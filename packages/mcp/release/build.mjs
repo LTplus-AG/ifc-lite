@@ -94,13 +94,17 @@ function assertPatchesApplied(nodeModules, staged) {
   for (const [spec, patch] of Object.entries(patches)) {
     if (!staged.includes(spec)) continue;
     const pkgRoot = join(nodeModules, spec.slice(0, spec.lastIndexOf('@')));
-    let file;
+    let file = '';
+    let checked = 0;
     for (const line of readFileSync(join(root, patch), 'utf-8').split('\n')) {
       if (line.startsWith('+++ ')) file = readFileSync(join(pkgRoot, line.slice(4).replace(/^b\//, '')), 'utf-8');
-      else if (line.startsWith('+') && line.trim() !== '+' && !file.includes(line.slice(1))) {
-        throw new Error(`${spec} is staged without ${patch} (missing: ${line.slice(1).trim()})`);
+      else if (line.startsWith('+') && line.trim() !== '+') {
+        if (!file.includes(line.slice(1))) throw new Error(`${spec} is staged without ${patch} (missing: ${line.slice(1).trim()})`);
+        checked++;
       }
     }
+    // A patch that parsed to nothing would pass without having checked anything.
+    if (checked === 0) throw new Error(`${patch} has no added lines to check`);
   }
 }
 

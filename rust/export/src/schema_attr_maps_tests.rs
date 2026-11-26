@@ -181,6 +181,21 @@ fn ifc2x3_property_subtypes_upgrade_to_the_ifc4_supertype_10777() {
     assert_eq!(checks.ifc4_slots.required_slots_unfilled(), 1, "Properties");
     let profile = convert_step_line("#5=IFCSTRUCTURALSTEELPROFILEPROPERTIES('P',#9,12.5,$,$,$,$,$,$,$,$,$,$,$,$,$,$,$,$,$,$,$,$,$,$,$,$);", "IFC2X3", "IFC4X3", 5, &mut Ifc2x3SlotFill::new(None), None).unwrap();
     assert_eq!(profile, "#5=IFCPROFILEPROPERTIES($,$,$,#9);");
+    // #11135: IFC4X3 requires Properties too, so the same record is counted against IFC4X3.
+    let mut checks = ConversionChecks::default();
+    let out = convert_step_line(line, "IFC2X3", "IFC4X3", 5, &mut Ifc2x3SlotFill::new(None), Some(&mut checks)).unwrap();
+    assert_eq!(out, "#5=IFCMATERIALPROPERTIES($,$,$,#8);");
+    assert_eq!(checks.ifc4_slots.required_slots_unfilled(), 0, "the IFC4 stat stays IFC4's");
+    let warnings = checks.ifc4_slots.warnings();
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert!(warnings[0].starts_with("1 slot(s) keep $ where IFC4X3 requires a value") && warnings[0].ends_with("not valid IFC4X3 (#11135)."), "{warnings:?}");
+    // A structural member's Axis, which the upgrade cannot supply, is counted on IFC4X3 as on IFC4.
+    let member = "#5=IFCSTRUCTURALCURVEMEMBER('0OSuGGYUFyIf0LtE29OSuH',$,'m',$,$,$,#3,.RIGID_JOINED_MEMBER.);";
+    for target in ["IFC4", "IFC4X3"] {
+        let mut checks = ConversionChecks::default();
+        convert_step_line(member, "IFC2X3", target, 5, &mut Ifc2x3SlotFill::new(None), Some(&mut checks)).unwrap();
+        assert!(checks.ifc4_slots.warnings().iter().any(|w| w.starts_with(&format!("1 slot(s) keep $ where {target} requires a value"))), "{target}");
+    }
     // IFC5 has no attribute list to map onto, so the record keeps its IFC2X3 name and layout.
     let ifc5 = "#5=IFCEXTENDEDMATERIALPROPERTIES(#8,(#6,#7),'d','Pset_x');";
     assert_eq!(convert_step_line(ifc5, "IFC2X3", "IFC5", 5, &mut Ifc2x3SlotFill::new(None), None).unwrap(), ifc5);

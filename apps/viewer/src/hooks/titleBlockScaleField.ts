@@ -41,10 +41,8 @@ export function titleBlockWithEffectiveScale(
   const label = `1:${formatScaleFactorLabel(1000 / effectiveScaleFactor)}`;
   // Auto-populate off means user text: like `autoPopulateTitleBlock` (`sheetSlice.ts`) it is kept,
   // except that a field with the id 'scale' is still corrected when the fit clamped the drawing (#2131).
-  const needsValue = (field: TitleBlockConfig['fields'][number]): boolean =>
-    field.autoPopulate && field.autoPopulateSource === 'drawing.scale'
-      ? field.value !== label
-      : clamped && field.id === 'scale';
+  const needsValue = (field: TitleBlockConfig['fields'][number]): boolean => field.value !== label
+    && ((field.autoPopulate && field.autoPopulateSource === 'drawing.scale') || (clamped && field.id === 'scale'));
   if (!titleBlock.fields.some(needsValue)) return titleBlock;
   return {
     ...titleBlock,

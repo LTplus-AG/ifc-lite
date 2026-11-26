@@ -39,6 +39,9 @@ describe('titleBlockWithEffectiveScale (#11458)', () => {
     assert.equal(scaleValue(titleBlockWithEffectiveScale(blockSaying('1:100'), 100, 1000 / 126.58)), '1:126.58');
     const ok = blockSaying('1:100');
     assert.equal(titleBlockWithEffectiveScale(ok, 100, 10), ok);
+    // A user-text field that already reads the clamped label is not copied either.
+    const clampedAlready = blockWith({ autoPopulate: false, value: '1:126.58' });
+    assert.equal(titleBlockWithEffectiveScale(clampedAlready, 100, 1000 / 126.58), clampedAlready);
   });
 
   it('leaves an unclamped scale field alone when auto-populate is off', () => {

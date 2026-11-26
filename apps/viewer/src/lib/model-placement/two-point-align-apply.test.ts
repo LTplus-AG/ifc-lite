@@ -75,6 +75,19 @@ describe('two-point align commit (#11505)', () => {
     assert.equal(placementFor(back, 'm').rotation.angle, 0, 'net heading is exactly zero, not 1e-16');
   });
 
+  it('treats a net heading that is only pick noise as no heading (viewer run, #11505)', () => {
+    // Picks come off float32 mesh vertices, so a model turned back to the reference's
+    // heading nets ~1e-8 rad, not 0. That must not be stored as a (barely visible) rotation.
+    const turned = seed({ m: testPlacement([30, 8, 0], { rotation: { angle: 17.5 * Math.PI / 180, pivot: [6, -4, 0] } }) });
+    const a = shown(turned, 'm', [-0.5, 5, 6.3176915645599365]), b = shown(turned, 'm', [12.5, 5, 6.3176915645599365]);
+    const f = (p: Translation): Translation => [Math.fround(p[0]), Math.fround(p[1]), Math.fround(p[2])];
+    const result = alignment({ a, b, aPrime: f([-0.5, 5, 6.3176915645599365]), bPrime: f([12.5, 5, 6.3176915645599365]) });
+    assert.ok(Math.abs(result.heading + 17.5 * Math.PI / 180) < 1e-6, 'the pairs undo the heading');
+    const done = alignPlacements(turned, ['m'], result);
+    assert.equal(placementFor(done, 'm').rotation.angle, 0);
+    near(shown(done, 'm', [-0.5, 5, 6.3176915645599365]), f([-0.5, 5, 6.3176915645599365]), 'A on A\'', 1e-6);
+  });
+
   it('carries a pending move preview instead of dropping it, and keeps A on A\'', () => {
     const start = previewPlacement(beginPlacement(seed({ m: testPlacement([0, 0, 0]) }), ['m'], new Set(['m'])), [40, 0, 0]);
     // The model is DRAWN at +40 m; A and B were picked there.

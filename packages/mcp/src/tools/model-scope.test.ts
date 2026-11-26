@@ -180,6 +180,10 @@ describe('a token narrowed to one model', () => {
     await expect(call('model_load', { file_path: join(tmp, 'beta.ifc'), model_id: 'alpha' }))
       .rejects.toThrow(/already loaded; replacing it needs mutate scope/);
     expect(ctx.registry.get('alpha')).toBe(before);
+    // The id derived from the file name is checked too, before any parse.
+    await expect(call('model_load', { file_path: join(tmp, 'alpha.ifc') }))
+      .rejects.toThrow(/already loaded/);
+    expect(ctx.registry.get('alpha')).toBe(before);
     const fresh = await call('model_load', { file_path: join(tmp, 'beta.ifc'), model_id: 'gamma' });
     expect((fresh.structuredContent as { id: string }).id).toBe('gamma');
   });

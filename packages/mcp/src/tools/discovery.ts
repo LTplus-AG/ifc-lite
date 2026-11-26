@@ -22,7 +22,8 @@ import { entityInfoAcrossSchemas, entityInfoInSchema } from '@ifc-lite/sdk/headl
 import { foldedEntityCount, foldedTypeCounts, pendingMutationsField, pendingOverlay } from '@ifc-lite/sdk/headless';
 import type { Tool } from './types.js';
 import { fmtInt, resolveModel, okResult } from './util.js';
-import { loadIfcModel } from '../loader.js';
+import { basename } from 'node:path';
+import { deriveModelId, loadIfcModel } from '../loader.js';
 import { resolveSafePath } from '../safe-path.js';
 import { modelAllowed, scopeAllows } from '../auth/scope.js';
 import type { ToolContext } from '../context.js';
@@ -137,22 +138,16 @@ export const modelLoad: Tool = {
     // The resulting absolute path is symlink-canonicalised and bounds-checked
     // before we touch the filesystem in `loadIfcModel`.
     const filePath = await resolveSafePath(input.file_path, ctx, 'read');
-    const explicitId = input.model_id as string | undefined;
-    // Refuse an explicit id before paying for the parse.
-    if (explicitId !== undefined) assertMayLoadAs(explicitId, ctx);
+    // The id the loader would pick, so a refusal costs no parse.
+    const id = (input.model_id as string | undefined) ?? deriveModelId(basename(filePath));
+    assertMayLoadAs(id, ctx);
     try {
       const loaded = await loadIfcModel(filePath, {
-        modelId: input.model_id as string | undefined,
+        modelId: id,
         // Path was already validated; loader's secondary check would be a
         // tautology, so pass a single-entry allowlist matching the file.
         allowedPaths: [filePath],
       });
-      try {
-        assertMayLoadAs(loaded.id, ctx);
-      } catch (err) {
-        loaded.backend.dispose();
-        throw err;
-      }
       ctx.registry.add(loaded);
       ctx.log.log('info', 'model_load', { id: loaded.id, file: filePath, entities: loaded.store.entityCount });
       // A model the scan read short is reported as such, in the text the

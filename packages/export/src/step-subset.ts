@@ -261,6 +261,11 @@ export function buildSubset(seedProducts: Set<number>, parsed: ParsedStep): Subs
       grew = true;
     }
   }
+  // A filler or projection the fixpoint pulled in may sit in a storey or space
+  // nothing else keeps: keep its spatial ancestors too, or its containment is
+  // dropped and it lands outside the spatial tree. Ancestors are spatial
+  // structures, never feature anchors, so the fixpoint needs no second run.
+  forwardClosure(spatialAncestors(keep, parsed.instances), parsed, keep);
 
   // Spatial relationships that connect kept products into the tree, each
   // relation's member SET filtered down to the kept ids rather than the whole

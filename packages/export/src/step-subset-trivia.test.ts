@@ -114,6 +114,26 @@ describe('relation anchors and projections', () => {
   });
 });
 
+describe('fillers keep their own container', () => {
+  it('keeps the storey of a door that fills an opening in a wall on another storey', () => {
+    const text = file([
+      ...BASE,
+      '#45=IFCLOCALPLACEMENT($,#2);',
+      "#46=IFCBUILDINGSTOREY('0000000000000000000ST2',$,'L02',$,$,#45,$,$,.ELEMENT.,3.);",
+      "#70=IFCWALL('0000000000000000000WA1',$,'W',$,$,#50,$,$,$);",
+      "#71=IFCOPENINGELEMENT('0000000000000000000OP1',$,'O',$,$,#50,$,$,$);",
+      "#72=IFCDOOR('0000000000000000000DO1',$,'D',$,$,#50,$,$,$,$,$,$,$);",
+      "#80=IFCRELVOIDSELEMENT('0000000000000000000RV1',$,$,$,#70,#71);",
+      "#81=IFCRELFILLSELEMENT('0000000000000000000RF1',$,$,$,#71,#72);",
+      "#82=IFCRELCONTAINEDINSPATIALSTRUCTURE('0000000000000000000RC1',$,$,$,(#70),#41);",
+      "#83=IFCRELCONTAINEDINSPATIALSTRUCTURE('0000000000000000000RC2',$,$,$,(#72),#46);",
+    ]);
+    const parsed = parseStep(text);
+    const keep = buildSubset(new Set([70]), parsed).keep;
+    for (const id of [72, 81, 46, 83]) expect(keep.has(id)).toBe(true);
+  });
+});
+
 describe('storey members off the placement chain', () => {
   it('reads containment with comments around the references', () => {
     const text = file([

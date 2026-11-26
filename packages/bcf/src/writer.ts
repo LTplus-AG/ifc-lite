@@ -340,22 +340,24 @@ function writeMarkupFile(
     content += `\n    <Index>${xsdInt(topic.index, 'Topic/Index', `topic "${topic.guid}"`)}</Index>`;
   }
 
-  if (topic.labels && topic.labels.length > 0) {
-    // BCF 3.0's markup.xsd wraps labels in ONE `<Labels>` container holding
-    // repeated `<Label>` children (Labels -> Label*); repeating `<Labels>text
-    // </Labels>` once per label -- the 2.1 shape, where `<Labels>` itself is
-    // the repeated per-entry element with no `<Label>` child -- fails 3.0
-    // validation ("Character content other than whitespace is not allowed
-    // because the content type is 'element-only'"). 2.1 is left as-is.
+  // Check the serialized text because escapeXml removes illegal XML characters.
+  // BCF 3.0 labels are optional NonEmptyOrBlankString values.
+  const escapedLabels = (topic.labels ?? []).map(escapeXml);
+  const labels = version === '3.0'
+    ? escapedLabels.filter((label) => !XML_WHITESPACE_ONLY.test(label))
+    : escapedLabels;
+  if (labels.length > 0) {
+    // 3.0 groups `<Label>` children inside one `<Labels>` container.
+    // 2.1 repeats `<Labels>` for each entry.
     if (version === '3.0') {
       content += `\n    <Labels>`;
-      for (const label of topic.labels) {
-        content += `\n      <Label>${escapeXml(label)}</Label>`;
+      for (const label of labels) {
+        content += `\n      <Label>${label}</Label>`;
       }
       content += `\n    </Labels>`;
     } else {
-      for (const label of topic.labels) {
-        content += `\n    <Labels>${escapeXml(label)}</Labels>`;
+      for (const label of labels) {
+        content += `\n    <Labels>${label}</Labels>`;
       }
     }
   }
@@ -427,7 +429,11 @@ function writeMarkupFile(
         let c = `\n${indent}<Comment Guid="${escapeXml(bcfGuid(comment.guid, version))}">`;
         c += `\n${indent}  <Date>${xsdDateTime(comment.date, 'Comment/Date', `comment "${comment.guid}"`)}</Date>`;
         c += `\n${indent}  <Author>${xsdRequiredString(comment.author, 'Comment/Author', `comment "${comment.guid}"`, version)}</Author>`;
-        c += `\n${indent}  <Comment>${escapeXml(comment.comment)}</Comment>`;
+        // 3.0 allows the text element to be absent. 2.1 requires it.
+        const text = escapeXml(comment.comment);
+        if (version === '2.1' || !XML_WHITESPACE_ONLY.test(text)) {
+          c += `\n${indent}  <Comment>${text}</Comment>`;
+        }
         if (comment.viewpointGuid) {
           c += `\n${indent}  <Viewpoint Guid="${escapeXml(bcfGuid(comment.viewpointGuid, version))}"/>`;
         }

@@ -95,6 +95,8 @@ export interface BatchedMesh {
   /** Finish shared by every piece: `colorKey` folds it in at 1/1000, so a batch never mixes finishes (#5582). */
   finish?: MeshFinish;
   expressIds: number[];  // For picking - all expressIds in this batch
+  /** Bumped on every change of `expressIds`, on batches whose ids can leave (compact pages, `batchEntryStamp`). */
+  entryRevision?: number;
   /** Per-entry modelIndex, parallel to `expressIds` (same index = same source
    *  piece): batches group by colour (see Scene.bucketBaseKey), NOT by model,
    *  so two federated models sharing an expressId AND colour can land in the

@@ -64,7 +64,7 @@ the answer, and `contentDiff.pendingMutations` says how many.
 **Geometry** — `geometry_get`, `geometry_bbox`, `geometry_area`,
 `geometry_volume`, `raycast`.
 
-**Validation** — `ids_validate`, `ids_explain`, `gherkin_check`.
+**Validation** — `ids_validate`, `ids_explain`.
 
 **Clash** — `clash_check`, `clash_matrix`.
 
@@ -79,7 +79,7 @@ only the user gave in `values`, never invented ones),
 `mutation_batch`, `mutation_diff`, `mutation_undo`.
 
 **Export** — `export_csv`, `export_json`, `export_ifc`, `export_ifcx`,
-`export_glb`, `export_3dm`, `export_pdf_report`.
+`export_glb`, `export_3dm`.
 
 **BCF** — `bcf_topic_create`, `bcf_topic_update`, `bcf_topic_close`,
 `bcf_topic_list`, `bcf_viewpoint_create`, `bcf_export`.

@@ -226,6 +226,23 @@ void run_mesh_canonical_tests() {
         require(std::abs(face_areas(mesh).at(0)-area)<=1e-9*area,
             "a warped quad tagged planar keeps its original 3D area");
     }
+    // Review case (#10916): a 1 um wide quad tagged planar at a 2.6e6 m
+    // offset with one corner 0.25 um out of plane. The canonical rule prefers
+    // the other diagonal than the SDK's, which would change its area by
+    // 1.17%: far above the noise floor, so the SDK's split stays.
+    {
+        const double x=2.6e6,y=8.6e5,z=3,w=1e-6;
+        AdapterMesh mesh;
+        mesh.positions={x,y,z, x+1,y,z, x+0.6,y+w,z+0.25e-6, x,y+w,z};
+        mesh.indices={0,1,3, 1,2,3};
+        mesh.faces={0,0};
+        mesh.normals.assign(mesh.indices.size()*3,0.);
+        order_mesh(mesh);
+        const double area=face_areas(mesh).at(0);
+        canonicalize(mesh,{true});
+        require(std::abs(face_areas(mesh).at(0)-area)<=1e-9*area,
+            "a warped thin quad at a 2.6e6 m offset keeps its 3D area");
+    }
     // The area check itself must not react to the SDK's +/-1 ULP noise: a
     // near-collinear quad at a 1e6 m offset (found by fuzzing) whose split
     // changed area by noise alone flipped between runs with a purely

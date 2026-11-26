@@ -54,6 +54,36 @@ double double_area(const AdapterMesh& mesh,const Triangle& t) {
     }
     return best;
 }
+// Whether a retriangulation keeps a face's 3D area: within 1e-9 relative,
+// plus a floor for the SDK's +/-1 ULP coordinate noise. That noise warps a
+// planar face by about one ULP of its largest |coordinate| M, which changes
+// the area of a near-collinear split by up to about eps * M * extent per
+// triangle; without the floor such a face's choice flipped between runs
+// (#10916 fuzz: 423 of 164k quads at offsets up to 1e6). The floor is 2 eps M
+// times the bounding-box diagonal per triangle: about 5e-10 m^2 per metre of
+// extent and triangle at a 2.6e6 m offset, the precision such coordinates
+// carry. A real warp is far above it (a 0.25 um corner on a 1 um wide face
+// there: 1.17%; #10916's closed cap: 1.17%); a face that narrow at that
+// offset can still change area by up to the floor (a 30 nm corner: 0.08%,
+// 6e-10 m^2).
+bool same_area(const AdapterMesh& mesh,const std::vector<Triangle>& before,const std::vector<Triangle>& after) {
+    double before_area=0,after_area=0,magnitude=0;
+    Point low{INFINITY,INFINITY,INFINITY},high{-INFINITY,-INFINITY,-INFINITY};
+    for (const auto& t:before) {
+        before_area+=double_area(mesh,t);
+        for (uint32_t id:t) {
+            const auto x=point(mesh,id);
+            for (unsigned k=0;k<3;++k) {
+                magnitude=std::max(magnitude,std::abs(x[k]));
+                low[k]=std::min(low[k],x[k]); high[k]=std::max(high[k],x[k]);
+            }
+        }
+    }
+    for (const auto& t:after) after_area+=double_area(mesh,t);
+    const double diagonal=std::hypot(high[0]-low[0],high[1]-low[1],high[2]-low[2]);
+    const double noise=2*std::numeric_limits<double>::epsilon()*magnitude*diagonal*double(before.size());
+    return std::abs(after_area-before_area)<=1e-9*before_area+noise;
+}
 using Edge=std::pair<uint32_t,uint32_t>;
 Edge edge(uint32_t a,uint32_t b) { return std::minmax(a,b); }
 Triangle rotated(Triangle t) {
@@ -313,21 +343,7 @@ std::vector<Triangle> requad(const AdapterMesh& mesh,const Triangle& a,const Tri
         const bool use_flipped=clear ? flipped_clear : flipped && sound({p,u,q},{q,v,p});
         if (use_flipped && (!use_kept || rank(p,q)<rank(u,v))) {
             const Triangle first{p,u,q},second{q,v,p};
-            const double before_area=double_area(mesh,a)+double_area(mesh,b);
-            const double after_area=double_area(mesh,first)+double_area(mesh,second);
-            // The general path's 1e-9 relative tolerance, plus a floor for
-            // the SDK's +/-1 ULP coordinate noise (about 2 extent * ULP of the
-            // largest |coordinate| per triangle, and rounding of the cross
-            // products), so a near-collinear quad's choice does not flip
-            // between runs. A real warp (#10916: 1.17% on a closed cap) is
-            // far above it.
-            double extent=0,magnitude=0;
-            for (const auto& x:{U,V,P,Q}) {
-                for (double c:x) magnitude=std::max(magnitude,std::abs(c));
-                for (const auto& y:{U,V,P,Q}) extent=std::max(extent,std::hypot(x[0]-y[0],x[1]-y[1],x[2]-y[2]));
-            }
-            const double noise=64*std::numeric_limits<double>::epsilon()*extent*(magnitude+extent);
-            if (!(std::abs(after_area-before_area)<=1e-9*before_area+noise)) return {};
+            if (!same_area(mesh,{a,b},{first,second})) return {};
             return {first,second};
         }
         if (use_kept) return {a,b};
@@ -453,12 +469,9 @@ std::vector<Triangle> greedy(const AdapterMesh& mesh,const std::vector<Triangle>
     // Each boundary edge once, in its original direction; each interior edge
     // once in each direction. Same area and outward normals.
     std::map<std::pair<uint32_t,uint32_t>,unsigned> after;
-    double before_area=0,after_area=0;
-    for (const auto& t:face) before_area+=double_area(mesh,t);
     for (const auto& t:found) {
         Point unit;
         if (!flat_normal(point(mesh,t[0]),point(mesh,t[1]),point(mesh,t[2]),unit) || !(dot(unit,n)>0)) return {};
-        after_area+=double_area(mesh,t);
         for (unsigned k=0;k<3;++k) ++after[{t[k],t[(k+1)%3]}];
     }
     for (const auto& [d,count]:after) {
@@ -466,8 +479,9 @@ std::vector<Triangle> greedy(const AdapterMesh& mesh,const std::vector<Triangle>
         if (count!=1 || (outer ? reverse : !reverse) || outline.count({d.second,d.first})) return {};
     }
     for (const auto& d:outline) if (!after.count(d)) return {};
-    if (!(std::abs(after_area-before_area)<=1e-9*before_area)) return {};
-    return {found.begin(),found.end()};
+    std::vector<Triangle> result{found.begin(),found.end()};
+    if (!same_area(mesh,face,result)) return {};
+    return result;
 }
 // The greedy, and if nearness left it without a valid triangulation, the
 // greedy without the near rule (exact predicates and grid ranking only).

@@ -192,39 +192,36 @@ test('main --final posts the verdict on the head sha with the job link', async (
 
 const entryEnv = { EVENT: 'pull_request', LANE: 'fast', BATCH: 'false', NOOP: 'false', FRONTEND: 'true', RUST: 'false' };
 
-test('PR #11355: newest success wins whether it lands before, during or after cancellation reporting', async (t) => {
-  const pending = { context: STATUS_CONTEXT, state: 'pending', target_url: CANCELLED_RUN_URL };
-  const newer = { ...CANCELLED_RUN, id: 43, conclusion: 'success' };
-  for (const timing of ['before', 'during', 'after']) {
-    await t.test(timing, async () => {
-      let postNewerVerdict;
-      let latest = [CANCELLED_RUN];
-      let current = pending;
-      await withApi(201, async (api, posts) => {
-        postNewerVerdict = async () => {
-          latest = [newer, CANCELLED_RUN];
-          await main(['--shards'], env(api, {
-            ...entryEnv, GITHUB_RUN_ID: String(newer.id), LANE: 'full', SHARDS_RESULT: 'success',
-          }));
-          current = posts.at(-1).body;
-        };
-        if (timing === 'before') await postNewerVerdict();
-        await main(['--cancelled'], env(api, CANCELLED_ENV));
-        if (timing === 'after') await postNewerVerdict();
-        assert.deepEqual(posts.map(({ body }) => body.state), timing === 'after' ? ['failure', 'success'] : ['success']);
-        assert.equal(posts.at(-1).body.target_url, `https://github.com/${REPO}/actions/runs/${newer.id}`);
-      }, {
-        [CANCELLED_RUN_PATH]: CANCELLED_RUN,
-        [STATUS_PATH]: async () => {
-          const snapshot = current;
-          if (timing === 'during') await postNewerVerdict();
-          return { statuses: [snapshot] };
-        },
-        [RUNS_PATH]: () => ({ workflow_runs: latest }),
-      });
+for (const timing of ['before', 'during', 'after']) {
+  test(`PR #11355: newest success wins when it lands ${timing} cancellation reporting`, async () => {
+    const newer = { ...CANCELLED_RUN, id: 43, conclusion: 'success' };
+    let postNewerVerdict;
+    let latest = [CANCELLED_RUN];
+    let current = { context: STATUS_CONTEXT, state: 'pending', target_url: CANCELLED_RUN_URL };
+    await withApi(201, async (api, posts) => {
+      postNewerVerdict = async () => {
+        latest = [newer, CANCELLED_RUN];
+        await main(['--shards'], env(api, {
+          ...entryEnv, GITHUB_RUN_ID: String(newer.id), LANE: 'full', SHARDS_RESULT: 'success',
+        }));
+        current = posts.at(-1).body;
+      };
+      if (timing === 'before') await postNewerVerdict();
+      await main(['--cancelled'], env(api, CANCELLED_ENV));
+      if (timing === 'after') await postNewerVerdict();
+      assert.deepEqual(posts.map(({ body }) => body.state), timing === 'after' ? ['failure', 'success'] : ['success']);
+      assert.equal(posts.at(-1).body.target_url, `https://github.com/${REPO}/actions/runs/${newer.id}`);
+    }, {
+      [CANCELLED_RUN_PATH]: CANCELLED_RUN,
+      [STATUS_PATH]: async () => {
+        const snapshot = current;
+        if (timing === 'during') await postNewerVerdict();
+        return { statuses: [snapshot] };
+      },
+      [RUNS_PATH]: () => ({ workflow_runs: latest }),
     });
-  }
-});
+  });
+}
 
 test('main: a failed post fails --final (the pending status still holds the gate) but never --entry (fails open)', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'viewer-status-'));

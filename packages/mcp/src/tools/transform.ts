@@ -241,6 +241,11 @@ const modelExtract: Tool = {
     const expressIds = (input.express_ids as number[] | undefined) ?? [];
     const types = nonBlank(input.types as string[] | undefined).map(withIfcPrefix);
     const storeys = nonBlank(input.storeys as string[] | undefined);
+    if (expressIds.length > 0 && m.backend.hasPendingChanges()) {
+      // Unsaved edits are re-serialized before extraction, and nothing pins that
+      // the source file's express ids survive it. GlobalIds do.
+      throw invalid('express_ids name records of the source file; with unsaved edits pending, select by global_ids instead.');
+    }
     if (globalIds.length + expressIds.length + types.length + storeys.length === 0) {
       throw invalid('Select something: global_ids, express_ids, types or storeys.');
     }

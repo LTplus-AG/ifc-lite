@@ -245,6 +245,11 @@ describe('resolveStorey: a storey NAMED with a number', () => {
     expect(resolveStorey('#21', clash).placementId).toBe(11);
   });
 
+  it('reports a storey id whose number other storeys share as a Name as ambiguous, not as a duplicate name', () => {
+    const clash = parseStep(text.replace("'0',$,$,#10", "'20',$,$,#10").replace("'1',$,$,#11", "'20',$,$,#11"));
+    expect(() => resolveStorey('20', clash).placementId).toThrow(/is storey #20 and the Name of other storeys/);
+  });
+
   it('still reads a bare storey express id, and #id, as an id', () => {
     expect(resolveStorey('20', parsed).placementId).toBe(10);
     expect(resolveStorey('#21', parsed).placementId).toBe(11);
@@ -253,9 +258,10 @@ describe('resolveStorey: a storey NAMED with a number', () => {
 });
 
 describe('parseStep: GlobalId index', () => {
-  it('keeps the first record for a GlobalId; a later record with the same leading string does not shadow it', () => {
+  it('indexes IfcRoot records only, whatever the record order', () => {
     const text = [
       'ISO-10303-21;', 'HEADER;', 'ENDSEC;', 'DATA;',
+      "#5=IFCPROPERTYSINGLEVALUE('2O2Fr$t4X7Zf8NOew3FLKr',$,$,$);",
       "#10=IFCWALL('2O2Fr$t4X7Zf8NOew3FLKr',$,'W',$,$,$,$,$,$);",
       "#900=IFCPROPERTYSINGLEVALUE('2O2Fr$t4X7Zf8NOew3FLKr',$,$,$);",
       'ENDSEC;', 'END-ISO-10303-21;', '',

@@ -105,12 +105,19 @@ export function resolveStorey(token: string, parsed: ParsedStep): { storeyId: nu
     // Storeys are often NAMED '0', '1', ...: a bare number that is not a
     // storey's express id is tried as a name before it is reported.
     const id = parseInt(t, 10);
-    const named = byName();
-    const isStorey = parsed.instances.get(id)?.type === 'IFCBUILDINGSTOREY';
-    if (isStorey && named !== undefined && named !== id) {
+    const isStoreyId = parsed.instances.get(id)?.type === 'IFCBUILDINGSTOREY';
+    let named: number | undefined;
+    try {
+      named = byName();
+    } catch (err) {
+      // Duplicate names do not block a token that is itself a storey id.
+      if (!(err instanceof SubsetSelectionError) || !isStoreyId) throw err;
+      throw new SubsetSelectionError('invalid', `'${t}' is storey #${id} and the Name of other storeys; pass #${id} or a GlobalId.`);
+    }
+    if (isStoreyId && named !== undefined && named !== id) {
       throw new SubsetSelectionError('invalid', `'${t}' is storey #${id} and the Name of storey #${named}; pass #${id} or a GlobalId.`);
     }
-    storeyId = isStorey ? id : named ?? id;
+    storeyId = isStoreyId ? id : named ?? id;
   } else if (parsed.guidToId.has(t)) {
     storeyId = parsed.guidToId.get(t);
   } else {

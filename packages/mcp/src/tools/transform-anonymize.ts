@@ -155,7 +155,7 @@ export const modelAnonymize: Tool = {
       express_ids: { type: 'array', items: { type: 'integer', minimum: 1 }, description: 'Seed entities by express id.' },
       global_ids: { ...stringList, description: 'Seed entities by GlobalId.' },
       types: { ...stringList, description: 'Every entity of these IFC types.' },
-      storey: { type: 'string', minLength: 1, description: 'Every entity contained in this storey: GlobalId, #id, exact Name (else LongName), or a name fragment that matches exactly one storey. Ambiguous names are refused.' },
+      storey: { type: 'string', minLength: 1, description: 'Every entity directly contained in this storey (IfcRelContainedInSpatialStructure, as `ifc-lite anonymize --storey`): GlobalId, #id, exact Name (else LongName), or a name fragment that matches exactly one storey. Ambiguous names are refused.' },
       exclude_relationships: { type: 'array', items: { type: 'string', enum: RELATIONSHIPS }, description: 'Relationships not to follow when expanding the seeds.' },
       connect_depth: { type: 'integer', minimum: 0, description: 'Also follow IfcRelConnectsPathElements this many hops (default 0).' },
       keep_psets: { type: 'boolean', description: 'Keep property sets instead of clearing them.' },

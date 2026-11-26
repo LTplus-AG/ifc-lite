@@ -25,6 +25,12 @@ import { resolveStorey, storeyMembers } from './step-subset-storey.js';
 export { SubsetSelectionError } from './step-subset-relations.js';
 export type { StepRecord, Subset } from './step-subset-relations.js';
 
+let ROOTED: Set<string> | undefined;
+/** Every IfcRoot subtype, uppercase, across the bundled schemas. */
+function rootedTypes(): Set<string> {
+  return (ROOTED ??= new Set(expandTypes(['IfcRoot']).map((t) => t.toUpperCase())));
+}
+
 export interface ParsedStep {
   header: string;
   instances: Map<number, StepRecord>;
@@ -106,9 +112,9 @@ export function parseStep(text: string): ParsedStep {
     instances.set(id, { id, type: type.toUpperCase(), body, full });
     // First quoted 22-char token is the GlobalId of a rooted entity.
     const gm = /^\s*'([^']{22})'/.exec(body);
-    // The first record wins: a later non-rooted record whose first string
-    // happens to equal a GlobalId must not shadow the entity that carries it.
-    if (gm && !guidToId.has(gm[1])) guidToId.set(gm[1], id);
+    // Only IfcRoot records carry a GlobalId; a property or material whose first
+    // string happens to be 22 characters must not answer for one.
+    if (gm && rootedTypes().has(instances.get(id)!.type)) guidToId.set(gm[1], id);
     i = semi + 1;
   }
   return { header, instances, guidToId };

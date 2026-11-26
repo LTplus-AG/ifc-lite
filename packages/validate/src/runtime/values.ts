@@ -90,7 +90,7 @@ export function withLowerBound(a: Aggregate, low: number): Aggregate {
 
 /** Copy an aggregate keeping its index base, so EXPRESS value semantics hold on assignment. */
 export function copyAggregate(a: Aggregate): Aggregate {
-  const out: Aggregate = a.slice();
+  const out: Aggregate = a.map(v => isAggregate(v) ? copyAggregate(v) : v);
   const low = a[LOWER_BOUND];
   if (low !== undefined) out[LOWER_BOUND] = low;
   if (a[IS_SET]) out[IS_SET] = true;

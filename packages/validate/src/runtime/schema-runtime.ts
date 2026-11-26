@@ -5,7 +5,7 @@
 /** Resolves the emitted schema tables into lookups the validator runs on. */
 
 import type {
-  AttributeMeta, CompiledRule, CompiledRules, DerivedFn, EntityMeta, EntityRuleFn, InverseMeta, SchemaMeta, TypeMeta, TypeRuleFn,
+  AttributeMeta, CompiledRule, CompiledRules, DerivedFn, EntityMeta, EntityRuleFn, InverseMeta, SchemaMeta, TypeMeta, TypeRef, TypeRuleFn,
 } from './schema-meta.js';
 
 export interface ResolvedAttribute extends AttributeMeta {
@@ -107,6 +107,18 @@ export class SchemaRuntime {
 
   type(name: string): TypeMeta | undefined {
     return this.types.get(name.toUpperCase());
+  }
+
+  aggregateType(type: TypeRef | undefined): Extract<TypeRef, { k: 'aggregate' }> | undefined {
+    const seen = new Set<string>();
+    while (type?.k === 'named') {
+      const name = type.name.toUpperCase();
+      if (seen.has(name)) return undefined;
+      seen.add(name);
+      const decl = this.type(name);
+      type = decl?.kind === 'defined' ? decl.underlying : undefined;
+    }
+    return type?.k === 'aggregate' ? type : undefined;
   }
 
   /** Canonical spelling of an entity or type name, as declared. */

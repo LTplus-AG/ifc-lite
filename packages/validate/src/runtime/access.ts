@@ -58,7 +58,11 @@ export function attr(base: Value, name: string, group?: string): Value {
   switch (slot.k) {
     case 'explicit': {
       const raw = base.attributes[slot.index];
-      return base.transient ? raw : resolve(base.model, raw);
+      const value = base.transient ? raw : resolve(base.model, raw);
+      if (!isAggregate(value)) return value;
+      const agg = base.model?.schema.aggregateType(slot.attribute.type);
+      if (agg?.kind === 'ARRAY' && agg.low !== undefined) return withLowerBound(value, agg.low);
+      return agg?.kind === 'SET' ? markSet(value) : value;
     }
     case 'derived': {
       const fn = slot.fn;

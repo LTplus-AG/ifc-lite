@@ -8,7 +8,7 @@ import { violated } from '../runtime/logic.js';
 import type { Model } from '../runtime/model.js';
 import type { TypeRef } from '../runtime/schema-meta.js';
 import type { ResolvedEntity } from '../runtime/schema-runtime.js';
-import { DERIVED, Typed, type Value } from '../runtime/values.js';
+import { DERIVED, Typed, withLowerBound, type Value } from '../runtime/values.js';
 import type { ValidationFinding } from './findings.js';
 import { conforms } from './value-types.js';
 import { guard } from './guard.js';
@@ -30,7 +30,7 @@ function typeLabel(t: TypeRef): string {
     case 'simple': return t.name;
     case 'named': return t.name;
     case 'generic': return 'GENERIC';
-    case 'aggregate': return `${t.kind} [${t.low}:${t.high ?? '?'}] OF ${typeLabel(t.of)}`;
+    case 'aggregate': return `${t.kind} [${t.low ?? '?'}:${t.high ?? '?'}] OF ${typeLabel(t.of)}`;
   }
 }
 
@@ -44,20 +44,24 @@ function checkTypeRules(m: Model, id: number, entity: ResolvedEntity, attribute:
   if (type.k !== 'named') return;
   const decl = m.schema.type(type.name);
   if (!decl) return;
-  if (decl.kind === 'select') {
-    if (v instanceof Typed) checkTypeRules(m, id, entity, attribute, v.value, { k: 'named', name: v.type }, out, counters);
-    return;
-  }
-  if (decl.kind !== 'defined') return;
   for (const { declaredBy, rule } of m.schema.typeRules.get(decl.name.toUpperCase()) ?? []) {
     counters.typeRuleEvaluations++;
     const ruleId = `${declaredBy}.${rule.label}`;
-    const result = guard(out, ruleId, id, entity.name, () => rule.check(v, m));
+    const result = guard(out, ruleId, id, entity.name, () => {
+      const agg = m.schema.aggregateType(type);
+      const value = Array.isArray(v) && agg?.kind === 'ARRAY' && agg.low !== undefined ? withLowerBound(v, agg.low) : v;
+      return rule.check(value, m);
+    });
     if (result.ok && violated(result.value)) {
       out.push({ category: 'simpletype_rule', rule: ruleId, instance: id, entity: entity.name, attribute, message: `${rule.source} is FALSE for ${describe(v)}` });
     }
   }
-  if (decl.underlying.k === 'aggregate') checkTypeRules(m, id, entity, attribute, v, decl.underlying, out, counters);
+  if (decl.kind === 'select' && v instanceof Typed) {
+    checkTypeRules(m, id, entity, attribute, v.value, { k: 'named', name: v.type }, out, counters);
+  } else {
+    const aggregate = m.schema.aggregateType(type);
+    if (aggregate) checkTypeRules(m, id, entity, attribute, v, aggregate, out, counters);
+  }
 }
 
 export function checkInstance(m: Model, id: number, out: ValidationFinding[], counters: InstanceCheckCounters): void {

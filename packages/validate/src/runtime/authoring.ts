@@ -14,7 +14,7 @@ import { violated } from './logic.js';
 import { Model } from './model.js';
 import type { TypeRef } from './schema-meta.js';
 import type { SchemaRuntime } from './schema-runtime.js';
-import { EnumValue, Ref, StepInteger, Typed, UNKNOWN, type Value } from './values.js';
+import { EnumValue, Ref, StepInteger, Typed, UNKNOWN, withLowerBound, markSet, type Value } from './values.js';
 
 export interface RefinementContext {
   addIssue(issue: { code: 'custom'; message: string; input?: unknown }): void;
@@ -33,11 +33,13 @@ function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
 
-export function fromAuthoring(schema: Pick<SchemaRuntime, 'canonicalName' | 'type'>, type: TypeRef | undefined, v: unknown): Value {
+export function fromAuthoring(schema: Pick<SchemaRuntime, 'canonicalName' | 'type' | 'aggregateType'>, type: TypeRef | undefined, v: unknown): Value {
   if (v === null || v === undefined) return undefined;
   if (Array.isArray(v)) {
-    const of = type?.k === 'aggregate' ? type.of : type?.k === 'named' ? underlyingAggregate(schema, type.name) : undefined;
-    return v.map((x) => fromAuthoring(schema, of, x));
+    const aggregate = schema.aggregateType(type);
+    const items = v.map(x => fromAuthoring(schema, aggregate?.of, x));
+    if (aggregate?.kind === 'ARRAY' && aggregate.low !== undefined) return withLowerBound(items, aggregate.low);
+    return aggregate?.kind === 'SET' ? markSet(items) : items;
   }
   if (isObject(v)) {
     if (typeof v.ref === 'number') return new Ref(v.ref);
@@ -52,11 +54,6 @@ export function fromAuthoring(schema: Pick<SchemaRuntime, 'canonicalName' | 'typ
   if (typeof v === 'number' && Number.isInteger(v) && resolvesTo(schema, type, 'INTEGER')) return new StepInteger(v);
   if (typeof v === 'number' || typeof v === 'string' || typeof v === 'boolean') return v;
   return undefined;
-}
-
-function underlyingAggregate(schema: Pick<SchemaRuntime, 'type'>, name: string): TypeRef | undefined {
-  const t = schema.type(name);
-  return t?.kind === 'defined' && t.underlying.k === 'aggregate' ? t.underlying.of : undefined;
 }
 
 function resolvesTo(schema: Pick<SchemaRuntime, 'type'>, type: TypeRef | undefined, simple: string): boolean {
@@ -97,6 +94,7 @@ export function localRuleRefinement(schema: SchemaRuntime, entityName: string, l
 }
 
 const SCALAR = {
+  aggregateType: () => undefined,
   canonicalName: () => undefined,
   type: () => undefined,
 };

@@ -105,3 +105,13 @@ describe('STEP record reader', () => {
     expect([...r.splitStepRecords(text)].map((x) => [x.id, x.type])).toEqual([[1, 'IFCA'], [2, 'IFCB']]);
   });
 });
+
+it('retains nested aggregate value semantics and compares sets independent of order (#11560)', () => {
+  const original = [[1, 2]];
+  const copy = r.assign(original);
+  if (!Array.isArray(copy)) throw new Error('expected aggregate');
+  r.setIndex(copy[0], 1, 5);
+  expect(original).toEqual([[1, 2]]);
+  expect(r.eq(r.assignSet([1, 2]), r.assignSet([2, 1]))).toBe(true);
+  expect(r.eq([1, 2], [2, 1])).toBe(false);
+});

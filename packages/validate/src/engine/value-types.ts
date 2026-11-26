@@ -46,9 +46,9 @@ export function conforms(m: Model, v: Value, type: TypeRef): boolean {
       return false;
     case 'aggregate': {
       if (!Array.isArray(v)) return false;
-      if (type.kind === 'ARRAY' && type.high !== undefined) {
-        if (v.length !== type.high - type.low + 1) return false;
-      } else if (v.length < type.low || (type.high !== undefined && v.length > type.high)) return false;
+      if (type.kind === 'ARRAY') {
+        if (type.low !== undefined && type.high !== undefined && v.length !== type.high - type.low + 1) return false;
+      } else if (v.length < (type.low ?? 0) || (type.high !== undefined && v.length > type.high)) return false;
       if ((type.kind === 'SET' || type.unique) && !uniqueAggregate(v)) return false;
       return v.every((x) => (x === undefined ? type.optional : conforms(m, x, type.of)));
     }

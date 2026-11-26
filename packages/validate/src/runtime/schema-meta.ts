@@ -13,7 +13,7 @@ export type SimpleTypeName = 'REAL' | 'INTEGER' | 'NUMBER' | 'BOOLEAN' | 'LOGICA
 export type TypeRef =
   | { k: 'simple'; name: SimpleTypeName; width?: number; fixed?: boolean }
   | { k: 'named'; name: string }
-  | { k: 'aggregate'; kind: 'LIST' | 'SET' | 'BAG' | 'ARRAY'; low: number; high?: number; unique: boolean; optional: boolean; of: TypeRef }
+  | { k: 'aggregate'; kind: 'LIST' | 'SET' | 'BAG' | 'ARRAY'; low?: number; high?: number; unique: boolean; optional: boolean; of: TypeRef }
   | { k: 'generic' };
 
 export interface AttributeMeta {

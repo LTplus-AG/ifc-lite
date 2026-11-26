@@ -6,7 +6,7 @@
 
 import { EntityInstance } from './instance.js';
 import { not } from './logic.js';
-import { BinaryValue, EnumValue, isAggregate, prim, Ref, UNKNOWN, type Logical, type Value } from './values.js';
+import { BinaryValue, EnumValue, isAggregate, isSet, prim, Ref, UNKNOWN, type Logical, type Value } from './values.js';
 
 const MAX_VALUE_DEPTH = 16;
 
@@ -26,28 +26,44 @@ function resolveRef(v: Value, owner: EntityInstance): Value {
 
 function valuesEqual(a: Value[], b: Value[], depth: number, ownerA?: EntityInstance, ownerB?: EntityInstance): Logical {
   if (a.length !== b.length) return false;
+  if (isSet(a) && isSet(b)) {
+    const remaining = b.slice();
+    let uncertain = false;
+    for (const member of a) {
+      let possible = false;
+      const index = remaining.findIndex(candidate => {
+        const result = equal(member, candidate, depth, ownerA, ownerB);
+        if (result === UNKNOWN) possible = true;
+        return result === true;
+      });
+      if (index >= 0) remaining.splice(index, 1);
+      else if (!possible) return false;
+      else uncertain = true;
+    }
+    return uncertain ? UNKNOWN : true;
+  }
   let unknown = false;
   for (let i = 0; i < a.length; i++) {
     const x = ownerA ? resolveRef(a[i], ownerA) : a[i];
     const y = ownerB ? resolveRef(b[i], ownerB) : b[i];
     if (x === undefined && y === undefined) continue;
-    const r = equal(x, y, depth);
+    const r = equal(x, y, depth, ownerA, ownerB);
     if (r === false) return false;
     if (r === UNKNOWN) unknown = true;
   }
   return unknown ? UNKNOWN : true;
 }
 
-function equal(a: Value, b: Value, depth: number): Logical {
-  const x = prim(a);
-  const y = prim(b);
+function equal(a: Value, b: Value, depth: number, ownerA?: EntityInstance, ownerB?: EntityInstance): Logical {
+  const x = prim(ownerA ? resolveRef(a, ownerA) : a);
+  const y = prim(ownerB ? resolveRef(b, ownerB) : b);
   if (x === undefined || y === undefined) return UNKNOWN;
   if (typeof x === 'number' || typeof x === 'string') return x === y;
   if (x === true || x === false || x === UNKNOWN) return y === true || y === false || y === UNKNOWN ? x === y : false;
   if (x instanceof EnumValue) return y instanceof EnumValue && x.name === y.name;
   if (x instanceof BinaryValue) return y instanceof BinaryValue && x.hex === y.hex;
   if (x instanceof EntityInstance) return y instanceof EntityInstance ? instancesEqual(x, y, depth) : false;
-  if (isAggregate(x)) return isAggregate(y) ? valuesEqual(x, y, depth + 1) : false;
+  if (isAggregate(x)) return isAggregate(y) ? valuesEqual(x, y, depth + 1, ownerA, ownerB) : false;
   return false;
 }
 

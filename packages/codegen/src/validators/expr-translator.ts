@@ -61,7 +61,7 @@ export class ExpressionTranslator {
 
   translate(e: Expr, scope: Scope): string {
     switch (e.k) {
-      case 'num': return e.int ? String(e.value) : String(e.value);
+      case 'num': return String(e.value);
       case 'str': return JSON.stringify(this.typeLiteral(e.value) ?? e.value);
       case 'logical': return e.value === 'TRUE' ? 'true' : e.value === 'FALSE' ? 'false' : 'r.UNKNOWN';
       case 'indeterminate': return 'undefined';
@@ -107,7 +107,10 @@ export class ExpressionTranslator {
     const upper = name.toUpperCase();
     if (scope.entity) {
       const kind = this.index.attributesOf(scope.entity).get(upper);
-      if (kind) return `r.attr(self, ${JSON.stringify(upper)})`;
+      if (kind) {
+        if (kind === 'derived') this.ctx.checkDerived(upper);
+        return `r.attr(self, ${JSON.stringify(upper)})`;
+      }
     }
     if (this.index.enumItems.has(upper)) return this.ctx.enumLiteral(upper);
     throw new UnsupportedConstruct(`unresolved identifier ${name}`);
@@ -122,6 +125,7 @@ export class ExpressionTranslator {
     }
     const upper = e.name.toUpperCase();
     if (!this.index.attributeNames.has(upper)) throw new UnsupportedConstruct(`no entity declares attribute ${e.name}`);
+    this.ctx.checkDerived(upper);
     return `r.attr(${this.translate(e.base, scope)}, ${JSON.stringify(upper)})`;
   }
 

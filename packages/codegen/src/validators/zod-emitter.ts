@@ -11,13 +11,10 @@
  * attributes, as refinements.
  */
 
-import type { EntityDecl, Expr, TypeDecl, TypeSpec } from '../express/ast.js';
+import type { EntityDecl, TypeDecl, TypeSpec } from '../express/ast.js';
 import { isLocalRule } from './local-rules.js';
+import { literalInt } from './meta-emitter.js';
 import type { SchemaIndex } from './schema-index.js';
-
-function literalInt(e: Expr | undefined): number | undefined {
-  return e?.k === 'num' && e.int ? e.value : undefined;
-}
 
 class ZodWriter {
   constructor(readonly index: SchemaIndex) {}

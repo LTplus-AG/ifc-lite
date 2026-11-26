@@ -37,7 +37,7 @@ program
   .option('--rust-slot-renames <path>', 'attribute-renames.json for the slot generator')
   .option('--skip-collision-check', 'Skip CRC32 collision check', false)
   .option('--validators <dir>', 'Generate only the @ifc-lite/validate rule modules and zod schemas, into <dir>')
-  .option('--validator-runtime <specifier>', 'Module specifier of the validator runtime, relative to --validators', '../../runtime/index.js')
+  .option('--validator-runtime <specifier>', 'Module specifier of the validator runtime as seen from --validators (default @ifc-lite/validate/runtime)')
   .option('-v, --verbose', 'Verbose output', false)
   .action(
     (
@@ -52,7 +52,7 @@ program
         rustSlotRenames?: string;
         skipCollisionCheck: boolean;
         validators?: string;
-        validatorRuntime: string;
+        validatorRuntime?: string;
         verbose: boolean;
       }
     ) => {

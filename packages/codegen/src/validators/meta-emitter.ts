@@ -13,7 +13,8 @@ export type MetaTypeRef =
   | { k: 'aggregate'; kind: 'LIST' | 'SET' | 'BAG' | 'ARRAY'; low: number; high?: number; unique: boolean; optional: boolean; of: MetaTypeRef }
   | { k: 'generic' };
 
-function literalInt(e: Expr | undefined): number | undefined {
+/** An integer literal bound or width (`2`, `-1`); undefined for `?` or an expression. */
+export function literalInt(e: Expr | undefined): number | undefined {
   if (!e) return undefined;
   if (e.k === 'num' && e.int) return e.value;
   if (e.k === 'unary' && e.op === '-' && e.operand.k === 'num') return -e.operand.value;

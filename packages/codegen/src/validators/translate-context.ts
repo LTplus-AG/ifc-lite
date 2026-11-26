@@ -44,6 +44,8 @@ export class Scope {
 export class TranslateContext {
   /** Module-level constants (enumeration literals), name -> initialiser. */
   readonly constants = new Map<string, string>();
+  /** Derived attributes that did not compile, upper name -> `Entity.Attr`. */
+  readonly failedDerived = new Map<string, string>();
   /** Functions the expression being translated calls (upper names). */
   calls = new Set<string>();
   private counter = 0;
@@ -53,6 +55,12 @@ export class TranslateContext {
     /** Upper function name -> reason, for functions that did not compile. */
     readonly unsupportedFunctions: Map<string, string>,
   ) {}
+
+  /** A reference to a derived attribute that did not compile makes the referring rule unsupported too. */
+  checkDerived(upper: string): void {
+    const failed = this.failedDerived.get(upper);
+    if (failed) throw new UnsupportedConstruct(`depends on derived attribute ${failed}, which did not compile`);
+  }
 
   fresh(prefix: string): string {
     return `${prefix}${++this.counter}`;

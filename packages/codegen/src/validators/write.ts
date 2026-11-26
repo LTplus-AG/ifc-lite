@@ -7,9 +7,9 @@ import { join } from 'node:path';
 import { generateValidators, type ValidatorCoverage } from './index.js';
 
 /** Generate the validator modules for one EXPRESS schema into `outDir` (Node only; the generator itself is pure). */
-export function writeValidators(schemaPath: string, outDir: string, runtimeImport: string): ValidatorCoverage {
+export function writeValidators(schemaPath: string, outDir: string, runtimeImport?: string): ValidatorCoverage {
   const source = readFileSync(schemaPath, 'utf8').replace(/\r\n/g, '\n');
-  const { files, coverage } = generateValidators(source, { runtimeImport });
+  const { files, coverage } = generateValidators(source, runtimeImport ? { runtimeImport } : {});
   mkdirSync(outDir, { recursive: true });
   for (const [name, content] of Object.entries(files)) writeFileSync(join(outDir, name), content);
   return coverage;

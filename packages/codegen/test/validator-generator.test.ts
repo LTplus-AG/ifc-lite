@@ -9,6 +9,11 @@ import ts from 'typescript';
 import { generateValidators } from '../src/index.js';
 
 const schemaSource = (file: string) => readFileSync(join(__dirname, '..', 'schemas', file), 'utf8');
+const generated = new Map<string, ReturnType<typeof generateValidators>>();
+const generate = (file: string) => {
+  if (!generated.has(file)) generated.set(file, generateValidators(schemaSource(file)));
+  return generated.get(file)!;
+};
 
 const mini = (where: string, extra = '') => `SCHEMA MINI;
 TYPE MiniLabel = STRING; END_TYPE;
@@ -30,7 +35,7 @@ describe('generateValidators', () => {
     ['IFC4_ADD2_TC1.exp', 'IFC4', 652, 25, 2, 47],
     ['IFC4X3.exp', 'IFC4X3_DEV_923B0514', 752, 25, 2, 48],
   ])('compiles every rule, DERIVE, FUNCTION and global RULE of %s', (file, typePrefix, entity, type, global, fns) => {
-    const { files, coverage } = generateValidators(schemaSource(file));
+    const { files, coverage } = generate(file);
     for (const [scope, c] of Object.entries(coverage.counts)) expect(c.compiled, scope).toBe(c.total);
     expect(coverage.unsupported).toEqual([]);
     expect([coverage.counts.entity.total, coverage.counts.type.total, coverage.counts.global.total, coverage.counts.function.total])
@@ -40,7 +45,7 @@ describe('generateValidators', () => {
   });
 
   it('emits modules that parse as TypeScript', () => {
-    const { files } = generateValidators(schemaSource('IFC4X3.exp'));
+    const { files } = generate('IFC4X3.exp');
     for (const [name, text] of Object.entries(files)) {
       if (!name.endsWith('.ts')) continue;
       const parsed = ts.transpileModule(text, { reportDiagnostics: true, compilerOptions: { module: ts.ModuleKind.ESNext } });
@@ -69,6 +74,24 @@ FUNCTION Outer (X : MiniLabel) : LOGICAL; RETURN (Inner(X)); END_FUNCTION;`;
       ['function', 'Inner'], ['function', 'Outer'], ['entity', 'MiniThing'],
     ]);
     expect(coverage.unsupported[1].reason).toBe('calls Inner, which did not compile: built-in VALUE_IN is not implemented');
+  });
+
+  it('marks a rule that reads a DERIVE which did not compile, but not one that only names it in a string', () => {
+    const schema = `SCHEMA MINI;
+ENTITY MiniThing;
+  Width : REAL;
+DERIVE
+  Area : REAL := MysteryArea(Width);
+WHERE
+  WR1 : Area > 0.;
+  WR2 : 'AREA' <> 'x';
+END_ENTITY;
+END_SCHEMA;`;
+    const { coverage } = generateValidators(schema);
+    expect(coverage.unsupported.map((u) => [u.scope, u.label, u.reason])).toEqual([
+      ['derived', 'Area', 'call to unknown function MysteryArea'],
+      ['entity', 'WR1', 'depends on derived attribute MiniThing.Area, which did not compile'],
+    ]);
   });
 
   it('rejects a qualified enumeration item the enumeration does not declare', () => {

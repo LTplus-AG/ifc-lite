@@ -78,7 +78,6 @@ export function compileRules(index: SchemaIndex, header: string, runtimeImport: 
   }
 
   const derived: string[] = [];
-  const failedDerived = new Map<string, string>();
   for (const e of index.schema.entities) {
     for (const d of e.derived) {
       counts.derived.total++;
@@ -87,19 +86,15 @@ export function compileRules(index: SchemaIndex, header: string, runtimeImport: 
         counts.derived.compiled++;
       } catch (err) {
         const reason = reasonOf(err);
-        failedDerived.set(d.name.toUpperCase(), `${e.name}.${d.name}`);
+        ctx.failedDerived.set(d.name.toUpperCase(), `${e.name}.${d.name}`);
         unsupported.push({ scope: 'derived', owner: e.name, label: d.name, reason });
       }
     }
   }
-  const dependsOnFailedDerived = (source: string): string | undefined => {
-    for (const [upper, qualified] of failedDerived) if (new RegExp(`\\b${upper}\\b`, 'i').test(source)) return qualified;
-    return undefined;
-  };
 
   const entityRules: string[] = [];
   for (const e of index.schema.entities) {
-    const rules = entityRuleSources(e, expr, dependsOnFailedDerived, unsupported, counts);
+    const rules = entityRuleSources(e, expr, unsupported, counts);
     if (rules.length) entityRules.push(`    ${JSON.stringify(e.name)}: [\n${rules.join('\n')}\n    ],`);
   }
 
@@ -163,7 +158,6 @@ ${globalRules.join('\n')}
 function entityRuleSources(
   e: EntityDecl,
   expr: ExpressionTranslator,
-  dependsOnFailedDerived: (source: string) => string | undefined,
   unsupported: UnsupportedEntry[],
   counts: RuleCompilation['counts'],
 ): string[] {
@@ -171,8 +165,6 @@ function entityRuleSources(
   for (const w of e.where) {
     counts.entity.total++;
     try {
-      const failed = dependsOnFailedDerived(w.source);
-      if (failed) throw new UnsupportedConstruct(`depends on derived attribute ${failed}, which did not compile`);
       out.push(`      { label: ${JSON.stringify(w.label)}, source: ${JSON.stringify(w.source)}, check: (self: r.EntityInstance, m: r.Model): r.Value => ${expr.translate(w.expr, new Scope('entity', e))} },`);
       counts.entity.compiled++;
     } catch (err) {

@@ -97,6 +97,8 @@ async function seedStore(options: {
     models: new Map([['m1', {
       id: 'm1',
       name: 'zones.ifc',
+      idOffset: 0,
+      maxExpressId: Math.max(...store.entities.expressId),
       ifcDataStore: store,
       visible: true,
       loadedAt: 1,
@@ -349,15 +351,16 @@ describe('emitZoneSpatialZones: whose frame', () => {
     });
     // An EARLIER model, which is the one the scene frame resolves to. Without a
     // second model the two rules agree and the test would prove nothing.
-    // Appended rather than prepended: `resolveRenderFrame` picks by `loadedAt`,
-    // while `resolveEntityRef` falls back to the FIRST entry of the map, so
-    // putting the anchor first would send the elements to a model with no store.
+    // `resolveRenderFrame` picks by `loadedAt`; the zone members still belong
+    // to the source model's ID range.
     useViewerStore.setState({
       models: new Map([
         ...useViewerStore.getState().models,
         ['m0', {
           id: 'm0',
           name: 'anchor.ifc',
+          idOffset: 1_000_000,
+          maxExpressId: 0,
           visible: true,
           loadedAt: 0,
           geometryResult: { coordinateInfo: { originShift: { x: -7, y: 0, z: 0 }, wasmRtcOffset: null } },

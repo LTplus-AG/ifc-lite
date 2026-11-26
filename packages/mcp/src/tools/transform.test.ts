@@ -10,11 +10,12 @@
  */
 
 import { statSync } from 'node:fs';
+import * as fs from 'node:fs/promises';
 import { link, mkdtemp, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ToolContext } from '../context.js';
 import { DEFAULT_CONFIG, InMemoryModelRegistry, NOOP_PROGRESS, SILENT_LOGGER } from '../context.js';
 import { fullScope } from '../auth/scope.js';
@@ -24,6 +25,9 @@ import { toToolDefinition } from '../tool-catalog.js';
 import { validateInput } from '../validate.js';
 import { toolError } from '../errors.js';
 import type { CallToolResult } from '../protocol/index.js';
+
+vi.mock('node:fs/promises', { spy: true });
+
 
 const HELLO_WALL = fileURLToPath(new URL('../../../../apps/viewer/public/samples/hello-wall.ifc', import.meta.url));
 
@@ -182,6 +186,29 @@ describe('model_merge', () => {
     ctx.registry.add(await loadIfcModel(join(tmp, 'b.ifc'), { modelId: 'b' }));
     await call('entity_set_attribute', { model_id: 'b', express_id: 72, attribute: 'Name', value: 'Edited' });
     await expect(call('model_merge', { file_path: join(tmp, 'edited.ifc') })).rejects.toMatchObject({ code: 'UNSUPPORTED_OPERATION' });
+  });
+
+  it('rechecks edits queued during the destination stat before writing (#11583)', async () => {
+    ctx.registry.add(await loadIfcModel(join(tmp, 'b.ifc'), { modelId: 'b' }));
+    const out = join(tmp, 'interleaved-merge.ifc');
+    await writeFile(out, 'existing destination');
+    const { stat: originalStat } = await vi.importActual<typeof fs>('node:fs/promises');
+    let destinationStats = 0;
+    const statSpy = vi.spyOn(fs, 'stat').mockImplementation(async (...args) => {
+      const info = await originalStat(...args);
+      // The first stat checks safe-path provenance. The second reserves the output.
+      if (args[0] === out && ++destinationStats === 2) {
+        await call('entity_set_attribute', { model_id: 'b', express_id: 72, attribute: 'Name', value: 'Interleaved edit' });
+      }
+      return info;
+    });
+    try {
+      await expect(call('model_merge', { file_path: out })).rejects.toMatchObject({ code: 'UNSUPPORTED_OPERATION' });
+      expect(destinationStats).toBe(2);
+      expect(await readFile(out, 'utf-8')).toBe('existing destination');
+    } finally {
+      statSpy.mockRestore();
+    }
   });
 });
 

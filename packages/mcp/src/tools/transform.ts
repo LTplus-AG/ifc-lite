@@ -118,7 +118,9 @@ const modelMerge: Tool = {
       mergeStoreys: input.merge_storeys as 'by-name' | 'by-elevation' | 'by-name-then-elevation' | undefined,
       dropEmptyContainers: input.drop_empty_containers === true,
     });
-    await writeTransformOutput(ctx, models, filePath, result.content);
+    await writeTransformOutput(ctx, models, filePath, result.content, undefined, () => {
+      for (const model of models) requireNoPendingEdits(model, 'model_merge');
+    });
     const s = { ...result.stats, warnings: [...conversionWarnings, ...result.stats.warnings] };
     return okResult(
       `Merged ${s.modelCount} models into ${filePath} (${fmtInt(s.totalEntityCount)} entities).` +

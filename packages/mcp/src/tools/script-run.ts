@@ -57,7 +57,7 @@ const inputSchema: JsonSchema = {
     },
     timeout_ms: {
       type: 'integer', minimum: 100, maximum: MAX_TIMEOUT_MS, default: DEFAULT_TIMEOUT_MS,
-      description: `Execution time limit in milliseconds (default ${DEFAULT_TIMEOUT_MS}, max ${MAX_TIMEOUT_MS}). The script is interrupted when it is exceeded.`,
+      description: `Execution time limit in milliseconds (default ${DEFAULT_TIMEOUT_MS}, max ${MAX_TIMEOUT_MS}). Script code is interrupted when it is exceeded; a single synchronous bim.* call already running is not cut short.`,
     },
     memory_mb: {
       type: 'integer', minimum: 8, maximum: MAX_MEMORY_MB, default: DEFAULT_MEMORY_MB,
@@ -85,7 +85,7 @@ const outputSchema: JsonSchema = {
     },
     logs_truncated: { type: 'boolean' },
     duration_ms: { type: 'number' },
-    mutations_queued: { type: 'integer', description: 'Pending mutations this script added; persist with export_ifc or model_save.' },
+    mutations_queued: { type: 'integer', minimum: 0, description: 'Mutations this script added that are still pending; persist with export_ifc or model_save.' },
   },
 };
 
@@ -97,11 +97,24 @@ function intInput(value: unknown, name: string, min: number, max: number, fallba
   return value as number;
 }
 
-function pendingMutationCount(model: LoadedModel): number {
-  return model.backend.getMutationView()?.getMutations().length ?? 0;
+function pendingMutationIds(model: LoadedModel): Set<string> {
+  return new Set(model.backend.getMutationView()?.getMutations().map((m) => m.id) ?? []);
+}
+
+/** Mutations pending now that were not pending before the run (undo removes them). */
+function countNewMutations(model: LoadedModel, before: ReadonlySet<string>): number {
+  let added = 0;
+  for (const m of model.backend.getMutationView()?.getMutations() ?? []) if (!before.has(m.id)) added++;
+  return added;
 }
 
 type LogLine = { level: string; text: string };
+
+/** `text.slice(0, max)` that never ends on the first half of a surrogate pair. */
+function clipUtf16(text: string, max: number): string {
+  const end = max > 0 && max < text.length && /[\uD800-\uDBFF]/.test(text[max - 1]) ? max - 1 : max;
+  return text.slice(0, Math.max(0, end));
+}
 
 function renderLogArg(arg: unknown): string {
   if (typeof arg === 'string') return arg;
@@ -121,7 +134,8 @@ function shapeLogs(entries: readonly LogEntry[]): { logs: LogLine[]; truncated: 
     if (chars + text.length > MAX_LOG_CHARS) {
       // Clip the entry that crosses the budget rather than dropping it, so
       // one huge log line does not hide everything before the cut.
-      logs.push({ level: entry.level, text: text.slice(0, MAX_LOG_CHARS - chars) });
+      const clipped = clipUtf16(text, MAX_LOG_CHARS - chars);
+      if (clipped.length > 0) logs.push({ level: entry.level, text: clipped });
       return { logs, truncated: true };
     }
     chars += text.length;
@@ -142,17 +156,24 @@ function shapeLogs(entries: readonly LogEntry[]): { logs: LogLine[]; truncated: 
  * does not initialise under Node.
  */
 function wrapScript(code: string): string {
-  return `(function () {
-  function msg(e) { return e && typeof e.message === 'string' ? e.message : String(e); }
+  // The script's function is created in the global scope, outside the
+  // helpers' closure, and the Promise/JSON primitives are bound before it
+  // runs, so a script that declares or assigns `env`, or reassigns
+  // `Promise`, cannot reach what the wrapper relies on.
+  return `(function (run, P, then, stringify) {
+  function msg(e) {
+    try { return e && typeof e.message === 'string' ? e.message : String(e); }
+    catch (_) { return 'unprintable error'; }
+  }
   function env(v) {
-    try { var j = JSON.stringify(v); return { json: j === undefined ? 'null' : j }; }
+    try { var j = stringify(v); return { json: j === undefined ? 'null' : j }; }
     catch (e) { return { unserialisable: msg(e) }; }
   }
   function fail(e) { return { threw: msg(e) }; }
   var r;
-  try { r = eval(${JSON.stringify(code)}); } catch (e) { return fail(e); }
-  return r instanceof Promise ? r.then(env, fail) : env(r);
-})()`;
+  try { r = run(); } catch (e) { return fail(e); }
+  return r instanceof P ? then.call(r, env, fail) : env(r);
+})(function () { return eval(${JSON.stringify(code)}); }, Promise, Promise.prototype.then, JSON.stringify)`;
 }
 
 type Envelope = { json?: string; threw?: string; unserialisable?: string };
@@ -170,7 +191,7 @@ function readEnvelope(dumped: unknown): { json: string } | { error: string } {
 
 function shapeValue(json: string): { value: unknown; value_truncated: boolean; value_preview?: string } {
   if (json.length <= MAX_VALUE_CHARS) return { value: JSON.parse(json) as unknown, value_truncated: false };
-  return { value: null, value_truncated: true, value_preview: json.slice(0, 2_000) };
+  return { value: null, value_truncated: true, value_preview: clipUtf16(json, 2_000) };
 }
 
 async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolContext) {
@@ -192,16 +213,26 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
   if (ctx.signal.aborted) throw cancelled();
 
   // Read mode has no write namespaces, so it cannot queue anything. In mutate
-  // mode the count is the model's pending-history growth over the run; a
+  // mode the count is pending mutations that appeared during the run; a
   // concurrent tool call editing the same model would be counted too.
-  const before = mode === 'mutate' ? pendingMutationCount(model) : 0;
-  const queued = () => (mode === 'mutate' ? pendingMutationCount(model) - before : 0);
+  const before = mode === 'mutate' ? pendingMutationIds(model) : new Set<string>();
+  const queued = () => (mode === 'mutate' ? countNewMutations(model, before) : 0);
   const sandbox = await createSandbox(model.bim, {
     permissions: mode === 'mutate' ? MUTATE_PERMISSIONS : READ_PERMISSIONS,
     limits: { timeoutMs, memoryBytes: memoryMb * 1024 * 1024 },
   });
+  // dispose() can throw SandboxAbortError when QuickJS aborts tearing down a
+  // runtime (#1922). From the timer or abort listener that would be an
+  // uncaught exception; from `finally` it would replace the real outcome.
+  const dispose = () => {
+    try {
+      sandbox.dispose();
+    } catch (err) {
+      ctx.log.log('warning', 'script_run: sandbox teardown aborted', { error: err instanceof Error ? err.message : String(err) });
+    }
+  };
   let stopReason: 'cancelled' | 'timeout' | null = null;
-  const stop = (reason: 'cancelled' | 'timeout') => { stopReason ??= reason; sandbox.dispose(); };
+  const stop = (reason: 'cancelled' | 'timeout') => { stopReason ??= reason; dispose(); };
   const onAbort = () => stop('cancelled');
   const timer = setTimeout(() => stop('timeout'), timeoutMs + HOST_GRACE_MS);
   ctx.signal.addEventListener('abort', onAbort, { once: true });
@@ -239,7 +270,7 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
   } finally {
     clearTimeout(timer);
     ctx.signal.removeEventListener('abort', onAbort);
-    sandbox.dispose();
+    dispose();
   }
 }
 
@@ -259,7 +290,7 @@ export const scriptRunTool: Tool = {
 export const scriptRunMutateTool: Tool = {
   name: 'script_run_mutate',
   title: 'Run SDK script (can edit)',
-  description: `script, eval, javascript, sdk, edit: run an SDK script that may edit the model through bim.mutate and bim.store. ${SHARED_DESCRIPTION} Edits are queued like other mutation tools (mutation_diff, mutation_undo) and persist only via export_ifc or model_save. Hidden in --read-only mode.`,
+  description: `script, eval, javascript, sdk, edit: run an SDK script that may edit the model through bim.mutate and bim.store. ${SHARED_DESCRIPTION} Edits are queued like other mutation tools (mutation_diff, mutation_undo) and persist only via export_ifc or model_save. Not atomic: if the script throws, times out or is cancelled, edits made before that stay queued and the error's details.mutations_queued says how many. Hidden in --read-only mode.`,
   scope: 'mutate',
   annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
   inputSchema,

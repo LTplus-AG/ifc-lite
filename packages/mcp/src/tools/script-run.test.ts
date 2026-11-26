@@ -164,6 +164,23 @@ describe('script_run', () => {
     expect(err.details?.logs).toEqual([{ level: 'log', text: 'step 1' }]);
   });
 
+  it('keeps its result wrapper out of the script\'s reach', async () => {
+    expect((await run('function env(x) { return 1; } 42')).structuredContent?.value).toBe(42);
+    expect((await run('env = 1; msg = 2; 43')).structuredContent?.value).toBe(43);
+    expect((await run('Promise = null; JSON.stringify = null; 44')).structuredContent?.value).toBe(44);
+    expect((await runError('var fail = 0; throw new Error("boom")')).message).toBe('Script error: boom');
+    expect((await runError('function msg() { return "x"; } throw new Error("real")')).message).toBe('Script error: real');
+  });
+
+  it('maps an out-of-memory inside an async job to a script error', async () => {
+    const err = await runError(
+      '(async () => { await Promise.resolve(); const a = []; for (;;) a.push(new Array(1 << 16).fill(1)); })()',
+      { memory_mb: 8 },
+    );
+    expect(err.code).toBe('INVALID_INPUT');
+    expect((await run('2 + 2')).structuredContent?.value).toBe(4);
+  }, 30_000);
+
   it('does not let a script fake a timeout', async () => {
     const err = await runError("throw new Error('interrupted')");
     expect(err.code).toBe('INVALID_INPUT');
@@ -228,6 +245,13 @@ describe('script_run_mutate on a script error', () => {
       throw new Error('stop');
     `, {}, scriptRunMutateTool);
     expect(err).toMatchObject({ code: 'INVALID_INPUT', message: 'Script error: stop', details: { mutations_queued: 1 } });
+  });
+});
+
+describe('script_run_mutate after undo', () => {
+  it('never reports a negative count', async () => {
+    const result = await run('bim.mutate.undo("m"); bim.mutate.undo("m"); 1', {}, scriptRunMutateTool);
+    expect(result.structuredContent?.mutations_queued).toBe(0);
   });
 });
 

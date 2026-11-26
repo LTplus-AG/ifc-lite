@@ -178,7 +178,7 @@ test('each retained and CSG command has a distinct summary identity (#10279)', (
           assert.ok(leg.features, 'each CSG leg supplies its Cargo features');
           return leg.features;
         });
-        const match = /node scripts\/ci-rust-metrics\.mjs (\S+) (test|clippy|command) /.exec(line);
+        const match = /node scripts\/ci-rust-metrics\.mjs (\S+) (test|clippy|command) /.exec(line); // @source-text-assertion-ok parsed workflow command inventory is the contract
         if (!match) continue;
         const identity = `${match[1]} / ${match[2]}`;
         assert.equal(identities.has(identity), false, `ambiguous summary identity: ${identity}`);

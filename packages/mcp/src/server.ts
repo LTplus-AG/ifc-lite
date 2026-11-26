@@ -7,8 +7,9 @@
  *
  * Responsibilities:
  *   - track initialization handshake
- *   - dispatch `tools/list`, `tools/call`, `resources/list`, `resources/read`,
- *     `prompts/list`, `prompts/get`, `ping`, `notifications/initialized`,
+ *   - dispatch `tools/list`, `tools/call`, `resources/list`,
+ *     `resources/templates/list`, `resources/read`, `prompts/list`,
+ *     `prompts/get`, `logging/setLevel`, `ping`, `notifications/initialized`,
  *     `notifications/cancelled`
  *   - filter tool advertisement by auth scope
  *   - validate tool input against the tool's JSON schema
@@ -32,6 +33,7 @@ import {
   JsonRpcRequest,
   JsonRpcResponse,
   ListPromptsResult,
+  ListResourceTemplatesResult,
   ListResourcesResult,
   ListToolsResult,
   PROTOCOL_VERSION,
@@ -40,8 +42,8 @@ import {
   ReadResourceParams,
   ReadResourceResult,
   ServerCapabilities,
+  SetLevelParams,
   SubscribeParams,
-  ToolDefinition,
 } from './protocol/index.js';
 import {
   errorResponse,
@@ -56,6 +58,9 @@ import {
   modelAllowed,
   scopeAllows,
 } from './auth/scope.js';
+import { ClientLogForwarder, isLoggingLevel } from './client-logging.js';
+import { SERVER_INSTRUCTIONS } from './server-instructions.js';
+import { toCatalogEntry, toToolDefinition, visibleTools } from './tool-catalog.js';
 import {
   DEFAULT_CONFIG,
   InMemoryModelRegistry,
@@ -72,11 +77,16 @@ import { ResourceRegistry } from './resources/types.js';
 import { disposeSessionResources } from './session-cleanup.js';
 import { ToolRegistry } from './tools/types.js';
 import { withScanHint } from './tools/util.js';
-import { advertisedInputSchema, validateInput } from './validate.js';
+import { validateInput } from './validate.js';
 import { ViewerManager } from './viewer-manager.js';
 import type { ViewerState } from './viewer-manager.js';
 
 export const SERVER_NAME = 'ifc-lite-mcp';
+
+/** A request failure the client caused, answered as a JSON-RPC error with this code. */
+class RequestError extends Error {
+  constructor(readonly code: number, message: string, readonly data?: unknown) { super(message); }
+}
 
 export interface OutgoingMessageSink {
   send(message: JsonRpcMessage): Promise<void> | void;
@@ -119,6 +129,7 @@ export class MCPServer {
 
   private scope: AuthScope;
   private logger: Logger;
+  private logForwarder: ClientLogForwarder;
   private capabilities: ServerCapabilities;
   private instructions: string;
   private initialized = false;
@@ -138,7 +149,8 @@ export class MCPServer {
     this.tools = opts.tools;
     this.resources = opts.resources;
     this.prompts = opts.prompts;
-    this.logger = opts.logger ?? SILENT_LOGGER;
+    this.logForwarder = new ClientLogForwarder(opts.logger ?? SILENT_LOGGER, this.name, (params) => this.notify('notifications/message', { ...params }));
+    this.logger = this.logForwarder.logger;
     this.instructions = opts.instructions ?? SERVER_INSTRUCTIONS;
     this.capabilities = opts.capabilities ?? {
       tools: { listChanged: true },
@@ -174,7 +186,11 @@ export class MCPServer {
 
   /** Update the auth scope mid-session (e.g. token refresh). */
   setScope(scope: AuthScope): void {
+    const tools = this.visibleToolNames();
+    const models = this.visibleModelIds();
     this.scope = scope;
+    if (this.visibleToolNames() !== tools) this.notifyToolsChanged();
+    if (this.visibleModelIds() !== models) this.notifyResourcesChanged();
   }
 
   /**
@@ -258,6 +274,8 @@ export class MCPServer {
           return successResponse(req.id, await this.handleCallTool(req));
         case 'resources/list':
           return successResponse(req.id, await this.handleListResources());
+        case 'resources/templates/list':
+          return successResponse(req.id, this.handleListResourceTemplates());
         case 'resources/read':
           return successResponse(req.id, await this.handleReadResource(req.params as ReadResourceParams));
         case 'resources/subscribe':
@@ -270,10 +288,17 @@ export class MCPServer {
           return successResponse(req.id, this.handleListPrompts());
         case 'prompts/get':
           return successResponse(req.id, await this.handleGetPrompt(req.params as GetPromptParams));
+        case 'logging/setLevel': {
+          const level = (req.params as Partial<SetLevelParams> | undefined)?.level;
+          if (!isLoggingLevel(level)) throw new RequestError(JsonRpcErrorCode.InvalidParams, `Unknown logging level: ${String(level)}`);
+          this.logForwarder.setLevel(level);
+          return successResponse(req.id, {});
+        }
         default:
           return errorResponse(req.id, JsonRpcErrorCode.MethodNotFound, `Unknown method: ${req.method}`);
       }
     } catch (err) {
+      if (err instanceof RequestError) return errorResponse(req.id, err.code, err.message, err.data);
       const message = err instanceof Error ? err.message : String(err);
       this.logger.log('error', `Request ${req.method} failed`, { error: message });
       return errorResponse(req.id, JsonRpcErrorCode.InternalError, message);
@@ -309,14 +334,8 @@ export class MCPServer {
 
   private handleInitialize(params: InitializeParams): InitializeResult {
     this.initialized = true;
-    // Per MCP spec: when the client requests a protocol version we support,
-    // echo it back; otherwise reply with our preferred version. Newer
-    // clients (e.g. Claude Desktop ≥ 0.x asking for 2025-11-25) hard-close
-    // the transport on a version mismatch, so silently downgrading them
-    // would brick the integration. Our wire surface is the stable subset
-    // (initialize, tools/{list,call}, resources/*, prompts/*, notifications/*,
-    // logging) that's been compatible across these revisions, so accepting
-    // them is safe.
+    // Per MCP spec: echo a version we support, else offer our own. Clients
+    // hard-close on a mismatch, so a needless downgrade bricks them.
     const negotiated = SUPPORTED_PROTOCOL_VERSIONS.has(params.protocolVersion)
       ? params.protocolVersion
       : PROTOCOL_VERSION;
@@ -338,17 +357,11 @@ export class MCPServer {
   // ────────────────────────────────────────────────────────────────────────
 
   private handleListTools(): ListToolsResult {
-    const visible = this.tools.list().filter((t) => scopeAllows(this.scope, t.scope));
-    if (this.config.readOnly) {
-      // belt-and-suspenders: even if a token claims `mutate`, hide mutation
-      // tools when the server was started --read-only.
-      const tools: ToolDefinition[] = visible
-        .filter((t) => t.scope !== 'mutate')
-        .map(toToolDefinition);
-      return { tools };
-    }
-    const tools: ToolDefinition[] = visible.map(toToolDefinition);
-    return { tools };
+    return { tools: visibleTools(this.tools, this.scope, this.config.readOnly).map(toToolDefinition) };
+  }
+
+  private visibleToolNames(): string {
+    return visibleTools(this.tools, this.scope, this.config.readOnly).map((t) => t.name).join('\n');
   }
 
   private async handleCallTool(req: JsonRpcRequest): Promise<CallToolResult> {
@@ -403,6 +416,7 @@ export class MCPServer {
     };
 
     const startedAt = Date.now();
+    const modelsBefore = this.visibleModelIds();
     try {
       const result = await tool.handler(validation.value as Record<string, unknown>, ctx);
       this.logger.log('info', `tools/call ${params.name}`, {
@@ -421,6 +435,8 @@ export class MCPServer {
       });
     } finally {
       this.active.delete(req.id);
+      // Per-model resources follow the loaded set: model_load/model_unload change resources/list.
+      if (this.visibleModelIds() !== modelsBefore) this.notifyResourcesChanged();
     }
   }
 
@@ -434,17 +450,22 @@ export class MCPServer {
     return { resources };
   }
 
+  private handleListResourceTemplates(): ListResourceTemplatesResult {
+    return { resourceTemplates: this.resources.templates() };
+  }
+
   private async handleReadResource(params: ReadResourceParams): Promise<ReadResourceResult> {
     const provider = this.resources.matchProvider(params.uri);
-    if (!provider) {
-      throw new ToolExecutionError({
-        code: ToolErrorCode.UNSUPPORTED_OPERATION,
-        message: `No resource provider matches URI: ${params.uri}`,
-      });
+    // An empty read is a well-formed URI naming nothing (unknown model or entity).
+    const contents = provider ? await provider.read(params.uri, this.makeResourceContext()) : [];
+    if (contents.length === 0) {
+      throw new RequestError(JsonRpcErrorCode.InvalidParams, `Resource not found: ${params.uri}`, { uri: params.uri });
     }
-    const ctx = this.makeResourceContext();
-    const contents = await provider.read(params.uri, ctx);
     return { contents };
+  }
+
+  private visibleModelIds(): string {
+    return this.registry.list().filter((m) => modelAllowed(this.scope, m.id)).map((m) => m.id).join('\n');
   }
 
   // ────────────────────────────────────────────────────────────────────────
@@ -457,12 +478,7 @@ export class MCPServer {
 
   private async handleGetPrompt(params: GetPromptParams): Promise<GetPromptResult> {
     const prompt = this.prompts.get(params.name);
-    if (!prompt) {
-      throw new ToolExecutionError({
-        code: ToolErrorCode.UNSUPPORTED_OPERATION,
-        message: `Unknown prompt: ${params.name}`,
-      });
-    }
+    if (!prompt) throw new RequestError(JsonRpcErrorCode.InvalidParams, `Unknown prompt: ${params.name}`);
     const ctx = this.makeResourceContext();
     return prompt.render(params.arguments ?? {}, ctx);
   }
@@ -482,6 +498,7 @@ export class MCPServer {
       config: this.config,
       session: { id: this.sessionId, principal: this.scope.user },
       viewer: this.viewer,
+      toolCatalog: () => visibleTools(this.tools, this.scope, this.config.readOnly).map(toCatalogEntry),
     };
   }
 
@@ -511,32 +528,11 @@ export class MCPServer {
   /** Notify clients that the tool list has changed (e.g., after model load). */
   notifyToolsChanged(): void { this.notify('notifications/tools/list_changed', {}); }
 
+  /** Notify clients that resources/list changed (a model was loaded, unloaded or hidden by scope). */
+  notifyResourcesChanged(): void { this.notify('notifications/resources/list_changed', {}); }
+
   /** Read-only access to the auth scope for transports that need to gate access. */
   hasModelAccess(modelId: string): boolean {
     return modelAllowed(this.scope, modelId);
   }
 }
-
-function toToolDefinition(tool: Omit<ToolDefinition, 'scope'> & { scope?: string }): ToolDefinition {
-  return {
-    name: tool.name,
-    ...(tool.title !== undefined ? { title: tool.title } : {}),
-    description: tool.description,
-    inputSchema: advertisedInputSchema(tool.inputSchema),
-    scope: tool.scope as ToolDefinition['scope'],
-    ...(tool.annotations !== undefined ? { annotations: tool.annotations } : {}),
-    ...(tool._meta !== undefined ? { _meta: tool._meta } : {}),
-  };
-}
-
-const SERVER_INSTRUCTIONS = `
-ifc-lite-mcp exposes a federated set of IFC/BIM models as MCP tools.
-
-Conventions:
-  • All tools accept an optional model_id; when only one model is loaded it can be omitted.
-  • Errors surface as tool results with isError=true and structuredContent.code (e.g. ENTITY_NOT_FOUND).
-  • Long operations stream progress via notifications/progress when a progressToken is supplied.
-  • Mutations are queued; call export_ifc or model_save to persist.
-
-See the resource ifc-lite://server/manifest for the full tool catalog.
-`.trim();

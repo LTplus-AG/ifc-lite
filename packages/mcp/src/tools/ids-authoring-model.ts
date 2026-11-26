@@ -9,7 +9,7 @@
  *
  * `ids_diff` works today (re-identification matcher, `diffIds`). The other
  * four are declared with their final input schemas and answer
- * UNSUPPORTED_OPERATION, the same convention as `gherkin_check`: the
+ * UNSUPPORTED_OPERATION: the
  * funnel, inference and coverage engines (IDS model loop) and the
  * test-suite runner (IDS-110) are not in this release. Each replaces its
  * stub handler when its engine lands; the names and inputs do not change.

@@ -22,6 +22,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import type { AuthScope } from './auth/scope.js';
 import type { HeadlessLikeBackend } from './headless-backend.js';
 import type { ViewerManager } from './viewer-manager.js';
+import type { ToolCatalogEntry } from './tool-catalog.js';
 
 export interface LoadedModel {
   id: string;
@@ -147,6 +148,8 @@ export interface ToolContext {
   session?: SessionIdentity;
   /** Optional: present when the server has a managed in-process viewer. */
   viewer?: ViewerManager;
+  /** The tools this caller may see, for the server manifest. Set by the server on resource reads. */
+  toolCatalog?: () => ToolCatalogEntry[];
 }
 
 export interface ServerConfig {

@@ -630,7 +630,6 @@ export const EXAMPLES: Record<string, Record<string, unknown>> = {
   export_json: { file_path: '/tmp/walls.json', type: 'IfcWall' },
   export_glb: { file_path: '/tmp/scene.glb' },
   export_ifcx: { file_path: '/tmp/scene.ifcx' },
-  export_pdf_report: { file_path: '/tmp/audit.pdf' },
   viewer_ask: { reason: 'to highlight failing fire-rated doors' },
   viewer_open: {},
   viewer_close: {},

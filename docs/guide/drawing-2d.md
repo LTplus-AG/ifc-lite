@@ -149,15 +149,18 @@ import { generateFloorPlan, type StoreyCut } from '@ifc-lite/drawing-2d';
 // A number is a render-frame Y. A StoreyCut is a height above a storey floor:
 // the storey's Elevation is moved into the render frame with the geometry's
 // coordinateInfo (storeyCutElevation gives the same Y as a number).
-// storeyElevations is empty on a store restored from the cache, so check for
-// the storey.
-const storeyElevation = store.spatialHierarchy?.storeyElevations.get(storeyId);
-if (storeyElevation === undefined) throw new Error(`No elevation for storey #${storeyId}`);
-// IfcBuildingStorey.Elevation is measured from the building placement, which
-// the parsed store does not carry. ASSUMPTION: the building sits at its site's
-// origin, so its local Z is 0 m. For a building placed off it, set buildingZ to
-// its local Z in metres: the Z of IfcBuilding.ObjectPlacement.RelativePlacement
-// .Location, relative to the site placement, times store.lengthUnitScale.
+// storeyElevation is IfcBuildingStorey.Elevation in metres, measured from the
+// building placement. Take it from the storey's Elevation attribute. If that is
+// unset, resolve the storey's placement chain (PlacementRelTo) into the building
+// frame, or stop with an error: an entry in spatialHierarchy.storeyElevations
+// does not establish that frame, since its placement fallback reads only the
+// storey's own location.
+const storeyElevation = 0.5;
+// The parsed store does not carry the building placement. ASSUMPTION: the
+// building sits at its site's origin, so its local Z is 0 m. For a building
+// placed off it, set buildingZ to its local Z in metres: the Z of
+// IfcBuilding.ObjectPlacement.RelativePlacement.Location, relative to the site
+// placement, times store.lengthUnitScale.
 const buildingZ = 0;
 const cut: StoreyCut = {
   storeyElevation,

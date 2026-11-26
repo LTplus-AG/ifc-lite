@@ -16,15 +16,18 @@ import { generateFloorPlan, exportToSVG, PAPER_SIZES, COMMON_SCALES, type Storey
 // Cut 1.2 m above a storey floor (standard architectural plan height). The
 // meshes sit in a shifted render frame; the frame moves the storey's Elevation
 // into it (storeyCutElevation returns that render-frame Y as a number).
-// storeyElevations is empty on a store restored from the cache: check for the
-// storey rather than cutting every storey at the same height.
-const storeyElevation = store.spatialHierarchy?.storeyElevations.get(storeyId);
-if (storeyElevation === undefined) throw new Error(`No elevation for storey #${storeyId}`);
-// IfcBuildingStorey.Elevation is measured from the building placement, which
-// the parsed store does not carry. ASSUMPTION: the building sits at its site's
-// origin, so its local Z is 0 m. For a building placed off it, set buildingZ to
-// its local Z in metres: the Z of IfcBuilding.ObjectPlacement.RelativePlacement
-// .Location, relative to the site placement, times store.lengthUnitScale.
+// storeyElevation is IfcBuildingStorey.Elevation in metres, measured from the
+// building placement. Take it from the storey's Elevation attribute. If that is
+// unset, resolve the storey's placement chain (PlacementRelTo) into the building
+// frame, or stop with an error: an entry in spatialHierarchy.storeyElevations
+// does not establish that frame, since its placement fallback reads only the
+// storey's own location.
+const storeyElevation = 0.5;
+// The parsed store does not carry the building placement. ASSUMPTION: the
+// building sits at its site's origin, so its local Z is 0 m. For a building
+// placed off it, set buildingZ to its local Z in metres: the Z of
+// IfcBuilding.ObjectPlacement.RelativePlacement.Location, relative to the site
+// placement, times store.lengthUnitScale.
 const buildingZ = 0;
 const cut: StoreyCut = {
   storeyElevation,

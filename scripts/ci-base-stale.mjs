@@ -254,7 +254,10 @@ function finish(opts, records, extra) {
   if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, body);
   // test.yml names the in-run upload after the mode the script parsed.
   if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `gate-mode=${extra.gateMode}\n`);
-  if (opts.jsonOut) writeFileSync(opts.jsonOut, records.map((r) => JSON.stringify({ ...r, ...extra, stats: undefined })).join('\n') + (records.length ? '\n' : ''));
+  // A skipped run (rate floor or budget) still writes one row, so the shadow
+  // count can tell "not refreshed" apart from "no labelled PR to judge".
+  const rows = records.length || !extra.skipped ? records : [{ trigger: opts.trigger ?? opts.mode }];
+  if (opts.jsonOut) writeFileSync(opts.jsonOut, rows.map((r) => JSON.stringify({ ...r, ...extra, stats: undefined })).join('\n') + (rows.length ? '\n' : ''));
 }
 
 export function run(opts, env = process.env, makeIo = createIo) {

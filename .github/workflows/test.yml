@@ -4238,7 +4238,7 @@ jobs:
       # draft: that run IS the queue's full gate on the merged tree.
       - name: Base-stale verdict (advisory unless CI_BASE_STALE_GATE is on)
         id: base-stale
-        if: always() && github.event_name == 'pull_request' && !startsWith(github.head_ref, 'mergify/merge-queue/')
+        if: ${{ !cancelled() && github.event_name == 'pull_request' && !startsWith(github.head_ref, 'mergify/merge-queue/') }}
         continue-on-error: true
         timeout-minutes: 3
         env:
@@ -4257,7 +4257,7 @@ jobs:
       # Named after the mode the script parsed: a `-on` upload is how a later
       # shadow sweep finds the statuses this step posted (rollback).
       - name: Upload the base-stale verdict
-        if: always() && steps.base-stale.outcome == 'success'
+        if: ${{ !cancelled() && steps.base-stale.outcome == 'success' }}
         continue-on-error: true
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

@@ -59,9 +59,11 @@ permissions:
   statuses: write
 
 concurrency:
-  # A newer main supersedes a sweep in flight; a re-label supersedes its own run.
+  # A re-label supersedes its own run. A sweep in flight finishes (10-minute
+  # timeout) so its verdicts are uploaded; a newer main push waits, and a
+  # still newer one replaces that pending run.
   group: base-stale-${{ github.event_name == 'pull_request_target' && format('pr-{0}', github.event.pull_request.number) || inputs.pr && format('pr-{0}', inputs.pr) || 'sweep' }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request_target' || inputs.pr != '' && inputs.pr != null }}
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true

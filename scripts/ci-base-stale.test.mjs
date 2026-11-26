@@ -6,7 +6,7 @@
 // from the real test.yml, and the per-PR evaluation over a fake I/O layer.
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -22,7 +22,7 @@ const present = MODULES.every((url) => existsSync(url));
 const [cli, core, ioMod] = present ? await Promise.all(MODULES.map((url) => import(url.href))) : [null, null, null];
 const { callAllowance, CALL_CAP, evaluatePr, MIN_ALLOWANCE, loadCache, loadFilterGlobs, parseArgs, RATE_FLOOR, readFilterGlobs, run } = cli ?? {};
 const { prRelevance } = core ?? {};
-const { BudgetError, changedPaths, compareMoved, createIo, isOwnRun } = ioMod ?? {};
+const { BudgetError, changedPaths, compareMoved, createIo, isOwnRun, MEASURED_FILE_MAX_BYTES, measuredJsonFiles } = ioMod ?? {};
 function ct(name, body) {
   test(name, () => {
     assert.ok(cli && core && ioMod, 'scripts/ci-base-stale.mjs, scripts/lib/base-stale.mjs or scripts/lib/base-stale-io.mjs is absent');
@@ -357,20 +357,38 @@ ct('run, budget: the rate floor is re-read between PRs and stops the sweep', () 
   assert.equal(saved.lastMode, 'shadow');
 });
 
-ct('run: under the floor at start nothing is read, an empty evidence file is written', () => {
+ct('run: under the floor at start nothing is read; the evidence file holds one skip row', () => {
   const { rows, reads, posts } = runFake({ gate: 'on', remaining: () => RATE_FLOOR });
-  assert.deepEqual([rows, reads, posts], [[], [], []]);
+  assert.deepEqual([reads, posts], [[], []]);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].skipped, 'rate-floor');
+  assert.equal(rows[0].trigger, 'sweep');
+  assert.equal(rows[0].verdict, undefined);
+  assert.ok(rows[0].evaluatedAt);
 });
 
-ct('run: a budget spent during setup is a clean skip (exit 0, empty evidence), not a harness fault', () => {
+ct('run: a budget spent during setup is a clean skip (exit 0, one skip row), not a harness fault', () => {
   let code;
   const { rows, reads, posts } = runFake({
     gate: 'on',
     ioOver: { queueCandidates: () => { throw new BudgetError('open PRs labelled mergify-trial'); } },
     opts: { onCode: (c) => { code = c; } },
   });
-  assert.deepEqual([rows, reads, posts], [[], [], []]);
+  assert.deepEqual([reads, posts], [[], []]);
+  assert.deepEqual(rows.map((r) => [r.skipped, r.verdict]), [['budget', undefined]]);
   assert.equal(code, 0);
+});
+
+ct('io: an artifact file that is a symlink, or over the size cap, is refused, not followed', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'base-stale-art-'));
+  writeFileSync(join(dir, 'b.json'), '{}');
+  writeFileSync(join(dir, 'notes.txt'), 'ignored');
+  assert.deepEqual(measuredJsonFiles(dir), [join(dir, 'b.json')]);
+  symlinkSync('/dev/zero', join(dir, 'a.json'));
+  assert.throws(() => measuredJsonFiles(dir), /a\.json is not a regular file/);
+  const big = mkdtempSync(join(tmpdir(), 'base-stale-art-'));
+  writeFileSync(join(big, 'x.json'), Buffer.alloc(MEASURED_FILE_MAX_BYTES + 1, 32));
+  assert.throws(() => measuredJsonFiles(big), /over the \d+ cap/);
 });
 
 ct('io: a file main moved out of a crate still counts for that crate (local git, no rename folding)', () => {

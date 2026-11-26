@@ -21,7 +21,7 @@
  */
 
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { lstatSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { loadMeasuredFile, validateCeilingFile } from '../perf-ratchet/ceilings.mjs';
@@ -37,6 +37,27 @@ const COMPARE_COMMIT_CAP = 250;
 const TREE_RUN_CAP = 5;
 
 /** A read refused because this run has spent its API allowance. */
+/** Largest measured file read from an artifact; real ones are a few KB. */
+export const MEASURED_FILE_MAX_BYTES = 1024 * 1024;
+
+/**
+ * The `.json` files an unzipped artifact holds, each a regular file under the
+ * size cap. A PR run (a fork's included) uploads these artifacts itself, so a
+ * symlink (to /dev/zero, or to a file on the runner) or a huge file is refused
+ * instead of followed: the throw makes that PR's verdict `unknown`.
+ */
+export function measuredJsonFiles(dir) {
+  const files = [];
+  for (const name of readdirSync(dir).filter((n) => n.endsWith('.json')).sort()) {
+    const path = join(dir, name);
+    const st = lstatSync(path);
+    if (!st.isFile()) throw new Error(`artifact file ${name} is not a regular file`);
+    if (st.size > MEASURED_FILE_MAX_BYTES) throw new Error(`artifact file ${name} is ${st.size} bytes, over the ${MEASURED_FILE_MAX_BYTES} cap`);
+    files.push(path);
+  }
+  return files;
+}
+
 export class BudgetError extends Error {
   constructor(what) {
     super(`API budget for this run spent before ${what}`);
@@ -111,7 +132,7 @@ export function createIo({ repo, cwd = process.cwd(), cache = null, now = () => 
         mkdirSync(out);
         writeFileSync(join(dir, `${name}.zip`), zip.stdout);
         execFileSync('unzip', ['-q', '-o', join(dir, `${name}.zip`), '-d', out]);
-        for (const f of readdirSync(out).filter((n) => n.endsWith('.json')).sort()) families.push(slim(loadMeasuredFile(join(out, f))));
+        for (const f of measuredJsonFiles(out)) families.push(slim(loadMeasuredFile(f)));
       }
       return families;
     } finally {

@@ -451,23 +451,24 @@ fn a_shared_corner_is_one_node_whatever_the_window() {
 
 #[test]
 fn each_row_carries_its_first_source_vertex_exactly() {
-    // A box whose first corner lies 0.2 mm below a 32 m chunk plane: its level 10 record rounds onto the plane
-    // (32 m), the f32 load files it below it. The anchor keeps the source value.
+    // A box at origin x = 31 whose first corner is at x = 0.9998 (f32): 0.2 mm below the 32 m chunk plane. Its level
+    // 10 record rounds onto the plane; the anchor is `origin + position` with the f32 position widened, exactly.
     let mut c = MeshCollection::new();
-    c.add(flat_box(3, [31.9998, 0.5, 0.25], 0.5));
+    let mut near = flat_box(3, [31.0, 0.5, 0.25], 0.5);
+    for v in near.positions.chunks_exact_mut(3) {
+        v[0] += 0.9998f32;
+    }
+    c.add(near);
     c.add(flat_box(4, [-1.0, 2.0, 3.0], 1.0));
     let b = c.encode_compact(32.0);
     assert_eq!(b.mesh_count(), 2);
-    let first = |row: usize| {
-        let r = &b.records[b.table[row * TABLE_STRIDE + 1] as usize * RECORD_BYTES..];
-        (0..3).map(|axis| (b.windows[row * 3 + axis] + u16::from_le_bytes([r[axis * 2], r[axis * 2 + 1]]) as f64) * step_of(b.table[row * TABLE_STRIDE + 5])).collect::<Vec<_>>()
-    };
     assert_eq!(b.anchors.len(), 6);
-    // Row order is by cell: find the near-plane box by its collection index.
     let row = (0..2).find(|&r| b.table[r * TABLE_STRIDE] == 0).unwrap();
-    assert_eq!(b.anchors[row * 3], 31.9998, "x: origin + first position, exactly");
-    assert!(first(row)[0] >= 32.0, "the record's first vertex rounds onto the chunk plane: {:?}", first(row));
-    assert!(b.anchors[row * 3] < 32.0);
+    assert_eq!(b.anchors[row * 3], 31.0 + 0.9998f32 as f64, "x: origin + the widened f32 position");
+    assert_ne!(b.anchors[row * 3], 31.9998, "not the f64 literal: the f32 position is widened");
+    let r = &b.records[b.table[row * TABLE_STRIDE + 1] as usize * RECORD_BYTES..];
+    let record_x = (b.windows[row * 3] + u16::from_le_bytes([r[0], r[1]]) as f64) * step_of(b.table[row * TABLE_STRIDE + 5]);
+    assert!(record_x >= 32.0 && b.anchors[row * 3] < 32.0, "record {record_x} on the plane, anchor below it");
     // The other box: its first corner is its origin (Z-up (-1, 2, 3) -> Y-up (-1, 3, -2)).
     let other = 1 - row;
     assert_eq!(&b.anchors[other * 3..other * 3 + 3], &[-1.0, 3.0, -2.0]);

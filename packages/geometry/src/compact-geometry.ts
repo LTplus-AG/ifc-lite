@@ -112,7 +112,9 @@ export function compactBounds(ref: CompactRef): Float64Array {
 
 /** Every array of a payload. One compact mesh keeps the whole payload of its batch alive, not only its own rows. */
 function payloadArrays(p: CompactPayload): ArrayBufferView[] {
-  return p.anchors ? [p.records, p.indices, p.table, p.windows, p.bounds, p.cells, p.anchors] : [p.records, p.indices, p.table, p.windows, p.bounds, p.cells];
+  const arrays: ArrayBufferView[] = [p.records, p.indices, p.table, p.windows, p.bounds, p.cells];
+  if (p.anchors) arrays.push(p.anchors);
+  return arrays;
 }
 
 /** The payload's buffers, for a transfer list (each wasm getter returned a standalone copy). */
@@ -121,7 +123,7 @@ export function compactPayloadTransfers(p: CompactPayload): ArrayBuffer[] {
 }
 
 /**
- * Hand a memory census every array a compact mesh retains: the records, the indices and the four
+ * Hand a memory census every array a compact mesh retains: the records, the indices and the
  * per-row tables. The one walk both censuses use (the renderer's and the viewer's), so neither undercounts.
  */
 export function visitCompactPayload(p: CompactPayload, visit: (array: ArrayBufferView, kind: 'indices' | 'other') => void): void {
@@ -171,7 +173,9 @@ export function encodeCompactCollection(
       records: batch.records, indices: batch.indices, table: compactTableOf(batch.table, count),
       windows: batch.windows, bounds: batch.bounds, cells: batch.cells,
     };
-    const anchors = batch.anchors; // read once: every wasm getter copies
+    // Read once (every wasm getter copies). TODO(remove-by: every supported @ifc-lite/wasm writes compact anchors,
+    // compact geometry maintainers), #11606: an older build has none (consumers then take the first record).
+    const anchors = batch.anchors;
     if (anchors && anchors.length === count * 3) payload.anchors = anchors;
     const index = payloads.length;
     payloads.push(payload);

@@ -128,6 +128,8 @@ function addWritten(group: Group, mesh: MeshData): void {
 function firstVertex(ref: CompactRef): [number, number, number] {
   const a = ref.payload.anchors, r = ref.row * 3;
   if (a) return [a[r], a[r + 1], a[r + 2]];
+  // TODO(remove-by: every supported @ifc-lite/wasm writes compact anchors, compact geometry maintainers), #11606.
+  // A payload from an older wasm build: its first record, within half a step of the source vertex.
   const { vertexStart, level } = compactRow(ref);
   const step = compactStep(level), w = ref.payload.windows, records = ref.payload.records;
   const view = new DataView(records.buffer, records.byteOffset + vertexStart * COMPACT_RECORD_BYTES, 6);

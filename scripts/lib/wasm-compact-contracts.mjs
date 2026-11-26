@@ -121,6 +121,8 @@ function checkRow(batch, row, reference) {
     assert.ok(found, `row ${row}: vertex ${p / 3} of #${reference.expressId} has no record within half a step (${step} m)`);
   }
   for (let k = 0; k < 6; k++) assert.equal(bounds[row * 6 + k], box[k], `row ${row}: box component ${k}`);
+  // The anchor is the first source vertex, folded in f64 exactly as the renderer's chunkCellKey folds it.
+  for (let k = 0; k < 3; k++) assert.equal(batch.anchors[row * 3 + k], origin[k] + positions[k], `row ${row}: anchor component ${k}`);
 
   const referenceArea = doubleArea(reference.indices, 0, reference.indices.length,
     (i) => [positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]]);
@@ -144,7 +146,7 @@ function checkFixture(api, bytes, label) {
     try {
       return {
         meshCount: batch.meshCount, records: batch.records, indices: batch.indices, table: batch.table,
-        windows: batch.windows, bounds: batch.bounds, cells: batch.cells, totals: batch.totals,
+        windows: batch.windows, bounds: batch.bounds, cells: batch.cells, anchors: batch.anchors, totals: batch.totals,
         refusals: batch.refusals, meshes: readMeshes(collection),
       };
     } finally {
@@ -160,6 +162,7 @@ function checkFixture(api, bytes, label) {
   assert.equal(encoded.windows.length, rows * 3);
   assert.equal(encoded.bounds.length, rows * 6);
   assert.equal(encoded.cells.length, rows * 3);
+  assert.ok(encoded.anchors instanceof Float64Array && encoded.anchors.length === rows * 3, `${label}: one anchor per row`);
   assert.equal(encoded.records.length % RECORD_BYTES, 0);
   assert.equal(encoded.refusals.length, REFUSAL_KINDS);
   const refused = encoded.refusals.reduce((sum, n) => sum + n, 0);

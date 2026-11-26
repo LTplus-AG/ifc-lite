@@ -449,6 +449,45 @@ describe('model repositioning user interactions (#4226)', () => {
     }
   });
 
+  it('finishes an instanced target pick after a scene revision between press and click (#11419)', async () => {
+    const canvas = document.createElement('canvas');
+    const renderer = new Renderer(canvas);
+    const modelOffset = 1_000_000;
+    const targetId = modelOffset + 7;
+    const target = { ...fixtureModel('scan', {
+      idOffset: modelOffset, entities: [{ expressId: 7, type: 'IfcWall' }],
+    }), maxExpressId: 7 };
+    mock.method(renderer.getScene(), 'getInstancedEntityIds', function* () { yield targetId; });
+    mock.method(renderer.getScene(), 'getInstancedEntityCount', () => 1);
+    mock.method(renderer, 'raycastSceneMagnetic', (...[, , , options]: Parameters<Renderer['raycastSceneMagnetic']>): ReturnType<Renderer['raycastSceneMagnetic']> => ({
+      snapTarget: null,
+      intersection: options?.isolatedIds?.has(targetId) ? {
+        expressId: targetId, point: { x: 1, y: 2, z: 3 }, normal: { x: 0, y: 1, z: 0 },
+        distance: 1, meshIndex: 0, triangleIndex: 0,
+      } : null,
+      edgeLock: { edge: null, meshExpressId: null, edgeT: 0, shouldLock: false, shouldRelease: false, isCorner: false, cornerValence: 0 },
+    }));
+    try {
+      setGlobalRendererRef({ current: renderer });
+      act(() => {
+        useViewerStore.setState({ ...fixtureModels(fixtureModel('ifc'), target), hiddenEntities: new Set(), isolatedEntities: null });
+        useViewerStore.getState().openReposition(['ifc']);
+        useViewerStore.getState().setMoveAnchor('source', { modelId: 'ifc', point: [0, 0, 0], kind: 'point' });
+      });
+      const ui = render(<><SceneOverlayRoot><ToolOverlays /></SceneOverlayRoot><LocalTab /></>);
+      click(button(ui, 'Pick target point'));
+      act(() => { canvas.dispatchEvent(new PointerEvent('pointerdown', { button: 0 })); });
+      assert.equal(useViewerStore.getState().modelPlacement.preview?.target?.modelId, 'scan');
+      const revision = renderer.getPickGeometryRevision();
+      await act(async () => { renderer.setModelTranslation(0, [1, 0, 0]); });
+      assert.ok(renderer.getPickGeometryRevision() > revision);
+      act(() => { canvas.dispatchEvent(new MouseEvent('click', { button: 0 })); });
+      assert.match(ui.textContent ?? '', /Check the move in preview/);
+    } finally {
+      setGlobalRendererRef(null);
+    }
+  });
+
   it('offers the rotation control for a model with GPU-instanced geometry (#4890)', () => {
     act(() => {
       const models = new Map(useViewerStore.getState().models);

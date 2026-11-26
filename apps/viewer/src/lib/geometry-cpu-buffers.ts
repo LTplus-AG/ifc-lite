@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { MeshData } from '@ifc-lite/geometry';
+import { visitCompactPayload } from '@ifc-lite/geometry/compact';
 
 // A source frame restore can replace buffers while earlier registered copies
 // remain live. Flat weak histories transfer through fully shared immutable
@@ -13,6 +14,12 @@ type BufferMembership = Pick<ReadonlySet<ArrayBufferLike>, 'has'>;
 
 /** Ephemeral allocation identities only; never retain this set in alias bookkeeping. */
 export function meshCpuBuffers(mesh: MeshData): Set<ArrayBufferLike> {
+  // A compact shell's CPU geometry is its batch payload; reading its arrays would decode it.
+  if (mesh.compact) {
+    const buffers = new Set<ArrayBufferLike>();
+    visitCompactPayload(mesh.compact.payload, (view) => buffers.add(view.buffer));
+    return buffers;
+  }
   const appearance = mesh.appearanceSource;
   return new Set([mesh.positions, mesh.normals, mesh.indices,
     appearance?.indices, appearance?.sourceIndices, appearance?.cornerIndices]

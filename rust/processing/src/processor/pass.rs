@@ -311,9 +311,9 @@ pub(super) fn run<'c>(
     let geometry_guard = geometry_span.clone().entered();
 
     // A finish is joined by the style source chosen while meshing, and the
-    // replay below sends colours only. So when the file authors finishes,
-    // apply the deferred styles before the first chunk (#10698).
-    if defer_style_updates && finishes.as_ref().is_some_and(|f| !f.is_empty()) && !cancelled(req) {
+    // replay below sends colours only. So with finishes, apply the deferred
+    // styles before the first chunk (#10698).
+    if defer_style_updates && req.features.finishes && !cancelled(req) {
         replay_deferred_styles(&mut ctx, sink, &[], &deferred_styled_item_positions, &indexed_colour_index, &mut deferred_style_refusals);
         deferred_styles_applied = true;
     }

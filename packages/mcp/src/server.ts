@@ -3,22 +3,18 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * MCPServer — the central JSON-RPC router.
+ * MCPServer — the domain module behind every MCP transport.
  *
- * Responsibilities:
- *   - track initialization handshake
- *   - dispatch `tools/list`, `tools/call`, `resources/list`,
- *     `resources/templates/list`, `resources/read`, `prompts/list`,
- *     `prompts/get`, `logging/setLevel`, `ping`, `notifications/initialized`,
- *     `notifications/cancelled`
- *   - filter tool advertisement by auth scope
- *   - validate tool input against the tool's JSON schema
- *   - turn thrown ToolExecutionError into structured tool results (NOT JSON-RPC errors)
+ * It owns what the server means: the tool, resource and prompt registries,
+ * auth scope and the read-only gate, input validation, the structured error
+ * envelope, the model registry and the viewer. The wire protocol (JSON-RPC
+ * framing, initialize and version negotiation, spec schema validation,
+ * cancellation, notification encoding) is the official MCP SDK's, reached
+ * through the adapter in `sdk/protocol-session.ts`.
  *
- * Transport-agnostic: `connect(transport)` is the only I/O hook. The transport
- * pushes incoming JSON-RPC messages via `handleMessage` and gets back zero or
- * one outgoing messages plus any progress/log notifications routed through
- * the `OutgoingMessageSink` contract.
+ * Transport-agnostic: a transport calls `attach(sink)`, pushes each inbound
+ * message through `handleMessage`, writes the returned response, and gets
+ * progress, log and list_changed notifications through the sink.
  */
 
 import {
@@ -26,40 +22,26 @@ import {
   CallToolResult,
   GetPromptParams,
   GetPromptResult,
-  InitializeParams,
-  InitializeResult,
   JsonRpcErrorCode,
   JsonRpcMessage,
-  JsonRpcRequest,
   JsonRpcResponse,
   ListPromptsResult,
   ListResourceTemplatesResult,
   ListResourcesResult,
   ListToolsResult,
-  PROTOCOL_VERSION,
-  SUPPORTED_PROTOCOL_VERSIONS,
-  ProgressNotification,
+  LoggingLevel,
   ReadResourceParams,
   ReadResourceResult,
   ServerCapabilities,
-  SetLevelParams,
-  SubscribeParams,
 } from './protocol/index.js';
-import {
-  errorResponse,
-  isJsonRpcNotification,
-  isJsonRpcRequest,
-  notification,
-  RequestError,
-  successResponse,
-} from './protocol/jsonrpc.js';
+import { RequestError } from './protocol/jsonrpc.js';
 import {
   AuthScope,
   fullScope,
   modelAllowed,
   scopeAllows,
 } from './auth/scope.js';
-import { ClientLogForwarder, isLoggingLevel } from './client-logging.js';
+import { ClientLogForwarder } from './client-logging.js';
 import { SERVER_INSTRUCTIONS } from './server-instructions.js';
 import { toCatalogEntry, toToolDefinition, visibleTools } from './tool-catalog.js';
 import {
@@ -67,14 +49,14 @@ import {
   InMemoryModelRegistry,
   Logger,
   ModelRegistry,
-  ProgressReporter,
   SILENT_LOGGER,
   ServerConfig,
   ToolContext,
 } from './context.js';
-import { describeThrown, ToolExecutionError, ToolErrorCode, toolError } from './errors.js';
+import { ToolExecutionError, ToolErrorCode, toolError } from './errors.js';
 import { PromptRegistry } from './prompts/types.js';
 import { ResourceRegistry } from './resources/types.js';
+import { ProtocolSession, type ProtocolDomain, type ToolCallChannel } from './sdk/protocol-session.js';
 import { disposeSessionResources } from './session-cleanup.js';
 import { ToolRegistry } from './tools/types.js';
 import { withScanHint } from './tools/util.js';
@@ -112,7 +94,7 @@ export interface MCPServerOptions {
   instructions?: string;
 }
 
-export class MCPServer {
+export class MCPServer implements ProtocolDomain {
   readonly name: string;
   readonly version: string;
   readonly registry: ModelRegistry;
@@ -122,18 +104,15 @@ export class MCPServer {
   readonly config: ServerConfig;
   readonly viewer: ViewerManager;
   readonly sessionId?: string;
+  readonly capabilities: ServerCapabilities;
+  readonly instructions: string;
 
   private scope: AuthScope;
   private logger: Logger;
   private logForwarder: ClientLogForwarder;
-  private capabilities: ServerCapabilities;
-  private instructions: string;
-  private initialized = false;
   private sink: OutgoingMessageSink | null = null;
-  /** Active tool calls keyed by JSON-RPC id, used for cancellation. */
-  private active = new Map<string | number, AbortController>();
-  /** Currently subscribed resource URIs (for `notifications/resources/updated`). */
-  private subscriptions = new Set<string>();
+  /** The live MCP connection; built on first use. */
+  private session: ProtocolSession | null = null;
   /** Models resources/list last showed; list_changed goes out only when they change. */
   private listedModels = '';
   private unsubscribeRegistry: (() => void) | undefined;
@@ -169,6 +148,11 @@ export class MCPServer {
     });
   }
 
+  /** Host-side logger without client forwarding (ProtocolDomain). */
+  get baseLogger(): Logger {
+    return this.logForwarder.base;
+  }
+
   /** Attach an outgoing-message sink. Required before handling messages. */
   attach(sink: OutgoingMessageSink): void {
     this.sink = sink;
@@ -180,8 +164,11 @@ export class MCPServer {
     this.sink = null;
     this.unsubscribeRegistry?.();
     this.unsubscribeRegistry = undefined;
-    this.active.forEach((c) => c.abort());
-    this.active.clear();
+    // The connection ends here: calls in flight are aborted, and a later
+    // attach starts a new one (uninitialized, no subscriptions, no log level).
+    this.session?.close();
+    this.session = null;
+    this.logForwarder.reset();
     // Close the viewer sockets, layer Y.Docs and native Room plates even if
     // an earlier resource fails. SSE reconnects do not call detach.
     disposeSessionResources(this.viewer, this.registry, this.sessionId, this.logger);
@@ -227,7 +214,7 @@ export class MCPServer {
   }
 
   isInitialized(): boolean {
-    return this.initialized;
+    return this.session?.isInitialized() ?? false;
   }
 
   /**
@@ -236,136 +223,31 @@ export class MCPServer {
    * through the attached sink, not the return value.
    */
   async handleMessage(message: JsonRpcMessage): Promise<JsonRpcResponse | null> {
-    if (isJsonRpcRequest(message)) {
-      return this.handleRequest(message);
-    }
-    if (isJsonRpcNotification(message)) {
-      await this.handleNotification(message);
-      return null;
-    }
-    // Responses to server-initiated requests would land here; v0.1 has no
-    // server-initiated requests so we just drop them.
-    return null;
+    return this.protocol().deliver(message);
+  }
+
+  private protocol(): ProtocolSession {
+    this.session ??= new ProtocolSession(this, () => this.sink);
+    return this.session;
   }
 
   // ────────────────────────────────────────────────────────────────────────
-  // Request dispatch
+  // ProtocolDomain: what each MCP request means
   // ────────────────────────────────────────────────────────────────────────
 
-  private async handleRequest(req: JsonRpcRequest): Promise<JsonRpcResponse> {
-    try {
-      // initialize/ping always allowed regardless of init state.
-      if (req.method === 'initialize') {
-        return successResponse(req.id, this.handleInitialize(req.params as InitializeParams));
-      }
-      if (req.method === 'ping') {
-        return successResponse(req.id, {});
-      }
-
-      if (!this.initialized) {
-        return errorResponse(
-          req.id,
-          JsonRpcErrorCode.ServerNotInitialized,
-          'Server not initialized — send `initialize` first',
-        );
-      }
-
-      switch (req.method) {
-        case 'tools/list':
-          return successResponse(req.id, this.handleListTools());
-        case 'tools/call':
-          return successResponse(req.id, await this.handleCallTool(req));
-        case 'resources/list':
-          return successResponse(req.id, await this.handleListResources());
-        case 'resources/templates/list':
-          return successResponse(req.id, { resourceTemplates: this.resources.templates() } satisfies ListResourceTemplatesResult);
-        case 'resources/read':
-          return successResponse(req.id, await this.handleReadResource((req.params ?? {}) as ReadResourceParams));
-        case 'resources/subscribe':
-          this.subscriptions.add((req.params as SubscribeParams).uri);
-          return successResponse(req.id, {});
-        case 'resources/unsubscribe':
-          this.subscriptions.delete((req.params as SubscribeParams).uri);
-          return successResponse(req.id, {});
-        case 'prompts/list':
-          return successResponse(req.id, this.handleListPrompts());
-        case 'prompts/get':
-          return successResponse(req.id, await this.handleGetPrompt((req.params ?? {}) as GetPromptParams));
-        case 'logging/setLevel': {
-          if (!this.capabilities.logging) throw new RequestError(JsonRpcErrorCode.MethodNotFound, 'Logging is not offered by this server');
-          const level = (req.params as Partial<SetLevelParams> | undefined)?.level;
-          if (!isLoggingLevel(level)) throw new RequestError(JsonRpcErrorCode.InvalidParams, `Unknown logging level: ${String(level)}`);
-          this.logForwarder.setLevel(level);
-          return successResponse(req.id, {});
-        }
-        default:
-          return errorResponse(req.id, JsonRpcErrorCode.MethodNotFound, `Unknown method: ${req.method}`);
-      }
-    } catch (err) {
-      if (err instanceof RequestError) return errorResponse(req.id, err.code, err.message, err.data);
-      const message = err instanceof Error ? err.message : String(err);
-      this.logger.log('error', `Request ${req.method} failed`, { error: message });
-      return errorResponse(req.id, JsonRpcErrorCode.InternalError, message);
-    }
+  initialized(info: { client: unknown; protocol: string; negotiated: string }): void {
+    this.logger.log('info', 'initialize', info);
   }
 
-  private async handleNotification(note: { method: string; params?: unknown }): Promise<void> {
-    switch (note.method) {
-      case 'notifications/initialized':
-        // Some clients send this AFTER `initialize`. Already initialized in the
-        // success path; this notification is just a confirmation.
-        return;
-      case 'notifications/cancelled': {
-        const params = note.params as { requestId?: string | number; reason?: string } | undefined;
-        if (params?.requestId !== undefined) {
-          const ctl = this.active.get(params.requestId);
-          if (ctl) {
-            ctl.abort();
-            this.active.delete(params.requestId);
-            this.logger.log('info', `Cancelled request ${params.requestId}`, { reason: params.reason });
-          }
-        }
-        return;
-      }
-      default:
-        this.logger.log('debug', `Ignored notification ${note.method}`);
-    }
+  setLogLevel(level: LoggingLevel): void {
+    this.logForwarder.setLevel(level);
   }
 
-  // ────────────────────────────────────────────────────────────────────────
-  // initialize
-  // ────────────────────────────────────────────────────────────────────────
-
-  private handleInitialize(params: InitializeParams): InitializeResult {
-    this.initialized = true;
-    // Per MCP spec: echo a version we support, else offer our own. Clients
-    // hard-close on a mismatch, so a needless downgrade bricks them.
-    const negotiated = SUPPORTED_PROTOCOL_VERSIONS.has(params.protocolVersion)
-      ? params.protocolVersion
-      : PROTOCOL_VERSION;
-    this.logger.log('info', 'initialize', {
-      client: params.clientInfo,
-      protocol: params.protocolVersion,
-      negotiated,
-    });
-    return {
-      protocolVersion: negotiated,
-      capabilities: this.capabilities,
-      serverInfo: { name: this.name, version: this.version },
-      instructions: this.instructions,
-    };
-  }
-
-  // ────────────────────────────────────────────────────────────────────────
-  // tools/*
-  // ────────────────────────────────────────────────────────────────────────
-
-  private handleListTools(): ListToolsResult {
+  listTools(): ListToolsResult {
     return { tools: visibleTools(this.tools, this.scope, this.config.readOnly).map(toToolDefinition) };
   }
 
-  private async handleCallTool(req: JsonRpcRequest): Promise<CallToolResult> {
-    const params = req.params as CallToolParams;
+  async callTool(params: CallToolParams, channel: ToolCallChannel): Promise<CallToolResult> {
     const tool = this.tools.get(params.name);
     if (!tool) {
       return toolError({
@@ -398,17 +280,13 @@ export class MCPServer {
       });
     }
 
-    const ctl = new AbortController();
-    this.active.set(req.id, ctl);
-    const progressToken = params._meta?.progressToken;
-    const progress = this.makeProgress(progressToken);
     const ctx: ToolContext = {
       registry: this.registry,
       scope: this.scope,
       currentScope: () => this.scope,
-      progress,
+      progress: channel.progress,
       log: this.logger,
-      signal: ctl.signal,
+      signal: channel.signal,
       config: this.config,
       // Read at call time — `setScope` may refresh the principal mid-session.
       session: { id: this.sessionId, principal: this.scope.user },
@@ -433,28 +311,35 @@ export class MCPServer {
         message: err instanceof Error ? err.message : String(err),
       });
     } finally {
-      this.active.delete(req.id);
       if (!this.registry.onChange) this.syncListedModels();
     }
   }
 
-  // ────────────────────────────────────────────────────────────────────────
-  // resources/*
-  // ────────────────────────────────────────────────────────────────────────
-
-  private async handleListResources(): Promise<ListResourcesResult> {
-    const ctx = this.makeResourceContext();
-    const resources = await this.resources.list(ctx);
-    return { resources };
+  async listResources(): Promise<ListResourcesResult> {
+    return { resources: await this.resources.list(this.makeResourceContext()) };
   }
 
-  private async handleReadResource(params: ReadResourceParams): Promise<ReadResourceResult> {
+  listResourceTemplates(): ListResourceTemplatesResult {
+    return { resourceTemplates: this.resources.templates() };
+  }
+
+  async readResource(params: ReadResourceParams): Promise<ReadResourceResult> {
     if (typeof params.uri !== 'string') throw new RequestError(JsonRpcErrorCode.InvalidParams, 'resources/read needs a uri');
     const provider = this.resources.matchProvider(params.uri);
     // An empty read is a well-formed URI naming nothing (unknown model or entity).
     const contents = provider ? await provider.read(params.uri, this.makeResourceContext()) : [];
-    if (contents.length === 0) throw new RequestError(JsonRpcErrorCode.ResourceNotFound, 'Resource not found', { uri: params.uri });
+    if (contents.length === 0) throw new RequestError(JsonRpcErrorCode.InvalidParams, 'Resource not found', { uri: params.uri });
     return { contents };
+  }
+
+  listPrompts(): ListPromptsResult {
+    return { prompts: this.prompts.list() };
+  }
+
+  async getPrompt(params: GetPromptParams): Promise<GetPromptResult> {
+    const prompt = this.prompts.get(params.name);
+    if (!prompt) throw new RequestError(JsonRpcErrorCode.InvalidParams, `Unknown prompt: ${params.name}`);
+    return prompt.render(params.arguments ?? {}, this.makeResourceContext());
   }
 
   private listedModelsKey(): string {
@@ -465,21 +350,6 @@ export class MCPServer {
   private syncListedModels(): void {
     const key = this.listedModelsKey();
     if (key !== this.listedModels) { this.listedModels = key; this.notifyResourcesChanged(); }
-  }
-
-  // ────────────────────────────────────────────────────────────────────────
-  // prompts/*
-  // ────────────────────────────────────────────────────────────────────────
-
-  private handleListPrompts(): ListPromptsResult {
-    return { prompts: this.prompts.list() };
-  }
-
-  private async handleGetPrompt(params: GetPromptParams): Promise<GetPromptResult> {
-    const prompt = this.prompts.get(params.name);
-    if (!prompt) throw new RequestError(JsonRpcErrorCode.InvalidParams, `Unknown prompt: ${params.name}`);
-    const ctx = this.makeResourceContext();
-    return prompt.render(params.arguments ?? {}, ctx);
   }
 
   // ────────────────────────────────────────────────────────────────────────
@@ -501,31 +371,14 @@ export class MCPServer {
     };
   }
 
-  private makeProgress(token: string | number | undefined): ProgressReporter {
-    if (token === undefined || !this.sink) return { report() { /* no token => silent */ } };
-    // Sent directly, not via notify(): a sink that throws here fails the producer on purpose (#7372).
-    const sink = this.sink;
-    return {
-      report: (progress, message, total) => {
-        const note: ProgressNotification = { progressToken: token, progress };
-        if (total !== undefined) note.total = total;
-        if (message !== undefined) note.message = message;
-        void sink.send(notification('notifications/progress', note));
-      },
-    };
-  }
-
   /** Broadcast a `notifications/resources/updated` to subscribers. */
   notifyResourceUpdated(uri: string): void {
-    if (this.subscriptions.has(uri)) this.notify('notifications/resources/updated', { uri });
+    if (this.sink) this.session?.resourceUpdated(uri);
   }
 
   /** Send a server notification. Dropped until initialize; a failing sink is logged, never thrown at the caller. */
   notify(method: string, params: Record<string, unknown>): void {
-    const sink = this.sink;
-    if (!this.initialized || !sink) return;
-    const failed = (err: unknown) => this.logForwarder.base.log('warning', `notify ${method} failed`, { error: describeThrown(err) });
-    void (async () => { try { await sink.send(notification(method, params)); } catch (err) { failed(err); } })();
+    if (this.sink) this.session?.notify(method, params);
   }
 
   /** Notify clients that the tool list has changed (e.g., after model load). */

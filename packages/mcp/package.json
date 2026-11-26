@@ -70,6 +70,7 @@
     "@ifc-lite/sdk": "workspace:^",
     "@ifc-lite/viewer-core": "workspace:^",
     "@ifc-lite/wasm": "workspace:^",
+    "@modelcontextprotocol/server": "^2.4.0",
     "ws": "^8.23.0",
     "yjs": "^13.6.33"
   },
@@ -84,7 +85,7 @@
     "vitest": "^5.1.0"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
   },
   "license": "MPL-2.0",
   "author": "Louis True",

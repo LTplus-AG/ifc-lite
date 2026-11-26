@@ -76,9 +76,15 @@ for (const fault of ['cancel','changed'] as const) it.skipIf(!available)(`#6232 
     else model.bim.store.addWall('alpha',42,{Start:[20,20,0],End:[24,20,0],Thickness:.2,Height:3});
     const expected = fault === 'cancel' ? before : snapshot(model);
     release();
-    const result = (await pending as {result:CallToolResult}).result;
-    expect(result.structuredContent?.code).toBe(fault === 'cancel' ? 'CANCELLED' : 'STATE_CHANGED');
-    expect(result.structuredContent?.details).toEqual({ retryable:true });
+    if (fault === 'cancel') {
+      // A cancelled request gets no response (MCP cancellation, via the SDK); the model is untouched.
+      expect(await pending).toBeNull();
+      await new Promise(resolve => setTimeout(resolve, 50));
+    } else {
+      const result = (await pending as {result:CallToolResult}).result;
+      expect(result.structuredContent?.code).toBe('STATE_CHANGED');
+      expect(result.structuredContent?.details).toEqual({ retryable:true });
+    }
     expect(snapshot(model)).toEqual(expected);
   } finally { release(); model.backend.dispose(); }
 });

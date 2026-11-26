@@ -405,7 +405,10 @@ it('#7372 actual protocol cancellation releases proof admission and a later genu
       params: { name: 'ids_validate', arguments: { model_id: host.model.id, ids_xml: host.xml } } });
     await reached;
     await host.transport.send({ jsonrpc: '2.0', method: 'notifications/cancelled', params: { requestId: 7372500 } });
-    release(); expect(result(await pending).isError).toBe(true);
+    // A cancelled request gets no response (MCP cancellation, via the SDK);
+    // the aborted run settles after release, so wait for its record.
+    release(); expect(await pending).toBeNull();
+    await expect.poll(async () => (await host.read()).structuredContent?.latestAttempt).toMatchObject({ state: 'aborted' });
     const cancelled = await host.read();
     expect(cancelled.structuredContent?.latestAttempt).toEqual({ state: 'aborted', refusal: 'aborted', proof: null });
     expect(cancelled.structuredContent?.bounds).toMatchObject({ knownFindings: null, nativeCoverageComplete: false });
@@ -477,12 +480,14 @@ for (const producer of ['ids', 'rules', 'flow'] as const) {
           const actual = await originalAsync(fn); armed = true; return actual;
         };
       } else armed = true;
-      const failed = result(await host.transport.send({ jsonrpc: '2.0', id: requestId, method: 'tools/call',
-        params: { name, arguments: args, _meta: { progressToken: '7372-native-producer-cancellation' } } }));
+      // A cancelled request gets no response (MCP cancellation, via the SDK).
+      const failed = await host.transport.send({ jsonrpc: '2.0', id: requestId, method: 'tools/call',
+        params: { name, arguments: args, _meta: { progressToken: '7372-native-producer-cancellation' } } });
       if (cancellation) await cancellation;
+      expect(failed).toBeNull();
+      await expect.poll(async () => (await host.read()).structuredContent?.latestAttempt).toMatchObject({ state: 'aborted' });
       source.withMaterializedAsync = originalAsync; armed = false;
       expect(cancelled).toBe(1);
-      expect(failed.isError === true || failed.structuredContent?.ok === false).toBe(true);
       const historical = await host.read();
       expect(historical.structuredContent?.latestAttempt).toMatchObject({ state: 'aborted', refusal: 'aborted' });
       const latest = historical.structuredContent?.latestAttempt;

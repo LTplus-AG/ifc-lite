@@ -30,6 +30,11 @@ export class ClientLogForwarder {
     this.minimum = LOGGING_LEVELS.indexOf(level);
   }
 
+  /** Back to forwarding nothing, as for a client that never set a level. */
+  reset(): void {
+    this.minimum = null;
+  }
+
   /** The server's logger: writes to the base logger, and to the client at or above the set level. */
   readonly logger: Logger = {
     log: (level, message, data) => {

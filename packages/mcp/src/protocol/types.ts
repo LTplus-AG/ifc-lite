@@ -71,9 +71,17 @@ export const JsonRpcErrorCode = {
   MethodNotFound: -32601,
   InvalidParams: -32602,
   InternalError: -32603,
-  // MCP-defined extension range starts at -32000.
-  ServerNotInitialized: -32002,
-  /** MCP resources spec: resources/read on a URI that names nothing. Shares -32002 with the code above. */
+  /**
+   * A request other than initialize/ping before the handshake. Was -32002,
+   * which the resources spec also uses for "not found"; JSON-RPC's own
+   * Invalid Request says it without the clash.
+   */
+  ServerNotInitialized: -32600,
+  /**
+   * resources/read on a URI that names nothing, as clients SHOULD still accept
+   * it. The server answers -32602 with `data.uri` instead (2026-07-28 makes
+   * that a MUST and the SDK sends it on every revision).
+   */
   ResourceNotFound: -32002,
   RequestCancelled: -32800,
 } as const;

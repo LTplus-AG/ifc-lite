@@ -289,10 +289,10 @@ describe('resources', () => {
     expect(templates.map((t) => t.uriTemplate)).toEqual(['ifc-lite://model/{model_id}/entity/{global_id}']);
   });
 
-  it('answers a missing resource with -32002 and a missing uri with -32602', async () => {
+  it('answers a missing resource and a missing uri with -32602, the resource case naming the uri', async () => {
     const { request } = await initialized();
-    expect((await request('resources/read', { uri: 'nope://x' })).error).toMatchObject({ code: -32002, data: { uri: 'nope://x' } });
-    expect((await request('resources/read', { uri: 'ifc-lite://model/missing/manifest' })).error?.code).toBe(-32002);
+    expect((await request('resources/read', { uri: 'nope://x' })).error).toMatchObject({ code: -32602, data: { uri: 'nope://x' } });
+    expect((await request('resources/read', { uri: 'ifc-lite://model/missing/manifest' })).error).toMatchObject({ code: -32602, data: { uri: 'ifc-lite://model/missing/manifest' } });
     expect((await request('resources/read')).error?.code).toBe(-32602);
     expect((await request('prompts/get')).error?.code).toBe(-32602);
   });

@@ -38,6 +38,8 @@ interface Agent {
   notifications: JsonRpcMessage[];
   listTools(): Promise<string[]>;
   call(name: string, args?: Record<string, unknown>, id?: number): Promise<CallToolResult>;
+  /** A call that may be cancelled: resolves null when no response is sent. */
+  callRaw(name: string, args: Record<string, unknown>, id: number): Promise<JsonRpcResponse | null>;
   cancel(id: number): Promise<void>;
 }
 
@@ -70,6 +72,9 @@ async function startAgent(opts: { readOnly?: boolean; tuning?: Parameters<typeof
       const res = await request('tools/call', { name, arguments: args }, id);
       if (!('result' in res)) throw new Error(JSON.stringify(res));
       return res.result as CallToolResult;
+    },
+    callRaw(name, args, id) {
+      return r.server.handleMessage({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: args } });
     },
     async cancel(id) {
       await r.server.handleMessage({ jsonrpc: '2.0', method: 'notifications/cancelled', params: { requestId: id } });
@@ -115,13 +120,14 @@ it('#11029: acknowledges only accepted intact results for the negotiated session
   expect((await received).content).toEqual([{ type: 'text', text: 'retained token' }]);
   expect(await tab.next('result-ack')).toMatchObject({ id: first.id, accepted: true });
 
-  const cancelled = agent.call(READ_TOOL.name, {}, 987);
+  const cancelled = agent.callRaw(READ_TOOL.name, {}, 987);
   const second = await tab.next('call');
   await agent.cancel(987);
   await tab.next('cancel');
   reply(second.id, textResult('expired token'));
   expect(await tab.next('result-ack')).toMatchObject({ id: second.id, accepted: false });
-  expect((await cancelled).isError).toBe(true);
+  // A cancelled request gets no response (MCP cancellation, via the SDK).
+  expect(await cancelled).toBeNull();
 
   const malformed = agent.call(READ_TOOL.name);
   const third = await tab.next('call');
@@ -248,10 +254,10 @@ describe('2. closing or replacing the tab fails pending calls', () => {
   it('forwards an MCP cancellation to the tab', async () => {
     const agent = await startAgent();
     const { tab } = await pair(agent);
-    const pending = agent.call(READ_TOOL.name, {}, 4242);
+    const pending = agent.callRaw(READ_TOOL.name, {}, 4242);
     const call = await tab.next('call');
     await agent.cancel(4242);
-    expect(code(await pending)).toBe('CANCELLED');
+    expect(await pending).toBeNull();
     expect(await tab.next('cancel')).toMatchObject({ id: call.id, reason: 'cancelled' });
   });
 });

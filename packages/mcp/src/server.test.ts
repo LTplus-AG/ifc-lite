@@ -72,7 +72,7 @@ describe('MCP server: handshake', () => {
     const { transport } = build();
     await transport.send({ jsonrpc: '2.0', method: 'notifications/initialized' });
     const response = await transport.send({ jsonrpc: '2.0', id: 90, method: 'tools/list' });
-    expect(response).toMatchObject({ error: { code: -32002 } });
+    expect(response).toMatchObject({ error: { code: -32600 } });
     await init(transport);
     expect(await transport.send({ jsonrpc: '2.0', id: 91, method: 'tools/list' })).toHaveProperty('result');
   });
@@ -104,10 +104,10 @@ describe('MCP server: handshake', () => {
     expect(res.result.protocolVersion).toBe(PROTOCOL_VERSION);
   });
 
-  it('rejects requests before initialize', async () => {
+  it('rejects requests before initialize with -32600, not the resource-not-found code', async () => {
     const { transport } = build();
     const res = await transport.send({ jsonrpc: '2.0', id: 99, method: 'tools/list' }) as { error: { code: number } };
-    expect(res.error.code).toBe(-32002);
+    expect(res.error.code).toBe(-32600);
   });
 });
 

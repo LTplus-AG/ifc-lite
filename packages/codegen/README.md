@@ -65,6 +65,17 @@ generated/ifc4/
 └── index.ts             ← barrel export
 ```
 
+## Generate validators
+
+`--validators <dir>` compiles the constraint side of the schema instead of the types: every WHERE rule (entity and defined type), DERIVE expression, INVERSE and UNIQUE clause, FUNCTION and global RULE, through a tokenising EXPRESS parser and an EXPRESS-to-TypeScript translator. The output is what `@ifc-lite/validate` runs: schema tables (`schema.ts`), compiled rules (`rules.ts`), zod 4 schemas for every entity and type (`zod.ts`) and `coverage.json`.
+
+```bash
+node dist/cli.js schemas/IFC4_ADD2_TC1.exp --validators ../validate/src/generated/ifc4
+# IFC4_ADD2_TC1: entity WHERE 652/652, type WHERE 25/25, DERIVE 62/62, global 2/2, functions 47/47
+```
+
+A construct the translator cannot compile is listed with its reason in `coverage.json` and in the generated `unsupported` table (and reported as not evaluated at runtime), never dropped; a FUNCTION that does not compile marks its callers and the rules using them. `--validator-runtime <specifier>` sets the runtime import (default `../../runtime/index.js`, the layout inside `@ifc-lite/validate`). `generateValidators(source, options)` is the same generator without file IO.
+
 ## Programmatic usage
 
 ```typescript

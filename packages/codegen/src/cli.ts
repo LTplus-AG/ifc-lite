@@ -11,6 +11,7 @@
 
 import { Command } from 'commander';
 import { generateFromFile, type GeneratorOptions } from './generator.js';
+import { writeValidators } from './validators/write.js';
 
 const program = new Command();
 
@@ -35,6 +36,8 @@ program
   )
   .option('--rust-slot-renames <path>', 'attribute-renames.json for the slot generator')
   .option('--skip-collision-check', 'Skip CRC32 collision check', false)
+  .option('--validators <dir>', 'Generate only the @ifc-lite/validate rule modules and zod schemas, into <dir>')
+  .option('--validator-runtime <specifier>', 'Module specifier of the validator runtime, relative to --validators', '../../runtime/index.js')
   .option('-v, --verbose', 'Verbose output', false)
   .action(
     (
@@ -48,10 +51,20 @@ program
         rustSlotSchema?: string[];
         rustSlotRenames?: string;
         skipCollisionCheck: boolean;
+        validators?: string;
+        validatorRuntime: string;
         verbose: boolean;
       }
     ) => {
       try {
+        if (options.validators) {
+          const coverage = writeValidators(schemaPath, options.validators, options.validatorRuntime);
+          const c = coverage.counts;
+          console.log(`${coverage.schema}: entity WHERE ${c.entity.compiled}/${c.entity.total}, type WHERE ${c.type.compiled}/${c.type.total}, ` +
+            `DERIVE ${c.derived.compiled}/${c.derived.total}, global ${c.global.compiled}/${c.global.total}, functions ${c.function.compiled}/${c.function.total}`);
+          for (const u of coverage.unsupported) console.log(`  not compiled: ${u.scope} ${u.owner}.${u.label}: ${u.reason}`);
+          return;
+        }
         console.log('🚀 IFC Code Generator\n');
         console.log(`Schema: ${schemaPath}`);
         console.log(`Output: ${options.output}`);

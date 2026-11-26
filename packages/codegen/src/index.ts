@@ -56,6 +56,15 @@ export {
   type GeneratorOptions,
 } from './generator.js';
 
+// Validator generation for @ifc-lite/validate (pure: no Node built-ins)
+export {
+  generateValidators,
+  type GeneratedValidators,
+  type UnsupportedEntry,
+  type ValidatorCoverage,
+  type ValidatorGeneratorOptions,
+} from './validators/index.js';
+
 // Schema-hierarchy helpers (runtime `isSubtypeOf`, against a generated
 // bundle's `SCHEMA_REGISTRY` — see `./ifc4` and `./ifc4x3` subpath exports).
 export {

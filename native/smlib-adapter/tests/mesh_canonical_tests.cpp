@@ -261,6 +261,54 @@ void run_mesh_canonical_tests() {
             same_topology(mesh,reference,"near-collinear quad at 1e6 m keeps its split under +/-1 ULP noise");
         }
     }
+    // Saddle review case (#10916): lifting two opposite corners of a quad by w
+    // changes its 3D area only by about A (w/L)^2, below same_area's 1e-9, but
+    // re-splitting it moves A w / 3 of volume and tilts both normals by about
+    // w / L. A parallelogram tagged planar, split by the SDK on its long
+    // diagonal (the canonical rule prefers the short one), must keep that
+    // split. Before the hinge check, the 10 m quad was re-split up to
+    // w = 1e-4 m and the 1 m quad up to w = 1e-5 m.
+    for (const auto& [length,lift]:std::vector<std::pair<double,double>>{{10,1e-4},{10,1e-6},{1,1e-5},{1,1e-7}}) {
+        const double s=length/2;
+        AdapterMesh mesh;
+        mesh.positions={0,0,0, length,0,lift, length+s,length,0, s,length,lift};
+        mesh.indices={0,1,2, 0,2,3}; mesh.faces={0,0}; mesh.normals.assign(18,0.);
+        declined(mesh,{true},"a saddle-warped quad tagged planar keeps the SDK's split");
+        // The same quad truly planar is re-split onto its short diagonal.
+        mesh.positions[5]=mesh.positions[11]=0;
+        canonicalize(mesh,{true});
+        require(has_edge(mesh,{length,0,0},{s,length,0}),"the planar parallelogram takes its short diagonal");
+    }
+    // The same on a face of more than two triangles (the greedy path): a 10 x
+    // 4 m rectangle with an edge vertex, split by the SDK on a long diagonal,
+    // one corner lifted by 10 um.
+    {
+        AdapterMesh mesh;
+        mesh.positions={0,0,0, 5,0,0, 10,0,0, 10,4,1e-5, 0,4,0};
+        mesh.indices={0,1,4, 1,2,4, 2,3,4}; mesh.faces={0,0,0}; mesh.normals.assign(27,0.);
+        declined(mesh,{true},"a warped face of three triangles tagged planar keeps the SDK's split");
+        mesh.positions[11]=0;
+        canonicalize(mesh,{true});
+        require(!has_edge(mesh,{10,0,0},{0,4,0}),"the planar rectangle with an edge vertex is re-split");
+    }
+    // A truly planar quad in a general orientation at a 1e6 m offset, under
+    // the SDK's +/-1 ULP noise: the hinge check must not decline it, so both
+    // SDK splits keep canonicalizing to one topology.
+    {
+        const Point origin{1e6,-4e5,2.5e5},u{0.48,0.6,0.64},v{0.8,-0.36,-0.48};
+        const double corners[4][2]={{0,0},{7,0},{10.5,3},{3.5,3}};
+        AdapterMesh base;
+        for (const auto& c:corners) for (unsigned axis=0;axis<3;++axis)
+            base.positions.push_back(origin[axis]+c[0]*u[axis]+c[1]*v[axis]);
+        base.indices={0,1,2, 0,2,3}; base.faces={0,0}; base.normals.assign(18,0.);
+        AdapterMesh reference=base; canonicalize(reference,{true});
+        for (unsigned run=0;run<64;++run) {
+            AdapterMesh mesh=base;
+            if (run%2) mesh.indices={1,2,3, 1,3,0};
+            nudge(mesh,random); canonicalize(mesh,{true});
+            same_topology(mesh,reference,"a planar rotated quad at 1e6 m canonicalizes stably under +/-1 ULP noise");
+        }
+    }
     // Concave planar quad (dent at (2,1)): only the diagonal through the dent
     // is inside it, even though the lowest vertex is (0,0).
     {

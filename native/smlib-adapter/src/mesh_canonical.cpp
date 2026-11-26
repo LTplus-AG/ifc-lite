@@ -44,15 +44,59 @@ Point cross(const AdapterMesh& mesh,const Triangle& t) {
 double dot(const Point& a,const Point& b) { return a[0]*b[0]+a[1]*b[1]+a[2]*b[2]; }
 // Twice a triangle's area from the longest of its three corner cross products
 // (as flat_normal): the first corner's can round to 0 for a sliver, and which
-// corner is first follows the SDK's split.
+// corner is first follows the SDK's split. NaN when a cross product overflows,
+// so every area comparison using it fails closed.
 double double_area(const AdapterMesh& mesh,const Triangle& t) {
     double best=0;
     for (unsigned k=0;k<3;++k) {
         const auto c=cross(mesh,{t[k],t[(k+1)%3],t[(k+2)%3]});
         const double length=std::hypot(c[0],c[1],c[2]);
-        if (std::isfinite(length)) best=std::max(best,length);
+        if (!std::isfinite(length)) return std::numeric_limits<double>::quiet_NaN();
+        best=std::max(best,length);
     }
     return best;
+}
+double double_area(const AdapterMesh& mesh,uint32_t a,uint32_t b,uint32_t c) { return double_area(mesh,Triangle{a,b,c}); }
+// Whether the SDK's triangulation of a face tagged planar is flat to first
+// order: at every interior edge a-b, between triangles (a, b, c) and (b, a, d),
+// the tetrahedron a b c d is no thicker than the SDK's coordinate noise. Its
+// volume is what re-splitting that hinge moves (a quad of area A whose two
+// opposite corners are lifted by w: A w / 3, while its 3D area only changes by
+// about A (w/L)^2, too little for same_area). If every hinge is flat and the
+// face is connected, all its triangles lie in one plane, so any split of it
+// keeps its volume and normals. Noise: coordinates change by about one ULP of
+// the largest |coordinate| M between runs (plus half a ULP of rounding in a
+// truly planar face), and |det| moves by the four faces' double areas times
+// that, so the tolerance is 8 eps M times their sum, about 3x the worst case,
+// plus the determinant's own rounding (4 eps times the sum of its absolute
+// terms). For a convex quad that is a warp of 16 eps M (about 9 nm at a
+// 2.6e6 m offset, 4e-14 m at 10 m): a real warp is far above it, and a
+// planar face's noise far below. Fails closed on non-finite values.
+bool flat_hinges(const AdapterMesh& mesh,const std::vector<Triangle>& face) {
+    double magnitude=0;
+    std::map<std::pair<uint32_t,uint32_t>,uint32_t> opposite;
+    for (const auto& t:face) for (unsigned k=0;k<3;++k) {
+        opposite[{t[k],t[(k+1)%3]}]=t[(k+2)%3];
+        const auto x=point(mesh,t[k]);
+        for (double c:x) magnitude=std::max(magnitude,std::abs(c));
+    }
+    const double eps=std::numeric_limits<double>::epsilon();
+    for (const auto& [ab,c]:opposite) {
+        const auto [a,b]=ab;
+        if (a>b) continue; // each hinge once
+        const auto found=opposite.find({b,a});
+        if (found==opposite.end()) continue; // boundary edge
+        const uint32_t d=found->second;
+        const auto A=point(mesh,a),B=point(mesh,b),C=point(mesh,c),D=point(mesh,d);
+        const Point x{B[0]-A[0],B[1]-A[1],B[2]-A[2]},y{C[0]-A[0],C[1]-A[1],C[2]-A[2]},z{D[0]-A[0],D[1]-A[1],D[2]-A[2]};
+        const std::array<double,6> terms{x[0]*y[1]*z[2],-x[0]*y[2]*z[1],x[1]*y[2]*z[0],-x[1]*y[0]*z[2],x[2]*y[0]*z[1],-x[2]*y[1]*z[0]};
+        double det=0,permanent=0;
+        for (double term:terms) { det+=term; permanent+=std::abs(term); }
+        const double faces=double_area(mesh,a,b,c)+double_area(mesh,b,a,d)+double_area(mesh,a,c,d)+double_area(mesh,b,d,c);
+        const double tolerance=8*eps*magnitude*faces+4*eps*permanent;
+        if (!(std::abs(det)<=tolerance)) return false;
+    }
+    return true;
 }
 // Whether a retriangulation keeps a face's 3D area: within 1e-9 relative,
 // plus a floor for the SDK's +/-1 ULP coordinate noise. That noise warps a
@@ -63,9 +107,10 @@ double double_area(const AdapterMesh& mesh,const Triangle& t) {
 // times the bounding-box diagonal per triangle: about 5e-10 m^2 per metre of
 // extent and triangle at a 2.6e6 m offset, the precision such coordinates
 // carry. A real warp is far above it (a 0.25 um corner on a 1 um wide face
-// there: 1.17%; #10916's closed cap: 1.17%); a face that narrow at that
-// offset can still change area by up to the floor (a 30 nm corner: 0.08%,
-// 6e-10 m^2).
+// there: 1.17%; #10916's closed cap: 1.17%). This is a second-order test (a
+// saddle warp w changes area by about A (w/L)^2), so flat_hinges guards the
+// warp itself; within the noise floor 2 eps M diag, an accepted split can
+// still change area by up to that floor.
 bool same_area(const AdapterMesh& mesh,const std::vector<Triangle>& before,const std::vector<Triangle>& after) {
     double before_area=0,after_area=0,magnitude=0;
     Point low{INFINITY,INFINITY,INFINITY},high{-INFINITY,-INFINITY,-INFINITY};
@@ -343,7 +388,7 @@ std::vector<Triangle> requad(const AdapterMesh& mesh,const Triangle& a,const Tri
         const bool use_flipped=clear ? flipped_clear : flipped && sound({p,u,q},{q,v,p});
         if (use_flipped && (!use_kept || rank(p,q)<rank(u,v))) {
             const Triangle first{p,u,q},second{q,v,p};
-            if (!same_area(mesh,{a,b},{first,second})) return {};
+            if (!flat_hinges(mesh,{a,b}) || !same_area(mesh,{a,b},{first,second})) return {};
             return {first,second};
         }
         if (use_kept) return {a,b};
@@ -480,7 +525,7 @@ std::vector<Triangle> greedy(const AdapterMesh& mesh,const std::vector<Triangle>
     }
     for (const auto& d:outline) if (!after.count(d)) return {};
     std::vector<Triangle> result{found.begin(),found.end()};
-    if (!same_area(mesh,face,result)) return {};
+    if (!flat_hinges(mesh,face) || !same_area(mesh,face,result)) return {};
     return result;
 }
 // The greedy, and if nearness left it without a valid triangulation, the

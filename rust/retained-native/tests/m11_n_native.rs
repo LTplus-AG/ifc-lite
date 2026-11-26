@@ -147,45 +147,75 @@ fn m11_n_reference_is_independent_of_worker_address_layout() {
     let Some(worker) = support::worker_path() else {return;};
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let mut workers = vec![worker.clone(),worker.clone()];
-    let directory = std::env::temp_dir().join(format!("m11-n-layout-{}",std::process::id()));
+    /// Removes the wrapper directory however the test ends, panics included.
+    struct TempDir(std::path::PathBuf);
+    impl Drop for TempDir { fn drop(&mut self) { let _ = std::fs::remove_dir_all(&self.0); } }
+    let directory = TempDir(std::env::temp_dir().join(format!("m11-n-layout-{}",std::process::id())));
     // Probe the personality flag itself: setarch can exist while a sandbox
     // (e.g. Docker's default seccomp profile) refuses ADDR_NO_RANDOMIZE.
     let aslr_off = std::process::Command::new("setarch")
         .args([std::env::consts::ARCH,"-R","true"]).output().is_ok_and(|o| o.status.success());
     if aslr_off {
-        std::fs::create_dir_all(&directory).unwrap();
-        let fixed = directory.join("worker-no-aslr");
+        std::fs::create_dir_all(&directory.0).unwrap();
+        let fixed = directory.0.join("worker-no-aslr");
         let worker_path = std::fs::canonicalize(&worker).unwrap();
-        std::fs::write(&fixed,format!("#!/bin/sh\nexec setarch \"$(uname -m)\" -R '{}' \"$@\"\n",worker_path.display())).unwrap();
+        // One single-quoted shell word: each ' in the path becomes '\''.
+        let quoted = format!("'{}'",worker_path.to_str().expect("worker path is UTF-8").replace('\'',"'\\''"));
+        std::fs::write(&fixed,format!("#!/bin/sh\nexec setarch \"$(uname -m)\" -R {quoted} \"$@\"\n")).unwrap();
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&fixed,std::fs::Permissions::from_mode(0o755)).unwrap();
         workers.push(fixed.into_os_string());
     } else {
         eprintln!("SKIP the ASLR-off worker: `setarch -R true` failed (no setarch, or the personality flag is refused); comparing 2 ordinary ASLR workers only");
     }
+    // A hung worker must fail this test within a bounded time, not hold the
+    // CI step until the job timeout: every model's passes share one deadline.
+    let deadline = std::time::Duration::from_secs(std::env::var("IFC_LITE_LAYOUT_PASS_SECONDS").ok()
+        .and_then(|s| s.parse().ok()).unwrap_or(600));
     let started = std::time::Instant::now();
     let mut models = 0;
+    let mut slowest = (0.0f64,String::new());
     let mut differing = Vec::new();
     for (model, expected) in universe(&root) {
         if !expected.values().any(|status| status == "published") {continue;}
         models += 1;
         // The passes are independent worker processes: run them concurrently
         // (one thread each) so the three passes cost about one in wall time.
-        let runs: Vec<serde_json::Value> = std::thread::scope(|scope| {
-            let passes: Vec<_> = workers.iter().map(|w| { let (root,model) = (&root,&model);
-                scope.spawn(move || serde_json::Value::Array(reference_rows(root,model,w))) }).collect();
-            passes.into_iter().map(|pass| pass.join().unwrap()).collect()
-        });
+        // Detached threads and a channel, not a scope: a pass that panics or
+        // outlives the deadline fails the test at once instead of waiting on
+        // the others (a timed-out pass is left running until the process exits).
+        let (sender,receiver) = std::sync::mpsc::channel();
+        for (k,w) in workers.iter().enumerate() {
+            let (sender,root,model,w) = (sender.clone(),root.clone(),model.clone(),w.clone());
+            std::thread::spawn(move || {
+                let rows = std::panic::catch_unwind(|| serde_json::Value::Array(reference_rows(&root,&model,&w)));
+                let _ = sender.send((k,rows.map_err(|e| e.downcast_ref::<String>().cloned()
+                    .or_else(|| e.downcast_ref::<&str>().map(|s| s.to_string())).unwrap_or_default())));
+            });
+        }
+        drop(sender);
+        let pass_started = std::time::Instant::now();
+        let mut runs = vec![serde_json::Value::Null; workers.len()];
+        for _ in 0..workers.len() {
+            let left = deadline.saturating_sub(pass_started.elapsed());
+            match receiver.recv_timeout(left) {
+                Ok((k,Ok(rows))) => runs[k] = rows,
+                Ok((k,Err(message))) => panic!("{model}: layout pass {k} panicked: {message}"),
+                Err(_) => panic!("{model}: layout passes did not finish within {} s (IFC_LITE_LAYOUT_PASS_SECONDS)",deadline.as_secs()),
+            }
+        }
+        let seconds = pass_started.elapsed().as_secs_f64();
+        if seconds > slowest.0 { slowest = (seconds,model.clone()); }
         for (k,run) in runs.iter().enumerate().skip(1) {
             if let Err(error) = same_row(&runs[0],run,"rows") { differing.push(format!("{model} (worker {k}): {error}")); }
         }
     }
-    let _ = std::fs::remove_dir_all(&directory);
     assert!(models >= 30,"must cover the committed published corpus, got {models} models");
     assert!(differing.is_empty(),"m11-n reference topology depends on the worker address layout:\n{}",differing.join("\n"));
     println!("M11-N layout determinism: {models} models with one topology (values within 4 ULP) across 2 ASLR workers{}",
         if aslr_off {" and 1 ASLR-off worker"} else {" (ASLR-off worker skipped)"});
-    println!("M11-N layout determinism: {} concurrent passes per model, {:.1} s wall",workers.len(),started.elapsed().as_secs_f64());
+    println!("M11-N layout determinism: {} concurrent passes per model, {:.1} s wall; slowest model {} at {:.1} s (deadline {} s)",
+        workers.len(),started.elapsed().as_secs_f64(),slowest.1,slowest.0,deadline.as_secs());
     println!("sdk witness executed: m11_n_worker_layout_determinism");
 }
 

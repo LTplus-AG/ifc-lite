@@ -118,7 +118,9 @@ describe('guids that differ only by case', () => {
   function twoViewpointsByCase(version: '2.1' | '3.0'): BCFProject {
     const p = project(version);
     const topic = [...p.topics.values()][0];
-    topic.viewpoints.push({ ...topic.viewpoints[0], guid: VIEWPOINT.toLowerCase() });
+    // A different camera, so a swapped payload shows in the round trip.
+    const camera = topic.viewpoints[0].perspectiveCamera!;
+    topic.viewpoints.push({ ...topic.viewpoints[0], guid: VIEWPOINT.toLowerCase(), perspectiveCamera: { ...camera, cameraViewPoint: { x: 7, y: 8, z: 9 } } });
     return p;
   }
 
@@ -132,7 +134,9 @@ describe('guids that differ only by case', () => {
   it('in one topic\'s viewpoints are kept distinct by the 2.1 writer, comment reference intact', async () => {
     const back = await readBCF(await writeBCF(twoViewpointsByCase('2.1')));
     const topic = [...back.topics.values()][0];
-    expect(topic.viewpoints.map((v) => v.guid).sort()).toEqual([VIEWPOINT, VIEWPOINT.toLowerCase()].sort());
+    const at = (guid: string) => topic.viewpoints.find((v) => v.guid === guid)?.perspectiveCamera?.cameraViewPoint;
+    expect(at(VIEWPOINT)).toEqual({ x: 1, y: 2, z: 3 });
+    expect(at(VIEWPOINT.toLowerCase())).toEqual({ x: 7, y: 8, z: 9 });
     expect(topic.comments[0].viewpointGuid).toBe(VIEWPOINT);
   });
 

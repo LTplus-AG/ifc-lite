@@ -97,8 +97,8 @@ const INTRINSICS: ReadonlyArray<readonly [string, string]> = [
 const INTRINSICS_OBJECT = `{ ${INTRINSICS.map(([n, v]) => `${n}: ${v}`).join(', ')} }`;
 const INTRINSICS_LOCALS = INTRINSICS.map(([n]) => `${n} = I.${n}`).join(', ');
 
-export function wrapScript(code: string): string {
-  return `(function (run, I, L) {
+// The wrapper text around the script, built once: only the script varies.
+const WRAPPER_HEAD = `(function (run, I, L) {
   // The intrinsics, by name: read once here, before the script runs.
   var ${INTRINSICS_LOCALS};
   // instanceof, guarded: a thrown Proxy whose getPrototypeOf trap throws must
@@ -287,5 +287,9 @@ ${SERIALISER_SOURCE}
     }
     catch (e) { resolveWrapper(fail(e)); }
   });
-})(function () { return (0, eval)(${JSON.stringify(code)}); }, ${INTRINSICS_OBJECT}, ${JSON.stringify(LIMITS)})`;
+})(function () { return (0, eval)(`;
+const WRAPPER_TAIL = `); }, ${INTRINSICS_OBJECT}, ${JSON.stringify(LIMITS)})`;
+
+export function wrapScript(code: string): string {
+  return WRAPPER_HEAD + JSON.stringify(code) + WRAPPER_TAIL;
 }

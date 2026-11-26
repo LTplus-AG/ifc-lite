@@ -201,7 +201,7 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
     hint: hintFor(mode, code, message, { trusted, exportAllowed, mutateAvailable }),
   });
   if (ctx.signal.aborted) throw cancelled(NOTHING_RAN);
-  const mutatePermissions: SandboxPermissions = { ...MUTATE_PERMISSIONS, export: exportAllowed };
+  const permissions = mode === 'mutate' ? { ...MUTATE_PERMISSIONS, export: exportAllowed } : READ_PERMISSIONS;
 
   // Read mode has no write namespaces, so it cannot queue anything. In mutate
   // mode the count is mutation-journal entries that appeared during the run; a
@@ -230,7 +230,7 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
     let sandbox: Awaited<ReturnType<typeof createSandbox>>;
     try {
       sandbox = await createSandbox(model.bim, {
-        permissions: mode === 'mutate' ? mutatePermissions : READ_PERMISSIONS,
+        permissions,
         limits: { timeoutMs, memoryBytes: memoryMb * 1024 * 1024, maxStackBytes: MAX_STACK_BYTES },
       });
     } catch (err) {
@@ -247,13 +247,12 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
       try {
         sandbox.dispose();
       } catch (err) {
-        ctx.log.log('warning', 'script_run: sandbox teardown aborted', { error: err instanceof Error ? err.message : String(err) });
+        ctx.log.log('warning', 'script_run: sandbox teardown aborted', { error: describeThrown(err) });
       }
     };
-    const onAbort = () => dispose();
-    ctx.signal.addEventListener('abort', onAbort, { once: true });
+    ctx.signal.addEventListener('abort', dispose, { once: true });
     // A cancel that landed while the sandbox was being created fired no event.
-    if (ctx.signal.aborted) onAbort();
+    if (ctx.signal.aborted) dispose();
     try {
       if (ctx.signal.aborted) throw cancelled(NOTHING_RAN);
       if (mode === 'mutate') before = new Set(journalMutationIds(model));
@@ -309,7 +308,7 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
       // Keep mutations_queued on every failure, not only script ones.
       throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: describeThrown(err), details });
     } finally {
-      ctx.signal.removeEventListener('abort', onAbort);
+      ctx.signal.removeEventListener('abort', dispose);
       dispose();
     }
   });

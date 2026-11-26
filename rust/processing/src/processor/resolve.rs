@@ -273,12 +273,9 @@ fn scan_phase<'c>(content: &'c [u8], req: &ProcessingRequest) -> Scanned<'c> {
         building_index,
     );
 
-    // Instances and recovered flats carry the source chosen during meshing.
-    // The deferred colour replay only updates flat mesh colours.
     let defer_style_updates = req.batching.fast_first
         && req.opening_filter == OpeningFilterMode::Default
-        && !req.features.presentation_layers
-        && !(req.instancing && req.features.finishes);
+        && !req.features.presentation_layers;
 
     // The inline index is now complete, identical to `build_entity_index` over
     // the same scanner.

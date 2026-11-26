@@ -271,10 +271,13 @@ fn world_min_x(mesh: &MeshData) -> f64 {
 
 #[test]
 fn native_instances_keep_same_colour_occurrence_finishes_10698() {
+    // `fast_first` defers the attached styles past the first chunk, so every
+    // job goes into that chunk: one-job chunks would mesh the slab after the
+    // replay and never see the deferral.
     for fast_first in [false, true] {
         let request = ProcessingRequest::full_pass()
             .instancing(true)
-            .batching(Batching::new(1, 1).fast_first(fast_first));
+            .batching(Batching::single_chunk().fast_first(fast_first));
         let features = request.features.finishes(true).presentation_layers(false);
         let mut sink = Recorder::default();
         let result = process(MAPPED_ITEM_STYLE_IFC.as_bytes(), &request.features(features), &mut sink);

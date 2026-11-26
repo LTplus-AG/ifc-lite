@@ -119,3 +119,17 @@ it('says why when the exact geometry cannot be prepared', async () => {
   mesher = installScriptedMesher(() => { throw new Error('mesher down'); });
   await assert.rejects(ensureExactSourceGeometry(MODEL, [10], signal()), /could not be prepared for appearance \(mesher down\)/);
 });
+
+it('leaves a plan with no compact mesh exactly as before: no re-mesh and no wait on the 3D view', async () => {
+  // A server/cache mesh names its IFC item without corner provenance; without `?compactGeom` it is not prepared.
+  const geometryResult = useViewerStore.getState().models.get(MODEL)!.geometryResult!;
+  geometryResult.meshes.splice(0, geometryResult.meshes.length, { ...triangleFor(OFFSET + 10), geometryItemId: OFFSET + 11 }, exactMesh(OFFSET + 20, OFFSET + 21));
+  let polled = 0;
+  // A viewport that draws neither product (e.g. a hidden model): the old wait would poll it for 30 s.
+  setGlobalRendererRef({ current: { getScene: () => ({ getMeshDataPieces: () => { polled++; return undefined; } }) } as unknown as Renderer });
+  const started = Date.now();
+  await ensureExactSourceGeometry(MODEL, [10, 20], signal());
+  assert.equal(mesher.requests.length, 0, 'not re-meshed');
+  assert.ok(Date.now() - started < 1000, 'returned without waiting on the 3D view');
+  assert.equal(polled, 2, 'only the one look for compact pieces per product');
+});

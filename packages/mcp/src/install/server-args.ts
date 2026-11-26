@@ -75,8 +75,9 @@ function walk(args: string[], host: HostEnv): { args: string[]; hasPaths: boolea
     if (arg === '') {
       throw new InstallError('An empty argument would become this directory; is a variable unset?');
     } else if (!arg.startsWith('-')) {
-      if (!host.isFile(abs(arg))) throw new InstallError(`No model file at ${abs(arg)}.`);
-      out.push(abs(arg));
+      const model = abs(arg);
+      if (!host.isFile(model)) throw new InstallError(`No model file at ${model}.`);
+      out.push(model);
     } else if (arg.includes('=')) {
       throw new InstallError(`The server reads ${arg.split('=')[0]} <value>, with a space; it would ignore ${arg}.`);
     } else if (HTTP_ONLY_FLAGS.includes(arg)) {

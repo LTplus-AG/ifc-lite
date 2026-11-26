@@ -50,32 +50,11 @@ export function nodeInstallIo(): InstallIo {
       home: homedir(),
       cwd: process.cwd(),
       env: process.env,
-      warn: (text) => process.stderr.write(`[ifc-lite-mcp install] ${text}\n`),
-      isFile: (path) => userFacing(() => {
-        try {
-          return statSync(path).isFile();
-        } catch (err) {
-          if ((err as NodeJS.ErrnoException).code === 'ENOENT') return false;
-          throw err;
-        }
-      }),
-      listDir: (path) => userFacing(() => {
-        try {
-          return readdirSync(path);
-        } catch (err) {
-          if ((err as NodeJS.ErrnoException).code === 'ENOENT') return [];
-          throw err;
-        }
-      }),
+      warn: (text) => process.stderr.write(note(text)),
+      isFile: (path) => userFacing(() => orIfMissing(() => statSync(path).isFile(), false)),
+      listDir: (path) => userFacing(() => orIfMissing(() => readdirSync(path), [])),
     },
-    readFile: (path) => userFacing(() => {
-      try {
-        return readFileSync(path, 'utf-8');
-      } catch (err) {
-        if ((err as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
-        throw err;
-      }
-    }),
+    readFile: (path) => userFacing(() => orIfMissing(() => readFileSync(path, 'utf-8'), undefined)),
     writeFile: (path, text) => userFacing(() => {
       const { target, mode } = writeTarget(path);
       mkdirSync(dirname(target), { recursive: true });
@@ -105,6 +84,21 @@ export function nodeInstallIo(): InstallIo {
     err: (text) => process.stderr.write(text),
     now: () => new Date(),
   };
+}
+
+/** One stderr line from install. */
+export function note(text: string): string {
+  return `[ifc-lite-mcp install] ${text}\n`;
+}
+
+/** `fn()`, or `fallback` when the path does not exist. */
+function orIfMissing<T, F>(fn: () => T, fallback: F): T | F {
+  try {
+    return fn();
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return fallback;
+    throw err;
+  }
 }
 
 /** A file-system or spawn failure (EACCES, EROFS, ...) is the user's to fix: report it, do not crash. */

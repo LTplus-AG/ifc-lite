@@ -30,14 +30,15 @@ function isObject(value: unknown): value is JsonObject {
 
 /**
  * @param existingText the file's contents, or undefined when it does not exist.
- * @param force replace an entry of the same name that differs from `entry`.
+ * @param replace whether to replace an entry of the same name that differs
+ *   from `entry`; a function decides from that entry.
  */
 export function mergeServer(
   existingText: string | undefined,
   key: string,
   name: string,
   entry: JsonObject,
-  force: boolean,
+  replace: boolean | ((existing: unknown) => boolean),
 ): MergeResult {
   let root: JsonObject = {};
   if (existingText !== undefined && existingText.trim() !== '') {
@@ -61,7 +62,7 @@ export function mergeServer(
   const merged = replacedEntry(existing, entry);
   if (existing !== undefined) {
     if (canonical(merged) === canonical(existing)) return { status: 'unchanged' };
-    if (!force) return { status: 'conflict', existing };
+    if (!(typeof replace === 'function' ? replace(existing) : replace)) return { status: 'conflict', existing };
   }
   const next = { ...root, [key]: { ...servers, [name]: merged } };
   return {

@@ -14,7 +14,7 @@
 
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { readPackageVersion, UNKNOWN_VERSION } from '@ifc-lite/data/node';
+import { readPackageVersion } from '@ifc-lite/data/node';
 import {
   CLIENTS,
   InstallError,
@@ -25,12 +25,12 @@ import {
   type FilePlan,
   type HostEnv,
   type InstallScope,
-  type ServerCommand,
 } from './clients.js';
-import { canonical, describeEntry, mergeServer, replacedEntry } from './merge.js';
+import { describeEntry, mergeServer } from './merge.js';
+import { onlyPinDiffers, serverCommand } from './pin.js';
 import { checkServerArgs, EXIT_FLAGS } from './server-args.js';
 import { isMcpValueFlag, MCP_BOOLEAN_FLAGS } from '../cli-args.js';
-import { nodeInstallIo, type InstallIo } from './io.js';
+import { nodeInstallIo, note, type InstallIo } from './io.js';
 
 const CLIENT_IDS = Object.keys(CLIENTS);
 
@@ -108,44 +108,6 @@ function parseInstallArgs(argv: string[], host: HostEnv): InstallArgs | 'help' {
   return { client, scope, name, dryRun, force, serverArgs, hasPaths };
 }
 
-/** The pins `serverCommand` writes (bare, or `^x.y.z` with any prerelease); keep the two in step. */
-const OUR_PIN = /^@ifc-lite\/mcp(?:@\^(\d+)\.(\d+)\.(\d+)(?:[-+][\w.+-]*)?)?$/;
-
-/** The entry with its one install-written pin taken out, and that pin's x.y.z. */
-function unpin(e: object): { rest: string; version?: number[] } | undefined {
-  const { args } = e as { args?: unknown };
-  if (!Array.isArray(args)) return undefined;
-  const pins = args.filter((x): x is string => typeof x === 'string' && x.startsWith('@ifc-lite/mcp'));
-  const m = pins.length === 1 ? OUR_PIN.exec(pins[0]) : null;
-  if (!m) return undefined;
-  return {
-    rest: canonical({ ...e, args: args.map((x) => (x === pins[0] ? '@ifc-lite/mcp' : x)) }),
-    version: m[1] === undefined ? undefined : [Number(m[1]), Number(m[2]), Number(m[3])],
-  };
-}
-
-/**
- * True when `entry` differs from `existing` only by a newer install-written
- * pin (strictly newer x.y.z). Bare to pinned, a downgrade, a prerelease of
- * the same x.y.z, or a hand-picked pin such as `@1.2.3` is the user's call.
- */
-function onlyPinDiffers(existing: unknown, entry: Record<string, unknown>): boolean {
-  if (typeof existing !== 'object' || existing === null) return false;
-  const before = unpin(existing);
-  const after = unpin(replacedEntry(existing, entry));
-  if (!before?.version || !after?.version || before.rest !== after.rest) return false;
-  const b = before.version;
-  const n = after.version;
-  const i = b.findIndex((v, k) => v !== n[k]);
-  return i >= 0 && n[i] > b[i];
-}
-
-/** `npx` pinned to this release line, so the flags written here are ones it knows. */
-function serverCommand(version: string, serverArgs: string[]): ServerCommand {
-  const spec = version === UNKNOWN_VERSION ? '@ifc-lite/mcp' : `@ifc-lite/mcp@^${version}`;
-  return { command: 'npx', args: ['-y', spec, ...serverArgs] };
-}
-
 function packageVersion(): string {
   return readPackageVersion(join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'package.json'));
 }
@@ -184,7 +146,7 @@ export function runInstall(
     }
     const plan = planInstall(args.client, args.scope, args.name, serverCommand(version, args.serverArgs), io.host);
     if (args.scope === 'project' && args.hasPaths) {
-      io.err('[ifc-lite-mcp install] note: the project file gets absolute paths, which only work on this machine.\n');
+      io.err(note('note: the project file gets absolute paths, which only work on this machine.'));
     }
     const label = CLIENTS[args.client];
     return plan.kind === 'command'
@@ -193,7 +155,7 @@ export function runInstall(
   } catch (err) {
     // InstallError is the user's to fix (a usage error, EACCES via the io seam); anything else is a bug.
     if (!(err instanceof InstallError)) throw err;
-    io.err(`[ifc-lite-mcp install] ${err.message}\n`);
+    io.err(note(err.message));
     return 1;
   }
 }
@@ -206,7 +168,7 @@ function runCommandPlan(
 ): number {
   const remove = args.force ? plan.remove : undefined;
   if (args.force && !plan.remove) {
-    io.err(`[ifc-lite-mcp install] --force has no effect here; \`${plan.command}\` decides what happens to an existing "${args.name}".\n`);
+    io.err(note(`--force has no effect here; \`${plan.command}\` decides what happens to an existing "${args.name}".`));
   }
   const line = commandLine(plan.command, plan.args, io.host.platform);
   if (args.dryRun) {
@@ -218,18 +180,22 @@ function runCommandPlan(
   const removed = remove !== undefined && io.run(plan.command, remove, true).status === 0;
   const result = io.run(plan.command, plan.args);
   if (result.missing) {
-    io.err(`[ifc-lite-mcp install] \`${plan.command}\` is not on PATH. Run this yourself:\n${line}\n`);
+    io.err(note(`\`${plan.command}\` is not on PATH. Run this yourself:\n${line}`));
     return 1;
   }
   if (result.status !== 0) {
     let hint = '';
     if (removed) hint = ` The old "${args.name}" entry was already removed; fix the error and run again:\n${line}`;
     else if (plan.remove && !args.force) hint = ' If the name is taken, pass --force or --name.';
-    io.err(`[ifc-lite-mcp install] \`${plan.command}\` exited with ${result.status}.${hint}\n`);
+    io.err(note(`\`${plan.command}\` exited with ${result.status}.${hint}`));
     return result.status;
   }
-  io.err(`[ifc-lite-mcp install] added "${args.name}" to ${label}.\n`);
+  io.err(note(`added "${args.name}" to ${label}.`));
   return 0;
+}
+
+function snippet(plan: FilePlan, name: string): string {
+  return JSON.stringify({ [plan.key]: { [name]: plan.entry } }, null, 2);
 }
 
 function writeFilePlan(
@@ -241,18 +207,14 @@ function writeFilePlan(
   const before = io.readFile(plan.path);
   let merged;
   try {
-    merged = mergeServer(before, plan.key, args.name, plan.entry, args.force);
     // Our own entry from an older release (only the version pin differs) is updated without --force.
-    if (merged.status === 'conflict' && onlyPinDiffers(merged.existing, plan.entry)) {
-      merged = mergeServer(before, plan.key, args.name, plan.entry, true);
-    }
+    merged = mergeServer(before, plan.key, args.name, plan.entry, args.force || ((old) => onlyPinDiffers(old, plan.entry)));
   } catch (err) {
     if (!(err instanceof InstallError)) throw err;
-    const snippet = JSON.stringify({ [plan.key]: { [args.name]: plan.entry } }, null, 2);
-    throw new InstallError(`Not changing ${plan.path}: ${err.message}. Add this by hand:\n${snippet}`);
+    throw new InstallError(`Not changing ${plan.path}: ${err.message}. Add this by hand:\n${snippet(plan, args.name)}`);
   }
   if (merged.status === 'unchanged') {
-    io.err(`[ifc-lite-mcp install] ${plan.path} already has this "${args.name}" entry.\n`);
+    io.err(note(`${plan.path} already has this "${args.name}" entry.`));
     return 0;
   }
   if (merged.status === 'conflict') {
@@ -263,9 +225,9 @@ function writeFilePlan(
   }
   if (args.dryRun) {
     // Only our entry: the rest of the file can hold other servers' secrets.
-    io.err(`[ifc-lite-mcp install] would ${merged.status === 'added' ? 'add' : 'replace'} this in ${plan.path}, keeping everything else:\n`);
-    io.out(`${JSON.stringify({ [plan.key]: { [args.name]: plan.entry } }, null, 2)}\n`);
-    if (merged.kept.length) io.err(`[ifc-lite-mcp install] the entry keeps its own ${merged.kept.join(', ')}.\n`);
+    io.err(note(`would ${merged.status === 'added' ? 'add' : 'replace'} this in ${plan.path}, keeping everything else:`));
+    io.out(`${snippet(plan, args.name)}\n`);
+    if (merged.kept.length) io.err(note(`the entry keeps its own ${merged.kept.join(', ')}.`));
     return 0;
   }
   let backup = '';
@@ -280,9 +242,6 @@ function writeFilePlan(
     if (backup && err instanceof InstallError) throw new InstallError(`${err.message}; the file is unchanged${backup}`);
     throw err;
   }
-  io.err(
-    `[ifc-lite-mcp install] ${merged.status} "${args.name}" in ${plan.path}${backup}. ` +
-      `Restart ${label} to load it.\n`,
-  );
+  io.err(note(`${merged.status} "${args.name}" in ${plan.path}${backup}. Restart ${label} to load it.`));
   return 0;
 }

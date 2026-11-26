@@ -50,7 +50,8 @@ export function mergeServer(
   const servers = root[key] ?? {};
   if (!isObject(servers)) throw new InstallError(`its "${key}" is not a JSON object`);
 
-  const existing = servers[name];
+  // hasOwn: a name like `constructor` must not find Object.prototype's.
+  const existing = Object.hasOwn(servers, name) ? servers[name] : undefined;
   if (existing !== undefined) {
     if (canonical(existing) === canonical(entry)) return { status: 'unchanged' };
     if (!force) return { status: 'conflict', existing };

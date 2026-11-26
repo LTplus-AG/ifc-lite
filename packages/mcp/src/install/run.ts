@@ -92,6 +92,8 @@ function parseInstallArgs(argv: string[], host: HostEnv): InstallArgs | 'help' {
     else if (arg === '--dry-run') dryRun = true;
     else if (arg === '--force') force = true;
     else if (arg.startsWith('-')) {
+      const own = arg.match(/^(--(?:client|scope|name))=/);
+      if (own) throw new InstallError(`Write ${own[1]} <value>, with a space.`);
       throw new InstallError(`Unknown option ${arg}. Server flags go after --, e.g. -- ${arg}.`);
     } else files.push(arg);
   }
@@ -99,6 +101,8 @@ function parseInstallArgs(argv: string[], host: HostEnv): InstallArgs | 'help' {
   if (!isClientId(client)) throw new InstallError(`Unknown client "${client}". Use one of ${CLIENT_IDS.join(', ')}.`);
   if (scope !== 'user' && scope !== 'project') throw new InstallError('--scope must be user or project.');
   if (!/^[A-Za-z0-9_-]+$/.test(name)) throw new InstallError('--name may use letters, digits, - and _ only.');
+  const exits = passThrough.find((a) => ['--help', '-h', '--version', '-v'].includes(a));
+  if (exits) throw new InstallError(`${exits} makes the server print and exit at every launch; drop it.`);
   if (passThrough.some((a, i) => a === '--transport' && passThrough[i + 1] !== 'stdio')) {
     throw new InstallError('Clients start ifc-lite-mcp over stdio; drop --transport. For HTTP, give the client the server URL.');
   }
@@ -203,7 +207,7 @@ function runCommandPlan(
     return 0;
   }
   // A non-zero exit from the remove step only means there was nothing to remove.
-  if (remove) io.run(plan.command, remove, true);
+  const removed = remove !== undefined && io.run(plan.command, remove, true).status === 0;
   const result = io.run(plan.command, plan.args);
   if (result.missing) {
     io.err(`[ifc-lite-mcp install] \`${plan.command}\` is not on PATH. Run this yourself:\n${line}\n`);
@@ -211,7 +215,7 @@ function runCommandPlan(
   }
   if (result.status !== 0) {
     let hint = '';
-    if (remove) hint = ` The old "${args.name}" entry was already removed; fix the error and run again:\n${line}`;
+    if (removed) hint = ` The old "${args.name}" entry was already removed; fix the error and run again:\n${line}`;
     else if (plan.remove) hint = ' If the name is taken, pass --force or --name.';
     io.err(`[ifc-lite-mcp install] \`${plan.command}\` exited with ${result.status}.${hint}\n`);
     return result.status;

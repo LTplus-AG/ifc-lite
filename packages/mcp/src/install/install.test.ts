@@ -25,7 +25,8 @@ interface Fake extends InstallIo {
   stderr: string;
 }
 
-function fakeIo(host: Partial<HostEnv> = {}, opts: { missing?: boolean; status?: number } = {}): Fake {
+/** `statuses`: exit status of each run in turn (default 0). */
+function fakeIo(host: Partial<HostEnv> = {}, opts: { missing?: boolean; statuses?: number[] } = {}): Fake {
   const io: Fake = {
     host: { platform: 'darwin', home: '/Users/u', cwd: '/work/proj', env: {}, listDir: () => [], ...host },
     files: new Map(),
@@ -37,7 +38,7 @@ function fakeIo(host: Partial<HostEnv> = {}, opts: { missing?: boolean; status?:
     copyFile: (from, to) => void io.files.set(to, io.files.get(from) ?? ''),
     run(command, args, quiet) {
       io.runs.push(quiet ? { command, args, quiet } : { command, args });
-      return opts.missing ? { status: 127, missing: true } : { status: opts.status ?? 0 };
+      return opts.missing ? { status: 127, missing: true } : { status: opts.statuses?.[io.runs.length - 1] ?? 0 };
     },
     out: (t) => void (io.stdout += t),
     err: (t) => void (io.stderr += t),
@@ -114,9 +115,12 @@ describe('ifc-lite-mcp install: where each client is configured', () => {
   });
 
   it('Claude Code --force says the old entry is gone when the add then fails', () => {
-    const io = fakeIo({}, { status: 1 });
+    const io = fakeIo({}, { statuses: [0, 1] });
     expect(install(['--client', 'claude-code', '--force'], io)).toBe(1);
     expect(io.stderr).toContain('already removed');
+    const none = fakeIo({}, { statuses: [1, 1] });
+    install(['--client', 'claude-code', '--force'], none);
+    expect(none.stderr).not.toContain('already removed');
   });
 
   it('a file-system error is reported, not thrown, and names the backup', () => {
@@ -167,6 +171,12 @@ describe('ifc-lite-mcp install: existing configs', () => {
     io.files.set(path, JSON.stringify({ mcpServers: { 'ifc-lite': { args: ['-y', PKG], command: 'npx' } } }));
     expect(install(['--client', 'cursor'], io)).toBe(0);
     expect(io.stderr).toContain('already has');
+  });
+
+  it('a name shared with an Object.prototype member is just a name', () => {
+    const io = fakeIo();
+    expect(install(['--client', 'cursor', '--name', 'constructor'], io)).toBe(0);
+    expect(Object.keys(JSON.parse(io.files.get(path) ?? 'null').mcpServers)).toEqual(['constructor']);
   });
 
   it('a second run with the same entry changes nothing', () => {
@@ -250,6 +260,8 @@ describe('ifc-lite-mcp install: dry run and usage errors', () => {
     [['--client', 'cursor', '--read-only'], 'Server flags go after --'],
     [['--client', 'cursor', '--', '--transport', 'http'], 'drop --transport'],
     [['--client', 'cursor', '--', '--transport'], 'drop --transport'],
+    [['--client', 'cursor', '--', '--version'], 'print and exit'],
+    [['--client=cursor'], 'Write --client <value>'],
     [['--client', 'cursor', '--', '--transport', 'stdio', '--transport', 'http'], 'drop --transport'],
     [['--client', 'claude-desktop', '--scope', 'project'], 'no project config'],
     [['--client', 'cursor', '--name', 'a b'], '--name'],

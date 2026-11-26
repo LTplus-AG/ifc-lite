@@ -122,6 +122,7 @@ export function parseArgs(argv: string[]): CliOptions {
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === '--read-only') opts.readOnly = true;
+    // TODO(remove-by: @ifc-lite/mcp 1.0, louistrue): drop --federate (#11534).
     else if (arg === '--federate') {
       opts.warnings.push('--federate does nothing: every file passed is loaded into the same session. Drop it.');
     }
@@ -130,9 +131,14 @@ export function parseArgs(argv: string[]): CliOptions {
     else if (arg === '--port') opts.port = Number(argv[++i] ?? 8765);
     else if (arg === '--host') opts.host = argv[++i];
     else if (arg === '--token' || arg === '--read-only-token') {
-      const token = argv[++i];
-      if (!token) opts.warnings.push(`${arg} needs a value; ignored.`);
-      else (arg === '--token' ? opts.tokens : opts.readOnlyTokens).push(token);
+      // The next flag is not a token: `--token --read-only` must not register
+      // '--read-only' as a credential and drop read-only mode.
+      const token = argv[i + 1];
+      if (!token || token.startsWith('-')) opts.warnings.push(`${arg} needs a value; ignored.`);
+      else {
+        i++;
+        (arg === '--token' ? opts.tokens : opts.readOnlyTokens).push(token);
+      }
     }
     else if (arg === '--bsdd') opts.bsdd = argv[++i];
     else if (arg === '--viewer') opts.autoViewer = true;

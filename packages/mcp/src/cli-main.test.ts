@@ -15,7 +15,8 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { parseArgs } from './cli-args.js';
-import { claudeDesktopConfigPath, mcpHelpText, runMcpCli, tokenScopes, type RunningHttpCli } from './cli-main.js';
+import { mcpHelpText, runMcpCli, type RunningHttpCli } from './cli-main.js';
+import { claudeDesktopConfigPath, tokenScopes } from './cli-support.js';
 
 const MODEL = `ISO-10303-21;
 HEADER;
@@ -107,9 +108,6 @@ describe('HTTP mode of runMcpCli (#11534)', () => {
     const loaded = await client.call('model_load', { file_path: modelPath, model_id: 'm' });
     expect(loaded.result?.isError).toBeFalsy();
     expect(loaded.result?.structuredContent?.id).toBe('m');
-    // Loading over it would dispose it; that needs mutate on a writable server.
-    const replaced = await client.call('model_load', { file_path: modelPath, model_id: 'm' });
-    expect(replaced.result?.isError).toBe(true);
     const unloaded = await client.call('model_unload', { model_id: 'm' });
     expect(unloaded.result?.isError).toBeFalsy();
     expect((await client.call('model_list', {})).result?.structuredContent?.count).toBe(0);

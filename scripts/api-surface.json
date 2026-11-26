@@ -8199,10 +8199,8 @@
   "@ifc-lite/mcp/cli-main": [
     "McpCliIdentity: interface",
     "RunningHttpCli: interface",
-    "claudeDesktopConfigPath: function",
     "mcpHelpText: function",
-    "runMcpCli: function",
-    "tokenScopes: function"
+    "runMcpCli: function"
   ],
   "@ifc-lite/mcp/protocol": [
     "CallToolParams: interface",

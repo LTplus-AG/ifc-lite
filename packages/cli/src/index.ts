@@ -63,7 +63,8 @@ async function main(): Promise<void> {
     }
   }
 
-  if (args.includes('--version') || args.includes('-v')) {
+  // `ifc-lite mcp --version` reports the MCP server's own version.
+  if (args[0] !== 'mcp' && (args.includes('--version') || args.includes('-v'))) {
     process.stdout.write(`ifc-lite ${await readVersion()}\n`);
     return;
   }

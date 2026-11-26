@@ -5,7 +5,7 @@
 
 Fix the MCP server's command line and read-only mode ([#11534](https://github.com/LTplus-AG/ifc-lite/issues/11534)).
 
-- `model_load` and `model_unload` need `read` scope instead of `mutate`, so `--read-only` servers and read-only tokens can open models. `--allow` still bounds which files. `model_load` refuses an id outside the token's model allowlist, and replacing an already loaded model needs `mutate` scope on a writable server.
+- `model_load` and `model_unload` need `read` scope instead of `mutate`, so `--read-only` servers and read-only tokens can open models. `--allow` still bounds which files. `model_load` refuses an id outside the token's model allowlist.
 - `ifc-lite-mcp --transport http` honours `--allow`. Both entry points refuse file arguments over HTTP instead of ignoring them: each HTTP session starts empty and loads models with `model_load`.
 - `--token` is repeatable as documented, and the new repeatable `--read-only-token` registers read-scope tokens.
 - Unknown flags print a warning on stderr. `--federate`, which never did anything, now warns too.

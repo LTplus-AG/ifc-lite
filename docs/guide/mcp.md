@@ -47,10 +47,10 @@ ifc-lite mcp --transport http --port 8765 --token $API_TOKEN --allow ./models
     `--read-only` and with a read-only token. `--allow` bounds which files it
     can open. File arguments are refused over HTTP rather than ignored:
     preloading would cost one parse and one resident copy per session.
-    `model_load` will not replace a model that is already loaded unless the
-    caller has `mutate` scope on a writable server.
+    Without `--allow`, `model_load` reaches the working directory, the system
+    temp directory and the directories of loaded models.
 
-By default the server binds `127.0.0.1`. Binding a non-loopback host requires either a `--token` (which becomes the bearer token for full scope) or the `--insecure` flag for development only. The token travels as a plaintext `Authorization` header: the CLI itself serves plain HTTP, so any non-loopback deployment must sit behind a TLS-terminating reverse proxy (nginx, Caddy, a cloud load balancer), or the bearer token is readable by anyone on the network path.
+By default the server binds `127.0.0.1`. Binding a non-loopback host requires either a token (`--token` gets full scope, or read scope under `--read-only`; `--read-only-token` gets read scope) or the `--insecure` flag for development only. The token travels as a plaintext `Authorization` header: the CLI itself serves plain HTTP, so any non-loopback deployment must sit behind a TLS-terminating reverse proxy (nginx, Caddy, a cloud load balancer), or the bearer token is readable by anyone on the network path.
 
 ### Flags
 

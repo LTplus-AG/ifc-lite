@@ -10,8 +10,7 @@
  * the same code, so the two cannot drift apart again.
  */
 
-import { homedir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { resolve } from 'node:path';
 import { bridgeConflict, parseArgs, type CliOptions } from './cli-args.js';
 import { startBridgeServer, type RunningBridge } from './bridge/run.js';
 import { DEFAULT_BRIDGE_PORT, DEFAULT_BRIDGE_VIEWER_URL } from './bridge/protocol.js';
@@ -20,20 +19,13 @@ import { routeConsoleToStderr } from './transport/stdio-console.js';
 import { HttpTransport, BearerTokenAuth, AllowAllAuth, type HttpAuthenticator, type SessionFactory } from './transport/http.js';
 import { createMCPServer, VERSION } from './index.js';
 import { loadIfcModel } from './loader.js';
-import { fullScope, readOnlyScope, type AuthScope } from './auth/scope.js';
+import { claudeDesktopConfigPath, serverScope, tokenScopes } from './cli-support.js';
 import { InMemoryModelRegistry, type ModelRegistry } from './context.js';
 import { fmtInt } from './tools/util.js';
 
 export interface McpCliIdentity {
   /** How the user invoked us, for usage text: `ifc-lite-mcp` or `ifc-lite mcp`. */
   command: string;
-}
-
-/** Where Claude Desktop reads its MCP config on `platform`. */
-export function claudeDesktopConfigPath(platform: NodeJS.Platform = process.platform, home = homedir()): string {
-  if (platform === 'darwin') return join(home, 'Library', 'Application Support', 'Claude', 'claude_desktop_config.json');
-  if (platform === 'win32') return '%APPDATA%\\Claude\\claude_desktop_config.json';
-  return join(home, '.config', 'Claude', 'claude_desktop_config.json');
 }
 
 export function mcpHelpText({ command }: McpCliIdentity, platform: NodeJS.Platform = process.platform): string {
@@ -156,11 +148,6 @@ function baseConfig(opts: CliOptions) {
   return { readOnly: opts.readOnly, bsddEndpoint: opts.bsdd, allowedPaths: opts.allowedPaths, samplingEnabled: false };
 }
 
-/** The server's scope when no token narrows it. */
-function serverScope(opts: CliOptions): AuthScope {
-  return opts.readOnly ? readOnlyScope() : fullScope();
-}
-
 async function loadFiles(registry: ModelRegistry, opts: CliOptions, log: (line: string) => void): Promise<void> {
   for (const file of opts.files) {
     const m = await loadIfcModel(resolve(file), { allowedPaths: opts.allowedPaths });
@@ -229,18 +216,6 @@ async function runStdio(opts: CliOptions, tag: string): Promise<void> {
   } else if (registry.count() > 0) {
     process.stderr.write(`${tag} viewer is opt-in. Tell the agent to call \`viewer_ask\` and then \`viewer_open\`, or restart with --viewer to auto-open.\n`);
   }
-}
-
-/**
- * The bearer tokens `opts` registers, each with its scope. `--token` gets
- * the server's scope; `--read-only-token` gets read scope. A token given
- * under both flags keeps the narrower scope.
- */
-export function tokenScopes(opts: CliOptions): Map<string, AuthScope> {
-  const tokens = new Map<string, AuthScope>();
-  for (const t of opts.tokens) tokens.set(t, serverScope(opts));
-  for (const t of opts.readOnlyTokens) tokens.set(t, readOnlyScope());
-  return tokens;
 }
 
 async function runHttp(opts: CliOptions, tag: string): Promise<RunningHttpCli | undefined> {

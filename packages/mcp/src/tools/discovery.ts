@@ -25,7 +25,7 @@ import { fmtInt, resolveModel, okResult } from './util.js';
 import { basename } from 'node:path';
 import { deriveModelId, loadIfcModel } from '../loader.js';
 import { resolveSafePath } from '../safe-path.js';
-import { modelAllowed, scopeAllows } from '../auth/scope.js';
+import { modelAllowed } from '../auth/scope.js';
 import type { ToolContext } from '../context.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 
@@ -122,7 +122,7 @@ export const modelLoad: Tool = {
   // `read`, not `mutate`: loading adds a model to this session and changes no
   // model, so a --read-only server or a read-only token can still open files.
   // The safe-path check below bounds which files, and `assertMayLoadAs`
-  // keeps a read caller from replacing a model.
+  // keeps it inside the token's model allowlist.
   scope: 'read',
   inputSchema: {
     type: 'object',
@@ -173,24 +173,16 @@ export const modelLoad: Tool = {
 
 /**
  * `model_load` needs only `read` scope (#11534), so it must not become a way
- * around the token's model allowlist or a way to drop another model's edits:
- * loading under an id the token may not access is refused, and replacing an
- * already loaded model (which disposes it, edits and all) needs `mutate` on
- * a server that is not read-only.
+ * around the token's model allowlist: the registry disposes a model it
+ * replaces, so loading under an id the token may not access is refused.
+ * Replacing a model the caller can access needs no extra rule: registries
+ * are per session, and a session without `mutate` has no edits to lose.
  */
 function assertMayLoadAs(id: string, ctx: ToolContext): void {
   if (!modelAllowed(ctx.scope, id)) {
     throw new ToolExecutionError({
       code: ToolErrorCode.PERMISSION_DENIED,
       message: `Access to model '${id}' is not permitted for this token.`,
-    });
-  }
-  const mayReplace = scopeAllows(ctx.scope, 'mutate') && !ctx.config.readOnly;
-  if (ctx.registry.get(id) && !mayReplace) {
-    throw new ToolExecutionError({
-      code: ToolErrorCode.PERMISSION_DENIED,
-      message: `Model '${id}' is already loaded; replacing it needs mutate scope.`,
-      hint: 'Pass a different `model_id`, or call `model_unload` first.',
     });
   }
 }

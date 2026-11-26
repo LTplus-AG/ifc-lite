@@ -115,6 +115,13 @@ describe('flag fixes (#11534)', () => {
     expect(opts.warnings).toEqual(['--token needs a value; ignored.']);
   });
 
+  it('does not take the next flag as a token', () => {
+    const opts = parseArgs(['--token', '--read-only']);
+    expect(opts.tokens).toEqual([]);
+    expect(opts.readOnly).toBe(true);
+    expect(opts.warnings).toEqual(['--token needs a value; ignored.']);
+  });
+
   it('warns about unknown flags and still parses the rest', () => {
     const opts = parseArgs(['--no-such-flag', '--allow=/x', 'model.ifc', '--read-only']);
     expect(opts.files).toEqual(['model.ifc']);

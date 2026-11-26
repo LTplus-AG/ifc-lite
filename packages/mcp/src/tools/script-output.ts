@@ -144,7 +144,7 @@ export function readEnvelope(dumped: unknown): Outcome {
   if (typeof envelope !== 'string') return { error: 'The script produced no result.' };
   // The wrapper bounds these; the host re-checks so a script that subverted
   // it still cannot pass an unbounded value or message on. Messages keep one
-  // unit past the cap for clipUtf16; scriptError clips and marks them once.
+  // unit past the cap for clipUtf16 and are clipped here, before any prefix.
   const body = envelope.slice(1, envelope[0] === 'J' ? undefined : MAX_MESSAGE_CHARS + 2);
   switch (envelope[0]) {
     case 'J':
@@ -161,8 +161,8 @@ export function readEnvelope(dumped: unknown): Outcome {
     // falls through
     case 'P': return { value: null, value_truncated: true, value_preview: clipUtf16(body, VALUE_PREVIEW_CHARS) };
     // An out-of-memory here gets the memory_mb hint from hintFor.
-    case 'U': return { error: `The script's value is not JSON-serialisable: ${body}` };
-    case 'T': return { error: body };
+    case 'U': return { error: `The script's value is not JSON-serialisable: ${clipMessage(body)}` };
+    case 'T': return { error: clipMessage(body) };
     default: return { error: 'The script produced no result.' };
   }
 }

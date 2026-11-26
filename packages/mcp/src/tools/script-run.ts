@@ -147,7 +147,8 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
     // kind tells a script failure from INVALID_INPUT on the tool's own arguments.
     // Clipped here too: a ScriptError from the sandbox can carry a script-sized message.
     code: ToolErrorCode.INVALID_INPUT,
-    message: `Script error: ${clipMessage(message)}`,
+    // Envelope messages arrive clipped; a ScriptError's is clipped where it is caught.
+    message: `Script error: ${message}`,
     details: { kind: 'script', ...details },
     hint: hintFor(mode, code, message),
   });
@@ -234,9 +235,9 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
         throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: err.message, details });
       }
       // Out of memory, stack overflow, or a fault the wrapper could not catch.
-      if (err instanceof ScriptError) throw scriptError(err.message, details);
+      if (err instanceof ScriptError) throw scriptError(clipMessage(err.message), details);
       // Recursion that outran the host stack despite MAX_STACK_BYTES.
-      if (err instanceof RangeError) throw scriptError(err.message, details);
+      if (err instanceof RangeError) throw scriptError(clipMessage(err.message), details);
       // Keep mutations_queued on every failure, not only script ones.
       throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: describeThrown(err), details });
     } finally {

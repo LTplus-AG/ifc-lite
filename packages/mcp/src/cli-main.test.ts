@@ -159,14 +159,33 @@ describe('HTTP mode of runMcpCli (#11534)', () => {
 });
 
 describe('stdio file arguments (#11534)', () => {
+  let dir: string;
+  let outsideFile: string;
+  beforeAll(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'mcp-cli-files-'));
+    outsideFile = join(await mkdtemp(join(tmpdir(), 'mcp-cli-files-out-')), 'secret-token.ifc');
+    await writeFile(outsideFile, MODEL);
+  });
+  afterAll(async () => {
+    await rm(dir, { recursive: true, force: true });
+    await rm(resolve(outsideFile, '..'), { recursive: true, force: true });
+  });
+
   // `--tokn s3cret` warns about --tokn and leaves `s3cret` as a file: the error must not print it.
-  it('names a missing file by position, never by its value', async () => {
+  it('names a file that fails to load by position, never by its value', async () => {
     vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    // runStdio routes console output to stderr for the process; undo that here.
+    const consoleBefore = { log: console.log, info: console.info, debug: console.debug, warn: console.warn };
     try {
-      const err = await runMcpCli(['--tokn', 's3cret-value'], { command: 'ifc-lite-mcp' }).catch((e: unknown) => e);
-      expect(String(err)).toMatch(/file argument 1 of 1 does not exist/);
-      expect(String(err)).not.toContain('s3cret');
+      const missing = await runMcpCli(['--tokn', 's3cret-value'], { command: 'ifc-lite-mcp' }).catch((e: unknown) => e);
+      expect(String(missing)).toMatch(/file argument 1 of 1 could not be loaded/);
+      expect(String(missing)).not.toContain('s3cret');
+      // An existing file outside --allow: the loader's message names the path, the CLI must not.
+      const outside = await runMcpCli(['--allow', dir, '--tokn', outsideFile], { command: 'ifc-lite-mcp' }).catch((e: unknown) => e);
+      expect(String(outside)).toMatch(/file argument 1 of 1 could not be loaded: .*outside the allowed roots/);
+      expect(String(outside)).not.toContain(outsideFile);
     } finally {
+      Object.assign(console, consoleBefore);
       vi.restoreAllMocks();
     }
   });

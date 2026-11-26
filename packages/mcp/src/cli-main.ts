@@ -10,7 +10,6 @@
  * the same code, so the two cannot drift apart again.
  */
 
-import { existsSync } from 'node:fs';
 import { basename, resolve } from 'node:path';
 import { bridgeConflict, parseArgs, type CliOptions } from './cli-args.js';
 import { startBridgeServer, type RunningBridge } from './bridge/run.js';
@@ -150,16 +149,26 @@ function baseConfig(opts: CliOptions) {
 }
 
 async function loadFiles(registry: ModelRegistry, opts: CliOptions, log: (line: string) => void): Promise<void> {
+  const seen = new Map<string, number>();
   for (const [index, file] of opts.files.entries()) {
-    // A missing file is named by position, not path: a mistyped value flag
-    // (`--tokn secret`) leaves its value here, and stderr reaches client logs.
-    if (!existsSync(resolve(file))) {
-      throw new Error(`file argument ${index + 1} of ${opts.files.length} does not exist. Check the path, and that no flag is misspelled.`);
+    const label = `file argument ${index + 1} of ${opts.files.length}`;
+    const absolute = resolve(file);
+    const first = seen.get(absolute);
+    if (first !== undefined) {
+      log(`warning: ${label} repeats file argument ${first + 1}; skipped`);
+      continue;
     }
+    seen.set(absolute, index);
     // `arch/model.ifc` and `struct/model.ifc` both derive `model`; suffix the
     // later one so it cannot replace (and dispose) the earlier.
     const modelId = freeModelId(registry, deriveModelId(basename(file)));
-    const m = await loadIfcModel(resolve(file), { allowedPaths: opts.allowedPaths, modelId });
+    const m = await loadIfcModel(absolute, { allowedPaths: opts.allowedPaths, modelId }).catch((err: unknown) => {
+      // Name the argument by position, never by path: a mistyped value flag
+      // (`--tokn secret`) leaves its value here, and stderr reaches client logs.
+      const message = err instanceof Error ? err.message : String(err);
+      const redacted = [absolute, file].reduce((text, part) => text.split(part).join('<file>'), message);
+      throw new Error(`${label} could not be loaded: ${redacted}. Check the path, and that no flag is misspelled.`);
+    });
     registry.add(m);
     log(`loaded ${m.name} (${m.id}) — ${fmtInt(m.store.entityCount)} entities`);
     for (const w of m.scanWarnings ?? []) log(`warning: ${m.name}: ${w}`);

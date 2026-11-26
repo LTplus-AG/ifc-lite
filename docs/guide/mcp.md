@@ -14,7 +14,7 @@ source snapshot rather than pending mutation overlays.
 
 ### stdio (local agents)
 
-The default transport is stdio, the mode Claude Desktop and Cursor expect. Pass one or more IFC files as positional arguments and they are preloaded into the model registry:
+The default transport is stdio, the mode Claude Desktop and Cursor expect. Pass one or more IFC files as positional arguments and they are preloaded into the model registry. Each gets the file name without extension as its `model_id`; a second file with the same name gets `_2` (`model`, `model_2`), and a file passed twice loads once:
 
 ```bash
 # Single model over stdio

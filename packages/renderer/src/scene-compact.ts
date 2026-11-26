@@ -55,6 +55,8 @@ export class SceneCompact {
   private refused = new WeakSet<MeshData>();
   /** The pages' LOD build under way (compact-lod.ts), a slice per `drain`; null when none. */
   private lod: PageLodBuild | null = null;
+  /** Meshes retired since the last build ('all': a build was dropped part-way): a drain builds their pages' parts again. */
+  private retired: Set<MeshData> | 'all' | null = null;
   /** Pages fill outside a stream (after a device loss, or a queue that outlived its stream): trim them at the drain that uploads them. */
   private trimAfterDrain = false;
   /** Meshes handed to the bucket path decoded since the last `clear`, by reason (`take` and `drain`; edits that demote are not counted). */
@@ -90,13 +92,10 @@ export class SceneCompact {
   }
 
   /** Work for the next `drain`: queued meshes, or a demotion asked for mid-frame. */
-  get hasQueued(): boolean { return this.queue.length > 0 || this.demotionPages.size > 0 || this.lod !== null; }
+  get hasQueued(): boolean { return this.queue.length > 0 || this.demotionPages.size > 0 || this.lod !== null || this.retired !== null; }
 
-  /**
-   * Move `page`'s meshes to buckets at the next `drain`. For a need found while a frame is being drawn
-   * (a page that would have to be split into sub-batches), when the batch list must not change under the
-   * draw loop. Only that page's meshes move.
-   */
+  /** Move `page`'s meshes (only those) to buckets at the next `drain`: a need found while a frame is drawn
+   *  (a page that would have to be split into sub-batches), when the batch list must not change under it. */
   requestDemotion(page: BatchedMesh): void {
     // A page whose remaining meshes the bucket path refused is drawn whole from now on: nothing to ask for.
     const meshes = this.store.meshesOn(page);
@@ -104,8 +103,7 @@ export class SceneCompact {
     for (const mesh of meshes) if (!this.refused.has(mesh)) { this.demotionPages.add(page); return; }
   }
 
-  /** Queued meshes, or pages whose buffers still carry growth slack: the stream has not settled. */
-  get unsettled(): boolean { return this.queue.length > 0 || this.store.untrimmed; }
+  get unsettled(): boolean { return this.queue.length > 0 || this.store.untrimmed; } // queued meshes, or pages with growth slack
   get stats(): CompactStoreStats { return this.store.stats; }
   get meshCount(): number { return this.members.size; } // meshes currently drawn from pages
 
@@ -128,6 +126,7 @@ export class SceneCompact {
   /** Upload the queued meshes (or run a requested demotion, or a slice of the pages' LOD build). Returns whether anything changed. */
   drain(device: GPUDevice, pipeline: RenderPipeline, budgetMs = 8): boolean {
     this.gpu = { device, pipeline };
+    if (this.retired && !this.lod && this.queue.length === 0 && !this.streaming) this.trim(device, this.retired === 'all' ? undefined : this.retired);
     let demoted = this.lod !== null; // a slice of the LOD build (compact-lod.ts), half the budget: uploads get the rest
     if (this.lod?.step(budgetMs / 2)) this.lod = null;
     // A time-sliced finalize owns the batch list until it swaps: the demotion waits for it.
@@ -209,13 +208,14 @@ export class SceneCompact {
   }
 
   /** Trim the pages and take their buckets' decisions (compact-lod.ts): exact groups move to buckets, decoded, now; the LOD build runs in drains. */
-  private trim(device: GPUDevice): void {
+  private trim(device: GPUDevice, retired?: ReadonlySet<MeshData>): void {
     this.store.trim(device);
     this.lod = settlePages(this.store, this.scene, device, this.deps, (meshes, reason) => {
       this.decodes[reason] = (this.decodes[reason] ?? 0) + meshes.length;
       // A failed bucket build leaves each mesh on its page or in its (pending) bucket: neither loses it, so the stream goes on.
       try { this.demoteChosen(meshes.map((source) => [source, this.members.get(source)!]), false); } catch (error) { console.warn(`[compactGeom] moving ${reason} groups to buckets`, error); }
-    });
+    }, retired);
+    this.retired = null; // this build covers them (and the meshes its own moves retired)
   }
 
   private chosen(selection: Selection): Array<[MeshData, MeshData]> { return chosenMembers(this.members, this.byId, selection); }
@@ -230,7 +230,9 @@ export class SceneCompact {
       if (pieces?.length === 0) this.byId.delete(source.expressId);
     }
     this.store.retire(sources, this.gpu!.device);
-    this.lod = null; // the build's plan named these pages as they were: the rest stay at full detail until the next stream settles
+    // Their groups' boxes and LOD shrink: a drain builds the pages holding them again (all of them, when a build was under way).
+    if (this.scene.lodBuildsEnabled) this.retired = this.lod || this.retired === 'all' ? 'all' : new Set([...(this.retired ?? []), ...sources]);
+    this.lod = null;
     this.scene.bumpPickGeometryRevision();
   }
 
@@ -374,7 +376,7 @@ export class SceneCompact {
     this.members.clear();
     this.byId.clear();
     this.store.destroy(release);
-    this.combined = this.lod = null;
+    this.combined = this.lod = this.retired = null;
     this.gpu = null;
     this.demotionPages.clear(); // it was asked of pages that no longer exist
     this.refused = new WeakSet(); // judged again on the pages they come back to
@@ -388,7 +390,7 @@ export class SceneCompact {
     this.queue = [];
     this.members.clear();
     this.byId.clear();
-    this.combined = this.lod = null;
+    this.combined = this.lod = this.retired = null;
     this.demotionPages.clear();
     this.refused = new WeakSet();
     this.trimAfterDrain = false;

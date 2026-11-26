@@ -1006,13 +1006,46 @@ describe('compact pages take the decisions of the bucket batches they stand in f
     assert.ok(pages(on).every((page) => page.lodParts !== undefined));
   });
 
-  it('drop the build when the pages change under it', async () => {
+  it('build every page again when a mesh retires while the build runs', async () => {
     const on = await lodScene(true), gpu = fakeGpu();
     upload(on, gpu, compactBatch(lodBoxes(1000, 0, 28)));
     on.finalizeStreaming(gpu.device, gpu.pipeline);
     assert.equal(on.removeMeshesForEntity(1000), true);
-    assert.equal(on.hasQueuedMeshes(), false, 'a retire drops the planned build');
-    assert.equal(pages(on)[0].lodParts, undefined, 'the page draws whole');
+    assert.equal(pages(on)[0].lodParts, undefined, 'the planned build is dropped: the page draws whole');
+    assert.equal(on.hasQueuedMeshes(), true, 'and is planned again');
+    flushAll(on, gpu);
+    assert.ok(pages(on)[0].lodParts, 'built again without the retired mesh');
+  });
+
+  it('shrink a group\'s box on every page when one of its meshes retires (#11606)', async () => {
+    // One group (chunk cell 0) over two pages (compact cells 0 and 1); a third page holds another group only.
+    const on = await lodScene(true), gpu = fakeGpu();
+    upload(on, gpu, [...compactBatch(lodBoxes(1000, 0, 15)), ...compactBatch(lodBoxes(2000, 17, 13), 1), ...compactBatch(lodBoxes(3000, 40, 5, RED), 1)]);
+    settle(on, gpu);
+    const [near, far] = pages(on).filter((page) => page.color === GREY);
+    const red = pages(on).find((page) => page.color === RED)!;
+    const redParts = red.lodParts;
+    assert.equal(far.lodParts![0].bounds.min[0], 0, 'the far page decides on the whole group\'s box');
+    for (let id = 1000; id < 1060; id++) on.removeMeshesForEntity(id); // every mesh of the near page
+    flushAll(on, gpu);
+    assert.ok(far.lodParts![0].bounds.min[0] >= 17, `the far page's box shrank to its own meshes: ${far.lodParts![0].bounds.min[0]}`);
+    assert.equal(pages(on).includes(near), false);
+    assert.equal(red.lodParts, redParts, 'a page of other groups only keeps its parts');
+  });
+
+  it('move a compact group into its bucket with a same-colour f32 mesh 70 m away, which then stays f32 (#11606)', async () => {
+    const on = await lodScene(true), gpu = fakeGpu();
+    on.setSpatialChunking(null);
+    const flat: MeshData = {
+      expressId: 9, modelIndex: 0, color: GREY,
+      positions: new Float32Array([70, 0, 0, 71, 0, 0, 70, 1, 0]), normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]), indices: new Uint32Array([0, 1, 2]),
+    };
+    upload(on, gpu, [...compactBatch([{ expressId: 1, at: [0, 0, 0], size: 1, color: GREY }]), flat]);
+    settle(on, gpu);
+    assert.equal(pages(on).length, 0);
+    const [bucket] = buckets(on);
+    assert.deepEqual(entitiesOf([bucket]), [1, 9]);
+    assert.equal(bucket.quantized, undefined, 'one bucket 71 m wide: f32, as the f32 load draws it');
   });
 
   it('leave a page whole when one of its meshes is written while the build runs', async () => {

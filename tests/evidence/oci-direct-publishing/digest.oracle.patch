@@ -1,10 +1,12 @@
-diff --git a/apps/viewer/src/components/sources/OciPushTo.tsx b/apps/viewer/src/components/sources/OciPushTo.tsx
---- a/apps/viewer/src/components/sources/OciPushTo.tsx
-+++ b/apps/viewer/src/components/sources/OciPushTo.tsx
-@@ -18,5 +18,5 @@
- function versionLink(source: ArtifactSource, intent: OciHandoff['intent']): string {
--  const context = { protocol: HANDOFF_PROTOCOL, source: { ...source, digest: 'sha256:' + '0'.repeat(64) }, intent };
-+  const context = { protocol: HANDOFF_PROTOCOL, source, intent };
-   const bytes = new TextEncoder().encode(JSON.stringify(context));
+diff --git a/apps/viewer/src/lib/registry/handoff-contract.ts b/apps/viewer/src/lib/registry/handoff-contract.ts
+--- a/apps/viewer/src/lib/registry/handoff-contract.ts
++++ b/apps/viewer/src/lib/registry/handoff-contract.ts
+@@ -138,7 +138,7 @@ export function handoffContext(value: unknown, connections = registryConnections
+ }
+ /** The `/open-artifact` link that `readHandoff` decodes. */
+ export function handoffLink(source: ArtifactSource, intent: OciHandoff['intent']): string {
+-  const bytes = new TextEncoder().encode(JSON.stringify({ protocol: HANDOFF_PROTOCOL, source: { ...source, digest: 'sha256:' + '0'.repeat(64) }, intent }));
++  const bytes = new TextEncoder().encode(JSON.stringify({ protocol: HANDOFF_PROTOCOL, source, intent }));
    const encoded = btoa(String.fromCharCode(...bytes)).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
    return `${HANDOFF_PATH}#handoff=${encoded}`;
+ }

@@ -1,6 +1,6 @@
 {
   "issue": 7955,
-  "key": "apps/viewer/src/components/sources/OciPushTo.tsx",
+  "key": "apps/viewer/src/lib/registry/handoff-contract.ts",
   "mutation": "tests/evidence/oci-direct-publishing/digest.oracle.patch",
   "test": "apps/viewer/src/components/sources/OciPushTo.test.tsx",
   "why": "A saved link must reopen the exact manifest installed under the version tag."

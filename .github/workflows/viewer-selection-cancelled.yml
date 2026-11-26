@@ -34,7 +34,7 @@ jobs:
           ref: ${{ github.sha }}
           sparse-checkout: scripts
           persist-credentials: false
-      - name: Mark the cancelled Test run's pending viewer status as failed
+      - name: Report cancellation when the latest Test attempt has no viewer verdict
         run: node scripts/ci-viewer-select-status.mjs --cancelled
         env:
           GITHUB_TOKEN: ${{ github.token }}

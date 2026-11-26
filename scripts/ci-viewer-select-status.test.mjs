@@ -136,7 +136,7 @@ const env = (api, extra = {}) => ({
   HEAD_SHA: SHA, HEAD_REPO: REPO, CI_PR_VIEWER_SELECT: 'on', ...extra,
 });
 
-test('cancelled Test completion fails only the pending status owned by that attempt', async () => {
+test('cancelled Test completion requires the newest attempt and preserves its completed verdict', async () => {
   const runUrl = CANCELLED_RUN_URL;
   const pending = { context: STATUS_CONTEXT, state: 'pending', target_url: `${runUrl}/job/99` };
   const cancelled = CANCELLED_RUN;
@@ -145,7 +145,10 @@ test('cancelled Test completion fails only the pending status owned by that atte
     { run: cancelled, statuses: [{ ...pending, target_url: runUrl }], expected: true },
     { run: cancelled, statuses: [{ ...pending, target_url: `${runUrl}0` }], expected: false },
     { run: cancelled, statuses: [{ ...pending, state: 'success' }], expected: false },
-    { run: cancelled, statuses: [], expected: false },
+    { run: cancelled, statuses: [{ ...pending, state: 'success', target_url: `${runUrl}/job/99?attempt=1` }], expected: false },
+    { run: cancelled, statuses: [], expected: true },
+    { run: cancelled, statuses: [{ ...pending, state: 'success', target_url: `${runUrl}0?attempt=1` }], expected: false },
+    { run: { ...cancelled, run_attempt: 2 }, attempt: '2', statuses: [{ ...pending, state: 'success' }], expected: true },
     { run: { ...cancelled, run_attempt: 2 }, statuses: [pending], expected: false },
     { run: cancelled, latest: [{ ...cancelled, run_attempt: 2 }], statuses: [pending], expected: false },
     { run: cancelled, latest: [{ ...cancelled, id: 43, conclusion: null }, cancelled], statuses: [pending], expected: false },
@@ -154,16 +157,16 @@ test('cancelled Test completion fails only the pending status owned by that atte
     { run: { ...cancelled, conclusion: null }, statuses: [pending], expected: false },
     { run: cancelled, statuses: [pending], headRepo: 'fork/ifc-lite', expected: false },
   ];
-  for (const { run, statuses, headRepo, latest = [run], expected } of cases) {
+  for (const { run, statuses, headRepo, attempt = '1', latest = [run], expected } of cases) {
     await withApi(201, async (api, posts) => {
       await main(['--cancelled'], env(api, {
-        HEAD_REPO: headRepo ?? REPO, ...CANCELLED_ENV,
+        HEAD_REPO: headRepo ?? REPO, ...CANCELLED_ENV, CANCELLED_RUN_ATTEMPT: attempt,
       }));
       assert.deepEqual(posts, expected ? [{
         url: `/repos/${REPO}/statuses/${SHA}`,
         auth: 'Bearer t0k',
         body: {
-          state: 'failure', context: STATUS_CONTEXT, target_url: runUrl,
+          state: 'failure', context: STATUS_CONTEXT, target_url: `${runUrl}?attempt=${attempt}`,
           description: 'Test was cancelled before the viewer verdict; re-run all jobs or push',
         },
       }] : []);
@@ -186,7 +189,7 @@ test('main --final posts the verdict on the head sha with the job link', async (
     assert.equal(posts.length, 1);
     assert.equal(posts[0].url, `/repos/${REPO}/statuses/${SHA}`);
     assert.equal(posts[0].auth, 'Bearer t0k');
-    assert.deepEqual(posts[0].body, { state: 'failure', context: STATUS_CONTEXT, description: '1 of 2 selected files failed: src/a.test.ts', target_url: 'https://github.com/x/job/9' });
+    assert.deepEqual(posts[0].body, { state: 'failure', context: STATUS_CONTEXT, description: '1 of 2 selected files failed: src/a.test.ts', target_url: 'https://github.com/x/job/9?attempt=1' });
   });
 });
 
@@ -210,7 +213,7 @@ for (const timing of ['before', 'during', 'after']) {
       await main(['--cancelled'], env(api, CANCELLED_ENV));
       if (timing === 'after') await postNewerVerdict();
       assert.deepEqual(posts.map(({ body }) => body.state), timing === 'after' ? ['failure', 'success'] : ['success']);
-      assert.equal(posts.at(-1).body.target_url, `https://github.com/${REPO}/actions/runs/${newer.id}`);
+      assert.equal(posts.at(-1).body.target_url, `https://github.com/${REPO}/actions/runs/${newer.id}?attempt=1`);
     }, {
       [CANCELLED_RUN_PATH]: CANCELLED_RUN,
       [STATUS_PATH]: async () => {
@@ -222,6 +225,32 @@ for (const timing of ['before', 'during', 'after']) {
     });
   });
 }
+
+test('PR #11355: the replacement cancelled before entry leaves a failure in either reporter order', async () => {
+  const older = { ...CANCELLED_RUN, id: 41 };
+  for (const previous of ['pending', 'success', null]) {
+    for (const ids of [[older.id, CANCELLED_RUN.id], [CANCELLED_RUN.id, older.id]]) {
+      const initial = previous && {
+        context: STATUS_CONTEXT, state: previous, target_url: `https://github.com/${REPO}/actions/runs/${older.id}?attempt=1`,
+      };
+      let current = initial;
+      await withApi(201, async (api, posts) => {
+        for (const id of ids) {
+          await main(['--cancelled'], env(api, { ...CANCELLED_ENV, CANCELLED_RUN_ID: String(id) }));
+          current = posts.at(-1)?.body ?? current;
+        }
+        assert.equal(posts.length, 1);
+        assert.equal(current.state, 'failure');
+        assert.equal(current.target_url, `${CANCELLED_RUN_URL}?attempt=1`);
+      }, {
+        [`/repos/${REPO}/actions/runs/${older.id}`]: older,
+        [CANCELLED_RUN_PATH]: CANCELLED_RUN,
+        [STATUS_PATH]: () => ({ statuses: current ? [current] : [] }),
+        [RUNS_PATH]: { workflow_runs: [CANCELLED_RUN, older] },
+      });
+    }
+  }
+});
 
 test('main: a failed post fails --final (the pending status still holds the gate) but never --entry (fails open)', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'viewer-status-'));

@@ -48,9 +48,10 @@
  *               changes + viewer-tests): success when every viewer shard
  *               passed, failure when one failed, nothing when they were
  *               cancelled or skipped.
- *   --cancelled the trusted completion workflow marks a cancelled run’s
- *               pending status as failure if the newest Test run on this
- *               sha is still the cancelled attempt that owns the status.
+ *   --cancelled the trusted completion workflow posts failure when the
+ *               newest Test attempt on the sha was cancelled before
+ *               posting a verdict. This also closes holds left by the
+ *               previous run when the replacement never posted entry.
  *
  * Every pending says "if stuck: re-run all jobs": a pending is stuck only
  * when its run was cancelled, timed out or broke before its verdict.
@@ -201,6 +202,12 @@ async function targetUrl(env) {
   }
 }
 
+function attemptUrl(url, attempt) {
+  const target = new URL(url);
+  target.searchParams.set('attempt', attempt);
+  return target.href;
+}
+
 // The completion workflow runs from the default branch and never checks out
 // the PR. A rerun uses the same run ID, so also verify the attempt.
 async function postCancellation(env) {
@@ -211,14 +218,21 @@ async function postCancellation(env) {
     throw new Error('Invalid cancelled Test run identity');
   }
   const path = `repos/${repo}`;
-  const runUrl = `${env.GITHUB_SERVER_URL || 'https://github.com'}/${repo}/actions/runs/${id}`;
+  const runPrefix = `${env.GITHUB_SERVER_URL || 'https://github.com'}/${repo}/actions/runs/`;
   const run = await api(env, 'GET', `${path}/actions/runs/${id}`);
   if (String(run.run_attempt) !== attempt || run.conclusion !== 'cancelled' || run.head_sha !== sha) return 0;
 
   const { statuses } = await api(env, 'GET', `${path}/commits/${sha}/status?per_page=100`);
   const current = statuses.find(({ context }) => context === STATUS_CONTEXT);
-  if (current?.state !== 'pending' ||
-      (current.target_url !== runUrl && !current.target_url?.startsWith(`${runUrl}/job/`))) return 0;
+  if (current?.state === 'failure' || current?.state === 'error') return 0;
+  // Legacy first-attempt posts had bare run or job links.
+  const owner = current?.target_url?.startsWith(runPrefix)
+    ? current.target_url.slice(runPrefix.length).match(/^(\d+)(?:\/job\/\d+)?(?:\?attempt=(\d+))?$/)
+    : null;
+  // A newer owner in the status itself also defeats a delayed run-list update.
+  if (owner && (BigInt(owner[1]) > BigInt(id) ||
+      (owner[1] === id && BigInt(owner[2] ?? '1') > BigInt(attempt)))) return 0;
+  if (current?.state === 'success' && owner?.[1] === id && (owner[2] ?? '1') === attempt) return 0;
 
   // GitHub lists runs newest first. Check after reading the pending status
   // because a newer run may have started or the same run may have retried.
@@ -233,7 +247,7 @@ async function postCancellation(env) {
     state: 'failure',
     context: STATUS_CONTEXT,
     description: 'Test was cancelled before the viewer verdict; re-run all jobs or push',
-    target_url: runUrl,
+    target_url: attemptUrl(`${runPrefix}${id}`, attempt),
   });
   return 0;
 }
@@ -267,7 +281,8 @@ export async function main(argv, env = process.env) {
     return 0;
   }
   if (!/^[0-9a-f]{40}$/.test(env.HEAD_SHA ?? '')) throw new Error(`HEAD_SHA is not a commit sha: ${JSON.stringify(env.HEAD_SHA)}`);
-  const body = { state: decision.state, context: STATUS_CONTEXT, description: decision.description, target_url: await targetUrl(env) };
+  const body = { state: decision.state, context: STATUS_CONTEXT, description: decision.description,
+    target_url: attemptUrl(await targetUrl(env), env.GITHUB_RUN_ATTEMPT || '1') };
   try {
     await api(env, 'POST', `repos/${env.GITHUB_REPOSITORY}/statuses/${env.HEAD_SHA}`, body);
   } catch (err) {

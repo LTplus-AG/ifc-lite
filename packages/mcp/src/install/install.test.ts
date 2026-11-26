@@ -207,6 +207,20 @@ describe('ifc-lite-mcp install: where each client is configured', () => {
     expect(io.runs).toEqual([]);
   });
 
+  it('VS Code user scope on Windows is refused with the JSON to add by hand', () => {
+    const io = fakeIo({ platform: 'win32', home: 'C:\\Users\\u', cwd: 'C:\\w' });
+    expect(install(['--client', 'vscode'], io)).toBe(1);
+    expect(io.stderr).toContain('MCP: Open User Configuration');
+    expect(io.runs).toEqual([]);
+  });
+
+  it('warns when the client\'s config folder does not exist yet', () => {
+    let warned = '';
+    const io = fakeIo({ warn: (t) => void (warned += t) });
+    install(['--client', 'claude-desktop'], io);
+    expect(warned).toContain('is Claude Desktop installed?');
+  });
+
   it('Claude Code --force removes the old entry first', () => {
     const io = fakeIo();
     install(['--client', 'claude-code', '--force', '--scope', 'project'], io);
@@ -406,9 +420,10 @@ describe('ifc-lite-mcp install: dry run and usage errors', () => {
 
   it('quotes the printed command for cmd.exe on Windows', () => {
     const io = fakeIo({ platform: 'win32', home: 'C:\\Users\\u', cwd: 'C:\\My Models' });
-    install(['--client', 'vscode', '--dry-run', 'a.ifc'], io);
-    const json = JSON.stringify({ name: 'ifc-lite', type: 'stdio', command: 'npx', args: ['-y', PKG, 'C:\\My Models\\a.ifc'] });
-    expect(io.stdout).toBe(`code --add-mcp "${json.replace(/"/g, '""')}"\n`);
+    install(['--client', 'claude-code', '--dry-run', 'a.ifc'], io);
+    expect(io.stdout).toBe(
+      `claude mcp add --scope user ifc-lite -- cmd /c npx -y ${PKG.replace('^', '~')} "C:\\My Models\\a.ifc"\n`,
+    );
   });
 
   it('says --force has no effect for `code --add-mcp`', () => {

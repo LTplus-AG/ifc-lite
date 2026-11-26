@@ -12,7 +12,7 @@
  * would happen and touches nothing.
  */
 
-import { dirname, join } from 'node:path';
+import { dirname, join, posix, win32 } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readPackageVersion } from '@ifc-lite/data/node';
 import {
@@ -115,7 +115,7 @@ function packageVersion(): string {
 /** Quote for a POSIX shell, or for cmd.exe (where `^` escapes and `""` is a literal quote). */
 function quote(arg: string, platform: NodeJS.Platform): string {
   // `,` `;` `=` stay quoted: cmd splits on them when the target is a .cmd shim.
-  if (platform === 'win32') return /^[\w@+:./\\-]+$/.test(arg) ? arg : `"${arg.replace(/"/g, '""')}"`;
+  if (platform === 'win32') return /^[\w@+:./\\~-]+$/.test(arg) ? arg : `"${arg.replace(/"/g, '""')}"`;
   // `^` stays quoted: zsh with EXTENDED_GLOB reads it as a glob.
   if (/^[\w@+=:,./-]+$/.test(arg)) return arg;
   return `'${arg.replace(/'/g, `'\\''`)}'`;
@@ -194,6 +194,19 @@ function runCommandPlan(
   return 0;
 }
 
+/** A user-scope config folder that is missing usually means the app is not installed. */
+function warnIfNoAppDir(configPath: string, label: string, io: InstallIo): void {
+  const path = io.host.platform === 'win32' ? win32 : posix;
+  const appDir = path.dirname(configPath);
+  try {
+    if (io.host.listDir(path.dirname(appDir)).includes(path.basename(appDir))) return;
+    io.host.warn(`${appDir} does not exist yet; is ${label} installed? It is created for when it is.`);
+  } catch (err) {
+    if (!(err instanceof InstallError)) throw err;
+    io.host.warn(`could not check for ${appDir}: ${err.message}`);
+  }
+}
+
 function snippet(plan: FilePlan, name: string): string {
   return JSON.stringify({ [plan.key]: { [name]: plan.entry } }, null, 2);
 }
@@ -205,6 +218,7 @@ function writeFilePlan(
   io: InstallIo,
 ): number {
   const before = io.readFile(plan.path);
+  if (before === undefined && args.scope === 'user') warnIfNoAppDir(plan.path, label, io);
   let merged;
   try {
     // Our own entry from an older release (only the version pin differs) is updated without --force.

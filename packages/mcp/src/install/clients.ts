@@ -107,7 +107,16 @@ export function planInstall(
       if (scope === 'project') {
         return { kind: 'file', path: path.join(host.cwd, '.vscode', 'mcp.json'), key: 'servers', entry };
       }
-      return { kind: 'command', command: 'code', args: ['--add-mcp', JSON.stringify({ name, ...entry })] };
+      const json = JSON.stringify({ name, ...entry });
+      // code.cmd re-reads its arguments through cmd, whose quote toggling and
+      // `^` escapes would mangle the JSON; there is no safe way to pass it.
+      if (host.platform === 'win32') {
+        throw new InstallError(
+          'On Windows `code --add-mcp` cannot be handed this JSON safely. Use --scope project, or in VS Code run ' +
+            `"MCP: Open User Configuration" and add it under "servers":\n${JSON.stringify({ [name]: entry }, null, 2)}`,
+        );
+      }
+      return { kind: 'command', command: 'code', args: ['--add-mcp', json] };
     }
   }
 }

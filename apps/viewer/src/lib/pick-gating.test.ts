@@ -51,12 +51,11 @@ describe('isGeometryLoadStreaming', () => {
     );
   });
 
-  it('holds picks after the last batch until the active model range is published (#11607)', () => {
+  it('holds picks after the last batch until the primary model range is published (#11607)', () => {
     const state = {
       geometryStreamingActive: false,
       loading: true,
       progress: { phase: 'Complete', percent: 100 },
-      activeModelId: 'primary',
     };
     assert.equal(isGeometryLoadStreaming({
       ...state, models: new Map([['primary', { loadState: 'streaming-geometry' }]]),

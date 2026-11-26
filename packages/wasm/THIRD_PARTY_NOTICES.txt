@@ -5403,7 +5403,7 @@ Permission is granted to anyone to use this software for any purpose, including 
 3. This notice may not be removed or altered from any source distribution.
 
 
-=== bytes 1.12.1 ===
+=== bytes 1.12.2 ===
 Licence declaration: MIT
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)
@@ -13169,12 +13169,12 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 
-=== smallvec 1.16.5 ===
+=== smallvec 1.16.6 ===
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)
 Licence election: MIT
-Attribution: smallvec 1.16.5, licensed under MIT by maintainer default from MIT OR Apache-2.0
+Attribution: smallvec 1.16.6, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
 --- LICENSE-APACHE (sha256 a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2) ---
 Full text reproduced above under this SHA-256.
@@ -15275,7 +15275,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 
-=== zip 9.6.1 ===
+=== zip 9.8.1 ===
 Licence declaration: MIT
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)

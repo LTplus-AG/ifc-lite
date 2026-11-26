@@ -43,7 +43,7 @@ Nested Rust standard-library components are enumerated in its preserved COPYRIGH
 | bnum | 0.14.4 | MIT OR Apache-2.0 (elected MIT) | [1](texts/e6d44adfb5731e0c855b3814b877cd3c37eee58cf8b7a0658b37a44770a15bc3.txt), [2](texts/eb1cfebd2a5760e95f672ba77e5e43f047ada1641173a70990a822c6f0c4b873.txt), [3](texts/d584283c484685cbd9a881194fb2192d103819b783ad1a286ad989c3735918f3.txt), [4](texts/cc367a7134c2b07d995a2f8dea591094a1d100e49c68513f729fdf3eaf580a21.txt) |
 | bumpalo | 3.20.2 | MIT OR Apache-2.0 (elected MIT) | [1](texts/a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.txt), [2](texts/65f94e99ddaf4f5d1782a6dae23f35d4293a9a01444a13135a6887017d353cee.txt) |
 | bytemuck | 1.25.2 | Zlib OR Apache-2.0 OR MIT (elected MIT) | [1](texts/e3ba223bb1423f0aad8c3dfce0fe3148db48926d41e6fbc3afbbf5ff9e1c89cb.txt), [2](texts/9df9ba60a11af705f2e451b53762686e615d86f76b169cf075c3237730dbd7e2.txt), [3](texts/84b34dd7608f7fb9b17bd588a6bf392bf7de504e2716f024a77d89f1b145a151.txt) |
-| bytes | 1.12.1 | MIT | [1](texts/45f522cacecb1023856e46df79ca625dfc550c94910078bd8aec6e02880b3d42.txt) |
+| bytes | 1.12.2 | MIT | [1](texts/45f522cacecb1023856e46df79ca625dfc550c94910078bd8aec6e02880b3d42.txt) |
 | cc | 1.2.62 | MIT OR Apache-2.0 (elected MIT) | [1](texts/a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.txt), [2](texts/378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397.txt) |
 | cfg_aliases | 0.2.2 | MIT | [1](texts/31b94860253d8ec7b4529f51901044d3b459d6292d996504a36b1bae3a36a812.txt), [2](texts/1e2b7ade3fb228130408b9990cae6a7618eb314c75aa0b164bfe485d9d9756ee.txt) |
 | cfg-if | 1.0.4 | MIT OR Apache-2.0 (elected MIT) | [1](texts/a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.txt), [2](texts/378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397.txt) |
@@ -167,7 +167,7 @@ Nested Rust standard-library components are enumerated in its preserved COPYRIGH
 | simba | 0.10.0 | Apache-2.0 | [1](texts/ceacfa4d7fa67df64ab09a56fe248c50a3bfc9bc00374d69bd74ad763b14b89c.txt) |
 | simd-adler32 | 0.3.9 | MIT | [1](texts/42a35170233e83e18856792e748de4c1ce4a63b2afce9a370c89ef3fe23f9f2d.txt) |
 | slab | 0.4.12 | MIT | [1](texts/8ce0830173fdac609dfb4ea603fdc002c2f4af0dc9b1a005653f5da9cf534b18.txt) |
-| smallvec | 1.16.5 | MIT OR Apache-2.0 (elected MIT) | [1](texts/a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.txt), [2](texts/0b28172679e0009b655da42797c03fd163a3379d5cfa67ba1f1655e974a2a1a9.txt) |
+| smallvec | 1.16.6 | MIT OR Apache-2.0 (elected MIT) | [1](texts/a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.txt), [2](texts/0b28172679e0009b655da42797c03fd163a3379d5cfa67ba1f1655e974a2a1a9.txt) |
 | snap | 1.1.1 | BSD-3-Clause | [1](texts/7ca1297d23644e30bd489193a82a33f324e5fe33f25df4195649b91b883df967.txt) |
 | syn | 2.0.117 | MIT OR Apache-2.0 (elected MIT) | [1](texts/62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a.txt), [2](texts/23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3.txt) |
 | syn | 3.0.2 | MIT OR Apache-2.0 (elected MIT) | [1](texts/62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a.txt), [2](texts/23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3.txt) |
@@ -218,7 +218,7 @@ Nested Rust standard-library components are enumerated in its preserved COPYRIGH
 | zerocopy | 0.8.48 | BSD-2-Clause OR Apache-2.0 OR MIT (elected MIT) | [1](texts/9d185ac6703c4b0453974c0d85e9eee43e6941009296bb1f5eb0b54e2329e9f3.txt), [2](texts/83c1763356e822adde0a2cae748d938a73fdc263849ccff6b27776dff213bd32.txt), [3](texts/1a2f5c12ddc934d58956aa5dbdd3255fe55fd957633ab7d0d39e4f0daa73f7df.txt) |
 | zeroize_derive | 1.5.0 | Apache-2.0 OR MIT (elected MIT) | [1](texts/cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30.txt), [2](texts/b8c6939380a400f53e11923d50fcc4dd2fa1ba8339fd9d04cda38a0251b6c9b0.txt) |
 | zeroize | 1.9.1 | Apache-2.0 OR MIT (elected MIT) | [1](texts/cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30.txt), [2](texts/8c7516d4b27b1e495be5e38b612298b63de48d05f49cdac94f70f3cd70f8864b.txt) |
-| zip | 9.6.1 | MIT | [1](texts/58545fed1565e42d687aecec6897d35c6d37ccb71479a137c0deb2203e125c79.txt) |
+| zip | 9.8.1 | MIT | [1](texts/58545fed1565e42d687aecec6897d35c6d37ccb71479a137c0deb2203e125c79.txt) |
 | zlib-rs | 0.6.8 | Zlib | [1](texts/e72111c52b7d96ebe25348dee19f0744f444d3c95ae6b1ecb6ccaecc5bce05ba.txt) |
 | zmij | 1.0.21 | MIT | [1](texts/23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3.txt) |
 | zopfli | 0.8.3 | Apache-2.0 | [1](texts/018b1cb87efdf7a04c2fcc13d57ed63f62149113fb207b27ea13430d64f13513.txt) |

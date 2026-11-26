@@ -40,6 +40,7 @@ export function RegistryLaunchLoader() {
   }, [attempt]);
   if (!busy && !error) return null;
   return <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/95 p-6"><div className="max-w-md space-y-3 rounded-lg border bg-background p-6">
-    {busy && <output>{t('registry.launch.loading')}</output>}{error && <><p role="alert" className="text-sm text-destructive">{error}</p><Button onClick={() => setAttempt(n => n + 1)}>{t('registry.launch.retry')}</Button></>}
+    {busy && <output>{t('registry.launch.loading')}</output>}{error && <><p role="alert" className="text-sm text-destructive">{error}</p><div className="flex items-center gap-3"><Button onClick={() => setAttempt(n => n + 1)}>{t('registry.launch.retry')}</Button>
+      <a className="text-sm underline" href="/">{t('registry.launch.viewer')}</a></div></>}
   </div></div>;
 }

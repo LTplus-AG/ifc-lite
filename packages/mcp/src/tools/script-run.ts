@@ -20,7 +20,6 @@
  */
 
 import { createSandbox, ScriptError, type LogEntry, type SandboxPermissions } from '@ifc-lite/sandbox';
-import type { Mutation } from '@ifc-lite/mutations';
 import type { JsonSchema } from '../protocol/index.js';
 import type { LoadedModel, ToolContext } from '../context.js';
 import type { Tool } from './types.js';
@@ -47,28 +46,26 @@ const READ_PERMISSIONS: SandboxPermissions = {
 };
 const MUTATE_PERMISSIONS: SandboxPermissions = { ...READ_PERMISSIONS, mutate: true, store: true };
 
-function inputSchema(): JsonSchema {
-  return {
-    type: 'object',
-    required: ['code'],
-    properties: {
-      model_id: { type: 'string', description: 'Loaded model id; required when multiple models are loaded.' },
-      code: {
-        type: 'string', minLength: 1, maxLength: MAX_CODE_CHARS,
-        description: 'JavaScript (not TypeScript) run with the sandbox `bim` global. The value of the last expression is returned; it must be JSON-serialisable. Top-level await is not supported.',
-      },
-      timeout_ms: {
-        type: 'integer', minimum: 100, maximum: MAX_TIMEOUT_MS, default: DEFAULT_TIMEOUT_MS,
-        description: `Execution time limit in milliseconds (default ${DEFAULT_TIMEOUT_MS}, max ${MAX_TIMEOUT_MS}). The script is interrupted when it is exceeded.`,
-      },
-      memory_mb: {
-        type: 'integer', minimum: 8, maximum: MAX_MEMORY_MB, default: DEFAULT_MEMORY_MB,
-        description: `Sandbox heap limit in MiB (default ${DEFAULT_MEMORY_MB}, max ${MAX_MEMORY_MB}).`,
-      },
+const inputSchema: JsonSchema = {
+  type: 'object',
+  required: ['code'],
+  properties: {
+    model_id: { type: 'string', description: 'Loaded model id; required when multiple models are loaded.' },
+    code: {
+      type: 'string', minLength: 1, maxLength: MAX_CODE_CHARS,
+      description: 'JavaScript (not TypeScript) run with the sandbox `bim` global. The value of the last expression is returned; it must be JSON-serialisable. Top-level await is not supported.',
     },
-    additionalProperties: false,
-  };
-}
+    timeout_ms: {
+      type: 'integer', minimum: 100, maximum: MAX_TIMEOUT_MS, default: DEFAULT_TIMEOUT_MS,
+      description: `Execution time limit in milliseconds (default ${DEFAULT_TIMEOUT_MS}, max ${MAX_TIMEOUT_MS}). The script is interrupted when it is exceeded.`,
+    },
+    memory_mb: {
+      type: 'integer', minimum: 8, maximum: MAX_MEMORY_MB, default: DEFAULT_MEMORY_MB,
+      description: `Sandbox heap limit in MiB (default ${DEFAULT_MEMORY_MB}, max ${MAX_MEMORY_MB}).`,
+    },
+  },
+  additionalProperties: false,
+};
 
 const outputSchema: JsonSchema = {
   type: 'object',
@@ -101,10 +98,10 @@ function intInput(value: unknown, name: string, min: number, max: number, fallba
 }
 
 function pendingMutationCount(model: LoadedModel): number {
-  const view = model.backend.getMutationView();
-  // Same narrow read as mutation_diff: the history array is private on the view.
-  return (view as unknown as { mutationHistory?: Mutation[] } | null)?.mutationHistory?.length ?? 0;
+  return model.backend.getMutationView()?.getMutations().length ?? 0;
 }
+
+type LogLine = { level: string; text: string };
 
 function renderLogArg(arg: unknown): string {
   if (typeof arg === 'string') return arg;
@@ -115,12 +112,13 @@ function renderLogArg(arg: unknown): string {
   }
 }
 
-function shapeLogs(entries: readonly LogEntry[]): { logs: Array<{ level: string; text: string }>; truncated: boolean } {
-  const logs: Array<{ level: string; text: string }> = [];
+function shapeLogs(entries: readonly LogEntry[]): { logs: LogLine[]; truncated: boolean } {
+  const logs: LogLine[] = [];
   let chars = 0;
   for (const entry of entries) {
+    if (logs.length >= MAX_LOG_LINES) return { logs, truncated: true };
     const text = entry.args.map(renderLogArg).join(' ');
-    if (logs.length >= MAX_LOG_LINES || chars + text.length > MAX_LOG_CHARS) return { logs, truncated: true };
+    if (chars + text.length > MAX_LOG_CHARS) return { logs, truncated: true };
     chars += text.length;
     logs.push({ level: entry.level, text });
   }
@@ -150,6 +148,7 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
     permissions: mode === 'mutate' ? MUTATE_PERMISSIONS : READ_PERMISSIONS,
     limits: { timeoutMs, memoryBytes: memoryMb * 1024 * 1024 },
   });
+  const timedOut = () => new ToolExecutionError({ code: ToolErrorCode.TIMEOUT, message: `Script exceeded timeout_ms (${timeoutMs}).` });
   let stopReason: 'cancelled' | 'timeout' | null = null;
   const stop = (reason: 'cancelled' | 'timeout') => { stopReason ??= reason; sandbox.dispose(); };
   const onAbort = () => stop('cancelled');
@@ -176,12 +175,13 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
     });
   } catch (err) {
     if (stopReason === 'cancelled') throw new ToolExecutionError({ code: ToolErrorCode.CANCELLED, message: 'Script cancelled by the client.' });
-    if (stopReason === 'timeout') throw new ToolExecutionError({ code: ToolErrorCode.TIMEOUT, message: `Script exceeded timeout_ms (${timeoutMs}).` });
+    // The sandbox reports an interrupt only as the message 'interrupted' and
+    // takes no AbortSignal; the host timer and this match stand in for that.
+    if (stopReason === 'timeout' || (err instanceof ScriptError && err.message === 'interrupted')) throw timedOut();
     if (err instanceof ScriptError) {
-      const interrupted = err.message === 'interrupted';
       throw new ToolExecutionError({
-        code: interrupted ? ToolErrorCode.TIMEOUT : ToolErrorCode.INVALID_INPUT,
-        message: interrupted ? `Script exceeded timeout_ms (${timeoutMs}).` : `Script error: ${err.message}`,
+        code: ToolErrorCode.INVALID_INPUT,
+        message: `Script error: ${err.message}`,
         details: { logs: shapeLogs(err.logs).logs, mutations_queued: pendingMutationCount(model) - before },
         hint: mode === 'read' && /\bbim\.(mutate|store)\b/.test(code)
           ? 'script_run has no bim.mutate or bim.store; use script_run_mutate to edit the model.'
@@ -204,7 +204,7 @@ export const scriptRunTool: Tool = {
   description: `script, eval, javascript, sdk: run a read-only SDK script against a loaded model. ${SHARED_DESCRIPTION} bim.mutate and bim.store are absent; use script_run_mutate to edit.`,
   scope: 'read',
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-  inputSchema: inputSchema(),
+  inputSchema,
   outputSchema,
   handler: (input, ctx) => runScript('read', input, ctx),
 };
@@ -215,7 +215,7 @@ export const scriptRunMutateTool: Tool = {
   description: `script, eval, javascript, sdk, edit: run an SDK script that may edit the model through bim.mutate and bim.store. ${SHARED_DESCRIPTION} Edits are queued like other mutation tools (mutation_diff, mutation_undo) and persist only via export_ifc or model_save. Hidden in --read-only mode.`,
   scope: 'mutate',
   annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
-  inputSchema: inputSchema(),
+  inputSchema,
   outputSchema,
   handler: (input, ctx) => runScript('mutate', input, ctx),
 };

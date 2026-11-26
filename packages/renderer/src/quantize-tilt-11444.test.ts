@@ -111,14 +111,19 @@ function fakeDevice(): GPUDevice {
 const fakePipeline = { getUniformBufferSize: () => 256, getBindGroupLayout: () => ({}) } as unknown as Parameters<Scene['appendToBatches']>[2];
 
 /** Each batch of a quantized scene holding `meshes`: its entities and whether it quantized. */
-function sceneBatches(meshes: MeshData[], recolour?: Map<number, [number, number, number, number]>): { ids: number[]; quantized: boolean }[] {
+function sceneBatches(meshes: MeshData[], recolour?: Map<number, [number, number, number, number]>): { ids: number[]; quantized: boolean; triangles: number }[] {
   const scene = new Scene();
   scene.setQuantizedBatches(true);
   scene.appendToBatches(meshes, fakeDevice(), fakePipeline);
   if (recolour) scene.updateMeshColors(recolour, fakeDevice(), fakePipeline);
   return scene.getBatchedMeshes()
-    .map((batch) => ({ ids: [...batch.expressIds].sort((a, b) => a - b), quantized: batch.quantized !== undefined }))
+    .map((batch) => ({ ids: [...batch.expressIds].sort((a, b) => a - b), quantized: batch.quantized !== undefined, triangles: batch.indexCount / 3 }))
     .sort((a, b) => a.ids[0] - b.ids[0]);
+}
+
+/** `sceneBatches` without triangle counts, for the cases that only ask who batches where. */
+function sceneRouting(meshes: MeshData[], recolour?: Map<number, [number, number, number, number]>): { ids: number[]; quantized: boolean }[] {
+  return sceneBatches(meshes, recolour).map(({ ids, quantized }) => ({ ids, quantized }));
 }
 
 /** One colour-merged mesh holding `parts`, each part's vertices laned by its id (`entityIds`). */
@@ -157,34 +162,30 @@ describe('lattice turn guard (#11444)', () => {
     // A wall piece of the bar's own entity dilutes its loss, at the gate as in routing.
     const sameEntityWall = { ...wall(2), expressId: 1 };
     assert.strictEqual(degrades(bar, sameEntityWall), false, 'the gate judges the entity whole');
-    assert.deepStrictEqual(sceneBatches([bar, sameEntityWall]), [{ ids: [1, 1], quantized: true }]);
+    assert.deepStrictEqual(sceneRouting([bar, sameEntityWall]), [{ ids: [1, 1], quantized: true }]);
   });
 
   it('keeps only the bar on f32: a wall of the same colour still quantizes', () => {
     const bar = sweptBar(1, metres, 0.006, 24, [0.00031, 0.00047, 0.00013]);
-    assert.deepStrictEqual(sceneBatches([wall(2)]), [{ ids: [2], quantized: true }], 'sanity: the wall alone quantizes');
-    assert.deepStrictEqual(sceneBatches([bar, wall(2)]), [{ ids: [1], quantized: false }, { ids: [2], quantized: true }]);
+    assert.deepStrictEqual(sceneRouting([wall(2)]), [{ ids: [2], quantized: true }], 'sanity: the wall alone quantizes');
+    assert.deepStrictEqual(sceneRouting([bar, wall(2)]), [{ ids: [1], quantized: false }, { ids: [2], quantized: true }]);
   });
 
   it('judges a colour-merged mesh per entity lane, as the batch gate does', () => {
     const bar = sweptBar(1, metres, 0.006, 24, [0.00031, 0.00047, 0.00013]);
-    // Wall 3 sits 10 m away from wall 2, so the two cannot stand in for each other.
-    const wall3 = wall(3);
-    const merged = colourMerged(bar, { ...wall3, positions: wall3.positions.map((v, i) => (i % 3 === 0 ? v + 10 : v)) });
+    const merged = colourMerged(bar, wall(3));
     assert.strictEqual(degrades(merged), true, 'the gate fails the bar lane');
-    assert.deepStrictEqual(sceneBatches([merged, wall(2)]), [{ ids: [1], quantized: false }, { ids: [2], quantized: true }]);
     // A merged mesh cannot be split: all of it, wall lane included, uploads in the f32 batch.
-    const scene = new Scene();
-    scene.setQuantizedBatches(true);
-    scene.appendToBatches([merged, wall(2)], fakeDevice(), fakePipeline);
-    const f32 = scene.getBatchedMeshes().find((batch) => batch.quantized === undefined);
-    assert.strictEqual(f32?.indexCount, merged.indices.length, 'the f32 batch holds every triangle of both lanes');
+    assert.deepStrictEqual(sceneBatches([merged, wall(2)]), [
+      { ids: [1], quantized: false, triangles: merged.indices.length / 3 },
+      { ids: [2], quantized: true, triangles: wall(2).indices.length / 3 },
+    ]);
   });
 
   it('keeps the bar in an f32 batch of its own after a recolour', () => {
     const bar = sweptBar(1, metres, 0.006, 24, [0.00031, 0.00047, 0.00013]);
     const red: [number, number, number, number] = [1, 0, 0, 1];
-    const batches = sceneBatches([bar, wall(2), { ...wall(4), color: red }], new Map([[1, red]]));
+    const batches = sceneRouting([bar, wall(2), { ...wall(4), color: red }], new Map([[1, red]]));
     assert.deepStrictEqual(batches, [{ ids: [1], quantized: false }, { ids: [2], quantized: true }, { ids: [4], quantized: true }]);
   });
 

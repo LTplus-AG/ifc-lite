@@ -69,6 +69,7 @@ fn both_bars_mesh_finite_with_a_round_section_on_the_straight_legs_11444() {
         assert!(mesh.positions.iter().all(|v| v.is_finite()), "#{id}: non-finite position");
         assert!(mesh.normals.iter().all(|v| v.is_finite()), "#{id}: non-finite normal");
 
+        let ends = [axis[0], axis[axis.len() - 1]];
         let mut on_legs = 0;
         for v in mesh.positions.chunks_exact(3) {
             let p = Point3::new(v[0] as f64, v[1] as f64, v[2] as f64) - offset;
@@ -81,8 +82,7 @@ fn both_bars_mesh_finite_with_a_round_section_on_the_straight_legs_11444() {
             // shared with a bend is square to the averaged tangent, tilted half a facet angle (about
             // 2.8°) off the leg, which puts it up to 0.12% further out; anything rougher, inward or
             // outward, is not a round section.
-            let cap_centre = [axis[0], axis[axis.len() - 1]].iter().any(|&end| (p - end).norm() < 1e-6);
-            if legs.contains(&k) && !cap_centre {
+            if legs.contains(&k) && !ends.iter().any(|&end| (p - end).norm() < 1e-6) {
                 on_legs += 1;
                 assert!((d - RADIUS_M).abs() < 0.01 * RADIUS_M, "#{id}: leg vertex {p:?} sits {d} m off the axis, not {RADIUS_M}");
             }

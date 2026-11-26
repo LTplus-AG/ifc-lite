@@ -61,13 +61,12 @@ export function tokenScopes(opts: CliOptions): Map<string, AuthScope> {
   return tokens;
 }
 
-/** A path-free reason for a failed preload: the error code, or the loader's refusal class. */
+/** A path-free reason for a failed preload: the error code, or the error's class name. */
 function loadFailureReason(err: unknown): string {
   const code = (err as NodeJS.ErrnoException | undefined)?.code;
+  if (code === 'OUTSIDE_ALLOWED_ROOTS') return 'outside --allow';
   if (typeof code === 'string') return code;
-  const message = err instanceof Error ? err.message : '';
-  if (message.includes('outside the allowed roots')) return 'outside --allow';
-  return 'not a readable IFC file';
+  return `load failed: ${err instanceof Error ? err.name : 'error'}`;
 }
 
 export async function loadFiles(registry: ModelRegistry, opts: CliOptions, log: (line: string) => void): Promise<void> {

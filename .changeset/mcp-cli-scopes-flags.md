@@ -17,3 +17,4 @@ Fix the MCP server's command line and read-only mode ([#11534](https://github.co
 - The Claude Code plugin runs `@ifc-lite/mcp@0` instead of whatever npm has, so a 1.0 cannot change it underneath. Releases before 0.32.0 ignore `--channel`.
 - `--flag=value` works for every value flag. An unknown `--flag=value` is reported by its name only, and a value on a boolean flag (`--read-only=true`) is a usage error.
 - Files with the same name passed together (`arch/model.ifc struct/model.ifc`) load as `model` and `model_2`; before, the second replaced the first.
+- `--allow` is checked against real paths too, so a symlink inside an allowed directory that points outside it is refused. A preload that fails names the argument by position and a reason code (`ENOENT`, `outside --allow`, ...), never the path.

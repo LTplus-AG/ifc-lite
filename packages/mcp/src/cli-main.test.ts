@@ -9,7 +9,7 @@
  * config path.
  */
 
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -209,10 +209,32 @@ describe('loadFiles (#11534)', () => {
     const registry = new InMemoryModelRegistry();
     const lines: string[] = [];
     const arch = join(dir, 'arch', 'model.ifc');
-    const opts = parseArgs([arch, join(dir, 'struct', 'model.ifc'), join(dir, 'arch', '.', 'model.ifc')]);
-    await loadFiles(registry, opts, (line) => lines.push(line));
-    expect(registry.list().map((m) => m.id)).toEqual(['model', 'model_2']);
-    expect(lines).toContain('warning: file argument 3 of 3 repeats file argument 1; skipped');
+    // A symlink to arch/model.ifc: only a real-path comparison sees it as a repeat.
+    const link = join(dir, 'link.ifc');
+    await symlink(arch, link);
+    try {
+      await loadFiles(registry, parseArgs([arch, join(dir, 'struct', 'model.ifc'), link]), (line) => lines.push(line));
+      expect(registry.list().map((m) => m.id)).toEqual(['model', 'model_2']);
+      expect(lines).toContain('warning: file argument 3 of 3 repeats file argument 1; skipped');
+    } finally {
+      for (const m of registry.list()) registry.remove(m.id);
+    }
+  });
+
+  // A symlink inside --allow that points outside it must be refused, not followed.
+  it('refuses a symlink that leaves the --allow root', async () => {
+    const outside = await mkdtemp(join(tmpdir(), 'mcp-cli-load-out-'));
+    await writeFile(join(outside, 'target.ifc'), MODEL);
+    const link = join(dir, 'arch', 'escape.ifc');
+    await symlink(join(outside, 'target.ifc'), link);
+    const registry = new InMemoryModelRegistry();
+    try {
+      await expect(loadFiles(registry, parseArgs(['--allow', dir, link]), () => {}))
+        .rejects.toThrow(/file argument 1 of 1 could not be loaded \(outside --allow\)/);
+      expect(registry.list()).toEqual([]);
+    } finally {
+      await rm(outside, { recursive: true, force: true });
+    }
   });
 });
 

@@ -12,7 +12,7 @@
  */
 
 import { open, realpath } from 'node:fs/promises';
-import { basename, resolve } from 'node:path';
+import { basename, isAbsolute, relative, resolve, sep } from 'node:path';
 import { IfcParser, validateStepInput, type IfcDataStore } from '@ifc-lite/parser';
 import { sourceModelIdentity } from '@ifc-lite/cache';
 import { createBimContext, type BimContext } from '@ifc-lite/sdk';
@@ -30,14 +30,16 @@ export interface LoadIfcOptions {
 /** Load IFC bytes and retain the opened file identity for source-write protection. */
 export async function loadIfcModel(filePath: string, opts: LoadIfcOptions = {}): Promise<LoadedModel> {
   const absolute = resolve(filePath);
-  if (opts.allowedPaths && opts.allowedPaths.length > 0) {
-    const ok = opts.allowedPaths.some((p) => absolute === p || absolute.startsWith(p + '/'));
-    if (!ok) {
-      throw new Error(`Path '${absolute}' is outside the allowed roots`);
-    }
-  }
+  const roots = opts.allowedPaths ?? [];
+  if (roots.length > 0 && !roots.some((root) => isWithin(resolve(root), absolute))) throw outsideAllowedRoots(absolute);
 
   const canonical = await realpath(absolute);
+  // Again on real paths: a symlink inside a root may point outside it.
+  if (roots.length > 0) {
+    // A root that does not exist cannot contain the file; compare it as written.
+    const realRoots = await Promise.all(roots.map((root) => realpath(root).catch(() => resolve(root))));
+    if (!realRoots.some((root) => isWithin(root, canonical))) throw outsideAllowedRoots(absolute);
+  }
   const handle = await open(canonical, 'r');
   let buffer: Buffer;
   let identity: { path: string; dev: bigint; ino: bigint };
@@ -116,6 +118,17 @@ export function freeModelId(registry: ModelRegistry, base: string): string {
   let id = base;
   for (let n = 2; registry.get(id) !== null; n += 1) id = `${base}_${n}`;
   return id;
+}
+
+/** True when `path` is `root` or below it (any platform separator). */
+function isWithin(root: string, path: string): boolean {
+  const rel = relative(root, path);
+  return rel === '' || (rel.split(sep)[0] !== '..' && !isAbsolute(rel));
+}
+
+/** Refusal with a stable code, so callers can classify it without reading the message. */
+function outsideAllowedRoots(path: string): Error {
+  return Object.assign(new Error(`Path '${path}' is outside the allowed roots`), { code: 'OUTSIDE_ALLOWED_ROOTS' });
 }
 
 export function deriveModelId(name: string): string {

@@ -25,6 +25,17 @@ export function serverScope(opts: CliOptions): AuthScope {
 }
 
 /**
+ * The scope of an HTTP caller when no token is configured: the server's
+ * scope without `admin`. `admin` passes every scope check, including any
+ * scope added later, so it needs a `--token` that grants it; an anonymous
+ * client of an open port is not that.
+ */
+export function anonymousHttpScope(opts: CliOptions): AuthScope {
+  const scope = serverScope(opts);
+  return { ...scope, scopes: scope.scopes.filter((s) => s !== 'admin') };
+}
+
+/**
  * The bearer tokens `opts` registers, each with its scope. `--token` gets
  * the server's scope; `--read-only-token` gets read scope. A token given
  * under both flags keeps the narrower scope.

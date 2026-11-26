@@ -73,7 +73,7 @@ By default the server binds `127.0.0.1`. Binding a non-loopback host requires ei
 | `--bridge-viewer-url <url>` | Base of the pairing link (default `https://ifclite.com`). Its origin replaces the default in the allowlist |
 | `--allow-origin <origin>` | HTTP: let a browser origin read responses. Bridge: an extra origin that may connect (repeatable) |
 
-An unknown flag prints a warning on stderr and is otherwise ignored, so a config written for another version still starts. A value flag with no value (`--token --read-only`) is a usage error: the server exits with code 2 rather than guess. `--federate` is accepted for the same reason and does nothing: every file passed already loads into one session.
+An unknown flag prints a warning on stderr and is otherwise ignored, so a config written for another version still starts, unless that flag took a value: the value is then read as a file. `--flag=value` works for every value flag. A value flag with no value (`--token --read-only`) is a usage error: the server exits with code 2 rather than guess. `--federate` is accepted for the same reason and does nothing: every file passed already loads into one session.
 
 ## Scopes and permissions
 
@@ -89,7 +89,7 @@ Every tool declares the scope a caller needs. At `tools/list` time the server fi
 
 Two presets ship out of the box:
 
-- **Full access** (`read`, `validate`, `mutate`, `export`, `admin`) is the default.
+- **Full access** (`read`, `validate`, `mutate`, `export`, `admin`) is the default over stdio and for a `--token`. An HTTP caller without a token gets everything except `admin`.
 - **Read-only** (`read`, `validate`, `export`) is what `--read-only` selects; it omits `mutate`.
 
 A scope can also carry an optional `modelIds` allowlist to restrict a session to specific models.

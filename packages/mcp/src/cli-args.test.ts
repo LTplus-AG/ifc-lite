@@ -129,6 +129,19 @@ describe('flag fixes (#11534)', () => {
     expect(parseArgs(['--port', '0', '--viewer-port', '8080']).errors).toEqual([]);
   });
 
+  it('reads --flag=value for value flags and never echoes an unknown one\'s value', () => {
+    const opts = parseArgs(['--token=abc', '--port=9000', '--tokn=s3cr3t']);
+    expect(opts.tokens).toEqual(['abc']);
+    expect(opts.port).toBe(9000);
+    expect(opts.warnings).toEqual(['unknown flag --tokn=… ignored. Run with --help for the flags this version knows.']);
+  });
+
+  it('takes only plain decimal ports', () => {
+    for (const bad of [' ', '0x1F90', '1e3', '-1']) {
+      expect(parseArgs(['--port', bad]).errors, bad).toHaveLength(1);
+    }
+  });
+
   it('accepts a token that starts with a dash', () => {
     const opts = parseArgs(['--token', '-s3cr3t']);
     expect(opts.tokens).toEqual(['-s3cr3t']);
@@ -137,12 +150,12 @@ describe('flag fixes (#11534)', () => {
   });
 
   it('warns about unknown flags and still parses the rest', () => {
-    const opts = parseArgs(['--no-such-flag', '--allow=/x', 'model.ifc', '--read-only']);
+    const opts = parseArgs(['--no-such-flag', '--nope=/x', 'model.ifc', '--read-only']);
     expect(opts.files).toEqual(['model.ifc']);
     expect(opts.readOnly).toBe(true);
     expect(opts.warnings).toEqual([
       'unknown flag --no-such-flag ignored. Run with --help for the flags this version knows.',
-      'unknown flag --allow=/x ignored. Run with --help for the flags this version knows.',
+      'unknown flag --nope=… ignored. Run with --help for the flags this version knows.',
     ]);
   });
 

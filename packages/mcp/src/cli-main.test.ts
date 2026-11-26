@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { parseArgs } from './cli-args.js';
 import { mcpHelpText, runMcpCli, type RunningHttpCli } from './cli-main.js';
-import { claudeDesktopConfigPath, tokenScopes } from './cli-support.js';
+import { anonymousHttpScope, claudeDesktopConfigPath, serverScope, tokenScopes } from './cli-support.js';
 
 const MODEL = `ISO-10303-21;
 HEADER;
@@ -173,6 +173,17 @@ describe('tokenScopes (#11534)', () => {
   });
 });
 
+describe('anonymousHttpScope (#11534)', () => {
+  it('never grants admin to an HTTP caller without a token', () => {
+    expect(anonymousHttpScope(parseArgs([])).scopes.sort()).toEqual(['export', 'mutate', 'read', 'validate']);
+    expect(anonymousHttpScope(parseArgs(['--read-only'])).scopes).not.toContain('admin');
+    // A --token still grants full scope, admin included, as documented.
+    expect(tokenScopes(parseArgs(['--token', 't'])).get('t')?.scopes).toContain('admin');
+    // stdio keeps full scope: the local user owns the process.
+    expect(serverScope(parseArgs([])).scopes).toContain('admin');
+  });
+});
+
 describe('help text (#11534)', () => {
   it('names the Claude Desktop config path of each OS', () => {
     expect(claudeDesktopConfigPath('darwin', '/Users/u')).toBe('/Users/u/Library/Application Support/Claude/claude_desktop_config.json');
@@ -189,7 +200,7 @@ describe('help text (#11534)', () => {
 });
 
 describe('Claude Code plugin manifest (#11534)', () => {
-  it('bounds @ifc-lite/mcp to a released range and passes only flags the parser knows', async () => {
+  it('pins @ifc-lite/mcp to the workspace major and passes only flags the parser knows', async () => {
     const manifestPath = resolve(fileURLToPath(import.meta.url), '../../../../.claude/.claude-plugin/plugin.json');
     const pkgVersion = (JSON.parse(await readFile(resolve(fileURLToPath(import.meta.url), '../../package.json'), 'utf8')) as { version: string }).version;
     const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as {
@@ -197,14 +208,11 @@ describe('Claude Code plugin manifest (#11534)', () => {
     };
     for (const server of Object.values(manifest.mcpServers)) {
       const pkg = server.args.find((a) => a.startsWith('@ifc-lite/mcp'));
-      // A bare package name runs whatever npm has, including a future major.
-      const range = /^@ifc-lite\/mcp@>=(\d+)\.(\d+)\.(\d+) <(\d+)\.0\.0$/.exec(pkg ?? '');
-      expect(range, pkg).not.toBeNull();
-      // The floor must already exist: a floor above the workspace version
-      // matches nothing on npm until it is released, and npx then fails.
-      const floor = range!.slice(1, 4).map(Number);
-      const workspace = pkgVersion.split('.').map(Number);
-      expect(floor[0] * 1e6 + floor[1] * 1e3 + floor[2]).toBeLessThanOrEqual(workspace[0] * 1e6 + workspace[1] * 1e3 + workspace[2]);
+      // A bare name runs whatever npm has, including a future major. The pin
+      // is the workspace major only: a range like `>=x <y` breaks on Windows,
+      // where npx.cmd runs through cmd.exe and `<`/`>` redirect, and a floor
+      // above the published version matches nothing until it is released.
+      expect(pkg).toBe(`@ifc-lite/mcp@${pkgVersion.split('.')[0]}`);
       const flags = server.args.slice(server.args.indexOf(pkg!) + 1);
       expect(parseArgs(flags).warnings).toEqual([]);
     }

@@ -19,7 +19,7 @@ import { routeConsoleToStderr } from './transport/stdio-console.js';
 import { HttpTransport, BearerTokenAuth, AllowAllAuth, type HttpAuthenticator, type SessionFactory } from './transport/http.js';
 import { createMCPServer, VERSION } from './index.js';
 import { loadIfcModel } from './loader.js';
-import { claudeDesktopConfigPath, serverScope, tokenScopes } from './cli-support.js';
+import { anonymousHttpScope, claudeDesktopConfigPath, serverScope, tokenScopes } from './cli-support.js';
 import { InMemoryModelRegistry, type ModelRegistry } from './context.js';
 import { fmtInt } from './tools/util.js';
 
@@ -271,7 +271,7 @@ async function runHttp(opts: CliOptions, tag: string): Promise<RunningHttpCli | 
   };
   const auth: HttpAuthenticator = tokens.size > 0
     ? new BearerTokenAuth(tokens)
-    : new AllowAllAuth(serverScope(opts));
+    : new AllowAllAuth(anonymousHttpScope(opts));
   const transport = new HttpTransport({
     port: opts.port,
     host,

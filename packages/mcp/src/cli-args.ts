@@ -101,7 +101,22 @@ export interface CliOptions {
   errors: string[];
 }
 
-export function parseArgs(argv: string[]): CliOptions {
+/**
+ * `--flag=value` for a value flag becomes `--flag value`. Any other `=` form
+ * is left whole and reported as unknown by its name alone, since the part
+ * after `=` may be a credential.
+ */
+function splitEquals(argv: string[]): string[] {
+  return argv.flatMap((arg) => {
+    const eq = arg.indexOf('=');
+    if (!arg.startsWith('--') || eq < 0) return [arg];
+    const name = arg.slice(0, eq);
+    return MCP_VALUE_FLAGS.includes(name) ? [name, arg.slice(eq + 1)] : [arg];
+  });
+}
+
+export function parseArgs(rawArgv: string[]): CliOptions {
+  const argv = splitEquals(rawArgv);
   const opts: CliOptions = {
     files: [],
     readOnly: false,
@@ -139,8 +154,7 @@ export function parseArgs(argv: string[]): CliOptions {
   const port = (flag: string): number | undefined => {
     const v = value(flag);
     if (v === undefined) return undefined;
-    const n = Number(v);
-    if (Number.isInteger(n) && n >= 0 && n <= 65535) return n;
+    if (/^\d+$/.test(v) && Number(v) <= 65535) return Number(v);
     opts.errors.push(`${flag} must be an integer from 0 to 65535, got '${v}'.`);
     return undefined;
   };
@@ -183,7 +197,8 @@ export function parseArgs(argv: string[]): CliOptions {
     } else if (!arg.startsWith('-')) {
       opts.files.push(arg);
     } else {
-      opts.warnings.push(`unknown flag ${arg} ignored. Run with --help for the flags this version knows.`);
+      const name = arg.includes('=') ? `${arg.slice(0, arg.indexOf('='))}=…` : arg;
+      opts.warnings.push(`unknown flag ${name} ignored. Run with --help for the flags this version knows.`);
     }
   }
   return opts;

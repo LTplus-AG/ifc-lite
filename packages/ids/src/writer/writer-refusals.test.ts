@@ -3,15 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * `writeIdsXml` must refuse a facet shape `ids.xsd` 1.0 rejects (or cannot
- * carry) rather than write a file third-party tools reject. Found by
- * validating generated files with `xmllint --schema ids.xsd`:
- *   - `<partOf cardinality="optional">`: the XSD allows required|prohibited.
- *   - `<classification/>` with neither value nor system: the XSD needs one.
- *   - an entity requirement that is prohibited/optional: entity has no
- *     cardinality in IDS 1.0, so it was written as a plain (required) check.
- * These assert the structural property (a refusal), not the XSD run itself;
- * the XSD run lives in `audit/xsd/ids-xsd-conformance.test.ts`.
+ * #11461: Refuse conditions IDS 1.0 cannot express. The schema needs a
+ * classification system and permits only required/prohibited partOf
+ * requirements. An entity requirement always implies required.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -32,7 +26,7 @@ function docWith(facet: IDSFacet, optionality: RequirementOptionality): IDSDocum
   };
 }
 
-describe('writeIdsXml refuses shapes ids.xsd rejects', () => {
+describe('writeIdsXml refuses shapes IDS 1.0 cannot represent (#11461)', () => {
   const partOf: IDSFacet = { type: 'partOf', relation: 'IfcRelAggregates', entity: { type: 'entity', name: sv('IFCBUILDING') } };
 
   it('an optional partOf requirement', () => {
@@ -41,12 +35,23 @@ describe('writeIdsXml refuses shapes ids.xsd rejects', () => {
     expect(writeIdsXml(docWith(partOf, 'prohibited'))).toContain('cardinality="prohibited"');
   });
 
-  it('a classification with neither value nor system, in requirements and applicability', () => {
-    const empty: IDSFacet = { type: 'classification' };
-    expect(() => writeIdsXml(docWith(empty, 'required'))).toThrow(/classification facet needs a value or a system/);
+  it.each([
+    { description: 'empty', facet: { type: 'classification' } },
+    { description: 'value-only', facet: { type: 'classification', value: sv('Ss_25') } },
+  ] satisfies { description: string; facet: IDSFacet }[])(
+    'a $description classification requirement without a system',
+    ({ facet }) => {
+      expect(() => writeIdsXml(docWith(facet, 'required'))).toThrow(/classification facet needs a system/);
+    },
+  );
+
+  it('a value-only classification in applicability', () => {
     const doc = docWith(entity('IFCWALL'), 'required');
-    doc.specifications[0].applicability.facets = [empty];
-    expect(() => writeIdsXml(doc)).toThrow(/classification facet needs a value or a system/);
+    doc.specifications[0].applicability.facets = [{ type: 'classification', value: sv('Ss_25') }];
+    expect(() => writeIdsXml(doc)).toThrow(/classification facet needs a system/);
+  });
+
+  it('a classification with a system and no value is writable', () => {
     expect(writeIdsXml(docWith({ type: 'classification', system: sv('Uniclass') }, 'required'))).toContain('<system>');
   });
 

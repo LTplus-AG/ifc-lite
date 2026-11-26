@@ -58,6 +58,8 @@ import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { validateXML } from 'xmllint-wasm';
 import { auditIDSDocument } from '../index.js';
+import { parseIDS } from '../../parser/xml-parser.js';
+import { writeIdsXml } from '../../writer/index.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const FIXTURES = join(here, '../__fixtures__');
@@ -361,6 +363,13 @@ describe('IDS documents against buildingSMART ids.xsd 1.0', () => {
     // If the vendored W3C redirect broke, libxml2 cannot resolve
     // `xs:restriction` and this throws rather than quietly passing.
     expect(await schemaErrors(CONFORMING_DOCUMENT)).toEqual([]);
+  });
+
+  it('accepts writer output with required/prohibited partOf and classification systems (#11461)', async () => {
+    const document = parseIDS(CONFORMING_DOCUMENT);
+    const partOf = document.specifications[0].requirements.find(({ facet }) => facet.type === 'partOf')!;
+    document.specifications[0].requirements.push({ ...partOf, id: 'prohibited-part-of', optionality: 'prohibited' });
+    expect(await schemaErrors(writeIdsXml(document))).toEqual([]);
   });
 
   // The mutation proof. Not "the validator returned green", but "the validator

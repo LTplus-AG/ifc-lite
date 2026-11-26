@@ -64,16 +64,16 @@ export const ENFORCED_KEYWORDS: ReadonlySet<string> = new Set([
 /** A defect in the schema itself (bad `$ref`, bad `pattern`), not in the caller's input. */
 export class SchemaError extends Error {}
 
-/**
- * Never throws for a bad schema: the defect comes back as an issue at `$`, so
- * a caller sees INVALID_INPUT naming the schema problem rather than a JSON-RPC
- * internal error.
- */
 export interface ValidateOptions {
   /** Off for a schema from an untrusted peer (a bridge tab): its `pattern`s are not run. Default on. */
   runPatterns?: boolean;
 }
 
+/**
+ * Never throws for a bad schema: the defect comes back as an issue at `$`, so
+ * a caller sees INVALID_INPUT naming the schema problem rather than a JSON-RPC
+ * internal error.
+ */
 export function validateInput(schema: JsonSchema, input: unknown, options: ValidateOptions = {}): ValidationResult {
   const errors: ValidationIssue[] = [];
   try {

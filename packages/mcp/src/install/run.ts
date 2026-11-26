@@ -108,6 +108,9 @@ function parseInstallArgs(argv: string[], host: HostEnv): InstallArgs | 'help' {
   return { client, scope, name, dryRun, force, serverArgs, hasPaths };
 }
 
+/** The pins `serverCommand` writes; keep the two in step. */
+const OUR_PIN = /^@ifc-lite\/mcp(@\^\d+\.\d+\.\d+)?$/;
+
 /**
  * True when writing `entry` over `existing` changes nothing but a pin that
  * install itself writes (`@ifc-lite/mcp` or `@ifc-lite/mcp@^x.y.z`). Keys the
@@ -126,8 +129,6 @@ function onlyPinDiffers(existing: unknown, entry: Record<string, unknown>): bool
   const before = unpin(existing);
   return before !== undefined && before === unpin({ ...existing, ...entry });
 }
-
-const OUR_PIN = /^@ifc-lite\/mcp(@\^\d+\.\d+\.\d+)?$/;
 
 /** `npx` pinned to this release line, so the flags written here are ones it knows. */
 function serverCommand(version: string, serverArgs: string[]): ServerCommand {

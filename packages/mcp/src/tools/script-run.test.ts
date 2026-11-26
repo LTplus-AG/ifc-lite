@@ -75,6 +75,11 @@ async function run(code: string, extra: Record<string, unknown> = {}, tool = scr
   return tool.handler({ code, ...extra }, ctx);
 }
 
+/** mutation_diff's structured result: the model's pending edits. */
+async function pendingEdits(): Promise<{ count: number; mutations: unknown[] }> {
+  return (await buildDefaultToolRegistry().get('mutation_diff')!.handler({}, ctx)).structuredContent as { count: number; mutations: unknown[] };
+}
+
 /** The captured log lines' text, [] when there are none. */
 function logTexts(result: CallToolResult): string[] {
   return ((result.structuredContent?.logs ?? []) as Array<{ text: string }>).map((l) => l.text);
@@ -476,9 +481,9 @@ describe('script_run_mutate', () => {
       bim.query.byType('IfcWall').map((w) => w.Name).sort();
     `, {}, scriptRunMutateTool);
     expect(result.structuredContent).toMatchObject({ mode: 'mutate', value: ['Renamed', 'Wall B'], mutations_queued: 2 });
-    const diff = await buildDefaultToolRegistry().get('mutation_diff')!.handler({}, ctx);
-    expect(diff.structuredContent?.count).toBe(2);
-    expect(diff.structuredContent?.mutations).toContainEqual(expect.objectContaining({
+    const diff = await pendingEdits();
+    expect(diff.count).toBe(2);
+    expect(diff.mutations).toContainEqual(expect.objectContaining({
       psetName: 'Pset_WallCommon', propName: 'IsExternal', newValue: true,
     }));
   });
@@ -507,14 +512,13 @@ describe('script_run_mutate on a script error', () => {
 
 describe('script_run_mutate after undo', () => {
   it('still counts the edit (headless undo reverts nothing)', async () => {
-    const pending = async () => (await buildDefaultToolRegistry().get('mutation_diff')!.handler({}, ctx)).structuredContent?.count as number;
-    const before = await pending();
+    const before = (await pendingEdits()).count;
     const result = await run(`
       bim.mutate.setAttribute(bim.query.byType('IfcDoor')[0], 'Tag', 'Now');
       bim.mutate.undo('m')
     `, {}, scriptRunMutateTool);
     expect(result.structuredContent).toMatchObject({ mutations_queued: 1 });
-    expect(await pending()).toBe(before + 1);
+    expect((await pendingEdits()).count).toBe(before + 1);
   });
 });
 

@@ -459,7 +459,7 @@ describe('script_run_mutate scope', () => {
     const noExport = { ...ctx, scope: { scopes: ['read', 'mutate'] as ToolScope[] } };
     const result = await scriptRunMutateTool.handler({ code: '[typeof bim.export, typeof bim.mutate]' }, noExport);
     expect(result.structuredContent?.value).toEqual(['undefined', 'object']);
-    expect((await scriptRunMutateTool.handler({ code: 'bim.export.csv([], [])' }, noExport).catch((e: { hint?: string }) => e) as { hint?: string }).hint).toMatch(/export scope/);
+    await expect(Promise.resolve(scriptRunMutateTool.handler({ code: 'bim.export.csv([], [])' }, noExport))).rejects.toMatchObject({ hint: expect.stringMatching(/export scope/) });
   });
 });
 

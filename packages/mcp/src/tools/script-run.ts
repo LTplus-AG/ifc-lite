@@ -143,8 +143,16 @@ const HOST_STACK_OVERFLOW = /^(stack overflow|Maximum call stack size exceeded)\
 /** QuickJS's wording for reading a property of an absent namespace. */
 const MISSING_NAMESPACE = /of undefined|undefined is not/;
 
-/** host: the error came from the sandbox itself, not from script code. */
-function hintFor(mode: Mode, code: string, message: string, { host, exportAllowed, mutateAvailable }: { host: boolean; exportAllowed: boolean; mutateAvailable: boolean }): string | undefined {
+interface HintContext {
+  /** The error came from the sandbox itself, not from script code. */
+  host: boolean;
+  /** The token holds the export scope. */
+  exportAllowed: boolean;
+  /** script_run_mutate is callable by this session (mutate scope, not --read-only). */
+  mutateAvailable: boolean;
+}
+
+function hintFor(mode: Mode, code: string, message: string, { host, exportAllowed, mutateAvailable }: HintContext): string | undefined {
   if ((host ? HOST_OUT_OF_MEMORY : SCRIPT_OUT_OF_MEMORY).test(message)) return `Raise memory_mb (max ${MAX_MEMORY_MB}) or keep less in memory.`;
   if ((host ? HOST_STACK_OVERFLOW : SCRIPT_STACK_OVERFLOW).test(message)) return 'Stack overflow: the script recursed too deep (make it iterative or shallower), a logged value is nested too deeply, or a bim call walked a very deeply nested model.';
   // Only when the failure looks like touching a namespace that is absent.

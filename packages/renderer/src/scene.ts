@@ -51,7 +51,8 @@ import { splitMeshDataForBufferLimit, cachedWorldAabb, worldAabbFromPieces, worl
 import { TopologyMemo } from './scene-precision.js';
 import { StreamAssembly } from './scene-stream-assembly.js';
 import { mergeSameColorPieces } from './scene-mesh-pieces.js';
-import { ambiguousLatticeBuckets, LATTICE_KEY_SUFFIX, markOffLattice, resolvePrecisionBucket } from './scene-bucket-routing.js';
+import { ColdPieceMembership } from './scene-cold-membership.js';
+import { LATTICE_KEY_SUFFIX, markOffLattice, resolvePrecisionBucket } from './scene-bucket-routing.js';
 import { residentBatchBytes, sumResidentGpuBytes, type ResidentGpuBytes } from './render-stats.js';
 import { composeInstancedOverrideColor, originalColorWithAlpha } from './instanced-override-color.js';
 import { writeInstanceLane } from './instance-lane-write.js';
@@ -95,6 +96,7 @@ import { discardSceneGpuResourcesForRecovery, prepareSceneDeviceRecovery, repart
 
 /** Consolidated per-bucket state — replaces six separate tracking maps. */
 interface BatchBucket {
+  coldMembers?: ColdPieceMembership;
   key: string;                      // bucket key (color hash or "hash#N")
   meshData: MeshData[];             // accumulated source mesh data
   batchedMesh: BatchedMesh | null;  // built GPU batch (null during streaming)
@@ -666,12 +668,11 @@ export class Scene {
     if (residentBytes <= budget) return;
 
     const shells: ResidencyShell[] = [];
-    const protectedKeys = ambiguousLatticeBuckets(this.buckets);
     for (const bucket of this.buckets.values()) {
       const b = bucket.batchedMesh;
       if (!b || b.gpuResident !== false) continue;             // hot buckets stay warm-skippable
       if (bucket.meshData.length === 0) continue;              // already cold
-      if (bucket.key.includes('#') || protectedKeys.has(bucket.key)) continue; // ambiguous disk membership
+      if (bucket.key.includes('#')) continue;                  // overflow sub-bucket
       if (this.dirtyBuckets.has(bucket.key) || this.fragmentPieces.forBatch(b)) continue; // diverged from disk, or outgrew its batch: a restore keyed by its ids drops the rest (#9270)
       // Colour-merged meshes (per-vertex entityIds) are registered in
       // meshDataMap under EVERY contained id; evicting only the primary id's
@@ -695,6 +696,7 @@ export class Scene {
     for (const key of evictKeys) {
       const bucket = this.buckets.get(key);
       if (!bucket || bucket.meshData.length === 0) continue;
+      bucket.coldMembers = new ColdPieceMembership(bucket.meshData.map(m => this.modelTranslations.sourceMesh(m)));
       for (const md of bucket.meshData) {
         evictedBytes += md.positions.byteLength + md.normals.byteLength + md.indices.byteLength;
         this.meshDataBucket.delete(md);
@@ -756,12 +758,8 @@ export class Scene {
         const current = this.buckets.get(key);
         if (!current || current !== bucket || !this.coldBuckets.has(key)) return;
         const baseKey = this.baseColorKey(key);
-        const idSet = new Set(shell.expressIds);
-        // Restored meshes are new objects: a lattice bucket's members (#11444) are marked again here.
         const lattice = baseKey.endsWith(LATTICE_KEY_SUFFIX);
-        const members = meshes.filter(
-          (m) => idSet.has(m.expressId) && this.bucketBaseKey(m) + (lattice ? LATTICE_KEY_SUFFIX : '') === baseKey
-        );
+        const members = bucket.coldMembers?.restore(meshes) ?? [];
         for (const source of members) {
           const m = this.modelTranslations.placeMesh(source);
           if (lattice) this.offLattice.add(m);
@@ -771,13 +769,14 @@ export class Scene {
           this.addMeshData(m);
         }
         if (members.length > 0) {
+          delete bucket.coldMembers;
           this.coldBuckets.delete(key);
           const restoredKeys = repartitionHydratedRecoveryBucket(this as unknown as SceneRecoveryHost, key, bucket, shell);
           if (bucket.batchedMesh !== shell) this.dropPartialCacheForBatch(shell); // repartitioned: shell id retired
           this.subsetResidency.requeueColdRestore(key, restoredKeys);
         } else {
           this.subsetResidency.warmOnly.delete(key);
-          console.warn(`[Scene] cold restore for ${key} found no members — bucket stays a shell`);
+          console.warn(`[Scene] cold restore for ${key} could not match every original piece — bucket stays a shell`);
         }
       })
       .catch((err) => {

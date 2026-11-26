@@ -33,34 +33,6 @@ interface RoutingState {
  */
 export const LATTICE_KEY_SUFFIX = '~lattice';
 
-/** The provider matches primary ids within a source bucket. If a lattice route
- * splits that membership, keep both sides warm, including when the sibling is
- * hot, dirty, or an overflow bucket that is itself ineligible for eviction. */
-export function ambiguousLatticeBuckets(buckets: ReadonlyMap<string, PrecisionBucket>): Set<string> {
-  const latticeIds = new Map<string, Set<number>>();
-  for (const bucket of buckets.values()) {
-    const [base] = bucket.key.split('#', 1);
-    if (!base.endsWith(LATTICE_KEY_SUFFIX)) continue;
-    const plain = base.slice(0, -LATTICE_KEY_SUFFIX.length);
-    let ids = latticeIds.get(plain);
-    if (!ids) latticeIds.set(plain, ids = new Set());
-    for (const piece of bucket.meshData) ids.add(piece.expressId);
-    for (const id of bucket.batchedMesh?.expressIds ?? []) ids.add(id);
-  }
-  const protectedKeys = new Set<string>();
-  if (latticeIds.size === 0) return protectedKeys;
-  for (const bucket of buckets.values()) {
-    const [base] = bucket.key.split('#', 1);
-    const ids = latticeIds.get(base);
-    if (ids && (bucket.meshData.some(mesh => ids.has(mesh.expressId))
-        || bucket.batchedMesh?.expressIds.some(id => ids.has(id)))) {
-      protectedKeys.add(base);
-      protectedKeys.add(base + LATTICE_KEY_SUFFIX);
-    }
-  }
-  return protectedKeys;
-}
-
 /** Reused per-mesh scratch for `markOffLattice`: batch-frame positions and their lattice nodes. */
 let scratchPositions = new Float32Array(0);
 let scratchNodes = new Int32Array(0);

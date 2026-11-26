@@ -11,6 +11,7 @@
  * make the same window from forty worker batches one draw instead of forty,
  * raising effective instancing across batch calls without touching Rust.
  */
+import { hashGeometry } from './mesh-geometry-hash.js';
 import { POOL_PALETTE_MAX } from './gpu-instance-cull.js';
 
 export interface PoolGeometry {
@@ -34,23 +35,6 @@ export interface PoolGroup {
   /** First occurrence of the group's compacted region, and its size (`layout`). */
   base: number;
   capacity: number;
-}
-
-/**
- * Two independent 32-bit hashes of a template's geometry (positions, normals
- * and indices bit patterns: the vertex buffer draws all of them). The first
- * buckets; both together stand in for the full compare once a group's CPU
- * arrays were released.
- */
-function hashGeometry(positions: Float32Array, normals: Float32Array, indices: Uint32Array): [number, number] {
-  let h = 0x811c9dc5, k = 0x9747b28c;
-  const mix = (v: number): void => { h = Math.imul(h ^ v, 0x01000193); k = Math.imul(k ^ v, 0x5bd1e995); k ^= k >>> 13; };
-  for (const f of [positions, normals]) {
-    const p = new Uint32Array(f.buffer, f.byteOffset, f.length);
-    for (let i = 0; i < p.length; i++) mix(p[i]!);
-  }
-  for (let i = 0; i < indices.length; i++) mix(indices[i]!);
-  return [(h ^ (positions.length * 31 + indices.length)) >>> 0, k >>> 0];
 }
 
 /** Element-wise equality; Float32Arrays compare bit patterns (so -0/NaN match exactly). */

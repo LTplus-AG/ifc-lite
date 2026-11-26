@@ -46,7 +46,7 @@ export const MIN_EVICTION_AGE_FRAMES = 30;
 /**
  * Cold-storage source for phase 3b (evict-to-disk): returns the meshes of
  * every cache chunk intersecting the given world AABB. The Scene filters the
- * result down to one bucket's members (by expressId + bucket base key), so
+ * result down to the source pieces recorded when it evicted the bucket, so
  * over-fetching neighbours is fine — providers should cache recently decoded
  * chunks since adjacent buckets restore together during a gesture.
  */

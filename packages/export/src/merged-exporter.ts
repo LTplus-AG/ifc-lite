@@ -544,7 +544,7 @@ export class MergedExporter {
         );
         if (line !== null) { allEntityLines.push(line); upgradePruning.note(line, sourceSchema); }
       }
-      if (model !== models.at(-1)) upgradePruning.forgetOmittedGuids(allEntityLines, modelStart, guidToFinalId);
+      if (model !== models.at(-1)) upgradePruning.forgetOmittedGuids(allEntityLines, modelStart, guidToFinalId, setup.parentClaims);
 
       isFirstModel = false;
     }
@@ -712,7 +712,7 @@ export class MergedExporter {
         }
       }
 
-      if (model !== models.at(-1)) upgradePruning.forgetOmittedGuids(allEntityLines, modelStart, guidToFinalId);
+      if (model !== models.at(-1)) upgradePruning.forgetOmittedGuids(allEntityLines, modelStart, guidToFinalId, setup.parentClaims);
       isFirstModel = false;
     }
     listKeptContexts(allEntityLines, setup.firstProjectIds.length ? setup.firstProjectIds[0] + setup.firstModelOffset : undefined, setup.keptContexts);

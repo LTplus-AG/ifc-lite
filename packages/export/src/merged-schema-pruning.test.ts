@@ -25,6 +25,10 @@ it.each(cases)('keeps a valid duplicate after the earlier $name is omitted (#111
     const survivors = lines.filter(line => line.includes(`=${keptType}('1YvctVUKr0kugbFTf53O9L',$,'Kept'`));
     expect(survivors).toHaveLength(1);
     const id = survivors[0].split('=')[0];
+    if (keptType === 'IFCGRID') {
+      const child = lines.find(line => line.includes("=IFCBUILDINGELEMENTPROXY('0YvctVUKr0kugbFTf53O9M'"))?.split('=')[0];
+      expect(lines.some(line => line.endsWith(`=IFCRELAGGREGATES('3YvctVUKr0kugbFTf53O9M',$,$,$,${id},(${child}));`))).toBe(true);
+    }
     expect(lines.find(line => line.includes('=IFCRELASSIGNSTOGROUP('))).toContain(`,(${id}),$,`);
     expect(result.stats.warnings.join(' ')).toContain(`#33 (${omittedType}) was omitted`);
   }

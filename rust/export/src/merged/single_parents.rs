@@ -128,6 +128,7 @@ struct Owner {
     rel_type: String,
     partner: usize,
     partners: HashSet<u32>,
+    foldable: bool,
 }
 
 /// One side of a final rel line.
@@ -158,8 +159,8 @@ fn rel_id(line: &str) -> Option<u32> {
 pub(super) struct ParentClaims {
     /// The output schema, canonical (`IFC2X3`, `IFC4`, `IFC4X3`, `IFC5`).
     schema: &'static str,
-    /// Claimed through a list side (RelatedObjects): the ids alone.
-    claimed: HashMap<&'static str, HashSet<u32>>,
+    /// Claimed through a list side (RelatedObjects): member id to owning relationship id.
+    claimed: HashMap<&'static str, HashMap<u32, u32>>,
     /// Claimed through a single side (RelatingPropertyDefinition): the rel that owns each.
     owners: HashMap<&'static str, HashMap<u32, Owner>>,
     /// Final rel id → (partner index, ids a later, folded rel adds to its partner list).
@@ -199,13 +200,13 @@ impl ParentClaims {
             return Some(line);
         };
         let mut strip: HashSet<u32> = HashSet::new();
-        let mut new_owners: Vec<(&'static str, u32, usize)> = Vec::new();
+        let mut new_owners: Vec<(&'static str, u32, usize, bool)> = Vec::new();
         for rule in rules {
             match read_side(&line, rule.claimed) {
                 Some(Side::List(members)) => {
                     let claimed = self.claimed.entry(rule.inverse).or_default();
                     if dedupe {
-                        strip.extend(members.iter().copied().filter(|m| claimed.contains(m)));
+                        strip.extend(members.iter().copied().filter(|m| claimed.contains_key(m)));
                     }
                 }
                 Some(Side::Single(entity)) => {
@@ -216,7 +217,7 @@ impl ParentClaims {
                     };
                     let foldable = matches!(read_side(&line, rule.partner), Some(Side::List(_))) && !rule.one_partner;
                     let Some(owner) = self.owners.entry(rule.inverse).or_default().get_mut(&entity) else {
-                        new_owners.push((rule.inverse, entity, rule.partner));
+                        new_owners.push((rule.inverse, entity, rule.partner, foldable));
                         continue;
                     };
                     if !dedupe {
@@ -236,7 +237,7 @@ impl ParentClaims {
                         for list_rule in rules {
                             if let Some(Side::List(members)) = read_side(&line, list_rule.claimed) {
                                 let claimed = self.claimed.entry(list_rule.inverse).or_default();
-                                claimed.extend(members.into_iter().filter(|m| !strip.contains(m)));
+                                claimed.extend(members.into_iter().filter(|m| !strip.contains(m)).map(|m| (m, owner.rel)));
                             }
                         }
                     } else if !fresh.is_empty() {
@@ -258,18 +259,31 @@ impl ParentClaims {
         };
         for rule in rules {
             if let Some(Side::List(members)) = read_side(&line, rule.claimed) {
-                self.claimed.entry(rule.inverse).or_default().extend(members);
+                self.claimed.entry(rule.inverse).or_default().extend(members.into_iter().map(|m| (m, rel)));
             }
         }
-        for (inverse, entity, partner) in new_owners {
+        for (inverse, entity, partner, foldable) in new_owners {
             let partners = match read_side(&line, partner) {
                 Some(Side::List(ids)) => ids.into_iter().collect(),
                 Some(Side::Single(id)) => HashSet::from([id]),
                 None => HashSet::new(),
             };
-            self.owners.entry(inverse).or_default().insert(entity, Owner { rel, rel_type: rel_type.to_string(), partner, partners });
+            self.owners.entry(inverse).or_default().insert(entity, Owner { rel, rel_type: rel_type.to_string(), partner, partners, foldable });
         }
         Some(line)
+    }
+
+    pub(super) fn release_omitted(&mut self, omitted: &HashSet<u32>) {
+        let revived: HashSet<_> = self.folds.iter()
+            .filter(|(rel, (_, ids))| omitted.contains(*rel) && ids.iter().any(|id| !omitted.contains(id)))
+            .map(|(&rel, _)| rel).collect();
+        for members in self.claimed.values_mut() {
+            members.retain(|_, rel| !omitted.contains(rel) || revived.contains(rel));
+        }
+        for owners in self.owners.values_mut() {
+            // A later fold can still supply a missing required list member.
+            owners.retain(|_, owner| owner.foldable || !omitted.contains(&owner.rel));
+        }
     }
 
     /// Write the folds of [`Self::claim`] into the finished DATA section `out`

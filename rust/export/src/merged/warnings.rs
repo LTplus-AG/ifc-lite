@@ -36,7 +36,7 @@ impl MergedStats {
 /// later model's fold can still keep one omitted here, so its GlobalId stays reserved.
 pub(super) fn forget_omitted_guids(
     body: &str, schema: &str, seeds: &HashSet<u32>, omitted: &mut HashSet<u32>,
-    guids: &mut HashMap<String, GuidRecord>, emitted: &mut HashSet<String>,
+    guids: &mut HashMap<String, GuidRecord>, emitted: &mut HashSet<String>, parents: &mut super::single_parents::ParentClaims,
 ) {
     if seeds.is_empty() {
         return;
@@ -47,6 +47,7 @@ pub(super) fn forget_omitted_guids(
     // omission across models, so scan this model against the known ids.
     let Some(dropped) = crate::schema_unrooted_upgrade::omitted_in_body(body, omitted, schema) else { return };
     if dropped.len() > previous_count {
+        parents.release_omitted(&dropped);
         guids.retain(|guid, record| {
             if record.can_unify && dropped.contains(&record.final_id) {
                 emitted.remove(guid);

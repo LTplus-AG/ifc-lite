@@ -3,8 +3,8 @@
     "name": "grid whose axis loses its required curve",
     "target": "IFC4",
     "laterSchema": "IFC2X3",
-    "first": "#1=IFCCARTESIANPOINT((0.,0.));\n#2=IFCCARTESIANPOINT((1.,1.));\n#3=IFCBEZIERCURVE(1,(#1,#2),.UNSPECIFIED.,.F.,.F.);\n#10=IFCCARTESIANPOINT((0.,0.,0.));\n#11=IFCAXIS2PLACEMENT3D(#10,$,$);\n#12=IFCLOCALPLACEMENT($,#11);\n#31=IFCGRIDAXIS('U',#3,.T.);\n#32=IFCGRIDAXIS('V',#3,.T.);\n#33=IFCGRID('1YvctVUKr0kugbFTf53O9L',$,'Dropped',$,$,#12,$,(#31),(#32),$);",
-    "later": "#1=IFCCARTESIANPOINT((0.,0.));\n#2=IFCCARTESIANPOINT((1.,1.));\n#3=IFCCARTESIANPOINT((1.,0.));\n#5=IFCPOLYLINE((#1,#2));\n#6=IFCPOLYLINE((#1,#3));\n#10=IFCCARTESIANPOINT((0.,0.,0.));\n#11=IFCAXIS2PLACEMENT3D(#10,$,$);\n#12=IFCLOCALPLACEMENT($,#11);\n#31=IFCGRIDAXIS('U',#5,.T.);\n#32=IFCGRIDAXIS('V',#6,.T.);\n#33=IFCGRID('1YvctVUKr0kugbFTf53O9L',$,'Kept',$,$,#12,$,(#31),(#32),$);",
+    "first": "#1=IFCCARTESIANPOINT((0.,0.));\n#2=IFCCARTESIANPOINT((1.,1.));\n#3=IFCBEZIERCURVE(1,(#1,#2),.UNSPECIFIED.,.F.,.F.);\n#10=IFCCARTESIANPOINT((0.,0.,0.));\n#11=IFCAXIS2PLACEMENT3D(#10,$,$);\n#12=IFCLOCALPLACEMENT($,#11);\n#31=IFCGRIDAXIS('U',#3,.T.);\n#32=IFCGRIDAXIS('V',#3,.T.);\n#33=IFCGRID('1YvctVUKr0kugbFTf53O9L',$,'Dropped',$,$,#12,$,(#31),(#32),$);\n#40=IFCBUILDINGELEMENTPROXY('0YvctVUKr0kugbFTf53O9M',$,'Shared child',$,$,$,$,$,$);\n#41=IFCRELAGGREGATES('2YvctVUKr0kugbFTf53O9M',$,$,$,#33,(#40));",
+    "later": "#1=IFCCARTESIANPOINT((0.,0.));\n#2=IFCCARTESIANPOINT((1.,1.));\n#3=IFCCARTESIANPOINT((1.,0.));\n#5=IFCPOLYLINE((#1,#2));\n#6=IFCPOLYLINE((#1,#3));\n#10=IFCCARTESIANPOINT((0.,0.,0.));\n#11=IFCAXIS2PLACEMENT3D(#10,$,$);\n#12=IFCLOCALPLACEMENT($,#11);\n#31=IFCGRIDAXIS('U',#5,.T.);\n#32=IFCGRIDAXIS('V',#6,.T.);\n#33=IFCGRID('1YvctVUKr0kugbFTf53O9L',$,'Kept',$,$,#12,$,(#31),(#32),$);\n#40=IFCBUILDINGELEMENTPROXY('0YvctVUKr0kugbFTf53O9M',$,'Shared child',$,$,$,$,$,$);\n#41=IFCRELAGGREGATES('3YvctVUKr0kugbFTf53O9M',$,$,$,#33,(#40));",
     "keptType": "IFCGRID",
     "omittedType": "IFCGRID"
   },

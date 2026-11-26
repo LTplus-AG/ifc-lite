@@ -386,7 +386,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
             stats.written += 1;
         }
 
-        if i + 1 < models.len() { warnings::forget_omitted_guids(&out[model_start..], &schema, &upgrade_seeds, &mut upgrade_omissions, &mut guid_to_final, &mut emitted_guids); }
+        if i + 1 < models.len() { warnings::forget_omitted_guids(&out[model_start..], &schema, &upgrade_seeds, &mut upgrade_omissions, &mut guid_to_final, &mut emitted_guids, &mut parents); }
         offset = next;
     }
 

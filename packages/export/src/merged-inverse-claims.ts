@@ -121,6 +121,7 @@ interface Owner {
   relType: string;
   /** Attribute index of its partner side. */
   partnerIndex: number;
+  foldable: boolean;
   /** Final ids already on its partner side. */
   partners: Set<number>;
 }
@@ -132,8 +133,8 @@ interface Owner {
 export class InverseClaims {
   /** Relationship type (uppercase) → the rules it is claimed under. */
   readonly rules: ReadonlyMap<string, readonly InverseRule[]>;
-  /** Claimed through a list side (RelatedObjects, RelatedElements): the ids alone. */
-  private readonly members = new Map<string, Set<number>>();
+  /** Claimed through a list side (RelatedObjects, RelatedElements): member id → owning relationship id. */
+  private readonly members = new Map<string, Map<number, number>>();
   /** Claimed through a single side (RelatingPropertyDefinition): the rel that owns each. */
   private readonly owners = new Map<string, Map<number, Owner>>();
   /** Final rel id → partner ids a later, folded rel adds to its partner list. */
@@ -146,10 +147,28 @@ export class InverseClaims {
     this.rules = new Map([...inverseRules(outputSchema)].filter(([relType]) => only(relType)));
   }
 
-  membersOf(inverse: string): Set<number> {
+  membersOf(inverse: string): Map<number, number> {
     let ids = this.members.get(inverse);
-    if (ids === undefined) this.members.set(inverse, (ids = new Set()));
+    if (ids === undefined) this.members.set(inverse, (ids = new Map()));
     return ids;
+  }
+
+  releaseOmitted(omitted: ReadonlySet<number>): void {
+    const revived = new Set<number>();
+    for (const [rel, fold] of this.folds) {
+      if (omitted.has(rel) && fold.ids.some(id => !omitted.has(id))) revived.add(rel);
+    }
+    for (const members of this.members.values()) {
+      for (const [member, rel] of members) {
+        if (omitted.has(rel) && !revived.has(rel)) members.delete(member);
+      }
+    }
+    for (const owners of this.owners.values()) {
+      for (const [id, owner] of owners) {
+        // A later fold can still supply a missing required list member.
+        if (omitted.has(owner.rel) && !owner.foldable) owners.delete(id);
+      }
+    }
   }
 
   ownersOf(inverse: string): Map<number, Owner> {
@@ -278,7 +297,9 @@ export function claimInverses(
       }
       // Kept, or folded into its owner: either way its surviving members are now written.
       for (const rule of rules) {
-        if (sides.get(rule.claimed)?.list) for (const ref of live(rule.claimed)) claims.membersOf(rule.inverse).add(finalId(ref));
+        if (!sides.get(rule.claimed)?.list) continue;
+        const members = claims.membersOf(rule.inverse);
+        for (const ref of live(rule.claimed)) members.set(finalId(ref), fold?.owner.rel ?? finalId(relId));
       }
       if (skip) {
         skipEntityIds.add(relId);
@@ -286,7 +307,7 @@ export function claimInverses(
       }
       if (strip.size > 0) relMemberStrip.set(relId, strip);
       for (const [owners, ref, rule] of newOwners) {
-        owners.set(finalId(ref), { rel: finalId(relId), relType, partnerIndex: rule.partner, partners: new Set(live(rule.partner).map(finalId)) });
+        owners.set(finalId(ref), { rel: finalId(relId), relType, partnerIndex: rule.partner, foldable: !!sides.get(rule.partner)?.list && !rule.onePartner, partners: new Set(live(rule.partner).map(finalId)) });
       }
     }
   }

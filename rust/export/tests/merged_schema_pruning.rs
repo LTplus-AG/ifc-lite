@@ -30,6 +30,10 @@ fn later_same_project_guids_survive_schema_pruning_11129() {
         let survivors: Vec<&str> = out.lines().filter(|line| line.contains(&survivor)).collect();
         assert_eq!(survivors.len(), 1, "{}: {out}", case.name);
         let id = survivors[0].split_once('=').unwrap().0;
+        if case.kept_type == "IFCGRID" {
+            let child = out.lines().find(|line| line.contains("=IFCBUILDINGELEMENTPROXY('0YvctVUKr0kugbFTf53O9M'")).unwrap().split_once('=').unwrap().0;
+            assert!(out.contains(&format!("=IFCRELAGGREGATES('3YvctVUKr0kugbFTf53O9M',$,$,$,{id},({child}));")), "{out}");
+        }
         let link = out.lines().find(|line| line.contains("=IFCRELASSIGNSTOGROUP(")).unwrap();
         assert!(link.contains(&format!(",({id}),$,")), "{}: {link}", case.name);
         assert!(stats.warnings.iter().any(|warning| warning.contains(&format!("#33 ({}) was omitted", case.omitted_type))), "{}: {:?}", case.name, stats.warnings);

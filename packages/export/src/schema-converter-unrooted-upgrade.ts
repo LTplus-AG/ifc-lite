@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
+import type { InverseClaims } from './merged-inverse-claims.js';
 import { getSchemaRegistryForVersion } from '@ifc-lite/parser';
 import { splitTopLevelStepArguments } from './step-argument-parser.js';
 import { frameArgs, stepRecordHead, stepRecordFrame, withFrameArgs, type StepRecordFrame } from './step-record-frame.js';
@@ -228,7 +229,7 @@ export class MergedUpgradePruning {
    * later model's fold can still keep one omitted here, so its GlobalId stays reserved: at worst a later relationship
    * with the same GlobalId is re-stamped.
    */
-  forgetOmittedGuids<T extends { finalId: number; canUnify: boolean }>(lines: string[], start: number, guids: Map<string, T>): void {
+  forgetOmittedGuids<T extends { finalId: number; canUnify: boolean }>(lines: string[], start: number, guids: Map<string, T>, claims: InverseClaims): void {
     if (!this.seeds.size || (this.target !== 'IFC4' && this.target !== 'IFC4X3')) return;
     const previousCount = this.omitted.size;
     for (const id of this.seeds) this.omitted.add(id);
@@ -236,6 +237,7 @@ export class MergedUpgradePruning {
     // earlier model, so index this model with the omissions already known.
     this.omitted = cascadeOmissions(lines.slice(start).map(record), this.omitted, this.target);
     if (this.omitted.size > previousCount) {
+      claims.releaseOmitted(this.omitted);
       for (const [guid, prior] of guids) if (prior.canUnify && this.omitted.has(prior.finalId)) guids.delete(guid);
     }
   }

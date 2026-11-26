@@ -83,6 +83,7 @@ mod schema_ifc2x3_records;
 mod schema_ifc2x3_slots;
 mod schema_enum;
 mod schema_ifc4_slots;
+mod schema_ifc4x3_upgrade;
 mod schema_owner_history;
 mod schema_grid_frames;
 mod schema_plan;

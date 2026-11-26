@@ -6,7 +6,28 @@ The format is specified in [`packages/cache/SPEC.md`](https://github.com/LTplus-
 
 ## Installation
 
-The tool is distributed through cargo from this repository; there are no prebuilt binaries, and the crate is not published to crates.io.
+Prebuilt binaries are attached to [GitHub releases tagged `cache-cli-v*`](https://github.com/LTplus-AG/ifc-lite/releases?q=cache-cli-v). Download the `.tar.gz` for your platform and verify its build provenance with the GitHub CLI before extracting it. The Windows archive contains `ifc-build-cache.exe`. The release notes give the cache format version written by that build.
+
+Set `tag` and `archive` to the release tag and downloaded filename for your platform:
+
+```sh
+tag=cache-cli-v30.0.0
+archive=ifc-build-cache-linux-x64.tar.gz
+gh attestation verify "$archive" --repo LTplus-AG/ifc-lite \
+  --signer-workflow LTplus-AG/ifc-lite/.github/workflows/cache-cli-binaries.yml \
+  --source-ref "refs/tags/$tag"
+```
+
+GitHub CLI retrieves the attestation from the public repository by archive digest. The release workflow runs the same verification before uploading the archives. The published `.sha256` sidecar checks transfer integrity. CI consumers must verify the attestation or check the archive against a SHA-256 digest pinned in their own repository, as the `setup-oci-registries` action does for zot and oras.
+
+If a partial upload leaves assets whose digests differ on retry, a maintainer must delete the affected assets from that release and rerun the original release-triggered **Cache CLI Binaries** workflow run. Archive metadata is fixed, but rebuilt binaries can still differ. Remove the matching archive or checksum sidecar if present so the workflow can publish the pair together. For example, with `tag` and `archive` set as above:
+
+```sh
+gh release delete-asset "$tag" "$archive" --repo LTplus-AG/ifc-lite
+gh release delete-asset "$tag" "$archive.sha256" --repo LTplus-AG/ifc-lite
+```
+
+The crate is not published to crates.io. Cargo can build it from a local checkout or directly from this repository.
 
 From a checkout:
 
@@ -30,7 +51,7 @@ A stable Rust toolchain builds the crate. The nightly pinned in `rust-toolchain.
 
 `BinaryCacheReader` rejects a cache whose format version is above its own `FORMAT_VERSION`, with `Unsupported format version`. That check is an upper bound, not a promise that every older cache decodes: [`SPEC.md` §11](https://github.com/LTplus-AG/ifc-lite/blob/main/packages/cache/SPEC.md#11-reader-compatibility-current-reader) lists what a cache from an older format version reads as, and which ones the reader refuses or misreads. The tool writes one format version, that of the commit it was built from, and `ifc-build-cache --help` prints it.
 
-Build the tool from a commit whose format version is not above the `FORMAT_VERSION` that the `@ifc-lite/cache` release in your readers exports. When a format version bump reaches you, upgrade the readers first, then the tool.
+Choose a release or source commit that writes a format version at or below the `FORMAT_VERSION` that the `@ifc-lite/cache` release in your readers exports. When a format version bump reaches you, upgrade the readers first, then the tool.
 
 ## Usage
 

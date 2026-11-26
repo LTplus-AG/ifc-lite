@@ -6,6 +6,7 @@
  */
 
 import type { LineCategory, VisibilityState } from './line-classification.js';
+import type { PlanSymbol } from './symbols/opening-symbols.js';
 
 // VECTOR TYPES
 // ═══════════════════════════════════════════════════════════════════════════
@@ -130,9 +131,7 @@ export type { LineCategory, VisibilityState };
 // DRAWING ELEMENTS
 // ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * A classified line segment in the 2D drawing
- */
+/** A classified line segment in the 2D drawing */
 export interface DrawingLine {
   /** 2D line geometry */
   line: Line2D;
@@ -164,9 +163,7 @@ export interface DrawingLine {
   depthEnd?: number;
 }
 
-/**
- * A polygon from section cut (used for hatching)
- */
+/** A polygon from section cut (used for hatching) */
 export interface DrawingPolygon {
   /** 2D polygon geometry */
   polygon: Polygon2D;
@@ -295,6 +292,8 @@ export interface Drawing2D {
 
   /** Projection polygons (visible surfaces beyond cut) */
   projectionPolygons: DrawingPolygon[];
+  /** Door and window symbols standing in for their bodies; set by `generateFloorPlan`. */
+  planSymbols?: PlanSymbol[];
 
   /** Bounding box in 2D drawing space */
   bounds: Bounds2D;

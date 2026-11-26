@@ -61,10 +61,10 @@ describe('model.openFromSource in the viewer', () => {
     assert.deepEqual(out, { kind: 'item', value: add.ids[0] });
   });
 
-  it('preserves the loader extension when escaping a full-length reserved filename (#11442)', async () => {
+  it('preserves the loader extension on a full-length reserved source filename (#11442)', async () => {
     const add = recordingAddModel('ok');
     await createViewerOpenModel(add.addModel)(IFC, `CON.${'a'.repeat(52)}.xyz`);
-    assert.equal(add.calls[0].name, `_CON.${'a'.repeat(51)}.xyz`);
+    assert.equal(add.calls[0].name, `CON.${'a'.repeat(52)}.xyz`);
   });
 
   it('keeps distinct source filenames distinct for the same model bytes (#11442)', async () => {
@@ -82,6 +82,15 @@ describe('model.openFromSource in the viewer', () => {
     await open(IFC, `${prefix}A.ifc`);
     await open(IFC, `${prefix}B.ifc`);
     assert.deepEqual(add.calls.map(call => call.name), [`${prefix}A.if`, `${prefix}B.if`]);
+  });
+
+  it('preserves the distinguishing character of full-length reserved source names (#11442)', async () => {
+    const add = recordingAddModel('ok');
+    const open = createViewerOpenModel(add.addModel);
+    const stem = `CON.${'a'.repeat(51)}`;
+    const names = [`${stem}A.ifc`, `${stem}B.ifc`];
+    for (const name of names) await open(IFC, name);
+    assert.deepEqual(add.calls.map(call => call.name), names);
   });
 
   it('fails the node when the model never registered', async () => {

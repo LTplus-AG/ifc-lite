@@ -411,7 +411,7 @@ describe('syncSourceModel — filename handling', () => {
         addModel: h.addModel,
         removeModel: h.removeModel,
       });
-      assert.equal(h.addModelCalls[0]?.file.name, `_CON.${'a'.repeat(51)}.xyz`);
+      assert.equal(h.addModelCalls[0]?.file.name, `CON.${'a'.repeat(52)}.xyz`);
     });
   }
 

@@ -1098,25 +1098,6 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
-      # A failed advisory upload cannot fail the shared build or its consumers.
-      - name: Upload viewer build for selected E2E shadow
-        if: >-
-          github.event_name == 'pull_request' &&
-          vars.CI_PR_E2E_SELECT == 'shadow' &&
-          needs.changes.outputs.lane == 'fast' &&
-          needs.changes.outputs.batch != 'true' &&
-          needs.changes.outputs.noop != 'true' &&
-          (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true')
-        timeout-minutes: 2
-        continue-on-error: true
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: viewer-dist-shadow
-          path: apps/viewer/dist
-          include-hidden-files: true
-          retention-days: 1
-          if-no-files-found: error
-
   # #3661: text review missed 10/10 independently confirmed defect cases even
   # after rubric retuning. This asks the executable question instead: do this
   # branch's changed tests fail when its production change is removed?
@@ -2961,12 +2942,11 @@ jobs:
       - name: Verify fixtures
         if: steps.plan.outputs.run == 'true'
         run: pnpm fixtures:check
-      - name: Download viewer app build
+      # Build only the viewer with the package outputs restored above.
+      # All shadow-specific work stays within this advisory job.
+      - name: Build the viewer for selected E2E
         if: steps.plan.outputs.run == 'true'
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: viewer-dist-shadow
-          path: apps/viewer/dist
+        run: pnpm --filter @ifc-lite/viewer build
       # The hosted runner already has the project's Chrome channel.
       - name: Install Playwright video encoder
         if: steps.plan.outputs.run == 'true'

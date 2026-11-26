@@ -63,10 +63,8 @@ export function makePropertiesGetter(
     if (cache.has(globalId)) return cache.get(globalId);
     const ref = fromGlobalIdFromModels(storeModels, globalId);
     // No ref means no loaded model owns the id: its raw value is no store's local id.
-    const store = !ref ? null : ref.modelId === 'legacy'
-      ? legacyStore
-      : (storeModels.get(ref.modelId)?.ifcDataStore ?? null);
-    const psets = store && ref ? extractPropertiesOnDemand(store, ref.expressId) : [];
+    const store = ref && (ref.modelId === 'legacy' ? legacyStore : (storeModels.get(ref.modelId)?.ifcDataStore ?? null));
+    const psets = store ? extractPropertiesOnDemand(store, ref.expressId) : [];
     let result: ElementProperties | undefined;
     if (psets.length > 0) {
       result = {};

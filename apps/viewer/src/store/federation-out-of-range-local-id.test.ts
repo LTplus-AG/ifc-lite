@@ -46,15 +46,28 @@ describe('fallback resolvers never hand out a local id the model does not own (#
     assert.deepEqual(fromGlobalIdFromModels(state.models, offset + 150), { modelId: 'later', expressId: 150 });
   });
 
-  it('resolveEntityRef on a negative id gives a ref that toGlobalId accepts', () => {
+  it('resolveEntityRef never gives the only model an id it does not own', () => {
     laterModelAlone();
-    const ref = resolveEntityRef(-2_024_174);
-    assert.equal(ref.modelId, 'legacy');
-    assert.doesNotThrow(() => useViewerStore.getState().toGlobalId(ref.modelId, ref.expressId),
-      `resolveEntityRef(-2024174) gave ${JSON.stringify(ref)}`);
+    // 5 is inside the later model's LOCAL range, but as a renderer id it belongs to no loaded model.
+    for (const globalId of [5, -2_024_174]) {
+      const ref = resolveEntityRef(globalId);
+      assert.equal(ref.modelId, 'legacy', `resolveEntityRef(${globalId}) gave ${JSON.stringify(ref)}`);
+      assert.doesNotThrow(() => useViewerStore.getState().toGlobalId(ref.modelId, ref.expressId));
+    }
   });
 
-  it('the canonical single model at offset 0 keeps its first-model fallback', () => {
+  it('a stale id past every range does not become the first model\'s local id', () => {
+    const { registerModelOffset, addModel } = useViewerStore.getState();
+    const a = registerModelOffset('a', 100);
+    const b = registerModelOffset('b', 100);
+    addModel({ ...fixtureModel('a', { idOffset: a }), maxExpressId: 100 });
+    addModel({ ...fixtureModel('b', { idOffset: b }), maxExpressId: 100 });
+    const ref = resolveEntityRef(b + 5_000_000);
+    assert.equal(ref.modelId, 'legacy', JSON.stringify(ref));
+    assert.doesNotThrow(() => useViewerStore.getState().toGlobalId(ref.modelId, ref.expressId));
+  });
+
+  it('an id the offset-0 model owns still resolves to it', () => {
     const { registerModelOffset, addModel } = useViewerStore.getState();
     const offset = registerModelOffset('only', 100);
     addModel({ ...fixtureModel('only', { idOffset: offset }), maxExpressId: 100 });

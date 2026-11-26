@@ -42,7 +42,6 @@ export function generateValidators(expressSource: string, options: ValidatorGene
   const runtimeImport = options.runtimeImport ?? '@ifc-lite/validate/runtime';
   const zodImport = options.zodImport ?? 'zod';
   const index = new SchemaIndex(parseExpressRules(expressSource));
-  index.detectTypePrefix(expressSource);
   const header = HEADER(index.schema.name);
   const rules = compileRules(index, header, runtimeImport);
   const coverage: ValidatorCoverage = { schema: index.schema.name, counts: rules.counts, unsupported: rules.unsupported };

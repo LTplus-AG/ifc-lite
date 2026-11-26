@@ -149,10 +149,10 @@ END_SCHEMA;`;
   });
 
   it('matches type-name sets in either intersection order and preserves ordinary set literals (#11559)', () => {
-    const { files } = generateValidators(mini("A : SIZEOF(TYPEOF(SELF) * ['mini.MiniThing']) = 1; B : SIZEOF(['mini.MiniThing'] * TYPEOF(SELF)) = 1; C : SIZEOF(['mini.MiniThing'] * ['MINI.MINITHING']) = 0"));
+    const { files } = generateValidators(mini("A : SIZEOF(TYPEOF(SELF) * ['mini.MiniThing']) = 1; B : SIZEOF(['mini.MiniThing'] * TYPEOF(SELF)) = 1; C : SIZEOF(['mini.MiniThing'] * ['MINI.MINITHING']) = 0; D : SIZEOF(['other.MiniThing'] * TYPEOF(SELF)) = 1; E : SIZEOF(TYPEOF(SELF) * ['other.MiniThing']) = 1"));
     const rules = loadRules(files['rules.ts'], setRuntime);
-    expect(rules.map(rule => rule.check(['MINI.MINITHING'], {}))).toEqual([true, true, true]);
-    expect(rules.map(rule => rule.check(['MINI.OTHER'], {}))).toEqual([false, false, true]);
+    expect(rules.map(rule => rule.check(['MINI.MINITHING'], {}))).toEqual([true, true, true, false, false]);
+    expect(rules.map(rule => rule.check(['MINI.OTHER'], {}))).toEqual([false, false, true, false, false]);
   });
 
   it('executes IFC4X3 ApplicableOnlyToItems on matching and nonmatching assigned items', () => {

@@ -21,7 +21,8 @@ export class SchemaIndex {
   typePrefix: string;
 
   constructor(readonly schema: ExpressRuleSchema) {
-    this.typePrefix = schema.name.toUpperCase();
+    // IFC4 ADD2 TC1 declares IFC4_ADD2_TC1 but uses IFC4 in its type names.
+    this.typePrefix = schema.name.toUpperCase() === 'IFC4_ADD2_TC1' ? 'IFC4' : schema.name.toUpperCase();
     for (const e of schema.entities) {
       this.entities.set(e.name.toUpperCase(), e);
       for (const a of [...e.explicit, ...e.derived, ...e.inverse]) this.attributeNames.add(a.name.toUpperCase());
@@ -37,18 +38,6 @@ export class SchemaIndex {
       }
     }
     for (const f of schema.functions) this.functions.set(f.name.toUpperCase(), f);
-  }
-
-  /** Use the qualifier the schema's own type-name literals (`'IFC4.IFCWALL'`) use most. */
-  detectTypePrefix(source: string): void {
-    const counts = new Map<string, number>();
-    for (const m of source.matchAll(/'([A-Za-z0-9_]+)\.([A-Za-z0-9_]+)'/g)) {
-      if (!this.entity(m[2]) && !this.type(m[2])) continue;
-      const prefix = m[1].toUpperCase();
-      counts.set(prefix, (counts.get(prefix) ?? 0) + 1);
-    }
-    const best = [...counts].sort((a, b) => b[1] - a[1])[0];
-    if (best) this.typePrefix = best[0];
   }
 
   entity(name: string): EntityDecl | undefined {

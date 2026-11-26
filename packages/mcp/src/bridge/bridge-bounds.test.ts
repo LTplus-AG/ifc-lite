@@ -85,7 +85,8 @@ describe('schema keywords the bridge cannot enforce (CodeRabbit json-bounds.ts:8
   // JSON-RPC InternalError instead of a refusal at hello (code review of the 2020-12 validator).
   it('refuses $ref, pattern and a non-array oneOf', async () => {
     expect(await refusal({ type: 'object', properties: { a: { $ref: '#/$defs/A' } } })).toMatch(/\$ref is not supported/);
-    expect(await refusal({ type: 'object', properties: { a: { oneOf: { type: 'string' } } } })).toMatch(/oneOf must be an array/);
+    expect(await refusal({ type: 'object', properties: { a: { oneOf: { type: 'string' } } } })).toMatch(/oneOf must be a non-empty array/);
+    expect(await refusal({ type: 'object', properties: { a: { oneOf: [] } } })).toMatch(/oneOf must be a non-empty array/);
     expect(await refusal({ type: 'object', properties: { a: { oneOf: [{ type: 'strng' }] } } })).toMatch(/oneOf\[0\]\.type must be one of/);
     // A tab regex would run on the server's event loop (`^(a+)+$` on 40 a's stalls it).
     expect(await refusal({ type: 'object', properties: { a: { type: 'string', pattern: '^(a+)+$' } } })).toMatch(/pattern is not supported/);

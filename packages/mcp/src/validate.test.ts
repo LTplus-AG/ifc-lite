@@ -325,3 +325,31 @@ describe('advertisedInputSchema', () => {
   });
 });
 
+describe('validateInput: code-review cases for $ref siblings, items:false, enum discriminators', () => {
+  it('a default filled by the $ref target does not trip a sibling additionalProperties: false', () => {
+    const schema = { type: 'object', properties: { o: { $ref: '#/$defs/A', properties: { b: {} }, additionalProperties: false } },
+      $defs: { A: { type: 'object', properties: { a: { type: 'string', default: 'x' } } } } };
+    expect(validateInput(schema, { o: { b: 1 } }).valid).toBe(true);
+  });
+
+  it('items: false rejects any item', () => {
+    expect(validateInput({ type: 'array', items: false } as unknown as Parameters<typeof validateInput>[0], [1]).valid).toBe(false);
+  });
+
+  it('a one-value enum works as a oneOf discriminator', () => {
+    const schema = { type: 'object', properties: { c: { oneOf: [
+      { type: 'object', properties: { k: { enum: ['a'] }, x: { type: 'string' } }, required: ['k', 'x'] },
+      { type: 'object', properties: { k: { enum: ['b'] }, y: { type: 'string' } }, required: ['k', 'y'] },
+    ] } } };
+    const message = validateInput(schema, { c: { k: 'b', x: 'v' } }).errors[0].message;
+    expect(message).toContain('$.c.y: Required property missing');
+    expect(message).not.toContain('$.c.k');
+  });
+
+  it('decodes percent-escapes in a $ref pointer', () => {
+    const schema = { type: 'object', properties: { v: { $ref: '#/$defs/a%20b' } }, $defs: { 'a b': { type: 'string' } } };
+    expect(validateInput(schema, { v: 1 }).valid).toBe(false);
+    expect(() => validateInput({ $ref: '#/$defs/%E0' }, {})).toThrow(/bad percent-escape/);
+  });
+});
+

@@ -116,7 +116,7 @@ export function checkSchemaShape(schema: unknown, path: string): string | null {
   }
   for (const [key, branches] of [['anyOf', anyOf], ['oneOf', oneOf]] as const) {
     if (branches === undefined) continue;
-    if (!Array.isArray(branches)) return `${path}.${key} must be an array`;
+    if (!Array.isArray(branches) || branches.length === 0) return `${path}.${key} must be a non-empty array`;
     for (const [i, sub] of branches.entries()) {
       const err = checkSchemaShape(sub, `${path}.${key}[${i}]`);
       if (err) return err;

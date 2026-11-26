@@ -264,7 +264,7 @@ describe('item 7: schema properties are own properties; malformed schemas are re
   it.each([
     ['properties: {a: null}', { type: 'object', properties: { a: null } }, /properties\.a must be an object/],
     ['required: "x"', { type: 'object', required: 'x' }, /required must be an array of strings/],
-    ['anyOf: {}', { type: 'object', anyOf: {} }, /anyOf must be an array/],
+    ['anyOf: {}', { type: 'object', anyOf: {} }, /anyOf must be a non-empty array/],
     ['maxLength: "5"', { type: 'object', properties: { s: { type: 'string', maxLength: '5' } } }, /maxLength must be a finite number/],
   ])('refuses a hello with %s', async (_label, inputSchema, message) => {
     const agent = await start();

@@ -89,7 +89,7 @@ interface WalkOptions {
   refs?: ReadonlySet<string>;
 }
 
-/** `const` failures, so `checkOneOf` can tell a wrong discriminator from a real problem. */
+/** `const` (and one-value `enum`) failures, so `checkOneOf` can tell a wrong discriminator from a real problem. */
 const constMismatches = new WeakSet<ValidationIssue>();
 
 function walk(schema: JsonSchema | boolean, input: unknown, path: string, errors: ValidationIssue[], opts: WalkOptions): unknown {
@@ -103,8 +103,17 @@ function walk(schema: JsonSchema | boolean, input: unknown, path: string, errors
     // The referenced schema and the keywords next to the `$ref` both apply.
     const { $ref: ref, ...siblings } = schema;
     if (opts.refs?.has(ref)) throw new Error(`Circular $ref '${ref}'`);
-    input = walk(resolveRef(ref, opts.root), input, path, errors, { ...opts, refs: new Set([...(opts.refs ?? []), ref]) });
-    schema = siblings;
+    // Both see the caller's input; a default the target fills must not trip a sibling `additionalProperties: false`.
+    const fromRef = walk(resolveRef(ref, opts.root), input, path, errors, { ...opts, refs: new Set([...(opts.refs ?? []), ref]) });
+    const fromSiblings = walk(siblings, input, path, errors, opts);
+    if (!matchesType('object', fromRef) || !matchesType('object', fromSiblings)) return fromRef;
+    // The target's result, with the properties the siblings declare taken from theirs.
+    const merged = { ...(fromRef as Record<string, unknown>) };
+    for (const key of Object.keys(siblings.properties ?? {})) {
+      const value = own(fromSiblings as Record<string, unknown>, key);
+      if (value !== undefined) defineData(merged, key, value);
+    }
+    return merged;
   }
   // Children start a fresh `$ref` chain: a recursive schema is fine once it descends into the input.
   const child: WalkOptions = opts.refs ? { root: opts.root, fillDefaults: opts.fillDefaults } : opts;
@@ -114,7 +123,10 @@ function walk(schema: JsonSchema | boolean, input: unknown, path: string, errors
   if (input === undefined || input === null) return input;
 
   if (schema.enum && !schema.enum.some((v) => sameValue(v, input))) {
-    errors.push({ path, message: `Expected one of ${JSON.stringify(schema.enum)}; got ${JSON.stringify(input)}` });
+    const issue = { path, message: `Expected one of ${JSON.stringify(schema.enum)}; got ${JSON.stringify(input)}` };
+    // A one-value enum is a discriminator just like a const.
+    if (schema.enum.length === 1) constMismatches.add(issue);
+    errors.push(issue);
   }
   if (schema.const !== undefined && !sameValue(schema.const, input)) {
     const issue = { path, message: `Expected constant ${JSON.stringify(schema.const)}; got ${JSON.stringify(input)}` };
@@ -195,7 +207,7 @@ function walk(schema: JsonSchema | boolean, input: unknown, path: string, errors
         seen.add(key);
       });
     }
-    if (schema.items) {
+    if (schema.items !== undefined) {
       return arr.map((item, i) => walk(schema.items as JsonSchema, item, `${path}[${i}]`, errors, child));
     }
     return arr;
@@ -268,13 +280,24 @@ function resolveRef(ref: string, root: JsonSchema): JsonSchema | boolean {
   if (!ref.startsWith('#')) throw new Error(`Unsupported non-local $ref '${ref}'`);
   let target: unknown = root;
   for (const raw of ref.slice(1).split('/').filter(Boolean)) {
-    const key = raw.replace(/~1/g, '/').replace(/~0/g, '~');
+    const key = decodePointerSegment(raw, ref);
     target = target !== null && typeof target === 'object' ? own(target as Record<string, unknown>, key) : undefined;
   }
   if (typeof target === 'boolean' || (target !== null && typeof target === 'object' && !Array.isArray(target))) {
     return target as JsonSchema | boolean;
   }
   throw new Error(`Unresolvable $ref '${ref}'`);
+}
+
+function decodePointerSegment(raw: string, ref: string): string {
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(raw);
+  } catch (err) {
+    if (err instanceof URIError) throw new Error(`Unresolvable $ref '${ref}': bad percent-escape`);
+    throw err;
+  }
+  return decoded.replace(/~1/g, '/').replace(/~0/g, '~');
 }
 
 function own(obj: Record<string, unknown>, key: string): unknown {

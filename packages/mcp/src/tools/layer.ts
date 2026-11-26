@@ -43,7 +43,7 @@ import {
   verifyLayerAgainstClaims,
 } from './layer-ops.js';
 import type { DraftOpInput } from './layer-ops.js';
-import { EDIT } from './annotations.js';
+import { DESTRUCTIVE_NOT_IDEMPOTENT, EDIT } from './annotations.js';
 
 /**
  * Attribute key a `set_property` op writes. Carries the Pset/Qto name so
@@ -149,7 +149,7 @@ const createDraftLayer: Tool = {
 };
 
 const draftApplyOps: Tool = {
-  name: 'draft_apply_ops', title: 'Apply draft operations', annotations: EDIT,
+  name: 'draft_apply_ops', title: 'Apply draft operations', annotations: DESTRUCTIVE_NOT_IDEMPOTENT,
   description:
     'Apply entity operations to a draft layer. Each op is checked against the draft\'s scope claims ' +
     'before it touches the document; violations return a structured error.',

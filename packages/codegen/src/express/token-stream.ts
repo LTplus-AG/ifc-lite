@@ -63,18 +63,6 @@ export class TokenStream {
     return this.source.slice(start, prev.end).replace(/\s+/g, ' ').trim();
   }
 
-  /** Skip to just past the next top-level `;`, honouring brackets. */
-  skipStatement(): void {
-    let depth = 0;
-    while (this.peek().kind !== 'eof') {
-      const t = this.next();
-      if (t.kind !== 'op') continue;
-      if (t.text === '(' || t.text === '[') depth++;
-      else if (t.text === ')' || t.text === ']') depth--;
-      else if (t.text === ';' && depth <= 0) return;
-    }
-  }
-
   fail(message: string): never {
     const t = this.peek();
     const line = this.source.slice(0, t.start).split('\n').length;

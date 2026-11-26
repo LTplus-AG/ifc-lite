@@ -106,10 +106,10 @@ function parseIf(s: TokenStream): Stmt {
   const cond = parseExpression(s);
   s.expectKeyword('THEN');
   const thenBody = parseStatements(s, ['ELSE', 'END_IF']);
-  const otherwise = s.acceptKeyword('ELSE') ? parseStatements(s, ['END_IF']) : undefined;
+  const elseBody = s.acceptKeyword('ELSE') ? parseStatements(s, ['END_IF']) : undefined;
   s.expectKeyword('END_IF');
   s.expectOp(';');
-  return otherwise ? { k: 'if', cond, thenBody, elseBody: otherwise } : { k: 'if', cond, thenBody };
+  return elseBody ? { k: 'if', cond, thenBody, elseBody } : { k: 'if', cond, thenBody };
 }
 
 function parseCase(s: TokenStream): Stmt {

@@ -12,6 +12,11 @@
  * - ENTITY definitions (with attributes, inheritance, WHERE clauses)
  * - TYPE definitions (simple types, enumerations, selects)
  * - Comments
+ *
+ * The tokenising parser in `./express/` reads the same schemas with their
+ * constraint clauses for the validator generator.
+ * TODO(remove-by: the generators read ./express/ instead, maintainers): delete
+ * this parser (#11562).
  */
 
 export interface ExpressSchema {

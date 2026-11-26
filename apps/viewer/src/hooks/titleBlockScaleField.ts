@@ -10,8 +10,9 @@ import { formatScaleFactorLabel, type TitleBlockConfig } from '@ifc-lite/drawing
  *
  * The field is plain static content: it was written once, by
  * `sheetSlice.ts`'s `autoPopulateTitleBlock`, from the REQUESTED
- * `sheet.scale.factor`, and a restored sheet, saved template or agent
- * `drawing.replaceSheet` can carry text that disagrees with it (#11458). `calculateDrawingTransform`'s
+ * `sheet.scale.factor`. A restored sheet, saved template or agent
+ * `drawing.replaceSheet` can carry text that disagrees with it (#11458).
+ * And `calculateDrawingTransform`'s
  * `fitScale = min(scaleX, scaleY, 1)` (`sheet-types.ts`) can shrink the
  * drawing below that requested scale to fit the sheet's fixed viewport, and
  * when it does, `effectiveScaleFactor` (already fed to the scale BAR as

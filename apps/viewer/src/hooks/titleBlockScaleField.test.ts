@@ -11,15 +11,17 @@ import { titleBlockWithEffectiveScale } from './titleBlockScaleField.js';
 
 const scaleValue = (tb: TitleBlockConfig) => tb.fields.find((f) => f.id === 'scale')?.value;
 
-function blockSaying(value: string): TitleBlockConfig {
+/** The standard title block with its 'scale' field patched. */
+function blockWith(scale: Partial<TitleBlockConfig['fields'][number]>): TitleBlockConfig {
   return {
     ...TITLE_BLOCK_PRESETS.standard,
-    fields: DEFAULT_TITLE_BLOCK_FIELDS.map((f) => (f.id === 'scale' ? { ...f, value } : { ...f })),
+    fields: DEFAULT_TITLE_BLOCK_FIELDS.map((f) => (f.id === 'scale' ? { ...f, ...scale } : { ...f })),
     logo: null,
-  } as TitleBlockConfig;
+  };
 }
+const blockSaying = (value: string) => blockWith({ value });
 
-describe('titleBlockWithEffectiveScale', () => {
+describe('titleBlockWithEffectiveScale (#11458)', () => {
   it('prints the scale the drawing was placed at when the stored text disagrees and nothing was clamped', () => {
     // scale.factor 50 => 20 mm/m, not clamped; the stored field still says 1:100.
     assert.equal(scaleValue(titleBlockWithEffectiveScale(blockSaying('1:100'), 50, 20)), '1:50');
@@ -40,12 +42,7 @@ describe('titleBlockWithEffectiveScale', () => {
   });
 
   it('leaves a scale field alone when auto-populate is off (#11458)', () => {
-    const tb = {
-      ...blockSaying('x'),
-      fields: DEFAULT_TITLE_BLOCK_FIELDS.map((f) => (f.id === 'scale'
-        ? { ...f, autoPopulate: false, autoPopulateSource: 'drawing.scale', value: 'As indicated' }
-        : { ...f })),
-    } as TitleBlockConfig;
+    const tb = blockWith({ autoPopulate: false, autoPopulateSource: 'drawing.scale', value: 'As indicated' });
     assert.equal(scaleValue(titleBlockWithEffectiveScale(tb, 100, 10)), 'As indicated');
     assert.equal(titleBlockWithEffectiveScale(tb, 100, 10), tb);
   });

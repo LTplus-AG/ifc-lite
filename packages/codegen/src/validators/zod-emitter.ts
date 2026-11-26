@@ -59,14 +59,15 @@ class ZodWriter {
         return t ? t.name : 'z.unknown()';
       }
       case 'aggregate': {
-        const low = literalInt(spec.low) ?? 0;
+        const low = literalInt(spec.low);
         const high = literalInt(spec.high);
         let inner = this.spec(spec.of);
         if (spec.optional) inner += '.nullable()';
         let out = `z.array(${inner})`;
-        if (spec.kind === 'ARRAY' && high !== undefined) out += `.length(${high - low + 1})`;
-        else {
-          if (low > 0) out += `.min(${low})`;
+        if (spec.kind === 'ARRAY') {
+          if (low !== undefined && high !== undefined) out += `.length(${high - low + 1})`;
+        } else {
+          if (low !== undefined && low > 0) out += `.min(${low})`;
           if (high !== undefined) out += `.max(${high})`;
         }
         if (spec.kind === 'SET' || spec.unique) out += ".refine(r.uniqueItems, 'aggregate items must be unique')";

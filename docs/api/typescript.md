@@ -47,6 +47,7 @@ ifc-lite ships its public npm packages under the `@ifc-lite/*` scope, plus the `
 | [`@ifc-lite/server-client`](#ifc-liteserver-client) | TypeScript client SDK for IFC-Lite Server |
 | [`@ifc-lite/server-bin`](#ifc-liteserver-bin) | Pre-built IFC-Lite server binary - run without Docker or Rust |
 | [`@ifc-lite/wasm`](#ifc-litewasm) | WebAssembly bindings for IFC-Lite |
+| [`@ifc-lite/validate`](#ifc-litevalidate) | IFC schema validation generated from the EXPRESS schemas: WHERE, UNIQUE, INVERSE and global rules plus zod schemas |
 | [`@ifc-lite/codegen`](#ifc-litecodegen) | TypeScript, Rust and validator code generator from IFC EXPRESS schemas |
 | [`create-ifc-lite`](#create-ifc-lite) | Create IFC-Lite projects with one command |
 | [`@ifc-lite/a2ui`](https://www.npmjs.com/package/@ifc-lite/a2ui) | A2UI v1.0 catalog, agent helpers and surface builders for IFC result surfaces |
@@ -1228,6 +1229,10 @@ initialization, with no top-level await or silent TypeScript engine fallback.
 Operations called before initialization throw; initialization failures propagate.
 The public fingerprint facade normalizes live property and quantity values
 before passing their typed projections to the raw fingerprint bindings.
+
+## @ifc-lite/validate
+
+Use `validateStepText` for STEP text or `validateDataStore` for a parsed model. Both return findings with the rule and instance that failed. The package runs in browsers and Workers and loads the generated rules for the model’s IFC release.
 
 ## @ifc-lite/codegen
 

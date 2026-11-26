@@ -1,0 +1,26 @@
+{
+  "schema": "IFC2X3",
+  "counts": {
+    "entity": {
+      "total": 339,
+      "compiled": 339
+    },
+    "type": {
+      "total": 24,
+      "compiled": 24
+    },
+    "derived": {
+      "total": 55,
+      "compiled": 55
+    },
+    "global": {
+      "total": 2,
+      "compiled": 2
+    },
+    "function": {
+      "total": 38,
+      "compiled": 38
+    }
+  },
+  "unsupported": []
+}

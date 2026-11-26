@@ -1,0 +1,75 @@
+{
+  "name": "@ifc-lite/validate",
+  "version": "0.0.0",
+  "description": "IFC schema validation generated from the EXPRESS schemas: WHERE, UNIQUE, INVERSE and global rules plus zod schemas",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./runtime": {
+      "types": "./dist/runtime/index.d.ts",
+      "import": "./dist/runtime/index.js",
+      "default": "./dist/runtime/index.js"
+    },
+    "./ifc4/zod": {
+      "types": "./dist/generated/ifc4/zod.d.ts",
+      "import": "./dist/generated/ifc4/zod.js",
+      "default": "./dist/generated/ifc4/zod.js"
+    },
+    "./ifc4x3/zod": {
+      "types": "./dist/generated/ifc4x3/zod.d.ts",
+      "import": "./dist/generated/ifc4x3/zod.js",
+      "default": "./dist/generated/ifc4x3/zod.js"
+    }
+  },
+  "scripts": {
+    "build": "pnpm exec tsc",
+    "typecheck": "node ../../scripts/typecheck-tests.mjs",
+    "dev": "pnpm exec tsc --watch",
+    "test": "vitest run",
+    "generate": "node ../codegen/dist/cli.js ../codegen/schemas/IFC2X3_TC1.exp --validator-runtime ../../runtime/index.js --validators src/generated/ifc2x3 && node ../codegen/dist/cli.js ../codegen/schemas/IFC4_ADD2_TC1.exp --validator-runtime ../../runtime/index.js --validators src/generated/ifc4 && node ../codegen/dist/cli.js ../codegen/schemas/IFC4X3.exp --validator-runtime ../../runtime/index.js --validators src/generated/ifc4x3"
+  },
+  "dependencies": {
+    "@ifc-lite/encoding": "workspace:^",
+    "zod": "^4.6.6"
+  },
+  "devDependencies": {
+    "@ifc-lite/codegen": "workspace:^",
+    "@ifc-lite/parser": "workspace:^",
+    "@mergifyio/vitest": "^2026.11.8",
+    "@types/node": "^26.6.6",
+    "esbuild": "^0.28.2",
+    "tsx": "^4.23.15",
+    "typescript": "^6.0.3",
+    "vitest": "^5.1.0"
+  },
+  "license": "MPL-2.0",
+  "author": "Louis True",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/LTplus-AG/ifc-lite.git",
+    "directory": "packages/validate"
+  },
+  "homepage": "https://ifclite.dev/docs/",
+  "bugs": "https://github.com/LTplus-AG/ifc-lite/issues",
+  "keywords": [
+    "ifc",
+    "bim",
+    "express",
+    "validation",
+    "zod",
+    "buildingsmart"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ]
+}

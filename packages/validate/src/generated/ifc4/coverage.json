@@ -1,0 +1,26 @@
+{
+  "schema": "IFC4_ADD2_TC1",
+  "counts": {
+    "entity": {
+      "total": 652,
+      "compiled": 652
+    },
+    "type": {
+      "total": 25,
+      "compiled": 25
+    },
+    "derived": {
+      "total": 62,
+      "compiled": 62
+    },
+    "global": {
+      "total": 2,
+      "compiled": 2
+    },
+    "function": {
+      "total": 47,
+      "compiled": 47
+    }
+  },
+  "unsupported": []
+}

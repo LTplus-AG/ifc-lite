@@ -1,0 +1,26 @@
+{
+  "schema": "IFC4X3_DEV_923b0514",
+  "counts": {
+    "entity": {
+      "total": 752,
+      "compiled": 752
+    },
+    "type": {
+      "total": 25,
+      "compiled": 25
+    },
+    "derived": {
+      "total": 60,
+      "compiled": 60
+    },
+    "global": {
+      "total": 2,
+      "compiled": 2
+    },
+    "function": {
+      "total": 48,
+      "compiled": 48
+    }
+  },
+  "unsupported": []
+}

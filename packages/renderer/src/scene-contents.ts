@@ -52,6 +52,7 @@ import type { ResidentGpuBytes } from './render-stats.js';
 import type { ColdGeometryProvider } from './residency.js';
 import type { SpatialChunkingConfig } from './chunk-grid.js';
 import type { LoadTrace } from '@ifc-lite/load-trace';
+import type { CompactSceneStats } from './scene-compact.js';
 
 /** The measured external scene surface. See the module doc before widening. */
 export interface SceneContents {
@@ -132,6 +133,8 @@ export interface SceneContents {
    * Null while a cached scene still awaits source-geometry hydration. */
   onGeometryChange?(listener: () => void): () => void;
   getTriangleCounts?(): ReadonlyMap<number, number> | null;
+  /** `?compactGeom`: meshes drawn from compact pages, and those a load decoded to buckets by reason; null before the page code loaded. */
+  getCompactStats?(): CompactSceneStats | null;
   /** The viewport has supplied the complete flat-source snapshot for this Scene. */
   isTriangleCountReplayComplete?(): boolean;
   setTriangleCountReplayComplete?(complete: boolean): void;

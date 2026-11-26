@@ -40,7 +40,7 @@
  * Stage 2 (#1394) is the vertex-mass trim above, applied to what stage 1 kept.
  */
 
-import { compactBounds, compactRow, type CompactRef } from '@ifc-lite/geometry/compact';
+import { compactMeshBounds, compactRow, type CompactRef } from '@ifc-lite/geometry/compact';
 import { detachedMinorityClusters } from './detachedClusters.js';
 
 export type Bounds = { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } };
@@ -63,17 +63,16 @@ const garbage = (x: number, y: number, z: number) =>
 
 /**
  * One mesh's box over its usable vertices and how many there are (its weight), or null when none is.
- * A compact mesh reads its row's box: the f64 `origin + position` box of its source vertices, the same
+ * A compact mesh reads its row's box (moved with its origin): the f64 `origin + position` box of its source vertices, the same
  * min and max a scan of the f32 mesh gives, where reading `positions` would decode it on the main thread
- * (and scan lattice positions up to half a step off). Its weight is its welded vertex count, not the f32
- * mesh's vertex count, which only shifts the relative mass the robust trim weighs.
+ * (and scan lattice positions up to half a step off). Its weight is its source vertex count, as the
+ * f32 mesh's scan counts, not its welded count: the robust trim keeps mass by it, and a welded weight
+ * dropped a different set of far meshes than the f32 load (lane L9: skolebygg 261 vs 270).
  */
 function meshBox(mesh: RobustFitMeshInput): { box: Float64Array; n: number } | null {
-  if (mesh.compact) {
-    const b = compactBounds(mesh.compact);
-    // A garbage corner means some vertex is garbage: only a scan can keep the others, as for an f32 mesh.
-    if (!garbage(b[0], b[1], b[2]) && !garbage(b[3], b[4], b[5])) return { box: Float64Array.from(b), n: compactRow(mesh.compact).vertexCount };
-  }
+  const b = compactMeshBounds(mesh);
+  // A garbage corner means some vertex is garbage: only a scan can keep the others, as for an f32 mesh.
+  if (b && mesh.compact && !garbage(b[0], b[1], b[2]) && !garbage(b[3], b[4], b[5])) return { box: b, n: compactRow(mesh.compact).sourceVertexCount };
   const positions = mesh.positions;
   const o = mesh.origin;
   const ox = o ? o[0] : 0, oy = o ? o[1] : 0, oz = o ? o[2] : 0;

@@ -25,11 +25,24 @@ export function worldBounds(meshes: readonly MeshData[]): {
   return { minX, minY, minZ, maxX, maxY, maxZ };
 }
 
-/** World-space bbox centre selected by the automatic batch-frame path. */
+/**
+ * The lattice an automatic batch frame snaps to: the coarsest step compact
+ * records use (level 9, `compact-store.ts`), a multiple of the quantized
+ * batch step 2^-10 (`quantize.ts`). A quantized batch puts its vertices on
+ * nodes `origin + k * 2^-10`; with the origin on this lattice those are the
+ * absolute nodes the wasm compact encoder writes, so a mesh lands on the same
+ * node whether it is drawn from a bucket or from a compact page.
+ */
+export const BATCH_ORIGIN_STEP = 2 ** -9;
+
+/** `v` rounded to the `BATCH_ORIGIN_STEP` lattice. */
+const snap = (v: number): number => Math.round(v / BATCH_ORIGIN_STEP) * BATCH_ORIGIN_STEP;
+
+/** World-space bbox centre selected by the automatic batch-frame path, on the `BATCH_ORIGIN_STEP` lattice. */
 export function automaticBatchOrigin(meshes: readonly MeshData[]): [number, number, number] {
   const { minX, minY, minZ, maxX, maxY, maxZ } = worldBounds(meshes);
   return Number.isFinite(minX)
-    ? [(minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2]
+    ? [snap((minX + maxX) / 2), snap((minY + maxY) / 2), snap((minZ + maxZ) / 2)]
     : [0, 0, 0];
 }
 
@@ -129,7 +142,10 @@ export function topologySafeBatchOrigin(
   // f32 frame still preserves them. Try one authored frame, validated against
   // every mesh, rather than treating exhausted preferred frames as exhaustion
   // of all frames. GPU high/low origin lanes must remain finite too (#5010).
+  // The exact authored origin first: it keeps these wide meshes' f32 positions bit-exact, as before the
+  // lattice. Its `BATCH_ORIGIN_STEP` snap only when the authored frame itself is unusable.
   const authored: [number, number, number] = meshes[0]?.origin ?? [0, 0, 0];
-  return renderableCoordinates(authored)
-    && preserves(authored) ? authored : undefined;
+  const snapped: [number, number, number] = [snap(authored[0]), snap(authored[1]), snap(authored[2])];
+  for (const frame of [authored, snapped]) if (renderableCoordinates(frame) && preserves(frame)) return frame;
+  return undefined;
 }

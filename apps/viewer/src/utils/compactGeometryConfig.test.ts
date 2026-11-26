@@ -100,7 +100,7 @@ it('a compact mesh is backed as the f32 mesh it decodes to (geometry-backing rec
   await loadCompactGeometry();
   // One triangle on the 2^-10 lattice: (0,0,0), (1,0,0), (0,1,0), normals +z.
   const payload: CompactPayload = {
-    records: new Uint8Array(3 * 12), indices: Uint16Array.from([0, 1, 2]), table: Uint32Array.from([0, 0, 3, 0, 3, 10]),
+    records: new Uint8Array(3 * 12), indices: Uint16Array.from([0, 1, 2]), table: Uint32Array.from([0, 0, 3, 0, 3, 10, 3]),
     windows: new Float64Array(3), bounds: Float64Array.from([0, 0, 0, 1, 1, 0]), cells: new Int32Array(3),
   };
   const view = new DataView(payload.records.buffer);

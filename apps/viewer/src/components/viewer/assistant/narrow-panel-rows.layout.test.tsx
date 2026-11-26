@@ -14,12 +14,21 @@
  */
 
 import '@/test/setup-dom.js';
+import 'fake-indexeddb/auto';
 import { after, afterEach, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { registerLocale, setLocale } from '@/i18n';
 import { clashGroupApplyDe } from '@/i18n/locales/de/clash-group-apply';
 import { chatDe } from '@/i18n/locales/de/chat';
 import { comparePanelDe } from '@/i18n/locales/de/compare-panel';
+import { aiReportsDe } from '@/i18n/locales/de/ai-reports';
+import { clashQualityDe } from '@/i18n/locales/de/clash-quality';
+import { clashGroupsDe } from '@/i18n/locales/de/clash-groups';
+import { captureEvidence } from '@/lib/assistant/evidence';
+import { cancelAssistant, replaceEvidence, useAssistant } from '@/lib/assistant/conversation';
+import { ReportDraftReview } from './ReportDraftReview.js';
+import { ClashQualityGates } from '../ClashQualityGates.js';
+import { ClashGroupStorage } from '../ClashGroupStorage.js';
 import { act } from 'react';
 import { cleanup, click, render } from '@/test/render.js';
 import { CONTRAST_BROWSER_SKIP, closeContrastBrowser, warmContrastBrowser, withThemedPage } from '@/test/contrast/render-harness.js';
@@ -34,7 +43,7 @@ const PANEL_WIDTHS = [260, 350] as const;
 const MIN_CONTROL_PX = 128;
 
 before(warmContrastBrowser);
-afterEach(() => { cleanup(); setLocale('en'); });
+afterEach(() => { cleanup(); cancelAssistant(); setLocale('en'); });
 after(closeContrastBrowser);
 
 function finding(occurrence: string): DraftFinding {
@@ -90,14 +99,26 @@ const ROWS = [
   { name: 'saved conversation name', html: () => htmlOf(<ConversationLibrary />), selector: '#assistant-conversation-name', count: 1 },
   { name: 'saved comparison name and pick', html: () => htmlOf(<SavedComparisonLibrary result={null} running={false} />),
     selector: '[data-saved-comparisons] > div.flex > input, [data-saved-comparisons] > label > select', count: 2 },
+  // #11590: the same row shape in other side panels.
+  { name: 'report draft name', html: reportDraftHtml, selector: '#assistant-report-name', count: 1 },
+  { name: 'clash quality gate band labels', html: () => htmlOf(<ClashQualityGates />),
+    selector: 'fieldset input:not([type="number"]):not([type="color"])', count: 6 },
+  { name: 'clash group workspace', html: () => htmlOf(<ClashGroupStorage />), selector: 'label > select', count: 1 },
 ] as const;
 
-describe('narrow side-panel rows keep a usable control (#11439)', () => {
+/** The report draft review renders once a reportable answer exists. */
+function reportDraftHtml(): string {
+  replaceEvidence(captureEvidence('clash'));
+  useAssistant.setState({ messages: [{ role: 'user', content: 'Summarize' }, { role: 'assistant', model: 'model', content: 'Summary' }] });
+  return htmlOf(<ReportDraftReview />);
+}
+
+describe('narrow side-panel rows keep a usable control (#11439, #11590)', () => {
   for (const locale of ['en', 'de'] as const) {
     for (const row of ROWS) {
       it(`${row.name} (${locale})`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
         if (locale === 'de') {
-          registerLocale('de', { ...clashGroupApplyDe, ...chatDe, ...comparePanelDe });
+          registerLocale('de', { ...clashGroupApplyDe, ...chatDe, ...comparePanelDe, ...aiReportsDe, ...clashQualityDe, ...clashGroupsDe });
           setLocale('de');
         }
         const html = row.html();

@@ -53,11 +53,11 @@ function QualityGateEditor() {
     <div className="space-y-3 py-2">
       {(['clash', 'duplicates'] as const).map(kind => <fieldset key={kind} className="space-y-1">
         <legend className="font-medium">{t(`clashQuality.${kind}`)}</legend>
-        {draft[kind].map((band, index) => <div key={index} className="flex items-center gap-1">
+        {draft[kind].map((band, index) => <div key={index} className="flex flex-wrap items-center gap-1">
           <Input type="number" min="0" max="100" step="any" disabled={index === 0} className="h-7 w-16 p-1 text-xs"
             aria-label={`${t(`clashQuality.${kind}`)} ${t('clashQuality.minimum')} ${index + 1}`} value={Number.isNaN(band.minimum) ? '' : band.minimum}
             onChange={event => setDraft({ ...draft, [kind]: draft[kind].map((entry, i) => i === index ? { ...entry, minimum: event.target.valueAsNumber } : entry) })} />
-          <Input className="h-7 min-w-0 flex-1 p-1 text-xs" aria-label={`${t(`clashQuality.${kind}`)} ${t('clashQuality.label')} ${index + 1}`}
+          <Input className="h-7 min-w-32 flex-1 p-1 text-xs" aria-label={`${t(`clashQuality.${kind}`)} ${t('clashQuality.label')} ${index + 1}`}
             maxLength={100} value={band.label} onChange={event => setDraft({ ...draft, [kind]: draft[kind].map((entry, i) => i === index ? { ...entry, label: event.target.value } : entry) })} />
           <Input type="color" className="h-7 w-8 p-0" aria-label={`${t(`clashQuality.${kind}`)} ${t('clashQuality.color')} ${index + 1}`} value={band.color}
             onChange={event => setDraft({ ...draft, [kind]: draft[kind].map((entry, i) => i === index ? { ...entry, color: event.target.value } : entry) })} />

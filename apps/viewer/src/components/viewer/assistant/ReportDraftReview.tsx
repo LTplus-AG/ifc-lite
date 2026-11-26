@@ -73,8 +73,8 @@ export function ReportDraftReview() {
           <Sparkles className="h-3 w-3 mr-1" aria-hidden="true" />{t('aiReports.draftWithAi')}</Button>
       </div>
       <label className="sr-only" htmlFor="assistant-report-name">{t('assistant.reportName')}</label>
-      <div className="flex items-center gap-1">
-        <input id="assistant-report-name" className="min-w-0 flex-1 h-7 border border-input rounded bg-background px-2" value={name}
+      <div className="flex flex-wrap items-center gap-1">
+        <input id="assistant-report-name" className="min-w-32 flex-1 h-7 border border-input rounded bg-background px-2" value={name}
           maxLength={200} disabled={busy} placeholder={t('assistant.reportName')} onChange={event => { setName(event.target.value); setApproved(false); }} />
       <Button variant="outline" size="sm" className="h-7 shrink-0" disabled={!eligible || busy} onClick={() => {
         try { setDraft(prepareReportDraft(name, language)); setApproved(false); setSaved(false); setError(null); }

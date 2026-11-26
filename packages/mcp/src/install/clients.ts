@@ -89,7 +89,7 @@ export function planInstall(
       return {
         kind: 'command',
         command: 'claude',
-        args: ['mcp', 'add', '--scope', scope, name, '--', server.command, ...server.args],
+        args: ['mcp', 'add', '--scope', scope, name, '--', ...claudeCodeLaunch(server, host)],
         remove: ['mcp', 'remove', '--scope', scope, name],
       };
     case 'claude-desktop':
@@ -113,6 +113,17 @@ export function planInstall(
 }
 
 const DESKTOP_CONFIG = 'claude_desktop_config.json';
+
+/**
+ * Claude Code on native Windows spawns the command without a shell, so the
+ * `npx.cmd` shim needs `cmd /c` (its own check warns "Windows requires
+ * 'cmd /c' wrapper to execute npx"). cmd then reads `^` as its escape
+ * character, so the `^x.y.z` pin is written `^^x.y.z` to reach npx intact.
+ */
+function claudeCodeLaunch(server: ServerCommand, host: HostEnv): string[] {
+  if (host.platform !== 'win32' || server.command !== 'npx') return [server.command, ...server.args];
+  return ['cmd', '/c', 'npx', ...server.args.map((a) => a.replaceAll('^', '^^'))];
+}
 
 function claudeDesktopConfigPath(host: HostEnv): string {
   const file = DESKTOP_CONFIG;

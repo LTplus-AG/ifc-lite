@@ -194,6 +194,12 @@ describe('ifc-lite-mcp install: where each client is configured', () => {
     expect(io.stderr).toMatch(/EACCES.*unchanged \(backup: .*bak-/);
   });
 
+  it('Claude Code on Windows wraps npx in cmd /c and escapes the pin\'s ^ for cmd', () => {
+    const io = fakeIo({ platform: 'win32', home: 'C:\\Users\\u', cwd: 'C:\\w' });
+    expect(install(['--client', 'claude-code'], io)).toBe(0);
+    expect(io.runs[0].args).toEqual(['mcp', 'add', '--scope', 'user', 'ifc-lite', '--', 'cmd', '/c', 'npx', '-y', PKG.replace('^', '^^')]);
+  });
+
   it('Claude Code --force removes the old entry first', () => {
     const io = fakeIo();
     install(['--client', 'claude-code', '--force', '--scope', 'project'], io);

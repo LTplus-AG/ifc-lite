@@ -29,8 +29,6 @@ import {
   type Tool,
 } from './index.js';
 import { allPrompts } from './prompts/templates.js';
-import { ClientLogForwarder } from './client-logging.js';
-import { toCatalogEntry } from './tool-catalog.js';
 import { toolError, ToolErrorCode } from './errors.js';
 import type { ContentBlock, ServerCapabilities, ToolDefinition } from './protocol/index.js';
 
@@ -56,6 +54,10 @@ function build({ readOnly = false, registry = new InMemoryModelRegistry() as Mod
       ctx.log.log('error', 'loud line', { n: 1 });
       return { content: [{ type: 'text', text: 'ok' }] };
     },
+  } satisfies Tool);
+  tools.register({
+    name: 'log_message_key', description: 'Logs a data.message key.', scope: 'read', inputSchema: { type: 'object' },
+    handler(_input, ctx) { ctx.log.log('error', 'export failed', { message: 'disk full' }); return { content: [] }; },
   } satisfies Tool);
   const server = new MCPServer({
     version: '0.0.0-test', registry, config: { readOnly, samplingEnabled: false },
@@ -121,12 +123,13 @@ describe('logging', () => {
     expect(sent[0].params).toMatchObject({ logger: 'ifc-lite-mcp', data: { message: 'loud line', data: { n: 1 } } });
   });
 
-  it('keeps both the log message and a data.message key', () => {
-    const sent: unknown[] = [];
-    const forwarder = new ClientLogForwarder(SILENT_LOGGER, 'x', (p) => sent.push(p));
-    forwarder.setLevel('debug');
-    forwarder.logger.log('error', 'export failed', { message: 'disk full' });
-    expect(sent).toEqual([{ level: 'error', logger: 'x', data: { message: 'export failed', data: { message: 'disk full' } } }]);
+  it('keeps both the log message and a data.message key', async () => {
+    const { request, notes } = await initialized();
+    await request('logging/setLevel', { level: 'error' });
+    await request('tools/call', { name: 'log_message_key', arguments: {} });
+    expect(methods(notes, 'notifications/message').map((n) => n.params)).toEqual([
+      { level: 'error', logger: 'ifc-lite-mcp', data: { message: 'export failed', data: { message: 'disk full' } } },
+    ]);
   });
 
   it('answers -32601 when logging is not advertised', async () => {
@@ -247,12 +250,26 @@ describe('instructions and manifest', () => {
     expect(await read(false)).toEqual([
       { name: 'load_fake', purpose: 'Adds a model.', scope: 'mutate' },
       { name: 'log_both', title: 'Log both', purpose: 'Logs info and error.', scope: 'read' },
+      { name: 'log_message_key', purpose: 'Logs a data.message key.', scope: 'read' },
     ]);
-    expect(await read(true)).toEqual([{ name: 'log_both', title: 'Log both', purpose: 'Logs info and error.', scope: 'read' }]);
+    expect((await read(true)).map((t) => (t as { name: string }).name)).toEqual(['log_both', 'log_message_key']);
   });
 
-  it('does not cut a purpose at an abbreviation', () => {
-    const entry = (description: string) => toCatalogEntry({ name: 't', description, inputSchema: {}, handler: () => ({ content: [] }) });
+  it('does not cut a purpose at an abbreviation', async () => {
+    const descriptions = [
+      'Class details for a name (e.g. "IfcWall") from bSDD.', 'First. Second.',
+      'Property sets for an entity (e.g. Pset_WallCommon for IfcWall).', 'A sentence wrapped\nover two lines. Then more.',
+      'Export rows. `type` filters them.', '😀'.repeat(200),
+    ];
+    const tools = new ToolRegistry();
+    descriptions.forEach((description, i) => tools.register({ name: `t${i}`, description, inputSchema: { type: 'object' }, handler: () => ({ content: [] }) }));
+    const server = new MCPServer({ version: '0', tools, resources: buildDefaultResourceRegistry(), prompts: buildDefaultPromptRegistry() });
+    const transport = new InProcessTransport();
+    void transport.connect(server);
+    await transport.send({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: 't', version: '0' } } });
+    const res = await transport.send({ jsonrpc: '2.0', id: 2, method: 'resources/read', params: { uri: 'ifc-lite://server/manifest' } }) as { result: { contents: Array<{ text: string }> } };
+    const catalog = (JSON.parse(res.result.contents[0].text) as { tools: Array<{ purpose: string }> }).tools;
+    const entry = (description: string) => catalog[descriptions.indexOf(description)];
     expect(entry('Class details for a name (e.g. "IfcWall") from bSDD.').purpose).toBe('Class details for a name (e.g. "IfcWall") from bSDD.');
     expect(entry('First. Second.').purpose).toBe('First.');
     expect(entry('Property sets for an entity (e.g. Pset_WallCommon for IfcWall).').purpose).toBe('Property sets for an entity (e.g. Pset_WallCommon for IfcWall).');

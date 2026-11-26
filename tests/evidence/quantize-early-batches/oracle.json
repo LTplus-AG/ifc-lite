@@ -1,0 +1,6 @@
+{
+  "issue": 11606,
+  "why": "Rebuild every f32 bucket batch when the quantized pipelines arrive, instead of only those built before them: a batch the lattice would collapse (#9068) is rebuilt for nothing, so the requantize tests must go red.",
+  "key": "packages/renderer/src/quantized-requantize.ts",
+  "mutation": "tests/evidence/quantize-early-batches/behaviour.oracle.patch"
+}

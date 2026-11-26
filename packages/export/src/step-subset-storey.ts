@@ -137,13 +137,15 @@ export function resolveStorey(token: string, parsed: ParsedStep): { storeyId: nu
 /** IfcObjectPlacement subtypes: placement records a storey walk returns, never products. */
 const PLACEMENT_TYPES = new Set(['IFCLOCALPLACEMENT', 'IFCGRIDPLACEMENT', 'IFCLINEARPLACEMENT']);
 
-const HOST_RELATIONS = new Set(['IFCRELVOIDSELEMENT', 'IFCRELFILLSELEMENT', 'IFCRELAGGREGATES', 'IFCRELNESTS']);
+const PART_WHOLE_RELATIONS = new Set(['IFCRELAGGREGATES', 'IFCRELNESTS']);
+const HOST_RELATIONS = new Set(['IFCRELVOIDSELEMENT', 'IFCRELFILLSELEMENT', ...PART_WHOLE_RELATIONS]);
 
 /**
  * Opening -> host element (IfcRelVoidsElement), filler -> opening
  * (IfcRelFillsElement), part -> whole (IfcRelAggregates / IfcRelNests under a
  * non-spatial whole). All four share the six-attribute shape with the relating
- * object at index 4 and the related set at index 5. Relation records that do not split into six attributes are skipped.
+ * object at index 4 and the related set at index 5. Relation records that do
+ * not split into six attributes are skipped.
  */
 function hostOf(parsed: ParsedStep): Map<number, number> {
   const out = new Map<number, number>();
@@ -154,7 +156,7 @@ function hostOf(parsed: ParsedStep): Map<number, number> {
     const relating = SINGLE_REF_RE.exec(args[4]);
     if (!relating) continue;
     const whole = Number(relating[1]);
-    if ((inst.type === 'IFCRELAGGREGATES' || inst.type === 'IFCRELNESTS') && isSpatialStructureType(IfcTypeEnumFromString(parsed.instances.get(whole)?.type ?? ''))) continue;
+    if (PART_WHOLE_RELATIONS.has(inst.type) && isSpatialStructureType(IfcTypeEnumFromString(parsed.instances.get(whole)?.type ?? ''))) continue;
     for (const part of refsOutsideStrings(args[5])) out.set(part, whole);
   }
   return out;
@@ -240,9 +242,11 @@ export function storeyMembers(storeyId: number, placementId: number, parsed: Par
   };
   const out = new Set<number>();
   // Spatial children, and openings/fillers/parts that inherit an owner, wherever placed.
-  for (const id of [...parents.keys(), ...hosts.keys()]) {
+  const consider = (id: number) => {
     if (!out.has(id) && isCandidate(id) && ownedHere(ownersOf(id))) out.add(id);
-  }
+  };
+  for (const id of parents.keys()) consider(id);
+  for (const id of hosts.keys()) consider(id);
   for (const id of productsUnderPlacement(placementId, parsed)) {
     if (out.has(id) || !isCandidate(id)) continue;
     const owner = ownersOf(id);

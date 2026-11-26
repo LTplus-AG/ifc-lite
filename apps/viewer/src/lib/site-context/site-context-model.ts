@@ -38,7 +38,7 @@ import { uuidFromSeed, uuidToIfcGuid } from '@ifc-lite/encoding';
 import type { MeshData, ModelSpatialReference } from '@ifc-lite/geometry';
 import type { JsonValue, SiteContextDocument, SiteContextFeature, SiteContextLayer, SiteContextLayerKind } from '@ifc-lite/site-context';
 import type { ViewerModelPayload } from '@/hooks/ingest/viewerModelIngest';
-import { buildTabularDataStore } from '@/hooks/ingest/tabularDataStore';
+import { buildTabularDataStore } from '@ifc-lite/parser';
 import { calculateMeshBounds, createCoordinateInfo } from '@/utils/localParsingUtils';
 import { rebuildSpatialHierarchy } from '@/utils/spatialHierarchy';
 import { parcelCasing, parcelDisplayWidth, widenParcelRibbon } from './parcel-outline';

@@ -14,6 +14,7 @@
  */
 
 import type { MeshData } from '@ifc-lite/geometry';
+import { selectModelMeshes } from '@ifc-lite/geometry/geometry-class';
 import type {
   SectionConfig,
   SectionAxis,
@@ -115,7 +116,8 @@ export class Drawing2DGenerator {
   }
 
   /**
-   * Generate a complete 2D drawing from a resident mesh array.
+   * Generate a complete 2D drawing from a resident mesh array. Type-library
+   * geometry (`geometryClass` 1/2) is left out, as in the viewer's Model view.
    */
   async generate(
     meshes: MeshData[],
@@ -123,7 +125,7 @@ export class Drawing2DGenerator {
     options: Partial<GeneratorOptions> = {},
     profiles?: ProfileEntry[],
   ): Promise<Drawing2D> {
-    return this.generateFromSource(meshArraySource(meshes), config, options, profiles);
+    return this.generateFromSource(meshArraySource(selectModelMeshes(meshes)), config, options, profiles);
   }
 
   /**

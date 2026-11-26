@@ -30,6 +30,7 @@ use crate::step_slot::slots_of;
 /// The edits that apply to one record, where a caller's attribute mutation and
 /// a copy-on-write repointing can both land on it. The repointing wins: it was
 /// computed from the caller's value rather than instead of it.
+#[cfg_attr(target_arch = "wasm32", inline(never))]
 pub(crate) fn merge_edits<'a>(
     muts: Option<&'a BTreeMap<usize, String>>,
     repointed: Option<&'a BTreeMap<usize, String>>,
@@ -189,6 +190,7 @@ pub(crate) fn ref_spans(bytes: &[u8]) -> impl Iterator<Item = RefSpan> + '_ {
 /// because both emit sites need the same PAIR — leave the record as its author
 /// wrote it, and say that an edit is missing — and a site that did the first
 /// without the second would ship a file that looks like it carried the edit.
+#[cfg_attr(target_arch = "wasm32", inline(never))]
 pub(crate) fn apply_attr_mutations_counted(
     line: &str,
     muts: &BTreeMap<usize, String>,

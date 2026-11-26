@@ -37,6 +37,6 @@ export function buildMergedHeader(
 export function finishMergedConversion(
   lines: string[], slots: Ifc2x3SlotFill, required: Ifc4SlotCheck, enums: EnumReconciliation, claims: InverseClaims,
 ): string[] {
-  enums.forms.dates.finish(lines);
+  enums.forms.dates.finish(lines, Number.MAX_SAFE_INTEGER);
   return [...slots.warnings(), ...required.warnings(), ...enums.warnings(), ...applyInverseFolds(lines, claims)];
 }

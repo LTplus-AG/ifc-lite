@@ -108,10 +108,13 @@ fn every_value_without_a_target_slot_is_counted_10763() {
     assert_eq!((out.as_str(), n), ("#5=IFCLIBRARYINFORMATION('n','v',#3,$,$,$);", 2));
 }
 
-/// IFC4 deleted IfcGeneralProfileProperties for a concrete
-/// IfcProfileProperties; IFC2X3 cannot instantiate its abstract namesake.
+/// IFC4 deleted IfcExtendedMaterialProperties for a concrete
+/// IfcMaterialProperties; IFC2X3 cannot instantiate its abstract namesake.
 #[test]
-fn ifc4_profile_properties_downgrade_to_the_deleted_subtype_10763() {
+fn ifc4_material_and_profile_properties_downgrade_to_the_deleted_subtypes_10763() {
+    // Without the export's material records nothing proves #8 an IfcMaterial, so the
+    // record is not written (`schema_material_referent_tests` covers the map's layout).
+    assert_eq!(down("#5=IFCMATERIALPROPERTIES('Pset_x','d',(#6,#7),#8);"), "");
     assert_eq!(
         convert_step_line("#5=IFCPROFILEPROPERTIES('n',$,(#6),#8);", "IFC4X3", "IFC2X3", 1, &mut Ifc2x3SlotFill::new(None), None).unwrap(),
         "#5=IFCGENERALPROFILEPROPERTIES($,#8,$,$,$,$,$);"
@@ -181,4 +184,78 @@ fn ifc2x3_property_subtypes_upgrade_to_the_ifc4_supertype_10777() {
     // IFC5 has no attribute list to map onto, so the record keeps its IFC2X3 name and layout.
     let ifc5 = "#5=IFCEXTENDEDMATERIALPROPERTIES(#8,(#6,#7),'d','Pset_x');";
     assert_eq!(convert_step_line(ifc5, "IFC2X3", "IFC5", 5, &mut Ifc2x3SlotFill::new(None), None).unwrap(), ifc5);
+}
+
+#[test]
+fn keeps_typed_ifc2x3_measures_as_property_single_values_10797() {
+    let source = include_bytes!("../tests/fixtures/schema_typed_properties_upgrade.ifc");
+    for schema in ["IFC4", "IFC4X3"] {
+        let opts = crate::StepOptions { schema: Some(schema.to_owned()), ..Default::default() };
+        let (output, stats, _) = crate::export_step_with_diagnostics(source, &opts).unwrap();
+        let (logged, log_stats) = crate::export_step_with_log(source, &opts, &crate::MutationLog::default()).unwrap();
+        let merged = crate::export_merged(&[source], &crate::MergedOptions { schema: opts.schema.clone(), ..Default::default() });
+        for output in [&output, &logged, &merged] {
+            for text in [
+                "#2=IFCMATERIALPROPERTIES('Pset_MaterialConcrete',$,(",
+                "IFCMATERIALPROPERTIES('Pset_MaterialMechanical',$,(",
+                "#4=IFCPROFILEPROPERTIES('Pset_ProfileMechanical',$,(",
+                "IFCPROPERTYSINGLEVALUE('YoungModulus',$,IFCMODULUSOFELASTICITYMEASURE(25000000000.),$);",
+                "IFCPROPERTYSINGLEVALUE('CompressiveStrength',$,IFCPRESSUREMEASURE(30000000.),$);",
+                "IFCPROPERTYSINGLEVALUE('MassPerLength',$,IFCMASSPERLENGTHMEASURE(4.5),$);",
+            ] {
+                assert!(output.contains(text), "{schema}: {text}\n{output}");
+            }
+        }
+        assert_eq!(log_stats.new_entities, 9, "{schema}: eight values and one extra property set");
+        assert_eq!(logged.lines().filter(|line| line.starts_with('#')).count(),
+            log_stats.total + log_stats.new_entities, "{schema}");
+        assert_eq!(log_stats.step.attribute_values_dropped, 0);
+        assert_eq!(stats.attribute_values_dropped, 0);
+    }
+}
+
+#[test]
+fn latin1_data_keeps_typed_mass_density_in_all_step_writers_10797() {
+    let source = include_bytes!("../tests/fixtures/schema_typed_properties_latin1.ifc");
+    assert!(source.windows(5).any(|name| name == b"B\xe9ton"), "fixture must contain the raw Latin-1 name");
+    let opts = crate::StepOptions { schema: Some("IFC4".to_owned()), ..Default::default() };
+    let direct = crate::export_step(source, &opts).unwrap();
+    let (logged, _) = crate::export_step_with_log(source, &opts, &crate::MutationLog::default()).unwrap();
+    let merged = crate::export_merged(&[source], &crate::MergedOptions { schema: opts.schema, ..Default::default() });
+    for (writer, output) in [("direct", direct), ("logged", logged), ("merged", merged)] {
+        assert!(output.contains("IFCMATERIAL('B�ton',$,$);"), "{writer} changed unrelated record decoding:\n{output}");
+        assert!(output.contains("IFCPROPERTYSINGLEVALUE('MassDensity',$,IFCMASSDENSITYMEASURE(42.),$);"),
+            "{writer} dropped MassDensity:\n{output}");
+    }
+}
+
+#[test]
+fn shared_typed_property_records_match_every_step_writer_10797() {
+    #[derive(serde::Deserialize)]
+    struct Case {
+        name: String,
+        source: String,
+        expected: Vec<String>,
+    }
+    let cases: Vec<Case> = serde_json::from_str(include_str!(
+        "../tests/fixtures/schema_typed_properties_writer_vectors.json"
+    )).unwrap();
+    let opts = crate::StepOptions { schema: Some("IFC4".to_owned()), ..Default::default() };
+    let merge_opts = crate::MergedOptions { schema: opts.schema.clone(), ..Default::default() };
+    let mut failures = Vec::new();
+    for case in cases {
+        let input = format!("ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n{}\nENDSEC;\nEND-ISO-10303-21;\n", case.source);
+        let input: Vec<u8> = input.chars().map(|c| u8::try_from(u32::from(c)).unwrap()).collect();
+        let direct = crate::export_step(&input, &opts).unwrap();
+        let (logged, _) = crate::export_step_with_log(&input, &opts, &crate::MutationLog::default()).unwrap();
+        let merged = crate::export_merged(&[&input], &merge_opts);
+        for (writer, output) in [("direct", direct), ("logged", logged), ("merged", merged)] {
+            for expected in &case.expected {
+                if !output.lines().filter_map(|line| line.split_once('=')).any(|(_, body)| body == expected) {
+                    failures.push(format!("{writer} {}: missing {expected}", case.name));
+                }
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
 }

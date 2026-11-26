@@ -37,6 +37,7 @@ import { depthNudgeWgsl, PERSPECTIVE_DEPTH_NUDGE_LEVEL_SHIFT } from '../../packa
 import { colorSaltByte, packEntityLane } from '../../packages/renderer/src/scene-geometry.js';
 import { PIPELINE_CONSTANTS } from '../../packages/renderer/src/constants.js';
 import { Camera } from '../../packages/renderer/src/camera.js';
+import { colorTableLayout, emptyColorTableGroup } from './color-table-binding.js';
 
 export const DISTANCES = [10, 30, 60, 100, 150] as const;
 export const GAPS = [0.005, 0.01, 0.02] as const;
@@ -189,7 +190,7 @@ export async function runPerspectiveDistanceWitness(
   const creasePipeline = async (variant: CreaseRow['variant'] | 'reference', frontId: number) => {
     const shader = device.createShaderModule({ code: source(variant === 'reference' ? ZERO_NUDGE : nudge, frontId) });
     return device.createRenderPipelineAsync({
-      layout: device.createPipelineLayout({ bindGroupLayouts: [layout] }),
+      layout: device.createPipelineLayout({ bindGroupLayouts: [layout, colorTableLayout(device)] }),
       vertex: { module: shader, entryPoint: 'vs_main', buffers: [LAYOUT] },
       fragment: { module: shader, entryPoint: variant === 'pixel-centre' ? 'fs_pixel_depth' : 'fs_witness', targets: [{ format: 'rgba8unorm' }] },
       primitive: { topology: 'triangle-list', cullMode: 'none' },
@@ -204,7 +205,7 @@ export async function runPerspectiveDistanceWitness(
     if (!found) {
       const shader = device.createShaderModule({ code: source(override, frontId) });
       found = await device.createRenderPipelineAsync({
-        layout: device.createPipelineLayout({ bindGroupLayouts: [layout] }),
+        layout: device.createPipelineLayout({ bindGroupLayouts: [layout, colorTableLayout(device)] }),
         vertex: { module: shader, entryPoint: 'vs_main', buffers: [LAYOUT] },
         fragment: { module: shader, entryPoint: 'fs_witness', targets: [{ format: 'rgba8unorm' }] },
         primitive: { topology: 'triangle-list', cullMode: 'none' },
@@ -219,7 +220,7 @@ export async function runPerspectiveDistanceWitness(
   const depthPipeline = async (override: string | undefined) => {
     const shader = device.createShaderModule({ code: source(override, 0) });
     return device.createRenderPipelineAsync({
-      layout: device.createPipelineLayout({ bindGroupLayouts: [layout] }),
+      layout: device.createPipelineLayout({ bindGroupLayouts: [layout, colorTableLayout(device)] }),
       vertex: { module: shader, entryPoint: 'vs_main', buffers: [LAYOUT] },
       primitive: { topology: 'triangle-list', cullMode: 'none' },
       depthStencil: { format: 'depth32float', depthWriteEnabled: true, depthCompare: 'greater' },
@@ -385,7 +386,7 @@ async function drawResolved(device: GPUDevice, depthFormat: GPUTextureFormat, pi
       depthStencilAttachment: { view: depth.createView(), depthLoadOp: 'clear', depthStoreOp: 'store', depthClearValue: 0,
         stencilLoadOp: 'clear', stencilStoreOp: 'store', stencilClearValue: 0 },
     });
-    pass.setPipeline(pipeline);
+    pass.setPipeline(pipeline); pass.setBindGroup(1, emptyColorTableGroup(device));
     for (const piece of pieces) {
       pass.setBindGroup(0, piece.bindGroup); pass.setVertexBuffer(0, piece.vertex); pass.setIndexBuffer(piece.index, 'uint32'); pass.drawIndexed(piece.count);
     }
@@ -403,7 +404,7 @@ async function readCentreDepth(device: GPUDevice, pipeline: GPURenderPipeline, p
     const encoder = device.createCommandEncoder();
     const pass = encoder.beginRenderPass({ colorAttachments: [],
       depthStencilAttachment: { view: depth.createView(), depthLoadOp: 'clear', depthStoreOp: 'store', depthClearValue: 0 } });
-    pass.setPipeline(pipeline); pass.setBindGroup(0, piece.bindGroup); pass.setVertexBuffer(0, piece.vertex);
+    pass.setPipeline(pipeline); pass.setBindGroup(0, piece.bindGroup); pass.setBindGroup(1, emptyColorTableGroup(device)); pass.setVertexBuffer(0, piece.vertex);
     pass.setIndexBuffer(piece.index, 'uint32'); pass.drawIndexed(piece.count); pass.end();
     encoder.copyTextureToBuffer({ texture: depth, aspect: 'depth-only' }, { buffer: read, bytesPerRow: 256 }, [SIZE, SIZE]);
     device.queue.submit([encoder.finish()]); await read.mapAsync(GPUMapMode.READ);

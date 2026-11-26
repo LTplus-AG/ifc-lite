@@ -47,6 +47,8 @@ import { getGpuResidencyBudgetBytes, getHostResidencyBudgetBytes } from '../../u
 import { getLodScreenPx } from '../../utils/lodConfig.js';
 import { isQuantizedEnabled } from '../../utils/quantizedConfig.js';
 import { configureDrawStream } from '../../utils/drawStreamConfig.js';
+import { configureGpuInstancing, configureKeyedInstancing } from '../../utils/gpuInstancingConfig.js';
+import { forgetAppliedRenderPaths } from '../../utils/hugeGeometryConfig.js';
 import { unionEntityBounds, getThemeClearColor, hasPendingMeasurementState, type BoundingBox3D } from '../../utils/viewportUtils.js';
 import { registerAgentViewportHost } from '@/lib/agent-bridge/viewport-host';
 import { setGlobalCanvasRef, setGlobalRendererRef, clearGlobalRefs } from '../../hooks/useBCF.js';
@@ -615,6 +617,7 @@ export function Viewport({
     renderer.init().then(() => {
       if (aborted) return;
       configureDrawStream(renderer); // flat-batch draw stream (m6.* flags), OFF by default
+      configureGpuInstancing(renderer); configureKeyedInstancing(renderer.getScene()); // GPU-driven instancing OFF by default; keyed joins ON
       // Spatial chunk bucketing (issue #1682 phase 2) — must be configured
       // before any geometry streams into the scene. ON by default since the
       // flip sweep; kill switch __IFC_LITE_CHUNKS = 0.
@@ -1106,7 +1109,7 @@ export function Viewport({
       rendererRef.current = null;
       // Free all WebGPU resources held by this renderer instance.
       // destroy() is idempotent, so this is safe even if init() rejected.
-      renderer.destroy();
+      renderer.destroy(); forgetAppliedRenderPaths(); // telemetry stops reporting this renderer's paths
       // Clear BCF global refs to prevent memory leaks
       clearGlobalRefs();
       clearViewportDebugHooks();

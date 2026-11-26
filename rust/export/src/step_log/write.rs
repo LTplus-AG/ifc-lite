@@ -110,7 +110,8 @@ pub fn export_step_with_log(
 
 /// [`export_step_with_log`], writing as it goes. The source is read, never
 /// copied: memory beyond the record index grows with the EDITS (the lines they
-/// change, the records they generate), not with the file.
+/// change, the records they generate). Conversions requiring a whole-DATA
+/// adaptation hold the body until references or placements have been settled.
 pub fn export_step_with_log_to_writer<W: Write>(
     content: &[u8],
     opts: &StepOptions,
@@ -145,11 +146,26 @@ fn write_line<W: Write>(
         let Some(flat) = flatten.line(from, text.to_string()) else { return Ok(false) };
         let text = flat.as_str();
         let converted = crate::schema_convert::convert_step_line(text, from, to, id, slot_fill, Some(checks))?;
+        // A record the conversion does not write (#10763).
+        if converted.is_empty() { return Ok(false); }
         out.write_all(converted.as_bytes())?;
     } else {
         out.write_all(text.as_bytes())?;
     }
     out.write_all(b"\n").map(|()| true)
+}
+
+/// The export's conversion checks, with its material records as it writes
+/// them (#10763): every edited record (a retype too) and every created one,
+/// against what the pass emits.
+#[allow(clippy::too_many_arguments)]
+fn checks_for(content: &[u8], source_label: &str, target: &str, opts: &StepOptions, log: &MutationLog, src: &Source<'_>, pass: &mut super::pass::Pass<'_, '_>) -> crate::schema_enum::ConversionChecks {
+    let unchanged = log.mutations.is_empty() && log.new_entities.is_empty() && log.georef_mutations.is_none();
+    let mut checks = crate::schema_enum::ConversionChecks::for_source(content, source_label, target, opts, unchanged, &|id, start| src.span(id).is_some_and(|(kept, _)| kept == start), &mut || pass.allocate().ok());
+    let written = pass.mutated_lines.iter().filter_map(|(id, (line, _))| Some((*id, line.as_deref()?))).chain(pass.created_lines.iter().map(|(id, l)| (*id, l.as_str())));
+    let retained = |id| pass.will_be_emitted(id) && !matches!(pass.mutated_lines.get(&id), Some((None, _)));
+    checks.materials.with_effective(crate::schema_convert::canon(source_label), &retained, written);
+    checks
 }
 
 /// The header, naming the source's schema token unless this export converts,
@@ -191,7 +207,7 @@ fn body_has(pass: &Pass<'_, '_>, content: &[u8], contains: impl Fn(&[u8]) -> boo
         || pass.mutated_lines.values().filter_map(|(text, _)| text.as_deref()).any(|text| contains(text.as_bytes()))
 }
 
-fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &mut W) -> io::Result<LogExportStats> {
+fn validate_log_options(opts: &StepOptions) -> io::Result<()> {
     if opts.included.is_some() {
         return Err(invalid("export_step_with_log: `included` is not supported with a mutation log"));
     }
@@ -200,13 +216,19 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
             "export_step_with_log: pass edits in the log, not in StepOptions' attribute/property/copy-on-write vectors",
         ));
     }
-    let src = Source::index(content);
+    Ok(())
+}
+
+fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &mut W) -> io::Result<LogExportStats> {
+    validate_log_options(opts)?;
+    let mut src = Source::index(content);
     check_created_ids(&src, log)?;
     let family = schema_family(content);
     let source_label = detect_schema(content);
     let target = opts.schema.clone().unwrap_or_else(|| source_label.clone());
     let converting = opts.schema.is_some() && crate::schema_convert::needs_conversion(&source_label, &target);
 
+    src.preserve_latin1 = crate::schema_typed_properties::applies_to_source(content, &source_label, &target);
     let target_is_ifc2x3 = crate::schema_convert::targets_ifc2x3(&target);
     if target_is_ifc2x3 && log.georef_mutations.as_ref().is_some_and(super::georef::requests_anything) {
         return Err(invalid(format!("export_step_with_log: {}", super::georef::IFC2X3_REFUSAL)));
@@ -270,17 +292,24 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
     generate(&mut pass, collected).map_err(unwritable)?;
     write_created(&mut pass).map_err(unwritable)?;
 
+    let typed_properties = src.preserve_latin1 || (crate::schema_typed_properties::applies(&source_label, &target)
+        && (!pass.overlay.retype_order.is_empty() || !pass.created_lines.is_empty()));
     let mut slot_fill = crate::schema_ifc2x3_slots::Ifc2x3SlotFill::new(pass.fallback_owner_history());
-    let mut checks = crate::schema_enum::ConversionChecks::for_source(content, &source_label, &target, opts, log.mutations.is_empty() && log.new_entities.is_empty() && log.georef_mutations.is_none(), &|id, start| src.span(id).is_some_and(|(kept, _)| kept == start), &mut || pass.allocate().ok());
+    let mut checks = checks_for(content, &source_label, &target, opts, log, &src, &mut pass); // #10763: its material records too
+    checks.typed_properties.enabled = typed_properties;
     let defer_varying = body_has(&pass, content, |bytes| checks.structural.buffers_varying(bytes));
     let date_buffer = body_has(&pass, content, |bytes| {
         crate::schema_value_forms::ValueForms::buffer_for_dates(bytes, &source_label, &target)
     });
     if target_is_ifc2x3 || date_buffer { checks.forms.enable_dates(); }
-    let modifications = pass.new_entity_count + pass.ledger.modified_count();
-    let header = |mut out: &mut dyn Write, added| write_header(&mut out, opts, content, converting, &target, modifications + added);
-    if !defer_varying { header(out, 0)?; }
-    let mut body = crate::schema_ifc2x3_placements::Body::for_conversion(&mut *out, target_is_ifc2x3, defer_varying || date_buffer);
+    let may_prune_upgrade = crate::schema_unrooted_upgrade::Upgrade::between(&source_label, &target).filter(|upgrade|
+        !pass.overlay.retype_order.is_empty() || !pass.created_lines.is_empty()
+            || upgrade.seeds(content).next().is_some());
+    let mut new_entities = pass.new_entity_count;
+    let delay_header = defer_varying || may_prune_upgrade.is_some();
+    let header = |mut out: &mut dyn Write, created| write_header(&mut out, opts, content, converting, &target, pass.ledger.modified_count() + created);
+    if !delay_header { header(out, new_entities)?; }
+    let mut body = crate::schema_ifc2x3_placements::Body::for_conversion(&mut *out, target_is_ifc2x3, defer_varying || date_buffer || typed_properties, may_prune_upgrade);
     let mut flatten = crate::schema_style_flatten::StyleFlatten::for_export(content, &source_label, &target); flatten.note_all(content, pass.mutated_lines.iter().filter_map(|(id, (t, _))| Some((*id, t.as_deref()?)))
         .chain(pass.generated.iter().chain(&pass.rewritten_lines).chain(&pass.georef_lines).chain(&pass.created_lines).map(|(id, l)| (*id, l.as_str()))));
     flatten.retain_grids(|id| !pass.skip.contains(&id) && !pass.is_deleted(id));
@@ -336,11 +365,11 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
     for (id, line) in appended.filter(|(id, _)| !flatten.drops(*id)) {
         written += usize::from(write_line(&mut body, line, *id, converting, &source_label, &target, &mut slot_fill, &mut checks, &flatten)?);
     }
-    let mut deferred_entities = 0;
-    let delta = checks.finish_with_header(body, target_is_ifc2x3.then_some(&mut slot_fill), |out, count| {
-        if !defer_varying { return Ok(()); }
-        deferred_entities = usize::try_from(count).unwrap_or_default();
-        header(out, deferred_entities)
+    let (delta, deferred_entities) = checks.finish_with_header(body, target_is_ifc2x3.then_some(&mut slot_fill), pass.ids, |out, varying, omitted| {
+        if !delay_header { return Ok(()); }
+        new_entities -= pass.generated.iter().chain(&pass.georef_lines).chain(&pass.created_lines)
+            .filter(|(id, _)| omitted.contains(id)).count();
+        header(out, new_entities + varying)
     })?;
     written = written.checked_add_signed(delta).unwrap_or(written);
     out.write_all(b"ENDSEC;\nEND-ISO-10303-21;\n")?;
@@ -352,7 +381,7 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
     Ok(LogExportStats {
         written,
         total: src.order.len(),
-        new_entities: pass.new_entity_count + deferred_entities,
+        new_entities: new_entities + deferred_entities,
         modified_entities: pass.ledger.modified_count(),
         warnings,
         step: StepCounters {

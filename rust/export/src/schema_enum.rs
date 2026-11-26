@@ -181,7 +181,10 @@ fn enum_member(slot: &str) -> Option<String> {
 /// required-slot count (#5307) and enum reconciliation (#5365); plus the
 /// per-type conversion plans and the values a conversion had no target slot
 /// for (#7683).
-#[derive(Default)]
+///
+/// Built only by [`ConversionChecks::new`], which takes the export's material
+/// referents (#10763), so no converter holds checks that cannot resolve them.
+#[cfg_attr(test, derive(Default))]
 pub(crate) struct ConversionChecks {
     pub(crate) structural: crate::schema_structural_diagnostics::StructuralDiagnostics,
     pub(crate) ifc4_slots: Ifc4SlotCheck,
@@ -190,6 +193,9 @@ pub(crate) struct ConversionChecks {
     pub(crate) documents: crate::schema_document_links::DocumentLinks,
     /// Values a target slot's type cannot hold (#10847).
     pub(crate) forms: crate::schema_value_forms::ValueForms,
+    /// The IfcMaterial a downgraded IfcMaterialProperties names (#10763).
+    pub(crate) materials: crate::schema_material_referent::MaterialReferents,
+    pub(crate) typed_properties: crate::schema_typed_properties::TypedPropertyUpgrade,
     /// `convert_record`'s per-type decisions, resolved once per distinct type.
     pub(crate) plans: crate::schema_plan::PlanCache,
     pub(crate) merged: bool,
@@ -197,11 +203,25 @@ pub(crate) struct ConversionChecks {
     /// a trimmed tail, an alignment proxy's attributes past IfcProduct's, and
     /// by-name remap sources with no same-named target attribute.
     pub(crate) attribute_values_dropped: usize,
+    upgrade_omissions: Vec<String>,
 }
 
 impl ConversionChecks {
-    pub(crate) fn new() -> Self {
-        Self::default()
+    /// The checks for one export, with the material records it writes.
+    pub(crate) fn new(materials: crate::schema_material_referent::MaterialReferents) -> Self {
+        Self {
+            structural: Default::default(),
+            ifc4_slots: Default::default(),
+            enums: Default::default(),
+            documents: Default::default(),
+            forms: Default::default(),
+            materials,
+            upgrade_omissions: Vec::new(),
+            typed_properties: Default::default(),
+            plans: Default::default(),
+            merged: false,
+            attribute_values_dropped: 0,
+        }
     }
 
     /// Source-derived orientations, link types and varying actions are safe only
@@ -209,7 +229,8 @@ impl ConversionChecks {
     #[inline(never)]
     pub(crate) fn for_source(content: &[u8], from: &str, to: &str, opts: &crate::step_api::StepOptions, unchanged: bool, kept: &dyn Fn(u32, usize) -> bool, allocate: &mut dyn FnMut() -> Option<u32>) -> Self {
         let (from, to) = (crate::schema_convert::canon(from), crate::schema_convert::canon(to));
-        let mut checks = Self::new();
+        // Read from the source's types alone, so it runs for every export (#10763).
+        let mut checks = Self::new(crate::schema_material_referent::MaterialReferents::scan(content, from, to, !unchanged, kept));
         if !(unchanged && opts.included.is_none() && opts.attribute_mutations.is_empty() && opts.copy_on_write.is_empty()) {
             checks.structural.defer_varying = from == "IFC2X3" && to == "IFC4";
             return checks;
@@ -245,16 +266,19 @@ impl ConversionChecks {
         &mut self,
         body: crate::schema_ifc2x3_body::Body<'_>,
         slots: Option<&mut crate::schema_ifc2x3_slots::Ifc2x3SlotFill>,
+        ids: crate::step_ids::IdAllocator,
     ) -> std::io::Result<isize> {
-        self.finish_with_header(body, slots, |_, _| Ok(()))
+        self.finish_with_header(body, slots, ids, |_, _, _| Ok(())).map(|(delta, _)| delta)
     }
 
+    /// Return the DATA record delta and the number of records minted by the deferred passes.
     pub(crate) fn finish_with_header(
         &mut self,
         mut body: crate::schema_ifc2x3_body::Body<'_>,
         mut slots: Option<&mut crate::schema_ifc2x3_slots::Ifc2x3SlotFill>,
-        header: impl FnOnce(&mut dyn std::io::Write, isize) -> std::io::Result<()>,
-    ) -> std::io::Result<isize> {
+        ids: crate::step_ids::IdAllocator,
+        header: impl FnOnce(&mut dyn std::io::Write, usize, &std::collections::HashSet<u32>) -> std::io::Result<()>,
+    ) -> std::io::Result<(isize, usize)> {
         use std::io::Write as _;
         let mut added = self.structural.added();
         added.extend(self.structural.values.added());
@@ -267,17 +291,32 @@ impl ConversionChecks {
             };
             writeln!(body, "{record}")?;
         }
-        // Date pruning changes the written count, but cannot undo a structural addition.
-        let varying_added = std::cell::Cell::new(0);
-        Ok(count + body.finish_with_header(|text| {
-            let varying = self.structural.finish_effective_varying(text, &mut self.attribute_values_dropped);
-            varying_added.set(varying.as_ref().map_or(0, |(_, added)| *added));
-            let source = varying.as_ref().map_or(text, |(body, _)| body.as_str());
+        // Varying actions mint ids above the final DATA ids, including typed properties.
+        let typed_added = body.rewrite_held(|text| self.finish_typed_properties(text, || ids));
+        let varying_ids = std::cell::RefCell::new(Vec::new());
+        let surviving_deferred = std::cell::Cell::new(typed_added);
+        let body_delta = body.finish_with_header(|text| {
+            let varying = self.structural.finish_effective_varying(text, &mut self.attribute_values_dropped)
+                .map(|(text, ids)| { varying_ids.replace(ids); text });
+            let added = varying_ids.borrow().len() as isize;
+            let source = varying.as_deref().unwrap_or(text);
             match self.forms.finish_dates(source, &mut self.attribute_values_dropped, |ty| self.plans.forget_verbatim(ty)) {
-                Some((body, delta)) => Some((body, varying_added.get() + delta)),
-                None => varying,
+                Some((body, delta)) => Some((body, added + delta)),
+                None => varying.map(|body| (body, added)),
             }
-        }, |out, _| header(out, varying_added.get()))?)
+        }, |out, omitted| {
+            let varying = varying_ids.borrow().iter().filter(|id| !omitted.contains(id)).count();
+            // Typed properties reserve a contiguous range starting at the supplied allocator.
+            let typed_removed = ids.peek().map_or(0, |first| omitted.iter()
+                .filter(|id| id.checked_sub(first).is_some_and(|offset| (offset as usize) < typed_added)).count());
+            surviving_deferred.set(typed_added - typed_removed + varying);
+            header(out, varying, omitted)
+        }, &mut self.upgrade_omissions)?;
+        Ok((count + typed_added as isize + body_delta, surviving_deferred.get()))
+    }
+
+    pub(crate) fn finish_typed_properties(&mut self, text: &[u8], ids: impl FnOnce() -> crate::step_ids::IdAllocator) -> Option<(Vec<u8>, usize)> {
+        self.typed_properties.finish(text, ids, &mut self.ifc4_slots, &mut self.attribute_values_dropped, &mut self.structural)
     }
 
     pub(crate) fn finish_dates(&mut self, text: &mut String) -> isize {
@@ -301,8 +340,11 @@ impl ConversionChecks {
         out.extend(self.enums.warnings());
         out.extend(self.documents.warnings());
         out.extend(self.forms.warnings());
+        out.extend(self.materials.warnings());
         out.extend(self.structural.warnings());
         out.extend(self.plans.warnings());
+        out.extend(self.upgrade_omissions.iter().cloned());
+        out.extend(self.typed_properties.warning());
         out
     }
 }

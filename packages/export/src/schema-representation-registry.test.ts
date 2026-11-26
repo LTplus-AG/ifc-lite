@@ -2,7 +2,7 @@
 /**
  * Registry check (#10902): every type a source schema declares and the target
  * does not is routed, never written verbatim unseen. For each schema pair it
- * partitions the source-only types by the conversion loss classifier's decisions and pins
+ * partitions the source-only types by `convertRecord`'s own decisions and pins
  * the partition to `rust/export/tests/fixtures/schema_unrepresented_vectors.json`
  * (`routes`), which the Rust twin checks name by name (`schema_unrepresented.rs`). A new source-only type, or a listed gap
  * that gets fixed, fails here until the fixture says so.
@@ -11,11 +11,13 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { attrNameTable, convertEntityType, shouldSkipEntity, type IfcSchemaVersion } from './schema-converter.js';
+import { isRootedEntityType, missingTypeRoute } from './schema-untranslatable.js';
 import { IfcParser } from '@ifc-lite/parser';
 import { StepExporter } from './step-exporter.js';
+import { DELETED_SUBTYPES } from './schema-converter-attr-maps.js';
 import { analyzeConversionLoss, classifyEntityTypeConversion } from './schema-conversion-loss-report.js';
 
-type Routes = { verbatim?: string[]; proxied?: string[]; handled?: string[] };
+type Routes = { verbatim?: string[]; proxied?: string[]; handled?: string[]; omitted?: string[] };
 const fixture: { routes: Record<string, Routes> } = JSON.parse(readFileSync(
   fileURLToPath(new URL('../../../rust/export/tests/fixtures/schema_unrepresented_vectors.json', import.meta.url)), 'utf8'));
 
@@ -26,17 +28,15 @@ const parse = (schema: IfcSchemaVersion, data: string) => new IfcParser().parseC
   `ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t.ifc','',(''),(''),'','','');\nFILE_SCHEMA(('${schema}'));\nENDSEC;\nDATA;${data}ENDSEC;\nEND-ISO-10303-21;\n`).buffer as ArrayBuffer);
 
 /** The source-only types of `from -> to` by route; renamed onto a declared type, or an alignment product proxy, needs no entry. */
-function partition(from: IfcSchemaVersion, to: IfcSchemaVersion): { verbatim: string[]; proxied: string[]; refused: string[]; handled: string[] } {
+function partition(from: IfcSchemaVersion, to: IfcSchemaVersion): { verbatim: string[]; proxied: string[]; refused: string[]; handled: string[]; omitted: string[] } {
   const src = attrNameTable(from)!, tgt = attrNameTable(to)!;
-  const out = { verbatim: [] as string[], proxied: [] as string[], refused: [] as string[], handled: [] as string[] };
+  const out = { verbatim: [] as string[], proxied: [] as string[], refused: [] as string[], handled: [] as string[], omitted: [] as string[] };
   for (const type of src.keys()) {
     const newType = convertEntityType(type, from, to);
-    if (tgt.has(newType) || shouldSkipEntity(newType, to)) continue;
-    const { kind } = classifyEntityTypeConversion(type, from, to);
-    if (kind === 'lossy') out.verbatim.push(type);
-    else if (kind === 'proxied') out.proxied.push(type);
-    else if (kind === 'blocked') out.refused.push(type);
-    else out.handled.push(type);
+    if (shouldSkipEntity(newType, to)) continue;
+    const route = missingTypeRoute(type, from, to, true, tgt.has(newType));
+    if (route === 'verbatim' || route === 'handled' || route === 'omitted') out[route].push(type);
+    else if (route === 'unrepresented') (isRootedEntityType(type) ? out.proxied : out.refused).push(type);
   }
   for (const list of Object.values(out)) list.sort();
   return out;
@@ -51,21 +51,19 @@ describe('every source-only type has a route (#10902)', () => {
         const got = partition(from, to);
         expect(got.verbatim).toEqual([...(fixture.routes[pair]?.verbatim ?? [])].sort());
         expect(got.handled).toEqual([...(fixture.routes[pair]?.handled ?? [])].sort());
+        expect(got.omitted).toEqual([...(fixture.routes[pair]?.omitted ?? [])].sort());
         // The upgrade's proxies are pinned so Rust can check each one; elsewhere only the verbatim gaps are.
         if (pair === 'IFC2X3>IFC4') expect(got.proxied).toEqual([...(fixture.routes[pair].proxied ?? [])].sort());
       });
     }
   }
 
-  it('IFC2X3 -> IFC4 writes verbatim exactly the listed types, and proxies the other rooted ones', () => {
+  it('IFC2X3 -> IFC4 preserves the task routes and proxies rooted types without a mapping', () => {
     const { verbatim, proxied, refused } = partition('IFC2X3', 'IFC4');
     expect(refused).toEqual([]);
     expect(proxied).toContain('IFCSERVICELIFE');
     // Written as their IFC4 supertype, so none needs a route.
-    for (const type of ['IFCMOVE', 'IFCORDERACTION', 'IFCRELOCCUPIESSPACES', 'IFCRELASSIGNSTASKS',
-      'IFCRELASSIGNSTOPROJECTORDER', 'IFCRELSCHEDULESCOSTITEMS']) {
-      expect([...verbatim, ...proxied], type).not.toContain(type);
-    }
+    for (const type of DELETED_SUBTYPES.keys()) expect([...verbatim, ...proxied], type).not.toContain(type);
     // Its overrides would be lost silently as IfcRelDefinesByProperties, so it stays a proxy.
     expect(proxied).toContain('IFCRELOVERRIDESPROPERTIES');
   });
@@ -100,7 +98,7 @@ describe('an IFC2X3 -> IFC4 upgrade writes each route, and the loss report names
     expect(entry('IFCSERVICELIFE')).toMatchObject({ kind: 'proxied', targetType: 'IFCPROXY', expressIds: [7] });
     expect(line(8)).toBe("#8=IFCRELASSIGNSTOCONTROL('0FvctVUKr0kugbFTf53O9L',$,$,$,(#5),$,#9);");
     expect(entry('IFCRELASSIGNSTASKS')).toMatchObject({ kind: 'lossy', targetType: 'IFCRELASSIGNSTOCONTROL', droppedAttributes: ['TimeForTask'], expressIds: [8] });
-    expect(entry('IFCMOVE')).toMatchObject({ kind: 'lossy', targetType: 'IFCTASK', droppedAttributes: ['MoveFrom', 'MoveTo', 'PunchList'], expressIds: [5] });
+    expect(entry('IFCMOVE')).toMatchObject({ kind: 'lossy', targetType: 'IFCTASK', droppedAttributes: ['PunchList'], expressIds: [5] });
     expect(entry('IFCCALENDARDATE')).toMatchObject({ kind: 'lossy', targetType: 'IFCCALENDARDATE', expressIds: [6] });
   });
 });

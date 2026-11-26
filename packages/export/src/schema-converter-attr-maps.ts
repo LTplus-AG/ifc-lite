@@ -81,8 +81,8 @@ function getAttrMapIndex(): AttrMapIndex {
     same('IFCDOCUMENTINFORMATIONRELATIONSHIP'),
     same('IFCLIBRARYINFORMATION', { retyped: ['VersionDate'], upOnly: ['Publisher'] }),
     // IFC4 deleted these IFC2X3 subtypes for its now-concrete supertype. A
-    // downgrade writes IfcGeneralProfileProperties (`IFC4_TO_IFC2X3`); an
-    // IfcMaterialProperties downgrade waits on its Material referent (#10911). An
+    // downgrade writes IfcGeneralProfileProperties or IfcExtendedMaterialProperties.
+    // The material downgrade resolves its Material referent before remapping. An
     // upgrade writes every one as its IFC4 supertype (#10777).
     // The typed subtypes keep only Material or ProfileDefinition; their measures are dropped.
     map('IFCEXTENDEDMATERIALPROPERTIES', 'IFCMATERIALPROPERTIES', { renamed: [['ExtendedProperties', 'Properties']] }),
@@ -169,7 +169,9 @@ export function attrMapFor(
 ): { map: AttrMap; up: boolean } | undefined {
   if (fromSchema === 'IFC2X3' && (toSchema === 'IFC4' || toSchema === 'IFC4X3')) {
     const found = getAttrMapIndex().byIfc2x3.get(entityType);
-    return found?.ifc4 === newType ? { map: found, up: true } : undefined;
+    const target = toSchema === 'IFC4X3' && newType === 'IFCDISTRIBUTIONBOARD'
+      ? 'IFCELECTRICDISTRIBUTIONBOARD' : newType;
+    return found?.ifc4 === target ? { map: found, up: true } : undefined;
   }
   if (toSchema === 'IFC2X3' && (fromSchema === 'IFC4' || fromSchema === 'IFC4X3')) {
     // IFC4X3 also declares the renamed IfcDistributionBoard with the same carried slots (#11021).

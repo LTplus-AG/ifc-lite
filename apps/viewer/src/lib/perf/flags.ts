@@ -13,7 +13,7 @@
  *
  * The existing global names, URL params and sticky keys are the bindings, so
  * every old spelling keeps working. `__IFC_LITE_*` globals are read only via
- * `readPerfFlagRaw` (`@ifc-lite/data`); geometry reads its three locally with
+ * `readPerfFlagRaw` (`@ifc-lite/data`); geometry reads its own locally with
  * the bindings it exports (`GEOMETRY_PERF_FLAG_BINDINGS`), spread below.
  *
  * `scripts/check-perf-flags.mjs` (CI, node-tests) parses `PERF_FLAGS` and
@@ -97,6 +97,33 @@ export const PERF_FLAGS = [
     introducedAt: '2026-10-05',
     default: true,
     bindings: { ...GEOMETRY_PERF_FLAG_BINDINGS.shardScan, benchmarkEnv: 'VIEWER_BENCHMARK_SHARD_SCAN' },
+  },
+  {
+    id: 'globalInstancing',
+    kind: 'ramp',
+    owner: '@louistrue',
+    removalCondition: 'Delete with the per-batch instancing decision once the global instance plan is the default and has shipped two releases with no rendering or compare report.',
+    introducedAt: '2026-11-23',
+    default: false,
+    bindings: GEOMETRY_PERF_FLAG_BINDINGS.globalInstancing,
+  },
+  {
+    id: 'outOfCore',
+    kind: 'ramp',
+    owner: '@louistrue',
+    removalCondition: 'Delete with the full-copy geometry worker path once out-of-core ingest is the default above its size threshold and has shipped two releases with no load or parity report.',
+    introducedAt: '2026-11-24',
+    default: false,
+    bindings: GEOMETRY_PERF_FLAG_BINDINGS.outOfCore,
+  },
+  {
+    id: 'outOfCoreBudgetMb',
+    kind: 'ramp',
+    owner: '@louistrue',
+    removalCondition: 'Delete with outOfCore: the arena budget becomes a constant once the default is chosen.',
+    introducedAt: '2026-11-24',
+    default: 192,
+    bindings: GEOMETRY_PERF_FLAG_BINDINGS.outOfCoreBudgetMb,
   },
   {
     id: 'contribCull',
@@ -230,8 +257,44 @@ export const PERF_FLAGS = [
     owner: '@louistrue',
     removalCondition: 'Flat-batch draw stream (bundles, shared arenas, far-field HLOD, highlight index; huge-geometry campaign): delete with the per-batch opaque loop once the stream ships on by default, or delete the stream if it is dropped. The global takes an object of DrawStreamConfig keys; each key also reads its own m6.<key> URL param.',
     introducedAt: '2026-11-23',
-    default: null,
-    bindings: { global: '__IFC_LITE_M6__', urlParam: 'm6.stream' },
+    default: false,
+    bindings: { global: '__IFC_LITE_M6__', urlParam: 'm6.stream', posthogKey: 'perf-draw-stream' },
+  },
+  {
+    id: 'gpuInstancing',
+    kind: 'ramp',
+    owner: '@louistrue',
+    removalCondition: 'GPU-driven instancing (compute cull, indirect draws; huge-geometry campaign): delete with the per-template instanced path once it ships on by default, or delete the pool if it is dropped.',
+    introducedAt: '2026-11-23',
+    default: false,
+    bindings: { global: '__IFC_LITE_GPU_INSTANCING', urlParam: 'perf.gpuInstancing', posthogKey: 'perf-gpu-instancing' },
+  },
+  {
+    id: 'hugeGeometry',
+    kind: 'ramp',
+    owner: '@louistrue',
+    removalCondition: 'Umbrella for the huge-geometry render paths (draw stream with arenas, HLOD and highlight index, plus GPU-driven instancing); delete once those ship on by default or are dropped.',
+    introducedAt: '2026-11-23',
+    default: false,
+    bindings: { global: '__IFC_LITE_HUGE', urlParam: 'perf.huge' },
+  },
+  {
+    id: 'compactGeom',
+    kind: 'ramp',
+    owner: '@louistrue',
+    removalCondition: 'Compact GPU records: delete with the f32 upload of flat meshes once on by default, or delete the encoder path if dropped.',
+    introducedAt: '2026-11-24',
+    default: false,
+    bindings: { urlParam: 'compactGeom' },
+  },
+  {
+    id: 'gpuOnly',
+    kind: 'ramp',
+    owner: '@louistrue',
+    removalCondition: 'GPU-only geometry residency: delete the off arm once large loads release their CPU geometry by default, or delete the controller if dropped.',
+    introducedAt: '2026-11-25',
+    default: 'off',
+    bindings: { global: '__IFC_LITE_GPU_ONLY', urlParam: 'perf.gpuOnly' },
   },
   {
     id: 'perfTrace',
@@ -293,39 +356,4 @@ export function resolvePerfFlag(
   }
   if (flag.kind === 'ramp' && posthogKey) return readFeatureFlag(posthogKey) ?? undefined;
   return undefined;
-}
-
-const MAX_STATE_LENGTH = 64;
-
-function compactState(value: unknown): string {
-  const text = typeof value === 'string' ? value : JSON.stringify(value) ?? String(value);
-  return text.length > MAX_STATE_LENGTH ? `${text.slice(0, MAX_STATE_LENGTH - 1)}…` : text;
-}
-
-/**
- * Boolean flags accept `1`/`0` (and their URL spellings) as on/off, so compare
- * those as the boolean they mean: `?perf.quantized=1` is the default, not an arm.
- */
-function effectiveState(value: unknown, fallback: PerfFlagDefault): unknown {
-  if (typeof fallback !== 'boolean') return value;
-  if (value === 1 || value === '1' || value === true) return true;
-  if (value === 0 || value === '0' || value === false) return false;
-  return value;
-}
-
-/**
- * Every flag whose current state differs from its default, as a compact
- * `{ id: value }` record (values stringified, capped at 64 chars). Meant to be
- * attached to field telemetry (#6961) so verdicts can be split by arm; an
- * empty record means the session ran every default.
- */
-export function activePerfFlags(): Record<string, string> {
-  const active: Record<string, string> = {};
-  for (const flag of PERF_FLAGS) {
-    const value = readPerfFlag(flag.id);
-    if (value === undefined || value === null) continue;
-    const state = compactState(effectiveState(value, flag.default));
-    if (state !== compactState(flag.default)) active[flag.id] = state;
-  }
-  return active;
 }

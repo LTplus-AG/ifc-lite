@@ -19,6 +19,40 @@ fn scan_ids(step: &str) -> Vec<u32> {
 }
 
 #[test]
+fn merged_typed_property_ids_follow_synthesized_records_10797() {
+    use std::fmt::Write;
+
+    let schema = "IFC4";
+    let mut out = header::merged_header(&MergedOptions::default(), schema);
+    let mut checks = ConversionChecks::new(Default::default());
+    let mut slots = Ifc2x3SlotFill::new(None);
+    checks.typed_properties.enabled = true;
+    let property = crate::schema_convert::convert_step_line(
+        "#2=IFCGENERALMATERIALPROPERTIES(#1,$,$,42.);", "IFC2X3", schema, 2,
+        &mut slots, Some(&mut checks),
+    ).unwrap();
+    writeln!(out, "#1=IFCMATERIAL('Concrete',$,$);\n{property}").unwrap();
+    // Model IDs end at #2. The finish pass receives a body with a synthesized #3 already present.
+    out.push_str("#3=IFCDIRECTION((1.,0.,0.));\n");
+    let mut stats = MergedStats {
+        models: 1, written: 3, federated_model_count: 0, unmerged_model_count: 0,
+        unit_rescale_required: false, dropped_container_count: 0, warnings: Vec::new(),
+    };
+    warnings::finish_output(
+        &mut out, &mut stats, schema, &slots, &mut checks,
+        single_parents::ParentClaims::for_schema(schema), &HashSet::new(), 2, &[],
+    );
+
+    let ids = scan_ids(&out);
+    assert_eq!(ids.len(), ids.iter().copied().collect::<HashSet<_>>().len(), "{out}");
+    assert_eq!(stats.written, ids.len());
+    assert!(out.contains("#3=IFCDIRECTION((1.,0.,0.));"), "{out}");
+    assert!(out.contains("#4=IFCPROPERTYSINGLEVALUE('MassDensity',$,IFCMASSDENSITYMEASURE(42.),$);"), "{out}");
+    assert!(out.contains("#2=IFCMATERIALPROPERTIES('Pset_MaterialCommon',$,(#4),#1);"), "{out}");
+    assert_no_dangling(&out);
+}
+
+#[test]
 fn merge_two_models_unifies_project_and_offsets_ids() {
     let a = fixture_or_skip!("ara3d/duplex.ifc");
     let single = scan_ids(&String::from_utf8_lossy(&a)).len();
@@ -839,6 +873,32 @@ fn incompatible_units_federate_and_flag_under_normalize() {
     unique.sort();
     unique.dedup();
     assert_eq!(unique.len(), guids.len());
+    assert_no_dangling(&merged);
+}
+
+#[test]
+fn typed_property_measures_stay_in_the_federated_models_units_10797() {
+    let metres = build_model("A", false, "Terrain", "Level 1");
+    let millimetres = include_str!("../../tests/fixtures/schema_typed_properties_upgrade.ifc")
+        .replace("0.02,'plastic'", "20.,'plastic'")
+        .replace("4.5,$,$,$,0.06", "4.5,$,$,$,60000.")
+        .replace("DATA;\n", concat!(
+            "DATA;\n",
+            "#10=IFCPROJECT('1123456789012345678901',$,'Project',$,$,$,$,$,#11);\n",
+            "#11=IFCUNITASSIGNMENT((#12,#13));\n",
+            "#12=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);\n",
+            "#13=IFCSIUNIT(*,.AREAUNIT.,.MILLI.,.SQUARE_METRE.);\n",
+        ));
+    let opts = MergedOptions {
+        schema: Some("IFC4".into()),
+        unit_reconciliation: UnitReconciliation::Normalize,
+        ..Default::default()
+    };
+    let (merged, stats) = export_merged_with_stats(&[metres.as_bytes(), millimetres.as_bytes()], &opts);
+    assert_eq!(stats.federated_model_count, 1);
+    assert!(stats.unit_rescale_required);
+    assert!(merged.contains("IFCPROPERTYSINGLEVALUE('MaxAggregateSize',$,IFCPOSITIVELENGTHMEASURE(20.),$);"));
+    assert!(merged.contains("IFCPROPERTYSINGLEVALUE('CrossSectionArea',$,IFCAREAMEASURE(60000.),$);"));
     assert_no_dangling(&merged);
 }
 

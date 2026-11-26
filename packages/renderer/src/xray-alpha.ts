@@ -101,8 +101,10 @@ export class XRayAlpha {
   private readonly selected: ReadonlySet<number>;
   // Resolved-per-batch results. Classification and the uniform write both need
   // them each frame, and recomputing would walk every id twice per batch.
-  private readonly batchCache = new WeakMap<object, { alpha: number; groups: AlphaGroup[] | null }>();
-  private readonly ghostCache = new WeakMap<object, boolean>();
+  // Each answer carries the id count it was computed for: a compact page (compact-store.ts) is one
+  // batch object that gains ids while a model streams, and a later id may resolve differently.
+  private readonly batchCache = new WeakMap<object, { alpha: number; groups: AlphaGroup[] | null; count: number }>();
+  private readonly ghostCache = new WeakMap<object, { ghost: boolean; count: number }>();
 
   constructor(options: RenderOptions, selectedExpressIds: ReadonlySet<number>) {
     const src = options.transparencyOverrides;
@@ -146,17 +148,18 @@ export class XRayAlpha {
    */
   isGhostBatch(batch: AlphaBatchLike): boolean {
     if (this.ghostExcept == null) return false;
-    let ghost = this.ghostCache.get(batch);
-    if (ghost === undefined) {
-      ghost = batch.expressIds.length > 0;
+    const cached = this.ghostCache.get(batch);
+    if (cached !== undefined && cached.count === batch.expressIds.length) return cached.ghost;
+    let ghost = batch.expressIds.length > 0;
+    {
       for (const eid of batchEntities(batch)) {
         if (this.ghostExcept.has(eid) || this.selected.has(eid) || this.overrides?.has(eid)) {
           ghost = false;
           break;
         }
       }
-      this.ghostCache.set(batch, ghost);
     }
+    this.ghostCache.set(batch, { ghost, count: batch.expressIds.length });
     return ghost;
   }
 
@@ -183,7 +186,7 @@ export class XRayAlpha {
 
   private resolve(batch: AlphaBatchLike, fallback: number): { alpha: number; groups: AlphaGroup[] | null } {
     const cached = this.batchCache.get(batch);
-    if (cached !== undefined) return cached;
+    if (cached !== undefined && cached.count === batch.expressIds.length) return cached;
     // ONE walk for both answers, and no allocation at all for the common case
     // (a batch that resolves to a single alpha — e.g. every fully-ghosted batch
     // on the model, every frame X-Ray is on). The group Sets are built by a
@@ -225,6 +228,7 @@ export class XRayAlpha {
     const resolved = {
       alpha: min === Infinity ? fallback : min,
       groups: mixed ? partitionByAlpha(batch.expressIds, (id) => this.forEntity(id, fallback)) : null,
+      count: batch.expressIds.length,
     };
     this.batchCache.set(batch, resolved);
     return resolved;

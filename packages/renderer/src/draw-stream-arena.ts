@@ -41,7 +41,7 @@ export class GeometryArena {
 
   /** Null when some batch cannot be copied (no COPY_SRC) or is not resident. */
   static build(device: GPUDevice, batches: readonly BatchedMesh[], cellOf: (b: BatchedMesh) => string): GeometryArena | null {
-    const ordered = [...batches].filter((b) => b.gpuResident !== false);
+    const ordered = [...batches].filter((b) => b.gpuResident !== false && !b.indexFormat); // a u16 compact page is never a stream member
     for (const b of ordered) {
       if ((b.vertexBuffer.usage & GPUBufferUsage.COPY_SRC) === 0 || (b.indexBuffer.usage & GPUBufferUsage.COPY_SRC) === 0) return null;
       if (b.lod1IndexBuffer && (b.lod1IndexBuffer.usage & GPUBufferUsage.COPY_SRC) === 0) return null;

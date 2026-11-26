@@ -69,3 +69,26 @@ fn edited_export_counts_each_varying_action_that_loses_its_configuration_11037()
     assert!(warnings.iter().any(|warning| warning.starts_with("2 structural conversion record(s): ")
         && warning.contains("no complete load configuration")), "{warnings:?}");
 }
+
+#[test]
+fn logged_export_counts_typed_properties_and_deferred_varying_records_once_10797() {
+    let text = varying_fixture().replace(
+        "\nENDSEC;\nEND-ISO-10303-21;",
+        "\n#90=IFCMATERIAL('Concrete');\n#91=IFCGENERALMATERIALPROPERTIES(#90,$,$,42.);\nENDSEC;\nEND-ISO-10303-21;",
+    );
+    let opts = ifc_lite_export::StepOptions { schema: Some("IFC4".into()), ..Default::default() };
+    let log = serde_json::from_value(serde_json::json!({"mutations": [
+        {"type": "UPDATE_POSITIONAL_ATTRIBUTE", "entityId": 30,
+         "attributeName": "@13", "newValue": ["#18", "#19"]}
+    ]})).unwrap();
+    let (output, stats) = ifc_lite_export::export_step_with_log(text.as_bytes(), &opts, &log).unwrap();
+    assert!(output.contains("IFCPROPERTYSINGLEVALUE('MassDensity',$,IFCMASSDENSITYMEASURE(42.),$);"), "{output}");
+    assert!(output.contains("IFCSTRUCTURALLOADCONFIGURATION($,(#11,#18,#19),$);"), "{output}");
+    assert!(output.contains("'Causes',$,(#20),$,#30);"), "{output}");
+    assert!(output.contains("3 modifications"), "{output}");
+    assert_eq!((stats.modified_entities, stats.new_entities), (1, 3));
+    let ids: Vec<_> = output.lines().filter(|line| line.starts_with('#'))
+        .map(|line| line.split_once('=').unwrap().0).collect();
+    assert_eq!(stats.written, ids.len());
+    assert_eq!(ids.iter().collect::<std::collections::HashSet<_>>().len(), ids.len(), "{output}");
+}

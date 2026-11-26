@@ -62,7 +62,7 @@ import { applySourceLineMutationsReported } from './step-attribute-mutations.js'
 import type { IfcSchemaVersion } from './schema-converter.js';
 import { convertStepLineFlattening } from './schema-style-flatten.js';
 import { nominateDeliveredInPlaceEdits } from './in-place-nomination.js';
-import { decodeRange } from './source-ref-bounds.js';
+import { decodeTypedPropertyRecord } from './schema-converter-typed-properties.js';
 import type { PropertySetContext } from './step-property-set-readers.js';
 import { retainSharedAtoms } from './step-shared-atom-retention.js';
 import { detachRelatedObjects } from './step-pset-copy-on-write.js';
@@ -184,15 +184,7 @@ export function writeSourceEntityLines(
         continue;
       }
 
-      // Get original entity text — decodeRange handles SAB-backed
-      // sources (Firefox/Chrome reject `TextDecoder.decode()` on a
-      // SharedArrayBuffer-backed view; the parser deliberately keeps
-      // `source` zero-copy SAB-backed for worker sharing).
-      const entityText = decodeRange(
-        source,
-        entityRef.byteOffset,
-        entityRef.byteOffset + entityRef.byteLength
-      );
+      const entityText = decodeTypedPropertyRecord(source, entityRef, pass.sourceSchema, pass.schema);
       // Retype, named attribute edits and positional edits, in that order.
       // Shared verbatim with the type-object `HasPropertySets` rewrite in
       // `step-property-sets.ts`, which writes the line this pass would

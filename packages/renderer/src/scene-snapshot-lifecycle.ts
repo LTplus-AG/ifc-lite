@@ -27,6 +27,7 @@ interface SnapshotBucket {
 
 /** The Scene state this module reads and publishes. */
 export interface SceneSnapshotHost {
+  compact: { readonly meshCount: number } | null;
   quantizedBatchesEnabled: boolean;
   lodBuildsEnabled: boolean;
   spatialChunking: SpatialChunkingConfig | null;
@@ -123,7 +124,7 @@ export class SceneSnapshotLifecycle {
         nextSplitId: scene.nextSplitId,
         sourceOf: (piece) => scene.modelTranslations.sourceMesh(piece),
         pristine: scene.dirtyBuckets.size === 0 && scene.coldBuckets.size === 0 && scene.texturedMeshes.length === 0
-          && scene.meshes.length === 0 && x === 0 && y === 0 && z === 0,
+          && scene.meshes.length === 0 && x === 0 && y === 0 && z === 0 && (scene.compact?.meshCount ?? 0) === 0, // pages are not in buckets
         sharedFrameOrigins: scene.sharedFrameOrigins,
         activeBuckets: scene.activeBucketKey,
         buckets: scene.buckets.values(),

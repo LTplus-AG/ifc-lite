@@ -209,7 +209,6 @@
    425 packages/ifcx/src/federated-composition.ts
    693 packages/ifcx/src/index.ts
    749 packages/lists/src/engine.ts
-   403 packages/mcp/src/server.ts
    470 packages/mcp/src/tools/layer-review.ts
    648 packages/mcp/src/tools/query.ts
    694 packages/mcp/src/tools/viewer.ts

@@ -36,13 +36,16 @@ function resolveEntityRefFromState(
   const progressive = federationRegistry.fromGlobalId(globalId);
   if (progressive) return progressive;
 
-  // Fallback: single-model mode where offset is 0 → globalId === expressId
-  if (state.models.size > 0) {
-    const firstModelId = state.models.keys().next().value as string;
+  // Fallback: single-model mode where offset is 0 → globalId === expressId.
+  // Only under that premise: behind a removed model the offset is not 0, and a
+  // negative id is nobody's (#11527: either became an unpublished local id that
+  // the next toGlobalId refused). Those take the legacy sentinel below.
+  const [firstModelId, firstModel] = state.models.entries().next().value ?? [];
+  if (firstModelId !== undefined && (firstModel?.idOffset ?? 0) === 0 && Number.isSafeInteger(globalId) && globalId >= 0) {
     return { modelId: firstModelId, expressId: globalId };
   }
 
-  // Legacy single-model mode: no models in federation map yet.
+  // Legacy single-model mode (no models in federation map yet), or an id no model owns.
   // 'legacy' is recognized by PropertiesPanel for fallback to legacy ifcDataStore.
   return { modelId: 'legacy', expressId: globalId };
 }

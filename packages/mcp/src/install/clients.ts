@@ -116,13 +116,14 @@ function claudeDesktopConfigPath(host: HostEnv): string {
   if (host.platform === 'win32') {
     // The Microsoft Store (MSIX) build reads a virtualized AppData under its
     // package folder, which shadows %APPDATA%\Claude once the app has run.
-    const localAppData = host.env.LOCALAPPDATA ?? win32.join(host.home, 'AppData', 'Local');
+    // `||`, not `??`: an empty variable counts as unset (XDG says so too).
+    const localAppData = host.env.LOCALAPPDATA || win32.join(host.home, 'AppData', 'Local');
     const packages = win32.join(localAppData, 'Packages');
     const msix = host.listDir(packages).find((d) => d.startsWith('Claude_'));
     if (msix) return win32.join(packages, msix, 'LocalCache', 'Roaming', 'Claude', file);
-    const appData = host.env.APPDATA ?? win32.join(host.home, 'AppData', 'Roaming');
+    const appData = host.env.APPDATA || win32.join(host.home, 'AppData', 'Roaming');
     return win32.join(appData, 'Claude', file);
   }
-  const config = host.env.XDG_CONFIG_HOME ?? posix.join(host.home, '.config');
+  const config = host.env.XDG_CONFIG_HOME || posix.join(host.home, '.config');
   return posix.join(config, 'Claude', file);
 }

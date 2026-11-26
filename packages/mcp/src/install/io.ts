@@ -119,12 +119,17 @@ function writeTarget(path: string): { target: string; mode?: number } {
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
   }
-  try {
-    return { target: resolve(dirname(path), readlinkSync(path)) };
-  } catch (err) {
-    // EINVAL: a plain path, not a link. ENOENT: nothing there yet.
-    const code = (err as NodeJS.ErrnoException).code;
-    if (code !== 'ENOENT' && code !== 'EINVAL') throw err;
-    return { target: path };
+  // Dangling: follow the chain of links to the missing end (realpath would have looped past 40).
+  let target = path;
+  for (let hop = 0; hop < 40; hop++) {
+    try {
+      target = resolve(dirname(target), readlinkSync(target));
+    } catch (err) {
+      // EINVAL: not a link, so this is the end. ENOENT: nothing there yet.
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code !== 'ENOENT' && code !== 'EINVAL') throw err;
+      return { target };
+    }
   }
+  throw new InstallError(`${path}: too many levels of symbolic links`);
 }

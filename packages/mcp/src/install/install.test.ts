@@ -75,6 +75,12 @@ describe('ifc-lite-mcp install: where each client is configured', () => {
     ]);
   });
 
+  it('an empty XDG_CONFIG_HOME counts as unset', () => {
+    const io = fakeIo({ platform: 'linux', env: { XDG_CONFIG_HOME: '' } });
+    install(['--client', 'claude-desktop'], io);
+    expect([...io.files.keys()]).toEqual(['/Users/u/.config/Claude/claude_desktop_config.json']);
+  });
+
   it('Cursor user and project scope', () => {
     const io = fakeIo();
     install(['--client', 'cursor'], io);
@@ -262,6 +268,8 @@ describe('ifc-lite-mcp install: dry run and usage errors', () => {
     [['--client', 'cursor', '--', '--transport'], 'drop --transport'],
     [['--client', 'cursor', '--', '--version'], 'print and exit'],
     [['--client', 'cursor', 'model.ifc', '--', '--bridge'], 'loads no files'],
+    [['--client', 'cursor', '-v'], 'not an install option'],
+    [['--client', 'cursor', '--', '--allow=./models'], 'with a space'],
     [['--client=cursor'], 'Write --client <value>'],
     [['--client', 'cursor', '--', '--transport', 'stdio', '--transport', 'http'], 'drop --transport'],
     [['--client', 'claude-desktop', '--scope', 'project'], 'no project config'],
@@ -310,6 +318,19 @@ describe('ifc-lite-mcp install: real files', () => {
     const io: InstallIo = { ...nodeInstallIo(), host: { platform: process.platform, home: dir, cwd: dir, env: {}, listDir: () => [] }, err: () => {} };
     expect(install(['--client', 'cursor'], io)).toBe(0);
     expect(lstatSync(join(dir, '.cursor', 'mcp.json')).isSymbolicLink()).toBe(true);
+    expect(JSON.parse(readFileSync(real, 'utf-8')).mcpServers['ifc-lite'].command).toBe('npx');
+  });
+
+  it.skipIf(process.platform === 'win32')('follows a chain of dangling links to its missing end', () => {
+    dir = mkdtempSync(join(tmpdir(), 'ifc-lite-install-'));
+    mkdirSync(join(dir, '.cursor'));
+    mkdirSync(join(dir, 'dotfiles'));
+    const real = join(dir, 'repo', 'mcp.json');
+    symlinkSync(real, join(dir, 'dotfiles', 'cursor.json'));
+    symlinkSync(join(dir, 'dotfiles', 'cursor.json'), join(dir, '.cursor', 'mcp.json'));
+    const io: InstallIo = { ...nodeInstallIo(), host: { platform: process.platform, home: dir, cwd: dir, env: {}, listDir: () => [] }, err: () => {} };
+    expect(install(['--client', 'cursor'], io)).toBe(0);
+    expect(lstatSync(join(dir, 'dotfiles', 'cursor.json')).isSymbolicLink()).toBe(true);
     expect(JSON.parse(readFileSync(real, 'utf-8')).mcpServers['ifc-lite'].command).toBe('npx');
   });
 

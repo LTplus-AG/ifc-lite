@@ -34,6 +34,8 @@ import { nodeInstallIo, type InstallIo } from './io.js';
 export { nodeInstallIo, type InstallIo };
 
 const CLIENT_IDS = Object.keys(CLIENTS);
+/** Server flags that print and exit; `--help`/`-h` are install's own. */
+const EXIT_FLAGS = ['--help', '-h', '--version', '-v'];
 
 function installHelp(invokedAs: string): string {
   return `
@@ -92,6 +94,7 @@ function parseInstallArgs(argv: string[], host: HostEnv): InstallArgs | 'help' {
     else if (arg === '--dry-run') dryRun = true;
     else if (arg === '--force') force = true;
     else if (arg.startsWith('-')) {
+      if (EXIT_FLAGS.includes(arg)) throw new InstallError(`${arg} is not an install option.`);
       const own = arg.match(/^(--(?:client|scope|name))=/);
       if (own) throw new InstallError(`Write ${own[1]} <value>, with a space.`);
       throw new InstallError(`Unknown option ${arg}. Server flags go after --, e.g. -- ${arg}.`);
@@ -101,8 +104,10 @@ function parseInstallArgs(argv: string[], host: HostEnv): InstallArgs | 'help' {
   if (!isClientId(client)) throw new InstallError(`Unknown client "${client}". Use one of ${CLIENT_IDS.join(', ')}.`);
   if (scope !== 'user' && scope !== 'project') throw new InstallError('--scope must be user or project.');
   if (!/^[A-Za-z0-9_-]+$/.test(name)) throw new InstallError('--name may use letters, digits, - and _ only.');
-  const exits = passThrough.find((a) => ['--help', '-h', '--version', '-v'].includes(a));
+  const exits = passThrough.find((a) => EXIT_FLAGS.includes(a));
   if (exits) throw new InstallError(`${exits} makes the server print and exit at every launch; drop it.`);
+  const glued = passThrough.find((a) => isMcpValueFlag(a.split('=')[0]) && a.includes('='));
+  if (glued) throw new InstallError(`The server reads ${glued.split('=')[0]} <value>, with a space; it would drop ${glued}.`);
   if (passThrough.some((a, i) => a === '--transport' && passThrough[i + 1] !== 'stdio')) {
     throw new InstallError('Clients start ifc-lite-mcp over stdio; drop --transport. For HTTP, give the client the server URL.');
   }

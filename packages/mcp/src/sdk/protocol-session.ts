@@ -131,16 +131,16 @@ class IfcProtocolServer extends Server {
         result = await inner(request, ctx);
       } catch (err) {
         if (err instanceof HandlerError) throw err;
-        // Before our handler, only the SDK's param validation is the client's fault:
-        // it throws a bare Error or a -32602 ProtocolError. Anything else is ours.
-        const validation = (err instanceof Error && err.constructor === Error)
-          || (err instanceof ProtocolError && err.code === ProtocolErrorCode.InvalidParams);
-        if (!entered.has(signal) && validation) {
-          throw invalidParams(err, (note) => this.onerror?.(new Error(note)));
-        }
-        if (!entered.has(signal) && err instanceof ProtocolError) throw err;
         const message = describeThrown(err);
-        if (!entered.has(signal)) throw new ProtocolError(ProtocolErrorCode.InternalError, message);
+        if (!entered.has(signal)) {
+          // Before our handler, only the SDK's param validation is the client's fault:
+          // it throws a bare Error or a -32602 ProtocolError (SDK 2.4). Anything else is ours.
+          if ((err instanceof Error && err.constructor === Error)
+            || (err instanceof ProtocolError && err.code === ProtocolErrorCode.InvalidParams)) {
+            throw invalidParams(err, (note) => this.onerror?.(new Error(note)));
+          }
+          throw err instanceof ProtocolError ? err : new ProtocolError(ProtocolErrorCode.InternalError, message);
+        }
         this.onerror?.(new Error(`${method} produced a result the protocol refused: ${message}`));
         if (method === 'tools/call') return toolError({ code: ToolErrorCode.INTERNAL_ERROR, message }) as unknown as Result;
         throw new ProtocolError(ProtocolErrorCode.InternalError, message);

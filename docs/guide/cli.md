@@ -1490,6 +1490,7 @@ ifc-lite mcp model.ifc --read-only
 ifc-lite mcp arch.ifc struct.ifc
 ifc-lite mcp model.ifc --transport http --port 8765 --token abc
 ifc-lite mcp model.ifc --viewer          # also start the 3D viewer
+ifc-lite mcp install --client claude-desktop ./model.ifc   # add it to a client's config
 ```
 
 !!! note "HTTP transport starts with an empty session"

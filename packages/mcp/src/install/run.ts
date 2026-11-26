@@ -15,7 +15,7 @@
 import { dirname, join, posix, win32 } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readPackageVersion, UNKNOWN_VERSION } from '@ifc-lite/data/node';
-import { bridgeConflict, isMcpValueFlag, parseArgs } from '../cli-args.js';
+import { bridgeConflict, isMcpValueFlag, MCP_BOOLEAN_FLAGS, MCP_VALUE_FLAGS, parseArgs } from '../cli-args.js';
 import {
   CLIENTS,
   InstallError,
@@ -30,8 +30,6 @@ import {
 } from './clients.js';
 import { mergeServer } from './merge.js';
 import { nodeInstallIo, type InstallIo } from './io.js';
-
-export { nodeInstallIo, type InstallIo };
 
 const CLIENT_IDS = Object.keys(CLIENTS);
 /** Server flags that print and exit; `--help`/`-h` are install's own. */
@@ -104,6 +102,12 @@ function parseInstallArgs(argv: string[], host: HostEnv): InstallArgs | 'help' {
   if (!isClientId(client)) throw new InstallError(`Unknown client "${client}". Use one of ${CLIENT_IDS.join(', ')}.`);
   if (scope !== 'user' && scope !== 'project') throw new InstallError('--scope must be user or project.');
   if (!/^[A-Za-z0-9_-]+$/.test(name)) throw new InstallError('--name may use letters, digits, - and _ only.');
+  // A typo such as --readonly would be written and then ignored at every launch.
+  const unknown = passThrough.find(
+    (a, i) => a.startsWith('-') && !a.includes('=') && !isMcpValueFlag(passThrough[i - 1] ?? '')
+      && !MCP_VALUE_FLAGS.includes(a) && !MCP_BOOLEAN_FLAGS.includes(a),
+  );
+  if (unknown) throw new InstallError(`The server has no ${unknown} flag (ifc-lite-mcp --help lists them).`);
   const exits = passThrough.find((a) => EXIT_FLAGS.includes(a));
   if (exits) throw new InstallError(`${exits} makes the server print and exit at every launch; drop it.`);
   const glued = passThrough.map((a) => a.match(/^(--[\w-]+)=/)).find((m) => m && isMcpValueFlag(m[1]));

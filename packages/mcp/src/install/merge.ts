@@ -5,8 +5,9 @@
 /**
  * Add one server entry to a client's JSON config without touching the rest.
  *
- * Other servers, and every other top-level key, come back exactly as they
- * were parsed. A file that is not plain JSON (VS Code and Cursor users add
+ * Other servers, and every other top-level key, keep their values (the file
+ * is re-serialized, so its spacing is normalized). A replaced entry keeps the
+ * user's own keys such as `env`. A file that is not plain JSON (VS Code and Cursor users add
  * comments) is refused rather than rewritten, because a rewrite would drop
  * the comments.
  */
@@ -52,11 +53,13 @@ export function mergeServer(
 
   // hasOwn: a name like `constructor` must not find Object.prototype's.
   const existing = Object.hasOwn(servers, name) ? servers[name] : undefined;
+  // Ours are command/args/type; anything else the user added (env, cwd) is kept.
+  const merged = isObject(existing) ? { ...existing, ...entry } : entry;
   if (existing !== undefined) {
-    if (canonical(existing) === canonical(entry)) return { status: 'unchanged' };
+    if (canonical(merged) === canonical(existing)) return { status: 'unchanged' };
     if (!force) return { status: 'conflict', existing };
   }
-  const next = { ...root, [key]: { ...servers, [name]: entry } };
+  const next = { ...root, [key]: { ...servers, [name]: merged } };
   return { status: existing === undefined ? 'added' : 'replaced', text: `${JSON.stringify(next, null, 2)}\n` };
 }
 

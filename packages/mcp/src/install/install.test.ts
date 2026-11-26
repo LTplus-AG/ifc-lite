@@ -12,7 +12,8 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync, mkdirSync, symlinkSync, lstatSync, statSync, chmodSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { nodeInstallIo, runInstall, type InstallIo } from './run.js';
+import { runInstall } from './run.js';
+import { nodeInstallIo, type InstallIo } from './io.js';
 import { InstallError, type HostEnv } from './clients.js';
 
 const VERSION = '0.32.0';
@@ -164,6 +165,15 @@ describe('ifc-lite-mcp install: existing configs', () => {
     expect(io.files.get(`${path}.bak-20261126-102030000`)).toBe(before);
   });
 
+  it('--force keeps keys the user added to the entry, such as env', () => {
+    const io = fakeIo();
+    io.files.set(path, JSON.stringify({ mcpServers: { 'ifc-lite': { command: 'npx', args: ['old'], env: { T: '1' } } } }));
+    expect(install(['--client', 'cursor', '--force'], io)).toBe(0);
+    expect(JSON.parse(io.files.get(path) ?? 'null').mcpServers['ifc-lite']).toEqual({ command: 'npx', args: ['-y', PKG], env: { T: '1' } });
+    expect(install(['--client', 'cursor'], io)).toBe(0);
+    expect(io.stderr).toContain('already has');
+  });
+
   it('refuses a different entry with the same name unless --force', () => {
     const io = fakeIo();
     const mine = JSON.stringify({ mcpServers: { 'ifc-lite': { command: 'node', args: ['mine.js'] } } });
@@ -272,6 +282,7 @@ describe('ifc-lite-mcp install: dry run and usage errors', () => {
     [['--client', 'cursor', '--', '--version'], 'print and exit'],
     [['--client', 'cursor', 'model.ifc', '--', '--bridge'], 'loads no files'],
     [['--client', 'cursor', '-v'], 'not an install option'],
+    [['--client', 'cursor', '--', '--readonly'], 'no --readonly flag'],
     [['--client', 'cursor', '--', '--transport=http'], 'with a space'],
     [['--client', 'cursor', '--', '--allow=./models'], 'with a space'],
     [['--client=cursor'], 'Write --client <value>'],

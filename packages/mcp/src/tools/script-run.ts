@@ -45,7 +45,7 @@ const MAX_TIMEOUT_MS = 30_000;
  * it started (bim.clash.run, say) may still finish on the host.
  */
 const MAX_CONCURRENT_SCRIPTS = 2;
-/** Sessions holding a script slot; its size is the process-wide count (stdio and in-process callers share the '' key). */
+/** Slot keys (see slotKey) holding a script slot; its size is the process-wide count. */
 const sessionsRunning = new Set<string>();
 const DEFAULT_MEMORY_MB = 64;
 // Kept well under the 4 GB wasm32 ceiling: the QuickJS module's linear memory
@@ -88,7 +88,7 @@ const inputSchema: JsonSchema = {
     },
     timeout_ms: {
       type: 'integer', minimum: 100, maximum: MAX_TIMEOUT_MS, default: DEFAULT_TIMEOUT_MS,
-      description: `Execution time limit in milliseconds (default ${DEFAULT_TIMEOUT_MS}, max ${MAX_TIMEOUT_MS}). Script code is interrupted when it is exceeded; a single synchronous bim.* call already running is not cut short. Script code runs on the server's event loop, so other requests and a cancel wait until it yields or is interrupted. bim calls the script starts but does not await still count: if they outlast the limit the run is a TIMEOUT. The limit is wall-clock from when the script starts running, so once it has started, time spent waiting behind another session's script counts too.`,
+      description: `Execution time limit in milliseconds (default ${DEFAULT_TIMEOUT_MS}, max ${MAX_TIMEOUT_MS}). Script code is interrupted when it is exceeded; a single synchronous bim.* call already running is not cut short. Script code runs on the server's event loop, so other requests and a cancel wait until it yields or is interrupted. bim calls the script starts but does not await still count: if they outlast the limit the run is a TIMEOUT. The limit is wall-clock from when the script starts running, so once it has started, time spent waiting behind another session's script counts too, and so does serialising a large returned value.`,
     },
     memory_mb: {
       type: 'integer', minimum: 8, maximum: MAX_MEMORY_MB, default: DEFAULT_MEMORY_MB,
@@ -223,7 +223,7 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
       return undefined;
     }
   };
-  return withScriptSlot(ctx.session?.id ?? '', async () => {
+  return withScriptSlot(slotKey(ctx), async () => {
     let sandbox: Awaited<ReturnType<typeof createSandbox>>;
     try {
       sandbox = await createSandbox(model.bim, {
@@ -312,17 +312,17 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
 
 /** Holds one of the process-wide script slots for the duration of `run`. */
 async function withScriptSlot<T>(session: string, run: () => Promise<T>): Promise<T> {
-  if (sessionsRunning.size >= MAX_CONCURRENT_SCRIPTS) {
-    throw new ToolExecutionError({
-      code: ToolErrorCode.RATE_LIMITED,
-      message: `${MAX_CONCURRENT_SCRIPTS} scripts are already running on this server; retry when one finishes.`,
-    });
-  }
-  // One slot per session, so a single client cannot hold both.
+  // The session's own run first: that is the one it has to wait for.
   if (sessionsRunning.has(session)) {
     throw new ToolExecutionError({
       code: ToolErrorCode.RATE_LIMITED,
       message: 'This session already has a script running; retry when it finishes.',
+    });
+  }
+  if (sessionsRunning.size >= MAX_CONCURRENT_SCRIPTS) {
+    throw new ToolExecutionError({
+      code: ToolErrorCode.RATE_LIMITED,
+      message: `${MAX_CONCURRENT_SCRIPTS} scripts are already running on this server; retry when one finishes.`,
     });
   }
   sessionsRunning.add(session);
@@ -331,6 +331,23 @@ async function withScriptSlot<T>(session: string, run: () => Promise<T>): Promis
   } finally {
     sessionsRunning.delete(session);
   }
+}
+
+/**
+ * The slot key for a call: its transport session, or (stdio, in-process)
+ * one key per model registry, which is per server, so two embedded servers
+ * in one process do not share a slot.
+ */
+const registryKeys = new WeakMap<object, string>();
+let nextRegistryKey = 0;
+function slotKey(ctx: ToolContext): string {
+  if (ctx.session?.id) return `session:${ctx.session.id}`;
+  let key = registryKeys.get(ctx.registry);
+  if (key === undefined) {
+    key = `registry:${nextRegistryKey++}`;
+    registryKeys.set(ctx.registry, key);
+  }
+  return key;
 }
 
 const SHARED_DESCRIPTION = `Runs in a QuickJS sandbox with only the \`bim\` SDK global (bim.query, bim.model, bim.lens, bim.clash, bim.cost, bim.structural, bim.schedule; script_run_mutate adds ${MUTATE_ONLY_LIST}; bim.export and bim.create only with the export scope) and console; no network, filesystem, viewer or timers. Returns the last expression value plus captured console output. memory_mb bounds the QuickJS heap only, not data bim calls build on the host (such as bim.create projects in script_run_mutate). Script code runs on the server's event loop, so other requests wait while it runs (bounded by timeout_ms). At most ${MAX_CONCURRENT_SCRIPTS} scripts run at once per server process and one per session; more get RATE_LIMITED.`;

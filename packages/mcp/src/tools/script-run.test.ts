@@ -384,6 +384,11 @@ describe('script_run', () => {
     expect(sameSession.filter(rateLimited)).toHaveLength(1);
     const settled = await Promise.allSettled(['a', 'b', 'c'].map((id) => scriptRunTool.handler({ code: '1' }, as(id))));
     expect(settled.filter(rateLimited)).toHaveLength(1);
+    // Two servers in one process (no session id) each get their own slot.
+    const other = { ...ctx, registry: new InMemoryModelRegistry(), session: undefined };
+    other.registry.add(ctx.registry.get('m')!);
+    const servers = await Promise.allSettled([run('1'), scriptRunTool.handler({ code: '1' }, other)]);
+    expect(servers.filter(rateLimited)).toHaveLength(0);
     expect((await run('4')).structuredContent?.value).toBe(4);
   }, 30_000);
 

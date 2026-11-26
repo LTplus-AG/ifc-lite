@@ -77,24 +77,54 @@ export function classificationToken(schema: CreatorSchema, request: Classificati
 }
 
 /**
- * The attributes after `Tag` for a generic element writer (`addElement`,
- * `addAxisElement`), written from the target schema's own attribute list:
- * - the classification slot (`PredefinedType`, else the first enum slot, e.g. IFC2X3
- *   `CompositionType` / `ShapeType`) gets the caller's value, checked against its enum,
- *   defaulting to NOTDEFINED where the enum has it and `$` where it is optional;
+ * The schema entity a generic writer (`addElement`, `addAxisElement`) places
+ * under a storey, or a thrown error when no relationship there is correct
+ * (#11577). An `IfcElement` is contained in the storey, an `IfcSpace` is
+ * aggregated by it (#11498), and another product (`IfcAnnotation`) is
+ * contained. A group (`IfcZone`, `IfcSystem`, `IfcGroup`) is not a product,
+ * and another spatial element (`IfcSite`, `IfcBuildingStorey`,
+ * `IfcFacilityPart`) cannot sit in a storey. Both are refused. A type the
+ * schema does not know is returned as `null` and keeps the historical writer.
+ */
+export function genericProductEntity(schema: CreatorSchema, ifcTypeUpper: string, op: string): string | null {
+  const registry = getSchemaRegistryForVersion(schema);
+  const entity = Object.keys(registry.entities).find((name) => name.toUpperCase() === ifcTypeUpper);
+  if (!entity) return null;
+  const chain = registry.entities[entity].inheritanceChain ?? [];
+  if (!chain.includes('IfcProduct')) {
+    throw new Error(`${op}: ${entity} is not a product and cannot be placed in a storey; it needs a group or assignment relationship`);
+  }
+  if (entity !== 'IfcSpace' && (chain.includes('IfcSpatialElement') || chain.includes('IfcSpatialStructureElement'))) {
+    throw new Error(`${op}: ${entity} is a spatial element and cannot be placed in a storey`);
+  }
+  return entity;
+}
+
+/**
+ * Every attribute after `Representation` for a generic product writer, from
+ * the target schema's own attribute list, so each entity gets its full record
+ * (an `IfcElement`'s `Tag`, an `IfcSpace`'s `LongName` and `CompositionType`):
+ * - `Tag` gets the caller's tag, and a spatial element's `CompositionType` is ELEMENT;
+ * - the classification slot (`PredefinedType`, else the first other enum slot, e.g.
+ *   IFC2X3 `CompositionType` / `ShapeType` / `InteriorOrExteriorSpace`) gets the
+ *   caller's value, checked against its enum, defaulting to NOTDEFINED where the enum
+ *   has it and `$` where it is optional;
  * - every other optional slot (IfcDoor `OverallHeight`, …) is `$`, a required enum
  *   slot is NOTDEFINED, and any other required slot throws;
  * - a caller value with no classification slot throws.
- * Entities the schema does not know keep the historical `,.TOKEN.` tail.
+ * Entities the schema does not know keep the historical `,<tag>,.TOKEN.` tail.
  */
-export function genericElementTail(schema: CreatorSchema, ifcTypeUpper: string, predefinedType: string | undefined): string {
+export function genericProductTail(schema: CreatorSchema, entity: string | null, tag: string, predefinedType: string | undefined): string {
+  if (!entity) return `,${tag},.${predefinedType ?? 'NOTDEFINED'}.`;
   const registry = getSchemaRegistryForVersion(schema);
-  const entity = Object.keys(registry.entities).find((name) => name.toUpperCase() === ifcTypeUpper);
-  if (!entity) return `,.${predefinedType ?? 'NOTDEFINED'}.`;
-  const rest = (registry.entities[entity].allAttributes ?? []).slice(8);
-  const target = rest.find((a) => a.name === 'PredefinedType') ?? rest.find((a) => registry.enums[a.type]);
+  const spatial = registry.entities[entity].inheritanceChain?.includes('IfcSpatialStructureElement') ?? false;
+  const rest = (registry.entities[entity].allAttributes ?? []).slice(7);
+  const composition = (name: string) => spatial && name === 'CompositionType';
+  const target = rest.find((a) => a.name === 'PredefinedType') ?? rest.find((a) => registry.enums[a.type] && !composition(a.name));
   if (predefinedType !== undefined && !target) throw new Error(`${entity} has no PredefinedType attribute in ${schema}`);
   return rest.map((attr) => {
+    if (attr.name === 'Tag') return `,${tag}`;
+    if (composition(attr.name)) return ',.ELEMENT.';
     const allowed = registry.enums[attr.type] ?? [];
     if (attr === target && predefinedType !== undefined && !(predefinedType === 'NOTDEFINED' && !allowed.includes('NOTDEFINED'))) {
       if (!allowed.includes(predefinedType)) {

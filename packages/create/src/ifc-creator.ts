@@ -31,8 +31,8 @@ import type {
   CostValueParams, SIUnitParams,
 } from './types-cost.js';
 import { esc, stepLine, num, vecLen, vecNorm, vecCross, optStr, optEnum,
-  NON_ELEMENT_TYPES, assertPositiveFinite, assertFinitePoint3, completePlacementAxes } from './ifc-creator-math.js';
-import { classificationToken, genericElementTail } from './ifc-creator-predefined-type.js';
+  assertPositiveFinite, assertFinitePoint3, completePlacementAxes } from './ifc-creator-math.js';
+import { classificationToken, genericProductEntity, genericProductTail } from './ifc-creator-predefined-type.js';
 import { emitWorkCalendar, emitTaskTime, workControlAttrs, ifc2x3Unsupported } from './ifc-creator-scheduling.js';
 import {
   assertCostSchema, emitCostItem, emitCostSchedule, emitCostValue,
@@ -2548,17 +2548,9 @@ export class IfcCreator {
     const objType = params.ObjectType ? `'${esc(params.ObjectType)}'` : '$';
     const tag = params.Tag ? `'${esc(params.Tag)}'` : '$';
     const ifcType = params.IfcType.toUpperCase();
-
-    if (NON_ELEMENT_TYPES.has(ifcType)) {
-      // Non-element types: GlobalId, OwnerHistory, Name, Description, ObjectType, ObjectPlacement, Representation
-      this.line(elementId, params.IfcType,
-        `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId}`);
-    } else {
-      // IfcElement subtypes: ...Tag, PredefinedType
-      const tail = genericElementTail(this.schema, ifcType, params.PredefinedType);
-      this.line(elementId, params.IfcType,
-        `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${tag}${tail}`);
-    }
+    const tail = genericProductTail(this.schema, genericProductEntity(this.schema, ifcType, 'addElement'), tag, params.PredefinedType);
+    // The STEP keyword is upper case whatever the caller's spelling (#11577).
+    this.line(elementId, ifcType, `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId}${tail}`);
 
     this.elementSolids.set(elementId, [solidId]);
     this.trackElement(storeyId, elementId);
@@ -2626,15 +2618,9 @@ export class IfcCreator {
     const objType = params.ObjectType ? `'${esc(params.ObjectType)}'` : '$';
     const tag = params.Tag ? `'${esc(params.Tag)}'` : '$';
     const ifcType = params.IfcType.toUpperCase();
-
-    if (NON_ELEMENT_TYPES.has(ifcType)) {
-      this.line(elementId, params.IfcType,
-        `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId}`);
-    } else {
-      const tail = genericElementTail(this.schema, ifcType, params.PredefinedType);
-      this.line(elementId, params.IfcType,
-        `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${tag}${tail}`);
-    }
+    const tail = genericProductTail(this.schema, genericProductEntity(this.schema, ifcType, 'addAxisElement'), tag, params.PredefinedType);
+    // The STEP keyword is upper case whatever the caller's spelling (#11577).
+    this.line(elementId, ifcType, `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId}${tail}`);
 
     this.elementSolids.set(elementId, [solidId]);
     this.trackElement(storeyId, elementId);

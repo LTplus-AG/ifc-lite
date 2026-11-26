@@ -34,9 +34,9 @@ const READ_SCOPE_WRITERS = new Set(['propose_flow']);
 
 const tools = buildDefaultToolRegistry().list();
 
-async function listTools(): Promise<{ tools: ToolDefinition[]; bytes: number }> {
+async function listTools(tools: ToolRegistry = buildDefaultToolRegistry()): Promise<{ tools: ToolDefinition[]; bytes: number }> {
   const server = new MCPServer({
-    version: 'test', registry: new InMemoryModelRegistry(), tools: buildDefaultToolRegistry(),
+    version: 'test', registry: new InMemoryModelRegistry(), tools,
     resources: new ResourceRegistry(), prompts: new PromptRegistry(), scope: fullScope(),
   });
   const transport = new InProcessTransport();
@@ -111,10 +111,6 @@ describe('tool catalog', () => {
     const outputSchema = { type: 'object', properties: { n: { type: 'integer' } }, required: ['n'] };
     const icons = [{ src: 'data:image/svg+xml;base64,PHN2Zy8+', mimeType: 'image/svg+xml', sizes: ['any'] }];
     registry.register({ name: 'probe', description: 'Probe.', inputSchema: { type: 'object' }, outputSchema, icons, handler: () => ({ content: [] }) });
-    const server = new MCPServer({ version: 'test', registry: new InMemoryModelRegistry(), tools: registry, resources: new ResourceRegistry(), prompts: new PromptRegistry(), scope: fullScope() });
-    await server.handleMessage({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'catalog', version: 'test' } } });
-    const res = (await server.handleMessage({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} })) as { result: { tools: ToolDefinition[] } };
-    expect(res.result.tools[0]).toMatchObject({ outputSchema, icons });
+    expect((await listTools(registry)).tools[0]).toMatchObject({ outputSchema, icons });
   });
 });
-

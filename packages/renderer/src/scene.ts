@@ -927,6 +927,10 @@ export class Scene {
     return removed;
   }
 
+  /** `bucketBaseKey` of a paged mesh, its chunk cell taken at `anchor` (its first vertex from its records: reading positions decodes it). */
+  compactBucketKey(mesh: MeshData, anchor: ChunkAnchorSource): string {
+    return (mesh.modelIndex ? `model${mesh.modelIndex}~` : '') + entityIdPageKey(mesh.expressId, bucketBaseKeyFor(anchor, this.colorKey(mesh.color, mesh.material), this.spatialChunking));
+  }
   /**
    * Bucket BASE key for a mesh: colour key, prefixed with the mesh's grid
    * cell when spatial chunking is on. EVERY bucket-key derivation
@@ -939,10 +943,6 @@ export class Scene {
    * spans 2^24 ids, which the entity colour table needs to rebuild a full id
    * from the 24-bit vertex lane (`entityIdAnchor`, entity-color-table.ts).
    */
-  /** `bucketBaseKey` of a paged mesh, its chunk cell taken at `anchor` (its first vertex from its records: reading positions decodes it). */
-  compactBucketKey(mesh: MeshData, anchor: ChunkAnchorSource): string {
-    return (mesh.modelIndex ? `model${mesh.modelIndex}~` : '') + entityIdPageKey(mesh.expressId, bucketBaseKeyFor(anchor, this.colorKey(mesh.color, mesh.material), this.spatialChunking));
-  }
   private bucketBaseKey(meshData: MeshData, color?: [number, number, number, number]): string {
     const source = this.modelTranslations.sourceMesh(meshData);
     // #5582: material is the mesh's OWN authored finish regardless of a
@@ -1916,7 +1916,7 @@ export class Scene {
    * @returns true if any meshes were processed (caller should render)
    */
   flushPending(device: GPUDevice, pipeline: RenderPipeline, budgetMs = 12, trace?: LoadTrace, deterministicUploads = false): boolean {
-    const compacted = this.compact?.drain(device, pipeline) ?? false;
+    const compacted = this.compact?.drain(device, pipeline, budgetMs) ?? false;
     const result = flushQueuedMeshes(this.meshQueue, this.meshQueueReadIndex, (chunk, nextReadIndex) => {
       this.meshQueueReadIndex = nextReadIndex;
       this.appendToBatches(chunk, device, pipeline, true, true);

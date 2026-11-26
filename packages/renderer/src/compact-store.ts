@@ -35,7 +35,7 @@ import { COMPACT_RECORD_BYTES as RECORD_BYTES, compactRow, compactStep, type Com
 import type { BatchedMesh } from './types.js';
 import type { RenderPipeline } from './pipeline.js';
 import type { CompactPageDeps } from './compact-page-deps.js';
-import { dropPageLod, retirePageLod, type PageLod } from './compact-lod.js';
+import { dropPageLod, MAX_PAGE_VERTICES, padded as paddedCount, retirePageLod, type PageLod } from './compact-lod.js';
 
 /**
  * The store origin snaps to the coarsest level's step, so every level's quantMin is a multiple of its own
@@ -43,7 +43,6 @@ import { dropPageLod, retirePageLod, type PageLod } from './compact-lod.js';
  * lands on one node on either path; not imported from there, which would pull an eager module into this chunk.
  */
 const ORIGIN_STEP = 2 ** -9;
-const MAX_PAGE_VERTICES = 65536;
 
 export interface CompactPage {
   key: string;
@@ -154,7 +153,7 @@ export class CompactGeometryStore {
       run.end = srcEnd;
       // Indices: rebase by the page's vertex base; pad to an even triangle count (4-byte writes).
       const base = page.vertexCount;
-      const padded = indexCount + ((indexCount / 3) & 1 ? 3 : 0);
+      const padded = paddedCount(indexCount);
       this.ensureIndexCapacity(page, page.indexCount + padded, device, flushRun);
       if (this.scratch.length < padded) this.scratch = new Uint16Array(Math.max(padded, this.scratch.length * 2));
       const src = ref.payload.indices;

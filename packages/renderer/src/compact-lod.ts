@@ -34,25 +34,22 @@
  */
 
 import type { MeshData } from '@ifc-lite/geometry';
-import { COMPACT_RECORD_BYTES, compactRow, type CompactRef } from '@ifc-lite/geometry/compact';
+import { COMPACT_RECORD_BYTES, compactRow, compactStep, type CompactRef } from '@ifc-lite/geometry/compact';
 import type { CompactPageDeps } from './compact-page-deps.js';
-import type { CompactGeometryStore, CompactPage, CompactSlot } from './compact-store.js';
+import type { CompactGeometryStore, CompactPage } from './compact-store.js';
 import type { LodPart } from './lod-parts.js';
 import type { SceneCompactHost } from './scene-compact-host.js';
 
-/** The lattice level a quantized bucket batch is drawn on (2^-10 m, quantize.ts `QUANT_STEP`). */
-const BUCKET_LEVEL = 10;
-const MAX_PAGE_VERTICES = 65536;
 /** Scratch record per vertex: position xyz (page frame) and the u32 entity lane. */
 const SCRATCH_FLOATS = 4;
+/** Vertices a page holds at most: every page draws with u16 indices (compact-store.ts). */
+export const MAX_PAGE_VERTICES = 65536;
 const ZERO_POSITION = new Float32Array(3);
 
 /** A page's LOD state: where each entity's LOD1 triangles are, so a retired entity's can be emptied. */
 export interface PageLod {
   /** Entity id -> its [start, count] ranges in the page's LOD1 index buffer (one per part it is in). */
   ranges: Map<number, Array<[number, number]>>;
-  /** Entity id -> meshes of it on the page. */
-  meshes: Map<number, number>;
   bytes: number;
 }
 
@@ -98,7 +95,8 @@ function collectGroups(store: CompactGeometryStore, host: SceneCompactHost, deps
         group.bounds.max[axis] = Math.max(group.bounds.max[axis], b[o + 3 + axis]);
       }
       group.triangles += row.indexCount / 3;
-      if (row.level > BUCKET_LEVEL) group.exact = true; // a finer level: level 10 collapsed it (level 9: only too wide for its window)
+      // A lattice finer than the bucket batch's: the bucket's collapsed it (one coarser only outgrew its window).
+      if (compactStep(row.level) < deps.bucket.quantStep) group.exact = true;
       group.members.push(mesh);
     }
   }
@@ -114,27 +112,44 @@ function collectGroups(store: CompactGeometryStore, host: SceneCompactHost, deps
 /** World position of a row's first record. */
 function firstVertex(ref: CompactRef): [number, number, number] {
   const { vertexStart, level } = compactRow(ref);
-  const step = 2 ** -level, w = ref.payload.windows, r = ref.row * 3, records = ref.payload.records;
+  const step = compactStep(level), w = ref.payload.windows, r = ref.row * 3, records = ref.payload.records;
   const view = new DataView(records.buffer, records.byteOffset + vertexStart * COMPACT_RECORD_BYTES, 6);
   return [(w[r] + view.getUint16(0, true)) * step, (w[r + 1] + view.getUint16(2, true)) * step, (w[r + 2] + view.getUint16(4, true)) * step];
 }
 
 /**
  * The pages were trimmed at the end of a stream: hand the meshes of every group whose bucket batch would
- * stay exact f32 to `toBuckets`, then (when bucket batches build LOD1) give the pages their parts.
- * Returns how many meshes went to `toBuckets`.
+ * stay exact f32 to `toBuckets` now (they join the stream's finalize), and return the build of the pages'
+ * parts when bucket batches build LOD1 (null otherwise). The caller runs it a slice at a time and drops it
+ * when the pages change under it.
  */
 export function settlePages(
   store: CompactGeometryStore, host: SceneCompactHost, device: GPUDevice, deps: CompactPageDeps, toBuckets: (exact: MeshData[]) => void,
-): number {
+): PageLodBuild | null {
   const t0 = performance.now();
   const groups = collectGroups(store, host, deps);
   const exact: MeshData[] = [];
   for (const group of groups.values()) if (group.exact) exact.push(...group.members);
   if (exact.length > 0) toBuckets(exact);
-  if (host.lodBuildsEnabled) buildPageLods(store, groups, device, deps);
   store.stats.settleMs += performance.now() - t0;
-  return exact.length;
+  return host.lodBuildsEnabled ? new PageLodBuild(store, buildPageLods(store, groups, device, deps)) : null;
+}
+
+/**
+ * The pages' LOD build, one page per step: clustering every page first (a group's decision needs all its
+ * parts), then installing them. A page draws whole until its step installs its parts.
+ */
+export class PageLodBuild {
+  constructor(private readonly store: CompactGeometryStore, private readonly steps: Iterator<void>) {}
+
+  /** Run steps until `budgetMs` has passed (at least one); returns whether the build finished. */
+  step(budgetMs: number): boolean {
+    const t0 = performance.now(), end = t0 + budgetMs;
+    let done = false;
+    do done = this.steps.next().done === true; while (!done && performance.now() < end);
+    this.store.stats.settleMs += performance.now() - t0;
+    return done;
+  }
 }
 
 /** One entity's run of a part's LOD1 triangles: [from, to) in the part's LOD1 indices. */
@@ -151,12 +166,11 @@ interface PagePlan {
  * `collectGroups` returned for the pages; the meshes of an exact group that left them since are skipped (no
  * group decision changes: an exact group gets no LOD1).
  */
-function buildPageLods(store: CompactGeometryStore, groups: Map<string, Group>, device: GPUDevice, deps: CompactPageDeps): void {
+function* buildPageLods(store: CompactGeometryStore, groups: Map<string, Group>, device: GPUDevice, deps: CompactPageDeps): Generator<void, void, void> {
   const { simplify, lodCellSize, lodMinTriangles, lodMaxKeptFraction } = deps.bucket;
   const groupOf = new Map<MeshData, Group>();
   for (const group of groups.values()) for (const mesh of group.members) groupOf.set(mesh, group);
-  const scratch = new Float32Array(MAX_PAGE_VERTICES * SCRATCH_FLOATS);
-  const lanes = new Uint32Array(scratch.buffer);
+  let scratch: Float32Array | null = null, lanes: Uint32Array | null = null; // allocated by the first page that clusters
   const plans: PagePlan[] = [];
   for (const page of store.pageList()) {
     // `collect` saw every mesh still on a page (one it missed would drop out of the rewritten buffer: such a page keeps its own).
@@ -175,6 +189,8 @@ function buildPageLods(store: CompactGeometryStore, groups: Map<string, Group>, 
       let lod1: Uint16Array | null = null;
       const runs: EntityRun[] = [];
       if (!group.exact && group.kept >= 0 && group.triangles >= lodMinTriangles) {
+        scratch ??= new Float32Array(MAX_PAGE_VERTICES * SCRATCH_FLOATS);
+        lanes ??= new Uint32Array(scratch.buffer);
         if (!decoded) { readRecords(store, page, scratch, lanes); decoded = true; }
         const out = simplify(scratch.subarray(0, page.vertexCount * SCRATCH_FLOATS), SCRATCH_FLOATS, sourceIndices(store, meshes),
           lodCellSize(group.bounds.min, group.bounds.max), { idLaneOffset: 3, frameOrigin: store.origin!, unconditional: true });
@@ -196,10 +212,12 @@ function buildPageLods(store: CompactGeometryStore, groups: Map<string, Group>, 
       plan.parts.push({ group, meshes, lod1, runs });
     }
     plans.push(plan);
+    yield;
   }
   // Whether a group draws LOD1 is its batch's decision: enough triangles, and the clustering pays over all its parts.
   const pays = (group: Group): boolean => group.kept > 0 && group.kept < group.triangles * 3 * lodMaxKeptFraction;
-  for (const plan of plans) install(store, plan, pays, device);
+  for (const plan of plans) for (const part of plan.parts) if (!pays(part.group)) part.lod1 = null;
+  for (const plan of plans) { install(store, plan, device); yield; }
 }
 
 /** Positions (page frame) and lanes of `page`'s records, at their page vertex numbers. */
@@ -217,48 +235,49 @@ function readRecords(store: CompactGeometryStore, page: CompactPage, scratch: Fl
   }
 }
 
+/** Write `mesh`'s triangles into `out` at `at`, in page vertex numbers (`base` its first); returns its index count. */
+function rebase(out: Uint16Array | Uint32Array, at: number, mesh: MeshData, base: number): number {
+  const { indexStart, indexCount } = compactRow(mesh.compact!), src = mesh.compact!.payload.indices;
+  for (let i = 0; i < indexCount; i++) out[at + i] = src[indexStart + i] + base;
+  return indexCount;
+}
+
 /** The meshes' triangles in page vertex numbers, unpadded. */
 function sourceIndices(store: CompactGeometryStore, meshes: readonly MeshData[]): Uint32Array {
   let length = 0;
   for (const mesh of meshes) length += compactRow(mesh.compact!).indexCount;
   const out = new Uint32Array(length);
   let w = 0;
-  for (const mesh of meshes) {
-    const { indexStart, indexCount } = compactRow(mesh.compact!), base = store.slotOf(mesh)!.base, src = mesh.compact!.payload.indices;
-    for (let i = 0; i < indexCount; i++) out[w++] = src[indexStart + i] + base;
-  }
+  for (const mesh of meshes) w += rebase(out, w, mesh, store.slotOf(mesh)!.base);
   return out;
 }
 
-/** An index count padded to an even triangle count (buffer writes are 4-byte multiples), as the store pads. */
-function padded(count: number): number {
+/** An index count padded to an even triangle count (buffer writes are 4-byte multiples), as the store pads its meshes. */
+export function padded(count: number): number {
   return count + ((count / 3) & 1 ? 3 : 0);
 }
 
-/** Write `plan`'s page: its meshes' ranges part by part, and the LOD1 runs of the parts whose group pays. */
-function install(store: CompactGeometryStore, plan: PagePlan, pays: (group: Group) => boolean, device: GPUDevice): void {
+/** Write `plan`'s page: its meshes' ranges part by part, and the LOD1 runs of the parts that kept theirs. */
+function install(store: CompactGeometryStore, plan: PagePlan, device: GPUDevice): void {
   let lod0Length = 0, lod1Length = 0;
   for (const part of plan.parts) {
     for (const mesh of part.meshes) lod0Length += store.slotOf(mesh)!.indexCount;
-    if (part.lod1 && pays(part.group)) for (const run of part.runs) lod1Length += padded(run.to - run.from);
+    if (part.lod1) for (const run of part.runs) lod1Length += padded(run.to - run.from);
   }
   const lod0 = new Uint16Array(lod0Length), lod1 = lod1Length > 0 ? new Uint16Array(lod1Length) : null;
   const starts = new Map<MeshData, number>();
   const parts: LodPart[] = [];
-  const lod: PageLod = { ranges: new Map(), meshes: new Map(), bytes: 0 };
+  const lod: PageLod = { ranges: new Map(), bytes: 0 };
   let w0 = 0, w1 = 0;
   for (const part of plan.parts) {
     const lod0Start = w0, lod1Start = w1;
     for (const mesh of part.meshes) {
-      const slot: CompactSlot = store.slotOf(mesh)!;
-      const { indexStart, indexCount } = compactRow(mesh.compact!), src = mesh.compact!.payload.indices;
+      const slot = store.slotOf(mesh)!;
       starts.set(mesh, w0);
-      for (let i = 0; i < indexCount; i++) lod0[w0 + i] = src[indexStart + i] + slot.base;
-      lod0.fill(slot.base, w0 + indexCount, w0 + slot.indexCount);
+      lod0.fill(slot.base, w0 + rebase(lod0, w0, mesh, slot.base), w0 + slot.indexCount);
       w0 += slot.indexCount;
-      lod.meshes.set(mesh.expressId, (lod.meshes.get(mesh.expressId) ?? 0) + 1);
     }
-    if (lod1 && part.lod1 && pays(part.group)) {
+    if (lod1 && part.lod1) {
       for (const { from, to, id } of part.runs) {
         const n = padded(to - from);
         lod1.set(part.lod1.subarray(from, to), w1);
@@ -320,18 +339,17 @@ export function dropPageLod(store: CompactGeometryStore, page: CompactPage): voi
 export function retirePageLod(store: CompactGeometryStore, page: CompactPage, retired: readonly MeshData[], device: GPUDevice): void {
   const lod = page.lod;
   if (!lod) return;
-  const ids = new Set<number>();
-  for (const mesh of retired) {
-    const left = (lod.meshes.get(mesh.expressId) ?? 1) - 1;
-    if (left > 0) lod.meshes.set(mesh.expressId, left); else lod.meshes.delete(mesh.expressId);
-    ids.add(mesh.expressId);
-  }
+  const ids = new Set(retired.map((mesh) => mesh.expressId));
+  // `page.meshes` no longer holds the retired ones: a mesh of theirs still there keeps the entity.
+  for (const mesh of page.meshes) if (ids.has(mesh.expressId)) { dropPageLod(store, page); return; }
+  const buffer = page.batch.lod1IndexBuffer;
+  if (!buffer) return;
+  let zeros = new Uint16Array(0);
   for (const id of ids) {
-    if (lod.meshes.has(id)) { dropPageLod(store, page); return; }
-  }
-  for (const id of ids) {
-    const buffer = page.batch.lod1IndexBuffer;
-    for (const [start, count] of lod.ranges.get(id) ?? []) if (buffer) device.queue.writeBuffer(buffer, start * 2, new Uint16Array(count));
+    for (const [start, count] of lod.ranges.get(id) ?? []) {
+      if (zeros.length < count) zeros = new Uint16Array(count);
+      device.queue.writeBuffer(buffer, start * 2, zeros, 0, count);
+    }
     lod.ranges.delete(id);
   }
 }

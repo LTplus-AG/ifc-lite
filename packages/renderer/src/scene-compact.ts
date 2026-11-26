@@ -35,8 +35,8 @@ import { CompactGeometryStore, type CompactStoreStats } from './compact-store.js
 import type { RenderPipeline } from './pipeline.js';
 import type { CompactPageDeps } from './compact-page-deps.js';
 import type { BatchedMesh } from './types.js';
-import { chosenMembers, normalize, pageMode, pageRefusal, type CompactDecodeReason, type CompactSelection, type PageMode, type SceneCompactHost, type Selection } from './scene-compact-host.js';
-import { settlePages } from './compact-lod.js';
+import { chosenMembers, forgetRegistrations, normalize, pageMode, pageRefusal, type CompactDecodeReason, type CompactSelection, type PageMode, type SceneCompactHost, type Selection } from './scene-compact-host.js';
+import { settlePages, type PageLodBuild } from './compact-lod.js';
 
 export type { CompactDecodeReason, CompactSceneStats, CompactSelection, SceneCompactHost } from './scene-compact-host.js';
 
@@ -53,6 +53,8 @@ export class SceneCompact {
   private demotionPages = new Set<BatchedMesh>();
   /** Paged meshes the bucket path refused: a frame's split request no longer asks for them. */
   private refused = new WeakSet<MeshData>();
+  /** The pages' LOD build under way (compact-lod.ts), a slice per `drain`; null when none. */
+  private lod: PageLodBuild | null = null;
   /** Pages fill outside a stream (after a device loss, or a queue that outlived its stream): trim them at the drain that uploads them. */
   private trimAfterDrain = false;
   /** Meshes handed to the bucket path decoded since the last `clear`, by reason (`take` and `drain`; edits that demote are not counted). */
@@ -88,7 +90,7 @@ export class SceneCompact {
   }
 
   /** Work for the next `drain`: queued meshes, or a demotion asked for mid-frame. */
-  get hasQueued(): boolean { return this.queue.length > 0 || this.demotionPages.size > 0; }
+  get hasQueued(): boolean { return this.queue.length > 0 || this.demotionPages.size > 0 || this.lod !== null; }
 
   /**
    * Move `page`'s meshes to buckets at the next `drain`. For a need found while a frame is being drawn
@@ -123,11 +125,12 @@ export class SceneCompact {
     return list;
   }
 
-  /** Upload the queued meshes (or run a requested demotion). Returns whether anything changed. */
-  drain(device: GPUDevice, pipeline: RenderPipeline): boolean {
+  /** Upload the queued meshes (or run a requested demotion, or a slice of the pages' LOD build). Returns whether anything changed. */
+  drain(device: GPUDevice, pipeline: RenderPipeline, budgetMs = 8): boolean {
     this.gpu = { device, pipeline };
+    let demoted = this.lod !== null; // a slice of the LOD build (compact-lod.ts), whatever else this drain does
+    if (this.lod?.step(budgetMs)) this.lod = null;
     // A time-sliced finalize owns the batch list until it swaps: the demotion waits for it.
-    let demoted = false;
     if (this.demotionPages.size > 0 && !this.scene.finalizeInProgress) {
       const pages = this.demotionPages;
       this.demotionPages = new Set();
@@ -156,6 +159,7 @@ export class SceneCompact {
       this.toBuckets(decoded);
       return true;
     }
+    this.lod = null; // appended pages drop their parts; the next settle builds every page's again
     try {
       this.store.append(queue, device, pipeline, (mesh, ref) => {
         const c = ref.payload.cells, r = ref.row * 3;
@@ -203,23 +207,13 @@ export class SceneCompact {
     else if (this.store.untrimmed) this.trim(device);
   }
 
-  /** Trim the pages and take their buckets' decisions (compact-lod.ts): exact groups move to buckets, decoded. */
+  /** Trim the pages and take their buckets' decisions (compact-lod.ts): exact groups move to buckets, decoded, now; the LOD build runs in drains. */
   private trim(device: GPUDevice): void {
     this.store.trim(device);
-    const exact = settlePages(this.store, this.scene, device, this.deps, (meshes) => this.demoteChosen(meshes.map((source) => [source, this.members.get(source)!]), false));
-    if (exact > 0) this.decodes.exact = (this.decodes.exact ?? 0) + exact;
-  }
-
-  /** Take the page-time registrations of these members out of the Scene's mesh map (they are registered again later). */
-  private forget(kept: ReadonlySet<MeshData>): void {
-    const ids = new Set([...kept].map((mesh) => mesh.expressId));
-    for (const id of ids) {
-      const pieces = this.scene.meshDataMap.get(id);
-      if (!pieces) continue;
-      const rest = pieces.filter((piece) => !kept.has(piece));
-      if (rest.length === 0) this.scene.meshDataMap.delete(id);
-      else if (rest.length !== pieces.length) this.scene.meshDataMap.set(id, rest);
-    }
+    this.lod = settlePages(this.store, this.scene, device, this.deps, (meshes) => {
+      this.decodes.exact = (this.decodes.exact ?? 0) + meshes.length;
+      this.demoteChosen(meshes.map((source) => [source, this.members.get(source)!]), false);
+    });
   }
 
   private chosen(selection: Selection): Array<[MeshData, MeshData]> { return chosenMembers(this.members, this.byId, selection); }
@@ -234,6 +228,7 @@ export class SceneCompact {
       if (pieces?.length === 0) this.byId.delete(source.expressId);
     }
     this.store.retire(sources, this.gpu!.device);
+    this.lod = null; // the build's plan named these pages as they were: the rest stay at full detail until the next stream settles
     this.scene.bumpPickGeometryRevision();
   }
 
@@ -319,7 +314,7 @@ export class SceneCompact {
   private move(moving: ReadonlyArray<[MeshData, MeshData]>): void {
     const scene = this.scene;
     // The bucket path registers each mesh again: take the page-time registrations out first.
-    this.forget(new Set(moving.map(([, kept]) => kept)));
+    forgetRegistrations(this.scene.meshDataMap, new Set(moving.map(([, kept]) => kept)));
     const sources = moving.map(([source, kept]) => {
       materializeCompactMesh(kept);
       materializeCompactMesh(source);
@@ -372,12 +367,12 @@ export class SceneCompact {
 
   /** Every paged mesh back in the queue, still compact, and no page left. */
   private requeuePages(release: boolean): void {
-    this.forget(new Set(this.members.values()));
+    forgetRegistrations(this.scene.meshDataMap, new Set(this.members.values()));
     this.queue = [...this.members.keys()].concat(this.queue);
     this.members.clear();
     this.byId.clear();
     this.store.destroy(release);
-    this.combined = null;
+    this.combined = this.lod = null;
     this.gpu = null;
     this.demotionPages.clear(); // it was asked of pages that no longer exist
     this.refused = new WeakSet(); // judged again on the pages they come back to
@@ -391,7 +386,7 @@ export class SceneCompact {
     this.queue = [];
     this.members.clear();
     this.byId.clear();
-    this.combined = null;
+    this.combined = this.lod = null;
     this.demotionPages.clear();
     this.refused = new WeakSet();
     this.trimAfterDrain = false;

@@ -825,6 +825,12 @@ function pageLod1(page: BatchedMesh): string[] {
   return page.lodParts!.flatMap((part) => triangles(page, lod1, part.lod1Start, part.lod1Start + part.lod1Count));
 }
 
+/** End the stream and run the drains that build the pages' parts (a slice per drain, compact-lod.ts). */
+function settle(scene: Scene, gpu: ReturnType<typeof fakeGpu>): void {
+  scene.finalizeStreaming(gpu.device, gpu.pipeline);
+  flushAll(scene, gpu);
+}
+
 describe('compact pages take the decisions of the bucket batches they stand in for', () => {
   it('build each bucket\'s LOD1 over their pages, the triangles the bucket path builds for the same meshes', async () => {
     const boxes = [...lodBoxes(1000, 0, 28), ...lodBoxes(2000, 0, 28, RED)];
@@ -832,12 +838,12 @@ describe('compact pages take the decisions of the bucket batches they stand in f
     const flat = compactBatch(boxes);
     for (const mesh of flat) materializeCompactMesh(mesh);
     upload(off, gpuOff, flat);
-    off.finalizeStreaming(gpuOff.device, gpuOff.pipeline);
+    settle(off, gpuOff);
     assert.equal(buckets(off).length, 2);
 
     const on = await lodScene(true), gpuOn = fakeGpu(), decodedOff = decoded();
     upload(on, gpuOn, compactBatch(boxes));
-    on.finalizeStreaming(gpuOn.device, gpuOn.pipeline);
+    settle(on, gpuOn);
     assert.equal(buckets(on).length, 0);
     assert.equal(decoded() - decodedOff, 0, 'built from the records: no mesh decoded');
     for (const color of [GREY, RED]) {
@@ -860,7 +866,7 @@ describe('compact pages take the decisions of the bucket batches they stand in f
     const near = lodBoxes(1000, 0, 15), far = lodBoxes(2000, 17, 14), beyond = lodBoxes(3000, 33, 12);
     const on = await lodScene(true), gpu = fakeGpu();
     upload(on, gpu, [...compactBatch(near), ...compactBatch([...far, ...beyond], 1)]);
-    on.finalizeStreaming(gpu.device, gpu.pipeline);
+    settle(on, gpu);
     const [page0, page1] = pages(on);
     assert.equal(pages(on).length, 2);
     assert.equal(page0.lodParts?.length, 1);
@@ -877,7 +883,7 @@ describe('compact pages take the decisions of the bucket batches they stand in f
     const flat = [...compactBatch(near), ...compactBatch([...far, ...beyond], 1)];
     for (const mesh of flat) materializeCompactMesh(mesh);
     upload(off, gpuOff, flat);
-    off.finalizeStreaming(gpuOff.device, gpuOff.pipeline);
+    settle(off, gpuOff);
     const cell0 = buckets(off).find((b) => b.bounds!.min[0] === 0)!;
     assertSameBox(cell0.bounds, page0.lodParts![0].bounds, 'chunk cell 0');
     const bucketLod1 = triangles(cell0, new Uint32Array(bytesOf(cell0.lod1IndexBuffer!).buffer, 0, cell0.lod1IndexCount)).sort();
@@ -893,7 +899,7 @@ describe('compact pages take the decisions of the bucket batches they stand in f
     const other = compactBatch([{ expressId: 3, at: [0, 0, 0], size: 1, color: RED }]);
     upload(on, gpu, [...exact, ...other]);
     assert.deepEqual(entitiesOf(pages(on)), [1, 2, 3], 'paged while the model streams');
-    on.finalizeStreaming(gpu.device, gpu.pipeline);
+    settle(on, gpu);
     assert.deepEqual(entitiesOf(pages(on)), [3]);
     assert.deepEqual(entitiesOf(buckets(on)), [1, 2]);
     assert.equal(on.getCompactStats()?.decodes.exact, 2);
@@ -905,7 +911,7 @@ describe('compact pages take the decisions of the bucket batches they stand in f
     const meshes = compactBatch([{ expressId: 1, at: [0, 0, 0], size: 1, color: GREY }, { expressId: 2, at: [3, 0, 0], size: 1, color: GREY }]);
     meshes[1].compact!.payload.table[1 * 7 + 5] = 9;
     upload(on, gpu, meshes);
-    on.finalizeStreaming(gpu.device, gpu.pipeline);
+    settle(on, gpu);
     assert.deepEqual(entitiesOf(pages(on)), [1, 2]);
     assert.equal(on.getCompactStats()?.decodes.exact, undefined);
   });
@@ -915,7 +921,7 @@ describe('compact pages take the decisions of the bucket batches they stand in f
     // 66 m apart on x, in two compact cells; with chunking off the bucket path files both in one batch.
     on.setSpatialChunking(null);
     upload(on, gpu, [...compactBatch([{ expressId: 1, at: [-10, 0, 0], size: 1, color: GREY }]), ...compactBatch([{ expressId: 2, at: [55, 0, 0], size: 1, color: GREY }], 1)]);
-    on.finalizeStreaming(gpu.device, gpu.pipeline);
+    settle(on, gpu);
     assert.equal(pages(on).length, 0);
     assert.equal(on.getCompactStats()?.decodes.exact, 2);
   });
@@ -923,7 +929,7 @@ describe('compact pages take the decisions of the bucket batches they stand in f
   it('empty a retired entity\'s LOD1 triangles and keep every other range', async () => {
     const on = await lodScene(true), gpu = fakeGpu();
     upload(on, gpu, compactBatch(lodBoxes(1000, 0, 28)));
-    on.finalizeStreaming(gpu.device, gpu.pipeline);
+    settle(on, gpu);
     const [page] = pages(on);
     const before = pageLod1(page).length;
     // Box 1000 is large (it keeps LOD1 triangles); a removal retires it.
@@ -936,7 +942,7 @@ describe('compact pages take the decisions of the bucket batches they stand in f
   it('drop a page\'s parts when a mesh joins it, and build them again when that stream ends', async () => {
     const on = await lodScene(true), gpu = fakeGpu();
     upload(on, gpu, compactBatch(lodBoxes(1000, 0, 28)));
-    on.finalizeStreaming(gpu.device, gpu.pipeline);
+    settle(on, gpu);
     const [page] = pages(on);
     const lod1 = page.lod1IndexBuffer!;
     upload(on, gpu, compactBatch([{ expressId: 5000, at: [1, 1, 1], size: 3, color: GREY }]));
@@ -944,16 +950,37 @@ describe('compact pages take the decisions of the bucket batches they stand in f
     assert.equal(page.lodParts, undefined, 'the parts no longer cover the page');
     assert.equal(page.lod1IndexBuffer, undefined);
     assert.equal(isDestroyed(lod1), true);
-    on.finalizeStreaming(gpu.device, gpu.pipeline);
+    settle(on, gpu);
     assert.equal(page.lodParts?.[0].lod0Count, page.indexCount);
     assert.equal(triangles(page, u16(page.indexBuffer)).length, 61 * 12);
+  });
+
+  it('build the parts a page per drain, and report queued work until the last one is in', async () => {
+    const on = await lodScene(true), gpu = fakeGpu();
+    upload(on, gpu, [...compactBatch(lodBoxes(1000, 0, 15)), ...compactBatch(lodBoxes(2000, 17, 14), 1)]);
+    on.finalizeStreaming(gpu.device, gpu.pipeline);
+    assert.equal(on.hasQueuedMeshes(), true, 'the build is work the flush loop still has to do');
+    assert.ok(pages(on).every((page) => page.lodParts === undefined), 'a page draws whole until its parts are installed');
+    let drains = 0;
+    for (; on.hasQueuedMeshes(); drains++) on.flushPending(gpu.device, gpu.pipeline, 0);
+    assert.equal(drains, 5, 'two pages clustered, two installed, then the build ends: one step per drain at a zero budget');
+    assert.ok(pages(on).every((page) => page.lodParts !== undefined));
+  });
+
+  it('drop the build when the pages change under it', async () => {
+    const on = await lodScene(true), gpu = fakeGpu();
+    upload(on, gpu, compactBatch(lodBoxes(1000, 0, 28)));
+    on.finalizeStreaming(gpu.device, gpu.pipeline);
+    assert.equal(on.removeMeshesForEntity(1000), true);
+    assert.equal(on.hasQueuedMeshes(), false, 'a retire drops the planned build');
+    assert.equal(pages(on)[0].lodParts, undefined, 'the page draws whole');
   });
 
   it('keep pages whole when bucket batches build no LOD1', async () => {
     const gpu = fakeGpu(), scene = await newScene();
     scene.setSpatialChunking({ cellSize: 32 });
     upload(scene, gpu, compactBatch(lodBoxes(1000, 0, 28)));
-    scene.finalizeStreaming(gpu.device, gpu.pipeline);
+    settle(scene, gpu);
     const [page] = pages(scene);
     assert.equal(page.lodParts, undefined);
     assert.equal(page.lod1IndexBuffer, undefined);

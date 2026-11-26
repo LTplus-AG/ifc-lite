@@ -59,6 +59,18 @@ export function chosenMembers(members: ReadonlyMap<MeshData, MeshData>, byId: Re
   return chosen;
 }
 
+/** Take the page-time registrations of `kept` members out of the Scene's mesh map (they are registered again later). */
+export function forgetRegistrations(meshDataMap: Map<number, MeshData[]>, kept: ReadonlySet<MeshData>): void {
+  const ids = new Set([...kept].map((mesh) => mesh.expressId));
+  for (const id of ids) {
+    const pieces = meshDataMap.get(id);
+    if (!pieces) continue;
+    const rest = pieces.filter((piece) => !kept.has(piece));
+    if (rest.length === 0) meshDataMap.delete(id);
+    else if (rest.length !== pieces.length) meshDataMap.set(id, rest);
+  }
+}
+
 export function normalize(selection: CompactSelection): Selection {
   return selection === undefined || 'modelIndex' in selection ? selection : { ids: new Set(selection.ids) };
 }

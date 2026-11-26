@@ -150,7 +150,7 @@ describe('formatSplitHoverLabel', () => {
 // A delta's sign must follow what is PRINTED: a tiny negative that rounds to
 // zero in the display unit used to print `-0` / `-0.000` / `-0.0 mm`, and a tiny
 // positive printed `+0` (a direction claimed for nothing).
-describe('signed readouts that round to zero', () => {
+describe('signed readouts that round to zero (#11465)', () => {
   it('formatSignedTriple prints an axis that rounds to zero without a sign', () => {
     assert.strictEqual(
       formatSignedTriple({ x: -0, y: -1e-6, z: 1e-6 }, { LENGTHUNIT: 'm' }),

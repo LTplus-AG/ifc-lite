@@ -127,7 +127,7 @@ describe('formatSignedDistance with a LENGTHUNIT override', () => {
   });
 });
 
-describe('formatSignedDistance rounds the sign with the value', () => {
+describe('formatSignedDistance rounds the sign with the value (#11465)', () => {
   it('prints a delta that rounds to zero without a minus sign', () => {
     assert.strictEqual(formatSignedDistance(-1e-7), '0.0 mm');
     assert.strictEqual(formatSignedDistance(-1e-7, { LENGTHUNIT: 'm' }), '0 m');

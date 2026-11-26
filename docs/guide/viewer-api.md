@@ -71,7 +71,7 @@ The viewer exposes a REST API on the same port. Use it from `curl`, scripts, or 
 ### `POST /api/command` — Send Viewer Commands
 
 ```bash
-curl -X POST http://localhost:3456/api/command \
+curl -X POST http://127.0.0.1:3456/api/command \
   -H 'Content-Type: application/json' \
   -d '{"action":"colorize","type":"IfcWall","color":[1,0,0,1]}'
 ```
@@ -119,12 +119,12 @@ Create IFC elements and inject them into the viewer in real time. Accepts a sing
 
 ```bash
 # Single element
-curl -X POST http://localhost:3456/api/create \
+curl -X POST http://127.0.0.1:3456/api/create \
   -H 'Content-Type: application/json' \
   -d '{"type":"wall","params":{"Height":3,"Start":[0,0,0],"End":[5,0,0]}}'
 
 # Batch create (single HTTP call)
-curl -X POST http://localhost:3456/api/create \
+curl -X POST http://127.0.0.1:3456/api/create \
   -H 'Content-Type: application/json' \
   -d '[
     {"type":"wall","params":{"Height":3,"Start":[0,0,0],"End":[5,0,0]}},
@@ -144,7 +144,7 @@ All 29 element types from the [`create` command](cli.md#create-create-ifc-files)
 ### `POST /api/clear-created` — Remove Live Geometry
 
 ```bash
-curl -X POST http://localhost:3456/api/clear-created
+curl -X POST http://127.0.0.1:3456/api/clear-created
 ```
 
 Removes all geometry added via `/api/create` from the viewer and server state.
@@ -152,7 +152,7 @@ Removes all geometry added via `/api/create` from the viewer and server state.
 ### `GET /api/export` — Download Created Geometry
 
 ```bash
-curl http://localhost:3456/api/export > created.ifc
+curl http://127.0.0.1:3456/api/export > created.ifc
 ```
 
 Downloads all live-created geometry as a valid IFC STEP file.
@@ -160,7 +160,7 @@ Downloads all live-created geometry as a valid IFC STEP file.
 ### `GET /api/status` — Server Status
 
 ```bash
-curl http://localhost:3456/api/status
+curl http://127.0.0.1:3456/api/status
 ```
 
 ```json

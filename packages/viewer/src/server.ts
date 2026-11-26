@@ -16,6 +16,7 @@ import { readFile, stat } from 'node:fs/promises';
 import { dirname, extname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getViewerHtml } from './viewer-html.js';
+import { localOrigin, ownHosts, refuseRequest } from './request-guard.js';
 
 /** Valid command actions that the viewer understands */
 export const VALID_ACTIONS = new Set([
@@ -117,9 +118,6 @@ async function resolveWasmDir(): Promise<string> {
   }
 }
 
-/** A page served from this machine: `http(s)://localhost` or `127.0.0.1`, any port. */
-const LOCAL_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
-
 /** Read full request body as string */
 function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -165,16 +163,10 @@ export async function startViewerServer(opts: ViewerServerOptions): Promise<View
 
   // The Host values this server answers to, set once it is listening. No
   // request can arrive before that.
-  let ownHosts = new Set<string>();
+  let hosts: ReadonlySet<string> = new Set();
 
   const server = createServer(async (req, res) => {
-    // A page on another site can still send requests here even though CORS
-    // stops it reading the answers, and a DNS-rebound name could read them
-    // too. Refuse any request whose Host is not this server's loopback
-    // address, and any POST sent from a non-local page.
-    const origin = req.headers.origin ?? '';
-    const localOrigin = LOCAL_ORIGIN.test(origin);
-    if (!ownHosts.has(req.headers.host?.toLowerCase() ?? '') || (req.method === 'POST' && origin !== '' && !localOrigin)) {
+    if (refuseRequest(req, hosts)) {
       res.writeHead(403, { 'Content-Type': 'text/plain' });
       res.end('Forbidden');
       return;
@@ -184,7 +176,8 @@ export async function startViewerServer(opts: ViewerServerOptions): Promise<View
     const path = url.pathname;
 
     // CORS headers — restrict to localhost origins only
-    if (localOrigin) {
+    const origin = localOrigin(req);
+    if (origin) {
       res.setHeader('Access-Control-Allow-Origin', origin);
     }
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -380,30 +373,13 @@ export async function startViewerServer(opts: ViewerServerOptions): Promise<View
     }
   });
 
-  // `promiseReject` matters: `opts.onReady` runs inside the `listen`
-  // callback, outside any surrounding try/catch the caller can see. Without
-  // it, a throwing `onReady` would silently drop `promiseResolve` and the
-  // returned promise would hang forever. On that path the server is already
-  // bound to the port, so close it before rejecting -- otherwise the caller
-  // gets a rejection with no handle to the still-listening socket, leaking
-  // the port for the life of the process.
+  // A throwing `onReady` runs outside any try/catch the caller can see, so
+  // reject (after closing the already-bound socket) instead of hanging.
   return new Promise((promiseResolve, promiseReject) => {
-    // A bind failure (e.g. EADDRINUSE) emits `error` and NEVER runs the
-    // `listen` callback below -- so without this listener neither
-    // `promiseResolve` nor `promiseReject` would ever fire and the returned
-    // promise would hang forever, the same defect class as the onReady-throw
-    // path above. `once` self-removes: `listen`'s success callback also
-    // strips it below, and a bind failure vs. a successful bind are mutually
-    // exclusive outcomes of a single `listen()` call, so this can only ever
-    // fire once and cannot race the resolve path.
-    const onListenError = (err: NodeJS.ErrnoException) => {
-      // The server never bound on this path, so there is no listening
-      // socket to leak -- unlike the onReady-throw path, close() is neither
-      // needed nor safe to rely on here (a server that failed to bind is
-      // not "running", and close() on it just reports that back via its
-      // optional callback rather than doing anything useful).
-      promiseReject(err);
-    };
+    // A bind failure (e.g. EADDRINUSE) emits `error` and never runs the
+    // `listen` callback, so reject here or the promise hangs. Nothing is
+    // bound on this path, so there is nothing to close.
+    const onListenError = (err: NodeJS.ErrnoException) => promiseReject(err);
     server.once('error', onListenError);
 
     // Loopback only: the server has no authentication.
@@ -411,11 +387,9 @@ export async function startViewerServer(opts: ViewerServerOptions): Promise<View
       server.off('error', onListenError);
       const addr = server.address();
       const port = typeof addr === 'object' && addr ? addr.port : requestedPort;
-      // Report the address the socket is bound to: `localhost` may resolve
-      // to ::1 first, where another process could hold the same port.
+      // Not `localhost`: it may resolve to ::1, where another process can hold this port.
       const url = `http://127.0.0.1:${port}`;
-      // Clients leave the default port out of Host.
-      ownHosts = new Set(['localhost', '127.0.0.1'].flatMap((h) => (port === 80 ? [h, `${h}:80`] : [`${h}:${port}`])));
+      hosts = ownHosts(port);
 
       if (opts.onReady) {
         try {

@@ -140,7 +140,7 @@ describe('viewer tools — full integration', () => {
     expect(realExpressId).toBeGreaterThan(0);
     void wallId;
 
-    const pickRes = await fetch(`http://localhost:${port}/api/command`, {
+    const pickRes = await fetch(`http://127.0.0.1:${port}/api/command`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'picked', expressId: realExpressId, ifcType: 'IfcWall' }),

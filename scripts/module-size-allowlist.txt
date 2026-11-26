@@ -261,7 +261,7 @@
    444 packages/server-client/src/parquet-tables.ts
    595 packages/server-client/src/types.ts
    406 packages/source-dalux/src/provider.ts
-   415 packages/viewer/src/server.ts
+   412 packages/viewer/src/server.ts
   1485 packages/viewer/src/viewer-html.ts
    500 scripts/check-agents-md-size.mjs
    680 scripts/check-changeset-bump.mjs

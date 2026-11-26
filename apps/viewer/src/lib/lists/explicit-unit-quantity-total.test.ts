@@ -114,6 +114,35 @@ describe('list quantity totals honour a member Unit', () => {
     assert.equal(converted?.value, 7);
   });
 
+  it('keeps the surviving same-named set in its own scale after deleting the first member (#11469)', async () => {
+    const source = STEP.replace('ENDSEC;\nEND-ISO-10303-21;', [
+      "#60=IFCQUANTITYAREA('NetSideArea',$,$,6.,$);",
+      "#61=IFCELEMENTQUANTITY('Q000000000000000000E1',$,'Qto_WallBaseQuantities',$,$,(#60));",
+      "#62=IFCRELDEFINESBYPROPERTIES('R000000000000000000E1',$,$,$,(#11),#61);",
+      'ENDSEC;',
+      'END-ISO-10303-21;',
+    ].join('\n'));
+    const bytes = new TextEncoder().encode(source);
+    const store = await new IfcParser().parseColumnar(bytes.buffer, { disableWorkerScan: true });
+    const view = new MutablePropertyView(store.properties, 'm');
+    view.setQuantityExtractor(id => extractQuantitiesOnDemand(store, id));
+    const definition: ListDefinition = {
+      id: 'duplicate', name: 'Duplicate sets', createdAt: 0, updatedAt: 0,
+      entityTypes: [IfcTypeEnum.IfcWall], expressIdsByModel: { m: [11] }, groups: [],
+      columns: [
+        { id: 'n', source: 'attribute', propertyName: 'Name' },
+        { id: 'a', source: 'quantity', psetName: 'Qto_WallBaseQuantities', propertyName: 'NetSideArea' },
+      ],
+      grouping: { columnId: 'n', sumColumnIds: ['a'] },
+    };
+    const read = () => executeList(definition, createProjectUnitListDataProvider(store, '', undefined, view), 'm');
+    assert.deepEqual(read().rows.map(row => row.values[1]), [5]);
+    assert.ok(view.deleteQuantity(11, 'Qto_WallBaseQuantities', 'NetSideArea'));
+    const result = read();
+    assert.deepEqual(result.rows.map(row => row.values[1]), [6]);
+    assert.equal(result.summary?.sums.a, 6);
+  });
+
   // #11469: mass and time follow the project's own unit (tonne, minute), not SI.
   const MASS_TIME = `ISO-10303-21;
 HEADER;

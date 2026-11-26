@@ -4,8 +4,7 @@
 
 /** ISO 10303-21 HEADER checks: FILE_DESCRIPTION and FILE_NAME attribute types (header_section_schema). */
 
-import { readStepRecord } from '../runtime/step-reader.js';
-import type { Value } from '../runtime/values.js';
+import { headerRecords } from '../runtime/step-reader.js';
 import type { ValidationFinding } from './findings.js';
 
 const HEADER_ATTRIBUTES: Record<string, Array<[name: string, list: boolean]>> = {
@@ -16,27 +15,14 @@ const HEADER_ATTRIBUTES: Record<string, Array<[name: string, list: boolean]>> = 
   ],
 };
 
-function headerEntity(header: string, name: string): Value[] | undefined {
-  const at = header.search(new RegExp(`\\b${name}\\s*\\(`));
-  if (at < 0) return undefined;
-  const end = header.indexOf(');', at);
-  try {
-    return readStepRecord(`#0=${header.slice(at, end < 0 ? undefined : end + 1)}`).attributes;
-  } catch {
-    return undefined;
-  }
-}
-
 export function checkHeader(text: string, out: ValidationFinding[]): void {
-  const start = text.indexOf('HEADER;');
-  const end = text.indexOf('ENDSEC;', start);
-  if (start < 0 || end < 0) {
+  const records = headerRecords(text);
+  if (!records.size) {
     out.push({ category: 'header', rule: 'header-section', message: 'No HEADER section' });
     return;
   }
-  const header = text.slice(start, end);
   for (const [entity, attributes] of Object.entries(HEADER_ATTRIBUTES)) {
-    const values = headerEntity(header, entity);
+    const values = records.get(entity);
     if (!values) {
       out.push({ category: 'header', rule: `${entity}`, message: `${entity} is missing or unreadable` });
       continue;

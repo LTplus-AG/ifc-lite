@@ -8,6 +8,7 @@
  * Workers). Schemas load per release so a bundle only carries the one it uses.
  */
 
+import { headerRecords } from './runtime/step-reader.js';
 import { Model, type StepRecordSource } from './runtime/model.js';
 import type { SchemaRuntime } from './runtime/schema-runtime.js';
 import type { ValidationReport } from './engine/findings.js';
@@ -38,7 +39,8 @@ export async function loadSchema(release: SchemaRelease): Promise<SchemaRuntime>
 }
 
 export function fileSchemaIdentifier(stepText: string): string | undefined {
-  return /FILE_SCHEMA\s*\(\s*\(\s*'([^']+)'/i.exec(stepText)?.[1];
+  const names = headerRecords(stepText).get('FILE_SCHEMA')?.[0];
+  return Array.isArray(names) && typeof names[0] === 'string' ? names[0] : undefined;
 }
 
 async function schemaOrThrow(identifier: string | undefined, schema?: SchemaRuntime): Promise<SchemaRuntime> {

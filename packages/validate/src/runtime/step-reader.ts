@@ -170,40 +170,70 @@ export function readStepRecord(text: string, resolve: TypeNameResolver = identit
   const type = c.word().toUpperCase();
   c.skip();
   if (text.charCodeAt(c.i) !== 40) c.fail("expected '('");
-  return { id, type, attributes: c.list() };
+  const attributes = c.list();
+  c.skip();
+  if (text[c.i] === ';') { c.i++; c.skip(); }
+  if (c.i !== text.length) c.fail('unexpected trailing tokens after record attributes');
+  return { id, type, attributes };
 }
 
-/** Split the DATA section of a STEP file into `#id=...;` records, honouring strings and comments. */
+/** STEP statements end at a semicolon outside a string, binary literal or comment. */
+function* statements(text: string): Generator<string> {
+  const cursor = new Cursor(text, identity);
+  while (cursor.i < text.length) {
+    cursor.skip();
+    const start = cursor.i;
+    let quote = '';
+    while (cursor.i < text.length) {
+      const ch = text[cursor.i++];
+      if (quote) {
+        if (ch !== quote) continue;
+        if (quote === "'" && text[cursor.i] === "'") cursor.i++;
+        else quote = '';
+      } else if (ch === "'" || ch === '"') quote = ch;
+      else if (ch === '/' && text[cursor.i] === '*') {
+        const end = text.indexOf('*/', cursor.i + 1);
+        cursor.i = end < 0 ? text.length : end + 2;
+      } else if (ch === ';') break;
+    }
+    if (cursor.i > start) yield text.slice(start, cursor.i);
+  }
+}
+
+export function* sectionRecords(text: string, section: 'HEADER' | 'DATA'): Generator<string> {
+  let active = false;
+  let bare = section === 'DATA';
+  for (const statement of statements(text)) {
+    if (bare && statement.startsWith('#')) { yield statement; continue; }
+    bare = false;
+    if (statement.startsWith('#')) {
+      if (active) yield statement;
+      continue;
+    }
+    const keyword = /^[A-Z0-9_-]+/i.exec(statement)?.[0].toUpperCase();
+    if (keyword === 'ENDSEC' && active) return;
+    if (keyword === section) active = true;
+    else if (active) yield statement;
+  }
+}
+
+export function headerRecords(text: string): Map<string, Value[]> {
+  const records = new Map<string, Value[]>();
+  for (const statement of sectionRecords(text, 'HEADER')) {
+    try {
+      const record = readStepRecord(`#0=${statement}`);
+      records.set(record.type, record.attributes);
+    } catch (error) {
+      if (!(error instanceof StepRecordError)) throw error;
+      // The header validator reports absent or unreadable attributes.
+    }
+  }
+  return records;
+}
+
 export function* splitStepRecords(text: string): Generator<{ id: number; type: string; text: string }> {
-  const data = text.search(/\bDATA\s*;/);
-  let i = data < 0 ? 0 : text.indexOf(';', data) + 1;
-  const endsec = text.indexOf('ENDSEC', i);
-  const n = endsec < 0 ? text.length : endsec;
-  while (i < n) {
-    const c = text.charCodeAt(i);
-    if (c === 47 && text.charCodeAt(i + 1) === 42) {
-      const end = text.indexOf('*/', i + 2);
-      i = end < 0 ? n : end + 2;
-      continue;
-    }
-    if (c !== 35) {
-      i++;
-      continue;
-    }
-    let j = i;
-    for (; j < n; j++) {
-      const ch = text.charCodeAt(j);
-      if (ch === 39) {
-        j++;
-        while (j < n && !(text.charCodeAt(j) === 39 && text.charCodeAt(j + 1) !== 39)) j += text.charCodeAt(j) === 39 ? 2 : 1;
-      } else if (ch === 47 && text.charCodeAt(j + 1) === 42) {
-        const end = text.indexOf('*/', j + 2);
-        j = end < 0 ? n : end + 1;
-      } else if (ch === 59) break;
-    }
-    const record = text.slice(i, j + 1);
+  for (const record of sectionRecords(text, 'DATA')) {
     const m = /^#(\d+)\s*=\s*([A-Za-z0-9_]+)/.exec(record);
     if (m) yield { id: Number(m[1]), type: m[2].toUpperCase(), text: record };
-    i = j + 1;
   }
 }

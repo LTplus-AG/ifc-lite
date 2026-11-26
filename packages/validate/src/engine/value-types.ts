@@ -13,6 +13,22 @@ import type { Model } from '../runtime/model.js';
 import type { TypeRef } from '../runtime/schema-meta.js';
 import { BinaryValue, EnumValue, Ref, StepInteger, Typed, UNKNOWN, type Value } from '../runtime/values.js';
 
+// This operates on raw STEP attributes, before references are resolved into entity objects.
+function uniqueAggregate(items: Value[]): boolean {
+  const seen = new Set<string>();
+  for (const item of items) {
+    if (item === undefined) continue;
+    const key = JSON.stringify(item, (_field, v: unknown) => {
+      if (v instanceof StepInteger) return v.value;
+      if (typeof v === 'symbol') return { logical: String(v) };
+      return v;
+    });
+    if (seen.has(key)) return false;
+    seen.add(key);
+  }
+  return true;
+}
+
 export function conforms(m: Model, v: Value, type: TypeRef): boolean {
   switch (type.k) {
     case 'generic':
@@ -30,7 +46,10 @@ export function conforms(m: Model, v: Value, type: TypeRef): boolean {
       return false;
     case 'aggregate': {
       if (!Array.isArray(v)) return false;
-      if (v.length < type.low || (type.high !== undefined && v.length > type.high)) return false;
+      if (type.kind === 'ARRAY' && type.high !== undefined) {
+        if (v.length !== type.high - type.low + 1) return false;
+      } else if (v.length < type.low || (type.high !== undefined && v.length > type.high)) return false;
+      if ((type.kind === 'SET' || type.unique) && !uniqueAggregate(v)) return false;
       return v.every((x) => (x === undefined ? type.optional : conforms(m, x, type.of)));
     }
     case 'named':

@@ -47,7 +47,9 @@ export class StatementTranslator {
       case 'null': return [];
       case 'assign': return [pad + this.assignment(s.target, s.value, scope)];
       case 'return': return [`${pad}return ${s.value ? this.t(s.value, scope) : 'undefined'};`];
-      case 'escape': return [`${pad}break;`];
+      case 'escape':
+        if (!scope.loop) throw new UnsupportedConstruct('ESCAPE outside REPEAT');
+        return [`${pad}break;`];
       case 'skip': {
         // SKIP leaves the body but still runs the UNTIL test, so it breaks out of a labelled body block.
         if (!scope.loop) throw new UnsupportedConstruct('SKIP outside REPEAT');

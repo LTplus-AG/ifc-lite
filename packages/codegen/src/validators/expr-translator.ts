@@ -61,7 +61,7 @@ export class ExpressionTranslator {
   translate(e: Expr, scope: Scope): string {
     switch (e.k) {
       case 'num': return String(e.value);
-      case 'str': return JSON.stringify(this.typeLiteral(e.value) ?? e.value);
+      case 'str': return JSON.stringify(e.value);
       case 'logical': return e.value === 'TRUE' ? 'true' : e.value === 'FALSE' ? 'false' : 'r.UNKNOWN';
       case 'indeterminate': return 'undefined';
       case 'self':
@@ -130,7 +130,12 @@ export class ExpressionTranslator {
 
   private call(name: string, args: Expr[], scope: Scope): string {
     const upper = name.toUpperCase();
-    const js = args.map((a) => this.translate(a, scope));
+    const js = args.map((arg, i) => {
+      if (upper === 'USEDIN' && i === 1 && arg.k === 'str') {
+        return JSON.stringify(this.typeLiteral(arg.value) ?? arg.value);
+      }
+      return this.translate(arg, scope);
+    });
     const builtin = BUILTINS[upper];
     if (builtin) {
       if (js.length !== builtin.arity) throw new UnsupportedConstruct(`${upper} called with ${js.length} arguments`);

@@ -2,13 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { schemaSource } from './schema-fixture.js';
+import { runInNewContext } from 'node:vm';
 import { describe, expect, it } from 'vitest';
 import ts from 'typescript';
 import { generateValidators } from '../src/index.js';
 
-const schemaSource = (file: string) => readFileSync(join(__dirname, '..', 'schemas', file), 'utf8');
 const generated = new Map<string, ReturnType<typeof generateValidators>>();
 const generate = (file: string) => {
   if (!generated.has(file)) generated.set(file, generateValidators(schemaSource(file)));
@@ -26,6 +25,13 @@ WHERE
 END_ENTITY;
 ${extra}
 END_SCHEMA;`;
+
+function loadMiniRules(source: string, runtime: Record<string, unknown>): { label: string; check: (self: object, model: object) => boolean }[] {
+  const { outputText } = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } });
+  const exports = { RULES: { entity: { MiniThing: [] } } };
+  runInNewContext(outputText, { exports, require: () => ({ EnumValue: class {}, ...runtime }) });
+  return exports.RULES.entity.MiniThing;
+}
 
 describe('generateValidators', () => {
   // Totals cross-checked against IfcOpenShell's compiled rule modules (#11559): every
@@ -116,6 +122,26 @@ END_SCHEMA;`;
   ])('refuses %s instead of compiling it wrong', (_what, body, reason) => {
     const fn = `FUNCTION F (X : LIST [1:?] OF MiniLabel) : INTEGER; LOCAL N : INTEGER := 0; END_LOCAL; ${body} END_FUNCTION;`;
     expect(generateValidators(mini('WR1 : TRUE', fn)).coverage.unsupported).toEqual([{ scope: 'function', owner: 'F', label: 'F', reason }]);
+  });
+
+  it('preserves ordinary strings and qualifies type and role operands (#11559)', () => {
+    const { files } = generateValidators(mini("WR1 : 'foo.MiniThing' <> 'bar.MiniThing'; WR2 : 'mini.minithing' IN TYPEOF(SELF); WR3 : EXISTS(USEDIN(SELF, 'mini.minithing.name'))"));
+    const rules = loadMiniRules(files['rules.ts'], {
+      ne: (a: string, b: string) => a !== b,
+      typeIs: (_model: unknown, _entity: unknown, name: string) => name === 'MINITHING',
+      usedIn: (_model: unknown, _entity: unknown, role: string) => role.endsWith('.MINITHING.NAME') ? role : undefined,
+      exists: (value: unknown) => value !== undefined,
+    });
+    expect(rules.map(rule => rule.check({}, {}))).toEqual([true, true, true]);
+  });
+
+  it('loads unrelated rules when ESCAPE is illegal and executes legal ESCAPE (#11559)', () => {
+    const schema = mini('WR1 : Bad(Name); WR2 : Good(Name)',
+      'FUNCTION Bad(X : MiniLabel) : LOGICAL; ESCAPE; END_FUNCTION; FUNCTION Good(X : MiniLabel) : LOGICAL; REPEAT WHILE TRUE; ESCAPE; END_REPEAT; RETURN (TRUE); END_FUNCTION;');
+    const { files, coverage } = generateValidators(schema);
+    expect(coverage.unsupported.map(u => u.reason)).toEqual(['ESCAPE outside REPEAT', 'calls Bad, which did not compile: ESCAPE outside REPEAT']);
+    const rules = loadMiniRules(files['rules.ts'], { isTrue: Boolean, attr: () => 'x' });
+    expect(rules.find(rule => rule.label === 'WR2')?.check({}, {})).toBe(true);
   });
 
   it('compiles SKIP to a break out of a labelled body, so the UNTIL test still runs', () => {

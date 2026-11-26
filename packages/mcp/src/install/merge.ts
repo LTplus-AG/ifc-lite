@@ -7,9 +7,9 @@
  *
  * Other servers, and every other top-level key, keep their values (the file
  * is re-serialized, so its spacing is normalized). A replaced entry keeps the
- * user's own keys such as `env`. A file that is not plain JSON (VS Code and Cursor users add
- * comments) is refused rather than rewritten, because a rewrite would drop
- * the comments.
+ * user's own keys such as `env`. A file that is not plain JSON (VS Code and
+ * Cursor users add comments) is refused rather than rewritten, because a
+ * rewrite would drop the comments.
  */
 
 import { InstallError } from './clients.js';

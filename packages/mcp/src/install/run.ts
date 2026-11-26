@@ -15,7 +15,7 @@
 import { dirname, join, posix, win32 } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readPackageVersion, UNKNOWN_VERSION } from '@ifc-lite/data/node';
-import { bridgeConflict, isMcpValueFlag, MCP_BOOLEAN_FLAGS, MCP_VALUE_FLAGS, parseArgs } from '../cli-args.js';
+import { bridgeConflict, isMcpValueFlag, MCP_BOOLEAN_FLAGS, parseArgs } from '../cli-args.js';
 import {
   CLIENTS,
   InstallError,
@@ -105,7 +105,7 @@ function parseInstallArgs(argv: string[], host: HostEnv): InstallArgs | 'help' {
   // A typo such as --readonly would be written and then ignored at every launch.
   const unknown = passThrough.find(
     (a, i) => a.startsWith('-') && !a.includes('=') && !isMcpValueFlag(passThrough[i - 1] ?? '')
-      && !MCP_VALUE_FLAGS.includes(a) && !MCP_BOOLEAN_FLAGS.includes(a),
+      && !isMcpValueFlag(a) && !MCP_BOOLEAN_FLAGS.includes(a),
   );
   if (unknown) throw new InstallError(`The server has no ${unknown} flag (ifc-lite-mcp --help lists them).`);
   const exits = passThrough.find((a) => EXIT_FLAGS.includes(a));

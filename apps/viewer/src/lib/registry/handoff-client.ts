@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { OciClient, OciError, buildImageManifest, parseReference, type OciDescriptor, type OciManifestResult } from '@ifc-lite/oci';
+import { OciClient, OciError, buildImageManifest, type OciDescriptor, type OciManifestResult, type OciReference } from '@ifc-lite/oci';
 import { RegistryError, releaseName, repositoryName } from './protocol';
 import { registryOrigin, type ArtifactSource } from './handoff-contract';
 import { resourceAllows, type ResourceSession } from './handoff-auth';
@@ -26,7 +26,9 @@ function connection(session: ResourceSession, registry: string, repository: stri
   registryOrigin(registry); repositoryName(repository);
   if (session.registry !== registry || !resourceAllows(session, repository, action)) throw new RegistryError('Sign in to this file store for the selected folder and action.', 403);
   const origin = new URL(registry), insecureHosts = origin.protocol === 'http:' ? [origin.host] : undefined;
-  return { client: new OciClient({ credentials: { token: session.accessToken }, insecureHosts }), reference: (suffix = '') => parseReference(`${origin.host}/${repository}${suffix}`, { insecureHosts }) };
+  // Built from the validated origin: a reference string would misread a single-label host as a path.
+  return { client: new OciClient({ credentials: { token: session.accessToken }, insecureHosts }),
+    reference: (version: Pick<OciReference, 'tag' | 'digest'> = {}): OciReference => ({ registry: origin.host, origin: origin.origin, repository, ...version }) };
 }
 
 /** Read tags in a known repository and inspect a bounded page of their manifests. */
@@ -37,7 +39,7 @@ export async function browseRepositoryVersions(
   const tags = remainingTags ?? [...new Set(await client.tags(reference(), { signal }))];
   const versions = await Promise.all(tags.slice(0, VERSIONS_PER_PAGE).map(async tag => {
     try {
-      const manifest = await client.manifest(reference(`:${tag}`), { signal });
+      const manifest = await client.manifest(reference({ tag }), { signal });
       const layer = ifcLayer(manifest);
       return layer && {
         tag, digest: manifest.digest,
@@ -55,7 +57,7 @@ export async function browseRepositoryVersions(
 export async function pullHandoff(source: ArtifactSource, session: ResourceSession, signal?: AbortSignal): Promise<{ bytes: Uint8Array<ArrayBuffer>; filename: string }> {
   const { client, reference } = connection(session, source.registry, source.repository, 'pull');
   if (!/^sha256:[a-f0-9]{64}$/.test(source.digest)) throw new RegistryError('Choose an exact published version.');
-  const ref = reference(`@${source.digest}`), manifest = await client.manifest(ref, { signal });
+  const ref = reference({ digest: source.digest }), manifest = await client.manifest(ref, { signal });
   const layer = ifcLayer(manifest);
   if (!layer) throw new RegistryError('Choose a version containing a supported IFC package.');
   const bytes = await client.blob(ref, layer, { signal, maxBytes: MAX_IFC_BYTES });
@@ -66,7 +68,7 @@ export async function pushHandoff(registry: string, repository: string, tag: str
   if (bytes.length > MAX_IFC_BYTES || !new TextDecoder().decode(bytes.subarray(0, 64)).trimStart().startsWith('ISO-10303-21;')) throw new RegistryError('Choose an IFC STEP model up to 512 MiB.');
   const { client, reference } = connection(session, registry, repository, 'push');
   if (!resourceAllows(session, repository, 'pull')) throw new RegistryError('View permission is required to check for an existing version.', 403);
-  const ref = reference(`:${tag}`);
+  const ref = reference({ tag });
   // Check before uploading large files. The registry owns any atomic immutability policy.
   try { await client.manifest(ref, { signal }); throw new RegistryError('That version already exists. Choose a new version name.'); }
   catch (error) { if (!(error && typeof error === 'object' && 'code' in error && error.code === 'NOT_FOUND')) throw error; }

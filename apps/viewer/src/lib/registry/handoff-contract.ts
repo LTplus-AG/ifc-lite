@@ -68,8 +68,6 @@ function parseConnection(entry: unknown): RegistryConnection {
   }
   const registry = webAddress(entry.registry.trim());
   if (registry.pathname !== '/' || registry.search) throw new RegistryError('Enter the registry origin without a folder or query.');
-  // OCI references read a single-label host as part of the repository path.
-  if (!/[.:]/.test(registry.host) && registry.hostname !== 'localhost') throw new RegistryError('Enter a registry address with a domain name, a port, or localhost.');
   const authorization_server = entry.authorization_server.trim();
   if (webAddress(authorization_server).search) throw new RegistryError('Enter the exact authorization issuer without a query.');
   return {

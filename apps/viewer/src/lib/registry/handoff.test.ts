@@ -8,7 +8,7 @@ import { startServer, closeAll, send } from '../../../../../packages/oci/test/fa
 import { pushRegistry } from '../../../../../packages/oci/test/push-registry.js';
 import { handoffContext, readHandoff, registryConnections, HANDOFF_PROTOCOL } from './handoff-contract';
 import { exchangeRegistryToken, resourceAllows, resourceSession } from './handoff-auth';
-import { pullHandoff, pushHandoff } from './handoff-client';
+import { browseRepositoryVersions, pullHandoff, pushHandoff } from './handoff-client';
 
 afterEach(closeAll);
 const issuer = 'https://login.example.test/realms/demo';
@@ -22,11 +22,18 @@ test('a handoff is a pinned content locator and accepts an independent authoriza
   assert.throws(() => handoffContext({...value,source:{...value.source,digest:'issued'}},[connection]));
 });
 
-test('a saved file store needs a registry host the OCI reference parser accepts (#9638 review)', () => {
-  assert.throws(() => registryConnections(JSON.stringify([{...connection,registry:'https://registry'}])),/domain name/);
-  for (const registry of ['https://registry.example.test','http://localhost:5000','http://localhost','https://registry:5000']) {
-    assert.equal(registryConnections(JSON.stringify([{...connection,registry}]))[0].registry,registry);
-  }
+test('a single-label intranet registry host can be browsed (#9638 review)', async t => {
+  const registry='https://registry';
+  assert.equal(registryConnections(JSON.stringify([{...connection,registry}]))[0].registry,registry);
+  const scope='repository:project/model:pull';
+  const session=resourceSession({access_token:'opaque',token_type:'Bearer',expires_in:300,scope},{...connection,registry},scope);
+  const requested: string[]=[];
+  t.mock.method(globalThis,'fetch',async (input: RequestInfo | URL) => {
+    requested.push(String(input instanceof Request ? input.url : input));
+    return Response.json({name:'project/model',tags:[]});
+  });
+  assert.deepEqual(await browseRepositoryVersions(registry,'project/model',session,new AbortController().signal),{versions:[],remaining:[]});
+  assert.deepEqual(requested,['https://registry/v2/project/model/tags/list']);
 });
 
 test('ordinary OAuth responses support downscoping and require no Subsoil session or identity fields', () => {

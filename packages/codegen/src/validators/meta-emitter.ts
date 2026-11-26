@@ -17,8 +17,19 @@ export type MetaTypeRef =
 export function literalInt(e: Expr | undefined): number | undefined {
   if (!e) return undefined;
   if (e.k === 'num' && e.int) return e.value;
-  if (e.k === 'unary' && e.op === '-' && e.operand.k === 'num') return -e.operand.value;
-  return undefined;
+  if (e.k === 'indeterminate') return undefined;
+  if (e.k === 'unary' && (e.op === '-' || e.op === '+')) {
+    const n = literalInt(e.operand);
+    if (n !== undefined) return e.op === '-' ? -n : n;
+  }
+  if (e.k === 'binary') {
+    const a = literalInt(e.left), b = literalInt(e.right);
+    if (a !== undefined && b !== undefined) {
+      const n = e.op === '+' ? a + b : e.op === '-' ? a - b : e.op === '*' ? a * b : NaN;
+      if (Number.isSafeInteger(n)) return n;
+    }
+  }
+  throw new Error('Cannot emit a schema bound that is not a constant integer');
 }
 
 export function toTypeRef(spec: TypeSpec, index: SchemaIndex): MetaTypeRef {
@@ -35,7 +46,7 @@ export function toTypeRef(spec: TypeSpec, index: SchemaIndex): MetaTypeRef {
         kind: spec.kind === 'AGGREGATE' ? 'BAG' : spec.kind,
         low: literalInt(spec.low) ?? 0,
         ...(high !== undefined ? { high } : {}),
-        unique: spec.unique,
+        unique: spec.kind === 'SET' || spec.unique,
         optional: spec.optional,
         of: toTypeRef(spec.of, index),
       };
@@ -54,7 +65,8 @@ function entityMeta(e: EntityDecl, index: SchemaIndex): Record<string, unknown> 
     abstract: e.abstract,
     attributes: own.map((a) => ({ name: a.name, type: toTypeRef(a.type, index), optional: a.optional })),
   };
-  if (e.supertypes[0]) meta.supertype = index.canonical(e.supertypes[0]) ?? e.supertypes[0];
+  if (e.supertypes.length > 1) meta.supertypes = e.supertypes.map(name => index.canonical(name) ?? name);
+  else if (e.supertypes[0]) meta.supertype = index.canonical(e.supertypes[0]) ?? e.supertypes[0];
   if (retyped.length) {
     meta.retyped = Object.fromEntries(retyped.map((a) => [a.redeclares!.attribute, { name: a.redeclares!.attribute, type: toTypeRef(a.type, index), optional: a.optional }]));
   }

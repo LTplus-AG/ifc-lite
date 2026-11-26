@@ -95,7 +95,6 @@ export class StatementTranslator {
     let body = this.statements(s.body, inner, depth + (counted ? 2 : 1));
     if (loop.label) body = [`${bodyPad}${loop.label}: {`, ...body.map((l) => INDENT + l), `${bodyPad}}`];
     if (!counted) {
-      if (!s.whileCond && !s.untilCond) throw new UnsupportedConstruct('REPEAT without increment, WHILE or UNTIL');
       return [`${pad}for (;;) {`, ...guard, ...body, ...tail, `${pad}}`];
     }
     const [f, to, by] = [this.expr.ctx.fresh('from'), this.expr.ctx.fresh('to'), this.expr.ctx.fresh('by')];
@@ -113,6 +112,13 @@ export class StatementTranslator {
 
   /** Value semantics of assignment to a variable of `type`: ARRAY bounds and SET uniqueness carry over. */
   private coerce(value: string, type: TypeSpec | undefined, scope: Scope): string {
+    const seen = new Set<string>();
+    while (type?.k === 'named') {
+      const name = type.name.toUpperCase();
+      if (seen.has(name)) throw new UnsupportedConstruct(`cyclic type alias ${name}`);
+      seen.add(name);
+      type = this.expr.ctx.index.type(name)?.spec;
+    }
     if (type?.k === 'aggregate' && type.kind === 'ARRAY' && type.low) return `r.assignArray(${value}, ${this.t(type.low, scope)})`;
     if (type?.k === 'aggregate' && type.kind === 'SET') return `r.assignSet(${value})`;
     return `r.assign(${value})`;
@@ -143,7 +149,7 @@ export class StatementTranslator {
   }
 
   /** A global RULE as `(m) => [[label, result], ...]`. */
-  ruleSource(rule: RuleDecl): string {
+  ruleSource(rule: RuleDecl, emitWhere: (label: RuleDecl['where'][number], compile: () => string) => string[]): string {
     const scope = new Scope('rule');
     const pops = rule.appliesTo.map((name) => {
       const entity = this.expr.ctx.index.entity(name);
@@ -152,7 +158,7 @@ export class StatementTranslator {
       return `    const ${js}: r.Value = m.population(${JSON.stringify(entity.name)});`;
     });
     const body = [...this.locals(rule.locals, scope, 2), ...this.statements(rule.body, scope, 2)];
-    const results = rule.where.map((w) => `[${JSON.stringify(w.label)}, ${this.t(w.expr, scope)}]`);
+    const results = rule.where.flatMap(w => emitWhere(w, () => `[${JSON.stringify(w.label)}, ${this.t(w.expr, scope)}]`));
     return [
       '(m: r.Model): Array<[string, r.Value]> => {',
       ...pops,

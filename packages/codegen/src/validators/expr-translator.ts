@@ -107,7 +107,7 @@ export class ExpressionTranslator {
     if (scope.entity) {
       const kind = this.index.attributesOf(scope.entity).get(upper);
       if (kind) {
-        if (kind === 'derived') this.ctx.checkDerived(upper);
+        if (kind === 'derived') this.ctx.checkDerived(upper, scope.entity);
         return `r.attr(self, ${JSON.stringify(upper)})`;
       }
     }
@@ -124,8 +124,10 @@ export class ExpressionTranslator {
     }
     const upper = e.name.toUpperCase();
     if (!this.index.attributeNames.has(upper)) throw new UnsupportedConstruct(`no entity declares attribute ${e.name}`);
-    this.ctx.checkDerived(upper);
-    return `r.attr(${this.translate(e.base, scope)}, ${JSON.stringify(upper)})`;
+    const owner = e.base.k === 'group' ? this.index.entity(e.base.entity) : e.base.k === 'self' ? scope.entity : undefined;
+    this.ctx.checkDerived(upper, owner);
+    const group = e.base.k === 'group' ? `, ${JSON.stringify(e.base.entity.toUpperCase())}` : '';
+    return `r.attr(${this.translate(e.base, scope)}, ${JSON.stringify(upper)}${group})`;
   }
 
   private call(name: string, args: Expr[], scope: Scope): string {

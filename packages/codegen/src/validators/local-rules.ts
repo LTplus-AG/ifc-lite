@@ -27,7 +27,7 @@ export function isLocalRule(expr: Expr, entity: EntityDecl, index: SchemaIndex):
         return vars.has(upper) || isExplicit(e.name) || (!attributes.has(upper) && index.enumItems.has(upper));
       }
       case 'attr':
-        if (e.base.k === 'id' && index.isEnumeration(e.base.name)) return true;
+        if (e.base.k === 'id' && !vars.has(e.base.name.toUpperCase()) && index.isEnumeration(e.base.name)) return true;
         return (e.base.k === 'self' || (e.base.k === 'group' && e.base.base.k === 'self')) && isExplicit(e.name);
       case 'group':
         return false;

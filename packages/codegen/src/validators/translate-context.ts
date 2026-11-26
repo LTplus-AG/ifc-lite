@@ -50,11 +50,7 @@ export class Scope {
 export class TranslateContext {
   /** Module-level constants (enumeration literals), name -> initialiser. */
   readonly constants = new Map<string, string>();
-  /**
-   * Derived attributes that did not compile, upper name -> `Entity.Attr`. Keyed by
-   * name alone, so a same-named attribute elsewhere is also refused: over-reporting
-   * "not evaluated" is safe, a rule run against a missing value is not.
-   */
+  /** Qualified upper name -> the failed declaration in EXPRESS spelling. */
   readonly failedDerived = new Map<string, string>();
   /** Functions the expression being translated calls (upper names). */
   calls = new Set<string>();
@@ -67,13 +63,21 @@ export class TranslateContext {
   ) {}
 
   /** A reference to a derived attribute that did not compile makes the referring rule unsupported too. */
-  checkDerived(upper: string): void {
-    const failed = this.failedDerived.get(upper);
+  checkDerived(upper: string, entity?: EntityDecl): void {
+    if (!this.failedDerived.size) return;
+    let failed: string | undefined;
+    if (entity) {
+      const owner = this.index.chain(entity).reverse().find(level =>
+        [...level.explicit, ...level.derived, ...level.inverse].some(a => a.name.toUpperCase() === upper));
+      if (owner) failed = this.failedDerived.get(`${owner.name.toUpperCase()}.${upper}`);
+    } else {
+      for (const [name, reason] of this.failedDerived) if (name.endsWith('.' + upper)) { failed = reason; break; }
+    }
     if (failed) throw new UnsupportedConstruct(`depends on derived attribute ${failed}, which did not compile`);
   }
 
   fresh(prefix: string): string {
-    return `${prefix}${++this.counter}`;
+    return `${prefix}_${++this.counter}`;
   }
 
   enumLiteral(item: string): string {

@@ -135,8 +135,10 @@ function onlyPinDiffers(existing: unknown, entry: Record<string, unknown>): bool
   const after = unpin(replacedEntry(existing, entry));
   if (!before || !after || before.rest !== after.rest) return false;
   if (!before.version || !after.version) return true;
-  const i = before.version.findIndex((n, k) => n !== after.version?.[k]);
-  return i < 0 || after.version[i] > before.version[i];
+  // x.y.z only: a prerelease of the same x.y.z counts as equal.
+  const [b, n] = [before.version, after.version];
+  const i = b.findIndex((v, k) => v !== n[k]);
+  return i < 0 || n[i] > b[i];
 }
 
 /** `npx` pinned to this release line, so the flags written here are ones it knows. */

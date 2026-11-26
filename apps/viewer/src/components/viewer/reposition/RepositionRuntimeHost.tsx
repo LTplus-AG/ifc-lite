@@ -87,6 +87,10 @@ export function RepositionRuntimeHost() {
       ensurePreview();
       state.setMoveConstraint(event.key.toLowerCase() as MoveConstraint);
     }, { ignoreModifiers: true });
+    const removeXray = registerKeyboardCommand('reposition.toggleXray', (event) => {
+      if (!eligibleTarget(event) || event.ctrlKey || event.metaKey) return false;
+      useViewerStore.getState().toggleSnapXray();
+    }, { ignoreModifiers: true });
     const removeNudge = registerKeyboardCommand('reposition.nudge', (event) => {
       if (!eligibleTarget(event)) return false;
       run(() => {
@@ -100,7 +104,7 @@ export function RepositionRuntimeHost() {
         state.previewModelTranslation(addTranslation(current.delta, step));
       });
     }, { ignoreModifiers: true });
-    return () => { removeCancel(); removeApply(); removeConstrain(); removeNudge(); };
+    return () => { removeCancel(); removeApply(); removeConstrain(); removeXray(); removeNudge(); };
   }, [apply, ensurePreview, run]);
 
   const chooseModels = useCallback((ids: readonly string[]) => run(() => {

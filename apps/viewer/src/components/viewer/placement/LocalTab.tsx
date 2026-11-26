@@ -20,6 +20,7 @@ import type { TranslationKey } from '@/i18n';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
+import { shortcutLabel } from '@/lib/commands/shortcut-label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { displayedTranslation, placementFor } from '@/lib/model-placement/state';
 import type { MoveConstraint } from '@/lib/model-placement/translation';
@@ -56,6 +57,7 @@ export function LocalTab() {
   const models = useViewerStore((s) => s.models);
   const placement = useViewerStore((s) => s.modelPlacement);
   const snapEnabled = useViewerStore((s) => s.snapEnabled);
+  const snapXray = useViewerStore((s) => s.snapXray);
   const repositionOpen = useViewerStore((s) => s.repositionOpen);
   const runtime = useRepositionRuntime();
   const [pending, setPending] = useState<readonly string[]>([]);
@@ -148,6 +150,10 @@ export function LocalTab() {
         <label className="flex items-center gap-1.5">
           <Switch checked={snapEnabled} onCheckedChange={() => useViewerStore.getState().toggleSnap()} aria-label={t('repositionPanel.snapLabel')} />
           <span>{t('repositionPanel.snapLabel')}</span>
+        </label>
+        <label className="flex items-center gap-1.5" title={t('repositionPanel.xrayTitle', { keys: shortcutLabel('reposition.toggleXray') })}>
+          <Switch checked={snapXray} onCheckedChange={() => useViewerStore.getState().toggleSnapXray()} aria-label={t('repositionPanel.xrayLabel')} />
+          <span>{t('repositionPanel.xrayLabel')}</span>
         </label>
       </div>
       <output className="block">

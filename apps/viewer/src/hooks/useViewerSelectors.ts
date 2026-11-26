@@ -16,6 +16,7 @@ import { classFilterActive, type RetypedClasses } from '../store/typeVisibilityF
 import { useViewerStore } from '../store/index.js';
 import { withTypeHidden, type TypeHiddenIds } from '../components/viewer/type-hidden-index.js';
 import { useStoreyContextVisibility } from './useStoreyContext.js';
+import { effectiveGhostExcept, isSnapXrayActive } from '../lib/snap/corner-assist.js';
 
 /**
  * Selection-related store state and actions
@@ -66,11 +67,13 @@ export function useVisibilityState(typeHidden?: TypeHiddenIds) {
   // The Model workspace hides (or ghosts) the storeys above the one being
   // drawn on, on top of the user's own sets (#6232 D9).
   const { hidden, ghostExcept } = useStoreyContextVisibility({ hidden: hiddenEntities, ghostExcept: userGhostExcept });
+  // X-ray while picking a snap point (#11504): everything translucent, without writing the store's channel.
+  const snapXray = useViewerStore((s) => isSnapXrayActive(s));
 
   return {
     hiddenEntities: hidden,
     isolatedEntities,
-    ghostExceptEntities: ghostExcept,
+    ghostExceptEntities: effectiveGhostExcept(snapXray, ghostExcept),
   };
 }
 

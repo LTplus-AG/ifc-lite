@@ -3,15 +3,17 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Corner snap markers, viewer side (#11517): which picks ask for markers and
- * the marker list the overlay draws. Pure rules, so no renderer or WebGPU is
- * involved.
+ * CAD-style corner snapping, viewer side (#11504): X-ray state to snap options
+ * and to the ghost channel, and the marker list the overlay draws. Pure rules,
+ * so no renderer or WebGPU is involved.
  */
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import type { ScreenCornerMarkers } from '@ifc-lite/renderer';
-import { cornerMarkerViews, isSnapPicking, screenCornerSnapConfig } from './corner-assist';
+import {
+  cornerMarkerViews, effectiveGhostExcept, isSnapPicking, isSnapXrayActive, screenCornerSnapConfig,
+} from './corner-assist';
 import { createSnapAssistSlice, type SnapAssistSlice } from '../../store/slices/snapAssistSlice';
 
 function slice(): { get: () => SnapAssistSlice } {
@@ -20,12 +22,35 @@ function slice(): { get: () => SnapAssistSlice } {
   return { get: () => state };
 }
 
-describe('which picks draw markers', () => {
-  const state = (over: Partial<{ activeTool: string; repositionPicking: boolean }>) =>
-    ({ activeTool: 'select', repositionPicking: false, ...over });
+describe('X-ray state to snap options', () => {
+  it('turns the occlusion rule off only with X-ray, and always asks for markers', () => {
+    assert.deepEqual(screenCornerSnapConfig(false), { markers: true });
+    assert.deepEqual(screenCornerSnapConfig(true), { markers: true, ignoreOcclusion: true });
+    assert.equal('ignoreOcclusion' in screenCornerSnapConfig(false), false, 'unset, not false: the default applies');
+  });
 
-  it('every snapping pick asks the corner search for markers', () => {
-    assert.deepEqual(screenCornerSnapConfig(), { markers: true });
+  it('the toggle drives the option and back', () => {
+    const store = slice();
+    assert.equal(store.get().snapXray, false, 'off by default');
+    const options = () => screenCornerSnapConfig(store.get().snapXray);
+    assert.equal(options().ignoreOcclusion, undefined);
+    store.get().toggleSnapXray();
+    assert.equal(options().ignoreOcclusion, true);
+    store.get().toggleSnapXray();
+    assert.equal(options().ignoreOcclusion, undefined);
+  });
+});
+
+describe('where X-ray applies', () => {
+  const state = (over: Partial<{ activeTool: string; repositionPicking: boolean; snapXray: boolean }>) =>
+    ({ activeTool: 'select', repositionPicking: false, snapXray: true, ...over });
+
+  it('applies in Measure and in an armed Reposition pick, and nowhere else', () => {
+    assert.equal(isSnapXrayActive(state({ activeTool: 'measure' })), true);
+    assert.equal(isSnapXrayActive(state({ repositionPicking: true })), true);
+    assert.equal(isSnapXrayActive(state({})), false, 'Select tool, nothing armed');
+    assert.equal(isSnapXrayActive(state({ activeTool: 'command' })), false, 'a modeling command is not offered the toggle');
+    assert.equal(isSnapXrayActive(state({ activeTool: 'measure', snapXray: false })), false);
   });
 
   it('markers are for the three snapping pickers', () => {
@@ -33,16 +58,37 @@ describe('which picks draw markers', () => {
     assert.equal(isSnapPicking(state({ activeTool: 'command' })), true);
     assert.equal(isSnapPicking(state({ repositionPicking: true })), true);
     assert.equal(isSnapPicking(state({ activeTool: 'section' })), false);
-    assert.equal(isSnapPicking(state({})), false, 'Select tool, nothing armed');
   });
 
   it('the Reposition flag is set and cleared by the slice', () => {
     const store = slice();
-    assert.equal(store.get().repositionPicking, false, 'off by default');
     store.get().setRepositionPicking(true);
     assert.equal(store.get().repositionPicking, true);
     store.get().setRepositionPicking(false);
     assert.equal(store.get().repositionPicking, false);
+  });
+});
+
+describe('X-ray appearance', () => {
+  it('ghosts everything while active and gives back the stored channel, unchanged, afterwards', () => {
+    const stored = new Set([7, 8]);
+    const ghosted = effectiveGhostExcept(true, stored);
+    assert.ok(ghosted && ghosted.size === 0, 'every entity is outside the (empty) exception set, so all render translucent');
+    assert.equal(effectiveGhostExcept(false, stored), stored, 'the same set object: nothing was written or copied');
+    assert.equal(effectiveGhostExcept(false, null), null, 'no ghosting before, none after');
+    assert.deepEqual([...stored], [7, 8], 'the owner\'s set is never mutated');
+  });
+
+  it('is derived, so toggling off restores exactly the state the store holds', () => {
+    const store = slice();
+    const stored = new Set([1]);
+    const tool = { activeTool: 'measure', repositionPicking: false };
+    const view = () => effectiveGhostExcept(isSnapXrayActive({ ...tool, snapXray: store.get().snapXray }), stored);
+    assert.equal(view(), stored);
+    store.get().toggleSnapXray();
+    assert.notEqual(view(), stored);
+    store.get().toggleSnapXray();
+    assert.equal(view(), stored);
   });
 });
 

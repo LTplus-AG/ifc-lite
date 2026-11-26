@@ -129,6 +129,26 @@ describe('selectSubsetSeeds: storeys that share one placement', () => {
     expect([...selectSubsetSeeds(parsed, { storeys: ['B'] })]).toEqual([200]);
   });
 
+  it('keeps an opening with its host storey, not a storey that shares the placement', () => {
+    const voids = [
+      'ISO-10303-21;', 'HEADER;', 'ENDSEC;', 'DATA;',
+      '#2=IFCAXIS2PLACEMENT3D(#3,$,$);', '#3=IFCCARTESIANPOINT((0.,0.,0.));',
+      '#40=IFCLOCALPLACEMENT($,#2);', '#50=IFCLOCALPLACEMENT(#40,#2);', '#51=IFCLOCALPLACEMENT(#50,#2);',
+      "#41=IFCBUILDINGSTOREY('0000000000000000000ST1',$,'L01',$,$,#40,$,$,.ELEMENT.,0.);",
+      "#42=IFCBUILDINGSTOREY('0000000000000000000ST2',$,'L02',$,$,#40,$,$,.ELEMENT.,3.);",
+      "#70=IFCWALL('0000000000000000000WA1',$,'W1',$,$,#50,$,$,$);",
+      "#71=IFCWALL('0000000000000000000WA2',$,'W2',$,$,#50,$,$,$);",
+      "#72=IFCOPENINGELEMENT('0000000000000000000OP1',$,'O',$,$,#51,$,$,$);",
+      "#73=IFCRELVOIDSELEMENT('0000000000000000000RV1',$,$,$,#70,#72);",
+      "#80=IFCRELCONTAINEDINSPATIALSTRUCTURE('0000000000000000000RC1',$,$,$,(#70),#41);",
+      "#81=IFCRELCONTAINEDINSPATIALSTRUCTURE('0000000000000000000RC2',$,$,$,(#71),#42);",
+      'ENDSEC;', 'END-ISO-10303-21;', '',
+    ].join('\n');
+    const parsed = parseStep(voids);
+    expect([...selectSubsetSeeds(parsed, { storeys: ['L02'] })].sort((a, b) => a - b)).toEqual([42, 71]);
+    expect([...selectSubsetSeeds(parsed, { storeys: ['L01'] })].sort((a, b) => a - b)).toEqual([41, 70, 72]);
+  });
+
   it('never counts a building that shares the storey placement as one of its products', () => {
     const building = [
       'ISO-10303-21;', 'HEADER;', 'ENDSEC;', 'DATA;',
@@ -138,7 +158,7 @@ describe('selectSubsetSeeds: storeys that share one placement', () => {
       "#41=IFCBUILDINGSTOREY('0000000000000000000ST1',$,'L0',$,$,#40,$,$,.ELEMENT.,0.);",
       'ENDSEC;', 'END-ISO-10303-21;', '',
     ].join('\n');
-    expect(() => selectSubsetSeeds(parseStep(building), { storeys: ['L0'], requireEachMatch: true })).toThrow(/Nothing is placed under storey L0/);
+    expect(() => selectSubsetSeeds(parseStep(building), { storeys: ['L0'], requireEachMatch: true })).toThrow(/Storey L0 has no elements/);
   });
 });
 

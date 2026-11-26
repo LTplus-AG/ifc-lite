@@ -228,7 +228,7 @@ const modelExtract: Tool = {
       global_ids: { ...stringList, description: 'Products by GlobalId.' },
       express_ids: { type: 'array', items: { type: 'integer', minimum: 1 }, description: 'Entities by express id in the source file.' },
       types: { ...stringList, description: 'Every entity of these IFC types, subtypes included (IfcWall selects IfcWallStandardCase).' },
-      storeys: { ...stringList, description: 'The storey plus every product placed under it or contained in it. Token: GlobalId, #id, or exact Name (else LongName); a bare number is a storey id first, a Name otherwise, refused when it is both.' },
+      storeys: { ...stringList, description: 'The storey plus its elements: those contained in it or in a space it aggregates (openings and parts follow their host), and unassigned elements placed under it. Token: GlobalId, #id, or exact Name (else LongName); a bare number is a storey id first, a Name otherwise, refused when it is both.' },
     },
     required: ['file_path'],
     additionalProperties: false,

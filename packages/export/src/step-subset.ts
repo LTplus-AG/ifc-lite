@@ -250,7 +250,7 @@ export interface SubsetSelectors {
   products?: readonly string[];
   /** IFC type names; subtypes are included (`IfcWall` selects `IfcWallStandardCase`). */
   types?: readonly string[];
-  /** Storey GlobalId, `#id`/id, or name: every product placed under it. */
+  /** Storey GlobalId, `#id`/id, or name: the storey and its members (see `storeyMembers`). */
   storeys?: readonly string[];
   /** Throw `SubsetSelectionError('invalid')` for any type or storey that selects nothing. */
   requireEachMatch?: boolean;
@@ -304,7 +304,7 @@ export function selectSubsetSeeds(parsed: ParsedStep, selectors: SubsetSelectors
     // The storey itself is kept as asked, even if no product is contained in it.
     seeds.add(storeyId);
     const products = storeyMembers(storeyId, placementId, parsed);
-    if (selectors.requireEachMatch && products.length === 0) throw new SubsetSelectionError('invalid', `Nothing is placed under storey ${token}.`);
+    if (selectors.requireEachMatch && products.length === 0) throw new SubsetSelectionError('invalid', `Storey ${token} has no elements.`);
     for (const id of products) seeds.add(id);
   }
   return seeds;

@@ -4,13 +4,12 @@
 
 /**
  * The storey selector of `selectSubsetSeeds`: resolve a storey token (GUID /
- * name / expressId) to the set of products whose ObjectPlacement chains up
- * through that storey's placement.
+ * name / expressId) to the storey, then to its members (see `storeyMembers`).
  */
 import { IfcTypeEnumFromString, isSpatialStructureType, walkPlacementChain } from '@ifc-lite/data';
 import { decodeStepStringLiteral } from '@ifc-lite/encoding';
 import { stepString } from './schema-converter-structural-source.js';
-import { refsOutsideStrings, splitTopLevelArgs, SubsetSelectionError } from './step-subset-relations.js';
+import { refsOutsideStrings, SINGLE_REF_RE, splitTopLevelArgs, STRUCTURE_RELATION_ATTRS, SubsetSelectionError } from './step-subset-relations.js';
 import { structureParents } from './step-subset-spatial-ancestors.js';
 import type { ParsedStep } from './step-subset.js';
 
@@ -138,6 +137,26 @@ export function resolveStorey(token: string, parsed: ParsedStep): { storeyId: nu
 /** IfcObjectPlacement subtypes: placement records a storey walk returns, never products. */
 const PLACEMENT_TYPES = new Set(['IFCLOCALPLACEMENT', 'IFCGRIDPLACEMENT', 'IFCLINEARPLACEMENT']);
 
+/**
+ * Opening -> host element (IfcRelVoidsElement), filler -> opening
+ * (IfcRelFillsElement), part -> whole (IfcRelAggregates under a non-spatial
+ * whole). Relation records that do not split into six attributes are skipped.
+ */
+function hostOf(parsed: ParsedStep): Map<number, number> {
+  const out = new Map<number, number>();
+  for (const inst of parsed.instances.values()) {
+    if (inst.type !== 'IFCRELVOIDSELEMENT' && inst.type !== 'IFCRELFILLSELEMENT' && inst.type !== 'IFCRELAGGREGATES') continue;
+    const args = splitTopLevelArgs(inst.body);
+    if (!args || args.length !== STRUCTURE_RELATION_ATTRS) continue;
+    const relating = SINGLE_REF_RE.exec(args[4]);
+    if (!relating) continue;
+    const whole = Number(relating[1]);
+    if (inst.type === 'IFCRELAGGREGATES' && isSpatialStructureType(IfcTypeEnumFromString(parsed.instances.get(whole)?.type ?? ''))) continue;
+    for (const part of refsOutsideStrings(args[5])) out.set(part, whole);
+  }
+  return out;
+}
+
 /** The relations that make a spatial element own another; a reference does not. */
 const OWNERSHIP = new Set(['IFCRELCONTAINEDINSPATIALSTRUCTURE', 'IFCRELAGGREGATES']);
 
@@ -173,10 +192,23 @@ function owningStoreys(id: number, parents: ReadonlyMap<number, number[]>, parse
  */
 export function storeyMembers(storeyId: number, placementId: number, parsed: ParsedStep): number[] {
   const parents = structureParents(parsed.instances, OWNERSHIP);
+  const hosts = hostOf(parsed);
   const owners = new Map<number, Set<number>>();
+  // An opening, filler or assembly part has no spatial owner of its own; it
+  // takes its host's or whole's, so it travels with that element.
   const ownersOf = (id: number): Set<number> => {
-    let found = owners.get(id);
-    if (!found) owners.set(id, (found = owningStoreys(id, parents, parsed)));
+    const cached = owners.get(id);
+    if (cached) return cached;
+    const visited = new Set<number>();
+    let at: number | undefined = id;
+    let found = new Set<number>();
+    while (at !== undefined && !visited.has(at)) {
+      visited.add(at);
+      found = owningStoreys(at, parents, parsed);
+      if (found.size > 0) break;
+      at = hosts.get(at);
+    }
+    owners.set(id, found);
     return found;
   };
   const isCandidate = (id: number): boolean => {
@@ -189,7 +221,9 @@ export function storeyMembers(storeyId: number, placementId: number, parsed: Par
     if (isCandidate(id) && ownersOf(id).has(storeyId)) out.add(id);
   }
   for (const id of productsUnderPlacement(placementId, parsed)) {
-    if (!out.has(id) && isCandidate(id) && ownersOf(id).size === 0) out.add(id);
+    if (out.has(id) || !isCandidate(id)) continue;
+    const owner = ownersOf(id);
+    if (owner.size === 0 || owner.has(storeyId)) out.add(id);
   }
   return [...out];
 }

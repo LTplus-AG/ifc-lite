@@ -79,9 +79,6 @@ const DEFAULT_HEADER_COMMENT = 'ifc-lite section export - units: metres';
  */
 const INVALID_LAYER_CHARS = /[^A-Za-z0-9$_-]/g;
 
-/** AutoCAD's reserved non-plotting layer (upper-cased); a user layer must never take it. */
-const RESERVED_LAYER = 'DEFPOINTS';
-
 /** R12 symbol names are limited to 31 characters (255 is an R2000+ limit). */
 const MAX_LAYER_NAME_LENGTH = 31;
 
@@ -164,8 +161,7 @@ export interface DxfWriterOptions {
  * {@link cssToAci}.
  */
 export class DxfWriter {
-  /** Keyed by the UPPER-CASED sanitized name: DXF symbol names are case-insensitive. */
-  private readonly layers = new Map<string, DxfLayerRecord>();
+  private readonly layers = new Map<string, DxfLayerRecord>(); // uppercase sanitized names
   /** Raw (pre-sanitization) name → assigned safe name, for stable reuse + collision disambiguation. */
   private readonly layerNameBySource = new Map<string, string>();
   private readonly entities: EntityWrite[] = [];
@@ -208,20 +204,16 @@ export class DxfWriter {
    * `addPolyline`/`addLine`/`addText`. Re-registering the same source name
    * with a different colour/linetype is a no-op (first registration wins) —
    * callers should derive one style per logical layer. DIFFERENT source
-   * names whose sanitized forms collide (`Wände`/`Wønde` → `W_nde`) get a
-   * numeric suffix (`W_nde`, `W_nde_2`, …) instead of silently merging onto
-   * one layer.
+   * names whose sanitized forms compare equal case-insensitively get a
+   * numeric suffix (`Walls`, `walls_2`, …). AutoCAD reserves Defpoints
+   * for its non-plotting layer.
    */
   layer(name: string, cssColor: string, linetype: DxfLinetype = 'CONTINUOUS'): string {
     const assigned = this.layerNameBySource.get(name);
     if (assigned !== undefined) return assigned;
     const base = sanitizeDxfLayerName(name);
     let safe = base;
-    // DXF symbol names compare case-insensitively (`Walls` and `WALLS` are one
-    // layer to AutoCAD/ezdxf, which keep a single record and drop the other's
-    // colour/linetype), and `Defpoints` is AutoCAD's reserved non-plotting
-    // layer — so both are matched case-insensitively here.
-    for (let n = 2; this.layers.has(safe.toUpperCase()) || safe.toUpperCase() === RESERVED_LAYER; n++) {
+    for (let n = 2; this.layers.has(safe.toUpperCase()) || safe.toUpperCase() === 'DEFPOINTS'; n++) {
       const suffix = `_${n}`;
       safe = base.slice(0, MAX_LAYER_NAME_LENGTH - suffix.length) + suffix;
     }

@@ -141,7 +141,7 @@ class IfcProtocolServer extends Server {
       } catch (err) {
         if (err instanceof HandlerError) throw err;
         if (!entered.has(signal) && !(err instanceof SdkError)) {
-          throw err instanceof ProtocolError ? err : new ProtocolError(ProtocolErrorCode.InvalidParams, describeThrown(err));
+          throw invalidParams(err);
         }
         const message = describeThrown(err);
         if (!entered.has(signal)) throw new ProtocolError(ProtocolErrorCode.InternalError, message);
@@ -162,6 +162,26 @@ class IfcProtocolServer extends Server {
       return result;
     };
   }
+}
+
+/**
+ * The SDK's param validation fails with a message that is a zod issue list
+ * as pretty-printed JSON (a bare `Error`, or a -32602 `ProtocolError`). Say
+ * it in one line; keep the issues in `data`. Other protocol errors pass.
+ */
+function invalidParams(err: unknown): ProtocolError {
+  if (err instanceof ProtocolError && err.code !== ProtocolErrorCode.InvalidParams) return err;
+  const text = err instanceof Error ? err.message : describeThrown(err);
+  let issues: Array<{ path?: unknown[]; message?: string }> | undefined;
+  try {
+    const parsed: unknown = JSON.parse(text);
+    if (Array.isArray(parsed)) issues = parsed as typeof issues;
+  } catch {
+    // Not an issue list: the message is already plain text.
+  }
+  if (!issues) return err instanceof ProtocolError ? err : new ProtocolError(ProtocolErrorCode.InvalidParams, text);
+  const summary = issues.map((i) => `${(i.path ?? []).join('.') || '(params)'}: ${i.message ?? 'invalid'}`).join('; ');
+  return new ProtocolError(ProtocolErrorCode.InvalidParams, `Invalid params: ${summary}`, { issues });
 }
 
 /**

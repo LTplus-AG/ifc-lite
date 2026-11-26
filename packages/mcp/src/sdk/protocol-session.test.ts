@@ -193,4 +193,32 @@ describe('SDK protocol adapter lifecycle', () => {
     const settled = await Promise.race([early.then(() => true), new Promise((r) => setTimeout(() => r(false), 200))]);
     expect(settled).toBe(true);
   });
+
+  it('stays initialized when a second, refused initialize races a successful one', async () => {
+    const { server, request } = build();
+    const init = (id: number, protocolVersion: unknown) => server.handleMessage({ jsonrpc: '2.0', id, method: 'initialize',
+      params: { protocolVersion, capabilities: {}, clientInfo: { name: 't', version: '0' } } });
+    await Promise.all([init(1, PROTOCOL_VERSION), init(2, 5)]);
+    expect(server.isInitialized()).toBe(true);
+    expect((await request('tools/list'))?.result).toBeDefined();
+  });
+
+  it('a cancelled initialize leaves the connection uninitialized, not half open', async () => {
+    const { server, request } = build();
+    const init = server.handleMessage({ jsonrpc: '2.0', id: 1, method: 'initialize',
+      params: { protocolVersion: PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: 't', version: '0' } } });
+    void server.handleMessage({ jsonrpc: '2.0', method: 'notifications/cancelled', params: { requestId: 1 } });
+    await init;
+    // Either the initialize won the race (fully initialized) or it did not (requests refused); never in between.
+    const listed = await request('tools/list');
+    expect(server.isInitialized() ? listed?.result !== undefined : listed?.error?.code === -32600).toBe(true);
+  });
+
+  it('says what params were wrong in one line', async () => {
+    const { request } = build();
+    const reply = await request('initialize', { protocolVersion: 5 });
+    expect(reply?.error?.code).toBe(-32602);
+    expect(reply?.error).toMatchObject({ data: { issues: expect.any(Array) } });
+    expect(String((reply?.error as { message?: string }).message)).not.toContain('\n');
+  });
 });

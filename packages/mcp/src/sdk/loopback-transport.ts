@@ -29,13 +29,16 @@ export class LoopbackTransport implements Transport {
   private waiting = new Map<JsonRpcId, (response: JsonRpcResponse | null) => void>();
   /** The error the sink threw synchronously during the latest send, if it did. */
   private syncFailure: { error: unknown } | null = null;
-  /** Id of the initialize request whose response has not gone out yet. */
-  private pendingInitialize: JsonRpcId | undefined;
-  private seenInitialize = false;
+  /** Initialize requests not answered yet. */
+  private pendingInitialize = new Set<JsonRpcId>();
   private sentHandshake = false;
-  /** Whether a valid `initialize` request has arrived; requests after it are served, as clients may pipeline them. */
-  get initializeSeen(): boolean { return this.seenInitialize; }
-  /** Whether the initialize result has gone out; notifications wait for it. */
+  /**
+   * Whether requests are served: an initialize succeeded, or one is still
+   * pending (clients may pipeline requests behind it). A refused or
+   * cancelled initialize leaves this as it was before.
+   */
+  get initializeSeen(): boolean { return this.sentHandshake || this.pendingInitialize.size > 0; }
+  /** Whether an initialize result has gone out; notifications wait for it. */
   get handshakeSent(): boolean { return this.sentHandshake; }
 
   constructor(private readonly sink: () => LoopbackSink | null) {}
@@ -58,14 +61,8 @@ export class LoopbackTransport implements Transport {
     if (isJsonRpcResponse(message)) {
       // Every request arrives through deliver(), so a response nobody waits
       // for answers an abandoned request: the client asked us not to send it.
-      const settle = this.take(message.id);
-      if (settle && message.id === this.pendingInitialize) {
-        this.pendingInitialize = undefined;
-        // A refused initialize closes the gate again; the client must retry it.
-        if ('result' in message) this.sentHandshake = true;
-        else this.seenInitialize = this.sentHandshake; // back to the last initialize that succeeded
-      }
-      settle?.(message as JsonRpcResponse);
+      if ('result' in message && message.id !== null && this.pendingInitialize.has(message.id)) this.sentHandshake = true;
+      this.take(message.id)?.(message as JsonRpcResponse);
       return Promise.resolve();
     }
     const sink = this.sink();
@@ -84,6 +81,7 @@ export class LoopbackTransport implements Transport {
     if (id === null || id === undefined) return undefined;
     const settle = this.waiting.get(id);
     this.waiting.delete(id);
+    this.pendingInitialize.delete(id);
     return settle;
   }
 
@@ -112,10 +110,7 @@ export class LoopbackTransport implements Transport {
         return Promise.resolve(errorResponse(message.id, JsonRpcErrorCode.InvalidRequest, `Request id ${String(message.id)} is already in flight`));
       }
       const answered = new Promise<JsonRpcResponse | null>((resolve) => this.waiting.set(message.id, resolve));
-      if (message.method === 'initialize') {
-        this.pendingInitialize = message.id;
-        this.seenInitialize = true;
-      }
+      if (message.method === 'initialize') this.pendingInitialize.add(message.id);
       try {
         this.onmessage(message as JSONRPCMessage);
       } catch (err) {

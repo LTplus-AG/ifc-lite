@@ -106,11 +106,7 @@ const modelMerge: Tool = {
       if (from === schema) continue;
       const loss = analyzeConversionLoss(m.store, from, schema);
       if (loss.hasBlocking) {
-        throw new ToolExecutionError({
-          code: ToolErrorCode.UNSUPPORTED_OPERATION,
-          message: `Cannot merge '${m.id}' into ${schema}: some of its entity types have no ${schema} representation and can be neither dropped nor replaced.`,
-          details: { modelId: m.id, lossReport: loss.entries.map(lossEntryRow) },
-        });
+        throw unsupported(`Cannot merge '${m.id}' into ${schema}: some of its entity types have no ${schema} representation and can be neither dropped nor replaced.`, { modelId: m.id, lossReport: loss.entries.map(lossEntryRow) });
       }
       for (const line of loss.describe()) conversionWarnings.push(`${m.id} (${from} to ${schema}): ${line}`);
     }
@@ -194,11 +190,7 @@ const modelConvert: Tool = {
       // represent is reported by name instead of throwing mid-export.
       const loss = analyzeConversionLoss(store, source, target);
       if (loss.hasBlocking) {
-        throw new ToolExecutionError({
-          code: ToolErrorCode.UNSUPPORTED_OPERATION,
-          message: `Cannot convert to ${target}: some entity types have no ${target} representation and are not IfcRoot subtypes, so they can be neither dropped nor replaced.`,
-          details: { lossReport: loss.entries.map(lossEntryRow) },
-        });
+        throw unsupported(`Cannot convert to ${target}: some entity types have no ${target} representation and are not IfcRoot subtypes, so they can be neither dropped nor replaced.`, { lossReport: loss.entries.map(lossEntryRow) });
       }
       // Bytes, not a decoded string: no V8 string-length limit on large models.
       const content = new StepExporter(store).export({ schema: target }).content;
@@ -255,10 +247,7 @@ const modelExtract: Tool = {
     }
     return withIfcBytes(m, async (bytes) => {
       if (bytes.byteLength >= bufferConstants.MAX_STRING_LENGTH) {
-        throw new ToolExecutionError({
-          code: ToolErrorCode.UNSUPPORTED_OPERATION,
-          message: `The model is too large to extract from (${fmtInt(bytes.byteLength)} bytes, over the V8 string limit).`,
-        });
+        throw unsupported(`The model is too large to extract from (${fmtInt(bytes.byteLength)} bytes, over the V8 string limit).`);
       }
       // latin1 is a lossless byte<->char bijection, so raw high bytes in the
       // source round-trip unchanged (same as the CLI).

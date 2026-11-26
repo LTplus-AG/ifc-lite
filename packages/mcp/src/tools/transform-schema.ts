@@ -127,8 +127,8 @@ export async function writeSidecar(primary: string, sidecar: string, data: strin
 }
 
 /** The model or its state cannot take this operation (as opposed to a bad argument). */
-export function unsupported(message: string): ToolExecutionError {
-  return new ToolExecutionError({ code: ToolErrorCode.UNSUPPORTED_OPERATION, message });
+export function unsupported(message: string, details?: Record<string, unknown>): ToolExecutionError {
+  return new ToolExecutionError({ code: ToolErrorCode.UNSUPPORTED_OPERATION, message, ...(details ? { details } : {}) });
 }
 
 export function invalid(message: string): ToolExecutionError {
@@ -138,8 +138,5 @@ export function invalid(message: string): ToolExecutionError {
 /** Store-backed transforms read the parsed source, so pending edits would be lost. */
 export function requireNoPendingEdits(m: LoadedModel, tool: string): void {
   if (!m.backend.hasPendingChanges()) return;
-  throw new ToolExecutionError({
-    code: ToolErrorCode.UNSUPPORTED_OPERATION,
-    message: `Model '${m.id}' has unsaved edits, which ${tool} would leave out. Write them with export_ifc, model_load the result, and run ${tool} on that.`,
-  });
+  throw unsupported(`Model '${m.id}' has unsaved edits, which ${tool} would leave out. Write them with export_ifc, model_load the result, and run ${tool} on that.`);
 }

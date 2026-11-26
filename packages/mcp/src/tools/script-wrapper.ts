@@ -6,7 +6,8 @@
  * The JavaScript that runs inside the QuickJS sandbox around a script_run
  * script. It settles a returned promise and hands back one tagged primitive
  * string: 'J' + JSON, 'P' + a JSON prefix (over the value cap), 'U' + why
- * the value could not be serialised, or 'T' + what the script threw.
+ * the value could not be serialised, 'T' + what the script threw, or 'Q' +
+ * the message of QuickJS's own InternalError (out of memory, stack overflow).
  *
  * Every primitive it relies on is bound before the script runs, and the
  * script's own function is created in the global scope outside this
@@ -46,7 +47,12 @@ export function wrapScript(code: string): string {
   return `(function (run, I, L) {
   // The intrinsics, by name: read once here, before the script runs.
   var P = I.P, isInstance = I.isInstance, then = I.then, apply = I.apply, slice = I.slice, Str = I.Str, stringify = I.stringify, keys = I.keys, isArray = I.isArray, create = I.create, defineProperty = I.defineProperty, glob = I.glob, ErrorCtor = I.ErrorCtor, TypeErrorCtor = I.TypeErrorCtor, SetCtor = I.SetCtor, setAdd = I.setAdd, setHas = I.setHas, setDelete = I.setDelete, unbox = I.unbox, objectProto = I.objectProto, getProto = I.getProto, parse = I.parse, charCodeAt = I.charCodeAt, SyntaxErrorCtor = I.SyntaxErrorCtor, RegExpCtor = I.RegExpCtor, exec = I.exec, bind = I.bind, InternalErrorCtor = I.InternalErrorCtor, toStringTag = I.toStringTag;
-  function isInternal(e) { return !!InternalErrorCtor && apply(isInstance, InternalErrorCtor, [e]); }
+  // Guarded: a thrown Proxy whose getPrototypeOf trap throws must not make the
+  // wrapper itself throw.
+  function isInternal(e) {
+    try { return !!InternalErrorCtor && apply(isInstance, InternalErrorCtor, [e]); }
+    catch (_) { return false; }
+  }
   function msg(e) {
     // message is read once and coerced inside the try, so a getter or
     // toString cannot throw past the wrapper and pose as a sandbox error.
@@ -215,7 +221,8 @@ export function wrapScript(code: string): string {
   }
   function env(v) {
     var j;
-    // 'Q' marks QuickJS's own InternalError, which no script-thrown text can forge.
+    // 'Q' marks QuickJS's own InternalError. The script has no InternalError
+    // global, so it can only reuse one a real limit raised, not invent one.
     try { j = ser(v, L.max); } catch (e) { return (isInternal(e) ? 'Q' : 'U') + msg(e); }
     if (j === undefined) return 'Jnull';
     return j.length > L.max ? 'P' + apply(slice, j, [0, L.preview + 1]) : 'J' + j;
@@ -264,6 +271,7 @@ export function wrapScript(code: string): string {
   // Writable and configurable like the originals: a script that replaces them
   // only affects itself, since the bridge's console is reachable only from here.
   defineProperty(glob, 'console', { value: safe, writable: true, configurable: true });
+  delete glob.InternalError;
   // The script's own JSON calls hit the same C recursion, so it gets a JSON
   // whose stringify is the wrapper's serialiser (replacer and indent applied
   // in the same iterative walk) and whose parse first scans nesting depth.

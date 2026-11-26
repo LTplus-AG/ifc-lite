@@ -97,7 +97,7 @@ export function readEnvelope(dumped: unknown): Outcome {
     // split surrogate pair. An over-cap J body is a preview like P.
     // falls through
     case 'P': return { value: null, value_truncated: true, value_preview: clipUtf16(body, VALUE_PREVIEW_CHARS) };
-    // An out-of-memory here gets the memory_mb hint from hintFor.
+    // A QuickJS out-of-memory while serialising arrives as 'Q', not here.
     case 'U': return { error: `The script's value is not JSON-serialisable: ${clipMessage(body)}` };
     case 'T': return { error: clipMessage(body) };
     // Tagged by the wrapper only for QuickJS's own InternalError (out of memory, stack overflow).

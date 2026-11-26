@@ -332,6 +332,8 @@ describe('script_run', () => {
     expect((await runError("throw { name: 'InternalError', message: 'out of memory' }")).hint).toBeUndefined();
     expect((await runError("throw new Error('InternalError: out of memory')")).hint).toBeUndefined();
     expect((await runError("throw 'InternalError: stack overflow'")).hint).toBeUndefined();
+    expect((await runError("throw new Proxy({}, { getPrototypeOf() { throw new Error('interrupted'); } })")).code).toBe('INVALID_INPUT');
+    expect((await run('typeof InternalError')).structuredContent?.value).toBe('undefined');
     expect(logTexts(await run("'use strict'; console.debug = console.log; console.debug('x'); 1"))).toEqual(['x']);
     expect((await run('Object.prototype.toString.call(JSON)')).structuredContent?.value).toBe('[object JSON]');
     const huge = await run("({ a: 'x'.repeat(2e7) })", { memory_mb: 128 });

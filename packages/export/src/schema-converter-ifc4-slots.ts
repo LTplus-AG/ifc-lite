@@ -37,9 +37,9 @@ const NULL_TOKEN = /^(?:\s|\/\*[\s\S]*?\*\/)*\$(?:\s|\/\*[\s\S]*?\*\/)*$/;
  * the IFC2X3 → IFC4 records a structural rewrite or an attribute map wrote
  * (`upgradeCountsSlots`, #10763). The rest of IFC2X3 → IFC4 is a separately
  * audited upgrade path, pinned byte-for-byte by `schema-converter-door-window-type.test.ts`.
- * An IFC2X3 → IFC4X3 upgrade counts the records an attribute map or the typed-property
- * pass wrote against IFC4X3's own required slots (#11135), so a slot IFC4X3 made optional
- * is not counted.
+ * An IFC2X3 → IFC4X3 upgrade counts the same records, and those the typed-property
+ * pass wrote, against IFC4X3's own required slots (#11135), so a slot IFC4X3 made
+ * optional is not counted.
  */
 export class Ifc4SlotCheck {
   /** Required slots left `$`, per target. Counted per SLOT: one record can leave several. */

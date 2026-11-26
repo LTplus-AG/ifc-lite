@@ -266,7 +266,7 @@ function requireTopLevelAttributes(attrsRaw: string, maxReferenceId?: number): s
  *   placeholder minted here; pass one when output must be byte-reproducible.
  * @param slots - Reuses OwnerHistory (#4686) and counts unsettled slots.
  *   Without a collector, required-slot filling uses the generated defaults.
- * @param ifc4Slots - Counts IFC4-required slots left `$` (IFC4X3/IFC5 → IFC4, #5202; mapped or structural IFC2X3 → IFC4, #10763).
+ * @param ifc4Slots - Counts required slots left `$` against the target (IFC4X3/IFC5 → IFC4, #5202; mapped or structural IFC2X3 → IFC4, #10763, or → IFC4X3, #11135).
  * @param enums - Resolves enum members the target lacks and reports losses (#5365).
  * @param withheldRefIds - Express ids this export is OMITTING outright
  *   ({@link computeWithheldRefIds}, #4206) — a record whose attributes name

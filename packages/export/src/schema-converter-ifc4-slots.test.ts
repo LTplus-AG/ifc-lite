@@ -6,6 +6,7 @@ import { describe, it, expect } from 'vitest';
 import { IfcParser } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { convertStepLine } from './schema-converter.js';
+import { Ifc4SlotCheck } from './schema-converter-ifc4-slots.js';
 import { StepExporter } from './step-exporter.js';
 
 // #5202 finding 2: cardinality tightening on a downgrade to IFC4 was
@@ -131,6 +132,16 @@ END-ISO-10303-21;`;
       expect(text).toMatch(/#7=IFCMATERIALPROPERTIES\('Pset_MaterialMechanical',\$,\(#\d+\),#8\);/);
       expect(warnings).toContain(warning(2, schema, issue));
       expect(warnings.join('\n'), 'one target, one count').not.toContain(schema === 'IFC4' ? 'IFC4X3 requires' : 'IFC4 requires');
+    }
+  });
+
+  it('counts a structural member whose Axis the upgrade cannot supply, on both targets', () => {
+    const member = "#5=IFCSTRUCTURALCURVEMEMBER('0OSuGGYUFyIf0LtE29OSuH',$,'m',$,$,$,#3,.RIGID_JOINED_MEMBER.);";
+    for (const target of ['IFC4', 'IFC4X3'] as const) {
+      const check = new Ifc4SlotCheck();
+      expect(convertStepLine(member, 'IFC2X3', target, undefined, undefined, undefined, check)).toBe(
+        "#5=IFCSTRUCTURALCURVEMEMBER('0OSuGGYUFyIf0LtE29OSuH',$,'m',$,$,$,#3,.RIGID_JOINED_MEMBER.,$);");
+      expect(check.warnings().join('\n')).toContain(`1 slot(s) keep $ where ${target} requires a value`);
     }
   });
 });

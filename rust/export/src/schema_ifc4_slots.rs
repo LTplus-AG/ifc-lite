@@ -40,9 +40,9 @@ impl SlotTarget {
 }
 
 /// How many required slots one export left `$`, per target. An IFC2X3 ->
-/// IFC4X3 upgrade counts the records an attribute map or the typed-property
-/// pass wrote against IFC4X3's own required slots (#11135), so a slot IFC4X3
-/// made optional is not counted.
+/// IFC4X3 upgrade counts its structural and mapped records, and those the
+/// typed-property pass wrote, against IFC4X3's own required slots (#11135), so
+/// a slot IFC4X3 made optional is not counted.
 #[derive(Default)]
 pub(crate) struct Ifc4SlotCheck {
     /// Indexed by `SlotTarget as usize`.
@@ -57,8 +57,8 @@ impl Ifc4SlotCheck {
         self.required_unfilled[SlotTarget::Ifc4 as usize]
     }
 
-    /// One warning when the counter is non-zero. Same text as the TypeScript
-    /// twin's, so both exporters report the same thing.
+    /// One warning per target with a non-zero count. Same text as the
+    /// TypeScript twin's, so both exporters report the same thing.
     pub(crate) fn warnings(&self) -> Vec<String> {
         [("IFC4", self.required_unfilled[SlotTarget::Ifc4 as usize], "#5202"), ("IFC4X3", self.required_unfilled[SlotTarget::Ifc4x3 as usize], "#11135")]
             .into_iter()
@@ -71,12 +71,12 @@ impl Ifc4SlotCheck {
             .collect()
     }
 
-    /// Count every required slot of an already-converted IFC4 line that holds
-    /// `$`. The line itself is never changed, so this takes it by reference.
+    /// Count every required slot of an already-converted `target` line that
+    /// holds `$`. The line itself is never changed, so this takes it by reference.
     ///
-    /// A line that does not parse, whose type IFC4 gives no required slot, or
-    /// whose ARITY is not IFC4's is not counted: its position `i` need not be
-    /// attribute `i` (the same guard `Ifc2x3SlotFill::fill_required` uses).
+    /// A line that does not parse, whose type `target` gives no required slot,
+    /// or whose ARITY is not `target`'s is not counted: its position `i` need not
+    /// be attribute `i` (the same guard `Ifc2x3SlotFill::fill_required` uses).
     pub(crate) fn count(&mut self, line: &str, target: SlotTarget) {
         let Some(open) = line.find('(') else { return };
         let Some(close) = line.rfind(')').filter(|&c| c > open) else { return };

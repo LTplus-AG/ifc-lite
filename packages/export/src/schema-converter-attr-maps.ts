@@ -151,16 +151,14 @@ export const DELETED_SUBTYPES: ReadonlyMap<string, string> = new Map([
 ]);
 
 /** True when a `target` `line` upgraded from IFC2X3 gets its required slots
- *  counted: one a map wrote, which can leave a required slot with no source
- *  value (#10763, #11135), or for IFC4 a structural record (the structural pass
- *  runs for IFC4 only). A map's IFC4X3 type is its IFC4 one, but for the
- *  distribution board `attrMapFor` names. The type is read from the record
- *  head. Twin of Rust `upgrade_counts_slots`. */
+ *  counted: a structural record, or one a map wrote, which can leave a required
+ *  slot with no source value (#10763, #11135). A map's IFC4X3 type is its IFC4
+ *  one, but for the distribution board `attrMapFor` names. The type is read
+ *  from the record head. Twin of Rust `upgrade_counts_slots`. */
 export function upgradeCountsSlots(line: string, target: 'IFC4' | 'IFC4X3'): boolean {
   const head = stepRecordHead(line);
   const type = head ? line.slice(head.typeStart, head.typeEnd) : '';
-  if (target === 'IFC4' && type.startsWith('IFCSTRUCTURAL')) return true;
-  return getAttrMapIndex().byIfc4.has(target === 'IFC4X3' && type === 'IFCDISTRIBUTIONBOARD' ? 'IFCELECTRICDISTRIBUTIONBOARD' : type);
+  return type.startsWith('IFCSTRUCTURAL') || getAttrMapIndex().byIfc4.has(target === 'IFC4X3' && type === 'IFCDISTRIBUTIONBOARD' ? 'IFCELECTRICDISTRIBUTIONBOARD' : type);
 }
 
 /** The map for writing `entityType` as `newType`, and whether it runs upward. */

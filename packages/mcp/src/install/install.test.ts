@@ -451,6 +451,8 @@ describe('ifc-lite-mcp install: dry run and usage errors', () => {
     [['--client', 'cursor', 'model.ifc', '--', '--bridge'], 'loads no files'],
     [['--client', 'cursor', '-v'], 'not an install option'],
     [['--client', 'cursor', '--', '--readonly'], 'no --readonly flag'],
+    [['--client', 'cursor', '--', '--bridge', '--bridge-port', 'abc'], '--bridge-port must be an integer'],
+    [['--client', 'cursor', '--', '--bridge', '--bridge-port', '65536'], '--bridge-port must be an integer'],
     [['--client', 'cursor', '--', '--bridge-port', '9000'], 'nothing without --bridge'],
     [['--client', 'cursor', '--', '--viewer-port', '9000'], 'nothing without --viewer'],
     [['--client', 'cursor', '--', '--viewer', '--viewer-port', 'abc'], 'integer from 0 to 65535'],
@@ -478,6 +480,18 @@ describe('ifc-lite-mcp install: dry run and usage errors', () => {
 describe('ifc-lite-mcp install: real files', () => {
   let dir = '';
   afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  it('rejects a stale config write and preserves the intervening update (#11580)', () => {
+    dir = mkdtempSync(join(tmpdir(), 'ifc-lite-install-'));
+    const path = join(dir, 'mcp.json');
+    const io = nodeInstallIo();
+    io.writeFile(path, 'initial', undefined);
+    const before = io.readConfig(path);
+    io.writeFile(path, 'intervening update', before);
+    expect(() => io.writeFile(path, 'stale merge', before)).toThrow('changed during install');
+    expect(io.readConfig(path)).toBe('intervening update');
+    expect(readdirSync(dir)).toEqual(['mcp.json']);
+  });
 
   it('merges into an existing file on disk and leaves a backup beside it', () => {
     dir = mkdtempSync(join(tmpdir(), 'ifc-lite-install-'));

@@ -9,9 +9,11 @@
 
 import {
   chmodSync,
+  closeSync,
   constants,
   copyFileSync,
   mkdirSync,
+  openSync,
   readdirSync,
   readFileSync,
   readlinkSync,
@@ -33,7 +35,7 @@ export interface InstallIo {
   /** File contents, or undefined when the file does not exist. */
   readConfig(path: string): string | undefined;
   /** Create parent directories and write the file, through a symlink, keeping its mode. */
-  writeFile(path: string, text: string): void;
+  writeFile(path: string, text: string, expected: string | undefined): void;
   /** Copy, failing rather than overwriting an existing `to`. */
   copyFile(from: string, to: string): void;
   /** Run a program with inherited stdio (or none, `quiet`). `missing` when it is not on PATH. */
@@ -55,20 +57,36 @@ export function nodeInstallIo(): InstallIo {
       listDir: (path) => userFacing(() => orIfMissing(() => readdirSync(path), [])),
     },
     readConfig: (path) => userFacing(() => orIfMissing(() => readFileSync(path, 'utf-8'), undefined)),
-    writeFile: (path, text) => userFacing(() => {
+    writeFile: (path, text, expected) => userFacing(() => {
       const { target, mode } = writeTarget(path);
       mkdirSync(dirname(target), { recursive: true });
+      const lock = `${target}.ifc-lite-install.lock`;
+      let fd: number;
+      try {
+        fd = openSync(lock, 'wx');
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === 'EEXIST') {
+          throw new InstallError(`Config is locked by another install (${lock}); retry once it finishes.`);
+        }
+        throw err;
+      }
       // Write beside the target and rename, so a crash never leaves half a config.
       const tmp = `${target}.${process.pid}.tmp`;
-      rmSync(tmp, { force: true }); // a stale one from a crashed run would keep its mode
       try {
+        rmSync(tmp, { force: true }); // a stale one from a crashed run would keep its mode
         // Created with the target's mode, so other servers' secrets are never more readable.
         writeFileSync(tmp, text, { mode: mode ?? 0o666 });
         if (mode !== undefined) chmodSync(tmp, mode); // undo the umask
+        if (writeTarget(path).target !== target || orIfMissing(() => readFileSync(target, 'utf-8'), undefined) !== expected) {
+          throw new InstallError(`${path} changed during install; retry to merge with its latest contents.`);
+        }
         renameSync(tmp, target);
       } catch (err) {
         rmSync(tmp, { force: true });
         throw err;
+      } finally {
+        closeSync(fd);
+        rmSync(lock);
       }
     }),
     copyFile: (from, to) => userFacing(() => copyFileSync(from, to, constants.COPYFILE_EXCL)),

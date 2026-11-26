@@ -265,9 +265,9 @@ function writeFilePlan(
     backup = ` (backup: ${to}${args.scope === 'project' ? ', it holds the old contents; keep it out of git' : ''})`;
   }
   try {
-    io.writeFile(plan.path, merged.text);
+    io.writeFile(plan.path, merged.text, before);
   } catch (err) {
-    if (backup && err instanceof InstallError) throw new InstallError(`${err.message}; the file is unchanged${backup}`);
+    if (backup && err instanceof InstallError) throw new InstallError(`${err.message}; install did not write the file${backup}`);
     throw err;
   }
   io.err(note(`${merged.status} "${args.name}" in ${plan.path}${backup}. Restart ${label} to load it.`));

@@ -67,7 +67,10 @@ describe('ifc-lite-mcp install: where each client is configured', () => {
       platform: 'win32',
       home: 'C:\\Users\\u',
       env: { LOCALAPPDATA: 'C:\\Users\\u\\AppData\\Local' },
-      listDir: (p) => (p === 'C:\\Users\\u\\AppData\\Local\\Packages' ? ['Microsoft.Foo_1', 'Claude_pzs8sxrjxfjjc'] : []),
+      listDir: (p) => ({
+        'C:\\Users\\u\\AppData\\Local\\Packages': ['Claude_stale', 'Microsoft.Foo_1', 'Claude_pzs8sxrjxfjjc'],
+        'C:\\Users\\u\\AppData\\Local\\Packages\\Claude_pzs8sxrjxfjjc\\LocalCache\\Roaming\\Claude': ['config.json'],
+      })[p] ?? [],
     });
     install(['--client', 'claude-desktop'], io);
     expect([...io.files.keys()]).toEqual([
@@ -269,6 +272,7 @@ describe('ifc-lite-mcp install: dry run and usage errors', () => {
     [['--client', 'cursor', '--', '--version'], 'print and exit'],
     [['--client', 'cursor', 'model.ifc', '--', '--bridge'], 'loads no files'],
     [['--client', 'cursor', '-v'], 'not an install option'],
+    [['--client', 'cursor', '--', '--transport=http'], 'with a space'],
     [['--client', 'cursor', '--', '--allow=./models'], 'with a space'],
     [['--client=cursor'], 'Write --client <value>'],
     [['--client', 'cursor', '--', '--transport', 'stdio', '--transport', 'http'], 'drop --transport'],

@@ -108,12 +108,13 @@ function parseInstallArgs(argv: string[], host: HostEnv): InstallArgs | 'help' {
   if (exits) throw new InstallError(`${exits} makes the server print and exit at every launch; drop it.`);
   const glued = passThrough.map((a) => a.match(/^(--[\w-]+)=/)).find((m) => m && isMcpValueFlag(m[1]));
   if (glued) throw new InstallError(`The server reads ${glued[1]} <value>, with a space; it would drop ${glued.input}.`);
-  if (passThrough.some((a, i) => a === '--transport' && passThrough[i + 1] !== 'stdio')) {
-    throw new InstallError('Clients start ifc-lite-mcp over stdio; drop --transport. For HTTP, give the client the server URL.');
-  }
   const { args: serverArgs, hasPaths } = absolutePaths([...files, ...passThrough], host);
   // What the server would refuse at launch is refused now, in the server's own words.
-  const conflict = bridgeConflict(parseArgs(serverArgs));
+  const parsed = parseArgs(serverArgs);
+  if (parsed.transport !== 'stdio' || passThrough.at(-1) === '--transport') {
+    throw new InstallError('Clients start ifc-lite-mcp over stdio; drop --transport. For HTTP, give the client the server URL.');
+  }
+  const conflict = bridgeConflict(parsed);
   if (conflict) throw new InstallError(conflict);
   return { client, scope, name, dryRun, force, serverArgs, hasPaths };
 }

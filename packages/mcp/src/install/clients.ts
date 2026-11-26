@@ -119,8 +119,11 @@ function claudeDesktopConfigPath(host: HostEnv): string {
     // `||`, not `??`: an empty variable counts as unset (XDG says so too).
     const localAppData = host.env.LOCALAPPDATA || win32.join(host.home, 'AppData', 'Local');
     const packages = win32.join(localAppData, 'Packages');
-    const msix = host.listDir(packages).find((d) => d.startsWith('Claude_'));
-    if (msix) return win32.join(packages, msix, 'LocalCache', 'Roaming', 'Claude', file);
+    // Only a Store install that has run (and so has data there) counts; a leftover folder does not.
+    for (const pkg of host.listDir(packages).filter((d) => d.startsWith('Claude_'))) {
+      const dir = win32.join(packages, pkg, 'LocalCache', 'Roaming', 'Claude');
+      if (host.listDir(dir).length > 0) return win32.join(dir, file);
+    }
     const appData = host.env.APPDATA || win32.join(host.home, 'AppData', 'Roaming');
     return win32.join(appData, 'Claude', file);
   }

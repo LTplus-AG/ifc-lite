@@ -44,7 +44,7 @@ async function main(): Promise<void> {
   const args = verbosity.rest;
 
   const wantsHelp = args.includes('--help') || args.includes('-h');
-  // `mcp install` answers --help itself and passes -v/--version after `--` to the server.
+  // `mcp install` answers --help itself and judges -v/--version itself (it refuses them).
   const mcpInstall = args[0] === 'mcp' && args[1] === 'install';
   if (args.length === 0) {
     process.stdout.write(buildHelp(await readVersion()) + '\n');

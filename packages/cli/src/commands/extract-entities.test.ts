@@ -178,6 +178,51 @@ it('extracts the same grid-placed storey members via CLI and MCP in IFC4X3_ADD2 
   }
 });
 
+it.each(['utf8', 'latin1'] as const)('selects %s storey Name and LongName with STEP escapes via CLI and MCP (#11583)', async (encoding) => {
+  const dir = await mkdtemp(join(tmpdir(), 'ifc-extract-storey-text-'));
+  try {
+    const src = join(dir, 'in.ifc');
+    const authoredName = String.raw`Café \X2\00FC\X0` + '\\';
+    const authoredLongName = String.raw`Étage d''été \\Annexe \X4\0001F600\X0` + '\\';
+    const fixture = TWO_STOREY_MODEL
+      .replace("'L01','dup of #44'", `'${authoredName}','dup of #44'`)
+      .replace("'L02',$,$,#44,$,$", `'L02',$,$,#44,$,'${authoredLongName}'`);
+    await writeFile(src, Buffer.from(fixture, encoding));
+
+    const model = await loadIfcModel(src);
+    const registry = new InMemoryModelRegistry();
+    registry.add(model);
+    const transport = new InProcessTransport();
+    try {
+      await transport.connect(createMCPServer({ registry, scope: fullScope(), config: { allowedPaths: [dir] } }));
+      await transport.send({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {
+        protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'storey text parity', version: '1' },
+      } });
+      for (const [index, [selector, authored, member, excluded]] of [
+        ['Café ü', authoredName, '#70=', '#90='],
+        [String.raw`Étage d'été \Annexe 😀`, authoredLongName, '#90=', '#70='],
+      ].entries()) {
+        const cliPath = join(dir, 'cli.ifc');
+        const mcpPath = join(dir, `mcp-${index}.ifc`);
+        await extractEntitiesCommand([src, '--storey', selector, '--out', cliPath]);
+        const cli = await readFile(cliPath);
+        expect(cli.includes(Buffer.from(authored, encoding))).toBe(true);
+        expect(cli.toString('latin1')).toContain(member);
+        expect(cli.toString('latin1')).not.toContain(excluded);
+        await transport.send({ jsonrpc: '2.0', id: 2 + index, method: 'tools/call', params: {
+          name: 'model_extract', arguments: { storeys: [selector], file_path: mcpPath },
+        } });
+        expect(await readFile(mcpPath)).toEqual(cli);
+      }
+    } finally {
+      transport.close();
+      model.backend.dispose();
+    }
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 it('keeps the ordered IfcRelNests list when extracting an assembly with selected parts (#11583)', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'ifc-extract-nests-'));
   try {

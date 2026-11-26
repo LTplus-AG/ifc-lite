@@ -69,20 +69,19 @@ const LONG_NAME = 7;
 function storeyText(body: string, index: number): string | null {
   const text = stepString(splitTopLevelArgs(body)?.[index]);
   if (text === null) return null;
-  const name = decodeStepStringLiteral(text);
-  // The subset parse reads the file as latin1, so a name a tool wrote as raw
-  // UTF-8 bytes arrives as one char per byte. Re-read it as UTF-8 when the raw
-  // literal itself carries high bytes and no backslash: a directive's decoded
-  // Latin-1 text must stay as written, and a name with both raw UTF-8 and a
-  // backslash is rare enough to keep as read.
-  if (!/[\u0080-\u00ff]/.test(text) || text.includes('\\')) return name;
-  try {
-    const utf8 = new TextDecoder('utf-8', { fatal: true });
-    return utf8.decode(Uint8Array.from(name, (c) => c.charCodeAt(0)));
-  } catch (err) {
-    if (!(err instanceof TypeError)) throw err;
-    return name; // not valid UTF-8: the bytes were latin1 text after all
+  // Recover raw UTF-8 from the subset parser's byte-preserving Latin-1 view
+  // before interpreting STEP escapes, which can themselves produce Unicode.
+  let literal = text;
+  if (/[\u0080-\u00ff]/.test(text)) {
+    try {
+      const utf8 = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
+      literal = utf8.decode(Uint8Array.from(text, (c) => c.charCodeAt(0)));
+    } catch (err) {
+      if (!(err instanceof TypeError)) throw err;
+      // Invalid UTF-8: keep the literal's original Latin-1 characters.
+    }
   }
+  return decodeStepStringLiteral(literal);
 }
 
 /** Resolve a --storey selector (GUID / name / expressId) to the storey and its placement. */

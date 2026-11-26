@@ -1,13 +1,12 @@
 diff --git b/packages/mcp/src/install/merge.ts a/packages/mcp/src/install/merge.ts
-index 051a620d4b..863eb3ef28 100644
+index 1c86d3268b..cad32eafe4 100644
 --- b/packages/mcp/src/install/merge.ts
 +++ a/packages/mcp/src/install/merge.ts
-@@ -62,9 +62,9 @@ export function mergeServer(
+@@ -61,8 +61,9 @@ export function mergeServer(
    const merged = replacedEntry(existing, entry);
    if (existing !== undefined) {
      if (canonical(merged) === canonical(existing)) return { status: 'unchanged' };
--    if (!(typeof replace === 'function' ? true : replace)) return { status: 'conflict', existing };
-+    if (!(typeof replace === 'function' ? replace(existing) : replace)) return { status: 'conflict', existing };
++    if (!force) return { status: 'conflict', existing };
    }
 -  const next = { ...root, [key]: { [name]: merged } };
 +  const next = { ...root, [key]: { ...servers, [name]: merged } };

@@ -50,7 +50,7 @@ ifc-lite mcp --transport http --port 8765 --token $API_TOKEN --allow ./models
     Without `--allow`, `model_load` reaches the working directory, the system
     temp directory and the directories of loaded models.
 
-By default the server binds `127.0.0.1`. Binding a non-loopback host requires either a token (`--token` gets full scope, or read scope under `--read-only`; `--read-only-token` gets read scope) or the `--insecure` flag for development only. The token travels as a plaintext `Authorization` header: the CLI itself serves plain HTTP, so any non-loopback deployment must sit behind a TLS-terminating reverse proxy (nginx, Caddy, a cloud load balancer), or the bearer token is readable by anyone on the network path.
+By default the server binds `127.0.0.1`. Binding a non-loopback host requires either a token (`--token` gets full scope, or read scope under `--read-only`; `--read-only-token` can read and validate, not edit or export) or the `--insecure` flag for development only. The token travels as a plaintext `Authorization` header: the CLI itself serves plain HTTP, so any non-loopback deployment must sit behind a TLS-terminating reverse proxy (nginx, Caddy, a cloud load balancer), or the bearer token is readable by anyone on the network path.
 
 ### Flags
 
@@ -60,7 +60,7 @@ By default the server binds `127.0.0.1`. Binding a non-loopback host requires ei
 | `--port <N>` | HTTP port (default 8765) |
 | `--host <h>` | HTTP host (default 127.0.0.1; non-loopback requires `--token`, `--read-only-token` or `--insecure`) |
 | `--token <bearer>` | HTTP bearer token (repeatable). Full scope, or read scope under `--read-only` |
-| `--read-only-token <bearer>` | HTTP bearer token with read scope only (repeatable) |
+| `--read-only-token <bearer>` | HTTP bearer token that can read and validate, not edit or export (repeatable) |
 | `--insecure` | Allow a non-loopback bind without a token (development only). With `--bridge`: accept a plain-`http` origin on a non-loopback host, with a warning |
 | `--read-only` | Hide mutation tools. Loading and unloading models still works |
 | `--bsdd <url>` | Override the bSDD endpoint |

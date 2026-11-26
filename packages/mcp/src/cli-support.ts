@@ -43,8 +43,9 @@ export function anonymousHttpScope(opts: CliOptions): AuthScope {
 
 /**
  * The bearer tokens `opts` registers, each with its scope. `--token` gets
- * the server's scope; `--read-only-token` gets read scope. A token given
- * under both flags keeps the narrower scope.
+ * the server's scope; `--read-only-token` gets `read` and `validate` only:
+ * no edits and no export, since exports write files on the host. A token
+ * given under both flags keeps the narrower scope.
  *
  * Each token gets its own `session`, a random id for this process. The
  * HTTP transport binds a session to its scope by content, so without one,
@@ -54,10 +55,16 @@ export function anonymousHttpScope(opts: CliOptions): AuthScope {
  * across restarts without either reusing argv order (another token would
  * inherit it) or writing a hash of the secret into shared files.
  */
+/** `read` and `validate`: the server-wide `--read-only` preset minus `export`, which writes files. */
+function readOnlyTokenScope(): AuthScope {
+  const scope = readOnlyScope();
+  return { ...scope, scopes: scope.scopes.filter((s) => s !== 'export') };
+}
+
 export function tokenScopes(opts: CliOptions): Map<string, AuthScope> {
   const tokens = new Map<string, AuthScope>();
   for (const t of opts.tokens) tokens.set(t, serverScope(opts));
-  for (const t of opts.readOnlyTokens) tokens.set(t, readOnlyScope());
+  for (const t of opts.readOnlyTokens) tokens.set(t, readOnlyTokenScope());
   for (const scope of tokens.values()) scope.session = `token-${randomUUID()}`;
   return tokens;
 }

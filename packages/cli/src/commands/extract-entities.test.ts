@@ -35,9 +35,9 @@ END-ISO-10303-21;
 `;
 
 describe('extract-entities --product: string text is not a reference (#4148)', () => {
-  // CLI-level counterpart of the forwardClosure test in `@ifc-lite/export` step-subset.test.ts: `forwardClosure` is an
-  // internal helper `--product` runs through (see `extractEntitiesCommand`),
-  // so a regression there could pass that helper-level test while the
+  // CLI-level counterpart of the forwardClosure test in `@ifc-lite/export`'s
+  // step-subset.test.ts: `forwardClosure` is an internal helper `--product`
+  // runs through (see `extractEntitiesCommand`), so a regression there could pass that helper-level test while the
   // command itself still emits the wrong bytes. Exercise the actual command
   // and assert on its output file, not just the in-memory `keep` set.
   it('extracting --product #70 does not emit the lookalike id pulled in only by string text', async () => {

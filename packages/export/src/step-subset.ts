@@ -278,7 +278,9 @@ export function selectSubsetSeeds(parsed: ParsedStep, selectors: SubsetSelectors
   requested.forEach((type, i) => {
     for (const name of expandTypes([type])) {
       const key = name.toUpperCase();
-      wantedTypes.set(key, [...(wantedTypes.get(key) ?? []), i]);
+      const from = wantedTypes.get(key);
+      if (from) from.push(i);
+      else wantedTypes.set(key, [i]);
     }
   });
   const typeMatched = new Set<number>();
@@ -298,11 +300,11 @@ export function selectSubsetSeeds(parsed: ParsedStep, selectors: SubsetSelectors
     if (!token.trim()) continue;
     const under = productsUnderPlacement(resolveStoreyPlacement(token, parsed), parsed);
     // `under` also holds the storey and placement records themselves; count products only.
-    const products = [...under].filter((id) => {
+    const isProduct = (id: number) => {
       const type = parsed.instances.get(id)?.type;
       return type !== 'IFCBUILDINGSTOREY' && type !== 'IFCLOCALPLACEMENT';
-    });
-    if (selectors.requireEachMatch && products.length === 0) throw new SubsetSelectionError('invalid', `Nothing is placed under storey ${token}.`);
+    };
+    if (selectors.requireEachMatch && ![...under].some(isProduct)) throw new SubsetSelectionError('invalid', `Nothing is placed under storey ${token}.`);
     for (const id of under) seeds.add(id);
   }
   return seeds;

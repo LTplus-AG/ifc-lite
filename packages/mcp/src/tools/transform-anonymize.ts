@@ -58,16 +58,16 @@ function anonymizeSeeds(m: LoadedModel, input: Record<string, unknown>): Set<num
   if (typeof input.storey === 'string' && !key) throw invalid('storey must not be blank.');
   if (key) {
     const id = key.replace(/^#/, '');
+    // An explicit '#id' is an id only, never a Name or name fragment.
+    const isId = key.startsWith('#');
     const storeys = m.bim.storeys();
-    // An explicit '#id' is an id only, never a name fragment.
-    const fragment = key.startsWith('#') ? [] : storeys.filter((s) => s.name?.trim().toLowerCase().includes(key.toLowerCase()));
+    const fragment = isId ? [] : storeys.filter((s) => s.name?.trim().toLowerCase().includes(key.toLowerCase()));
     const byId = storeys.find((s) => s.globalId === key) ?? storeys.find((s) => String(s.ref.expressId) === id);
     // Name first, then LongName, as extract's --storey resolves it.
     const longName = (s: (typeof storeys)[number]) =>
       m.bim.attributes(s.ref).find((a) => a.name === 'LongName')?.value;
-    // An explicit '#id' is an id only, never a Name.
-    const byName = key.startsWith('#') ? [] : storeys.filter((s) => s.name?.trim() === key);
-    const named = byName.length > 0 || key.startsWith('#') ? byName : storeys.filter((s) => String(longName(s) ?? '').trim() === key);
+    const byName = isId ? [] : storeys.filter((s) => s.name?.trim() === key);
+    const named = isId || byName.length > 0 ? byName : storeys.filter((s) => String(longName(s) ?? '').trim() === key);
     // A bare number that is one storey's id and another storey's name is ambiguous.
     if (byId && /^\d+$/.test(key) && named.some((s) => s !== byId)) {
       throw invalid(`storey: '${key}' is storey #${key} and the name of another storey; pass #${key} or a GlobalId.`);

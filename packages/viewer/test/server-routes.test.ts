@@ -446,9 +446,9 @@ describe('viewer server — loopback only', () => {
   });
 
   // A tunnel (ssh -L 9000:127.0.0.1:<port>) or port 80 changes the Host port.
-  for (const host of ['localhost:PORT', '127.0.0.1:PORT', 'LOCALHOST:PORT', 'localhost:9000', 'localhost']) {
+  for (const host of ['localhost:9000', '127.0.0.1:9000', 'LOCALHOST:9000', 'localhost']) {
     it(`serves Host ${host}`, TEST_TIMEOUT, async () => {
-      const res = await req(port, '/api/status', { headers: { host: host.replace('PORT', String(port)) } });
+      const res = await req(port, '/api/status', { headers: { host } });
       assert.equal(res.status, 200);
     });
   }

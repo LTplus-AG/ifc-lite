@@ -27,17 +27,17 @@ export function viewerUrl(port: number, path = ''): string {
   return `http://${VIEWER_HOST}:${port}${path}`;
 }
 
-/** A page served from this machine: `http(s)://localhost` or `127.0.0.1`, any port. */
-const LOCAL_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
+/** `localhost` or `127.0.0.1`, with or without a port. */
+const LOOPBACK = String.raw`(localhost|127\.0\.0\.1)(:\d+)?`;
+const LOOPBACK_HOST = new RegExp(`^${LOOPBACK}$`, 'i');
+/** A page served from this machine. */
+const LOCAL_ORIGIN = new RegExp(`^https?://${LOOPBACK}$`);
 
 export type RequestVerdict = { refuse: true } | { refuse: false; corsOrigin: string | null };
 
-/** `localhost` or `127.0.0.1`, with or without a port. */
-const LOOPBACK_HOST = /^(localhost|127\.0\.0\.1)(:\d+)?$/;
-
 /** Refuse `req`, or serve it, echoing its Origin for CORS when that is a local page. */
 export function checkRequest(req: IncomingMessage): RequestVerdict {
-  if (!LOOPBACK_HOST.test(req.headers.host?.toLowerCase() ?? '')) return { refuse: true };
+  if (!LOOPBACK_HOST.test(req.headers.host ?? '')) return { refuse: true };
   const origin = req.headers.origin;
   if (origin === undefined) return { refuse: false, corsOrigin: null }; // the CLI, the MCP server: not a page
   const local = LOCAL_ORIGIN.test(origin);

@@ -161,7 +161,6 @@ export async function startViewerServer(opts: ViewerServerOptions): Promise<View
   // Track IFC content created via /api/create for export
   const createdSegments: string[] = [];
 
-
   const server = createServer(async (req, res) => {
     const verdict = checkRequest(req);
     if (verdict.refuse) {

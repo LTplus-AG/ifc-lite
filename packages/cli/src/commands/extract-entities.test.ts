@@ -132,6 +132,35 @@ ENDSEC;
 END-ISO-10303-21;
 `;
 
+it('keeps the ordered IfcRelNests list when extracting an assembly with selected parts (#11583)', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'ifc-extract-nests-'));
+  try {
+    const src = join(dir, 'in.ifc');
+    const fixture = TWO_STOREY_MODEL.replace('ENDSEC;\nEND-ISO', [
+      "#76= IFCELEMENTASSEMBLY('ASSE000000000000000001',#5,'Assembly',$,$,$,$,$,.NOTDEFINED.,.NOTDEFINED.);",
+      "#77= IFCRELNESTS('NEST000000000000000001',#5,$,$,#76,(#90,#70));",
+      'ENDSEC;', 'END-ISO',
+    ].join('\n'));
+    for (const [products, sourceMembers, members, omitted] of [
+      ['#76,#70', '(#90,#70)', '(#70)', '#90='],
+      ['#76,#70,#90', '(#90,#95,#70)', '(#90,#70)', '#95='],
+    ]) {
+      await writeFile(src, fixture.replace('(#90,#70));', `${sourceMembers});`), 'latin1');
+      const out = join(dir, 'sub.ifc');
+      await extractEntitiesCommand([src, '--product', products, '--out', out]);
+      const text = await readFile(out, 'latin1');
+      expect(text).toContain('#76= IFCELEMENTASSEMBLY');
+      expect(text).toContain(`#77= IFCRELNESTS('NEST000000000000000001',#5,$,$,#76,${members});`);
+      expect(text).not.toContain(omitted);
+      const data = text.slice(text.indexOf('DATA;')).replace(/'(?:[^']|'')*'/g, "''");
+      const definitions = new Set(Array.from(data.matchAll(/^#(\d+)\s*=/gm), ([, id]) => id));
+      for (const [, id] of data.matchAll(/#(\d+)/g)) expect(definitions.has(id)).toBe(true);
+    }
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 it('selects each exact authored storey Name, including surrounding spaces (#11583)', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'ifc-extract-authored-storey-'));
   try {

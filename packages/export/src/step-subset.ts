@@ -233,7 +233,7 @@ export function buildSubset(seedProducts: Set<number>, parsed: ParsedStep): Subs
     if (anchor === null) continue;
     if (assembly) {
       if (parsed.instances.get(anchor)?.type !== 'IFCELEMENTASSEMBLY') continue;
-      // Explicit part selections narrow the assembly's RelatedObjects set.
+      // Explicit part selections narrow the assembly's RelatedObjects.
       if (refsOutsideStrings(args[5]).some((part) => seedProducts.has(part))) continue;
     }
     const relations = inverse.get(anchor);

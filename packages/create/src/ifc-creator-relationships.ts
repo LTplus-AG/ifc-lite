@@ -25,11 +25,11 @@ export interface SpatialStructure extends RelationshipContext {
   storeyIds: readonly number[];
   storeyElements: ReadonlyMap<number, readonly number[]>;
   /**
-   * Spaces per storey. An `IfcSpace` is a spatial structure element, so
-   * `IfcRelContainedInSpatialStructure.WR31` forbids containing it and
-   * `IfcSpatialStructureElement.WR41` requires it to be aggregated.
+   * The `IfcSpace` members of `storeyElements`. A space is a spatial structure
+   * element, so `IfcRelContainedInSpatialStructure.WR31` forbids containing it
+   * and `IfcSpatialStructureElement.WR41` requires it to be aggregated (#11498).
    */
-  storeySpaces?: ReadonlyMap<number, readonly number[]>;
+  spaceIds?: ReadonlySet<number>;
   /**
    * Products contained in the site rather than a storey — terrain surfaces and
    * survey annotations, which have no storey to belong to.
@@ -82,16 +82,12 @@ export function emitSpatialRelationships(structure: SpatialStructure): void {
     emitRelAggregates(structure.buildingId, structure.storeyIds, structure);
   }
 
-  for (const [storeyId, elementIds] of structure.storeyElements) {
-    if (elementIds.length > 0) {
-      emitRelContainedInSpatialStructure(storeyId, elementIds, structure);
-    }
-  }
-
-  for (const [storeyId, spaceIds] of structure.storeySpaces ?? []) {
-    if (spaceIds.length > 0) {
-      emitRelAggregates(storeyId, spaceIds, structure);
-    }
+  const spaces = structure.spaceIds ?? new Set<number>();
+  for (const [storeyId, memberIds] of structure.storeyElements) {
+    const contained = memberIds.filter((id) => !spaces.has(id));
+    const aggregated = memberIds.filter((id) => spaces.has(id));
+    if (contained.length > 0) emitRelContainedInSpatialStructure(storeyId, contained, structure);
+    if (aggregated.length > 0) emitRelAggregates(storeyId, aggregated, structure);
   }
 
   if (structure.siteElements.length > 0) {

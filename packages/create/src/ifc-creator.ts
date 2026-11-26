@@ -123,8 +123,6 @@ export class IfcCreator {
   // Tracking for spatial aggregation
   private storeyIds: number[] = [];
   private storeyElements: Map<number, number[]> = new Map();
-  /** Spaces per storey: aggregated by it (`IfcRelAggregates`), never contained (`IfcRelContainedInSpatialStructure.WR31`). */
-  private storeySpaces: Map<number, number[]> = new Map();
   /** Storey expressId → its IfcLocalPlacement id (at [0,0,elevation]) */
   private storeyPlacements: Map<number, number> = new Map();
   /** Element expressId → containing storey expressId */
@@ -205,7 +203,6 @@ export class IfcCreator {
 
     this.storeyIds.push(id);
     this.storeyElements.set(id, []);
-    this.storeySpaces.set(id, []);
     this.storeyPlacements.set(id, storeyPlacementId);
     this.entities.push({ expressId: id, type: 'IfcBuildingStorey', Name: name });
     return id;
@@ -1090,7 +1087,7 @@ export class IfcCreator {
       `'${globalId}',#${this.ownerHistoryId},'${esc(name)}',${desc},${objType},#${placementId},#${prodShapeId},${longName},.ELEMENT.${predefined},$`);
 
     this.elementSolids.set(spaceId, [solidId]);
-    this.trackElement(storeyId, spaceId, true);
+    this.trackElement(storeyId, spaceId);
     this.entities.push({ expressId: spaceId, type: 'IfcSpace', Name: name });
     return spaceId;
   }
@@ -2754,8 +2751,7 @@ export class IfcCreator {
       siteId: this.siteId,
       buildingId: this.buildingId,
       storeyIds: this.storeyIds,
-      storeyElements: this.storeyElements,
-      storeySpaces: this.storeySpaces,
+      storeyElements: this.storeyElements, spaceIds: new Set(this.entities.filter((e) => e.type.toUpperCase() === 'IFCSPACE').map((e) => e.expressId)),
       siteElements: this.siteElements,
       projectElements: this.projectElements,
     });
@@ -2804,8 +2800,8 @@ export class IfcCreator {
     return placementId;
   }
 
-  private trackElement(storeyId: number, elementId: number, aggregated = false): void {
-    const elements = (aggregated ? this.storeySpaces : this.storeyElements).get(storeyId);
+  private trackElement(storeyId: number, elementId: number): void {
+    const elements = this.storeyElements.get(storeyId);
     if (!elements) {
       throw new Error(`Unknown storeyId #${storeyId} — call addIfcBuildingStorey() first`);
     }

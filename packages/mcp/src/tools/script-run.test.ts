@@ -251,6 +251,11 @@ describe('script_run', () => {
     expect((await run("Object.defineProperty(Promise, Symbol.hasInstance, { value() { throw 'y'; } }); 1")).structuredContent?.value).toBe(1);
   });
 
+  it('cuts a huge thrown message inside the sandbox', async () => {
+    const err = await runError("throw 'x'.repeat(5e6)", { memory_mb: 64 });
+    expect(err.message.length).toBeLessThan(4_100);
+  });
+
   it('tags a script failure apart from bad arguments', async () => {
     expect((await runError("throw new Error('no walls')")).details?.kind).toBe('script');
   });

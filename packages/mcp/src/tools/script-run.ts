@@ -174,12 +174,14 @@ function wrapScript(code: string): string {
   // runs, so a script that declares or assigns `env`, or reassigns
   // `Promise`, cannot reach what the wrapper relies on. The envelope is a
   // tagged primitive string, which no prototype or toJSON patch can reshape
-  // on its way through vm.dump, and an oversized value is cut down inside the
-  // sandbox so only the preview crosses to the host.
-  return `(function (run, P, isInstance, then, apply, slice, Str, stringify, max, preview) {
+  // on its way through vm.dump, and an oversized value or message is cut down
+  // inside the sandbox so only a bounded string crosses to the host.
+  return `(function (run, P, isInstance, then, apply, slice, Str, stringify, max, preview, maxMessage) {
   function msg(e) {
-    try { return e && typeof e.message === 'string' ? e.message : Str(e); }
+    var m;
+    try { m = e && typeof e.message === 'string' ? e.message : Str(e); }
     catch (_) { return 'unprintable error'; }
+    return apply(slice, m, [0, maxMessage + 1]);
   }
   function env(v) {
     var j;
@@ -198,7 +200,7 @@ function wrapScript(code: string): string {
     try { apply(then, r, [function (v) { resolve(env(v)); }, function (e) { resolve(fail(e)); }]); }
     catch (e) { resolve(fail(e)); }
   });
-})(function () { return eval(${JSON.stringify(code)}); }, Promise, Function.prototype[Symbol.hasInstance], Promise.prototype.then, Reflect.apply, String.prototype.slice, String, JSON.stringify, ${MAX_VALUE_CHARS}, ${VALUE_PREVIEW_CHARS})`;
+})(function () { return eval(${JSON.stringify(code)}); }, Promise, Function.prototype[Symbol.hasInstance], Promise.prototype.then, Reflect.apply, String.prototype.slice, String, JSON.stringify, ${MAX_VALUE_CHARS}, ${VALUE_PREVIEW_CHARS}, ${MAX_MESSAGE_CHARS})`;
 }
 
 type Outcome =

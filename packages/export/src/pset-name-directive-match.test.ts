@@ -64,6 +64,9 @@ describe('editing a property of a source set whose name needs STEP escapes', () 
       expect(out).toContain("IFCLABEL('new')");
       expect(out).not.toContain("IFCLABEL('old')");
       expect(out.split('\n').filter((l) => /^#\d+=IFCELEMENTQUANTITY\(/.test(l))).toHaveLength(1);
+      // The quantity edit landed, not only the count.
+      expect(out).toMatch(/IFCQUANTITYLENGTH\('Len',\$,\$,7\.?,/);
+      expect(out).not.toMatch(/IFCQUANTITYLENGTH\('Len',\$,\$,1\.,/);
     });
   }
 });

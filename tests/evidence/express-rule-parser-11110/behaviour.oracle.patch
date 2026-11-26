@@ -7,10 +7,10 @@ diff --git a/packages/codegen/src/express/declaration-parser.ts b/packages/codeg
      let label;
 -    label = `${prefix}${++n}`;
 +    do label = `${prefix}${++n}`; while (taken.has(label));
+     taken.add(label);
      return label;
    };
-   return rules.map((r) => ({ ...r, label: r.label ?? generate() }) as R);
-@@ -84,7 +84,7 @@ function skipBalanced(s: TokenStream): void {
+@@ -85,7 +85,7 @@ function skipBalanced(s: TokenStream): void {
  
  function parseEntityHeader(s: TokenStream, entity: EntityDecl): void {
    for (;;) {
@@ -19,7 +19,7 @@ diff --git a/packages/codegen/src/express/declaration-parser.ts b/packages/codeg
      if (s.acceptKeyword('SUPERTYPE')) {
        if (s.acceptKeyword('OF')) skipBalanced(s);
        continue;
-@@ -107,7 +107,7 @@ function parseInverse(s: TokenStream): InverseAttribute {
+@@ -108,7 +108,7 @@ function parseInverse(s: TokenStream): InverseAttribute {
    const inv: InverseAttribute = { name, entity: '', forAttribute: '' };
    if (redeclares) inv.redeclares = redeclares;
    if (s.isKeyword('SET') || s.isKeyword('BAG')) {

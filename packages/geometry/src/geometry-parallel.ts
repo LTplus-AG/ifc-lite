@@ -497,6 +497,7 @@ export async function* processParallel(
   const setupLog = new PoolSetupBroadcast(workers, holdsPoolUntilPrepassEnds(sharedBuffer.byteLength, workerCount));
   const broadcastSetup = (setup: (w: Worker) => void) => setupLog.broadcast(setup); // held until the pre-pass ends on large 1-worker loads (#10264)
   let heldPlanReport: boolean | null = null; // the plan's outcome while its columns wait in a held setup
+  let prepassColumnsFailed = false; // a worker never received the plan's columns: the load is not armed
   const postInitMessages = (worker: Worker) => postGeometryWorkerInit(worker, options, sharedWasmModule);
   setupLog.record(postInitMessages);
   // This loop runs BEFORE the try/finally below (which owns teardown for the
@@ -1262,13 +1263,14 @@ export async function* processParallel(
               ],
             );
           } catch (err) {
+            prepassColumnsFailed = true;
             console.warn('[stream] set-prepass-columns dispatch failed:', err);
           }
         });
         if (globalPlan) { // armed, or counts that do not match the plan; a held pool hears it when the columns are released
           const armed = globalPlanCountsMatch(evt);
           heldPlanReport = setupLog.holding ? armed : null;
-          if (!setupLog.holding) options?.onGlobalInstancingDecision?.(armed);
+          if (!setupLog.holding) options?.onGlobalInstancingDecision?.(armed && !prepassColumnsFailed);
         }
 
         // Not a dispatch gate (see dispatchJobsChunk); the pre-pass emits this
@@ -1347,7 +1349,7 @@ export async function* processParallel(
     prepassWorker.terminate(); // first: a held pool (#10264) starts only after this; its heap is freed asynchronously
     if (setupLog.holding) {
       setupLog.release();
-      if (heldPlanReport !== null) options?.onGlobalInstancingDecision?.(heldPlanReport);
+      if (heldPlanReport !== null) options?.onGlobalInstancingDecision?.(heldPlanReport && !prepassColumnsFailed); // the held posts ran in release()
       drainQueuedChunksIfReady();
     }
     // Only signal stream-end to workers if they actually got

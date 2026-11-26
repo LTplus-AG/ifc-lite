@@ -296,33 +296,33 @@ pub(super) fn has_oblique_paired_cap(pf: &PrismFrame, tris: &[PTri]) -> bool {
             (0..2).all(|k| lo[k] - band <= p[k] && p[k] <= hi[k] + band)
         };
         // Containment names the wider face. Reversing both source shells
-        // swaps the signed-area groups but leaves the faces in place.
+        // swaps the signed-area groups but leaves the faces in place. Faces
+        // equal within the band contain each other, and either may be the
+        // outer one, so both are tried (#11351). Deferring only hands the
+        // cut to the exact path.
         let wider = |bounds: [V2; 2], corners: [V3; 4]| {
             corners.iter().all(|&p| covers(bounds, pf.to2(p)))
         };
-        let ([lo, hi], [inner_lo, inner_hi]) = if wider(first_bounds, second) {
-            (first_bounds, second_bounds)
-        } else if wider(second_bounds, first) {
-            (second_bounds, first_bounds)
-        } else {
-            return false;
-        };
-        if !profile.iter().all(|&p| covers([lo, hi], p))
-            || !(0..2).all(|k| inner_lo[k] < pf.bb.1[k] && pf.bb.0[k] < inner_hi[k])
-        {
-            return false;
-        }
-        let on_edge = |tri: &PTri, bounds: [V2; 2]| (0..2).any(|k| {
-            bounds.iter().any(|edge| tri.p.iter().all(|&p| (pf.to2(p)[k] - edge[k]).abs() <= band))
-        });
-        !tris.iter().enumerate().any(|(index, tri)| {
-            if sided.iter().any(|side| side.contains(&index)) || on_edge(tri, [lo, hi]) {
+        let defers = |[lo, hi]: [V2; 2], [inner_lo, inner_hi]: [V2; 2]| {
+            if !profile.iter().all(|&p| covers([lo, hi], p))
+                || !(0..2).all(|k| inner_lo[k] < pf.bb.1[k] && pf.bb.0[k] < inner_hi[k])
+            {
                 return false;
             }
-            let on_finish = on_edge(tri, [inner_lo, inner_hi])
-                && tri.p.iter().all(|&p| direction * (dot(p, pf.d) - depth) <= band);
-            !on_finish && tri_touches_slab_footprint(tri, pf, profile, depth - band, depth + band, 1.0e-8)
-        })
+            let on_edge = |tri: &PTri, bounds: [V2; 2]| (0..2).any(|k| {
+                bounds.iter().any(|edge| tri.p.iter().all(|&p| (pf.to2(p)[k] - edge[k]).abs() <= band))
+            });
+            !tris.iter().enumerate().any(|(index, tri)| {
+                if sided.iter().any(|side| side.contains(&index)) || on_edge(tri, [lo, hi]) {
+                    return false;
+                }
+                let on_finish = on_edge(tri, [inner_lo, inner_hi])
+                    && tri.p.iter().all(|&p| direction * (dot(p, pf.d) - depth) <= band);
+                !on_finish && tri_touches_slab_footprint(tri, pf, profile, depth - band, depth + band, 1.0e-8)
+            })
+        };
+        (wider(first_bounds, second) && defers(first_bounds, second_bounds))
+            || (wider(second_bounds, first) && defers(second_bounds, first_bounds))
     })
 }
 

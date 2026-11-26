@@ -61,12 +61,18 @@ fn exact_jamb_does_not_choose_a_wider_finish_as_the_floor_11276() {
 /// A 23° wall frame with a core face over u in [0, 4] and a finish face over
 /// u in [`finish.0`, `finish.1`], both at the cap depth `w` and both 3 m tall.
 /// `wider_ccw` is the projected winding of the core face; the finish face
-/// always has the opposite winding, as two touching closed shells do.
-fn oblique_pair(end: usize, finish: (f64, f64), wider_ccw: bool) -> (PrismFrame, Vec<PTri>) {
+/// always has the opposite winding, as two touching closed shells do. The
+/// aperture spans u in [1, `aperture_hi`] and v in [1, 2].
+fn oblique_pair(
+    end: usize,
+    finish: (f64, f64),
+    aperture_hi: f64,
+    wider_ccw: bool,
+) -> (PrismFrame, Vec<PTri>) {
     let (s, c) = 23.0_f64.to_radians().sin_cos();
     let w = 2.411;
     let planes = if end == 0 { vec![w, w + 0.012] } else { vec![w - 0.012, w] };
-    let (lo, hi) = ([1.0, 1.0], [2.0, 2.0]);
+    let (lo, hi) = ([1.0, 1.0], [aperture_hi, 2.0]);
     let pf = PrismFrame {
         u: [-s, c, 0.0],
         v: [0.0, 0.0, 1.0],
@@ -103,7 +109,7 @@ fn oblique_paired_cap_defers_for_either_source_winding_11351() {
     // which face contains the other, so the deferral must not change.
     for end in [0, 1] {
         for wider_ccw in [false, true] {
-            let (pf, tris) = oblique_pair(end, (0.0, 1.5), wider_ccw);
+            let (pf, tris) = oblique_pair(end, (0.0, 1.5), 2.0, wider_ccw);
             assert!(
                 has_oblique_paired_cap(&pf, &tris),
                 "end={end} wider_ccw={wider_ccw}",
@@ -118,9 +124,29 @@ fn oblique_paired_cap_still_needs_shared_corners_11351() {
     // whichever signed-area group either face falls in.
     for end in [0, 1] {
         for wider_ccw in [false, true] {
-            let (pf, tris) = oblique_pair(end, (0.2, 1.7), wider_ccw);
+            let (pf, tris) = oblique_pair(end, (0.2, 1.7), 2.0, wider_ccw);
             assert!(
                 !has_oblique_paired_cap(&pf, &tris),
+                "end={end} wider_ccw={wider_ccw}",
+            );
+        }
+    }
+}
+
+#[test]
+fn oblique_paired_cap_tries_both_mutually_contained_faces_11351() {
+    // The finish stops half a band short of the core's u = 4 edge, so each
+    // face contains the other within the band. The aperture reaches 3/4 of a
+    // band past u = 4: only the core covers it. Whichever signed-area group
+    // the core falls in, it counts as the outer face and the cut defers.
+    let band = flush_band_at(oblique_pair(0, (0.0, 4.0), 4.0, true).0.corner_mag());
+    for end in [0, 1] {
+        for wider_ccw in [false, true] {
+            let finish = (0.0, 4.0 - 0.5 * band);
+            let (pf, tris) = oblique_pair(end, finish, 4.0 + 0.75 * band, wider_ccw);
+            assert_eq!(flush_band_at(pf.corner_mag()), band);
+            assert!(
+                has_oblique_paired_cap(&pf, &tris),
                 "end={end} wider_ccw={wider_ccw}",
             );
         }

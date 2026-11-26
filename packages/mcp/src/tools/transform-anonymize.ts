@@ -13,11 +13,11 @@
 import { writeFile } from 'node:fs/promises';
 import { collectRelatedEntities, exportAnonymizedSubset, type RelatedEntityOptions } from '@ifc-lite/export';
 import type { Tool } from './types.js';
-import { fmtInt, okResult, resolveGlobalIds, resolveModel } from './util.js';
+import { fmtInt, okResult, resolveGlobalIds } from './util.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import { resolveSafePath } from '../safe-path.js';
 import type { LoadedModel, ToolContext } from '../context.js';
-import { FILE_WRITE_ANNOTATIONS, fileOutputSchema, invalid, nonBlank, optionalOutputPath, withIfcPrefix, requireDistinctPaths, requireNoPendingEdits, stringList, throwIfCancelled, writeSidecar } from './transform-schema.js';
+import { FILE_WRITE_ANNOTATIONS, fileOutputSchema, invalid, nonBlank, optionalOutputPath, withIfcPrefix, requireDistinctPaths, requireNoPendingEdits, resolveStepModel, stringList, throwIfCancelled, writeSidecar } from './transform-schema.js';
 
 /** Each relationship the walk follows, with the setting it takes when on (when off: false or 'none'). */
 const FOLLOWED = {
@@ -165,6 +165,6 @@ export const modelAnonymize: Tool = {
     warnings: { type: 'array', items: { type: 'string' } },
   }),
   handler(input, ctx) {
-    return runAnonymize(resolveModel(ctx, input.model_id as string | undefined), input, ctx);
+    return runAnonymize(resolveStepModel(ctx, input.model_id as string | undefined, 'model_anonymize'), input, ctx);
   },
 };

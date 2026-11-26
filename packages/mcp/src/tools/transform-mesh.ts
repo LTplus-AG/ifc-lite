@@ -11,11 +11,11 @@
 import { writeFile } from 'node:fs/promises';
 import { DemeshSession, generateLod0, generateLod1 } from '@ifc-lite/export';
 import type { Tool } from './types.js';
-import { fmtInt, okResult, resolveModel } from './util.js';
+import { fmtInt, okResult } from './util.js';
 import { withIfcBytes } from './export-source.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import { resolveSafePath } from '../safe-path.js';
-import { FILE_WRITE_ANNOTATIONS, fileOutputSchema, invalid, optionalOutputPath, requireDistinctPaths, throwIfCancelled, writeSidecar } from './transform-schema.js';
+import { FILE_WRITE_ANNOTATIONS, fileOutputSchema, invalid, optionalOutputPath, requireDistinctPaths, resolveStepModel, throwIfCancelled, writeSidecar } from './transform-schema.js';
 
 const modelSimplify: Tool = {
   name: 'model_simplify',
@@ -47,7 +47,7 @@ const modelSimplify: Tool = {
     upconverted: { type: 'boolean' },
   }),
   async handler(input, ctx) {
-    const m = resolveModel(ctx, input.model_id as string | undefined);
+    const m = resolveStepModel(ctx, input.model_id as string | undefined, 'model_simplify');
     const filePath = await resolveSafePath(input.file_path, ctx, 'write');
     const level = (input.level as number | undefined) ?? 1;
     return withIfcBytes(m, async (bytes) => {
@@ -124,7 +124,7 @@ const modelLod: Tool = {
     metaPath: { type: ['string', 'null'] },
   }),
   async handler(input, ctx) {
-    const m = resolveModel(ctx, input.model_id as string | undefined);
+    const m = resolveStepModel(ctx, input.model_id as string | undefined, 'model_lod');
     const level = input.level as 0 | 1;
     const filePath = await resolveSafePath(input.file_path, ctx, 'write');
     if (level === 0 && input.meta_path !== undefined) throw invalid('meta_path applies to level 1 only.');

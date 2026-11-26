@@ -24,7 +24,7 @@ import {
   serializeSubset,
 } from '@ifc-lite/export';
 import type { Tool } from './types.js';
-import { fmtInt, listAllowedModelIds, okResult, resolveModel } from './util.js';
+import { fmtInt, listAllowedModelIds, okResult } from './util.js';
 import { withIfcBytes } from './export-source.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import { resolveSafePath } from '../safe-path.js';
@@ -39,6 +39,7 @@ import {
   nonBlank,
   schemaOf,
   requireNoPendingEdits,
+  resolveStepModel,
   withIfcPrefix,
   stringList,
   throwIfCancelled,
@@ -81,7 +82,7 @@ const modelMerge: Tool = {
     const ids = (input.model_ids as string[] | undefined) ?? listAllowedModelIds(ctx);
     if (new Set(ids).size !== ids.length) throw invalid('model_ids lists a model more than once.');
     if (ids.length < 2) throw invalid(`model_merge needs at least 2 models; ${ids.length} given or loaded.`);
-    const models = ids.map((id) => resolveModel(ctx, id));
+    const models = ids.map((id) => resolveStepModel(ctx, id, 'model_merge'));
     const filePath = await resolveSafePath(input.file_path, ctx, 'write');
     // After the await: an edit queued while it ran must still refuse the call.
     for (const m of models) requireNoPendingEdits(m, 'model_merge');
@@ -168,7 +169,7 @@ const modelConvert: Tool = {
     },
   }),
   async handler(input, ctx) {
-    const m = resolveModel(ctx, input.model_id as string | undefined);
+    const m = resolveStepModel(ctx, input.model_id as string | undefined, 'model_convert');
     const target = input.schema as 'IFC2X3' | 'IFC4' | 'IFC4X3';
     const source = schemaOf(m);
     const filePath = await resolveSafePath(input.file_path, ctx, 'write');
@@ -232,7 +233,7 @@ const modelExtract: Tool = {
   },
   outputSchema: fileOutputSchema({ seedCount: { type: 'integer' }, instanceCount: { type: 'integer' } }),
   async handler(input, ctx) {
-    const m = resolveModel(ctx, input.model_id as string | undefined);
+    const m = resolveStepModel(ctx, input.model_id as string | undefined, 'model_extract');
     const filePath = await resolveSafePath(input.file_path, ctx, 'write');
     const products = [
       ...nonBlank(input.global_ids as string[] | undefined),

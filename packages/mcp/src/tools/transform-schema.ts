@@ -10,6 +10,7 @@ import type { LoadedModel, ToolContext } from '../context.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import { rm, writeFile } from 'node:fs/promises';
 import { resolveSafePath } from '../safe-path.js';
+import { resolveModel } from './util.js';
 
 /**
  * Writes a new file and leaves the loaded model alone, but replaces an
@@ -71,6 +72,15 @@ export async function optionalOutputPath(input: Record<string, unknown>, key: st
 
 /** Trimmed, non-blank selector tokens. */
 export const nonBlank = (list: readonly string[] | undefined): string[] => (list ?? []).map((t) => t.trim()).filter(Boolean);
+
+/** Resolve a model for a transform; all of them read and write STEP, so an IFC5 (IFCX) model is refused by name. */
+export function resolveStepModel(ctx: ToolContext, modelId: string | undefined, tool: string): LoadedModel {
+  const m = resolveModel(ctx, modelId);
+  if (m.store.schemaVersion === 'IFC5') {
+    throw new ToolExecutionError({ code: ToolErrorCode.UNSUPPORTED_OPERATION, message: `${tool} reads IFC STEP; model '${m.id}' is IFC5 (IFCX).` });
+  }
+  return m;
+}
 
 /** The model's schema version, IFC4 when the file did not say. */
 export const schemaOf = (m: LoadedModel): IfcSchemaVersion => (m.store.schemaVersion ?? 'IFC4') as IfcSchemaVersion;

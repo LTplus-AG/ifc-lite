@@ -112,6 +112,17 @@ describe('transform tool metadata', () => {
   });
 });
 
+describe('IFC5 sources', () => {
+  it.each(TRANSFORMS)('%s refuses an IFC5 (IFCX) model by name instead of reading it as STEP', async (name) => {
+    const m = ctx.registry.get('a')!;
+    (m.store as { schemaVersion: string }).schemaVersion = 'IFC5';
+    const input: Record<string, unknown> = { file_path: join(tmp, 'ifc5-out.ifc'), schema: 'IFC4', level: 0, types: ['IfcWall'] };
+    if (name === 'model_merge') input.model_ids = ['a', 'a2'];
+    if (name === 'model_merge') ctx.registry.add(await loadIfcModel(join(tmp, 'b.ifc'), { modelId: 'a2' }));
+    await expect(call(name, input)).rejects.toMatchObject({ code: 'UNSUPPORTED_OPERATION', message: expect.stringContaining('IFC5') });
+  });
+});
+
 describe('model_merge', () => {
   it('writes one file holding both models, storeys unified by name', async () => {
     ctx.registry.add(await loadIfcModel(join(tmp, 'b.ifc'), { modelId: 'b' }));

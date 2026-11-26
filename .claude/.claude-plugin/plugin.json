@@ -20,7 +20,7 @@
       "command": "npx",
       "args": [
         "-y",
-        "@ifc-lite/mcp",
+        "@ifc-lite/mcp@^0.32.0",
         "--bridge",
         "--channel"
       ]

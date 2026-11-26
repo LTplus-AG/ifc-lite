@@ -40,19 +40,14 @@ The Streamable HTTP transport serves remote agents:
 ifc-lite mcp ./model.ifc --transport http --port 8765 --token $API_TOKEN
 ```
 
-!!! warning "HTTP sessions start with an empty registry"
-    In `--transport http` mode the positional files are **not** preloaded. Every
-    HTTP session gets its own fresh, empty model registry. The agent loads a
-    model into its session with the `model_load` tool, which needs `mutate`
-    scope, so it is hidden under `--read-only`. Only the default `stdio`
-    transport preloads the files you pass on the command line. This isolation is
-    deliberate: two sessions that load different files which derive the same
-    internal id never alias each other's state.
-
-    A corollary: `--read-only` combined with `--transport http` produces
-    sessions that have no way to load a model at all (the registry starts
-    empty and `model_load` is hidden). For read-only serving of preloaded
-    files, use the `stdio` transport.
+!!! note "Every HTTP session loads its own copy"
+    In `--transport http` mode each session gets its own model registry, and
+    the positional files are loaded into it when the session starts. Sessions
+    never share edits, and two sessions that load different files which derive
+    the same internal id never alias each other's state. The cost is one parse
+    per session. The agent can load more files with `model_load`, which needs
+    only `read` scope, so it also works under `--read-only` and with a
+    read-only token. `--allow` bounds which files it can open.
 
 By default the server binds `127.0.0.1`. Binding a non-loopback host requires either a `--token` (which becomes the bearer token for full scope) or the `--insecure` flag for development only. The token travels as a plaintext `Authorization` header: the CLI itself serves plain HTTP, so any non-loopback deployment must sit behind a TLS-terminating reverse proxy (nginx, Caddy, a cloud load balancer), or the bearer token is readable by anyone on the network path.
 
@@ -63,11 +58,12 @@ By default the server binds `127.0.0.1`. Binding a non-loopback host requires ei
 | `--transport <t>` | `stdio` (default) or `http` |
 | `--port <N>` | HTTP port (default 8765) |
 | `--host <h>` | HTTP host (default 127.0.0.1; non-loopback requires `--token` or `--insecure`) |
-| `--token <bearer>` | HTTP bearer token that maps to full scope |
+| `--token <bearer>` | HTTP bearer token (repeatable). Full scope, or read scope under `--read-only` |
+| `--read-only-token <bearer>` | HTTP bearer token with read scope only (repeatable) |
 | `--insecure` | Allow a non-loopback bind without a token (development only). With `--bridge`: accept a plain-`http` origin on a non-loopback host, with a warning |
-| `--read-only` | Hide mutation tools |
+| `--read-only` | Hide mutation tools. Loading and unloading models still works |
 | `--bsdd <url>` | Override the bSDD endpoint |
-| `--allow <path>` | Restrict file-system access (repeatable) |
+| `--allow <path>` | Restrict file-system access, over stdio and HTTP (repeatable) |
 | `--viewer` | Auto-open the 3D viewer |
 | `--viewer-port <N>` | Preferred viewer port (0 = auto) |
 | `--open` | Auto-open the viewer **and** open its URL in the browser |
@@ -76,16 +72,18 @@ By default the server binds `127.0.0.1`. Binding a non-loopback host requires ei
 | `--bridge-viewer-url <url>` | Base of the pairing link (default `https://ifclite.com`). Its origin replaces the default in the allowlist |
 | `--allow-origin <origin>` | HTTP: let a browser origin read responses. Bridge: an extra origin that may connect (repeatable) |
 
+An unknown flag prints a warning on stderr and is otherwise ignored, so a config written for another version still starts. `--federate` is accepted for the same reason and does nothing: every file passed already loads into one session.
+
 ## Scopes and permissions
 
 Every tool declares the scope a caller needs. At `tools/list` time the server filters the advertised set by the session's scope, so an agent never even sees a tool it is not allowed to call, which keeps it from attempting a forbidden operation.
 
 | Scope | Grants |
 |-------|--------|
-| `read` | Discovery, query, geometry metrics, viewer reads |
+| `read` | Discovery (including loading and unloading models), query, geometry metrics, viewer reads |
 | `validate` | IDS validation, model audit |
 | `export` | Data and geometry export |
-| `mutate` | Property/attribute edits, entity create/delete, model load/save |
+| `mutate` | Property/attribute edits, entity create/delete, model save |
 | `admin` | All of the above |
 
 Two presets ship out of the box:
@@ -586,7 +584,7 @@ A failed native library save carries the library's reason in `details.save`. Sto
 
 === "Claude Desktop"
 
-    Add the server to `claude_desktop_config.json`:
+    Add the server to `claude_desktop_config.json` (`~/Library/Application Support/Claude/` on macOS, `%APPDATA%\Claude\` on Windows):
 
     ```json
     {
@@ -615,7 +613,7 @@ A failed native library save carries the library's reason in `details.save`. Sto
     Header:     Authorization: Bearer my-secret
     ```
 
-    Remember to call `model_load` first: an HTTP session starts empty.
+    Each session starts with the files passed on the command line; call `model_load` for others.
 
 Cursor, Windsurf, Goose, and Zed all accept the same `npx @ifc-lite/mcp <file>` stdio command.
 

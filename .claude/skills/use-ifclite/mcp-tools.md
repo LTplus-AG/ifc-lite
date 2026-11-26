@@ -9,17 +9,18 @@ call BIM operations as typed tools instead of shelling out to the CLI.
 ```bash
 ifc-lite mcp ./model.ifc                       # stdio (default transport)
 ifc-lite mcp ./model.ifc --read-only           # hide all mutation tools
-ifc-lite mcp ./arch.ifc ./struct.ifc --federate
+ifc-lite mcp ./arch.ifc ./struct.ifc            # several files, one session
 ifc-lite mcp --transport http --port 8765 --token <secret>
 ifc-lite mcp ./model.ifc --viewer              # auto-open the 3D viewer
 ```
 
 The standalone binary `ifc-lite-mcp …` accepts the same flags. Useful options:
-`--read-only`, `--federate`, `--transport stdio|http`, `--port`, `--host`
+`--read-only`, `--transport stdio|http`, `--port`, `--host`
 (loopback by default; non-loopback needs `--token` or `--insecure`), `--token`
-(a single bearer token for HTTP auth; combine with `--read-only` to scope the
-whole server read-only), `--bsdd <url>`, `--allow <path>` (restrict filesystem
-access).
+(repeatable bearer token for HTTP auth; combine with `--read-only` to scope the
+whole server read-only), `--read-only-token` (repeatable, read scope),
+`--bsdd <url>`, `--allow <path>` (restrict filesystem access), and the
+`--bridge` flags.
 
 Register it with Claude Code via your MCP config, e.g.:
 

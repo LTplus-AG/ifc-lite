@@ -116,8 +116,11 @@ export const modelList: Tool = {
 
 export const modelLoad: Tool = {
   name: 'model_load',
-  description: 'Load an IFC file from disk into the session. Requires `mutate` scope. The path must be inside the configured allowedPaths roots (when set).',
-  scope: 'mutate',
+  description: 'Load an IFC file from disk into the session. The path must be inside the configured allowedPaths roots (when set).',
+  // `read`, not `mutate`: loading adds a model to this session and changes no
+  // model, so a --read-only server or a read-only token can still open files.
+  // The safe-path check below is what bounds which files.
+  scope: 'read',
   inputSchema: {
     type: 'object',
     properties: {
@@ -164,8 +167,10 @@ export const modelLoad: Tool = {
 
 export const modelUnload: Tool = {
   name: 'model_unload',
-  description: 'Drop a model from session memory.',
-  scope: 'mutate',
+  description: 'Drop a model from session memory. Unsaved edits to it are lost.',
+  // `read` for the same reason as `model_load`: it frees session memory and
+  // writes nothing. A token narrowed to some models still cannot drop others.
+  scope: 'read',
   inputSchema: {
     type: 'object',
     properties: {

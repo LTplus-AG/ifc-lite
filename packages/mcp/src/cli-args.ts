@@ -7,16 +7,11 @@
  *
  * There are two front doors to `createMCPServer`: the standalone
  * `ifc-lite-mcp` binary (`./cli.ts`) and the `ifc-lite mcp` subcommand in
- * `@ifc-lite/cli`. The binary's parser reads a flag and consumes its value in
- * the same branch, so it cannot disagree with itself; the subcommand has to
- * know which flags carry a value in order to skip them while collecting
- * positional `.ifc` paths, and kept its own hand-written copy of that list.
- *
- * The copy drifted. `--allow-origin` was added to the binary and never to the
- * subcommand's list, so `ifc-lite mcp --transport http --allow-origin
- * https://example.test model.ifc` skipped the flag, failed to skip its value,
- * and resolved the ORIGIN as a model file path. Declaring the flags here and
- * importing them on both sides means a new flag lands in one place.
+ * `@ifc-lite/cli`. Both hand their argv to `runMcpCli` (`./cli-main.ts`),
+ * which parses it here. The subcommand used to keep its own parser and its
+ * own list of value-bearing flags; that copy drifted (`--allow-origin` was
+ * resolved as a model path) and never learned the bridge flags, so there is
+ * now one parser and no list to copy.
  */
 
 import { resolve } from 'node:path';
@@ -27,6 +22,7 @@ export const MCP_VALUE_FLAGS: readonly string[] = [
   '--port',
   '--host',
   '--token',
+  '--read-only-token',
   '--bsdd',
   '--allow',
   '--allow-origin',
@@ -35,7 +31,11 @@ export const MCP_VALUE_FLAGS: readonly string[] = [
   '--bridge-viewer-url',
 ];
 
-/** Flags that stand alone, taking no value. */
+/**
+ * Flags that stand alone, taking no value. `--federate` is accepted only so
+ * older configs keep starting: it never did anything (every positional file
+ * already loads into one session), and the parser warns about it.
+ */
 export const MCP_BOOLEAN_FLAGS: readonly string[] = [
   '--read-only',
   '--federate',
@@ -50,21 +50,6 @@ export const MCP_BOOLEAN_FLAGS: readonly string[] = [
   '-v',
 ];
 
-/**
- * Flags the standalone binary understands that the `ifc-lite mcp` subcommand
- * does not act on. Their VALUES are still skipped (that is what caused the
- * bogus-path bug), but the subcommand warns rather than pretending to honour
- * them.
- */
-export const MCP_SUBCOMMAND_UNSUPPORTED_FLAGS: readonly string[] = [
-  '--allow-origin',
-  '--federate',
-  '--bridge',
-  '--bridge-port',
-  '--bridge-viewer-url',
-  '--channel',
-];
-
 /** True when `arg` consumes the next argv token. */
 export function isMcpValueFlag(arg: string): boolean {
   return MCP_VALUE_FLAGS.includes(arg);
@@ -73,12 +58,14 @@ export function isMcpValueFlag(arg: string): boolean {
 export interface CliOptions {
   files: string[];
   readOnly: boolean;
-  federate: boolean;
   transport: 'stdio' | 'http';
   port: number;
   /** undefined → caller didn't pass --host; CLI picks loopback by default */
   host?: string;
-  token?: string;
+  /** `--token`, repeatable. Each one gets the server's scope (read scope under --read-only). */
+  tokens: string[];
+  /** `--read-only-token`, repeatable. Each one gets read scope. */
+  readOnlyTokens: string[];
   bsdd?: string;
   allowedPaths?: string[];
   /** Browser Origins allowed to read HTTP responses cross-origin. Empty = none. */
@@ -105,13 +92,21 @@ export interface CliOptions {
   help: boolean;
   /** `--version`/`-v` was passed. The caller prints the version and exits. */
   version: boolean;
+  /**
+   * Usage problems that should not stop the server: unknown flags and flags
+   * that do nothing. The caller prints them on stderr. They are warnings, not
+   * errors, because MCP client configs written for older versions still pass
+   * flags this version dropped.
+   */
+  warnings: string[];
 }
 
 export function parseArgs(argv: string[]): CliOptions {
   const opts: CliOptions = {
     files: [],
     readOnly: false,
-    federate: false,
+    tokens: [],
+    readOnlyTokens: [],
     transport: 'stdio',
     port: 8765,
     autoViewer: false,
@@ -121,16 +116,23 @@ export function parseArgs(argv: string[]): CliOptions {
     bridge: false,
     help: false,
     version: false,
+    warnings: [],
   };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === '--read-only') opts.readOnly = true;
-    else if (arg === '--federate') opts.federate = true;
+    else if (arg === '--federate') {
+      opts.warnings.push('--federate does nothing: every file passed is loaded into the same session. Drop it.');
+    }
     else if (arg === '--insecure') opts.insecure = true;
     else if (arg === '--transport') opts.transport = (argv[++i] as 'stdio' | 'http') ?? 'stdio';
     else if (arg === '--port') opts.port = Number(argv[++i] ?? 8765);
     else if (arg === '--host') opts.host = argv[++i];
-    else if (arg === '--token') opts.token = argv[++i];
+    else if (arg === '--token' || arg === '--read-only-token') {
+      const token = argv[++i];
+      if (!token) opts.warnings.push(`${arg} needs a value; ignored.`);
+      else (arg === '--token' ? opts.tokens : opts.readOnlyTokens).push(token);
+    }
     else if (arg === '--bsdd') opts.bsdd = argv[++i];
     else if (arg === '--viewer') opts.autoViewer = true;
     else if (arg === '--viewer-port') opts.viewerPort = Number(argv[++i] ?? 0);
@@ -161,6 +163,8 @@ export function parseArgs(argv: string[]): CliOptions {
       opts.version = true;
     } else if (!arg.startsWith('-')) {
       opts.files.push(arg);
+    } else {
+      opts.warnings.push(`unknown flag ${arg} ignored. Run with --help for the flags this version knows.`);
     }
   }
   return opts;

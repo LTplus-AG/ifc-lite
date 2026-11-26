@@ -12,8 +12,8 @@ Model Context Protocol (MCP) server for **ifc-lite** — agent-native BIM via JS
 # Run against a local IFC file over stdio (the default for Claude Desktop / Cursor)
 npx @ifc-lite/mcp ./model.ifc
 
-# Federate multiple files
-npx @ifc-lite/mcp ./arch.ifc ./struct.ifc ./mep.ifc --federate
+# Several files in one session
+npx @ifc-lite/mcp ./arch.ifc ./struct.ifc ./mep.ifc
 
 # Read-only (no mutation tools advertised)
 npx @ifc-lite/mcp ./model.ifc --read-only
@@ -112,7 +112,7 @@ ifc-lite mcp ./model.ifc --read-only
 
 ### Claude Desktop
 
-Drop this into `claude_desktop_config.json`:
+Drop this into `claude_desktop_config.json` (`~/Library/Application Support/Claude/` on macOS, `%APPDATA%\Claude\` on Windows):
 
 ```json
 {

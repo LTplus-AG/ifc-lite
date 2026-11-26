@@ -8191,11 +8191,18 @@
   "@ifc-lite/mcp/cli-args": [
     "CliOptions: interface",
     "MCP_BOOLEAN_FLAGS: const",
-    "MCP_SUBCOMMAND_UNSUPPORTED_FLAGS: const",
     "MCP_VALUE_FLAGS: const",
     "bridgeConflict: function",
     "isMcpValueFlag: function",
     "parseArgs: function"
+  ],
+  "@ifc-lite/mcp/cli-main": [
+    "McpCliIdentity: interface",
+    "RunningHttpCli: interface",
+    "claudeDesktopConfigPath: function",
+    "mcpHelpText: function",
+    "runMcpCli: function",
+    "tokenScopes: function"
   ],
   "@ifc-lite/mcp/protocol": [
     "CallToolParams: interface",

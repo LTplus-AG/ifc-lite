@@ -192,7 +192,7 @@ export function buildHelp(version: string): string {
     ifc-lite lod model.ifc --level 1 --out model.glb --meta model.lod1.json
     ifc-lite mcp model.ifc
     ifc-lite mcp model.ifc --read-only
-    ifc-lite mcp arch.ifc struct.ifc --federate
+    ifc-lite mcp arch.ifc struct.ifc
     ifc-lite mcp model.ifc --transport http --port 8765 --token abc
     ifc-lite georef show model.ifc --json
     ifc-lite georef check model.ifc

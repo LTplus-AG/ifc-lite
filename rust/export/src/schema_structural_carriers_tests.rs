@@ -223,14 +223,14 @@ fn an_incomplete_varying_action_reports_only_the_slots_that_held_a_value_11354()
 }
 
 #[test]
-fn an_applied_load_that_is_an_ifc4_load_configuration_is_kept_11354() {
+fn an_ifc4_load_configuration_is_unusable_for_a_constant_action_11354() {
     let opts = StepOptions { schema: Some("IFC4".into()), ..StepOptions::default() };
     let action = VARYING.replace(",#15,#11,", ",#15,#40,");
     let source = model("IFC2X3", &[GEOMETRY, REACTION, &action, "#40=IFCSTRUCTURALLOADCONFIGURATION($,(#11),$);"].join("\n"));
     let (up, stats, warnings) = export_step_with_diagnostics(source.as_bytes(), &opts).unwrap();
-    assert!(record(&up, 30).contains(",#15,#40,.GLOBAL_COORDS."), "{up}");
-    assert!(!warnings.iter().any(|w| w.contains("no usable AppliedLoad")), "{warnings:?}");
-    assert_eq!(stats.attribute_values_dropped, 2, "VaryingAppliedLoadLocation, SubsequentAppliedLoads");
+    assert!(record(&up, 30).contains(",#15,$,.GLOBAL_COORDS."), "{up}");
+    assert!(warnings.iter().any(|w| w.contains("no usable AppliedLoad")), "{warnings:?}");
+    assert_eq!(stats.attribute_values_dropped, 3, "AppliedLoad, VaryingAppliedLoadLocation, SubsequentAppliedLoads");
 }
 
 #[test]

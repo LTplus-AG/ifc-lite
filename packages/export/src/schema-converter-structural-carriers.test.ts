@@ -496,11 +496,11 @@ ${geometry.replace('(#16),', aspect)}
       expect((await both('#17,(#11,#11)')).warnings).toContain('its varying locations and subsequent loads were omitted');
     });
 
-    it('keeps an AppliedLoad that is an IfcStructuralLoadConfiguration, which IFC4 counts as a load (#11354)', async () => {
+    it('reports an IfcStructuralLoadConfiguration as unusable for a constant action (#11354)', async () => {
       const text = varying('(#16),').replace(',#9,#15,#11,', ',#9,#15,#40,').replace('ENDSEC;\nEND', '#40=IFCSTRUCTURALLOADCONFIGURATION($,(#11),$);\nENDSEC;\nEND');
       const up = await convert(text, 'IFC4');
-      expect(line(up.step, 30)).toContain(',#15,#40,.GLOBAL_COORDS.');
-      expect(up.warnings).not.toContain('no usable AppliedLoad');
+      expect(line(up.step, 30)).toContain(',#15,$,.GLOBAL_COORDS.');
+      expect(up.warnings).toContain('no usable AppliedLoad');
     });
 
     it('leaves the complete configuration conversion alone', async () => {

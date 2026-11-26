@@ -7,6 +7,7 @@
 
 import type { LineCategory, VisibilityState } from './line-classification.js';
 import type { PlanSymbol } from './symbols/opening-symbols.js';
+import type { DoorOperationType, WindowPartitioningType } from './openings/operation-types.js';
 
 // VECTOR TYPES
 // ═══════════════════════════════════════════════════════════════════════════
@@ -452,46 +453,7 @@ export function colorKey(color?: [number, number, number, number] | null): strin
 // OPENING AND RELATIONSHIP TYPES
 // ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Door operation type (from IFC IfcDoorTypeOperationEnum)
- */
-export type DoorOperationType =
-  | 'SINGLE_SWING_LEFT'
-  | 'SINGLE_SWING_RIGHT'
-  | 'DOUBLE_DOOR_SINGLE_SWING'
-  | 'DOUBLE_DOOR_SINGLE_SWING_OPPOSITE_LEFT'
-  | 'DOUBLE_DOOR_SINGLE_SWING_OPPOSITE_RIGHT'
-  | 'DOUBLE_DOOR_DOUBLE_SWING'
-  | 'DOUBLE_SWING_LEFT'
-  | 'DOUBLE_SWING_RIGHT'
-  | 'SLIDING_TO_LEFT'
-  | 'SLIDING_TO_RIGHT'
-  | 'DOUBLE_DOOR_SLIDING'
-  | 'FOLDING_TO_LEFT'
-  | 'FOLDING_TO_RIGHT'
-  | 'DOUBLE_DOOR_FOLDING'
-  | 'REVOLVING'
-  | 'ROLLINGUP'
-  | 'SWING_FIXED_LEFT'
-  | 'SWING_FIXED_RIGHT'
-  | 'USERDEFINED'
-  | 'NOTDEFINED';
-
-/**
- * Window operation type (from IFC IfcWindowTypePartitioningEnum)
- */
-export type WindowPartitioningType =
-  | 'SINGLE_PANEL'
-  | 'DOUBLE_PANEL_VERTICAL'
-  | 'DOUBLE_PANEL_HORIZONTAL'
-  | 'TRIPLE_PANEL_VERTICAL'
-  | 'TRIPLE_PANEL_HORIZONTAL'
-  | 'TRIPLE_PANEL_BOTTOM'
-  | 'TRIPLE_PANEL_TOP'
-  | 'TRIPLE_PANEL_LEFT'
-  | 'TRIPLE_PANEL_RIGHT'
-  | 'USERDEFINED'
-  | 'NOTDEFINED';
+export type { DoorOperationType, WindowPartitioningType } from './openings/operation-types.js';
 
 /**
  * Information about an opening (door, window, or void)

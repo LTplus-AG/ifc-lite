@@ -2,9 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { DoorOperationType, WindowPartitioningType } from '../types.js';
-
-const DOOR_OPERATIONS: Record<DoorOperationType, true> = {
+const DOOR_OPERATIONS = {
   SINGLE_SWING_LEFT: true, SINGLE_SWING_RIGHT: true, DOUBLE_DOOR_SINGLE_SWING: true,
   DOUBLE_DOOR_SINGLE_SWING_OPPOSITE_LEFT: true, DOUBLE_DOOR_SINGLE_SWING_OPPOSITE_RIGHT: true,
   DOUBLE_DOOR_DOUBLE_SWING: true, DOUBLE_SWING_LEFT: true, DOUBLE_SWING_RIGHT: true,
@@ -14,12 +12,18 @@ const DOOR_OPERATIONS: Record<DoorOperationType, true> = {
   USERDEFINED: true, NOTDEFINED: true,
 };
 
-const WINDOW_PARTITIONINGS: Record<WindowPartitioningType, true> = {
+const WINDOW_PARTITIONINGS = {
   SINGLE_PANEL: true, DOUBLE_PANEL_VERTICAL: true, DOUBLE_PANEL_HORIZONTAL: true,
   TRIPLE_PANEL_VERTICAL: true, TRIPLE_PANEL_HORIZONTAL: true, TRIPLE_PANEL_BOTTOM: true,
   TRIPLE_PANEL_TOP: true, TRIPLE_PANEL_LEFT: true, TRIPLE_PANEL_RIGHT: true,
   USERDEFINED: true, NOTDEFINED: true,
 };
+
+/** Door operations from IFC4 IfcDoorTypeOperationEnum. */
+export type DoorOperationType = keyof typeof DOOR_OPERATIONS;
+
+/** Window partitionings from IFC4 IfcWindowTypePartitioningEnum. */
+export type WindowPartitioningType = keyof typeof WINDOW_PARTITIONINGS;
 
 /** An IFC enumeration value as authored (`.SINGLE_SWING_LEFT.` or bare), upper-cased; null when blank. */
 function enumToken(value: unknown): string | null {

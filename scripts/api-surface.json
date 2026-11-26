@@ -8197,6 +8197,11 @@
     "isMcpValueFlag: function",
     "parseArgs: function"
   ],
+  "@ifc-lite/mcp/install": [
+    "InstallIo: interface",
+    "nodeInstallIo: function",
+    "runInstall: function"
+  ],
   "@ifc-lite/mcp/protocol": [
     "CallToolParams: interface",
     "CallToolResult: interface",

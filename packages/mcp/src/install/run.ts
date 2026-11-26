@@ -81,7 +81,7 @@ export function nodeInstallIo(): InstallIo {
   };
 }
 
-export function installHelp(invokedAs: string): string {
+function installHelp(invokedAs: string): string {
   return `
   Usage: ${invokedAs} --client <${CLIENTS.join('|')}> [options] [model.ifc…] [-- server flags]
 
@@ -171,7 +171,7 @@ function abs(path: string, cwd: string): string {
 }
 
 /** `npx` pinned to this release line, so the flags written here are ones it knows. */
-export function serverCommand(version: string, serverArgs: string[]): ServerCommand {
+function serverCommand(version: string, serverArgs: string[]): ServerCommand {
   const spec = version === UNKNOWN_VERSION ? '@ifc-lite/mcp' : `@ifc-lite/mcp@^${version}`;
   return { command: 'npx', args: ['-y', spec, ...serverArgs] };
 }

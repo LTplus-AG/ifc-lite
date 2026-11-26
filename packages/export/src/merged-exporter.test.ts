@@ -1296,6 +1296,28 @@ describe('MergedExporter', () => {
       }
     });
 
+    it.each([
+      ['#8', '2500.'],
+      ['$', '2.5'],
+    ])('keeps enumerated selections in the domain unit %s in both exports (#11333)', async (unit, expected) => {
+      const secondary = mmModel([
+        [18, 'IFCPROPERTYENUMERATEDVALUE', "#18=IFCPROPERTYENUMERATEDVALUE('Selected',$,(IFCLENGTHMEASURE(2500.)),/* domain */ #19);"],
+        [19, 'IFCPROPERTYENUMERATION', `#19=IFCPROPERTYENUMERATION('Domain',(IFCLENGTHMEASURE(2500.)),/* unit */ ${unit});`],
+        [20, 'IFCPROPERTYENUMERATEDVALUE', "#20=IFCPROPERTYENUMERATEDVALUE('Independent',$,(IFCLENGTHMEASURE(2500.)),$);"],
+      ]);
+      const exporter = new MergedExporter([metreModel(), secondary]);
+      const options = { schema: 'IFC4', unitReconciliation: 'normalize' } as const;
+      for (const result of [exporter.export(options), await exporter.exportAsync(options)]) {
+        const output = decode(result.content);
+        const domainId = /(#\d+)=IFCPROPERTYENUMERATION\('Domain'/.exec(output)?.[1];
+        expect(domainId).toBeDefined();
+        expect(output).toContain(`IFCPROPERTYENUMERATION('Domain',(IFCLENGTHMEASURE(${expected})),`);
+        expect(output).toContain(`IFCPROPERTYENUMERATEDVALUE('Selected',$,(IFCLENGTHMEASURE(${expected})),/* domain */ ${domainId});`);
+        expect(output).toContain("IFCPROPERTYENUMERATEDVALUE('Independent',$,(IFCLENGTHMEASURE(2.5)),$);");
+        expect(findDanglingRefs(output)).toEqual([]);
+      }
+    });
+
     it('scales an undeclared mass per length by the mass unit too (#11329)', () => {
       // 50 g/mm is 50 kg/m: the length ratio alone would give 50000.
       const secondary = mmModel([

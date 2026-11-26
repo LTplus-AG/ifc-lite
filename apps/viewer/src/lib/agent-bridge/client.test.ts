@@ -822,7 +822,8 @@ describe('local agent bridge client: allowing edits (#9523)', () => {
   });
 
   it('a grant whose update the bridge would refuse grants nothing; an error frame alone changes no grant', () => {
-    const bad = { name: 'bad_edit', description: 'd', inputSchema: { type: 'object', additionalProperties: { type: 'string' } }, readOnly: false };
+    // `$ref` stays refused by the bridge's schema check (a tab schema has nothing to resolve it against).
+    const bad = { name: 'bad_edit', description: 'd', inputSchema: { type: 'object', properties: { a: { $ref: '#/$defs/A' } } }, readOnly: false };
     const h = paired({ tools: [...mainViewerBridgeTools(), bad as unknown as BridgeToolDescriptor] });
     assert.equal(h.client.setPermission('read-write'), false, 'refused before sending');
     assert.equal(h.client.canEditNow(), false);

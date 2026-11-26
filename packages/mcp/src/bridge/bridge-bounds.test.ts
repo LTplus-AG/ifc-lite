@@ -81,15 +81,15 @@ describe('schema keywords the bridge cannot enforce (CodeRabbit json-bounds.ts:8
     expect(await refusal({ type: 'object', additionalProperties: { type: 'intrger' } })).toMatch(/additionalProperties\.type must be one of/);
   });
 
-  // validateInput would throw on every call for $ref and a malformed oneOf, as a
-  // JSON-RPC InternalError instead of a refusal at hello (code review of the 2020-12 validator).
-  it('refuses $ref, pattern and a non-array oneOf', async () => {
+  // validateInput would throw on every call for these, as a JSON-RPC InternalError
+  // instead of a refusal at hello (code review of the 2020-12 validator). The viewer's
+  // own tab schemas use valid `pattern`s, so a compiling one is accepted and enforced.
+  it('refuses $ref, an invalid pattern and a non-array or empty oneOf', async () => {
     expect(await refusal({ type: 'object', properties: { a: { $ref: '#/$defs/A' } } })).toMatch(/\$ref is not supported/);
     expect(await refusal({ type: 'object', properties: { a: { oneOf: { type: 'string' } } } })).toMatch(/oneOf must be a non-empty array/);
     expect(await refusal({ type: 'object', properties: { a: { oneOf: [] } } })).toMatch(/oneOf must be a non-empty array/);
     expect(await refusal({ type: 'object', properties: { a: { oneOf: [{ type: 'strng' }] } } })).toMatch(/oneOf\[0\]\.type must be one of/);
-    // A tab regex would run on the server's event loop (`^(a+)+$` on 40 a's stalls it).
-    expect(await refusal({ type: 'object', properties: { a: { type: 'string', pattern: '^(a+)+$' } } })).toMatch(/pattern is not supported/);
+    expect(await refusal({ type: 'object', properties: { a: { type: 'string', pattern: '[' } } })).toMatch(/pattern must be a valid regular expression/);
   });
 });
 

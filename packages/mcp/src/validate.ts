@@ -103,6 +103,8 @@ function walk(schema: JsonSchema | boolean, input: unknown, path: string, errors
     // The referenced schema and the keywords next to the `$ref` both apply.
     const { $ref: ref, ...siblings } = schema;
     if (opts.refs?.has(ref)) throw new Error(`Circular $ref '${ref}'`);
+    // A default next to the `$ref` is filled first, so the target checks it and adds its own defaults.
+    if (opts.fillDefaults && input === undefined && siblings.default !== undefined) input = clone(siblings.default);
     // Both see the caller's input; a default the target fills must not trip a sibling `additionalProperties: false`.
     const fromRef = walk(resolveRef(ref, opts.root), input, path, errors, { ...opts, refs: new Set([...(opts.refs ?? []), ref]) });
     const fromSiblings = walk(siblings, input, path, errors, opts);

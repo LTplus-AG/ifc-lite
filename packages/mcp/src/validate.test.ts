@@ -356,5 +356,11 @@ describe('validateInput: code-review cases for $ref siblings, items:false, enum 
     const schema = { type: 'object', properties: { x: { $ref: '#/$defs/A', default: 5 } }, $defs: { A: { type: 'integer' } } };
     expect(validateInput(schema, {}).value).toEqual({ x: 5 });
   });
+
+  it('walks a default next to a $ref through the target', () => {
+    const schema = { type: 'object', properties: { a: { $ref: '#/$defs/A', default: {} } },
+      $defs: { A: { type: 'object', properties: { n: { type: 'integer', default: 3 } } } } };
+    expect(validateInput(schema, {}).value).toEqual({ a: { n: 3 } });
+  });
 });
 

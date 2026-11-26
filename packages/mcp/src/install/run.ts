@@ -243,5 +243,6 @@ function writeFilePlan(
     throw err;
   }
   io.err(note(`${merged.status} "${args.name}" in ${plan.path}${backup}. Restart ${label} to load it.`));
+  if (merged.kept.length) io.err(note(`the entry kept its own ${merged.kept.join(', ')}.`));
   return 0;
 }

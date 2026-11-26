@@ -117,8 +117,9 @@ const DESKTOP_CONFIG = 'claude_desktop_config.json';
 /**
  * Claude Code on native Windows spawns the command without a shell, so the
  * `npx.cmd` shim needs `cmd /c` (its own check warns "Windows requires
- * 'cmd /c' wrapper to execute npx"). cmd then reads `^` as its escape
- * character, so the `^x.y.z` pin is written `^^x.y.z` to reach npx intact.
+ * 'cmd /c' wrapper to execute npx"). cmd reads `^` as an escape, once for
+ * `cmd /c` and again in npx.cmd's `%*`, so the `^x.y.z` pin becomes
+ * `~x.y.z`: no metacharacter, and the same range while the major is 0.
  */
 function claudeCodeLaunch(server: ServerCommand, host: HostEnv): string[] {
   // Only npx is a .cmd shim; any other command spawns as it is.
@@ -131,7 +132,7 @@ function claudeCodeLaunch(server: ServerCommand, host: HostEnv): string[] {
       `${unsafe} has a character cmd /c would interpret; Claude Code on Windows cannot be given it. Rename it or use another client.`,
     );
   }
-  return ['cmd', '/c', 'npx', ...server.args.map((a) => (isPin(a) ? a.replaceAll('^', '^^') : a))];
+  return ['cmd', '/c', 'npx', ...server.args.map((a) => (isPin(a) ? a.replace('@^', '@~') : a))];
 }
 
 function claudeDesktopConfigPath(host: HostEnv): string {

@@ -15,9 +15,9 @@
  * `https://…` as a model file path.
  *
  * Both front doors now share `parseArgs` (#11534). These tests keep the
- * published flag tables honest: they drive the REAL parser, so a flag added
- * to `parseArgs` without a matching entry (or an entry with no parser
- * branch) fails here rather than in someone's argv.
+ * published flag tables honest: they drive the REAL parser, so a table
+ * entry with no parser branch fails here rather than in someone's argv. A
+ * parser branch missing from the tables is not detected.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -41,6 +41,8 @@ describe('MCP_VALUE_FLAGS agrees with parseArgs', () => {
   it.each(MCP_BOOLEAN_FLAGS)('%s stands alone and does not swallow the next token', (flag) => {
     const opts = parseArgs([flag, 'model.ifc']);
     expect(opts.files).toEqual(['model.ifc']);
+    // Without a parser branch the flag would be "unknown" and still leave the file alone.
+    expect(opts.warnings.filter((w) => w.startsWith('unknown flag'))).toEqual([]);
   });
 
   it('has no flag in both tables', () => {

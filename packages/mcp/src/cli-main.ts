@@ -11,7 +11,7 @@
  */
 
 import { existsSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { basename, resolve } from 'node:path';
 import { bridgeConflict, parseArgs, type CliOptions } from './cli-args.js';
 import { startBridgeServer, type RunningBridge } from './bridge/run.js';
 import { DEFAULT_BRIDGE_PORT, DEFAULT_BRIDGE_VIEWER_URL } from './bridge/protocol.js';
@@ -19,7 +19,7 @@ import { StdioTransport } from './transport/stdio.js';
 import { routeConsoleToStderr } from './transport/stdio-console.js';
 import { HttpTransport, BearerTokenAuth, AllowAllAuth, type HttpAuthenticator, type SessionFactory } from './transport/http.js';
 import { createMCPServer, VERSION } from './index.js';
-import { loadIfcModel } from './loader.js';
+import { deriveModelId, loadIfcModel } from './loader.js';
 import { anonymousHttpScope, claudeDesktopConfigPath, serverScope, tokenScopes } from './cli-support.js';
 import { InMemoryModelRegistry, type ModelRegistry } from './context.js';
 import { fmtInt } from './tools/util.js';
@@ -156,7 +156,12 @@ async function loadFiles(registry: ModelRegistry, opts: CliOptions, log: (line: 
     if (!existsSync(resolve(file))) {
       throw new Error(`file argument ${index + 1} of ${opts.files.length} does not exist. Check the path, and that no flag is misspelled.`);
     }
-    const m = await loadIfcModel(resolve(file), { allowedPaths: opts.allowedPaths });
+    // `arch/model.ifc` and `struct/model.ifc` both derive `model`; suffix the
+    // later one so it cannot replace (and dispose) the earlier.
+    const base = deriveModelId(basename(file));
+    let modelId = base;
+    for (let n = 2; registry.get(modelId); n++) modelId = `${base}-${n}`;
+    const m = await loadIfcModel(resolve(file), { allowedPaths: opts.allowedPaths, modelId });
     registry.add(m);
     log(`loaded ${m.name} (${m.id}) — ${fmtInt(m.store.entityCount)} entities`);
     for (const w of m.scanWarnings ?? []) log(`warning: ${m.name}: ${w}`);

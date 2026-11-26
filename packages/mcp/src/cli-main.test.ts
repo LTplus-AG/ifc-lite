@@ -229,7 +229,9 @@ describe('Claude Code plugin manifest (#11534)', () => {
     const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as {
       mcpServers: Record<string, { command: string; args: string[] }>;
     };
-    for (const server of Object.values(manifest.mcpServers)) {
+    const servers = Object.values(manifest.mcpServers);
+    expect(servers.length).toBeGreaterThan(0);
+    for (const server of servers) {
       const pkg = server.args.find((a) => a.startsWith('@ifc-lite/mcp'));
       // A bare name runs whatever npm has, including a future major. The pin
       // is the workspace major only: a range like `>=x <y` breaks on Windows,
@@ -238,6 +240,7 @@ describe('Claude Code plugin manifest (#11534)', () => {
       expect(pkg).toBe(`@ifc-lite/mcp@${pkgVersion.split('.')[0]}`);
       const flags = server.args.slice(server.args.indexOf(pkg!) + 1);
       expect(parseArgs(flags).warnings).toEqual([]);
+      expect(parseArgs(flags).errors).toEqual([]);
     }
   });
 });

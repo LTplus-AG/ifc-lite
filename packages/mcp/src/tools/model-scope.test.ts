@@ -170,8 +170,12 @@ describe('a token narrowed to one model', () => {
       .rejects.toThrow(/not permitted for this token/);
     expect(ctx.registry.get('beta')).toBe(before);
     // Counter-example: its own model can be replaced, since NARROWED carries admin.
-    const ok = await call('model_load', { file_path: join(tmp, 'alpha.ifc'), model_id: 'alpha' });
+    const original = ctx.registry.get('alpha');
+    const ok = await call('model_load', { file_path: join(tmp, 'beta.ifc'), model_id: 'alpha' });
     expect((ok.structuredContent as { id: string }).id).toBe('alpha');
+    const replaced = ctx.registry.get('alpha');
+    expect(replaced).not.toBe(original);
+    expect(replaced?.filePath).toMatch(/beta\.ifc$/);
   });
 
   it('cannot read entities out of an out-of-scope model', async () => {

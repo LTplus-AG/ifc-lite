@@ -58,6 +58,36 @@ fn a_relationship_naming_a_left_out_boundary_is_scrubbed() {
     assert!(warnings.iter().any(|w| w.to_lowercase().contains("relationship #33 (ifcrelassociatesclassification) was withheld")), "{warnings:?}");
 }
 
+/// A permissively parsed IFC2X3 file can name a relationship in another
+/// relationship's RelatedObjects. Copy-on-write must not leave dangling IDs
+/// when the upgrade withholds the boundary named by the copied relationship.
+#[test]
+fn copied_relationship_does_not_restore_an_omitted_boundary_11457() {
+    let rels = concat!(
+        "#31=IFCCLASSIFICATION('S','E',$,'N');\n",
+        "#33=IFCRELASSOCIATESCLASSIFICATION('5XigBlHYfFnxzvgV9_gBmP',$,$,$,(#20),#31);\n",
+        "#34=IFCRELASSOCIATESCLASSIFICATION('6XigBlHYfFnxzvgV9_gBmP',$,$,$,(#33,#11),#31);",
+    );
+    let source = model("IFC2X3", &format!("{}\n{rels}", data()));
+    let options = StepOptions {
+        schema: Some("IFC4".into()),
+        copy_on_write: vec![crate::CopyOnWriteMutation {
+            express_id: 33, index: 2, value: "'Local copy'".into(),
+            referrer_id: 34, referrer_index: 4,
+        }],
+        ..StepOptions::default()
+    };
+    let (out, _, warnings) = export_step_with_diagnostics(source.as_bytes(), &options).unwrap();
+    let rows: Vec<_> = out.lines().filter(|line| line.starts_with('#')).collect();
+    let defined: std::collections::HashSet<_> = rows.iter().filter_map(|line| line.split_once('=').map(|(id, _)| id)).collect();
+    let dangling: Vec<_> = rows.iter().flat_map(|line| line.split('#').skip(1))
+        .map(|part| part.split(|c: char| !c.is_ascii_digit()).next().unwrap())
+        .filter(|id| !id.is_empty() && !defined.contains(format!("#{id}").as_str())).collect();
+    assert!(dangling.is_empty(), "{dangling:?}\n{out}\n{warnings:?}");
+    assert!(!out.lines().any(|line| line.starts_with("#20=")));
+    assert!(out.lines().any(|line| line.starts_with("#34=") && line.contains("#11")));
+}
+
 /// The same scrub through the mutation-log writer (#11457), with a log that edits nothing.
 #[test]
 fn the_log_writer_scrubs_the_same_way() {

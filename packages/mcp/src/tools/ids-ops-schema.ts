@@ -30,13 +30,22 @@ function payloadOf(kind: string, defs: Defs): JsonSchema {
   return defs[`Op_${kind.replace(/\./g, '_')}`]?.properties?.payload ?? fail(`no payload for ${kind}`);
 }
 
-/** `spec.add: specId, name, ifcVersions [index, description, …]` */
+/** `facet:FacetDraft`, `ifcVersions:[IfcVersion]`, `field:"title"|"date"`; plain fields and ids stay bare. */
+function typedField(name: string, schema: JsonSchema | undefined): string {
+  const ref = refName(schema) ?? (refName(schema?.items) && `[${refName(schema?.items)}]`);
+  if (ref && ref !== 'Uuid' && ref !== '[Uuid]') return `${name}:${ref}`;
+  if (Array.isArray(schema?.enum)) return `${name}:${schema.enum.map((v) => JSON.stringify(v)).join('|')}`;
+  return name;
+}
+
+/** `spec.add: specId, name, ifcVersions:[IfcVersion] [index, description, …]` */
 function kindLine(kind: string, defs: Defs): string {
   const payload = payloadOf(kind, defs);
-  const fields = Object.keys(payload.properties ?? {});
+  const props = payload.properties ?? {};
   const required = payload.required ?? [];
-  const optional = fields.filter((f) => !required.includes(f));
-  return `${kind}: ${required.join(', ') || '(none)'}${optional.length ? ` [${optional.join(', ')}]` : ''}`;
+  const show = (names: string[]) => names.map((n) => typedField(n, props[n])).join(', ');
+  const optional = Object.keys(props).filter((f) => !required.includes(f));
+  return `${kind}: ${show(required) || '(none)'}${optional.length ? ` [${show(optional)}]` : ''}`;
 }
 
 /** One branch of a discriminated union: `{type:"entity", name, [predefinedType]}`. */

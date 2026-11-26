@@ -26,7 +26,7 @@ import { loadIfcModel } from '../loader.js';
 import { resolveSafePath } from '../safe-path.js';
 import { modelAllowed } from '../auth/scope.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
-import { DESTRUCTIVE, EDIT, READ_ONLY } from './annotations.js';
+import { DESTRUCTIVE, READ_ONLY } from './annotations.js';
 
 export const modelInfo: Tool = {
   name: 'model_info', title: 'Model info', annotations: READ_ONLY,
@@ -116,7 +116,7 @@ export const modelList: Tool = {
 };
 
 export const modelLoad: Tool = {
-  name: 'model_load', title: 'Load IFC model', annotations: EDIT,
+  name: 'model_load', title: 'Load IFC model', annotations: DESTRUCTIVE,
   description: 'Load an IFC file from disk into the session. Requires `mutate` scope. The path must be inside the configured allowedPaths roots (when set).',
   scope: 'mutate',
   inputSchema: {

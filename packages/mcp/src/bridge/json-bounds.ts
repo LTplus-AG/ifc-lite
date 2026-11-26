@@ -13,7 +13,7 @@
  * it is deeper or larger than the limits in `BRIDGE_LIMITS`.
  */
 
-import { SUPPORTED_SCHEMA_TYPES } from '../validate.js';
+import { compilePattern, SUPPORTED_SCHEMA_TYPES } from '../validate.js';
 import { clip } from './sanitize.js';
 
 export interface JsonBounds {
@@ -116,7 +116,8 @@ export function checkSchemaShape(schema: unknown, path: string): string | null {
   }
   for (const [key, branches] of [['anyOf', anyOf], ['oneOf', oneOf]] as const) {
     if (branches === undefined) continue;
-    if (!Array.isArray(branches) || branches.length === 0) return `${path}.${key} must be a non-empty array`;
+    // An empty oneOf matches nothing; an empty anyOf has always been accepted as no constraint.
+    if (!Array.isArray(branches) || (key === 'oneOf' && branches.length === 0)) return `${path}.${key} must be ${key === 'oneOf' ? 'a non-empty' : 'an'} array`;
     for (const [i, sub] of branches.entries()) {
       const err = checkSchemaShape(sub, `${path}.${key}[${i}]`);
       if (err) return err;
@@ -125,7 +126,7 @@ export function checkSchemaShape(schema: unknown, path: string): string | null {
   // A tab schema has no `$defs` the server could resolve against; `validateInput` would throw on every call.
   if (schema.$ref !== undefined) return `${path}.$ref is not supported in a tab schema; inline the schema`;
   // validateInput runs the pattern on every call; one that does not compile would throw there instead.
-  if (schema.pattern !== undefined && !compiles(schema.pattern)) return `${path}.pattern must be a valid regular expression (u flag)`;
+  if (schema.pattern !== undefined && !compiles(schema.pattern)) return `${path}.pattern must be a valid regular expression`;
   if (additionalProperties !== undefined && typeof additionalProperties !== 'boolean') {
     const err = checkSchemaShape(additionalProperties, `${path}.additionalProperties`);
     if (err) return err;
@@ -141,7 +142,7 @@ export function checkSchemaShape(schema: unknown, path: string): string | null {
 function compiles(pattern: unknown): boolean {
   if (typeof pattern !== 'string') return false;
   try {
-    new RegExp(pattern, 'u');
+    compilePattern(pattern);
     return true;
   } catch (err) {
     if (err instanceof SyntaxError) return false;

@@ -362,5 +362,11 @@ describe('validateInput: code-review cases for $ref siblings, items:false, enum 
       $defs: { A: { type: 'object', properties: { n: { type: 'integer', default: 3 } } } } };
     expect(validateInput(schema, {}).value).toEqual({ a: { n: 3 } });
   });
+
+  it('runs a pattern that only compiles without the u flag (hand-written escapes like \\-)', () => {
+    const schema = { type: 'object', properties: { d: { type: 'string', pattern: '^\\d{4}\\-\\d{2}$' } } };
+    expect(validateInput(schema, { d: '2026-11' }).valid).toBe(true);
+    expect(validateInput(schema, { d: '2026/11' }).valid).toBe(false);
+  });
 });
 

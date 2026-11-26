@@ -393,7 +393,7 @@ palette. Reads, selection inspection and palette discovery are available initial
   `required` as strings, numeric bounds as numbers, ...), `type` must name a
   type the bridge enforces (`string`, `number`, `integer`, `boolean`, `array`,
   `object`, `null`), and `oneOf`/`anyOf` must be arrays of schemas. `pattern` must
-  compile as a `u`-flag regular expression, and `$ref` is refused (a tab
+  compile as a regular expression, and `$ref` is refused (a tab
   schema has no `$defs` to resolve against). The bridge enforces `enum`,
   `const`, `pattern`, `uniqueItems`, `oneOf`, `anyOf` and schema-valued
   `additionalProperties`. Other JSON Schema keywords (`format`,

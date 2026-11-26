@@ -234,7 +234,7 @@ function walk(schema: JsonSchema | boolean, input: unknown, path: string, errors
     if (schema.maxLength !== undefined && input.length > schema.maxLength) {
       errors.push({ path, message: `String longer than ${schema.maxLength}` });
     }
-    if (typeof schema.pattern === 'string' && !new RegExp(schema.pattern, 'u').test(input)) {
+    if (typeof schema.pattern === 'string' && !compilePattern(schema.pattern).test(input)) {
       errors.push({ path, message: `Does not match pattern ${schema.pattern}` });
     }
   }
@@ -301,6 +301,21 @@ function decodePointerSegment(raw: string, ref: string): string {
     throw err;
   }
   return decoded.replace(/~1/g, '/').replace(/~0/g, '~');
+}
+
+/**
+ * A schema `pattern` as a RegExp: with the `u` flag when it compiles that way
+ * (what 2020-12 means), else without it, because hand-written patterns often
+ * carry escapes like `\-` that only non-unicode mode accepts. Throws a
+ * SyntaxError when neither compiles.
+ */
+export function compilePattern(source: string): RegExp {
+  try {
+    return new RegExp(source, 'u');
+  } catch (err) {
+    if (err instanceof SyntaxError) return new RegExp(source);
+    throw err;
+  }
 }
 
 function own(obj: Record<string, unknown>, key: string): unknown {

@@ -77,7 +77,7 @@ const inputSchema: JsonSchema = {
     },
     timeout_ms: {
       type: 'integer', minimum: 100, maximum: MAX_TIMEOUT_MS, default: DEFAULT_TIMEOUT_MS,
-      description: `Execution time limit in milliseconds (default ${DEFAULT_TIMEOUT_MS}, max ${MAX_TIMEOUT_MS}). Script code is interrupted when it is exceeded; a single synchronous bim.* call already running is not cut short. Script code runs on the server's event loop, so other requests and a cancel wait until it yields or is interrupted. bim calls the script starts but does not await still count: if they outlast the limit the run is a TIMEOUT.`,
+      description: `Execution time limit in milliseconds (default ${DEFAULT_TIMEOUT_MS}, max ${MAX_TIMEOUT_MS}). Script code is interrupted when it is exceeded; a single synchronous bim.* call already running is not cut short. Script code runs on the server's event loop, so other requests and a cancel wait until it yields or is interrupted. bim calls the script starts but does not await still count: if they outlast the limit the run is a TIMEOUT. The limit is wall-clock, so time spent waiting behind another session's script counts too.`,
     },
     memory_mb: {
       type: 'integer', minimum: 8, maximum: MAX_MEMORY_MB, default: DEFAULT_MEMORY_MB,
@@ -145,7 +145,6 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
     new ToolExecutionError({ code: ToolErrorCode.CANCELLED, message: 'Script cancelled by the client.', details });
   const scriptError = (message: string, details: Record<string, unknown>) => new ToolExecutionError({
     // kind tells a script failure from INVALID_INPUT on the tool's own arguments.
-    // Clipped here too: a ScriptError from the sandbox can carry a script-sized message.
     code: ToolErrorCode.INVALID_INPUT,
     // Envelope messages arrive clipped; a ScriptError's is clipped where it is caught.
     message: `Script error: ${message}`,

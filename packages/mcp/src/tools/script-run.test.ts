@@ -280,6 +280,7 @@ describe('script_run', () => {
     expect((await runError('null.x')).message).toMatch(/^Script error: TypeError: /);
     const err = await runError('throw Object.create(null)');
     expect(err.message).toBe('Script error: a thrown value with no string form');
+    expect((await runError("throw ''")).message).toBe('Script error: an empty string was thrown');
     expect(err.hint).toBeUndefined();
   });
 

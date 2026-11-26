@@ -102,6 +102,7 @@ export function wrapScript(code: string): string {
       try { return c && c.name === 'InternalError' ? 'out of memory while printing the error' : 'a thrown value with no string form'; }
       catch (_) { return 'a thrown value with no string form'; }
     }
+    if (m === '') return 'an empty ' + (typeof e) + ' was thrown';
     return apply(slice, m, [0, maxMessage + 1]);
   }
   function env(v) {

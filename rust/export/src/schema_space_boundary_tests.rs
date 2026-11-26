@@ -84,6 +84,10 @@ fn the_merged_writer_scrubs_a_left_out_boundary() {
         .filter(|id| !id.is_empty() && !defined.contains(id)).collect();
     assert!(dangling.is_empty(), "{dangling:?}\n{out}");
     assert_eq!(out.lines().filter(|l| l.contains("=IFCRELSPACEBOUNDARY(")).count(), 2, "{out}");
+    // #32 keeps its other member in each model; only #33, left with none, is omitted.
+    let kept: Vec<&str> = out.lines().filter(|l| l.contains("=IFCRELASSOCIATESCLASSIFICATION(")).collect();
+    assert_eq!(kept.len(), 2, "{out}");
+    assert_eq!(kept[0], "#32=IFCRELASSOCIATESCLASSIFICATION('4XigBlHYfFnxzvgV9_gBmP',$,$,$,(#11),#31);", "{out}");
     assert!(stats.warnings.iter().any(|w| w.contains("#33 (IFCRELASSOCIATESCLASSIFICATION) was omitted because a required IFC4 attribute lost a reference")), "{:?}", stats.warnings);
 }
 

@@ -74,6 +74,7 @@ const CLASS = "#31=IFCCLASSIFICATION('S','E',$,'N');";
 const MIXED = "#32=IFCRELASSOCIATESCLASSIFICATION('4XigBlHYfFnxzvgV9_gBmP',$,$,$,(#20,#11),#31);";
 const SOLE = "#33=IFCRELASSOCIATESCLASSIFICATION('5XigBlHYfFnxzvgV9_gBmP',$,$,$,(#20),#31);";
 const REFS = `${DATA}\n${CLASS}\n${MIXED}\n${SOLE}`;
+const MIXED_KEPT = "#32=IFCRELASSOCIATESCLASSIFICATION('4XigBlHYfFnxzvgV9_gBmP',$,$,$,(#11),#31);";
 const relLines = (text: string) => text.split('\n').filter((l) => l.includes('=IFCRELASSOCIATESCLASSIFICATION('));
 
 describe('a relationship naming a left-out IfcRelSpaceBoundary (#11457)', () => {
@@ -82,7 +83,7 @@ describe('a relationship naming a left-out IfcRelSpaceBoundary (#11457)', () => 
     const result = new StepExporter(store).export({ schema: 'IFC4' });
     const text = out(result.content);
     expect(ids(text)).toEqual(['#21']);
-    expect(relLines(text)).toEqual(["#32=IFCRELASSOCIATESCLASSIFICATION('4XigBlHYfFnxzvgV9_gBmP',$,$,$,(#11),#31);"]);
+    expect(relLines(text)).toEqual([MIXED_KEPT]);
     expect(text).not.toMatch(/#20\b/);
     expect(result.stats.warnings.join('\n').toLowerCase()).toContain('relationship #33 (ifcrelassociatesclassification) was withheld');
     expect(result.stats.warnings.join('\n')).toContain('#20, #22');
@@ -100,7 +101,10 @@ describe('a merged upgrade naming a left-out IfcRelSpaceBoundary (#11457)', () =
     const named = [...data.matchAll(/#(\d+)(?!\d|=)/g)].map((m) => m[1]);
     expect(named.filter((id) => !defined.has(id))).toEqual([]);
     expect(ids(text)).toHaveLength(2);
-    expect(relLines(text).every((line) => line.includes('(#'))).toBe(true);
+    // #32 keeps its other member in each model; only #33, left with none, is omitted.
+    const kept = relLines(text);
+    expect(kept).toHaveLength(2);
+    expect(kept[0]).toBe(MIXED_KEPT);
     expect(result.stats.warnings.join('\n')).toMatch(/#33 \(IFCRELASSOCIATESCLASSIFICATION\) was omitted because a required IFC4 attribute lost a reference/);
   });
 });

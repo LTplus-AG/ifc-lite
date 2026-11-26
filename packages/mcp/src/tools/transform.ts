@@ -23,12 +23,11 @@ import {
   type IfcSchemaVersion,
 } from '@ifc-lite/export';
 import type { Tool } from './types.js';
-import { fmtInt, okResult, resolveModel } from './util.js';
+import { fmtInt, listAllowedModelIds, okResult, resolveModel } from './util.js';
 import { withIfcBytes } from './export-source.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import { resolveSafePath } from '../safe-path.js';
 import { loadIfcModelFromBytes } from '../loader.js';
-import { modelAllowed } from '../auth/scope.js';
 import { modelAnonymize } from './transform-anonymize.js';
 import { meshTransformTools } from './transform-mesh.js';
 import {
@@ -73,8 +72,7 @@ const modelMerge: Tool = {
     warnings: { type: 'array', items: { type: 'string' } },
   }),
   async handler(input, ctx) {
-    const ids = (input.model_ids as string[] | undefined)
-      ?? ctx.registry.list().filter((m) => modelAllowed(ctx.scope, m.id)).map((m) => m.id);
+    const ids = (input.model_ids as string[] | undefined) ?? listAllowedModelIds(ctx);
     if (new Set(ids).size !== ids.length) throw invalid('model_ids lists a model more than once.');
     if (ids.length < 2) throw invalid(`model_merge needs at least 2 models; ${ids.length} given or loaded.`);
     const models = ids.map((id) => resolveModel(ctx, id));
@@ -233,8 +231,10 @@ const modelExtract: Tool = {
         throw new ToolExecutionError({ code: ToolErrorCode.ENTITY_NOT_FOUND, message: (err as Error).message });
       }
       if (seeds.size === 0) {
-        const tried = [types.length > 0 ? `no product of type ${types.join(', ')} (or a subtype)` : '', storeys.length > 0 ? `no product under storey ${storeys.join(', ')}` : ''];
-        throw invalid(`Nothing matched: ${tried.filter(Boolean).join(', and ')}.`);
+        const tried: string[] = [];
+        if (types.length > 0) tried.push(`no product of type ${types.join(', ')} (or a subtype)`);
+        if (storeys.length > 0) tried.push(`no product under storey ${storeys.join(', ')}`);
+        throw invalid(`Nothing matched: ${tried.join(', and ')}.`);
       }
       const subset = buildSubset(seeds, parsed);
       const out = Buffer.from(serializeSubset(subset, parsed), 'latin1');

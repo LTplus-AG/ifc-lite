@@ -134,6 +134,7 @@ describe('script_run', () => {
     const err = await runError(`const a = []; for (;;) a.push(new Array(1 << 16).fill(1.5));`, { memory_mb: 8, timeout_ms: 10_000 });
     expect(err.code).toBe('INVALID_INPUT');
     expect(err.message).toMatch(/memory/i);
+    expect(err.hint).toMatch(/memory_mb/);
     expect((await run('1 + 1')).structuredContent?.value).toBe(2);
   }, 30_000);
 

@@ -83,7 +83,7 @@ const inputSchema: JsonSchema = {
 
 const outputSchema: JsonSchema = {
   type: 'object',
-  required: ['model_id', 'mode', 'value', 'value_truncated', 'logs', 'logs_truncated', 'duration_ms', 'mutations_queued'],
+  required: ['model_id', 'mode', 'value', 'value_truncated', 'logs', 'logs_truncated', 'duration_ms'],
   properties: {
     model_id: { type: 'string' },
     mode: { type: 'string', enum: ['read', 'mutate'] },
@@ -99,7 +99,7 @@ const outputSchema: JsonSchema = {
     },
     logs_truncated: { type: 'boolean' },
     duration_ms: { type: 'number' },
-    mutations_queued: { type: 'integer', minimum: 0, description: 'Mutation journal entries this script added (an edit it later undid still counts); persist pending edits with export_ifc or model_save.' },
+    mutations_queued: { type: 'integer', minimum: 0, description: 'Mutation journal entries this script added (an edit it later undid still counts); persist pending edits with export_ifc or model_save. Absent if the model was unloaded during the run.' },
   },
 };
 
@@ -252,10 +252,12 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
     // kind tells a script failure from INVALID_INPUT on the tool's own arguments.
     // Clipped here too: a ScriptError from the sandbox can carry a script-sized message.
     code: ToolErrorCode.INVALID_INPUT, message: `Script error: ${clipUtf16(message, MAX_MESSAGE_CHARS)}`, details: { kind: 'script', ...details },
-    // Only when the failure looks like touching a namespace that is absent.
-    hint: mode === 'read' && /\bbim\.(mutate|store)\b/.test(code) && /of undefined|undefined is not/.test(message)
-      ? 'script_run has no bim.mutate or bim.store; use script_run_mutate to edit the model.'
-      : undefined,
+    hint: /out of memory/i.test(message)
+      ? `Raise memory_mb (max ${MAX_MEMORY_MB}) or keep less in memory.`
+      // Only when the failure looks like touching a namespace that is absent.
+      : mode === 'read' && /\bbim\.(mutate|store)\b/.test(code) && /of undefined|undefined is not/.test(message)
+        ? 'script_run has no bim.mutate or bim.store; use script_run_mutate to edit the model.'
+        : undefined,
   });
   if (ctx.signal.aborted) throw cancelled();
 
@@ -264,7 +266,17 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
   // concurrent tool call editing the same model would be counted too.
   // Counted by id, so mutations the script undoes are not subtracted.
   const before = new Set(mode === 'mutate' ? pendingMutationIds(model) : []);
-  const queued = () => (mode === 'mutate' ? pendingMutationIds(model).filter((id) => !before.has(id)).length : 0);
+  // Undefined when the model was unloaded mid-run (its backend is disposed):
+  // the count is lost, but the run's own outcome must still come through.
+  const queued = (): number | undefined => {
+    if (mode !== 'mutate') return 0;
+    try {
+      return pendingMutationIds(model).filter((id) => !before.has(id)).length;
+    } catch (err) {
+      ctx.log.log('warning', 'script_run: could not count queued mutations', { error: describeThrown(err) });
+      return undefined;
+    }
+  };
   return withScriptSlot(async () => {
     const sandbox = await createSandbox(model.bim, {
       permissions: mode === 'mutate' ? MUTATE_PERMISSIONS : READ_PERMISSIONS,
@@ -293,7 +305,7 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
       if ('error' in outcome) throw scriptError(outcome.error, { logs, logs_truncated: truncated, mutations_queued: mutationsQueued });
       const summary = [
         `Script ran in ${result.durationMs} ms on model '${model.id}' (${mode}).`,
-        mutationsQueued > 0 ? `${mutationsQueued} mutation(s) queued; persist with export_ifc or model_save.` : '',
+        (mutationsQueued ?? 0) > 0 ? `${mutationsQueued} mutation(s) queued; persist with export_ifc or model_save.` : '',
         outcome.value_truncated ? `Value truncated (over ${MAX_VALUE_CHARS} JSON characters).` : '',
       ].filter(Boolean).join(' ');
       const structured = {
@@ -308,14 +320,7 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
       // A sandbox disposed by a cancel rejects with a plain Error
       // that carries no logs; only a ScriptError has them.
       const shaped = err instanceof ScriptError ? shapeLogs(err.logs) : { logs: [], truncated: false };
-      let mutationsQueued: number | undefined;
-      try {
-        mutationsQueued = queued();
-      } catch (countErr) {
-        // A model unloaded mid-run disposes its backend; keep the real error.
-        ctx.log.log('warning', 'script_run: could not count queued mutations', { error: describeThrown(countErr) });
-      }
-      const details = { logs: shaped.logs, logs_truncated: shaped.truncated, mutations_queued: mutationsQueued };
+      const details = { logs: shaped.logs, logs_truncated: shaped.truncated, mutations_queued: queued() };
       if (ctx.signal.aborted) throw cancelled(details);
       // Script throws are caught in the wrapper, so 'interrupted' here is the
       // sandbox's own interrupt handler (it reports nothing more specific).
@@ -353,7 +358,7 @@ async function withScriptSlot<T>(run: () => Promise<T>): Promise<T> {
   }
 }
 
-const SHARED_DESCRIPTION = `Runs in a QuickJS sandbox with only the \`bim\` SDK global (bim.query, bim.model, bim.export, bim.lens, bim.clash, bim.cost, bim.structural, bim.schedule, bim.create) and console; no network, filesystem, viewer or timers. Returns the last expression value plus captured console output. Script code runs on the server's event loop, so other requests wait while it runs (bounded by timeout_ms). At most ${MAX_CONCURRENT_SCRIPTS} scripts run at once per server; more get RATE_LIMITED.`;
+const SHARED_DESCRIPTION = `Runs in a QuickJS sandbox with only the \`bim\` SDK global (bim.query, bim.model, bim.export, bim.lens, bim.clash, bim.cost, bim.structural, bim.schedule, bim.create) and console; no network, filesystem, viewer or timers. Returns the last expression value plus captured console output. Script code runs on the server's event loop, so other requests wait while it runs (bounded by timeout_ms). At most ${MAX_CONCURRENT_SCRIPTS} scripts run at once per server, shared across all sessions; more get RATE_LIMITED.`;
 
 export const scriptRunTool: Tool = {
   name: 'script_run',

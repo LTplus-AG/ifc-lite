@@ -111,7 +111,7 @@ export class CornerBuildPipeline {
     const active = this.ctx ? this.activeOf(this.ctx).length : 0;
     return {
       activePieces: active, candidatePieces: this.candidatePieces, gridPieces: run?.grid.pieces.length ?? 0,
-      complete: !!run && run.order !== null && run.cursor >= run.order.length && !!this.ctx && run.pieces === this.ctx.pieces,
+      complete: !!this.ctx && this.isComplete(this.ctx, this.keyOf(this.ctx)),
       gridsStarted: this.gridsStarted, candidateBuilds: this.candidateBuilds, slices: this.slices,
       approxBytes: this.candidateBytes + (run?.grid.approxBytes() ?? 0),
     };
@@ -137,6 +137,12 @@ export class CornerBuildPipeline {
     return list;
   }
 
+  /** The view as the grid sees it right now. */
+  private keyOf(ctx: BuildContext): string {
+    return gridKey(ctx.liveViewKey(), ctx.clip, ctx.viewport.width, ctx.viewport.height,
+      ctx.hiddenIds, ctx.isolatedIds, ctx.cell, ctx.eligible);
+  }
+
   private isComplete(ctx: BuildContext, key: string): boolean {
     const r = this.run;
     return !!r && r.key === key && r.pieces === ctx.pieces && r.order !== null && r.cursor >= r.order.length;
@@ -151,8 +157,7 @@ export class CornerBuildPipeline {
     const ctx = this.ctx;
     if (!ctx) return;
     this.slices++;
-    const key = gridKey(ctx.liveViewKey(), ctx.clip, ctx.viewport.width, ctx.viewport.height,
-      ctx.hiddenIds, ctx.isolatedIds, ctx.cell, ctx.eligible);
+    const key = this.keyOf(ctx);
     const t0 = ctx.now();
     if (this.seen?.key !== key) this.seen = { key, at: t0 };
     const wait = ctx.settleMs - (t0 - this.seen.at);

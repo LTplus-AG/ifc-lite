@@ -55,10 +55,10 @@ const modelSimplify: Tool = {
       try {
         const ids = (input.express_ids as number[] | undefined)
           ?? (await session.heaviest(Number.MAX_SAFE_INTEGER)).map((e) => e.expressId);
-        if (ids.length === 0) throw invalid('The model produced no element meshes to simplify.');
+        if (ids.length === 0) throw new ToolExecutionError({ code: ToolErrorCode.UNSUPPORTED_OPERATION, message: 'The model produced no element meshes to simplify.' });
         const simplified = await session.simplify(ids, level);
         if (simplified.elements.length === 0) {
-          throw invalid(`No elements could be simplified (${simplified.skipped.length} skipped).`);
+          throw new ToolExecutionError({ code: ToolErrorCode.UNSUPPORTED_OPERATION, message: `No elements could be simplified (${simplified.skipped.length} skipped).` });
         }
         const exported = await session.exportIfc();
         // The export report is the authority on what the file contains; with

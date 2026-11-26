@@ -55,7 +55,7 @@ export function fileOutputSchema(extra: Record<string, JsonSchema>): JsonSchema 
  */
 export function requireDistinctPaths(a: string, b: string | null | undefined, name: string): void {
   if (b == null) return;
-  const fold = (p: string) => (CASE_INSENSITIVE_FS ? p.toLowerCase() : p);
+  const fold = (p: string) => (CASE_INSENSITIVE_FS ? p.normalize('NFC').toLowerCase() : p);
   if (fold(a) === fold(b)) throw invalid(`${name} must differ from file_path.`);
 }
 

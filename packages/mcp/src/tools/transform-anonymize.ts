@@ -61,7 +61,8 @@ function anonymizeSeeds(m: LoadedModel, input: Record<string, unknown>): Set<num
     // An explicit '#id' is an id only, never a Name or name fragment.
     const isId = key.startsWith('#');
     const storeys = m.bim.storeys();
-    const fragment = isId ? [] : storeys.filter((s) => s.name?.trim().toLowerCase().includes(key.toLowerCase()));
+    // A bare number is an id or an exact name, never a fragment ('1' must not pick 'Level 10').
+    const fragment = isId || /^\d+$/.test(key) ? [] : storeys.filter((s) => s.name?.trim().toLowerCase().includes(key.toLowerCase()));
     const byId = storeys.find((s) => s.globalId === key) ?? storeys.find((s) => String(s.ref.expressId) === id);
     // Name first, then LongName, as extract's --storey resolves it.
     const longName = (s: (typeof storeys)[number]) =>

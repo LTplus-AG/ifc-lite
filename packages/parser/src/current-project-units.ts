@@ -33,6 +33,12 @@ export function readCurrentProjectUnits(store: IfcDataStore, view: MetadataReadV
         const read: UnitEntityReader = id => {
             const record = effectiveMetadataRecord(store, id, view);
             if (!record) throw new ProjectUnitReadError('Native project unit dependency is unreadable');
+            // A clear remains explicit in the session overlay, even when the saved slot was $.
+            if (id === selected && record.attributes[8] === null &&
+                (view.getPositionalMutationsForEntity(id)?.has(8) ||
+                 view.getAttributeMutationsForEntity(id).some(edit => edit.name === 'UnitsInContext'))) {
+                throw new ProjectUnitReadError('Native project unit context is unset');
+            }
             return record;
         };
         return { status: 'available', reason: null, value: extractProjectUnits(store.source, store.entityIndex, selected, read) };

@@ -134,7 +134,7 @@ test('#7382 same-name native own and inherited sets remain owned, searchable and
   }
 });
 
-test('#7382 unknown native project context keeps explicit inherited Length and refuses implicit own unit labels', async t => {
+test('#7382 clearing native units preserves explicit Length and reload gives implicit Length its SI default', async t => {
   const x = await nativeLength(t); if (!x) return;
   x.current.createQuantitySet(x.f.id, 'Own implicit quantities', [{ name: 'OwnRawLength', value: 7, quantityType: QuantityType.Length }]);
   x.current.setPositionalAttribute(x.project, 8, null);
@@ -144,11 +144,16 @@ test('#7382 unknown native project context keeps explicit inherited Length and r
   assert.equal(own.value, 7); assert.equal(own.explicitUnit, undefined);
   const inherited = extractTypeQuantitiesOnDemand(saved, x.f.id)?.quantities[0]?.quantities[0]; assert.ok(inherited);
   assert.equal(inherited.value, 10); assert.equal(inherited.explicitUnit, 'm');
-  installSource(saved);
   const ui = render(<PropertiesPanel />);
   assert.equal(quantityRow(ui, 'OwnRawLength').querySelector('span.font-mono')?.textContent, '7');
   assert.equal(quantityRow(ui, 'NetVolume').querySelector('span.font-mono')?.textContent, '10 m');
   assert.match(ui.textContent ?? '', /Current quantity units are unavailable/);
+  cleanup();
+  installSource(saved);
+  const reopened = render(<PropertiesPanel />);
+  assert.equal(quantityRow(reopened, 'OwnRawLength').querySelector('span.font-mono')?.textContent, '7 m');
+  assert.equal(quantityRow(reopened, 'NetVolume').querySelector('span.font-mono')?.textContent, '10 m');
+  assert.doesNotMatch(reopened.textContent ?? '', /Current quantity units are unavailable/);
 });
 
 

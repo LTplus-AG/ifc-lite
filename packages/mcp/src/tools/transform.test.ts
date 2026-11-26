@@ -227,6 +227,20 @@ describe('model_anonymize', () => {
     }
   });
 
+  it('refuses a blank storey and a name fragment that matches several storeys', async () => {
+    await expect(call('model_anonymize', { storey: ' ', file_path: join(tmp, 'x.ifc') })).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+    await writeFile(join(tmp, 'two.ifc'), model('C', 'Level 10').replace('ENDSEC;\nEND', "#43= IFCBUILDINGSTOREY('0000000000000000000S2C',$,'Level 11',$,$,#40,$,$,.ELEMENT.,3.);\nENDSEC;\nEND"), 'utf-8');
+    ctx.registry.remove('a');
+    ctx.registry.add(await loadIfcModel(join(tmp, 'two.ifc'), { modelId: 'two' }));
+    await expect(call('model_anonymize', { storey: 'level 1', file_path: join(tmp, 'x.ifc') }))
+      .rejects.toMatchObject({ code: 'INVALID_INPUT', message: expect.stringContaining('Level 10, Level 11') });
+  });
+
+  it('reads an unprefixed type as Ifc-prefixed, like the CLI', async () => {
+    const res = await call('model_anonymize', { types: [' Wall'], file_path: join(tmp, 'anon-type.ifc') });
+    expect(res.structuredContent.seedCount).toBe(2);
+  });
+
   it('accepts a storey express id written as #id', async () => {
     const res = await call('model_anonymize', { storey: '#41', file_path: join(tmp, 'anon-hash.ifc') });
     expect(res.structuredContent.seedCount).toBe(3);

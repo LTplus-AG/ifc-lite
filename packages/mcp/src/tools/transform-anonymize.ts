@@ -17,7 +17,7 @@ import { fmtInt, okResult, resolveGlobalIds, resolveModel } from './util.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import { resolveSafePath } from '../safe-path.js';
 import type { LoadedModel, ToolContext } from '../context.js';
-import { FILE_WRITE_ANNOTATIONS, fileOutputSchema, invalid, requireDistinctPaths, requireNoPendingEdits, stringList } from './transform-schema.js';
+import { FILE_WRITE_ANNOTATIONS, fileOutputSchema, invalid, optionalOutputPath, requireDistinctPaths, requireNoPendingEdits, stringList } from './transform-schema.js';
 
 /** Each relationship the walk follows, with the setting it takes when on (when off: false or 'none'). */
 const FOLLOWED = {
@@ -46,17 +46,23 @@ function anonymizeSeeds(m: LoadedModel, input: Record<string, unknown>): Set<num
     if (!ids) throw new ToolExecutionError({ code: ToolErrorCode.ENTITY_NOT_FOUND, message: `global_ids: GlobalId ${g} not found.` });
     for (const id of ids) seeds.add(id);
   }
-  for (const type of (input.types as string[] | undefined) ?? []) {
+  for (const raw of (input.types as string[] | undefined) ?? []) {
+    const trimmed = raw.trim();
+    if (!trimmed) continue;
+    // `Wall` means `IfcWall`, as `ifc-lite anonymize --type` reads it.
+    const type = /^ifc/i.test(trimmed) ? trimmed : `Ifc${trimmed}`;
     const matched = m.bim.query().byType(type).toArray();
     if (matched.length === 0) throw invalid(`types: no ${type} entities.`);
     for (const e of matched) seeds.add(e.ref.expressId);
   }
-  if (typeof input.storey === 'string') {
-    const key = input.storey.trim();
+  const key = typeof input.storey === 'string' ? input.storey.trim() : '';
+  if (key) {
     const id = key.replace(/^#/, '');
     const storeys = m.bim.storeys();
-    const storey = storeys.find((s) => s.globalId === key) ?? storeys.find((s) => String(s.ref.expressId) === id) ?? storeys.find((s) => s.name === key)
-      ?? storeys.find((s) => s.name?.toLowerCase().includes(key.toLowerCase()));
+    const fragment = storeys.filter((s) => s.name?.toLowerCase().includes(key.toLowerCase()));
+    const exact = storeys.find((s) => s.globalId === key) ?? storeys.find((s) => String(s.ref.expressId) === id) ?? storeys.find((s) => s.name === key);
+    if (!exact && fragment.length > 1) throw invalid(`storey: '${key}' matches ${fragment.map((s) => s.name).join(', ')}; name one exactly.`);
+    const storey = exact ?? fragment[0];
     if (!storey) throw new ToolExecutionError({ code: ToolErrorCode.ENTITY_NOT_FOUND, message: `storey: ${key} not found (available: ${storeys.map((s) => s.name).filter(Boolean).join(', ') || 'none'}).` });
     const contained = m.bim.contains(storey.ref);
     if (contained.length === 0) throw invalid(`storey: ${key} contains nothing.`);
@@ -68,7 +74,7 @@ function anonymizeSeeds(m: LoadedModel, input: Record<string, unknown>): Set<num
 async function runAnonymize(m: LoadedModel, input: Record<string, unknown>, ctx: ToolContext) {
   requireNoPendingEdits(m, 'model_anonymize');
   const filePath = await resolveSafePath(input.file_path, ctx, 'write');
-  const guidMapPath = typeof input.guid_map_path === 'string' ? await resolveSafePath(input.guid_map_path, ctx, 'write') : undefined;
+  const guidMapPath = await optionalOutputPath(input, 'guid_map_path', ctx);
   requireDistinctPaths(filePath, guidMapPath, 'guid_map_path');
   const seeds = anonymizeSeeds(m, input);
   if (seeds.size === 0) throw invalid('Select something: express_ids, global_ids, types or storey.');
@@ -110,7 +116,7 @@ async function runAnonymize(m: LoadedModel, input: Record<string, unknown>, ctx:
       includedCount: related.all.size,
       entityCount: result.stats.entityCount,
       truncated: related.truncated,
-      guidMapPath: guidMapPath ?? null,
+      guidMapPath,
       warnings,
     },
   );
@@ -132,7 +138,7 @@ export const modelAnonymize: Tool = {
       express_ids: { type: 'array', items: { type: 'integer', minimum: 1 }, description: 'Seed entities by express id.' },
       global_ids: { ...stringList, description: 'Seed entities by GlobalId.' },
       types: { ...stringList, description: 'Every entity of these IFC types.' },
-      storey: { type: 'string', description: 'Every entity contained in this storey (GlobalId, express id or name).' },
+      storey: { type: 'string', minLength: 1, description: 'Every entity contained in this storey (GlobalId, express id or name).' },
       exclude_relationships: { type: 'array', items: { type: 'string', enum: RELATIONSHIPS }, description: 'Relationships not to follow when expanding the seeds.' },
       connect_depth: { type: 'integer', minimum: 0, description: 'Also follow IfcRelConnectsPathElements this many hops (default 0).' },
       keep_psets: { type: 'boolean', description: 'Keep property sets instead of clearing them.' },

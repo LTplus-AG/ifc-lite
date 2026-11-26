@@ -19,7 +19,7 @@
  * site/building/storey/space chain actually reached by what was selected, not
  * every spatial-structure instance in the model, see `@ifc-lite/export` step-subset-spatial-ancestors.ts) and
  * every spatial-structure relation, its related-objects SET rewritten down to
- * the kept members (see `@ifc-lite/export` step-subset-relations.ts) — so the result parses and
+ * the kept members (see `@ifc-lite/export` step-subset-relations.ts), so the result parses and
  * renders on its own.
  *
  * `--detect --report [--json]` prints the triage report WITHOUT extracting. The

@@ -5,8 +5,9 @@
 /** Shared metadata and guards for the file-writing transform tools. */
 
 import type { JsonSchema, ToolAnnotations } from '../protocol/index.js';
-import type { LoadedModel } from '../context.js';
+import type { LoadedModel, ToolContext } from '../context.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
+import { resolveSafePath } from '../safe-path.js';
 
 /**
  * Writes a new file and leaves the loaded model alone, but replaces an
@@ -57,6 +58,14 @@ export function requireDistinctPaths(a: string, b: string | null | undefined, na
 
 /** The default filesystems of macOS and Windows ignore case. */
 export const CASE_INSENSITIVE_FS = process.platform === 'darwin' || process.platform === 'win32';
+
+/** A second output path argument: absent is null; present must be a non-empty string inside the allowed paths. */
+export async function optionalOutputPath(input: Record<string, unknown>, key: string, ctx: ToolContext): Promise<string | null> {
+  const raw = input[key];
+  if (raw === undefined) return null;
+  if (typeof raw !== 'string' || raw.length === 0) throw invalid(`${key} must be a non-empty string.`);
+  return resolveSafePath(raw, ctx, 'write');
+}
 
 export function invalid(message: string): ToolExecutionError {
   return new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message });

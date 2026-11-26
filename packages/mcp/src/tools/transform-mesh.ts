@@ -15,7 +15,7 @@ import { fmtInt, okResult, resolveModel } from './util.js';
 import { withIfcBytes } from './export-source.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import { resolveSafePath } from '../safe-path.js';
-import { FILE_WRITE_ANNOTATIONS, fileOutputSchema, invalid, requireDistinctPaths } from './transform-schema.js';
+import { FILE_WRITE_ANNOTATIONS, fileOutputSchema, invalid, optionalOutputPath, requireDistinctPaths } from './transform-schema.js';
 
 const modelSimplify: Tool = {
   name: 'model_simplify',
@@ -127,7 +127,7 @@ const modelLod: Tool = {
     const level = input.level as 0 | 1;
     const filePath = await resolveSafePath(input.file_path, ctx, 'write');
     if (level === 0 && input.meta_path !== undefined) throw invalid('meta_path applies to level 1 only.');
-    const metaPath = typeof input.meta_path === 'string' ? await resolveSafePath(input.meta_path, ctx, 'write') : null;
+    const metaPath = await optionalOutputPath(input, 'meta_path', ctx);
     requireDistinctPaths(filePath, metaPath, 'meta_path');
     return withIfcBytes(m, async (bytes) => {
       if (level === 0) {

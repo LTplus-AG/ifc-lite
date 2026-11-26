@@ -139,6 +139,7 @@ const modelConvert: Tool = {
           targetType: { type: ['string', 'null'] },
           kind: { type: 'string' },
           count: { type: 'integer' },
+          droppedAttributes: { type: 'array', items: { type: 'string' }, description: 'Attributes the target schema has no slot for.' },
         },
       },
     },
@@ -176,7 +177,7 @@ const modelConvert: Tool = {
           bytes,
           sourceSchema: source,
           targetSchema: target,
-          lossReport: loss.entries.map((e) => ({ type: e.sourceType, targetType: e.targetType ?? null, kind: e.kind, count: e.count })),
+          lossReport: loss.entries.map((e) => ({ type: e.sourceType, targetType: e.targetType ?? null, kind: e.kind, count: e.count, droppedAttributes: e.droppedAttributes })),
         },
       );
     } finally {

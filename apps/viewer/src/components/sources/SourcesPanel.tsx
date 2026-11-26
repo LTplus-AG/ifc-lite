@@ -6,6 +6,8 @@ import { Suspense, useState, useCallback, useEffect, useMemo, useRef } from 'rea
 import { lazyChunk } from '@/lib/lazy-chunk';
 import type { ConnectionTestResult } from '@ifc-lite/plugin-api';
 import { useSourceHost } from '@/services/sources/SourceHostProvider';
+import { RegistrationFailureMessage } from './SourceRegistrationFailureMessage';
+import { SourceWriteBackModels } from './SourceWriteBackAction';
 import { SourceSettingsDialog } from './SourceSettingsDialog';
 import { SourceBrowser } from './SourceBrowser';
 import { SourceProviderRow } from './SourceProviderRow';
@@ -86,18 +88,6 @@ export function notifyRevisionSync(t: Translate, updates: readonly SourceRevisio
   const deleted = updates.filter((u) => u.event.deleted).length;
   const changed = updates.length - deleted;
   toast.info(revisionSyncMessage(t, getLocale(), changed, deleted));
-}
-
-export function RegistrationFailureMessage({ provider, reason }: { provider: string; reason: string }) {
-  const { t } = useTranslation();
-  let marker = '\uE000provider\uE001';
-  while (reason.includes(marker)) marker += '\uE002';
-  const message = t('sources.sourcesPanel.failedToRegister', { provider: marker, reason });
-  const segments = message.split(marker);
-  if (segments.length === 1) return message;
-  return segments.flatMap((segment, index) => index === segments.length - 1
-    ? [segment]
-    : [segment, <span key={index} className="font-medium">{provider}</span>]);
 }
 
 export function SourcesPanel({ onClose, registryEnabled = import.meta.env?.VITE_REGISTRY_ENABLED === 'true' }: SourcesPanelProps) {
@@ -284,6 +274,7 @@ export function SourcesPanel({ onClose, registryEnabled = import.meta.env?.VITE_
 
   return (
     <div className="flex h-full flex-col">
+      <SourceWriteBackModels />
       <div className="flex items-center justify-between border-b px-3 py-2">
         <span className="text-sm font-medium">{t('sources.sourcesPanel.title')}</span>
         <Button

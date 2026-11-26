@@ -13,7 +13,7 @@ import '@/test/setup-dom.js';
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { cleanup, render } from '@/test/render.js';
+import { cleanup, render, waitFor } from '@/test/render.js';
 import { setSourceSyncProgress } from '@/lib/sources/downloadProgress';
 import { ModelHeaderRow } from './ModelHeaderRow.js';
 import type { TreeNode } from './types.js';
@@ -55,12 +55,13 @@ afterEach(() => {
 });
 
 describe('ModelHeaderRow Sync progress (#6375)', () => {
-  it('follows the sync download as a ring, then returns to the spinning arrows', () => {
+  it('follows the sync download as a ring, then returns to the spinning arrows', async () => {
     const row = mount(true);
     assert.equal(row.querySelector('[role="progressbar"]'), null, 'no ring before the download reports');
     assert.ok(row.querySelector('.animate-spin'), 'the arrows spin while the sync lists the source');
 
     act(() => setSourceSyncProgress('A', { phase: 'downloading', received: 25, total: 100 }));
+    await waitFor(() => row.querySelector('[role="progressbar"]') !== null, 'the source progress component loads');
     const ring = row.querySelector('[role="progressbar"]');
     assert.equal(ring?.getAttribute('aria-valuenow'), '25');
     assert.equal(ring?.getAttribute('aria-label'), 'Downloading the latest revision of A.ifc');

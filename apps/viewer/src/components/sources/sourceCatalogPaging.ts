@@ -17,7 +17,7 @@ export async function fetchContainerPage(
   provider: FileSourceProvider,
   ctx: PluginContext,
   projectId: string,
-  parentKey: string,
+  parentKey: string | undefined,
   cursor: string | undefined,
   signal: AbortSignal,
 ): Promise<PagedItems<SourceContainer>> {
@@ -29,7 +29,7 @@ export async function fetchContainerPage(
   // Providers may omit `parentId` on direct children; normalise so the
   // client-side tree always has a link back to the queried parent.
   const items = page.items.map((container) =>
-    container.parentId === undefined ? { ...container, parentId: parentKey } : container,
+    parentKey !== undefined && container.parentId === undefined ? { ...container, parentId: parentKey } : container,
   );
   return { items, cursor: page.cursor } satisfies PagedItems<SourceContainer>;
 }

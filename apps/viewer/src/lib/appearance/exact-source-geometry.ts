@@ -76,7 +76,12 @@ async function sceneHasExactGeometry(globalIds: readonly number[], remeshed: Rea
     signal.throwIfAborted();
     const scene = getGlobalRenderer()?.getScene();
     if (!scene) return true; // no viewport: binding needs one, and says so itself
-    if (globalIds.every((id) => !(scene.getMeshDataPieces(id) ?? []).some((piece) => stale(id, piece)))) return true;
+    const drawn = (id: number) => {
+      const pieces = scene.getMeshDataPieces(id) ?? [];
+      // A re-meshed product with no piece yet is mid-swap (an instanced-only product is never re-meshed).
+      return !(remeshed.has(id) && pieces.length === 0) && !pieces.some((piece) => stale(id, piece));
+    };
+    if (globalIds.every(drawn)) return true;
     if (Date.now() >= deadline) return false;
     await abortableDelay(SCENE_SWAP_POLL_MS, signal);
   }

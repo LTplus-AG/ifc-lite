@@ -92,7 +92,9 @@ it('leaves products outside the plan compact', async () => {
 it('waits until the 3D view draws the re-meshed products before the preview binds', async () => {
   // The viewport swaps re-meshed meshes in on its own commit: here, three polls after the store has them.
   let polls = 0;
-  const scene = { getMeshDataPieces: (id: number) => (id !== OFFSET + 10 ? meshesOf(id) : ++polls > 3 ? meshesOf(id) : [compactWall(id, id + 1)]) };
+  // Polls 1-2: still the compact piece; 3: none (the old one removed, the new one not yet added); then exact.
+  const scene = { getMeshDataPieces: (id: number) => (id !== OFFSET + 10 ? meshesOf(id)
+    : ++polls > 3 ? meshesOf(id) : polls === 3 ? undefined : [compactWall(id, id + 1)]) };
   setGlobalRendererRef({ current: { getScene: () => scene } as unknown as Renderer });
   await ensureExactSourceGeometry(MODEL, [10], signal());
   assert.ok(polls > 3, 'it did not bind against the compact scene meshes');
@@ -102,7 +104,7 @@ it('waits until the 3D view draws the re-meshed products before the preview bind
   polls = 0;
   await ensureExactSourceGeometry(MODEL, [10], signal());
   assert.equal(mesher.requests.length, 1, 'not re-meshed again');
-  assert.ok(polls > 3, 'the second run waited for the swap too');
+  assert.ok(polls >= 3, 'the second run waited past the compact pieces too');
 });
 
 it('refuses at once, instead of re-meshing in a loop, when the re-mesh brings no provenance', async () => {

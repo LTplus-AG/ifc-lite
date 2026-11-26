@@ -42,7 +42,7 @@ export function conforms(m: Model, v: Value, type: TypeRef): boolean {
         case 'LOGICAL': return typeof v === 'boolean' || v === UNKNOWN;
         case 'STRING': return typeof v === 'string';
         case 'BINARY': {
-          if (!(v instanceof BinaryValue) || !/^(?:0|[0-3][0-9a-f]+)$/i.test(v.hex)) return false;
+          if (!(v instanceof BinaryValue) || !/^(?:0|1[0-7]|2[0-3]|3[01])[0-9a-f]*$/i.test(v.hex)) return false;
           const bits = (v.hex.length - 1) * 4 - Number(v.hex[0]);
           return type.width === undefined || (type.fixed ? bits === type.width : bits <= type.width);
         }

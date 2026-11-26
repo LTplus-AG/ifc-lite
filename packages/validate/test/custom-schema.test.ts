@@ -78,3 +78,15 @@ it('checks declared BINARY widths in bits in generated authoring schemas', () =>
   expect(schemas.Short.safeParse('0F').success).toBe(true);
   expect(schemas.Short.safeParse('0FF').success).toBe(false);
 });
+
+it('validates padding bits before width for STEP and generated authoring BINARY values', async () => {
+  const { schemas, schema } = generated(`SCHEMA S; TYPE Bits = BINARY; END_TYPE;
+TYPE Five = BINARY(5); END_TYPE; TYPE Fixed = BINARY(5) FIXED; END_TYPE;
+ENTITY Sample; A : Bits; B : Five; C : Fixed; END_ENTITY; END_SCHEMA;`);
+  for (const type of [schemas.Bits, schemas.Five, schemas.Fixed]) {
+    expect(type.safeParse('31F').success).toBe(true);
+    expect(type.safeParse('3FF').success).toBe(false);
+  }
+  const report = await validateStepText('DATA;#1=SAMPLE("31F","31F","31F");#2=SAMPLE("3FF","3FF","3FF");ENDSEC;', { schema });
+  expect(report.findings.filter(f => f.rule === 'invalid-type').map(f => f.instance)).toEqual([2, 2, 2]);
+});

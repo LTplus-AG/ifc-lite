@@ -3199,7 +3199,7 @@ export const IfcPixelTexture = z.strictObject({
   Width: IfcInteger,
   Height: IfcInteger,
   ColourComponents: IfcInteger,
-  Pixel: z.array(z.string().regex(/^(?:0|[0-3][0-9A-Fa-f]+)$/).refine(value => (value.length - 1) * 4 - Number(value[0]) <= 32, 'invalid BINARY bit length')).min(1),
+  Pixel: z.array(z.string().regex(/^(?:0|1[0-7]|2[0-3]|3[01])[0-9A-Fa-f]*$/).refine(value => (value.length - 1) * 4 - Number(value[0]) <= 32, 'invalid BINARY bit length')).min(1),
 }).superRefine(r.localRuleRefinement(SCHEMA, "IfcPixelTexture", ["IfcPixelTexture.WR21","IfcPixelTexture.WR22","IfcPixelTexture.WR23","IfcPixelTexture.WR24"]));
 export const IfcPlacement = z.strictObject({
   Location: $EntityRef,

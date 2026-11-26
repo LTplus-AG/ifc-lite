@@ -49,7 +49,7 @@ export class StructuralDiagnostics {
   private readonly restored = new Map<number, Set<string>>();
   /** Source record id -> the type an IFC2X3 varying action is written as when the export reports its CausedBy (`strandedAs`). */
   private readonly stranded = new Map<number, string>();
-  /** Source record id -> the attributes of an IFC2X3 varying action the constant fallback drops (`StructuralVarying.constantLosses`). */
+  /** Source record id -> the attributes of an IFC2X3 varying action the constant fallback drops (`StructuralRewrite.dropped`). */
   private readonly constantDropped = new Map<number, readonly string[]>();
 
   /** `roundTrip`: also find what the reverse conversion restores (`structuralRoundTrip`); an export does not. */
@@ -169,10 +169,7 @@ export class StructuralDiagnostics {
         ?? this.thickness.rewrite(id, entity, args) ?? this.axes.rewrite(id, args, withheld);
     if (!rewrite || (withheld && rewrite.body !== null && referencesAnyExpressId(rewrite.body, withheld))) return undefined;
     rewrite.losses.forEach((loss) => this.record(loss));
-    if (this.roundTrip) {
-      const dropped = this.varying.constantLosses(entity, args);
-      if (dropped.length) this.constantDropped.set(id, dropped);
-    }
+    if (this.roundTrip && rewrite.dropped?.length) this.constantDropped.set(id, rewrite.dropped);
     rewrite.restored?.forEach(([source, attributes]) => this.restore(source, attributes));
     // A rewritten record skips `inspect`, which would free this.
     this.carried.delete(id);

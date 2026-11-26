@@ -6,7 +6,7 @@ import { refId } from './schema-ifc2x3-records.js';
 import { holdsValue, withoutComments } from './step-comment-skip.js';
 import { referencesAnyExpressId } from './step-ref-scan.js';
 import { isSubtype, slotRef, type SourceRecords, type StructuralRewrite } from './schema-converter-structural-source.js';
-import { constantAction, constantActionLosses } from './schema-structural-varying-constant.js';
+import { constantAction } from './schema-structural-varying-constant.js';
 
 /**
  * IFC2X3's varying actions and the IFC4 actions they become. IFC4 dropped
@@ -158,15 +158,6 @@ export class StructuralVarying {
     const target = varyingTarget(entity);
     if (!target || args.length !== 14) return undefined;
     return constantAction(target, entity, args, this.namesLoad(args), carried.has('CausedBy'));
-  }
-
-  /**
-   * The IFC2X3 attributes of this varying action that the constant fallback
-   * drops (`constantActionLosses`): empty unless the upgrade writes it constant (#11354).
-   */
-  constantLosses(entity: string, args: readonly string[]): string[] {
-    if (!varyingTarget(entity) || args.length !== 14 || !this.upgrading || this.upgradeLoads(entity, args)) return [];
-    return constantActionLosses(args, this.namesLoad(args));
   }
 
   /** Whether AppliedLoad names a record IFC4 counts as an IfcStructuralLoad. */

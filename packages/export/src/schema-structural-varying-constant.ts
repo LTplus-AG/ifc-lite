@@ -10,15 +10,6 @@ const OMITTED_SLOTS = [
 ] as const;
 const lossFor = (words: readonly string[]): string => `The retained varying structural action has no complete load configuration; its ${words.join(' and ')} were omitted (#11037).`;
 
-/**
- * The IFC2X3 attributes the constant action drops of `args` (the 14 attributes
- * of a varying action): VaryingAppliedLoadLocation and SubsequentAppliedLoads
- * when they hold a value, and AppliedLoad when `load` is false and it holds one.
- * What the loss preview names (#11354).
- */
-export function constantActionLosses(args: readonly string[], load: boolean): string[] {
-  return [...(load || !holdsValue(args[7]) ? [] : ['AppliedLoad']), ...OMITTED_SLOTS.filter((o) => holdsValue(args[o.slot])).map((o) => o.attribute)];
-}
 const MISSING_LOAD = 'The retained varying structural action has no usable AppliedLoad; the required IFC4 slot was left unset (#11037).';
 
 /**
@@ -30,13 +21,16 @@ const MISSING_LOAD = 'The retained varying structural action has no usable Appli
  *
  * `args` are the 14 IFC2X3 attributes. `load` is whether AppliedLoad names an
  * IfcStructuralLoad. `carried`: a 'Causes' relationship holds the CausedBy.
+ * `dropped` names what the loss preview reports (#11354): the omitted slots that
+ * held a value, and AppliedLoad when it held one that is no load.
  */
 export function constantAction(target: string, entity: string, args: readonly string[], load: boolean, carried: boolean): StructuralRewrite {
-  const omitted = OMITTED_SLOTS.filter((o) => holdsValue(args[o.slot])).map((o) => o.words);
+  const omitted = OMITTED_SLOTS.filter((o) => holdsValue(args[o.slot]));
   // Reported only when a slot held a value, and naming only those (#11354).
-  const losses = omitted.length ? [lossFor(omitted)] : [];
+  const losses = omitted.length ? [lossFor(omitted.map((o) => o.words))] : [];
   if (!load) losses.push(MISSING_LOAD);
   if (!carried && holdsValue(args[10])) losses.push(`${entity}.CausedBy has no slot in IFC4; its value is omitted (#11037).`);
   const applied = load ? args[7] : '$';
-  return { body: `${target}(${[...args.slice(0, 7), applied, args[8], args[9], args[11], '.CONST.'].join(',')})`, losses };
+  const dropped = [...(load || !holdsValue(args[7]) ? [] : ['AppliedLoad']), ...omitted.map((o) => o.attribute)];
+  return { body: `${target}(${[...args.slice(0, 7), applied, args[8], args[9], args[11], '.CONST.'].join(',')})`, losses, dropped };
 }

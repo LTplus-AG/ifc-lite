@@ -13,7 +13,7 @@ const OMITTED_SLOTS: [(usize, &str); 2] = [(12, "varying locations"), (13, "subs
 fn loss(omitted: &[&str]) -> String {
     format!("The retained varying structural action has no complete load configuration; its {} were omitted (#11037).", omitted.join(" and "))
 }
-pub(crate) const MISSING_LOAD: &str = "The retained varying structural action has no usable AppliedLoad; the required IFC4 slot was left unset (#11037).";
+const MISSING_LOAD: &str = "The retained varying structural action has no usable AppliedLoad; the required IFC4 slot was left unset (#11037).";
 
 /// The target body, its loss warnings and the attribute values it drops.
 pub(crate) struct Constant {

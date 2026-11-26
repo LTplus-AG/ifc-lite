@@ -14,7 +14,6 @@ use crate::step_ids::IdAllocator;
 use crate::step_record_frame::record_frame;
 use crate::step_slot::split_top_level_args;
 
-
 pub(super) fn contains_varying(content: &[u8]) -> bool {
     let mut scan = EntityScanner::new(content);
     std::iter::from_fn(|| scan.next_entity()).any(|(_, ty, _, _)| StructuralVarying::target(ty).is_some())

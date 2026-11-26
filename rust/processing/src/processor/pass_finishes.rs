@@ -15,7 +15,7 @@ use crate::style::ModelFinishes;
 /// meshing whenever finishes are asked for, so every source here is final.
 pub(super) fn emit_finishes(
     sink: &mut dyn ProcessingSink,
-    finishes: Option<&mut ModelFinishes<'_>>,
+    finishes: Option<&ModelFinishes<'_>>,
     styles: &[StyleSource],
 ) {
     let Some(finishes) = finishes else { return };

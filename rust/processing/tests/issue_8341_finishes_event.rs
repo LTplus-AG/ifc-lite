@@ -217,11 +217,11 @@ fn indexed_first() -> String {
     ifc
 }
 
-/// A `fast_first` pass without presentation layers meshes its first chunk
-/// before the attached styles are resolved, and the replay sends colours
-/// only. Every batch of that chunk still carries each item's own authored
-/// finish (#10698 review): the join must not wait for a style source that
-/// arrives after the chunk, nor take the fallback the mesh was coloured with.
+/// A `fast_first` pass without presentation layers defers the attached styles
+/// past its first chunk, and the replay sends colours only. A finish is joined
+/// by the style source chosen while meshing, so a pass asked for finishes
+/// resolves the deferred styles before that chunk (#10698): every batch carries
+/// each item's own authored finish, in the colour it was authored with.
 #[test]
 fn a_deferred_first_chunk_keeps_its_items_authored_finish_8341() {
     let features = ProcessingRequest::default().features.finishes(true).presentation_layers(false);
@@ -234,24 +234,21 @@ fn a_deferred_first_chunk_keeps_its_items_authored_finish_8341() {
     ] {
         let mut sink = Recorder::default();
         process(ifc.as_bytes(), &request, &mut sink);
-        // Premise: with one job, every batch (one mesh each) comes from the
-        // first chunk, meshed before the attached styles: #61 is not yet in
-        // its authored colour, and any replay update follows the last batch.
+        // With one job, every batch (one mesh each) comes from the first chunk,
+        // which is meshed after the deferred styles resolve: #61 is already in
+        // its authored colour, and the early replay sends no colour update.
         let order: Vec<_> = sink.batches.iter().map(|(meshes, _)| meshes.iter().map(|m| m.geometry_item_id).collect::<Vec<_>>()).collect();
         assert_eq!(order, items.iter().map(|&item| vec![item]).collect::<Vec<_>>(), "{what}: one batch per item, in order");
         let styled = sink.batches.iter().flat_map(|(meshes, _)| meshes).find(|m| m.geometry_item_id == Some(61)).expect("#61");
-        assert_ne!(styled.color, [0.6, 0.5, 0.4, 1.0], "{what}: #61 already in its authored colour, so nothing was deferred");
-        assert!(
-            sink.updates_after_batches.is_none_or(|n| n == sink.batches.len()),
-            "{what}: a colour update arrived inside the deferred chunk"
-        );
+        assert_eq!(styled.color, [0.6, 0.5, 0.4, 1.0], "{what}: #61 in its authored colour from the first chunk");
+        assert!(sink.updates_after_batches.is_none(), "{what}: a colour update was sent although styles resolved first");
         let roughness: Vec<_> = sink
             .batches
             .iter()
             .flat_map(|(meshes, finishes)| meshes.iter().zip(finishes.as_ref().expect("announced")))
             .map(|(mesh, finish)| (mesh.geometry_item_id, finish.and_then(|f| f.roughness).map(|r| (r * 100.0).round() / 100.0)))
             .collect();
-        assert!(roughness.contains(&(Some(61), Some(0.25))), "{what}: the deferred chunk dropped #61's authored finish: {roughness:?}");
+        assert!(roughness.contains(&(Some(61), Some(0.25))), "{what}: the first chunk dropped #61's authored finish: {roughness:?}");
         assert!(roughness.iter().all(|&(item, r)| item == Some(61) || r.is_none()), "{what}: a finish leaked to another item: {roughness:?}");
     }
 }

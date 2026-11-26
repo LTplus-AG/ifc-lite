@@ -66,6 +66,8 @@ pub struct Features {
     /// the pass's own scan instead of a second read of the file. Instance
     /// finishes are delivered by
     /// [`ProcessingSink::on_instance_finishes`](super::ProcessingSink::on_instance_finishes).
+    /// With `Batching::fast_first`, a file that authors finishes has its
+    /// attached styles resolved before the first chunk, not after it (#10698).
     /// Off by default.
     pub finishes: bool,
 }

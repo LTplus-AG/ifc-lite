@@ -84,7 +84,7 @@ impl CsgFailures {
 fn emit_final_batches(
     req: &ProcessingRequest,
     sink: &mut dyn ProcessingSink,
-    mut finishes: Option<ModelFinishes<'_>>,
+    finishes: Option<ModelFinishes<'_>>,
     recovered: &[MeshData],
     recovered_styles: &[crate::element::StyleSource],
     instance_styles: &[crate::element::StyleSource],
@@ -96,11 +96,11 @@ fn emit_final_batches(
         counts.1 = recovered.iter().map(|mesh| mesh.vertex_count()).sum::<usize>();
         counts.2 = recovered.iter().map(|mesh| mesh.triangle_count()).sum::<usize>();
         if !cancelled(req) {
-            super::pass_finishes::emit_finishes(sink, finishes.as_mut(), recovered_styles);
+            super::pass_finishes::emit_finishes(sink, finishes.as_ref(), recovered_styles);
             sink.on_batch(recovered, progress.0, progress.1);
         }
     }
-    if let Some(finishes) = finishes.as_mut().filter(|_| !instance_styles.is_empty() && !cancelled(req)) {
+    if let Some(finishes) = finishes.as_ref().filter(|_| !instance_styles.is_empty() && !cancelled(req)) {
         let values: Vec<_> = instance_styles
             .iter()
             .map(|&style| finishes.finish_for_source(style))

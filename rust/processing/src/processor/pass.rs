@@ -279,7 +279,7 @@ pub(super) fn run<'c>(
         },
         sink,
     );
-    let mut finishes = finish_join(content, req, &facts, &ctx);
+    let finishes = finish_join(content, req, &facts, &ctx);
     let mut appearance = AppearanceResolver::new(
         element_material_color,
         presentation_layer_by_assigned_id,
@@ -311,9 +311,9 @@ pub(super) fn run<'c>(
     let geometry_guard = geometry_span.clone().entered();
 
     // A finish is joined by the style source chosen while meshing, and the
-    // replay below sends colours only. So with finishes, apply the deferred
-    // styles before the first chunk (#10698).
-    if defer_style_updates && req.features.finishes && !cancelled(req) {
+    // replay below sends colours only. So when the file authors finishes,
+    // apply the deferred styles before the first chunk (#10698).
+    if defer_style_updates && finishes.as_ref().is_some_and(|f| !f.is_empty()) && !cancelled(req) {
         replay_deferred_styles(&mut ctx, sink, &[], &deferred_styled_item_positions, &indexed_colour_index, &mut deferred_style_refusals);
         deferred_styles_applied = true;
     }
@@ -338,7 +338,7 @@ pub(super) fn run<'c>(
             total_meshes += chunk_meshes.len();
             let emit_mesh_chunk_size = current_chunk_size.max(1);
             for (emitted_meshes, emitted_styles) in chunk_meshes.chunks(emit_mesh_chunk_size).zip(chunk_styles.chunks(emit_mesh_chunk_size)) {
-                super::pass_finishes::emit_finishes(sink, finishes.as_mut(), emitted_styles);
+                super::pass_finishes::emit_finishes(sink, finishes.as_ref(), emitted_styles);
                 sink.on_batch(emitted_meshes, processed_jobs, total_jobs);
             }
             if req.retain_meshes {

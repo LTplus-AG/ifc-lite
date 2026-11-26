@@ -23,7 +23,7 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { displayedTranslation, placementFor } from '@/lib/model-placement/state';
 import type { MoveConstraint } from '@/lib/model-placement/translation';
-import { eligiblePickModelIds, modelEntityIds, modelLabels, pickableModelIds, pickContext, pickPromptKey } from '@/lib/model-placement/pick-eligibility';
+import { eligiblePickModelIds, modelLabels, pickableFilter, pickContext, pickPromptKey } from '@/lib/model-placement/pick-eligibility';
 import { frameModels } from '@/lib/model-placement/scene';
 import { useRepositionRuntime, type RepositionRuntime } from '@/lib/model-placement/reposition-runtime';
 import { openRepositionModels } from '@/lib/model-placement/commands';
@@ -59,7 +59,7 @@ function pickPrompt(
 ): string {
   const eligible = eligiblePickModelIds(role, models.keys(), pickContext(new Set(before?.keys()), reference, models));
   // Name only models with something left to pick: not fully hidden or outside the isolation set.
-  const ids = pickableModelIds(eligible, (id) => modelEntityIds(models.get(id)), hidden, isolated);
+  const ids = pickableFilter(models, hidden, isolated)(eligible);
   const labels = modelLabels(models.keys(), (id) => models.get(id)?.name ?? id);
   const key = pickPromptKey(role, ids.length, reference !== '');
   return key === 'repositionPanel.pickPrompt'

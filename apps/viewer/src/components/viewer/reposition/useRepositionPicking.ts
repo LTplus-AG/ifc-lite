@@ -10,7 +10,7 @@ import { getGlobalRenderer } from '@/hooks/useBCF';
 import { resolveEntityRef, useViewerStore } from '@/store';
 import { fromRenderTranslation, orthogonalAxis, constrainTranslation, subtractTranslation } from '@/lib/model-placement/translation';
 import type { PlacementAnchor } from '@/lib/model-placement/state';
-import { explainRaycastFilter, modelEntityIds, hitModelId, isEligiblePickModel, pickContext, rejectedPickMessage } from '@/lib/model-placement/pick-eligibility';
+import { explainRaycastFilter, modelEntityIds, hitModelId, isEligiblePickModel, pickableFilter, pickContext, rejectedPickMessage } from '@/lib/model-placement/pick-eligibility';
 import { resolve } from '@/i18n/registry';
 
 export type PickRole = 'source' | 'target' | null;
@@ -52,7 +52,8 @@ export function useRepositionPicking(role: PickRole, finish: (role: PickRole) =>
       const result = cast(event, current, explainRaycastFilter(current));
       const hitModel = hitModelId(result, (id) => resolveEntityRef(id).modelId);
       const message = rejectedPickMessage(role, hitModel, pickContext(ctx.moving, reference, current.models),
-        current.models.keys(), (modelId) => current.models.get(modelId)?.name ?? modelId);
+        current.models.keys(), (modelId) => current.models.get(modelId)?.name ?? modelId,
+        pickableFilter(current.models, current.hiddenEntities, current.isolatedEntities));
       return resolve(message.key, message.params);
     };
     const pick = (event: PointerEvent): PlacementAnchor | null => {

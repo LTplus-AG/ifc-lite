@@ -56,19 +56,22 @@ export interface RejectedPickMessage { key: RejectedPickKey; params: { hit: stri
 /**
  * Message for a click that found no eligible point. `hitModelId` is the model
  * an unrestricted raycast hit, or null when it hit nothing. A hit on an
- * eligible or unknown model keeps the generic message.
+ * eligible or unknown model keeps the generic message. `pickable` narrows the
+ * expected list the same way the prompt does (see `pickableFilter`); labels
+ * still count every loaded model.
  */
 export function rejectedPickMessage(
   role: PickRole, hitModelId: string | null, ctx: PickEligibilityContext,
   modelIds: Iterable<string>, nameOf: (modelId: string) => string,
+  pickable: (eligible: string[]) => string[] = (eligible) => eligible,
 ): RejectedPickMessage {
   const generic: RejectedPickMessage = { key: 'repositionPanel.errorNoPoint', params: { hit: '', expected: '' } };
   if (hitModelId === null || !ctx.isVisible(hitModelId) || isEligiblePickModel(role, hitModelId, ctx)) return generic;
   const all = [...modelIds];
   const labels = modelLabels(all, nameOf);
   const label = (id: string) => labels.get(id) ?? nameOf(id);
-  const expected = eligiblePickModelIds(role, all, ctx).map(label).join(', ');
-  // Nothing eligible (e.g. the only moving model is hidden): naming a model to
+  const expected = pickable(eligiblePickModelIds(role, all, ctx)).map(label).join(', ');
+  // Nothing pickable (e.g. the only moving model is hidden): naming a model to
   // pick instead would end the sentence on an empty list.
   if (expected === '') return generic;
   const hit = label(hitModelId);
@@ -115,6 +118,14 @@ export function pickableModelIds(
     }
     return !any;
   });
+}
+
+/** `pickableModelIds` bound to the store's models and hidden/isolation sets, for the prompt and the rejection message alike. */
+export function pickableFilter(
+  models: ReadonlyMap<string, Parameters<typeof modelEntityIds>[0]>,
+  hidden: ReadonlySet<number>, isolated: ReadonlySet<number> | null,
+): (eligible: string[]) => string[] {
+  return (eligible) => pickableModelIds(eligible, (id) => modelEntityIds(models.get(id)), hidden, isolated);
 }
 
 /** Hidden and isolation sets for the click-time raycast that explains a refusal: the same ones the pick respects, without the model restriction. */

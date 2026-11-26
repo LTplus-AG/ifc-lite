@@ -117,3 +117,20 @@ test('the explained hit prefers the snap target and maps to a model', () => {
   assert.equal(eligibility.hitModelId({ snapTarget: null, intersection: null }, modelOf), null);
   assert.equal(eligibility.hitModelId({ snapTarget: { expressId: 0 }, intersection: null }, modelOf), 'a');
 });
+
+test('the wrong-model message names only moving models that are still pickable (#11419)', () => {
+  // a and c are moving; b is the non-moving model the user clicked.
+  const geometry = (ids: number[]) => ({ visible: true, geometryResult: { meshes: ids.map((expressId) => ({ expressId })) } });
+  const store = new Map([['a', geometry([1, 2])], ['b', geometry([3])], ['c', geometry([5])]]);
+  const sameName = (id: string) => (id === 'b' ? 'B.ifc' : 'X.ifc');
+  const reject = (hidden: number[], isolated: number[] | null) => eligibility.rejectedPickMessage(
+    'source', 'b', eligibility.pickContext(new Set(['a', 'c']), '', store), store.keys(), sameName,
+    eligibility.pickableFilter(store, new Set(hidden), isolated && new Set(isolated)));
+  // a fully hidden: only c is offered, still labelled by its load order among all models.
+  assert.deepEqual(reject([1, 2], null), { key: 'repositionPanel.errorNotMoving', params: { hit: 'B.ifc', expected: 'X.ifc (2)' } });
+  // c outside the isolation set: only a is offered.
+  assert.deepEqual(reject([], [1, 3]).params.expected, 'X.ifc (1)');
+  // Neither moving model is pickable: the generic message, not an empty or misleading list.
+  assert.equal(reject([1, 2, 5], null).key, 'repositionPanel.errorNoPoint');
+  assert.equal(reject([], [3]).key, 'repositionPanel.errorNoPoint');
+});

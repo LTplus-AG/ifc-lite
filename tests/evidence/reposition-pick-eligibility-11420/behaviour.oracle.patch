@@ -33,9 +33,10 @@ index 7bc1b7c18c..f6753ce0cb 100644
  }
  
  /** Context from the store's models map and the preview's moving ids. */
-@@ -69,6 +70,7 @@ export function rejectedPickMessage(
-   const expected = eligiblePickModelIds(role, all, ctx).map(label).join(', ');
-   // Nothing eligible (e.g. the only moving model is hidden): naming a model to
+@@ -72,6 +73,7 @@ export function rejectedPickMessage(
+-  const expected = eligiblePickModelIds(role, all, ctx).map(label).join(', ');
++  const expected = pickable(eligiblePickModelIds(role, all, ctx)).map(label).join(', ');
+   // Nothing pickable (e.g. the only moving model is hidden): naming a model to
    // pick instead would end the sentence on an empty list.
 +  if (expected === '') return generic;
    const hit = label(hitModelId);

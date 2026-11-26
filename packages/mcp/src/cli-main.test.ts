@@ -299,7 +299,7 @@ describe('loadFiles (#11534)', () => {
 });
 
 describe('tokenScopes (#11534)', () => {
-  it('gives --token the server scope and --read-only-token read scope', () => {
+  it('gives --token the server scope and --read-only-token the --read-only preset', () => {
     const scopes = tokenScopes(parseArgs(['--token', 'a', '--token', 'b', '--read-only-token', 'r']));
     expect([...scopes.keys()]).toEqual(['a', 'b', 'r']);
     expect(scopes.get('a')?.scopes).toContain('mutate');
@@ -318,7 +318,7 @@ describe('tokenScopes (#11534)', () => {
     expect(scopes.every((s) => s.user === undefined)).toBe(true);
   });
 
-  it('narrows every token under --read-only, and a doubly listed token to read', () => {
+  it('narrows every token under --read-only, and a doubly listed token to the --read-only preset', () => {
     expect(tokenScopes(parseArgs(['--read-only', '--token', 'a'])).get('a')?.scopes).not.toContain('mutate');
     expect(tokenScopes(parseArgs(['--token', 'a', '--read-only-token', 'a'])).get('a')?.scopes).not.toContain('mutate');
   });

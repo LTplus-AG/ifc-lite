@@ -44,7 +44,7 @@ export function anonymousHttpScope(opts: CliOptions): AuthScope {
 /**
  * The bearer tokens `opts` registers, each with its scope. `--token` gets
  * the server's scope; `--read-only-token` gets the `--read-only` preset
- * (no edits; export may write files inside --allow). A token given
+ * (`readOnlyScope()`). A token given
  * under both flags keeps the narrower scope.
  *
  * Each token gets its own `session`, a random id for this process. The

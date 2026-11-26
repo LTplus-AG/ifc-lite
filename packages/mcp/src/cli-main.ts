@@ -36,7 +36,10 @@ export function mcpHelpText({ command }: McpCliIdentity, platform: NodeJS.Platfo
 
   Options:
     --read-only             Hide all mutation tools regardless of scope.
-                            Models can still be loaded and unloaded.
+                            Models can still be loaded and unloaded, and
+                            export and flow-checkpoint tools still write
+                            files under the allowed roots (--allow, or the
+                            working, temp and model directories without it).
                             With --bridge: hide and refuse the tools the tab
                             LABELS as mutating; the tab enforces the rest.
     --transport <stdio|http>  Default: stdio.
@@ -45,10 +48,9 @@ export function mcpHelpText({ command }: McpCliIdentity, platform: NodeJS.Platfo
                             non-loopback host needs --token, --read-only-token
                             or --insecure.
     --token <t>             Bearer token for HTTP auth (repeatable). Each gets
-                            full scope, or read scope under --read-only.
-    --read-only-token <t>   Bearer token that cannot edit models (repeatable).
-                            Like --read-only it may still export files
-                            inside --allow.
+                            full scope, or the --read-only preset under it.
+    --read-only-token <t>   Bearer token with the --read-only preset
+                            (repeatable).
     --insecure              Allow non-loopback bind without authentication.
                             Required when combining a public --host with no
                             token. NEVER use in production.
@@ -236,8 +238,8 @@ async function runHttp(opts: CliOptions, tag: string): Promise<RunningHttpCli | 
   }
   if (!opts.allowedPaths?.length) {
     process.stderr.write(
-      `${tag} warning: no --allow, so model_load (read scope) can open IFC files under the working directory, ` +
-      'the temp directory and loaded models\' directories. Pass --allow <dir> to narrow that.\n',
+      `${tag} warning: no --allow, so model_load (read scope) can open IFC files, and export tools can write files, under the working ` +
+      'directory, the temp directory and loaded models\' directories. Pass --allow <dir> to narrow that.\n',
     );
   }
   const sessionFactory: SessionFactory = {

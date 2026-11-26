@@ -59,7 +59,7 @@ export interface CliOptions {
   port: number;
   /** undefined → caller didn't pass --host; CLI picks loopback by default */
   host?: string;
-  /** `--token`, repeatable. Each one gets the server's scope (read scope under --read-only). */
+  /** `--token`, repeatable. Each one gets the server's scope (the --read-only preset under --read-only). */
   tokens: string[];
   /** `--read-only-token`, repeatable. Each gets the --read-only preset (read, validate, export). */
   readOnlyTokens: string[];

@@ -20,7 +20,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import type { MeshData } from '@ifc-lite/geometry';
-import { addMeshLatticeLoss, latticeCollapsesGeometry, latticeLoses } from './quantize.js';
+import { latticeCollapsesGeometry } from './quantize.js';
+import { markOffLattice } from './scene-bucket-routing.js';
 import { mergeGeometry } from './scene-geometry.js';
 import { Scene } from './scene.js';
 
@@ -139,16 +140,19 @@ describe('lattice turn guard (#11444)', () => {
     }
   });
 
-  it('judges a mesh by the batch gate\'s rule', () => {
-    const judge = (mesh: MeshData): boolean => {
-      const loss = { area: 0, collapsed: 0, turned: 0 };
-      addMeshLatticeLoss(loss, mesh, [0, 0, 0]);
-      return latticeLoses(loss);
+  it('routes by the batch gate\'s rule, per entity', () => {
+    const judge = (...meshes: MeshData[]): MeshData[] => {
+      const off = new WeakSet<MeshData>();
+      markOffLattice(meshes, () => 'grey', () => [0, 0, 0], off);
+      return meshes.filter((mesh) => off.has(mesh));
     };
     const bar = sweptBar(1, metres, 0.006, 24, [0.00031, 0.00047, 0.00013]);
-    assert.strictEqual(judge(bar), true);
-    assert.strictEqual(judge(wall(2)), false);
-    assert.strictEqual(judge(bar), degrades(bar), 'the same verdict as the batch gate');
+    const sameWall = { ...wall(2), expressId: 1 };
+    assert.deepStrictEqual(judge(bar, wall(2)), [bar], 'only the bar leaves the lattice');
+    assert.strictEqual(degrades(bar), true, 'the batch gate agrees');
+    // The bar's own entity dilutes its loss across all its pieces of a colour, as the gate does.
+    assert.deepStrictEqual(judge(bar, sameWall), [], 'an entity is judged whole');
+    assert.strictEqual(degrades(bar, sameWall), false, 'and so is it at the gate');
   });
 
   it('keeps only the bar on f32: a wall of the same colour still quantizes', () => {

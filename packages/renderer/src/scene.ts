@@ -1139,9 +1139,14 @@ export class Scene {
 
   /** Whether `appendToBatches` refuses `meshData`: no topology-safe f32 frame holds it. */
   refusesBucketPath(meshData: MeshData, topology: TopologyMemo = new TopologyMemo()): boolean {
+    return !this.bucketFrame(meshData, topology);
+  }
+
+  /** The f32 frame a new bucket would give `meshData`, or undefined when none holds it. */
+  private bucketFrame(meshData: MeshData, topology: TopologyMemo): [number, number, number] | undefined {
     const modelIndex = meshData.modelIndex ?? 0;
     const shared = this.modelTranslations.frameOrigin(this.sharedFrameOrigins.get(modelIndex) ?? null, modelIndex);
-    return !topologySafeBatchOrigin([meshData], undefined, shared, undefined, topology);
+    return topologySafeBatchOrigin([meshData], undefined, shared, undefined, topology) ?? undefined;
   }
 
   /**
@@ -1166,7 +1171,6 @@ export class Scene {
       if (this.refusesBucketPath(meshData, topology)) throw new Error('Unable to resolve a topology-safe GPU frame for mesh geometry.');
     }
     if (this.appearanceController) for (const part of meshDataArray) this.appearanceController.cancelFor(part.expressId);
-    if (this.quantizedBatchesEnabled) markOffLattice(meshDataArray, (mesh) => this.bucketBaseKey(mesh), (mesh) => this.modelTranslations.frameOrigin(this.sharedFrameOrigins.get(mesh.modelIndex ?? 0) ?? null, mesh.modelIndex ?? 0), topology, this.offLattice);
     // Cache max buffer size on first call
     if (this.cachedMaxBufferSize === 0) {
       this.cachedMaxBufferSize = this.getMaxBufferSize(device);
@@ -1192,6 +1196,7 @@ export class Scene {
       }
     }
 
+    if (this.quantizedBatchesEnabled) markOffLattice(renderable, (mesh) => this.bucketBaseKey(mesh), (mesh) => this.bucketFrame(mesh, topology), this.offLattice);
     // Route each mesh into a size-aware bucket for its color (and, with
     // spatial chunking on, its grid cell)
     for (const meshData of renderable) {

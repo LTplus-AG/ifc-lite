@@ -125,15 +125,6 @@ class IfcProtocolServer extends Server {
     return async (request, ctx) => {
       const signal = ctx.mcpReq.signal;
       const id = ctx.mcpReq.id;
-      // The SDK sends nothing for a request it aborted, even one whose handler
-      // already returned or that we refuse below. Its caller is told once the
-      // handler has unwound (a retry then cannot collide with the old run), or
-      // at once if the abort lands after that.
-      let unwound = false;
-      let aborted = false;
-      const abandoned = () => { if (unwound) this.link.abandon(id); else aborted = true; };
-      if (signal.aborted) aborted = true;
-      else signal.addEventListener('abort', abandoned, { once: true });
       this.running++;
       let result: Result;
       try {
@@ -153,8 +144,11 @@ class IfcProtocolServer extends Server {
         throw new ProtocolError(ProtocolErrorCode.InternalError, message);
       } finally {
         this.running--;
-        unwound = true;
-        if (aborted) this.link.abandon(id);
+        // The SDK sends nothing for a request it aborted, even one whose handler
+        // already returned. Its caller is told once the handler has unwound (a
+        // retry then cannot collide with the old run), or when a later abort lands.
+        if (signal.aborted) this.link.abandon(id);
+        else signal.addEventListener('abort', () => this.link.abandon(id), { once: true });
       }
       if (method === 'initialize') {
         // A failing observer must not fail a handshake the SDK already answered.

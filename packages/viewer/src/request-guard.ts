@@ -26,7 +26,8 @@ const LOCAL_ORIGIN = new RegExp(`^https?://${LOOPBACK}$`, 'i');
  * embed it, so this stops any other site from framing it (clickjacked picks).
  * Only the viewer's own origin, pages opened as localhost or 127.0.0.1, and
  * desktop VS Code-family webviews may frame it. Keep the https entries:
- * engines without CSP3 scheme upgrade need them.
+ * engines without CSP3 scheme upgrade need them. [::1] is missing on purpose:
+ * CSP host sources cannot name an IPv6 literal.
  */
 export const PAGE_FRAME_ANCESTORS = "frame-ancestors 'self' http://localhost:* http://127.0.0.1:* https://localhost:* https://127.0.0.1:* vscode-webview: vscode-file:";
 

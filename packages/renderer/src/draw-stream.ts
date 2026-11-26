@@ -57,7 +57,7 @@ export class DrawStream {
   private deltaBuffer: GPUBuffer | null = null;
   private deltaImage = new Float32Array(0);
   private bindGroup: GPUBindGroup | null = null;
-  private readonly pipelines: StreamPipelines;
+  readonly pipelines: StreamPipelines;
   private lastCamera: [number, number, number] = [NaN, NaN, NaN];
   private bundleKey = '';
   private readonly scratch = new Float32Array(MESH_UNIFORM_FLOATS);

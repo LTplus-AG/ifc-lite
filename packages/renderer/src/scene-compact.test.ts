@@ -976,6 +976,17 @@ describe('compact pages take the decisions of the bucket batches they stand in f
     assert.equal(pages(on)[0].lodParts, undefined, 'the page draws whole');
   });
 
+  it('leave a page whole when one of its meshes is written while the build runs', async () => {
+    const on = await lodScene(true), gpu = fakeGpu();
+    const meshes = compactBatch(lodBoxes(1000, 0, 28));
+    upload(on, gpu, meshes);
+    on.finalizeStreaming(gpu.device, gpu.pipeline);
+    meshes[5].positions = new Float32Array(meshes[5].positions); // a write: the mesh no longer has records
+    assert.equal(meshes[5].compact, undefined);
+    assert.doesNotThrow(() => flushAll(on, gpu));
+    assert.equal(pages(on)[0].lodParts, undefined, 'its page keeps its own buffer');
+  });
+
   it('keep pages whole when bucket batches build no LOD1', async () => {
     const gpu = fakeGpu(), scene = await newScene();
     scene.setSpatialChunking({ cellSize: 32 });

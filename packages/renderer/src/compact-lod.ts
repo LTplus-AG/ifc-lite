@@ -173,15 +173,18 @@ function* buildPageLods(store: CompactGeometryStore, groups: Map<string, Group>,
   let scratch: Float32Array | null = null, lanes: Uint32Array | null = null; // allocated by the first page that clusters
   const plans: PagePlan[] = [];
   for (const page of store.pageList()) {
-    // `collect` saw every mesh still on a page (one it missed would drop out of the rewritten buffer: such a page keeps its own).
+    // A page with a mesh `collect` did not see, or one written since (no records to read), keeps its own buffer, and
+    // its groups get no LOD1: their other parts alone cannot be judged as the bucket would judge them.
     const byGroup = new Map<Group, MeshData[]>();
+    let whole = true;
     for (const mesh of page.meshes) {
       const group = groupOf.get(mesh);
-      if (!group) { byGroup.clear(); break; }
+      if (!group || !mesh.compact) { whole = false; continue; }
       const list = byGroup.get(group);
       if (list) list.push(mesh); else byGroup.set(group, [mesh]);
     }
-    if (byGroup.size === 0) continue;
+    if (!whole) for (const group of byGroup.keys()) group.kept = -1;
+    if (!whole || byGroup.size === 0) continue;
     const plan: PagePlan = { page, parts: [] };
     let decoded = false;
     for (const [group, meshes] of byGroup) {
@@ -217,7 +220,11 @@ function* buildPageLods(store: CompactGeometryStore, groups: Map<string, Group>,
   // Whether a group draws LOD1 is its batch's decision: enough triangles, and the clustering pays over all its parts.
   const pays = (group: Group): boolean => group.kept > 0 && group.kept < group.triangles * 3 * lodMaxKeptFraction;
   for (const plan of plans) for (const part of plan.parts) if (!pays(part.group)) part.lod1 = null;
-  for (const plan of plans) { install(store, plan, device); yield; }
+  for (const plan of plans) {
+    // Written since it was clustered: its records are gone, so the page stays as it is.
+    if (plan.parts.every((part) => part.meshes.every((mesh) => mesh.compact && plan.page.meshes.has(mesh)))) install(store, plan, device);
+    yield;
+  }
 }
 
 /** Positions (page frame) and lanes of `page`'s records, at their page vertex numbers. */

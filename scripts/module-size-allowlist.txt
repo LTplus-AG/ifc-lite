@@ -241,7 +241,7 @@
    951 packages/renderer/src/pipeline.ts
    465 packages/renderer/src/pointcloud/point-cloud-renderer.ts
    758 packages/renderer/src/pointcloud/point-cloud-spatial-index.ts
-  3595 packages/renderer/src/renderer.ts
+  3591 packages/renderer/src/renderer.ts
    462 packages/renderer/src/scene-raycaster.ts
   3980 packages/renderer/src/scene.ts
    589 packages/renderer/src/section-2d-overlay.ts

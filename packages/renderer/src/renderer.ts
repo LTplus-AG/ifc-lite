@@ -2447,7 +2447,7 @@ export class Renderer {
                     const drawn = drawBatchIndices(pass, batch, !!useLod1, choosePart); // draw calls * 2 + LOD1 bit (lod-parts.ts)
                     if (drawn & 1) frameBatchesAtLod1++;
                     frameDrawCalls += drawn >> 1;
-                    if (drawn > 1) frameBatchesDrawn++;
+                    if (drawn > 1) frameBatchesDrawn++; else if (batch.lodParts) frameBatchesContributionCulled++; // every part culled
                 };
 
                 // Quantized batches (issue #1682 phase 6) draw through the quantized

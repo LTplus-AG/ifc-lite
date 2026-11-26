@@ -128,8 +128,8 @@ export class SceneCompact {
   /** Upload the queued meshes (or run a requested demotion, or a slice of the pages' LOD build). Returns whether anything changed. */
   drain(device: GPUDevice, pipeline: RenderPipeline, budgetMs = 8): boolean {
     this.gpu = { device, pipeline };
-    let demoted = this.lod !== null; // a slice of the LOD build (compact-lod.ts), whatever else this drain does
-    if (this.lod?.step(budgetMs)) this.lod = null;
+    let demoted = this.lod !== null; // a slice of the LOD build (compact-lod.ts), half the budget: uploads get the rest
+    if (this.lod?.step(budgetMs / 2)) this.lod = null;
     // A time-sliced finalize owns the batch list until it swaps: the demotion waits for it.
     if (this.demotionPages.size > 0 && !this.scene.finalizeInProgress) {
       const pages = this.demotionPages;
@@ -139,7 +139,7 @@ export class SceneCompact {
       for (const page of pages) {
         for (const source of this.store.meshesOn(page) ?? []) if (!this.refused.has(source)) chosen.push([source, this.members.get(source)!]);
       }
-      demoted = this.demoteChosen(chosen, false);
+      demoted = this.demoteChosen(chosen, false) || demoted;
     }
     if (this.queue.length === 0) return demoted;
     const mode = pageMode(this.scene);
@@ -212,7 +212,8 @@ export class SceneCompact {
     this.store.trim(device);
     this.lod = settlePages(this.store, this.scene, device, this.deps, (meshes) => {
       this.decodes.exact = (this.decodes.exact ?? 0) + meshes.length;
-      this.demoteChosen(meshes.map((source) => [source, this.members.get(source)!]), false);
+      // A failed bucket build leaves each mesh on its page or in its (pending) bucket: neither loses it, so the stream goes on.
+      try { this.demoteChosen(meshes.map((source) => [source, this.members.get(source)!]), false); } catch (error) { console.warn('[compactGeom] exact buckets', error); }
     });
   }
 

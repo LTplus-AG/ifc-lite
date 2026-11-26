@@ -1017,6 +1017,21 @@ describe('compact pages take the decisions of the bucket batches they stand in f
     assert.deepEqual(pages(on)[0].lodParts?.map((part) => part.lod1), [false], 'as the bucket rebuilt with 492 triangles draws LOD0');
   });
 
+  it('count a written mesh for its group, and give that group no LOD1 on any page (#11606)', async () => {
+    const on = await lodScene(true), gpu = fakeGpu();
+    const near = compactBatch(lodBoxes(1000, 0, 15));
+    upload(on, gpu, [...near, ...compactBatch(lodBoxes(2000, 17, 13), 1)]);
+    settle(on, gpu);
+    const far = pages(on).find((page) => page.expressIds.includes(2000))!;
+    assert.deepEqual(far.lodParts?.map((part) => part.lod1), [true]);
+    near[0].positions = new Float32Array([-5, 0, 0, -4, 0, 0, -5, 1, 0]); // written: still drawn from its page, no records any more
+    near[0].indices = new Uint32Array([0, 1, 2]);
+    assert.equal(on.removeMeshesForEntity(2001), true); // an edit: the group's pages are built again
+    flushAll(on, gpu);
+    assert.deepEqual(far.lodParts?.map((part) => part.lod1), [false], 'no LOD1 decided on part of the bucket');
+    assert.equal(far.lodParts![0].bounds.min[0], -5, 'the written mesh counts for the box');
+  });
+
   it('build every page again when a mesh retires while the build runs', async () => {
     const on = await lodScene(true), gpu = fakeGpu();
     upload(on, gpu, compactBatch(lodBoxes(1000, 0, 28)));

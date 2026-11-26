@@ -51,14 +51,15 @@ export function collectGroups(store: CompactGeometryStore, host: SceneCompactHos
   const groups = new Map<string, Group>();
   for (const page of store.pageList()) {
     for (const mesh of page.meshes) {
-      if (!mesh.compact) continue; // written since it was paged: `buildPageLods` leaves its page as it is
-      const key = bucketKeyOf(host, mesh)!;
+      const key = bucketKeyOf(host, mesh, !mesh.compact);
+      if (key === undefined) continue; // written before any build keyed it: `buildPageLods` leaves its page as it is
       let group = groups.get(key);
       if (!group) {
         group = { bounds: { min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] }, triangles: 0, fine: false, move: null, members: [], kept: 0 };
         groups.set(key, group);
       }
-      const ref = mesh.compact!, row = compactRow(ref), b = ref.payload.bounds, o = ref.row * 6;
+      if (!mesh.compact) { addWritten(group, mesh); continue; }
+      const ref = mesh.compact, row = compactRow(ref), b = ref.payload.bounds, o = ref.row * 6;
       for (let axis = 0; axis < 3; axis++) {
         group.bounds.min[axis] = Math.min(group.bounds.min[axis], b[o + axis]);
         group.bounds.max[axis] = Math.max(group.bounds.max[axis], b[o + 3 + axis]);
@@ -92,6 +93,23 @@ export function collectGroups(store: CompactGeometryStore, host: SceneCompactHos
     if (group.move) verdicts.set(key, group.move);
   }
   return groups;
+}
+
+/**
+ * A paged mesh written since a build keyed it: its page still draws it, so it counts for its group's box and
+ * triangles, but with no records to cluster the group gets no LOD1 (`kept` -1) and the mesh is no member
+ * (members are judged and clustered from their records; its page keeps its own buffer, `buildPageLods`).
+ */
+function addWritten(group: Group, mesh: MeshData): void {
+  const p = mesh.positions, o = mesh.origin ?? [0, 0, 0];
+  for (let v = 0; v + 2 < p.length; v += 3) {
+    for (let axis = 0; axis < 3; axis++) {
+      group.bounds.min[axis] = Math.min(group.bounds.min[axis], o[axis] + p[v + axis]);
+      group.bounds.max[axis] = Math.max(group.bounds.max[axis], o[axis] + p[v + axis]);
+    }
+  }
+  group.triangles += mesh.indices.length / 3;
+  group.kept = -1;
 }
 
 /** World position of a row's first record. */

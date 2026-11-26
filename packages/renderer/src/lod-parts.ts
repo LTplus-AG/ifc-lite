@@ -80,7 +80,7 @@ export function drawLodParts(
     if (draw === PartDraw.Skip) continue;
     const at = draw === PartDraw.Lod1 ? part.lod1Start : part.lod0Start;
     const n = draw === PartDraw.Lod1 ? part.lod1Count : part.lod0Count;
-    if (n === 0) continue; // an empty LOD1 range: nothing to draw (and no buffer to bind when every range is empty)
+    if (n === 0) { if (draw === PartDraw.Lod1) lod1 = true; continue; } // an empty LOD1 range: drawn at LOD1, as nothing
     if (draw === run && start + count === at) { count += n; continue; }
     flush();
     run = draw; start = at; count = n;

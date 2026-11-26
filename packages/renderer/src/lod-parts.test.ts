@@ -62,7 +62,8 @@ describe('lod-parts', () => {
     const empty: LodPart = { bounds: box(1), lod0Start: 0, lod0Count: 60, lod1: true, lod1Start: 0, lod1Count: 0 };
     assert.equal(partDraw(empty, 20, 4, 48), PartDraw.Lod1);
     const pass = recorder();
-    assert.equal(drawBatchIndices(pass.pass, { vertexBuffer: RECORDS, indexBuffer: LOD0, indexFormat: 'uint16', indexCount: 60, lodParts: [empty] }, false, () => PartDraw.Lod1), 0);
+    assert.equal(drawBatchIndices(pass.pass, { vertexBuffer: RECORDS, indexBuffer: LOD0, indexFormat: 'uint16', indexCount: 60, lodParts: [empty] }, false, () => PartDraw.Lod1), 1,
+      'no draw call, drawn at LOD1 (not culled)');
     assert.deepEqual(pass.calls, [], 'no LOD1 buffer to bind, and nothing drawn');
   });
 

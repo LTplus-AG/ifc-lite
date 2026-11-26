@@ -29,6 +29,7 @@ import { cancelAssistant, replaceEvidence, useAssistant } from '@/lib/assistant/
 import { ReportDraftReview } from './ReportDraftReview.js';
 import { ClashQualityGates } from '../ClashQualityGates.js';
 import { ClashGroupStorage } from '../ClashGroupStorage.js';
+import { defaultQualityGateConfig } from '@/lib/clash/quality-gate';
 import { act } from 'react';
 import { cleanup, click, render } from '@/test/render.js';
 import { CONTRAST_BROWSER_SKIP, closeContrastBrowser, warmContrastBrowser, withThemedPage } from '@/test/contrast/render-harness.js';
@@ -103,9 +104,15 @@ const ROWS = [
   // #11590: the same row shape in other side panels.
   { name: 'report draft name', html: reportDraftHtml, selector: '#assistant-report-name', count: 1 },
   { name: 'clash quality gate band labels', html: () => htmlOf(<ClashQualityGates />),
-    selector: 'fieldset input:not([type="number"]):not([type="color"])', count: 6 },
+    selector: 'fieldset input:not([type="number"]):not([type="color"])', count: defaultBandCount() },
   { name: 'clash group workspace', html: () => htmlOf(<ClashGroupStorage />), selector: 'label > select', count: 1 },
 ] as const;
+
+/** One label input per default band, clash and duplicates. */
+function defaultBandCount(): number {
+  const config = defaultQualityGateConfig();
+  return config.clash.length + config.duplicates.length;
+}
 
 /** The report draft review renders once a reportable answer exists. */
 function reportDraftHtml(): string {

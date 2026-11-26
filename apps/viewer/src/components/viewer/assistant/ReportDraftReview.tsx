@@ -76,10 +76,10 @@ export function ReportDraftReview() {
       <div className="flex flex-wrap items-center gap-1">
         <input id="assistant-report-name" className="min-w-32 flex-1 h-7 border border-input rounded bg-background px-2" value={name}
           maxLength={200} disabled={busy} placeholder={t('assistant.reportName')} onChange={event => { setName(event.target.value); setApproved(false); }} />
-      <Button variant="outline" size="sm" className="h-7 shrink-0" disabled={!eligible || busy} onClick={() => {
-        try { setDraft(prepareReportDraft(name, language)); setApproved(false); setSaved(false); setError(null); }
-        catch (error) { fail(error); }
-      }}>{t('assistant.prepareReport')}</Button>
+        <Button variant="outline" size="sm" className="h-7 shrink-0" disabled={!eligible || busy} onClick={() => {
+          try { setDraft(prepareReportDraft(name, language)); setApproved(false); setSaved(false); setError(null); }
+          catch (error) { fail(error); }
+        }}>{t('assistant.prepareReport')}</Button>
       </div>
       {draft && <>
         <div>

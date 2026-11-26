@@ -59,9 +59,12 @@ function QualityGateEditor() {
             onChange={event => setDraft({ ...draft, [kind]: draft[kind].map((entry, i) => i === index ? { ...entry, minimum: event.target.valueAsNumber } : entry) })} />
           <Input className="h-7 min-w-32 flex-1 p-1 text-xs" aria-label={`${t(`clashQuality.${kind}`)} ${t('clashQuality.label')} ${index + 1}`}
             maxLength={100} value={band.label} onChange={event => setDraft({ ...draft, [kind]: draft[kind].map((entry, i) => i === index ? { ...entry, label: event.target.value } : entry) })} />
-          <Input type="color" className="h-7 w-8 p-0" aria-label={`${t(`clashQuality.${kind}`)} ${t('clashQuality.color')} ${index + 1}`} value={band.color}
-            onChange={event => setDraft({ ...draft, [kind]: draft[kind].map((entry, i) => i === index ? { ...entry, color: event.target.value } : entry) })} />
-          {index > 0 && <IconButton type="button" variant="ghost" size="icon-xs" label={`${t('clashQuality.remove')} ${index + 1}`} onClick={() => setDraft({ ...draft, [kind]: draft[kind].filter((_, i) => i !== index) })}>×</IconButton>}
+          {/* The swatch and remove button wrap together, so a lone × never lands under another band (#11590). */}
+          <span className="flex shrink-0 items-center gap-1">
+            <Input type="color" className="h-7 w-8 p-0" aria-label={`${t(`clashQuality.${kind}`)} ${t('clashQuality.color')} ${index + 1}`} value={band.color}
+              onChange={event => setDraft({ ...draft, [kind]: draft[kind].map((entry, i) => i === index ? { ...entry, color: event.target.value } : entry) })} />
+            {index > 0 && <IconButton type="button" variant="ghost" size="icon-xs" label={`${t('clashQuality.remove')} ${index + 1}`} onClick={() => setDraft({ ...draft, [kind]: draft[kind].filter((_, i) => i !== index) })}>×</IconButton>}
+          </span>
         </div>)}
         <Button type="button" variant="ghost" size="sm" disabled={draft[kind].length >= 12 || draft[kind].at(-1)!.minimum >= 100}
           onClick={() => setDraft({ ...draft, [kind]: [...draft[kind], newQualityBand(Math.min(100, draft[kind].at(-1)!.minimum + 1), t('clashQuality.newCategory'))] })}>{t('clashQuality.add')}</Button>

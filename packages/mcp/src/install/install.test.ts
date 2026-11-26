@@ -111,6 +111,12 @@ describe('ifc-lite-mcp install: where each client is configured', () => {
     expect([...io.files.keys()]).toEqual(['C:\\A\\Claude\\claude_desktop_config.json']);
   });
 
+  it('--allow is refused on Windows, where the server cannot match it yet', () => {
+    const io = fakeIo({ platform: 'win32', home: 'C:\\Users\\u', cwd: 'C:\\w' });
+    expect(install(['--client', 'cursor', '--', '--allow', 'C:\\models'], io)).toBe(1);
+    expect(io.stderr).toContain('drop --allow');
+  });
+
   it('a Windows root-relative path gets the drive of the current directory', () => {
     const io = fakeIo({ platform: 'win32', home: 'C:\\Users\\u', cwd: 'D:\\work' });
     install(['--client', 'cursor', '\\proj\\m.ifc'], io);

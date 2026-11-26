@@ -35,11 +35,11 @@ export function checkServerArgs(argv: string[], host: HostEnv): { args: string[]
   // loader.ts's exact rule, so what it refuses at load is refused here (its '/'-only
   // join also refuses Windows paths today; install says so rather than write it).
   const roots = parsed.allowedPaths ?? [];
-  const outside = roots.length > 0 && parsed.files.find((f) => !roots.some((r) => f === r || f.startsWith(r + '/')));
-  if (outside) {
-    const why = host.platform === 'win32' ? ' (on Windows the server cannot match --allow roots yet)' : '';
-    throw new InstallError(`${outside} is outside every --allow root; the server would refuse it${why}.`);
+  if (roots.length > 0 && host.platform === 'win32') {
+    throw new InstallError('On Windows the server cannot match --allow roots yet, so every model would be refused; drop --allow.');
   }
+  const outside = roots.length > 0 && parsed.files.find((f) => !roots.some((r) => f === r || f.startsWith(r + '/')));
+  if (outside) throw new InstallError(`${outside} is outside every --allow root; the server would refuse it.`);
   if (!parsed.bridge && (parsed.insecure || parsed.allowedOrigins)) {
     throw new InstallError('--insecure and --allow-origin only act with --bridge here; for HTTP, give the client the server URL.');
   }

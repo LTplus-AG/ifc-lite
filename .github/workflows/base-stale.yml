@@ -27,8 +27,9 @@ name: Base-stale signal
 # tree's measurement, a PR head's measuring run) are cached across sweeps.
 # Each run may spend at most min(150, half the requests left above 300); the
 # floor is re-read between PRs, and a PR the budget cuts short is logged as
-# not judged and posts nothing. However many main pushes land in an hour,
-# this workflow alone cannot take the token below 300. Measured 2026-11-26
+# not judged and posts nothing. Runs one after another (however many main
+# pushes land in an hour) cannot take the token below 300; two at once (a
+# sweep and a label run) still meet it; see callAllowance for more. Measured 2026-11-26
 # over 7 labelled PRs: 61-71 calls cold, 13-15 warm, 12-48 s of script.
 #
 # EVIDENCE. Each run uploads `base-stale-verdicts` (JSONL, 30 days): one row

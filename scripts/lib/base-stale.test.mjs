@@ -121,8 +121,12 @@ bt("a pass against main measured behind its tip is unknown, not fresh: the tip's
   assert.equal(r.verdict, UNKNOWN);
   assert.ok(r.reasons.some((x) => x.endsWith("3 commit(s) behind main's unmeasured tip")), r.reasons.join(' | '));
   assert.ok(r.reasons.some((x) => x.endsWith('3 commit(s) behind its tip')));
-  // Behind the tip and already over: still stale, the measured drift alone proves it.
-  assert.equal(perf(ALLOWED - 100, { atBase: 13000000, latest: 13000101, behindTip: 3 }).verdict, STALE);
+  // Behind the tip and over: unknown too; the unmeasured tip may have shrunk.
+  const over = perf(ALLOWED - 100, { atBase: 13000000, latest: 13000101, behindTip: 3 });
+  assert.equal(over.verdict, UNKNOWN);
+  assert.ok(over.reasons[0].includes('> allowed 13478804 by 1 as of bbbbbbbbb'), over.reasons[0]);
+  // At the tip the same numbers are stale.
+  assert.equal(perf(ALLOWED - 100, { atBase: 13000000, latest: 13000101 }).verdict, STALE);
 });
 
 const RUST = ['rust/**', 'Cargo.toml', 'Cargo.lock', 'apps/server/**'];

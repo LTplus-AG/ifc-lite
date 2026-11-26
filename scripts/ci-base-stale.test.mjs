@@ -15,13 +15,11 @@ import { fileURLToPath } from 'node:url';
 // Guarded imports (the scripts/perf-ratchet pattern, #6516): with the
 // production modules reverted, every test fails on the presence assertion
 // instead of the file dying at import with no assertion evaluated.
-async function load(rel) {
-  const url = new URL(rel, import.meta.url);
-  return existsSync(url) ? import(url.href) : null;
-}
-const cli = await load('./ci-base-stale.mjs');
-const core = await load('./lib/base-stale.mjs');
-const ioMod = await load('./lib/base-stale-io.mjs');
+// All three are checked before any is imported: the CLI imports the other
+// two, so one reverted module would otherwise fail the CLI's import.
+const MODULES = ['./ci-base-stale.mjs', './lib/base-stale.mjs', './lib/base-stale-io.mjs'].map((rel) => new URL(rel, import.meta.url));
+const present = MODULES.every((url) => existsSync(url));
+const [cli, core, ioMod] = present ? await Promise.all(MODULES.map((url) => import(url.href))) : [null, null, null];
 const { callAllowance, CALL_CAP, evaluatePr, MIN_ALLOWANCE, loadCache, loadFilterGlobs, parseArgs, RATE_FLOOR, readFilterGlobs, run } = cli ?? {};
 const { prRelevance } = core ?? {};
 const { BudgetError, changedPaths, compareMoved, createIo, isOwnRun } = ioMod ?? {};
@@ -47,7 +45,7 @@ ct('parseArgs: the three modes and their required inputs', () => {
 
 ct('parseArgs: a malformed --pr-run is refused, never read as "no replay"', () => {
   assert.equal(parseArgs(['--pr', '1', '--pr-run', '4503929569']).prRun, 4503929569);
-  for (const bad of ['4503929569x', '0', '-3', '1.5']) {
+  for (const bad of ['4503929569x', '0', '-3', '1.5', '9007199254740993']) {
     assert.throws(() => parseArgs(['--pr', '1', '--pr-run', bad]), /--pr-run needs a run id/, bad);
   }
 });
@@ -381,14 +379,18 @@ ct('io: a file main moved out of a crate still counts for that crate (local git,
   git('init', '-q');
   mkdirSync(join(dir, 'rust/core/src'), { recursive: true });
   writeFileSync(join(dir, 'rust/core/src/a.rs'), 'pub fn a() -> u32 { 1 }\n'.repeat(20));
+  writeFileSync(join(dir, 'rust/core/src/café.rs'), 'pub fn c() {}\n');
   git('add', '-A');
   git('commit', '-qm', 'base');
   const base = git('rev-parse', 'HEAD');
   mkdirSync(join(dir, 'docs'));
   git('mv', 'rust/core/src/a.rs', 'docs/a.rs');
+  writeFileSync(join(dir, 'rust/core/src/café.rs'), 'pub fn c() -> u8 { 2 }\n');
+  git('add', '-A');
   git('commit', '-qm', 'move');
   const moved = createIo({ repo: 'o/r', cwd: dir }).movedSince(base, git('rev-parse', 'HEAD'));
-  assert.deepEqual([...moved.files].sort(), ['docs/a.rs', 'rust/core/src/a.rs']);
+  // Both ends of the move, and the non-ASCII name as raw bytes, not C-quoted.
+  assert.deepEqual([...moved.files].sort(), ['docs/a.rs', 'rust/core/src/a.rs', 'rust/core/src/café.rs']);
 });
 
 ct('io: the compare cap counts entries, not the two paths a rename expands to', () => {
@@ -431,4 +433,28 @@ ct('run: two PRs sharing a head keep their own file lists in the cache', () => {
   }
   const saved = loadCache(cachePath).prFiles;
   assert.deepEqual(saved, { 'same#5': ['docs/a.md'], 'same#6': ['rust/core/src/a.rs'] }, 'both survive the prune, neither overwrites the other');
+});
+
+ct('evaluatePr: an unreadable main diff makes the Rust half unknown but keeps a stale perf half', () => {
+  const io = fakeIo({
+    prFiles: () => ['rust/core/src/a.rs'],
+    movedSince: () => { throw new Error('HTTP 502'); },
+  });
+  const log = console.log;
+  console.log = () => {};
+  let r;
+  try {
+    r = evaluatePr(io, { pr: 1, headSha: 'h', mainTip: 'tip00000001', ceilings, globs });
+  } finally {
+    console.log = log;
+  }
+  assert.equal(r.verdict, 'stale', 'perf is stale on its own evidence');
+  assert.equal(r.rust.verdict, 'unknown');
+});
+
+ct('run: a replay (--pr-run / --main-sha) is logged, never posted, even with the gate on', () => {
+  for (const over of [{ prRun: 4503929569 }, { mainSha: 'tip00000001' }]) {
+    const { posts, reads } = runFake({ gate: 'on', opts: over });
+    assert.deepEqual([posts, reads], [[], []], JSON.stringify(over));
+  }
 });

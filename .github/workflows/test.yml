@@ -4148,7 +4148,10 @@ jobs:
       && (needs.native-instructions.result == 'success' || needs.native-instructions.result == 'skipped')
       && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.frontend == 'true' || needs.changes.outputs.perf_ratchet == 'true')
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # 5 for the ratchet itself (it takes ~25 s), +3 so the advisory
+    # base-stale step (its own timeout-minutes: 3) can never cancel this
+    # required job.
+    timeout-minutes: 8
     permissions:
       contents: read
       # The sticky report comment (issues/comments endpoint on the PR).

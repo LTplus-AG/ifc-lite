@@ -45,7 +45,7 @@
  *   node scripts/ci-base-stale.mjs --sweep [--cache <file>] [--json-out <file>]
  *   node scripts/ci-base-stale.mjs --pr <n> [--json-out <file>]
  *   node scripts/ci-base-stale.mjs --in-run --pr <n> --head-sha <sha> --merge-sha <sha> --measured-dir <dir>
- *   common: [--main-sha <sha>] [--pr-run <run id>] (replay a past decision) [--dry-run] (never post)
+ *   common: [--main-sha <sha>] [--pr-run <run id>] (replay a past decision; never posts) [--dry-run] (never post)
  *
  * Env: GH_TOKEN, GITHUB_REPOSITORY, CI_BASE_STALE_GATE, GITHUB_STEP_SUMMARY,
  * GITHUB_SERVER_URL/GITHUB_RUN_ID (status target link), HEAD_REPO (in-run fork check).
@@ -74,8 +74,12 @@ export const MIN_ALLOWANCE = 10;
 /**
  * This run's allowance: at most half of what is left above the floor, and
  * never more than the cap. Each run spends at most half the headroom, so
- * however many main pushes land in an hour, this workflow alone cannot take
- * the shared token below RATE_FLOOR, and a busy hour backs off on its own.
+ * runs one after another (however many main pushes land in an hour) cannot
+ * take the shared token below RATE_FLOOR, and a busy hour backs off on its
+ * own. Runs that read the quota at the same moment each size from that one
+ * reading: two (a sweep and a label run) still meet the floor exactly; k > 2
+ * can dip under it by at most (k - 2) halves of that headroom, and the
+ * between-PR re-read stops a sweep at the floor as soon as it is crossed.
  */
 export function callAllowance(remaining, cap) {
   if (remaining === null) return cap;
@@ -101,7 +105,7 @@ export function parseArgs(argv) {
     else if (flag === '--main-sha') opts.mainSha = value();
     else if (flag === '--pr-run') {
       const raw = value();
-      if (!/^[1-9]\d*$/.test(raw)) throw new Error(`--pr-run needs a run id, got ${raw}`);
+      if (!/^[1-9]\d*$/.test(raw) || !Number.isSafeInteger(Number(raw))) throw new Error(`--pr-run needs a run id, got ${raw}`);
       opts.prRun = Number(raw);
     }
     else if (flag === '--cache') opts.cache = value();
@@ -177,7 +181,17 @@ export function evaluatePr(io, { pr, headSha, mainTip, ceilings, globs, measured
         mainLatest: needsMain ? (atTip ?? io.latestMainMeasurement(mainTip)) : null,
       });
     }
-    const moved = rel.rust && tb ? (sameMain ? { files: [], commits: 0, capped: false } : io.movedSince(tb, mainTip)) : null;
+    let moved = null;
+    if (rel.rust && tb) {
+      try {
+        moved = sameMain ? { files: [], commits: 0, capped: false } : io.movedSince(tb, mainTip);
+      } catch (err) {
+        // Rust becomes "could not be read"; a stale perf half still stands.
+        if (err instanceof BudgetError) throw err;
+        console.log(`base-stale: #${pr}: main's changes since ${tb} not read (${err.message.split('\n')[0]})`);
+        moved = null;
+      }
+    }
     const rust = evaluateRust({ relevant: rel.rust, prFiles: files, rustGlobs: globs.rustGlobs, testedBase: tb, moved });
     return { ...record, ...combine(perf, rust), perf: { verdict: perf.verdict, rows: perf.rows }, rust: { verdict: rust.verdict, mainRustFiles: rust.mainRustFiles, overlap: rust.overlap } };
   } catch (err) {
@@ -338,7 +352,10 @@ export function run(opts, env = process.env, makeIo = createIo) {
     const budgetCut = rec.budget === true;
     if (budgetCut) stopped = 'API budget for this run spent';
     let status = null;
-    if (!fork && !opts.dryRun && !budgetCut) {
+    // A replay (--pr-run / --main-sha) judges other evidence than the head's
+    // current state: it is logged, never posted.
+    const replay = Boolean(opts.prRun || opts.mainSha);
+    if (!fork && !opts.dryRun && !budgetCut && !replay) {
       try {
         // Shadow reads the existing status only where `on` may have left a
         // non-success: always for a single PR; in a sweep, for every head on

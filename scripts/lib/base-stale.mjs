@@ -155,21 +155,23 @@ export function evaluatePerf({ relevant, editsCeilings = false, prMeasured, test
       const drift = l - b;
       const projected = pr + drift;
       const row = { ...base, drift, projected };
-      if (projected > allowed) {
+      if (mainLatest.behindTip > 0) {
+        // Main's tip is not measured yet (a sweep can run before its upload):
+        // neither a pass nor an overage against an older main is a verdict on
+        // current main, which may have moved either way since.
+        const where = projected > allowed ? `> allowed ${allowed} by ${projected - allowed}` : `<= allowed ${allowed}`;
+        rows.push({
+          ...row,
+          verdict: UNKNOWN,
+          reason: `${id}: projected ${projected} ${where} as of ${short(mainLatest.sha)}, ${mainLatest.behindTip} commit(s) behind main's unmeasured tip`,
+        });
+      } else if (projected > allowed) {
         rows.push({
           ...row,
           verdict: STALE,
           reason:
             `${id}: PR ${pr} on ${short(testedBase)}, main ${drift >= 0 ? '+' : ''}${drift} since (to ${short(mainLatest.sha)}); ` +
             `projected ${projected} > allowed ${allowed} by ${projected - allowed}`,
-        });
-      } else if (mainLatest.behindTip > 0) {
-        // Main's tip is not measured yet (a sweep can run before its upload):
-        // a pass against an older main is not a verdict on current main.
-        rows.push({
-          ...row,
-          verdict: UNKNOWN,
-          reason: `${id}: projected ${projected} <= allowed ${allowed} as of ${short(mainLatest.sha)}, ${mainLatest.behindTip} commit(s) behind main's unmeasured tip`,
         });
       } else {
         const note = projected > entry.ceiling ? 'within tolerance' : 'at or under ceiling';
@@ -213,6 +215,9 @@ const WORKSPACE_RUST_FILES = new Set(['Cargo.toml', 'Cargo.lock', 'rust-toolchai
  * `rust` filter carries (test.yml itself, harness scripts, the CLI's retained
  * glue) re-triggers the Rust lanes but is not Rust source, so it has no scope
  * and never overlaps: two PRs both editing test.yml is not a Rust conflict.
+ * A crate's own tests (`rust/<crate>/tests/**`) DO take the crate's scope:
+ * they compile against its source, so main changing that source can break
+ * them in the queue.
  */
 export function rustScope(path) {
   if (WORKSPACE_RUST_FILES.has(path)) return 'workspace';

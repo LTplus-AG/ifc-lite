@@ -128,7 +128,9 @@ export function createIo({ repo, cwd = process.cwd(), cache = null, now = () => 
   function mainMeasurementAt(sha) {
     const tree = treeOf(sha);
     const hit = store.mainMeasurements[tree];
-    if (hit && (hit.families || now() - hit.checkedAt < NEGATIVE_TTL_MS)) {
+    // A miss, or a measurement without every family (the native job uploads
+    // after the bundle one), is re-checked after the TTL; a full one is final.
+    if (hit && ((hit.families && !hit.checkedAt) || now() - hit.checkedAt < NEGATIVE_TTL_MS)) {
       stats.cacheHits += 1;
       return hit.families ? { sha, families: hit.families, runId: hit.runId } : null;
     }
@@ -140,7 +142,8 @@ export function createIo({ repo, cwd = process.cwd(), cache = null, now = () => 
     for (const art of candidates) {
       const families = runMeasurement(art.workflow_run.id);
       if (families) {
-        store.mainMeasurements[tree] = { families, runId: art.workflow_run.id };
+        const full = families.length >= MEASURED_ARTIFACTS.length;
+        store.mainMeasurements[tree] = { families, runId: art.workflow_run.id, ...(full ? {} : { checkedAt: now() }) };
         return { sha, families, runId: art.workflow_run.id };
       }
     }
@@ -214,7 +217,8 @@ export function createIo({ repo, cwd = process.cwd(), cache = null, now = () => 
       if (spawnSync('git', ['merge-base', '--is-ancestor', base, tip], { cwd }).status !== 0) return null;
       // --no-renames: a move lists its old path too (a crate main moved a file
       // out of still changed), and rename detection would fetch blobs.
-      const files = git(['diff', '--name-only', '--no-renames', `${base}..${tip}`]).split('\n').filter(Boolean);
+      // -z: raw path bytes, not C-quoted ones a non-ASCII name would get.
+      const files = git(['diff', '--name-only', '-z', '--no-renames', `${base}..${tip}`]).split('\0').filter(Boolean);
       const commits = Number(git(['rev-list', '--count', `${base}..${tip}`]));
       return { files, commits, capped: false };
     }
@@ -239,7 +243,10 @@ export function createIo({ repo, cwd = process.cwd(), cache = null, now = () => 
     for (let page = 1; ; page += 1) {
       const entries = api(`repos/${repo}/pulls/${number}/files?per_page=100&page=${page}`, `files of PR #${number}`);
       files.push(...changedPaths(entries));
-      if (entries.length < 100 || page >= 30) break;
+      if (entries.length < 100) break;
+      // GitHub lists at most 3,000 files: a full 30th page may hide the rest,
+      // and a prefix read as the whole list could call a Rust PR not relevant.
+      if (page >= 30) throw new Error(`PR #${number} changes 3,000+ files; GitHub does not list them all`);
     }
     if (key) store.prFiles[key] = files;
     return files;
@@ -280,8 +287,12 @@ export function createIo({ repo, cwd = process.cwd(), cache = null, now = () => 
 
   /** This context's state on a commit, or null when absent. */
   function existingStatus(sha, context) {
-    const combined = api(`repos/${repo}/commits/${sha}/status`, `statuses on ${sha}`);
-    return (combined.statuses ?? []).find((s) => s.context === context)?.state ?? null;
+    const combined = api(`repos/${repo}/commits/${sha}/status?per_page=100`, `statuses on ${sha}`);
+    const statuses = combined.statuses ?? [];
+    const found = statuses.find((s) => s.context === context)?.state ?? null;
+    // Not on a page that holds every context is no answer, not "absent".
+    if (found === null && (combined.total_count ?? 0) > statuses.length) throw new Error(`${sha} has ${combined.total_count} statuses; ${context} is not on the first page`);
+    return found;
   }
 
   function postStatus(sha, context, { state, description }, targetUrl) {

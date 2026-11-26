@@ -33,7 +33,7 @@
  */
 
 import type { JsonSchema } from './protocol/index.js';
-import { resolveRef, SchemaError } from './schema-ref.js';
+import { own, resolveRef, SchemaError } from './schema-ref.js';
 
 export interface ValidationIssue {
   path: string;
@@ -62,7 +62,6 @@ export const ENFORCED_KEYWORDS: ReadonlySet<string> = new Set([
   'description', 'title', 'format', 'examples', '$schema', '$comment',
 ]);
 
-export { SchemaError };
 
 export interface ValidateOptions {
   /**
@@ -326,10 +325,6 @@ export function compilePattern(source: string): RegExp {
     if (err instanceof SyntaxError) return new RegExp(source);
     throw err;
   }
-}
-
-function own(obj: Record<string, unknown>, key: string): unknown {
-  return Object.prototype.hasOwnProperty.call(obj, key) ? obj[key] : undefined;
 }
 
 function defineData(obj: Record<string, unknown>, key: string, value: unknown): void {

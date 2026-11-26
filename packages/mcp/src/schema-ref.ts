@@ -17,7 +17,7 @@ export function resolveRef(ref: string, root: JsonSchema): JsonSchema | boolean 
   // `#` is the root; every segment after it is a key, including an empty one (RFC 6901).
   for (const raw of ref === '#' ? [] : ref.slice(1).split('/').slice(1)) {
     const key = decodePointerSegment(raw, ref);
-    target = target !== null && typeof target === 'object' ? (Object.prototype.hasOwnProperty.call(target, key) ? (target as Record<string, unknown>)[key] : undefined) : undefined;
+    target = target !== null && typeof target === 'object' ? own(target as Record<string, unknown>, key) : undefined;
   }
   if (typeof target === 'boolean' || (target !== null && typeof target === 'object' && !Array.isArray(target))) {
     return target as JsonSchema | boolean;
@@ -34,4 +34,9 @@ function decodePointerSegment(raw: string, ref: string): string {
     throw err;
   }
   return decoded.replace(/~1/g, '/').replace(/~0/g, '~');
+}
+
+/** An own property only: a key named `constructor` must not read Object.prototype's. */
+export function own(obj: Record<string, unknown>, key: string): unknown {
+  return Object.prototype.hasOwnProperty.call(obj, key) ? obj[key] : undefined;
 }

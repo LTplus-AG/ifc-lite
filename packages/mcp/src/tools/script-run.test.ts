@@ -189,8 +189,8 @@ describe('script_run', () => {
 
   it('puts the serialised result in the text block for content-only clients', async () => {
     const result = await run("console.log('hi'); bim.query.byType('IfcWall').length");
-    const text = (result.content[0] as { text: string }).text;
-    expect(JSON.parse(text.slice(text.indexOf('\n') + 1))).toMatchObject({ value: 2, logs: [{ text: 'hi' }] });
+    const last = result.content[result.content.length - 1] as { text: string };
+    expect(JSON.parse(last.text)).toMatchObject({ value: 2, logs: [{ text: 'hi' }] });
   });
 
   it('flags truncated logs on an error result', async () => {
@@ -268,6 +268,10 @@ describe('script_run', () => {
     expect(err).toMatchObject({ code: 'INVALID_INPUT', details: { kind: 'script' } });
     expect(err.hint).toMatch(/recursed/);
     expect((await run('5 + 5')).structuredContent?.value).toBe(10);
+  });
+
+  it('hints at script_run_mutate for every namespace read mode lacks', async () => {
+    expect((await runError("bim.create.project({})")).hint).toMatch(/script_run_mutate/);
   });
 
   it('tags a script failure apart from bad arguments', async () => {

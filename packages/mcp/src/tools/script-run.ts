@@ -10,8 +10,8 @@
  * Two tools rather than one with a flag, so the server's static gates do the
  * work: `--read-only` and a token without the `mutate` scope hide
  * `script_run_mutate` from `tools/list` and refuse it at dispatch, and
- * `script_run` builds a sandbox with no `bim.mutate` / `bim.store`
- * namespaces at all. Neither tool gets network, files, viewer or UI access.
+ * `script_run` builds a sandbox with no `bim.mutate`, `bim.store`,
+ * `bim.export` or `bim.create` namespaces at all. Neither tool gets network, files, viewer or UI access.
  *
  * Every call gets a fresh sandbox, disposed in `finally`. The QuickJS
  * interrupt handler enforces `timeout_ms` on script code, and the sandbox
@@ -23,10 +23,10 @@
 
 import { createSandbox, ScriptError, type SandboxPermissions } from '@ifc-lite/sandbox';
 import { MAX_VALUE_CHARS, clipMessage, readEnvelope, shapeLogs, wrapScript } from './script-output.js';
-import type { JsonSchema } from '../protocol/index.js';
+import type { CallToolResult, JsonSchema } from '../protocol/index.js';
 import type { LoadedModel, ToolContext } from '../context.js';
 import type { Tool } from './types.js';
-import { okResult, resolveModel } from './util.js';
+import { resolveModel } from './util.js';
 import { ToolErrorCode, ToolExecutionError, describeThrown } from '../errors.js';
 
 const MAX_CODE_CHARS = 100_000;
@@ -123,8 +123,8 @@ function hintFor(mode: Mode, code: string, message: string): string | undefined 
   if (OUT_OF_MEMORY.test(message)) return `Raise memory_mb (max ${MAX_MEMORY_MB}) or keep less in memory.`;
   if (/stack overflow|call stack/i.test(message)) return 'The script recursed too deep; make the recursion iterative or shallower.';
   // Only when the failure looks like touching a namespace that is absent.
-  if (mode === 'read' && /\bbim\.(mutate|store)\b/.test(code) && /of undefined|undefined is not/.test(message)) {
-    return 'script_run has no bim.mutate or bim.store; use script_run_mutate to edit the model.';
+  if (mode === 'read' && /\bbim\.(mutate|store|export|create)\b/.test(code) && /of undefined|undefined is not/.test(message)) {
+    return 'script_run has no bim.mutate, bim.store, bim.export or bim.create; use script_run_mutate for them.';
   }
   return undefined;
 }
@@ -202,7 +202,12 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
       };
       // The serialised result goes in the text block too, for clients that
       // read only `content` (MCP 2025-06-18, structured content).
-      return okResult(`${summary}\n${JSON.stringify(structured)}`, structured);
+      // Its own last block, like the error envelope fitOutputSchema adds.
+      const toolResult: CallToolResult = {
+        content: [{ type: 'text', text: summary }, { type: 'text', text: JSON.stringify(structured) }],
+        structuredContent: structured,
+      };
+      return toolResult;
     } catch (err) {
       if (err instanceof ToolExecutionError) throw err;
       // A sandbox disposed by a cancel rejects with a plain Error
@@ -253,7 +258,7 @@ const SHARED_DESCRIPTION = `Runs in a QuickJS sandbox with only the \`bim\` SDK 
 export const scriptRunTool: Tool = {
   name: 'script_run',
   title: 'Run SDK script (read-only)',
-  description: `script, eval, javascript, sdk: run a read-only SDK script against a loaded model. ${SHARED_DESCRIPTION} bim.mutate and bim.store are absent; use script_run_mutate to edit.`,
+  description: `script, eval, javascript, sdk: run a read-only SDK script against a loaded model. ${SHARED_DESCRIPTION} bim.mutate, bim.store, bim.export and bim.create are absent; use script_run_mutate for them.`,
   scope: 'read',
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   inputSchema,

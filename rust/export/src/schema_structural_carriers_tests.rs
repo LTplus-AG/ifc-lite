@@ -187,18 +187,14 @@ fn an_incomplete_varying_action_is_written_constant_and_linked_to_its_reaction_1
 }
 
 #[test]
-fn an_incomplete_varying_action_reports_an_uncarried_cause_and_an_unusable_load_11354() {
+fn an_incomplete_varying_action_reports_an_uncarried_cause_11354() {
     let opts = StepOptions { schema: Some("IFC4".into()), ..StepOptions::default() };
     let action = VARYING.replace(",.F.,#20,.TRUE_LENGTH.", ",.F.,#9,.TRUE_LENGTH.");
     let (up, stats, warnings) = export_step_with_diagnostics(model("IFC2X3", &[GEOMETRY, REACTION, &action].join("\n")).as_bytes(), &opts).unwrap();
     assert!(record(&up, 30).ends_with(".TRUE_LENGTH.,.CONST.);") && relationships(&up).is_empty(), "{up}");
     assert!(warnings.iter().any(|w| w.contains("IFCSTRUCTURALLINEARACTIONVARYING.CausedBy has no slot in IFC4")), "{warnings:?}");
     assert_eq!(stats.attribute_values_dropped, 3, "CausedBy, VaryingAppliedLoadLocation, SubsequentAppliedLoads");
-    let action = VARYING.replace(",#15,#11,", ",#15,#9,");
-    let (up, stats, warnings) = export_step_with_diagnostics(model("IFC2X3", &[GEOMETRY, REACTION, &action].join("\n")).as_bytes(), &opts).unwrap();
-    assert!(record(&up, 30).contains(",#15,$,.GLOBAL_COORDS."), "{up}");
-    assert!(warnings.iter().any(|w| w.contains("no usable AppliedLoad")), "{warnings:?}");
-    assert_eq!(stats.attribute_values_dropped, 3, "AppliedLoad, VaryingAppliedLoadLocation, SubsequentAppliedLoads");
+
 }
 
 #[test]
@@ -223,14 +219,15 @@ fn an_incomplete_varying_action_reports_only_the_slots_that_held_a_value_11354()
 }
 
 #[test]
-fn an_ifc4_load_configuration_is_unusable_for_a_constant_action_11354() {
+fn a_constant_action_requires_an_eligible_applied_load_11354() {
     let opts = StepOptions { schema: Some("IFC4".into()), ..StepOptions::default() };
-    let action = VARYING.replace(",#15,#11,", ",#15,#40,");
-    let source = model("IFC2X3", &[GEOMETRY, REACTION, &action, "#40=IFCSTRUCTURALLOADCONFIGURATION($,(#11),$);"].join("\n"));
-    let (up, stats, warnings) = export_step_with_diagnostics(source.as_bytes(), &opts).unwrap();
-    assert!(record(&up, 30).contains(",#15,$,.GLOBAL_COORDS."), "{up}");
-    assert!(warnings.iter().any(|w| w.contains("no usable AppliedLoad")), "{warnings:?}");
-    assert_eq!(stats.attribute_values_dropped, 3, "AppliedLoad, VaryingAppliedLoadLocation, SubsequentAppliedLoads");
+    for invalid in ["#40", "$", "#9"] {
+        let action = VARYING.replace(",#15,#11,", &format!(",#15,{invalid},"));
+        let source = model("IFC2X3", &[GEOMETRY, REACTION, &action, "#40=IFCSTRUCTURALLOADCONFIGURATION($,(#11),$);"].join("\n"));
+        let error = export_step_with_diagnostics(source.as_bytes(), &opts).unwrap_err();
+        assert!(error.to_string().contains("#30 (IFCSTRUCTURALLINEARACTIONVARYING)"), "{invalid}: {error}");
+        assert!(error.to_string().contains("no usable AppliedLoad"), "{invalid}: {error}");
+    }
 }
 
 #[test]

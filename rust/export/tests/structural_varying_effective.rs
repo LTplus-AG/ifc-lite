@@ -109,3 +109,25 @@ fn logged_export_counts_typed_properties_and_deferred_varying_records_once_10797
     assert_eq!(stats.written, ids.len());
     assert_eq!(ids.iter().collect::<std::collections::HashSet<_>>().len(), ids.len(), "{output}");
 }
+
+#[test]
+fn effective_exports_refuse_an_action_without_a_usable_initial_load_11354() {
+    use ifc_lite_export::{export_step_with_diagnostics, export_step_with_log, AttrMutation, StepOptions};
+
+    let source = varying_fixture();
+    let options = StepOptions { schema: Some("IFC4".into()), ..StepOptions::default() };
+    let edited = StepOptions {
+        attribute_mutations: vec![AttrMutation { express_id: 30, index: 7, value: "$".into() }],
+        ..options.clone()
+    };
+    let log = serde_json::from_value(serde_json::json!({"mutations": [
+        {"type": "UPDATE_POSITIONAL_ATTRIBUTE", "entityId": 30, "attributeName": "@7", "newValue": "$"}
+    ]})).unwrap();
+    let edited_error = export_step_with_diagnostics(source.as_bytes(), &edited).unwrap_err();
+    let logged_error = export_step_with_log(source.as_bytes(), &options, &log).unwrap_err();
+    for error in [edited_error, logged_error] {
+        let diagnostic = error.to_string();
+        assert!(diagnostic.contains("#30 (IFCSTRUCTURALLINEARACTIONVARYING)"), "{diagnostic}");
+        assert!(diagnostic.contains("no usable AppliedLoad"), "{diagnostic}");
+    }
+}

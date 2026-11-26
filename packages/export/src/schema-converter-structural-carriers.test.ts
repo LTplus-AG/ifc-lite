@@ -464,14 +464,11 @@ ${geometry.replace('(#16),', aspect)}
       await expectIfc4Shape(up.step, 30);
     });
 
-    it('reports an omitted CausedBy that names no reaction, and an AppliedLoad that is no load', async () => {
+    it('reports an omitted CausedBy that names no reaction', async () => {
       const noReaction = await convert(varying('(#16),').replace(',.F.,#20,.TRUE_LENGTH.', ',.F.,#9,.TRUE_LENGTH.'), 'IFC4');
       expect(line(noReaction.step, 30)).toMatch(/^#30=IFCSTRUCTURALCURVEACTION\(.*\.CONST\.\);$/);
       expect(records(noReaction.step, 'IFCRELASSIGNSTOPRODUCT')).toEqual([]);
       expect(noReaction.warnings).toContain('IFCSTRUCTURALLINEARACTIONVARYING.CausedBy has no slot in IFC4; its value is omitted');
-      const noLoad = await convert(varying('(#16),').replace(',#9,#15,#11,', ',#9,#15,#9,'), 'IFC4');
-      expect(line(noLoad.step, 30)).toContain(',#15,$,.GLOBAL_COORDS.,');
-      expect(noLoad.warnings).toContain('no usable AppliedLoad');
     });
 
     it('keeps an AppliedLoad that carries a STEP comment, before or after the reference (#11354)', async () => {
@@ -496,11 +493,13 @@ ${geometry.replace('(#16),', aspect)}
       expect((await both('#17,(#11,#11)')).warnings).toContain('its varying locations and subsequent loads were omitted');
     });
 
-    it('reports an IfcStructuralLoadConfiguration as unusable for a constant action (#11354)', async () => {
+    it('refuses a constant action with an absent or ineligible AppliedLoad (#11354)', async () => {
       const text = varying('(#16),').replace(',#9,#15,#11,', ',#9,#15,#40,').replace('ENDSEC;\nEND', '#40=IFCSTRUCTURALLOADCONFIGURATION($,(#11),$);\nENDSEC;\nEND');
-      const up = await convert(text, 'IFC4');
-      expect(line(up.step, 30)).toContain(',#15,$,.GLOBAL_COORDS.');
-      expect(up.warnings).toContain('no usable AppliedLoad');
+      for (const source of [text, text.replace(',#15,#40,', ',#15,$,'), text.replace(',#15,#40,', ',#15,#9,')]) {
+        await expect(convert(source, 'IFC4')).rejects.toThrow(/#30 .*no usable AppliedLoad/);
+        const exporter = new StepExporter(await parse(source));
+        expect(() => exporter.export({ schema: 'IFC4', subsetEntityIds: new Set([30]) })).toThrow(/#30 .*no usable AppliedLoad/);
+      }
     });
 
     it('leaves the complete configuration conversion alone', async () => {

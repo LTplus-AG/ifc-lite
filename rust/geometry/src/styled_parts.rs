@@ -156,8 +156,8 @@ impl From<SubMeshCollection> for StyledParts {
 /// produced under (#10698), from the `*_styled_*` [`GeometryRouter`] entries.
 ///
 /// The sub-meshes are exactly those the matching plain entry returns, in the
-/// same order. [`Self::occurrences`] of a sub-mesh lists the mapped items it
-/// was produced under, inner to outer: a style on one of them styles this
+/// same order. [`Self::iter`] gives each sub-mesh with its occurrence chain:
+/// the mapped items it was produced under, inner to outer: a style on one of them styles this
 /// occurrence of the shared geometry, so two sub-meshes with the same
 /// `geometry_id` can be coloured apart. It is empty for a direct item, a
 /// material-layer slice (`ids_are_materials`) and a cut part of either.

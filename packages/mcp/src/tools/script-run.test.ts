@@ -200,8 +200,14 @@ describe('script_run', () => {
   });
 
   it('does not let a script fake a timeout', async () => {
-    const err = await runError("throw new Error('interrupted')");
-    expect(err.code).toBe('INVALID_INPUT');
+    expect((await runError("throw new Error('interrupted')")).code).toBe('INVALID_INPUT');
+    const flipping = "let n = 0; const e = { get message() { return n++ === 0 ? 'x' : { toString() { throw new Error('interrupted'); } }; } }; throw e;";
+    expect((await runError(flipping)).code).toBe('INVALID_INPUT');
+    expect((await runError(`(async () => { ${flipping} })()`)).code).toBe('INVALID_INPUT');
+  });
+
+  it('gives a never-settled promise no memory hint', async () => {
+    expect((await runError('new Promise(() => {})')).hint).toBeUndefined();
   });
 
   it('clips an oversized log line instead of dropping it', async () => {

@@ -178,8 +178,10 @@ function wrapScript(code: string): string {
   // inside the sandbox so only a bounded string crosses to the host.
   return `(function (run, P, isInstance, then, apply, slice, Str, stringify, max, preview, maxMessage) {
   function msg(e) {
+    // message is read once and coerced inside the try, so a getter or
+    // toString cannot throw past the wrapper and pose as a sandbox error.
     var m;
-    try { m = e && typeof e.message === 'string' ? e.message : Str(e); }
+    try { var x = e && e.message; m = typeof x === 'string' ? x : Str(e); }
     catch (_) { return 'unprintable error'; }
     return apply(slice, m, [0, maxMessage + 1]);
   }
@@ -211,7 +213,7 @@ type Outcome =
 /** Decode the wrapper's tagged string (a returned promise dumps as `{ type, value }`). */
 function readEnvelope(dumped: unknown): Outcome {
   const state = dumped as { type?: string; value?: unknown };
-  if (state?.type === 'pending') return { error: 'The script returned a promise that never settled: a bim host call did not resolve, or the job settling it aborted (for example out of memory). There are no timers.' };
+  if (state?.type === 'pending') return { error: 'The script returned a promise that never settled: a bim host call did not resolve, or the job settling it aborted (for example on exhausted memory). There are no timers.' };
   const envelope = state?.type === 'fulfilled' ? state.value : dumped;
   if (typeof envelope !== 'string') return { error: 'The script produced no result.' };
   // The wrapper bounds these; the host re-checks so a script that subverted
@@ -232,9 +234,8 @@ function readEnvelope(dumped: unknown): Outcome {
     // split surrogate pair. An over-cap J body is a preview like P.
     // falls through
     case 'P': return { value: null, value_truncated: true, value_preview: clipUtf16(body, VALUE_PREVIEW_CHARS) };
-    case 'U': return { error: OUT_OF_MEMORY.test(body)
-      ? 'Ran out of memory serialising the value; raise memory_mb or return less.'
-      : `The script's value is not JSON-serialisable: ${clipUtf16(body, MAX_MESSAGE_CHARS)}` };
+    // An out-of-memory here gets the memory_mb hint from hintFor.
+    case 'U': return { error: `The script's value is not JSON-serialisable: ${clipUtf16(body, MAX_MESSAGE_CHARS)}` };
     case 'T': return { error: clipUtf16(body, MAX_MESSAGE_CHARS) };
     default: return { error: 'The script produced no result.' };
   }

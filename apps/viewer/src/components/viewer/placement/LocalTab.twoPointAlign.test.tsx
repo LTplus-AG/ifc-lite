@@ -28,13 +28,19 @@ function button(ui: HTMLElement, label: string): HTMLButtonElement {
   assert.ok(el, `button ${label}`); return el;
 }
 const hasButton = (ui: HTMLElement, label: string) => [...ui.querySelectorAll('button')].some((item) => item.textContent === label);
-const promptText = (ui: HTMLElement) => ui.querySelector('fieldset output')?.textContent ?? '';
+// The Local tab's move section has its own fieldset and prompt above; ask the align section for its.
+const promptText = (ui: HTMLElement) => [...ui.querySelectorAll('fieldset')]
+  .find((set) => set.querySelector('legend')?.textContent === 'Two-point align')?.querySelector('output')?.textContent ?? '';
 const readoutText = (ui: HTMLElement) => ui.querySelector('[role="group"][aria-label="Alignment result"]')?.textContent ?? '';
-/** What a user's click on the canvas does in align mode. */
+/** What a user's click on the canvas does in align mode: `useRepositionPicking` calls `capture` and
+ * hands the role it returns to its own `finish`. That finish is not `runtime.setRole` (which is the
+ * ordinary pick path and leaves align), so the returned next role is reported, not applied. */
 function pickPoint(role: 'source' | 'target', point: Translation, modelId = role === 'source' ? 'ifc' : 'scan') {
   assert.ok(runtime, 'runtime is published');
-  const next = runtime.align.capture(role, { modelId, point, kind: 'vertex' });
-  act(() => runtime!.setRole(next));
+  const current = runtime;
+  let next: 'source' | 'target' | null = null;
+  act(() => { next = current.align.capture(role, { modelId, point, kind: 'vertex' }); });
+  return next;
 }
 function pickAll(a: Translation, aPrime: Translation, b: Translation, bPrime: Translation) {
   pickPoint('source', a); pickPoint('target', aPrime); pickPoint('source', b); pickPoint('target', bPrime);
@@ -56,16 +62,14 @@ describe('two-point align panel (#11505)', () => {
     assert.equal(promptText(ui), 'Pick A on the moving models.');
     assert.equal(runtime!.role, 'source');
     assert.equal(button(ui, 'Apply alignment').disabled, true);
-    pickPoint('source', [0, 0, 0]);
+    assert.equal(pickPoint('source', [0, 0, 0]), 'target', 'the next pick is on the reference');
     assert.equal(promptText(ui), 'Pick A′ on the reference model.');
-    assert.equal(runtime!.role, 'target');
-    pickPoint('target', [10, 0, 0]);
+    assert.equal(pickPoint('target', [10, 0, 0]), 'source');
     assert.equal(promptText(ui), 'Pick B on the moving models, far from A.');
     pickPoint('source', [5, 0, 0]);
     assert.equal(promptText(ui), 'Pick B′ on the reference model.');
     assert.equal(button(ui, 'Apply alignment').disabled, true, 'three picks are not a result');
-    pickPoint('target', [10, 5, 0]);
-    assert.equal(runtime!.role, null);
+    assert.equal(pickPoint('target', [10, 5, 0]), null, 'no further pick once all four are in');
     assert.match(promptText(ui), /All four points are picked/);
     assert.equal(button(ui, 'Apply alignment').disabled, false);
   });

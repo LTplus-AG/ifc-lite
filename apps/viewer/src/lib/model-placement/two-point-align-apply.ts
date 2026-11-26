@@ -7,6 +7,11 @@ import { normalizeAngle, workspacePointToModelFrame, ZERO_ROTATION, type ModelRo
 import { cancelPlacement, commitPlacements, placementFor, type ModelPlacement, type PlacementState } from './state.js';
 import type { TwoPointAlignment } from './two-point-align.js';
 
+/** A net heading below this is pick noise (float32 mesh vertices put ~1e-8 rad on
+ * a pair that should cancel the heading), not a rotation worth storing and baking.
+ * 1e-6 rad is 0.1 mm over 100 m. */
+const NET_HEADING_NOISE_RAD = 1e-6;
+
 /**
  * Commit a two-point align to every named model as ONE undoable command.
  *
@@ -40,7 +45,8 @@ export function alignPlacements(
     const shown: ModelPlacement = preview?.before.has(id)
       ? { ...placement, translation: addTranslation(placement.translation, preview.delta) } : placement;
     const pivot = workspacePointToModelFrame(alignment.pivot, shown);
-    const angle = normalizeAngle(shown.rotation.angle + alignment.heading);
+    const summed = normalizeAngle(shown.rotation.angle + alignment.heading);
+    const angle = Math.abs(summed) < NET_HEADING_NOISE_RAD ? 0 : summed;
     const translation = subtractTranslation(target, pivot);
     assertRenderableTranslation(translation);
     assertRenderableTranslation(pivot);

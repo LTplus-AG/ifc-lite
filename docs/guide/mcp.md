@@ -563,6 +563,15 @@ VS Code user-scope installs also require `--force` because its CLI replaces
 same-name entries. On Windows, use project scope or open the VS Code user
 configuration and paste the entry printed by install.
 
+For file-based updates, concurrent IFClite installers targeting the same
+resolved file coordinate through a lock. The installer backs up an existing
+file under that lock, checks that the target and contents still match the
+merge input, then publishes the complete replacement with a single rename.
+A detected change aborts the update. A completed backup can remain if the
+replacement fails. Other editors and client processes do not share the lock.
+An external write between the final check and rename can still be overwritten,
+so avoid editing or saving that config while running the installer.
+
 On macOS, Claude Desktop launched from the Dock may have a different PATH
 from your terminal. If it cannot find `npx`, use a Claude Desktop bundle when
 available, or configure absolute paths for your Node installation and ensure

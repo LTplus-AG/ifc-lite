@@ -246,18 +246,11 @@ function writeFilePlan(
     if (merged.kept.length) io.err(note(`the entry keeps its own ${merged.kept.join(', ')}.`));
     return 0;
   }
-  let backup = '';
-  if (before !== undefined) {
-    const to = backupPath(plan.path, io.now());
-    io.copyFile(plan.path, to);
-    backup = ` (backup: ${to}${args.scope === 'project' ? ', it holds the old contents; keep it out of git' : ''})`;
-  }
-  try {
-    io.writeFile(plan.path, merged.text, before);
-  } catch (err) {
-    if (backup && err instanceof InstallError) throw new InstallError(`${err.message}; install did not write the file${backup}`);
-    throw err;
-  }
+  const backupTo = before === undefined ? undefined : backupPath(plan.path, io.now());
+  io.writeFile(plan.path, merged.text, before, backupTo);
+  const backup = backupTo === undefined
+    ? ''
+    : ` (backup: ${backupTo}${args.scope === 'project' ? ', it holds the old contents; keep it out of git' : ''})`;
   io.err(note(`${merged.status} "${args.name}" in ${plan.path}${backup}. Restart ${label} to load it.`));
   if (merged.kept.length) io.err(note(`the entry kept its own ${merged.kept.join(', ')}.`));
   return 0;

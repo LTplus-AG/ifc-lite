@@ -34,10 +34,8 @@ export interface InstallIo {
   host: HostEnv;
   /** File contents, or undefined when the file does not exist. */
   readConfig(path: string): string | undefined;
-  /** Create parent directories and write the file, through a symlink, keeping its mode. */
-  writeFile(path: string, text: string, expected: string | undefined): void;
-  /** Copy, failing rather than overwriting an existing `to`. */
-  copyFile(from: string, to: string): void;
+  /** Replace the config through an atomic rename, optionally backing up the existing file first. */
+  writeFile(path: string, text: string, expected: string | undefined, backupTo?: string): void;
   /** Run a program with inherited stdio. `missing` when it is not on PATH. */
   run(command: string, args: string[]): { status: number; missing?: boolean };
   out(text: string): void;
@@ -57,7 +55,7 @@ export function nodeInstallIo(): InstallIo {
       listDir: (path) => userFacing(() => orIfMissing(() => readdirSync(path), [])),
     },
     readConfig: (path) => userFacing(() => orIfMissing(() => readFileSync(path, 'utf-8'), undefined)),
-    writeFile: (path, text, expected) => userFacing(() => {
+    writeFile: (path, text, expected, backupTo) => userFacing(() => {
       const { target, mode } = writeTarget(path);
       mkdirSync(dirname(target), { recursive: true });
       const lock = `${target}.ifc-lite-install.lock`;
@@ -66,30 +64,42 @@ export function nodeInstallIo(): InstallIo {
         fd = openSync(lock, 'wx');
       } catch (err) {
         if ((err as NodeJS.ErrnoException).code === 'EEXIST') {
-          throw new InstallError(`Config is locked by another install (${lock}); retry once it finishes.`);
+          throw new InstallError(`Config is locked (${lock}); retry after the other installer exits. If a crashed install left this lock, delete it only once no install is running.`);
         }
         throw err;
       }
-      // Write beside the target and rename, so a crash never leaves half a config.
+      // Write beside the target so the rename publishes the complete file at once.
       const tmp = `${target}.${process.pid}.tmp`;
-      try {
-        rmSync(tmp, { force: true }); // a stale one from a crashed run would keep its mode
-        // Created with the target's mode, so other servers' secrets are never more readable.
-        writeFileSync(tmp, text, { mode: mode ?? 0o666 });
-        if (mode !== undefined) chmodSync(tmp, mode); // undo the umask
+      const checkCurrent = () => {
         if (writeTarget(path).target !== target || orIfMissing(() => readFileSync(target, 'utf-8'), undefined) !== expected) {
           throw new InstallError(`${path} changed during install; retry to merge with its latest contents.`);
         }
+      };
+      let backedUp = false;
+      try {
+        rmSync(tmp, { force: true }); // A crashed run may have left a temp file.
+        writeFileSync(tmp, text, { mode: mode ?? 0o666, flag: 'wx' });
+        if (mode !== undefined) chmodSync(tmp, mode); // undo the umask
+        checkCurrent();
+        if (backupTo !== undefined && expected !== undefined) {
+          copyFileSync(target, backupTo, constants.COPYFILE_EXCL);
+          backedUp = true;
+          checkCurrent();
+        }
+        // The lock covers cooperating installers. An external writer can
+        // still change the config between the last check and this rename.
         renameSync(tmp, target);
       } catch (err) {
         rmSync(tmp, { force: true });
+        if (backedUp && (err instanceof InstallError || typeof (err as NodeJS.ErrnoException).syscall === 'string')) {
+          throw new InstallError(`${(err as Error).message} Install did not replace the config (backup: ${backupTo}).`);
+        }
         throw err;
       } finally {
         closeSync(fd);
         rmSync(lock);
       }
     }),
-    copyFile: (from, to) => userFacing(() => copyFileSync(from, to, constants.COPYFILE_EXCL)),
     run: (command, args) => userFacing(() => {
       const r = crossSpawn.sync(command, args, { stdio: 'inherit' });
       if (r.error) {

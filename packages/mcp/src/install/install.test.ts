@@ -34,8 +34,10 @@ function fakeIo(host: Partial<HostEnv> = {}, opts: { missing?: boolean } = {}): 
     stdout: '',
     stderr: '',
     readConfig: (p) => io.files.get(p),
-    writeFile: (p, t) => void io.files.set(p, t),
-    copyFile: (from, to) => void io.files.set(to, io.files.get(from) ?? ''),
+    writeFile: (p, t, expected, backupTo) => {
+      if (backupTo !== undefined && expected !== undefined) io.files.set(backupTo, expected);
+      io.files.set(p, t);
+    },
     run(command, args) {
       io.runs.push({ command, args });
       return opts.missing ? { status: 127, missing: true } : { status: 0 };
@@ -191,17 +193,9 @@ describe('ifc-lite-mcp install: where each client is configured', () => {
     io.writeFile = () => { throw new InstallError('EACCES: permission denied'); };
     expect(install(['--client', 'claude-code', '--force'], io)).toBe(1);
     expect(io.files.get(path)).toBe(before);
-    expect(io.files.get(`${path}.bak-20261126-102030000`)).toBe(before);
-    expect(io.stderr).toContain('install did not write the file');
+    expect([...io.files.keys()]).toEqual([path]);
+    expect(io.stderr).toContain('EACCES');
     expect(io.runs).toEqual([]);
-  });
-
-  it('a file-system error is reported, not thrown, and names the backup', () => {
-    const io = fakeIo();
-    io.files.set('/Users/u/.cursor/mcp.json', '{}');
-    io.writeFile = () => { throw new InstallError('EACCES: permission denied'); };
-    expect(install(['--client', 'cursor'], io)).toBe(1);
-    expect(io.stderr).toMatch(/EACCES.*install did not write the file \(backup: .*bak-/);
   });
 
   it('Claude Code on Windows wraps npx in cmd /c with a pin cmd cannot mangle', () => {
@@ -510,6 +504,36 @@ describe('ifc-lite-mcp install: real files', () => {
   let dir = '';
   afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
+  it('refuses a locked replacement without touching the config or creating a backup (#11580)', () => {
+    dir = mkdtempSync(join(tmpdir(), 'ifc-lite-install-'));
+    const path = join(dir, 'mcp.json');
+    const lock = `${path}.ifc-lite-install.lock`;
+    const backup = `${path}.bak`;
+    const io = nodeInstallIo();
+    writeFileSync(path, 'initial');
+    writeFileSync(lock, '');
+    expect(() => io.writeFile(path, 'replacement', 'initial', backup)).toThrow('delete it only once no install is running');
+    expect(io.readConfig(path)).toBe('initial');
+    expect(io.readConfig(backup)).toBeUndefined();
+    rmSync(lock);
+    io.writeFile(path, 'replacement', 'initial', backup);
+    expect(io.readConfig(path)).toBe('replacement');
+    expect(io.readConfig(backup)).toBe('initial');
+  });
+
+  it('refuses to overwrite a backup and leaves the config intact (#11580)', () => {
+    dir = mkdtempSync(join(tmpdir(), 'ifc-lite-install-'));
+    const path = join(dir, 'mcp.json');
+    const backup = `${path}.bak`;
+    const io = nodeInstallIo();
+    writeFileSync(path, 'initial');
+    writeFileSync(backup, 'existing backup');
+    expect(() => io.writeFile(path, 'replacement', 'initial', backup)).toThrow('EEXIST');
+    expect(io.readConfig(path)).toBe('initial');
+    expect(io.readConfig(backup)).toBe('existing backup');
+    expect(readdirSync(dir).sort()).toEqual(['mcp.json', 'mcp.json.bak']);
+  });
+
   it('rejects a stale config write and preserves the intervening update (#11580)', () => {
     dir = mkdtempSync(join(tmpdir(), 'ifc-lite-install-'));
     const path = join(dir, 'mcp.json');
@@ -517,7 +541,7 @@ describe('ifc-lite-mcp install: real files', () => {
     io.writeFile(path, 'initial', undefined);
     const before = io.readConfig(path);
     io.writeFile(path, 'intervening update', before);
-    expect(() => io.writeFile(path, 'stale merge', before)).toThrow('changed during install');
+    expect(() => io.writeFile(path, 'stale merge', before, `${path}.bak`)).toThrow('changed during install');
     expect(io.readConfig(path)).toBe('intervening update');
     expect(readdirSync(dir)).toEqual(['mcp.json']);
   });

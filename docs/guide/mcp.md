@@ -37,17 +37,18 @@ You can also invoke the package directly with `npx @ifc-lite/mcp ./model.ifc`. B
 The Streamable HTTP transport serves remote agents:
 
 ```bash
-ifc-lite mcp ./model.ifc --transport http --port 8765 --token $API_TOKEN
+ifc-lite mcp --transport http --port 8765 --token $API_TOKEN --allow ./models
 ```
 
-!!! note "Every HTTP session loads its own copy"
-    In `--transport http` mode each session gets its own model registry, and
-    the positional files are loaded into it when the session starts. Sessions
-    never share edits, and two sessions that load different files which derive
-    the same internal id never alias each other's state. The cost is one parse
-    per session. The agent can load more files with `model_load`, which needs
-    only `read` scope, so it also works under `--read-only` and with a
-    read-only token. `--allow` bounds which files it can open.
+!!! note "HTTP sessions start empty"
+    In `--transport http` mode every session gets its own fresh, empty model
+    registry, so sessions never share edits. The agent loads a model with
+    `model_load`, which needs only `read` scope, so it also works under
+    `--read-only` and with a read-only token. `--allow` bounds which files it
+    can open. File arguments are refused over HTTP rather than ignored:
+    preloading would cost one parse and one resident copy per session.
+    `model_load` will not replace a model that is already loaded unless the
+    caller has `mutate` scope on a writable server.
 
 By default the server binds `127.0.0.1`. Binding a non-loopback host requires either a `--token` (which becomes the bearer token for full scope) or the `--insecure` flag for development only. The token travels as a plaintext `Authorization` header: the CLI itself serves plain HTTP, so any non-loopback deployment must sit behind a TLS-terminating reverse proxy (nginx, Caddy, a cloud load balancer), or the bearer token is readable by anyone on the network path.
 
@@ -605,7 +606,7 @@ A failed native library save carries the library's reason in `details.save`. Sto
     at it with the bearer token:
 
     ```bash
-    ifc-lite mcp ./model.ifc --transport http --port 8765 --token my-secret
+    ifc-lite mcp --transport http --port 8765 --token my-secret --allow ./models
     ```
 
     ```
@@ -613,7 +614,7 @@ A failed native library save carries the library's reason in `details.save`. Sto
     Header:     Authorization: Bearer my-secret
     ```
 
-    Each session starts with the files passed on the command line; call `model_load` for others.
+    Each session starts empty: call `model_load` first.
 
 Cursor, Windsurf, Goose, and Zed all accept the same `npx @ifc-lite/mcp <file>` stdio command.
 

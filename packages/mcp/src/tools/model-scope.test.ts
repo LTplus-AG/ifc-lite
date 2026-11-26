@@ -162,6 +162,28 @@ describe('a token narrowed to one model', () => {
     expect(ctx.registry.get('alpha')).toBeNull();
   });
 
+  // #11534: model_load needs only read scope, so it must not replace a
+  // model outside the allowlist (the registry disposes the one it replaces).
+  it('cannot load over a model outside its allowlist', async () => {
+    const before = ctx.registry.get('beta');
+    await expect(call('model_load', { file_path: join(tmp, 'alpha.ifc'), model_id: 'beta' }))
+      .rejects.toThrow(/not permitted for this token/);
+    expect(ctx.registry.get('beta')).toBe(before);
+    // Counter-example: its own model can be replaced, since NARROWED carries admin.
+    const ok = await call('model_load', { file_path: join(tmp, 'alpha.ifc'), model_id: 'alpha' });
+    expect((ok.structuredContent as { id: string }).id).toBe('alpha');
+  });
+
+  it('cannot replace a loaded model with read scope alone', async () => {
+    await sessionWithScope({ scopes: ['read'] });
+    const before = ctx.registry.get('alpha');
+    await expect(call('model_load', { file_path: join(tmp, 'beta.ifc'), model_id: 'alpha' }))
+      .rejects.toThrow(/already loaded; replacing it needs mutate scope/);
+    expect(ctx.registry.get('alpha')).toBe(before);
+    const fresh = await call('model_load', { file_path: join(tmp, 'beta.ifc'), model_id: 'gamma' });
+    expect((fresh.structuredContent as { id: string }).id).toBe('gamma');
+  });
+
   it('cannot read entities out of an out-of-scope model', async () => {
     await expect(call('query_entities', { model_id: 'beta', type: 'IfcWall' }))
       .rejects.toThrow(/not permitted for this token/);

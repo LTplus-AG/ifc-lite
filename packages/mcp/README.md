@@ -19,7 +19,7 @@ npx @ifc-lite/mcp ./arch.ifc ./struct.ifc ./mep.ifc
 npx @ifc-lite/mcp ./model.ifc --read-only
 
 # HTTP / Streamable HTTP for remote agents
-npx @ifc-lite/mcp ./model.ifc --transport http --port 8765 --token $API_TOKEN
+npx @ifc-lite/mcp --transport http --port 8765 --token $API_TOKEN --allow ./models
 
 # Auto-open the WebGL viewer at startup. Add --open to also pop the URL in
 # the system browser.

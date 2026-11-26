@@ -4,8 +4,9 @@
 
 /**
  * The shared command line runtime (#11534): a read-only HTTP session can
- * load a model, HTTP mode serves the files it is given and honours --allow,
- * tokens repeat, and the help names the right Claude Desktop config path.
+ * load a model, HTTP mode honours --allow and refuses file arguments it
+ * would ignore, tokens repeat, and the help names the right Claude Desktop
+ * config path.
  */
 
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
@@ -82,7 +83,7 @@ describe('HTTP mode of runMcpCli (#11534)', () => {
     await writeFile(join(outside, 'other.ifc'), MODEL);
     vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
     running = await runMcpCli(
-      ['--transport', 'http', '--port', '0', '--read-only', '--read-only-token', 'ro', '--token', 'full', '--allow', dir, modelPath],
+      ['--transport', 'http', '--port', '0', '--read-only', '--read-only-token', 'ro', '--token', 'full', '--allow', dir],
       { command: 'ifc-lite-mcp' },
     );
   });
@@ -94,15 +95,6 @@ describe('HTTP mode of runMcpCli (#11534)', () => {
     await rm(outside, { recursive: true, force: true });
   });
 
-  it('preloads the file arguments into each session', async () => {
-    for (const token of ['ro', 'full']) {
-      const client = new Client(running!.port, token);
-      await client.initialize();
-      const listed = await client.call('model_list', {});
-      expect(listed.result?.structuredContent?.count).toBe(1);
-    }
-  });
-
   it('lets a read-only session load and unload models', async () => {
     const client = new Client(running!.port, 'ro');
     await client.initialize();
@@ -112,11 +104,15 @@ describe('HTTP mode of runMcpCli (#11534)', () => {
     // A mutation tool stays hidden under --read-only.
     expect(tools).not.toContain('entity_set_property');
 
-    const loaded = await client.call('model_load', { file_path: modelPath, model_id: 'second' });
+    const loaded = await client.call('model_load', { file_path: modelPath, model_id: 'm' });
     expect(loaded.result?.isError).toBeFalsy();
-    expect(loaded.result?.structuredContent?.id).toBe('second');
-    const unloaded = await client.call('model_unload', { model_id: 'second' });
+    expect(loaded.result?.structuredContent?.id).toBe('m');
+    // Loading over it would dispose it; that needs mutate on a writable server.
+    const replaced = await client.call('model_load', { file_path: modelPath, model_id: 'm' });
+    expect(replaced.result?.isError).toBe(true);
+    const unloaded = await client.call('model_unload', { model_id: 'm' });
     expect(unloaded.result?.isError).toBeFalsy();
+    expect((await client.call('model_list', {})).result?.structuredContent?.count).toBe(0);
   });
 
   // #2731: --allow means the same over HTTP as over stdio.
@@ -127,9 +123,14 @@ describe('HTTP mode of runMcpCli (#11534)', () => {
     expect(refused.result?.isError).toBe(true);
   });
 
-  it('refuses to start on a file it cannot read', async () => {
-    await expect(runMcpCli(['--transport', 'http', '--port', '0', join(dir, 'missing.ifc')], { command: 'ifc-lite-mcp' }))
-      .rejects.toThrow(/cannot read/);
+  it('refuses file arguments instead of starting a server that ignores them', async () => {
+    const before = process.exitCode;
+    try {
+      await expect(runMcpCli(['--transport', 'http', '--port', '0', modelPath], { command: 'ifc-lite-mcp' })).resolves.toBeUndefined();
+      expect(process.exitCode).toBe(2);
+    } finally {
+      process.exitCode = before;
+    }
   });
 });
 
@@ -164,15 +165,22 @@ describe('help text (#11534)', () => {
 });
 
 describe('Claude Code plugin manifest (#11534)', () => {
-  it('pins @ifc-lite/mcp and passes only flags the parser knows', async () => {
+  it('bounds @ifc-lite/mcp to a released range and passes only flags the parser knows', async () => {
     const manifestPath = resolve(fileURLToPath(import.meta.url), '../../../../.claude/.claude-plugin/plugin.json');
+    const pkgVersion = (JSON.parse(await readFile(resolve(fileURLToPath(import.meta.url), '../../package.json'), 'utf8')) as { version: string }).version;
     const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as {
       mcpServers: Record<string, { command: string; args: string[] }>;
     };
     for (const server of Object.values(manifest.mcpServers)) {
       const pkg = server.args.find((a) => a.startsWith('@ifc-lite/mcp'));
-      // A bare package name runs whatever npm has, which may predate a flag.
-      expect(pkg).toMatch(/^@ifc-lite\/mcp@\^\d+\.\d+\.\d+$/);
+      // A bare package name runs whatever npm has, including a future major.
+      const range = /^@ifc-lite\/mcp@>=(\d+)\.(\d+)\.(\d+) <(\d+)\.0\.0$/.exec(pkg ?? '');
+      expect(range, pkg).not.toBeNull();
+      // The floor must already exist: a floor above the workspace version
+      // matches nothing on npm until it is released, and npx then fails.
+      const floor = range!.slice(1, 4).map(Number);
+      const workspace = pkgVersion.split('.').map(Number);
+      expect(floor[0] * 1e6 + floor[1] * 1e3 + floor[2]).toBeLessThanOrEqual(workspace[0] * 1e6 + workspace[1] * 1e3 + workspace[2]);
       const flags = server.args.slice(server.args.indexOf(pkg!) + 1);
       expect(parseArgs(flags).warnings).toEqual([]);
     }

@@ -10,7 +10,6 @@
  * the same code, so the two cannot drift apart again.
  */
 
-import { access, constants } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { bridgeConflict, parseArgs, type CliOptions } from './cli-args.js';
@@ -43,8 +42,8 @@ export function mcpHelpText({ command }: McpCliIdentity, platform: NodeJS.Platfo
 
   Usage: ${command} [files…] [options]
 
-  Files are loaded into the session at startup. Over HTTP every session loads
-  its own copy, so sessions never share edits.
+  Over stdio the files are loaded at startup. Over HTTP each session starts
+  empty and the agent loads models with model_load.
 
   Options:
     --read-only             Hide all mutation tools regardless of scope.
@@ -257,25 +256,24 @@ async function runHttp(opts: CliOptions, tag: string): Promise<RunningHttpCli | 
     process.exitCode = 1;
     return undefined;
   }
-  // Every session loads the files itself (below): sessions must not share
-  // mutable model state, so each pays one parse. Check the files are readable
-  // now, so a typo fails at startup rather than on the first connection.
-  for (const file of opts.files) {
-    const path = resolve(file);
-    try {
-      await access(path, constants.R_OK);
-    } catch (err) {
-      throw new Error(`cannot read ${path}: ${(err as Error).message}`);
-    }
+  // Files are not preloaded over HTTP. Every session has its own registry
+  // so sessions never share edits, and preloading would mean one full parse
+  // and one resident copy per session, which any client could multiply by
+  // opening sessions. Say so instead of starting a server that ignores them.
+  if (opts.files.length > 0) {
+    process.stderr.write(
+      `${tag} --transport http does not preload files (${opts.files.join(', ')}): each session starts empty and the agent ` +
+      'loads a model with model_load. Drop the file arguments, and pass --allow <dir> to bound what it can load.\n',
+    );
+    process.exitCode = 2;
+    return undefined;
   }
   const sessionFactory: SessionFactory = {
-    async build(scopeForSession, sessionId) {
-      // Each HTTP session gets a fresh registry so mutations don't leak.
-      const registry = new InMemoryModelRegistry();
-      await loadFiles(registry, opts, (line) => process.stderr.write(`${tag} session ${sessionId}: ${line}\n`));
+    build(scopeForSession, sessionId) {
       return createMCPServer({
         version: VERSION,
-        registry,
+        // Each HTTP session gets a fresh registry so mutations don't leak.
+        registry: new InMemoryModelRegistry(),
         scope: scopeForSession,
         // Keys per-session state (layer workspaces) and its disposal (#1030).
         sessionId,
@@ -298,7 +296,6 @@ async function runHttp(opts: CliOptions, tag: string): Promise<RunningHttpCli | 
   process.stderr.write(
     `${tag} listening on http://${host}:${port}` +
     (tokens.size === 0 ? ' (no auth — loopback only unless --insecure)' : ` (${tokens.size} token${tokens.size === 1 ? '' : 's'})`) +
-    (opts.files.length > 0 ? `; each session loads ${opts.files.length} file${opts.files.length === 1 ? '' : 's'}` : '') +
     '\n',
   );
   return { port, close: () => transport.close() };

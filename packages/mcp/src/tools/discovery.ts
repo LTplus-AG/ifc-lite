@@ -24,7 +24,8 @@ import type { Tool } from './types.js';
 import { fmtInt, resolveModel, okResult } from './util.js';
 import { loadIfcModel } from '../loader.js';
 import { resolveSafePath } from '../safe-path.js';
-import { modelAllowed } from '../auth/scope.js';
+import { modelAllowed, scopeAllows } from '../auth/scope.js';
+import type { ToolContext } from '../context.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 
 export const modelInfo: Tool = {
@@ -119,7 +120,8 @@ export const modelLoad: Tool = {
   description: 'Load an IFC file from disk into the session. The path must be inside the configured allowedPaths roots (when set).',
   // `read`, not `mutate`: loading adds a model to this session and changes no
   // model, so a --read-only server or a read-only token can still open files.
-  // The safe-path check below is what bounds which files.
+  // The safe-path check below bounds which files, and `assertMayLoadAs`
+  // keeps a read caller from replacing a model.
   scope: 'read',
   inputSchema: {
     type: 'object',
@@ -135,6 +137,9 @@ export const modelLoad: Tool = {
     // The resulting absolute path is symlink-canonicalised and bounds-checked
     // before we touch the filesystem in `loadIfcModel`.
     const filePath = await resolveSafePath(input.file_path, ctx, 'read');
+    const explicitId = input.model_id as string | undefined;
+    // Refuse an explicit id before paying for the parse.
+    if (explicitId !== undefined) assertMayLoadAs(explicitId, ctx);
     try {
       const loaded = await loadIfcModel(filePath, {
         modelId: input.model_id as string | undefined,
@@ -142,6 +147,12 @@ export const modelLoad: Tool = {
         // tautology, so pass a single-entry allowlist matching the file.
         allowedPaths: [filePath],
       });
+      try {
+        assertMayLoadAs(loaded.id, ctx);
+      } catch (err) {
+        loaded.backend.dispose();
+        throw err;
+      }
       ctx.registry.add(loaded);
       ctx.log.log('info', 'model_load', { id: loaded.id, file: filePath, entities: loaded.store.entityCount });
       // A model the scan read short is reported as such, in the text the
@@ -164,6 +175,30 @@ export const modelLoad: Tool = {
     }
   },
 };
+
+/**
+ * `model_load` needs only `read` scope (#11534), so it must not become a way
+ * around the token's model allowlist or a way to drop another model's edits:
+ * loading under an id the token may not access is refused, and replacing an
+ * already loaded model (which disposes it, edits and all) needs `mutate` on
+ * a server that is not read-only.
+ */
+function assertMayLoadAs(id: string, ctx: ToolContext): void {
+  if (!modelAllowed(ctx.scope, id)) {
+    throw new ToolExecutionError({
+      code: ToolErrorCode.PERMISSION_DENIED,
+      message: `Access to model '${id}' is not permitted for this token.`,
+    });
+  }
+  const mayReplace = scopeAllows(ctx.scope, 'mutate') && !ctx.config.readOnly;
+  if (ctx.registry.get(id) && !mayReplace) {
+    throw new ToolExecutionError({
+      code: ToolErrorCode.PERMISSION_DENIED,
+      message: `Model '${id}' is already loaded; replacing it needs mutate scope.`,
+      hint: 'Pass a different `model_id`, or call `model_unload` first.',
+    });
+  }
+}
 
 export const modelUnload: Tool = {
   name: 'model_unload',

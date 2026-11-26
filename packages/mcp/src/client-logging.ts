@@ -20,6 +20,7 @@ export class ClientLogForwarder {
   private minimum: number | null = null;
 
   constructor(
+    /** The host's logger, without client forwarding: where send failures go, so they cannot loop. */
     readonly base: Logger,
     private readonly loggerName: string,
     private readonly send: (params: LogNotification) => void,

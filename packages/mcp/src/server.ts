@@ -502,9 +502,8 @@ export class MCPServer {
   }
 
   private makeProgress(token: string | number | undefined): ProgressReporter {
-    if (token === undefined || !this.sink) {
-      return { report() { /* no token => silent */ } };
-    }
+    if (token === undefined || !this.sink) return { report() { /* no token => silent */ } };
+    // Sent directly, not via notify(): a sink that throws here fails the producer on purpose (#7372).
     const sink = this.sink;
     return {
       report: (progress, message, total) => {
@@ -521,11 +520,12 @@ export class MCPServer {
     if (this.subscriptions.has(uri)) this.notify('notifications/resources/updated', { uri });
   }
 
-  /** Send a server notification. Dropped until initialize; a failing sink goes to the base logger (no loop), never to the caller. */
+  /** Send a server notification. Dropped until initialize; a failing sink is logged, never thrown at the caller. */
   notify(method: string, params: Record<string, unknown>): void {
-    if (!this.initialized || !this.sink) return;
+    const sink = this.sink;
+    if (!this.initialized || !sink) return;
     const failed = (err: unknown) => this.logForwarder.base.log('warning', `notify ${method} failed`, { error: describeThrown(err) });
-    try { void Promise.resolve(this.sink.send(notification(method, params))).catch(failed); } catch (err) { failed(err); }
+    void (async () => { try { await sink.send(notification(method, params)); } catch (err) { failed(err); } })();
   }
 
   /** Notify clients that the tool list has changed (e.g., after model load). */

@@ -40,6 +40,8 @@ export interface HostEnv {
   env: Record<string, string | undefined>;
   /** Entry names in a directory; [] when it does not exist. */
   listDir(path: string): string[];
+  /** True when `path` is an existing file. */
+  isFile(path: string): boolean;
 }
 
 /** The command a client spawns to start the server. */
@@ -119,7 +121,8 @@ function claudeDesktopConfigPath(host: HostEnv): string {
     // `||`, not `??`: an empty variable counts as unset (XDG says so too).
     const localAppData = host.env.LOCALAPPDATA || win32.join(host.home, 'AppData', 'Local');
     const packages = win32.join(localAppData, 'Packages');
-    // Only a Store install that has run (and so has data there) counts; a leftover folder does not.
+    // Only when the package already holds the config: otherwise the app's merged
+    // view reads %APPDATA%, and a new file here would hide the one there.
     const msix = storeConfigDir(host, packages);
     if (msix) return win32.join(msix, file);
     const appData = host.env.APPDATA || win32.join(host.home, 'AppData', 'Roaming');
@@ -144,7 +147,7 @@ function storeConfigDir(host: HostEnv, packages: string): string | undefined {
   };
   for (const pkg of readable(packages).filter((d) => d.startsWith('Claude_'))) {
     const dir = win32.join(packages, pkg, 'LocalCache', 'Roaming', 'Claude');
-    if (readable(dir).length > 0) return dir;
+    if (readable(dir).includes('claude_desktop_config.json')) return dir;
   }
   return undefined;
 }

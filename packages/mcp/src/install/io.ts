@@ -50,6 +50,14 @@ export function nodeInstallIo(): InstallIo {
       home: homedir(),
       cwd: process.cwd(),
       env: process.env,
+      isFile: (path) => userFacing(() => {
+        try {
+          return statSync(path).isFile();
+        } catch (err) {
+          if ((err as NodeJS.ErrnoException).code === 'ENOENT') return false;
+          throw err;
+        }
+      }),
       listDir: (path) => userFacing(() => {
         try {
           return readdirSync(path);

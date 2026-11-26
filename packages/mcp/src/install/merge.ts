@@ -15,7 +15,7 @@
 import { InstallError } from './clients.js';
 
 export type MergeResult =
-  | { status: 'added' | 'replaced'; text: string }
+  | { status: 'added' | 'replaced'; text: string; kept: string[] }
   | { status: 'unchanged' }
   | { status: 'conflict'; existing: unknown };
 
@@ -67,7 +67,22 @@ export function mergeServer(
     if (!force) return { status: 'conflict', existing };
   }
   const next = { ...root, [key]: { ...servers, [name]: merged } };
-  return { status: existing === undefined ? 'added' : 'replaced', text: `${JSON.stringify(next, null, 2)}\n` };
+  return {
+    status: existing === undefined ? 'added' : 'replaced',
+    text: `${JSON.stringify(next, null, 2)}\n`,
+    kept: Object.keys(kept),
+  };
+}
+
+/**
+ * An entry for a message: its launch keys in full, other keys by name only,
+ * because `env` and `headers` hold tokens.
+ */
+export function describeEntry(entry: unknown): string {
+  if (!isObject(entry)) return JSON.stringify(entry);
+  const launch = Object.fromEntries(Object.entries(entry).filter(([k]) => LAUNCH_KEYS.includes(k)));
+  const others = Object.keys(entry).filter((k) => !LAUNCH_KEYS.includes(k));
+  return JSON.stringify(launch, null, 2) + (others.length ? `\n(also: ${others.join(', ')})` : '');
 }
 
 /** JSON with object keys sorted, so key order does not make two entries differ. */

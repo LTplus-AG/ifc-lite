@@ -38,10 +38,14 @@ let debugFlag = false;
 async function main(): Promise<void> {
   // Global verbosity flags are parsed and STRIPPED before dispatch so a
   // command's positional-argument scan never mistakes them for a file path.
-  const verbosity = parseVerbosity(process.argv.slice(2));
+  const argv = process.argv.slice(2);
+  // `mcp install -- <flags>` writes those flags for the server, so the global
+  // verbosity flags are not taken out of them.
+  const dashDash = argv[0] === 'mcp' && argv[1] === 'install' ? argv.indexOf('--') : -1;
+  const verbosity = parseVerbosity(dashDash < 0 ? argv : argv.slice(0, dashDash));
   logger.configure({ level: verbosity.level });
   debugFlag = verbosity.debug;
-  const args = verbosity.rest;
+  const args = dashDash < 0 ? verbosity.rest : [...verbosity.rest, ...argv.slice(dashDash)];
 
   const wantsHelp = args.includes('--help') || args.includes('-h');
   // `mcp install` answers --help itself and judges -v/--version itself (it refuses them).

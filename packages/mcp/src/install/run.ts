@@ -28,7 +28,7 @@ import {
   type InstallScope,
   type ServerCommand,
 } from './clients.js';
-import { mergeServer } from './merge.js';
+import { describeEntry, mergeServer } from './merge.js';
 import { nodeInstallIo, type InstallIo } from './io.js';
 
 const CLIENT_IDS = Object.keys(CLIENTS);
@@ -137,7 +137,10 @@ function serverArgsFor(args: string[], host: HostEnv): { args: string[]; hasPath
   const out: string[] = [];
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
-    if (!arg.startsWith('-')) {
+    if (arg === '') {
+      throw new InstallError('An empty argument would become this directory; is a variable unset?');
+    } else if (!arg.startsWith('-')) {
+      if (!host.isFile(abs(arg))) throw new InstallError(`No model file at ${abs(arg)}.`);
       out.push(abs(arg));
     } else if (arg.includes('=')) {
       throw new InstallError(`The server reads ${arg.split('=')[0]} <value>, with a space; it would ignore ${arg}.`);
@@ -145,7 +148,7 @@ function serverArgsFor(args: string[], host: HostEnv): { args: string[]; hasPath
       throw new InstallError(`${arg} is for --transport http; clients start the server over stdio.`);
     } else if (isMcpValueFlag(arg)) {
       const value = args[i + 1];
-      if (value === undefined || value.startsWith('-')) throw new InstallError(`${arg} needs a value.`);
+      if (!value || value.startsWith('-')) throw new InstallError(`${arg} needs a value.`);
       i++;
       out.push(arg, arg === '--allow' ? abs(value) : value);
     } else if (EXIT_FLAGS.includes(arg)) {
@@ -272,7 +275,7 @@ function writeFilePlan(
   }
   if (merged.status === 'conflict') {
     throw new InstallError(
-      `${plan.path} already has a different "${args.name}" entry:\n${JSON.stringify(merged.existing, null, 2)}\n` +
+      `${plan.path} already has a different "${args.name}" entry:\n${describeEntry(merged.existing)}\n` +
         'Pass --force to replace it, or --name to add another.',
     );
   }
@@ -280,6 +283,7 @@ function writeFilePlan(
     // Only our entry: the rest of the file can hold other servers' secrets.
     io.err(`[ifc-lite-mcp install] would ${merged.status === 'added' ? 'add' : 'replace'} this in ${plan.path}, keeping everything else:\n`);
     io.out(`${JSON.stringify({ [plan.key]: { [args.name]: plan.entry } }, null, 2)}\n`);
+    if (merged.kept.length) io.err(`[ifc-lite-mcp install] the entry keeps its own ${merged.kept.join(', ')}.\n`);
     return 0;
   }
   let backup = '';

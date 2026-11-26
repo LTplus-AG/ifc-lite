@@ -260,6 +260,24 @@ test('saving a file store keeps a copy of saved stores it cannot read (#9638 rev
   assert.equal(localStorage.getItem('ifc-lite:oci-file-stores:v1:unreadable'), unreadable);
 });
 
+test('a refused or unbackable save leaves unreadable file stores in place (#9638 review)', t => {
+  const key = 'ifc-lite:oci-file-stores:v1';
+  const unreadable = JSON.stringify([{ registry: 'https://kept.example.test', authorization_server: 'https://issuer.example.test' }]);
+  const store = { registry: 'https://new.example.test', authorization_server: 'https://issuer.example.test', client_id: 'ifc-lite' };
+  localStorage.setItem(key, unreadable);
+  assert.throws(() => saveRegistryConnection(store, true), /file store changed/);
+  assert.equal(localStorage.getItem(key), unreadable);
+  assert.equal(localStorage.getItem(key + ':unreadable'), null);
+
+  const setItem = localStorage.setItem.bind(localStorage);
+  t.mock.method(localStorage, 'setItem', (name: string, value: string) => {
+    if (name.endsWith(':unreadable')) throw new DOMException('quota', 'QuotaExceededError');
+    setItem(name, value);
+  });
+  assert.throws(() => saveRegistryConnection(store), /could not be read or moved aside/);
+  assert.equal(localStorage.getItem(key), unreadable);
+});
+
 test('OCI handoff requires callback issuer identification when advertised or when multiple issuers share the callback (#9638)', async () => {
   let origin = '';
   let advertisesIssuer = false;

@@ -90,7 +90,7 @@ function parseConnections(input: string): RegistryConnection[] {
 
 /** Throws on unreadable storage; readers fall back to no stores, saves move it aside first. */
 function storedConnections(): RegistryConnection[] {
-  const stored = globalThis.localStorage?.getItem(CONNECTIONS_KEY);
+  const stored = optionalLocalStorage()?.getItem(CONNECTIONS_KEY);
   return stored ? parseConnections(stored) : [];
 }
 
@@ -106,15 +106,11 @@ export function registryConnections(input?: string): RegistryConnection[] {
 
 export function saveRegistryConnection(value: RegistryConnection, replace?: boolean) {
   const connection = parseConnection(value);
-  let existing: RegistryConnection[];
+  let existing: RegistryConnection[] = [], unreadable: unknown;
   try {
     existing = storedConnections();
   } catch (error) {
-    // Start over, but move what could not be read aside rather than overwrite it.
-    if (!preserveUnreadableEntry(optionalLocalStorage(), CONNECTIONS_KEY, error)) {
-      throw new RegistryError('Could not save the file store. Check that browser storage is available.');
-    }
-    existing = [];
+    unreadable = error;
   }
   const duplicate = existing.some(store => store.registry === connection.registry);
   if (duplicate && !replace) throw new RegistryError('This registry already has a file store. Select it and choose Edit file store.');
@@ -123,6 +119,10 @@ export function saveRegistryConnection(value: RegistryConnection, replace?: bool
   const connections = duplicate
     ? existing.map(store => store.registry === connection.registry ? connection : store)
     : [...existing, connection];
+  // Start over only once the save is valid, and move what could not be read aside rather than overwrite it.
+  if (unreadable !== undefined && !preserveUnreadableEntry(optionalLocalStorage(), CONNECTIONS_KEY, unreadable)) {
+    throw new RegistryError('The saved file stores could not be read or moved aside, so nothing was changed. Free some browser storage and try again.');
+  }
   try {
     globalThis.localStorage.setItem(CONNECTIONS_KEY, JSON.stringify(connections));
   } catch {

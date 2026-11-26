@@ -41,7 +41,7 @@ import {
   xsdRequiredString,
 } from './xsd-required-string.js';
 import { generateUuid } from '@ifc-lite/encoding';
-import { assertNoCaseOnlyTopicClash, bcfGuid } from './xsd-guid.js';
+import { assertNoCaseOnlyGuidClash, bcfGuid } from './xsd-guid.js';
 import { viewpointFileName, type ViewpointFileName } from './writer-viewpoint-filename.js';
 import { BcfArchive } from './writer-archive.js';
 
@@ -64,7 +64,10 @@ export async function writeBCF(project: BCFProject): Promise<Blob> {
 
   // Write topics
   const usedFolderNames = new Set<string>();
-  assertNoCaseOnlyTopicClash(project.topics.values(), project.version);
+  assertNoCaseOnlyGuidClash(project.topics.values(), project.version, 'topics');
+  for (const topic of project.topics.values()) {
+    assertNoCaseOnlyGuidClash(topic.viewpoints, project.version, `viewpoints in topic "${topic.guid}"`);
+  }
   for (const topic of project.topics.values()) {
     await writeTopicFolder(zip, topic, project.version, usedFolderNames);
   }

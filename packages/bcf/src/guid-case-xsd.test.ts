@@ -111,4 +111,37 @@ describe('guids that differ only by case', () => {
     const back = await readBCF(await writeBCF(p));
     expect(back.topics.size).toBe(2);
   });
+
+  // A comment's <Viewpoint Guid> names one viewpoint. Two viewpoints whose guids
+  // lowercase to the same value make that reference ambiguous in 3.0.
+  function twoViewpointsByCase(version: '2.1' | '3.0'): BCFProject {
+    const p = project(version);
+    const topic = [...p.topics.values()][0];
+    topic.viewpoints.push({ ...topic.viewpoints[0], guid: VIEWPOINT.toLowerCase() });
+    return p;
+  }
+
+  it('in one topic\'s viewpoints are refused by the 3.0 writer', async () => {
+    const lower = VIEWPOINT.toLowerCase();
+    await expect(writeBCF(twoViewpointsByCase('3.0'))).rejects.toThrow(
+      new RegExp(`viewpoints in topic "${TOPIC}" "${VIEWPOINT}" and "${lower}"`),
+    );
+  });
+
+  it('in one topic\'s viewpoints are kept distinct by the 2.1 writer, comment reference intact', async () => {
+    const back = await readBCF(await writeBCF(twoViewpointsByCase('2.1')));
+    const topic = [...back.topics.values()][0];
+    expect(topic.viewpoints.map((v) => v.guid).sort()).toEqual([VIEWPOINT, VIEWPOINT.toLowerCase()].sort());
+    expect(topic.comments[0].viewpointGuid).toBe(VIEWPOINT);
+  });
+
+  it('in different topics\' viewpoints are not a clash', async () => {
+    const p = project('3.0');
+    const a = [...p.topics.values()][0];
+    const other = 'AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAB';
+    p.topics.set(other, { ...a, guid: other, comments: [], viewpoints: [{ ...a.viewpoints[0], guid: VIEWPOINT.toLowerCase() }] });
+    // Same lowercased viewpoint guid under two topics: each topic folder is its own namespace.
+    const back = await readBCF(await writeBCF(p));
+    expect(back.topics.size).toBe(2);
+  });
 });

@@ -25,24 +25,28 @@ export function bcfGuid(guid: string, version: '2.1' | '3.0'): string {
 }
 
 /**
- * BCF 3.0 lowercases every guid, so two topics whose guids differ only by case
- * would both be written under one guid and the reader would drop one
- * ("Duplicate topic Guid"). Refuse rather than silently merge them (#11450).
+ * BCF 3.0 lowercases every guid, so two topics (or two viewpoints of one topic)
+ * whose guids differ only by case would both be written under one guid: the
+ * reader drops one topic ("Duplicate topic Guid"), and a comment's
+ * `<Viewpoint Guid>` can no longer say which viewpoint it means. Refuse rather
+ * than silently merge them (#11450). `what` names the items in the error, e.g.
+ * `topics` or `viewpoints in topic "<guid>"`.
  */
-export function assertNoCaseOnlyTopicClash(
-  topics: Iterable<{ guid: string }>,
+export function assertNoCaseOnlyGuidClash(
+  items: Iterable<{ guid: string }>,
   version: '2.1' | '3.0',
+  what: string,
 ): void {
   const written = new Map<string, string>();
-  for (const topic of topics) {
-    const out = bcfGuid(topic.guid, version);
+  for (const item of items) {
+    const out = bcfGuid(item.guid, version);
     const clash = written.get(out);
     if (clash !== undefined) {
       throw new Error(
-        `BCF ${version} guids are lowercase, so topics "${clash}" and "${topic.guid}" ` +
+        `BCF ${version} guids are lowercase, so ${what} "${clash}" and "${item.guid}" ` +
           `would both be written as "${out}". Give one of them a different guid before writing.`
       );
     }
-    written.set(out, topic.guid);
+    written.set(out, item.guid);
   }
 }

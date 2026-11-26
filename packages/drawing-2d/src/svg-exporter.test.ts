@@ -12,6 +12,7 @@ import {
   DEFAULT_SECTION_CONFIG,
   type Drawing2D,
   type DrawingLine,
+  type Polygon2D,
   type SectionPlaneConfig,
 } from './types.js';
 import type { DxfUnderlay } from './dxf/types.js';
@@ -63,6 +64,32 @@ const underlay = (): DxfUnderlay => ({
       ],
     },
   ],
+});
+
+describe('SVGExporter cut polygon rings (#11467)', () => {
+  const outer = [{ x: 1, y: 1 }, { x: 5, y: 1 }, { x: 5, y: 4 }, { x: 1, y: 4 }];
+  const hole = [{ x: 2, y: 2 }, { x: 2, y: 3 }, { x: 3, y: 3 }, { x: 3, y: 2 }];
+  const hatch = (polygon: Polygon2D): string => {
+    const drawing = emptyDrawing();
+    drawing.cutPolygons = [{ polygon, ifcType: 'IfcWall', entityId: 7, modelIndex: 0, isCut: true }];
+    const svg = exportToSVG(drawing);
+    return /<g id="hatching"[^>]*>([\s\S]*?)<\/g>/.exec(svg)?.[1] ?? '';
+  };
+
+  it('emits neither fill nor hatch for a non-finite outer ring', () => {
+    expect(hatch({ outer, holes: [] })).toContain('data-entity-id="7"');
+    expect(hatch({ outer: [{ x: NaN, y: 1 }, ...outer.slice(1)], holes: [] }).trim()).toBe('');
+  });
+
+  it('does not render an orphan hole as a solid island', () => {
+    expect(hatch({ outer: [], holes: [hole] }).trim()).toBe('');
+  });
+
+  it('omits an invalid hole from both fill and hatch', () => {
+    const uncut = hatch({ outer, holes: [] });
+    expect(hatch({ outer, holes: [hole] })).not.toBe(uncut);
+    expect(hatch({ outer, holes: [[{ x: Infinity, y: 2 }, ...hole.slice(1)]] })).toBe(uncut);
+  });
 });
 
 describe('SVGExporter underlays', () => {

@@ -152,41 +152,56 @@ fn m11_n_reference_is_independent_of_worker_address_layout() {
     /// thread cannot be stopped, and the runtime spawns its worker with stderr
     /// inherited, so a worker stuck in compute would otherwise outlive the test
     /// binary and keep a CI `cargo test 2>&1 | tee` step open until the job
-    /// timeout. Each wrapper records its PID and then execs the worker (the
-    /// same process, so the runtime's own kill-on-drop still reaches it); a
-    /// PID is only killed while its command line is still the worker's.
+    /// timeout. Each wrapper records its PID, checks that the `go` file still
+    /// exists, and then execs the worker (the same process, so the runtime's
+    /// own kill-on-drop still reaches it). Cleanup removes `go` first: a
+    /// wrapper that checks after that exits, and one that checked before had
+    /// already recorded its PID. Cleanup then kills every recorded PID that is
+    /// still ours (the worker, `setarch` on its way to it, or a wrapper shell
+    /// not yet exec'd) until none is left, with a bounded wait (#10916 review:
+    /// a recorded shell that had not yet exec'd was skipped and could start a
+    /// worker after a fixed number of sweeps).
     struct Layout { directory: std::path::PathBuf, worker: std::path::PathBuf }
     impl Layout {
-        fn kill_workers(&self) {
-            let Ok(pids) = std::fs::read_to_string(self.directory.join("pids")) else {return;};
-            for pid in pids.split_whitespace() {
-                let Ok(command) = std::fs::read(format!("/proc/{pid}/cmdline")) else {continue;};
-                let program = command.split(|&b| b==0).next().unwrap_or_default();
-                if program == self.worker.as_os_str().as_encoded_bytes() {
-                    let _ = std::process::Command::new("kill").args(["-KILL",pid]).status();
-                }
-            }
+        /// Recorded PIDs whose process is still one of ours. A PID reused by an
+        /// unrelated process, or a killed one awaiting its reaper (a zombie has
+        /// an empty command line), is not.
+        fn ours(&self) -> Vec<String> {
+            let Ok(pids) = std::fs::read_to_string(self.directory.join("pids")) else {return Vec::new();};
+            let names: Vec<std::ffi::OsString> = [self.worker.clone(),self.directory.join("worker"),self.directory.join("worker-no-aslr")]
+                .into_iter().map(|p| p.into_os_string()).collect();
+            pids.split_whitespace().filter(|pid| std::fs::read(format!("/proc/{pid}/cmdline")).is_ok_and(|command|
+                command.split(|&b| b==0).any(|arg| names.iter().any(|name| arg == name.as_encoded_bytes()))))
+                .map(str::to_string).collect()
         }
     }
     impl Drop for Layout {
         fn drop(&mut self) {
-            // Remove the wrappers first so a pass cannot start another worker;
-            // a wrapper already past its PID line execs within moments, so
-            // sweep a few times.
-            for name in ["worker","worker-no-aslr"] { let _ = std::fs::remove_file(self.directory.join(name)); }
-            for _ in 0..3 { self.kill_workers(); std::thread::sleep(std::time::Duration::from_millis(100)); }
+            let _ = std::fs::remove_file(self.directory.join("go"));
+            let until = std::time::Instant::now() + std::time::Duration::from_secs(10);
+            loop {
+                let live = self.ours();
+                if live.is_empty() {break;}
+                if std::time::Instant::now() > until {
+                    eprintln!("m11-n layout cleanup: processes {live:?} still running after 10 s of SIGKILL");
+                    break;
+                }
+                for pid in &live { let _ = std::process::Command::new("kill").args(["-KILL",pid]).status(); }
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
             let _ = std::fs::remove_dir_all(&self.directory);
         }
     }
     let worker_path = std::fs::canonicalize(&worker).unwrap();
     let layout = Layout {directory: std::env::temp_dir().join(format!("m11-n-layout-{}",std::process::id())), worker: worker_path.clone()};
     std::fs::create_dir_all(&layout.directory).unwrap();
+    std::fs::write(layout.directory.join("go"),b"").unwrap();
     let wrapper = |name: &str, exec: &str| {
         // Single-quoted shell words: each ' in a path becomes '\''.
         let quote = |path: &Path| format!("'{}'",path.to_str().expect("path is UTF-8").replace('\'',"'\\''"));
         let path = layout.directory.join(name);
-        std::fs::write(&path,format!("#!/bin/sh\necho $$ >> {}\nexec {exec} {} \"$@\"\n",
-            quote(&layout.directory.join("pids")),quote(&worker_path))).unwrap();
+        std::fs::write(&path,format!("#!/bin/sh\necho $$ >> {} || exit 75\n[ -e {} ] || exit 75\nexec {exec} {} \"$@\"\n",
+            quote(&layout.directory.join("pids")),quote(&layout.directory.join("go")),quote(&worker_path))).unwrap();
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&path,std::fs::Permissions::from_mode(0o755)).unwrap();
         path.into_os_string()
@@ -208,11 +223,11 @@ fn m11_n_reference_is_independent_of_worker_address_layout() {
         .and_then(|s| s.parse().ok()).unwrap_or(600));
     let started = std::time::Instant::now();
     let mut models = 0;
+    let mut products = 0;
     let mut slowest = (0.0f64,String::new());
     let mut differing = Vec::new();
     for (model, expected) in universe(&root) {
         if !expected.values().any(|status| status == "published") {continue;}
-        models += 1;
         // The passes are independent worker processes: run them concurrently
         // (one thread each) so the three passes cost about one in wall time.
         // Detached threads and a channel, not a scope: a pass that panics or
@@ -240,13 +255,24 @@ fn m11_n_reference_is_independent_of_worker_address_layout() {
         }
         let seconds = pass_started.elapsed().as_secs_f64();
         if seconds > slowest.0 { slowest = (seconds,model.clone()); }
+        // A model counts only when every pass published a product, so passes
+        // that refuse everything (identical refusal rows) cannot make up the
+        // coverage below (#10916 review).
+        let published = |run: &serde_json::Value| run.as_array().unwrap().iter().filter(|row| row["status"] == "published").count();
+        let counts: Vec<usize> = runs.iter().map(published).collect();
+        if counts.contains(&0) {
+            differing.push(format!("{model}: a pass published no product (published per pass {counts:?}), nothing compared"));
+        } else {
+            models += 1;
+            products += counts[0];
+        }
         for (k,run) in runs.iter().enumerate().skip(1) {
             if let Err(error) = same_row(&runs[0],run,"rows") { differing.push(format!("{model} (worker {k}): {error}")); }
         }
     }
-    assert!(models >= 30,"must cover the committed published corpus, got {models} models");
+    assert!(models >= 30,"must cover the committed published corpus, got {models} models with published products compared");
     assert!(differing.is_empty(),"m11-n reference topology depends on the worker address layout:\n{}",differing.join("\n"));
-    println!("M11-N layout determinism: {models} models with one topology (values within 4 ULP) across 2 ASLR workers{}",
+    println!("M11-N layout determinism: {models} models ({products} published products compared) with one topology (values within 4 ULP) across 2 ASLR workers{}",
         if aslr_off {" and 1 ASLR-off worker"} else {" (ASLR-off worker skipped)"});
     println!("M11-N layout determinism: {} concurrent passes per model, {:.1} s wall; slowest model {} at {:.1} s (deadline {} s)",
         workers.len(),started.elapsed().as_secs_f64(),slowest.1,slowest.0,deadline.as_secs());

@@ -371,16 +371,28 @@ bool projection(const AdapterMesh& mesh,const std::vector<std::pair<uint32_t,uin
     plane=Plane2{(axis+1)%3,(axis+2)%3,n[axis]>0 ? 1 : -1};
     return true;
 }
+// Whether no two of `vertices` share one projected point (greedy's guard).
+bool distinct_projections(const AdapterMesh& mesh,const std::vector<uint32_t>& vertices,const Plane2& plane) {
+    std::vector<P2> projected;
+    for (uint32_t v:vertices) projected.push_back(plane.at(mesh,v));
+    std::sort(projected.begin(),projected.end());
+    return std::adjacent_find(projected.begin(),projected.end())==projected.end();
+}
 // A two-triangle face in closed form: the diagonal first in (grid length,
 // lower, upper) order among those that are not foreign, leave both triangles
 // strictly positive (exact orientation) and pass no vertex within
 // near_threshold; if near-rejection leaves none, the first such diagonal
 // regardless of nearness whose two flat normals follow the face. Empty when neither diagonal is valid (the SDK's
-// split stays). A flipped diagonal must also preserve the original 3D area
-// (a warped face can be tagged planar, #10916); otherwise the SDK's split
-// stays.
+// split stays). A flipped diagonal must also preserve the original 3D area;
+// otherwise the SDK's split stays.
+// Empty (declined) as well, before either diagonal is ranked, when the quad
+// is not flat (flat_face; a warped face can be tagged planar, #10916). A
+// declined face's diagonal is foreign to every other face, so a flat
+// neighbour cannot flip onto a warped quad's retained diagonal and give it
+// four triangles (#10916 review: the recount then restored the whole mesh).
 std::vector<Triangle> requad(const AdapterMesh& mesh,const Triangle& a,const Triangle& b,
     const std::vector<Edge>& foreign,double h) {
+    if (!flat_face(mesh,{a,b})) return {};
     for (unsigned i=0;i<3;++i) for (unsigned j=0;j<3;++j) {
         if (!(b[j]==a[(i+1)%3] && b[(j+1)%3]==a[i])) continue;
         const uint32_t u=a[i],v=a[(i+1)%3],p=a[(i+2)%3],q=b[(j+2)%3];
@@ -410,7 +422,7 @@ std::vector<Triangle> requad(const AdapterMesh& mesh,const Triangle& a,const Tri
         const bool use_flipped=clear ? flipped_clear : flipped && sound({p,u,q},{q,v,p});
         if (use_flipped && (!use_kept || rank(p,q)<rank(u,v))) {
             const Triangle first{p,u,q},second{q,v,p};
-            if (!flat_face(mesh,{a,b}) || !same_area(mesh,{a,b},{first,second})) return {};
+            if (!same_area(mesh,{a,b},{first,second})) return {};
             return {first,second};
         }
         if (use_kept) return {a,b};
@@ -444,12 +456,7 @@ std::vector<Triangle> greedy(const AdapterMesh& mesh,const std::vector<Triangle>
     if (!projection(mesh,boundary,plane,n)) return {};
     // Two vertices with one projected point (a non-planar face tagged planar)
     // would make the angular order below not a strict weak order: decline.
-    {
-        std::vector<P2> projected;
-        for (uint32_t v:vertices) projected.push_back(plane.at(mesh,v));
-        std::sort(projected.begin(),projected.end());
-        if (std::adjacent_find(projected.begin(),projected.end())!=projected.end()) return {};
-    }
+    if (!distinct_projections(mesh,vertices,plane)) return {};
     // Exact angular order around a vertex: half-plane, then orientation.
     auto ccw=[&](uint32_t a) {
         const auto o=plane.at(mesh,a);
@@ -560,6 +567,18 @@ std::vector<Triangle> retriangulate(const AdapterMesh& mesh,const std::vector<Tr
     if (result.empty()) result=greedy(mesh,face,foreign,h,false);
     return result;
 }
+}
+
+bool planar_face_projects_distinctly(const AdapterMesh& mesh,const std::vector<std::array<uint32_t,3>>& face) {
+    std::set<std::pair<uint32_t,uint32_t>> directed;
+    std::vector<uint32_t> vertices;
+    for (const auto& t:face) for (unsigned k=0;k<3;++k) { directed.emplace(t[k],t[(k+1)%3]); vertices.push_back(t[k]); }
+    std::sort(vertices.begin(),vertices.end());
+    vertices.erase(std::unique(vertices.begin(),vertices.end()),vertices.end());
+    std::vector<std::pair<uint32_t,uint32_t>> boundary;
+    for (const auto& [a,b]:directed) if (!directed.count({b,a})) boundary.emplace_back(a,b);
+    Plane2 plane; Point n;
+    return projection(mesh,boundary,plane,n) && distinct_projections(mesh,vertices,plane);
 }
 
 void canonical_planar_faces(AdapterMesh& mesh,const std::vector<bool>& planar_faces) {

@@ -780,10 +780,45 @@ void run_mesh_canonical_tests() {
     }
     // A face tagged planar whose two interior vertices share one projected
     // point (it is folded): the angular order would not be a strict weak
-    // order there, so the face is declined.
+    // order there, so the face is declined. The fold (+/-2^-52) is inside
+    // flat_face's tolerance (16 eps for this unit square), so the face gets
+    // past the flatness check to the projected-duplicate guard (#10916
+    // review: at +/-0.2 flat_face declined it first and the guard went
+    // untested).
     {
-        AdapterMesh folded; folded.positions={0,0,0, 1,0,0, 1,1,0, 0,1,0, .5,.5,.2, .5,.5,-.2};
+        const double fold=0x1p-52;
+        AdapterMesh folded; folded.positions={0,0,0, 1,0,0, 1,1,0, 0,1,0, .5,.5,fold, .5,.5,-fold};
         folded.indices={0,1,4, 1,5,4, 1,2,5, 2,3,5, 3,4,5, 3,0,4}; folded.faces.assign(6,0); folded.normals.assign(54,0.);
         declined(folded,{true},"face with two vertices on one projected point is left as split");
+        // Removing the guard alone still declines this face later (its
+        // triangle count), so the guard is also checked directly.
+        std::vector<std::array<uint32_t,3>> face;
+        for (size_t t=0;t<6;++t) face.push_back({folded.indices[3*t],folded.indices[3*t+1],folded.indices[3*t+2]});
+        require(!planar_face_projects_distinctly(folded,face),"the projected-duplicate guard sees the folded vertices");
+        AdapterMesh apart=folded; apart.positions[12]=.25; apart.positions[15]=.75;
+        require(planar_face_projects_distinctly(apart,face),"the guard passes vertices apart in projection");
+    }
+    // A warped quad tagged planar keeps the SDK's split, and is declined as a
+    // whole before either diagonal is ranked, so its retained diagonal is
+    // foreign to every other face. Here a flat unit square over the same two
+    // corners prefers exactly that diagonal (equal lengths, lower vertex IDs).
+    // When only a flip was checked for flatness, the warped quad "kept" its
+    // diagonal, the square flipped onto it (four triangles on one edge), and
+    // the recount restored the whole mesh: an unrelated kite then kept the
+    // SDK's long diagonal too (#10916 review).
+    {
+        AdapterMesh mesh;
+        mesh.positions={0,0,0, 2,-1,1e-4, 1,1,0, -1,2,1e-4, // warped quad 0 1 2 3, SDK split 0-2
+            1,0,0, 0,1,0,                                   // square 0 4 2 5, SDK split 4-5
+            10,0,0, 12,-1,0, 14,0,0, 12,1,0};               // kite 6 7 8 9, SDK split 6-8 (the long one)
+        mesh.indices={0,1,2, 0,2,3, 0,4,5, 4,2,5, 6,7,8, 6,8,9};
+        mesh.faces={0,0,1,1,2,2}; mesh.normals.assign(mesh.indices.size()*3,0.);
+        order_mesh(mesh);
+        const auto counts=canonical_planar_faces_or_keep(mesh,{true,true,true});
+        require(counts.spine==0,"no edge gets four triangles");
+        require(has_edge(mesh,{0,0,0},{1,1,0}) && has_edge(mesh,{1,0,0},{0,1,0}),
+            "the warped quad and the square keep their SDK splits");
+        require(has_edge(mesh,{12,-1,0},{12,1,0}) && !has_edge(mesh,{10,0,0},{14,0,0}),
+            "a warped quad's retained diagonal does not make the mesh fall back: the kite takes its short diagonal");
     }
 }

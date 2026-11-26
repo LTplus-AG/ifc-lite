@@ -88,6 +88,10 @@ void order_mesh(AdapterMesh& mesh);
 // Requires order_mesh first (canonical vertex IDs, faces contiguous).
 void canonical_planar_faces(AdapterMesh& mesh, const std::vector<bool>& planar_faces);
 
+// The greedy's projected-duplicate guard on its own, for the unit tests: false
+// when two of the face's vertices share one point in its 2D projection (or
+// the face has no projection). A face for which it is false is declined.
+bool planar_face_projects_distinctly(const AdapterMesh& mesh, const std::vector<std::array<uint32_t,3>>& face);
 // Boundary edges (in one triangle) and spine edges (in more than two).
 struct EdgeCounts { uint32_t boundary=0, spine=0; };
 EdgeCounts edge_counts(const AdapterMesh& mesh);

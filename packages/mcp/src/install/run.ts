@@ -12,11 +12,22 @@
  * would happen and touches nothing.
  */
 
-import { copyFileSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  constants,
+  copyFileSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  renameSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { homedir } from 'node:os';
-import { dirname, isAbsolute, join, resolve } from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { dirname, join, posix, win32 } from 'node:path';
 import { fileURLToPath } from 'node:url';
+// Resolves Windows `.cmd` shims (`claude.cmd`, `code.cmd`) that a bare spawn cannot run.
+import crossSpawn from 'cross-spawn';
 import { readPackageVersion, UNKNOWN_VERSION } from '@ifc-lite/data/node';
 import { isMcpValueFlag } from '../cli-args.js';
 import {
@@ -33,15 +44,16 @@ import {
 } from './clients.js';
 import { mergeServer } from './merge.js';
 
-/** Everything `runInstall` does to the outside world, so tests can fake it. */
 const CLIENT_IDS = Object.keys(CLIENTS);
 
+/** Everything `runInstall` does to the outside world, so tests can fake it. */
 export interface InstallIo {
   host: HostEnv;
   /** File contents, or undefined when the file does not exist. */
   readFile(path: string): string | undefined;
-  /** Create parent directories and write the file. */
+  /** Create parent directories and write the file, through a symlink, keeping its mode. */
   writeFile(path: string, text: string): void;
+  /** Copy, failing rather than overwriting an existing `to`. */
   copyFile(from: string, to: string): void;
   /** Run a program with inherited stdio. `missing` when it is not on PATH. */
   run(command: string, args: string[]): { status: number; missing?: boolean };
@@ -63,14 +75,17 @@ export function nodeInstallIo(): InstallIo {
     },
     writeFile(path, text) {
       mkdirSync(dirname(path), { recursive: true });
+      // A dotfiles symlink stays a symlink: write its target.
+      const target = existing(path) ? realpathSync(path) : path;
       // Write beside the target and rename, so a crash never leaves half a config.
-      const tmp = `${path}.${process.pid}.tmp`;
+      const tmp = `${target}.${process.pid}.tmp`;
       writeFileSync(tmp, text);
-      renameSync(tmp, path);
+      if (existing(target)) chmodSync(tmp, statSync(target).mode & 0o7777);
+      renameSync(tmp, target);
     },
-    copyFile: (from, to) => copyFileSync(from, to),
+    copyFile: (from, to) => copyFileSync(from, to, constants.COPYFILE_EXCL),
     run(command, args) {
-      const r = spawnSync(command, args, { stdio: 'inherit' });
+      const r = crossSpawn.sync(command, args, { stdio: 'inherit' });
       if (r.error) {
         if ((r.error as NodeJS.ErrnoException).code === 'ENOENT') return { status: 127, missing: true };
         throw r.error;
@@ -81,6 +96,16 @@ export function nodeInstallIo(): InstallIo {
     err: (text) => process.stderr.write(text),
     now: () => new Date(),
   };
+}
+
+function existing(path: string): boolean {
+  try {
+    statSync(path);
+    return true;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return false;
+    throw err;
+  }
 }
 
 function installHelp(invokedAs: string): string {
@@ -115,7 +140,7 @@ interface InstallArgs {
   serverArgs: string[];
 }
 
-function parseInstallArgs(argv: string[], cwd: string): InstallArgs | 'help' {
+function parseInstallArgs(argv: string[], host: HostEnv): InstallArgs | 'help' {
   let client: string | undefined;
   let scope = 'user';
   let name = 'ifc-lite';
@@ -145,31 +170,29 @@ function parseInstallArgs(argv: string[], cwd: string): InstallArgs | 'help' {
   if (!isClientId(client)) throw new InstallError(`Unknown client "${client}". Use one of ${CLIENT_IDS.join(', ')}.`);
   if (scope !== 'user' && scope !== 'project') throw new InstallError('--scope must be user or project.');
   if (!/^[A-Za-z0-9_-]+$/.test(name)) throw new InstallError('--name may use letters, digits, - and _ only.');
-  return { client, scope, name, dryRun, force, serverArgs: absolutePaths([...files, ...passThrough], cwd) };
+  return { client, scope, name, dryRun, force, serverArgs: absolutePaths([...files, ...passThrough], host) };
 }
 
 /**
  * The client starts the server from a directory we do not know, so model
  * paths and `--allow` roots are fixed to absolute paths now.
  */
-function absolutePaths(args: string[], cwd: string): string[] {
+function absolutePaths(args: string[], host: HostEnv): string[] {
+  const path = host.platform === 'win32' ? win32 : posix;
+  const abs = (p: string) => (path.isAbsolute(p) ? p : path.resolve(host.cwd, p));
   const out: string[] = [];
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (arg === '--transport') {
       throw new InstallError('Clients start ifc-lite-mcp over stdio; drop --transport. For HTTP, give the client the server URL.');
     }
-    out.push(arg.startsWith('-') ? arg : abs(arg, cwd));
+    out.push(arg.startsWith('-') ? arg : abs(arg));
     if (isMcpValueFlag(arg) && i + 1 < args.length) {
       i++;
-      out.push(arg === '--allow' ? abs(args[i], cwd) : args[i]);
+      out.push(arg === '--allow' ? abs(args[i]) : args[i]);
     }
   }
   return out;
-}
-
-function abs(path: string, cwd: string): string {
-  return isAbsolute(path) ? path : resolve(cwd, path);
 }
 
 /** `npx` pinned to this release line, so the flags written here are ones it knows. */
@@ -182,18 +205,20 @@ function packageVersion(): string {
   return readPackageVersion(join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'package.json'));
 }
 
+/** Quote for a POSIX shell, or for cmd.exe (where `^` escapes and `""` is a literal quote). */
 function quote(arg: string, platform: NodeJS.Platform): string {
+  if (platform === 'win32') return /^[\w@+=:,./\\-]+$/.test(arg) ? arg : `"${arg.replace(/"/g, '""')}"`;
   if (/^[\w@%+=:,./^-]+$/.test(arg)) return arg;
-  if (platform === 'win32') return `"${arg.replace(/"/g, '\\"')}"`;
   return `'${arg.replace(/'/g, `'\\''`)}'`;
 }
 
-function commandLine(plan: CommandPlan, platform: NodeJS.Platform): string {
-  return [plan.command, ...plan.args].map((a) => quote(a, platform)).join(' ');
+function commandLine(command: string, args: string[], platform: NodeJS.Platform): string {
+  return [command, ...args].map((a) => quote(a, platform)).join(' ');
 }
 
+/** Milliseconds in the name, and the copy refuses to overwrite, so no backup is lost. */
 function backupPath(path: string, now: Date): string {
-  const stamp = now.toISOString().replace(/[-:]/g, '').replace(/\..*$/, '').replace('T', '-');
+  const stamp = now.toISOString().replace(/[-:]/g, '').replace('T', '-').replace('.', '').replace('Z', '');
   return `${path}.bak-${stamp}`;
 }
 
@@ -205,7 +230,7 @@ export function runInstall(
   version: string = packageVersion(),
 ): number {
   try {
-    const args = parseInstallArgs(argv, io.host.cwd);
+    const args = parseInstallArgs(argv, io.host);
     if (args === 'help') {
       io.out(installHelp(invokedAs));
       return 0;
@@ -228,15 +253,18 @@ function runCommandPlan(
   label: string,
   io: InstallIo,
 ): number {
-  const line = commandLine(plan, io.host.platform);
+  const remove = args.force && plan.remove ? plan.remove : undefined;
+  if (args.force && !plan.remove) {
+    io.err(`[ifc-lite-mcp install] --force has no effect here; \`${plan.command}\` decides what happens to an existing "${args.name}".\n`);
+  }
+  const line = commandLine(plan.command, plan.args, io.host.platform);
   if (args.dryRun) {
+    if (remove) io.out(`${commandLine(plan.command, remove, io.host.platform)}\n`);
     io.out(`${line}\n`);
     return 0;
   }
-  if (args.force && plan.remove) {
-    // A non-zero exit here only means there was nothing to remove.
-    io.run(plan.command, plan.remove);
-  }
+  // A non-zero exit from the remove step only means there was nothing to remove.
+  if (remove) io.run(plan.command, remove);
   const result = io.run(plan.command, plan.args);
   if (result.missing) {
     io.err(`[ifc-lite-mcp install] \`${plan.command}\` is not on PATH. Run this yourself:\n${line}\n`);

@@ -39,7 +39,8 @@ export function mergeServer(
   if (existingText !== undefined && existingText.trim() !== '') {
     let parsed: unknown;
     try {
-      parsed = JSON.parse(existingText);
+      // Notepad saves a byte-order mark, which JSON.parse rejects.
+      parsed = JSON.parse(existingText.replace(/^\uFEFF/, ''));
     } catch (err) {
       throw new InstallError(`it is not plain JSON (${(err as Error).message}); comments are not supported here`);
     }

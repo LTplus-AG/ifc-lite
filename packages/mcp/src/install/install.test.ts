@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync, mkdirSync, symlinkSync, lstatSync, statSync, chmodSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { nodeInstallIo, runInstall, type InstallIo } from './run.js';
@@ -116,7 +116,7 @@ describe('ifc-lite-mcp install: existing configs', () => {
     expect(after.theme).toBe('dark');
     expect(after.mcpServers.github).toEqual(other.mcpServers.github);
     expect(after.mcpServers['ifc-lite'].args).toEqual(['-y', PKG]);
-    expect(io.files.get(`${path}.bak-20261126-102030`)).toBe(before);
+    expect(io.files.get(`${path}.bak-20261126-102030000`)).toBe(before);
   });
 
   it('refuses a different entry with the same name unless --force', () => {
@@ -137,6 +137,13 @@ describe('ifc-lite-mcp install: existing configs', () => {
     expect(install(['--client', 'cursor'], io)).toBe(0);
     expect(io.files.size).toBe(files);
     expect(io.stderr).toContain('already has');
+  });
+
+  it('reads a file saved with a byte-order mark', () => {
+    const io = fakeIo();
+    io.files.set(path, `\uFEFF${JSON.stringify(other)}`);
+    expect(install(['--client', 'cursor'], io)).toBe(0);
+    expect(JSON.parse(io.files.get(path) ?? 'null').mcpServers.github).toEqual(other.mcpServers.github);
   });
 
   it('refuses a file with comments and prints the entry to add by hand', () => {
@@ -162,6 +169,25 @@ describe('ifc-lite-mcp install: dry run and usage errors', () => {
     expect(install(['--client', 'claude-code', '--dry-run', 'a.ifc'], io)).toBe(0);
     expect(io.runs).toEqual([]);
     expect(io.stdout).toBe(`claude mcp add --scope user ifc-lite -- npx -y ${PKG} '/My Models/a.ifc'\n`);
+  });
+
+  it('--dry-run --force prints the remove step a real run takes first', () => {
+    const io = fakeIo();
+    install(['--client', 'claude-code', '--dry-run', '--force'], io);
+    expect(io.stdout.split('\n')[0]).toBe('claude mcp remove --scope user ifc-lite');
+  });
+
+  it('quotes the printed command for cmd.exe on Windows', () => {
+    const io = fakeIo({ platform: 'win32', home: 'C:\\Users\\u', cwd: 'C:\\My Models' });
+    install(['--client', 'vscode', '--dry-run', 'a.ifc'], io);
+    const json = JSON.stringify({ name: 'ifc-lite', type: 'stdio', command: 'npx', args: ['-y', PKG, 'C:\\My Models\\a.ifc'] });
+    expect(io.stdout).toBe(`code --add-mcp "${json.replace(/"/g, '""')}"\n`);
+  });
+
+  it('says --force has no effect for `code --add-mcp`', () => {
+    const io = fakeIo();
+    install(['--client', 'vscode', '--force'], io);
+    expect(io.stderr).toContain('--force has no effect');
   });
 
   it('prints the command when the client CLI is not on PATH', () => {
@@ -199,7 +225,22 @@ describe('ifc-lite-mcp install: real files', () => {
     expect(Object.keys(JSON.parse(readFileSync(path, 'utf-8')).mcpServers)).toEqual(['other', 'ifc-lite']);
     expect(readdirSync(join(dir, '.cursor')).sort()).toEqual([
       'mcp.json',
-      expect.stringMatching(/^mcp\.json\.bak-\d{8}-\d{6}$/),
+      expect.stringMatching(/^mcp\.json\.bak-\d{8}-\d{9}$/),
     ]);
+  });
+
+  it.skipIf(process.platform === 'win32')('writes through a symlinked config and keeps its mode', () => {
+    dir = mkdtempSync(join(tmpdir(), 'ifc-lite-install-'));
+    mkdirSync(join(dir, 'dotfiles'));
+    mkdirSync(join(dir, '.cursor'));
+    const real = join(dir, 'dotfiles', 'mcp.json');
+    writeFileSync(real, '{}');
+    chmodSync(real, 0o600);
+    symlinkSync(real, join(dir, '.cursor', 'mcp.json'));
+    const io: InstallIo = { ...nodeInstallIo(), host: { platform: process.platform, home: dir, cwd: dir, env: {} }, err: () => {} };
+    expect(install(['--client', 'cursor'], io)).toBe(0);
+    expect(lstatSync(join(dir, '.cursor', 'mcp.json')).isSymbolicLink()).toBe(true);
+    expect(JSON.parse(readFileSync(real, 'utf-8')).mcpServers['ifc-lite'].command).toBe('npx');
+    expect(statSync(real).mode & 0o777).toBe(0o600);
   });
 });

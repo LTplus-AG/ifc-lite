@@ -293,7 +293,8 @@ export class BridgeToolRegistry extends ToolRegistry {
     const name = LEGACY_ALIASES.get(requested) ?? requested;
     if (name === BRIDGE_STATUS_TOOL) return this.status;
     if (name === TAB_SHOW_UI_TOOL) return this.surface;
-    if (name === BRIDGE_UI_EVENTS_TOOL) return this.events;
+    // With no tab, nothing can fill the inbox: fail at once like the other tab_ stand-ins.
+    if (name === BRIDGE_UI_EVENTS_TOOL) return this.bridge.tab() ? this.events : notConnectedTool(this.bridge, name);
     if (!name.startsWith(TAB_TOOL_PREFIX)) return super.get(name);
     const tab = this.bridge.tab();
     if (!tab) return notConnectedTool(this.bridge, name);

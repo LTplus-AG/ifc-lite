@@ -152,7 +152,7 @@ export class DeliveredSurfaces {
   check(event: BridgeUiEvent): SurfaceCheck {
     const surface = this.surfaces.get(event.surfaceId);
     if (!surface) return { refused: 'names a surface the agent did not show in this tab' };
-    if (event.name !== ASK_EVENT && !surface.events.has(event.name)) return { refused: 'names an event that surface does not raise' };
+    if (event.name !== ASK_EVENT && !surface.events.has(event.name.trim())) return { refused: 'names an event that surface does not raise' };
     const prompt = event.prompt?.trim();
     // A blank prompt is no prompt: nothing to pass on as the user's words. The
     // `prompt: undefined` key tells the caller to drop the tab's raw blank text.

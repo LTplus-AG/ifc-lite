@@ -116,6 +116,20 @@ describe('UiEventInbox', () => {
     await expect(waiting).resolves.toMatchObject({ events: [{ prompt: 'next' }], dropped: 0 });
   });
 
+  it('reports counted refusals at once, and limits how often they wake a reader', async () => {
+    let t = 0;
+    const inbox = new UiEventInbox(() => t);
+    inbox.refused();
+    // Already counted: the read does not wait out its 60 s.
+    await expect(inbox.take(60_000)).resolves.toEqual({ events: [], dropped: 0, refused: 1 });
+    let woken = 0;
+    const waiting = inbox.take(60_000).then((r) => { woken++; return r; });
+    for (let i = 0; i < 3 * UI_EVENT_LIMITS.maxPerSecond; i++) inbox.refused();
+    await expect(waiting).resolves.toMatchObject({ refused: 3 * UI_EVENT_LIMITS.maxPerSecond });
+    expect(woken).toBe(1);
+    t += 1000;
+  });
+
   it('stops waiting when the call is cancelled', async () => {
     const inbox = new UiEventInbox();
     const abort = new AbortController();

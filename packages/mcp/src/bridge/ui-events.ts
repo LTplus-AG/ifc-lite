@@ -160,7 +160,8 @@ export class UiEventInbox {
    * none queued, wait up to `waitMs` (or until `signal` aborts) for the first.
    */
   async take(waitMs: number, signal?: AbortSignal): Promise<{ events: ReceivedUiEvent[]; dropped: number; refused: number }> {
-    if (this.queue.length === 0 && waitMs > 0 && !signal?.aborted) {
+    // Losses already counted are news too: report them without waiting.
+    if (this.queue.length === 0 && this.dropped === 0 && this.refusedCount === 0 && waitMs > 0 && !signal?.aborted) {
       await new Promise<void>((resolve) => {
         const done = (): void => {
           clearTimeout(timer);
@@ -185,7 +186,12 @@ export class UiEventInbox {
   /** Count an event the bridge refused, so the agent hears that a click was lost. */
   refused(): void {
     this.refusedCount++;
-    // A waiting reader hears it now, not at the end of its wait.
+    // A waiting reader hears it now, under the same per-second limit as accepted events,
+    // so a flood of bad events cannot turn the agent's long-poll into a busy loop.
+    const t = this.now();
+    this.recent = this.recent.filter((r) => t - r < 1000);
+    if (this.recent.length >= UI_EVENT_LIMITS.maxPerSecond) return;
+    this.recent.push(t);
     for (const wake of this.waiters) wake();
   }
 

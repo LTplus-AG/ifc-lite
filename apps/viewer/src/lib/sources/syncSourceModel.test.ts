@@ -400,6 +400,21 @@ describe('syncSourceModel — filename handling', () => {
     assert.equal(loaded.name, 'etc-pas swd.ifc');
   });
 
+  for (const trailing of ['', ' ', '.']) {
+    it(`preserves the replacement file extension with trailing ${JSON.stringify(trailing)} (#11442)`, async () => {
+      const name = `CON.${'a'.repeat(52)}.xyz${trailing}`;
+      const h = makeHarness({ pages: [{ items: [makeFile({ name })] }] });
+      await syncSourceModel({
+        modelId: MODEL_ID,
+        tag: makeTag(),
+        sourceHost: h.sourceHost,
+        addModel: h.addModel,
+        removeModel: h.removeModel,
+      });
+      assert.equal(h.addModelCalls[0]?.file.name, `_CON.${'a'.repeat(51)}.xyz`);
+    });
+  }
+
   it('falls back to "model" when the provider name sanitizes away to nothing', async () => {
     const h = makeHarness({ pages: [{ items: [makeFile({ name: '///' })] }] });
 

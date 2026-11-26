@@ -69,11 +69,12 @@ export function sanitizeFilename(name: string, options: SanitizeFilenameOptions 
 }
 
 /** Keep a model's format suffix intact when budgeting its filesystem-safe name. */
-export function sanitizeModelFilename(name: string): string {
-  const suffix = /\.([a-z0-9]{1,16})$/i.exec(name);
+export function sanitizeModelFilename(name: string, fallback = 'model.ifc'): string {
+  const trimmed = name.replace(/[\s.-]+$/, '');
+  const suffix = /\.([a-z0-9]{1,16})$/i.exec(trimmed);
   return suffix && suffix.index > 0
     ? buildExportFilename(name.slice(0, suffix.index), suffix[1])
-    : sanitizeFilename(name, { fallback: 'model.ifc' });
+    : sanitizeFilename(name, { fallback });
 }
 
 /** No real file extension is longer than this; caps a pathological input. */

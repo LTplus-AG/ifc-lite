@@ -54,6 +54,8 @@ export interface TwoPointAlignment {
   pivot: Translation;
   /** The move that follows the rotation about A: A' - A. */
   delta: Translation;
+  /** Plan distance from A to B, in metres. */
+  movingPlanLength: number;
   check: TwoPointAlignCheck;
 }
 
@@ -90,6 +92,7 @@ export function alignTwoPoints(input: TwoPointAlignInput): TwoPointAlignResult {
     heading,
     pivot: [a[0], a[1], a[2]],
     delta: [aPrime[0] - a[0], aPrime[1] - a[1], aPrime[2] - a[2]],
+    movingPlanLength: movingPlan,
     check: { distance, planRatio: movingPlan / referencePlan, deltaZ: refZ - abZ },
   } };
 }

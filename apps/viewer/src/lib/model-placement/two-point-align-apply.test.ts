@@ -91,6 +91,15 @@ describe('two-point align commit (#11505)', () => {
     near(shown(done, 'm', aPrime), aPrime, 'A on A\'', 2e-6);
   });
 
+  it('keeps a small heading when ignoring it would move B by more than the pick-noise allowance', () => {
+    const a: Translation = [0, 0, 0];
+    const b: Translation = [20_000, 0, 0];
+    const heading = 9e-7;
+    const bPrime: Translation = [b[0] * Math.cos(heading), b[0] * Math.sin(heading), 0];
+    const done = alignPlacements(emptyPlacementState(), ['m'], alignment({ a, b, aPrime: a, bPrime }));
+    near(shown(done, 'm', b), bPrime, 'B on B\'');
+  });
+
   it('carries a pending move preview instead of dropping it, and keeps A on A\'', () => {
     const start = previewPlacement(beginPlacement(seed({ m: testPlacement([0, 0, 0]) }), ['m'], new Set(['m'])), [40, 0, 0]);
     // The model is DRAWN at +40 m; A and B were picked there.

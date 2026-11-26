@@ -8,9 +8,9 @@ import { cancelPlacement, commitPlacements, placementFor, type ModelPlacement, t
 import type { TwoPointAlignment } from './two-point-align.js';
 
 /** A net heading below this is pick noise (float32 mesh vertices put ~1e-8 rad on
- * a pair that should cancel the heading), not a rotation worth storing and baking.
- * 1e-6 rad is 0.1 mm over 100 m. */
+ * a pair that should cancel the heading), provided it barely moves the check point. */
 const NET_HEADING_NOISE_RAD = 1e-6;
+const NET_HEADING_NOISE_AT_B_M = 1e-3;
 
 /**
  * Commit a two-point align to every named model as ONE undoable command.
@@ -37,6 +37,7 @@ export function alignPlacements(
   if (ids.length === 0) throw new Error('Choose at least one model to align.');
   const preview = state.preview;
   const target = addTranslation(alignment.pivot, alignment.delta);
+  const noiseAngle = Math.min(NET_HEADING_NOISE_RAD, NET_HEADING_NOISE_AT_B_M / alignment.movingPlanLength);
   const before = new Map<string, ModelPlacement>();
   const after = new Map<string, ModelPlacement>();
   for (const id of new Set(ids)) {
@@ -46,7 +47,7 @@ export function alignPlacements(
       ? { ...placement, translation: addTranslation(placement.translation, preview.delta) } : placement;
     const pivot = workspacePointToModelFrame(alignment.pivot, shown);
     const summed = normalizeAngle(shown.rotation.angle + alignment.heading);
-    const angle = Math.abs(summed) < NET_HEADING_NOISE_RAD ? 0 : summed;
+    const angle = Math.abs(summed) < noiseAngle ? 0 : summed;
     const translation = subtractTranslation(target, pivot);
     assertRenderableTranslation(translation);
     assertRenderableTranslation(pivot);

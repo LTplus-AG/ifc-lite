@@ -35,6 +35,7 @@ const cut: StoreyCut = {
   frame: { ...geometryResult.coordinateInfo, buildingOrigin: { z: buildingZ } },
 };
 const drawing = await generateFloorPlan(geometryResult.meshes, cut, {
+  openingSymbols: true,
   includeHiddenLines: true,
   includeProjection: true,
 });

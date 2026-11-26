@@ -168,6 +168,7 @@ const cut: StoreyCut = {
   frame: { ...geometryResult.coordinateInfo, buildingOrigin: { z: buildingZ } },
 };
 const drawing = await generateFloorPlan(geometryResult.meshes, cut, {
+  openingSymbols: true,
   includeHiddenLines: true,
   includeProjection: true,
 });
@@ -176,7 +177,7 @@ console.log(`${drawing.stats.cutLineCount} cut lines`);
 console.log(`${drawing.stats.projectionLineCount} projection lines`);
 ```
 
-Doors and windows that cross the cut come back as plan symbols in `drawing.planSymbols` (a swing per `IfcDoor`, a frame per `IfcWindow`) instead of cut bodies, and `exportToSVG` and `exportToDXF` draw them. Pass `openings`, keyed by `makeEntityKey(modelIndex, expressId)`, with each element's `operationType`, `partitioningType`, `width` (`OverallWidth`) and host `wallThickness`; without them a door swings `SINGLE_SWING_LEFT` at its mesh width. A door whose operation has no plan symbol keeps its cut body. `openingSymbols: false` cuts every body as before.
+With `openingSymbols: true`, doors and windows that cross the cut come back as plan symbols in `drawing.planSymbols` (a swing per `IfcDoor`, a frame per `IfcWindow`) instead of cut bodies, and `exportToSVG` and `exportToDXF` draw them. Pass `openings`, keyed by `makeEntityKey(modelIndex, expressId)`, with each element's `operationType`, `partitioningType`, `width` (`OverallWidth`) and host `wallThickness`; without them a door swings `SINGLE_SWING_LEFT` at its mesh width. A door whose operation has no plan symbol keeps its cut body. By default, the floor-plan generator keeps the cut bodies.
 
 ### Generating a Section
 

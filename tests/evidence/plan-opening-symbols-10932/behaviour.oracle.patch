@@ -24,7 +24,8 @@ index 520ddf9678..bc18d52227 100644
        type: isDoor ? 'door' : 'window',
 @@ -153,7 +154,7 @@ export async function generateWithOpeningSymbols(
  ): Promise<Drawing2D> {
-   if (options?.openingSymbols === false || config.plane.axis !== 'y' || config.plane.customPlane) return generate(meshes);
+-  if (options?.openingSymbols === false || config.plane.axis !== 'y' || config.plane.customPlane) return generate(meshes);
++  if (options?.openingSymbols !== true || config.plane.axis !== 'y' || config.plane.customPlane) return generate(meshes);
    const planSymbols = buildOpeningSymbols(meshes, config.plane, options?.openings);
 -  const symbolized = new Set<EntityKey>();
 +  const symbolized = new Set(planSymbols.map((s) => makeEntityKey(s.modelIndex, s.entityId)));

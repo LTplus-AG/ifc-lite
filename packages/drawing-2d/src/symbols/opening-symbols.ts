@@ -44,7 +44,7 @@ export interface PlanOpeningInfo {
 }
 
 export interface PlanSymbolOptions {
-  /** Draw doors and windows crossing the cut as symbols instead of cutting their bodies. Default true. */
+  /** Draw doors and windows crossing the cut as symbols instead of cutting their bodies. Default false. */
   openingSymbols?: boolean;
   /** Operation type, width and host thickness per door/window, keyed by `makeEntityKey(modelIndex, expressId)`. */
   openings?: ReadonlyMap<EntityKey, PlanOpeningInfo>;
@@ -156,7 +156,7 @@ export async function generateWithOpeningSymbols(
   options: PlanSymbolOptions | undefined,
   generate: (meshes: MeshData[]) => Promise<Drawing2D>,
 ): Promise<Drawing2D> {
-  if (options?.openingSymbols === false || config.plane.axis !== 'y' || config.plane.customPlane) return generate(meshes);
+  if (options?.openingSymbols !== true || config.plane.axis !== 'y' || config.plane.customPlane) return generate(meshes);
   const planSymbols = buildOpeningSymbols(meshes, config.plane, options?.openings);
   const symbolized = new Set(planSymbols.map((s) => makeEntityKey(s.modelIndex, s.entityId)));
   const drawing = await generate(symbolized.size === 0 ? meshes : meshes.filter((m) => !symbolized.has(makeEntityKey(m.modelIndex ?? 0, m.expressId))));

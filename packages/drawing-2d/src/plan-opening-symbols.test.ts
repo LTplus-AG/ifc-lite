@@ -48,7 +48,8 @@ function door(expressId: number, at: V3, width = 0.9): MeshData[] {
   );
 }
 
-const options = { useGPU: false, includeHiddenLines: false } as const;
+const baseOptions = { useGPU: false, includeHiddenLines: false } as const;
+const options = { ...baseOptions, openingSymbols: true } as const;
 const host = box(1, [0, 0, -0.1], [6, 2.7, 0]);
 const symbolsOf = (d: Drawing2D, kind: string) => (d.planSymbols ?? []).filter((s) => s.kind === kind);
 const isDoorSwing = (p: SymbolParameters | undefined): p is DoorSwingParameters =>
@@ -150,10 +151,15 @@ describe('headless plans draw door and window symbols (#10932)', () => {
     expect(swing(drawing, 20, 1).width).toBeCloseTo(0.85, 6);
   });
 
-  it('cuts door bodies as before when openingSymbols is false', async () => {
-    const drawing = await generateFloorPlan([host, ...door(20, [1, 0, 0])], 1.2, { ...options, openingSymbols: false });
+  it.each([undefined, false])('keeps opening bodies when openingSymbols is %s', async (openingSymbols) => {
+    const window = box(30, [4.5, 0.9, -0.1], [5.5, 2, 0], { ifcType: 'IfcWindow' });
+    const legacyOptions = openingSymbols === undefined ? baseOptions : { ...baseOptions, openingSymbols };
+    const drawing = await generateFloorPlan([host, ...door(20, [1, 0, 0]), window], 1.2, legacyOptions);
     expect(drawing.planSymbols).toBeUndefined();
-    expect(drawing.cutPolygons.some((p) => p.entityId === 20)).toBe(true);
+    for (const entityId of [20, 30]) {
+      expect(drawing.cutPolygons.some((p) => p.entityId === entityId)).toBe(true);
+      expect(drawing.lines.some((line) => line.entityId === entityId && line.category === 'cut')).toBe(true);
+    }
   });
 
   it('keeps the body of a door whose operation has no symbol, and draws SINGLE_SWING_LEFT hinged left', async () => {

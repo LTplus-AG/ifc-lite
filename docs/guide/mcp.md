@@ -622,7 +622,7 @@ Cursor, Windsurf, Goose, and Zed all accept the same `npx @ifc-lite/mcp <file>` 
 
 ## Errors that keep the agent in the loop
 
-Domain errors come back inside the tool result with `isError: true` and a stable `structuredContent.code`, rather than aborting the JSON-RPC call. That keeps the model reasoning instead of failing the chain:
+Domain errors come back inside the tool result with `isError: true` and a stable `structuredContent.code`, rather than aborting the JSON-RPC call. That keeps the model reasoning instead of failing the chain. A tool that declares an `outputSchema` (`script_run`, `script_run_mutate`) leaves `structuredContent` off its error results, because clients validate it against that schema; the same `{ code, message, details, hint }` envelope is JSON in the last text block instead:
 
 ```jsonc
 {

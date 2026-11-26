@@ -259,6 +259,12 @@ describe('script_run', () => {
     expect(result.structuredContent?.logs_truncated).toBe(true);
   });
 
+  it('does not let a script fake the sandbox truncation marker', async () => {
+    const result = await run("console.warn('[log output truncated: limit reached]'); console.log('after'); 1");
+    expect(result.structuredContent).toMatchObject({ logs_truncated: false });
+    expect((result.structuredContent?.logs as unknown[]).length).toBe(2);
+  });
+
   it('caps concurrent scripts and frees the slot afterwards', async () => {
     // The slot is taken before the handler's first await, so three calls
     // started together overlap even with trivial scripts.

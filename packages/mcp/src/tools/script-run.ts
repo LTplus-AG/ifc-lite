@@ -135,9 +135,13 @@ function renderLogArg(arg: unknown): string {
 function shapeLogs(entries: readonly LogEntry[]): { logs: LogLine[]; truncated: boolean } {
   const logs: LogLine[] = [];
   let chars = 0;
-  for (const entry of entries) {
+  for (const [index, entry] of entries.entries()) {
     if (logs.length >= MAX_LOG_LINES) return { logs, truncated: true };
-    if (entry.args.length === 1 && entry.args[0] === SANDBOX_LOG_TRUNCATED) return { logs, truncated: true };
+    // The sandbox appends its marker as the final warn entry and then stops
+    // capturing; the same text logged by the script anywhere else is just a log.
+    const isSandboxMarker = index === entries.length - 1 && entry.level === 'warn'
+      && entry.args.length === 1 && entry.args[0] === SANDBOX_LOG_TRUNCATED;
+    if (isSandboxMarker) return { logs, truncated: true };
     const text = entry.args.map(renderLogArg).join(' ');
     if (chars + text.length > MAX_LOG_CHARS) {
       // Clip the entry that crosses the budget rather than dropping it, so
@@ -265,71 +269,71 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
     const sandbox = await createSandbox(model.bim, {
       permissions: mode === 'mutate' ? MUTATE_PERMISSIONS : READ_PERMISSIONS,
       limits: { timeoutMs, memoryBytes: memoryMb * 1024 * 1024 },
-  });
-  // dispose() can throw SandboxAbortError when QuickJS aborts tearing down a
-  // runtime (#1922). From the abort listener that would be an uncaught
-  // exception; from `finally` it would replace the real outcome.
-  const dispose = () => {
-    try {
-      sandbox.dispose();
-    } catch (err) {
-      ctx.log.log('warning', 'script_run: sandbox teardown aborted', { error: err instanceof Error ? err.message : String(err) });
-    }
-  };
-  const onAbort = () => dispose();
-  ctx.signal.addEventListener('abort', onAbort, { once: true });
-  // A cancel that landed while the sandbox was being created fired no event.
-  if (ctx.signal.aborted) onAbort();
-  try {
-    if (ctx.signal.aborted) throw cancelled();
-    const result = await sandbox.eval(wrapScript(code), { typescript: false, filename: 'script_run.js' });
-    const { logs, truncated } = shapeLogs(result.logs);
-    const mutationsQueued = queued();
-    const outcome = readEnvelope(result.value);
-    if ('error' in outcome) throw scriptError(outcome.error, { logs, logs_truncated: truncated, mutations_queued: mutationsQueued });
-    const summary = [
-      `Script ran in ${result.durationMs} ms on model '${model.id}' (${mode}).`,
-      mutationsQueued > 0 ? `${mutationsQueued} mutation(s) queued; persist with export_ifc or model_save.` : '',
-      outcome.value_truncated ? `Value truncated (over ${MAX_VALUE_CHARS} JSON characters).` : '',
-    ].filter(Boolean).join(' ');
-    const structured = {
-      model_id: model.id, mode, ...outcome, logs, logs_truncated: truncated,
-      duration_ms: result.durationMs, mutations_queued: mutationsQueued,
+    });
+    // dispose() can throw SandboxAbortError when QuickJS aborts tearing down a
+    // runtime (#1922). From the abort listener that would be an uncaught
+    // exception; from `finally` it would replace the real outcome.
+    const dispose = () => {
+      try {
+        sandbox.dispose();
+      } catch (err) {
+        ctx.log.log('warning', 'script_run: sandbox teardown aborted', { error: err instanceof Error ? err.message : String(err) });
+      }
     };
-    // The serialised result goes in the text block too, for clients that
-    // read only `content` (MCP 2025-06-18, structured content).
-    return okResult(`${summary}\n${JSON.stringify(structured)}`, structured);
-  } catch (err) {
-    if (err instanceof ToolExecutionError) throw err;
-    // A sandbox disposed by a cancel rejects with a plain Error
-    // that carries no logs; only a ScriptError has them.
-    const shaped = err instanceof ScriptError ? shapeLogs(err.logs) : { logs: [], truncated: false };
-    let mutationsQueued: number | undefined;
+    const onAbort = () => dispose();
+    ctx.signal.addEventListener('abort', onAbort, { once: true });
+    // A cancel that landed while the sandbox was being created fired no event.
+    if (ctx.signal.aborted) onAbort();
     try {
-      mutationsQueued = queued();
-    } catch (countErr) {
-      // A model unloaded mid-run disposes its backend; keep the real error.
-      ctx.log.log('warning', 'script_run: could not count queued mutations', { error: describeThrown(countErr) });
+      if (ctx.signal.aborted) throw cancelled();
+      const result = await sandbox.eval(wrapScript(code), { typescript: false, filename: 'script_run.js' });
+      const { logs, truncated } = shapeLogs(result.logs);
+      const mutationsQueued = queued();
+      const outcome = readEnvelope(result.value);
+      if ('error' in outcome) throw scriptError(outcome.error, { logs, logs_truncated: truncated, mutations_queued: mutationsQueued });
+      const summary = [
+        `Script ran in ${result.durationMs} ms on model '${model.id}' (${mode}).`,
+        mutationsQueued > 0 ? `${mutationsQueued} mutation(s) queued; persist with export_ifc or model_save.` : '',
+        outcome.value_truncated ? `Value truncated (over ${MAX_VALUE_CHARS} JSON characters).` : '',
+      ].filter(Boolean).join(' ');
+      const structured = {
+        model_id: model.id, mode, ...outcome, logs, logs_truncated: truncated,
+        duration_ms: result.durationMs, mutations_queued: mutationsQueued,
+      };
+      // The serialised result goes in the text block too, for clients that
+      // read only `content` (MCP 2025-06-18, structured content).
+      return okResult(`${summary}\n${JSON.stringify(structured)}`, structured);
+    } catch (err) {
+      if (err instanceof ToolExecutionError) throw err;
+      // A sandbox disposed by a cancel rejects with a plain Error
+      // that carries no logs; only a ScriptError has them.
+      const shaped = err instanceof ScriptError ? shapeLogs(err.logs) : { logs: [], truncated: false };
+      let mutationsQueued: number | undefined;
+      try {
+        mutationsQueued = queued();
+      } catch (countErr) {
+        // A model unloaded mid-run disposes its backend; keep the real error.
+        ctx.log.log('warning', 'script_run: could not count queued mutations', { error: describeThrown(countErr) });
+      }
+      const details = { logs: shaped.logs, logs_truncated: shaped.truncated, mutations_queued: mutationsQueued };
+      if (ctx.signal.aborted) throw cancelled(details);
+      // Script throws are caught in the wrapper, so 'interrupted' here is the
+      // sandbox's own interrupt handler (it reports nothing more specific).
+      if (err instanceof ScriptError && err.message === 'interrupted') {
+        throw new ToolExecutionError({ code: ToolErrorCode.TIMEOUT, message: `Script exceeded timeout_ms (${timeoutMs}).`, details });
+      }
+      // The sandbox's own realm failing is a server fault, not the script's.
+      if (err instanceof ScriptError && err.message.startsWith('Sandbox realm became invalid')) {
+        throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: err.message, details });
+      }
+      // Out of memory, stack overflow, or a fault the wrapper could not catch.
+      if (err instanceof ScriptError) throw scriptError(err.message, details);
+      // Keep mutations_queued on every failure, not only script ones.
+      throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: describeThrown(err), details });
+    } finally {
+      ctx.signal.removeEventListener('abort', onAbort);
+      dispose();
     }
-    const details = { logs: shaped.logs, logs_truncated: shaped.truncated, mutations_queued: mutationsQueued };
-    if (ctx.signal.aborted) throw cancelled(details);
-    // Script throws are caught in the wrapper, so 'interrupted' here is the
-    // sandbox's own interrupt handler (it reports nothing more specific).
-    if (err instanceof ScriptError && err.message === 'interrupted') {
-      throw new ToolExecutionError({ code: ToolErrorCode.TIMEOUT, message: `Script exceeded timeout_ms (${timeoutMs}).`, details });
-    }
-    // The sandbox's own realm failing is a server fault, not the script's.
-    if (err instanceof ScriptError && err.message.startsWith('Sandbox realm became invalid')) {
-      throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: err.message, details });
-    }
-    // Out of memory, stack overflow, or a fault the wrapper could not catch.
-    if (err instanceof ScriptError) throw scriptError(err.message, details);
-    // Keep mutations_queued on every failure, not only script ones.
-    throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: describeThrown(err), details });
-  } finally {
-    ctx.signal.removeEventListener('abort', onAbort);
-    dispose();
-  }
   });
 }
 

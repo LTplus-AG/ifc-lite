@@ -268,7 +268,10 @@ const initResp = await transport.send({
 ## Errors
 
 Domain errors come back inside the tool result with `isError: true` and a
-stable `structuredContent.code`:
+stable `structuredContent.code`. Tools that declare an `outputSchema`
+(`script_run`, `script_run_mutate`) put that envelope as JSON in the last
+text block instead, since clients validate `structuredContent` against the
+schema:
 
 ```jsonc
 {

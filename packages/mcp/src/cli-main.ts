@@ -139,12 +139,7 @@ export async function runMcpCli(argv: string[], identity: McpCliIdentity): Promi
     return undefined;
   }
   if (opts.transport === 'http') return runHttp(opts, tag);
-  if (opts.transport === 'stdio') {
-    await runStdio(opts, tag);
-    return undefined;
-  }
-  process.stderr.write(`${tag} unknown transport: ${String(opts.transport)}. Use stdio or http.\n`);
-  process.exitCode = 2;
+  await runStdio(opts, tag);
   return undefined;
 }
 

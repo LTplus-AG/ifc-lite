@@ -136,6 +136,11 @@ describe('flag fixes (#11534)', () => {
     expect(opts.warnings).toEqual(['unknown flag --tokn=… ignored. Run with --help for the flags this version knows.']);
   });
 
+  it('takes only stdio or http as the transport', () => {
+    expect(parseArgs(['--transport', 'htp']).errors).toEqual(["--transport must be stdio or http, got 'htp'."]);
+    expect(parseArgs(['--transport', 'http']).transport).toBe('http');
+  });
+
   it('takes only plain decimal ports', () => {
     for (const bad of [' ', '0x1F90', '1e3', '-1']) {
       expect(parseArgs(['--port', bad]).errors, bad).toHaveLength(1);

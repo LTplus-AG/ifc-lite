@@ -168,7 +168,8 @@ export function parseArgs(rawArgv: string[]): CliOptions {
     else if (arg === '--insecure') opts.insecure = true;
     else if (arg === '--transport') {
       const v = value(arg);
-      if (v !== undefined) opts.transport = v as 'stdio' | 'http';
+      if (v === 'stdio' || v === 'http') opts.transport = v;
+      else if (v !== undefined) opts.errors.push(`--transport must be stdio or http, got '${v}'.`);
     }
     else if (arg === '--port') opts.port = port(arg) ?? opts.port;
     else if (arg === '--host') opts.host = value(arg);
@@ -210,7 +211,9 @@ export function parseArgs(rawArgv: string[]): CliOptions {
  */
 export function bridgeConflict(opts: CliOptions): string | null {
   if (!opts.bridge) return opts.channel ? '--channel needs --bridge: it pushes events from the paired viewer tab.' : null;
-  if (opts.files.length > 0) return `--bridge serves the model open in a browser tab and loads no files; drop ${opts.files.join(', ')}.`;
+  // The count, not the values: a mistyped value flag leaves its value
+  // (maybe a token) as a positional, and stderr ends up in client logs.
+  if (opts.files.length > 0) return `--bridge serves the model open in a browser tab and loads no files; drop the ${opts.files.length} file argument(s).`;
   if (opts.transport !== 'stdio') return '--bridge speaks MCP over stdio only; drop --transport http.';
   if (opts.autoViewer) return '--bridge cannot be combined with --viewer or --open: the browser tab is the viewer.';
   return null;

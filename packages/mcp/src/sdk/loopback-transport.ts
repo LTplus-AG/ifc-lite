@@ -99,6 +99,8 @@ export class LoopbackTransport implements Transport {
   /** One inbound message; resolves with its response, or null for notifications and abandoned requests. */
   deliver(message: JsonRpcMessage): Promise<JsonRpcResponse | null> {
     if (!this.onmessage) return Promise.resolve(null);
+    // The server sends the client no requests, so a client response answers nothing.
+    if (isJsonRpcResponse(message)) return Promise.resolve(null);
     if (isJsonRpcRequest(message)) {
       // The SDK drops a request its strict envelope schema refuses (null or
       // fractional id, array params, extra members) without answering it.

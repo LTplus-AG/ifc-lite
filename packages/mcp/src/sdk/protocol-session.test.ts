@@ -76,6 +76,8 @@ describe('SDK protocol adapter lifecycle', () => {
     await new Promise((r) => setTimeout(r, 10));
     await server.handleMessage({ jsonrpc: '2.0', method: 'notifications/cancelled', params: { requestId: 'slow' } });
     expect(await pending).toBeNull();
+    // Answered only once the aborted handler has unwound.
+    expect(server.runningCalls()).toBe(0);
     await new Promise((r) => setTimeout(r, 10));
     expect(sent.filter((m) => 'id' in m && m.id === 'slow')).toEqual([]);
   });

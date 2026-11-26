@@ -126,17 +126,20 @@ class IfcProtocolServer extends Server {
       const signal = ctx.mcpReq.signal;
       const id = ctx.mcpReq.id;
       // The SDK sends nothing for a request it aborted, even one whose handler
-      // already returned or that we refuse below, so the listener comes first
-      // and stays for the request's lifetime.
-      const abandoned = () => this.link.abandon(id);
-      if (signal.aborted) abandoned();
+      // already returned or that we refuse below. Its caller is told once the
+      // handler has unwound (a retry then cannot collide with the old run), or
+      // at once if the abort lands after that.
+      let unwound = false;
+      let aborted = false;
+      const abandoned = () => { if (unwound) this.link.abandon(id); else aborted = true; };
+      if (signal.aborted) aborted = true;
       else signal.addEventListener('abort', abandoned, { once: true });
-      if (!opening && !this.link.initializeSeen) {
-        throw new ProtocolError(JsonRpcErrorCode.ServerNotInitialized, 'Server not initialized — send `initialize` first');
-      }
       this.running++;
       let result: Result;
       try {
+        if (!opening && !this.link.initializeSeen) {
+          throw new HandlerError(JsonRpcErrorCode.ServerNotInitialized, 'Server not initialized — send `initialize` first');
+        }
         result = await inner(request, ctx);
       } catch (err) {
         if (err instanceof HandlerError) throw err;
@@ -150,6 +153,8 @@ class IfcProtocolServer extends Server {
         throw new ProtocolError(ProtocolErrorCode.InternalError, message);
       } finally {
         this.running--;
+        unwound = true;
+        if (aborted) this.link.abandon(id);
       }
       if (method === 'initialize') {
         // A failing observer must not fail a handshake the SDK already answered.
@@ -180,11 +185,14 @@ function invalidParams(err: unknown): ProtocolError {
 }
 
 function zodIssues(text: string): Array<{ path?: unknown[]; message?: string }> | undefined {
+  if (!text.trimStart().startsWith('[')) return undefined; // plain text already
   try {
     const parsed: unknown = JSON.parse(text);
     return Array.isArray(parsed) ? parsed : undefined;
-  } catch {
-    return undefined; // not an issue list: the message is already plain text
+  } catch (err) {
+    // Looked like an issue list but is not one: the raw message goes out as is.
+    console.error(`[ifc-lite-mcp] unparsable validation message: ${describeThrown(err)}`);
+    return undefined;
   }
 }
 
@@ -253,7 +261,7 @@ export class ProtocolSession {
 
   /** Send a server notification. Dropped until initialize; a failing sink is logged, never thrown at the caller. */
   notify(method: string, params: Record<string, unknown>): void {
-    // Not before the client has the initialize result: nothing may overtake it.
+    // Not before the initialize result has left the protocol layer.
     if (!this.transport.handshakeSent) return;
     const failed = (err: unknown) => this.domain.baseLogger.log('warning', `notify ${method} failed`, { error: describeThrown(err) });
     try {
@@ -329,6 +337,8 @@ export class ProtocolSession {
     if (token === undefined) return { report() { /* no token => silent */ } };
     return {
       report: (progress, message, total) => {
+        // A cancelled or closed request has nobody listening for its progress.
+        if (ctx.mcpReq.signal.aborted) return;
         const params: Record<string, unknown> = { progressToken: token, progress };
         if (total !== undefined) params.total = total;
         if (message !== undefined) params.message = message;

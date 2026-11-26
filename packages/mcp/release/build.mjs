@@ -36,11 +36,13 @@ import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
+import { matchesPostimage, patchPostimages } from './patch-postimage.mjs';
 
 /** Pinned so a new CLI release cannot change what a release builds. */
 const MCPB_CLI = '@anthropic-ai/mcpb@2.1.2';
 
 const pkgDir = dirname(dirname(fileURLToPath(import.meta.url)));
+const root = resolve(pkgDir, '../..');
 const { values: flags } = parseArgs({ options: { out: { type: 'string' }, 'no-bundle': { type: 'boolean' } } });
 // pnpm runs scripts in packages/mcp; a relative --out means where the user typed it.
 const packageEntry = process.env.npm_lifecycle_event === 'release:manifests';
@@ -91,35 +93,9 @@ function resolvedTree(nodeModules) {
   return found;
 }
 
-/**
- * The root `patchedDependencies` the stage carries, each checked to be applied:
- * the hoisted deploy runs with allow-unused-patches, so pnpm would not say if
- * one of them were skipped. Every line a patch adds must be in the staged file.
- */
 const nameOf = (spec) => spec.slice(0, spec.lastIndexOf('@'));
 
-/** A patch as files, each with the lines it adds and the lines it only removes. */
-function parsePatch(text) {
-  const files = [];
-  // A CRLF checkout of patches/ (core.autocrlf) must still compare equal.
-  let prev = '';
-  for (const line of text.split(/\r?\n/)) {
-    // A file header is `+++ ` right after `--- `; inside a hunk it is an added `++ ` line.
-    const header = line.startsWith('+++ ') && prev.startsWith('--- ');
-    prev = line;
-    if (header) {
-      // A deleted file (+++ /dev/null) has nothing to look for.
-      files.push({ name: line === '+++ /dev/null' ? null : line.slice(4).replace(/^b\//, ''), added: [], removed: [] });
-    } else if (files.length && line.startsWith('+') && line.trim() !== '+') files.at(-1).added.push(line.slice(1));
-    else if (files.length && line.startsWith('-') && !line.startsWith('--- ') && line.trim() !== '-') files.at(-1).removed.push(line.slice(1));
-  }
-  // A removed line that lives on inside an added one (`f(x)` -> `f(x, y)`) proves nothing.
-  for (const f of files) f.removed = f.removed.filter((l) => !f.added.some((a) => a.includes(l)));
-  return files.filter((f) => f.name !== null);
-}
-
 function assertPatchesApplied(staged) {
-  const root = resolve(pkgDir, '..', '..');
   const patches = JSON.parse(readFileSync(join(root, 'package.json'), 'utf-8')).pnpm?.patchedDependencies ?? {};
   for (const [spec, patch] of Object.entries(patches)) {
     if (!/^.+@\d+\.\d+\.\d+/.test(spec)) {
@@ -128,20 +104,14 @@ function assertPatchesApplied(staged) {
     // pnpm patches one version; any other version of the package ships unpatched.
     const other = [...staged.keys()].find((s) => nameOf(s) === nameOf(spec) && s !== spec);
     if (other) throw new Error(`${other} is staged, but ${patch} only patches ${spec}`);
-    const files = parsePatch(readFileSync(join(root, patch), 'utf-8'));
-    // A patch that parsed to nothing would pass without having checked anything.
-    if (!files.some((f) => f.added.length)) throw new Error(`${patch} has no added lines to check`);
-    // Every copy of exactly this version, hoisted or nested.
-    for (const pkgRoot of staged.get(spec) ?? []) {
-      for (const { name, added, removed } of files) {
-        const text = readFileSync(join(pkgRoot, name), 'utf-8');
-        const missing = added.find((l) => !text.includes(l));
-        if (missing !== undefined) throw new Error(`${pkgRoot}/${name} is staged without ${patch} (missing: ${missing.trim()})`);
-        // Added lines can be generic (`}`), so a line the patch only removes must
-        // also be gone, compared as a whole line.
-        const present = new Set(text.split(/\r?\n/).map((l) => l.trim()));
-        if (removed.length && removed.every((l) => present.has(l.trim()))) {
-          throw new Error(`${pkgRoot}/${name} still has every line ${patch} removes`);
+    const copies = staged.get(spec);
+    if (!copies) continue;
+    const files = patchPostimages(readFileSync(join(root, patch), 'utf-8'));
+    for (const pkgRoot of copies) {
+      for (const file of files) {
+        const path = join(pkgRoot, file.name);
+        if (file.deleted ? existsSync(path) : !matchesPostimage(readFileSync(path, 'utf-8'), file)) {
+          throw new Error(`${path} does not match the postimage of ${patch}`);
         }
       }
     }
@@ -190,7 +160,7 @@ if (!flags['no-bundle']) {
   }
 }
 if (packageEntry) {
-  run('pnpm', ['exec', 'turbo', 'run', 'build', '--force', `--filter=${pkg.name}...`], resolve(pkgDir, '../..'));
+  run('pnpm', ['exec', 'turbo', 'run', 'build', '--force', `--filter=${pkg.name}...`], root);
 }
 // Direct execution uses the existing dist; the package entry builds it above.
 const { BUNDLE_SERVER_DIR, mcpbManifest, serverJson } = await import('../dist/release/manifests.js');
@@ -216,7 +186,11 @@ if (!flags['no-bundle']) {
   if (source.length) throw new Error(`packages/wasm is missing ${source.join(', ')}: build it (scripts/build-wasm.sh) first`);
   // build-wasm.sh also keeps the old runtime when a wasm-pack build fails
   // outside CI, so a runtime older than the Rust sources is a stale one.
-  const rustNewest = newestMtime(resolve(pkgDir, '..', '..', 'rust'));
+  const rustNewest = Math.max(
+    newestMtime(join(root, 'rust')),
+    statSync(join(root, 'Cargo.toml')).mtimeMs,
+    statSync(join(root, 'Cargo.lock')).mtimeMs,
+  );
   const stale = WASM.filter((f) => statSync(join(wasmDir, f)).mtimeMs < rustNewest);
   if (stale.length) throw new Error(`packages/wasm/${stale.join(', ')} is older than the Rust sources: rebuild it (scripts/build-wasm.sh)`);
   const stage = mkdtempSync(join(out, '.ifc-lite-mcpb-stage-'));

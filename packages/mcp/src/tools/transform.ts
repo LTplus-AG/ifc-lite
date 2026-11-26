@@ -88,7 +88,13 @@ const modelMerge: Tool = {
     const models = ids.map((id) => resolveStepModel(ctx, id, 'model_merge'));
     const filePath = await resolveSafePath(input.file_path, ctx, 'write');
     // After the await: an edit queued while it ran must still refuse the call.
-    for (const m of models) requireNoPendingEdits(m, 'model_merge');
+    for (const m of models) {
+      requireNoPendingEdits(m, 'model_merge');
+      // MergedExporter skips a model with no source bytes; refuse rather than merge fewer than asked.
+      if (m.store.source.byteLength === 0) {
+        throw new ToolExecutionError({ code: ToolErrorCode.UNSUPPORTED_OPERATION, message: `Model '${m.id}' kept no source bytes to merge. Reload it with model_load.` });
+      }
+    }
     // Default: the first model's schema, so a merge never converts unasked.
     const schema = (input.schema as 'IFC2X3' | 'IFC4' | 'IFC4X3' | undefined)
       ?? (schemaOf(models[0]) as 'IFC2X3' | 'IFC4' | 'IFC4X3');
@@ -219,7 +225,7 @@ const modelExtract: Tool = {
   name: 'model_extract',
   title: 'Extract entities to a standalone IFC',
   description:
-    'Extract, isolate or cut out selected products into a small valid standalone IFC that keeps their full reference closure, openings and fillers, spatial ancestors and project context. Records are copied byte-for-byte, so a suspect element reproduces outside its source file. Selectors are unioned.',
+    'Extract, isolate or cut out selected products into a small valid standalone IFC that keeps their full reference closure, openings and fillers, spatial ancestors and project context. Records are copied byte-for-byte, so a suspect element reproduces outside its source file; with unsaved edits the model is re-serialized first and records are no longer the source bytes. Selectors are unioned.',
   scope: 'export',
   annotations: FILE_WRITE_ANNOTATIONS,
   inputSchema: {

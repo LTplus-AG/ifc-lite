@@ -127,7 +127,7 @@ const modelLod: Tool = {
     const m = resolveStepModel(ctx, input.model_id as string | undefined, 'model_lod');
     const level = input.level as 0 | 1;
     const filePath = await resolveSafePath(input.file_path, ctx, 'write');
-    if (level === 0 && input.meta_path !== undefined) throw invalid('meta_path applies to level 1 only.');
+    if (level === 0 && input.meta_path != null) throw invalid('meta_path applies to level 1 only.');
     const metaPath = await optionalOutputPath(input, 'meta_path', ctx);
     requireDistinctPaths(filePath, metaPath, 'meta_path');
     return withIfcBytes(m, async (bytes) => {

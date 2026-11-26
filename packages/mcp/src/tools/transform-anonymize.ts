@@ -55,6 +55,7 @@ function anonymizeSeeds(m: LoadedModel, input: Record<string, unknown>): Set<num
     for (const e of matched) seeds.add(e.ref.expressId);
   }
   const key = typeof input.storey === 'string' ? input.storey.trim() : '';
+  if (typeof input.storey === 'string' && !key) throw invalid('storey must not be blank.');
   if (key) {
     const id = key.replace(/^#/, '');
     const storeys = m.bim.storeys();
@@ -149,7 +150,7 @@ export const modelAnonymize: Tool = {
       express_ids: { type: 'array', items: { type: 'integer', minimum: 1 }, description: 'Seed entities by express id.' },
       global_ids: { ...stringList, description: 'Seed entities by GlobalId.' },
       types: { ...stringList, description: 'Every entity of these IFC types.' },
-      storey: { type: 'string', minLength: 1, description: 'Every entity contained in this storey: GlobalId, #id, exact name, or a name fragment that matches one storey (as `ifc-lite anonymize --storey`).' },
+      storey: { type: 'string', minLength: 1, description: 'Every entity contained in this storey: GlobalId, #id, exact name, or a name fragment that matches exactly one storey. Ambiguous names are refused.' },
       exclude_relationships: { type: 'array', items: { type: 'string', enum: RELATIONSHIPS }, description: 'Relationships not to follow when expanding the seeds.' },
       connect_depth: { type: 'integer', minimum: 0, description: 'Also follow IfcRelConnectsPathElements this many hops (default 0).' },
       keep_psets: { type: 'boolean', description: 'Keep property sets instead of clearing them.' },

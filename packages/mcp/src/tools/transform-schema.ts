@@ -65,7 +65,7 @@ export const CASE_INSENSITIVE_FS = process.platform === 'darwin' || process.plat
 /** A second output path argument: absent is null; present must be a non-empty string inside the allowed paths. */
 export async function optionalOutputPath(input: Record<string, unknown>, key: string, ctx: ToolContext): Promise<string | null> {
   const raw = input[key];
-  if (raw === undefined) return null;
+  if (raw == null) return null; // null and absent mean the same, as in validate.ts
   if (typeof raw !== 'string' || raw.length === 0) throw invalid(`${key} must be a non-empty string.`);
   return resolveSafePath(raw, ctx, 'write');
 }

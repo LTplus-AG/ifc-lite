@@ -285,6 +285,11 @@ describe('model_anonymize', () => {
     expect(res.structuredContent.seedCount).toBe(2);
   });
 
+  it('reads a null guid_map_path as absent', async () => {
+    const res = await call('model_anonymize', { global_ids: ['000000000000000000WA1A'], file_path: join(tmp, 'anon-null.ifc'), guid_map_path: null });
+    expect(res.structuredContent.guidMapPath).toBeNull();
+  });
+
   it('accepts a storey express id written as #id', async () => {
     const res = await call('model_anonymize', { storey: '#41', file_path: join(tmp, 'anon-hash.ifc') });
     expect(res.structuredContent.seedCount).toBe(3);

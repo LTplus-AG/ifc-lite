@@ -15,7 +15,7 @@
 import { dirname, join, posix, win32 } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readPackageVersion, UNKNOWN_VERSION } from '@ifc-lite/data/node';
-import { isMcpValueFlag } from '../cli-args.js';
+import { bridgeConflict, isMcpValueFlag, parseArgs } from '../cli-args.js';
 import {
   CLIENTS,
   InstallError,
@@ -107,6 +107,9 @@ function parseInstallArgs(argv: string[], host: HostEnv): InstallArgs | 'help' {
     throw new InstallError('Clients start ifc-lite-mcp over stdio; drop --transport. For HTTP, give the client the server URL.');
   }
   const { args: serverArgs, hasPaths } = absolutePaths([...files, ...passThrough], host);
+  // What the server would refuse at launch is refused now, in the server's own words.
+  const conflict = bridgeConflict(parseArgs(serverArgs));
+  if (conflict) throw new InstallError(conflict);
   return { client, scope, name, dryRun, force, serverArgs, hasPaths };
 }
 

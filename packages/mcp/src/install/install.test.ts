@@ -261,6 +261,7 @@ describe('ifc-lite-mcp install: dry run and usage errors', () => {
     [['--client', 'cursor', '--', '--transport', 'http'], 'drop --transport'],
     [['--client', 'cursor', '--', '--transport'], 'drop --transport'],
     [['--client', 'cursor', '--', '--version'], 'print and exit'],
+    [['--client', 'cursor', 'model.ifc', '--', '--bridge'], 'loads no files'],
     [['--client=cursor'], 'Write --client <value>'],
     [['--client', 'cursor', '--', '--transport', 'stdio', '--transport', 'http'], 'drop --transport'],
     [['--client', 'claude-desktop', '--scope', 'project'], 'no project config'],

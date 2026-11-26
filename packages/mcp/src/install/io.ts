@@ -73,8 +73,9 @@ export function nodeInstallIo(): InstallIo {
       // Write beside the target and rename, so a crash never leaves half a config.
       const tmp = `${target}.${process.pid}.tmp`;
       try {
-        writeFileSync(tmp, text);
-        if (mode !== undefined) chmodSync(tmp, mode);
+        // Created with the target's mode, so other servers' secrets are never more readable.
+        writeFileSync(tmp, text, { mode: mode ?? 0o666 });
+        if (mode !== undefined) chmodSync(tmp, mode); // undo the umask
         renameSync(tmp, target);
       } catch (err) {
         rmSync(tmp, { force: true });

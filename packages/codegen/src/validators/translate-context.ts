@@ -44,7 +44,11 @@ export class Scope {
 export class TranslateContext {
   /** Module-level constants (enumeration literals), name -> initialiser. */
   readonly constants = new Map<string, string>();
-  /** Derived attributes that did not compile, upper name -> `Entity.Attr`. */
+  /**
+   * Derived attributes that did not compile, upper name -> `Entity.Attr`. Keyed by
+   * name alone, so a same-named attribute elsewhere is also refused: over-reporting
+   * "not evaluated" is safe, a rule run against a missing value is not.
+   */
   readonly failedDerived = new Map<string, string>();
   /** Functions the expression being translated calls (upper names). */
   calls = new Set<string>();

@@ -61,9 +61,26 @@ function indent(text: string, pad: string): string {
   return text.split('\n').map((l, i) => (i === 0 ? l : pad + l)).join('\n');
 }
 
+/**
+ * A FUNCTION, or a DERIVE declared earlier, can read a DERIVE that only fails
+ * later in the pass. Compile again with the failed DERIVEs known up front until
+ * the set stops growing; the bundled schemas have none, so one pass.
+ */
 export function compileRules(index: SchemaIndex, header: string, runtimeImport: string): RuleCompilation {
+  let known = new Map<string, string>();
+  for (;;) {
+    const pass = compilePass(index, header, runtimeImport, known);
+    if (pass.failedDerived.size === known.size) return pass.compilation;
+    known = pass.failedDerived;
+  }
+}
+
+function compilePass(
+  index: SchemaIndex, header: string, runtimeImport: string, knownFailedDerived: Map<string, string>,
+): { compilation: RuleCompilation; failedDerived: Map<string, string> } {
   const unsupportedFunctions = new Map<string, string>();
   const ctx = new TranslateContext(index, unsupportedFunctions);
+  for (const [name, qualified] of knownFailedDerived) ctx.failedDerived.set(name, qualified);
   const expr = new ExpressionTranslator(ctx);
   const stmts = new StatementTranslator(expr);
   const functions = compileFunctions(index, ctx, stmts);
@@ -152,7 +169,7 @@ ${globalRules.join('\n')}
   unsupported: ${JSON.stringify(unsupported, null, 1).replace(/\n/g, '\n  ')},
 };
 `;
-  return { source, unsupported, counts };
+  return { compilation: { source, unsupported, counts }, failedDerived: ctx.failedDerived };
 }
 
 function entityRuleSources(

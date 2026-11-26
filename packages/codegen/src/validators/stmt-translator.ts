@@ -11,6 +11,9 @@ import { functionIdentifier, jsIdentifier, Scope, UnsupportedConstruct } from '.
 const INDENT = '  ';
 
 export class StatementTranslator {
+  /** Whether each enclosing REPEAT has an UNTIL, innermost last. */
+  private readonly loops: boolean[] = [];
+
   constructor(readonly expr: ExpressionTranslator) {}
 
   private t(e: Expr, scope: Scope): string {
@@ -48,7 +51,10 @@ export class StatementTranslator {
       case 'assign': return [pad + this.assignment(s.target, s.value, scope)];
       case 'return': return [`${pad}return ${s.value ? this.t(s.value, scope) : 'undefined'};`];
       case 'escape': return [`${pad}break;`];
-      case 'skip': return [`${pad}continue;`];
+      case 'skip':
+        // `continue` would jump past the UNTIL test, which EXPRESS still evaluates after SKIP.
+        if (this.loops.at(-1) !== false) throw new UnsupportedConstruct('SKIP in a REPEAT with UNTIL, or outside REPEAT');
+        return [`${pad}continue;`];
       case 'block': return [`${pad}{`, ...this.statements(s.body, scope, depth + 1), `${pad}}`];
       case 'if': {
         const out = [`${pad}if (r.isTrue(${this.t(s.cond, scope)})) {`, ...this.statements(s.thenBody, scope, depth + 1)];
@@ -84,7 +90,13 @@ export class StatementTranslator {
     const bodyPad = pad + INDENT.repeat(counted ? 2 : 1);
     const guard = s.whileCond ? [`${bodyPad}if (!r.isTrue(${this.t(s.whileCond, inner)})) break;`] : [];
     const tail = s.untilCond ? [`${bodyPad}if (r.isTrue(${this.t(s.untilCond, inner)})) break;`] : [];
-    const body = this.statements(s.body, inner, depth + (counted ? 2 : 1));
+    this.loops.push(!!s.untilCond);
+    let body: string[];
+    try {
+      body = this.statements(s.body, inner, depth + (counted ? 2 : 1));
+    } finally {
+      this.loops.pop();
+    }
     if (!counted) {
       if (!s.whileCond && !s.untilCond) throw new UnsupportedConstruct('REPEAT without increment, WHILE or UNTIL');
       return [`${pad}for (;;) {`, ...guard, ...body, ...tail, `${pad}}`];

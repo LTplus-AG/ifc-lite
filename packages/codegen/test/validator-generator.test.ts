@@ -94,6 +94,51 @@ END_SCHEMA;`;
     ]);
   });
 
+  it('marks a FUNCTION that reads a DERIVE which did not compile, and the rules calling it', () => {
+    const schema = `SCHEMA MINI;
+ENTITY MiniThing;
+  Width : REAL;
+DERIVE
+  Area : REAL := MysteryArea(Width);
+WHERE
+  WR1 : AreaOf(SELF) > 0.;
+END_ENTITY;
+FUNCTION AreaOf (T : MiniThing) : REAL; RETURN (T.Area); END_FUNCTION;
+END_SCHEMA;`;
+    const { coverage } = generateValidators(schema);
+    expect(coverage.unsupported.map((u) => [u.scope, u.label])).toEqual([['function', 'AreaOf'], ['derived', 'Area'], ['entity', 'WR1']]);
+    expect(coverage.counts.function).toEqual({ total: 1, compiled: 0 });
+  });
+
+  it.each([
+    ['HIBOUND, which is not HIINDEX', 'RETURN (HIBOUND(X));', 'built-in HIBOUND is not implemented'],
+    ['SKIP that would jump past UNTIL', 'REPEAT UNTIL N > 3; N := N + 1; IF N = 2 THEN SKIP; END_IF; END_REPEAT; RETURN (N);',
+      'SKIP in a REPEAT with UNTIL, or outside REPEAT'],
+  ])('refuses %s instead of compiling it wrong', (_what, body, reason) => {
+    const fn = `FUNCTION F (X : LIST [1:?] OF MiniLabel) : INTEGER; LOCAL N : INTEGER := 0; END_LOCAL; ${body} END_FUNCTION;`;
+    expect(generateValidators(mini('WR1 : TRUE', fn)).coverage.unsupported).toEqual([{ scope: 'function', owner: 'F', label: 'F', reason }]);
+  });
+
+  it("does not treat a three-part 'SCHEMA.ENTITY.ATTR' literal as a type in IN TYPEOF", () => {
+    const { files } = generateValidators(mini("WR1 : 'MINI.MINITHING.NAME' IN TYPEOF(SELF)"));
+    expect(files['rules.ts']).not.toContain('r.typeIs(');
+  });
+
+  it('runs a supertype rule as a zod refinement only where the attribute is still explicit', () => {
+    const schema = `SCHEMA MINI;
+ENTITY Base; Size : REAL; WHERE Positive : Size > 0.; END_ENTITY;
+ENTITY Fixed SUBTYPE OF (Base); DERIVE SELF\\Base.Size : REAL := 1.; END_ENTITY;
+ENTITY Free SUBTYPE OF (Base); END_ENTITY;
+ENTITY Opt; Tag : OPTIONAL REAL; END_ENTITY;
+ENTITY Req SUBTYPE OF (Opt); SELF\\Opt.Tag : REAL; END_ENTITY;
+END_SCHEMA;`;
+    const zod = generateValidators(schema).files['zod.ts'];
+    const decl = (name: string) => zod.split('\nexport const ').find((d) => d.startsWith(`${name} =`)) ?? '';
+    expect(decl('Free')).toContain('"Base.Positive"');
+    expect(decl('Fixed')).not.toContain('localRuleRefinement');
+    expect(zod).toMatch(/export const Req = z\.strictObject\(\{\n  Tag: z\.number\(\),\n\}\)/);
+  });
+
   it('rejects a qualified enumeration item the enumeration does not declare', () => {
     const { coverage } = generateValidators(mini('WR1 : Kind <> MiniEnum.MISSING'));
     expect(coverage.unsupported[0].reason).toBe('MiniEnum has no item MISSING');

@@ -15,8 +15,6 @@ const BUILTINS: Record<string, { fn: string; arity: number; model?: boolean }> =
   SIZEOF: { fn: 'sizeof', arity: 1 },
   HIINDEX: { fn: 'hiindex', arity: 1 },
   LOINDEX: { fn: 'loindex', arity: 1 },
-  HIBOUND: { fn: 'hiindex', arity: 1 },
-  LOBOUND: { fn: 'loindex', arity: 1 },
   EXISTS: { fn: 'exists', arity: 1 },
   NVL: { fn: 'nvl', arity: 2 },
   TYPEOF: { fn: 'typeOf', arity: 1, model: true },
@@ -38,7 +36,8 @@ const BUILTINS: Record<string, { fn: string; arity: number; model?: boolean }> =
   LENGTH: { fn: 'length', arity: 1 },
 };
 
-const UNSUPPORTED_BUILTINS = new Set(['VALUE', 'VALUE_IN', 'VALUE_UNIQUE', 'ROLESOF', 'FORMAT', 'INSERT', 'REMOVE']);
+// HIBOUND/LOBOUND are the declared bounds, not HIINDEX/LOINDEX; no bundled schema calls them.
+const UNSUPPORTED_BUILTINS = new Set(['HIBOUND', 'LOBOUND', 'VALUE', 'VALUE_IN', 'VALUE_UNIQUE', 'ROLESOF', 'FORMAT', 'INSERT', 'REMOVE']);
 
 const BINARY: Partial<Record<BinaryOp, string>> = {
   '=': 'eq', '<>': 'ne', ':=:': 'same', ':<>:': 'notSame', '<': 'lt', '>': 'gt', '<=': 'le', '>=': 'ge', IN: 'isIn',
@@ -168,7 +167,8 @@ export class ExpressionTranslator {
   private binary(op: BinaryOp, left: Expr, right: Expr, scope: Scope): string {
     if (op === 'IN' && left.k === 'str' && right.k === 'call' && right.name.toUpperCase() === 'TYPEOF' && right.args.length === 1) {
       const literal = this.typeLiteral(left.value);
-      if (literal) {
+      // A three-part 'SCHEMA.ENTITY.ATTR' literal names an attribute role, never a type.
+      if (literal && literal.split('.').length === 2) {
         const name = literal.slice(literal.lastIndexOf('.') + 1);
         return `r.typeIs(m, ${this.translate(right.args[0], scope)}, ${JSON.stringify(name)})`;
       }

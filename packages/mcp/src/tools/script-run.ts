@@ -22,7 +22,7 @@
  */
 
 import { createSandbox, ScriptError, type SandboxPermissions } from '@ifc-lite/sandbox';
-import { MAX_MESSAGE_CHARS, MAX_VALUE_CHARS, clipUtf16, readEnvelope, shapeLogs, wrapScript } from './script-output.js';
+import { MAX_VALUE_CHARS, clipMessage, readEnvelope, shapeLogs, wrapScript } from './script-output.js';
 import type { JsonSchema } from '../protocol/index.js';
 import type { LoadedModel, ToolContext } from '../context.js';
 import type { Tool } from './types.js';
@@ -54,11 +54,13 @@ const MAX_STACK_BYTES = 256 * 1024;
 
 type Mode = 'read' | 'mutate';
 
+// No `export` in read mode: it also enables bim.create, whose IfcCreator
+// projects live on the host heap where memory_mb does not reach.
 const READ_PERMISSIONS: SandboxPermissions = {
-  model: true, query: true, lens: true, export: true,
+  model: true, query: true, lens: true, export: false,
   mutate: false, store: false, viewer: false, files: false, ui: false, network: false,
 };
-const MUTATE_PERMISSIONS: SandboxPermissions = { ...READ_PERMISSIONS, mutate: true, store: true };
+const MUTATE_PERMISSIONS: SandboxPermissions = { ...READ_PERMISSIONS, export: true, mutate: true, store: true };
 
 const inputSchema: JsonSchema = {
   type: 'object',
@@ -140,7 +142,9 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
   const scriptError = (message: string, details: Record<string, unknown>) => new ToolExecutionError({
     // kind tells a script failure from INVALID_INPUT on the tool's own arguments.
     // Clipped here too: a ScriptError from the sandbox can carry a script-sized message.
-    code: ToolErrorCode.INVALID_INPUT, message: `Script error: ${clipUtf16(message, MAX_MESSAGE_CHARS)}`, details: { kind: 'script', ...details },
+    code: ToolErrorCode.INVALID_INPUT,
+    message: `Script error: ${clipMessage(message)}`,
+    details: { kind: 'script', ...details },
     hint: hintFor(mode, code, message),
   });
   if (ctx.signal.aborted) throw cancelled();
@@ -244,7 +248,7 @@ async function withScriptSlot<T>(run: () => Promise<T>): Promise<T> {
   }
 }
 
-const SHARED_DESCRIPTION = `Runs in a QuickJS sandbox with only the \`bim\` SDK global (bim.query, bim.model, bim.export, bim.lens, bim.clash, bim.cost, bim.structural, bim.schedule, bim.create) and console; no network, filesystem, viewer or timers. Returns the last expression value plus captured console output. Script code runs on the server's event loop, so other requests wait while it runs (bounded by timeout_ms). At most ${MAX_CONCURRENT_SCRIPTS} scripts run at once per server, shared across all sessions; more get RATE_LIMITED.`;
+const SHARED_DESCRIPTION = `Runs in a QuickJS sandbox with only the \`bim\` SDK global (bim.query, bim.model, bim.lens, bim.clash, bim.cost, bim.structural, bim.schedule; script_run_mutate adds bim.mutate, bim.store, bim.export and bim.create) and console; no network, filesystem, viewer or timers. Returns the last expression value plus captured console output. memory_mb bounds the QuickJS heap only, not data bim calls build on the host. Script code runs on the server's event loop, so other requests wait while it runs (bounded by timeout_ms). At most ${MAX_CONCURRENT_SCRIPTS} scripts run at once per server, shared across all sessions; more get RATE_LIMITED.`;
 
 export const scriptRunTool: Tool = {
   name: 'script_run',

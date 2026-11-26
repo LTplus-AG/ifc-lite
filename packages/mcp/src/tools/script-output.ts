@@ -16,14 +16,19 @@ const SANDBOX_LOG_TRUNCATED = '[log output truncated: limit reached]';
 /** Caps on what one call returns to the client (the sandbox caps capture at 1000 entries / 4 MB). */
 export const MAX_VALUE_CHARS = 256 * 1024;
 const VALUE_PREVIEW_CHARS = 2_000;
-export const MAX_MESSAGE_CHARS = 4_000;
+const MAX_MESSAGE_CHARS = 4_000;
 const MAX_LOG_LINES = 200;
 const MAX_LOG_CHARS = 64 * 1024;
 
 type LogLine = { level: string; text: string };
 
+/** A message cut to MAX_MESSAGE_CHARS, marked when the cut removed text. */
+export function clipMessage(text: string): string {
+  return text.length > MAX_MESSAGE_CHARS ? `${clipUtf16(text, MAX_MESSAGE_CHARS)} [truncated]` : text;
+}
+
 /** `text.slice(0, max)` that never ends on the first half of a surrogate pair. */
-export function clipUtf16(text: string, max: number): string {
+function clipUtf16(text: string, max: number): string {
   const end = max < text.length && /[\uD800-\uDBFF]/.test(text[max - 1] ?? '') ? max - 1 : max;
   return text.slice(0, end);
 }
@@ -87,7 +92,7 @@ export function wrapScript(code: string): string {
     // toString cannot throw past the wrapper and pose as a sandbox error.
     var m;
     try { var x = e && e.message; m = typeof x === 'string' ? x : Str(e); }
-    catch (_) { return 'unprintable error'; }
+    catch (_) { return 'unprintable error (possibly out of memory)'; }
     return apply(slice, m, [0, maxMessage + 1]);
   }
   function env(v) {
@@ -147,8 +152,8 @@ export function readEnvelope(dumped: unknown): Outcome {
     // falls through
     case 'P': return { value: null, value_truncated: true, value_preview: clipUtf16(body, VALUE_PREVIEW_CHARS) };
     // An out-of-memory here gets the memory_mb hint from hintFor.
-    case 'U': return { error: `The script's value is not JSON-serialisable: ${clipUtf16(body, MAX_MESSAGE_CHARS)}` };
-    case 'T': return { error: clipUtf16(body, MAX_MESSAGE_CHARS) };
+    case 'U': return { error: `The script's value is not JSON-serialisable: ${clipMessage(body)}` };
+    case 'T': return { error: clipMessage(body) };
     default: return { error: 'The script produced no result.' };
   }
 }

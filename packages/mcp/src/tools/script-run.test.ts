@@ -101,8 +101,8 @@ describe('script_run', () => {
   });
 
   it('has no write namespaces in read mode and queues nothing', async () => {
-    const result = await run('[typeof bim.mutate, typeof bim.store, typeof bim.query]');
-    expect(result.structuredContent?.value).toEqual(['undefined', 'undefined', 'object']);
+    const result = await run('[typeof bim.mutate, typeof bim.store, typeof bim.create, typeof bim.export, typeof bim.query]');
+    expect(result.structuredContent?.value).toEqual(['undefined', 'undefined', 'undefined', 'undefined', 'object']);
     const err = await runError(`bim.mutate.setAttribute(bim.query.byType('IfcWall')[0], 'Name', 'x')`);
     expect(err.code).toBe('INVALID_INPUT');
     expect(err.hint).toMatch(/script_run_mutate/);
@@ -260,6 +260,7 @@ describe('script_run', () => {
   it('cuts a huge thrown message inside the sandbox', async () => {
     const err = await runError("throw 'x'.repeat(5e6)", { memory_mb: 64 });
     expect(err.message.length).toBeLessThan(4_100);
+    expect(err.message.endsWith('[truncated]')).toBe(true);
   });
 
   it('reports runaway recursion as a script error and keeps the sandbox healthy', async () => {

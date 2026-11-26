@@ -32,15 +32,27 @@
  * label or "not this wrapper type").
  */
 
-import { SANDBOX_CONSOLE_LEVELS } from '@ifc-lite/sandbox';
+import { NAMESPACE_SCHEMAS, SANDBOX_CONSOLE_LEVELS } from '@ifc-lite/sandbox';
 import { MAX_LOG_CHARS, MAX_MESSAGE_CHARS, MAX_VALUE_CHARS, VALUE_PREVIEW_CHARS } from './script-output.js';
 
 /** Deepest value the wrapper serialises; about 3000 levels overflowed the host stack. */
 const MAX_VALUE_DEPTH = 1_000;
 
+/**
+ * For each bim method the schema declares, the argument positions the bridge
+ * vm.dump()s ('dump' and the entityRefs kinds). Only those are bounded, so a
+ * string or number argument keeps its toString/valueOf coercion.
+ */
+const DUMPED_ARGS: Record<string, number[]> = Object.fromEntries(
+  NAMESPACE_SCHEMAS.flatMap((ns) => ns.methods.map((m) => [
+    `${ns.name}.${m.name}`,
+    m.args.flatMap((kind, i) => (kind === 'dump' || kind.startsWith('entityRefs') ? [i] : [])),
+  ])),
+);
+
 const LIMITS = {
   max: MAX_VALUE_CHARS, preview: VALUE_PREVIEW_CHARS, maxMessage: MAX_MESSAGE_CHARS,
-  maxDepth: MAX_VALUE_DEPTH, maxLog: MAX_LOG_CHARS, levels: SANDBOX_CONSOLE_LEVELS,
+  maxDepth: MAX_VALUE_DEPTH, maxLog: MAX_LOG_CHARS, levels: SANDBOX_CONSOLE_LEVELS, dumped: DUMPED_ARGS,
 };
 
 export function wrapScript(code: string): string {
@@ -208,8 +220,8 @@ export function wrapScript(code: string): string {
         var k = ks[fi[i]]; fi[i] = fi[i] + 1;
         var v = resolve(o[k], k, o, fn);
         if (omitted(v)) continue;
-        // A long key can pass the cap on its own; stop before copying more.
-        if (out.length > limit) return out;
+        // A long key can pass the cap on its own; stop before copying it.
+        if (out.length + k.length > limit) return out;
         if (fw[i]) out += ',';
         fw[i] = true;
         if (gap) out += '\\n' + indent(sp);
@@ -240,7 +252,7 @@ export function wrapScript(code: string): string {
   function logArg(a) {
     if (typeof a === 'string') return a;
     if (typeof a === 'bigint') return bigintText(a);
-    if (typeof a === 'number') return Str(a);
+    if (typeof a === 'number') return a === 0 && 1 / a < 0 ? '-0' : Str(a);
     try {
       if (apply(isInstance, ErrorCtor, [a])) {
         var st = a.stack;
@@ -258,10 +270,13 @@ export function wrapScript(code: string): string {
   }
   // A function that maps each argument and then calls fn on thisArg. The
   // argument list is a null-prototype array-like, out of Array.prototype's reach.
-  function forwardMapped(fn, thisArg, mapper) {
+  // positions, when given, limits the mapping to those argument indexes.
+  function forwardMapped(fn, thisArg, mapper, positions) {
+    var only = null;
+    if (positions) { only = create(null); for (var pi = 0; pi < positions.length; pi++) only[positions[pi]] = true; }
     return function () {
       var args = create(null), n = arguments.length;
-      for (var ai = 0; ai < n; ai++) args[ai] = mapper(arguments[ai]);
+      for (var ai = 0; ai < n; ai++) args[ai] = only === null || only[ai] ? mapper(arguments[ai]) : arguments[ai];
       args.length = n;
       return apply(fn, thisArg, args);
     };
@@ -281,18 +296,21 @@ export function wrapScript(code: string): string {
     var text = ser(a, Infinity, false);
     return text === undefined ? undefined : parse(text);
   }
-  function wrapMethods(source, level) {
+  // path is the dotted namespace ('query'); a method the schema lists bounds
+  // only its dumped positions, one it does not list bounds every object.
+  function wrapMethods(source, level, path) {
     var target = create(null), ks = keys(source);
     for (var wi = 0; wi < ks.length; wi++) {
-      var member = source[ks[wi]];
-      target[ks[wi]] = typeof member === 'function' ? forwardMapped(member, source, safeArg)
-        : member !== null && typeof member === 'object' && level < 3 ? wrapMethods(member, level + 1)
+      var member = source[ks[wi]], name = path === '' ? ks[wi] : path + '.' + ks[wi];
+      var listed = L.dumped[name];
+      target[ks[wi]] = typeof member === 'function' ? forwardMapped(member, source, safeArg, listed)
+        : member !== null && typeof member === 'object' && level < 3 ? wrapMethods(member, level + 1, name)
         : member;
     }
     return target;
   }
   if (glob.bim !== null && typeof glob.bim === 'object') {
-    defineProperty(glob, 'bim', { value: wrapMethods(glob.bim, 0), writable: true, configurable: true });
+    defineProperty(glob, 'bim', { value: wrapMethods(glob.bim, 0, ''), writable: true, configurable: true });
   }
   // The script's own JSON calls hit the same C recursion, so it gets a JSON
   // whose stringify is the wrapper's serialiser (replacer and indent applied

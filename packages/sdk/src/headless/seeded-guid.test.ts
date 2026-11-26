@@ -77,15 +77,27 @@ describe('HeadlessBackendOptions.guidRandom (#10963)', () => {
     expect(authoredGlobalIds(other, source)).not.toEqual(authored);
   });
 
-  it('keeps the source it was constructed with when the caller replaces it later', async () => {
-    const { store } = await parseModel(readFileSync(SAMPLE), { disableWorkerScan: true });
-    const options: HeadlessBackendOptions = { guidRandom: seeded(3) };
-    const backend = new HeadlessBackend(store, 'hello-wall.ifc', 'm', options);
-    let late = 0;
-    options.guidRandom = () => { late++; return Math.random(); };
-    const S = new BimContext({ backend }).store;
-    S.addWall('m', S.listStoreyLevels('m')[0].expressId, { Start: [0, 10, 0], End: [6, 10, 0], Thickness: 0.2, Height: 3 });
-    expect(late).toBe(0);
+  it('keeps the source it was constructed with, for authoring and export, when the caller replaces it later', async () => {
+    const session = async (replaceAfterConstruction: boolean) => {
+      const { store } = await parseModel(readFileSync(SAMPLE), { disableWorkerScan: true });
+      const options: HeadlessBackendOptions = { guidRandom: seeded(3) };
+      const backend = new HeadlessBackend(store, 'hello-wall.ifc', 'm', options);
+      let late = 0;
+      if (replaceAfterConstruction) options.guidRandom = () => { late++; return Math.random(); };
+      const bim = new BimContext({ backend });
+      const wall = bim.store.addWall('m', bim.store.listStoreyLevels('m')[0].expressId, { Start: [0, 10, 0], End: [6, 10, 0], Thickness: 0.2, Height: 3 });
+      const authoredBeforeExport = late;
+      // The property set is new, so export.ifc() writes its GlobalId.
+      bim.mutate.setProperty(wall, 'Pset_WallCommon', 'IsExternal', true);
+      const content = bim.export.ifc();
+      const step = typeof content === 'string' ? content : new TextDecoder().decode(content);
+      return { authoredBeforeExport, late, data: dataSection(step) };
+    };
+    const kept = await session(false);
+    const replaced = await session(true);
+    expect(replaced.authoredBeforeExport).toBe(0);
+    expect(replaced.late).toBe(0);
+    expect(replaced.data).toBe(kept.data);
   });
 
   it('collects a malformed or missing GlobalId of an authored root instead of skipping it', () => {

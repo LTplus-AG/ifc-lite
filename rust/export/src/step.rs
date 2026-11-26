@@ -227,8 +227,7 @@ fn emit<W: std::io::Write>(
     let targets_ifc2x3 = crate::schema_convert::targets_ifc2x3(&schema);
 
     let (muts_by_id, mut attribute_edits_refused) = prepared_attribute_edits(opts);
-    let boundaries_left_out = if converting { crate::schema_space_boundary::plain_left_out(opts, content, &index, &included, &muts_by_id, &source_schema, &schema) } else { HashSet::new() };
-    checks.boundaries.restrict(&boundaries_left_out);
+    let mut boundaries_left_out = if converting { crate::schema_space_boundary::plain_left_out(opts, content, &index, &included, &muts_by_id, &source_schema, &schema) } else { HashSet::new() };
     let mut withheld_warnings: Vec<String> = Vec::new();
 
     // Copy-on-write, resolved before the emit loop so the copies and the
@@ -239,6 +238,8 @@ fn emit<W: std::io::Write>(
     let resolved = crate::step_cow::resolve(&opts.copy_on_write, content, line_of, &included, &muts_by_id, &mut ids);
     let copies_refused = resolved.refused;
     let copies = resolved.copies; flatten.note_edits(content, &copies, &muts_by_id); flatten.retain_grids(|id| included.contains(&id));
+    boundaries_left_out.extend(crate::schema_space_boundary::copied_left_out(&copies, content, &index, &muts_by_id, &source_schema, &schema));
+    checks.boundaries.restrict(&boundaries_left_out);
     let repointed = resolved.repointed;
     // #10763: the material records as this export writes them.
     checks.materials.note_step(crate::schema_convert::canon(&source_schema), content, line_of, &included, &muts_by_id, &repointed, &copies);

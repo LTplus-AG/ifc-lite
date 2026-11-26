@@ -11,7 +11,7 @@
 //! its values are counted dropped and the export names it. A boundary that
 //! names an element is untouched. Twin of
 //! `packages/export/src/schema-converter-space-boundary.ts`.
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use crate::schema_structural_links::slot_unset;
 use crate::step_record_frame::{record_frame, record_head};
 use crate::step_slot::slots_of;
@@ -58,6 +58,24 @@ pub(crate) fn plain_left_out(opts: &crate::StepOptions, content: &[u8], index: &
         index.order.iter().filter(|id| included.contains(id) && !edited.contains_key(id) && !hosts.contains(id))
             .filter_map(|id| index.spans.get(id).map(|&(s, e)| (*id, String::from_utf8_lossy(&content[s..e])))),
         crate::schema_convert::canon(from), crate::schema_convert::canon(to))
+}
+
+/// Preflight effective boundary copies before their referrers are written.
+pub(crate) fn copied_left_out<'a>(
+    copies: &'a [crate::step_cow::Copy], content: &'a [u8], index: &'a crate::step_index::RecordIndex,
+    edited: &'a HashMap<u32, BTreeMap<usize, String>>, from: &str, to: &str,
+) -> impl Iterator<Item = u32> + 'a {
+    let from = crate::schema_convert::canon(from);
+    let to = crate::schema_convert::canon(to);
+    let candidates = if requires_element(from, to) { copies } else { &[] };
+    candidates.iter().filter_map(move |(copy_id, source_id, edits)| {
+        let &(start, end) = index.spans.get(source_id)?;
+        let raw = String::from_utf8_lossy(&content[start..end]);
+        if !record_head(&raw)?.type_name(&raw).eq_ignore_ascii_case(BOUNDARY) { return None; }
+        // The emit loop owns the rejected-edit count; this preview only learns which id is absent.
+        let effective = crate::step_cow::apply_copy_edits(&raw, edited.get(source_id), edits, &mut 0);
+        unrelated(&effective, from, to).map(|_| *copy_id)
+    })
 }
 
 #[derive(Default)]

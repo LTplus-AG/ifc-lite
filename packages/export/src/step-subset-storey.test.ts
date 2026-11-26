@@ -149,6 +149,21 @@ describe('selectSubsetSeeds: storeys that share one placement', () => {
     expect([...selectSubsetSeeds(parsed, { storeys: ['L01'] })].sort((a, b) => a - b)).toEqual([41, 70, 72]);
   });
 
+  it('keeps a world-placed opening with its host storey', () => {
+    const world = [
+      'ISO-10303-21;', 'HEADER;', 'ENDSEC;', 'DATA;',
+      '#2=IFCAXIS2PLACEMENT3D(#3,$,$);', '#3=IFCCARTESIANPOINT((0.,0.,0.));',
+      '#40=IFCLOCALPLACEMENT($,#2);', '#50=IFCLOCALPLACEMENT(#40,#2);', '#60=IFCLOCALPLACEMENT($,#2);',
+      "#41=IFCBUILDINGSTOREY('0000000000000000000ST1',$,'L01',$,$,#40,$,$,.ELEMENT.,0.);",
+      "#70=IFCWALL('0000000000000000000WA1',$,'W1',$,$,#50,$,$,$);",
+      "#72=IFCOPENINGELEMENT('0000000000000000000OP1',$,'O',$,$,#60,$,$,$);",
+      "#73=IFCRELVOIDSELEMENT('0000000000000000000RV1',$,$,$,#70,#72);",
+      "#80=IFCRELCONTAINEDINSPATIALSTRUCTURE('0000000000000000000RC1',$,$,$,(#70),#41);",
+      'ENDSEC;', 'END-ISO-10303-21;', '',
+    ].join('\n');
+    expect([...selectSubsetSeeds(parseStep(world), { storeys: ['L01'] })].sort((a, b) => a - b)).toEqual([41, 70, 72]);
+  });
+
   it('never counts a building that shares the storey placement as one of its products', () => {
     const building = [
       'ISO-10303-21;', 'HEADER;', 'ENDSEC;', 'DATA;',

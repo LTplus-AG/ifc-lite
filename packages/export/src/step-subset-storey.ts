@@ -162,9 +162,9 @@ const OWNERSHIP = new Set(['IFCRELCONTAINEDINSPATIALSTRUCTURE', 'IFCRELAGGREGATE
 
 /**
  * The nearest storeys above `id` in the spatial tree (containment and spatial
- * aggregation, as `structureParents` reads them). The
- * walk stops at the first storey on each path and keeps a visited set, so a
- * cyclic or deep file terminates.
+ * aggregation, as `structureParents` reads them). The walk stops at the first
+ * storey on each path and keeps a visited set, so a cyclic or deep file
+ * terminates.
  */
 function owningStoreys(id: number, parents: ReadonlyMap<number, number[]>, parsed: ParsedStep): Set<number> {
   const found = new Set<number>();
@@ -217,8 +217,9 @@ export function storeyMembers(storeyId: number, placementId: number, parsed: Par
     return type === 'IFCSPACE' || !isSpatialStructureType(IfcTypeEnumFromString(type));
   };
   const out = new Set<number>();
-  for (const id of parents.keys()) {
-    if (isCandidate(id) && ownersOf(id).has(storeyId)) out.add(id);
+  // Spatial children, and openings/fillers/parts that inherit an owner, wherever placed.
+  for (const id of [...parents.keys(), ...hosts.keys()]) {
+    if (!out.has(id) && isCandidate(id) && ownersOf(id).has(storeyId)) out.add(id);
   }
   for (const id of productsUnderPlacement(placementId, parsed)) {
     if (out.has(id) || !isCandidate(id)) continue;

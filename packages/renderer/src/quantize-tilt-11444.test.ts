@@ -21,7 +21,6 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import type { MeshData } from '@ifc-lite/geometry';
 import { latticeCollapsesGeometry } from './quantize.js';
-import { markOffLattice } from './scene-bucket-routing.js';
 import { mergeGeometry } from './scene-geometry.js';
 import { Scene } from './scene.js';
 
@@ -153,19 +152,12 @@ describe('lattice turn guard (#11444)', () => {
     }
   });
 
-  it('routes by the batch gate\'s rule, per entity', () => {
-    const judge = (...meshes: MeshData[]): MeshData[] => {
-      const off = new WeakSet<MeshData>();
-      markOffLattice(meshes, () => ({ base: 'grey', frame: [0, 0, 0] }), off);
-      return meshes.filter((mesh) => off.has(mesh));
-    };
+  it('routes by the batch gate\'s rule, judging an entity whole', () => {
     const bar = sweptBar(1, metres, 0.006, 24, [0.00031, 0.00047, 0.00013]);
-    const sameWall = { ...wall(2), expressId: 1 };
-    assert.deepStrictEqual(judge(bar, wall(2)), [bar], 'only the bar leaves the lattice');
-    assert.strictEqual(degrades(bar), true, 'the batch gate agrees');
-    // The bar's own entity dilutes its loss across all its pieces of a colour, as the gate does.
-    assert.deepStrictEqual(judge(bar, sameWall), [], 'an entity is judged whole');
-    assert.strictEqual(degrades(bar, sameWall), false, 'and so is it at the gate');
+    // A wall piece of the bar's own entity dilutes its loss, at the gate as in routing.
+    const sameEntityWall = { ...wall(2), expressId: 1 };
+    assert.strictEqual(degrades(bar, sameEntityWall), false, 'the gate judges the entity whole');
+    assert.deepStrictEqual(sceneBatches([bar, sameEntityWall]), [{ ids: [1, 1], quantized: true }]);
   });
 
   it('keeps only the bar on f32: a wall of the same colour still quantizes', () => {
@@ -177,10 +169,8 @@ describe('lattice turn guard (#11444)', () => {
   it('judges a colour-merged mesh per entity lane, as the batch gate does', () => {
     const bar = sweptBar(1, metres, 0.006, 24, [0.00031, 0.00047, 0.00013]);
     const merged = colourMerged(bar, wall(3));
-    const off = new WeakSet<MeshData>();
-    markOffLattice([merged], () => ({ base: 'grey', frame: [0, 0, 0] }), off);
     assert.strictEqual(degrades(merged), true, 'the gate fails the bar lane');
-    assert.strictEqual(off.has(merged), true, 'so routing keeps the merged mesh off the lattice');
+    assert.deepStrictEqual(sceneBatches([merged, wall(2)]), [{ ids: [1], quantized: false }, { ids: [2], quantized: true }]);
   });
 
   it('keeps the bar in an f32 batch of its own after a recolour', () => {

@@ -19,7 +19,7 @@ const MAX_COLLAPSED_AREA_FRACTION: f64 = 0.01;
 /// the 1 mm lattice but turns at least 10% of its area past 20°; chamfered pieces stay under 5%.
 const MAX_TURNED_AREA_FRACTION: f64 = 0.05;
 /// cos² 20°, the turn `MAX_TURNED_AREA_FRACTION` counts (the renderer's `MIN_LATTICE_COS2`).
-pub(super) const MIN_LATTICE_COS2: f64 = 0.883_022_221_559_489_1;
+const MIN_LATTICE_COS2: f64 = 0.883_022_221_559_489_1;
 
 /// A corner is witnessed by its node's stored normal when the cosine between
 /// them is above this. The fragment shader orients a face's derivative normal

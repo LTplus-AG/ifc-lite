@@ -182,6 +182,29 @@ describe('lattice turn guard (#11444)', () => {
     ]);
   });
 
+  it('preserves same-id bar and wall pieces across a residency round trip (#11602)', async () => {
+    const scene = new Scene(), device = fakeDevice();
+    scene.setQuantizedBatches(true);
+    const bar = sweptBar(1, metres, 0.006, 24, [0.00031, 0.00047, 0.00013]);
+    const other = wall(2);
+    other.color = [1, 0, 0, 1];
+    const pieces = [bar, wall(1), other];
+    for (const piece of pieces) scene.appendToBatches([piece], device, fakePipeline);
+    scene.setColdGeometryProvider({ loadMeshesInBounds: async () => pieces.map(piece => ({ ...piece })) });
+    scene.setGpuResidencyBudget(1);
+    scene.setHostResidencyBudget(1);
+    for (let i = 0; i < 1000; i++) scene.beginResidencyFrame();
+    for (let i = 0; i < 240; i++) scene.enforceGpuBudget();
+    assert.equal(scene.getMeshDataPieces(2), undefined, 'independent wall reached cold storage');
+    await scene.drainColdTier();
+    assert.equal(scene.restoreAllEvicted(device, fakePipeline), 3);
+    const counts = scene.getBatchedMeshes().filter(batch => batch.expressIds.includes(1))
+      .map(batch => [batch.quantized !== undefined, batch.indexCount / 3])
+      .sort(([a], [b]) => Number(a) - Number(b));
+    assert.deepEqual(counts, [[false, 1680], [true, 12]]);
+    assert.equal(scene.getMeshDataPieces(1)?.length, 2);
+  });
+
   it('keeps the bar in an f32 batch of its own after a recolour', () => {
     const bar = sweptBar(1, metres, 0.006, 24, [0.00031, 0.00047, 0.00013]);
     const red: [number, number, number, number] = [1, 0, 0, 1];

@@ -51,7 +51,7 @@ import { splitMeshDataForBufferLimit, cachedWorldAabb, worldAabbFromPieces, worl
 import { TopologyMemo } from './scene-precision.js';
 import { StreamAssembly } from './scene-stream-assembly.js';
 import { mergeSameColorPieces } from './scene-mesh-pieces.js';
-import { LATTICE_KEY_SUFFIX, markOffLattice, resolvePrecisionBucket } from './scene-bucket-routing.js';
+import { ambiguousLatticeBuckets, LATTICE_KEY_SUFFIX, markOffLattice, resolvePrecisionBucket } from './scene-bucket-routing.js';
 import { residentBatchBytes, sumResidentGpuBytes, type ResidentGpuBytes } from './render-stats.js';
 import { composeInstancedOverrideColor, originalColorWithAlpha } from './instanced-override-color.js';
 import { writeInstanceLane } from './instance-lane-write.js';
@@ -666,11 +666,12 @@ export class Scene {
     if (residentBytes <= budget) return;
 
     const shells: ResidencyShell[] = [];
+    const protectedKeys = ambiguousLatticeBuckets(this.buckets);
     for (const bucket of this.buckets.values()) {
       const b = bucket.batchedMesh;
       if (!b || b.gpuResident !== false) continue;             // hot buckets stay warm-skippable
       if (bucket.meshData.length === 0) continue;              // already cold
-      if (bucket.key.includes('#')) continue;                  // overflow sub-bucket
+      if (bucket.key.includes('#') || protectedKeys.has(bucket.key)) continue; // ambiguous disk membership
       if (this.dirtyBuckets.has(bucket.key) || this.fragmentPieces.forBatch(b)) continue; // diverged from disk, or outgrew its batch: a restore keyed by its ids drops the rest (#9270)
       // Colour-merged meshes (per-vertex entityIds) are registered in
       // meshDataMap under EVERY contained id; evicting only the primary id's

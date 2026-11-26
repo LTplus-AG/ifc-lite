@@ -25,7 +25,7 @@ const REFUSED = new Error('no workers in this test');
 /** Run a load up to its first worker (which refuses to start) and return the decisions it reported. Any other
  *  failure fails the test: the load must reach the worker it refuses. */
 async function decisions(bytes: number, options: ProcessParallelOptions): Promise<boolean[]> {
-  g.Worker = vi.fn().mockImplementation(() => { throw REFUSED; }) as unknown as typeof Worker;
+  g.Worker = vi.fn().mockImplementation(function refuse() { throw REFUSED; }) as unknown as typeof Worker;
   vi.spyOn(console, 'warn').mockImplementation(() => {});
   vi.spyOn(console, 'error').mockImplementation(() => {});
   const decided: boolean[] = [];

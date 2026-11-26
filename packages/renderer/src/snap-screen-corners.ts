@@ -53,8 +53,8 @@ export interface ScreenCornerSnapOptions {
   /** Per-query time budget, in ms, for building candidates of not-yet-ready pieces while the view moves. Default 6. */
   buildBudgetMs?: number;
   /**
-   * Per-query budget for the same work once the view has been still for `settleMs`: a large model's candidates
-   * are then built within a few seconds of hovering instead of a few pieces per move. Default 24.
+   * Per-query budget for the same work once the view has been still for `settleMs`, so a large model's
+   * candidates are built in fewer moves than while the view moves (never below `buildBudgetMs`). Default 8.
    */
   settledBuildBudgetMs?: number;
   /**
@@ -78,7 +78,7 @@ export const DEFAULT_CORNER_RADIUS_PX = 10;
 export const DEFAULT_EDGE_RADIUS_PX = 6;
 const DEFAULT_BUILD_BUDGET_MS = 6;
 const DEFAULT_SETTLE_MS = 120;
-const DEFAULT_SETTLED_BUILD_BUDGET_MS = 24;
+const DEFAULT_SETTLED_BUILD_BUDGET_MS = 8;
 /** A grid that lacks pieces is rebuilt once the ready pieces outnumber its own by this factor. */
 const GRID_REGROW_FACTOR = 1.5;
 

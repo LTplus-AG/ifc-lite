@@ -106,9 +106,8 @@ impl TypedPropertyUpgrade {
     /// Remember values from the effective input, keyed by their final id.
     /// Reserve generated ids after every source and appended record is known.
     pub(crate) fn capture(&mut self, source: &str, from: &str, to: &str, id: u32) -> bool {
-        if !self.enabled || from != "IFC2X3" || !matches!(to, "IFC4" | "IFC4X3") {
-            return false;
-        }
+        // IFC2X3 -> IFC4 or IFC4X3 only, the targets whose required slots are counted.
+        let Some(target) = crate::schema_ifc4_slots::SlotTarget::of(to).filter(|_| self.enabled && from == "IFC2X3") else { return false };
         let Some(head) = record_head(source) else { return false };
         let Some(&(source_type, arity, sets)) = lookup(head.type_name(source)) else { return false };
         let Some(values) = record_frame(source).and_then(|frame| slots_of(frame.args(source))) else { return false };
@@ -126,7 +125,6 @@ impl TypedPropertyUpgrade {
         if groups.is_empty() {
             return false;
         }
-        let Some(target) = crate::schema_ifc4_slots::SlotTarget::of(to) else { return false };
         self.drafts.insert(id, Draft { source_type, groups, target });
         true
     }

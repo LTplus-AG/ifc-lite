@@ -11,7 +11,6 @@
 import type {
   BCFProject,
   BCFTopic,
-  BCFComment,
   BCFViewpoint,
   BCFComponents,
   BCFComponent,
@@ -339,30 +338,24 @@ function writeMarkupFile(
     content += `\n    <Index>${xsdInt(topic.index, 'Topic/Index', `topic "${topic.guid}"`)}</Index>`;
   }
 
-  // BCF 3.0 types `Label` as NonEmptyOrBlankString (minLength 1 after
-  // whitespace collapse), so an empty or blank label (e.g. an untouched UI
-  // tag field) cannot be written; `Label` is `minOccurs="0"`, so it is
-  // omitted. 2.1's `Labels` is a plain xs:string and keeps every entry.
-  const labels =
-    version === '3.0'
-      ? (topic.labels ?? []).filter((l) => !XML_WHITESPACE_ONLY.test(l))
-      : (topic.labels ?? []);
+  // Check the serialized text because escapeXml removes illegal XML characters.
+  // BCF 3.0 labels are optional NonEmptyOrBlankString values.
+  const escapedLabels = (topic.labels ?? []).map(escapeXml);
+  const labels = version === '3.0'
+    ? escapedLabels.filter((label) => !XML_WHITESPACE_ONLY.test(label))
+    : escapedLabels;
   if (labels.length > 0) {
-    // BCF 3.0's markup.xsd wraps labels in ONE `<Labels>` container holding
-    // repeated `<Label>` children (Labels -> Label*); repeating `<Labels>text
-    // </Labels>` once per label -- the 2.1 shape, where `<Labels>` itself is
-    // the repeated per-entry element with no `<Label>` child -- fails 3.0
-    // validation ("Character content other than whitespace is not allowed
-    // because the content type is 'element-only'"). 2.1 is left as-is.
+    // 3.0 groups `<Label>` children inside one `<Labels>` container.
+    // 2.1 repeats `<Labels>` for each entry.
     if (version === '3.0') {
       content += `\n    <Labels>`;
       for (const label of labels) {
-        content += `\n      <Label>${escapeXml(label)}</Label>`;
+        content += `\n      <Label>${label}</Label>`;
       }
       content += `\n    </Labels>`;
     } else {
       for (const label of labels) {
-        content += `\n    <Labels>${escapeXml(label)}</Labels>`;
+        content += `\n    <Labels>${label}</Labels>`;
       }
     }
   }
@@ -434,12 +427,10 @@ function writeMarkupFile(
         let c = `\n${indent}<Comment Guid="${escapeXml(comment.guid)}">`;
         c += `\n${indent}  <Date>${xsdDateTime(comment.date, 'Comment/Date', `comment "${comment.guid}"`)}</Date>`;
         c += `\n${indent}  <Author>${xsdRequiredString(comment.author, 'Comment/Author', `comment "${comment.guid}"`, version)}</Author>`;
-        // 3.0 declares the text `minOccurs="0"` but NonEmptyOrBlankString, so
-        // an empty/blank text (a comment that only carries a viewpoint) is
-        // written as NO element; the reader maps an absent one back to ''.
-        // 2.1 requires the element and allows an empty xs:string.
-        if (version === '2.1' || !XML_WHITESPACE_ONLY.test(comment.comment)) {
-          c += `\n${indent}  <Comment>${escapeXml(comment.comment)}</Comment>`;
+        // 3.0 allows the text element to be absent. 2.1 requires it.
+        const text = escapeXml(comment.comment);
+        if (version === '2.1' || !XML_WHITESPACE_ONLY.test(text)) {
+          c += `\n${indent}  <Comment>${text}</Comment>`;
         }
         if (comment.viewpointGuid) {
           c += `\n${indent}  <Viewpoint Guid="${escapeXml(comment.viewpointGuid)}"/>`;

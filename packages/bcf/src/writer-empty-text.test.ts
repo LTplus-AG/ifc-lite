@@ -64,8 +64,8 @@ function project(version: '2.1' | '3.0', text: string, labels: string[]): BCFPro
           ],
         },
       ],
-    ]) as BCFProject['topics'],
-  } as BCFProject;
+    ]),
+  };
 }
 
 async function markupOf(p: BCFProject): Promise<{ xml: string; blob: Blob }> {
@@ -85,8 +85,8 @@ async function errorsFor(version: '2.1' | '3.0', xml: string): Promise<string[]>
   return r.errors.map((e) => e.message);
 }
 
-describe('empty Comment text and Label against the official schemas', () => {
-  for (const blank of ['', '   ']) {
+describe('empty Comment text and Label against the official schemas (#11453)', () => {
+  for (const blank of ['', ' \t\r\n ', ' \u000b ']) {
     const tag = JSON.stringify(blank);
     it(`3.0: a viewpoint-only comment (${tag}) and a blank label write a schema-valid markup`, async () => {
       const { xml } = await markupOf(project('3.0', blank, ['keep', blank]));
@@ -117,8 +117,10 @@ describe('empty Comment text and Label against the official schemas', () => {
   });
 
   it('2.1: keeps the required empty Comment element, which xs:string allows', async () => {
-    const { xml } = await markupOf(project('2.1', '', ['a']));
+    const { xml } = await markupOf(project('2.1', '', ['a', '', ' ']));
     expect(xml).toMatch(/<Comment><\/Comment>/);
+    expect(xml).toContain('<Labels></Labels>');
+    expect(xml).toContain('<Labels> </Labels>');
     expect(await errorsFor('2.1', xml)).toEqual([]);
   });
 });

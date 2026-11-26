@@ -31,7 +31,7 @@ import { InstallError, type HostEnv } from './clients.js';
 export interface InstallIo {
   host: HostEnv;
   /** File contents, or undefined when the file does not exist. */
-  readFile(path: string): string | undefined;
+  readConfig(path: string): string | undefined;
   /** Create parent directories and write the file, through a symlink, keeping its mode. */
   writeFile(path: string, text: string): void;
   /** Copy, failing rather than overwriting an existing `to`. */
@@ -54,7 +54,7 @@ export function nodeInstallIo(): InstallIo {
       isFile: (path) => userFacing(() => orIfMissing(() => statSync(path).isFile(), false)),
       listDir: (path) => userFacing(() => orIfMissing(() => readdirSync(path), [])),
     },
-    readFile: (path) => userFacing(() => orIfMissing(() => readFileSync(path, 'utf-8'), undefined)),
+    readConfig: (path) => userFacing(() => orIfMissing(() => readFileSync(path, 'utf-8'), undefined)),
     writeFile: (path, text) => userFacing(() => {
       const { target, mode } = writeTarget(path);
       mkdirSync(dirname(target), { recursive: true });

@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync, mkdirSync, symlinkSync, lstatSync, statSync, chmodSync } from 'node:fs';
+import { mkdtempSync, readdirSync, rmSync, writeFileSync, mkdirSync, symlinkSync, lstatSync, statSync, chmodSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runInstall } from './run.js';
@@ -34,7 +34,7 @@ function fakeIo(host: Partial<HostEnv> = {}, opts: { missing?: boolean; statuses
     runs: [],
     stdout: '',
     stderr: '',
-    readFile: (p) => io.files.get(p),
+    readConfig: (p) => io.files.get(p),
     writeFile: (p, t) => void io.files.set(p, t),
     copyFile: (from, to) => void io.files.set(to, io.files.get(from) ?? ''),
     run(command, args, quiet) {
@@ -49,6 +49,9 @@ function fakeIo(host: Partial<HostEnv> = {}, opts: { missing?: boolean; statuses
 }
 
 const install = (argv: string[], io: InstallIo) => runInstall(argv, io, 'ifc-lite-mcp install', VERSION);
+
+/** A config file on disk, read through the same io seam install writes it with. */
+const configAt = (path: string) => JSON.parse(nodeInstallIo().readConfig(path) ?? 'null');
 
 describe('ifc-lite-mcp install: where each client is configured', () => {
   it.each([
@@ -484,7 +487,7 @@ describe('ifc-lite-mcp install: real files', () => {
     writeFileSync(path, JSON.stringify({ mcpServers: { other: { command: 'x' } } }));
     const io: InstallIo = { ...nodeInstallIo(), host: { platform: process.platform, home: dir, cwd: dir, env: {}, listDir: () => [], isFile: () => true, warn: () => {} }, err: () => {} };
     expect(install(['--client', 'cursor'], io)).toBe(0);
-    expect(Object.keys(JSON.parse(readFileSync(path, 'utf-8')).mcpServers)).toEqual(['other', 'ifc-lite']);
+    expect(Object.keys(configAt(path).mcpServers)).toEqual(['other', 'ifc-lite']);
     expect(readdirSync(join(dir, '.cursor')).sort()).toEqual([
       'mcp.json',
       expect.stringMatching(/^mcp\.json\.bak-\d{8}-\d{9}$/),
@@ -509,7 +512,7 @@ describe('ifc-lite-mcp install: real files', () => {
     const io: InstallIo = { ...nodeInstallIo(), host: { platform: process.platform, home: dir, cwd: dir, env: {}, listDir: () => [], isFile: () => true, warn: () => {} }, err: () => {} };
     expect(install(['--client', 'cursor'], io)).toBe(0);
     expect(lstatSync(join(dir, '.cursor', 'mcp.json')).isSymbolicLink()).toBe(true);
-    expect(JSON.parse(readFileSync(real, 'utf-8')).mcpServers['ifc-lite'].command).toBe('npx');
+    expect(configAt(real).mcpServers['ifc-lite'].command).toBe('npx');
   });
 
   it.skipIf(process.platform === 'win32')('follows a chain of dangling links to its missing end', () => {
@@ -522,7 +525,7 @@ describe('ifc-lite-mcp install: real files', () => {
     const io: InstallIo = { ...nodeInstallIo(), host: { platform: process.platform, home: dir, cwd: dir, env: {}, listDir: () => [], isFile: () => true, warn: () => {} }, err: () => {} };
     expect(install(['--client', 'cursor'], io)).toBe(0);
     expect(lstatSync(join(dir, 'dotfiles', 'cursor.json')).isSymbolicLink()).toBe(true);
-    expect(JSON.parse(readFileSync(real, 'utf-8')).mcpServers['ifc-lite'].command).toBe('npx');
+    expect(configAt(real).mcpServers['ifc-lite'].command).toBe('npx');
   });
 
   it.skipIf(process.platform === 'win32')('writes through a symlinked config and keeps its mode', () => {
@@ -536,7 +539,7 @@ describe('ifc-lite-mcp install: real files', () => {
     const io: InstallIo = { ...nodeInstallIo(), host: { platform: process.platform, home: dir, cwd: dir, env: {}, listDir: () => [], isFile: () => true, warn: () => {} }, err: () => {} };
     expect(install(['--client', 'cursor'], io)).toBe(0);
     expect(lstatSync(join(dir, '.cursor', 'mcp.json')).isSymbolicLink()).toBe(true);
-    expect(JSON.parse(readFileSync(real, 'utf-8')).mcpServers['ifc-lite'].command).toBe('npx');
+    expect(configAt(real).mcpServers['ifc-lite'].command).toBe('npx');
     expect(statSync(real).mode & 0o777).toBe(0o600);
   });
 });

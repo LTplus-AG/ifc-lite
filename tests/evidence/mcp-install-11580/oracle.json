@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "why": "Keep the installer loadable while making a config merge drop the other servers and replace a different same-name entry without --force: the merge and conflict tests must go red.",
+  "key": "packages/mcp/src/install/merge.ts",
+  "mutation": "tests/evidence/mcp-install-11580/behaviour.oracle.patch",
+  "test": "packages/mcp/src/install/install.test.ts"
+}

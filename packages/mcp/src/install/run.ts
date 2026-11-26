@@ -113,10 +113,13 @@ function packageVersion(): string {
   return readPackageVersion(join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'package.json'));
 }
 
-/** Quote for a POSIX shell, or for cmd.exe (where `^` escapes and `""` is a literal quote). */
+/**
+ * Quote for a POSIX shell, or for cmd.exe. On Windows only Claude Code lines
+ * are printed, and their arguments cannot hold `"` (clients.ts refuses them).
+ */
 function quote(arg: string, platform: NodeJS.Platform): string {
   // `,` `;` `=` stay quoted: cmd splits on them when the target is a .cmd shim.
-  if (platform === 'win32') return /^[\w@+:./\\~-]+$/.test(arg) ? arg : `"${arg.replace(/"/g, '""')}"`;
+  if (platform === 'win32') return /^[\w@+:./\\~-]+$/.test(arg) ? arg : `"${arg}"`;
   // `^` stays quoted: zsh with EXTENDED_GLOB reads it as a glob.
   if (/^[\w@+=:,./-]+$/.test(arg)) return arg;
   return `'${arg.replace(/'/g, `'\\''`)}'`;
@@ -218,7 +221,7 @@ function writeFilePlan(
   label: string,
   io: InstallIo,
 ): number {
-  const before = io.readFile(plan.path);
+  const before = io.readConfig(plan.path);
   if (before === undefined && args.scope === 'user') warnIfNoAppDir(plan.path, label, io);
   let merged;
   try {

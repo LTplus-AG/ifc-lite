@@ -49,7 +49,8 @@ export function shapeLogs(entries: readonly LogEntry[]): { logs: LogLine[]; trun
   for (const [index, entry] of entries.entries()) {
     if (logs.length >= MAX_LOG_LINES) return { logs, truncated: true };
     // The sandbox appends its marker as the final warn entry and then stops
-    // capturing; the same text logged by the script anywhere else is just a log.
+    // capturing; the same text logged anywhere else is just a log. A script that
+    // logs the exact marker as its last line only mislabels its own logs.
     const isSandboxMarker = index === entries.length - 1 && entry.level === 'warn'
       && entry.args.length === 1 && entry.args[0] === SANDBOX_LOG_TRUNCATED;
     if (isSandboxMarker) return { logs, truncated: true };
@@ -70,7 +71,7 @@ export function shapeLogs(entries: readonly LogEntry[]): { logs: LogLine[]; trun
 type Outcome =
   | { value: unknown; value_truncated: false }
   | { value: null; value_truncated: true; value_preview: string }
-  | { error: string };
+  | { error: string; quickjs?: boolean };
 
 /** Decode the wrapper's tagged string (a returned promise dumps as `{ type, value }`). */
 export function readEnvelope(dumped: unknown): Outcome {
@@ -99,6 +100,8 @@ export function readEnvelope(dumped: unknown): Outcome {
     // An out-of-memory here gets the memory_mb hint from hintFor.
     case 'U': return { error: `The script's value is not JSON-serialisable: ${clipMessage(body)}` };
     case 'T': return { error: clipMessage(body) };
+    // Tagged by the wrapper only for QuickJS's own InternalError (out of memory, stack overflow).
+    case 'Q': return { error: clipMessage(body), quickjs: true };
     default: return { error: 'The script produced no result.' };
   }
 }

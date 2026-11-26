@@ -135,20 +135,16 @@ function journalMutationIds(model: LoadedModel): string[] {
   return model.backend.getMutationView()?.getMutations().map((m) => m.id) ?? [];
 }
 
-// Inside the script, only QuickJS's own InternalError (the wrapper keeps its
-// name) and the wrapper's own wording count, so a script throwing
-// Error('out of memory') does not earn the hint. A ScriptError or host
-// RangeError from the sandbox itself is trusted as-is (host).
-const SCRIPT_OUT_OF_MEMORY = /InternalError: out of memory\b|out of memory while printing/;
-const SCRIPT_STACK_OVERFLOW = /InternalError: stack overflow\b|stack overflow while printing/;
-const HOST_OUT_OF_MEMORY = /^out of memory\b/;
-const HOST_STACK_OVERFLOW = /^(stack overflow|Maximum call stack size exceeded)\b/;
+// Memory and stack hints go only to errors the sandbox or the wrapper's 'Q'
+// tag vouches for (QuickJS's own InternalError), never to text a script threw.
+const QUICKJS_OUT_OF_MEMORY = /^(InternalError: )?out of memory\b/;
+const QUICKJS_STACK_OVERFLOW = /^(InternalError: )?(stack overflow|Maximum call stack size exceeded)\b/;
 
 /** QuickJS's wording for reading a property of an absent namespace. */
 const MISSING_NAMESPACE = /of undefined|undefined is not/;
 
 interface HintContext {
-  /** The error came from the sandbox itself, not from script code. */
+  /** The error came from the sandbox itself or is QuickJS's own InternalError, not script-thrown text. */
   host: boolean;
   /** The token holds the export scope. */
   exportAllowed: boolean;
@@ -157,8 +153,8 @@ interface HintContext {
 }
 
 function hintFor(mode: Mode, code: string, message: string, { host, exportAllowed, mutateAvailable }: HintContext): string | undefined {
-  if ((host ? HOST_OUT_OF_MEMORY : SCRIPT_OUT_OF_MEMORY).test(message)) return `Raise memory_mb (max ${MAX_MEMORY_MB}) or keep less in memory.`;
-  if ((host ? HOST_STACK_OVERFLOW : SCRIPT_STACK_OVERFLOW).test(message)) return 'Stack overflow: the script recursed too deep (make it iterative or shallower), a logged value is nested too deeply, or a bim call walked a very deeply nested model.';
+  if (host && QUICKJS_OUT_OF_MEMORY.test(message)) return `Raise memory_mb (max ${MAX_MEMORY_MB}) or keep less in memory.`;
+  if (host && QUICKJS_STACK_OVERFLOW.test(message)) return 'Stack overflow: the script recursed too deep (make it iterative or shallower), a logged value is nested too deeply, or a bim call walked a very deeply nested model.';
   // Only when the failure looks like touching a namespace that is absent.
   if (mode === 'read' && MUTATE_ONLY_USE.test(code) && MISSING_NAMESPACE.test(message)) {
     // Point at script_run_mutate only when this server and token would let it help.
@@ -263,7 +259,7 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
       // A cancel that landed during the last host-work drain still wins.
       if (ctx.signal.aborted) throw cancelled({ logs, logs_truncated: truncated, mutations_queued: mutationsQueued });
       const outcome = readEnvelope(result.value);
-      if ('error' in outcome) throw scriptError(outcome.error, { logs, logs_truncated: truncated, mutations_queued: mutationsQueued });
+      if ('error' in outcome) throw scriptError(outcome.error, { logs, logs_truncated: truncated, mutations_queued: mutationsQueued }, outcome.quickjs === true);
       const summary = [
         `Script ran in ${result.durationMs} ms on model '${model.id}' (${mode}).`,
         (mutationsQueued ?? 0) > 0 ? `${mutationsQueued} mutation(s) queued; persist with export_ifc or model_save.` : '',

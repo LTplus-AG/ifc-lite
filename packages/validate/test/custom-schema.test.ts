@@ -70,3 +70,11 @@ ENTITY Pair; A : Bucket; B : Bucket; WHERE Equal : A = B; Distinct : A :<>: B; E
     expect(report.findings.filter(f => f.rule === 'Pair.Distinct')).toEqual([]);
   }
 });
+
+it('checks declared BINARY widths in bits in generated authoring schemas', () => {
+  const { schemas } = generated('SCHEMA S; TYPE Octet = BINARY(8) FIXED; END_TYPE; TYPE Short = BINARY(5); END_TYPE; END_SCHEMA;');
+  expect(schemas.Octet.safeParse('0FF').success).toBe(true);
+  expect(schemas.Octet.safeParse('0F').success).toBe(false);
+  expect(schemas.Short.safeParse('0F').success).toBe(true);
+  expect(schemas.Short.safeParse('0FF').success).toBe(false);
+});

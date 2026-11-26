@@ -41,7 +41,11 @@ export function conforms(m: Model, v: Value, type: TypeRef): boolean {
         case 'BOOLEAN': return typeof v === 'boolean';
         case 'LOGICAL': return typeof v === 'boolean' || v === UNKNOWN;
         case 'STRING': return typeof v === 'string';
-        case 'BINARY': return v instanceof BinaryValue;
+        case 'BINARY': {
+          if (!(v instanceof BinaryValue) || !/^(?:0|[0-3][0-9a-f]+)$/i.test(v.hex)) return false;
+          const bits = (v.hex.length - 1) * 4 - Number(v.hex[0]);
+          return type.width === undefined || (type.fixed ? bits === type.width : bits <= type.width);
+        }
       }
       return false;
     case 'aggregate': {

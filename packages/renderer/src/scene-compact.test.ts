@@ -5,7 +5,7 @@
 import { beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { MeshData } from '@ifc-lite/geometry';
-import { adoptCompactMeshes, compactHydrationStats, loadCompactGeometry, materializeCompactMesh, type CompactPayload } from '@ifc-lite/geometry/compact';
+import { adoptCompactMeshes, compactHydrationStats, loadCompactGeometry, type CompactPayload } from '@ifc-lite/geometry/compact';
 import { createCompactPages, loadCompactPages } from './compact-page-deps.js';
 import type { SceneCompactHost } from './scene-compact.js';
 import { batchEntityIdAnchor } from './entity-color-table.js';

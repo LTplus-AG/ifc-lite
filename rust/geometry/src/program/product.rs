@@ -18,7 +18,7 @@ use crate::representation::product_budget::{AdmittedProduct, ProductItems};
 use crate::router::annotation::{admit_fill, AnnotationRings};
 use crate::router::processing::SourceHygiene;
 use crate::router::transforms::ObjectPlacement;
-use crate::{GeometryRouter, Mesh, Result, SubMeshCollection};
+use crate::{GeometryRouter, Mesh, Result, styled_parts::StyledParts};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use rustc_hash::FxHashMap;
 
@@ -41,7 +41,7 @@ enum Sink {
     /// Boxed with `Prepared`: the accumulators are two meshes and more, and
     /// would otherwise size every program and move with every step.
     Merged(Box<Merged>),
-    Styled(SubMeshCollection),
+    Styled(StyledParts),
     // RetainedSelection is uninhabited on default wasm; the common walk stays shared.
     #[cfg_attr(not(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime")), allow(dead_code))]
     Retained(Vec<LogicalRetainedValue>, RetainedSelection),
@@ -60,7 +60,7 @@ enum Body {
 /// A completed product walk's output.
 pub(super) enum ProductOutput {
     Parts(Vec<Mesh>),
-    Styled(SubMeshCollection),
+    Styled(StyledParts),
     Retained(Vec<LogicalRetainedValue>, RetainedSelection),
 }
 
@@ -190,7 +190,7 @@ impl<'a> ProductControl<'a> {
     fn new(element: &'a DecodedEntity, hygiene: SourceHygiene, styled: Option<Styled<'a>>) -> Self {
         let sink = match styled {
             None => Sink::Merged(Box::default()),
-            Some(_) => Sink::Styled(SubMeshCollection::new()),
+            Some(_) => Sink::Styled(StyledParts::new()),
         };
         // IfcAlignment carries its directrix curve in a dedicated `Axis`
         // attribute (IFC4X1) instead of (or in addition to) a normal

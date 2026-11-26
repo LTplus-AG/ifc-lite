@@ -3,9 +3,9 @@
 use super::batch_output::ElementMeshOutput;
 use super::batch_prepare::BatchSetup;
 use super::style_finishes::BatchFinishes;
-use crate::api::styling::resolve_element_color;
+use crate::api::styling::resolve_element_style;
 use crate::api::IfcAPI;
-use ifc_lite_processing::element::{produce_element_meshes_owned, ElementJobKind, ElementMeshJob};
+use ifc_lite_processing::element::{produce_element_meshes_owned_styled, ElementJobKind, ElementMeshJob, StyleSource};
 use rustc_hash::FxHashMap;
 
 #[derive(Default)]
@@ -15,7 +15,8 @@ pub(super) struct BatchState {
     pub elements: u64,
     pub backstop: u64,
     pub refused: u64,
-    pub occurrences: Vec<ifc_lite_processing::RawInstanceOccurrence>,
+    /// Each don't-bake occurrence with the source of its colour (#10698).
+    pub occurrences: Vec<(ifc_lite_processing::RawInstanceOccurrence, StyleSource)>,
 }
 impl IfcAPI {
     pub(super) fn produce_batch_element(
@@ -59,16 +60,19 @@ impl IfcAPI {
         } else {
             ifc_lite_core::slot::IfcProduct::REPRESENTATION.index()
         };
-        let element_color = if !geometry_styles.is_empty()
+        // The element colour and its source, from one walk (#10698).
+        let element_style = if !geometry_styles.is_empty()
             && entity
                 .get(representation_slot)
                 .map(|a| !a.is_null())
                 .unwrap_or(false)
         {
-            resolve_element_color(&entity, geometry_styles, &mut setup.decoder)
+            resolve_element_style(&entity, geometry_styles, &mut setup.decoder)
         } else {
             None
         };
+        let element_color = element_style.map(|(color, _)| color);
+        let element_source = element_style.map_or(StyleSource::Unstyled, |(_, source)| source);
 
         let kind = if is_type_product {
             let rep_map_ids = ifc_lite_processing::discovery::record_refs_at(
@@ -92,7 +96,7 @@ impl IfcAPI {
 
         #[cfg(test)]
         super::batch::parity::record_job(id, &kind);
-        let produced = produce_element_meshes_owned(
+        let produced = produce_element_meshes_owned_styled(
             &ElementMeshJob {
                 id,
                 ifc_type,
@@ -101,6 +105,7 @@ impl IfcAPI {
                 element_color,
                 metadata: None,
             },
+            element_source,
             &setup.ctx,
             &setup.opts,
             &mut setup.decoder,
@@ -111,6 +116,8 @@ impl IfcAPI {
             state.refused += 1;
             return;
         };
+        // One source per mesh and per occurrence, in their order.
+        let (produced, mesh_styles, occurrence_styles) = produced.into_parts();
 
         for (product_id, fails) in produced.csg_failures {
             state
@@ -122,19 +129,17 @@ impl IfcAPI {
         state.elements += 1;
         state.backstop += produced.degenerate_triangles_dropped;
         if !produced.instance_occurrences.is_empty() {
-            state.occurrences.extend(produced.instance_occurrences);
+            state.occurrences.extend(produced.instance_occurrences.into_iter().zip(occurrence_styles));
         }
         state.outputs.push(ElementMeshOutput {
             id,
-            finishes: batch_finishes.for_meshes(&produced.meshes, &mut setup.decoder),
+            finishes: batch_finishes.for_sources(&mesh_styles),
             meshes: produced.meshes,
             geometry_hash: produced.geometry_hash,
             geometry_aabb: produced.geometry_aabb,
             geometry_volume: produced.geometry_volume,
             geometry_closure_bits: produced.geometry_closure.map_or(0, |c| c.bits()),
         });
-        // Finish resolution can re-decode refused items too. Drain the whole
-        // element scope only after the join, before the next job starts.
         self.record_input_refusals(&setup.decoder, setup.router.length_unit_refused());
     }
 }

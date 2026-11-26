@@ -9,7 +9,8 @@ use ifc_lite_geometry::GeometryRouter;
 use ifc_lite_processing::element::retained_runtime::{resolve_appearances, PartAppearance};
 use ifc_lite_processing::element::OwnedMeshProductionData;
 use ifc_lite_processing::prepass::{resolve_prepass, PrepassSpans};
-use ifc_lite_processing::{process, ProcessingRequest};
+use ifc_lite_processing::style::SpecularMaterial;
+use ifc_lite_processing::{process, MeshData, ProcessingRequest, ProcessingSink};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
@@ -76,6 +77,32 @@ fn exact_matches(source: &Arc<SourceBundle>, id: u32, parts: &[PartAppearance]) 
     assert!(!meshed.is_empty(), "the exact witness must not pass vacuously");
     assert_eq!(meshed, retained, "exact and retained RGBA bits per (product, geometry item)");
 }
+/// `style`'s shape with an authored specular (roughness 0.25), so the exact pass announces a finish for whatever takes its colour.
+fn glossy(id: u32, rgb: [f64; 3]) -> String {
+    format!("#{c}=IFCCOLOURRGB($,{:?},{:?},{:?});#{r}=IFCSURFACESTYLERENDERING(#{c},0.,$,$,$,$,\
+        IFCNORMALISEDRATIOMEASURE(0.75),$,.NOTDEFINED.);#{id}=IFCSURFACESTYLE($,.BOTH.,(#{r}));", rgb[0], rgb[1], rgb[2],
+        c = id + 1, r = id + 2)
+}
+#[derive(Default)]
+struct Finishes { pending: Vec<Option<SpecularMaterial>>, by_item: BTreeMap<Option<u32>, Option<f32>> }
+impl ProcessingSink for Finishes {
+    fn on_finishes(&mut self, finishes: &[Option<SpecularMaterial>]) { self.pending = finishes.to_vec(); }
+    fn on_batch(&mut self, meshes: &[MeshData], _processed: usize, _total: usize) {
+        assert_eq!(self.pending.len(), meshes.len(), "one finish per mesh");
+        for (mesh, finish) in meshes.iter().zip(std::mem::take(&mut self.pending)) {
+            self.by_item.insert(mesh.geometry_item_id, finish.and_then(|f| f.roughness).map(|r| (r * 1000.).round() / 1000.));
+        }
+    }
+}
+/// Exact joins a finish by the source it recorded with the colour (#10698), so a finish on a part whose own item
+/// is unstyled shows that exact took the colour from the same styled item as retained's `style_id`.
+fn exact_roughness(source: &Arc<SourceBundle>) -> BTreeMap<Option<u32>, Option<f32>> {
+    let request = ProcessingRequest::full_pass();
+    let features = request.features.finishes(true);
+    let mut sink = Finishes::default();
+    process(source.bytes(), &request.features(features), &mut sink);
+    sink.by_item
+}
 fn near(actual: [f32; 4], expected: [f32; 4]) {
     assert!(actual.iter().zip(expected).all(|(a, e)| (a - e).abs() < 1e-6), "{actual:?} != {expected:?}");
 }
@@ -108,13 +135,17 @@ fn m11_a_material_colour_then_the_element_colour_when_nothing_styles_the_item() 
 #[test]
 fn m11_a_an_unstyled_item_takes_the_first_style_of_its_representation_as_exact_does() {
     // Exact's job colour is the first styled item under the product's shape, and an item with no style of
-    // its own, no material and no mapped chase falls back to it: #10 renders as #11 does.
-    let rest = format!("{WALL}#25=IFCSTYLEDITEM(#11,(#20),$);{}", style(20, [0.3, 0.3, 0.7], 0.));
+    // its own, no material and no mapped chase falls back to it: #10 renders as #11 does. Since #10698 the element
+    // colour carries the styled item it came from, so #10's colour, and its finish, are #11's on both paths.
+    let rest = format!("{WALL}#25=IFCSTYLEDITEM(#11,(#20),$);{}", glossy(20, [0.3, 0.3, 0.7]));
     let source = source("#10,#11", &rest);
     let parts = appearances(&source, &product_plan(&source, 14, false), 14, IfcType::IfcWall, WALL_GREY);
     near(parts[0].rgba, [0.3, 0.3, 0.7, 1.]);
     near(parts[1].rgba, [0.3, 0.3, 0.7, 1.]);
-    assert_eq!((parts[0].style_id, parts[1].style_id), (None, Some(11)));
+    exact_matches(&source, 14, &parts);
+    assert_eq!((parts[0].style_id, parts[1].style_id), (Some(11), Some(11)));
+    let exact = exact_roughness(&source);
+    assert_eq!((exact[&Some(10)], exact[&Some(11)]), (Some(0.25), Some(0.25)), "exact gives #10 #11's finish too");
 }
 
 #[test]
@@ -248,15 +279,20 @@ fn m11_a_a_style_on_the_mapped_item_reaches_a_bare_leaf_only_as_the_element_colo
     // #10 is styled red; #11 is bare; the IfcMappedItem itself is styled blue. Exact: #10 keeps its direct style; #11
     // has no style, no chase (it is not a mapped item) and no material, so it takes the element colour, which is the
     // first style the product reaches: the mapped item's own (blue). Keyed by the map, #10 would turn blue too.
+    // Without material colours the occurrence step does not run (#10698); the element colour now carries its
+    // source, #43, so #11's style_id is #43 and exact joins #43's finish to #11 as well.
     let rest = format!("{WALL}{}#43=IFCMAPPEDITEM(#41,#42);#25=IFCSTYLEDITEM(#10,(#20),$);#26=IFCSTYLEDITEM(#43,(#27),$);{}{}",
-        map_of("#10,#11"), style(20, [0.75, 0.25, 0.25], 0.), style(27, [0.25, 0.25, 0.75], 0.));
+        map_of("#10,#11"), style(20, [0.75, 0.25, 0.25], 0.), glossy(27, [0.25, 0.25, 0.75]));
     let source = source("#43", &rest);
     let parts = appearances(&source, &product_plan(&source, 14, false), 14, IfcType::IfcWall, WALL_GREY);
     assert_eq!(parts.len(), 2);
     near(parts[0].rgba, [0.75, 0.25, 0.25, 1.]);
     near(parts[1].rgba, [0.25, 0.25, 0.75, 1.]);
     assert_eq!((parts[0].geometry_item_id, parts[1].geometry_item_id), (Some(10), Some(11)));
-    assert_eq!((parts[0].style_id, parts[1].style_id), (Some(10), None));
+    exact_matches(&source, 14, &parts);
+    assert_eq!((parts[0].style_id, parts[1].style_id), (Some(10), Some(43)));
+    let exact = exact_roughness(&source);
+    assert_eq!((exact[&Some(10)], exact[&Some(11)]), (None, Some(0.25)), "exact: #10 is its own red, #11 has #43's finish");
 }
 
 #[test]

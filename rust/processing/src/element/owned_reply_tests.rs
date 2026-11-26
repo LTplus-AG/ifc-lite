@@ -21,7 +21,7 @@ fn foreign_context_request_and_reply_are_rejected_intact_before_geometry_or_hash
     assert_eq!(session.execute(foreign, &mut decoder, &router).err(), Some(WorkError::WrongContext));
     assert!(decoder.try_execution_lease().is_ok(), "forged request never reached owner/cache admission");
     let mut reply = session.execute(request, &mut decoder, &router).unwrap();
-    let delivered = matches!(&reply.payload, WorkPayload::Primary(PrimaryOutcome::Candidate(parts)) if !parts.sub_meshes.is_empty());
+    let delivered = matches!(&reply.payload, WorkPayload::Primary(PrimaryOutcome::Candidate(parts)) if !parts.is_empty());
     assert!(delivered, "fixture must deliver real geometry");
     reply.context = Some(b.id());
     let rejected = session.accept(reply, &mut decoder, &router).unwrap_err();

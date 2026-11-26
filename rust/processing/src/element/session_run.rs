@@ -19,20 +19,20 @@ use ifc_lite_geometry::resource::{self, ProgramStop};
 /// final hooks or letting a later product adopt them. Geometry is discarded.
 pub(super) struct Publication<'r> {
     router: &'r GeometryRouter,
-    pub output: Option<ProducedElementMeshes>,
+    pub output: Option<StyledProduction>,
 }
 impl<'r> Publication<'r> {
     pub fn new(router: &'r GeometryRouter) -> Self {
         Self { router, output: None }
     }
-    pub fn commit(mut self) -> Result<ProducedElementMeshes, WorkError> {
+    pub fn commit(mut self) -> Result<StyledProduction, WorkError> {
         self.output.take().ok_or(WorkError::Aborted)
     }
 }
 impl Drop for Publication<'_> {
     fn drop(&mut self) {
         if let Some(output) = &mut self.output {
-            self.router.quarantine_unpublished_csg_failures(std::mem::take(&mut output.csg_failures));
+            self.router.quarantine_unpublished_csg_failures(std::mem::take(&mut output.rest.csg_failures));
         }
     }
 }
@@ -88,14 +88,14 @@ impl ProductState<'_> {
     pub(super) fn finish_live(
         mut self,
         router: &GeometryRouter,
-        output: &mut Option<ProducedElementMeshes>,
+        output: &mut Option<StyledProduction>,
     ) -> Result<Option<ProgramStop>, WorkError> {
         if self.live.is_none() {
             return Err(WorkError::Aborted);
         }
         if self.capture_stop() {
             router.quarantine_recorded_csg_failures();
-            *output = Some(session_canonical::stopped_output());
+            *output = Some(StyledProduction::unstyled(session_canonical::stopped_output()));
             return Ok(self.terminal());
         }
         if !matches!(self.stage, Stage::Complete) {
@@ -113,7 +113,7 @@ impl ProductState<'_> {
             }
             Err(stop) => {
                 self.remember_stop(stop);
-                *output = Some(session_canonical::stopped_output());
+                *output = Some(StyledProduction::unstyled(session_canonical::stopped_output()));
                 Ok(self.terminal())
             }
         }
@@ -125,7 +125,9 @@ impl ProductState<'_> {
     pub(super) fn apply_fixed_color(&mut self) {
         if let Some(fixed) = crate::style::fixed_display_color_for_type(&self.job.ifc_type) {
             let fixed = fixed.to_array();
-            for mesh in &mut self.meshes {
+            // The fixed colour replaces the colour, not its source: an authored
+            // finish still comes from the style the part resolved (#10698).
+            for ProducedMesh { mesh, .. } in &mut self.meshes {
                 mesh.color = fixed;
                 mesh.texture = None;
                 mesh.uvs = None;
@@ -133,7 +135,7 @@ impl ProductState<'_> {
                     record.overridden_by_fixed_display_colour();
                 }
             }
-            for occurrence in &mut self.occurrences {
+            for ProducedOccurrence { occurrence, .. } in &mut self.occurrences {
                 occurrence.color = fixed;
             }
         }
@@ -146,7 +148,7 @@ impl ProductState<'_> {
         self,
         csg_failures: FxHashMap<u32, Vec<BoolFailure>>,
         dropped: u64,
-    ) -> ProducedElementMeshes {
+    ) -> StyledProduction {
         let (geometry_hash, geometry_aabb, geometry_volume, geometry_closure) = match self.hasher {
             Some(mut h) if !h.is_empty() => {
                 h.retract_closure_if_mesh_edited(dropped);
@@ -154,15 +156,16 @@ impl ProductState<'_> {
             }
             _ => (None, None, None, None),
         };
-        ProducedElementMeshes {
-            meshes: self.meshes,
-            instance_occurrences: self.occurrences,
+        let rest = ProducedElementMeshes {
+            meshes: Vec::new(),
+            instance_occurrences: Vec::new(),
             geometry_hash,
             geometry_aabb,
             geometry_volume,
             geometry_closure,
             csg_failures,
             degenerate_triangles_dropped: dropped,
-        }
+        };
+        StyledProduction { meshes: self.meshes, occurrences: self.occurrences, rest }
     }
 }

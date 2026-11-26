@@ -48,7 +48,8 @@ export function mcpHelpText({ command }: McpCliIdentity, platform: NodeJS.Platfo
                             non-loopback host needs --token, --read-only-token
                             or --insecure.
     --token <t>             Bearer token for HTTP auth (repeatable). Each gets
-                            full scope, or the --read-only preset under it.
+                            full scope, or the --read-only preset when
+                            --read-only is set.
     --read-only-token <t>   Bearer token with the --read-only preset
                             (repeatable).
     --insecure              Allow non-loopback bind without authentication.
@@ -238,7 +239,7 @@ async function runHttp(opts: CliOptions, tag: string): Promise<RunningHttpCli | 
   }
   if (!opts.allowedPaths?.length) {
     process.stderr.write(
-      `${tag} warning: no --allow, so model_load (read scope) can open IFC files, and export tools can write files, under the working ` +
+      `${tag} warning: no --allow, so model_load (read scope) can open IFC files, and tools can write files, under the working ` +
       'directory, the temp directory and loaded models\' directories. Pass --allow <dir> to narrow that.\n',
     );
   }

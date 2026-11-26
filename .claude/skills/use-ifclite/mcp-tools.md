@@ -16,9 +16,9 @@ ifc-lite mcp ./model.ifc --viewer              # auto-open the 3D viewer
 
 The standalone binary `ifc-lite-mcp …` accepts the same flags. Useful options:
 `--read-only`, `--transport stdio|http`, `--port`, `--host`
-(loopback by default; non-loopback needs `--token` or `--insecure`), `--token`
+(loopback by default; non-loopback needs `--token`, `--read-only-token` or `--insecure`), `--token`
 (repeatable bearer token for HTTP auth; combine with `--read-only` to scope the
-whole server read-only), `--read-only-token` (repeatable, read scope),
+whole server read-only), `--read-only-token` (repeatable, the `--read-only` preset: no edits, but export and flow-checkpoint tools still write files under the allowed roots),
 `--bsdd <url>`, `--allow <path>` (restrict filesystem access), and the
 `--bridge` flags.
 

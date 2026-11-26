@@ -34,6 +34,7 @@
 
 import { NAMESPACE_SCHEMAS, SANDBOX_CONSOLE_LEVELS } from '@ifc-lite/sandbox';
 import { MAX_LOG_CHARS, MAX_MESSAGE_CHARS, MAX_VALUE_CHARS, VALUE_PREVIEW_CHARS } from './script-output.js';
+import { SERIALISER_SOURCE } from './script-serialiser.js';
 
 /** Deepest value the wrapper serialises; about 3000 levels overflowed the host stack. */
 const MAX_VALUE_DEPTH = 1_000;
@@ -55,10 +56,51 @@ const LIMITS = {
   maxDepth: MAX_VALUE_DEPTH, maxLog: MAX_LOG_CHARS, levels: SANDBOX_CONSOLE_LEVELS, dumped: DUMPED_ARGS,
 };
 
+/**
+ * The intrinsics the wrapper binds before the script runs, as [local name,
+ * source expression]: one list feeds both the object literal passed in and the
+ * locals unpacked from it, so the two cannot drift.
+ */
+const INTRINSICS: ReadonlyArray<readonly [string, string]> = [
+  ['P', 'Promise'],
+  ['isInstance', 'Function.prototype[Symbol.hasInstance]'],
+  ['then', 'Promise.prototype.then'],
+  ['apply', 'Reflect.apply'],
+  ['slice', 'String.prototype.slice'],
+  ['Str', 'String'],
+  ['stringify', 'JSON.stringify'],
+  ['keys', 'Object.keys'],
+  ['isArray', 'Array.isArray'],
+  ['create', 'Object.create'],
+  ['defineProperty', 'Object.defineProperty'],
+  ['glob', 'globalThis'],
+  ['ErrorCtor', 'Error'],
+  ['TypeErrorCtor', 'TypeError'],
+  ['SetCtor', 'Set'],
+  ['setAdd', 'Set.prototype.add'],
+  ['setHas', 'Set.prototype.has'],
+  ['setDelete', 'Set.prototype.delete'],
+  ['unbox', '[[Number.prototype, Number.prototype.valueOf], [String.prototype, String.prototype.valueOf], [Boolean.prototype, Boolean.prototype.valueOf], [BigInt.prototype, BigInt.prototype.valueOf]]'],
+  ['objectProto', 'Object.prototype'],
+  ['indexOf', 'String.prototype.indexOf'],
+  ['lastIndexOf', 'String.prototype.lastIndexOf'],
+  ['getProto', 'Object.getPrototypeOf'],
+  ['parse', 'JSON.parse'],
+  ['charCodeAt', 'String.prototype.charCodeAt'],
+  ['SyntaxErrorCtor', 'SyntaxError'],
+  ['RegExpCtor', 'RegExp'],
+  ['exec', 'RegExp.prototype.exec'],
+  ['bind', 'Function.prototype.bind'],
+  ['InternalErrorCtor', 'typeof InternalError === \'function\' ? InternalError : undefined'],
+  ['toStringTag', 'Symbol.toStringTag'],
+];
+const INTRINSICS_OBJECT = `{ ${INTRINSICS.map(([n, v]) => `${n}: ${v}`).join(', ')} }`;
+const INTRINSICS_LOCALS = INTRINSICS.map(([n]) => `${n} = I.${n}`).join(', ');
+
 export function wrapScript(code: string): string {
   return `(function (run, I, L) {
   // The intrinsics, by name: read once here, before the script runs.
-  var P = I.P, isInstance = I.isInstance, then = I.then, apply = I.apply, slice = I.slice, Str = I.Str, stringify = I.stringify, keys = I.keys, isArray = I.isArray, create = I.create, defineProperty = I.defineProperty, glob = I.glob, ErrorCtor = I.ErrorCtor, TypeErrorCtor = I.TypeErrorCtor, SetCtor = I.SetCtor, setAdd = I.setAdd, setHas = I.setHas, setDelete = I.setDelete, unbox = I.unbox, objectProto = I.objectProto, indexOf = I.indexOf, lastIndexOf = I.lastIndexOf, getProto = I.getProto, parse = I.parse, charCodeAt = I.charCodeAt, SyntaxErrorCtor = I.SyntaxErrorCtor, RegExpCtor = I.RegExpCtor, exec = I.exec, bind = I.bind, InternalErrorCtor = I.InternalErrorCtor, toStringTag = I.toStringTag;
+  var ${INTRINSICS_LOCALS};
   // instanceof, guarded: a thrown Proxy whose getPrototypeOf trap throws must
   // not make the wrapper itself throw.
   function instanceOf(ctor, e) {
@@ -90,150 +132,7 @@ export function wrapScript(code: string): string {
     if (m === '') return 'an empty ' + (typeof e) + ' was thrown';
     return apply(slice, m, [0, L.maxMessage + 1]);
   }
-  function bigintText(b) { return Str(b) + 'n'; }
-  function omitted(v) { var t = typeof v; return t === 'undefined' || t === 'function' || t === 'symbol'; }
-  // JSON's per-property steps, in the spec's order: toJSON, then the
-  // replacer function (called with the holder), then unboxing in write().
-  function resolve(v, k, holder, replacer) {
-    if (v !== null && (typeof v === 'object' || typeof v === 'function' || typeof v === 'bigint')) {
-      var f = v.toJSON;
-      if (typeof f === 'function') v = apply(f, v, [k]);
-    }
-    return replacer ? apply(replacer, holder, [k, v]) : v;
-  }
-  // JSON text for v, stopping once it passes limit; undefined when JSON would
-  // omit v. Frames live in null-prototype maps: an index setter on
-  // Array.prototype cannot intercept them.
-  // A boxed primitive's value, as native JSON unwraps it (a boxed BigInt then
-  // throws like a bare one); undefined for any other object. Plain objects
-  // and arrays skip the brand-checked valueOf calls entirely; anything with
-  // another prototype (a boxed value, a subclass of one, a class instance)
-  // tries each, and a valueOf that rejects the receiver means "not this type".
-  // A Number or String subclass that overrides valueOf or toString is written
-  // from its internal value (native JSON calls the override).
-  // A boxed value whose prototype was reset to Object.prototype or null is
-  // written as an object, unlike native JSON; plain objects stay cheap.
-  function unboxed(v) {
-    var proto = getProto(v);
-    if (proto === objectProto || proto === null || isArray(v)) return undefined;
-    // Walk to a box prototype first, so a class instance costs a short chain
-    // walk instead of four thrown brand checks; the chain is capped in case a
-    // proxy keeps inventing prototypes.
-    var u = -1;
-    for (var hops = 0; proto !== null && hops < 64 && u < 0; hops++) {
-      for (var b = 0; b < unbox.length; b++) if (proto === unbox[b][0]) u = b;
-      if (u < 0) proto = getProto(proto);
-    }
-    if (u >= 0) {
-      try { return { v: apply(unbox[u][1], v, []) }; } catch (e) {
-        // A brand-check TypeError means "not this wrapper type"; QuickJS's own
-        // out-of-memory or stack overflow must not turn the value into {}.
-        if (isInternal(e)) throw e;
-      }
-    }
-    return undefined;
-  }
-  // The replacer and indent of JSON.stringify(value, replacer, space): a
-  // function, or a property list (null-prototype, so no Array.prototype
-  // setter sees it); and the gap string.
-  function jsonOptions(replacer, space) {
-    var o = { fn: null, list: null, gap: '' };
-    if (typeof replacer === 'function') o.fn = replacer;
-    else if (isArray(replacer)) {
-      var list = create(null), seen = new SetCtor(), n = 0, len = replacer.length;
-      for (var ri = 0; ri < len; ri++) {
-        var item = replacer[ri], name;
-        if (typeof item === 'string') name = item;
-        else if (typeof item === 'number') name = Str(item);
-        else if (item !== null && typeof item === 'object') { var b = unboxed(item); if (b && (typeof b.v === 'string' || typeof b.v === 'number')) name = Str(b.v); }
-        if (name !== undefined && !apply(setHas, seen, [name])) { apply(setAdd, seen, [name]); list[n++] = name; }
-      }
-      list.length = n;
-      o.list = list;
-    }
-    if (space !== null && typeof space === 'object') { var sb = unboxed(space); if (sb) space = sb.v; }
-    if (typeof space === 'number') {
-      var count = space > 10 ? 10 : space >= 1 ? space - (space % 1) : 0;
-      for (var si = 0; si < count; si++) o.gap += ' ';
-    } else if (typeof space === 'string') o.gap = apply(slice, space, [0, 10]);
-    return o;
-  }
-  // forLog: an Error nested in a logged value prints as its message, not {}.
-  // opts: from jsonOptions, or undefined for plain JSON with no replacer.
-  function ser(root, limit, forLog, opts) {
-    var fn = opts ? opts.fn : null, list = opts ? opts.list : null, gap = opts ? opts.gap : '';
-    // Indent strings per depth, built only when there is a gap.
-    var indents = null, built = 0;
-    function indent(depth) {
-      if (indents === null) { indents = create(null); indents[0] = ''; }
-      for (; built < depth; built++) indents[built + 1] = indents[built] + gap;
-      return indents[depth];
-    }
-    // onPath holds the objects being written, so a cycle is named as one
-    // (like native JSON) before the length cap could turn it into a preview.
-    var out = '', sp = 0, fo = create(null), fk = create(null), fi = create(null), fa = create(null), fw = create(null);
-    var onPath = new SetCtor();
-    function write(v) {
-      if (v === null) { out += 'null'; return; }
-      if (forLog && typeof v === 'bigint') { out += stringify(bigintText(v)); return; }
-      if (typeof v === 'object') {
-        var box = unboxed(v);
-        // Unwrapped, it takes the primitive path below (a boxed string is cut too).
-        if (box) v = forLog && typeof box.v === 'bigint' ? bigintText(box.v) : box.v;
-      }
-      if (typeof v === 'object') {
-        if (forLog && isError(v)) { out += stringify(msg(v)); return; }
-        if (apply(setHas, onPath, [v])) throw new TypeErrorCtor('the value is cyclic');
-        if (sp >= L.maxDepth) throw new ErrorCtor('the value is nested deeper than ' + L.maxDepth + ' levels');
-        apply(setAdd, onPath, [v]);
-        var a = isArray(v);
-        // An array's length is read once, as native JSON does, so a toJSON or
-        // replacer that appends to it cannot make the walk run forever.
-        fo[sp] = v; fk[sp] = a ? v.length : list || keys(v); fi[sp] = 0; fa[sp] = a; fw[sp] = false; sp++;
-        out += a ? '[' : '{';
-        return;
-      }
-      // A string past the cap is cut before it is escaped, so the preview path
-      // runs instead of copying a huge string into out.
-      if (typeof v === 'string' && limit !== Infinity && out.length + v.length > limit) v = apply(slice, v, [0, out.length > limit ? 0 : limit - out.length + 1]);
-      out += omitted(v) ? 'null' : stringify(v);
-    }
-    var top = resolve(root, '', { '': root }, fn);
-    if (omitted(top)) return undefined;
-    write(top);
-    while (sp > 0) {
-      if (out.length > limit) return out;
-      var i = sp - 1, o = fo[i];
-      if (fa[i]) {
-        if (fi[i] >= fk[i]) {
-          if (gap && fk[i] > 0) out += '\\n' + indent(sp - 1);
-          out += ']'; apply(setDelete, onPath, [o]); sp--; continue;
-        }
-        var idx = fi[i]; fi[i] = idx + 1;
-        if (idx > 0) out += ',';
-        if (gap) out += '\\n' + indent(sp);
-        write(resolve(o[idx], Str(idx), o, fn));
-      } else {
-        var ks = fk[i];
-        if (fi[i] >= ks.length) {
-          if (gap && fw[i]) out += '\\n' + indent(sp - 1);
-          out += '}'; apply(setDelete, onPath, [o]); sp--; continue;
-        }
-        var k = ks[fi[i]]; fi[i] = fi[i] + 1;
-        var v = resolve(o[k], k, o, fn);
-        if (omitted(v)) continue;
-        // A long key can pass the cap on its own: copy only enough of it to
-        // pass the cap, so the result is read as a preview, then stop.
-        if (out.length + k.length > limit) return out.length > limit ? out : out + (fw[i] ? ',' : '') + stringify(apply(slice, k, [0, limit - out.length + 1]));
-        if (fw[i]) out += ',';
-        fw[i] = true;
-        if (gap) out += '\\n' + indent(sp);
-        out += stringify(k) + (gap ? ': ' : ':');
-        write(v);
-      }
-    }
-    return out;
-  }
+${SERIALISER_SOURCE}
   function env(v) {
     var j;
     // 'Q' marks QuickJS's own InternalError class. The script has no
@@ -262,12 +161,11 @@ export function wrapScript(code: string): string {
       // The wrapper's own frames (and the eval that runs the script) mean
       // nothing to the script's author: cut the stack where they start.
       if (typeof st === 'string') {
-        var cutAt = apply(indexOf, st, ['internal-script-wrapper.js']);
+        var cutAt = apply(indexOf, st, ['at eval (native)']);
+        if (cutAt < 0) cutAt = apply(indexOf, st, ['internal-script-wrapper.js']);
         if (cutAt >= 0) {
           var lineStart = apply(lastIndexOf, st, ['\\n', cutAt]);
           st = apply(slice, st, [0, lineStart < 0 ? 0 : lineStart]);
-          var evalAt = apply(lastIndexOf, st, ['\\n    at eval (native)']);
-          if (evalAt >= 0) st = apply(slice, st, [0, evalAt]);
         }
       }
       return head + (typeof st === 'string' && st !== '' ? '\\n' + cut(st, L.maxLog - 32 - head.length) : '');
@@ -386,5 +284,5 @@ export function wrapScript(code: string): string {
     }
     catch (e) { resolveWrapper(fail(e)); }
   });
-})(function () { return (0, eval)(${JSON.stringify(code)}); }, { P: Promise, isInstance: Function.prototype[Symbol.hasInstance], then: Promise.prototype.then, apply: Reflect.apply, slice: String.prototype.slice, Str: String, stringify: JSON.stringify, keys: Object.keys, isArray: Array.isArray, create: Object.create, defineProperty: Object.defineProperty, glob: globalThis, ErrorCtor: Error, TypeErrorCtor: TypeError, SetCtor: Set, setAdd: Set.prototype.add, setHas: Set.prototype.has, setDelete: Set.prototype.delete, unbox: [[Number.prototype, Number.prototype.valueOf], [String.prototype, String.prototype.valueOf], [Boolean.prototype, Boolean.prototype.valueOf], [BigInt.prototype, BigInt.prototype.valueOf]], objectProto: Object.prototype, indexOf: String.prototype.indexOf, lastIndexOf: String.prototype.lastIndexOf, getProto: Object.getPrototypeOf, parse: JSON.parse, charCodeAt: String.prototype.charCodeAt, SyntaxErrorCtor: SyntaxError, RegExpCtor: RegExp, exec: RegExp.prototype.exec, bind: Function.prototype.bind, InternalErrorCtor: typeof InternalError === 'function' ? InternalError : undefined, toStringTag: Symbol.toStringTag }, ${JSON.stringify(LIMITS)})`;
+})(function () { return (0, eval)(${JSON.stringify(code)}); }, ${INTRINSICS_OBJECT}, ${JSON.stringify(LIMITS)})`;
 }

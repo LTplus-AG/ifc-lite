@@ -143,9 +143,13 @@ describe('viewer server — static routes and CORS', () => {
     'ftp://localhost',
     'http://localhost:notaport',
   ]) {
-    it(`withholds Access-Control-Allow-Origin for ${origin}`, TEST_TIMEOUT, async () => {
-      const res = await req(port, '/api/status', { headers: { origin } });
-      assert.equal(res.headers['access-control-allow-origin'], undefined);
+    // A foreign page could otherwise open /events and count as a connected viewer.
+    it(`refuses ${origin} outright, with no Access-Control-Allow-Origin`, TEST_TIMEOUT, async () => {
+      for (const path of ['/api/status', '/events', '/model.ifc']) {
+        const res = await req(port, path, { headers: { origin } });
+        assert.equal(res.status, 403, path);
+        assert.equal(res.headers['access-control-allow-origin'], undefined, path);
+      }
     });
   }
 
@@ -429,14 +433,6 @@ describe('viewer server — loopback only', () => {
       assert.equal(res.status, 403);
     });
   }
-
-  // A foreign page could otherwise open /events and count as a connected viewer.
-  it('refuses GETs from another site too', TEST_TIMEOUT, async () => {
-    for (const path of ['/events', '/model.ifc', '/api/status']) {
-      const res = await req(port, path, { headers: { origin: 'http://evil.com' } });
-      assert.equal(res.status, 403, path);
-    }
-  });
 
   it('accepts a command from a local page and from a client that sends no Origin', TEST_TIMEOUT, async () => {
     for (const headers of [{ origin: `http://localhost:${port}` }, { origin: `http://LocalHost:${port}` }, {}]) {

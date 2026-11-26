@@ -252,6 +252,8 @@ export interface SubsetSelectors {
   types?: readonly string[];
   /** Storey GlobalId, `#id`/id, or name: every product placed under it. */
   storeys?: readonly string[];
+  /** Throw `SubsetSelectionError('invalid')` for any type or storey that selects nothing. */
+  requireEachMatch?: boolean;
 }
 
 /**
@@ -269,17 +271,34 @@ export function selectSubsetSeeds(parsed: ParsedStep, selectors: SubsetSelectors
   for (const token of selectors.products ?? []) {
     if (token.trim()) seeds.add(resolveToId(token, parsed));
   }
-  const wantedTypes = new Set(
-    expandTypes((selectors.types ?? []).map((t) => t.trim()).filter(Boolean)).map((name) => name.toUpperCase()),
-  );
+  // Expanded STEP type name -> the requested types it came from, so one scan
+  // also tells which requested type matched nothing.
+  const requested = (selectors.types ?? []).map((t) => t.trim()).filter(Boolean);
+  const wantedTypes = new Map<string, number[]>();
+  requested.forEach((type, i) => {
+    for (const name of expandTypes([type])) {
+      const key = name.toUpperCase();
+      wantedTypes.set(key, [...(wantedTypes.get(key) ?? []), i]);
+    }
+  });
+  const typeMatched = new Set<number>();
   if (wantedTypes.size > 0) {
     for (const inst of parsed.instances.values()) {
-      if (wantedTypes.has(inst.type)) seeds.add(inst.id);
+      const from = wantedTypes.get(inst.type);
+      if (!from) continue;
+      seeds.add(inst.id);
+      for (const i of from) typeMatched.add(i);
     }
+  }
+  if (selectors.requireEachMatch) {
+    const missing = requested.filter((_, i) => !typeMatched.has(i));
+    if (missing.length > 0) throw new SubsetSelectionError('invalid', `No product of type ${missing.join(', ')} (or a subtype).`);
   }
   for (const token of selectors.storeys ?? []) {
     if (!token.trim()) continue;
-    for (const id of productsUnderPlacement(resolveStoreyPlacement(token, parsed), parsed)) seeds.add(id);
+    const under = productsUnderPlacement(resolveStoreyPlacement(token, parsed), parsed);
+    if (selectors.requireEachMatch && under.size === 0) throw new SubsetSelectionError('invalid', `Nothing is placed under storey ${token}.`);
+    for (const id of under) seeds.add(id);
   }
   return seeds;
 }

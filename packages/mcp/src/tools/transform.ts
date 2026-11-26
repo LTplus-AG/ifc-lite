@@ -182,8 +182,6 @@ const modelConvert: Tool = {
     const target = input.schema as 'IFC2X3' | 'IFC4' | 'IFC4X3';
     const source = schemaOf(m);
     const filePath = await resolveSafePath(input.file_path, ctx, 'write');
-    // Pending edits are baked and re-parsed first, so the loss pre-check sees
-    // what the export writes, created entities included.
     // Pending edits are baked, and a model that kept no source bytes is re-read,
     // so the loss check and the export both see the records that get written.
     const baked = m.backend.hasPendingChanges() || m.store.source.byteLength === 0
@@ -268,14 +266,8 @@ const modelExtract: Tool = {
       const parsed = parseStep(Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString('latin1'));
       let seeds: Set<number>;
       try {
-        seeds = selectSubsetSeeds(parsed, { products, types, storeys });
         // Each type and storey must contribute, or a typo hides behind another selector's matches.
-        for (const type of types) {
-          if (selectSubsetSeeds(parsed, { types: [type] }).size === 0) throw invalid(`types: no product of type ${type} (or a subtype).`);
-        }
-        for (const storey of storeys) {
-          if (selectSubsetSeeds(parsed, { storeys: [storey] }).size === 0) throw invalid(`storeys: nothing is placed under storey ${storey}.`);
-        }
+        seeds = selectSubsetSeeds(parsed, { products, types, storeys, requireEachMatch: true });
       } catch (err) {
         if (!(err instanceof SubsetSelectionError)) throw err;
         if (err.kind === 'invalid') throw invalid(err.message);

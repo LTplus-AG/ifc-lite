@@ -29,56 +29,15 @@
  */
 
 import type { MeshData } from '@ifc-lite/geometry';
-import { compactRow, COMPACT_RECORD_BYTES, materializeCompactMesh, type CompactRef } from '@ifc-lite/geometry/compact';
+import { compactRow, materializeCompactMesh } from '@ifc-lite/geometry/compact';
 import { CompactGeometryStore, type CompactStoreStats } from './compact-store.js';
 import type { RenderPipeline } from './pipeline.js';
 import type { CompactPageDeps } from './compact-page-deps.js';
 import type { BatchedMesh } from './types.js';
 
-/** Which paged meshes an operation needs on the bucket path: every one (`undefined`), some entities', or one model's. */
-export type CompactSelection = { ids: Iterable<number> } | { modelIndex: number } | undefined;
+import { normalize, recordedLane, unmoved, type CompactSelection, type SceneCompactHost, type Selection } from './scene-compact-host.js';
 
-/** The Scene members this module works through (the Scene passes itself, as it does to its snapshot lifecycle). */
-export interface SceneCompactHost {
-  ephemeralStreamingMode: boolean;
-  geometryReleased: boolean;
-  /** The quantized pipelines exist: without them a 12-byte page cannot be drawn. */
-  quantizedBatchesEnabled: boolean;
-  finalizeInProgress: boolean;
-  nextBatchId: number;
-  streamingFragments: readonly BatchedMesh[];
-  streamedBucketKeys: ReadonlySet<string>;
-  meshQueue: MeshData[];
-  meshDataMap: Map<number, MeshData[]>;
-  modelTranslations: { isPlaced(modelIndex: number): boolean; placeMesh(mesh: MeshData): MeshData };
-  triangleCounts: { uploaded(meshes: readonly MeshData[]): void };
-  colorKey(color: readonly [number, number, number, number], material?: MeshData['material']): string;
-  addMeshData(mesh: MeshData): void;
-  splitMeshForStreaming(mesh: MeshData): MeshData[];
-  appendToBatches(meshes: MeshData[], device: GPUDevice, pipeline: RenderPipeline, isStreaming: boolean, sourceCounted: boolean): void;
-  /** `appendToBatches`' own per-mesh validation: whether it would refuse `mesh` (no topology-safe f32 frame). */
-  refusesBucketPath(mesh: MeshData): boolean;
-  bumpPickGeometryRevision(): void;
-}
-
-/** A selection with its ids read once (an iterator can be walked only once). */
-type Selection = { ids: ReadonlySet<number> } | { modelIndex: number } | undefined;
-
-function normalize(selection: CompactSelection): Selection {
-  return selection === undefined || 'modelIndex' in selection ? selection : { ids: new Set(selection.ids) };
-}
-
-/** The mesh still has the origin its records were adopted under (records hold world positions and cannot follow a new one). */
-function unmoved(mesh: MeshData, ref: CompactRef): boolean {
-  const now = mesh.origin, then = ref.origin;
-  return (now?.[0] ?? 0) === (then?.[0] ?? 0) && (now?.[1] ?? 0) === (then?.[1] ?? 0) && (now?.[2] ?? 0) === (then?.[2] ?? 0);
-}
-
-function recordedLane(ref: CompactRef): number {
-  const { records } = ref.payload;
-  const at = records.byteOffset + compactRow(ref).vertexStart * COMPACT_RECORD_BYTES + 8;
-  return new DataView(records.buffer, at, 4).getUint32(0, true);
-}
+export type { CompactSelection, SceneCompactHost } from './scene-compact-host.js';
 
 export class SceneCompact {
   private readonly store: CompactGeometryStore;
@@ -185,8 +144,10 @@ export class SceneCompact {
     // A queued mesh may have changed since `take`: its geometry written, or its id, colour, origin or
     // model placement set. Judged again here, it goes to the bucket queue when a page no longer draws it.
     const queue: MeshData[] = [];
+    const scene = this.scene;
+    const pages = scene.quantizedBatchesEnabled && !scene.ephemeralStreamingMode && !scene.geometryReleased;
     for (const mesh of this.queue) {
-      if (this.eligible(mesh)) { queue.push(mesh); continue; }
+      if (pages && this.eligible(mesh)) { queue.push(mesh); continue; }
       materializeCompactMesh(mesh);
       this.scene.meshQueue.push(...this.scene.splitMeshForStreaming(mesh));
     }
@@ -301,6 +262,18 @@ export class SceneCompact {
     const normal = normalize(selection);
     const queued = this.demoteQueued(normal);
     return this.demoteChosen(this.chosen(normal)) || queued;
+  }
+
+  /**
+   * The quantized pipelines went away: every uploaded page moves to buckets,
+   * but queued meshes stay queued, still compact. A device recovery turns the
+   * pipelines off while it rebuilds them, after the lost pages were queued
+   * again; sent to the bucket queue then, they became streaming fragments no
+   * stream would ever finalize. `drain` judges them against the pipelines it
+   * finds (and decodes them only if the pipelines stay off).
+   */
+  demotePages(): boolean {
+    return this.demoteChosen(this.chosen(undefined));
   }
 
   /** Move `chosen` to buckets, keeping refused meshes paged; throws for those when `strict` (an edit of them cannot proceed). */

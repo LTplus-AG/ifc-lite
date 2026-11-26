@@ -581,7 +581,7 @@ export class Scene {
    */
   setQuantizedBatches(enabled: boolean): void {
     this.quantizedBatchesEnabled = enabled;
-    if (!enabled) this.compact?.demote(); // pages are 12-byte records: only the quantized pipelines draw them
+    if (!enabled) this.compact?.demotePages(); // pages are 12-byte records: only the quantized pipelines draw them; the queue waits for the next drain
   }
 
   /** The draw origin of the textured drawable rendering `meshData`, or null

@@ -457,6 +457,40 @@ describe('compact meshes in the scene', () => {
     assert.equal(decoded(), 0);
   });
 
+  it('come back as pages through the renderer\'s whole recovery sequence, and the scene settles', async () => {
+    // device-recovery.ts: prepare (pages queued again), discard, teardown and init turn the quantized pipelines
+    // off, prepare again, pipelines back on, restore, prepare once more. Sent to the bucket queue while the
+    // pipelines were off, the queued meshes became streaming fragments no stream finalized: the scene never
+    // settled after a device loss once a page outlived the load (lane L5 GPU qualification).
+    const lost = fakeGpu(), scene = await newScene();
+    upload(scene, lost, compactBatch(Array.from({ length: 6 }, (_, i) => ({ expressId: 320 + i, at: [i * 2, 0, 0] as [number, number, number], size: 1, color: i % 2 ? GREY : RED }))));
+    scene.finalizeStreaming(lost.device, lost.pipeline);
+    assert.equal(scene.prepareDeviceRecovery().ok, true);
+    scene.discardGpuResourcesForRecovery();
+    scene.setQuantizedBatches(false);
+    scene.setQuantizedBatches(false);
+    assert.equal(scene.prepareDeviceRecovery().ok, true);
+    scene.setQuantizedBatches(true);
+    const next = fakeGpu();
+    scene.restoreGpuResourcesAfterRecovery(next.device, next.pipeline);
+    assert.equal(scene.prepareDeviceRecovery().ok, true);
+    flushAll(scene, next);
+    assert.deepEqual(entitiesOf(pages(scene)), [320, 321, 322, 323, 324, 325]);
+    assert.equal(buckets(scene).length, 0);
+    assert.equal(scene.hasStreamingFragments(), false, 'nothing is left for a finalize that never comes');
+    assert.equal(decoded(), 0);
+  });
+
+  it('decode queued meshes at the next drain when the quantized pipelines stay off', async () => {
+    const gpu = fakeGpu(), scene = await newScene();
+    scene.queueMeshes(compactBatch([{ expressId: 330, at: [0, 0, 0], size: 1, color: GREY }]));
+    scene.setQuantizedBatches(false);
+    assert.equal(scene.hasQueuedMeshes(), true, 'still queued, still compact');
+    flushAll(scene, gpu);
+    assert.equal(pages(scene).length, 0);
+    assert.equal(scene.getMeshDataPieces(330)?.[0].compact, undefined);
+  });
+
   it('recover as pages after a device loss even when a demotion was pending', async () => {
     const lost = fakeGpu(), scene = await newScene();
     upload(scene, lost, compactBatch([{ expressId: 101, at: [0, 0, 0], size: 1, color: GREY }]));

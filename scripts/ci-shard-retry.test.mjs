@@ -391,12 +391,20 @@ test('/code-review on #9788: tests a hook failure skipped are retried but do not
 
 test('/code-review on #9788: a failure located in a file this shard does not run is not retried', () => {
   const file = 'src/hooks/useSandbox.runSupersession.test.tsx';
-  const shard = assignShards([file], viewerManifest, viewerShardCount, process.env.VIEWER_TEST_CONCURRENCY).get(file);
   const tap = join(TMP, 'other-shard.tap');
   writeFileSync(tap, `not ok 1 - ${file}\n# tests 1\n# pass 0\n# fail 1\n# cancelled 0\n# duration_ms 1\n`);
-  const r = cli('viewer', { CI_SHARD_RETRY: 'on', TAP_FILE: tap, TEST_SHARDS: String(viewerShardCount), TEST_SHARD: String((shard + 1) % viewerShardCount) });
-  assert.equal(r.record.plan.retry, false);
-  assert.match(r.record.plan.reason, /this shard does not run/); // @source-text-assertion-ok subject is the plan's reason
+  for (const concurrency of ['', '2']) {
+    const shard = assignShards([file], viewerManifest, viewerShardCount, concurrency).get(file);
+    const r = cli('viewer', {
+      CI_SHARD_RETRY: 'on',
+      TAP_FILE: tap,
+      TEST_SHARDS: String(viewerShardCount),
+      TEST_SHARD: String((shard + 1) % viewerShardCount),
+      VIEWER_TEST_CONCURRENCY: concurrency,
+    });
+    assert.equal(r.record.plan.retry, false);
+    assert.match(r.record.plan.reason, /this shard does not run/); // @source-text-assertion-ok subject is the plan's reason
+  }
 });
 
 test('titles reach the summary table and annotations on one line', () => {

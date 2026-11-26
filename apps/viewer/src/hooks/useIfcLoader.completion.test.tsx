@@ -11,6 +11,7 @@ import { WorkerParser } from '@ifc-lite/parser/browser';
 import { GeometryProcessor } from '@ifc-lite/geometry';
 import { useViewerStore } from '@/store';
 import { advance, waitFor } from '@/test/render.js';
+import { isGeometryLoadStreaming } from '@/lib/pick-gating.js';
 import { launchModelCommand } from '@/lib/commands/modeling/keys-workspace.js';
 import '@/lib/commands/modeling/builtin.js';
 import { startWorkflowRun } from '@/lib/flow/run-session.js';
@@ -55,6 +56,7 @@ describe('owned primary completion and launcher (#6232)', () => {
       await waitFor(() => held.decoded() && !useViewerStore.getState().geometryStreamingActive,
         'real producer finished geometry while its workflow-owned metadata is held');
       assert.equal(settled, false, 'workflow caller waits for its own registration');
+      assert.equal(isGeometryLoadStreaming(useViewerStore.getState()), true, 'picking waits for ID range publication (#11607)');
       const ownedCancel = useViewerStore.getState().activeLoadCanceller;
       assert.ok(ownedCancel);
       await assert.rejects(secondHook.loadFile(blankFile('METRE')), /A workflow is running/);
@@ -64,6 +66,7 @@ describe('owned primary completion and launcher (#6232)', () => {
       held.release();
       await act(async () => pending);
       assert.equal(useViewerStore.getState().models.get(modelId)?.loadState, 'complete');
+      assert.equal(isGeometryLoadStreaming(useViewerStore.getState()), false, 'picking resumes after publication (#11607)');
       assert.equal(useViewerStore.getState().activeLoadCanceller, null);
       run.release();
       assert.equal(useViewerStore.getState().enterModelWorkspace({ modelId }), true);

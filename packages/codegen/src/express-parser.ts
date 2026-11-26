@@ -3,15 +3,10 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * EXPRESS Schema Parser
- *
- * Parses IFC EXPRESS schemas (.exp files) into an AST for code generation.
- *
- * EXPRESS is a data modeling language (ISO 10303-11) used to define IFC schemas.
- * We parse the subset needed for TypeScript code generation:
- * - ENTITY definitions (with attributes, inheritance, WHERE clauses)
- * - TYPE definitions (simple types, enumerations, selects)
- * - Comments
+ * EXPRESS Schema Parser: parses IFC EXPRESS schemas (ISO 10303-11, .exp files)
+ * into an AST for code generation. We parse the subset needed for TypeScript
+ * code generation: ENTITY definitions (with attributes, inheritance, WHERE
+ * clauses), TYPE definitions (simple types, enumerations, selects), comments.
  *
  * The tokenising parser in `./express/` reads the same schemas with their
  * constraint clauses for the validator generator.

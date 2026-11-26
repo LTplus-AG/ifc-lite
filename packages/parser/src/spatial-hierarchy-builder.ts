@@ -28,6 +28,7 @@ import type { EntityRef } from './types.js';
 import { EntityExtractor } from './entity-extractor.js';
 import type { IfcSourceBytes } from './source-bytes.js';
 import { computeCanonicalParent, computeReachableSpatialNodes } from './spatial-hierarchy-canonical-parent.js';
+import { claimThroughSpaces, type SpaceClaim } from './spatial-space-claims.js';
 import {
   type AttributeSource,
   extractLongName,
@@ -52,7 +53,7 @@ interface BuildContext {
   visited: Set<number>;
   /** Storeys with the spatial children they aggregate; the claim-through-spaces
    *  pass runs over these once every direct containment is in. */
-  spaceClaims: Array<{ storeyId: number; childNodes: SpatialNode[] }>;
+  spaceClaims: SpaceClaim[];
   canonicalParent: Map<number, number>; // childId -> its one allowed builder (#4095)
   /** Spatial-structure nodes buildNode will actually visit from IfcProject
    *  (see computeReachableSpatialNodes) - set once IfcProject is known, #4310. */
@@ -133,7 +134,7 @@ export class SpatialHierarchyBuilder {
     ctx.reachableSpatialNodes = computeReachableSpatialNodes(projectIds[0], ctx.canonicalParent);
 
     const projectNode = this.buildNode(projectIds[0], ctx);
-    claimThroughSpaces(ctx);
+    claimThroughSpaces(ctx.spaceClaims, ctx.relationships, ctx.elementToStorey);
 
     if (ctx.byStorey.size === 0) {
       console.warn('[SpatialHierarchyBuilder] No storeys found in spatial hierarchy');
@@ -360,42 +361,5 @@ export class SpatialHierarchyBuilder {
     }
 
     return { expressId, type: typeEnum, name, longName, elevation, children: childNodes, elements: containedElements };
-  }
-}
-
-/**
- * An element contained in a space a storey aggregates (or in a space nested in
- * it) is on that storey too, with its aggregated parts. The edited path
- * (`effectiveStoreyResolver`) already walks through the space; the parsed
- * model must answer the same. It runs once every storey has been visited so
- * direct containment, and the parts of a directly contained element, always
- * win whatever order the storeys were visited in. An element reached through
- * spaces on several storeys (a malformed file) goes to the lowest storey
- * express id, the same rule as `claim_through_spaces` in the Rust data model.
- */
-function claimThroughSpaces(ctx: BuildContext): void {
-  const { relationships, elementToStorey } = ctx;
-  ctx.spaceClaims.sort((a, b) => a.storeyId - b.storeyId);
-  for (const { storeyId, childNodes } of ctx.spaceClaims) {
-    const walk = (nodes: SpatialNode[]): void => {
-      for (const node of nodes) {
-        if (!isSpaceLikeSpatialType(node.type)) continue;
-        for (const elementId of node.elements) {
-          if (!elementToStorey.has(elementId)) elementToStorey.set(elementId, storeyId);
-          const stack: number[] = [elementId];
-          const seen = new Set<number>(stack);
-          while (stack.length > 0) {
-            for (const kid of relationships.getRelated(stack.pop() as number, RelationshipType.Aggregates, 'forward')) {
-              if (seen.has(kid)) continue;
-              seen.add(kid);
-              if (!elementToStorey.has(kid)) elementToStorey.set(kid, storeyId);
-              stack.push(kid);
-            }
-          }
-        }
-        walk(node.children);
-      }
-    };
-    walk(childNodes);
   }
 }

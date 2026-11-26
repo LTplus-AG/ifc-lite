@@ -14,6 +14,7 @@
 #include <numeric>
 #include <random>
 #include <set>
+#include <tuple>
 #include <vector>
 
 namespace {
@@ -424,10 +425,32 @@ void run_mesh_canonical_tests() {
         const std::vector<Tri> around{{0,1,5},{0,5,4},{1,2,6},{1,6,5},{2,3,7},{2,7,6},{3,0,4},{3,4,7}};
         planar_face_is_canonical(ring,around,random,"face with a hole has one canonical triangulation");
         AdapterMesh mesh=variant(ring,around,9,random); canonicalize(mesh,{true});
+        // Each triangle's overlap with the hole (clipped against the square
+        // [1,3]^2) has zero area, and the triangles tile the 16 - 4 = 12 m^2
+        // ring exactly: a centroid test alone misses a triangle such as
+        // (0,0)-(4,0)-(3,3), whose centroid is outside but which covers (2,1.5).
+        double ring_area=0;
         for (size_t t=0;t<mesh.faces.size();++t) {
-            double x=0,y=0; for (unsigned k=0;k<3;++k) { x+=mesh.positions[3*mesh.indices[3*t+k]]/3; y+=mesh.positions[3*mesh.indices[3*t+k]+1]/3; }
-            require(!(x>1 && x<3 && y>1 && y<3),"no triangle covers the hole");
+            std::vector<std::array<double,2>> poly;
+            for (unsigned k=0;k<3;++k) poly.push_back({mesh.positions[3*mesh.indices[3*t+k]],mesh.positions[3*mesh.indices[3*t+k]+1]});
+            auto area2=[](const std::vector<std::array<double,2>>& q) {
+                double a=0; for (size_t i=0;i<q.size();++i) { const auto& u=q[i]; const auto& v=q[(i+1)%q.size()]; a+=u[0]*v[1]-v[0]*u[1]; }
+                return std::fabs(a)/2; };
+            ring_area+=area2(poly);
+            // Sutherland-Hodgman against x>=1, x<=3, y>=1, y<=3.
+            for (const auto& [axis,bound,keep_above]:std::vector<std::tuple<int,double,bool>>{{0,1.,true},{0,3.,false},{1,1.,true},{1,3.,false}}) {
+                std::vector<std::array<double,2>> out;
+                for (size_t i=0;i<poly.size();++i) {
+                    const auto& u=poly[i]; const auto& v=poly[(i+1)%poly.size()];
+                    const bool ui=keep_above ? u[axis]>=bound : u[axis]<=bound, vi=keep_above ? v[axis]>=bound : v[axis]<=bound;
+                    if (ui) out.push_back(u);
+                    if (ui!=vi) { const double f=(bound-u[axis])/(v[axis]-u[axis]); out.push_back({u[0]+f*(v[0]-u[0]),u[1]+f*(v[1]-u[1])}); }
+                }
+                poly=out; if (poly.empty()) break;
+            }
+            require(poly.size()<3 || area2(poly)<1e-12,"no triangle covers any part of the hole");
         }
+        require(std::fabs(ring_area-12)<1e-12,"the triangles tile the ring around the hole exactly");
         // Convex hexagon, initially a fan.
         std::vector<Point> hexagon;
         for (unsigned i=0;i<6;++i) hexagon.push_back({std::cos(i*1.0471975511965976),std::sin(i*1.0471975511965976)*0.7,0});
@@ -763,7 +786,13 @@ void run_mesh_canonical_tests() {
         AdapterMesh cube; for (unsigned i=0;i<8;++i) cube.positions.insert(cube.positions.end(),{double(i&1),double(i>>1&1),double(i>>2&1)});
         cube.indices={0,2,3, 0,3,1, 4,5,7, 4,7,6, 0,1,5, 0,5,4, 2,6,7, 2,7,3, 0,4,6, 0,6,2, 1,3,7, 1,7,5}; cube.faces={0,0,1,1,2,2,3,3,4,4,5,5};
         cube.normals.assign(cube.indices.size()*3,0.);
+        // The bottom face starts on its 1-2 diagonal, not the canonical one, so
+        // a fallback that restored the input split would differ (#10916 review:
+        // with every input diagonal already canonical, this could not tell).
+        cube.indices[0]=0; cube.indices[1]=2; cube.indices[2]=1; cube.indices[3]=1; cube.indices[4]=2; cube.indices[5]=3;
         AdapterMesh canonical=cube; canonicalize(canonical,std::vector<bool>(6,true));
+        AdapterMesh kept_input=cube; order_mesh(kept_input);
+        require(kept_input.indices!=canonical.indices || kept_input.positions!=canonical.positions,"the cube's input split is not already canonical");
         order_mesh(cube); canonical_planar_faces_or_keep(cube,std::vector<bool>(6,true));
         same_bytes(cube,canonical,"a manifold result keeps the canonical split");
     }

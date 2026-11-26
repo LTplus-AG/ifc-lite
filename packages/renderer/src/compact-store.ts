@@ -35,6 +35,7 @@ import { COMPACT_RECORD_BYTES as RECORD_BYTES, compactRow, compactStep, type Com
 import type { BatchedMesh } from './types.js';
 import type { RenderPipeline } from './pipeline.js';
 import type { CompactPageDeps } from './compact-page-deps.js';
+import { dropPageLod, retirePageLod, type PageLod } from './compact-lod.js';
 
 /**
  * The store origin snaps to the coarsest level's step, so every level's quantMin is a multiple of its own
@@ -44,7 +45,7 @@ import type { CompactPageDeps } from './compact-page-deps.js';
 const ORIGIN_STEP = 2 ** -9;
 const MAX_PAGE_VERTICES = 65536;
 
-interface CompactPage {
+export interface CompactPage {
   key: string;
   batch: BatchedMesh;
   window: [number, number, number];
@@ -54,10 +55,12 @@ interface CompactPage {
   indexCapacity: number;
   /** Meshes still drawn from this page; when the last one leaves, the page is destroyed. */
   meshes: Set<MeshData>;
+  /** Its LOD parts and LOD1 buffer (compact-lod.ts); dropped when a mesh is appended. */
+  lod?: PageLod;
 }
 
 /** Where one mesh's triangles sit in its page: retiring it rewrites that index range. */
-interface CompactSlot {
+export interface CompactSlot {
   page: CompactPage;
   /** First index (u16 element) of the mesh in the page's index buffer, and how many it wrote (with padding). */
   indexStart: number;
@@ -83,6 +86,9 @@ export interface CompactStoreStats {
   /** Main-thread ms spent in `append` and `trim`. */
   appendMs: number;
   trimMs: number;
+  /** Bytes of the pages' LOD1 index buffers (compact-lod.ts; not in `allocatedBytes`), and ms spent in its `settlePages`. */
+  lod1Bytes: number;
+  settleMs: number;
 }
 
 export class CompactGeometryStore {
@@ -101,7 +107,7 @@ export class CompactGeometryStore {
   private scratch = new Uint16Array(0);
   readonly stats: CompactStoreStats = {
     meshes: 0, pages: 0, vertices: 0, triangles: 0, usedBytes: 0, allocatedBytes: 0,
-    vertexWrites: 0, indexWrites: 0, grows: 0, appendMs: 0, trimMs: 0,
+    vertexWrites: 0, indexWrites: 0, grows: 0, appendMs: 0, trimMs: 0, lod1Bytes: 0, settleMs: 0,
   };
 
   get size(): number { return this.batches.length; }
@@ -137,6 +143,7 @@ export class CompactGeometryStore {
       // A page holds one lattice level and one window: the key carries the level, the cell names the window.
       const key = `${keyOf(mesh, ref)}~L${level}`;
       const page = this.pageFor(key, mesh, window, step, vertexCount, device, pipeline, nextId, flushRun);
+      dropPageLod(this, page); // its parts no longer cover its indices: built again when the stream settles
       // Vertices: extend the run or start a new one.
       const srcStart = vertexStart * RECORD_BYTES, srcEnd = srcStart + vertexCount * RECORD_BYTES;
       const dst = page.vertexCount * RECORD_BYTES;
@@ -176,6 +183,10 @@ export class CompactGeometryStore {
     this.stats.appendMs += performance.now() - t0;
   }
 
+  /** Every page, in creation order per bucket, and a mesh's slot (compact-lod.ts rewrites both). */
+  *pageList(): IterableIterator<CompactPage> { for (const list of this.pages.values()) yield* list; }
+  slotOf(mesh: MeshData): CompactSlot | undefined { return this.slots.get(mesh); }
+
   /** The meshes `page` (one of `batches`) draws; undefined for any other batch. */
   meshesOn(page: BatchedMesh): ReadonlySet<MeshData> | undefined {
     return this.byBatch.get(page)?.meshes;
@@ -189,11 +200,14 @@ export class CompactGeometryStore {
    */
   retire(meshes: Iterable<MeshData>, device: GPUDevice): void {
     const slots: CompactSlot[] = [];
+    const byPage = new Map<CompactPage, MeshData[]>();
     for (const mesh of meshes) {
       const slot = this.slots.get(mesh);
       if (!slot) continue;
       this.slots.delete(mesh);
       slots.push(slot);
+      const list = byPage.get(slot.page);
+      if (list) list.push(mesh); else byPage.set(slot.page, [mesh]);
       const { batch } = slot.page;
       const at = batch.expressIds.indexOf(mesh.expressId);
       if (at >= 0) { batch.expressIds.splice(at, 1); batch.modelIndices?.splice(at, 1); batch.entryRevision!++; }
@@ -211,11 +225,12 @@ export class CompactGeometryStore {
       device.queue.writeBuffer(slot.page.batch.indexBuffer, slot.indexStart * 2, this.scratch, 0, slot.indexCount);
       this.stats.indexWrites++;
     }
-    for (const page of new Set(slots.map((slot) => slot.page))) if (page.meshes.size === 0) this.destroyPage(page);
+    for (const [page, left] of byPage) if (page.meshes.size === 0) this.destroyPage(page); else retirePageLod(this, page, left, device);
     this.version++;
   }
 
   private destroyPage(page: CompactPage): void {
+    dropPageLod(this, page);
     const list = this.pages.get(page.key);
     const at = list?.indexOf(page) ?? -1;
     if (at >= 0) list!.splice(at, 1);
@@ -273,7 +288,7 @@ export class CompactGeometryStore {
     this.untrimmed = false;
     this.version++;
     // What is held now; the write and timing counters stay cumulative.
-    Object.assign(this.stats, { meshes: 0, pages: 0, vertices: 0, triangles: 0, usedBytes: 0, allocatedBytes: 0 });
+    Object.assign(this.stats, { meshes: 0, pages: 0, vertices: 0, triangles: 0, usedBytes: 0, allocatedBytes: 0, lod1Bytes: 0 });
   }
 
   private windowOf(ref: CompactRef): [number, number, number] {

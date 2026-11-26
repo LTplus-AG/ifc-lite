@@ -5,7 +5,7 @@
 import { beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { MeshData } from '@ifc-lite/geometry';
-import { adoptCompactMeshes, compactHydrationStats, loadCompactGeometry, type CompactPayload } from '@ifc-lite/geometry/compact';
+import { adoptCompactMeshes, compactHydrationStats, loadCompactGeometry, materializeCompactMesh, type CompactPayload } from '@ifc-lite/geometry/compact';
 import { createCompactPages, loadCompactPages } from './compact-page-deps.js';
 import type { SceneCompactHost } from './scene-compact.js';
 import { batchEntityIdAnchor } from './entity-color-table.js';
@@ -69,13 +69,15 @@ const boxCorner = (box: Box, corner: number, axis: number): number => box.at[axi
  * A worker batch of welded boxes in the layout the wasm encoder writes: level 10, every box in the
  * window of cell 0 (16 m below the origin), lanes stamped with the id and colour salt.
  */
-function compactBatch(boxes: readonly Box[]): MeshData[] {
-  const scale = 1024, window = -16 * scale;
+function compactBatch(boxes: readonly Box[], cellX = 0): MeshData[] {
+  const scale = 1024, window = -16 * scale, windowX = (cellX * 32 - 16) * scale;
   const payload: CompactPayload = {
     records: new Uint8Array(boxes.length * 8 * 12), indices: new Uint16Array(boxes.length * 36),
     table: new Uint32Array(boxes.length * 7), windows: new Float64Array(boxes.length * 3).fill(window),
     bounds: new Float64Array(boxes.length * 6), cells: new Int32Array(boxes.length * 3),
   };
+  // `cellX`: the compact cell on x ([32 * cellX - 16, 32 * cellX + 16) m), whose window the boxes are written in.
+  for (let row = 0; row < boxes.length; row++) { payload.windows[row * 3] = windowX; payload.cells[row * 3] = cellX; }
   const view = new DataView(payload.records.buffer);
   boxes.forEach((box, row) => {
     payload.table.set([row, row * 8, 8, row * 36, 36, 10, 24], row * 7);
@@ -84,7 +86,7 @@ function compactBatch(boxes: readonly Box[]): MeshData[] {
     for (let corner = 0; corner < 8; corner++) {
       const at = (row * 8 + corner) * 12;
       for (let axis = 0; axis < 3; axis++) {
-        view.setUint16(at + axis * 2, Math.round(boxCorner(box, corner, axis) * scale) - window, true);
+        view.setUint16(at + axis * 2, Math.round(boxCorner(box, corner, axis) * scale) - (axis === 0 ? windowX : window), true);
       }
       // Outward corner normal, oct-encoded: +-1/3 on each axis folds to bytes 85/170 (or their mirror for -z).
       const sign = [(corner & 1) * 2 - 1, ((corner >> 1) & 1) * 2 - 1, ((corner >> 2) & 1) * 2 - 1];
@@ -772,5 +774,176 @@ describe('compact meshes in the scene', () => {
     assert.deepEqual(entitiesOf(pages(scene)), [51]);
     assert.deepEqual(entitiesOf(buckets(scene)), [52]);
     assert.equal(decoded(), 0);
+  });
+});
+
+/**
+ * 40 small boxes (smaller than a LOD cell: they collapse) and 20 large ones along x. One colour, so the
+ * bucket path files them in one bucket per 32 m chunk cell; a box's id is `firstId + index`.
+ */
+function lodBoxes(firstId: number, x0: number, length: number, color: Rgba = GREY): Box[] {
+  return Array.from({ length: 60 }, (_, i) => ({
+    expressId: firstId + i, at: [x0 + (i * length) / 60, (i % 3) * 0.25, 0] as [number, number, number], size: i % 3 === 0 ? 2 : 0.1, color,
+  }));
+}
+
+/** A scene that builds LOD1 with 32 m chunk cells: pages when `compact`, the bucket path (f32 meshes) otherwise. */
+async function lodScene(compact: boolean): Promise<Scene> {
+  const scene = compact ? await newScene() : new Scene();
+  scene.setQuantizedBatches(true);
+  scene.setSpatialChunking({ cellSize: 32 });
+  scene.setLodBuildsEnabled(true);
+  return scene;
+}
+
+/** The world positions (in lattice steps) of the non-empty triangles of `indices` over a quantized batch's records. */
+function triangles(batch: BatchedMesh, indices: ArrayLike<number>, from = 0, to = indices.length): string[] {
+  const view = new DataView(bytesOf(batch.vertexBuffer).buffer), q = batch.quantized!;
+  const out: string[] = [];
+  for (let t = from; t < to; t += 3) {
+    const corners = [indices[t], indices[t + 1], indices[t + 2]];
+    if (corners[0] === corners[1] || corners[1] === corners[2] || corners[0] === corners[2]) continue;
+    out.push(corners.map((v) => [0, 1, 2].map((axis) => Math.round((batch.origin![axis] + q.min[axis] + view.getUint16(v * 12 + axis * 2, true) * q.step) * 1024)).join(' ')).sort().join('|'));
+  }
+  return out;
+}
+
+const u16 = (buffer: GPUBuffer): Uint16Array => new Uint16Array(bytesOf(buffer).buffer);
+
+/** The same box within half a lattice step: rows carry the source box, the decoded f32 meshes of these fixtures its lattice nodes. */
+function assertSameBox(a: BatchedMesh['bounds'], b: BatchedMesh['bounds'], message: string): void {
+  for (const corner of ['min', 'max'] as const) {
+    for (let axis = 0; axis < 3; axis++) assert.ok(Math.abs(a![corner][axis] - b![corner][axis]) <= 2 ** -11, `${message}: ${corner}[${axis}] ${a![corner][axis]} vs ${b![corner][axis]}`);
+  }
+}
+
+/** A page's LOD1 triangles, over its parts. */
+function pageLod1(page: BatchedMesh): string[] {
+  const lod1 = u16(page.lod1IndexBuffer!);
+  return page.lodParts!.flatMap((part) => triangles(page, lod1, part.lod1Start, part.lod1Start + part.lod1Count));
+}
+
+describe('compact pages take the decisions of the bucket batches they stand in for', () => {
+  it('build each bucket\'s LOD1 over their pages, the triangles the bucket path builds for the same meshes', async () => {
+    const boxes = [...lodBoxes(1000, 0, 28), ...lodBoxes(2000, 0, 28, RED)];
+    const off = await lodScene(false), gpuOff = fakeGpu();
+    const flat = compactBatch(boxes);
+    for (const mesh of flat) materializeCompactMesh(mesh);
+    upload(off, gpuOff, flat);
+    off.finalizeStreaming(gpuOff.device, gpuOff.pipeline);
+    assert.equal(buckets(off).length, 2);
+
+    const on = await lodScene(true), gpuOn = fakeGpu(), decodedOff = decoded();
+    upload(on, gpuOn, compactBatch(boxes));
+    on.finalizeStreaming(gpuOn.device, gpuOn.pipeline);
+    assert.equal(buckets(on).length, 0);
+    assert.equal(decoded() - decodedOff, 0, 'built from the records: no mesh decoded');
+    for (const color of [GREY, RED]) {
+      const bucket = buckets(off).find((b) => b.color === color)!, page = pages(on).find((p) => p.color === color)!;
+      assert.ok(bucket.lod1IndexBuffer && bucket.lod1IndexCount! < bucket.indexCount, 'the bucket batch has a LOD1 range');
+      assert.equal(page.lodParts?.length, 1);
+      const [part] = page.lodParts!;
+      assertSameBox(part.bounds, bucket.bounds, 'the part decides on the bucket batch\'s box');
+      assert.deepEqual({ start: part.lod0Start, count: part.lod0Count }, { start: 0, count: page.indexCount });
+      const bucketLod1 = triangles(bucket, new Uint32Array(bytesOf(bucket.lod1IndexBuffer).buffer, 0, bucket.lod1IndexCount)).sort();
+      assert.deepEqual(pageLod1(page).sort(), bucketLod1);
+      // Full detail is every triangle of the page, as before.
+      assert.equal(triangles(page, u16(page.indexBuffer)).length, 60 * 12);
+    }
+    assert.equal(on.getCompactStats()?.paged, 120);
+  });
+
+  it('take a bucket\'s decision once over every page that holds part of it, on the bucket\'s box', async () => {
+    // Compact cells 0 ([-16, 16) m) and 1 ([16, 48) m) both hold boxes of chunk cell 0 ([0, 32) m); cell 1 also of chunk cell 1.
+    const near = lodBoxes(1000, 0, 15), far = lodBoxes(2000, 17, 14), beyond = lodBoxes(3000, 33, 12);
+    const on = await lodScene(true), gpu = fakeGpu();
+    upload(on, gpu, [...compactBatch(near), ...compactBatch([...far, ...beyond], 1)]);
+    on.finalizeStreaming(gpu.device, gpu.pipeline);
+    const [page0, page1] = pages(on);
+    assert.equal(pages(on).length, 2);
+    assert.equal(page0.lodParts?.length, 1);
+    assert.equal(page1.lodParts?.length, 2, 'the second page holds parts of two buckets');
+    assert.equal(page1.lodParts![0].bounds, page0.lodParts![0].bounds, 'one box for chunk cell 0, shared by both pages');
+    assert.deepEqual(page0.lodParts![0].bounds.min, [0, 0, 0]);
+    assert.ok(page0.lodParts![0].bounds.max[0] > 32, 'it reaches the far page\'s boxes of chunk cell 0');
+    assert.deepEqual(page1.lodParts![1].bounds.min, [33, 0, 0]);
+    // Each part's LOD0 range holds exactly its meshes' triangles, and the parts cover the page.
+    assert.equal(page1.lodParts![0].lod0Count + page1.lodParts![1].lod0Count, page1.indexCount);
+    assert.deepEqual(entitiesOf([page1]), entitiesOf([page1]).filter((id) => id >= 2000));
+
+    const off = await lodScene(false), gpuOff = fakeGpu();
+    const flat = [...compactBatch(near), ...compactBatch([...far, ...beyond], 1)];
+    for (const mesh of flat) materializeCompactMesh(mesh);
+    upload(off, gpuOff, flat);
+    off.finalizeStreaming(gpuOff.device, gpuOff.pipeline);
+    const cell0 = buckets(off).find((b) => b.bounds!.min[0] === 0)!;
+    assertSameBox(cell0.bounds, page0.lodParts![0].bounds, 'chunk cell 0');
+    const bucketLod1 = triangles(cell0, new Uint32Array(bytesOf(cell0.lod1IndexBuffer!).buffer, 0, cell0.lod1IndexCount)).sort();
+    const lod1Of = (page: BatchedMesh, part: number) => triangles(page, u16(page.lod1IndexBuffer!), page.lodParts![part].lod1Start, page.lodParts![part].lod1Start + page.lodParts![part].lod1Count);
+    assert.deepEqual([...lod1Of(page0, 0), ...lod1Of(page1, 0)].sort(), bucketLod1, 'per-page clustering: no entity spans the two pages here');
+  });
+
+  it('move the meshes of a bucket that would stay exact f32 (#9068) to buckets at the end of the stream', async () => {
+    const on = await lodScene(true), gpu = fakeGpu();
+    const exact = compactBatch([{ expressId: 1, at: [0, 0, 0], size: 1, color: GREY }, { expressId: 2, at: [3, 0, 0], size: 1, color: GREY }]);
+    // Row 1 is on level 11: the encoder moved it there because level 10 collapsed it. Its bucket batch would stay f32.
+    exact[1].compact!.payload.table[1 * 7 + 5] = 11;
+    const other = compactBatch([{ expressId: 3, at: [0, 0, 0], size: 1, color: RED }]);
+    upload(on, gpu, [...exact, ...other]);
+    assert.deepEqual(entitiesOf(pages(on)), [1, 2, 3], 'paged while the model streams');
+    on.finalizeStreaming(gpu.device, gpu.pipeline);
+    assert.deepEqual(entitiesOf(pages(on)), [3]);
+    assert.deepEqual(entitiesOf(buckets(on)), [1, 2]);
+    assert.equal(on.getCompactStats()?.decodes.exact, 2);
+    assert.equal(decoded(), 2);
+  });
+
+  it('move the meshes of a bucket wider than the u16 lattice range to buckets', async () => {
+    const on = await lodScene(true), gpu = fakeGpu();
+    // 66 m apart on x, in two compact cells; with chunking off the bucket path files both in one batch.
+    on.setSpatialChunking(null);
+    upload(on, gpu, [...compactBatch([{ expressId: 1, at: [-10, 0, 0], size: 1, color: GREY }]), ...compactBatch([{ expressId: 2, at: [55, 0, 0], size: 1, color: GREY }], 1)]);
+    on.finalizeStreaming(gpu.device, gpu.pipeline);
+    assert.equal(pages(on).length, 0);
+    assert.equal(on.getCompactStats()?.decodes.exact, 2);
+  });
+
+  it('empty a retired entity\'s LOD1 triangles and keep every other range', async () => {
+    const on = await lodScene(true), gpu = fakeGpu();
+    upload(on, gpu, compactBatch(lodBoxes(1000, 0, 28)));
+    on.finalizeStreaming(gpu.device, gpu.pipeline);
+    const [page] = pages(on);
+    const before = pageLod1(page).length;
+    // Box 1000 is large (it keeps LOD1 triangles); a removal retires it.
+    assert.equal(on.removeMeshesForEntity(1000), true);
+    assert.ok(page.lodParts, 'the page keeps its parts');
+    assert.equal(pageLod1(page).length, before - 12, 'its 12 triangles are empty now');
+    assert.equal(on.getCompactStats()?.paged, 59);
+  });
+
+  it('drop a page\'s parts when a mesh joins it, and build them again when that stream ends', async () => {
+    const on = await lodScene(true), gpu = fakeGpu();
+    upload(on, gpu, compactBatch(lodBoxes(1000, 0, 28)));
+    on.finalizeStreaming(gpu.device, gpu.pipeline);
+    const [page] = pages(on);
+    const lod1 = page.lod1IndexBuffer!;
+    upload(on, gpu, compactBatch([{ expressId: 5000, at: [1, 1, 1], size: 3, color: GREY }]));
+    assert.equal(pages(on).length, 1);
+    assert.equal(page.lodParts, undefined, 'the parts no longer cover the page');
+    assert.equal(page.lod1IndexBuffer, undefined);
+    assert.equal(isDestroyed(lod1), true);
+    on.finalizeStreaming(gpu.device, gpu.pipeline);
+    assert.equal(page.lodParts?.[0].lod0Count, page.indexCount);
+    assert.equal(triangles(page, u16(page.indexBuffer)).length, 61 * 12);
+  });
+
+  it('keep pages whole when bucket batches build no LOD1', async () => {
+    const gpu = fakeGpu(), scene = await newScene();
+    scene.setSpatialChunking({ cellSize: 32 });
+    upload(scene, gpu, compactBatch(lodBoxes(1000, 0, 28)));
+    scene.finalizeStreaming(gpu.device, gpu.pipeline);
+    const [page] = pages(scene);
+    assert.equal(page.lodParts, undefined);
+    assert.equal(page.lod1IndexBuffer, undefined);
   });
 });

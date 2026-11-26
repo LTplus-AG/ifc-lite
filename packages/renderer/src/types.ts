@@ -8,6 +8,7 @@
 
 import type { ClipBox } from './clip-types.js';
 import type { MeshUniformSlot } from './mesh-uniform-arena.js';
+import type { LodPart } from './lod-parts.js';
 import type { SectionCapStyleOptions } from './section-cap-types.js';
 export type { ClipBox, ExtraClipPlane } from './clip-types.js';
 
@@ -120,6 +121,9 @@ export interface BatchedMesh {
    *  the configured screen size. Absent = no LOD (draw full detail always). */
   lod1IndexBuffer?: GPUBuffer;
   lod1IndexCount?: number;
+  /** Runs of the index buffers that each decide culling and LOD on their own box (compact pages,
+   *  lod-parts.ts); absent = the batch decides as a whole. `lod1IndexBuffer` then holds their LOD1 ranges. */
+  lodParts?: readonly LodPart[];
   /** 12-byte lattice-quantized vertex buffer (issue #1682 phase 6): when
    *  present, `vertexBuffer` holds uint16x4+u32 records and the batch must
    *  draw through the quantized pipeline variants with these dequantization

@@ -35,7 +35,8 @@ import { CompactGeometryStore, type CompactStoreStats } from './compact-store.js
 import type { RenderPipeline } from './pipeline.js';
 import type { CompactPageDeps } from './compact-page-deps.js';
 import type { BatchedMesh } from './types.js';
-import { normalize, pageMode, pageRefusal, type CompactDecodeReason, type CompactSelection, type PageMode, type SceneCompactHost, type Selection } from './scene-compact-host.js';
+import { chosenMembers, normalize, pageMode, pageRefusal, type CompactDecodeReason, type CompactSelection, type PageMode, type SceneCompactHost, type Selection } from './scene-compact-host.js';
+import { settlePages } from './compact-lod.js';
 
 export type { CompactDecodeReason, CompactSceneStats, CompactSelection, SceneCompactHost } from './scene-compact-host.js';
 
@@ -104,8 +105,7 @@ export class SceneCompact {
   /** Queued meshes, or pages whose buffers still carry growth slack: the stream has not settled. */
   get unsettled(): boolean { return this.queue.length > 0 || this.store.untrimmed; }
   get stats(): CompactStoreStats { return this.store.stats; }
-  /** Meshes currently drawn from pages. */
-  get meshCount(): number { return this.members.size; }
+  get meshCount(): number { return this.members.size; } // meshes currently drawn from pages
 
   /**
    * `flat` followed by the pages. The list is reused while it still says that:
@@ -178,7 +178,7 @@ export class SceneCompact {
     this.scene.triangleCounts.uploaded(queue);
     if (this.trimAfterDrain) {
       this.trimAfterDrain = false;
-      this.store.trim(device);
+      this.trim(device);
     }
     this.scene.bumpPickGeometryRevision();
     // After the pages: a throw here (a bucket's GPU build) leaves these in their buckets, pending, and the pages drawn.
@@ -200,7 +200,14 @@ export class SceneCompact {
   settle(device: GPUDevice, pipeline: RenderPipeline): void {
     this.drain(device, pipeline);
     if (this.queue.length > 0) this.trimAfterDrain = true;
-    else if (this.store.untrimmed) this.store.trim(device);
+    else if (this.store.untrimmed) this.trim(device);
+  }
+
+  /** Trim the pages and take their buckets' decisions (compact-lod.ts): exact groups move to buckets, decoded. */
+  private trim(device: GPUDevice): void {
+    this.store.trim(device);
+    const exact = settlePages(this.store, this.scene, device, this.deps, (meshes) => this.demoteChosen(meshes.map((source) => [source, this.members.get(source)!]), false));
+    if (exact > 0) this.decodes.exact = (this.decodes.exact ?? 0) + exact;
   }
 
   /** Take the page-time registrations of these members out of the Scene's mesh map (they are registered again later). */
@@ -215,14 +222,7 @@ export class SceneCompact {
     }
   }
 
-  /** The members `selection` names, as [source, kept] pairs. */
-  private chosen(selection: Selection): Array<[MeshData, MeshData]> {
-    if (selection === undefined) return [...this.members];
-    if ('modelIndex' in selection) return [...this.members].filter(([source]) => (source.modelIndex ?? 0) === selection.modelIndex);
-    const chosen: Array<[MeshData, MeshData]> = [];
-    for (const id of selection.ids) for (const source of this.byId.get(id) ?? []) chosen.push([source, this.members.get(source)!]);
-    return chosen;
-  }
+  private chosen(selection: Selection): Array<[MeshData, MeshData]> { return chosenMembers(this.members, this.byId, selection); }
 
   /** Take members off the books and retire their page ranges. */
   private unpage(sources: readonly MeshData[]): void {

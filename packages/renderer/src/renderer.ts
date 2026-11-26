@@ -192,6 +192,7 @@ import { VisibilityEpochTracker } from './visibility-epoch.js';
 import { isEntityVisible } from './entity-visibility.js';
 import { ModelBoundsTracker, type ModelBoundsBox } from './model-bounds-tracker.js';
 import { resolveContributionThresholdPx, projectedAabbRadiusPx, projectedInstancedRadiusPx, type CullCameraState } from './contribution-cull.js';
+import { drawBatchIndices, partDraw, PartDraw, type LodPart } from './lod-parts.js';
 import type { FrameStats } from './render-stats.js';
 import { SkyPass } from './sky-pass.js';
 import { skyShaderSource } from './shaders/sky.wgsl.js';
@@ -2305,7 +2306,7 @@ export class Renderer {
                             frameBatchesFrustumCulled++;
                             continue; // Entire batch is off-screen
                         }
-                        if (cullCam) {
+                        if (cullCam && !batch.lodParts) { // a batch with parts decides per part as it draws (lod-parts.ts)
                             const px = projectedAabbRadiusPx(batch.bounds.min, batch.bounds.max, cullCam);
                             // Contribution cull: the whole batch projects below the
                             // pixel threshold — drawing it could change at most a
@@ -2401,6 +2402,7 @@ export class Renderer {
                 // Helper function to render a batch — patches color into the shared template.
                 // `paint` = a depth-writing opaque draw: colour overrides shade it from the
                 // entity colour table (#6076); transparent draws keep their own colour.
+                const choosePart = (p: LodPart): PartDraw => (cullCam ? partDraw(p, projectedAabbRadiusPx(p.bounds.min, p.bounds.max, cullCam), contribThresholdPx, lodScreenPx) : PartDraw.Lod0);
                 const renderBatch = (batch: typeof allBatchedMeshes[0], paint = false) => {
                     if (!batch.bindGroup || !batch.uniformSlot) return;
 
@@ -2442,16 +2444,10 @@ export class Renderer {
                     const useLod1 = batch.lod1IndexBuffer && batch.lod1IndexCount && lodBatches.has(batch.id);
                     pass.setBindGroup(0, batch.bindGroup);
                     pass.setVertexBuffer(0, batch.vertexBuffer);
-                    if (useLod1) {
-                        pass.setIndexBuffer(batch.lod1IndexBuffer!, 'uint32');
-                        pass.drawIndexed(batch.lod1IndexCount!);
-                        frameBatchesAtLod1++;
-                    } else {
-                        pass.setIndexBuffer(batch.indexBuffer, batch.indexFormat ?? 'uint32');
-                        pass.drawIndexed(batch.indexCount);
-                    }
-                    frameDrawCalls++;
-                    frameBatchesDrawn++;
+                    const drawn = drawBatchIndices(pass, batch, !!useLod1, choosePart); // draw calls * 2 + LOD1 bit (lod-parts.ts)
+                    if (drawn & 1) frameBatchesAtLod1++;
+                    frameDrawCalls += drawn >> 1;
+                    if (drawn > 1) frameBatchesDrawn++;
                 };
 
                 // Quantized batches (issue #1682 phase 6) draw through the quantized

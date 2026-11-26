@@ -119,6 +119,20 @@ describe('simplifyIndicesByClustering', () => {
     assert.strictEqual(lod, null);
   });
 
+  it('returns what it kept whatever its size when `unconditional` (a caller judging several runs together)', () => {
+    const small = strip(LOD_MIN_TRIANGLES - 1, 0.01);
+    const floor = simplifyIndicesByClustering(small.vertexData, STRIDE, small.indices, 1.0, { unconditional: true });
+    assert.ok(floor && floor.length > 0 && floor.length < small.indices.length, 'below the triangle floor');
+    const kept = strip(LOD_MIN_TRIANGLES, 10);
+    assert.strictEqual(simplifyIndicesByClustering(kept.vertexData, STRIDE, kept.indices, 0.001, { unconditional: true })?.length, kept.indices.length, 'nothing collapsed');
+    const blob = strip(LOD_MIN_TRIANGLES, 0.000001);
+    assert.strictEqual(simplifyIndicesByClustering(blob.vertexData, STRIDE, blob.indices, 1000, { unconditional: true })?.length, 0, 'everything collapsed');
+    // The same triangles as without it, where the result pays.
+    const dense = strip(LOD_MIN_TRIANGLES, 0.01);
+    assert.deepStrictEqual(simplifyIndicesByClustering(dense.vertexData, STRIDE, dense.indices, 1.0, { unconditional: true }),
+      simplifyIndicesByClustering(dense.vertexData, STRIDE, dense.indices, 1.0));
+  });
+
   it('never merges co-located vertices from DIFFERENT entities (entity-scoped clustering)', () => {
     // Two dense strips occupying the SAME positions, tagged with different
     // per-vertex entity ids. Cross-entity welding would let one entity's

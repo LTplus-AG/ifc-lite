@@ -57,7 +57,7 @@ import { composeInstancedOverrideColor, originalColorWithAlpha } from './instanc
 import { writeInstanceLane } from './instance-lane-write.js';
 import type { GpuInstancePool } from './gpu-instance-pool.js';
 import { SceneInstancePool } from './scene-gpu-instancing.js';
-import { bucketBaseKeyFor, colorKey, type MaterialKeySource, type SpatialChunkingConfig } from './chunk-grid.js';
+import { bucketBaseKeyFor, colorKey, type ChunkAnchorSource, type MaterialKeySource, type SpatialChunkingConfig } from './chunk-grid.js';
 import { cloneOverrides, inheritedQuantization, type BatchQuantization } from './scene-derived-batches.js';
 import { EntityColorTable, entityIdPageKey } from './entity-color-table.js';
 import { VisibilityEpochTracker } from './visibility-epoch.js';
@@ -939,6 +939,10 @@ export class Scene {
    * spans 2^24 ids, which the entity colour table needs to rebuild a full id
    * from the 24-bit vertex lane (`entityIdAnchor`, entity-color-table.ts).
    */
+  /** `bucketBaseKey` of a paged mesh, its chunk cell taken at `anchor` (its first vertex from its records: reading positions decodes it). */
+  compactBucketKey(mesh: MeshData, anchor: ChunkAnchorSource): string {
+    return (mesh.modelIndex ? `model${mesh.modelIndex}~` : '') + entityIdPageKey(mesh.expressId, bucketBaseKeyFor(anchor, this.colorKey(mesh.color, mesh.material), this.spatialChunking));
+  }
   private bucketBaseKey(meshData: MeshData, color?: [number, number, number, number]): string {
     const source = this.modelTranslations.sourceMesh(meshData);
     // #5582: material is the mesh's OWN authored finish regardless of a

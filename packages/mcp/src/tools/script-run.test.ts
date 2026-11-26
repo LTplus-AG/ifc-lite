@@ -72,6 +72,11 @@ async function run(code: string, extra: Record<string, unknown> = {}, tool = scr
   return tool.handler({ code, ...extra }, ctx);
 }
 
+/** The captured log lines' text, [] when there are none. */
+function logTexts(result: CallToolResult): string[] {
+  return ((result.structuredContent?.logs ?? []) as Array<{ text: string }>).map((l) => l.text);
+}
+
 async function runError(code: string, extra: Record<string, unknown> = {}, tool = scriptRunTool) {
   const err = await run(code, extra, tool).then(
     () => { throw new Error('expected the script to fail'); },
@@ -281,7 +286,7 @@ describe('script_run', () => {
     expect((await run(`let n = 0; ({ get x() { ${deep} return n++ ? o : 1; } })`)).structuredContent?.value).toEqual({ x: 1 });
     const logged = await run(`${deep} console.log(o); 1`);
     expect(logged.structuredContent?.value).toBe(1);
-    expect((logged.structuredContent?.logs as Array<{ text: string }>)[0].text).toMatch(/unserialisable: the value is nested deeper/);
+    expect(logTexts(logged)[0]).toMatch(/unserialisable: the value is nested deeper/);
     expect((await run('8 + 8')).structuredContent?.value).toBe(16);
   });
 
@@ -299,14 +304,14 @@ describe('script_run', () => {
     expect((await run('class Qty extends Number {} new Qty(5)')).structuredContent?.value).toBe(5);
     expect((await run('class Box { constructor() { this.a = 1; } } new Box()')).structuredContent?.value).toEqual({ a: 1 });
     const long = await run("console.log({ blob: 'x'.repeat(100000) }); 1");
-    expect((long.structuredContent?.logs as Array<{ text: string }>)[0].text.endsWith('[truncated]')).toBe(true);
+    expect(logTexts(long)[0].endsWith('[truncated]')).toBe(true);
     const result = await run("console.log(1 / 0, 0 / 0); console.log({ err: new Error('boom') }); console.error(new Error('x'.repeat(10000))); 1");
-    const logs = (result.structuredContent?.logs as Array<{ text: string }>).map((l) => l.text);
+    const logs = logTexts(result);
     expect(logs[0]).toBe('Infinity NaN');
-    expect(((await run('console.log(new Date(0)); 1')).structuredContent?.logs as Array<{ text: string }>)[0].text).toBe('1970-01-01T00:00:00.000Z');
+    expect(logTexts(await run('console.log(new Date(0)); 1'))[0]).toBe('1970-01-01T00:00:00.000Z');
     expect(logs[1]).toBe('{"err":"boom"}');
-    expect(((await run("console.log({ id: 12n }); 1")).structuredContent?.logs as Array<{ text: string }>)[0].text).toBe('{"id":"12n"}');
-    expect(((await run("console.log({ n: Object(5n) }); 1")).structuredContent?.logs as Array<{ text: string }>)[0].text).toBe('{"n":"5n"}');
+    expect(logTexts(await run("console.log({ id: 12n }); 1"))[0]).toBe('{"id":"12n"}');
+    expect(logTexts(await run("console.log({ n: Object(5n) }); 1"))[0]).toBe('{"n":"5n"}');
     expect(logs[2].split('\n')[0].endsWith('[truncated]')).toBe(true);
     expect((await runError("throw new Error('out of memory')")).hint).toBeUndefined();
   });
@@ -333,6 +338,19 @@ describe('script_run', () => {
     expect((await run("try { JSON.parse('['.repeat(50000) + ']'.repeat(50000)); 'no' } catch (e) { e.name }")).structuredContent?.value).toBe('SyntaxError');
     expect((await run("JSON.stringify({ a: [1, { b: 2 }] }, null, 1)")).structuredContent?.value).toBe(JSON.stringify({ a: [1, { b: 2 }] }, null, 1));
     expect((await run("JSON.parse('{\"a\":[1,\"]\"]}', (k, v) => (k === '0' ? 9 : v))")).structuredContent?.value).toEqual({ a: [9, ']'] });
+    // Replacer and indent follow native JSON, and a replacer's return value is walked too.
+    for (const code of [
+      "JSON.stringify({ a: 1n }, (k, v) => (typeof v === 'bigint' ? String(v) : v))",
+      "JSON.stringify({ m: new Map([[1, 2]]) }, (k, v) => (v instanceof Map ? [...v] : v))",
+      "JSON.stringify({ a: undefined, b: [undefined] }, (k, v) => (v === undefined ? 'U' : v))",
+      "JSON.stringify({ a: 1, b: 2, c: { a: 3, d: 4 } }, ['a', 'c'], 2)",
+      "JSON.stringify([[], {}, [1, [2]], { x: { y: 1 } }], null, '--')",
+      "JSON.stringify({ d: new Date(0), n: new Number(3) }, null, 4)",
+    ]) {
+      // eslint-disable-next-line no-eval -- the native reference result for the same expression
+      expect((await run(code)).structuredContent?.value).toBe(eval(code));
+    }
+    expect((await run(`${deep} try { JSON.stringify(1, (k, v) => (k === '' ? o : v)); 'no' } catch (e) { e.message }`)).structuredContent?.value).toMatch(/nested deeper than 1000 levels/);
     expect((await run('typeof bim.lens')).structuredContent?.value).toBe('undefined');
     expect((await run('9 + 9')).structuredContent?.value).toBe(18);
   });
@@ -382,7 +400,7 @@ describe('script_run', () => {
   it('does not let a script fake the sandbox truncation marker', async () => {
     const result = await run("console.warn('[log output truncated: limit reached]'); console.log('after'); 1");
     expect(result.structuredContent).toMatchObject({ logs_truncated: false });
-    expect((result.structuredContent?.logs as unknown[]).length).toBe(2);
+    expect(logTexts(result)).toHaveLength(2);
   });
 
   it('caps concurrent scripts per session and per process, and frees the slots', async () => {

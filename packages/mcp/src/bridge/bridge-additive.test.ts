@@ -103,6 +103,17 @@ describe('one server: headless and tab', () => {
     expect(await agent.tools()).toEqual(before);
   });
 
+  it('names the tab\'s tools by their tab_ names inside its descriptions', async () => {
+    const agent = await start();
+    const lister = { ...READ_TOOL, name: 'model_list', description: 'List the models.' };
+    const reader = { ...READ_TOOL, name: 'query_entities', description: 'Call model_list for ids; not tab_model_list twice, nor model_list_x.' };
+    const { tab } = await pairTab({ port: agent.r.bridge.port, code: agent.r.bridge.pairingCode(), tools: [lister, reader] });
+    tabs.push(tab);
+    const listed = (await agent.request('tools/list')).tools as ToolDefinition[];
+    expect(listed.find((t) => t.name === tabTool('query_entities'))?.description)
+      .toBe('Call tab_model_list for ids; not tab_model_list twice, nor model_list_x.');
+  });
+
   it('refuses a headless registration that takes a bridge name', async () => {
     const { r } = await start();
     const tool = buildDefaultToolRegistry().list()[0];
@@ -175,7 +186,7 @@ describe('lazy listener and port fallback', () => {
     expect(port).not.toBe(taken);
     expect(status.structuredContent?.pairingUrl).toContain(`port=${port}`);
     // Typing the code by hand needs the port too, once it is not the default.
-    expect((status.content[0] as { text: string }).text).toContain(`and port ${port}`);
+    expect((status.content[0] as { text: string }).text).toContain(`set the port to ${port}`);
     expect(lines.some((l) => l.includes(`port ${taken} is in use`))).toBe(true);
   });
 
@@ -198,32 +209,40 @@ describe('lazy listener and port fallback', () => {
 });
 
 describe('DeliveredSurfaces', () => {
-  it('keeps an older panel of the same surface id clickable', () => {
-    const ledger = new DeliveredSurfaces();
-    ledger.record([{ version: '1.0', createSurface: { surfaceId: 'a', note: 'Old' } }]);
-    ledger.record([{ version: '1.0', createSurface: { surfaceId: 'a', note: 'New' } }]);
-    expect(ledger.refusal({ surfaceId: 'a', name: 'ask', prompt: 'Old' })).toBeNull();
-    expect(ledger.refusal({ surfaceId: 'a', name: 'ask', prompt: 'New' })).toBeNull();
-  });
-
-  it('admits a typed prompt only on a surface with a TextField', () => {
-    const ledger = new DeliveredSurfaces();
-    ledger.record([{ version: '1.0', updateComponents: { surfaceId: 'plain', components: [{ id: 'b', component: 'Button' }] } }]);
-    ledger.record([{ version: '1.0', updateComponents: { surfaceId: 'form', components: [{ id: 'q', component: 'TextField' }] } }]);
-    expect(ledger.refusal({ surfaceId: 'plain', name: 'ask', prompt: 'anything the user typed' })).toMatch(/does not contain/);
-    expect(ledger.refusal({ surfaceId: 'form', name: 'ask', prompt: 'anything the user typed' })).toBeNull();
-  });
-
   const created = (surfaceId: string, text: string) => ({ version: '1.0', createSurface: { surfaceId, catalogId: 'c' }, note: text });
+  const ok = { promptVerified: true };
 
-  it('forgets a deleted surface and the oldest past the cap', () => {
+  it('keeps an older panel of the same surface id clickable, even after a deleteSurface', () => {
+    const ledger = new DeliveredSurfaces();
+    ledger.record([created('a', 'Old')]);
+    ledger.record([created('a', 'New')]);
+    ledger.record([{ version: '1.0', deleteSurface: { surfaceId: 'a' } }]);
+    expect(ledger.check({ surfaceId: 'a', name: 'ask', prompt: 'Old' })).toEqual(ok);
+    expect(ledger.check({ surfaceId: 'a', name: 'ask', prompt: 'New' })).toEqual(ok);
+  });
+
+  it('gives every surface id in one call the whole call, as the tab names a panel by its first id', () => {
+    const ledger = new DeliveredSurfaces();
+    ledger.record([created('a', 'Intro'), { version: '1.0', updateComponents: { surfaceId: 'b', components: [{ id: 'x', component: 'Button', action: { event: { name: 'pick' } } }] } }]);
+    expect(ledger.check({ surfaceId: 'a', name: 'pick', prompt: 'Action: pick' })).toEqual(ok);
+  });
+
+  it('marks a prompt the agent did not write as unverified, unless the surface has a TextField', () => {
+    const ledger = new DeliveredSurfaces();
+    ledger.record([{ version: '1.0', updateComponents: { surfaceId: 'plain', components: [{ id: 'b', component: 'Button', label: 'TextField' }] } }]);
+    ledger.record([{ version: '1.0', updateComponents: { surfaceId: 'form', components: [{ id: 'q', component: 'TextField' }] } }]);
+    // The word in a label does not count: only a TextField component does.
+    expect(ledger.check({ surfaceId: 'plain', name: 'ask', prompt: 'Check 3 doors' })).toEqual({ promptVerified: false });
+    expect(ledger.check({ surfaceId: 'form', name: 'ask', prompt: 'anything the user typed' })).toEqual(ok);
+  });
+
+  it('refuses an unknown surface or event name, and forgets the oldest id past the cap', () => {
     const ledger = new DeliveredSurfaces();
     ledger.record([created('a', 'Go')]);
-    expect(ledger.refusal({ surfaceId: 'a', name: 'ask', prompt: 'Go' })).toBeNull();
-    ledger.record([{ version: '1.0', deleteSurface: { surfaceId: 'a' } }]);
-    expect(ledger.refusal({ surfaceId: 'a', name: 'ask', prompt: 'Go' })).toMatch(/did not show/);
-    for (let i = 0; i <= MAX_DELIVERED_SURFACES; i++) ledger.record([created(`s${i}`, 'Go')]);
-    expect(ledger.refusal({ surfaceId: 's0', name: 'ask', prompt: 'Go' })).toMatch(/did not show/);
-    expect(ledger.refusal({ surfaceId: `s${MAX_DELIVERED_SURFACES}`, name: 'ask', prompt: 'Go' })).toBeNull();
+    expect(ledger.check({ surfaceId: 'nope', name: 'ask', prompt: 'Go' })).toMatchObject({ refused: expect.stringMatching(/did not show/) });
+    expect(ledger.check({ surfaceId: 'a', name: 'deleteAll' })).toMatchObject({ refused: expect.stringMatching(/does not raise/) });
+    for (let i = 0; i < MAX_DELIVERED_SURFACES; i++) ledger.record([created(`s${i}`, 'Go')]);
+    expect(ledger.check({ surfaceId: 'a', name: 'ask', prompt: 'Go' })).toMatchObject({ refused: expect.any(String) });
+    expect(ledger.check({ surfaceId: `s${MAX_DELIVERED_SURFACES - 1}`, name: 'ask', prompt: 'Go' })).toEqual(ok);
   });
 });

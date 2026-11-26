@@ -350,9 +350,9 @@ export class TabBridge {
       effectivePermission: () => this.effectivePermission(s),
       changed: () => this.changed.fire(),
       uiEvent: (event) => {
-        const refused = this.surfaces.refusal(event);
-        if (refused) this.noisy.note('ui events not matching a shown surface', `dropped a ui-event that ${refused}`);
-        else if (!this.uiEvents.push(event)) this.noisy.note('ui events over the rate limit', 'dropped a ui-event over the rate limit');
+        const checked = this.surfaces.check(event);
+        if ('refused' in checked) this.noisy.note('ui events not matching a shown surface', `dropped a ui-event that ${checked.refused}`);
+        else if (!this.uiEvents.push(event, checked.promptVerified)) this.noisy.note('ui events over the rate limit', 'dropped a ui-event over the rate limit');
       },
     });
   }

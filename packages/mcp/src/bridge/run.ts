@@ -91,6 +91,7 @@ ${TAB_SHOW_UI_TOOL} when listed to deliver an A2UI surface to the tab, and ${BRI
   • tab_* tools the tab marks as changing the model appear only when the user allowed changes in the tab. Changes land in
     the viewer's undo history; saving or writing back to a cloud source stays a user action in the viewer.
   • viewer_* tools (no tab_ prefix) drive this process's own local viewer page, not the user's tab.
+  • A tool name inside a tab_* result or hint (e.g. "call model_list") names the tab's own tool: call it as tab_model_list.
 `.trim();
 
 const CHANNEL_INSTRUCTIONS = `

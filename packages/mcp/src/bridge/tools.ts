@@ -76,10 +76,29 @@ async function forward(bridge: TabBridge, name: string, input: Record<string, un
   }
 }
 
-function forwardedTool(bridge: TabBridge, d: BridgeToolDescriptor): Tool {
+/** Rewrites the tab's own tool names in its text to their `tab_` names, per tool list. */
+const renamers = new WeakMap<readonly BridgeToolDescriptor[], (text: string) => string>();
+
+/**
+ * A tab describes its tools by their tab-side names ("call model_list
+ * first"); over MCP those names are `tab_*`, and the bare one may be a tool
+ * of this process. Whole names only, never one already prefixed.
+ */
+function renamer(tools: readonly BridgeToolDescriptor[]): (text: string) => string {
+  let rename = renamers.get(tools);
+  if (!rename) {
+    const names = tools.map((t) => t.name).sort((a, b) => b.length - a.length).map((n) => n.replace(/[.\-]/g, '\\$&'));
+    const pattern = names.length ? new RegExp(`(?<![A-Za-z0-9_.-])(${names.join('|')})(?![A-Za-z0-9_-])`, 'g') : null;
+    rename = (text) => (pattern ? text.replace(pattern, `${TAB_TOOL_PREFIX}$1`) : text);
+    renamers.set(tools, rename);
+  }
+  return rename;
+}
+
+function forwardedTool(bridge: TabBridge, d: BridgeToolDescriptor, tools: readonly BridgeToolDescriptor[]): Tool {
   return {
     name: mcpName(d.name),
-    description: d.description,
+    description: renamer(tools)(d.description),
     inputSchema: d.inputSchema as JsonSchema,
     scope: d.readOnly ? 'read' : 'mutate',
     ...(d.title !== undefined ? { title: d.title } : {}),
@@ -169,13 +188,15 @@ function statusResult(bridge: TabBridge, pairNewTab: boolean): CallToolResult {
     );
   }
   if (pairing) {
-    // The dialog assumes the default port; a fallback port must be typed too.
-    const portHint = bridge.port === DEFAULT_BRIDGE_PORT ? '' : ` and port ${bridge.port}`;
+    // The dialog assumes the default port; a fallback port must be typed first.
+    const manual = bridge.port === DEFAULT_BRIDGE_PORT
+      ? `or enter the code ${pairing.code} in the viewer's "Connect local agent" dialog.`
+      : `or, in the viewer's "Connect local agent" dialog, set the port to ${bridge.port} (not the default ${DEFAULT_BRIDGE_PORT}) and enter the code ${pairing.code}.`;
     lines.push(
       '',
       `To ${tab ? 'pair a different tab (it replaces the connected one)' : 'connect'}, open this link in the browser tab with the model:`,
       pairing.url,
-      `or enter the code ${pairing.code}${portHint} in the viewer's "Connect local agent" dialog.`,
+      manual,
       'The code works once.',
     );
   }
@@ -229,7 +250,7 @@ export class BridgeToolRegistry extends ToolRegistry {
     const d = tab.tools.find((t) => mcpName(t.name) === name);
     // A hidden (mutating, read-only) tool still resolves, so the call gets a
     // READ_ONLY refusal from `TabBridge.call` rather than "unknown tool".
-    return d ? forwardedTool(this.bridge, d) : null;
+    return d ? forwardedTool(this.bridge, d, tab.tools) : null;
   }
 
   override list(): Tool[] {
@@ -237,7 +258,7 @@ export class BridgeToolRegistry extends ToolRegistry {
     const tab = this.bridge.tab();
     if (!tab) return [...own, this.status];
     const visible = tab.permission === 'read-only' ? tab.tools.filter((t) => t.readOnly) : tab.tools;
-    return [...own, this.status, ...(tab.a2uiSurface ? [this.surface, this.events] : []), ...visible.map((d) => forwardedTool(this.bridge, d))];
+    return [...own, this.status, ...(tab.a2uiSurface ? [this.surface, this.events] : []), ...visible.map((d) => forwardedTool(this.bridge, d, tab.tools))];
   }
 
   override has(name: string): boolean {

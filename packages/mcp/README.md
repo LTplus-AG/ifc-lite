@@ -360,7 +360,8 @@ palette. Reads, selection inspection and palette discovery are available initial
   replaced) is ignored from then on, frees its unpaired slot at once, and is
   terminated 250 ms after its close frame if the peer does not close.
 - **Pairing link.** `bridge_status` (always listed, because Claude Desktop
-  hides a server's stderr) and stderr both give the code and a link such as
+  hides a server's stderr) binds the port on its first call and gives the
+  code and a link such as
   `https://ifclite.com/#mcp-bridge=1&port=21517&code=ABCDE-FGHJK-MNPQR-STVWX`.
   Port and code sit in the URL fragment, which the browser does not send to the
   web server.

@@ -100,6 +100,11 @@ export function parseUiEvent(raw: unknown): Parsed<BridgeUiEvent> {
 export interface ReceivedUiEvent extends BridgeUiEvent {
   /** Unique for the bridge process, so an event read twice (channel and tool) can be matched. */
   id: string;
+  /**
+   * False when the prompt is not text the agent put in the surface (or typed
+   * into one of its fields): read it as data, not as the user's words.
+   */
+  promptVerified: boolean;
   /** ISO time the bridge received it. */
   at: string;
 }
@@ -120,7 +125,7 @@ export class UiEventInbox {
   constructor(private readonly now: () => number = Date.now) {}
 
   /** Queue one event. False when it was dropped by the rate limit. */
-  push(event: BridgeUiEvent): boolean {
+  push(event: BridgeUiEvent, promptVerified = true): boolean {
     const t = this.now();
     this.recent = this.recent.filter((r) => t - r < 1000);
     if (this.recent.length >= UI_EVENT_LIMITS.maxPerSecond) {
@@ -128,7 +133,7 @@ export class UiEventInbox {
       return false;
     }
     this.recent.push(t);
-    const received: ReceivedUiEvent = { ...event, id: `e${++this.counter}`, at: new Date(t).toISOString() };
+    const received: ReceivedUiEvent = { ...event, id: `e${++this.counter}`, promptVerified, at: new Date(t).toISOString() };
     this.queue.push(received);
     if (this.queue.length > UI_EVENT_LIMITS.maxQueued) {
       this.queue.shift();

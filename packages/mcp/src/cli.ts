@@ -140,14 +140,6 @@ async function main(): Promise<void> {
   if (opts.transport === 'stdio') {
     // Before the first model loads: the engine logs while it works.
     routeConsoleToStderr();
-    for (const file of opts.files) {
-      const m = await loadIfcModel(resolve(file), { allowedPaths: opts.allowedPaths });
-      registry.add(m);
-      // Use stderr — stdout is sacred for the JSON-RPC channel.
-      process.stderr.write(`[ifc-lite-mcp] loaded ${m.name} (${m.id}) — ${fmtInt(m.store.entityCount)} entities\n`);
-      for (const w of m.scanWarnings ?? []) process.stderr.write(`[ifc-lite-mcp] warning: ${m.name}: ${w}\n`);
-    }
-
     const config = {
       readOnly: opts.readOnly,
       bsddEndpoint: opts.bsdd,
@@ -170,6 +162,14 @@ async function main(): Promise<void> {
       : null;
     if (opts.bridge && !bridged) return;
     const server = bridged?.server ?? createMCPServer({ version: VERSION, registry, scope, config, logger });
+    // After the bridge started, so a bad bridge flag fails before a long load.
+    for (const file of opts.files) {
+      const m = await loadIfcModel(resolve(file), { allowedPaths: opts.allowedPaths });
+      registry.add(m);
+      // Use stderr — stdout is sacred for the JSON-RPC channel.
+      process.stderr.write(`[ifc-lite-mcp] loaded ${m.name} (${m.id}) — ${fmtInt(m.store.entityCount)} entities\n`);
+      for (const w of m.scanWarnings ?? []) process.stderr.write(`[ifc-lite-mcp] warning: ${m.name}: ${w}\n`);
+    }
     const transport = new StdioTransport();
     await transport.connect(server);
     if (bridged) {

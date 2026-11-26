@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { useState } from 'react';
-import { exportSectionedStep, StepExporter, type SectionExportOptions, type MergeModelInput, type IfcSchemaVersion } from '@ifc-lite/export';
+import { exportSectionedStep, isGeorefRefusal, type SectionExportOptions, type MergeModelInput, type IfcSchemaVersion } from '@ifc-lite/export';
 import { IfcParser } from '@ifc-lite/parser';
 import { renderFrameWorldOffset, viewerToIfcAxes } from '@ifc-lite/geometry/world-frame';
 import { sharedRenderFrame } from '@/lib/render-frame/sharedRenderFrame';
@@ -59,7 +59,7 @@ type MergeVisibility = { hidden: Map<string, Set<number>>; isolated: Map<string,
 
 /** Crop each source before merging; visibility is consumed in the original source namespace.
  * The merge never sees a cropped source's export warnings, so they are returned here,
- * each named for its model since two sources can report the same line (#10606). */
+ * each named for its model since two sources can report the same line (#10606), the way the merge names its own. */
 export async function sectionMergeInputs(
   inputs: MergeModelInput[],
   visibility: MergeVisibility,
@@ -72,14 +72,24 @@ export async function sectionMergeInputs(
   for (const input of inputs) {
     const options = optionsFor(input.id);
     if (!options) { result.push(input); continue; }
-    const source = await new StepExporter(input.dataStore, input.mutationView).exportAsync({
+    const { StepExporter, mergeWarningLabel } = await import('./step-export-runtime');
+    const label = mergeWarningLabel(input, inputs);
+    const crop = (georefMutations: MergeModelInput['georefMutations']) => new StepExporter(input.dataStore, input.mutationView).exportAsync({
       schema, visibleOnly: true, hiddenEntityIds: visibility.hidden.get(input.id), isolatedEntityIds: visibility.isolated.get(input.id),
+      georefMutations,
     });
-    for (const warning of source.stats.warnings) warnings.push(`${input.name}: ${warning}`);
+    // As the merge bake does: an edit the exporter refuses (IFC2X3, a partial position) is left out and named.
+    const source = await crop(input.georefMutations).catch((error: unknown) => {
+      if (!input.georefMutations || !isGeorefRefusal(error)) throw error;
+      warnings.push(`${label}: Georeferencing edits were not written. ${error.message}`);
+      return crop(undefined);
+    });
+    for (const warning of source.stats.warnings) warnings.push(`${label}: ${warning}`);
     const cropped = await exportSectionedStep(source.content, options);
     const buffer = new ArrayBuffer(cropped.content.byteLength);
     new Uint8Array(buffer).set(cropped.content);
-    result.push({ ...input, mutationView: undefined, dataStore: await new IfcParser().parseColumnar(buffer, { disableWorkerScan: true }) });
+    // The cropped bytes carry the edits, so the merge must not apply them again.
+    result.push({ ...input, mutationView: undefined, georefMutations: undefined, dataStore: await new IfcParser().parseColumnar(buffer, { disableWorkerScan: true }) });
     // The cropped store may reuse a removed product id for new geometry.
     // Its original selection was applied above and cannot filter this namespace.
     remainingVisibility.hidden.delete(input.id);

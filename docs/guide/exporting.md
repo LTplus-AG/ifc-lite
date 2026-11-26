@@ -777,7 +777,10 @@ Supports all 202 `IfcProduct` subtypes from IFC4 and IFC4X3 schemas, including i
 Merge multiple IFC models into a single file. The models are passed to the
 constructor; `export()` (sync) or `exportAsync()` (yields to the event loop for
 progress reporting, and required when any model carries pending mutation-view
-edits to bake) takes the options:
+edits to bake) takes the options. A model's `georefMutations` (the
+`StepExportOptions` shape) are baked the same way, so they too need
+`exportAsync()`; a refused or partial georeference edit is named in
+`stats.warnings`.
 
 ```typescript
 import { MergedExporter } from '@ifc-lite/export';
@@ -793,6 +796,12 @@ const result = await exporter.exportAsync({
 });
 await saveFile('merged.ifc', result.content);
 ```
+
+Use Rust’s `ifc_lite_export::try_export_merged` to handle merge failures with
+`std::io::Result<String>`. If an IFC2X3 downgrade leaves an
+`IfcPropertyBoundedValue` without either bound, the error identifies the record
+and `WR22`. The string-returning `export_merged` logs the refusal to stderr
+and returns an empty string.
 
 #### Mixed length units
 
@@ -981,6 +990,10 @@ USD-*flavored JSON*. The stage is Z-up (`upAxis = "Z"`, `metersPerUnit = 1`) and
 IFC spatial hierarchy as `Xform` prims, with `UsdGeomMesh` geometry, `UsdPreviewSurface`
 materials, and IFC metadata (`ifc:class`, `ifc:GlobalId`, property/quantity sets) as custom
 attributes. It opens in usdview, Blender, and Omniverse.
+
+USD materials preserve authored metallic and roughness for both baked meshes
+and mapped occurrences. Occurrences can share a geometry prototype while
+binding different materials, even when their colours match.
 
 ```bash
 # whole-model export (entity filters do not apply to USD)

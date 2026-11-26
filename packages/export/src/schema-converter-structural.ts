@@ -21,8 +21,11 @@ function stiffnessType(entity: string, index: number): string | null {
   return null;
 }
 
-/** Same semantic stiffness fields; only their EXPRESS names/value wrappers changed. */
-export function isStructuralBoundaryCondition(entity: string): boolean { return stiffnessType(entity, 1) !== null; }
+/** IFC2X3's stiffness fields keep their position and units in IFC4 and IFC4X3. */
+export function isStructuralStiffnessConversion(entity: string, from: string, to: string): boolean {
+  const other = from === 'IFC2X3' ? to : to === 'IFC2X3' ? from : undefined;
+  return (other === 'IFC4' || other === 'IFC4X3') && stiffnessType(entity, 1) !== null;
+}
 
 /** The loss reported when IFC2X3's required DestabilizingLoad is written as .F. for an unknown value. */
 export const destabilizingUnknown = (entity: string): string => `${entity}.DestabilizingLoad is unknown; IFC2X3 requires a boolean, so the writer substitutes .F.`;
@@ -37,13 +40,12 @@ export function structuralAttributes(entity: string, args: readonly string[], fr
     // IFC4's analytical assignment retains both objects, but changes relationship kind.
     return `${args.slice(0, 4).join(',')},(${args[5]}),$,${args[4]}`;
   }
-  if (!((from === 'IFC2X3' && to === 'IFC4') || (from === 'IFC4' && to === 'IFC2X3'))) return null;
-  if (stiffnessType(entity, 1)) {
+  if (isStructuralStiffnessConversion(entity, from, to)) {
     const values = [...args];
     for (let i = 1; i < values.length; i++) {
       const measure = stiffnessType(entity, i), token = values[i].trim();
       if (!measure || scalarEquals(token, '$')) continue;
-      if (to === 'IFC4') {
+      if (from === 'IFC2X3') {
         // IFC2X3's -1 sentinel means rigid. Zero retains its measure encoding.
         values[i] = parseStepNumber(token) === -1 ? 'IFCBOOLEAN(.T.)' : `${measure}(${token})`;
       } else {
@@ -59,6 +61,7 @@ export function structuralAttributes(entity: string, args: readonly string[], fr
     }
     return values.join(',');
   }
+  if (!((from === 'IFC2X3' && to === 'IFC4') || (from === 'IFC4' && to === 'IFC2X3'))) return null;
   if (entity !== 'IFCSTRUCTURALLINEARACTION' && entity !== 'IFCSTRUCTURALPLANARACTION') return null;
   const name = entity === 'IFCSTRUCTURALLINEARACTION' ? 'IfcStructuralLinearAction' : 'IfcStructuralPlanarAction';
   const slots = (schema: 'IFC2X3' | 'IFC4') => getSchemaRegistryForVersion(schema).entities[name]?.allAttributes?.map(a => a.name);

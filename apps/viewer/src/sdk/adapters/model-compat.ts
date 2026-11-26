@@ -14,23 +14,60 @@
  * single-model state when the `models` Map is empty.
  */
 
+import { mutationViewBaseStore } from '@/utils/configureMutationView';
 import type { IfcDataStore } from '@ifc-lite/parser';
+import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { SchemaVersion } from '@ifc-lite/sdk';
 import type { ViewerState } from '../../store/index.js';
 
 /** Sentinel model ID used for the legacy single-model path */
 export const LEGACY_MODEL_ID = 'default';
 
-/**
- * The id `normalizeMutationModelId` stamps onto the refs the SDK store adapter
- * mints while the legacy single-model path is active, and the key its mutation
- * views are registered under.
- *
- * It lives here rather than beside that normalizer because `getModelForRef`
- * has to accept it and `mutation-view.ts` already imports this module (#5234);
- * `mutation-view.ts` re-exports it so existing importers are unaffected.
- */
+/** Key used for the mutation view in a legacy single-model session. */
 export const LEGACY_MUTATION_MODEL_ID = '__legacy__';
+
+export const LEGACY_MUTATION_MODEL_IDS: readonly string[] = [LEGACY_MUTATION_MODEL_ID, LEGACY_MODEL_ID, 'legacy'];
+
+/** Resolve historical keys in the same order for every legacy model reader. */
+export function getLegacyMutationView<T>(views: ReadonlyMap<string, T>): T | undefined {
+  for (const id of LEGACY_MUTATION_MODEL_IDS) {
+    const view = views.get(id);
+    if (view !== undefined) return view;
+  }
+  return undefined;
+}
+
+type LegacySourceState = Pick<ViewerState, 'models' | 'ifcDataStore'>;
+
+/** Real federated identifiers keep their own overlay, even if they spell an old alias. */
+export function isLegacySourceRef(state: LegacySourceState, modelId: string): boolean {
+  return LEGACY_MUTATION_MODEL_IDS.includes(modelId)
+    && (state.models.size === 0 || (!!state.ifcDataStore && !state.models.has(modelId)));
+}
+
+/** Resolve the overlay paired with the legacy source during single-model
+ * loading and while another model is being added to the federation. */
+export function getLegacySourceMutationView(
+  state: LegacySourceState & { mutationViews: ReadonlyMap<string, MutablePropertyView> },
+) {
+  for (const alias of LEGACY_MUTATION_MODEL_IDS) {
+    const view = state.mutationViews.get(alias);
+    if (!view) continue;
+    if (!isLegacySourceRef(state, alias)) continue;
+    const viewStore = mutationViewBaseStore(view);
+    if (state.ifcDataStore && viewStore && viewStore !== state.ifcDataStore) continue;
+    return view;
+  }
+  return null;
+}
+
+export function isLegacyMutationRef(state: Pick<ViewerState, 'models'>, modelId: string): boolean {
+  return state.models.size === 0 && LEGACY_MUTATION_MODEL_IDS.includes(modelId);
+}
+
+export function normalizeMutationModelId(state: Pick<ViewerState, 'models'>, modelId: string): string {
+  return isLegacyMutationRef(state, modelId) ? LEGACY_MUTATION_MODEL_ID : modelId;
+}
 
 /** Minimal model shape needed by the SDK adapters.
  *
@@ -57,15 +94,8 @@ export function getModelForRef(state: Pick<ViewerState, 'models' | 'ifcDataStore
   const model = state.models.get(modelId);
   if (model) return model;
 
-  // Legacy single-model fallback. `__legacy__` belongs in this list because
-  // the store adapter hands it back on every ref it mints in single-model mode
-  // (#5234): without it, feeding such a ref's `modelId` to any reader built on
-  // this resolver — `bim.cost`, the mutation-view attribute reader — failed
-  // with "Unknown modelId '__legacy__'" for an id this adapter itself issued.
-  const legacyAlias = modelId === LEGACY_MODEL_ID
-    || modelId === 'legacy'
-    || modelId === LEGACY_MUTATION_MODEL_ID;
-  if (legacyAlias && state.models.size === 0 && state.ifcDataStore) {
+  // A top-level source may remain available while another model enters the federation.
+  if (isLegacySourceRef(state, modelId) && state.ifcDataStore) {
     return buildLegacyModel(state.ifcDataStore);
   }
 

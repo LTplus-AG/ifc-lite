@@ -14,19 +14,20 @@
 import { loadBcfPanel, loadValidationPanel, loadLensPanel, loadGanttPanel, loadListPanel, loadExtensionsPanel } from './deferred-panel-modules';
 import { DeferredPanel } from './DeferredPanel';
 import { AssistantSourceContext } from '@/components/viewer/assistant/AssistantAction';
-import { lazy, Suspense, type ReactNode } from 'react';
+import { Suspense, type ReactNode } from 'react';
+import { lazyChunk } from '@/lib/lazy-chunk';
 import { panelModelGateMode, type WorkspacePanelId } from './registry';
 import { ChunkErrorBoundary } from '@/components/ChunkErrorBoundary';
 import { HierarchyPanel } from '@/components/viewer/HierarchyPanel';
 import { PropertiesPanel } from '@/components/viewer/PropertiesPanel';
-const InfluxPanel = lazy(() => import('@/components/viewer/influx/InfluxPanel').then(module => ({ default: module.InfluxPanel })));
+const InfluxPanel = lazyChunk(() => import('@/components/viewer/influx/InfluxPanel').then(module => ({ default: module.InfluxPanel })));
 
-const ComparePanel = lazy(() => import('@/components/viewer/ComparePanel').then(module => ({ default: module.ComparePanel })));
-const ClashPanel = lazy(() => import('@/components/viewer/ClashPanel').then(module => ({ default: module.ClashPanel })));
+const ComparePanel = lazyChunk(() => import('@/components/viewer/ComparePanel').then(module => ({ default: module.ComparePanel })));
+const ClashPanel = lazyChunk(() => import('@/components/viewer/ClashPanel').then(module => ({ default: module.ClashPanel })));
 import { RoomPanel } from '@/components/viewer/RoomPanel';
 import { ZonesPanel } from '@/components/viewer/ZonesPanel';
 // Opened on demand; kept off the boot path (eager-bundle ratchet, #8341).
-const LoadReportPanel = lazy(() => import('@/components/viewer/LoadReportPanel').then((m) => ({ default: m.LoadReportPanel })));
+const LoadReportPanel = lazyChunk(() => import('@/components/viewer/LoadReportPanel').then((m) => ({ default: m.LoadReportPanel })));
 import { ChangesPanel } from '@/components/viewer/ChangesPanel';
 import { ChangeSetPanel } from '@/components/viewer/change-sets/ChangeSetPanel';
 import { CostPanel } from '@/components/viewer/CostPanel';
@@ -41,39 +42,39 @@ import { loadIdsStudioRuntime } from '@/lib/ids-studio/runtime-loader';
 import { useViewerStore } from '@/store';
 // Lazy: the Layers panel pulls in @ifc-lite/merge (engine + blake3); a
 // dynamic chunk keeps it out of the initial bundle until first opened.
-const LayersPanel = lazy(() =>
+const LayersPanel = lazyChunk(() =>
   import('@/components/viewer/layers/LayersPanel').then((m) => ({ default: m.LayersPanel })),
 );
 // Lazy: the Sources panel (cloud-source browser + provider plumbing) is only
 // needed once a user opens it — keep it out of the first-paint bundle.
-const SourcesPanel = lazy(() =>
+const SourcesPanel = lazyChunk(() =>
   import('@/components/sources/SourcesPanel').then((m) => ({ default: m.SourcesPanel })),
 );
 
 // Lazy: the Point Clouds panel carries scan-to-BIM detection, review and creation (#6894);
 // it stays out of the first-paint bundle until first opened.
-const PointCloudPanel = lazy(() => import('@/components/viewer/PointCloudPanel').then((m) => ({ default: m.PointCloudPanel })));
+const PointCloudPanel = lazyChunk(() => import('@/components/viewer/PointCloudPanel').then((m) => ({ default: m.PointCloudPanel })));
 // Lazy: the Charts panel pulls in ECharts; it stays out of the first-paint bundle.
-const ChartsPanel = lazy(() => import('@/components/viewer/charts/ChartsPanel').then((m) => ({ default: m.ChartsPanel })));
-const DocumentPanel = lazy(() => import('@/components/viewer/document/DocumentPanel').then((m) => ({ default: m.DocumentPanel })));
+const ChartsPanel = lazyChunk(() => import('@/components/viewer/charts/ChartsPanel').then((m) => ({ default: m.ChartsPanel })));
+const DocumentPanel = lazyChunk(() => import('@/components/viewer/document/DocumentPanel').then((m) => ({ default: m.DocumentPanel })));
 // Lazy: the Flow panel pulls in React Flow; it stays out of the first-paint bundle.
-const FlowPanel = lazy(() => import('@/components/viewer/flow/FlowPanel').then((m) => ({ default: m.FlowPanel })));
+const FlowPanel = lazyChunk(() => import('@/components/viewer/flow/FlowPanel').then((m) => ({ default: m.FlowPanel })));
 // Lazy: the drawing view pulls in its canvas, export and underlay code; its runtime
 // (generation, persistence) is DrawingRuntimeHost, mounted eagerly in ViewportContainer.
-const DrawingPanel = lazy(() => import('@/components/viewer/drawing/DrawingPanel').then((m) => ({ default: m.DrawingPanel })));
+const DrawingPanel = lazyChunk(() => import('@/components/viewer/drawing/DrawingPanel').then((m) => ({ default: m.DrawingPanel })));
 // Lazy: the filmstrip of saved basket views (#5508), out of the first-paint bundle like the other bottom panels.
-const PresentationPanel = lazy(() => import('@/components/viewer/presentation/PresentationPanel').then((m) => ({ default: m.PresentationPanel })));
+const PresentationPanel = lazyChunk(() => import('@/components/viewer/presentation/PresentationPanel').then((m) => ({ default: m.PresentationPanel })));
 
-const ScriptPanel = lazy(() => import('@/components/viewer/ScriptPanel').then(m => ({ default: m.ScriptPanel })));
+const ScriptPanel = lazyChunk(() => import('@/components/viewer/ScriptPanel').then(m => ({ default: m.ScriptPanel })));
 
-const AssistantPanel = lazy(() => import('@/components/viewer/assistant/AssistantPanel').then(m => ({ default: m.AssistantPanel })));
+const AssistantPanel = lazyChunk(() => import('@/components/viewer/assistant/AssistantPanel').then(m => ({ default: m.AssistantPanel })));
 
-const SemanticPanel = lazy(() => import('@/components/viewer/SemanticPanel').then(m => ({ default: m.SemanticPanel })));
+const SemanticPanel = lazyChunk(() => import('@/components/viewer/SemanticPanel').then(m => ({ default: m.SemanticPanel })));
 function SemanticPanelBody() {
   return <ChunkErrorBoundary label="Linked records panel"><Suspense fallback={null}><SemanticPanel /></Suspense></ChunkErrorBoundary>;
 }
 
-const ReviewPanel = lazy(() => import('@/components/viewer/review/ReviewPanel').then(m => ({ default: m.ReviewPanel })));
+const ReviewPanel = lazyChunk(() => import('@/components/viewer/review/ReviewPanel').then(m => ({ default: m.ReviewPanel })));
 function ReviewPanelBody() {
   return <ChunkErrorBoundary label="Review panel"><Suspense fallback={null}><ReviewPanel /></Suspense></ChunkErrorBoundary>;
 }
@@ -81,7 +82,7 @@ function ReviewPanelBody() {
 // Lazy: IDS Studio pulls in the authoring core, lint rules and CodeMirror (IDS-030).
 // The panel mounts only once the store's authoring runtime is installed, so the
 // Studio slice's synchronous actions are always ready when the panel calls them.
-const IdsStudioPanel = lazy(() => Promise.all([
+const IdsStudioPanel = lazyChunk(() => Promise.all([
   import('@/components/viewer/ids-studio/IdsStudioPanel'),
   loadIdsStudioRuntime(),
 ]).then(([m]) => ({ default: m.IdsStudioPanel })));
@@ -89,7 +90,7 @@ function IdsStudioPanelBody() {
   return <ChunkErrorBoundary label="IDS Studio panel"><Suspense fallback={null}><IdsStudioPanel /></Suspense></ChunkErrorBoundary>;
 }
 
-const AppearancePanel = lazy(() => import('@/components/viewer/appearance/AppearancePanel').then(m => ({ default: m.AppearancePanel })));
+const AppearancePanel = lazyChunk(() => import('@/components/viewer/appearance/AppearancePanel').then(m => ({ default: m.AppearancePanel })));
 
 // Each lazy panel needs its own stable host identity. Reusing the boundary
 // itself as the body can retain another panel's failed-chunk state on a switch.

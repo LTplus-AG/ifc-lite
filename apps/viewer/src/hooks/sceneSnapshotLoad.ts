@@ -13,9 +13,10 @@ import { BufferReader, readInstancedShards, SectionType, type openGeometryChunks
 import { decodeSceneSnapshot, type Renderer, type SceneContents, type SceneSnapshot } from '@ifc-lite/renderer';
 import { decodeInstancedShard, type CoordinateInfo, type MeshData } from '@ifc-lite/geometry';
 import type { LoadTrace } from '@ifc-lite/load-trace';
+import type { StoreApi } from 'zustand';
 import { useViewerStore } from '../store/index.js';
 import { noteInstancedShardModel } from '../store/instancedShardModels.js';
-import { enqueueInstancedShards, instancedShardGeneration } from '../store/instancedShardQueue.js';
+import { announceAdoptedInstancedShards, completeInstancedShardSupply, enqueueInstancedShards, instancedShardModelEpoch, instancedShardSupplyCurrent, instancedShardSupplyToken, unattestInstancedShards } from '../store/instancedShardQueue.js';
 import { fitCameraToSnapshot, lastFinalFitBounds, sceneSnapshotKey, type SnapshotCameraFit, setPendingColdCapture, setPendingSceneSnapshot, withdrawPendingColdCapture, withdrawPendingSceneSnapshot } from '../components/viewer/sceneSnapshotOwnership.js';
 import { readPerfFlag } from '../lib/perf/flags.js';
 import { tapSceneSnapshot } from '../lib/perf/sceneIdentityTap.js';
@@ -23,18 +24,27 @@ import { recordFirstVisible } from '../lib/perf/loadTrace.js';
 import { clearSceneSnapshot, type CacheResult } from '../services/cacheService.js';
 import { isQuantizedEnabled } from '../utils/quantizedConfig.js';
 import { getGlobalRenderer } from './useBCF.js';
+import { clearSnapshotTypeIndex, installSnapshotTypeIndex } from '../components/viewer/snapshot-type-index.js';
 import type { DecodedCacheMetadata } from './ifcCacheDecode.js';
 import type { CapturedScene, SnapshotEntry } from './sceneSnapshotWrite.js';
 
 /** What the viewer stores beside the batches (sceneSnapshotWrite.ts): the fit they were finalized under, and where the shards are. */
 interface SnapshotHostData extends SnapshotCameraFit {
   shards: { offset: number; size: number } | null;
+  /** The captured meshes' type index (`TypeHiddenIndex.metadataOf`); entries without one are not adopted. */
+  typeIndex?: unknown;
 }
 
 export interface AdoptedSceneSnapshot {
   adoption: object;
   shards: ArrayBuffer[];
+  /** The model's shard supply when adoption BEGAN (before any await): a reset or discard since supersedes these shards. */
+  supply: ReturnType<typeof instancedShardSupplyToken>;
+  /** Every shard reached the scene; a failed upload means nothing may attest the set (#10264). */
+  shardsUploaded: boolean;
   fit: SnapshotCameraFit;
+  /** This load's snapshot type index (snapshot-type-index.ts), cleared once its meshes are published. */
+  typeToken: object;
   firstVisible: Promise<void>;
 }
 
@@ -45,8 +55,7 @@ function snapshotsEnabled(): boolean {
 }
 
 function snapshotKey(scene: SceneContents): string {
-  const { typeVisibility, typeViewMode, structuralViewMode } = useViewerStore.getState();
-  return sceneSnapshotKey(scene.sceneSnapshotPolicy(), typeViewMode, typeVisibility, structuralViewMode);
+  return sceneSnapshotKey(scene.sceneSnapshotPolicy());
 }
 
 /** Level display moves pieces at arrival, so the batches would not be the cached geometry. */
@@ -72,16 +81,48 @@ async function rendererReady(isStale: (() => boolean) | undefined, timeoutMs = 3
 }
 
 /** Direct, unlike a stream's queued shards (`instancedShardQueue`): the first frame is complete, and an abandoned adoption can remove them. */
-function uploadSnapshotShards(scene: SceneContents, device: GPUDevice, modelId: string, shards: ArrayBuffer[]): void {
+export function uploadSnapshotShards(scene: Pick<SceneContents, 'addInstancedShard'>, device: GPUDevice, modelId: string, shards: ArrayBuffer[]): boolean {
   if (shards.length > 0) noteInstancedShardModel(modelId);
+  let all = true;
   for (const bytes of shards) {
     try {
       const shard = decodeInstancedShard(new Uint8Array(bytes));
       if (shard) scene.addInstancedShard(device, shard, 0);
+      else all = false;
     } catch (err) {
+      all = false;
       console.warn('[useIfcCache] snapshot shard upload failed (device lost?), skipping:', err);
     }
   }
+  // Partly drawn (or not at all): the scene's set is no longer any backing's, even before commit.
+  if (!all) unattestInstancedShards(modelId);
+  return all;
+}
+
+/**
+ * A committed adoption's shards, attested to the geometry backing only when every one reached
+ * the scene. Otherwise nothing is attested and the model's instancing fails closed: a backing
+ * must never hold an occurrence the scene does not draw.
+ */
+export function attestAdoptedShards(modelId: string, adopted: Pick<AdoptedSceneSnapshot, 'shards' | 'shardsUploaded'>,
+  token: Parameters<typeof instancedShardSupplyCurrent>[1],
+  store: Pick<StoreApi<{ models: ReadonlyMap<string, { idOffset?: number }> }>, 'getState' | 'subscribe'> = useViewerStore): void {
+  if (!adopted.shardsUploaded) return;
+  const announce = () => {
+    announceAdoptedInstancedShards(modelId, adopted.shards, token);
+    completeInstancedShardSupply(modelId, adopted.shards.length, token);
+  };
+  // A first primary load commits its snapshot during geometry sync, BEFORE the model is registered:
+  // the backing places shard ids with the model's id offset, so announce only once the model is
+  // registered. A registered model without an idOffset is model 0's space (offset 0), as the tap and
+  // the drain read it (r4647509027). A reset or discard of the model meanwhile (its supply moved)
+  // supersedes the attestation entirely.
+  const registered = () => store.getState().models.has(modelId);
+  if (registered()) { announce(); return; }
+  const off = store.subscribe(() => {
+    if (!instancedShardSupplyCurrent(modelId, token)) { off(); return; }
+    if (registered()) { off(); announce(); }
+  });
 }
 
 /** Draw the entry's finished scene, or return null so the hit streams. */
@@ -91,6 +132,7 @@ export async function adoptCachedSceneSnapshot(
   isStale: (() => boolean) | undefined,
   trace: LoadTrace,
 ): Promise<AdoptedSceneSnapshot | null> {
+  const supply = instancedShardSupplyToken(modelId); // before the first await, as the ordinary cache path does
   const { sceneSnapshot, sceneSnapshotKey, buffer: entry } = cacheResult;
   if (!snapshotsEnabled() || !sceneSnapshot || !(entry instanceof Blob) || !sceneMatchesCachedGeometry()) return null;
   const renderer = await rendererReady(isStale);
@@ -104,23 +146,39 @@ export async function adoptCachedSceneSnapshot(
   const bytes = await trace.span('cache.snapshotRead', () => sceneSnapshot.arrayBuffer());
   const snapshot = decodeSceneSnapshot(bytes);
   const host = snapshot?.hostData as SnapshotHostData | undefined;
-  if (!snapshot || !host?.fitBounds || !host.sceneBounds || isStale?.()) return null;
+  // A snapshot without its type index would draw hidden classes until the meshes decode: stream instead.
+  if (!snapshot || !host?.fitBounds || !host.sceneBounds || !host.typeIndex || isStale?.()) return null;
   const shards = await readSnapshotShards(entry, host.shards);
-  if (isStale?.()) return null;
+  // The last awaits: a reset or discard of the model since adoption began supersedes the snapshot itself,
+  // whatever the optional isStale says. Nothing is adopted or uploaded; the hit streams instead.
+  if (isStale?.() || !instancedShardSupplyCurrent(modelId, supply)) return null;
+  // The viewport hides the stored type index's ids under the current toggles before the first frame.
+  const typeToken = {};
+  if (!(await installSnapshotTypeIndex(typeToken, host.typeIndex)) || isStale?.() || !instancedShardSupplyCurrent(modelId, supply)) return failClosed(typeToken);
   const adoption = trace.span('scene.snapshotAdopt', () => scene.adoptSceneSnapshot(snapshot, device, pipeline), { batches: snapshot.batches.length });
-  if (!adoption) return null;
+  if (!adoption) return failClosed(typeToken);
   trace.milestone('scene.snapshotAdopted');
   tapSceneSnapshot('adopted', snapshot);
-  uploadSnapshotShards(scene, device, modelId, shards);
+  const shardsUploaded = uploadSnapshotShards(scene, device, modelId, shards);
   const camera = renderer.getCamera();
   camera.reset();
   fitCameraToSnapshot(renderer, host);
   renderer.clearCaches();
   renderer.requestRender();
-  return { adoption, shards, fit: host, firstVisible: recordFirstVisible(trace, trace.milestone('geometry.firstAppend')) };
+  return { adoption, shards, supply, shardsUploaded, fit: host, typeToken, firstVisible: recordFirstVisible(trace, trace.milestone('geometry.firstAppend')) };
 }
 
-/** Decode every mesh and publish it; Scene sync hydrates the adopted batches with what it receives. */
+function failClosed(typeToken: object): null {
+  clearSnapshotTypeIndex(typeToken);
+  return null;
+}
+
+/**
+ * Decode every mesh and publish it; Scene sync hydrates the adopted batches with what it receives.
+ * `null` when the load was superseded during the decode, by `isStale` or by a reset or discard of the
+ * model since adoption began (its captured supply): nothing is registered or appended, and the caller
+ * abandons the adoption, so neither the old adoption nor its meshes enter a re-added model.
+ */
 export async function publishAdoptedSceneMeshes(
   adopted: AdoptedSceneSnapshot,
   open: ReturnType<typeof openGeometryChunksV13>,
@@ -130,16 +188,23 @@ export async function publishAdoptedSceneMeshes(
   isStale: (() => boolean) | undefined,
   trace: LoadTrace,
   append: (modelId: string, meshes: MeshData[], coordinateInfo?: CoordinateInfo) => void,
-): Promise<MeshData[]> {
-  const shardGeneration = instancedShardGeneration(); // a later reset supersedes the requeue below
+): Promise<MeshData[] | null> {
+  const shardGeneration = adopted.supply; // captured when adoption began: a reset or discard since supersedes the requeue below
   const chunks = await Promise.all(open.chunks.map((_, i) => trace.span('cache.chunkDecode', () => open.readChunk(i), { chunk: i })));
-  if (isStale?.()) return [];
+  // Superseded by a discard of THIS model only; a full clear (#9628) keeps the hit live, and its shards are refused by the token below.
+  if (isStale?.() || instancedShardModelEpoch(modelId) !== shardGeneration.epoch) {
+    clearSnapshotTypeIndex(adopted.typeToken);
+    return null;
+  }
   const meshes = chunks.flat();
   setPendingSceneSnapshot(adopted.adoption, () => {
     enqueueInstancedShards(modelId, adopted.shards, shardGeneration);
+    completeInstancedShardSupply(modelId, adopted.shards.length, shardGeneration);
     forgetRefusedSnapshot(cacheResult, cacheKey);
-  }, adopted.fit, trace);
+  }, adopted.fit, trace, () => attestAdoptedShards(modelId, adopted, shardGeneration));
   append(modelId, meshes, open.coordinateInfo);
+  // The published meshes carry the same ids; the stored index stops answering in the same render.
+  clearSnapshotTypeIndex(adopted.typeToken);
   return meshes;
 }
 
@@ -154,6 +219,7 @@ function forgetRefusedSnapshot({ createdAt, fullSourceHash }: CacheResult, cache
 /** The load is over without serving its snapshot: the adopted batches must not outlive it. */
 export function abandonAdoptedSceneSnapshot(adopted: AdoptedSceneSnapshot | null): void {
   if (!adopted) return;
+  clearSnapshotTypeIndex(adopted.typeToken);
   withdrawPendingSceneSnapshot(adopted.adoption);
   getGlobalRenderer()?.getScene().abandonSceneSnapshot(adopted.adoption);
 }

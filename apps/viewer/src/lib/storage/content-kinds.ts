@@ -9,6 +9,7 @@ export const CONTENT_POLICIES = {
   document: { immutableEvidence: false },
   assistant: { immutableEvidence: false },
   clashGroups: { immutableEvidence: false },
+  idsStudioDrafts: { immutableEvidence: false },
   bcfDrafts: { immutableEvidence: false },
   bcfOutbox: { immutableEvidence: false },
   modelChanges: { immutableEvidence: false },

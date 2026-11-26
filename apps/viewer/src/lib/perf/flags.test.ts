@@ -6,12 +6,13 @@ import { describe, it, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { GEOMETRY_PERF_FLAG_BINDINGS } from '@ifc-lite/geometry';
 import {
+  getPerfFlagDefinition,
   PERF_FLAGS,
-  activePerfFlags,
   readPerfFlag,
   resolvePerfFlag,
   type PerfFlagDefinition,
 } from './flags.js';
+import { activePerfFlags } from './flags-applied.js';
 import { STICKY_OVERRIDES } from '../../components/viewer/settings/sticky-overrides.js';
 import { GEOM_WORKERS_STORAGE_KEY } from '../../store/geomWorkerOverride.js';
 import { GEOM_TIER_STORAGE_KEY } from '../../store/geometryFidelity.js';
@@ -116,6 +117,15 @@ describe('ramps', () => {
       assert.equal(resolvePerfFlag(ramp, posthog), 0);
     } finally {
       delete g.__IFC_LITE_EXAMPLE_RAMP;
+    }
+  });
+
+  it('resolves the huge-geometry ramps from PostHog when nothing else overrides them', () => {
+    for (const [id, key] of [['drawStream', 'perf-draw-stream'], ['gpuInstancing', 'perf-gpu-instancing']] as const) {
+      const flag = getPerfFlagDefinition(id);
+      assert.equal(flag.bindings.posthogKey, key);
+      assert.equal(resolvePerfFlag(flag, (k) => (k === key ? true : undefined)), true);
+      assert.equal(resolvePerfFlag(flag, (k) => (k === key ? false : undefined)), false);
     }
   });
 

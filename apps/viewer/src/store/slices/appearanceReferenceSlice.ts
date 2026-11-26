@@ -8,7 +8,7 @@ import { defineSliceTeardown } from '../teardown.js';
 import { placementFrameKey } from '@/lib/model-placement/persistence.js';
 import { appearanceAssets } from '@/lib/appearance/model-assets.js';
 import { createReferenceLeases } from '@/lib/appearance/references/leases.js';
-import { parseReferences, serializeReferences } from '@/lib/appearance/references/persistence.js';
+import { LockedAppearanceReferenceError, parseReferences, serializeReferences } from '@/lib/appearance/references/persistence.js';
 import { MAX_REFERENCES, MAX_REFERENCE_HISTORY, ownReference,
   type RegisteredAppearanceReference, type ReferenceCommand } from '@/lib/appearance/references/types.js';
 
@@ -36,7 +36,7 @@ export interface AppearanceReferenceSlice {
   removeAppearanceReference(id: string): void;
   replayAppearanceReference(direction: 'undo' | 'redo'): void;
   exportAppearanceReferences(): string;
-  importAppearanceReferences(text: string): void;
+  importAppearanceReferences(text: string, decode?: typeof parseReferences): void;
   /** Restores bytes only when their content digest exactly matches the saved record. */
   relinkAppearanceReference(id: string, image: File, signal?: AbortSignal): Promise<void>;
 }
@@ -123,13 +123,13 @@ export const createAppearanceReferenceSlice: StateCreator<ViewerState, [], [], A
       leases.sync({ ...patch, appearanceSources: get().appearanceSources }); set(patch);
     },
     exportAppearanceReferences: () => serializeReferences(get().appearanceReferences, placementFrameKey(get())),
-    importAppearanceReferences(text) {
-      const records = parseReferences(text, placementFrameKey(get()));
+    importAppearanceReferences(text, decode = parseReferences) {
+      const records = decode(text, placementFrameKey(get()));
       // Import replaces registrations atomically, but never silently moves or
       // deletes a locked reference. Missing assets remain in the restored list.
       for (const [id, record] of get().appearanceReferences) if (record.locked
         && JSON.stringify(records.get(id)) !== JSON.stringify(record)) {
-        throw new Error('Unlock existing drawing references before replacing their registration.');
+        throw new LockedAppearanceReferenceError('Unlock existing drawing references before replacing their registration.');
       }
       publish(records);
     },

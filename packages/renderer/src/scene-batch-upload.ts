@@ -11,6 +11,7 @@ import { createStaticGpuBuffer } from './gpu-static-upload.js';
 import type { MergedBatchBytes } from './scene-snapshot-batches.js';
 import { meshUniformArena, type MeshUniformSlot } from './mesh-uniform-arena.js';
 import type { BatchQuantization } from './scene-derived-batches.js';
+import { laneIdsOf } from './batch-entities.js';
 import {
   simplifyIndicesByClustering,
   lodCellSizeForBounds,
@@ -37,6 +38,8 @@ export function createSceneBatch(
     lattice?: LatticeFrame;
     /** The vertex buffer can be copied from (a fragment a finalize may assemble from). */
     copySource?: boolean;
+    /** Vertex and index buffers can be copied from (draw-stream arenas, `Scene.setDrawStreamArena`). */
+    arenaCopySource?: boolean;
   },
   bucketKey?: string,
 ): BatchedMesh {
@@ -100,7 +103,8 @@ export function createSceneBatch(
         'its partial-batch depth will not match the base geometry (#4832).',
       );
     }
-    const vertexUsage = GPUBufferUsage.VERTEX | (options.copySource ? GPUBufferUsage.COPY_SRC : 0);
+    const arenaUsage = options.arenaCopySource ? GPUBufferUsage.COPY_SRC : 0;
+    const vertexUsage = GPUBufferUsage.VERTEX | (options.copySource ? GPUBufferUsage.COPY_SRC : 0) | arenaUsage;
     if (quantizedData) {
       vertexBuffer = track(createStaticGpuBuffer(device, quantizedData.vertexData, vertexUsage));
       quantized = { min: quantizedData.quantMin, step: quantizedData.step };
@@ -109,7 +113,7 @@ export function createSceneBatch(
     }
 
     // Create index buffer
-    const indexBuffer = track(createStaticGpuBuffer(device, merged.indices, GPUBufferUsage.INDEX));
+    const indexBuffer = track(createStaticGpuBuffer(device, merged.indices, GPUBufferUsage.INDEX | arenaUsage));
 
     const uniform = createBatchUniform(device, pipeline);
     uniformSlot = uniform.uniformSlot;
@@ -119,8 +123,8 @@ export function createSceneBatch(
     // vertex buffer. Bucket-owned batches only (`bucketKey` present) — the
     // transient streaming fragments and partial/overlay sub-batches never pay
     // the build. Positions in `merged.vertexData` are relative to the batch
-    // origin, which is fine: clustering is translation-invariant as long as
-    // the cell size comes from the same-space bounds extent.
+    // origin; `frameOrigin` anchors the cells in world space, so the result
+    // does not depend on which batch set the shared frame (lod-simplify.ts).
     let lod1IndexBuffer: GPUBuffer | undefined;
     let lod1IndexCount: number | undefined;
     let lodIndices: Uint32Array | null | undefined;
@@ -139,9 +143,10 @@ export function createSceneBatch(
         BATCH_CONSTANTS.BYTES_PER_VERTEX / 4,
         merged.indices,
         cellSize,
+        { frameOrigin: options.origin },
       );
       if (lodIndices) {
-        lod1IndexBuffer = track(createStaticGpuBuffer(device, lodIndices, GPUBufferUsage.INDEX));
+        lod1IndexBuffer = track(createStaticGpuBuffer(device, lodIndices, GPUBufferUsage.INDEX | arenaUsage));
         lod1IndexCount = lodIndices.length;
       }
     }
@@ -162,6 +167,7 @@ export function createSceneBatch(
       uniformSlot,
       bounds: merged.bounds,
       modelIndices,
+      ...laneIdsOf(meshDataArray),
       // Per-batch local frame: positions are stored relative to this; the draw
       // loop applies model = translate(origin) so they land in world space.
       origin: merged.origin,
@@ -218,6 +224,7 @@ export function createSceneBatchShell(
     ...(meshDataArray[0]?.material ? { finish: meshDataArray[0].material } : {}), // #5582
     expressIds: meshDataArray.map((mesh) => mesh.expressId),
     modelIndices: meshDataArray.map((mesh) => mesh.modelIndex),
+    ...laneIdsOf(meshDataArray),
     bounds: merged.bounds,
     origin: merged.origin,
     gpuResident: false,

@@ -108,7 +108,7 @@ impl Execution {
         // On the unified exact path every opening is a cheap box-vs-host cut, so
         // a budget-skipped opening is a correctness bug, not a perf guard.
 
-        let prepared = exact::prepare::cutters(self, ctx, wall_min, wall_max);
+        let prepared = exact::prepare::cutters(self, ctx, wall_min, wall_max, &original_host);
         let all_openings: Vec<&CutterKind> = prepared.ordered();
 
         // DISJOINT-CUTTER BATCHING: group cutters whose pad-inflated AABBs are
@@ -127,6 +127,7 @@ impl Execution {
         let tail = ExactTail::new(result, all_openings);
         let (result, host_mutated) = tail.run(CutContext {
             execution: self, clipper: &clipper, wall_min, wall_max,
+            original_host: &original_host,
             #[cfg(feature = "csg_manifold_gate")]
             unextended_rectangles: &prepared.unextended_rectangles,
         });

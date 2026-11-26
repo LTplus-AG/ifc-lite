@@ -43,6 +43,28 @@ afterEach(async () => {
   await act(async () => root.unmount()); container.remove(); setGlobalRendererRef({ current: null }); mock.restoreAll();
 });
 
+it('#10596 runs the replacement guard after preflight and preserves the open scene on refusal', async () => {
+  const oldModel = useViewerStore.getState().models.get('existing');
+  const file = new File([step], 'replacement.ifc');
+  const readHeader = mock.method(file, 'slice');
+  const errors: string[] = [];
+  let guardCallCount = 0;
+  await act(async () => {
+    await api.loadFile(file, { kind: 'primary', modelId: 'replacement' }, {
+      beforePrimaryReset: () => {
+        guardCallCount++;
+        assert.ok(readHeader.mock.callCount() > 0);
+        throw new Error('The current model was edited during preflight');
+      },
+      onLoadError: message => errors.push(message),
+    });
+  });
+  assert.equal(guardCallCount, 1);
+  assert.match(errors[0] ?? '', /edited during preflight/);
+  assert.equal(useViewerStore.getState().models.get('existing'), oldModel);
+  assert.equal(useViewerStore.getState().models.has('replacement'), false);
+});
+
 for (const kind of ['primary', 'federated'] as const) for (const archive of ['step', 'zip-file', 'zip-expanded'] as const) for (const memory of [8, 4]) {
   it(`#10264 ${kind} ${archive}: server fallback ${memory === 8 ? 'Cancel' : 'refusal'} preserves existing models before acquisition`, async () => {
     const oldMemory = Object.getOwnPropertyDescriptor(navigator, 'deviceMemory');

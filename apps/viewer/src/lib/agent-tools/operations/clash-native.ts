@@ -2,10 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { useViewerStore } from '@/store';
+import { boundedMappedPage, pageInput, type PageInput } from './result-limit';
+import { stateRevision } from './state-revision';
 import type { Clash } from '@ifc-lite/clash';
 import { viewerOperation, emptySchema, type ViewerOperationContext } from './contract';
 import { assertToolActive } from '../cancellation';
 import type { ToolHost } from '../types';
+import { internal, invalidInput, stale, unavailable } from './refusals';
+import type { ClashErrorKind } from '@/lib/clash/clash-error-kind';
 const outputSchema = {
   type: 'object',
   properties: { native_json: { type: 'string' } },
@@ -55,11 +59,11 @@ export function currentClash(run_seq: number, id: string): Clash {
 /** Look up several clashes of the current run with one pass over the result. */
 export function currentClashes(run_seq: number, ids: readonly string[]): Clash[] {
   const s = useViewerStore.getState();
-  if (s.clashRunSeq !== run_seq) throw new Error('Clash results changed. Inspect again.');
+  if (s.clashRunSeq !== run_seq) throw stale('Clash results changed. Inspect again.');
   const byId = new Map((s.clashResult?.clashes ?? []).map((row) => [row.id, row]));
   return ids.map((id) => {
     const clash = byId.get(id);
-    if (!clash) throw new Error('Unknown clash in the current native result.');
+    if (!clash) throw invalidInput('unknown-target', 'Unknown clash in the current native result.');
     return clash;
   });
 }
@@ -79,6 +83,25 @@ export function clashSettings() {
     showRegionBox: s.showClashRegionBox,
   };
 }
+export function clashViewSettingsSignature() {
+  return JSON.stringify({ settings: clashSettings(), statusFilter: [...useViewerStore.getState().clashStatusFilter].sort() });
+}
+/**
+ * Classify a recorded detection or focus failure by its kind (#10871).
+ * A missing preset is an input refusal when the caller named it directly.
+ * A rerun whose recorded preset disappeared is unavailable.
+ */
+function clashRefusal(error: string, kind: ClashErrorKind | null, namedTarget: boolean) {
+  if (kind === 'unknown-target') return namedTarget ? invalidInput('unknown-target', error) : unavailable(error);
+  if (kind === 'refused') return invalidInput('refused', error);
+  if (kind === 'unavailable') return unavailable(error);
+  if (kind === 'stale') return stale(error);
+  return internal(error);
+}
+export function clashFocusRefusal(fallback: string) {
+  const { clashError, clashErrorKind } = useViewerStore.getState();
+  return clashError ? clashRefusal(clashError, clashErrorKind, true) : invalidInput('refused', fallback);
+}
 export const nativeClashOperations = [
   viewerOperation(
     meta(
@@ -91,6 +114,7 @@ export const nativeClashOperations = [
       return out({
         settings: clashSettings(),
         expected_settings: JSON.stringify(clashSettings()),
+        expected_view_settings: clashViewSettingsSignature(),
         presets: s.clashPresets,
         expected_presets: JSON.stringify(s.clashPresets),
         exclusions: s.clashExclusions,
@@ -115,11 +139,12 @@ export const nativeClashOperations = [
       });
     },
   ),
-  viewerOperation<{ offset: number; limit: number; run_seq: number }>(
-    meta('clash.results', 'Read a bounded page of complete native clash pairs and durable review annotations.'),
+  viewerOperation<PageInput & { offset: number; limit: number; run_seq: number }>(
+    meta('clash.results', 'Read a bounded page of complete native clash pairs and durable review annotations. Pass next_offset and page_revision to continue.'),
     {
       type: 'object',
       properties: {
+        ...pageInput.properties,
         offset: { type: 'integer', minimum: 0 },
         limit: { type: 'integer', minimum: 1, maximum: 100 },
         run_seq: { type: 'integer', minimum: 0 },
@@ -131,14 +156,12 @@ export const nativeClashOperations = [
       const { clashReviewKey } = await import('@ifc-lite/clash');
       assertToolActive(c);
       const s = useViewerStore.getState();
-      if (s.clashRunSeq !== i.run_seq) throw new Error('Clash results changed.');
-      return out({
-        total: s.clashResult?.clashes.length ?? 0,
-        clashes:
-          s.clashResult?.clashes
-            .slice(i.offset, i.offset + i.limit)
-            .map((clash) => ({ clash, review: s.clashReviews.get(clashReviewKey(clash)) ?? { status: 'open' } })) ?? [],
-      });
+      if (s.clashRunSeq !== i.run_seq) throw stale('Clash results changed.');
+      const clashes = s.clashResult?.clashes ?? [];
+      const revision = stateRevision([i.run_seq, clashes, [...s.clashReviews]]);
+      const { items, ...page } = boundedMappedPage(clashes,
+        clash => ({ clash, review: s.clashReviews.get(clashReviewKey(clash)) ?? { status: 'open' } }), i, null, revision);
+      return out({ ...page, clashes: items });
     },
   ),
   viewerOperation<{
@@ -178,7 +201,7 @@ export const nativeClashOperations = [
         JSON.stringify([...s.models.keys()].sort()) !== JSON.stringify([...i.expected_model_ids].sort()) ||
         JSON.stringify(clashSettings()) !== i.expected_settings
       )
-        throw new Error('Clash inputs changed. Inspect again.');
+        throw stale('Clash inputs changed. Inspect again.');
       const seq = s.clashRunSeq;
       const cancel = () => runtime.cancelRun();
       c.signal?.addEventListener('abort', cancel, { once: true });
@@ -186,7 +209,7 @@ export const nativeClashOperations = [
         assertToolActive(c);
         if (i.kind === 'rerun') {
           const request = runRequestOf(s.clashRawResult);
-          if (!request) throw new Error('No recorded clash run to rerun. Choose a run kind instead.');
+          if (!request) throw unavailable('No recorded clash run to rerun. Choose a run kind instead.');
           await rerunClashRequest(request, runtime);
         }
         else if (i.kind === 'all') await runtime.runAll();
@@ -195,8 +218,10 @@ export const nativeClashOperations = [
         else await runtime.runDuplicates();
         assertToolActive(c);
         const end = useViewerStore.getState();
-        if (end.clashRunSeq === seq)
-          throw new Error(end.clashError ?? 'Native run was cancelled, superseded or refused.');
+        if (end.clashRunSeq === seq) {
+          throw end.clashError === null ? stale('Native run was cancelled, superseded or refused.')
+            : clashRefusal(end.clashError, end.clashErrorKind, i.kind === 'preset');
+        }
         return out({
           run_seq: end.clashRunSeq,
           count: end.clashResult?.clashes.length ?? 0,
@@ -275,16 +300,15 @@ export const nativeClashOperations = [
     async (i, c) => {
       const runtime = await clashRuntime(c);
       const pairs = currentClashes(i.run_seq, i.clash_ids);
-      if (i.element !== 'pair' && pairs.length !== 1) throw new Error('Choose one clash for a single-element focus.');
+      if (i.element !== 'pair' && pairs.length !== 1) throw invalidInput('invalid-value', 'Choose one clash for a single-element focus.');
       return out(
         c.commit(() => {
-          if (i.element !== 'pair') runtime.selectElement(pairs[0][i.element], i.mode);
-          else if (pairs.length === 1) {
-            runtime.focusClash(pairs[0], i.mode);
-            if (useViewerStore.getState().clashSelectedId !== pairs[0].id)
-              throw new Error(useViewerStore.getState().clashError ?? 'Native pair focus refused.');
+          if (i.element !== 'pair') {
+            if (!runtime.selectElement(pairs[0][i.element], i.mode)) throw clashFocusRefusal('Native element focus refused.');
+          } else if (pairs.length === 1) {
+            if (!runtime.focusClash(pairs[0], i.mode)) throw clashFocusRefusal('Native pair focus refused.');
           } else if (!runtime.focusClashes(pairs, i.mode))
-            throw new Error(useViewerStore.getState().clashError ?? 'Native group focus refused.');
+            throw clashFocusRefusal('Native group focus refused.');
           return {
             dispatched: true,
             solidStatus: useViewerStore.getState().clashSolidStatus,

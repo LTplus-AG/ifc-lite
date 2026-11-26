@@ -25,7 +25,7 @@ import { newFlowDocument } from '@/lib/flow/persistence';
 import { addNode, toggleInput, toggleOutput } from '@/lib/flow/editor-ops';
 import { BimProvider } from '@/sdk/BimProvider';
 import { useViewerStore } from '@/store';
-import { cleanup, render, waitFor } from '@/test/render';
+import { cleanup, render, settle, waitFor } from '@/test/render';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { FLOW_VERSION, type FlowDocument } from '@ifc-lite/flow';
 import { flowRegistry } from '@/lib/flow/runner';
@@ -111,9 +111,10 @@ describe('FlowPanel — Player mode and Publish button (#5167)', () => {
     });
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     cleanup();
     useViewerStore.setState(initialState);
+    await settle();
   });
 
   it('shows an Editor/Player toggle and a Publish button once a graph is open', () => {
@@ -263,7 +264,7 @@ describe('FlowPanel — Player mode and Publish button (#5167)', () => {
     assert.equal(numberInput.value, '0', 'graph B never inherits graph A\'s last-used value');
   });
 
-  it('Publish is disabled with a reason before a run and after a run that wrote nothing, enabled after a writing run', () => {
+  it('Publish is disabled with a reason before a run and after a run that wrote nothing, enabled after a writing run', async () => {
     const doc = numberGraph('Publish graph');
     useViewerStore.getState().importFlow(doc);
     const container = mountFlowPanel();
@@ -304,6 +305,7 @@ describe('FlowPanel — Player mode and Publish button (#5167)', () => {
     // Publishing clears the run's edits; the button must not come back for
     // the same run and publish an empty layer (#5380 review).
     act(() => useViewerStore.getState().clearAllMutations());
+    await settle();
     assert.equal(byText<HTMLButtonElement>(container, 'button', 'Publish').disabled, true);
     assert.match(container.textContent ?? '', /no longer pending/);
   });
@@ -358,6 +360,7 @@ for (const reviewOnWriter of [false, true]) it(`#7038 mounted paused writes rema
     ] };
   useViewerStore.getState().importFlow(doc);
   const ui = mountFlowPanel();
+  await settle();
   click(byText(ui, 'button', 'Run'));
   await waitFor(() => !!useViewerStore.getState().flowLastRun && !useViewerStore.getState().flowRunning, 'paused run completes');
   const paused = useViewerStore.getState().flowLastRun!;

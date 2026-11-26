@@ -7,7 +7,30 @@
 
 use std::collections::BTreeSet;
 
+use ifc_lite_core::EntityScanner;
+
 use super::MergedStats;
+use crate::step_ids::IdAllocator;
+
+impl MergedStats {
+    pub(super) fn new(models: usize) -> Self {
+        Self {
+            models,
+            written: 0,
+            federated_model_count: 0,
+            unmerged_model_count: 0,
+            unit_rescale_required: false,
+            dropped_container_count: 0,
+            warnings: Vec::new(),
+        }
+    }
+
+    pub(super) fn refused(self, error: crate::schema_unrepresented::UnrepresentedEntityError) -> (String, Self) {
+        let mut stats = Self::new(self.models);
+        stats.warnings.push(error.to_string());
+        (String::new(), stats)
+    }
+}
 
 /// Push the merge-level warnings: federated models, oversized references
 /// refused while resolving closures, and types kept unconverted.
@@ -48,4 +71,43 @@ pub(super) fn push_merge_warnings(
             unrepresented_types_kept.into_iter().collect::<Vec<_>>().join(", ")
         ));
     }
+}
+
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn finish_output(
+    out: &mut String,
+    stats: &mut MergedStats,
+    schema: &str,
+    slot_fill: &crate::schema_ifc2x3_slots::Ifc2x3SlotFill,
+    checks: &mut crate::schema_enum::ConversionChecks,
+    parents: super::single_parents::ParentClaims,
+    upgrade_seeds: &std::collections::HashSet<u32>,
+    offset: u32,
+    models: &[super::MergedModel],
+) {
+    if let Some((text, added)) = checks.finish_typed_properties(out.as_bytes(), || {
+        // Earlier conversion output may have used IDs beyond the model offset.
+        let mut max_id = offset;
+        let mut scanner = EntityScanner::new(out);
+        while let Some((id, _, _, _)) = scanner.next_entity() {
+            max_id = max_id.max(id);
+        }
+        IdAllocator::after(max_id)
+    }) {
+        *out = String::from_utf8(text).expect("typed property rewrites preserve merged UTF-8 output");
+        stats.written += added;
+    }
+    stats.warnings.extend(slot_fill.warnings());
+    stats.written = stats.written.saturating_add_signed(checks.finish_dates(out));
+    stats.warnings.extend(checks.warnings_for_sources(models.iter().map(|m| m.content)));
+    stats.warnings.extend(parents.apply_folds(out)); // #5774 folds, after every model is written
+    // One product per placement in IFC2X3 (#9209); the header holds no record to change.
+    stats.written = stats.written.saturating_add_signed(crate::schema_ifc2x3_placements::place_text_for_schema(schema, out));
+    if let Some((pruned, _, losses)) = crate::schema_unrooted_upgrade::prune(out, upgrade_seeds, schema) {
+        *out = pruned;
+        stats.written -= losses.len();
+        stats.warnings.extend(losses);
+    }
+    out.push_str("ENDSEC;\nEND-ISO-10303-21;\n");
 }

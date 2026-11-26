@@ -32,6 +32,22 @@ pub(crate) const GEOMETRY_CHUNK_COMPRESS_MIN_BYTES: usize = 64 * 1024;
 /// `GeometryChunkFlags.DeflateRaw`.
 pub(crate) const CHUNK_FLAG_DEFLATE_RAW: u32 = 1;
 
+/// The bounds a build is held to: [`Limits::FORMAT`] on every shipped path.
+/// Tests shrink `max_bytes` to exercise the u32 refusal without writing
+/// 4 GiB, and inject a mid-geometry failure.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Limits {
+    /// The largest file the u32 section and chunk offsets and lengths can
+    /// address.
+    pub(crate) max_bytes: u64,
+    /// Fail on appending this (0-based) chunk, as a write error would.
+    pub(crate) fail_at_chunk: Option<usize>,
+}
+
+impl Limits {
+    pub(crate) const FORMAT: Limits = Limits { max_bytes: u32::MAX as u64, fail_at_chunk: None };
+}
+
 /// `SectionType`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u16)]

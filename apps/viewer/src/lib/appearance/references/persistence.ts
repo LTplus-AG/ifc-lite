@@ -37,3 +37,5 @@ export function parseReferences(text: string, frameKey: string): ReadonlyMap<str
   }
   return references;
 }
+
+export class LockedAppearanceReferenceError extends Error {}

@@ -7,10 +7,11 @@
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { extractEntityAttributesOnDemand } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
+import { EntityNode } from '@ifc-lite/query';
 import { configureMutationView } from '@/utils/configureMutationView';
 import type { ViewerState } from '@/store';
 import { effectiveListStringAttribute } from '@/lib/lists/effective-provider-entities';
-import type { ChangeScalar, ModelChange } from '@ifc-lite/ai/artifacts';
+import { EDITABLE_ATTRIBUTES, type ChangeScalar, type ModelChange } from '@ifc-lite/ai/artifacts';
 
 /** A value that cannot be compared or written by this layer (lists, references). */
 export const UNSUPPORTED_VALUE = Symbol('unsupported-value');
@@ -66,6 +67,20 @@ export function currentValue(reader: ModelReader, expressId: number, change: Mod
 export function effectiveAttribute(reader: ModelReader, expressId: number, name: string): string {
   const { dataStore, view } = reader;
   return effectiveListStringAttribute(dataStore, view, expressId, name, () => baseAttribute(dataStore, expressId, name));
+}
+
+/**
+ * The value an undo of an edit to attribute `name` restores: a session edit's value exactly (even '' or `$`), else the
+ * source string, null when unset, or undefined for an attribute this reader cannot read (anything but IfcRoot's
+ * editable strings).
+ */
+export function attributeUndoPrior(reader: ModelReader, expressId: number, name: string): string | null | undefined {
+  const edited = reader.view.getAttributeMutationsForEntity(expressId).find(mutation => mutation.name === name);
+  if (edited) return edited.value;
+  if (!(EDITABLE_ATTRIBUTES as readonly string[]).includes(name)) return undefined;
+  // The reader gives '' for a written '' and for `$` alike; only the source record says whether the slot is written.
+  const value = effectiveAttribute(reader, expressId, name);
+  return value || (new EntityNode(reader.dataStore, expressId).allAttributes().some(attr => attr.name === name) ? '' : null);
 }
 
 const TEXT_BOOLEAN = /^(true|false)$/i;

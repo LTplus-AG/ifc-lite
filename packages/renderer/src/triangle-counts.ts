@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { MeshData } from '@ifc-lite/geometry';
+import { meshTriangleCount } from '@ifc-lite/geometry/compact';
 
 /** Occurrence triangle counts, rather than unique GPU-template storage (#10370).
  * IDs stay in the supplied geometry's space; federation callers resolve them.
@@ -13,9 +14,9 @@ export class TriangleCounts {
     this.byEntity.set(entityId, (this.byEntity.get(entityId) ?? 0) + triangles);
   }
 
-  addMesh(mesh: Pick<MeshData, 'expressId' | 'indices' | 'entityIds'>): void {
+  addMesh(mesh: Pick<MeshData, 'expressId' | 'indices' | 'entityIds' | 'compact'>): void {
     if (!mesh.entityIds?.length) {
-      this.add(mesh.expressId, mesh.indices.length / 3);
+      this.add(mesh.expressId, meshTriangleCount(mesh)); // a compact mesh is counted from its row, not decoded
       return;
     }
     // A merged batch's expressId names the batch, while the per-vertex IDs

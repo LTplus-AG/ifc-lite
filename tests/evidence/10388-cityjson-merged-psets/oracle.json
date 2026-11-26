@@ -1,7 +1,0 @@
-{
-  "issue": 7955,
-  "key": "rust/export/src/cityjson/attributes.rs",
-  "mutation": "tests/evidence/10388-cityjson-merged-psets/behaviour.oracle.patch",
-  "test": "rust/export/src/cityjson_tests.rs",
-  "why": "Reverse application makes a later property set of the same name replace the earlier one again, so the building's Pset_BuildingCommon loses IsLandmarked and YearOfConstruction 1984 and same_named_property_sets_are_merged_with_a_warning_on_conflict goes red."
-}

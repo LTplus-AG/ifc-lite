@@ -19,7 +19,7 @@ import '@/test/setup-dom.js';
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { cleanup, click, render } from '@/test/render.js';
+import { cleanup, click, render, settle } from '@/test/render.js';
 import { installLayout } from '@/test/dom-layout.js';
 import { setLocale } from '@/i18n';
 import { useViewerStore } from '@/store';
@@ -80,7 +80,7 @@ afterEach(() => {
 
 describe('IDSPanel re-run and split clear (#5816)', () => {
   for (const modelCount of [1, 2] as const) {
-    it(`#5820 keeps a stale report visible with a Re-run banner (${modelCount} model(s))`, () => {
+    it(`#5820 keeps a stale report visible with a Re-run banner (${modelCount} model(s))`, async () => {
       const models = modelCount === 1
         ? fixtureModels(fixtureModel('model-a', { entities: [{ expressId: 1, type: 'IfcWall' }] }))
         : fixtureModels(
@@ -90,9 +90,11 @@ describe('IDSPanel re-run and split clear (#5816)', () => {
       useViewerStore.setState({ ...models, idsDocument: documentFixture, mutationVersion: 10, geometryContentVersion: 20 });
       const report = stampAnalysisReport(reportFor('model-a'), captureAnalysisStamp());
       useViewerStore.setState({ idsValidationReport: report });
+      await settle();
       const ui = render(<IDSPanel />);
 
       act(() => useViewerStore.setState({ mutationVersion: 11 }));
+      await settle();
       assert.equal(useViewerStore.getState().idsValidationReport, report);
       assert.match(ui.textContent ?? '', /model changed/i);
       const bannerRerun = [...ui.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'Re-run');
@@ -110,11 +112,12 @@ describe('IDSPanel re-run and split clear (#5816)', () => {
     });
   }
 
-  it('offers Re-run while a report is on screen, targeting the report model (1 model)', () => {
+  it('offers Re-run while a report is on screen, targeting the report model (1 model)', async () => {
     // No model loaded: a re-run that names the report's model fails with
     // "model-a is not loaded"; one that fell back to the active model would
     // report "no model loaded" instead.
     useViewerStore.setState({ idsDocument: documentFixture, idsValidationReport: reportFor('model-a') });
+    await settle();
     const ui = render(<IDSPanel />);
     const rerun = button(ui, 'Re-run validation');
     assert.ok(rerun, 'Re-run is offered once a report exists');
@@ -125,7 +128,7 @@ describe('IDSPanel re-run and split clear (#5816)', () => {
     });
   });
 
-  it('re-runs against the report model, not the active one (N models)', () => {
+  it('re-runs against the report model, not the active one (N models)', async () => {
     // The active model has parsed data; the report's model (second, offset
     // ids) has none. Targeting the report model fails with "no parsed data";
     // a re-run that fell back to the active model would validate model-b.
@@ -135,6 +138,7 @@ describe('IDSPanel re-run and split clear (#5816)', () => {
     );
     assert.equal(federation.activeModelId, 'model-b');
     useViewerStore.setState({ ...federation, idsDocument: documentFixture, idsValidationReport: reportFor('model-a') });
+    await settle();
     const ui = render(<IDSPanel />);
     const rerun = button(ui, 'Re-run validation');
     assert.ok(rerun);
@@ -144,6 +148,7 @@ describe('IDSPanel re-run and split clear (#5816)', () => {
 
   it('clears results but keeps the IDS document loaded', async () => {
     useViewerStore.setState({ idsDocument: documentFixture, idsValidationReport: reportFor('model-a') });
+    await settle();
     const ui = render(<IDSPanel />);
     // A header action, inline or in More actions (#8802).
     assert.ok(await findPanelAction(ui, 'Clear results'), 'Clear results is offered once a report exists');
@@ -156,6 +161,7 @@ describe('IDSPanel re-run and split clear (#5816)', () => {
 
   it('unloads the IDS document and its results together', async () => {
     useViewerStore.setState({ idsDocument: documentFixture, idsValidationReport: reportFor('model-a') });
+    await settle();
     const ui = render(<IDSPanel />);
     await runPanelAction(ui, 'Unload IDS');
     const state = useViewerStore.getState();
@@ -165,6 +171,7 @@ describe('IDSPanel re-run and split clear (#5816)', () => {
 
   it('offers neither Re-run nor Clear results before the first run', async () => {
     useViewerStore.setState({ idsDocument: documentFixture, idsValidationReport: null });
+    await settle();
     const ui = render(<IDSPanel />);
     assert.equal(button(ui, 'Re-run validation'), undefined);
     assert.equal(await findPanelAction(ui, 'Clear results'), undefined);

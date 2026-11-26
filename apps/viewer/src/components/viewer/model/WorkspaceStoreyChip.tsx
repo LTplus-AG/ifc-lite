@@ -19,7 +19,8 @@
  * and raises a notice: nothing can be drawn until it has one.
  */
 
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { lazyChunk } from '@/lib/lazy-chunk';
 import { ChevronDown, Eye, EyeOff, Layers, TriangleAlert } from 'lucide-react';
 import { useViewerStore } from '@/store';
 import { mutationDenial } from '@/store/mutation-permission';
@@ -35,7 +36,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';
 import { StoreyContextControl } from './StoreyContextControl';
 
-const CopyToStoreys = lazy(() => import('./storeys/CopyToStoreys').then(module => ({ default: module.CopyToStoreys })));
+const CopyToStoreys = lazyChunk(() => import('./storeys/CopyToStoreys').then(module => ({ default: module.CopyToStoreys })));
 
 /** Move the session to `storey`, keeping the command and the isolation (the chip and the plan header). */
 export function pickWorkspaceStorey(storey: WorkspaceStorey): void {

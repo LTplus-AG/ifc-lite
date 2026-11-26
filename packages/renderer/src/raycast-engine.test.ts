@@ -937,3 +937,104 @@ describe('RaycastEngine flat index (#9504)', () => {
     assert.equal(engine.raycastScene(400, 300), null, 'evicted geometry is not pickable, as before #9504');
   });
 });
+
+describe('RaycastEngine readback meshes (#10264)', () => {
+  it('raycasts and snaps released geometry read back from storage, under hide/isolate, and clears', () => {
+    const scene = new Scene();
+    const resident = makeQuad({ expressId: 1, translate: [0, 0, -10] });
+    addRegularQuad(scene, resident);
+    const engine = engineFor(scene, orthoCameraLookingDownZ([0, 0, 0], 50));
+    const residentHit = engine.raycastScene(400, 300, { snapOptions: { snapToVertices: true, snapToEdges: true } });
+    assert.equal(residentHit?.intersection.expressId, 1);
+    scene.releaseGeometryData();
+    assert.equal(scene.isGeometryDataReleased(), true);
+    assert.equal(engine.raycastScene(400, 300), null, 'a released scene has no CPU pieces to test');
+
+    // The same piece, as storage returns it: a fresh object with fresh arrays.
+    const readback: MeshData = { ...resident, positions: resident.positions.slice(), normals: resident.normals.slice(), indices: resident.indices.slice() };
+    engine.setReadbackMeshes([readback]);
+    const hit = engine.raycastScene(400, 300, { snapOptions: { snapToVertices: true, snapToEdges: true } });
+    assert.equal(hit?.intersection.expressId, 1);
+    assert.deepEqual(hit?.intersection.point, residentHit?.intersection.point, 'the same surface point as over resident pieces');
+    assert.ok(residentHit?.snap, 'the resident pick snaps: two missing snaps would compare equal and prove nothing');
+    assert.ok(hit?.snap, 'and the readback pick snaps too');
+    assert.equal(hit.snap.type, residentHit.snap.type, 'the same snap kind');
+    assert.deepEqual(hit.snap.position, residentHit.snap.position, 'at the same position');
+    assert.equal(engine.raycastScene(400, 300, { hiddenIds: new Set([1]) }), null, 'hidden readback pieces are not hit');
+    assert.equal(engine.raycastScene(400, 300, { isolatedIds: new Set([2]) }), null, 'non-isolated readback pieces are not hit');
+    engine.setReadbackMeshes(null);
+    assert.equal(engine.raycastScene(400, 300), null, 'cleared readback leaves nothing behind');
+  });
+
+  it('#10884 coverage is a 1.5 CSS px radius (not a square) and is bound to the viewport size the ray was unprojected in', () => {
+    const scene = new Scene();
+    const quad = makeQuad({ expressId: 1, translate: [0, 0, -10], half: 8 });
+    addRegularQuad(scene, quad);
+    const camera = orthoCameraLookingDownZ([0, 0, 0], 50);
+    let size = { width: 800, height: 600 };
+    const canvas = { width: 800, height: 600, getBoundingClientRect: () => size } as unknown as HTMLCanvasElement;
+    const engine = engineFor(scene, camera, canvas);
+    scene.releaseGeometryData();
+    engine.setReadbackMeshes([{ ...quad }], { x: 400, y: 300 });
+    assert.equal(engine.readbackCovers(401, 301), true, '1.41 px away: inside the radius');
+    assert.equal(engine.readbackCovers(401.5, 301.5), false, '2.12 px away: outside the stated 1.5 px, though within 1.5 on each axis');
+    size = { width: 1600, height: 1200 }; // same aspect, same camera matrix: a different ray through (400, 300)
+    assert.equal(engine.readbackCovers(400, 300), false, 'a resized viewport invalidates the prepared ray');
+    assert.equal(engine.raycastScene(400, 300), null, 'and its pieces never answer the new ray');
+  });
+
+  it('r4651056779 coverage is bound to the f64 camera pose, not only its f32 matrix', () => {
+    const scene = new Scene();
+    const quad = makeQuad({ expressId: 1, translate: [0, 0, -10], half: 8 });
+    addRegularQuad(scene, quad);
+    const camera = orthoCameraLookingDownZ([1e7, 0, 0], 50);
+    const engine = engineFor(scene, camera);
+    scene.releaseGeometryData();
+    engine.setReadbackMeshes([{ ...quad }], { x: 400, y: 300 });
+    const matrix = Array.from(camera.getViewProjMatrix().m);
+    camera.setPosition(1e7 + 1e-3, 0, 50); camera.setTarget(1e7 + 1e-3, 0, 0); // a 1 mm pan far from the origin
+    assert.deepEqual(Array.from(camera.getViewProjMatrix().m), matrix, 'precondition: the f32 matrix cannot see it');
+    assert.equal(engine.readbackCovers(400, 300), false, 'but the ray moved, so the pieces cover it no longer');
+  });
+
+  it('r4651056771 coverage is bound to the host state folded into the stamp (the pick-clip revision)', () => {
+    const scene = new Scene();
+    const quad = makeQuad({ expressId: 1, translate: [0, 0, -10], half: 8 });
+    addRegularQuad(scene, quad);
+    const engine = engineFor(scene, orthoCameraLookingDownZ([0, 0, 0], 50));
+    let clip = 1;
+    engine.viewStampExtra = () => String(clip);
+    scene.releaseGeometryData();
+    engine.setReadbackMeshes([{ ...quad }], { x: 400, y: 300 });
+    assert.equal(engine.readbackCovers(400, 300), true);
+    clip = 2; // a section change exposes other surfaces along the same ray
+    assert.equal(engine.readbackCovers(400, 300), false);
+  });
+
+  it('r4649736566 readback pieces prepared at a non-finite point cover no ray', () => {
+    const scene = new Scene();
+    const quad = makeQuad({ expressId: 1, translate: [0, 0, -10], half: 8 });
+    addRegularQuad(scene, quad);
+    const engine = engineFor(scene, orthoCameraLookingDownZ([0, 0, 0], 50));
+    scene.releaseGeometryData();
+    engine.setReadbackMeshes([{ ...quad }], { x: Number.NaN, y: 300 });
+    assert.equal(engine.readbackCovers(400, 300), false, 'NaN distance is no coverage');
+    assert.equal(engine.raycastScene(400, 300), null, 'and the pieces answer no ray');
+  });
+
+  it('prepared for one ray, readback pieces never answer another ray or view', () => {
+    const scene = new Scene();
+    const quad = makeQuad({ expressId: 1, translate: [0, 0, -10], half: 8 });
+    addRegularQuad(scene, quad);
+    const camera = orthoCameraLookingDownZ([0, 0, 0], 50);
+    const engine = engineFor(scene, camera);
+    scene.releaseGeometryData();
+    engine.setReadbackMeshes([{ ...quad }], { x: 400, y: 300 });
+    assert.equal(engine.raycastScene(400, 300)?.intersection.expressId, 1, 'the prepared ray');
+    assert.equal(engine.raycastScene(401, 301)?.intersection.expressId, 1, 'within 1.5 CSS px');
+    assert.equal(engine.raycastScene(420, 300), null, 'another ray could pass an unfed front surface');
+    assert.equal(engine.readbackCovers(420, 300), false);
+    camera.setPosition(1, 0, 50);
+    assert.equal(engine.raycastScene(400, 300), null, 'a changed view invalidates the prepared ray');
+  });
+});

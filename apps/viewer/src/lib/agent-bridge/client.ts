@@ -34,22 +34,29 @@
  *     each edit checks the grant synchronously with its write.
  */
 
+import { agentSurfaces } from './agent-surfaces.js';
 import {
+  BRIDGE_FEATURE_IMAGE_CONTENT,
+  BRIDGE_FEATURE_UI_EVENTS,
   BRIDGE_LIMITS,
   BRIDGE_PROTOCOL_VERSION,
+  BRIDGE_SURFACE_TOOL,
   normalizePairingCode,
   parseServerMessage,
   parseTabMessage,
   type BridgeHelloMessage,
   type BridgeToolDescriptor,
+  type BridgeUiEvent,
   type BridgeUpdateMessage,
 } from '@ifc-lite/mcp/bridge-protocol';
 import type {
   AgentBridgeActivity, AgentBridgePermission, AgentBridgeStatus,
 } from './state';
+import type { DeliveryClaim } from '../agent-tools/delivery';
 import type { ToolOutcome } from './result-frame';
 import { CALL_LIMITS, type CallLimits } from './call-admission';
 import { CallRunner } from './call-runner';
+import { sendUiEventFrame } from './ui-event-frame';
 import { WELCOME_TIMEOUT_CLOSE, statusForClose } from './close-outcome';
 
 
@@ -88,7 +95,7 @@ export interface BridgeClientOptions {
    */
   tools: readonly BridgeToolDescriptor[];
   /** Runs one call. Must not throw (a throw is still caught and reported as INTERNAL_ERROR). */
-  dispatch(name: string, args: Record<string, unknown>, signal: AbortSignal): Promise<ToolOutcome>;
+  dispatch(name: string, args: Record<string, unknown>, signal: AbortSignal, onDelivery?: (claim: DeliveryClaim) => void): Promise<ToolOutcome>;
   /** The model a call is about, for the activity log. */
   modelIdFor?(args: Record<string, unknown>): string | null;
   onStatus(status: AgentBridgeStatus): void;
@@ -116,6 +123,8 @@ function warn(message: string, err?: unknown): void {
 export class BridgeClient {
   private ws: WebSocketLike | null = null;
   private sessionId: string | null = null;
+  /** The bridge accepts `ui-event` frames (welcome.features). */
+  private uiEvents = false;
   private opened = false;
   private ended = false;
   private lastFrameError: string | null = null;
@@ -181,6 +190,13 @@ export class BridgeClient {
     return true;
   }
 
+  /** Send a click on an agent-pushed surface back to the agent; false when it cannot go (see `sendUiEventFrame`). */
+  sendUiEvent(event: BridgeUiEvent): boolean {
+    const ws = this.ws;
+    if (this.current.kind !== 'connected' || !ws || !this.sessionId || !this.uiEvents) return false;
+    return sendUiEventFrame((json) => ws.send(json), this.sessionId, event);
+  }
+
   /** Open the socket and pair. Call once per client: a used pairing code is never resent. */
   connect(): void {
     if (this.ws || this.ended) return;
@@ -225,6 +241,8 @@ export class BridgeClient {
       protocol: BRIDGE_PROTOCOL_VERSION,
       pairingCode: normalizePairingCode(this.opts.pairingCode),
       permission: 'read-only',
+      resultAck: true,
+      a2uiSurface: true,
       tools: [...this.opts.tools],
       ...(this.opts.clientInfo ? { client: this.opts.clientInfo } : {}),
     };
@@ -241,7 +259,7 @@ export class BridgeClient {
       warn('ignored a binary frame from the bridge');
       return;
     }
-    const parsed = parseServerMessage(data);
+    const parsed = parseServerMessage(data, { resultAck: true });
     if (!parsed.ok) {
       warn(`ignored an invalid frame from the bridge: ${parsed.error}`);
       return;
@@ -256,12 +274,21 @@ export class BridgeClient {
         }
         this.clearWelcomeTimer();
         this.sessionId = msg.sessionId;
+        this.uiEvents = msg.features?.includes(BRIDGE_FEATURE_UI_EVENTS) === true;
         this.runner = new CallRunner({
           sessionId: msg.sessionId,
           limits: this.limits,
           maxResultBytes: this.opts.maxResultBytes ?? BRIDGE_LIMITS.maxResultBytes,
+          // Images only to a bridge that said it forwards them; an older one refuses the whole result.
+          imageContent: msg.features?.includes(BRIDGE_FEATURE_IMAGE_CONTENT) === true,
           now: this.now,
-          dispatch: this.opts.dispatch,
+          dispatch: (name, args, signal, onDelivery) => {
+            if (name !== BRIDGE_SURFACE_TOOL) return this.opts.dispatch(name, args, signal, onDelivery);
+            agentSurfaces.push({ messages: args.messages as unknown[], title: args.title as string | undefined });
+            return Promise.resolve({ text: 'Surface delivered to the viewer.', structured: {}, isError: false });
+          },
+          ...(msg.resultAck === true ? { onAckTimeout: () =>
+            this.end({ kind: 'disconnected', reason: 'connection-lost' }, 1000, 'result acknowledgement timeout') } : {}),
           modelIdFor: this.opts.modelIdFor,
           mutates: (name) => this.mutating.has(name),
           onActivity: this.opts.onActivity,
@@ -275,9 +302,18 @@ export class BridgeClient {
         });
         return;
       }
+      case 'a2ui-surface':
+        if (msg.sessionId === this.sessionId && this.runner && !this.runner.has(msg.id)) {
+          this.runner.admit({ type: 'call', name: BRIDGE_SURFACE_TOOL, sessionId: msg.sessionId, id: msg.id, arguments: msg.surface });
+        }
+        return;
       case 'call':
+        if (msg.name === BRIDGE_SURFACE_TOOL) return;
         if (!this.runner || msg.sessionId !== this.sessionId || this.runner.has(msg.id)) return;
         this.runner.admit(msg);
+        return;
+      case 'result-ack':
+        if (msg.sessionId === this.sessionId) this.runner?.acknowledge(msg.id, msg.accepted);
         return;
       case 'cancel':
         if (this.runner && msg.sessionId === this.sessionId) this.runner.cancel(msg.id);

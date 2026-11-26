@@ -6,7 +6,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { FederatedModel } from '@/store/types';
 import { discoverFilterValues } from '@/lib/search/filter-schema';
-import { LEGACY_MODEL_ID, LEGACY_MUTATION_MODEL_ID } from '@/sdk/adapters/model-compat';
+import { getLegacyMutationView } from '@/sdk/adapters/model-compat';
 
 export interface StoreWithView {
   store: IfcDataStore;
@@ -33,7 +33,7 @@ export function storesWithMutationViews(
     const modelId = modelIds?.[index];
     const view = models.size > 0
       ? modelId ? mutationViews.get(modelId) : viewsByStore.get(store)
-      : mutationViews.get(LEGACY_MUTATION_MODEL_ID) ?? mutationViews.get(LEGACY_MODEL_ID);
+      : getLegacyMutationView(mutationViews);
     return { store, view };
   });
 }

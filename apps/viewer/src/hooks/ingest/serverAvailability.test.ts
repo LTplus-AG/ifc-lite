@@ -28,6 +28,32 @@ describe('isServerReachable', () => {
     assert.equal(isServerReachable('https://server.example.org', remotePage), true);
   });
 
+  it('accepts an explicitly configured HTTPS loopback server from a remote page', () => {
+    assert.equal(isServerReachable('https://localhost:8080', remotePage, true), true);
+  });
+
+  it('allows explicit HTTP loopback but blocks remote HTTP from HTTPS pages', () => {
+    assert.equal(isServerReachable('http://localhost:8080', remotePage, true), true);
+    assert.equal(isServerReachable('http://server.example.org', remotePage, true), false);
+    assert.equal(isServerReachable('http://server.example.org', remotePage), false);
+    assert.equal(isServerReachable('http://server.example.org', {
+      href: 'http://models.example.org/', hostname: 'models.example.org',
+    }, true), true);
+  });
+
+  it('treats all of 127.0.0.0/8 as loopback, as browsers do, and not look-alikes', () => {
+    assert.equal(isServerReachable('http://127.0.0.2:8080', remotePage, true), true);
+    assert.equal(isServerReachable('http://LOCALHOST:8080', remotePage, true), true);
+    assert.equal(isServerReachable('http://127.999.0.1:8080', remotePage, true), false);
+    assert.equal(isServerReachable('http://127.example.org:8080', remotePage, true), false);
+  });
+
+  it('applies the same loopback rules to IPv6', () => {
+    assert.equal(isServerReachable('http://[::1]:8080', remotePage), false);
+    assert.equal(isServerReachable('http://[::1]:8080', remotePage, true), true);
+    assert.equal(isServerReachable('http://localhost:8080', { href: 'http://[::1]/', hostname: '[::1]' }), true);
+  });
+
   it('has no server to ask when none is configured or the value is not a URL', () => {
     assert.equal(isServerReachable(''), false);
     assert.equal(isServerReachable('http://'), false);

@@ -38,7 +38,7 @@ export function createPreviewAnalysis() {
           clashResult: base.clashResult, clashRawResult: base.clashRawResult,
           clashGroups: base.clashGroups, clashGroupsKind: base.clashGroupsKind,
           clashExclusionCounts: base.clashExclusionCounts, clashSuppressedCount: base.clashSuppressedCount,
-          clashError: base.clashError,
+          clashError: base.clashError, clashErrorKind: base.clashErrorKind,
           ...(writesUnchanged ? { pointCloudDeviationComputed: base.pointCloudDeviationComputed,
             pointCloudDeviationStatistics: base.pointCloudDeviationStatistics,
             pointCloudColorMode: base.pointCloudColorMode } : { pointCloudDeviationComputed: false, pointCloudDeviationStatistics: null,

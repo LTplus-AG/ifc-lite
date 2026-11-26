@@ -27,10 +27,12 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@ifc-lite/a2ui": "workspace:^",
     "@ifc-lite/extensions": "workspace:^",
     "@ifc-lite/sdk": "workspace:^",
     "esbuild-wasm": "^0.28.2",
-    "quickjs-emscripten": "^0.32.0"
+    "quickjs-emscripten": "^0.32.0",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@ifc-lite/create": "workspace:^",

@@ -35,7 +35,7 @@ const MAX_SLOT_NESTING_DEPTH = 256;
 
 const I64_MAX = 9223372036854775807n;
 const I64_MIN = -9223372036854775808n;
-const U32_MAX = 4294967295;
+export const MAX_SOURCE_STEP_ID = 0xffffffff;
 
 /** The STEP whitespace set, as core's `is_step_space`. */
 export function isStepSpaceCode(code: number): boolean {
@@ -122,7 +122,7 @@ export function parseStepNumber(token: string): number {
  * Whether `value` is exactly ONE STEP value, trivia allowed around it and
  * between its parts. See the module comment for the grammar.
  */
-export function isStepValue(value: string): boolean {
+export function isStepValue(value: string, maxReferenceId = MAX_SOURCE_STEP_ID): boolean {
   const n = value.length;
   let i = skipStepTrivia(value, 0);
   if (i === -1) return false;
@@ -166,7 +166,7 @@ export function isStepValue(value: string): boolean {
       } else if (code === 0x23) {
         let end = i + 1;
         while (end < n && isDigit(value.charCodeAt(end))) end++;
-        if (end === i + 1 || Number(value.slice(i + 1, end)) > U32_MAX) return false;
+        if (end === i + 1 || Number(value.slice(i + 1, end)) > maxReferenceId) return false;
         i = end;
       } else if (code === 0x2e && i + 1 < n && !isDigit(value.charCodeAt(i + 1))) {
         const end = nameEnd(value, i + 1);
@@ -215,6 +215,6 @@ export function isStepValue(value: string): boolean {
  * NOT given that pass: counting it as one more empty slot would shift every
  * index after it.
  */
-export function isWellFormedStepSlot(part: string): boolean {
-  return isStepBlank(part) || isStepValue(part);
+export function isWellFormedStepSlot(part: string, maxReferenceId?: number): boolean {
+  return isStepBlank(part) || isStepValue(part, maxReferenceId);
 }

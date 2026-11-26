@@ -6,12 +6,14 @@
  * Mutation slice - manages property/quantity mutations for IFC export
  */
 
+import { registerOverlayView } from './register-overlay-view.js';
 import { moveWithGeneratedRooms, notifySkippedRoomRotation, rotateWithGeneratedRooms } from './mutation-placement-rooms.js';
 import { createRoofIn } from './mutation-roof-create.js';
 import { modelEditTarget, readModelEditTarget } from './mutation-modelling-records.js';
 import { moveAttachedTargetIn } from './mutation-attached-target-move.js';
 import { type StateCreator } from 'zustand';
 import type { ViewerState } from '../index.js';
+import { getLegacySourceMutationView, isLegacySourceRef, LEGACY_MUTATION_MODEL_IDS } from '@/sdk/adapters/model-compat';
 import type { MutablePropertyView, NewEntity, IfcAttributeValue } from '@ifc-lite/mutations';
 import { StoreEditor } from '@ifc-lite/mutations';
 import type { Mutation, ChangeSet, PropertyValue } from '@ifc-lite/mutations';
@@ -61,9 +63,10 @@ export type { AuthoredElement };
 import { createCostUndoMutations, type CostUndoMethods } from './mutation-cost-undo.js';
 import { completeEntityRemoval, pruneStashByModel, type RemovedMeshStash } from './mutation-mesh-stash.js';
 import { applyDuplicatePreAlignmentBaseline } from './mutation-duplicate-prealign.js';
+import { mirroredSession, movedEntityOf, propertyBefore, rememberPublishedEdit, publishMove } from './mutation-room-history.js';
 import { isGeorefMutation, pruneMutationHistory } from './mutation-history-prune.js';
 import { invalidateHistoryPatch } from './mutation-redo-remote-guard.js';
-import { hasPendingWorkOutsideView } from './pending-outside-view.js';
+import { hasPendingScheduleEdits } from './pending-outside-view.js';
 import {
   resolvePlacementChain,
   resolveRotationState,
@@ -345,7 +348,8 @@ export interface MutationSlice extends CostUndoMethods {
     entityId: number,
     attrName: string,
     value: string,
-    oldValue?: string
+    /** The value before the edit, which undo restores (null: it was unset); omitted when the caller does not know it. */
+    oldValue?: string | null
   ) => Mutation | null;
 
   /**
@@ -1058,16 +1062,14 @@ export const createMutationSlice: StateCreator<
 
   // Mutation View Management
   getMutationView: (modelId) => {
-    return get().mutationViews.get(modelId) || null;
+    const state = get();
+    const view = isLegacySourceRef(state, modelId)
+      ? getLegacySourceMutationView(state)
+      : state.mutationViews.get(modelId);
+    return view ?? null;
   },
 
-  registerMutationView: (modelId, view) => {
-    set((state) => {
-      const newViews = new Map(state.mutationViews);
-      newViews.set(modelId, view);
-      return { mutationViews: newViews };
-    });
-  },
+  registerMutationView: (modelId, view) => set(state => registerOverlayView(state, modelId, view)),
 
   clearMutationView: (modelIds, options) => {
     set((initial) => {
@@ -1077,12 +1079,17 @@ export const createMutationSlice: StateCreator<
       let history = { undoStacks: initial.undoStacks, redoStacks: initial.redoStacks,
         mutationBatchTags: initial.mutationBatchTags, mutationMeshTranslations: initial.mutationMeshTranslations };
       const discarded: Mutation[] = [];
-      for (const modelId of typeof modelIds === 'string' ? [modelIds] : modelIds) {
+      const requestedIds = typeof modelIds === 'string' ? [modelIds] : modelIds;
+      const clearedIds = new Set(requestedIds.flatMap(modelId =>
+        isLegacySourceRef(initial, modelId)
+          ? LEGACY_MUTATION_MODEL_IDS.filter(id => isLegacySourceRef(initial, id)) : [modelId]));
+      for (const modelId of clearedIds) {
         const undo = history.undoStacks.get(modelId) ?? [], redo = history.redoStacks.get(modelId) ?? [];
         const keepGeoref = options?.keepGeoref === true && [...undo, ...redo].some(isGeorefMutation);
         // What still makes the model unsaved without its view: a pending georeference
         // value, or the schedule it owns (generated tasks or edits).
-        const stillUnsaved = options?.keepGeoref === true && hasPendingWorkOutsideView(initial, modelId);
+        const stillUnsaved = hasPendingScheduleEdits(initial, modelId)
+          || (options?.keepGeoref === true && initial.georefMutations.has(modelId));
         mutationViews.delete(modelId);
         storeEditors.delete(modelId);
         if (!stillUnsaved) dirtyModels.delete(modelId);
@@ -1109,7 +1116,7 @@ export const createMutationSlice: StateCreator<
     // Apply the shared edit-mode, role, and model gate before touching the
     // overlay, undo/redo, dirty state, or collaboration mirror (#5901).
     if (!canMutateData(get(), modelId)) return null;
-    const view = get().mutationViews.get(modelId);
+    const view = get().getMutationView(modelId);
     if (!view) return null;
 
     if (dataType !== undefined) {
@@ -1118,6 +1125,7 @@ export const createMutationSlice: StateCreator<
       dataType = declaration.dataType;
       valueType = declaration.valueType;
     }
+    const session = mirroredSession(get(), modelId), previous = session ? propertyBefore(view, entityId, psetName, propName) : undefined;
     const mutation = view.setProperty(entityId, psetName, propName, value, valueType, undefined, false, dataType);
 
     set((state) => recordHistory(state, modelId, [mutation]));
@@ -1127,6 +1135,7 @@ export const createMutationSlice: StateCreator<
     // is handed, so this call site cannot get the subject wrong. See
     // `@/lib/collab/room-model-target`.)
     get().mirrorPropertyEdit(modelId, entityId, psetName, propName, value, valueType, dataType);
+    if (session) rememberPublishedEdit(mutation, session, { forward: { type: valueType, dataType }, inverse: previous });
 
     return mutation;
   },
@@ -1134,7 +1143,7 @@ export const createMutationSlice: StateCreator<
   deleteProperty: (modelId, entityId, psetName, propName) => {
     // Shared mutation gate before the local commit — see setProperty.
     if (!canMutateData(get(), modelId)) return null;
-    const view = get().mutationViews.get(modelId);
+    const view = get().getMutationView(modelId);
     if (!view) return null;
 
     const mutation = view.deleteProperty(entityId, psetName, propName);
@@ -1145,6 +1154,9 @@ export const createMutationSlice: StateCreator<
     // Mirror into the collab CRDT — room model only, gated in the callee. See
     // the note in `setProperty`.
     get().mirrorPropertyDelete(modelId, entityId, psetName, propName);
+    // The delete recorded the row's types, which its undo restores here and in the room.
+    const session = mirroredSession(get(), modelId);
+    if (session) rememberPublishedEdit(mutation, session, mutation.valueType === undefined ? {} : { inverse: { type: mutation.valueType, dataType: mutation.dataType } });
 
     return mutation;
   },
@@ -1154,7 +1166,7 @@ export const createMutationSlice: StateCreator<
     // creation isn't mirrored yet, which is all the more reason a read-only
     // role must not accumulate local-only psets in a shared session.)
     if (!canMutateData(get(), modelId)) return null;
-    const view = get().mutationViews.get(modelId);
+    const view = get().getMutationView(modelId);
     if (!view) return null;
 
     const mutation = view.createPropertySet(entityId, psetName, properties);
@@ -1170,7 +1182,7 @@ export const createMutationSlice: StateCreator<
     // `createPropertySet` and `deleteProperty` were both given the gate and
     // this one was not.
     if (!canMutateData(get(), modelId)) return null;
-    const view = get().mutationViews.get(modelId);
+    const view = get().getMutationView(modelId);
     if (!view) return null;
 
     const mutation = view.deletePropertySet(entityId, psetName);
@@ -1195,7 +1207,7 @@ export const createMutationSlice: StateCreator<
     // Gating here at least stops an unauthorised writer, and stops the local
     // state diverging further than it already does.
     if (!canMutateData(get(), modelId)) return null;
-    const view = get().mutationViews.get(modelId);
+    const view = get().getMutationView(modelId);
     if (!view) return null;
 
     const mutation = view.setQuantity(entityId, qsetName, quantName, value, quantityType, unit);
@@ -1208,7 +1220,7 @@ export const createMutationSlice: StateCreator<
   createQuantitySet: (modelId, entityId, qsetName, quantities) => {
     // See setQuantity above — same omission, same reason.
     if (!canMutateData(get(), modelId)) return null;
-    const view = get().mutationViews.get(modelId);
+    const view = get().getMutationView(modelId);
     if (!view) return null;
 
     const mutation = view.createQuantitySet(entityId, qsetName, quantities);
@@ -1222,16 +1234,19 @@ export const createMutationSlice: StateCreator<
   setAttribute: (modelId, entityId, attrName, value, oldValue) => {
     // Shared mutation gate before the local commit — see setProperty.
     if (!canMutateData(get(), modelId)) return null;
-    const view = get().mutationViews.get(modelId);
+    const view = get().getMutationView(modelId);
     if (!view) return null;
 
-    const mutation = view.setAttribute(entityId, attrName, value, oldValue);
+    // An unset prior has no value to restore locally: the undo drops the overlay.
+    const mutation = view.setAttribute(entityId, attrName, value, oldValue ?? undefined);
 
     set((state) => recordHistory(state, modelId, [mutation]));
 
     // Mirror into the collab CRDT — room model only, gated in the callee. See
     // the note in `setProperty`.
     get().mirrorAttributeEdit(modelId, entityId, attrName, value);
+    const session = mirroredSession(get(), modelId);
+    if (session) rememberPublishedEdit(mutation, session, oldValue === undefined ? {} : { attributePrior: oldValue });
 
     return mutation;
   },
@@ -1241,7 +1256,7 @@ export const createMutationSlice: StateCreator<
     // Shared mutation gate before the local commit — see setProperty. Reclassing an
     // entity is an attribute write like any other, and `setAttribute` is gated.
     if (!canMutateData(get(), modelId)) return null;
-    const view = get().mutationViews.get(modelId);
+    const view = get().getMutationView(modelId);
     if (!view) return null;
 
     let mutation: Mutation | null = null;
@@ -1346,7 +1361,7 @@ export const createMutationSlice: StateCreator<
     if (attached) {
       if (!attached.ok) return attached;
       // Same canonical placement as the plain move below; the remesh publishes the refit geometry.
-      get().mirrorPlacementEdit(modelId, expressId, delta);
+      publishMove(get(), modelId, attached.mutation, expressId, delta);
       return { ok: true, newCoordinates: pointToMetres(dataStore, attached.newCoordinates) };
     }
     // Go through the slice's own `setPositionalAttribute` action so
@@ -1387,7 +1402,7 @@ export const createMutationSlice: StateCreator<
     }
     // Mirror the move to peers as the entity's canonical placement
     // (`usd::xformop`). No-op outside a collab session.
-    get().mirrorPlacementEdit(modelId, expressId, delta);
+    publishMove(get(), modelId, mutation, expressId, delta);
 
     return { ok: true, newCoordinates: pointToMetres(dataStore, nativeNext) };
   },
@@ -1433,7 +1448,7 @@ export const createMutationSlice: StateCreator<
     const attached = moveAttachedTargetIn(api, modelId, expressId, pointToNative(dataStore, position));
     if (attached) {
       if (!attached.ok) return attached;
-      if (dx !== 0 || dy !== 0 || dz !== 0) get().mirrorPlacementEdit(modelId, expressId, [dx, dy, dz]);
+      if (dx !== 0 || dy !== 0 || dz !== 0) publishMove(get(), modelId, attached.mutation, expressId, [dx, dy, dz]);
       return { ok: true, newCoordinates: position };
     }
     const updated = moveWithGeneratedRooms(api, modelId, expressId, chain.cartesianPointId, pointToNative(dataStore, position));
@@ -1453,7 +1468,7 @@ export const createMutationSlice: StateCreator<
         }
       }
       // Mirror the move to peers as the entity's placement (`usd::xformop`).
-      get().mirrorPlacementEdit(modelId, expressId, [dx, dy, dz]);
+      publishMove(get(), modelId, mutation, expressId, [dx, dy, dz]);
     }
     return { ok: true, newCoordinates: position };
   },
@@ -1841,7 +1856,15 @@ export const createMutationSlice: StateCreator<
   },
 
   invalidateHistoryForEntity: (modelId, entityId) => set((s) => {
-    const patch = invalidateHistoryPatch(s.undoStacks, s.redoStacks, s.mutationBatchTags, s.mutationMeshTranslations, modelId, entityId);
+    // A move's mutation is its placement point's, so a recorded move of this entity goes too, with the rest of its
+    // batch: an undo of half a move would revert its regenerated rooms or refits and leave the element moved (#10810).
+    // A peer edit of any member of a move's batch clears all of it; any other batch keeps the members the peer did not touch.
+    const hit = (m: Mutation) => m.entityId === entityId || movedEntityOf(m) === entityId;
+    const stacks = [...(s.undoStacks.get(modelId) ?? []), ...(s.redoStacks.get(modelId) ?? [])];
+    const moves = new Set(stacks.filter((m) => movedEntityOf(m) !== undefined).map((m) => s.mutationBatchTags.get(m.id)));
+    const batches = new Set(stacks.filter(hit).map((m) => s.mutationBatchTags.get(m.id)).filter((tag) => tag !== undefined && moves.has(tag)));
+    const patch = invalidateHistoryPatch(s.undoStacks, s.redoStacks, s.mutationBatchTags, s.mutationMeshTranslations, modelId,
+      (m) => hit(m) || batches.has(s.mutationBatchTags.get(m.id) ?? ''));
     // Whatever the patch removed from this model's undo stack also leaves its change sets.
     if (!patch.undoStacks) return patch;
     const kept = new Set((patch.undoStacks.get(modelId) ?? []).map((m) => m.id));
@@ -1915,7 +1938,7 @@ export const createMutationSlice: StateCreator<
   },
 
   getMutationsForModel: (modelId) => {
-    const view = get().mutationViews.get(modelId);
+    const view = get().getMutationView(modelId);
     return view ? view.getMutations() : [];
   },
 

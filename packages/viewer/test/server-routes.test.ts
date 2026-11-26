@@ -338,7 +338,7 @@ describe('viewer server — /api/command allowlist', () => {
     'colorize', 'isolate', 'xray', 'flyto', 'highlight',
     'colorizeEntities', 'isolateEntities', 'hideEntities', 'showEntities', 'resetColorEntities',
     'section', 'clearSection', 'colorByStorey', 'addGeometry',
-    'showall', 'reset', 'picked', 'setView', 'removeCreated', 'camera',
+    'showall', 'reset', 'picked', 'selectEntities', 'setView', 'removeCreated', 'camera',
   ]) {
     it(`accepts the "${action}" action`, TEST_TIMEOUT, async () => {
       assert.ok(VALID_ACTIONS.has(action), `${action} must be exported in VALID_ACTIONS`);
@@ -351,10 +351,10 @@ describe('viewer server — /api/command allowlist', () => {
     });
   }
 
-  it('exports exactly the twenty actions the viewer implements', () => {
+  it('exports exactly the twenty-one actions the viewer implements', () => {
     // Pins the size in both directions: the per-action tests above catch a
     // removal, this catches a silent addition.
-    assert.equal(VALID_ACTIONS.size, 20);
+    assert.equal(VALID_ACTIONS.size, 21);
   });
 
   it('rejects an action outside the allowlist and lists the valid ones', TEST_TIMEOUT, async () => {

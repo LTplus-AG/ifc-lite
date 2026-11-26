@@ -3,11 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { discoverFilterSchema, discoverPropertyAndQuantitySchema, discoverFilterValues, type FilterValueSchema } from '@/lib/search/filter-schema';
 import { operation, emptySchema } from './contract';
-import { MAX_RESULT_BYTES } from './result-limit';
+import { MAX_RESULT_BYTES, resultBytes } from './result-limit';
 const string = { type: 'string' };
-const utf8 = new TextEncoder();
-/** Measured as the executor measures a result: UTF-8 bytes of its JSON. */
-const bytes = (value: unknown) => utf8.encode(JSON.stringify(value)).length;
 const strings = { type: 'array', items: string };
 const tuple = (...items: Record<string, unknown>[]) => ({ type: 'array', items, minItems: items.length, maxItems: items.length, additionalItems: false });
 const meta = (id: string, description: string, outputSchema: Record<string, unknown>) => ({ id, owner: 'hierarchy', description,
@@ -21,7 +18,7 @@ export function boundedPropertyValues(values: Iterable<[string, string[]]>, budg
   const out: Record<string, string[]> = {};
   let used = 1;
   for (const [key, list] of values) {
-    const size = bytes(key) + bytes(list) + 2;
+    const size = resultBytes(key) + resultBytes(list) + 2;
     if (used + size > budget) continue; // a later, smaller key may still fit
     out[key] = list; used += size;
   }
@@ -31,7 +28,7 @@ export function boundedPropertyValues(values: Iterable<[string, string[]]>, budg
 function boundedList(values: string[], budget: number): string[] {
   let used = 1, count = 0;
   for (; count < values.length; count++) {
-    used += bytes(values[count]) + 1;
+    used += resultBytes(values[count]) + 1;
     if (used > budget) break;
   }
   return values.slice(0, count);
@@ -52,8 +49,8 @@ export function boundedFieldValues(values: FilterValueSchema, budget: number): F
   const keys = [...values.propertyValues].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
   const out: FieldValues = { ...values, propertyValues: Object.fromEntries(keys) };
   // Reserve keys and a full `truncated` list; the null placeholders and each field's own brackets are slack.
-  let left = budget - bytes({ ...Object.fromEntries(VALUE_FIELDS.map(field => [field, null])), truncated: VALUE_FIELDS });
-  const bySize = VALUE_FIELDS.map(field => ({ field, size: bytes(out[field]) })).sort((a, b) => a.size - b.size);
+  let left = budget - resultBytes({ ...Object.fromEntries(VALUE_FIELDS.map(field => [field, null])), truncated: VALUE_FIELDS });
+  const bySize = VALUE_FIELDS.map(field => ({ field, size: resultBytes(out[field]) })).sort((a, b) => a.size - b.size);
   const truncated = new Set<ValueField>();
   bySize.forEach(({ field, size }, index) => {
     const share = Math.floor(left / (bySize.length - index));
@@ -61,7 +58,7 @@ export function boundedFieldValues(values: FilterValueSchema, budget: number): F
     truncated.add(field);
     if (field === 'propertyValues') out.propertyValues = boundedPropertyValues(keys, share);
     else out[field] = boundedList(out[field], share);
-    left -= bytes(out[field]);
+    left -= resultBytes(out[field]);
   });
   return truncated.size ? { ...out, truncated: VALUE_FIELDS.filter(field => truncated.has(field)) } : out;
 }

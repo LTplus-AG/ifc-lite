@@ -13,9 +13,11 @@ import { test, expect, type Page, type TestInfo } from '@playwright/test';
 import { copyFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import type { ListDefinition } from '../../packages/lists/src/types.js';
 
 const STORE = '__ifc_lite_viewer_store__';
 const FIXTURE = 'tests/models/ara3d/AC20-FZK-Haus.ifc';
+const INSTANCED_FIXTURE = 'tests/models/ara3d/C20-Institute-Var-2.ifc';
 const LIST = 'Ground floor elements';
 /** FZK-Haus's two storeys; the rule keeps what the ground floor directly contains. */
 const KEPT = 'Erdgeschoss';
@@ -27,12 +29,17 @@ type Store = {
   spatialHierarchy: { elementToStorey: Map<number, number> };
 };
 type Api = { getState(): {
-  models: Map<string, { geometryResult?: { meshes: unknown[] }; ifcDataStore: Store | null }>;
+  models: Map<string, { geometryResult?: {
+    meshes: Array<{ expressId: number }>;
+    instancedGeometryHashes?: Map<number, bigint>;
+  }; ifcDataStore: Store | null }>;
   /** A single loaded model may keep its store on this legacy slot only. */
   ifcDataStore: Store | null;
   loading: boolean;
   listDefinitions: Array<{ name: string; groups: unknown; unreadableConditions?: unknown[] }>;
   listResult: { rows: Array<{ modelId: string; entityId: number }> } | null;
+  selectedEntityIds: Set<number>;
+  addListDefinition(definition: ListDefinition): void;
   setListPanelVisible(visible: boolean): void;
 } };
 
@@ -197,4 +204,51 @@ test('a saved exact-Container List value rule is created, reopened and run on on
   expect(perModel.get(firstId)).toBe(one.length);
   await snap(page, testInfo, 'lists-value-rule-two-models.png');
   testInfo.annotations.push({ type: 'rows', description: `one=${one.length}; excludedUpper=${sides.upper}; two=${JSON.stringify([...perModel.values()])}` });
+});
+
+test('a schedule row selects flat and GPU-instanced doors in the IFC fixture (#11154)', async ({ page }, testInfo) => {
+  test.skip(!existsSync(INSTANCED_FIXTURE), `${INSTANCED_FIXTURE} missing — run pnpm fixtures`);
+  const definition: ListDefinition = {
+    id: 'doors', name: 'Doors', createdAt: 0, updatedAt: 0, entityTypes: [],
+    columns: [{ id: 'class', source: 'attribute', propertyName: 'Class' }],
+    groups: [{ combinator: 'AND', rules: [
+      { kind: 'listCondition', source: 'attribute', propertyName: 'Class', operator: 'equals', value: 'IfcDoor' },
+    ] }],
+    grouping: { columnId: 'class', sumColumnIds: [], view: 'schedule' },
+  };
+  await page.goto('/');
+  await page.waitForFunction((key) => !!(globalThis as Record<string, unknown>)[key], STORE);
+  await page.locator('#file-input-open').setInputFiles(INSTANCED_FIXTURE);
+  await page.waitForFunction((key) => {
+    const globals = globalThis as unknown as Record<string, Api> & {
+      __ifc_lite_render_frame__?: () => { instancedDrawn?: number } | null;
+    };
+    const s = globals[key].getState();
+    return !s.loading && [...s.models.values()].some((model) => model.ifcDataStore)
+      && (globals.__ifc_lite_render_frame__?.()?.instancedDrawn ?? 0) > 0;
+  }, STORE, { timeout: 120_000 });
+  const expected = await page.evaluate(([key, list]) => {
+    const s = (globalThis as unknown as Record<string, Api>)[key].getState();
+    s.addListDefinition(list);
+    s.setListPanelVisible(true);
+    const model = [...s.models.values()][0];
+    const ids = model.ifcDataStore!.entityIndex.byType.get('IFCDOOR') ?? [];
+    const flat = new Set(model.geometryResult?.meshes.map((mesh) => mesh.expressId));
+    const instanced = model.geometryResult?.instancedGeometryHashes;
+    return {
+      visible: ids.filter((id) => flat.has(id) || instanced?.has(id)).sort((a, b) => a - b),
+      flat: ids.filter((id) => flat.has(id)).length,
+      instanced: ids.filter((id) => instanced?.has(id)).length,
+    };
+  }, [STORE, definition] as const);
+  expect(expected.flat).toBeGreaterThan(0);
+  expect(expected.instanced).toBeGreaterThan(0);
+
+  await page.getByRole('button', { name: 'Run list Doors' }).click();
+  await expect(page.getByRole('button', { name: 'Showing visible objects only' })).toBeVisible();
+  await page.getByRole('button', { name: `IfcDoor ${expected.visible.length}`, exact: true }).press('Enter', { timeout: 10_000 });
+  const selected = await page.evaluate((key) => [...(globalThis as unknown as Record<string, Api>)[key].getState().selectedEntityIds].sort((a, b) => a - b), STORE);
+  expect(selected).toEqual(expected.visible);
+  testInfo.annotations.push({ type: 'selection', description: `${selected.length} doors (${expected.flat} flat, ${expected.instanced} instanced)` });
+  await snap(page, testInfo, 'instanced-schedule-selection.png');
 });

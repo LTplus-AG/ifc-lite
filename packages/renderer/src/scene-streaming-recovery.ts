@@ -18,6 +18,7 @@ export function restoredGpuRollback(host: SceneRecoveryHost): () => void {
     }
     for (const texture of textures) texture.destroy();
     for (const template of templates) if (template) destroyInstancedTemplateGpu(template);
+    host.dropGpuInstancePool?.(); // rebuilt from those templates during the restore
   };
 }
 

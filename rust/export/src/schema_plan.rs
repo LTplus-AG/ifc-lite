@@ -14,9 +14,10 @@
 
 use rustc_hash::FxHashMap;
 
+use crate::schema_attr_maps::{attr_map, AttrMap};
 use crate::schema_convert::{rename_type, schema_attribute_names, should_skip_entity, BY_NAME_ATTR_REMAP_TYPES};
 use crate::schema_renames::{is_strict_attr_prefix, replaced_slot};
-use crate::schema_unrepresented::has_representation;
+use crate::schema_unrepresented::{missing_type_route, missing_type_warnings, Named, Route};
 
 /// How a written record's attribute list is reconciled with the target type.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -28,7 +29,11 @@ pub(crate) enum Adjust {
     /// The source list is a strict name prefix of the target's: pad to this many.
     Pad(usize),
     /// A renamed type in `BY_NAME_ATTR_REMAP_TYPES`: source names, target names.
+    UpgradeIfc4x3(&'static [&'static str], &'static [&'static str]),
     ByName(&'static [&'static str], &'static [&'static str]),
+    /// A type IFC4 inserted, reordered or retyped attributes in (#10763): the
+    /// reviewed map, whether it runs upward, source names, target names.
+    Mapped(&'static AttrMap, bool, &'static [&'static str], &'static [&'static str]),
 }
 
 /// What `convert_record` does with every record of one source type.
@@ -50,32 +55,43 @@ pub(crate) enum Plan {
 /// `convertRecord`: proxy list, representation, then the prefix rules (source
 /// names keyed on the ORIGINAL type, target names on the renamed one).
 pub(crate) fn plan_for(entity_type: &str, cfrom: &'static str, cto: &'static str) -> Plan {
+    plan_and_route(entity_type, cfrom, cto).0
+}
+
+/// [`plan_for`] and the type's [`Route`], for the warnings (#10902).
+fn plan_and_route(entity_type: &str, cfrom: &'static str, cto: &'static str) -> (Plan, Route) {
     let renamed = rename_type(entity_type, cfrom, cto);
     let new_type = renamed.unwrap_or(entity_type);
+    // An alignment product has no representation in the target either: the
+    // warnings name it with the other proxies.
     if should_skip_entity(new_type, cto) {
-        return Plan::ProductProxy;
+        return (Plan::ProductProxy, Route::Unrepresented);
     }
     let src_names = schema_attribute_names(cfrom, entity_type);
-    if !has_representation(cfrom == "IFC4X3" && src_names.is_some(), new_type, cto) {
-        return Plan::Unrepresented;
+    let route = missing_type_route(entity_type, new_type, cfrom, cto, src_names.is_some());
+    if route == Route::Unrepresented {
+        return (Plan::Unrepresented, route);
     }
     // The two prefix branches cannot both apply: each needs its own list
     // strictly shorter.
     let tgt_names = schema_attribute_names(cto, new_type);
-    let adjust = match (src_names, tgt_names) {
-        (Some(src), Some(tgt)) if is_strict_attr_prefix(entity_type, tgt, src) => Adjust::Trim(tgt.len()),
-        (Some(src), Some(tgt)) if is_strict_attr_prefix(entity_type, src, tgt) => Adjust::Pad(tgt.len()),
-        (Some(src), Some(tgt)) if new_type != entity_type
+    let adjust = match (src_names, tgt_names, attr_map(entity_type, new_type, cfrom, cto)) {
+        (Some(src), Some(tgt), _) if cto == "IFC4X3" && renamed.is_some() && crate::schema_ifc4x3_upgrade::needs_slot_map(entity_type) => Adjust::UpgradeIfc4x3(src, tgt),
+        (Some(src), Some(tgt), Some((map, up))) => Adjust::Mapped(map, up, src, tgt),
+        (Some(src), Some(tgt), _) if is_strict_attr_prefix(entity_type, tgt, src) => Adjust::Trim(tgt.len()),
+        (Some(src), Some(tgt), _) if is_strict_attr_prefix(entity_type, src, tgt) => Adjust::Pad(tgt.len()),
+        (Some(src), Some(tgt), _) if new_type != entity_type
             && (BY_NAME_ATTR_REMAP_TYPES.contains(&entity_type) || (cto == "IFC2X3" && crate::schema_mep::ifc2x3_type(entity_type).is_some())) => {
             Adjust::ByName(src, tgt)
         }
         // The name stays, but IFC4X3 puts the inherited `PlacementRelTo` first,
         // so neither list is a positional prefix of the other (#9026 item 14).
-        (Some(src), Some(tgt)) if entity_type == crate::schema_grid_frames::GRID_PLACEMENT && src != tgt => Adjust::ByName(src, tgt),
+        (Some(src), Some(tgt), _) if entity_type == crate::schema_grid_frames::GRID_PLACEMENT && src != tgt => Adjust::ByName(src, tgt),
         _ => Adjust::Keep,
     };
-    let replaced = src_names.zip(tgt_names).and_then(|(src, tgt)| replaced_slot(entity_type, src, tgt));
-    Plan::Write { renamed, adjust, replaced }
+    // A map decides every slot itself, as in the TypeScript twin.
+    let replaced = src_names.zip(tgt_names).filter(|_| !matches!(adjust, Adjust::Mapped(..))).and_then(|(src, tgt)| replaced_slot(entity_type, src, tgt));
+    (Plan::Write { renamed, adjust, replaced }, route)
 }
 
 /// Index of a canonical schema family, for [`PlanCache`]'s per-pair maps.
@@ -91,21 +107,45 @@ fn family(schema: &str) -> usize {
 /// [`plan_for`], memoised per (source family, target family, type name). One
 /// map per schema pair, because a merged export converts models of different
 /// source schemas through one cache. Bounded by the distinct type names the
-/// input holds, which never exceeds its record count.
+/// input holds, which never exceeds its record count. Each entry counts the
+/// records asked for, so the warnings can name those of a type with no type of
+/// the target's own (#10902).
 #[derive(Default)]
 pub(crate) struct PlanCache {
-    by_pair: [FxHashMap<Box<str>, Plan>; 16],
+    by_pair: [FxHashMap<Box<str>, Cached>; 16],
+}
+
+struct Cached {
+    plan: Plan,
+    named: Option<Named>,
+    records: usize,
 }
 
 impl PlanCache {
     pub(crate) fn get(&mut self, entity_type: &str, cfrom: &'static str, cto: &'static str) -> Plan {
         let map = &mut self.by_pair[family(cfrom) * 4 + family(cto)];
-        if let Some(plan) = map.get(entity_type) {
-            return *plan;
+        if let Some(cached) = map.get_mut(entity_type) {
+            cached.records += 1;
+            return cached.plan;
         }
-        let plan = plan_for(entity_type, cfrom, cto);
-        map.insert(entity_type.into(), plan);
+        let (plan, route) = plan_and_route(entity_type, cfrom, cto);
+        map.insert(entity_type.into(), Cached { plan, named: route.named(entity_type), records: 1 });
         plan
+    }
+
+    /// Remove a date carrier that the final pass pruned from the written body.
+    pub(crate) fn forget_verbatim(&mut self, ty: &str) {
+        for entry in self.by_pair.iter_mut().filter_map(|map| map.get_mut(ty)) {
+            if entry.named == Some(Named::Verbatim) && entry.records > 0 {
+                entry.records -= 1;
+                break;
+            }
+        }
+    }
+
+    /// The records written as a proxy or as they are, by type (#10902).
+    pub(crate) fn warnings(&self) -> Vec<String> {
+        missing_type_warnings(self.by_pair.iter().flatten().filter(|(_, c)| c.records > 0).filter_map(|(ty, c)| c.named.map(|named| (&**ty, named, c.records))))
     }
 }
 

@@ -15,6 +15,7 @@
 import type { Drawing2D, DrawingLine, DrawingPolygon, Point2D, Bounds2D } from './types.js';
 import type { HatchLine } from './hatch-generator.js';
 import { HatchGenerator } from './hatch-generator.js';
+import { createHatchPatternDefs } from './svg-hatch-patterns.js';
 import {
   getLineStyle,
   getHatchPattern,
@@ -27,6 +28,7 @@ import {
 import {
   computeTransform,
   scaleLabel,
+  sheetFlipsY,
   transformPoint,
   type Transform2D,
 } from './svg-transform.js';
@@ -129,8 +131,7 @@ export class SVGExporter {
       underlays = [],
     } = options;
 
-    // Calculate transform from drawing coordinates to SVG coordinates
-    const transform = computeTransform(drawing.bounds, paperSize, scale, padding);
+    const transform = computeTransform(drawing.bounds, paperSize, scale, padding, sheetFlipsY(drawing.config.plane));
 
     // Build SVG
     let svg = this.createHeader(paperSize, backgroundColor);
@@ -226,55 +227,15 @@ export class SVGExporter {
 
   private createDefs(drawing: Drawing2D, scaleFactor: number): string {
     let defs = '  <defs>\n';
-    defs += this.createHatchPatternDefs(scaleFactor);
+    defs += createHatchPatternDefs(scaleFactor);
     defs += '  </defs>\n';
     return defs;
   }
 
   private createPolygonDefs(scaleFactor: number): string {
     let defs = '  <defs>\n';
-    defs += this.createHatchPatternDefs(scaleFactor);
+    defs += createHatchPatternDefs(scaleFactor);
     defs += '  </defs>\n';
-    return defs;
-  }
-
-  private createHatchPatternDefs(scaleFactor: number): string {
-    const spacing = 3 * (scaleFactor / 100); // Adjust for scale
-    let defs = '';
-
-    // Diagonal hatch
-    defs += `    <pattern id="hatch-diagonal" patternUnits="userSpaceOnUse"
-                width="${spacing}" height="${spacing}" patternTransform="rotate(45)">
-      <line x1="0" y1="0" x2="0" y2="${spacing}" stroke="#000" stroke-width="0.15"/>
-    </pattern>\n`;
-
-    // Cross-hatch
-    defs += `    <pattern id="hatch-cross" patternUnits="userSpaceOnUse"
-                width="${spacing}" height="${spacing}">
-      <line x1="0" y1="0" x2="${spacing}" y2="${spacing}" stroke="#000" stroke-width="0.1"/>
-      <line x1="${spacing}" y1="0" x2="0" y2="${spacing}" stroke="#000" stroke-width="0.1"/>
-    </pattern>\n`;
-
-    // Horizontal lines
-    defs += `    <pattern id="hatch-horizontal" patternUnits="userSpaceOnUse"
-                width="${spacing}" height="${spacing}">
-      <line x1="0" y1="${spacing / 2}" x2="${spacing}" y2="${spacing / 2}" stroke="#000" stroke-width="0.1"/>
-    </pattern>\n`;
-
-    // Concrete dots
-    defs += `    <pattern id="hatch-concrete" patternUnits="userSpaceOnUse"
-                width="${spacing * 2}" height="${spacing * 2}">
-      <circle cx="${spacing * 0.3}" cy="${spacing * 0.3}" r="0.3" fill="#666"/>
-      <circle cx="${spacing * 1.3}" cy="${spacing * 1.3}" r="0.3" fill="#666"/>
-      <circle cx="${spacing * 0.8}" cy="${spacing * 1.6}" r="0.2" fill="#888"/>
-    </pattern>\n`;
-
-    // Steel (dense diagonal)
-    defs += `    <pattern id="hatch-steel" patternUnits="userSpaceOnUse"
-                width="${spacing * 0.7}" height="${spacing * 0.7}" patternTransform="rotate(45)">
-      <line x1="0" y1="0" x2="0" y2="${spacing * 0.7}" stroke="#333" stroke-width="0.2"/>
-    </pattern>\n`;
-
     return defs;
   }
 

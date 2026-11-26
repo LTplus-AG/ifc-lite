@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { retainedCatalogueShape } from './retained-catalogue-shape';
+import { a2uiMessageParameters } from './a2ui-catalogue-shape';
 import { registryCatalogueShape } from './registry-catalogue-shape';
 import { structuralDeriveShape, type StructuralDeriveKey } from './structural-derive-catalogue-shape';
 import type { flowReviewEn } from './catalogues/flow-review.en';
@@ -337,11 +338,8 @@ const ifcFederationShape = {
 /** The glyph overlay's tooltips (#9668); only the tooltip takes parameters. A regex, since this ships eagerly. */
 const STRUCTURAL_GLYPH_KEY = /^structuralGlyphs\.(support\.(fixed|pinned|roller|spring)|load\.(force|moment|temperature|displacement)|reaction)$/;
 
-/**
- * The local agent bridge's keys (#9523), compact because this ships eagerly:
- * every tail, and the parameters of the few that take any. Checked against
- * `agent-bridge.en.ts` in `catalogue-problems.test.ts`.
- */
+/** Eager agent bridge key and parameter metadata (#9523).
+ * Checked against `agent-bridge.en.ts` in `catalogue-problems.test.ts`. */
 const AGENT_BRIDGE_TAILS = new Set(('row.title row.description row.connect dialog.title dialog.fromLink dialog.reads '
   + 'dialog.readOnly dialog.localOnly dialog.browserPrompt dialog.start dialog.code dialog.codeHint dialog.port '
   + 'dialog.codeRequired dialog.portInvalid dialog.connect dialog.tryAgain dialog.cancel dialog.connecting '
@@ -351,12 +349,14 @@ const AGENT_BRIDGE_TAILS = new Set(('row.title row.description row.connect dialo
   + 'failure.handshakeTimeout failure.invalidMessage failure.busy failure.invalidLink ended.replaced '
   + 'ended.bridgeShutdown ended.connectionLost ended.pageHidden dialog.unverified dialog.target dialog.replaces '
   + 'failure.framed ended.flooded row.showActivity row.hideActivity failure.permissionPrompt dialog.permissionWait '
+  + 'chip.connectedCommands panel.sinceCommands panel.allowCommands panel.allowCommandsHint '
   + 'chip.connectedEdits panel.sinceEdits panel.allowEdits panel.allowEditsHint panel.editsCeiling panel.edit panel.editChange '
-  + 'panel.editDeleted panel.editUnchanged').split(' '));
+  + 'panel.editDeleted panel.editUnchanged panel.repeated surfaces.title surfaces.dismiss surfaces.clear surfaces.untitled surfaces.sent').split(' '));
 const AGENT_BRIDGE_PARAMETERS: Record<string, readonly string[]> = {
   'dialog.reads': ['port'], 'dialog.target': ['port'], 'dialog.replaces': ['port'], 'panel.since': ['port', 'time'], 'panel.error': ['code'], 'panel.duration': ['ms'],
   'failure.unreachable': ['port'], 'failure.origin': ['origin'], 'panel.sinceEdits': ['port', 'time'], 'panel.editChange': ['after', 'before', 'entity', 'field'],
-  'panel.editDeleted': ['before', 'entity', 'field'], 'panel.editUnchanged': ['after', 'entity', 'field'],
+  'panel.sinceCommands': ['port', 'time'],
+  'panel.editDeleted': ['before', 'entity', 'field'], 'panel.editUnchanged': ['after', 'entity', 'field'], 'panel.repeated': ['count'], 'surfaces.dismiss': ['title'],
 };
 
 export function lazyMessageParameters(key: string): readonly string[] | null {
@@ -396,5 +396,5 @@ export function lazyMessageParameters(key: string): readonly string[] | null {
     const tail = key.slice('reviewWorkspace.'.length);
     return Object.hasOwn(reviewMessageShape, tail) ? reviewMessageShape[tail as WorkspaceReviewKey] : null;
   }
-  return null;
+  return a2uiMessageParameters(key);
 }

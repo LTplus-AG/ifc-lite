@@ -23,6 +23,8 @@ pub(super) struct ColumnsDiscovery {
     pub mapped_item_spans: Vec<(u32, usize, usize)>,
     pub type_candidate_spans: Vec<(u32, usize, usize, ifc_lite_core::IfcType)>,
     pub has_layer_set: bool,
+    /// Out-of-core ingest: collected only when the host asked for it.
+    pub sparse: Option<super::sparse_facts::SparseFacts>,
 }
 
 impl ColumnsDiscovery {
@@ -50,6 +52,9 @@ impl ColumnsDiscovery {
     ) {
         use ifc_lite_processing::scan::ScanClass;
         let class = ScanClass::classify(kw);
+        if let Some(sparse) = self.sparse.as_mut() {
+            sparse.observe(content, id, kw, start, end);
+        }
         let job = shared.observe_browser(content, class, id, kw, start, end);
         self.project_id = shared.project_id;
         if class == ScanClass::Site {

@@ -71,7 +71,7 @@ const evidence = {
   startedAt: new Date().toISOString(),
 };
 
-const aliases = { '@ifc-lite/spatial': resolve(repo, 'packages/spatial/src/index.ts'), '@ifc-lite/load-trace': resolve(repo, 'packages/load-trace/src/index.ts') };
+const aliases = { '@ifc-lite/spatial': resolve(repo, 'packages/spatial/src/index.ts'), '@ifc-lite/load-trace': resolve(repo, 'packages/load-trace/src/index.ts'), '@ifc-lite/geometry/compact': resolve(repo, 'packages/geometry/src/compact.ts') };
 async function startServer(configFile) {
   const server = await createServer({
     root, logLevel: 'warn', ...(configFile ? { configFile } : { configFile: false, resolve: { alias: aliases } }),

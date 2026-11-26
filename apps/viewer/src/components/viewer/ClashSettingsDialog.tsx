@@ -32,9 +32,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 import { toast } from '@/components/ui/toast';
 import { useViewerStore } from '@/store';
-import { useTranslation } from '@/i18n';
-import type { TranslationKey } from '@/i18n';
+import { useTranslation, type TranslationKey } from '@/i18n';
 import { matchesSelector, type ClashSeverity } from '@ifc-lite/clash';
+import { trackExportCompleted } from '@/lib/analytics';
 import { exportPresets, importPresets, type ClashPreset, type SaveResult } from '@/lib/clash/persistence';
 import { ClashRuleDraftEditor, type ClashRuleDraft } from '@/components/viewer/ClashRuleDraftEditor';
 import {
@@ -278,7 +278,10 @@ export function ClashSettingsDialog({ open, onOpenChange }: ClashSettingsDialogP
                 <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" title={t('clashTools.settings.resetRulesTooltip')} onClick={() => reportSaveFailure(resetPresets())}>
                   <RotateCcw className="h-3.5 w-3.5" />
                 </Button>
-                <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" title={t('clashTools.settings.exportRulesTooltip')} onClick={() => exportPresets(presets)}>
+                <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" title={t('clashTools.settings.exportRulesTooltip')} onClick={() => {
+                  exportPresets(presets);
+                  trackExportCompleted({ format: 'json', surface: 'clash_results' });
+                }}>
                   <Download className="h-3.5 w-3.5" />
                 </Button>
                 <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" title={t('clashTools.settings.importRulesTooltip')} onClick={() => fileRef.current?.click()}>

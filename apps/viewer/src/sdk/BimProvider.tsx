@@ -21,6 +21,7 @@
 
 import { createContext, useContext, type ReactNode } from 'react';
 import type { BimContext } from '@ifc-lite/sdk';
+import type { SdkStepWriter } from './sdk-step-writer.js';
 import { useBimHost } from './useBimHost.js';
 
 /**
@@ -33,8 +34,8 @@ import { useBimHost } from './useBimHost.js';
 export const BimReactContext = createContext<BimContext | null>(null);
 
 /** Provider that initializes the SDK and makes it available via useBim() */
-export function BimProvider({ children }: { children: ReactNode }) {
-  const bim = useBimHost();
+export function BimProvider({ children, stepWriter }: { children: ReactNode; stepWriter?: SdkStepWriter }) {
+  const bim = useBimHost(stepWriter);
   return (
     <BimReactContext.Provider value={bim}>
       {children}

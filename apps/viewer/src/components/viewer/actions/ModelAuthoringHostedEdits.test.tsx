@@ -8,7 +8,7 @@ import { afterEach, test } from 'node:test';
 import { act } from 'react';
 import { readHostedFill, readHostedElementSize } from '@ifc-lite/create';
 import { useViewerStore } from '@/store';
-import { render, click, cleanup } from '@/test/render';
+import { render, click, cleanup, settle } from '@/test/render';
 import { GROUND_STOREY, SAMPLE_MODEL, parseIfc, seedAuthoringSample } from '@/test/authoring-sample-fixture';
 import { editedModelBytes } from '@/lib/export/edited-model-bytes';
 import { getModelLengthUnitScale } from '@/lib/length-unit-scale';
@@ -36,6 +36,7 @@ test('#7265 mounted review discloses native hosted bounds and selectively edits 
       edit: { Sill: .5, OverallWidth: 1.3 } };
   });
   const batch = parseModelAuthoringBatch(JSON.stringify({ version: 1, kind: 'model.authoring', title: 'Selective hosted edit', units: 'm', frame: 'storey-local', operations }));
+  await settle();
   const count = view.getMutationCount(), ui = render(<ModelAuthoringReview batch={batch} origin="native hosted review" />);
   assert.match(ui.textContent ?? '', /Offset=2, Sill=0.7, OverallWidth=1, OverallHeight=1.2 m/);
   assert.match(ui.textContent ?? '', /Sill=0.5, OverallWidth=1.3 m/);

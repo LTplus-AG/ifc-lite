@@ -10,6 +10,7 @@
       "@ifc-lite/parser": ["../../packages/parser/src"],
       "@ifc-lite/parser/structural-glyphs": ["../../packages/parser/src/structural-glyphs"],
       "@ifc-lite/geometry": ["../../packages/geometry/src"],
+      "@ifc-lite/geometry/compact": ["../../packages/geometry/src/compact"],
       "@ifc-lite/geometry/geometry-class": ["../../packages/geometry/src/geometry-class"],
       "@ifc-lite/renderer": ["../../packages/renderer/src"],
       "@ifc-lite/query": ["../../packages/query/src"],
@@ -20,6 +21,7 @@
       "@ifc-lite/cache": ["../../packages/cache/src"],
       "@ifc-lite/drawing-2d": ["../../packages/drawing-2d/src"],
       "@ifc-lite/export": ["../../packages/export/src"],
+      "@ifc-lite/export/merged-exporter": ["../../packages/export/src/merged-exporter"],
       "@ifc-lite/ids": ["../../packages/ids/src"],
       "@ifc-lite/ifcx": ["../../packages/ifcx/src"],
       "@ifc-lite/mutations": ["../../packages/mutations/src"],
@@ -31,6 +33,7 @@
       "@ifc-lite/lens": ["../../packages/lens/src"],
       "@ifc-lite/lists": ["../../packages/lists/src"],
       "@ifc-lite/server-client": ["../../packages/server-client/src"],
+      "@ifc-lite/server-client/processed-model": ["../../packages/server-client/src/processed-model.ts"],
       "@ifc-lite/embed-protocol": ["../../packages/embed-protocol/src"],
       "@ifc-lite/viewer-retained": ["../viewer/src/lib/retained/off.ts"]
     }

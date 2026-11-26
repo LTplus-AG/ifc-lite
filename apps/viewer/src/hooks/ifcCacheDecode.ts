@@ -300,6 +300,8 @@ export interface CacheLoadResult {
   meshCount: number;
   totalVertices: number;
   totalTriangles: number;
+  /** The load was superseded (a newer load, or its model removed while it adopted): no fallback parse (r4655016554). */
+  superseded?: boolean;
 }
 
 /**

@@ -38,6 +38,15 @@ export interface ProcessParallelOptions {
    */
   enableInstancing?: boolean;
   /**
+   * Encode eligible flat meshes as compact GPU records in the workers, at this
+   * cell size in metres (`COMPACT_CELL_METRES`; see compact-geometry.ts). Such a
+   * mesh arrives with `MeshData.compact` set and decodes its arrays on demand.
+   * Takes effect only after `loadCompactGeometry()` (`@ifc-lite/geometry/compact`)
+   * has resolved; before that the workers send f32 meshes. Off by default. Only for a host whose renderer draws compact records, and
+   * only where the ids it draws with are the worker's express ids.
+   */
+  compactCellSize?: number;
+  /**
    * Issue #924 — per-entity geometry-hash tolerance in metres. When a
    * positive value is given, each geometry worker's IfcAPI receives
    * `setComputeGeometryHashes(tol)` before the first stream-chunk, so the

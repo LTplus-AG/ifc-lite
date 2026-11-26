@@ -5,8 +5,10 @@
 //! and spatial unification.
 
 use std::collections::{HashMap, HashSet};
+use crate::schema_material_referent::MaterialReferents;
 
-use super::guid::{extract_global_id_fast, is_relationship_type, GuidMinter};
+use super::guid::{can_unify_converted_type, extract_global_id_fast};
+use super::line_edit::rewrite_refs;
 use super::spatial::{
     ContainerMergeStrategy, SpatialLookup, StoreyMergeStrategy,
 };
@@ -92,6 +94,23 @@ impl<'a> ModelIndex<'a> {
     /// Raw bytes of the entity line for `id`.
     pub fn line_bytes(&self, id: u32) -> Option<&'a [u8]> {
         self.line_of.get(&id).map(|&(s, e)| &self.content[s..e])
+    }
+
+    /// Index the canonical material records under their exported ids (#10763, #10911).
+    pub(super) fn add_materials(
+        &self, materials: &mut MaterialReferents, from: &str, to: &str,
+        included: &HashSet<u32>, plan: &ModelPlan, offset: u32,
+    ) -> bool {
+        let written = |id| included.contains(&id) && !plan.skip.contains(&id) && !plan.shared_remap.contains_key(&id);
+        materials.load_model(
+            self.content, crate::schema_convert::canon(from), "IFCMATERIALPROPERTIES",
+            &|id, start| {
+                let &(kept, _) = self.line_of.get(&id)?;
+                (kept == start).then(|| (id.saturating_add(offset), written(id)))
+            },
+            &|bytes| rewrite_refs(bytes, offset, &|id| plan.shared_remap.get(&id).copied()),
+        );
+        crate::schema_convert::needs_conversion(from, to)
     }
 
     /// The entity line for `id` decoded lossily to a `String`.
@@ -242,10 +261,15 @@ pub(super) struct ModelPlan {
     pub(super) shared_remap: HashMap<u32, u32>,
     /// Local express ids whose line is not emitted (unified into the first model).
     pub(super) skip: HashSet<u32>,
-    /// Local express id → fresh GlobalId to stamp (duplicate GUID re-stamp).
-    pub(super) guid_rewrite: HashMap<u32, String>,
     /// Local express id → its source GlobalId (rooted entities only).
     pub(super) local_guids: HashMap<u32, String>,
+}
+
+#[derive(Clone, Copy)]
+pub(super) struct GuidRecord {
+    pub(super) final_id: u32,
+    pub(super) scale: f64,
+    pub(super) can_unify: bool,
 }
 
 /// Immutable-ish context threaded into [`build_plan`].
@@ -257,10 +281,8 @@ pub(super) struct PlanCtx<'a> {
     pub(super) merge_buildings: ContainerMergeStrategy,
     pub(super) merge_storeys: StoreyMergeStrategy,
     pub(super) primary_scale: f64,
-    pub(super) guid_to_final: &'a HashMap<String, (u32, f64)>,
-    pub(super) emitted_guids: &'a HashSet<String>,
-    pub(super) minter: &'a mut GuidMinter,
-    pub(super) salt: String,
+    pub(super) guid_to_final: &'a HashMap<String, GuidRecord>,
+    pub(super) schemas: (&'static str, &'static str),
 }
 
 /// Build the [`ModelPlan`] for one model: project / infrastructure / spatial
@@ -269,7 +291,7 @@ pub(super) fn build_plan(
     index: &ModelIndex,
     is_first: bool,
     compatible: bool,
-    mut ctx: PlanCtx,
+    ctx: PlanCtx,
 ) -> ModelPlan {
     let mut plan = ModelPlan::default();
 
@@ -316,52 +338,27 @@ pub(super) fn build_plan(
 
     // Reconcile GlobalIds for every model — including the first, whose two rooted
     // entities can share a GlobalId (a defective source) and must not both survive.
-    reconcile_global_ids(index, compatible, &mut plan, &mut ctx);
+    reconcile_global_ids(index, compatible, &mut plan, &ctx);
 
     plan
 }
 
-/// Unify or re-stamp each rooted entity whose GlobalId already appeared — either
-/// in an earlier model (cross-model, via `guid_to_final`) or earlier in THIS
-/// model (within-model, via `seen_local`).
-fn reconcile_global_ids(index: &ModelIndex, compatible: bool, plan: &mut ModelPlan, ctx: &mut PlanCtx) {
-    // Collect first so the mutable `minter` borrow does not overlap the read of
-    // `plan.local_guids` / `plan.skip`.
-    let mut restamp: Vec<(u32, String)> = Vec::new();
-    // GlobalIds this model has already emitted unchanged. The cross-model map
-    // (`guid_to_final`) cannot see a duplicate *within* this model, because the
-    // first occurrence is not registered until emit time — so two rooted entities
-    // in one model sharing a GlobalId would both bypass unify/restamp and emit
-    // duplicate identifiers. Keep the first, re-stamp every later one.
-    let mut seen_local: HashSet<String> = HashSet::new();
+/// Plan only unifications. A record that survives is checked for an actual
+/// GlobalId collision after conversion, when its final GUID is known.
+fn reconcile_global_ids(index: &ModelIndex, compatible: bool, plan: &mut ModelPlan, ctx: &PlanCtx) {
+    let mut seen_local = HashSet::new();
     for &id in &index.order {
-        if plan.skip.contains(&id) {
-            continue;
-        }
+        if plan.skip.contains(&id) { continue; }
         let Some(guid) = plan.local_guids.get(&id) else { continue };
-        if !seen_local.insert(guid.clone()) {
-            restamp.push((id, guid.clone()));
-            continue;
-        }
-        let Some(&(final_id, scale)) = ctx.guid_to_final.get(guid) else { continue };
+        if !seen_local.insert(guid) { continue; }
+        let Some(prior) = ctx.guid_to_final.get(guid) else { continue };
         let ty = index.type_of.get(&id).map(String::as_str).unwrap_or("");
-        let can_unify =
-            compatible && units_compatible(scale, ctx.primary_scale) && !is_relationship_type(ty);
-        if can_unify {
-            plan.shared_remap.insert(id, final_id);
+        if compatible && prior.can_unify && units_compatible(prior.scale, ctx.primary_scale)
+            && can_unify_converted_type(ty, ctx.schemas)
+        {
+            plan.shared_remap.insert(id, prior.final_id);
             plan.skip.insert(id);
-        } else {
-            restamp.push((id, guid.clone()));
         }
-    }
-    // A minted replacement must also avoid the guids THIS model emits unchanged:
-    // `emitted_guids` only holds prior models' guids (the plan is built before this
-    // model emits), so without this a fresh guid could collide with an untouched
-    // one in the same model (CR). Collect them once, before the mutable borrow.
-    let local_guids: HashSet<String> = plan.local_guids.values().cloned().collect();
-    for (id, guid) in restamp {
-        let minted = ctx.minter.mint(&guid, &ctx.salt, ctx.emitted_guids, &local_guids);
-        plan.guid_rewrite.insert(id, minted);
     }
 }
 

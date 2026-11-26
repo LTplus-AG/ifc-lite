@@ -17,7 +17,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use crate::schema_ifc2x3_records::ref_id;
 use crate::schema_structural_axes::list_items;
 use crate::step_record_frame::record_frame;
-use crate::step_slot::split_top_level_args;
+use crate::step_slot::{slot_is, split_top_level_args};
 
 /// One IFC2X3 varying action and the IFC4 action it becomes.
 struct Kind {
@@ -150,7 +150,11 @@ impl StructuralVarying {
     pub(crate) fn needs_ids(&self) -> impl Iterator<Item = u32> + '_ { self.planned.keys().copied() }
 
     /// Whether `entity` is an IFC2X3 varying action.
-    pub(crate) fn is_varying(entity: &str) -> bool { KINDS.iter().any(|k| k.ifc2x3 == entity) }
+    pub(crate) fn is_varying(entity: &str) -> bool { Self::target(entity).is_some() }
+
+    pub(crate) fn target(entity: &str) -> Option<&'static str> {
+        KINDS.iter().find(|kind| entity.eq_ignore_ascii_case(kind.ifc2x3)).map(|kind| kind.ifc4)
+    }
 
     /// Whether this varying action converts and still needs a configuration id.
     pub(crate) fn plans(&self, id: u32) -> bool { self.planned.contains_key(&id) }
@@ -202,9 +206,9 @@ impl StructuralVarying {
             self.pending.insert(*config, format!("#{config}=IFCSTRUCTURALLOADCONFIGURATION($,({values}),$);"));
             let mut losses = vec![FROM_IFC2X3.to_string()];
             let cause = &args[crate::schema_structural_carriers::CAUSED_BY];
-            // Keep the warning predicate in sync with the TypeScript rewrite.
-            if !cause_carried && cause.trim() != "$" { losses.push(format!("{entity}.CausedBy has no slot in IFC4; its value is omitted")); }
+            // One predicate for the warning and the count (#10779), as in the TypeScript rewrite.
             let cause_dropped = !cause_carried && crate::schema_convert::holds_value(cause);
+            if cause_dropped { losses.push(format!("{entity}.CausedBy has no slot in IFC4; its value is omitted")); }
             let body = [&args[..7], &[format!("#{config}"), args[8].clone(), args[9].clone(), args[11].clone(), ".NOTDEFINED.".into()]].concat();
             return Some((format!("{}({})", kind.ifc4, body.join(",")), losses, cause_dropped));
         }
@@ -213,7 +217,7 @@ impl StructuralVarying {
         let tail = [format!("#{}", values[0]), args[8].clone(), args[9].clone(), "$".into(), args[10].clone(), format!("#{aspect}"), format!("({rest})")];
         let mut losses = vec![TO_IFC2X3.to_string()];
         // `inspect` reports this for the records it sees; a rewritten one skips it.
-        if args[9].trim() == "$" { losses.push(crate::schema_structural::destabilizing_unknown(entity)); }
+        if slot_is(&args[9], "$") { losses.push(crate::schema_structural::destabilizing_unknown(entity)); }
         Some((format!("{}({})", kind.ifc2x3, [&args[..7], &tail].concat().join(",")), losses, false))
     }
 
@@ -314,11 +318,11 @@ mod tests {
     }
 
     #[test]
-    fn a_subset_keeps_the_varying_action_unconverted_9668() {
+    fn a_subset_with_all_load_locations_converts_the_varying_action_11037() {
         let source = model("IFC2X3", LINE);
         let (out, _) = export_step_with_stats(source.as_bytes(), &StepOptions { included: Some(vec![1, 10, 11, 20, 21, 30]), ..to("IFC4") }).unwrap();
-        assert!(record(&out, "#30=").starts_with("#30=IFCSTRUCTURALLINEARACTIONVARYING("), "{out}");
-        assert!(configs(&out).is_empty(), "{out}");
+        assert!(record(&out, "#30=").starts_with("#30=IFCSTRUCTURALCURVEACTION("), "{out}");
+        assert_eq!(configs(&out), ["#31=IFCSTRUCTURALLOADCONFIGURATION($,(#20,#21),$);"]);
     }
 
     #[test]
@@ -332,6 +336,15 @@ mod tests {
         // A planar load among the values: not a varying linear action, so the configuration stays and has no IFC2X3 form.
         let mixed = source.replace("(#20,#21)", "(#20,#22)");
         assert!(export_step_with_stats(mixed.as_bytes(), &to("IFC2X3")).is_err());
+    }
+
+    #[test]
+    fn reports_a_commented_unset_destabilizing_load_on_a_varying_action_11001() {
+        let line = "#30=IFCSTRUCTURALCURVEACTION('0d2HL$ILbNDhwyUI0qw12$',$,'Line',$,$,$,#10,#25,.GLOBAL_COORDS.,/* unknown */$,$,.LINEAR.);";
+        let source = model("IFC4", &format!("#25=IFCSTRUCTURALLOADCONFIGURATION($,(#20,#21),$);\n{line}"));
+        let (out, _, warnings) = export_step_with_diagnostics(source.as_bytes(), &to("IFC2X3")).unwrap();
+        assert!(record(&out, "#30=").starts_with("#30=IFCSTRUCTURALLINEARACTIONVARYING("), "{out}");
+        assert!(warnings.iter().any(|w| w.contains("IFCSTRUCTURALCURVEACTION.DestabilizingLoad is unknown")), "{warnings:?}");
     }
 
     #[test]

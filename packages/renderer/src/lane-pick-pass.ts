@@ -29,6 +29,7 @@ export interface LanePickDraw {
   layout: LanePickLayout;
   vertexBuffer: GPUBuffer;
   indexBuffer: GPUBuffer;
+  indexFormat?: GPUIndexFormat;
   indexCount: number;
   /** World = origin + vertex position. */
   origin: readonly [number, number, number];
@@ -167,7 +168,7 @@ export class LanePickPass {
       }
       pass.setBindGroup(0, bindGroup, [i * SLOT_BYTES]);
       pass.setVertexBuffer(0, draw.vertexBuffer);
-      pass.setIndexBuffer(draw.indexBuffer, 'uint32');
+      pass.setIndexBuffer(draw.indexBuffer, draw.indexFormat ?? 'uint32');
       pass.drawIndexed(draw.indexCount);
       drawn++;
     }

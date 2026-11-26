@@ -6,6 +6,7 @@ import { cityJsonEngine, produceNativeCityJson } from '@/lib/export/native-cityj
 import { viewerOperation } from './contract';
 import { exportCheckpoint, exportMetadata } from './exports-common';
 import { nativeArtifact, nativeStepTarget, targetSchema } from './export-native-runtime';
+import { internal, invalidInput } from './refusals';
 
 /** The toolbar CityJSON dialog's producer (#10612), returned as a host-owned artifact. */
 export const cityJsonExportOperations = [viewerOperation<{ target_model_id: string; sequence: boolean }>(exportMetadata('exports.cityjson',
@@ -15,12 +16,18 @@ export const cityJsonExportOperations = [viewerOperation<{ target_model_id: stri
   const model = nativeStepTarget(i.target_model_id);
   // CityJSON reads only the model and its edits, not view state, so the narrower export checkpoint applies.
   const check = exportCheckpoint(c, [model.id]); check();
-  const engine = await cityJsonEngine.load();
+  const engine = await cityJsonEngine.load(); check();
   const { getMutationView, georefMutations } = useViewerStore.getState();
-  const produced = await produceNativeCityJson(engine, model, getMutationView, georefMutations.get(model.id), i.sequence).catch((error: unknown) => {
+  // A checkpoint stop is not a writer failure: it passes through unlogged and keeps its code.
+  let stopped: unknown;
+  const gate = () => { try { check(); } catch (error) { stopped = error; throw error; } };
+  const produced = await produceNativeCityJson(engine, model, getMutationView, georefMutations.get(model.id), i.sequence, gate).catch((error: unknown) => {
+    if (error === stopped) throw error;
     const refusal = engine.cityJsonRefusalReason(error);
     if (refusal === null) console.error('CityJSON export failed:', error);
-    throw new Error(refusal ?? (error instanceof Error ? error.message : String(error)), { cause: error });
+    // A refusal names this model's limits; anything else is a producer failure, not the caller's input.
+    if (refusal !== null) throw invalidInput('refused', refusal, { cause: String(error) });
+    throw internal(error instanceof Error ? error.message : String(error));
   });
   return nativeArtifact(c, produced.blob, produced.filename, { warnings: produced.warnings }, check);
 })];

@@ -31,21 +31,24 @@ function parseRuleLabel(s: TokenStream, taken: Set<string>): string | undefined 
   return label;
 }
 
-/** Number unlabelled rules <prefix>1, <prefix>2, ..., skipping labels already taken. */
-function labelRules<T extends { label?: string }>(rules: T[], prefix: string, taken: Set<string>): (T & { label: string })[] {
+/** A WHERE or UNIQUE rule before `labelRules` has named it. */
+type Unlabelled<R extends { label: string }> = Omit<R, 'label'> & { label?: string };
+
+/** Number unlabelled rules <prefix>1, <prefix>2, ..., skipping labels already `taken` (upper-cased). */
+function labelRules<R extends { label: string }>(rules: Unlabelled<R>[], prefix: string, taken: Set<string>): R[] {
   let n = 0;
   const generate = () => {
     let label;
     do label = `${prefix}${++n}`; while (taken.has(label));
     return label;
   };
-  return rules.map((r) => ({ ...r, label: r.label ?? generate() }));
+  return rules.map((r) => ({ ...r, label: r.label ?? generate() }) as R);
 }
 
 function parseWhereClause(s: TokenStream, end: string): WhereRule[] {
   if (!s.acceptKeyword('WHERE')) return [];
   const taken = new Set<string>();
-  const rules: (Omit<WhereRule, 'label'> & { label?: string })[] = [];
+  const rules: Unlabelled<WhereRule>[] = [];
   while (!s.isKeyword(end)) {
     const label = parseRuleLabel(s, taken);
     const start = s.peek().start;
@@ -124,7 +127,7 @@ function parseInverse(s: TokenStream): InverseAttribute {
   return inv;
 }
 
-function parseUnique(s: TokenStream, taken: Set<string>): Omit<UniqueRule, 'label'> & { label?: string } {
+function parseUnique(s: TokenStream, taken: Set<string>): Unlabelled<UniqueRule> {
   const label = parseRuleLabel(s, taken);
   const attributes: UniqueRule['attributes'] = [];
   do {
@@ -174,7 +177,7 @@ function parseEntity(s: TokenStream): EntityDecl {
   }
   if (s.acceptKeyword('UNIQUE')) {
     const taken = new Set<string>();
-    const unique = [];
+    const unique: Unlabelled<UniqueRule>[] = [];
     while (!sectionStart()) unique.push(parseUnique(s, taken));
     entity.unique = labelRules(unique, 'UR', taken);
   }

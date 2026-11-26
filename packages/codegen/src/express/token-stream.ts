@@ -58,9 +58,9 @@ export class TokenStream {
   }
 
   /**
-   * Source text of the tokens consumed since offset `start`, on one line:
-   * remarks dropped, any gap between tokens written as one space, string
-   * literals verbatim.
+   * Source text of the tokens consumed since offset `start`: remarks
+   * dropped, any gap between tokens written as one space, string literals
+   * verbatim.
    */
   sliceFrom(start: number): string {
     let first = this.pos;

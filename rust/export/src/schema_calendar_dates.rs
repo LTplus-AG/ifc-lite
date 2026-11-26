@@ -37,6 +37,9 @@ pub(super) struct CalendarDates {
     /// An IFC2X3 upgrade wrote a legacy date record, so those nothing references
     /// go even when no slot converts (#11199).
     carriers_written: bool,
+    /// The upgrade's target, whose omitted-route records reference nothing
+    /// once the later upgrade prune drops them (#11199).
+    target: &'static str,
     pending: HashMap<u32, Vec<PendingDate>>,
     retained: usize,
     /// `(id, TYPE)` of each legacy date record no written record reached
@@ -55,7 +58,8 @@ pub(super) enum DateLoss {
 
 impl CalendarDates {
     /// Note an IFC2X3 upgrade's record of `ty`: a legacy date record arms the finishing pass.
-    pub(super) fn note_upgraded(&mut self, ty: &str) {
+    pub(super) fn note_upgraded(&mut self, ty: &str, ifc4x3: bool) {
+        self.target = if ifc4x3 { "IFC4X3" } else { "IFC4" };
         if carrier(ty) { self.carriers_written = true; }
     }
 
@@ -79,7 +83,7 @@ impl CalendarDates {
         let upgrade = self.carriers_written || self.pending.values().any(|dates| dates.iter().any(|date| date.up));
         let (carriers, maximum) = collect_carriers(text, upgrade);
         // What no written record reaches before slots convert carries no value anywhere: it is omitted, and named (#11199).
-        let reached = retained_carriers(text, &carriers, &HashMap::new());
+        let reached = retained_carriers(text, &carriers, &HashMap::new(), self.target);
         let mut ids = IdAllocator::after(maximum);
         let mut appended = Vec::new();
         let mut rewrites = HashMap::new();
@@ -111,7 +115,7 @@ impl CalendarDates {
         }
         self.pending.clear();
         self.omitted.extend(carriers.iter().filter(|(id, _)| !reached.contains(id)).map(|(id, date)| (*id, date.ty.clone())));
-        let used = retained_carriers(text, &carriers, &rewrites);
+        let used = retained_carriers(text, &carriers, &rewrites, self.target);
         self.retained = used.len();
         Some(finish_text(text, &carriers, &used, &rewrites, &appended, pruned))
     }
@@ -161,7 +165,16 @@ fn restored_date(token: &str, kind: Kind, ids: &mut IdAllocator, appended: &mut 
     Some(format!("#{reference}"))
 }
 
-fn retained_carriers(text: &str, carriers: &HashMap<u32, DateRecord>, rewrites: &HashMap<u32, String>) -> HashSet<u32> {
+/// Whether the IFC2X3 upgrade to `target` writes an output record of `ty`
+/// with its references: not one it proxies or omits (the upgrade prune drops
+/// an omitted one after this pass). The writer's own route decides (#11199).
+fn writes_references(ty: &str, target: &str) -> bool {
+    use crate::schema_unrepresented::{missing_type_route, Route};
+    let declared = crate::schema_convert::schema_attribute_names("IFC2X3", ty).is_some();
+    !matches!(missing_type_route(ty, ty, "IFC2X3", target, declared), Route::Unrepresented | Route::Omitted)
+}
+
+fn retained_carriers(text: &str, carriers: &HashMap<u32, DateRecord>, rewrites: &HashMap<u32, String>, target: &str) -> HashSet<u32> {
     let mut retained = HashSet::new();
     if carriers.is_empty() {
         return retained;
@@ -169,8 +182,8 @@ fn retained_carriers(text: &str, carriers: &HashMap<u32, DateRecord>, rewrites: 
     let mut queue = VecDeque::new();
     let mut refs = Vec::new();
     let mut scanner = EntityScanner::new(text);
-    while let Some((id, _, a, b)) = scanner.next_entity() {
-        if carriers.contains_key(&id) {
+    while let Some((id, ty, a, b)) = scanner.next_entity() {
+        if carriers.contains_key(&id) || !writes_references(&ty.to_ascii_uppercase(), target) {
             continue;
         }
         let line = rewrites.get(&id).map_or(&text[a..b], String::as_str);

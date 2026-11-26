@@ -187,7 +187,7 @@ impl ValueForms {
         let written = frame.head.type_name(&line);
         // The converter writes the type in upper case; anything else is copied once.
         let ty: std::borrow::Cow<str> = if written.bytes().any(|b| b.is_ascii_lowercase()) { written.to_ascii_uppercase().into() } else { written.into() };
-        if cfrom == "IFC2X3" && matches!(cto, "IFC4" | "IFC4X3") { self.dates.note_upgraded(&ty); } // #11199
+        if cfrom == "IFC2X3" && matches!(cto, "IFC4" | "IFC4X3") { self.dates.note_upgraded(&ty, cto == "IFC4X3"); } // #11199
         let Ok(at) = VALUE_FORM_SLOTS.binary_search_by(|(f, t, name, _)| (*f, *t, *name).cmp(&(cfrom, cto, &*ty))) else { return Ok(line) };
         let slots: &[ValueFormSlot] = VALUE_FORM_SLOTS[at].3;
         let Some(mut args) = split_top_level_args(frame.args(&line)) else { return Ok(line) };

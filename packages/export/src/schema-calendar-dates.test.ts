@@ -102,14 +102,18 @@ it('reports a clock whose minute or second the IFC2X3 source left unset (#11199)
   }
 });
 
-it('names a date record whose only referrer is written as IFCPROXY, in the export and the preview alike (#11199)', async () => {
+it('names a date record whose only referrer is proxied or omitted, in the export and the preview alike (#11199)', async () => {
   const store = await legacy("#2=IFCCALENDARDATE(29,2,2024);\n#10=IFCTIMESERIESSCHEDULE('1YvctVUKr0kugbFTf53O9L',$,'S',$,$,(#2),.WEEKLY.,$);");
-  const result = new StepExporter(store).export({ schema: 'IFC4' });
-  const text = new TextDecoder().decode(result.content);
-  expect(text).toMatch(/^#10=IFCPROXY\(/m);
-  expect(text).not.toContain('=IFCCALENDARDATE(');
-  expect(result.stats.warnings.join('\n')).toContain('were omitted because no written record references them and the target schema does not declare their type: #2 (IFCCALENDARDATE)');
-  expect(analyzeConversionLoss(store, 'IFC2X3', 'IFC4').describe().join('\n')).toContain('IFCCALENDARDATE (#2) will be omitted because no written record references it');
+  // IFC4 proxies the schedule; IFC4X3 omits it in the later upgrade prune.
+  for (const schema of ['IFC4', 'IFC4X3'] as const) {
+    const result = new StepExporter(store).export({ schema });
+    const text = new TextDecoder().decode(result.content);
+    expect(text).not.toContain('=IFCCALENDARDATE(');
+    expect(text).not.toMatch(/^#10=IFCTIMESERIESSCHEDULE/m);
+    expect(result.stats.warnings.join('\n')).toContain('were omitted because no written record references them and the target schema does not declare their type: #2 (IFCCALENDARDATE)');
+    expect(result.stats.warnings.join('\n')).not.toContain('still referenced');
+    expect(analyzeConversionLoss(store, 'IFC2X3', schema).describe().join('\n')).toContain('IFCCALENDARDATE (#2) will be omitted because no written record references it');
+  }
 });
 
 it('keeps a date record a type neither schema declares still references, in the preview as in the export (#11199)', async () => {

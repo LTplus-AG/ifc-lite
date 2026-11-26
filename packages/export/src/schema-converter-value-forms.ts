@@ -177,7 +177,7 @@ export class ValueForms {
     const head = stepRecordHead(line);
     if (!head) return line;
     const type = line.slice(head.typeStart, head.typeEnd).toUpperCase();
-    if (from === 'IFC2X3') this.dates.noteUpgraded(type); // #11199
+    if (from === 'IFC2X3' && (to === 'IFC4' || to === 'IFC4X3')) this.dates.noteUpgraded(type, to); // #11199
     const { arity, rules } = rulesFor(from, to, type);
     const record = rules.length ? readStepSlots(line, maxReferenceId) : null;
     // A record whose arity is not the target's is left alone: slot i need not be attribute i.

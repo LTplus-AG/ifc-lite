@@ -29,11 +29,14 @@ export class CalendarDates {
   private readonly omitted: [id: number, type: string][] = [];
   /** An IFC2X3 upgrade wrote a legacy date record, so those nothing references go even when no slot converts (#11199). */
   private carriersWritten = false;
+  /** The upgrade's target, whose omitted-route records reference nothing once written (#11199). */
+  private target: 'IFC4' | 'IFC4X3' = 'IFC4';
 
   constructor(private readonly enabled: boolean) {}
 
   /** Note an IFC2X3 upgrade's record of `type`: a legacy date record arms the finishing pass. */
-  noteUpgraded(type: string): void {
+  noteUpgraded(type: string, to: 'IFC4' | 'IFC4X3'): void {
+    this.target = to;
     if (DATE_CARRIERS.has(type)) this.carriersWritten = true;
   }
 
@@ -64,7 +67,9 @@ export class CalendarDates {
       if (record) carriers.set(id, record);
     }
     // What no written record reaches before slots convert carries no value anywhere: it is omitted, and named (#11199).
-    const reached = carriers.size ? carrierUse(lines, carriers) : new Set<number>();
+    // The upgrade prune runs later and drops omitted-route records, so their references do not count.
+    const written = (): Iterable<string> => carrierReferrers(lines, this.target);
+    const reached = carriers.size ? carrierUse(written(), carriers) : new Set<number>();
     const added: string[] = [];
     for (let index = 0; index < lines.length; index++) {
       const dates = this.pending.get(recordId(lines[index]));
@@ -98,7 +103,7 @@ export class CalendarDates {
     this.pending.clear();
     if (carriers.size) {
       for (const [id, record] of carriers) if (!reached.has(id)) this.omitted.push([id, record.type]);
-      const used = carrierUse(lines, carriers);
+      const used = carrierUse(written(), carriers);
       this.retained = used.size;
       let kept = 0;
       for (const line of lines) {
@@ -121,6 +126,23 @@ export class CalendarDates {
 
 /** Why an IFC2X3 upgrade leaves out a legacy date record nothing references (#11199). */
 export const ORPHAN_DATE = 'no written record references it and the target schema does not declare its type (#11199)';
+
+/** Whether the IFC2X3 upgrade to `to` writes a record of `type` with its references: not one it proxies or omits.
+ *  `convertRecord`'s own route decides (#11199). */
+function writesReferences(type: string, to: 'IFC4' | 'IFC4X3', converted: boolean): boolean {
+  const [source, target] = [attrNameTable('IFC2X3'), attrNameTable(to)];
+  const written = converted ? type : convertEntityType(type, 'IFC2X3', to);
+  return DATE_CARRIERS.has(type) || !['unrepresented', 'omitted'].includes(
+    missingTypeRoute(type, 'IFC2X3', to, source?.has(type) ?? false, !target || target.has(written)));
+}
+
+/** The output lines of an IFC2X3 upgrade to `to` whose references survive the upgrade prune. */
+function* carrierReferrers(lines: readonly string[], to: 'IFC4' | 'IFC4X3'): Generator<string> {
+  for (const line of lines) {
+    const head = stepRecordHead(line);
+    if (!head || writesReferences(line.slice(head.typeStart, head.typeEnd).toUpperCase(), to, true)) yield line;
+  }
+}
 
 /** The carriers some other record reaches, directly or through another carrier. */
 function carrierUse(lines: Iterable<string>, carriers: ReadonlyMap<number, { slots: readonly string[] }>): Set<number> {
@@ -147,14 +169,11 @@ export function orphanDateRecords(store: SourceStore, from: string, to: 'IFC2X3'
   const carriers = new Map<number, { slots: readonly string[] }>();
   for (const type of DATE_CARRIERS) for (const id of source.ids(type)) carriers.set(id, { slots: source.slots(id) ?? [] });
   if (!carriers.size) return new Set();
-  // A referrer the writer proxies or omits does not write its date references; `convertRecord`'s own route decides.
-  const [sourceTable, target] = [attrNameTable(from), attrNameTable(to)];
-  const writesRefs = (type: string) => !['unrepresented', 'omitted'].includes(
-    missingTypeRoute(type, from, to, sourceTable?.has(type) ?? false, !target || target.has(convertEntityType(type, from, to))));
+  // A referrer the writer proxies or omits does not write its date references, as in the export.
   const written = function* () {
     for (const { id, text } of source.texts()) {
       const type = source.type(id);
-      if (type && (carriers.has(id) || writesRefs(type))) yield text;
+      if (type && writesReferences(type, to, false)) yield text;
     }
   };
   const used = carrierUse(written(), carriers);

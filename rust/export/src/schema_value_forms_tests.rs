@@ -347,3 +347,18 @@ fn a_clock_with_an_unset_minute_or_second_is_reported_11199() {
         assert!(warnings.contains(&"1 time value(s) wrote an unset minute or second as 00, a precision the IFC2X3 source does not state: IFCIRREGULARTIMESERIESVALUE.TimeStamp (#11199).".to_owned()), "{warnings:?}");
     }
 }
+
+/// #11199: a date record whose only referrer the upgrade proxies (IFC4) or
+/// omits (IFC4X3) is not written either, and is named. Twin of the TypeScript case.
+#[test]
+fn a_date_record_whose_referrer_is_proxied_or_omitted_is_named_11199() {
+    let input = legacy_model("#2=IFCCALENDARDATE(29,2,2024);\n#10=IFCTIMESERIESSCHEDULE('1YvctVUKr0kugbFTf53O9L',$,'S',$,$,(#2),.WEEKLY.,$);");
+    for schema in ["IFC4", "IFC4X3"] {
+        let options = crate::StepOptions { schema: Some(schema.into()), ..Default::default() };
+        let (output, _, warnings) = crate::export_step_with_diagnostics(input.as_bytes(), &options).unwrap();
+        assert!(!output.contains("=IFCCALENDARDATE(") && !output.contains("#10=IFCTIMESERIESSCHEDULE"), "{schema}: {output}");
+        let named = warnings.join("\n");
+        assert!(named.contains("were omitted because no written record references them and the target schema does not declare their type: #2 (IFCCALENDARDATE)"), "{schema}: {named}");
+        assert!(!named.contains("still referenced"), "{schema}: {named}");
+    }
+}

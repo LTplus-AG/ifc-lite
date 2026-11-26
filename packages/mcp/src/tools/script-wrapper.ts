@@ -21,6 +21,11 @@
  * length are capped, and native stringify only ever sees primitives. Console
  * methods are replaced so non-string arguments go through the same path
  * before they reach the bridge.
+ *
+ * The catch blocks inside the generated source are not silent in the house
+ * rule's sense: this code runs in the sandbox with no host logger, and each
+ * one turns the failure into a stated result (an envelope tag, a fallback
+ * label or "not this wrapper type").
  */
 
 import { SANDBOX_CONSOLE_LEVELS } from '@ifc-lite/sandbox';
@@ -90,6 +95,7 @@ export function wrapScript(code: string): string {
     var onPath = new SetCtor();
     function write(v) {
       if (v === null) { out += 'null'; return; }
+      if (forLog && typeof v === 'bigint') { out += stringify(Str(v) + 'n'); return; }
       if (typeof v === 'object') {
         var box = unboxed(v);
         if (box) { out += stringify(box.v); return; }

@@ -305,6 +305,7 @@ describe('script_run', () => {
     expect(logs[0]).toBe('Infinity NaN');
     expect(((await run('console.log(new Date(0)); 1')).structuredContent?.logs as Array<{ text: string }>)[0].text).toBe('1970-01-01T00:00:00.000Z');
     expect(logs[1]).toBe('{"err":"boom"}');
+    expect(((await run("console.log({ id: 12n }); 1")).structuredContent?.logs as Array<{ text: string }>)[0].text).toBe('{"id":"12n"}');
     expect(logs[2].split('\n')[0].endsWith('[truncated]')).toBe(true);
     expect((await runError("throw new Error('out of memory')")).hint).toBeUndefined();
   });

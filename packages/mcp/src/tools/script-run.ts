@@ -144,12 +144,16 @@ const HOST_STACK_OVERFLOW = /^(stack overflow|Maximum call stack size exceeded)\
 const MISSING_NAMESPACE = /of undefined|undefined is not/;
 
 /** host: the error came from the sandbox itself, not from script code. */
-function hintFor(mode: Mode, code: string, message: string, { host, exportAllowed }: { host: boolean; exportAllowed: boolean }): string | undefined {
+function hintFor(mode: Mode, code: string, message: string, { host, exportAllowed, mutateAvailable }: { host: boolean; exportAllowed: boolean; mutateAvailable: boolean }): string | undefined {
   if ((host ? HOST_OUT_OF_MEMORY : SCRIPT_OUT_OF_MEMORY).test(message)) return `Raise memory_mb (max ${MAX_MEMORY_MB}) or keep less in memory.`;
   if ((host ? HOST_STACK_OVERFLOW : SCRIPT_STACK_OVERFLOW).test(message)) return 'Stack overflow: the script recursed too deep (make it iterative or shallower), a logged value is nested too deeply, or a bim call walked a very deeply nested model.';
   // Only when the failure looks like touching a namespace that is absent.
   if (mode === 'read' && MUTATE_ONLY_USE.test(code) && MISSING_NAMESPACE.test(message)) {
-    return `script_run has no ${MUTATE_ONLY_LIST}; use script_run_mutate for them.`;
+    // Point at script_run_mutate only when this server and token would let it help.
+    if (!mutateAvailable) return `script_run has no ${MUTATE_ONLY_LIST}, and script_run_mutate is not available to this session.`;
+    return exportAllowed
+      ? `script_run has no ${MUTATE_ONLY_LIST}; use script_run_mutate for them.`
+      : 'script_run has no bim.mutate or bim.store; script_run_mutate has them. bim.export and bim.create also need the export scope.';
   }
   if (mode === 'mutate' && !exportAllowed && /\bbim\.(export|create)\b/.test(code) && MISSING_NAMESPACE.test(message)) {
     return 'bim.export and bim.create need the export scope, which this token lacks.';
@@ -166,6 +170,7 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
     throw new ToolExecutionError({ code: ToolErrorCode.PERMISSION_DENIED, message: 'Script tools read the model and need the read scope.' });
   }
   const exportAllowed = scopeAllows(scope, 'export');
+  const mutateAvailable = scopeAllows(scope, 'mutate') && !ctx.config.readOnly;
   const model = resolveModel(ctx, input.model_id as string | undefined);
   const code = input.code;
   if (typeof code !== 'string' || code.length === 0 || code.length > MAX_CODE_CHARS) {
@@ -181,7 +186,7 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
     // Envelope messages arrive clipped; a ScriptError's is clipped where it is caught.
     message: `Script error: ${message}`,
     details: { kind: 'script', ...details },
-    hint: hintFor(mode, code, message, { host, exportAllowed }),
+    hint: hintFor(mode, code, message, { host, exportAllowed, mutateAvailable }),
   });
   if (ctx.signal.aborted) throw cancelled();
   const mutatePermissions: SandboxPermissions = { ...MUTATE_PERMISSIONS, export: exportAllowed };
@@ -210,10 +215,19 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
     }
   };
   return withScriptSlot(async () => {
-    const sandbox = await createSandbox(model.bim, {
-      permissions: mode === 'mutate' ? mutatePermissions : READ_PERMISSIONS,
-      limits: { timeoutMs, memoryBytes: memoryMb * 1024 * 1024, maxStackBytes: MAX_STACK_BYTES },
-    });
+    let sandbox: Awaited<ReturnType<typeof createSandbox>>;
+    try {
+      sandbox = await createSandbox(model.bim, {
+        permissions: mode === 'mutate' ? mutatePermissions : READ_PERMISSIONS,
+        limits: { timeoutMs, memoryBytes: memoryMb * 1024 * 1024, maxStackBytes: MAX_STACK_BYTES },
+      });
+    } catch (err) {
+      // e.g. a QuickJS module that could not be (re)created; nothing ran yet.
+      throw new ToolExecutionError({
+        code: ToolErrorCode.INTERNAL_ERROR, message: `Could not start the script sandbox: ${describeThrown(err)}`,
+        details: { logs: [], logs_truncated: false, mutations_queued: 0 },
+      });
+    }
     // dispose() can throw SandboxAbortError when QuickJS aborts tearing down a
     // runtime (#1922). From the abort listener that would be an uncaught
     // exception; from `finally` it would replace the real outcome.

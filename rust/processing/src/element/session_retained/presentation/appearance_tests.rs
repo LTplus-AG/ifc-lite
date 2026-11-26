@@ -104,7 +104,7 @@ fn resolve(parts: &[Bound]) -> Result<Vec<PartAppearance>, RetainedExecutionErro
     let entity = decoder.decode_by_id(14).unwrap();
     let job = ElementMeshJob { id: 14, ifc_type: IfcType::IfcWall, entity: &entity, kind: ElementJobKind::Product,
         element_color: None, metadata: None };
-    resolve_parts(&AssemblyJob::from(&job), parts, [0.85, 0.85, 0.85, 1.], &model.borrowed(), &mut decoder)
+    resolve_parts(&AssemblyJob::from(&job), parts, ([0.85, 0.85, 0.85, 1.], crate::element::StyleSource::Unstyled), &model.borrowed(), &mut decoder)
 }
 fn assert_unsupported(error: RetainedExecutionError, entity: u32, cause: &str) {
     let (refusal, origin) = error.refusal();
@@ -177,7 +177,7 @@ fn m11_a_frames_of_one_item_are_one_sub_mesh_and_advance_the_material_cursor_onc
     let job = ElementMeshJob { id: 14, ifc_type: IfcType::IfcWindow, entity: &entity, kind: ElementJobKind::Product,
         element_color: None, metadata: None };
     let parts = [bound(fact(10)), bound(fact(10)), bound(fact(11))];
-    let resolved = resolve_parts(&AssemblyJob::from(&job), &parts, [0.6, 0.8, 1.0, 0.4], &model.borrowed(), &mut decoder).unwrap();
+    let resolved = resolve_parts(&AssemblyJob::from(&job), &parts, ([0.6, 0.8, 1.0, 0.4], crate::element::StyleSource::Unstyled), &model.borrowed(), &mut decoder).unwrap();
     near(resolved[0].rgba, [0.6, 0.8, 1.0, 0.35]);
     near(resolved[1].rgba, [0.6, 0.8, 1.0, 0.35]);
     near(resolved[2].rgba, [0.3, 0.2, 0.1, 1.]);
@@ -194,7 +194,7 @@ fn m11_a_one_leaf_under_two_occurrences_is_two_sub_meshes_and_two_cursor_steps()
     // Two frames under one chain are one. Chains that differ only in an inner occurrence still differ.
     let parts = [under(fact(10), &[20]), under(fact(10), &[20]), under(fact(10), &[21]), under(fact(10), &[22, 30]),
         under(fact(10), &[23, 30])];
-    let resolved = resolve_parts(&AssemblyJob::from(&job), &parts, [0.6, 0.8, 1.0, 0.4], &model.borrowed(), &mut decoder).unwrap();
+    let resolved = resolve_parts(&AssemblyJob::from(&job), &parts, ([0.6, 0.8, 1.0, 0.4], crate::element::StyleSource::Unstyled), &model.borrowed(), &mut decoder).unwrap();
     let alphas: Vec<f32> = resolved.iter().map(|part| part.rgba[3]).collect();
     // The cursor alternates over [glass .35, frame 1.]: the two frames of #20 share the first step.
     near([alphas[0], alphas[1], alphas[2], alphas[3]], [0.35, 0.35, 1., 0.35]);
@@ -222,7 +222,7 @@ fn m4_band_appearance_missing_style_matches_exact_bits_and_names() {
     let job = ElementMeshJob { id: 22, ifc_type: IfcType::IfcWall, entity: &entity,
         kind: ElementJobKind::Product, element_color: None, metadata: None };
     let parts = [23, 31, 33].map(|id| Bound { source: PartSource::Material(id), ..bound(fact(id)) });
-    let appearances = resolve_parts(&AssemblyJob::from(&job), &parts, [0.8, 0.2, 0.1, 1.],
+    let appearances = resolve_parts(&AssemblyJob::from(&job), &parts, ([0.8, 0.2, 0.1, 1.], crate::element::StyleSource::Unstyled),
         &model.borrowed(), &mut decoder).unwrap();
     let mut router = GeometryRouter::with_units(source.bytes(), &mut decoder);
     decoder.seed_unit_scales(router.unit_scale(), 1.);
@@ -241,7 +241,7 @@ fn m4_band_appearance_missing_style_matches_exact_bits_and_names() {
     assert_eq!(appearances[1].material_name, None);
     // Missing-style parts consume successive entries; styled keys consume none.
     let parts = [23, 31, 33, 31].map(|id| Bound { source: PartSource::Material(id), ..bound(fact(id)) });
-    let appearances = resolve_parts(&AssemblyJob::from(&job), &parts, [0.8, 0.2, 0.1, 1.],
+    let appearances = resolve_parts(&AssemblyJob::from(&job), &parts, ([0.8, 0.2, 0.1, 1.], crate::element::StyleSource::Unstyled),
         &model.borrowed(), &mut decoder).unwrap();
     near(appearances[1].rgba, [0.1, 0.2, 0.8, 0.75]);
     near(appearances[3].rgba, [0.8, 0.2, 0.1, 1.]);

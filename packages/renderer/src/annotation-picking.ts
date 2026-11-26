@@ -13,7 +13,7 @@ import { pointClipped, rayTriangleIntersect } from './scene-raycaster.js';
 import { isEntityVisible } from './entity-visibility.js';
 import { viewBasis } from './math.js';
 import { PERSPECTIVE_OVERLAY_DEPTH_LIFT, ORTHOGRAPHIC_DEPTH_NUDGE_PER_LEVEL,
-  ORTHOGRAPHIC_MAX_DEPTH_NUDGE_METRES, MAX_DEPTH_NUDGE_HASH } from './shaders/depth-nudge.wgsl.js';
+  ORTHOGRAPHIC_MAX_DEPTH_NUDGE_METRES, MAX_DEPTH_NUDGE_HASH, orthographicOverlayLiftLevels } from './shaders/depth-nudge.wgsl.js';
 
 type Point = readonly [number, number, number];
 const point = (p: Point): Vec3 => ({ x: p[0], y: p[1], z: p[2] });
@@ -122,7 +122,7 @@ export class AnnotationPicker {
     const range = 1 / Math.hypot(m[2], m[6], m[10]);
     const levels = Math.min(MAX_DEPTH_NUDGE_HASH, Math.max(0, Math.floor(ORTHOGRAPHIC_MAX_DEPTH_NUDGE_METRES / (range * ORTHOGRAPHIC_DEPTH_NUDGE_PER_LEVEL)))) + 1;
     const lift = camera.getProjectionMode() === 'orthographic'
-      ? Math.max(PERSPECTIVE_OVERLAY_DEPTH_LIFT, (levels + 1) * ORTHOGRAPHIC_DEPTH_NUDGE_PER_LEVEL)
+      ? Math.max(PERSPECTIVE_OVERLAY_DEPTH_LIFT, orthographicOverlayLiftLevels(levels) * ORTHOGRAPHIC_DEPTH_NUDGE_PER_LEVEL)
       : PERSPECTIVE_OVERLAY_DEPTH_LIFT;
     const add = (id: number, p: Vec3, lifted: boolean) => {
       const q = project(tuple(p)), z = q[2] / q[3];

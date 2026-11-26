@@ -634,6 +634,8 @@ const SOURCES_10763 = {
     "#34=IFCLIBRARYINFORMATION('Lib','1',#2,$,$);",
     "#40=IFCIMAGETEXTURE(.T.,.T.,.TEXTURE.,$,'tex.png');",
     "#41=IFCPERFORMANCEHISTORY('0XvctVUKr0kugbFTf53O9L',#5,'History',$,$,'Operation');",
+    // #10777: an IFC2X3 subtype IFC4 deleted, written as IfcMaterialProperties.
+    "#44=IFCMATERIAL('Steel');", "#45=IFCEXTENDEDMATERIALPROPERTIES(#44,(#27),'d','Pset_x');",
   ],
   IFC4: [
     "#24=IFCTASK('2YvctVUKr0kugbFTf53O9L',#5,'Task',$,$,'T-1',$,'Open',$,.F.,1,$,.CONSTRUCTION.);",
@@ -646,7 +648,8 @@ const SOURCES_10763 = {
     "#32=IFCDOCUMENTINFORMATIONRELATIONSHIP($,$,#30,(#31),'part');",
     "#46=IFCPROCEDURE('1YvctVUKr0kugbFTf53O9L',#5,'Proc',$,$,'P-1','Long text',.SHUTDOWN.);",
     "#47=IFCPROCEDURE('2XvctVUKr0kugbFTf53O9L',#5,'Proc2',$,'Flush','P-2',$,.USERDEFINED.);",
-    "#34=IFCLIBRARYINFORMATION('Lib','1',#2,$,$,$);",
+    "#34=IFCLIBRARYINFORMATION('Lib','1',#2,$,$,$);", "#42=IFCMATERIAL('Steel',$,$);",
+    "#43=IFCMATERIALPROPERTIES('Pset_MaterialCommon',$,(#27),#42);",
     "#41=IFCPERFORMANCEHISTORY('0XvctVUKr0kugbFTf53O9L',#5,'History',$,$,'P-1','Operation',.NOTDEFINED.);",
   ],
 };
@@ -686,5 +689,24 @@ describe.skipIf(!ifcopenshellAvailable())('boundary stiffness conversions use co
     writeFileSync(upperPath, Buffer.from(up.content));
     writeFileSync(lowerPath, Buffer.from(down.content));
     runValidateOrThrow([upperPath, lowerPath]);
+  }, IFCOPENSHELL_TEST_TIMEOUT_MS);
+});
+
+describe.skipIf(!ifcopenshellAvailable())('surviving IFC2X3 bounded properties satisfy WR22 (#11117)', () => {
+  it('validates the exported one-sided bounds with EXPRESS rules enabled', async () => {
+    const vectors: { from: 'IFC4' | 'IFC4X3'; line: string; expect?: string }[] = JSON.parse(readFileSync(
+      new URL('../../../rust/export/tests/fixtures/schema_bounded_property_vectors.json', import.meta.url), 'utf8',
+    ));
+    const directory = mkdtempSync(join(tmpdir(), 'ifc-lite-11117-'));
+    const paths: string[] = [];
+    for (const [i, { from, line, expect: output }] of vectors.entries()) {
+      if (!output) continue;
+      const input = stepFile10758(from === 'IFC4X3' ? 'IFC4X3_ADD2' : from, [line.replace(/^#5=/, '#10=')]);
+      const store = await new IfcParser().parseColumnar(new TextEncoder().encode(input).buffer, { disableWorkerScan: true });
+      const path = join(directory, `${from}-bounded-${i}.ifc`);
+      writeFileSync(path, new StepExporter(store).export({ schema: 'IFC2X3' }).content);
+      paths.push(path);
+    }
+    runValidateOrThrow(paths);
   }, IFCOPENSHELL_TEST_TIMEOUT_MS);
 });

@@ -8,6 +8,7 @@
  * cache management, and server-side parsing delegation
  *
  */
+import { gpuOnlyRequested, installGpuOnlyResidency } from '@/lib/geometry-backing/gpu-only-mode';
 import { useCallback, useEffect, useRef } from 'react';
 import { attachCapturedLoad } from '@/lib/error-reports/correlation';
 import { useShallow } from 'zustand/react/shallow';
@@ -105,7 +106,9 @@ import { posthog } from '../lib/analytics.js';
 import { loadFailureReporter, settleKernelRefusal } from './ingest/loadFailureReport.js';
 import { revalidateServedCache, type ServedCacheHit } from './ingest/cacheRevalidation.js';
 import { reportRenderStats } from '../utils/renderStatsReport.js';
-import { nextFrameOrTimeout } from '../utils/frameWait.js';
+import { nextFrameOrTimeout } from '../utils/frameWait.js'; import { configureOutOfCore, resetOutOfCoreArm } from '../utils/outOfCoreConfig.js';
+import { compactCellSizeForLoad } from '../utils/compactGeometryFlag.js'; import { configureGlobalInstancing, resetGlobalInstancingArm } from '../utils/gpuInstancingConfig.js';
+import { isCompactCellSize, meshTriangleCount, meshVertexCount } from '@ifc-lite/geometry/compact';
 import { visibilityWitness } from '../utils/visibilityWitness.js';
 import { buildModelLoadedPayload, captureModelLoaded, clearModelLoadedSnapshot, snapshotFromGeometry } from '../utils/loadTelemetry.js';
 import { classifyLoadError, errorCaptureProps, type LoadErrorKind } from '../lib/load-errors.js';
@@ -402,10 +405,13 @@ export function useIfcLoader() {
       return true;
     };
 
-
     const settleResumable = file && beginResumableLoad(file);
     try {
       const fileSize = processedModel?.bytes ?? file?.size ?? 0;
+      if (target.kind === 'primary' && gpuOnlyRequested(fileSize)) {
+        await installGpuOnlyResidency();
+        if (isStale()) return;
+      }
       const fileSizeMB = fileSize / (1024 * 1024);
       // LandXML finalizes before the full-buffer detector below; a processed model is IFC.
       let format: ReturnType<typeof detectFormat> | NonNullable<ReturnType<typeof detectPointCloudFormat>> | 'landxml' = processedModel ? 'ifc' : isLandXmlFileName(fileName) ? 'landxml' : 'unknown';
@@ -425,10 +431,10 @@ export function useIfcLoader() {
         // Reset all viewer state before loading new file — PRIMARY ONLY. A
         // federated add must never wipe model #1; it joins the existing map.
         if (target.kind === 'primary') {
-          clearModelLoadedSnapshot();
+          clearModelLoadedSnapshot(); resetGlobalInstancingArm(); // the plan's telemetry arm starts at the default
           getGlobalRenderer()?.getScene()?.setColdGeometryProvider(null);
           resetViewerState({ preserveLoading: true });
-          clearAllModels();
+          clearAllModels(); resetOutOfCoreArm(); // out-of-core's telemetry arm starts at the default
           // A non-federated load has no layer stack behind it (#1717).
           useViewerStore.getState().clearLayerStack();
         }
@@ -1294,16 +1300,16 @@ export function useIfcLoader() {
         // express-id offset, so the shards this produces have somewhere to
         // go.
         enableInstancing: true,
-      });
+      }); configureGlobalInstancing(geometryProcessor, { recordArm: target.kind === 'primary' }); // the plan's flag incl. its PostHog ramp, for this load's pool only
       // Armed BEFORE init() so an engine-init failure still frees whatever the
       // partially-initialised bridge allocated (dispose() is a no-op when it
       // allocated nothing).
-      geometryHandle = createGeometryProcessorDisposer(() => geometryProcessor.dispose());
+      geometryHandle = createGeometryProcessorDisposer(() => geometryProcessor.dispose()); configureOutOfCore(geometryProcessor, { primary: target.kind === 'primary', retry: isResourceRetryLoad || options?.tierOverride !== undefined, isCurrent }); // out-of-core incl. its PostHog ramp, for this load's pool only
       // The engine binary's own download lives here (wasm-bindgen fetches
       // `ifc-lite_bg.wasm` from `import.meta.url`), so this is the one stage a
       // first-visit user can fail in before a single IFC byte is touched.
       loadStage = 'engine-init';
-      await trace.span('engine.init', () => geometryProcessor.init());
+      await trace.span('engine.init', () => Promise.all([geometryProcessor.init(), compactCellSizeForLoad(target.kind, { isCurrent: () => !isStale() }).then((size) => { geometryProcessor.compactCellSize = size; })])); if (isStale()) return; // ?compactGeom's code is fetched beside the engine; a load superseded during the wait stops here
       loadStage = 'parse';
       // Issue #924: enable RTC-invariant per-entity geometry fingerprints so
       // the model-compare feature can detect geometry changes. The hash rides
@@ -1874,7 +1880,7 @@ export function useIfcLoader() {
                 const hasTexturedMeshes = allMeshes.some((m) => m.texture || m.textureRef);
                 if (hasTexturedMeshes) console.log('[useIfc] Skipping cache write: model carries surface textures the cache format does not persist yet (#1781)');
                 const cacheCoordinateInfo = finalCoordinateInfo;
-                const cacheable = cachePlan.shouldCache && !hasTexturedMeshes && !skippedHungElements && !omittedTypeRecords && allMeshes.length > 0 && !!cacheCoordinateInfo;
+                const cacheable = cachePlan.shouldCache && !hasTexturedMeshes && !isCompactCellSize(geometryProcessor.compactCellSize) && !(target.kind === 'primary' && useViewerStore.getState().boundedGeometryMode) && !skippedHungElements && !omittedTypeRecords && allMeshes.length > 0 && !!cacheCoordinateInfo;
                 const writeCache = (meshes: MeshData[]) => cacheCoordinateInfo && trace.span('cache.write', () => saveToCache(cacheKey, dataStore, {
                   meshes, coordinateInfo: cacheCoordinateInfo,
                   totalVertices: meshes.reduce((sum, m) => sum + m.positions.length / 3, 0),
@@ -1926,14 +1932,10 @@ export function useIfcLoader() {
                 completeInstancedShardSupply(modelId, allInstancedShards.length, shardGeneration); // every streamed shard is queued
                 await trace.span('load.finalize', () => finalizeModel(dataStore, useViewerStore.getState().geometryResult, getViewerSchemaVersion(dataStore), {
                   loadState: 'complete',
-                  // Only show "writing" when this file will actually be cached
-                  // under the current plan (respects the size bands + kill switch).
-                  cacheState: cachePlan.shouldCache ? 'writing' : 'none', loadPath: 'wasm', tessellationTier: loadTessellationTier, skipSmallCuts: skipSmallCutsAtLoad,
+                  cacheState: cacheable ? 'writing' : 'none', loadPath: 'wasm', tessellationTier: loadTessellationTier, skipSmallCuts: skipSmallCutsAtLoad,
                 }, allInstancedShards));
                 if (isStale()) return; // finalize awaited the identity pass (#7022)
 
-                // Cache the result in the background, reusing the `cachePlan`
-                // decided once above (single source of truth for read + write).
                 // Both tiers (`source` 10-150MB, `mesh-only` 150-400MB, kill switch `?meshCache=0`) cache
                 // tables + geometry WITHOUT the source; re-open rehydrates from the fresh buffer, validated
                 // by the mtime guard + off-thread full hash (cacheTier.ts) — the key only keys the lookup.
@@ -2043,11 +2045,11 @@ export function useIfcLoader() {
       }
 
       const totalElapsedMs = trace.finish({ loadPath: 'wasm', cacheTier: cachePlan.tier });
-      const totalVertices = allMeshes.reduce((sum, m) => sum + m.positions.length / 3, 0);
+      const totalVertices = allMeshes.reduce((sum, m) => sum + meshVertexCount(m), 0); // without decoding a compact mesh
       console.log(
         `[ifc-lite] ${file.name} (${fileSizeMB.toFixed(1)}MB) → ${allMeshes.length} meshes, ${(totalVertices / 1000).toFixed(0)}k verts in ${(totalElapsedMs / 1000).toFixed(1)}s`
       );
-      const totalTriangles = allMeshes.reduce((sum, m) => sum + m.indices.length / 3, 0);
+      const totalTriangles = allMeshes.reduce((sum, m) => sum + meshTriangleCount(m), 0);
       // Single home for this payload — see `utils/loadTelemetry.ts` for why
       // `was_hidden: false` and `total_csg_failures: 0` must survive to the
       // wire. captureModelLoaded also retains the snapshot for the device-loss

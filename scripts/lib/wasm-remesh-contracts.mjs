@@ -41,6 +41,15 @@ function fnv(meshes) {
   return hash;
 }
 
+/**
+ * The IFC item each mesh names. A `?compactGeom` mesh has no corner provenance and is re-meshed for
+ * appearance work (viewer `exact-source-geometry.ts`), which binds the plan by item: a re-mesh must
+ * name the load's items, and stamp provenance on them (checked in `remeshDiffs`).
+ */
+function itemProvenance(meshes) {
+  return meshes.map((mesh) => mesh.geometryItemId ?? '-').join('|');
+}
+
 /** Colour and origin per mesh; an absent or zero origin reads as [0,0,0]. */
 function placementAndColour(meshes) {
   return meshes.map((mesh) => `${Array.from(mesh.color)}@${Array.from(mesh.origin ?? [0, 0, 0])}`).join('|');
@@ -68,7 +77,7 @@ function loadMeshes(api, bytes, frame) {
         if (!mesh) continue;
         try {
           const list = byId.get(mesh.expressId) ?? [];
-          list.push({ positions: mesh.positions, indices: mesh.indices, color: mesh.color, origin: mesh.origin });
+          list.push({ positions: mesh.positions, indices: mesh.indices, color: mesh.color, origin: mesh.origin, geometryItemId: mesh.geometryItemId });
           byId.set(mesh.expressId, list);
         } finally {
           mesh.free();
@@ -113,7 +122,12 @@ function remeshDiffs(api, store, load, targets) {
     });
     assert.ok(result.meshes.every((mesh) => mesh.expressId === id), `#${id}: a non-target was meshed`);
     const expected = load.byId.get(id);
-    if (fnv(result.meshes) !== fnv(expected) || placementAndColour(result.meshes) !== placementAndColour(expected)) diffs.push(id);
+    for (const mesh of result.meshes) {
+      if (mesh.geometryItemId === undefined) continue;
+      assert.equal(mesh.appearanceSource?.sourceIndices, mesh.indices, `#${id}: a re-meshed item carries no canonical corner provenance`);
+    }
+    if (fnv(result.meshes) !== fnv(expected) || placementAndColour(result.meshes) !== placementAndColour(expected)
+      || itemProvenance(result.meshes) !== itemProvenance(expected)) diffs.push(id);
     meshed++;
   }
   return { diffs, meshed };

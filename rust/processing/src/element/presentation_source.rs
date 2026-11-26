@@ -7,6 +7,8 @@ use super::assembly_submeshes::{emit_body, occurrence};
 use super::assembly_types::{ready_type_part, TypePart};
 use super::presentation::{CollectionTopology, FaceCorrespondence, HashPolicy, Palette, ReadyBody, SourceId};
 use super::*;
+use super::styled_output::{ProducedMesh, ProducedOccurrence, StyleSource};
+use crate::style::SubmeshColorBranch;
 use crate::types::presentation::{NormalProvenance, UvAuthority};
 
 /// A sub-mesh collection: per-item colour through the canonical
@@ -16,28 +18,30 @@ use crate::types::presentation::{NormalProvenance, UvAuthority};
 /// 0 for occurrence geometry, [`GEOM_CLASS_LAYER_SLICE`] for the per-layer
 /// slices of a material-layer wall. `topology` is what the executing strategy
 /// proves about the parts' triangles; only an uncut collection can bind a
-/// palette (#7955 J5).
+/// palette (#7955 J5). Each mesh and occurrence is paired with the source of
+/// its colour, from the same decision ([`color`]).
 #[allow(clippy::too_many_arguments)] // the executed collection plus its borrowed inputs
 pub(super) fn submeshes(
     job: &AssemblyJob<'_>,
-    collection: SubMeshCollection,
-    fallback: [f32; 4],
+    collection: impl IntoIterator<Item = (ifc_lite_geometry::SubMesh, Vec<u32>)>,
+    ids_are_materials: bool,
+    fallback: ([f32; 4], StyleSource),
     ctx: &MeshProductionContext<'_>,
     decoder: &mut EntityDecoder,
     hasher: &mut Option<GeometryHasher>,
     class: u8,
     topology: CollectionTopology,
-) -> (Vec<MeshData>, Vec<RawInstanceOccurrence>) {
+) -> (Vec<ProducedMesh>, Vec<ProducedOccurrence>) {
     // Material colours for this element, used when a sub-mesh has no direct
     // style; ONE cursor alternates them across the collection so frame
     // (opaque) and glazing (transparent) split across a window's parts.
     let materials = ctx.element_material_colors.get(&job.id).map(Vec::as_slice);
     let mut next_material = 0;
-    let mut meshes = Vec::with_capacity(collection.len());
+    let collection = collection.into_iter();
+    let mut meshes = Vec::with_capacity(collection.size_hint().0);
     let mut occurrences = Vec::new();
     // What the ids MEAN is a property of the collection (#3199).
-    let ids_are_materials = collection.ids_are_materials;
-    for sub in collection.sub_meshes {
+    for (sub, occurrence_chain) in collection {
         let source = SourceId::collection(sub.geometry_id, ids_are_materials);
         let mut mesh = sub.mesh;
         if mesh.is_empty() {
@@ -45,9 +49,9 @@ pub(super) fn submeshes(
             // occurrence, coloured exactly as its materialized twin would be.
             // Empty non-instances read no source and do not advance the cursor.
             if let Some(meta) = mesh.instance_meta.as_ref().filter(|meta| meta.instanceable) {
-                let (color, _) =
-                    color(job, sub.geometry_id, fallback, materials, &mut next_material, ctx, decoder, false);
-                occurrences.push(occurrence(job, source, meta, color));
+                let (color, _, style) = color(job, sub.geometry_id, &occurrence_chain, fallback, materials,
+                    &mut next_material, ctx, decoder, false);
+                occurrences.push(ProducedOccurrence { occurrence: occurrence(job, source, meta, color), style });
             }
             continue;
         }
@@ -59,8 +63,8 @@ pub(super) fn submeshes(
         if normals != NormalProvenance::Producer {
             calculate_normals(&mut mesh);
         }
-        let (color, material_name) =
-            color(job, sub.geometry_id, fallback, materials, &mut next_material, ctx, decoder, true);
+        let (color, material_name, style) =
+            color(job, sub.geometry_id, &occurrence_chain, fallback, materials, &mut next_material, ctx, decoder, true);
         // #7955 J5: judged from source here, so the funnel stays source-free.
         let uv_authority =
             (job.provenance() && sub.texture.is_some()).then(|| judge_uv_authority(sub.geometry_id, ctx, decoder));
@@ -89,7 +93,8 @@ pub(super) fn submeshes(
             uv_authority,
             faces,
         };
-        meshes.extend(emit_body(body, job, ctx.site_local_rotation, hasher));
+        // A palette split of the body keeps the body's source.
+        meshes.extend(emit_body(body, job, ctx.site_local_rotation, hasher).into_iter().map(|mesh| ProducedMesh { mesh, style }));
     }
     (meshes, occurrences)
 }
@@ -134,24 +139,42 @@ fn recompute_reason(mesh: &Mesh, flipped: bool) -> NormalProvenance {
 }
 
 /// Direct style wins; else chase IfcMappedItem so mapped sub-geometry
-/// inherits its underlying style (#913 §2.7); else the material cursor; else
-/// the element colour.
+/// inherits its underlying style (#913 §2.7); else, when the element has
+/// material colours, the style on the `IfcMappedItem` occurrence this sub-mesh
+/// was produced under (`occurrence_style_source`); else the material cursor;
+/// else the element colour. Without material colours the occurrence lookup is
+/// skipped and an unstyled leaf keeps the existing product-wide element colour,
+/// as before #10698: that is the product's first styled item, which may be a
+/// sibling occurrence's style, not this occurrence's own.
+///
+/// The colour's [`StyleSource`] comes out of the same decision: the styled
+/// item the direct step took it from, `Unstyled` for a material colour, and
+/// the fallback's own source (`fallback.1`) for the element colour.
 #[allow(clippy::too_many_arguments)] // canonical precedence and one collection cursor
 pub(super) fn color(
     job: &AssemblyJob<'_>,
     id: u32,
-    fallback: [f32; 4],
+    occurrences: &[u32],
+    fallback: ([f32; 4], StyleSource),
     materials: Option<&[[f32; 4]]>,
     next: &mut usize,
     ctx: &MeshProductionContext<'_>,
     decoder: &mut EntityDecoder,
     material_name: bool,
-) -> ([f32; 4], Option<String>) {
+) -> ([f32; 4], Option<String>, StyleSource) {
     let style = ctx.geometry_style_index.get(&id);
-    let direct = style
-        .map(|style| style.color)
-        .or_else(|| find_geometry_item_color(id, ctx.geometry_style_index, decoder));
-    let color = crate::style::resolve_submesh_color(direct, materials, next, fallback);
+    let styles = ctx.geometry_style_index;
+    let direct_source = find_geometry_item_style_source(id, &|item| styles.contains_key(&item), decoder).or_else(|| {
+        materials?;
+        occurrence_style_source(occurrences, ctx)
+    });
+    let direct = direct_source.and_then(|source| styles.get(&source)).map(|style| style.color);
+    let (color, branch) = crate::style::resolve_submesh_color_branch(direct, materials, next, fallback.0);
+    let source = match branch {
+        SubmeshColorBranch::Direct => direct_source.map_or(StyleSource::Unavailable, StyleSource::Style),
+        SubmeshColorBranch::Material => StyleSource::Unstyled,
+        SubmeshColorBranch::Element => fallback.1,
+    };
     let name = if material_name {
         style
             .and_then(|style| style.material_name.as_ref())
@@ -160,7 +183,16 @@ pub(super) fn color(
     } else {
         None
     };
-    (color, name)
+    (color, name, source)
+}
+
+/// The style source of a sub-mesh coloured by its `IfcMappedItem` occurrence
+/// rather than its own item: the nearest styled one of `occurrences` (the
+/// mapped items it was produced under, inner to outer, `StyledSubMeshes`).
+/// The occurrence chain, not the shared item, decides: one item mapped by a
+/// styled and an unstyled occurrence is two sub-meshes, coloured apart.
+pub(crate) fn occurrence_style_source(occurrences: &[u32], ctx: &MeshProductionContext<'_>) -> Option<u32> {
+    occurrences.iter().copied().find(|item| ctx.geometry_style_index.contains_key(item))
 }
 
 /// One assembled fallback body (a single frame part). Outward winding: a
@@ -172,11 +204,11 @@ pub(super) fn fallback(
     job: &AssemblyJob<'_>,
     entity: &DecodedEntity,
     mut mesh: Mesh,
-    color: [f32; 4],
+    (color, style): ([f32; 4], StyleSource),
     ctx: &MeshProductionContext<'_>,
     decoder: &mut EntityDecoder,
     hasher: &mut Option<GeometryHasher>,
-) -> Vec<MeshData> {
+) -> Vec<ProducedMesh> {
     let verdict = orient_mesh_outward_verdict(&mut mesh);
     // Only a flip recomputes here; a missing channel is repaired, and
     // recorded, further down the funnel.
@@ -215,28 +247,67 @@ pub(super) fn fallback(
         // other items: neither is provably the face set row for row.
         faces: FaceCorrespondence::Unproven,
     };
-    emit_body(body, job, ctx.site_local_rotation, hasher)
+    emit_body(body, job, ctx.site_local_rotation, hasher).into_iter().map(|mesh| ProducedMesh { mesh, style }).collect()
 }
 
 /// One executed type map's parts (#957/#961), each tagged with its planned
 /// geometry_class. The map's style colour is resolved once, after the map's
-/// own geometry ran. Type maps are never hashed.
+/// own geometry ran. Type maps are never hashed. The source is the map's
+/// styled item, else the fallback's own.
 pub(super) fn type_parts(
     job: &AssemblyJob<'_>,
     (map, class): (u32, u8),
     parts: Vec<TypePart>,
-    fallback: [f32; 4],
+    fallback: ([f32; 4], StyleSource),
     ctx: &MeshProductionContext<'_>,
     decoder: &mut EntityDecoder,
-) -> Vec<MeshData> {
-    let color = resolve_color_for_representation_map(map, ctx.geometry_style_index, decoder).unwrap_or(fallback);
+) -> Vec<ProducedMesh> {
+    let styles = ctx.geometry_style_index;
+    let (color, style) = representation_map_style_source(map, &|item| styles.contains_key(&item), decoder)
+        .and_then(|source| styles.get(&source).map(|style| (style.color, StyleSource::Style(source))))
+        .unwrap_or(fallback);
     let mut out = Vec::new();
     for (mesh, uvs, texture) in parts {
         if mesh.is_empty() {
             continue;
         }
         let body = ready_type_part(mesh, uvs, texture, color, class);
-        out.extend(emit_body(body, job, ctx.site_local_rotation, &mut None));
+        out.extend(emit_body(body, job, ctx.site_local_rotation, &mut None).into_iter().map(|mesh| ProducedMesh { mesh, style }));
     }
     out
+}
+
+/// [`submeshes`] over a plain collection (no occurrence chains) for tests,
+/// with the sources dropped.
+#[cfg(test)]
+#[allow(clippy::too_many_arguments)]
+pub(super) fn submeshes_plain(
+    job: &AssemblyJob<'_>,
+    collection: SubMeshCollection,
+    fallback: [f32; 4],
+    ctx: &MeshProductionContext<'_>,
+    decoder: &mut EntityDecoder,
+    hasher: &mut Option<GeometryHasher>,
+    class: u8,
+    topology: CollectionTopology,
+) -> (Vec<MeshData>, Vec<RawInstanceOccurrence>) {
+    let ids = collection.ids_are_materials;
+    let parts = collection.sub_meshes.into_iter().map(|sub| (sub, Vec::new()));
+    let (meshes, occurrences) =
+        submeshes(job, parts, ids, (fallback, StyleSource::Unavailable), ctx, decoder, hasher, class, topology);
+    (meshes.into_iter().map(|m| m.mesh).collect(), occurrences.into_iter().map(|o| o.occurrence).collect())
+}
+
+/// [`fallback`] for tests, with the source dropped.
+#[cfg(test)]
+pub(super) fn fallback_plain(
+    job: &AssemblyJob<'_>,
+    entity: &DecodedEntity,
+    mesh: Mesh,
+    color: [f32; 4],
+    ctx: &MeshProductionContext<'_>,
+    decoder: &mut EntityDecoder,
+    hasher: &mut Option<GeometryHasher>,
+) -> Vec<MeshData> {
+    fallback(job, entity, mesh, (color, StyleSource::Unavailable), ctx, decoder, hasher).into_iter().map(|m| m.mesh).collect()
 }

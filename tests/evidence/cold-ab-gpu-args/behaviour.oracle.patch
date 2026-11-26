@@ -1,0 +1,11 @@
+diff --git a/scripts/perf/browser-cold-launch.mjs b/scripts/perf/browser-cold-launch.mjs
+index b46cca5579..c4ab7e36c6 100644
+--- a/scripts/perf/browser-cold-launch.mjs
++++ b/scripts/perf/browser-cold-launch.mjs
+@@ -16,5 +16,5 @@ export const DEFAULT_COLD_AB_GPU_ARGS = Object.freeze(['--enable-gpu', '--enable
+  */
+ export function coldAbBrowserArgs(env) {
+   const fromHost = (env.IFC_GPU_CHROME_ARGS ?? '').split(/\s+/).filter(Boolean);
+-  return fromHost.length ? [...fromHost] : [...DEFAULT_COLD_AB_GPU_ARGS];
++  return fromHost.length ? [...fromHost, '--use-webgpu-power-preference=default-high-performance'] : [...DEFAULT_COLD_AB_GPU_ARGS];
+ }

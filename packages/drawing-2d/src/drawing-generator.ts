@@ -14,6 +14,7 @@
  */
 
 import type { MeshData } from '@ifc-lite/geometry';
+import { selectModelMeshes } from '@ifc-lite/geometry/geometry-class';
 import type {
   SectionConfig,
   SectionAxis,
@@ -29,6 +30,7 @@ import type { SVGExportOptions } from './svg-exporter.js';
 import { GPUSectionCutter } from './gpu-section-cutter.js';
 import { meshArraySource, type DrawingMeshSource } from './drawing-mesh-source.js';
 import { DrawingSession } from './drawing-session.js';
+import { storeyCutElevation, type StoreyCut } from './storey-cut.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPES
@@ -115,7 +117,8 @@ export class Drawing2DGenerator {
   }
 
   /**
-   * Generate a complete 2D drawing from a resident mesh array.
+   * Generate a complete 2D drawing from a resident mesh array. Type-library
+   * geometry (`geometryClass` 1/2) is left out, as in the viewer's Model view.
    */
   async generate(
     meshes: MeshData[],
@@ -123,7 +126,7 @@ export class Drawing2DGenerator {
     options: Partial<GeneratorOptions> = {},
     profiles?: ProfileEntry[],
   ): Promise<Drawing2D> {
-    return this.generateFromSource(meshArraySource(meshes), config, options, profiles);
+    return this.generateFromSource(meshArraySource(selectModelMeshes(meshes)), config, options, profiles);
   }
 
   /**
@@ -236,18 +239,23 @@ export function createSectionConfig(
 }
 
 /**
- * Quick helper to generate a floor plan
+ * Quick helper to generate a floor plan. `elevation` is the render-frame Y of
+ * the cut, or a {@link StoreyCut} height above a storey floor, which is moved
+ * into that frame with {@link storeyCutElevation}.
  */
 export async function generateFloorPlan(
   meshes: MeshData[],
-  elevation: number,
+  elevation: number | StoreyCut,
   options?: Partial<GeneratorOptions>
 ): Promise<Drawing2D> {
+  const cutY = typeof elevation === 'number'
+    ? elevation
+    : storeyCutElevation(elevation.storeyElevation, elevation.cutHeight, elevation.frame);
   const generator = new Drawing2DGenerator();
   try {
     await generator.initialize();
 
-    const config = createSectionConfig('y', elevation, {
+    const config = createSectionConfig('y', cutY, {
       projectionDepth: 3, // 3 meters below cut
       scale: 100,
     });

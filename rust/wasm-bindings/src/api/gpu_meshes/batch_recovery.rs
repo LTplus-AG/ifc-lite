@@ -3,15 +3,13 @@
 use super::batch_output::ElementMeshOutput;
 use super::batch_partition::{is_instancing_candidate, INSTANCE_MIN_OCCURRENCES};
 use super::style_finishes::BatchFinishes;
-use ifc_lite_core::EntityDecoder;
 
 pub(super) fn recover(
     outputs: &mut Vec<ElementMeshOutput>,
-    all_occurrences: Vec<ifc_lite_processing::RawInstanceOccurrence>,
+    all_occurrences: Vec<(ifc_lite_processing::RawInstanceOccurrence, ifc_lite_processing::element::StyleSource)>,
     mapped_item_cache: &ifc_lite_geometry::SharedMappedItemCache,
     rtc: [f64; 3],
-    batch_finishes: &mut BatchFinishes<'_>,
-    decoder: &mut EntityDecoder,
+    batch_finishes: &BatchFinishes<'_>,
 ) -> Vec<super::instancing::ShardOccurrence> {
     // Retained instanceable meshes provide batch-local template facts. Resolve
     // kept shard instances and recover sub-threshold/ineligible templates flat.
@@ -26,7 +24,7 @@ pub(super) fn recover(
             outputs.iter().flat_map(|out| out.meshes.iter()),
             |_, m| super::instancing::TemplateInfo { eligible: is_instancing_candidate(m) },
         );
-        let mut recovered_flats: Vec<ifc_lite_processing::MeshData> = Vec::new();
+        let mut recovered_flats: Vec<(ifc_lite_processing::MeshData, ifc_lite_processing::element::StyleSource)> = Vec::new();
         let mut shard = super::instancing::resolve_batch_occurrences(
             all_occurrences,
             &template_by_rep,
@@ -37,11 +35,11 @@ pub(super) fn recover(
         );
         // Recovered occurrences are single-mesh outputs with no instance meta:
         // the partition sends them flat, byte-identical to the flat baseline.
-        for m in recovered_flats {
+        for (m, style) in recovered_flats {
             let id = m.express_id;
             outputs.push(ElementMeshOutput {
                 id,
-                finishes: batch_finishes.for_meshes(std::slice::from_ref(&m), decoder),
+                finishes: batch_finishes.for_sources(&[style]),
                 meshes: vec![m],
                 geometry_hash: None,
                 geometry_aabb: None,
@@ -50,12 +48,7 @@ pub(super) fn recover(
             });
         }
         for occ in &mut shard {
-            occ.finish = batch_finishes.for_occurrence(
-                occ.entity_id,
-                occ.geometry_item_id,
-                occ.color,
-                decoder,
-            );
+            occ.finish = batch_finishes.for_source(occ.style);
         }
         shard
     }

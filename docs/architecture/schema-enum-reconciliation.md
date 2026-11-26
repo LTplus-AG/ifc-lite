@@ -23,9 +23,9 @@ into, which can receive any member of the source type's enum (#10856).
 | IFC4X3 → IFC4 | 108 | 402 | 7 | 0 |
 | IFC4X3 → IFC2X3 | 83 | 216 | 18 | 10 |
 | IFC4 → IFC2X3 | 63 | 111 | 14 | 7 |
-| IFC2X3 → IFC4 | 24 | 71 | 4 | 0 |
-| IFC2X3 → IFC4X3 | 23 | 71 | 3 | 0 |
-| IFC4 → IFC4X3 | 0 | 0 | 0 | 0 |
+| IFC2X3 → IFC4 | 27 | 71 | 7 | 0 |
+| IFC2X3 → IFC4X3 | 28 | 71 | 8 | 0 |
+| IFC4 → IFC4X3 | 16 | 0 | 16 | 0 |
 
 ## IFC4X3 → IFC4
 
@@ -315,6 +315,8 @@ into, which can receive any member of the source type's enum (#10856).
 | IfcOwnerHistory.ChangeAction | IfcChangeActionEnum | MODIFIEDADDED, MODIFIEDDELETED | `.NOTDEFINED.` (reported) |
 | IfcProtectiveDevice.PredefinedType | IfcProtectiveDeviceTypeEnum | EARTHFAILUREDEVICE | `.USERDEFINED.`, name in `ObjectType` |
 | IfcProtectiveDeviceType.PredefinedType | IfcProtectiveDeviceTypeEnum | EARTHFAILUREDEVICE | `.USERDEFINED.`, name in `ElementType` |
+| IfcRelAssignsToActor.RelatedObjectsType | IfcObjectTypeEnum | (renamed into this type: any member not listed) | `.NOTDEFINED.` (reported) |
+| IfcRelAssignsToControl.RelatedObjectsType | IfcObjectTypeEnum | (renamed into this type: any member not listed) | `.NOTDEFINED.` (reported) |
 | IfcRelAssignsToProduct.RelatedObjectsType | IfcObjectTypeEnum | (renamed into this type: any member not listed) | `.NOTDEFINED.` (reported) |
 | IfcSpaceHeater.PredefinedType | IfcSpaceHeaterTypeEnum | SECTIONALRADIATOR, PANELRADIATOR, TUBULARRADIATOR, BASEBOARDHEATER, FINNEDTUBEUNIT, UNITHEATER | `.USERDEFINED.`, name in `ObjectType` |
 | IfcSpaceHeaterType.PredefinedType | IfcSpaceHeaterTypeEnum | SECTIONALRADIATOR, PANELRADIATOR, TUBULARRADIATOR, BASEBOARDHEATER, FINNEDTUBEUNIT, UNITHEATER | `.USERDEFINED.`, name in `ElementType` |
@@ -322,6 +324,7 @@ into, which can receive any member of the source type's enum (#10856).
 | IfcStructuralLoadGroup.PredefinedType | IfcLoadGroupTypeEnum | LOAD_COMBINATION_GROUP | `.USERDEFINED.`, name in `ObjectType` |
 | IfcTank.PredefinedType | IfcTankTypeEnum | PREFORMED, SECTIONAL | `.USERDEFINED.`, name in `ObjectType` |
 | IfcTankType.PredefinedType | IfcTankTypeEnum | PREFORMED, SECTIONAL | `.USERDEFINED.`, name in `ElementType` |
+| IfcTask.PredefinedType | IfcTaskTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ObjectType` |
 | IfcWasteTerminal.PredefinedType | IfcWasteTerminalTypeEnum | GREASEINTERCEPTOR, OILINTERCEPTOR, PETROLINTERCEPTOR | `.USERDEFINED.`, name in `ObjectType` |
 | IfcWasteTerminalType.PredefinedType | IfcWasteTerminalTypeEnum | GREASEINTERCEPTOR, OILINTERCEPTOR, PETROLINTERCEPTOR | `.USERDEFINED.`, name in `ElementType` |
 
@@ -336,9 +339,11 @@ into, which can receive any member of the source type's enum (#10856).
 | IfcBurnerType.PredefinedType | IfcBurnerTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ElementType` |
 | IfcController.PredefinedType | IfcControllerTypeEnum | PROPORTIONALINTEGRAL, PROPORTIONALINTEGRALDERIVATIVE, TIMEDTWOPOSITION | `.USERDEFINED.`, name in `ObjectType` |
 | IfcControllerType.PredefinedType | IfcControllerTypeEnum | PROPORTIONALINTEGRAL, PROPORTIONALINTEGRALDERIVATIVE, TIMEDTWOPOSITION | `.USERDEFINED.`, name in `ElementType` |
+| IfcDistributionBoard.PredefinedType | IfcDistributionBoardTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ObjectType` |
+| IfcDoorType.PredefinedType | IfcDoorTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ElementType` |
+| IfcDoorType.OperationType | IfcDoorTypeOperationEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `UserDefinedOperationType` |
 | IfcElectricAppliance.PredefinedType | IfcElectricApplianceTypeEnum | COMPUTER, DIRECTWATERHEATER, ELECTRICHEATER, FACSIMILE, INDIRECTWATERHEATER, PRINTER, RADIANTHEATER, SCANNER, TELEPHONE, TV, WATERHEATER, WATERCOOLER | `.USERDEFINED.`, name in `ObjectType` |
 | IfcElectricApplianceType.PredefinedType | IfcElectricApplianceTypeEnum | COMPUTER, DIRECTWATERHEATER, ELECTRICHEATER, FACSIMILE, INDIRECTWATERHEATER, PRINTER, RADIANTHEATER, SCANNER, TELEPHONE, TV, WATERHEATER, WATERCOOLER | `.USERDEFINED.`, name in `ElementType` |
-| IfcElectricDistributionBoard.PredefinedType | IfcElectricDistributionBoardTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ObjectType` |
 | IfcFlowMeter.PredefinedType | IfcFlowMeterTypeEnum | ELECTRICMETER, FLOWMETER | `.USERDEFINED.`, name in `ObjectType` |
 | IfcFlowMeterType.PredefinedType | IfcFlowMeterTypeEnum | ELECTRICMETER, FLOWMETER | `.USERDEFINED.`, name in `ElementType` |
 | IfcOwnerHistory.ChangeAction | IfcChangeActionEnum | MODIFIEDADDED, MODIFIEDDELETED | `.NOTDEFINED.` (reported) |
@@ -350,9 +355,29 @@ into, which can receive any member of the source type's enum (#10856).
 | IfcStructuralLoadGroup.PredefinedType | IfcLoadGroupTypeEnum | LOAD_COMBINATION_GROUP | `.USERDEFINED.`, name in `ObjectType` |
 | IfcTank.PredefinedType | IfcTankTypeEnum | PREFORMED, SECTIONAL | `.USERDEFINED.`, name in `ObjectType` |
 | IfcTankType.PredefinedType | IfcTankTypeEnum | PREFORMED, SECTIONAL | `.USERDEFINED.`, name in `ElementType` |
+| IfcTask.PredefinedType | IfcTaskTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ObjectType` |
 | IfcWasteTerminal.PredefinedType | IfcWasteTerminalTypeEnum | GREASEINTERCEPTOR, OILINTERCEPTOR, PETROLINTERCEPTOR | `.USERDEFINED.`, name in `ObjectType` |
 | IfcWasteTerminalType.PredefinedType | IfcWasteTerminalTypeEnum | GREASEINTERCEPTOR, OILINTERCEPTOR, PETROLINTERCEPTOR | `.USERDEFINED.`, name in `ElementType` |
+| IfcWindowType.PredefinedType | IfcWindowTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ElementType` |
+| IfcWindowType.PartitioningType | IfcWindowTypePartitioningEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `UserDefinedPartitioningType` |
 
 ## IFC4 → IFC4X3
 
-No enum member of a shared enum is missing in this direction, and no record is renamed into an enum-typed type.
+| Entity.Attribute | Enum | Members the target lacks | Written as |
+| --- | --- | --- | --- |
+| IfcBeam.PredefinedType | IfcBeamTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ObjectType` |
+| IfcBuildingElementProxy.PredefinedType | IfcBuildingElementProxyTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ObjectType` |
+| IfcColumn.PredefinedType | IfcColumnTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ObjectType` |
+| IfcDoor.PredefinedType | IfcDoorTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ObjectType` |
+| IfcDoor.OperationType | IfcDoorTypeOperationEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `UserDefinedOperationType` |
+| IfcDoorType.PredefinedType | IfcDoorTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ElementType` |
+| IfcDoorType.OperationType | IfcDoorTypeOperationEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `UserDefinedOperationType` |
+| IfcMember.PredefinedType | IfcMemberTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ObjectType` |
+| IfcOpeningElement.PredefinedType | IfcOpeningElementTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ObjectType` |
+| IfcPlate.PredefinedType | IfcPlateTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ObjectType` |
+| IfcSlab.PredefinedType | IfcSlabTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ObjectType` |
+| IfcWall.PredefinedType | IfcWallTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ObjectType` |
+| IfcWindow.PredefinedType | IfcWindowTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ObjectType` |
+| IfcWindow.PartitioningType | IfcWindowTypePartitioningEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `UserDefinedPartitioningType` |
+| IfcWindowType.PredefinedType | IfcWindowTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ElementType` |
+| IfcWindowType.PartitioningType | IfcWindowTypePartitioningEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `UserDefinedPartitioningType` |

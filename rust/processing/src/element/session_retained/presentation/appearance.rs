@@ -2,6 +2,7 @@
 //! M11-A IfcAppearance. A product discharges the obligation only when every
 //! part resolves through exact's own colour resolver. A texture or indexed palette
 //! binding is flagged here and answered by the surface slice, or refuses there.
+use crate::element::StyleSource;
 use super::appearance_resolve::{bind, resolve_parts, unsupported, Bound, PartSource};
 use super::{Context, OwnedMeshProductionContext, RetainedProductPlan, Requirement, ShapeOnlyProduct};
 use crate::element::assembly_job::AssemblyJob;
@@ -50,8 +51,10 @@ fn resolve_plan(
     let job = ElementMeshJob { id: product_id, ifc_type: ifc_type.clone(), entity: &entity,
         kind: ElementJobKind::Product, element_color: None, metadata: None };
     let ctx = model.borrowed();
+    // A caller-supplied colour comes as RGBA alone; the composed one carries
+    // its source from the same decision (#10698).
     let element_color = if parts.iter().any(|part| part.fact.type_product.is_some()) {
-        element_color
+        (element_color, StyleSource::Unavailable)
     } else {
         product_element_color(&entity, &ctx, &mut decoder, element_color)
     };
@@ -81,10 +84,11 @@ fn product_element_color(
     ctx: &MeshProductionContext<'_>,
     decoder: &mut EntityDecoder,
     default: [f32; 4],
-) -> [f32; 4] {
-    crate::processor::resolve_product_element_color(entity.ref_at(slot::IfcProduct::REPRESENTATION), entity.id,
+) -> ([f32; 4], StyleSource) {
+    // The class default comes from no style.
+    crate::processor::resolve_product_element_style(entity.ref_at(slot::IfcProduct::REPRESENTATION), entity.id,
         ctx.geometry_style_index, ctx.element_material_colors, decoder)
-        .unwrap_or(default)
+        .unwrap_or((default, StyleSource::Unstyled))
 }
 
 #[cfg(test)]

@@ -29,7 +29,7 @@ async function readVersion(): Promise<string> {
  * `Commands:` block carries. Their handlers already tested for it; before
  * #5527 that branch was simply unreachable.
  */
-const HELP_DELEGATING_COMMANDS = new Set(['layer', 'ref', 'ext', 'oci', 'georef', 'site-context']);
+const HELP_DELEGATING_COMMANDS = new Set(['layer', 'ref', 'ext', 'oci', 'georef', 'site-context', 'mcp']);
 
 let activeCommand = '';
 /** True when --debug was passed (stack traces on error). */
@@ -63,7 +63,8 @@ async function main(): Promise<void> {
     }
   }
 
-  if (args.includes('--version') || args.includes('-v')) {
+  // `ifc-lite mcp --version` reports the MCP server's own version.
+  if (args[0] !== 'mcp' && (args.includes('--version') || args.includes('-v'))) {
     process.stdout.write(`ifc-lite ${await readVersion()}\n`);
     return;
   }

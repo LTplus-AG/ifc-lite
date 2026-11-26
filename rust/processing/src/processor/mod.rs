@@ -39,6 +39,7 @@ use job::{normalize_optional_string, EntityJob};
 mod jobs;
 mod opening_filter;
 mod pass;
+mod pass_finishes;
 mod pass_metadata;
 mod phase_marks;
 use phase_marks::{mark, Clock, Mark};
@@ -65,6 +66,8 @@ pub(crate) use site_local::site_local_rotation_invalidates_captured_transforms;
 
 use crate::mesh_frame::{MeshCoordinateSpace, MeshFrame};
 pub(crate) use color_layer::resolve_product_element_color;
+#[cfg(feature = "retained-runtime")]
+pub(crate) use color_layer::resolve_product_element_style;
 
 /// Controls how IfcWindow / IfcDoor openings are exported.
 #[derive(Debug, Clone, Copy, PartialEq, Default, serde::Deserialize)]

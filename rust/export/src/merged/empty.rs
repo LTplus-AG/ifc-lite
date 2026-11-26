@@ -179,9 +179,9 @@ fn plan_container_drops(models: &[MergedModel], ctx: &DropCtx) -> DropPlan {
         let canon = canonical_containers(&index, &included, &remap, compatible, i, &mut guid_node);
         graph.nodes.extend(canon.values().copied());
         // GlobalId unification the emit loop is sure to repeat (#5937).
-        let converting = crate::schema_convert::needs_conversion(&detect_schema(model.content), ctx.schema);
+        let schemas = (crate::schema_convert::canon(&detect_schema(model.content)), crate::schema_convert::canon(ctx.schema));
         let scale = mode.map_or(1.0, |m| m.scale);
-        let guid_model = GuidModel { index: &index, included: &included, remap: &remap, first: i == 0, compatible, base, scale, converting };
+        let guid_model = GuidModel { index: &index, included: &included, remap: &remap, first: i == 0, compatible, base, scale, schemas };
         let mut resolved = guids.plan(&guid_model);
         resolved.extend(remap.iter().map(|(&k, &v)| (k, v)));
         let withheld = claims.withheld(&index, &included, &resolved, base, i > 0 && compatible);

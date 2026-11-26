@@ -72,6 +72,7 @@ function batchDraw(batch: BatchedMesh): LanePickDraw | null {
     layout: batch.quantized ? 'quantized' : 'flat',
     vertexBuffer: batch.vertexBuffer,
     indexBuffer: batch.indexBuffer,
+    ...(batch.indexFormat ? { indexFormat: batch.indexFormat } : {}),
     indexCount: batch.indexCount,
     origin: batch.origin ?? [0, 0, 0],
     anchor,

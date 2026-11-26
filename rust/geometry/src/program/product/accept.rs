@@ -7,7 +7,7 @@ use crate::program::inner_cache::CacheControl;
 use crate::program::mapping::{MappingControl, MappingOutput, Reached};
 use crate::representation::product_budget::ProductItems;
 use crate::router::frame_parts::single_frame_source;
-use crate::{Error, GeometryRouter, Mesh, Result, SubMeshCollection};
+use crate::{Error, GeometryRouter, Mesh, Result, styled_parts::StyledParts};
 use ifc_lite_core::{DecodedEntity, IfcType};
 
 impl<'a> ProductControl<'a> {
@@ -138,7 +138,7 @@ impl<'a> ProductControl<'a> {
             }
             return Action::Complete(Ok(match self.styled {
                 None => ProductOutput::Parts(vec![Mesh::new()]),
-                Some(_) => ProductOutput::Styled(SubMeshCollection::new()),
+                Some(_) => ProductOutput::Styled(StyledParts::new()),
             }));
         }
         self.plan = Some(plan.into_admitted());

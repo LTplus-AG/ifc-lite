@@ -22,7 +22,7 @@
  * (model_save, export_*) stages a Blob in `playgroundFiles` that the user
  * downloads on click — never auto-triggered. The handful of tools that
  * genuinely don't fit a browser (model_load federated, export_glb /
- * export_ifcx / export_pdf_report) return a friendly
+ * export_ifcx) return a friendly
  * UNSUPPORTED_OPERATION so the agent can route the user to the stdio MCP
  * for those.
  */
@@ -1499,7 +1499,7 @@ export async function dispatch(
   }
   // The v2 surface includes mutate, BCF, IDS, export, diff. Anything with
   // an entry in IMPLS is wired client-side; the catalogue still includes
-  // a few v0.2 / v0.5 entries (export_glb, export_ifcx, export_pdf_report)
+  // a few entries (export_glb, export_ifcx)
   // that aren't implemented yet — those fall through to the
   // UNSUPPORTED_OPERATION branch below.
   const impl = IMPLS[toolName];

@@ -198,7 +198,7 @@ fn stopped_valid_reply_cannot_assemble_after_an_earlier_type_map_was_accepted() 
         assert!(execution.advance(&mut decoder, &router).unwrap());
     }
     assert_eq!(execution.state.meshes.len(), 1, "the first real map was already presented");
-    assert!(!execution.state.meshes[0].positions.is_empty());
+    assert!(!execution.state.meshes[0].mesh.positions.is_empty());
     let request = execution.request().unwrap().unwrap();
     let reply = execution.execute(request, &mut decoder, &router).unwrap();
     assert_eq!(calls.borrow().len(), 2);

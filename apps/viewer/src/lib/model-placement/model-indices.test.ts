@@ -4,7 +4,9 @@
 
 import { it } from 'node:test';
 import assert from 'node:assert/strict';
-import { createModelIndexAllocator } from './model-indices.js';
+import { useViewerStore } from '@/store';
+import { fixtureModel, fixtureModels } from '@/test/store-fixture';
+import { createModelIndexAllocator, modelIndices } from './model-indices.js';
 
 const models = (...ids: string[]) => new Map(ids.map(id => [id, {}]));
 
@@ -53,4 +55,25 @@ it('without reservations the shared map keeps its identity until an assignment c
   assert.notEqual(removed, first);
   assert.deepEqual([...removed], [['b', 1]], 'indices never compact in a live federation');
   assert.equal(indices(models('b')), removed);
+});
+
+it('#11246 an old federation sees only its surviving assignments and cannot change the live map', (t) => {
+  const initial = useViewerStore.getState();
+  t.after(() => {
+    useViewerStore.setState(initial, true);
+    modelIndices(initial.models);
+  });
+  const retained = fixtureModel('retained');
+  const captured = fixtureModels(retained, fixtureModel('removed'));
+  useViewerStore.setState(captured);
+  const oldIndex = modelIndices(captured.models).get(retained.id);
+  assert.notEqual(oldIndex, undefined);
+
+  const live = fixtureModels(retained, fixtureModel('new'));
+  useViewerStore.setState(live);
+  const indices = modelIndices(live.models);
+  assert.notEqual(indices.get('new'), undefined);
+
+  assert.deepEqual([...modelIndices(captured.models)], [[retained.id, oldIndex]]);
+  assert.equal(modelIndices(live.models), indices, 'stale lookup must leave the current assignments untouched');
 });

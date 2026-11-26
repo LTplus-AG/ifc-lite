@@ -1,0 +1,14 @@
+ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('styled-item-downgrade.ifc','',(''),(''),'','','');
+FILE_SCHEMA(('IFC4X3_ADD2'));
+ENDSEC;
+DATA;
+#1=IFCCARTESIANPOINT((0.,0.,0.));
+#2=IFCSTYLEDITEM(#1,(/* style */ #3 /* member */),'Styled point');
+#3=IFCSURFACESTYLE('white',.BOTH.,(#4));
+#4=IFCSURFACESTYLESHADING(#5,$);
+#5=IFCCOLOURRGB($,1.,1.,1.);
+ENDSEC;
+END-ISO-10303-21;

@@ -67,28 +67,28 @@ fn a_malformed_finish_wire_keeps_only_complete_pairs() {
 // BatchFinishes / mesh_js_with_finish — the per-mesh join
 // ───────────────────────────────────────────────────────────────────────────
 
-/// Item level: a mesh takes the finish of its own styled representation item;
-/// two meshes of one element from different items take different finishes; an
-/// empty claim (a style that authored no specular) is no finish; nothing
-/// installed means no join at all. (The element-level and type-level reach is
-/// `ifc_lite_processing`'s `finish_join` tests; this pins the batch wiring.)
+/// By source (#10698): a mesh takes the finish of the styled item its colour
+/// came from; two meshes from different items take different finishes; an
+/// empty claim (a style that authored no specular) is no finish; a colour from
+/// no style, or of unknown provenance, has none; nothing installed means no
+/// join at all. (Which source production pairs with each mesh is
+/// `ifc_lite_processing`'s tests; this pins the batch wiring.)
 #[test]
-fn a_mesh_takes_the_finish_of_its_own_representation_item() {
+fn a_mesh_takes_the_finish_of_the_style_its_colour_came_from() {
     let mut finishes = StyleFinishes::default();
     finishes.insert(10, steel());
     finishes.insert(11, SpecularMaterial { metallic: None, roughness: Some(0.9) });
     finishes.insert(12, SpecularMaterial::default());
     let colors: FxHashMap<u32, [f32; 4]> = [10, 11, 12].into_iter().map(|id| (id, [0.5, 0.5, 0.5, 1.0])).collect();
-    let mut decoder = ifc_lite_core::EntityDecoder::new(b"");
-
-    let meshes: Vec<MeshData> = [Some(10), Some(11), Some(12), Some(13), None].into_iter().map(mesh_from_item).collect();
-    let joined = BatchFinishes::new(Some(&finishes), &colors).for_meshes(&meshes, &mut decoder);
+    use ifc_lite_processing::element::StyleSource;
+    let sources = [StyleSource::Style(10), StyleSource::Style(11), StyleSource::Style(12), StyleSource::Unstyled, StyleSource::Unavailable];
+    let joined = BatchFinishes::new(Some(&finishes), &colors).for_sources(&sources);
     assert_eq!(joined[0], Some(steel()));
     assert_eq!(joined[1].and_then(|f| f.roughness), Some(0.9));
     assert_eq!(joined[2], None, "empty claim");
-    assert_eq!(joined[3], None, "unstyled item");
-    assert_eq!(joined[4], None, "no item id, no element to fall back to");
-    assert!(BatchFinishes::new(None, &colors).for_meshes(&meshes, &mut decoder).is_empty(), "none installed");
+    assert_eq!(joined[3], None, "a material or default colour");
+    assert_eq!(joined[4], None, "a colour of unknown provenance");
+    assert!(BatchFinishes::new(None, &colors).for_sources(&sources).is_empty(), "none installed");
 }
 
 /// What JS reads: the `MeshDataJs.metallic/roughness` getters of the mesh the
@@ -139,8 +139,8 @@ fn a_prepass_finish_reaches_the_mesh_built_from_its_item() {
     api.set_style_finishes(&ids, &wire);
     let installed = api.style_finishes_for(&ids).expect("installed for this style wire");
     let colors = ifc_lite_processing::prepass::style_colors_from_flat(&ids, &colors);
-    let joined = BatchFinishes::new(Some(&installed), &colors)
-        .for_meshes(&[mesh_from_item(Some(10)), mesh_from_item(Some(11))], &mut decoder);
+    use ifc_lite_processing::element::StyleSource;
+    let joined = BatchFinishes::new(Some(&installed), &colors).for_sources(&[StyleSource::Style(10), StyleSource::Style(11)]);
 
     let steel = joined[0].expect("#10 authors a finish");
     assert_eq!(steel.metallic, Some(1.0));

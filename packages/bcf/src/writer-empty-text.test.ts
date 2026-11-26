@@ -112,13 +112,25 @@ describe('empty Comment text and Label against the official schemas (#11453)', (
   });
 
   it('3.0: non-empty text is unchanged', async () => {
-    const { xml } = await markupOf(project('3.0', 'hello', ['a']));
+    const { xml } = await markupOf(project('3.0', 'hello', ['\u00a0']));
     expect(xml).toContain('<Comment>hello</Comment>');
+    expect(xml).toContain('<Label>\u00a0</Label>');
+    expect(await errorsFor('3.0', xml)).toEqual([]);
   });
 
-  it('2.1: keeps the required empty Comment element, which xs:string allows', async () => {
-    const { xml } = await markupOf(project('2.1', '', ['a', '', ' ']));
-    expect(xml).toMatch(/<Comment><\/Comment>/);
+  it('3.0: keeps a comment with only author and date', async () => {
+    const input = project('3.0', '', []);
+    input.topics.get(TOPIC)!.comments[0].viewpointGuid = undefined;
+    const { xml, blob } = await markupOf(input);
+    expect(await errorsFor('3.0', xml)).toEqual([]);
+    expect((await readBCF(blob)).topics.get(TOPIC)!.comments).toMatchObject([
+      { comment: '', author: 'a@example.invalid', date: '2026-01-05T06:07:08Z' },
+    ]);
+  });
+
+  it.each(['', '   '])('2.1: keeps the required Comment element containing %j', async (text) => {
+    const { xml } = await markupOf(project('2.1', text, ['a', '', ' ']));
+    expect(xml).toContain(`<Comment>${text}</Comment>`);
     expect(xml).toContain('<Labels></Labels>');
     expect(xml).toContain('<Labels> </Labels>');
     expect(await errorsFor('2.1', xml)).toEqual([]);

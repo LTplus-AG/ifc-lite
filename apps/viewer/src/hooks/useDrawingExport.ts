@@ -42,7 +42,7 @@ import { createDxfDownload } from '@/hooks/dxfDownload';
 import { rasterizeSvgToPngDataUrl, SHEET_PDF_DPI } from './drawing-svg-raster';
 export { rasterizeSvgToPngDataUrl, SHEET_PDF_DPI, MAX_SHEET_RASTER_PIXELS, MAX_SHEET_RASTER_DIMENSION_PX } from './drawing-svg-raster';
 import { DEFAULT_SCAN_SVG_CAP, type ScanBandPoint } from '@/hooks/scanSectionMath';
-import { computeSvgExportViewport, svgExportMmToWorld } from '@/hooks/svgExportViewport';
+import { computeSvgExportViewport, svgExportMmToWorld, svgExportScale } from '@/hooks/svgExportViewport';
 import { polygonPathData } from '@/hooks/svgPolygonPath';
 import { makePropertiesGetter } from '@/hooks/drawingElementProperties';
 import { styleCutPolygons, type CutPolygonStyleContext } from '@/components/viewer/drawing/cut-polygon-style';
@@ -202,7 +202,8 @@ export function createDrawingExport({
     // extracted to svgExportViewport.ts (see that file's docstring for why
     // this transform doesn't map points at all — the SVG's own
     // width/height-vs-viewBox ratio does the scaling).
-    const dims = dimensionGraphicsAt(displayOptions.scale || 100, sectionPlane.axis); // the viewBox must hold them too
+    // Same scale as the viewport below, so a negative or NaN scale cannot size the dimensions differently.
+    const dims = dimensionGraphicsAt(svgExportScale(displayOptions.scale), sectionPlane.axis); // the viewBox must hold them too
     const viewport = computeSvgExportViewport(boundsWithDimensions(bounds, dims), displayOptions.scale, sectionPlane.axis);
     const { widthMm: svgWidthMm, heightMm: svgHeightMm, viewBoxMinX, viewBoxMinY, viewBoxWidth: viewWidth, viewBoxHeight: viewHeight, flipX, flipY, effectiveScale } = viewport;
 

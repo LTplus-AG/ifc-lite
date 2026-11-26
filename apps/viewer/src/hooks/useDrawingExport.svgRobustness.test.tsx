@@ -6,7 +6,7 @@
  * The direct SVG export wrote `NaN`/`Infinity` into `viewBox`, `width`/`height`
  * and path data for an empty or corrupt section; strict consumers (Illustrator,
  * Inkscape, CAD importers) reject or blank such a file. The PDF export already
- * refuses or skips the same inputs.
+ * refuses or skips the same inputs. Regression tests for #11467.
  */
 
 import '@/test/setup-dom.js';
@@ -58,6 +58,7 @@ const cases: Record<string, (d: Drawing2D) => void> = {
   pointBounds: (d) => { d.bounds = { min: { x: 2, y: 2 }, max: { x: 2, y: 2 } }; d.lines = [_line({ x: 2, y: 2 }, { x: 2, y: 2 })]; },
   nanBounds: (d) => { d.bounds = { min: { x: NaN, y: 0 }, max: { x: 4, y: 3 } }; },
   nanOuter: (d) => { d.cutPolygons = [poly([{ x: 0, y: 0 }, { x: NaN, y: 0 }, { x: 4, y: 3 }])]; },
+  holesOnly: (d) => { d.cutPolygons = [poly(sq), { ...poly([], [[{ x: 1, y: 1 }, { x: 2, y: 1 }, { x: 2, y: 2 }]]), entityId: 8 }]; },
   nanHole: (d) => { d.cutPolygons = [poly(sq, [[{ x: 1, y: NaN }, { x: 2, y: 1 }, { x: 2, y: 2 }]])]; },
 };
 
@@ -146,6 +147,11 @@ describe('direct SVG export never writes a non-finite number', () => {
   it('writes well-formed XML for control characters in annotation text, colour and cloud label (libxml2)', async () => {
     const svg = await run('controlAnnotation');
     assert.deepEqual(await xmlErrors(svg), []);
+  });
+  it('does not fill the holes of a polygon that has no outer ring', async () => {
+    const svg = await run('holesOnly');
+    assert.ok(!svg.includes('data-entity-id="8"'), 'a hole on its own would fill the opening');
+    assert.ok(svg.includes('data-entity-id="7"'));
   });
   it('omits data-entity-id for a non-finite id', async () => {
     const svg = await run('nanEntityId');

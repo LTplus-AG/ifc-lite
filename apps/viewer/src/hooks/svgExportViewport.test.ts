@@ -121,7 +121,7 @@ describe('svgExportMmToWorld', () => {
   });
 });
 
-describe('computeSvgExportViewport degenerate bounds', () => {
+describe('computeSvgExportViewport degenerate bounds (#11467)', () => {
   it('throws on the +/-Infinity bounds of an empty drawing rather than emitting Infinity', () => {
     const empty: SvgExportBounds = { min: { x: Infinity, y: Infinity }, max: { x: -Infinity, y: -Infinity } };
     assert.throws(() => computeSvgExportViewport(empty, 100, 'down'), /bounds/);
@@ -136,5 +136,13 @@ describe('computeSvgExportViewport degenerate bounds', () => {
   it('falls back to scale 100 for a negative or NaN scale (a negative one made width negative)', () => {
     assert.strictEqual(computeSvgExportViewport(bounds, -50, 'down').widthMm, 120);
     assert.strictEqual(computeSvgExportViewport(bounds, NaN, 'down').widthMm, 120);
+  });
+});
+
+describe('a scale the export cannot use (#11467)', () => {
+  it('falls back to 1:100, which the dimension graphics use too', () => {
+    const at = (scale: number) => computeSvgExportViewport({ min: { x: 0, y: 0 }, max: { x: 4, y: 3 } }, scale, 'down').effectiveScale;
+    assert.equal(at(50), 50);
+    for (const bad of [-50, 0, NaN, Infinity]) assert.equal(at(bad), 100);
   });
 });

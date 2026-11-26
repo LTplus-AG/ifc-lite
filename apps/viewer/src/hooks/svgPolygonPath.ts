@@ -33,7 +33,7 @@ export function polygonPathData(
 ): string {
   const outer = ringToPath(polygon.outer, map);
   // Holes without a usable outer ring would fill the hole region by itself.
-  if (!outer && polygon.outer.length > 0) return '';
+  if (!outer) return '';
   let path = outer;
   for (const hole of polygon.holes) {
     const ring = ringToPath(hole, map);

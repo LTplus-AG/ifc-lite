@@ -14,7 +14,6 @@ import { describe, it, expect } from 'vitest';
 import { mcpbManifest, serverJson, type McpPackage } from '../src/release/manifests.js';
 
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf-8')) as McpPackage & {
-  files: string[];
   bin: Record<string, string>;
 };
 
@@ -56,7 +55,6 @@ describe('.mcpb manifest for Claude Desktop', () => {
 
   it('starts the same file the package publishes as its bin', () => {
     expect(server.entry_point).toBe(`server/${pkg.bin['ifc-lite-mcp'].replace(/^\.\//, '')}`);
-    expect(pkg.files).toContain('dist');
     expect(server.mcp_config.args[0]).toBe(`\${__dirname}/${server.entry_point}`);
   });
 

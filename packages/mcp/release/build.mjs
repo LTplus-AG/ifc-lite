@@ -115,23 +115,31 @@ function assertPatchesApplied(staged) {
     const added = new Set(lines.filter(isAdded).map((l) => l.slice(1)));
     // Every copy of exactly this version, hoisted or nested.
     for (const pkgRoot of staged.get(spec) ?? []) {
+      // Per patched file: added lines can be generic (`}`), so a removed line
+      // the patch does not add back must also be gone, or the file is unpatched.
       let file = '';
-      // Added lines can be generic (`}`); a removed line the patch does not
-      // add back must also be gone, or the file may simply be unpatched.
+      let name = '';
       let removedOnly = 0;
       let removedGone = 0;
+      const endFile = () => {
+        if (removedOnly > 0 && removedGone === 0) throw new Error(`${pkgRoot}/${name} still has every line ${patch} removes`);
+        removedOnly = 0;
+        removedGone = 0;
+      };
       for (const line of lines) {
-        // A deleted file (+++ /dev/null) has no added lines to look for.
         if (line.startsWith('+++ ')) {
-          file = line === '+++ /dev/null' ? '' : readFileSync(join(pkgRoot, line.slice(4).replace(/^b\//, '')), 'utf-8');
+          endFile();
+          name = line.slice(4).replace(/^b\//, '');
+          // A deleted file (+++ /dev/null) has no added lines to look for.
+          file = line === '+++ /dev/null' ? '' : readFileSync(join(pkgRoot, name), 'utf-8');
         } else if (isAdded(line) && !file.includes(line.slice(1))) {
-          throw new Error(`${pkgRoot} is staged without ${patch} (missing: ${line.slice(1).trim()})`);
-        } else if (isRemoved(line) && !added.has(line.slice(1))) {
+          throw new Error(`${pkgRoot}/${name} is staged without ${patch} (missing: ${line.slice(1).trim()})`);
+        } else if (isRemoved(line) && !added.has(line.slice(1)) && file) {
           removedOnly++;
           if (!file.includes(line.slice(1))) removedGone++;
         }
       }
-      if (removedOnly > 0 && removedGone === 0) throw new Error(`${pkgRoot} still has every line ${patch} removes`);
+      endFile();
     }
   }
 }
@@ -163,6 +171,11 @@ if (onNpm.status !== 0 && /E404/.test(onNpm.stderr ?? '')) {
 }
 
 if (!flags['no-bundle']) {
+  // build-wasm.sh keeps the runtime on disk when wasm-pack is missing, so a
+  // release host without it would bundle an old engine.
+  if (spawnSync('wasm-pack', ['--version'], { shell: win }).status !== 0) {
+    throw new Error('wasm-pack is not on PATH: a release must rebuild the wasm runtime (scripts/build-wasm.sh)');
+  }
   // Checked before the slow deploy, and again in the stage after it.
   const source = missingWasm(resolve(pkgDir, '..', 'wasm'));
   if (source.length) throw new Error(`packages/wasm is missing ${source.join(', ')}: build it (scripts/build-wasm.sh) first`);
@@ -193,6 +206,8 @@ if (!flags['no-bundle']) {
   writeFileSync(join(stage, '.mcpbignore'), '*.map\n*.d.ts\n*.d.mts\n*.d.cts\n');
   run('npx', ['-y', MCPB_CLI, 'pack', stage, bundle], pkgDir);
   process.stdout.write(`wrote ${bundle}\n`);
+  // A few hundred MB, with its own copy of this package's package.json.
+  rmSync(stage, { recursive: true, force: true });
   // Only once the bundle exists, so a failed pack leaves no record of a bundle.
   writeFileSync(deps, `${[...tree.keys()].sort().join('\n')}\n`);
   process.stdout.write(`wrote ${deps}\n`);

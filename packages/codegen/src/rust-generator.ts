@@ -12,9 +12,9 @@
  * - Type conversion functions
  */
 
-import type { ExpressSchema, EntityDefinition } from './express-parser.js';
+import type { ExpressSchema, EntityDefinition } from './generator-schema.js';
 import { crc32, formatCRC32TableLiteral } from './crc32.js';
-import { getInheritanceChain } from './express-parser.js';
+import { getInheritanceChain } from './generator-schema.js';
 import { generateSchemaQueries, mergeTypeUniverse } from './rust-schema-queries.js';
 import { generateCanonicalNameHash, generateTypeNameParser } from './rust-type-name-parser.js';
 import { generateUnknownIfcType } from './rust-unknown-ifc-type.js';

@@ -12,7 +12,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import ts from 'typescript';
-import { parseExpressSchema } from '../src/express-parser.js';
+import { parseExpressSchema } from '../src/index.js';
 import {
   buildSchemaRegistry,
   decodeSchemaRegistry,

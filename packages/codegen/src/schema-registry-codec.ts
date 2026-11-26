@@ -30,8 +30,8 @@
  * through it and compares them with {@link buildSchemaRegistry}.
  */
 
-import type { ExpressSchema, EntityDefinition, AttributeDefinition } from './express-parser.js';
-import { getAllAttributes, getInheritanceChain } from './express-parser.js';
+import type { ExpressSchema, EntityDefinition, AttributeDefinition } from './generator-schema.js';
+import { getAllAttributes, getInheritanceChain } from './generator-schema.js';
 
 export interface RegistryAttribute {
   name: string;

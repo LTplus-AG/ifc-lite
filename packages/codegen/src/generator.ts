@@ -15,11 +15,11 @@
 import { ENTITIES_IFC4, IFC_DATA_TYPES } from '@ifc-lite/data';
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join, isAbsolute } from 'node:path';
-import { parseExpressSchema, type ExpressSchema } from './express-parser.js';
+import { parseExpressSchema } from './generator-schema.js';
 import { generateTypeScript, type GeneratedCode } from './typescript-generator.js';
 import { generateTypeIds } from './type-ids-generator.js';
 import { generateSerializers } from './serialization-generator.js';
-import { generateRust, type RustGeneratedCode } from './rust-generator.js';
+import { generateRust } from './rust-generator.js';
 import { findCollisions } from './crc32.js';
 import { entityCatalogSchema, mergeTypeUniverse } from './rust-schema-queries.js';
 import { generateSlots, slotSchemaOf } from './rust-slot-emitter.js';

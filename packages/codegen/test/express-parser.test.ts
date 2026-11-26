@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { parseExpressSchema, getAllAttributes, getInheritanceChain } from '../src/express-parser.js';
+import { parseExpressSchema, getAllAttributes, getInheritanceChain } from '../src/index.js';
 
 describe('EXPRESS Parser', () => {
   describe('Schema parsing', () => {

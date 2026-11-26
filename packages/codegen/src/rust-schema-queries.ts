@@ -11,8 +11,8 @@
  */
 
 import type { IfcEntityInfo } from '@ifc-lite/data';
-import type { EntityDefinition, ExpressSchema } from './express-parser.js';
-import { getAllAttributes } from './express-parser.js';
+import type { EntityDefinition, ExpressSchema } from './generator-schema.js';
+import { getAllAttributes } from './generator-schema.js';
 import { AttributeKindResolver } from './rust-attribute-flags.js';
 
 /** Adapt class-shaped IFC catalog rows into a name-only EXPRESS supplement. */

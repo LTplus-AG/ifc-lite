@@ -62,13 +62,16 @@ export class TokenStream {
    * dropped, any gap between tokens written as one space, string literals
    * verbatim.
    */
-  sliceFrom(start: number): string {
+  sliceFrom(start: number, preserveSpacing = false): string {
     let first = this.pos;
     while (first > 0 && this.tokens[first - 1].start >= start) first--;
     let text = '';
     for (let i = first; i < this.pos; i++) {
       const t = this.tokens[i];
-      if (i > first && t.start > this.tokens[i - 1].end) text += ' ';
+      if (i > first && t.start > this.tokens[i - 1].end) {
+        const gap = this.source.slice(this.tokens[i - 1].end, t.start);
+        text += preserveSpacing && !gap.trim() ? gap : ' ';
+      }
       text += this.source.slice(t.start, t.end);
     }
     return text;

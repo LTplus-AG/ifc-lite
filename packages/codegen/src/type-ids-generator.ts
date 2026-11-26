@@ -8,7 +8,7 @@
  * Generates TypeScript type ID constants and lookup maps.
  */
 
-import type { ExpressSchema } from './express-parser.js';
+import type { ExpressSchema } from './generator-schema.js';
 import { crc32, formatCRC32TableLiteral } from './crc32.js';
 
 /**

@@ -16,7 +16,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseExpressSchema } from '../src/express-parser.js';
+import { parseExpressSchema } from '../src/index.js';
 import {
   ABSENT,
   classifySlots,
@@ -52,6 +52,7 @@ const OLD = `
   ENTITY IfcGone;
     Value : IfcLabel;
   END_ENTITY;
+  END_SCHEMA;
 `;
 const NEW = `
   SCHEMA IFC4X3_DEV_x;
@@ -71,6 +72,7 @@ const NEW = `
   ENTITY IfcNewer;
     Value : IfcLabel;
   END_ENTITY;
+  END_SCHEMA;
 `;
 
 function classify(table: RenameTable = NO_RENAMES): Map<string, SlotEntity> {
@@ -149,14 +151,14 @@ describe('classifySlots (synthetic)', () => {
     const clash = (src: string) => () =>
       classifySlots(input('Ifc4x3', src), [], NO_RENAMES, () => true);
     expect(
-      clash('SCHEMA IFC4X3_x;\nTYPE T = STRING; END_TYPE;\nENTITY IfcA;\n  DeltaT : T;\n  Delta_T : T;\nEND_ENTITY;\n'),
+      clash('SCHEMA IFC4X3_x;\nTYPE T = STRING; END_TYPE;\nENTITY IfcA;\n  DeltaT : T;\n  Delta_T : T;\nEND_ENTITY;\nEND_SCHEMA;\n'),
     ).toThrow(/both name the slot DELTA_T/);
   });
 
   it('an omit row removes an older-release attribute, and a stale one fails', () => {
-    const old = 'SCHEMA IFC2X3;\nTYPE T = STRING; END_TYPE;\nENTITY IfcA;\n  UrlReference : T;\nEND_ENTITY;\n';
+    const old = 'SCHEMA IFC2X3;\nTYPE T = STRING; END_TYPE;\nENTITY IfcA;\n  UrlReference : T;\nEND_ENTITY;\nEND_SCHEMA;\n';
     const next =
-      'SCHEMA IFC4X3_x;\nTYPE T = STRING; END_TYPE;\nENTITY IfcA;\n  Extra : T;\n  URLReference : T;\nEND_ENTITY;\n';
+      'SCHEMA IFC4X3_x;\nTYPE T = STRING; END_TYPE;\nENTITY IfcA;\n  Extra : T;\n  URLReference : T;\nEND_ENTITY;\nEND_SCHEMA;\n';
     const run = (omit: RenameTable['omit']) =>
       classifySlots(input('Ifc4x3', next), [input('Ifc2x3', old)], { renames: [], omit }, () => true);
     expect(() => run([])).toThrow(/both name the slot URL_REFERENCE/);

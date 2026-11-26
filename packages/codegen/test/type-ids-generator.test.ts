@@ -22,7 +22,7 @@
 
 import { describe, it, expect } from 'vitest';
 import ts from 'typescript';
-import { parseExpressSchema } from '../src/express-parser.js';
+import { parseExpressSchema } from '../src/index.js';
 import { generateTypeIds } from '../src/type-ids-generator.js';
 import { crc32, buildCRC32Table } from '../src/crc32.js';
 

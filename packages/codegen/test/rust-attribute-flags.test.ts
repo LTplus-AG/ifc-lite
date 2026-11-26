@@ -16,7 +16,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { getAllAttributes, parseExpressSchema } from '../src/express-parser.js';
+import { getAllAttributes, parseExpressSchema } from '../src/index.js';
 import {
   AttributeKindResolver,
   FLAG_AGGREGATE,

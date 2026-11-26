@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { crc32 } from './crc32.js';
-import type { EntityDefinition, ExpressSchema } from './express-parser.js';
+import type { EntityDefinition, ExpressSchema } from './generator-schema.js';
 
 /** Render the generated CRC32 constants without coupling this to enum emission. */
 export function generateTypeIdConstants(

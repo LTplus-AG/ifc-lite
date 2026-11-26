@@ -4,8 +4,7 @@
 
 /**
  * The clause forms the rule parser models (#11110), one representative of
- * each, plus a cross-check that it reads the same type surface as the regex
- * parser the existing generators use on every bundled schema.
+ * each, plus coverage of the generator projection on every bundled schema.
  */
 
 import { readFileSync } from 'node:fs';
@@ -13,7 +12,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { parseExpressRules } from '../src/express/declaration-parser.js';
 import { ExpressSyntaxError } from '../src/express/lexer.js';
-import { parseExpressSchema } from '../src/express-parser.js';
+import { parseExpressSchema } from '../src/index.js';
 
 const SCHEMA = `SCHEMA CLAUSES;
 (* a (* nested *) remark *)
@@ -253,36 +252,36 @@ describe('EXPRESS rule parser: malformed and edge input (#11110 review)', () => 
   });
 });
 
-describe('EXPRESS rule parser agrees with the regex parser on every bundled schema (#11110)', () => {
+describe('generator projection preserves the declaration surface of every bundled schema (#11562)', () => {
   const schemaSource = (file: string) => readFileSync(join(__dirname, '..', 'schemas', file), 'utf8');
 
   it.each(['IFC2X3_TC1.exp', 'IFC4_ADD2_TC1.exp', 'IFC4X1.exp', 'IFC4X2.exp', 'IFC4X3.exp'])('%s', (file) => {
     const source = schemaSource(file);
-    const regex = parseExpressSchema(source);
+    const projection = parseExpressSchema(source);
     const rules = parseExpressRules(source);
 
     // The surface the existing generators emit from: entity names, ABSTRACT,
     // the supertype, and each explicit attribute with its OPTIONAL flag.
-    // Redeclared attributes (SELF\X.Y) are skipped by the regex parser.
+    // Redeclared attributes (SELF\X.Y) reuse an inherited slot.
     const surface = (name: string, abstract: boolean, supertype: string | undefined, attrs: string[]) =>
       `${name}${abstract ? ' ABSTRACT' : ''} < ${supertype ?? '-'} (${attrs.join(', ')})`;
     expect(rules.entities.map((e) => surface(
       e.name, e.abstract, e.supertypes[0],
       e.explicit.filter((a) => !a.redeclares).map((a) => `${a.name}${a.optional ? '?' : ''}`),
-    ))).toEqual(regex.entities.map((e) => surface(
+    ))).toEqual(projection.entities.map((e) => surface(
       e.name, e.isAbstract, e.supertype, e.attributes.map((a) => `${a.name}${a.optional ? '?' : ''}`),
     )));
     expect(rules.entities.every((e) => e.supertypes.length <= 1)).toBe(true);
     expect(new Set(rules.types.map((t) => t.name))).toEqual(
-      new Set([...regex.types, ...regex.enums, ...regex.selects].map((t) => t.name)),
+      new Set([...projection.types, ...projection.enums, ...projection.selects].map((t) => t.name)),
     );
   });
 
-  // WHERE rules are not compared: the regex parser stops IfcSweptSurface's
-  // at the DERIVE inside 'IFC2X3.IFCDERIVEDPROFILEDEF' and keeps one of two.
-  // Nothing reads its whereRules; this parser keeps both.
-  it('keeps a WHERE rule whose string literal contains a section keyword', () => {
-    const rules = parseExpressRules(schemaSource('IFC2X3_TC1.exp')).entities.find((e) => e.name === 'IfcSweptSurface');
-    expect(rules?.where.map((w) => w.label)).toEqual(['WR1', 'WR2']);
-  });
+});
+
+it('keeps both IFC2X3 IfcSweptSurface rules on the generator surface (#11562)', () => {
+  const source = readFileSync(join(__dirname, '..', 'schemas', 'IFC2X3_TC1.exp'), 'utf8');
+  const swept = parseExpressSchema(source).entities.find(e => e.name === 'IfcSweptSurface');
+  expect(swept?.whereRules?.map(rule => rule.split(':')[0])).toEqual(['WR1', 'WR2']);
+  expect(swept?.whereRules?.[0]).toContain('IFC2X3.IFCDERIVEDPROFILEDEF');
 });

@@ -54,7 +54,7 @@ export type SimpleTypeName = 'REAL' | 'INTEGER' | 'NUMBER' | 'BOOLEAN' | 'LOGICA
 export type AggregateKind = 'LIST' | 'SET' | 'BAG' | 'ARRAY' | 'AGGREGATE';
 
 export type TypeSpec =
-  | { k: 'simple'; name: SimpleTypeName; width?: Expr; fixed?: boolean }
+  | { k: 'simple'; name: SimpleTypeName; spelling?: string; width?: Expr; fixed?: boolean }
   | { k: 'named'; name: string }
   | { k: 'aggregate'; kind: AggregateKind; low?: Expr; high?: Expr; optional: boolean; unique: boolean; of: TypeSpec }
   | { k: 'enumeration'; items: string[]; extensible: boolean; basedOn?: string }
@@ -106,6 +106,7 @@ export interface EntityDecl {
   name: string;
   abstract: boolean;
   supertypes: string[];
+  subtypeNames?: string[];
   explicit: ExplicitAttribute[];
   derived: DerivedAttribute[];
   inverse: InverseAttribute[];
@@ -114,6 +115,7 @@ export interface EntityDecl {
 }
 
 export interface TypeDecl {
+  source: string;
   name: string;
   spec: TypeSpec;
   where: WhereRule[];

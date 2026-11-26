@@ -25,7 +25,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { parseExpressSchema } from '../src/express-parser.js';
+import { parseExpressSchema } from '../src/index.js';
 import { generateRust } from '../src/rust-generator.js';
 import { crc32 } from '../src/crc32.js';
 import {

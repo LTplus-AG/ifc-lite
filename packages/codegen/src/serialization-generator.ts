@@ -12,7 +12,7 @@
  * single place means the generated copies can never drift from the runtime.
  */
 
-import type { ExpressSchema } from './express-parser.js';
+import type { ExpressSchema } from './generator-schema.js';
 
 /**
  * Generate serialization support code — a thin re-export of the shared

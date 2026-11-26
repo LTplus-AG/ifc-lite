@@ -1,7 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-import type { ExpressSchema } from './express-parser.js';
+import type { ExpressSchema } from './generator-schema.js';
 
 const U64 = (1n << 64n) - 1n;
 const HASH_MULTIPLIER = 0x9e3779b97f4a7c15n;

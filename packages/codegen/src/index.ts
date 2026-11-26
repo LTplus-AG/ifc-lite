@@ -28,7 +28,7 @@ export {
   type SelectDefinition,
   type DerivedAttribute,
   type InverseAttribute,
-} from './express-parser.js';
+} from './generator-schema.js';
 
 // TypeScript generation
 export {

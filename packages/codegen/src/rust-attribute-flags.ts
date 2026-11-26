@@ -25,7 +25,7 @@
  * default: a wrong flag reads as a wrong attribute at runtime.
  */
 
-import type { AttributeDefinition, ExpressSchema } from './express-parser.js';
+import type { AttributeDefinition, ExpressSchema } from './generator-schema.js';
 
 /** Mirrors `AttrKind` in rust/core/src/attribute_slot.rs. */
 export const KIND = {

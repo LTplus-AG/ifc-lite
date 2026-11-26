@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import type { ExpressSchema } from '../src/express-parser.js';
+import type { ExpressSchema } from '../src/index.js';
 import { generateSerializers } from '../src/serialization-generator.js';
 
 const STUB_SCHEMA: ExpressSchema = {

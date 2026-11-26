@@ -30,7 +30,7 @@
 
 import { describe, it, expect } from 'vitest';
 import ts from 'typescript';
-import { parseExpressSchema, type ExpressSchema } from '../src/express-parser.js';
+import { parseExpressSchema, type ExpressSchema } from '../src/index.js';
 import { generateTypeScript } from '../src/typescript-generator.js';
 
 /** The runtime surface the emitted `schema-registry.ts` ships to consumers. */

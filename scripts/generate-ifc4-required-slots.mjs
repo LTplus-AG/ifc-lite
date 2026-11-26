@@ -180,7 +180,7 @@ function renderRs(rows) {
 // Pruning uses core's AttrSlot to find OPTIONAL and aggregate slots. The
 // only extra data the Rust writer needs is where a variable-length list's
 // minimum differs from 1 or where an aggregate must be treated as one value.
-const { parseExpressSchema } = await import('../packages/codegen/src/express-parser.ts');
+const { parseExpressSchema } = await import('../packages/codegen/src/generator-schema.ts');
 const { AttributeKindResolver, FLAG_AGGREGATE } = await import('../packages/codegen/src/rust-attribute-flags.ts');
 const { SCHEMA_REGISTRY: IFC4X3 } = await import(
   pathToFileURL(join(ROOT, 'packages/parser/src/generated/ifc4x3/schema-registry.ts')).href

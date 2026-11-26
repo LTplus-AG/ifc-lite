@@ -45,7 +45,7 @@ export function parseTypeSpec(s: TokenStream): TypeSpec {
       const width = parseExpression(s);
       s.expectOp(')');
       const fixed = s.acceptKeyword('FIXED');
-      return { k: 'simple', name: word, width, fixed };
+      return { k: 'simple', name: word, width, fixed, spelling: s.sliceFrom(t.start, true) };
     }
     return { k: 'simple', name: word };
   }

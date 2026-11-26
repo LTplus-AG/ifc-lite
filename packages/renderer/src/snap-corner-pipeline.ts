@@ -14,14 +14,15 @@
  *   (on-screen first, nearest first), building a piece's candidates if it has
  *   none and projecting them into a fresh grid. The grid answers queries while
  *   it fills, so the on-screen part of a large model is snappable first;
- * - a slice stops at its budget, between pieces.
+ * - a slice stops at its budget, inside a piece if need be: candidate and grid
+ *   building run in chunks with a cursor, so one huge piece spans several slices.
  */
 
 import type { MeshData } from '@ifc-lite/geometry';
 import type { PickClipState } from './pick-types.js';
 import { isEntityVisible } from './entity-visibility.js';
 import type { MeshGeometryCache } from './snap-geometry-cache.js';
-import { candidatesFromCache, type PieceCandidates } from './snap-corner-candidates.js';
+import { CandidateBuild, type PieceCandidates } from './snap-corner-candidates.js';
 import { CornerGrid, type ScreenSnapCamera } from './snap-corner-grid.js';
 import { gridKey, idsOf } from './snap-corner-key.js';
 import { PriorityOrder } from './snap-corner-priority.js';
@@ -79,6 +80,8 @@ interface Run {
 
 export class CornerBuildPipeline {
   private candidates = new WeakMap<MeshData, PieceCandidates>();
+  /** Candidate builds a slice stopped inside; the next slice resumes them. */
+  private building = new WeakMap<MeshData, CandidateBuild>();
   private candidatePieces = 0;
   private candidateBuilds = 0;
   private gridsStarted = 0;
@@ -122,6 +125,7 @@ export class CornerBuildPipeline {
     if (this.handle !== null) this.host.cancel(this.handle);
     this.handle = null;
     this.candidates = new WeakMap();
+    this.building = new WeakMap();
     this.candidatePieces = 0;
     this.candidateBytes = 0;
     this.ctx = null; this.seen = null; this.run = null; this.activeCache = null;
@@ -185,16 +189,28 @@ export class CornerBuildPipeline {
       run.cursor = 0;
     }
     const order = run.order;
+    // A piece is built in chunks: the clock is read between chunks, so one huge piece spans several slices.
     while (run.cursor < order.length) {
-      const piece = order[run.cursor++];
+      const piece = order[run.cursor];
       let cand = this.candidates.get(piece);
       if (!cand) {
-        cand = candidatesFromCache(piece.expressId, ctx.geometryFor(piece));
+        let build = this.building.get(piece);
+        if (!build) {
+          build = new CandidateBuild(piece.expressId, ctx.geometryFor(piece));
+          this.building.set(piece, build);
+          if (over()) break;
+        }
+        while (!build.step()) if (over()) break;
+        if (over() && !build.done) break;
+        cand = build.result();
+        this.building.delete(piece);
         this.candidates.set(piece, cand);
         this.candidatePieces++; this.candidateBuilds++;
         this.candidateBytes += 8 * (cand.corners.length + cand.edges.length);
       }
-      run.grid.addPiece(piece, cand);
+      while (!run.grid.addPieceStep(piece, cand)) if (over()) break;
+      if (!run.grid.has(piece)) break;
+      run.cursor++;
       if (over()) break;
     }
     if (run.cursor < order.length) this.schedule();

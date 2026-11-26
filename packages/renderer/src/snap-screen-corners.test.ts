@@ -308,6 +308,54 @@ describe('screen corner idle build (#11504)', () => {
     assert.deepEqual(t.state.built, [2, 3, 4, 1], 'the big piece waits for the small ones');
   });
 
+  it('builds one piece far bigger than a slice budget over several slices, each doing bounded work', () => {
+    // One piece of 1500 separate boxes: ~18 000 feature edges and ~12 000 corners, built in one go by the old code.
+    const n = 1500, positions = new Float32Array(n * 24), indices = new Uint32Array(n * 36);
+    const unit = makeBox(1, [0, 0, 0], [0.1, 0.1, 0.1]);
+    for (let b = 0; b < n; b++) {
+      for (let v = 0; v < 24; v += 3) {
+        positions[b * 24 + v] = unit.positions[v] + (b % 50) * 0.2 - 5;
+        positions[b * 24 + v + 1] = unit.positions[v + 1] + Math.floor(b / 50) * 0.2 - 3;
+        positions[b * 24 + v + 2] = unit.positions[v + 2];
+      }
+      for (let k = 0; k < 36; k++) indices[b * 36 + k] = unit.indices[k] + b * 8;
+    }
+    const big: MeshData = { ...unit, expressId: 7, positions, normals: new Float32Array(positions.length), indices };
+    const t = harness([big]);
+    // Every clock read costs 1 ms: the pipeline reads it once per chunk, so chunks per slice = budget.
+    const state = t.state;
+    const query = () => t.index.query({
+      x: 400, y: 300, ray: t.camera.unprojectToRay(400, 300, VIEW.width, VIEW.height), camera: t.camera, viewKey: 'still',
+      liveViewKey: () => 'still', viewport: VIEW, pieces: [big],
+      geometryFor: (m) => buildGeometryCache(m),
+      options: { idleHost: t.host, settleMs: 0, maxSliceMs: 5 }, now: () => state.clock++,
+    });
+    query();
+    const sliceCost: number[] = [], sliceGain: number[] = [];
+    let bytes = 0, partialSeen = false, candidateSlices = 0;
+    while (t.host.pending > 0) {
+      const c0 = state.clock;
+      t.host.tick(5);
+      sliceCost.push(state.clock - c0);
+      const st = t.index.stats()!;
+      // The candidates are counted when they finish, so measure the grid's growth only once they have.
+      if (st.candidatePieces === 0) candidateSlices++;
+      else if (bytes > 0) sliceGain.push(st.approxBytes - bytes);
+      bytes = st.candidatePieces === 0 ? 0 : st.approxBytes;
+      if (!st.complete && st.gridPieces === 1) partialSeen = true;
+      assert.ok(sliceCost.length < 5000, 'terminates');
+    }
+    const done = t.index.stats()!;
+    assert.equal(done.complete, true);
+    assert.equal(done.candidatePieces, 1);
+    assert.ok(partialSeen, 'a half-built piece was never reported complete');
+    assert.ok(candidateSlices >= 3, `the candidates took ${candidateSlices} slices`);
+    assert.ok(sliceCost.length >= 8, `one piece took ${sliceCost.length} slices`);
+    const total = sliceGain.reduce((a, b) => a + b, 0);
+    assert.ok(Math.max(...sliceGain) < total / 4, `no slice did more than a quarter of the piece (${Math.max(...sliceGain)} of ${total} bytes)`);
+    assert.ok(Math.max(...sliceCost) <= 5 + 4, `no slice overshot its budget by more than one chunk (${Math.max(...sliceCost)} ticks)`);
+  });
+
   it('does nothing while the view moves, and starts once it has been still for settleMs', () => {
     const t = harness(boxRow(20));
     t.host.onWait = () => {}; // the clock only moves with the picks

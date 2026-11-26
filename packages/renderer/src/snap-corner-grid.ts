@@ -34,10 +34,21 @@ export interface ScreenCornerHit {
 
 const CLIP_TOL = 1e-4;
 
+/** Corners plus edges one `addPieceStep` projects: the most a slice can overshoot its budget by. */
+export const GRID_CHUNK = 256;
+
+/** An edge registers in many cells, so it spends this many items of a step's budget. */
+const EDGE_COST = 8;
+
+/** Where a half-projected piece resumes. */
+interface PieceCursor { piece: MeshData; cand: PieceCandidates; pi: number; corner: number; edge: number }
+
 export class CornerGrid {
   /** The pieces `cornerPiece` / `edgePiece` index into, in the order they were added. */
   readonly pieces: MeshData[] = [];
+  /** Pieces fully projected. A piece being projected (`cursor`) is not in it. */
   private readonly added = new WeakSet<MeshData>();
+  private cursor: PieceCursor | null = null;
   private readonly cols: number;
   private readonly rows: number;
   /** Per cell: indices into the corner arrays. */
@@ -79,16 +90,31 @@ export class CornerGrid {
     if (list) list.push(v); else m.set(k, [v]);
   }
 
-  /** Project one piece's candidates into the grid. */
+  /** Project one whole piece's candidates into the grid. */
   addPiece(piece: MeshData, cand: PieceCandidates): void {
-    if (this.added.has(piece)) return;
-    this.added.add(piece);
+    while (!this.addPieceStep(piece, cand, Infinity)) { /* one step finishes it */ }
+  }
+
+  /**
+   * Project up to `maxItems` more corners and edges of `piece`; true once the
+   * piece is done. Every corner and edge is registered whole before the step
+   * returns, so a query between steps reads a valid, partly covered piece.
+   */
+  addPieceStep(piece: MeshData, cand: PieceCandidates, maxItems: number = GRID_CHUNK): boolean {
+    if (this.added.has(piece)) return true;
+    let cur = this.cursor;
+    if (!cur || cur.piece !== piece) {
+      // A different piece was left half done (the build was reordered): finish it first so the grid never holds two open pieces.
+      if (cur) this.addPieceStep(cur.piece, cur.cand, Infinity);
+      cur = this.cursor = { piece, cand, pi: this.pieces.push(piece) - 1, corner: 0, edge: 0 };
+      this.cands.push(cand);
+    }
     const g = this, { camera, viewport, clip, cell } = this;
-    const pi = this.pieces.push(piece) - 1;
-    this.cands.push(cand);
+    const pi = cur.pi;
+    let budget = maxItems;
     const ec = entityClip(clip, piece.expressId);
     const planes = planesFor(piece.expressId, clip);
-    for (let i = 0; i < cand.corners.length; i += 3) {
+    for (let i = cur.corner; i < cand.corners.length && budget > 0; i += 3, cur.corner = i, budget--) {
       const wx = cand.corners[i], wy = cand.corners[i + 1], wz = cand.corners[i + 2];
       if (pointClipped(ec, wx, wy, wz)) continue;
       const s = camera.projectToScreen({ x: wx, y: wy, z: wz }, viewport.width, viewport.height);
@@ -99,7 +125,7 @@ export class CornerGrid {
       g.cx.push(s.x); g.cy.push(s.y); g.cornerPiece.push(pi); g.cornerOrd.push(i / 3);
       CornerGrid.push(g.cornerCells, c, idx);
     }
-    for (let i = 0; i < cand.edges.length; i += 6) {
+    for (let i = cur.edge; i < cand.edges.length && budget > 0; i += 6, cur.edge = i, budget -= EDGE_COST) {
       const a0: Vec3 = { x: cand.edges[i], y: cand.edges[i + 1], z: cand.edges[i + 2] };
       const b0: Vec3 = { x: cand.edges[i + 3], y: cand.edges[i + 4], z: cand.edges[i + 5] };
       let a = a0, b = b0;
@@ -129,6 +155,10 @@ export class CornerGrid {
         CornerGrid.push(g.edgeCells, c, idx);
       }
     }
+    if (cur.corner < cand.corners.length || cur.edge < cand.edges.length) return false;
+    this.cursor = null;
+    this.added.add(piece);
+    return true;
   }
 
   /** Rough heap held by the grid's own arrays, in bytes (8 per stored number; cell lists excluded; candidates are counted by their owner). */

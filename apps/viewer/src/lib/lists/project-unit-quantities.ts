@@ -79,10 +79,9 @@ function quantitySetsInProjectUnits(store: IfcDataStore, sets: QuantitySet[], ov
       const { explicitUnitSiScale: _scale, explicitUnitUnresolved: _unresolved, explicitUnit: _symbol, ...own } = quantity;
       // `own` carries no explicit unit, so this is the project's scale for the quantity's type.
       const projectScale = quantitySiScale(own, units);
-      // One multiply by the ratio, rounded to 12 significant digits: mm and m
-      // quantities of the same size must land on the same number, or a Group by
-      // would split them over float noise.
-      return { ...own, value: Number((quantity.value * (ownScale / projectScale)).toPrecision(12)) };
+      // Keep the precision of the numeric cell used by sums and exports.
+      const value = ownScale === projectScale ? quantity.value : quantity.value * (ownScale / projectScale);
+      return { ...own, value };
     }),
   }));
 }

@@ -16,7 +16,6 @@ function userMessage(text: string) {
   return { role: 'user' as const, content: { type: 'text' as const, text } };
 }
 
-
 export const auditModel: Prompt = {
   name: 'audit_model',
   description: 'Run the model_audit tool and explain the top issues by impact, suggesting fixes.',
@@ -27,7 +26,7 @@ export const auditModel: Prompt = {
       messages: [
         userMessage(
           [
-            'You are a senior BIM modeler reviewing IFC quality. ',
+            'You are a senior BIM modeler reviewing IFC quality.\n',
             'Run `model_audit` on the loaded model',
             args.model_id ? ` (model_id="${args.model_id}")` : '',
             '. For each ERROR-severity issue, explain in plain language: ',

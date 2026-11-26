@@ -136,6 +136,16 @@ describe('list_changed', () => {
     expect(methods(notes, 'notifications/resources/list_changed')).toHaveLength(1);
   });
 
+  it('sends resources/list_changed for a registry change made outside any tool call', async () => {
+    const { server, notes } = await initialized();
+    server.registry.add(fakeModel('host-loaded'));
+    server.registry.remove('host-loaded');
+    expect(methods(notes, 'notifications/resources/list_changed')).toHaveLength(2);
+    server.detach();
+    server.registry.add(fakeModel('after-detach'));
+    expect(methods(notes, 'notifications/resources/list_changed')).toHaveLength(2);
+  });
+
   it('sends tools/list_changed when setScope changes the visible tools, and not otherwise', async () => {
     const { server, notes } = await initialized();
     server.setScope(fullScope());

@@ -138,6 +138,9 @@ export class MCPServer {
   private active = new Map<string | number, AbortController>();
   /** Currently subscribed resource URIs (for `notifications/resources/updated`). */
   private subscriptions = new Set<string>();
+  /** Model ids resources/list last showed; list_changed goes out only when they change. */
+  private listedModels = '';
+  private unsubscribeRegistry: (() => void) | undefined;
 
   constructor(opts: MCPServerOptions) {
     this.name = opts.name ?? SERVER_NAME;
@@ -173,10 +176,14 @@ export class MCPServer {
   /** Attach an outgoing-message sink. Required before handling messages. */
   attach(sink: OutgoingMessageSink): void {
     this.sink = sink;
+    this.listedModels = this.visibleModelIds();
+    this.unsubscribeRegistry ??= this.registry.onChange?.(() => this.syncListedModels());
   }
 
   detach(): void {
     this.sink = null;
+    this.unsubscribeRegistry?.();
+    this.unsubscribeRegistry = undefined;
     this.active.forEach((c) => c.abort());
     this.active.clear();
     // Close the viewer sockets, layer Y.Docs and native Room plates even if
@@ -186,11 +193,11 @@ export class MCPServer {
 
   /** Update the auth scope mid-session (e.g. token refresh). */
   setScope(scope: AuthScope): void {
-    const tools = this.visibleToolNames();
-    const models = this.visibleModelIds();
+    const names = () => visibleTools(this.tools, this.scope, this.config.readOnly).map((t) => t.name).join('\n');
+    const before = names();
     this.scope = scope;
-    if (this.visibleToolNames() !== tools) this.notifyToolsChanged();
-    if (this.visibleModelIds() !== models) this.notifyResourcesChanged();
+    if (names() !== before) this.notifyToolsChanged();
+    this.syncListedModels();
   }
 
   /**
@@ -275,7 +282,7 @@ export class MCPServer {
         case 'resources/list':
           return successResponse(req.id, await this.handleListResources());
         case 'resources/templates/list':
-          return successResponse(req.id, this.handleListResourceTemplates());
+          return successResponse(req.id, { resourceTemplates: this.resources.templates() } satisfies ListResourceTemplatesResult);
         case 'resources/read':
           return successResponse(req.id, await this.handleReadResource(req.params as ReadResourceParams));
         case 'resources/subscribe':
@@ -360,9 +367,6 @@ export class MCPServer {
     return { tools: visibleTools(this.tools, this.scope, this.config.readOnly).map(toToolDefinition) };
   }
 
-  private visibleToolNames(): string {
-    return visibleTools(this.tools, this.scope, this.config.readOnly).map((t) => t.name).join('\n');
-  }
 
   private async handleCallTool(req: JsonRpcRequest): Promise<CallToolResult> {
     const params = req.params as CallToolParams;
@@ -416,7 +420,6 @@ export class MCPServer {
     };
 
     const startedAt = Date.now();
-    const modelsBefore = this.visibleModelIds();
     try {
       const result = await tool.handler(validation.value as Record<string, unknown>, ctx);
       this.logger.log('info', `tools/call ${params.name}`, {
@@ -435,8 +438,6 @@ export class MCPServer {
       });
     } finally {
       this.active.delete(req.id);
-      // Per-model resources follow the loaded set: model_load/model_unload change resources/list.
-      if (this.visibleModelIds() !== modelsBefore) this.notifyResourcesChanged();
     }
   }
 
@@ -448,10 +449,6 @@ export class MCPServer {
     const ctx = this.makeResourceContext();
     const resources = await this.resources.list(ctx);
     return { resources };
-  }
-
-  private handleListResourceTemplates(): ListResourceTemplatesResult {
-    return { resourceTemplates: this.resources.templates() };
   }
 
   private async handleReadResource(params: ReadResourceParams): Promise<ReadResourceResult> {
@@ -466,6 +463,12 @@ export class MCPServer {
 
   private visibleModelIds(): string {
     return this.registry.list().filter((m) => modelAllowed(this.scope, m.id)).map((m) => m.id).join('\n');
+  }
+
+  /** Per-model resources follow the loaded set the scope permits. */
+  private syncListedModels(): void {
+    const ids = this.visibleModelIds();
+    if (ids !== this.listedModels) { this.listedModels = ids; this.notifyResourcesChanged(); }
   }
 
   // ────────────────────────────────────────────────────────────────────────

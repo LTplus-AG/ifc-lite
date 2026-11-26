@@ -64,10 +64,18 @@ export interface ModelRegistry {
   add(model: LoadedModel): void;
   remove(id: string): boolean;
   count(): number;
+  /** Called after every add or remove. Returns the unsubscribe. Optional for custom registries. */
+  onChange?(listener: () => void): () => void;
 }
 
 export class InMemoryModelRegistry implements ModelRegistry {
   private models = new Map<string, LoadedModel>();
+  private listeners = new Set<() => void>();
+
+  onChange(listener: () => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
 
   list(): LoadedModel[] {
     return Array.from(this.models.values());
@@ -91,11 +99,14 @@ export class InMemoryModelRegistry implements ModelRegistry {
     if (previous && previous !== model) previous.backend.dispose();
     this.models.set(model.id, model);
     model.backend.setPeerScopes(() => this.list().filter(peer => peer !== model).map(peer => ({ dataStore: peer.store, view: peer.backend.getMutationView() })));
+    this.listeners.forEach((l) => l());
   }
 
   remove(id: string): boolean {
     this.models.get(id)?.backend.dispose();
-    return this.models.delete(id);
+    const removed = this.models.delete(id);
+    if (removed) this.listeners.forEach((l) => l());
+    return removed;
   }
 
   count(): number {

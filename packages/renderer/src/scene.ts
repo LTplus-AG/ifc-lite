@@ -1200,7 +1200,10 @@ export class Scene {
       }
     }
 
-    if (this.quantizedBatchesEnabled) markOffLattice(renderable, (mesh) => this.bucketBaseKey(mesh), (mesh) => { const base = this.bucketBaseKey(mesh); return this.buckets.get(this.activeBucketKey.get(base) ?? base)?.frameOrigin ?? this.bucketFrame(mesh, topology); }, this.offLattice);
+    if (this.quantizedBatchesEnabled) markOffLattice(renderable, (mesh) => {
+      const base = this.bucketBaseKey(mesh), frame = this.buckets.get(this.activeBucketKey.get(base) ?? base)?.frameOrigin ?? this.bucketFrame(mesh, topology);
+      return frame && { base, frame };
+    }, this.offLattice);
     // Route each mesh into a size-aware bucket for its color (and, with
     // spatial chunking on, its grid cell)
     for (const meshData of renderable) {

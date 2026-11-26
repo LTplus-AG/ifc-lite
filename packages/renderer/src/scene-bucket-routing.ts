@@ -7,7 +7,7 @@ import type { BatchedMesh } from './types.js';
 import { BATCH_CONSTANTS } from './constants.js';
 import { type TopologyMemo, originPreservesTriangleTopology, topologySafeBatchOrigin } from './scene-precision.js';
 import { addLatticeTriangle, emptyLatticeLoss, latticeLoses, latticeNodes, type LatticeLoss } from './quantize.js';
-import { writeMergedRecords } from './scene-geometry.js';
+import { frameShift } from './scene-geometry.js';
 
 export interface PrecisionBucket {
   key: string;
@@ -33,29 +33,31 @@ interface RoutingState {
  */
 export const LATTICE_KEY_SUFFIX = '~lattice';
 
-/** Reused per-mesh scratch for `markOffLattice`: merged records (7 words per vertex) and lattice nodes. */
-let scratchRecords = new ArrayBuffer(0);
+/** Reused per-mesh scratch for `markOffLattice`: batch-frame positions and their lattice nodes. */
+let scratchPositions = new Float32Array(0);
 let scratchNodes = new Int32Array(0);
 
 /**
  * Add `mesh`'s triangles to the loss of the entity each belongs to (`lossOf`
  * its lane: `entityIds` per vertex in a colour-merged mesh, as the batch gate
- * reads them, else the mesh's own id), judged on the f32 records
- * `mergeGeometry` would store for it in `frame`.
+ * reads them, else the mesh's own id), judged on the f32 positions
+ * `mergeGeometry` would store for it in `frame` (the same `frameShift`).
  */
 function addMeshLatticeLoss(lossOf: (lane: number) => LatticeLoss, mesh: MeshData, frame: readonly [number, number, number]): void {
-  const vertexCount = mesh.positions.length / 3;
-  if (scratchRecords.byteLength < vertexCount * 28) scratchRecords = new ArrayBuffer(vertexCount * 28);
-  if (scratchNodes.length < vertexCount * 3) scratchNodes = new Int32Array(vertexCount * 3);
-  const records = new Float32Array(scratchRecords, 0, vertexCount * 7);
-  writeMergedRecords(mesh, frame, records, new Uint32Array(scratchRecords, 0, vertexCount * 7), 0);
-  const nodes = latticeNodes(records, 7, scratchNodes);
-  const { indices, entityIds } = mesh;
+  const { positions, indices, entityIds } = mesh;
+  if (scratchPositions.length < positions.length) {
+    scratchPositions = new Float32Array(positions.length);
+    scratchNodes = new Int32Array(positions.length);
+  }
+  const local = scratchPositions.subarray(0, positions.length);
+  const shift = frameShift(mesh, frame);
+  for (let i = 0; i < positions.length; i++) local[i] = positions[i] + shift[i % 3];
+  const nodes = latticeNodes(local, 3, scratchNodes);
   let lane = -1, loss = emptyLatticeLoss();
   for (let t = 0; t + 2 < indices.length; t += 3) {
     const id = entityIds ? entityIds[indices[t]] : mesh.expressId;
     if (id !== lane) { lane = id; loss = lossOf(id); }
-    addLatticeTriangle(loss, records, 7, nodes, indices[t], indices[t + 1], indices[t + 2]);
+    addLatticeTriangle(loss, local, 3, nodes, indices[t], indices[t + 1], indices[t + 2]);
   }
 }
 
@@ -63,7 +65,7 @@ function addMeshLatticeLoss(lossOf: (lane: number) => LatticeLoss, mesh: MeshDat
  * Add to `into` the meshes of `meshes` that hold an entity the lattice would
  * crumple: per entity and bucket colour, the batch gate's rule
  * (`latticeLoses`) over that entity's triangles in this arrival, each mesh
- * judged in `frameOf(mesh)`, the frame of the bucket it would join. Their
+ * judged in the frame of the bucket it would join (`routeOf`). Their
  * bucket base key then ends in `LATTICE_KEY_SUFFIX`, so they batch apart, in
  * f32, and the batch they would have joined still quantizes (#11444). An
  * entity judged in parts (split across arrivals) or in a frame its batch does
@@ -71,15 +73,14 @@ function addMeshLatticeLoss(lossOf: (lane: number) => LatticeLoss, mesh: MeshDat
  */
 export function markOffLattice(
   meshes: readonly MeshData[],
-  baseKeyOf: (mesh: MeshData) => string,
-  frameOf: (mesh: MeshData) => readonly [number, number, number] | undefined,
+  routeOf: (mesh: MeshData) => { base: string; frame: readonly [number, number, number] } | undefined,
   into: WeakSet<MeshData>,
 ): void {
   const entities = new Map<string, { loss: LatticeLoss; meshes: Set<MeshData> }>();
   for (const mesh of meshes) {
-    const frame = frameOf(mesh);
-    if (!frame || mesh.indices.length < 3) continue;
-    const base = baseKeyOf(mesh);
+    const route = mesh.indices.length < 3 ? undefined : routeOf(mesh);
+    if (!route) continue;
+    const { base, frame } = route;
     addMeshLatticeLoss((lane) => {
       const key = `${base}\u0000${lane}`;
       let entity = entities.get(key);

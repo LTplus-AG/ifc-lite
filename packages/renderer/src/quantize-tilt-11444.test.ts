@@ -156,7 +156,7 @@ describe('lattice turn guard (#11444)', () => {
   it('routes by the batch gate\'s rule, per entity', () => {
     const judge = (...meshes: MeshData[]): MeshData[] => {
       const off = new WeakSet<MeshData>();
-      markOffLattice(meshes, () => 'grey', () => [0, 0, 0], off);
+      markOffLattice(meshes, () => ({ base: 'grey', frame: [0, 0, 0] }), off);
       return meshes.filter((mesh) => off.has(mesh));
     };
     const bar = sweptBar(1, metres, 0.006, 24, [0.00031, 0.00047, 0.00013]);
@@ -178,7 +178,7 @@ describe('lattice turn guard (#11444)', () => {
     const bar = sweptBar(1, metres, 0.006, 24, [0.00031, 0.00047, 0.00013]);
     const merged = colourMerged(bar, wall(3));
     const off = new WeakSet<MeshData>();
-    markOffLattice([merged], () => 'grey', () => [0, 0, 0], off);
+    markOffLattice([merged], () => ({ base: 'grey', frame: [0, 0, 0] }), off);
     assert.strictEqual(degrades(merged), true, 'the gate fails the bar lane');
     assert.strictEqual(off.has(merged), true, 'so routing keeps the merged mesh off the lattice');
   });

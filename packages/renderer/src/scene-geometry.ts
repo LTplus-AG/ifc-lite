@@ -193,6 +193,11 @@ export function entityLaneOf(mesh: MeshData): { entityId: number; saltByte: numb
   return { entityId, saltByte: colorSaltByte(mesh.color) };
 }
 
+/** `mesh.origin - origin`: the f64 shift that takes `mesh`'s local positions into the batch frame `origin`. */
+export function frameShift(mesh: MeshData, origin: readonly [number, number, number]): [number, number, number] {
+  return [(mesh.origin ? mesh.origin[0] : 0) - origin[0], (mesh.origin ? mesh.origin[1] : 0) - origin[1], (mesh.origin ? mesh.origin[2] : 0) - origin[2]];
+}
+
 /**
  * Write `mesh`'s vertices as merged batch records (position relative to
  * `origin`, normal, entity lane: 7 floats each) at record `vertexBase`.
@@ -211,9 +216,7 @@ export function writeMergedRecords(
   const vertexCount = positions.length / 3;
   // Shift this mesh into the batch-local frame: stored = world - origin
   // = (mesh.origin - origin) + localPosition. f64 fold, f32 store.
-  const dox = (mesh.origin ? mesh.origin[0] : 0) - origin[0];
-  const doy = (mesh.origin ? mesh.origin[1] : 0) - origin[1];
-  const doz = (mesh.origin ? mesh.origin[2] : 0) - origin[2];
+  const [dox, doy, doz] = frameShift(mesh, origin);
   let outIdx = vertexBase * 7;
   const perVertexEntityIds = mesh.entityIds; // color-merged batches
   const { entityId, saltByte } = entityLaneOf(mesh);

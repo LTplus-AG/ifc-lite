@@ -20,9 +20,12 @@
  * handed back to the caller as an ordinary f32 mesh.
  *
  * Pages are outside the Scene's buckets, so nothing that edits, moves, removes,
- * recolours or evicts bucket geometry can reach them. `demote` is the single
- * way back: it decodes every paged mesh, destroys the pages and appends the
- * meshes through the bucket path. The Scene calls it before any such operation.
+ * recolours or evicts bucket geometry can reach them. `demote` is the way
+ * back, per mesh: it decodes the paged meshes an operation is about (an
+ * entity's, a model's, or all of them), retires them from their pages and
+ * appends them through the bucket path; every other mesh stays on its page.
+ * The Scene calls it before any such operation. `drop` retires an entity's
+ * meshes without moving them, for a removal.
  */
 
 import type { MeshData } from '@ifc-lite/geometry';
@@ -31,6 +34,9 @@ import { CompactGeometryStore, type CompactStoreStats } from './compact-store.js
 import type { RenderPipeline } from './pipeline.js';
 import type { CompactPageDeps } from './compact-page-deps.js';
 import type { BatchedMesh } from './types.js';
+
+/** Which paged meshes an operation needs on the bucket path: every one (`undefined`), some entities', or one model's. */
+export type CompactSelection = { ids: Iterable<number> } | { modelIndex: number } | undefined;
 
 /** The Scene members this module works through (the Scene passes itself, as it does to its snapshot lifecycle). */
 export interface SceneCompactHost {
@@ -50,7 +56,16 @@ export interface SceneCompactHost {
   addMeshData(mesh: MeshData): void;
   splitMeshForStreaming(mesh: MeshData): MeshData[];
   appendToBatches(meshes: MeshData[], device: GPUDevice, pipeline: RenderPipeline, isStreaming: boolean, sourceCounted: boolean): void;
+  /** `appendToBatches`' own per-mesh validation: whether it would refuse `mesh` (no topology-safe f32 frame). */
+  refusesBucketPath(mesh: MeshData): boolean;
   bumpPickGeometryRevision(): void;
+}
+
+/** A selection with its ids read once (an iterator can be walked only once). */
+type Selection = { ids: ReadonlySet<number> } | { modelIndex: number } | undefined;
+
+function normalize(selection: CompactSelection): Selection {
+  return selection === undefined || 'modelIndex' in selection ? selection : { ids: new Set(selection.ids) };
 }
 
 /** The mesh still has the origin its records were adopted under (records hold world positions and cannot follow a new one). */
@@ -68,11 +83,16 @@ function recordedLane(ref: CompactRef): number {
 export class SceneCompact {
   private readonly store: CompactGeometryStore;
   private queue: MeshData[] = [];
-  /** Every paged mesh: the caller's object, and the one the Scene keeps for it. */
-  private members: Array<{ source: MeshData; kept: MeshData }> = [];
+  /** Every paged mesh: the caller's object -> the one the Scene keeps for it. */
+  private members = new Map<MeshData, MeshData>();
+  /** The paged meshes of each entity, so an edit of one entity does not walk every member. */
+  private byId = new Map<number, MeshData[]>();
   private gpu: { device: GPUDevice; pipeline: RenderPipeline } | null = null;
   private combined: { version: number; list: BatchedMesh[] } | null = null;
-  private demotionRequested = false;
+  /** Pages a frame could not split into sub-batches: their meshes move to buckets at the next drain. */
+  private demotionPages = new Set<BatchedMesh>();
+  /** Paged meshes the bucket path refused: a frame's split request no longer asks for them. */
+  private readonly refused = new WeakSet<MeshData>();
   /** Pages were rebuilt outside a stream (after a device loss): trim them at the drain that uploads them. */
   private trimAfterDrain = false;
 
@@ -110,21 +130,25 @@ export class SceneCompact {
   }
 
   /** Work for the next `drain`: queued meshes, or a demotion asked for mid-frame. */
-  get hasQueued(): boolean { return this.queue.length > 0 || this.demotionRequested; }
+  get hasQueued(): boolean { return this.queue.length > 0 || this.demotionPages.size > 0; }
 
   /**
-   * Ask for `demote` at the next `drain`. For a need found while a frame is being drawn (a page that
-   * would have to be split into sub-batches), when the batch list must not change under the draw loop.
+   * Move `page`'s meshes to buckets at the next `drain`. For a need found while a frame is being drawn
+   * (a page that would have to be split into sub-batches), when the batch list must not change under the
+   * draw loop. Only that page's meshes move.
    */
-  requestDemotion(): void {
-    if (this.members.length > 0) this.demotionRequested = true;
+  requestDemotion(page: BatchedMesh): void {
+    // A page whose remaining meshes the bucket path refused is drawn whole from now on: nothing to ask for.
+    const meshes = this.store.meshesOn(page);
+    if (!meshes || this.demotionPages.has(page)) return;
+    for (const mesh of meshes) if (!this.refused.has(mesh)) { this.demotionPages.add(page); return; }
   }
 
   /** Queued meshes, or pages whose buffers still carry growth slack: the stream has not settled. */
   get unsettled(): boolean { return this.queue.length > 0 || this.store.untrimmed; }
   get stats(): CompactStoreStats { return this.store.stats; }
   /** Meshes currently drawn from pages. */
-  get meshCount(): number { return this.members.length; }
+  get meshCount(): number { return this.members.size; }
 
   /**
    * `flat` followed by the pages. The list is reused while it still says that:
@@ -146,8 +170,18 @@ export class SceneCompact {
   drain(device: GPUDevice, pipeline: RenderPipeline): boolean {
     this.gpu = { device, pipeline };
     // A time-sliced finalize owns the batch list until it swaps: the demotion waits for it.
-    if (this.demotionRequested && !this.scene.finalizeInProgress) return this.demote();
-    if (this.queue.length === 0) return false;
+    let demoted = false;
+    if (this.demotionPages.size > 0 && !this.scene.finalizeInProgress) {
+      const pages = this.demotionPages;
+      this.demotionPages = new Set();
+      // A mesh the bucket path refused stays drawn whole from its page: asking again every frame would only fail again.
+      const chosen: Array<[MeshData, MeshData]> = [];
+      for (const page of pages) {
+        for (const source of this.store.meshesOn(page) ?? []) if (!this.refused.has(source)) chosen.push([source, this.members.get(source)!]);
+      }
+      demoted = this.demoteChosen(chosen, false);
+    }
+    if (this.queue.length === 0) return demoted;
     // A queued mesh may have changed since `take`: its geometry written, or its id, colour, origin or
     // model placement set. Judged again here, it goes to the bucket queue when a page no longer draws it.
     const queue: MeshData[] = [];
@@ -173,7 +207,9 @@ export class SceneCompact {
     }
     for (const source of queue) {
       this.scene.addMeshData(source);
-      this.members.push({ source, kept: this.scene.modelTranslations.placeMesh(source) });
+      this.members.set(source, this.scene.modelTranslations.placeMesh(source));
+      const pieces = this.byId.get(source.expressId);
+      if (pieces) pieces.push(source); else this.byId.set(source.expressId, [source]);
     }
     this.scene.triangleCounts.uploaded(queue);
     if (this.trimAfterDrain) {
@@ -200,38 +236,96 @@ export class SceneCompact {
     if (this.store.untrimmed) this.store.trim(device);
   }
 
-  /** Take the page-time registrations of `members` out of the Scene's mesh map (they are registered again later). */
-  private forget(members: ReadonlyArray<{ kept: MeshData }>): void {
-    const kept = new Set(members.map((member) => member.kept));
-    for (const [id, pieces] of this.scene.meshDataMap) {
+  /** Take the page-time registrations of these members out of the Scene's mesh map (they are registered again later). */
+  private forget(kept: ReadonlySet<MeshData>): void {
+    const ids = new Set([...kept].map((mesh) => mesh.expressId));
+    for (const id of ids) {
+      const pieces = this.scene.meshDataMap.get(id);
+      if (!pieces) continue;
       const rest = pieces.filter((piece) => !kept.has(piece));
       if (rest.length === 0) this.scene.meshDataMap.delete(id);
       else if (rest.length !== pieces.length) this.scene.meshDataMap.set(id, rest);
     }
   }
 
-  /**
-   * Move every compact mesh to the bucket path: the queued ones are decoded
-   * and queued there, the uploaded ones are decoded, their pages destroyed and
-   * their meshes appended to buckets. Returns whether anything moved.
-   */
-  demote(): boolean {
-    this.demotionRequested = false;
-    const scene = this.scene;
-    const queued = this.queue;
-    this.queue = [];
-    for (const mesh of queued) {
-      materializeCompactMesh(mesh);
-      scene.meshQueue.push(...scene.splitMeshForStreaming(mesh));
+  /** The members `selection` names, as [source, kept] pairs. */
+  private chosen(selection: Selection): Array<[MeshData, MeshData]> {
+    if (selection === undefined) return [...this.members];
+    if ('modelIndex' in selection) return [...this.members].filter(([source]) => (source.modelIndex ?? 0) === selection.modelIndex);
+    const chosen: Array<[MeshData, MeshData]> = [];
+    for (const id of selection.ids) for (const source of this.byId.get(id) ?? []) chosen.push([source, this.members.get(source)!]);
+    return chosen;
+  }
+
+  /** Take members off the books and retire their page ranges. */
+  private unpage(sources: readonly MeshData[]): void {
+    for (const source of sources) {
+      this.members.delete(source);
+      const pieces = this.byId.get(source.expressId);
+      const at = pieces?.indexOf(source) ?? -1;
+      if (at >= 0) pieces!.splice(at, 1);
+      if (pieces?.length === 0) this.byId.delete(source.expressId);
     }
-    if (this.members.length === 0) return queued.length > 0;
-    const members = this.members;
+    this.store.retire(sources, this.gpu!.device);
+    this.scene.bumpPickGeometryRevision();
+  }
+
+  /** Queued meshes `selection` names go to the bucket queue, decoded. Returns whether any did. */
+  private demoteQueued(selection: Selection): boolean {
+    if (this.queue.length === 0) return false;
+    const keep: MeshData[] = [];
+    let moved = false;
+    for (const mesh of this.queue) {
+      const selected = selection === undefined || ('modelIndex' in selection
+        ? (mesh.modelIndex ?? 0) === selection.modelIndex : selection.ids.has(mesh.expressId));
+      if (!selected) { keep.push(mesh); continue; }
+      materializeCompactMesh(mesh);
+      this.scene.meshQueue.push(...this.scene.splitMeshForStreaming(mesh));
+      moved = true;
+    }
+    this.queue = keep;
+    return moved;
+  }
+
+  /**
+   * Move the compact meshes `selection` names (every one by default) to the
+   * bucket path; the others stay on their pages. Queued ones are decoded and
+   * queued there; uploaded ones are decoded, retired from their pages and
+   * appended to buckets. Returns whether anything moved.
+   *
+   * Each mesh is judged first: one the bucket path would refuse stays on its
+   * page, the rest move, and the call then throws, so an edit of that mesh
+   * fails while edits of every other mesh go on working.
+   */
+  demote(selection?: CompactSelection): boolean {
+    const normal = normalize(selection);
+    const queued = this.demoteQueued(normal);
+    return this.demoteChosen(this.chosen(normal)) || queued;
+  }
+
+  /** Move `chosen` to buckets, keeping refused meshes paged; throws for those when `strict` (an edit of them cannot proceed). */
+  private demoteChosen(chosen: ReadonlyArray<[MeshData, MeshData]>, strict = true): boolean {
+    if (chosen.length === 0) return false;
+    const refused = new Set(chosen.filter(([, kept]) => this.scene.refusesBucketPath(kept)));
+    const moving = refused.size === 0 ? chosen : chosen.filter((pair) => !refused.has(pair));
+    if (moving.length > 0) this.move(moving);
+    if (refused.size === 0) return true;
+    for (const [source] of refused) this.refused.add(source);
+    const [[first]] = refused;
+    const message = `[compactGeom] ${refused.size} compact mesh(es) of entity #${first.expressId}${refused.size > 1 ? ' and others' : ''} have no topology-safe f32 frame; they stay on their pages`;
+    if (strict) throw new Error(message);
+    console.warn(message);
+    return moving.length > 0;
+  }
+
+  private move(moving: ReadonlyArray<[MeshData, MeshData]>): void {
+    const scene = this.scene;
     // The bucket path registers each mesh again: take the page-time registrations out first.
-    this.forget(members);
-    const sources = members.map((member) => {
-      materializeCompactMesh(member.kept);
-      materializeCompactMesh(member.source);
-      return member.source;
+    this.forget(new Set(moving.map(([, kept]) => kept)));
+    const sources = moving.map(([source, kept]) => {
+      materializeCompactMesh(kept);
+      materializeCompactMesh(source);
+      return source;
     });
     // `drain` uploaded them, so its device is known. While a stream or its finalize is under way they
     // join it as fragments; a synchronous rebuild would republish the batch list without the stream's.
@@ -246,17 +340,25 @@ export class SceneCompact {
     }
     // The append validates before it changes anything and builds GPU batches last. If it refused the
     // meshes outright they are in no bucket: the pages still draw them, so pages and registrations stay.
-    if (failed && !members.every((member) => scene.meshDataMap.get(member.kept.expressId)?.includes(member.kept))) {
+    if (failed && !moving.every(([, kept]) => scene.meshDataMap.get(kept.expressId)?.includes(kept))) {
       for (const source of sources) scene.addMeshData(source);
       throw failure;
     }
-    // Buckets hold them now (their batches built, or pending like any bucket whose build failed): the pages go.
-    this.members = [];
-    this.store.destroy();
-    this.combined = null;
-    scene.bumpPickGeometryRevision();
+    // Buckets hold them now (their batches built, or pending like any bucket whose build failed): their page ranges go.
+    this.unpage(sources);
     if (failed) throw failure;
-    return true;
+  }
+
+  /**
+   * Stop drawing the given entities' meshes from pages without moving them
+   * anywhere, for a removal: the caller drops their registrations. Queued
+   * ones go to the bucket queue, as an f32 mesh still queued would stay queued.
+   */
+  drop(ids: Iterable<number>): void {
+    const selection = { ids: new Set(ids) };
+    this.demoteQueued(selection);
+    const sources = this.chosen(selection).map(([source]) => source);
+    if (sources.length > 0) this.unpage(sources);
   }
 
   /**
@@ -265,19 +367,20 @@ export class SceneCompact {
    * `drain`. Nothing here touches the lost device.
    */
   onDeviceLost(): void {
-    if (this.members.length === 0 && this.store.size === 0) return;
+    if (this.members.size === 0 && this.store.size === 0) return;
     this.requeuePages(false);
   }
 
   /** Every paged mesh back in the queue, still compact, and no page left. */
   private requeuePages(release: boolean): void {
-    this.forget(this.members);
-    this.queue = this.members.map((member) => member.source).concat(this.queue);
-    this.members = [];
+    this.forget(new Set(this.members.values()));
+    this.queue = [...this.members.keys()].concat(this.queue);
+    this.members.clear();
+    this.byId.clear();
     this.store.destroy(release);
     this.combined = null;
     this.gpu = null;
-    this.demotionRequested = false; // it was asked of pages that no longer exist
+    this.demotionPages.clear(); // it was asked of pages that no longer exist
     this.trimAfterDrain = true;
     this.scene.bumpPickGeometryRevision();
   }
@@ -286,9 +389,10 @@ export class SceneCompact {
   clear(): void {
     this.store.destroy();
     this.queue = [];
-    this.members = [];
+    this.members.clear();
+    this.byId.clear();
     this.combined = null;
-    this.demotionRequested = false;
+    this.demotionPages.clear();
     this.trimAfterDrain = false;
   }
 }

@@ -7,6 +7,7 @@ import type { MeshData } from '@ifc-lite/geometry';
 import { generateFloorPlan } from './drawing-generator.js';
 import { exportToSVG } from './svg-exporter.js';
 import { exportToDXF } from './dxf-exporter.js';
+import { parseDxf } from './dxf/parser.js';
 import { box } from './drawing-stream.fixtures.test.js';
 import { vec3, vec3Cross, vec3Scale } from './math.js';
 import { buildOpeningSymbols } from './symbols/opening-symbols.js';
@@ -144,10 +145,16 @@ describe('headless plans draw door and window symbols (#10932)', () => {
     expect(drawing.lines.filter((l) => l.entityId === 30 && l.category === 'projection').length).toBeGreaterThan(0);
   });
 
-  it('keeps a projected window piece when the cut lies between disjoint pieces (#10932)', async () => {
+  it.each([false, true])('keeps projection in a window gap (pieces in one mesh: %s) (#10932)', async (joinPieces) => {
     const low = box(30, [4.5, 0.2, -0.1], [5.5, 1.0, 0], { ifcType: 'IfcWindow' });
     const high = box(30, [4.5, 1.5, -0.1], [5.5, 2.0, 0], { ifcType: 'IfcWindow' });
-    const drawing = await generateFloorPlan([host, low, high], 1.2, options);
+    const combined = {
+      ...low,
+      positions: new Float32Array([...low.positions, ...high.positions]),
+      normals: new Float32Array([...low.normals, ...high.normals]),
+      indices: new Uint32Array([...low.indices, ...high.indices.map(i => i + low.positions.length / 3)]),
+    };
+    const drawing = await generateFloorPlan([host, ...(joinPieces ? [combined] : [low, high])], 1.2, options);
     expect(symbolsOf(drawing, 'window')).toEqual([]);
     expect(drawing.lines.some(line => line.entityId === 30 && line.category === 'projection')).toBe(true);
   });
@@ -273,12 +280,18 @@ describe('headless plans draw door and window symbols (#10932)', () => {
     expect(drawing.cutPolygons.filter((p) => p.entityId === 90)).toEqual([]);
   });
 
-  it('writes the symbols to DXF on their own layer', async () => {
+  it('writes transformed DXF LINE endpoints on the symbol layer', async () => {
     const drawing = await generateFloorPlan([host, ...door(20, [1, 0, 0])], 1.2, options);
-    const symbolLines = symbolsOf(drawing, 'door').flatMap((s) => s.lines).length;
-    expect(symbolLines).toBeGreaterThan(1);
-    const onLayer = exportToDXF(drawing).split(/\r?\n/).filter((line) => line.trim() === 'IFC-SYMBOLS').length;
-    expect(onLayer).toBeGreaterThanOrEqual(symbolLines);
+    const expected = symbolsOf(drawing, 'door').flatMap(symbol => symbol.lines);
+    expect(expected.length).toBeGreaterThan(1);
+    const coordinateTransform = ({ x, y }: { x: number; y: number }) => ({ x: 12 - 2 * y, y: -4 + 2 * x });
+    const entities = parseDxf(exportToDXF(drawing, { coordinateTransform })).entities
+      .filter(entity => entity.kind === 'line' && entity.layer === 'IFC-SYMBOLS');
+    expect(entities).toHaveLength(expected.length);
+    for (const [i, line] of entities.entries()) {
+      expectPoint({ x: line.x1, y: line.y1 }, 12 - 2 * expected[i].start.y, -4 + 2 * expected[i].start.x);
+      expectPoint({ x: line.x2, y: line.y2 }, 12 - 2 * expected[i].end.y, -4 + 2 * expected[i].end.x);
+    }
   });
 
   it('hinges a door without localToWorld at the mirrored point in a flipped view', () => {

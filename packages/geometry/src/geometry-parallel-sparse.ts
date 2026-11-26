@@ -51,6 +51,8 @@ export interface SparsePoolHost {
   shareIndex(ids: SharedArrayBuffer, starts: SharedArrayBuffer, lengths: SharedArrayBuffer): void;
   /** Called once the workers have what they mesh from: jobs may be dispatched. */
   onReady(): void;
+  /** Hears once whether the workers got sparse sources (true) or the whole-file index (false). */
+  onDecision?(ran: boolean): void;
 }
 
 export class SparsePool {
@@ -93,6 +95,7 @@ export class SparsePool {
     if (this.refused !== null) {
       console.warn(`[stream][ooc] whole-file path: the file has ${this.refused}`);
       this.host.shareIndex(index.ids, index.starts, index.lengths);
+      this.host.onDecision?.(false);
       this.host.onReady();
       return;
     }
@@ -113,6 +116,7 @@ export class SparsePool {
         budgetBytes,
       } satisfies GeometryWorkerSetSparseSourceMessage);
     });
+    this.host.onDecision?.(true);
     this.host.onReady();
   }
 
@@ -135,10 +139,11 @@ export class SparsePool {
  * Two host options keep a load on the whole-file path, because their batch setup reads the source in a
  * way an arena cannot answer: merged material layers (a scan for the aggregate relations of layer parts)
  * and the global instance plan (its mapped sources are resolved once, before the arena holds them).
+ * `outOfCore` is the host's decision for this load (a staged rollout); unset, the explicit global or URL param.
  */
-export function sparsePoolFor(sharedBuffer: SharedArrayBuffer, host: SparsePoolHost, options?: { mergeLayers?: boolean }): SparsePool | null {
+export function sparsePoolFor(sharedBuffer: SharedArrayBuffer, host: SparsePoolHost, options?: { mergeLayers?: boolean; outOfCore?: boolean }): SparsePool | null {
   delete (globalThis as { __IFC_LITE_OOC_STATS__?: OutOfCoreStats }).__IFC_LITE_OOC_STATS__; // never an earlier load's
-  if (!readOutOfCoreFlag()) return null;
+  if (!(options?.outOfCore ?? readOutOfCoreFlag())) return null;
   const blocker = options?.mergeLayers === true ? 'merged material layers' : globalInstancingApplies(sharedBuffer.byteLength) ? 'the global instance plan' : null;
   if (blocker !== null) {
     console.warn(`[stream][ooc] whole-file path: out-of-core ingest does not support ${blocker}`);

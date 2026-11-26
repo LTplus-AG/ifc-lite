@@ -231,7 +231,10 @@ export async function* processParallel(
   const shareIndex = (ids: SharedArrayBuffer, starts: SharedArrayBuffer, lengths: SharedArrayBuffer) => broadcastSetup(entityIndexSetup(() => ({
     ids: new Uint32Array(ids), starts: new Uint32Array(starts), lengths: new Uint32Array(lengths),
   })));
-  const sparse = sparsePoolFor(sharedBuffer, { broadcast: (setup) => broadcastSetup(setup), shareIndex, onReady: () => drainQueuedChunksIfReady() }, options);
+  const sparse = sparsePoolFor(sharedBuffer, {
+    broadcast: (setup) => broadcastSetup(setup), shareIndex, onReady: () => drainQueuedChunksIfReady(), onDecision: options?.onOutOfCoreDecision,
+  }, options);
+  if (!sparse) options?.onOutOfCoreDecision?.(false); // the arm is what ran: a sparse pool reports once its scan decides
   const shardScanEnabled = readShardScanFlag() && !sparse;
   let entityIndexDeliveredEarly = false;
   const shardResults: (ShardColumns | null)[] = [];

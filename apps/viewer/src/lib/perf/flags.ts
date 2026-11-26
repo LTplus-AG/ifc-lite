@@ -114,7 +114,8 @@ export const PERF_FLAGS = [
     removalCondition: 'Delete with the full-copy geometry worker path once out-of-core ingest is the default above its size threshold and has shipped two releases with no load or parity report.',
     introducedAt: '2026-11-24',
     default: false,
-    bindings: GEOMETRY_PERF_FLAG_BINDINGS.outOfCore,
+    // The geometry host reads the global and URL param itself; the viewer hands its load processor the PostHog ramp (`configureOutOfCore`).
+    bindings: { ...GEOMETRY_PERF_FLAG_BINDINGS.outOfCore, posthogKey: 'perf-ooc' },
   },
   {
     id: 'outOfCoreBudgetMb',

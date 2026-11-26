@@ -106,7 +106,7 @@ import { posthog } from '../lib/analytics.js';
 import { loadFailureReporter, settleKernelRefusal } from './ingest/loadFailureReport.js';
 import { revalidateServedCache, type ServedCacheHit } from './ingest/cacheRevalidation.js';
 import { reportRenderStats } from '../utils/renderStatsReport.js';
-import { nextFrameOrTimeout } from '../utils/frameWait.js';
+import { nextFrameOrTimeout } from '../utils/frameWait.js'; import { configureOutOfCore, resetOutOfCoreArm } from '../utils/outOfCoreConfig.js';
 import { compactCellSizeForLoad } from '../utils/compactGeometryFlag.js';
 import { isCompactCellSize, meshTriangleCount, meshVertexCount } from '@ifc-lite/geometry/compact';
 import { visibilityWitness } from '../utils/visibilityWitness.js';
@@ -434,7 +434,7 @@ export function useIfcLoader() {
           clearModelLoadedSnapshot();
           getGlobalRenderer()?.getScene()?.setColdGeometryProvider(null);
           resetViewerState({ preserveLoading: true });
-          clearAllModels();
+          clearAllModels(); resetOutOfCoreArm(); // out-of-core's telemetry arm starts at the default
           // A non-federated load has no layer stack behind it (#1717).
           useViewerStore.getState().clearLayerStack();
         }
@@ -1304,7 +1304,7 @@ export function useIfcLoader() {
       // Armed BEFORE init() so an engine-init failure still frees whatever the
       // partially-initialised bridge allocated (dispose() is a no-op when it
       // allocated nothing).
-      geometryHandle = createGeometryProcessorDisposer(() => geometryProcessor.dispose());
+      geometryHandle = createGeometryProcessorDisposer(() => geometryProcessor.dispose()); configureOutOfCore(geometryProcessor, { recordArm: target.kind === 'primary' }); // out-of-core incl. its PostHog ramp, for this load's pool only
       // The engine binary's own download lives here (wasm-bindgen fetches
       // `ifc-lite_bg.wasm` from `import.meta.url`), so this is the one stage a
       // first-visit user can fail in before a single IFC byte is touched.

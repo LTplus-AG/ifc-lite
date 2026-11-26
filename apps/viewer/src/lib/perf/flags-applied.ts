@@ -10,7 +10,9 @@
 
 import { PERF_FLAGS, readPerfFlag, type PerfFlagDefault, type PerfFlagId } from './flags.js';
 
-const appliedFlags = new Map<PerfFlagId, unknown>();
+// Out-of-core ingest's arm is what a primary load's pool reported (outOfCoreConfig.ts); until one has, the default,
+// never the user's PostHog ramp value.
+const appliedFlags = new Map<PerfFlagId, unknown>([['outOfCore', false]]);
 
 /**
  * Record the value a read-once flag was applied with (renderer init), so the

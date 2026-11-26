@@ -243,7 +243,7 @@ export class GeometryProcessor {
   private enableInstancing: boolean;
   private tessellationQuality: TessellationQuality | null;
   private skipSmallCuts: boolean;
-  private skipVoids: boolean;
+  private skipVoids: boolean; outOfCore?: boolean; onOutOfCoreDecision?: (ran: boolean) => void; // out-of-core ingest as the host decided it (unset = explicit global/URL) and whether each pool load ran it (`ProcessParallelOptions`)
   compactCellSize?: number; // worker-pool compact GPU records at this cell size, after `loadCompactGeometry()` (`ProcessParallelOptions.compactCellSize`); unset = off
 
   constructor(options: GeometryProcessorOptions = {}) {
@@ -767,7 +767,7 @@ export class GeometryProcessor {
       sourceFingerprint,
       signal,
       hungJobTimeoutMs,
-      stallPhaseHandle, trace,
+      stallPhaseHandle, trace, outOfCore: this.outOfCore, onOutOfCoreDecision: this.onOutOfCoreDecision,
       // Every pool worker meshes with this processor's settings (#540, #924, #976, #1286; meshing-settings.ts).
       ...this.meshingSettings(),
       compactCellSize: this.compactCellSize,

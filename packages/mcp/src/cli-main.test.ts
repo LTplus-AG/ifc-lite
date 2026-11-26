@@ -243,22 +243,37 @@ describe('loadFiles (#11534)', () => {
     }
   });
 
-  it('reports why a file under --allow is refused, by code', async () => {
+  // chmod does nothing on Windows, and root ignores directory modes.
+  it.skipIf(process.platform === 'win32' || process.getuid?.() === 0)('reports an unreadable directory under --allow as EACCES', async () => {
     const locked = join(dir, 'locked');
     await mkdir(join(locked, 'inner'), { recursive: true });
     await writeFile(join(locked, 'inner', 'm.ifc'), MODEL);
     await chmod(locked, 0o000);
     try {
-      // Root ignores directory modes, so only check EACCES when it is really enforced.
-      if (process.getuid?.() !== 0) {
-        await expect(loadFiles(new InMemoryModelRegistry(), parseArgs(['--allow', dir, join(locked, 'inner', 'm.ifc')]), () => {}))
-          .rejects.toThrow(/could not be loaded \(EACCES\)/);
-      }
+      await expect(loadFiles(new InMemoryModelRegistry(), parseArgs(['--allow', dir, join(locked, 'inner', 'm.ifc')]), () => {}))
+        .rejects.toThrow(/could not be loaded \(EACCES\)/);
     } finally {
       await chmod(locked, 0o755);
     }
+  });
+
+  it('reports a protected home path under --allow', async () => {
     await expect(loadFiles(new InMemoryModelRegistry(), parseArgs(['--allow', homedir(), join(homedir(), '.ssh', 'model.ifc')]), () => {}))
       .rejects.toThrow(/could not be loaded \(protected home path\)/);
+  });
+
+  // With --allow the model is named after the checked (real) path, as model_load names it.
+  it('names a symlinked file after its target under --allow', async () => {
+    const link = join(dir, 'current.ifc');
+    await symlink(join(dir, 'struct', 'model.ifc'), link);
+    const registry = new InMemoryModelRegistry();
+    try {
+      await loadFiles(registry, parseArgs(['--allow', dir, link]), () => {});
+      expect(registry.list().map((m) => [m.id, m.name])).toEqual([['model', 'model.ifc']]);
+    } finally {
+      for (const m of registry.list()) registry.remove(m.id);
+      await rm(link);
+    }
   });
 
   it('reports a missing file under --allow as ENOENT', async () => {

@@ -68,15 +68,13 @@ export function tokenScopes(opts: CliOptions): Map<string, AuthScope> {
  * entries); without, the operator's own arguments load from anywhere.
  */
 async function loadAllowed(registry: ModelRegistry, opts: CliOptions, absolute: string) {
-  if (!opts.allowedPaths?.length) return loadIfcModel(absolute, { modelId: freeId(registry, absolute) });
-  // Open the path that was checked, and name the model after it, as model_load does.
-  const checked = await resolveSafePath(absolute, { config: { allowedPaths: opts.allowedPaths }, registry }, 'read');
-  return loadIfcModel(checked, { modelId: freeId(registry, checked), allowedPaths: [checked] });
-}
-
-/** `arch/model.ifc` and `struct/model.ifc` both derive `model`: the later one gets `model_2`, so it cannot replace (and dispose) the earlier. */
-function freeId(registry: ModelRegistry, path: string): string {
-  return freeModelId(registry, deriveModelId(basename(path)));
+  const allowedPaths = opts.allowedPaths?.length ? opts.allowedPaths : undefined;
+  // With --allow, open the path that was checked and name the model after it, as model_load does.
+  const path = allowedPaths ? await resolveSafePath(absolute, { config: { allowedPaths }, registry }, 'read') : absolute;
+  // `arch/model.ifc` and `struct/model.ifc` both derive `model`: the later one
+  // gets `model_2`, so it cannot replace (and dispose) the earlier.
+  const modelId = freeModelId(registry, deriveModelId(basename(path)));
+  return loadIfcModel(path, { modelId, ...(allowedPaths ? { allowedPaths: [path] } : {}) });
 }
 
 const PRINTABLE_ERRNO = new Set(['ENOENT', 'EACCES', 'EPERM', 'EISDIR', 'ENOTDIR', 'ELOOP', 'ENAMETOOLONG']);
@@ -93,6 +91,7 @@ function loadFailureReason(err: unknown): string {
     case 'missing': return 'ENOENT';
     case 'outside': return 'outside --allow';
     case 'protected': return 'protected home path';
+    case 'permission': return 'EACCES';
     default: return 'not a readable IFC file';
   }
 }

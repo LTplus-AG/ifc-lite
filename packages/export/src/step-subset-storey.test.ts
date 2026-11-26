@@ -45,6 +45,13 @@ describe('resolveStoreyPlacement: a storey NAMED with a number', () => {
     expect(resolveStoreyPlacement('0', parsed)).toBe(10);
   });
 
+  it('matches the Name attribute only, and refuses a name two storeys share', () => {
+    const shared = parseStep(text.replace("'0',$,$,#10", "'1',$,$,#10"));
+    expect(() => resolveStoreyPlacement('1', shared)).toThrow(/2 storeys are named '1'/);
+    const described = parseStep(text.replace("'0',$,$,#10", "'Ground','1',$,#10"));
+    expect(resolveStoreyPlacement('1', described)).toBe(11);
+  });
+
   it('still reads a bare storey express id, and #id, as an id', () => {
     expect(resolveStoreyPlacement('20', parsed)).toBe(10);
     expect(resolveStoreyPlacement('#21', parsed)).toBe(11);

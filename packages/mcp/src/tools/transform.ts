@@ -218,7 +218,7 @@ const modelExtract: Tool = {
       file_path: { type: 'string', description: 'Output .ifc path, inside the allowed paths.' },
       global_ids: { ...stringList, description: 'Products by GlobalId.' },
       express_ids: { type: 'array', items: { type: 'integer', minimum: 1 }, description: 'Products by express id in the source file.' },
-      types: { ...stringList, description: 'Every product of these IFC types, subtypes included (IfcWall selects IfcWallStandardCase).' },
+      types: { ...stringList, description: 'Every entity of these IFC types, subtypes included (IfcWall selects IfcWallStandardCase).' },
       storeys: { ...stringList, description: 'Every product placed under these storeys (GlobalId, express id or name).' },
     },
     required: ['file_path'],
@@ -265,7 +265,7 @@ const modelExtract: Tool = {
       const out = Buffer.from(serializeSubset(subset, parsed), 'latin1');
       await writeFile(filePath, out);
       return okResult(
-        `Extracted ${seeds.size} product(s) into ${subset.keep.size} instances: ${filePath}.`,
+        `Extracted ${seeds.size} selected entities into ${subset.keep.size} instances: ${filePath}.`,
         { filePath, bytes: out.length, seedCount: seeds.size, instanceCount: subset.keep.size },
       );
     });

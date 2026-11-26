@@ -8,7 +8,7 @@
  * through that storey's placement.
  */
 import { walkPlacementChain } from '@ifc-lite/data';
-import { refsOutsideStrings, SubsetSelectionError } from './step-subset-relations.js';
+import { refsOutsideStrings, splitTopLevelArgs, SubsetSelectionError } from './step-subset-relations.js';
 import type { ParsedStep } from './step-subset.js';
 
 /** Map each IfcLocalPlacement to its parent placement (or null when top-level). */
@@ -60,12 +60,15 @@ export function productsUnderPlacement(storeyPlacementId: number, parsed: Parsed
 export function resolveStoreyPlacement(token: string, parsed: ParsedStep): number {
   let storeyId: number | undefined;
   const t = token.trim();
-  // match by name (2nd-to-last-ish quoted arg); scan storeys for a Name match
+  // Exact match on the Name attribute (the third), never on LongName,
+  // Description or ObjectType text; two storeys of one name are refused.
   const byName = (): number | undefined => {
+    const hits: number[] = [];
     for (const inst of parsed.instances.values()) {
-      if (inst.type === 'IFCBUILDINGSTOREY' && inst.body.includes(`'${t}'`)) return inst.id;
+      if (inst.type === 'IFCBUILDINGSTOREY' && splitTopLevelArgs(inst.body)?.[2] === `'${t}'`) hits.push(inst.id);
     }
-    return undefined;
+    if (hits.length > 1) throw new SubsetSelectionError('invalid', `${hits.length} storeys are named '${t}' (#${hits.join(', #')}); pass a GlobalId or #id.`);
+    return hits[0];
   };
   if (/^#\d+$/.test(t)) {
     storeyId = parseInt(t.slice(1), 10);
@@ -81,8 +84,9 @@ export function resolveStoreyPlacement(token: string, parsed: ParsedStep): numbe
   }
   if (storeyId === undefined) throw new SubsetSelectionError('not-found', `Storey not found: ${token}`);
   const storey = parsed.instances.get(storeyId);
-  if (!storey || storey.type !== 'IFCBUILDINGSTOREY') {
-    throw new SubsetSelectionError('invalid', `#${storeyId} is ${storey?.type ?? 'missing'}, not an IfcBuildingStorey`);
+  if (!storey) throw new SubsetSelectionError('not-found', `Storey not found: ${token} (no #${storeyId})`);
+  if (storey.type !== 'IFCBUILDINGSTOREY') {
+    throw new SubsetSelectionError('invalid', `#${storeyId} is ${storey.type}, not an IfcBuildingStorey`);
   }
   // IfcBuildingStorey ObjectPlacement is attribute 6 (after Guid, Owner, Name,
   // Description, ObjectType) — the last #ref before LongName/Elevation. Grab the

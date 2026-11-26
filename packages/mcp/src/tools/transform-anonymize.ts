@@ -59,9 +59,10 @@ function anonymizeSeeds(m: LoadedModel, input: Record<string, unknown>): Set<num
     const id = key.replace(/^#/, '');
     const storeys = m.bim.storeys();
     const fragment = storeys.filter((s) => s.name?.toLowerCase().includes(key.toLowerCase()));
+    const byId = storeys.find((s) => s.globalId === key) ?? storeys.find((s) => String(s.ref.expressId) === id);
     const named = storeys.filter((s) => s.name === key);
-    if (named.length > 1) throw invalid(`storey: ${named.length} storeys are named '${key}'; pass a GlobalId or express id.`);
-    const exact = storeys.find((s) => s.globalId === key) ?? storeys.find((s) => String(s.ref.expressId) === id) ?? named[0];
+    if (!byId && named.length > 1) throw invalid(`storey: ${named.length} storeys are named '${key}'; pass a GlobalId or express id.`);
+    const exact = byId ?? named[0];
     if (!exact && fragment.length > 1) throw invalid(`storey: '${key}' matches ${fragment.map((s) => s.name).join(', ')}; name one exactly.`);
     const storey = exact ?? fragment[0];
     if (!storey) throw new ToolExecutionError({ code: ToolErrorCode.ENTITY_NOT_FOUND, message: `storey: ${key} not found (available: ${storeys.map((s) => s.name).filter(Boolean).join(', ') || 'none'}).` });

@@ -27,7 +27,7 @@ import {
   type InstallScope,
   type ServerCommand,
 } from './clients.js';
-import { canonical, describeEntry, mergeServer } from './merge.js';
+import { canonical, describeEntry, mergeServer, replacedEntry } from './merge.js';
 import { checkServerArgs, EXIT_FLAGS } from './server-args.js';
 import { isMcpValueFlag, MCP_BOOLEAN_FLAGS } from '../cli-args.js';
 import { nodeInstallIo, type InstallIo } from './io.js';
@@ -108,26 +108,35 @@ function parseInstallArgs(argv: string[], host: HostEnv): InstallArgs | 'help' {
   return { client, scope, name, dryRun, force, serverArgs, hasPaths };
 }
 
-/** The pins `serverCommand` writes; keep the two in step. */
-const OUR_PIN = /^@ifc-lite\/mcp(@\^\d+\.\d+\.\d+)?$/;
+/** The pins `serverCommand` writes (bare, or `^x.y.z` with any prerelease); keep the two in step. */
+const OUR_PIN = /^@ifc-lite\/mcp(?:@\^(\d+)\.(\d+)\.(\d+)(?:[-+][\w.+-]*)?)?$/;
+
+/** The entry with its one install-written pin taken out, and that pin's x.y.z. */
+function unpin(e: object): { rest: string; version?: number[] } | undefined {
+  const { args } = e as { args?: unknown };
+  if (!Array.isArray(args)) return undefined;
+  const pins = args.filter((x): x is string => typeof x === 'string' && x.startsWith('@ifc-lite/mcp'));
+  const m = pins.length === 1 ? OUR_PIN.exec(pins[0]) : null;
+  if (!m) return undefined;
+  return {
+    rest: canonical({ ...e, args: args.map((x) => (x === pins[0] ? '@ifc-lite/mcp' : x)) }),
+    version: m[1] === undefined ? undefined : [Number(m[1]), Number(m[2]), Number(m[3])],
+  };
+}
 
 /**
- * True when writing `entry` over `existing` changes nothing but a pin that
- * install itself writes (`@ifc-lite/mcp` or `@ifc-lite/mcp@^x.y.z`). Keys the
- * user added (env, cwd) stay either way; a hand-picked pin such as `@1.2.3`
- * or `@latest` is not ours to move.
+ * True when replacing `existing` with `entry` changes nothing but a pin that
+ * install itself writes, and does not move it to an older release. A
+ * hand-picked pin such as `@1.2.3` or `@latest` is not ours to move.
  */
 function onlyPinDiffers(existing: unknown, entry: Record<string, unknown>): boolean {
   if (typeof existing !== 'object' || existing === null) return false;
-  const unpin = (e: object): string | undefined => {
-    const { args } = e as { args?: unknown };
-    if (!Array.isArray(args)) return undefined;
-    const pins = args.filter((x) => typeof x === 'string' && x.startsWith('@ifc-lite/mcp'));
-    if (pins.length !== 1 || !OUR_PIN.test(pins[0] as string)) return undefined;
-    return canonical({ ...e, args: args.map((x) => (x === pins[0] ? '@ifc-lite/mcp' : x)) });
-  };
   const before = unpin(existing);
-  return before !== undefined && before === unpin({ ...existing, ...entry });
+  const after = unpin(replacedEntry(existing, entry));
+  if (!before || !after || before.rest !== after.rest) return false;
+  if (!before.version || !after.version) return true;
+  const i = before.version.findIndex((n, k) => n !== after.version?.[k]);
+  return i < 0 || after.version[i] > before.version[i];
 }
 
 /** `npx` pinned to this release line, so the flags written here are ones it knows. */
@@ -214,7 +223,7 @@ function runCommandPlan(
   if (result.status !== 0) {
     let hint = '';
     if (removed) hint = ` The old "${args.name}" entry was already removed; fix the error and run again:\n${line}`;
-    else if (plan.remove) hint = ' If the name is taken, pass --force or --name.';
+    else if (plan.remove && !args.force) hint = ' If the name is taken, pass --force or --name.';
     io.err(`[ifc-lite-mcp install] \`${plan.command}\` exited with ${result.status}.${hint}\n`);
     return result.status;
   }

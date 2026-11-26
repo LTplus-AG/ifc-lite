@@ -58,10 +58,7 @@ export function mergeServer(
   const existing = Object.hasOwn(servers, name) ? servers[name] : undefined;
   // Ours replace the launch keys, and an old HTTP entry's url/headers go with
   // them; anything else the user added (env, cwd, disabled) is kept.
-  const kept = isObject(existing)
-    ? Object.fromEntries(Object.entries(existing).filter(([k]) => !LAUNCH_KEYS.includes(k)))
-    : {};
-  const merged = { ...kept, ...entry };
+  const merged = replacedEntry(existing, entry);
   if (existing !== undefined) {
     if (canonical(merged) === canonical(existing)) return { status: 'unchanged' };
     if (!force) return { status: 'conflict', existing };
@@ -70,8 +67,16 @@ export function mergeServer(
   return {
     status: existing === undefined ? 'added' : 'replaced',
     text: `${JSON.stringify(next, null, 2)}\n`,
-    kept: Object.keys(kept),
+    kept: Object.keys(merged).filter((k) => !Object.hasOwn(entry, k)),
   };
+}
+
+/** What replacing `existing` with `entry` writes: our launch keys, the user's other keys. */
+export function replacedEntry(existing: unknown, entry: JsonObject): JsonObject {
+  const kept = isObject(existing)
+    ? Object.fromEntries(Object.entries(existing).filter(([k]) => !LAUNCH_KEYS.includes(k)))
+    : {};
+  return { ...kept, ...entry };
 }
 
 /**

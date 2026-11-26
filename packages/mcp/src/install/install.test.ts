@@ -265,6 +265,20 @@ describe('ifc-lite-mcp install: existing configs', () => {
     expect(JSON.parse(io.files.get(path) ?? 'null').mcpServers['ifc-lite']).toEqual({ command: 'npx', args: ['-y', PKG], env: { T: '1' } });
   });
 
+  it('an older release does not downgrade a newer entry without --force', () => {
+    const io = fakeIo();
+    io.files.set(path, JSON.stringify({ mcpServers: { 'ifc-lite': { command: 'npx', args: ['-y', '@ifc-lite/mcp@^9.0.0'] } } }));
+    expect(install(['--client', 'cursor'], io)).toBe(1);
+  });
+
+  it('a prerelease pin install wrote is updated, and a VS Code type key is kept', () => {
+    const io = fakeIo();
+    const vs = '/work/proj/.vscode/mcp.json';
+    io.files.set(vs, JSON.stringify({ servers: { 'ifc-lite': { type: 'stdio', command: 'npx', args: ['-y', '@ifc-lite/mcp@^0.20.0-next.1'] } } }));
+    expect(install(['--client', 'vscode', '--scope', 'project'], io)).toBe(0);
+    expect(JSON.parse(io.files.get(vs) ?? 'null').servers['ifc-lite']).toEqual({ type: 'stdio', command: 'npx', args: ['-y', PKG] });
+  });
+
   it('a hand-picked exact pin is not moved without --force', () => {
     const io = fakeIo();
     io.files.set(path, JSON.stringify({ mcpServers: { 'ifc-lite': { command: 'npx', args: ['-y', '@ifc-lite/mcp@0.20.1'] } } }));

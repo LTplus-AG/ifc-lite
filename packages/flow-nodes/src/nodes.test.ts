@@ -293,6 +293,32 @@ describe('table.readCsv / table.writeCsv', () => {
 });
 
 describe('table.readXlsx / table.writeXlsx', () => {
+  it('round-trips text under a worksheet name with illegal characters (#11463)', async () => {
+    const table: Table = {
+      columns: [{ name: 'Room', type: 'string' }],
+      rows: [{ Room: 'Sală de ședințe' }],
+      key: 'Room',
+    };
+    const bytes = await writeXlsxTable(table, 'Rooms [Draft]: */?\\');
+    const result = await readXlsxTable(bytes);
+    expect(result.problems).toEqual([]);
+    expect(result.table.rows).toEqual(table.rows);
+  }, 30_000);
+
+  it('makes truncation visible in both spreadsheet headers and values (#11463)', async () => {
+    const header = 'h'.repeat(40000);
+    const value = `${'x'.repeat(32765)}😀tail`;
+    const bytes = await writeXlsxTable({
+      columns: [{ name: header, type: 'string' }],
+      rows: [{ [header]: value }],
+      key: header,
+    });
+    const { table } = await readXlsxTable(bytes);
+    const clippedHeader = `${'h'.repeat(32766)}…`;
+    expect(table.columns[0].name).toBe(clippedHeader);
+    expect(table.rows).toEqual([{ [clippedHeader]: `${'x'.repeat(32765)}…` }]);
+  }, 30_000);
+
   it('reads back a sheet WriteXlsx produced, column types preserved', async () => {
     const table: Table = {
       columns: [{ name: 'GlobalId', type: 'identifier' }, { name: 'FireRating', type: 'real' }, { name: 'IsExternal', type: 'boolean' }],

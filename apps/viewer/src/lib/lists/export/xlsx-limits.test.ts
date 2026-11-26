@@ -22,20 +22,28 @@ async function load(title: string, values: Array<[string, number]>) {
   const model = buildExportModel({ title, columns, rows, numericCols: [false, true], columnWidths: [120, 120], generatedAt: 'now' });
   const ExcelJS = (await import('exceljs')).default;
   const wb = new ExcelJS.Workbook();
-  await wb.xlsx.load(await (await toXlsx(model)).arrayBuffer() as never);
+  await wb.xlsx.load(await (await toXlsx(model)).arrayBuffer());
   return wb;
 }
 
-describe('toXlsx Excel limits', () => {
+describe('toXlsx Excel limits (#11463)', () => {
   it('exports a list whose name has illegal sheet characters', async () => {
     const wb = await load('Ground floor – Rooms & Areas [Draft]: v2/3', [['Sală', 1]]);
     const name = wb.worksheets[0].name;
     assert.ok(name.length <= 31 && !/[\\/?*[\]:]/.test(name), name);
   });
-  it('caps a cell at 32,767 characters', async () => {
-    const wb = await load('long', [['x'.repeat(40000), 1]]);
-    const cell = wb.worksheets[0].getCell(5, 1).value as string;
-    assert.ok(cell.length <= 32767, String(cell.length));
+  it('fits a title, sheet name and cell without splitting a surrogate pair', async () => {
+    const long = '😀'.repeat(20000);
+    const wb = await load(long, [[`${'x'.repeat(32765)}😀tail`, 1]]);
+    const ws = wb.worksheets[0];
+    assert.equal(ws.name, '😀'.repeat(15));
+    assert.equal(ws.getCell(1, 1).value, `${'😀'.repeat(16383)}…`);
+    assert.equal(ws.getCell(5, 1).value, `${'x'.repeat(32765)}…`);
+  });
+  it('handles empty, quoted and reserved worksheet names', async () => {
+    assert.equal((await load('', [])).worksheets[0].name, 'List');
+    assert.equal((await load(" 'Sală' ", [])).worksheets[0].name, 'Sală');
+    assert.equal((await load('HiStOrY', [])).worksheets[0].name, 'HiStOrY (1)');
   });
   it('caps a long column header, group label and totals row', async () => {
     const long = 'x'.repeat(40000);
@@ -50,7 +58,7 @@ describe('toXlsx Excel limits', () => {
     });
     const ExcelJS = (await import('exceljs')).default;
     const wb = new ExcelJS.Workbook();
-    await wb.xlsx.load(await (await toXlsx(model)).arrayBuffer() as never);
+    await wb.xlsx.load(await (await toXlsx(model)).arrayBuffer());
     const ws = wb.worksheets[0];
     let checked = 0;
     ws.eachRow((row) => row.eachCell((cell) => {

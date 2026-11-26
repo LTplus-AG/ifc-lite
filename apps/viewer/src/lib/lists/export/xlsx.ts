@@ -26,7 +26,7 @@ export async function toXlsx(model: ExportModel): Promise<Blob> {
   const ExcelJS = (await import('exceljs')).default;
   const wb = new ExcelJS.Workbook();
   wb.creator = 'IFC-Lite';
-  const ws = wb.addWorksheet(sanitizeSheetName(model.title || 'List', [], 'List'), {
+  const ws = wb.addWorksheet(sanitizeSheetName(model.title, 'List'), {
     views: [{ state: 'frozen', ySplit: 4 }],
   });
 
@@ -37,10 +37,10 @@ export async function toXlsx(model: ExportModel): Promise<Blob> {
   const ncol = cols.length;
 
   // Title + meta.
-  ws.addRow([model.title || 'List']);
+  ws.addRow([clampXlsxCellText(model.title || 'List')]);
   ws.mergeCells(1, 1, 1, ncol);
   ws.getCell(1, 1).font = { bold: true, size: 14 };
-  ws.addRow([`${model.totals.count.toLocaleString()} elements · ${model.generatedAt}`]);
+  ws.addRow([clampXlsxCellText(`${model.totals.count.toLocaleString()} elements · ${model.generatedAt}`)]);
   ws.mergeCells(2, 1, 2, ncol);
   ws.getCell(2, 1).font = { italic: true, size: 9, color: { argb: 'FF94A3B8' } };
   ws.addRow([]);

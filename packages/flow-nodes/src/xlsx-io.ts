@@ -169,7 +169,7 @@ export async function readXlsxTable(data: Uint8Array, options: ReadXlsxOptions =
 export async function writeXlsxTable(table: Table, sheetName = 'Sheet1'): Promise<Uint8Array> {
   const wb = new (await loadExcelJS()).Workbook();
   const ws = wb.addWorksheet(sanitizeSheetName(sheetName));
-  ws.addRow(table.columns.map((c) => guardSpreadsheetFormula(c.name)));
+  ws.addRow(table.columns.map((c) => clampXlsxCellText(guardSpreadsheetFormula(c.name))));
   for (const row of table.rows) {
     ws.addRow(table.columns.map((c) => {
       const v = row[c.name];

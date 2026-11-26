@@ -3,4 +3,4 @@
 "@ifc-lite/flow-nodes": patch
 ---
 
-XLSX exports respect Excel's limits: sheet names are sanitised (illegal characters, 31 characters, case-insensitive uniqueness) instead of making the export throw, and cells over 32,767 characters are truncated with an ellipsis instead of producing a file Excel offers to repair.
+XLSX exports sanitize worksheet names and cap them at 31 UTF-16 units. Text cells over 32,767 UTF-16 units end in a visible ellipsis, including headers and list titles.

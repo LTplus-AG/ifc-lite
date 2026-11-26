@@ -147,7 +147,7 @@ impl ProfileProcessor {
                   "gradient directrix: chord tolerance not met within the split budget" }
                 else {
                     eprintln!(
-                        "[ifc-lite][gradient-directrix] #{}: {} span(s) kept chords coarser than {}                          after {} splits",
+                        "[ifc-lite][gradient-directrix] #{}: {} span(s) kept chords coarser than {} after {} splits",
                         curve.id, coarse, tolerance, MAX_SPAN_SPLITS,
                     );
                 }

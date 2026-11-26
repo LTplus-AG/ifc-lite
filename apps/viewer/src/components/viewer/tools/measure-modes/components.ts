@@ -15,7 +15,8 @@
  * silently wrong for every model.
  */
 
-import { formatDistance, signedByPrintedValue } from '../formatDistance';
+import { formatDistance } from '../formatDistance';
+import { signedByPrintedValue } from '../signedByPrintedValue';
 
 export interface Point3 {
   x: number;

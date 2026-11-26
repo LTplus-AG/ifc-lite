@@ -7,6 +7,7 @@
 #include <iterator>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <map>
 #include <numeric>
 #include <set>
@@ -278,12 +279,9 @@ bool projection(const AdapterMesh& mesh,const std::vector<std::pair<uint32_t,uin
 // strictly positive (exact orientation) and pass no vertex within
 // near_threshold; if near-rejection leaves none, the first such diagonal
 // regardless of nearness whose two flat normals follow the face. Empty when neither diagonal is valid (the SDK's
-// split stays). This is the greedy's ranking, not the same rule in closed
-// form: requad skips retriangulate's area, normal and edge-use checks, so for
-// a near-collinear quad at a large offset it can return a split where
-// retriangulate would decline. Its own result depends only on exact
-// orientations and grid keys, whereas retriangulate's 1e-9 relative area
-// check on such a sliver can itself flip with the SDK's noise.
+// split stays). A flipped diagonal must also preserve the original 3D area
+// (a warped face can be tagged planar, #10916); otherwise the SDK's split
+// stays.
 std::vector<Triangle> requad(const AdapterMesh& mesh,const Triangle& a,const Triangle& b,
     const std::vector<Edge>& foreign,double h) {
     for (unsigned i=0;i<3;++i) for (unsigned j=0;j<3;++j) {
@@ -313,7 +311,25 @@ std::vector<Triangle> requad(const AdapterMesh& mesh,const Triangle& a,const Tri
         const bool clear=kept_clear || flipped_clear;
         const bool use_kept=clear ? kept_clear : kept && sound(a,b);
         const bool use_flipped=clear ? flipped_clear : flipped && sound({p,u,q},{q,v,p});
-        if (use_flipped && (!use_kept || rank(p,q)<rank(u,v))) return {Triangle{p,u,q},Triangle{q,v,p}};
+        if (use_flipped && (!use_kept || rank(p,q)<rank(u,v))) {
+            const Triangle first{p,u,q},second{q,v,p};
+            const double before_area=double_area(mesh,a)+double_area(mesh,b);
+            const double after_area=double_area(mesh,first)+double_area(mesh,second);
+            // The general path's 1e-9 relative tolerance, plus a floor for
+            // the SDK's +/-1 ULP coordinate noise (about 2 extent * ULP of the
+            // largest |coordinate| per triangle, and rounding of the cross
+            // products), so a near-collinear quad's choice does not flip
+            // between runs. A real warp (#10916: 1.17% on a closed cap) is
+            // far above it.
+            double extent=0,magnitude=0;
+            for (const auto& x:{U,V,P,Q}) {
+                for (double c:x) magnitude=std::max(magnitude,std::abs(c));
+                for (const auto& y:{U,V,P,Q}) extent=std::max(extent,std::hypot(x[0]-y[0],x[1]-y[1],x[2]-y[2]));
+            }
+            const double noise=64*std::numeric_limits<double>::epsilon()*extent*(magnitude+extent);
+            if (!(std::abs(after_area-before_area)<=1e-9*before_area+noise)) return {};
+            return {first,second};
+        }
         if (use_kept) return {a,b};
         return {};
     }

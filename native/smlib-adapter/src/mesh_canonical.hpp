@@ -71,10 +71,12 @@ void order_mesh(AdapterMesh& mesh);
 // mesh stays as manifold as the SDK made it). A declined face keeps the SDK's split, so its interior edges are
 // avoided by every other face (faces that used one are redone).
 // A two-triangle face uses the same ranking in closed form (requad), with
-// exact orientation checks but without the greedy's area, normal and edge-use
+// exact orientation checks but without the greedy's normal and edge-use
 // checks, so a near-collinear quad can get a split where the greedy would
 // decline; its last resort (a near diagonal) also requires both flat normals
-// to follow the face. Cost is O(V^3) per
+// to follow the face. A flipped diagonal must keep the face's 3D area
+// (1e-9 relative plus a +/-1 ULP noise floor), so a warped face tagged planar
+// keeps the SDK's split. Cost is O(V^3) per
 // face in the worst case (about 11 ms for 256 vertices, 1 us for a quad).
 // Requires order_mesh first (canonical vertex IDs, faces contiguous).
 void canonical_planar_faces(AdapterMesh& mesh, const std::vector<bool>& planar_faces);

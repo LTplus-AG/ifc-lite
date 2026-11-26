@@ -211,6 +211,39 @@ void run_mesh_canonical_tests() {
         canonicalize(flipped,curved); auto original=mesh; order_mesh(original);
         same_bytes(flipped,original,"no diagonal change on non-planar source faces");
     }
+    // A face tagged planar can have warped vertices. Its projected diagonal
+    // is valid, but changing the split can change its 3D surface area (#10916).
+    {
+        AdapterMesh mesh;
+        mesh.positions={0,0,0, 1,0,0, .6,1e-8,2.5e-9, 0,1e-8,0, .3,0,-1};
+        mesh.indices={0,1,3, 1,2,3, 1,0,4, 2,1,4, 3,2,4, 0,3,4};
+        mesh.faces={0,0,1,2,3,4};
+        mesh.normals.assign(mesh.indices.size()*3,0.);
+        order_mesh(mesh);
+        const double area=face_areas(mesh).at(0);
+        const auto counts=canonical_planar_faces_or_keep(mesh,{true,false,false,false,false});
+        require(counts.boundary==0 && counts.spine==0,"the warped cap remains manifold");
+        require(std::abs(face_areas(mesh).at(0)-area)<=1e-9*area,
+            "a warped quad tagged planar keeps its original 3D area");
+    }
+    // The area check itself must not react to the SDK's +/-1 ULP noise: a
+    // near-collinear quad at a 1e6 m offset (found by fuzzing) whose split
+    // changed area by noise alone flipped between runs with a purely
+    // relative 1e-9 tolerance.
+    {
+        AdapterMesh base;
+        base.positions={1000000,500000,3, 1000000.01,499999.99073807587,3.0013894433416275,
+            1000000.0124370087,500000.00242414844,3.0017280518869596,
+            1000000.0075259981,500000.00146692322,3.0010456947939192};
+        base.indices={0,2,3, 0,1,2};
+        base.faces={0,0};
+        base.normals.assign(base.indices.size()*3,0.);
+        AdapterMesh reference=base; canonicalize(reference,{true});
+        for (unsigned run=0;run<64;++run) {
+            AdapterMesh mesh=base; nudge(mesh,random); canonicalize(mesh,{true});
+            same_topology(mesh,reference,"near-collinear quad at 1e6 m keeps its split under +/-1 ULP noise");
+        }
+    }
     // Concave planar quad (dent at (2,1)): only the diagonal through the dent
     // is inside it, even though the lowest vertex is (0,0).
     {

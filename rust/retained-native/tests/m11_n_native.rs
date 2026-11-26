@@ -163,12 +163,19 @@ fn m11_n_reference_is_independent_of_worker_address_layout() {
     } else {
         eprintln!("SKIP the ASLR-off worker: `setarch -R true` failed (no setarch, or the personality flag is refused); comparing 2 ordinary ASLR workers only");
     }
+    let started = std::time::Instant::now();
     let mut models = 0;
     let mut differing = Vec::new();
     for (model, expected) in universe(&root) {
         if !expected.values().any(|status| status == "published") {continue;}
         models += 1;
-        let runs: Vec<serde_json::Value> = workers.iter().map(|w| serde_json::Value::Array(reference_rows(&root,&model,w))).collect();
+        // The passes are independent worker processes: run them concurrently
+        // (one thread each) so the three passes cost about one in wall time.
+        let runs: Vec<serde_json::Value> = std::thread::scope(|scope| {
+            let passes: Vec<_> = workers.iter().map(|w| { let (root,model) = (&root,&model);
+                scope.spawn(move || serde_json::Value::Array(reference_rows(root,model,w))) }).collect();
+            passes.into_iter().map(|pass| pass.join().unwrap()).collect()
+        });
         for (k,run) in runs.iter().enumerate().skip(1) {
             if let Err(error) = same_row(&runs[0],run,"rows") { differing.push(format!("{model} (worker {k}): {error}")); }
         }
@@ -178,6 +185,7 @@ fn m11_n_reference_is_independent_of_worker_address_layout() {
     assert!(differing.is_empty(),"m11-n reference topology depends on the worker address layout:\n{}",differing.join("\n"));
     println!("M11-N layout determinism: {models} models with one topology (values within 4 ULP) across 2 ASLR workers{}",
         if aslr_off {" and 1 ASLR-off worker"} else {" (ASLR-off worker skipped)"});
+    println!("M11-N layout determinism: {} concurrent passes per model, {:.1} s wall",workers.len(),started.elapsed().as_secs_f64());
     println!("sdk witness executed: m11_n_worker_layout_determinism");
 }
 

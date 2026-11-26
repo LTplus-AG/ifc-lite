@@ -76,48 +76,45 @@ export function classificationToken(schema: CreatorSchema, request: Classificati
   return `.${token}.`;
 }
 
+/** Canonical entity names by upper-case name, built once per schema. */
+const ENTITY_BY_UPPER = new Map<CreatorSchema, Map<string, string>>();
+function entityNamed(schema: CreatorSchema, ifcTypeUpper: string): string | undefined {
+  let index = ENTITY_BY_UPPER.get(schema);
+  if (!index) {
+    index = new Map(Object.keys(getSchemaRegistryForVersion(schema).entities).map((name) => [name.toUpperCase(), name]));
+    ENTITY_BY_UPPER.set(schema, index);
+  }
+  return index.get(ifcTypeUpper);
+}
+
 /**
- * The schema entity a generic writer (`addElement`, `addAxisElement`) places
- * under a storey, or a thrown error when no relationship there is correct
- * (#11577). An `IfcElement` is contained in the storey, an `IfcSpace` is
- * aggregated by it (#11498), and another product (`IfcAnnotation`) is
- * contained. A group (`IfcZone`, `IfcSystem`, `IfcGroup`) is not a product,
- * and another spatial element (`IfcSite`, `IfcBuildingStorey`,
- * `IfcFacilityPart`) cannot sit in a storey. Both are refused. A type the
- * schema does not know is returned as `null` and keeps the historical writer.
+ * Every attribute after `Representation` for a generic product writer
+ * (`addElement`, `addAxisElement`), from the target schema's own attribute
+ * list, so each product gets its full record (#11577):
+ * - `Tag` gets the caller's tag, and a spatial element's `CompositionType` is ELEMENT
+ *   (its enum has no NOTDEFINED; `addIfcSpace` writes the same);
+ * - the classification slot (`PredefinedType`, else the first other enum slot) gets
+ *   the caller's value, checked against its enum, defaulting to NOTDEFINED where the
+ *   enum has it and `$` where it is optional;
+ * - every other optional slot is `$`, a required enum slot is NOTDEFINED, and any
+ *   other required slot throws; a caller value with no classification slot throws.
+ *
+ * Only what a storey can hold is written: an `IfcElement` or another product
+ * is contained, an `IfcSpace` is aggregated (#11498). A group (`IfcZone`,
+ * `IfcSystem`, `IfcGroup`) is not a product and another spatial element
+ * cannot sit in a storey, so both throw. A type the schema does not know
+ * keeps the historical `,<tag>,.TOKEN.` tail.
  */
-export function genericProductEntity(schema: CreatorSchema, ifcTypeUpper: string, op: string): string | null {
+export function genericProductTail(schema: CreatorSchema, ifcTypeUpper: string, op: string, tag: string, predefinedType: string | undefined): string {
+  const entity = entityNamed(schema, ifcTypeUpper);
+  if (!entity) return `,${tag},.${predefinedType ?? 'NOTDEFINED'}.`;
   const registry = getSchemaRegistryForVersion(schema);
-  const entity = Object.keys(registry.entities).find((name) => name.toUpperCase() === ifcTypeUpper);
-  if (!entity) return null;
   const chain = registry.entities[entity].inheritanceChain ?? [];
   if (!chain.includes('IfcProduct')) {
     throw new Error(`${op}: ${entity} is not a product and cannot be placed in a storey; it needs a group or assignment relationship`);
   }
-  if (entity !== 'IfcSpace' && (chain.includes('IfcSpatialElement') || chain.includes('IfcSpatialStructureElement'))) {
-    throw new Error(`${op}: ${entity} is a spatial element and cannot be placed in a storey`);
-  }
-  return entity;
-}
-
-/**
- * Every attribute after `Representation` for a generic product writer, from
- * the target schema's own attribute list, so each entity gets its full record
- * (an `IfcElement`'s `Tag`, an `IfcSpace`'s `LongName` and `CompositionType`):
- * - `Tag` gets the caller's tag, and a spatial element's `CompositionType` is ELEMENT;
- * - the classification slot (`PredefinedType`, else the first other enum slot, e.g.
- *   IFC2X3 `CompositionType` / `ShapeType` / `InteriorOrExteriorSpace`) gets the
- *   caller's value, checked against its enum, defaulting to NOTDEFINED where the enum
- *   has it and `$` where it is optional;
- * - every other optional slot (IfcDoor `OverallHeight`, …) is `$`, a required enum
- *   slot is NOTDEFINED, and any other required slot throws;
- * - a caller value with no classification slot throws.
- * Entities the schema does not know keep the historical `,<tag>,.TOKEN.` tail.
- */
-export function genericProductTail(schema: CreatorSchema, entity: string | null, tag: string, predefinedType: string | undefined): string {
-  if (!entity) return `,${tag},.${predefinedType ?? 'NOTDEFINED'}.`;
-  const registry = getSchemaRegistryForVersion(schema);
-  const spatial = registry.entities[entity].inheritanceChain?.includes('IfcSpatialStructureElement') ?? false;
+  const spatial = chain.includes('IfcSpatialElement') || chain.includes('IfcSpatialStructureElement');
+  if (spatial && entity !== 'IfcSpace') throw new Error(`${op}: ${entity} is a spatial element and cannot be placed in a storey`);
   const rest = (registry.entities[entity].allAttributes ?? []).slice(7);
   const composition = (name: string) => spatial && name === 'CompositionType';
   const target = rest.find((a) => a.name === 'PredefinedType') ?? rest.find((a) => registry.enums[a.type] && !composition(a.name));

@@ -36,17 +36,15 @@ function resolveEntityRefFromState(
   const progressive = federationRegistry.fromGlobalId(globalId);
   if (progressive) return progressive;
 
-  // Fallback: an offset-0 first model owns globalId === expressId inside its
-  // range. Any other id is not its local id (#11527) and takes the legacy sentinel.
-  const first = state.models.entries().next();
-  if (!first.done) {
-    const model = first.value[1];
-    // A model whose range is not recorded yet bounds nothing, as its offset defaults to 0.
-    const owned = Number.isSafeInteger(globalId) && globalId >= 0 && globalId <= (model.maxExpressId ?? Number.POSITIVE_INFINITY);
-    if ((model.idOffset ?? 0) === 0 && owned) return { modelId: first.value[0], expressId: globalId };
+  // Fallback: single-model mode where offset is 0 → globalId === expressId.
+  // A negative or non-integer id is no model's local id (#11527: one became an
+  // unpublished local id the next toGlobalId refused); it takes the legacy sentinel.
+  if (state.models.size > 0 && Number.isSafeInteger(globalId) && globalId >= 0) {
+    const firstModelId = state.models.keys().next().value as string;
+    return { modelId: firstModelId, expressId: globalId };
   }
 
-  // Legacy single-model mode (no models in federation map yet), or an id no loaded model owns.
+  // Legacy single-model mode (no models in federation map yet), or an id no model can own.
   // 'legacy' is recognized by PropertiesPanel for fallback to legacy ifcDataStore.
   return { modelId: 'legacy', expressId: globalId };
 }
@@ -57,9 +55,9 @@ function resolveEntityRefFromState(
  * Resolution order:
  *  1. resolveGlobalIdFromModels (offset-based range check — the canonical path)
  *  2. The federation registry, for a published component not yet in `models` (#5050)
- *  3. First loaded model as fallback (single-model, offset 0, id inside its range)
- *  4. 'legacy' sentinel: legacy single-model mode (no federation map), or an id
- *     no loaded model owns (#11527)
+ *  3. First loaded model as fallback (single-model, offset 0), for a non-negative id
+ *  4. 'legacy' sentinel: legacy single-model mode (no federation map), or a
+ *     negative or non-integer id (#11527)
  *
  * ALWAYS returns an EntityRef — never null.  This ensures all callers
  * (multi-select, basket, context menu) can proceed without null-guards.

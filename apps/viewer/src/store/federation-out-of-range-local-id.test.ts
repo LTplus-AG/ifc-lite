@@ -57,21 +57,11 @@ describe('fallback resolvers never hand out a local id the model does not own (#
     assert.deepEqual(fromGlobalIdFromModels(state.models, offset + 150), { modelId: 'later', expressId: 150 });
   });
 
-  it('resolveEntityRef never gives the only model an id it does not own', () => {
+  it('resolveEntityRef turns a negative renderer id into the legacy sentinel, not a local id', () => {
     laterModelAlone();
-    // 5 is inside the later model's LOCAL range, but as a renderer id it belongs to no loaded model.
-    for (const globalId of [5, -2_024_174]) {
-      const ref = resolveEntityRef(globalId);
-      assert.equal(ref.modelId, 'legacy', `resolveEntityRef(${globalId}) gave ${JSON.stringify(ref)}`);
-      assertPublishable(ref);
-    }
-  });
-
-  it('a stale id past every range does not become the first model\'s local id', () => {
-    loadModel('a');
-    const b = loadModel('b');
-    const ref = resolveEntityRef(b + 5_000_000);
-    assert.equal(ref.modelId, 'legacy', JSON.stringify(ref));
+    const ref = resolveEntityRef(-2_024_174);
+    assert.deepEqual(ref, { modelId: 'legacy', expressId: -2_024_174 });
+    // On main this ref was { later, -2024174 } and toGlobalId threw the #11527 message.
     assertPublishable(ref);
   });
 

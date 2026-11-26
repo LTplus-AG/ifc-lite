@@ -15,7 +15,7 @@ import { fmtInt, okResult } from './util.js';
 import { refusingEmpty, withIfcBytes } from './export-source.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import { resolveSafePath } from '../safe-path.js';
-import { FILE_WRITE_ANNOTATIONS, fileOutputSchema, invalid, optionalOutputPath, requireDistinctPaths, resolveStepModel, throwIfCancelled, unsupported, writeSidecar } from './transform-schema.js';
+import { FILE_WRITE_ANNOTATIONS, fileOutputSchema, invalid, optionalOutputPath, refuseSourceIdsWhilePending, requireDistinctPaths, resolveStepModel, throwIfCancelled, unsupported, writeSidecar } from './transform-schema.js';
 
 const modelSimplify: Tool = {
   name: 'model_simplify',
@@ -50,10 +50,7 @@ const modelSimplify: Tool = {
     const m = resolveStepModel(ctx, input.model_id as string | undefined, 'model_simplify');
     const filePath = await resolveSafePath(input.file_path, ctx, 'write');
     const level = (input.level as number | undefined) ?? 1;
-    if (input.express_ids !== undefined && m.backend.hasPendingChanges()) {
-      // The mesher reads re-serialized bytes when edits are pending; source ids need not survive that.
-      throw invalid('express_ids name records of the source file; with unsaved edits pending, write them with export_ifc and model_load the result first.');
-    }
+    if (input.express_ids !== undefined) refuseSourceIdsWhilePending(m, 'express_ids');
     return withIfcBytes(m, async (bytes) => {
       const session = new DemeshSession(bytes);
       try {

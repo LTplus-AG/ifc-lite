@@ -136,6 +136,16 @@ export function invalid(message: string): ToolExecutionError {
   return new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message });
 }
 
+/**
+ * Express ids name records of the source file. With edits pending, the
+ * byte-backed transforms read a re-serialized export whose ids need not match,
+ * so a selection by express id is refused. `what` names the offending input.
+ */
+export function refuseSourceIdsWhilePending(m: LoadedModel, what: string): void {
+  if (!m.backend.hasPendingChanges()) return;
+  throw invalid(`${what} names records of the source file by express id; with unsaved edits pending, select by GlobalId or name, or write the edits with export_ifc and model_load the result first.`);
+}
+
 /** Store-backed transforms copy records from the parsed source; a model that kept none cannot be used. */
 export function requireSourceBytes(m: LoadedModel, tool: string): void {
   if (m.store.source.byteLength === 0) throw unsupported(`Model '${m.id}' kept no source bytes for ${tool}. Reload it with model_load.`);

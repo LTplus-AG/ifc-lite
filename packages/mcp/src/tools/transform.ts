@@ -40,6 +40,7 @@ import {
   schemaOf,
   requireNoPendingEdits,
   requireSourceBytes,
+  refuseSourceIdsWhilePending,
   resolveStepModel,
   isStepModel,
   withIfcPrefix,
@@ -241,11 +242,9 @@ const modelExtract: Tool = {
     const expressIds = (input.express_ids as number[] | undefined) ?? [];
     const types = nonBlank(input.types as string[] | undefined).map(withIfcPrefix);
     const storeys = nonBlank(input.storeys as string[] | undefined);
-    if (m.backend.hasPendingChanges() && (expressIds.length > 0 || storeys.some((s) => /^#?\d+$/.test(s)))) {
-      // Unsaved edits are re-serialized before extraction, and nothing pins that
-      // the source file's express ids survive it. GlobalIds and names do.
-      throw invalid('Express ids (express_ids, or a storey given as #id) name records of the source file; with unsaved edits pending, select by GlobalId or name instead.');
-    }
+    if (expressIds.length > 0) refuseSourceIdsWhilePending(m, 'express_ids');
+    // A bare number can resolve to a storey id, so it is refused too.
+    if (storeys.some((s) => /^#?\d+$/.test(s))) refuseSourceIdsWhilePending(m, 'A storey given as a number');
     if (globalIds.length + expressIds.length + types.length + storeys.length === 0) {
       throw invalid('Select something: global_ids, express_ids, types or storeys.');
     }

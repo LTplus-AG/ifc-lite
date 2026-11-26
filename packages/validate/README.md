@@ -67,6 +67,17 @@ pnpm --filter @ifc-lite/validate generate
 
 `src/generated` is committed; a test fails when it drifts from the generator.
 
+## Parity with ifcopenshell.validate
+
+The package test checks the committed report against cached IfcOpenShell findings. Run `pnpm fixtures` for the third-party models. To refresh the oracle, install `ifcopenshell==0.9.0.post1` and `pytest` in the Python environment used below. IfcOpenShell uses pytest to evaluate EXPRESS rules.
+
+`parity/` measures the validators against `ifcopenshell.validate` (LGPL, used only as a test oracle): a crafted IFC4 building with one defect per rule of the authoring subset, plus third-party models from `pnpm fixtures`. `parity/REPORT.md` has the per-rule agreement, and `parity/explanations.json` the reason for each known disagreement.
+
+```bash
+pnpm --filter @ifc-lite/validate parity            # oracle findings from parity/oracle-cache.json
+IFCOPENSHELL_PYTHON=/path/to/python pnpm --filter @ifc-lite/validate parity --oracle
+```
+
 ## License
 
 MPL-2.0

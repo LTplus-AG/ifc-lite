@@ -1,0 +1,20 @@
+{
+  "description": "Third-party models from tests/models (fetched by `pnpm fixtures`) and repo fixtures. Missing files are skipped and listed in the report.",
+  "files": [
+    "tests/models/ara3d/AC20-FZK-Haus.ifc",
+    "tests/models/ara3d/IfcOpenHouse_IFC4.ifc",
+    "tests/models/buildingsmart/Building-Architecture.ifc",
+    "tests/models/buildingsmart/Building-Structural.ifc",
+    "tests/models/buildingsmart/wall-with-opening-and-window.ifc",
+    "tests/models/buildingsmart/Infra-Road.ifc",
+    "tests/models/buildingsmart/Infra-Bridge.ifc",
+    "tests/models/modelling/saved-building.ifc",
+    "tests/models/various/issue-604-door.ifc",
+    "tests/models/ara3d/duplex.ifc",
+    "tests/models/buildingsmart/annex_e/basic-geometric-shape/extruded-solid.ifc",
+    "tests/models/buildingsmart/annex_e/tessellated-shape/polygonal-face-tessellation.ifc",
+    "tests/models/ifcopenshell/generated_structural_coverage_ifc4x3.ifc",
+    "apps/viewer/public/samples/hello-wall.ifc",
+    "apps/viewer/public/samples/building-architecture-rev-b.ifc"
+  ]
+}

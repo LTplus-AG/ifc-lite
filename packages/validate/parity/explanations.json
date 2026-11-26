@@ -1,0 +1,15 @@
+{
+  "description": "Known disagreements with the oracle, each with the reason our finding (FP) or the oracle's (FN) stands. A row only annotates the report; it never hides a finding.",
+  "explanations": [
+    {
+      "rule": "derived-in-subtype",
+      "kind": "fp",
+      "reason": "ISO 10303-21 requires `*` in a slot a subtype redeclares as DERIVE (IfcGeometricRepresentationSubContext.CoordinateSpaceDimension). IfcOpenShell does not report a value written there; the corpus file subcontext-explicit-derived.ifc shows it."
+    },
+    {
+      "rule": "global:ifcrepresentationcontextsamewcs",
+      "kind": "fp",
+      "reason": "The rule tests `WorldCoordinateSystem :<>: ...`, instance inequality (ISO 10303-11 12.2.2). IfcOpenShell compiles it to `!=` under compare_instances_by_value, so two distinct but equal-valued placements skip the precision check. We keep instance semantics: the two contexts carry precisions $ and 1E-5."
+    }
+  ]
+}

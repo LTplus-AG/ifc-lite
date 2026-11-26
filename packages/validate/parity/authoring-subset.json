@@ -1,0 +1,21 @@
+{
+  "description": "Entities a building-authoring tool writes. Coverage counts the WHERE rules of these entities and their supertypes, the type WHERE rules of the defined types their attributes use, and the global rules.",
+  "entities": [
+    "IfcProject", "IfcSite", "IfcBuilding", "IfcBuildingStorey", "IfcSpace",
+    "IfcWall", "IfcWallStandardCase", "IfcSlab", "IfcDoor", "IfcWindow", "IfcOpeningElement", "IfcGrid", "IfcGridAxis",
+    "IfcWallType", "IfcSlabType", "IfcDoorType", "IfcWindowType",
+    "IfcLocalPlacement", "IfcGridPlacement", "IfcAxis2Placement2D", "IfcAxis2Placement3D", "IfcCartesianPoint", "IfcDirection",
+    "IfcGeometricRepresentationContext", "IfcGeometricRepresentationSubContext", "IfcShapeRepresentation", "IfcProductDefinitionShape",
+    "IfcExtrudedAreaSolid", "IfcRectangleProfileDef", "IfcArbitraryClosedProfileDef", "IfcArbitraryProfileDefWithVoids",
+    "IfcPolyline", "IfcIndexedPolyCurve", "IfcCartesianPointList2D", "IfcCartesianPointList3D", "IfcTriangulatedFaceSet",
+    "IfcBooleanClippingResult", "IfcHalfSpaceSolid", "IfcPolygonalBoundedHalfSpace", "IfcPlane", "IfcMappedItem", "IfcRepresentationMap",
+    "IfcCartesianTransformationOperator3D",
+    "IfcRelAggregates", "IfcRelContainedInSpatialStructure", "IfcRelVoidsElement", "IfcRelFillsElement",
+    "IfcRelDefinesByProperties", "IfcRelDefinesByType", "IfcRelAssociatesMaterial",
+    "IfcPropertySet", "IfcPropertySingleValue", "IfcPropertyEnumeratedValue", "IfcElementQuantity",
+    "IfcQuantityLength", "IfcQuantityArea", "IfcQuantityVolume", "IfcQuantityCount",
+    "IfcMaterial", "IfcMaterialLayer", "IfcMaterialLayerSet", "IfcMaterialLayerSetUsage",
+    "IfcOwnerHistory", "IfcPerson", "IfcOrganization", "IfcPersonAndOrganization", "IfcApplication",
+    "IfcSIUnit", "IfcUnitAssignment", "IfcConversionBasedUnit", "IfcMeasureWithUnit"
+  ]
+}

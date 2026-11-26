@@ -36,8 +36,9 @@
     "build": "pnpm exec tsc",
     "typecheck": "node ../../scripts/typecheck-tests.mjs",
     "dev": "pnpm exec tsc --watch",
-    "test": "vitest run",
-    "generate": "node ../codegen/dist/cli.js ../codegen/schemas/IFC2X3_TC1.exp --validator-runtime ../../runtime/index.js --validators src/generated/ifc2x3 && node ../codegen/dist/cli.js ../codegen/schemas/IFC4_ADD2_TC1.exp --validator-runtime ../../runtime/index.js --validators src/generated/ifc4 && node ../codegen/dist/cli.js ../codegen/schemas/IFC4X3.exp --validator-runtime ../../runtime/index.js --validators src/generated/ifc4x3"
+    "test": "vitest run && tsx parity/run-parity.ts --check",
+    "generate": "node ../codegen/dist/cli.js ../codegen/schemas/IFC2X3_TC1.exp --validator-runtime ../../runtime/index.js --validators src/generated/ifc2x3 && node ../codegen/dist/cli.js ../codegen/schemas/IFC4_ADD2_TC1.exp --validator-runtime ../../runtime/index.js --validators src/generated/ifc4 && node ../codegen/dist/cli.js ../codegen/schemas/IFC4X3.exp --validator-runtime ../../runtime/index.js --validators src/generated/ifc4x3",
+    "parity": "tsx parity/run-parity.ts"
   },
   "dependencies": {
     "@ifc-lite/encoding": "workspace:^",

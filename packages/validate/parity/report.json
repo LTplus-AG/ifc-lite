@@ -1,0 +1,3711 @@
+{
+ "generatedAt": "2026-11-26",
+ "oracle": {
+  "engine": "ifcopenshell.validate (express_rules=True)",
+  "version": "0.9.0.post1"
+ },
+ "coverage": [
+  {
+   "schema": "IFC4_ADD2_TC1",
+   "scope": "all",
+   "entityWhere": {
+    "total": 652,
+    "compiled": 652
+   },
+   "typeWhere": {
+    "total": 25,
+    "compiled": 25
+   },
+   "global": {
+    "total": 2,
+    "compiled": 2
+   },
+   "compiledPercent": 100,
+   "unsupported": []
+  },
+  {
+   "schema": "IFC4_ADD2_TC1",
+   "scope": "authoring",
+   "entityWhere": {
+    "total": 95,
+    "compiled": 95
+   },
+   "typeWhere": {
+    "total": 13,
+    "compiled": 13
+   },
+   "global": {
+    "total": 2,
+    "compiled": 2
+   },
+   "compiledPercent": 100,
+   "unsupported": []
+  },
+  {
+   "schema": "IFC4X3_DEV_923b0514",
+   "scope": "all",
+   "entityWhere": {
+    "total": 752,
+    "compiled": 752
+   },
+   "typeWhere": {
+    "total": 25,
+    "compiled": 25
+   },
+   "global": {
+    "total": 2,
+    "compiled": 2
+   },
+   "compiledPercent": 100,
+   "unsupported": []
+  },
+  {
+   "schema": "IFC4X3_DEV_923b0514",
+   "scope": "authoring",
+   "entityWhere": {
+    "total": 101,
+    "compiled": 101
+   },
+   "typeWhere": {
+    "total": 13,
+    "compiled": 13
+   },
+   "global": {
+    "total": 2,
+    "compiled": 2
+   },
+   "compiledPercent": 100,
+   "unsupported": []
+  },
+  {
+   "schema": "IFC2X3",
+   "scope": "all",
+   "entityWhere": {
+    "total": 339,
+    "compiled": 339
+   },
+   "typeWhere": {
+    "total": 24,
+    "compiled": 24
+   },
+   "global": {
+    "total": 2,
+    "compiled": 2
+   },
+   "compiledPercent": 100,
+   "unsupported": []
+  }
+ ],
+ "totals": {
+  "files": 131,
+  "tp": 313,
+  "fp": 3,
+  "fn": 0,
+  "craftedFn": 0
+ },
+ "rules": {
+  "crafted": [
+   {
+    "rule": "derived-in-subtype",
+    "tp": 0,
+    "fp": 2,
+    "fn": 0,
+    "tnFiles": 114,
+    "explained": "FP: ISO 10303-21 requires `*` in a slot a subtype redeclares as DERIVE (IfcGeometricRepresentationSubContext.CoordinateSpaceDimension). IfcOpenShell does not report a value written there; the corpus file subcontext-explicit-derived.ifc shows it."
+   },
+   {
+    "rule": "abstract",
+    "tp": 4,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 112
+   },
+   {
+    "rule": "attribute-count",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 114
+   },
+   {
+    "rule": "global:ifcsingleprojectinstance",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 114
+   },
+   {
+    "rule": "guid-format",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 114
+   },
+   {
+    "rule": "header:file_name.author",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 114
+   },
+   {
+    "rule": "ifcarbitraryclosedprofiledef.wr1",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 114
+   },
+   {
+    "rule": "ifcaxis2placement2d.locationis2d",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 114
+   },
+   {
+    "rule": "ifcaxis2placement3d.axisandrefdirprovision",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 114
+   },
+   {
+    "rule": "ifcaxis2placement3d.axistorefdirposition",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 114
+   },
+   {
+    "rule": "ifcaxis2placement3d.locationis3d",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 114
+   },
+   {
+    "rule": "ifccartesianpoint.cp2dor3d",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 114
+   },
+   {
+    "rule": "ifcdirection.magnitudegreaterzero",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 114
+   },
+   {
+    "rule": "ifcdoor.correctstyleassigned",
+    "tp": 1,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 115
+   },
+   {
+    "rule": "ifcdoor.correcttypeassigned",
+    "tp": 1,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 115
+   },
+   {
+    "rule": "ifcextrudedareasolid.validextrusiondirection",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 114
+   },
+   {
+    "rule": "ifcgeometricrepresentationcontext.north2d",
+    "tp": 4,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 114
+   },
+   {
+    "rule": "ifcgeometricrepresentationsubcontext.usertargetprovided",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 114
+   },
+   {
+    "rule": "ifcgrid.hasplacement",
+    "tp": 1,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 115
+   },
+   {
+    "rule": "ifcgridaxis.wr1",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 114
+   },
+   {
+    "rule": "ifclocalplacement.wr21",
+    "tp": 4,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 112
+   },
+   {
+    "rule": "ifcmateriallayer.normalizedpriority",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 114
+   },
+   {
+    "rule": "ifcnamedunit.wr1",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 114
+   },
+   {
+    "rule": "ifcobject.uniquepropertysetnames",
+    "tp": 4,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 112
+   },
+   {
+    "rule": "ifcownerhistory.correctchangeaction",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 114
+   },
+   {
+    "rule": "ifcperson.identifiableperson",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 114
+   },
+   {
+    "rule": "ifcpolyline.samedim",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 114
+   },
+   {
+    "rule": "ifcpositioningelement.hasplacement",
+    "tp": 1,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 115
+   },
+   {
+    "rule": "ifcpositivelengthmeasure.wr1",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 114
+   },
+   {
+    "rule": "ifcproject.correctcontext",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 114
+   },
+   {
+    "rule": "ifcproject.hasname",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 114
+   },
+   {
+    "rule": "ifcpropertyset.existsname",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 114
+   },
+   {
+    "rule": "ifcpropertyset.uniquepropertynames",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 114
+   },
+   {
+    "rule": "ifcquantitylength.wr22",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 114
+   },
+   {
+    "rule": "ifcrelaggregates.noselfreference",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 114
+   },
+   {
+    "rule": "ifcrelcontainedinspatialstructure.wr31",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 114
+   },
+   {
+    "rule": "ifcreldefinesbyproperties.norelatedtypeobject",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 114
+   },
+   {
+    "rule": "ifcshapemodel.wr11",
+    "tp": 4,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 114
+   },
+   {
+    "rule": "ifcshaperepresentation.correctcontext",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 114
+   },
+   {
+    "rule": "ifcshaperepresentation.correctitemsfortype",
+    "tp": 4,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 112
+   },
+   {
+    "rule": "ifcshaperepresentation.hasrepresentationtype",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 114
+   },
+   {
+    "rule": "ifcslab.correctpredefinedtype",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 114
+   },
+   {
+    "rule": "ifcspace.correctpredefinedtype",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 114
+   },
+   {
+    "rule": "ifcspatialstructureelement.wr41",
+    "tp": 4,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 112
+   },
+   {
+    "rule": "ifctypeobject.namerequired",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 114
+   },
+   {
+    "rule": "ifcunitassignment.wr01",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 114
+   },
+   {
+    "rule": "ifcwall.correctpredefinedtype",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 114
+   },
+   {
+    "rule": "ifcwall.correcttypeassigned",
+    "tp": 4,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 114
+   },
+   {
+    "rule": "ifcwallstandardcase.hasmateriallayersetusage",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 114
+   },
+   {
+    "rule": "ifcwindow.correctstyleassigned",
+    "tp": 1,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 115
+   },
+   {
+    "rule": "ifcwindow.correcttypeassigned",
+    "tp": 1,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 115
+   },
+   {
+    "rule": "invalid-type",
+    "tp": 12,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 104
+   },
+   {
+    "rule": "inverse-cardinality",
+    "tp": 10,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 106
+   },
+   {
+    "rule": "not-optional",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 114
+   },
+   {
+    "rule": "unique:ifcroot.ur1",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 114
+   }
+  ],
+  "all": [
+   {
+    "rule": "derived-in-subtype",
+    "tp": 0,
+    "fp": 2,
+    "fn": 0,
+    "tnFiles": 129,
+    "explained": "FP: ISO 10303-21 requires `*` in a slot a subtype redeclares as DERIVE (IfcGeometricRepresentationSubContext.CoordinateSpaceDimension). IfcOpenShell does not report a value written there; the corpus file subcontext-explicit-derived.ifc shows it."
+   },
+   {
+    "rule": "global:ifcrepresentationcontextsamewcs",
+    "tp": 0,
+    "fp": 1,
+    "fn": 0,
+    "tnFiles": 130,
+    "explained": "FP: The rule tests `WorldCoordinateSystem :<>: ...`, instance inequality (ISO 10303-11 12.2.2). IfcOpenShell compiles it to `!=` under compare_instances_by_value, so two distinct but equal-valued placements skip the precision check. We keep instance semantics: the two contexts carry precisions $ and 1E-5."
+   },
+   {
+    "rule": "abstract",
+    "tp": 4,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 127
+   },
+   {
+    "rule": "attribute-count",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 129
+   },
+   {
+    "rule": "global:ifcsingleprojectinstance",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 129
+   },
+   {
+    "rule": "guid-format",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 129
+   },
+   {
+    "rule": "header:file_name.author",
+    "tp": 3,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 128
+   },
+   {
+    "rule": "header:file_name.organization",
+    "tp": 1,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 130
+   },
+   {
+    "rule": "ifcarbitraryclosedprofiledef.wr1",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 129
+   },
+   {
+    "rule": "ifcarbitraryopenprofiledef.wr12",
+    "tp": 4,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 130
+   },
+   {
+    "rule": "ifcaxis2placement2d.locationis2d",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 129
+   },
+   {
+    "rule": "ifcaxis2placement3d.axisandrefdirprovision",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 129
+   },
+   {
+    "rule": "ifcaxis2placement3d.axistorefdirposition",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 129
+   },
+   {
+    "rule": "ifcaxis2placement3d.locationis3d",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 129
+   },
+   {
+    "rule": "ifccartesianpoint.cp2dor3d",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 129
+   },
+   {
+    "rule": "ifcdirection.magnitudegreaterzero",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 129
+   },
+   {
+    "rule": "ifcdoor.correctstyleassigned",
+    "tp": 1,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 130
+   },
+   {
+    "rule": "ifcdoor.correcttypeassigned",
+    "tp": 1,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 130
+   },
+   {
+    "rule": "ifcextrudedareasolid.validextrusiondirection",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 129
+   },
+   {
+    "rule": "ifcgeometricrepresentationcontext.north2d",
+    "tp": 4,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 129
+   },
+   {
+    "rule": "ifcgeometricrepresentationsubcontext.usertargetprovided",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 129
+   },
+   {
+    "rule": "ifcgrid.hasplacement",
+    "tp": 1,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 130
+   },
+   {
+    "rule": "ifcgridaxis.wr1",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 129
+   },
+   {
+    "rule": "ifclocalplacement.wr21",
+    "tp": 4,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 127
+   },
+   {
+    "rule": "ifcmateriallayer.normalizedpriority",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 129
+   },
+   {
+    "rule": "ifcnamedunit.wr1",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 129
+   },
+   {
+    "rule": "ifcobject.uniquepropertysetnames",
+    "tp": 4,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 127
+   },
+   {
+    "rule": "ifcownerhistory.correctchangeaction",
+    "tp": 3,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 128
+   },
+   {
+    "rule": "ifcperson.identifiableperson",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 129
+   },
+   {
+    "rule": "ifcpolyline.samedim",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 129
+   },
+   {
+    "rule": "ifcpositioningelement.hasplacement",
+    "tp": 1,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 130
+   },
+   {
+    "rule": "ifcpositivelengthmeasure.wr1",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 129
+   },
+   {
+    "rule": "ifcpositiveratiomeasure.wr1",
+    "tp": 8,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 130
+   },
+   {
+    "rule": "ifcproject.correctcontext",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 129
+   },
+   {
+    "rule": "ifcproject.hasname",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 129
+   },
+   {
+    "rule": "ifcpropertyset.existsname",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 129
+   },
+   {
+    "rule": "ifcpropertyset.uniquepropertynames",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 129
+   },
+   {
+    "rule": "ifcquantitylength.wr22",
+    "tp": 11,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 128
+   },
+   {
+    "rule": "ifcrelaggregates.noselfreference",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 129
+   },
+   {
+    "rule": "ifcrelcontainedinspatialstructure.wr31",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 129
+   },
+   {
+    "rule": "ifcreldefinesbyproperties.norelatedtypeobject",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 129
+   },
+   {
+    "rule": "ifcrelspaceboundary.correctphysorvirt",
+    "tp": 5,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 130
+   },
+   {
+    "rule": "ifcshapemodel.wr11",
+    "tp": 144,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 128
+   },
+   {
+    "rule": "ifcshaperepresentation.correctcontext",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 129
+   },
+   {
+    "rule": "ifcshaperepresentation.correctitemsfortype",
+    "tp": 4,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 127
+   },
+   {
+    "rule": "ifcshaperepresentation.hasrepresentationtype",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 129
+   },
+   {
+    "rule": "ifcslab.correctpredefinedtype",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 129
+   },
+   {
+    "rule": "ifcspace.correctpredefinedtype",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 129
+   },
+   {
+    "rule": "ifcspatialstructureelement.wr41",
+    "tp": 4,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 127
+   },
+   {
+    "rule": "ifctypeobject.namerequired",
+    "tp": 4,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 128
+   },
+   {
+    "rule": "ifcunitassignment.wr01",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 129
+   },
+   {
+    "rule": "ifcwall.correctpredefinedtype",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 129
+   },
+   {
+    "rule": "ifcwall.correcttypeassigned",
+    "tp": 4,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 129
+   },
+   {
+    "rule": "ifcwallstandardcase.hasmateriallayersetusage",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 129
+   },
+   {
+    "rule": "ifcwindow.correctstyleassigned",
+    "tp": 1,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 130
+   },
+   {
+    "rule": "ifcwindow.correcttypeassigned",
+    "tp": 1,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 130
+   },
+   {
+    "rule": "invalid-type",
+    "tp": 12,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 119
+   },
+   {
+    "rule": "inverse-cardinality",
+    "tp": 11,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 120
+   },
+   {
+    "rule": "not-optional",
+    "tp": 7,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 128
+   },
+   {
+    "rule": "unique:ifcroot.ur1",
+    "tp": 2,
+    "fp": 0,
+    "fn": 0,
+    "tnFiles": 129
+   }
+  ]
+ },
+ "targeted": [
+  {
+   "file": "broken/wall-userdefined-without-objecttype.ifc",
+   "targets": "IfcWall.CorrectPredefinedType",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "broken/door-typed-by-wall-type.ifc",
+   "targets": "IfcDoor.CorrectStyleAssigned",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "broken/window-typed-by-wall-type.ifc",
+   "targets": "IfcWindow.CorrectStyleAssigned",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "broken/slab-userdefined-without-objecttype.ifc",
+   "targets": "IfcSlab.CorrectPredefinedType",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "broken/space-userdefined-without-objecttype.ifc",
+   "targets": "IfcSpace.CorrectPredefinedType",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "broken/wall-typed-by-slab-type.ifc",
+   "targets": "IfcWall.CorrectTypeAssigned",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "broken/walltype-without-name.ifc",
+   "targets": "IfcTypeObject.NameRequired",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "broken/storey-not-aggregated.ifc",
+   "targets": "IfcSpatialStructureElement.WR41",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "broken/aggregates-self-reference.ifc",
+   "targets": "IfcRelAggregates.NoSelfReference",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "broken/storey-contained-in-storey.ifc",
+   "targets": "IfcRelContainedInSpatialStructure.WR31",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "broken/project-without-name.ifc",
+   "targets": "IfcProject.HasName",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "broken/project-subcontext.ifc",
+   "targets": "IfcProject.CorrectContext",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "broken/two-projects.ifc",
+   "targets": "global:IfcSingleProjectInstance",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "broken/axis-without-refdirection.ifc",
+   "targets": "IfcAxis2Placement3D.AxisAndRefDirProvision",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "broken/placement-location-2d.ifc",
+   "targets": "IfcAxis2Placement3D.LocationIs3D",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "broken/placement-parallel-axes.ifc",
+   "targets": "IfcAxis2Placement3D.AxisToRefDirPosition",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "broken/direction-zero.ifc",
+   "targets": "IfcDirection.MagnitudeGreaterZero",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "broken/point-one-coordinate.ifc",
+   "targets": "IfcCartesianPoint.CP2Dor3D",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "broken/extrusion-in-profile-plane.ifc",
+   "targets": "IfcExtrudedAreaSolid.ValidExtrusionDirection",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "broken/rectangle-zero-width.ifc",
+   "targets": "IfcPositiveLengthMeasure.WR1",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "broken/shape-without-type.ifc",
+   "targets": "IfcShapeRepresentation.HasRepresentationType",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "broken/shape-wrong-type.ifc",
+   "targets": "IfcShapeRepresentation.CorrectItemsForType",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "broken/shape-in-non-geometric-context.ifc",
+   "targets": "IfcShapeRepresentation.CorrectContext",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "broken/shape-shared-by-two-products.ifc",
+   "targets": "IfcShapeModel.WR11",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "broken/local-placement-3d-under-2d.ifc",
+   "targets": "IfcLocalPlacement.WR21",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "broken/subcontext-userdefined-view.ifc",
+   "targets": "IfcGeometricRepresentationSubContext.UserTargetProvided",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "broken/subcontext-explicit-derived.ifc",
+   "targets": "derived-in-subtype",
+   "ours": true,
+   "oracle": false
+  },
+  {
+   "file": "broken/pset-without-name.ifc",
+   "targets": "IfcPropertySet.ExistsName",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "broken/pset-duplicate-property-names.ifc",
+   "targets": "IfcPropertySet.UniquePropertyNames",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "broken/two-psets-same-name.ifc",
+   "targets": "IfcObject.UniquePropertySetNames",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "broken/quantity-negative-length.ifc",
+   "targets": "IfcQuantityLength.WR22",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "broken/unit-wrong-dimensions.ifc",
+   "targets": "IfcNamedUnit.WR1",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "broken/unit-assignment-duplicate-type.ifc",
+   "targets": "IfcUnitAssignment.WR01",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "broken/ownerhistory-added-without-date.ifc",
+   "targets": "IfcOwnerHistory.CorrectChangeAction",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "broken/person-without-name.ifc",
+   "targets": "IfcPerson.IdentifiablePerson",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "broken/grid-without-placement.ifc",
+   "targets": "IfcGrid.HasPlacement",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "broken/grid-axis-3d-curve.ifc",
+   "targets": "IfcGridAxis.WR1",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "broken/polyline-mixed-dimensions.ifc",
+   "targets": "IfcPolyline.SameDim",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "broken/profile-outer-curve-3d.ifc",
+   "targets": "IfcArbitraryClosedProfileDef.WR1",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "broken/material-priority-out-of-range.ifc",
+   "targets": "IfcMaterialLayer.NormalizedPriority",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "broken/wallstandardcase-without-layer-usage.ifc",
+   "targets": "IfcWallStandardCase.HasMaterialLayerSetUsage",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "broken/opening-voids-nothing.ifc",
+   "targets": "inverse-cardinality",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "broken/door-fills-two-openings.ifc",
+   "targets": "inverse-cardinality",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "broken/wall-contained-twice.ifc",
+   "targets": "inverse-cardinality",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "broken/defines-by-properties-on-type.ifc",
+   "targets": "IfcRelDefinesByProperties.NoRelatedTypeObject",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "broken/duplicate-globalid.ifc",
+   "targets": "IfcRoot.UR1",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "broken/globalid-invalid-characters.ifc",
+   "targets": "guid-format",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "broken/wall-missing-globalid.ifc",
+   "targets": "not-optional",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "broken/wall-name-integer.ifc",
+   "targets": "invalid-type",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "broken/wall-placement-wrong-entity.ifc",
+   "targets": "invalid-type",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "broken/point-integer-coordinates.ifc",
+   "targets": "invalid-type",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "broken/wall-enum-unknown-item.ifc",
+   "targets": "invalid-type",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "broken/wall-attribute-count.ifc",
+   "targets": "attribute-count",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "broken/abstract-entity-instance.ifc",
+   "targets": "abstract",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "broken/select-untyped-value.ifc",
+   "targets": "invalid-type",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "broken/typed-value-in-plain-slot.ifc",
+   "targets": "invalid-type",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "broken/header-author-not-list.ifc",
+   "targets": "FILE_NAME.author",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "ifc4x3/broken/wall-userdefined-without-objecttype.ifc",
+   "targets": "IfcWall.CorrectPredefinedType",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "ifc4x3/broken/slab-userdefined-without-objecttype.ifc",
+   "targets": "IfcSlab.CorrectPredefinedType",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "ifc4x3/broken/space-userdefined-without-objecttype.ifc",
+   "targets": "IfcSpace.CorrectPredefinedType",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "ifc4x3/broken/wall-typed-by-slab-type.ifc",
+   "targets": "IfcWall.CorrectTypeAssigned",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "ifc4x3/broken/walltype-without-name.ifc",
+   "targets": "IfcTypeObject.NameRequired",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "ifc4x3/broken/storey-not-aggregated.ifc",
+   "targets": "IfcSpatialStructureElement.WR41",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "ifc4x3/broken/aggregates-self-reference.ifc",
+   "targets": "IfcRelAggregates.NoSelfReference",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "ifc4x3/broken/storey-contained-in-storey.ifc",
+   "targets": "IfcRelContainedInSpatialStructure.WR31",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "ifc4x3/broken/project-without-name.ifc",
+   "targets": "IfcProject.HasName",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "ifc4x3/broken/project-subcontext.ifc",
+   "targets": "IfcProject.CorrectContext",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "ifc4x3/broken/two-projects.ifc",
+   "targets": "global:IfcSingleProjectInstance",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "ifc4x3/broken/axis-without-refdirection.ifc",
+   "targets": "IfcAxis2Placement3D.AxisAndRefDirProvision",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "ifc4x3/broken/placement-location-2d.ifc",
+   "targets": "IfcAxis2Placement3D.LocationIs3D",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "ifc4x3/broken/placement-parallel-axes.ifc",
+   "targets": "IfcAxis2Placement3D.AxisToRefDirPosition",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "ifc4x3/broken/direction-zero.ifc",
+   "targets": "IfcDirection.MagnitudeGreaterZero",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "ifc4x3/broken/point-one-coordinate.ifc",
+   "targets": "IfcCartesianPoint.CP2Dor3D",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "ifc4x3/broken/extrusion-in-profile-plane.ifc",
+   "targets": "IfcExtrudedAreaSolid.ValidExtrusionDirection",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "ifc4x3/broken/rectangle-zero-width.ifc",
+   "targets": "IfcPositiveLengthMeasure.WR1",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "ifc4x3/broken/shape-without-type.ifc",
+   "targets": "IfcShapeRepresentation.HasRepresentationType",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "ifc4x3/broken/shape-wrong-type.ifc",
+   "targets": "IfcShapeRepresentation.CorrectItemsForType",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "ifc4x3/broken/shape-in-non-geometric-context.ifc",
+   "targets": "IfcShapeRepresentation.CorrectContext",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "ifc4x3/broken/shape-shared-by-two-products.ifc",
+   "targets": "IfcShapeModel.WR11",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "ifc4x3/broken/local-placement-3d-under-2d.ifc",
+   "targets": "IfcLocalPlacement.WR21",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "ifc4x3/broken/subcontext-userdefined-view.ifc",
+   "targets": "IfcGeometricRepresentationSubContext.UserTargetProvided",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "ifc4x3/broken/subcontext-explicit-derived.ifc",
+   "targets": "derived-in-subtype",
+   "ours": true,
+   "oracle": false
+  },
+  {
+   "file": "ifc4x3/broken/pset-without-name.ifc",
+   "targets": "IfcPropertySet.ExistsName",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "ifc4x3/broken/pset-duplicate-property-names.ifc",
+   "targets": "IfcPropertySet.UniquePropertyNames",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "ifc4x3/broken/two-psets-same-name.ifc",
+   "targets": "IfcObject.UniquePropertySetNames",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "ifc4x3/broken/quantity-negative-length.ifc",
+   "targets": "IfcQuantityLength.WR22",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "ifc4x3/broken/unit-wrong-dimensions.ifc",
+   "targets": "IfcNamedUnit.WR1",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "ifc4x3/broken/unit-assignment-duplicate-type.ifc",
+   "targets": "IfcUnitAssignment.WR01",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "ifc4x3/broken/ownerhistory-added-without-date.ifc",
+   "targets": "IfcOwnerHistory.CorrectChangeAction",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "ifc4x3/broken/person-without-name.ifc",
+   "targets": "IfcPerson.IdentifiablePerson",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "ifc4x3/broken/grid-axis-3d-curve.ifc",
+   "targets": "IfcGridAxis.WR1",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "ifc4x3/broken/polyline-mixed-dimensions.ifc",
+   "targets": "IfcPolyline.SameDim",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "ifc4x3/broken/profile-outer-curve-3d.ifc",
+   "targets": "IfcArbitraryClosedProfileDef.WR1",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "ifc4x3/broken/material-priority-out-of-range.ifc",
+   "targets": "IfcMaterialLayer.NormalizedPriority",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "ifc4x3/broken/wallstandardcase-without-layer-usage.ifc",
+   "targets": "IfcWallStandardCase.HasMaterialLayerSetUsage",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "ifc4x3/broken/opening-voids-nothing.ifc",
+   "targets": "inverse-cardinality",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "ifc4x3/broken/door-fills-two-openings.ifc",
+   "targets": "inverse-cardinality",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "ifc4x3/broken/wall-contained-twice.ifc",
+   "targets": "inverse-cardinality",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "ifc4x3/broken/defines-by-properties-on-type.ifc",
+   "targets": "IfcRelDefinesByProperties.NoRelatedTypeObject",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "ifc4x3/broken/duplicate-globalid.ifc",
+   "targets": "IfcRoot.UR1",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "ifc4x3/broken/globalid-invalid-characters.ifc",
+   "targets": "guid-format",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "ifc4x3/broken/wall-missing-globalid.ifc",
+   "targets": "not-optional",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "ifc4x3/broken/wall-name-integer.ifc",
+   "targets": "invalid-type",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "ifc4x3/broken/wall-placement-wrong-entity.ifc",
+   "targets": "invalid-type",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "ifc4x3/broken/point-integer-coordinates.ifc",
+   "targets": "invalid-type",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "ifc4x3/broken/wall-enum-unknown-item.ifc",
+   "targets": "invalid-type",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "ifc4x3/broken/wall-attribute-count.ifc",
+   "targets": "attribute-count",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "ifc4x3/broken/abstract-entity-instance.ifc",
+   "targets": "abstract",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "ifc4x3/broken/select-untyped-value.ifc",
+   "targets": "invalid-type",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "ifc4x3/broken/typed-value-in-plain-slot.ifc",
+   "targets": "invalid-type",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "ifc4x3/broken/header-author-not-list.ifc",
+   "targets": "FILE_NAME.author",
+   "ours": true,
+   "oracle": true
+  }
+ ],
+ "files": [
+  {
+   "path": "packages/validate/parity/corpus/base-ifc4.ifc",
+   "kind": "crafted",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 0,
+   "oracle": 0,
+   "milliseconds": 136,
+   "tp": [],
+   "fp": [],
+   "fn": []
+  },
+  {
+   "path": "packages/validate/parity/corpus/ifc4x3/base.ifc",
+   "kind": "crafted",
+   "schema": "IFC4X3_DEV_923b0514",
+   "ours": 0,
+   "oracle": 0,
+   "milliseconds": 106,
+   "tp": [],
+   "fp": [],
+   "fn": []
+  },
+  {
+   "path": "packages/validate/parity/corpus/broken/wall-userdefined-without-objecttype.ifc",
+   "kind": "crafted",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 4,
+   "tp": [
+    "ifcwall.correctpredefinedtype|42"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcWall.CorrectPredefinedType"
+  },
+  {
+   "path": "packages/validate/parity/corpus/broken/door-typed-by-wall-type.ifc",
+   "kind": "crafted",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 5,
+   "tp": [
+    "ifcdoor.correctstyleassigned|62"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcDoor.CorrectStyleAssigned"
+  },
+  {
+   "path": "packages/validate/parity/corpus/broken/window-typed-by-wall-type.ifc",
+   "kind": "crafted",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 1,
+   "tp": [
+    "ifcwindow.correctstyleassigned|73"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcWindow.CorrectStyleAssigned"
+  },
+  {
+   "path": "packages/validate/parity/corpus/broken/slab-userdefined-without-objecttype.ifc",
+   "kind": "crafted",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 2,
+   "tp": [
+    "ifcslab.correctpredefinedtype|88"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcSlab.CorrectPredefinedType"
+  },
+  {
+   "path": "packages/validate/parity/corpus/broken/space-userdefined-without-objecttype.ifc",
+   "kind": "crafted",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 2,
+   "tp": [
+    "ifcspace.correctpredefinedtype|101"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcSpace.CorrectPredefinedType"
+  },
+  {
+   "path": "packages/validate/parity/corpus/broken/wall-typed-by-slab-type.ifc",
+   "kind": "crafted",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 2,
+   "oracle": 2,
+   "milliseconds": 1,
+   "tp": [
+    "ifcwall.correcttypeassigned|42",
+    "ifcwall.correcttypeassigned|60"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcWall.CorrectTypeAssigned"
+  },
+  {
+   "path": "packages/validate/parity/corpus/broken/walltype-without-name.ifc",
+   "kind": "crafted",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 1,
+   "tp": [
+    "ifctypeobject.namerequired|48"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcTypeObject.NameRequired"
+  },
+  {
+   "path": "packages/validate/parity/corpus/broken/storey-not-aggregated.ifc",
+   "kind": "crafted",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 3,
+   "tp": [
+    "ifcspatialstructureelement.wr41|26"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcSpatialStructureElement.WR41"
+  },
+  {
+   "path": "packages/validate/parity/corpus/broken/aggregates-self-reference.ifc",
+   "kind": "crafted",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 3,
+   "oracle": 3,
+   "milliseconds": 2,
+   "tp": [
+    "inverse-cardinality:decomposes|26",
+    "ifcspatialstructureelement.wr41|26",
+    "ifcrelaggregates.noselfreference|102"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcRelAggregates.NoSelfReference"
+  },
+  {
+   "path": "packages/validate/parity/corpus/broken/storey-contained-in-storey.ifc",
+   "kind": "crafted",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 2,
+   "tp": [
+    "ifcrelcontainedinspatialstructure.wr31|120"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcRelContainedInSpatialStructure.WR31"
+  },
+  {
+   "path": "packages/validate/parity/corpus/broken/project-without-name.ifc",
+   "kind": "crafted",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 5,
+   "tp": [
+    "ifcproject.hasname|20"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcProject.HasName"
+  },
+  {
+   "path": "packages/validate/parity/corpus/broken/project-subcontext.ifc",
+   "kind": "crafted",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 1,
+   "tp": [
+    "ifcproject.correctcontext|20"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcProject.CorrectContext"
+  },
+  {
+   "path": "packages/validate/parity/corpus/broken/two-projects.ifc",
+   "kind": "crafted",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 2,
+   "tp": [
+    "global:ifcsingleprojectinstance|"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "global:IfcSingleProjectInstance"
+  },
+  {
+   "path": "packages/validate/parity/corpus/broken/axis-without-refdirection.ifc",
+   "kind": "crafted",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 1,
+   "tp": [
+    "ifcaxis2placement3d.axisandrefdirprovision|14"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcAxis2Placement3D.AxisAndRefDirProvision"
+  },
+  {
+   "path": "packages/validate/parity/corpus/broken/placement-location-2d.ifc",
+   "kind": "crafted",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 2,
+   "oracle": 2,
+   "milliseconds": 1,
+   "tp": [
+    "ifclocalplacement.wr21|71",
+    "ifcaxis2placement3d.locationis3d|92"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcAxis2Placement3D.LocationIs3D"
+  },
+  {
+   "path": "packages/validate/parity/corpus/broken/placement-parallel-axes.ifc",
+   "kind": "crafted",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 3,
+   "oracle": 3,
+   "milliseconds": 2,
+   "tp": [
+    "ifcaxis2placement3d.axistorefdirposition|14",
+    "ifcgeometricrepresentationcontext.north2d|16",
+    "ifcgeometricrepresentationcontext.north2d|17"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcAxis2Placement3D.AxisToRefDirPosition"
+  },
+  {
+   "path": "packages/validate/parity/corpus/broken/direction-zero.ifc",
+   "kind": "crafted",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 1,
+   "tp": [
+    "ifcdirection.magnitudegreaterzero|32"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcDirection.MagnitudeGreaterZero"
+  },
+  {
+   "path": "packages/validate/parity/corpus/broken/point-one-coordinate.ifc",
+   "kind": "crafted",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 2,
+   "oracle": 2,
+   "milliseconds": 1,
+   "tp": [
+    "ifcaxis2placement2d.locationis2d|54",
+    "ifccartesianpoint.cp2dor3d|55"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcCartesianPoint.CP2Dor3D"
+  },
+  {
+   "path": "packages/validate/parity/corpus/broken/extrusion-in-profile-plane.ifc",
+   "kind": "crafted",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 1,
+   "tp": [
+    "ifcextrudedareasolid.validextrusiondirection|35"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcExtrudedAreaSolid.ValidExtrusionDirection"
+  },
+  {
+   "path": "packages/validate/parity/corpus/broken/rectangle-zero-width.ifc",
+   "kind": "crafted",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 2,
+   "tp": [
+    "ifcpositivelengthmeasure.wr1|34"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcPositiveLengthMeasure.WR1"
+  },
+  {
+   "path": "packages/validate/parity/corpus/broken/shape-without-type.ifc",
+   "kind": "crafted",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 2,
+   "oracle": 2,
+   "milliseconds": 1,
+   "tp": [
+    "ifcshaperepresentation.hasrepresentationtype|85",
+    "ifcshaperepresentation.correctitemsfortype|85"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcShapeRepresentation.HasRepresentationType"
+  },
+  {
+   "path": "packages/validate/parity/corpus/broken/shape-wrong-type.ifc",
+   "kind": "crafted",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 1,
+   "tp": [
+    "ifcshaperepresentation.correctitemsfortype|85"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcShapeRepresentation.CorrectItemsForType"
+  },
+  {
+   "path": "packages/validate/parity/corpus/broken/shape-in-non-geometric-context.ifc",
+   "kind": "crafted",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 2,
+   "oracle": 2,
+   "milliseconds": 1,
+   "tp": [
+    "abstract|138",
+    "ifcshaperepresentation.correctcontext|85"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcShapeRepresentation.CorrectContext"
+  },
+  {
+   "path": "packages/validate/parity/corpus/broken/shape-shared-by-two-products.ifc",
+   "kind": "crafted",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 2,
+   "oracle": 2,
+   "milliseconds": 1,
+   "tp": [
+    "ifcshapemodel.wr11|36",
+    "ifcshapemodel.wr11|95"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcShapeModel.WR11"
+  },
+  {
+   "path": "packages/validate/parity/corpus/broken/local-placement-3d-under-2d.ifc",
+   "kind": "crafted",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 2,
+   "tp": [
+    "ifclocalplacement.wr21|63"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcLocalPlacement.WR21"
+  },
+  {
+   "path": "packages/validate/parity/corpus/broken/subcontext-userdefined-view.ifc",
+   "kind": "crafted",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 4,
+   "tp": [
+    "ifcgeometricrepresentationsubcontext.usertargetprovided|16"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcGeometricRepresentationSubContext.UserTargetProvided"
+  },
+  {
+   "path": "packages/validate/parity/corpus/broken/subcontext-explicit-derived.ifc",
+   "kind": "crafted",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 1,
+   "oracle": 0,
+   "milliseconds": 1,
+   "tp": [],
+   "fp": [
+    "derived-in-subtype:coordinatespacedimension|17"
+   ],
+   "fn": [],
+   "targets": "derived-in-subtype"
+  },
+  {
+   "path": "packages/validate/parity/corpus/broken/pset-without-name.ifc",
+   "kind": "crafted",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 2,
+   "oracle": 2,
+   "milliseconds": 2,
+   "tp": [
+    "ifcobject.uniquepropertysetnames|42",
+    "ifcpropertyset.existsname|132"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcPropertySet.ExistsName"
+  },
+  {
+   "path": "packages/validate/parity/corpus/broken/pset-duplicate-property-names.ifc",
+   "kind": "crafted",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 2,
+   "tp": [
+    "ifcpropertyset.uniquepropertynames|132"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcPropertySet.UniquePropertyNames"
+  },
+  {
+   "path": "packages/validate/parity/corpus/broken/two-psets-same-name.ifc",
+   "kind": "crafted",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 1,
+   "tp": [
+    "ifcobject.uniquepropertysetnames|42"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcObject.UniquePropertySetNames"
+  },
+  {
+   "path": "packages/validate/parity/corpus/broken/quantity-negative-length.ifc",
+   "kind": "crafted",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 1,
+   "tp": [
+    "ifcquantitylength.wr22|134"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcQuantityLength.WR22"
+  },
+  {
+   "path": "packages/validate/parity/corpus/broken/unit-wrong-dimensions.ifc",
+   "kind": "crafted",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 1,
+   "tp": [
+    "ifcnamedunit.wr1|7"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcNamedUnit.WR1"
+  },
+  {
+   "path": "packages/validate/parity/corpus/broken/unit-assignment-duplicate-type.ifc",
+   "kind": "crafted",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 1,
+   "tp": [
+    "ifcunitassignment.wr01|10"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcUnitAssignment.WR01"
+  },
+  {
+   "path": "packages/validate/parity/corpus/broken/ownerhistory-added-without-date.ifc",
+   "kind": "crafted",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 1,
+   "tp": [
+    "ifcownerhistory.correctchangeaction|5"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcOwnerHistory.CorrectChangeAction"
+  },
+  {
+   "path": "packages/validate/parity/corpus/broken/person-without-name.ifc",
+   "kind": "crafted",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 2,
+   "tp": [
+    "ifcperson.identifiableperson|1"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcPerson.IdentifiablePerson"
+  },
+  {
+   "path": "packages/validate/parity/corpus/broken/grid-without-placement.ifc",
+   "kind": "crafted",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 1,
+   "tp": [
+    "ifcgrid.hasplacement|119"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcGrid.HasPlacement"
+  },
+  {
+   "path": "packages/validate/parity/corpus/broken/grid-axis-3d-curve.ifc",
+   "kind": "crafted",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 1,
+   "tp": [
+    "ifcgridaxis.wr1|113"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcGridAxis.WR1"
+  },
+  {
+   "path": "packages/validate/parity/corpus/broken/polyline-mixed-dimensions.ifc",
+   "kind": "crafted",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 1,
+   "tp": [
+    "ifcpolyline.samedim|39"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcPolyline.SameDim"
+  },
+  {
+   "path": "packages/validate/parity/corpus/broken/profile-outer-curve-3d.ifc",
+   "kind": "crafted",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 1,
+   "tp": [
+    "ifcarbitraryclosedprofiledef.wr1|83"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcArbitraryClosedProfileDef.WR1"
+  },
+  {
+   "path": "packages/validate/parity/corpus/broken/material-priority-out-of-range.ifc",
+   "kind": "crafted",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 2,
+   "tp": [
+    "ifcmateriallayer.normalizedpriority|44"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcMaterialLayer.NormalizedPriority"
+  },
+  {
+   "path": "packages/validate/parity/corpus/broken/wallstandardcase-without-layer-usage.ifc",
+   "kind": "crafted",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 2,
+   "oracle": 2,
+   "milliseconds": 2,
+   "tp": [
+    "inverse-cardinality:associatedto|46",
+    "ifcwallstandardcase.hasmateriallayersetusage|60"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcWallStandardCase.HasMaterialLayerSetUsage"
+  },
+  {
+   "path": "packages/validate/parity/corpus/broken/opening-voids-nothing.ifc",
+   "kind": "crafted",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 1,
+   "tp": [
+    "inverse-cardinality:voidselements|70"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "inverse-cardinality"
+  },
+  {
+   "path": "packages/validate/parity/corpus/broken/door-fills-two-openings.ifc",
+   "kind": "crafted",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 1,
+   "tp": [
+    "inverse-cardinality:fillsvoids|62"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "inverse-cardinality"
+  },
+  {
+   "path": "packages/validate/parity/corpus/broken/wall-contained-twice.ifc",
+   "kind": "crafted",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 5,
+   "tp": [
+    "inverse-cardinality:containedinstructure|42"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "inverse-cardinality"
+  },
+  {
+   "path": "packages/validate/parity/corpus/broken/defines-by-properties-on-type.ifc",
+   "kind": "crafted",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 2,
+   "tp": [
+    "ifcreldefinesbyproperties.norelatedtypeobject|133"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcRelDefinesByProperties.NoRelatedTypeObject"
+  },
+  {
+   "path": "packages/validate/parity/corpus/broken/duplicate-globalid.ifc",
+   "kind": "crafted",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 2,
+   "tp": [
+    "unique:ifcroot.ur1|60"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcRoot.UR1"
+  },
+  {
+   "path": "packages/validate/parity/corpus/broken/globalid-invalid-characters.ifc",
+   "kind": "crafted",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 1,
+   "tp": [
+    "guid-format|42"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "guid-format"
+  },
+  {
+   "path": "packages/validate/parity/corpus/broken/wall-missing-globalid.ifc",
+   "kind": "crafted",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 2,
+   "tp": [
+    "not-optional:globalid|42"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "not-optional"
+  },
+  {
+   "path": "packages/validate/parity/corpus/broken/wall-name-integer.ifc",
+   "kind": "crafted",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 1,
+   "tp": [
+    "invalid-type:name|42"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "invalid-type"
+  },
+  {
+   "path": "packages/validate/parity/corpus/broken/wall-placement-wrong-entity.ifc",
+   "kind": "crafted",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 2,
+   "tp": [
+    "invalid-type:objectplacement|42"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "invalid-type"
+  },
+  {
+   "path": "packages/validate/parity/corpus/broken/point-integer-coordinates.ifc",
+   "kind": "crafted",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 5,
+   "tp": [
+    "invalid-type:coordinates|52"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "invalid-type"
+  },
+  {
+   "path": "packages/validate/parity/corpus/broken/wall-enum-unknown-item.ifc",
+   "kind": "crafted",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 2,
+   "tp": [
+    "invalid-type:predefinedtype|42"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "invalid-type"
+  },
+  {
+   "path": "packages/validate/parity/corpus/broken/wall-attribute-count.ifc",
+   "kind": "crafted",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 1,
+   "tp": [
+    "attribute-count|42"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "attribute-count"
+  },
+  {
+   "path": "packages/validate/parity/corpus/broken/abstract-entity-instance.ifc",
+   "kind": "crafted",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 1,
+   "tp": [
+    "abstract|138"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "abstract"
+  },
+  {
+   "path": "packages/validate/parity/corpus/broken/select-untyped-value.ifc",
+   "kind": "crafted",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 3,
+   "tp": [
+    "invalid-type:nominalvalue|130"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "invalid-type"
+  },
+  {
+   "path": "packages/validate/parity/corpus/broken/typed-value-in-plain-slot.ifc",
+   "kind": "crafted",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 1,
+   "tp": [
+    "invalid-type:name|42"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "invalid-type"
+  },
+  {
+   "path": "packages/validate/parity/corpus/broken/header-author-not-list.ifc",
+   "kind": "crafted",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 1,
+   "tp": [
+    "header:file_name.author|"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "FILE_NAME.author"
+  },
+  {
+   "path": "packages/validate/parity/corpus/ifc4x3/broken/wall-userdefined-without-objecttype.ifc",
+   "kind": "crafted",
+   "schema": "IFC4X3_DEV_923b0514",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 2,
+   "tp": [
+    "ifcwall.correctpredefinedtype|42"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcWall.CorrectPredefinedType"
+  },
+  {
+   "path": "packages/validate/parity/corpus/ifc4x3/broken/door-typed-by-wall-type.ifc",
+   "kind": "crafted",
+   "schema": "IFC4X3_DEV_923b0514",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 1,
+   "tp": [
+    "ifcdoor.correcttypeassigned|62"
+   ],
+   "fp": [],
+   "fn": []
+  },
+  {
+   "path": "packages/validate/parity/corpus/ifc4x3/broken/window-typed-by-wall-type.ifc",
+   "kind": "crafted",
+   "schema": "IFC4X3_DEV_923b0514",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 2,
+   "tp": [
+    "ifcwindow.correcttypeassigned|73"
+   ],
+   "fp": [],
+   "fn": []
+  },
+  {
+   "path": "packages/validate/parity/corpus/ifc4x3/broken/slab-userdefined-without-objecttype.ifc",
+   "kind": "crafted",
+   "schema": "IFC4X3_DEV_923b0514",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 1,
+   "tp": [
+    "ifcslab.correctpredefinedtype|88"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcSlab.CorrectPredefinedType"
+  },
+  {
+   "path": "packages/validate/parity/corpus/ifc4x3/broken/space-userdefined-without-objecttype.ifc",
+   "kind": "crafted",
+   "schema": "IFC4X3_DEV_923b0514",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 1,
+   "tp": [
+    "ifcspace.correctpredefinedtype|101"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcSpace.CorrectPredefinedType"
+  },
+  {
+   "path": "packages/validate/parity/corpus/ifc4x3/broken/wall-typed-by-slab-type.ifc",
+   "kind": "crafted",
+   "schema": "IFC4X3_DEV_923b0514",
+   "ours": 2,
+   "oracle": 2,
+   "milliseconds": 1,
+   "tp": [
+    "ifcwall.correcttypeassigned|42",
+    "ifcwall.correcttypeassigned|60"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcWall.CorrectTypeAssigned"
+  },
+  {
+   "path": "packages/validate/parity/corpus/ifc4x3/broken/walltype-without-name.ifc",
+   "kind": "crafted",
+   "schema": "IFC4X3_DEV_923b0514",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 1,
+   "tp": [
+    "ifctypeobject.namerequired|48"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcTypeObject.NameRequired"
+  },
+  {
+   "path": "packages/validate/parity/corpus/ifc4x3/broken/storey-not-aggregated.ifc",
+   "kind": "crafted",
+   "schema": "IFC4X3_DEV_923b0514",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 1,
+   "tp": [
+    "ifcspatialstructureelement.wr41|26"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcSpatialStructureElement.WR41"
+  },
+  {
+   "path": "packages/validate/parity/corpus/ifc4x3/broken/aggregates-self-reference.ifc",
+   "kind": "crafted",
+   "schema": "IFC4X3_DEV_923b0514",
+   "ours": 3,
+   "oracle": 3,
+   "milliseconds": 2,
+   "tp": [
+    "inverse-cardinality:decomposes|26",
+    "ifcspatialstructureelement.wr41|26",
+    "ifcrelaggregates.noselfreference|102"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcRelAggregates.NoSelfReference"
+  },
+  {
+   "path": "packages/validate/parity/corpus/ifc4x3/broken/storey-contained-in-storey.ifc",
+   "kind": "crafted",
+   "schema": "IFC4X3_DEV_923b0514",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 1,
+   "tp": [
+    "ifcrelcontainedinspatialstructure.wr31|120"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcRelContainedInSpatialStructure.WR31"
+  },
+  {
+   "path": "packages/validate/parity/corpus/ifc4x3/broken/project-without-name.ifc",
+   "kind": "crafted",
+   "schema": "IFC4X3_DEV_923b0514",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 1,
+   "tp": [
+    "ifcproject.hasname|20"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcProject.HasName"
+  },
+  {
+   "path": "packages/validate/parity/corpus/ifc4x3/broken/project-subcontext.ifc",
+   "kind": "crafted",
+   "schema": "IFC4X3_DEV_923b0514",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 1,
+   "tp": [
+    "ifcproject.correctcontext|20"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcProject.CorrectContext"
+  },
+  {
+   "path": "packages/validate/parity/corpus/ifc4x3/broken/two-projects.ifc",
+   "kind": "crafted",
+   "schema": "IFC4X3_DEV_923b0514",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 1,
+   "tp": [
+    "global:ifcsingleprojectinstance|"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "global:IfcSingleProjectInstance"
+  },
+  {
+   "path": "packages/validate/parity/corpus/ifc4x3/broken/axis-without-refdirection.ifc",
+   "kind": "crafted",
+   "schema": "IFC4X3_DEV_923b0514",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 10,
+   "tp": [
+    "ifcaxis2placement3d.axisandrefdirprovision|14"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcAxis2Placement3D.AxisAndRefDirProvision"
+  },
+  {
+   "path": "packages/validate/parity/corpus/ifc4x3/broken/placement-location-2d.ifc",
+   "kind": "crafted",
+   "schema": "IFC4X3_DEV_923b0514",
+   "ours": 2,
+   "oracle": 2,
+   "milliseconds": 2,
+   "tp": [
+    "ifclocalplacement.wr21|71",
+    "ifcaxis2placement3d.locationis3d|92"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcAxis2Placement3D.LocationIs3D"
+  },
+  {
+   "path": "packages/validate/parity/corpus/ifc4x3/broken/placement-parallel-axes.ifc",
+   "kind": "crafted",
+   "schema": "IFC4X3_DEV_923b0514",
+   "ours": 3,
+   "oracle": 3,
+   "milliseconds": 1,
+   "tp": [
+    "ifcaxis2placement3d.axistorefdirposition|14",
+    "ifcgeometricrepresentationcontext.north2d|16",
+    "ifcgeometricrepresentationcontext.north2d|17"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcAxis2Placement3D.AxisToRefDirPosition"
+  },
+  {
+   "path": "packages/validate/parity/corpus/ifc4x3/broken/direction-zero.ifc",
+   "kind": "crafted",
+   "schema": "IFC4X3_DEV_923b0514",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 2,
+   "tp": [
+    "ifcdirection.magnitudegreaterzero|32"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcDirection.MagnitudeGreaterZero"
+  },
+  {
+   "path": "packages/validate/parity/corpus/ifc4x3/broken/point-one-coordinate.ifc",
+   "kind": "crafted",
+   "schema": "IFC4X3_DEV_923b0514",
+   "ours": 2,
+   "oracle": 2,
+   "milliseconds": 1,
+   "tp": [
+    "ifcaxis2placement2d.locationis2d|54",
+    "ifccartesianpoint.cp2dor3d|55"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcCartesianPoint.CP2Dor3D"
+  },
+  {
+   "path": "packages/validate/parity/corpus/ifc4x3/broken/extrusion-in-profile-plane.ifc",
+   "kind": "crafted",
+   "schema": "IFC4X3_DEV_923b0514",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 1,
+   "tp": [
+    "ifcextrudedareasolid.validextrusiondirection|35"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcExtrudedAreaSolid.ValidExtrusionDirection"
+  },
+  {
+   "path": "packages/validate/parity/corpus/ifc4x3/broken/rectangle-zero-width.ifc",
+   "kind": "crafted",
+   "schema": "IFC4X3_DEV_923b0514",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 10,
+   "tp": [
+    "ifcpositivelengthmeasure.wr1|34"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcPositiveLengthMeasure.WR1"
+  },
+  {
+   "path": "packages/validate/parity/corpus/ifc4x3/broken/shape-without-type.ifc",
+   "kind": "crafted",
+   "schema": "IFC4X3_DEV_923b0514",
+   "ours": 2,
+   "oracle": 2,
+   "milliseconds": 4,
+   "tp": [
+    "ifcshaperepresentation.correctitemsfortype|85",
+    "ifcshaperepresentation.hasrepresentationtype|85"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcShapeRepresentation.HasRepresentationType"
+  },
+  {
+   "path": "packages/validate/parity/corpus/ifc4x3/broken/shape-wrong-type.ifc",
+   "kind": "crafted",
+   "schema": "IFC4X3_DEV_923b0514",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 2,
+   "tp": [
+    "ifcshaperepresentation.correctitemsfortype|85"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcShapeRepresentation.CorrectItemsForType"
+  },
+  {
+   "path": "packages/validate/parity/corpus/ifc4x3/broken/shape-in-non-geometric-context.ifc",
+   "kind": "crafted",
+   "schema": "IFC4X3_DEV_923b0514",
+   "ours": 2,
+   "oracle": 2,
+   "milliseconds": 1,
+   "tp": [
+    "abstract|138",
+    "ifcshaperepresentation.correctcontext|85"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcShapeRepresentation.CorrectContext"
+  },
+  {
+   "path": "packages/validate/parity/corpus/ifc4x3/broken/shape-shared-by-two-products.ifc",
+   "kind": "crafted",
+   "schema": "IFC4X3_DEV_923b0514",
+   "ours": 2,
+   "oracle": 2,
+   "milliseconds": 1,
+   "tp": [
+    "ifcshapemodel.wr11|36",
+    "ifcshapemodel.wr11|95"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcShapeModel.WR11"
+  },
+  {
+   "path": "packages/validate/parity/corpus/ifc4x3/broken/local-placement-3d-under-2d.ifc",
+   "kind": "crafted",
+   "schema": "IFC4X3_DEV_923b0514",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 1,
+   "tp": [
+    "ifclocalplacement.wr21|63"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcLocalPlacement.WR21"
+  },
+  {
+   "path": "packages/validate/parity/corpus/ifc4x3/broken/subcontext-userdefined-view.ifc",
+   "kind": "crafted",
+   "schema": "IFC4X3_DEV_923b0514",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 1,
+   "tp": [
+    "ifcgeometricrepresentationsubcontext.usertargetprovided|16"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcGeometricRepresentationSubContext.UserTargetProvided"
+  },
+  {
+   "path": "packages/validate/parity/corpus/ifc4x3/broken/subcontext-explicit-derived.ifc",
+   "kind": "crafted",
+   "schema": "IFC4X3_DEV_923b0514",
+   "ours": 1,
+   "oracle": 0,
+   "milliseconds": 1,
+   "tp": [],
+   "fp": [
+    "derived-in-subtype:coordinatespacedimension|17"
+   ],
+   "fn": [],
+   "targets": "derived-in-subtype"
+  },
+  {
+   "path": "packages/validate/parity/corpus/ifc4x3/broken/pset-without-name.ifc",
+   "kind": "crafted",
+   "schema": "IFC4X3_DEV_923b0514",
+   "ours": 2,
+   "oracle": 2,
+   "milliseconds": 2,
+   "tp": [
+    "ifcobject.uniquepropertysetnames|42",
+    "ifcpropertyset.existsname|132"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcPropertySet.ExistsName"
+  },
+  {
+   "path": "packages/validate/parity/corpus/ifc4x3/broken/pset-duplicate-property-names.ifc",
+   "kind": "crafted",
+   "schema": "IFC4X3_DEV_923b0514",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 2,
+   "tp": [
+    "ifcpropertyset.uniquepropertynames|132"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcPropertySet.UniquePropertyNames"
+  },
+  {
+   "path": "packages/validate/parity/corpus/ifc4x3/broken/two-psets-same-name.ifc",
+   "kind": "crafted",
+   "schema": "IFC4X3_DEV_923b0514",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 1,
+   "tp": [
+    "ifcobject.uniquepropertysetnames|42"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcObject.UniquePropertySetNames"
+  },
+  {
+   "path": "packages/validate/parity/corpus/ifc4x3/broken/quantity-negative-length.ifc",
+   "kind": "crafted",
+   "schema": "IFC4X3_DEV_923b0514",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 1,
+   "tp": [
+    "ifcquantitylength.wr22|134"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcQuantityLength.WR22"
+  },
+  {
+   "path": "packages/validate/parity/corpus/ifc4x3/broken/unit-wrong-dimensions.ifc",
+   "kind": "crafted",
+   "schema": "IFC4X3_DEV_923b0514",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 1,
+   "tp": [
+    "ifcnamedunit.wr1|7"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcNamedUnit.WR1"
+  },
+  {
+   "path": "packages/validate/parity/corpus/ifc4x3/broken/unit-assignment-duplicate-type.ifc",
+   "kind": "crafted",
+   "schema": "IFC4X3_DEV_923b0514",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 1,
+   "tp": [
+    "ifcunitassignment.wr01|10"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcUnitAssignment.WR01"
+  },
+  {
+   "path": "packages/validate/parity/corpus/ifc4x3/broken/ownerhistory-added-without-date.ifc",
+   "kind": "crafted",
+   "schema": "IFC4X3_DEV_923b0514",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 1,
+   "tp": [
+    "ifcownerhistory.correctchangeaction|5"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcOwnerHistory.CorrectChangeAction"
+  },
+  {
+   "path": "packages/validate/parity/corpus/ifc4x3/broken/person-without-name.ifc",
+   "kind": "crafted",
+   "schema": "IFC4X3_DEV_923b0514",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 2,
+   "tp": [
+    "ifcperson.identifiableperson|1"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcPerson.IdentifiablePerson"
+  },
+  {
+   "path": "packages/validate/parity/corpus/ifc4x3/broken/grid-without-placement.ifc",
+   "kind": "crafted",
+   "schema": "IFC4X3_DEV_923b0514",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 1,
+   "tp": [
+    "ifcpositioningelement.hasplacement|119"
+   ],
+   "fp": [],
+   "fn": []
+  },
+  {
+   "path": "packages/validate/parity/corpus/ifc4x3/broken/grid-axis-3d-curve.ifc",
+   "kind": "crafted",
+   "schema": "IFC4X3_DEV_923b0514",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 1,
+   "tp": [
+    "ifcgridaxis.wr1|113"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcGridAxis.WR1"
+  },
+  {
+   "path": "packages/validate/parity/corpus/ifc4x3/broken/polyline-mixed-dimensions.ifc",
+   "kind": "crafted",
+   "schema": "IFC4X3_DEV_923b0514",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 1,
+   "tp": [
+    "ifcpolyline.samedim|39"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcPolyline.SameDim"
+  },
+  {
+   "path": "packages/validate/parity/corpus/ifc4x3/broken/profile-outer-curve-3d.ifc",
+   "kind": "crafted",
+   "schema": "IFC4X3_DEV_923b0514",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 2,
+   "tp": [
+    "ifcarbitraryclosedprofiledef.wr1|83"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcArbitraryClosedProfileDef.WR1"
+  },
+  {
+   "path": "packages/validate/parity/corpus/ifc4x3/broken/material-priority-out-of-range.ifc",
+   "kind": "crafted",
+   "schema": "IFC4X3_DEV_923b0514",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 1,
+   "tp": [
+    "ifcmateriallayer.normalizedpriority|44"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcMaterialLayer.NormalizedPriority"
+  },
+  {
+   "path": "packages/validate/parity/corpus/ifc4x3/broken/wallstandardcase-without-layer-usage.ifc",
+   "kind": "crafted",
+   "schema": "IFC4X3_DEV_923b0514",
+   "ours": 2,
+   "oracle": 2,
+   "milliseconds": 2,
+   "tp": [
+    "inverse-cardinality:associatedto|46",
+    "ifcwallstandardcase.hasmateriallayersetusage|60"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcWallStandardCase.HasMaterialLayerSetUsage"
+  },
+  {
+   "path": "packages/validate/parity/corpus/ifc4x3/broken/opening-voids-nothing.ifc",
+   "kind": "crafted",
+   "schema": "IFC4X3_DEV_923b0514",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 4,
+   "tp": [
+    "inverse-cardinality:voidselements|70"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "inverse-cardinality"
+  },
+  {
+   "path": "packages/validate/parity/corpus/ifc4x3/broken/door-fills-two-openings.ifc",
+   "kind": "crafted",
+   "schema": "IFC4X3_DEV_923b0514",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 2,
+   "tp": [
+    "inverse-cardinality:fillsvoids|62"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "inverse-cardinality"
+  },
+  {
+   "path": "packages/validate/parity/corpus/ifc4x3/broken/wall-contained-twice.ifc",
+   "kind": "crafted",
+   "schema": "IFC4X3_DEV_923b0514",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 3,
+   "tp": [
+    "inverse-cardinality:containedinstructure|42"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "inverse-cardinality"
+  },
+  {
+   "path": "packages/validate/parity/corpus/ifc4x3/broken/defines-by-properties-on-type.ifc",
+   "kind": "crafted",
+   "schema": "IFC4X3_DEV_923b0514",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 3,
+   "tp": [
+    "ifcreldefinesbyproperties.norelatedtypeobject|133"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcRelDefinesByProperties.NoRelatedTypeObject"
+  },
+  {
+   "path": "packages/validate/parity/corpus/ifc4x3/broken/duplicate-globalid.ifc",
+   "kind": "crafted",
+   "schema": "IFC4X3_DEV_923b0514",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 2,
+   "tp": [
+    "unique:ifcroot.ur1|60"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcRoot.UR1"
+  },
+  {
+   "path": "packages/validate/parity/corpus/ifc4x3/broken/globalid-invalid-characters.ifc",
+   "kind": "crafted",
+   "schema": "IFC4X3_DEV_923b0514",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 8,
+   "tp": [
+    "guid-format|42"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "guid-format"
+  },
+  {
+   "path": "packages/validate/parity/corpus/ifc4x3/broken/wall-missing-globalid.ifc",
+   "kind": "crafted",
+   "schema": "IFC4X3_DEV_923b0514",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 1,
+   "tp": [
+    "not-optional:globalid|42"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "not-optional"
+  },
+  {
+   "path": "packages/validate/parity/corpus/ifc4x3/broken/wall-name-integer.ifc",
+   "kind": "crafted",
+   "schema": "IFC4X3_DEV_923b0514",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 1,
+   "tp": [
+    "invalid-type:name|42"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "invalid-type"
+  },
+  {
+   "path": "packages/validate/parity/corpus/ifc4x3/broken/wall-placement-wrong-entity.ifc",
+   "kind": "crafted",
+   "schema": "IFC4X3_DEV_923b0514",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 1,
+   "tp": [
+    "invalid-type:objectplacement|42"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "invalid-type"
+  },
+  {
+   "path": "packages/validate/parity/corpus/ifc4x3/broken/point-integer-coordinates.ifc",
+   "kind": "crafted",
+   "schema": "IFC4X3_DEV_923b0514",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 1,
+   "tp": [
+    "invalid-type:coordinates|52"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "invalid-type"
+  },
+  {
+   "path": "packages/validate/parity/corpus/ifc4x3/broken/wall-enum-unknown-item.ifc",
+   "kind": "crafted",
+   "schema": "IFC4X3_DEV_923b0514",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 1,
+   "tp": [
+    "invalid-type:predefinedtype|42"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "invalid-type"
+  },
+  {
+   "path": "packages/validate/parity/corpus/ifc4x3/broken/wall-attribute-count.ifc",
+   "kind": "crafted",
+   "schema": "IFC4X3_DEV_923b0514",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 1,
+   "tp": [
+    "attribute-count|42"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "attribute-count"
+  },
+  {
+   "path": "packages/validate/parity/corpus/ifc4x3/broken/abstract-entity-instance.ifc",
+   "kind": "crafted",
+   "schema": "IFC4X3_DEV_923b0514",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 1,
+   "tp": [
+    "abstract|138"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "abstract"
+  },
+  {
+   "path": "packages/validate/parity/corpus/ifc4x3/broken/select-untyped-value.ifc",
+   "kind": "crafted",
+   "schema": "IFC4X3_DEV_923b0514",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 1,
+   "tp": [
+    "invalid-type:nominalvalue|130"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "invalid-type"
+  },
+  {
+   "path": "packages/validate/parity/corpus/ifc4x3/broken/typed-value-in-plain-slot.ifc",
+   "kind": "crafted",
+   "schema": "IFC4X3_DEV_923b0514",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 1,
+   "tp": [
+    "invalid-type:name|42"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "invalid-type"
+  },
+  {
+   "path": "packages/validate/parity/corpus/ifc4x3/broken/header-author-not-list.ifc",
+   "kind": "crafted",
+   "schema": "IFC4X3_DEV_923b0514",
+   "ours": 1,
+   "oracle": 1,
+   "milliseconds": 1,
+   "tp": [
+    "header:file_name.author|"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "FILE_NAME.author"
+  },
+  {
+   "path": "tests/models/ara3d/AC20-FZK-Haus.ifc",
+   "kind": "real",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 170,
+   "oracle": 170,
+   "milliseconds": 393,
+   "tp": [
+    "ifcpositiveratiomeasure.wr1|15065",
+    "ifcpositiveratiomeasure.wr1|15066",
+    "ifcpositiveratiomeasure.wr1|20397",
+    "ifcpositiveratiomeasure.wr1|20398",
+    "ifcpositiveratiomeasure.wr1|34524",
+    "ifcpositiveratiomeasure.wr1|34525",
+    "ifcpositiveratiomeasure.wr1|59313",
+    "ifcpositiveratiomeasure.wr1|59314",
+    "not-optional:relatedbuildingelement|77426",
+    "not-optional:relatedbuildingelement|77953",
+    "not-optional:relatedbuildingelement|77981",
+    "not-optional:relatedbuildingelement|78009",
+    "not-optional:relatedbuildingelement|78592",
+    "ifcownerhistory.correctchangeaction|12",
+    "ifcshapemodel.wr11|15016",
+    "ifcshapemodel.wr11|15024",
+    "ifcshapemodel.wr11|15033",
+    "ifcshapemodel.wr11|17018",
+    "ifcshapemodel.wr11|17024",
+    "ifcshapemodel.wr11|17032",
+    "ifcshapemodel.wr11|17456",
+    "ifcshapemodel.wr11|17462",
+    "ifcshapemodel.wr11|18443",
+    "ifcshapemodel.wr11|18449",
+    "ifcshapemodel.wr11|18457",
+    "ifcshapemodel.wr11|18676",
+    "ifcshapemodel.wr11|18682",
+    "ifcshapemodel.wr11|18690",
+    "ifcshapemodel.wr11|19193",
+    "ifcshapemodel.wr11|19498",
+    "ifcshapemodel.wr11|20360",
+    "ifcshapemodel.wr11|20368",
+    "ifcshapemodel.wr11|20576",
+    "ifcshapemodel.wr11|20582",
+    "ifcshapemodel.wr11|20590",
+    "ifcshapemodel.wr11|20878",
+    "ifcshapemodel.wr11|20886",
+    "ifcshapemodel.wr11|20901",
+    "ifcshapemodel.wr11|21256",
+    "ifcshapemodel.wr11|21262",
+    "ifcshapemodel.wr11|21276",
+    "ifcshapemodel.wr11|21613",
+    "ifcshapemodel.wr11|21619",
+    "ifcshapemodel.wr11|21633",
+    "ifcshapemodel.wr11|21942",
+    "ifcshapemodel.wr11|21950",
+    "ifcshapemodel.wr11|21958",
+    "ifcshapemodel.wr11|23018",
+    "ifcshapemodel.wr11|23938",
+    "ifcshapemodel.wr11|27001",
+    "ifcshapemodel.wr11|27007",
+    "ifcshapemodel.wr11|27399",
+    "ifcshapemodel.wr11|27405",
+    "ifcshapemodel.wr11|27413",
+    "ifcshapemodel.wr11|27827",
+    "ifcshapemodel.wr11|28107",
+    "ifcshapemodel.wr11|31067",
+    "ifcshapemodel.wr11|31073",
+    "ifcshapemodel.wr11|31448",
+    "ifcshapemodel.wr11|31454",
+    "ifcshapemodel.wr11|31462",
+    "ifcshapemodel.wr11|31812",
+    "ifcshapemodel.wr11|32092",
+    "ifcshapemodel.wr11|32385",
+    "ifcshapemodel.wr11|32391",
+    "ifcshapemodel.wr11|32399",
+    "ifcshapemodel.wr11|32823",
+    "ifcshapemodel.wr11|33103",
+    "ifcshapemodel.wr11|33383",
+    "ifcshapemodel.wr11|33745",
+    "ifcshapemodel.wr11|33751",
+    "ifcshapemodel.wr11|33767",
+    "ifcshapemodel.wr11|34158",
+    "ifcshapemodel.wr11|34164",
+    "ifcshapemodel.wr11|34184",
+    "ifcshapemodel.wr11|34495",
+    "ifcshapemodel.wr11|34503",
+    "ifcquantitylength.wr22|34642",
+    "ifcshapemodel.wr11|34734",
+    "ifcshapemodel.wr11|34740",
+    "ifcshapemodel.wr11|34756",
+    "ifcshapemodel.wr11|35163",
+    "ifctypeobject.namerequired|35265",
+    "ifcshapemodel.wr11|35298",
+    "ifcshapemodel.wr11|35421",
+    "ifcshapemodel.wr11|35544",
+    "ifcshapemodel.wr11|35667",
+    "ifcshapemodel.wr11|35790",
+    "ifcshapemodel.wr11|35913",
+    "ifcshapemodel.wr11|36036",
+    "ifcshapemodel.wr11|36159",
+    "ifcshapemodel.wr11|36282",
+    "ifcshapemodel.wr11|36405",
+    "ifcshapemodel.wr11|36528",
+    "ifcshapemodel.wr11|36651",
+    "ifcshapemodel.wr11|36774",
+    "ifcshapemodel.wr11|36897",
+    "ifcshapemodel.wr11|37020",
+    "ifcshapemodel.wr11|37143",
+    "ifcshapemodel.wr11|37266",
+    "ifcshapemodel.wr11|37389",
+    "ifcshapemodel.wr11|37576",
+    "ifctypeobject.namerequired|37671",
+    "ifcshapemodel.wr11|37704",
+    "ifcshapemodel.wr11|37827",
+    "ifcshapemodel.wr11|37950",
+    "ifcshapemodel.wr11|38073",
+    "ifcshapemodel.wr11|38196",
+    "ifcshapemodel.wr11|38319",
+    "ifcshapemodel.wr11|38442",
+    "ifcshapemodel.wr11|38565",
+    "ifcshapemodel.wr11|38688",
+    "ifcshapemodel.wr11|38811",
+    "ifcshapemodel.wr11|38934",
+    "ifcshapemodel.wr11|39057",
+    "ifcshapemodel.wr11|39180",
+    "ifcshapemodel.wr11|39303",
+    "ifcshapemodel.wr11|39426",
+    "ifcshapemodel.wr11|39549",
+    "ifcshapemodel.wr11|39672",
+    "ifcshapemodel.wr11|39795",
+    "ifcshapemodel.wr11|39918",
+    "ifcshapemodel.wr11|40041",
+    "ifcshapemodel.wr11|40164",
+    "ifcshapemodel.wr11|40287",
+    "ifcshapemodel.wr11|40410",
+    "ifcshapemodel.wr11|40533",
+    "ifcshapemodel.wr11|40656",
+    "ifcshapemodel.wr11|49817",
+    "ifcshapemodel.wr11|49825",
+    "ifcshapemodel.wr11|59063",
+    "ifcshapemodel.wr11|59069",
+    "ifcshapemodel.wr11|59278",
+    "ifcshapemodel.wr11|59284",
+    "ifcshapemodel.wr11|59539",
+    "ifcshapemodel.wr11|59547",
+    "ifcshapemodel.wr11|59741",
+    "ifcshapemodel.wr11|59747",
+    "ifcshapemodel.wr11|59990",
+    "ifcshapemodel.wr11|59996",
+    "ifcshapemodel.wr11|60004",
+    "ifcshapemodel.wr11|66447",
+    "ifcshapemodel.wr11|66453",
+    "ifcquantitylength.wr22|67406",
+    "ifcquantitylength.wr22|67408",
+    "ifcquantitylength.wr22|67413",
+    "ifcquantitylength.wr22|67415",
+    "ifcshapemodel.wr11|67514",
+    "ifcshapemodel.wr11|67520",
+    "ifcshapemodel.wr11|67528",
+    "ifcshapemodel.wr11|67806",
+    "ifcshapemodel.wr11|67812",
+    "ifcshapemodel.wr11|67820",
+    "ifcshapemodel.wr11|74268",
+    "ifcshapemodel.wr11|74274",
+    "ifcquantitylength.wr22|75227",
+    "ifcquantitylength.wr22|75229",
+    "ifcquantitylength.wr22|75234",
+    "ifcquantitylength.wr22|75236",
+    "ifcshapemodel.wr11|75325",
+    "ifcshapemodel.wr11|75331",
+    "ifcshapemodel.wr11|75339",
+    "ifcshapemodel.wr11|76185",
+    "ifcshapemodel.wr11|76193",
+    "ifcshapemodel.wr11|76207",
+    "ifcrelspaceboundary.correctphysorvirt|77426",
+    "ifcrelspaceboundary.correctphysorvirt|77953",
+    "ifcrelspaceboundary.correctphysorvirt|77981",
+    "ifcrelspaceboundary.correctphysorvirt|78009",
+    "ifcrelspaceboundary.correctphysorvirt|78592"
+   ],
+   "fp": [],
+   "fn": []
+  },
+  {
+   "path": "tests/models/ara3d/IfcOpenHouse_IFC4.ifc",
+   "kind": "real",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 0,
+   "oracle": 0,
+   "milliseconds": 14,
+   "tp": [],
+   "fp": [],
+   "fn": []
+  },
+  {
+   "path": "tests/models/buildingsmart/Building-Architecture.ifc",
+   "kind": "real",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 0,
+   "oracle": 0,
+   "milliseconds": 14,
+   "tp": [],
+   "fp": [],
+   "fn": []
+  },
+  {
+   "path": "tests/models/buildingsmart/Building-Structural.ifc",
+   "kind": "real",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 0,
+   "oracle": 0,
+   "milliseconds": 17,
+   "tp": [],
+   "fp": [],
+   "fn": []
+  },
+  {
+   "path": "tests/models/buildingsmart/wall-with-opening-and-window.ifc",
+   "kind": "real",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 0,
+   "oracle": 0,
+   "milliseconds": 1,
+   "tp": [],
+   "fp": [],
+   "fn": []
+  },
+  {
+   "path": "tests/models/buildingsmart/Infra-Road.ifc",
+   "kind": "real",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 0,
+   "oracle": 0,
+   "milliseconds": 22,
+   "tp": [],
+   "fp": [],
+   "fn": []
+  },
+  {
+   "path": "tests/models/buildingsmart/Infra-Bridge.ifc",
+   "kind": "real",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 0,
+   "oracle": 0,
+   "milliseconds": 77,
+   "tp": [],
+   "fp": [],
+   "fn": []
+  },
+  {
+   "path": "tests/models/modelling/saved-building.ifc",
+   "kind": "real",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 0,
+   "oracle": 0,
+   "milliseconds": 3,
+   "tp": [],
+   "fp": [],
+   "fn": []
+  },
+  {
+   "path": "tests/models/various/issue-604-door.ifc",
+   "kind": "real",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 4,
+   "oracle": 4,
+   "milliseconds": 13,
+   "tp": [
+    "ifcarbitraryopenprofiledef.wr12|190",
+    "ifcarbitraryopenprofiledef.wr12|203",
+    "ifcarbitraryopenprofiledef.wr12|398",
+    "ifcarbitraryopenprofiledef.wr12|411"
+   ],
+   "fp": [],
+   "fn": []
+  },
+  {
+   "path": "tests/models/ara3d/duplex.ifc",
+   "kind": "real",
+   "schema": "IFC2X3",
+   "ours": 0,
+   "oracle": 0,
+   "milliseconds": 335,
+   "tp": [],
+   "fp": [],
+   "fn": []
+  },
+  {
+   "path": "tests/models/buildingsmart/annex_e/basic-geometric-shape/extruded-solid.ifc",
+   "kind": "real",
+   "schema": "IFC4X3_DEV_923b0514",
+   "ours": 0,
+   "oracle": 0,
+   "milliseconds": 1,
+   "tp": [],
+   "fp": [],
+   "fn": []
+  },
+  {
+   "path": "tests/models/buildingsmart/annex_e/tessellated-shape/polygonal-face-tessellation.ifc",
+   "kind": "real",
+   "schema": "IFC4X3_DEV_923b0514",
+   "ours": 0,
+   "oracle": 0,
+   "milliseconds": 1,
+   "tp": [],
+   "fp": [],
+   "fn": []
+  },
+  {
+   "path": "tests/models/ifcopenshell/generated_structural_coverage_ifc4x3.ifc",
+   "kind": "real",
+   "schema": "IFC4X3_DEV_923b0514",
+   "ours": 0,
+   "oracle": 0,
+   "milliseconds": 2,
+   "tp": [],
+   "fp": [],
+   "fn": []
+  },
+  {
+   "path": "apps/viewer/public/samples/hello-wall.ifc",
+   "kind": "real",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 2,
+   "oracle": 2,
+   "milliseconds": 7,
+   "tp": [
+    "header:file_name.author|",
+    "header:file_name.organization|"
+   ],
+   "fp": [],
+   "fn": []
+  },
+  {
+   "path": "apps/viewer/public/samples/building-architecture-rev-b.ifc",
+   "kind": "real",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 2,
+   "oracle": 1,
+   "milliseconds": 12,
+   "tp": [
+    "inverse-cardinality:shapeofproduct|192"
+   ],
+   "fp": [
+    "global:ifcrepresentationcontextsamewcs|"
+   ],
+   "fn": []
+  }
+ ],
+ "missingModels": [],
+ "schemaFor": {
+  "packages/validate/parity/corpus/base-ifc4.ifc": "IFC4",
+  "packages/validate/parity/corpus/ifc4x3/base.ifc": "IFC4X3",
+  "packages/validate/parity/corpus/broken/wall-userdefined-without-objecttype.ifc": "IFC4",
+  "packages/validate/parity/corpus/broken/door-typed-by-wall-type.ifc": "IFC4",
+  "packages/validate/parity/corpus/broken/window-typed-by-wall-type.ifc": "IFC4",
+  "packages/validate/parity/corpus/broken/slab-userdefined-without-objecttype.ifc": "IFC4",
+  "packages/validate/parity/corpus/broken/space-userdefined-without-objecttype.ifc": "IFC4",
+  "packages/validate/parity/corpus/broken/wall-typed-by-slab-type.ifc": "IFC4",
+  "packages/validate/parity/corpus/broken/walltype-without-name.ifc": "IFC4",
+  "packages/validate/parity/corpus/broken/storey-not-aggregated.ifc": "IFC4",
+  "packages/validate/parity/corpus/broken/aggregates-self-reference.ifc": "IFC4",
+  "packages/validate/parity/corpus/broken/storey-contained-in-storey.ifc": "IFC4",
+  "packages/validate/parity/corpus/broken/project-without-name.ifc": "IFC4",
+  "packages/validate/parity/corpus/broken/project-subcontext.ifc": "IFC4",
+  "packages/validate/parity/corpus/broken/two-projects.ifc": "IFC4",
+  "packages/validate/parity/corpus/broken/axis-without-refdirection.ifc": "IFC4",
+  "packages/validate/parity/corpus/broken/placement-location-2d.ifc": "IFC4",
+  "packages/validate/parity/corpus/broken/placement-parallel-axes.ifc": "IFC4",
+  "packages/validate/parity/corpus/broken/direction-zero.ifc": "IFC4",
+  "packages/validate/parity/corpus/broken/point-one-coordinate.ifc": "IFC4",
+  "packages/validate/parity/corpus/broken/extrusion-in-profile-plane.ifc": "IFC4",
+  "packages/validate/parity/corpus/broken/rectangle-zero-width.ifc": "IFC4",
+  "packages/validate/parity/corpus/broken/shape-without-type.ifc": "IFC4",
+  "packages/validate/parity/corpus/broken/shape-wrong-type.ifc": "IFC4",
+  "packages/validate/parity/corpus/broken/shape-in-non-geometric-context.ifc": "IFC4",
+  "packages/validate/parity/corpus/broken/shape-shared-by-two-products.ifc": "IFC4",
+  "packages/validate/parity/corpus/broken/local-placement-3d-under-2d.ifc": "IFC4",
+  "packages/validate/parity/corpus/broken/subcontext-userdefined-view.ifc": "IFC4",
+  "packages/validate/parity/corpus/broken/subcontext-explicit-derived.ifc": "IFC4",
+  "packages/validate/parity/corpus/broken/pset-without-name.ifc": "IFC4",
+  "packages/validate/parity/corpus/broken/pset-duplicate-property-names.ifc": "IFC4",
+  "packages/validate/parity/corpus/broken/two-psets-same-name.ifc": "IFC4",
+  "packages/validate/parity/corpus/broken/quantity-negative-length.ifc": "IFC4",
+  "packages/validate/parity/corpus/broken/unit-wrong-dimensions.ifc": "IFC4",
+  "packages/validate/parity/corpus/broken/unit-assignment-duplicate-type.ifc": "IFC4",
+  "packages/validate/parity/corpus/broken/ownerhistory-added-without-date.ifc": "IFC4",
+  "packages/validate/parity/corpus/broken/person-without-name.ifc": "IFC4",
+  "packages/validate/parity/corpus/broken/grid-without-placement.ifc": "IFC4",
+  "packages/validate/parity/corpus/broken/grid-axis-3d-curve.ifc": "IFC4",
+  "packages/validate/parity/corpus/broken/polyline-mixed-dimensions.ifc": "IFC4",
+  "packages/validate/parity/corpus/broken/profile-outer-curve-3d.ifc": "IFC4",
+  "packages/validate/parity/corpus/broken/material-priority-out-of-range.ifc": "IFC4",
+  "packages/validate/parity/corpus/broken/wallstandardcase-without-layer-usage.ifc": "IFC4",
+  "packages/validate/parity/corpus/broken/opening-voids-nothing.ifc": "IFC4",
+  "packages/validate/parity/corpus/broken/door-fills-two-openings.ifc": "IFC4",
+  "packages/validate/parity/corpus/broken/wall-contained-twice.ifc": "IFC4",
+  "packages/validate/parity/corpus/broken/defines-by-properties-on-type.ifc": "IFC4",
+  "packages/validate/parity/corpus/broken/duplicate-globalid.ifc": "IFC4",
+  "packages/validate/parity/corpus/broken/globalid-invalid-characters.ifc": "IFC4",
+  "packages/validate/parity/corpus/broken/wall-missing-globalid.ifc": "IFC4",
+  "packages/validate/parity/corpus/broken/wall-name-integer.ifc": "IFC4",
+  "packages/validate/parity/corpus/broken/wall-placement-wrong-entity.ifc": "IFC4",
+  "packages/validate/parity/corpus/broken/point-integer-coordinates.ifc": "IFC4",
+  "packages/validate/parity/corpus/broken/wall-enum-unknown-item.ifc": "IFC4",
+  "packages/validate/parity/corpus/broken/wall-attribute-count.ifc": "IFC4",
+  "packages/validate/parity/corpus/broken/abstract-entity-instance.ifc": "IFC4",
+  "packages/validate/parity/corpus/broken/select-untyped-value.ifc": "IFC4",
+  "packages/validate/parity/corpus/broken/typed-value-in-plain-slot.ifc": "IFC4",
+  "packages/validate/parity/corpus/broken/header-author-not-list.ifc": "IFC4",
+  "packages/validate/parity/corpus/ifc4x3/broken/wall-userdefined-without-objecttype.ifc": "IFC4X3",
+  "packages/validate/parity/corpus/ifc4x3/broken/door-typed-by-wall-type.ifc": "IFC4X3",
+  "packages/validate/parity/corpus/ifc4x3/broken/window-typed-by-wall-type.ifc": "IFC4X3",
+  "packages/validate/parity/corpus/ifc4x3/broken/slab-userdefined-without-objecttype.ifc": "IFC4X3",
+  "packages/validate/parity/corpus/ifc4x3/broken/space-userdefined-without-objecttype.ifc": "IFC4X3",
+  "packages/validate/parity/corpus/ifc4x3/broken/wall-typed-by-slab-type.ifc": "IFC4X3",
+  "packages/validate/parity/corpus/ifc4x3/broken/walltype-without-name.ifc": "IFC4X3",
+  "packages/validate/parity/corpus/ifc4x3/broken/storey-not-aggregated.ifc": "IFC4X3",
+  "packages/validate/parity/corpus/ifc4x3/broken/aggregates-self-reference.ifc": "IFC4X3",
+  "packages/validate/parity/corpus/ifc4x3/broken/storey-contained-in-storey.ifc": "IFC4X3",
+  "packages/validate/parity/corpus/ifc4x3/broken/project-without-name.ifc": "IFC4X3",
+  "packages/validate/parity/corpus/ifc4x3/broken/project-subcontext.ifc": "IFC4X3",
+  "packages/validate/parity/corpus/ifc4x3/broken/two-projects.ifc": "IFC4X3",
+  "packages/validate/parity/corpus/ifc4x3/broken/axis-without-refdirection.ifc": "IFC4X3",
+  "packages/validate/parity/corpus/ifc4x3/broken/placement-location-2d.ifc": "IFC4X3",
+  "packages/validate/parity/corpus/ifc4x3/broken/placement-parallel-axes.ifc": "IFC4X3",
+  "packages/validate/parity/corpus/ifc4x3/broken/direction-zero.ifc": "IFC4X3",
+  "packages/validate/parity/corpus/ifc4x3/broken/point-one-coordinate.ifc": "IFC4X3",
+  "packages/validate/parity/corpus/ifc4x3/broken/extrusion-in-profile-plane.ifc": "IFC4X3",
+  "packages/validate/parity/corpus/ifc4x3/broken/rectangle-zero-width.ifc": "IFC4X3",
+  "packages/validate/parity/corpus/ifc4x3/broken/shape-without-type.ifc": "IFC4X3",
+  "packages/validate/parity/corpus/ifc4x3/broken/shape-wrong-type.ifc": "IFC4X3",
+  "packages/validate/parity/corpus/ifc4x3/broken/shape-in-non-geometric-context.ifc": "IFC4X3",
+  "packages/validate/parity/corpus/ifc4x3/broken/shape-shared-by-two-products.ifc": "IFC4X3",
+  "packages/validate/parity/corpus/ifc4x3/broken/local-placement-3d-under-2d.ifc": "IFC4X3",
+  "packages/validate/parity/corpus/ifc4x3/broken/subcontext-userdefined-view.ifc": "IFC4X3",
+  "packages/validate/parity/corpus/ifc4x3/broken/subcontext-explicit-derived.ifc": "IFC4X3",
+  "packages/validate/parity/corpus/ifc4x3/broken/pset-without-name.ifc": "IFC4X3",
+  "packages/validate/parity/corpus/ifc4x3/broken/pset-duplicate-property-names.ifc": "IFC4X3",
+  "packages/validate/parity/corpus/ifc4x3/broken/two-psets-same-name.ifc": "IFC4X3",
+  "packages/validate/parity/corpus/ifc4x3/broken/quantity-negative-length.ifc": "IFC4X3",
+  "packages/validate/parity/corpus/ifc4x3/broken/unit-wrong-dimensions.ifc": "IFC4X3",
+  "packages/validate/parity/corpus/ifc4x3/broken/unit-assignment-duplicate-type.ifc": "IFC4X3",
+  "packages/validate/parity/corpus/ifc4x3/broken/ownerhistory-added-without-date.ifc": "IFC4X3",
+  "packages/validate/parity/corpus/ifc4x3/broken/person-without-name.ifc": "IFC4X3",
+  "packages/validate/parity/corpus/ifc4x3/broken/grid-without-placement.ifc": "IFC4X3",
+  "packages/validate/parity/corpus/ifc4x3/broken/grid-axis-3d-curve.ifc": "IFC4X3",
+  "packages/validate/parity/corpus/ifc4x3/broken/polyline-mixed-dimensions.ifc": "IFC4X3",
+  "packages/validate/parity/corpus/ifc4x3/broken/profile-outer-curve-3d.ifc": "IFC4X3",
+  "packages/validate/parity/corpus/ifc4x3/broken/material-priority-out-of-range.ifc": "IFC4X3",
+  "packages/validate/parity/corpus/ifc4x3/broken/wallstandardcase-without-layer-usage.ifc": "IFC4X3",
+  "packages/validate/parity/corpus/ifc4x3/broken/opening-voids-nothing.ifc": "IFC4X3",
+  "packages/validate/parity/corpus/ifc4x3/broken/door-fills-two-openings.ifc": "IFC4X3",
+  "packages/validate/parity/corpus/ifc4x3/broken/wall-contained-twice.ifc": "IFC4X3",
+  "packages/validate/parity/corpus/ifc4x3/broken/defines-by-properties-on-type.ifc": "IFC4X3",
+  "packages/validate/parity/corpus/ifc4x3/broken/duplicate-globalid.ifc": "IFC4X3",
+  "packages/validate/parity/corpus/ifc4x3/broken/globalid-invalid-characters.ifc": "IFC4X3",
+  "packages/validate/parity/corpus/ifc4x3/broken/wall-missing-globalid.ifc": "IFC4X3",
+  "packages/validate/parity/corpus/ifc4x3/broken/wall-name-integer.ifc": "IFC4X3",
+  "packages/validate/parity/corpus/ifc4x3/broken/wall-placement-wrong-entity.ifc": "IFC4X3",
+  "packages/validate/parity/corpus/ifc4x3/broken/point-integer-coordinates.ifc": "IFC4X3",
+  "packages/validate/parity/corpus/ifc4x3/broken/wall-enum-unknown-item.ifc": "IFC4X3",
+  "packages/validate/parity/corpus/ifc4x3/broken/wall-attribute-count.ifc": "IFC4X3",
+  "packages/validate/parity/corpus/ifc4x3/broken/abstract-entity-instance.ifc": "IFC4X3",
+  "packages/validate/parity/corpus/ifc4x3/broken/select-untyped-value.ifc": "IFC4X3",
+  "packages/validate/parity/corpus/ifc4x3/broken/typed-value-in-plain-slot.ifc": "IFC4X3",
+  "packages/validate/parity/corpus/ifc4x3/broken/header-author-not-list.ifc": "IFC4X3",
+  "tests/models/ara3d/AC20-FZK-Haus.ifc": "IFC4",
+  "tests/models/ara3d/IfcOpenHouse_IFC4.ifc": "IFC4",
+  "tests/models/buildingsmart/Building-Architecture.ifc": "IFC4",
+  "tests/models/buildingsmart/Building-Structural.ifc": "IFC4",
+  "tests/models/buildingsmart/wall-with-opening-and-window.ifc": "IFC4",
+  "tests/models/buildingsmart/Infra-Road.ifc": "IFC4",
+  "tests/models/buildingsmart/Infra-Bridge.ifc": "IFC4",
+  "tests/models/modelling/saved-building.ifc": "IFC4",
+  "tests/models/various/issue-604-door.ifc": "IFC4",
+  "tests/models/ara3d/duplex.ifc": "IFC2X3",
+  "tests/models/buildingsmart/annex_e/basic-geometric-shape/extruded-solid.ifc": "IFC4X3",
+  "tests/models/buildingsmart/annex_e/tessellated-shape/polygonal-face-tessellation.ifc": "IFC4X3",
+  "tests/models/ifcopenshell/generated_structural_coverage_ifc4x3.ifc": "IFC4X3",
+  "apps/viewer/public/samples/hello-wall.ifc": "IFC4",
+  "apps/viewer/public/samples/building-architecture-rev-b.ifc": "IFC4"
+ }
+}

@@ -5,7 +5,7 @@
 import { describe, it, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { configureOutOfCore, resetOutOfCoreArm } from './outOfCoreConfig.js';
-import { activePerfFlags, recordAppliedPerfFlag } from '../lib/perf/flags-applied.js';
+import { activePerfFlags } from '../lib/perf/flags-applied.js';
 
 const g = globalThis as Record<string, unknown>;
 
@@ -21,30 +21,45 @@ afterEach(() => {
 
 type Processor = { outOfCore?: boolean; onOutOfCoreDecision?: (ran: boolean) => void };
 const ramp = (value: unknown) => (key: string) => (key === 'perf-ooc' ? value : undefined);
+const primary = { primary: true, retry: false, isCurrent: () => true };
 
 describe('out-of-core config', () => {
-  it('is off with nothing set', () => {
+  it('leaves the processor unset with nothing on, so the pool reads the explicit flag itself', () => {
     const processor: Processor = {};
-    configureOutOfCore(processor, { recordArm: true }, () => undefined);
-    assert.equal(processor.outOfCore, false);
+    configureOutOfCore(processor, primary, () => undefined);
+    assert.equal(processor.outOfCore, undefined);
+    configureOutOfCore(processor, primary, ramp(false));
+    assert.equal(processor.outOfCore, undefined, 'a ramp that is off is not an explicit off');
   });
 
-  it('follows the perf-ooc PostHog ramp, under the explicit global and URL param', () => {
+  it('hands a primary first attempt the perf-ooc ramp, under the explicit global and URL param', () => {
     const processor: Processor = {};
-    configureOutOfCore(processor, { recordArm: true }, ramp(true));
+    configureOutOfCore(processor, primary, ramp(true));
     assert.equal(processor.outOfCore, true, 'the ramp alone reaches the processor');
     setSearch('?perf.ooc=0');
-    configureOutOfCore(processor, { recordArm: true }, ramp(true));
-    assert.equal(processor.outOfCore, false, 'the URL kill switch beats the ramp');
+    configureOutOfCore(processor, primary, ramp(true));
+    assert.equal(processor.outOfCore, undefined, 'the URL kill switch beats the ramp (the pool then reads it)');
     Reflect.deleteProperty(globalThis, 'location');
     g.__IFC_LITE_OOC = 1;
-    configureOutOfCore(processor, { recordArm: true }, ramp(false));
+    configureOutOfCore(processor, primary, ramp(false));
     assert.equal(processor.outOfCore, true, 'the global beats a ramp that is off');
+  });
+
+  it('keeps the ramp off a resource retry and a federated add; the explicit flag still applies to both', () => {
+    for (const options of [{ ...primary, retry: true }, { ...primary, primary: false }]) {
+      const processor: Processor = {};
+      configureOutOfCore(processor, options, ramp(true));
+      assert.equal(processor.outOfCore, undefined, JSON.stringify(options));
+      setSearch('?perf.ooc=1');
+      configureOutOfCore(processor, options, ramp(true));
+      assert.equal(processor.outOfCore, true, JSON.stringify(options));
+      Reflect.deleteProperty(globalThis, 'location');
+    }
   });
 
   it("reports the arm the primary load's pool ran, not the ramp value", () => {
     const processor: Processor = {};
-    configureOutOfCore(processor, { recordArm: true }, ramp(true));
+    configureOutOfCore(processor, primary, ramp(true));
     assert.equal(activePerfFlags().outOfCore, undefined, 'before the pool reports, the default');
     processor.onOutOfCoreDecision?.(true);
     assert.equal(activePerfFlags().outOfCore, 'true');
@@ -52,22 +67,22 @@ describe('out-of-core config', () => {
     assert.equal(activePerfFlags().outOfCore, undefined, 'a load the arena could not serve reports off');
   });
 
-  it('leaves the arm to the primary for a federated add', () => {
+  it('ignores a decision from a load that is no longer current', () => {
+    let current = true;
     const processor: Processor = {};
-    configureOutOfCore(processor, { recordArm: false }, ramp(true));
-    assert.equal(processor.outOfCore, true);
-    assert.equal(processor.onOutOfCoreDecision, undefined);
-  });
-
-  it('starts every primary load from the default arm', () => {
-    recordAppliedPerfFlag('outOfCore', true);
-    assert.equal(activePerfFlags().outOfCore, 'true');
-    resetOutOfCoreArm();
+    configureOutOfCore(processor, { ...primary, isCurrent: () => current }, ramp(true));
+    current = false; // a newer primary load started (and reset the arm)
+    processor.onOutOfCoreDecision?.(true);
     assert.equal(activePerfFlags().outOfCore, undefined);
   });
 
+  it('leaves the arm to the primary for a federated add', () => {
+    const processor: Processor = {};
+    configureOutOfCore(processor, { ...primary, primary: false }, ramp(true));
+    assert.equal(processor.onOutOfCoreDecision, undefined);
+  });
+
   it('does not report a URL param that no pool load ran', () => {
-    // The module starts with the arm recorded as off: a session that never loads through the pool reports the default.
     setSearch('?perf.ooc=1');
     assert.equal(activePerfFlags().outOfCore, undefined);
   });

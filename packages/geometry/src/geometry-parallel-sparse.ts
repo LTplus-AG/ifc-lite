@@ -20,6 +20,7 @@
 
 import type { GeometryWorkerSetSparseSourceMessage, WorkerSparseStats } from './geometry-worker-sparse.js';
 import { globalInstancingApplies, readOutOfCoreBudgetBytes, readOutOfCoreFlag } from './perf-flags.js';
+import type { ProcessParallelOptions } from './geometry-parallel-options.js';
 
 interface SparseFacts { preamble: Uint8Array; inverseTargets: Uint32Array; inverseReferrers: Uint32Array }
 interface SparseIndex { ids: SharedArrayBuffer; starts: SharedArrayBuffer; lengths: SharedArrayBuffer }
@@ -141,7 +142,7 @@ export class SparsePool {
  * and the global instance plan (its mapped sources are resolved once, before the arena holds them).
  * `outOfCore` is the host's decision for this load (a staged rollout); unset, the explicit global or URL param.
  */
-export function sparsePoolFor(sharedBuffer: SharedArrayBuffer, host: SparsePoolHost, options?: { mergeLayers?: boolean; outOfCore?: boolean }): SparsePool | null {
+export function sparsePoolFor(sharedBuffer: SharedArrayBuffer, host: SparsePoolHost, options?: Pick<ProcessParallelOptions, 'mergeLayers' | 'outOfCore'>): SparsePool | null {
   delete (globalThis as { __IFC_LITE_OOC_STATS__?: OutOfCoreStats }).__IFC_LITE_OOC_STATS__; // never an earlier load's
   if (!(options?.outOfCore ?? readOutOfCoreFlag())) return null;
   const blocker = options?.mergeLayers === true ? 'merged material layers' : globalInstancingApplies(sharedBuffer.byteLength) ? 'the global instance plan' : null;

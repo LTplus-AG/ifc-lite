@@ -9,20 +9,25 @@ import { isPerfFlagOn } from './hugeGeometryConfig.js';
 
 /**
  * Out-of-core geometry ingest (`@ifc-lite/geometry` geometry-parallel-sparse.ts), OFF by default, for one exact
- * load's processor: the flag is resolved here (global, `?perf.ooc`, then the `perf-ooc` PostHog ramp), because the
- * geometry host reads only the global and URL param. The ramp therefore reaches the viewer's own loads, never
- * exports or other processors. A primary load (`recordArm`) records whether its pool meshed out of core as the
- * telemetry arm; a federated add follows the flag too but leaves the arm to its primary. {@link resetOutOfCoreArm}
- * starts every primary load from the default, so a small file (fast path), a cache reopen, a server load or a load
- * the arena cannot serve reports off.
+ * load's processor. The geometry host reads only the global and `?perf.ooc`; the `perf-ooc` PostHog ramp reaches a
+ * load only through `processor.outOfCore`, set here, so it never reaches exports or other processors.
+ *
+ * The ramp applies to a first attempt of a primary load only. A federated add and a resource retry follow the
+ * explicit global or URL param alone: a retry then takes the whole-file path the file opened with before the ramp,
+ * and the arm (one per session) stays the primary's. The primary records whether its pool meshed out of core as the
+ * telemetry arm, while it is still the current load (`isCurrent`), so a superseded load cannot label the next one.
+ * {@link resetOutOfCoreArm} starts every primary load from the default, so a small file (fast path), a cache reopen,
+ * a server load or a file the arena cannot serve reports off.
  */
 export function configureOutOfCore(
   processor: Pick<GeometryProcessor, 'outOfCore' | 'onOutOfCoreDecision'>,
-  { recordArm }: { recordArm: boolean },
+  { primary, retry, isCurrent }: { primary: boolean; retry: boolean; isCurrent: () => boolean },
   readFeatureFlag?: (key: string) => unknown,
 ): void {
-  processor.outOfCore = isPerfFlagOn(resolvePerfFlag(getPerfFlagDefinition('outOfCore'), readFeatureFlag));
-  processor.onOutOfCoreDecision = recordArm ? (ran) => recordAppliedPerfFlag('outOfCore', ran) : undefined;
+  const ramp = primary && !retry ? readFeatureFlag : () => undefined;
+  // Only an "on" is handed over: unset, the pool reads the explicit flag itself when the load starts.
+  processor.outOfCore = isPerfFlagOn(resolvePerfFlag(getPerfFlagDefinition('outOfCore'), ramp)) ? true : undefined;
+  processor.onOutOfCoreDecision = primary ? (ran) => { if (isCurrent()) recordAppliedPerfFlag('outOfCore', ran); } : undefined;
 }
 
 /** A primary load starts from the default arm until its pool reports. */

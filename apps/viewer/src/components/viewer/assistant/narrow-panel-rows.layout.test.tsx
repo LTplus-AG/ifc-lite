@@ -43,7 +43,8 @@ const PANEL_WIDTHS = [260, 350] as const;
 const MIN_CONTROL_PX = 128;
 
 before(warmContrastBrowser);
-afterEach(() => { cleanup(); cancelAssistant(); setLocale('en'); });
+const initialAssistant = useAssistant.getState();
+afterEach(() => { cleanup(); cancelAssistant(); useAssistant.setState(initialAssistant, true); setLocale('en'); });
 after(closeContrastBrowser);
 
 function finding(occurrence: string): DraftFinding {

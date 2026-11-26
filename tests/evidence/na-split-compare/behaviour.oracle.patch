@@ -1,0 +1,21 @@
+diff --git a/scripts/lib/native-adapter-split-compare.mjs b/scripts/lib/native-adapter-split-compare.mjs
+index ce8cc00644..c013df4784 100644
+--- a/scripts/lib/native-adapter-split-compare.mjs
++++ b/scripts/lib/native-adapter-split-compare.mjs
+@@ -190,6 +190,7 @@ export function sameReference(rel, aBytes, bBytes) {
+   const invariants = BY_INVARIANTS[rel.split('/').at(-1)];
+   if (!invariants) return timingFreeHash(rel, aBytes) === timingFreeHash(rel, bBytes);
+   const [a, b] = [aBytes, bBytes].map((x) => invariants(JSON.parse(x.toString('utf8'))));
++  if (a.defects.length || b.defects.length) return false;
+   if (JSON.stringify(stripVolatile(a.exact)) !== JSON.stringify(stripVolatile(b.exact)) || a.areas.length !== b.areas.length) return false;
+   return a.areas.every((x, i) => Math.abs(x - b.areas[i]) <= M11N_AREA_RELATIVE * Math.max(Math.abs(x), Math.abs(b.areas[i])));
+ }
+@@ -290,7 +291,7 @@ export async function compareLayouts({ mono: monoDir, split: splitDir, needs, ro
+   const splitGreen = j.ok && judgeResult === 'success';
+   lines.push(`Verdict: single job **${needs?.['native-adapter']?.result ?? 'absent'}**, split judge **${splitGreen ? 'success' : 'failure'}**`);
+   if (judgeResult !== 'success') problems.push(`${SPLIT_JUDGE} result ${judgeResult}: the split has no verdict of its own`);
+-  if (false) problems.push(`verdicts differ: single ${monoGreen ? 'green' : 'red'}, split ${splitGreen ? 'green' : 'red'}${j.problems.length ? ` (${j.problems.join('; ')})` : ''}`);
++  if (monoGreen !== splitGreen) problems.push(`verdicts differ: single ${monoGreen ? 'green' : 'red'}, split ${splitGreen ? 'green' : 'red'}${j.problems.length ? ` (${j.problems.join('; ')})` : ''}`);
+   for (const id of new Set(SPLIT_LANE_JOBS.map((job) => split[job].meta.head).filter(Boolean))) if (mono.meta.head && id !== mono.meta.head) problems.push(`split job commit ${id} is not the single job's ${mono.meta.head}`);
+ 
+   lines.push('', '| lane | single job | split |', '|---|---|---|');

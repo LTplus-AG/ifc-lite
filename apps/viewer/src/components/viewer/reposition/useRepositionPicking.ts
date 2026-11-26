@@ -37,10 +37,11 @@ export function useRepositionPicking(role: PickRole, finish: (role: PickRole) =>
     let lastRevision = state.modelPlacement.revision;
     const previousCursor = canvas.style.cursor;
     canvas.style.cursor = 'crosshair';
-    const cast = (event: PointerEvent, current: ReturnType<typeof useViewerStore.getState>, filter: { hiddenIds: Set<number>; isolatedIds: Set<number> | undefined }) => {
+    const cast = (event: PointerEvent, current: ReturnType<typeof useViewerStore.getState>,
+      filter: { hiddenIds: Set<number>; isolatedIds: Set<number> | undefined }, lock: EdgeLockInput) => {
       const rect = canvas.getBoundingClientRect();
       return renderer.raycastSceneMagnetic(event.clientX - rect.left, event.clientY - rect.top,
-        edgeLock, {
+        lock, {
           hiddenIds: filter.hiddenIds, isolatedIds: filter.isolatedIds,
           snapOptions: { snapToVertices: current.snapEnabled, snapToEdges: current.snapEnabled,
             snapToFaces: current.snapEnabled, snapToPointClouds: true, screenSnapRadius: 12 },
@@ -49,7 +50,8 @@ export function useRepositionPicking(role: PickRole, finish: (role: PickRole) =>
     /** Click-only: what an unrestricted raycast (same hidden/isolation) hit, to explain a refusal. */
     const explainMiss = (event: PointerEvent): string => {
       const current = useViewerStore.getState();
-      const result = cast(event, current, explainRaycastFilter(current));
+      // Unlocked: the live edge lock may sit on an eligible edge and snap this cast back onto it.
+      const result = cast(event, current, explainRaycastFilter(current), { edge: null, meshExpressId: null, lockStrength: 0 });
       const hitModel = hitModelId(result, (id) => resolveEntityRef(id).modelId);
       const message = rejectedPickMessage(role, hitModel, pickContext(ctx.moving, reference, current.models),
         current.models.keys(), (modelId) => current.models.get(modelId)?.name ?? modelId,
@@ -65,7 +67,7 @@ export function useRepositionPicking(role: PickRole, finish: (role: PickRole) =>
       lastRevision = current.modelPlacement.revision;
       const isolatedIds = current.isolatedEntities === null ? allowed
         : new Set([...allowed].filter((id) => current.isolatedEntities?.has(id)));
-      const result = cast(event, current, { hiddenIds: current.hiddenEntities, isolatedIds });
+      const result = cast(event, current, { hiddenIds: current.hiddenEntities, isolatedIds }, edgeLock);
       if (result.edgeLock.shouldRelease) edgeLock = { edge: null, meshExpressId: null, lockStrength: 0 };
       else if (result.edgeLock.shouldLock && result.edgeLock.edge) edgeLock = {
         edge: result.edgeLock.edge, meshExpressId: result.edgeLock.meshExpressId, lockStrength: EDGE_LOCK_DEFAULTS.INITIAL_STRENGTH,
@@ -111,7 +113,11 @@ export function useRepositionPicking(role: PickRole, finish: (role: PickRole) =>
       }
       if (refuseCaptureHeldPick(renderer)) return;
       const hit = pick(event);
-      if (!hit) { onError(explainMiss(event)); return; }
+      if (!hit) {
+        // A preview that ended mid-pick leaves nothing to explain.
+        if (useViewerStore.getState().modelPlacement.preview) onError(explainMiss(event));
+        return;
+      }
       try {
         updateAnchor(event, hit);
         nextRole = role === 'source' ? 'target' : null;

@@ -154,7 +154,7 @@ export function evaluatePr(io, { pr, headSha, mainTip, ceilings, globs, measured
       prMeasured = measured.families.map(slim);
       record.testedBase = io.mergeParents(measured.mergeSha, headSha);
     } else if (rel.perf || rel.rust) {
-      const m = io.prMeasurement(headSha, prRun);
+      const m = io.prMeasurement(headSha, prRun, pr);
       if (m) {
         prMeasured = m.families;
         record.testedBase = m.testedBase;

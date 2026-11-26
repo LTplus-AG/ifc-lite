@@ -177,9 +177,12 @@ export function createIo({ repo, cwd = process.cwd(), cache = null, now = () => 
   /**
    * The PR head's newest measurement: the newest `pull_request` Test run on
    * that head that uploaded one. Older runs on the same head are not skipped
-   * past a newer measuring run, so a re-run with a newer base wins.
+   * past a newer measuring run, so a re-run with a newer base wins. Two PRs
+   * can share a head against different bases, so a run that names its PRs
+   * must name this one (a fork's run names none and is taken as is), and the
+   * cache is keyed by PR as well as head.
    */
-  function prMeasurement(headSha, onlyRun = null) {
+  function prMeasurement(headSha, onlyRun = null, number = null) {
     if (onlyRun) {
       const families = runMeasurement(onlyRun);
       if (!families) return null;
@@ -190,8 +193,12 @@ export function createIo({ repo, cwd = process.cwd(), cache = null, now = () => 
       `repos/${repo}/actions/workflows/test.yml/runs?head_sha=${headSha}&event=pull_request&per_page=20`,
       `Test runs on ${headSha}`,
     ).workflow_runs ?? [];
-    const own = runs.filter((r) => !String(r.head_branch ?? '').startsWith('mergify/merge-queue/')).sort((a, b) => b.id - a.id);
-    const cached = store.prMeasurements[headSha];
+    const forThisPr = (r) => number === null || !(r.pull_requests?.length) || r.pull_requests.some((p) => p.number === number);
+    const own = runs
+      .filter((r) => !String(r.head_branch ?? '').startsWith('mergify/merge-queue/') && forThisPr(r))
+      .sort((a, b) => b.id - a.id);
+    const key = number === null ? headSha : `${headSha}#${number}`;
+    const cached = store.prMeasurements[key];
     for (const run of own) {
       if (cached && cached.runId === run.id) {
         stats.cacheHits += 1;
@@ -203,7 +210,7 @@ export function createIo({ repo, cwd = process.cwd(), cache = null, now = () => 
       const mergeSha = families[0].commit;
       const testedBase = mergeParents(mergeSha, headSha);
       const entry = { runId: run.id, mergeSha, testedBase, families };
-      store.prMeasurements[headSha] = entry;
+      store.prMeasurements[key] = entry;
       return entry;
     }
     return null;

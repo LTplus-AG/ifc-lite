@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -131,6 +131,23 @@ DATA;
 ENDSEC;
 END-ISO-10303-21;
 `;
+
+it('selects each exact authored storey Name, including surrounding spaces (#11583)', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'ifc-extract-authored-storey-'));
+  try {
+    const src = join(dir, 'in.ifc');
+    await writeFile(src, TWO_STOREY_MODEL.replace("'L02',$,$,#44", "' L01 ',$,$,#44"), 'latin1');
+    for (const [selector, expected, excluded] of [['L01', '#70=', '#90='], [' L01 ', '#90=', '#70=']]) {
+      const out = join(dir, 'sub.ifc');
+      await extractEntitiesCommand([src, '--storey', selector, '--out', out]);
+      const text = await readFile(out, 'latin1');
+      expect(text).toContain(expected);
+      expect(text).not.toContain(excluded);
+    }
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
 
 describe('extract-entities --storey: a free-text `#id` naming a real unrelated entity (#4166)', () => {
   it('picks the storey genuine placement, not the id its Description text names', async () => {

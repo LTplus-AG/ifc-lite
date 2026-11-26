@@ -96,6 +96,13 @@ function assertPatchesApplied(staged) {
   const root = resolve(pkgDir, '..', '..');
   const patches = JSON.parse(readFileSync(join(root, 'package.json'), 'utf-8')).pnpm?.patchedDependencies ?? {};
   for (const [spec, patch] of Object.entries(patches)) {
+    const at = spec.lastIndexOf('@');
+    if (at <= 0 || !/^\d+\.\d+\.\d+/.test(spec.slice(at + 1))) {
+      throw new Error(`patchedDependencies key ${spec} is not name@x.y.z; this check matches exact versions only`);
+    }
+    // pnpm patches one version; any other version of the package ships unpatched.
+    const other = [...staged.keys()].find((s) => s.slice(0, s.lastIndexOf('@')) === spec.slice(0, at) && s !== spec);
+    if (other) throw new Error(`${other} is staged, but ${patch} only patches ${spec}`);
     // A CRLF checkout of patches/ (core.autocrlf) must still compare equal.
     const lines = readFileSync(join(root, patch), 'utf-8').split(/\r?\n/);
     const isAdded = (line) => line.startsWith('+') && !line.startsWith('+++ ') && line.trim() !== '+';
@@ -105,7 +112,10 @@ function assertPatchesApplied(staged) {
     for (const pkgRoot of staged.get(spec) ?? []) {
       let file = '';
       for (const line of lines) {
-        if (line.startsWith('+++ ')) file = readFileSync(join(pkgRoot, line.slice(4).replace(/^b\//, '')), 'utf-8');
+        // A deleted file (+++ /dev/null) has no added lines to look for.
+        if (line.startsWith('+++ ')) {
+          file = line === '+++ /dev/null' ? '' : readFileSync(join(pkgRoot, line.slice(4).replace(/^b\//, '')), 'utf-8');
+        }
         else if (isAdded(line) && !file.includes(line.slice(1))) {
           throw new Error(`${pkgRoot} is staged without ${patch} (missing: ${line.slice(1).trim()})`);
         }

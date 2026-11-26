@@ -39,9 +39,9 @@ pub(super) struct CalendarDates {
     carriers_written: bool,
     pending: HashMap<u32, Vec<PendingDate>>,
     retained: usize,
-    /// `#id (TYPE)` of each legacy date record nothing reached before
-    /// conversion, so it was left out (#11199).
-    omitted: Vec<String>,
+    /// `(id, TYPE)` of each legacy date record no written record reached
+    /// before slots converted, so it was left out (#11199).
+    omitted: Vec<(u32, String)>,
 }
 
 /// What a deferred date slot lost: all of it, its time (kept the date), or
@@ -78,7 +78,7 @@ impl CalendarDates {
         }
         let upgrade = self.carriers_written || self.pending.values().any(|dates| dates.iter().any(|date| date.up));
         let (carriers, maximum) = collect_carriers(text, upgrade);
-        // What nothing reaches before slots convert carries no value anywhere: it is omitted, and named (#11199).
+        // What no written record reaches before slots convert carries no value anywhere: it is omitted, and named (#11199).
         let reached = retained_carriers(text, &carriers, &HashMap::new());
         let mut ids = IdAllocator::after(maximum);
         let mut appended = Vec::new();
@@ -110,9 +110,7 @@ impl CalendarDates {
             rewrites.insert(id, frame.with_args(line, &slots.join(",")));
         }
         self.pending.clear();
-        let mut orphans: Vec<_> = carriers.iter().filter(|(id, _)| !reached.contains(id)).map(|(id, date)| (*id, date.ty.clone())).collect();
-        orphans.sort_unstable();
-        self.omitted.extend(orphans.into_iter().map(|(id, ty)| format!("#{id} ({ty})")));
+        self.omitted.extend(carriers.iter().filter(|(id, _)| !reached.contains(id)).map(|(id, date)| (*id, date.ty.clone())));
         let used = retained_carriers(text, &carriers, &rewrites);
         self.retained = used.len();
         Some(finish_text(text, &carriers, &used, &rewrites, &appended, pruned))
@@ -122,9 +120,14 @@ impl CalendarDates {
             "{} legacy IFC2X3 date record(s) are still referenced by unconverted slots, so the file is not valid against its header (#10879).",
             self.retained,
         ));
-        retained.into_iter().chain(self.omitted.iter().map(|record| format!(
-            "{record} was omitted because nothing references it and the target schema does not declare its type (#11199)."
-        )))
+        let mut omitted: Vec<_> = self.omitted.iter().collect();
+        omitted.sort_unstable();
+        let omitted = (!omitted.is_empty()).then(|| format!(
+            "{} legacy IFC2X3 date record(s) were omitted because no written record references them and the target schema does not declare their type: {} (#11199).",
+            omitted.len(),
+            omitted.iter().map(|(id, ty)| format!("#{id} ({ty})")).collect::<Vec<_>>().join(", "),
+        ));
+        retained.into_iter().chain(omitted)
     }
 }
 

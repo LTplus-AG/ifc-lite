@@ -89,8 +89,8 @@ fn every_source_only_type_has_a_route_10902() {
 
 /// As the TypeScript twin's end-to-end case: an IFC2X3 -> IFC4 upgrade
 /// maps, renames, proxies or keeps each record, and the warnings name the
-/// proxied and omitted ones. The standalone IFCCALENDARDATE #6 is referenced by
-/// nothing, so it is left out rather than written verbatim (#11199): #10902 kept
+/// proxied and omitted ones. No written record references the standalone
+/// IFCCALENDARDATE #6, so it is left out rather than written verbatim (#11199): #10902 kept
 /// verbatim dates only because a referenced one cannot go without dangling refs.
 #[test]
 fn an_upgrade_writes_each_route_and_names_it_10902() {
@@ -105,7 +105,7 @@ fn an_upgrade_writes_each_route_and_names_it_10902() {
     assert_eq!(line("#6="), "");
     let named = warnings.join("\n");
     assert!(named.contains("were written as IFCPROXY: IFCSERVICELIFE (1)."), "{named}");
-    assert!(named.contains("#6 (IFCCALENDARDATE) was omitted because nothing references it"), "{named}");
+    assert!(named.contains("1 legacy IFC2X3 date record(s) were omitted because no written record references them and the target schema does not declare their type: #6 (IFCCALENDARDATE) (#11199)."), "{named}");
     assert!(!named.contains("readers may reject: IFCCALENDARDATE"), "{named}");
 }
 

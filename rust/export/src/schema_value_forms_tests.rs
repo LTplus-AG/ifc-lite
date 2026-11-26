@@ -329,7 +329,7 @@ fn an_unreferenced_date_record_goes_without_a_slot_to_convert_11199() {
             assert!(!output.contains("=IFCCALENDARDATE(") && !output.contains("=IFCLOCALTIME("), "{schema}: {output}");
             assert_eq!(written, output.lines().filter(|line| line.starts_with('#')).count(), "{schema}");
             assert!(!warnings.iter().any(|w| w.contains("still referenced") || w.contains("readers may reject")), "{warnings:?}");
-            assert!(warnings.iter().any(|w| w == "#2 (IFCCALENDARDATE) was omitted because nothing references it and the target schema does not declare its type (#11199)."), "{warnings:?}");
+            assert!(warnings.iter().any(|w| w == "2 legacy IFC2X3 date record(s) were omitted because no written record references them and the target schema does not declare their type: #2 (IFCCALENDARDATE), #3 (IFCLOCALTIME) (#11199)."), "{warnings:?}");
         }
     }
 }

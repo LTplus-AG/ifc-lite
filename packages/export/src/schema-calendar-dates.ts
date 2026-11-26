@@ -7,6 +7,7 @@ import { readStepSlots } from './step-argument-parser.js';
 import { stepRecordHead } from './step-record-frame.js';
 import { namedExpressIds } from './step-ref-scan.js';
 import { SourceRecords, type SourceStore } from './schema-converter-structural-source.js';
+import { attrNameTable, convertEntityType } from './schema-converter.js';
 import { MAX_SOURCE_STEP_ID, skipStepTrivia } from './step-slot-grammar.js';
 
 /** What a deferred date slot lost: all of it, its time (kept the date), or nothing but a clock precision it filled (#11199). */
@@ -23,8 +24,8 @@ function recordId(text: string): number {
 export class CalendarDates {
   private readonly pending = new Map<number, PendingDate[]>();
   private retained = 0;
-  /** `#id (TYPE)` of each legacy date record nothing reached before conversion, so it was left out (#11199). */
-  private readonly omitted: string[] = [];
+  /** Each legacy date record no written record reached before slots converted, so it was left out (#11199). */
+  private readonly omitted: [id: number, type: string][] = [];
   /** An IFC2X3 upgrade wrote a legacy date record, so those nothing references go even when no slot converts (#11199). */
   private carriersWritten = false;
 
@@ -61,7 +62,7 @@ export class CalendarDates {
       const record = readStepSlots(line, maxReferenceId);
       if (record) carriers.set(id, record);
     }
-    // What nothing reaches before slots convert carries no value anywhere: it is omitted, and named (#11199).
+    // What no written record reaches before slots convert carries no value anywhere: it is omitted, and named (#11199).
     const reached = carriers.size ? carrierUse(lines, carriers) : new Set<number>();
     const added: string[] = [];
     for (let index = 0; index < lines.length; index++) {
@@ -95,7 +96,7 @@ export class CalendarDates {
     }
     this.pending.clear();
     if (carriers.size) {
-      for (const [id, record] of carriers) if (!reached.has(id)) this.omitted.push(`#${id} (${record.type})`);
+      for (const [id, record] of carriers) if (!reached.has(id)) this.omitted.push([id, record.type]);
       const used = carrierUse(lines, carriers);
       this.retained = used.size;
       let kept = 0;
@@ -111,13 +112,14 @@ export class CalendarDates {
   warnings(): string[] {
     return [
       ...(this.retained ? [this.retained + ' legacy IFC2X3 date record(s) are still referenced by unconverted slots, so the file is not valid against its header (#10879).'] : []),
-      ...this.omitted.map((record) => `${record} was omitted because ${ORPHAN_DATE}.`),
+      ...(this.omitted.length ? [`${this.omitted.length} legacy IFC2X3 date record(s) were omitted because no written record references them and the target schema does not declare their type: ${
+        [...this.omitted].sort(([a], [b]) => a - b).map(([id, type]) => `#${id} (${type})`).join(', ')} (#11199).`] : []),
     ];
   }
 }
 
 /** Why an IFC2X3 upgrade leaves out a legacy date record nothing references (#11199). */
-export const ORPHAN_DATE = 'nothing references it and the target schema does not declare its type (#11199)';
+export const ORPHAN_DATE = 'no written record references it and the target schema does not declare its type (#11199)';
 
 /** The carriers some other record reaches, directly or through another carrier. */
 function carrierUse(lines: Iterable<string>, carriers: ReadonlyMap<number, { slots: readonly string[] }>): Set<number> {
@@ -138,12 +140,20 @@ function carrierUse(lines: Iterable<string>, carriers: ReadonlyMap<number, { slo
 }
 
 /** The legacy date records of an unedited IFC2X3 source that an upgrade to `to` leaves out, for the loss report (#11199). */
-export function orphanDateRecords(store: SourceStore, from: string, to: string): Set<number> {
+export function orphanDateRecords(store: SourceStore, from: string, to: 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5'): Set<number> {
+  if (from !== 'IFC2X3' || (to !== 'IFC4' && to !== 'IFC4X3')) return new Set();
   const source = new SourceRecords(store);
   const carriers = new Map<number, { slots: readonly string[] }>();
-  if (from !== 'IFC2X3' || (to !== 'IFC4' && to !== 'IFC4X3')) return new Set();
   for (const type of DATE_CARRIERS) for (const id of source.ids(type)) carriers.set(id, { slots: source.slots(id) ?? [] });
   if (!carriers.size) return new Set();
-  const used = carrierUse((function* () { for (const { text } of source.texts()) yield text; })(), carriers);
+  // A referrer the target does not declare is proxied or omitted, so its date references are not written.
+  const target = attrNameTable(to);
+  const written = function* () {
+    for (const { id, text } of source.texts()) {
+      const type = source.type(id);
+      if (type && (carriers.has(id) || target?.has(convertEntityType(type, from, to)))) yield text;
+    }
+  };
+  const used = carrierUse(written(), carriers);
   return new Set([...carriers.keys()].filter((id) => !used.has(id)));
 }

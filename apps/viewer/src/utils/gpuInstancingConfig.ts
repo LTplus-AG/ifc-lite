@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { GEOMETRY_PERF_FLAG_BINDINGS, setGlobalInstancingRamp } from '@ifc-lite/geometry';
+import { GEOMETRY_PERF_FLAG_BINDINGS, type GeometryProcessor } from '@ifc-lite/geometry';
 import type { Renderer, SceneContents } from '@ifc-lite/renderer';
 import { readPerfFlagRaw } from '@ifc-lite/data';
 import { getPerfFlagDefinition, resolvePerfFlag } from '../lib/perf/flags.js';
@@ -47,16 +47,20 @@ export function configureKeyedInstancing(scene: Pick<SceneContents, 'keyedInstan
 }
 
 /**
- * Let the geometry host ask the `perf-global-instancing` PostHog ramp whether the global instance plan applies,
- * when no global or URL param says so, and record what each pool load decided as the telemetry arm. Call before
- * each exact load: the arm starts off, so a small file, a non-pool load or a cache reopen reports the default
- * rather than the user's ramp value.
+ * The global instance plan for one exact load's processor: its flag resolved here (global, URL param, then the
+ * `perf-global-instancing` PostHog ramp), so the ramp reaches only the viewer's own loads, never exports or
+ * other processors. Each worker-pool decision is recorded as the telemetry arm; {@link resetGlobalInstancingArm}
+ * starts every primary load from the default, so a small file, a cache reopen or a server load reports it.
  */
-export function installGlobalInstancingRamp(readFeatureFlag?: (key: string) => unknown): void {
-  const flag = getPerfFlagDefinition('globalInstancing');
+export function configureGlobalInstancing(
+  processor: Pick<GeometryProcessor, 'globalInstancing' | 'onGlobalInstancingDecision'>,
+  readFeatureFlag?: (key: string) => unknown,
+): void {
+  processor.globalInstancing = isPerfFlagOn(resolvePerfFlag(getPerfFlagDefinition('globalInstancing'), readFeatureFlag));
+  processor.onGlobalInstancingDecision = (applies) => recordAppliedPerfFlag('globalInstancing', applies);
+}
+
+/** A primary load starts from the default arm until its pool decides. */
+export function resetGlobalInstancingArm(): void {
   recordAppliedPerfFlag('globalInstancing', false);
-  setGlobalInstancingRamp({
-    read: () => resolvePerfFlag(flag, readFeatureFlag),
-    decided: (applies) => recordAppliedPerfFlag('globalInstancing', applies),
-  });
 }

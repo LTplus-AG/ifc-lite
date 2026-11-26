@@ -108,7 +108,7 @@ import { revalidateServedCache, type ServedCacheHit } from './ingest/cacheRevali
 import { reportRenderStats } from '../utils/renderStatsReport.js';
 import { nextFrameOrTimeout } from '../utils/frameWait.js';
 import { compactCellSizeForLoad } from '../utils/compactGeometryFlag.js';
-import { installGlobalInstancingRamp } from '../utils/gpuInstancingConfig.js';
+import { configureGlobalInstancing, resetGlobalInstancingArm } from '../utils/gpuInstancingConfig.js';
 import { isCompactCellSize, meshTriangleCount, meshVertexCount } from '@ifc-lite/geometry/compact';
 import { visibilityWitness } from '../utils/visibilityWitness.js';
 import { buildModelLoadedPayload, captureModelLoaded, clearModelLoadedSnapshot, snapshotFromGeometry } from '../utils/loadTelemetry.js';
@@ -433,6 +433,7 @@ export function useIfcLoader() {
         // federated add must never wipe model #1; it joins the existing map.
         if (target.kind === 'primary') {
           clearModelLoadedSnapshot();
+          resetGlobalInstancingArm();
           getGlobalRenderer()?.getScene()?.setColdGeometryProvider(null);
           resetViewerState({ preserveLoading: true });
           clearAllModels();
@@ -1277,7 +1278,6 @@ export function useIfcLoader() {
       // Initialize geometry processor first (WASM init is fast if already loaded)
       // Reuses the merge-layers snapshot taken above for the cache key so the
       // key and the WASM tessellation always agree (issues #540, #1107).
-      installGlobalInstancingRamp(); // the plan's PostHog ramp, read by the pool once per load
       const geometryProcessor = new GeometryProcessor({
         // Auto-low vertex density for heavy models (or `?geomTier=` override);
         // `undefined` keeps the engine default (medium, full-density curves).
@@ -1303,6 +1303,7 @@ export function useIfcLoader() {
         // go.
         enableInstancing: true,
       });
+      configureGlobalInstancing(geometryProcessor); // the plan's flag incl. its PostHog ramp, for this load's pool only
       // Armed BEFORE init() so an engine-init failure still frees whatever the
       // partially-initialised bridge allocated (dispose() is a no-op when it
       // allocated nothing).

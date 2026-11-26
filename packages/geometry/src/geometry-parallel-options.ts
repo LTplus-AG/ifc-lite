@@ -47,6 +47,13 @@ export interface ProcessParallelOptions {
    */
   compactCellSize?: number;
   /**
+   * The global instance plan's flag for this load, as the host decided it (a staged rollout); unset, the explicit
+   * global or URL param. Small files never plan (`globalInstancingApplies`). The pool decides once per load.
+   */
+  globalInstancing?: boolean;
+  /** Hears the pool's once-per-load plan decision (the host's telemetry arm). */
+  onGlobalInstancingDecision?: (applies: boolean) => void;
+  /**
    * Issue #924 — per-entity geometry-hash tolerance in metres. When a
    * positive value is given, each geometry worker's IfcAPI receives
    * `setComputeGeometryHashes(tol)` before the first stream-chunk, so the

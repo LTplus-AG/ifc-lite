@@ -62,7 +62,7 @@ export { type StallPhase, type StallPhaseHandle } from './stall-phase.js';
 export { prewarmSharedWasmModule, compileSharedWasmModule } from './wasm-shared-module.js';
 export type { GeometryMeshingSettings } from './meshing-settings.js';
 // `__IFC_LITE_*` flag bindings the host reads; the viewer registry spreads these (#6962).
-export { GEOMETRY_PERF_FLAG_BINDINGS, GLOBAL_INSTANCING_MIN_BYTES, decideGlobalInstancing, globalInstancingApplies, inSmallFileTier, readGlobalInstancingFlag, setGlobalInstancingRamp, type GlobalInstancingRamp } from './perf-flags.js';
+export { GEOMETRY_PERF_FLAG_BINDINGS, GLOBAL_INSTANCING_MIN_BYTES, globalInstancingApplies, inSmallFileTier, readGlobalInstancingFlag } from './perf-flags.js';
 // Stale-deployment WASM-asset detection (#1363). The host app subscribes to
 // WASM_ASSET_UNAVAILABLE_EVENT and uses `isWasmAssetUnavailableError` to
 // reload onto the deployment; `notifyIfWasmAssetUnavailable` stays internal.
@@ -245,6 +245,11 @@ export class GeometryProcessor {
   private skipSmallCuts: boolean;
   private skipVoids: boolean;
   compactCellSize?: number; // worker-pool compact GPU records at this cell size, after `loadCompactGeometry()` (`ProcessParallelOptions.compactCellSize`); unset = off
+  /** This processor's global-instance-plan flag (`ProcessParallelOptions.globalInstancing`): a host's own decision,
+   *  such as a staged rollout; unset = the explicit global or URL param. */
+  globalInstancing?: boolean;
+  /** Hears each worker-pool load's plan decision (`ProcessParallelOptions.onGlobalInstancingDecision`). */
+  onGlobalInstancingDecision?: (applies: boolean) => void;
 
   constructor(options: GeometryProcessorOptions = {}) {
     this.bufferBuilder = new BufferBuilder();
@@ -771,6 +776,7 @@ export class GeometryProcessor {
       // Every pool worker meshes with this processor's settings (#540, #924, #976, #1286; meshing-settings.ts).
       ...this.meshingSettings(),
       compactCellSize: this.compactCellSize,
+      globalInstancing: this.globalInstancing, onGlobalInstancingDecision: this.onGlobalInstancingDecision,
       wasmUrls,
       workerCountOverride,
     });

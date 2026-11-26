@@ -105,7 +105,7 @@ export const PERF_FLAGS = [
     removalCondition: 'Delete with the per-batch instancing decision once the global instance plan is the default and has shipped two releases with no rendering or compare report.',
     introducedAt: '2026-11-23',
     default: false,
-    // The geometry host reads the global and URL param itself; the PostHog ramp reaches it through `installGlobalInstancingRamp`.
+    // The geometry host reads the global and URL param itself; the viewer hands its load processor the PostHog ramp (`configureGlobalInstancing`).
     bindings: { ...GEOMETRY_PERF_FLAG_BINDINGS.globalInstancing, posthogKey: 'perf-global-instancing' },
   },
   {

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import {
   forwardKeyPlan,
   globalKeyPlanningField,
@@ -12,12 +12,11 @@ import {
   type GeometryWorkerAddKeyPlanMessage,
   type GlobalPlanApi,
 } from './global-instance-plan.js';
-import { decideGlobalInstancing, GLOBAL_INSTANCING_MIN_BYTES, globalInstancingApplies, setGlobalInstancingRamp } from './perf-flags.js';
+import { GLOBAL_INSTANCING_MIN_BYTES, globalInstancingApplies } from './perf-flags.js';
 
 const g = globalThis as Record<string, unknown>;
 afterEach(() => {
   delete g.__IFC_LITE_GLOBAL_INSTANCING;
-  setGlobalInstancingRamp(undefined);
 });
 
 const NONE = 0xffff_ffff;
@@ -33,35 +32,16 @@ describe('global instance plan messages', () => {
     expect(globalPlanColumns({ ...columns, mappedInstanceCounts: Uint32Array.of(9, 1) }, true), 'counts must parallel the plan').toEqual({});
   });
 
-  it('apply only past the small tier, with the flag on or the host ramp on', () => {
+  it('apply only past the small tier, with the explicit flag or the host\'s own decision', () => {
     const large = GLOBAL_INSTANCING_MIN_BYTES, small = GLOBAL_INSTANCING_MIN_BYTES - 1;
     expect(globalInstancingApplies(large)).toBe(false);
     g.__IFC_LITE_GLOBAL_INSTANCING = 1;
     expect(globalInstancingApplies(large)).toBe(true);
     expect(globalInstancingApplies(small), 'a small file keeps the per-batch decision').toBe(false);
+    expect(globalInstancingApplies(large, false), 'the host decision replaces the explicit read').toBe(false);
     delete g.__IFC_LITE_GLOBAL_INSTANCING;
-    let ramp: unknown = true;
-    setGlobalInstancingRamp({ read: () => ramp });
-    expect(globalInstancingApplies(large), 'the ramp decides when nothing explicit is set').toBe(true);
-    ramp = 'control';
-    expect(globalInstancingApplies(large), 'an unrecognised variant is off').toBe(false);
-    ramp = true;
-    g.__IFC_LITE_GLOBAL_INSTANCING = 0;
-    expect(globalInstancingApplies(large), 'an explicit 0 beats the ramp').toBe(false);
-    delete g.__IFC_LITE_GLOBAL_INSTANCING;
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    setGlobalInstancingRamp({ read: () => { throw new Error('analytics gone'); } });
-    expect(globalInstancingApplies(large), 'a failing ramp read keeps the default').toBe(false);
-    expect(warn).toHaveBeenCalledOnce();
-    warn.mockRestore();
-  });
-
-  it('report each pool load\'s decision to the ramp', () => {
-    const decided: boolean[] = [];
-    setGlobalInstancingRamp({ read: () => true, decided: (on) => decided.push(on) });
-    expect(decideGlobalInstancing(GLOBAL_INSTANCING_MIN_BYTES)).toBe(true);
-    expect(decideGlobalInstancing(GLOBAL_INSTANCING_MIN_BYTES - 1)).toBe(false);
-    expect(decided).toEqual([true, false]);
+    expect(globalInstancingApplies(large, true)).toBe(true);
+    expect(globalInstancingApplies(small, true), 'the small tier holds for a host decision too').toBe(false);
   });
 
   it('forward only planned jobs, and nothing for a chunk without plan indices', () => {

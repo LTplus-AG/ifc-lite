@@ -65,22 +65,6 @@ export function readShardScanFlag(): boolean {
   return true;
 }
 
-/** A host's staged rollout for the plan: `read` answers when nothing explicit is set; `decided` hears each pool load's decision. */
-export interface GlobalInstancingRamp {
-  read: () => unknown;
-  decided?: (applies: boolean) => void;
-}
-
-let globalInstancingRamp: GlobalInstancingRamp | undefined;
-
-/**
- * Install the host's rollout for the plan (the viewer's PostHog ramp). Its `read` is asked only when neither the
- * global nor the URL param is set, so an explicit `0` or `1` always wins. `undefined` removes it.
- */
-export function setGlobalInstancingRamp(ramp: GlobalInstancingRamp | undefined): void {
-  globalInstancingRamp = ramp;
-}
-
 /**
  * Global instance plan: decide GPU instancing ONCE per model from the
  * pre-pass's model-wide facts (mapped-item counts, repeated content keys)
@@ -88,13 +72,7 @@ export function setGlobalInstancingRamp(ramp: GlobalInstancingRamp | undefined):
  * it. Read on the host thread when a load starts.
  */
 export function readGlobalInstancingFlag(): boolean {
-  let v = readPerfFlagRaw(GEOMETRY_PERF_FLAG_BINDINGS.globalInstancing);
-  if (v === undefined && globalInstancingRamp) {
-    try { v = globalInstancingRamp.read(); } catch (err) {
-      console.warn('[geometry] global instancing ramp read failed; the plan stays off', err);
-      v = undefined;
-    }
-  }
+  const v = readPerfFlagRaw(GEOMETRY_PERF_FLAG_BINDINGS.globalInstancing);
   return v === 1 || v === '1' || v === true || v === 'true';
 }
 
@@ -114,16 +92,10 @@ export function inSmallFileTier(byteLength: number): boolean {
 }
 
 /** Whether the plan applies to a source of `byteLength` bytes (the bytes the pool meshes: for a compressed source,
- *  its decompressed IFC): the flag is on and the source is past the small tier. */
-export function globalInstancingApplies(byteLength: number): boolean {
-  return !inSmallFileTier(byteLength) && readGlobalInstancingFlag();
-}
-
-/** A pool load's plan decision, made once: {@link globalInstancingApplies}, reported to the host's ramp. */
-export function decideGlobalInstancing(byteLength: number): boolean {
-  const applies = globalInstancingApplies(byteLength);
-  globalInstancingRamp?.decided?.(applies);
-  return applies;
+ *  its decompressed IFC): the flag is on and the source is past the small tier. `flag` is a host's own decision
+ *  (the viewer's PostHog ramp, `GeometryProcessor.globalInstancing`); unset, the explicit global or URL param. */
+export function globalInstancingApplies(byteLength: number, flag?: boolean): boolean {
+  return !inSmallFileTier(byteLength) && (flag ?? readGlobalInstancingFlag());
 }
 
 /**

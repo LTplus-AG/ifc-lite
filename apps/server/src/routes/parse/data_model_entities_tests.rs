@@ -137,6 +137,68 @@ fn split_entities(payload: &[u8]) -> (Vec<u32>, Vec<u8>) {
     (ids, payload[4 + len..].to_vec())
 }
 
+fn next_section<'a>(remaining: &mut &'a [u8]) -> &'a [u8] {
+    let len = u32::from_le_bytes(remaining[..4].try_into().unwrap()) as usize;
+    let (section, rest) = remaining[4..].split_at(len);
+    *remaining = rest;
+    section
+}
+
+fn wall_storey(mut payload: &[u8]) -> Option<u32> {
+    for _ in 0..4 {
+        next_section(&mut payload);
+    }
+    let mut spatial = next_section(&mut payload);
+    next_section(&mut spatial);
+    let table = bytes::Bytes::copy_from_slice(next_section(&mut spatial));
+    let reader = ParquetRecordBatchReaderBuilder::try_new(table).unwrap().build().unwrap();
+    for batch in reader {
+        let batch = batch.unwrap();
+        let column = |name| {
+            batch.column_by_name(name).unwrap().as_any()
+                .downcast_ref::<arrow::array::UInt32Array>().unwrap()
+        };
+        if let Some(row) = column("element_id").values().iter().position(|&id| id == 28) {
+            return Some(column("spatial_id").value(row));
+        }
+    }
+    None
+}
+
+#[tokio::test]
+async fn issue_11468_warm_data_model_recomputes_space_contained_storey_rows() {
+    use crate::services::{extract_data_model_with, serialize_data_model_to_parquet, DataModelOptions};
+
+    let state = test_state("space-contained-upgrade").await;
+    let content = fixture("space-contained-upgrade").replace(
+        "(#28),#10);",
+        "(#28),#13);\n#13=IFCSPACE('Spac00000000000000001',$,'Room',$,$,$,$,$,$,$);\n#14=IFCRELAGGREGATES('Agg0000000000000000014',$,$,$,#10,(#13));",
+    );
+    let content = content.as_bytes();
+    let key = key_for(content);
+
+    for (entities, infix, query) in [
+        (DataModelEntities::All, "", ""),
+        (DataModelEntities::Rooted, "-rooted", "?data_model_entities=rooted"),
+    ] {
+        let uri = format!("/api/v1/parse/data-model/{key}{query}");
+        let opts = DataModelOptions::for_entities(entities);
+        let mut old_model = extract_data_model_with(content, opts).model;
+        assert!(old_model.spatial_hierarchy.element_to_storey.contains(&(28, 10)));
+        old_model.spatial_hierarchy.element_to_storey.retain(|&(id, _)| id != 28);
+        let old_sidecar = serialize_data_model_to_parquet(&old_model).unwrap();
+        assert_eq!(wall_storey(&old_sidecar), None);
+        state.cache.set_bytes(&format!("{key}-datamodel{infix}-v8"), &old_sidecar).await.unwrap();
+
+        assert_eq!(get(&state, &uri).await.0, StatusCode::NOT_FOUND, "{entities:?} served pre-upgrade rows");
+        let (status, _, _) = post(&state, &format!("/api/v1/parse/parquet/optimized{query}"), content).await;
+        assert_eq!(status, StatusCode::OK);
+        let (status, payload) = get(&state, &uri).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(wall_storey(&payload), Some(10), "{entities:?} omitted the wall's storey");
+    }
+}
+
 /// The headline: a rooted optimized parse writes ONLY the rooted entry, the
 /// fetch route serves it only to a client that asks for it, and the payload
 /// differs from the default one in the entities section alone. The geometry

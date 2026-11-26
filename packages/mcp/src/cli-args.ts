@@ -139,7 +139,9 @@ export function parseArgs(rawArgv: string[]): CliOptions {
    */
   const value = (flag: string): string | undefined => {
     const next = argv[i + 1];
-    if (next === undefined || next === '' || KNOWN_FLAGS.has(next)) {
+    // An unknown `--x=…` is not a value either: it is reported by name only,
+    // and taking it here would put its value in an error or a bind address.
+    if (next === undefined || next === '' || KNOWN_FLAGS.has(next) || (next.startsWith('--') && next.includes('='))) {
       opts.errors.push(`${flag} needs a value.`);
       return undefined;
     }
@@ -151,7 +153,7 @@ export function parseArgs(rawArgv: string[]): CliOptions {
     const v = value(flag);
     if (v === undefined) return undefined;
     if (/^\d+$/.test(v) && Number(v) <= 65535) return Number(v);
-    opts.errors.push(`${flag} must be an integer from 0 to 65535, got '${v}'.`);
+    opts.errors.push(`${flag} must be an integer from 0 to 65535.`);
     return undefined;
   };
   for (; i < argv.length; i++) {
@@ -165,7 +167,7 @@ export function parseArgs(rawArgv: string[]): CliOptions {
     else if (arg === '--transport') {
       const v = value(arg);
       if (v === 'stdio' || v === 'http') opts.transport = v;
-      else if (v !== undefined) opts.errors.push(`--transport must be stdio or http, got '${v}'.`);
+      else if (v !== undefined) opts.errors.push('--transport must be stdio or http.');
     }
     else if (arg === '--port') opts.port = port(arg) ?? opts.port;
     else if (arg === '--host') opts.host = value(arg);

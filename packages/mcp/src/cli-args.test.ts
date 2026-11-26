@@ -95,7 +95,7 @@ describe('--bridge (#9523)', () => {
     expect(bridgeConflict(parseArgs(['--bridge', 'model.ifc']))).toMatch(/loads no files/);
     expect(bridgeConflict(parseArgs(['--bridge', '--transport', 'http']))).toMatch(/stdio only/);
     expect(bridgeConflict(parseArgs(['--bridge', '--viewer']))).toMatch(/--viewer/);
-    expect(parseArgs(['--bridge', '--bridge-port', 'abc']).errors).toEqual(["--bridge-port must be an integer from 0 to 65535, got 'abc'."]);
+    expect(parseArgs(['--bridge', '--bridge-port', 'abc']).errors).toEqual(['--bridge-port must be an integer from 0 to 65535.']);
     expect(bridgeConflict(parseArgs(['--transport', 'http']))).toBeNull();
   });
 });
@@ -124,7 +124,7 @@ describe('flag fixes (#11534)', () => {
   });
 
   it('refuses a port that is not an integer from 0 to 65535', () => {
-    expect(parseArgs(['--port', 'abc']).errors).toEqual(["--port must be an integer from 0 to 65535, got 'abc'."]);
+    expect(parseArgs(['--port', 'abc']).errors).toEqual(['--port must be an integer from 0 to 65535.']);
     expect(parseArgs(['--viewer-port', '70000']).errors).toHaveLength(1);
     expect(parseArgs(['--port', '0', '--viewer-port', '8080']).errors).toEqual([]);
   });
@@ -136,13 +136,20 @@ describe('flag fixes (#11534)', () => {
     expect(opts.warnings).toEqual(['unknown flag --tokn=… ignored. Run with --help for the flags this version knows.']);
   });
 
+  it('never takes an unknown --x=… as a value, so its value is not echoed or bound', () => {
+    const opts = parseArgs(['--host', '--tokn=s3cr3t']);
+    expect(opts.host).toBeUndefined();
+    expect(opts.errors).toEqual(['--host needs a value.']);
+    expect(JSON.stringify(opts)).not.toContain('s3cr3t');
+  });
+
   it('refuses a value on a boolean flag instead of ignoring the flag', () => {
     const opts = parseArgs(['model.ifc', '--read-only=true']);
     expect(opts.errors).toEqual(['--read-only takes no value.']);
   });
 
   it('takes only stdio or http as the transport', () => {
-    expect(parseArgs(['--transport', 'htp']).errors).toEqual(["--transport must be stdio or http, got 'htp'."]);
+    expect(parseArgs(['--transport', 'htp']).errors).toEqual(['--transport must be stdio or http.']);
     expect(parseArgs(['--transport', 'http']).transport).toBe('http');
   });
 

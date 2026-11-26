@@ -91,7 +91,7 @@ export function buildHelp(version: string): string {
     analyze   <file.ifc> --viewer <port>        Query + visualize analysis results
     lod       <file.ifc> --level 0|1            Generate lightweight LOD artifacts
     simplify  <file.ifc> --out F [--level 1..5] [--ids 1,2,...] [--json]  Demesher: simplify meshes, write lighter IFC
-    mcp       <file.ifc> [--transport stdio|http] Start an MCP server bound to one or more IFC files
+    mcp       [files…] [--transport stdio|http] Start an MCP server (files load over stdio)
     ext       validate <path>|init <dir>          Manage IFClite extensions (Phase 0 — validate, init)
     layer     <publish|diff|merge|log|bake|...>    Layered change tracking over a local store (.ifc-lite/)
     ref       <list|create|move|protect>           Manage named refs in the layer store

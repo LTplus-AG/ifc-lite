@@ -13,7 +13,7 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync, mkdirSyn
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { nodeInstallIo, runInstall, type InstallIo } from './run.js';
-import type { HostEnv } from './clients.js';
+import { InstallError, type HostEnv } from './clients.js';
 
 const VERSION = '0.32.0';
 const PKG = `@ifc-lite/mcp@^${VERSION}`;
@@ -109,7 +109,7 @@ describe('ifc-lite-mcp install: where each client is configured', () => {
   it('a file-system error is reported, not thrown, and names the backup', () => {
     const io = fakeIo();
     io.files.set('/Users/u/.cursor/mcp.json', '{}');
-    io.writeFile = () => { throw Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' }); };
+    io.writeFile = () => { throw new InstallError('EACCES: permission denied'); };
     expect(install(['--client', 'cursor'], io)).toBe(1);
     expect(io.stderr).toMatch(/EACCES.*unchanged \(backup: .*bak-/);
   });
@@ -247,6 +247,16 @@ describe('ifc-lite-mcp install: real files', () => {
       'mcp.json',
       expect.stringMatching(/^mcp\.json\.bak-\d{8}-\d{9}$/),
     ]);
+  });
+
+  it('a real permission error is reported, not thrown', () => {
+    dir = mkdtempSync(join(tmpdir(), 'ifc-lite-install-'));
+    // A directory where the config file should be: reading it fails with EISDIR.
+    mkdirSync(join(dir, '.cursor', 'mcp.json'), { recursive: true });
+    let stderr = '';
+    const io: InstallIo = { ...nodeInstallIo(), host: { platform: process.platform, home: dir, cwd: dir, env: {} }, err: (t) => void (stderr += t) };
+    expect(install(['--client', 'cursor'], io)).toBe(1);
+    expect(stderr).toContain('EISDIR');
   });
 
   it.skipIf(process.platform === 'win32')('writes through a dangling dotfiles symlink', () => {

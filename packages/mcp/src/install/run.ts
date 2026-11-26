@@ -21,8 +21,8 @@ import {
   readlinkSync,
   realpathSync,
   renameSync,
+  rmSync,
   statSync,
-  unlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { homedir } from 'node:os';
@@ -67,15 +67,15 @@ export interface InstallIo {
 export function nodeInstallIo(): InstallIo {
   return {
     host: { platform: process.platform, home: homedir(), cwd: process.cwd(), env: process.env },
-    readFile(path) {
+    readFile: (path) => userFacing(() => {
       try {
         return readFileSync(path, 'utf-8');
       } catch (err) {
         if ((err as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
         throw err;
       }
-    },
-    writeFile(path, text) {
+    }),
+    writeFile: (path, text) => userFacing(() => {
       const { target, mode } = writeTarget(path);
       mkdirSync(dirname(target), { recursive: true });
       // Write beside the target and rename, so a crash never leaves half a config.
@@ -85,27 +85,33 @@ export function nodeInstallIo(): InstallIo {
         if (mode !== undefined) chmodSync(tmp, mode);
         renameSync(tmp, target);
       } catch (err) {
-        try {
-          unlinkSync(tmp);
-        } catch (cleanup) {
-          if ((cleanup as NodeJS.ErrnoException).code !== 'ENOENT') process.stderr.write(`could not remove ${tmp}: ${(cleanup as Error).message}\n`);
-        }
+        rmSync(tmp, { force: true });
         throw err;
       }
-    },
-    copyFile: (from, to) => copyFileSync(from, to, constants.COPYFILE_EXCL),
-    run(command, args) {
+    }),
+    copyFile: (from, to) => userFacing(() => copyFileSync(from, to, constants.COPYFILE_EXCL)),
+    run: (command, args) => userFacing(() => {
       const r = crossSpawn.sync(command, args, { stdio: 'inherit' });
       if (r.error) {
         if ((r.error as NodeJS.ErrnoException).code === 'ENOENT') return { status: 127, missing: true };
         throw r.error;
       }
       return { status: r.status ?? 1 };
-    },
+    }),
     out: (text) => process.stdout.write(text),
     err: (text) => process.stderr.write(text),
     now: () => new Date(),
   };
+}
+
+/** A file-system or spawn failure (EACCES, EROFS, ...) is the user's to fix: report it, do not crash. */
+function userFacing<T>(fn: () => T): T {
+  try {
+    return fn();
+  } catch (err) {
+    if (typeof (err as NodeJS.ErrnoException).syscall === 'string') throw new InstallError((err as Error).message);
+    throw err;
+  }
 }
 
 /**
@@ -160,6 +166,8 @@ interface InstallArgs {
   dryRun: boolean;
   force: boolean;
   serverArgs: string[];
+  /** Model files or --allow roots were given, so serverArgs holds machine-specific paths. */
+  hasPaths: boolean;
 }
 
 function parseInstallArgs(argv: string[], host: HostEnv): InstallArgs | 'help' {
@@ -192,7 +200,13 @@ function parseInstallArgs(argv: string[], host: HostEnv): InstallArgs | 'help' {
   if (!isClientId(client)) throw new InstallError(`Unknown client "${client}". Use one of ${CLIENT_IDS.join(', ')}.`);
   if (scope !== 'user' && scope !== 'project') throw new InstallError('--scope must be user or project.');
   if (!/^[A-Za-z0-9_-]+$/.test(name)) throw new InstallError('--name may use letters, digits, - and _ only.');
-  return { client, scope, name, dryRun, force, serverArgs: absolutePaths([...files, ...passThrough], host) };
+  const transport = passThrough.indexOf('--transport');
+  if (transport >= 0 && passThrough[transport + 1] !== 'stdio') {
+    throw new InstallError('Clients start ifc-lite-mcp over stdio; drop --transport. For HTTP, give the client the server URL.');
+  }
+  const serverArgs = absolutePaths([...files, ...passThrough], host);
+  const hasPaths = files.length > 0 || passThrough.includes('--allow');
+  return { client, scope, name, dryRun, force, serverArgs, hasPaths };
 }
 
 /**
@@ -205,9 +219,6 @@ function absolutePaths(args: string[], host: HostEnv): string[] {
   const out: string[] = [];
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
-    if (arg === '--transport' && args[i + 1] !== 'stdio') {
-      throw new InstallError('Clients start ifc-lite-mcp over stdio; drop --transport. For HTTP, give the client the server URL.');
-    }
     out.push(arg.startsWith('-') ? arg : abs(arg));
     if (isMcpValueFlag(arg) && i + 1 < args.length) {
       i++;
@@ -258,7 +269,7 @@ export function runInstall(
       io.out(installHelp(invokedAs));
       return 0;
     }
-    if (args.scope === 'project' && args.serverArgs.some((x) => !x.startsWith('-'))) {
+    if (args.scope === 'project' && args.hasPaths) {
       io.err('[ifc-lite-mcp install] note: the project file gets absolute paths, which only work on this machine.\n');
     }
     const plan = planInstall(args.client, args.scope, args.name, serverCommand(version, args.serverArgs), io.host);
@@ -268,8 +279,8 @@ export function runInstall(
       : writeFilePlan(plan, args, label, io);
   } catch (err) {
     // A file-system or spawn failure (EACCES, EROFS, ...) is the user's to fix, not a crash.
-    if (!(err instanceof InstallError) && typeof (err as NodeJS.ErrnoException).code !== 'string') throw err;
-    io.err(`[ifc-lite-mcp install] ${(err as Error).message}\n`);
+    if (!(err instanceof InstallError)) throw err;
+    io.err(`[ifc-lite-mcp install] ${err.message}\n`);
     return 1;
   }
 }
@@ -298,9 +309,9 @@ function runCommandPlan(
     return 1;
   }
   if (result.status !== 0) {
-    const hint = remove
-      ? ` The old "${args.name}" entry was already removed; fix the error and run again:\n${line}`
-      : plan.remove ? ' If the name is taken, pass --force or --name.' : '';
+    let hint = '';
+    if (remove) hint = ` The old "${args.name}" entry was already removed; fix the error and run again:\n${line}`;
+    else if (plan.remove) hint = ' If the name is taken, pass --force or --name.';
     io.err(`[ifc-lite-mcp install] \`${plan.command}\` exited with ${result.status}.${hint}\n`);
     return result.status;
   }
@@ -347,7 +358,7 @@ function writeFilePlan(
   try {
     io.writeFile(plan.path, merged.text);
   } catch (err) {
-    if (backup) (err as Error).message += `; the file is unchanged${backup}`;
+    if (backup && err instanceof InstallError) throw new InstallError(`${err.message}; the file is unchanged${backup}`);
     throw err;
   }
   io.err(

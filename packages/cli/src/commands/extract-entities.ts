@@ -190,7 +190,8 @@ export async function extractEntitiesCommand(args: string[]): Promise<void> {
   const seeds = selectSubsetSeeds(parsed, {
     products: splitFlag('--product'),
     types: requestedTypes,
-    storeys: splitFlag('--storey'),
+    storeys: getAllFlags(args, '--storey'),
+    splitStoreyLists: true,
     schemaVersion: detectSchemaVersion(buf, parseSourceHeader(buf)),
   });
   if (detect) {

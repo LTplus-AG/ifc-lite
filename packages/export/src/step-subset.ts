@@ -17,14 +17,14 @@
  * Consumers: `ifc-lite extract-entities` and the MCP `model_extract` tool.
  */
 import { stepStringLiteralEnd } from '@ifc-lite/encoding';
-import { expandTypes } from '@ifc-lite/parser';
+import { detectSchemaVersion, expandTypes, parseSourceHeader } from '@ifc-lite/parser';
 import { getIfcRootTypes } from './subset-roots.js';
 import { planSpatialRelations, refsOutsideStrings, splitTopLevelArgs, STRUCTURE_RELATION_ATTRS, SubsetSelectionError, type StepRecord, type Subset } from './step-subset-relations.js';
 import { slotRef } from './schema-converter-structural-source.js';
 import { skipStepTrivia } from './step-slot-grammar.js';
 import { skipStepComment } from './step-comment-skip.js';
 import { spatialAncestors } from './step-subset-spatial-ancestors.js';
-import { resolveStorey, storeyMembers } from './step-subset-storey.js';
+import { resolveStoreyArgument, storeyMembers } from './step-subset-storey.js';
 
 export { SubsetSelectionError } from './step-subset-relations.js';
 export type { StepRecord, Subset } from './step-subset-relations.js';
@@ -173,7 +173,13 @@ export function parseStep(text: string): ParsedStep {
 export function resolveToId(token: string, parsed: ParsedStep): number {
   const t = token.trim();
   const guidId = parsed.guidToId.get(t);
-  if (guidId !== undefined) return guidId;
+  if (guidId !== undefined) {
+    const numericId = /^\d+$/.test(t) ? Number(t) : undefined;
+    if (numericId !== undefined && numericId !== guidId && parsed.instances.has(numericId)) {
+      throw new SubsetSelectionError('invalid', `Ambiguous product selector '${t}': GlobalId for #${guidId} also names express id #${numericId}; use an explicit #id.`);
+    }
+    return guidId;
+  }
   if (t.startsWith('#') || /^\d+$/.test(t)) {
     if (!/^#?\d+$/.test(t)) throw new SubsetSelectionError('invalid', `Invalid expressId: ${t}`);
     const id = Number(t.replace(/^#/, ''));
@@ -312,6 +318,8 @@ export interface SubsetSelectors {
   requireEachMatch?: boolean;
   /** The file's schema, when known: subtypes are expanded for it alone rather than for the union of all schemas. */
   schemaVersion?: string;
+  /** Accept comma-delimited storey lists after trying each whole argument. */
+  splitStoreyLists?: boolean;
 }
 
 /**
@@ -319,12 +327,15 @@ export interface SubsetSelectors {
  * nothing throws; a type that matches nothing just adds nothing, so the caller
  * decides how to word an empty selection.
  *
- * Types go through `expandTypes` for `selectors.schemaVersion`. Without one
- * (the CLI's own lightweight parse has no resolved schema) it expands for the
- * union of the bundled schemas, the case that union documents, rather than
- * picking one on the caller's behalf.
+ * An explicit schema overrides FILE_SCHEMA. Without either, types expand across bundled schemas.
  */
 export function selectSubsetSeeds(parsed: ParsedStep, selectors: SubsetSelectors): Set<number> {
+  let schemaVersion = selectors.schemaVersion;
+  if (schemaVersion === undefined) {
+    const headerBytes = new TextEncoder().encode(parsed.header);
+    const header = parseSourceHeader(headerBytes);
+    if (header?.schemaIdentifiers.length) schemaVersion = detectSchemaVersion(headerBytes, header);
+  }
   const seeds = new Set<number>();
   for (const token of selectors.products ?? []) {
     if (token.trim()) seeds.add(resolveToId(token, parsed));
@@ -334,7 +345,7 @@ export function selectSubsetSeeds(parsed: ParsedStep, selectors: SubsetSelectors
   const requested = (selectors.types ?? []).map((t) => t.trim()).filter(Boolean);
   const wantedTypes = new Map<string, number[]>();
   requested.forEach((type, i) => {
-    for (const name of expandTypes([type], selectors.schemaVersion)) {
+    for (const name of expandTypes([type], schemaVersion)) {
       const key = name.toUpperCase();
       const from = wantedTypes.get(key);
       if (from) from.push(i);
@@ -356,12 +367,14 @@ export function selectSubsetSeeds(parsed: ParsedStep, selectors: SubsetSelectors
   }
   for (const token of selectors.storeys ?? []) {
     if (!token.trim()) continue;
-    const { storeyId, placementId } = resolveStorey(token, parsed);
-    // The storey itself is kept as asked, even if no product is contained in it.
-    seeds.add(storeyId);
-    const products = storeyMembers(storeyId, placementId, parsed, selectors.schemaVersion);
-    if (selectors.requireEachMatch && products.length === 0) throw new SubsetSelectionError('invalid', `Storey ${token} has no elements.`);
-    for (const id of products) seeds.add(id);
+    const storeys = resolveStoreyArgument(token, parsed, selectors.splitStoreyLists === true);
+    for (const { storeyId, placementId } of storeys) {
+      // Keep the storey itself, even when it is empty.
+      seeds.add(storeyId);
+      const products = storeyMembers(storeyId, placementId, parsed, schemaVersion);
+      if (selectors.requireEachMatch && products.length === 0) throw new SubsetSelectionError('invalid', `Storey ${token} has no elements.`);
+      for (const id of products) seeds.add(id);
+    }
   }
   return seeds;
 }

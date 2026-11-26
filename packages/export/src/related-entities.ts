@@ -71,6 +71,7 @@ function withDefaults(options: RelatedEntityOptions): Required<RelatedEntityOpti
     IfcRelDefinesByType: options.IfcRelDefinesByType ?? true,
     IfcRelAssociatesMaterial: options.IfcRelAssociatesMaterial ?? true,
     IfcRelContainedInSpatialStructure: options.IfcRelContainedInSpatialStructure ?? true,
+    includeSpatialAggregates: options.includeSpatialAggregates ?? true,
     IfcRelDefinesByProperties: options.IfcRelDefinesByProperties ?? false,
     IfcRelConnectsPathElementsDepth: options.IfcRelConnectsPathElementsDepth ?? 0,
   };
@@ -219,7 +220,7 @@ export function collectRelatedEntities(
     // types only, so it climbs the containment chain without also chasing
     // an unrelated `IfcRelAggregates` parent of every non-spatial entity
     // this walk happens to reach.
-    rules.push({
+    if (opts.includeSpatialAggregates) rules.push({
       relType: RelationshipType.Aggregates,
       direction: 'inverse',
       relationship: 'IfcRelAggregates',

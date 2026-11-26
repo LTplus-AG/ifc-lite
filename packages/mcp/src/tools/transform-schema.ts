@@ -10,6 +10,7 @@ import type { LoadedModel, ToolContext } from '../context.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import { rm, stat, writeFile } from 'node:fs/promises';
 import { resolveSafePath } from '../safe-path.js';
+import { withSourceWriteLock } from '../source-write-lock.js';
 import { modelAllowed, scopeAllows } from '../auth/scope.js';
 import { resolveModel } from './util.js';
 
@@ -152,28 +153,33 @@ export async function writeTransformOutput(
   if (keys.some((key) => activeOutputs.has(key))) throw invalid('Another transform is writing to one of these paths.');
   for (const key of keys) activeOutputs.add(key);
   try {
-    beforeWrite(ctx, ...models);
-    beforePrimary?.();
-    await writeFile(primary, content);
-    if (!sidecar) return;
-    try {
+    await withSourceWriteLock(ctx.registry, async () => {
+      for (const path of paths) {
+        if (await resolveSafePath(path, ctx, 'write') !== path) {
+          throw invalid('The output destination changed during the transform.');
+        }
+      }
       beforeWrite(ctx, ...models);
-      // The owner-only map needs a fresh inode. Setting the mode on an
-      // existing file would preserve its old permissions.
-      if (sidecar.mode !== undefined) {
+      beforePrimary?.();
+      // Invalidate the previous map before replacing the IFC. A revoked
+      // request or failed map write after that point cannot leave a stale map.
+      if (sidecar) {
         await rm(sidecar.path, { force: true });
         beforeWrite(ctx, ...models);
+        beforePrimary?.();
       }
-      await writeFile(sidecar.path, sidecar.data, {
-        encoding: 'utf-8',
-        ...(sidecar.mode !== undefined ? { mode: sidecar.mode, flag: 'wx' } : {}),
-      });
-    } catch (error) {
-      throw new ToolExecutionError({
-        code: error instanceof ToolExecutionError ? error.code : ToolErrorCode.INTERNAL_ERROR,
-        message: `Wrote ${primary}, but writing ${sidecar.path} failed: ${error instanceof Error ? error.message : String(error)}. The two files do not match.`,
-      });
-    }
+      await writeFile(primary, content);
+      if (!sidecar) return;
+      try {
+        beforeWrite(ctx, ...models);
+        await writeFile(sidecar.path, sidecar.data, { encoding: 'utf-8', mode: sidecar.mode, flag: 'wx' });
+      } catch (error) {
+        throw new ToolExecutionError({
+          code: error instanceof ToolExecutionError ? error.code : ToolErrorCode.INTERNAL_ERROR,
+          message: `Wrote ${primary}, but writing ${sidecar.path} failed: ${error instanceof Error ? error.message : String(error)}.`,
+        });
+      }
+    });
   } finally {
     for (const key of keys) activeOutputs.delete(key);
   }

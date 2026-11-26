@@ -140,6 +140,26 @@ export function resolveStorey(token: string, parsed: ParsedStep): { storeyId: nu
   return { storeyId, placementId };
 }
 
+function isMissingStorey(error: unknown): boolean {
+  return error instanceof SubsetSelectionError && error.kind === 'not-found';
+}
+
+export function resolveStoreyArgument(token: string, parsed: ParsedStep, splitLists: boolean): ReturnType<typeof resolveStorey>[] {
+  try {
+    return [resolveStorey(token, parsed)];
+  } catch (error) {
+    if (!splitLists || !token.includes(',') || !isMissingStorey(error)) throw error;
+  }
+  return token.split(',').filter((part) => part.trim()).map((part) => {
+    try {
+      return resolveStorey(part, parsed);
+    } catch (error) {
+      if (part === part.trim() || !isMissingStorey(error)) throw error;
+      return resolveStorey(part.trim(), parsed);
+    }
+  });
+}
+
 const PART_WHOLE_RELATIONS = new Set(['IFCRELAGGREGATES', 'IFCRELNESTS']);
 const HOST_RELATIONS = new Set(['IFCRELVOIDSELEMENT', 'IFCRELFILLSELEMENT', 'IFCRELPROJECTSELEMENT', ...PART_WHOLE_RELATIONS]);
 
@@ -256,7 +276,7 @@ export function storeyMembers(
   for (const id of placed) {
     if (out.has(id) || !isCandidate(id)) continue;
     const owner = ownersOf(id);
-    if (owner.size === 0 || ownedHere(owner)) out.add(id);
+    if (owner.size === 0 && !hosts.has(id)) out.add(id);
   }
   // Unowned parts, openings and fillers of an element the placement pass took
   // come with it, wherever they are placed (fixpoint: parts of parts).

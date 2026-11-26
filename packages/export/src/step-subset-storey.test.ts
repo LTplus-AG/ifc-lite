@@ -26,6 +26,11 @@ describe('productsUnderPlacement (#7791, D27: no depth guard)', () => {
       .replace('ENDSEC;\nEND-ISO', "#9100=IFCSTRUCTURALANALYSISMODEL('0000000000000000000030',$,'analysis',$,$,.LOADING_3D.,$,$,$,#1000);\nENDSEC;\nEND-ISO");
     const products = productsUnderPlacement(1000, parseStep(text), 'IFC4X3');
     expect([...products]).toEqual([9000]);
+    const parsed = parseStep(text
+      .replace('HEADER;', "HEADER;FILE_SCHEMA(('IFC4X3_ADD2'));")
+      .replace('DATA;', "DATA;#40=IFCBUILDINGSTOREY('0000000000000000000ST1',$,'L01',$,$,#1000,$,$,.ELEMENT.,0.);"));
+    expect(selectSubsetSeeds(parsed, { storeys: ['L01'] })).toEqual(new Set([40, 9000]));
+    expect(selectSubsetSeeds(parsed, { storeys: ['L01'], schemaVersion: 'IFC4' })).toEqual(new Set([40]));
   });
 
   it('does not select a product whose chain cycles without reaching the storey', () => {
@@ -89,11 +94,12 @@ describe('selectSubsetSeeds: storeys that share one placement', () => {
     const spaced = [
       'ISO-10303-21;', 'HEADER;', 'ENDSEC;', 'DATA;',
       '#2=IFCAXIS2PLACEMENT3D(#3,$,$);', '#3=IFCCARTESIANPOINT((0.,0.,0.));',
-      '#40=IFCLOCALPLACEMENT($,#2);', '#45=IFCLOCALPLACEMENT(#40,#2);', '#46=IFCLOCALPLACEMENT(#45,#2);',
+      '#40=IFCLOCALPLACEMENT($,#2);', '#45=IFCLOCALPLACEMENT(#40,#2);', '#46=IFCLOCALPLACEMENT($,#2);',
       "#41=IFCBUILDINGSTOREY('0000000000000000000ST1',$,'L01',$,$,#40,$,$,.ELEMENT.,0.);",
       "#50=IFCSPACE('0000000000000000000SP1',$,'Room',$,$,#45,$,$,.ELEMENT.,.INTERNAL.,$);",
       "#70=IFCFURNISHINGELEMENT('0000000000000000000FU1',$,'Chair',$,$,#46,$,$);",
       "#80=IFCRELCONTAINEDINSPATIALSTRUCTURE('0000000000000000000RC1',$,$,$,(#70),#50);",
+      "#81=IFCRELCONTAINEDINSPATIALSTRUCTURE('0000000000000000000RC2',$,$,$,(#50),#41);",
       'ENDSEC;', 'END-ISO-10303-21;', '',
     ].join('\n');
     expect([...selectSubsetSeeds(parseStep(spaced), { storeys: ['L01'] })].sort((a, b) => a - b)).toEqual([41, 50, 70]);

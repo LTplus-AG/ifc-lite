@@ -38,7 +38,7 @@ const modelSimplify: Tool = {
     level: { type: 'integer' },
     simplified: { type: 'integer', description: 'Meshes the mesh pass simplified.' },
     replaced: { type: 'integer', description: 'Representations replaced in the written IFC.' },
-    skipped: { type: 'integer' },
+    skipped: { type: 'integer', description: 'Requested IDs without an eligible mesh or whose mesh could not be simplified.' },
     exportSkipped: { type: 'integer' },
     trianglesBefore: { type: 'integer' },
     trianglesAfter: { type: 'integer' },
@@ -101,7 +101,7 @@ const modelLod: Tool = {
   name: 'model_lod',
   title: 'Generate LOD artifact',
   description:
-    'Generate a lightweight level-of-detail artifact. Level 0 writes JSON with one world transform and bounding box per element; level 1 writes a GLB of element meshes with boxes for recoverable mesh failures, plus optional metadata JSON mapping express ids to GLB nodes.',
+    'Generate a lightweight level-of-detail artifact. Level 0 writes JSON with one world transform and bounding box per element; level 1 writes a GLB and optional JSON mapping express ids to nodes. Partial meshing can omit failed elements. If the normal meshing pass throws, LOD1 attempts a box fallback.',
   scope: 'export',
   annotations: FILE_WRITE_ANNOTATIONS,
   inputSchema: {

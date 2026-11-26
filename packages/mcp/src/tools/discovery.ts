@@ -9,6 +9,7 @@
  * out what models are loaded and what's in them.
  */
 
+import { withSourceWriteLock } from '../source-write-lock.js';
 import {
   extractGeoreferencingOnDemand,
   extractLengthUnitScale,
@@ -133,13 +134,16 @@ export const modelLoad: Tool = {
     // before we touch the filesystem in `loadIfcModel`.
     const filePath = await resolveSafePath(input.file_path, ctx, 'read');
     try {
-      const loaded = await loadIfcModel(filePath, {
-        modelId: input.model_id as string | undefined,
-        // Path was already validated; loader's secondary check would be a
-        // tautology, so pass a single-entry allowlist matching the file.
-        allowedPaths: [filePath],
+      const loaded = await withSourceWriteLock(ctx.registry, async () => {
+        ctx.signal.throwIfAborted();
+        const model = await loadIfcModel(filePath, {
+          modelId: input.model_id as string | undefined,
+          // The path was already validated by resolveSafePath.
+          allowedPaths: [filePath],
+        });
+        ctx.registry.add(model);
+        return model;
       });
-      ctx.registry.add(loaded);
       ctx.log.log('info', 'model_load', { id: loaded.id, file: filePath, entities: loaded.store.entityCount });
       // A model the scan read short is reported as such, in the text the
       // agent reads and in the structured result (#7610).

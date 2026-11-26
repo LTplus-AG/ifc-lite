@@ -9,7 +9,7 @@
  * no always-failing stubs, and hints visible without structured output.
  */
 
-import { describe, it, expect, expectTypeOf } from 'vitest';
+import { describe, it, expect, expectTypeOf, vi } from 'vitest';
 import {
   MCPServer,
   PROTOCOL_VERSION,
@@ -176,17 +176,12 @@ describe('list_changed', () => {
     let ran = 0;
     registry.onChange(() => { throw new Error('bad host listener'); });
     registry.onChange(() => { ran++; });
-    const errors: unknown[] = [];
-    const original = console.error;
-    console.error = (...args: unknown[]) => { errors.push(args); };
-    try {
-      expect(() => registry.add(fakeModel('kept'))).not.toThrow();
-      expect(() => registry.remove('kept')).not.toThrow();
-    } finally {
-      console.error = original;
-    }
+    const stderr = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    expect(() => registry.add(fakeModel('kept'))).not.toThrow();
+    expect(() => registry.remove('kept')).not.toThrow();
     expect(ran).toBe(2);
-    expect(errors).toHaveLength(2);
+    expect(stderr).toHaveBeenCalledTimes(2);
+    stderr.mockRestore();
   });
 
   it('sends no list_changed before initialize', async () => {

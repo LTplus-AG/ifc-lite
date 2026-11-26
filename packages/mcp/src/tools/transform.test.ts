@@ -290,6 +290,17 @@ describe('model_anonymize', () => {
     expect(res.structuredContent.guidMapPath).toBeNull();
   });
 
+  it('falls back to the storey LongName, as model_extract does', async () => {
+    await writeFile(join(tmp, 'revit.ifc'), model('R', '02').replace("'02',$,$,#40,$,$,.ELEMENT.", "'02',$,$,#40,$,'Level 2',.ELEMENT."), 'utf-8');
+    ctx.registry.remove('a');
+    ctx.registry.add(await loadIfcModel(join(tmp, 'revit.ifc'), { modelId: 'r' }));
+    const res = await call('model_anonymize', { storey: 'Level 2', file_path: join(tmp, 'anon-long.ifc') });
+    expect(res.structuredContent.seedCount).toBe(3);
+    await call('model_extract', { storeys: ['Level 2'], file_path: join(tmp, 'extract-long.ifc') });
+    const text = await readFile(join(tmp, 'extract-long.ifc'), 'utf-8');
+    for (const name of ['Wall A R', 'Wall B R', 'Slab R']) expect(text).toContain(`'${name}'`);
+  });
+
   it('accepts a storey express id written as #id', async () => {
     const res = await call('model_anonymize', { storey: '#41', file_path: join(tmp, 'anon-hash.ifc') });
     expect(res.structuredContent.seedCount).toBe(3);

@@ -62,7 +62,11 @@ function anonymizeSeeds(m: LoadedModel, input: Record<string, unknown>): Set<num
     // An explicit '#id' is an id only, never a name fragment.
     const fragment = key.startsWith('#') ? [] : storeys.filter((s) => s.name?.trim().toLowerCase().includes(key.toLowerCase()));
     const byId = storeys.find((s) => s.globalId === key) ?? storeys.find((s) => String(s.ref.expressId) === id);
-    const named = storeys.filter((s) => s.name?.trim() === key);
+    // Name first, then LongName, as extract's --storey resolves it.
+    const longName = (s: (typeof storeys)[number]) =>
+      m.bim.attributes(s.ref).find((a) => a.name === 'LongName')?.value;
+    const byName = storeys.filter((s) => s.name?.trim() === key);
+    const named = byName.length > 0 ? byName : storeys.filter((s) => String(longName(s) ?? '').trim() === key);
     // A bare number that is one storey's id and another storey's name is ambiguous.
     if (byId && /^\d+$/.test(key) && named.some((s) => s !== byId)) {
       throw invalid(`storey: '${key}' is storey #${key} and the name of another storey; pass #${key} or a GlobalId.`);
@@ -150,7 +154,7 @@ export const modelAnonymize: Tool = {
       express_ids: { type: 'array', items: { type: 'integer', minimum: 1 }, description: 'Seed entities by express id.' },
       global_ids: { ...stringList, description: 'Seed entities by GlobalId.' },
       types: { ...stringList, description: 'Every entity of these IFC types.' },
-      storey: { type: 'string', minLength: 1, description: 'Every entity contained in this storey: GlobalId, #id, exact name, or a name fragment that matches exactly one storey. Ambiguous names are refused.' },
+      storey: { type: 'string', minLength: 1, description: 'Every entity contained in this storey: GlobalId, #id, exact Name (else LongName), or a name fragment that matches exactly one storey. Ambiguous names are refused.' },
       exclude_relationships: { type: 'array', items: { type: 'string', enum: RELATIONSHIPS }, description: 'Relationships not to follow when expanding the seeds.' },
       connect_depth: { type: 'integer', minimum: 0, description: 'Also follow IfcRelConnectsPathElements this many hops (default 0).' },
       keep_psets: { type: 'boolean', description: 'Keep property sets instead of clearing them.' },

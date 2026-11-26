@@ -23,10 +23,10 @@
 
 import { createSandbox, ScriptError, type SandboxPermissions } from '@ifc-lite/sandbox';
 import { MAX_VALUE_CHARS, clipMessage, readEnvelope, shapeLogs, wrapScript } from './script-output.js';
-import type { CallToolResult, JsonSchema } from '../protocol/index.js';
+import type { JsonSchema } from '../protocol/index.js';
 import type { LoadedModel, ToolContext } from '../context.js';
 import type { Tool } from './types.js';
-import { resolveModel } from './util.js';
+import { okResult, resolveModel } from './util.js';
 import { ToolErrorCode, ToolExecutionError, describeThrown } from '../errors.js';
 
 const MAX_CODE_CHARS = 100_000;
@@ -61,6 +61,10 @@ const READ_PERMISSIONS: SandboxPermissions = {
   mutate: false, store: false, viewer: false, files: false, ui: false, network: false,
 };
 const MUTATE_PERMISSIONS: SandboxPermissions = { ...READ_PERMISSIONS, export: true, mutate: true, store: true };
+/** The namespaces script_run lacks and script_run_mutate has (export also gates create). */
+const MUTATE_ONLY_NAMESPACES = ['mutate', 'store', 'export', 'create'] as const;
+const MUTATE_ONLY_LIST = MUTATE_ONLY_NAMESPACES.map((n) => `bim.${n}`).join(', ');
+const MUTATE_ONLY_USE = new RegExp(`\\bbim\\.(${MUTATE_ONLY_NAMESPACES.join('|')})\\b`);
 
 const inputSchema: JsonSchema = {
   type: 'object',
@@ -123,8 +127,8 @@ function hintFor(mode: Mode, code: string, message: string): string | undefined 
   if (OUT_OF_MEMORY.test(message)) return `Raise memory_mb (max ${MAX_MEMORY_MB}) or keep less in memory.`;
   if (/stack overflow|call stack/i.test(message)) return 'The script recursed too deep; make the recursion iterative or shallower.';
   // Only when the failure looks like touching a namespace that is absent.
-  if (mode === 'read' && /\bbim\.(mutate|store|export|create)\b/.test(code) && /of undefined|undefined is not/.test(message)) {
-    return 'script_run has no bim.mutate, bim.store, bim.export or bim.create; use script_run_mutate for them.';
+  if (mode === 'read' && MUTATE_ONLY_USE.test(code) && /of undefined|undefined is not/.test(message)) {
+    return `script_run has no ${MUTATE_ONLY_LIST}; use script_run_mutate for them.`;
   }
   return undefined;
 }
@@ -202,11 +206,9 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
       };
       // The serialised result goes in the text block too, for clients that
       // read only `content` (MCP 2025-06-18, structured content).
-      // Its own last block, like the error envelope fitOutputSchema adds.
-      const toolResult: CallToolResult = {
-        content: [{ type: 'text', text: summary }, { type: 'text', text: JSON.stringify(structured) }],
-        structuredContent: structured,
-      };
+      // The JSON gets its own last block, like the error envelope fitOutputSchema adds.
+      const toolResult = okResult(summary, structured);
+      toolResult.content.push({ type: 'text', text: JSON.stringify(structured) });
       return toolResult;
     } catch (err) {
       if (err instanceof ToolExecutionError) throw err;
@@ -253,12 +255,12 @@ async function withScriptSlot<T>(run: () => Promise<T>): Promise<T> {
   }
 }
 
-const SHARED_DESCRIPTION = `Runs in a QuickJS sandbox with only the \`bim\` SDK global (bim.query, bim.model, bim.lens, bim.clash, bim.cost, bim.structural, bim.schedule; script_run_mutate adds bim.mutate, bim.store, bim.export and bim.create) and console; no network, filesystem, viewer or timers. Returns the last expression value plus captured console output. memory_mb bounds the QuickJS heap only, not data bim calls build on the host. Script code runs on the server's event loop, so other requests wait while it runs (bounded by timeout_ms). At most ${MAX_CONCURRENT_SCRIPTS} scripts run at once per server, shared across all sessions; more get RATE_LIMITED.`;
+const SHARED_DESCRIPTION = `Runs in a QuickJS sandbox with only the \`bim\` SDK global (bim.query, bim.model, bim.lens, bim.clash, bim.cost, bim.structural, bim.schedule; script_run_mutate adds ${MUTATE_ONLY_LIST}) and console; no network, filesystem, viewer or timers. Returns the last expression value plus captured console output. memory_mb bounds the QuickJS heap only, not data bim calls build on the host. Script code runs on the server's event loop, so other requests wait while it runs (bounded by timeout_ms). At most ${MAX_CONCURRENT_SCRIPTS} scripts run at once per server, shared across all sessions; more get RATE_LIMITED.`;
 
 export const scriptRunTool: Tool = {
   name: 'script_run',
   title: 'Run SDK script (read-only)',
-  description: `script, eval, javascript, sdk: run a read-only SDK script against a loaded model. ${SHARED_DESCRIPTION} bim.mutate, bim.store, bim.export and bim.create are absent; use script_run_mutate for them.`,
+  description: `script, eval, javascript, sdk: run a read-only SDK script against a loaded model. ${SHARED_DESCRIPTION} ${MUTATE_ONLY_LIST} are absent; use script_run_mutate for them.`,
   scope: 'read',
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   inputSchema,

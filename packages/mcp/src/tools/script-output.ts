@@ -134,9 +134,8 @@ export function readEnvelope(dumped: unknown): Outcome {
   const envelope = state?.type === 'fulfilled' ? state.value : dumped;
   if (typeof envelope !== 'string') return { error: 'The script produced no result.' };
   // The wrapper bounds these; the host re-checks so a script that subverted
-  // it still cannot pass an unbounded value or message on to the client.
-  // Bounded here; scriptError clips (and marks) the final message once.
-  // One unit past the cap, so clipUtf16 can see a split surrogate pair.
+  // it still cannot pass an unbounded value or message on. Messages keep one
+  // unit past the cap for clipUtf16; scriptError clips and marks them once.
   const body = envelope.slice(1, envelope[0] === 'J' ? undefined : MAX_MESSAGE_CHARS + 2);
   switch (envelope[0]) {
     case 'J':

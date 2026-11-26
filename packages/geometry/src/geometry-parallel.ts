@@ -35,7 +35,7 @@ import { mergeGeometryDiagnostics, type GeometryDiagnostics } from './diagnostic
 import { omittedTypeRecordsField, parseOmittedTypeRecords } from './omitted-type-records.js';
 import { planLoadWorkerCount } from './worker-count.js';
 import { globalInstancingApplies, readBatchSizingOverride, readShardScanFlag, readVisibilityFilterOverride } from './perf-flags.js';
-import { forwardKeyPlan, globalKeyPlanningField, globalPlanColumns } from './global-instance-plan.js';
+import { forwardKeyPlan, globalKeyPlanningField, globalPlanColumns, globalPlanCountsMatch } from './global-instance-plan.js';
 import { sparsePoolFor } from './geometry-parallel-sparse.js';
 import { notifyIfWasmAssetUnavailable, notifyIfWorkerScriptUnavailable } from './wasm-asset-error.js';
 import { restashWasmPanicLocation } from './wasm-panic-forward.js';
@@ -1229,8 +1229,6 @@ export async function* processParallel(
         const mliLayerMaterialIds = evt.mliLayerMaterialIds as Uint32Array;
         const mliLayerThicknesses = evt.mliLayerThicknesses as Float64Array;
         console.log(`[stream] prepass-columns @ ${elapsed()}ms (${referencedRepmaps.length} repmaps, ${instantiatedTypeIds.length} inst-types, ${mliElementIds.length} layer-elems)`);
-        if (globalPlan) options?.onGlobalInstancingDecision?.(globalPlanColumns(evt, true).globalInstancing === true); // armed, or counts that do not match the plan
-
         broadcastSetup((w) => {
           try {
             const rRepmaps = referencedRepmaps.slice();
@@ -1266,6 +1264,7 @@ export async function* processParallel(
             console.warn('[stream] set-prepass-columns dispatch failed:', err);
           }
         });
+        if (globalPlan) options?.onGlobalInstancingDecision?.(globalPlanCountsMatch(evt)); // armed, or counts that do not match the plan
 
         // Not a dispatch gate (see dispatchJobsChunk); the pre-pass emits this
         // before the first jobs chunk, so drain here only for symmetry with the

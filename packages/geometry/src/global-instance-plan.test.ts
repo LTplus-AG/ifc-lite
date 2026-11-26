@@ -7,6 +7,7 @@ import {
   forwardKeyPlan,
   globalKeyPlanningField,
   globalPlanColumns,
+  globalPlanCountsMatch,
   plannedJobs,
   WorkerGlobalPlan,
   type GeometryWorkerAddKeyPlanMessage,
@@ -30,6 +31,9 @@ describe('global instance plan messages', () => {
     expect(globalKeyPlanningField(true)).toEqual({ globalInstancing: true });
     expect(globalPlanColumns(columns, true)).toEqual({ globalInstancing: true, mappedInstanceCounts: Uint32Array.of(9) });
     expect(globalPlanColumns({ ...columns, mappedInstanceCounts: Uint32Array.of(9, 1) }, true), 'counts must parallel the plan').toEqual({});
+    expect(globalPlanCountsMatch(columns), 'what arms the plan (the pool reports it as the arm)').toBe(true);
+    expect(globalPlanCountsMatch({ ...columns, mappedInstanceCounts: Uint32Array.of(9, 1) })).toBe(false);
+    expect(globalPlanCountsMatch({ mappedInstancePlan: Uint32Array.of(21) }), 'no counts: an older pre-pass').toBe(false);
   });
 
   it('apply only past the small tier, with the explicit flag or the host\'s own decision', () => {

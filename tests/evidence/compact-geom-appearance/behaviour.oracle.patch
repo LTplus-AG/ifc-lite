@@ -1,0 +1,23 @@
+diff --git a/apps/viewer/src/lib/appearance/exact-source-geometry.ts b/apps/viewer/src/lib/appearance/exact-source-geometry.ts
+index bfa95ef808..81df1fc5de 100644
+--- a/apps/viewer/src/lib/appearance/exact-source-geometry.ts
++++ b/apps/viewer/src/lib/appearance/exact-source-geometry.ts
+@@ -37,7 +37,8 @@ const SCENE_SWAP_POLL_MS = 50;
+  * to its own readback. Reads no geometry array, so a compact mesh is not decoded.
+  */
+ function lacksCornerProvenance(mesh: MeshData): boolean {
+-  return mesh.geometryItemId !== undefined && mesh.appearanceSource === undefined && !isReleasedMesh(mesh) && !mesh.compact;
++  if (mesh.compact) return true;
++  return mesh.geometryItemId !== undefined && mesh.appearanceSource === undefined && !isReleasedMesh(mesh);
+ }
+ 
+ function reasonOf(outcome: Exclude<RemeshOutcome, { status: 'applied' }>): string {
+@@ -75,7 +76,7 @@ async function sceneHasExactGeometry(globalIds: readonly number[], remeshed: Rea
+     signal.throwIfAborted();
+     const scene = getGlobalRenderer()?.getScene();
+     if (!scene) return true; // no viewport: binding needs one, and says so itself
+-    return true;
++    if (globalIds.every((id) => !(scene.getMeshDataPieces(id) ?? []).some((piece) => stale(id, piece)))) return true;
+     if (Date.now() >= deadline) return false;
+     await abortableDelay(SCENE_SWAP_POLL_MS, signal);
+   }

@@ -45,6 +45,19 @@ const setRuntime = {
 };
 
 describe('generateValidators', () => {
+  it('normalizes named and inline SET parameters and keeps LIST duplicates (#11646)', () => {
+    const { files, coverage } = generateValidators(mini(
+      'Named : CountTags([1,1]) = 1; InlineSet : CountSet([1,1]) = 1; Ordered : CountList([1,1]) = 2',
+      `TYPE Tags = SET [1:?] OF INTEGER; END_TYPE;
+       FUNCTION CountTags(X : Tags) : INTEGER; RETURN(SIZEOF(X)); END_FUNCTION;
+       FUNCTION CountSet(X : SET [1:?] OF INTEGER) : INTEGER; RETURN(SIZEOF(X)); END_FUNCTION;
+       FUNCTION CountList(X : LIST [1:?] OF INTEGER) : INTEGER; RETURN(SIZEOF(X)); END_FUNCTION;`,
+    ));
+    expect(coverage.unsupported).toEqual([]);
+    const rules = loadRules(files['rules.ts'], { ...setRuntime, assignSet: (items: number[]) => [...new Set(items)] });
+    expect(rules.map(rule => rule.check({}, {}))).toEqual([true, true, true]);
+  });
+
   // Totals cross-checked against IfcOpenShell's compiled rule modules (#11559): every
   // entity WHERE, type WHERE and global RULE label it runs is one these schemas compile.
   it.each([

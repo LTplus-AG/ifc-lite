@@ -156,14 +156,16 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
   // Read mode has no write namespaces, so it cannot queue anything. In mutate
   // mode the count is pending mutations that appeared during the run; a
   // concurrent tool call editing the same model would be counted too.
-  // Counted by id, so mutations the script undoes are not subtracted.
-  const before = new Set(mode === 'mutate' ? pendingMutationIds(model) : []);
+  // Counted by id, so mutations the script undoes are not subtracted. Taken
+  // right before eval, so edits landing during sandbox creation are not counted.
+  let before: ReadonlySet<string> | null = null;
   // Undefined when the model was unloaded mid-run (its backend is disposed):
   // the count is lost, but the run's own outcome must still come through.
   const queued = (): number | undefined => {
-    if (mode !== 'mutate') return 0;
+    if (mode !== 'mutate' || before === null) return 0;
+    const baseline = before;
     try {
-      return pendingMutationIds(model).filter((id) => !before.has(id)).length;
+      return pendingMutationIds(model).filter((id) => !baseline.has(id)).length;
     } catch (err) {
       ctx.log.log('warning', 'script_run: could not count queued mutations', { error: describeThrown(err) });
       return undefined;
@@ -190,6 +192,7 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
     if (ctx.signal.aborted) onAbort();
     try {
       if (ctx.signal.aborted) throw cancelled();
+      if (mode === 'mutate') before = new Set(pendingMutationIds(model));
       const result = await sandbox.eval(wrapScript(code), { typescript: false, filename: 'script_run.js' });
       const { logs, truncated } = shapeLogs(result.logs);
       const mutationsQueued = queued();

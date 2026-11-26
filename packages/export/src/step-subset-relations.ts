@@ -65,7 +65,8 @@
  */
 
 import { stepStringLiteralEnd } from '@ifc-lite/encoding';
-import { skipStepComment } from './step-comment-skip.js';
+import { skipStepComment, withoutComments } from './step-comment-skip.js';
+import { slotRef } from './schema-converter-structural-source.js';
 
 /**
  * A selector that cannot be satisfied: `not-found` when it names nothing in the
@@ -202,24 +203,25 @@ function relationLine(
   const args = splitTopLevelArgs(inst.body);
   if (args === null || args.length !== STRUCTURE_RELATION_ATTRS) return keepWhole(inst, keep);
 
-  const setText = args[relatedIdx];
+  // Comments around the SET and its references are trivia.
+  const setText = withoutComments(args[relatedIdx]);
   if (!setText.startsWith('(') || !setText.endsWith(')')) return keepWhole(inst, keep);
   const members = splitTopLevelArgs(setText.slice(1, -1));
   if (members === null) return keepWhole(inst, keep);
   const memberIds: number[] = [];
   for (const member of members) {
-    const ref = SINGLE_REF_RE.exec(member);
+    const ref = slotRef(member);
     // A SET member that is not a plain object reference is not something this
     // rewrite understands; fall back rather than guess at it.
     if (ref === null) return keepWhole(inst, keep);
-    memberIds.push(Number(ref[1]));
+    memberIds.push(ref);
   }
 
   // The relating parent must be a real, kept reference. The `every reference
   // outside the SET is kept` loop below would pass VACUOUSLY on a `$` here,
   // emitting a containment with no parent.
-  const relating = SINGLE_REF_RE.exec(args[relatingIdx]);
-  if (relating === null || !keep.has(Number(relating[1]))) return null;
+  const relating = slotRef(args[relatingIdx]);
+  if (relating === null || !keep.has(relating)) return null;
 
   const kept = memberIds.filter((id) => keep.has(id));
   if (kept.length === 0) return null;

@@ -8,9 +8,8 @@
  */
 import { IfcTypeEnumFromString, isSpatialStructureType, walkPlacementChain } from '@ifc-lite/data';
 import { decodeStepStringLiteral } from '@ifc-lite/encoding';
-import { stepString } from './schema-converter-structural-source.js';
+import { slotRef, stepString } from './schema-converter-structural-source.js';
 import { refsOutsideStrings, splitTopLevelArgs, STRUCTURE_RELATION_ATTRS, SubsetSelectionError } from './step-subset-relations.js';
-import { slotRef } from './schema-converter-structural-source.js';
 import { structureParents } from './step-subset-spatial-ancestors.js';
 import type { ParsedStep } from './step-subset.js';
 

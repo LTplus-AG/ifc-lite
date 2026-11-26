@@ -20,7 +20,7 @@ import { stepStringLiteralEnd } from '@ifc-lite/encoding';
 import { expandTypes } from '@ifc-lite/parser';
 import { getIfcRootTypes } from './subset-roots.js';
 import { planSpatialRelations, refsOutsideStrings, splitTopLevelArgs, SubsetSelectionError, type StepRecord, type Subset } from './step-subset-relations.js';
-import { slotRef } from './schema-converter-structural-source.js';
+import { slotRef, stepString } from './schema-converter-structural-source.js';
 import { skipStepComment } from './step-comment-skip.js';
 import { spatialAncestors } from './step-subset-spatial-ancestors.js';
 import { resolveStorey, storeyMembers } from './step-subset-storey.js';
@@ -33,6 +33,15 @@ export interface ParsedStep {
   instances: Map<number, StepRecord>;
   /** 22-char GlobalId → expressId, for rooted entities. */
   guidToId: Map<string, number>;
+}
+
+/** Index after any whitespace and comments at `i`. */
+function skipTrivia(text: string, i: number): number {
+  for (;;) {
+    while (i < text.length && /\s/.test(text[i])) i++;
+    if (text[i] !== '/' || text[i + 1] !== '*') return i;
+    i = skipStepComment(text, i);
+  }
 }
 
 /** Index of the `DATA;` section token, ignoring header string literals and comments; -1 if none. */
@@ -101,13 +110,13 @@ export function parseStep(text: string): ParsedStep {
     let j = i;
     while (j < n && (data[j] === ' ' || data[j] === '\t')) j++;
     if (data[j] !== '=') continue; // `#42` as a REFERENCE, not a definition
-    j++;
-    while (j < n && (data[j] === ' ' || data[j] === '\t' || data[j] === '\n' || data[j] === '\r')) j++;
+    j = skipTrivia(data, j + 1);
     // read TYPE
     let type = '';
     while (j < n && /[A-Za-z0-9_]/.test(data[j])) type += data[j++];
     // now consume the balanced `( ... )` respecting strings, then the ';'
-    while (j < n && data[j] !== '(') j++;
+    j = skipTrivia(data, j);
+    if (data[j] !== '(') continue; // not a record definition after all
     const bodyStart = j + 1;
     let depth = 0;
     for (; j < n; j++) {
@@ -138,11 +147,12 @@ export function parseStep(text: string): ParsedStep {
     const full = data.slice(hashStart, semi + 1).trim();
     const upperType = type.toUpperCase();
     instances.set(id, { id, type: upperType, body, full });
-    // First quoted 22-char token is the GlobalId of a rooted entity.
-    const gm = /^\s*'([^']{22})'/.exec(body);
-    // Only IfcRoot records carry a GlobalId; a property or material whose first
-    // string happens to be 22 characters must not answer for one.
-    if (gm && rooted.has(upperType)) guidToId.set(gm[1], id);
+    // Only IfcRoot records carry a GlobalId (their first attribute); a property
+    // or material whose first string happens to be 22 characters must not answer for one.
+    if (rooted.has(upperType)) {
+      const guid = stepString(splitTopLevelArgs(body)?.[0]);
+      if (guid?.length === 22) guidToId.set(guid, id);
+    }
     i = semi + 1;
   }
   return { header, instances, guidToId };

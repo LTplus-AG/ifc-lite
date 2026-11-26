@@ -35,6 +35,17 @@ describe('parseStep framing', () => {
     expect([...parseStep(text).instances.keys()]).toEqual([10]);
   });
 
+  it('frames a record with a comment between = and the type, and reads a GlobalId after a comment', () => {
+    const text = file([
+      "#10= /* x(y */ IFCWALL(/*g*/'0000000000000000000WA1',$,'W',$,$,$,$,$,$);",
+      "#11=IFCWALL('0000000000000000000WA2',$,'W2',$,$,$,$,$,$);",
+    ]);
+    const parsed = parseStep(text);
+    expect([...parsed.instances.keys()]).toEqual([10, 11]);
+    expect(parsed.instances.get(10)?.type).toBe('IFCWALL');
+    expect(parsed.guidToId.get('0000000000000000000WA1')).toBe(10);
+  });
+
   it('treats comments between and inside records as trivia', () => {
     const text = file([
       "#10=IFCWALL('0000000000000000000WA1',$,'W',$,$,$,$,$,$);",
@@ -86,6 +97,19 @@ describe('storey members off the placement chain', () => {
       "#80=IFCRELCONTAINEDINSPATIALSTRUCTURE('0000000000000000000RC1',$,$,$,(/* wall */#70),/* level */#41);",
     ]);
     expect(sorted(selectSubsetSeeds(parseStep(text), { storeys: ['L01'] }))).toEqual([41, 70]);
+  });
+
+  it('writes a containment relation whose references carry comments', () => {
+    const text = file([
+      ...BASE,
+      "#70=IFCWALL('0000000000000000000WA1',$,'W',$,$,#50,$,$,$);",
+      "#71=IFCWALL('0000000000000000000WA2',$,'W2',$,$,#50,$,$,$);",
+      "#80=IFCRELCONTAINEDINSPATIALSTRUCTURE('0000000000000000000RC1',$,$,$,(#70,/* other */#71),/* level */#41);",
+    ]);
+    const parsed = parseStep(text);
+    const out = serializeSubset(buildSubset(new Set([70]), parsed), parsed);
+    expect(out).toMatch(/#80=IFCRELCONTAINEDINSPATIALSTRUCTURE\([^;]*\(#70\),[^;]*#41\);/);
+    expect(out).not.toContain("'W2'");
   });
 
   it('selects by containment for a storey with no placement', () => {

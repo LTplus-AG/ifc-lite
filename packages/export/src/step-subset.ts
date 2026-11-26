@@ -19,7 +19,7 @@
 import { stepStringLiteralEnd } from '@ifc-lite/encoding';
 import { expandTypes } from '@ifc-lite/parser';
 import { getIfcRootTypes } from './subset-roots.js';
-import { planSpatialRelations, refsOutsideStrings, splitTopLevelArgs, SubsetSelectionError, type StepRecord, type Subset } from './step-subset-relations.js';
+import { planSpatialRelations, refsOutsideStrings, splitTopLevelArgs, STRUCTURE_RELATION_ATTRS, SubsetSelectionError, type StepRecord, type Subset } from './step-subset-relations.js';
 import { slotRef } from './schema-converter-structural-source.js';
 import { skipStepTrivia } from './step-slot-grammar.js';
 import { skipStepComment } from './step-comment-skip.js';
@@ -237,7 +237,10 @@ export function buildSubset(seedProducts: Set<number>, parsed: ParsedStep): Subs
   // Each relation's anchor, read once: it does not change between passes.
   const features: Array<{ inst: StepRecord; anchor: number | null }> = [];
   for (const inst of parsed.instances.values()) {
-    if (HOST_FEATURE_RELATIONS.has(inst.type)) features.push({ inst, anchor: slotRef(splitTopLevelArgs(inst.body)?.[4]) });
+    if (!HOST_FEATURE_RELATIONS.has(inst.type)) continue;
+    const args = splitTopLevelArgs(inst.body);
+    // Only a well-formed six-attribute record has its anchor at index 4.
+    features.push({ inst, anchor: args?.length === STRUCTURE_RELATION_ATTRS ? slotRef(args[4]) : null });
   }
   let grew = true;
   while (grew) {

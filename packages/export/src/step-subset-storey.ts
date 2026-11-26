@@ -18,8 +18,8 @@ function placementParents(parsed: ParsedStep): Map<number, number | null> {
   const parents = new Map<number, number | null>();
   for (const inst of parsed.instances.values()) {
     if (inst.type !== 'IFCLOCALPLACEMENT') continue;
-    const pm = /^\s*(#\d+|\$)/.exec(inst.body);
-    parents.set(inst.id, pm && pm[1].startsWith('#') ? parseInt(pm[1].slice(1), 10) : null);
+    // PlacementRelTo is the first attribute; comments around it are trivia.
+    parents.set(inst.id, slotRef(splitTopLevelArgs(inst.body)?.[0]));
   }
   return parents;
 }

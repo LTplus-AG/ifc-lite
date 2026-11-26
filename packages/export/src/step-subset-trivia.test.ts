@@ -137,6 +137,15 @@ describe('storey members off the placement chain', () => {
     expect(out).not.toContain("'W2'");
   });
 
+  it('chains a placement whose parent carries a comment', () => {
+    const text = file([
+      ...BASE,
+      '#55=IFCLOCALPLACEMENT(/* rel */#40,#2);',
+      "#70=IFCWALL('0000000000000000000WA1',$,'W',$,$,#55,$,$,$);",
+    ]);
+    expect(sorted(selectSubsetSeeds(parseStep(text), { storeys: ['L01'] }))).toEqual([41, 70]);
+  });
+
   it('selects by containment for a storey with no placement', () => {
     const text = file([
       ...BASE.filter((r) => !r.startsWith('#41=')),

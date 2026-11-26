@@ -298,7 +298,8 @@ export function refsOutsideStrings(arg: string): number[] {
  * no rewriting.
  */
 function keepWhole(inst: StepRecord, keep: ReadonlySet<number>): string | null {
-  const refs = [...inst.body.matchAll(/#(\d+)/g)].map((m) => Number(m[1]));
+  // Comments are trivia; string text is still over-counted, the safe direction.
+  const refs = [...withoutComments(inst.body).matchAll(/#(\d+)/g)].map((m) => Number(m[1]));
   return refs.length > 0 && refs.every((r) => keep.has(r)) ? inst.full : null;
 }
 

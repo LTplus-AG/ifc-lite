@@ -113,7 +113,7 @@ function parseInstallArgs(argv: string[], host: HostEnv): InstallArgs | 'help' {
   const conflict = bridgeConflict(parsed);
   if (conflict) throw new InstallError(conflict);
   if (!parsed.bridge && (parsed.insecure || parsed.allowedOrigins)) {
-    throw new InstallError('--insecure and --allow-origin only act with --transport http or --bridge.');
+    throw new InstallError('--insecure and --allow-origin only act with --bridge here; for HTTP, give the client the server URL.');
   }
   return { client, scope, name, dryRun, force, serverArgs, hasPaths };
 }
@@ -210,6 +210,7 @@ export function runInstall(
       ? runCommandPlan(plan, args, label, io)
       : writeFilePlan(plan, args, label, io);
   } catch (err) {
+    // InstallError is the user's to fix (a usage error, EACCES via the io seam); anything else is a bug.
     if (!(err instanceof InstallError)) throw err;
     io.err(`[ifc-lite-mcp install] ${err.message}\n`);
     return 1;

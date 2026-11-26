@@ -234,8 +234,8 @@ export function latticeCollapsesGeometry(
     const qnx = quy * qvz - quz * qvy, qny = quz * qvx - qux * qvz, qnz = qux * qvy - quy * qvx;
     const turn = nx * qnx + ny * qny + nz * qnz;
     const qnSq = qnx * qnx + qny * qny + qnz * qnz;
-    // `area` is |n|: collapsed, flipped, or turned past 25° from the source face.
-    if (qnSq === 0 || turn <= 0 || turn * turn < MIN_LATTICE_COS2 * area * area * qnSq) runCollapsed += area;
+    // `area` is |n|: collapsed (turn 0), flipped, or turned past 25° from the source face.
+    if (turn <= 0 || turn * turn < MIN_LATTICE_COS2 * area * area * qnSq) runCollapsed += area;
   }
   flush();
   for (const { area, collapsed } of totals.values()) {

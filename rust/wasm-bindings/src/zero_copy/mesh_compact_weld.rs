@@ -268,7 +268,7 @@ fn triangles(mesh: &MeshDataJs, s: &mut Scratch) -> Result<(), Refusal> {
         let (ra, rb, rc) = (s.remap[a], s.remap[b], s.remap[c]);
         if tri_area > 0.0 {
             area += tri_area;
-            if lattice_degrades(&s.nodes, ra, rb, rc, n) {
+            if lattice_degrades(&s.nodes, [ra, rb, rc], n, tri_area) {
                 collapsed += tri_area;
             }
         }
@@ -285,19 +285,16 @@ fn triangles(mesh: &MeshDataJs, s: &mut Scratch) -> Result<(), Refusal> {
     Ok(())
 }
 
-/// The triangle's lattice nodes lose its face: collinear (their integer cross product is zero),
-/// flipped, or turned past `MIN_LATTICE_COS2` from `source`, the source face's cross product.
-fn lattice_degrades(nodes: &[[u16; 3]], a: u16, b: u16, c: u16, source: [f64; 3]) -> bool {
+/// The triangle's lattice nodes lose its face: collinear (a zero integer cross product, so no
+/// turn), flipped, or turned past `MIN_LATTICE_COS2` from `source`, the source face's cross
+/// product, whose length is `source_len`.
+fn lattice_degrades(nodes: &[[u16; 3]], [a, b, c]: [u16; 3], source: [f64; 3], source_len: f64) -> bool {
     let (na, nb, nc) = (nodes[a as usize], nodes[b as usize], nodes[c as usize]);
-    let d = |x: [u16; 3], y: [u16; 3], axis: usize| x[axis] as i64 - y[axis] as i64;
+    let d = |x: [u16; 3], y: [u16; 3], axis: usize| (x[axis] as i64 - y[axis] as i64) as f64;
     let u = [d(nb, na, 0), d(nb, na, 1), d(nb, na, 2)];
     let w = [d(nc, na, 0), d(nc, na, 1), d(nc, na, 2)];
+    // Offsets are at most 65,535 steps, so every product is exact in f64.
     let q = [u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]];
-    if q == [0; 3] {
-        return true;
-    }
-    let q = q.map(|v| v as f64);
     let turn = source[0] * q[0] + source[1] * q[1] + source[2] * q[2];
-    let source_sq = source[0] * source[0] + source[1] * source[1] + source[2] * source[2];
-    turn <= 0.0 || turn * turn < MIN_LATTICE_COS2 * source_sq * (q[0] * q[0] + q[1] * q[1] + q[2] * q[2])
+    turn <= 0.0 || turn * turn < MIN_LATTICE_COS2 * source_len * source_len * (q[0] * q[0] + q[1] * q[1] + q[2] * q[2])
 }

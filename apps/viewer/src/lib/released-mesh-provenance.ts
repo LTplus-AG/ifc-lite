@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { MeshData } from '@ifc-lite/geometry';
-import { meshTriangleCount, meshVertexCount } from '@ifc-lite/geometry/compact';
+import { compactRow, meshTriangleCount, meshVertexCount } from '@ifc-lite/geometry/compact';
 import { registerCpuMeshCopy } from './geometry-cpu-aliases';
 
 // The bounded-memory release callback runs after GPU upload. Retain only
@@ -81,7 +81,9 @@ export function isReleasedMesh(mesh: MeshData): boolean {
 
 /** Counts this mesh contributes to geometryResult totals, live or as retained at release. */
 export function meshGeometryCounts(mesh: MeshData): MeshGeometryCounts {
-  if (mesh.compact) return { triangles: meshTriangleCount(mesh), vertices: meshVertexCount(mesh) }; // never released: its arrays decode on read
+  // Never released (its arrays decode on read). Vertices as the load totalled them: the source mesh's, not the
+  // welded count, or removing it would leave phantom vertices in `geometryResult.totalVertices`.
+  if (mesh.compact) return { triangles: meshTriangleCount(mesh), vertices: compactRow(mesh.compact).sourceVertexCount };
   const retained = releasedCounts.get(mesh);
   return {
     triangles: mesh.indices.length > 0 ? mesh.indices.length / 3 : retained?.indices === mesh.indices ? retained.triangles : 0,

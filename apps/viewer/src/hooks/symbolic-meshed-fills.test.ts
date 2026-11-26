@@ -119,7 +119,7 @@ it('reads a compact mesh\'s counts from its row, without decoding it (lane L9)',
   adoptCompactMeshes([shell], [payload]);
   const decoded = compactHydrationStats().meshes;
   assert.equal(meshedFillItems([shell], id => id)(1, 11), true);
-  assert.deepEqual(meshGeometryCounts(shell), { triangles: 1, vertices: 3 });
+  assert.deepEqual(meshGeometryCounts(shell), { triangles: 1, vertices: 9 }, 'vertices as the load totals them: the source count, not the 3 welded');
   assert.equal(compactHydrationStats().meshes, decoded, 'no compact mesh was decoded');
   assert.ok(shell.compact, 'still a compact mesh');
 });

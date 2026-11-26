@@ -7,7 +7,7 @@ import { afterEach, test } from 'node:test';
 import { startServer, closeAll, send } from '../../../../../packages/oci/test/fake-registry.js';
 import { pushRegistry } from '../../../../../packages/oci/test/push-registry.js';
 import { handoffContext, readHandoff, registryConnections, HANDOFF_PROTOCOL } from './handoff-contract';
-import { exchangeRegistryToken, resourceSession } from './handoff-auth';
+import { exchangeRegistryToken, resourceAllows, resourceSession } from './handoff-auth';
 import { pullHandoff, pushHandoff } from './handoff-client';
 
 afterEach(closeAll);
@@ -27,6 +27,16 @@ test('ordinary OAuth responses support downscoping and require no Subsoil sessio
   const session=resourceSession({access_token:'opaque',token_type:'Bearer',expires_in:300,scope:'repository:project/model:pull'},connection,requested);
   assert.equal(session.scope,'repository:project/model:pull');
   assert.throws(() => resourceSession({access_token:'opaque',token_type:'Bearer',expires_in:300,scope:'repository:other/model:pull'},connection,requested));
+});
+
+test('identity scopes an issuer adds by default do not block a repository grant (#9638 review)', () => {
+  const requested='repository:project/model:pull';
+  // Keycloak returns its default client scopes alongside the requested ones.
+  const session=resourceSession({access_token:'opaque',token_type:'Bearer',expires_in:300,scope:'profile email repository:project/model:pull'},connection,requested);
+  assert(resourceAllows(session,'project/model','pull'));
+  assert.equal(resourceAllows(session,'project/model','push'),false);
+  assert.throws(() => resourceSession({access_token:'opaque',token_type:'Bearer',expires_in:300,scope:'profile email'},connection,requested),/exceeds/);
+  assert.throws(() => resourceSession({access_token:'opaque',token_type:'Bearer',expires_in:300,scope:'profile repository:project/model:delete'},connection,requested),/unsupported/);
 });
 
 test('push and pull use OCI and isolate source/destination tokens at the actual HTTP boundary', async () => {

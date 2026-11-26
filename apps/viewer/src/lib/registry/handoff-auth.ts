@@ -79,7 +79,8 @@ function bearerGrant(value: unknown): { token: string; expiresAt: number; scope?
 export function resourceSession(value: unknown, connection: RegistryConnection, requestedScope: string): ResourceSession {
   const grant = bearerGrant(value);
   const scope = grant.scope ?? requestedScope;
-  const actions = (scopes: string) => new Set(scopes.split(/\s+/).filter(Boolean).flatMap(s => {
+  // Issuers may add identity scopes (Keycloak's `profile email`); only repository entries grant registry access.
+  const actions = (scopes: string) => new Set(scopes.split(/\s+/).filter(s => s.startsWith('repository:')).flatMap(s => {
     const match = /^repository:([^:]+):([a-z,]+)$/.exec(s);
     if (!match || match[2].split(',').some(a => a !== 'pull' && a !== 'push')) throw new RegistryError('The authorization server returned unsupported permissions.');
     repositoryName(match[1]); return match[2].split(',').map(a => `${match[1]}:${a}`);

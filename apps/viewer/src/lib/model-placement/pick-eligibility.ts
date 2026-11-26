@@ -112,7 +112,7 @@ export function modelLabels(modelIds: Iterable<string>, nameOf: (modelId: string
 /**
  * Of the eligible models, those with at least one entity the pick can still
  * land on: not hidden and, when an isolation set is active, inside it. A model
- * with no known entity ids (e.g. instanced-only geometry) is kept, since its
+ * with no known entity ids is kept, since its
  * visibility cannot be judged from here.
  */
 export function pickableModelIds(
@@ -133,8 +133,9 @@ export function pickableModelIds(
 export function pickableFilter(
   models: ReadonlyMap<string, Parameters<typeof modelEntityIds>[0]>,
   hidden: ReadonlySet<number>, isolated: ReadonlySet<number> | null,
+  instances?: ReadonlyMap<string, readonly number[]>,
 ): (eligible: string[]) => string[] {
-  return (eligible) => pickableModelIds(eligible, (id) => modelEntityIds(models.get(id)), hidden, isolated);
+  return (eligible) => pickableModelIds(eligible, (id) => modelEntityIds(models.get(id), instances?.get(id)), hidden, isolated);
 }
 
 /** Hidden and isolation sets for the click-time raycast that explains a refusal: the same ones the pick respects, without the model restriction. */
@@ -159,10 +160,12 @@ export function* modelEntityIds(
     meshes?: ReadonlyArray<{ expressId: number; entityIds?: ArrayLike<number> }>;
     pointClouds?: ReadonlyArray<{ expressId: number }>;
   } | null } | undefined,
+  instances: Iterable<number> = [],
 ): Generator<number> {
   for (const mesh of model?.geometryResult?.meshes ?? []) {
     if (mesh.entityIds) for (let i = 0; i < mesh.entityIds.length; i++) yield mesh.entityIds[i];
     else yield mesh.expressId;
   }
   for (const cloud of model?.geometryResult?.pointClouds ?? []) yield cloud.expressId;
+  yield* instances;
 }

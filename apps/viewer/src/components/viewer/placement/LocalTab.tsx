@@ -24,6 +24,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { displayedTranslation, placementFor } from '@/lib/model-placement/state';
 import type { MoveConstraint } from '@/lib/model-placement/translation';
 import { eligiblePickModelIds, modelLabels, pickableFilter, pickContext, pickPromptKey } from '@/lib/model-placement/pick-eligibility';
+import { repositionInstanceIds } from '@/lib/model-placement/pick-instance-ids';
+import { useInstancedSceneRevision } from '@/hooks/useSceneTriangleCounts';
 import { frameModels } from '@/lib/model-placement/scene';
 import { useRepositionRuntime, type RepositionRuntime } from '@/lib/model-placement/reposition-runtime';
 import { openRepositionModels } from '@/lib/model-placement/commands';
@@ -59,7 +61,7 @@ function pickPrompt(
 ): string {
   const eligible = eligiblePickModelIds(role, models.keys(), pickContext(new Set(before?.keys()), reference, models));
   // Name only models with something left to pick: not fully hidden or outside the isolation set.
-  const ids = pickableFilter(models, hidden, isolated)(eligible);
+  const ids = pickableFilter(models, hidden, isolated, repositionInstanceIds())(eligible);
   const labels = modelLabels(models.keys(), (id) => models.get(id)?.name ?? id);
   const key = pickPromptKey(role, ids.length, reference !== '');
   return key === 'repositionPanel.pickPrompt'
@@ -80,9 +82,10 @@ export function LocalTab() {
   // Memoised so hover re-renders do not rescan every model's entity ids; `t`
   // keeps its identity across locale switches, so `revision` keys the locale.
   const role = runtime?.role ?? null, reference = runtime?.reference ?? '', before = placement.preview?.before;
+  const instanceRevision = useInstancedSceneRevision(role !== null);
   const prompt = useMemo(
     () => (role ? pickPrompt(t, role, before, reference, models, hidden, isolated) : t('repositionPanel.previewPrompt')),
-    [t, revision, role, before, reference, models, hidden, isolated],
+    [t, revision, role, before, reference, models, hidden, isolated, instanceRevision],
   );
 
   if (!repositionOpen || !runtime) {

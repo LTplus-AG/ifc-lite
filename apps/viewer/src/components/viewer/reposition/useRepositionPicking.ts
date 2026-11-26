@@ -12,6 +12,8 @@ import { fromRenderTranslation, orthogonalAxis, constrainTranslation, subtractTr
 import type { PlacementAnchor } from '@/lib/model-placement/state';
 import { explainRaycastFilter, modelEntityIds, hitModelId, isEligiblePickModel, pickableFilter, pickContext, rejectedPickMessage } from '@/lib/model-placement/pick-eligibility';
 import { resolve } from '@/i18n/registry';
+import { repositionInstanceIds } from '@/lib/model-placement/pick-instance-ids';
+import { useInstancedSceneRevision } from '@/hooks/useSceneTriangleCounts';
 
 export type PickRole = 'source' | 'target' | null;
 
@@ -20,19 +22,20 @@ export type PickRole = 'source' | 'target' | null;
 export function useRepositionPicking(role: PickRole, finish: (role: PickRole) => void, onError: (message: string) => void, reference = '') {
   const [hover, setHover] = useState<PlacementAnchor | null>(null);
   const models = useViewerStore((state) => state.models);
+  const instanceRevision = useInstancedSceneRevision(role !== null);
   useEffect(() => {
     const renderer = getGlobalRenderer(), canvas = renderer?.getCanvas();
     if (!role || !renderer || !canvas) { setHover(null); return; }
     const state = useViewerStore.getState(), preview = state.modelPlacement.preview;
     if (!preview) return;
     const allowed = new Set<number>();
+    const instances = repositionInstanceIds();
     const ctx = pickContext(new Set(preview.before.keys()), reference, state.models);
     const accepts = (id: string) => isEligiblePickModel(role, id, ctx);
     for (const [id, model] of state.models) {
       if (!accepts(id)) continue;
-      for (const entityId of modelEntityIds(model)) allowed.add(entityId);
+      for (const entityId of modelEntityIds(model, instances.get(id))) allowed.add(entityId);
     }
-    for (const id of renderer.getScene().getInstancedEntityIds()) if (accepts(resolveEntityRef(id).modelId)) allowed.add(id);
     let edgeLock: EdgeLockInput = { edge: null, meshExpressId: null, lockStrength: 0 };
     let lastRevision = state.modelPlacement.revision;
     const previousCursor = canvas.style.cursor;
@@ -55,7 +58,7 @@ export function useRepositionPicking(role: PickRole, finish: (role: PickRole) =>
       const hitModel = hitModelId(result, (id) => resolveEntityRef(id).modelId);
       const message = rejectedPickMessage(role, hitModel, pickContext(ctx.moving, reference, current.models),
         current.models.keys(), (modelId) => current.models.get(modelId)?.name ?? modelId,
-        pickableFilter(current.models, current.hiddenEntities, current.isolatedEntities));
+        pickableFilter(current.models, current.hiddenEntities, current.isolatedEntities, instances));
       return resolve(message.key, message.params);
     };
     const pick = (event: PointerEvent): PlacementAnchor | null => {
@@ -146,6 +149,6 @@ export function useRepositionPicking(role: PickRole, finish: (role: PickRole) =>
       canvas.removeEventListener('pointerdown', down, true);
       canvas.style.cursor = previousCursor;
     };
-  }, [role, finish, onError, models, reference]);
+  }, [role, finish, onError, models, reference, instanceRevision]);
   return hover;
 }

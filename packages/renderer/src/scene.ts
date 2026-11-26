@@ -51,7 +51,7 @@ import { splitMeshDataForBufferLimit, cachedWorldAabb, worldAabbFromPieces, worl
 import { TopologyMemo } from './scene-precision.js';
 import { StreamAssembly } from './scene-stream-assembly.js';
 import { mergeSameColorPieces } from './scene-mesh-pieces.js';
-import { markOffLattice, resolvePrecisionBucket } from './scene-bucket-routing.js';
+import { LATTICE_KEY_SUFFIX, markOffLattice, resolvePrecisionBucket } from './scene-bucket-routing.js';
 import { residentBatchBytes, sumResidentGpuBytes, type ResidentGpuBytes } from './render-stats.js';
 import { composeInstancedOverrideColor, originalColorWithAlpha } from './instanced-override-color.js';
 import { writeInstanceLane } from './instance-lane-write.js';
@@ -337,7 +337,7 @@ export class Scene {
   // Per-model shared origins keep all colours and highlights bit-coincident
   // without narrowing the distance between federated models into f32 vertices.
   private sharedFrameOrigins = new Map<number, [number, number, number]>();
-  /** Meshes routed to an f32 `#lattice` bucket of their colour: the lattice would crumple their entity (#11444). */
+  /** Meshes whose bucket key ends in `LATTICE_KEY_SUFFIX`: the lattice would crumple their entity (#11444). */
   private readonly offLattice = new WeakSet<MeshData>();
   private cachedMaxBufferSize: number = 0; // device.limits.maxBufferSize * safety factor (set on first use)
   private static readonly STREAMING_FRAGMENT_MAX_INDICES = 180_000;
@@ -756,11 +756,14 @@ export class Scene {
         if (!current || current !== bucket || !this.coldBuckets.has(key)) return;
         const baseKey = this.baseColorKey(key);
         const idSet = new Set(shell.expressIds);
+        // Restored meshes are new objects: a lattice bucket's members (#11444) are marked again here.
+        const lattice = baseKey.endsWith(LATTICE_KEY_SUFFIX);
         const members = meshes.filter(
-          (m) => idSet.has(m.expressId) && this.bucketBaseKey(m) === baseKey
+          (m) => idSet.has(m.expressId) && this.bucketBaseKey(m) + (lattice ? LATTICE_KEY_SUFFIX : '') === baseKey
         );
         for (const source of members) {
           const m = this.modelTranslations.placeMesh(source);
+          if (lattice) this.offLattice.add(m);
           bucket.meshData.push(m);
           bucket.vertexBytes += (m.positions.length / 3) * BATCH_CONSTANTS.BYTES_PER_VERTEX;
           this.meshDataBucket.set(m, bucket);
@@ -925,7 +928,8 @@ export class Scene {
     // #5582: material is the mesh's OWN authored finish regardless of a
     // colour override — a recolour changes what a piece looks like, not
     // what it is physically made of.
-    const key = entityIdPageKey(source.expressId, bucketBaseKeyFor(source, this.colorKey(color ?? meshData.color, meshData.material), this.spatialChunking));
+    const key = entityIdPageKey(source.expressId, bucketBaseKeyFor(source, this.colorKey(color ?? meshData.color, meshData.material), this.spatialChunking))
+      + (this.offLattice.has(meshData) ? LATTICE_KEY_SUFFIX : '');
     return source.modelIndex ? `model${source.modelIndex}~${key}` : key;
   }
 
@@ -1196,7 +1200,7 @@ export class Scene {
       }
     }
 
-    if (this.quantizedBatchesEnabled) markOffLattice(renderable, (mesh) => this.bucketBaseKey(mesh), (mesh) => this.bucketFrame(mesh, topology), this.offLattice);
+    if (this.quantizedBatchesEnabled) markOffLattice(renderable, (mesh) => this.bucketBaseKey(mesh), (mesh) => { const base = this.bucketBaseKey(mesh); return this.buckets.get(this.activeBucketKey.get(base) ?? base)?.frameOrigin ?? this.bucketFrame(mesh, topology); }, this.offLattice);
     // Route each mesh into a size-aware bucket for its color (and, with
     // spatial chunking on, its grid cell)
     for (const meshData of renderable) {
@@ -2531,7 +2535,6 @@ export class Scene {
       sharedOrigin: this.modelTranslations.frameOrigin(
         this.sharedFrameOrigins.get(modelIndex) ?? null, modelIndex,
       ),
-      offLattice: (mesh) => this.offLattice.has(mesh),
       nextSplitKey: () => `${baseColorKey}#${this.nextSplitId++}`,
     }, baseColorKey, meshData, topology);
   }

@@ -23,42 +23,51 @@ interface RoutingState {
   coldKeys: ReadonlySet<string>;
   maxBufferSize: number;
   sharedOrigin: [number, number, number] | undefined;
-  /** A mesh `markOffLattice` kept off the ~1 mm lattice: routed to its colour's f32 bucket (#11444). */
-  offLattice?(mesh: MeshData): boolean;
   nextSplitKey(): string;
 }
 
-/** Suffix of the routing key for meshes the lattice would crumple: their own f32 buckets per colour. */
-export const LATTICE_BUCKET_SUFFIX = '#lattice';
+/**
+ * Last segment of the bucket base key of a mesh `markOffLattice` kept off the
+ * ~1 mm lattice: its entity gets f32 buckets of its own colour (#11444). A
+ * `~` segment, like the cell and id-page ones, so `#N` split parsing keeps it.
+ */
+export const LATTICE_KEY_SUFFIX = '~lattice';
 
 /** Reused per-mesh scratch for `markOffLattice`: merged records (7 words per vertex) and lattice nodes. */
 let scratchRecords = new ArrayBuffer(0);
 let scratchNodes = new Int32Array(0);
 
 /**
- * Add `mesh`'s triangles to `loss`, judged on the f32 records `mergeGeometry`
- * would store for it in `frame`.
+ * Add `mesh`'s triangles to the loss of the entity each belongs to (`lossOf`
+ * its lane: `entityIds` per vertex in a colour-merged mesh, as the batch gate
+ * reads them, else the mesh's own id), judged on the f32 records
+ * `mergeGeometry` would store for it in `frame`.
  */
-function addMeshLatticeLoss(loss: LatticeLoss, mesh: MeshData, frame: readonly [number, number, number]): void {
+function addMeshLatticeLoss(lossOf: (lane: number) => LatticeLoss, mesh: MeshData, frame: readonly [number, number, number]): void {
   const vertexCount = mesh.positions.length / 3;
   if (scratchRecords.byteLength < vertexCount * 28) scratchRecords = new ArrayBuffer(vertexCount * 28);
   if (scratchNodes.length < vertexCount * 3) scratchNodes = new Int32Array(vertexCount * 3);
   const records = new Float32Array(scratchRecords, 0, vertexCount * 7);
   writeMergedRecords(mesh, frame, records, new Uint32Array(scratchRecords, 0, vertexCount * 7), 0);
   const nodes = latticeNodes(records, 7, scratchNodes);
-  const { indices } = mesh;
-  for (let t = 0; t + 2 < indices.length; t += 3) addLatticeTriangle(loss, records, 7, nodes, indices[t], indices[t + 1], indices[t + 2]);
+  const { indices, entityIds } = mesh;
+  let lane = -1, loss = emptyLatticeLoss();
+  for (let t = 0; t + 2 < indices.length; t += 3) {
+    const id = entityIds ? entityIds[indices[t]] : mesh.expressId;
+    if (id !== lane) { lane = id; loss = lossOf(id); }
+    addLatticeTriangle(loss, records, 7, nodes, indices[t], indices[t + 1], indices[t + 2]);
+  }
 }
 
 /**
- * Add to `into` the meshes of `meshes` whose entity the lattice would crumple:
- * per entity and bucket colour, the batch gate's rule (`latticeLoses`) over
- * that entity's meshes in this arrival, each judged in `frameOf(mesh)`, the
- * frame a new bucket would give it. Routing then keeps them in an f32 bucket of
- * their colour, so the batch they would have joined still quantizes (#11444).
- * An entity judged in parts (split across arrivals) or in another bucket's
- * frame can still fail the gate there, which keeps that whole batch f32 as
- * before this routing.
+ * Add to `into` the meshes of `meshes` that hold an entity the lattice would
+ * crumple: per entity and bucket colour, the batch gate's rule
+ * (`latticeLoses`) over that entity's triangles in this arrival, each mesh
+ * judged in `frameOf(mesh)`, the frame of the bucket it would join. Their
+ * bucket base key then ends in `LATTICE_KEY_SUFFIX`, so they batch apart, in
+ * f32, and the batch they would have joined still quantizes (#11444). An
+ * entity judged in parts (split across arrivals) or in a frame its batch does
+ * not use can still fail the gate there, which keeps that batch f32 as before.
  */
 export function markOffLattice(
   meshes: readonly MeshData[],
@@ -66,35 +75,31 @@ export function markOffLattice(
   frameOf: (mesh: MeshData) => readonly [number, number, number] | undefined,
   into: WeakSet<MeshData>,
 ): void {
-  const entities = new Map<string, { loss: LatticeLoss; meshes: MeshData[] }>();
+  const entities = new Map<string, { loss: LatticeLoss; meshes: Set<MeshData> }>();
   for (const mesh of meshes) {
     const frame = frameOf(mesh);
     if (!frame || mesh.indices.length < 3) continue;
-    const key = `${baseKeyOf(mesh)}\u0000${mesh.expressId}`;
-    let entity = entities.get(key);
-    if (!entity) entities.set(key, entity = { loss: emptyLatticeLoss(), meshes: [] });
-    addMeshLatticeLoss(entity.loss, mesh, frame);
-    entity.meshes.push(mesh);
+    const base = baseKeyOf(mesh);
+    addMeshLatticeLoss((lane) => {
+      const key = `${base}\u0000${lane}`;
+      let entity = entities.get(key);
+      if (!entity) entities.set(key, entity = { loss: emptyLatticeLoss(), meshes: new Set() });
+      entity.meshes.add(mesh);
+      return entity.loss;
+    }, mesh, frame);
   }
   for (const { loss, meshes: parts } of entities.values()) {
     if (latticeLoses(loss)) for (const mesh of parts) into.add(mesh);
   }
 }
 
-/**
- * Route by GPU size, by the fixed f32-safe frame chosen for each bucket, and by
- * whether `markOffLattice` kept the mesh off the lattice: such a mesh goes to a
- * bucket of its own colour that stays f32 (the batch gate,
- * `latticeCollapsesGeometry`, judges a whole batch), so its colour neighbours
- * keep their 12-byte records (#11444).
- */
+/** Route by GPU size and by the fixed f32-safe frame chosen for each bucket. */
 export function resolvePrecisionBucket(
   state: RoutingState,
-  colorKey: string,
+  baseKey: string,
   mesh: MeshData,
   memo?: TopologyMemo,
 ): string {
-  const baseKey = state.offLattice?.(mesh) ? colorKey + LATTICE_BUCKET_SUFFIX : colorKey;
   let key = state.activeKeys.get(baseKey) ?? baseKey;
   const current = state.buckets.get(key);
   const meshBytes = (mesh.positions.length / 3) * BATCH_CONSTANTS.BYTES_PER_VERTEX;

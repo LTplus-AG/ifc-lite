@@ -112,13 +112,26 @@ function fakeDevice(): GPUDevice {
 const fakePipeline = { getUniformBufferSize: () => 256, getBindGroupLayout: () => ({}) } as unknown as Parameters<Scene['appendToBatches']>[2];
 
 /** Each batch of a quantized scene holding `meshes`: its entities and whether it quantized. */
-function sceneBatches(meshes: MeshData[]): { ids: number[]; quantized: boolean }[] {
+function sceneBatches(meshes: MeshData[], recolour?: Map<number, [number, number, number, number]>): { ids: number[]; quantized: boolean }[] {
   const scene = new Scene();
   scene.setQuantizedBatches(true);
   scene.appendToBatches(meshes, fakeDevice(), fakePipeline);
+  if (recolour) scene.updateMeshColors(recolour, fakeDevice(), fakePipeline);
   return scene.getBatchedMeshes()
     .map((batch) => ({ ids: [...batch.expressIds].sort((a, b) => a - b), quantized: batch.quantized !== undefined }))
     .sort((a, b) => a.ids[0] - b.ids[0]);
+}
+
+/** One colour-merged mesh holding `parts`, each part's vertices laned by its id (`entityIds`). */
+function colourMerged(...parts: MeshData[]): MeshData {
+  const positions: number[] = [], normals: number[] = [], indices: number[] = [], lanes: number[] = [];
+  for (const part of parts) {
+    const base = positions.length / 3;
+    positions.push(...part.positions); normals.push(...part.normals);
+    indices.push(...[...part.indices].map((i) => i + base));
+    lanes.push(...Array.from({ length: part.positions.length / 3 }, () => part.expressId));
+  }
+  return { ...parts[0], positions: new Float32Array(positions), normals: new Float32Array(normals), indices: new Uint32Array(indices), entityIds: new Uint32Array(lanes) };
 }
 
 const metres = DIRECTRIX_MM.map(([x, y, z]): V => [x / 1000, y / 1000, z / 1000]);
@@ -159,6 +172,22 @@ describe('lattice turn guard (#11444)', () => {
     const bar = sweptBar(1, metres, 0.006, 24, [0.00031, 0.00047, 0.00013]);
     assert.deepStrictEqual(sceneBatches([wall(2)]), [{ ids: [2], quantized: true }], 'sanity: the wall alone quantizes');
     assert.deepStrictEqual(sceneBatches([bar, wall(2)]), [{ ids: [1], quantized: false }, { ids: [2], quantized: true }]);
+  });
+
+  it('judges a colour-merged mesh per entity lane, as the batch gate does', () => {
+    const bar = sweptBar(1, metres, 0.006, 24, [0.00031, 0.00047, 0.00013]);
+    const merged = colourMerged(bar, wall(3));
+    const off = new WeakSet<MeshData>();
+    markOffLattice([merged], () => 'grey', () => [0, 0, 0], off);
+    assert.strictEqual(degrades(merged), true, 'the gate fails the bar lane');
+    assert.strictEqual(off.has(merged), true, 'so routing keeps the merged mesh off the lattice');
+  });
+
+  it('keeps the bar in an f32 batch of its own after a recolour', () => {
+    const bar = sweptBar(1, metres, 0.006, 24, [0.00031, 0.00047, 0.00013]);
+    const red: [number, number, number, number] = [1, 0, 0, 1];
+    const batches = sceneBatches([bar, wall(2), { ...wall(4), color: red }], new Map([[1, red]]));
+    assert.deepStrictEqual(batches, [{ ids: [1], quantized: false }, { ids: [2], quantized: true }, { ids: [4], quantized: true }]);
   });
 
   it('is scale-relative: the same bar at 10x (Ø120 mm) still quantizes', () => {

@@ -24,7 +24,10 @@ export const stringList: JsonSchema = { type: 'array', items: { type: 'string' }
 
 /**
  * `structuredContent` of a tool that wrote one file: `filePath` and `bytes`
- * always, plus the tool's own fields.
+ * plus the tool's own fields on success. An error result carries the shared
+ * `{ code, message, details, hint }` payload (`toolError`), so the schema
+ * declares those too and requires nothing: a client that validates error
+ * results against it still passes. (No top-level `anyOf`: see validate.ts.)
  */
 export function fileOutputSchema(extra: Record<string, JsonSchema>): JsonSchema {
   return {
@@ -33,14 +36,23 @@ export function fileOutputSchema(extra: Record<string, JsonSchema>): JsonSchema 
       filePath: { type: 'string', description: 'Absolute path of the written file.' },
       bytes: { type: 'integer', description: 'Size of the written file in bytes.' },
       ...extra,
+      code: { type: 'string', description: 'Error results only: the error code.' },
+      message: { type: 'string', description: 'Error results only.' },
+      details: { type: 'object', description: 'Error results only.' },
+      hint: { type: 'string', description: 'Error results only.' },
     },
-    required: ['filePath', 'bytes'],
+    additionalProperties: false,
   };
 }
 
-/** Refuse two outputs of one call that resolve to the same file. */
+/**
+ * Refuse two outputs of one call that may be the same file. Compared without
+ * case on macOS and Windows, whose default filesystems ignore it.
+ */
 export function requireDistinctPaths(a: string, b: string | null | undefined, name: string): void {
-  if (b === a) throw invalid(`${name} must differ from file_path.`);
+  if (b == null) return;
+  const fold = process.platform === 'darwin' || process.platform === 'win32' ? (p: string) => p.toLowerCase() : (p: string) => p;
+  if (fold(a) === fold(b)) throw invalid(`${name} must differ from file_path.`);
 }
 
 export function invalid(message: string): ToolExecutionError {

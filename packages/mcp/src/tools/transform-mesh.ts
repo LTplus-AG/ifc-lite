@@ -140,7 +140,9 @@ const modelLod: Tool = {
         );
       }
       const { glb, meta } = await generateLod1(bytes);
-      await Promise.all([writeFile(filePath, glb), metaPath ? writeFile(metaPath, JSON.stringify(meta, null, 2), 'utf-8') : undefined]);
+      // One after the other: a failed meta write must not race a GLB still landing.
+      await writeFile(filePath, glb);
+      if (metaPath) await writeFile(metaPath, JSON.stringify(meta, null, 2), 'utf-8');
       return okResult(
         `Wrote LOD1 GLB (${meta.status}, ${meta.failedElements.length} failed elements) to ${filePath}.`,
         { filePath, bytes: glb.length, level, status: meta.status, failedElements: meta.failedElements.length, metaPath },

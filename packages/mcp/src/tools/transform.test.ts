@@ -19,6 +19,8 @@ import { DEFAULT_CONFIG, InMemoryModelRegistry, NOOP_PROGRESS, SILENT_LOGGER } f
 import { fullScope } from '../auth/scope.js';
 import { loadIfcModel } from '../loader.js';
 import { buildDefaultToolRegistry } from './index.js';
+import { validateInput } from '../validate.js';
+import { toolError } from '../errors.js';
 import type { CallToolResult } from '../protocol/index.js';
 
 const HELLO_WALL = fileURLToPath(new URL('../../../../apps/viewer/public/samples/hello-wall.ifc', import.meta.url));
@@ -84,11 +86,11 @@ beforeEach(async () => {
 
 const TRANSFORMS = ['model_merge', 'model_convert', 'model_extract', 'model_anonymize', 'model_simplify', 'model_lod'];
 
-/** Every key the tool returned must be declared in its outputSchema. */
+/** A success result validates against the tool's outputSchema and names the file it wrote. */
 function expectMatchesOutputSchema(name: string, structured: Record<string, unknown>): void {
-  const schema = tool(name).outputSchema as { properties: Record<string, unknown>; required: string[] };
-  for (const key of schema.required) expect(structured).toHaveProperty(key);
-  for (const key of Object.keys(structured)) expect(Object.keys(schema.properties)).toContain(key);
+  expect(validateInput(tool(name).outputSchema!, structured)).toMatchObject({ valid: true, errors: [] });
+  expect(structured).toHaveProperty('filePath');
+  expect(structured).toHaveProperty('bytes');
 }
 
 describe('transform tool metadata', () => {
@@ -98,7 +100,10 @@ describe('transform tool metadata', () => {
     expect(t.scope).toBe('export');
     // destructive: each one replaces an existing file at file_path.
     expect(t.annotations).toMatchObject({ readOnlyHint: false, destructiveHint: true });
-    expect(t.outputSchema).toMatchObject({ type: 'object', required: ['filePath', 'bytes'] });
+    expect(t.outputSchema).toMatchObject({ type: 'object', additionalProperties: false });
+    // An error result's structuredContent must validate too, for clients that check it.
+    const err = toolError({ code: 'INVALID_INPUT', message: 'x', hint: 'y' });
+    expect(validateInput(t.outputSchema!, err.structuredContent)).toMatchObject({ valid: true, errors: [] });
     expect(t.inputSchema.required).toContain('file_path');
     for (const [key, prop] of Object.entries(t.inputSchema.properties ?? {})) {
       expect((prop as { description?: string }).description, `${name}.${key}`).toBeTruthy();
@@ -179,6 +184,11 @@ describe('model_extract', () => {
     expect(text).not.toContain("'Wall A A'");
   });
 
+  it('treats blank selectors as no selection', async () => {
+    await expect(call('model_extract', { global_ids: [''], storeys: [' '], file_path: join(tmp, 'x.ifc') }))
+      .rejects.toMatchObject({ code: 'INVALID_INPUT', message: expect.stringContaining('Select something') });
+  });
+
   it('fails loudly on a GlobalId the model does not have, and on a type that matches nothing', async () => {
     await expect(call('model_extract', { global_ids: ['NOPE00000000000000000X'], file_path: join(tmp, 'x.ifc') }))
       .rejects.toMatchObject({ code: 'ENTITY_NOT_FOUND' });
@@ -210,6 +220,15 @@ describe('model_anonymize', () => {
     const out = join(tmp, 'same.ifc');
     await expect(call('model_anonymize', { global_ids: ['000000000000000000WA1A'], file_path: out, guid_map_path: out }))
       .rejects.toMatchObject({ code: 'INVALID_INPUT' });
+    if (process.platform === 'darwin' || process.platform === 'win32') {
+      await expect(call('model_anonymize', { global_ids: ['000000000000000000WA1A'], file_path: out, guid_map_path: join(tmp, 'SAME.ifc') }))
+        .rejects.toMatchObject({ code: 'INVALID_INPUT' });
+    }
+  });
+
+  it('accepts a storey express id written as #id', async () => {
+    const res = await call('model_anonymize', { storey: '#41', file_path: join(tmp, 'anon-hash.ifc') });
+    expect(res.structuredContent.seedCount).toBe(3);
   });
 
   it('fails loudly on a storey that does not exist', async () => {

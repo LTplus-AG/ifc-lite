@@ -6,15 +6,12 @@ import { describe, expect, it } from 'vitest';
 import { planSpatialRelations, splitTopLevelArgs, type StepRecord } from './step-subset-relations.js';
 
 /**
- * #4227: `@ifc-lite/export`'s `step-argument-parser.ts` had two top-level STEP
- * argument splitters, and only one of them (`splitTopLevelStepArguments`)
- * skipped `/* ... *​/` comments atomically before reading commas as argument
- * boundaries. This module's own `splitTopLevelArgs` — a documented near-twin
- * of that same export-side function, copied rather than imported because
- * `@ifc-lite/export`'s `exports` map exposes only `.` — carried the identical
- * gap: a third, independently-drifted copy of the same missing logic. Fixed
- * by giving it its own local copy of `skipStepComment` (same reason it cannot
- * import `@ifc-lite/export`'s).
+ * #4227: `step-argument-parser.ts` had two top-level STEP argument splitters,
+ * and only one of them (`splitTopLevelStepArguments`) skipped `/* ... *​/`
+ * comments atomically before reading commas as argument boundaries. This
+ * module's `splitTopLevelArgs`, a near-twin written while it lived in the CLI,
+ * carried the identical gap. It now skips comments with the package's own
+ * `skipStepComment`.
  */
 describe('splitTopLevelArgs skips comment content in the outer scan (#4227)', () => {
   it('does not read a comma inside a comment as an argument boundary', () => {

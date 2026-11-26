@@ -54,32 +54,24 @@
  * A relation that loses NO member re-emits its source line verbatim, so an
  * extraction that happened to keep every member does not churn.
  *
- * ## What this module re-implements, and why
+ * ## Near-twins elsewhere in this package
  *
- * Three things here already exist in `@ifc-lite/export`, and all three are
- * copied for ONE reason: that package's `exports` map exposes only `.`, and its
- * `index.ts` re-exports none of them, so reaching any of them would mean adding
- * a published export (and an `api-surface` entry) to a v4.0.0 package in order
- * to fix a CLI bug.
+ * This module moved here from the CLI, where `@ifc-lite/export`'s internals
+ * were out of reach. Two near-twins remain, tracked for consolidation in #4125:
  *
- *   - `filterHiddenRefsFromRelationshipLine` (`reference-collector.ts`) is the
- *     same job, done better: it filters EVERY parenthesised attribute of ANY
- *     `IFCREL*` line against an `isExcluded` predicate, so it needs no slot
- *     table at all, and it carries an edge case this module has no equivalent
- *     of (`IfcRelConnectsStructuralMember`'s optional trailing placement).
- *     Adopting it would delete most of this file. The export barrier above is
- *     the whole reason it is not adopted here, and nothing else: fed only
- *     today's three types it would change no behaviour, because the CALLER
- *     picks which lines it sees. Widening the type set is the separate decision,
- *     and that is the one that changes which relations survive an extraction.
- *     Consolidation follow-up: #4125.
- *   - `splitTopLevelStepArguments` (`step-argument-parser.ts`) and
- *     `skipStepComment` (`step-comment-skip.ts`): see {@link splitTopLevelArgs}.
- *   - `STRUCTURE_RELATIONS` (`merged-empty-containers.ts`): three lines, see
- *     below.
+ *   - `filterHiddenRefsFromRelationshipLine` (`reference-collector.ts`) does
+ *     the same job for EVERY parenthesised attribute of ANY `IFCREL*` line.
+ *     Fed only today's three types it would change no behaviour, because the
+ *     CALLER picks which lines it sees; widening the type set is the separate
+ *     decision that changes which relations survive an extraction.
+ *   - `splitTopLevelStepArguments` (`step-argument-parser.ts`): see
+ *     {@link splitTopLevelArgs} for the two ways it differs.
+ *
+ * `merged-empty-containers.ts` keeps a private copy of `STRUCTURE_RELATIONS`.
  */
 
 import { stepStringLiteralEnd } from '@ifc-lite/encoding';
+import { skipStepComment } from './step-comment-skip.js';
 
 /**
  * One parsed STEP record, as `step-subset.ts`'s `parseStep` produces it.
@@ -126,11 +118,9 @@ export interface SpatialRelationPlan {
 /**
  * Spatial-structure relations, as `[relatingAttributeIndex, relatedAttributeIndex]`.
  * `IfcRelAggregates` names the whole (`RelatingObject`) first; the two containment
- * relations name the parts (`RelatedElements`) first. Same table as `STRUCTURE_RELATIONS`
- * in `@ifc-lite/export`'s `merged-empty-containers.ts`, which reads the same three
- * records, copied rather than imported because that module is internal to
- * `@ifc-lite/export` and exporting it would widen a published API surface for a
- * three-line constant.
+ * relations name the parts (`RelatedElements`) first. Same table as the private
+ * `STRUCTURE_RELATIONS` in `merged-empty-containers.ts`, which reads the same three
+ * records.
  *
  * `IfcRelReferencedInSpatialStructure` is here for the same reason the other two are:
  * same shape (one relating parent, one related SET), same one-per-storey authoring,
@@ -327,17 +317,6 @@ function spliceArgument(
 }
 
 /**
- * Skip a `/* ... *\/` comment atomically: index of `/` in, index past its
- * close marker (or end-of-text when unterminated) out. Byte-identical copy of
- * `@ifc-lite/export`'s `skipStepComment` (not imported, see the module
- * header): #4227's third copy of the same missing logic.
- */
-function skipStepComment(text: string, i: number): number {
-  const end = text.indexOf('*/', i + 2);
-  return end === -1 ? text.length : end + 2;
-}
-
-/**
  * Split a STEP argument list on top-level commas, respecting nested parens,
  * quoted strings, doubled-quote escapes, and `/* ... *\/` comments (#4227).
  * Returns null on an unterminated string, an unbalanced paren depth, or a
@@ -350,8 +329,8 @@ function skipStepComment(text: string, i: number): number {
  * orphaned-storey symptom (#4126) this module exists to fix, by a different
  * route. An EMPTY INTERIOR slot (`a,,b`) is one part, not rejected.
  *
- * Near-twin of `@ifc-lite/export`'s `splitTopLevelStepArguments` (see the
- * module header). Two differences: each part is `trim`med (because
+ * Near-twin of `splitTopLevelStepArguments` in `step-argument-parser.ts` (see
+ * the module header). Two differences: each part is `trim`med (because
  * {@link SINGLE_REF_RE} is anchored), and a TRAILING empty slot (`a,b,`)
  * yields 2 parts, not 3.
  */

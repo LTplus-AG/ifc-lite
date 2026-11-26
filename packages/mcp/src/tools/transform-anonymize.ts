@@ -52,9 +52,10 @@ function anonymizeSeeds(m: LoadedModel, input: Record<string, unknown>): Set<num
     for (const e of matched) seeds.add(e.ref.expressId);
   }
   if (typeof input.storey === 'string') {
-    const key = input.storey;
+    const key = input.storey.trim();
+    const id = key.replace(/^#/, '');
     const storeys = m.bim.storeys();
-    const storey = storeys.find((s) => s.globalId === key) ?? storeys.find((s) => String(s.ref.expressId) === key) ?? storeys.find((s) => s.name === key)
+    const storey = storeys.find((s) => s.globalId === key) ?? storeys.find((s) => String(s.ref.expressId) === id) ?? storeys.find((s) => s.name === key)
       ?? storeys.find((s) => s.name?.toLowerCase().includes(key.toLowerCase()));
     if (!storey) throw new ToolExecutionError({ code: ToolErrorCode.ENTITY_NOT_FOUND, message: `storey: ${key} not found (available: ${storeys.map((s) => s.name).filter(Boolean).join(', ') || 'none'}).` });
     const contained = m.bim.contains(storey.ref);

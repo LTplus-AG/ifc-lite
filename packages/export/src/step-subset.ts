@@ -20,7 +20,8 @@ import { stepStringLiteralEnd } from '@ifc-lite/encoding';
 import { expandTypes } from '@ifc-lite/parser';
 import { getIfcRootTypes } from './subset-roots.js';
 import { planSpatialRelations, refsOutsideStrings, splitTopLevelArgs, SubsetSelectionError, type StepRecord, type Subset } from './step-subset-relations.js';
-import { slotRef, stepString } from './schema-converter-structural-source.js';
+import { slotRef } from './schema-converter-structural-source.js';
+import { skipStepTrivia } from './step-slot-grammar.js';
 import { skipStepComment } from './step-comment-skip.js';
 import { spatialAncestors } from './step-subset-spatial-ancestors.js';
 import { resolveStorey, storeyMembers } from './step-subset-storey.js';
@@ -35,13 +36,14 @@ export interface ParsedStep {
   guidToId: Map<string, number>;
 }
 
-/** Index after any whitespace and comments at `i`. */
-function skipTrivia(text: string, i: number): number {
-  for (;;) {
-    while (i < text.length && /\s/.test(text[i])) i++;
-    if (text[i] !== '/' || text[i + 1] !== '*') return i;
-    i = skipStepComment(text, i);
-  }
+/** The first attribute's text when it is a string literal, read without splitting the whole body. */
+function firstStringSlot(body: string): string | null {
+  const start = skipStepTrivia(body, 0);
+  if (start < 0 || body[start] !== "'") return null;
+  const end = stepStringLiteralEnd(body, start);
+  if (end < 0) return null;
+  const after = skipStepTrivia(body, end);
+  return after === body.length || body[after] === ',' ? body.slice(start + 1, end - 1) : null;
 }
 
 /** Index of the `DATA;` section token, ignoring header string literals and comments; -1 if none. */
@@ -110,12 +112,14 @@ export function parseStep(text: string): ParsedStep {
     let j = i;
     while (j < n && (data[j] === ' ' || data[j] === '\t')) j++;
     if (data[j] !== '=') continue; // `#42` as a REFERENCE, not a definition
-    j = skipTrivia(data, j + 1);
+    j = skipStepTrivia(data, j + 1);
+    if (j < 0) break; // an unclosed comment runs to the end
     // read TYPE
     let type = '';
     while (j < n && /[A-Za-z0-9_]/.test(data[j])) type += data[j++];
     // now consume the balanced `( ... )` respecting strings, then the ';'
-    j = skipTrivia(data, j);
+    j = skipStepTrivia(data, j);
+    if (j < 0) break;
     if (data[j] !== '(') continue; // not a record definition after all
     const bodyStart = j + 1;
     let depth = 0;
@@ -150,7 +154,7 @@ export function parseStep(text: string): ParsedStep {
     // Only IfcRoot records carry a GlobalId (their first attribute); a property
     // or material whose first string happens to be 22 characters must not answer for one.
     if (rooted.has(upperType)) {
-      const guid = stepString(splitTopLevelArgs(body)?.[0]);
+      const guid = firstStringSlot(body);
       if (guid?.length === 22) guidToId.set(guid, id);
     }
     i = semi + 1;

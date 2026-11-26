@@ -358,7 +358,7 @@ describe('buildSubset: an IfcRelAggregates keeping its whole and a strict subset
     expect(keep.has(93)).toBe(true);
     // The slot that shrank is the SET, not the parent. Pairing the two the other
     // way round makes `relationLine` read `(#70,#71)` as the relating parent,
-    // fail `SINGLE_REF_RE`, fall back to keep-whole, and drop #93 on the unkept
+    // fail `slotRef`, fall back to keep-whole, and drop #93 on the unkept
     // #71, so `keep.has(93)` is what pins the orientation and the tail pins which
     // slot was written.
     expect(rewritten.get(93)?.endsWith(',#76,(#70));')).toBe(true);
@@ -745,7 +745,7 @@ describe('planSpatialRelations: a record it cannot scan, or cannot read as six a
   });
 
   // A plain `#70` in the related slot is caught by the MEMBER check further down
-  // (stripping its first and last character leaves `7`, which `SINGLE_REF_RE`
+  // (stripping its first and last character leaves `7`, which `slotRef`
   // rejects), so it does not pin the shape check at all. A quoted STRING does:
   // strip its first and last character and `#70,#71` looks exactly like a
   // two-member SET. Mutation-checked: removing the `startsWith('(') /

@@ -157,9 +157,6 @@ export const STRUCTURE_RELATIONS: Record<string, [number, number]> = {
  */
 export const STRUCTURE_RELATION_ATTRS = 6;
 
-/** A single `#id` and nothing else: an object reference in one slot. */
-export const SINGLE_REF_RE = /^#(\d+)$/;
-
 /**
  * Decide every spatial-structure relation against a kept-id set.
  *
@@ -342,7 +339,7 @@ function spliceArgument(
  *
  * Near-twin of `splitTopLevelStepArguments` in `step-argument-parser.ts` (see
  * the module header). Two differences: each part is `trim`med (because
- * {@link SINGLE_REF_RE} is anchored), and a TRAILING empty slot (`a,b,`)
+ * `slotRef` reads one reference per slot), and a TRAILING empty slot (`a,b,`)
  * yields 2 parts, not 3.
  */
 export function splitTopLevelArgs(text: string): string[] | null {

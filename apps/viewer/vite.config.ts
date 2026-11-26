@@ -4,9 +4,10 @@
 
 import { registryProxy } from './registry-proxy.ts';
 import { viewerAliases } from './vite-aliases';
+import { a2uiNodeBuiltins } from './vite-a2ui-node-builtins';
 import { collectPackageVersions } from './vite-package-versions';
 import { bundleAnalysis } from './vite-bundle-analysis';
-import { legacyManualChunk, preloadHelperChunkGroup, quickjsRuntimeChunkGroup, tslibChunkGroup } from './vite-chunks';
+import { appearanceWorkflowsChunkGroup, drawingLeavesChunkGroup, drawingSharedChunkGroup, legacyManualChunk, mergedExportChunkGroup, preloadHelperChunkGroup, processedModelRefChunkGroup, quickjsRuntimeChunkGroup, stepExportChunkGroup, tslibChunkGroup, wasmPrewarmChunkGroup } from './vite-chunks';
 import { defineConfig, loadEnv } from 'vite';
 import { retainedEngine } from './vite-plugins/retained-engine';
 import react from '@vitejs/plugin-react';
@@ -208,6 +209,7 @@ export default defineConfig(({ mode }) => {
   return {
   plugins: [
     ...(process.env.VITE_BUNDLE_ANALYSIS === '1' ? [bundleAnalysis()] : []),
+    a2uiNodeBuiltins(),
     retainedEngine(retained),
     react(),
     Icons({
@@ -346,7 +348,14 @@ export default defineConfig(({ mode }) => {
             },
             tslibChunkGroup,
             quickjsRuntimeChunkGroup,
+            mergedExportChunkGroup,
+            stepExportChunkGroup,
             preloadHelperChunkGroup,
+            processedModelRefChunkGroup,
+            wasmPrewarmChunkGroup,
+            drawingSharedChunkGroup,
+            drawingLeavesChunkGroup,
+            appearanceWorkflowsChunkGroup,
             {
               name: legacyManualChunk,
               priority: 0,

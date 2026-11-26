@@ -35,6 +35,13 @@
    "to": "IFC4",
    "line": "#453=IFCALIGNMENTSEGMENT('3K5H1$Zs9CQuKQFQKQFQK',#2,$,$,$,#455,$,#9);",
    "expect": "#453=IFCPROXY(<MINTED>,#2,'IFCALIGNMENTSEGMENT',$,'IFCALIGNMENTSEGMENT',#455,$,.NOTDEFINED.,$);"
+  },
+  {
+   "why": "#11149 commented unset Name and ObjectType fall back to the alignment type",
+   "from": "IFC4X3",
+   "to": "IFC4",
+   "line": "#453=IFCALIGNMENTSEGMENT('3K5H1$Zs9CQuKQFQKQFQK',#2,/* unnamed */$,$,$/* no type */,#455,$,#9);",
+   "expect": "#453=IFCPROXY(<MINTED>,#2,'IFCALIGNMENTSEGMENT',$,'IFCALIGNMENTSEGMENT',#455,$,.NOTDEFINED.,$);"
   }
  ]
 }

@@ -4,7 +4,8 @@
 import { useViewerStore } from '@/store';
 import { viewerOperation } from './contract';
 import { assertToolActive } from '../cancellation';
-import { clashRuntime, currentClashes } from './clash-native';
+import { clashFocusRefusal, clashRuntime, currentClashes } from './clash-native';
+import { internal, invalidInput, stale, unavailable } from './refusals';
 export const clashTopicOperations = [
   viewerOperation<{
     kind: 'pair' | 'report' | 'group';
@@ -46,37 +47,52 @@ export const clashTopicOperations = [
       additionalProperties: false,
     },
     async (i, c) => {
-      const [{ createNativeClashTopic }, runtime] = await Promise.all([
+      const [{ createNativeClashTopic, StaleCaptureError }, runtime] = await Promise.all([
         import('@/lib/clash/clash-native-topic'),
         clashRuntime(c),
       ]);
       const s = useViewerStore.getState();
-      if (s.clashRunSeq !== i.run_seq || !s.clashResult) throw new Error('No exact current clash result.');
+      if (!s.clashResult) throw unavailable('No current clash result.');
+      if (s.clashRunSeq !== i.run_seq) throw stale('The clash result changed since inspection.');
       if (
         (i.kind === 'pair' && i.clash_ids.length !== 1) ||
         (i.kind === 'report' && i.clash_ids.length !== 0) ||
         (i.kind === 'group' && (!i.group_name.trim() || i.clash_ids.length === 0))
       )
-        throw new Error('Use one pair, an empty report population, or an explicit named nonempty group.');
+        throw invalidInput('invalid-value', 'Use one pair, an empty report population, or an explicit named nonempty group.');
       const result = s.clashResult,
         pairs = currentClashes(i.run_seq, i.clash_ids);
       const isCurrent = () =>
         !c.signal?.aborted &&
         useViewerStore.getState().clashResult === result &&
         useViewerStore.getState().clashRunSeq === i.run_seq;
-      const created = await createNativeClashTopic({
-        clashes: pairs,
-        total: result.clashes.length,
-        ...(i.kind === 'group' ? { groupName: i.group_name } : {}),
-        mode: i.mode,
-        focusClash: runtime.focusClash,
-        focusClashes: runtime.focusClashes,
-        isCurrent,
-        signal: c.signal,
-        commit: (write) => c.commit(write),
-      });
+      let created;
+      try {
+        created = await createNativeClashTopic({
+          clashes: pairs,
+          total: result.clashes.length,
+          ...(i.kind === 'group' ? { groupName: i.group_name } : {}),
+          mode: i.mode,
+          focusClash: (pair, mode) => {
+            if (!runtime.focusClash(pair, mode)) throw clashFocusRefusal('Native clash focus refused.');
+          },
+          focusClashes: (group, mode, signal) => {
+            const focused = runtime.focusClashes(group, mode, signal);
+            if (!focused) throw clashFocusRefusal('None of this group’s objects are available in the loaded models.');
+            return focused;
+          },
+          isCurrent,
+          signal: c.signal,
+          commit: (write) => c.commit(write),
+          requireSnapshot: true,
+        });
+      } catch (error) {
+        if (error instanceof StaleCaptureError) throw stale(error.message);
+        throw error;
+      }
       assertToolActive(c);
-      if (!created) throw new Error('Native BCF topic capture failed or was superseded.');
+      if (!created) throw isCurrent() ? internal('Native BCF topic capture failed.')
+        : stale('The clash result changed during BCF topic capture.');
       return created;
     },
   ),

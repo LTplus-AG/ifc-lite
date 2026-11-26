@@ -7,15 +7,19 @@ import { decodeSavedFilter, encodeSavedFilter, type SavedFilterPreset } from '..
 import { decodeSavedList, encodeSavedList } from '../lists/saved-list-codec.js';
 import { migrateSavedLens, encodeSavedLens } from '../lens/migrate-saved-lens.js';
 
+import { decodeLocalWorkBackup, type LocalWorkBackup } from './local-work-backup.js';
+
 export interface StandaloneArtifactLibraries {
   filters?: SavedFilterPreset[];
   lists?: ListDefinition[];
   lenses?: Lens[];
+  localWork?: LocalWorkBackup;
 }
 
 /** Native artifact codecs own their versions; backup never reinterprets their criteria. */
 export function encodeArtifactLibraries(libraries: StandaloneArtifactLibraries): Record<string, unknown> {
   return {
+    ...(libraries.localWork ? { localWork: libraries.localWork } : {}),
     ...(libraries.filters ? { filters: libraries.filters.map(encodeSavedFilter) } : {}),
     ...(libraries.lists ? { lists: libraries.lists.map(encodeSavedList) } : {}),
     ...(libraries.lenses ? { lenses: libraries.lenses.map(encodeSavedLens) } : {}),
@@ -48,5 +52,6 @@ export function decodeArtifactLibraries(raw: Record<string, unknown>): Standalon
   unique(filters?.map(row => row.name.toLowerCase()), 'filter names');
   unique(lists?.map(row => row.id), 'list IDs');
   unique(lenses?.map(row => row.id), 'lens IDs');
-  return { ...(filters ? { filters } : {}), ...(lists ? { lists } : {}), ...(lenses ? { lenses } : {}) };
+  const localWork = raw.localWork === undefined ? undefined : decodeLocalWorkBackup(raw.localWork);
+  return { ...(localWork ? { localWork } : {}), ...(filters ? { filters } : {}), ...(lists ? { lists } : {}), ...(lenses ? { lenses } : {}) };
 }

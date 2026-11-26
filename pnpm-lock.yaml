@@ -41,6 +41,15 @@ overrides:
 packageExtensionsChecksum: sha256-LM9e1121wHlk+b2fEsPdhl89vi3DhRlX5kymYPR0Yyc=
 
 patchedDependencies:
+  '@a2ui/agent@0.1.0':
+    hash: bd6b6288fc34d3316476b90f1d913a17233648b125f38495225fcf47de20b8ac
+    path: patches/@a2ui__agent@0.1.0.patch
+  '@a2ui/react@0.15.0':
+    hash: 83b1103e23a0cbf66dc58d99008f032abc466b7dd415f19b82adc377d033a125
+    path: patches/@a2ui__react@0.15.0.patch
+  '@a2ui/web_core@0.15.0':
+    hash: 4cd64b3659b2322468db9a10794fe9bd6eeac0430b2ac21cdbfa621831ae96c3
+    path: patches/@a2ui__web_core@0.15.0.patch
   '@luma.gl/splats@9.4.2':
     hash: 3dee701bf5033cd97faec32f8a1e18d652ada636df74d4cea3d7df7fdfb83e62
     path: patches/@luma.gl__splats@9.4.2.patch
@@ -215,6 +224,12 @@ importers:
       '@3dconnexion/3dconnexionjs':
         specifier: ^0.8.1
         version: 0.8.1
+      '@a2ui/react':
+        specifier: 0.15.0
+        version: 0.15.0(patch_hash=83b1103e23a0cbf66dc58d99008f032abc466b7dd415f19b82adc377d033a125)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(zod@4.6.7)
+      '@a2ui/web_core':
+        specifier: 0.15.0
+        version: 0.15.0(patch_hash=4cd64b3659b2322468db9a10794fe9bd6eeac0430b2ac21cdbfa621831ae96c3)
       '@anthropic-ai/sdk':
         specifier: ^1.8.0
         version: 1.8.0(zod@4.6.7)
@@ -245,6 +260,9 @@ importers:
       '@floating-ui/dom':
         specifier: ^1.8.0
         version: 1.8.0
+      '@ifc-lite/a2ui':
+        specifier: workspace:^
+        version: link:../../packages/a2ui
       '@ifc-lite/ai':
         specifier: workspace:^
         version: link:../../packages/ai
@@ -408,8 +426,8 @@ importers:
         specifier: workspace:^
         version: link:../../packages/wasm
       '@playcanvas/splat-transform':
-        specifier: 3.10.3
-        version: 3.10.3(playcanvas@2.24.1)
+        specifier: 3.11.2
+        version: 3.11.2(playcanvas@2.24.1)
       '@radix-ui/react-collapsible':
         specifier: ^1.1.20
         version: 1.1.20(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -633,6 +651,9 @@ importers:
 
   apps/viewer-embed:
     dependencies:
+      '@ifc-lite/a2ui':
+        specifier: workspace:^
+        version: link:../../packages/a2ui
       '@ifc-lite/ai':
         specifier: workspace:^
         version: link:../../packages/ai
@@ -898,8 +919,8 @@ importers:
         specifier: 9.4.2
         version: 9.4.2(@luma.gl/core@9.4.2)(@luma.gl/shadertools@9.4.2(@luma.gl/core@9.4.2))
       '@playcanvas/splat-transform':
-        specifier: 3.10.3
-        version: 3.10.3(playcanvas@2.24.1)
+        specifier: 3.11.2
+        version: 3.11.2(playcanvas@2.24.1)
       playcanvas:
         specifier: 2.24.1
         version: 2.24.1
@@ -997,6 +1018,28 @@ importers:
       vite:
         specifier: ^8.1.0
         version: 8.3.8(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)
+
+  packages/a2ui:
+    dependencies:
+      '@a2ui/agent':
+        specifier: 0.1.0
+        version: 0.1.0(patch_hash=bd6b6288fc34d3316476b90f1d913a17233648b125f38495225fcf47de20b8ac)
+      '@a2ui/web_core':
+        specifier: 0.15.0
+        version: 0.15.0(patch_hash=4cd64b3659b2322468db9a10794fe9bd6eeac0430b2ac21cdbfa621831ae96c3)
+      zod:
+        specifier: ^4.6.7
+        version: 4.6.7
+    devDependencies:
+      '@mergifyio/vitest':
+        specifier: ^2026.11.8
+        version: 2026.11.8(vitest@5.1.0(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(happy-dom@21.0.4)(vite@8.3.8(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: ^5.0.3
+        version: 5.1.0(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(happy-dom@21.0.4)(vite@8.3.8(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
 
   packages/ai:
     dependencies:
@@ -1994,6 +2037,9 @@ importers:
         specifier: ^2.4.0
         version: 2.4.0
     devDependencies:
+      esbuild:
+        specifier: ^0.28.1
+        version: 0.28.2
       tsx:
         specifier: ^4.23.15
         version: 4.23.15
@@ -2065,6 +2111,9 @@ importers:
 
   packages/mcp:
     dependencies:
+      '@ifc-lite/a2ui':
+        specifier: workspace:^
+        version: link:../a2ui
       '@ifc-lite/ai':
         specifier: workspace:^
         version: link:../ai
@@ -2150,6 +2199,9 @@ importers:
         specifier: ^13.6.33
         version: 13.6.33
     devDependencies:
+      '@a2ui/web_core':
+        specifier: 0.15.0
+        version: 0.15.0(patch_hash=4cd64b3659b2322468db9a10794fe9bd6eeac0430b2ac21cdbfa621831ae96c3)
       '@mergifyio/vitest':
         specifier: ^2026.11.8
         version: 2026.11.8(vitest@5.1.0(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(happy-dom@21.0.4)(vite@8.3.8(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
@@ -2159,6 +2211,12 @@ importers:
       '@types/ws':
         specifier: ^8.18.2
         version: 8.18.2
+      esbuild:
+        specifier: ^0.28.1
+        version: 0.28.2
+      happy-dom:
+        specifier: ^21.0.4
+        version: 21.0.4
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -2485,6 +2543,9 @@ importers:
 
   packages/sandbox:
     dependencies:
+      '@ifc-lite/a2ui':
+        specifier: workspace:^
+        version: link:../a2ui
       '@ifc-lite/extensions':
         specifier: workspace:^
         version: link:../extensions
@@ -2497,6 +2558,9 @@ importers:
       quickjs-emscripten:
         specifier: ^0.32.0
         version: 0.32.0
+      zod:
+        specifier: ^4.6.7
+        version: 4.6.7
     devDependencies:
       '@ifc-lite/create':
         specifier: workspace:^
@@ -2519,6 +2583,9 @@ importers:
 
   packages/sdk:
     dependencies:
+      '@ifc-lite/a2ui':
+        specifier: workspace:^
+        version: link:../a2ui
       '@ifc-lite/bcf':
         specifier: workspace:^
         version: link:../bcf
@@ -2949,8 +3016,27 @@ packages:
     resolution: {integrity: sha512-08K9ou5VNbheZFxM5tDWoqjA3ImC50DiuuJ2tj1yEPRfkp8lLLg6XAaJ4On+a0yAXor/8ay5gHnAIshRM44Kpw==}
     engines: {node: '>=12.17'}
 
-  '@adobe/spz@0.2.3':
-    resolution: {integrity: sha512-iMiIB+FUxQ2vaNxP012fdIVd4yugyq0PUXBaknGfYDE3xpTNU5PrhbLtnDTGFE9anKOwjneOuanSKqaaNpC68Q==}
+  '@a2ui/agent@0.1.0':
+    resolution: {integrity: sha512-qpqMN+uQU+vA8JEjtIJsGT6qJJ0FZCnOKSRB6HBhleqnlsasjAiNIMSJfwX/lANv13cnEF10CgMiQGDLSyjnLQ==}
+
+  '@a2ui/markdown-it@0.2.2':
+    resolution: {integrity: sha512-oj58ybxIPwnRzN2NpvgxrOOwDlZuBKoEtW5U6wRs6SOq1dDjk/zAAkRtb0U52WPSu01gHJOFSGEkuE+Xe09dcQ==}
+    peerDependencies:
+      '@a2ui/web_core': ^0.14.0
+
+  '@a2ui/react@0.15.0':
+    resolution: {integrity: sha512-SkbdIMoRgtYNGh+nSEvK8YHDSAgS8LVFggDMCYdDqrUAWMLb2PS1unYOL8lfkXjskYK/+VoD7sa6X+I2F+F62w==}
+    engines: {node: '>=18.0.0'}
+    peerDependencies:
+      react: ^18.0.0 || ^19.0.0
+      react-dom: ^18.0.0 || ^19.0.0
+      zod: ^4.6.6
+
+  '@a2ui/web_core@0.15.0':
+    resolution: {integrity: sha512-S3k9rAJ9O55z5TlDeWy22ly3yQnDLO+XBWihlL5JQSuyxaCUmd7jgFnxO4eq/Bn6dSgdBF0WG8cve/euMoz8SA==}
+
+  '@adobe/spz@0.3.1':
+    resolution: {integrity: sha512-3HVGFYny7rGrpPFvAApDLM9U0owm0wO1+ipcEC52JIy+Vj0p/Mmuuq95utVmdZ7FLAfWb4mvme+H0JBvpc3HFw==}
 
   '@alloc/quick-lru@5.3.0':
     resolution: {integrity: sha512-U4+70Pc5ZS9osnCBCE5Jha/ciHM+Yp+CNMNC/7HvYbNRk1Ldd+f7qO65W5qfhu/TCv+/ozljlXXe9Nj8419DMA==}
@@ -3570,6 +3656,15 @@ packages:
   '@lezer/lr@1.4.11':
     resolution: {integrity: sha512-UwgZcl1R66H2hDzBrA7kWyYmX6s8p5TQ+e/t7CuvgCtBEPxbEPaHYHu+pJBvTvDotEJpuQkJjbXuHiw5Cixxgw==}
 
+  '@lit-labs/ssr-dom-shim@1.6.0':
+    resolution: {integrity: sha512-VHb0ALPMTlgKjM6yIxxoQNnpKyUKLD04VzeQdsiXkMqkvYlAHxq9glGLmgbb889/1GsohSOAjvQYoiBppXFqrQ==}
+
+  '@lit/context@1.1.6':
+    resolution: {integrity: sha512-M26qDE6UkQbZA2mQ3RjJ3Gzd8TxP+/0obMgE5HfkfLhEEyYE3Bui4A5XHiGPjy0MUGAyxB3QgVuw2ciS0kHn6A==}
+
+  '@lit/reactive-element@2.1.2':
+    resolution: {integrity: sha512-pbCDiVMnne1lYUIaYNN5wrwQXDtHaYtg7YEFPeW+hws6U47WeFvISGUWekPGKWOP1ygrs0ef0o1VJMk1exos5A==}
+
   '@luma.gl/core@9.4.2':
     resolution: {integrity: sha512-VFol6FUSHQeYR40NrkCM/mkP5DX7aI8pcDewxI8DBjtrcP4+ZJiJwnxWZnsMBzM4RuuvmDoHkPWCxj6Ob9yo+w==}
 
@@ -4154,8 +4249,8 @@ packages:
   '@petamoriken/float16@3.9.3':
     resolution: {integrity: sha512-8awtpHXCx/bNpFt4mt2xdkgtgVvKqty8VbjHI/WWWQuEw+KLzFot3f4+LkQY9YmOtq7A5GdOnqoIC8Pdygjk2g==}
 
-  '@playcanvas/splat-transform@3.10.3':
-    resolution: {integrity: sha512-+jzoQtM1EHDwE2WKuEcaX9RGCGzk6VKnSAmOAiTB2TiNwB1kx2RhesXoSzrGvjKSKEPx6Pr/8kJhcl2WY70Ffg==}
+  '@playcanvas/splat-transform@3.11.2':
+    resolution: {integrity: sha512-LO9kFxy/GO0l6MLYa0WxnV443qq0uVzzZMUfPP0uSHtGhUjq7wthlM73pcExfGo22dHZeXZML/FaGX6mIoPZUw==}
     engines: {node: '>=22.0.0'}
     hasBin: true
     peerDependencies:
@@ -4183,6 +4278,9 @@ packages:
 
   '@posthog/types@1.425.1':
     resolution: {integrity: sha512-mh7jyQ5lN+XCeOnMdYkBEFtO/G0TxeLOKTWNH6E6OZjxS4nVM0Tb2xQt+FG5DCFM9qzL2HmuX6A793TwlJVDvw==}
+
+  '@preact/signals-core@1.14.5':
+    resolution: {integrity: sha512-vcRv7Ityz5JVmeiVqIluLFzT/PDS/AlhHUpw3/aUWqcVUs6bDGIPXE/6RSC4evBNWYvnniozg5Syfj33al3gkg==}
 
   '@probe.gl/env@4.1.2':
     resolution: {integrity: sha512-KIcdjrEiEZVIGX9nh7pZSmTMIKrd+wCb09gyXqpYYI4hs9WMqrQHvKZ7KD8ASutf6kwARwgd4WNQn8aucLSz3g==}
@@ -5515,6 +5613,9 @@ packages:
     resolution: {integrity: sha512-zbB9rCJAT1rbjiVDb2hqKFHNYLxgtk8NURxZ3IZwD3F6NtxbXZQCnnSi1Lkx+IDohdPlFp222wVALIheZJQSEg==}
     engines: {node: '>=8'}
 
+  antlr4ng@3.0.16:
+    resolution: {integrity: sha512-DQuJkC7kX3xunfF4K2KsWTSvoxxslv+FQp/WHQZTJSsH2Ec3QfFmrxC3Nky2ok9yglXn6nHM4zUaVDxcN5f6kA==}
+
   anymatch@3.1.3:
     resolution: {integrity: sha512-KMReFUr0B4t+D+OBkjR3KYqvocp2XaSzO55UcB6mgQMd3KbcE+mWTyvVV7D/zsdEbNnV6acZUutkiHQXvTr1Rw==}
     engines: {node: '>= 8'}
@@ -6445,6 +6546,15 @@ packages:
   linkify-it@5.0.2:
     resolution: {integrity: sha512-ONTm2jCMAVZjgQa/Fy1kScXsuOoF5NPTsoFBdE1KVIZ2vAh/r9+Bqo+0jINCBYnavTPQZz38QzFTme79ENoN3Q==}
 
+  lit-element@4.2.2:
+    resolution: {integrity: sha512-aFKhNToWxoyhkNDmWZwEva2SlQia+jfG0fjIWV//YeTaWrVnOxD89dPKfigCUspXFmjzOEUQpOkejH5Ly6sG0w==}
+
+  lit-html@3.3.3:
+    resolution: {integrity: sha512-el8M6jK2o3RXBnrSHX3ZKrsN8zEV63pSExTO1wYJz7QndGYZ8353e2a5PPX+qHe2aGayfnchQmkAojaWAREOIA==}
+
+  lit@3.3.3:
+    resolution: {integrity: sha512-fycuvZg/hkpozL00lm1pEJH5nN/lr9ZXd6mJI2HSN4+Bzc+LDNdEApJ6HFbPkdFNHLvOplIIuJvxkS4XUxqirw==}
+
   local-pkg@1.2.1:
     resolution: {integrity: sha512-++gUqRDEvcnN6Zhqrr+y/CkVEHhlrR96vZn3nZZPYzMcBUyBtTKzB9NadClFIsIVSsu+3i9tfk/erqy9kAmt7Q==}
     engines: {node: '>=14'}
@@ -7167,8 +7277,17 @@ packages:
     resolution: {integrity: sha512-hOS089on8RduqdbhvQ5Z37A0ESjsqz6qnRcffsMU3495FuTdqSm+7bhJ29JvIOsBDEEnan5DPu9t3To9VRlMzA==}
     engines: {node: '>=8.10.0'}
 
+  redos-detector@6.1.4:
+    resolution: {integrity: sha512-lPlka1rEH6kK42gtgokvvxMmpAvyc28DcRjQbGxeP5RJsJWgAduBOdGedVCDPdSyCr4ay/JDxq3nGYsJZyt8tA==}
+    engines: {node: '>=16.0.0'}
+    hasBin: true
+
   regenerator-runtime@0.13.11:
     resolution: {integrity: sha512-kY1AZVr2Ra+t+piVaJ4gxaFaReZVH40AKNo7UCX6W+dEwBo/2oZJzqfuN1qLq1oL45o56cPaTXELwrTh8Fpggg==}
+
+  regjsparser@0.13.0:
+    resolution: {integrity: sha512-NZQZdC5wOE/H3UT28fVGL+ikOZcEzfMGk/c3iN9UGxzWHMa1op7274oyiUVrAG4B2EuFhus8SvkaYnhvW92p9Q==}
+    hasBin: true
 
   remark-gfm@4.0.1:
     resolution: {integrity: sha512-1quofZ2RQ9EWdeN34S79+KExV1764+wCUGop5CPL1WGdD0ocPpu91lzPGbwWMECpEpd42kJGQwzRfyov9j4yNg==}
@@ -7610,6 +7729,9 @@ packages:
     resolution: {integrity: sha512-vIYxrBCC/N/K+Js3qSN88go7kIfNPssr/hHCesKCQNAjmgvYS2oqr69kIufEG+O4+PfezOH4EbIeHCfFov8ZgQ==}
     hasBin: true
 
+  validate-color@2.2.4:
+    resolution: {integrity: sha512-Znolz+b6CwW6eBXYld7MFM3O7funcdyRfjKC/X9hqYV/0VcC5LB/L45mff7m3dIn9wdGdNOAQ/fybNuD5P/HDw==}
+
   vfile-message@4.0.3:
     resolution: {integrity: sha512-QTHzsGd1EhbZs4AsQ20JX1rC3cOlt/IWJruk893DfLRr57lcnOeMaWG4K0JrRta4mIJZKth2Au3mM3u03/JWKw==}
 
@@ -7851,6 +7973,11 @@ packages:
     resolution: {integrity: sha512-9qv4rlDiopXg4E69k+vMHjNN63YFMe9sZMrdlvKnCjlCRWeCBswPPMPUfx+ipsAWq1LXHe70RcbaHdJJpS6hyQ==}
     engines: {node: '>= 10'}
 
+  zod-to-json-schema@3.25.2:
+    resolution: {integrity: sha512-O/PgfnpT1xKSDeQYSCfRI5Gy3hPf91mKVDuYLUHZJMiDFptvP41MSnWofm8dnCm0256ZNfZIM7DSzuSMAFnjHA==}
+    peerDependencies:
+      zod: ^4.6.6
+
   zod@4.6.7:
     resolution: {integrity: sha512-g8W2D2kU6a8untc053fX1uVBKzM7yqAxW/3zwk83+6RyF2+SKOuV+c0wBDhUwzV1PaGapmZH+rmcUzPf+3CGwg==}
 
@@ -7905,7 +8032,38 @@ snapshots:
       lodash: 4.18.1
       typical: 7.3.0
 
-  '@adobe/spz@0.2.3': {}
+  '@a2ui/agent@0.1.0(patch_hash=bd6b6288fc34d3316476b90f1d913a17233648b125f38495225fcf47de20b8ac)':
+    dependencies:
+      '@a2ui/web_core': 0.15.0(patch_hash=4cd64b3659b2322468db9a10794fe9bd6eeac0430b2ac21cdbfa621831ae96c3)
+      antlr4ng: 3.0.16
+
+  '@a2ui/markdown-it@0.2.2(@a2ui/web_core@0.15.0(patch_hash=4cd64b3659b2322468db9a10794fe9bd6eeac0430b2ac21cdbfa621831ae96c3))':
+    dependencies:
+      '@a2ui/web_core': 0.15.0(patch_hash=4cd64b3659b2322468db9a10794fe9bd6eeac0430b2ac21cdbfa621831ae96c3)
+      dompurify: 3.4.18
+      markdown-it: 14.3.3
+
+  '@a2ui/react@0.15.0(patch_hash=83b1103e23a0cbf66dc58d99008f032abc466b7dd415f19b82adc377d033a125)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(zod@4.6.7)':
+    dependencies:
+      '@a2ui/markdown-it': 0.2.2(@a2ui/web_core@0.15.0(patch_hash=4cd64b3659b2322468db9a10794fe9bd6eeac0430b2ac21cdbfa621831ae96c3))
+      '@a2ui/web_core': 0.15.0(patch_hash=4cd64b3659b2322468db9a10794fe9bd6eeac0430b2ac21cdbfa621831ae96c3)
+      clsx: 2.1.1
+      markdown-it: 14.3.3
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
+      zod: 4.6.7
+
+  '@a2ui/web_core@0.15.0(patch_hash=4cd64b3659b2322468db9a10794fe9bd6eeac0430b2ac21cdbfa621831ae96c3)':
+    dependencies:
+      '@lit/context': 1.1.6
+      '@preact/signals-core': 1.14.5
+      lit: 3.3.3
+      redos-detector: 6.1.4
+      validate-color: 2.2.4
+      zod: 4.6.7
+      zod-to-json-schema: 3.25.2(zod@4.6.7)
+
+  '@adobe/spz@0.3.1': {}
 
   '@alloc/quick-lru@5.3.0': {}
 
@@ -8742,6 +8900,16 @@ snapshots:
     dependencies:
       '@lezer/common': 1.5.3
 
+  '@lit-labs/ssr-dom-shim@1.6.0': {}
+
+  '@lit/context@1.1.6':
+    dependencies:
+      '@lit/reactive-element': 2.1.2
+
+  '@lit/reactive-element@2.1.2':
+    dependencies:
+      '@lit-labs/ssr-dom-shim': 1.6.0
+
   '@luma.gl/core@9.4.2':
     dependencies:
       '@math.gl/types': 4.1.0
@@ -9168,9 +9336,9 @@ snapshots:
 
   '@petamoriken/float16@3.9.3': {}
 
-  '@playcanvas/splat-transform@3.10.3(playcanvas@2.24.1)':
+  '@playcanvas/splat-transform@3.11.2(playcanvas@2.24.1)':
     dependencies:
-      '@adobe/spz': 0.2.3
+      '@adobe/spz': 0.3.1
       playcanvas: 2.24.1
       webgpu: 0.6.2
     transitivePeerDependencies:
@@ -9200,6 +9368,8 @@ snapshots:
       '@posthog/types': 1.425.1
 
   '@posthog/types@1.425.1': {}
+
+  '@preact/signals-core@1.14.5': {}
 
   '@probe.gl/env@4.1.2': {}
 
@@ -10258,8 +10428,7 @@ snapshots:
       fflate: 0.8.3
       meshoptimizer: 1.1.1
 
-  '@types/trusted-types@2.0.7':
-    optional: true
+  '@types/trusted-types@2.0.7': {}
 
   '@types/unist@2.0.11': {}
 
@@ -10374,6 +10543,8 @@ snapshots:
   ansi-styles@4.3.0:
     dependencies:
       color-convert: 2.0.1
+
+  antlr4ng@3.0.16: {}
 
   anymatch@3.1.3:
     dependencies:
@@ -11322,6 +11493,22 @@ snapshots:
   linkify-it@5.0.2:
     dependencies:
       uc.micro: 2.1.0
+
+  lit-element@4.2.2:
+    dependencies:
+      '@lit-labs/ssr-dom-shim': 1.6.0
+      '@lit/reactive-element': 2.1.2
+      lit-html: 3.3.3
+
+  lit-html@3.3.3:
+    dependencies:
+      '@types/trusted-types': 2.0.7
+
+  lit@3.3.3:
+    dependencies:
+      '@lit/reactive-element': 2.1.2
+      lit-element: 4.2.2
+      lit-html: 3.3.3
 
   local-pkg@1.2.1:
     dependencies:
@@ -12320,8 +12507,16 @@ snapshots:
     dependencies:
       picomatch: 2.3.2
 
+  redos-detector@6.1.4:
+    dependencies:
+      regjsparser: 0.13.0
+
   regenerator-runtime@0.13.11:
     optional: true
+
+  regjsparser@0.13.0:
+    dependencies:
+      jsesc: 3.1.0
 
   remark-gfm@4.0.1:
     dependencies:
@@ -12776,6 +12971,8 @@ snapshots:
 
   uuid@11.1.1: {}
 
+  validate-color@2.2.4: {}
+
   vfile-message@4.0.3:
     dependencies:
       '@types/unist': 3.0.3
@@ -12937,6 +13134,10 @@ snapshots:
       archiver-utils: 3.0.4
       compress-commons: 4.1.2
       readable-stream: 3.6.2
+
+  zod-to-json-schema@3.25.2(zod@4.6.7):
+    dependencies:
+      zod: 4.6.7
 
   zod@4.6.7: {}
 

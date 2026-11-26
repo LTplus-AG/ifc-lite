@@ -17,7 +17,7 @@ import { readFileSync } from 'node:fs';
 import { act } from 'react';
 import { IfcParser } from '@ifc-lite/parser';
 import { Rule, type RuleSetFile } from '@ifc-lite/rules';
-import { render, cleanup } from '@/test/render.js';
+import { render, cleanup, settle } from '@/test/render.js';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { useViewerStore } from '@/store';
 import { analysisStampOf, isAnalysisStale } from '@/hooks/useAnalysisStaleness';
@@ -48,6 +48,7 @@ it('#6921 a rule-set run publishes a report stamped with the model state it ran 
   useViewerStore.setState({ ...fixtureModels({ ...fixtureModel('m'), name: 'building-architecture.ifc', ifcDataStore: store }),
     mutationVersion: 3, geometryContentVersion: 2 });
   assert.ok(useViewerStore.getState().addValidationDefinition({ kind: 'rules', file: ruleSet }));
+  await settle();
   render(<Owner />);
   await act(async () => { await owner.run(); });
 
@@ -71,6 +72,7 @@ it('#6952 two real native rule-set runs retain their distinct input names in the
   const store = await new IfcParser().parseColumnar(new Uint8Array(bytes).buffer);
   useViewerStore.setState({ ...fixtureModels({ ...fixtureModel('m'), name: 'building-architecture.ifc', ifcDataStore: store }) });
   assert.ok(useViewerStore.getState().addValidationDefinition({ kind: 'rules', file: ruleSet }));
+  await settle();
   render(<Owner />);
   await act(async () => { await owner.run(); });
   act(() => owner.setFile({ ...ruleSet, name: 'Delivery naming review' }));
@@ -86,6 +88,7 @@ it('#7110 tray cancellation of a real SketchUp information-rule run records Canc
   const store = await new IfcParser().parseColumnar(new Uint8Array(bytes).buffer);
   useViewerStore.setState({ ...fixtureModels({ ...fixtureModel('m'), name: 'building-architecture.ifc', ifcDataStore: store }), idsValidationReport: null });
   assert.ok(useViewerStore.getState().addValidationDefinition({ kind: 'rules', file: ruleSet }));
+  await settle();
   render(<Owner />);
   let cancelled = false;
   let id: string | undefined;

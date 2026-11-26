@@ -12,7 +12,7 @@ import { ATTR } from './types.js';
 import { buildReachableAttributeIndex, collectIncomingEdgeNames, collectSiblingEdgeNames } from './traversal.js';
 import { nodeName } from './names.js';
 import { materialDefinitions, typeDefinitions } from './definitions.js';
-import { POINTCLOUD_ATTR_KEYS } from '@ifc-lite/pointcloud';
+import { POINTCLOUD_ATTR_KEYS } from '@ifc-lite/pointcloud/ifcx';
 import {
   StringTable,
   EntityTableBuilder,

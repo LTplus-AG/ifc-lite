@@ -1,5 +1,58 @@
 # @ifc-lite/create
 
+## 6.1.0
+
+### Minor Changes
+
+- [#11164](https://github.com/LTplus-AG/ifc-lite/pull/11164) [`1a933af`](https://github.com/LTplus-AG/ifc-lite/commit/1a933af1c00a82b706a180f4b23e3e083e5b0514) Thanks [@quotentiroler](https://github.com/quotentiroler)! - `polygonArea(ring)`, `pointInPolygon(x, y, ring)` and the `PolygonRing` type are exported. They are the shoelace area and even-odd containment test the room, slab, space, structural and base-quantity builders measure with, now one module instead of five private copies, so a caller checking a room outline against the same rules as `detectEnclosedAreas` and `offsetRoomFootprint` no longer re-implements them.
+
+- [#11168](https://github.com/LTplus-AG/ifc-lite/pull/11168) [`ef4d13e`](https://github.com/LTplus-AG/ifc-lite/commit/ef4d13e83c98b0a19c0be44e96973705151099e1) Thanks [@quotentiroler](https://github.com/quotentiroler)! - `editHostedElementInStore` (and `bim.store.editHostedElement`) no longer leaves the door or window's previous `IfcProductDefinitionShape` behind after a size edit. The old shape kept referencing the representation the new `IfcRepresentationMap` maps, so the export had a product shape with no `ShapeOfProduct` and a representation owned twice, both refused by schema validation; repeated resizes also kept the previous mapping wrappers. The retirement the mirror and stair edits already did inline is now one helper, `retireProductShape(store, editor, shapeId)`, which is exported for callers that remove a product with `StoreEditor.removeEntity` and want its now-unused shape and representations gone too. Records anything else still references (shared type maps, contexts, styled items) are kept.
+
+- [#10671](https://github.com/LTplus-AG/ifc-lite/pull/10671) [`79a3e8c`](https://github.com/LTplus-AG/ifc-lite/commit/79a3e8cd0a3998cbb674b7f25457f20f3b355fb8) Thanks [@louistrue](https://github.com/louistrue)! - `ExistingAnalysisModel` (in a structural derivation plan's `existingAnalysisModels`) carries `memberIds`, the structural members the analysis model groups, read from the live session. `ifc-lite derive-structural --json` reports them too.
+
+### Patch Changes
+
+- [#10552](https://github.com/LTplus-AG/ifc-lite/pull/10552) [`1d6fccf`](https://github.com/LTplus-AG/ifc-lite/commit/1d6fccf36771a30dfee6d67ac04a320accc47b7e) Thanks [@louistrue](https://github.com/louistrue)! - `derive-structural` guesses fewer supports on flat members at the lowest level. When at least two bearing points hold a flat run (apart, and not all on one line unless the run is), only they get supports, so a truss tie rests on its heels and its overhangs stay cantilevers. A column drawn from a ground beam's top face (more than the tolerance above the lowest level) does not make its node a bearing point. If two other bearing points hold the beam and nothing holds that node from below, the node gets no guessed support. Check columns on ground beams.
+
+- [#10420](https://github.com/LTplus-AG/ifc-lite/pull/10420) [`38ef050`](https://github.com/LTplus-AG/ifc-lite/commit/38ef050d9585a468132f11c4ec822ceaf157d6b2) Thanks [@louistrue](https://github.com/louistrue)! - Reduce per-record attribute observer allocations and remove replaced authored geometry from the mutation journal without scanning unrelated session history. Bound the frozen entity snapshot memo while preserving held snapshots, exported mutations, detached drafts and compound undo order.
+  
+  Enumerate created IDs without materializing attribute snapshots during export index and collision checks.
+  
+  Add a constant-time relative creation-order query so bounded relationship lookups preserve canonical order after retargeting and inside nested drafts.
+  
+  Index requested positional reference slots with an unresolved bucket, and narrow opening host/fill reads while preserving conservative malformed-host refusals.
+  
+  Maintain ID-only storey planning inventories across geometry edits and unchanged atomic drafts. Plan exceptional placements and unequal-delta attachment groups in detail while retaining the complete moved product list, refusal and undo contracts. Expose a bounded, disposable entity-change cursor for derived inventories.
+  
+  Keep read-only derived inventories request-scoped so hierarchy dependency tracking stays correct without retaining mutation subscriptions for temporary views.
+  
+  Read attachment metadata GUIDs through borrowed snapshots during export so a save does not make later transactions copy every authored product as a mutable alias.
+  
+  Invalidate planning classifications when product GUIDs or placement classes change, preserving unresolved attachment notices and unreadable-placement refusals.
+  
+  Avoid cold reference-projection allocations for small relationship classes while bounding direct lookup work.
+  
+  Release completed transaction indexes and collect evicted read snapshots during synchronous sessions, while preserving retained draft views and already exposed mutable aliases.
+  
+  Keep borrow and exposure state in the shared attribute barrier to avoid duplicate weak-collection lookups and cache metadata allocations.
+  
+  Keep attribute barriers on their owning records as non-enumerable metadata, avoiding a session-wide weak-table insertion during a bounded edit. Metadata stays out of cloned and exported records.
+  
+  Clone appended mutation-journal rows as one detached batch instead of invoking serialization separately for each new mutation.
+  
+  Avoid typed-map work when both override indexes are empty and reuse the sparse draft's known map kind for positional reference queries.
+  
+  Classify sparse source opening candidates through canonical effective entity metadata before resolving their payloads, preserving unresolved candidates, retypes and refusal behavior.
+
+- [#10693](https://github.com/LTplus-AG/ifc-lite/pull/10693) [`b888736`](https://github.com/LTplus-AG/ifc-lite/commit/b8887367aaa740c5e0584138d4273ce98ca5d9a5) Thanks [@louistrue](https://github.com/louistrue)! - Hosted placement walks a small `IfcRelVoidsElement` class when both the authored and effective void counts are at most 32 canonically instead of building the source projection, querying reference slots and classifying overrides. The first window or door in an authored session no longer compiles and runs that machinery; larger classes keep the bounded candidate path.
+
+- [#10759](https://github.com/LTplus-AG/ifc-lite/pull/10759) [`97de03a`](https://github.com/LTplus-AG/ifc-lite/commit/97de03ad7c9a2ed240e744aee19d9b911338466b) Thanks [@louistrue](https://github.com/louistrue)! - Derive now uses the stated IFC2X3 centre of gravity of T, U, C and asymmetric I profiles, under the rule it already applied to L profiles ([#10377](https://github.com/LTplus-AG/ifc-lite/issues/10377)). The value is the distance from the centre of the bounds, as the IFC2x3 TC1 text defines it for each type. It is used only when it is within 10% of the computed offset and that reading can be told apart from a distance measured from the outer edge. The sign always comes from the computed centroid, so an asymmetric I with the wider flange on top keeps +y where TC1, which assumes the wider flange at the bottom, says -y. Each type, the L included, is read only at its IFC2X3 attribute count, so an IFC4 asymmetric I's BottomFlangeEdgeRadius, which reuses the old slot, is never taken for a centre of gravity.
+- Updated dependencies [[`3b2e398`](https://github.com/LTplus-AG/ifc-lite/commit/3b2e3985a97d3d21b44337a33cc8fe7aef477c91), [`73a0edd`](https://github.com/LTplus-AG/ifc-lite/commit/73a0eddfae97a8376a7cb706010b43479c99be0e), [`b95d529`](https://github.com/LTplus-AG/ifc-lite/commit/b95d529e4fe1fcc2cf25dd75809ef79bd57b7d20), [`054569a`](https://github.com/LTplus-AG/ifc-lite/commit/054569a4f3719b4bff505a45d1cbed4eb6520192), [`0eab51c`](https://github.com/LTplus-AG/ifc-lite/commit/0eab51ce15ae5bfed2520b890e63d7e16298108c), [`c4b9047`](https://github.com/LTplus-AG/ifc-lite/commit/c4b9047de2125c5d6010719f2c05676440220ab7), [`1c90760`](https://github.com/LTplus-AG/ifc-lite/commit/1c9076074d07eea0811a713d227f3839a4fe9756), [`bc8fd0c`](https://github.com/LTplus-AG/ifc-lite/commit/bc8fd0c4bac2c94f4e1ad5085ded2f6080c08d9b), [`7053690`](https://github.com/LTplus-AG/ifc-lite/commit/7053690af8cd5e2c0c6853a8a9e7215fe4f69db3), [`cedc6c4`](https://github.com/LTplus-AG/ifc-lite/commit/cedc6c4e595d2065aaf96a1133dd4b211c309b97), [`38ef050`](https://github.com/LTplus-AG/ifc-lite/commit/38ef050d9585a468132f11c4ec822ceaf157d6b2), [`f3e347e`](https://github.com/LTplus-AG/ifc-lite/commit/f3e347ead2176f7120d5a2e0ffc572c141bfa7ad), [`5669c62`](https://github.com/LTplus-AG/ifc-lite/commit/5669c625b64fb2b9c5f58f006e9197ff4e363c1d), [`809ff80`](https://github.com/LTplus-AG/ifc-lite/commit/809ff8091ab3d2de47e7989eb51a8bce72e361d5), [`073de01`](https://github.com/LTplus-AG/ifc-lite/commit/073de014d989c750e5930b205cc35d87d8570a0c), [`809ff80`](https://github.com/LTplus-AG/ifc-lite/commit/809ff8091ab3d2de47e7989eb51a8bce72e361d5), [`d17f7cc`](https://github.com/LTplus-AG/ifc-lite/commit/d17f7cc862444e00c5bd6e9e060a19e32200e57e), [`089bcb5`](https://github.com/LTplus-AG/ifc-lite/commit/089bcb526e1ed474058ee7c75fa8abfffd13e2a6), [`80f01cc`](https://github.com/LTplus-AG/ifc-lite/commit/80f01cc596cd541237c8083f7b17b9e62b068f44), [`25de928`](https://github.com/LTplus-AG/ifc-lite/commit/25de928d55302ac75b40d2d241a13e819b0aea51), [`57b3409`](https://github.com/LTplus-AG/ifc-lite/commit/57b34097c81a8819715065bfaef71078d3478806), [`fe05a51`](https://github.com/LTplus-AG/ifc-lite/commit/fe05a5174d8bb63e87dddbe7e68295eb8d1bd035), [`4e1436b`](https://github.com/LTplus-AG/ifc-lite/commit/4e1436bb25b66d68cd63916a4c6211f82b65c61b), [`c535b22`](https://github.com/LTplus-AG/ifc-lite/commit/c535b221a0c0ed237e7ec83637df5fb308c0138b), [`2088a50`](https://github.com/LTplus-AG/ifc-lite/commit/2088a50fbd535bf22d580ad3a8e05a13204cd967), [`0cf8a22`](https://github.com/LTplus-AG/ifc-lite/commit/0cf8a229c97224f4fde2afea554cd46ce1afcd81), [`a1c2588`](https://github.com/LTplus-AG/ifc-lite/commit/a1c25887acfaba313db68b556059c357c72283e1), [`60f75bf`](https://github.com/LTplus-AG/ifc-lite/commit/60f75bf1f8418cf4f1598c8cc570de55209ee268), [`70568d4`](https://github.com/LTplus-AG/ifc-lite/commit/70568d4e0ea03c785bc0ed7d3338f354a361b347), [`6c2ece6`](https://github.com/LTplus-AG/ifc-lite/commit/6c2ece6857c330cc37b44386181c2a2022df1864), [`b0639bb`](https://github.com/LTplus-AG/ifc-lite/commit/b0639bba6b01401b222f70bbec54f006a732ab4e), [`1ad48ac`](https://github.com/LTplus-AG/ifc-lite/commit/1ad48ac88d255d9bcc6b5986072fdf4021ca247c), [`1264e71`](https://github.com/LTplus-AG/ifc-lite/commit/1264e71f714ef36e347b658b897e09a22294b3d2), [`d96b53a`](https://github.com/LTplus-AG/ifc-lite/commit/d96b53a32480683d51c6137f586385e123c93421), [`306b41c`](https://github.com/LTplus-AG/ifc-lite/commit/306b41cb17c43557c416b1d498a68de727fe125c), [`469ec7d`](https://github.com/LTplus-AG/ifc-lite/commit/469ec7d4750c1c47290aa7f6c8ffaba0d929751e), [`8c30d45`](https://github.com/LTplus-AG/ifc-lite/commit/8c30d455cf70cbfb45a83a813d9d3c40e92bcdef), [`e0637f1`](https://github.com/LTplus-AG/ifc-lite/commit/e0637f1d90f1ae8432ca413e386c203449eacb74), [`dcd0ae7`](https://github.com/LTplus-AG/ifc-lite/commit/dcd0ae7a56f177735abe0075a24aa8a246b02974), [`ca88662`](https://github.com/LTplus-AG/ifc-lite/commit/ca886626e182f59d518a3f6a64798ef88041ebca), [`d706d3b`](https://github.com/LTplus-AG/ifc-lite/commit/d706d3b345155c06028a372bc27533fe7e492267)]:
+  - @ifc-lite/export@5.0.0
+  - @ifc-lite/geometry@8.3.0
+  - @ifc-lite/mutations@4.1.0
+  - @ifc-lite/parser@11.0.0
+
 ## 6.0.0
 
 ### Major Changes

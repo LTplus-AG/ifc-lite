@@ -37,7 +37,9 @@ for (const degree of [0, 1, 2, 3]) it(`real upstream decoder preserves raw SH${d
 });
 
 for (const name of ['x', 'y', 'z', 'rot_0', 'scale_1', 'opacity', 'f_dc_2', 'f_rest_44']) {
-  for (const value of [NaN, Infinity, -Infinity]) it(`rejects upstream-preserved ${name}=${value} before publication (#8565)`, async () => {
+  // #10613: since SplatTransform 3.11 an infinite opacity logit is read as true opacity
+  // 1 or 0, which decodes to a finite saturated logit; only NaN opacity stays invalid.
+  for (const value of name === 'opacity' ? [NaN] : [NaN, Infinity, -Infinity]) it(`rejects upstream-preserved ${name}=${value} before publication (#8565)`, async () => {
     await assert.rejects(decodeGaussianFile(ply(3, { [name]: value })), /Non-finite/);
   });
 }
@@ -312,7 +314,9 @@ it('reader discriminator is vertex-scoped and ordinary PLY dispatch remains comp
 });
 
 it('other upstream PLY model discriminators cannot reach materialization (#8565 review r3)', async () => {
-  for (const comment of ['SplatRenderMode: mip', 'SplatRenderMode: 2dgs', 'antialiased 1']) {
+  // #10613: SplatTransform 3.11 reads Postshot's flag as `postshot.anti_aliasing=1`;
+  // the 3.10 form `antialiased 1` is an ordinary comment to it.
+  for (const comment of ['SplatRenderMode: mip', 'SplatRenderMode: 2dgs', 'postshot.anti_aliasing=1']) {
     const file = await changeHeader(layoutPly(1), header => header.replace('element vertex', `comment ${comment}\nelement vertex`));
     const { requested } = await boundedFloat32(async () => {
       await assert.rejects(decodeGaussianFile(file), /Unsupported or inconsistent/);
@@ -393,7 +397,7 @@ it('headers the pinned reader rejects stop at bounded admission before any body 
 });
 
 it('indented comments cannot hide a render model from the decoder (#8613 review r4)', async () => {
-  for (const comment of ['SplatRenderMode: mip', 'antialiased 1']) {
+  for (const comment of ['SplatRenderMode: mip', 'postshot.anti_aliasing=1']) {
     const flush = await changeHeader(layoutPly(1), header => header.replace('element vertex', `comment ${comment}\nelement vertex`));
     const indented = await changeHeader(layoutPly(1), header => header.replace('element vertex', `  comment ${comment}\nelement vertex`));
     // Real pinned reader: comments are line.substring(8), so indentation loses the model.

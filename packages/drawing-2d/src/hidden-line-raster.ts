@@ -72,7 +72,17 @@ export function buildDepthRaster(
   depthBias: number,
   bounds?: Bounds2D,
 ): DepthRaster | null {
-  const b = bounds ?? computeOccluderBounds(meshes, plane, occluderDepth);
+  const raster = createDepthRaster(bounds ?? computeOccluderBounds(meshes, plane, occluderDepth), resolution);
+  if (raster) rasterizeOccluders(raster, meshes, plane, occluderDepth, depthBias);
+  return raster;
+}
+
+/**
+ * An empty raster over `b`, or `null` when `b` is empty or degenerate.
+ * Occluders are added with {@link rasterizeOccluders}, in any number of
+ * batches: each pixel keeps the minimum, so the order of batches never matters.
+ */
+export function createDepthRaster(b: Bounds2D, resolution: number): DepthRaster | null {
   const boundsWidth = b.max.x - b.min.x;
   const boundsHeight = b.max.y - b.min.y;
 
@@ -98,14 +108,18 @@ export function buildDepthRaster(
 
   const buffer = new Float32Array(width * height);
   buffer.fill(Infinity);
+  return { buffer, width, height, bounds: b };
+}
 
-  const raster: DepthRaster = { buffer, width, height, bounds: b };
-
-  for (const mesh of meshes) {
-    rasterizeMesh(raster, mesh, plane, occluderDepth, depthBias);
-  }
-
-  return raster;
+/** Rasterize one batch of occluders into `raster`. */
+export function rasterizeOccluders(
+  raster: DepthRaster,
+  meshes: readonly MeshData[],
+  plane: SectionPlaneConfig,
+  occluderDepth: number,
+  depthBias: number,
+): void {
+  for (const mesh of meshes) rasterizeMesh(raster, mesh, plane, occluderDepth, depthBias);
 }
 
 function rasterizeMesh(

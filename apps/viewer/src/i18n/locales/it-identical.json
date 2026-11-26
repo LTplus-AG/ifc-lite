@@ -11,6 +11,10 @@
     "value": "{ms} ms",
     "reason": "Runtime placeholder with a unit symbol (milliseconds); no English prose."
   },
+  "agentBridge.panel.repeated": {
+    "value": "×{count}",
+    "reason": "Runtime count with a multiplication sign; no English prose."
+  },
   "alignmentSection.axisFallback": {
     "value": "IfcAlignment #{id}",
     "reason": "alignmentSection.axisFallback: IfcAlignment is the exact IFC entity name; the hash introduces the supplied entity identifier."
@@ -1754,5 +1758,13 @@
   "cityJsonExport.sequence": {
     "value": "CityJSONSeq (.city.jsonl)",
     "reason": "Canonical interoperable file format name and extension."
+  },
+  "a2ui.noValue": {
+    "value": "—",
+    "reason": "Placeholder dash for an empty cell in an A2UI table or card; a symbol, not English prose."
+  },
+  "a2ui.table.group": {
+    "value": "{group} ({count})",
+    "reason": "Group header made only of runtime placeholders (the group value and its row count); no English prose."
   }
 }

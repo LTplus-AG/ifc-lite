@@ -32,10 +32,9 @@ import {
 } from '@/components/ui/select';
 import { toast } from '@/components/ui/toast';
 import { useTranslation } from '@/i18n';
-import { mutationDenialKey } from '@/store/mutation-permission';
 import { useMutationDenialReason } from '@/hooks/useMutationDenialReason';
-import { useViewerStore } from '@/store';
-import { canMutate, type MutationDenialReason } from '@/store/mutation-permission';
+import { useViewerStore, type ViewerState } from '@/store';
+import { isMutationDenialReason, mutationDenialKey, mutationPermission, type MutationDenialReason } from '@/store/mutation-permission';
 import { resolveEntityRef } from '@/store/resolveEntityRef';
 import type { TranslationKey } from '@/i18n';
 import { useZoneWriteBack, zonePropertySetNamesOnElement } from '@/hooks/useZoneWriteBack';
@@ -51,6 +50,17 @@ import {
 } from '@/lib/zones';
 
 const BASES: readonly VolumeBasis[] = ['mesh', 'net', 'gross', 'unqualified'];
+
+function denialForTargets(state: ViewerState, modelIds: ReadonlySet<string>): MutationDenialReason | null {
+  let denial: MutationDenialReason | null = null;
+  for (const modelId of modelIds) {
+    const permission = mutationPermission(state, modelId);
+    // A federated operation can still act on the writable models.
+    if (permission.allowed) return null;
+    denial ??= permission.reason;
+  }
+  return denial;
+}
 
 export function ZoneWriteBackControl({ zoneSet }: { zoneSet: ZoneSet }) {
   const { t } = useTranslation();
@@ -77,16 +87,16 @@ export function ZoneWriteBackControl({ zoneSet }: { zoneSet: ZoneSet }) {
     const withViews = (ids: ReadonlySet<string>) => new Set([...ids, ...views.keys()]);
     return { write, removeProperties: withViews(assigned), emit: withViews(members), removeZones: new Set(views.keys()) };
   }, [assignments, views, models, zoneSet.id]);
-  const reasonFor = (modelIds: ReadonlySet<string>): MutationDenialReason | null => {
-    if (globalDenial) return globalDenial;
-    if (modelIds.size === 0 || [...modelIds].some(modelId => canMutate(useViewerStore.getState(), modelId))) return null;
-    return 'model-unavailable';
-  };
-  const writeDenial = reasonFor(targets.write);
-  const removePropertiesDenial = reasonFor(targets.removeProperties);
-  const emitDenial = reasonFor(targets.emit);
-  const removeZonesDenial = reasonFor(targets.removeZones);
+  const writeDenial = useViewerStore(state => globalDenial ?? denialForTargets(state, targets.write));
+  const removePropertiesDenial = useViewerStore(state => globalDenial ?? denialForTargets(state, targets.removeProperties));
+  const emitDenial = useViewerStore(state => globalDenial ?? denialForTargets(state, targets.emit));
+  const removeZonesDenial = useViewerStore(state => globalDenial ?? denialForTargets(state, targets.removeZones));
   const messageFor = (reason: MutationDenialReason | null) => reason ? t(mutationDenialKey(reason)) : undefined;
+  const reportMutationDenial = (reason: string | null, roleMessage: TranslationKey): boolean => {
+    if (!reason || !isMutationDenialReason(reason)) return false;
+    toast.error(t(reason === 'collab-role' ? roleMessage : mutationDenialKey(reason)));
+    return true;
+  };
   const denialMessage = messageFor(globalDenial ?? writeDenial ?? removePropertiesDenial ?? emitDenial ?? removeZonesDenial);
   const denialId = useId();
   const [basis, setBasis] = useState<VolumeBasis>('mesh');
@@ -170,11 +180,7 @@ export function ZoneWriteBackControl({ zoneSet }: { zoneSet: ZoneSet }) {
               toast.error(t('properties.panel.occurrenceUnavailable', { reason: error.message }));
               return;
             }
-            if (result.blocked === 'edit-mode' || result.blocked === 'workflow-running' || result.blocked === 'model-unavailable') { toast.error(t(mutationDenialKey(result.blocked))); return; }
-            if (result.blocked === 'collab-role') {
-              toast.error(t('zonesPanel.writeBack.collabReadOnlyWrite'));
-              return;
-            }
+            if (reportMutationDenial(result.blocked, 'zonesPanel.writeBack.collabReadOnlyWrite')) return;
             if (result.blocked === 'duplicate-set-name') {
               // Both set names carry the display name, so two sets sharing one
               // would write to the same place and each would clear the other's
@@ -220,11 +226,7 @@ export function ZoneWriteBackControl({ zoneSet }: { zoneSet: ZoneSet }) {
               return;
             }
             const { removed, blocked } = result;
-            if (blocked === 'edit-mode' || blocked === 'workflow-running' || blocked === 'model-unavailable') { toast.error(t(mutationDenialKey(blocked))); return; }
-            if (blocked === 'collab-role') {
-              toast.error(t('zonesPanel.writeBack.collabReadOnlyRemove'));
-              return;
-            }
+            if (reportMutationDenial(blocked, 'zonesPanel.writeBack.collabReadOnlyRemove')) return;
             if (blocked === 'duplicate-set-name') {
               toast.error(t('zonesPanel.writeBack.duplicateSetNameRemove', { name: zoneSet.name }));
               return;
@@ -269,11 +271,7 @@ export function ZoneWriteBackControl({ zoneSet }: { zoneSet: ZoneSet }) {
           title={messageFor(emitDenial) ?? t('zonesPanel.writeBack.emitZonesTitle')}
           onClick={() => {
             const result = emitZones(zoneSet);
-            if (result.blocked === 'edit-mode' || result.blocked === 'workflow-running' || result.blocked === 'model-unavailable') { toast.error(t(mutationDenialKey(result.blocked))); return; }
-            if (result.blocked === 'collab-role') {
-              toast.error(t('zonesPanel.writeBack.collabReadOnlyEmit'));
-              return;
-            }
+            if (reportMutationDenial(result.blocked, 'zonesPanel.writeBack.collabReadOnlyEmit')) return;
             if (result.blocked === 'no-members') {
               toast.info(
                 result.staleRemoved > 0
@@ -334,11 +332,7 @@ export function ZoneWriteBackControl({ zoneSet }: { zoneSet: ZoneSet }) {
           className="h-6 w-6"
           onClick={() => {
             const { removed, blocked } = removeZones(zoneSet);
-            if (blocked === 'edit-mode' || blocked === 'workflow-running' || blocked === 'model-unavailable') { toast.error(t(mutationDenialKey(blocked))); return; }
-            if (blocked === 'collab-role') {
-              toast.error(t('zonesPanel.writeBack.collabReadOnlyRemove'));
-              return;
-            }
+            if (reportMutationDenial(blocked, 'zonesPanel.writeBack.collabReadOnlyRemove')) return;
             if (blocked === 'duplicate-set-name') {
               toast.error(t('zonesPanel.writeBack.duplicateSetNameRemove', { name: zoneSet.name }));
               return;

@@ -85,6 +85,8 @@ export function EntityContextMenu() {
   // right-clicked entity. Dispatch that same pointer position through Radix's
   // Trigger so its virtual anchor, focus management, and collision handling
   // remain authoritative. Root stays mounted for its close/focus lifecycle.
+  // The store can publish a close and same-point reopen together during an
+  // edit hold. Each new menu request must still rearm the Radix trigger.
   useLayoutEffect(() => {
     if (!contextMenu.isOpen) {
       wasOpenRef.current = false;
@@ -101,7 +103,7 @@ export function EntityContextMenu() {
       clientX: contextMenu.screenX,
       clientY: contextMenu.screenY,
     }));
-  }, [contextMenu.isOpen, contextMenu.screenX, contextMenu.screenY]);
+  }, [contextMenu]);
 
   // The pointer/keyboard outside dismissal belongs to Radix. Keep the scene
   // movement guards: a wheel or viewport resize invalidates the anchor. A

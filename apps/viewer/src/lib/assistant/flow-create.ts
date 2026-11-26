@@ -156,5 +156,7 @@ export function canRemoveCreatedFlow(receipt: FlowCreateReceipt): boolean {
 
 export function removeCreatedFlow(receipt: FlowCreateReceipt): void {
   if (!canRemoveCreatedFlow(receipt)) throw new Error('The created graph was edited or run; delete it from Flow instead');
-  useViewerStore.getState().deleteFlow(receipt.flowId);
+  if (!useViewerStore.getState().deleteFlow(receipt.flowId)) {
+    throw new Error(useViewerStore.getState().flowStorageError ?? 'Native workflow deletion refused.');
+  }
 }

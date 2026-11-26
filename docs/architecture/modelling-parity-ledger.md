@@ -4,11 +4,11 @@
 
 The scorecard of the modelling parity hill climb ([#9296](https://github.com/LTplus-AG/ifc-lite/issues/9296)): the capabilities an architect treats as table stakes in Revit, Archicad, Vectorworks and Bonsai, each measured by three probes. Rows, oracles and owners live in `tests/modelling-parity/catalogue.json`; statuses come from the probes' result files, scored by `tests/modelling-parity/score.mjs`.
 
-**Table-stakes score: 24.5 / 25** (met 24, partial 1, missing 0). A met row counts 1, a partial row 0.5. The score may only go up: `node tests/modelling-parity/score.mjs <dirs> --check tests/modelling-parity/baseline/r3-combined.json` fails when it or any row drops.
+**Table-stakes score: 25 / 25** (met 25, partial 0, missing 0). A met row counts 1, a partial row 0.5. The score may only go up: `node tests/modelling-parity/score.mjs <dirs> --check tests/modelling-parity/baseline/r4-combined.json` fails when it or any row drops.
 
-**Per-level passes: SDK 20/25 · UI 24/25 · OUTPUT 23/25.** Non-applicable levels earn no pass.
+**Per-level passes: SDK 20/25 · UI 25/25 · OUTPUT 23/25.** Non-applicable levels earn no pass.
 
-Summary: `tests/modelling-parity/baseline/r3-combined.json`, generated 2026-11-19T08:21:53.267Z from 6818 results on `469ec7d475`, `469ec7d475`, `469ec7d475`, `469ec7d475`; inputs `tests/modelling-parity/.out/r3/sdk`, `tests/modelling-parity/.out/r3/exercises`, `tests/modelling-parity/.out/r3/ui-probes`, `tests/modelling-parity/.out/r3/ui-exercises`.
+Summary: `tests/modelling-parity/baseline/r4-combined.json`, generated 2026-11-21T14:02:59.957Z from 6818 results on `7053690af8`, `7053690af8`, `b0411f5938`, `b0411f5938`, `7053690af8`; inputs `tests/modelling-parity/.out/r4/sdk`, `tests/modelling-parity/.out/r4/exercises`, `tests/modelling-parity/.out/r4/ui`.
 
 Levels:
 
@@ -47,7 +47,7 @@ Levels:
 | Dimensions and tags (`dimensions-tags`) | Documentation | – | ✅ | ✅ | – | ✅ met |  |
 | Sheets, PDF and DXF export (`sheets-pdf-dwg`) | Documentation | – | ✅ | ✅ | – | ✅ met |  |
 | Psets, classification and valid IFC4 (`psets-classification-valid-ifc4`) | Spaces and data | ✅ | ✅ | ✅ | ✅ | ✅ met |  |
-| Large and tall model performance (`large-tall-model-performance`) | Scale | ✅ | ◐ | ✅ | ✅ | ◐ partial | **ui** partial: single-edit median below 100 ms including remesh: {"count":5,"medianMs":137,"p95Ms":235,"maxMs":235}; exclusive benchmark admission: DIAGNOSTIC: PC benchmark admission is disabled; no timing qualification under the shared GPU helper |
+| Large and tall model performance (`large-tall-model-performance`) | Scale | ✅ | ✅ | ✅ | ✅ | ✅ met |  |
 
 ## Beyond table stakes (reported, not scored)
 

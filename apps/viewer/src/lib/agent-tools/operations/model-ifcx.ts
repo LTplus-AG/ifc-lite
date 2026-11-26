@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { useViewerStore } from '@/store';
-import { exportModelIfcx } from '@/lib/export/model-ifcx-export';
 import { modelExportFilename } from '@/lib/export/download';
 import { resolveExportVisibility } from '@/store/exportVisibility';
 import { hasRetainedShapeOnlyModel } from '@/store/retainedGeometry';
@@ -12,6 +11,9 @@ import { listExportModels, resolveExportModel } from '@/components/viewer/export
 import { omittedCaptureCount } from '@/lib/export/capture-export';
 import { operation, viewerOperation, emptySchema } from './contract';
 import { exportCheckpoint, exportMetadata } from './exports-common';
+import { exportGuard, refuseComposedLayer } from './export-native-runtime';
+import { normalizeMutationModelId } from '@/sdk/adapters/mutation-view';
+import { invalidInput, unavailable } from './refusals';
 export const ifcxExportOperations = [
   viewerOperation({ id: 'exports.models', owner: 'exports', description: 'Read the exact native Export dialog model choices, including source-independent/native-metadata models and legacy IDs. Gaussian captures are omitted with an explicit count.',
     effects: ['read'], capability: 'read', implementation: 'native-store', features: ['export.files'], outputSchema: {
@@ -20,14 +22,18 @@ export const ifcxExportOperations = [
   operation<{ include_geometry: boolean; apply_mutations: boolean; visible_only: boolean; changes_only: boolean; only_known_properties: boolean }>(exportMetadata('exports.modelIfcx', 'Produce native IFCX with the Export dialog geometry, mutation, visible-only, changes-only and known-property options. Shares its exact instanced-mesh scoped producer and room path mapping. Native empty-pset/property-collision diagnostics remain in diagnostics_json; no download.'), {
     type: 'object', properties: { include_geometry: { type: 'boolean' }, apply_mutations: { type: 'boolean' }, visible_only: { type: 'boolean' }, changes_only: { type: 'boolean' }, only_known_properties: { type: 'boolean' } }, required: ['include_geometry', 'apply_mutations', 'visible_only', 'changes_only', 'only_known_properties'], additionalProperties: false,
   }, async (i, c) => {
-    const current = exportCheckpoint(c, [c.model.id]); current();
-    const state = useViewerStore.getState(), model = state.models.get(c.model.id), view = c.model.mutationView();
-    if (model?.gaussianSplat) throw new Error('Gaussian captures are omitted by native model exporters.');
-    if (i.include_geometry && !i.changes_only && model && hasRetainedShapeOnlyModel(new Map([[model.id, model]]))) throw new Error('Native retained geometry is incomplete or shape-only for IFCX export.');
+    // As exports.modelStep: the export services key a legacy model as '__legacy__', and a visible-only export reads the view.
+    const id = normalizeMutationModelId(useViewerStore.getState(), c.model.id);
+    // A changes-only file is scoped by the pending changes, not the view.
+    const current = exportGuard(c, [id], i.visible_only && !i.changes_only); current();
+    const state = useViewerStore.getState(), model = state.models.get(id), view = c.model.mutationView();
+    if (model?.gaussianSplat) throw invalidInput('invalid-value', 'Gaussian captures are omitted by native model exporters.');
+    if (i.include_geometry && !i.changes_only && model && hasRetainedShapeOnlyModel(new Map([[model.id, model]]))) throw unavailable('Native retained geometry is incomplete or shape-only for IFCX export.');
     // A changes-only file must not fall back to the full model, nor publish an empty one, when nothing is pending.
-    if (i.changes_only && !view?.getMutations().length) throw new Error('This model has no pending changes to export.');
-    const visibility = resolveExportVisibility(state, c.model.id);
-    const result = await exportModelIfcx({ modelId: c.model.id, dataStore: c.model.store, mutationView: view ?? undefined,
+    if (i.changes_only && !view?.getMutations().length) throw unavailable('This model has no pending changes to export.');
+    const visibility = resolveExportVisibility(state, id);
+    const { exportModelIfcx } = await import('@/lib/export/model-ifcx-export');
+    const result = await exportModelIfcx({ modelId: id, dataStore: c.model.store, mutationView: view ?? undefined,
       geometryResult: model ? model.geometryResult : state.geometryResult, idOffset: model?.idOffset ?? 0,
       maxExpressId: model ? model.maxExpressId ?? 0 : undefined, models: state.models,
       options: { includeGeometry: i.changes_only ? false : i.include_geometry, includeProperties: true,
@@ -36,7 +42,7 @@ export const ifcxExportOperations = [
         hiddenEntityIds: !i.changes_only && i.visible_only ? visibility.hiddenLocalIds : undefined,
         isolatedEntityIds: i.changes_only ? new Set(view!.getMutations().map(mutation => mutation.entityId))
           : i.visible_only ? visibility.isolatedLocalIds ?? undefined : undefined,
-        onlyKnownProperties: i.only_known_properties, author: 'ifc-lite', stripPathPrefix: roomExportPathPrefix(state, c.model.id) },
+        onlyKnownProperties: i.only_known_properties, author: 'ifc-lite', stripPathPrefix: roomExportPathPrefix(state, id) },
     });
     current();
     return { artifact: await c.artifacts.create({ data: result.content, filename: modelExportFilename(c.model.name, 'ifcx', i.changes_only ? '_changes' : '_export'), mimeType: 'application/json' }), diagnostics_json: JSON.stringify(result.stats) };
@@ -45,9 +51,10 @@ export const ifcxExportOperations = [
     type: 'object', properties: { target_model_id: { type: 'string', minLength: 1, maxLength: 200 } }, required: ['target_model_id'], additionalProperties: false,
   }, async (i, c) => {
     const current = exportCheckpoint(c, [i.target_model_id]); current();
+    refuseComposedLayer(i.target_model_id);
     const state = useViewerStore.getState();
     const model = resolveExportModel(state.models, i.target_model_id, state.ifcDataStore, state.geometryResult);
-    if (!model || ('gaussianSplat' in model && model.gaussianSplat)) throw new Error('Unknown native Export dialog model ID.');
+    if (!model || ('gaussianSplat' in model && model.gaussianSplat)) throw invalidInput('unknown-target', 'Unknown native Export dialog model ID.');
     const mutations = activeChangesJsonMutations(i.target_model_id, state.getMutationView(i.target_model_id)?.getMutations() ?? [], useViewerStore);
     const file = buildChangesJson(i.target_model_id, model.name, mutations);
     current();

@@ -30,7 +30,7 @@ import {
   reloadEditedQuantityRefreshForTests,
 } from '@/lib/quantities/edited-quantity-refresh';
 import { MODEL_ID, STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
-import { cleanup, render } from '@/test/render.js';
+import { cleanup, render, settle as settleEdit } from '@/test/render.js';
 
 const s = () => useViewerStore.getState();
 const WALL = 'Qto_WallBaseQuantities';
@@ -173,6 +173,7 @@ describe('the Quantities tab', () => {
   it('offers the switch on a loaded wall, and marks the set it refreshed', async () => {
     resize(wallId, 4);
     select(wallId);
+    await settleEdit();
     const panel = render(<PropertiesPanel />);
     await settle();
     const toggle = panel.querySelector('#quantities-update-edited');
@@ -181,6 +182,7 @@ describe('the Quantities tab', () => {
     assert.doesNotMatch(panel.textContent ?? '', /Updated from geometry/, 'off: the set reads as the file wrote it');
     act(() => { (toggle as HTMLElement).click(); });
     await settle();
+    await settleEdit();
     assert.equal(isEditedQuantityRefreshEnabled(), true);
     assert.match(panel.textContent ?? '', /Updated from geometry/);
     assert.match(panel.textContent ?? '', /6\.4/, 'and shows the refreshed volume');

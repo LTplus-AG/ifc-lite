@@ -18,7 +18,7 @@ import { act } from 'react';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
-import { cleanup, render } from '@/test/render.js';
+import { cleanup, render, settle } from '@/test/render.js';
 import { MODEL_ID, STOREY, seedModelingSession } from '@/test/modeling-session-fixture';
 import { solveSnap } from '@/lib/snap/solve';
 import { AlignBar } from '@/components/viewer/tools/command/AlignBar';
@@ -247,7 +247,7 @@ describe('element.align (#6232 C4)', () => {
     assert.deepEqual(solveSnap(query, sources, ELEMENT_ALIGN.snap).local, [2.5, 3]);
   });
 
-  it('marks the reference, the picked targets and the edge they line up on, in the plan and in 3D', () => {
+  it('marks the reference, the picked targets and the edge they line up on, in the plan and in 3D', async () => {
     begin();
     click([1, 1]);
     click([2.5, 3]);
@@ -263,6 +263,7 @@ describe('element.align (#6232 C4)', () => {
     useViewerStore.setState({
       cameraCallbacks: { projectToScreen: (p: { x: number; y: number; z: number }) => ({ x: p.x * 10, y: -p.z * 10 }), getViewpoint: () => null },
     } as unknown as Partial<ReturnType<typeof useViewerStore.getState>>);
+    await settle();
     const scene = render(<AlignScene gesture={gesture()} ctx={getCommandRuntime().ctx!} />);
     assert.equal(scene.querySelectorAll('[data-align-layer] path').length, 3);
     assert.ok(scene.querySelector('[data-align-layer] line'), 'and the guide, through the workplane');

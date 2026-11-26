@@ -21,7 +21,10 @@
  * engine they didn't ask for. They pay it on first load instead, as today.
  */
 
+import { useViewerStore } from '@/store';
+import { onPendingProcessedModelChange, processedModelRequested } from './processed-model.js';
 import { onFieldTelemetry } from './perf/fieldTelemetryLoader.js';
+import { supportsWasmSimd } from './wasm-simd-support.js';
 
 /** Subset of the (non-standard, Chromium-only) NetworkInformation we consult. */
 interface NetworkInformationLike {
@@ -51,38 +54,72 @@ let scheduled = false;
 
 /**
  * Schedule the engine prewarm for the next idle period. Safe to call more than
- * once — only the first call schedules, and the underlying compile is memoised
- * per binary URL regardless.
+ * once. If a model is queued or loading, wait for it to settle before
+ * trying again. The underlying compile is memoised per binary URL.
  */
 export function scheduleWasmPrewarm(): void {
   if (scheduled || typeof window === 'undefined') return;
   // Gate BEFORE latching: a session that was on a metered/2g link at mount can
   // become eligible later, and latching first would lock it out for good.
-  if (shouldSkipPrewarm(connection())) return;
+  // Without SIMD the binary cannot compile, so downloading it is waste (#10784).
+  if (!supportsWasmSimd() || shouldSkipPrewarm(connection())) return;
   scheduled = true;
 
+  const isLoading = () => processedModelRequested() || useViewerStore.getState().loading;
+  // A prewarm that waited for a load is not a boot-time compile; keep it out of viewer_boot.
+  let waitedForLoad = false;
+  const arm = () => {
+    if (isLoading()) {
+      waitedForLoad = true;
+      let waiting = true;
+      const resume = () => {
+        if (!waiting || isLoading()) return;
+        waiting = false;
+        offStore();
+        offPending();
+        arm();
+      };
+      const offStore = useViewerStore.subscribe((state, previous) => {
+        if (state.loading !== previous.loading) resume();
+      });
+      // The autoload takes the request before setting loading in the same turn.
+      const offPending = onPendingProcessedModelChange(() => queueMicrotask(resume));
+      return;
+    }
+    // The fallback covers browsers without requestIdleCallback (Safari < 17).
+    if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(run, { timeout: 3000 });
+    else window.setTimeout(run, 1500);
+  };
+
   const run = () => {
-    // Imported dynamically so this module has no load-order dependency on the
-    // geometry package. (It does NOT keep it out of the entry chunk —
-    // useIfcLoader value-imports GeometryProcessor, so @ifc-lite/geometry is
-    // already in the entry graph and this resolves from memory.)
+    if (isLoading()) {
+      arm();
+      return;
+    }
+    // Geometry already ships with the loader. Import it here to keep prewarm
+    // independent of the order in which the viewer modules are initialized.
     const startedAt = performance.now();
     void import('@ifc-lite/geometry')
-      .then(({ prewarmSharedWasmModule }) => prewarmSharedWasmModule())
-      // `viewer_boot` (#6961): when the engine binary finished compiling.
-      .then((compiled) => { const endedAt = performance.now(); onFieldTelemetry((field) => field.noteEngineCompiled(startedAt, endedAt, compiled)); })
+      .then(async ({ prewarmSharedWasmModule }) => {
+        if (isLoading()) {
+          arm();
+          return;
+        }
+        if (shouldSkipPrewarm(connection())) {
+          scheduled = false;
+          return;
+        }
+        const compiled = await prewarmSharedWasmModule();
+        const endedAt = performance.now();
+        // `viewer_boot` (#6961): when the engine binary finished compiling at boot.
+        if (!waitedForLoad) onFieldTelemetry((field) => field.noteEngineCompiled(startedAt, endedAt, compiled));
+      })
       .catch((err) => {
         console.warn('[wasm-prewarm] engine prewarm skipped:', err);
       });
   };
 
-  // `timeout` bounds the wait on a busy main thread; the fallback covers
-  // browsers without requestIdleCallback (Safari < 17).
-  if (typeof window.requestIdleCallback === 'function') {
-    window.requestIdleCallback(run, { timeout: 3000 });
-  } else {
-    window.setTimeout(run, 1500);
-  }
+  arm();
 }
 
 let fastPathScheduled = false;
@@ -93,7 +130,8 @@ let fastPathScheduled = false;
  * decides for itself whether this browser may prepare anything.
  */
 export function scheduleFastPath(): void {
-  if (fastPathScheduled || typeof window === 'undefined') return;
+  // The spare workers compile the same engine binary (#10784).
+  if (fastPathScheduled || typeof window === 'undefined' || !supportsWasmSimd()) return;
   fastPathScheduled = true;
   const run = () => {
     void import('./fast-path/startFastPath')

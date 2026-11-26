@@ -4,31 +4,36 @@
 import { useViewerStore } from '@/store';
 import { isToolAvailable } from '@/lib/features/tools';
 import { resolveRef } from '../refs';
+import { boundedMappedPage, pageInput, pageOutputProperties, type PageRequest } from './result-limit';
+import { stateRevision } from './state-revision';
 import { operation, viewerOperation, pointSchema } from './contract';
+import { disabled, invalidInput, parseJsonInput, stale, unavailable } from './refusals';
 const resultSchema = { type: 'object', properties: { id: { type: 'string' }, annotation_json: { type: 'string' }, persistence: { type: 'string' } }, required: ['id', 'annotation_json', 'persistence'], additionalProperties: false };
 const meta = (id: string, description: string) => ({ id, owner: 'viewport', description: `${description} Pins use renderer Y-up metres and native best-effort browser persistence. Native collaboration mirroring and role checks remain authoritative.`,
   features: ['tools.annotate'] as const, effects: ['configuration', 'network'] as const, capability: 'commands-and-edits' as const, implementation: 'native-store' as const,
   synchronous: true, policy: { network: 'native-provider' as const }, outputSchema: resultSchema });
-function enabled() { if (!isToolAvailable('annotate')) throw new Error('Annotation tools are disabled by the host.'); }
+function enabled() { if (!isToolAvailable('annotate')) throw disabled('Annotation tools are disabled by the host.'); }
 function result(id: string) {
   return { id, annotation_json: JSON.stringify(useViewerStore.getState().annotations.get(id) ?? null), persistence: 'native-browser-preferences-best-effort' };
 }
 function create(position: [number, number, number], note: string, modelId: string | null, expressId: number | null) {
   enabled();
   const s = useViewerStore.getState();
-  if (s.draft) throw new Error('An annotation draft is already open; finish or cancel it first.');
-  if (!note.trim()) throw new Error('A nonempty annotation note is required.');
+  if (s.draft) throw unavailable('An annotation draft is already open; finish or cancel it first.');
+  if (!note.trim()) throw invalidInput('invalid-value', 'A nonempty annotation note is required.');
   s.beginDraft({ x: position[0], y: position[1], z: position[2] }, expressId, modelId);
   const id = s.commitDraft(note);
-  if (!id) throw new Error('Native annotation creation refused.');
+  if (!id) throw invalidInput('refused', 'Native annotation creation refused.');
   return result(id);
 }
 export const annotationOperations = [
-  viewerOperation<{ offset?: number; limit?: number }>({ id: 'annotations.read', owner: 'viewport', description: 'Read a bounded page of native annotation records, including attribution, timestamps and model/entity anchors in annotation_json.', effects: ['read'], capability: 'read', implementation: 'native-store', outputSchema: {
-    type: 'object', properties: { total: { type: 'integer' }, next_offset: { anyOf: [{ type: 'integer' }, { type: 'null' }] }, records: { type: 'array', items: { type: 'string' } } }, required: ['total', 'next_offset', 'records'], additionalProperties: false,
-  } }, { type: 'object', properties: { offset: { type: 'integer', minimum: 0, nullable: true }, limit: { type: 'integer', minimum: 1, maximum: 100, nullable: true } }, required: [], additionalProperties: false }, i => {
-    const entries = [...useViewerStore.getState().annotations.values()], offset = i.offset ?? 0, end = offset + (i.limit ?? 25);
-    return { total: entries.length, next_offset: end < entries.length ? end : null, records: entries.slice(offset, end).map(entry => JSON.stringify(entry)) };
+  viewerOperation<PageRequest>({ id: 'annotations.read', owner: 'viewport', description: 'Read a bounded page of native annotation records, including attribution, timestamps and model/entity anchors. Pass next_offset and page_revision to continue.', effects: ['read'], capability: 'read', implementation: 'native-store', outputSchema: {
+    type: 'object', properties: { total: { type: 'integer' }, ...pageOutputProperties, records: { type: 'array', items: { type: 'string' } } }, required: ['total', 'next_offset', 'page_revision', 'records'], additionalProperties: false,
+  } }, { ...pageInput, properties: { ...pageInput.properties, limit: { type: 'integer', minimum: 1, maximum: 100, nullable: true } } }, i => {
+    const entries = [...useViewerStore.getState().annotations.values()];
+    const { items: records, offset: _offset, ...page } = boundedMappedPage(entries, entry => JSON.stringify(entry),
+      { ...i, limit: i.limit ?? 25 }, null, stateRevision(entries));
+    return { ...page, records };
   }),
   viewerOperation<{ position: [number, number, number]; note: string }>(meta('annotations.create', 'Create a numerical free-space native annotation, preserving any already-open human draft.'), {
     type: 'object', properties: { position: pointSchema, note: { type: 'string', minLength: 1, maxLength: 2000 } }, required: ['position', 'note'], additionalProperties: false,
@@ -40,8 +45,9 @@ export const annotationOperations = [
     type: 'object', properties: { id: { type: 'string', minLength: 1, maxLength: 200 }, expected_json: { type: 'string', minLength: 1, maxLength: 10000 }, action: { type: 'string', enum: ['edit', 'delete', 'select'] }, note: { type: 'string', maxLength: 2000, nullable: true } }, required: ['id', 'expected_json', 'action'], additionalProperties: false,
   }, i => {
     enabled(); const s = useViewerStore.getState(), existing = s.annotations.get(i.id);
-    if (!existing || JSON.stringify(existing) !== i.expected_json) throw new Error('The annotation changed; inspect it again.');
-    if (i.action === 'edit') { if (typeof i.note !== 'string') throw new Error('note is required for edit.'); s.updateAnnotation(i.id, i.note); }
+    if (!existing) throw invalidInput('unknown-target', 'Unknown native annotation.');
+    if (JSON.stringify(existing) !== JSON.stringify(parseJsonInput(i.expected_json, 'expected_json'))) throw stale('The annotation changed; inspect it again.');
+    if (i.action === 'edit') { if (typeof i.note !== 'string') throw invalidInput('invalid-value', 'note is required for edit.'); s.updateAnnotation(i.id, i.note); }
     else if (i.action === 'delete') s.removeAnnotation(i.id); else s.selectAnnotation(i.id);
     return result(i.id);
   }),

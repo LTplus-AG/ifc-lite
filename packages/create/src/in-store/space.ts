@@ -21,6 +21,7 @@ import { getSchemaRegistryForVersion } from '@ifc-lite/parser';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import { assertFinitePoint3 } from '../ifc-creator-math.js';
 import { toNativeLength, type SpatialAnchor } from './anchor.js';
+import { polygonArea } from './polygon-2d.js';
 import { assertPositiveFinite, emitBodyRepresentation, emitExtrudedSolid, emitLocalPlacement, emitPolygonProfile, emitRectangleProfile, ownerHistoryRef, productGuid } from './_emit-helpers.js';
 
 export type SpaceInStoreParams = SpaceRectangleParams | SpacePolygonParams;
@@ -105,17 +106,6 @@ export interface SpaceBuildResult {
   relAggregatesId: number;
   /** One IfcRelSpaceBoundary per bounding element (empty if none supplied). */
   spaceBoundaryIds: number[];
-}
-
-/** Absolute polygon area (shoelace), m². */
-function polygonArea(pts: ReadonlyArray<readonly [number, number]>): number {
-  let acc = 0;
-  for (let i = 0; i < pts.length; i++) {
-    const p = pts[i];
-    const q = pts[(i + 1) % pts.length];
-    acc += p[0] * q[1] - q[0] * p[1];
-  }
-  return Math.abs(acc) / 2;
 }
 
 /** Polygon perimeter, m. */

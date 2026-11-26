@@ -15,7 +15,7 @@ import { unzipSync } from 'fflate';
 import { IfcParser } from '@ifc-lite/parser';
 import { skip, blankFile, load } from '@/test/blank-ifc-loader-harness.js';
 import '@/test/download-capture';
-import { render, cleanup, click, waitFor, advance, type as typeInto } from '@/test/render';
+import { render, cleanup, click, waitFor, advance, settle, type as typeInto } from '@/test/render';
 import { useViewerStore } from '@/store';
 import { modelEditTarget } from '@/store/slices/mutation-modelling-records.js';
 import { toGlobalIdFromModels } from '@/store/globalId.js';
@@ -80,6 +80,8 @@ describe('other File > Export geometry exports on an authored session (#9026 ite
         projectedCRS: { name: 'EPSG:4326' },
       }]]),
     });
+    // No viewport drains the authored mesh edits here, so panels see this at the settle cap (#10535).
+    await settle();
     const { bytes, text } = await exportKmz();
     assert.ok(bytes, `no file was written: ${text}`);
     const dae = new TextDecoder().decode(unzipSync(bytes)['model.dae']);
@@ -90,6 +92,8 @@ describe('other File > Export geometry exports on an authored session (#9026 ite
 
   it('KMZ: without a georeference it says that, not that there is no geometry', { skip }, async () => {
     await authoredSession();
+    // No viewport drains the authored mesh edits here, so panels see this at the settle cap (#10535).
+    await settle();
     const { bytes, text } = await exportKmz();
     assert.equal(bytes, null);
     assert.match(text, /has no georeferencing/);
@@ -101,6 +105,8 @@ describe('other File > Export geometry exports on an authored session (#9026 ite
       mapConversion: { eastings: 2600000, northings: 1200000, orthogonalHeight: 0 },
       projectedCRS: { name: 'EPSG:2056' },
     }]]) });
+    // No viewport drains the authored mesh edits here, so panels see this at the settle cap (#10535).
+    await settle();
     let sent: IonUploadInput | undefined;
     render(<CesiumIonExportDialog surface="ribbon" upload={async (input) => { sent = input; return { assetId: 1 }; }} />);
     click(button('Upload to Cesium ion'));

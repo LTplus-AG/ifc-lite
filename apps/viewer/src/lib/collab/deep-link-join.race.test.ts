@@ -12,7 +12,7 @@ import { buildCollabTestState } from '@/test/collab-slice-state';
 import { deferred } from '@/test/race';
 import { joinRoomFromPageUrl } from './deep-link-join';
 import { setCollabEnabledOverride } from './config';
-import { openProcessedModel, resetProcessedModelRequestsForTests } from '@/lib/processed-model';
+import { onProcessedModelRequest, openProcessedModel, resetProcessedModelRequestsForTests } from '@/lib/processed-model';
 register('../../test/collab-session-race-hook.mjs', import.meta.url);
 
 it('leaves a page room parked at sync when a host request arrives, without hydration or seeding (#10142)', async () => {
@@ -55,6 +55,32 @@ it('leaves a page room parked at sync when a host request arrives, without hydra
     delete globals.__collabSyncGate;
     delete globals.__collabSessionGated;
     delete globals.__collabSessionCreated;
+    resetProcessedModelRequestsForTests();
+    setCollabEnabledOverride(null);
+  }
+});
+
+
+it('leaves an already joined page room before dispatching the host model (#10469)', async () => {
+  const state = buildCollabTestState();
+  const roomAtDispatch: Array<string | null> = [];
+  const stopListening = onProcessedModelRequest(() => { roomAtDispatch.push(state.get().collabRoomId); });
+  let joined!: Promise<void>;
+  setCollabEnabledOverride(true);
+  try {
+    joinRoomFromPageUrl('?room=joined-before-host', () => ({
+      ...state.get(),
+      startCollab: options => (joined = state.get().startCollab(options)),
+    }));
+    await joined;
+    assert.ok(state.get().collabSession, 'the page room finished joining');
+    assert.equal(state.get().collabConnecting, false);
+    openProcessedModel({ sha256: 'a'.repeat(64), bytes: 1, name: 'host.ifc' });
+    assert.deepEqual(roomAtDispatch, [null]);
+    assert.equal(state.get().collabSession, null);
+  } finally {
+    stopListening();
+    state.get().stopCollab();
     resetProcessedModelRequestsForTests();
     setCollabEnabledOverride(null);
   }

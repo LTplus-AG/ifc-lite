@@ -38,8 +38,9 @@ function revertMutation(view: MutationView, mutation: Mutation): void {
           mutation.propName,
           mutation.oldValue,
           mutation.valueType,
-          undefined,
+          mutation.type === 'DELETE_PROPERTY' ? mutation.unit : undefined, // a deleted property's unit
           true,
+          mutation.dataType, // a deleted property's measure type (absent on an update)
         );
       }
       return;

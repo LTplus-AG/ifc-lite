@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-/** Exercise the real USD boundary with the git-tracked hello-wall fixture. */
+/** Exercise the real USD boundary with git-tracked fixtures. */
 export function runUsdExportContracts(api, test, skip, rootDir) {
   const wall = join(rootDir, 'apps/landing/samples/hello-wall.ifc');
   if (!existsSync(wall)) return skip('USD export contracts', 'hello-wall.ifc missing');
@@ -36,4 +36,15 @@ export function runUsdExportContracts(api, test, skip, rootDir) {
     assert.equal(new TextDecoder().decode(again), usda, 'USD export must be deterministic');
   });
 
+  test('exportUsd binds the authored finish to a mapped occurrence (#10995)', () => {
+    const path = join(rootDir, 'rust/export/tests/fixtures/mapped_instance_finishes.ifc');
+    const stage = new TextDecoder().decode(api.exportUsd(new Uint8Array(readFileSync(path))));
+    const body = stage.split('def Xform "Proxy_1_38"')[1]?.split('def Xform ')[0] ?? '';
+    assert.match(body, /prepend references = <\/World\/Prototypes\//);
+    const materialName = body.match(/rel material:binding = <\/World\/Looks\/([^>]+)>/)?.[1];
+    assert.ok(materialName, 'the occurrence has a material binding');
+    const material = stage.split(`def Material "${materialName}"`)[1]?.split('def Material ')[0] ?? '';
+    assert.equal(material.match(/float inputs:metallic = (\S+)$/m)?.[1], '1');
+    assert.equal(material.match(/float inputs:roughness = (\S+)$/m)?.[1], '0.75');
+  });
 }

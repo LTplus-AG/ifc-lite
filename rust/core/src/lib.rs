@@ -67,6 +67,7 @@ pub mod columnar_index;
 pub mod compatibility;
 pub mod decoder;
 pub mod dense_index;
+mod entity_index_store;
 pub mod error;
 pub mod execution_owner;
 pub mod express_id;
@@ -152,6 +153,8 @@ pub mod resource_stop;
 mod source_index;
 pub mod source_bundle;
 pub use source_bundle::SourceBundle;
+pub mod sparse_source;
+pub use sparse_source::{build_sparse_preamble, SparseIndex, SparseSource, SparseStats};
 
 pub use decoder::source_caches::{SourceCache, TrustedDecoderInputs};
 

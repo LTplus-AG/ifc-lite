@@ -1,6 +1,0 @@
-{
-  "issue": 7955,
-  "key": "packages/geodata-ch/src/lv95.ts",
-  "mutation": "tests/evidence/10391-geodata-ch-lv95-guard/behaviour.oracle.patch",
-  "why": "Reverse application keeps every export the tests import but makes assertLv95Point validate the northing against the easting range, so a valid LV95 point such as (2600423, 1199521) is rejected with a RangeError and the lv95 test that expects it not to throw goes red."
-}

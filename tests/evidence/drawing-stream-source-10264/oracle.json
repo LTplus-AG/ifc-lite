@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "why": "Keep the streamed drawing source API loadable while dropping the replay pass's free-edge test: open surfaces then fill as closed cuts and the drawing no longer equals the pre-streaming generator's.",
+  "key": "packages/drawing-2d/src/drawing-mesh-source.ts",
+  "mutation": "tests/evidence/drawing-stream-source-10264/behaviour.oracle.patch",
+  "test": "packages/drawing-2d/src/drawing-stream.test.ts"
+}

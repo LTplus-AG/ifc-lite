@@ -22,6 +22,7 @@ import { GeometryProcessor, terrainRefusalReason, type LandXmlTerrainExport, typ
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { EntityRef } from '@/store/types';
 import { modelExportFilename } from './download';
+import { LEGACY_MUTATION_MODEL_ID } from '@/sdk/adapters/model-compat';
 
 /** The IFC classes the producer accepts as a terrain carrier. */
 const TERRAIN_TYPES = new Set(['IFCGEOGRAPHICELEMENT', 'IFCSITE']);
@@ -44,7 +45,7 @@ export type TerrainSelection =
   | {
       kind: 'ready';
       skipped: number;
-      /** Mutation-view key: the federated model id, or `legacy`. */
+      /** Mutation-view key: the federated model id, or the legacy model's `__legacy__`. */
       modelId: string;
       modelName: string;
       store: IfcDataStore;
@@ -66,7 +67,8 @@ function resolveRefModel(input: TerrainSelectionInput, modelId: string): Resolve
   // A `legacy` ref is a single-model session's id. With no federated model it
   // is the legacy store; with exactly one it can only mean that model.
   if (input.models.size === 0) {
-    return input.legacyStore ? { modelId: LEGACY_MODEL_ID, name: '', store: input.legacyStore } : null;
+    // Keyed as the store keeps the legacy model's edits, so its pending edits reach the export (#10695).
+    return input.legacyStore ? { modelId: LEGACY_MUTATION_MODEL_ID, name: '', store: input.legacyStore } : null;
   }
   if (input.models.size === 1) {
     const [soleId, sole] = [...input.models][0];
@@ -81,7 +83,7 @@ function resolveRefModel(input: TerrainSelectionInput, modelId: string): Resolve
  * whose model cannot be resolved, is counted in `skipped`.
  */
 export function resolveTerrainSelection(input: TerrainSelectionInput): TerrainSelection {
-  const byModel = new Map<string, { model: ResolvedModel; ids: number[] }>();
+  const byModel = new Map<string, { model: ResolvedModel; ids: Set<number> }>();
   let skipped = 0;
   for (const ref of input.refs) {
     const model = resolveRefModel(input, ref.modelId);
@@ -90,9 +92,9 @@ export function resolveTerrainSelection(input: TerrainSelectionInput): TerrainSe
       skipped += 1;
       continue;
     }
-    const entry = byModel.get(model.modelId) ?? { model, ids: [] };
+    const entry = byModel.get(model.modelId) ?? { model, ids: new Set<number>() };
     byModel.set(model.modelId, entry);
-    if (!entry.ids.includes(ref.expressId)) entry.ids.push(ref.expressId);
+    entry.ids.add(ref.expressId);
   }
   if (byModel.size === 0) return { kind: 'none', skipped };
   if (byModel.size > 1) return { kind: 'multiple-models', skipped, modelCount: byModel.size };
@@ -103,7 +105,7 @@ export function resolveTerrainSelection(input: TerrainSelectionInput): TerrainSe
     modelId: model.modelId,
     modelName: model.name,
     store: model.store,
-    productIds: ids,
+    productIds: [...ids],
   };
 }
 

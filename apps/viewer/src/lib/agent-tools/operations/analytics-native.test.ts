@@ -7,6 +7,7 @@ import { clearNativeChartSelection, presentChartIds } from '@/components/viewer/
 import { applyNativeLensResult, evaluateNativeLens, hasCurrentNativeLensResult } from '@/lib/lens/native-lens';
 import { beforeEach, describe, it } from 'node:test';
 import { EntityFlags, IfcTypeEnum } from '@ifc-lite/data';
+import { DEFAULT_SECTION_CONFIG, type Drawing2D } from '@ifc-lite/drawing-2d';
 import type { ListDefinition } from '@ifc-lite/lists';
 import type { Lens } from '@ifc-lite/lens';
 import { createBimContext } from '@ifc-lite/sdk';
@@ -23,21 +24,32 @@ import { analyticsLensOperations } from './analytics-lens';
 import { analyticsMeasurementOperations } from './analytics-measurements';
 import { analyticsDocumentOperations } from './analytics-document';
 import { analyticsCostScheduleOperations } from './analytics-cost-schedule';
+import { analyticsDrawingAppearanceOperations } from './analytics-drawing-appearance';
 import { analyticsScheduleEditOperations } from './analytics-schedule-edit';
+import { analyticsAppearanceOperations } from './analytics-appearance';
+import { analyticsDrawingExportOperations } from './analytics-drawing-export';
 import { analyticsChartReportOperations } from './analytics-chart-report';
 import { analyticsMeasurementSettingOperations } from './analytics-measurement-settings';
+import { analyticsAppearanceSettingOperations } from './analytics-appearance-settings';
+import { analyticsDrawingSettingOperations } from './analytics-drawing-settings';
 import { analyticsPresentationOperations } from './analytics-presentation';
 import { analyticsSchedulePlaybackOperations } from './analytics-schedule-playback';
 import { analyticsScheduleGenerateOperations } from './analytics-schedule-generate';
+import { analyticsDrawingMarkupOperations } from './analytics-drawing-markup';
+import { analyticsDrawingSheetOperations } from './analytics-drawing-sheets';
 import { analyticsListControlOperations } from './analytics-list-controls';
 import { analyticsLensControlOperations } from './analytics-lens-controls';
 import { analyticsScheduleControlOperations } from './analytics-schedule-controls';
+import { analyticsDrawingControlOperations } from './analytics-drawing-controls';
+import { publishDrawingExportFrame } from '@/lib/drawing/export-view-frame';
+import { dxfPlaneDrawingMapper } from '@/hooks/dxfReferencePlane';
 import { computeAnimationFrame } from '@/components/viewer/schedule/schedule-animator';
+import { measuredDimensionValue } from '@/store/slices/drawing2DDimensions';
 import { blankDocument } from '@/lib/document/presets';
 import { modelOverviewDashboard } from '@/lib/charts/presets';
 import { listRunDefinition, listRunModels } from '@/lib/lists/run-provenance';
 
-const entries = [...analyticsListControlOperations, ...analyticsLensControlOperations, ...analyticsScheduleControlOperations, ...analyticsListOperations, ...analyticsChartOperations, ...analyticsLensOperations, ...analyticsMeasurementOperations, ...analyticsDocumentOperations, ...analyticsCostScheduleOperations, ...analyticsScheduleEditOperations, ...analyticsScheduleGenerateOperations, ...analyticsSchedulePlaybackOperations, ...analyticsPresentationOperations, ...analyticsChartReportOperations, ...analyticsMeasurementSettingOperations];
+const entries = [...analyticsListControlOperations, ...analyticsLensControlOperations, ...analyticsScheduleControlOperations, ...analyticsDrawingControlOperations, ...analyticsListOperations, ...analyticsChartOperations, ...analyticsLensOperations, ...analyticsMeasurementOperations, ...analyticsDocumentOperations, ...analyticsCostScheduleOperations, ...analyticsDrawingAppearanceOperations, ...analyticsScheduleEditOperations, ...analyticsAppearanceOperations, ...analyticsScheduleGenerateOperations, ...analyticsDrawingMarkupOperations, ...analyticsDrawingSheetOperations, ...analyticsSchedulePlaybackOperations, ...analyticsPresentationOperations, ...analyticsDrawingExportOperations, ...analyticsChartReportOperations, ...analyticsMeasurementSettingOperations, ...analyticsAppearanceSettingOperations, ...analyticsDrawingSettingOperations];
 let context: OperationContext;
 async function seed(count: 1 | 2 = 1) {
   resetFeaturesForTest(); await seedCoincidentWalls(count, 4);
@@ -58,7 +70,7 @@ async function seed(count: 1 | 2 = 1) {
   const commit = <T,>(write: () => T): T => { context.signal?.throwIfAborted(); context.checkpoint?.(); return write(); };
   context = { model: { ...model, store: model.store }, host, commit,
     commitAsync: async <T,>(write: () => Promise<T>): Promise<T> => { context.signal?.throwIfAborted(); context.checkpoint?.(); return write(); },
-    artifacts: operationArtifacts(host, commit), canEdit: () => true };
+    ownGeometry: async work => work(), retain: () => {}, artifacts: operationArtifacts(host, commit), canEdit: () => true };
 }
 async function run<T>(id: string, input: unknown = {}, activeContext: OperationExecutionContext = context): Promise<T> {
   const entry: Operation | undefined = entries.find(row => row.id === id); assert.ok(entry, id);
@@ -71,12 +83,19 @@ describe('native analytics operations (#10525 deeper automation)', () => {
   beforeEach(async () => seed());
   it('runs all federation rows through the shared Lists service, paginates only the reply and records exact provenance', async () => {
     await seed(2); useViewerStore.setState({ listDefinitions: [list] });
-    const result = await run<{ rows: unknown[]; totalCount: number }>('lists.run', { id: list.id, offset: 1, limit: 2 });
+    const first = await run<{ next_offset: number; page_revision: string }>('lists.run', { id: list.id, offset: 0, limit: 1 });
+    assert.equal(first.next_offset, 1); assert.ok(first.page_revision);
+    const next = { id: list.id, offset: first.next_offset, page_revision: first.page_revision, limit: 2 };
+    const result = await run<{ rows: unknown[]; totalCount: number }>('lists.run', next);
     assert.equal(result.rows.length, 2); assert.equal(result.totalCount, 4);
     const stored = useViewerStore.getState().listResult; assert.ok(stored);
     assert.equal(stored.rows.length, 4); assert.equal(listRunDefinition(stored)?.id, list.id);
     assert.deepEqual(result.rows, stored.rows.slice(1, 3));
     assert.deepEqual(listRunModels(stored)?.models.map(row => row.id), ['A', 'B']);
+    // #10877: re-running an edited definition cannot publish a changed population as a continuation.
+    useViewerStore.setState({ listDefinitions: [{ ...list, entityTypes: [IfcTypeEnum.IfcDoor] }] });
+    await assert.rejects(run('lists.run', next), { code: 'STATE_CHANGED' });
+    assert.equal(useViewerStore.getState().listResult, stored);
   });
   it('native group X-ray uses exact federated members, toggles off and never releases a successor visibility owner', async () => {
     await seed(2); const { model: _model, ...viewer } = context;
@@ -99,6 +118,27 @@ describe('native analytics operations (#10525 deeper automation)', () => {
     assert.equal(result.columns[0].propertyName, 'NetVolume');
     await assert.rejects(run('lists.editColumn', input), /changed since inspection/);
   });
+  it('distinguishes a removed reviewed list column from an unknown column (#11060)', async () => {
+    const definition: ListDefinition = { ...list, columns: [
+      { id: 'rating', source: 'property', psetName: 'Pset_WallCommon', propertyName: 'FireRating' }, ...list.columns,
+    ] };
+    useViewerStore.setState({ listDefinitions: [definition] });
+    const { model: _model, ...viewer } = context;
+    const inspected = await run<{ definitions: ListDefinition[] }>('lists.library', {}, viewer);
+    const current = { ...definition, columns: list.columns };
+    useViewerStore.getState().setListDefinitions([current]);
+    for (const [column_id, code, reason] of [
+      ['rating', 'STATE_CHANGED', 'stale'],
+      ['never-existed', 'INVALID_INPUT', 'unknown-target'],
+    ] as const) {
+      await assert.rejects(run('lists.editColumn', {
+        id: definition.id, column_id, expected_json: JSON.stringify(inspected.definitions[0]),
+        source: 'quantity', set_name: 'Qto_WallBaseQuantities', property_name: 'NetVolume',
+      }, viewer), { code, details: { reason } });
+    }
+    assert.deepEqual(useViewerStore.getState().listDefinitions, [current]);
+  });
+
   it('native Lens rule switch with equal membership remains isolated and releases only its current claim', async () => {
     useViewerStore.setState({ activeLensId: 'same', lensRuleEntityIds: new Map([['a', [1, 2]], ['b', [1, 2]]]), lensRuleIsolation: null, isolatedEntities: null });
     await run('lens.ruleMembers', { id: 'a', expected_lens_id: 'same', action: 'isolate' });
@@ -123,6 +163,39 @@ describe('native analytics operations (#10525 deeper automation)', () => {
     await assert.rejects(run('schedule.configureAnimation', input, viewer), /changed since inspection/);
     await assert.rejects(run('schedule.configureAnimation', { ...input, expected_json: JSON.stringify(useViewerStore.getState().animationSettings), settings: { ...input.settings, palette: { ...input.settings.palette, COMPLETED: [1, 1, 1, 2] } } }, viewer));
   });
+  it('distinguishes a timeline owned by another model from an absent schedule (#11060)', async () => {
+    await seed(2);
+    const state = useViewerStore.getState();
+    state.setScheduleData(null);
+    state.setActiveModel('B');
+    useViewerStore.setState({ editEnabled: true, scheduleIsEdited: false });
+    const b = context.host.models().find(model => model.id === 'B');
+    assert.ok(b?.store);
+    const sourceContext = { ...context, model: { ...b, store: b.store } };
+    await run('schedule.initialize', {}, sourceContext);
+    await run('schedule.import', { format: 'csv', text: 'Name,Start,Finish\nBuild,2026-01-05,2026-01-06\n' }, sourceContext);
+    const timeline = useViewerStore.getState().scheduleData;
+    const range = useViewerStore.getState().scheduleRange;
+    assert.ok(timeline && range);
+    assert.equal(useViewerStore.getState().scheduleSourceModelId, 'B');
+    const task = timeline.tasks[0];
+    const requests = [
+      ['schedule.moveTask', { id: task.globalId, new_index: 0, expected_order: [task.globalId] }],
+      ['schedule.updateTask', { id: task.globalId, expected_name: task.name ?? '', Name: 'Rename', Identification: '', IsMilestone: false }],
+      ['schedule.nativeData', {}],
+      ['schedule.play', { until: range.end, max_real_seconds: 1 }],
+    ] as const;
+
+    for (const [operation, input] of requests)
+      await assert.rejects(run(operation, input), { code: 'INVALID_INPUT', details: { reason: 'wrong-target' } });
+    assert.equal(useViewerStore.getState().scheduleData, timeline);
+    assert.equal(useViewerStore.getState().playbackIsPlaying, false);
+
+    useViewerStore.getState().setScheduleData(null);
+    for (const [operation, input] of requests)
+      await assert.rejects(run(operation, input), { code: 'UNSUPPORTED_OPERATION', details: { reason: 'unavailable' } });
+  });
+
   it('does not publish rows when native query cancellation is requested', async () => {
     useViewerStore.setState({ listDefinitions: [list] }); const abort = new AbortController(); context.signal = abort.signal;
     const pending = run('lists.run', { id: list.id, offset: 0, limit: 10 }); abort.abort();
@@ -311,6 +384,12 @@ describe('native analytics operations (#10525 deeper automation)', () => {
     useViewerStore.setState({ editEnabled: false });
     await assert.rejects(run('schedule.updateTask', { id: row.globalId, expected_name: row.name ?? '', Name: 'Denied', Identification: '', IsMilestone: false }), /Edit mode/);
   });
+  it('refuses native appearance previews before touching renderer resources when edit mode is off', async () => {
+    useViewerStore.setState({ editEnabled: false });
+    await assert.rejects(run('appearance.preview', { source_id: 'missing', express_ids: [1], settings: {
+      representationPolicy: 'preserve', kind: 'planar', plane: 'xz', repeatU: 1, repeatV: 1, tileWidth: 1, tileHeight: 1, tileDepth: 1, rotationDegrees: 0, offsetU: 0, offsetV: 0, offsetW: 0, repeatS: true, repeatT: true,
+    } }), /Edit mode/);
+  });
 
   it('generates a native height-group schedule with exact product assignment and optional work-plan grouping', async () => {
     const input = { settings: { strategy: 'IfcElement', startDate: '2026-01-05T08:00:00', daysPerGroup: 2, lagDays: 0, order: 'bottom-up', skipEmptyGroups: true, linkSequences: true, scheduleName: 'Native', predefinedType: 'CONSTRUCTION', heightTolerance: 3, elementZSubgroup: 'none' }, work_plan_name: 'Programme' };
@@ -320,6 +399,19 @@ describe('native analytics operations (#10525 deeper automation)', () => {
     useViewerStore.setState({ editEnabled: true, scheduleData: null, scheduleSourceModelId: null });
     await run('schedule.generate', { ...input, expected_json: 'null' }); assert.equal(useViewerStore.getState().scheduleSourceModelId, 'A');
     await assert.rejects(run('schedule.generate', { ...input, expected_json: 'null' }), /changed since inspection/);
+  });
+  it('computes native drawing polygon geometry and one undoable numerical dimension with no IFC loaded', async () => {
+    const { model: _model, ...viewerContext } = context;
+    useViewerStore.setState({ models: new Map(), ifcDataStore: null, activeModelId: null, polygonArea2DPoints: [], polygonArea2DResults: [], dimension2DPoints: [], dimensions2D: [], dimension2DUndo: [], dimension2DRedo: [] });
+    await run('drawing.addPolygon', { points: [[0, 0], [3, 0], [3, 4], [0, 4]] }, viewerContext);
+    assert.equal(useViewerStore.getState().polygonArea2DResults[0].area, 12); assert.equal(useViewerStore.getState().polygonArea2DResults[0].perimeter, 14);
+    await run('drawing.addPolygon', { points: [[0, 0], [3, 0], [3, 4], [0, 4]] }, viewerContext);
+    assert.notEqual(useViewerStore.getState().polygonArea2DResults[0].id, useViewerStore.getState().polygonArea2DResults[1].id);
+    const dimension = await run<{ id: string }>('drawing.addDimension', { a: [0, 0], b: [3, 4], offset: 1, orientation: 'aligned', text: '<>' }, viewerContext);
+    assert.equal(measuredDimensionValue(useViewerStore.getState().dimensions2D[0]), 5);
+    await run('drawing.moveMarkup', { id: dimension.id, kind: 'dimension', position: [10, 10] }, viewerContext);
+    assert.equal(measuredDimensionValue(useViewerStore.getState().dimensions2D[0]), 5);
+    await run('drawing.dimensionHistory', { action: 'undo' }, viewerContext); assert.deepEqual(useViewerStore.getState().dimensions2D[0].a, { x: 0, y: 0 });
   });
 
   it('#10584 refuses non-finite schedule seek and stop times before changing playback', async () => {
@@ -368,6 +460,54 @@ describe('native analytics operations (#10525 deeper automation)', () => {
     assert.equal(result.state, 'cancelled'); assert.equal(result.played, 1); assert.equal(useViewerStore.getState().activeBasketViewId, id);
   });
 
+  it('exports real composed SVG/DXF/raw PDF and native sheet SVG without mounting a Drawing panel', async () => {
+    const drawing: Drawing2D = { config: { ...DEFAULT_SECTION_CONFIG, plane: { axis: 'y', position: 0, flipped: false }, scale: 100 },
+      lines: [{ line: { start: { x: 0, y: 0 }, end: { x: 4, y: 0 } }, category: 'projection', visibility: 'visible', entityId: 1, ifcType: 'IfcWall', modelIndex: 0, depth: 0 }],
+      cutPolygons: [], projectionPolygons: [], bounds: { min: { x: 0, y: -1 }, max: { x: 4, y: 2 } },
+      stats: { cutLineCount: 0, projectionLineCount: 1, hiddenLineCount: 0, silhouetteLineCount: 0, polygonCount: 0, totalTriangles: 0, processingTimeMs: 0 } };
+    const plane = { axis: 'down' as const, position: 50, flipped: false };
+    useViewerStore.setState({ drawing2D: drawing, drawing2DStatus: 'ready', drawing2DPlane: plane, sheetEnabled: false, activeSheet: null,
+      dxfUnderlays: [], appearanceReferences: new Map(), textAnnotations2D: [], cloudAnnotations2D: [], polygonArea2DResults: [], measure2DResults: [],
+      dimensions2D: [{ id: 'on-cut', a: { x: 0, y: 0 }, b: { x: 4, y: 0 }, offset: 0.5, orientation: 'aligned', plane }],
+      drawing2DDisplayOptions: { ...useViewerStore.getState().drawing2DDisplayOptions, showScanSection: false } });
+    const { model: _model, ...viewerContext } = context;
+    const text = await run<{ id: string }>('drawing.addText', { position: [1, 1], text: 'Native typography', font_size: 12, color: '#000000', background: '#ffffff', border: '#000000' }, viewerContext);
+    const original = useViewerStore.getState().textAnnotations2D.find(row => row.id === text.id);
+    await run('drawing.styleText', { id: text.id, expected_json: JSON.stringify(original), font_size: 24, color: '#123456', background: '#ffffff', border: '#654321' }, viewerContext);
+    const imported = await run<{ id: string }>('drawing.importDxf', { filename: 'reference.dxf', units: 'm', register_to_drawing_plane: true,
+      content: '0\nSECTION\n2\nENTITIES\n0\nLINE\n8\n0\n10\n10\n20\n20\n11\n12\n21\n22\n0\nENDSEC\n0\nEOF\n' }, viewerContext);
+    // #10587: panel placement metadata must preserve the composed export bounds.
+    const exportSvg = async () => {
+      const result = await run<{ artifact: { artifact_id: string } }>('drawing.export', { format: 'svg', use_display_scale: false, scale: 100 }, viewerContext);
+      const read = await readArtifact(context.host, result.artifact.artifact_id, 0, 65536);
+      return Buffer.from(read.data, 'base64').toString('utf8');
+    };
+    const withoutFrame = (await exportSvg()).match(/viewBox="[^"]+"/)?.[0];
+    assert.ok(withoutFrame, 'The raw export has a viewBox to compare against');
+    const cachedSheetTransformRef = { current: null };
+    publishDrawingExportFrame({ drawing, isPinned: false, cachedSheetTransformRef });
+    try {
+      assert.equal((await exportSvg()).match(/viewBox="[^"]+"/)?.[0], withoutFrame);
+    } finally {
+      publishDrawingExportFrame({ drawing: null, isPinned: false, cachedSheetTransformRef });
+    }
+    await assert.rejects(run('drawing.centerDxf', { id: 'missing-dxf' }, viewerContext), { code: 'INVALID_INPUT', details: { reason: 'unknown-target' } });
+    await run('drawing.centerDxf', { id: imported.id }, viewerContext);
+    const underlay = useViewerStore.getState().dxfUnderlays.find(row => row.id === imported.id); assert.ok(underlay?.referenceFrame);
+    const mapped = dxfPlaneDrawingMapper(underlay, useViewerStore.getState(), drawing.config.plane); assert.ok(mapped);
+    const center = mapped({ x: 11, y: 21 }); assert.ok(Math.abs(center.x - 2) < 1e-8); assert.ok(Math.abs(center.y - 0.5) < 1e-8, 'Center uses the generated model drawing bounds, including its vertical extents');
+    for (const format of ['svg', 'dxf', 'pdf'] as const) {
+      const result = await run<{ artifact: { artifact_id: string; bytes: number } }>('drawing.export', { format, use_display_scale: false, scale: 100 }, viewerContext);
+      assert.ok(result.artifact.bytes > 100);
+      const read = await readArtifact(context.host, result.artifact.artifact_id, 0, 65536); const bytes = Buffer.from(read.data, 'base64');
+      if (format === 'svg') { assert.match(bytes.toString('utf8'), /<svg/); assert.match(bytes.toString('utf8'), /4000/); assert.match(bytes.toString('utf8'), /Native typography/); assert.match(bytes.toString('utf8'), /#123456/); }
+      if (format === 'dxf') { assert.match(bytes.toString('latin1'), /SECTION/); assert.match(bytes.toString('latin1'), /4000/); }
+      if (format === 'pdf') assert.match(bytes.toString('latin1'), /^%PDF-/);
+    }
+    useViewerStore.getState().createSheet(); useViewerStore.getState().updateTitleBlockField('project-name', 'Native composed sheet');
+    const sheet = await run<{ artifact: { artifact_id: string } }>('drawing.export', { format: 'svg', use_display_scale: true, scale: 100 }, viewerContext);
+    const read = await readArtifact(context.host, sheet.artifact.artifact_id, 0, 65536); assert.match(Buffer.from(read.data, 'base64').toString('utf8'), /Native composed sheet/);
+  });
   it('creates a genuine native report PDF with explicit page/title-block controls and no IFC loaded', async () => {
     const dashboard = { ...modelOverviewDashboard(), charts: [], layout: [] };
     useViewerStore.setState({ models: new Map(), ifcDataStore: null, activeModelId: null, dashboards: [dashboard] });

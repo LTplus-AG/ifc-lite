@@ -62,6 +62,7 @@ mod parquet_bos;
 mod rooms;
 pub mod rooted_type;
 mod scene_input;
+mod schema_attr_maps;
 mod schema_convert;
 mod schema_structural;
 mod schema_structural_diagnostics;
@@ -70,6 +71,9 @@ mod schema_structural_axis_carriers;
 mod schema_structural_values;
 mod schema_structural_carriers;
 mod schema_structural_links;
+mod schema_document_links;
+mod schema_value_forms;
+mod schema_material_referent;
 mod schema_structural_varying;
 mod schema_mep;
 mod schema_detect;
@@ -83,8 +87,13 @@ mod schema_owner_history;
 mod schema_grid_frames;
 mod schema_plan;
 mod schema_renames;
+mod schema_retyped;
+mod schema_userdefined;
+mod schema_userdefined_label;
 mod schema_style_flatten;
 mod schema_unrepresented;
+mod schema_typed_properties;
+mod schema_unrooted_upgrade;
 mod shades;
 pub mod source_header;
 mod step;
@@ -163,7 +172,7 @@ pub use kmz::{
     ifc_angle_to_kml_heading, try_export_kmz_collada_from_meshes, AltitudeMode, KmzOptions,
 };
 pub use merged::{
-    deterministic_global_id, export_merged, export_merged_models, export_merged_with_stats,
+    deterministic_global_id, export_merged, export_merged_models, export_merged_with_stats, try_export_merged,
     leading_rooted_global_id, ContainerMergeStrategy, MergedModel, MergedOptions, MergedStats,
     StoreyMergeStrategy, UnitReconciliation,
 };

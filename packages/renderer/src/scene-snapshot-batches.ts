@@ -85,6 +85,7 @@ export class FinishedBatchCapture {
         ...(batch.modelIndices?.[0] !== undefined ? { modelIndex: batch.modelIndices[0] } : {}),
         vertexBytes: bucket.vertexBytes,
         expressIds: Uint32Array.from(batch.expressIds),
+        ...(batch.laneIds ? { laneIds: Uint32Array.from(batch.laneIds) } : {}),
         ordinals,
         vertexData: vertexData instanceof ArrayBuffer ? new Uint8Array(vertexData) : new Uint8Array(vertexData.buffer, vertexData.byteOffset, vertexData.byteLength),
         indices,
@@ -98,7 +99,8 @@ export class FinishedBatchCapture {
 }
 
 /** Create every batch's GPU resources; on a throw, free what was created. */
-export function stageSnapshotBatches(snapshot: SceneSnapshot, device: GPUDevice, pipeline: RenderPipeline, firstBatchId: number): BatchedMesh[] {
+export function stageSnapshotBatches(snapshot: SceneSnapshot, device: GPUDevice, pipeline: RenderPipeline, firstBatchId: number, arenaCopySource = false): BatchedMesh[] {
+  const copy = arenaCopySource ? GPUBufferUsage.COPY_SRC : 0;
   const staged: BatchedMesh[] = [];
   let loose: GPUBuffer[] = [];
   let looseSlot: MeshUniformSlot | undefined;
@@ -107,9 +109,9 @@ export function stageSnapshotBatches(snapshot: SceneSnapshot, device: GPUDevice,
     for (const source of snapshot.batches) {
       loose = [];
       looseSlot = undefined;
-      const vertexBuffer = track(createStaticGpuBuffer(device, source.vertexData, GPUBufferUsage.VERTEX));
-      const indexBuffer = track(createStaticGpuBuffer(device, source.indices, GPUBufferUsage.INDEX));
-      const lod1IndexBuffer = source.lod1Indices ? track(createStaticGpuBuffer(device, source.lod1Indices, GPUBufferUsage.INDEX)) : undefined;
+      const vertexBuffer = track(createStaticGpuBuffer(device, source.vertexData, GPUBufferUsage.VERTEX | copy));
+      const indexBuffer = track(createStaticGpuBuffer(device, source.indices, GPUBufferUsage.INDEX | copy));
+      const lod1IndexBuffer = source.lod1Indices ? track(createStaticGpuBuffer(device, source.lod1Indices, GPUBufferUsage.INDEX | copy)) : undefined;
       const uniformSlot = looseSlot = meshUniformArena(device, pipeline.getUniformBufferSize()).allocate();
       const bindGroup = device.createBindGroup({ layout: pipeline.getBindGroupLayout(), entries: [
         { binding: 0, resource: { buffer: uniformSlot.buffer, offset: uniformSlot.offset, size: uniformSlot.size } },
@@ -122,6 +124,7 @@ export function stageSnapshotBatches(snapshot: SceneSnapshot, device: GPUDevice,
         expressIds, bindGroup, uniformSlot,
         ...(source.bounds ? { bounds: source.bounds } : {}),
         modelIndices: expressIds.map(() => source.modelIndex),
+        ...(source.laneIds ? { laneIds: Array.from(source.laneIds) } : {}),
         ...(source.origin ? { origin: source.origin } : {}),
         ...(lod1IndexBuffer ? { lod1IndexBuffer, lod1IndexCount: source.lod1Indices!.length } : {}),
         ...(source.quantized ? { quantized: source.quantized } : {}),

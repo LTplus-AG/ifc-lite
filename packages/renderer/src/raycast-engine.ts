@@ -41,6 +41,12 @@ export class RaycastEngine {
     private flatIndex: RaycastFlatIndex;
     private pointCloudProvider: PointCloudRayProvider | null = null;
     private sourceSnapCurves: readonly SourceSnapCurve[] = [];
+    /** Flat pieces read back for released geometry (#10264); empty when unused. */
+    private readbackMeshes: readonly MeshData[] = [];
+    /** The one ray they were prepared for: canvas point and view stamp at set time. */
+    private readbackCoverage: { x: number; y: number; view: string } | null = null;
+    /** Host state a ray's answer also depends on, folded into the view stamp (the renderer's pick-clip revision). */
+    viewStampExtra: () => string = () => '';
 
     constructor(camera: Camera, scene: RaycastScene, canvas: HTMLCanvasElement) {
         this.camera = camera;
@@ -81,9 +87,34 @@ export class RaycastEngine {
         return piece => isEntityVisible(piece.expressId, hidden, isolated);
     }
 
+    /** Released geometry read back for an imminent raycast or snap (#10264), under the same visibility and clip
+     *  rules as flat candidates; `null` clears. The host owns their lifetime and frame (`placeAppearanceSource`). */
+    setReadbackMeshes(meshes: readonly MeshData[] | null, at?: { x: number; y: number }): void {
+        this.readbackMeshes = meshes ?? [];
+        this.readbackCoverage = meshes && at ? { x: at.x, y: at.y, view: this.readbackViewKey() } : null;
+    }
+
+    /** Whether readback pieces (a neighbourhood only: another ray could pass an unfed front surface) answer (x, y):
+     *  only the prepared ray, within a 1.5 CSS px radius, under the same view stamp. */
+    readbackCovers(x: number, y: number): boolean {
+        const at = this.readbackCoverage; // `<= 1.5`, so a NaN distance covers nothing; the view includes the viewport size
+        return at !== null && Math.hypot(at.x - x, at.y - y) <= 1.5 && at.view === this.readbackViewKey();
+    }
+
+    /** Coverage's view stamp: the f64 ray inputs (pose, projection), the matrix, CSS viewport size and host extras. */
+    readbackViewKey(): string {
+        const v = this.cssViewport(), c = this.camera, at = (p: { x: number; y: number; z: number }) => `${p.x},${p.y},${p.z}`;
+        return [at(c.getPosition()), at(c.getTarget()), at(c.getUp()), c.getProjectionMode(), c.getFOV(), c.getOrthoSize(),
+            Array.from(c.getViewProjMatrix().m).join(','), `${v?.width ?? 0}x${v?.height ?? 0}`, this.viewStampExtra()].join('|');
+    }
+
     /** Flat candidates near the ray, plus ray-culled instanced occurrences. */
-    private meshesForRay(options: PickOptions | undefined, ray: Ray): MeshData[] {
+    private meshesForRay(options: PickOptions | undefined, ray: Ray, at?: { x: number; y: number }): MeshData[] {
         const allMeshData = this.flatIndex.query(ray, this.visibilityFilter(options));
+        const covered = this.readbackCoverage === null || (at !== undefined && this.readbackCovers(at.x, at.y));
+        if (covered) for (const piece of this.readbackMeshes) {
+            if (isEntityVisible(piece.expressId, options?.hiddenIds, options?.isolatedIds)) allMeshData.push(piece);
+        }
         const seenInstancedKeys = new Set<string>();
 
         // GPU-instanced occurrences live only in the shard, not meshDataMap. Materialize
@@ -120,10 +151,7 @@ export class RaycastEngine {
      */
     private cssViewport(): { width: number; height: number } | null {
         const rect = this.canvas.getBoundingClientRect();
-        if (rect.width === 0 || rect.height === 0) {
-            return null;
-        }
-        return { width: rect.width, height: rect.height };
+        return rect.width === 0 || rect.height === 0 ? null : { width: rect.width, height: rect.height };
     }
 
     /**
@@ -147,7 +175,7 @@ export class RaycastEngine {
             const ray = this.camera.unprojectToRay(x, y, viewport.width, viewport.height);
 
             // Get all mesh data from scene
-            const meshesToTest = this.meshesForRay(options, ray);
+            const meshesToTest = this.meshesForRay(options, ray, { x, y });
             if (meshesToTest.length === 0) {
                 return null;
             }
@@ -221,7 +249,7 @@ export class RaycastEngine {
             // model (no IFC mesh loaded at all) must still fall through
             // to the point-cloud query below instead of returning a hard
             // miss.
-            const meshesToTest = this.meshesForRay(options, ray);
+            const meshesToTest = this.meshesForRay(options, ray, { x, y });
 
             const cameraPos = this.camera.getPosition();
             const cameraFov = this.camera.getFOV();

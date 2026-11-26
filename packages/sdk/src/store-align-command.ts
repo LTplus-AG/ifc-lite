@@ -27,7 +27,7 @@ export function createAlignCommandBackend(resolve: (modelId: string) => CostStor
         const boxes = await provide(model, storey, [reference, ...params.targets]);
         const current = resolve(modelId);
         if (current.store !== model.store || current.mutationView !== model.mutationView || head !== host.historyHead(modelId) || changes !== journal(current)) throw new Error('The model changed while native Align geometry was preparing; retry the command');
-        const result = host.record(modelId, draft => draft.editor.runAtomic(editor => alignElementsInStore({ dataStore: draft.store, view: editor.getMutationView(), editor }, params, boxes)));
+        const result = host.record(modelId, draft => draft.editor.runAtomic(editor => alignElementsInStore({ dataStore: draft.store, view: editor.getMutationView(), editor, guidRandom: draft.guidRandom }, params, boxes)));
         return result.remesh.map(expressId => ({ modelId, expressId }));
       } finally { preparing.delete(modelId); }
     },

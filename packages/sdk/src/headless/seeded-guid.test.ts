@@ -63,6 +63,10 @@ async function authoredExport(guidRandom: RandomSource): Promise<string> {
     const usage = S.addMaterialLayerSetUsage('m', { ForLayerSet: before.set, LayerSetDirection: 'AXIS2', OffsetFromReferenceLine: -0.1 }).expressId;
     S.assignMaterial('m', usage, [e.expressId, f.expressId]);
     S.assignType('m', after.type, [e.expressId]);
+    // Trimming a joined wall and a layer-driven thickness change both reshape joined walls.
+    const g = S.addWall('m', home, { Start: [21, 8, 0], End: [21, 12, 0], Thickness: 0.2, Height: 3 });
+    S.trimExtendElement(e, { mode: 'trim', click: [20.1, 10], boundary: { wallId: g.expressId } });
+    S.assignMaterial('m', S.addMaterialLayerSet('m', { MaterialLayers: [{ LayerThickness: 0.3 }] }).expressId, [b.expressId]);
     bim.mutate.setProperty(a, 'Pset_WallCommon', 'IsExternal', true);
     const content = bim.export.ifc();
     return typeof content === 'string' ? content : new TextDecoder().decode(content);
@@ -96,7 +100,7 @@ describe('HeadlessBackendOptions.guidRandom (#10963)', () => {
     expect(authoredGlobalIds(again, source)).toEqual(authored);
     expect(dataSection(again)).toBe(dataSection(first));
     expect(authoredGlobalIds(other, source)).not.toEqual(authored);
-  });
+  }, 60_000);
 
   it('keeps the source it was constructed with, for authoring and export, when the caller replaces it later', async () => {
     const session = async (replaceAfterConstruction: boolean) => {

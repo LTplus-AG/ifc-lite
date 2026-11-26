@@ -168,7 +168,7 @@ export function createModellingStoreBackendWithoutStoreys(resolve: ModellingStor
     replaceElement(entity, storeyExpressId, element) {
       const model = resolve(entity.modelId);
       const built = replaceElementInStore(model.store, model.editor, entity.expressId,
-        draft => (seededSpatialAnchor(model, storeyExpressId, draft.getMutationView())), element);
+        draft => seededSpatialAnchor(model, storeyExpressId, draft.getMutationView()), element);
       return ref(model.modelId, built.expressId);
     },
     removeStair(entity: EntityRef): boolean {

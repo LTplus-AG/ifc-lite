@@ -75,7 +75,7 @@ export function trimExtendElementInStore(store: IfcDataStore, editor: StoreEdito
     if (!plan.ok) throw new Error(`Trim/extend refused: ${plan.reason}${plan.detail ? `: ${plan.detail}` : ''}`);
     const walls = new Set<number>([id]);
     if (read) {
-      const result = resizeWallInStore({ dataStore: store, view, editor: draft }, id, plan.start, plan.stop);
+      const result = resizeWallInStore({ dataStore: store, view, editor: draft, guidRandom: guidOptions.guidRandom }, id, plan.start, plan.stop);
       if (!result.ok) throw new Error(result.reason);
       for (const wall of result.walls) walls.add(wall);
       const after = readWallJoinTarget(store, view, id, scale);

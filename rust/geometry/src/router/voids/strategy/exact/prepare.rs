@@ -325,3 +325,7 @@ fn cap_touches_exterior(host: &Mesh, min: Point3<f64>, max: Point3<f64>, depth: 
         })
     })
 }
+
+#[cfg(test)]
+#[path = "prepare_tests.rs"]
+mod tests;

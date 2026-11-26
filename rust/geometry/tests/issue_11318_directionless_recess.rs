@@ -21,14 +21,14 @@ use voids_common::production::build_void_index_like_production;
 #[cfg(feature = "csg_manifold_gate")]
 #[test]
 fn gate_rejected_directionless_recess_keeps_the_core_11318() {
-    keeps_the_core("gate_rejected_directionless_recess_keeps_the_core_11318");
+    check_material_volume("gate_rejected_directionless_recess_keeps_the_core_11318");
 }
 
 /// Without the gate, the exact cut is the reference the fallback must match.
 #[cfg(not(feature = "csg_manifold_gate"))]
 #[test]
 fn exact_directionless_recess_keeps_the_core_11318() {
-    keeps_the_core("exact_directionless_recess_keeps_the_core_11318");
+    check_material_volume("exact_directionless_recess_keeps_the_core_11318");
 }
 
 /// A stub wall shorter than it is thick: the inferred thinnest axis is its
@@ -36,16 +36,33 @@ fn exact_directionless_recess_keeps_the_core_11318() {
 #[cfg(feature = "csg_manifold_gate")]
 #[test]
 fn gate_rejected_directionless_recess_in_a_stub_wall_keeps_the_core_11318() {
-    keeps_the_core("gate_rejected_directionless_recess_in_a_stub_wall_keeps_the_core_11318");
+    check_material_volume("gate_rejected_directionless_recess_in_a_stub_wall_keeps_the_core_11318");
 }
 
 #[cfg(not(feature = "csg_manifold_gate"))]
 #[test]
 fn exact_directionless_recess_in_a_stub_wall_keeps_the_core_11318() {
-    keeps_the_core("exact_directionless_recess_in_a_stub_wall_keeps_the_core_11318");
+    check_material_volume("exact_directionless_recess_in_a_stub_wall_keeps_the_core_11318");
 }
 
-fn keeps_the_core(test_name: &str) {
+/// The counterexample to skipping the cut whenever any axis proves air: the
+/// same directionless opening started 0.1 m inside the core removes core
+/// material, so no axis may prove it air and the cut must still happen.
+#[cfg(feature = "csg_manifold_gate")]
+#[test]
+fn gate_rejected_directionless_opening_into_the_core_still_cuts_11318() {
+    check_material_volume("gate_rejected_directionless_opening_into_the_core_still_cuts_11318");
+}
+
+#[cfg(not(feature = "csg_manifold_gate"))]
+#[test]
+fn exact_directionless_opening_into_the_core_still_cuts_11318() {
+    check_material_volume("exact_directionless_opening_into_the_core_still_cuts_11318");
+}
+
+/// Mesh the fixture `test_name` names and check its material volume: the air
+/// recesses keep the whole wall, the opening into the core removes its share.
+fn check_material_volume(test_name: &str) {
     use std::process::Command;
     const PROBE: &str = "IFCLITE_PROBE_DIRECTIONLESS_RECESS_11318";
     if std::env::var_os(PROBE).is_none() {
@@ -62,6 +79,7 @@ fn keeps_the_core(test_name: &str) {
         return;
     }
     let stub = test_name.contains("stub_wall");
+    let into_core = test_name.contains("into_the_core");
     // 4 m x 3 m x 0.2 m of core and 0.5 m x 3 m x 12 mm of finish. The
     // chamfered recess at x in [1, 2] lies beyond the finish, so nothing goes.
     // The stub wall's recess likewise lies beyond its finish.
@@ -69,7 +87,10 @@ fn keeps_the_core(test_name: &str) {
     for offset in [2.137, 2.274, 2.411] {
         // The stub keeps 0.0918 m³, so its tolerance must stay well under
         // the 0.0006 m³ of finish a box widened along x would remove.
-        let (content, expected, tolerance) = if stub {
+        let (content, expected, tolerance) = if into_core {
+            let y0 = 0.1;
+            (split_wall::wall_with_tessellated_cut(offset, y0), 2.418 - split_wall::tessellated_cut_volume(y0), 6.0e-4)
+        } else if stub {
             (split_wall::stub_wall_with_tessellated_recess(offset), split_wall::stub_wall_volume(), 5.0e-5)
         } else {
             (split_wall::wall_with_tessellated_recess(offset, 0.5), 2.418, 6.0e-4)
@@ -81,7 +102,8 @@ fn keeps_the_core(test_name: &str) {
         let mesh = router.process_element_with_voids(&wall, &mut decoder, &voids).expect("the wall meshes");
         let open = EdgeLedger::build(&mesh, VertexKey::GridMul(1.0e3), Degenerate::SkipTriangle).unbalanced().count();
         let volume = mesh_volume(&mesh);
-        if open != 0 || (volume - expected).abs() > tolerance {
+        // A NaN volume fails the tolerance comparison silently.
+        if open != 0 || !volume.is_finite() || (volume - expected).abs() > tolerance {
             failures.push(format!("y={offset}: {volume:.6} m³, {open} unbalanced edges"));
         }
     }

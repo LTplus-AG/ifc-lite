@@ -44,7 +44,26 @@ pub(crate) fn wall_with_finish(
 #[allow(dead_code)]
 pub(crate) fn wall_with_tessellated_recess(wall_y: f64, finish_length: f64) -> String {
     let swept = wall_with_finish([0.0; 2], 0.0, wall_y, Recess::FromInterface, finish_length);
-    tessellate_recess(&swept, &[(1.0, 1.0), (2.0, 1.0), (2.0, 1.9), (1.9, 2.0), (1.0, 2.0)])
+    tessellate_recess(&swept, CORE, &TESSELLATED_PROFILE)
+}
+
+/// The chamfered x-z profile of [`wall_with_tessellated_recess`].
+const TESSELLATED_PROFILE: [(f64, f64); 5] = [(1.0, 1.0), (2.0, 1.0), (2.0, 1.9), (1.9, 2.0), (1.0, 2.0)];
+
+/// The tessellated opening of [`wall_with_tessellated_recess`], started at
+/// `y0` inside the core instead of at its face. It removes
+/// [`tessellated_cut_volume`] of core material, so the fallback must cut it.
+#[allow(dead_code)]
+pub(crate) fn wall_with_tessellated_cut(wall_y: f64, y0: f64) -> String {
+    let swept = wall_with_finish([0.0; 2], 0.0, wall_y, Recess::FromInterface, 0.5);
+    tessellate_recess(&swept, y0, &TESSELLATED_PROFILE)
+}
+
+/// Core material inside [`wall_with_tessellated_cut`]: the profile's area,
+/// a unit square less a 0.1 m chamfer, over y in [`y0`, CORE].
+#[allow(dead_code)]
+pub(crate) fn tessellated_cut_volume(y0: f64) -> f64 {
+    (1.0 - 0.5 * 0.1 * 0.1) * (CORE - y0)
 }
 
 /// A stub wall shorter than it is thick, so its thinnest axis is its length
@@ -59,7 +78,7 @@ pub(crate) fn stub_wall_with_tessellated_recess(wall_y: f64) -> String {
         extrusion(64, 0.0, 0.05, CORE, CORE + FINISH),
     );
     let swept = wall_with_bodies([0.0; 2], 0.0, wall_y, Recess::FromInterface, bodies);
-    tessellate_recess(&swept, &[(0.07, 1.0), (0.13, 1.0), (0.13, 1.97), (0.1, 2.0), (0.07, 2.0)])
+    tessellate_recess(&swept, CORE, &[(0.07, 1.0), (0.13, 1.0), (0.13, 1.97), (0.1, 2.0), (0.07, 2.0)])
 }
 
 /// The stub wall's length.
@@ -74,11 +93,11 @@ pub(crate) fn stub_wall_volume() -> f64 {
 }
 
 /// Replace the swept recess of `swept` with a closed triangulated prism of
-/// the x-z `profile` spanning y in [CORE, CORE + FINISH], in wall coordinates.
-fn tessellate_recess(swept: &str, profile: &[(f64, f64); 5]) -> String {
+/// the x-z `profile` spanning y in [`y0`, CORE + FINISH], in wall coordinates.
+fn tessellate_recess(swept: &str, y0: f64, profile: &[(f64, f64); 5]) -> String {
     let start = swept.find("#110=").expect("the recess placement");
     let end = swept.find("#200=").expect("the opening element");
-    let points = [CORE, CORE + FINISH]
+    let points = [y0, CORE + FINISH]
         .iter()
         .flat_map(|y| profile.iter().map(move |(x, z)| format!("({x:?},{y:?},{z:?})")))
         .collect::<Vec<_>>()

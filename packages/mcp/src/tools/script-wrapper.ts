@@ -46,6 +46,7 @@ export function wrapScript(code: string): string {
   return `(function (run, I, L) {
   // The intrinsics, by name: read once here, before the script runs.
   var P = I.P, isInstance = I.isInstance, then = I.then, apply = I.apply, slice = I.slice, Str = I.Str, stringify = I.stringify, keys = I.keys, isArray = I.isArray, create = I.create, defineProperty = I.defineProperty, glob = I.glob, ErrorCtor = I.ErrorCtor, TypeErrorCtor = I.TypeErrorCtor, SetCtor = I.SetCtor, setAdd = I.setAdd, setHas = I.setHas, setDelete = I.setDelete, unbox = I.unbox, objectProto = I.objectProto, getProto = I.getProto, parse = I.parse, charCodeAt = I.charCodeAt, SyntaxErrorCtor = I.SyntaxErrorCtor, RegExpCtor = I.RegExpCtor, exec = I.exec, bind = I.bind, InternalErrorCtor = I.InternalErrorCtor, toStringTag = I.toStringTag;
+  function isInternal(e) { return !!InternalErrorCtor && apply(isInstance, InternalErrorCtor, [e]); }
   function msg(e) {
     // message is read once and coerced inside the try, so a getter or
     // toString cannot throw past the wrapper and pose as a sandbox error.
@@ -54,7 +55,7 @@ export function wrapScript(code: string): string {
       var x = e && e.message, n = e && e.name;
       // Only QuickJS's own InternalError keeps that name, so a thrown look-alike
       // cannot earn the memory or stack hints.
-      if (n === 'InternalError' && !(InternalErrorCtor && apply(isInstance, InternalErrorCtor, [e]))) n = 'Error';
+      if (n === 'InternalError' && !(isInternal(e))) n = 'Error';
       m = typeof x !== 'string' || x === '' ? Str(e)
         : typeof n === 'string' && n !== '' && n !== 'Error' ? n + ': ' + x : x;
     } catch (c) {
@@ -99,7 +100,7 @@ export function wrapScript(code: string): string {
       try { return { v: apply(unbox[u], v, []) }; } catch (e) {
         // A brand-check TypeError means "not this wrapper type"; QuickJS's own
         // out-of-memory or stack overflow must not turn the value into {}.
-        if (InternalErrorCtor && apply(isInstance, InternalErrorCtor, [e])) throw e;
+        if (isInternal(e)) throw e;
       }
     }
     return undefined;

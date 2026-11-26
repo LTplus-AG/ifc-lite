@@ -42,7 +42,7 @@ import { createDxfDownload } from '@/hooks/dxfDownload';
 import { rasterizeSvgToPngDataUrl, SHEET_PDF_DPI } from './drawing-svg-raster';
 export { rasterizeSvgToPngDataUrl, SHEET_PDF_DPI, MAX_SHEET_RASTER_PIXELS, MAX_SHEET_RASTER_DIMENSION_PX } from './drawing-svg-raster';
 import { DEFAULT_SCAN_SVG_CAP, type ScanBandPoint } from '@/hooks/scanSectionMath';
-import { computeSvgExportViewport, svgExportMmToWorld, svgExportScale } from '@/hooks/svgExportViewport';
+import { assertValidSvgDrawingBounds, computeSvgExportViewport, svgExportMmToWorld, svgExportScale } from '@/hooks/svgExportViewport';
 import { polygonPathData } from '@/hooks/svgPolygonPath';
 import { makePropertiesGetter } from '@/hooks/drawingElementProperties';
 import { styleCutPolygons, type CutPolygonStyleContext } from '@/components/viewer/drawing/cut-polygon-style';
@@ -196,6 +196,7 @@ export function createDrawingExport({
     if (!drawing) return null;
 
     const { bounds } = drawing;
+    assertValidSvgDrawingBounds(bounds);
     const styleContext = cutPolygonStyleContext();
 
     // World-metres -> paper-mm arithmetic for the direct SVG export,

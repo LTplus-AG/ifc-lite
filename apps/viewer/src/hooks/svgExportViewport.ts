@@ -53,6 +53,15 @@ export interface SvgExportViewport {
   effectiveScale: number;
 }
 
+export function assertValidSvgDrawingBounds({ min, max }: SvgExportBounds): void {
+  if (!Number.isFinite(min.x) || !Number.isFinite(min.y) || !Number.isFinite(max.x) || !Number.isFinite(max.y)) {
+    throw new Error('Invalid drawing bounds for SVG export: the section is empty or its bounds are not finite.');
+  }
+  if (max.x < min.x || max.y < min.y) {
+    throw new Error('Invalid drawing bounds for SVG export: max must be >= min on both axes.');
+  }
+}
+
 /**
  * Compute the direct SVG export's paper dimensions, `viewBox`, and
  * axis-driven mirroring from the drawing bounds, the requested scale
@@ -74,18 +83,9 @@ export function computeSvgExportViewport(
   axis: SectionAxis,
 ): SvgExportViewport {
   const { min, max } = bounds;
-  // An empty drawing's bounds are +/-Infinity (`boundsEmpty()`), and a NaN
-  // corner poisons every derived number. `toFixed` prints both verbatim, so
-  // the file would open with `viewBox="Infinity ..."` and `width="-Infinitymm"`.
-  // Refuse, as the PDF export does for the same input (`computePdfScaleLayout`).
-  if (!Number.isFinite(min.x) || !Number.isFinite(min.y) || !Number.isFinite(max.x) || !Number.isFinite(max.y)) {
-    throw new Error('Invalid drawing bounds for SVG export: the section is empty or its bounds are not finite.');
-  }
+  assertValidSvgDrawingBounds(bounds);
   const width = max.x - min.x;
   const height = max.y - min.y;
-  if (width < 0 || height < 0) {
-    throw new Error('Invalid drawing bounds for SVG export: max must be >= min on both axes.');
-  }
 
   // Padding around the drawing, in world units. A single point (zero extent)
   // would give a 0x0 viewBox, which the SVG spec renders as nothing, so it

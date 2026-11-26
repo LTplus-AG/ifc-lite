@@ -20,6 +20,7 @@ import useDrawingExport from './useDrawingExport.js';
 import { useActivityJournal } from '@/lib/activity/activity-journal';
 import { waitFor } from '@/test/render.js';
 import { toast } from '@/components/ui/toast';
+import { useViewerStore } from '@/store';
 
 const base = (): Drawing2D => ({
   config: { plane: { axis: 'y', position: 0, flipped: false }, projectionDepth: 10, includeHiddenLines: true, creaseAngle: 30, scale: 50 },
@@ -116,6 +117,20 @@ describe('direct SVG export never writes a non-finite number', () => {
   it('refuses an empty section instead of writing viewBox="Infinity ..."', async () => {
     const out = await run('emptyBounds');
     assert.ok(out.startsWith('ERROR') && /bounds/.test(out), out.slice(0, 200));
+  });
+  it('refuses an empty section even when a dimension could supply finite bounds (#11467)', async () => {
+    const plane = { axis: 'down' as const, position: 50, flipped: false };
+    const { dimensions2D, drawing2DPlane } = useViewerStore.getState();
+    useViewerStore.setState({
+      drawing2DPlane: plane,
+      dimensions2D: [{ id: 'on-cut', a: { x: 0, y: 0 }, b: { x: 4, y: 0 }, offset: 0.5, orientation: 'aligned', plane }],
+    });
+    try {
+      const out = await run('emptyBounds');
+      assert.match(out, /^ERROR .*Invalid drawing bounds for SVG export/);
+    } finally {
+      useViewerStore.setState({ dimensions2D, drawing2DPlane });
+    }
   });
   it('refuses NaN bounds', async () => {
     const out = await run('nanBounds');

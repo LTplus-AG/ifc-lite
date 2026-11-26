@@ -143,6 +143,7 @@ describe('two-point align panel (#11505)', () => {
     setGlobalRendererRef({ current: {
       getCanvas: () => canvas,
       getScene: () => ({ getInstancedEntityIds: () => [] }),
+      getModelPlacementBounds: () => null,
       raycastSceneMagnetic: () => ({
         snapTarget: { expressId: 1, type: 'vertex', position: { x: 0, y: 0, z: 0 } },
         edgeLock: { shouldRelease: false, shouldLock: false },

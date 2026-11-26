@@ -11,18 +11,26 @@ npm install @ifc-lite/drawing-2d
 ## Floor plan
 
 ```typescript
-import { generateFloorPlan, exportToSVG, PAPER_SIZES, COMMON_SCALES } from '@ifc-lite/drawing-2d';
+import { generateFloorPlan, exportToSVG, PAPER_SIZES, COMMON_SCALES, type StoreyCut } from '@ifc-lite/drawing-2d';
 
 // Cut 1.2 m above a storey floor (standard architectural plan height). The
 // meshes sit in a shifted render frame; the frame moves the storey's Elevation
 // into it (storeyCutElevation returns that render-frame Y as a number).
-// Elevation is relative to the building, so a building placed off its site's Z
-// also passes `buildingOrigin: { z }` in the frame. storeyElevations is empty
-// on a store restored from the cache: check for the storey rather than cutting
-// every storey at the same height.
+// storeyElevations is empty on a store restored from the cache: check for the
+// storey rather than cutting every storey at the same height.
 const storeyElevation = store.spatialHierarchy?.storeyElevations.get(storeyId);
 if (storeyElevation === undefined) throw new Error(`No elevation for storey #${storeyId}`);
-const cut = { storeyElevation, cutHeight: 1.2, frame: geometryResult.coordinateInfo };
+// IfcBuildingStorey.Elevation is measured from the building placement, which
+// the parsed store does not carry. ASSUMPTION: the building sits at its site's
+// origin, so its local Z is 0 m. For a building placed off it, set buildingZ to
+// its local Z in metres: the Z of IfcBuilding.ObjectPlacement.RelativePlacement
+// .Location, relative to the site placement, times store.lengthUnitScale.
+const buildingZ = 0;
+const cut: StoreyCut = {
+  storeyElevation,
+  cutHeight: 1.2,
+  frame: { ...geometryResult.coordinateInfo, buildingOrigin: { z: buildingZ } },
+};
 const drawing = await generateFloorPlan(geometryResult.meshes, cut, {
   includeHiddenLines: true,
   includeProjection: true,

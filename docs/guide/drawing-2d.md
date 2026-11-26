@@ -229,10 +229,10 @@ encoder mismatches that declared codepage, and any real DXF reader
 import { exportToDXF, encodeDxfCp1252 } from '@ifc-lite/drawing-2d';
 
 declare const dxf: ReturnType<typeof exportToDXF>;
-const { bytes, hadUnmappable } = encodeDxfCp1252(dxf);
+const { bytes, hadEscaped, hadUnmappable } = encodeDxfCp1252(dxf);
 // bytes is a Uint8Array ready to write to disk or a Blob.
-// hadUnmappable is true if a character outside windows-1252 (e.g. CJK)
-// was replaced with '?' — R12 TEXT has no wider single-byte encoding.
+// hadEscaped reports lossless DXF Unicode escapes for BMP text outside windows-1252.
+// hadUnmappable reports replacement with '?' for unsupported characters such as emoji.
 ```
 
 ## Drawing Sheets

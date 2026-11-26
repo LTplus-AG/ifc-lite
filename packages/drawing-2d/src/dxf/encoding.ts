@@ -76,7 +76,7 @@ export interface Cp1252EncodeResult {
   bytes: Uint8Array;
   /** True when at least one code point could not be represented at all and was replaced with `?` (information lost). */
   hadUnmappable: boolean;
-  /** True when at least one BMP code point outside windows-1252 was written as a `\U+XXXX` escape (nothing lost). */
+  /** True when a Unicode escape was written, including escapes that protect literal backslashes. */
   hadEscaped: boolean;
 }
 

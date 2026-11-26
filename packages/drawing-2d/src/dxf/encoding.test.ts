@@ -72,14 +72,21 @@ describe('encodeDxfCp1252', () => {
     expect(ascii(encodeDxfCp1252('C:\\dir').bytes)).toBe('C:\\dir'); // other backslashes untouched
   });
 
-  it('round-trips through ifc-lite\'s own parser (writer -> bytes -> parseDxf)', () => {
-    for (const label of ['Sală de ședințe – Etaj 2, 25 m²', 'Łódź', 'Příčka', 'a\\U+0041b', '日本']) {
+  it('round-trips through the DXF writer and parser (#11451)', () => {
+    for (const label of ['Sală de ședințe – Etaj 2, 25 m²', 'Łódź', 'Příčka', 'a\\U+0041b', 'a\\ăb', '日本']) {
       const w = new DxfWriter();
       w.addText({ x: 0, y: 0 }, label, 2.5, 'TXT');
       const doc = parseDxf(ascii(encodeDxfCp1252(w.toString()).bytes, true));
       const t = doc.entities.find((e) => e.kind === 'text');
       expect(t && 'text' in t ? t.text : undefined).toBe(label);
     }
+  });
+
+  it('keeps text after repeated buffer growth (#11451)', () => {
+    const { bytes, hadEscaped, hadUnmappable } = encodeDxfCp1252(`${'ă'.repeat(256)}-tail`);
+    expect(ascii(bytes)).toBe(`${'\\U+0103'.repeat(256)}-tail`);
+    expect(hadEscaped).toBe(true);
+    expect(hadUnmappable).toBe(false);
   });
 
   it('replaces an unassigned windows-1252 C1 slot (e.g. U+0081, never assigned in cp1252) the same way', () => {

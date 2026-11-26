@@ -1,0 +1,195 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * script_run / script_run_mutate (MCP overhaul P5a): sandboxed SDK scripts.
+ * The security claims are tested as behaviour: the read tool has no write
+ * namespaces, neither tool reaches network/files/host globals, the limits
+ * stop a runaway script, and --read-only hides the mutate tool.
+ */
+
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import type { CallToolResult } from '../protocol/index.js';
+import {
+  DEFAULT_CONFIG, InMemoryModelRegistry, NOOP_PROGRESS, SILENT_LOGGER, type ToolContext,
+} from '../context.js';
+import { fullScope } from '../auth/scope.js';
+import { loadIfcModel } from '../loader.js';
+import { MCPServer } from '../server.js';
+import { InProcessTransport } from '../transport/in-process.js';
+import { ResourceRegistry } from '../resources/index.js';
+import { PromptRegistry } from '../prompts/index.js';
+import { PROTOCOL_VERSION } from '../protocol/index.js';
+import { buildDefaultToolRegistry } from './index.js';
+import { scriptRunMutateTool, scriptRunTool } from './script-run.js';
+
+const IFC = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('m','2026',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1= IFCPROJECT('0000PROJ00000000000000',$,'Proj',$,$,$,$,(#20),#30);
+#20= IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#21,$);
+#21= IFCAXIS2PLACEMENT3D(#22,$,$);
+#22= IFCCARTESIANPOINT((0.,0.,0.));
+#30= IFCUNITASSIGNMENT((#31));
+#31= IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#40= IFCLOCALPLACEMENT($,#21);
+#72= IFCWALL('0000WALA00000000000000',$,'Wall A',$,$,#40,$,$,$);
+#73= IFCWALL('0000WALB00000000000000',$,'Wall B',$,$,#40,$,$,$);
+#74= IFCDOOR('0000DOOR00000000000000',$,'Door',$,$,#40,$,$,$,$,$,$,$);
+ENDSEC;
+END-ISO-10303-21;
+`;
+
+let tmp: string;
+let ctx: ToolContext;
+
+beforeAll(async () => {
+  tmp = await mkdtemp(join(tmpdir(), 'mcp-script-run-'));
+  const path = join(tmp, 'm.ifc');
+  await writeFile(path, IFC, 'utf-8');
+  const registry = new InMemoryModelRegistry();
+  registry.add(await loadIfcModel(path, { modelId: 'm' }));
+  ctx = {
+    registry, scope: fullScope(), progress: NOOP_PROGRESS, log: SILENT_LOGGER,
+    signal: new AbortController().signal, config: { ...DEFAULT_CONFIG },
+  };
+});
+
+afterAll(async () => {
+  for (const model of ctx.registry.list()) ctx.registry.remove(model.id);
+  await rm(tmp, { recursive: true, force: true });
+});
+
+async function run(code: string, extra: Record<string, unknown> = {}, tool = scriptRunTool): Promise<CallToolResult> {
+  return tool.handler({ code, ...extra }, ctx);
+}
+
+async function runError(code: string, extra: Record<string, unknown> = {}, tool = scriptRunTool) {
+  const err = await run(code, extra, tool).then(
+    () => { throw new Error('expected the script to fail'); },
+    (e: unknown) => e as { code: string; message: string; details?: Record<string, unknown>; hint?: string },
+  );
+  return err;
+}
+
+describe('script_run', () => {
+  it('is registered with read and mutate variants', () => {
+    const registry = buildDefaultToolRegistry();
+    expect(registry.get('script_run')?.scope).toBe('read');
+    expect(registry.get('script_run_mutate')?.scope).toBe('mutate');
+    expect(registry.get('script_run')?.outputSchema).toBeDefined();
+  });
+
+  it('returns the last expression and captured console output', async () => {
+    const result = await run(`
+      const walls = bim.query.byType('IfcWall');
+      console.log('walls', walls.length);
+      walls.map((w) => w.Name).sort();
+    `);
+    expect(result.structuredContent).toMatchObject({
+      model_id: 'm', mode: 'read', value: ['Wall A', 'Wall B'], value_truncated: false,
+      logs: [{ level: 'log', text: 'walls 2' }], mutations_queued: 0,
+    });
+  });
+
+  it('has no write namespaces in read mode and queues nothing', async () => {
+    const result = await run('[typeof bim.mutate, typeof bim.store, typeof bim.query]');
+    expect(result.structuredContent?.value).toEqual(['undefined', 'undefined', 'object']);
+    const err = await runError(`bim.mutate.setAttribute(bim.query.byType('IfcWall')[0], 'Name', 'x')`);
+    expect(err.code).toBe('INVALID_INPUT');
+    expect(err.hint).toMatch(/script_run_mutate/);
+    expect(err.details?.mutations_queued).toBe(0);
+  });
+
+  it('exposes no network, files, viewer, timers or host globals', async () => {
+    const result = await run(`[typeof bim.network, typeof bim.files, typeof bim.viewer, typeof fetch,
+      typeof require, typeof process, typeof setTimeout, typeof globalThis.Deno]`);
+    expect(result.structuredContent?.value).toEqual(Array(8).fill('undefined'));
+  });
+
+  it('cannot reach the host realm through a Function constructor', async () => {
+    const result = await run(`[
+      (function () {}).constructor('return typeof process')(),
+      bim.query.byType.constructor('return typeof require')(),
+    ]`);
+    expect(result.structuredContent?.value).toEqual(['undefined', 'undefined']);
+  });
+
+  it('interrupts an endless loop at timeout_ms', async () => {
+    const started = Date.now();
+    const err = await runError('for (;;) {}', { timeout_ms: 200 });
+    expect(err.code).toBe('TIMEOUT');
+    expect(Date.now() - started).toBeLessThan(5_000);
+  });
+
+  it('fails cleanly when the script exceeds memory_mb, and the next call still works', async () => {
+    const err = await runError(`const a = []; for (;;) a.push(new Array(1 << 16).fill(1.5));`, { memory_mb: 8, timeout_ms: 10_000 });
+    expect(err.code).toBe('INVALID_INPUT');
+    expect(err.message).toMatch(/memory/i);
+    expect((await run('1 + 1')).structuredContent?.value).toBe(2);
+  }, 30_000);
+
+  it('truncates an oversized value instead of returning it', async () => {
+    const result = await run(`'x'.repeat(300 * 1024)`);
+    expect(result.structuredContent).toMatchObject({ value: null, value_truncated: true });
+    expect(String(result.structuredContent?.value_preview).length).toBeLessThanOrEqual(2_000);
+  });
+
+  it('refuses out-of-range limits', async () => {
+    await expect(run('1', { timeout_ms: 10 })).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+    await expect(run('1', { memory_mb: 4096 })).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+  });
+
+  it('honours a cancelled request', async () => {
+    const ctl = new AbortController();
+    ctl.abort();
+    await expect(scriptRunTool.handler({ code: '1' }, { ...ctx, signal: ctl.signal })).rejects.toMatchObject({ code: 'CANCELLED' });
+  });
+});
+
+describe('script_run_mutate', () => {
+  it('queues edits through the shared mutation view', async () => {
+    const result = await run(`
+      const wall = bim.query.byType('IfcWall')[0];
+      bim.mutate.setProperty(wall, 'Pset_WallCommon', 'IsExternal', true);
+      bim.mutate.setAttribute(wall, 'Name', 'Renamed');
+      bim.query.byType('IfcWall').map((w) => w.Name).sort();
+    `, {}, scriptRunMutateTool);
+    expect(result.structuredContent).toMatchObject({ mode: 'mutate', value: ['Renamed', 'Wall B'], mutations_queued: 2 });
+    const diff = await buildDefaultToolRegistry().get('mutation_diff')!.handler({}, ctx);
+    expect(diff.structuredContent?.count).toBe(2);
+  });
+});
+
+describe('script_run under --read-only', () => {
+  it('hides and refuses script_run_mutate but keeps script_run', async () => {
+    const server = new MCPServer({
+      version: '0.0.0-test', registry: ctx.registry, scope: fullScope(),
+      config: { ...DEFAULT_CONFIG, readOnly: true }, tools: buildDefaultToolRegistry(),
+      resources: new ResourceRegistry(), prompts: new PromptRegistry(),
+    });
+    const transport = new InProcessTransport();
+    void transport.connect(server);
+    await transport.send({
+      jsonrpc: '2.0', id: 1, method: 'initialize',
+      params: { protocolVersion: PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: 't', version: '0' } },
+    });
+    const list = await transport.send({ jsonrpc: '2.0', id: 2, method: 'tools/list' }) as { result: { tools: Array<{ name: string; outputSchema?: unknown }> } };
+    const names = list.result.tools.map((t) => t.name);
+    expect(names).toContain('script_run');
+    expect(names).not.toContain('script_run_mutate');
+    expect(list.result.tools.find((t) => t.name === 'script_run')?.outputSchema).toBeDefined();
+    const call = await transport.send({
+      jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'script_run_mutate', arguments: { code: '1' } },
+    }) as { result: { isError: boolean; structuredContent: { code: string } } };
+    expect(call.result).toMatchObject({ isError: true, structuredContent: { code: 'READ_ONLY' } });
+  });
+});

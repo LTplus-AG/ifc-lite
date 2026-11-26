@@ -160,6 +160,7 @@ export interface ToolDefinition {
   title?: string;
   description: string;
   inputSchema: JsonSchema;
+  outputSchema?: JsonSchema;
   annotations?: ToolAnnotations;
   _meta?: { ui?: { resourceUri: string; visibility?: Array<'model' | 'app'> } };
   /** Optional metadata: which scope a token needs to call this tool. */

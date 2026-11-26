@@ -27,6 +27,7 @@ import { idsAuthoringModelTools } from './ids-authoring-model.js';
 import { presentationTools } from './presentation.js';
 import { surfaceAction, viewerSelect } from './surface-action.js';
 import { idsSchemaTools } from './ids-schema.js';
+import { scriptTools } from './script-run.js';
 
 /** Agent draft-layer family (06-agents.md): draft lifecycle + review loop. */
 export const layerTools = [...draftLayerTools, ...layerReviewTools];
@@ -85,6 +86,7 @@ export function buildDefaultToolRegistry(): ToolRegistry {
   registry.registerAll(idsSchemaTools);
   registry.registerAll(layerTools);
   registry.registerAll(presentationTools);
+  registry.registerAll(scriptTools);
   registry.register(surfaceAction);
   registry.register(viewerSelect);
   return registry;

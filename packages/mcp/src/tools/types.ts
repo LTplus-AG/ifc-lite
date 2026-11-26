@@ -14,6 +14,8 @@ export interface Tool {
   title?: string;
   /** MCP behaviour hints for `tools/list`. */
   annotations?: ToolAnnotations;
+  /** JSON Schema of `structuredContent` on success (MCP 2025-06-18). */
+  outputSchema?: JsonSchema;
   _meta?: ToolDefinition['_meta'];
   handler(input: Record<string, unknown>, ctx: ToolContext): Promise<CallToolResult> | CallToolResult;
 }

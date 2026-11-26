@@ -1,0 +1,5 @@
+---
+"@ifc-lite/mcp": minor
+---
+
+Add `script_run` and `script_run_mutate`: run JavaScript against the `bim` SDK in the `@ifc-lite/sandbox` QuickJS sandbox, with `timeout_ms` and `memory_mb` limits. `script_run` has no `bim.mutate` or `bim.store`; `script_run_mutate` needs the `mutate` scope and is hidden under `--read-only`. Neither gets network, files or viewer access. Tools can now declare an `outputSchema`, advertised in `tools/list`.

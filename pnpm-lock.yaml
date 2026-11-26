@@ -2183,6 +2183,9 @@ importers:
       '@ifc-lite/rules':
         specifier: workspace:^
         version: link:../rules
+      '@ifc-lite/sandbox':
+        specifier: workspace:^
+        version: link:../sandbox
       '@ifc-lite/sdk':
         specifier: workspace:^
         version: link:../sdk

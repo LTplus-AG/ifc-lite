@@ -42,13 +42,20 @@ impl ProfileProcessor {
         end_param: Option<f64>,
         quality: TessellationQuality,
     ) -> Result<Vec<Point3<f64>>> {
-        self.set_tessellation_quality(quality);
-        if directrix.ifc_type == IfcType::IfcGradientCurve {
-            let (start, end) = (start_param.map(CurveMeasure::Parameter), end_param.map(CurveMeasure::Parameter));
-            if let Some(samples) = self.get_gradient_directrix(directrix, decoder, start, end)? {
-                return Ok(samples.points);
-            }
-        }
+        let (start, end) = (start_param.map(CurveMeasure::Parameter), end_param.map(CurveMeasure::Parameter));
+        Ok(self.get_directrix_samples(directrix, decoder, start, end, quality)?.points)
+    }
+
+    /// [`Self::get_directrix_points`] for any directrix but a readable
+    /// `IfcGradientCurve`, without evaluated tangents.
+    fn get_plain_directrix_points(
+        &self,
+        directrix: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        start_param: Option<f64>,
+        end_param: Option<f64>,
+        quality: TessellationQuality,
+    ) -> Result<Vec<Point3<f64>>> {
         if start_param.is_none() && end_param.is_none() {
             return self.get_curve_points(directrix, decoder, quality);
         }

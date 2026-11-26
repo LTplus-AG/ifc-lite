@@ -492,7 +492,7 @@ impl AlignmentCurve {
     /// station 100 onward put station 0 at the LAST segment's exit grade
     /// extrapolated backwards across the whole alignment (z = -15 where
     /// the first segment's start height 10 was right).
-    fn evaluate_vertical_frame(&self, station: f64) -> (f64, f64) {
+    pub(crate) fn evaluate_vertical_frame(&self, station: f64) -> (f64, f64) {
         if let Some(profile) = &self.gradient {
             return profile.evaluate(station + profile.first_station());
         }

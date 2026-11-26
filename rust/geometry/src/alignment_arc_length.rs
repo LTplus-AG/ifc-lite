@@ -16,14 +16,18 @@ pub(crate) struct ArcLengthMap {
     warps: Vec<Warp>,
 }
 
-/// An interval `[a, b]` within [`NEAR_POLE`] of its widths from a station
-/// `pole` where the profile is vertical, sampled at `pieces` equal steps of t
-/// in u = sqrt(|h - pole|). Its samples start at index `first`.
+/// An interval ending at `b` within [`NEAR_POLE`] of its widths from a
+/// station `pole` where the profile is vertical, sampled at `pieces` equal
+/// steps of t in u = sqrt(|h - pole|), from `ua` to `ub`. `side` is -1 when
+/// the pole lies after the interval and +1 when before. Its samples start at
+/// index `first`.
 struct Warp {
     first: usize,
-    a: f64,
     b: f64,
     pole: f64,
+    side: f64,
+    ua: f64,
+    ub: f64,
     pieces: usize,
 }
 
@@ -33,15 +37,27 @@ struct Warp {
 const NEAR_POLE: f64 = 8.0;
 
 impl Warp {
-    /// Station and dh/dt at t, with u linear in t from sqrt(|a - pole|) to
-    /// sqrt(|b - pole|) and h = pole -/+ u^2. The speed grows like 1/u near
-    /// the pole and dh/dt is proportional to u, so their product is smooth
-    /// whether or not the interval reaches the pole.
+    /// The warp of `[a, b]` toward `pole`, when the pole is near enough.
+    fn near(first: usize, a: f64, b: f64, pole: f64) -> Option<Self> {
+        let after = pole > 0.5 * (a + b);
+        let gap = if after { pole - b } else { a - pole };
+        (gap < NEAR_POLE * (b - a)).then(|| Self {
+            first,
+            b,
+            pole,
+            side: if after { -1.0 } else { 1.0 },
+            ua: (a - pole).abs().sqrt(),
+            ub: (b - pole).abs().sqrt(),
+            pieces: if gap < b - a { 64 } else { 16 },
+        })
+    }
+
+    /// Station and dh/dt at t, with u linear in t and h = pole -/+ u^2. The
+    /// speed grows like 1/u near the pole and dh/dt is proportional to u, so
+    /// their product is smooth whether or not the interval reaches the pole.
     fn station(&self, t: f64) -> (f64, f64) {
-        let side = if self.pole > 0.5 * (self.a + self.b) { -1.0 } else { 1.0 };
-        let (ua, ub) = ((self.a - self.pole).abs().sqrt(), (self.b - self.pole).abs().sqrt());
-        let u = ua + (ub - ua) * t;
-        (self.pole + side * u * u, 2.0 * side * u * (ub - ua))
+        let u = self.ua + (self.ub - self.ua) * t;
+        (self.pole + self.side * u * u, 2.0 * self.side * u * (self.ub - self.ua))
     }
 }
 
@@ -67,14 +83,13 @@ impl ArcLengthMap {
             for i in 1..=count {
                 let a = *stations.last().unwrap_or(&pair[0]);
                 let b = pair[0] + span * (i as f64 / count as f64);
+                // Poles are at breaks, so never inside an interval; the
+                // nearer one is the one with the smaller |u| at an end.
                 let near = poles
                     .iter()
-                    .map(|&pole| (pole, if pole > 0.5 * (a + b) { pole - b } else { a - pole }))
-                    .min_by(|x, y| x.1.total_cmp(&y.1))
-                    .filter(|&(_, gap)| gap < NEAR_POLE * (b - a));
-                if let Some((pole, gap)) = near {
-                    let pieces = if gap < b - a { 64 } else { 16 };
-                    let warp = Warp { first: stations.len() - 1, a, b, pole, pieces };
+                    .filter_map(|&pole| Warp::near(stations.len() - 1, a, b, pole))
+                    .min_by(|x, y| x.ua.min(x.ub).total_cmp(&y.ua.min(y.ub)));
+                if let Some(warp) = near {
                     toward_vertical(alignment, &warp, &mut stations, &mut lengths);
                     warps.push(warp);
                     continue;

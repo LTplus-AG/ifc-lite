@@ -78,7 +78,7 @@ impl ProfileProcessor {
                 return Ok(samples);
             }
         }
-        let points = self.get_directrix_points(
+        let points = self.get_plain_directrix_points(
             directrix,
             decoder,
             start.map(CurveMeasure::value),
@@ -239,11 +239,8 @@ fn refine_span(
 /// Largest vertical distance between the profile and its chord over
 /// `[lo, hi]`, for a profile whose grade is monotone there.
 fn chord_error(alignment: &AlignmentCurve, lo: f64, hi: f64) -> f64 {
-    let profile = |s: f64| {
-        let frame = alignment.evaluate(s);
-        let horizontal = frame.tangent.x.hypot(frame.tangent.y);
-        (frame.origin.z, frame.tangent.z / horizontal)
-    };
+    // (height, grade): the grade reaches +-inf at a vertical end.
+    let profile = |s: f64| alignment.evaluate_vertical_frame(s);
     let ((z_lo, g_lo), (z_hi, g_hi)) = (profile(lo), profile(hi));
     let slope = (z_hi - z_lo) / (hi - lo);
     if (g_hi - g_lo).abs() <= f64::EPSILON || !slope.is_finite() {

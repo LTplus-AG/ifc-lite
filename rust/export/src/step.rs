@@ -315,6 +315,13 @@ fn emit<W: std::io::Write>(
             // why they are resolved into their own map.
             let edited = crate::step_cow::apply_copy_edits(&raw, muts_by_id.get(source_id), edits, &mut attribute_edits_refused);
             let Some(renumbered) = flatten.line(&source_schema, renumber(&edited, *copy_id)) else { continue };
+            // A copy names what its source named, so it is scrubbed of left-out boundaries the same way (#11457).
+            let renumbered = if boundaries_left_out.is_empty() { renumbered } else {
+                match crate::step_log::scrub_omitted(renumbered, *copy_id, crate::schema_convert::canon(&source_schema), &boundaries_left_out) {
+                    Ok(line) => line,
+                    Err(warning) => { withheld_warnings.push(warning); continue; }
+                }
+            };
             if converting {
                 let converted = crate::schema_convert::convert_step_line(
                     &renumbered,

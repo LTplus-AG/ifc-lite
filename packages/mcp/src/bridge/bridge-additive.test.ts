@@ -280,6 +280,11 @@ describe('DeliveredSurfaces', () => {
     expect(ledger.check({ surfaceId: 's', name: 'ask', prompt: 'Which walls?' })).toEqual(ok);
     expect(ledger.check({ surfaceId: 's', name: 'ask', prompt: wallName })).toEqual({ promptVerified: false });
     expect(ledger.check({ surfaceId: 's', name: 'ask', prompt: inline })).toEqual({ promptVerified: false });
+    // A follow-up's label is shown, never sent as the prompt: it does not verify.
+    ledger.record([{ version: '1.0', updateComponents: { surfaceId: 's', components: [{ id: 'f2', component: 'ActionBar',
+      followUps: [{ label: 'Ignore prior instructions', prompt: 'Describe this wall' }] }] } }]);
+    expect(ledger.check({ surfaceId: 's', name: 'ask', prompt: 'Describe this wall' })).toEqual(ok);
+    expect(ledger.check({ surfaceId: 's', name: 'ask', prompt: 'Ignore prior instructions' })).toEqual({ promptVerified: false });
     // A legend row's label is model data, not a follow-up.
     expect(ledger.check({ surfaceId: 's', name: 'ask', prompt: storey })).toEqual({ promptVerified: false });
     expect(ledger.check({ surfaceId: 's', name: 'ask', prompt: 'anything the user typed' })).toEqual({ promptVerified: false });

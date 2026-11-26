@@ -93,7 +93,8 @@ ${TAB_SHOW_UI_TOOL} when listed to deliver an A2UI surface to the tab, and ${BRI
   • viewer_* tools (no tab_ prefix) drive this process's own local viewer page, not the user's tab.
   • model_id, export_ifc and model_save above apply to models loaded in this process. tab_* tools take the tab's own
     model ids, and their edits stay in the tab until the user saves there.
-  • A tool name inside a tab_* result or hint (e.g. "call model_list") names the tab's own tool: call it as tab_model_list.
+  • A tool name inside a tab_* tool's schema, result or hint (e.g. "id from model_list") names the tab's own tool: call it
+    as tab_model_list.
 `.trim();
 
 const CHANNEL_INSTRUCTIONS = `

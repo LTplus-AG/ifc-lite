@@ -13,11 +13,12 @@
  * (`{ event: { name } }`) in that surface. Anything else is dropped.
  *
  * An admitted event's prompt is VERIFIED only when it is follow-up text the
- * agent wrote in that surface: a follow-up's `prompt` or `label`, an event
- * action's `userMessage` or `context.prompt`, or the label of the component
- * that carries it, or the renderer's generic `Action: <name>` line. Data values
- * (entity names, property values, legend rows, `updateDataModel`) never
- * verify a prompt: they may come from the model. Any other prompt, typed
+ * agent wrote in that surface: a follow-up's `prompt`, an event action's
+ * `userMessage` or `context.prompt`, or the renderer's generic
+ * `Action: <name>` line: the texts the renderer sends as a prompt. Labels
+ * never verify (the renderer never sends one, and agents put entity names in
+ * them), nor do data values (entity names, property values, legend rows,
+ * `updateDataModel`), which may come from the model. Any other prompt, typed
  * into a field or computed by the renderer, is still delivered, but marked
  * unverified, and the agent reads it as quoted data rather than as the
  * user's words (`channelParams`).
@@ -79,11 +80,9 @@ function addString(set: Set<string>, value: unknown): void {
 }
 
 /**
- * Follow-up text and event names from the agent's component definitions.
- * Only two shapes carry follow-up text: a follow-up (`{ label, prompt }`)
- * and an object with an `action` (a button: its `label`, and the action's
- * `userMessage` and `event.context.prompt`). A `label` anywhere else (a
- * legend row) may be model data and is not taken.
+ * Follow-up text and event names from the agent's component definitions:
+ * a follow-up's `prompt` (`{ label, prompt }`), and an event action's
+ * `userMessage` and `context.prompt`.
  */
 function collect(value: unknown, into: Surface): void {
   if (Array.isArray(value)) {
@@ -91,13 +90,9 @@ function collect(value: unknown, into: Surface): void {
     return;
   }
   if (!isRecord(value)) return;
-  if (typeof value.prompt === 'string' && typeof value.label === 'string') {
-    addString(into.prompts, value.prompt);
-    addString(into.prompts, value.label);
-  }
+  if (typeof value.prompt === 'string' && typeof value.label === 'string') addString(into.prompts, value.prompt);
   const action = value.action;
   if (isRecord(action)) {
-    addString(into.prompts, value.label);
     const event = action.event;
     if (isRecord(event)) {
       addString(into.events, event.name);

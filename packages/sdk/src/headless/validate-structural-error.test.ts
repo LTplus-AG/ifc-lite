@@ -17,7 +17,7 @@ vi.mock('@ifc-lite/parser', async (importOriginal) => ({
   structuralConsistencyReport: () => { throw 'unreadable structural record'; },
 }));
 
-const { computeValidationIssues } = await import('./validate.js');
+const { computeValidationIssues } = await import('./validation-issues.js');
 
 describe('validate: structural consistency that cannot run', () => {
   it('reports the failure instead of throwing, and keeps the other rules', async () => {

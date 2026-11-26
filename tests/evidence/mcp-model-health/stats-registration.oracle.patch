@@ -1,0 +1,7 @@
+--- a/packages/mcp/src/tools/model-health.ts
++++ b/packages/mcp/src/tools/model-health.ts
+@@ -18,3 +18,3 @@
+ const modelStats: Tool = {
+-  name: 'model_stats_hidden',
++  name: 'model_stats',
+   title: 'Model statistics',

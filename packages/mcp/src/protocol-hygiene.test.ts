@@ -24,6 +24,7 @@ import {
   readOnlyScope,
   SILENT_LOGGER,
   type LoadedModel,
+  type ModelRegistry,
   type Tool,
 } from './index.js';
 import { allPrompts } from './prompts/templates.js';
@@ -39,8 +40,7 @@ const fakeModel = (id: string, name = id): LoadedModel => ({
   backend: { setPeerScopes() { /* no peers */ }, dispose() { /* nothing held */ } },
 } as unknown as LoadedModel);
 
-function build({ readOnly = false } = {}) {
-  const registry = new InMemoryModelRegistry();
+function build({ readOnly = false, registry = new InMemoryModelRegistry() as ModelRegistry } = {}) {
   const tools = new ToolRegistry();
   tools.register({
     name: 'load_fake', description: 'Adds a model. Second sentence.', scope: 'mutate',
@@ -72,7 +72,7 @@ function build({ readOnly = false } = {}) {
   return { server, request, notes };
 }
 
-async function initialized(opts?: { readOnly?: boolean }) {
+async function initialized(opts?: Parameters<typeof build>[0]) {
   const h = build(opts);
   const res = await h.request('initialize', { protocolVersion: PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: 't', version: '0' } });
   return { ...h, init: res.result as { instructions: string; capabilities: Record<string, unknown> } };
@@ -168,18 +168,8 @@ describe('list_changed', () => {
       resolve: () => null, add: (m: LoadedModel) => { models.set(m.id, m); },
       remove: (id: string) => models.delete(id), count: () => models.size,
     };
-    const tools = new ToolRegistry();
-    tools.register({
-      name: 'load', description: 'Adds a model.', inputSchema: { type: 'object' },
-      handler() { registry.add(fakeModel('m')); return { content: [] }; },
-    } satisfies Tool);
-    const server = new MCPServer({ version: '0', registry, tools, resources: buildDefaultResourceRegistry(), prompts: buildDefaultPromptRegistry() });
-    const transport = new InProcessTransport();
-    void transport.connect(server);
-    const notes: Note[] = [];
-    transport.onMessage((m) => notes.push(m as Note));
-    await transport.send({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: 't', version: '0' } } });
-    await transport.send({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'load', arguments: {} } });
+    const { request, notes } = await initialized({ registry });
+    await request('tools/call', { name: 'load_fake', arguments: { id: 'm' } });
     expect(methods(notes, 'notifications/resources/list_changed')).toHaveLength(1);
   });
 

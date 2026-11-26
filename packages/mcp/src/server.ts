@@ -437,7 +437,7 @@ export class MCPServer {
       });
     } finally {
       this.active.delete(req.id);
-      this.syncListedModels(); // for a registry without onChange
+      if (!this.registry.onChange) this.syncListedModels();
     }
   }
 
@@ -467,8 +467,8 @@ export class MCPServer {
 
   /** Per-model resources follow the loaded set the scope permits. */
   private syncListedModels(): void {
-    const ids = this.listedModelsKey();
-    if (ids !== this.listedModels) { this.listedModels = ids; this.notifyResourcesChanged(); }
+    const key = this.listedModelsKey();
+    if (key !== this.listedModels) { this.listedModels = key; this.notifyResourcesChanged(); }
   }
 
   // ────────────────────────────────────────────────────────────────────────

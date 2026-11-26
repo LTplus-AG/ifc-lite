@@ -265,6 +265,13 @@ describe('model_extract', () => {
       .rejects.toMatchObject({ code: 'INVALID_INPUT', message: expect.stringContaining('express_ids') });
   });
 
+  it('refuses to write once the live scope no longer allows the model', async () => {
+    const out = join(tmp, 'withdrawn.ifc');
+    ctx.currentScope = () => ({ ...fullScope(), modelIds: ['someone-else'] });
+    await expect(call('model_extract', { types: ['IfcWall'], file_path: out })).rejects.toMatchObject({ code: 'PERMISSION_DENIED' });
+    await expect(readFile(out)).rejects.toThrow();
+  });
+
   it('treats blank selectors as no selection', async () => {
     await expect(call('model_extract', { global_ids: [''], storeys: [' '], file_path: join(tmp, 'x.ifc') }))
       .rejects.toMatchObject({ code: 'INVALID_INPUT', message: expect.stringContaining('Select something') });

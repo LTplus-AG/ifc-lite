@@ -9,7 +9,8 @@
 import { IfcTypeEnumFromString, isSpatialStructureType, walkPlacementChain } from '@ifc-lite/data';
 import { decodeStepStringLiteral } from '@ifc-lite/encoding';
 import { stepString } from './schema-converter-structural-source.js';
-import { refsOutsideStrings, SINGLE_REF_RE, splitTopLevelArgs, STRUCTURE_RELATION_ATTRS, SubsetSelectionError } from './step-subset-relations.js';
+import { refsOutsideStrings, splitTopLevelArgs, STRUCTURE_RELATION_ATTRS, SubsetSelectionError } from './step-subset-relations.js';
+import { slotRef } from './step-subset-slots.js';
 import { structureParents } from './step-subset-spatial-ancestors.js';
 import type { ParsedStep } from './step-subset.js';
 
@@ -84,7 +85,7 @@ function storeyText(body: string, index: number): string | null {
 }
 
 /** Resolve a --storey selector (GUID / name / expressId) to the storey and its placement. */
-export function resolveStorey(token: string, parsed: ParsedStep): { storeyId: number; placementId: number } {
+export function resolveStorey(token: string, parsed: ParsedStep): { storeyId: number; placementId: number | undefined } {
   let storeyId: number | undefined;
   const t = token.trim();
   // Exact match on the decoded Name, then on LongName (Revit writes '02' as
@@ -138,7 +139,8 @@ export function resolveStorey(token: string, parsed: ParsedStep): { storeyId: nu
   // #99'`) naming an unrelated IfcLocalPlacement.
   const refs = refsOutsideStrings(storey.body);
   const placementId = refs.find((r) => parsed.instances.get(r)?.type === 'IFCLOCALPLACEMENT');
-  if (placementId === undefined) throw new SubsetSelectionError('invalid', `Storey #${storeyId} has no IfcLocalPlacement`);
+  // No placement is allowed (IFC permits a storey whose elements are placed
+  // independently); membership then comes from containment alone.
   return { storeyId, placementId };
 }
 
@@ -162,9 +164,8 @@ function hostOf(parsed: ParsedStep): Map<number, number> {
     if (!HOST_RELATIONS.has(inst.type)) continue;
     const args = splitTopLevelArgs(inst.body);
     if (!args || args.length !== STRUCTURE_RELATION_ATTRS) continue;
-    const relating = SINGLE_REF_RE.exec(args[4]);
-    if (!relating) continue;
-    const whole = Number(relating[1]);
+    const whole = slotRef(args[4]);
+    if (whole === undefined) continue;
     if (PART_WHOLE_RELATIONS.has(inst.type) && isSpatialStructureType(IfcTypeEnumFromString(parsed.instances.get(whole)?.type ?? ''))) continue;
     for (const part of refsOutsideStrings(args[5])) out.set(part, whole);
   }
@@ -204,7 +205,7 @@ function owningStoreys(id: number, parents: ReadonlyMap<number, number[]>, parse
  * that cannot be read leaves its element unowned, so the placement decides.
  * Spatial-structure records other than IfcSpace are never products.
  */
-export function storeyMembers(storeyId: number, placementId: number, parsed: ParsedStep): number[] {
+export function storeyMembers(storeyId: number, placementId: number | undefined, parsed: ParsedStep): number[] {
   const parents = structureParents(parsed.instances, OWNERSHIP);
   const hosts = hostOf(parsed);
   const owners = new Map<number, Set<number>>();
@@ -256,10 +257,22 @@ export function storeyMembers(storeyId: number, placementId: number, parsed: Par
   };
   for (const id of parents.keys()) consider(id);
   for (const id of hosts.keys()) consider(id);
-  for (const id of productsUnderPlacement(placementId, parsed)) {
+  const placed = placementId === undefined ? [] : productsUnderPlacement(placementId, parsed);
+  for (const id of placed) {
     if (out.has(id) || !isCandidate(id)) continue;
     const owner = ownersOf(id);
     if (owner.size === 0 || ownedHere(owner)) out.add(id);
+  }
+  // Unowned parts, openings and fillers of an element the placement pass took
+  // come with it, wherever they are placed (fixpoint: parts of parts).
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const [part, host] of hosts) {
+      if (out.has(part) || !out.has(host) || !isCandidate(part) || ownersOf(part).size > 0) continue;
+      out.add(part);
+      grew = true;
+    }
   }
   return [...out];
 }

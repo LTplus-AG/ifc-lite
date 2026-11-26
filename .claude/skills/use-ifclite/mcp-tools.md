@@ -81,7 +81,7 @@ only the user gave in `values`, never invented ones),
 **Export** — `export_csv`, `export_json`, `export_ifc`, `export_ifcx`,
 `export_glb`, `export_3dm`.
 
-**Model transforms** (write a new file, the loaded model is untouched):
+**Model transforms** (write to `file_path`, replacing a file already there, never a loaded model's source; the loaded model is untouched):
 `model_merge`, `model_convert` (schema version, with a loss report),
 `model_extract` (byte-preserving subset), `model_anonymize`,
 `model_simplify`, `model_lod`.

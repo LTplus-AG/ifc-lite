@@ -10,6 +10,7 @@ import type { LoadedModel, ToolContext } from '../context.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import { rm, writeFile } from 'node:fs/promises';
 import { resolveSafePath } from '../safe-path.js';
+import { modelAllowed, scopeAllows } from '../auth/scope.js';
 import { resolveModel } from './util.js';
 
 /**
@@ -103,9 +104,20 @@ export function lossEntryRow(e: ConversionLossEntry) {
   };
 }
 
-/** Stop before replacing an output file once the client cancelled the call. */
-export function throwIfCancelled(ctx: ToolContext): void {
+/**
+ * Last check before a transform writes its output: the call was not cancelled,
+ * and the live scope still allows exporting these models. The handler may have
+ * awaited source materialization since dispatch, and a scope change in that
+ * window must not let the write through.
+ */
+export function beforeWrite(ctx: ToolContext, ...models: LoadedModel[]): void {
   if (ctx.signal.aborted) throw new ToolExecutionError({ code: ToolErrorCode.CANCELLED, message: 'Cancelled before the output was written.' });
+  const scope = ctx.currentScope?.() ?? ctx.scope;
+  for (const m of models) {
+    if (!scopeAllows(scope, 'export') || !modelAllowed(scope, m.id)) {
+      throw new ToolExecutionError({ code: ToolErrorCode.PERMISSION_DENIED, message: `Access to model '${m.id}' was withdrawn before the output was written.` });
+    }
+  }
 }
 
 /**

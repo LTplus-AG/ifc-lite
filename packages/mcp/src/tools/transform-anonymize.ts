@@ -17,7 +17,7 @@ import { fmtInt, okResult, resolveGlobalIds } from './util.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import { resolveSafePath } from '../safe-path.js';
 import type { LoadedModel, ToolContext } from '../context.js';
-import { FILE_WRITE_ANNOTATIONS, fileOutputSchema, invalid, nonBlank, optionalOutputPath, withIfcPrefix, requireDistinctPaths, requireNoPendingEdits, resolveStepModel, requireSourceBytes, stringList, throwIfCancelled, writeSidecar } from './transform-schema.js';
+import { FILE_WRITE_ANNOTATIONS, fileOutputSchema, invalid, nonBlank, optionalOutputPath, withIfcPrefix, requireDistinctPaths, requireNoPendingEdits, resolveStepModel, requireSourceBytes, stringList, beforeWrite, writeSidecar } from './transform-schema.js';
 
 /** Each relationship the walk follows, with the setting it takes when on (when off: false or 'none'). */
 const FOLLOWED = {
@@ -116,7 +116,7 @@ async function runAnonymize(m: LoadedModel, input: Record<string, unknown>, ctx:
   } catch (err) {
     throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: (err as Error).message });
   }
-  throwIfCancelled(ctx);
+  beforeWrite(ctx, m);
   await writeFile(filePath, result.content);
   // Owner-only: the map reverses the anonymization.
   if (guidMapPath) await writeSidecar(filePath, guidMapPath, JSON.stringify(Object.fromEntries(result.guidMap), null, 2), 0o600);

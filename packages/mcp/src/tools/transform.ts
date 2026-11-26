@@ -45,7 +45,7 @@ import {
   isStepModel,
   withIfcPrefix,
   stringList,
-  throwIfCancelled,
+  beforeWrite,
   unsupported,
 } from './transform-schema.js';
 
@@ -119,7 +119,7 @@ const modelMerge: Tool = {
       mergeStoreys: input.merge_storeys as 'by-name' | 'by-elevation' | 'by-name-then-elevation' | undefined,
       dropEmptyContainers: input.drop_empty_containers === true,
     });
-    throwIfCancelled(ctx);
+    beforeWrite(ctx, ...models);
     await writeFile(filePath, result.content);
     const s = { ...result.stats, warnings: [...conversionWarnings, ...result.stats.warnings] };
     return okResult(
@@ -194,7 +194,7 @@ const modelConvert: Tool = {
       }
       // Bytes, not a decoded string: no V8 string-length limit on large models.
       const content = new StepExporter(store).export({ schema: target }).content;
-      throwIfCancelled(ctx);
+      beforeWrite(ctx, m);
       await writeFile(filePath, content);
       const bytes = content.length;
       return okResult(
@@ -270,7 +270,7 @@ const modelExtract: Tool = {
       }
       const subset = buildSubset(seeds, parsed);
       const out = Buffer.from(serializeSubset(subset, parsed), 'latin1');
-      throwIfCancelled(ctx);
+      beforeWrite(ctx, m);
       await writeFile(filePath, out);
       return okResult(
         `Extracted ${seeds.size} selected entities into ${subset.keep.size} instances: ${filePath}.`,

@@ -15,7 +15,7 @@ import { fmtInt, okResult } from './util.js';
 import { refusingEmpty, withIfcBytes } from './export-source.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import { resolveSafePath } from '../safe-path.js';
-import { FILE_WRITE_ANNOTATIONS, fileOutputSchema, invalid, optionalOutputPath, refuseSourceIdsWhilePending, requireDistinctPaths, resolveStepModel, throwIfCancelled, unsupported, writeSidecar } from './transform-schema.js';
+import { FILE_WRITE_ANNOTATIONS, fileOutputSchema, invalid, optionalOutputPath, refuseSourceIdsWhilePending, requireDistinctPaths, resolveStepModel, beforeWrite, unsupported, writeSidecar } from './transform-schema.js';
 
 const modelSimplify: Tool = {
   name: 'model_simplify',
@@ -71,7 +71,7 @@ const modelSimplify: Tool = {
             message: `Simplified ${simplified.elements.length} meshes, but none could be applied to the IFC (${exported.report.skipped.length} skipped at export). Nothing written.`,
           });
         }
-        throwIfCancelled(ctx);
+        beforeWrite(ctx, m);
         await writeFile(filePath, exported.bytes);
         const trianglesBefore = simplified.elements.reduce((s, e) => s + e.trisBefore, 0);
         const trianglesAfter = simplified.elements.reduce((s, e) => s + e.trisAfter, 0);
@@ -135,7 +135,7 @@ const modelLod: Tool = {
       if (level === 0) {
         const lod0 = await refusingEmpty(() => generateLod0(bytes), (r) => r.elements.length, 'LOD0 produced no elements: the model has no exportable geometry.');
         const json = Buffer.from(JSON.stringify(lod0, null, 2));
-        throwIfCancelled(ctx);
+        beforeWrite(ctx, m);
         await writeFile(filePath, json);
         return okResult(
           `Wrote LOD0 for ${fmtInt(lod0.elements.length)} elements to ${filePath}.`,
@@ -143,7 +143,7 @@ const modelLod: Tool = {
         );
       }
       const { glb, meta } = await refusingEmpty(() => generateLod1(bytes), (r) => countGlbMeshes(r.glb), 'LOD1 produced no meshes: the model has no exportable geometry.');
-      throwIfCancelled(ctx);
+      beforeWrite(ctx, m);
       // One after the other: a failed meta write must not race a GLB still landing.
       await writeFile(filePath, glb);
       if (metaPath) await writeSidecar(filePath, metaPath, JSON.stringify(meta, null, 2));

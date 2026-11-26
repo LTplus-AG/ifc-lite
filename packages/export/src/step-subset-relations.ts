@@ -272,7 +272,10 @@ export function refsOutsideStrings(arg: string): number[] {
   const ids: number[] = [];
   for (let i = 0; i < arg.length; i++) {
     const char = arg[i];
-    if (char === "'") {
+    if (char === '/' && arg[i + 1] === '*') {
+      // A comment is trivia: a `#id` inside it is not a reference.
+      i = skipStepComment(arg, i) - 1;
+    } else if (char === "'") {
       // #7589: the shared literal-end rule (`''`, PAGE-directive operand).
       const end = stepStringLiteralEnd(arg, i);
       if (end < 0) break; // never closes: the rest is string text

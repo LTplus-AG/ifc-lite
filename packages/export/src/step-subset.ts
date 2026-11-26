@@ -19,7 +19,9 @@
 import { stepStringLiteralEnd } from '@ifc-lite/encoding';
 import { expandTypes } from '@ifc-lite/parser';
 import { getIfcRootTypes } from './subset-roots.js';
-import { planSpatialRelations, refsOutsideStrings, SubsetSelectionError, type StepRecord, type Subset } from './step-subset-relations.js';
+import { planSpatialRelations, refsOutsideStrings, splitTopLevelArgs, SubsetSelectionError, type StepRecord, type Subset } from './step-subset-relations.js';
+import { slotRef } from './step-subset-slots.js';
+import { skipStepComment } from './step-comment-skip.js';
 import { spatialAncestors } from './step-subset-spatial-ancestors.js';
 import { resolveStorey, storeyMembers } from './step-subset-storey.js';
 
@@ -40,11 +42,32 @@ export interface ParsedStep {
  * mis-fires on names containing `;` or `#` (common in Revit exports), so this
  * scans character by character instead.
  */
+/** Index of the `DATA;` section token, ignoring header string literals and comments; -1 if none. */
+function findDataSection(text: string): number {
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === "'") {
+      const end = stepStringLiteralEnd(text, i);
+      if (end < 0) return -1;
+      i = end - 1;
+    } else if (ch === '/' && text[i + 1] === '*') {
+      i = skipStepComment(text, i) - 1;
+    } else if (text.startsWith('DATA;', i) && !/[A-Za-z0-9_]/.test(text[i - 1] ?? '')) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+/** Voids, fills and projections: the relation pulls a feature in once its anchor (attribute 5) is kept. */
+const HOST_FEATURE_RELATIONS = new Set(['IFCRELVOIDSELEMENT', 'IFCRELFILLSELEMENT', 'IFCRELPROJECTSELEMENT']);
+
 export function parseStep(text: string): ParsedStep {
-  const dataStart = text.indexOf('DATA;');
+  const dataStart = findDataSection(text);
   if (dataStart < 0) throw new Error('Not a STEP file: no DATA; section');
-  const headerEnd = text.indexOf('\n', dataStart) + 1;
-  const header = text.slice(0, headerEnd);
+  // The header ends at the `DATA;` token itself: a record may follow on the same line.
+  const headerEnd = dataStart + 'DATA;'.length;
+  const header = text.slice(0, headerEnd) + '\n';
   const data = text;
 
   const instances = new Map<number, StepRecord>();
@@ -56,6 +79,11 @@ export function parseStep(text: string): ParsedStep {
   while (i < n) {
     // Seek the next `#`
     while (i < n && data[i] !== '#') {
+      // Comments between records are trivia, never a terminator.
+      if (data[i] === '/' && data[i + 1] === '*') {
+        i = skipStepComment(data, i);
+        continue;
+      }
       // Stop at ENDSEC to avoid scanning the footer.
       if (data.startsWith('ENDSEC', i)) {
         i = n;
@@ -84,7 +112,10 @@ export function parseStep(text: string): ParsedStep {
     let depth = 0;
     for (; j < n; j++) {
       const ch = data[j];
-      if (ch === "'") {
+      if (ch === '/' && data[j + 1] === '*') {
+        // A comment's quotes and parentheses do not frame the record.
+        j = skipStepComment(data, j) - 1;
+      } else if (ch === "'") {
         // The shared literal-end rule (`''`, PAGE-directive operand, #7589).
         const end = stepStringLiteralEnd(data, j);
         j = end < 0 ? n : end - 1; // unterminated: runs to the end
@@ -131,12 +162,6 @@ export function resolveToId(token: string, parsed: ParsedStep): number {
   if (id === undefined) throw new SubsetSelectionError('not-found', `GlobalId not found in model: ${t}`);
   return id;
 }
-
-// Used only by the voids/fills fixpoint below — a narrower, TYPE-POSITIONAL
-// read (last N refs of a known relation shape) than forwardClosure's
-// open-ended scan. `productsUnderPlacement`/`resolveStorey` used
-// this too, until free text tripped it; see `refsOutsideStrings` there, #4148.
-const REF_RE = /#(\d+)/g;
 
 /**
  * Forward reference closure: every instance transitively referenced by
@@ -199,13 +224,15 @@ export function buildSubset(seedProducts: Set<number>, parsed: ParsedStep): Subs
     grew = false;
     for (const inst of parsed.instances.values()) {
       if (keep.has(inst.id)) continue;
-      if (inst.type !== 'IFCRELVOIDSELEMENT' && inst.type !== 'IFCRELFILLSELEMENT') continue;
+      if (!HOST_FEATURE_RELATIONS.has(inst.type)) continue;
       // Different meanings, one shape. `Relating` (attribute 5, the second-to-last
       // reference) is the ANCHOR that must be kept already: the host wall for voids, the
       // opening for fills. `Related` (attribute 6) is what the relation drags in, the
       // opening or the filling window/door, and it is not read here because the closure
       // below reaches it anyway.
-      const anchor = [...inst.body.matchAll(REF_RE)].map((m) => parseInt(m[1], 10)).at(-2);
+      // Read from its attribute slot, comments allowed, not the second-to-last
+      // `#` in the body (a trailing comment naming an id would win that race).
+      const anchor = slotRef(splitTopLevelArgs(inst.body)?.[4]);
       if (anchor === undefined || !keep.has(anchor)) continue;
       // Close over the relation itself, not just what it drags in: the rel's own
       // OwnerHistory must be kept too or the subset emits a dangling ref.

@@ -21,8 +21,8 @@
  * was actually selected, and needs no type list at all.
  */
 import { IfcTypeEnumFromString, isSpatialStructureType } from '@ifc-lite/data';
+import { slotRef, withoutComments } from './step-subset-slots.js';
 import {
-  SINGLE_REF_RE,
   splitTopLevelArgs,
   STRUCTURE_RELATIONS,
   STRUCTURE_RELATION_ATTRS,
@@ -58,21 +58,20 @@ export function structureParents(
     const [relatingIdx, relatedIdx] = slots;
     const args = splitTopLevelArgs(inst.body);
     if (args === null || args.length !== STRUCTURE_RELATION_ATTRS) continue;
-    const relating = SINGLE_REF_RE.exec(args[relatingIdx]);
-    if (relating === null) continue;
-    const parentId = Number(relating[1]);
+    // Comments around a reference are trivia (slotRef / withoutComments).
+    const parentId = slotRef(args[relatingIdx]);
+    if (parentId === undefined) continue;
     if (inst.type === 'IFCRELAGGREGATES') {
       const parentType = IfcTypeEnumFromString(instances.get(parentId)?.type ?? '');
       if (!isSpatialStructureType(parentType)) continue;
     }
-    const setText = args[relatedIdx];
+    const setText = withoutComments(args[relatedIdx]).trim();
     if (!setText.startsWith('(') || !setText.endsWith(')')) continue;
     const members = splitTopLevelArgs(setText.slice(1, -1));
     if (members === null) continue;
     for (const member of members) {
-      const ref = SINGLE_REF_RE.exec(member);
-      if (ref === null) continue;
-      const childId = Number(ref[1]);
+      const childId = slotRef(member);
+      if (childId === undefined) continue;
       const existing = parents.get(childId);
       if (existing) existing.push(parentId);
       else parents.set(childId, [parentId]);

@@ -104,7 +104,7 @@ export interface EntityLengthPlan {
   /** Scalar volume attributes → scale by the volume factor. */
   volumeIdx: number[];
   /** Scalar profile measures and their STEP type names. */
-  profileMeasures: { index: number; measure: string; power: number }[];
+  profileMeasures: { index: number; measure: string }[];
   /**
    * Indices of unit-override attributes (`Unit` / `DefiningUnit` / `DefinedUnit`,
    * typed IfcNamedUnit or the IfcUnit SELECT). An explicit unit protects its
@@ -179,8 +179,7 @@ function buildEntityLengthPlan(typeUpper: string, legacySchema?: 'IFC2X3'): Enti
   fields.forEach((a, i) => {
     const { base, isList } = attrBaseType(a.type, a);
     const measure = base.toUpperCase();
-    const power = PROFILE_MEASURE_POWERS.get(measure);
-    if (power !== undefined && !isList) profileMeasures.push({ index: i, measure, power });
+    if (PROFILE_MEASURE_POWERS.has(measure) && !isList) profileMeasures.push({ index: i, measure });
     if (LENGTH_MEASURE_TYPES.has(base)) {
       if (isList) listIdx.push(i);
       else scalarIdx.push(i);
@@ -236,6 +235,13 @@ const TYPED_MEASURE_RE = new RegExp(
   'gi',
 );
 
+/** A profile measure's factor. NaN (`profileMeasureFactors`) is a declared unit whose scale cannot be resolved. */
+function profileFactor(measure: string, profileFactors: ReadonlyMap<string, number> | undefined, lengthFactor: number): number {
+  const factor = profileFactors?.get(measure) ?? lengthFactor ** (PROFILE_MEASURE_POWERS.get(measure) ?? 1);
+  if (Number.isNaN(factor)) throw new Error(`Cannot normalize ${measure}: its declared unit scale cannot be resolved`);
+  return factor;
+}
+
 export function scaleTypedMeasures(
   text: string,
   lengthFactor: number,
@@ -251,7 +257,7 @@ export function scaleTypedMeasures(
       const kw = keyword.toUpperCase();
       const factor = kw === 'IFCAREAMEASURE' ? areaFactor
         : kw === 'IFCVOLUMEMEASURE' ? volumeFactor
-        : profileFactors?.get(kw) ?? lengthFactor ** (PROFILE_MEASURE_POWERS.get(kw) ?? 1);
+        : profileFactor(kw, profileFactors, lengthFactor);
       if (preserveTrivia && factor === 1) return full;
       const scaled = scaleMeasureNumber(before, num, after, factor, preserveTrivia);
       return scaled === undefined ? full : `${keyword}${preserveTrivia ? separator : ''}(${scaled})`;
@@ -351,8 +357,8 @@ export function rescaleEntityLengths(
       for (const idx of plan.volumeIdx) {
         if (args[idx] !== undefined) args[idx] = scaleScalarArg(args[idx], volumeFactor);
       }
-      for (const { index, measure, power } of plan.profileMeasures) {
-        if (args[index] !== undefined) args[index] = scaleScalarArg(args[index], profileFactors?.get(measure) ?? lengthFactor ** power);
+      for (const { index, measure } of plan.profileMeasures) {
+        if (args[index] !== undefined && BARE_MEASURE_RE.test(args[index])) args[index] = scaleScalarArg(args[index], profileFactor(measure, profileFactors, lengthFactor));
       }
       inner = args.join(',');
     }

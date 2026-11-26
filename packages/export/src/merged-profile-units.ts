@@ -9,15 +9,17 @@ export function readProfileProjectUnits({ source, entityIndex }: IfcDataStore): 
   if (source) return extractProjectUnits(source, entityIndex);
 }
 
+/** The declared unit's SI scale, or NaN when the project declares the unit but its scale cannot be resolved. */
 function declaredScale(units: ProjectUnits | undefined, unitType: string, measure: string): number | undefined {
   const scale = units?.resolvedForUnitType(unitType)?.siScale;
-  if (units?.unitForMeasure(measure) === null || (scale !== undefined && (!Number.isFinite(scale) || scale <= 0))) {
-    throw new Error(`Cannot normalize declared ${unitType}: its unit scale cannot be resolved`);
-  }
+  if (units?.unitForMeasure(measure) === null || (scale !== undefined && (!Number.isFinite(scale) || scale <= 0))) return NaN;
   return scale;
 }
 
-/** Override the length-based factor when either project declares the derived unit. */
+/**
+ * Override the length-based factor when either project declares the derived unit. A NaN factor marks a declared
+ * unit whose scale cannot be resolved: only scaling a value that inherits it fails (`profileFactor`).
+ */
 export function profileMeasureFactors(
   source: ProjectUnits | undefined, target: ProjectUnits | undefined,
   sourceLength: number, targetLength: number,

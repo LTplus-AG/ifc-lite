@@ -1297,6 +1297,25 @@ describe('MergedExporter', () => {
     });
 
     it.each([
+      ['no profile value', null, true],
+      ['a value with an explicit unit', '#18=IFCPROPERTYSINGLEVALUE(\'Section datum\',$,IFCMASSPERLENGTHMEASURE(50.),#23);', true],
+      ['a value that inherits the unit', '#18=IFCPROPERTYSINGLEVALUE(\'Section datum\',$,IFCMASSPERLENGTHMEASURE(50.),$);', false],
+    ])('an unresolvable declared profile unit fails the merge only for a value that inherits it: %s (#11329)', (_case, property, exports) => {
+      const secondary = mmModel([
+        ...(property ? [[18, 'IFCPROPERTYSINGLEVALUE', property] as [number, string, string]] : []),
+        [19, 'IFCCONTEXTDEPENDENTUNIT', "#19=IFCCONTEXTDEPENDENTUNIT(#24,.MASSUNIT.,'lump');"],
+        [20, 'IFCSIUNIT', '#20=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);'],
+        [21, 'IFCDERIVEDUNITELEMENT', '#21=IFCDERIVEDUNITELEMENT(#19,1);'],
+        [22, 'IFCDERIVEDUNITELEMENT', '#22=IFCDERIVEDUNITELEMENT(#20,-1);'],
+        [23, 'IFCDERIVEDUNIT', '#23=IFCDERIVEDUNIT((#21,#22),.MASSPERLENGTHUNIT.,$);'],
+        [24, 'IFCDIMENSIONALEXPONENTS', '#24=IFCDIMENSIONALEXPONENTS(0,1,0,0,0,0,0);'],
+      ], [23]);
+      const run = () => new MergedExporter([metreModel(), secondary]).export({ schema: 'IFC4', unitReconciliation: 'normalize' });
+      if (exports) expect(run().stats.normalizedModelCount).toBe(1);
+      else expect(run).toThrow('Cannot normalize IFCMASSPERLENGTHMEASURE: its declared unit scale cannot be resolved');
+    });
+
+    it.each([
       ['MASSPERLENGTH', -1, '50.', 50],
       ['MOMENTOFINERTIA', 4, '2.E-5', 2e-5],
       ['SECTIONMODULUS', 3, '3.E-4', 3e-4],

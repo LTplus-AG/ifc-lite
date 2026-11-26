@@ -13,6 +13,8 @@ import { render, cleanup, click, type, press, settle } from '@/test/render';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useViewerStore } from '@/store';
+import { setGlobalRendererRef } from '@/lib/renderer-ref';
+import type { GeometryResult } from '@ifc-lite/geometry';
 import { noteDeviationWrite } from '@/lib/model-placement/preview-analysis';
 import { emptyPlacementState, displayedTranslation, placementFor } from '@/lib/model-placement/state';
 import { ToolOverlays } from '../ToolOverlays';
@@ -410,6 +412,41 @@ describe('model repositioning user interactions (#4226)', () => {
     click(button(ui, 'Apply rotation'));
     assert.match(ui.querySelector('[role="alert"]')!.textContent!, /pivot/i);
     assert.equal(placementFor(useViewerStore.getState().modelPlacement, 'ifc').rotation.angle, 0);
+  });
+
+  it('offers a moving model with a visible renderer-only instance and hidden baked geometry (#11419)', () => {
+    const renderer = new Renderer(document.createElement('canvas'));
+    mock.method(renderer.getScene(), 'getInstancedEntityIds', function* () { yield 7; });
+    mock.method(renderer.getScene(), 'getInstancedEntityCount', () => 1);
+    const bounds = { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 0 } };
+    const geometryResult: GeometryResult = {
+      meshes: [{
+        expressId: 5, positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+        indices: new Uint32Array([0, 1, 2]), normals: new Float32Array(9), color: [1, 1, 1, 1],
+      }],
+      totalTriangles: 1, totalVertices: 3,
+      coordinateInfo: { originShift: bounds.min, originalBounds: bounds, shiftedBounds: bounds, hasLargeCoordinates: false },
+    };
+    const moving = fixtureModel('ifc', { entities: [{ expressId: 5, type: 'IfcWall' }, { expressId: 7, type: 'IfcWall' }] });
+    try {
+      setGlobalRendererRef({ current: renderer });
+      act(() => {
+        useViewerStore.setState({
+          ...fixtureModels({ ...moving, geometryResult }),
+          hiddenEntities: new Set([5]), isolatedEntities: null,
+        });
+        useViewerStore.getState().openReposition(['ifc']);
+      });
+      const ui = render(<><SceneOverlayRoot><ToolOverlays /></SceneOverlayRoot><LocalTab /></>);
+      click(button(ui, 'Pick source point'));
+      assert.match(ui.textContent ?? '', /Pick a source point on a moving model \(ifc\)/);
+      act(() => useViewerStore.setState({ isolatedEntities: new Set([5]) }));
+      assert.doesNotMatch(ui.textContent ?? '', /Pick a source point on a moving model/);
+      assert.match(ui.textContent ?? '', /Pick a source point\. Use the other mouse buttons/);
+    } finally {
+      setGlobalRendererRef(null);
+      useViewerStore.setState({ hiddenEntities: new Set(), isolatedEntities: null });
+    }
   });
 
   it('offers the rotation control for a model with GPU-instanced geometry (#4890)', () => {

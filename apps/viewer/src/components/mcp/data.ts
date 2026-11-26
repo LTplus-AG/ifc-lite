@@ -66,7 +66,7 @@ export const CATEGORY_BLURBS: Record<ToolCategory, string> = {
   BCF: 'Author and export buildingSMART topics + viewpoints.',
   bSDD: 'Look up canonical class/property metadata.',
   Diff: 'Compare two loaded models — added/removed/changed.',
-  Export: 'Dump to .ifc, CSV, JSON, glTF, IFCx, PDF.',
+  Export: 'Dump to .ifc, CSV, JSON, glTF, IFCx.',
   Viewer: 'Drive the live WebGL viewer; subscribe to user picks.',
   Clash: 'Mesh in-browser and detect hard/clearance interferences.',
 };

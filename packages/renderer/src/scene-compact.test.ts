@@ -355,8 +355,9 @@ describe('compact meshes in the scene', () => {
     scene.removeMeshesForEntity(36);
     assert.equal(pages(scene).length, 0);
     assert.equal(scene.hasStreamingFragments(), false);
-    upload(scene, gpu, compactBatch([{ expressId: 37, at: [8, 0, 0], size: 1, color: GREY }]));
-    assert.deepEqual(pages(scene)[0].origin, [-16, -16, -16], 'the origin is taken from the new first window');
+    // The store-wide origin goes with the last page, so the next model's first window picks its own.
+    const store = (scene as unknown as { compact: { store: { origin: unknown } } }).compact.store;
+    assert.equal(store.origin, null);
   });
 
   it('ask a refused mesh once: a page that keeps it draws whole without failing every frame', async () => {

@@ -92,7 +92,7 @@ export class SceneCompact {
   /** Pages a frame could not split into sub-batches: their meshes move to buckets at the next drain. */
   private demotionPages = new Set<BatchedMesh>();
   /** Paged meshes the bucket path refused: a frame's split request no longer asks for them. */
-  private readonly refused = new WeakSet<MeshData>();
+  private refused = new WeakSet<MeshData>();
   /** Pages were rebuilt outside a stream (after a device loss): trim them at the drain that uploads them. */
   private trimAfterDrain = false;
 
@@ -381,6 +381,7 @@ export class SceneCompact {
     this.combined = null;
     this.gpu = null;
     this.demotionPages.clear(); // it was asked of pages that no longer exist
+    this.refused = new WeakSet(); // judged again on the pages they come back to
     this.trimAfterDrain = true;
     this.scene.bumpPickGeometryRevision();
   }
@@ -393,6 +394,7 @@ export class SceneCompact {
     this.byId.clear();
     this.combined = null;
     this.demotionPages.clear();
+    this.refused = new WeakSet();
     this.trimAfterDrain = false;
   }
 }

@@ -65,7 +65,6 @@
     { "name": "export_json",         "category": "Export",     "scope": "export", "description": "Structured JSON dump of attributes/properties/quantities for a type set.", "inputSchema": { "type": "object" } },
     { "name": "export_glb",          "category": "Export",     "scope": "export", "description": "(v0.2) Geometry export to glTF binary — needs the WASM mesh pipeline.", "inputSchema": { "type": "object" } },
     { "name": "export_ifcx",         "category": "Export",     "scope": "export", "description": "(v0.2) Export to the new IFCx interchange format.", "inputSchema": { "type": "object" } },
-    { "name": "export_pdf_report",   "category": "Export",     "scope": "export", "description": "(v0.5) Branded PDF audit report with charts.", "inputSchema": { "type": "object" } },
 
     { "name": "viewer_ask",          "category": "Viewer",     "scope": "read",   "description": "Suggest wording the agent can use to ask the user for permission to open the viewer.", "inputSchema": { "type": "object" } },
     { "name": "viewer_open",         "category": "Viewer",     "scope": "read",   "description": "Boot the in-process WebGL viewer and return its URL for the user to open.", "inputSchema": { "type": "object" } },

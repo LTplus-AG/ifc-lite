@@ -22,6 +22,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import type { AuthScope } from './auth/scope.js';
 import type { HeadlessLikeBackend } from './headless-backend.js';
 import type { ViewerManager } from './viewer-manager.js';
+import type { ToolCatalogEntry } from './tool-catalog.js';
 
 export interface LoadedModel {
   id: string;
@@ -63,10 +64,25 @@ export interface ModelRegistry {
   add(model: LoadedModel): void;
   remove(id: string): boolean;
   count(): number;
+  /** Called after every add or remove. Returns the unsubscribe. Optional for custom registries. */
+  onChange?(listener: () => void): () => void;
 }
 
 export class InMemoryModelRegistry implements ModelRegistry {
   private models = new Map<string, LoadedModel>();
+  private listeners = new Set<() => void>();
+
+  onChange(listener: () => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  /** The change is already committed: a failing listener is reported, never thrown at the add/remove caller. */
+  private changed(): void {
+    for (const listener of this.listeners) {
+      try { listener(); } catch (err) { console.error('[ifc-lite-mcp] model registry listener failed:', err); }
+    }
+  }
 
   list(): LoadedModel[] {
     return Array.from(this.models.values());
@@ -90,11 +106,14 @@ export class InMemoryModelRegistry implements ModelRegistry {
     if (previous && previous !== model) previous.backend.dispose();
     this.models.set(model.id, model);
     model.backend.setPeerScopes(() => this.list().filter(peer => peer !== model).map(peer => ({ dataStore: peer.store, view: peer.backend.getMutationView() })));
+    this.changed();
   }
 
   remove(id: string): boolean {
     this.models.get(id)?.backend.dispose();
-    return this.models.delete(id);
+    const removed = this.models.delete(id);
+    if (removed) this.changed();
+    return removed;
   }
 
   count(): number {
@@ -147,6 +166,8 @@ export interface ToolContext {
   session?: SessionIdentity;
   /** Optional: present when the server has a managed in-process viewer. */
   viewer?: ViewerManager;
+  /** The tools this caller may see, for the server manifest. Set by the server on resource reads. */
+  toolCatalog?: () => ToolCatalogEntry[];
 }
 
 export interface ServerConfig {

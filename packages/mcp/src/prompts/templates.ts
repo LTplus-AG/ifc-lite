@@ -16,10 +16,6 @@ function userMessage(text: string) {
   return { role: 'user' as const, content: { type: 'text' as const, text } };
 }
 
-function systemMessage(text: string) {
-  return { role: 'system' as const, content: { type: 'text' as const, text } };
-}
-
 export const auditModel: Prompt = {
   name: 'audit_model',
   description: 'Run the model_audit tool and explain the top issues by impact, suggesting fixes.',
@@ -28,9 +24,9 @@ export const auditModel: Prompt = {
     return {
       description: 'Comprehensive model health check',
       messages: [
-        systemMessage('You are a senior BIM modeler reviewing IFC quality.'),
         userMessage(
           [
+            'You are a senior BIM modeler reviewing IFC quality.\n',
             'Run `model_audit` on the loaded model',
             args.model_id ? ` (model_id="${args.model_id}")` : '',
             '. For each ERROR-severity issue, explain in plain language: ',
@@ -141,8 +137,8 @@ export const clashReview: Prompt = {
     return {
       description: 'Clash review',
       messages: [
-        systemMessage('You are a BIM coordination lead triaging clash results.'),
         userMessage([
+          'You are a BIM coordination lead triaging clash results.',
           `Run \`clash_matrix\` (mode="${mode}") on the model.`,
           'Summarize the byRule and bySeverity breakdowns. Those are complete counts over every clash.',
           'Then produce a top-20 list from `sampleClashes`, ordered by distance ascending: deepest penetration first in hard mode, tightest gap first in clearance mode.',

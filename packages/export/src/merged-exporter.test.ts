@@ -1347,10 +1347,11 @@ describe('MergedExporter', () => {
     });
 
     it.each([
-      ['kg/m to kg/m', '.KILO.', '$', '.KILO.', '50.', true],
-      ['g/cm to kg/m', '$', '.CENTI.', '.KILO.', '5.', true],
-      ['g/cm to g/m without a primary derived-unit type entry', '$', '.CENTI.', '$', '5000.', false],
-    ])('normalizes declared mass per length from %s (#11329)', (_case, massPrefix, metrePrefix, primaryMass, expected, indexed) => {
+      ['kg/m to kg/m', '.KILO.', '$', '.KILO.', '$', '50.', true],
+      ['g/cm to kg/m', '$', '.CENTI.', '.KILO.', '$', '5.', true],
+      // The implicit kg/m fallback would give 5: only resolving the primary's g/cm gives 50.
+      ['g/cm to g/cm without a primary derived-unit type entry', '$', '.CENTI.', '$', '.CENTI.', '50.', false],
+    ])('normalizes declared mass per length from %s (#11329)', (_case, massPrefix, metrePrefix, primaryMass, primaryMetre, expected, indexed) => {
       const massPerLengthUnits = (mass: string, length: string): Array<[number, string, string]> => [
         [19, 'IFCSIUNIT', `#19=IFCSIUNIT(*,.MASSUNIT.,${mass},.GRAM.);`],
         [20, 'IFCSIUNIT', `#20=IFCSIUNIT(*,.LENGTHUNIT.,${length},.METRE.);`],
@@ -1358,7 +1359,7 @@ describe('MergedExporter', () => {
         [22, 'IFCDERIVEDUNITELEMENT', '#22=IFCDERIVEDUNITELEMENT(#20,-1);'],
         [23, 'IFCDERIVEDUNIT', '#23=IFCDERIVEDUNIT((#21,#22),.MASSPERLENGTHUNIT.,$);'],
       ];
-      const primary = metreModel(massPerLengthUnits(primaryMass, '$'), [23]);
+      const primary = metreModel(massPerLengthUnits(primaryMass, primaryMetre), [23]);
       if (!indexed) primary.dataStore.entityIndex.byType.delete('IFCDERIVEDUNIT');
       const secondary = mmModel([
         [18, 'IFCPROPERTYSINGLEVALUE', "#18=IFCPROPERTYSINGLEVALUE('Section weight',$,IFCMASSPERLENGTHMEASURE(50.),$);"],

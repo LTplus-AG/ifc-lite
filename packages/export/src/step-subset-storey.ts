@@ -58,10 +58,22 @@ export function productsUnderPlacement(storeyPlacementId: number, parsed: Parsed
   return seeds;
 }
 
+const UTF8 = new TextDecoder('utf-8', { fatal: true });
+
 /** A storey record's decoded Name (third attribute), or null when it is not a string. */
 function storeyName(body: string): string | null {
   const text = stepString(splitTopLevelArgs(body)?.[2]);
-  return text === null ? null : decodeStepStringLiteral(text);
+  if (text === null) return null;
+  const name = decodeStepStringLiteral(text);
+  // The subset parse reads the file as latin1, so a name a tool wrote as raw
+  // UTF-8 bytes arrives as one char per byte. Re-read it as UTF-8 when it is.
+  if (!/[\u0080-\u00ff]/.test(name) || /[^\u0000-\u00ff]/.test(name)) return name;
+  try {
+    return UTF8.decode(Uint8Array.from(name, (c) => c.charCodeAt(0)));
+  } catch (err) {
+    if (!(err instanceof TypeError)) throw err;
+    return name; // not valid UTF-8: the bytes were latin1 text after all
+  }
 }
 
 /** Resolve a --storey selector (GUID / name / expressId) to its placement id. */

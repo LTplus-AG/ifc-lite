@@ -5,8 +5,9 @@
 /**
  * Model transforms that write a new IFC file: merge, schema convert, raw STEP
  * subset extraction and anonymized subset export. Each is a thin wrapper over
- * the `@ifc-lite/export` function the CLI command of the same name calls, so
- * the two surfaces give the same answer. Geometry transforms (simplify, LOD)
+ * the `@ifc-lite/export` function the CLI command of the same name calls.
+ * One default differs on purpose: `model_merge` keeps the first model's schema
+ * where `ifc-lite merge` writes IFC4. Geometry transforms (simplify, LOD)
  * live in `transform-mesh.ts`.
  */
 
@@ -81,8 +82,9 @@ const modelMerge: Tool = {
     if (new Set(ids).size !== ids.length) throw invalid('model_ids lists a model more than once.');
     if (ids.length < 2) throw invalid(`model_merge needs at least 2 models; ${ids.length} given or loaded.`);
     const models = ids.map((id) => resolveModel(ctx, id));
-    for (const m of models) requireNoPendingEdits(m, 'model_merge');
     const filePath = await resolveSafePath(input.file_path, ctx, 'write');
+    // After the await: an edit queued while it ran must still refuse the call.
+    for (const m of models) requireNoPendingEdits(m, 'model_merge');
     // Default: the first model's schema, so a merge never converts unasked.
     const schema = (input.schema as 'IFC2X3' | 'IFC4' | 'IFC4X3' | undefined)
       ?? (schemaOf(models[0]) as 'IFC2X3' | 'IFC4' | 'IFC4X3');
@@ -223,7 +225,7 @@ const modelExtract: Tool = {
       global_ids: { ...stringList, description: 'Products by GlobalId.' },
       express_ids: { type: 'array', items: { type: 'integer', minimum: 1 }, description: 'Products by express id in the source file.' },
       types: { ...stringList, description: 'Every entity of these IFC types, subtypes included (IfcWall selects IfcWallStandardCase).' },
-      storeys: { ...stringList, description: 'Every product placed under these storeys (GlobalId, express id or name).' },
+      storeys: { ...stringList, description: 'Every product placed under these storeys: GlobalId, #id, or exact Name.' },
     },
     required: ['file_path'],
     additionalProperties: false,

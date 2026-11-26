@@ -52,6 +52,11 @@ describe('resolveStoreyPlacement: a storey NAMED with a number', () => {
     expect(resolveStoreyPlacement('1', described)).toBe(11);
   });
 
+  it('reads a Name written as raw UTF-8 bytes (the parse is latin1)', () => {
+    const latin1 = Buffer.from(text.replace("'0',$,$,#10", "'Erdgeschoß',$,$,#10"), 'utf8').toString('latin1');
+    expect(resolveStoreyPlacement('Erdgeschoß', parseStep(latin1))).toBe(10);
+  });
+
   it('decodes the Name before comparing (doubled quote, \\X2\\ escape)', () => {
     const named = parseStep(text.replace("'0',$,$,#10", "'O''Brien \\X2\\00FC\\X0\\',$,$,#10"));
     expect(resolveStoreyPlacement("O'Brien \u00fc", named)).toBe(10);

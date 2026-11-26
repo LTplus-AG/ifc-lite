@@ -258,6 +258,13 @@ describe('ifc-lite-mcp install: existing configs', () => {
     expect(JSON.parse(io.files.get(path) ?? 'null').mcpServers['ifc-lite'].args).toEqual(['-y', PKG]);
   });
 
+  it('an older entry with other flags still needs --force', () => {
+    const io = fakeIo();
+    io.files.set(path, JSON.stringify({ mcpServers: { 'ifc-lite': { command: 'npx', args: ['-y', '@ifc-lite/mcp@^0.20.0', '--read-only'] } } }));
+    expect(install(['--client', 'cursor'], io)).toBe(1);
+    expect(io.stderr).toContain('--force');
+  });
+
   it('--open is written with a warning that it opens a tab at every start', () => {
     let warned = '';
     const io = fakeIo({ warn: (t) => void (warned += t) });
@@ -367,7 +374,8 @@ describe('ifc-lite-mcp install: dry run and usage errors', () => {
   it.each([
     [[], '--client is required'],
     [['--client', 'zed'], 'Unknown client'],
-    [['--client', 'cursor', '--read-only'], 'Server flags go after --'],
+    [['--client', 'cursor', '--read-only'], 'put it after --'],
+    [['--client', 'cursor', '--dry-run=true'], 'Unknown option --dry-run=true.'],
     [['--client', 'cursor', '--', '--transport', 'http'], 'drop --transport'],
     [['--client', 'cursor', '--', '--transport'], '--transport needs a value'],
     [['--client', 'cursor', '--', '--version'], 'print and exit'],

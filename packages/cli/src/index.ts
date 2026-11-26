@@ -50,8 +50,12 @@ async function main(): Promise<void> {
     activeCommand = 'mcp';
     const raw = process.argv.slice(2);
     const at = raw.findIndex((a, i) => a === 'mcp' && raw[i + 1] === 'install');
+    const tail = raw.slice(at + 2);
+    const dd = tail.indexOf('--');
+    // Global flags before `--` are the CLI's (already applied above); after it they are the server's.
+    const own = parseVerbosity(dd < 0 ? tail : tail.slice(0, dd)).rest;
     const { runInstall } = await import('@ifc-lite/mcp/install');
-    process.exitCode = runInstall(raw.slice(at + 2), undefined, 'ifc-lite mcp install');
+    process.exitCode = runInstall([...own, ...(dd < 0 ? [] : tail.slice(dd))], undefined, 'ifc-lite mcp install');
     return;
   }
 

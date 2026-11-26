@@ -29,6 +29,7 @@ import {
 } from './clients.js';
 import { describeEntry, mergeServer } from './merge.js';
 import { checkServerArgs, EXIT_FLAGS } from './server-args.js';
+import { isMcpValueFlag, MCP_BOOLEAN_FLAGS } from '../cli-args.js';
 import { nodeInstallIo, type InstallIo } from './io.js';
 
 const CLIENT_IDS = Object.keys(CLIENTS);
@@ -47,6 +48,8 @@ function installHelp(invokedAs: string): string {
     --name <name>           Server name in the client (default ifc-lite).
     --dry-run               Print the config or command; change nothing.
     --force                 Replace an existing entry with the same name.
+                            File clients update their own older entry without
+                            it; Claude Code needs it to update.
 
   Examples:
     ${invokedAs} --client claude-code
@@ -93,7 +96,8 @@ function parseInstallArgs(argv: string[], host: HostEnv): InstallArgs | 'help' {
       if (EXIT_FLAGS.includes(arg)) throw new InstallError(`${arg} is not an install option.`);
       const own = arg.match(/^(--(?:client|scope|name))=/);
       if (own) throw new InstallError(`Write ${own[1]} <value>, with a space.`);
-      throw new InstallError(`Unknown option ${arg}. Server flags go after --, e.g. -- ${arg}.`);
+      const serverFlag = isMcpValueFlag(arg) || MCP_BOOLEAN_FLAGS.includes(arg);
+      throw new InstallError(serverFlag ? `${arg} is a server flag; put it after --, e.g. -- ${arg}.` : `Unknown option ${arg}.`);
     } else files.push(arg);
   }
   if (client === undefined) throw new InstallError(`--client is required: one of ${CLIENT_IDS.join(', ')}.`);
@@ -104,11 +108,15 @@ function parseInstallArgs(argv: string[], host: HostEnv): InstallArgs | 'help' {
   return { client, scope, name, dryRun, force, serverArgs, hasPaths };
 }
 
-/** An entry an earlier `install` wrote: npx running @ifc-lite/mcp. */
-function isOurs(entry: unknown): boolean {
-  if (typeof entry !== 'object' || entry === null) return false;
-  const { command, args } = entry as { command?: unknown; args?: unknown };
-  return command === 'npx' && Array.isArray(args) && args.some((a) => typeof a === 'string' && /^@ifc-lite\/mcp(@|$)/.test(a));
+/** True when `existing` is `entry` with another `@ifc-lite/mcp@…` pin and nothing else changed. */
+function onlyPinDiffers(existing: unknown, entry: Record<string, unknown>): boolean {
+  const unpin = (e: unknown): string => {
+    if (typeof e !== 'object' || e === null) return '';
+    const { args, ...rest } = e as { args?: unknown };
+    const a = Array.isArray(args) ? args.map((x) => (typeof x === 'string' && /^@ifc-lite\/mcp(@|$)/.test(x) ? '@ifc-lite/mcp' : x)) : args;
+    return JSON.stringify(Object.entries({ ...rest, args: a }).sort(([x], [y]) => (x < y ? -1 : x > y ? 1 : 0)));
+  };
+  return unpin(existing) !== '' && unpin(existing) === unpin(entry);
 }
 
 /** `npx` pinned to this release line, so the flags written here are ones it knows. */
@@ -214,8 +222,8 @@ function writeFilePlan(
   let merged;
   try {
     merged = mergeServer(before, plan.key, args.name, plan.entry, args.force);
-    // Our own older entry (a new version pin, other flags) is replaced without --force.
-    if (merged.status === 'conflict' && isOurs(merged.existing)) {
+    // Our own entry from an older release (only the version pin differs) is updated without --force.
+    if (merged.status === 'conflict' && onlyPinDiffers(merged.existing, plan.entry)) {
       merged = mergeServer(before, plan.key, args.name, plan.entry, true);
     }
   } catch (err) {

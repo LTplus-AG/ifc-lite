@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "why": "Keep the EXPRESS rule translator compiling while dropping the TYPEOF membership test, the lazy AND/OR right operand and the VALUE_IN refusal: the translation and unsupported-propagation tests must go red.",
+  "key": "packages/codegen/src/validators/expr-translator.ts",
+  "mutation": "tests/evidence/express-rules-translator-11559/behaviour.oracle.patch",
+  "test": "packages/codegen/test/validator-generator.test.ts"
+}

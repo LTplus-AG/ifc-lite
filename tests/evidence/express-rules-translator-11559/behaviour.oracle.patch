@@ -1,0 +1,30 @@
+diff --git a/packages/codegen/src/validators/expr-translator.ts b/packages/codegen/src/validators/expr-translator.ts
+--- a/packages/codegen/src/validators/expr-translator.ts
++++ b/packages/codegen/src/validators/expr-translator.ts
+@@ -38,7 +38,7 @@ const BUILTINS: Record<string, { fn: string; arity: number; model?: boolean }> =
+   LENGTH: { fn: 'length', arity: 1 },
+ };
+ 
+-const UNSUPPORTED_BUILTINS = new Set(['VALUE', 'VALUE_UNIQUE', 'ROLESOF', 'FORMAT', 'INSERT', 'REMOVE']);
++const UNSUPPORTED_BUILTINS = new Set(['VALUE', 'VALUE_IN', 'VALUE_UNIQUE', 'ROLESOF', 'FORMAT', 'INSERT', 'REMOVE']);
+ 
+ const BINARY: Partial<Record<BinaryOp, string>> = {
+   '=': 'eq', '<>': 'ne', ':=:': 'same', ':<>:': 'notSame', '<': 'lt', '>': 'gt', '<=': 'le', '>=': 'ge', IN: 'isIn',
+@@ -164,7 +164,7 @@ export class ExpressionTranslator {
+   private binary(op: BinaryOp, left: Expr, right: Expr, scope: Scope): string {
+     if (op === 'IN' && left.k === 'str' && right.k === 'call' && right.name.toUpperCase() === 'TYPEOF' && right.args.length === 1) {
+       const literal = this.typeLiteral(left.value);
+-      if (literal && literal.length < 0) {
++      if (literal) {
+         const name = literal.slice(literal.lastIndexOf('.') + 1);
+         return `r.typeIs(m, ${this.translate(right.args[0], scope)}, ${JSON.stringify(name)})`;
+       }
+@@ -174,7 +174,7 @@ export class ExpressionTranslator {
+       return `r.complex(m, [${parts.join(', ')}])`;
+     }
+     if (op === 'AND' || op === 'OR') {
+-      return `r.${op === 'AND' ? 'and' : 'or'}(${this.translate(left, scope)}, ${this.translate(right, scope)})`;
++      return `r.${op === 'AND' ? 'and' : 'or'}(${this.translate(left, scope)}, () => ${this.translate(right, scope)})`;
+     }
+     const fn = BINARY[op];
+     if (!fn) throw new UnsupportedConstruct(`operator ${op} is not implemented`);

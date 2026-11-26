@@ -42,3 +42,16 @@ test('#4080: the exception cannot swallow authored or mixed changes', () => {
   assert.equal(isDependabotDependencyOnly('dependabot[bot]', entries('rust/csg-thread-bench/Cargo.toml')), false);
   assert.equal(isDependabotDependencyOnly('dependabot[bot]', entries('apps/viewer/Dockerfile')), false);
 });
+
+test('#11653: the ifc-build-cache dependency update uses the normal test lanes', () => {
+  const cacheUpdate = entries('rust/cache/Cargo.toml', 'Cargo.lock');
+  assert.equal(isDependabotDependencyOnly('dependabot[bot]', cacheUpdate), true);
+  assert.equal(isDependabotDependencyOnly('louistrue', cacheUpdate), false);
+  assert.equal(
+    isDependabotDependencyOnly(
+      'dependabot[bot]',
+      [...cacheUpdate, ...entries('rust/cache/src/bin/ifc-build-cache.rs')],
+    ),
+    false,
+  );
+});

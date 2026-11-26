@@ -450,10 +450,13 @@ describe('viewer server — loopback only', () => {
 
   // An agent shares the viewer link in a web chat; clicking it must open the viewer.
   it('opens the viewer page from a link on another site', TEST_TIMEOUT, async () => {
-    for (const path of ['/', '/?ref=chat']) {
-      const res = await req(port, path, { headers: { 'sec-fetch-site': 'cross-site', 'sec-fetch-dest': 'document' } });
-      assert.equal(res.status, 200, path);
+    for (const [path, dest] of [['/', 'document'], ['/?ref=chat', 'document'], ['/', 'iframe']]) {
+      const res = await req(port, path, { headers: { 'sec-fetch-site': 'cross-site', 'sec-fetch-dest': dest } });
+      assert.equal(res.status, 200, `${path} as ${dest}`);
     }
+    // Anything else embedded from another site stays refused.
+    const res = await req(port, '/events', { headers: { 'sec-fetch-site': 'cross-site', 'sec-fetch-dest': 'iframe' } });
+    assert.equal(res.status, 403);
   });
 
   // localhost and 127.0.0.1 are different sites to a browser, but both are local pages.

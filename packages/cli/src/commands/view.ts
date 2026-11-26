@@ -82,8 +82,9 @@ export async function viewCommand(args: string[]): Promise<void> {
     return creator.toIfc();
   };
 
+  let viewer: ViewerServer;
   try {
-    const viewer = await startViewerServer({
+    viewer = await startViewerServer({
       filePath,
       fileName,
       port: requestedPort,
@@ -109,11 +110,11 @@ export async function viewCommand(args: string[]): Promise<void> {
         fatal(`Server error: ${err.message}`);
       },
     });
-    // Not in onReady: that runs before startViewerServer resolves.
-    setupStdinCommands(viewer);
   } catch (e: unknown) {
     fatal(`Failed to start viewer: ${(e as Error).message}`);
   }
+  // Not in onReady: that runs before startViewerServer resolves.
+  setupStdinCommands(viewer);
 }
 
 /** Open URL in default browser (cross-platform) */

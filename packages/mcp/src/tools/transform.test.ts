@@ -163,6 +163,14 @@ describe('model_merge', () => {
     expect(await readFile(out, 'utf-8')).toContain("FILE_SCHEMA(('IFC2X3'))");
   });
 
+  it('leaves an IFC5 model out of the default list', async () => {
+    ctx.registry.add(await loadIfcModel(join(tmp, 'b.ifc'), { modelId: 'b' }));
+    ctx.registry.add(await loadIfcModel(join(tmp, 'b.ifc'), { modelId: 'x' }));
+    (ctx.registry.get('x')!.store as { schemaVersion: string }).schemaVersion = 'IFC5';
+    const res = await call('model_merge', { file_path: join(tmp, 'no-ifc5.ifc') });
+    expect(res.structuredContent.modelCount).toBe(2);
+  });
+
   it('refuses fewer than two models', async () => {
     await expect(call('model_merge', { file_path: join(tmp, 'one.ifc') })).rejects.toMatchObject({ code: 'INVALID_INPUT' });
   });

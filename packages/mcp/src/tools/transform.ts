@@ -58,7 +58,7 @@ const modelMerge: Tool = {
   inputSchema: {
     type: 'object',
     properties: {
-      model_ids: { type: 'array', items: { type: 'string' }, minItems: 2, description: 'Models to merge, in order; the first sets the unit and project. Default: every loaded model.' },
+      model_ids: { type: 'array', items: { type: 'string' }, minItems: 2, description: 'Models to merge, in order; the first sets the unit and project. Default: every loaded STEP model.' },
       file_path: { type: 'string', description: 'Output .ifc path, inside the allowed paths.' },
       schema: { type: 'string', enum: ['IFC2X3', 'IFC4', 'IFC4X3'], description: 'Output schema. Default: the first model\'s. Models in another schema are converted, the loss reported in warnings.' },
       unit_reconciliation: { type: 'string', enum: ['auto', 'normalize', 'assume-shared'], description: 'auto: federate other-unit models as separate projects; normalize: rescale into the first model\'s unit; assume-shared: one project, no rescale.' },
@@ -79,7 +79,9 @@ const modelMerge: Tool = {
     warnings: { type: 'array', items: { type: 'string' } },
   }),
   async handler(input, ctx) {
-    const ids = (input.model_ids as string[] | undefined) ?? listAllowedModelIds(ctx);
+    // Default: every loaded STEP model the token may access (IFC5 models cannot be merged).
+    const ids = (input.model_ids as string[] | undefined)
+      ?? listAllowedModelIds(ctx).filter((id) => ctx.registry.get(id)?.store.schemaVersion !== 'IFC5');
     if (new Set(ids).size !== ids.length) throw invalid('model_ids lists a model more than once.');
     if (ids.length < 2) throw invalid(`model_merge needs at least 2 models; ${ids.length} given or loaded.`);
     const models = ids.map((id) => resolveStepModel(ctx, id, 'model_merge'));

@@ -57,6 +57,11 @@ describe('resolveStoreyPlacement: a storey NAMED with a number', () => {
     expect(resolveStoreyPlacement('Erdgeschoß', parseStep(latin1))).toBe(10);
   });
 
+  it('keeps an escaped Latin-1 Name as written', () => {
+    const escaped = parseStep(text.replace("'0',$,$,#10", "'\\X\\C3\\X\\A9tage',$,$,#10"));
+    expect(resolveStoreyPlacement('\u00c3\u00a9tage', escaped)).toBe(10);
+  });
+
   it('decodes the Name before comparing (doubled quote, \\X2\\ escape)', () => {
     const named = parseStep(text.replace("'0',$,$,#10", "'O''Brien \\X2\\00FC\\X0\\',$,$,#10"));
     expect(resolveStoreyPlacement("O'Brien \u00fc", named)).toBe(10);

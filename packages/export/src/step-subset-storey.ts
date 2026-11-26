@@ -66,8 +66,10 @@ function storeyName(body: string): string | null {
   if (text === null) return null;
   const name = decodeStepStringLiteral(text);
   // The subset parse reads the file as latin1, so a name a tool wrote as raw
-  // UTF-8 bytes arrives as one char per byte. Re-read it as UTF-8 when it is.
-  if (!/[\u0080-\u00ff]/.test(name) || /[^\u0000-\u00ff]/.test(name)) return name;
+  // UTF-8 bytes arrives as one char per byte. Re-read it as UTF-8 when the raw
+  // literal itself carries high bytes and no escape directive (whose decoded
+  // Latin-1 text must stay as written).
+  if (!/[\u0080-\u00ff]/.test(text) || text.includes('\\') || /[^\u0000-\u00ff]/.test(name)) return name;
   try {
     return UTF8.decode(Uint8Array.from(name, (c) => c.charCodeAt(0)));
   } catch (err) {

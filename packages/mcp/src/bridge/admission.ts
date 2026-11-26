@@ -98,6 +98,13 @@ export class PairingAdmission {
       this.host.release(slot);
       return;
     }
+    // Paired by another tab while this one waited out the backoff: no code was
+    // guessed wrong, so the gate is not fed.
+    if (!this.codes.live()) {
+      this.host.release(slot);
+      this.host.kill(ws, BridgeErrorCode.PAIRING_FAILED, 'No pairing code is live (a tab is already paired). Ask the agent to call bridge_status with pair_new_tab for a fresh link.', BridgeCloseCode.PAIRING_FAILED);
+      return;
+    }
     if (this.codes.consume(hello.pairingCode) !== 'ok') {
       this.failed();
       this.host.note('wrong pairing codes', 'refused a wrong pairing code');

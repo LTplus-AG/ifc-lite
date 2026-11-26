@@ -311,9 +311,9 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
 }
 
 /** Holds one of the process-wide script slots for the duration of `run`. */
-async function withScriptSlot<T>(session: string, run: () => Promise<T>): Promise<T> {
+async function withScriptSlot<T>(slot: string, run: () => Promise<T>): Promise<T> {
   // The session's own run first: that is the one it has to wait for.
-  if (sessionsRunning.has(session)) {
+  if (sessionsRunning.has(slot)) {
     throw new ToolExecutionError({
       code: ToolErrorCode.RATE_LIMITED,
       message: 'This session already has a script running; retry when it finishes.',
@@ -325,11 +325,11 @@ async function withScriptSlot<T>(session: string, run: () => Promise<T>): Promis
       message: `${MAX_CONCURRENT_SCRIPTS} scripts are already running on this server; retry when one finishes.`,
     });
   }
-  sessionsRunning.add(session);
+  sessionsRunning.add(slot);
   try {
     return await run();
   } finally {
-    sessionsRunning.delete(session);
+    sessionsRunning.delete(slot);
   }
 }
 

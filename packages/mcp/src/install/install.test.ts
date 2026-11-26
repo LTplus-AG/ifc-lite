@@ -141,9 +141,13 @@ describe('ifc-lite-mcp install: where each client is configured', () => {
     });
   });
 
-  it('VS Code user scope goes through `code --add-mcp`', () => {
+  it('VS Code user scope goes through `code --add-mcp`, only with --force', () => {
+    const refused = fakeIo();
+    // CodeRabbit on #11580: --add-mcp replaces a same-name entry install cannot see.
+    expect(install(['--client', 'vscode', '--', '--bridge'], refused)).toBe(1);
+    expect(refused.runs).toEqual([]);
     const io = fakeIo();
-    expect(install(['--client', 'vscode', '--', '--bridge'], io)).toBe(0);
+    expect(install(['--client', 'vscode', '--force', '--', '--bridge'], io)).toBe(0);
     expect(io.runs).toEqual([{
       command: 'code',
       args: ['--add-mcp', JSON.stringify({ name: 'ifc-lite', type: 'stdio', command: 'npx', args: ['-y', PKG, '--bridge'] })],
@@ -287,17 +291,11 @@ describe('ifc-lite-mcp install: existing configs', () => {
     expect(io.stderr).not.toContain('sk-secret');
   });
 
-  it('an entry an older install wrote is updated without --force', () => {
-    const io = fakeIo();
-    io.files.set(path, JSON.stringify({ mcpServers: { 'ifc-lite': { command: 'npx', args: ['-y', '@ifc-lite/mcp@^0.20.0'] } } }));
-    expect(install(['--client', 'cursor'], io)).toBe(0);
-    expect(JSON.parse(io.files.get(path) ?? 'null').mcpServers['ifc-lite'].args).toEqual(['-y', PKG]);
-  });
-
-  it('an older entry with the user\'s env is still updated without --force', () => {
+  it('an entry with an older pin is a conflict: install cannot tell it wrote it (CodeRabbit on #11580)', () => {
     const io = fakeIo();
     io.files.set(path, JSON.stringify({ mcpServers: { 'ifc-lite': { command: 'npx', args: ['-y', '@ifc-lite/mcp@^0.20.0'], env: { T: '1' } } } }));
-    expect(install(['--client', 'cursor'], io)).toBe(0);
+    expect(install(['--client', 'cursor'], io)).toBe(1);
+    expect(install(['--client', 'cursor', '--force'], io)).toBe(0);
     expect(JSON.parse(io.files.get(path) ?? 'null').mcpServers['ifc-lite']).toEqual({ command: 'npx', args: ['-y', PKG], env: { T: '1' } });
   });
 
@@ -307,11 +305,11 @@ describe('ifc-lite-mcp install: existing configs', () => {
     expect(install(['--client', 'cursor'], io)).toBe(1);
   });
 
-  it('a prerelease pin install wrote is updated, and a VS Code type key is kept', () => {
+  it('--force over a VS Code workspace entry keeps its type', () => {
     const io = fakeIo();
     const vs = '/work/proj/.vscode/mcp.json';
     io.files.set(vs, JSON.stringify({ servers: { 'ifc-lite': { type: 'stdio', command: 'npx', args: ['-y', '@ifc-lite/mcp@^0.20.0-next.1'] } } }));
-    expect(install(['--client', 'vscode', '--scope', 'project'], io)).toBe(0);
+    expect(install(['--client', 'vscode', '--scope', 'project', '--force'], io)).toBe(0);
     expect(JSON.parse(io.files.get(vs) ?? 'null').servers['ifc-lite']).toEqual({ type: 'stdio', command: 'npx', args: ['-y', PKG] });
   });
 
@@ -429,10 +427,11 @@ describe('ifc-lite-mcp install: dry run and usage errors', () => {
     );
   });
 
-  it('says --force has no effect for `code --add-mcp`', () => {
+  it('a bridge viewer URL the bridge would refuse is refused at install', () => {
     const io = fakeIo();
-    install(['--client', 'vscode', '--force'], io);
-    expect(io.stderr).toContain('--force has no effect');
+    expect(install(['--client', 'cursor', '--', '--bridge', '--bridge-viewer-url', 'http://viewer.example'], io)).toBe(1);
+    expect(io.stderr).toContain('plain http on a non-loopback host');
+    expect(install(['--client', 'cursor', '--', '--bridge', '--bridge-viewer-url', 'http://localhost:3000'], io)).toBe(0);
   });
 
   it('prints the command when the client CLI is not on PATH', () => {

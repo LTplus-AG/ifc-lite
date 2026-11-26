@@ -30,15 +30,14 @@ function isObject(value: unknown): value is JsonObject {
 
 /**
  * @param existingText the file's contents, or undefined when it does not exist.
- * @param replace whether to replace an entry of the same name that differs
- *   from `entry`; a function decides from that entry.
+ * @param force replace an entry of the same name that differs from `entry`.
  */
 export function mergeServer(
   existingText: string | undefined,
   key: string,
   name: string,
   entry: JsonObject,
-  replace: boolean | ((existing: unknown) => boolean),
+  force: boolean,
 ): MergeResult {
   let root: JsonObject = {};
   if (existingText !== undefined && existingText.trim() !== '') {
@@ -62,7 +61,7 @@ export function mergeServer(
   const merged = replacedEntry(existing, entry);
   if (existing !== undefined) {
     if (canonical(merged) === canonical(existing)) return { status: 'unchanged' };
-    if (!(typeof replace === 'function' ? replace(existing) : replace)) return { status: 'conflict', existing };
+    if (!force) return { status: 'conflict', existing };
   }
   const next = { ...root, [key]: { ...servers, [name]: merged } };
   return {
@@ -73,7 +72,7 @@ export function mergeServer(
 }
 
 /** What replacing `existing` with `entry` writes: our launch keys, the user's other keys. */
-export function replacedEntry(existing: unknown, entry: JsonObject): JsonObject {
+function replacedEntry(existing: unknown, entry: JsonObject): JsonObject {
   const kept = isObject(existing)
     ? Object.fromEntries(Object.entries(existing).filter(([k]) => !LAUNCH_KEYS.includes(k)))
     : {};
@@ -105,7 +104,7 @@ function originOf(url: string): string {
 }
 
 /** JSON with object keys sorted, so key order does not make two entries differ. */
-export function canonical(value: unknown): string {
+function canonical(value: unknown): string {
   return JSON.stringify(value, (_key, v: unknown) =>
     isObject(v) ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) : v,
   );

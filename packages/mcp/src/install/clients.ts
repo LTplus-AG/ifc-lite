@@ -65,6 +65,8 @@ export interface CommandPlan {
   args: string[];
   /** Run first under --force, because the CLI refuses an existing name. */
   remove?: string[];
+  /** The CLI silently replaces an existing entry of the same name. */
+  overwrites?: boolean;
 }
 
 /** A client takes the server either as an entry in a JSON file or through its own CLI. */
@@ -120,7 +122,7 @@ export function planInstall(
             `"MCP: Open User Configuration" and add it under "servers":\n${JSON.stringify({ [name]: entry }, null, 2)}`,
         );
       }
-      return { kind: 'command', command: 'code', args: ['--add-mcp', JSON.stringify({ name, ...entry })] };
+      return { kind: 'command', command: 'code', args: ['--add-mcp', JSON.stringify({ name, ...entry })], overwrites: true };
     }
   }
 }

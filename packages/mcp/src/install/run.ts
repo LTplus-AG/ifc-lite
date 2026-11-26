@@ -28,7 +28,7 @@ import {
   type InstallScope,
 } from './clients.js';
 import { describeEntry, mergeServer } from './merge.js';
-import { onlyPinDiffers, serverCommand } from './pin.js';
+import { serverCommand } from './pin.js';
 import { checkServerArgs, EXIT_FLAGS } from './server-args.js';
 import { isMcpValueFlag, MCP_BOOLEAN_FLAGS } from '../cli-args.js';
 import { nodeInstallIo, note, type InstallIo } from './io.js';
@@ -48,9 +48,11 @@ function installHelp(invokedAs: string): string {
                             directory (.mcp.json, .cursor/, .vscode/).
     --name <name>           Server name in the client (default ifc-lite).
     --dry-run               Print the config or command; change nothing.
-    --force                 Replace an existing entry with the same name.
-                            File clients update their own older entry without
-                            it; Claude Code needs it to update.
+    --force                 Replace an existing entry with the same name, e.g.
+                            after an upgrade. File clients keep the entry's
+                            own keys (env, cwd); Claude Code and VS Code user
+                            scope replace the whole entry. VS Code user scope
+                            needs it, since install cannot see that entry.
 
   Examples:
     ${invokedAs} --client claude-code
@@ -171,8 +173,11 @@ function runCommandPlan(
   io: InstallIo,
 ): number {
   const remove = args.force ? plan.remove : undefined;
-  if (args.force && !plan.remove) {
-    io.err(note(`--force has no effect here; \`${plan.command}\` decides what happens to an existing "${args.name}".`));
+  if (plan.overwrites && !args.force && !args.dryRun) {
+    throw new InstallError(
+      `\`${plan.command} ${plan.args[0]}\` replaces any existing "${args.name}" entry, and install cannot check for one first. ` +
+        'Pass --force to go ahead, or use --scope project.',
+    );
   }
   const line = commandLine(plan.command, plan.args, io.host.platform);
   if (args.dryRun) {
@@ -182,7 +187,13 @@ function runCommandPlan(
   }
   // A non-zero exit from the remove step only means there was nothing to remove.
   const removed = remove !== undefined && io.run(plan.command, remove, true).status === 0;
-  const result = io.run(plan.command, plan.args);
+  let result;
+  try {
+    result = io.run(plan.command, plan.args);
+  } catch (err) {
+    if (removed && err instanceof InstallError) throw new InstallError(`${err.message}. The old "${args.name}" entry was already removed; run again:\n${line}`);
+    throw err;
+  }
   if (result.missing) {
     io.err(note(`\`${plan.command}\` is not on PATH. Run this yourself:\n${line}`));
     return 1;
@@ -225,8 +236,7 @@ function writeFilePlan(
   if (before === undefined && args.scope === 'user') warnIfNoAppDir(plan.path, label, io);
   let merged;
   try {
-    // Our own entry from an older release (only the version pin differs) is updated without --force.
-    merged = mergeServer(before, plan.key, args.name, plan.entry, args.force || ((old) => onlyPinDiffers(old, plan.entry)));
+    merged = mergeServer(before, plan.key, args.name, plan.entry, args.force);
   } catch (err) {
     if (!(err instanceof InstallError)) throw err;
     throw new InstallError(`Not changing ${plan.path}: ${err.message}. Add this by hand:\n${snippet(plan, args.name)}`);

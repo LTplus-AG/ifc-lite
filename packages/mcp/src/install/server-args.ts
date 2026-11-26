@@ -10,6 +10,8 @@
 
 import { bridgeConflict, isMcpValueFlag, MCP_BOOLEAN_FLAGS, parseArgs } from '../cli-args.js';
 import { InstallError, pathFor, type HostEnv } from './clients.js';
+import { DEFAULT_BRIDGE_VIEWER_URL } from '../bridge/bridge-protocol.js';
+import { isInsecureRemoteOrigin, normalizeOrigin } from '../bridge/guards.js';
 
 /** Read only by the HTTP transport, which an installed server never runs. */
 const HTTP_ONLY_FLAGS = ['--port', '--host', '--token'];
@@ -31,6 +33,17 @@ export function checkServerArgs(argv: string[], host: HostEnv): { args: string[]
   }
   const conflict = bridgeConflict(parsed);
   if (conflict) throw new InstallError(conflict);
+  // bridge/run.ts bridgeOrigins' rule, with its own helpers: what the bridge
+  // refuses at startup (it pulls in the whole server, so it is not imported).
+  if (parsed.bridge) {
+    for (const value of [parsed.bridgeViewerUrl ?? DEFAULT_BRIDGE_VIEWER_URL, ...(parsed.allowedOrigins ?? [])]) {
+      const origin = normalizeOrigin(value);
+      if (origin === null) throw new InstallError(`not an http(s) origin or URL: ${value}`);
+      if (isInsecureRemoteOrigin(origin) && !parsed.insecure) {
+        throw new InstallError(`${origin} is plain http on a non-loopback host; the bridge refuses it without --insecure.`);
+      }
+    }
+  }
   // loader.ts's exact rule, so what it refuses at load is refused here (its '/'-only
   // join also refuses Windows paths today; install says so rather than write it).
   const roots = parsed.allowedPaths ?? [];

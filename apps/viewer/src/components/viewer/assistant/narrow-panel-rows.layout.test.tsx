@@ -41,25 +41,24 @@ function finding(occurrence: string): DraftFinding {
     disciplineCandidates: { a: ['ARC'], b: ['MEP'] } } as DraftFinding;
 }
 
+/** Markup as mounted, after `interact` (a click into rename mode). */
+function htmlOf(element: React.ReactElement, interact: (ui: HTMLElement) => void = () => {}): string {
+  const ui = render(element);
+  interact(ui);
+  const html = ui.innerHTML;
+  cleanup();
+  return html;
+}
+
 /** The clash editor with its first group header in rename mode, and both groups' merge rows. */
 function clashEditorHtml(): string {
   const draft = draftFromGroups([
     { name: 'Walls vs pipes', explanation: '', findings: [finding('o1')] },
     { name: 'Riser', explanation: '', findings: [finding('o2')] },
   ], 2, { kind: 'sample', evidenceId: 'e', omittedFromEvidence: 0 });
-  const ui = render(<ClashGroupDraftEditor draft={draft} onChange={() => {}} resolve={() => undefined}
-    focusClash={() => {}} focusClashes={() => {}} />);
-  click(ui.querySelector<HTMLButtonElement>('button[aria-label^="Rename"], button[aria-label$="umbenennen"]')!);
-  const html = ui.innerHTML;
-  cleanup();
-  return html;
-}
-
-function htmlOf(element: React.ReactElement): string {
-  const ui = render(element);
-  const html = ui.innerHTML;
-  cleanup();
-  return html;
+  // The header's first button is the rename pencil, in any locale.
+  return htmlOf(<ClashGroupDraftEditor draft={draft} onChange={() => {}} resolve={() => undefined}
+    focusClash={() => {}} focusClashes={() => {}} />, (ui) => click(ui.querySelector<HTMLButtonElement>('h4 button')!));
 }
 
 interface RowLayout { control: number; overflow: number }

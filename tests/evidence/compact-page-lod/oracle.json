@@ -1,5 +1,5 @@
 {
-  "issue": 11606,
+  "issue": 7955,
   "why": "Give a page's LOD1 representative the largest face normal at its position instead of the smallest the bucket path elects: LOD1 faces are then oriented (lit) differently from the bucket's, so the page/bucket LOD1 parity test must go red.",
   "key": "packages/renderer/src/compact-lod.ts",
   "mutation": "tests/evidence/compact-page-lod/behaviour.oracle.patch"

@@ -5,8 +5,9 @@
 /** EXPRESS value (`=`), instance (`:=:`) and ordering comparisons. */
 
 import { EntityInstance } from './instance.js';
+import type { TypeRef } from './schema-meta.js';
 import { not } from './logic.js';
-import { BinaryValue, EnumValue, isAggregate, isSet, prim, Ref, UNKNOWN, type Logical, type Value } from './values.js';
+import { BinaryValue, EnumValue, isAggregate, isSet, markSet, prim, Ref, UNKNOWN, type Logical, type Value } from './values.js';
 
 const MAX_VALUE_DEPTH = 16;
 
@@ -14,10 +15,27 @@ function rank(v: Value): number {
   return v === false ? 0 : v === UNKNOWN ? 1 : 2;
 }
 
+function storedValue(value: Value, type: TypeRef, owner: EntityInstance): Value {
+  if (!isAggregate(value)) return value;
+  const aggregate = type.k === 'aggregate' ? type : owner.model?.schema.aggregateType(type);
+  if (!aggregate) return value;
+  const items = value.map(item => storedValue(item, aggregate.of, owner));
+  return aggregate.kind === 'SET' ? markSet(items) : items;
+}
+
 function instancesEqual(a: EntityInstance, b: EntityInstance, depth: number): Logical {
   if (a === b) return true;
   if (a.entity !== b.entity || depth > MAX_VALUE_DEPTH) return false;
-  return valuesEqual(a.attributes, b.attributes, depth + 1, a, b);
+  if (a.attributes.length !== b.attributes.length) return false;
+  let unknown = false;
+  for (const [i, attr] of a.entity.attributes.entries()) {
+    const x = a.attributes[i], y = b.attributes[i];
+    if (x === undefined && y === undefined) continue;
+    const result = equal(storedValue(x, attr.type, a), storedValue(y, attr.type, b), depth + 1, a, b);
+    if (result === false) return false;
+    if (result === UNKNOWN) unknown = true;
+  }
+  return unknown ? UNKNOWN : true;
 }
 
 function resolveRef(v: Value, owner: EntityInstance): Value {

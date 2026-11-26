@@ -59,3 +59,14 @@ ENTITY C SUBTYPE OF (A,B); WHERE Different : SELF\\A.X <> SELF\\B.X; END_ENTITY;
   const report = await validateStepText('DATA;#1=C(1.,2.);#2=C(1.,1.);ENDSEC;', { schema });
   expect(report.findings.filter(f => f.rule === 'C.Different').map(f => f.instance)).toEqual([2]);
 });
+
+it('compares entity attributes with their declared SET or LIST semantics (#11560)', async () => {
+  for (const [kind, expected] of [['SET', [6]], ['LIST', [3, 6]]] as const) {
+    const { schema } = generated(`SCHEMA S; TYPE Members = ${kind} [1:?] OF INTEGER; END_TYPE;
+ENTITY Bucket; Items : Members; END_ENTITY;
+ENTITY Pair; A : Bucket; B : Bucket; WHERE Equal : A = B; Distinct : A :<>: B; END_ENTITY; END_SCHEMA;`);
+    const report = await validateStepText('DATA;#1=BUCKET((1,2));#2=BUCKET((2,1));#3=PAIR(#1,#2);#4=BUCKET((1,3));#6=PAIR(#1,#4);ENDSEC;', { schema });
+    expect(report.findings.filter(f => f.rule === 'Pair.Equal').map(f => f.instance)).toEqual(expected);
+    expect(report.findings.filter(f => f.rule === 'Pair.Distinct')).toEqual([]);
+  }
+});

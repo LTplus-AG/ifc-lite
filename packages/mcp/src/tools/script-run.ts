@@ -46,6 +46,8 @@ const MAX_TIMEOUT_MS = 30_000;
  */
 const MAX_CONCURRENT_SCRIPTS = 2;
 let runningScripts = 0;
+/** Sessions holding a slot (stdio and in-process callers share the '' key). */
+const sessionsRunning = new Set<string>();
 const DEFAULT_MEMORY_MB = 64;
 // Kept well under the 4 GB wasm32 ceiling: the QuickJS module's linear memory
 // is shared by every sandbox and does not shrink after a run.
@@ -222,7 +224,7 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
       return undefined;
     }
   };
-  return withScriptSlot(async () => {
+  return withScriptSlot(ctx.session?.id ?? '', async () => {
     let sandbox: Awaited<ReturnType<typeof createSandbox>>;
     try {
       sandbox = await createSandbox(model.bim, {
@@ -310,22 +312,31 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
 }
 
 /** Holds one of the process-wide script slots for the duration of `run`. */
-async function withScriptSlot<T>(run: () => Promise<T>): Promise<T> {
+async function withScriptSlot<T>(session: string, run: () => Promise<T>): Promise<T> {
   if (runningScripts >= MAX_CONCURRENT_SCRIPTS) {
     throw new ToolExecutionError({
       code: ToolErrorCode.RATE_LIMITED,
       message: `${MAX_CONCURRENT_SCRIPTS} scripts are already running on this server; retry when one finishes.`,
     });
   }
+  // One slot per session, so a single client cannot hold both.
+  if (sessionsRunning.has(session)) {
+    throw new ToolExecutionError({
+      code: ToolErrorCode.RATE_LIMITED,
+      message: 'This session already has a script running; retry when it finishes.',
+    });
+  }
   runningScripts++;
+  sessionsRunning.add(session);
   try {
     return await run();
   } finally {
     runningScripts--;
+    sessionsRunning.delete(session);
   }
 }
 
-const SHARED_DESCRIPTION = `Runs in a QuickJS sandbox with only the \`bim\` SDK global (bim.query, bim.model, bim.lens, bim.clash, bim.cost, bim.structural, bim.schedule; script_run_mutate adds ${MUTATE_ONLY_LIST}; bim.export and bim.create only with the export scope) and console; no network, filesystem, viewer or timers. Returns the last expression value plus captured console output. memory_mb bounds the QuickJS heap only, not data bim calls build on the host (such as bim.create projects in script_run_mutate). Script code runs on the server's event loop, so other requests wait while it runs (bounded by timeout_ms). At most ${MAX_CONCURRENT_SCRIPTS} scripts run at once per server process, shared across all sessions; more get RATE_LIMITED.`;
+const SHARED_DESCRIPTION = `Runs in a QuickJS sandbox with only the \`bim\` SDK global (bim.query, bim.model, bim.lens, bim.clash, bim.cost, bim.structural, bim.schedule; script_run_mutate adds ${MUTATE_ONLY_LIST}; bim.export and bim.create only with the export scope) and console; no network, filesystem, viewer or timers. Returns the last expression value plus captured console output. memory_mb bounds the QuickJS heap only, not data bim calls build on the host (such as bim.create projects in script_run_mutate). Script code runs on the server's event loop, so other requests wait while it runs (bounded by timeout_ms). At most ${MAX_CONCURRENT_SCRIPTS} scripts run at once per server process and one per session; more get RATE_LIMITED.`;
 
 export const scriptRunTool: Tool = {
   name: 'script_run',

@@ -306,6 +306,7 @@ describe('script_run', () => {
     expect(((await run('console.log(new Date(0)); 1')).structuredContent?.logs as Array<{ text: string }>)[0].text).toBe('1970-01-01T00:00:00.000Z');
     expect(logs[1]).toBe('{"err":"boom"}');
     expect(((await run("console.log({ id: 12n }); 1")).structuredContent?.logs as Array<{ text: string }>)[0].text).toBe('{"id":"12n"}');
+    expect(((await run("console.log({ n: Object(5n) }); 1")).structuredContent?.logs as Array<{ text: string }>)[0].text).toBe('{"n":"5n"}');
     expect(logs[2].split('\n')[0].endsWith('[truncated]')).toBe(true);
     expect((await runError("throw new Error('out of memory')")).hint).toBeUndefined();
   });
@@ -374,12 +375,16 @@ describe('script_run', () => {
     expect((result.structuredContent?.logs as unknown[]).length).toBe(2);
   });
 
-  it('caps concurrent scripts and frees the slot afterwards', async () => {
-    // The slot is taken before the handler's first await, so three calls
-    // started together overlap even with trivial scripts.
-    const calls = [run('1'), run('2'), run('3')];
-    const settled = await Promise.allSettled(calls);
-    expect(settled.filter((r) => r.status === 'rejected' && (r.reason as { code?: string }).code === 'RATE_LIMITED')).toHaveLength(1);
+  it('caps concurrent scripts per session and per process, and frees the slots', async () => {
+    // The slot is taken before the handler's first await, so calls started
+    // together overlap even with trivial scripts.
+    const as = (id: string) => ({ ...ctx, session: { id } });
+    const rateLimited = (r: PromiseSettledResult<unknown>) => r.status === 'rejected' && (r.reason as { code?: string }).code === 'RATE_LIMITED';
+    const sameSession = await Promise.allSettled([run('1'), run('2')]);
+    expect(sameSession.filter(rateLimited)).toHaveLength(1);
+    const three = await Promise.allSettled(['a', 'b', 'c'].map((id) => scriptRunTool.handler({ code: '1' }, as(id))));
+    const settled = three;
+    expect(settled.filter(rateLimited)).toHaveLength(1);
     expect((await run('4')).structuredContent?.value).toBe(4);
   }, 30_000);
 

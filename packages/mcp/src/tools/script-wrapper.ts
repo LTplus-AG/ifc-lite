@@ -98,7 +98,7 @@ export function wrapScript(code: string): string {
       if (forLog && typeof v === 'bigint') { out += stringify(Str(v) + 'n'); return; }
       if (typeof v === 'object') {
         var box = unboxed(v);
-        if (box) { out += stringify(box.v); return; }
+        if (box) { out += forLog && typeof box.v === 'bigint' ? stringify(Str(box.v) + 'n') : stringify(box.v); return; }
         if (forLog && apply(isInstance, ErrorCtor, [v])) { out += stringify(msg(v)); return; }
         if (apply(setHas, onPath, [v])) throw new TypeErrorCtor('the value is cyclic');
         if (sp >= L.maxDepth) throw new ErrorCtor('the value is nested deeper than ' + L.maxDepth + ' levels');

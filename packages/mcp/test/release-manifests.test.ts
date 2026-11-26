@@ -67,6 +67,10 @@ describe('.mcpb manifest for Claude Desktop', () => {
     expect(used.every((k) => keys.includes(k))).toBe(true);
   });
 
+  it('defaults the model list to empty, so choosing none adds no argument', () => {
+    expect((manifest.user_config as { models: { default: unknown } }).models.default).toEqual([]);
+  });
+
   it('asks for the Node the package declares', () => {
     expect((manifest.compatibility as { runtimes: { node: string } }).runtimes.node).toBe(pkg.engines.node);
   });

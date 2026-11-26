@@ -114,6 +114,9 @@ export function mcpbManifest(pkg: McpPackage): Record<string, unknown> {
         description: 'Models to load when the server starts. Leave empty to load them from the chat instead.',
         multiple: true,
         required: false,
+        // Without a default an empty choice leaves the literal placeholder in
+        // argv (mcpb 2.1.2 shared/config.js keeps unknown variables); [] expands to nothing.
+        default: [],
       },
     },
     compatibility: {

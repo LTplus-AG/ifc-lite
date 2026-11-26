@@ -41,7 +41,7 @@
     "typecheck": "node ../../scripts/typecheck-tests.mjs",
     "dev": "pnpm exec tsc --watch",
     "start": "node dist/cli.js",
-    "release:manifests": "pnpm run build && node release/build.mjs",
+    "release:manifests": "pnpm --dir ../.. exec turbo run build --filter=@ifc-lite/mcp... --filter=!@ifc-lite/wasm && node release/build.mjs",
     "test": "vitest run"
   },
   "dependencies": {

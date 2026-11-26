@@ -9,7 +9,9 @@
  *
  *   pnpm --filter @ifc-lite/mcp release:manifests [--out <dir>] [--no-bundle]
  *
- * (The script builds the package first, so dist/ is never stale.)
+ * (The script first builds @ifc-lite/mcp and every workspace package it
+ * depends on, so no dist/ is stale. The wasm runtime is not rebuilt: it
+ * needs Rust, and the bundle step fails if it is missing.)
  *
  * The bundle stages the package with its production dependencies through
  * `pnpm deploy`, writes the manifest next to it and packs it with the
@@ -22,7 +24,7 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
@@ -36,18 +38,24 @@ const { values: flags } = parseArgs({ options: { out: { type: 'string' }, 'no-bu
 const out = resolve(flags.out ?? join(pkgDir, 'release-out'));
 const pkg = JSON.parse(readFileSync(join(pkgDir, 'package.json'), 'utf-8'));
 
-/** `.bin` holds symlinks to CLIs the server never runs; a bundle carries real files only. */
+/**
+ * `.bin` holds symlinks to CLIs the server never runs, so it goes. Any other
+ * symlink is a build error: the bundle must carry real files only.
+ */
 function removeBinLinks(dir) {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue;
     const path = join(dir, entry.name);
     if (entry.name === '.bin') rmSync(path, { recursive: true, force: true });
-    else removeBinLinks(path);
+    else if (entry.isSymbolicLink()) throw new Error(`${path} is a symlink; the bundle needs real files`);
+    else if (entry.isDirectory()) removeBinLinks(path);
   }
 }
 
+const win = process.platform === 'win32';
+
+/** On Windows pnpm and npx are .cmd shims, which need the shell; quote for it. */
 function run(command, args, cwd) {
-  const r = spawnSync(command, args, { cwd, stdio: 'inherit', shell: process.platform === 'win32' });
+  const r = spawnSync(command, win ? args.map((a) => `"${a}"`) : args, { cwd, stdio: 'inherit', shell: win });
   if (r.error) throw r.error;
   if (r.status !== 0) throw new Error(`${command} ${args.join(' ')} exited with ${r.status}`);
 }
@@ -67,6 +75,9 @@ if (!flags['no-bundle']) {
     '--filter', pkg.name, 'deploy', '--prod', '--legacy', join(stage, BUNDLE_SERVER_DIR),
   ], pkgDir);
   removeBinLinks(join(stage, BUNDLE_SERVER_DIR));
+  // gitignored and built by scripts/build-wasm.sh; without it no model loads.
+  const wasm = join(stage, BUNDLE_SERVER_DIR, 'node_modules', '@ifc-lite', 'wasm', 'pkg', 'ifc-lite_bg.wasm');
+  if (!existsSync(wasm)) throw new Error(`${wasm} is missing: build packages/wasm (scripts/build-wasm.sh) first`);
   writeFileSync(join(stage, 'manifest.json'), `${JSON.stringify(mcpbManifest(pkg), null, 2)}\n`);
   // Source maps and type declarations are about 30 MB of the stage and never run.
   writeFileSync(join(stage, '.mcpbignore'), '*.map\n*.d.ts\n*.d.mts\n*.d.cts\n');

@@ -8,7 +8,7 @@
  * same visibility filter, so the two can never disagree.
  */
 
-import type { ToolDefinition, ToolScope } from './protocol/index.js';
+import type { CallToolResult, ToolDefinition, ToolScope } from './protocol/index.js';
 import { scopeAllows, type AuthScope } from './auth/scope.js';
 import type { Tool, ToolRegistry } from './tools/types.js';
 import { advertisedInputSchema } from './validate.js';
@@ -60,4 +60,17 @@ function firstSentence(text: string): string {
   const sentence = end === -1 ? flat : flat.slice(0, end + 1);
   const chars = Array.from(sentence);
   return chars.length > PURPOSE_MAX ? `${chars.slice(0, PURPOSE_MAX - 1).join('')}…` : sentence;
+}
+
+/**
+ * MCP clients validate any `structuredContent` against the tool's
+ * `outputSchema`, error results included (the TS SDK client does), and the
+ * error envelope `{ code, message, details, hint }` matches no success
+ * schema. For a tool that declares one, the envelope moves into the text
+ * block.
+ */
+export function fitOutputSchema(result: CallToolResult, tool: Tool | null): CallToolResult {
+  if (!result.isError || result.structuredContent === undefined || !tool?.outputSchema) return result;
+  const { structuredContent, ...rest } = result;
+  return { ...rest, content: [...result.content, { type: 'text', text: JSON.stringify(structuredContent) }] };
 }

@@ -102,10 +102,11 @@ export function wrapScript(code: string): string {
   // The intrinsics, by name: read once here, before the script runs.
   var ${INTRINSICS_LOCALS};
   // instanceof, guarded: a thrown Proxy whose getPrototypeOf trap throws must
-  // not make the wrapper itself throw.
+  // not make the wrapper itself throw, unless QuickJS itself ran out of memory
+  // or stack (that must reach the host as such).
   function instanceOf(ctor, e) {
     try { return !!ctor && apply(isInstance, ctor, [e]); }
-    catch (_) { return false; }
+    catch (x) { if (ctor !== InternalErrorCtor && isInternal(x)) throw x; return false; }
   }
   function isError(e) { return instanceOf(ErrorCtor, e); }
   function isInternal(e) { return instanceOf(InternalErrorCtor, e); }

@@ -9,7 +9,7 @@
  * with `isError: true` — NEVER as JSON-RPC errors. That lets the LLM read
  * and react to the failure inline rather than aborting the chain. For a tool
  * that declares an `outputSchema`, the server moves the envelope into the
- * text block instead (see `fitOutputSchema` in tool-wire.ts).
+ * text block instead (see `fitOutputSchema` in tool-catalog.ts).
  */
 
 import type { CallToolResult } from './protocol/index.js';

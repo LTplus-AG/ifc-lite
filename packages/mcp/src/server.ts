@@ -61,7 +61,7 @@ import {
 } from './auth/scope.js';
 import { ClientLogForwarder, isLoggingLevel } from './client-logging.js';
 import { SERVER_INSTRUCTIONS } from './server-instructions.js';
-import { toCatalogEntry, toToolDefinition, visibleTools } from './tool-catalog.js';
+import { fitOutputSchema, toCatalogEntry, toToolDefinition, visibleTools } from './tool-catalog.js';
 import {
   DEFAULT_CONFIG,
   InMemoryModelRegistry,
@@ -79,7 +79,6 @@ import { disposeSessionResources } from './session-cleanup.js';
 import { ToolRegistry } from './tools/types.js';
 import { withScanHint } from './tools/util.js';
 import { validateInput } from './validate.js';
-import { fitOutputSchema } from './tool-wire.js';
 import { ViewerManager } from './viewer-manager.js';
 import type { ViewerState } from './viewer-manager.js';
 

@@ -90,7 +90,7 @@ const inputSchema: JsonSchema = {
     model_id: { type: 'string', description: 'Loaded model id; required when multiple models are loaded.' },
     code: {
       type: 'string', minLength: 1, maxLength: MAX_CODE_CHARS,
-      description: 'JavaScript (not TypeScript) run with the sandbox `bim` global. The value of the last expression is returned and must be JSON-serialisable; if it is a native promise (e.g. an async IIFE around bim.clash.run) its resolved value is returned; thenables are not awaited. Top-level await is not supported. Wrap an object literal result in parentheses, ({ a: 1 }): a leading { is a block. Inside scripts, JSON.stringify and JSON.parse are depth-checked versions and run several times slower than native ones on large data.',
+      description: 'JavaScript (not TypeScript) run with the sandbox `bim` global. The value of the last expression is returned and must be JSON-serialisable; if it is a native promise with its usual prototype (e.g. an async IIFE around bim.clash.run) its resolved value is returned; thenables are not awaited. Top-level await is not supported. Wrap an object literal result in parentheses, ({ a: 1 }): a leading { is a block. Inside scripts, JSON.stringify and JSON.parse are depth-checked versions and run several times slower than native ones on large data.',
     },
     timeout_ms: {
       type: 'integer', minimum: 100, maximum: MAX_TIMEOUT_MS, default: DEFAULT_TIMEOUT_MS,

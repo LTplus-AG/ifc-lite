@@ -352,6 +352,23 @@ describe('script_run_mutate after undo', () => {
   });
 });
 
+describe('script_run_mutate when the model is unloaded mid-run', () => {
+  it('drops the count and the persist advice', async () => {
+    const model = ctx.registry.get('m')!;
+    const unloading = { ...ctx, registry: new InMemoryModelRegistry() };
+    // Resolves the model for the call (no model_id: resolve()), but get()
+    // already answers as if model_unload had removed it.
+    unloading.registry.count = () => 1;
+    unloading.registry.get = () => null;
+    unloading.registry.resolve = () => model;
+    const result = await scriptRunMutateTool.handler(
+      { code: "bim.mutate.setAttribute(bim.query.byType('IfcWall')[1], 'Description', 'gone'); 1" }, unloading,
+    );
+    expect(result.structuredContent?.mutations_queued).toBeUndefined();
+    expect((result.content[0] as { text: string }).text).not.toMatch(/persist/);
+  });
+});
+
 describe('script_run under --read-only', () => {
   it('hides and refuses script_run_mutate but keeps script_run', async () => {
     const server = new MCPServer({

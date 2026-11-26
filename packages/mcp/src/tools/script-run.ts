@@ -21,7 +21,7 @@
  * QuickJS heap.
  */
 
-import { createSandbox, ScriptError, type SandboxPermissions } from '@ifc-lite/sandbox';
+import { createSandbox, SANDBOX_CONSOLE_LEVELS, ScriptError, type SandboxPermissions } from '@ifc-lite/sandbox';
 import { MAX_VALUE_CHARS, clipMessage, readEnvelope, shapeLogs, wrapScript } from './script-output.js';
 import type { JsonSchema } from '../protocol/index.js';
 import type { LoadedModel, ToolContext } from '../context.js';
@@ -73,7 +73,7 @@ const inputSchema: JsonSchema = {
     model_id: { type: 'string', description: 'Loaded model id; required when multiple models are loaded.' },
     code: {
       type: 'string', minLength: 1, maxLength: MAX_CODE_CHARS,
-      description: 'JavaScript (not TypeScript) run with the sandbox `bim` global. The value of the last expression is returned and must be JSON-serialisable; if it is a native promise (e.g. an async IIFE around bim.clash.run) its resolved value is returned; thenables are not awaited. Top-level await is not supported.',
+      description: 'JavaScript (not TypeScript) run with the sandbox `bim` global. The value of the last expression is returned and must be JSON-serialisable; if it is a native promise (e.g. an async IIFE around bim.clash.run) its resolved value is returned; thenables are not awaited. Top-level await is not supported. Wrap an object literal result in parentheses, ({ a: 1 }): a leading { is a block.',
     },
     timeout_ms: {
       type: 'integer', minimum: 100, maximum: MAX_TIMEOUT_MS, default: DEFAULT_TIMEOUT_MS,
@@ -100,7 +100,7 @@ const outputSchema: JsonSchema = {
       type: 'array',
       items: {
         type: 'object', required: ['level', 'text'],
-        properties: { level: { type: 'string', enum: ['log', 'info', 'warn', 'error'] }, text: { type: 'string' } },
+        properties: { level: { type: 'string', enum: [...SANDBOX_CONSOLE_LEVELS] }, text: { type: 'string' } },
       },
     },
     logs_truncated: { type: 'boolean' },
@@ -163,6 +163,9 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
   // the count is lost, but the run's own outcome must still come through.
   const queued = (): number | undefined => {
     if (mode !== 'mutate' || before === null) return 0;
+    // An unloaded model keeps a live mutation view but its edits can no
+    // longer be saved, so report no count rather than advice to persist.
+    if (ctx.registry.get(model.id) !== model) return undefined;
     const baseline = before;
     try {
       return pendingMutationIds(model).filter((id) => !baseline.has(id)).length;
@@ -259,7 +262,7 @@ async function withScriptSlot<T>(run: () => Promise<T>): Promise<T> {
   }
 }
 
-const SHARED_DESCRIPTION = `Runs in a QuickJS sandbox with only the \`bim\` SDK global (bim.query, bim.model, bim.lens, bim.clash, bim.cost, bim.structural, bim.schedule; script_run_mutate adds ${MUTATE_ONLY_LIST}) and console; no network, filesystem, viewer or timers. Returns the last expression value plus captured console output. memory_mb bounds the QuickJS heap only, not data bim calls build on the host. Script code runs on the server's event loop, so other requests wait while it runs (bounded by timeout_ms). At most ${MAX_CONCURRENT_SCRIPTS} scripts run at once per server, shared across all sessions; more get RATE_LIMITED.`;
+const SHARED_DESCRIPTION = `Runs in a QuickJS sandbox with only the \`bim\` SDK global (bim.query, bim.model, bim.lens, bim.clash, bim.cost, bim.structural, bim.schedule; script_run_mutate adds ${MUTATE_ONLY_LIST}) and console; no network, filesystem, viewer or timers. Returns the last expression value plus captured console output. memory_mb bounds the QuickJS heap only, not data bim calls build on the host (such as bim.create projects in script_run_mutate). Script code runs on the server's event loop, so other requests wait while it runs (bounded by timeout_ms). At most ${MAX_CONCURRENT_SCRIPTS} scripts run at once per server, shared across all sessions; more get RATE_LIMITED.`;
 
 export const scriptRunTool: Tool = {
   name: 'script_run',

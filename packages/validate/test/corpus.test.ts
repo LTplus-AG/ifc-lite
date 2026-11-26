@@ -34,7 +34,18 @@ describe('crafted parity corpus', () => {
 
   it.each(targeted)('$file: reports $targets', async ({ file, targets }) => {
     const report = await validateStepText(read(file));
-    expect(report.findings.some((f) => hitsTarget(keyString(ourKey(f)), targets))).toBe(true);
+    const matches = report.findings.filter(f => hitsTarget(keyString(ourKey(f)), targets));
+    expect(matches.length).toBeGreaterThan(0);
+    if (file.endsWith('/shape-shared-by-two-products.ifc')) expect(matches.some(f => f.instance === 36)).toBe(true);
+  });
+
+  it('cannot satisfy an oracle enum diagnostic with a different attribute on the same instance', async () => {
+    const file = 'broken/wall-enum-unknown-item.ifc';
+    const report = await validateStepText(read(file));
+    const misattributed = report.findings.map(f => f.rule === 'invalid-type' ? { ...f, attribute: 'IfcWall.Name' } : f);
+    const result = compareFile(file, 'crafted', report.schema, misattributed, oracleFor(file)!, 0);
+    expect(result.fn).toContain('invalid-type:predefinedtype|42');
+    expect(result.fp).toContain('invalid-type:name|42');
   });
 
   it.each(manifest)('$file: misses nothing ifcopenshell.validate reports', async ({ file }) => {

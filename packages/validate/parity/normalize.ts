@@ -27,6 +27,11 @@ export function oracleKey(f: OracleFinding): Keyed {
   switch (f.type) {
     case 'entity_rule':
     case 'simpletype_rule':
+      // IfcOpenShell labels execution exceptions as rule findings too. Match only
+      // the concrete exception diagnostics emitted by the pinned engine.
+      if (/\nViolated by:\n\s+(?:Attribute not set|'indeterminate_type' object is not callable|unhashable type: 'indeterminate_type')\s*\n/.test(msg)) {
+        return { rule: `evaluation-error:${(f.attribute ?? '?').toLowerCase()}`, instance };
+      }
       return { rule: (f.attribute ?? '?').toLowerCase(), instance };
     case 'global_rule':
       return { rule: `global:${(f.attribute ?? '?').toLowerCase()}` };
@@ -39,7 +44,7 @@ export function oracleKey(f: OracleFinding): Keyed {
   const unique = /Rule (Ifc\w+\.UR\d+)/.exec(msg);
   if (unique) return { rule: `unique:${unique[1].toLowerCase()}`, instance: instance ?? idFromOnInstance(msg) };
   if (msg.includes('IfcGloballyUniqueId base64')) return { rule: 'guid-format', instance: instance ?? idFromOnInstance(msg) };
-  if (/^An enumeration literal '.*' is not valid for type/.test(msg)) return { rule: 'invalid-type:?', instance };
+  if (/^An enumeration literal '.*' is not valid for type/.test(msg)) return { rule: `invalid-type:${last(f.attribute) || '?'}`, instance };
   if (/^Expected \d+ attribute values, found \d+/.test(msg)) return { rule: 'attribute-count', instance };
   const header = /For instance:\s+(FILE_\w+)\([\s\S]*Attribute '(\w+)' has invalid type/.exec(msg);
   if (header) return { rule: `header:${header[1].toLowerCase()}.${header[2].toLowerCase()}` };
@@ -64,7 +69,7 @@ export function ourKey(f: ValidationFinding): Keyed {
     case 'header':
       return { rule: `header:${f.rule.toLowerCase()}` };
     case 'evaluation_error':
-      return { rule: f.rule.toLowerCase(), instance };
+      return { rule: `evaluation-error:${f.rule.toLowerCase()}`, instance };
     case 'schema':
       switch (f.rule) {
         case 'not-optional': case 'derived-in-subtype': case 'invalid-type': case 'inverse-cardinality':

@@ -44,7 +44,7 @@ DATA;
 #39=IFCPOLYLINE((#37,#38));
 #40=IFCSHAPEREPRESENTATION(#17,'Axis','Curve2D',(#39));
 #41=IFCPRODUCTDEFINITIONSHAPE($,$,(#40,#36));
-#42=IFCWALL('9!invalid-guid-chars!!x',#5,'Wall A',$,$,#30,#41,$,.STANDARD.);
+#42=IFCWALL('1!invalid-guid-chars!!',#5,'Wall A',$,$,#30,#41,$,.STANDARD.);
 #43=IFCMATERIAL('Concrete',$,$);
 #44=IFCMATERIALLAYER(#43,0.2,$,$,$,$,$);
 #45=IFCMATERIALLAYERSET((#44),'Wall 200',$);

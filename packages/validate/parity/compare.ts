@@ -44,17 +44,7 @@ export function compareFile(
   oracleError?: string,
 ): FileComparison {
   const a = new Set(ours.map((f) => keyString(ourKey(f))));
-  const b = new Set<string>();
-  for (const f of oracle) {
-    const key = keyString(oracleKey(f));
-    const [rule, instance] = key.split('|');
-    if (!rule.endsWith(':?')) {
-      b.add(key);
-      continue;
-    }
-    const family = rule.slice(0, -1);
-    b.add([...a].find((k) => k.startsWith(family) && k.endsWith(`|${instance}`)) ?? key);
-  }
+  const b = new Set(oracle.map(f => keyString(oracleKey(f))));
   const rules = new Set([...a, ...b].map((k) => ruleFamily(k.split('|')[0])));
   return {
     path, kind, schema, ours: a.size, oracle: b.size, milliseconds, rules,

@@ -41,15 +41,28 @@ def run(path: str) -> dict:
     except Exception as exc:  # the oracle failing is a result, never a silent pass
         return {"path": path, "sha256": digest, "error": f"{type(exc).__name__}: {exc}", "findings": []}
     findings = []
+    schema = None
     for s in logger.statements:
         if s.get("level") != "error":
             continue
         message = str(s.get("message", ""))
+        attribute = s.get("attribute")
+        enum = re.match(r"An enumeration literal '.*?' is not valid for type '(\w+)'", message)
+        entity = re.match(r"#\d+\s*=\s*(\w+)\(", str(s.get("instance")), re.I)
+        if enum and entity and not attribute:
+            if schema is None:
+                schema = ifcopenshell.schema_by_name(ifcopenshell.open(path).schema_identifier)
+            declaration = schema.declaration_by_name(entity.group(1))
+            matches = [a.name() for a in declaration.all_attributes()
+                       if hasattr(a.type_of_attribute(), "declared_type")
+                       and a.type_of_attribute().declared_type().name().lower() == enum.group(1).lower()]
+            if len(matches) == 1:
+                attribute = f"{declaration.name()}.{matches[0]}"
         findings.append({
             "type": s.get("type"),
             "instance": instance_id(s.get("instance")),
             "instanceText": str(s.get("instance"))[:200] if s.get("instance") is not None else None,
-            "attribute": s.get("attribute"),
+            "attribute": attribute,
             "message": message[:400],
         })
     return {"path": path, "sha256": digest, "findings": findings}

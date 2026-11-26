@@ -73,6 +73,7 @@ function refreshOracle(cache: OracleCache, files: CorpusFile[], force: boolean):
   const out = JSON.parse(run.stdout) as { version: string; files: Array<{ path: string; sha256: string; findings: OracleFinding[]; error?: string }> };
   const next: OracleCache = { version: out.version, files: { ...cache.files } };
   for (const f of out.files) {
+    if (f.error) throw new Error(`Oracle failed for ${f.path}: ${f.error}`);
     const key = relative(repoRoot, f.path).replaceAll('\\', '/');
     next.files[key] = { sha256: f.sha256, findings: f.findings, ...(f.error ? { error: f.error } : {}) };
   }
@@ -94,6 +95,7 @@ async function main(): Promise<void> {
     const report = await validateStepText(text);
     const ms = Date.now() - started;
     const oracle = cache.files[f.path];
+    if (oracle?.error) throw new Error(`Cached oracle failed for ${f.path}: ${oracle.error}`);
     comparisons.push(compareFile(f.path, f.kind, report.schema, report.findings, oracle?.findings ?? [], ms, f.targets, oracle?.error));
   }
 

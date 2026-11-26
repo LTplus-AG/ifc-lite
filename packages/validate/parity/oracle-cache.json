@@ -598,14 +598,14 @@
    ]
   },
   "packages/validate/parity/corpus/broken/globalid-invalid-characters.ifc": {
-   "sha256": "901c494db4f0f64d835266040c8eca367246243dda5cfe252c5b3792c718e309",
+   "sha256": "71647563f6ba475ab972360f092ebf4c3fbb702beab73a655eb04ba792c3c551",
    "findings": [
     {
      "type": "schema",
      "instance": 42,
-     "instanceText": "#42=IfcWall('9!invalid-guid-chars!!x',#5,'Wall A',$,$,#30,#41,$,.STANDARD.)",
+     "instanceText": "#42=IfcWall('1!invalid-guid-chars!!',#5,'Wall A',$,$,#30,#41,$,.STANDARD.)",
      "attribute": null,
-     "message": "On instance:\n    #42=IfcWall('9!invalid-guid-chars!!x',#5,'Wall A',$,$,#30,#41,$,.STANDARD.)\n                ^^^^^^^^^^^^^^^^^^^^^^^^^                                      \nIfcGloballyUniqueId base64 validation:\n    The attribute GlobalId should be valid base64 encoded 128-bit number.\nViolated by:\n    Guid length should be 22 characters.\n"
+     "message": "On instance:\n    #42=IfcWall('1!invalid-guid-chars!!',#5,'Wall A',$,$,#30,#41,$,.STANDARD.)\n                ^^^^^^^^^^^^^^^^^^^^^^^^                                      \nIfcGloballyUniqueId base64 validation:\n    The attribute GlobalId should be valid base64 encoded 128-bit number.\nViolated by:\n    Guid contains invalid characters, allowed characters: '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefgh"
     }
    ]
   },
@@ -664,7 +664,7 @@
      "type": "schema",
      "instance": 42,
      "instanceText": "#42=IFCWALL('2xxxxxxxxxxxxxxxxxxxx8',#5,'Wall A',$,$,#30,#41,$,.CURVED.);",
-     "attribute": null,
+     "attribute": "IfcWall.PredefinedType",
      "message": "An enumeration literal 'CURVED' is not valid for type 'IfcWallTypeEnum' :\n\n#42=IFCWALL('2xxxxxxxxxxxxxxxxxxxx8',#5,'Wall A',$,$,#30,#41,$,.CURVED.);"
     }
    ]
@@ -2701,14 +2701,14 @@
    ]
   },
   "packages/validate/parity/corpus/ifc4x3/broken/globalid-invalid-characters.ifc": {
-   "sha256": "2c855bfa021d765d66abed409b7af73409aacd3a065a5dd2cd1087b0afc41238",
+   "sha256": "070c1d36c1f420431eaf9a51bdd89a398fe5b6255ad5532c0587f7c624bed3b6",
    "findings": [
     {
      "type": "schema",
      "instance": 42,
-     "instanceText": "#42=IfcWall('9!invalid-guid-chars!!x',#5,'Wall A',$,$,#30,#41,$,.STANDARD.)",
+     "instanceText": "#42=IfcWall('1!invalid-guid-chars!!',#5,'Wall A',$,$,#30,#41,$,.STANDARD.)",
      "attribute": null,
-     "message": "On instance:\n    #42=IfcWall('9!invalid-guid-chars!!x',#5,'Wall A',$,$,#30,#41,$,.STANDARD.)\n                ^^^^^^^^^^^^^^^^^^^^^^^^^                                      \nIfcGloballyUniqueId base64 validation:\n    The attribute GlobalId should be valid base64 encoded 128-bit number.\nViolated by:\n    Guid length should be 22 characters.\n"
+     "message": "On instance:\n    #42=IfcWall('1!invalid-guid-chars!!',#5,'Wall A',$,$,#30,#41,$,.STANDARD.)\n                ^^^^^^^^^^^^^^^^^^^^^^^^                                      \nIfcGloballyUniqueId base64 validation:\n    The attribute GlobalId should be valid base64 encoded 128-bit number.\nViolated by:\n    Guid contains invalid characters, allowed characters: '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefgh"
     }
    ]
   },
@@ -2767,7 +2767,7 @@
      "type": "schema",
      "instance": 42,
      "instanceText": "#42=IFCWALL('2xxxxxxxxxxxxxxxxxxxx8',#5,'Wall A',$,$,#30,#41,$,.CURVED.);",
-     "attribute": null,
+     "attribute": "IfcWall.PredefinedType",
      "message": "An enumeration literal 'CURVED' is not valid for type 'IfcWallTypeEnum' :\n\n#42=IFCWALL('2xxxxxxxxxxxxxxxxxxxx8',#5,'Wall A',$,$,#30,#41,$,.CURVED.);"
     }
    ]

@@ -58,7 +58,8 @@ function anonymizeSeeds(m: LoadedModel, input: Record<string, unknown>): Set<num
   if (key) {
     const id = key.replace(/^#/, '');
     const storeys = m.bim.storeys();
-    const fragment = storeys.filter((s) => s.name?.toLowerCase().includes(key.toLowerCase()));
+    // An explicit '#id' is an id only, never a name fragment.
+    const fragment = key.startsWith('#') ? [] : storeys.filter((s) => s.name?.toLowerCase().includes(key.toLowerCase()));
     const byId = storeys.find((s) => s.globalId === key) ?? storeys.find((s) => String(s.ref.expressId) === id);
     const named = storeys.filter((s) => s.name === key);
     // A bare number that is one storey's id and another storey's name is ambiguous.

@@ -534,6 +534,8 @@ ifc-lite extract-entities model.ifc --product '2O2Fr$t4X7Zf8NOew3FLKr' --out sub
 # By type or storey
 ifc-lite extract-entities model.ifc --type IfcWall --out walls.ifc
 ifc-lite extract-entities model.ifc --storey "Level 2" --out level2.ifc
+# --storey takes a GlobalId, #id, or the storey's exact Name (not LongName).
+# A bare number is a Name when no storey has that id; when it is both, use #id.
 
 # Auto-triage: extract the N most unusual meshes
 ifc-lite extract-entities model.ifc --detect --top 10 --out suspects.ifc

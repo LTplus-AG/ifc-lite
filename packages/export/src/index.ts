@@ -39,6 +39,8 @@ export {
   selectSubsetSeeds,
   SubsetSelectionError,
   type ParsedStep,
+  type StepRecord,
+  type Subset,
   type SubsetSelectors,
 } from './step-subset.js';
 export { MergedExporter, type MergeModelInput, type MergeExportOptions, type MergeExportResult, type MergeBlobExportResult, type ExportProgress } from './merged-exporter.js';

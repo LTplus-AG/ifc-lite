@@ -88,7 +88,7 @@ export function resolveStoreyPlacement(token: string, parsed: ParsedStep): numbe
   const byName = (): number | undefined => {
     const hits: number[] = [];
     for (const inst of parsed.instances.values()) {
-      if (inst.type === 'IFCBUILDINGSTOREY' && storeyName(inst.body) === t) hits.push(inst.id);
+      if (inst.type === 'IFCBUILDINGSTOREY' && storeyName(inst.body)?.trim() === t) hits.push(inst.id);
     }
     if (hits.length > 1) throw new SubsetSelectionError('invalid', `${hits.length} storeys are named '${t}' (#${hits.join(', #')}); pass a GlobalId or #id.`);
     return hits[0];

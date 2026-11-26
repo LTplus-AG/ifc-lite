@@ -29,7 +29,7 @@ const RETRY_MS = 100;
  * still where the lattice would collapse an entity, #9068). While a stream or its finalize runs this
  * waits (`schedule`) and looks again: a time-sliced finalize has already taken its pending keys, so
  * keys marked meanwhile would stay pending. `isCurrent` false (the renderer moved on) drops it.
- * Returns how many buckets it rebuilt now, or -1 when it will look again.
+ * Returns the number of marked buckets after a successful rebuild, 0 if it fails, or -1 if deferred.
  */
 export function requantizeEarlyBatches(
   scene: Scene, device: () => GPUDevice, pipeline: RenderPipeline, isCurrent: () => boolean = () => true,
@@ -53,10 +53,11 @@ export function requantizeEarlyBatches(
   if (marked === 0) return 0;
   try {
     scene.rebuildPendingBatches(device(), pipeline);
-    view.bumpPickGeometryRevision(); // hover and selection copies snap to the lattice of the batch they cover
   } catch (error) {
     // The keys stay pending: the next edit drain retries them, as for any failed rebuild.
     console.warn('[quantized] rebuilding batches built before the pipeline probe failed', error);
+    return 0;
   }
+  view.bumpPickGeometryRevision(); // hover and selection copies snap to the lattice of the batch they cover
   return marked;
 }

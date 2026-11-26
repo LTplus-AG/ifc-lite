@@ -48,6 +48,19 @@ describe('requantizeEarlyBatches (the quantized pipeline probe resolved after ba
     assert.equal(requantizeEarlyBatches(scene, () => device, pipeline), 0, 'the rebuilt batches are not marked again');
   });
 
+  it('reports zero rebuilt when the device is unavailable and retries the pending bucket (#11631)', () => {
+    const scene = new Scene();
+    scene.appendToBatches([square(1, 0)], device, pipeline, false);
+    scene.setQuantizedBatches(true);
+    const revision = scene.getPickGeometryRevision();
+    assert.equal(requantizeEarlyBatches(scene, () => { throw new Error('device unavailable'); }, pipeline), 0);
+    assert.equal(scene.getPickGeometryRevision(), revision);
+    assert.equal(quantizedBatches(scene), 0);
+    assert.ok(scene.hasPendingBatches());
+    assert.equal(requantizeEarlyBatches(scene, () => device, pipeline), 1);
+    assert.equal(quantizedBatches(scene), 1);
+  });
+
   it('leaves alone a batch quantization itself kept f32 (#9068), and batches built quantized', () => {
     const scene = new Scene();
     scene.setQuantizedBatches(true);

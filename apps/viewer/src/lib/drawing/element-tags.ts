@@ -14,7 +14,8 @@ import type { Point2D, TagAnnotation2D, TextAnnotation2D } from '@/store/slices/
 /** True unless the first IfcProject's UnitsInContext is explicitly unset ($). */
 function projectDeclaresUnits(store: IfcDataStore, view: Parameters<typeof effectiveMetadataRecord>[2]): boolean {
   const id = store.entityIndex.byType.get('IFCPROJECT')?.[0];
-  const record = id === undefined ? null : effectiveMetadataRecord(store, id, view);
+  if (id === undefined) return true;
+  const record = effectiveMetadataRecord(store, id, view);
   return !record || record.attributes[record.names.indexOf('UnitsInContext')] !== null;
 }
 
@@ -41,14 +42,16 @@ export function resolveElementTagLabel(tag: TagAnnotation2D): string | null {
   const sets = view ? view.getQuantitiesForEntity(tag.entityId, view.hasQuantityBase() ? undefined : base) : base(tag.entityId);
   const quantity = sets.filter(set => set.name === 'Qto_SpaceBaseQuantities')
     .flatMap(set => set.quantities).find(candidate => candidate.name === 'NetFloorArea');
-  if (!quantity || typeof quantity.value !== 'number' || !Number.isFinite(quantity.value)) return name || 'IfcSpace';
+  const title = name || 'IfcSpace';
+  if (!quantity || typeof quantity.value !== 'number' || !Number.isFinite(quantity.value)) return title;
   // The value is in the file's own AREAUNIT (or the quantity's explicit Unit), never pre-converted to m².
   const context = currentProjectUnitContext(store, view);
   // A project with no UnitsInContext (optional in IFC4) declares nothing, so SI defaults apply, as for geometry.
-  const undeclared = context.status === 'unavailable' && !projectDeclaresUnits(store, view);
-  const { unit } = resolveQuantityDisplay(quantity.value, QuantityType.Area, context.value ?? ProjectUnits.empty(), {}, quantity, context.status !== 'unavailable' || undeclared);
+  const unitsKnown = context.status !== 'unavailable' || !projectDeclaresUnits(store, view);
+  const units = context.value ?? ProjectUnits.empty();
+  const { unit } = resolveQuantityDisplay(quantity.value, QuantityType.Area, units, {}, quantity, unitsKnown);
   // Declared but unreadable units show no area rather than a number under a guessed unit.
-  return unit ? `${name || 'IfcSpace'} · ≈ ${Number(quantity.value.toFixed(2))} ${unit}` : name || 'IfcSpace';
+  return unit ? `${title} · ≈ ${Number(quantity.value.toFixed(2))} ${unit}` : title;
 }
 
 /** Area-weighted cut centroid. All fragments contribute, so tessellation order cannot move a tag. */

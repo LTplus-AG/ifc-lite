@@ -158,6 +158,14 @@ it('#9296 the cut centroid wins over projection fragments of the same element', 
   assert.deepEqual(resolveElementTagAnchor(tag(10), [polygon(0,true), polygon(10,false)], 10), { x: 1.2, y: 1.3 });
 });
 
+/** Length in metres; AREAUNIT the conversion-based square foot (0.09290304 m²), as Revit-style exports declare it. */
+const SQUARE_FOOT_UNITS = `#2=IFCUNITASSIGNMENT((#3,#4));
+#3=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#4=IFCCONVERSIONBASEDUNIT(#5,.AREAUNIT.,'square foot',#6);
+#5=IFCDIMENSIONALEXPONENTS(2,0,0,0,0,0,0);
+#6=IFCMEASUREWITHUNIT(IFCAREAMEASURE(0.09290304),#7);
+#7=IFCSIUNIT(*,.AREAUNIT.,$,.SQUARE_METRE.);`;
+
 /** A space whose NetFloorArea is authored in the model's own units (the value is NOT pre-converted to SI). */
 async function unitFixture(units: string, area: string, unitsRef = '#2', quantityUnit = '$') {
   const source = `ISO-10303-21;
@@ -181,7 +189,6 @@ END-ISO-10303-21;`;
 }
 
 it('space tag area carries the file\'s declared AREAUNIT, not a hard-coded m\u00b2', async () => {
-  // Imperial authoring: AREAUNIT is the conversion-based square foot (0.09290304 m\u00b2), as Revit-style exports declare it.
   await unitFixture(SQUARE_FOOT_UNITS, '1076.39');
   const label = resolveElementTagLabel(tag(20));
   assert.ok(label && !label.endsWith(' m\u00b2'), `label must not claim m\u00b2 for a square-foot value: ${label}`);
@@ -211,22 +218,11 @@ it('space tag area is omitted when the declared unit assignment is unreadable', 
 
 const unitFixtureUndeclared = (area: string) => unitFixture('', area, '$');
 
-const SQUARE_FOOT_UNITS = `#2=IFCUNITASSIGNMENT((#3,#4));
-#3=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
-#4=IFCCONVERSIONBASEDUNIT(#5,.AREAUNIT.,'square foot',#6);
-#5=IFCDIMENSIONALEXPONENTS(2,0,0,0,0,0,0);
-#6=IFCMEASUREWITHUNIT(IFCAREAMEASURE(0.09290304),#7);
-#7=IFCSIUNIT(*,.AREAUNIT.,$,.SQUARE_METRE.);`;
-
 it('#11456 space tag area follows the quantity\'s own Unit over the project AREAUNIT', async () => {
   // Project area unit is square metre; the quantity itself declares square foot.
-  await unitFixture(`#2=IFCUNITASSIGNMENT((#3,#8));
-#3=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
-#8=IFCSIUNIT(*,.AREAUNIT.,$,.SQUARE_METRE.);
-#4=IFCCONVERSIONBASEDUNIT(#5,.AREAUNIT.,'square foot',#6);
-#5=IFCDIMENSIONALEXPONENTS(2,0,0,0,0,0,0);
-#6=IFCMEASUREWITHUNIT(IFCAREAMEASURE(0.09290304),#7);
-#7=IFCSIUNIT(*,.AREAUNIT.,$,.SQUARE_METRE.);`, '1076.39', '#2', '#4');
+  // Same square-foot unit #4, but the assignment lists the SI square metre #8 as AREAUNIT.
+  await unitFixture(`${SQUARE_FOOT_UNITS.replace('(#3,#4)', '(#3,#8)')}
+#8=IFCSIUNIT(*,.AREAUNIT.,$,.SQUARE_METRE.);`, '1076.39', '#2', '#4');
   const label = resolveElementTagLabel(tag(20));
   assert.ok(label && !label.endsWith(' m\u00b2'), `label must follow the quantity's square-foot Unit: ${label}`);
   assert.match(label ?? '', /1076\.39 (sq ?ft|ft\u00b2|square foot)/i);

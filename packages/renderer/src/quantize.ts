@@ -182,7 +182,7 @@ export const MAX_COLLAPSED_AREA_FRACTION = 0.01;
  * the ~1 mm lattice but turns 2 to 20% of its area past this, wherever it sits
  * on the lattice; at 30° some positions dropped under 1% (#11444).
  */
-export const MIN_LATTICE_COS2 = Math.cos((25 * Math.PI) / 180) ** 2;
+const MIN_LATTICE_COS2 = Math.cos((25 * Math.PI) / 180) ** 2;
 
 /**
  * True when snapping a batch onto the lattice would visibly destroy shape:

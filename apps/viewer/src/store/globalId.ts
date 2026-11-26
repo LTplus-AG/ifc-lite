@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { federationRegistry } from '@ifc-lite/renderer';
 import type { EntityRef, FederatedModel } from './types.js';
 
 /** Shape accepted by `toGlobalIdFromModels` — re-export it so consumers can
@@ -38,40 +39,36 @@ export function toGlobalIdFromModels(
 /**
  * Resolve a renderer/global ID back to the source model and local expressId.
  *
- * This mirrors toGlobalIdFromModels and preserves legacy single-model behavior.
+ * Prefer the supplied model snapshot and its edits. Published IDs can extend
+ * beyond the snapshot's parse ranges while models stream or overlays publish.
  */
 export function fromGlobalIdFromModels(
   models: ReverseModelMapLike,
   globalId: number,
+  overlayFor?: (modelId: string) => OwnershipView | null | undefined,
 ): EntityRef | undefined {
   // No models loaded — legacy single-store fallback (expressId === globalId).
   if (models.size === 0) {
     return { modelId: 'legacy', expressId: globalId };
   }
 
-  // Resolve through every model by its offset range, regardless of count.
-  // For a true single model with idOffset 0 this still yields expressId === globalId.
-  // The `>= 0` boundary matches the canonical resolveGlobalIdFromModels (modelSlice.ts).
-  for (const [modelId, model] of models.entries()) {
-    const localExpressId = globalId - model.idOffset;
-    if (localExpressId >= 0 && localExpressId <= model.maxExpressId) {
-      return {
-        modelId,
-        expressId: localExpressId,
-      };
+  for (const [modelId, model] of models) {
+    const expressId = localIdInParseRange(model, globalId);
+    if (expressId !== null) return { modelId, expressId };
+  }
+
+  if (overlayFor) {
+    for (const [modelId, model] of models) {
+      const expressId = localIdInOverlay(model, globalId, overlayFor(modelId) ?? undefined);
+      if (expressId !== null) return { modelId, expressId };
     }
   }
 
-  // Single-model graceful fallback: an overlay-allocated id lands ABOVE
-  // maxExpressId, so with exactly one model the offset-corrected id is still
-  // that model's. An id below its offset is not (#11527: it came out as a
-  // negative local id that the next toGlobalId refused).
-  if (models.size === 1) {
-    const [modelId, model] = models.entries().next().value!;
-    const localId = globalId - model.idOffset;
-    if (localId > model.maxExpressId) return { modelId, expressId: localId };
+  // The supplied snapshot may outlive a registry reset or model replacement.
+  const published = federationRegistry.fromGlobalId(globalId);
+  if (published && models.get(published.modelId)?.idOffset === federationRegistry.getOffset(published.modelId)) {
+    return published;
   }
-
   return undefined;
 }
 

@@ -114,15 +114,13 @@ describe('fromGlobalIdFromModels', () => {
     const models = twoModels();
     // 501 is above model-a's max and below model-b's offset — owned by neither.
     assert.equal(fromGlobalIdFromModels(models, 501), undefined);
-    // Past model-b's window entirely, with >1 model so no single-model rescue.
+    // Past model-b's window entirely.
     assert.equal(fromGlobalIdFromModels(models, 1301), undefined);
   });
 
-  it('rescues an out-of-range id when exactly one model is loaded', () => {
-    // Overlay-allocated ids land above the parse-time maxExpressId; with a
-    // single model the offset-corrected id is still the right answer.
+  it('requires ownership above the only model’s parse range (#11607)', () => {
     const single = new Map<string, ReverseEntry>([['only', { idOffset: 100, maxExpressId: 50 }]]);
-    assert.deepEqual(fromGlobalIdFromModels(single, 999), { modelId: 'only', expressId: 899 });
+    assert.equal(fromGlobalIdFromModels(single, 999), undefined);
   });
 
   it('round-trips every model through toGlobalId → fromGlobalId', () => {
@@ -148,9 +146,7 @@ describe('fromGlobalIdFromModels', () => {
  * `localIdInParseRange` / `localIdInOverlay` — the "does a surviving model
  * own this global id" rule (#3343). Exported here so `modelSlice.ts`'s
  * resolvers and `teardown-scope.ts`'s `modelRemovedScope` survivor check
- * share ONE implementation instead of three hand-written copies (the third,
- * `fromGlobalIdFromModels` above, stays a deliberate fourth spelling — see
- * its own boundary comment).
+ * share one implementation with `fromGlobalIdFromModels`.
  */
 describe('localIdInParseRange', () => {
   it('returns the local id inside [idOffset, idOffset + maxExpressId], both boundaries included', () => {

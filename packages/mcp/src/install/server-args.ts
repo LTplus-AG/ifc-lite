@@ -8,9 +8,8 @@
  * here, because once written it fails silently at every client launch.
  */
 
-import { posix, win32 } from 'node:path';
 import { bridgeConflict, isMcpValueFlag, MCP_BOOLEAN_FLAGS, parseArgs } from '../cli-args.js';
-import { InstallError, type HostEnv } from './clients.js';
+import { InstallError, pathFor, type HostEnv } from './clients.js';
 
 /** Read only by the HTTP transport, which an installed server never runs. */
 const HTTP_ONLY_FLAGS = ['--port', '--host', '--token'];
@@ -62,7 +61,7 @@ export function checkServerArgs(argv: string[], host: HostEnv): { args: string[]
  * roots are made absolute.
  */
 function walk(args: string[], host: HostEnv): { args: string[]; hasPaths: boolean } {
-  const path = host.platform === 'win32' ? win32 : posix;
+  const path = pathFor(host);
   let hasPaths = false;
   const abs = (p: string) => {
     hasPaths = true;

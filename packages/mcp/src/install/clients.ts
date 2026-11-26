@@ -72,6 +72,11 @@ export type InstallPlan = FilePlan | CommandPlan;
 
 export class InstallError extends Error {}
 
+/** Path rules of the machine the config is for, not of the one running install. */
+export function pathFor(host: HostEnv): typeof posix {
+  return host.platform === 'win32' ? win32 : posix;
+}
+
 export function isClientId(value: string): value is ClientId {
   return Object.hasOwn(CLIENTS, value);
 }
@@ -83,7 +88,7 @@ export function planInstall(
   server: ServerCommand,
   host: HostEnv,
 ): InstallPlan {
-  const path = host.platform === 'win32' ? win32 : posix;
+  const path = pathFor(host);
   switch (client) {
     case 'claude-code':
       return {
@@ -107,7 +112,6 @@ export function planInstall(
       if (scope === 'project') {
         return { kind: 'file', path: path.join(host.cwd, '.vscode', 'mcp.json'), key: 'servers', entry };
       }
-      const json = JSON.stringify({ name, ...entry });
       // code.cmd re-reads its arguments through cmd, whose quote toggling and
       // `^` escapes would mangle the JSON; there is no safe way to pass it.
       if (host.platform === 'win32') {
@@ -116,7 +120,7 @@ export function planInstall(
             `"MCP: Open User Configuration" and add it under "servers":\n${JSON.stringify({ [name]: entry }, null, 2)}`,
         );
       }
-      return { kind: 'command', command: 'code', args: ['--add-mcp', json] };
+      return { kind: 'command', command: 'code', args: ['--add-mcp', JSON.stringify({ name, ...entry })] };
     }
   }
 }

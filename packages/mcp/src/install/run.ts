@@ -12,13 +12,14 @@
  * would happen and touches nothing.
  */
 
-import { dirname, join, posix, win32 } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readPackageVersion } from '@ifc-lite/data/node';
 import {
   CLIENTS,
   InstallError,
   isClientId,
+  pathFor,
   planInstall,
   type ClientId,
   type CommandPlan,
@@ -196,7 +197,7 @@ function runCommandPlan(
 
 /** A user-scope config folder that is missing usually means the app is not installed. */
 function warnIfNoAppDir(configPath: string, label: string, io: InstallIo): void {
-  const path = io.host.platform === 'win32' ? win32 : posix;
+  const path = pathFor(io.host);
   const appDir = path.dirname(configPath);
   try {
     if (io.host.listDir(path.dirname(appDir)).includes(path.basename(appDir))) return;

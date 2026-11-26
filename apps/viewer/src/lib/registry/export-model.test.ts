@@ -5,6 +5,8 @@
 import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { useViewerStore } from '@/store';
+import { createViewerOpenModel } from '@/lib/flow/open-model';
 import { editedRegistryModel } from '@/test/registry-model-fixture';
 import { exportRegistryModel } from './export-model';
 
@@ -21,4 +23,17 @@ test('registry publishing exports the complete active IFC with its pending prope
   const originalWall = reopened.entityIndex.byId.get(wall!);
   assert(originalWall, 'the edited wall still exists after re-parsing');
   assert.equal(reopened.entities.getName(wall!), 'Registry persisted wall', 'the edit belongs to the exported wall');
+});
+
+test('a full-length reserved registry name reopens with its IFC extension (#11442)', async () => {
+  const { id } = await editedRegistryModel();
+  const models = new Map(useViewerStore.getState().models);
+  models.set(id, { ...models.get(id)!, name: `CON.${'a'.repeat(51)}A.ifc` });
+  useViewerStore.setState({ models });
+  const { bytes, filename } = await exportRegistryModel();
+  assert.equal(filename, `_CON.${'a'.repeat(51)}.ifc`);
+  await createViewerOpenModel(async file => {
+    assert.equal(file.name, filename);
+    return id;
+  })(bytes, filename);
 });

@@ -4,8 +4,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Build the MCP Registry `server.json` and the Claude Desktop bundle
- * (`ifc-lite-<version>.mcpb`) for the current @ifc-lite/mcp version.
+ * Build the MCP Registry `server.json`, the Claude Desktop bundle
+ * (`ifc-lite-<version>.mcpb`) and its resolved dependency list
+ * (`ifc-lite-<version>.deps.txt`) for the current @ifc-lite/mcp version.
  *
  *   pnpm --filter @ifc-lite/mcp release:manifests [--out <dir>] [--no-bundle]
  *
@@ -99,8 +100,10 @@ mkdirSync(out, { recursive: true });
 writeFileSync(join(out, 'server.json'), `${JSON.stringify(serverJson(pkg), null, 2)}\n`);
 process.stdout.write(`wrote ${join(out, 'server.json')}\n`);
 // The registry verifies ownership through the npm package's mcpName.
-const onNpm = spawnSync('npm', ['view', `${pkg.name}@${pkg.version}`, 'mcpName'], { encoding: 'utf-8', shell: win });
-if (onNpm.stdout?.trim() !== pkg.mcpName) {
+const onNpm = spawnSync('npm', ['view', `${pkg.name}@${pkg.version}`, 'mcpName'], { encoding: 'utf-8', shell: win, timeout: 30_000 });
+if (onNpm.status !== 0) {
+  process.stdout.write(`note: could not ask npm about ${pkg.name}@${pkg.version}; check its mcpName before publishing server.json\n`);
+} else if (onNpm.stdout.trim() !== pkg.mcpName) {
   process.stdout.write(`note: ${pkg.name}@${pkg.version} on npm has no mcpName ${pkg.mcpName}; publish this version before server.json\n`);
 }
 

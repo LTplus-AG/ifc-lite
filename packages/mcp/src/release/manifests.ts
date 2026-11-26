@@ -102,6 +102,8 @@ export function mcpbManifest(pkg: McpPackage): Record<string, unknown> {
       mcp_config: {
         command: 'node',
         // Each selected file becomes its own argument (MANIFEST.md, array expansion).
+        // The client fills in ${user_config.models}; it is a literal here on purpose.
+        // eslint-disable-next-line no-template-curly-in-string
         args: [`\${__dirname}/${entry}`, '${user_config.models}'],
       },
     },

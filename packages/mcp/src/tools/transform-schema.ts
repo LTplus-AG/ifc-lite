@@ -80,7 +80,7 @@ export const isStepModel = (m: LoadedModel): boolean => m.store.schemaVersion !=
 export function resolveStepModel(ctx: ToolContext, modelId: string | undefined, tool: string): LoadedModel {
   const m = resolveModel(ctx, modelId);
   if (!isStepModel(m)) {
-    throw new ToolExecutionError({ code: ToolErrorCode.UNSUPPORTED_OPERATION, message: `${tool} reads IFC STEP; model '${m.id}' is IFC5 (IFCX).` });
+    throw unsupported(`${tool} reads IFC STEP; model '${m.id}' is IFC5 (IFCX).`);
   }
   return m;
 }
@@ -124,6 +124,11 @@ export async function writeSidecar(primary: string, sidecar: string, data: strin
       message: `Wrote ${primary}, but writing ${sidecar} failed: ${err instanceof Error ? err.message : String(err)}. The two files do not match.`,
     });
   }
+}
+
+/** The model or its state cannot take this operation (as opposed to a bad argument). */
+export function unsupported(message: string): ToolExecutionError {
+  return new ToolExecutionError({ code: ToolErrorCode.UNSUPPORTED_OPERATION, message });
 }
 
 export function invalid(message: string): ToolExecutionError {

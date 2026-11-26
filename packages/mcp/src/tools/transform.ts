@@ -44,6 +44,7 @@ import {
   withIfcPrefix,
   stringList,
   throwIfCancelled,
+  unsupported,
 } from './transform-schema.js';
 
 const ROOT_MODES = ['single', 'by-name'];
@@ -92,7 +93,7 @@ const modelMerge: Tool = {
       requireNoPendingEdits(m, 'model_merge');
       // MergedExporter skips a model with no source bytes; refuse rather than merge fewer than asked.
       if (m.store.source.byteLength === 0) {
-        throw new ToolExecutionError({ code: ToolErrorCode.UNSUPPORTED_OPERATION, message: `Model '${m.id}' kept no source bytes to merge. Reload it with model_load.` });
+        throw unsupported(`Model '${m.id}' kept no source bytes to merge. Reload it with model_load.`);
       }
     }
     // Default: the first model's schema, so a merge never converts unasked.

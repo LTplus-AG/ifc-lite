@@ -10,7 +10,7 @@
 import { walkPlacementChain } from '@ifc-lite/data';
 import { decodeStepStringLiteral } from '@ifc-lite/encoding';
 import { stepString } from './schema-converter-structural-source.js';
-import { refsOutsideStrings, splitTopLevelArgs, SubsetSelectionError } from './step-subset-relations.js';
+import { refsOutsideStrings, SINGLE_REF_RE, splitTopLevelArgs, STRUCTURE_RELATION_ATTRS, STRUCTURE_RELATIONS, SubsetSelectionError } from './step-subset-relations.js';
 import type { ParsedStep } from './step-subset.js';
 
 /** Map each IfcLocalPlacement to its parent placement (or null when top-level). */
@@ -132,4 +132,25 @@ export function resolveStoreyPlacement(token: string, parsed: ParsedStep): numbe
   const placementId = refs.find((r) => parsed.instances.get(r)?.type === 'IFCLOCALPLACEMENT');
   if (placementId === undefined) throw new SubsetSelectionError('invalid', `Storey #${storeyId} has no IfcLocalPlacement`);
   return placementId;
+}
+
+/**
+ * RelatedElements of every IfcRelContainedInSpatialStructure whose
+ * RelatingStructure is in `structures`: a storey's products that are placed
+ * in world or building coordinates rather than under the storey's placement.
+ * A record that does not split into its six attributes is skipped.
+ */
+export function containedIn(structures: ReadonlySet<number>, parsed: ParsedStep): number[] {
+  const out: number[] = [];
+  if (structures.size === 0) return out;
+  const [relatingAt, relatedAt] = STRUCTURE_RELATIONS.IFCRELCONTAINEDINSPATIALSTRUCTURE;
+  for (const inst of parsed.instances.values()) {
+    if (inst.type !== 'IFCRELCONTAINEDINSPATIALSTRUCTURE') continue;
+    const args = splitTopLevelArgs(inst.body);
+    if (!args || args.length !== STRUCTURE_RELATION_ATTRS) continue;
+    const relating = SINGLE_REF_RE.exec(args[relatingAt]);
+    if (!relating || !structures.has(Number(relating[1]))) continue;
+    for (const id of refsOutsideStrings(args[relatedAt])) if (parsed.instances.has(id)) out.push(id);
+  }
+  return out;
 }

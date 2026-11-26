@@ -3089,3 +3089,36 @@ fn an_element_in_spaces_on_two_storeys_goes_to_the_lowest_storey_id() {
     assert_eq!(storey_of(&dm, 7), Some(4));
     assert_eq!(storey_of(&dm, 8), Some(4), "aggregated part follows");
 }
+
+// An orphan storey (never aggregated under the project) contains pump #7, and
+// space #6 on reachable storey #4 contains it too. packages/parser never visits
+// the orphan, so it answers #4; the server must agree.
+const SPACE_CLAIM_BEATS_ORPHAN_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000001',$,'P',$,$,$,$,$,$);
+#2=IFCSITE('Site0000000000000000001',$,'S',$,$,$,$,$,$,$,$,$,$,$);
+#3=IFCBUILDING('Bldg0000000000000000001',$,'B',$,$,$,$,$,$,$,$,$);
+#4=IFCBUILDINGSTOREY('StorA00000000000000001',$,'A',$,$,$,$,$,$,$);
+#50=IFCBUILDINGSTOREY('StorO00000000000000001',$,'Orphan',$,$,$,$,$,$,$);
+#10=IFCRELAGGREGATES('Agg00000000000000000001',$,$,$,#1,(#2));
+#11=IFCRELAGGREGATES('Agg00000000000000000002',$,$,$,#2,(#3));
+#12=IFCRELAGGREGATES('Agg00000000000000000003',$,$,$,#3,(#4));
+#6=IFCSPACE('Spac0000000000000000001',$,'Room',$,$,$,$,$,$,$,$);
+#7=IFCFLOWSEGMENT('Pump0000000000000001',$,'Pump',$,$,$,$,$);
+#20=IFCRELAGGREGATES('Agg00000000000000000010',$,$,$,#4,(#6));
+#30=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000001',$,$,$,(#7),#50);
+#31=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000002',$,$,$,(#7),#6);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn a_space_claim_on_a_reachable_storey_beats_an_orphan_storey_row() {
+    let dm = extract_data_model_checked(SPACE_CLAIM_BEATS_ORPHAN_IFC);
+    assert_eq!(storey_of(&dm, 7), Some(4));
+    let rows = dm.spatial_hierarchy.element_to_storey.iter().filter(|(e, _)| *e == 7).count();
+    assert_eq!(rows, 1, "one storey row for #7");
+}

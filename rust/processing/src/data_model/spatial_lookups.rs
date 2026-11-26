@@ -102,19 +102,12 @@ pub(super) fn build_element_lookups(
         }
     }
 
-    // Orphan-only elements keep their first-declared orphan storey.
-    for (element_id, spatial_id) in element_to_orphan_storey {
-        if !storey_claimed.contains(&element_id) {
-            element_to_storey.push((element_id, spatial_id));
-        }
-    }
-
     // #11468 parity with `packages/parser`'s `elementToStorey`: the aggregated
     // parts of a directly contained element are on its storey, and so is an
     // element contained in an IfcSpace/IfcSpatialZone that a project-reachable
     // storey aggregates (the space may be nested in another space), with its
-    // parts. Direct containment, orphan rows included, wins, so this runs after
-    // every direct row is in. The walk goes through space-like nodes only. An
+    // parts. Direct containment in a reachable storey wins, so this runs after
+    // those rows are in. The walk goes through space-like nodes only. An
     // element reached through spaces on several storeys goes to the lowest
     // storey id; the parser applies the same rule.
     claim_through_spaces(
@@ -125,6 +118,16 @@ pub(super) fn build_element_lookups(
         &is_space_like_spatial_type,
         &mut element_to_storey,
     );
+
+    // Orphan-only elements keep their first-declared orphan storey. They go in
+    // after the space claim: the parser never visits an orphan storey, so a
+    // reachable storey reached through a space wins over it there too.
+    let claimed: FxHashSet<u32> = element_to_storey.iter().map(|(e, _)| *e).collect();
+    for (element_id, spatial_id) in element_to_orphan_storey {
+        if !claimed.contains(&element_id) {
+            element_to_storey.push((element_id, spatial_id));
+        }
+    }
 
     ElementLookups {
         storey: element_to_storey,

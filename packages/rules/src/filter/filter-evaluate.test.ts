@@ -281,7 +281,13 @@ describe('evaluateFilterRules — storey & predefinedType resolvers', () => {
     const byRef = evaluateFilterRules(
       'm1', store, [Rule.storey(['Level 3'], 'in', [{ modelId: 'm1', expressId: 500 }])], 'AND',
     );
-    assert.deepStrictEqual(byRef.map((r) => r.expressId), [900]);
+    // Space 550 is itself on storey 500 (elementToStorey), so it matches as well;
+    // OR, which skips the prefilter, already returned it (#11468).
+    assert.deepStrictEqual(byRef.map((r) => r.expressId), [550, 900]);
+    const byRefOr = evaluateFilterRules(
+      'm1', store, [Rule.storey(['Level 3'], 'in', [{ modelId: 'm1', expressId: 500 }])], 'OR',
+    );
+    assert.deepStrictEqual(byRefOr.map((r) => r.expressId), [550, 900]);
   });
 });
 
@@ -924,7 +930,28 @@ describe('selectIterationSource — index prefilter (AND + op:in)', () => {
       s2, [Rule.storey(['Level 3'], 'in', [{ modelId: 'm1', expressId: 500 }])], 'AND', undefined, 'm1',
     );
     const ids = Array.from(source as Iterable<number>);
-    assert.deepStrictEqual(ids.sort(), [900]);
+    // The space itself (550) resolves to storey 500 through elementToStorey, so the
+    // per-entity check matches it and the bucket must hold it too (#11468).
+    assert.deepStrictEqual(ids.sort(), [550, 900]);
+  });
+
+  it('unionByStorey holds every element elementToStorey puts on the storey, nested-space elements and parts included (#11468)', () => {
+    const storeyRows = [
+      ...rows,
+      { expressId: 500, type: 'IFCBUILDINGSTOREY', globalId: '5abcdefghijklmnopqrstu', name: 'Level 3' },
+      { expressId: 901, type: 'IFCFURNITURE', globalId: '9abcdefghijklmnopqrstw', name: 'Chair' },
+      { expressId: 902, type: 'IFCBUILDINGELEMENTPART', globalId: '9abcdefghijklmnopqrstx', name: 'Part' },
+    ];
+    const s2 = buildStore(storeyRows);
+    // 901 sits in a space nested in another space on 500, and 902 is its part:
+    // neither is in byStorey or reachable through bySpace in one hop.
+    (s2 as unknown as { spatialHierarchy: unknown }).spatialHierarchy = {
+      byStorey: new Map<number, number[]>([[500, []]]),
+      elementToStorey: new Map<number, number>([[901, 500], [902, 500]]),
+      bySpace: new Map<number, number[]>(),
+    };
+    const ids = Array.from(select(s2, [Rule.storey(['Level 3'], 'in')], 'AND', undefined, 'm1') as Iterable<number>);
+    assert.deepStrictEqual(ids.sort(), [901, 902]);
   });
 });
 

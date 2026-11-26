@@ -16,7 +16,7 @@ import type { Tool } from './types.js';
 import type { JsonSchema } from '../protocol/index.js';
 import { okResult, resolveModel } from './util.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
-import { EDIT, READ_ONLY } from './annotations.js';
+import { EDIT, READ_ONLY_NETWORK } from './annotations.js';
 
 const PLAN_PROPS: Record<string, JsonSchema> = {
   apply: { type: 'array', items: { type: 'string' }, description: 'Fix ids (from georeferencing_check) to use instead of their finding\'s preferred fix.' },
@@ -61,7 +61,7 @@ function asToolError(err: unknown): never {
 }
 
 export const georeferencingCheckTool: Tool = {
-  name: 'georeferencing_check', title: 'Check georeferencing', annotations: READ_ONLY,
+  name: 'georeferencing_check', title: 'Check georeferencing', annotations: READ_ONLY_NETWORK,
   description: [
     'Diagnose a model\'s georeferencing: the Level of Georeferencing found, findings with stable codes (MAP_POSITION_APPLIED_TWICE, SCALE_UNIT_MISMATCH, EASTING_ZONE_PREFIX, LV03_LV95_MIX, OUTSIDE_CRS_AREA, SITE_LOCATION_DEFAULT, …), checks skipped for lack of a capability, and a fix plan.',
     'Each planned fix has a status: ready (georeferencing_fix applies it), needs-value (pass the listed paths in values, from the user), review (the checker marks it uncertain; never applied), manual, alternative (pass its id in apply), conflict.',
@@ -82,7 +82,7 @@ export const georeferencingCheckTool: Tool = {
 };
 
 export const georeferencingFixTool: Tool = {
-  name: 'georeferencing_fix', title: 'Fix georeferencing', annotations: EDIT,
+  name: 'georeferencing_fix', title: 'Fix georeferencing', annotations: { ...EDIT, openWorldHint: true },
   description: [
     'Apply the georeferencing fixes georeferencing_check marks ready (same inputs: apply, values, accept_approximate_datum), held in the session like georeferencing_write and saved by export_ifc / model_save, then check again.',
     'Never applies a fix that needs a value nobody supplied, that the checker marks uncertain, or that the write API cannot carry; returns what was applied and what remains.',

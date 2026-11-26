@@ -392,12 +392,13 @@ palette. Reads, selection inspection and palette discovery are available initial
   well-formed for the keywords the bridge validates (`properties` of schemas,
   `required` as strings, numeric bounds as numbers, ...), `type` must name a
   type the bridge enforces (`string`, `number`, `integer`, `boolean`, `array`,
-  `object`, `null`), `oneOf`/`anyOf` must be arrays of schemas, `pattern` must
-  compile as a `u`-flag regular expression, and `$ref` is refused (a tab schema
-  has no `$defs` to resolve against). The bridge enforces `enum`, `const`,
-  `pattern`, `uniqueItems`, `oneOf`, `anyOf` and schema-valued
-  `additionalProperties`; `format` is published but not checked, so the tab
-  must validate it. Non-finite numbers (`1e999`) are
+  `object`, `null`), and `oneOf`/`anyOf` must be arrays of schemas. `$ref` is
+  refused (a tab schema has no `$defs` to resolve against), and so is `pattern`
+  (the server will not run a tab's regex against agent input). The bridge
+  enforces `enum`, `const`, `uniqueItems`, `oneOf`, `anyOf` and schema-valued
+  `additionalProperties`. Other JSON Schema keywords (`format`,
+  `exclusiveMaximum`, `multipleOf`, `allOf`, …) are published to the agent but
+  not checked by the bridge; the tab must validate them. Non-finite numbers (`1e999`) are
   refused anywhere in a frame. An oversized or
   malformed hello is refused; an update is rejected with a non-fatal `error`;
   a result fails its call with a message naming the limit. The size and

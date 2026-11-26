@@ -299,5 +299,29 @@ describe('validateInput: 2020-12 keywords beyond the original subset', () => {
     expect(r.errors[0].message).toContain('$.op.body.v');
     expect(r.errors[0].message).not.toContain('$.op.kind');
   });
+
+  it('applies keywords next to a $ref on top of the referenced schema', () => {
+    const schema = { type: 'object', properties: { op: { $ref: '#/$defs/Op', properties: { extra: { type: 'string' } } } },
+      $defs: { Op: { type: 'object', properties: { kind: { const: 'add' } } } } };
+    expect(validateInput(schema, { op: { kind: 'bogus' } }).valid).toBe(false);
+    expect(validateInput(schema, { op: { kind: 'add', extra: 1 } }).valid).toBe(false);
+    expect(validateInput(schema, { op: { kind: 'add', extra: 'x' } }).valid).toBe(true);
+  });
+
+  it('resolves a $ref to a boolean schema, and allows a recursive schema that descends into the input', () => {
+    const any = { type: 'object', properties: { x: { $ref: '#/$defs/Any' } }, $defs: { Any: true } };
+    expect(validateInput(any as unknown as Parameters<typeof validateInput>[0], { x: 1 }).valid).toBe(true);
+    const tree = { $ref: '#/$defs/Node', $defs: { Node: { type: 'object', properties: { kids: { type: 'array', items: { $ref: '#/$defs/Node' } }, n: { type: 'integer' } } } } };
+    expect(validateInput(tree, { kids: [{ kids: [{ n: 1 }] }] }).valid).toBe(true);
+    expect(validateInput(tree, { kids: [{ kids: [{ n: 'x' }] }] }).errors[0].path).toBe('$.kids[0].kids[0].n');
+  });
+});
+
+describe('advertisedInputSchema', () => {
+  // A bridge tab may now send a root oneOf; the Anthropic API rejects it like a root anyOf (#5192).
+  it('strips a root oneOf as well as a root anyOf', () => {
+    const advertised = advertisedInputSchema({ type: 'object', oneOf: [{ required: ['a'] }, { required: ['b'] }] });
+    expect(advertised).toEqual({ type: 'object' });
+  });
 });
 

@@ -28,7 +28,11 @@ export const VIEWER_DISPLAY = hints(false, false, true);
 export const EDIT = hints(false, false, false);
 /** Sets a value; repeating the same call leaves the same state. */
 export const EDIT_IDEMPOTENT = hints(false, false, true);
-/** Deletes, overwrites or removes data; repeating the call changes nothing more. */
+/**
+ * Deletes or removes data (an element, a property, a storey, a model, the
+ * georeferencing); repeating the call changes nothing more. Setting a value
+ * that `mutation_undo` can restore is an edit, not destructive.
+ */
 export const DESTRUCTIVE = hints(false, true, true);
 /** May delete or discard data, and each call can do so again. */
 export const DESTRUCTIVE_NOT_IDEMPOTENT = hints(false, true, false);

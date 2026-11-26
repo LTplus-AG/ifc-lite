@@ -24,7 +24,7 @@
  * passed to `validateInput`. Keywords next to a `$ref` are applied too, on top
  * of the referenced schema's.
  *
- * A top-level `anyOf` is enforced here but NOT advertised: the Anthropic
+ * A top-level `anyOf` or `oneOf` is enforced here but NOT advertised: the Anthropic
  * Messages API rejects a tool `input_schema` carrying `oneOf`/`allOf`/`anyOf`
  * at the root with a 400 that fails the whole request, so every Claude-backed
  * MCP client would lose the entire tool list over one schema.
@@ -68,13 +68,13 @@ export function validateInput(schema: JsonSchema, input: unknown): ValidationRes
 }
 
 /**
- * The schema `tools/list` publishes for a tool: its input schema without the
- * root-level `anyOf` (see the file header). Nested `anyOf` is left alone —
- * only the root is rejected by the Anthropic API.
+ * The schema `tools/list` publishes for a tool: its input schema without a
+ * root-level `anyOf` or `oneOf` (see the file header). Nested ones are left
+ * alone; only the root is rejected by the Anthropic API.
  */
 export function advertisedInputSchema(schema: JsonSchema): JsonSchema {
-  if (schema.anyOf === undefined) return schema;
-  const { anyOf: _enforcedServerSide, ...advertised } = schema;
+  if (schema.anyOf === undefined && schema.oneOf === undefined) return schema;
+  const { anyOf: _anyOf, oneOf: _oneOf, ...advertised } = schema;
   return advertised;
 }
 
@@ -85,6 +85,8 @@ interface WalkOptions {
    * result is discarded, so a default must not be what lets it pass.
    */
   fillDefaults: boolean;
+  /** `$ref`s followed at the current path; a repeat is a cycle that consumes no input. */
+  refs?: ReadonlySet<string>;
 }
 
 /** `const` failures, so `checkOneOf` can tell a wrong discriminator from a real problem. */
@@ -97,7 +99,15 @@ function walk(schema: JsonSchema | boolean, input: unknown, path: string, errors
     if (input !== undefined) errors.push({ path, message: 'No value is allowed here' });
     return input;
   }
-  if (typeof schema.$ref === 'string') schema = resolveRef(schema, opts.root);
+  if (typeof schema.$ref === 'string') {
+    // The referenced schema and the keywords next to the `$ref` both apply.
+    const { $ref: ref, ...siblings } = schema;
+    if (opts.refs?.has(ref)) throw new Error(`Circular $ref '${ref}'`);
+    input = walk(resolveRef(ref, opts.root), input, path, errors, { ...opts, refs: new Set([...(opts.refs ?? []), ref]) });
+    schema = siblings;
+  }
+  // Children start a fresh `$ref` chain: a recursive schema is fine once it descends into the input.
+  const child: WalkOptions = opts.refs ? { root: opts.root, fillDefaults: opts.fillDefaults } : opts;
   if (opts.fillDefaults && input === undefined && schema.default !== undefined) {
     input = clone(schema.default);
   }
@@ -143,7 +153,7 @@ function walk(schema: JsonSchema | boolean, input: unknown, path: string, errors
         const childPath = `${path}.${key}`;
         // Own properties only: a schema property named `toString` or
         // `constructor` must not read the value inherited from Object.prototype.
-        const value = walk(sub, own(obj, key), childPath, errors, opts);
+        const value = walk(sub, own(obj, key), childPath, errors, child);
         // defineProperty, not `result[key] =`: a `__proto__` key must stay data.
         if (value !== undefined) defineData(result, key, value);
       }
@@ -163,7 +173,7 @@ function walk(schema: JsonSchema | boolean, input: unknown, path: string, errors
       for (const key of Object.keys(obj)) {
         if (own(schema.properties ?? {}, key) !== undefined) continue;
         if (extra === false) errors.push({ path: `${path}.${key}`, message: 'Unexpected property' });
-        else defineData(result, key, walk(extra, obj[key], `${path}.${key}`, errors, opts));
+        else defineData(result, key, walk(extra, obj[key], `${path}.${key}`, errors, child));
       }
     }
     return result;
@@ -186,7 +196,7 @@ function walk(schema: JsonSchema | boolean, input: unknown, path: string, errors
       });
     }
     if (schema.items) {
-      return arr.map((item, i) => walk(schema.items as JsonSchema, item, `${path}[${i}]`, errors, opts));
+      return arr.map((item, i) => walk(schema.items as JsonSchema, item, `${path}[${i}]`, errors, child));
     }
     return arr;
   }
@@ -253,23 +263,18 @@ function describeIssues(issues: ValidationIssue[]): string {
   return issues.map((e) => `${e.path}: ${e.message}`).join('; ');
 }
 
-/** Resolve a local `$ref` (`#/a/b`) against the root; sibling keywords override the target's. */
-function resolveRef(schema: JsonSchema, root: JsonSchema, seen = new Set<string>()): JsonSchema {
-  const ref = schema.$ref as string;
+/** The schema a local `$ref` (`#/a/b`) points at, which may be a boolean schema. */
+function resolveRef(ref: string, root: JsonSchema): JsonSchema | boolean {
   if (!ref.startsWith('#')) throw new Error(`Unsupported non-local $ref '${ref}'`);
-  if (seen.has(ref)) throw new Error(`Circular $ref '${ref}'`);
-  seen.add(ref);
   let target: unknown = root;
   for (const raw of ref.slice(1).split('/').filter(Boolean)) {
     const key = raw.replace(/~1/g, '/').replace(/~0/g, '~');
     target = target !== null && typeof target === 'object' ? own(target as Record<string, unknown>, key) : undefined;
   }
-  if (target === undefined || target === null || typeof target !== 'object') {
-    throw new Error(`Unresolvable $ref '${ref}'`);
+  if (typeof target === 'boolean' || (target !== null && typeof target === 'object' && !Array.isArray(target))) {
+    return target as JsonSchema | boolean;
   }
-  const { $ref: _resolved, ...siblings } = schema;
-  const resolved = { ...(target as JsonSchema), ...siblings };
-  return typeof resolved.$ref === 'string' ? resolveRef(resolved, root, seen) : resolved;
+  throw new Error(`Unresolvable $ref '${ref}'`);
 }
 
 function own(obj: Record<string, unknown>, key: string): unknown {

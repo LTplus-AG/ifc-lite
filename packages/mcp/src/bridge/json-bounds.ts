@@ -124,7 +124,8 @@ export function checkSchemaShape(schema: unknown, path: string): string | null {
   }
   // A tab schema has no `$defs` the server could resolve against; `validateInput` would throw on every call.
   if (schema.$ref !== undefined) return `${path}.$ref is not supported in a tab schema; inline the schema`;
-  if (schema.pattern !== undefined && !compiles(schema.pattern)) return `${path}.pattern must be a valid regular expression (u flag)`;
+  // The server would run a tab's regex against agent input on its own event loop (a backtracking pattern stalls every session).
+  if (schema.pattern !== undefined) return `${path}.pattern is not supported in a tab schema; check it in the tab`;
   if (additionalProperties !== undefined && typeof additionalProperties !== 'boolean') {
     const err = checkSchemaShape(additionalProperties, `${path}.additionalProperties`);
     if (err) return err;
@@ -137,13 +138,3 @@ export function checkSchemaShape(schema: unknown, path: string): string | null {
   return null;
 }
 
-function compiles(pattern: unknown): boolean {
-  if (typeof pattern !== 'string') return false;
-  try {
-    new RegExp(pattern, 'u');
-    return true;
-  } catch (err) {
-    if (err instanceof SyntaxError) return false;
-    throw err;
-  }
-}

@@ -110,7 +110,8 @@ export function resolveStorey(token: string, parsed: ParsedStep): { storeyId: nu
     try {
       named = byName();
     } catch (err) {
-      // Duplicate names do not block a token that is itself a storey id.
+      // For a token that is itself a storey id, report the id/name ambiguity
+      // instead of the bare duplicate-name error.
       if (!(err instanceof SubsetSelectionError) || !isStoreyId) throw err;
       throw new SubsetSelectionError('invalid', `'${t}' is storey #${id} and the Name of other storeys; pass #${id} or a GlobalId.`);
     }

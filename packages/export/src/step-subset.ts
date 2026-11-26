@@ -18,18 +18,13 @@
  */
 import { stepStringLiteralEnd } from '@ifc-lite/encoding';
 import { expandTypes } from '@ifc-lite/parser';
+import { getIfcRootTypes } from './subset-roots.js';
 import { planSpatialRelations, refsOutsideStrings, SubsetSelectionError, type StepRecord, type Subset } from './step-subset-relations.js';
 import { spatialAncestors } from './step-subset-spatial-ancestors.js';
 import { resolveStorey, storeyMembers } from './step-subset-storey.js';
 
 export { SubsetSelectionError } from './step-subset-relations.js';
 export type { StepRecord, Subset } from './step-subset-relations.js';
-
-let ROOTED: Set<string> | undefined;
-/** Every IfcRoot subtype, uppercase, across the bundled schemas. */
-function rootedTypes(): Set<string> {
-  return (ROOTED ??= new Set(expandTypes(['IfcRoot']).map((t) => t.toUpperCase())));
-}
 
 export interface ParsedStep {
   header: string;
@@ -53,6 +48,7 @@ export function parseStep(text: string): ParsedStep {
   const data = text;
 
   const instances = new Map<number, StepRecord>();
+  const rooted = getIfcRootTypes();
   const guidToId = new Map<string, number>();
 
   let i = headerEnd;
@@ -109,12 +105,13 @@ export function parseStep(text: string): ParsedStep {
     const id = parseInt(idStr, 10);
     const body = data.slice(bodyStart, bodyEnd);
     const full = data.slice(hashStart, semi + 1).trim();
-    instances.set(id, { id, type: type.toUpperCase(), body, full });
+    const upperType = type.toUpperCase();
+    instances.set(id, { id, type: upperType, body, full });
     // First quoted 22-char token is the GlobalId of a rooted entity.
     const gm = /^\s*'([^']{22})'/.exec(body);
     // Only IfcRoot records carry a GlobalId; a property or material whose first
     // string happens to be 22 characters must not answer for one.
-    if (gm && rootedTypes().has(instances.get(id)!.type)) guidToId.set(gm[1], id);
+    if (gm && rooted.has(upperType)) guidToId.set(gm[1], id);
     i = semi + 1;
   }
   return { header, instances, guidToId };

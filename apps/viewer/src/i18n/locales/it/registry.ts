@@ -53,6 +53,7 @@ export const registryIt = {
   "registry.signInFailed": "Accesso non completato. Riprova.",
   "registry.denied": "Questo account non ha accesso al modello o all’azione.",
   "registry.failed": "Impossibile completare la richiesta. Riprova.",
+  "registry.connectionChanged": "Le impostazioni salvate dell’archivio file sono cambiate durante l’autorizzazione. Riprova.",
   "registry.releaseMissing": "Questa versione non è più disponibile. Scegli un’altra versione.",
   "registry.share.manage": "Gestisci condivisioni",
   "registry.share.notice": "Chiunque abbia il link può usare i relativi permessi fino alla scadenza o alla revoca. La disconnessione non disattiva la condivisione.",

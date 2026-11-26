@@ -53,6 +53,7 @@ export const registryDe = {
   "registry.signInFailed": "Die Anmeldung wurde nicht abgeschlossen. Bitte versuchen Sie es erneut.",
   "registry.denied": "Dieses Konto hat keinen Zugriff auf dieses Modell oder diese Aktion.",
   "registry.failed": "Die Anfrage konnte nicht abgeschlossen werden. Bitte versuchen Sie es erneut.",
+  "registry.connectionChanged": "Die gespeicherten Einstellungen des Dateispeichers wurden während der Autorisierung geändert. Bitte versuchen Sie es erneut.",
   "registry.releaseMissing": "Diese Version ist nicht mehr verfügbar. Wählen Sie eine andere Version.",
   "registry.share.manage": "Freigaben verwalten",
   "registry.share.notice": "Alle mit dem Link können dessen Zugriff nutzen, bis er abläuft oder Sie ihn widerrufen. Beim Abmelden bleibt die Freigabe aktiv.",

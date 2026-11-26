@@ -302,6 +302,9 @@ Start with a repository from the handoff, workspace configuration, or **Folder**
 
 Publishing uploads the IFC and puts its OCI manifest under the tag you choose. Use a fresh tag per version and configure server-side tag immutability if the repository requires it. The saved locator uses the manifest digest. [OCI manifest push](https://github.com/opencontainers/distribution-spec/blob/main/spec.md#pushing-manifests)
 
+Opening a handoff link in the current tab replaces that viewer session. Export
+or publish any unpublished edits first, or open the link in a separate tab.
+
 A handoff is an unpadded base64url encoding of UTF-8 JSON in `/open-artifact#handoff=<encoded>`.
 
 ```json

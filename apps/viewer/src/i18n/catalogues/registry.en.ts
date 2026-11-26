@@ -51,6 +51,7 @@ export const registryEn = {
   'registry.signInFailed': 'Sign-in did not complete. Please try again.',
   'registry.denied': 'This account does not have access to that model or action.',
   'registry.failed': 'Could not complete the request. Please try again.',
+  'registry.connectionChanged': 'The saved file store settings changed during authorization. Please try again.',
   'registry.releaseMissing': 'That version is no longer available. Choose another version.',
   'registry.share.manage': 'Manage shares',
   'registry.share.notice': 'Anyone with the link can use its access until it expires or you revoke it. Signing out keeps the share active.',

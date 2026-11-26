@@ -53,6 +53,7 @@ export const registryFr = {
   "registry.signInFailed": "La connexion n’a pas abouti. Réessayez.",
   "registry.denied": "Ce compte n’a pas accès à ce modèle ou à cette action.",
   "registry.failed": "La requête n’a pas abouti. Réessayez.",
+  "registry.connectionChanged": "Les paramètres enregistrés du stockage de fichiers ont changé pendant l’autorisation. Veuillez réessayer.",
   "registry.releaseMissing": "Cette version n’est plus disponible. Choisissez une autre version.",
   "registry.share.manage": "Gérer les partages",
   "registry.share.notice": "Toute personne disposant du lien peut utiliser les droits associés jusqu’à son expiration ou sa révocation. La déconnexion ne désactive pas le partage.",

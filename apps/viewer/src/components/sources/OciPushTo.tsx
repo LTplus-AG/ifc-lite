@@ -99,6 +99,14 @@ export function OciPushTo({ disabled = false, onBusyChange }: {
         (action === 'pull' || resourceAllows(session, repository, 'push')));
       const session = previous ?? await authorizeRepository(connection, repository, action, controller.signal, storedConnections);
       controller.signal.throwIfAborted();
+      const latestConnections = registryConnections();
+      const latest = latestConnections.find(candidate => candidate.registry === connection.registry);
+      const latestIdentity = latest && registryConnectionIdentity(latest);
+      if (latestIdentity !== identity) {
+        clearFileStoreSessions(connection.registry, latestIdentity);
+        setConnections(latestConnections);
+        throw new Error(t('registry.connectionChanged'));
+      }
       if (!previous) useHandoffWorkspace.setState({ repositorySession: session });
       await operation(session, controller.signal);
     } catch (failure) {

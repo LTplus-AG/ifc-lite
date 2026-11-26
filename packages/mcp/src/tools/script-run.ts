@@ -16,7 +16,9 @@
  * Every call gets a fresh sandbox, disposed in `finally`. The QuickJS
  * interrupt handler enforces `timeout_ms` on script code, and the sandbox
  * stops waiting on async host work at the same deadline. The client's cancel
- * signal disposes the sandbox. `memory_mb` caps the QuickJS heap.
+ * signal disposes the sandbox, which takes effect at a host-work await: script
+ * code itself runs synchronously on the event loop. `memory_mb` caps the
+ * QuickJS heap.
  */
 
 import { createSandbox, ScriptError, type LogEntry, type SandboxPermissions } from '@ifc-lite/sandbox';
@@ -24,11 +26,13 @@ import type { JsonSchema } from '../protocol/index.js';
 import type { LoadedModel, ToolContext } from '../context.js';
 import type { Tool } from './types.js';
 import { okResult, resolveModel } from './util.js';
-import { ToolErrorCode, ToolExecutionError } from '../errors.js';
+import { ToolErrorCode, ToolExecutionError, describeThrown } from '../errors.js';
 
 const MAX_CODE_CHARS = 100_000;
 const DEFAULT_TIMEOUT_MS = 10_000;
-const MAX_TIMEOUT_MS = 60_000;
+// Script code runs synchronously on the server's event loop, so this also
+// bounds how long one call can hold up every other request.
+const MAX_TIMEOUT_MS = 30_000;
 const DEFAULT_MEMORY_MB = 64;
 const MAX_MEMORY_MB = 256;
 /** Caps on what one call returns to the client (the sandbox caps capture at 1000 entries / 4 MB). */
@@ -53,11 +57,11 @@ const inputSchema: JsonSchema = {
     model_id: { type: 'string', description: 'Loaded model id; required when multiple models are loaded.' },
     code: {
       type: 'string', minLength: 1, maxLength: MAX_CODE_CHARS,
-      description: 'JavaScript (not TypeScript) run with the sandbox `bim` global. The value of the last expression is returned and must be JSON-serialisable; if it is a promise (e.g. an async IIFE around bim.clash.run) its resolved value is returned. Top-level await is not supported.',
+      description: 'JavaScript (not TypeScript) run with the sandbox `bim` global. The value of the last expression is returned and must be JSON-serialisable; if it is a native promise (e.g. an async IIFE around bim.clash.run) its resolved value is returned; thenables are not awaited. Top-level await is not supported.',
     },
     timeout_ms: {
       type: 'integer', minimum: 100, maximum: MAX_TIMEOUT_MS, default: DEFAULT_TIMEOUT_MS,
-      description: `Execution time limit in milliseconds (default ${DEFAULT_TIMEOUT_MS}, max ${MAX_TIMEOUT_MS}). Script code is interrupted when it is exceeded; a single synchronous bim.* call already running is not cut short.`,
+      description: `Execution time limit in milliseconds (default ${DEFAULT_TIMEOUT_MS}, max ${MAX_TIMEOUT_MS}). Script code is interrupted when it is exceeded; a single synchronous bim.* call already running is not cut short. Script code runs on the server's event loop, so other requests and a cancel wait until it yields or is interrupted.`,
     },
     memory_mb: {
       type: 'integer', minimum: 8, maximum: MAX_MEMORY_MB, default: DEFAULT_MEMORY_MB,
@@ -294,7 +298,8 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
     }
     // Out of memory, stack overflow, or a fault the wrapper could not catch.
     if (err instanceof ScriptError) throw scriptError(err.message, details);
-    throw err;
+    // Keep mutations_queued on every failure, not only script ones.
+    throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: describeThrown(err), details });
   } finally {
     ctx.signal.removeEventListener('abort', onAbort);
     dispose();

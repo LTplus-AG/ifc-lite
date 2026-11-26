@@ -29,7 +29,7 @@ export const ToolErrorCode = {
   RATE_LIMITED: 'RATE_LIMITED',
   /** `--bridge`: no browser tab is paired, or the paired tab went away mid-call. */
   VIEWER_NOT_CONNECTED: 'VIEWER_NOT_CONNECTED',
-  /** `--bridge`: the paired tab did not answer in time. */
+  /** `--bridge`: the paired tab did not answer in time; or a script_run script exceeded timeout_ms. */
   TIMEOUT: 'TIMEOUT',
   INTERNAL_ERROR: 'INTERNAL_ERROR',
 } as const;

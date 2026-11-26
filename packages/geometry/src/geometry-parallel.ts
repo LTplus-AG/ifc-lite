@@ -138,8 +138,10 @@ export async function* processParallel(
   yield { type: 'start', totalEstimate: buffer.length / 1000 };
   yield { type: 'model-open', modelID: 0 };
   // The global instance plan is decided once per load: a flag that changes mid-load cannot split the pre-pass request from its columns.
-  const globalPlan = globalInstancingApplies(buffer.length, options?.globalInstancing);
-  options?.onGlobalInstancingDecision?.(globalPlan);
+  // A load with instancing off (a federated add) emits no instanced shards, so it never plans and reports no arm.
+  const instancing = options?.enableInstancing !== false;
+  const globalPlan = instancing && globalInstancingApplies(buffer.length, options?.globalInstancing);
+  if (instancing) options?.onGlobalInstancingDecision?.(globalPlan);
   // Kick off the ONE shared wasm compile immediately so it overlaps the SAB setup + worker-count planning below; awaited just before the workers init
   // (see `compileSharedWasmModule`). Null ⇒ each worker self-inits (unchanged).
   const wasmModulePromise = compileSharedWasmModule(options?.wasmUrls?.wasm);

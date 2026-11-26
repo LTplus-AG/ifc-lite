@@ -152,6 +152,16 @@ export async function runMcpCli(argv: string[], identity: McpCliIdentity): Promi
   return undefined;
 }
 
+/** Server config both transports share; stdio adds the viewer fields. */
+function baseConfig(opts: CliOptions) {
+  return { readOnly: opts.readOnly, bsddEndpoint: opts.bsdd, allowedPaths: opts.allowedPaths, samplingEnabled: false };
+}
+
+/** The server's scope when no token narrows it. */
+function serverScope(opts: CliOptions): AuthScope {
+  return opts.readOnly ? readOnlyScope() : fullScope();
+}
+
 async function loadFiles(registry: ModelRegistry, opts: CliOptions, log: (line: string) => void): Promise<void> {
   for (const file of opts.files) {
     const m = await loadIfcModel(resolve(file), { allowedPaths: opts.allowedPaths });
@@ -162,7 +172,6 @@ async function loadFiles(registry: ModelRegistry, opts: CliOptions, log: (line: 
 }
 
 async function runStdio(opts: CliOptions, tag: string): Promise<void> {
-  const scope: AuthScope = opts.readOnly ? readOnlyScope() : fullScope();
   const registry = new InMemoryModelRegistry();
   // Before the first model loads: the engine logs while it works.
   routeConsoleToStderr();
@@ -172,12 +181,9 @@ async function runStdio(opts: CliOptions, tag: string): Promise<void> {
   const server = createMCPServer({
     version: VERSION,
     registry,
-    scope,
+    scope: serverScope(opts),
     config: {
-      readOnly: opts.readOnly,
-      bsddEndpoint: opts.bsdd,
-      allowedPaths: opts.allowedPaths,
-      samplingEnabled: false,
+      ...baseConfig(opts),
       autoOpenViewer: opts.autoViewer,
       viewerPort: opts.viewerPort,
     },
@@ -231,9 +237,9 @@ async function runStdio(opts: CliOptions, tag: string): Promise<void> {
  * the server's scope; `--read-only-token` gets read scope. A token given
  * under both flags keeps the narrower scope.
  */
-export function tokenScopes(opts: Pick<CliOptions, 'tokens' | 'readOnlyTokens' | 'readOnly'>): Map<string, AuthScope> {
+export function tokenScopes(opts: CliOptions): Map<string, AuthScope> {
   const tokens = new Map<string, AuthScope>();
-  for (const t of opts.tokens) tokens.set(t, opts.readOnly ? readOnlyScope() : fullScope());
+  for (const t of opts.tokens) tokens.set(t, serverScope(opts));
   for (const t of opts.readOnlyTokens) tokens.set(t, readOnlyScope());
   return tokens;
 }
@@ -251,7 +257,8 @@ async function runHttp(opts: CliOptions, tag: string): Promise<RunningHttpCli | 
     process.exitCode = 1;
     return undefined;
   }
-  // Every session loads the files itself (below). Check they are readable
+  // Every session loads the files itself (below): sessions must not share
+  // mutable model state, so each pays one parse. Check the files are readable
   // now, so a typo fails at startup rather than on the first connection.
   for (const file of opts.files) {
     const path = resolve(file);
@@ -272,18 +279,13 @@ async function runHttp(opts: CliOptions, tag: string): Promise<RunningHttpCli | 
         scope: scopeForSession,
         // Keys per-session state (layer workspaces) and its disposal (#1030).
         sessionId,
-        config: {
-          readOnly: opts.readOnly,
-          bsddEndpoint: opts.bsdd,
-          allowedPaths: opts.allowedPaths,
-          samplingEnabled: false,
-        },
+        config: baseConfig(opts),
       });
     },
   };
   const auth: HttpAuthenticator = tokens.size > 0
     ? new BearerTokenAuth(tokens)
-    : new AllowAllAuth(opts.readOnly ? readOnlyScope() : fullScope());
+    : new AllowAllAuth(serverScope(opts));
   const transport = new HttpTransport({
     port: opts.port,
     host,

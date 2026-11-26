@@ -114,6 +114,7 @@ export function parseArgs(argv: string[]): CliOptions {
     openBrowser: false,
     insecure: false,
     bridge: false,
+    channel: false,
     help: false,
     version: false,
     warnings: [],

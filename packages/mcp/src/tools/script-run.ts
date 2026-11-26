@@ -34,8 +34,9 @@ import { scopeAllows } from '../auth/scope.js';
 const MAX_CODE_CHARS = 100_000;
 const DEFAULT_TIMEOUT_MS = 10_000;
 // Script code runs synchronously on the server's event loop, so this also
-// bounds how long one call can hold up every other request. Follow-up: run
-// the sandbox in a worker thread so a script no longer blocks other sessions.
+// bounds how long script code can hold up every other request (a single
+// synchronous bim call already running is not cut short). Follow-up: run the
+// sandbox in a worker thread so a script no longer blocks other sessions.
 const MAX_TIMEOUT_MS = 30_000;
 /**
  * Sandboxes alive at once, process-wide. All of them share one QuickJS WASM
@@ -351,7 +352,7 @@ function slotKey(ctx: ToolContext): string {
   return key;
 }
 
-const SHARED_DESCRIPTION = `Runs in a QuickJS sandbox with only the \`bim\` SDK global (bim.query, bim.model, bim.clash, bim.cost, bim.structural, bim.schedule; script_run_mutate adds ${MUTATE_ONLY_LIST}; bim.export and bim.create only with the export scope; both tools also need the read scope) and console; no network, filesystem, viewer or timers. Returns the last expression value plus captured console output. memory_mb bounds the QuickJS heap only, not data bim calls build on the host (such as bim.create projects in script_run_mutate). Script code runs on the server's event loop, so other requests wait while it runs (bounded by timeout_ms). At most ${MAX_CONCURRENT_SCRIPTS} scripts run at once per server process and one per session; more get RATE_LIMITED.`;
+const SHARED_DESCRIPTION = `Runs in a QuickJS sandbox with only the \`bim\` SDK global (bim.query, bim.model, bim.clash, bim.cost, bim.structural, bim.schedule; script_run_mutate adds ${MUTATE_ONLY_LIST}; bim.export and bim.create only with the export scope; both tools also need the read scope) and console; no network, filesystem, viewer or timers. Returns the last expression value plus captured console output. memory_mb bounds the QuickJS heap only, not data bim calls build on the host (such as bim.create projects in script_run_mutate). Script code runs on the server's event loop, so other requests wait while it runs (bounded by timeout_ms, except a single synchronous bim call already running). At most ${MAX_CONCURRENT_SCRIPTS} scripts run at once per server process and one per session; more get RATE_LIMITED.`;
 
 export const scriptRunTool: Tool = {
   name: 'script_run',

@@ -203,7 +203,8 @@ ${SERIALISER_SOURCE}
   // The bridge vm.dump()s every object argument of a bim method (JSON
   // semantics), and that recursion has no stack check either (#11600). Each
   // object argument therefore goes through the wrapper's bounded serialiser
-  // and native parse first: the bridge gets the same data, capped in depth.
+  // and native parse first: the bridge gets the same data, capped in depth
+  // (except an Error, which JSON writes as {} where vm.dump kept its fields).
   function safeArg(a) {
     if (a === null || (typeof a !== 'object' && typeof a !== 'function')) return a;
     var text = ser(a, Infinity, false);

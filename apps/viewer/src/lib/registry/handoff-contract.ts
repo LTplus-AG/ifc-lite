@@ -161,5 +161,11 @@ export function readHandoff(href: string, connections = registryConnections()): 
   const url = new URL(href), params = new URLSearchParams(url.hash.slice(1));
   const encoded = params.get('handoff');
   if (url.pathname !== HANDOFF_PATH || url.search || params.size !== 1 || !encoded || encoded.length > 8192 || !/^[A-Za-z0-9_-]+$/.test(encoded)) throw new RegistryError('Return to the files and choose Open with again.');
-  return handoffContext(JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(Uint8Array.from(atob(encoded.replaceAll('-', '+').replaceAll('_', '/')), c => c.charCodeAt(0)))), connections);
+  let value: unknown;
+  try {
+    value = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(Uint8Array.from(atob(encoded.replaceAll('-', '+').replaceAll('_', '/')), c => c.charCodeAt(0))));
+  } catch {
+    throw new RegistryError('Return to the files and choose Open with again.');
+  }
+  return handoffContext(value, connections);
 }

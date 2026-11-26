@@ -20,6 +20,9 @@ test('a handoff is a pinned content locator and accepts an independent authoriza
   assert.deepEqual(readHandoff('https://viewer.example.test/open-artifact#handoff='+encoded,[connection]),value);
   assert.throws(() => handoffContext({...value,source:{...value.source,registry:'https://unknown.example.test'}},[connection]));
   assert.throws(() => handoffContext({...value,source:{...value.source,digest:'issued'}},[connection]));
+  for (const damaged of ['abcde', Buffer.from('{"protocol":').toString('base64url')]) {
+    assert.throws(() => readHandoff('https://viewer.example.test/open-artifact#handoff='+damaged,[connection]),/choose Open with again/);
+  }
 });
 
 test('a single-label intranet registry host can be browsed (#9638 review)', async t => {
@@ -49,7 +52,7 @@ test('identity scopes an issuer adds by default do not block a repository grant 
   const session=resourceSession({access_token:'opaque',token_type:'Bearer',expires_in:300,scope:'profile email repository:project/model:pull'},connection,requested);
   assert(resourceAllows(session,'project/model','pull'));
   assert.equal(resourceAllows(session,'project/model','push'),false);
-  assert.throws(() => resourceSession({access_token:'opaque',token_type:'Bearer',expires_in:300,scope:'profile email'},connection,requested),/exceeds/);
+  assert.throws(() => resourceSession({access_token:'opaque',token_type:'Bearer',expires_in:300,scope:'profile email'},connection,requested),/no access to the requested folder/);
   assert.throws(() => resourceSession({access_token:'opaque',token_type:'Bearer',expires_in:300,scope:'profile repository:project/model:delete'},connection,requested),/unsupported/);
 });
 

@@ -15,7 +15,6 @@ import type { CliOptions } from './cli-args.js';
 import type { ModelRegistry } from './context.js';
 import { deriveModelId, freeModelId, loadIfcModel } from './loader.js';
 import { fmtInt } from './tools/util.js';
-import { ToolErrorCode } from './errors.js';
 import { resolveSafePath } from './safe-path.js';
 import { fullScope, readOnlyScope, type AuthScope } from './auth/scope.js';
 
@@ -69,29 +68,26 @@ export function tokenScopes(opts: CliOptions): Map<string, AuthScope> {
  * entries); without, the operator's own arguments load from anywhere.
  */
 async function loadAllowed(registry: ModelRegistry, opts: CliOptions, absolute: string, modelId: string) {
-  // The check only: the model keeps the path the operator typed (name, filePath), as without --allow.
-  if (opts.allowedPaths?.length) await resolveSafePath(absolute, { config: { allowedPaths: opts.allowedPaths }, registry }, 'read');
-  return loadIfcModel(absolute, { modelId });
+  if (!opts.allowedPaths?.length) return loadIfcModel(absolute, { modelId });
+  // Open the path that was checked, as model_load does, so a symlink cannot be repointed in between.
+  const checked = await resolveSafePath(absolute, { config: { allowedPaths: opts.allowedPaths }, registry }, 'read');
+  return loadIfcModel(checked, { modelId, allowedPaths: [checked] });
 }
 
 const PRINTABLE_ERRNO = new Set(['ENOENT', 'EACCES', 'EPERM', 'EISDIR', 'ENOTDIR', 'ELOOP', 'ENAMETOOLONG']);
 
-/**
- * A reason from a fixed list, never the error's text (which may spell the
- * path). resolveSafePath reports a missing file as INVALID_INPUT and its
- * three refusals as PERMISSION_DENIED; `details.roots` marks the bounds one.
- */
+/** A reason from a fixed list, never the error's text (which may spell the path). */
 function loadFailureReason(err: unknown): string {
-  const e = err as { code?: unknown; message?: unknown; details?: { roots?: unknown } } | undefined;
-  if (typeof e?.code === 'string' && PRINTABLE_ERRNO.has(e.code)) return e.code;
-  const message = typeof e?.message === 'string' ? e.message : '';
-  if (e?.code === ToolErrorCode.INVALID_INPUT && message.endsWith('does not exist')) return 'ENOENT';
-  if (e?.code === ToolErrorCode.PERMISSION_DENIED) {
-    if (e.details?.roots !== undefined) return 'outside --allow';
-    if (message.startsWith('Refusing to access')) return 'protected home path';
-    return 'EACCES';
+  const e = err as { code?: unknown; details?: { reason?: unknown; errno?: unknown } } | undefined;
+  const errno = typeof e?.code === 'string' ? e.code : e?.details?.errno;
+  if (typeof errno === 'string' && PRINTABLE_ERRNO.has(errno)) return errno;
+  // resolveSafePath's refusals carry details.reason.
+  switch (e?.details?.reason) {
+    case 'missing': return 'ENOENT';
+    case 'outside': return 'outside --allow';
+    case 'protected': return 'protected home path';
+    default: return 'not a readable IFC file';
   }
-  return 'not a readable IFC file';
 }
 
 export async function loadFiles(registry: ModelRegistry, opts: CliOptions, log: (line: string) => void): Promise<void> {

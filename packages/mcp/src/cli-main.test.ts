@@ -227,18 +227,19 @@ describe('loadFiles (#11534)', () => {
   // admits files spelled through its real path, but a file spelled through a
   // link must itself sit under a root, whatever its target.
   it('accepts a real-path file under a linked root, and refuses a linked file under a real root', async () => {
-    const linkedRoot = join(await mkdtemp(join(tmpdir(), 'mcp-cli-load-link-')), 'root');
-    await symlink(dir, linkedRoot);
-    const real = await realpath(dir);
+    const parent = await mkdtemp(join(tmpdir(), 'mcp-cli-load-link-'));
+    const linkedRoot = join(parent, 'root');
     const registry = new InMemoryModelRegistry();
     try {
+      await symlink(dir, linkedRoot);
+      const real = await realpath(dir);
       await loadFiles(registry, parseArgs(['--allow', linkedRoot, join(real, 'arch', 'model.ifc')]), () => {});
       expect(registry.list().map((m) => m.id)).toEqual(['model']);
       await expect(loadFiles(new InMemoryModelRegistry(), parseArgs(['--allow', real, join(linkedRoot, 'arch', 'model.ifc')]), () => {}))
         .rejects.toThrow(/\(outside --allow\)/);
     } finally {
       for (const m of registry.list()) registry.remove(m.id);
-      await rm(resolve(linkedRoot, '..'), { recursive: true, force: true });
+      await rm(parent, { recursive: true, force: true });
     }
   });
 

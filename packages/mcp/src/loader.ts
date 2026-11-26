@@ -23,7 +23,7 @@ import { rememberLoadedSource } from './loaded-source.js';
 export interface LoadIfcOptions {
   /** Override the registered model ID (default = file basename without extension). */
   modelId?: string;
-  /** Restrict reads to these absolute path prefixes. Used by the stdio CLI. */
+  /** Restrict reads to these absolute path prefixes (model_load and the CLI pass the checked path itself). */
   allowedPaths?: string[];
 }
 

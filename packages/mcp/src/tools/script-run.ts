@@ -31,8 +31,8 @@ import { okResult, resolveModel } from './util.js';
 import { ToolErrorCode, ToolExecutionError, describeThrown } from '../errors.js';
 import { scopeAllows } from '../auth/scope.js';
 
-/** Error details for a call that stopped before any script code ran. */
-const NOTHING_RAN = { logs: [], logs_truncated: false, mutations_queued: 0 };
+/** Error details for a call that stopped before any script code ran (fresh each call: in-process callers get them by reference). */
+const nothingRan = () => ({ logs: [], logs_truncated: false, mutations_queued: 0 });
 const MAX_CODE_CHARS = 100_000;
 const DEFAULT_TIMEOUT_MS = 10_000;
 // Script code runs synchronously on the server's event loop, so this also
@@ -200,7 +200,7 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
     details: { kind: 'script', ...details },
     hint: hintFor(mode, code, message, { trusted, exportAllowed, mutateAvailable }),
   });
-  if (ctx.signal.aborted) throw cancelled(NOTHING_RAN);
+  if (ctx.signal.aborted) throw cancelled(nothingRan());
   const permissions = mode === 'mutate' ? { ...MUTATE_PERMISSIONS, export: exportAllowed } : READ_PERMISSIONS;
 
   // Read mode has no write namespaces, so it cannot queue anything. In mutate
@@ -237,7 +237,7 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
       // e.g. a QuickJS module that could not be (re)created; nothing ran yet.
       throw new ToolExecutionError({
         code: ToolErrorCode.INTERNAL_ERROR, message: `Could not start the script sandbox: ${describeThrown(err)}`,
-        details: NOTHING_RAN,
+        details: nothingRan(),
       });
     }
     // dispose() can throw SandboxAbortError when QuickJS aborts tearing down a
@@ -254,7 +254,7 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
     // A cancel that landed while the sandbox was being created fired no event.
     if (ctx.signal.aborted) dispose();
     try {
-      if (ctx.signal.aborted) throw cancelled(NOTHING_RAN);
+      if (ctx.signal.aborted) throw cancelled(nothingRan());
       if (mode === 'mutate') before = new Set(journalMutationIds(model));
       const result = await sandbox.eval(wrapScript(code), { typescript: false, filename: 'internal-script-wrapper.js' });
       const { logs, truncated } = shapeLogs(result.logs);

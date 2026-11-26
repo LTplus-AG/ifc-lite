@@ -375,8 +375,8 @@ export class SpatialHierarchyBuilder {
  */
 function claimThroughSpaces(ctx: BuildContext): void {
   const { relationships, elementToStorey } = ctx;
-  const claims = [...ctx.spaceClaims].sort((a, b) => a.storeyId - b.storeyId);
-  for (const { storeyId, childNodes } of claims) {
+  ctx.spaceClaims.sort((a, b) => a.storeyId - b.storeyId);
+  for (const { storeyId, childNodes } of ctx.spaceClaims) {
     const walk = (nodes: SpatialNode[]): void => {
       for (const node of nodes) {
         if (!isSpaceLikeSpatialType(node.type)) continue;

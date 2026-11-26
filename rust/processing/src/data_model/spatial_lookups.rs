@@ -148,22 +148,25 @@ fn claim_through_spaces(
             parts.entry(rel.relating_id).or_default().push(rel.related_id);
         }
     }
+    // `owned` holds every element that already has a storey row; it is also the
+    // visited set of the part walks, so a cycle or a shared part stops there.
     let mut owned: FxHashSet<u32> = element_to_storey.iter().map(|(e, _)| *e).collect();
     // The aggregated parts of a directly contained element are on its storey
-    // (packages/parser propagates it to them), so they get that row here, and
+    // (packages/parser propagates it to them), so they get that row first and
     // the space claim below cannot hand them to another storey. Walked in row
     // order, so a part shared by two parents takes the first-declared one.
-    let direct: Vec<(u32, u32)> = element_to_storey.clone();
-    for (element_id, storey) in direct {
-        let mut pending = vec![element_id];
-        while let Some(id) = pending.pop() {
-            for kid in parts.get(&id).into_iter().flatten() {
-                if owned.insert(*kid) {
-                    element_to_storey.push((*kid, storey));
-                    pending.push(*kid);
-                }
-            }
-        }
+    let direct_rows = element_to_storey.len();
+    for i in 0..direct_rows {
+        let (element_id, storey) = element_to_storey[i];
+        claim_parts(element_id, storey, &parts, &mut owned, element_to_storey);
+    }
+
+    let mut elements_in_space: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
+    for (element_id, space_id) in element_to_space {
+        elements_in_space.entry(*space_id).or_default().push(*element_id);
+    }
+    if elements_in_space.is_empty() {
+        return;
     }
     let mut storeys: Vec<u32> = project_reachable
         .iter()
@@ -174,38 +177,41 @@ fn claim_through_spaces(
                 .is_some_and(|n| n.type_name.eq_ignore_ascii_case("IFCBUILDINGSTOREY"))
         })
         .collect();
+    // Lowest storey id first, so it wins an element reached from several storeys.
     storeys.sort_unstable();
+    let mut visited: FxHashSet<u32> = FxHashSet::default();
     for storey in storeys {
-        let mut spaces: Vec<u32> = Vec::new();
-        let mut visited: FxHashSet<u32> = FxHashSet::default();
         let mut pending: Vec<u32> = nodes_map[&storey].children_ids.clone();
         while let Some(id) = pending.pop() {
             let Some(node) = nodes_map.get(&id) else { continue };
             if !is_space_like_spatial_type(&node.type_name.to_uppercase()) || !visited.insert(id) {
                 continue;
             }
-            spaces.push(id);
+            for element_id in elements_in_space.get(&id).into_iter().flatten() {
+                if owned.insert(*element_id) {
+                    element_to_storey.push((*element_id, storey));
+                    claim_parts(*element_id, storey, &parts, &mut owned, element_to_storey);
+                }
+            }
             pending.extend(node.children_ids.iter().copied());
         }
-        for (element_id, space_id) in element_to_space {
-            if !spaces.contains(space_id) {
-                continue;
-            }
-            let mut stack = vec![*element_id];
-            let mut seen: FxHashSet<u32> = FxHashSet::default();
-            seen.insert(*element_id);
-            if owned.insert(*element_id) {
-                element_to_storey.push((*element_id, storey));
-            }
-            while let Some(id) = stack.pop() {
-                for kid in parts.get(&id).into_iter().flatten() {
-                    if seen.insert(*kid) {
-                        if owned.insert(*kid) {
-                            element_to_storey.push((*kid, storey));
-                        }
-                        stack.push(*kid);
-                    }
-                }
+    }
+}
+
+/// Give every not-yet-owned aggregated descendant of `root` a row on `storey`.
+fn claim_parts(
+    root: u32,
+    storey: u32,
+    parts: &FxHashMap<u32, Vec<u32>>,
+    owned: &mut FxHashSet<u32>,
+    element_to_storey: &mut Vec<(u32, u32)>,
+) {
+    let mut pending = vec![root];
+    while let Some(id) = pending.pop() {
+        for kid in parts.get(&id).into_iter().flatten() {
+            if owned.insert(*kid) {
+                element_to_storey.push((*kid, storey));
+                pending.push(*kid);
             }
         }
     }

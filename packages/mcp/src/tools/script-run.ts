@@ -236,7 +236,7 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
       // e.g. a QuickJS module that could not be (re)created; nothing ran yet.
       throw new ToolExecutionError({
         code: ToolErrorCode.INTERNAL_ERROR, message: `Could not start the script sandbox: ${describeThrown(err)}`,
-        details: { logs: [], logs_truncated: false, mutations_queued: 0 },
+        details: NOTHING_RAN,
       });
     }
     // dispose() can throw SandboxAbortError when QuickJS aborts tearing down a

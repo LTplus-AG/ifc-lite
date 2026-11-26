@@ -97,23 +97,16 @@ function intInput(value: unknown, name: string, min: number, max: number, fallba
   return value as number;
 }
 
-function pendingMutationIds(model: LoadedModel): Set<string> {
-  return new Set(model.backend.getMutationView()?.getMutations().map((m) => m.id) ?? []);
-}
-
-/** Mutations pending now that were not pending before the run (undo removes them). */
-function countNewMutations(model: LoadedModel, before: ReadonlySet<string>): number {
-  let added = 0;
-  for (const m of model.backend.getMutationView()?.getMutations() ?? []) if (!before.has(m.id)) added++;
-  return added;
+function pendingMutationIds(model: LoadedModel): string[] {
+  return model.backend.getMutationView()?.getMutations().map((m) => m.id) ?? [];
 }
 
 type LogLine = { level: string; text: string };
 
 /** `text.slice(0, max)` that never ends on the first half of a surrogate pair. */
 function clipUtf16(text: string, max: number): string {
-  const end = max > 0 && max < text.length && /[\uD800-\uDBFF]/.test(text[max - 1]) ? max - 1 : max;
-  return text.slice(0, Math.max(0, end));
+  const end = max < text.length && /[\uD800-\uDBFF]/.test(text[max - 1] ?? '') ? max - 1 : max;
+  return text.slice(0, end);
 }
 
 function renderLogArg(arg: unknown): string {
@@ -153,7 +146,8 @@ function shapeLogs(entries: readonly LogEntry[]): { logs: LogLine[]; truncated: 
  * interrupts are uncatchable). A direct eval gives the script its own
  * variable environment and keeps its completion value (the flow script node
  * does the same). Plain JS: the TypeScript strip needs esbuild-wasm, which
- * does not initialise under Node.
+ * does not initialise under Node. The sandbox has no eval option that
+ * settles and serialises the result itself; this wrapper stands in for one.
  */
 function wrapScript(code: string): string {
   // The script's function is created in the global scope, outside the
@@ -215,8 +209,9 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
   // Read mode has no write namespaces, so it cannot queue anything. In mutate
   // mode the count is pending mutations that appeared during the run; a
   // concurrent tool call editing the same model would be counted too.
-  const before = mode === 'mutate' ? pendingMutationIds(model) : new Set<string>();
-  const queued = () => (mode === 'mutate' ? countNewMutations(model, before) : 0);
+  // Counted by id, so mutations the script undoes are not subtracted.
+  const before = new Set(mode === 'mutate' ? pendingMutationIds(model) : []);
+  const queued = () => (mode === 'mutate' ? pendingMutationIds(model).filter((id) => !before.has(id)).length : 0);
   const sandbox = await createSandbox(model.bim, {
     permissions: mode === 'mutate' ? MUTATE_PERMISSIONS : READ_PERMISSIONS,
     limits: { timeoutMs, memoryBytes: memoryMb * 1024 * 1024 },

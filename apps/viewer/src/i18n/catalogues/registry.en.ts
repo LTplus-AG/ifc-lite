@@ -86,5 +86,6 @@ export const registryEn = {
   'registry.push.explain': 'Choose a file store and folder to browse or publish versions.',
   'registry.push.saved': 'Your new version was saved.',
   'registry.push.modelChanged': 'The active model changed. Select the model you want to save and try again.',
+  'registry.push.storeChanged': 'The file-store settings changed during sign-in. Try again.',
   'registry.handoff.explain': 'Opening the sign-in page to authorize access to the selected folder.',
 } as const;

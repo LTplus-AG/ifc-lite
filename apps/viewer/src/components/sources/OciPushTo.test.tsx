@@ -205,6 +205,52 @@ test('browsing reauthorizes after the saved file store changes while Cloud Sourc
   }
 });
 
+test('a grant for superseded file-store settings is neither cached nor used (#9638 review)', async () => {
+  const repository = 'project/model';
+  const tagsPath = `/v2/${repository}/tags/list`;
+  let origin = '';
+  const server = await startServer(allowBrowser(async (req, res) => {
+    const headers = { 'Content-Type': 'application/json' };
+    if (req.url === '/.well-known/oauth-authorization-server') {
+      return send(res, { headers, body: JSON.stringify({
+        issuer: origin, authorization_endpoint: origin + '/authorize', token_endpoint: origin + '/token',
+        response_types_supported: ['code'], code_challenge_methods_supported: ['S256'],
+      }) });
+    }
+    if (req.url === '/token') {
+      const chunks: Uint8Array[] = [];
+      for await (const chunk of req) chunks.push(chunk);
+      const client = new URLSearchParams(Buffer.concat(chunks).toString()).get('client_id');
+      return send(res, { headers, body: JSON.stringify({ access_token: client, token_type: 'Bearer', expires_in: 300 }) });
+    }
+    assert.equal(req.url, tagsPath);
+    if (!req.headers.authorization) return send(res, { status: 401 });
+    return send(res, { headers, body: JSON.stringify({ name: repository, tags: [] }) });
+  }));
+  origin = server.origin;
+  const connection = { registry: origin, authorization_server: origin, client_id: 'original-client' };
+  saveRegistryConnection(connection);
+  // Another tab replaces the saved settings while this tab's sign-in popup is open.
+  const popup = installRegistryPopup(request => {
+    saveRegistryConnection({ ...connection, client_id: 'replacement-client' }, true);
+    return registryCallback(request);
+  });
+  try {
+    const ui = render(<OciPushTo onBusyChange={() => {}} />);
+    const folder = ui.querySelector<HTMLInputElement>('input[id$="-folder"]');
+    const browse = [...ui.querySelectorAll('button')].find(button => button.textContent === 'Browse versions');
+    assert(folder && browse);
+    type(folder, repository);
+    click(browse);
+    await waitFor(() => Boolean(ui.querySelector('[role=alert]')));
+    assert.match(ui.querySelector('[role=alert]')!.textContent ?? '', /file-store settings changed/);
+    assert.equal(server.requests.filter(request => request.url === tagsPath).length, 0);
+    assert.equal(useHandoffWorkspace.getState().repositorySession, undefined);
+  } finally {
+    popup.restore();
+  }
+});
+
 test('OCI handoff requires callback issuer identification when advertised or when multiple issuers share the callback (#9638)', async () => {
   let origin = '';
   let advertisesIssuer = false;

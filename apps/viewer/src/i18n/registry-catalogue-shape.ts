@@ -88,5 +88,6 @@ export const registryCatalogueShape = {
   'registry.push.explain': [],
   'registry.push.saved': [],
   'registry.push.modelChanged': [],
+  'registry.push.storeChanged': [],
   'registry.handoff.explain': [],
 } as const satisfies Record<keyof typeof registryEn, readonly string[]>;

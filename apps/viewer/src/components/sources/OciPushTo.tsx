@@ -99,6 +99,8 @@ export function OciPushTo({ disabled = false, onBusyChange }: {
         (action === 'pull' || resourceAllows(session, repository, 'push')));
       const session = previous ?? await authorizeRepository(connection, repository, action, controller.signal, storedConnections);
       controller.signal.throwIfAborted();
+      // Another tab can replace the saved settings while the sign-in popup is open.
+      if (registryConnectionIdentity(connectionFor(registry)) !== identity) throw new Error(t('registry.push.storeChanged'));
       if (!previous) useHandoffWorkspace.setState({ repositorySession: session });
       await operation(session, controller.signal);
     } catch (failure) {

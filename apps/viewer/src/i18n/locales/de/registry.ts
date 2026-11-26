@@ -88,5 +88,6 @@ export const registryDe = {
   "registry.push.explain": "Wählen Sie einen Dateispeicher und einen Ordner, um Versionen zu durchsuchen oder zu veröffentlichen.",
   "registry.push.saved": "Ihre neue Version wurde gespeichert.",
   "registry.push.modelChanged": "Das aktive Modell hat sich geändert. Wählen Sie das Modell aus, das Sie speichern möchten, und versuchen Sie es erneut.",
+  "registry.push.storeChanged": "Die Dateispeicher-Einstellungen haben sich während der Anmeldung geändert. Versuchen Sie es erneut.",
   "registry.handoff.explain": "Die Anmeldeseite wird geöffnet, um den Zugriff auf den ausgewählten Ordner zu genehmigen."
 } satisfies Catalogue;

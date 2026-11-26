@@ -88,5 +88,6 @@ export const registryFr = {
   "registry.push.explain": "Choisissez un espace de stockage et un dossier pour parcourir ou publier des versions.",
   "registry.push.saved": "Votre nouvelle version a été enregistrée.",
   "registry.push.modelChanged": "Le modèle actif a changé. Sélectionnez le modèle à enregistrer et réessayez.",
+  "registry.push.storeChanged": "Les paramètres de l’espace de stockage ont changé pendant la connexion. Réessayez.",
   "registry.handoff.explain": "Ouverture de la page de connexion pour autoriser l’accès au dossier sélectionné."
 } satisfies Catalogue;

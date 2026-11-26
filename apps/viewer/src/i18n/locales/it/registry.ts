@@ -88,5 +88,6 @@ export const registryIt = {
   "registry.push.explain": "Scegli un archivio file e una cartella per sfogliare o pubblicare le versioni.",
   "registry.push.saved": "La nuova versione è stata salvata.",
   "registry.push.modelChanged": "Il modello attivo è cambiato. Seleziona il modello da salvare e riprova.",
+  "registry.push.storeChanged": "Le impostazioni dell'archivio file sono cambiate durante l'accesso. Riprova.",
   "registry.handoff.explain": "Apertura della pagina di accesso per autorizzare l’accesso alla cartella selezionata."
 } satisfies Catalogue;

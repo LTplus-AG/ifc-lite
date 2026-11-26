@@ -298,10 +298,8 @@ pub(super) fn run<'c>(
     let mut deferred_style_refusals: Vec<u32> = Vec::new();
     // Instances and recovered flats keep the style source chosen while meshing,
     // and the replay below recolours flat meshes only. So with instanced
-    // finishes, apply the deferred styles before the first chunk (#10698). Done
-    // here rather than by not deferring in the scan, which keeps the entity
-    // scan's code unchanged.
-    if !deferred_styles_applied && req.instancing && req.features.finishes {
+    // finishes, apply the deferred styles before the first chunk (#10698).
+    if defer_style_updates && req.instancing && req.features.finishes {
         replay_deferred_styles(&mut ctx, sink, &[], &deferred_styled_item_positions, &indexed_colour_index, &mut deferred_style_refusals);
         deferred_styles_applied = true;
     }

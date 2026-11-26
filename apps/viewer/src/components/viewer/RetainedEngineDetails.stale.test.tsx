@@ -17,7 +17,7 @@ async function flush(): Promise<void> {
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
 }
 
-describe('RetainedEngineDetails stale manifest answer', () => {
+describe('RetainedEngineDetails stale manifest answer (#11447)', () => {
   afterEach(cleanup);
 
   it('a manifest answer that arrives after the disclosure was closed does not reopen it', async () => {
@@ -34,7 +34,7 @@ describe('RetainedEngineDetails stale manifest answer', () => {
     assert.equal(button.getAttribute('aria-expanded'), 'false', 'the closed panel must stay closed');
   });
 
-  it('an older answer does not overwrite the loading state of a newer open', async () => {
+  it('an older request that fails last does not replace the newer answer', async () => {
     const pending: Array<(response: Response) => void> = [];
     const fetcher = (() => new Promise<Response>((resolve) => { pending.push(resolve); })) as unknown as typeof fetch;
     const ui = render(<RetainedEngineDetails fetcher={fetcher} />);

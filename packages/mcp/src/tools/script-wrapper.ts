@@ -72,6 +72,8 @@ export function wrapScript(code: string): string {
   // and arrays skip the brand-checked valueOf calls entirely; anything with
   // another prototype (a boxed value, a subclass of one, a class instance)
   // tries each, and a valueOf that rejects the receiver means "not this type".
+  // A boxed value whose prototype was reset to Object.prototype or null is
+  // written as an object, unlike native JSON; plain objects stay cheap.
   function unboxed(v) {
     var proto = getProto(v);
     if (proto === objectProto || proto === null || isArray(v)) return undefined;
@@ -150,7 +152,8 @@ export function wrapScript(code: string): string {
     try {
       if (apply(isInstance, ErrorCtor, [a])) {
         var st = a.stack;
-        return cut(msg(a), L.maxMessage) + (typeof st === 'string' && st !== '' ? '\\n' + cut(st, L.maxLog) : '');
+        var head = cut(msg(a), L.maxMessage);
+        return head + (typeof st === 'string' && st !== '' ? '\\n' + cut(st, L.maxLog - 32 - head.length) : '');
       }
     } catch (_) { /* an unreadable stack: fall through to the JSON form */ }
     try { var s = ser(a, L.maxLog, true); return cut(s === undefined ? Str(a) : s, L.maxLog - 32); }

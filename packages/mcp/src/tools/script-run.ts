@@ -140,12 +140,15 @@ const SCRIPT_STACK_OVERFLOW = /InternalError: stack overflow\b|stack overflow wh
 const HOST_OUT_OF_MEMORY = /^out of memory\b/;
 const HOST_STACK_OVERFLOW = /^(stack overflow|Maximum call stack size exceeded)\b/;
 
-function hintFor(mode: Mode, code: string, message: string, host: boolean): string | undefined {
+function hintFor(mode: Mode, code: string, message: string, host: boolean, exportAllowed: boolean): string | undefined {
   if ((host ? HOST_OUT_OF_MEMORY : SCRIPT_OUT_OF_MEMORY).test(message)) return `Raise memory_mb (max ${MAX_MEMORY_MB}) or keep less in memory.`;
   if ((host ? HOST_STACK_OVERFLOW : SCRIPT_STACK_OVERFLOW).test(message)) return 'Stack overflow: the script recursed too deep (make it iterative or shallower), a logged value is nested too deeply, or a bim call walked a very deeply nested model.';
   // Only when the failure looks like touching a namespace that is absent.
   if (mode === 'read' && MUTATE_ONLY_USE.test(code) && /of undefined|undefined is not/.test(message)) {
     return `script_run has no ${MUTATE_ONLY_LIST}; use script_run_mutate for them.`;
+  }
+  if (mode === 'mutate' && !exportAllowed && /\bbim\.(export|create)\b/.test(code) && /of undefined|undefined is not/.test(message)) {
+    return 'bim.export and bim.create need the export scope, which this token lacks.';
   }
   return undefined;
 }
@@ -160,22 +163,23 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
   const memoryMb = intInput(input.memory_mb, 'memory_mb', 8, MAX_MEMORY_MB, DEFAULT_MEMORY_MB);
   const cancelled = (details?: Record<string, unknown>) =>
     new ToolExecutionError({ code: ToolErrorCode.CANCELLED, message: 'Script cancelled by the client.', details });
+  // A script reads the model and (in mutate mode) can export it, so the
+  // token needs those scopes too, not only the tool's own 'mutate'.
+  const scope = ctx.currentScope?.() ?? ctx.scope;
+  const exportAllowed = scopeAllows(scope, 'export');
   const scriptError = (message: string, details: Record<string, unknown>, host = false) => new ToolExecutionError({
     // kind tells a script failure from INVALID_INPUT on the tool's own arguments.
     code: ToolErrorCode.INVALID_INPUT,
     // Envelope messages arrive clipped; a ScriptError's is clipped where it is caught.
     message: `Script error: ${message}`,
     details: { kind: 'script', ...details },
-    hint: hintFor(mode, code, message, host),
+    hint: hintFor(mode, code, message, host, exportAllowed),
   });
   if (ctx.signal.aborted) throw cancelled();
-  // A script reads the model and (in mutate mode) can export it, so the
-  // token needs those scopes too, not only the tool's own 'mutate'.
-  const scope = ctx.currentScope?.() ?? ctx.scope;
   if (!scopeAllows(scope, 'read')) {
     throw new ToolExecutionError({ code: ToolErrorCode.PERMISSION_DENIED, message: 'Script tools read the model and need the read scope.' });
   }
-  const mutatePermissions: SandboxPermissions = { ...MUTATE_PERMISSIONS, export: scopeAllows(scope, 'export') };
+  const mutatePermissions: SandboxPermissions = { ...MUTATE_PERMISSIONS, export: exportAllowed };
 
   // Read mode has no write namespaces, so it cannot queue anything. In mutate
   // mode the count is mutation-journal entries that appeared during the run; a
@@ -294,7 +298,7 @@ async function withScriptSlot<T>(run: () => Promise<T>): Promise<T> {
   }
 }
 
-const SHARED_DESCRIPTION = `Runs in a QuickJS sandbox with only the \`bim\` SDK global (bim.query, bim.model, bim.lens, bim.clash, bim.cost, bim.structural, bim.schedule; script_run_mutate adds ${MUTATE_ONLY_LIST}) and console; no network, filesystem, viewer or timers. Returns the last expression value plus captured console output. memory_mb bounds the QuickJS heap only, not data bim calls build on the host (such as bim.create projects in script_run_mutate). Script code runs on the server's event loop, so other requests wait while it runs (bounded by timeout_ms). At most ${MAX_CONCURRENT_SCRIPTS} scripts run at once per server process, shared across all sessions; more get RATE_LIMITED.`;
+const SHARED_DESCRIPTION = `Runs in a QuickJS sandbox with only the \`bim\` SDK global (bim.query, bim.model, bim.lens, bim.clash, bim.cost, bim.structural, bim.schedule; script_run_mutate adds ${MUTATE_ONLY_LIST}; bim.export and bim.create only with the export scope) and console; no network, filesystem, viewer or timers. Returns the last expression value plus captured console output. memory_mb bounds the QuickJS heap only, not data bim calls build on the host (such as bim.create projects in script_run_mutate). Script code runs on the server's event loop, so other requests wait while it runs (bounded by timeout_ms). At most ${MAX_CONCURRENT_SCRIPTS} scripts run at once per server process, shared across all sessions; more get RATE_LIMITED.`;
 
 export const scriptRunTool: Tool = {
   name: 'script_run',

@@ -32,20 +32,24 @@ function storeyIdOf(hierarchy: NonNullable<IfcDataStore['spatialHierarchy']>, ex
   return hierarchy.elementToStorey.get(spaceId);
 }
 
-/** Every element {@link storeyIdOf} can resolve to `storeyId`, for the bulk
- *  prefilter: the storey's `byStorey` list, every `elementToStorey` entry
- *  naming it, and every element `bySpace` lists for a space belonging to it
- *  (the one-hop widening). `bySpace` is absent on the same partial test mocks
- *  {@link storeyIdOf} guards against. */
-function elementsOfStorey(hierarchy: NonNullable<IfcDataStore['spatialHierarchy']>, storeyId: number, out: Set<number>): void {
-  for (const id of hierarchy.byStorey.get(storeyId) ?? []) out.add(id);
-  // Absent on the same partial test mocks.
-  for (const [id, storey] of hierarchy.elementToStorey ?? []) if (storey === storeyId) out.add(id);
-  if (!hierarchy.bySpace) return;
-  for (const [spaceId, elements] of hierarchy.bySpace) {
-    if (hierarchy.elementToStorey.get(spaceId) !== storeyId) continue;
+/** Every element {@link storeyIdOf} can resolve to one of `storeyIds`, for
+ *  the bulk prefilter: each storey's `byStorey` list, every `elementToStorey`
+ *  entry naming one, and every element `bySpace` lists for a space belonging
+ *  to one (the one-hop widening). One pass over each map, whatever the number
+ *  of storeys. `elementToStorey` and `bySpace` are absent on the same partial
+ *  test mocks {@link storeyIdOf} guards against. */
+function elementsOfStoreys(hierarchy: NonNullable<IfcDataStore['spatialHierarchy']>, storeyIds: ReadonlySet<number>): number[] | null {
+  if (storeyIds.size === 0) return null;
+  const out = new Set<number>();
+  for (const storeyId of storeyIds) for (const id of hierarchy.byStorey.get(storeyId) ?? []) out.add(id);
+  const storeyOf = hierarchy.elementToStorey ?? new Map<number, number>();
+  for (const [id, storey] of storeyOf) if (storeyIds.has(storey)) out.add(id);
+  for (const [spaceId, elements] of hierarchy.bySpace ?? []) {
+    const storey = storeyOf.get(spaceId);
+    if (storey === undefined || !storeyIds.has(storey)) continue;
     for (const id of elements) out.add(id);
   }
+  return out.size > 0 ? [...out] : null;
 }
 
 export function defaultStoreyName(store: IfcDataStore, expressId: number): string {
@@ -69,21 +73,19 @@ export function storeyMatchesRefs(store: IfcDataStore, expressId: number, modelI
 
 /** Index-prefilter twin of {@link storeyMatchesRefs}/Name matching: the
  *  bucket of elements a `storey op:'in'` rule narrows to for `modelId`.
- *  Built from {@link elementsOfStorey}, so this prefilter can never exclude
+ *  Built from {@link elementsOfStoreys}, so this prefilter can never exclude
  *  a candidate the per-entity check in `filter-evaluate.ts` would match. */
 export function unionByStorey(store: IfcDataStore, rule: StoreyRule, modelId: string | undefined): number[] | null {
   const hierarchy = store.spatialHierarchy;
   if (!hierarchy) return null;
-  const out = new Set<number>();
+  const storeyIds = new Set<number>();
   if (rule.refs) {
-    for (const ref of rule.refs) {
-      if (ref.modelId === modelId) elementsOfStorey(hierarchy, ref.expressId, out);
+    for (const ref of rule.refs) if (ref.modelId === modelId) storeyIds.add(ref.expressId);
+  } else {
+    const wanted = new Set(rule.values.map((n) => n.toLowerCase()));
+    for (const storeyId of hierarchy.byStorey.keys()) {
+      if (wanted.has(store.entities.getName(storeyId).toLowerCase())) storeyIds.add(storeyId);
     }
-    return out.size > 0 ? [...out] : null;
   }
-  const wanted = new Set(rule.values.map((n) => n.toLowerCase()));
-  for (const storeyId of hierarchy.byStorey.keys()) {
-    if (wanted.has(store.entities.getName(storeyId).toLowerCase())) elementsOfStorey(hierarchy, storeyId, out);
-  }
-  return out.size > 0 ? [...out] : null;
+  return elementsOfStoreys(hierarchy, storeyIds);
 }

@@ -232,7 +232,7 @@ ct('run, rollback: the first shadow sweep after `on` releases a failure the gate
   assert.deepEqual(reads, ['head5']);
   assert.equal(posts.length, 1);
   assert.equal(posts[0].state, 'success');
-  assert.match(posts[0].description, /shadow/);
+  assert.equal(posts[0].description, 'Gate in shadow (CI_BASE_STALE_GATE not on): not enforced');
 });
 
 ct('run, shadow: a head the gate already left green is not posted again', () => {
@@ -317,7 +317,7 @@ ct('run, budget: a sweep cut short posts nothing for the rest and keeps the roll
   assert.deepEqual(posts.map((p) => p.sha), ['head5']);
   assert.equal(saved.lastMode, 'on', 'an incomplete sweep must not mark the rollback done');
   assert.equal(rows[1].verdict, 'unknown');
-  assert.match(rows[1].reasons[0], /^not judged: API budget/);
+  assert.deepEqual(rows[1].reasons, ['not judged: API budget for this run spent before files of PR #7']);
   assert.equal(rows[1].posted, null);
 });
 
@@ -327,7 +327,7 @@ ct('run, budget: the rate floor is re-read between PRs and stops the sweep', () 
   const { rows, saved } = runFake({ gate: 'shadow', cacheData: { version: 1, lastMode: 'shadow' }, prs: [STALE_PR, second], remaining: () => left.shift() ?? 0 });
   assert.equal(rows.length, 2);
   assert.notEqual(rows[0].verdict, 'unknown');
-  assert.match(rows[1].reasons[0], /not judged: .* core API requests left/);
+  assert.deepEqual(rows[1].reasons, [`not judged: ${RATE_FLOOR - 1} core API requests left (floor ${RATE_FLOOR})`]);
   assert.equal(saved.lastMode, 'shadow');
 });
 

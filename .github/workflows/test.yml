@@ -4245,7 +4245,8 @@ jobs:
           --head-sha "$HEAD_SHA" --merge-sha "$GITHUB_SHA" --measured-dir "$RUNNER_TEMP/perf-ratchet"
           --json-out "$RUNNER_TEMP/base-stale-verdicts.jsonl"
       # The PR-side half of the shadow evidence (base-stale.yml uploads the
-      # sweep's): one JSONL row per evaluation, the same shape.
+      # sweep's): one JSONL row per evaluation, the same shape. Every exit-0
+      # path of the script writes the file, so its absence is a harness fault.
       - name: Upload the base-stale verdict
         if: always() && steps.base-stale.outcome == 'success'
         continue-on-error: true
@@ -4254,7 +4255,7 @@ jobs:
           name: base-stale-verdicts-pr-run
           path: ${{ runner.temp }}/base-stale-verdicts.jsonl
           retention-days: 30
-          if-no-files-found: ignore
+          if-no-files-found: error
 
   # The release PR's own checks, for the lean lane (scripts/ci-release-lane.mjs).
   # Runs ONLY in a lean run, so it is skipped on every other run; its success

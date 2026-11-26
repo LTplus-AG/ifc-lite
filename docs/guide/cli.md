@@ -1507,7 +1507,7 @@ ifc-lite mcp model.ifc --viewer          # also start the 3D viewer
 | `--port <N>` | HTTP port (default 8765) |
 | `--host <h>` | HTTP host (default 127.0.0.1; non-loopback requires `--token`, `--read-only-token` or `--insecure`) |
 | `--token <bearer>` | HTTP bearer token (repeatable). Full scope, or read scope under `--read-only` |
-| `--read-only-token <bearer>` | HTTP bearer token with read scope only (repeatable) |
+| `--read-only-token <bearer>` | HTTP bearer token that cannot edit models; like `--read-only` it may still write export files inside `--allow` (repeatable) |
 | `--insecure` | Allow non-loopback bind without a token (development only) |
 | `--read-only` | Hide mutation tools |
 | `--bsdd <url>` | Override the bSDD endpoint |

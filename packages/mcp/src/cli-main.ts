@@ -46,7 +46,9 @@ export function mcpHelpText({ command }: McpCliIdentity, platform: NodeJS.Platfo
                             or --insecure.
     --token <t>             Bearer token for HTTP auth (repeatable). Each gets
                             full scope, or read scope under --read-only.
-    --read-only-token <t>   Bearer token with read scope only (repeatable).
+    --read-only-token <t>   Bearer token that cannot edit models (repeatable).
+                            Like --read-only it may still export files
+                            inside --allow.
     --insecure              Allow non-loopback bind without authentication.
                             Required when combining a public --host with no
                             token. NEVER use in production.

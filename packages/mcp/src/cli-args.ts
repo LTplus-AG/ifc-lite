@@ -61,7 +61,7 @@ export interface CliOptions {
   host?: string;
   /** `--token`, repeatable. Each one gets the server's scope (read scope under --read-only). */
   tokens: string[];
-  /** `--read-only-token`, repeatable. Each one gets read scope. */
+  /** `--read-only-token`, repeatable. Each gets the --read-only preset (read, validate, export). */
   readOnlyTokens: string[];
   bsdd?: string;
   allowedPaths?: string[];

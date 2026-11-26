@@ -305,6 +305,8 @@ describe('tokenScopes (#11534)', () => {
     expect(scopes.get('a')?.scopes).toContain('mutate');
     expect(scopes.get('b')?.scopes).toContain('mutate');
     expect(scopes.get('r')?.scopes).not.toContain('mutate');
+    // Same preset as --read-only: exports (inside --allow) stay possible.
+    expect(scopes.get('r')?.scopes).toEqual(['read', 'validate', 'export']);
   });
 
   it('gives each token its own identity, so equal scopes do not share sessions', () => {

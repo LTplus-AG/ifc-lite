@@ -30,6 +30,10 @@
       "import": "./dist/cli-args.js",
       "types": "./dist/cli-args.d.ts"
     },
+    "./install": {
+      "import": "./dist/install/run.js",
+      "types": "./dist/install/run.d.ts"
+    },
     "./bridge-protocol": {
       "import": "./dist/bridge/bridge-protocol.js",
       "types": "./dist/bridge/bridge-protocol.d.ts"

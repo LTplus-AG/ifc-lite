@@ -53,7 +53,7 @@ async function main(): Promise<void> {
     // still sitting in `args`, so all 37 subcommands printed the same page and
     // the real help written in `layer`/`ref`/`ext` was unreachable (#5527).
     const requested = args[0];
-    if (HELP_DELEGATING_COMMANDS.has(requested)) {
+    if (HELP_DELEGATING_COMMANDS.has(requested) || (requested === 'mcp' && args[1] === 'install')) {
       // These write richer help of their own; let them answer.
     } else {
       const version = await readVersion();

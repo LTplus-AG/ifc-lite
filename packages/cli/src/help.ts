@@ -92,6 +92,7 @@ export function buildHelp(version: string): string {
     lod       <file.ifc> --level 0|1            Generate lightweight LOD artifacts
     simplify  <file.ifc> --out F [--level 1..5] [--ids 1,2,...] [--json]  Demesher: simplify meshes, write lighter IFC
     mcp       <file.ifc> [--transport stdio|http] Start an MCP server bound to one or more IFC files
+              install --client <claude-code|claude-desktop|cursor|vscode> [--dry-run]  Add the MCP server to a client's config
     ext       validate <path>|init <dir>          Manage IFClite extensions (Phase 0 — validate, init)
     layer     <publish|diff|merge|log|bake|...>    Layered change tracking over a local store (.ifc-lite/)
     ref       <list|create|move|protect>           Manage named refs in the layer store
@@ -194,6 +195,7 @@ export function buildHelp(version: string): string {
     ifc-lite mcp model.ifc --read-only
     ifc-lite mcp arch.ifc struct.ifc --federate
     ifc-lite mcp model.ifc --transport http --port 8765 --token abc
+    ifc-lite mcp install --client claude-desktop --dry-run
     ifc-lite georef show model.ifc --json
     ifc-lite georef check model.ifc
     ifc-lite georef fix model.ifc --out fixed.ifc

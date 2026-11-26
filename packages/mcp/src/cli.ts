@@ -33,6 +33,8 @@ function printHelp(): void {
   ifc-lite-mcp v${VERSION} — Model Context Protocol server for ifc-lite
 
   Usage: ifc-lite-mcp [files…] [options]
+         ifc-lite-mcp install --client <claude-code|claude-desktop|cursor|vscode>
+                            Add this server to an MCP client (install --help).
 
   Options:
     --read-only             Hide all mutation tools regardless of scope.
@@ -97,6 +99,11 @@ function printHelp(): void {
 }
 
 async function main(): Promise<void> {
+  if (process.argv[2] === 'install') {
+    const { runInstall } = await import('./install/run.js');
+    process.exitCode = runInstall(process.argv.slice(3));
+    return;
+  }
   const opts = parseArgs(process.argv.slice(2));
   // `parseArgs` is a pure parser so it can be exercised by tests (and shared
   // with `ifc-lite mcp`); acting on --help/--version stays here, where exiting

@@ -542,6 +542,20 @@ A failed native library save carries the library's reason in `details.save`. Sto
 
 ## Wiring it into a client
 
+`install` writes the config for you. It merges into an existing file, keeps
+every other server, and backs the file up first. `--dry-run` prints the JSON
+or command and changes nothing.
+
+```bash
+ifc-lite mcp install --client claude-desktop ./model.ifc
+npx -y @ifc-lite/mcp install --client cursor -- --bridge
+```
+
+Clients: `claude-code` (runs `claude mcp add`), `claude-desktop`, `cursor`,
+`vscode` (user scope runs `code --add-mcp`). `--scope project` writes the
+current directory's `.mcp.json`, `.cursor/mcp.json` or `.vscode/mcp.json`.
+Flags after `--` go to the server. Model paths become absolute.
+
 === "Claude Code"
 
     The repository is a plugin marketplace. The `ifc-lite` plugin bundles the

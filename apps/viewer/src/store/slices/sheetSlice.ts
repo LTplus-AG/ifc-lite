@@ -269,7 +269,11 @@ export const createSheetSlice: StateCreator<SheetSlice, [], [], SheetSlice> = (
     const current = get().activeSheet;
     if (!current) return;
 
-    // Auto-recalculate scale bar when scale changes
+    const fields = current.titleBlock.fields.map((field) =>
+      field.autoPopulate && field.autoPopulateSource === 'drawing.scale'
+        ? { ...field, value: `1:${scale.factor}` }
+        : field
+    );
     const optimalLength = calculateOptimalScaleBarLength(
       scale.factor,
       current.viewportBounds.width * 0.3
@@ -279,15 +283,10 @@ export const createSheetSlice: StateCreator<SheetSlice, [], [], SheetSlice> = (
       activeSheet: {
         ...current,
         scale,
-        scaleBar: {
-          ...current.scaleBar,
-          totalLengthM: optimalLength,
-        },
+        scaleBar: { ...current.scaleBar, totalLengthM: optimalLength },
+        titleBlock: { ...current.titleBlock, fields },
       },
     });
-
-    // Update scale field in title block
-    get().updateTitleBlockField('scale', `1:${scale.factor}`);
   },
 
   // ═══════════════════════════════════════════════════════════════════════════

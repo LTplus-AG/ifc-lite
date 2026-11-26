@@ -1417,6 +1417,8 @@ jobs:
   # Refresh per-file weights from two or three dedicated green full runs
   # with VIEWER_TEST_CONCURRENCY unset:
   #   node scripts/refresh-viewer-test-durations.mjs --run <id> --run <id>
+  # Refresh the concurrent weights with --concurrent-run <id> for full runs
+  # at concurrency 2 while their file-timing artifacts are available.
   # The TAP timestamp attribution in scripts/lib/viewer-test-durations.mjs
   # requires serial files. Keep concurrency bounded to 2 in the viewer test
   # script. Four-way concurrency exposed a timing-sensitive test in #3060.

@@ -42,11 +42,22 @@ The following values come from each job's initial
 The observed maximum falls inside the earlier range; the historical packing
 prediction did not establish an equivalent improvement on fresh CI. Source,
 runner load, caches and batch contents differ. This is not a controlled A/B
-measurement and supports no percentage saving. Refresh the existing manifest
-from two or three dedicated successful full runs with
-`VIEWER_TEST_CONCURRENCY` unset when file weights drift. Submit those runs in
-a maintenance window and restore the variable after they finish. The refresh
-script uses serial TAP timestamps for whole-file weights.
+measurement and supports no percentage saving. Refresh the weights for both
+modes when file durations drift:
+
+- For concurrency 2, use two or three successful full runs while their
+  `viewer-file-timings-N` artifacts are available. Pass each run with
+  `--concurrent-run`. The refresher validates full, exact file coverage and
+  takes median whole-file durations across the supplied runs.
+- For serial weights, run two or three successful full runs with
+  `VIEWER_TEST_CONCURRENCY` unset. Submit them in a maintenance window and
+  restore the variable after they finish. Pass each serial run with `--run`
+  to refresh the TAP-derived weights.
+
+Both sets of flags can be supplied to the same
+`node scripts/refresh-viewer-test-durations.mjs` command, and `--dry-run`
+previews what it would use. Refreshing one mode preserves the other mode's
+weights for files still present.
 
 If viewer concurrency 2 needs to be rolled back, unset
 `VIEWER_TEST_CONCURRENCY`. This switches the 14 viewer jobs to serial

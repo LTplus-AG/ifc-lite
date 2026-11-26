@@ -241,14 +241,29 @@ test("through apps/viewer's real selection, the retry pattern runs exactly the f
   const listed = spawnSync('sh', ['-c', SELECT], { cwd: VIEWER, encoding: 'utf8', env: { ...process.env, TEST_SHARDS: '', TEST_SHARD: '' } });
   assert.equal(listed.status, 0, listed.stderr);
   const all = listed.stdout.trim().split('\n');
-  const file = all[Math.floor(all.length / 2)];
-  const shard = assignShards(all, viewerManifest, viewerShardCount).get(file);
-  const select = (s) => spawnSync('sh', ['-c', SELECT], { cwd: VIEWER, encoding: 'utf8', env: { ...process.env, TEST_SHARDS: String(viewerShardCount), TEST_SHARD: String(s), TEST_PATTERN: viewerPattern([file]) } });
-  const own = select(shard);
-  assert.equal(own.status, 0, own.stderr);
-  assert.deepEqual(own.stdout.trim().split('\n'), [file]);
-  const other = select((shard + 1) % viewerShardCount);
-  assert.notEqual(other.status, 0, 'a pattern that selects nothing in this shard fails, never falls back to every file');
+  const serial = assignShards(all, viewerManifest, viewerShardCount, '');
+  const concurrent = assignShards(all, viewerManifest, viewerShardCount, '2');
+  const file = all.find((path) => serial.get(path) !== concurrent.get(path));
+  assert.ok(file, 'the fixture needs a path whose assignment changes with concurrency');
+  for (const concurrency of new Set([process.env.VIEWER_TEST_CONCURRENCY ?? '', '2'])) {
+    const shard = assignShards([file], viewerManifest, viewerShardCount, concurrency).get(file);
+    const select = (s) => spawnSync('sh', ['-c', SELECT], {
+      cwd: VIEWER,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        TEST_SHARDS: String(viewerShardCount),
+        TEST_SHARD: String(s),
+        TEST_PATTERN: viewerPattern([file]),
+        VIEWER_TEST_CONCURRENCY: concurrency,
+      },
+    });
+    const own = select(shard);
+    assert.equal(own.status, 0, own.stderr);
+    assert.deepEqual(own.stdout.trim().split('\n'), [file]);
+    const other = select((shard + 1) % viewerShardCount);
+    assert.notEqual(other.status, 0, 'a pattern outside its shard fails the selector');
+  }
 });
 
 // ------------------------------------------------------------ the decisions
@@ -376,7 +391,7 @@ test('/code-review on #9788: tests a hook failure skipped are retried but do not
 
 test('/code-review on #9788: a failure located in a file this shard does not run is not retried', () => {
   const file = 'src/hooks/useSandbox.runSupersession.test.tsx';
-  const shard = assignShards([file], viewerManifest, viewerShardCount).get(file);
+  const shard = assignShards([file], viewerManifest, viewerShardCount, process.env.VIEWER_TEST_CONCURRENCY).get(file);
   const tap = join(TMP, 'other-shard.tap');
   writeFileSync(tap, `not ok 1 - ${file}\n# tests 1\n# pass 0\n# fail 1\n# cancelled 0\n# duration_ms 1\n`);
   const r = cli('viewer', { CI_SHARD_RETRY: 'on', TAP_FILE: tap, TEST_SHARDS: String(viewerShardCount), TEST_SHARD: String((shard + 1) % viewerShardCount) });

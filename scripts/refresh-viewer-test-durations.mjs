@@ -6,34 +6,29 @@
 /**
  * Rebuild apps/viewer/test-durations.json from green CI runs.
  *
- *   node scripts/refresh-viewer-test-durations.mjs --run <run-id> [--run <id> ...]
- *       [--repo owner/name] [--log-cache <dir>] [--dry-run]
+ *   node scripts/refresh-viewer-test-durations.mjs [--run <serial-id> ...]
+ *       [--concurrent-run <id> ...] [--repo owner/name] [--log-cache <dir>] [--dry-run]
  *
- * For each run: reads every successful `Viewer tests (shard n)` job log (via
- * `gh`), reconstructs that shard's ordered file list exactly as the run's
- * commit selected it (its file tree and its own manifest, through
- * viewer-test-shards.mjs), and attributes the TAP timestamps to files (see
- * lib/viewer-test-durations.mjs for the method and its known biases). A
- * file's manifest value is the MEDIAN across the given runs; pass two or
- * three serial runs, since per-shard wall time varies by +-25% run to run on hosted
- * runners. Only files present at HEAD are written.
- *
- * A maintenance tool, run by hand when the shard loads drift apart; it gates
- * nothing. Refreshing serial weights preserves independent concurrent measurements
- * for files still present. The selection it feeds is tested in viewer-test-shards.test.mjs.
+ * Serial runs use the TAP timestamps and the run commit's file list and
+ * manifest. Concurrent runs use the per-file timing artifacts. Use two or
+ * three complete runs per mode and refresh either table or both. Only
+ * files present at HEAD are written.
  */
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { EMPTY_MANIFEST, MANIFEST_PATH, packManifest, parseManifest, selectShard } from './viewer-test-shards.mjs';
+import { isMainEntry } from './lib/is-main-entry.mjs';
 import { attributeFiles, median, parseTapLog } from './lib/viewer-test-durations.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const VIEWER = 'apps/viewer/';
 const TEST_FILE = /^apps\/viewer\/src\/.*\.test\.tsx?$/;
 const JOB_NAME = /^Viewer tests \(shard (\d+)\)$/;
+const CONCURRENCY_TWO = /^.*Z +VIEWER_TEST_CONCURRENCY: '?2'?\s*$/m;
 
 function run(cmd, args, opts = {}) {
   const r = spawnSync(cmd, args, { cwd: ROOT, encoding: 'utf8', maxBuffer: 1 << 30, ...opts });
@@ -44,17 +39,22 @@ function run(cmd, args, opts = {}) {
 const byPath = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 
 function parseArgs(argv) {
-  const opts = { runs: [], repo: 'LTplus-AG/ifc-lite', cache: null, dryRun: false };
+  const opts = { runs: [], concurrentRuns: [], repo: 'LTplus-AG/ifc-lite', cache: null, dryRun: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--run') opts.runs.push(argv[++i]);
+    else if (a === '--concurrent-run') opts.concurrentRuns.push(argv[++i]);
     else if (a === '--repo') opts.repo = argv[++i];
     else if (a === '--log-cache') opts.cache = argv[++i];
     else if (a === '--dry-run') opts.dryRun = true;
     else throw new Error(`unknown argument ${a}`);
   }
-  if (opts.runs.length === 0 || opts.runs.some((r) => !/^\d+$/.test(r ?? ''))) {
-    throw new Error('pass at least one --run <numeric run id>');
+  const ids = [...opts.runs, ...opts.concurrentRuns];
+  if (ids.length === 0 || ids.some((id) => !/^\d+$/.test(id ?? ''))) {
+    throw new Error('pass at least one --run or --concurrent-run with a numeric run ID');
+  }
+  if (new Set(ids).size !== ids.length) {
+    throw new Error('provide each run ID only once');
   }
   return opts;
 }
@@ -89,7 +89,7 @@ function jobLog(opts, runId, shard, jobId) {
   return text;
 }
 
-function measureRun(opts, runId) {
+function runInventory(opts, runId) {
   const sha = run('gh', ['api', `repos/${opts.repo}/actions/runs/${runId}`, '-q', '.head_sha']).trim();
   if (spawnSync('git', ['cat-file', '-e', `${sha}^{commit}`], { cwd: ROOT }).status !== 0) {
     run('git', ['fetch', '--quiet', 'origin', sha]);
@@ -101,6 +101,11 @@ function measureRun(opts, runId) {
     .filter(([, , name]) => JOB_NAME.test(name));
   const files = run('git', ['ls-tree', '-r', '--name-only', sha, '--', `${VIEWER}src`])
     .split('\n').filter((p) => TEST_FILE.test(p)).sort(byPath);
+  return { sha, jobs, files };
+}
+
+function measureSerialRun(opts, runId) {
+  const { sha, jobs, files } = runInventory(opts, runId);
   const sources = new Map(readBlobs(sha, files).map((t, i) => [files[i].slice(VIEWER.length), t]));
   const relFiles = files.map((p) => p.slice(VIEWER.length));
   const manifestAtSha = spawnSync('git', ['show', `${sha}:apps/viewer/test-durations.json`], { cwd: ROOT, encoding: 'utf8' });
@@ -115,7 +120,7 @@ function measureRun(opts, runId) {
       continue;
     }
     const log = jobLog(opts, runId, shard, jobId);
-    if (/^.*Z +VIEWER_TEST_CONCURRENCY: '?2'? *$/m.test(log)) {
+    if (CONCURRENCY_TWO.test(log)) {
       throw new Error(`run ${runId} shard ${shard}: serial TAP attribution requires concurrency 1`);
     }
     const count = Number(/TEST_SHARDS: '?(\d+)/.exec(log)?.[1]);
@@ -131,6 +136,67 @@ function measureRun(opts, runId) {
   }
   shards.sort((a, b) => a.shard - b.shard);
   return { runId, sha, seconds, shards };
+}
+
+/**
+ * Read one artifact per shard and verify that each file in the run's
+ * inventory appears exactly once with a usable duration.
+ */
+function readConcurrentTimings(directory, shardIds, expectedFiles) {
+  const expected = new Set(expectedFiles);
+  const seconds = new Map();
+  for (const shard of shardIds) {
+    const path = join(directory, `viewer-file-timings-${shard}`, 'viewer-test-file-durations.json');
+    const data = JSON.parse(readFileSync(path, 'utf8'));
+    if (!data || typeof data !== 'object' || Array.isArray(data) || Object.keys(data).length === 0) {
+      throw new Error(`shard ${shard}: expected a non-empty file-duration object`);
+    }
+    for (const [file, duration] of Object.entries(data)) {
+      if (!expected.has(file)) throw new Error(`shard ${shard}: unexpected file ${file}`);
+      if (seconds.has(file)) throw new Error(`shard ${shard}: duplicate file ${file}`);
+      if (!Number.isFinite(duration) || duration <= 0) throw new Error(`shard ${shard}: invalid duration for ${file}`);
+      seconds.set(file, duration);
+    }
+  }
+  if (seconds.size !== expected.size) {
+    const missing = [...expected].find((file) => !seconds.has(file));
+    throw new Error(`recorded ${seconds.size}/${expected.size} files; missing ${missing}`);
+  }
+  return seconds;
+}
+
+function measureConcurrentRun(opts, runId) {
+  const { sha, jobs, files } = runInventory(opts, runId);
+  const shardIds = jobs.map(([jobId, conclusion, name]) => {
+    const shard = Number(JOB_NAME.exec(name)[1]);
+    if (conclusion !== 'success') throw new Error(`run ${runId} shard ${shard}: ${conclusion}`);
+    if (!CONCURRENCY_TWO.test(jobLog(opts, runId, shard, jobId))) {
+      throw new Error(`run ${runId} shard ${shard}: expected VIEWER_TEST_CONCURRENCY=2`);
+    }
+    return shard;
+  });
+  if (shardIds.length === 0) throw new Error(`run ${runId}: no viewer shard jobs`);
+  const directory = mkdtempSync(join(tmpdir(), 'viewer-file-timings-'));
+  try {
+    run('gh', ['run', 'download', runId, '--repo', opts.repo, '--pattern', 'viewer-file-timings-*', '--dir', directory]);
+    const seconds = readConcurrentTimings(directory, shardIds, files.map((file) => file.slice(VIEWER.length)));
+    console.log(`run ${runId} @ ${sha.slice(0, 10)}: measured ${seconds.size} concurrent files in ${shardIds.length} shards`);
+    return { seconds };
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+}
+
+function refreshedWeights(measured, head, roundDuration) {
+  const perFile = new Map();
+  for (const m of measured) {
+    for (const [file, duration] of m.seconds) {
+      if (head.has(file)) perFile.set(file, [...(perFile.get(file) ?? []), duration]);
+    }
+  }
+  return Object.fromEntries([...perFile.keys()].sort(byPath).map((file) => [
+    file, roundDuration(median(perFile.get(file))),
+  ]));
 }
 
 /** `TEST_SHARDS` of the viewer-tests job in the workflow at HEAD. */
@@ -149,7 +215,8 @@ function summarize(walls) {
 
 function main() {
   const opts = parseArgs(process.argv.slice(2));
-  const measured = opts.runs.map((r) => measureRun(opts, r));
+  const measured = opts.runs.map((r) => measureSerialRun(opts, r));
+  const concurrent = opts.concurrentRuns.map((r) => measureConcurrentRun(opts, r));
   for (const m of measured) {
     console.log(`run ${m.runId} @ ${m.sha.slice(0, 10)}: test-step wall ${summarize(m.shards.map((s) => s.wall))}`);
     for (const s of m.shards) {
@@ -159,20 +226,17 @@ function main() {
   }
   const head = new Set(run('git', ['ls-files', '--', `${VIEWER}src`]).split('\n')
     .filter((p) => TEST_FILE.test(p)).map((p) => p.slice(VIEWER.length)));
-  const perFile = new Map();
-  for (const m of measured) {
-    for (const [f, s] of m.seconds) if (head.has(f)) perFile.set(f, [...(perFile.get(f) ?? []), s]);
-  }
-  const seconds = {};
-  for (const f of [...perFile.keys()].sort(byPath)) seconds[f] = Math.round(median(perFile.get(f)) * 10) / 10;
-  // Packed for the shard count CI runs at HEAD; another count ignores it.
   const count = ciShardCount();
   const oldManifest = parseManifest(readFileSync(MANIFEST_PATH, 'utf8'));
+  const currentFiles = (table) => Object.fromEntries(Object.entries(table).filter(([file]) => head.has(file)));
+  const seconds = measured.length
+    ? refreshedWeights(measured, head, (duration) => Number(duration.toFixed(1)))
+    : currentFiles(oldManifest.seconds);
   const manifest = { shards: count, seconds };
-  if (oldManifest.concurrentSeconds) {
-    manifest.concurrentSeconds = Object.fromEntries(
-      Object.entries(oldManifest.concurrentSeconds).filter(([file]) => head.has(file)),
-    );
+  if (concurrent.length) {
+    manifest.concurrentSeconds = refreshedWeights(concurrent, head, (duration) => Math.max(1e-6, Number(duration.toFixed(6))));
+  } else if (oldManifest.concurrentSeconds) {
+    manifest.concurrentSeconds = currentFiles(oldManifest.concurrentSeconds);
   }
   const packed = packManifest(seconds, count);
   for (const m of measured) {
@@ -181,16 +245,22 @@ function main() {
     console.log(`run ${m.runId} re-packed with the new manifest (in-sample): ${summarize(load)}`);
   }
   const n = Object.keys(seconds).length;
-  console.log(`${n} files measured; ${head.size - n} at HEAD unmeasured (hash fallback); packed for ${count} shards`);
+  console.log(`${n} serial files measured; ${head.size - n} at HEAD unmeasured; packed for ${count} shards`);
+  if (manifest.concurrentSeconds) {
+    const n = Object.keys(manifest.concurrentSeconds).length;
+    console.log(`${n} concurrency-2 files measured; ${head.size - n} at HEAD unmeasured; packed for ${count} shards`);
+  }
   if (!opts.dryRun) {
     writeFileSync(MANIFEST_PATH, `${JSON.stringify(manifest, null, 2)}\n`);
     console.log(`wrote ${MANIFEST_PATH}`);
   }
 }
 
-try {
-  main();
-} catch (err) {
-  console.error(`refresh-viewer-test-durations: ${err.message}`);
-  process.exit(1);
+if (isMainEntry(import.meta.url)) {
+  try {
+    main();
+  } catch (err) {
+    console.error(`refresh-viewer-test-durations: ${err.message}`);
+    process.exit(1);
+  }
 }

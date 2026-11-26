@@ -34,7 +34,7 @@ import {
   ReadResourceResult,
   ServerCapabilities,
 } from './protocol/index.js';
-import { RequestError } from './protocol/jsonrpc.js';
+import { errorResponse, isJsonRpcRequest, RequestError } from './protocol/jsonrpc.js';
 import {
   AuthScope,
   fullScope,
@@ -111,6 +111,8 @@ export class MCPServer implements ProtocolDomain {
   readonly logger: Logger;
   private logForwarder: ClientLogForwarder;
   private sink: OutgoingMessageSink | null = null;
+  /** Set by detach until the next attach: a detached server opens no new connection. */
+  private detached = false;
   /** The live MCP connection; built on first use. */
   private session: ProtocolSession | null = null;
   /** Models resources/list last showed; list_changed goes out only when they change. */
@@ -156,6 +158,7 @@ export class MCPServer implements ProtocolDomain {
   /** Attach an outgoing-message sink. Required before handling messages. */
   attach(sink: OutgoingMessageSink): void {
     this.sink = sink;
+    this.detached = false;
     this.listedModels = this.listedModelsKey();
     this.unsubscribeRegistry ??= this.registry.onChange?.(() => this.syncListedModels());
   }
@@ -168,6 +171,7 @@ export class MCPServer implements ProtocolDomain {
     // attach starts a new one (uninitialized, no subscriptions, no log level).
     this.session?.close();
     this.session = null;
+    this.detached = true;
     this.logForwarder.reset();
     // Close the viewer sockets, layer Y.Docs and native Room plates even if
     // an earlier resource fails. SSE reconnects do not call detach.
@@ -223,7 +227,9 @@ export class MCPServer implements ProtocolDomain {
    * through the attached sink, not the return value.
    */
   async handleMessage(message: JsonRpcMessage): Promise<JsonRpcResponse | null> {
-    return this.protocol().deliver(message);
+    // A request racing detach (an HTTP session ended mid-POST) must not reopen the connection.
+    if (!this.detached) return this.protocol().deliver(message);
+    return isJsonRpcRequest(message) ? errorResponse(message.id, JsonRpcErrorCode.InternalError, 'The server was detached from its connection') : null;
   }
 
   private protocol(): ProtocolSession {

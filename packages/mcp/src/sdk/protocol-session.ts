@@ -132,7 +132,7 @@ class IfcProtocolServer extends Server {
       } catch (err) {
         if (err instanceof HandlerError) throw err;
         if (!entered.has(signal) && !(err instanceof SdkError)) {
-          throw invalidParams(err);
+          throw invalidParams(err, (note) => this.onerror?.(new Error(note)));
         }
         const message = describeThrown(err);
         if (!entered.has(signal)) throw new ProtocolError(ProtocolErrorCode.InternalError, message);
@@ -165,25 +165,25 @@ class IfcProtocolServer extends Server {
  * 2.4). Say it in one line; keep the issues in `data`. Anything else passes:
  * if the SDK changes that format, clients get its raw message.
  */
-function invalidParams(err: unknown): ProtocolError {
+function invalidParams(err: unknown, report: (note: string) => void): ProtocolError {
   if (err instanceof ProtocolError && err.code !== ProtocolErrorCode.InvalidParams) return err;
   const text = err instanceof Error ? err.message : describeThrown(err);
   // The list may follow a prefix such as "Invalid tools/call request: ".
   const start = text.indexOf('[');
-  const issues = start < 0 ? undefined : zodIssues(text.slice(start));
+  const issues = start < 0 ? undefined : zodIssues(text.slice(start), report);
   if (!issues) return err instanceof ProtocolError ? err : new ProtocolError(ProtocolErrorCode.InvalidParams, text);
   const summary = issues.map((i) => `${(i.path ?? []).join('.') || '(params)'}: ${i.message ?? 'invalid'}`).join('; ');
   const prefix = start > 0 ? text.slice(0, start).trim().replace(/:$/, '') : 'Invalid params';
   return new ProtocolError(ProtocolErrorCode.InvalidParams, `${prefix}: ${summary}`, { issues });
 }
 
-function zodIssues(text: string): Array<{ path?: unknown[]; message?: string }> | undefined {
+function zodIssues(text: string, report: (note: string) => void): Array<{ path?: unknown[]; message?: string }> | undefined {
   try {
     const parsed: unknown = JSON.parse(text);
     return Array.isArray(parsed) ? parsed : undefined;
   } catch (err) {
     // Looked like an issue list but is not one: the raw message goes out as is.
-    console.error(`[ifc-lite-mcp] unparsable validation message: ${describeThrown(err)}`);
+    report(`unparsable validation message: ${describeThrown(err)}`);
     return undefined;
   }
 }
@@ -195,7 +195,8 @@ function zodIssues(text: string): Array<{ path?: unknown[]; message?: string }> 
  */
 async function withPlainAbort<T>(source: AbortSignal, fn: (signal: AbortSignal) => Promise<T>): Promise<T> {
   const plain = new AbortController();
-  const forward = () => plain.abort();
+  // Keeps the client's reason (or the SDK's close error) readable as the message.
+  const forward = () => plain.abort(new DOMException(describeThrown(source.reason), 'AbortError'));
   if (source.aborted) forward();
   else source.addEventListener('abort', forward, { once: true });
   try {

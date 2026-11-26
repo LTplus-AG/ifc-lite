@@ -702,8 +702,11 @@ describe('HttpTransport cancelled request (#11542 lifecycle follow-up)', () => {
       name: 'wait', description: 'Waits until cancelled.', scope: 'read', inputSchema: { type: 'object' },
       handler: (_input, ctx) => new Promise((resolve) => {
         ctx.signal.addEventListener('abort', () => resolve({ content: [{ type: 'text', text: 'aborted' }] }));
+        started();
       }),
     });
+    let started: () => void = () => undefined;
+    const running = new Promise<void>((resolve) => { started = resolve; });
     const transport = makeTransport({ build: (scope, sessionId) => createMCPServer({ version: VERSION, scope, sessionId, tools }) });
     await transport.listen();
     try {
@@ -711,7 +714,7 @@ describe('HttpTransport cancelled request (#11542 lifecycle follow-up)', () => {
       const sessionId = await initSession(port, 'alice-token');
       const call = request(port, 'alice-token', { method: 'POST', sessionId,
         body: JSON.stringify({ jsonrpc: '2.0', id: 9, method: 'tools/call', params: { name: 'wait', arguments: {} } }) });
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await running;
       await request(port, 'alice-token', { method: 'POST', sessionId,
         body: JSON.stringify({ jsonrpc: '2.0', method: 'notifications/cancelled', params: { requestId: 9 } }) });
       expect(await (await call).json()).toMatchObject({ id: 9, error: { code: -32800 } });

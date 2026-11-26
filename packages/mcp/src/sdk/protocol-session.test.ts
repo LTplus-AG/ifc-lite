@@ -167,6 +167,8 @@ describe('SDK protocol adapter lifecycle', () => {
     await new Promise((r) => setTimeout(r, 10));
     server.detach();
     expect(((await call) as Reply)?.error?.code).toBe(-32603);
+    // And a request racing the detach does not open a new connection.
+    expect(((await server.handleMessage({ jsonrpc: '2.0', id: 'late', method: 'tools/list' })) as Reply)?.error?.code).toBe(-32603);
   });
 
   it('keeps the gate closed after a refused initialize', async () => {

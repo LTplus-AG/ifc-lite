@@ -260,7 +260,7 @@ export function scaleTypedMeasures(
         : profileFactor(kw, profileFactors, lengthFactor);
       if (preserveTrivia && factor === 1) return full;
       const scaled = scaleMeasureNumber(before, num, after, factor, preserveTrivia);
-      return scaled === undefined ? full : `${keyword}${preserveTrivia ? separator : ''}(${scaled})`;
+      return scaled === undefined ? full : `${keyword}${preserveTrivia || separator.includes('/*') ? separator : ''}(${scaled})`;
     },
   ));
 }

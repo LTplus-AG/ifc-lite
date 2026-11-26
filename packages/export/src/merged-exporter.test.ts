@@ -1266,6 +1266,13 @@ describe('MergedExporter', () => {
       expect(Number(literal)).toBe(expected);
     });
 
+    it('retains STEP comments between a normalized profile measure and its value (#11329)', () => {
+      const result = new MergedExporter([metreModel(), mmModel([
+        [18, 'IFCPROPERTYSINGLEVALUE', "#18=IFCPROPERTYSINGLEVALUE('Section datum',$,IFCMOMENTOFINERTIAMEASURE /* design basis */ (2.E12),$);"],
+      ])]).export({ schema: 'IFC4', unitReconciliation: 'normalize' });
+      expect(decode(result.content)).toContain('IFCMOMENTOFINERTIAMEASURE /* design basis */ (2.)');
+    });
+
     it.each([
       ['explicit defining unit', true, false],
       ['explicit defined unit', false, true],

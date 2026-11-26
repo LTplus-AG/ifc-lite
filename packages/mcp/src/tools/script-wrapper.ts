@@ -220,8 +220,9 @@ export function wrapScript(code: string): string {
         var k = ks[fi[i]]; fi[i] = fi[i] + 1;
         var v = resolve(o[k], k, o, fn);
         if (omitted(v)) continue;
-        // A long key can pass the cap on its own; stop before copying it.
-        if (out.length + k.length > limit) return out;
+        // A long key can pass the cap on its own: copy only enough of it to
+        // pass the cap, so the result is read as a preview, then stop.
+        if (out.length + k.length > limit) return out.length > limit ? out : out + apply(slice, k, [0, limit - out.length + 1]);
         if (fw[i]) out += ',';
         fw[i] = true;
         if (gap) out += '\\n' + indent(sp);

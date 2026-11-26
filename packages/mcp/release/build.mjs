@@ -42,12 +42,12 @@ const pkg = JSON.parse(readFileSync(join(pkgDir, 'package.json'), 'utf-8'));
  * `.bin` holds symlinks to CLIs the server never runs, so it goes. Any other
  * symlink is a build error: the bundle must carry real files only.
  */
-function removeBinLinks(dir) {
+function pruneStage(dir) {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const path = join(dir, entry.name);
     if (entry.name === '.bin') rmSync(path, { recursive: true, force: true });
     else if (entry.isSymbolicLink()) throw new Error(`${path} is a symlink; the bundle needs real files`);
-    else if (entry.isDirectory()) removeBinLinks(path);
+    else if (entry.isDirectory()) pruneStage(path);
   }
 }
 
@@ -65,6 +65,12 @@ writeFileSync(join(out, 'server.json'), `${JSON.stringify(serverJson(pkg), null,
 process.stdout.write(`wrote ${join(out, 'server.json')}\n`);
 
 if (!flags['no-bundle']) {
+  // gitignored and built by scripts/build-wasm.sh; without it no model loads.
+  // Checked before the slow deploy, and again in the stage after it.
+  const WASM = join('pkg', 'ifc-lite_bg.wasm');
+  if (!existsSync(join(pkgDir, '..', 'wasm', WASM))) {
+    throw new Error('packages/wasm/pkg/ifc-lite_bg.wasm is missing: build it (scripts/build-wasm.sh) first');
+  }
   const stage = join(out, 'mcpb');
   rmSync(stage, { recursive: true, force: true });
   run('pnpm', [
@@ -74,10 +80,10 @@ if (!flags['no-bundle']) {
     '--config.allow-unused-patches=true',
     '--filter', pkg.name, 'deploy', '--prod', '--legacy', join(stage, BUNDLE_SERVER_DIR),
   ], pkgDir);
-  removeBinLinks(join(stage, BUNDLE_SERVER_DIR));
-  // gitignored and built by scripts/build-wasm.sh; without it no model loads.
-  const wasm = join(stage, BUNDLE_SERVER_DIR, 'node_modules', '@ifc-lite', 'wasm', 'pkg', 'ifc-lite_bg.wasm');
-  if (!existsSync(wasm)) throw new Error(`${wasm} is missing: build packages/wasm (scripts/build-wasm.sh) first`);
+  pruneStage(join(stage, BUNDLE_SERVER_DIR));
+  if (!existsSync(join(stage, BUNDLE_SERVER_DIR, 'node_modules', '@ifc-lite', 'wasm', WASM))) {
+    throw new Error('the deployed stage has no wasm runtime');
+  }
   writeFileSync(join(stage, 'manifest.json'), `${JSON.stringify(mcpbManifest(pkg), null, 2)}\n`);
   // Source maps and type declarations are about 30 MB of the stage and never run.
   writeFileSync(join(stage, '.mcpbignore'), '*.map\n*.d.ts\n*.d.mts\n*.d.cts\n');

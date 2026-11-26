@@ -99,7 +99,12 @@ export function resolveStoreyPlacement(token: string, parsed: ParsedStep): numbe
     // Storeys are often NAMED '0', '1', ...: a bare number that is not a
     // storey's express id is tried as a name before it is reported.
     const id = parseInt(t, 10);
-    storeyId = parsed.instances.get(id)?.type === 'IFCBUILDINGSTOREY' ? id : byName() ?? id;
+    const named = byName();
+    const isStorey = parsed.instances.get(id)?.type === 'IFCBUILDINGSTOREY';
+    if (isStorey && named !== undefined && named !== id) {
+      throw new SubsetSelectionError('invalid', `'${t}' is storey #${id} and the Name of storey #${named}; pass #${id} or a GlobalId.`);
+    }
+    storeyId = isStorey ? id : named ?? id;
   } else if (parsed.guidToId.has(t)) {
     storeyId = parsed.guidToId.get(t);
   } else {

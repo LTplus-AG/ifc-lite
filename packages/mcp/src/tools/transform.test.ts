@@ -317,6 +317,14 @@ describe('model_simplify and model_lod on a real model (wasm)', () => {
     expect(reloaded.bim.query().byType('IfcTriangulatedFaceSet').toArray().length).toBeGreaterThan(0);
   }, 60_000);
 
+  it('model_lod level 1 on a model with no geometry reports the box fallback as degraded', async () => {
+    ctx.registry.add(await loadIfcModel(join(tmp, 'a.ifc'), { modelId: 'a' }));
+    // No mesh: generateLod1 falls back to LOD0 boxes and says so, as `ifc-lite lod` does.
+    const res = await call('model_lod', { model_id: 'a', level: 1, file_path: join(tmp, 'boxes-lod1.glb') });
+    expect(res.structuredContent).toMatchObject({ status: 'degraded' });
+    expect(res.content[0]).toMatchObject({ text: expect.stringContaining('degraded') });
+  }, 60_000);
+
   it('model_lod level 0 writes one JSON row per element; level 1 writes a GLB and its metadata', async () => {
     const json = join(tmp, 'lod0.json');
     const res0 = await call('model_lod', { level: 0, file_path: json });

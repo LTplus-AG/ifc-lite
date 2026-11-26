@@ -16,7 +16,7 @@ import { writeFile } from 'node:fs/promises';
 import {
   analyzeConversionLoss,
   buildSubset,
-  exportToStep,
+  StepExporter,
   MergedExporter,
   parseStep,
   selectSubsetSeeds,
@@ -59,7 +59,7 @@ const modelMerge: Tool = {
   inputSchema: {
     type: 'object',
     properties: {
-      model_ids: { type: 'array', items: { type: 'string' }, minItems: 2, description: 'Models to merge, in order; the first sets the unit and project. Default: every loaded STEP model.' },
+      model_ids: { type: 'array', items: { type: 'string' }, minItems: 2, description: 'Models to merge, in order; the first sets the unit and project. Default: every loaded STEP model, each of which must have no unsaved edits.' },
       file_path: { type: 'string', description: 'Output .ifc path, inside the allowed paths.' },
       schema: { type: 'string', enum: ['IFC2X3', 'IFC4', 'IFC4X3'], description: 'Output schema. Default: the first model\'s. Models in another schema are converted, the loss reported in warnings.' },
       unit_reconciliation: { type: 'string', enum: ['auto', 'normalize', 'assume-shared'], description: 'auto: federate other-unit models as separate projects; normalize: rescale into the first model\'s unit; assume-shared: one project, no rescale.' },
@@ -193,10 +193,11 @@ const modelConvert: Tool = {
           details: { lossReport: loss.entries.map(lossEntryRow) },
         });
       }
-      const content = exportToStep(store, { schema: target });
+      // Bytes, not a decoded string: no V8 string-length limit on large models.
+      const content = new StepExporter(store).export({ schema: target }).content;
       throwIfCancelled(ctx);
       await writeFile(filePath, content);
-      const bytes = Buffer.byteLength(content);
+      const bytes = content.length;
       return okResult(
         `Converted ${source} to ${target}: wrote ${fmtInt(bytes)} bytes to ${filePath}.` +
           (loss.entries.length > 0 ? `\n${loss.describe().join('\n')}` : ''),

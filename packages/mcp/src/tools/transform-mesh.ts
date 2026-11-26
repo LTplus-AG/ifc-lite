@@ -9,10 +9,10 @@
  */
 
 import { writeFile } from 'node:fs/promises';
-import { DemeshSession, generateLod0, generateLod1 } from '@ifc-lite/export';
+import { countGlbMeshes, DemeshSession, generateLod0, generateLod1 } from '@ifc-lite/export';
 import type { Tool } from './types.js';
 import { fmtInt, okResult } from './util.js';
-import { withIfcBytes } from './export-source.js';
+import { refusingEmpty, withIfcBytes } from './export-source.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import { resolveSafePath } from '../safe-path.js';
 import { FILE_WRITE_ANNOTATIONS, fileOutputSchema, invalid, optionalOutputPath, requireDistinctPaths, resolveStepModel, throwIfCancelled, writeSidecar } from './transform-schema.js';
@@ -132,7 +132,7 @@ const modelLod: Tool = {
     requireDistinctPaths(filePath, metaPath, 'meta_path');
     return withIfcBytes(m, async (bytes) => {
       if (level === 0) {
-        const lod0 = await generateLod0(bytes);
+        const lod0 = await refusingEmpty(() => generateLod0(bytes), (r) => r.elements.length, 'LOD0 produced no elements: the model has no exportable geometry.');
         const json = Buffer.from(JSON.stringify(lod0, null, 2));
         throwIfCancelled(ctx);
         await writeFile(filePath, json);
@@ -141,7 +141,7 @@ const modelLod: Tool = {
           { filePath, bytes: json.length, level, elementCount: lod0.elements.length, metaPath: null },
         );
       }
-      const { glb, meta } = await generateLod1(bytes);
+      const { glb, meta } = await refusingEmpty(() => generateLod1(bytes), (r) => countGlbMeshes(r.glb), 'LOD1 produced no meshes: the model has no exportable geometry.');
       throwIfCancelled(ctx);
       // One after the other: a failed meta write must not race a GLB still landing.
       await writeFile(filePath, glb);

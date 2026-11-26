@@ -61,6 +61,10 @@ function anonymizeSeeds(m: LoadedModel, input: Record<string, unknown>): Set<num
     const fragment = storeys.filter((s) => s.name?.toLowerCase().includes(key.toLowerCase()));
     const byId = storeys.find((s) => s.globalId === key) ?? storeys.find((s) => String(s.ref.expressId) === id);
     const named = storeys.filter((s) => s.name === key);
+    // A bare number that is one storey's id and another storey's name is ambiguous.
+    if (byId && /^\d+$/.test(key) && named.some((s) => s !== byId)) {
+      throw invalid(`storey: '${key}' is storey #${key} and the name of another storey; pass #${key} or a GlobalId.`);
+    }
     if (!byId && named.length > 1) throw invalid(`storey: ${named.length} storeys are named '${key}'; pass a GlobalId or express id.`);
     const exact = byId ?? named[0];
     if (!exact && fragment.length > 1) throw invalid(`storey: '${key}' matches ${fragment.map((s) => s.name).join(', ')}; name one exactly.`);

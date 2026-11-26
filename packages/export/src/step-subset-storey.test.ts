@@ -67,6 +67,12 @@ describe('resolveStoreyPlacement: a storey NAMED with a number', () => {
     expect(resolveStoreyPlacement("O'Brien \u00fc", named)).toBe(10);
   });
 
+  it('refuses a bare number that is one storey\'s id and another storey\'s Name', () => {
+    const clash = parseStep(text.replace("'0',$,$,#10", "'21',$,$,#10"));
+    expect(() => resolveStoreyPlacement('21', clash)).toThrow(/storey #21 and the Name of storey #20/);
+    expect(resolveStoreyPlacement('#21', clash)).toBe(11);
+  });
+
   it('still reads a bare storey express id, and #id, as an id', () => {
     expect(resolveStoreyPlacement('20', parsed)).toBe(10);
     expect(resolveStoreyPlacement('#21', parsed)).toBe(11);

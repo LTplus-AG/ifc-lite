@@ -176,6 +176,13 @@ describe('modelExportFilename', () => {
 });
 
 describe('reserved-name prefix stays inside the length cap (#11442)', () => {
+  it('fits the fallback when a supplementary letter cannot fit the stem budget', () => {
+    const name = '\u{20000}';
+    assert.strictEqual(sanitizeFilename(name, { maxLength: 1 }), 'f');
+    assert.strictEqual(buildExportFilename(name, 'csv', 5), 'f.csv');
+    assert.strictEqual(sanitizeFilename(name, { maxLength: 1, fallback: name }), '_');
+  });
+
   it('sanitizeFilename never exceeds maxLength once the prefix is added', () => {
     assert.strictEqual(sanitizeFilename('CON', { maxLength: 3 }), '_CO');
     const out = sanitizeFilename(`CON.${'x'.repeat(100)}`);

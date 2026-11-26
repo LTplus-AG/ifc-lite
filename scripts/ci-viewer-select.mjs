@@ -7,7 +7,7 @@
  * Selected viewer tests on a fast-lane PR run: the viewer test files a PR's
  * changes can reach through the static import graph, capped to a time budget.
  *
- * WHY. With `CI_PR_LANE=fast` a PR run skips the sixteen viewer shards, so a
+ * WHY. With `CI_PR_LANE=fast` a PR run skips the full viewer matrix, so a
  * viewer failure is first seen in the merge queue's full run. A red queue run
  * costs about seven runner-hours, resets the batches behind it and sends the PR
  * round the queue again. Running the few viewer tests a change can affect, on

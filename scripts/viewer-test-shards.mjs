@@ -15,7 +15,7 @@
  *
  * Membership has two tiers:
  *
- *  1. When `TEST_SHARDS` equals the manifest's `shards` (CI's 16), a path
+ *  1. When `TEST_SHARDS` equals the manifest's `shards` (the CI matrix size), a path
  *     listed in the committed manifest `apps/viewer/test-durations.json`
  *     (`seconds`: path -> measured seconds) is bin-packed by greedy LPT: longest first,
  *     ties broken by path, each onto the currently least-loaded shard, ties

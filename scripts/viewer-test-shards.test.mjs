@@ -22,7 +22,7 @@ import { attributeFiles, declaredTitles, parseTapLog } from './lib/viewer-test-d
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const VIEWER = join(ROOT, 'apps/viewer');
 const SCRIPT = join(ROOT, 'scripts/viewer-test-shards.mjs');
-const SHARDS = 16;
+const SHARDS = 12;
 
 /** The viewer's test files exactly as its `test` script's `find` sees them. */
 function realTestFiles() {
@@ -49,7 +49,7 @@ test('measured durations cover at least 95% of the current viewer suite (#10279)
     `${measured.length}/${files.length} current tests have measured durations; refresh the manifest from green CI`);
 });
 
-test('the REAL test files are partitioned: each runs in exactly one of the 16 shards, none is empty', () => {
+test('the REAL test files are partitioned: each runs in exactly one CI shard, none is empty', () => {
   // Anti-vacuity: an empty walk or an empty manifest would partition trivially.
   assert.ok(files.length >= 2000, `expected the real viewer suite, got ${files.length} files`);
   assert.ok(Object.keys(manifest.seconds).length >= 2000, 'expected the committed manifest to be populated');
@@ -144,7 +144,7 @@ test('CLI: without TEST_SHARDS every file is printed (a local `pnpm test` runs e
   assert.deepEqual(r.stdout.trim().split('\n'), files);
 });
 
-test('CLI: the 16 shards together print every real file exactly once', () => {
+test('CLI: all CI shards together print every real file exactly once', () => {
   const all = [];
   for (let s = 0; s < SHARDS; s++) {
     const r = cli(files.join('\n') + '\n', { TEST_SHARDS: String(SHARDS), TEST_SHARD: String(s) });
@@ -155,7 +155,8 @@ test('CLI: the 16 shards together print every real file exactly once', () => {
 });
 
 test('CLI: refuses an out-of-range shard and an empty selection instead of printing nothing', () => {
-  for (const env of [{ TEST_SHARDS: '16', TEST_SHARD: '16' }, { TEST_SHARDS: '0' }, { TEST_SHARDS: '16', TEST_SHARD: 'x' }]) {
+  const count = String(SHARDS);
+  for (const env of [{ TEST_SHARDS: count, TEST_SHARD: count }, { TEST_SHARDS: '0' }, { TEST_SHARDS: count, TEST_SHARD: 'x' }]) {
     const r = cli(files.join('\n') + '\n', env);
     assert.equal(r.status, 1, `expected refusal for ${JSON.stringify(env)}`);
     assert.equal(r.stdout, '');
@@ -167,7 +168,7 @@ test('CLI: refuses an out-of-range shard and an empty selection instead of print
 
 test('a malformed manifest is refused, naming the problem', () => {
   assert.throws(() => parseManifest('{"src/a.test.ts": 3}'), /shards/);
-  assert.throws(() => parseManifest('{"shards": 16, "seconds": {"src/a.test.ts": -1}}'), /src\/a\.test\.ts/);
+  assert.throws(() => parseManifest('{"shards": 2, "seconds": {"src/a.test.ts": -1}}'), /src\/a\.test\.ts/);
   assert.deepEqual(parseManifest('{"shards": 2, "seconds": {}}'), { shards: 2, seconds: {} });
   assert.deepEqual(assignShards(['src/x.test.ts'], EMPTY_MANIFEST, 4).get('src/x.test.ts'), pathHash('src/x.test.ts') % 4);
 });

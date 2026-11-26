@@ -3,9 +3,9 @@
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 # The viewer suite at VIEWER_TEST_CONCURRENCY=2 over EIGHT shards, measured
-# after a main push's Test run finishes, to decide the gate's concurrency from
-# CI numbers instead of the local 19 s vs 70 s in #3061. The gate itself
-# (`viewer-tests` in test.yml) keeps concurrency 1 over sixteen shards.
+# after a main push's Test run finishes. It originally qualified two-way
+# concurrency for the main viewer gate. Its eight shards provide an advisory
+# comparison against the duration-packed shards in test.yml.
 #
 # OFF unless the repo variable VIEWER_CONCURRENCY_PROBE is exactly `on`: with
 # it unset the `plan` job's `if` is false and every other job needs `plan`, so
@@ -168,7 +168,7 @@ jobs:
           retention-days: 30
 
   # Warns (never fails) when a test failed at concurrency 2 or when fewer files
-  # reported a result than the 16-shard gate selects.
+  # reported a result than the full viewer gate selects.
   report:
     name: Viewer concurrency probe, advisory (report)
     needs: [plan, probe]

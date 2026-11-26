@@ -53,6 +53,8 @@ const {
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..');
 const VIEWER = join(REPO_ROOT, 'apps/viewer');
+const viewerManifest = parseManifest(readFileSync(MANIFEST_PATH, 'utf8'));
+const viewerShardCount = viewerManifest.shards;
 const TSX = join(REPO_ROOT, 'node_modules/.bin/tsx');
 const WORKFLOW = parse(readFileSync(join(REPO_ROOT, '.github/workflows/test.yml'), 'utf8'));
 
@@ -240,12 +242,12 @@ test("through apps/viewer's real selection, the retry pattern runs exactly the f
   assert.equal(listed.status, 0, listed.stderr);
   const all = listed.stdout.trim().split('\n');
   const file = all[Math.floor(all.length / 2)];
-  const shard = assignShards(all, parseManifest(readFileSync(MANIFEST_PATH, 'utf8')), 16).get(file);
-  const select = (s) => spawnSync('sh', ['-c', SELECT], { cwd: VIEWER, encoding: 'utf8', env: { ...process.env, TEST_SHARDS: '16', TEST_SHARD: String(s), TEST_PATTERN: viewerPattern([file]) } });
+  const shard = assignShards(all, viewerManifest, viewerShardCount).get(file);
+  const select = (s) => spawnSync('sh', ['-c', SELECT], { cwd: VIEWER, encoding: 'utf8', env: { ...process.env, TEST_SHARDS: String(viewerShardCount), TEST_SHARD: String(s), TEST_PATTERN: viewerPattern([file]) } });
   const own = select(shard);
   assert.equal(own.status, 0, own.stderr);
   assert.deepEqual(own.stdout.trim().split('\n'), [file]);
-  const other = select((shard + 1) % 16);
+  const other = select((shard + 1) % viewerShardCount);
   assert.notEqual(other.status, 0, 'a pattern that selects nothing in this shard fails, never falls back to every file');
 });
 
@@ -374,10 +376,10 @@ test('/code-review on #9788: tests a hook failure skipped are retried but do not
 
 test('/code-review on #9788: a failure located in a file this shard does not run is not retried', () => {
   const file = 'src/hooks/useSandbox.runSupersession.test.tsx';
-  const shard = assignShards([file], parseManifest(readFileSync(MANIFEST_PATH, 'utf8')), 16).get(file);
+  const shard = assignShards([file], viewerManifest, viewerShardCount).get(file);
   const tap = join(TMP, 'other-shard.tap');
   writeFileSync(tap, `not ok 1 - ${file}\n# tests 1\n# pass 0\n# fail 1\n# cancelled 0\n# duration_ms 1\n`);
-  const r = cli('viewer', { CI_SHARD_RETRY: 'on', TAP_FILE: tap, TEST_SHARDS: '16', TEST_SHARD: String((shard + 1) % 16) });
+  const r = cli('viewer', { CI_SHARD_RETRY: 'on', TAP_FILE: tap, TEST_SHARDS: String(viewerShardCount), TEST_SHARD: String((shard + 1) % viewerShardCount) });
   assert.equal(r.record.plan.retry, false);
   assert.match(r.record.plan.reason, /this shard does not run/); // @source-text-assertion-ok subject is the plan's reason
 });

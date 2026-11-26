@@ -21,6 +21,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
+import { MANIFEST_PATH, parseManifest } from './viewer-test-shards.mjs';
 
 // When the revert oracle reverses this PR's production files, every test must
 // still run and fail on its own assertion, not the whole file at load with
@@ -70,12 +71,21 @@ test("apps/viewer's script bounds VIEWER_TEST_CONCURRENCY: only 2, the value the
   }
 });
 
-test('the gate step hands the repo variable to that script, which is the one place it is bounded', () => {
-  const env = TEST_YML.jobs['viewer-tests'].steps.find((s) => s.id === 'viewer_tests').env;
+test('the gate uses the concurrency variable and the same duration-packed shards for tests and retries', () => {
+  const job = TEST_YML.jobs['viewer-tests'];
+  const env = job.steps.find((s) => s.id === 'viewer_tests').env;
   // A GitHub Actions expression, compared as written.
   // eslint-disable-next-line no-template-curly-in-string
   assert.equal(env.VIEWER_TEST_CONCURRENCY, '${{ vars.VIEWER_TEST_CONCURRENCY }}');
-  assert.equal(TEST_YML.jobs['viewer-tests'].strategy.matrix.shard.length, 16, 'the gate keeps sixteen shards');
+  const { shards } = parseManifest(readFileSync(MANIFEST_PATH, 'utf8'));
+  assert.deepEqual(job.strategy.matrix.shard, Array.from({ length: shards }, (_, shard) => shard));
+  const retryEnv = job.steps.find((s) => s.id === 'viewer_retry').env;
+  assert.equal(env.TEST_SHARDS, String(shards));
+  assert.equal(retryEnv.TEST_SHARDS, env.TEST_SHARDS);
+  assert.equal(retryEnv.TEST_SHARD, env.TEST_SHARD);
+  const artifact = job.steps.find((s) => s.name === 'Upload the retry record');
+  // eslint-disable-next-line no-template-curly-in-string
+  assert.equal(artifact.with.name, 'shard-retry-viewer-${{ matrix.shard }}');
 });
 
 // ------------------------------ what ran, through the real reporter

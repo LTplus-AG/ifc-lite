@@ -11,8 +11,9 @@ CI step durations below are wall time, not CPU time or billing-weighted minutes.
 - Generated `tsconfig.tests.json` files no longer invalidate production Turbo
   build keys (#10407). The actual Turbo regression still requires production
   source/configuration changes to invalidate the key.
-- Viewer tests retain 16 isolated shards and their complete inventory. #10399
-  refreshed the existing LPT duration manifest; no second selector was added.
+- Viewer tests use 12 duration-packed shards with two-way file concurrency
+  enabled by `VIEWER_TEST_CONCURRENCY`. #10399 refreshed the existing duration
+  manifest when the job still used 16 shards. Both layouts cover the full suite.
 - Retained Rust uses one Cargo archive owner for the native and WASM target
   tree, rather than restoring/saving the same paths twice. The setup action
   already installs the required Rust toolchain and exposes its exact cache hit.
@@ -41,15 +42,25 @@ The following values come from each job's initial
 The observed maximum falls inside the earlier range; the historical packing
 prediction did not establish an equivalent improvement on fresh CI. Source,
 runner load, caches and batch contents differ. This is not a controlled A/B
-measurement and supports no percentage saving. Retain the existing shard count
-and selector; refresh from several successful full runs when measurements drift,
-rather than adding shards or optimizing one noisy sample. Post-merge replay runs
+measurement and supports no percentage saving. Refresh the existing manifest
+from several successful full runs at concurrency 1 when file weights drift.
+For a shard-count change, update the matrix, the initial and retry step counts,
+and the manifest together. Post-merge replay runs
 that skip all shards provide no balancing evidence.
 
 Reproduce the inventory with
 `gh api repos/LTplus-AG/ifc-lite/actions/runs/RUN/jobs?per_page=100 --paginate`,
 selecting successful `Viewer tests (shard N)` jobs and the exact step above.
 Subtract `started_at` from `completed_at`; exclude setup, retries and post steps.
+
+The move from 16 to 12 shards followed four successful hosted queue runs on
+2026-11-25 and 2026-11-26 with `VIEWER_TEST_CONCURRENCY=2`. The old layout
+used 145–167 summed test-step minutes. Scaling the serial file weights to
+each observed shard's wall time and replaying duration packing projected
+slowest steps of 15.8 minutes for 10 shards, 14.2 for 11 and 13.1 for 12.
+These estimates use shard-level wall times because concurrent TAP output
+is buffered. The viewer jobs report the number of files completed alongside
+the step durations for direct comparison on a full run.
 
 ## Rust measurements
 

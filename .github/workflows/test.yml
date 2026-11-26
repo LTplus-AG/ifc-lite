@@ -1397,76 +1397,24 @@ jobs:
       - name: Check changeset bump levels against the API surface
         run: node scripts/check-changeset-bump.mjs
 
-  # The viewer's own suite, split out of `node-tests` across sixteen shards.
+  # The viewer suite is split out of node-tests. It outgrew eight serial
+  # shards (#7360) and ran on sixteen before VIEWER_TEST_CONCURRENCY was set
+  # to 2. With two files running at a time, twelve shards are projected to
+  # fit the test-step budget and free four hosted runner slots per queue run.
   #
-  # Measured, not guessed. Splitting it out of node-tests took that lane from
-  # a 25:00 timeout to 5:32 SUCCESS, so everything except the viewer costs five
-  # and a half minutes. The viewer alone then still timed out at 25:29 with a
-  # whole 4-vCPU runner to itself, which is what made sharding the answer
-  # rather than more concurrency inside one job.
+  # The selector packs measured files from apps/viewer/test-durations.json
+  # longest first onto the least-loaded shard. Adding or removing a file
+  # leaves the other assignments stable. Files absent from the manifest use
+  # a stable path hash. Change the manifest count together with the matrix
+  # and both TEST_SHARDS settings so duration packing stays active.
   #
-  # Healthy shard timings, recorded so the next person seeing this lane creep
-  # knows what good looks like rather than only what broken looked like:
-  # 2:29, 2:01, 1:50 against a 25 minute cap, at FOUR shards over 521 files.
-  # The suite had grown to 803 files by 2026-09-11 and the four shards were
-  # measured at 5.6-8.2 min on hosted runners, on the frontend PR's critical
-  # path; EIGHT shards (CI redesign, step 4) halved the per-shard file count
-  # then. The suite now needs sixteen shards (see #7360 below). Membership
-  # is a hash of the path (below), so going 4 -> 8 reassigns files exactly
-  # once and then stays stable.
-  #
-  # Shard membership is by MEASURED DURATION first, path hash second
-  # (scripts/viewer-test-shards.mjs, tested by viewer-test-shards.test.mjs).
-  # Measured on three green main runs (2026-10-14): the hash split the
-  # same ~10,470 s of tests into shards of 336-900 s, and the slowest was
-  # always shard 4 (876-900 s): the content, not the runner. So every file in
-  # apps/viewer/test-durations.json is bin-packed (greedy LPT, ties by path)
-  # across the 16 shards, ~654 s of measured work each. The packing is a
-  # function of the manifest alone, so adding or deleting a test file still
-  # moves no other file; a file the manifest does not list takes the path
-  # hash below, so a new file always runs in exactly one shard. Runner speed
-  # still varies run to run (one job ran 1.7x its files' median), which no
-  # assignment can remove.
-  #
-  # Refresh the manifest when shard times drift apart, from two or three
-  # green runs (per-file times are median-combined):
+  # Refresh per-file weights from two or three green concurrency-1 runs:
   #   node scripts/refresh-viewer-test-durations.mjs --run <id> --run <id>
-  # It needs `gh` and reads the `Viewer tests (shard n)` job logs; how TAP
-  # timestamps are attributed to files is in scripts/lib/viewer-test-durations.mjs.
-  # Changing the shard count below falls every file back to the hash until
-  # the manifest is refreshed for the new count.
-  #
-  # The fallback hash is of the file PATH, not its index in the sorted
-  # list. With `NR % n` every file after an added or removed test moves to a
-  # different shard: measured, adding ONE file reassigned 534 of 534. Two
-  # things that breaks. A flaky file wanders between shards, and "shard 1
-  # passed on PR X" stops being evidence about shard 1 on PR Y, because they
-  # are not the same set of files. I used exactly that cross-PR comparison as
-  # proof while chasing a flake, and it did not hold. With the hash, adding a
-  # file reassigns 0 of 534.
-  #
-  # Parallelism comes from the SHARDS, not from concurrency inside a shard.
-  # `--test-concurrency=1` is deliberate: at 4 a timing-sensitive test races
-  # three neighbours, and `useSandbox.runSupersession.test.tsx` failed on three
-  # unrelated PRs in one hour that way (issue #3060) while passing locally 3/3.
-  # The bump to 4 came from an earlier attempt at this lane that was MEASURED
-  # not to help on CI, and it was carried forward as harmless once sharding
-  # worked. It is not harmless, and its speedup is redundant with sharding.
-  # Cost of going back to 1, measured: ~70s versus ~19s per shard locally,
-  # roughly 8 minutes versus 2 on CI, against a 25 minute cap.
-  #
-  # Correction: dropping to 1 MITIGATED #3060, it did not fix it. The defect
-  # was in that file's fixture, which slept a flat 50ms and then asserted that
-  # a run had reached its host gate. The #1922 tests at the bottom of that file
-  # abort a WASM module, the aborted module is retired, and the next run pays a
-  # fresh `newQuickJSWASMModule()` — measured at 46-72ms on a contended
-  # machine, straddling the sleep. Reproduced locally at 11/30 failures with
-  # the exact reported `0 !== 1, then 2 !== 1`, on Node 22.13.1 AND 22.23.2,
-  # by loading the machine rather than by raising concurrency; the fixture now
-  # waits for the gate instead of predicting it, and the same load gives 30/30.
-  # So concurrency was the exposure, not the cause: this setting is still worth
-  # keeping for the other timing-sensitive tests it protects, but it is no
-  # longer what stands between #3060 and a red shard.
+  # The TAP timestamp attribution in scripts/lib/viewer-test-durations.mjs
+  # requires serial files. Keep concurrency bounded to 2 in the viewer test
+  # script. Four-way concurrency exposed a timing-sensitive test in #3060.
+  # Its fixture now waits for the run to reach the host gate instead of
+  # sleeping for 50 ms and assuming QuickJS has initialized.
   #
   # Two earlier explanations in this file were WRONG and are corrected here,
   # because a confident wrong comment is worse than none:
@@ -1501,9 +1449,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # #7360 qualification: 2,180 files outgrew eight serial shards.
-        # Keep the 25-minute cap and run every path exactly once.
-        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
     env:
       HAS_MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN != '' }}
     steps:
@@ -1560,7 +1506,7 @@ jobs:
       # test script pipes its file list through scripts/viewer-test-shards.mjs,
       # see above). Unset, the script takes every file, so a local `pnpm test`
       # is unchanged. The split is exact: a manifest file is packed into one
-      # shard and any other path hashes to exactly one of the 16 residues, so
+      # shard and any other path hashes to exactly one shard, so
       # nothing is dropped or run twice; an empty selection fails the step.
       #
       # CI_SHARD_RETRY (scripts/ci-shard-retry.mjs) reruns only the failed
@@ -1572,13 +1518,20 @@ jobs:
         run: pnpm --filter @ifc-lite/viewer run test
         continue-on-error: ${{ vars.CI_SHARD_RETRY == 'on' }}
         env:
-          NODE_OPTIONS: --test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml${{ (vars.CI_SHARD_RETRY == 'shadow' || vars.CI_SHARD_RETRY == 'on') && format(' --test-reporter=tap --test-reporter-destination={0}/viewer-attempt1.tap', runner.temp) || '' }}
-          TEST_SHARDS: '16'
+          NODE_OPTIONS: --test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml --test-reporter=${{ github.workspace }}/scripts/lib/test-file-reporter.mjs --test-reporter-destination=${{ runner.temp }}/viewer-test-files.json${{ (vars.CI_SHARD_RETRY == 'shadow' || vars.CI_SHARD_RETRY == 'on') && format(' --test-reporter=tap --test-reporter-destination={0}/viewer-attempt1.tap', runner.temp) || '' }}
+          TEST_SHARDS: '12'
           TEST_SHARD: ${{ matrix.shard }}
           # Bounded by apps/viewer's test script, the one place the rule lives.
           # Above 1, refresh test-durations.json only from runs at 1:
           # scripts/lib/viewer-test-durations.mjs assumes serial files.
           VIEWER_TEST_CONCURRENCY: ${{ vars.VIEWER_TEST_CONCURRENCY }}
+      - name: Count viewer test files that reported a result
+        run: |
+          node --input-type=module -e '
+            import { readFileSync } from "node:fs";
+            const files = JSON.parse(readFileSync(process.argv[1], "utf8"));
+            console.log(`Viewer test files reported: ${files.length}`);
+          ' "$RUNNER_TEMP/viewer-test-files.json"
       # The contrast harness fails rather than skips in CI when it has no
       # browser. Check the outcome too, so a shard that skipped them for that
       # reason can never pass (scripts/lib/contrast-skips.mjs).
@@ -1604,7 +1557,7 @@ jobs:
           JOB_TIMEOUT_MINUTES: '25'  # this job's timeout-minutes
           TAP_FILE: ${{ runner.temp }}/viewer-attempt1.tap
           REPORT_DIR: ${{ runner.temp }}/shard-retry
-          TEST_SHARDS: '16'
+          TEST_SHARDS: '12'
           TEST_SHARD: ${{ matrix.shard }}
       - name: Upload the retry record
         if: (success() || failure()) && (steps.viewer_retry.outcome == 'success' || steps.viewer_retry.outcome == 'failure')

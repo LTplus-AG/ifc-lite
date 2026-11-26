@@ -1,5 +1,5 @@
 {
-  "shards": 16,
+  "shards": 12,
   "seconds": {
     "src/components/StaleDeploymentNotice.test.tsx": 6.3,
     "src/components/agent-bridge/AgentBridge.ui.test.tsx": 13.6,

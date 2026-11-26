@@ -83,6 +83,27 @@ function resolvedTree(nodeModules) {
   return [...new Set(found)].sort();
 }
 
+/**
+ * The root `patchedDependencies` the stage carries, each checked to be applied:
+ * the hoisted deploy runs with allow-unused-patches, so pnpm would not say if
+ * one of them were skipped. Every line a patch adds must be in the staged file.
+ */
+function assertPatchesApplied(nodeModules, staged) {
+  const root = resolve(pkgDir, '..', '..');
+  const patches = JSON.parse(readFileSync(join(root, 'package.json'), 'utf-8')).pnpm?.patchedDependencies ?? {};
+  for (const [spec, patch] of Object.entries(patches)) {
+    if (!staged.includes(spec)) continue;
+    const pkgRoot = join(nodeModules, spec.slice(0, spec.lastIndexOf('@')));
+    let file;
+    for (const line of readFileSync(join(root, patch), 'utf-8').split('\n')) {
+      if (line.startsWith('+++ ')) file = readFileSync(join(pkgRoot, line.slice(4).replace(/^b\//, '')), 'utf-8');
+      else if (line.startsWith('+') && line.trim() !== '+' && !file.includes(line.slice(1))) {
+        throw new Error(`${spec} is staged without ${patch} (missing: ${line.slice(1).trim()})`);
+      }
+    }
+  }
+}
+
 function missingWasm(root) {
   return WASM.filter((f) => !existsSync(join(root, f)));
 }
@@ -125,8 +146,11 @@ if (!flags['no-bundle']) {
   if (staged.length) throw new Error(`the deployed stage is missing ${staged.join(', ')}`);
   // Hoisted deploy resolves within package.json ranges, not the lockfile, so the
   // exact tree is recorded next to the bundle to audit or reproduce a release.
+  const nodeModules = join(stage, BUNDLE_SERVER_DIR, 'node_modules');
+  const tree = resolvedTree(nodeModules);
+  assertPatchesApplied(nodeModules, tree);
   const deps = join(out, `ifc-lite-${pkg.version}.deps.txt`);
-  writeFileSync(deps, `${resolvedTree(join(stage, BUNDLE_SERVER_DIR, 'node_modules')).join('\n')}\n`);
+  writeFileSync(deps, `${tree.join('\n')}\n`);
   process.stdout.write(`wrote ${deps}\n`);
   writeFileSync(join(stage, 'manifest.json'), `${JSON.stringify(mcpbManifest(pkg), null, 2)}\n`);
   // Source maps and type declarations are about 30 MB of the stage and never run.

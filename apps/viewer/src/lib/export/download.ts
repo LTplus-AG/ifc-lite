@@ -27,7 +27,7 @@ export interface SanitizeFilenameOptions {
   reservedStem?: boolean;
 }
 
-const WINDOWS_RESERVED_STEM = /^(?:con|prn|aux|nul|com[0-9\u00B9\u00B2\u00B3]|lpt[0-9\u00B9\u00B2\u00B3])(?: *\.|$)/i;
+const WINDOWS_RESERVED_STEM = /^(?:con|prn|aux|nul|com[1-9\u00B9\u00B2\u00B3]|lpt[1-9\u00B9\u00B2\u00B3])(?: *\.|$)/i;
 
 function fitFilename(name: string, limit: number): string {
   return name

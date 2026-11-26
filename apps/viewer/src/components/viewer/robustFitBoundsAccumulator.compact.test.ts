@@ -46,3 +46,11 @@ it('frames a compact mesh on its exact source box without decoding it', () => {
   assert.deepEqual(robustFitBoundsFull([compact]), robustFitBoundsFull([f32]));
   assert.ok(compact.compact, 'still drawn from its records');
 });
+
+it('scans a compact mesh whose box has a garbage corner, keeping its valid vertices as the f32 scan does', () => {
+  const { f32, compact } = pair([0, 0, 0], [[0, 0, 0], [10, 0, 0], [0, 10, 0]]);
+  compact.compact!.payload.bounds.set([0, 0, 0, 1e13, 10, 0]); // one source vertex far out
+  const fit = robustFitBoundsFull([compact]);
+  assert.ok(fit, 'still framed');
+  assert.deepEqual(fit!.full, robustFitBoundsFull([f32])!.full);
+});

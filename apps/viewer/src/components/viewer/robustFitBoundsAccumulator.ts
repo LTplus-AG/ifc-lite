@@ -71,8 +71,8 @@ const garbage = (x: number, y: number, z: number) =>
 function meshBox(mesh: RobustFitMeshInput): { box: Float64Array; n: number } | null {
   if (mesh.compact) {
     const b = compactBounds(mesh.compact);
-    if (garbage(b[0], b[1], b[2]) || garbage(b[3], b[4], b[5])) return null;
-    return { box: Float64Array.from(b), n: compactRow(mesh.compact).vertexCount };
+    // A garbage corner means some vertex is garbage: only a scan can keep the others, as for an f32 mesh.
+    if (!garbage(b[0], b[1], b[2]) && !garbage(b[3], b[4], b[5])) return { box: Float64Array.from(b), n: compactRow(mesh.compact).vertexCount };
   }
   const positions = mesh.positions;
   const o = mesh.origin;

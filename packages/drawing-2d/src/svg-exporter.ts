@@ -265,17 +265,25 @@ export class SVGExporter {
   ): string {
     let layer = '  <g id="hatching" inkscape:label="Hatching" inkscape:groupmode="layer">\n';
 
+    const drawableRing = (ring: Point2D[]): boolean => ring.length > 0 && ring.every(point => {
+      const paper = transformPoint(point, transform);
+      return Number.isFinite(paper.x) && Number.isFinite(paper.y);
+    });
+
     for (const polygon of polygons) {
       const pattern = getHatchPattern(polygon.ifcType);
+      if (pattern.type === 'none' || !drawableRing(polygon.polygon.outer)) continue;
 
-      if (pattern.type === 'none') continue;
+      // Fill and hatch the same rings. A rejected hole must not clip the hatch
+      // after the fill has already left that hole out.
+      const holes = polygon.polygon.holes.filter(drawableRing);
+      const drawable = holes.length === polygon.polygon.holes.length
+        ? polygon
+        : { ...polygon, polygon: { outer: polygon.polygon.outer, holes } };
+      layer += this.renderPolygon(drawable, transform, pattern);
 
-      // Render polygon with fill
-      layer += this.renderPolygon(polygon, transform, pattern);
-
-      // Generate and render hatch lines for non-solid fills
       if (pattern.type !== 'solid' && pattern.type !== 'glass') {
-        const hatchResult = this.hatchGenerator.generateHatch(polygon, scaleFactor);
+        const hatchResult = this.hatchGenerator.generateHatch(drawable, scaleFactor);
         for (const hatchLine of hatchResult.lines) {
           layer += this.renderHatchLine(hatchLine, transform, pattern);
         }

@@ -827,8 +827,9 @@ Write actions remain protected by `room_command`'s mutation scope. Unchanged
 headless storeys reuse prepared geometry; source, overlay or journal changes
 invalidate it, and model removal releases the cache.
 
-Cancelled requests return `CANCELLED`; concurrent changes or preparation ownership
-return `STATE_CHANGED`, both with `details.retryable: true`. An unavailable native
+A cancelled request gets no response (MCP cancellation; over HTTP in JSON
+mode the POST answers JSON-RPC `-32800`). Concurrent changes or preparation
+ownership return `STATE_CHANGED` with `details.retryable: true`. An unavailable native
 runtime returns `UNSUPPORTED_OPERATION` with reason `NATIVE_RUNTIME_UNAVAILABLE`.
 Malformed commands and unsupported input shapes retain `INVALID_INPUT`.
 

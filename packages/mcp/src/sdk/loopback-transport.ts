@@ -15,7 +15,7 @@
 
 import { isJSONRPCRequest, type JSONRPCMessage, type Transport } from '@modelcontextprotocol/server';
 import { JsonRpcErrorCode, type JsonRpcId, type JsonRpcMessage, type JsonRpcResponse } from '../protocol/index.js';
-import { errorResponse, isJsonRpcNotification, isJsonRpcRequest, isJsonRpcResponse } from '../protocol/jsonrpc.js';
+import { errorResponse, isJsonRpcRequest, isJsonRpcResponse } from '../protocol/jsonrpc.js';
 import { describeThrown } from '../errors.js';
 
 export interface LoopbackSink {
@@ -53,7 +53,7 @@ export class LoopbackTransport implements Transport {
     this.syncFailure = null;
     if (isJsonRpcResponse(message)) {
       // Every request arrives through deliver(), so a response nobody waits
-      // for answers a cancelled request: the client asked us not to send it.
+      // for answers an abandoned request: the client asked us not to send it.
       const settle = this.take(message.id);
       if (settle && message.id === this.pendingInitialize) {
         this.pendingInitialize = undefined;
@@ -92,7 +92,7 @@ export class LoopbackTransport implements Transport {
     return failure;
   }
 
-  /** One inbound message; resolves with its response, or null for notifications and cancelled requests. */
+  /** One inbound message; resolves with its response, or null for notifications and abandoned requests. */
   deliver(message: JsonRpcMessage): Promise<JsonRpcResponse | null> {
     if (!this.onmessage) return Promise.resolve(null);
     if (isJsonRpcRequest(message)) {
@@ -116,10 +116,11 @@ export class LoopbackTransport implements Transport {
       return answered;
     }
     this.onmessage(message as JSONRPCMessage);
-    if (isJsonRpcNotification(message) && message.method === 'notifications/cancelled') {
-      // The protocol layer sends no response for a cancelled request; stop waiting for one.
-      this.take((message.params as { requestId?: JsonRpcId } | undefined)?.requestId)?.(null);
-    }
     return Promise.resolve(null);
+  }
+
+  /** The protocol layer aborted request `id` and will send no response: stop waiting for one. */
+  abandon(id: JsonRpcId): void {
+    this.take(id)?.(null);
   }
 }

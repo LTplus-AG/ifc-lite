@@ -97,9 +97,12 @@ const entered = new WeakSet<ServerContext>();
  *   structured envelope.
  */
 class IfcProtocolServer extends Server {
-  private answeredInitialize = false;
-  /** Whether `initialize` has been answered. */
-  get ready(): boolean { return this.answeredInitialize; }
+  /** Whether the initialize result has gone out; requests before that are refused. */
+  isReady: () => boolean = () => false;
+  /** The SDK aborted request `id` (client cancel, or close) and will not answer it. */
+  onAbandoned?: (id: string | number) => void;
+  /** Request handlers running now, including aborted ones that have not returned. */
+  running = 0;
   /** Runs after the SDK answered `initialize`, with the request and the negotiated result. */
   onInitialize?: (params: { protocolVersion: string; clientInfo?: unknown }, result: { protocolVersion: string }) => void;
 
@@ -110,9 +113,14 @@ class IfcProtocolServer extends Server {
     const inner = super._wrapHandler(method, handler);
     const opening = method === 'initialize' || method === 'ping';
     return async (request, ctx) => {
-      if (!opening && !this.ready) {
+      if (!opening && !this.isReady()) {
         throw new ProtocolError(JsonRpcErrorCode.ServerNotInitialized, 'Server not initialized — send `initialize` first');
       }
+      const signal = ctx.mcpReq.signal;
+      const abandoned = () => this.onAbandoned?.(ctx.mcpReq.id);
+      if (signal.aborted) abandoned();
+      else signal.addEventListener('abort', abandoned, { once: true });
+      this.running++;
       let result: Result;
       try {
         result = await inner(request, ctx);
@@ -122,12 +130,15 @@ class IfcProtocolServer extends Server {
           throw err instanceof ProtocolError ? err : new ProtocolError(ProtocolErrorCode.InvalidParams, describeThrown(err));
         }
         const message = describeThrown(err);
+        if (!entered.has(ctx)) throw new ProtocolError(ProtocolErrorCode.InternalError, message);
         this.onerror?.(new Error(`${method} produced a result the protocol refused: ${message}`));
         if (method === 'tools/call') return toolError({ code: ToolErrorCode.INTERNAL_ERROR, message }) as unknown as Result;
         throw new ProtocolError(ProtocolErrorCode.InternalError, message);
+      } finally {
+        this.running--;
+        signal.removeEventListener('abort', abandoned);
       }
       if (method === 'initialize') {
-        this.answeredInitialize = true;
         // A failing observer must not fail a handshake the SDK already answered.
         try {
           this.onInitialize?.(request.params as { protocolVersion: string }, result as { protocolVersion: string });
@@ -166,7 +177,12 @@ export class ProtocolSession {
   }
 
   isInitialized(): boolean {
-    return this.server.ready;
+    return this.transport.handshakeSent;
+  }
+
+  /** Request handlers still running, including cancelled ones that have not returned yet. */
+  runningHandlers(): number {
+    return this.server.running;
   }
 
   /** One inbound message; resolves with the response, or null for notifications. */
@@ -198,6 +214,8 @@ export class ProtocolSession {
 
   private register(capabilities: ServerCapabilities): void {
     const s = this.server;
+    s.isReady = () => this.transport.handshakeSent;
+    s.onAbandoned = (id) => this.transport.abandon(id);
     // The SDK answers initialize and negotiates the version; we only record it.
     s.onInitialize = (params, result) => {
       this.domain.initialized({ client: params.clientInfo, protocol: params.protocolVersion, negotiated: result.protocolVersion });

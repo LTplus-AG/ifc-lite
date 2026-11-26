@@ -303,26 +303,26 @@ export class HttpTransport {
       this.trackSse(session, res);
       const response = await this.dispatch(session, message);
       if (response && !res.writableEnded) writeSse(res, response);
+      // A cancelled request has no response: end its stream instead of leaving it open.
+      else if (!response && isJsonRpcRequest(message) && !res.writableEnded) res.end();
       return;
     }
 
-    // Plain JSON response (the common case).
-    const response = await this.dispatch(session, message);
+    // Plain JSON response (the common case). A request the server answered with
+    // nothing was cancelled (or its session ended mid-call); the POST still
+    // needs a JSON-RPC body, so it says so.
+    const response = await this.dispatch(session, message)
+      ?? (isJsonRpcRequest(message) ? errorResponse(message.id, JsonRpcErrorCode.RequestCancelled, 'Request cancelled') : null);
     res.statusCode = 200;
     res.setHeader('Content-Type', 'application/json');
     res.end(response ? JSON.stringify(response) : '{}');
   }
 
-  /**
-   * Run one message; the session counts as busy until it settles, and active
-   * when it does. A request the server answered with nothing was cancelled (or
-   * its session ended mid-call); its POST still needs a JSON-RPC answer.
-   */
+  /** Run one message; the session counts as busy until it settles, and active when it does. */
   private async dispatch(session: Session, message: JsonRpcMessage): Promise<Awaited<ReturnType<MCPServer['handleMessage']>>> {
     session.inFlight++;
     try {
-      return await session.server.handleMessage(message)
-        ?? (isJsonRpcRequest(message) ? errorResponse(message.id, JsonRpcErrorCode.RequestCancelled, 'Request cancelled') : null);
+      return await session.server.handleMessage(message);
     } finally {
       session.inFlight--;
       session.lastSeen = Date.now();

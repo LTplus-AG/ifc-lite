@@ -113,8 +113,6 @@ export class MCPServer implements ProtocolDomain {
   private sink: OutgoingMessageSink | null = null;
   /** The live MCP connection; built on first use. */
   private session: ProtocolSession | null = null;
-  /** Tool handlers still running, including ones whose request was cancelled. */
-  private running = 0;
   /** Models resources/list last showed; list_changed goes out only when they change. */
   private listedModels = '';
   private unsubscribeRegistry: (() => void) | undefined;
@@ -216,12 +214,12 @@ export class MCPServer implements ProtocolDomain {
   }
 
   /**
-   * Tool handlers still running. A cancelled request is answered at once, but
-   * its handler runs until it notices the abort; a transport must not end
-   * the session under it.
+   * Request handlers still running. A cancelled request gets no response, but
+   * its handler runs until it notices the abort; a transport must not end the
+   * session under it.
    */
   runningCalls(): number {
-    return this.running;
+    return this.session?.runningHandlers() ?? 0;
   }
 
   isInitialized(): boolean {
@@ -291,13 +289,19 @@ export class MCPServer implements ProtocolDomain {
       });
     }
 
+    // Tools see a plain AbortError on cancel (they check `error.name`); the SDK
+    // aborts its own signal with the client's reason or an SdkError instead.
+    const abort = new AbortController();
+    const forwardAbort = () => abort.abort();
+    if (channel.signal.aborted) forwardAbort();
+    else channel.signal.addEventListener('abort', forwardAbort, { once: true });
     const ctx: ToolContext = {
       registry: this.registry,
       scope: this.scope,
       currentScope: () => this.scope,
       progress: channel.progress,
       log: this.logger,
-      signal: channel.signal,
+      signal: abort.signal,
       config: this.config,
       // Read at call time — `setScope` may refresh the principal mid-session.
       session: { id: this.sessionId, principal: this.scope.user },
@@ -305,7 +309,6 @@ export class MCPServer implements ProtocolDomain {
     };
 
     const startedAt = Date.now();
-    this.running++;
     try {
       const result = await tool.handler(validation.value as Record<string, unknown>, ctx);
       this.logger.log('info', `tools/call ${params.name}`, {
@@ -323,7 +326,7 @@ export class MCPServer implements ProtocolDomain {
         message: err instanceof Error ? err.message : String(err),
       });
     } finally {
-      this.running--;
+      channel.signal.removeEventListener('abort', forwardAbort);
       if (!this.registry.onChange) this.syncListedModels();
     }
   }

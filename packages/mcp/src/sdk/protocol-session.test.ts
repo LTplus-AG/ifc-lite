@@ -25,6 +25,7 @@ type Reply = { result?: Record<string, unknown>; error?: { code: number; data?: 
 function build() {
   const tools = new ToolRegistry();
   let release: () => void = () => undefined;
+  const abortNames: string[] = [];
   tools.register({
     name: 'bad_result', description: 'Returns structuredContent the spec refuses.', scope: 'read', inputSchema: { type: 'object' },
     handler: () => ({ content: [], structuredContent: [1, 2] as unknown as Record<string, unknown> }),
@@ -33,7 +34,10 @@ function build() {
     name: 'wait', description: 'Waits until released or cancelled.', scope: 'read', inputSchema: { type: 'object' },
     handler: (_input, ctx) => new Promise((resolve) => {
       release = () => resolve({ content: [{ type: 'text', text: 'done' }] });
-      ctx.signal.addEventListener('abort', () => resolve({ content: [{ type: 'text', text: 'aborted' }] }));
+      ctx.signal.addEventListener('abort', () => {
+        abortNames.push((ctx.signal.reason as Error).name);
+        resolve({ content: [{ type: 'text', text: 'aborted' }] });
+      });
     }),
   } satisfies Tool);
   const server = new MCPServer({ version: '0.0.0-test', tools, resources: buildDefaultResourceRegistry(), prompts: buildDefaultPromptRegistry() });
@@ -43,7 +47,7 @@ function build() {
   const request = (method: string, params?: unknown) =>
     server.handleMessage({ jsonrpc: '2.0', id: id++, method, ...(params !== undefined ? { params } : {}) }) as Promise<Reply>;
   const initialize = () => request('initialize', { protocolVersion: PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: 't', version: '0' } });
-  return { server, sent, request, initialize, release: () => release() };
+  return { server, sent, request, initialize, release: () => release(), abortNames };
 }
 
 describe('SDK protocol adapter lifecycle', () => {
@@ -129,5 +133,18 @@ describe('SDK protocol adapter lifecycle', () => {
     release();
     await pending;
     expect(server.runningCalls()).toBe(0);
+  });
+
+  it('aborts the tool with an AbortError and keeps a reused id off the cancelled request', async () => {
+    const { server, initialize, abortNames } = build();
+    await initialize();
+    const first = server.handleMessage({ jsonrpc: '2.0', id: 5, method: 'tools/call', params: { name: 'wait', arguments: {} } });
+    await new Promise((r) => setTimeout(r, 10));
+    // Same chunk on stdio: the cancel, then a new request reusing the id.
+    void server.handleMessage({ jsonrpc: '2.0', method: 'notifications/cancelled', params: { requestId: 5, reason: 'user' } });
+    const reused = server.handleMessage({ jsonrpc: '2.0', id: 5, method: 'tools/list' }) as Promise<Reply>;
+    expect((await reused)?.error?.code).toBe(-32600);
+    expect(await first).toBeNull();
+    expect(abortNames).toEqual(['AbortError']);
   });
 });

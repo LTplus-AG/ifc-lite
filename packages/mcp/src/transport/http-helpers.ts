@@ -107,7 +107,7 @@ export interface ReclaimableSession {
   /** Requests currently being handled. */
   inFlight: number;
   lastSeen: number;
-  /** Tool handlers still running; a cancelled call is answered before its handler stops. */
+  /** Request handlers still running; a cancelled request ends before its handler stops. */
   server?: { runningCalls(): number };
 }
 

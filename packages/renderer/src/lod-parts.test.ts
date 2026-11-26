@@ -21,9 +21,9 @@ function recorder() {
 const box = (r: number): LodPart['bounds'] => ({ min: [0, 0, 0], max: [r, r, r] });
 /** Three parts laid out back to back in both buffers; the middle one has no LOD1. */
 const PARTS: LodPart[] = [
-  { bounds: box(1), lod0Start: 0, lod0Count: 60, lod1Start: 0, lod1Count: 12 },
-  { bounds: box(2), lod0Start: 60, lod0Count: 30, lod1Start: 12, lod1Count: 0 },
-  { bounds: box(3), lod0Start: 90, lod0Count: 36, lod1Start: 12, lod1Count: 6 },
+  { bounds: box(1), lod0Start: 0, lod0Count: 60, lod1: true, lod1Start: 0, lod1Count: 12 },
+  { bounds: box(2), lod0Start: 60, lod0Count: 30, lod1: false, lod1Start: 12, lod1Count: 0 },
+  { bounds: box(3), lod0Start: 90, lod0Count: 36, lod1: true, lod1Start: 12, lod1Count: 6 },
 ];
 const page = { indexBuffer: LOD0, indexFormat: 'uint16' as const, lod1IndexBuffer: LOD1, indexCount: 126, lodParts: PARTS };
 
@@ -53,6 +53,14 @@ describe('lod-parts', () => {
     const culled = recorder();
     assert.equal(drawBatchIndices(culled.pass, page, false, () => PartDraw.Skip), 0);
     assert.deepEqual(culled.calls, []);
+  });
+
+  it('draws nothing for a part whose LOD1 range is empty (every triangle collapsed), not its full detail (#11606)', () => {
+    const empty: LodPart = { bounds: box(1), lod0Start: 0, lod0Count: 60, lod1: true, lod1Start: 0, lod1Count: 0 };
+    assert.equal(partDraw(empty, 20, 4, 48), PartDraw.Lod1);
+    const pass = recorder();
+    assert.equal(drawBatchIndices(pass.pass, { indexBuffer: LOD0, indexFormat: 'uint16', indexCount: 60, lodParts: [empty] }, false, () => PartDraw.Lod1), 0);
+    assert.deepEqual(pass.calls, [], 'no LOD1 buffer to bind, and nothing drawn');
   });
 
   it('draws a batch without parts as before: its LOD1 range in u32, or every index in its own format', () => {

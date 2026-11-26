@@ -987,6 +987,19 @@ describe('compact pages take the decisions of the bucket batches they stand in f
     assert.equal(pages(on)[0].lodParts, undefined, 'its page keeps its own buffer');
   });
 
+  it('group by each scene\'s own chunking when the same meshes are paged in two scenes (#11606)', async () => {
+    const meshes = compactBatch([...lodBoxes(1000, 20, 4), ...lodBoxes(2000, 36, 4)], 1); // compact cell 1: [16, 48) m
+    const wide = await lodScene(true), gpuWide = fakeGpu();
+    wide.setSpatialChunking({ cellSize: 64 });
+    upload(wide, gpuWide, meshes);
+    settle(wide, gpuWide);
+    assert.equal(pages(wide)[0].lodParts?.length, 1, '64 m chunks: one bucket');
+    const narrow = await lodScene(true), gpuNarrow = fakeGpu();
+    upload(narrow, gpuNarrow, meshes);
+    settle(narrow, gpuNarrow);
+    assert.equal(pages(narrow)[0].lodParts?.length, 2, '32 m chunks: two buckets, not the first scene\'s cached one');
+  });
+
   it('keep pages whole when bucket batches build no LOD1', async () => {
     const gpu = fakeGpu(), scene = await newScene();
     scene.setSpatialChunking({ cellSize: 32 });

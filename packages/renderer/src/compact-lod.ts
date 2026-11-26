@@ -64,15 +64,17 @@ interface Group {
   kept: number;
 }
 
-/** The bucket key of each paged mesh. Cached: a mesh whose colour, id or model changes leaves its page first. */
-const bucketKeys = new WeakMap<MeshData, string>();
+/** Each Scene's bucket key of each paged mesh (the key depends on its chunking). Cached: a mesh whose colour, id or model changes leaves its page first. */
+const bucketKeys = new WeakMap<SceneCompactHost, WeakMap<MeshData, string>>();
 
 function bucketKeyOf(host: SceneCompactHost, mesh: MeshData): string {
-  let key = bucketKeys.get(mesh);
+  let keys = bucketKeys.get(host);
+  if (!keys) bucketKeys.set(host, (keys = new WeakMap()));
+  let key = keys.get(mesh);
   if (key === undefined) {
     // The chunk cell is taken at the first source vertex, which the encoder writes first (welding keeps first occurrences).
     key = host.compactBucketKey(mesh, { origin: firstVertex(mesh.compact!), positions: ZERO_POSITION });
-    bucketKeys.set(mesh, key);
+    keys.set(mesh, key);
   }
   return key;
 }
@@ -294,7 +296,7 @@ function install(store: CompactGeometryStore, plan: PagePlan, device: GPUDevice)
         w1 += n;
       }
     }
-    parts.push({ bounds: part.group.bounds, lod0Start, lod0Count: w0 - lod0Start, lod1Start, lod1Count: w1 - lod1Start });
+    parts.push({ bounds: part.group.bounds, lod0Start, lod0Count: w0 - lod0Start, lod1: part.lod1 !== null, lod1Start, lod1Count: w1 - lod1Start });
   }
   replaceIndices(store, plan.page, lod0, starts, device);
   setPageLod(store, plan.page, parts, lod1, lod, device);

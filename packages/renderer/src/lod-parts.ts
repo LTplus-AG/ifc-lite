@@ -20,7 +20,9 @@ export interface LodPart {
   bounds: { min: [number, number, number]; max: [number, number, number] };
   lod0Start: number;
   lod0Count: number;
-  /** The part's range in `lod1IndexBuffer`; a count of 0 = no LOD1 (always full detail). */
+  /** Whether the part has a LOD1 range (`lod1Start`, `lod1Count` in `lod1IndexBuffer`); without one it always draws
+   *  full detail. A LOD1 range may be empty: every triangle of the part collapsed, so at LOD distance it draws nothing. */
+  lod1: boolean;
   lod1Start: number;
   lod1Count: number;
 }
@@ -36,7 +38,7 @@ export type PartDraw = typeof PartDraw[keyof typeof PartDraw];
  */
 export function partDraw(part: LodPart, px: number, contribPx: number, lodPx: number): PartDraw {
   if (contribPx > 0 && px < contribPx) return PartDraw.Skip;
-  return lodPx > 0 && px < lodPx && part.lod1Count > 0 ? PartDraw.Lod1 : PartDraw.Lod0;
+  return lodPx > 0 && px < lodPx && part.lod1 ? PartDraw.Lod1 : PartDraw.Lod0;
 }
 
 interface PartsBatch {
@@ -59,7 +61,7 @@ export function drawLodParts(
   let bound: PartDraw = PartDraw.Skip;
   let run: PartDraw = PartDraw.Skip, start = 0, count = 0, draws = 0, lod1 = false;
   const flush = (): void => {
-    if (run === PartDraw.Skip || count === 0) return;
+    if (run === PartDraw.Skip) return; // runs start non-empty (empty ranges are skipped below)
     if (bound !== run) {
       pass.setIndexBuffer(run === PartDraw.Lod1 ? batch.lod1IndexBuffer! : batch.indexBuffer, format);
       bound = run;
@@ -69,11 +71,11 @@ export function drawLodParts(
     if (run === PartDraw.Lod1) lod1 = true;
   };
   for (const part of parts) {
-    const chosen = choose(part);
-    const draw = chosen === PartDraw.Lod1 && !batch.lod1IndexBuffer ? PartDraw.Lod0 : chosen;
+    const draw = choose(part);
     if (draw === PartDraw.Skip) continue;
     const at = draw === PartDraw.Lod1 ? part.lod1Start : part.lod0Start;
     const n = draw === PartDraw.Lod1 ? part.lod1Count : part.lod0Count;
+    if (n === 0) continue; // an empty LOD1 range: nothing to draw (and no buffer to bind when every range is empty)
     if (draw === run && start + count === at) { count += n; continue; }
     flush();
     run = draw; start = at; count = n;

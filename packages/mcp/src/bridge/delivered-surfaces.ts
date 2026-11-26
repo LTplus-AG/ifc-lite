@@ -14,8 +14,8 @@
  *
  * An admitted event's prompt is VERIFIED only when it is follow-up text the
  * agent wrote in that surface: a follow-up's `prompt` or `label`, an event
- * action's `context.prompt`, `userMessage` or the label of the component that
- * carries it, or the renderer's generic `Action: <name>` line. Data values
+ * action's `userMessage` or `context.prompt`, or the label of the component
+ * that carries it, or the renderer's generic `Action: <name>` line. Data values
  * (entity names, property values, legend rows, `updateDataModel`) never
  * verify a prompt: they may come from the model. Any other prompt, typed
  * into a field or computed by the renderer, is still delivered, but marked
@@ -88,10 +88,11 @@ function collect(value: unknown, into: Surface): void {
   const action = value.action;
   if (isRecord(action)) {
     addString(into.prompts, value.label);
-    addString(into.prompts, action.userMessage);
     const event = action.event;
     if (isRecord(event)) {
       addString(into.events, event.name);
+      // A2UI v1.0 keeps the button's user message inside the event.
+      addString(into.prompts, event.userMessage);
       if (isRecord(event.context)) addString(into.prompts, event.context.prompt);
     }
   }

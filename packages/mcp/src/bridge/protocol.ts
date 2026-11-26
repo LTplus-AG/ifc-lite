@@ -93,13 +93,10 @@ export const MAX_MCP_TOOL_NAME = 64;
 export const TAB_SHOW_UI_TOOL = `${TAB_TOOL_PREFIX}show_ui`;
 
 /**
- * Names a tab may not register: the bridge's own tools, and the tab-side
- * names whose prefixed form would shadow one of them.
+ * Names a tab may not register. A tab tool whose `tab_` name would shadow a
+ * bridge tool (`show_ui`, `ui_events`) is accepted but not served.
  */
-export const BRIDGE_RESERVED_TOOLS: ReadonlySet<string> = new Set([
-  BRIDGE_STATUS_TOOL, BRIDGE_SURFACE_TOOL, BRIDGE_UI_EVENTS_TOOL,
-  ...[TAB_SHOW_UI_TOOL, BRIDGE_UI_EVENTS_TOOL].map((name) => name.slice(TAB_TOOL_PREFIX.length)),
-]);
+export const BRIDGE_RESERVED_TOOLS: ReadonlySet<string> = new Set([BRIDGE_STATUS_TOOL, BRIDGE_SURFACE_TOOL, BRIDGE_UI_EVENTS_TOOL]);
 
 /** Key in the pairing link's URL fragment that marks it as a bridge pairing link. */
 export const PAIRING_FRAGMENT_KEY = 'mcp-bridge';

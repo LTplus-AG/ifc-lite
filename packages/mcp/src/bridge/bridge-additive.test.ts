@@ -146,9 +146,17 @@ describe('one server: headless and tab', () => {
     expect(() => r.server.tools.register({ ...tool, name: `${TAB_TOOL_PREFIX}anything` })).toThrow(/reserved/);
   });
 
-  it('reserves the tab names whose prefixed form is a bridge tool', () => {
-    expect(BRIDGE_RESERVED_TOOLS.has('show_ui')).toBe(true);
-    expect(BRIDGE_RESERVED_TOOLS.has('ui_events')).toBe(true);
+  it('skips a tab tool whose tab_ name would shadow a bridge tool, without failing the hello', async () => {
+    expect(BRIDGE_RESERVED_TOOLS.has('show_ui')).toBe(false);
+    const agent = await start();
+    const { tab } = await pairTab({ port: agent.r.bridge.port, code: agent.r.bridge.pairingCode(), a2uiSurface: true,
+      tools: [READ_TOOL, { ...READ_TOOL, name: 'show_ui' }, { ...READ_TOOL, name: 'ui_events' }] });
+    tabs.push(tab);
+    const listed = (await agent.request('tools/list')).tools as ToolDefinition[];
+    // Each bridge name once, and it is the bridge's own tool.
+    expect(listed.filter((t) => t.name === 'tab_show_ui')).toHaveLength(1);
+    expect(listed.find((t) => t.name === 'tab_show_ui')?.description).not.toBe(READ_TOOL.description);
+    expect(listed.filter((t) => t.name === 'tab_ui_events')).toHaveLength(1);
   });
 
   it('an unknown non-tab name is unknown, a tab_ name with no tab fails as not connected', async () => {
@@ -251,6 +259,13 @@ describe('DeliveredSurfaces', () => {
     const ledger = new DeliveredSurfaces();
     ledger.record([{ version: '1.0', createSurface: { surfaceId: 'a', catalogId: 'c' } }, button('b', 'pick')]);
     expect(ledger.check({ surfaceId: 'a', name: 'pick', prompt: 'Action: pick' })).toEqual(ok);
+  });
+
+  it('verifies an A2UI v1.0 event userMessage the agent wrote', () => {
+    const ledger = new DeliveredSurfaces();
+    ledger.record([{ version: '1.0', updateComponents: { surfaceId: 'b', components: [
+      { id: 'x', component: 'Button', action: { event: { name: 'apply', userMessage: 'Apply fire ratings' } } }] } }]);
+    expect(ledger.check({ surfaceId: 'b', name: 'apply', prompt: 'Apply fire ratings' })).toEqual(ok);
   });
 
   it('verifies only follow-up text, never a data value or typed text', () => {

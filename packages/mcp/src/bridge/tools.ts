@@ -73,9 +73,18 @@ const LEGACY_ALIASES: ReadonlyMap<string, string> = new Map([
   ['viewer_ui_events', BRIDGE_UI_EVENTS_TOOL],
 ]);
 
-/** The tab tools this server lists and forwards: a longer `tab_` name than clients accept is skipped. */
+/** Names the bridge serves itself; a tab tool whose `tab_` name is one of them is skipped. */
+const BRIDGE_OWNED: ReadonlySet<string> = new Set([BRIDGE_STATUS_TOOL, TAB_SHOW_UI_TOOL, BRIDGE_UI_EVENTS_TOOL]);
+
+/**
+ * The tab tools this server lists and forwards. Skipped: a `tab_` name
+ * longer than clients accept, and one that would shadow a bridge tool.
+ */
 function servable(tools: readonly BridgeToolDescriptor[]): BridgeToolDescriptor[] {
-  return tools.filter((d) => mcpName(d.name).length <= MAX_MCP_TOOL_NAME);
+  return tools.filter((d) => {
+    const name = mcpName(d.name);
+    return name.length <= MAX_MCP_TOOL_NAME && !BRIDGE_OWNED.has(name);
+  });
 }
 
 async function forward(bridge: TabBridge, name: string, input: Record<string, unknown>, signal: AbortSignal): Promise<CallToolResult> {
@@ -100,8 +109,8 @@ function renamer(tools: readonly BridgeToolDescriptor[]): (text: string) => stri
   let rename = renamers.get(tools);
   if (!rename) {
     // Only names a word of prose cannot be: ones with `_` or `.`.
-    const names = tools.map((t) => t.name).filter((n) => /[_.]/.test(n)).sort((a, b) => b.length - a.length).map((n) => n.replace(/[.\-]/g, '\\$&'));
-    const pattern = names.length ? new RegExp(`(?<![A-Za-z0-9_.-])(${names.join('|')})(?![A-Za-z0-9_-])`, 'g') : null;
+    const names = servable(tools).map((t) => t.name).filter((n) => /[_.]/.test(n)).sort((a, b) => b.length - a.length).map((n) => n.replace(/[.\-]/g, '\\$&'));
+    const pattern = names.length ? new RegExp(`(?<![A-Za-z0-9_.-])(${names.join('|')})(?![A-Za-z0-9_-]|\\.[A-Za-z0-9])`, 'g') : null;
     rename = (text) => (pattern ? text.replace(pattern, (_m, name: string) => mcpName(name)) : text);
     renamers.set(tools, rename);
   }
@@ -244,7 +253,7 @@ function statusResult(bridge: TabBridge, pairNewTab: boolean): CallToolResult {
           client: tab.client ?? null,
           permission: tab.permission,
           connectedAt: tab.connectedAt.toISOString(),
-          toolCount: tab.tools.length,
+          toolCount: servable(tab.tools).length,
         },
       } : {}),
       ...(pairing ? { pairingUrl: pairing.url, ...(codeTypable(bridge) ? { pairingCode: pairing.code } : {}) } : {}),

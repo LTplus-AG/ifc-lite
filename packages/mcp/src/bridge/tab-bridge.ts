@@ -133,6 +133,7 @@ export class TabBridge {
     const server = await listenLoopbackFirstFree(ports, maxPayload, (wss, req, socket, head) => this.onUpgrade(wss, req, socket, head), this.log);
     if (this.closing) {
       // Closed while binding: free the port at once.
+      server.wss.close();
       await closeLoopback(server.http);
       throw new Error('The bridge is shut down.');
     }

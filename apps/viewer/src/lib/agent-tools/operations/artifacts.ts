@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { ToolErrorCode, ToolExecutionError } from '@ifc-lite/mcp/browser';
-import { buildExportFilename, csvBlob, isCsvMime, sanitizeFilename, downloadBlob } from '@/lib/export/download';
+import { buildExportFilename, downloadBlob, isCsvMime, prependUtf8Bom, sanitizeFilename } from '@/lib/export/download';
 import type { ToolHost } from '../types';
 import { invalidInput, unavailable } from './refusals';
 
@@ -85,8 +85,7 @@ export function removeArtifact(host: ToolHost, id: string) { get(host, id); arti
 export function downloadArtifact(host: ToolHost, id: string) {
   const entry = get(host, id);
   if (typeof document === 'undefined' || typeof URL.createObjectURL !== 'function') throw unavailable('A mounted browser download host is required.');
-  // csvBlob on empty content yields exactly the BOM, in the same Blob type the other CSV saves use.
-  const blob = entry.needsCsvBom ? new Blob([csvBlob(new Uint8Array(0)), entry.blob], { type: entry.blob.type || entry.metadata.mime_type }) : entry.blob;
+  const blob = entry.needsCsvBom ? prependUtf8Bom(entry.blob, entry.blob.type || entry.metadata.mime_type) : entry.blob;
   downloadBlob(blob, entry.metadata.filename);
   return { artifact_id: id, status: 'dispatched' as const };
 }

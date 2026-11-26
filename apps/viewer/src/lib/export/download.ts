@@ -209,6 +209,11 @@ export function downloadFile(
 
 const UTF8_BOM = [0xef, 0xbb, 0xbf] as const;
 
+/** Prefix a blob that is known to lack a UTF-8 BOM. */
+export function prependUtf8Bom(blob: Blob, mime = blob.type): Blob {
+  return new Blob([new Uint8Array(UTF8_BOM), blob], { type: mime });
+}
+
 export function isCsvMime(mime: string): boolean {
   return /^text\/csv\s*(?:;|$)/i.test(mime.trim());
 }

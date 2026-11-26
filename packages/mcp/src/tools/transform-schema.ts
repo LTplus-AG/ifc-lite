@@ -4,7 +4,7 @@
 
 /** Shared metadata and guards for the file-writing transform tools. */
 
-import type { ConversionLossEntry } from '@ifc-lite/export';
+import type { ConversionLossEntry, IfcSchemaVersion } from '@ifc-lite/export';
 import type { JsonSchema, ToolAnnotations } from '../protocol/index.js';
 import type { LoadedModel, ToolContext } from '../context.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
@@ -67,6 +67,12 @@ export async function optionalOutputPath(input: Record<string, unknown>, key: st
   if (typeof raw !== 'string' || raw.length === 0) throw invalid(`${key} must be a non-empty string.`);
   return resolveSafePath(raw, ctx, 'write');
 }
+
+/** Trimmed, non-blank selector tokens. */
+export const nonBlank = (list: readonly string[] | undefined): string[] => (list ?? []).map((t) => t.trim()).filter(Boolean);
+
+/** The model's schema version, IFC4 when the file did not say. */
+export const schemaOf = (m: LoadedModel): IfcSchemaVersion => (m.store.schemaVersion ?? 'IFC4') as IfcSchemaVersion;
 
 /** `Wall` means `IfcWall`, as the CLI's `--type` reads it. */
 export function withIfcPrefix(type: string): string {

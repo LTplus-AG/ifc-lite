@@ -21,7 +21,6 @@ import {
   selectSubsetSeeds,
   SubsetSelectionError,
   serializeSubset,
-  type IfcSchemaVersion,
 } from '@ifc-lite/export';
 import type { Tool } from './types.js';
 import { fmtInt, listAllowedModelIds, okResult, resolveModel } from './util.js';
@@ -36,13 +35,12 @@ import {
   fileOutputSchema,
   invalid,
   lossEntryRow,
+  nonBlank,
+  schemaOf,
   requireNoPendingEdits,
   withIfcPrefix,
   stringList,
 } from './transform-schema.js';
-
-/** Trimmed, non-blank selector tokens. */
-const nonBlank = (list: readonly string[] | undefined): string[] => (list ?? []).map((t) => t.trim()).filter(Boolean);
 
 const ROOT_MODES = ['single', 'by-name'];
 const STOREY_MODES = ['by-name', 'by-elevation', 'by-name-then-elevation'];
@@ -86,11 +84,11 @@ const modelMerge: Tool = {
     const filePath = await resolveSafePath(input.file_path, ctx, 'write');
     // Default: the first model's schema, so a merge never converts unasked.
     const schema = (input.schema as 'IFC2X3' | 'IFC4' | 'IFC4X3' | undefined)
-      ?? ((models[0].store.schemaVersion ?? 'IFC4') as 'IFC2X3' | 'IFC4' | 'IFC4X3');
+      ?? (schemaOf(models[0]) as 'IFC2X3' | 'IFC4' | 'IFC4X3');
     // A model in another schema is converted on the way in: same pre-check as model_convert (#4206).
     const conversionWarnings: string[] = [];
     for (const m of models) {
-      const from = (m.store.schemaVersion ?? 'IFC4') as IfcSchemaVersion;
+      const from = schemaOf(m);
       if (from === schema) continue;
       const loss = analyzeConversionLoss(m.store, from, schema);
       if (loss.hasBlocking) {
@@ -167,7 +165,7 @@ const modelConvert: Tool = {
   async handler(input, ctx) {
     const m = resolveModel(ctx, input.model_id as string | undefined);
     const target = input.schema as 'IFC2X3' | 'IFC4' | 'IFC4X3';
-    const source = (m.store.schemaVersion ?? 'IFC4') as IfcSchemaVersion;
+    const source = schemaOf(m);
     const filePath = await resolveSafePath(input.file_path, ctx, 'write');
     // Pending edits are baked and re-parsed first, so the loss pre-check sees
     // what the export writes, created entities included.

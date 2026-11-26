@@ -17,7 +17,7 @@ import { fmtInt, okResult, resolveGlobalIds, resolveModel } from './util.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import { resolveSafePath } from '../safe-path.js';
 import type { LoadedModel, ToolContext } from '../context.js';
-import { FILE_WRITE_ANNOTATIONS, fileOutputSchema, invalid, optionalOutputPath, withIfcPrefix, requireDistinctPaths, requireNoPendingEdits, stringList } from './transform-schema.js';
+import { FILE_WRITE_ANNOTATIONS, fileOutputSchema, invalid, nonBlank, optionalOutputPath, withIfcPrefix, requireDistinctPaths, requireNoPendingEdits, stringList } from './transform-schema.js';
 
 /** Each relationship the walk follows, with the setting it takes when on (when off: false or 'none'). */
 const FOLLOWED = {
@@ -39,7 +39,7 @@ function anonymizeSeeds(m: LoadedModel, input: Record<string, unknown>): Set<num
     }
     seeds.add(id);
   }
-  const globalIds = ((input.global_ids as string[] | undefined) ?? []).map((g) => g.trim()).filter(Boolean);
+  const globalIds = nonBlank(input.global_ids as string[] | undefined);
   const carriers = resolveGlobalIds(m, globalIds);
   for (const g of globalIds) {
     const ids = carriers.get(g);

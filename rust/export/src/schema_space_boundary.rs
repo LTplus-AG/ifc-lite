@@ -19,10 +19,13 @@ use crate::step_slot::slots_of;
 const BOUNDARY: &str = "IFCRELSPACEBOUNDARY";
 const ELEMENT: &str = "RelatedBuildingElement";
 
+/// Whether a `from` -> `to` export upgrades IfcRelSpaceBoundary to a schema that requires its element.
+fn requires_element(from: &str, to: &str) -> bool { from == "IFC2X3" && matches!(to, "IFC4" | "IFC4X3") }
+
 /// How many values an IFC2X3 IfcRelSpaceBoundary with no RelatedBuildingElement carries (the ones its omission
 /// loses), or `None` when `line` is not one, or the export is not an upgrade to a schema that requires the element.
 fn unrelated(line: &str, from: &str, to: &str) -> Option<usize> {
-    if from != "IFC2X3" || !matches!(to, "IFC4" | "IFC4X3") { return None; }
+    if !requires_element(from, to) { return None; }
     let head = record_head(line)?;
     if !head.type_name(line).eq_ignore_ascii_case(BOUNDARY) { return None; }
     let names = crate::schema_convert::schema_attribute_names(from, BOUNDARY)?;
@@ -41,7 +44,7 @@ fn unrelated(line: &str, from: &str, to: &str) -> Option<usize> {
 /// The boundaries of `records`, `(id, source text)` pairs, that an upgrade `from` -> `to` leaves out. Known before any
 /// record is written, so the relationships naming them can be scrubbed of them (#11457).
 pub(crate) fn left_out<'a>(records: impl Iterator<Item = (u32, std::borrow::Cow<'a, str>)>, from: &str, to: &str) -> HashSet<u32> {
-    if from != "IFC2X3" || !matches!(to, "IFC4" | "IFC4X3") { return HashSet::new(); }
+    if !requires_element(from, to) { return HashSet::new(); }
     records.filter(|(_, line)| unrelated(line, from, to).is_some()).map(|(id, _)| id).collect()
 }
 

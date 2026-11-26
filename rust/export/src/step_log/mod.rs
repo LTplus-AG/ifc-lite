@@ -52,7 +52,7 @@ mod pass;
 mod property_value;
 mod readers;
 mod record;
-pub(crate) mod refilter;
+mod refilter;
 mod refs;
 mod retype;
 mod replay;

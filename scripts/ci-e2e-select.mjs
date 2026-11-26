@@ -8,6 +8,11 @@ import { join } from 'node:path';
 import { assertListMatchesPlan, configTestDir, fileFilter, selectedFiles } from './ci-e2e-shards.mjs';
 import { isMainEntry } from './lib/is-main-entry.mjs';
 
+// This shadow measures the catch rate and runtime cost of changed specs and
+// the general smoke spec. A production path is still unknown when it triggers
+// smoke. Enabling an `on` mode requires a spec mapper that traces page helpers
+// into the viewer import graph (see ci-viewer-select.mjs) and maps fixture
+// names and routes to the specs that exercise them.
 const SMOKE = 'tests/e2e/viewer-smoke.e2e.spec.ts';
 const SHARED_INPUT = /^(?:apps\/viewer\/|packages\/|rust\/|tests\/(?:e2e|fixtures|models)\/|(?:playwright\.config\.ts|package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|turbo\.json|Cargo\.lock|Cargo\.toml)$)/;
 

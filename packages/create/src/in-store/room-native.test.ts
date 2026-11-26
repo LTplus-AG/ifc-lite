@@ -82,7 +82,7 @@ it.skipIf(!available)('native split/merge rewrites real IFC rooms with stable la
 });
 
 it.skipIf(!available)('a split room takes every GlobalId it authors, its aggregation included, from the supplied source', async () => {
-  /** The GlobalIds a seeded split authors, by entity type. */
+  /** The first string attribute (the GlobalId, for rooted records) of every record a seeded split authors, by entity type. */
   const splitOnce = async (seed: number) => {
     const { store, editor } = await session();
     const plate = fromRects(flattenRoomRects(rects), .05, Number.MIN_VALUE);
@@ -106,6 +106,7 @@ it.skipIf(!available)('a split room takes every GlobalId it authors, its aggrega
   const first = await splitOnce(42);
   expect(first.some((id) => id.startsWith('IFCRELAGGREGATES '))).toBe(true);
   expect(await splitOnce(42)).toEqual(first);
+  expect(await splitOnce(7)).not.toEqual(first);
 });
 
 it.skipIf(!available)('update/no-room refusal preserves graph and creation late refusal preserves allocator', async () => {

@@ -5,6 +5,7 @@
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 import { loadIfcModel, loadIfcModelFromBytes } from './loader.js';
 
@@ -34,5 +35,18 @@ describe('MCP shared loading validation', () => {
     const input = "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nEND-ISO-10303-21;";
     const loaded = await loadIfcModelFromBytes(new TextEncoder().encode(input), 'prefix.ifc');
     expect(loaded.store.entityCount).toBe(0);
+  });
+
+  // #11534: model_load needs only read scope, so a FIFO in an allowed root
+  // must fail fast instead of blocking the open forever.
+  it.skipIf(process.platform === 'win32')('refuses a FIFO without opening it', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'ifc-lite-fifo-'));
+    try {
+      const fifo = join(dir, 'pipe.ifc');
+      execFileSync('mkfifo', [fifo]);
+      await expect(loadIfcModel(fifo)).rejects.toThrow(/not a regular file/);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });

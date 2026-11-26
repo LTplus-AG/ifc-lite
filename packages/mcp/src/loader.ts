@@ -11,7 +11,7 @@
  * native geometry preparation and registry/file-loading behavior.
  */
 
-import { open, realpath } from 'node:fs/promises';
+import { open, realpath, stat } from 'node:fs/promises';
 import { basename, resolve } from 'node:path';
 import { IfcParser, validateStepInput, type IfcDataStore } from '@ifc-lite/parser';
 import { sourceModelIdentity } from '@ifc-lite/cache';
@@ -38,6 +38,10 @@ export async function loadIfcModel(filePath: string, opts: LoadIfcOptions = {}):
   }
 
   const canonical = await realpath(absolute);
+  // stat does not block; opening a FIFO with no writer would, forever.
+  if (!(await stat(canonical)).isFile()) {
+    throw Object.assign(new Error(`Path '${absolute}' is not a regular file`), { code: 'EISDIR' });
+  }
   const handle = await open(canonical, 'r');
   let buffer: Buffer;
   let identity: { path: string; dev: bigint; ino: bigint };

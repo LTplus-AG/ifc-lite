@@ -25,7 +25,7 @@ import { fmtInt, resolveModel, okResult } from './util.js';
 import { basename } from 'node:path';
 import { deriveModelId, loadIfcModel } from '../loader.js';
 import { resolveSafePath } from '../safe-path.js';
-import { modelAllowed, scopeAllows } from '../auth/scope.js';
+import { modelAllowed, scopeAllows, type AuthScope } from '../auth/scope.js';
 import type { ToolContext } from '../context.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 
@@ -141,6 +141,7 @@ export const modelLoad: Tool = {
     // The id the loader would pick, so a refusal costs no parse.
     const id = (input.model_id as string | undefined) ?? deriveModelId(basename(filePath));
     assertMayLoadAs(id, ctx);
+    assertMayDiscard(id, ctx, ctx.scope);
     try {
       const loaded = await loadIfcModel(filePath, {
         modelId: id,
@@ -156,6 +157,7 @@ export const modelLoad: Tool = {
           throw new ToolExecutionError({ code: ToolErrorCode.PERMISSION_DENIED, message: 'This token no longer has read scope.' });
         }
         assertMayLoadAs(id, ctx, live);
+        assertMayDiscard(id, ctx, live);
         if (ctx.signal.aborted) throw new ToolExecutionError({ code: ToolErrorCode.CANCELLED, message: 'model_load was cancelled.' });
       } catch (refused) {
         try {
@@ -192,14 +194,30 @@ export const modelLoad: Tool = {
  * `model_load` needs only `read` scope (#11534), so it must not become a way
  * around the token's model allowlist: the registry disposes a model it
  * replaces, so loading under an id the token may not access is refused.
- * Replacing a model the caller can access needs no extra rule: registries
- * are per session, and a session without `mutate` has no edits to lose.
+ * Replacing or dropping a model with unsaved edits needs `mutate` (see
+ * assertMayDiscard): a session narrowed after editing must not lose the edits.
  */
 function assertMayLoadAs(id: string, ctx: ToolContext, scope = ctx.scope): void {
   if (!modelAllowed(scope, id)) {
     throw new ToolExecutionError({
       code: ToolErrorCode.PERMISSION_DENIED,
       message: `Access to model '${id}' is not permitted for this token.`,
+    });
+  }
+}
+
+/**
+ * Unloading or replacing a model throws away its unsaved edits. A caller that
+ * could not have made them (no `mutate` in the live scope, e.g. after setScope
+ * narrowed the session) may not discard them.
+ */
+function assertMayDiscard(id: string, ctx: ToolContext, scope: AuthScope): void {
+  const existing = ctx.registry.get(id);
+  if (!existing || scopeAllows(scope, 'mutate')) return;
+  if ((pendingOverlay(existing)?.pendingMutations ?? 0) > 0) {
+    throw new ToolExecutionError({
+      code: ToolErrorCode.PERMISSION_DENIED,
+      message: `Model '${id}' has unsaved edits; dropping or replacing it needs mutate scope. Export it first.`,
     });
   }
 }
@@ -235,6 +253,7 @@ export const modelUnload: Tool = {
         message: `Model '${id}' is not loaded.`,
       });
     }
+    assertMayDiscard(id, ctx, ctx.currentScope?.() ?? ctx.scope);
     ctx.registry.remove(id);
     return okResult(`Unloaded model '${id}'.`, { id });
   },

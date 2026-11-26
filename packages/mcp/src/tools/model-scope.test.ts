@@ -29,6 +29,7 @@ import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import { loadIfcModel } from '../loader.js';
 import { discoveryTools } from './discovery.js';
 import { queryTools } from './query-tools.js';
+import { mutationTools } from './mutate.js';
 import { assertModelAccess, resolveModel } from './util.js';
 
 function guid(mnemonic: string): string {
@@ -56,7 +57,7 @@ END-ISO-10303-21;
 `;
 }
 
-const ALL_TOOLS = [...discoveryTools, ...queryTools];
+const ALL_TOOLS = [...discoveryTools, ...queryTools, ...mutationTools];
 
 function tool(name: string) {
   const found = ALL_TOOLS.find((t) => t.name === name);
@@ -261,3 +262,24 @@ describe('resolveModel without an explicit model_id', () => {
     }
   });
 });
+
+// #11534: model_load and model_unload need only read scope, so a session
+// narrowed after editing must not be able to throw the edits away.
+describe('unsaved edits survive a narrowed session', () => {
+  beforeEach(async () => {
+    await sessionWithScope({ scopes: ['read', 'validate', 'mutate', 'export'] });
+    await call('entity_set_attribute', { model_id: 'alpha', global_id: guid('WALL'), attribute: 'Name', value: 'edited' });
+    ctx.scope = { scopes: ['read', 'validate', 'export'] };
+  });
+
+  it('refuses to unload or replace the edited model without mutate', async () => {
+    const edited = ctx.registry.get('alpha');
+    await expect(call('model_unload', { model_id: 'alpha' })).rejects.toThrow(/unsaved edits/);
+    await expect(call('model_load', { file_path: join(tmp, 'beta.ifc'), model_id: 'alpha' })).rejects.toThrow(/unsaved edits/);
+    expect(ctx.registry.get('alpha')).toBe(edited);
+    // An unedited model can still be dropped with read scope.
+    await call('model_unload', { model_id: 'beta' });
+    expect(ctx.registry.get('beta')).toBeNull();
+  });
+});
+

@@ -96,14 +96,14 @@ export interface CliOptions {
   errors: string[];
 }
 
-/**
- * `--flag=value` for a value flag becomes `--flag value`. Any other `=` form
- * is left whole and reported as unknown by its name alone, since the part
- * after `=` may be a credential.
- */
-/** `--flag=value` as two arguments; `explicit` holds the indexes of values given with `=`. */
 const KNOWN_FLAGS: ReadonlySet<string> = new Set([...MCP_VALUE_FLAGS, ...MCP_BOOLEAN_FLAGS]);
 
+/**
+ * `--flag=value` for a value flag becomes `--flag value`, and `explicit`
+ * records the value's index so a value starting with `--` is accepted. Any
+ * other `=` form is left whole and reported as unknown by its name alone,
+ * since the part after `=` may be a credential.
+ */
 function splitEquals(raw: string[]): { argv: string[]; explicit: Set<number> } {
   const argv: string[] = [];
   const explicit = new Set<number>();
@@ -147,13 +147,18 @@ export function parseArgs(rawArgv: string[]): CliOptions {
    * is a value: `--token --read-only` must not register '--read-only' as a
    * credential and drop read-only mode, and neither may a misspelled
    * `--read-onli`. A value that really starts with `--` uses `--token=--…`;
-   * one starting with a single '-' is still taken.
+   * one starting with a single '-' is still taken. An unknown `--…` here is
+   * swallowed, never echoed: it may be the secret the user meant to pass.
    */
   const value = (flag: string): string | undefined => {
     const next = argv[i + 1];
-    const flagLike = next !== undefined && !explicit.has(i + 1) && (next.startsWith('--') || KNOWN_FLAGS.has(next));
-    if (next === undefined || next === '' || flagLike) {
+    if (next === undefined || next === '' || (!explicit.has(i + 1) && KNOWN_FLAGS.has(next))) {
       opts.errors.push(`${flag} needs a value.`);
+      return undefined;
+    }
+    if (!explicit.has(i + 1) && next.startsWith('--')) {
+      i++;
+      opts.errors.push(`${flag} needs a value; the next argument starts with '--'. Pass ${flag}=<value> if the value starts with '--'.`);
       return undefined;
     }
     i++;

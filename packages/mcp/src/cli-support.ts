@@ -65,18 +65,19 @@ export function tokenScopes(opts: CliOptions): Map<string, AuthScope> {
 }
 
 /**
- * Load one command-line file. With --allow it goes through the same policy as
- * `model_load` (real paths, both spellings of each root, protected home
- * entries); without, the operator's own arguments load from anywhere.
+ * The path to open for one command-line file, and the key that finds repeats.
+ * With --allow it goes through the same policy as `model_load` (real paths,
+ * both spellings of each root, protected home entries) before anything else,
+ * and the checked path is what gets opened; without, the operator's own
+ * arguments load from anywhere, matched by real path.
  */
-async function loadAllowed(registry: ModelRegistry, opts: CliOptions, absolute: string) {
-  const allowedPaths = opts.allowedPaths?.length ? opts.allowedPaths : undefined;
-  // With --allow, open the path that was checked and name the model after it, as model_load does.
-  const path = allowedPaths ? await resolveSafePath(absolute, { config: { allowedPaths }, registry }, 'read') : absolute;
-  // `arch/model.ifc` and `struct/model.ifc` both derive `model`: the later one
-  // gets `model_2`, so it cannot replace (and dispose) the earlier.
-  const modelId = freeModelId(registry, deriveModelId(basename(path)));
-  return loadIfcModel(path, { modelId, ...(allowedPaths ? { allowedPaths: [path] } : {}) });
+async function preloadPath(registry: ModelRegistry, opts: CliOptions, absolute: string): Promise<{ path: string; key: string }> {
+  if (opts.allowedPaths?.length) {
+    const path = await resolveSafePath(absolute, { config: { allowedPaths: opts.allowedPaths }, registry }, 'read');
+    return { path, key: path };
+  }
+  // A path that does not resolve falls through to the loader, which reports it.
+  return { path: absolute, key: await realpath(absolute).catch(() => absolute) };
 }
 
 const PRINTABLE_ERRNO = new Set(['ENOENT', 'EACCES', 'EPERM', 'EISDIR', 'ENOTDIR', 'ELOOP', 'ENAMETOOLONG']);
@@ -102,23 +103,24 @@ export async function loadFiles(registry: ModelRegistry, opts: CliOptions, log: 
   const seen = new Map<string, number>();
   for (const [index, file] of opts.files.entries()) {
     const label = `file argument ${index + 1} of ${opts.files.length}`;
-    const absolute = resolve(file);
-    // The real path, so ./m.ifc, M.ifc on a case-insensitive disk and a
-    // symlink all count as one file. A path that does not resolve falls
-    // through to the loader, which reports it.
-    const key = await realpath(absolute).catch(() => absolute);
+    // Name the argument by position and give a fixed reason, never the
+    // loader's text: a mistyped value flag (`--tokn secret`) leaves its value
+    // here, any message may spell the path, and stderr reaches client logs.
+    const refuse = (err: unknown): never => {
+      throw new Error(`${label} could not be loaded (${loadFailureReason(err)}). Check the path, and that no flag is misspelled.`);
+    };
+    // Checked first, so a repeat spelled outside --allow is refused, not skipped.
+    const { path, key } = await preloadPath(registry, opts, resolve(file)).catch(refuse);
     const first = seen.get(key);
     if (first !== undefined) {
       log(`warning: ${label} repeats file argument ${first + 1}; skipped`);
       continue;
     }
     seen.set(key, index);
-    const m = await loadAllowed(registry, opts, absolute).catch((err: unknown) => {
-      // Name the argument by position and give a fixed reason, never the
-      // loader's text: a mistyped value flag (`--tokn secret`) leaves its
-      // value here, any message may spell the path, and stderr reaches client logs.
-      throw new Error(`${label} could not be loaded (${loadFailureReason(err)}). Check the path, and that no flag is misspelled.`);
-    });
+    // `arch/model.ifc` and `struct/model.ifc` both derive `model`: the later one
+    // gets `model_2`, so it cannot replace (and dispose) the earlier.
+    const modelId = freeModelId(registry, deriveModelId(basename(path)));
+    const m = await loadIfcModel(path, { modelId, ...(opts.allowedPaths?.length ? { allowedPaths: [path] } : {}) }).catch(refuse);
     registry.add(m);
     log(`loaded ${m.name} (${m.id}) — ${fmtInt(m.store.entityCount)} entities`);
     for (const w of m.scanWarnings ?? []) log(`warning: ${m.name}: ${w}`);

@@ -130,7 +130,10 @@ describe('flag fixes (#11534)', () => {
   it('takes nothing starting with -- as a value; --flag=value still works', () => {
     const typo = parseArgs(['--token', '--read-onli', '--host', '0.0.0.0']);
     expect(typo.tokens).toEqual([]);
-    expect(typo.errors).toContain('--token needs a value.');
+    expect(typo.errors.join()).toMatch(/--token needs a value; the next argument starts with '--'/);
+    // Swallowed, never echoed: it may be the secret.
+    expect([...typo.errors, ...typo.warnings].join()).not.toContain('read-onli');
+    expect(typo.host).toBe('0.0.0.0');
     expect(parseArgs(['--token=--odd']).tokens).toEqual(['--odd']);
     expect(parseArgs(['--token', '-single']).tokens).toEqual(['-single']);
   });
@@ -151,7 +154,7 @@ describe('flag fixes (#11534)', () => {
   it('never takes an unknown --x=… as a value, so its value is not echoed or bound', () => {
     const opts = parseArgs(['--host', '--tokn=s3cr3t']);
     expect(opts.host).toBeUndefined();
-    expect(opts.errors).toEqual(['--host needs a value.']);
+    expect(opts.errors.join()).toMatch(/^--host needs a value/);
     expect(JSON.stringify(opts)).not.toContain('s3cr3t');
   });
 

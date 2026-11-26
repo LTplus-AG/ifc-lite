@@ -259,7 +259,7 @@ const modelExtract: Tool = {
       const products = [...globalIds.map((g) => `#${parsed.guidToId.get(g)}`), ...expressIds.map((id) => `#${id}`)];
       try {
         // Each type and storey must contribute, or a typo hides behind another selector's matches.
-        seeds = selectSubsetSeeds(parsed, { products, types, storeys, requireEachMatch: true });
+        seeds = selectSubsetSeeds(parsed, { products, types, storeys, requireEachMatch: true, schemaVersion: schemaOf(m) });
       } catch (err) {
         if (!(err instanceof SubsetSelectionError)) throw err;
         if (err.kind === 'invalid') throw invalid(err.message);

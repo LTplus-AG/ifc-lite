@@ -226,6 +226,17 @@ describe('model_extract', () => {
     expect(res.structuredContent.seedCount).toBe(1);
   });
 
+  it('expands subtypes for the model\'s own schema, not the union of all schemas', async () => {
+    // IfcReinforcingBar is an IfcBuildingElement subtype in IFC2X3 only; this model is IFC4.
+    await writeFile(join(tmp, 'rebar.ifc'), model('Q', 'Level 1', "#90= IFCREINFORCINGBAR('000000000000000000RB1Q',$,'Bar',$,$,#50,$,$,$,$,$,$,$,$,$);\n"), 'utf-8');
+    ctx.registry.remove('a');
+    ctx.registry.add(await loadIfcModel(join(tmp, 'rebar.ifc'), { modelId: 'q' }));
+    await call('model_extract', { types: ['IfcBuildingElement'], file_path: join(tmp, 'be.ifc') });
+    const text = await readFile(join(tmp, 'be.ifc'), 'utf-8');
+    expect(text).toContain("'Wall A Q'");
+    expect(text).not.toContain("'Bar'");
+  });
+
   it('refuses a type that matches nothing even when another selector matches', async () => {
     await expect(call('model_extract', { global_ids: ['000000000000000000WA1A'], types: ['IfcWal'], file_path: join(tmp, 'x.ifc') }))
       .rejects.toMatchObject({ code: 'INVALID_INPUT', message: expect.stringContaining('IfcWal') });

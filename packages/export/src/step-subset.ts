@@ -257,6 +257,8 @@ export interface SubsetSelectors {
   storeys?: readonly string[];
   /** Throw `SubsetSelectionError('invalid')` for any type or storey that selects nothing. */
   requireEachMatch?: boolean;
+  /** The file's schema, when known: subtypes are expanded for it alone rather than for the union of all schemas. */
+  schemaVersion?: string;
 }
 
 /**
@@ -264,10 +266,10 @@ export interface SubsetSelectors {
  * nothing throws; a type that matches nothing just adds nothing, so the caller
  * decides how to word an empty selection.
  *
- * Types go through `expandTypes` with no schema version: this parse has no
- * resolved `schemaVersion`, which is exactly the case that union documents (a
- * superset across the bundled schemas rather than one picked on the caller's
- * behalf).
+ * Types go through `expandTypes` for `selectors.schemaVersion`. Without one
+ * (the CLI's own lightweight parse has no resolved schema) it expands for the
+ * union of the bundled schemas, the case that union documents, rather than
+ * picking one on the caller's behalf.
  */
 export function selectSubsetSeeds(parsed: ParsedStep, selectors: SubsetSelectors): Set<number> {
   const seeds = new Set<number>();
@@ -279,7 +281,7 @@ export function selectSubsetSeeds(parsed: ParsedStep, selectors: SubsetSelectors
   const requested = (selectors.types ?? []).map((t) => t.trim()).filter(Boolean);
   const wantedTypes = new Map<string, number[]>();
   requested.forEach((type, i) => {
-    for (const name of expandTypes([type])) {
+    for (const name of expandTypes([type], selectors.schemaVersion)) {
       const key = name.toUpperCase();
       const from = wantedTypes.get(key);
       if (from) from.push(i);

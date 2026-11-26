@@ -17,7 +17,7 @@ import { fmtInt, okResult, resolveGlobalIds } from './util.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import { resolveSafePath } from '../safe-path.js';
 import type { LoadedModel, ToolContext } from '../context.js';
-import { FILE_WRITE_ANNOTATIONS, fileOutputSchema, invalid, nonBlank, optionalOutputPath, withIfcPrefix, requireDistinctPaths, requireNoPendingEdits, resolveStepModel, stringList, throwIfCancelled, writeSidecar } from './transform-schema.js';
+import { FILE_WRITE_ANNOTATIONS, fileOutputSchema, invalid, nonBlank, optionalOutputPath, withIfcPrefix, requireDistinctPaths, requireNoPendingEdits, resolveStepModel, stringList, throwIfCancelled, unsupported, writeSidecar } from './transform-schema.js';
 
 /** Each relationship the walk follows, with the setting it takes when on (when off: false or 'none'). */
 const FOLLOWED = {
@@ -92,6 +92,7 @@ async function runAnonymize(m: LoadedModel, input: Record<string, unknown>, ctx:
   // After the awaits above: an edit queued while they ran must still refuse the call.
   // Nothing below awaits until the export is written.
   requireNoPendingEdits(m, 'model_anonymize');
+  if (m.store.source.byteLength === 0) throw unsupported(`Model '${m.id}' kept no source bytes to anonymize. Reload it with model_load.`);
   const seeds = anonymizeSeeds(m, input);
   if (seeds.size === 0) throw invalid('Select something: express_ids, global_ids, types or storey.');
   const keepPsets = input.keep_psets === true;

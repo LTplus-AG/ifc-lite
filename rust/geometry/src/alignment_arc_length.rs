@@ -12,33 +12,36 @@ use crate::alignment::AlignmentCurve;
 pub(crate) struct ArcLengthMap {
     stations: Vec<f64>,
     lengths: Vec<f64>,
-    /// The intervals that end vertical, in sample order (see [`Warp`]).
+    /// The intervals near a vertical station, in sample order (see [`Warp`]).
     warps: Vec<Warp>,
 }
 
-/// An interval `[a, b]` sampled at `pieces` equal steps of t. Next to a
-/// vertical end the station is h = b - (b - a)(1 - t)^2 (vertical at b) or
-/// h = a + (b - a)t^2 (at a), otherwise h = a + (b - a)t. Its samples start
-/// at index `first`.
+/// An interval `[a, b]` within [`NEAR_POLE`] of its widths from a station
+/// `pole` where the profile is vertical, sampled at `pieces` equal steps of t
+/// in u = sqrt(|h - pole|). Its samples start at index `first`.
 struct Warp {
     first: usize,
     a: f64,
     b: f64,
+    pole: f64,
     pieces: usize,
-    vertical_at: Option<bool>,
 }
 
+/// How close, in interval widths, a vertical station makes an interval steep
+/// enough to need [`Warp`]. Further out Simpson's relative error on a speed
+/// that grows like 1/sqrt of the distance is below 1e-6.
+const NEAR_POLE: f64 = 8.0;
+
 impl Warp {
-    /// Station and dh/dt at t. The quadratic one vanishes at the vertical
-    /// end, where the speed grows like 1/sqrt of the distance to it, and
-    /// the product is smooth.
+    /// Station and dh/dt at t, with u linear in t from sqrt(|a - pole|) to
+    /// sqrt(|b - pole|) and h = pole -/+ u^2. The speed grows like 1/u near
+    /// the pole and dh/dt is proportional to u, so their product is smooth
+    /// whether or not the interval reaches the pole.
     fn station(&self, t: f64) -> (f64, f64) {
-        let span = self.b - self.a;
-        match self.vertical_at {
-            Some(true) => (self.a + span * t * t, 2.0 * span * t),
-            Some(false) => (self.b - span * (1.0 - t) * (1.0 - t), 2.0 * span * (1.0 - t)),
-            None => (self.a + span * t, span),
-        }
+        let side = if self.pole > 0.5 * (self.a + self.b) { -1.0 } else { 1.0 };
+        let (ua, ub) = ((self.a - self.pole).abs().sqrt(), (self.b - self.pole).abs().sqrt());
+        let u = ua + (ub - ua) * t;
+        (self.pole + side * u * u, 2.0 * side * u * (ub - ua))
     }
 }
 
@@ -53,27 +56,27 @@ impl ArcLengthMap {
             let z = alignment.evaluate(s).tangent.z;
             1.0 / (1.0 - z * z).sqrt().max(1e-12)
         };
+        // A profile is vertical only where it ends, at a break (beyond a
+        // circular segment's vertical end the height is not finite). The
+        // speed steepens toward it across any breaks in between, so the
+        // intervals near it are chosen by their distance to it.
+        let poles: Vec<f64> = breaks.iter().copied().filter(|&s| speed(s) >= 1e12).collect();
         for pair in breaks.windows(2) {
             let span = pair[1] - pair[0];
             let count = ((span / step).ceil() as usize).max(1);
-            // A profile is vertical only where it ends, at a break (beyond
-            // a circular segment's vertical end the height is not finite),
-            // so at most one end of an interval is. It steepens the whole
-            // span up to that break.
-            let vertical = [speed(pair[0]) >= 1e12, speed(pair[1]) >= 1e12];
             for i in 1..=count {
                 let a = *stations.last().unwrap_or(&pair[0]);
                 let b = pair[0] + span * (i as f64 / count as f64);
-                if vertical[0] || vertical[1] {
-                    let vertical_at = match (i == 1 && vertical[0], i == count && vertical[1]) {
-                        (true, _) => Some(true),
-                        (_, true) => Some(false),
-                        _ => None,
-                    };
-                    let pieces = if vertical_at.is_some() { 64 } else { 16 };
-                    let warp = Warp { first: stations.len() - 1, a, b, pieces, vertical_at };
+                let near = poles
+                    .iter()
+                    .map(|&pole| (pole, if pole > 0.5 * (a + b) { pole - b } else { a - pole }))
+                    .min_by(|x, y| x.1.total_cmp(&y.1))
+                    .filter(|&(_, gap)| gap < NEAR_POLE * (b - a));
+                if let Some((pole, gap)) = near {
+                    let pieces = if gap < b - a { 64 } else { 16 };
+                    let warp = Warp { first: stations.len() - 1, a, b, pole, pieces };
                     toward_vertical(alignment, &warp, &mut stations, &mut lengths);
-                    warps.extend(warp.vertical_at.is_some().then_some(warp));
+                    warps.push(warp);
                     continue;
                 }
                 let middle = (a + b) * 0.5;
@@ -105,8 +108,8 @@ impl ArcLengthMap {
             return self.stations[last] + (distance - self.lengths[last]) / slope;
         }
         let t = (distance - self.lengths[i - 1]) / (self.lengths[i] - self.lengths[i - 1]);
-        // Inside an interval at a vertical end the length is smooth in
-        // t, not in station: interpolate t and map it to the station.
+        // Inside an interval near a vertical station the length is smooth
+        // in t, not in station: interpolate t and map it to the station.
         let w = self.warps.partition_point(|w| w.first + w.pieces < i);
         if let Some(warp) = self.warps.get(w).filter(|warp| warp.first < i) {
             return warp.station(((i - 1 - warp.first) as f64 + t) / warp.pieces as f64).0;
@@ -115,14 +118,13 @@ impl ArcLengthMap {
     }
 }
 
-/// Samples of an interval of a span that ends vertical (a circular profile
-/// reaching 90 degrees). The speed grows like 1/sqrt of the distance to
-/// that end, which Simpson's rule cannot integrate, and it steepens the
-/// whole span. In the interval at the end, [`Warp::station`] cancels the
-/// singularity, so the integrand in t is smooth and nonzero. Its `pieces` in
+/// Samples of an interval near a vertical station (a circular profile
+/// reaching 90 degrees). The speed grows like 1/sqrt of the distance to that
+/// station, which Simpson's rule cannot integrate. [`Warp::station`] cancels
+/// that growth, so the integrand in t is smooth and nonzero. Its `pieces` in
 /// t are summed by 4-point Gauss-Legendre, which never evaluates an end, and
-/// each is recorded. The speed is the reciprocal of the tangent's
-/// horizontal part, exact near vertical where 1 - z^2 cancels.
+/// each is recorded. The speed is the reciprocal of the tangent's horizontal
+/// part, exact near vertical where 1 - z^2 cancels.
 fn toward_vertical(
     alignment: &AlignmentCurve,
     warp: &Warp,

@@ -116,6 +116,35 @@ fn length_bounds_up_to_the_vertical_end_reach_their_place_on_the_arc() {
     }
 }
 
+/// The same arc with the plan split 1 mm before the vertical end, so a break
+/// at station 9.999 leaves the steep interval 8.999..9.999 in a span that does
+/// not itself end vertical. Simpson's rule counted that interval as about
+/// 14.2 m of arc instead of 4.37 m, and the whole-arc bound stopped the sweep
+/// near station 9.3 (PR #9969 review).
+#[test]
+fn a_length_bound_reaches_the_vertical_end_past_a_break_just_before_it() {
+    let split = VERTICAL_END.replace(
+        "#7=IFCCOMPOSITECURVE((#6),.F.);",
+        "#13=IFCCARTESIANPOINT((0.,9.999));\n\
+         #14=IFCAXIS2PLACEMENT2D(#13,#16);\n\
+         #15=IFCCURVESEGMENT(.CONTINUOUS.,#14,IFCLENGTHMEASURE(0.),IFCLENGTHMEASURE(0.001),#4);\n\
+         #7=IFCCOMPOSITECURVE((#6,#15),.F.);",
+    ).replace("IFCLENGTHMEASURE(10.),#4)", "IFCLENGTHMEASURE(9.999),#4)");
+    let (radius, section) = (10.0_f64, 0.05_f64);
+    for arc in [5.0 * std::f64::consts::PI, 5.0 * std::f64::consts::PI - 0.06] {
+        let mesh = element_mesh(&format!(
+            "{split}
+            #25=IFCCIRCLEPROFILEDEF(.AREA.,$,$,{section:?});
+            #26=IFCDIRECTION((0.,0.,1.));
+            #30=IFCFIXEDREFERENCESWEPTAREASOLID(#25,$,#20,IFCLENGTHMEASURE(0.),IFCLENGTHMEASURE({arc:?}),#26);"
+        ));
+        let angle = arc / radius;
+        let expected = 100.0 + radius * (1.0 - angle.cos()) + section * angle.cos();
+        let top = mesh.positions.chunks_exact(3).map(|p| p[2] as f64).fold(f64::MIN, f64::max);
+        assert!((top - expected).abs() < 1e-4, "arc {arc}: top at {top}, expected {expected}");
+    }
+}
+
 /// The parameter of a 2-point IfcPolyline BaseCurve is 0..1 over its 1000 m,
 /// not distance. That mapping is not read, so parameter bounds on it are
 /// refused rather than cut at 0.3..0.6 m. Unbounded, the curve still follows

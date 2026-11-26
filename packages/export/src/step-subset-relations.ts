@@ -51,7 +51,7 @@
  * ## Near-twins elsewhere in this package
  *
  * This module moved here from the CLI, where `@ifc-lite/export`'s internals
- * were out of reach. Two near-twins remain, tracked for consolidation in #4125:
+ * were out of reach. Two near-twins remain, each different on purpose:
  *
  *   - `filterHiddenRefsFromRelationshipLine` (`reference-collector.ts`) does
  *     the same job for EVERY parenthesised attribute of ANY `IFCREL*` line.

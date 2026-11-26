@@ -244,6 +244,9 @@ export function serializeSubset({ keep, rewritten }: Subset, parsed: ParsedStep)
   return parsed.header + lines.join('\n') + '\nENDSEC;\nEND-ISO-10303-21;\n';
 }
 
+/** IfcObjectPlacement subtypes: placement records a storey walk returns, never products. */
+const PLACEMENT_TYPES = new Set(['IFCLOCALPLACEMENT', 'IFCGRIDPLACEMENT', 'IFCLINEARPLACEMENT']);
+
 /** Selectors for {@link selectSubsetSeeds}; every selector is unioned. */
 export interface SubsetSelectors {
   /** `#42`, `42`, or a 22-char GlobalId. Each must resolve, or it throws. */
@@ -305,7 +308,7 @@ export function selectSubsetSeeds(parsed: ParsedStep, selectors: SubsetSelectors
     for (const id of under) {
       const type = parsed.instances.get(id)?.type;
       if (type === 'IFCBUILDINGSTOREY') seeds.add(id);
-      else if (type !== 'IFCLOCALPLACEMENT') products.push(id);
+      else if (type !== undefined && !PLACEMENT_TYPES.has(type)) products.push(id);
     }
     if (selectors.requireEachMatch && products.length === 0) throw new SubsetSelectionError('invalid', `Nothing is placed under storey ${token}.`);
     for (const id of products) seeds.add(id);

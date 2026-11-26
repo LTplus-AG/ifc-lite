@@ -2,8 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { GEOMETRY_PERF_FLAG_BINDINGS, setGlobalInstancingRamp } from '@ifc-lite/geometry';
 import type { Renderer, SceneContents } from '@ifc-lite/renderer';
-import { readPerfFlag } from '../lib/perf/flags.js';
+import { readPerfFlagRaw } from '@ifc-lite/data';
+import { getPerfFlagDefinition, resolvePerfFlag } from '../lib/perf/flags.js';
 import { recordAppliedPerfFlag } from '../lib/perf/flags-applied.js';
 import { isHugeGeometryEnabled, isPerfFlagOff, isPerfFlagOn, readRampFlag } from './hugeGeometryConfig.js';
 
@@ -34,10 +36,21 @@ export function configureGpuInstancing(renderer: Pick<Renderer, 'setGpuInstancin
 /**
  * The scene joins keyed instanced records (global instance plan) by default, on every upload path, so a reopen
  * draws like its cold load. An explicit `?perf.globalInstancing=0` is the kill switch for the join as well: a reopen
- * of a snapshot cached with the plan then draws one template per record, as before the plan. Read once at init.
+ * of a snapshot cached with the plan then draws one template per record, as before the plan. The `perf-global-instancing`
+ * ramp does not switch the join off. Read once at init.
  */
 export function configureKeyedInstancing(scene: Pick<SceneContents, 'keyedInstancing'>): boolean {
   if (!scene.keyedInstancing) return false;
-  scene.keyedInstancing.enabled = !isPerfFlagOff(readPerfFlag('globalInstancing'));
+  // Explicit only: a user outside the PostHog ramp reads `false` there, and must still join a plan's cached records.
+  scene.keyedInstancing.enabled = !isPerfFlagOff(readPerfFlagRaw(GEOMETRY_PERF_FLAG_BINDINGS.globalInstancing));
   return scene.keyedInstancing.enabled;
+}
+
+/**
+ * Let the geometry host ask the `perf-global-instancing` PostHog ramp whether the global instance plan applies,
+ * when no global or URL param says so. The host reads it once per load (`globalInstancingApplies`). Idempotent.
+ */
+export function installGlobalInstancingRamp(readFeatureFlag?: (key: string) => unknown): void {
+  const flag = getPerfFlagDefinition('globalInstancing');
+  setGlobalInstancingRamp(() => resolvePerfFlag(flag, readFeatureFlag));
 }

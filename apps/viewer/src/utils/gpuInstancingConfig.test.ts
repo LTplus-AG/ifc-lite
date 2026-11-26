@@ -4,7 +4,8 @@
 
 import { describe, it, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { configureGpuInstancing, configureKeyedInstancing, isGpuInstancingEnabled } from './gpuInstancingConfig.js';
+import { globalInstancingApplies, GLOBAL_INSTANCING_MIN_BYTES, setGlobalInstancingRamp } from '@ifc-lite/geometry';
+import { configureGpuInstancing, configureKeyedInstancing, installGlobalInstancingRamp, isGpuInstancingEnabled } from './gpuInstancingConfig.js';
 
 const g = globalThis as Record<string, unknown>;
 
@@ -14,6 +15,8 @@ function setSearch(search: string): void {
 
 afterEach(() => {
   delete g.__IFC_LITE_GPU_INSTANCING;
+  delete g.__IFC_LITE_GLOBAL_INSTANCING;
+  setGlobalInstancingRamp(undefined);
   Reflect.deleteProperty(globalThis, 'location');
 });
 
@@ -56,5 +59,36 @@ describe('keyed instancing config (#11390 follow-up)', () => {
       assert.equal(configureKeyedInstancing(scene), on, search || 'unset');
       assert.equal(scene.keyedInstancing.enabled, on);
     }
+  });
+});
+
+describe('global instance plan ramp', () => {
+  const large = GLOBAL_INSTANCING_MIN_BYTES;
+  const posthog = (value: unknown) => (key: string) => (key === 'perf-global-instancing' ? value : undefined);
+
+  it('hands the geometry host the perf-global-instancing ramp', () => {
+    installGlobalInstancingRamp(posthog(true));
+    assert.equal(globalInstancingApplies(large), true);
+    assert.equal(globalInstancingApplies(large - 1), false, 'small files keep the per-batch decision');
+    installGlobalInstancingRamp(posthog(false));
+    assert.equal(globalInstancingApplies(large), false);
+    installGlobalInstancingRamp(posthog(undefined));
+    assert.equal(globalInstancingApplies(large), false, 'no PostHog value: off');
+  });
+
+  it('lets an explicit param or global beat the ramp', () => {
+    installGlobalInstancingRamp(posthog(true));
+    setSearch('?perf.globalInstancing=0');
+    assert.equal(globalInstancingApplies(large), false);
+    Reflect.deleteProperty(globalThis, 'location');
+    installGlobalInstancingRamp(posthog(false));
+    g.__IFC_LITE_GLOBAL_INSTANCING = 1;
+    assert.equal(globalInstancingApplies(large), true);
+  });
+
+  it('never kills the keyed join from the ramp: a user outside it still joins cached plan records', () => {
+    installGlobalInstancingRamp(posthog(false));
+    const scene = { keyedInstancing: { enabled: false } };
+    assert.equal(configureKeyedInstancing(scene), true);
   });
 });

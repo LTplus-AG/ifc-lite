@@ -105,7 +105,8 @@ export const PERF_FLAGS = [
     removalCondition: 'Delete with the per-batch instancing decision once the global instance plan is the default and has shipped two releases with no rendering or compare report.',
     introducedAt: '2026-11-23',
     default: false,
-    bindings: GEOMETRY_PERF_FLAG_BINDINGS.globalInstancing,
+    // The geometry host reads the global and URL param itself; the PostHog ramp reaches it through `installGlobalInstancingRamp`.
+    bindings: { ...GEOMETRY_PERF_FLAG_BINDINGS.globalInstancing, posthogKey: 'perf-global-instancing' },
   },
   {
     id: 'outOfCore',

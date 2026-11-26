@@ -12,28 +12,45 @@ import {
   type GeometryWorkerAddKeyPlanMessage,
   type GlobalPlanApi,
 } from './global-instance-plan.js';
-import { GLOBAL_INSTANCING_MIN_BYTES } from './perf-flags.js';
+import { GLOBAL_INSTANCING_MIN_BYTES, globalInstancingApplies, setGlobalInstancingRamp } from './perf-flags.js';
 
 const g = globalThis as Record<string, unknown>;
 afterEach(() => {
   delete g.__IFC_LITE_GLOBAL_INSTANCING;
+  setGlobalInstancingRamp(undefined);
 });
 
 const NONE = 0xffff_ffff;
 const jobs = Uint32Array.from([10, 0, 5, 11, 5, 9, 12, 9, 14]);
 
 describe('global instance plan messages', () => {
-  it('stay off unless the flag is on and the file is past the small tier', () => {
+  it('follow the load\'s plan decision', () => {
     const columns = { mappedInstancePlan: Uint32Array.of(21), mappedInstanceCounts: Uint32Array.of(9) };
+    expect(globalKeyPlanningField(false)).toEqual({});
+    expect(globalPlanColumns(columns, false)).toEqual({});
+    expect(globalKeyPlanningField(true)).toEqual({ globalInstancing: true });
+    expect(globalPlanColumns(columns, true)).toEqual({ globalInstancing: true, mappedInstanceCounts: Uint32Array.of(9) });
+    expect(globalPlanColumns({ ...columns, mappedInstanceCounts: Uint32Array.of(9, 1) }, true), 'counts must parallel the plan').toEqual({});
+  });
+
+  it('apply only past the small tier, with the flag on or the host ramp on', () => {
     const large = GLOBAL_INSTANCING_MIN_BYTES, small = GLOBAL_INSTANCING_MIN_BYTES - 1;
-    expect(globalKeyPlanningField(large)).toEqual({});
-    expect(globalPlanColumns(columns, large)).toEqual({});
+    expect(globalInstancingApplies(large)).toBe(false);
     g.__IFC_LITE_GLOBAL_INSTANCING = 1;
-    expect(globalKeyPlanningField(large)).toEqual({ globalInstancing: true });
-    expect(globalPlanColumns(columns, large)).toEqual({ globalInstancing: true, mappedInstanceCounts: Uint32Array.of(9) });
-    expect(globalPlanColumns({ ...columns, mappedInstanceCounts: Uint32Array.of(9, 1) }, large), 'counts must parallel the plan').toEqual({});
-    expect(globalKeyPlanningField(small), 'a small file keeps the per-batch decision').toEqual({});
-    expect(globalPlanColumns(columns, small)).toEqual({});
+    expect(globalInstancingApplies(large)).toBe(true);
+    expect(globalInstancingApplies(small), 'a small file keeps the per-batch decision').toBe(false);
+    delete g.__IFC_LITE_GLOBAL_INSTANCING;
+    let ramp: unknown = true;
+    setGlobalInstancingRamp(() => ramp);
+    expect(globalInstancingApplies(large), 'the ramp decides when nothing explicit is set').toBe(true);
+    ramp = 'control';
+    expect(globalInstancingApplies(large), 'an unrecognised variant is off').toBe(false);
+    ramp = true;
+    g.__IFC_LITE_GLOBAL_INSTANCING = 0;
+    expect(globalInstancingApplies(large), 'an explicit 0 beats the ramp').toBe(false);
+    delete g.__IFC_LITE_GLOBAL_INSTANCING;
+    setGlobalInstancingRamp(() => { throw new Error('analytics gone'); });
+    expect(globalInstancingApplies(large), 'a failing ramp read keeps the default').toBe(false);
   });
 
   it('forward only planned jobs, and nothing for a chunk without plan indices', () => {

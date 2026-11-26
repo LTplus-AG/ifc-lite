@@ -34,7 +34,7 @@ import type { StreamingGeometryEvent } from './index.js';
 import { mergeGeometryDiagnostics, type GeometryDiagnostics } from './diagnostics.js';
 import { omittedTypeRecordsField, parseOmittedTypeRecords } from './omitted-type-records.js';
 import { planLoadWorkerCount } from './worker-count.js';
-import { readBatchSizingOverride, readShardScanFlag, readVisibilityFilterOverride } from './perf-flags.js';
+import { globalInstancingApplies, readBatchSizingOverride, readShardScanFlag, readVisibilityFilterOverride } from './perf-flags.js';
 import { forwardKeyPlan, globalKeyPlanningField, globalPlanColumns } from './global-instance-plan.js';
 import { sparsePoolFor } from './geometry-parallel-sparse.js';
 import { notifyIfWasmAssetUnavailable, notifyIfWorkerScriptUnavailable } from './wasm-asset-error.js';
@@ -137,6 +137,8 @@ export async function* processParallel(
   coordinator.reset();
   yield { type: 'start', totalEstimate: buffer.length / 1000 };
   yield { type: 'model-open', modelID: 0 };
+  // The global instance plan is decided once per load: a ramp that arrives mid-load cannot split the pre-pass request from its columns.
+  const globalPlan = globalInstancingApplies(buffer.length);
   // Kick off the ONE shared wasm compile immediately so it overlaps the SAB setup + worker-count planning below; awaited just before the workers init
   // (see `compileSharedWasmModule`). Null ⇒ each worker self-inits (unchanged).
   const wasmModulePromise = compileSharedWasmModule(options?.wasmUrls?.wasm);
@@ -231,7 +233,7 @@ export async function* processParallel(
   const shareIndex = (ids: SharedArrayBuffer, starts: SharedArrayBuffer, lengths: SharedArrayBuffer) => broadcastSetup(entityIndexSetup(() => ({
     ids: new Uint32Array(ids), starts: new Uint32Array(starts), lengths: new Uint32Array(lengths),
   })));
-  const sparse = sparsePoolFor(sharedBuffer, { broadcast: (setup) => broadcastSetup(setup), shareIndex, onReady: () => drainQueuedChunksIfReady() }, options);
+  const sparse = sparsePoolFor(sharedBuffer, { broadcast: (setup) => broadcastSetup(setup), shareIndex, onReady: () => drainQueuedChunksIfReady() }, { mergeLayers: options?.mergeLayers, globalInstancing: globalPlan });
   const shardScanEnabled = readShardScanFlag() && !sparse;
   let entityIndexDeliveredEarly = false;
   const shardResults: (ShardColumns | null)[] = [];
@@ -1241,7 +1243,7 @@ export async function* processParallel(
                 type: 'set-prepass-columns' as const,
                 referencedRepmaps: rRepmaps,
                 instantiatedTypeIds: rTypeIds,
-                mappedInstancePlan: rMappedPlan, ...globalPlanColumns(evt, buffer.length),
+                mappedInstancePlan: rMappedPlan, ...globalPlanColumns(evt, globalPlan),
                 mliElementIds: mIds,
                 mliAxis: mAxis,
                 mliLayerCounts: mCounts,
@@ -1390,7 +1392,7 @@ export async function* processParallel(
       }
       prepassWorker.postMessage({
         type: 'prepass-streaming-sharded',
-        sourceFingerprint: options?.sourceFingerprint, ...globalKeyPlanningField(buffer.length),
+        sourceFingerprint: options?.sourceFingerprint, ...globalKeyPlanningField(globalPlan),
         sharedBuffer,
         chunkSize: 50_000,
         ...(visibilityFilter?.disabledTypes ? { disabledTypes: visibilityFilter.disabledTypes } : {}),
@@ -1403,7 +1405,7 @@ export async function* processParallel(
     } else {
       prepassWorker.postMessage({
         type: 'prepass-streaming',
-        sourceFingerprint: options?.sourceFingerprint, ...globalKeyPlanningField(buffer.length),
+        sourceFingerprint: options?.sourceFingerprint, ...globalKeyPlanningField(globalPlan),
         sharedBuffer,
         chunkSize: 50_000,
         ...(sparse ? { emitSparseFacts: true } : {}),

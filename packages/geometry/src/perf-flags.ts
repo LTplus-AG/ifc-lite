@@ -65,6 +65,16 @@ export function readShardScanFlag(): boolean {
   return true;
 }
 
+let globalInstancingRamp: (() => unknown) | undefined;
+
+/**
+ * The host's staged rollout for the plan (the viewer's PostHog ramp), asked only when neither the global nor
+ * the URL param is set, so an explicit `0` or `1` always wins. `undefined` removes it.
+ */
+export function setGlobalInstancingRamp(read: (() => unknown) | undefined): void {
+  globalInstancingRamp = read;
+}
+
 /**
  * Global instance plan: decide GPU instancing ONCE per model from the
  * pre-pass's model-wide facts (mapped-item counts, repeated content keys)
@@ -72,7 +82,10 @@ export function readShardScanFlag(): boolean {
  * it. Read on the host thread when a load starts.
  */
 export function readGlobalInstancingFlag(): boolean {
-  const v = readPerfFlagRaw(GEOMETRY_PERF_FLAG_BINDINGS.globalInstancing);
+  let v = readPerfFlagRaw(GEOMETRY_PERF_FLAG_BINDINGS.globalInstancing);
+  if (v === undefined) {
+    try { v = globalInstancingRamp?.(); } catch { v = undefined; } // a failing ramp read keeps the default
+  }
   return v === 1 || v === '1' || v === true || v === 'true';
 }
 

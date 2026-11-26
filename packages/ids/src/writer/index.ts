@@ -87,7 +87,14 @@ function instructionsFor(facet: IDSFacet, context: FacetContext, requirementInst
   return requirementInstructions;
 }
 
-function writeFacet(xml: XmlLines, facet: IDSFacet, cardinality: string | undefined, context: FacetContext, requirementInstructions?: string): void {
+function writeFacet(
+  xml: XmlLines,
+  facet: IDSFacet,
+  cardinality: string | undefined,
+  context: FacetContext,
+  specName: string,
+  requirementInstructions?: string,
+): void {
   const instructions = instructionsFor(facet, context, requirementInstructions);
   switch (facet.type) {
     case 'entity':
@@ -107,9 +114,12 @@ function writeFacet(xml: XmlLines, facet: IDSFacet, cardinality: string | undefi
       xml.close('property');
       return;
     case 'classification':
+      if (!facet.system) {
+        throw new Error(`writeIdsXml: a classification facet needs a system (specification ${JSON.stringify(specName)}, ${context})`);
+      }
       xml.open('classification', { cardinality, instructions, uri: facet.uri });
       if (facet.value) writeConstraint(xml, 'value', facet.value);
-      if (facet.system) writeConstraint(xml, 'system', facet.system);
+      writeConstraint(xml, 'system', facet.system);
       xml.close('classification');
       return;
     case 'material':
@@ -131,16 +141,24 @@ function writeFacet(xml: XmlLines, facet: IDSFacet, cardinality: string | undefi
       });
       writeEntity(xml, facet.entity);
       // IDS 1.1 PREVIEW (#379/#380): conditions on the related parent.
-      for (const nested of facet.facets ?? []) writeFacet(xml, nested, undefined, 'nested');
+      for (const nested of facet.facets ?? []) writeFacet(xml, nested, undefined, 'nested', specName);
       xml.close('partOf');
       return;
   }
 }
 
-function writeRequirement(xml: XmlLines, requirement: IDSRequirement): void {
+function writeRequirement(xml: XmlLines, requirement: IDSRequirement, specName: string): void {
+  const { facet, optionality } = requirement;
+  const location = `(specification ${JSON.stringify(specName)}, requirement ${JSON.stringify(requirement.id)})`;
+  if (facet.type === 'entity' && optionality !== 'required') {
+    throw new Error(`writeIdsXml: an entity requirement cannot be ${optionality} ${location}. IDS 1.0 has no entity cardinality`);
+  }
+  if (facet.type === 'partOf' && optionality === 'optional') {
+    throw new Error(`writeIdsXml: a partOf requirement cannot be optional ${location}. Use required or prohibited`);
+  }
   // IDS 1.0 has no cardinality on an entity facet inside requirements.
-  const cardinality = requirement.facet.type === 'entity' ? undefined : requirement.optionality;
-  writeFacet(xml, requirement.facet, cardinality, 'requirement', requirement.instructions);
+  const cardinality = facet.type === 'entity' ? undefined : optionality;
+  writeFacet(xml, facet, cardinality, 'requirement', specName, requirement.instructions);
 }
 
 /** Formatting of `writeIdsXml`'s output. Every option changes layout or order only, never meaning. */
@@ -201,11 +219,11 @@ function writeSpecification(xml: XmlLines, spec: IDSSpecification, canonical: bo
   });
   const maxOccurs = spec.maxOccurs === undefined ? 'unbounded' : String(spec.maxOccurs);
   xml.open('applicability', { minOccurs: String(spec.minOccurs ?? 0), maxOccurs });
-  for (const facet of facets) writeFacet(xml, facet, undefined, 'applicability');
+  for (const facet of facets) writeFacet(xml, facet, undefined, 'applicability', spec.name);
   xml.close('applicability');
   if (spec.requirements.length > 0) {
     xml.open('requirements');
-    for (const requirement of spec.requirements) writeRequirement(xml, requirement);
+    for (const requirement of spec.requirements) writeRequirement(xml, requirement, spec.name);
     xml.close('requirements');
   }
   xml.close('specification');

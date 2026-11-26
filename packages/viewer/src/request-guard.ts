@@ -21,6 +21,12 @@ const LOOPBACK_HOST = new RegExp(`^${LOOPBACK}$`, 'i');
 /** A page served from this machine. */
 const LOCAL_ORIGIN = new RegExp(`^https?://${LOOPBACK}$`, 'i');
 
+/**
+ * `frame-ancestors` for the viewer page: the guard lets an IDE preview pane
+ * embed it, so this stops any other site from framing it (clickjacked picks).
+ */
+export const PAGE_FRAME_ANCESTORS = "frame-ancestors 'self' http://localhost:* http://127.0.0.1:* http://[::1]:* vscode-webview: vscode-file:";
+
 export type RequestVerdict = { refuse: string } | { refuse: false; corsOrigin: string | null };
 
 /** Refuse `req` (with the reason), or serve it, echoing its Origin for CORS when that is a local page. */

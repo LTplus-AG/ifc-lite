@@ -409,6 +409,7 @@ describe('viewer server — /api/command allowlist', () => {
   });
 });
 
+// #11532: loopback bind, DNS rebinding and cross-site refusal.
 describe('viewer server — loopback only', () => {
   let server: ViewerServer;
   let port: number;
@@ -443,9 +444,20 @@ describe('viewer server — loopback only', () => {
 
   it('serves the address bar and the page itself', TEST_TIMEOUT, async () => {
     for (const site of ['none', 'same-origin']) {
-      const res = await req(port, '/api/status', { headers: { 'sec-fetch-site': site } });
-      assert.equal(res.status, 200, site);
+      const page = await req(port, '/', { headers: { 'sec-fetch-site': site, 'sec-fetch-dest': 'document' } });
+      assert.equal(page.status, 200, `page, ${site}`);
+      const api = await req(port, '/api/status', { headers: { 'sec-fetch-site': site } });
+      assert.equal(api.status, 200, `api, ${site}`);
     }
+  });
+
+  // The page may be embedded by an IDE preview pane, so CSP keeps other sites from framing it.
+  it('only lets local pages and IDE webviews frame the viewer page', TEST_TIMEOUT, async () => {
+    const res = await req(port, '/');
+    const csp = String(res.headers['content-security-policy']);
+    assert.match(csp, /^frame-ancestors 'self' /);
+    assert.ok(csp.includes('vscode-webview:'));
+    assert.ok(!csp.includes('*.') && !/\s\*(\s|$)/.test(csp), 'no wildcard host');
   });
 
   // An agent shares the viewer link in a web chat; clicking it must open the viewer.

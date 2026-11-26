@@ -16,7 +16,7 @@ import { readFile, stat } from 'node:fs/promises';
 import { dirname, extname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getViewerHtml } from './viewer-html.js';
-import { checkRequest } from './request-guard.js';
+import { checkRequest, PAGE_FRAME_ANCESTORS } from './request-guard.js';
 import { VIEWER_HOST, viewerUrl } from './url.js';
 
 /** Valid command actions that the viewer understands */
@@ -186,7 +186,7 @@ export async function startViewerServer(opts: ViewerServerOptions): Promise<View
 
     // Routes
     if (path === '/' && req.method === 'GET') {
-      res.writeHead(200, { 'Content-Type': MIME['.html'] });
+      res.writeHead(200, { 'Content-Type': MIME['.html'], 'Content-Security-Policy': PAGE_FRAME_ANCESTORS });
       res.end(viewerHtml);
       return;
     }

@@ -110,8 +110,10 @@ export function planInstall(
   }
 }
 
+const DESKTOP_CONFIG = 'claude_desktop_config.json';
+
 function claudeDesktopConfigPath(host: HostEnv): string {
-  const file = 'claude_desktop_config.json';
+  const file = DESKTOP_CONFIG;
   if (host.platform === 'darwin') {
     return posix.join(host.home, 'Library', 'Application Support', 'Claude', file);
   }
@@ -133,8 +135,9 @@ function claudeDesktopConfigPath(host: HostEnv): string {
 }
 
 /**
- * The Claude Store package's config folder, when one has data. A folder we
- * cannot read is not one Claude Desktop uses, so it falls through to %APPDATA%.
+ * The Claude Store package's config folder, when it holds the config file.
+ * A folder we cannot read is not one Claude Desktop uses, so it falls
+ * through to %APPDATA%.
  */
 function storeConfigDir(host: HostEnv, packages: string): string | undefined {
   const readable = (dir: string): string[] => {
@@ -147,7 +150,7 @@ function storeConfigDir(host: HostEnv, packages: string): string | undefined {
   };
   for (const pkg of readable(packages).filter((d) => d.startsWith('Claude_'))) {
     const dir = win32.join(packages, pkg, 'LocalCache', 'Roaming', 'Claude');
-    if (readable(dir).includes('claude_desktop_config.json')) return dir;
+    if (readable(dir).includes(DESKTOP_CONFIG)) return dir;
   }
   return undefined;
 }

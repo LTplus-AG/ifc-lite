@@ -18,7 +18,7 @@ import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { collectReferencedEntityIds, getVisibleEntityIds, filterHiddenRefsFromRelationshipLine } from './reference-collector.js';
 import { collectStyleEntities, STYLE_RESCUE_TYPES } from './style-closure.js';
 import { collectGeoreferencingEntities } from './georef-closure.js';
-import { noteUnrootedUpgradeSeed, omitUnrootedUpgrade } from './schema-converter-unrooted-upgrade.js';
+import { noteUpgradeSeed, pruneUpgrade } from './schema-converter-unrooted-upgrade.js';
 import { convertStepLine, needsConversion, type IfcSchemaVersion } from './schema-converter.js';
 import { classifyEntityTypeConversion } from './schema-conversion-loss-report.js';
 import { StyleFlatten } from './schema-style-flatten.js';
@@ -542,7 +542,7 @@ export class MergedExporter {
           expressId, entityRef, source, offset, plan, sourceSchema, schema, guidToFinalId, mode,
           visibility?.hiddenProductIds ?? null, completeIndex, visibility?.included ?? null, slotFill, ifc4Slots, enums, styleFlatten,
         );
-        if (line !== null) { allEntityLines.push(line); if (sourceSchema === 'IFC2X3' && schema === 'IFC4') noteUnrootedUpgradeSeed(line, upgradeSeeds); }
+        if (line !== null) { allEntityLines.push(line); noteUpgradeSeed(line, upgradeSeeds, sourceSchema, schema); }
       }
 
       isFirstModel = false;
@@ -551,7 +551,7 @@ export class MergedExporter {
     setup.minted.appendTo(allEntityLines);
     enums.typedProperties.finish(allEntityLines, ifc4Slots, setup.nextAvailableId, enums.structural, Number.MAX_SAFE_INTEGER);
     for (const warning of finishMergedConversion(allEntityLines, slotFill, ifc4Slots, enums, setup.parentClaims)) normalizeWarnings.add(warning);
-    for (const warning of omitUnrootedUpgrade(allEntityLines, upgradeSeeds)) normalizeWarnings.add(warning);
+    for (const warning of pruneUpgrade(allEntityLines, upgradeSeeds, schema)) normalizeWarnings.add(warning);
 
     if (onProgress) onProgress({ phase: 'assembling', percent: 0.9, entitiesProcessed: allEntityLines.length, entitiesTotal: allEntityLines.length });
     const content = assembleStepBytes(header, placeObjectsForSchema(schema, allEntityLines)); // #9209
@@ -691,7 +691,7 @@ export class MergedExporter {
           expressId, entityRef, source, offset, plan, sourceSchema, schema, guidToFinalId, mode,
           visibility?.hiddenProductIds ?? null, completeIndex, visibility?.included ?? null, slotFill, ifc4Slots, enums, styleFlatten,
         );
-        if (line !== null) { allEntityLines.push(line); if (sourceSchema === 'IFC2X3' && schema === 'IFC4') noteUnrootedUpgradeSeed(line, upgradeSeeds); }
+        if (line !== null) { allEntityLines.push(line); noteUpgradeSeed(line, upgradeSeeds, sourceSchema, schema); }
 
         entityCount++;
         entitiesProcessed++;
@@ -717,7 +717,7 @@ export class MergedExporter {
     setup.minted.appendTo(allEntityLines);
     enums.typedProperties.finish(allEntityLines, ifc4Slots, setup.nextAvailableId, enums.structural, Number.MAX_SAFE_INTEGER);
     for (const warning of finishMergedConversion(allEntityLines, slotFill, ifc4Slots, enums, setup.parentClaims)) normalizeWarnings.add(warning);
-    for (const warning of omitUnrootedUpgrade(allEntityLines, upgradeSeeds)) normalizeWarnings.add(warning);
+    for (const warning of pruneUpgrade(allEntityLines, upgradeSeeds, schema)) normalizeWarnings.add(warning);
 
     if (onProgress) {
       onProgress({ phase: 'assembling', percent: 0.9, entitiesProcessed: totalEntities, entitiesTotal: totalEntities });

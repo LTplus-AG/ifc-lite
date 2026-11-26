@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
-import { outputRecordId, pruneUnrootedUpgrade } from './schema-converter-unrooted-upgrade.js';
+import { outputRecordId, pruneUpgradeFromSource, removesObsoleteResources } from './schema-converter-unrooted-upgrade.js';
 import type { ExportPass } from './step-export-types.js';
 
 /** Finish conversions on the emitted DATA before writing the STEP header. */
@@ -13,7 +13,7 @@ export function finishStepConversion(
   const next = enums.typedProperties.finish(entities, pass.ifc4Slots, nextExpressId, enums.structural);
   const varyingStart = entities.length;
   pass.newEntityCount += enums.structural.finishEffectiveVarying(entities);
-  if (pass.sourceSchema !== 'IFC2X3' || pass.schema !== 'IFC4') {
+  if (!removesObsoleteResources(pass.sourceSchema, pass.schema)) {
     enums.forms.dates.finish(entities);
     return next;
   }
@@ -25,7 +25,7 @@ export function finishStepConversion(
     for (let i = start; i < end; i++) countedIds.add(outputRecordId(entities[i]));
   }
   enums.forms.dates.finish(entities);
-  pass.warnings.push(...pruneUnrootedUpgrade(entities, (id) => {
+  pass.warnings.push(...pruneUpgradeFromSource(entities, pass.sourceSchema, pass.schema, (id) => {
     if (countedIds.delete(id)) pass.newEntityCount--;
   }));
   return next;

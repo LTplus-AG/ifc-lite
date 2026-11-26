@@ -302,11 +302,11 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
         crate::schema_value_forms::ValueForms::buffer_for_dates(bytes, &source_label, &target)
     });
     if target_is_ifc2x3 || date_buffer { checks.forms.enable_dates(); }
-    let may_prune_upgrade = crate::schema_unrooted_upgrade::applies(&source_label, &target)
-        && (!pass.overlay.retype_order.is_empty() || !pass.created_lines.is_empty()
-            || crate::schema_unrooted_upgrade::seeds(content).next().is_some());
+    let may_prune_upgrade = crate::schema_unrooted_upgrade::Upgrade::between(&source_label, &target).filter(|upgrade|
+        !pass.overlay.retype_order.is_empty() || !pass.created_lines.is_empty()
+            || upgrade.seeds(content).next().is_some());
     let mut new_entities = pass.new_entity_count;
-    let delay_header = defer_varying || may_prune_upgrade;
+    let delay_header = defer_varying || may_prune_upgrade.is_some();
     let header = |mut out: &mut dyn Write, created| write_header(&mut out, opts, content, converting, &target, pass.ledger.modified_count() + created);
     if !delay_header { header(out, new_entities)?; }
     let mut body = crate::schema_ifc2x3_placements::Body::for_conversion(&mut *out, target_is_ifc2x3, defer_varying || date_buffer || typed_properties, may_prune_upgrade);

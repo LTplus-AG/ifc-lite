@@ -43,8 +43,15 @@ fn entity_type_renames() {
 /// type names exists in IFC4.
 #[test]
 fn ifc2x3_only_types_are_renamed_on_upgrade() {
+    for target in ["IFC4", "IFC5"] {
+        assert_eq!(
+            convert_entity_type("IFCELECTRICDISTRIBUTIONPOINT", "IFC2X3", target),
+            "IFCELECTRICDISTRIBUTIONBOARD",
+            "2X3 → {target}",
+        );
+    }
+    // The IFC4X3 distribution board layout is covered by the shared vectors.
     for (from, want) in [
-        ("IFCELECTRICDISTRIBUTIONPOINT", "IFCELECTRICDISTRIBUTIONBOARD"),
         ("IFCGASTERMINALTYPE", "IFCBURNERTYPE"),
         ("IFCEQUIPMENTELEMENT", "IFCBUILDINGELEMENTPROXY"),
     ] {

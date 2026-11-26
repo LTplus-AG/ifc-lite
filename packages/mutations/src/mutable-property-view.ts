@@ -20,6 +20,7 @@ import { collectEffectiveChanges, type AttributeExtractor } from './effective-ch
 import { applyMutationsBatch } from './apply-mutations.js';
 import { MutableOverlayState, type ForgottenEntityOverlay } from './mutable-overlay-state.js';
 import { deleteQuantityMember, deleteQuantitySetOverlay } from './quantity-member-delete.js';
+import { keptExplicitUnit } from './quantity-explicit-unit.js';
 
 export type { AttributeExtractor } from './effective-changes.js';
 
@@ -731,6 +732,7 @@ export class MutablePropertyView extends MutableOverlayState {
           type: mutation.quantityType ?? q.type,
           value: mutation.value ?? q.value,
           unit: mutation.unitRemoved ? undefined : mutation.unit ?? q.unit,
+          ...keptExplicitUnit(q, mutation),
         }),
         q => q,
         (name, mutation) => ({

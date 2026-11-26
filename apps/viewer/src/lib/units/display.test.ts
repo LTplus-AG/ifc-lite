@@ -218,3 +218,18 @@ describe('formatConverted', () => {
     assert.strictEqual(formatConverted(1 / 3), '0.3333');
   });
 });
+
+describe('an edited quantity keeps labelling its own Unit (#11592)', () => {
+  it('shows the explicit unit after an overlay edit of the value', async () => {
+    const { MutablePropertyView } = await import('@ifc-lite/mutations');
+    const view = new MutablePropertyView(null, 'm');
+    view.setQuantityExtractor(() => [{
+      name: 'Qto_SpaceBaseQuantities',
+      quantities: [{ name: 'NetFloorArea', type: QuantityType.Area, value: 250_000, explicitUnit: 'cm²', explicitUnitSiScale: 1e-4 }],
+    }] as never);
+    view.setQuantity(1, 'Qto_SpaceBaseQuantities', 'NetFloorArea', 300_000, QuantityType.Area);
+    const edited = view.getQuantitiesForEntity(1)[0].quantities[0];
+    const display = resolveQuantityDisplay(edited.value, edited.type, ProjectUnits.empty(), {}, edited as never);
+    assert.strictEqual(display.unit, 'cm²');
+  });
+});

@@ -58,7 +58,7 @@
 import { getAllAttributesForEntity, getCanonicalEntityName, getSchemaRegistryForVersion, STEP_TRIVIA } from '@ifc-lite/parser';
 import { formatStepReal } from '@ifc-lite/data';
 import { splitTopLevelStepArguments } from './step-argument-parser.js';
-import { withoutComments } from './step-comment-skip.js';
+import { holdsValue } from './step-comment-skip.js';
 import { findOuterArgs, mapOutsideStepStrings } from './step-outer-args.js';
 
 /** IFC defined types whose values are lengths (STEP writes them as bare reals). */
@@ -329,10 +329,7 @@ export function rescaleEntityLengths(
     }
 
     // A live unit-override reference means the value is already in its own unit.
-    const hasExplicitUnit = (idx: number) => {
-      const u = withoutComments(args[idx] ?? '');
-      return u !== '' && u !== '$' && u !== '*';
-    };
+    const hasExplicitUnit = (idx: number) => holdsValue(args[idx] ?? '');
     if (typeUpper === 'IFCPROPERTYTABLEVALUE') {
       // DefiningValues / DefiningUnit and DefinedValues / DefinedUnit.
       for (const [values, unit] of [[2, 5], [3, 6]] as const) {

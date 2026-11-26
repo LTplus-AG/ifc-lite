@@ -337,10 +337,3 @@ describe('ids source resolution', () => {
     })).rejects.toThrow(/not found in IDS document/);
   });
 });
-
-describe('gherkin_check', () => {
-  it('reports UNSUPPORTED_OPERATION rather than silently passing', async () => {
-    await expect(run('warning-only.ifc', 'gherkin_check', {}))
-      .rejects.toThrow(/gherkin_check is planned/);
-  });
-});

@@ -45,6 +45,11 @@ export function successResponse<R>(id: JsonRpcId, result: R): JsonRpcSuccessResp
   return { jsonrpc: JSONRPC_VERSION, id, result };
 }
 
+/** A request failure the client caused, answered as a JSON-RPC error with this code. */
+export class RequestError extends Error {
+  constructor(readonly code: number, message: string, readonly data?: unknown) { super(message); }
+}
+
 export function errorResponse(
   id: JsonRpcId | null,
   code: number,

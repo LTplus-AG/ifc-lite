@@ -14,7 +14,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { validateStepText } from '../src/index.js';
 import { compareFile } from '../parity/compare.js';
-import { hitsTarget, keyString, ourKey, type OracleFinding } from '../parity/normalize.js';
+import { hitsTarget, keyString, oracleKey, ourKey, type OracleFinding } from '../parity/normalize.js';
 
 const corpusDir = join(__dirname, '..', 'parity', 'corpus');
 const manifest: Array<{ file: string; schema: string; targets: string | null }> = JSON.parse(readFileSync(join(corpusDir, 'manifest.json'), 'utf8'));
@@ -37,6 +37,15 @@ describe('crafted parity corpus', () => {
     const matches = report.findings.filter(f => hitsTarget(keyString(ourKey(f)), targets));
     expect(matches.length).toBeGreaterThan(0);
     if (file.endsWith('/shape-shared-by-two-products.ifc')) expect(matches.some(f => f.instance === 36)).toBe(true);
+  });
+
+  it('requires a decided WR11 violation for the crafted target (#11561)', () => {
+    const target = 'IfcShapeModel.WR11';
+    const actual = { category: 'evaluation_error' as const, rule: target, instance: 36, message: 'Attribute not set' };
+    const oracle = { type: 'entity_rule', instance: 36, attribute: target, instanceText: null, message: '\nViolated by:\n    Attribute not set\n' };
+    expect(hitsTarget(keyString(ourKey(actual)), target)).toBe(false);
+    expect(hitsTarget(keyString(oracleKey(oracle)), target)).toBe(false);
+    expect(hitsTarget(keyString(ourKey({ ...actual, category: 'entity_rule' })), target)).toBe(true);
   });
 
   it('cannot satisfy an oracle enum diagnostic with a different attribute on the same instance', async () => {

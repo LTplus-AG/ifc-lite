@@ -87,6 +87,7 @@ export const keyString = (k: Keyed) => `${k.rule}|${k.instance ?? ''}`;
 /** Does a finding key (`rule|instance`) hit a corpus target such as `IfcWall.CorrectPredefinedType` or `not-optional`? */
 export function hitsTarget(key: string, target: string): boolean {
   const rule = key.split('|')[0];
+  if (rule.startsWith('evaluation-error:')) return false;
   const t = target.toLowerCase();
   return rule === t || rule.startsWith(`${t}:`) || rule.endsWith(`:${t}`);
 }

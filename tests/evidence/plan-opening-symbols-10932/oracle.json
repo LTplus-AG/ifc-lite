@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "why": "Keep the plan symbol modules loadable while keeping every door body, symbolizing every operation, summing skewed axes for the centre, symbolizing singular placements, ignoring the flipped view in the fallback axes and dropping the SVG swing lines: the plan symbol tests must go red.",
+  "key": "packages/drawing-2d/src/symbols/opening-symbols.ts",
+  "mutation": "tests/evidence/plan-opening-symbols-10932/behaviour.oracle.patch",
+  "test": "packages/drawing-2d/src/plan-opening-symbols.test.ts"
+}

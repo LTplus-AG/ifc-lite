@@ -1,0 +1,145 @@
+diff --git b/packages/drawing-2d/src/svg-plan-symbols.ts a/packages/drawing-2d/src/svg-plan-symbols.ts
+index 6cc5b7ec3..4ed89c35b 100644
+--- b/packages/drawing-2d/src/svg-plan-symbols.ts
++++ a/packages/drawing-2d/src/svg-plan-symbols.ts
+@@ -17,6 +17,7 @@ export function createPlanSymbolLayer(symbols: readonly PlanSymbol[], transform:
+     for (const { start, end } of symbol.lines) {
+       const a = transformPoint(start, transform);
+       const b = transformPoint(end, transform);
++      svg += `      <line x1="${svgNum(a.x)}" y1="${svgNum(a.y)}" x2="${svgNum(b.x)}" y2="${svgNum(b.y)}"/>\n`;
+     }
+     svg += '    </g>\n';
+   }
+diff --git b/packages/drawing-2d/src/symbols/opening-symbols.ts a/packages/drawing-2d/src/symbols/opening-symbols.ts
+index abd5d4c98..11eb99948 100644
+--- b/packages/drawing-2d/src/symbols/opening-symbols.ts
++++ a/packages/drawing-2d/src/symbols/opening-symbols.ts
+@@ -14,7 +14,7 @@
+ import type { MeshData } from '@ifc-lite/geometry';
+ import type { ArchitecturalSymbol, DoorOperationType, Drawing2D, Line2D, OpeningInfo, Point2D, SectionConfig, SectionPlaneConfig } from '../types.js';
+ import { makeEntityKey, type EntityKey } from '../types.js';
+-import { boundsExtendLine, projectTo2D, vec3 } from '../math.js';
++import { boundsExtendLine, point2DCross, projectTo2D, vec3 } from '../math.js';
+ import { DoorSymbolGenerator } from './door-symbol.js';
+ import { WindowSymbolGenerator } from './window-symbol.js';
+ import { parseDoorOperation, parseWindowPartitioning } from '../openings/operation-types.js';
+@@ -66,17 +66,22 @@ export function isOpeningFillingType(ifcType: string | undefined): boolean {
+   return DOOR_TYPES.has(type) || WINDOW_TYPES.has(type);
+ }
+ 
+-interface Footprint {
+-  center: Point2D;
++interface PlanAxes {
+   along: Point2D;
+   across: Point2D;
++}
++
++interface Footprint extends PlanAxes {
++  center: Point2D;
+   width: number;
+   depth: number;
+   minY: number;
+   maxY: number;
+-  placed: boolean;
+ }
+ 
++/** Below this sine between the projected placement axes the element is not drawn as a symbol. */
++const MIN_AXES_SINE = 1e-3;
++
+ const unit2 = (p: Point2D): Point2D | null => {
+   const len = Math.hypot(p.x, p.y);
+   return len > 1e-9 ? { x: p.x / len, y: p.y / len } : null;
+@@ -109,6 +114,7 @@ export function buildOpeningSymbols(
+     const info = openings?.get(key);
+     const isDoor = DOOR_TYPES.has((first.ifcType ?? '').toLowerCase());
+     const operation = isDoor ? parseDoorOperation(info?.operationType) ?? 'SINGLE_SWING_LEFT' : undefined;
++    if (operation && !SYMBOLIZED_DOOR_OPERATIONS.has(operation)) continue;
+     const width = info?.width ?? footprint.width;
+     const opening: OpeningInfo = {
+       type: isDoor ? 'door' : 'window',
+@@ -125,8 +131,7 @@ export function buildOpeningSymbols(
+     if (operation) {
+       opening.doorOperation = operation;
+       const at = { min: footprint.center, max: footprint.center };
+-      const axes = footprint.placed ? { x: footprint.along, y: footprint.across } : undefined;
+-      const result = doorGenerator.generateFromOpening(opening, at, footprint.along, axes);
++      const result = doorGenerator.generateFromOpening(opening, at, footprint.along, { x: footprint.along, y: footprint.across });
+       symbols.push({ kind: 'door', ...base, lines: result.lines, symbol: { ...result.symbol, entityId: base.entityId } });
+     } else {
+       const partitioning = parseWindowPartitioning(info?.partitioningType) ?? 'SINGLE_PANEL';
+@@ -153,23 +158,24 @@ export async function generateWithOpeningSymbols(
+ ): Promise<Drawing2D> {
+   if (options?.openingSymbols === false || config.plane.axis !== 'y' || config.plane.customPlane) return generate(meshes);
+   const planSymbols = buildOpeningSymbols(meshes, config.plane, options?.openings);
+-  const symbolized = new Set<EntityKey>();
++  const symbolized = new Set(planSymbols.map((s) => makeEntityKey(s.modelIndex, s.entityId)));
+   const drawing = await generate(meshes.filter((m) => !symbolized.has(makeEntityKey(m.modelIndex ?? 0, m.expressId))));
+   let bounds = drawing.bounds;
+   for (const symbol of planSymbols) for (const line of symbol.lines) bounds = boundsExtendLine(bounds, line);
+   return { ...drawing, planSymbols, bounds };
+ }
+ 
+-function placementAxes(mesh: MeshData, plane: SectionPlaneConfig): { along: Point2D; across: Point2D } | null {
+-  const m = mesh.localToWorld;
+-  if (!m || m.length !== 16) return null;
++/** The placement's axes in the plan, or `null` when they are singular there. */
++function placementAxes(m: readonly number[], plane: SectionPlaneConfig): PlanAxes | null {
+   const along = unit2(projectTo2D(vec3(m[0], m[4], m[8]), plane.axis, plane.flipped));
+   const across = unit2(projectTo2D(vec3(-m[2], -m[6], -m[10]), plane.axis, plane.flipped));
+-  return along && across ? { along, across } : null;
++  return along && across && Math.abs(point2DCross(along, across)) > MIN_AXES_SINE ? { along, across } : null;
+ }
+ 
+ function measureFootprint(group: readonly MeshData[], plane: SectionPlaneConfig): Footprint | null {
+-  const placed = placementAxes(group[0], plane);
++  const m = group[0].localToWorld;
++  const placed = m?.length === 16 ? placementAxes(m, plane) : undefined;
++  if (placed === null) return null;
+   const points: Point2D[] = [];
+   let minY = Infinity;
+   let maxY = -Infinity;
+@@ -184,7 +190,7 @@ function measureFootprint(group: readonly MeshData[], plane: SectionPlaneConfig)
+     }
+   }
+   if (points.length === 0) return null;
+-  const axes = placed ?? principalAxes(points);
++  const axes = placed ?? principalAxes(points, plane.flipped);
+   let s0 = Infinity, s1 = -Infinity, t0 = Infinity, t1 = -Infinity;
+   for (const q of points) {
+     const s = q.x * axes.along.x + q.y * axes.along.y;
+@@ -196,20 +202,20 @@ function measureFootprint(group: readonly MeshData[], plane: SectionPlaneConfig)
+   }
+   const sm = (s0 + s1) / 2;
+   const tm = (t0 + t1) / 2;
++  const det = point2DCross(axes.along, axes.across);
+   return {
+-    center: { x: axes.along.x * sm + axes.across.x * tm, y: axes.along.y * sm + axes.across.y * tm },
++    center: { x: (sm * axes.across.y - tm * axes.along.y) / det, y: (tm * axes.along.x - sm * axes.across.x) / det },
+     along: axes.along,
+     across: axes.across,
+     width: s1 - s0,
+     depth: t1 - t0,
+     minY,
+     maxY,
+-    placed: placed !== null,
+   };
+ }
+ 
+-/** Axis-aligned fallback without a placement: the longer plan extent runs along the wall. */
+-function principalAxes(points: readonly Point2D[]): { along: Point2D; across: Point2D } {
++/** Axis-aligned fallback without a placement: the longer plan extent runs along the wall, mirrored with a flipped view. */
++function principalAxes(points: readonly Point2D[], flipped: boolean): PlanAxes {
+   let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+   for (const p of points) {
+     if (p.x < x0) x0 = p.x;
+@@ -217,7 +223,9 @@ function principalAxes(points: readonly Point2D[]): { along: Point2D; across: Po
+     if (p.y < y0) y0 = p.y;
+     if (p.y > y1) y1 = p.y;
+   }
+-  return x1 - x0 >= y1 - y0
++  const axes = x1 - x0 >= y1 - y0
+     ? { along: { x: 1, y: 0 }, across: { x: 0, y: 1 } }
+     : { along: { x: 0, y: 1 }, across: { x: -1, y: 0 } };
++  const mirror = (p: Point2D): Point2D => ({ x: flipped ? -p.x : p.x, y: p.y });
++  return { along: mirror(axes.along), across: mirror(axes.across) };
+ }

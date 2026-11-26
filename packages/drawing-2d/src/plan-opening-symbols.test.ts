@@ -7,9 +7,32 @@ import type { MeshData } from '@ifc-lite/geometry';
 import { generateFloorPlan } from './drawing-generator.js';
 import { exportToSVG } from './svg-exporter.js';
 import { box } from './drawing-stream.fixtures.test.js';
-import { makeEntityKey, type DoorSwingParameters, type Drawing2D, type SymbolParameters } from './types.js';
+import { vec3, vec3Cross, vec3Scale } from './math.js';
+import { buildOpeningSymbols } from './symbols/opening-symbols.js';
+import { makeEntityKey, type DoorSwingParameters, type Drawing2D, type SymbolParameters, type Vec3 } from './types.js';
 
 type V3 = [number, number, number];
+
+/** A row-major Y-up `localToWorld` with local X along `x`, object-space Z along `z` and origin `t`. */
+function frame(x: Vec3, z: Vec3, t: V3): number[] {
+  const y = vec3Cross(z, x);
+  return [x.x, y.x, z.x, t[0], x.y, y.y, z.y, t[1], x.z, y.z, z.z, t[2], 0, 0, 0, 1];
+}
+
+function toWorld(m: readonly number[], [x, y, z]: V3): V3 {
+  const row = (r: number) => m[4 * r] * x + m[4 * r + 1] * y + m[4 * r + 2] * z + m[4 * r + 3];
+  return [row(0), row(1), row(2)];
+}
+
+/** A 0.9 m door leaf whose world positions are its local box moved by `localToWorld`. */
+function placedDoor(expressId: number, localToWorld: number[]): MeshData {
+  const local = box(expressId, [0, 0, -0.1], [0.9, 2.1, 0], { ifcType: 'IfcDoor', localToWorld });
+  const positions = new Float32Array(local.positions.length);
+  for (let i = 0; i < positions.length; i += 3) {
+    positions.set(toWorld(localToWorld, [local.positions[i], local.positions[i + 1], local.positions[i + 2]]), i);
+  }
+  return { ...local, positions };
+}
 
 /**
  * An IfcDoor as the wasm pipeline emits it: a row-major Y-up `localToWorld` and
@@ -62,7 +85,18 @@ describe('headless plans draw door and window symbols (#10932)', () => {
       expect(width).toBeCloseTo(0.9, 5);
     }
     expect(drawing.cutPolygons.filter((p) => p.ifcType === 'IfcDoor')).toEqual([]);
-    expect(exportToSVG(drawing)).toMatch(/<g data-entity-id="20" data-ifc-type="IfcDoor" data-symbol="door"/);
+    const group = exportToSVG(drawing).match(/<g data-entity-id="20" data-ifc-type="IfcDoor" data-symbol="door"[^>]*>([^]*?)<\/g>/);
+    expect(group).not.toBeNull();
+    const svgLines = [...(group?.[1] ?? '').matchAll(/<line x1="([-\d.]+)" y1="([-\d.]+)" x2="([-\d.]+)" y2="([-\d.]+)"\/>/g)].map((m) => m.slice(1).map(Number));
+    expect(svgLines).toHaveLength(symbolsOf(drawing, 'door').find((s) => s.entityId === 20)?.lines.length ?? -1);
+    const [[hx, hy, lx, ly], ...arc] = svgLines;
+    const radius = Math.hypot(lx - hx, ly - hy);
+    expect(radius).toBeGreaterThan(0);
+    expect(arc.length).toBeGreaterThan(1);
+    for (const [x1, y1, x2, y2] of arc) {
+      expect(Math.hypot(x1 - hx, y1 - hy)).toBeCloseTo(radius, 2);
+      expect(Math.hypot(x2 - hx, y2 - hy)).toBeCloseTo(radius, 2);
+    }
   });
 
   it('prefers the authored OverallWidth over the mesh extent', async () => {
@@ -141,5 +175,40 @@ describe('headless plans draw door and window symbols (#10932)', () => {
     expectPoint(hinge, 101, 49.95);
     expectPoint(leafEnd, 101, 49.05);
     expectPoint(closedEnd, 101.9, 49.95);
+  });
+
+  it('keeps the body of a door whose placement axes are singular in the plan', async () => {
+    const r = Math.SQRT1_2;
+    const parallel = placedDoor(20, frame(vec3(r, r, 0), vec3(-r, r, 0), [1, 0.8, 0]));
+    const lying = placedDoor(21, frame(vec3(1, 0, 0), vec3(0, 1, 0), [3, 1.25, 0]));
+    const drawing = await generateFloorPlan([parallel, lying], 1.2, options);
+    expect(symbolsOf(drawing, 'door')).toEqual([]);
+    expect([...new Set(drawing.cutPolygons.filter((p) => p.ifcType === 'IfcDoor').map((p) => p.entityId))].sort()).toEqual([20, 21]);
+  });
+
+  it('centres a tilted door whose plan axes are not orthogonal on its own body', async () => {
+    const [c, s, k] = [Math.cos(Math.PI / 6), Math.sin(Math.PI / 6), 0.6];
+    const swingTo = vec3(s * k, c * k, -Math.sqrt(1 - k * k));
+    const localToWorld = frame(vec3(c, -s, 0), vec3Scale(swingTo, -1), [1, 0, 2]);
+    const openings = new Map([[makeEntityKey(0, 20), { width: 0.9 }]]);
+    const drawing = await generateFloorPlan([placedDoor(20, localToWorld)], 1.2, { ...options, openings });
+    const [cx, , cz] = toWorld(localToWorld, [0.45, 1.05, -0.05]);
+    const across = Math.hypot(swingTo.x, swingTo.z);
+    const { hinge, leafEnd } = leafAndClosedEnd(drawing, 20);
+    expectPoint(hinge, cx - 0.45, cz);
+    expectPoint(leafEnd, cx - 0.45 + (0.9 * swingTo.x) / across, cz + (0.9 * swingTo.z) / across);
+  });
+
+  it('hinges a door without localToWorld at the mirrored point in a flipped view', () => {
+    const plain = box(20, [1, 0, -0.1], [2, 2.1, 0], { ifcType: 'IfcDoor' });
+    const leaf = (flipped: boolean) => {
+      const lines = buildOpeningSymbols([plain], { axis: 'y', position: 1.2, flipped }).find((symbol) => symbol.entityId === 20)?.lines ?? [];
+      if (lines.length === 0) throw new Error(`no door lines with flipped=${flipped}`);
+      return lines[0];
+    };
+    expectPoint(leaf(false).start, 1, -0.05);
+    expectPoint(leaf(false).end, 1, 0.95);
+    expectPoint(leaf(true).start, -1, -0.05);
+    expectPoint(leaf(true).end, -1, 0.95);
   });
 });

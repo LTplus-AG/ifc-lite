@@ -150,3 +150,15 @@ it('refuses a retry that finds a product drawn from records in the scene but gon
   await assert.rejects(ensureExactSourceGeometry(MODEL, [10, 20], signal()), /could not be prepared for appearance \(the re-mesh returned no geometry\)/);
   assert.equal(mesher.requests.length, 0, 'nothing in the store to re-mesh');
 });
+
+it('refuses a retry whose store holds no mesh at all while the scene still draws a product from records', async () => {
+  useViewerStore.getState().models.get(MODEL)!.geometryResult!.meshes.splice(0);
+  setGlobalRendererRef({ current: { getScene: () => ({ getMeshDataPieces: (id: number) => (id === OFFSET + 10 ? [compactWall(id, id + 1)] : undefined) }) } as unknown as Renderer });
+  await assert.rejects(ensureExactSourceGeometry(MODEL, [10], signal()), /\(the re-mesh returned no geometry\)/);
+});
+
+it('refuses a re-mesh that brings meshes back with neither an IFC item nor corner provenance', async () => {
+  mesher.restore();
+  mesher = installScriptedMesher((request) => [...request.targets].map((id) => triangleFor(id)));
+  await assert.rejects(ensureExactSourceGeometry(MODEL, [10], signal()), /carries no corner provenance/);
+});

@@ -26,22 +26,11 @@
 import type { MeshData } from '@ifc-lite/geometry';
 import { useViewerStore } from '@/store';
 import { getGlobalRenderer } from '@/lib/renderer-ref';
-import { isReleasedMesh } from '@/lib/released-mesh-provenance';
 import { requestRemesh, type RemeshOutcome } from '@/lib/remesh/remesh-service';
 
 /** How long the viewport may take to swap the re-meshed geometry in. */
 const SCENE_SWAP_WAIT_MS = 30_000;
 const SCENE_SWAP_POLL_MS = 50;
-
-/**
- * A mesh appearance cannot bind to: drawn from compact records, or naming its
- * IFC item without corner provenance. Released CPU geometry (#10264) is left
- * to its own readback. Reads no geometry array, so a compact mesh is not decoded.
- */
-function lacksCornerProvenance(mesh: MeshData): boolean {
-  if (mesh.compact) return true;
-  return mesh.geometryItemId !== undefined && mesh.appearanceSource === undefined && !isReleasedMesh(mesh);
-}
 
 function reasonOf(outcome: Exclude<RemeshOutcome, { status: 'applied' }>): string {
   if (outcome.status === 'refused') return outcome.reason;
@@ -50,9 +39,11 @@ function reasonOf(outcome: Exclude<RemeshOutcome, { status: 'applied' }>): strin
 }
 
 const isCompact = (mesh: MeshData): boolean => mesh.compact !== undefined;
+/** What a re-meshed product must not come back as: drawn from records, or without corner provenance. Reads no array. */
+const lacksExactProvenance = (mesh: MeshData): boolean => isCompact(mesh) || mesh.appearanceSource === undefined;
 
-/** Model-local product ids of `productIds` with a mesh in `meshes` that `lacks` (default: no corner provenance). */
-function missingProducts(meshes: readonly MeshData[], productIds: ReadonlyMap<number, number>, lacks = lacksCornerProvenance): number[] {
+/** Model-local product ids of `productIds` with a mesh in `meshes` that `lacks`. */
+function missingProducts(meshes: readonly MeshData[], productIds: ReadonlyMap<number, number>, lacks: (mesh: MeshData) => boolean): number[] {
   const missing = new Set<number>();
   for (const mesh of meshes) {
     const product = productIds.get(mesh.expressId);
@@ -100,8 +91,9 @@ async function sceneHasExactGeometry(expected: ReadonlyMap<number, number>, sign
  */
 export async function ensureExactSourceGeometry(modelId: string, productIds: readonly number[], signal: AbortSignal): Promise<void> {
   const state = useViewerStore.getState();
-  const meshes = state.models.get(modelId)?.geometryResult?.meshes;
-  if (!meshes?.length || productIds.length === 0) return;
+  // An empty store still checks the scene: an earlier re-mesh may have removed a product it still draws from records.
+  const meshes = state.models.get(modelId)?.geometryResult?.meshes ?? [];
+  if (productIds.length === 0) return;
   const byGlobalId = new Map(productIds.map((id) => [state.toGlobalId(modelId, id), id]));
   // Only products drawn from compact records (in the store, or still in the scene after an earlier, aborted
   // run re-meshed the store) are prepared. Without `?compactGeom` there are none, and the edit runs as before.
@@ -120,7 +112,7 @@ export async function ensureExactSourceGeometry(modelId: string, productIds: rea
       : [...remeshed.keys()].some((globalId) => !after.some((mesh) => mesh.expressId === globalId))
         ? 'the re-mesh returned no geometry'
         // Never re-mesh in a loop: what came back must carry the provenance, or the edit cannot bind.
-        : missingProducts(after, remeshed).length > 0 ? 'the re-meshed geometry carries no corner provenance' : null;
+        : missingProducts(after, remeshed, lacksExactProvenance).length > 0 ? 'the re-meshed geometry carries no corner provenance' : null;
     if (why !== null) {
       throw new Error(`The exact geometry of ${missing.length} object(s) could not be prepared for appearance (${why}). Refresh the preview, or reload the model.`);
     }

@@ -112,11 +112,10 @@ function parseInstallArgs(argv: string[], host: HostEnv): InstallArgs | 'help' {
   }
   const conflict = bridgeConflict(parsed);
   if (conflict) throw new InstallError(conflict);
-  // Mirrors loader.ts: a model outside every --allow root is refused at load. The
-  // loader joins with '/' only (a Windows gap, deferred); this uses the host's separator.
+  // loader.ts's exact rule, so what it refuses at load is refused here (its '/'-only
+  // join also refuses Windows paths today; install says so rather than write it).
   const roots = parsed.allowedPaths ?? [];
-  const sep = host.platform === 'win32' ? '\\' : '/';
-  const outside = roots.length > 0 && parsed.files.find((f) => !roots.some((r) => f === r || f.startsWith(r + sep)));
+  const outside = roots.length > 0 && parsed.files.find((f) => !roots.some((r) => f === r || f.startsWith(r + '/')));
   if (outside) throw new InstallError(`${outside} is outside every --allow root; the server would refuse it.`);
   if (!parsed.bridge && (parsed.insecure || parsed.allowedOrigins)) {
     throw new InstallError('--insecure and --allow-origin only act with --bridge here; for HTTP, give the client the server URL.');

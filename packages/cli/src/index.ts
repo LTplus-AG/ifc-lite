@@ -78,7 +78,7 @@ async function main(): Promise<void> {
   activeCommand = command;
   const commandArgs = args.slice(1);
 
-  if (commandArgs.includes('--out') && !COMMANDS_WITH_OUT.has(command)) {
+  if (!mcpInstall && commandArgs.includes('--out') && !COMMANDS_WITH_OUT.has(command)) {
     fatal(
       `\`${command}\` does not write to a file: it has no --out. ` +
         `Redirect its output instead, e.g. \`ifc-lite ${command} ... > out.json\`. ` +

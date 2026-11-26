@@ -345,11 +345,12 @@ export class SceneCompact {
   /**
    * Stop drawing the given entities' meshes from pages without moving them
    * anywhere, for a removal: the caller drops their registrations. Queued
-   * ones go to the bucket queue, as an f32 mesh still queued would stay queued.
+   * ones are discarded.
    */
   drop(ids: Iterable<number>): void {
     const selection = { ids: new Set(ids) };
-    this.demoteQueued(selection);
+    // Queued meshes of a removed entity are discarded: uploaded later, the entity would come back.
+    this.queue = this.queue.filter((mesh) => !selection.ids.has(mesh.expressId));
     const sources = this.chosen(selection).map(([source]) => source);
     if (sources.length > 0) this.unpage(sources);
   }

@@ -250,6 +250,18 @@ describe('compact meshes in the scene', () => {
     assert.equal(decoded(), 0);
   });
 
+  it('discard a removed entity\'s still-queued compact meshes, so it does not come back (#11525)', async () => {
+    const gpu = fakeGpu(), scene = await newScene();
+    scene.queueMeshes(compactBatch([
+      { expressId: 41, at: [0, 0, 0], size: 1, color: GREY },
+      { expressId: 42, at: [2, 0, 0], size: 1, color: GREY },
+    ]));
+    scene.removeMeshesForEntity(41); // before the first drain, with no stream running
+    flushAll(scene, gpu);
+    assert.deepEqual(entitiesOf(scene.getBatchedMeshes()), [42]);
+    assert.equal(scene.getMeshDataPieces(41), undefined);
+  });
+
   it('move only the edited entity to buckets, each mesh registered once', async () => {
     const gpu = fakeGpu(), scene = await newScene();
     upload(scene, gpu, compactBatch([

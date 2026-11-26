@@ -261,7 +261,7 @@ impl ValueForms {
         };
         line(&self.dropped, "were dropped").into_iter()
             .chain(line(&self.emptied, "left a slot the target requires as $, so the file is not valid against its header"))
-            .chain(self.dates.warning())
+            .chain(self.dates.warnings())
             .chain(sites(&self.narrowed_dates, &|total, list| format!("{total} date value(s) kept the calendar date and dropped the time and any timezone: {list} (#10879).")))
             .chain(sites(&self.filled_dates, &|total, list| format!("{total} time value(s) wrote an unset minute or second as 00, a precision the IFC2X3 source does not state: {list} (#11199).")))
             .collect()

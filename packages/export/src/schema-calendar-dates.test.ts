@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { IfcParser } from '@ifc-lite/parser';
 import { expect, it } from 'vitest';
 import { MergedExporter } from './merged-exporter.js';
+import { analyzeConversionLoss } from './schema-conversion-loss-report.js';
 import { StepExporter } from './step-exporter.js';
 
 const { calendarWarnings } = JSON.parse(readFileSync(
@@ -75,6 +76,11 @@ it('leaves out an IFC2X3 date record nothing references, even when no slot conve
     expect(text).not.toMatch(/=IFC(CALENDARDATE|LOCALTIME)\(/);
     expect(result.stats.entityCount).toBe([...text.matchAll(/^#\d+=/gm)].length);
     expect(result.stats.warnings.join('\n')).not.toContain('still referenced');
+    expect(result.stats.warnings.join('\n')).not.toContain('readers may reject');
+    expect(result.stats.warnings).toContain('#2 (IFCCALENDARDATE) was omitted because nothing references it and the target schema does not declare its type (#11199).');
+    const preview = analyzeConversionLoss(store, 'IFC2X3', schema).describe().join('\n');
+    expect(preview).toContain('IFCCALENDARDATE (#2) will be omitted because nothing references it');
+    expect(preview).toContain('IFCLOCALTIME (#3) will be omitted because nothing references it');
   }
 });
 

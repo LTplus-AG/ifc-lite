@@ -328,7 +328,8 @@ fn an_unreferenced_date_record_goes_without_a_slot_to_convert_11199() {
         for (output, written, warnings) in [(&direct, stats.written, &warnings), (&logged, log_stats.written, &log_stats.warnings)] {
             assert!(!output.contains("=IFCCALENDARDATE(") && !output.contains("=IFCLOCALTIME("), "{schema}: {output}");
             assert_eq!(written, output.lines().filter(|line| line.starts_with('#')).count(), "{schema}");
-            assert!(!warnings.iter().any(|w| w.contains("still referenced")), "{warnings:?}");
+            assert!(!warnings.iter().any(|w| w.contains("still referenced") || w.contains("readers may reject")), "{warnings:?}");
+            assert!(warnings.iter().any(|w| w == "#2 (IFCCALENDARDATE) was omitted because nothing references it and the target schema does not declare its type (#11199)."), "{warnings:?}");
         }
     }
 }

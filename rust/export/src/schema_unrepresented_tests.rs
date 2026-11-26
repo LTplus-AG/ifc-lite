@@ -89,7 +89,9 @@ fn every_source_only_type_has_a_route_10902() {
 
 /// As the TypeScript twin's end-to-end case: an IFC2X3 -> IFC4 upgrade
 /// maps, renames, proxies or keeps each record, and the warnings name the
-/// proxied and kept ones.
+/// proxied and omitted ones. The standalone IFCCALENDARDATE #6 is referenced by
+/// nothing, so it is left out rather than written verbatim (#11199): #10902 kept
+/// verbatim dates only because a referenced one cannot go without dangling refs.
 #[test]
 fn an_upgrade_writes_each_route_and_names_it_10902() {
     let data = "#1=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'P',$,$,$,$,$,$);\n#2=IFCSPACE('0AvctVUKr0kugbFTf53O9L',$,'Room',$,$,$,$,$,.ELEMENT.,.INTERNAL.,$);\n#3=IFCACTOR('0BvctVUKr0kugbFTf53O9L',$,'Tenant',$,$,$);\n#4=IFCRELOCCUPIESSPACES('0CvctVUKr0kugbFTf53O9L',$,$,$,(#2),$,#3,$);\n#5=IFCMOVE('0DvctVUKr0kugbFTf53O9L',$,'Move',$,$,'T-1','planned',$,.F.,1,$,$,('pack'));\n#6=IFCCALENDARDATE(1,2,2020);\n#7=IFCSERVICELIFE('0EvctVUKr0kugbFTf53O9L',$,'Life',$,$,.ACTUALSERVICELIFE.,10.);";
@@ -100,10 +102,11 @@ fn an_upgrade_writes_each_route_and_names_it_10902() {
     assert_eq!(line("#4="), "#4=IFCRELASSIGNSTOACTOR('0CvctVUKr0kugbFTf53O9L',$,$,$,(#2),$,#3,$);");
     assert!(line("#7=") == "#7=IFCPROXY('0EvctVUKr0kugbFTf53O9L',$,'Life',$,$,$,$,.NOTDEFINED.,$);", "{out}");
     assert_eq!(line("#5="), "#5=IFCTASK('0DvctVUKr0kugbFTf53O9L',$,'Move',$,$,'T-1',$,'planned',$,.F.,1,$,$);");
-    assert_eq!(line("#6="), "#6=IFCCALENDARDATE(1,2,2020);");
+    assert_eq!(line("#6="), "");
     let named = warnings.join("\n");
     assert!(named.contains("were written as IFCPROXY: IFCSERVICELIFE (1)."), "{named}");
-    assert!(named.contains("which readers may reject: IFCCALENDARDATE (1)."), "{named}");
+    assert!(named.contains("#6 (IFCCALENDARDATE) was omitted because nothing references it"), "{named}");
+    assert!(!named.contains("readers may reject: IFCCALENDARDATE"), "{named}");
 }
 
 /// #11326, twin of the TypeScript loss report: IfcMove and IfcOrderAction attributes with no

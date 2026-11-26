@@ -10,7 +10,7 @@ import { IfcTypeEnumFromString, isSpatialStructureType, walkPlacementChain } fro
 import { decodeStepStringLiteral } from '@ifc-lite/encoding';
 import { stepString } from './schema-converter-structural-source.js';
 import { refsOutsideStrings, splitTopLevelArgs, STRUCTURE_RELATION_ATTRS, SubsetSelectionError } from './step-subset-relations.js';
-import { slotRef } from './step-subset-slots.js';
+import { slotRef } from './schema-converter-structural-source.js';
 import { structureParents } from './step-subset-spatial-ancestors.js';
 import type { ParsedStep } from './step-subset.js';
 
@@ -165,7 +165,7 @@ function hostOf(parsed: ParsedStep): Map<number, number> {
     const args = splitTopLevelArgs(inst.body);
     if (!args || args.length !== STRUCTURE_RELATION_ATTRS) continue;
     const whole = slotRef(args[4]);
-    if (whole === undefined) continue;
+    if (whole === null) continue;
     if (PART_WHOLE_RELATIONS.has(inst.type) && isSpatialStructureType(IfcTypeEnumFromString(parsed.instances.get(whole)?.type ?? ''))) continue;
     for (const part of refsOutsideStrings(args[5])) out.set(part, whole);
   }

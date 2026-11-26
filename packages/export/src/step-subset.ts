@@ -20,7 +20,7 @@ import { stepStringLiteralEnd } from '@ifc-lite/encoding';
 import { expandTypes } from '@ifc-lite/parser';
 import { getIfcRootTypes } from './subset-roots.js';
 import { planSpatialRelations, refsOutsideStrings, splitTopLevelArgs, SubsetSelectionError, type StepRecord, type Subset } from './step-subset-relations.js';
-import { slotRef } from './step-subset-slots.js';
+import { slotRef } from './schema-converter-structural-source.js';
 import { skipStepComment } from './step-comment-skip.js';
 import { spatialAncestors } from './step-subset-spatial-ancestors.js';
 import { resolveStorey, storeyMembers } from './step-subset-storey.js';
@@ -35,13 +35,6 @@ export interface ParsedStep {
   guidToId: Map<string, number>;
 }
 
-/**
- * String-aware STEP DATA tokenizer. Splits the data section into instances at
- * the `;` that terminates each `#id = TYPE(...)`, ignoring `;`/`#`/`(` inside
- * STEP string literals (`'...'`, where `''` is an escaped quote). A regex split
- * mis-fires on names containing `;` or `#` (common in Revit exports), so this
- * scans character by character instead.
- */
 /** Index of the `DATA;` section token, ignoring header string literals and comments; -1 if none. */
 function findDataSection(text: string): number {
   for (let i = 0; i < text.length; i++) {
@@ -62,6 +55,13 @@ function findDataSection(text: string): number {
 /** Voids, fills and projections: the relation pulls a feature in once its anchor (attribute 5) is kept. */
 const HOST_FEATURE_RELATIONS = new Set(['IFCRELVOIDSELEMENT', 'IFCRELFILLSELEMENT', 'IFCRELPROJECTSELEMENT']);
 
+/**
+ * String-aware STEP DATA tokenizer. Splits the data section into instances at
+ * the `;` that terminates each `#id = TYPE(...)`, ignoring `;`/`#`/`(` inside
+ * STEP string literals (`'...'`, where `''` is an escaped quote). A regex split
+ * mis-fires on names containing `;` or `#` (common in Revit exports), so this
+ * scans character by character instead.
+ */
 export function parseStep(text: string): ParsedStep {
   const dataStart = findDataSection(text);
   if (dataStart < 0) throw new Error('Not a STEP file: no DATA; section');
@@ -219,21 +219,24 @@ export function buildSubset(seedProducts: Set<number>, parsed: ParsedStep): Subs
   // (+ the IfcOpeningElement's forward closure), then each IfcRelFillsElement
   // whose opening is now kept (+ the filler window/door). The fixpoint loop lets
   // a fill relation see an opening that a voids relation added in an earlier pass.
+  // Each relation's anchor, read once: it does not change between passes.
+  const features: Array<{ inst: StepRecord; anchor: number | null }> = [];
+  for (const inst of parsed.instances.values()) {
+    if (HOST_FEATURE_RELATIONS.has(inst.type)) features.push({ inst, anchor: slotRef(splitTopLevelArgs(inst.body)?.[4]) });
+  }
   let grew = true;
   while (grew) {
     grew = false;
-    for (const inst of parsed.instances.values()) {
+    for (const { inst, anchor } of features) {
       if (keep.has(inst.id)) continue;
-      if (!HOST_FEATURE_RELATIONS.has(inst.type)) continue;
       // Different meanings, one shape. `Relating` (attribute 5, the second-to-last
       // reference) is the ANCHOR that must be kept already: the host wall for voids, the
       // opening for fills. `Related` (attribute 6) is what the relation drags in, the
       // opening or the filling window/door, and it is not read here because the closure
       // below reaches it anyway.
-      // Read from its attribute slot, comments allowed, not the second-to-last
-      // `#` in the body (a trailing comment naming an id would win that race).
-      const anchor = slotRef(splitTopLevelArgs(inst.body)?.[4]);
-      if (anchor === undefined || !keep.has(anchor)) continue;
+      // The anchor comes from its attribute slot, comments allowed, not the
+      // second-to-last `#` in the body (a trailing comment would win that race).
+      if (anchor === null || !keep.has(anchor)) continue;
       // Close over the relation itself, not just what it drags in: the rel's own
       // OwnerHistory must be kept too or the subset emits a dangling ref.
       forwardClosure([inst.id], parsed, keep);

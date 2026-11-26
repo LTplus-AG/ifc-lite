@@ -21,7 +21,8 @@
  * was actually selected, and needs no type list at all.
  */
 import { IfcTypeEnumFromString, isSpatialStructureType } from '@ifc-lite/data';
-import { slotRef, withoutComments } from './step-subset-slots.js';
+import { slotRef } from './schema-converter-structural-source.js';
+import { withoutComments } from './step-comment-skip.js';
 import {
   splitTopLevelArgs,
   STRUCTURE_RELATIONS,
@@ -60,18 +61,18 @@ export function structureParents(
     if (args === null || args.length !== STRUCTURE_RELATION_ATTRS) continue;
     // Comments around a reference are trivia (slotRef / withoutComments).
     const parentId = slotRef(args[relatingIdx]);
-    if (parentId === undefined) continue;
+    if (parentId === null) continue;
     if (inst.type === 'IFCRELAGGREGATES') {
       const parentType = IfcTypeEnumFromString(instances.get(parentId)?.type ?? '');
       if (!isSpatialStructureType(parentType)) continue;
     }
-    const setText = withoutComments(args[relatedIdx]).trim();
+    const setText = withoutComments(args[relatedIdx]);
     if (!setText.startsWith('(') || !setText.endsWith(')')) continue;
     const members = splitTopLevelArgs(setText.slice(1, -1));
     if (members === null) continue;
     for (const member of members) {
       const childId = slotRef(member);
-      if (childId === undefined) continue;
+      if (childId === null) continue;
       const existing = parents.get(childId);
       if (existing) existing.push(parentId);
       else parents.set(childId, [parentId]);

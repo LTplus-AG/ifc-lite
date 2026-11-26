@@ -124,6 +124,17 @@ describe('one server: headless and tab', () => {
       .toBe('Call tab_model_list for ids; not tab_model_list twice, nor model_list_x.');
   });
 
+  it('still answers the 0.32 surface tool names, without listing them', async () => {
+    const agent = await start();
+    const { tab } = await pairTab({ port: agent.r.bridge.port, code: agent.r.bridge.pairingCode(), a2uiSurface: true });
+    tabs.push(tab);
+    const names = await agent.tools();
+    expect(names).toContain('tab_ui_events');
+    expect(names).not.toContain('viewer_ui_events');
+    expect(names).not.toContain('viewer_show_ui');
+    expect((await agent.call('viewer_ui_events')).structuredContent?.events).toEqual([]);
+  });
+
   it('refuses a headless registration that takes a bridge name', async () => {
     const { r } = await start();
     const tool = buildDefaultToolRegistry().list()[0];

@@ -66,6 +66,13 @@ function mcpName(tabName: string): string {
   return TAB_TOOL_PREFIX + tabName;
 }
 
+/**
+ * The 0.32 names of the surface tools, still callable (never listed) for one
+ * minor release. Remove in 0.34.
+ */
+const LEGACY_SURFACE_TOOL = 'viewer_show_ui';
+const LEGACY_UI_EVENTS_TOOL = 'viewer_ui_events';
+
 /** Longest MCP tool name many clients accept; a longer `tab_` name is not served. */
 const MAX_MCP_TOOL_NAME = 64;
 
@@ -250,8 +257,8 @@ export class BridgeToolRegistry extends ToolRegistry {
 
   override get(name: string): Tool | null {
     if (name === BRIDGE_STATUS_TOOL) return this.status;
-    if (name === TAB_SHOW_UI_TOOL) return this.surface;
-    if (name === BRIDGE_UI_EVENTS_TOOL) return this.events;
+    if (name === TAB_SHOW_UI_TOOL || name === LEGACY_SURFACE_TOOL) return this.surface;
+    if (name === BRIDGE_UI_EVENTS_TOOL || name === LEGACY_UI_EVENTS_TOOL) return this.events;
     if (!name.startsWith(TAB_TOOL_PREFIX)) return super.get(name);
     const tab = this.bridge.tab();
     if (!tab) return notConnectedTool(this.bridge, name);

@@ -43,13 +43,16 @@ const LIMITS = {
 };
 
 export function wrapScript(code: string): string {
-  return `(function (run, P, isInstance, then, apply, slice, Str, stringify, keys, isArray, create, defineProperty, freeze, glob, ErrorCtor, TypeErrorCtor, SetCtor, setAdd, setHas, setDelete, unbox, objectProto, getProto, parse, charCodeAt, SyntaxErrorCtor, L) {
+  return `(function (run, P, isInstance, then, apply, slice, Str, stringify, keys, isArray, create, defineProperty, glob, ErrorCtor, TypeErrorCtor, SetCtor, setAdd, setHas, setDelete, unbox, objectProto, getProto, parse, charCodeAt, SyntaxErrorCtor, RegExpCtor, exec, bind, InternalErrorCtor, toStringTag, L) {
   function msg(e) {
     // message is read once and coerced inside the try, so a getter or
     // toString cannot throw past the wrapper and pose as a sandbox error.
     var m;
     try {
       var x = e && e.message, n = e && e.name;
+      // Only QuickJS's own InternalError keeps that name, so a thrown look-alike
+      // cannot earn the memory or stack hints.
+      if (n === 'InternalError' && !(InternalErrorCtor && apply(isInstance, InternalErrorCtor, [e]))) n = 'Error';
       m = typeof x !== 'string' || x === '' ? Str(e)
         : typeof n === 'string' && n !== '' && n !== 'Error' ? n + ': ' + x : x;
     } catch (c) {
@@ -148,6 +151,9 @@ export function wrapScript(code: string): string {
         out += a ? '[' : '{';
         return;
       }
+      // A string past the cap is cut before it is escaped, so the preview path
+      // runs instead of copying a huge string into out.
+      if (typeof v === 'string' && limit !== Infinity && out.length + v.length > limit) v = apply(slice, v, [0, limit - out.length + 1]);
       out += omitted(v) ? 'null' : stringify(v);
     }
     var top = resolve(root, '', { '': root }, fn);
@@ -230,26 +236,30 @@ export function wrapScript(code: string): string {
       };
     })(L.levels[li]);
   }
-  defineProperty(glob, 'console', { value: freeze(safe), writable: false, configurable: false });
+  // Writable and configurable like the originals: a script that replaces them
+  // only affects itself, since the bridge's console is reachable only from here.
+  defineProperty(glob, 'console', { value: safe, writable: true, configurable: true });
   // The script's own JSON calls hit the same C recursion, so it gets a JSON
   // whose stringify is the wrapper's serialiser (replacer and indent applied
   // in the same iterative walk) and whose parse first scans nesting depth.
+  // Brackets, quotes and backslashes only: exec (bound before the script ran,
+  // on a regex no script can reach) jumps between them natively, so the scan
+  // costs per structural character, not per character.
+  var structural = new RegExpCtor('[\\\\[\\\\]{}"\\\\\\\\]', 'g');
+  var nextStructural = apply(bind, exec, [structural]);
   function depthOf(text) {
-    var depth = 0, top = 0, inString = false, n = text.length;
+    var depth = 0, top = 0, inString = false, m;
     // Each level takes at least one character, so short text cannot be too deep.
-    if (n <= L.maxDepth) return 0;
-    // One argument array, reused: its index is an own property, so no
-    // Array.prototype setter can intercept the writes.
-    var at = [0];
-    for (var p = 0; p < n; p++) {
-      at[0] = p;
-      var ch = apply(charCodeAt, text, at);
+    if (text.length <= L.maxDepth) return 0;
+    structural.lastIndex = 0;
+    while ((m = nextStructural(text)) !== null) {
+      var ch = m[0];
       if (inString) {
-        if (ch === 92) p++;
-        else if (ch === 34) inString = false;
-      } else if (ch === 34) inString = true;
-      else if (ch === 91 || ch === 123) { if (++depth > top) top = depth; }
-      else if (ch === 93 || ch === 125) depth--;
+        if (ch === '\\\\') structural.lastIndex++;
+        else if (ch === '"') inString = false;
+      } else if (ch === '"') inString = true;
+      else if (ch === '[' || ch === '{') { if (++depth > top) top = depth; }
+      else if (ch === ']' || ch === '}') depth--;
     }
     return top;
   }
@@ -262,7 +272,8 @@ export function wrapScript(code: string): string {
     if (depthOf(t) > L.maxDepth) throw new SyntaxErrorCtor('JSON text is nested deeper than ' + L.maxDepth + ' levels');
     return reviver === undefined ? parse(t) : parse(t, reviver);
   };
-  defineProperty(glob, 'JSON', { value: freeze(safeJson), writable: false, configurable: false });
+  defineProperty(safeJson, toStringTag, { value: 'JSON', configurable: true });
+  defineProperty(glob, 'JSON', { value: safeJson, writable: true, configurable: true });
   var r, isPromise;
   try { r = run(); isPromise = apply(isInstance, P, [r]); } catch (e) { return fail(e); }
   if (!isPromise) return env(r);
@@ -280,5 +291,5 @@ export function wrapScript(code: string): string {
     }
     catch (e) { resolveWrapper(fail(e)); }
   });
-})(function () { return eval(${JSON.stringify(code)}); }, Promise, Function.prototype[Symbol.hasInstance], Promise.prototype.then, Reflect.apply, String.prototype.slice, String, JSON.stringify, Object.keys, Array.isArray, Object.create, Object.defineProperty, Object.freeze, globalThis, Error, TypeError, Set, Set.prototype.add, Set.prototype.has, Set.prototype.delete, [Number.prototype.valueOf, String.prototype.valueOf, Boolean.prototype.valueOf, BigInt.prototype.valueOf], Object.prototype, Object.getPrototypeOf, JSON.parse, String.prototype.charCodeAt, SyntaxError, ${JSON.stringify(LIMITS)})`;
+})(function () { return eval(${JSON.stringify(code)}); }, Promise, Function.prototype[Symbol.hasInstance], Promise.prototype.then, Reflect.apply, String.prototype.slice, String, JSON.stringify, Object.keys, Array.isArray, Object.create, Object.defineProperty, globalThis, Error, TypeError, Set, Set.prototype.add, Set.prototype.has, Set.prototype.delete, [Number.prototype.valueOf, String.prototype.valueOf, Boolean.prototype.valueOf, BigInt.prototype.valueOf], Object.prototype, Object.getPrototypeOf, JSON.parse, String.prototype.charCodeAt, SyntaxError, RegExp, RegExp.prototype.exec, Function.prototype.bind, typeof InternalError === 'function' ? InternalError : undefined, Symbol.toStringTag, ${JSON.stringify(LIMITS)})`;
 }

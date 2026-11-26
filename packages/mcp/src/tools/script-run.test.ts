@@ -328,6 +328,14 @@ describe('script_run', () => {
     expect(String(big.structuredContent?.value_preview).startsWith('[{"i":0},{"i":1}')).toBe(true);
   });
 
+  it('gives no hint to a thrown InternalError look-alike, and lets a script reassign console', async () => {
+    expect((await runError("throw { name: 'InternalError', message: 'out of memory' }")).hint).toBeUndefined();
+    expect(logTexts(await run("'use strict'; console.debug = console.log; console.debug('x'); 1"))).toEqual(['x']);
+    expect((await run('Object.prototype.toString.call(JSON)')).structuredContent?.value).toBe('[object JSON]');
+    const huge = await run("({ a: 'x'.repeat(2e7) })", { memory_mb: 128 });
+    expect(huge.structuredContent).toMatchObject({ value_truncated: true });
+  });
+
   it('gives no memory hint for a script that merely says out of memory', async () => {
     expect((await runError("throw new Error('device out of memory budget')")).hint).toBeUndefined();
   });

@@ -188,6 +188,8 @@ END-ISO-10303-21;`;
   useViewerStore.setState({ ...fixtureModels({ ...fixtureModel('m'), ifcDataStore: store }), mutationViews: new Map([['m', view]]) });
 }
 
+const unitFixtureUndeclared = (area: string) => unitFixture('', area, '$');
+
 it('space tag area carries the file\'s declared AREAUNIT, not a hard-coded m\u00b2', async () => {
   await unitFixture(SQUARE_FOOT_UNITS, '1076.39');
   const label = resolveElementTagLabel(tag(20));
@@ -216,7 +218,6 @@ it('space tag area is omitted when the declared unit assignment is unreadable', 
   assert.equal(resolveElementTagLabel(tag(20)), 'Office');
 });
 
-const unitFixtureUndeclared = (area: string) => unitFixture('', area, '$');
 
 it('#11456 space tag area follows the quantity\'s own Unit over the project AREAUNIT', async () => {
   // Project area unit is square metre; the quantity itself declares square foot.

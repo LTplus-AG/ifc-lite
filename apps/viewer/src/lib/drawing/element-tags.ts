@@ -4,6 +4,7 @@
 
 import { effectiveMetadataRecord, extractPropertiesOnDemand, extractQuantitiesOnDemand, ProjectUnits, type IfcDataStore } from '@ifc-lite/parser';
 import { QuantityType } from '@ifc-lite/data';
+import { iterateEffectiveEntityIds, type MutablePropertyView } from '@ifc-lite/mutations';
 import { currentProjectUnitContext } from '@/lib/units/current-project-unit-context';
 import { resolveQuantityDisplay } from '@/lib/units/display';
 import type { Drawing2D, DrawingPolygon } from '@ifc-lite/drawing-2d';
@@ -12,8 +13,9 @@ import { toGlobalIdForRef } from '@/store/globalId';
 import type { Point2D, TagAnnotation2D, TextAnnotation2D } from '@/store/slices/drawing2DSlice';
 
 /** True unless the first IfcProject's UnitsInContext is explicitly unset ($). */
-function projectDeclaresUnits(store: IfcDataStore, view: Parameters<typeof effectiveMetadataRecord>[2]): boolean {
-  const id = store.entityIndex.byType.get('IFCPROJECT')?.[0];
+function projectDeclaresUnits(store: IfcDataStore, view: MutablePropertyView | undefined): boolean {
+  // The live project, as `readCurrentProjectUnits` picks it: overlay edits and deletions included.
+  const id = iterateEffectiveEntityIds(store, view, ['IFCPROJECT']).next().value?.expressId;
   if (id === undefined) return true;
   const record = effectiveMetadataRecord(store, id, view);
   return !record || record.attributes[record.names.indexOf('UnitsInContext')] !== null;

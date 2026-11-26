@@ -268,7 +268,7 @@ describe('script_run', () => {
   it('reports runaway recursion as a script error and keeps the sandbox healthy', async () => {
     const err = await runError('function f() { return f(); } f()');
     expect(err).toMatchObject({ code: 'INVALID_INPUT', details: { kind: 'script' } });
-    expect(err.hint).toMatch(/recursed/);
+    expect(err.hint).toMatch(/recursed too deep/);
     expect((await run('5 + 5')).structuredContent?.value).toBe(10);
   });
 

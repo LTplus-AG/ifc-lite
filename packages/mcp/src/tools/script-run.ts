@@ -117,7 +117,7 @@ function intInput(value: unknown, name: string, min: number, max: number, fallba
   return value as number;
 }
 
-function pendingMutationIds(model: LoadedModel): string[] {
+function journalMutationIds(model: LoadedModel): string[] {
   return model.backend.getMutationView()?.getMutations().map((m) => m.id) ?? [];
 }
 
@@ -125,7 +125,7 @@ const OUT_OF_MEMORY = /out of memory/i;
 
 function hintFor(mode: Mode, code: string, message: string): string | undefined {
   if (OUT_OF_MEMORY.test(message)) return `Raise memory_mb (max ${MAX_MEMORY_MB}) or keep less in memory.`;
-  if (/stack overflow|call stack/i.test(message)) return 'The script recursed too deep; make the recursion iterative or shallower.';
+  if (/stack overflow|call stack/i.test(message)) return 'Stack overflow: the script recursed too deep (make it iterative or shallower), or a bim call walked a very deeply nested model.';
   // Only when the failure looks like touching a namespace that is absent.
   if (mode === 'read' && MUTATE_ONLY_USE.test(code) && /of undefined|undefined is not/.test(message)) {
     return `script_run has no ${MUTATE_ONLY_LIST}; use script_run_mutate for them.`;
@@ -155,7 +155,7 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
   if (ctx.signal.aborted) throw cancelled();
 
   // Read mode has no write namespaces, so it cannot queue anything. In mutate
-  // mode the count is pending mutations that appeared during the run; a
+  // mode the count is mutation-journal entries that appeared during the run; a
   // concurrent tool call editing the same model would be counted too.
   // Counted by id, so mutations the script undoes are not subtracted. Taken
   // right before eval, so edits landing during sandbox creation are not counted.
@@ -169,7 +169,7 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
     if (ctx.registry.get(model.id) !== model) return undefined;
     const baseline = before;
     try {
-      return pendingMutationIds(model).filter((id) => !baseline.has(id)).length;
+      return journalMutationIds(model).filter((id) => !baseline.has(id)).length;
     } catch (err) {
       ctx.log.log('warning', 'script_run: could not count queued mutations', { error: describeThrown(err) });
       return undefined;
@@ -196,7 +196,7 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
     if (ctx.signal.aborted) onAbort();
     try {
       if (ctx.signal.aborted) throw cancelled();
-      if (mode === 'mutate') before = new Set(pendingMutationIds(model));
+      if (mode === 'mutate') before = new Set(journalMutationIds(model));
       const result = await sandbox.eval(wrapScript(code), { typescript: false, filename: 'script_run.js' });
       const { logs, truncated } = shapeLogs(result.logs);
       const mutationsQueued = queued();

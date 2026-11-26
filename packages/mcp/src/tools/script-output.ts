@@ -139,7 +139,7 @@ type Outcome =
 /** Decode the wrapper's tagged string (a returned promise dumps as `{ type, value }`). */
 export function readEnvelope(dumped: unknown): Outcome {
   const state = dumped as { type?: string; value?: unknown };
-  if (state?.type === 'pending') return { error: 'The script returned a promise that never settled: a bim host call did not resolve, or the job settling it aborted (for example on exhausted memory). There are no timers.' };
+  if (state?.type === 'pending') return { error: 'The script returned a promise that never settled: nothing resolved it (for example new Promise(() => {})), or the job settling it aborted, for example on exhausted memory. There are no timers.' };
   const envelope = state?.type === 'fulfilled' ? state.value : dumped;
   if (typeof envelope !== 'string') return { error: 'The script produced no result.' };
   // The wrapper bounds these; the host re-checks so a script that subverted

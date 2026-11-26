@@ -20,7 +20,7 @@ import { stepStringLiteralEnd } from '@ifc-lite/encoding';
 import { expandTypes } from '@ifc-lite/parser';
 import { planSpatialRelations, refsOutsideStrings, SubsetSelectionError, type StepRecord, type Subset } from './step-subset-relations.js';
 import { spatialAncestors } from './step-subset-spatial-ancestors.js';
-import { containedIn, productsUnderPlacement, resolveStorey } from './step-subset-storey.js';
+import { resolveStorey, storeyMembers } from './step-subset-storey.js';
 
 export { SubsetSelectionError } from './step-subset-relations.js';
 export type { StepRecord, Subset } from './step-subset-relations.js';
@@ -244,9 +244,6 @@ export function serializeSubset({ keep, rewritten }: Subset, parsed: ParsedStep)
   return parsed.header + lines.join('\n') + '\nENDSEC;\nEND-ISO-10303-21;\n';
 }
 
-/** IfcObjectPlacement subtypes: placement records a storey walk returns, never products. */
-const PLACEMENT_TYPES = new Set(['IFCLOCALPLACEMENT', 'IFCGRIDPLACEMENT', 'IFCLINEARPLACEMENT']);
-
 /** Selectors for {@link selectSubsetSeeds}; every selector is unioned. */
 export interface SubsetSelectors {
   /** `#42`, `42`, or a 22-char GlobalId. Each must resolve, or it throws. */
@@ -306,16 +303,7 @@ export function selectSubsetSeeds(parsed: ParsedStep, selectors: SubsetSelectors
     const { storeyId, placementId } = resolveStorey(token, parsed);
     // The storey itself is kept as asked, even if no product is contained in it.
     seeds.add(storeyId);
-    // `under` also holds placement records (the products' closure keeps those)
-    // and any storey sharing the placement, which is not the one asked for.
-    const products: number[] = [];
-    for (const id of productsUnderPlacement(placementId, parsed)) {
-      const type = parsed.instances.get(id)?.type;
-      if (type !== undefined && type !== 'IFCBUILDINGSTOREY' && !PLACEMENT_TYPES.has(type)) products.push(id);
-    }
-    // Elements contained in the storey but placed elsewhere (world or building
-    // placement) are its products too.
-    for (const id of containedIn(storeyId, parsed)) products.push(id);
+    const products = storeyMembers(storeyId, placementId, parsed);
     if (selectors.requireEachMatch && products.length === 0) throw new SubsetSelectionError('invalid', `Nothing is placed under storey ${token}.`);
     for (const id of products) seeds.add(id);
   }

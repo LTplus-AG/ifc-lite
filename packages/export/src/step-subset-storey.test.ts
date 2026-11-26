@@ -60,6 +60,34 @@ describe('selectSubsetSeeds: storeys that share one placement', () => {
     ].join('\n');
     expect([...selectSubsetSeeds(parseStep(text), { storeys: ['L01'] })].sort((a, b) => a - b)).toEqual([41, 70]);
   });
+
+  it('keeps a wall placed on the shared placement with the storey that contains it', () => {
+    const shared = [
+      'ISO-10303-21;', 'HEADER;', 'ENDSEC;', 'DATA;',
+      '#2=IFCAXIS2PLACEMENT3D(#3,$,$);', '#3=IFCCARTESIANPOINT((0.,0.,0.));',
+      '#40=IFCLOCALPLACEMENT($,#2);', '#60=IFCLOCALPLACEMENT(#40,#2);', '#61=IFCLOCALPLACEMENT(#40,#2);',
+      "#41=IFCBUILDINGSTOREY('0000000000000000000ST1',$,'L01',$,$,#40,$,$,.ELEMENT.,0.);",
+      "#42=IFCBUILDINGSTOREY('0000000000000000000ST2',$,'L02',$,$,#40,$,$,.ELEMENT.,3.);",
+      "#70=IFCWALL('0000000000000000000WA1',$,'W1',$,$,#60,$,$,$);",
+      "#71=IFCWALL('0000000000000000000WA2',$,'W2',$,$,#61,$,$,$);",
+      "#80=IFCRELCONTAINEDINSPATIALSTRUCTURE('0000000000000000000RC1',$,$,$,(#70),#41);",
+      "#81=IFCRELCONTAINEDINSPATIALSTRUCTURE('0000000000000000000RC2',$,$,$,(#71),#42);",
+      'ENDSEC;', 'END-ISO-10303-21;', '',
+    ].join('\n');
+    expect([...selectSubsetSeeds(parseStep(shared), { storeys: ['L01'] })].sort((a, b) => a - b)).toEqual([41, 70]);
+  });
+
+  it('never counts a building that shares the storey placement as one of its products', () => {
+    const building = [
+      'ISO-10303-21;', 'HEADER;', 'ENDSEC;', 'DATA;',
+      '#2=IFCAXIS2PLACEMENT3D(#3,$,$);', '#3=IFCCARTESIANPOINT((0.,0.,0.));',
+      '#40=IFCLOCALPLACEMENT($,#2);',
+      "#30=IFCBUILDING('0000000000000000000BLD',$,'B',$,$,#40,$,$,.ELEMENT.,$,$,$);",
+      "#41=IFCBUILDINGSTOREY('0000000000000000000ST1',$,'L0',$,$,#40,$,$,.ELEMENT.,0.);",
+      'ENDSEC;', 'END-ISO-10303-21;', '',
+    ].join('\n');
+    expect(() => selectSubsetSeeds(parseStep(building), { storeys: ['L0'], requireEachMatch: true })).toThrow(/Nothing is placed under storey L0/);
+  });
 });
 
 describe('resolveStorey: a storey NAMED with a number', () => {

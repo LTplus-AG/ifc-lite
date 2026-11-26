@@ -7,7 +7,7 @@
  * name / expressId) to the set of products whose ObjectPlacement chains up
  * through that storey's placement.
  */
-import { walkPlacementChain } from '@ifc-lite/data';
+import { IfcTypeEnumFromString, isSpatialStructureType, walkPlacementChain } from '@ifc-lite/data';
 import { decodeStepStringLiteral } from '@ifc-lite/encoding';
 import { stepString } from './schema-converter-structural-source.js';
 import { refsOutsideStrings, SINGLE_REF_RE, splitTopLevelArgs, STRUCTURE_RELATION_ATTRS, STRUCTURE_RELATIONS, SubsetSelectionError } from './step-subset-relations.js';
@@ -134,22 +134,43 @@ export function resolveStorey(token: string, parsed: ParsedStep): { storeyId: nu
   return { storeyId, placementId };
 }
 
-/**
- * RelatedElements of every IfcRelContainedInSpatialStructure whose
- * RelatingStructure is `storeyId`: a storey's products that are placed
- * in world or building coordinates rather than under the storey's placement.
- * A record that does not split into its six attributes is skipped.
- */
-export function containedIn(storeyId: number, parsed: ParsedStep): number[] {
-  const out: number[] = [];
+/** Element id -> the spatial structure an IfcRelContainedInSpatialStructure puts it in. */
+function containment(parsed: ParsedStep): Map<number, number> {
+  const out = new Map<number, number>();
   const [relatingAt, relatedAt] = STRUCTURE_RELATIONS.IFCRELCONTAINEDINSPATIALSTRUCTURE;
   for (const inst of parsed.instances.values()) {
     if (inst.type !== 'IFCRELCONTAINEDINSPATIALSTRUCTURE') continue;
     const args = splitTopLevelArgs(inst.body);
     if (!args || args.length !== STRUCTURE_RELATION_ATTRS) continue;
     const relating = SINGLE_REF_RE.exec(args[relatingAt]);
-    if (!relating || Number(relating[1]) !== storeyId) continue;
-    for (const id of refsOutsideStrings(args[relatedAt])) if (parsed.instances.has(id)) out.push(id);
+    if (!relating) continue;
+    for (const id of refsOutsideStrings(args[relatedAt])) if (parsed.instances.has(id)) out.set(id, Number(relating[1]));
   }
   return out;
 }
+
+/**
+ * A storey's products: every element IfcRelContainedInSpatialStructure puts in
+ * it (placed anywhere), plus every element whose placement chains through the
+ * storey's placement and that no containment assigns to another structure. The
+ * second set is what a storey means when its elements have no containment;
+ * the exclusion keeps storeys that share a placement from leaking into each
+ * other. Spatial-structure records other than IfcSpace are never products.
+ */
+export function storeyMembers(storeyId: number, placementId: number, parsed: ParsedStep): number[] {
+  const containedBy = containment(parsed);
+  const isMember = (id: number): boolean => {
+    const type = parsed.instances.get(id)?.type;
+    if (type === undefined || PLACEMENT_TYPES.has(type)) return false;
+    if (type !== 'IFCSPACE' && isSpatialStructureType(IfcTypeEnumFromString(type))) return false;
+    const structure = containedBy.get(id);
+    return structure === undefined || structure === storeyId;
+  };
+  const out = new Set<number>();
+  for (const id of productsUnderPlacement(placementId, parsed)) if (isMember(id)) out.add(id);
+  for (const [id, structure] of containedBy) if (structure === storeyId) out.add(id);
+  return [...out];
+}
+
+/** IfcObjectPlacement subtypes: placement records a storey walk returns, never products. */
+const PLACEMENT_TYPES = new Set(['IFCLOCALPLACEMENT', 'IFCGRIDPLACEMENT', 'IFCLINEARPLACEMENT']);

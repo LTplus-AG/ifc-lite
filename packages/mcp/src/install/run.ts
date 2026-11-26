@@ -112,6 +112,11 @@ function parseInstallArgs(argv: string[], host: HostEnv): InstallArgs | 'help' {
   }
   const conflict = bridgeConflict(parsed);
   if (conflict) throw new InstallError(conflict);
+  // The loader's own rule (loader.ts): a model outside every --allow root is refused at load.
+  const roots = parsed.allowedPaths ?? [];
+  const sep = host.platform === 'win32' ? '\\' : '/';
+  const outside = roots.length > 0 && parsed.files.find((f) => !roots.some((r) => f === r || f.startsWith(r + sep)));
+  if (outside) throw new InstallError(`${outside} is outside every --allow root; the server would refuse it.`);
   if (!parsed.bridge && (parsed.insecure || parsed.allowedOrigins)) {
     throw new InstallError('--insecure and --allow-origin only act with --bridge here; for HTTP, give the client the server URL.');
   }
@@ -246,6 +251,7 @@ function runCommandPlan(
   if (result.status !== 0) {
     let hint = '';
     if (removed) hint = ` The old "${args.name}" entry was already removed; fix the error and run again:\n${line}`;
+    else if (remove) hint = ` The remove step failed too; check \`${plan.command} mcp list\`.`;
     else if (plan.remove) hint = ' If the name is taken, pass --force or --name.';
     io.err(`[ifc-lite-mcp install] \`${plan.command}\` exited with ${result.status}.${hint}\n`);
     return result.status;
@@ -290,7 +296,7 @@ function writeFilePlan(
   if (before !== undefined) {
     const to = backupPath(plan.path, io.now());
     io.copyFile(plan.path, to);
-    backup = ` (backup: ${to})`;
+    backup = ` (backup: ${to}${args.scope === 'project' ? ', it holds the old contents; keep it out of git' : ''})`;
   }
   try {
     io.writeFile(plan.path, merged.text);

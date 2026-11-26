@@ -50,6 +50,7 @@ export function nodeInstallIo(): InstallIo {
       home: homedir(),
       cwd: process.cwd(),
       env: process.env,
+      warn: (text) => process.stderr.write(`[ifc-lite-mcp install] ${text}\n`),
       isFile: (path) => userFacing(() => {
         try {
           return statSync(path).isFile();
@@ -80,6 +81,7 @@ export function nodeInstallIo(): InstallIo {
       mkdirSync(dirname(target), { recursive: true });
       // Write beside the target and rename, so a crash never leaves half a config.
       const tmp = `${target}.${process.pid}.tmp`;
+      rmSync(tmp, { force: true }); // a stale one from a crashed run would keep its mode
       try {
         // Created with the target's mode, so other servers' secrets are never more readable.
         writeFileSync(tmp, text, { mode: mode ?? 0o666 });

@@ -75,14 +75,27 @@ export function mergeServer(
 }
 
 /**
- * An entry for a message: its launch keys in full, other keys by name only,
- * because `env` and `headers` hold tokens.
+ * An entry for a message, without values that can hold tokens: `command`,
+ * `type` and a url's origin are shown, every other key by name only.
  */
 export function describeEntry(entry: unknown): string {
-  if (!isObject(entry)) return JSON.stringify(entry);
-  const launch = Object.fromEntries(Object.entries(entry).filter(([k]) => LAUNCH_KEYS.includes(k)));
-  const others = Object.keys(entry).filter((k) => !LAUNCH_KEYS.includes(k));
-  return JSON.stringify(launch, null, 2) + (others.length ? `\n(also: ${others.join(', ')})` : '');
+  if (!isObject(entry)) return typeof entry;
+  const shown: string[] = [];
+  if (typeof entry.command === 'string') shown.push(`command: ${entry.command}`);
+  if (typeof entry.type === 'string') shown.push(`type: ${entry.type}`);
+  if (typeof entry.url === 'string') shown.push(`url: ${originOf(entry.url)}`);
+  const others = Object.keys(entry).filter((k) => !['command', 'type', 'url'].includes(k));
+  if (others.length) shown.push(`also: ${others.join(', ')}`);
+  return shown.join('\n');
+}
+
+function originOf(url: string): string {
+  try {
+    return new URL(url).origin;
+  } catch (err) {
+    if (!(err instanceof TypeError)) throw err;
+    return '(not a URL)';
+  }
 }
 
 /** JSON with object keys sorted, so key order does not make two entries differ. */

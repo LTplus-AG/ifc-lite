@@ -42,6 +42,8 @@ export interface HostEnv {
   listDir(path: string): string[];
   /** True when `path` is an existing file. */
   isFile(path: string): boolean;
+  /** A note for the user (stderr). */
+  warn(text: string): void;
 }
 
 /** The command a client spawns to start the server. */
@@ -145,6 +147,7 @@ function storeConfigDir(host: HostEnv, packages: string): string | undefined {
       return host.listDir(dir);
     } catch (err) {
       if (!(err instanceof InstallError)) throw err;
+      host.warn(`skipping ${dir}: ${err.message}`);
       return [];
     }
   };

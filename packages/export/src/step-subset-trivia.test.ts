@@ -166,6 +166,25 @@ describe('storey members off the placement chain', () => {
     expect(sorted(selectSubsetSeeds(parseStep(text), { storeys: ['L01'] }))).toEqual([41, 70]);
   });
 
+  it('retains selected assembly members without taking unrelated storey products (#11583)', () => {
+    const text = [
+      'ISO-10303-21;HEADER;ENDSEC;DATA;',
+      "#40=IFCELEMENTASSEMBLY('0000000000000000000001',$,'Assembly',$,$,$,$,$,$,$);",
+      "#41=IFCWALL('0000000000000000000002',$,'Part',$,$,$,$,$,$);",
+      "#42=IFCWALL('0000000000000000000003',$,'Unrelated',$,$,$,$,$,$);",
+      "#50=IFCRELAGGREGATES('0000000000000000000004',$,$,$,#40,(#41));",
+      'ENDSEC;END-ISO-10303-21;',
+    ].join('\n');
+    const parsed = parseStep(text);
+    const result = buildSubset(new Set([40]), parsed);
+    expect([...result.keep].sort((a, b) => a - b)).toEqual([40, 41, 50]);
+  });
+
+  it('does not swallow the next record when a semicolon is missing (#11583)', () => {
+    const parsed = parseStep("ISO-10303-21;HEADER;ENDSEC;DATA;#1=IFCCARTESIANPOINT((0.,0.,0.))#2=IFCCARTESIANPOINT((1.,0.,0.));ENDSEC;END-ISO-10303-21;");
+    expect([...parsed.instances.keys()]).toEqual([2]);
+  });
+
   it('recognizes the DATA opener with trivia before its semicolon (#11583)', () => {
     const parsed = parseStep("ISO-10303-21;HEADER;ENDSEC;DATA /* opener */ ;#5=IFCWALL('0000000000000000000000',$,$,$,$,$,$,$,$);ENDSEC;END-ISO-10303-21;");
     expect(parsed.instances.get(5)?.type).toBe('IFCWALL');

@@ -65,6 +65,7 @@ function findDataSection(text: string): number {
 }
 
 /** Voids, fills and projections: the relation pulls a feature in once its anchor (attribute 5) is kept. */
+const ASSEMBLY_RELATIONS = new Set(['IFCRELAGGREGATES', 'IFCRELNESTS']);
 const HOST_FEATURE_RELATIONS = new Set(['IFCRELVOIDSELEMENT', 'IFCRELFILLSELEMENT', 'IFCRELPROJECTSELEMENT']);
 
 /**
@@ -143,10 +144,13 @@ export function parseStep(text: string): ParsedStep {
       }
     }
     const bodyEnd = j - 1; // index of the matching ')'
-    // consume up to and including the terminating ';'
-    // A comment before the `;` may hold one; it is not the terminator.
-    while (j < n && data[j] !== ';') j = data[j] === '/' && data[j + 1] === '*' ? skipStepComment(data, j) : j + 1;
-    const semi = j;
+    const semi = skipStepTrivia(data, j);
+    if (semi < 0 || semi >= n || depth !== 0) break;
+    if (data[semi] !== ';') {
+      // A malformed record must not consume the next well-formed one.
+      i = semi;
+      continue;
+    }
     const id = parseInt(idStr, 10);
     const body = data.slice(bodyStart, bodyEnd);
     const full = data.slice(hashStart, semi + 1).trim();
@@ -216,40 +220,26 @@ export function buildSubset(seedProducts: Set<number>, parsed: ParsedStep): Subs
   const keep = new Set<number>();
   forwardClosure(seedProducts, parsed, keep);
 
-  // Opening (void) + filler relations. These point FROM the relation TO the host
-  // wall (RelatingBuildingElement), so walking only the wall's forward closure
-  // never reaches its openings — the isolated wall would lose every window/door
-  // cut and render as an uncut box, hiding the very void-cut defect the isolate
-  // step exists to reproduce. Pull each IfcRelVoidsElement whose host is kept
-  // (+ the IfcOpeningElement's forward closure), then each IfcRelFillsElement
-  // whose opening is now kept (+ the filler window/door). The fixpoint loop lets
-  // a fill relation see an opening that a voids relation added in an earlier pass.
-  // Each relation's anchor, read once: it does not change between passes.
-  const features: Array<{ inst: StepRecord; anchor: number | null }> = [];
+  // Openings, fillers and physical assembly parts point back to the selected
+  // host through inverse relationships. Traverse them before adding spatial
+  // context, so selecting an assembly never pulls in the contents of a storey.
+  const inverse = new Map<number, number[]>();
   for (const inst of parsed.instances.values()) {
-    if (!HOST_FEATURE_RELATIONS.has(inst.type)) continue;
+    const assembly = ASSEMBLY_RELATIONS.has(inst.type);
+    if (!assembly && !HOST_FEATURE_RELATIONS.has(inst.type)) continue;
     const args = splitTopLevelArgs(inst.body);
-    // Only a well-formed six-attribute record has its anchor at index 4.
-    features.push({ inst, anchor: args?.length === STRUCTURE_RELATION_ATTRS ? slotRef(args[4]) : null });
+    const anchor = args?.length === STRUCTURE_RELATION_ATTRS ? slotRef(args[4]) : null;
+    if (anchor === null) continue;
+    if (assembly && parsed.instances.get(anchor)?.type !== 'IFCELEMENTASSEMBLY') continue;
+    const relations = inverse.get(anchor);
+    if (relations) relations.push(inst.id);
+    else inverse.set(anchor, [inst.id]);
   }
-  let grew = true;
-  while (grew) {
-    grew = false;
-    for (const { inst, anchor } of features) {
-      if (keep.has(inst.id)) continue;
-      // Different meanings, one shape. `Relating` (attribute 5, the second-to-last
-      // reference) is the ANCHOR that must be kept already: the host wall for voids, the
-      // opening for fills. `Related` (attribute 6) is what the relation drags in, the
-      // opening or the filling window/door, and it is not read here because the closure
-      // below reaches it anyway.
-      // The anchor comes from its attribute slot, comments allowed, not the
-      // second-to-last `#` in the body (a trailing comment would win that race).
-      if (anchor === null || !keep.has(anchor)) continue;
-      // Close over the relation itself, not just what it drags in: the rel's own
-      // OwnerHistory must be kept too or the subset emits a dangling ref.
-      forwardClosure([inst.id], parsed, keep);
-      grew = true;
-    }
+  // Set iteration also visits new members. Each anchor and relation is handled
+  // once, even for deep or cyclic assembly graphs.
+  for (const id of keep) {
+    const relations = inverse.get(id);
+    if (relations) forwardClosure(relations, parsed, keep);
   }
 
   // Context roots: IfcProject (always — units/contexts hang off it even when

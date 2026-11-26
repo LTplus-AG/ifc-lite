@@ -8,14 +8,13 @@
  * and `model_lod` (`generateLod0` / `generateLod1`, as `ifc-lite lod`).
  */
 
-import { writeFile } from 'node:fs/promises';
 import { countGlbMeshes, DemeshSession, generateLod0, generateLod1 } from '@ifc-lite/export';
 import type { Tool } from './types.js';
 import { fmtInt, okResult } from './util.js';
 import { refusingEmpty, withIfcBytes } from './export-source.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import { resolveSafePath } from '../safe-path.js';
-import { FILE_WRITE_ANNOTATIONS, fileOutputSchema, invalid, optionalOutputPath, refuseSourceIdsWhilePending, requireDistinctPaths, resolveStepModel, beforeWrite, unsupported, writeTransformPair } from './transform-schema.js';
+import { FILE_WRITE_ANNOTATIONS, fileOutputSchema, invalid, optionalOutputPath, refuseSourceIdsWhilePending, requireDistinctPaths, resolveStepModel, unsupported, writeTransformOutput } from './transform-schema.js';
 
 const modelSimplify: Tool = {
   name: 'model_simplify',
@@ -50,7 +49,7 @@ const modelSimplify: Tool = {
     const m = resolveStepModel(ctx, input.model_id as string | undefined, 'model_simplify');
     const filePath = await resolveSafePath(input.file_path, ctx, 'write');
     const level = (input.level as number | undefined) ?? 1;
-    if (input.express_ids !== undefined) refuseSourceIdsWhilePending(m, 'express_ids', 'omit express_ids to simplify all elements, or write the edits with export_ifc and model_load the result first');
+    if (input.express_ids != null) refuseSourceIdsWhilePending(m, 'express_ids', 'omit express_ids to simplify all elements, or write the edits with export_ifc and model_load the result first');
     return withIfcBytes(m, async (bytes) => {
       const session = new DemeshSession(bytes);
       try {
@@ -71,8 +70,7 @@ const modelSimplify: Tool = {
             message: `Simplified ${simplified.elements.length} meshes, but none could be applied to the IFC (${exported.report.skipped.length} skipped at export). Nothing written.`,
           });
         }
-        beforeWrite(ctx, m);
-        await writeFile(filePath, exported.bytes);
+        await writeTransformOutput(ctx, [m], filePath, exported.bytes);
         const trianglesBefore = simplified.elements.reduce((s, e) => s + e.trisBefore, 0);
         const trianglesAfter = simplified.elements.reduce((s, e) => s + e.trisAfter, 0);
         return okResult(
@@ -135,15 +133,14 @@ const modelLod: Tool = {
       if (level === 0) {
         const lod0 = await refusingEmpty(() => generateLod0(bytes), (r) => r.elements.length, 'LOD0 produced no elements: the model has no exportable geometry.');
         const json = Buffer.from(JSON.stringify(lod0, null, 2));
-        beforeWrite(ctx, m);
-        await writeFile(filePath, json);
+        await writeTransformOutput(ctx, [m], filePath, json);
         return okResult(
           `Wrote LOD0 for ${fmtInt(lod0.elements.length)} elements to ${filePath}.`,
           { filePath, bytes: json.length, level, elementCount: lod0.elements.length, metaPath: null },
         );
       }
       const { glb, meta } = await refusingEmpty(() => generateLod1(bytes), (r) => countGlbMeshes(r.glb), 'LOD1 produced no meshes: the model has no exportable geometry.');
-      await writeTransformPair(ctx, m, filePath, glb, metaPath
+      await writeTransformOutput(ctx, [m], filePath, glb, metaPath
         ? { path: metaPath, argument: 'meta_path', data: JSON.stringify(meta, null, 2) }
         : undefined);
       return okResult(

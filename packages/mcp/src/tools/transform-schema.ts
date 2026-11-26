@@ -112,7 +112,7 @@ export function lossEntryRow(e: ConversionLossEntry) {
  * awaited source materialization since dispatch, and a scope change in that
  * window must not let the write through.
  */
-export function beforeWrite(ctx: ToolContext, ...models: LoadedModel[]): void {
+function beforeWrite(ctx: ToolContext, ...models: LoadedModel[]): void {
   if (ctx.signal.aborted) throw new ToolExecutionError({ code: ToolErrorCode.CANCELLED, message: 'Cancelled before the output was written.' });
   const scope = ctx.currentScope?.() ?? ctx.scope;
   for (const m of models) {
@@ -134,13 +134,14 @@ async function outputInode(path: string): Promise<string | undefined> {
   }
 }
 
-/** Hold both destinations for a paired write and recheck live access between files. */
-export async function writeTransformPair(
+/** Reserve transform destinations and recheck live access before each write. */
+export async function writeTransformOutput(
   ctx: ToolContext,
-  model: LoadedModel,
+  models: readonly LoadedModel[],
   primary: string,
   content: Uint8Array,
   sidecar?: { path: string; argument: string; data: string; mode?: number },
+  beforePrimary?: () => void,
 ): Promise<void> {
   const paths = sidecar ? [primary, sidecar.path] : [primary];
   const inodes = await Promise.all(paths.map(outputInode));
@@ -151,16 +152,17 @@ export async function writeTransformPair(
   if (keys.some((key) => activeOutputs.has(key))) throw invalid('Another transform is writing to one of these paths.');
   for (const key of keys) activeOutputs.add(key);
   try {
-    beforeWrite(ctx, model);
+    beforeWrite(ctx, ...models);
+    beforePrimary?.();
     await writeFile(primary, content);
     if (!sidecar) return;
     try {
-      beforeWrite(ctx, model);
+      beforeWrite(ctx, ...models);
       // The owner-only map needs a fresh inode. Setting the mode on an
       // existing file would preserve its old permissions.
       if (sidecar.mode !== undefined) {
         await rm(sidecar.path, { force: true });
-        beforeWrite(ctx, model);
+        beforeWrite(ctx, ...models);
       }
       await writeFile(sidecar.path, sidecar.data, {
         encoding: 'utf-8',

@@ -4,7 +4,7 @@
 
 /**
  * `model_anonymize` (#2934): a seed selection, expanded by relationship
- * context, exported as a STEP file with every project-identifying signal
+ * context, exported as a STEP file with common identifying metadata
  * removed while geometry-relevant transformations survive. Thin wrapper over
  * `@ifc-lite/export`'s `collectRelatedEntities` / `exportAnonymizedSubset`,
  * the same two functions `ifc-lite anonymize` and the viewer dialog call.
@@ -16,7 +16,7 @@ import { fmtInt, okResult, resolveGlobalIds } from './util.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import { resolveSafePath } from '../safe-path.js';
 import type { LoadedModel, ToolContext } from '../context.js';
-import { FILE_WRITE_ANNOTATIONS, fileOutputSchema, invalid, nonBlank, optionalOutputPath, withIfcPrefix, requireDistinctPaths, requireNoPendingEdits, resolveStepModel, requireSourceBytes, stringList, writeTransformPair } from './transform-schema.js';
+import { FILE_WRITE_ANNOTATIONS, fileOutputSchema, invalid, nonBlank, optionalOutputPath, withIfcPrefix, requireDistinctPaths, requireNoPendingEdits, resolveStepModel, requireSourceBytes, stringList, writeTransformOutput } from './transform-schema.js';
 
 /** Each relationship the walk follows, with the setting it takes when on (when off: false or 'none'). */
 const FOLLOWED = {
@@ -116,9 +116,9 @@ async function runAnonymize(m: LoadedModel, input: Record<string, unknown>, ctx:
     throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: (err as Error).message });
   }
   // Owner-only: the map reverses the anonymization.
-  await writeTransformPair(ctx, m, filePath, result.content, guidMapPath
+  await writeTransformOutput(ctx, [m], filePath, result.content, guidMapPath
     ? { path: guidMapPath, argument: 'guid_map_path', data: JSON.stringify(Object.fromEntries(result.guidMap), null, 2), mode: 0o600 }
-    : undefined);
+    : undefined, () => requireNoPendingEdits(m, 'model_anonymize'));
   const warnings = [...result.stats.warnings];
   if (related.truncated) warnings.unshift('The related-entity walk hit its work budget; the subset may be incomplete.');
   return okResult(
@@ -142,7 +142,7 @@ export const modelAnonymize: Tool = {
   name: 'model_anonymize',
   title: 'Anonymized subset export',
   description:
-    'Anonymize, scrub or redact: export selected entities plus their relationship context (hosts, openings, types, materials, aggregates, spatial chain) as an IFC with names, GlobalIds, owner history, property sets and currency neutralised, so a bug reproduction can be shared without the source model. Geometry-relevant placements survive. Selectors are unioned and each must match.',
+    'Anonymize, scrub or redact: export selected entities plus their relationship context (hosts, openings, types, materials, aggregates, spatial chain) as an IFC with names, GlobalIds, owner history, property sets and currency neutralised, for a bug reproduction. Geometry-relevant placements and authored annotation text survive. Selectors are unioned and each must match.',
   scope: 'export',
   // Fresh random GlobalIds and a timestamp each run.
   annotations: { ...FILE_WRITE_ANNOTATIONS, idempotentHint: false },

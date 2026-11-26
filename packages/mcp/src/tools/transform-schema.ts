@@ -29,11 +29,9 @@ export const FILE_WRITE_ANNOTATIONS: ToolAnnotations = {
 export const stringList: JsonSchema = { type: 'array', items: { type: 'string' } };
 
 /**
- * `structuredContent` of a tool that wrote one file: `filePath` and `bytes`
- * plus the tool's own fields on success. An error result carries the shared
- * `{ code, message, details, hint }` payload (`toolError`), so the schema
- * declares those too and requires nothing: a client that validates error
- * results against it still passes. (No top-level `anyOf`: see validate.ts.)
+ * A transform's structured result carries the written path and byte count
+ * on success or the shared toolError payload on failure. The root anyOf
+ * describes output, so input-schema advertising restrictions do not apply.
  */
 export function fileOutputSchema(extra: Record<string, JsonSchema>): JsonSchema {
   return {
@@ -47,6 +45,10 @@ export function fileOutputSchema(extra: Record<string, JsonSchema>): JsonSchema 
       details: { type: 'object', description: 'Error results only.' },
       hint: { type: 'string', description: 'Error results only.' },
     },
+    anyOf: [
+      { required: ['filePath', 'bytes'] },
+      { required: ['code', 'message', 'details'] },
+    ],
     additionalProperties: false,
   };
 }

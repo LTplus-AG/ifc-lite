@@ -112,8 +112,14 @@ describe('transform tool metadata', () => {
     // tools/list carries it to the client.
     expect(toToolDefinition(t).outputSchema).toBe(t.outputSchema);
     // An error result's structuredContent must validate too, for clients that check it.
-    const err = toolError({ code: 'INVALID_INPUT', message: 'x', hint: 'y' });
-    expect(validateInput(t.outputSchema!, err.structuredContent)).toMatchObject({ valid: true, errors: [] });
+    for (const incomplete of [{}, { filePath: '/out.ifc' }, { bytes: 12 }, { code: 'INVALID_INPUT' }]) {
+      expect(validateInput(t.outputSchema!, incomplete).valid).toBe(false);
+    }
+    for (const hint of [undefined, 'Select a valid model.']) {
+      const err = toolError({ code: 'INVALID_INPUT', message: 'Invalid model.', hint });
+      const wire = JSON.parse(JSON.stringify(err)) as CallToolResult;
+      expect(validateInput(t.outputSchema!, wire.structuredContent)).toMatchObject({ valid: true, errors: [] });
+    }
     expect(t.inputSchema.required).toContain('file_path');
     for (const [key, prop] of Object.entries(t.inputSchema.properties ?? {})) {
       expect((prop as { description?: string }).description, `${name}.${key}`).toBeTruthy();

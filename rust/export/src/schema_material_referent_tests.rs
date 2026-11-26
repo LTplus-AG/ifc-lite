@@ -25,6 +25,20 @@ fn a_material_is_carried_10763() {
     }
 }
 
+#[test]
+fn ifc5_material_properties_are_omitted_with_a_warning_11132() {
+    let source = model("IFC5", "#5=IFCMATERIALPROPERTIES('Pset_x',$,(#6),#8);\n#6=IFCPROPERTYSINGLEVALUE('p',$,IFCLABEL('v'),$);\n#8=IFCMATERIAL('Steel');");
+    let opts = crate::StepOptions { schema: Some("IFC2X3".into()), ..Default::default() };
+    let (single, stats, warnings) = crate::export_step_with_diagnostics(source.as_bytes(), &opts).unwrap();
+    let (merged, merged_stats) = crate::export_merged_models(&[crate::MergedModel::new(source.as_bytes())], &crate::MergedOptions { schema: opts.schema, ..Default::default() });
+    for (out, warnings) in [(single, warnings), (merged, merged_stats.warnings)] {
+        assert!(record(&out, "#8=").starts_with("#8=IFCMATERIAL("), "{out}");
+        assert_eq!(record(&out, "#5="), "", "{out}");
+        assert!(warnings.iter().any(|w| w.contains("IFC5 has no EXPRESS attribute registry") && w.contains("#5")), "{warnings:?}");
+    }
+    assert_eq!(stats.attribute_values_dropped, 3);
+}
+
 /// A layer, or a set whose members name one material (an air gap names
 /// none), is pointed at that material.
 #[test]

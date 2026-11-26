@@ -175,7 +175,7 @@
    565 packages/drawing-2d/src/gpu-section-cutter.ts
    470 packages/drawing-2d/src/graphic-overrides/presets.ts
    499 packages/drawing-2d/src/graphic-overrides/rule-engine.ts
-   570 packages/drawing-2d/src/index.ts
+   567 packages/drawing-2d/src/index.ts
    436 packages/drawing-2d/src/line-merger.ts
    417 packages/drawing-2d/src/object-styles.ts
    753 packages/drawing-2d/src/polygon-builder.ts

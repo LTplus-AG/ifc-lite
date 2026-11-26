@@ -22,19 +22,21 @@ function harness(budgetBytes?: number) {
   const worker = { postMessage: (message: GeometryWorkerSetSparseSourceMessage) => { posted.push(message); } } as unknown as Worker;
   let ready = 0;
   const shared: SharedArrayBuffer[][] = [];
+  const decisions: boolean[] = [];
   const pool = new SparsePool(source, {
     broadcast: (setup) => setup(worker),
     shareIndex: (...columns) => { shared.push(columns); },
     onReady: () => { ready++; },
+    onDecision: (ran) => { decisions.push(ran); },
   }, budgetBytes);
   const columns = [new SharedArrayBuffer(8), new SharedArrayBuffer(8), new SharedArrayBuffer(8)] as const;
   const facts = { type: 'sparse-facts', preamble: Uint8Array.from([7, 8, 9]), inverseTargets: Uint32Array.from([1]), inverseReferrers: Uint32Array.from([2]) };
-  return { pool, posted, shared, source, columns, facts, ready: () => ready };
+  return { pool, posted, shared, source, columns, facts, decisions, ready: () => ready };
 }
 
 describe('SparsePool', () => {
   it.each(['index first', 'facts first'])('sends one sparse source once the index and the pre-pass facts are both in (%s)', (order) => {
-    const { pool, posted, source, columns, facts, ready } = harness(64 * 1024 * 1024);
+    const { pool, posted, source, columns, facts, decisions, ready } = harness(64 * 1024 * 1024);
     if (order === 'index first') pool.offerIndex(...columns); else pool.offerFacts(facts);
     expect(pool.ready).toBe(false);
     expect(posted).toHaveLength(0);
@@ -54,10 +56,11 @@ describe('SparsePool', () => {
 
     pool.offerFacts(facts);
     expect(posted).toHaveLength(1);
+    expect(decisions, 'the arm hears once that the load ran out of core').toEqual([true]);
   });
 
   it.each(['index first', 'facts first'])('hands the workers the index of the whole-file path when the scan names the file unsupported (%s)', (order) => {
-    const { pool, posted, shared, columns, facts, ready } = harness();
+    const { pool, posted, shared, columns, facts, decisions, ready } = harness();
     const refusal = { ...facts, unsupported: 'annotation fill areas' };
     if (order === 'index first') pool.offerIndex(...columns); else pool.offerFacts(refusal);
     expect(pool.ready).toBe(false);
@@ -68,6 +71,7 @@ describe('SparsePool', () => {
     expect(pool.ready).toBe(true);
     expect(ready()).toBe(1);
     expect(pool.refused).toBe('annotation fill areas');
+    expect(decisions, 'a load the arena cannot serve reports the whole-file path').toEqual([false]);
     expect(pool.report(1)).toBeNull();
     expect(flagHost.__IFC_LITE_OOC_STATS__).toBeUndefined();
   });
@@ -102,18 +106,24 @@ describe('SparsePool', () => {
 
 describe('sparsePoolFor', () => {
   const host = { broadcast: () => {}, shareIndex: () => {}, onReady: () => {} };
-  const make = (bytes = 8, options?: { mergeLayers?: boolean; globalInstancing?: boolean }) => sparsePoolFor(new SharedArrayBuffer(bytes), host, options);
+  const make = (bytes = GLOBAL_INSTANCING_MIN_BYTES, options?: { mergeLayers?: boolean; globalInstancing?: boolean; outOfCore?: boolean }) => sparsePoolFor(new SharedArrayBuffer(bytes), host, options);
 
   it('keeps a load on the whole-file path for the options an arena cannot serve', () => {
     flagHost.__IFC_LITE_OOC = 1;
-    expect(make(8, { mergeLayers: true })).toBeNull();
-    expect(make(8, { mergeLayers: false })).toBeInstanceOf(SparsePool);
+    expect(make(undefined, { mergeLayers: true })).toBeNull();
+    expect(make(undefined, { mergeLayers: false })).toBeInstanceOf(SparsePool);
     flagHost.__IFC_LITE_GLOBAL_INSTANCING = 1;
-    expect(make(8), 'the plan does not apply to the small-file tier').toBeInstanceOf(SparsePool);
-    expect(make(GLOBAL_INSTANCING_MIN_BYTES)).toBeNull();
-    expect(make(GLOBAL_INSTANCING_MIN_BYTES, { globalInstancing: false }), 'the load\'s own decision wins over a re-read').toBeInstanceOf(SparsePool);
+    expect(make()).toBeNull();
+    expect(make(undefined, { globalInstancing: false }), 'the load\'s own decision wins over a re-read').toBeInstanceOf(SparsePool);
     delete flagHost.__IFC_LITE_GLOBAL_INSTANCING;
-    expect(make(8, { globalInstancing: true })).toBeNull();
+    expect(make(undefined, { globalInstancing: true })).toBeNull();
+  });
+
+  it('keeps a source in the small-file tier on the whole-file path, whoever turned it on', () => {
+    flagHost.__IFC_LITE_OOC = 1;
+    expect(make(GLOBAL_INSTANCING_MIN_BYTES - 1)).toBeNull();
+    expect(make(GLOBAL_INSTANCING_MIN_BYTES - 1, { outOfCore: true })).toBeNull();
+    expect(make(GLOBAL_INSTANCING_MIN_BYTES)).toBeInstanceOf(SparsePool);
   });
 
   it('clears the stats an earlier load published, whichever path this load takes', () => {
@@ -128,5 +138,13 @@ describe('sparsePoolFor', () => {
     expect(make()).toBeNull();
     flagHost.__IFC_LITE_OOC = '1';
     expect(make()).toBeInstanceOf(SparsePool);
+  });
+
+  it("follows the host's own decision over the explicit flag when it has one (a staged rollout)", () => {
+    expect(make(undefined, { outOfCore: true })).toBeInstanceOf(SparsePool);
+    flagHost.__IFC_LITE_OOC = 1;
+    expect(make(undefined, { outOfCore: false })).toBeNull();
+    expect(make(undefined, { outOfCore: undefined }), 'unset reads the explicit flag').toBeInstanceOf(SparsePool);
+    expect(make(undefined, { outOfCore: true, mergeLayers: true }), 'the host decision does not lift a blocker').toBeNull();
   });
 });

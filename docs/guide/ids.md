@@ -327,7 +327,9 @@ Bounds on `xs:decimal` and the integer bases are written without an exponent.
 What has no valid IDS 1.0 form is refused with an error naming it, never
 written as a weaker check: unparseable bounds, two patterns or two
 enumerations in one conjunction (XSD would OR them), conjunctive facets with
-different bases, and a bounds restriction without any facet. Line breaks and
+different bases, and a bounds restriction without any facet. The writer also
+refuses a classification without a system, an optional `partOf` requirement,
+and an entity requirement marked optional or prohibited. Line breaks and
 tabs in attributes such as `instructions` are written as character
 references, so they read back unchanged; a control character XML cannot carry
 is refused with the element or attribute it is in. Every pass/fail case of the

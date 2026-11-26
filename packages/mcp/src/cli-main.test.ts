@@ -9,7 +9,7 @@
  * config path.
  */
 
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -184,7 +184,7 @@ describe('stdio file arguments (#11534)', () => {
       expect(String(missing)).not.toContain('s3cret');
       // An existing file outside --allow: the loader's message names the path, the CLI must not.
       const outside = await runMcpCli(['--allow', dir, '--tokn', outsideFile], { command: 'ifc-lite-mcp' }).catch((e: unknown) => e);
-      expect(String(outside)).toMatch(/file argument 1 of 1 could not be loaded \(outside --allow\)/);
+      expect(String(outside)).toMatch(/file argument 1 of 1 could not be loaded \(outside --allow, or a protected path\)/);
       expect(String(outside)).not.toContain(outsideFile);
     } finally {
       Object.assign(console, consoleBefore);
@@ -213,9 +213,22 @@ describe('loadFiles (#11534)', () => {
     const link = join(dir, 'link.ifc');
     await symlink(arch, link);
     try {
-      await loadFiles(registry, parseArgs([arch, join(dir, 'struct', 'model.ifc'), link]), (line) => lines.push(line));
+      const repeat = join(dir, 'arch', '..', 'arch', 'model.ifc');
+      await loadFiles(registry, parseArgs([arch, join(dir, 'struct', 'model.ifc'), link, repeat]), (line) => lines.push(line));
       expect(registry.list().map((m) => m.id)).toEqual(['model', 'model_2']);
-      expect(lines).toContain('warning: file argument 3 of 3 repeats file argument 1; skipped');
+      expect(lines).toContain('warning: file argument 3 of 4 repeats file argument 1; skipped');
+      expect(lines).toContain('warning: file argument 4 of 4 repeats file argument 1; skipped');
+    } finally {
+      for (const m of registry.list()) registry.remove(m.id);
+    }
+  });
+
+  // --allow and the file may name the same directory through different links (macOS /tmp -> /private/tmp).
+  it('accepts a file inside --allow spelled through its real path', async () => {
+    const registry = new InMemoryModelRegistry();
+    try {
+      await loadFiles(registry, parseArgs(['--allow', dir, join(await realpath(dir), 'arch', 'model.ifc')]), () => {});
+      expect(registry.list().map((m) => m.id)).toEqual(['model']);
     } finally {
       for (const m of registry.list()) registry.remove(m.id);
     }
@@ -230,7 +243,7 @@ describe('loadFiles (#11534)', () => {
     const registry = new InMemoryModelRegistry();
     try {
       await expect(loadFiles(registry, parseArgs(['--allow', dir, link]), () => {}))
-        .rejects.toThrow(/file argument 1 of 1 could not be loaded \(outside --allow\)/);
+        .rejects.toThrow(/file argument 1 of 1 could not be loaded \(outside --allow, or a protected path\)/);
       expect(registry.list()).toEqual([]);
     } finally {
       await rm(outside, { recursive: true, force: true });

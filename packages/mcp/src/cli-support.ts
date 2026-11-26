@@ -15,6 +15,8 @@ import type { CliOptions } from './cli-args.js';
 import type { ModelRegistry } from './context.js';
 import { deriveModelId, freeModelId, loadIfcModel } from './loader.js';
 import { fmtInt } from './tools/util.js';
+import { ToolErrorCode } from './errors.js';
+import { resolveSafePath } from './safe-path.js';
 import { fullScope, readOnlyScope, type AuthScope } from './auth/scope.js';
 
 /** Where Claude Desktop reads its MCP config on `platform`. */
@@ -61,12 +63,23 @@ export function tokenScopes(opts: CliOptions): Map<string, AuthScope> {
   return tokens;
 }
 
+/**
+ * Load one command-line file. With --allow it goes through the same policy as
+ * `model_load` (real paths, both spellings of each root, protected home
+ * entries); without, the operator's own arguments load from anywhere.
+ */
+async function loadAllowed(registry: ModelRegistry, opts: CliOptions, absolute: string, modelId: string) {
+  if (!opts.allowedPaths?.length) return loadIfcModel(absolute, { modelId });
+  const path = await resolveSafePath(absolute, { config: { allowedPaths: opts.allowedPaths }, registry }, 'read');
+  return loadIfcModel(path, { modelId, allowedPaths: [path] });
+}
+
 /** A path-free reason for a failed preload: the error code, or the error's class name. */
 function loadFailureReason(err: unknown): string {
-  const code = (err as NodeJS.ErrnoException | undefined)?.code;
-  if (code === 'OUTSIDE_ALLOWED_ROOTS') return 'outside --allow';
+  const code = (err as { code?: unknown } | undefined)?.code;
+  if (code === ToolErrorCode.PERMISSION_DENIED) return 'outside --allow, or a protected path';
   if (typeof code === 'string') return code;
-  return `load failed: ${err instanceof Error ? err.name : 'error'}`;
+  return 'not a readable IFC file';
 }
 
 export async function loadFiles(registry: ModelRegistry, opts: CliOptions, log: (line: string) => void): Promise<void> {
@@ -87,7 +100,7 @@ export async function loadFiles(registry: ModelRegistry, opts: CliOptions, log: 
     // `arch/model.ifc` and `struct/model.ifc` both derive `model`; suffix the
     // later one so it cannot replace (and dispose) the earlier.
     const modelId = freeModelId(registry, deriveModelId(basename(file)));
-    const m = await loadIfcModel(absolute, { allowedPaths: opts.allowedPaths, modelId }).catch((err: unknown) => {
+    const m = await loadAllowed(registry, opts, absolute, modelId).catch((err: unknown) => {
       // Name the argument by position and give a fixed reason, never the
       // loader's text: a mistyped value flag (`--tokn secret`) leaves its
       // value here, any message may spell the path, and stderr reaches client logs.

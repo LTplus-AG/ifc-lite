@@ -12,6 +12,8 @@
  */
 
 import { withIfcBytes, refusingEmpty } from './export-source.js';
+import { loadIfcModelFromBytes } from '../loader.js';
+import { writeTransformOutput } from './transform-schema.js';
 import { cityAndEnergyExportTools } from './export-city-energy.js';
 import { export3dmTool } from './export-3dm.js';
 import { hasExportFilter, selectExportEntities, exportIsolation, exportFilterProperties } from './export-selection.js';
@@ -58,12 +60,14 @@ const exportIfc: Tool = {
       // the allowlist actually export it rather than silently drop it.
       const wanted = new Set(input.global_ids as string[]);
       const matched = new Set<string>();
-      for (const e of selectExportEntities(m.bim, input)) {
+      const { limit, ...filters } = input;
+      for (const e of selectExportEntities(m.bim, filters)) {
         if (!wanted.has(e.globalId)) continue;
         refs.push(e.ref);
         matched.add(e.globalId);
       }
       unmatched = [...wanted].filter((id) => !matched.has(id));
+      if (typeof limit === 'number') refs = refs.slice(0, limit);
       // FAIL CLOSED with the allowlist's own wording and count. `export.ifc`
       // refuses an empty active list too (#4738), so this is the first of two
       // lines rather than the only one.
@@ -192,8 +196,20 @@ function artifactTool(name: keyof typeof artifactFormats, description: string): 
     async handler(input, ctx) {
       const model = resolveModel(ctx, input.model_id as string | undefined);
       const filePath = await resolveSafePath(input.file_path, ctx, 'write');
-      const isolated = exportIsolation(model.bim, input);
+      const reparseSelection = hasExportFilter(input) && model.backend.hasPendingChanges();
+      const baseIsolation = reparseSelection ? undefined : exportIsolation(model.bim, input);
       const artifact = await withIfcBytes(model, async (bytes) => {
+        let isolated = baseIsolation;
+        if (reparseSelection) {
+          // Isolation IDs must name the records in the STEP bytes the engine
+          // gets. A baked edit can change those IDs.
+          const baked = await loadIfcModelFromBytes(bytes, model.name);
+          try {
+            isolated = exportIsolation(baked.bim, input);
+          } finally {
+            baked.backend.dispose();
+          }
+        }
         const processor = new GeometryProcessor();
         try {
           await processor.init();
@@ -214,8 +230,7 @@ function artifactTool(name: keyof typeof artifactFormats, description: string): 
           processor.dispose();
         }
       });
-      ctx.signal.throwIfAborted();
-      await writeFile(await resolveSafePath(filePath, ctx, 'write'), artifact);
+      await writeTransformOutput(ctx, [model], await resolveSafePath(filePath, ctx, 'write'), artifact);
       const result = okResult(`Wrote ${fmtInt(artifact.length)} bytes to ${filePath}.`, { filePath, bytes: artifact.length });
       if (name === 'gltf' || name === 'jsonld') {
         result.content.push({ type: 'resource_link', uri: pathToFileURL(filePath).href, name: basename(filePath), mimeType, size: artifact.length });

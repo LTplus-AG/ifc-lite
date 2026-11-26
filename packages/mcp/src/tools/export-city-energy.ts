@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { writeFile } from 'node:fs/promises';
 import { basename } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { exportEnergyArtifact } from '@ifc-lite/export';
@@ -11,6 +10,7 @@ import type { ToolContext } from '../context.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import { resolveSafePath } from '../safe-path.js';
 import { withIfcBytes } from './export-source.js';
+import { writeTransformOutput } from './transform-schema.js';
 import type { Tool } from './types.js';
 import { fmtInt, resolveModel } from './util.js';
 
@@ -28,9 +28,9 @@ async function writeArtifact(
   const model = resolveModel(ctx, input.model_id as string | undefined);
   const filePath = await resolveSafePath(input.file_path, ctx, 'write');
   const { text, warnings } = await withIfcBytes(model, (bytes) => produce(bytes, model.name));
-  ctx.signal.throwIfAborted();
-  const bytes = Buffer.byteLength(text);
-  await writeFile(await resolveSafePath(filePath, ctx, 'write'), text, 'utf-8');
+  const data = Buffer.from(text, 'utf-8');
+  const bytes = data.length;
+  await writeTransformOutput(ctx, [model], await resolveSafePath(filePath, ctx, 'write'), data);
   return {
     content: [
       { type: 'text' as const, text: [`Wrote ${fmtInt(bytes)} bytes to ${filePath}.`, ...warnings].join('\n') },

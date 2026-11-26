@@ -70,6 +70,17 @@ it('applies storey and limit filters to a loaded model export', async () => {
   expect(result.structuredContent).toMatchObject({ rows: [expect.objectContaining({ Name: 'Existing wall' })] });
 });
 
+it('applies the STEP export limit after the GlobalId allowlist (#11583)', async () => {
+  const text = new TextDecoder().decode(source).replace(
+    'ENDSEC;\nEND-ISO', "#73=IFCWALL('0WALL00000000000000001',$,'Other wall',$,$,#40,$,$,$);\nENDSEC;\nEND-ISO",
+  );
+  ctx.registry.add(await loadIfcModelFromBytes(new TextEncoder().encode(text), 'walls.ifc'));
+  const filePath = join(root, 'limited.ifc');
+  const result = await run('export_ifc', { file_path: filePath, global_ids: ['0WALL00000000000000001'], limit: 1 });
+  expect(result.structuredContent).toMatchObject({ exportedCount: 1 });
+  expect(await readFile(filePath, 'utf-8')).toContain("Other wall");
+});
+
 it.skipIf(!existsSync(wasm))('writes binary glTF and a property-bearing JSON-LD graph', async () => {
   ctx.registry.add(await loadIfcModel(wall));
   expect(countGlbMeshes(await artifact('export_gltf', { type: 'IfcWall' }))).toBeGreaterThan(0);

@@ -10,7 +10,7 @@ const operators: ComparisonOp[] = ['=', '!=', '>', '<', '>=', '<=', 'contains', 
 
 export const exportFilterProperties = {
   type: { type: 'string', description: 'Filter by IFC type (for example IfcWall).' },
-  storey: { type: 'string', description: 'Keep entities contained in the named storey or storey express ID.' },
+  storey: { type: 'string', minLength: 1, description: 'Keep entities contained in the named storey or storey express ID.' },
   where: {
     type: 'object',
     description: 'Filter on a property or quantity in a named set.',
@@ -27,7 +27,7 @@ export const exportFilterProperties = {
 } satisfies Record<string, JsonSchema>;
 
 export function hasExportFilter(input: Record<string, unknown>): boolean {
-  return !!(input.type || input.storey || input.where || input.limit);
+  return !!(input.type || input.where || input.limit) || input.storey != null;
 }
 
 export function selectExportEntities(bim: BimContext, input: Record<string, unknown>) {
@@ -46,11 +46,19 @@ export function selectExportEntities(bim: BimContext, input: Record<string, unkn
     query = query.where(set, property, operator, value);
   }
   let entities = query.toArray();
-  if (typeof input.storey === 'string' && input.storey) {
-    const storey = input.storey;
+  if (typeof input.storey === 'string') {
+    const storey = input.storey.trim();
+    if (!storey) throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message: 'Storey must not be blank.' });
     const storeys = bim.storeys();
-    const match = storeys.find((entry) =>
-      entry.name === storey || entry.name.toLowerCase().includes(storey.toLowerCase()) || String(entry.ref.expressId) === storey);
+    const id = /^#?\d+$/.test(storey) ? Number(storey.replace(/^#/, '')) : undefined;
+    const named = storeys.filter((entry) => entry.name.toLowerCase() === storey.toLowerCase());
+    const matches = named.length > 0 ? named
+      : storeys.filter((entry) => entry.name.toLowerCase().includes(storey.toLowerCase()));
+    const exactId = id === undefined ? undefined : storeys.find((entry) => entry.ref.expressId === id);
+    if (!exactId && matches.length > 1) {
+      throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message: `Storey "${storey}" matches several storeys. Use an exact name or express ID.` });
+    }
+    const match = exactId ?? matches[0];
     if (!match) {
       throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message: `Storey "${storey}" not found.` });
     }

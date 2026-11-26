@@ -13,7 +13,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { CallToolResult } from '../protocol/index.js';
+import type { CallToolResult, ToolScope } from '../protocol/index.js';
 import {
   DEFAULT_CONFIG, InMemoryModelRegistry, NOOP_PROGRESS, SILENT_LOGGER, type ToolContext,
 } from '../context.js';
@@ -83,7 +83,7 @@ async function runError(code: string, extra: Record<string, unknown> = {}, tool 
 describe('script_run', () => {
   it('is registered with read and mutate variants', () => {
     const registry = buildDefaultToolRegistry();
-    expect(registry.get('script_run')?.scope).toBe('read');
+    expect(registry.get('script_run')?.scope).toBe('admin');
     expect(registry.get('script_run_mutate')?.scope).toBe('mutate');
     expect(registry.get('script_run')?.outputSchema).toBeDefined();
   });
@@ -305,6 +305,14 @@ describe('script_run_mutate after undo', () => {
   it('never reports a negative count', async () => {
     const result = await run('bim.mutate.undo("m"); bim.mutate.undo("m"); 1', {}, scriptRunMutateTool);
     expect(result.structuredContent?.mutations_queued).toBe(0);
+  });
+});
+
+describe('script tools need the admin scope', () => {
+  it('refuses a token with read and mutate but not admin', async () => {
+    const limited = { ...ctx, scope: { scopes: ['read', 'validate', 'mutate', 'export'] as ToolScope[] } };
+    await expect(scriptRunTool.handler({ code: '1' }, limited)).rejects.toMatchObject({ code: 'PERMISSION_DENIED' });
+    await expect(scriptRunMutateTool.handler({ code: '1' }, limited)).rejects.toMatchObject({ code: 'PERMISSION_DENIED' });
   });
 });
 

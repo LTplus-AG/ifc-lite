@@ -27,6 +27,7 @@ import type { LoadedModel, ToolContext } from '../context.js';
 import type { Tool } from './types.js';
 import { okResult, resolveModel } from './util.js';
 import { ToolErrorCode, ToolExecutionError, describeThrown } from '../errors.js';
+import { scopeAllows } from '../auth/scope.js';
 
 const MAX_CODE_CHARS = 100_000;
 const DEFAULT_TIMEOUT_MS = 10_000;
@@ -217,6 +218,11 @@ function readEnvelope(dumped: unknown): Outcome {
 }
 
 async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolContext) {
+  // script_run_mutate is scoped 'mutate' so --read-only hides it; admin is
+  // checked here as well, for the same event-loop reason script_run is admin.
+  if (!scopeAllows(ctx.currentScope?.() ?? ctx.scope, 'admin')) {
+    throw new ToolExecutionError({ code: ToolErrorCode.PERMISSION_DENIED, message: 'Script tools require the admin scope.' });
+  }
   const model = resolveModel(ctx, input.model_id as string | undefined);
   const code = input.code;
   if (typeof code !== 'string' || code.length === 0 || code.length > MAX_CODE_CHARS) {
@@ -306,13 +312,15 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
   }
 }
 
-const SHARED_DESCRIPTION = 'Runs in a QuickJS sandbox with only the `bim` SDK global (bim.query, bim.model, bim.export, bim.lens, bim.clash, bim.cost, bim.structural, bim.schedule, bim.create) and console; no network, filesystem, viewer or timers. Returns the last expression value plus captured console output.';
+const SHARED_DESCRIPTION = 'Runs in a QuickJS sandbox with only the `bim` SDK global (bim.query, bim.model, bim.export, bim.lens, bim.clash, bim.cost, bim.structural, bim.schedule, bim.create) and console; no network, filesystem, viewer or timers. Returns the last expression value plus captured console output. Requires the admin scope: script code runs on the server\'s event loop and holds other requests while it runs.';
 
 export const scriptRunTool: Tool = {
   name: 'script_run',
   title: 'Run SDK script (read-only)',
   description: `script, eval, javascript, sdk: run a read-only SDK script against a loaded model. ${SHARED_DESCRIPTION} bim.mutate and bim.store are absent; use script_run_mutate to edit.`,
-  scope: 'read',
+  // admin, not read: until the sandbox runs in a worker thread, a script
+  // blocks every session on a shared server for up to timeout_ms.
+  scope: 'admin',
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   inputSchema,
   outputSchema,

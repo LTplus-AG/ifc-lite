@@ -26,10 +26,13 @@ function refName(schema: JsonSchema | undefined): string | undefined {
   return typeof ref === 'string' ? ref.slice(ref.lastIndexOf('/') + 1) : undefined;
 }
 
+function payloadOf(kind: string, defs: Defs): JsonSchema {
+  return defs[`Op_${kind.replace(/\./g, '_')}`]?.properties?.payload ?? fail(`no payload for ${kind}`);
+}
+
 /** `spec.add: specId, name, ifcVersions [index, description, …]` */
 function kindLine(kind: string, defs: Defs): string {
-  const payload = defs[`Op_${kind.replace(/\./g, '_')}`]?.properties?.payload;
-  if (!payload) fail(`no payload for ${kind}`);
+  const payload = payloadOf(kind, defs);
   const fields = Object.keys(payload.properties ?? {});
   const required = payload.required ?? [];
   const optional = fields.filter((f) => !required.includes(f));
@@ -64,7 +67,7 @@ function directRefs(schema: JsonSchema): string[] {
  */
 function legendNames(defs: Defs): string[] {
   const seen = new Set<string>(['Uuid']);
-  const queue = OP_KINDS.flatMap((kind) => directRefs(defs[`Op_${kind.replace(/\./g, '_')}`]?.properties?.payload ?? {}));
+  const queue = OP_KINDS.flatMap((kind) => directRefs(payloadOf(kind, defs)));
   const out: string[] = [];
   while (queue.length > 0) {
     const name = queue.shift()!;

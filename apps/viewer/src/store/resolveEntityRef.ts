@@ -40,9 +40,9 @@ function resolveEntityRefFromState(
   // Only under that premise: behind a removed model the offset is not 0, and a
   // negative id is nobody's (#11527: either became an unpublished local id that
   // the next toGlobalId refused). Those take the legacy sentinel below.
-  const [firstModelId, firstModel] = state.models.entries().next().value ?? [];
-  if (firstModelId !== undefined && (firstModel?.idOffset ?? 0) === 0 && Number.isSafeInteger(globalId) && globalId >= 0) {
-    return { modelId: firstModelId, expressId: globalId };
+  const first = state.models.entries().next();
+  if (!first.done && (first.value[1].idOffset ?? 0) === 0 && Number.isSafeInteger(globalId) && globalId >= 0) {
+    return { modelId: first.value[0], expressId: globalId };
   }
 
   // Legacy single-model mode (no models in federation map yet), or an id no model owns.

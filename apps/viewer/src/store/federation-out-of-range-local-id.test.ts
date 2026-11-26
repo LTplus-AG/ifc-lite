@@ -49,7 +49,7 @@ describe('fallback resolvers never hand out a local id the model does not own (#
   it('resolveEntityRef on an unowned id gives a ref that toGlobalId accepts', () => {
     laterModelAlone();
     // 5 is inside the later model's LOCAL range, but as a renderer id it belongs to no loaded model.
-    assert.notDeepEqual(resolveEntityRef(5), { modelId: 'later', expressId: 5 });
+    assert.deepEqual(resolveEntityRef(5), { modelId: 'legacy', expressId: 5 });
     for (const globalId of [5, -2_024_174]) {
       const ref = resolveEntityRef(globalId);
       assert.doesNotThrow(() => useViewerStore.getState().toGlobalId(ref.modelId, ref.expressId),

@@ -120,8 +120,8 @@ describe('ramps', () => {
     }
   });
 
-  it('resolves the huge-geometry ramps from PostHog when nothing else overrides them', () => {
-    for (const [id, key] of [['drawStream', 'perf-draw-stream'], ['gpuInstancing', 'perf-gpu-instancing']] as const) {
+  it('resolves the huge-geometry ramps (and compactGeom) from PostHog when nothing else overrides them', () => {
+    for (const [id, key] of [['drawStream', 'perf-draw-stream'], ['gpuInstancing', 'perf-gpu-instancing'], ['globalInstancing', 'perf-global-instancing'], ['compactGeom', 'perf-compact-geom']] as const) {
       const flag = getPerfFlagDefinition(id);
       assert.equal(flag.bindings.posthogKey, key);
       assert.equal(resolvePerfFlag(flag, (k) => (k === key ? true : undefined)), true);

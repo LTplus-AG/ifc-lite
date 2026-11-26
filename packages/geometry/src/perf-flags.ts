@@ -92,9 +92,10 @@ export function inSmallFileTier(byteLength: number): boolean {
 }
 
 /** Whether the plan applies to a source of `byteLength` bytes (the bytes the pool meshes: for a compressed source,
- *  its decompressed IFC): the flag is on and the source is past the small tier. */
-export function globalInstancingApplies(byteLength: number): boolean {
-  return !inSmallFileTier(byteLength) && readGlobalInstancingFlag();
+ *  its decompressed IFC): the flag is on and the source is past the small tier. `flag` is a host's own decision
+ *  (the viewer's PostHog ramp, `GeometryProcessor.globalInstancing`); unset, the explicit global or URL param. */
+export function globalInstancingApplies(byteLength: number, flag?: boolean): boolean {
+  return !inSmallFileTier(byteLength) && (flag ?? readGlobalInstancingFlag());
 }
 
 /**

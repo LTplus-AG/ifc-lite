@@ -2,8 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { GEOMETRY_PERF_FLAG_BINDINGS, type GeometryProcessor } from '@ifc-lite/geometry';
 import type { Renderer, SceneContents } from '@ifc-lite/renderer';
-import { readPerfFlag } from '../lib/perf/flags.js';
+import { readPerfFlagRaw } from '@ifc-lite/data';
+import { getPerfFlagDefinition, resolvePerfFlag } from '../lib/perf/flags.js';
 import { recordAppliedPerfFlag } from '../lib/perf/flags-applied.js';
 import { isHugeGeometryEnabled, isPerfFlagOff, isPerfFlagOn, readRampFlag } from './hugeGeometryConfig.js';
 
@@ -34,10 +36,33 @@ export function configureGpuInstancing(renderer: Pick<Renderer, 'setGpuInstancin
 /**
  * The scene joins keyed instanced records (global instance plan) by default, on every upload path, so a reopen
  * draws like its cold load. An explicit `?perf.globalInstancing=0` is the kill switch for the join as well: a reopen
- * of a snapshot cached with the plan then draws one template per record, as before the plan. Read once at init.
+ * of a snapshot cached with the plan then draws one template per record, as before the plan. The `perf-global-instancing`
+ * ramp does not switch the join off. Read once at init.
  */
 export function configureKeyedInstancing(scene: Pick<SceneContents, 'keyedInstancing'>): boolean {
   if (!scene.keyedInstancing) return false;
-  scene.keyedInstancing.enabled = !isPerfFlagOff(readPerfFlag('globalInstancing'));
+  // Explicit only: a user outside the PostHog ramp reads `false` there, and must still join a plan's cached records.
+  scene.keyedInstancing.enabled = !isPerfFlagOff(readPerfFlagRaw(GEOMETRY_PERF_FLAG_BINDINGS.globalInstancing));
   return scene.keyedInstancing.enabled;
+}
+
+/**
+ * The global instance plan for one exact load's processor: its flag resolved here (global, URL param, then the
+ * `perf-global-instancing` PostHog ramp), so the ramp reaches only the viewer's own loads, never exports or other
+ * processors. A primary load (`recordArm`) records whether the plan ran as the telemetry arm; a federated add
+ * plans too but leaves the arm to its primary. {@link resetGlobalInstancingArm} starts every primary load from the
+ * default, so a small file, a cache reopen or a server load reports it.
+ */
+export function configureGlobalInstancing(
+  processor: Pick<GeometryProcessor, 'globalInstancing' | 'onGlobalInstancingDecision'>,
+  { recordArm }: { recordArm: boolean },
+  readFeatureFlag?: (key: string) => unknown,
+): void {
+  processor.globalInstancing = isPerfFlagOn(resolvePerfFlag(getPerfFlagDefinition('globalInstancing'), readFeatureFlag));
+  processor.onGlobalInstancingDecision = recordArm ? (ran) => recordAppliedPerfFlag('globalInstancing', ran) : undefined;
+}
+
+/** A primary load starts from the default arm until its pool reports. */
+export function resetGlobalInstancingArm(): void {
+  recordAppliedPerfFlag('globalInstancing', false);
 }

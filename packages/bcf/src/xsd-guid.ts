@@ -2,26 +2,17 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/**
- * Case normalisation for BCF `Guid` attributes.
- *
- * BCF 2.1's `markup.xsd`/`visinfo.xsd` accept a `Guid` of either hex case
- * (`[a-fA-F0-9]{8}-...`). BCF 3.0's `shared-types.xsd` narrows the `Guid` simple
- * type to LOWERCASE hex only (`[a-f0-9]{8}-...`). Real 2.1 producers emit
- * uppercase GUIDs, so a project read from one and written as 3.0 carried the
- * uppercase value through verbatim and failed validation on every `Topic`,
- * `Comment`, `Viewpoint`, `RelatedTopic` and `DocumentReference` guid.
- *
- * Hex case carries no information in a UUID, so lowercasing a value that IS a
- * UUID is lossless. A value that is not a UUID is returned untouched: this is
- * not the place to invent an identifier, and a caller that depends on an
- * opaque id round-tripping keeps it.
- */
-const UUID_ANY_CASE = /^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$/;
+import { isValidUuid } from '@ifc-lite/encoding';
 
-/** The guid as it must be written for `version`; every guid emitter shares this. */
+/**
+ * The guid as it must be written for `version`; every guid emitter shares this.
+ * BCF 3.0's `shared-types.xsd` allows only lowercase hex, while 2.1 allows
+ * either case, so 2.1 producers' uppercase guids failed 3.0 validation. Case
+ * carries no information in a UUID, so lowercasing one is lossless; a value
+ * that is not a UUID is returned untouched.
+ */
 export function bcfGuid(guid: string, version: '2.1' | '3.0'): string {
-  return version === '3.0' && UUID_ANY_CASE.test(guid) ? guid.toLowerCase() : guid;
+  return version === '3.0' && isValidUuid(guid) ? guid.toLowerCase() : guid;
 }
 
 /**
@@ -37,11 +28,13 @@ export function assertNoCaseOnlyGuidClash(
   version: '2.1' | '3.0',
   what: string,
 ): void {
+  if (version !== '3.0') return;
   const written = new Map<string, string>();
   for (const item of items) {
     const out = bcfGuid(item.guid, version);
     const clash = written.get(out);
-    if (clash !== undefined) {
+    // An exact duplicate is not a case-only clash; lowercasing does not create it.
+    if (clash !== undefined && clash !== item.guid) {
       throw new Error(
         `BCF ${version} guids are lowercase, so ${what} "${clash}" and "${item.guid}" ` +
           `would both be written as "${out}". Give one of them a different guid before writing.`

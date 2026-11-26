@@ -235,7 +235,6 @@ export class ProtocolSession {
     return this.transport.handshakeSent;
   }
 
-
   /** One inbound message; resolves with the response, or null for notifications. */
   deliver(message: JsonRpcMessage): Promise<JsonRpcResponse | null> {
     return this.transport.deliver(message);

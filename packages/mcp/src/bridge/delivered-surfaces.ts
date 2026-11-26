@@ -90,7 +90,8 @@ function collect(value: unknown, into: Surface): void {
     return;
   }
   if (!isRecord(value)) return;
-  if (typeof value.prompt === 'string' && typeof value.label === 'string') addString(into.prompts, value.prompt);
+  // A follow-up has a label (literal or bound) and a literal prompt.
+  if ('label' in value && typeof value.prompt === 'string') addString(into.prompts, value.prompt);
   const action = value.action;
   if (isRecord(action)) {
     const event = action.event;

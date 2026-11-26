@@ -237,7 +237,7 @@ describe.skipIf(!built)('ifc-lite-mcp --bridge binary', () => {
       child.stderr.setEncoding('utf8').on('data', (d: string) => { stderr += d; });
       const code = await new Promise<number | null>((done) => child.once('close', (c) => done(c)));
       expect(code).toBe(1);
-      expect(stderr).toContain(`port ${port} on 127.0.0.1 is in use`);
+      expect(stderr).toContain(`port ${port} on 127.0.0.1 is in use or reserved`);
     } finally {
       await new Promise<void>((ok) => holder.close(() => ok()));
     }

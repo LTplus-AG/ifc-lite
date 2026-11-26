@@ -261,6 +261,13 @@ describe('DeliveredSurfaces', () => {
     expect(ledger.check({ surfaceId: 'a', name: 'pick', prompt: 'Action: pick' })).toMatchObject(ok);
   });
 
+  it('verifies the literal prompt of a follow-up whose label is bound', () => {
+    const ledger = new DeliveredSurfaces();
+    ledger.record([{ version: '1.0', updateComponents: { surfaceId: 'f', components: [
+      { id: 'a', component: 'ActionBar', followUps: [{ label: { path: '/l' }, prompt: 'Which walls are external?' }] }] } }]);
+    expect(ledger.check({ surfaceId: 'f', name: 'ask', prompt: 'Which walls are external?' })).toMatchObject(ok);
+  });
+
   it('verifies an A2UI v1.0 event userMessage the agent wrote', () => {
     const ledger = new DeliveredSurfaces();
     ledger.record([{ version: '1.0', updateComponents: { surfaceId: 'b', components: [

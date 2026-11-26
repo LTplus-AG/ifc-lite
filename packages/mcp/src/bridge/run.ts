@@ -90,13 +90,17 @@ ${TAB_SHOW_UI_TOOL} when listed to deliver an A2UI surface to the tab, and ${BRI
   • The tool list changes (notifications/tools/list_changed) when a tab connects, disconnects or changes permission.
   • tab_* tools the tab marks as changing the model appear only when the user allowed changes in the tab. Changes land in
     the viewer's undo history; saving or writing back to a cloud source stays a user action in the viewer.
+  • A tool name inside a tab_* tool's schema, result or hint (e.g. "id from model_list") names the tab's own tool: call it
+    as tab_model_list.
+`.trim();
+
+/** Only when headless tools are served next to the tab. */
+const HEADLESS_INSTRUCTIONS = `
   • viewer_* tools (no tab_ prefix) drive this process's own local viewer page, not the user's tab (except the
     deprecated aliases viewer_show_ui and viewer_ui_events, which are tab_show_ui and tab_ui_events).
   • model_id, export_ifc and model_save above apply to models loaded in this process. tab_* tools take the tab's own
     model ids, and their edits stay in the tab until the user saves there.
-  • A tool name inside a tab_* tool's schema, result or hint (e.g. "id from model_list") names the tab's own tool: call it
-    as tab_model_list.
-`.trim();
+`.trimEnd();
 
 const CHANNEL_INSTRUCTIONS = `
   • Viewer UI events arrive as <channel source="..." event="..." surface_id="..." event_id="..."> messages when the user
@@ -154,7 +158,7 @@ export async function startBridgeServer(opts: BridgeServerOptions): Promise<Runn
   };
   const tools = new BridgeToolRegistry(bridge, opts.channel === true);
   tools.registerAll(parts.tools.list());
-  const bridgeInstructions = opts.channel ? `${INSTRUCTIONS}\n${CHANNEL_INSTRUCTIONS}` : INSTRUCTIONS;
+  const bridgeInstructions = [INSTRUCTIONS, ...(opts.headless ? [HEADLESS_INSTRUCTIONS] : []), ...(opts.channel ? [CHANNEL_INSTRUCTIONS] : [])].join('\n');
   const server = new MCPServer({
     name: 'ifc-lite',
     version: opts.version,

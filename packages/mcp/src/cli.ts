@@ -19,7 +19,7 @@
 import { resolve } from 'node:path';
 import { bridgeConflict, parseArgs, type CliOptions } from './cli-args.js';
 import { startBridgeServer, type HeadlessParts, type RunningBridge } from './bridge/run.js';
-import { isAddrInUse } from './bridge/loopback-server.js';
+import { isPortUnavailable } from './bridge/loopback-server.js';
 import { DEFAULT_BRIDGE_PORT, DEFAULT_BRIDGE_VIEWER_URL } from './bridge/protocol.js';
 import { StdioTransport } from './transport/stdio.js';
 import { routeConsoleToStderr } from './transport/stdio-console.js';
@@ -304,8 +304,8 @@ async function startBridge(opts: CliOptions, headless: HeadlessParts, logger: Lo
       logger,
     });
   } catch (err) {
-    const why = explicitPort && isAddrInUse(err)
-      ? `port ${opts.bridgePort} on 127.0.0.1 is in use (another bridge running?). Pass another --bridge-port, or drop it to let the bridge pick a free one.`
+    const why = explicitPort && isPortUnavailable(err)
+      ? `port ${opts.bridgePort} on 127.0.0.1 is in use or reserved (another bridge running?). Pass another --bridge-port, or drop it to let the bridge pick a free one.`
       : (err as Error).message;
     process.stderr.write(`[ifc-lite-mcp] cannot start the bridge: ${why}\n`);
     process.exitCode = 1;

@@ -109,7 +109,7 @@ export function renderTitleBlock(
   }
 
   // North arrow (in title block, next to scale bar or logo area)
-  if (extras?.northArrow && extras.northArrow.style !== 'none' && h > 15) {
+  if (extras?.northArrow && extras.northArrow.style !== 'none' && h > 15 && Number.isFinite(extras.northArrow.rotation)) {
     svg += renderNorthArrowInTitleBlock(extras.northArrow, x, y, w, h, config.logo != null, config.position);
   }
 

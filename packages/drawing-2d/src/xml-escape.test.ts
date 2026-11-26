@@ -91,6 +91,21 @@ describe('SVG writers emit well-formed XML for hostile strings (#11467)', () => 
     const { svgElements } = renderTitleBlock(b, { x: 0, y: 0, width: 420, height: 297 }, []);
     expect(svgElements).not.toMatch(/NaN|Infinity/);
   });
+  it('omits a title-block north arrow whose bearing is not finite (#11467)', () => {
+    const b = block('Drawing title');
+    const frame = { x: 0, y: 0, width: 420, height: 297 };
+    const renderWithBearing = (rotation: number) =>
+      renderTitleBlock(b, frame, [], { northArrow: { style: 'simple', sizeMm: 8, rotation } }).svgElements;
+    const valid = renderWithBearing(-35.5);
+    expect(valid).toContain('id="title-block-north-arrow"');
+    expect(valid).toContain('rotate(-35.5)');
+    for (const bearing of [NaN, Infinity, -Infinity]) {
+      const invalid = renderWithBearing(bearing);
+      expect(invalid).toContain('Drawing title');
+      expect(invalid).not.toContain('id="title-block-north-arrow"');
+      expect(invalid).not.toMatch(/NaN|Infinity/);
+    }
+  });
   it('svgNum maps non-finite to 0', () => {
     expect(svgNum(NaN)).toBe('0');
     expect(svgNum(1.23456, 2)).toBe('1.23');

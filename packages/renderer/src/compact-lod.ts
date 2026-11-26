@@ -157,6 +157,7 @@ function* buildPageLods(
       if (list) list.push(mesh); else byGroup.set(group, [mesh]);
     }
     if (!whole) for (const group of byGroup.keys()) group.kept = -1;
+    if (!whole) dropPageLod(store, page); // its parts no longer describe it: drawn whole until a build covers it again
     if (!whole || byGroup.size === 0) continue;
     const plan: PagePlan = { page, parts: [] };
     let decoded = false;

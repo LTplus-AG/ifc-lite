@@ -1029,6 +1029,8 @@ describe('compact pages take the decisions of the bucket batches they stand in f
     assert.equal(on.removeMeshesForEntity(2001), true); // an edit: the group's pages are built again
     flushAll(on, gpu);
     assert.deepEqual(far.lodParts?.map((part) => part.lod1), [false], 'no LOD1 decided on part of the bucket');
+    const nearPage = pages(on).find((page) => page.expressIds.includes(1001))!;
+    assert.equal(nearPage.lodParts, undefined, 'the written mesh\'s page drops its old parts and draws whole');
     assert.equal(far.lodParts![0].bounds.min[0], -5, 'the written mesh counts for the box');
   });
 

@@ -17,6 +17,7 @@ export interface OracleFinding {
 export interface Keyed {
   rule: string;
   instance?: number;
+  otherInstance?: number;
 }
 
 const last = (attribute: string | null | undefined) => (attribute ?? '').split('.').pop()!.toLowerCase();
@@ -42,7 +43,7 @@ export function oracleKey(f: OracleFinding): Keyed {
   if (msg.startsWith('With inverse:')) return { rule: `inverse-cardinality:${last(f.attribute)}`, instance };
   if (msg.startsWith('With attribute:') || msg.startsWith('Invalid attribute value')) return { rule: `invalid-type:${last(f.attribute)}`, instance };
   const unique = /Rule (Ifc\w+\.UR\d+)/.exec(msg);
-  if (unique) return { rule: `unique:${unique[1].toLowerCase()}`, instance: instance ?? idFromOnInstance(msg) };
+  if (unique) return { rule: `unique:${unique[1].toLowerCase()}`, instance: instance ?? idFromOnInstance(msg), otherInstance: recordId(/Violated by:\s+#(\d+)=/, msg) };
   if (msg.includes('IfcGloballyUniqueId base64')) return { rule: 'guid-format', instance: instance ?? idFromOnInstance(msg) };
   if (/^An enumeration literal '.*' is not valid for type/.test(msg)) return { rule: `invalid-type:${last(f.attribute) || '?'}`, instance };
   if (/^Expected \d+ attribute values, found \d+/.test(msg)) return { rule: 'attribute-count', instance };
@@ -52,7 +53,11 @@ export function oracleKey(f: OracleFinding): Keyed {
 }
 
 function idFromOnInstance(msg: string): number | undefined {
-  const m = /On instance:\s+#(\d+)=/.exec(msg);
+  return recordId(/On instance:\s+#(\d+)=/, msg);
+}
+
+function recordId(pattern: RegExp, msg: string): number | undefined {
+  const m = pattern.exec(msg);
   return m ? Number(m[1]) : undefined;
 }
 
@@ -65,7 +70,7 @@ export function ourKey(f: ValidationFinding): Keyed {
     case 'global_rule':
       return { rule: `global:${f.rule.split('.')[0].toLowerCase()}` };
     case 'unique_rule':
-      return { rule: `unique:${f.rule.toLowerCase()}`, instance };
+      return { rule: `unique:${f.rule.toLowerCase()}`, instance, otherInstance: recordId(/also used by #(\d+)/, f.message) };
     case 'header':
       return { rule: `header:${f.rule.toLowerCase()}` };
     case 'evaluation_error':
@@ -82,7 +87,13 @@ export function ourKey(f: ValidationFinding): Keyed {
   }
 }
 
-export const keyString = (k: Keyed) => `${k.rule}|${k.instance ?? ''}`;
+export const keyString = (k: Keyed) => {
+  // A UNIQUE collision concerns both instances. The oracle may enumerate them in either order.
+  const ids = k.instance !== undefined && k.otherInstance !== undefined
+    ? [k.instance, k.otherInstance].sort((a, b) => a - b).join(',')
+    : k.instance ?? '';
+  return `${k.rule}|${ids}`;
+};
 
 /** Does a finding key (`rule|instance`) hit a corpus target such as `IfcWall.CorrectPredefinedType` or `not-optional`? */
 export function hitsTarget(key: string, target: string): boolean {

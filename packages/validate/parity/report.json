@@ -1620,7 +1620,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 0,
    "oracle": 0,
-   "milliseconds": 32,
+   "milliseconds": 31,
    "tp": [],
    "fp": [],
    "fn": []
@@ -1631,7 +1631,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 0,
    "oracle": 0,
-   "milliseconds": 27,
+   "milliseconds": 33,
    "tp": [],
    "fp": [],
    "fn": []
@@ -1642,7 +1642,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 1,
+   "milliseconds": 2,
    "tp": [
     "ifcwall.correctpredefinedtype|42"
    ],
@@ -1670,7 +1670,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 1,
+   "milliseconds": 2,
    "tp": [
     "ifcwindow.correctstyleassigned|73"
    ],
@@ -1727,7 +1727,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [
     "ifctypeobject.namerequired|48"
    ],
@@ -1741,7 +1741,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [
     "ifcspatialstructureelement.wr41|26"
    ],
@@ -1755,7 +1755,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 3,
    "oracle": 3,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [
     "inverse-cardinality:decomposes|26",
     "ifcspatialstructureelement.wr41|26",
@@ -1813,7 +1813,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 1,
+   "milliseconds": 0,
    "tp": [
     "global:ifcsingleprojectinstance|"
    ],
@@ -1841,7 +1841,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 2,
    "oracle": 2,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [
     "ifclocalplacement.wr21|71",
     "ifcaxis2placement3d.locationis3d|92"
@@ -1872,7 +1872,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 1,
+   "milliseconds": 0,
    "tp": [
     "ifcdirection.magnitudegreaterzero|32"
    ],
@@ -1886,7 +1886,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 2,
    "oracle": 2,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [
     "ifcaxis2placement2d.locationis2d|54",
     "ifccartesianpoint.cp2dor3d|55"
@@ -1944,7 +1944,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [
     "ifcshaperepresentation.correctitemsfortype|85"
    ],
@@ -1958,7 +1958,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 2,
    "oracle": 2,
-   "milliseconds": 2,
+   "milliseconds": 1,
    "tp": [
     "abstract|138",
     "ifcshaperepresentation.correctcontext|85"
@@ -1988,7 +1988,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [
     "ifclocalplacement.wr21|63"
    ],
@@ -2002,7 +2002,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 1,
+   "milliseconds": 4,
    "tp": [
     "ifcgeometricrepresentationsubcontext.usertargetprovided|16"
    ],
@@ -2016,7 +2016,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 1,
    "oracle": 0,
-   "milliseconds": 1,
+   "milliseconds": 0,
    "tp": [],
    "fp": [
     "derived-in-subtype:coordinatespacedimension|17"
@@ -2045,7 +2045,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [
     "ifcpropertyset.uniquepropertynames|132"
    ],
@@ -2059,7 +2059,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 1,
+   "milliseconds": 0,
    "tp": [
     "ifcobject.uniquepropertysetnames|42"
    ],
@@ -2087,7 +2087,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [
     "ifcnamedunit.wr1|7"
    ],
@@ -2101,7 +2101,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 1,
+   "milliseconds": 0,
    "tp": [
     "ifcunitassignment.wr01|10"
    ],
@@ -2129,7 +2129,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 5,
+   "milliseconds": 1,
    "tp": [
     "ifcperson.identifiableperson|1"
    ],
@@ -2157,7 +2157,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 1,
+   "milliseconds": 0,
    "tp": [
     "ifcgridaxis.wr1|113"
    ],
@@ -2199,7 +2199,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 1,
+   "milliseconds": 0,
    "tp": [
     "ifcmateriallayer.normalizedpriority|44"
    ],
@@ -2213,7 +2213,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 2,
    "oracle": 2,
-   "milliseconds": 1,
+   "milliseconds": 0,
    "tp": [
     "inverse-cardinality:associatedto|46",
     "ifcwallstandardcase.hasmateriallayersetusage|60"
@@ -2242,7 +2242,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 1,
+   "milliseconds": 0,
    "tp": [
     "inverse-cardinality:fillsvoids|62"
    ],
@@ -2256,7 +2256,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 1,
+   "milliseconds": 0,
    "tp": [
     "inverse-cardinality:containedinstructure|42"
    ],
@@ -2270,7 +2270,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [
     "ifcreldefinesbyproperties.norelatedtypeobject|133"
    ],
@@ -2284,9 +2284,9 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 1,
+   "milliseconds": 0,
    "tp": [
-    "unique:ifcroot.ur1|60"
+    "unique:ifcroot.ur1|42,60"
    ],
    "fp": [],
    "fn": [],
@@ -2340,7 +2340,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 1,
+   "milliseconds": 2,
    "tp": [
     "invalid-type:objectplacement|42"
    ],
@@ -2424,7 +2424,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [
     "invalid-type:name|42"
    ],
@@ -2438,7 +2438,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 1,
+   "milliseconds": 0,
    "tp": [
     "header:file_name.author|"
    ],
@@ -2479,7 +2479,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 2,
+   "milliseconds": 1,
    "tp": [
     "ifcwindow.correcttypeassigned|73"
    ],
@@ -2492,7 +2492,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 1,
+   "milliseconds": 0,
    "tp": [
     "ifcslab.correctpredefinedtype|88"
    ],
@@ -2563,7 +2563,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 3,
    "oracle": 3,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [
     "inverse-cardinality:decomposes|26",
     "ifcspatialstructureelement.wr41|26",
@@ -2579,7 +2579,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 1,
+   "milliseconds": 0,
    "tp": [
     "ifcrelcontainedinspatialstructure.wr31|120"
    ],
@@ -2607,7 +2607,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [
     "ifcproject.correctcontext|20"
    ],
@@ -2621,7 +2621,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 1,
+   "milliseconds": 0,
    "tp": [
     "global:ifcsingleprojectinstance|"
    ],
@@ -2635,7 +2635,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [
     "ifcaxis2placement3d.axisandrefdirprovision|14"
    ],
@@ -2664,7 +2664,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 3,
    "oracle": 3,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [
     "ifcaxis2placement3d.axistorefdirposition|14",
     "evaluation-error:ifcgeometricrepresentationcontext.north2d|16",
@@ -2680,7 +2680,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 1,
+   "milliseconds": 0,
    "tp": [
     "ifcdirection.magnitudegreaterzero|32"
    ],
@@ -2709,7 +2709,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [
     "ifcextrudedareasolid.validextrusiondirection|35"
    ],
@@ -2723,7 +2723,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 1,
+   "milliseconds": 0,
    "tp": [
     "ifcpositivelengthmeasure.wr1|34"
    ],
@@ -2867,7 +2867,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 1,
+   "milliseconds": 0,
    "tp": [
     "ifcobject.uniquepropertysetnames|42"
    ],
@@ -2881,7 +2881,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [
     "ifcquantitylength.wr22|134"
    ],
@@ -2895,7 +2895,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [
     "ifcnamedunit.wr1|7"
    ],
@@ -2923,7 +2923,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [
     "ifcownerhistory.correctchangeaction|5"
    ],
@@ -2978,7 +2978,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [
     "ifcpolyline.samedim|39"
    ],
@@ -3006,7 +3006,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 1,
+   "milliseconds": 0,
    "tp": [
     "ifcmateriallayer.normalizedpriority|44"
    ],
@@ -3020,7 +3020,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 2,
    "oracle": 2,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [
     "inverse-cardinality:associatedto|46",
     "ifcwallstandardcase.hasmateriallayersetusage|60"
@@ -3077,7 +3077,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 1,
+   "milliseconds": 0,
    "tp": [
     "ifcreldefinesbyproperties.norelatedtypeobject|133"
    ],
@@ -3091,9 +3091,9 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [
-    "unique:ifcroot.ur1|60"
+    "unique:ifcroot.ur1|42,60"
    ],
    "fp": [],
    "fn": [],
@@ -3105,7 +3105,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 1,
+   "milliseconds": 0,
    "tp": [
     "guid-format|42"
    ],
@@ -3203,7 +3203,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 2,
+   "milliseconds": 0,
    "tp": [
     "abstract|138"
    ],
@@ -3231,7 +3231,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 1,
+   "milliseconds": 0,
    "tp": [
     "invalid-type:name|42"
    ],
@@ -3259,7 +3259,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 170,
    "oracle": 170,
-   "milliseconds": 215,
+   "milliseconds": 192,
    "tp": [
     "ifcpositiveratiomeasure.wr1|15065",
     "ifcpositiveratiomeasure.wr1|15066",
@@ -3452,7 +3452,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 0,
    "oracle": 0,
-   "milliseconds": 8,
+   "milliseconds": 9,
    "tp": [],
    "fp": [],
    "fn": []
@@ -3474,7 +3474,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 0,
    "oracle": 0,
-   "milliseconds": 2,
+   "milliseconds": 1,
    "tp": [],
    "fp": [],
    "fn": []
@@ -3485,7 +3485,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 0,
    "oracle": 0,
-   "milliseconds": 14,
+   "milliseconds": 15,
    "tp": [],
    "fp": [],
    "fn": []
@@ -3496,7 +3496,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 0,
    "oracle": 0,
-   "milliseconds": 47,
+   "milliseconds": 54,
    "tp": [],
    "fp": [],
    "fn": []
@@ -3518,7 +3518,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 4,
    "oracle": 4,
-   "milliseconds": 8,
+   "milliseconds": 9,
    "tp": [
     "ifcarbitraryopenprofiledef.wr12|190",
     "ifcarbitraryopenprofiledef.wr12|203",
@@ -3534,7 +3534,7 @@
    "schema": "IFC2X3",
    "ours": 0,
    "oracle": 0,
-   "milliseconds": 166,
+   "milliseconds": 174,
    "tp": [],
    "fp": [],
    "fn": []
@@ -3545,7 +3545,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 0,
    "oracle": 0,
-   "milliseconds": 1,
+   "milliseconds": 0,
    "tp": [],
    "fp": [],
    "fn": []
@@ -3556,7 +3556,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 0,
    "oracle": 0,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [],
    "fp": [],
    "fn": []
@@ -3592,7 +3592,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 2,
    "oracle": 1,
-   "milliseconds": 7,
+   "milliseconds": 8,
    "tp": [
     "inverse-cardinality:shapeofproduct|192"
    ],

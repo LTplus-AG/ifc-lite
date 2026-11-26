@@ -63,7 +63,7 @@ def run(path: str) -> dict:
             "instance": instance_id(s.get("instance")),
             "instanceText": str(s.get("instance"))[:200] if s.get("instance") is not None else None,
             "attribute": attribute,
-            "message": message[:400],
+            "message": message,
         })
     return {"path": path, "sha256": digest, "findings": findings}
 

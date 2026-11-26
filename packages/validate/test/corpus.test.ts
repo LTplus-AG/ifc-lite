@@ -48,6 +48,13 @@ describe('crafted parity corpus', () => {
     expect(hitsTarget(keyString(ourKey({ ...actual, category: 'entity_rule' })), target)).toBe(true);
   });
 
+  it('matches a UNIQUE collision in either order and keeps different pairs distinct', () => {
+    const finding = { category: 'unique_rule' as const, rule: 'IfcRoot.UR1', instance: 60, message: 'GlobalId must be unique; also used by #42' };
+    const reference = { type: 'schema', instance: 42, attribute: null, message: 'Rule IfcRoot.UR1:\nViolated by:\n  #60=IfcWall()' };
+    expect(keyString(ourKey(finding))).toBe(keyString(oracleKey(reference)));
+    expect(keyString(ourKey({ ...finding, instance: 61 }))).not.toBe(keyString(oracleKey(reference)));
+  });
+
   it('cannot satisfy an oracle enum diagnostic with a different attribute on the same instance', async () => {
     const file = 'broken/wall-enum-unknown-item.ifc';
     const report = await validateStepText(read(file));

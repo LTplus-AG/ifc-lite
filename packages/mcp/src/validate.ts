@@ -134,6 +134,7 @@ function walk(schema: JsonSchema | boolean, input: unknown, path: string, errors
     // Handlers read null as absent, so a top-level null passes. Inside an
     // anyOf/oneOf branch test it must still fail a non-null `type`, or null
     // would match every branch and a oneOf could never accept it.
+    // (`fillDefaults` is false exactly while a branch is being tested, see tryBranches.)
     const declared = Array.isArray(schema.type) ? schema.type : schema.type ? [schema.type] : [];
     if (!opts.fillDefaults && declared.length > 0 && !declared.includes('null')) errors.push({ path, message: 'Expected a non-null value' });
     return input;
@@ -319,12 +320,6 @@ function decodePointerSegment(raw: string, ref: string): string {
   return decoded.replace(/~1/g, '/').replace(/~0/g, '~');
 }
 
-/**
- * A schema `pattern` as a RegExp: with the `u` flag when it compiles that way
- * (what 2020-12 means), else without it, because hand-written patterns often
- * carry escapes like `\-` that only non-unicode mode accepts. Throws a
- * SyntaxError when neither compiles.
- */
 const compiled = new WeakMap<JsonSchema, RegExp>();
 function patternOf(schema: JsonSchema): RegExp {
   let re = compiled.get(schema);
@@ -340,6 +335,12 @@ function patternOf(schema: JsonSchema): RegExp {
   return re;
 }
 
+/**
+ * A schema `pattern` as a RegExp: with the `u` flag when it compiles that way
+ * (what 2020-12 means), else without it, because hand-written patterns often
+ * carry escapes like `\-` that only non-unicode mode accepts. Throws a
+ * SyntaxError when neither compiles.
+ */
 export function compilePattern(source: string): RegExp {
   try {
     return new RegExp(source, 'u');

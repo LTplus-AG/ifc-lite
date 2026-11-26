@@ -7087,6 +7087,7 @@
     "geometryAabbAt: function",
     "geometryVolumeAt: function",
     "getGeometryStreamWatchdogMs: function",
+    "globalInstancingApplies: function",
     "inSmallFileTier: function",
     "isNoRenderGeometryError: function",
     "isTauri: function",
@@ -11588,7 +11589,12 @@
     "createStreamingViewerAdapter: function",
     "createStreamingVisibilityAdapter: function",
     "getViewerHtml: function",
-    "startViewerServer: function"
+    "startViewerServer: function",
+    "viewerUrl: function"
+  ],
+  "@ifc-lite/viewer-core/url": [
+    "VIEWER_HOST: const",
+    "viewerUrl: function"
   ],
   "@ifc-lite/wasm": [
     "AlignmentAxisJs: class",

@@ -56,7 +56,7 @@ pause() {
 
 send() {
   # Send a command to the running viewer via REST API
-  curl -s -X POST "http://localhost:${PORT}/api/command" \
+  curl -s -X POST "http://127.0.0.1:${PORT}/api/command" \
     -H 'Content-Type: application/json' \
     -d "$1" | jq -r '.ok // .error' 2>/dev/null || true
 }
@@ -100,13 +100,13 @@ VIEWER_PID=$!
 # Wait for the server to be ready
 echo -e "${DIM}  Waiting for viewer to start...${RESET}"
 for i in $(seq 1 30); do
-  if curl -s "http://localhost:${PORT}/api/status" >/dev/null 2>&1; then
+  if curl -s "http://127.0.0.1:${PORT}/api/status" >/dev/null 2>&1; then
     break
   fi
   sleep 0.5
 done
 
-echo -e "${GREEN}  ✓ Viewer running at http://localhost:${PORT}${RESET}"
+echo -e "${GREEN}  ✓ Viewer running at http://127.0.0.1:${PORT}${RESET}"
 
 pause
 
@@ -296,7 +296,7 @@ send '{"action":"showall"}'
 
 step "Create a wall in real-time" "Injected directly into the running viewer"
 echo -e "${GREEN}\$ curl → /api/create wall${RESET}"
-curl -s -X POST "http://localhost:${PORT}/api/create" \
+curl -s -X POST "http://127.0.0.1:${PORT}/api/create" \
   -H 'Content-Type: application/json' \
   -d '{
     "type": "wall",
@@ -313,7 +313,7 @@ pause
 
 step "Create a column" ""
 echo -e "${GREEN}\$ curl → /api/create column${RESET}"
-curl -s -X POST "http://localhost:${PORT}/api/create" \
+curl -s -X POST "http://127.0.0.1:${PORT}/api/create" \
   -H 'Content-Type: application/json' \
   -d '{
     "type": "column",
@@ -327,13 +327,13 @@ curl -s -X POST "http://localhost:${PORT}/api/create" \
 pause
 
 step "Export created geometry as IFC" ""
-echo -e "${GREEN}\$ curl http://localhost:${PORT}/api/export > demo-created.ifc${RESET}"
-curl -s "http://localhost:${PORT}/api/export" > /tmp/demo-created.ifc
+echo -e "${GREEN}\$ curl http://127.0.0.1:${PORT}/api/export > demo-created.ifc${RESET}"
+curl -s "http://127.0.0.1:${PORT}/api/export" > /tmp/demo-created.ifc
 echo -e "${GREEN}  ✓ Saved to /tmp/demo-created.ifc ($(wc -c < /tmp/demo-created.ifc) bytes)${RESET}"
 
 step "Clear created geometry" ""
 echo -e "${GREEN}\$ curl → /api/clear-created${RESET}"
-curl -s -X POST "http://localhost:${PORT}/api/clear-created" | jq .
+curl -s -X POST "http://127.0.0.1:${PORT}/api/clear-created" | jq .
 
 pause
 
@@ -343,7 +343,7 @@ pause
 banner "Demo Complete"
 
 echo ""
-echo -e "  Viewer still running at ${BOLD}http://localhost:${PORT}${RESET}"
+echo -e "  Viewer still running at ${BOLD}http://127.0.0.1:${PORT}${RESET}"
 echo -e "  Try interactive commands in the viewer terminal:"
 echo -e "    ${GREEN}colorize IfcWall red${RESET}"
 echo -e "    ${GREEN}xray IfcSlab 0.15${RESET}"

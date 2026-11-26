@@ -51,7 +51,9 @@ function addMeshLatticeLoss(lossOf: (lane: number) => LatticeLoss, mesh: MeshDat
   }
   const local = scratchPositions.subarray(0, positions.length);
   const shift = frameShift(mesh, frame);
-  for (let i = 0; i < positions.length; i++) local[i] = positions[i] + shift[i % 3];
+  for (let axis = 0; axis < 3; axis++) {
+    for (let i = axis; i < positions.length; i += 3) local[i] = positions[i] + shift[axis];
+  }
   const nodes = latticeNodes(local, 3, scratchNodes);
   let lane = -1, loss = emptyLatticeLoss();
   for (let t = 0; t + 2 < indices.length; t += 3) {
@@ -76,21 +78,25 @@ export function markOffLattice(
   routeOf: (mesh: MeshData) => { base: string; frame: readonly [number, number, number] } | undefined,
   into: WeakSet<MeshData>,
 ): void {
-  const entities = new Map<string, { loss: LatticeLoss; meshes: Set<MeshData> }>();
+  // Per bucket base, per entity lane: the summed loss and the meshes holding it.
+  const bases = new Map<string, Map<number, { loss: LatticeLoss; meshes: MeshData[] }>>();
   for (const mesh of meshes) {
     const route = mesh.indices.length < 3 ? undefined : routeOf(mesh);
     if (!route) continue;
-    const { base, frame } = route;
+    let entities = bases.get(route.base);
+    if (!entities) bases.set(route.base, entities = new Map());
+    const lanes = entities;
     addMeshLatticeLoss((lane) => {
-      const key = `${base}\u0000${lane}`;
-      let entity = entities.get(key);
-      if (!entity) entities.set(key, entity = { loss: emptyLatticeLoss(), meshes: new Set() });
-      entity.meshes.add(mesh);
+      let entity = lanes.get(lane);
+      if (!entity) lanes.set(lane, entity = { loss: emptyLatticeLoss(), meshes: [] });
+      if (entity.meshes[entity.meshes.length - 1] !== mesh) entity.meshes.push(mesh);
       return entity.loss;
-    }, mesh, frame);
+    }, mesh, route.frame);
   }
-  for (const { loss, meshes: parts } of entities.values()) {
-    if (latticeLoses(loss)) for (const mesh of parts) into.add(mesh);
+  for (const entities of bases.values()) {
+    for (const { loss, meshes: parts } of entities.values()) {
+      if (latticeLoses(loss)) for (const mesh of parts) into.add(mesh);
+    }
   }
 }
 

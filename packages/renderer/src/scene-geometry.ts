@@ -195,7 +195,8 @@ export function entityLaneOf(mesh: MeshData): { entityId: number; saltByte: numb
 
 /** `mesh.origin - origin`: the f64 shift that takes `mesh`'s local positions into the batch frame `origin`. */
 export function frameShift(mesh: MeshData, origin: readonly [number, number, number]): [number, number, number] {
-  return [(mesh.origin ? mesh.origin[0] : 0) - origin[0], (mesh.origin ? mesh.origin[1] : 0) - origin[1], (mesh.origin ? mesh.origin[2] : 0) - origin[2]];
+  const o = mesh.origin ?? [0, 0, 0];
+  return [o[0] - origin[0], o[1] - origin[1], o[2] - origin[2]];
 }
 
 /**

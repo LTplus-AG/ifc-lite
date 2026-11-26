@@ -541,6 +541,18 @@ ENDSEC;\nEND`), why: 'converted, among several causes', target: 'IFCSTRUCTURALCU
     expect(Object.keys(complete).filter((k) => k.startsWith(`${key}.`) && !k.endsWith('.CausedBy'))).toEqual([]);
   });
 
+  it('names the written type for record groups that drop different attributes but are written as one type (#11354)', async () => {
+    const incomplete = varying('(#16),');
+    const first = incomplete.split('\n').find((l) => l.startsWith('#30='))!;
+    const second = first.replace('#30=', '#31=').replace("'3sXjCM_kPHN8ZCpuBhV_98'", "'4sXjCM_kPHN8ZCpuBhV_98'").replace(',#17,(#11,#11));', ',#17,$);');
+    const text = incomplete.replace('ENDSEC;\nEND', `${second}\nENDSEC;\nEND`);
+    const step = (await convert(text, 'IFC4')).step;
+    expect([line(step, 30), line(step, 31)]).toEqual([expect.stringMatching(/^#30=IFCSTRUCTURALCURVEACTION\(/), expect.stringMatching(/^#31=IFCSTRUCTURALCURVEACTION\(/)]);
+    const entry = analyzeConversionLoss(await parse(text), 'IFC2X3', 'IFC4').entries.find((e) => e.sourceType === 'IFCSTRUCTURALLINEARACTIONVARYING');
+    expect(entry?.recordGroups).toHaveLength(2);
+    expect(entry?.targetType).toBe('IFCSTRUCTURALCURVEACTION');
+  });
+
   it('keeps one entry for the type, naming each record group under the type the export writes it as', async () => {
     // #30 converts and names no reaction; #31 is malformed (13 of the 14 attributes), so it stays unconverted, and names a reaction.
     const text = varying('(#14,#16,#16),').replace(',.F.,#20,', ',.F.,#12,') .replace('ENDSEC;\nEND', `#18=IFCPRODUCTDEFINITIONSHAPE($,$,(#14));

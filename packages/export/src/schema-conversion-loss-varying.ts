@@ -28,8 +28,9 @@ export function varyingLossEntries(varying: readonly (readonly [string, readonly
     if (!groups.length) continue;
     const expressIds = groups.flatMap((group) => group.expressIds);
     const droppedAttributes = [...new Set(groups.flatMap((group) => group.droppedAttributes))];
-    // Several groups: each names its own target, and the entry keeps the classifier's (the source type).
-    const targetType = groups.length > 1 ? sourceType : groups[0].targetType;
+    // Groups written as different types each name their own target, and the entry keeps the classifier's (the source type).
+    const targets = new Set(groups.map((group) => group.targetType));
+    const targetType = targets.size > 1 ? sourceType : groups[0].targetType;
     entries.push({ targetType, kind: 'lossy', droppedAttributes, sourceType, count: expressIds.length, expressIds, ...(groups.length > 1 ? { recordGroups: groups } : {}) });
   }
   return entries;

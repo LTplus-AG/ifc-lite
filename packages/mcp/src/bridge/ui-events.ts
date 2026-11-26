@@ -127,8 +127,8 @@ export class UiEventInbox {
   /** Events refused since the last `take`: they named no surface or event the agent showed this tab. */
   private refusedCount = 0;
 
-  /** Wake-ups for refusals in the last second, apart from `recent` so a refusal flood costs real clicks nothing. */
-  private refusalWakes: number[] = [];
+  /** Wake-ups for losses (drops, refusals) in the last second, apart from `recent` so a flood costs real clicks nothing. */
+  private lossWakes: number[] = [];
 
   constructor(private readonly now: () => number = Date.now) {}
 
@@ -172,10 +172,13 @@ export class UiEventInbox {
    * `signal` aborts) for the first.
    */
   async take(waitMs: number, signal?: AbortSignal): Promise<{ events: ReceivedUiEvent[]; dropped: number; refused: number }> {
-    // Losses already counted are news too: report them without waiting. Refusals
-    // end a wait under their own window, so a flood of them cannot busy-loop the reader.
-    const refusalNews = this.refusedCount > 0 && this.admit(this.refusalWakes, this.now());
-    if (this.queue.length === 0 && this.dropped === 0 && !refusalNews && waitMs > 0 && !signal?.aborted) {
+    // Losses already counted are news too, reported at most maxPerSecond times a
+    // second so a flood cannot busy-loop the reader. Past that window, wait at
+    // most a second for it to clear rather than sitting on news.
+    const lossNews = this.dropped > 0 || this.refusedCount > 0;
+    const reportNow = lossNews && this.admit(this.lossWakes, this.now());
+    if (lossNews && !reportNow) waitMs = Math.min(waitMs, 1000);
+    if (this.queue.length === 0 && !reportNow && waitMs > 0 && !signal?.aborted) {
       await new Promise<void>((resolve) => {
         const done = (): void => {
           clearTimeout(timer);
@@ -202,7 +205,7 @@ export class UiEventInbox {
     this.refusedCount++;
     // A waiting reader hears it now, at most maxPerSecond times a second, so a
     // flood of bad events cannot turn the agent's long-poll into a busy loop.
-    if (this.admit(this.refusalWakes, this.now())) for (const wake of this.waiters) wake();
+    if (this.admit(this.lossWakes, this.now())) for (const wake of this.waiters) wake();
   }
 
   /** A new tab paired: its predecessor's unread events do not carry over. */
@@ -211,7 +214,7 @@ export class UiEventInbox {
     this.recent = [];
     this.dropped = 0;
     this.refusedCount = 0;
-    this.refusalWakes = [];
+    this.lossWakes = [];
   }
 
   /** Something to report: queued events, or counted drops or refusals. */

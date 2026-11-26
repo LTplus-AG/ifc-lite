@@ -367,7 +367,7 @@ export class TabBridge {
           this.uiEvents.refused();
           this.noisy.note('ui events not matching a shown surface', `dropped a ui-event that ${checked.refused}`);
         }
-        else if (!this.uiEvents.push({ ...event, ...('prompt' in checked ? { prompt: checked.prompt } : {}) }, checked.promptVerified)) this.noisy.note('ui events over the rate limit', 'dropped a ui-event over the rate limit');
+        else if (!this.uiEvents.push(checked.event, checked.promptVerified)) this.noisy.note('ui events over the rate limit', 'dropped a ui-event over the rate limit');
       },
     });
   }

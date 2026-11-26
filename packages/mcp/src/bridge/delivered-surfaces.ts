@@ -107,8 +107,11 @@ function collect(value: unknown, into: Surface): void {
   }
 }
 
-/** Refused, or admitted with the prompt to deliver (trimmed when verified, as the agent wrote it). */
-type SurfaceCheck = { refused: string } | { promptVerified: boolean; prompt?: string | undefined };
+/**
+ * Refused, or admitted with the event to deliver: its name trimmed, and its
+ * prompt trimmed when verified (as the agent wrote it) or dropped when blank.
+ */
+type SurfaceCheck = { refused: string } | { promptVerified: boolean; event: BridgeUiEvent };
 
 export class DeliveredSurfaces {
   /** Surface id -> what the agent sent for it. Insertion order is age. */
@@ -154,12 +157,12 @@ export class DeliveredSurfaces {
     if (!surface) return { refused: 'names a surface the agent did not show in this tab' };
     const name = event.name.trim();
     if (name !== ASK_EVENT && !surface.events.has(name)) return { refused: 'names an event that surface does not raise' };
-    const prompt = event.prompt?.trim();
-    // A blank prompt is no prompt: nothing to pass on as the user's words. The
-    // `prompt: undefined` key tells the caller to drop the tab's raw blank text.
-    if (!prompt) return { promptVerified: true, ...(event.prompt === undefined ? {} : { prompt: undefined }) };
+    const { prompt: raw, ...rest } = event;
+    const prompt = raw?.trim();
+    // A blank prompt is no prompt: nothing to pass on as the user's words.
+    if (!prompt) return { promptVerified: true, event: { ...rest, name } };
     const promptVerified = surface.prompts.has(prompt) || prompt === genericPrompt(name);
-    return { promptVerified, prompt: promptVerified ? prompt : event.prompt };
+    return { promptVerified, event: { ...rest, name, prompt: promptVerified ? prompt : raw } };
   }
 
   /** A different tab paired: what the previous one was shown does not carry over. */

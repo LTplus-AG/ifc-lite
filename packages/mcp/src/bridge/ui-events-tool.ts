@@ -68,11 +68,19 @@ function quoted(value: unknown): string {
   return JSON.stringify(value).replace(/[<>&]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`);
 }
 
-/** An event as structured content: an unverified prompt quoted, and context's raw copy of it dropped. */
+/**
+ * An event as structured content: an unverified prompt quoted, and a
+ * `context.prompt` dropped when it repeats the prompt, quoted otherwise.
+ */
 function structuredEvent(e: ReceivedUiEvent): ReceivedUiEvent {
-  if (e.promptVerified || e.prompt === undefined) return e;
-  const { prompt: raw, ...context } = e.context ?? {};
-  return { ...e, prompt: shownPrompt(e), ...(e.context ? { context: raw === e.prompt ? context : { ...context, prompt: quoted(raw) } } : {}) };
+  const out: ReceivedUiEvent = { ...e };
+  if (e.prompt !== undefined && !e.promptVerified) out.prompt = shownPrompt(e);
+  if (e.context && 'prompt' in e.context) {
+    const { prompt: raw, ...others } = e.context;
+    const repeats = typeof raw === 'string' && raw.trim() === e.prompt?.trim();
+    out.context = repeats ? others : { ...others, prompt: quoted(raw) };
+  }
+  return out;
 }
 
 /** A named event's prompt, as the agent should read it. */

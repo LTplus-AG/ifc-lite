@@ -33,7 +33,7 @@ import { a2uiSurfaceId, type BridgeUiEvent } from './ui-events.js';
 
 /** Surface ids remembered; the oldest is forgotten past this. Well above what the tab's dock shows (3). */
 export const MAX_DELIVERED_SURFACES = 64;
-/** Follow-up texts and event names remembered per surface, each. */
+/** Follow-up texts and event names remembered per surface, each; the oldest go first. */
 export const MAX_SURFACE_ENTRIES = 1024;
 
 /** The renderer's prompt for an event action without a user message. */
@@ -54,14 +54,21 @@ interface Surface {
   events: Set<string>;
 }
 
+/** Keep `value`, dropping the oldest entry past the cap: what the agent sent last stays admitted. */
+function keep(set: Set<string>, value: string): void {
+  set.delete(value);
+  set.add(value);
+  if (set.size > MAX_SURFACE_ENTRIES) set.delete(set.values().next().value as string);
+}
+
 function add(set: Set<string>, value: string): void {
   const trimmed = value.trim();
-  if (trimmed && set.size < MAX_SURFACE_ENTRIES) set.add(trimmed);
+  if (trimmed) keep(set, trimmed);
 }
 
 /** `from` is already trimmed; only the cap applies. */
 function merge(into: Set<string>, from: Set<string>): void {
-  for (const value of from) if (into.size < MAX_SURFACE_ENTRIES) into.add(value);
+  for (const value of from) keep(into, value);
 }
 
 function addString(set: Set<string>, value: unknown): void {
@@ -127,9 +134,10 @@ export class DeliveredSurfaces {
       this.surfaces.delete(id);
       this.surfaces.set(id, surface);
     }
-    while (this.surfaces.size > MAX_DELIVERED_SURFACES) {
-      const oldest = this.surfaces.keys().next().value as string;
-      this.surfaces.delete(oldest);
+    // Forget the oldest ids, never one this call named (the panel's first id names its clicks).
+    for (const id of this.surfaces.keys()) {
+      if (this.surfaces.size <= MAX_DELIVERED_SURFACES) break;
+      if (!ids.has(id)) this.surfaces.delete(id);
     }
   }
 

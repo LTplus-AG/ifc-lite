@@ -243,7 +243,7 @@ function statusResult(bridge: TabBridge, pairNewTab: boolean): CallToolResult {
       `To ${tab ? 'pair a different tab (it replaces the connected one)' : 'connect'}, open this link in the browser tab with the model:`,
       pairing.url,
       manual,
-      'The code works once.',
+      codeTypable(bridge) ? 'The code works once.' : 'The link works once.',
     );
   }
   return {

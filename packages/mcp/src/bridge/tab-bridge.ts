@@ -239,6 +239,8 @@ export class TabBridge {
       // Shutdown must not reject (callers chain on it during exit); report and carry on.
       this.log(`error while closing: ${describeThrown(err)}`);
     } finally {
+      // A lazy bind still in flight frees its own port once it sees `closing`: wait for it.
+      await this.listening?.then(() => undefined, () => undefined);
       // Whatever failed above, the listener must close so the port is freed.
       const http = this.http;
       this.http = null;

@@ -48,9 +48,9 @@ export const agentBridgeEn = {
   'agentBridge.panel.repeated': '×{count}',
 
   'agentBridge.failure.unreachable': 'Could not connect to the bridge on port {port}, or it dropped the connection. Ask your agent for a fresh link (its bridge_status tool) and open it; if the agent has no ifc-lite bridge yet, add it with the command below. If it is running, it may have refused the connection because too many tabs were trying to pair: close them and try again.',
-  'agentBridge.failure.origin': 'Viewer not on ifclite.com? Start the bridge with --bridge-viewer-url {origin} so it accepts this page.',
+  'agentBridge.failure.origin': 'Viewer not on ifclite.com? The setup command above adds --bridge-viewer-url {origin} so the bridge accepts this page.',
   'agentBridge.failure.permissionDenied': 'The browser blocked this site from reaching apps on this computer. Allow it in this site\'s settings (the icon left of the address): "Apps on device" in Chrome, "Device apps and services" in Firefox. Then try again.',
-  'agentBridge.failure.pairingFailed': 'The bridge did not accept this code. A code works once and a new one is issued after each pairing: ask the agent for a fresh link (bridge_status) or copy the latest code from the bridge.',
+  'agentBridge.failure.pairingFailed': 'The bridge did not accept this code. A code works once and a new one is issued after each pairing: ask the agent for a fresh link (bridge_status) and open it.',
   'agentBridge.failure.protocolMismatch': 'This viewer and the bridge speak different protocol versions. Update the bridge (npx @ifc-lite/mcp@latest --bridge), reload this page, then pair again.',
   'agentBridge.failure.handshakeTimeout': 'The bridge did not finish pairing in time. Try again with a fresh code.',
   'agentBridge.failure.invalidMessage': 'The bridge rejected a message from this viewer. Update @ifc-lite/mcp, reload this page, then pair again.',

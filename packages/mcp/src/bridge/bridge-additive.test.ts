@@ -20,7 +20,7 @@ import { buildDefaultResourceRegistry } from '../resources/index.js';
 import { buildDefaultToolRegistry } from '../tools/index.js';
 import { MUTATING_TOOL, pairTab, READ_TOOL, tabTool, type FakeTab } from '../test/bridge-fake-tab.js';
 import { BRIDGE_STATUS_TOOL, TAB_TOOL_PREFIX } from './bridge-protocol.js';
-import { DeliveredSurfaces, MAX_DELIVERED_SURFACES } from './delivered-surfaces.js';
+import { DeliveredSurfaces, MAX_DELIVERED_SURFACES, MAX_SURFACE_ENTRIES } from './delivered-surfaces.js';
 import { fallbackPorts, PORT_FALLBACK_SPAN } from './loopback-server.js';
 import { startBridgeServer, type BridgeServerOptions, type RunningBridge } from './run.js';
 
@@ -283,6 +283,20 @@ describe('DeliveredSurfaces', () => {
     // A legend row's label is model data, not a follow-up.
     expect(ledger.check({ surfaceId: 's', name: 'ask', prompt: storey })).toEqual({ promptVerified: false });
     expect(ledger.check({ surfaceId: 's', name: 'ask', prompt: 'anything the user typed' })).toEqual({ promptVerified: false });
+  });
+
+  it('keeps admitting what the agent sent last on a surface it keeps updating', () => {
+    const ledger = new DeliveredSurfaces();
+    for (let i = 0; i < MAX_SURFACE_ENTRIES + 50; i++) ledger.record([followUp('dash', `Question ${i}`)]);
+    expect(ledger.check({ surfaceId: 'dash', name: 'ask', prompt: `Question ${MAX_SURFACE_ENTRIES + 49}` })).toEqual(ok);
+    expect(ledger.check({ surfaceId: 'dash', name: 'ask', prompt: 'Question 0' })).toEqual({ promptVerified: false });
+  });
+
+  it('never forgets an id of the call being recorded, however many it names', () => {
+    const ledger = new DeliveredSurfaces();
+    const many = Array.from({ length: MAX_DELIVERED_SURFACES + 36 }, (_, i) => followUp(`s${i}`, 'Go'));
+    ledger.record(many);
+    expect(ledger.check({ surfaceId: 's0', name: 'ask', prompt: 'Go' })).toEqual(ok);
   });
 
   it('knows event names past many follow-ups, refuses unknown surfaces and names, and forgets the oldest id', () => {

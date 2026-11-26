@@ -123,11 +123,15 @@ const DESKTOP_CONFIG = 'claude_desktop_config.json';
 function claudeCodeLaunch(server: ServerCommand, host: HostEnv): string[] {
   // Only npx is a .cmd shim; any other command spawns as it is.
   if (host.platform !== 'win32' || server.command !== 'npx') return [server.command, ...server.args];
-  const [, pin, ...rest] = server.args;
+  const isPin = (a: string) => a.startsWith('@ifc-lite/mcp');
   // Through cmd these would run or expand (`&`, `%VAR%`), and quoting does not stop all of them.
-  const unsafe = rest.find((a) => /[&|<>^%!"]/.test(a));
-  if (unsafe) throw new InstallError(`${unsafe} has a character cmd /c would interpret; Claude Code on Windows cannot be given it. Rename it or use another client.`);
-  return ['cmd', '/c', 'npx', server.args[0], pin.replaceAll('^', '^^'), ...rest];
+  const unsafe = server.args.find((a) => !isPin(a) && /[&|<>^%!"]/.test(a));
+  if (unsafe) {
+    throw new InstallError(
+      `${unsafe} has a character cmd /c would interpret; Claude Code on Windows cannot be given it. Rename it or use another client.`,
+    );
+  }
+  return ['cmd', '/c', 'npx', ...server.args.map((a) => (isPin(a) ? a.replaceAll('^', '^^') : a))];
 }
 
 function claudeDesktopConfigPath(host: HostEnv): string {

@@ -229,14 +229,14 @@ export class MergedUpgradePruning {
    * with the same GlobalId is re-stamped.
    */
   forgetOmittedGuids<T extends { finalId: number; canUnify: boolean }>(lines: string[], start: number, guids: Map<string, T>): void {
-    if (!this.seeds.size) return; // seeds are noted only for an IFC4 or IFC4X3 target
+    if (!this.seeds.size || (this.target !== 'IFC4' && this.target !== 'IFC4X3')) return;
     const previousCount = this.omitted.size;
     for (const id of this.seeds) this.omitted.add(id);
     // Model offsets keep emitted ids disjoint. Remaps can refer back to an
     // earlier model, so index this model with the omissions already known.
     this.omitted = cascadeOmissions(lines.slice(start).map(record), this.omitted, this.target);
     if (this.omitted.size > previousCount) {
-      for (const [guid, record] of guids) if (record.canUnify && this.omitted.has(record.finalId)) guids.delete(guid);
+      for (const [guid, prior] of guids) if (prior.canUnify && this.omitted.has(prior.finalId)) guids.delete(guid);
     }
   }
 

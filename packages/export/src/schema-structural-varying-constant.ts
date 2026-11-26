@@ -20,7 +20,7 @@ const MISSING_LOAD = 'The retained varying structural action has no usable Appli
  * full one (`StructuralVarying.constant`), so the two cannot drift.
  *
  * `args` are the 14 IFC2X3 attributes. `load` is whether AppliedLoad names an
- * IfcStructuralLoad. `carried`: a 'Causes' relationship holds the CausedBy.
+ * eligible direct load. `carried`: a 'Causes' relationship holds the CausedBy.
  * `dropped` names what the loss preview reports (#11354): the omitted slots that
  * held a value, and AppliedLoad when it held one that is no load.
  */

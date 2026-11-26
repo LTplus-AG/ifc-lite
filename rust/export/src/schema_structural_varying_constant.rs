@@ -23,7 +23,7 @@ pub(crate) struct Constant {
 }
 
 /// `args` are the 14 IFC2X3 attributes of the varying action `ty`. `load`: AppliedLoad
-/// names an IfcStructuralLoad. `cause_carried`: a 'Causes' relationship holds the CausedBy.
+/// names an eligible direct load. `cause_carried`: a 'Causes' relationship holds the CausedBy.
 pub(crate) fn constant_action(target: &str, ty: &str, args: &[String], load: bool, cause_carried: bool) -> Constant {
     let omitted: Vec<&str> = OMITTED_SLOTS.iter().filter(|(at, _)| holds_value(&args[*at])).map(|(_, name)| *name).collect();
     // Reported only when a slot held a value, and naming only those (#11354).

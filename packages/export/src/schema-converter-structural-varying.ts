@@ -4,7 +4,7 @@ import { destabilizingUnknown } from './schema-converter-structural.js';
 import { listItems } from './schema-converter-structural-axes.js';
 import { holdsValue, withoutComments } from './step-comment-skip.js';
 import { referencesAnyExpressId } from './step-ref-scan.js';
-import { isSubtype, slotRef, type SourceRecords, type StructuralRewrite } from './schema-converter-structural-source.js';
+import { slotRef, type SourceRecords, type StructuralRewrite } from './schema-converter-structural-source.js';
 import { constantAction } from './schema-structural-varying-constant.js';
 
 /**
@@ -154,14 +154,11 @@ export class StructuralVarying {
    * record is an IFC2X3 varying action of 14 attributes.
    */
   constant(entity: string, args: readonly string[], carried: ReadonlySet<string>): StructuralRewrite | undefined {
-    const target = varyingTarget(entity);
-    if (!target || args.length !== 14) return undefined;
-    return constantAction(target, entity, args, this.namesLoad(args), carried.has('CausedBy'));
-  }
-
-  /** Whether AppliedLoad names a record IFC4 counts as an IfcStructuralLoad. */
-  private namesLoad(args: readonly string[]): boolean {
-    return isSubtype('IFC4', this.typeOf(slotRef(args[7])), 'IfcStructuralLoad');
+    const kind = KINDS.find((k) => k.ifc2x3 === entity);
+    if (!kind || args.length !== 14) return undefined;
+    const allowed: readonly string[] = kind.first;
+    const load = allowed.includes(this.typeOf(slotRef(args[7])));
+    return constantAction(kind.ifc4, entity, args, load, carried.has('CausedBy'));
   }
 
   /** Armed for IFC2X3 -> IFC4, with the exporter's id allocator. */

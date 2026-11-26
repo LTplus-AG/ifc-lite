@@ -126,7 +126,7 @@ fn incomplete_aspects(text: &str, records: &HashMap<u32, Record<'_>>) -> HashSet
 fn fallback(ty: &str, args: &[String], records: &HashMap<u32, Record<'_>>, cause_carried: bool, result: &mut EffectiveResult) -> String {
     let target = StructuralVarying::target(ty).expect("indexed only varying actions");
     let load = reference(&args[7], records)
-        .is_some_and(|r| ifc_lite_core::is_subtype_of_for_schema("IFC4", &r.ty.to_ascii_uppercase(), "IFCSTRUCTURALLOAD"));
+        .is_some_and(|r| StructuralVarying::admits_direct_load(ty, r.ty));
     let constant = constant_action(target, ty, args, load, cause_carried);
     result.dropped += constant.dropped;
     result.warnings.extend(constant.warnings);

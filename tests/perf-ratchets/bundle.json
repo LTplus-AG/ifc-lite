@@ -7,15 +7,15 @@
       "metric": "raw-bytes",
       "unit": "bytes",
       "description": "raw size of packages/wasm/pkg/ifc-lite_bg.wasm, the single-thread engine bundle; its brotli size is reported, not gated",
-      "ceiling": 10676970,
+      "ceiling": 10782669,
       "headroom": 0.01,
       "tolerance": {
         "kind": "relative",
         "value": 0.001
       },
       "provenance": {
-        "commit": "20727966aa2efad11ec33a807f64ad6ed589b422",
-        "measuredAt": "2026-11-24T01:39:36.047Z"
+        "commit": "e186d8c4e2b3e58fd957946520d06d437a4983d9",
+        "measuredAt": "2026-11-25T05:30:34.825Z"
       }
     },
     {
@@ -38,14 +38,14 @@
       "metric": "raw-bytes",
       "unit": "bytes",
       "description": "summed raw size of every JS file dist/index.html loads eagerly: the module <script src> plus <link rel=modulepreload>",
-      "ceiling": 13473340,
+      "ceiling": 13618673,
       "tolerance": {
         "kind": "relative",
         "value": 0.001
       },
       "provenance": {
-        "commit": "4ed6e97acc108489534907d92e5946a4a41b53f0",
-        "measuredAt": "2026-11-22T12:20:14.000Z"
+        "commit": "356ece76880b114fa7bc3a8f85779c927bea1885",
+        "measuredAt": "2026-11-24T10:11:32.761Z"
       }
     },
     {
@@ -53,14 +53,14 @@
       "metric": "raw-bytes",
       "unit": "bytes",
       "description": "raw size of apps/viewer/dist/assets/parser.worker-*.js, the parser worker's own chunk (chunks it imports on demand are not counted)",
-      "ceiling": 1459413,
+      "ceiling": 1475391,
       "tolerance": {
         "kind": "relative",
         "value": 0.001
       },
       "provenance": {
-        "commit": "e0632edf1e6f9e857a440239af8fd456c32c9fab",
-        "measuredAt": "2026-11-19T00:06:05.630Z"
+        "commit": "356ece76880b114fa7bc3a8f85779c927bea1885",
+        "measuredAt": "2026-11-24T10:11:32.761Z"
       }
     }
   ]

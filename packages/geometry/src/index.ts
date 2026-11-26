@@ -62,7 +62,7 @@ export { type StallPhase, type StallPhaseHandle } from './stall-phase.js';
 export { prewarmSharedWasmModule, compileSharedWasmModule } from './wasm-shared-module.js';
 export type { GeometryMeshingSettings } from './meshing-settings.js';
 // `__IFC_LITE_*` flag bindings the host reads; the viewer registry spreads these (#6962).
-export { GEOMETRY_PERF_FLAG_BINDINGS, readGlobalInstancingFlag } from './perf-flags.js';
+export { GEOMETRY_PERF_FLAG_BINDINGS, GLOBAL_INSTANCING_MIN_BYTES, globalInstancingApplies, inSmallFileTier, readGlobalInstancingFlag } from './perf-flags.js';
 // Stale-deployment WASM-asset detection (#1363). The host app subscribes to
 // WASM_ASSET_UNAVAILABLE_EVENT and uses `isWasmAssetUnavailableError` to
 // reload onto the deployment; `notifyIfWasmAssetUnavailable` stays internal.
@@ -114,6 +114,7 @@ import { resolveRtcFrame, type RtcFrame } from './rtc-frame.js';
 import { streamNativeGeometry } from './geometry-native.js';
 import { processParallel, type ProcessParallelOptions } from './geometry-parallel.js';
 import { acquireWasmStreamingOperation } from './wasm-streaming-guard.js';
+import { canRunWorkerPool } from './worker-count.js';
 import type { StallPhaseHandle } from './stall-phase.js';
 import type { ByteStreamingPrePassResult, UnitRefusedEvent } from './byte-streaming-prepass-result.js';
 import { buildPrePassWithFinishes } from './style-finishes.js';
@@ -243,6 +244,8 @@ export class GeometryProcessor {
   private tessellationQuality: TessellationQuality | null;
   private skipSmallCuts: boolean;
   private skipVoids: boolean;
+  compactCellSize?: number; // worker-pool compact GPU records at this cell size, after `loadCompactGeometry()` (`ProcessParallelOptions.compactCellSize`); unset = off
+  globalInstancing?: boolean; onGlobalInstancingDecision?: (applies: boolean) => void; // the plan's flag as the host decided it (unset = explicit global/URL) and whether it ran per pool load (`ProcessParallelOptions`)
 
   constructor(options: GeometryProcessorOptions = {}) {
     this.bufferBuilder = new BufferBuilder();
@@ -768,8 +771,8 @@ export class GeometryProcessor {
       stallPhaseHandle, trace,
       // Every pool worker meshes with this processor's settings (#540, #924, #976, #1286; meshing-settings.ts).
       ...this.meshingSettings(),
-      wasmUrls,
-      workerCountOverride,
+      compactCellSize: this.compactCellSize, globalInstancing: this.globalInstancing, onGlobalInstancingDecision: this.onGlobalInstancingDecision,
+      wasmUrls, workerCountOverride,
     });
   }
 
@@ -882,10 +885,7 @@ export class GeometryProcessor {
       yield { type: 'complete', totalMeshes: allMeshes.length, coordinateInfo, ...omittedTypeRecordsField(omittedTypeRecords) };
     } else {
       // Large files: parallel or streaming
-      const useParallel = typeof SharedArrayBuffer !== 'undefined'
-        && typeof Worker !== 'undefined'
-        && typeof navigator !== 'undefined'
-        && (navigator.hardwareConcurrency ?? 1) > 1;
+      const useParallel = canRunWorkerPool();
 
       if (useParallel) {
         yield* this.processParallel(

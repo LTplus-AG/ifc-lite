@@ -15,6 +15,7 @@ import {
   suiteRows, unitInjectable, unitPreloadSource, withNodeImport, writeFlaggedDist,
 } from './flag-qualify-lib.mjs';
 import { decodePng, encodePng, pixelStats } from './flag-qualify-pixels.mjs';
+import * as gpuStage from './flag-qualify-gpu.mjs';
 
 const image = (width, height, fill = [10, 20, 30, 255]) => {
   const data = new Uint8Array(width * height * 4);
@@ -201,15 +202,52 @@ describe('compareArms', () => {
     assert.equal(overall(rows), 'fail');
   });
 
+  /** `rows` rows shaded red from the top, or blue from the bottom. */
+  const shade = (rows, fromBottom = false) => {
+    const img = image(10, 10);
+    for (let p = 0; p < rows * 10; p++) img.data.set(fromBottom ? [0, 0, 200, 255] : [200, 0, 0, 255], (fromBottom ? 99 - p : p) * 4);
+    return img;
+  };
+
+  it('passes a step where flags on matches any flags-off load', () => {
+    const off = arm('off', { steps: { home: { ok: true, frame: frame('b-off', image(10, 10)) } } });
+    const noise = [arm('off2', { steps: { home: { ok: true, frame: frame('b-off2', shade(1)) } } }),
+      arm('off3', { steps: { home: { ok: true, frame: frame('b-off3', shade(3)) } } })];
+    const row = compareArms(off, arm('on', { steps: { home: { ok: true, frame: frame('b-on', shade(3)) } } }), { ...options, noise })
+      .find((r) => r.check === 'home pixels');
+    assert.equal(row.verdict, 'pass');
+    assert.match(row.detail, /^matches flags-off load 3, one of main's own states; 0% /);
+  });
+
+  it('never lets an unclean or failed flags-off load approve a step, and names loads by their own number', () => {
+    const off = arm('off', { steps: { home: { ok: true, frame: frame('c-off', image(10, 10)) } } });
+    const on = arm('on', { steps: { home: { ok: true, frame: frame('c-on', shade(3)) } } });
+    const unstable = arm('off2', { steps: { home: { ok: true, frame: { ...frame('c-off2', shade(3)), stable: false } } } });
+    const failed = arm('off3', { errors: ['crashed'], steps: { home: { ok: false, frame: frame('c-off3', shade(3)) } } });
+    const rows = compareArms(off, on, { ...options, noise: [unstable, failed] });
+    assert.equal(rows.find((r) => r.check === 'home pixels').verdict, 'fail');
+    assert.equal(rows.find((r) => r.check === 'flags-off load 3 completed').verdict, 'error');
+    const good = arm('off3', { steps: { home: { ok: true, frame: frame('c-off3b', shade(3)) } } });
+    assert.match(compareArms(off, on, { ...options, noise: [unstable, good] }).find((r) => r.check === 'home pixels').detail, /^matches flags-off load 3,/);
+  });
+
+  it('treats a flags-off load that is missing the step as not clean, never as a match', () => {
+    const off = arm('off', { steps: { home: { ok: true, frame: frame('m-off', image(10, 10)) } } });
+    const on = arm('on', { steps: { home: { ok: true, frame: frame('m-on', shade(3)) } } });
+    const missing = [arm('off2', { steps: {} }), arm('off3', { steps: undefined })];
+    const row = compareArms(off, on, { ...options, noise: missing }).find((r) => r.check === 'home pixels');
+    assert.equal(row.verdict, 'fail');
+    assert.doesNotMatch(row.detail, /matches flags-off load/);
+  });
+
   it('calls a step inconclusive where main is not deterministic, unless the flag is far worse', () => {
-    const shade = (rows) => { const img = image(10, 10); for (let p = 0; p < rows * 10; p++) img.data.set([200, 0, 0, 255], p * 4); return img; };
     const off = arm('off', { steps: { home: { ok: true, frame: frame('n-off', image(10, 10)) } } });
-    const on = (rows) => arm('on', { steps: { home: { ok: true, frame: frame(`n-on-${rows}`, shade(rows)) } } });
+    const on = (rows) => arm('on', { steps: { home: { ok: true, frame: frame(`n-on-${rows}`, shade(rows, true)) } } });
     assert.equal(verdicts(compareArms(off, on(1), options))['home pixels'], 'fail');
     const noise = arm('off2', { steps: { home: { ok: true, frame: frame('n-off2', shade(1)) } } });
     const row = compareArms(off, on(1), { ...options, noise }).find((r) => r.check === 'home pixels');
     assert.equal(row.verdict, 'skip');
-    assert.match(row.detail, /^inconclusive.*main vs main 10%/);
+    assert.match(row.detail, /^inconclusive.*main vs main up to 10%/);
     assert.equal(verdicts(compareArms(off, on(3), { ...options, noise }))['home pixels'], 'fail', '30% > 2 x 10% + 0.1%');
   });
 
@@ -323,5 +361,58 @@ describe('suite results', () => {
     assert.match(md, /\| a\\\|b \| c \| PASS \| x \| e \|/);
     assert.equal(overall([{ verdict: 'skip' }]), 'skip');
     assert.equal(overall([{ verdict: 'pass' }, { verdict: 'error' }]), 'fail');
+  });
+});
+
+describe('section drawing wait', () => {
+  /** A store whose drawing2DStatus follows `script`, one entry per poll; the last entry repeats. */
+  const scripted = (script) => {
+    let polls = 0;
+    return { store: { getState: () => ({ drawing2DStatus: script[Math.min(polls++, script.length - 1)] }) }, polls: () => polls };
+  };
+
+  it('waits out a stale ready and a later generation, then needs ready to hold', async () => {
+    const { WAIT_SECTION_DRAWING } = gpuStage;
+    assert.equal(typeof WAIT_SECTION_DRAWING, 'function', 'the section steps wait for the cut drawing');
+    // A stale ready for one poll, then a generation, then its result. Each status change is a poll,
+    // so the stale ready is reset whatever the timing; only the final hold measures time.
+    const fake = scripted(['ready', 'generating', 'generating', 'ready']);
+    globalThis.__ifc_lite_viewer_store__ = fake.store;
+    try {
+      assert.equal(await WAIT_SECTION_DRAWING({ holdMs: 20, pollMs: 1 }), 'ready');
+      assert.ok(fake.polls() > 4, 'resolved only after the final ready held, not on the stale one');
+      globalThis.__ifc_lite_viewer_store__ = scripted(['generating']).store;
+      assert.equal(await WAIT_SECTION_DRAWING({ holdMs: 20, timeoutMs: 30, pollMs: 1 }), 'timeout (generating)');
+      // Nothing requested a drawing (the section tool is not active): idle is settled, not a 120 s wait.
+      globalThis.__ifc_lite_viewer_store__ = scripted(['idle']).store;
+      assert.equal(await WAIT_SECTION_DRAWING({ holdMs: 5, timeoutMs: 1000, pollMs: 1 }), 'idle');
+      // The viewer's settled hook wins over the status when the build has it (#11445).
+      let calls = 0;
+      globalThis.__ifc_lite_scene_settled__ = () => ++calls > 3;
+      globalThis.__ifc_lite_viewer_store__ = scripted(['generating']).store;
+      assert.equal(await WAIT_SECTION_DRAWING({ holdMs: 5, pollMs: 1 }), 'generating');
+      assert.ok(calls > 3, 'waited for the hook to report settled');
+      delete globalThis.__ifc_lite_scene_settled__;
+      globalThis.__ifc_lite_viewer_store__ = scripted(['generating', 'error']).store;
+      assert.equal(await WAIT_SECTION_DRAWING({ holdMs: 5, pollMs: 1 }), 'error');
+    } finally { delete globalThis.__ifc_lite_viewer_store__; delete globalThis.__ifc_lite_scene_settled__; }
+  });
+});
+
+describe('element id sample', () => {
+  it('samples every data-store entity as global ids, the same set whatever geometry a flag drops', () => {
+    const { DATA_ENTITY_IDS } = gpuStage;
+    assert.equal(typeof DATA_ENTITY_IDS, 'function', 'hide/isolate/colour sample ids from the data store');
+    const table = (ids) => ({ count: ids.length, expressId: Uint32Array.from(ids) });
+    globalThis.__ifc_lite_viewer_store__ = { getState: () => ({
+      models: new Map([['b', { ifcDataStore: { entities: table([9, 7, 8]) } }], ['a', { ifcDataStore: { entities: table([3, 1, 2]) } }]]), // keys out of order
+      toGlobalId: (model, id) => (model === 'a' ? 0 : 100) + id,
+    }) };
+    try {
+      assert.deepEqual(DATA_ENTITY_IDS({ fraction: 1, limit: 10 }), { total: 6, ids: [1, 2, 3, 107, 108, 109] });
+      assert.deepEqual(DATA_ENTITY_IDS({ fraction: 0.5, limit: 10 }).ids, [1, 2, 107, 108], 'each model its share, evenly spaced over its sorted ids');
+      globalThis.__ifc_lite_viewer_store__ = { getState: () => ({ models: new Map([['a', {}]]) }) };
+      assert.equal(DATA_ENTITY_IDS({ fraction: 1, limit: 10 }), null, 'no data store: the caller falls back to geometry ids');
+    } finally { delete globalThis.__ifc_lite_viewer_store__; }
   });
 });

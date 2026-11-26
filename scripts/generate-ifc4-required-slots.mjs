@@ -177,13 +177,44 @@ function renderRs(rows) {
   return lines.join('\n');
 }
 
+// Pruning uses core's AttrSlot to find OPTIONAL and aggregate slots. The
+// only extra data the Rust writer needs is where a variable-length list's
+// minimum differs from 1 or where an aggregate must be treated as one value.
+const { parseExpressSchema } = await import('../packages/codegen/src/express-parser.ts');
+const { AttributeKindResolver, FLAG_AGGREGATE } = await import('../packages/codegen/src/rust-attribute-flags.ts');
+const { SCHEMA_REGISTRY: IFC4X3 } = await import(
+  pathToFileURL(join(ROOT, 'packages/parser/src/generated/ifc4x3/schema-registry.ts')).href
+);
+
+function renderAggregateExceptions(schema, registry, file) {
+  const express = parseExpressSchema(readFileSync(join(ROOT, 'packages/codegen/schemas', file), 'utf8'));
+  const kinds = new AttributeKindResolver(express);
+  const entries = [];
+  for (const [name, entity] of Object.entries(registry.entities)) {
+    for (const [index, attr] of (entity.allAttributes ?? entity.attributes).entries()) {
+      if (!(kinds.flagByte(attr) & FLAG_AGGREGATE)) continue;
+      const min = attr.isList || attr.isSet ? attr.arrayBounds?.[0] ?? 1 : null;
+      if (min !== 1) entries.push({ name: name.toUpperCase(), index, min });
+    }
+  }
+  entries.sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : a.index - b.index);
+  return [
+    `/// (Entity, slot, minimum) for non-default aggregate pruning in ${schema}.`,
+    '/// None preserves a fixed-size array or a select alternative as a whole value.',
+    `pub static ${schema}_AGGREGATE_PRUNE_EXCEPTIONS: &[(&str, usize, Option<usize>)] = &[`,
+    ...entries.map(({ name, index, min }) => `    ("${name}", ${index}, ${min === null ? 'None' : `Some(${min})`}),`),
+    '];',
+    '',
+  ].join('\n');
+}
+
 const rows = buildRows();
 if (rows.length === 0) {
   console.error('generate-ifc4-required-slots: the registry yielded ZERO rows; refusing to write.');
   process.exit(1);
 }
 
-const outputs = [[TS_REL, renderTs(rows)], [RS_REL, renderRs(rows)]];
+const outputs = [[TS_REL, renderTs(rows)], [RS_REL, renderRs(rows) + '\n' + renderAggregateExceptions('IFC4', IFC4, 'IFC4_ADD2_TC1.exp') + '\n' + renderAggregateExceptions('IFC4X3', IFC4X3, 'IFC4X3.exp')]];
 
 if (process.argv.includes('--check')) {
   for (const [rel, text] of outputs) {

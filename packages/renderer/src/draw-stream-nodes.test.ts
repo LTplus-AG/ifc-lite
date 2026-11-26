@@ -13,6 +13,7 @@ import { HlodTree, nodeKey, proxySlotKey, type HlodNode } from './draw-stream-hl
 import type { MeshData } from '@ifc-lite/geometry';
 import { PROXY_WORKER_SOURCE } from './draw-stream-proxy-worker.js';
 import { resolveDrawStreamConfig } from './draw-stream-config.js';
+import { BASE_OPAQUE_MODE } from './opaque-draw-variants.js';
 import { cellOf, MemberPick, orthoSlot, pxPerMetre, type StreamFrameInputs, type StreamFrameStats } from './draw-stream-types.js';
 
 function batch(id: number, x: number, opts: { quantized?: boolean; lod1?: number; ids?: number } = {}): BatchedMesh {
@@ -143,7 +144,7 @@ describe('draw stream culling', () => {
     const device = { createBindGroupLayout: () => ({}), createPipelineLayout: () => ({}), createBindGroup: () => ({}), createShaderModule: () => ({}),
       createBuffer: (d: GPUBufferDescriptor) => ({ size: d.size, destroy() {} }), queue: { writeBuffer() {} }, createRenderBundleEncoder: enc } as unknown as GPUDevice;
     const pipeline = { getStreamBase: () => ({ environmentLayout: {}, descriptor: { fragment: { targets: [] } }, colorFormat: 'bgra8unorm', depthFormat: 'depth32float', sampleCount: 1 }),
-      visibility: { create: () => ({}) }, getEnvironmentBindGroup: () => env } as unknown as ConstructorParameters<typeof DrawStream>[1];
+      visibility: { create: () => ({}), createAsync: async () => ({}) }, getEnvironmentBindGroup: () => env } as unknown as ConstructorParameters<typeof DrawStream>[1];
     const cell = [batch(1, 0, { lod1: 6 }), batch(2, 2, { lod1: 6 })];
     const stream = new DrawStream(device, pipeline, resolveDrawStreamConfig({ stream: true }));
     stream.sync(cell, 'g', 'k', 32, () => ({ alpha: 1, anchor: null, overrideBits: 0 }));
@@ -188,7 +189,7 @@ describe('renderer draw stream glue', () => {
 
   it('hands every batch to the per-batch loop while the stream is off', () => {
     const glue = new RendererDrawStream();
-    assert.equal(glue.begin(device, pipeline, batches, 0, 'e', 32, inputs), batches);
+    assert.equal(glue.begin(device, pipeline, batches, 0, 'e', 32, inputs, BASE_OPAQUE_MODE), batches);
     assert.equal(glue.engaged, false);
     assert.equal(glue.highlightIndex, false);
     assert.equal(glue.enabled, false);
@@ -198,7 +199,7 @@ describe('renderer draw stream glue', () => {
   it('waits for the batch set to settle before engaging', () => {
     const glue = new RendererDrawStream();
     glue.configure(resolveDrawStreamConfig({ stream: true, settleMs: 60_000 }));
-    assert.equal(glue.begin(device, pipeline, batches, 0, 'e', 32, inputs), batches);
+    assert.equal(glue.begin(device, pipeline, batches, 0, 'e', 32, inputs, BASE_OPAQUE_MODE), batches);
     assert.equal(glue.engaged, false);
     assert.equal(glue.highlightIndex, true, 'the stream implies the highlight index');
     assert.equal(glue.enabled, true);

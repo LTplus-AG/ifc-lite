@@ -95,7 +95,7 @@
    813 apps/viewer/src/components/viewer/tools/MeasurementVisuals.tsx
    701 apps/viewer/src/components/viewer/useGeometryStreaming.ts
    880 apps/viewer/src/components/viewer/useMouseControls.ts
-  1479 apps/viewer/src/components/viewer/Viewport.tsx
+  1480 apps/viewer/src/components/viewer/Viewport.tsx
    846 apps/viewer/src/components/viewer/ViewportContainer.tsx
    500 apps/viewer/src/components/viewer/ZonesPanel.tsx
    847 apps/viewer/src/hooks/ids/idsExportService.ts
@@ -146,7 +146,7 @@
    439 packages/clash/src/bcf-bridge.ts
    433 packages/clash/src/duplicates.ts
    547 packages/cli/src/commands/ask.ts
-   501 packages/cli/src/commands/create.ts
+   499 packages/cli/src/commands/create.ts
    482 packages/cli/src/commands/extract-entities.ts
    501 packages/cli/src/commands/query.ts
    457 packages/codegen/src/express-parser.ts
@@ -261,7 +261,7 @@
    444 packages/server-client/src/parquet-tables.ts
    595 packages/server-client/src/types.ts
    406 packages/source-dalux/src/provider.ts
-   415 packages/viewer/src/server.ts
+   405 packages/viewer/src/server.ts
   1485 packages/viewer/src/viewer-html.ts
    500 scripts/check-agents-md-size.mjs
    680 scripts/check-changeset-bump.mjs
@@ -296,5 +296,5 @@
    531 scripts/review/run-reviewer.mjs
    688 scripts/source-text-assertion-detect.mjs
    504 scripts/test-geometry-regression.mjs
-  2069 scripts/test-wasm-contract.mjs
+  2070 scripts/test-wasm-contract.mjs
    678 scripts/typecheck-tests.mjs

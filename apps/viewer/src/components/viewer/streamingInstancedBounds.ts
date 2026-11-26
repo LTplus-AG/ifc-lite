@@ -5,7 +5,6 @@ import { useViewerStore } from '@/store';
 import type { MutableRefObject } from 'react';
 import type { Renderer } from '@ifc-lite/renderer';
 import { activeLoadTrace, tracePhaseOnce } from '@/lib/perf/activeLoadTrace';
-import { globalInstancingOn } from '@/lib/perf/flags';
 import { robustFitBoundsFull } from './robustFitBoundsAccumulator.js';
 import { userMovedCamera, type Bounds } from './streamingBounds.js';
 
@@ -22,10 +21,11 @@ interface FitParams {
   initialAtCompletion?: boolean;
 }
 
-/** Whether a COMPLETED load may hold instanced geometry only: the retained kernel (#7955), or the global instance plan.
- * The plan also streams flat geometry, so it never takes the partial instance-only fit, only the completion one. */
-export function instanceOnlyLoadPossible(geometryKernel: string | undefined): boolean {
-  return geometryKernel === 'retained' || globalInstancingOn();
+/** Whether a COMPLETED load may hold instanced geometry only: the retained kernel (#7955), or a load the global instance
+ * plan applied to (its keyed records joined the scene's templates; the flag alone does not say so, small files keep the
+ * per-batch decision). The plan also streams flat geometry, so it never takes the partial instance-only fit, only the completion one. */
+export function instanceOnlyLoadPossible(geometryKernel: string | undefined, scene: { hasKeyedTemplates?(): boolean }): boolean {
+  return geometryKernel === 'retained' || scene.hasKeyedTemplates?.() === true;
 }
 
 /** #7955: called only after a shard-only arrival (or its empty-flat completion).

@@ -57,7 +57,7 @@ export class DrawStream {
   private deltaBuffer: GPUBuffer | null = null;
   private deltaImage = new Float32Array(0);
   private bindGroup: GPUBindGroup | null = null;
-  private readonly pipelines: StreamPipelines;
+  readonly pipelines: StreamPipelines;
   private lastCamera: [number, number, number] = [NaN, NaN, NaN];
   private bundleKey = '';
   private readonly scratch = new Float32Array(MESH_UNIFORM_FLOATS);
@@ -84,7 +84,7 @@ export class DrawStream {
 
   constructor(private readonly device: GPUDevice, private readonly pipeline: RenderPipeline, readonly config: DrawStreamConfig) {
     this.frameBuffer = device.createBuffer({ label: 'draw-stream-frame', size: MESH_UNIFORM_BYTES, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-    this.pipelines = new StreamPipelines(device, pipeline);
+    this.pipelines = new StreamPipelines(device, pipeline, () => this.requestRender());
   }
 
   /**
@@ -114,7 +114,7 @@ export class DrawStream {
     const members: BatchedMesh[] = []; const legacy: BatchedMesh[] = []; const states: StreamBatchState[] = [];
     for (const b of batches) {
       // An evicted batch the arena holds still draws from its arena copy.
-      const st = b.bounds && (b.gpuResident !== false || this.arena?.slots.has(b)) && !this.outsideEnvelope.has(b) ? eligible(b) : null;
+      const st = b.bounds && !b.indexFormat /* a u16 compact page: arenas and stream draws index with u32 */ && (b.gpuResident !== false || this.arena?.slots.has(b)) && !this.outsideEnvelope.has(b) ? eligible(b) : null;
       if (st) { members.push(b); states.push(st); } else legacy.push(b);
     }
     this.members = members; this.legacy = legacy;
@@ -290,12 +290,13 @@ export class DrawStream {
         const enc = newBundle(); this.encodeProxy(enc, n, mode, true); n.bundle[mi] = enc.finish(); budget--; stats.bundlesRecorded++;
       }
     }
-    // Once this mode is warm, warm the other discard mode too. A section plane (or a
-    // translucent override) flips the opaque pass to the discarding variant, and its first frame
-    // otherwise recorded or directly encoded every visible node (section toggle 38 -> 134 ms).
-    if (budget > 0) budget = this.warmLeaves(newBundle, { ...mode, discardFree: !mode.discardFree }, budget, 1, stats);
-    // Nothing left to record: stay idle until a resync, a bundle invalidation or a new ready proxy.
-    if (budget === PREWARM_PER_FRAME) this.warmModes[mi] = true;
+    // Once this mode is warm, warm the other discard mode too (once its pipelines are built off the frame: `ready`). A section
+    // plane (or a translucent override) flips the opaque pass to the discarding variant, and its first frame otherwise
+    // recorded or directly encoded every visible node (section toggle 38 -> 134 ms).
+    const other = { ...mode, discardFree: !mode.discardFree }, otherReady = budget > 0 ? this.pipelines.ready(other) : false;
+    if (otherReady) budget = this.warmLeaves(newBundle, other, budget, 1, stats);
+    // Nothing left to record (a failed build leaves its mode to the live draw): idle until a resync, an invalidation or a new ready proxy.
+    if (budget === PREWARM_PER_FRAME && otherReady !== false) this.warmModes[mi] = true;
   }
 
   /** Record up to `budget` missing leaf bundles (both LODs) for `mode`, resuming at cursor `c`; returns the budget left. */

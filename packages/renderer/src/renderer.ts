@@ -2287,13 +2287,17 @@ export class Renderer {
                     (shouldRouteBatchTransparent(alphaForBatch(drawn, b.color[3]), batchEntities(drawn), colorOverrides) ? transparentBatches : opaqueBatches).push(b);
                 };
 
+                // Discard-free / no-object-id twins when nothing clips (opaque-draw-variants.ts); clipBox.enabled = packClipBox's bit below.
+                const opaqueMode = (instancedDiscards?: boolean) => resolveOpaqueDrawMode({ perspective: this.camera.getProjectionMode() !== 'orthographic',
+                    clipping: sectionPlaneData?.enabled === true || options.clipBox?.enabled === true || extraClipPlanes.length > 0, edges: needsObjectIdPass, instancedDiscards });
+                const flatMode = opaqueMode();
                 // Draw stream: once engaged, plain opaque whole batches move to it; the rest stay in this loop.
                 const loopBatches = !this.drawStream.enabled ? allBatchedMeshes : this.drawStream.begin(device, this.pipeline, allBatchedMeshes, this.scene.getPickGeometryRevision(),
                     `${this._partialBatchEpoch}|${xray.active}|${options.emphasizeOverrides === true}|${hasVisibilityFiltering}`, this.scene.getSpatialChunking()?.cellSize ?? 0, {
                         visibility: (b) => (hasVisibilityFiltering ? this._batchVisibility.classify(b, this._visibilityVersion, options.hiddenIds, options.isolatedIds) : 'all'),
                         alpha: (b) => alphaForBatch(b, b.color[3]), colorOverrides, colorOverrideGen, emphasize: options.emphasizeOverrides === true, xrayActive: xray.active,
                         forEachPiece: (visit) => this.scene.forEachFlatMeshData(visit), requestRender: () => this.requestRender(),
-                    });
+                    }, flatMode);
                 for (let batch of loopBatches) {
                     // Frustum culling: skip batches entirely outside the camera view
                     if (batch.bounds) {
@@ -2443,7 +2447,7 @@ export class Renderer {
                         pass.drawIndexed(batch.lod1IndexCount!);
                         frameBatchesAtLod1++;
                     } else {
-                        pass.setIndexBuffer(batch.indexBuffer, 'uint32');
+                        pass.setIndexBuffer(batch.indexBuffer, batch.indexFormat ?? 'uint32');
                         pass.drawIndexed(batch.indexCount);
                     }
                     frameDrawCalls++;
@@ -2452,11 +2456,7 @@ export class Renderer {
 
                 // Quantized batches (issue #1682 phase 6) draw through the quantized
                 // variants; scene only quantizes once the probe verified they exist, so
-                // the f32 fallback is type-safety. Opaque draws take the discard-free /
-                // no-object-id twins when nothing can clip them (opaque-draw-variants.ts).
-                const opaqueMode = (instancedDiscards?: boolean) => resolveOpaqueDrawMode({ perspective: this.camera.getProjectionMode() !== 'orthographic',
-                    clipping: sectionPlaneData?.enabled === true || tplClipBit !== 0 || extraClipPlanes.length > 0, edges: needsObjectIdPass, instancedDiscards });
-                const flatMode = opaqueMode();
+                // the f32 fallback is type-safety (`flatMode`: see the draw stream above).
                 const filteredMode = { ...flatMode, discardFree: false }; // the visibility test discards
                 const pipeFor = (batch: typeof allBatchedMeshes[0], kind: 'opaque' | 'transparent'): GPURenderPipeline => {
                     if (kind === 'opaque') return this.pipeline!.opaquePipeline(batch.quantized ? 'quantized' : 'flat', filtered.has(batch) ? filteredMode : flatMode);
@@ -2902,7 +2902,7 @@ export class Renderer {
                 pixelRatio: this.pixelRatio,
                 // EDL only when point clouds are loaded and the user enabled it.
                 edl: this.edlOptions.enabled && this.pointCloudRenderer?.hasAssets() ? this.edlOptions : null,
-                selectionOutline, geometricVisibility: this.pipeline.visibility.getBinding(),
+                selectionOutline, geometricVisibility: this.pipeline.visibility.getBinding(), entityColorTable: this.scene.getEntityColorTable().getBuffer(),
             });
 
             // Internal opt-in witness metadata: snapshot synchronously alongside the submitted copy.

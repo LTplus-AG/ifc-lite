@@ -172,7 +172,8 @@ function armLoadClock(count) {
 /**
  * In page: null until every model is fully interactive, then timings relative to the input event.
  * Gate on top of the span rule: the viewer's own settled check (`__ifc_lite_scene_settled__`: store not
- * streaming, renderer scene with no queued meshes, no streaming fragments, no finalize running). A load that
+ * streaming, renderer scene with no queued meshes, no streaming fragments, no finalize running; and, when the
+ * drawing panel or the section tool's 3D cap is open, its drawing caught up with the live cut). A load that
  * reaches the store's settle before its drain has started (a fast path with no `stream.queue` span) otherwise
  * marks before the scene exists. The mark itself is still the latest of the span milestones, so a load the
  * check never holds back keeps exactly its old value (`interactiveMsOldGate` records the old rule's value).

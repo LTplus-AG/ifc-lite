@@ -6,7 +6,7 @@ import {
 import { readStepSlots } from './step-argument-parser.js';
 import { stepRecordHead } from './step-record-frame.js';
 import { namedExpressIds } from './step-ref-scan.js';
-import { skipStepTrivia } from './step-slot-grammar.js';
+import { MAX_SOURCE_STEP_ID, skipStepTrivia } from './step-slot-grammar.js';
 
 interface PendingDate { slot: number; kind: CalendarKind; up: boolean; lost: (narrowed: boolean) => void }
 
@@ -33,7 +33,7 @@ export class CalendarDates {
     return true;
   }
 
-  finish(lines: string[]): void {
+  finish(lines: string[], maxReferenceId = MAX_SOURCE_STEP_ID): void {
     if (!this.pending.size) return;
     const upgrade = [...this.pending.values()].some((rules) => rules.some((rule) => rule.up));
     const carriers = new Map<number, DateRecord>();
@@ -45,14 +45,14 @@ export class CalendarDates {
       if (!head) continue;
       const type = line.slice(head.typeStart, head.typeEnd).toUpperCase();
       if (!DATE_CARRIERS.has(type)) continue;
-      const record = readStepSlots(line);
+      const record = readStepSlots(line, maxReferenceId);
       if (record) carriers.set(id, record);
     }
     const added: string[] = [];
     for (let index = 0; index < lines.length; index++) {
       const dates = this.pending.get(recordId(lines[index]));
       if (!dates) continue;
-      const record = readStepSlots(lines[index]);
+      const record = readStepSlots(lines[index], maxReferenceId);
       if (!record) continue;
       const slots = [...record.slots];
       for (const date of dates) {
@@ -66,7 +66,7 @@ export class CalendarDates {
         } else {
           let candidate = next;
           const result = toLegacyDate(value, date.kind, () => candidate++);
-          if (result && candidate - 1 <= 0xffffffff) {
+          if (result && result.records.length - 1 <= maxReferenceId - next) {
             added.push(...result.records);
             next = candidate;
             fixed = result.ref;

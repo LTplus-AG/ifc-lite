@@ -7005,6 +7005,7 @@
     "EntityWorldAabb: interface",
     "ExtrusionDefinitions: type",
     "GEOMETRY_PERF_FLAG_BINDINGS: const",
+    "GLOBAL_INSTANCING_MIN_BYTES: const",
     "GeometryBatch: interface",
     "GeometryDiagnostics: interface",
     "GeometryMeshingSettings: interface",
@@ -7086,6 +7087,8 @@
     "geometryAabbAt: function",
     "geometryVolumeAt: function",
     "getGeometryStreamWatchdogMs: function",
+    "globalInstancingApplies: function",
+    "inSmallFileTier: function",
     "isNoRenderGeometryError: function",
     "isTauri: function",
     "isWasmAssetUnavailableError: function",
@@ -7101,14 +7104,35 @@
     "resolveSpatialPlacement: function",
     "terrainRefusalReason: function"
   ],
+  "@ifc-lite/geometry/compact": [
+    "COMPACT_CELL_METRES: const",
+    "COMPACT_RECORD_BYTES: const",
+    "CompactPayload: interface",
+    "CompactRef: interface",
+    "adoptCompactMeshes: function",
+    "compactBounds: function",
+    "compactHydrationStats: function",
+    "compactRow: function",
+    "compactStep: function",
+    "copyMeshShell: function",
+    "isCompactCellSize: function",
+    "loadCompactGeometry: function",
+    "materializeCompactMesh: function",
+    "materializeCompactMeshes: function",
+    "meshTriangleCount: function",
+    "meshVertexCount: function",
+    "visitCompactPayload: function"
+  ],
   "@ifc-lite/geometry/geometry-class": [
     "GEOM_CLASS_INSTANCED_TYPE: const",
     "GEOM_CLASS_LAYER_SLICE: const",
     "GEOM_CLASS_OCCURRENCE: const",
     "GEOM_CLASS_ORPHAN_TYPE: const",
     "geometryClassOf: function",
+    "isModelViewGeometryClass: function",
     "isPlacedGeometryClass: function",
-    "isTypeLibraryGeometryClass: function"
+    "isTypeLibraryGeometryClass: function",
+    "selectModelMeshes: function"
   ],
   "@ifc-lite/geometry/remesh": [
     "RemeshClient: class",
@@ -10207,6 +10231,7 @@
     "isEntityVisible: function",
     "isNegativeDelta: function",
     "isRenderablePointCloud: function",
+    "loadCompactPages: function",
     "lodCellSizeForBounds: function",
     "materializeShardOccurrences: function",
     "nearestCardinalAxis: function",
@@ -11564,7 +11589,12 @@
     "createStreamingViewerAdapter: function",
     "createStreamingVisibilityAdapter: function",
     "getViewerHtml: function",
-    "startViewerServer: function"
+    "startViewerServer: function",
+    "viewerUrl: function"
+  ],
+  "@ifc-lite/viewer-core/url": [
+    "VIEWER_HOST: const",
+    "viewerUrl: function"
   ],
   "@ifc-lite/wasm": [
     "AlignmentAxisJs: class",

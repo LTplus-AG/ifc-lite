@@ -30,7 +30,7 @@ import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 import { generateScenario } from './huge-geometry-gen.mjs';
-import { ROOT, bounded, launchGpu, loadModel, startSampler } from './huge-geometry-browser.mjs';
+import { ROOT, bounded, launchGpu, loadModel, nonNegativeInteger, positiveFinite, startSampler } from './huge-geometry-browser.mjs';
 import { withTimeout } from './oom-load-probe-lib.mjs';
 import { SCENE_STATS } from './huge-geometry-page.mjs';
 import { frameSummary } from './huge-geometry-report.mjs';
@@ -82,6 +82,20 @@ async function calibrate(page, showcase) {
   if (map && map.rms < 1.0) return { map, how: `anchors (${pairs.length}, rms ${map.rms.toFixed(3)} m)` };
   const guess = { perm: [0, 2, 1], sign: [1, 1, -1], offset: [0, 0, 0], rms: null, apply: (p) => [p[0], p[2], -p[1]] };
   return { map: guess, how: `fallback Z-up -> Y-up guess (anchors: ${pairs.length}, rms ${map?.rms ?? '–'})` };
+}
+
+export async function tryClick(page, centre, timeoutMs = 5000) {
+  const at = await withTimeout(page.evaluate(PROJECT, centre).catch(() => null), timeoutMs, () => null);
+  if (!at || at.x < 0 || at.y < 0 || at.x > 1600 || at.y > 900) return { at, sel: null };
+  try {
+    await bounded(page.mouse.move(at.x, at.y), timeoutMs, 'pick mouse move');
+    await bounded(page.mouse.down(), timeoutMs, 'pick mouse down');
+    await sleep(50);
+    await bounded(page.mouse.up(), timeoutMs, 'pick mouse up');
+  } catch { return { at, sel: null }; }
+  let sel = null;
+  for (let i = 0; i < 10 && !sel; i++) { await sleep(80); sel = await withTimeout(page.evaluate(SELECTION).catch(() => null), timeoutMs, () => null); }
+  return { at, sel };
 }
 
 async function recordTier({ label, manifest, url, out, fps, loadSpeed, timeoutMs, urlNote }) {
@@ -218,19 +232,9 @@ async function recordTier({ label, manifest, url, out, fps, loadSpeed, timeoutMs
         // a plain click; a real wheel nudge first; the viewer's own home() tween then a click at the target;
         // the viewer's own frameEntities() tween onto the target then a click. The camera path resumes after.
         await sleep(shot.durationMs * 0.28);
-        const tryClick = async () => {
-          // Every page call here is bounded: a tab that stops answering mid-pick must not hold the recorder.
-          const at = await withTimeout(page.evaluate(PROJECT, cal.map.apply(sc.hero.pick.centre)).catch(() => null), 5000, () => null);
-          if (!at || at.x < 0 || at.y < 0 || at.x > 1600 || at.y > 900) return { at, sel: null };
-          await page.mouse.move(at.x, at.y);
-          await page.mouse.down(); await sleep(50); await page.mouse.up();
-          let sel = null;
-          for (let i = 0; i < 10 && !sel; i++) { await sleep(80); sel = await withTimeout(page.evaluate(SELECTION).catch(() => null), 5000, () => null); }
-          return { at, sel };
-        };
         const strategies = [
           ['click', async () => {}],
-          ['wheel-nudge', async () => { await page.mouse.wheel(0, -1); await sleep(250); }],
+          ['wheel-nudge', async () => { await bounded(page.mouse.wheel(0, -1), 5000, 'pick wheel nudge'); await sleep(250); }],
           ['home-tween', async () => { await bounded(page.evaluate(CAMERA_CALL, { call: 'home' }), 5000); await bounded(page.evaluate(TWEEN_DONE), 30000); }],
           ['frame-tween', async () => { await bounded(page.evaluate(CAMERA_CALL, { call: 'frame', ids: [sc.hero.pick.id] }), 5000); await bounded(page.evaluate(TWEEN_DONE), 30000); }],
         ];
@@ -239,8 +243,8 @@ async function recordTier({ label, manifest, url, out, fps, loadSpeed, timeoutMs
         await sleep(150);
         try {
           for (const [k, prep] of strategies) {
-            await prep().catch(() => null);
-            got = await tryClick();
+            if (!await prep().then(() => true, () => false)) continue;
+            got = await tryClick(page, cal.map.apply(sc.hero.pick.centre));
             if (got.sel) { used = k; break; }
           }
         } finally { await withTimeout(page.evaluate(CAMERA_HOLD, false).catch(() => null), 5000, () => null); }
@@ -330,13 +334,17 @@ async function main() {
     'timeout-min': { type: 'string', default: '12' }, 'emit-stdout': { type: 'boolean', default: false },
     'emit-max-mb': { type: 'string', default: '170' },
   } });
+  const usage = 'usage: huge-geometry-cinema.mjs --label NAME --models-dir DIR --out DIR [--tiers 250k,1M] [--seed 1] '
+      + "[--viewer-url URL | --dist DIR [--query 'a=1&b=2']] [--fps 30] [--load-speed 4] [--timeout-min 12] [--emit-stdout] [--emit-max-mb 170]";
   if (!values.label || !values['models-dir'] || !values.out || !/^[\w.-]+$/.test(values.label)) {
-    console.error('usage: huge-geometry-cinema.mjs --label NAME --models-dir DIR --out DIR [--tiers 250k,1M] [--seed 1] '
-      + "[--viewer-url URL | --dist DIR [--query 'a=1&b=2']] [--fps 30] [--load-speed 4] [--timeout-min 12]");
+    console.error(usage);
     process.exit(2);
   }
-  const emitMaxMb = Number(values['emit-max-mb']);
-  if (!Number.isFinite(emitMaxMb) || emitMaxMb <= 0) { console.error('--emit-max-mb must be a positive finite number'); process.exit(2); }
+  const seed = nonNegativeInteger('seed', values.seed, usage);
+  const fps = positiveFinite('fps', values.fps, usage);
+  const loadSpeed = positiveFinite('load-speed', values['load-speed'], usage);
+  const timeoutMs = positiveFinite('timeout-min', values['timeout-min'], usage) * 60000;
+  const emitMaxMb = positiveFinite('emit-max-mb', values['emit-max-mb'], usage);
   const out = resolve(values.out);
   mkdirSync(join(out, 'clips'), { recursive: true });
   mkdirSync(join(out, 'stills'), { recursive: true });
@@ -352,10 +360,9 @@ async function main() {
   const index = existsSync(indexPath) ? JSON.parse(readFileSync(indexPath, 'utf8')) : { label: values.label, clips: {} };
   try {
     for (const tier of values.tiers.split(',').map(parseTier)) {
-      const manifest = generateScenario(resolve(values['models-dir']), { look: 'showcase', elements: tier, seed: Number(values.seed) });
-      const fps = Number(values.fps);
-      const r = await recordTier({ label: values.label, manifest, url, out, fps, loadSpeed: Number(values['load-speed']),
-        timeoutMs: Number(values['timeout-min']) * 60000, urlNote });
+      const manifest = generateScenario(resolve(values['models-dir']), { look: 'showcase', elements: tier, seed });
+      const r = await recordTier({ label: values.label, manifest, url, out, fps, loadSpeed,
+        timeoutMs, urlNote });
       r.encoder.pause();
       await r.stop();
       await r.session.close();

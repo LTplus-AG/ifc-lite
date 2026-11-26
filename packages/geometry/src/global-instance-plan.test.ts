@@ -7,11 +7,13 @@ import {
   forwardKeyPlan,
   globalKeyPlanningField,
   globalPlanColumns,
+  globalPlanCountsMatch,
   plannedJobs,
   WorkerGlobalPlan,
   type GeometryWorkerAddKeyPlanMessage,
   type GlobalPlanApi,
 } from './global-instance-plan.js';
+import { GLOBAL_INSTANCING_MIN_BYTES, globalInstancingApplies } from './perf-flags.js';
 
 const g = globalThis as Record<string, unknown>;
 afterEach(() => {
@@ -22,14 +24,28 @@ const NONE = 0xffff_ffff;
 const jobs = Uint32Array.from([10, 0, 5, 11, 5, 9, 12, 9, 14]);
 
 describe('global instance plan messages', () => {
-  it('stay off unless the flag arms them', () => {
+  it('follow the load\'s plan decision', () => {
     const columns = { mappedInstancePlan: Uint32Array.of(21), mappedInstanceCounts: Uint32Array.of(9) };
-    expect(globalKeyPlanningField()).toEqual({});
-    expect(globalPlanColumns(columns)).toEqual({});
+    expect(globalKeyPlanningField(false)).toEqual({});
+    expect(globalPlanColumns(columns, false)).toEqual({});
+    expect(globalKeyPlanningField(true)).toEqual({ globalInstancing: true });
+    expect(globalPlanColumns(columns, true)).toEqual({ globalInstancing: true, mappedInstanceCounts: Uint32Array.of(9) });
+    expect(globalPlanColumns({ ...columns, mappedInstanceCounts: Uint32Array.of(9, 1) }, true), 'counts must parallel the plan').toEqual({});
+    expect(globalPlanCountsMatch(columns), 'what arms the plan (the pool reports it as the arm)').toBe(true);
+    expect(globalPlanCountsMatch({ ...columns, mappedInstanceCounts: Uint32Array.of(9, 1) })).toBe(false);
+    expect(globalPlanCountsMatch({ mappedInstancePlan: Uint32Array.of(21) }), 'no counts: an older pre-pass').toBe(false);
+  });
+
+  it('apply only past the small tier, with the explicit flag or the host\'s own decision', () => {
+    const large = GLOBAL_INSTANCING_MIN_BYTES, small = GLOBAL_INSTANCING_MIN_BYTES - 1;
+    expect(globalInstancingApplies(large)).toBe(false);
     g.__IFC_LITE_GLOBAL_INSTANCING = 1;
-    expect(globalKeyPlanningField()).toEqual({ globalInstancing: true });
-    expect(globalPlanColumns(columns)).toEqual({ globalInstancing: true, mappedInstanceCounts: Uint32Array.of(9) });
-    expect(globalPlanColumns({ ...columns, mappedInstanceCounts: Uint32Array.of(9, 1) }), 'counts must parallel the plan').toEqual({});
+    expect(globalInstancingApplies(large)).toBe(true);
+    expect(globalInstancingApplies(small), 'a small file keeps the per-batch decision').toBe(false);
+    expect(globalInstancingApplies(large, false), 'the host decision replaces the explicit read').toBe(false);
+    delete g.__IFC_LITE_GLOBAL_INSTANCING;
+    expect(globalInstancingApplies(large, true)).toBe(true);
+    expect(globalInstancingApplies(small, true), 'the small tier holds for a host decision too').toBe(false);
   });
 
   it('forward only planned jobs, and nothing for a chunk without plan indices', () => {

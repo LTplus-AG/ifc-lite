@@ -78,11 +78,11 @@ three reads at an idle renderer with the mouse off the canvas):
 
 | step | area | what is compared |
 |---|---|---|
-| home, far (4x zoom out: LOD1 and far field), top | render, LOD | pixels |
+| home, far (4x zoom out: LOD1 and far field), top | render, LOD | pixels; home also the camera (view-projection), so a flag that moves the scene bounds shows as a framing change |
 | pick (three canvas clicks) | pick | picked ids, pixels (highlight) |
-| hide 30%, isolate 10% (sorted id sample) | hide/isolate | counts, pixels |
+| hide 30%, isolate 10% (even sample of the data-store entity ids, so both arms pick the same elements) | hide/isolate | counts, pixels |
 | colour 20% | colour override | pixels |
-| section | section | pixels |
+| section, section + colour | section | pixels, after the cut drawing the 3D cap is drawn from has settled (`drawing2DStatus` held at ready) |
 | export | export | GLB size and SHA-256 (command palette, real download) |
 | device-loss | device loss | recovery to a settled scene, pixels after recovery |
 
@@ -95,8 +95,10 @@ Model compare has no renderer path of its own; it is covered by the e2e stage
 (`compare-impact-6921`, and the federation model here).
 
 **Pixel gate.** A step passes when at most `--pixel-max-pct` (default 0.1) of
-the pixels differ by more than 8/255 between the arms. With `--noise` a second
-flags-off arm loads too (reported as `main vs main`). A step where main differs
+the pixels differ by more than 8/255 between the arms. With `--noise`, `--noise-loads`
+(default 2) more flags-off loads run too, and flags on passes a step that
+matches any flags-off load: main can render a step in more than one state
+between loads (reported as `main vs main`). Otherwise a step where main differs
 from itself by more than the gate is inconclusive (`skip`), unless the flag
 differs by more than twice that plus the gate; failing steps get a diff
 image (`diffs/`, differing pixels in red). Main draws the same frame on every
@@ -105,4 +107,6 @@ residue is the model's shared frame origin, which the first batch created sets:
 a different origin moves the f32 vertex positions by a rounding step, which
 shifts single sub-pixel edges and, rarely, a vertex across a LOD1 cell edge.
 Before the LOD1 election became load-order independent, main differed from
-itself in 5.1% of pixels.
+itself in 5.1% of pixels. Holter's section view looked bimodal (about 1%) only
+because the asynchronously generated cut drawing, which the 3D cap is drawn
+from, could arrive after the capture; the section steps now wait for it.

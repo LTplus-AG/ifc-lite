@@ -7,7 +7,7 @@ import { slotRef, slotUnset, type SourceRecords } from './schema-converter-struc
 import { getMaxExpressId, type CompleteEntityIndex } from './entity-iteration.js';
 import { stepRecordHead } from './step-record-frame.js';
 import { decodeRange } from './source-ref-bounds.js';
-import { isStepValue, parseStepNumber, skipStepTrivia } from './step-slot-grammar.js';
+import { MAX_SOURCE_STEP_ID, isStepValue, parseStepNumber, skipStepTrivia } from './step-slot-grammar.js';
 import type { StructuralDiagnostics } from './schema-converter-structural-diagnostics.js';
 import type { Ifc4SlotCheck } from './schema-converter-ifc4-slots.js';
 import type { IfcSchemaVersion } from './schema-converter.js';
@@ -70,10 +70,10 @@ function writableGroups(row: (typeof IFC2X3_TYPED_PROPERTIES)[number], slots: re
   });
 }
 
-function nextAfterProperties(next: number, groupSizes: readonly number[]): number | undefined {
+function nextAfterProperties(next: number, groupSizes: readonly number[], maxId = MAX_SOURCE_STEP_ID): number | undefined {
   if (!groupSizes.length) return undefined;
-  const end = next + groupSizes.reduce((size, count) => size + count + 1, -1);
-  return end - 1 <= 0xffffffff ? end : undefined;
+  const size = groupSizes.reduce((total, count) => total + count + 1, -1);
+  return size - 1 <= maxId - next ? next + size : undefined;
 }
 
 /** Allocate in source iteration order as the default full STEP export does. */
@@ -116,13 +116,13 @@ export class TypedPropertyUpgrade {
 
   constructor(private readonly enabled: boolean) {}
 
-  capture(source: string, converted: string, from: IfcSchemaVersion, to: IfcSchemaVersion): boolean {
+  capture(source: string, converted: string, from: IfcSchemaVersion, to: IfcSchemaVersion, maxReferenceId = MAX_SOURCE_STEP_ID): boolean {
     if (!this.enabled || from !== 'IFC2X3' || (to !== 'IFC4' && to !== 'IFC4X3')) return false;
     const head = stepRecordHead(source);
     const sourceType = head ? source.slice(head.typeStart, head.typeEnd).toUpperCase() : '';
     const row = rowFor(sourceType);
     if (!row) return false;
-    const input = readStepSlots(source);
+    const input = readStepSlots(source, maxReferenceId);
     if (!input || input.slots.length !== row[1]) return false;
     const groups = writableGroups(row, input.slots).map(({ name, fields }) => ({
       name,
@@ -132,7 +132,7 @@ export class TypedPropertyUpgrade {
       }),
     }));
     const id = idOf(converted);
-    if (!groups.length || !(id <= 0xffffffff)) return false;
+    if (!groups.length || !(id <= maxReferenceId)) return false;
     this.drafts.set(id, { sourceType, to, groups });
     return true;
   }
@@ -141,7 +141,7 @@ export class TypedPropertyUpgrade {
     return this.refused ? [`${this.refused} typed property record(s) could not be preserved because the target reference is missing or the export has run out of STEP ids (#10797).`] : [];
   }
 
-  finish(lines: string[], slots: Ifc4SlotCheck, firstAvailableId: number, structural: StructuralDiagnostics): number {
+  finish(lines: string[], slots: Ifc4SlotCheck, firstAvailableId: number, structural: StructuralDiagnostics, maxReferenceId = MAX_SOURCE_STEP_ID): number {
     if (this.drafts.size === 0) return firstAvailableId;
     const extra: string[] = [];
     let next = firstAvailableId;
@@ -150,8 +150,8 @@ export class TypedPropertyUpgrade {
       if (id >= next) next = id + 1;
     }
     const rewritten = (line: string, draft: Draft): string => {
-      const record = readStepSlots(line);
-      const end = nextAfterProperties(next, draft.groups.map((group) => group.properties.length));
+      const record = readStepSlots(line, maxReferenceId);
+      const end = nextAfterProperties(next, draft.groups.map((group) => group.properties.length), maxReferenceId);
       if (!record || record.slots.length !== 4 || slotRef(record.slots[3]) === null
         || end === undefined) {
         this.refused++;

@@ -38,6 +38,23 @@ export interface ProcessParallelOptions {
    */
   enableInstancing?: boolean;
   /**
+   * Encode eligible flat meshes as compact GPU records in the workers, at this
+   * cell size in metres (`COMPACT_CELL_METRES`; see compact-geometry.ts). Such a
+   * mesh arrives with `MeshData.compact` set and decodes its arrays on demand.
+   * Takes effect only after `loadCompactGeometry()` (`@ifc-lite/geometry/compact`)
+   * has resolved; before that the workers send f32 meshes. Off by default. Only for a host whose renderer draws compact records, and
+   * only where the ids it draws with are the worker's express ids.
+   */
+  compactCellSize?: number;
+  /**
+   * The global instance plan's flag for this load, as the host decided it (a staged rollout); unset, the explicit
+   * global or URL param. Small files never plan (`globalInstancingApplies`). The pool decides once per load.
+   */
+  globalInstancing?: boolean;
+  /** Hears whether the plan ran for this load (the host's telemetry arm): `false` at the start when it does not
+   *  apply, or the outcome once the prepass columns reach the workers. Silent for a load with instancing off. */
+  onGlobalInstancingDecision?: (applies: boolean) => void;
+  /**
    * Issue #924 — per-entity geometry-hash tolerance in metres. When a
    * positive value is given, each geometry worker's IfcAPI receives
    * `setComputeGeometryHashes(tol)` before the first stream-chunk, so the

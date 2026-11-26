@@ -17,7 +17,6 @@
  */
 
 import type { IfcAPI } from '@ifc-lite/wasm';
-import { readGlobalInstancingFlag } from './perf-flags.js';
 
 /** Unplanned job (the pre-pass's `KEY_PLAN_NONE`). */
 const KEY_PLAN_NONE = 0xffff_ffff;
@@ -73,17 +72,23 @@ export interface GlobalKeyPlanningField {
   globalInstancing?: boolean;
 }
 
-/** Field for the pre-pass request: plan content keys when the flag is on. */
-export function globalKeyPlanningField(): GlobalKeyPlanningField {
-  return readGlobalInstancingFlag() ? { globalInstancing: true } : {};
+/** Field for the pre-pass request: plan content keys when the plan applies to this load
+ *  (`globalInstancingApplies`, read once per load). */
+export function globalKeyPlanningField(applies: boolean): GlobalKeyPlanningField {
+  return applies ? { globalInstancing: true } : {};
 }
 
-/** Prepass-columns fields for the workers: the counts when the flag is on and they match the plan. */
-export function globalPlanColumns(evt: Record<string, unknown>): GlobalPlanColumns {
+/** Prepass-columns fields for the workers: the counts when the plan applies to this load and they match the plan. */
+export function globalPlanColumns(evt: Record<string, unknown>, applies: boolean): GlobalPlanColumns {
+  if (!applies || !globalPlanCountsMatch(evt)) return {};
+  return { globalInstancing: true, mappedInstanceCounts: (evt.mappedInstanceCounts as Uint32Array).slice() };
+}
+
+/** Whether a `prepass-columns` event carries the model-wide counts, one per plan entry: what arms the plan. */
+export function globalPlanCountsMatch(evt: Record<string, unknown>): boolean {
   const plan = evt.mappedInstancePlan as Uint32Array | undefined;
   const counts = evt.mappedInstanceCounts as Uint32Array | undefined;
-  if (!readGlobalInstancingFlag() || !plan || !counts || counts.length !== plan.length) return {};
-  return { globalInstancing: true, mappedInstanceCounts: counts.slice() };
+  return !!plan && !!counts && counts.length === plan.length;
 }
 
 /** The planned (job, index) pairs of one `jobs` chunk, or null when it has none. */

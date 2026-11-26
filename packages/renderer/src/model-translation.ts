@@ -5,6 +5,7 @@
 import { renderableCoordinates } from './renderable-coordinates.js';
 import type { Mesh } from './types.js';
 import type { MeshData } from '@ifc-lite/geometry';
+import { copyMeshShell } from '@ifc-lite/geometry/compact';
 import type { BoundingBox } from './scene-raycaster.js';
 import { MeshPlacementCache } from './mesh-placement-cache.js';
 import { worldAabbFromPieces } from './scene-geometry.js'; import { unionBox } from './released-entity-bounds.js';
@@ -77,6 +78,7 @@ export class ModelTranslations {
   private releasedEntities = new Map<number, Map<number, BoundingBox>>();
 
   get(modelIndex = 0): Offset { return this.offsets.get(modelIndex) ?? ZERO; }
+  isPlaced(modelIndex = 0): boolean { return this.yaws.has(modelIndex) || this.get(modelIndex).some((value) => value !== 0); } // moved or turned from its source frame
 
   set(modelIndex: number, offset: Offset): boolean {
     assertModelTranslation(modelIndex, offset);
@@ -119,7 +121,7 @@ export class ModelTranslations {
   placeMesh(source: MeshData): MeshData {
     let entry = this.meshes.get(source);
     if (!entry) {
-      entry = { source, placed: { ...source } };
+      entry = { source, placed: copyMeshShell(source) }; // a spread would decode a compact shell
       this.meshes.set(entry);
     }
     const delta = this.get(entry.source.modelIndex);

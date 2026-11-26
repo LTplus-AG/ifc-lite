@@ -286,7 +286,7 @@ export const PERF_FLAGS = [
     removalCondition: 'Compact GPU records: delete with the f32 upload of flat meshes once on by default, or delete the encoder path if dropped.',
     introducedAt: '2026-11-24',
     default: false,
-    bindings: { urlParam: 'compactGeom' },
+    bindings: { urlParam: 'compactGeom', posthogKey: 'perf-compact-geom' },
   },
   {
     id: 'gpuOnly',

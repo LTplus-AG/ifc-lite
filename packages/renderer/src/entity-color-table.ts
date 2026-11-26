@@ -53,7 +53,7 @@
  * the renderer rebinds it at frame start (`RenderPipeline.setEntityColorTableBuffer`).
  */
 
-import { batchEntities, type BatchEntityIds } from './batch-entities.js';
+import { batchEntities, batchEntryStamp, type BatchEntityIds } from './batch-entities.js';
 
 type Rgba = readonly [number, number, number, number];
 
@@ -234,7 +234,7 @@ export function batchHasColorOverride(
 ): boolean {
   if (!overrides || overrides.size === 0) return false;
   const cached = hasOverrideCache.get(batch);
-  const count = batch.expressIds.length; // a compact page gains entries within one generation
+  const count = batchEntryStamp(batch); // a compact page gains and loses entries within one generation
   if (cached && cached.generation === generation && cached.count === count) return cached.has;
   const has = batchEntities(batch).some((id) => overrides.has(id));
   hasOverrideCache.set(batch, { generation, count, has });

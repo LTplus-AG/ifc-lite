@@ -1309,7 +1309,7 @@ export function useIfcLoader() {
       // `ifc-lite_bg.wasm` from `import.meta.url`), so this is the one stage a
       // first-visit user can fail in before a single IFC byte is touched.
       loadStage = 'engine-init';
-      await trace.span('engine.init', () => Promise.all([geometryProcessor.init(), compactCellSizeForLoad(target.kind).then((size) => { geometryProcessor.compactCellSize = size; })])); if (isStale()) return; // ?compactGeom's code is fetched beside the engine; a load superseded during the wait stops here
+      await trace.span('engine.init', () => Promise.all([geometryProcessor.init(), compactCellSizeForLoad(target.kind, { isCurrent: () => !isStale() }).then((size) => { geometryProcessor.compactCellSize = size; })])); if (isStale()) return; // ?compactGeom's code is fetched beside the engine; a load superseded during the wait stops here
       loadStage = 'parse';
       // Issue #924: enable RTC-invariant per-entity geometry fingerprints so
       // the model-compare feature can detect geometry changes. The hash rides

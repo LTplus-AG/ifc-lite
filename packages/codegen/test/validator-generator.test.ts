@@ -230,6 +230,34 @@ SUBTYPE_CONSTRAINT C FOR A; END_SUBTYPE_CONSTRAINT; END_SCHEMA;`);
     expect(coverage.unsupported.map(u => [u.scope, u.label])).toEqual([['schema', 'C'], ['schema', 'D upper bound'], ['global', 'Bad']]);
   });
 
+  it('resolves QUERY dependencies against the aggregate element type (#11646)', () => {
+    const { coverage, files } = generateValidators(`SCHEMA S;
+ENTITY Bad; DERIVE Value : INTEGER := Mystery(1); END_ENTITY;
+ENTITY Good; Value : INTEGER; END_ENTITY;
+ENTITY Holder; Items : LIST OF Good; Others : LIST OF Bad;
+WHERE Valid : SIZEOF(QUERY(x <* Items | x.Value > 0)) > 0;
+Invalid : SIZEOF(QUERY(x <* Others | x.Value > 0)) > 0; END_ENTITY; END_SCHEMA;`);
+    expect(coverage.unsupported.map(u => [u.owner, u.label])).toEqual([['Bad', 'Value'], ['Holder', 'Invalid']]);
+    const [rule] = loadRules(files['rules.ts'], { ...setRuntime, gt: (a: number, b: number) => a > b }, 'Holder');
+    expect(rule.check({ ITEMS: [{ VALUE: 1 }] }, {})).toBe(true);
+    expect(rule.check({ ITEMS: [{ VALUE: 0 }] }, {})).toBe(false);
+  });
+
+  it('propagates a failed renamed DERIVE through both names only on its subtype (#11646)', () => {
+    const { coverage, files } = generateValidators(`SCHEMA S;
+ENTITY Parent; Value : INTEGER; WHERE Original : Value > 0; END_ENTITY;
+ENTITY Child SUBTYPE OF (Parent);
+DERIVE SELF\\Parent.Value RENAMED Broken : INTEGER := Mystery(1);
+WHERE NewName : Broken > 0; OldGroup : SELF\\Parent.Value > 0; END_ENTITY; END_SCHEMA;`);
+    expect(coverage.unsupported.map(u => [u.owner, u.label])).toEqual([
+      ['Child', 'Broken'], ['Child', 'NewName'], ['Child', 'OldGroup'],
+    ]);
+    expect(coverage.unsupported.slice(1).every(u => u.reason.includes('Child.Broken'))).toBe(true);
+    const [rule] = loadRules(files['rules.ts'], { ...setRuntime, gt: (a: number, b: number) => a > b }, 'Parent');
+    expect(rule.check({ VALUE: 1 }, {})).toBe(true);
+    expect(rule.check({ VALUE: 0 }, {})).toBe(false);
+  });
+
   it('uses an entity parameter type to resolve failed DERIVE dependencies (#11646)', () => {
     const { coverage, files } = generateValidators(`SCHEMA S;
 ENTITY A; DERIVE Flag : LOGICAL := Mystery(1); WHERE W : ReadA(SELF); END_ENTITY;

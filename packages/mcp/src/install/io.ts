@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-
 /**
  * The Node side of `runInstall`: files, the client CLIs, the terminal.
  * Kept apart so tests swap in an in-memory version.

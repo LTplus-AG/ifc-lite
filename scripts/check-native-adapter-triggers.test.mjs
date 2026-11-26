@@ -557,8 +557,16 @@ test('a partial split, a judge that misses a lane job or a lane step that is fat
   inJob(scalar, 'na-native', '\n    continue-on-error: true\n', '\n    needs: na-wasm\n    continue-on-error: true\n');
   assert.ok(audit(scalar).some((f) => f.includes('split job na-native declares needs: in a form this audit cannot read')));
   const blockList = copyTree(context);
-  inJob(blockList, 'na-split-judge', /    needs: \[[^\]]*\]\n/, `    needs:\n${SPLIT_LANE_JOBS.map((j) => `      - ${j}\n`).join('')}`);
+  // Built with join, not a .map callback: the source-text gate's flat taint set would read the callback's parameter as file text.
+  inJob(blockList, 'na-split-judge', `    needs: [${SPLIT_LANE_JOBS.join(', ')}]\n`, `    needs:\n      - ${SPLIT_LANE_JOBS.join('\n      - ')}\n`);
   assert.ok(audit(blockList).some((f) => f.includes('split job na-split-judge declares needs: in a form this audit cannot read')));
+  // A judge that only names its command (an echo, a comment) judges nothing.
+  const echoed = copyTree(context);
+  inJob(echoed, 'na-split-judge', '        run: node scripts/native-adapter-split.mjs judge\n', '        run: echo "node scripts/native-adapter-split.mjs judge"\n');
+  assert.ok(audit(echoed).some((f) => f.includes('must run scripts/native-adapter-split.mjs judge')));
+  const commented = copyTree(context);
+  inJob(commented, 'na-split-judge', '        run: node scripts/native-adapter-split.mjs judge\n', '        # run: node scripts/native-adapter-split.mjs judge\n        run: true\n');
+  assert.ok(audit(commented).some((f) => f.includes('must run scripts/native-adapter-split.mjs judge')));
   const noVerdict = copyTree(context);
   inJob(noVerdict, 'na-emscripten', `      verdict: \${{ steps.verdict.outputs.verdict }}\n`, '');
   assert.ok(audit(noVerdict).some((f) => f.includes('split job na-emscripten must end with an if: always() step id verdict')));

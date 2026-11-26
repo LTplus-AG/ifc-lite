@@ -206,6 +206,16 @@ test('m11-n compares by mesh invariants: SMLib order and quad diagonals do not c
   // Three of a face's triangles on one edge (0-1: [0,1,2], [0,1,3] and [0,1,5]) is a defect.
   const fanOn01 = (p) => { for (const v of [3, 5]) { p.indices.push(0, 1, v); p.normals.push(0, 0, 1, 0, 0, 1, 0, 0, 1); p.revisionLocalFaces.push(0); p.surfaceIndices.push(7); } };
   assert.equal(m11nInvariants(JSON.parse(m11n({ edit: fanOn01 }).toString())).defects.some((d) => d.includes('shared by 3 triangles')), true, 'edge shared by three triangles');
+  // The same over several surfaces of one face (#10858 review): 7, 8 and 9 each use 0-1 once, the face three times.
+  const fanAcross = (p) => { for (const [v, surface] of [[3, 8], [5, 9]]) { p.indices.push(0, 1, v); p.normals.push(0, 0, 1, 0, 0, 1, 0, 0, 1); p.revisionLocalFaces.push(0); p.surfaceIndices.push(surface); } };
+  assert.equal(m11nInvariants(JSON.parse(m11n({ edit: fanAcross }).toString())).defects.some((d) => d.includes('face 0: edge') && d.includes('shared by 3 triangles')), true, 'edge shared by three triangles over three surfaces');
+  // Winding across an interior edge (#10858 review): two triangles of one face that walk their shared edge the
+  // same way hold a flipped one, wherever it sits, so a flip in either copy fails even where the outline and the
+  // count against the normals agree. The square's diagonal 0-2: [0,1,2] walks 2>0, [0,2,3] 0>2; [0,3,2] walks 2>0 too.
+  const flippedInner = m11n({ edit: (p) => { p.indices.splice(3, 3, 0, 3, 2); } });
+  assert.equal(m11nInvariants(JSON.parse(flippedInner.toString())).defects.some((d) => d.includes('walked the same way by both of its triangles')), true, 'interior edge walked twice the same way');
+  assert.equal(sameReference('temp/m11-n-native.json', flippedInner, flippedInner), false, 'a flipped interior triangle fails even against itself');
+  for (const diagonal of [0, 1]) assert.deepEqual(m11nInvariants(JSON.parse(m11n({ diagonal }).toString())).defects, [], `consistent winding, diagonal ${diagonal}`);
   // Moving face 1's triangle onto the square's positions changes that set (and the area).
   assert.equal(same(m11n({ edit: (p) => { p.indices.splice(6, 3, 0, 1, 2); } })), false, 'face 1 uses other positions');
   // The second review counter-example: [0,1,2],[0,1,3] covers one half twice and leaves the other empty,
@@ -329,6 +339,43 @@ test('cli/viewer record content, browser outputs and an empty transport are comp
   const empty = await compareLayouts(layouts(scratch(context), (b) => writeFileSync(join(evidence(b, 'na-browser'), 'refs/manifest.json'), '{"files":{}}')));
   assert.ok(empty.problems.includes('na-browser restored no reference at all'), empty.markdown);
   assert.ok(empty.problems.some((p) => p.startsWith('na-browser did not restore 4 of na-native')), empty.markdown);
+});
+
+test('an unreadable output is a named problem, and every other file is still compared', async (context) => {
+  const evidence = (b, job) => join(b, 'split', `na-split-evidence-${job}`);
+  const report = await compareLayouts(layouts(scratch(context), (b) => {
+    put(join(evidence(b, 'na-native'), 'outputs/viewer-retained/e2e/real-archicad.json'), '{"meshes":4');
+    put(join(evidence(b, 'na-native'), 'outputs/viewer-retained/summary.json'), '{"published":11}');
+  }));
+  assert.ok(report.problems.some((p) => p.startsWith('output viewer-retained/e2e/real-archicad.json unreadable in na-native')), report.markdown);
+  assert.ok(report.problems.includes('output viewer-retained/summary.json differs'), report.markdown);
+  assert.match(report.markdown, /\| viewer-retained\/e2e\/real-archicad\.json \| \*\*unreadable\*\* \|/);
+  const ref = await compareLayouts(layouts(scratch(context), (b) => put(join(evidence(b, 'na-native'), 'refs/temp/m3-native-openings.json'), '{"a":')));
+  assert.ok(ref.problems.some((p) => p.startsWith('reference temp/m3-native-openings.json unreadable')), ref.markdown);
+});
+
+test('a red single job stopped halfway: outputs and logs only the split wrote are reported, not counted', async (context) => {
+  const halfway = (input) => {
+    const p = join(input.mono, 'steps.json');
+    writeFileSync(p, JSON.stringify({ ...JSON.parse(readFileSync(p, 'utf8')), 'viewer-retained': { outcome: 'failure' } }));
+    input.needs['native-adapter'].result = 'failure';
+    return input;
+  };
+  const cut = (b) => {
+    rmSync(join(b, 'mono/logs/cli-real-authoring.log'));
+    rmSync(join(b, 'mono/outputs/viewer-retained/e2e/real-archicad.json'));
+    put(join(b, 'mono/outputs/viewer-retained/summary.json'), '{"published":');
+  };
+  const red = await compareLayouts(halfway(layouts(scratch(context), cut)));
+  assert.ok(!red.problems.some((p) => p.startsWith('log ') || p.startsWith('output ')), red.markdown);
+  assert.match(red.markdown, /cli-real-authoring\.log: only in split \(single job red: reported, not counted\)/);
+  // The verdict still differs (single red, split green): a red run is never a match on its own.
+  assert.ok(red.problems.some((p) => p.startsWith('verdicts differ')), red.markdown);
+  // On a green single job the same gaps count.
+  const green = await compareLayouts(layouts(scratch(context), cut));
+  assert.ok(green.problems.includes('log cli-real-authoring.log missing from the single job'), green.markdown);
+  assert.ok(green.problems.includes('output viewer-retained/e2e/real-archicad.json only in the split'), green.markdown);
+  assert.ok(green.problems.some((p) => p.startsWith('output viewer-retained/summary.json unreadable in the single job')), green.markdown);
 });
 
 test('missing evidence from either layout is a mismatch, never an empty match', async (context) => {

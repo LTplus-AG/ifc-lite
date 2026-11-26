@@ -121,6 +121,8 @@ export function m11nInvariants(reference) {
     // Grouped by (face, source surface): a triangle cannot trade surfaces with another one unseen.
     const faces = new Map();
     const seen = new Map();
+    // Per face id across its surfaces: the manifold and winding checks below are about the face, not one surface of it.
+    const faceEdges = new Map();
     for (let t = 0; t * 3 < indices.length; t += 1) {
       const id = revisionLocalFaces?.[t] ?? null;
       const surface = surfaceIndices?.[t] ?? null;
@@ -141,9 +143,14 @@ export function m11nInvariants(reference) {
       // A corner normal belongs to its position (any diagonal keeps it): pairs, not a bare normal set.
       for (let k = 0; k < 3; k += 1) face.corners.add(JSON.stringify([[a, b, c][k], Array.isArray(normals) ? xyz(normals, t * 3 + k) : null]));
       for (const q of corners) face.used.add(q);
+      const whole = faceEdges.get(id) ?? new Map();
+      faceEdges.set(id, whole);
       for (const [i, j] of [[0, 1], [1, 2], [2, 0]]) {
         const edge = [corners[i], corners[j]].sort().join('|');
         face.edges.set(edge, (face.edges.get(edge) ?? 0) + 1);
+        const walks = whole.get(edge) ?? [];
+        walks.push(`${corners[i]}>${corners[j]}`);
+        whole.set(edge, walks);
         const directed = `${corners[i]}>${corners[j]}`;
         face.directed.set(directed, (face.directed.get(directed) ?? 0) + 1);
       }
@@ -156,9 +163,13 @@ export function m11nInvariants(reference) {
       faces.set(group, face);
     }
     const groups = [...faces.keys()].sort((x, y) => x.localeCompare(y, 'en', { numeric: true }));
-    for (const g of groups) {
-      areas.push(faces.get(g).area);
-      for (const [edge, n] of faces.get(g).edges) if (n > 2) defects.push(`face ${faces.get(g).id}: edge ${edge} shared by ${n} triangles`);
+    for (const g of groups) areas.push(faces.get(g).area);
+    for (const [id, whole] of faceEdges) {
+      for (const [edge, walks] of whole) {
+        if (walks.length > 2) defects.push(`face ${id}: edge ${edge} shared by ${walks.length} triangles`);
+        // Two consistently wound triangles walk their shared edge in opposite senses; the same sense twice is a flipped one.
+        else if (walks.length === 2 && walks[0] === walks[1]) defects.push(`face ${id}: edge ${edge} walked the same way by both of its triangles`);
+      }
     }
     // Directed: the boundary is walked in the winding's sense, so a reversed triangle on it reverses an edge.
     const boundary = (face) => [...face.directed.keys()].filter((d) => face.edges.get(d.split('>').sort().join('|')) === 1).sort();
@@ -304,7 +315,13 @@ export async function compareLayouts({ mono: monoDir, split: splitDir, needs, ro
     // One writer per log in the split; two would let one copy mask the other.
     if (owners.length > 1) problems.push(`log ${name} comes from more than one split job (${owners.join(', ')})`);
     const b = owners.length ? new Map(owners.flatMap((job) => [...read(split[job])])) : null;
-    if (a === null || b === null) { lines.push(`- ${name}: only in ${a === null ? 'split' : 'single job'}`); problems.push(`log ${name} missing from the ${a === null ? 'single job' : 'split'}`); continue; }
+    // A red single job stops a combined step halfway, where the split still runs the later half in another job:
+    // on a red run a log in one layout only is reported, and the lane outcomes above decide.
+    if (a === null || b === null) {
+      lines.push(`- ${name}: only in ${a === null ? 'split' : 'single job'}${monoGreen ? '' : ' (single job red: reported, not counted)'}`);
+      if (monoGreen) problems.push(`log ${name} missing from the ${a === null ? 'single job' : 'split'}`);
+      continue;
+    }
     const extra = [...b.keys()].filter((x) => !a.has(x) && !(SPLIT_ONLY_MARKERS[name] ?? []).includes(x));
     const lost = [...a.keys()].filter((x) => !b.has(x));
     const changed = [...a.keys()].filter((x) => b.has(x) && a.get(x) !== b.get(x));
@@ -318,7 +335,12 @@ export async function compareLayouts({ mono: monoDir, split: splitDir, needs, ro
   for (const rel of [...new Set([...Object.keys(mono.refs), ...Object.keys(native.refs)])].sort()) {
     if (!mono.refs[rel] && SPLIT_ONLY_REFS.includes(rel)) { lines.push(`| ${rel} | split only (by design) | - |`); continue; }
     if (!mono.refs[rel] || !native.refs[rel]) { lines.push(`| ${rel} | only in ${mono.refs[rel] ? 'single job' : 'split'} | - |`); problems.push(`reference ${rel} produced by one layout only`); continue; }
-    const same = sameReference(rel, readFileSync(join(mono.dir, 'refs', rel)), readFileSync(join(native.dir, 'refs', rel)));
+    let same;
+    try { same = sameReference(rel, readFileSync(join(mono.dir, 'refs', rel)), readFileSync(join(native.dir, 'refs', rel))); } catch (err) {
+      lines.push(`| ${rel} | ${mono.refs[rel] === native.refs[rel] ? 'yes' : 'no'} | **unreadable** |`);
+      problems.push(`reference ${rel} unreadable (${err?.message ?? err})`);
+      continue;
+    }
     lines.push(`| ${rel} | ${mono.refs[rel] === native.refs[rel] ? 'yes' : 'no'} | ${same ? 'yes' : '**no**'} |`);
     if (!same) problems.push(`reference ${rel} differs`);
   }
@@ -334,14 +356,26 @@ export async function compareLayouts({ mono: monoDir, split: splitDir, needs, ro
   }
 
   lines.push('', '### Browser and viewer outputs (viewer-retained/, volatile-free)', '', '| file | equal |', '|---|---|');
-  // Counted only when the single job reached its viewer step; otherwise the split's extra outputs are expected.
-  const reached = ['success', 'failure'].includes(mono.steps['viewer-retained']?.outcome);
+  // Counted only when the single job's viewer step succeeded: a failed one stops partway, and its outputs then
+  // cover only what ran before the failure (the VIEWER_RETAINED lane outcome above still compares).
+  const reached = mono.steps['viewer-retained']?.outcome === 'success';
+  // A truncated or unparseable file is a problem of its own, named with its layout (counted like any
+  // output, so not after a failed viewer step, which can leave one half-written); the rest is still compared.
+  const hashOf = (rel, dir, layout) => {
+    try { return timingFreeHash(rel, readFileSync(join(dir, 'outputs', rel))); } catch (err) {
+      if (reached) problems.push(`output ${rel} unreadable in ${layout} (${err?.message ?? err})`);
+      return null;
+    }
+  };
   const ownerOf = (rel) => SPLIT_LANE_JOBS.find((job) => split[job].outputs.includes(rel));
   for (const rel of [...new Set([...mono.outputs, ...SPLIT_LANE_JOBS.flatMap((job) => split[job].outputs)])].sort()) {
     const owner = ownerOf(rel);
     const inMono = mono.outputs.includes(rel);
-    const same = inMono && owner && timingFreeHash(rel, readFileSync(join(mono.dir, 'outputs', rel))) === timingFreeHash(rel, readFileSync(join(split[owner].dir, 'outputs', rel)));
-    lines.push(`| ${rel} | ${!inMono ? 'split only' : !owner ? 'single job only' : same ? 'yes' : '**no**'} |`);
+    const hashes = inMono && owner ? [hashOf(rel, mono.dir, 'the single job'), hashOf(rel, split[owner].dir, owner)] : [];
+    const unreadable = hashes.includes(null);
+    const same = hashes.length === 2 && !unreadable && hashes[0] === hashes[1];
+    lines.push(`| ${rel} | ${!inMono ? 'split only' : !owner ? 'single job only' : unreadable ? '**unreadable**' : same ? 'yes' : '**no**'} |`);
+    if (unreadable) continue;
     if (reached && !same) problems.push(`output ${rel} ${!inMono ? 'only in the split' : !owner ? 'missing from the split' : 'differs'}`);
   }
 

@@ -9,7 +9,9 @@ import '@/test/section-tool-ready.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
+import type { GeometryResult } from '@ifc-lite/geometry';
 import type { Renderer } from '@ifc-lite/renderer';
+import { convergeFederationRtcFrame } from '@/hooks/ingest/federationRtcRebase';
 import { setGlobalRendererRef } from '@/lib/renderer-ref';
 import { render, cleanup, click } from '@/test/render';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
@@ -201,6 +203,47 @@ describe('two-point align panel (#11505)', () => {
     assert.equal(runtime!.align.active, false);
     assert.equal(readoutText(ui), '');
     assert.equal(useViewerStore.getState().modelPlacement.undo.length, 0);
+  });
+
+  it('blocks stale Apply and repicks after an unrotated reference moves onto the shared RTC anchor (#11629)', () => {
+    const anchor = { x: 1000, y: 0, z: 0 };
+    const box = { min: { x: 0, y: 0, z: 0 }, max: { x: 10, y: 1, z: 0 } };
+    const geometry = (x: number, wasmRtcOffset?: typeof anchor): GeometryResult => ({
+      meshes: [{ expressId: 1, origin: [x, 0, 0], positions: new Float32Array([0, 0, 0, 10, 0, 0, 0, 1, 0]),
+        normals: new Float32Array(9), indices: new Uint32Array([0, 1, 2]), color: [1, 1, 1, 1] }],
+      totalVertices: 3, totalTriangles: 1,
+      coordinateInfo: { originShift: { x: 0, y: 0, z: 0 }, originalBounds: box, shiftedBounds: box,
+        hasLargeCoordinates: !!wasmRtcOffset, wasmRtcOffset },
+    });
+    const referenceGeometry = geometry(1020);
+    act(() => {
+      const store = useViewerStore.getState();
+      store.updateModel('ifc', { geometryResult: geometry(0, anchor), loadState: 'complete', loadedAt: 1 });
+      store.updateModel('scan', { geometryResult: referenceGeometry, loadState: 'complete', loadedAt: 2 });
+    });
+    click(button(ui, 'Two-point align'));
+    pickAll([0, 0, 0], [1020, 0, 0], [10, 0, 0], [1030, 0, 0]);
+    assert.equal(button(ui, 'Apply alignment').disabled, false);
+    const applyBeforeRebase = runtime!.align.apply;
+    assert.equal(useViewerStore.getState().modelPlacement.placements.has('scan'), false);
+
+    act(() => {
+      convergeFederationRtcFrame();
+      applyBeforeRebase();
+    });
+    assert.deepEqual(referenceGeometry.meshes[0].origin, [20, 0, 0]);
+    assert.equal(useViewerStore.getState().modelPlacement.undo.length, 0, 'Apply cannot commit before the UI catches up');
+    assert.equal(readoutText(ui), '');
+    assert.equal(button(ui, 'Apply alignment').disabled, true);
+    assert.equal(promptText(ui), 'Pick A on the moving models.');
+
+    pickAll([0, 0, 0], [20, 0, 0], [10, 0, 0], [30, 0, 0]);
+    act(() => convergeFederationRtcFrame());
+    assert.equal(button(ui, 'Apply alignment').disabled, false, 'an already converged frame keeps fresh picks');
+    click(button(ui, 'Apply alignment'));
+    const placed = useViewerStore.getState().modelPlacement;
+    assert.equal(placed.undo.length, 1);
+    assert.deepEqual(placementFor(placed, 'ifc').translation, [20, 0, 0]);
   });
 
   it('is a distinct mode: choosing the ordinary source pick leaves it', () => {

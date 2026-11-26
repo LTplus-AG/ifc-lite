@@ -362,6 +362,46 @@ describe('model_anonymize', () => {
     for (const name of ['Wall A R', 'Wall B R', 'Slab R']) expect(text).toContain(`'${name}'`);
   });
 
+  it.each(['Name', 'LongName'].flatMap((attribute) =>
+    ['model_extract', 'model_anonymize'].map((toolName) => ({ attribute, toolName })),
+  ))('keeps authored whitespace in storey $attribute for $toolName (#11583)', async ({ attribute, toolName }) => {
+    const fixture = model('S', attribute === 'Name' ? 'L01' : '01').replace('(#41));', '(#41,#43));');
+    const first = attribute === 'Name' ? fixture : fixture.replace("#40,$,$,.ELEMENT.,0.);", "#40,$,'L01',.ELEMENT.,0.);");
+    const otherStorey = attribute === 'Name' ? "' L01 ',$,$,#40,$,$" : "'02',$,$,#40,$,' L01 '";
+    const text = first.replace('ENDSEC;\nEND-ISO', [
+      `#43= IFCBUILDINGSTOREY('0000000000000000000S2S',$,${otherStorey},.ELEMENT.,3.);`,
+      "#75= IFCWALL('000000000000000000WA3S',$,'Other storey wall',$,$,#50,$,$,$);",
+      "#81= IFCRELCONTAINEDINSPATIALSTRUCTURE('000000000000000000RC2S',$,$,$,(#75),#43);",
+      'ENDSEC;', 'END-ISO',
+    ].join('\n'));
+    const path = join(tmp, `authored-${attribute}.ifc`);
+    await writeFile(path, text);
+    ctx.registry.remove('a');
+    ctx.registry.add(await loadIfcModel(path, { modelId: 'authored' }));
+
+    for (const [index, selector] of ['L01', ' L01 '].entries()) {
+      const output = join(tmp, `${toolName}-${attribute}-${index}.ifc`);
+      const guidMap = join(tmp, `guids-${attribute}-${index}.json`);
+      const expected = index === 0 ? '000000000000000000WA1S' : '000000000000000000WA3S';
+      const excluded = index === 0 ? '000000000000000000WA3S' : '000000000000000000WA1S';
+      if (toolName === 'model_extract') {
+        await call(toolName, { storeys: [null, selector], file_path: output });
+        const extracted = await readFile(output, 'utf-8');
+        expect(extracted).toContain(expected);
+        expect(extracted).not.toContain(excluded);
+      } else {
+        await call(toolName, { storey: selector, file_path: output, guid_map_path: guidMap });
+        const map = JSON.parse(await readFile(guidMap, 'utf-8')) as Record<string, string>;
+        expect(Object.keys(map)).toContain(expected);
+        expect(Object.keys(map)).not.toContain(excluded);
+      }
+    }
+    if (toolName === 'model_anonymize' && attribute === 'Name') {
+      await expect(call(toolName, { storey: 'l01', file_path: join(tmp, 'ambiguous.ifc') }))
+        .rejects.toMatchObject({ code: 'INVALID_INPUT' });
+    }
+  });
+
   it('accepts a storey express id written as #id', async () => {
     const res = await call('model_anonymize', { storey: '#41', file_path: join(tmp, 'anon-hash.ifc') });
     expect(res.structuredContent.seedCount).toBe(3);

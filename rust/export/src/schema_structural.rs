@@ -51,6 +51,13 @@ pub(crate) fn constant_action(entity: &str) -> bool {
     matches!(entity, "IFCSTRUCTURALLINEARACTION" | "IFCSTRUCTURALPLANARACTION")
 }
 
+/// A constant linear or planar action between IFC2X3 and IFC4 or IFC4X3, mapped
+/// by attribute name: IFC2X3's CausedBy has no slot in either, and both declare
+/// the same layout (#11571).
+pub(crate) fn is_constant_action_conversion(entity: &str, from: &str, to: &str) -> bool {
+    matches!((from, to), ("IFC2X3", "IFC4" | "IFC4X3") | ("IFC4" | "IFC4X3", "IFC2X3")) && constant_action(entity)
+}
+
 pub(crate) fn is_assignment_conversion(entity: &str, from: &str, to: &str) -> bool {
     entity == "IFCRELCONNECTSSTRUCTURALELEMENT" && from == "IFC2X3" && matches!(to, "IFC4" | "IFC4X3" | "IFC5")
 }
@@ -86,7 +93,7 @@ pub(crate) fn attributes(entity: &str, args: &[String], from: &str, to: &str) ->
         }
         return Some(values.join(","));
     }
-    if matches!((from, to), ("IFC2X3", "IFC4") | ("IFC4", "IFC2X3")) && constant_action(entity) {
+    if is_constant_action_conversion(entity, from, to) {
         let src = crate::schema_convert::schema_attribute_names(from, entity)?;
         let tgt = crate::schema_convert::schema_attribute_names(to, entity)?;
         return Some(tgt.iter().map(|name| {
@@ -151,6 +158,20 @@ mod tests {
             assert_eq!(convert_step_line(&there, "IFC4", "IFC2X3", 50, &mut slots, None).unwrap(), source);
         }
     }
+
+    /// #11571: IFC2X3 and IFC4X3 constant actions have the same arity, so a
+    /// positional copy put CausedBy into ProjectedOrTrue. Twin of the TypeScript case.
+    #[test]
+    fn constant_actions_map_by_name_to_and_from_ifc4x3_11571() {
+        let convert = |line: &str, from: &str, to: &str| convert_step_line(line, from, to, 50, &mut Ifc2x3SlotFill::new(None), None).unwrap();
+        for entity in ["IFCSTRUCTURALLINEARACTION", "IFCSTRUCTURALPLANARACTION"] {
+            let source = format!("#50={entity}('id',#1,$,$,$,$,$,#22,.GLOBAL_COORDS.,.F.,#20,.TRUE_LENGTH.);");
+            let ifc4 = convert(&source, "IFC2X3", "IFC4");
+            assert_eq!(ifc4, format!("#50={entity}('id',#1,$,$,$,$,$,#22,.GLOBAL_COORDS.,.F.,.TRUE_LENGTH.,.CONST.);"));
+            assert_eq!(convert(&source, "IFC2X3", "IFC4X3"), ifc4, "{entity}");
+            assert_eq!(convert(&ifc4, "IFC4X3", "IFC2X3"), format!("#50={entity}('id',#1,$,$,$,$,$,#22,.GLOBAL_COORDS.,.F.,$,.TRUE_LENGTH.);"), "{entity}");
+        }
+    }
 }
 
 #[cfg(test)]
@@ -197,6 +218,8 @@ mod review_regressions {
         for (schema, target, record, field) in [
             ("IFC4", "IFC2X3", "#50=IFCSTRUCTURALPOINTCONNECTION('id',#1,$,$,$,$,$,#22,#77);", "ConditionCoordinateSystem"),
             ("IFC2X3", "IFC4", "#50=IFCSTRUCTURALPOINTACTION('id',#1,$,$,$,$,$,#22,.GLOBAL_COORDS.,.F.,#77);", "CausedBy"),
+            // #11571: a constant action's CausedBy is named on IFC4X3 as on IFC4.
+            ("IFC2X3", "IFC4X3", "#50=IFCSTRUCTURALLINEARACTION('id',#1,$,$,$,$,$,#22,.GLOBAL_COORDS.,.F.,#77,.TRUE_LENGTH.);", "CausedBy"),
         ] {
             let source = format!("ISO-10303-21;HEADER;FILE_SCHEMA(('{schema}'));ENDSEC;DATA;\n{record}\nENDSEC;END-ISO-10303-21;");
             let options = StepOptions { schema: Some(target.into()), ..StepOptions::default() };

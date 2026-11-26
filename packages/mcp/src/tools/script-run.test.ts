@@ -131,12 +131,14 @@ describe('script_run', () => {
   });
 
   it('fails cleanly when the script exceeds memory_mb, and the next call still works', async () => {
-    const err = await runError(`const a = []; for (;;) a.push(new Array(1 << 16).fill(1.5));`, { memory_mb: 8, timeout_ms: 10_000 });
+    // Big chunks and the full time limit, so a loaded machine still runs out of
+    // memory before it runs out of time.
+    const err = await runError(`const a = []; for (;;) a.push(new Array(1 << 20).fill(1.5));`, { memory_mb: 8, timeout_ms: 30_000 });
     expect(err.code).toBe('INVALID_INPUT');
     expect(err.message).toMatch(/memory/i);
     expect(err.hint).toMatch(/memory_mb/);
     expect((await run('1 + 1')).structuredContent?.value).toBe(2);
-  }, 30_000);
+  }, 60_000);
 
   it('truncates an oversized value instead of returning it', async () => {
     const result = await run(`'x'.repeat(300 * 1024)`);
@@ -175,12 +177,12 @@ describe('script_run', () => {
 
   it('maps an out-of-memory inside an async job to a script error', async () => {
     const err = await runError(
-      '(async () => { await Promise.resolve(); const a = []; for (;;) a.push(new Array(1 << 16).fill(1)); })()',
-      { memory_mb: 8 },
+      '(async () => { await Promise.resolve(); const a = []; for (;;) a.push(new Array(1 << 20).fill(1)); })()',
+      { memory_mb: 8, timeout_ms: 30_000 },
     );
     expect(err.code).toBe('INVALID_INPUT');
     expect((await run('2 + 2')).structuredContent?.value).toBe(4);
-  }, 30_000);
+  }, 60_000);
 
   it('cannot reshape its result envelope through prototype patches', async () => {
     const result = await run("Object.prototype.toJSON = function () { return { type: 'pending' }; }; String.prototype.toJSON = null; 'ok'");

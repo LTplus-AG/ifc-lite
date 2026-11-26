@@ -1006,6 +1006,17 @@ describe('compact pages take the decisions of the bucket batches they stand in f
     assert.ok(pages(on).every((page) => page.lodParts !== undefined));
   });
 
+  it('drop a group\'s LOD1 when a retire takes it below the bucket\'s triangle minimum (#11606)', async () => {
+    // 42 boxes, 504 triangles: one group just over LOD_MIN_TRIANGLES (500).
+    const on = await lodScene(true), gpu = fakeGpu();
+    upload(on, gpu, compactBatch(lodBoxes(1000, 0, 28).slice(0, 42)));
+    settle(on, gpu);
+    assert.deepEqual(pages(on)[0].lodParts?.map((part) => part.lod1), [true]);
+    assert.equal(on.removeMeshesForEntity(1000), true); // 492 triangles left
+    flushAll(on, gpu);
+    assert.deepEqual(pages(on)[0].lodParts?.map((part) => part.lod1), [false], 'as the bucket rebuilt with 492 triangles draws LOD0');
+  });
+
   it('build every page again when a mesh retires while the build runs', async () => {
     const on = await lodScene(true), gpu = fakeGpu();
     upload(on, gpu, compactBatch(lodBoxes(1000, 0, 28)));

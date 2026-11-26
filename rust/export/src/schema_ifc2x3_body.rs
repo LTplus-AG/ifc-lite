@@ -13,6 +13,7 @@ pub(crate) struct Body<'w> {
     held: Option<Vec<u8>>,
     ifc2x3: bool,
     prune_upgrade: Option<Upgrade>,
+    omitted: HashSet<u32>,
 }
 
 impl<'w> Body<'w> {
@@ -21,7 +22,12 @@ impl<'w> Body<'w> {
     }
 
     pub(crate) fn for_conversion(out: &'w mut dyn Write, ifc2x3: bool, deferred: bool, prune_upgrade: Option<Upgrade>) -> Self {
-        Body { out, held: (ifc2x3 || deferred || prune_upgrade.is_some()).then(Vec::new), ifc2x3, prune_upgrade }
+        Body { out, held: (ifc2x3 || deferred || prune_upgrade.is_some()).then(Vec::new), ifc2x3, prune_upgrade, omitted: HashSet::new() }
+    }
+
+    /// Keep omitted IDs for the final dependency pass, even when their lines were never written.
+    pub(crate) fn note_omitted(&mut self, id: u32) {
+        if self.prune_upgrade.is_some() { self.omitted.insert(id); }
     }
 
     pub(crate) fn finish(self) -> io::Result<isize> {
@@ -49,7 +55,7 @@ impl<'w> Body<'w> {
             let source = rewritten.as_ref().map_or(text, |(s, _)| s.as_str());
             let added = rewritten.as_ref().map_or(0, |(_, n)| *n);
             if let Some(upgrade) = self.prune_upgrade {
-                if let Some((pruned, omitted, losses)) = upgrade.prune(source) {
+                if let Some((pruned, omitted, losses)) = upgrade.prune(source, self.omitted) {
                     let removed = losses.len() as isize;
                     warnings.extend(losses);
                     return Some((pruned, added - removed, omitted));

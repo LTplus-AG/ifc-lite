@@ -50,8 +50,9 @@ impl Upgrade {
         })
     }
 
-    pub(crate) fn prune(self, text: &str) -> Option<(String, HashSet<u32>, Vec<String>)> {
-        prune(text, &self.seeds(text.as_bytes()).collect(), self.to)
+    pub(crate) fn prune(self, text: &str, mut omitted: HashSet<u32>) -> Option<(String, HashSet<u32>, Vec<String>)> {
+        omitted.extend(self.seeds(text.as_bytes()));
+        prune(text, &omitted, self.to)
     }
 }
 

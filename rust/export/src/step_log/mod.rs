@@ -84,13 +84,11 @@ pub(crate) fn scrub_omitted(line: String, id: u32, schema: &str, omitted: &std::
     }
 }
 
-/// `line` (record `id`) scrubbed of the left-out boundaries (#11457). When nothing is left to write it is withheld
-/// with `warnings`; without them (a copy-on-write copy, whose referrer already names it) it is written as it is.
-pub(crate) fn scrub_boundaries(line: String, id: u32, schema: &str, left_out: &std::collections::HashSet<u32>, warnings: Option<&mut Vec<String>>) -> Option<String> {
+/// Narrow references to omitted boundaries or withhold a record that cannot survive the loss (#11457).
+pub(crate) fn scrub_boundaries(line: String, id: u32, schema: &str, left_out: &std::collections::HashSet<u32>, warnings: &mut Vec<String>) -> Option<String> {
     if left_out.is_empty() { return Some(line); }
-    let schema = crate::schema_convert::canon(schema);
-    let Some(warnings) = warnings else { return Some(scrub_omitted(line.clone(), id, schema, left_out).unwrap_or(line)) };
-    scrub_omitted(line, id, schema, left_out).map_err(|warning| warnings.push(warning)).ok()
+    scrub_omitted(line, id, crate::schema_convert::canon(schema), left_out)
+        .map_err(|warning| warnings.push(warning)).ok()
 }
 
 /// The boundaries an IFC2X3 upgrade leaves out (#11457), known before any line is filtered. An edited boundary, or

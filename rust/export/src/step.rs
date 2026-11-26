@@ -252,7 +252,13 @@ fn emit<W: std::io::Write>(
     // IFC2X3 places one product per placement (#9209): its records are held to adapt them.
     use std::io::Write as _;
     let date_buffer = crate::schema_value_forms::ValueForms::buffer_for_dates(content, &source_schema, &schema);
-    let mut body = crate::schema_ifc2x3_placements::Body::for_conversion(&mut *out, targets_ifc2x3, date_buffer || checks.structural.buffers_varying(content) || checks.typed_properties.enabled, upgrading.filter(|_| may_prune_upgrade));
+    // A withheld copy can already be named by a repointed source record.
+    // Close those references in the same final pass as other upgrade losses.
+    let repair_boundary_copies = !copies.is_empty() && !boundaries_left_out.is_empty();
+    let mut body = crate::schema_ifc2x3_placements::Body::for_conversion(&mut *out, targets_ifc2x3, date_buffer || checks.structural.buffers_varying(content) || checks.typed_properties.enabled, upgrading.filter(|_| may_prune_upgrade || repair_boundary_copies));
+    if repair_boundary_copies {
+        for &id in &boundaries_left_out { body.note_omitted(id); }
+    }
     if targets_ifc2x3 || date_buffer { checks.forms.enable_dates(); }
 
     let mut written = 0usize;
@@ -268,7 +274,7 @@ fn emit<W: std::io::Write>(
                     None => raw.into_owned(),
                 };
                 let Some(edited) = flatten.line(&source_schema, edited) else { continue };
-                let Some(edited) = crate::step_log::scrub_boundaries(edited, *id, &source_schema, &boundaries_left_out, Some(&mut withheld_warnings)) else { continue };
+                let Some(edited) = crate::step_log::scrub_boundaries(edited, *id, &source_schema, &boundaries_left_out, &mut withheld_warnings) else { body.note_omitted(*id); continue };
                 if converting {
                     let converted = crate::schema_convert::convert_step_line(
                         &edited,
@@ -301,7 +307,7 @@ fn emit<W: std::io::Write>(
             // why they are resolved into their own map.
             let edited = crate::step_cow::apply_copy_edits(&raw, muts_by_id.get(source_id), edits, &mut attribute_edits_refused);
             let Some(renumbered) = flatten.line(&source_schema, renumber(&edited, *copy_id)) else { continue };
-            let Some(renumbered) = crate::step_log::scrub_boundaries(renumbered, *copy_id, &source_schema, &boundaries_left_out, None) else { continue };
+            let Some(renumbered) = crate::step_log::scrub_boundaries(renumbered, *copy_id, &source_schema, &boundaries_left_out, &mut withheld_warnings) else { body.note_omitted(*copy_id); continue };
             if converting {
                 let converted = crate::schema_convert::convert_step_line(
                     &renumbered,

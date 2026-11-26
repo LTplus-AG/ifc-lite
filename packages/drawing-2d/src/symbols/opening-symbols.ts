@@ -95,7 +95,7 @@ export function buildOpeningSymbols(
   plane: SectionPlaneConfig,
   openings?: ReadonlyMap<EntityKey, PlanOpeningInfo>,
 ): PlanSymbol[] {
-  if (plane.axis !== 'y' || plane.customPlane) return [];
+  if (plane.axis !== 'y' || plane.customPlane || !Number.isFinite(plane.position)) return [];
   const groups = new Map<EntityKey, MeshData[]>();
   for (const mesh of meshes) {
     if (!isOpeningFillingType(mesh.ifcType)) continue;

@@ -102,6 +102,15 @@ describe('headless plans draw door and window symbols (#10932)', () => {
     }
   });
 
+  it('keeps the ordinary drawing when the opening cut position is NaN (#10932)', async () => {
+    const meshes = [host, ...door(20, [1, 0, 0])];
+    const ordinary = await generateFloorPlan(meshes, Number.NaN, baseOptions);
+    const drawing = await generateFloorPlan(meshes, Number.NaN, options);
+    expect(drawing.planSymbols ?? []).toEqual([]);
+    expect(drawing.lines).toEqual(ordinary.lines);
+    expect(drawing.cutPolygons).toEqual(ordinary.cutPolygons);
+  });
+
   it('draws a door swing at a cut between the leaf and transom (#10932)', async () => {
     const leaf = box(20, [1, 0, -0.1], [1.9, 1, 0], { ifcType: 'IfcDoor' });
     const transom = box(20, [1, 1.5, -0.1], [1.9, 2, 0], { ifcType: 'IfcDoor' });

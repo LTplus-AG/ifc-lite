@@ -52,10 +52,6 @@ export const MCP_BOOLEAN_FLAGS: readonly string[] = [
 
 const KNOWN_FLAGS: ReadonlySet<string> = new Set([...MCP_VALUE_FLAGS, ...MCP_BOOLEAN_FLAGS]);
 
-/** True when `arg` consumes the next argv token. */
-export function isMcpValueFlag(arg: string): boolean {
-  return MCP_VALUE_FLAGS.includes(arg);
-}
 
 export interface CliOptions {
   files: string[];
@@ -140,6 +136,15 @@ export function parseArgs(argv: string[]): CliOptions {
     i++;
     return next;
   };
+  /** A port value, 0 to 65535; anything else is a usage error. */
+  const port = (flag: string): number | undefined => {
+    const v = value(flag);
+    if (v === undefined) return undefined;
+    const n = Number(v);
+    if (Number.isInteger(n) && n >= 0 && n <= 65535) return n;
+    opts.errors.push(`${flag} must be an integer from 0 to 65535, got '${v}'.`);
+    return undefined;
+  };
   for (; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === '--read-only') opts.readOnly = true;
@@ -153,8 +158,8 @@ export function parseArgs(argv: string[]): CliOptions {
       if (v !== undefined) opts.transport = v as 'stdio' | 'http';
     }
     else if (arg === '--port') {
-      const v = value(arg);
-      if (v !== undefined) opts.port = Number(v);
+      const v = port(arg);
+      if (v !== undefined) opts.port = v;
     }
     else if (arg === '--host') opts.host = value(arg);
     else if (arg === '--token' || arg === '--read-only-token') {
@@ -164,8 +169,8 @@ export function parseArgs(argv: string[]): CliOptions {
     else if (arg === '--bsdd') opts.bsdd = value(arg);
     else if (arg === '--viewer') opts.autoViewer = true;
     else if (arg === '--viewer-port') {
-      const v = value(arg);
-      if (v !== undefined) opts.viewerPort = Number(v);
+      const v = port(arg);
+      if (v !== undefined) opts.viewerPort = v;
     }
     else if (arg === '--open') { opts.autoViewer = true; opts.openBrowser = true; }
     else if (arg === '--bridge') opts.bridge = true;

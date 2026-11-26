@@ -23,7 +23,6 @@
 import { describe, it, expect } from 'vitest';
 import {
   parseArgs,
-  isMcpValueFlag,
   MCP_VALUE_FLAGS,
   MCP_BOOLEAN_FLAGS,
   bridgeConflict,
@@ -52,7 +51,7 @@ describe('MCP_VALUE_FLAGS agrees with parseArgs', () => {
   it('classifies --allow-origin as value-bearing — the entry that was missing', () => {
     // The specific drift this pair was built to stop: the origin must land in
     // `allowedOrigins`, never in `files`.
-    expect(isMcpValueFlag('--allow-origin')).toBe(true);
+    expect(MCP_VALUE_FLAGS).toContain('--allow-origin');
     const opts = parseArgs(['--allow-origin', 'https://app.example.test', 'model.ifc']);
     expect(opts.allowedOrigins).toEqual(['https://app.example.test']);
     expect(opts.files).toEqual(['model.ifc']);
@@ -122,6 +121,12 @@ describe('flag fixes (#11534)', () => {
       expect(opts.files, flag).toEqual(['model.ifc']);
       expect(opts.errors, flag).toEqual([`${flag} needs a value.`]);
     }
+  });
+
+  it('refuses a port that is not an integer from 0 to 65535', () => {
+    expect(parseArgs(['--port', 'abc']).errors).toEqual(["--port must be an integer from 0 to 65535, got 'abc'."]);
+    expect(parseArgs(['--viewer-port', '70000']).errors).toHaveLength(1);
+    expect(parseArgs(['--port', '0', '--viewer-port', '8080']).errors).toEqual([]);
   });
 
   it('accepts a token that starts with a dash', () => {

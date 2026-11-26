@@ -1493,10 +1493,11 @@ ifc-lite mcp model.ifc --viewer          # also start the 3D viewer
 ```
 
 !!! note "HTTP transport starts with an empty session"
-    In `--transport http` mode the positional files are **not** preloaded: every
-    HTTP session gets its own empty model registry. Load a model into the session
-    with the `model_load` tool (which needs `mutate` scope, so it is hidden under
-    `--read-only`). The default `stdio` transport does preload the files you pass.
+    In `--transport http` mode every HTTP session gets its own empty model
+    registry, and file arguments are refused (exit code 2). Load a model into
+    the session with the `model_load` tool, which needs only `read` scope, so
+    it works under `--read-only` too. The default `stdio` transport preloads
+    the files you pass.
 
 **Flags:**
 
@@ -1505,7 +1506,8 @@ ifc-lite mcp model.ifc --viewer          # also start the 3D viewer
 | `--transport <t>` | `stdio` (default) or `http` |
 | `--port <N>` | HTTP port (default 8765) |
 | `--host <h>` | HTTP host (default 127.0.0.1; non-loopback requires `--token` or `--insecure`) |
-| `--token <bearer>` | HTTP bearer token for full scope |
+| `--token <bearer>` | HTTP bearer token (repeatable). Full scope, or read scope under `--read-only` |
+| `--read-only-token <bearer>` | HTTP bearer token with read scope only (repeatable) |
 | `--insecure` | Allow non-loopback bind without a token (development only) |
 | `--read-only` | Hide mutation tools |
 | `--bsdd <url>` | Override the bSDD endpoint |
@@ -1513,6 +1515,10 @@ ifc-lite mcp model.ifc --viewer          # also start the 3D viewer
 | `--viewer` | Auto-open the 3D viewer |
 | `--viewer-port <N>` | Preferred viewer port (0 = auto) |
 | `--open` | Auto-open the viewer and open the URL in the browser |
+| `--allow-origin <origin>` | Let a browser origin read HTTP responses (repeatable) |
+| `--bridge`, `--bridge-port`, `--bridge-viewer-url`, `--channel` | Serve the model open in a browser tab; see the [MCP guide](mcp.md#bridge-to-a-browser-tab) |
+
+`ifc-lite mcp` and the standalone `ifc-lite-mcp` binary run the same code and take the same flags. Run `ifc-lite mcp --help` for the full list.
 
 ### `simplify` - Demesher
 

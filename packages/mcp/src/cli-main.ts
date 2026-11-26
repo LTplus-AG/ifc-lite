@@ -94,7 +94,7 @@ export function mcpHelpText({ command }: McpCliIdentity, platform: NodeJS.Platfo
       "mcpServers": {
         "ifc-lite": {
           "command": "npx",
-          "args": ["-y", "@ifc-lite/mcp@^${VERSION}", "/abs/path/to/model.ifc"]
+          "args": ["-y", "@ifc-lite/mcp", "/abs/path/to/model.ifc"]
         }
       }
     }
@@ -242,11 +242,19 @@ async function runHttp(opts: CliOptions, tag: string): Promise<RunningHttpCli | 
   // opening sessions. Say so instead of starting a server that ignores them.
   if (opts.files.length > 0) {
     process.stderr.write(
-      `${tag} --transport http does not preload files (${opts.files.join(', ')}): each session starts empty and the agent ` +
+      // The count, not the values: a mistyped flag (`--tokn secret`) leaves
+      // its value here as a positional, and it must not land in a log.
+      `${tag} --transport http does not preload files (${opts.files.length} file argument${opts.files.length === 1 ? '' : 's'} given): each session starts empty and the agent ` +
       'loads a model with model_load. Drop the file arguments, and pass --allow <dir> to bound what it can load.\n',
     );
     process.exitCode = 2;
     return undefined;
+  }
+  if (!opts.allowedPaths?.length) {
+    process.stderr.write(
+      `${tag} warning: no --allow, so model_load (read scope) can open IFC files under the working directory, ` +
+      'the temp directory and loaded models\' directories. Pass --allow <dir> to narrow that.\n',
+    );
   }
   const sessionFactory: SessionFactory = {
     build(scopeForSession, sessionId) {

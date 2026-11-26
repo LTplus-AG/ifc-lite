@@ -8193,7 +8193,6 @@
     "MCP_BOOLEAN_FLAGS: const",
     "MCP_VALUE_FLAGS: const",
     "bridgeConflict: function",
-    "isMcpValueFlag: function",
     "parseArgs: function"
   ],
   "@ifc-lite/mcp/cli-main": [

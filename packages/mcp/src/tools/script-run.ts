@@ -34,6 +34,15 @@ const DEFAULT_TIMEOUT_MS = 10_000;
 // bounds how long one call can hold up every other request. Follow-up: run
 // the sandbox in a worker thread so a script no longer blocks other sessions.
 const MAX_TIMEOUT_MS = 30_000;
+/**
+ * Sandboxes alive at once, process-wide. All of them share one QuickJS WASM
+ * module whose linear memory never shrinks, so overlapping runs that await
+ * host work could otherwise each reserve up to MAX_MEMORY_MB.
+ */
+const MAX_CONCURRENT_SCRIPTS = 2;
+let runningScripts = 0;
+/** The entry the sandbox's own console capture appends when it drops output. */
+const SANDBOX_LOG_TRUNCATED = '[log output truncated: limit reached]';
 const DEFAULT_MEMORY_MB = 64;
 const MAX_MEMORY_MB = 256;
 /** Caps on what one call returns to the client (the sandbox caps capture at 1000 entries / 4 MB). */
@@ -128,6 +137,7 @@ function shapeLogs(entries: readonly LogEntry[]): { logs: LogLine[]; truncated: 
   let chars = 0;
   for (const entry of entries) {
     if (logs.length >= MAX_LOG_LINES) return { logs, truncated: true };
+    if (entry.args.length === 1 && entry.args[0] === SANDBOX_LOG_TRUNCATED) return { logs, truncated: true };
     const text = entry.args.map(renderLogArg).join(' ');
     if (chars + text.length > MAX_LOG_CHARS) {
       // Clip the entry that crosses the budget rather than dropping it, so
@@ -251,10 +261,23 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
   // Counted by id, so mutations the script undoes are not subtracted.
   const before = new Set(mode === 'mutate' ? pendingMutationIds(model) : []);
   const queued = () => (mode === 'mutate' ? pendingMutationIds(model).filter((id) => !before.has(id)).length : 0);
-  const sandbox = await createSandbox(model.bim, {
-    permissions: mode === 'mutate' ? MUTATE_PERMISSIONS : READ_PERMISSIONS,
-    limits: { timeoutMs, memoryBytes: memoryMb * 1024 * 1024 },
-  });
+  if (runningScripts >= MAX_CONCURRENT_SCRIPTS) {
+    throw new ToolExecutionError({
+      code: ToolErrorCode.RATE_LIMITED,
+      message: `${MAX_CONCURRENT_SCRIPTS} scripts are already running on this server; retry when one finishes.`,
+    });
+  }
+  runningScripts++;
+  let sandbox: Awaited<ReturnType<typeof createSandbox>>;
+  try {
+    sandbox = await createSandbox(model.bim, {
+      permissions: mode === 'mutate' ? MUTATE_PERMISSIONS : READ_PERMISSIONS,
+      limits: { timeoutMs, memoryBytes: memoryMb * 1024 * 1024 },
+    });
+  } catch (err) {
+    runningScripts--;
+    throw err;
+  }
   // dispose() can throw SandboxAbortError when QuickJS aborts tearing down a
   // runtime (#1922). From the abort listener that would be an uncaught
   // exception; from `finally` it would replace the real outcome.
@@ -318,10 +341,11 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
   } finally {
     ctx.signal.removeEventListener('abort', onAbort);
     dispose();
+    runningScripts--;
   }
 }
 
-const SHARED_DESCRIPTION = 'Runs in a QuickJS sandbox with only the `bim` SDK global (bim.query, bim.model, bim.export, bim.lens, bim.clash, bim.cost, bim.structural, bim.schedule, bim.create) and console; no network, filesystem, viewer or timers. Returns the last expression value plus captured console output. Script code runs on the server\'s event loop, so other requests wait while it runs (bounded by timeout_ms).';
+const SHARED_DESCRIPTION = 'Runs in a QuickJS sandbox with only the `bim` SDK global (bim.query, bim.model, bim.export, bim.lens, bim.clash, bim.cost, bim.structural, bim.schedule, bim.create) and console; no network, filesystem, viewer or timers. Returns the last expression value plus captured console output. Script code runs on the server\'s event loop, so other requests wait while it runs (bounded by timeout_ms). At most 2 scripts run at once per server; a third gets RATE_LIMITED.';
 
 export const scriptRunTool: Tool = {
   name: 'script_run',

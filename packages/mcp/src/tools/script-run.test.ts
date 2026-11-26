@@ -254,6 +254,20 @@ describe('script_run', () => {
     expect((await runError("throw new Error('no walls')")).details?.kind).toBe('script');
   });
 
+  it('marks logs truncated when the sandbox itself dropped output', async () => {
+    const result = await run("console.log('x'.repeat(5e6)); 1");
+    expect(result.structuredContent?.logs_truncated).toBe(true);
+  });
+
+  it('caps concurrent scripts and frees the slot afterwards', async () => {
+    // The slot is taken before the handler's first await, so three calls
+    // started together overlap even with trivial scripts.
+    const calls = [run('1'), run('2'), run('3')];
+    const settled = await Promise.allSettled(calls);
+    expect(settled.filter((r) => r.status === 'rejected' && (r.reason as { code?: string }).code === 'RATE_LIMITED')).toHaveLength(1);
+    expect((await run('4')).structuredContent?.value).toBe(4);
+  }, 30_000);
+
   it('refuses out-of-range limits', async () => {
     await expect(run('1', { timeout_ms: 10 })).rejects.toMatchObject({ code: 'INVALID_INPUT' });
     await expect(run('1', { memory_mb: 4096 })).rejects.toMatchObject({ code: 'INVALID_INPUT' });

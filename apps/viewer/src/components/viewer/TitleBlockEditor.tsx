@@ -90,7 +90,7 @@ export function TitleBlockEditor({ open, onOpenChange }: TitleBlockEditorProps):
     const standard: TitleBlockField[] = [];
     const custom: TitleBlockField[] = [];
 
-    for (const field of titleBlockWithEffectiveScale(activeSheet.titleBlock, activeSheet.scale.factor, 1000 / activeSheet.scale.factor).fields) { // #11581
+    for (const field of titleBlockWithEffectiveScale(activeSheet.titleBlock, activeSheet.scale.factor).fields) {
       if (STANDARD_FIELD_IDS.includes(field.id)) {
         standard.push(field);
       } else {

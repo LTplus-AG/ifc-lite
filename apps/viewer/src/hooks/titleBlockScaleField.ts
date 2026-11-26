@@ -34,7 +34,8 @@ import { formatScaleFactorLabel, type TitleBlockConfig } from '@ifc-lite/drawing
 export function titleBlockWithEffectiveScale(
   titleBlock: TitleBlockConfig,
   requestedScaleFactor: number,
-  effectiveScaleFactor: number
+  /** mm per metre the drawing is placed at; defaults to the requested scale (no viewport fit known). */
+  effectiveScaleFactor = 1000 / requestedScaleFactor
 ): TitleBlockConfig {
   const nominalScaleFactor = 1000 / requestedScaleFactor;
   const clamped = Math.abs(effectiveScaleFactor - nominalScaleFactor) > 1e-9;

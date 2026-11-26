@@ -189,7 +189,7 @@ impl Execution {
             match (normal, depth.try_normalize(NORMALIZE_EPSILON)) {
                 (Some(normal), Some(depth)) => {
                     let turn = normal.cross(&depth).norm();
-                    turn < off_axis(normal) && turn * host_run(mesh) <= host_face_tol(mesh, &depth)
+                    turn < off_axis(normal) && host_lines_up(mesh, &depth, turn)
                 }
                 _ => false,
             }
@@ -222,20 +222,15 @@ impl Execution {
     }
 }
 
-/// The horizontal diagonal of the host's bounds: no run along the wall is
-/// longer.
-fn host_run(mesh: &Mesh) -> f64 {
-    let (min, max) = mesh.bounds();
-    f64::from(max.x - min.x).hypot(f64::from(max.y - min.y))
-}
-
-/// The recess face tolerance of the host's bounds along the unit `depth`, as
-/// the flush extension reads it.
-fn host_face_tol(mesh: &Mesh, depth: &Vector3<f64>) -> f64 {
+/// Whether a host turned `turn` (a sine) off the unit `depth` stays within
+/// the recess face tolerance, as the flush extension reads it, over its run:
+/// the horizontal diagonal of its bounds, which no run along the wall exceeds.
+fn host_lines_up(mesh: &Mesh, depth: &Vector3<f64>, turn: f64) -> bool {
     let (min, max) = mesh.bounds();
     let bounds = [min.cast::<f64>(), max.cast::<f64>()];
-    let extent = (bounds[1] - bounds[0]).abs().dot(&depth.abs());
-    recess_face_tol(&bounds, depth, extent)
+    let size = bounds[1] - bounds[0];
+    let extent = size.abs().dot(&depth.abs());
+    turn * size.x.hypot(size.y) <= recess_face_tol(&bounds, depth, extent)
 }
 
 /// The sine of the angle between the unit `dir` and its nearest world axis:

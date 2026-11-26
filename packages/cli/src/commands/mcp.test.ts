@@ -41,8 +41,10 @@ describe('ifc-lite mcp (#11534)', () => {
   });
 
   it('refuses a bridge combined with HTTP, as the binary does', async () => {
-    vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
     await mcpCommand(['--bridge', '--transport', 'http']);
     expect(process.exitCode).toBe(2);
+    // The conflict itself, not some other usage error, must be the reason.
+    expect(stderr.mock.calls.map((c) => String(c[0])).join('')).toContain('--bridge speaks MCP over stdio only');
   });
 });

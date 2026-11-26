@@ -176,6 +176,21 @@ describe('a token narrowed to one model', () => {
     const replaced = ctx.registry.get('alpha');
     expect(replaced).not.toBe(original);
     expect(replaced?.filePath).toMatch(/beta\.ifc$/);
+    // The payload, not only the metadata: alpha now holds beta's project.
+    const projects = await call('query_entities', { model_id: 'alpha', type: 'IfcProject' });
+    expect((projects.structuredContent as { entities: Array<{ globalId?: string }> }).entities.map((e) => e.globalId)).toEqual([guid('BETA')]);
+  });
+
+  // #11534: the allowlist is checked again after the parse, against the live scope.
+  it('refuses a load whose model was revoked while the file parsed', async () => {
+    const load = tool('model_load');
+    let live: AuthScope = NARROWED;
+    const revoking = { ...ctx, currentScope: () => live, scope: NARROWED };
+    const pending = load.handler({ file_path: join(tmp, 'beta.ifc'), model_id: 'alpha' }, revoking);
+    live = { ...NARROWED, modelIds: ['gamma'] }; // alpha revoked before the parse finishes (an empty list means all)
+    const before = ctx.registry.get('alpha');
+    await expect(pending).rejects.toThrow(/not permitted for this token/);
+    expect(ctx.registry.get('alpha')).toBe(before);
   });
 
   it('cannot read entities out of an out-of-scope model', async () => {

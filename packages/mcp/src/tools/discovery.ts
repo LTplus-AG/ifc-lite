@@ -148,6 +148,13 @@ export const modelLoad: Tool = {
         // tautology, so pass a single-entry allowlist matching the file.
         allowedPaths: [filePath],
       });
+      // The scope may have been narrowed (setScope) while the file parsed.
+      try {
+        assertMayLoadAs(id, ctx, ctx.currentScope?.() ?? ctx.scope);
+      } catch (refused) {
+        loaded.backend.dispose();
+        throw refused;
+      }
       ctx.registry.add(loaded);
       ctx.log.log('info', 'model_load', { id: loaded.id, file: filePath, entities: loaded.store.entityCount });
       // A model the scan read short is reported as such, in the text the
@@ -178,8 +185,8 @@ export const modelLoad: Tool = {
  * Replacing a model the caller can access needs no extra rule: registries
  * are per session, and a session without `mutate` has no edits to lose.
  */
-function assertMayLoadAs(id: string, ctx: ToolContext): void {
-  if (!modelAllowed(ctx.scope, id)) {
+function assertMayLoadAs(id: string, ctx: ToolContext, scope = ctx.scope): void {
+  if (!modelAllowed(scope, id)) {
     throw new ToolExecutionError({
       code: ToolErrorCode.PERMISSION_DENIED,
       message: `Access to model '${id}' is not permitted for this token.`,

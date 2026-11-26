@@ -198,10 +198,11 @@ describe('loadFiles (#11534)', () => {
   let dir: string;
   beforeAll(async () => {
     dir = await mkdtemp(join(tmpdir(), 'mcp-cli-load-'));
-    for (const sub of ['arch', 'struct']) {
-      await mkdir(join(dir, sub));
-      await writeFile(join(dir, sub, 'model.ifc'), MODEL);
-    }
+    // Distinct payloads: struct has one more entity, so a model loaded from the wrong file shows.
+    await mkdir(join(dir, 'arch'));
+    await writeFile(join(dir, 'arch', 'model.ifc'), MODEL);
+    await mkdir(join(dir, 'struct'));
+    await writeFile(join(dir, 'struct', 'model.ifc'), MODEL.replace('#40=', '#39= IFCCARTESIANPOINT((1.,0.,0.));\n#40='));
   });
   afterAll(() => rm(dir, { recursive: true, force: true }));
 
@@ -216,6 +217,8 @@ describe('loadFiles (#11534)', () => {
       const repeat = join(dir, 'arch', '..', 'arch', 'model.ifc');
       await loadFiles(registry, parseArgs([arch, join(dir, 'struct', 'model.ifc'), link, repeat]), (line) => lines.push(line));
       expect(registry.list().map((m) => m.id)).toEqual(['model', 'model_2']);
+      const [first, second] = registry.list();
+      expect(second!.store.entityCount).toBe(first!.store.entityCount + 1);
       expect(lines).toContain('warning: file argument 3 of 4 repeats file argument 1; skipped');
       expect(lines).toContain('warning: file argument 4 of 4 repeats file argument 1; skipped');
     } finally {

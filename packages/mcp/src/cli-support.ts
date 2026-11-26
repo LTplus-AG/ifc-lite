@@ -10,7 +10,7 @@
 import { randomUUID } from 'node:crypto';
 import { realpath } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { basename, join, resolve } from 'node:path';
+import { basename, posix, resolve } from 'node:path';
 import type { CliOptions } from './cli-args.js';
 import type { ModelRegistry } from './context.js';
 import { deriveModelId, freeModelId, loadIfcModel } from './loader.js';
@@ -20,9 +20,10 @@ import { fullScope, readOnlyScope, type AuthScope } from './auth/scope.js';
 
 /** Where Claude Desktop reads its MCP config on `platform`. */
 export function claudeDesktopConfigPath(platform: NodeJS.Platform = process.platform, home = homedir()): string {
-  if (platform === 'darwin') return join(home, 'Library', 'Application Support', 'Claude', 'claude_desktop_config.json');
+  // posix.join: the macOS and Linux paths keep '/' even when computed on Windows (tests).
+  if (platform === 'darwin') return posix.join(home, 'Library', 'Application Support', 'Claude', 'claude_desktop_config.json');
   if (platform === 'win32') return '%APPDATA%\\Claude\\claude_desktop_config.json';
-  return join(home, '.config', 'Claude', 'claude_desktop_config.json');
+  return posix.join(home, '.config', 'Claude', 'claude_desktop_config.json');
 }
 
 /** The server's scope when no token narrows it. */

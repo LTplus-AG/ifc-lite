@@ -43,10 +43,11 @@ export function generateValidators(expressSource: string, options: ValidatorGene
   const zodImport = options.zodImport ?? 'zod';
   const index = new SchemaIndex(parseExpressRules(expressSource));
   const header = HEADER(index.schema.name);
+  const schema = emitSchemaMeta(index, header, runtimeImport);
   const rules = compileRules(index, header, runtimeImport);
   const coverage: ValidatorCoverage = { schema: index.schema.name, counts: rules.counts, unsupported: rules.unsupported };
   const files: Record<string, string> = {
-    'schema.ts': emitSchemaMeta(index, header, runtimeImport),
+    'schema.ts': schema,
     'rules.ts': rules.source,
     'zod.ts': emitZodSchemas(index, header, runtimeImport, zodImport),
     'index.ts': `${header}

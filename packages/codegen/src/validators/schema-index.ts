@@ -9,6 +9,7 @@ import type { EntityDecl, ExpressRuleSchema, FunctionDecl, TypeDecl } from '../e
 export type AttributeKind = 'explicit' | 'derived' | 'inverse';
 
 export class SchemaIndex {
+  readonly unsupportedBounds = new Set<string>();
   readonly entities = new Map<string, EntityDecl>();
   readonly types = new Map<string, TypeDecl>();
   readonly functions = new Map<string, FunctionDecl>();

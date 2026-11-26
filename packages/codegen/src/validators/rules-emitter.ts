@@ -87,6 +87,9 @@ function compilePass(
   const unsupported: UnsupportedEntry[] = index.schema.skipped.map(({ kind, name }) => ({
     scope: 'schema', owner: index.schema.name, label: name || kind, reason: `${kind} declaration is not evaluated`,
   }));
+  for (const label of index.unsupportedBounds) {
+    unsupported.push({ scope: 'schema', owner: index.schema.name, label, reason: 'bound is not a supported constant integer expression' });
+  }
   const counts: RuleCompilation['counts'] = {
     entity: { total: 0, compiled: 0 }, type: { total: 0, compiled: 0 }, derived: { total: 0, compiled: 0 },
     global: { total: 0, compiled: 0 }, function: { total: index.schema.functions.length, compiled: functions.size },

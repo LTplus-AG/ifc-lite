@@ -116,6 +116,8 @@ export function wrapScript(code: string): string {
   // value nested a few thousand levels deep overflows the host stack and
   // aborts the shared module (#1922). Walk it first, iteratively, with a
   // hand-indexed stack (Array.prototype.push is script-patchable).
+  // Same bound as bridge/json-bounds.ts checkJsonBounds, which this sandbox-side
+  // string cannot import.
   // 0: fine, 1: nested too deep, 2: too many nodes to check (and to return).
   function shape(v) {
     if (v === null || typeof v !== 'object') return 0;

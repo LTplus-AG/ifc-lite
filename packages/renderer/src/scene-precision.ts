@@ -35,14 +35,14 @@ export function worldBounds(meshes: readonly MeshData[]): {
  */
 export const BATCH_ORIGIN_STEP = 2 ** -9;
 
-/** Midpoint of [lo, hi], rounded to the `BATCH_ORIGIN_STEP` lattice. */
-const latticeCentre = (lo: number, hi: number): number => Math.round((lo + hi) / 2 / BATCH_ORIGIN_STEP) * BATCH_ORIGIN_STEP;
+/** `v` rounded to the `BATCH_ORIGIN_STEP` lattice. */
+const snap = (v: number): number => Math.round(v / BATCH_ORIGIN_STEP) * BATCH_ORIGIN_STEP;
 
 /** World-space bbox centre selected by the automatic batch-frame path, on the `BATCH_ORIGIN_STEP` lattice. */
 export function automaticBatchOrigin(meshes: readonly MeshData[]): [number, number, number] {
   const { minX, minY, minZ, maxX, maxY, maxZ } = worldBounds(meshes);
   return Number.isFinite(minX)
-    ? [latticeCentre(minX, maxX), latticeCentre(minY, maxY), latticeCentre(minZ, maxZ)]
+    ? [snap((minX + maxX) / 2), snap((minY + maxY) / 2), snap((minZ + maxZ) / 2)]
     : [0, 0, 0];
 }
 
@@ -142,7 +142,10 @@ export function topologySafeBatchOrigin(
   // f32 frame still preserves them. Try one authored frame, validated against
   // every mesh, rather than treating exhausted preferred frames as exhaustion
   // of all frames. GPU high/low origin lanes must remain finite too (#5010).
+  // That frame on the `BATCH_ORIGIN_STEP` lattice first (a later batch inherits it as the shared frame),
+  // the exact authored origin only when a sub-millimetre shift already loses a triangle.
   const authored: [number, number, number] = meshes[0]?.origin ?? [0, 0, 0];
-  return renderableCoordinates(authored)
-    && preserves(authored) ? authored : undefined;
+  const snapped: [number, number, number] = [snap(authored[0]), snap(authored[1]), snap(authored[2])];
+  for (const frame of [snapped, authored]) if (renderableCoordinates(frame) && preserves(frame)) return frame;
+  return undefined;
 }

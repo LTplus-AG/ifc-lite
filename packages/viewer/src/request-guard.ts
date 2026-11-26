@@ -26,9 +26,14 @@ export type RequestVerdict = { refuse: string } | { refuse: false; corsOrigin: s
 /** Refuse `req` (with the reason), or serve it, echoing its Origin for CORS when that is a local page. */
 export function checkRequest(req: IncomingMessage): RequestVerdict {
   if (!LOOPBACK_HOST.test(req.headers.host ?? '')) return { refuse: 'Host must be localhost, 127.0.0.1 or [::1]' };
-  // Browsers send no Origin on a cross-site navigation or <iframe>, but do send Sec-Fetch-Site.
-  if (req.headers['sec-fetch-site'] === 'cross-site') return { refuse: 'cross-site request' };
   const origin = req.headers.origin;
-  if (origin === undefined) return { refuse: false, corsOrigin: null }; // the CLI, the MCP server: not a page
-  return LOCAL_ORIGIN.test(origin) ? { refuse: false, corsOrigin: origin } : { refuse: 'Origin is not a local page' };
+  if (origin !== undefined) {
+    return LOCAL_ORIGIN.test(origin) ? { refuse: false, corsOrigin: origin } : { refuse: 'Origin is not a local page' };
+  }
+  // No Origin: the CLI or the MCP server, or a browser following a link or
+  // loading an <iframe>. A browser says where it came from in Sec-Fetch-Site;
+  // from another site, only opening the viewer page itself is allowed.
+  const openingPage = req.method === 'GET' && req.url === '/' && req.headers['sec-fetch-dest'] === 'document';
+  if (req.headers['sec-fetch-site'] === 'cross-site' && !openingPage) return { refuse: 'cross-site request' };
+  return { refuse: false, corsOrigin: null };
 }

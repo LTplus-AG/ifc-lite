@@ -243,7 +243,9 @@ function setupStdinCommands(port: number, viewer: ViewerServer): void {
         break;
       case 'clear':
       case 'clearCreated':
-        fetch(viewerUrl(port, '/api/clear-created'), { method: 'POST' }).catch(() => {});
+        fetch(viewerUrl(port, '/api/clear-created'), { method: 'POST' })
+          .then((res) => { if (!res.ok) process.stderr.write(`clear failed: HTTP ${res.status}\n`); })
+          .catch((err: unknown) => process.stderr.write(`clear failed: ${String(err)}\n`));
         break;
       case 'showall':
         command = { action: 'showall' };

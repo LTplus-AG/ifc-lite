@@ -448,6 +448,22 @@ describe('viewer server — loopback only', () => {
     }
   });
 
+  // An agent shares the viewer link in a web chat; clicking it must open the viewer.
+  it('opens the viewer page from a link on another site', TEST_TIMEOUT, async () => {
+    const res = await req(port, '/', { headers: { 'sec-fetch-site': 'cross-site', 'sec-fetch-dest': 'document' } });
+    assert.equal(res.status, 200);
+  });
+
+  // localhost and 127.0.0.1 are different sites to a browser, but both are local pages.
+  it('lets a local page on another loopback name post a command', TEST_TIMEOUT, async () => {
+    const res = await req(port, '/api/command', {
+      method: 'POST',
+      headers: { origin: 'http://localhost:5173', 'sec-fetch-site': 'cross-site' },
+      body: command,
+    });
+    assert.equal(res.status, 200);
+  });
+
   it('accepts a command from a local page and from a client that sends no Origin', TEST_TIMEOUT, async () => {
     for (const headers of [{ origin: `http://localhost:${port}` }, { origin: `http://LocalHost:${port}` }, {}]) {
       const res = await req(port, '/api/command', { method: 'POST', headers, body: command });

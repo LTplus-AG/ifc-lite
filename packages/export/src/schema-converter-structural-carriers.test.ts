@@ -405,6 +405,13 @@ ${geometry.replace('(#16),', aspect)}
     expect(up.warnings).toContain('CausedBy is written as');
   });
 
+  it('converts a complete action whose load references carry comments, instead of falling back (#11354)', async () => {
+    const text = varying('(#14,#16,#16),').replace(',#15,#11,.GLOBAL_COORDS.', ',/* rep */#15,/* initial */#11,.GLOBAL_COORDS.').replace(',#17,(#11,#11));', ',/* at */#17,(#11,/* next */#11));');
+    const up = await convert(text, 'IFC4');
+    expect(line(up.step, 30)).toMatch(/^#30=IFCSTRUCTURALCURVEACTION\(.*\.NOTDEFINED\.\);$/);
+    expect(records(up.step, 'IFCSTRUCTURALLOADCONFIGURATION')).toHaveLength(1);
+  });
+
   it('still writes it for a varying action that converts', async () => {
     const up = await convert(varying('(#14,#16,#16),'), 'IFC4');
     expect(line(up.step, 30)).toMatch(/^#30=IFCSTRUCTURALCURVEACTION\(/);

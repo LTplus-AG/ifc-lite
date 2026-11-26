@@ -56,6 +56,16 @@ fn aspect_representation_count_matches_loads_b() {
     }
 }
 
+/// #11354: comments around the references a configuration needs do not send a complete action to the lossy
+/// constant fallback, which reads AppliedLoad comment-aware too.
+#[test]
+fn commented_load_references_still_convert_to_a_configuration() {
+    let line = LINE.replace(",#10,#20,", ",/* rep */#10,/* initial */#20,").replace(",#11,(#21));", ",/* at */#11,(/* next */#21));");
+    let (out, _) = export_step_with_stats(model("IFC2X3", &line).as_bytes(), &to("IFC4")).unwrap();
+    assert!(record(&out, "#30=").starts_with("#30=IFCSTRUCTURALCURVEACTION(") && record(&out, "#30=").ends_with(".NOTDEFINED.);"), "{out}");
+    assert_eq!(configs(&out), ["#31=IFCSTRUCTURALLOADCONFIGURATION($,(#20,#21),$);"], "{out}");
+}
+
 #[test]
 fn varying_actions_round_trip_through_ifc4_9668() {
     let source = model("IFC2X3", &format!("{LINE}\n{AREA}"));

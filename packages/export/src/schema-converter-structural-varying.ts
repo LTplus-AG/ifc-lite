@@ -132,7 +132,7 @@ export class StructuralVarying {
    * enough loads, all of one type that the IFC2X3 WR61 admits.
    */
   private convertible(kind: Kind, representation: string, loads: readonly (number | null)[], location?: number | null): number | undefined {
-    const found = this.aspects.get(refId(representation) ?? -1);
+    const found = this.aspects.get(slotRef(representation) ?? -1);
     if (found?.length !== 1 || (location !== undefined && found[0].id !== location) || loads.length < kind.min || found[0].representations !== loads.length) return undefined;
     const type = this.typeOf(loads[0]);
     const first: readonly string[] = kind.first;
@@ -172,8 +172,9 @@ export class StructuralVarying {
   private upgradeLoads(entity: string, args: readonly string[]): { kind: Kind; loads: (number | null)[] } | undefined {
     const kind = KINDS.find((k) => k.ifc2x3 === entity);
     if (!this.upgrading || !kind || args.length !== 14) return undefined;
-    const loads = [args[7], ...(listItems(args[13]) ?? [])].map(refId);
-    return this.convertible(kind, args[6], loads, refId(args[12])) === undefined ? undefined : { kind, loads };
+    // Comment-aware, as the constant fallback reads AppliedLoad: a commented reference must not fall back (#11354).
+    const loads = [args[7], ...(listItems(args[13]) ?? [])].map(slotRef);
+    return this.convertible(kind, args[6], loads, slotRef(args[12])) === undefined ? undefined : { kind, loads };
   }
 
   private toIfc4(entity: string, args: readonly string[], carried: ReadonlySet<string>): StructuralRewrite | undefined {

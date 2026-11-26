@@ -90,14 +90,15 @@ pub(crate) fn record(content: &[u8], start: usize, end: usize) -> Option<Vec<Str
 /// AppliedLoad then SubsequentAppliedLoads of an IFC2X3 varying action, or None.
 fn varying_loads(args: &[String]) -> Option<Vec<u32>> {
     if args.len() != 14 { return None; }
-    let mut loads = vec![ref_id(Some(&args[7]))?];
+    // Comment-aware, as the constant fallback reads AppliedLoad: a commented reference must not fall back (#11354).
+    let mut loads = vec![slot_ref(&args[7])?];
     loads.extend(refs(&args[13])?);
     Some(loads)
 }
 
 /// A list of references, or None when any item is not one.
 fn refs(token: &str) -> Option<Vec<u32>> {
-    list_items(token)?.iter().map(|item| ref_id(Some(item))).collect()
+    list_items(token)?.iter().map(|item| slot_ref(item)).collect()
 }
 
 impl Source {
@@ -131,7 +132,7 @@ impl Source {
     /// one aspect of its representation (and `location`, when IFC2X3 names
     /// one), enough loads, all of one type that the IFC2X3 WR61 admits.
     fn convertible(&self, kind: &Kind, representation: &str, loads: &[u32], location: Option<u32>) -> Option<u32> {
-        let Some(&[(aspect, representations)]) = ref_id(Some(representation)).and_then(|r| self.aspects.get(&r)).map(Vec::as_slice) else { return None };
+        let Some(&[(aspect, representations)]) = slot_ref(representation).and_then(|r| self.aspects.get(&r)).map(Vec::as_slice) else { return None };
         if location.is_some_and(|l| l != aspect) || loads.len() < kind.min || representations != Some(loads.len()) { return None; }
         let first = self.loads.get(&loads[0]).filter(|t| kind.first.contains(&t.as_str()))?;
         loads.iter().all(|l| self.loads.get(l) == Some(first)).then_some(aspect)
@@ -146,7 +147,7 @@ impl StructuralVarying {
         let mut result = Self { upgrading: true, ..Self::default() };
         for (id, kind, args) in &source.actions {
             let Some(loads) = varying_loads(args) else { continue };
-            let Some(location) = ref_id(Some(&args[12])) else { continue };
+            let Some(location) = slot_ref(&args[12]) else { continue };
             if source.convertible(kind, &args[6], &loads, Some(location)).is_some() { result.planned.insert(*id, (*kind, loads)); }
         }
         // Every other action of the attributes IFC2X3 gives it keeps its initial load, when IFC4 counts it as a load (#11354).

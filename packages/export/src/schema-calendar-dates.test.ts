@@ -17,7 +17,8 @@ it('keeps calendar dates, fractional seconds and timezone offsets across schema 
   const output = new TextDecoder().decode(primary.content);
   expect(output).toContain("#1=IFCCLASSIFICATION('Source','1','2024-02-29','Classification',$,$,$);");
   expect(output).toContain("#3=IFCIRREGULARTIMESERIESVALUE('2024-02-29T10:30:15.5+05:30',(IFCREAL(1.)));");
-  expect(output).toContain("#7=IFCCOSTVALUE('Estimate',$,$,$,'2024-02-29','2024-02-29','Materials',$,$,$);");
+  // #11199: ApplicableDate (#4) and FixedUntilDate (#8) are different dates, so a swap shows.
+  expect(output).toContain("#7=IFCCOSTVALUE('Estimate',$,$,$,'2024-02-29','2024-03-01','Materials',$,$,$);");
   expect(primary.stats.warnings).toEqual(calendarWarnings);
   expect(primary.stats.entityCount).toBe([...output.matchAll(/^#\d+=/gm)].length);
   expect(output).not.toMatch(/=IFC(CALENDARDATE|DATEANDTIME|LOCALTIME|COORDINATEDUNIVERSALTIMEOFFSET)\(/);
@@ -28,6 +29,7 @@ it('keeps calendar dates, fractional seconds and timezone offsets across schema 
     const text = new TextDecoder().decode(result.content);
     expect(text).toMatch(/IFCCLASSIFICATION\('Source','1',#\d+,'Classification'\);/);
     expect(text).toContain('IFCCALENDARDATE(29,2,2024);');
+    expect(text).toContain('IFCCALENDARDATE(1,3,2024);');
     expect(text).toMatch(/IFCLOCALTIME\(10,30,15\.5,#\d+,\$\);/);
     expect(text).toContain('IFCCOORDINATEDUNIVERSALTIMEOFFSET(5,30,.AHEAD.);');
   }
@@ -50,4 +52,46 @@ it('warns when converting a duration with a non-second project TIMEUNIT (#10879)
   const seconds = new TextEncoder().encode(bytes.toString().replace('IFCUNITASSIGNMENT((#6))', 'IFCUNITASSIGNMENT((#3))'));
   const store = await parser.parseColumnar(seconds.buffer as ArrayBuffer);
   expect(new StepExporter(store).export({ schema: 'IFC4' }).stats.warnings.join(' ')).not.toContain('assumed seconds');
+});
+
+const legacy = (data: string) => new IfcParser().parseColumnar(new TextEncoder().encode(`ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('t.ifc','',(''),(''),'','','');
+FILE_SCHEMA(('IFC2X3'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'P',$,$,$,$,$,$);
+${data}
+ENDSEC;
+END-ISO-10303-21;
+`).buffer as ArrayBuffer);
+
+it('leaves out an IFC2X3 date record nothing references, even when no slot converts (#11199)', async () => {
+  const store = await legacy('#2=IFCCALENDARDATE(29,2,2024);\n#3=IFCLOCALTIME(10,30,$,$,$);');
+  for (const schema of ['IFC4', 'IFC4X3'] as const) {
+    const result = new StepExporter(store).export({ schema });
+    const text = new TextDecoder().decode(result.content);
+    expect(text).not.toMatch(/=IFC(CALENDARDATE|LOCALTIME)\(/);
+    expect(result.stats.entityCount).toBe([...text.matchAll(/^#\d+=/gm)].length);
+    expect(result.stats.warnings.join('\n')).not.toContain('still referenced');
+  }
+});
+
+it('reports a clock whose minute or second the IFC2X3 source left unset (#11199)', async () => {
+  const store = await legacy(`#2=IFCCALENDARDATE(29,2,2024);
+#4=IFCDATEANDTIME(#2,#5);
+#5=IFCLOCALTIME(10,$,$,$,$);
+#3=IFCIRREGULARTIMESERIESVALUE(#4,(IFCREAL(1.)));
+#6=IFCLOCALTIME(10,30,15.,$,$);
+#7=IFCDATEANDTIME(#2,#6);
+#8=IFCIRREGULARTIMESERIESVALUE(#7,(IFCREAL(2.)));`);
+  for (const schema of ['IFC4', 'IFC4X3'] as const) {
+    const result = new StepExporter(store).export({ schema });
+    const text = new TextDecoder().decode(result.content);
+    expect(text).toContain("#3=IFCIRREGULARTIMESERIESVALUE('2024-02-29T10:00:00',(IFCREAL(1.)));");
+    expect(text).toContain("#8=IFCIRREGULARTIMESERIESVALUE('2024-02-29T10:30:15',(IFCREAL(2.)));");
+    expect(result.stats.warnings).toContain(
+      '1 time value(s) wrote an unset minute or second as 00, a precision the IFC2X3 source does not state: IFCIRREGULARTIMESERIESVALUE.TimeStamp (#11199).');
+  }
 });

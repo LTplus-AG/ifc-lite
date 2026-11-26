@@ -28,7 +28,8 @@ pub(super) struct DateRecord {
 }
 
 struct Day { year: u16, month: u8, day: u8 }
-struct Clock { hour: u8, minute: u8, second: String, zone: Option<i16> }
+/// `filled`: the source left the minute or second unset, written as 00 (#11199).
+struct Clock { hour: u8, minute: u8, second: String, zone: Option<i16>, filled: bool }
 
 fn valid_day(year: u16, month: u8, day: u8) -> Option<Day> {
     let leap = year.is_multiple_of(4) && (!year.is_multiple_of(100) || year.is_multiple_of(400));
@@ -76,10 +77,11 @@ fn legacy_clock<'a>(record: &DateRecord, read: &impl Fn(Option<u32>) -> Option<&
     if zone.is_some_and(|zone| zone.abs() >= 1440) {
         return None;
     }
-    Some(Clock { hour, minute, second, zone })
+    Some(Clock { hour, minute, second, zone, filled: unset(m) || unset(s) })
 }
 
-pub(super) fn from_legacy<'a>(source: &str, kind: Kind, read: impl Fn(Option<u32>) -> Option<&'a DateRecord>) -> Option<(String, bool)> {
+/// The value, whether it was narrowed to its date, and whether its clock's precision was filled (#11199).
+pub(super) fn from_legacy<'a>(source: &str, kind: Kind, read: impl Fn(Option<u32>) -> Option<&'a DateRecord>) -> Option<(String, bool, bool)> {
     let record = read(slot_ref(source))?;
     let narrowed = matches!(kind, Kind::Date) && record.ty == "IFCDATEANDTIME";
     let child = |slot: &str| read(slot_ref(slot));
@@ -93,14 +95,14 @@ pub(super) fn from_legacy<'a>(source: &str, kind: Kind, read: impl Fn(Option<u32
         (Kind::DateTime, _, _) => return None,
     };
     let day = day.map_or_else(String::new, |Day { year, month, day }| format!("{year:04}-{month:02}-{day:02}"));
-    let Some(Clock { hour, minute, second, zone }) = clock else { return Some((format!("'{day}'"), narrowed)) };
+    let Some(Clock { hour, minute, second, zone, filled }) = clock else { return Some((format!("'{day}'"), narrowed, false)) };
     let junction = if day.is_empty() { "" } else { "T" };
     let zone = match zone {
         None => String::new(),
         Some(0) => "Z".to_owned(),
         Some(zone) => format!("{}{:02}:{:02}", if zone < 0 { '-' } else { '+' }, zone.abs() / 60, zone.abs() % 60),
     };
-    Some((format!("'{day}{junction}{hour:02}:{minute:02}:{second}{zone}'"), false))
+    Some((format!("'{day}{junction}{hour:02}:{minute:02}:{second}{zone}'"), false, filled))
 }
 
 fn digits(text: &str) -> bool {
@@ -136,7 +138,7 @@ fn iso_clock(text: &str) -> Option<Clock> {
     let (whole, fraction) = sec.split_once('.').unwrap_or((sec, ""));
     (whole.len() == 2 && digits(whole) && whole.parse::<u8>().ok()? < 60
         && ((fraction.is_empty() && !sec.contains('.')) || digits(fraction))).then_some(())?;
-    Some(Clock { hour, minute, second: sec.to_owned(), zone })
+    Some(Clock { hour, minute, second: sec.to_owned(), zone, filled: false })
 }
 
 pub(super) fn to_legacy(token: &str, kind: Kind, mut add: impl FnMut(String) -> Option<u32>) -> Option<u32> {
@@ -153,7 +155,7 @@ pub(super) fn to_legacy(token: &str, kind: Kind, mut add: impl FnMut(String) -> 
         Some(Day { year, month, day }) => Some(add(format!("IFCCALENDARDATE({day},{month},{year})"))?),
         None => None,
     };
-    let Some(Clock { hour, minute, second, zone }) = clock else { return date };
+    let Some(Clock { hour, minute, second, zone, .. }) = clock else { return date };
     let zone = match zone {
         None => "$".to_owned(),
         Some(zone) => {

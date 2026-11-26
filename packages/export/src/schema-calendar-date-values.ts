@@ -8,7 +8,8 @@ export const DATE_CARRIERS = new Set(['IFCCALENDARDATE', 'IFCDATEANDTIME', 'IFCL
 
 export interface DateRecord { readonly type: string; readonly slots: readonly string[] }
 interface Day { year: number; month: number; day: number }
-interface Clock { hour: number; minute: number; second: string; zone: number | null }
+/** `filled`: the source left the minute or second unset, written as 00 (#11199). */
+interface Clock { hour: number; minute: number; second: string; zone: number | null; filled: boolean }
 export type CalendarKind = 'DATE' | 'DATETIME' | 'TIME';
 
 const two = (n: number) => String(n).padStart(2, '0');
@@ -47,20 +48,20 @@ function legacyClock(record: DateRecord | undefined, read: (id: number | null) =
   if (zone === null && !unset(z)) return null;
   const dst = unset(daylight) ? 0 : integer(daylight);
   if (!(dst >= 0 && dst <= 2) || (zone === null && dst !== 0) || Math.abs((zone ?? 0) + dst * 60) >= 1440) return null;
-  return { hour, minute, second: whole.padStart(2, '0') + (fraction ? '.' + fraction : ''), zone: zone === null ? null : zone + dst * 60 };
+  return { hour, minute, second: whole.padStart(2, '0') + (fraction ? '.' + fraction : ''), zone: zone === null ? null : zone + dst * 60, filled: unset(m) || unset(s) };
 }
 
-export function fromLegacyDate(ref: string, kind: CalendarKind, read: (id: number | null) => DateRecord | undefined): { value: string; narrowed: boolean } | null {
+export function fromLegacyDate(ref: string, kind: CalendarKind, read: (id: number | null) => DateRecord | undefined): { value: string; narrowed: boolean; filled: boolean } | null {
   const record = read(slotRef(ref));
   const split = kind !== 'TIME' && record?.type === 'IFCDATEANDTIME' && record.slots.length === 2;
   const d = kind === 'TIME' ? null : legacyDay(split ? read(slotRef(record.slots[0])) : record);
   const t = kind === 'DATE' ? null : legacyClock(split ? read(slotRef(record.slots[1])) : record, read);
   if ((kind !== 'TIME' && !d) || (kind !== 'DATE' && !t)) return null;
   const date = d ? String(d.year).padStart(4, '0') + '-' + two(d.month) + '-' + two(d.day) : '';
-  if (!t) return { value: "'" + date + "'", narrowed: split };
+  if (!t) return { value: "'" + date + "'", narrowed: split, filled: false };
   const zone = t.zone === null ? '' : t.zone === 0 ? 'Z'
     : (t.zone < 0 ? '-' : '+') + two(Math.floor(Math.abs(t.zone) / 60)) + ':' + two(Math.abs(t.zone) % 60);
-  return { value: "'" + (d ? date + 'T' : '') + two(t.hour) + ':' + two(t.minute) + ':' + t.second + zone + "'", narrowed: false };
+  return { value: "'" + (d ? date + 'T' : '') + two(t.hour) + ':' + two(t.minute) + ':' + t.second + zone + "'", narrowed: false, filled: t.filled };
 }
 
 interface DateDraft { day?: Day; clock?: Clock }
@@ -80,7 +81,7 @@ function readIso(token: string, kind: CalendarKind): DateDraft | null {
   if (!t || Number(t[1]) >= 24 || Number(t[2]) >= 60 || Number(t[3].slice(0, 2)) >= 60
     || (t[4] && (Number(t[5]) >= 24 || Number(t[6]) >= 60))) return null;
   const zone = t[4] ? (t[4] === '-' ? -1 : 1) * (Number(t[5]) * 60 + Number(t[6])) : t[7] ? 0 : null;
-  return { day: day ?? undefined, clock: { hour: Number(t[1]), minute: Number(t[2]), second: t[3], zone } };
+  return { day: day ?? undefined, clock: { hour: Number(t[1]), minute: Number(t[2]), second: t[3], zone, filled: false } };
 }
 
 export function toLegacyDate(token: string, kind: CalendarKind, next: () => number): { ref: string; records: string[] } | null {

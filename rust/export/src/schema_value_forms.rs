@@ -174,6 +174,8 @@ impl ValueForms {
     /// `line`, already converted from `cfrom` to `cto`, with every slot in a
     /// form the target accepts; each value dropped is added to `dropped`.
     pub(crate) fn apply(&mut self, line: String, cfrom: &str, cto: &str, express_id: u32, dropped: &mut usize) -> Result<String, UnrepresentedEntityError> {
+        // #11199: legacy date records go even when no slot converts.
+        if cfrom == "IFC2X3" && matches!(cto, "IFC4" | "IFC4X3") { self.dates.upgrading = true; }
         let Some(frame) = crate::step_record_frame::record_frame(&line) else { return Ok(line) };
         let written = frame.head.type_name(&line);
         // The converter writes the type in upper case; anything else is copied once.
@@ -250,7 +252,7 @@ impl ValueForms {
         };
         line(&self.dropped, "were dropped").into_iter()
             .chain(line(&self.emptied, "left a slot the target requires as $, so the file is not valid against its header"))
-            .chain(self.dates.warning())
+            .chain(self.dates.warnings())
             .chain((!self.narrowed_dates.is_empty()).then(|| format!(
                 "{} date value(s) kept the calendar date and dropped the time and any timezone: {} (#10879).",
                 self.narrowed_dates.values().sum::<usize>(),

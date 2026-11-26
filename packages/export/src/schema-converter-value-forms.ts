@@ -171,6 +171,7 @@ export class ValueForms {
   /** `line`, already converted from `from` to `to`, with every slot in a form the target accepts. */
   apply(line: string, from: string, to: string, maxReferenceId?: number): string {
     if (!SCHEMAS.has(from) || !SCHEMAS.has(to) || from === to) return line;
+    if (from === 'IFC2X3') this.dates.upgrading = true; // #11199: legacy date records go even when no slot converts
     // The head names the type; most records stop before their slots are split.
     const head = stepRecordHead(line);
     if (!head) return line;
@@ -184,7 +185,7 @@ export class ValueForms {
       if (rule.index >= slots.length) continue;
       const form = rule.hasCalendar ? valueForm(withoutComments(slots[rule.index])) : null;
       const calendar = form === null ? null : rule.forms.get(form);
-      if (calendar?.startsWith('C') && this.dates.defer(line, rule.index, calendar,
+      if (calendar?.startsWith('C') && this.dates.defer(line, rule.index, calendar, rule.where,
         (narrowed) => this.count(narrowed ? this.narrowedDates : rule.required ? this.emptied : this.dropped, rule.where, 1))) continue;
       const fixed = fix(slots[rule.index], '', rule, this.markDuration, maxReferenceId);
       if (fixed.lost && rule.whole.length) {

@@ -210,13 +210,8 @@ function assertModelLoadAccess(id: string | undefined, ctx: ToolContext, oci: bo
   }
 }
 
-/**
- * `model_load` needs only `read` scope (#11534), so it must not become a way
- * around the token's model allowlist: the registry disposes a model it
- * replaces, so loading under an id the token may not access is refused.
- * Replacing or dropping a model with unsaved edits needs `mutate` (see
- * assertMayDiscard): a session narrowed after editing must not lose the edits.
- */
+// A model allowlist also governs registration, since replacing an existing
+// entry disposes it. assertMayDiscard separately protects pending edits.
 function assertMayLoadAs(id: string, ctx: ToolContext, scope = ctx.scope): void {
   if (!modelAllowed(scope, id)) {
     throw new ToolExecutionError({

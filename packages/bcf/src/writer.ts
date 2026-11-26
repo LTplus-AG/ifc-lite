@@ -11,7 +11,6 @@
 import type {
   BCFProject,
   BCFTopic,
-  BCFComment,
   BCFViewpoint,
   BCFComponents,
   BCFComponent,

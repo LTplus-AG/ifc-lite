@@ -125,7 +125,7 @@ export function checkSchemaShape(schema: unknown, path: string): string | null {
   }
   // A tab schema has no `$defs` the server could resolve against; `validateInput` would throw on every call.
   if (schema.$ref !== undefined) return `${path}.$ref is not supported in a tab schema; inline the schema`;
-  // A tab pattern is published, not run server-side (Tool.schemaFromTab); it must still compile for clients that do.
+  // A tab pattern is published, not run server-side (ValidateOptions.fromTab); it must still compile for clients that do.
   if (schema.pattern !== undefined && !compiles(schema.pattern)) return `${path}.pattern must be a valid regular expression`;
   // Tab schemas keep the bridge's original rule: true or false only (see ValidateOptions.fromTab).
   if (additionalProperties !== undefined && typeof additionalProperties !== 'boolean') {

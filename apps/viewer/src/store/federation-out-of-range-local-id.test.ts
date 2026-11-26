@@ -21,14 +21,25 @@ import { resolveEntityRef } from './resolveEntityRef.js';
 
 const initial = useViewerStore.getState();
 
+/** Register a model with `maxExpressId` 100 and put it in the store; returns its offset. */
+function loadModel(id: string): number {
+  const { registerModelOffset, addModel } = useViewerStore.getState();
+  const offset = registerModelOffset(id, 100);
+  addModel({ ...fixtureModel(id, { idOffset: offset }), maxExpressId: 100 });
+  return offset;
+}
+
 /** Register 'earlier' then 'later', and keep only 'later' loaded, as after removing the first model. */
 function laterModelAlone(): number {
-  const { registerModelOffset, addModel } = useViewerStore.getState();
-  registerModelOffset('earlier', 2_000_000);
-  const offset = registerModelOffset('later', 100);
-  addModel({ ...fixtureModel('later', { idOffset: offset }), maxExpressId: 100 });
+  useViewerStore.getState().registerModelOffset('earlier', 2_000_000);
+  const offset = loadModel('later');
   federationRegistry.unregisterModel('earlier');
   return offset;
+}
+
+/** The ref a resolver gave must survive the next toGlobalId. */
+function assertPublishable(ref: { modelId: string; expressId: number }): void {
+  assert.doesNotThrow(() => useViewerStore.getState().toGlobalId(ref.modelId, ref.expressId), JSON.stringify(ref));
 }
 
 describe('fallback resolvers never hand out a local id the model does not own (#11527)', () => {
@@ -52,26 +63,20 @@ describe('fallback resolvers never hand out a local id the model does not own (#
     for (const globalId of [5, -2_024_174]) {
       const ref = resolveEntityRef(globalId);
       assert.equal(ref.modelId, 'legacy', `resolveEntityRef(${globalId}) gave ${JSON.stringify(ref)}`);
-      assert.doesNotThrow(() => useViewerStore.getState().toGlobalId(ref.modelId, ref.expressId));
+      assertPublishable(ref);
     }
   });
 
   it('a stale id past every range does not become the first model\'s local id', () => {
-    const { registerModelOffset, addModel } = useViewerStore.getState();
-    const a = registerModelOffset('a', 100);
-    const b = registerModelOffset('b', 100);
-    addModel({ ...fixtureModel('a', { idOffset: a }), maxExpressId: 100 });
-    addModel({ ...fixtureModel('b', { idOffset: b }), maxExpressId: 100 });
+    loadModel('a');
+    const b = loadModel('b');
     const ref = resolveEntityRef(b + 5_000_000);
     assert.equal(ref.modelId, 'legacy', JSON.stringify(ref));
-    assert.doesNotThrow(() => useViewerStore.getState().toGlobalId(ref.modelId, ref.expressId));
+    assertPublishable(ref);
   });
 
   it('an id the offset-0 model owns still resolves to it', () => {
-    const { registerModelOffset, addModel } = useViewerStore.getState();
-    const offset = registerModelOffset('only', 100);
-    addModel({ ...fixtureModel('only', { idOffset: offset }), maxExpressId: 100 });
-    assert.equal(offset, 0);
+    assert.equal(loadModel('only'), 0);
     assert.deepEqual(resolveEntityRef(7), { modelId: 'only', expressId: 7 });
   });
 });

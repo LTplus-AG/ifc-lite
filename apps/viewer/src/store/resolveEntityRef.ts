@@ -36,12 +36,8 @@ function resolveEntityRefFromState(
   const progressive = federationRegistry.fromGlobalId(globalId);
   if (progressive) return progressive;
 
-  // Fallback: single-model mode where offset is 0 → globalId === expressId.
-  // Only under that premise, and inside the model's range: behind a removed
-  // model the offset is not 0, a negative id is nobody's, and a stale or
-  // foreign id past the range is not this model's (#11527: each became an
-  // unpublished local id that the next toGlobalId refused). A model still
-  // hydrating its range (#7282) and everything else take the legacy sentinel.
+  // Fallback: an offset-0 first model owns globalId === expressId inside its
+  // range. Any other id is not its local id (#11527) and takes the legacy sentinel.
   const first = state.models.entries().next();
   if (!first.done) {
     const model = first.value[1];

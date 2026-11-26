@@ -548,7 +548,7 @@ ifc-lite-mcp exposes a federated set of IFC/BIM models as MCP tools.
 
 Conventions:
   • All tools accept an optional model_id; when only one model is loaded it can be omitted.
-  • Errors surface as tool results with isError=true and structuredContent.code (e.g. ENTITY_NOT_FOUND).
+  • Errors surface as tool results with isError=true and structuredContent.code (e.g. ENTITY_NOT_FOUND); tools with an outputSchema put that envelope as JSON in the last text block instead.
   • Long operations stream progress via notifications/progress when a progressToken is supplied.
   • Mutations are queued; call export_ifc or model_save to persist.
 

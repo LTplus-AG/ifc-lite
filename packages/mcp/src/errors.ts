@@ -7,7 +7,9 @@
  *
  * Critical: these are surfaced as `structuredContent.code` on tool results
  * with `isError: true` — NEVER as JSON-RPC errors. That lets the LLM read
- * and react to the failure inline rather than aborting the chain.
+ * and react to the failure inline rather than aborting the chain. For a tool
+ * that declares an `outputSchema`, the server moves the envelope into the
+ * text block instead (see `MCPServer.fitOutputSchema`).
  */
 
 import type { CallToolResult } from './protocol/index.js';

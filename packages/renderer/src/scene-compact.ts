@@ -152,8 +152,7 @@ export class SceneCompact {
       decoded.push(mesh);
     }
     this.queue = [];
-    this.toBuckets(decoded);
-    if (queue.length === 0) return true;
+    if (queue.length === 0) { this.toBuckets(decoded); return true; }
     try {
       this.store.append(queue, device, pipeline, (mesh, ref) => {
         const c = ref.payload.cells, r = ref.row * 3;
@@ -179,6 +178,8 @@ export class SceneCompact {
       this.store.trim(device);
     }
     this.scene.bumpPickGeometryRevision();
+    // After the pages: a throw here (a bucket's GPU build) leaves these in their buckets, pending, and the pages drawn.
+    this.toBuckets(decoded);
     return true;
   }
 

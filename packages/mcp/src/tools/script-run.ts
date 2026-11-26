@@ -53,7 +53,7 @@ const inputSchema: JsonSchema = {
     model_id: { type: 'string', description: 'Loaded model id; required when multiple models are loaded.' },
     code: {
       type: 'string', minLength: 1, maxLength: MAX_CODE_CHARS,
-      description: 'JavaScript (not TypeScript) run with the sandbox `bim` global. The value of the last expression is returned; it must be JSON-serialisable. Top-level await is not supported.',
+      description: 'JavaScript (not TypeScript) run with the sandbox `bim` global. The value of the last expression is returned and must be JSON-serialisable; if it is a promise (e.g. an async IIFE around bim.clash.run) its resolved value is returned. Top-level await is not supported.',
     },
     timeout_ms: {
       type: 'integer', minimum: 100, maximum: MAX_TIMEOUT_MS, default: DEFAULT_TIMEOUT_MS,
@@ -118,7 +118,12 @@ function shapeLogs(entries: readonly LogEntry[]): { logs: LogLine[]; truncated: 
   for (const entry of entries) {
     if (logs.length >= MAX_LOG_LINES) return { logs, truncated: true };
     const text = entry.args.map(renderLogArg).join(' ');
-    if (chars + text.length > MAX_LOG_CHARS) return { logs, truncated: true };
+    if (chars + text.length > MAX_LOG_CHARS) {
+      // Clip the entry that crosses the budget rather than dropping it, so
+      // one huge log line does not hide everything before the cut.
+      logs.push({ level: entry.level, text: text.slice(0, MAX_LOG_CHARS - chars) });
+      return { logs, truncated: true };
+    }
     chars += text.length;
     logs.push({ level: entry.level, text });
   }
@@ -126,11 +131,37 @@ function shapeLogs(entries: readonly LogEntry[]): { logs: LogLine[]; truncated: 
 }
 
 function shapeValue(value: unknown): { value: unknown; value_truncated: boolean; value_preview?: string } {
-  if (value === undefined) return { value: null, value_truncated: false };
+  // `value` came out of vm.dump, which yields plain JSON data, so this cannot throw.
   const json = JSON.stringify(value);
   if (json === undefined) return { value: null, value_truncated: false };
   if (json.length <= MAX_VALUE_CHARS) return { value, value_truncated: false };
   return { value: null, value_truncated: true, value_preview: json.slice(0, 2_000) };
+}
+
+/**
+ * Wraps the script so a returned promise is awaited by the sandbox's own
+ * promise settling and its value comes back tagged: a promise nested in the
+ * value dumps as `{}`, so the tag is the only way to tell the two apart.
+ * A direct eval inside a function gives the script its own variable
+ * environment and keeps its completion value (the flow script node does the
+ * same). Plain JS: the TypeScript strip needs esbuild-wasm, which does not
+ * initialise under Node.
+ */
+function wrapScript(code: string): string {
+  return `(function () { var r = eval(${JSON.stringify(code)}); return r instanceof Promise ? r.then(function (v) { return { settled: v }; }) : { sync: r }; })()`;
+}
+
+function unwrapValue(dumped: unknown): unknown {
+  // The wrapper always returns an object; anything else is QuickJS's dump
+  // falling back to String() for a value JSON cannot carry (a BigInt, say).
+  if (typeof dumped !== 'object' || dumped === null) {
+    throw new Error("The script's value is not JSON-serialisable (BigInt, cyclic or host value).");
+  }
+  const v = dumped as { sync?: unknown; type?: string; value?: { settled?: unknown } };
+  if ('sync' in v) return v.sync;
+  if (v.type === 'fulfilled') return v.value?.settled;
+  if (v.type === 'pending') throw new Error('The script returned a promise that never settled (only bim host calls resolve; there are no timers).');
+  return undefined;
 }
 
 async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolContext) {
@@ -141,29 +172,39 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
   }
   const timeoutMs = intInput(input.timeout_ms, 'timeout_ms', 100, MAX_TIMEOUT_MS, DEFAULT_TIMEOUT_MS);
   const memoryMb = intInput(input.memory_mb, 'memory_mb', 8, MAX_MEMORY_MB, DEFAULT_MEMORY_MB);
-  if (ctx.signal.aborted) throw new ToolExecutionError({ code: ToolErrorCode.CANCELLED, message: 'Cancelled before the script started.' });
+  const cancelled = () => new ToolExecutionError({ code: ToolErrorCode.CANCELLED, message: 'Script cancelled by the client.' });
+  if (ctx.signal.aborted) throw cancelled();
 
-  const before = pendingMutationCount(model);
+  // Read mode has no write namespaces, so it cannot queue anything. In mutate
+  // mode the count is the model's pending-history growth over the run; a
+  // concurrent tool call editing the same model would be counted too.
+  const before = mode === 'mutate' ? pendingMutationCount(model) : 0;
+  const queued = () => (mode === 'mutate' ? pendingMutationCount(model) - before : 0);
   const sandbox = await createSandbox(model.bim, {
     permissions: mode === 'mutate' ? MUTATE_PERMISSIONS : READ_PERMISSIONS,
     limits: { timeoutMs, memoryBytes: memoryMb * 1024 * 1024 },
   });
-  const timedOut = () => new ToolExecutionError({ code: ToolErrorCode.TIMEOUT, message: `Script exceeded timeout_ms (${timeoutMs}).` });
   let stopReason: 'cancelled' | 'timeout' | null = null;
   const stop = (reason: 'cancelled' | 'timeout') => { stopReason ??= reason; sandbox.dispose(); };
   const onAbort = () => stop('cancelled');
-  ctx.signal.addEventListener('abort', onAbort, { once: true });
   const timer = setTimeout(() => stop('timeout'), timeoutMs + HOST_GRACE_MS);
+  ctx.signal.addEventListener('abort', onAbort, { once: true });
+  // A cancel that landed while the sandbox was being created fired no event.
+  if (ctx.signal.aborted) onAbort();
   try {
-    // A direct eval inside a function gives the script its own variable
-    // environment and still returns its completion value (the flow script
-    // node does the same). Plain JS: the TypeScript strip needs esbuild-wasm,
-    // which does not initialise under Node.
-    const wrapped = `(function () { return eval(${JSON.stringify(code)}); })()`;
-    const result = await sandbox.eval(wrapped, { typescript: false, filename: 'script_run.js' });
+    if (stopReason) throw cancelled();
+    const result = await sandbox.eval(wrapScript(code), { typescript: false, filename: 'script_run.js' });
     const { logs, truncated } = shapeLogs(result.logs);
-    const mutationsQueued = pendingMutationCount(model) - before;
-    const shaped = shapeValue(result.value);
+    const mutationsQueued = queued();
+    let shaped: ReturnType<typeof shapeValue>;
+    try {
+      shaped = shapeValue(unwrapValue(result.value));
+    } catch (err) {
+      throw new ToolExecutionError({
+        code: ToolErrorCode.INVALID_INPUT, message: err instanceof Error ? err.message : String(err),
+        details: { logs, mutations_queued: mutationsQueued },
+      });
+    }
     const summary = [
       `Script ran in ${result.durationMs} ms on model '${model.id}' (${mode}).`,
       mutationsQueued > 0 ? `${mutationsQueued} mutation(s) queued; persist with export_ifc or model_save.` : '',
@@ -174,19 +215,25 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
       duration_ms: result.durationMs, mutations_queued: mutationsQueued,
     });
   } catch (err) {
-    if (stopReason === 'cancelled') throw new ToolExecutionError({ code: ToolErrorCode.CANCELLED, message: 'Script cancelled by the client.' });
+    if (err instanceof ToolExecutionError) throw err;
+    const details = { logs: err instanceof ScriptError ? shapeLogs(err.logs).logs : [], mutations_queued: queued() };
     // The sandbox reports an interrupt only as the message 'interrupted' and
-    // takes no AbortSignal; the host timer and this match stand in for that.
-    if (stopReason === 'timeout' || (err instanceof ScriptError && err.message === 'interrupted')) throw timedOut();
-    if (err instanceof ScriptError) {
+    // takes no AbortSignal; the elapsed time tells a real interrupt from a
+    // script that threw Error('interrupted') itself.
+    const interrupted = err instanceof ScriptError && err.message === 'interrupted' && err.durationMs >= timeoutMs;
+    if (err instanceof ScriptError && !interrupted && stopReason === null) {
       throw new ToolExecutionError({
         code: ToolErrorCode.INVALID_INPUT,
         message: `Script error: ${err.message}`,
-        details: { logs: shapeLogs(err.logs).logs, mutations_queued: pendingMutationCount(model) - before },
+        details,
         hint: mode === 'read' && /\bbim\.(mutate|store)\b/.test(code)
           ? 'script_run has no bim.mutate or bim.store; use script_run_mutate to edit the model.'
           : undefined,
       });
+    }
+    if (stopReason === 'cancelled') throw new ToolExecutionError({ code: ToolErrorCode.CANCELLED, message: 'Script cancelled by the client.', details });
+    if (interrupted || stopReason === 'timeout') {
+      throw new ToolExecutionError({ code: ToolErrorCode.TIMEOUT, message: `Script exceeded timeout_ms (${timeoutMs}).`, details });
     }
     throw err;
   } finally {

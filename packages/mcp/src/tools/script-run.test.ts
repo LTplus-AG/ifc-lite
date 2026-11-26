@@ -143,6 +143,40 @@ describe('script_run', () => {
     expect(String(result.structuredContent?.value_preview).length).toBeLessThanOrEqual(2_000);
   });
 
+  it('returns the resolved value of a returned promise', async () => {
+    expect((await run('(async () => 7)()')).structuredContent?.value).toBe(7);
+    expect((await run("({ type: 'fulfilled', value: 3 })")).structuredContent?.value).toEqual({ type: 'fulfilled', value: 3 });
+    await expect(run('new Promise(() => {})')).rejects.toMatchObject({ code: 'INVALID_INPUT', message: expect.stringMatching(/never settled/) });
+    await expect(run("(async () => { throw new Error('boom') })()")).rejects.toMatchObject({ message: expect.stringMatching(/boom/) });
+  });
+
+  it('reports a non-JSON value as a script error with its logs', async () => {
+    const err = await runError("console.log('before'); 1n");
+    expect(err.code).toBe('INVALID_INPUT');
+    expect(err.message).toMatch(/not JSON-serialisable/);
+    expect(err.details?.logs).toEqual([{ level: 'log', text: 'before' }]);
+  });
+
+  it('does not let a script fake a timeout', async () => {
+    const err = await runError("throw new Error('interrupted')");
+    expect(err.code).toBe('INVALID_INPUT');
+  });
+
+  it('clips an oversized log line instead of dropping it', async () => {
+    const result = await run("console.log('a'.repeat(70000)); console.log('small'); 1");
+    const logs = result.structuredContent?.logs as Array<{ text: string }>;
+    expect(result.structuredContent?.logs_truncated).toBe(true);
+    expect(logs).toHaveLength(1);
+    expect(logs[0].text.length).toBe(64 * 1024);
+  });
+
+  it('honours a cancel that lands while the sandbox is being created', async () => {
+    const ctl = new AbortController();
+    const pending = scriptRunTool.handler({ code: 'for (;;) {}' }, { ...ctx, signal: ctl.signal });
+    ctl.abort();
+    await expect(pending).rejects.toMatchObject({ code: 'CANCELLED' });
+  });
+
   it('refuses out-of-range limits', async () => {
     await expect(run('1', { timeout_ms: 10 })).rejects.toMatchObject({ code: 'INVALID_INPUT' });
     await expect(run('1', { memory_mb: 4096 })).rejects.toMatchObject({ code: 'INVALID_INPUT' });
@@ -166,6 +200,17 @@ describe('script_run_mutate', () => {
     expect(result.structuredContent).toMatchObject({ mode: 'mutate', value: ['Renamed', 'Wall B'], mutations_queued: 2 });
     const diff = await buildDefaultToolRegistry().get('mutation_diff')!.handler({}, ctx);
     expect(diff.structuredContent?.count).toBe(2);
+  });
+});
+
+describe('script_run_mutate on timeout', () => {
+  it('says how many edits stayed queued', async () => {
+    const err = await runError(`
+      bim.mutate.setAttribute(bim.query.byType('IfcDoor')[0], 'Name', 'Edited');
+      for (;;) {}
+    `, { timeout_ms: 200 }, scriptRunMutateTool);
+    expect(err.code).toBe('TIMEOUT');
+    expect(err.details?.mutations_queued).toBe(1);
   });
 });
 

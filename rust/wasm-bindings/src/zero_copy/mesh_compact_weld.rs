@@ -322,3 +322,10 @@ fn lattice_turn(nodes: &[[u16; 3]], [a, b, c]: [u16; 3], source: [f64; 3], sourc
     }
     Turn::Kept
 }
+
+/// The renderer computes `Math.cos((20 * Math.PI) / 180) ** 2` (`quantize.ts`): the two stay bit for bit.
+#[cfg(test)]
+#[test]
+fn min_lattice_cos2_is_the_renderers_20_degrees() {
+    assert_eq!(MIN_LATTICE_COS2, 20f64.to_radians().cos().powi(2));
+}

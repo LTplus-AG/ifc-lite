@@ -187,7 +187,11 @@ export class SceneCompact {
       decoded.push(mesh);
     }
     this.queue = [];
-    if (queue.length === 0) { this.toBuckets(decoded); return true; }
+    if (queue.length === 0) {
+      this.trimAfterDrain = false; // nothing was paged: a later stream's pages are its own to trim
+      this.toBuckets(decoded);
+      return true;
+    }
     try {
       this.store.append(queue, device, pipeline, (mesh, ref) => {
         const c = ref.payload.cells, r = ref.row * 3;

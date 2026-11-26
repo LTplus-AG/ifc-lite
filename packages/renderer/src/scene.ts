@@ -324,7 +324,7 @@ export class Scene {
   // 12-byte quantized batch vertices (issue #1682 phase 6): off unless the
   // renderer probed its quantized pipelines and enabled it.
   private quantizedBatchesEnabled = false;
-  // Quantized pipeline probes in flight (`awaitQuantizedPipelines`). Compact meshes wait for their outcome
+  // Quantized pipeline probes in flight (`beginQuantizedProbe`). Compact meshes wait for their outcome
   // instead of decoding to f32: a load that races the probe would otherwise decode whatever arrived first.
   private quantizedProbes = 0;
   // True while a (possibly time-sliced) finalize rebuild is running. The
@@ -595,13 +595,14 @@ export class Scene {
   get quantizedBatchesPending(): boolean { return this.quantizedProbes > 0; }
 
   /**
-   * Hold compact meshes queued until `probe` (a quantized pipeline validation, whose outcome the
-   * caller passes to `setQuantizedBatches`) settles. Settled, the queue drains to pages or, when the
-   * pipelines stay off, decodes to buckets.
+   * A quantized pipeline probe starts: compact meshes stay queued, still compact, until the returned
+   * function is called. Call it after the probe's outcome reached `setQuantizedBatches` (or the probe
+   * was abandoned): the queue then drains to pages or, with the pipelines off, decodes to buckets.
    */
-  awaitQuantizedPipelines<T>(probe: Promise<T>): Promise<T> {
+  beginQuantizedProbe(): () => void {
     this.quantizedProbes++;
-    return probe.finally(() => { this.quantizedProbes--; });
+    let settled = false;
+    return () => { if (!settled) { settled = true; this.quantizedProbes--; } };
   }
 
   /** The draw origin of the textured drawable rendering `meshData`, or null

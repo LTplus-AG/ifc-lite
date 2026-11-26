@@ -72,7 +72,7 @@ describe('buildSpatialIndex', () => {
     // JS heap flag-on). The row carries the f64 `origin + position` box of the source vertices.
     const bounds = new Float64Array([0, 0, 0, 0, 0, 0, 99, -1, -1, 101, 1, 1]);
     const compact = { payload: { records: new Uint8Array(0), indices: new Uint16Array(0), table: new Uint32Array(14),
-      windows: new Float64Array(6), bounds, cells: new Int32Array(6) }, row: 1 };
+      windows: new Float64Array(6), bounds, cells: new Int32Array(6) }, row: 1, origin: [100, 0, 0] as const };
     const shell = { expressId: 42, color: [1, 1, 1, 1], origin: [100, 0, 0] } as unknown as MeshData;
     for (const key of ['positions', 'normals', 'indices']) {
       Object.defineProperty(shell, key, { enumerable: true, get: () => { throw new Error(`${key} decoded`); } });
@@ -82,6 +82,10 @@ describe('buildSpatialIndex', () => {
       expect(bvh.queryAABB(box(99.5, -0.5, -0.5, 100.5, 0.5, 0.5))).toEqual([42]);
       expect(bvh.queryAABB(box(-1, -1, -1, 1, 1, 1))).toEqual([]);
     }
+    // Moved by rewriting its origin after adoption (an RTC re-anchor): its positions, and so its box, follow.
+    shell.origin = [100, 50, 0];
+    expect(buildSpatialIndex([shell]).queryAABB(box(99.5, 49.5, -0.5, 100.5, 50.5, 0.5))).toEqual([42]);
+    expect(buildSpatialIndex([shell]).queryAABB(box(99.5, -0.5, -0.5, 100.5, 0.5, 0.5))).toEqual([]);
   });
 
   it('treats an absent origin as no offset', () => {

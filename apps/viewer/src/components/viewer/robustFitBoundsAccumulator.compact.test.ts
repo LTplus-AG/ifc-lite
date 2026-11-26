@@ -71,3 +71,10 @@ it('weighs a compact mesh by its source vertices, so the robust trim drops what 
   assert.deepEqual(robustFitBoundsFull([...near.map((p) => p.compact), far.compact]), f32);
   assert.deepEqual(createRobustFitBoundsAccumulator().update([...near.map((p) => p.compact), far.compact]), f32);
 });
+
+it('frames a compact mesh where its origin moved it after encoding, as the f32 scan does', () => {
+  const { f32, compact } = pair([10, 0, 0], [[0, 0, 0], [2, 0, 0], [0, 3, 0]]);
+  f32.origin = [12, 5, -1];
+  compact.origin = [12, 5, -1]; // an RTC re-anchor rewrites the origin; positions stay relative to it
+  assert.deepEqual(robustFitBoundsFull([compact]), robustFitBoundsFull([f32]));
+});

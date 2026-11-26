@@ -668,8 +668,7 @@ describe('compact meshes in the scene', () => {
     // ended with 0 pages, advanced_model with 0 or 59-90 between loads of one build).
     const gpu = fakeGpu(), scene = new Scene();
     await loadCompactPages();
-    let settleProbe!: (ok: boolean) => void;
-    const probe = scene.awaitQuantizedPipelines(new Promise<boolean>((resolve) => { settleProbe = resolve; }));
+    const settle = scene.beginQuantizedProbe();
     assert.equal(scene.quantizedBatchesPending, true);
     const meshes = compactBatch([{ expressId: 401, at: [0, 0, 0], size: 1, color: GREY }, { expressId: 402, at: [2, 0, 0], size: 1, color: RED }]);
     scene.queueMeshes(meshes);
@@ -680,8 +679,9 @@ describe('compact meshes in the scene', () => {
     assert.ok(meshes.every((mesh) => mesh.compact), 'still compact');
     assert.equal(decoded(), 0);
 
-    settleProbe(true);
-    scene.setQuantizedBatches(await probe);
+    scene.setQuantizedBatches(true); // the probe's outcome is applied before its hold is released
+    settle();
+    settle(); // a second call is a no-op
     assert.equal(scene.quantizedBatchesPending, false);
     flushAll(scene, gpu);
     assert.deepEqual(entitiesOf(pages(scene)), [401, 402]);
@@ -695,12 +695,12 @@ describe('compact meshes in the scene', () => {
   it('decode the waiting queue to buckets when the probe finds no quantized pipelines', async () => {
     const gpu = fakeGpu(), scene = new Scene();
     await loadCompactPages();
-    const probe = scene.awaitQuantizedPipelines(Promise.reject(new Error('pipeline validation failed')));
+    const settle = scene.beginQuantizedProbe();
     scene.queueMeshes(compactBatch([{ expressId: 411, at: [0, 0, 0], size: 1, color: GREY }]));
     scene.flushPending(gpu.device, gpu.pipeline, 0);
+    scene.finalizeStreaming(gpu.device, gpu.pipeline);
     assert.equal(scene.getBatchedMeshes().length, 0);
-    await assert.rejects(probe, /pipeline validation failed/);
-    assert.equal(scene.quantizedBatchesPending, false, 'a failed probe settles too');
+    settle(); // the probe failed: the pipelines stay off
     flushAll(scene, gpu);
     assert.deepEqual(entitiesOf(buckets(scene)), [411]);
     assert.equal(pages(scene).length, 0);

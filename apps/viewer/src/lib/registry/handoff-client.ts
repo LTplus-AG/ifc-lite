@@ -6,8 +6,7 @@ import { OciClient, OciError, buildImageManifest, parseReference, type OciDescri
 import { RegistryError, releaseName, repositoryName } from './protocol';
 import { registryOrigin, type ArtifactSource } from './handoff-contract';
 import { resourceAllows, type ResourceSession } from './handoff-auth';
-const MAX_IFC_BYTES = 512 * 1024 * 1024;
-const IFC_ARTIFACT_TYPE = 'application/vnd.ifc-lite.ifc.v1';
+import { IFC_ARTIFACT_TYPE, MAX_IFC_BYTES } from './artifacts';
 const VERSIONS_PER_PAGE = 12;
 
 export interface RepositoryVersion {
@@ -53,14 +52,14 @@ export async function browseRepositoryVersions(
   return { versions: versions.filter(version => version !== undefined), remaining: tags.slice(VERSIONS_PER_PAGE) };
 }
 
-export async function pullHandoff(source: ArtifactSource, session: ResourceSession, signal?: AbortSignal): Promise<{ bytes: Uint8Array<ArrayBuffer>; filename: string; digest: string }> {
+export async function pullHandoff(source: ArtifactSource, session: ResourceSession, signal?: AbortSignal): Promise<{ bytes: Uint8Array<ArrayBuffer>; filename: string }> {
   const { client, reference } = connection(session, source.registry, source.repository, 'pull');
   if (!/^sha256:[a-f0-9]{64}$/.test(source.digest)) throw new RegistryError('Choose an exact published version.');
   const ref = reference(`@${source.digest}`), manifest = await client.manifest(ref, { signal });
   const layer = ifcLayer(manifest);
   if (!layer) throw new RegistryError('Choose a version containing a supported IFC package.');
   const bytes = await client.blob(ref, layer, { signal, maxBytes: MAX_IFC_BYTES });
-  return { bytes: new Uint8Array(bytes), filename: layer.annotations?.['org.opencontainers.image.title']?.split(/[\\/]/).pop() || 'model.ifc', digest: manifest.digest };
+  return { bytes: new Uint8Array(bytes), filename: layer.annotations?.['org.opencontainers.image.title']?.split(/[\\/]/).pop() || 'model.ifc' };
 }
 export async function pushHandoff(registry: string, repository: string, tag: string, bytes: Uint8Array<ArrayBuffer>, filename: string, session: ResourceSession, signal?: AbortSignal): Promise<ArtifactSource> {
   releaseName(tag);

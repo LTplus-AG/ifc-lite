@@ -4,6 +4,7 @@
 
 import { createAuthorizationRequest, waitForOAuthCallback } from '@ifc-lite/oauth-pkce';
 
+import { REGISTRY_CALLBACK_PATH } from './oauth';
 import { RegistryError, repositoryName, responseBytes } from './protocol';
 import {
   connectionFor, HANDOFF_CALLBACK, handoffContext, readHandoff, registryConnectionIdentity, registryConnections, webAddress,
@@ -25,7 +26,6 @@ interface Pending {
   redirectUri: string; state: string; verifier: string; scope: string; created: number;
 }
 const PENDING = 'ifc-lite:oci-handoff:pkce';
-export const PUSH_CALLBACK = '/oauth/registry/callback';
 const TIMEOUT = 5 * 60 * 1000;
 
 function validateRegistryCallback(href: string, redirectUri: string, state: string, issuer: string, issuerRequired: boolean): string {
@@ -182,7 +182,7 @@ async function repositoryGrant(connection: RegistryConnection, authorization: Au
   if (!popup) throw new RegistryError('Allow the file-store sign-in popup and try again.');
   try {
     const metadata = await authorizationMetadata(connection, signal);
-    const redirectUri = new URL(PUSH_CALLBACK, window.location.origin).href;
+    const redirectUri = new URL(REGISTRY_CALLBACK_PATH, window.location.origin).href;
     const request = await createAuthorizationRequest({ authorizationEndpoint: metadata.authorization_endpoint, clientId: connection.client_id,
       redirectUri, scope: authorization.scope, extraParams: { resource: authorization.resource } });
     signal.throwIfAborted();

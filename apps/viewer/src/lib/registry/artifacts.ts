@@ -7,7 +7,7 @@ import { RegistryError, releaseName, repositoryName, responseBytes } from './pro
 
 export const IFC_ARTIFACT_TYPE = 'application/vnd.ifc-lite.ifc.v1';
 export const OCI_MANIFEST_TYPE = 'application/vnd.oci.image.manifest.v1+json';
-const MAX_IFC_BYTES = 512 * 1024 * 1024;
+export const MAX_IFC_BYTES = 512 * 1024 * 1024;
 const SHA256 = /^sha256:[a-f0-9]{64}$/;
 /** Bad artifact metadata may be skipped without hiding registry or session failures. */
 class UnreadableReleaseError extends RegistryError {}

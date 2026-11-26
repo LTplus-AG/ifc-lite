@@ -136,6 +136,12 @@ export function handoffContext(value: unknown, connections = registryConnections
   }
   return { protocol: HANDOFF_PROTOCOL, source: { registry: source.registry, repository: repositoryName(source.repository), digest: source.digest }, intent: value.intent, ...(destination ? { destination } : {}) };
 }
+/** The `/open-artifact` link that `readHandoff` decodes. */
+export function handoffLink(source: ArtifactSource, intent: OciHandoff['intent']): string {
+  const bytes = new TextEncoder().encode(JSON.stringify({ protocol: HANDOFF_PROTOCOL, source, intent }));
+  const encoded = btoa(String.fromCharCode(...bytes)).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
+  return `${HANDOFF_PATH}#handoff=${encoded}`;
+}
 export function readHandoff(href: string, connections = registryConnections()): OciHandoff {
   const url = new URL(href), params = new URLSearchParams(url.hash.slice(1));
   const encoded = params.get('handoff');

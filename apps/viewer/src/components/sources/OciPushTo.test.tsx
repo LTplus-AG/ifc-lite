@@ -6,7 +6,7 @@ import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
 import { act } from 'react';
-import { cleanup, click, render, type } from '@/test/render';
+import { cleanup, click, render, type, waitFor } from '@/test/render';
 import { editedRegistryModel } from '@/test/registry-model-fixture';
 import { fixtureModel } from '@/test/store-fixture';
 import { useHandoffWorkspace } from '@/lib/registry/handoff-workspace';
@@ -24,7 +24,6 @@ afterEach(async () => {
   useHandoffWorkspace.setState(useHandoffWorkspace.getInitialState(), true);
   await closeAll();
 });
-async function waitFor(predicate: () => boolean) { for (let i=0;i<100;i++) { if (predicate()) return; await act(async () => { await new Promise(r => setTimeout(r,10)); }); } assert(predicate(),'operation should complete'); }
 
 function allowBrowser(handler: Handler): Handler {
   return (req, res) => {
@@ -105,7 +104,7 @@ test('Push to publishes successive IFC versions and Browse reopens each pinned d
   type(field('-folder'), repository);
   type(field('-version'), 'model-v1');
   click(button('Push to…'));
-  await waitFor(() => Boolean(link('Open saved version')));
+  await waitFor(() => Boolean(link('Open saved version')), 'the operation should complete');
   const first = link('Open saved version')!.href;
   assert.equal(readHandoff(first).source.digest, fixture.store.tags.get('model-v1'));
   assert.equal((await openVersion(first)).name, 'Registry persisted wall');
@@ -116,7 +115,7 @@ test('Push to publishes successive IFC versions and Browse reopens each pinned d
   });
   type(field('-version'), 'model-v2');
   click(button('Push to…'));
-  await waitFor(() => Boolean(link('Open saved version')));
+  await waitFor(() => Boolean(link('Open saved version')), 'the operation should complete');
   const second = link('Open saved version')!.href;
   assert.notEqual(second, first);
   assert.equal((await openVersion(second)).name, 'Second registry version');
@@ -133,10 +132,10 @@ test('Push to publishes successive IFC versions and Browse reopens each pinned d
   assert.equal(button('Push to…').disabled, true);
 
   click(button('Browse versions'));
-  await waitFor(() => Boolean(link('edited.ifc · model-v1')));
+  await waitFor(() => Boolean(link('edited.ifc · model-v1')), 'the operation should complete');
   assert.equal(link('edited.ifc · model-v2'), undefined);
   click(button('More versions'));
-  await waitFor(() => Boolean(link('edited.ifc · model-v2')));
+  await waitFor(() => Boolean(link('edited.ifc · model-v2')), 'the operation should complete');
   const firstPublished = await openVersion(link('edited.ifc · model-v1')!.href);
   const secondPublished = await openVersion(link('edited.ifc · model-v2')!.href);
   assert.equal(firstPublished.source.digest, fixture.store.tags.get('model-v1'));
@@ -182,7 +181,7 @@ test('browsing reauthorizes after the saved file store changes while Cloud Sourc
     assert(folder && browse);
     type(folder, repository);
     click(browse);
-    await waitFor(() => browse.textContent !== 'Browse versions' || Boolean(ui.querySelector('[role=alert]')));
+    await waitFor(() => browse.textContent !== 'Browse versions' || Boolean(ui.querySelector('[role=alert]')), 'the operation should complete');
     assert.equal(ui.querySelector('[role=alert]'), null);
     cleanup();
   }
@@ -242,7 +241,7 @@ test('a grant for superseded file-store settings is neither cached nor used (#96
     assert(folder && browse);
     type(folder, repository);
     click(browse);
-    await waitFor(() => Boolean(ui.querySelector('[role=alert]')));
+    await waitFor(() => Boolean(ui.querySelector('[role=alert]')), 'the operation should complete');
     assert.match(ui.querySelector('[role=alert]')!.textContent ?? '', /file-store settings changed/);
     assert.equal(server.requests.filter(request => request.url === tagsPath).length, 0);
     assert.equal(useHandoffWorkspace.getState().repositorySession, undefined);

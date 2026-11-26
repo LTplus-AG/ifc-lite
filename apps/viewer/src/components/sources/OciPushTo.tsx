@@ -10,24 +10,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { registerEnglish, useTranslation } from '@/i18n';
 import { registryEn } from '@/i18n/catalogues/registry.en';
 import { useViewerStore } from '@/store';
-import { exportRegistryModel } from '@/lib/registry/export-model';
+import { exportRegistryModel, registryExportModelId } from '@/lib/registry/export-model';
 import { authorizeRepository, resourceAllows, type ResourceSession } from '@/lib/registry/handoff-auth';
 import { browseRepositoryVersions, pushHandoff } from '@/lib/registry/handoff-client';
 import {
-  connectionFor, HANDOFF_PATH, HANDOFF_PROTOCOL, registryConnectionIdentity, registryConnections,
-  type ArtifactSource, type OciHandoff, type RegistryConnection,
+  connectionFor, handoffLink, registryConnectionIdentity, registryConnections, type RegistryConnection,
 } from '@/lib/registry/handoff-contract';
 import { clearFileStoreSessions, useHandoffWorkspace } from '@/lib/registry/handoff-workspace';
 import { FileStoreConnectionForm } from './FileStoreConnectionForm';
 
 registerEnglish(registryEn);
-
-function versionLink(source: ArtifactSource, intent: OciHandoff['intent']): string {
-  const context = { protocol: HANDOFF_PROTOCOL, source, intent };
-  const bytes = new TextEncoder().encode(JSON.stringify(context));
-  const encoded = btoa(String.fromCharCode(...bytes)).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
-  return `${HANDOFF_PATH}#handoff=${encoded}`;
-}
 
 /** Browse and publish versions in a known OCI repository. */
 export function OciPushTo({ disabled = false, onBusyChange }: {
@@ -48,7 +40,7 @@ export function OciPushTo({ disabled = false, onBusyChange }: {
   const [error, setError] = useState('');
   const pending = useRef<AbortController | null>(null);
   const model = useViewerStore(state => {
-    const id = state.activeModelId ?? (state.models.size === 1 ? state.models.keys().next().value : undefined);
+    const id = registryExportModelId(state);
     return id ? state.models.get(id) : undefined;
   });
   const saved = savedResult?.modelId === model?.id ? savedResult?.artifact : undefined;
@@ -123,9 +115,7 @@ export function OciPushTo({ disabled = false, onBusyChange }: {
     if (!model) return;
     return run('push', async (session, signal) => {
       clearSaved();
-      const current = useViewerStore.getState();
-      const activeId = current.activeModelId ?? (current.models.size === 1 ? current.models.keys().next().value : undefined);
-      if (activeId !== model.id) throw new Error(t('registry.push.modelChanged'));
+      if (registryExportModelId(useViewerStore.getState()) !== model.id) throw new Error(t('registry.push.modelChanged'));
       const source = await exportRegistryModel();
       signal.throwIfAborted();
       const artifact = await pushHandoff(registry, repository, tag, source.bytes, source.filename, session, signal);
@@ -169,7 +159,7 @@ export function OciPushTo({ disabled = false, onBusyChange }: {
     {page && <>
       {page.versions.length > 0 && <ul className="grid gap-1">
         {page.versions.map(({ tag, title, digest }) => <li key={tag}>
-          <a className="break-all text-sm underline" href={versionLink({ registry, repository, digest }, 'view')} target="_blank" rel="noopener noreferrer">
+          <a className="break-all text-sm underline" href={handoffLink({ registry, repository, digest }, 'view')} target="_blank" rel="noopener noreferrer">
             {title === tag ? tag : `${title} · ${tag}`}
           </a>
         </li>)}
@@ -191,7 +181,7 @@ export function OciPushTo({ disabled = false, onBusyChange }: {
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
     {saved && <>
       <output className="text-sm">{t('registry.push.saved')}</output>
-      <a className="text-sm underline" href={versionLink(saved, 'edit')} target="_blank" rel="noopener noreferrer">{t('registry.reopen')}</a>
+      <a className="text-sm underline" href={handoffLink(saved, 'edit')} target="_blank" rel="noopener noreferrer">{t('registry.reopen')}</a>
       <details>
         <summary className="cursor-pointer text-xs">{t('registry.details')}</summary>
         <p className="break-all text-xs">{saved.registry}/{saved.repository}@{saved.digest}</p>

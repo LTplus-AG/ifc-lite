@@ -9,6 +9,7 @@
 import { describe, expect, it } from 'vitest';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
+import { PropertyValueType } from '@ifc-lite/data';
 import { MergedExporter } from './merged-exporter.js';
 import { StepExporter } from './step-exporter.js';
 import { convertStepLine } from './schema-converter.js';
@@ -110,6 +111,17 @@ describe('an edited IfcRelSpaceBoundary with no element (#11457)', () => {
     const store = await parse(model('IFC2X3', `${CLASS}\n${MIXED}\n${DATA}`));
     const view = new MutablePropertyView(null, 'm');
     view.setAttribute(20, 'Name', 'Edited');
+    const text = out(new StepExporter(store, view).export({ schema: 'IFC4' }).content);
+    const defined = new Set([...text.matchAll(/^#(\d+)=/gm)].map((m) => m[1]));
+    const named = [...text.slice(text.indexOf('DATA;')).matchAll(/#(\d+)(?!\d|=)/g)].map((m) => m[1]);
+    expect(named.filter((id) => !defined.has(id))).toEqual([]);
+    expect(ids(text)).toEqual(['#20', '#21']);
+  });
+
+  it('is written as before when a property edit gives it a generated set, which names it', async () => {
+    const store = await parse(model('IFC2X3', DATA));
+    const view = new MutablePropertyView(null, 'm');
+    view.setProperty(20, 'Pset_X', 'P', 'v', PropertyValueType.String);
     const text = out(new StepExporter(store, view).export({ schema: 'IFC4' }).content);
     const defined = new Set([...text.matchAll(/^#(\d+)=/gm)].map((m) => m[1]));
     const named = [...text.slice(text.indexOf('DATA;')).matchAll(/#(\d+)(?!\d|=)/g)].map((m) => m[1]);

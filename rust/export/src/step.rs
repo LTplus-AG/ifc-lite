@@ -229,10 +229,11 @@ fn emit<W: std::io::Write>(
     let (muts_by_id, mut attribute_edits_refused) = prepared_attribute_edits(opts);
     // The boundaries an IFC2X3 upgrade leaves out (#11457): known before any record is written, so a relationship
     // naming one is narrowed, or withheld when nothing is left, instead of shipping a dangling reference. An edited
-    // boundary is judged by the conversion itself, which reads its edited line.
+    // boundary, or one a property edit gives a generated set, is written as before (`restrict`).
     let boundaries_left_out = if converting {
+        let property_hosts: HashSet<u32> = opts.property_mutations.iter().map(|m| m.express_id).collect();
         crate::schema_space_boundary::left_out(
-            order.iter().filter(|id| included.contains(id) && !muts_by_id.contains_key(id))
+            order.iter().filter(|id| included.contains(id) && !muts_by_id.contains_key(id) && !property_hosts.contains(id))
                 .filter_map(|id| line_of.get(id).map(|&(s, e)| (*id, String::from_utf8_lossy(&content[s..e])))),
             crate::schema_convert::canon(&source_schema), crate::schema_convert::canon(&schema))
     } else { HashSet::new() };

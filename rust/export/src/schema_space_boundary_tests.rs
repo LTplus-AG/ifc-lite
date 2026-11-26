@@ -102,3 +102,17 @@ fn an_edited_boundary_is_written_as_before() {
     assert!(out.contains("#20=IFCRELSPACEBOUNDARY('3XigBlHYfFnxzvgV9_gBmP',$,'Edited',"), "{out}");
     assert!(out.contains("(#20,#11),#31);"), "{out}");
 }
+
+/// #11457: a boundary a property edit gives a generated set is written as before, so the new
+/// IfcRelDefinesByProperties names a record that is there.
+#[test]
+fn a_boundary_with_a_property_edit_is_written_as_before() {
+    let options = StepOptions {
+        schema: Some("IFC4".into()),
+        property_mutations: vec![crate::step_api::PropMutation { express_id: 20, pset_name: "Pset_X".into(), prop_name: "P".into(), value: "IFCLABEL('v')".into() }],
+        ..StepOptions::default()
+    };
+    let (out, _, _) = export_step_with_diagnostics(model("IFC2X3", &data()).as_bytes(), &options).unwrap();
+    assert!(out.lines().any(|l| l.starts_with("#20=IFCRELSPACEBOUNDARY(")), "{out}");
+    assert!(out.lines().any(|l| l.contains("IFCRELDEFINESBYPROPERTIES(") && l.contains("(#20)")), "{out}");
+}

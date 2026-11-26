@@ -97,10 +97,12 @@ export function spaceBoundaryLoss(store: Parameters<typeof spaceBoundariesNotWri
 /**
  * Note the source boundaries a StepExporter pass leaves out (#11457) before any record is converted, so the
  * relationship filters scrub them from the records that name them. Only an unedited source boundary this pass
- * writes is judged; an edited, retyped or created one is written as before (`SpaceBoundaryElements.apply`).
+ * writes is judged; an edited, retyped or created one, or one that gets a generated property or quantity set, is
+ * written as before (`SpaceBoundaryElements.apply`).
  */
 export function noteBoundariesLeftOut(pass: ExportPass, store: Parameters<typeof spaceBoundariesNotWritten>[0]): void {
-  pass.enums.boundaries.note(spaceBoundariesNotWritten(store, pass.sourceSchema, pass.schema).filter((id) =>
+  const hosts = new Set([...pass.newPropertySets, ...pass.newQuantitySets].map((set) => set.entityId));
+  pass.enums.boundaries.note(spaceBoundariesNotWritten(store, pass.sourceSchema, pass.schema).filter((id) => !hosts.has(id) &&
     pass.willBeEmitted(id) && !pass.modifiedAttributes.has(id) && !pass.effective.isOverlayCreated(id)
       && !pass.effective.hasSourceMutation?.(id) && pass.effective.typeOf(id) === BOUNDARY));
 }

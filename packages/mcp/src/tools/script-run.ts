@@ -31,6 +31,8 @@ import { okResult, resolveModel } from './util.js';
 import { ToolErrorCode, ToolExecutionError, describeThrown } from '../errors.js';
 import { scopeAllows } from '../auth/scope.js';
 
+/** Error details for a call that stopped before any script code ran. */
+const NOTHING_RAN = { logs: [], logs_truncated: false, mutations_queued: 0 };
 const MAX_CODE_CHARS = 100_000;
 const DEFAULT_TIMEOUT_MS = 10_000;
 // Script code runs synchronously on the server's event loop, so this also
@@ -197,7 +199,7 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
     details: { kind: 'script', ...details },
     hint: hintFor(mode, code, message, { trusted, exportAllowed, mutateAvailable }),
   });
-  if (ctx.signal.aborted) throw cancelled();
+  if (ctx.signal.aborted) throw cancelled(NOTHING_RAN);
   const mutatePermissions: SandboxPermissions = { ...MUTATE_PERMISSIONS, export: exportAllowed };
 
   // Read mode has no write namespaces, so it cannot queue anything. In mutate
@@ -252,7 +254,7 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
     // A cancel that landed while the sandbox was being created fired no event.
     if (ctx.signal.aborted) onAbort();
     try {
-      if (ctx.signal.aborted) throw cancelled();
+      if (ctx.signal.aborted) throw cancelled(NOTHING_RAN);
       if (mode === 'mutate') before = new Set(journalMutationIds(model));
       const result = await sandbox.eval(wrapScript(code), { typescript: false, filename: 'internal-script-wrapper.js' });
       const { logs, truncated } = shapeLogs(result.logs);

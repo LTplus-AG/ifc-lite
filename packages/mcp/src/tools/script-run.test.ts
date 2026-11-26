@@ -230,7 +230,7 @@ describe('script_run', () => {
     const ctl = new AbortController();
     const pending = scriptRunTool.handler({ code: 'for (;;) {}' }, { ...ctx, signal: ctl.signal });
     ctl.abort();
-    await expect(pending).rejects.toMatchObject({ code: 'CANCELLED' });
+    await expect(pending).rejects.toMatchObject({ code: 'CANCELLED', details: { mutations_queued: 0, logs: [] } });
   });
 
   it('never ends a truncated preview on half a surrogate pair', async () => {
@@ -336,6 +336,7 @@ describe('script_run', () => {
     expect((await runError("throw 'InternalError: stack overflow'")).hint).toBeUndefined();
     expect((await runError("throw new Proxy({}, { getPrototypeOf() { throw new Error('interrupted'); } })")).code).toBe('INVALID_INPUT');
     expect((await run('typeof InternalError')).structuredContent?.value).toBe('undefined');
+    expect((await run("new Proxy({ a: 1 }, { getPrototypeOf() { throw new Error('x'); } })")).structuredContent?.value).toEqual({ a: 1 });
     // Global scope, as in the other sandbox hosts.
     expect((await run('var g = 5; globalThis.g')).structuredContent?.value).toBe(5);
     expect((await run('typeof arguments')).structuredContent?.value).toBe('undefined');

@@ -35,7 +35,9 @@ export const SERIALISER_SOURCE = `
   // A boxed value whose prototype was reset to Object.prototype or null is
   // written as an object, unlike native JSON; plain objects stay cheap.
   function unboxed(v) {
-    var proto = getProto(v);
+    // A Proxy's getPrototypeOf trap may throw: treat that as 'not a box'.
+    var proto;
+    try { proto = getProto(v); } catch (_) { return undefined; }
     if (proto === objectProto || proto === null || isArray(v)) return undefined;
     // Walk to a box prototype first, so a class instance costs a short chain
     // walk instead of four thrown brand checks; the chain is capped in case a
@@ -43,7 +45,7 @@ export const SERIALISER_SOURCE = `
     var u = -1;
     for (var hops = 0; proto !== null && hops < 64 && u < 0; hops++) {
       for (var b = 0; b < unbox.length; b++) if (proto === unbox[b][0]) u = b;
-      if (u < 0) proto = getProto(proto);
+      if (u < 0) { try { proto = getProto(proto); } catch (_) { return undefined; } }
     }
     if (u >= 0) {
       try { return { v: apply(unbox[u][1], v, []) }; } catch (e) {

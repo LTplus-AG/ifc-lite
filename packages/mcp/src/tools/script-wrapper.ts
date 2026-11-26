@@ -269,7 +269,7 @@ ${SERIALISER_SOURCE}
   defineProperty(safeJson, toStringTag, { value: 'JSON', configurable: true });
   defineProperty(glob, 'JSON', { value: safeJson, writable: true, configurable: true });
   var r, isPromise;
-  try { r = run(); isPromise = apply(isInstance, P, [r]); } catch (e) { return fail(e); }
+  try { r = run(); isPromise = instanceOf(P, r); } catch (e) { return fail(e); }
   if (!isPromise) return env(r);
   // Settle through a promise the wrapper owns: then() on the script's
   // promise builds its result via the script-controlled species constructor,

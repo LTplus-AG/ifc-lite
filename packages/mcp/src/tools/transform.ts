@@ -245,13 +245,11 @@ const modelExtract: Tool = {
   async handler(input, ctx) {
     const m = resolveStepModel(ctx, input.model_id as string | undefined, 'model_extract');
     const filePath = await resolveSafePath(input.file_path, ctx, 'write');
-    const products = [
-      ...nonBlank(input.global_ids as string[] | undefined),
-      ...((input.express_ids as number[] | undefined) ?? []).map((id) => `#${id}`),
-    ];
+    const globalIds = nonBlank(input.global_ids as string[] | undefined);
+    const expressIds = (input.express_ids as number[] | undefined) ?? [];
     const types = nonBlank(input.types as string[] | undefined).map(withIfcPrefix);
     const storeys = nonBlank(input.storeys as string[] | undefined);
-    if (products.length + types.length + storeys.length === 0) {
+    if (globalIds.length + expressIds.length + types.length + storeys.length === 0) {
       throw invalid('Select something: global_ids, express_ids, types or storeys.');
     }
     return withIfcBytes(m, async (bytes) => {
@@ -265,6 +263,10 @@ const modelExtract: Tool = {
       // source round-trip unchanged (same as the CLI).
       const parsed = parseStep(Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString('latin1'));
       let seeds: Set<number>;
+      // GlobalIds resolve as GlobalIds only, never as a digit string read as an express id.
+      const unknown = globalIds.find((g) => !parsed.guidToId.has(g));
+      if (unknown !== undefined) throw new ToolExecutionError({ code: ToolErrorCode.ENTITY_NOT_FOUND, message: `GlobalId not found in model: ${unknown}` });
+      const products = [...globalIds.map((g) => `#${parsed.guidToId.get(g)}`), ...expressIds.map((id) => `#${id}`)];
       try {
         // Each type and storey must contribute, or a typo hides behind another selector's matches.
         seeds = selectSubsetSeeds(parsed, { products, types, storeys, requireEachMatch: true });

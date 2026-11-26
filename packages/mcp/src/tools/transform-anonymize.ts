@@ -65,8 +65,9 @@ function anonymizeSeeds(m: LoadedModel, input: Record<string, unknown>): Set<num
     // Name first, then LongName, as extract's --storey resolves it.
     const longName = (s: (typeof storeys)[number]) =>
       m.bim.attributes(s.ref).find((a) => a.name === 'LongName')?.value;
-    const byName = storeys.filter((s) => s.name?.trim() === key);
-    const named = byName.length > 0 ? byName : storeys.filter((s) => String(longName(s) ?? '').trim() === key);
+    // An explicit '#id' is an id only, never a Name.
+    const byName = key.startsWith('#') ? [] : storeys.filter((s) => s.name?.trim() === key);
+    const named = byName.length > 0 || key.startsWith('#') ? byName : storeys.filter((s) => String(longName(s) ?? '').trim() === key);
     // A bare number that is one storey's id and another storey's name is ambiguous.
     if (byId && /^\d+$/.test(key) && named.some((s) => s !== byId)) {
       throw invalid(`storey: '${key}' is storey #${key} and the name of another storey; pass #${key} or a GlobalId.`);

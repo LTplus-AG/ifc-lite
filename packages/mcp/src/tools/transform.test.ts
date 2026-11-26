@@ -231,6 +231,16 @@ describe('model_extract', () => {
       .rejects.toMatchObject({ code: 'INVALID_INPUT', message: expect.stringContaining('IfcWal') });
   });
 
+  it('refuses a storey with nothing placed under it, and a digit-only global_ids entry', async () => {
+    await writeFile(join(tmp, 'empty-storey.ifc'), model('E', 'Level 1').replace('#80= IFCRELCONTAINEDINSPATIALSTRUCTURE', "#45= IFCLOCALPLACEMENT($,#21);\n#46= IFCBUILDINGSTOREY('0000000000000000000S2E',$,'Empty',$,$,#45,$,$,.ELEMENT.,9.);\n#80= IFCRELCONTAINEDINSPATIALSTRUCTURE"), 'utf-8');
+    ctx.registry.remove('a');
+    ctx.registry.add(await loadIfcModel(join(tmp, 'empty-storey.ifc'), { modelId: 'e' }));
+    await expect(call('model_extract', { storeys: ['Empty'], file_path: join(tmp, 'x.ifc') }))
+      .rejects.toMatchObject({ code: 'INVALID_INPUT', message: expect.stringContaining('Empty') });
+    await expect(call('model_extract', { global_ids: ['72'], file_path: join(tmp, 'x.ifc') }))
+      .rejects.toMatchObject({ code: 'ENTITY_NOT_FOUND' });
+  });
+
   it('treats blank selectors as no selection', async () => {
     await expect(call('model_extract', { global_ids: [''], storeys: [' '], file_path: join(tmp, 'x.ifc') }))
       .rejects.toMatchObject({ code: 'INVALID_INPUT', message: expect.stringContaining('Select something') });

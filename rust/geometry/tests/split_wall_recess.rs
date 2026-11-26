@@ -351,13 +351,18 @@ fn recess_turned_in_the_wall_frame_cuts_only_its_box_on_the_exact_route() {
 /// Turns the recess of `wall_with_finish` by `phi` degrees in plan about
 /// the vertical through its placement point, in a wall that stays on the axes.
 fn wall_with_turned_recess(phi: f64, recess: Recess, length: f64) -> String {
+    wall_with_recess_turned_against(0.0, phi, recess, length)
+}
+
+/// [`wall_with_turned_recess`] in a wall itself turned `wall` degrees in plan.
+fn wall_with_recess_turned_against(wall: f64, phi: f64, recess: Recess, length: f64) -> String {
     let (sin, cos) = phi.to_radians().sin_cos();
     let (axis, depth) = match recess {
         Recess::FromInterface => ("#15", format!("({:?},{cos:?},0.)", -sin)),
         Recess::ToInterfaceAtTop => ("#16", format!("({sin:?},{:?},0.)", -cos)),
     };
     let authored = format!("#111=IFCAXIS2PLACEMENT3D(#110,{axis},#17);");
-    let content = split_wall::wall_with_finish([0.0; 2], 0.0, 2.274, recess, length);
+    let content = split_wall::wall_with_finish([0.0; 2], wall, 2.274, recess, length);
     assert!(content.contains(&authored));
     content.replace(
         &authored,
@@ -372,6 +377,12 @@ fn wall_with_turned_recess(phi: f64, recess: Recess, length: f64) -> String {
 /// m³: its 1 m by 12 mm plan section clipped to the finish at y in
 /// [0.2, 0.212], over its 1 m height. The finish runs past the recess.
 fn turned_recess_removed_finish(phi: f64, recess: Recess) -> f64 {
+    turned_recess_removed_above(phi, recess, 0.2)
+}
+
+/// The material the turned recess removes from the wall at y in
+/// [`floor`, 0.212]: the finish alone for `floor` 0.2, the core too for 0.
+fn turned_recess_removed_above(phi: f64, recess: Recess, floor: f64) -> f64 {
     let (sin, cos) = phi.to_radians().sin_cos();
     // y = y0 + u sin + sense v cos for u in [0, 1] along the face, v in
     // [0, 0.012] along the depth.
@@ -384,7 +395,7 @@ fn turned_recess_removed_finish(phi: f64, recess: Recess) -> f64 {
         .map(|step| {
             let u = (step as f64 + 0.5) / STEPS as f64;
             // The v at which y reaches each finish face.
-            let a = (0.2 - y0 - u * sin) / (sense * cos);
+            let a = (floor - y0 - u * sin) / (sense * cos);
             let b = (0.212 - y0 - u * sin) / (sense * cos);
             (a.max(b).min(0.012) - a.min(b).max(0.0)).max(0.0)
         })
@@ -447,4 +458,70 @@ fn recess_turned_in_a_straight_wall_keeps_the_core_on_the_exact_route() {
     }
     let failures = turned_recess_in_a_straight_wall_failures();
     assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+/// Torn hosts and volumes off by more than 1.1 L over a sweep of recesses
+/// turned against near-axis walls: wall turns 0, ±0.5, 1 and 0.17 degrees,
+/// relative turns up to ±0.3 degrees, both recess kinds.
+fn recess_turned_against_a_wall_sweep() -> (usize, Vec<String>) {
+    let mut torn = 0;
+    let mut off = Vec::new();
+    for wall in [0.0, 0.5, 1.0, -0.5, 0.17] {
+        for phi in [-0.3, -0.2, -0.1, -0.01, 0.0, 0.01, 0.1, 0.2, 0.3] {
+            for recess in [Recess::FromInterface, Recess::ToInterfaceAtTop] {
+                let content = wall_with_recess_turned_against(wall, phi, recess, 4.0);
+                let (mesh, _) = fixture_host(&content, false);
+                let exact = 4.0 * 3.0 * (0.2 + 0.012) - turned_recess_removed_above(phi, recess, 0.0);
+                let delta = (mesh_volume(&mesh) - exact) * 1000.0;
+                let ledger = EdgeLedger::build(&mesh, VertexKey::GridMul(1.0e3), Degenerate::SkipTriangle);
+                torn += usize::from(ledger.unbalanced().count() != 0);
+                if !delta.is_finite() || delta.abs() > 1.1 {
+                    off.push(format!("wall {wall}° recess {phi}° {recess:?}: {delta:+.3} L"));
+                }
+            }
+        }
+    }
+    (torn, off)
+}
+
+/// #11321 review: a recess turned against its near-axis wall seeded the wall
+/// frame, and the host then sat up to `run · sin γ` (14 mm at 0.2 degrees)
+/// off its own faces in it. A box now seeds only when the host lines up with
+/// it to the recess face tolerance. On the default route every volume in the
+/// sweep is right (main: 68 of 90 off). Turned cutters still tear some hosts
+/// in the kernel, 20 of 90 as on main; that count may not grow.
+#[test]
+fn recess_turned_against_a_near_axis_wall_keeps_its_volume() {
+    let (torn, off) = recess_turned_against_a_wall_sweep();
+    assert!(off.is_empty(), "{}", off.join("\n"));
+    assert!(torn <= 20, "{torn} of 90 hosts torn, main tears 20");
+}
+
+/// The same sweep on the exact route, where a seeded frame cut about 200 L
+/// of core for every relative turn. A box turned past 1 degree still seeds
+/// the frame unchecked (the 1 degree wall), so 18 cases stay off and 6 hosts
+/// tear (main: 82 and 14). The manifold gate rejects more cuts: 42 and 40
+/// (main: 76 and 52). Neither count may grow.
+#[test]
+fn recess_turned_against_a_near_axis_wall_keeps_its_volume_on_the_exact_route() {
+    use std::process::Command;
+    const PROBE: &str = "IFCLITE_PROBE_RECESS_TURNED_AGAINST_WALL";
+    if std::env::var_os(PROBE).is_none() {
+        let child = Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "recess_turned_against_a_near_axis_wall_keeps_its_volume_on_the_exact_route", "--nocapture"])
+            .env("IFC_LITE_PRISM_CUT", "0")
+            .env("IFC_LITE_VOID_2D", "0")
+            .env("IFC_LITE_RECT_FAST", "0")
+            .env(PROBE, "1")
+            .output()
+            .unwrap();
+        let stdout = String::from_utf8_lossy(&child.stdout);
+        assert!(child.status.success(), "{stdout}\n{}", String::from_utf8_lossy(&child.stderr));
+        assert!(stdout.contains("1 passed; 0 failed"), "{stdout}");
+        return;
+    }
+    let (max_off, max_torn) = if cfg!(feature = "csg_manifold_gate") { (42, 40) } else { (18, 6) };
+    let (torn, off) = recess_turned_against_a_wall_sweep();
+    assert!(off.len() <= max_off, "{} of 90 off, at most {max_off}:\n{}", off.len(), off.join("\n"));
+    assert!(torn <= max_torn, "{torn} of 90 hosts torn, at most {max_torn}");
 }

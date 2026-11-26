@@ -8,6 +8,7 @@
 //! frame recursion runs the frame-local chain again with
 //! `allow_local_frame: false` (#3641).
 
+use super::super::flush::recess_face_tol;
 use super::super::frame_snap;
 use super::super::geom::{
     bounds_are_the_box, bounds_are_the_box_in_frame, is_axis_aligned_direction, mesh_to_frame,
@@ -176,14 +177,20 @@ impl Execution {
         // with it: the host must sit closer to the axes of the box's frame
         // than to the world's. A box turned in a wall on the axes would
         // otherwise turn the wall off them, and its recess would no longer
-        // start on the face it was authored on.
+        // start on the face it was authored on. The host must also line up
+        // with the box to the recess face tolerance over its run: a box
+        // turned 0.2 degrees against a 0.5 degree wall left the host 14 mm
+        // off its own faces in that frame, and the cut tore it.
         let host_normal = std::cell::OnceCell::new();
         let host_turned_with = |depth: &Vector3<f64>| {
             let normal = host_normal.get_or_init(|| {
                 dominant_horizontal_normal(mesh).and_then(|n| n.try_normalize(NORMALIZE_EPSILON))
             });
             match (normal, depth.try_normalize(NORMALIZE_EPSILON)) {
-                (Some(normal), Some(depth)) => normal.cross(&depth).norm() < off_axis(normal),
+                (Some(normal), Some(depth)) => {
+                    let turn = normal.cross(&depth).norm();
+                    turn < off_axis(normal) && turn * host_run(mesh) <= host_face_tol(mesh, &depth)
+                }
                 _ => false,
             }
         };
@@ -213,6 +220,22 @@ impl Execution {
         }
         Some(axes)
     }
+}
+
+/// The horizontal diagonal of the host's bounds: no run along the wall is
+/// longer.
+fn host_run(mesh: &Mesh) -> f64 {
+    let (min, max) = mesh.bounds();
+    f64::from(max.x - min.x).hypot(f64::from(max.y - min.y))
+}
+
+/// The recess face tolerance of the host's bounds along the unit `depth`, as
+/// the flush extension reads it.
+fn host_face_tol(mesh: &Mesh, depth: &Vector3<f64>) -> f64 {
+    let (min, max) = mesh.bounds();
+    let bounds = [min.cast::<f64>(), max.cast::<f64>()];
+    let extent = (bounds[1] - bounds[0]).abs().dot(&depth.abs());
+    recess_face_tol(&bounds, depth, extent)
 }
 
 /// The sine of the angle between the unit `dir` and its nearest world axis:

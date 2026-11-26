@@ -165,6 +165,7 @@ fn checks_for(content: &[u8], source_label: &str, target: &str, opts: &StepOptio
     let written = pass.mutated_lines.iter().filter_map(|(id, (line, _))| Some((*id, line.as_deref()?))).chain(pass.created_lines.iter().map(|(id, l)| (*id, l.as_str())));
     let retained = |id| pass.will_be_emitted(id) && !matches!(pass.mutated_lines.get(&id), Some((None, _)));
     checks.materials.with_effective(crate::schema_convert::canon(source_label), &retained, written);
+    checks.boundaries.restrict(&pass.left_out); // #11457: only the boundaries judged up front
     checks
 }
 
@@ -245,16 +246,7 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
         super::georef::apply(&mut pass, georef, &declared_schema(content, converting, &target)).map_err(unwritable)?;
     }
     retain_shared_atoms(&mut pass);
-    // The boundaries an IFC2X3 upgrade leaves out (#11457), known before any line is filtered. An edited boundary, or
-    // one that gets a generated property or quantity set, is written as before (`restrict`).
-    if converting {
-        let edited: std::collections::HashSet<u32> = pass.modified_attributes.iter().map(|(id, _)| *id)
-            .chain(pass.overlay.positional.keys().copied()).chain(pass.overlay.retype_order.iter().copied())
-            .chain(collected.new_psets.iter().map(|(host, ..)| *host)).chain(collected.new_qsets.iter().map(|(host, _)| *host)).collect();
-        pass.left_out = crate::schema_space_boundary::left_out(
-            src.order.iter().filter(|id| !edited.contains(id) && pass.has(**id) && !pass.is_overlay_created(**id)).filter_map(|id| src.line(*id).map(|l| (*id, l))),
-            crate::schema_convert::canon(&source_label), crate::schema_convert::canon(&target));
-    }
+    if converting { pass.left_out = super::boundaries_left_out(&pass, &src, &collected, &source_label, &target); }
 
     // The source lines the log rewrites, decided before the header because
     // the header counts them: every record with an attribute, retype or
@@ -307,7 +299,6 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
     let mut slot_fill = crate::schema_ifc2x3_slots::Ifc2x3SlotFill::new(pass.fallback_owner_history());
     let mut checks = checks_for(content, &source_label, &target, opts, log, &src, &mut pass); // #10763: its material records too
     checks.typed_properties.enabled = typed_properties;
-    checks.boundaries.restrict(&pass.left_out); // #11457: only the boundaries judged up front
     let defer_varying = body_has(&pass, content, |bytes| checks.structural.buffers_varying(bytes));
     let date_buffer = body_has(&pass, content, |bytes| {
         crate::schema_value_forms::ValueForms::buffer_for_dates(bytes, &source_label, &target)

@@ -83,3 +83,23 @@ pub(crate) fn scrub_omitted(line: String, id: u32, schema: &str, omitted: &std::
         refilter::Filtered::Withhold(warning) => Err(warning),
     }
 }
+
+/// `line` (record `id`) scrubbed of the left-out boundaries (#11457). When nothing is left to write it is withheld
+/// with `warnings`; without them (a copy-on-write copy, whose referrer already names it) it is written as it is.
+pub(crate) fn scrub_boundaries(line: String, id: u32, schema: &str, left_out: &std::collections::HashSet<u32>, warnings: Option<&mut Vec<String>>) -> Option<String> {
+    if left_out.is_empty() { return Some(line); }
+    let schema = crate::schema_convert::canon(schema);
+    let Some(warnings) = warnings else { return Some(scrub_omitted(line.clone(), id, schema, left_out).unwrap_or(line)) };
+    scrub_omitted(line, id, schema, left_out).map_err(|warning| warnings.push(warning)).ok()
+}
+
+/// The boundaries an IFC2X3 upgrade leaves out (#11457), known before any line is filtered. An edited boundary, or
+/// one that gets a generated property or quantity set, is written as before (`restrict`).
+pub(super) fn boundaries_left_out(pass: &pass::Pass<'_, '_>, src: &source::Source<'_>, collected: &collect::Collected, from: &str, to: &str) -> std::collections::HashSet<u32> {
+    let edited: std::collections::HashSet<u32> = pass.modified_attributes.iter().map(|(id, _)| *id)
+        .chain(pass.overlay.positional.keys().copied()).chain(pass.overlay.retype_order.iter().copied())
+        .chain(collected.new_psets.iter().map(|(host, ..)| *host)).chain(collected.new_qsets.iter().map(|(host, _)| *host)).collect();
+    crate::schema_space_boundary::left_out(
+        src.order.iter().filter(|id| !edited.contains(id) && pass.has(**id) && !pass.is_overlay_created(**id)).filter_map(|id| src.line(*id).map(|l| (*id, l))),
+        crate::schema_convert::canon(from), crate::schema_convert::canon(to))
+}

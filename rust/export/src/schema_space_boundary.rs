@@ -48,6 +48,18 @@ pub(crate) fn left_out<'a>(records: impl Iterator<Item = (u32, std::borrow::Cow<
     records.filter(|(_, line)| unrelated(line, from, to).is_some()).map(|(id, _)| id).collect()
 }
 
+/// The boundaries an IFC2X3 upgrade leaves out (#11457): known before any record is written, so a relationship naming
+/// one is narrowed, or withheld when nothing is left, instead of shipping a dangling reference. An edited boundary, one
+/// a property edit gives a generated set, or one a copy-on-write repoints, is written as before (`restrict`).
+pub(crate) fn plain_left_out(opts: &crate::StepOptions, content: &[u8], index: &crate::step_index::RecordIndex, included: &HashSet<u32>,
+    edited: &std::collections::HashMap<u32, std::collections::BTreeMap<usize, String>>, from: &str, to: &str) -> HashSet<u32> {
+    let hosts: HashSet<u32> = opts.property_mutations.iter().map(|m| m.express_id).chain(opts.copy_on_write.iter().map(|c| c.referrer_id)).collect();
+    left_out(
+        index.order.iter().filter(|id| included.contains(id) && !edited.contains_key(id) && !hosts.contains(id))
+            .filter_map(|id| index.spans.get(id).map(|&(s, e)| (*id, String::from_utf8_lossy(&content[s..e])))),
+        crate::schema_convert::canon(from), crate::schema_convert::canon(to))
+}
+
 #[derive(Default)]
 pub(crate) struct SpaceBoundaryElements {
     dropped: BTreeSet<u32>,

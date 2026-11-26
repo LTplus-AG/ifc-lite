@@ -11592,6 +11592,10 @@
     "startViewerServer: function",
     "viewerUrl: function"
   ],
+  "@ifc-lite/viewer-core/url": [
+    "VIEWER_HOST: const",
+    "viewerUrl: function"
+  ],
   "@ifc-lite/wasm": [
     "AlignmentAxisJs: class",
     "AnalyticCurveSegmentJs: type",

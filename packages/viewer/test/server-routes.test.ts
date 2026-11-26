@@ -15,7 +15,6 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 import { access, mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { connect } from 'node:net';
 import { networkInterfaces, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -459,14 +458,8 @@ describe('viewer server — loopback only', () => {
       .flat()
       .find((i) => i && i.family === 'IPv4' && !i.internal);
     if (!external) return t.skip('no external IPv4 interface to probe');
-    // Refused or dropped both mean unreachable; only a completed connect fails.
-    const connected = await new Promise<boolean>((done) => {
-      const socket = connect({ host: external.address, port, timeout: 2_000 });
-      socket.once('connect', () => { socket.destroy(); done(true); });
-      socket.once('timeout', () => { socket.destroy(); done(false); });
-      socket.once('error', () => done(false));
-    });
-    assert.equal(connected, false);
+    // Refused or dropped (timeout) both reject; only a reachable server answers.
+    await assert.rejects(fetch(`http://${external.address}:${port}/api/status`, { signal: AbortSignal.timeout(2_000) }));
   });
 });
 

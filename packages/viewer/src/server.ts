@@ -16,7 +16,8 @@ import { readFile, stat } from 'node:fs/promises';
 import { dirname, extname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getViewerHtml } from './viewer-html.js';
-import { checkRequest, VIEWER_HOST, viewerUrl } from './request-guard.js';
+import { checkRequest } from './request-guard.js';
+import { VIEWER_HOST, viewerUrl } from './url.js';
 
 /** Valid command actions that the viewer understands */
 export const VALID_ACTIONS = new Set([
@@ -164,8 +165,7 @@ export async function startViewerServer(opts: ViewerServerOptions): Promise<View
   const server = createServer(async (req, res) => {
     const verdict = checkRequest(req);
     if (verdict.refuse) {
-      res.writeHead(403, { 'Content-Type': 'text/plain' });
-      res.end('Forbidden');
+      res.writeHead(403, { 'Content-Type': 'text/plain' }).end('Forbidden');
       return;
     }
 

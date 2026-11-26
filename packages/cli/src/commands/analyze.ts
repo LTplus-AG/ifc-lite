@@ -16,6 +16,7 @@
  */
 
 import { readFile } from 'node:fs/promises';
+import { viewerUrl } from '@ifc-lite/viewer-core/url';
 import { createStreamingContext } from '../loader.js';
 import { fatal, getFlag, hasFlag, printJson, validateViewerPort, writeOutput } from '../output.js';
 import type { BimContext, EntityRef, EntityData } from '@ifc-lite/sdk';
@@ -176,8 +177,6 @@ function evaluateWhere(
 }
 
 async function sendViewerCommand(port: number, cmd: Record<string, unknown>): Promise<void> {
-  const { viewerUrl } = await import('@ifc-lite/viewer-core').catch(() => ({ viewerUrl: null }));
-  if (!viewerUrl) return; // like an unreachable viewer: analysis output does not depend on it
   await fetch(viewerUrl(port, '/api/command'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

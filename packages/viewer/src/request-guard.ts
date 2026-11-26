@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Where the viewer server listens, and who it answers.
+ * Who the viewer server answers.
  *
  * A page on another site can still send requests to it even though CORS
  * stops that page reading the answers, and a DNS-rebound name could read
@@ -14,18 +14,6 @@
  */
 
 import type { IncomingMessage } from 'node:http';
-
-/**
- * The address the viewer server binds. Clients dial it rather than
- * `localhost`, which may resolve to ::1, where another process can hold the
- * same port.
- */
-export const VIEWER_HOST = '127.0.0.1';
-
-/** `http://127.0.0.1:<port><path>`: the viewer server's own URL. */
-export function viewerUrl(port: number, path = ''): string {
-  return `http://${VIEWER_HOST}:${port}${path}`;
-}
 
 /** `localhost`, `127.0.0.1` or `[::1]` (a tunnel's local end), with or without a port. */
 const LOOPBACK = String.raw`(localhost|127\.0\.0\.1|\[::1\])(:\d+)?`;

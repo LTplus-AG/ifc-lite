@@ -213,14 +213,14 @@ describe('lazy listener and port fallback', () => {
     expect((status.content[0] as { text: string }).text).toContain(`Use the link: it carries port ${port}`);
     expect((status.content[0] as { text: string }).text).not.toContain('enter the code');
     expect(status.structuredContent).not.toHaveProperty('pairingCode');
-    expect(lines.some((l) => l.includes(`port ${taken} is in use`))).toBe(true);
+    expect(lines.some((l) => l.includes(`port ${taken} is unavailable`))).toBe(true);
   });
 
   it('an explicit port that is free keeps the manual code path, with the port named', async () => {
     const agent = await start({ port: 0, lazy: true });
     const text = ((await agent.call(BRIDGE_STATUS_TOOL)).content[0] as { text: string }).text;
     expect(text).toMatch(/or enter the code \S+ with port \d+ in the viewer/);
-    expect(text).not.toContain('belongs to another program');
+    expect(text).not.toContain('is unavailable');
   });
 
   it('without fallback a taken port fails bridge_status and a later call can retry', async () => {

@@ -140,7 +140,7 @@ export class TabBridge {
     this.http = server.http;
     this.wss = server.wss;
     this.boundPort = server.port;
-    const moved = this.fellBackFrom !== null ? ` (port ${this.fellBackFrom} is in use)` : '';
+    const moved = this.fellBackFrom !== null ? ` (port ${this.fellBackFrom} is unavailable: in use or reserved)` : '';
     this.log(`listening on ws://127.0.0.1:${server.port}${moved}; allowed origins (exactly these): ${this.allowedOrigins.join(', ')}`);
     return this.boundPort;
   }

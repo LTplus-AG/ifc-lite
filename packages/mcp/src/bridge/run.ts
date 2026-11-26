@@ -171,7 +171,7 @@ export async function startBridgeServer(opts: BridgeServerOptions): Promise<Runn
       logging: {},
       ...(opts.channel ? { experimental: { 'claude/channel': {} } } : {}),
     },
-    instructions: `${SERVER_INSTRUCTIONS}\n\n${bridgeInstructions}`,
+    instructions: opts.headless ? `${SERVER_INSTRUCTIONS}\n\n${bridgeInstructions}` : bridgeInstructions,
     logger: opts.logger,
   });
   // After the registry and server are built, so a throw there holds no port.

@@ -78,7 +78,7 @@ const LEGACY_ALIASES: ReadonlyMap<string, string> = new Map([
  * them is skipped. `BRIDGE_RESERVED_TOOLS` (protocol) holds the tab-side
  * names a tab may not register at all; these are the prefixed MCP names.
  */
-const BRIDGE_OWNED: ReadonlySet<string> = new Set([BRIDGE_STATUS_TOOL, TAB_SHOW_UI_TOOL, BRIDGE_UI_EVENTS_TOOL]);
+const BRIDGE_OWNED: ReadonlySet<string> = new Set([TAB_SHOW_UI_TOOL, BRIDGE_UI_EVENTS_TOOL]);
 
 /**
  * The tab tools this server lists and forwards. Skipped: a `tab_` name
@@ -195,7 +195,7 @@ function codeTypable(bridge: TabBridge): boolean {
  */
 function manualPairingHint(bridge: TabBridge, code: string): string {
   if (!codeTypable(bridge)) {
-    return `Use the link: it carries port ${bridge.port}. Port ${bridge.fellBackFrom} belongs to another program, so do not type the code into the dialog with that port.`;
+    return `Use the link: it carries port ${bridge.port}. Port ${bridge.fellBackFrom} is unavailable (another program may hold it), so do not type the code into the dialog with that port.`;
   }
   if (bridge.port === DEFAULT_BRIDGE_PORT) return `or enter the code ${code} in the viewer's "Connect local agent" dialog.`;
   return `or enter the code ${code} with port ${bridge.port} in the viewer's "Connect local agent" dialog.`;

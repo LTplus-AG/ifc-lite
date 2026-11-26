@@ -167,13 +167,14 @@ export function packEntityLane(rawId: number, saltByte: number): number {
  * and the sub-batch clones alike.
  */
 export function destroyGpuResources(
-  m: { vertexBuffer: GPUBuffer; indexBuffer: GPUBuffer; uniformBuffer?: GPUBuffer; uniformSlot?: { release(): void }; lod1IndexBuffer?: GPUBuffer },
+  m: { vertexBuffer: GPUBuffer; indexBuffer: GPUBuffer; uniformBuffer?: GPUBuffer; uniformSlot?: { release(): void }; lod1IndexBuffer?: GPUBuffer; lod1VertexBuffer?: GPUBuffer },
 ): void {
   m.vertexBuffer.destroy();
   m.indexBuffer.destroy();
   if (m.uniformBuffer) m.uniformBuffer.destroy();
   m.uniformSlot?.release();
   if (m.lod1IndexBuffer) m.lod1IndexBuffer.destroy();
+  if (m.lod1VertexBuffer) m.lod1VertexBuffer.destroy(); // compact pages only
 }
 
 /**

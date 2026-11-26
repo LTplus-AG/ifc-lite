@@ -42,6 +42,7 @@ import type { CompactGeometryStore, CompactPage } from './compact-store.js';
 import type { LodPart } from './lod-parts.js';
 import type { SceneCompactHost } from './scene-compact-host.js';
 import { entityCollapses } from './compact-exact.js';
+import { lod1Vertices } from './compact-lod-vertices.js';
 
 /** Scratch record per vertex: position xyz (page frame) and the u32 entity lane. */
 const SCRATCH_FLOATS = 4;
@@ -173,7 +174,8 @@ interface EntityRun { from: number; to: number; id: number }
 /** A page's meshes per group, each sorted by entity (an entity's LOD1 triangles are then one run). */
 interface PagePlan {
   page: CompactPage;
-  parts: Array<{ group: Group; meshes: MeshData[]; lod1: Uint16Array | null; runs: EntityRun[] }>;
+  /** `lod1` indexes the part's own representative `records` (compact-lod-vertices.ts). */
+  parts: Array<{ group: Group; meshes: MeshData[]; lod1: Uint16Array | null; records: Uint8Array | null; runs: EntityRun[] }>;
 }
 
 /**
@@ -204,17 +206,18 @@ function* buildPageLods(store: CompactGeometryStore, groups: Map<string, Group>,
     let decoded = false;
     for (const [group, meshes] of byGroup) {
       meshes.sort((a, b) => a.expressId - b.expressId); // stable: an entity's meshes keep their order
-      let lod1: Uint16Array | null = null;
+      let lod1: Uint16Array | null = null, records: Uint8Array | null = null;
       const runs: EntityRun[] = [];
       if (!group.move && group.kept >= 0 && group.triangles >= lodMinTriangles) {
         scratch ??= new Float32Array(MAX_PAGE_VERTICES * SCRATCH_FLOATS);
         lanes ??= new Uint32Array(scratch.buffer);
         if (!decoded) { readRecords(store, page, scratch, lanes); decoded = true; }
-        const out = simplify(scratch.subarray(0, page.vertexCount * SCRATCH_FLOATS), SCRATCH_FLOATS, sourceIndices(store, meshes),
+        const source = sourceIndices(store, meshes);
+        const out = simplify(scratch.subarray(0, page.vertexCount * SCRATCH_FLOATS), SCRATCH_FLOATS, source,
           lodCellSize(group.bounds.min, group.bounds.max), { idLaneOffset: 3, frameOrigin: store.origin!, unconditional: true });
         if (out) {
           group.kept += out.length;
-          lod1 = Uint16Array.from(out);
+          ({ indices: lod1, records } = lod1Vertices(out, source, { positions: scratch, lanes, vertexCount: page.vertexCount, quantized: page.batch.quantized! }, deps.bucket.octEncode));
           // The clustering is entity-scoped: every corner of a triangle carries its entity's lane.
           const idOf = new Map<number, number>();
           for (const mesh of meshes) idOf.set(lanes[store.slotOf(mesh)!.base * SCRATCH_FLOATS + 3], mesh.expressId);
@@ -227,7 +230,7 @@ function* buildPageLods(store: CompactGeometryStore, groups: Map<string, Group>,
           }
         } else group.kept = -1;
       }
-      plan.parts.push({ group, meshes, lod1, runs });
+      plan.parts.push({ group, meshes, lod1, records, runs });
     }
     plans.push(plan);
     yield;
@@ -287,6 +290,10 @@ function install(store: CompactGeometryStore, plan: PagePlan, device: GPUDevice)
     if (part.lod1) for (const run of part.runs) lod1Length += padded(run.to - run.from);
   }
   const lod0 = new Uint16Array(lod0Length), lod1 = lod1Length > 0 ? new Uint16Array(lod1Length) : null;
+  let recordBytes = 0;
+  for (const part of plan.parts) if (part.lod1) recordBytes += part.records!.length;
+  const records = new Uint8Array(recordBytes);
+  let base = 0; // the part's first record in the page's LOD1 vertex buffer
   const starts = new Map<MeshData, number>();
   const parts: LodPart[] = [];
   const lod: PageLod = { ranges: new Map(), bytes: 0 };
@@ -300,19 +307,21 @@ function install(store: CompactGeometryStore, plan: PagePlan, device: GPUDevice)
       w0 += slot.indexCount;
     }
     if (lod1 && part.lod1) {
+      records.set(part.records!, base * COMPACT_RECORD_BYTES);
       for (const { from, to, id } of part.runs) {
         const n = padded(to - from);
-        lod1.set(part.lod1.subarray(from, to), w1);
-        lod1.fill(part.lod1[from], w1 + to - from, w1 + n);
+        for (let i = from; i < to; i++) lod1[w1 + i - from] = part.lod1[i] + base;
+        lod1.fill(part.lod1[from] + base, w1 + to - from, w1 + n);
         const ranges = lod.ranges.get(id);
         if (ranges) ranges.push([w1, n]); else lod.ranges.set(id, [[w1, n]]);
         w1 += n;
       }
+      base += part.records!.length / COMPACT_RECORD_BYTES;
     }
     parts.push({ bounds: part.group.bounds, lod0Start, lod0Count: w0 - lod0Start, lod1: part.lod1 !== null, lod1Start, lod1Count: w1 - lod1Start });
   }
   replaceIndices(store, plan.page, lod0, starts, device);
-  setPageLod(store, plan.page, parts, lod1, lod, device);
+  setPageLod(store, plan.page, parts, lod1 && { indices: lod1, records }, lod, device);
 }
 
 /** Replace `page`'s index buffer with `lod0` (exact size), each listed mesh's range now starting at `starts`. */
@@ -329,15 +338,20 @@ function replaceIndices(store: CompactGeometryStore, page: CompactPage, lod0: Ui
 }
 
 /** Give `page` its parts and LOD1 buffer (replacing any it had). */
-function setPageLod(store: CompactGeometryStore, page: CompactPage, parts: LodPart[], lod1: Uint16Array | null, lod: PageLod, device: GPUDevice): void {
+function setPageLod(
+  store: CompactGeometryStore, page: CompactPage, parts: LodPart[], lod1: { indices: Uint16Array; records: Uint8Array } | null, lod: PageLod, device: GPUDevice,
+): void {
   dropPageLod(store, page);
   if (lod1) {
-    const buffer = device.createBuffer({ size: Math.max(4, lod1.byteLength), usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST });
-    device.queue.writeBuffer(buffer, 0, lod1);
-    page.batch.lod1IndexBuffer = buffer;
-    page.batch.lod1IndexCount = lod1.length;
-    lod.bytes = buffer.size;
-    store.stats.lod1Bytes += buffer.size;
+    const indices = device.createBuffer({ size: Math.max(4, lod1.indices.byteLength), usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST });
+    device.queue.writeBuffer(indices, 0, lod1.indices);
+    const vertices = device.createBuffer({ size: Math.max(4, lod1.records.byteLength), usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST });
+    if (lod1.records.length > 0) device.queue.writeBuffer(vertices, 0, lod1.records);
+    page.batch.lod1IndexBuffer = indices;
+    page.batch.lod1IndexCount = lod1.indices.length;
+    page.batch.lod1VertexBuffer = vertices;
+    lod.bytes = indices.size + vertices.size;
+    store.stats.lod1Bytes += lod.bytes;
   }
   page.batch.lodParts = parts;
   page.lod = lod;
@@ -347,8 +361,10 @@ function setPageLod(store: CompactGeometryStore, page: CompactPage, parts: LodPa
 export function dropPageLod(store: CompactGeometryStore, page: CompactPage): void {
   if (!page.lod) return;
   page.batch.lod1IndexBuffer?.destroy();
+  page.batch.lod1VertexBuffer?.destroy();
   store.stats.lod1Bytes -= page.lod.bytes;
   delete page.batch.lod1IndexBuffer;
+  delete page.batch.lod1VertexBuffer;
   delete page.batch.lod1IndexCount;
   delete page.batch.lodParts;
   page.lod = undefined;

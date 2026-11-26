@@ -42,9 +42,12 @@ export function partDraw(part: LodPart, px: number, contribPx: number, lodPx: nu
 }
 
 interface PartsBatch {
+  vertexBuffer: GPUBuffer;
   indexBuffer: GPUBuffer;
   indexFormat?: GPUIndexFormat;
   lod1IndexBuffer?: GPUBuffer;
+  /** The records LOD1 ranges index, when not `vertexBuffer`. */
+  lod1VertexBuffer?: GPUBuffer;
 }
 
 /**
@@ -52,7 +55,7 @@ interface PartsBatch {
  * Returns draw calls * 2, plus 1 when a part drew its LOD1 range (a number: the per-batch draw allocates nothing).
  */
 export function drawLodParts(
-  pass: Pick<GPURenderPassEncoder, 'setIndexBuffer' | 'drawIndexed'>,
+  pass: Pick<GPURenderPassEncoder, 'setVertexBuffer' | 'setIndexBuffer' | 'drawIndexed'>,
   batch: PartsBatch,
   parts: readonly LodPart[],
   choose: (part: LodPart) => PartDraw,
@@ -63,6 +66,8 @@ export function drawLodParts(
   const flush = (): void => {
     if (run === PartDraw.Skip) return; // runs start non-empty (empty ranges are skipped below)
     if (bound !== run) {
+      // The caller bound `vertexBuffer`: a LOD1 run over records of its own binds those, and a later LOD0 run binds it back.
+      if (batch.lod1VertexBuffer && (run === PartDraw.Lod1 || bound === PartDraw.Lod1)) pass.setVertexBuffer(0, run === PartDraw.Lod1 ? batch.lod1VertexBuffer : batch.vertexBuffer);
       pass.setIndexBuffer(run === PartDraw.Lod1 ? batch.lod1IndexBuffer! : batch.indexBuffer, format);
       bound = run;
     }
@@ -90,7 +95,7 @@ export function drawLodParts(
  * when a LOD1 range was drawn.
  */
 export function drawBatchIndices(
-  pass: Pick<GPURenderPassEncoder, 'setIndexBuffer' | 'drawIndexed'>,
+  pass: Pick<GPURenderPassEncoder, 'setVertexBuffer' | 'setIndexBuffer' | 'drawIndexed'>,
   batch: PartsBatch & { indexCount: number; lod1IndexCount?: number; lodParts?: readonly LodPart[] },
   lod1: boolean,
   choose: (part: LodPart) => PartDraw,

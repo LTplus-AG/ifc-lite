@@ -124,6 +124,8 @@ export interface BatchedMesh {
   /** Runs of the index buffers that each decide culling and LOD on their own box (compact pages,
    *  lod-parts.ts); absent = the batch decides as a whole. `lod1IndexBuffer` then holds their LOD1 ranges. */
   lodParts?: readonly LodPart[];
+  /** Records the parts' LOD1 ranges index instead of `vertexBuffer` (compact pages: representatives with their own normals). */
+  lod1VertexBuffer?: GPUBuffer;
   /** 12-byte lattice-quantized vertex buffer (issue #1682 phase 6): when
    *  present, `vertexBuffer` holds uint16x4+u32 records and the batch must
    *  draw through the quantized pipeline variants with these dequantization

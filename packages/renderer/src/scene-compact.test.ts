@@ -799,15 +799,34 @@ async function lodScene(compact: boolean): Promise<Scene> {
 }
 
 /** The world positions (in lattice steps) of the non-empty triangles of `indices` over a quantized batch's records. */
-function triangles(batch: BatchedMesh, indices: ArrayLike<number>, from = 0, to = indices.length): string[] {
-  const view = new DataView(bytesOf(batch.vertexBuffer).buffer), q = batch.quantized!;
+function triangles(batch: BatchedMesh, indices: ArrayLike<number>, from = 0, to = indices.length, vertices = batch.vertexBuffer, withNormals = false): string[] {
+  const view = new DataView(bytesOf(vertices).buffer), q = batch.quantized!;
   const out: string[] = [];
   for (let t = from; t < to; t += 3) {
     const corners = [indices[t], indices[t + 1], indices[t + 2]];
     if (corners[0] === corners[1] || corners[1] === corners[2] || corners[0] === corners[2]) continue;
-    out.push(corners.map((v) => [0, 1, 2].map((axis) => Math.round((batch.origin![axis] + q.min[axis] + view.getUint16(v * 12 + axis * 2, true) * q.step) * 1024)).join(' ')).sort().join('|'));
+    out.push(corners.map((v) => [0, 1, 2].map((axis) => Math.round((batch.origin![axis] + q.min[axis] + view.getUint16(v * 12 + axis * 2, true) * q.step) * 1024)).join(' ')
+      + (withNormals ? ` n${view.getUint16(v * 12 + 6, true)}` : '')).sort().join('|'));
   }
   return out;
+}
+
+/** A box as the f32 load gets it: an unwelded soup, every corner with its face's normal, on the lattice nodes the fixture writes. */
+function boxSoup(box: Box): MeshData {
+  const node = (corner: number, axis: number): number => Math.round(boxCorner(box, corner, axis) * 1024) / 1024;
+  const positions: number[] = [], normals: number[] = [];
+  for (let t = 0; t < BOX_TRIANGLES.length; t += 3) {
+    const [a, b, c] = [BOX_TRIANGLES[t], BOX_TRIANGLES[t + 1], BOX_TRIANGLES[t + 2]];
+    const p = [a, b, c].map((corner) => [0, 1, 2].map((axis) => node(corner, axis)));
+    const u = [0, 1, 2].map((k) => p[1][k] - p[0][k]), v = [0, 1, 2].map((k) => p[2][k] - p[0][k]);
+    const n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+    const length = Math.hypot(n[0], n[1], n[2]);
+    for (const corner of p) { positions.push(...corner); normals.push(n[0] / length, n[1] / length, n[2] / length); }
+  }
+  return {
+    expressId: box.expressId, modelIndex: 0, color: box.color,
+    positions: new Float32Array(positions), normals: new Float32Array(normals), indices: Uint32Array.from(positions.slice(0, positions.length / 3), (_, i) => i),
+  };
 }
 
 const u16 = (buffer: GPUBuffer): Uint16Array => new Uint16Array(bytesOf(buffer).buffer);
@@ -820,9 +839,9 @@ function assertSameBox(a: BatchedMesh['bounds'], b: BatchedMesh['bounds'], messa
 }
 
 /** A page's LOD1 triangles, over its parts. */
-function pageLod1(page: BatchedMesh): string[] {
+function pageLod1(page: BatchedMesh, withNormals = false): string[] {
   const lod1 = u16(page.lod1IndexBuffer!);
-  return page.lodParts!.flatMap((part) => triangles(page, lod1, part.lod1Start, part.lod1Start + part.lod1Count));
+  return page.lodParts!.flatMap((part) => triangles(page, lod1, part.lod1Start, part.lod1Start + part.lod1Count, page.lod1VertexBuffer, withNormals));
 }
 
 /** End the stream and run the drains that build the pages' parts (a slice per drain, compact-lod.ts). */
@@ -835,9 +854,7 @@ describe('compact pages take the decisions of the bucket batches they stand in f
   it('build each bucket\'s LOD1 over their pages, the triangles the bucket path builds for the same meshes', async () => {
     const boxes = [...lodBoxes(1000, 0, 28), ...lodBoxes(2000, 0, 28, RED)];
     const off = await lodScene(false), gpuOff = fakeGpu();
-    const flat = compactBatch(boxes);
-    for (const mesh of flat) materializeCompactMesh(mesh);
-    upload(off, gpuOff, flat);
+    upload(off, gpuOff, boxes.map(boxSoup));
     settle(off, gpuOff);
     assert.equal(buckets(off).length, 2);
 
@@ -853,8 +870,8 @@ describe('compact pages take the decisions of the bucket batches they stand in f
       const [part] = page.lodParts!;
       assertSameBox(part.bounds, bucket.bounds, 'the part decides on the bucket batch\'s box');
       assert.deepEqual({ start: part.lod0Start, count: part.lod0Count }, { start: 0, count: page.indexCount });
-      const bucketLod1 = triangles(bucket, new Uint32Array(bytesOf(bucket.lod1IndexBuffer).buffer, 0, bucket.lod1IndexCount)).sort();
-      assert.deepEqual(pageLod1(page).sort(), bucketLod1);
+      const bucketLod1 = triangles(bucket, new Uint32Array(bytesOf(bucket.lod1IndexBuffer).buffer, 0, bucket.lod1IndexCount), 0, undefined, undefined, true).sort();
+      assert.deepEqual(pageLod1(page, true).sort(), bucketLod1, 'the same triangles, each corner with the normal the bucket elects');
       // Full detail is every triangle of the page, as before.
       assert.equal(triangles(page, u16(page.indexBuffer)).length, 60 * 12);
     }
@@ -880,14 +897,12 @@ describe('compact pages take the decisions of the bucket batches they stand in f
     assert.deepEqual(entitiesOf([page1]), entitiesOf([page1]).filter((id) => id >= 2000));
 
     const off = await lodScene(false), gpuOff = fakeGpu();
-    const flat = [...compactBatch(near), ...compactBatch([...far, ...beyond], 1)];
-    for (const mesh of flat) materializeCompactMesh(mesh);
-    upload(off, gpuOff, flat);
+    upload(off, gpuOff, [...near, ...far, ...beyond].map(boxSoup));
     settle(off, gpuOff);
     const cell0 = buckets(off).find((b) => b.bounds!.min[0] === 0)!;
     assertSameBox(cell0.bounds, page0.lodParts![0].bounds, 'chunk cell 0');
-    const bucketLod1 = triangles(cell0, new Uint32Array(bytesOf(cell0.lod1IndexBuffer!).buffer, 0, cell0.lod1IndexCount)).sort();
-    const lod1Of = (page: BatchedMesh, part: number) => triangles(page, u16(page.lod1IndexBuffer!), page.lodParts![part].lod1Start, page.lodParts![part].lod1Start + page.lodParts![part].lod1Count);
+    const bucketLod1 = triangles(cell0, new Uint32Array(bytesOf(cell0.lod1IndexBuffer!).buffer, 0, cell0.lod1IndexCount), 0, undefined, undefined, true).sort();
+    const lod1Of = (page: BatchedMesh, part: number) => triangles(page, u16(page.lod1IndexBuffer!), page.lodParts![part].lod1Start, page.lodParts![part].lod1Start + page.lodParts![part].lod1Count, page.lod1VertexBuffer, true);
     assert.deepEqual([...lod1Of(page0, 0), ...lod1Of(page1, 0)].sort(), bucketLod1, 'per-page clustering: no entity spans the two pages here');
   });
 

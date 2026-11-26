@@ -439,15 +439,16 @@ describe('viewer server — loopback only', () => {
 
   // A DNS-rebound name reaches 127.0.0.1 but still sends its own name as Host.
   it('refuses a foreign Host, even on the right port', TEST_TIMEOUT, async () => {
-    for (const host of ['evil.com', `evil.com:${port}`, '127.0.0.1:1', 'localhost']) {
+    for (const host of ['evil.com', `evil.com:${port}`, 'localhost.evil.com', '127.0.0.1.nip.io']) {
       const res = await req(port, '/model.ifc', { headers: { host } });
       assert.equal(res.status, 403, host);
     }
   });
 
-  for (const host of ['localhost', '127.0.0.1', 'LOCALHOST']) {
-    it(`serves Host ${host}:<port>`, TEST_TIMEOUT, async () => {
-      const res = await req(port, '/api/status', { headers: { host: `${host}:${port}` } });
+  // A tunnel (ssh -L 9000:127.0.0.1:<port>) or port 80 changes the Host port.
+  for (const host of ['localhost:PORT', '127.0.0.1:PORT', 'LOCALHOST:PORT', 'localhost:9000', 'localhost']) {
+    it(`serves Host ${host}`, TEST_TIMEOUT, async () => {
+      const res = await req(port, '/api/status', { headers: { host: host.replace('PORT', String(port)) } });
       assert.equal(res.status, 200);
     });
   }

@@ -16,7 +16,6 @@
  */
 
 import { readFile } from 'node:fs/promises';
-import { viewerUrl } from '@ifc-lite/viewer-core';
 import { createStreamingContext } from '../loader.js';
 import { fatal, getFlag, hasFlag, printJson, validateViewerPort, writeOutput } from '../output.js';
 import type { BimContext, EntityRef, EntityData } from '@ifc-lite/sdk';
@@ -177,6 +176,7 @@ function evaluateWhere(
 }
 
 async function sendViewerCommand(port: number, cmd: Record<string, unknown>): Promise<void> {
+  const { viewerUrl } = await import('@ifc-lite/viewer-core');
   await fetch(viewerUrl(port, '/api/command'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

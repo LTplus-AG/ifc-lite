@@ -7,8 +7,10 @@
  *
  * A page on another site can still send requests to it even though CORS
  * stops that page reading the answers, and a DNS-rebound name could read
- * them too. So the server refuses any request whose Host is not its own
- * loopback name and port, and any POST sent from a page that is not local.
+ * them too. So the server refuses any request whose Host is not a loopback
+ * name, and any POST sent from a page that is not local. The Host port is not
+ * checked: a tunnel (`ssh -L 9000:127.0.0.1:3456`) forwards from another
+ * port, and a rebound name is caught by its name alone.
  */
 
 import type { IncomingMessage } from 'node:http';
@@ -30,12 +32,12 @@ const LOCAL_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
 
 export type RequestVerdict = { refuse: true } | { refuse: false; corsOrigin: string | null };
 
+/** `localhost` or `127.0.0.1`, with or without a port. */
+const LOOPBACK_HOST = /^(localhost|127\.0\.0\.1)(:\d+)?$/;
+
 /** Refuse `req`, or serve it, echoing its Origin for CORS when that is a local page. */
-export function checkRequest(req: IncomingMessage, port: number): RequestVerdict {
-  const host = req.headers.host?.toLowerCase();
-  // Clients leave the default port out of Host.
-  const ownHost = ['localhost', VIEWER_HOST].some((h) => host === `${h}:${port}` || (port === 80 && host === h));
-  if (!ownHost) return { refuse: true };
+export function checkRequest(req: IncomingMessage): RequestVerdict {
+  if (!LOOPBACK_HOST.test(req.headers.host?.toLowerCase() ?? '')) return { refuse: true };
   const origin = req.headers.origin;
   if (origin === undefined) return { refuse: false, corsOrigin: null }; // the CLI, the MCP server: not a page
   const local = LOCAL_ORIGIN.test(origin);

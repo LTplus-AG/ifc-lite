@@ -161,11 +161,9 @@ export async function startViewerServer(opts: ViewerServerOptions): Promise<View
   // Track IFC content created via /api/create for export
   const createdSegments: string[] = [];
 
-  // Set once listening; no request arrives before that.
-  let boundPort = 0;
 
   const server = createServer(async (req, res) => {
-    const verdict = checkRequest(req, boundPort);
+    const verdict = checkRequest(req);
     if (verdict.refuse) {
       res.writeHead(403, { 'Content-Type': 'text/plain' });
       res.end('Forbidden');
@@ -386,7 +384,6 @@ export async function startViewerServer(opts: ViewerServerOptions): Promise<View
       const addr = server.address();
       const port = typeof addr === 'object' && addr ? addr.port : requestedPort;
       const url = viewerUrl(port);
-      boundPort = port;
 
       if (opts.onReady) {
         try {

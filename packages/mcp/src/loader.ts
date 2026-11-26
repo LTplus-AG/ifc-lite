@@ -11,38 +11,47 @@
  * native geometry preparation and registry/file-loading behavior.
  */
 
-import { open, realpath } from 'node:fs/promises';
-import { basename, resolve } from 'node:path';
+import { constants } from 'node:fs';
+import { open, realpath, stat } from 'node:fs/promises';
+import { basename, dirname, join, parse, resolve, sep } from 'node:path';
 import { buildIfcxDataStore, IfcParser, validateStepInput, type IfcDataStore } from '@ifc-lite/parser';
 import { sourceModelIdentity } from '@ifc-lite/cache';
 import { createBimContext, type BimContext } from '@ifc-lite/sdk';
-import type { LoadedModel } from './context.js';
+import type { LoadedModel, ModelRegistry } from './context.js';
 import { HeadlessLikeBackend } from './headless-backend.js';
 import { rememberLoadedSource } from './loaded-source.js';
 
 export interface LoadIfcOptions {
   /** Override the registered model ID (default = file basename without extension). */
   modelId?: string;
-  /** Restrict reads to these absolute path prefixes. Used by the stdio CLI. */
+  /** Restrict reads to these absolute path prefixes (model_load and the CLI pass the checked path itself). */
   allowedPaths?: string[];
 }
 
 /** Load IFC bytes and retain the opened file identity for source-write protection. */
 export async function loadIfcModel(filePath: string, opts: LoadIfcOptions = {}): Promise<LoadedModel> {
   const absolute = resolve(filePath);
-  if (opts.allowedPaths && opts.allowedPaths.length > 0) {
-    const ok = opts.allowedPaths.some((p) => absolute === p || absolute.startsWith(p + '/'));
-    if (!ok) {
-      throw new Error(`Path '${absolute}' is outside the allowed roots`);
-    }
-  }
-
+  const roots = (opts.allowedPaths ?? []).map(normalRoot);
+  const realRoots = await Promise.all(roots.map(realRoot));
+  // Either spelling up front (a root given as /tmp/x admits /private/tmp/x)...
+  if (roots.length > 0 && !inRoots(absolute, roots) && !inRoots(absolute, realRoots)) throw outsideRoots(absolute);
+  // ...but the real path, resolved once and then opened, decides: a symlink in
+  // the path, or a file swapped for one since the caller checked it, must not
+  // lead outside the real roots. Out of scope: a process that rewrites parent
+  // directories inside the roots while the load runs (that needs openat).
   const canonical = await realpath(absolute);
-  const handle = await open(canonical, 'r');
+  if (roots.length > 0 && !inRoots(canonical, realRoots)) throw outsideRoots(absolute);
+  // Refuse special files before opening them: opening a device can have side
+  // effects, and a FIFO with no writer blocks. Then open without blocking and
+  // without following a symlink swapped in since realpath, and check the
+  // opened descriptor again in case the path changed in between.
+  if (!(await stat(canonical)).isFile()) throw new Error(`Path '${absolute}' is not a regular file`);
+  const handle = await open(canonical, constants.O_RDONLY | constants.O_NONBLOCK | (constants.O_NOFOLLOW ?? 0));
   let buffer: Buffer;
   let identity: { path: string; dev: bigint; ino: bigint };
   try {
     const info = await handle.stat({ bigint: true });
+    if (!info.isFile()) throw new Error(`Path '${absolute}' is not a regular file`);
     identity = { path: canonical, dev: info.dev, ino: info.ino };
     buffer = await handle.readFile();
   } finally {
@@ -116,6 +125,41 @@ export async function loadIfcModelFromBytes(bytes: Uint8Array, name: string, mod
     ...(scanWarnings.length > 0 ? { scanWarnings } : {}),
     loadedAt: Date.now(),
   };
+}
+
+/** `base`, or `base_2`, `base_3`, … — the first id the registry does not hold yet. */
+export function freeModelId(registry: ModelRegistry, base: string): string {
+  let id = base;
+  for (let n = 2; registry.get(id) !== null; n += 1) id = `${base}_${n}`;
+  return id;
+}
+
+/** Absolute, without a trailing separator unless it is a filesystem root (`/`, `C:\\`). */
+function normalRoot(p: string): string {
+  const r = resolve(p);
+  return r !== parse(r).root && r.endsWith(sep) ? r.slice(0, -1) : r;
+}
+
+/**
+ * A root's real form. A directory root is followed through links (macOS
+ * /tmp -> /private/tmp). A root that is not a directory, such as the checked
+ * file model_load and the CLI pass, keeps its last component: following it
+ * would move the root along with a file swapped for a symlink. A root that
+ * cannot be resolved stays as written, so it admits nothing it did not before.
+ */
+async function realRoot(root: string): Promise<string> {
+  const real = await realpath(root).catch(() => root);
+  if (real === root) return root;
+  if ((await stat(real).catch(() => null))?.isDirectory()) return real;
+  return join(await realpath(dirname(root)).catch(() => dirname(root)), basename(root));
+}
+
+function inRoots(path: string, roots: readonly string[]): boolean {
+  return roots.some((p) => path === p || path.startsWith(p.endsWith(sep) ? p : p + sep));
+}
+
+function outsideRoots(path: string): Error {
+  return new Error(`Path '${path}' is outside the allowed roots`);
 }
 
 export function deriveModelId(name: string): string {

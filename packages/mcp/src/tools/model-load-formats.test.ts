@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, it } from 'vitest';
-import { fullScope } from '../auth/scope.js';
+import { fullScope, readOnlyScope } from '../auth/scope.js';
 import { DEFAULT_CONFIG, InMemoryModelRegistry, NOOP_PROGRESS, SILENT_LOGGER, type ToolContext } from '../context.js';
 import { source } from './__fixtures__/export-session.js';
 import { modelLoad } from './discovery.js';
@@ -33,6 +33,7 @@ it('loads a local IFCX model and reads wall attributes from its tabular store', 
   const ctx = context();
   const root = await realpath(await mkdtemp(join(tmpdir(), 'mcp-ifcx-load-')));
   ctx.config.allowedPaths = [dirname(filePath), root];
+  ctx.scope = readOnlyScope();
   try {
     const result = await modelLoad.handler({ file_path: filePath }, ctx);
     expect(result.structuredContent).toMatchObject({ id: 'hello-wall', schema: 'IFC5' });
@@ -82,6 +83,9 @@ it('refuses unconfigured OCI hosts, then loads a digest-verified STEP layer from
     await expect(modelLoad.handler({ file_path }, ctx)).rejects.toMatchObject({ code: 'PERMISSION_DENIED' });
     expect(requests).toBe(0);
     ctx.config.ociHosts = [registry];
+    await expect(modelLoad.handler({ file_path }, { ...ctx, scope: readOnlyScope() }))
+      .rejects.toMatchObject({ code: 'PERMISSION_DENIED', message: 'Loading an OCI model requires mutate scope.' });
+    expect(requests).toBe(0);
     const response = await modelLoad.handler({ file_path }, ctx);
     expect(response.structuredContent).toMatchObject({ id: 'oci-fixture', schema: 'IFC4' });
     expect(ctx.registry.get('oci-fixture')?.bim.query().byType('IfcWall').toArray()).toHaveLength(1);

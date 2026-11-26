@@ -48,7 +48,7 @@ impl<'a> ShardedColumns<'a> {
     }
 
     pub(super) fn discover_and_build(
-        self, content: &[u8], disabled_types: &rustc_hash::FxHashSet<String>,
+        self, content: &[u8], disabled_types: &rustc_hash::FxHashSet<String>, collect_sparse_facts: bool,
     ) -> Result<(ColumnarEntityIndex, ColumnsDiscovery), String> {
         let (ids, starts, lengths, classes) = match &self {
             Self::Borrowed { columns, .. } => *columns,
@@ -56,7 +56,10 @@ impl<'a> ShardedColumns<'a> {
         };
         // The class column describes FILE ORDER. Sorting/deduplication must wait
         // until this sole discovery walk has retained all jobs/support spans.
-        let discovery = discover_from_columns(content, ids, starts, lengths, classes, disabled_types);
+        let mut discovery = discover_from_columns(content, ids, starts, lengths, classes, disabled_types);
+        if collect_sparse_facts {
+            discovery.observe_sparse_columns(content, ids, starts, lengths, classes);
+        }
         let index = match self {
             Self::Borrowed { index, .. } => index,
             Self::Owned { ids, starts, lengths, .. } =>

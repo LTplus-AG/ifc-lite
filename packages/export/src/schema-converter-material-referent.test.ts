@@ -29,6 +29,24 @@ const LAYERS = `#10=IFCMATERIALLAYER(#8,0.2,$,$,$,$,$);
 #12=IFCMATERIALLAYER(#8,0.1,$,$,$,$,$);`;
 
 describe('the Material a downgraded IfcMaterialProperties names (#10763)', () => {
+  it('omits unverified IFC5 material properties and reports their ids (#11132)', async () => {
+    const source = model('IFC5', `#5=IFCMATERIALPROPERTIES('Pset_x',$,(#6),#8);
+#6=IFCPROPERTYSINGLEVALUE('p',$,IFCLABEL('v'),$);
+#8=IFCMATERIAL('Concrete');`);
+    const store = await parse(source);
+    const merged = new MergedExporter([{ id: 'ifc5', name: 'IFC5', dataStore: store }]);
+    const options = { schema: 'IFC2X3' } as const;
+    for (const result of [new StepExporter(store).export(options), merged.export(options), await merged.exportAsync(options)]) {
+      const out = new TextDecoder().decode(result.content);
+      expect(out).toContain("#8=IFCMATERIAL('Concrete');");
+      expect(out).not.toContain('#5=');
+      expect(result.stats.warnings.join(' ')).toMatch(/IFC5 has no EXPRESS attribute registry.*#5/);
+    }
+    const report = analyzeConversionLoss(store, 'IFC5', 'IFC2X3');
+    expect(report.entries).toContainEqual(expect.objectContaining({ sourceType: 'IFCMATERIALPROPERTIES', kind: 'lossy', expressIds: [5] }));
+    expect(report.describe()).toContain('1 × IFCMATERIALPROPERTIES (#5) will be omitted because IFC5 has no EXPRESS attribute registry.');
+  });
+
   it('carries an IfcMaterial as it is', async () => {
     for (const from of ['IFC4', 'IFC4X3']) {
       expect((await down(from, "#5=IFCMATERIALPROPERTIES('Pset_x','d',(#6),#8);")).line, from)

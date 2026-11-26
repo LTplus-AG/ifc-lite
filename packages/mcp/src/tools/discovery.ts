@@ -23,10 +23,12 @@ import { entityInfoAcrossSchemas, entityInfoInSchema } from '@ifc-lite/sdk/headl
 import { foldedEntityCount, foldedTypeCounts, pendingMutationsField, pendingOverlay } from '@ifc-lite/sdk/headless';
 import type { Tool } from './types.js';
 import { fmtInt, resolveModel, okResult } from './util.js';
+import { basename } from 'node:path';
 import { openOciModel, parseModelReference } from '@ifc-lite/oci/node-model';
-import { loadIfcModel, loadIfcModelFromBytes } from '../loader.js';
+import { deriveModelId, loadIfcModel, loadIfcModelFromBytes } from '../loader.js';
 import { resolveSafePath } from '../safe-path.js';
-import { modelAllowed, scopeAllows } from '../auth/scope.js';
+import { modelAllowed, scopeAllows, type AuthScope } from '../auth/scope.js';
+import type { ToolContext } from '../context.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 
 export const modelInfo: Tool = {
@@ -118,9 +120,9 @@ export const modelList: Tool = {
 
 export const modelLoad: Tool = {
   name: 'model_load',
-  description: 'Load IFC STEP, IFCZIP or IFCX from an allowed local path or an allowed OCI registry. Requires mutate scope.',
+  description: 'Load IFC STEP, IFCZIP or IFCX from an allowed local path. Loading from an allowed OCI registry also requires mutate scope.',
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
-  scope: 'mutate',
+  scope: 'read',
   inputSchema: {
     type: 'object',
     properties: {
@@ -133,36 +135,41 @@ export const modelLoad: Tool = {
   async handler(input, ctx) {
     const source = input.file_path;
     const modelId = input.model_id as string | undefined;
+    const oci = typeof source === 'string' && source.startsWith('oci://');
     let label = String(source);
     try {
       const loaded = await withSourceWriteLock(ctx.registry, async () => {
-        if (ctx.signal.aborted) {
-          throw new ToolExecutionError({ code: ToolErrorCode.CANCELLED, message: 'Model loading cancelled.' });
-        }
-        let loaded;
-        if (typeof source === 'string' && source.startsWith('oci://')) {
+        assertModelLoadAccess(modelId, ctx, oci);
+        let model;
+        if (oci) {
           const { registry } = parseModelReference(source);
           const allowed = ctx.config.ociHosts ?? process.env.IFC_LITE_MCP_OCI_HOSTS?.split(',') ?? [];
           if (!allowed.some((host) => host.trim().toLowerCase() === registry)) {
             throw new ToolExecutionError({ code: ToolErrorCode.PERMISSION_DENIED, message: `OCI registry '${registry}' is outside the configured OCI hosts.` });
           }
           const { bytes, name } = await openOciModel(source);
-          loaded = await loadIfcModelFromBytes(bytes, name, modelId, source);
+          const id = modelId ?? deriveModelId(name);
+          assertModelLoadAccess(id, ctx, oci);
+          model = await loadIfcModelFromBytes(bytes, name, id, source);
         } else {
-          // Canonicalize and bounds-check local paths before touching the model.
           label = await resolveSafePath(source, ctx, 'read');
-          loaded = await loadIfcModel(label, { modelId, allowedPaths: [label] });
+          const id = modelId ?? deriveModelId(basename(label));
+          assertModelLoadAccess(id, ctx, oci);
+          model = await loadIfcModel(label, { modelId: id, allowedPaths: [label] });
         }
-        const scope = ctx.currentScope?.() ?? ctx.scope;
-        if (ctx.signal.aborted || !scopeAllows(scope, 'mutate') || !modelAllowed(scope, loaded.id)) {
-          loaded.backend.dispose();
-          throw new ToolExecutionError({
-            code: ctx.signal.aborted ? ToolErrorCode.CANCELLED : ToolErrorCode.PERMISSION_DENIED,
-            message: ctx.signal.aborted ? 'Model loading cancelled.' : 'Access was withdrawn before the model was registered.',
-          });
+        // The scope, pending edits or cancellation can change during the parse.
+        try {
+          assertModelLoadAccess(model.id, ctx, oci);
+        } catch (refused) {
+          try {
+            model.backend.dispose();
+          } catch (disposeError) {
+            ctx.log.log('warning', 'model_load: dispose after refusal failed', { error: String(disposeError) });
+          }
+          throw refused;
         }
-        ctx.registry.add(loaded);
-        return loaded;
+        ctx.registry.add(model);
+        return model;
       });
       ctx.log.log('info', 'model_load', { id: loaded.id, file: label, entities: loaded.store.entityCount });
       // A model the scan read short is reported as such, in the text the
@@ -186,10 +193,63 @@ export const modelLoad: Tool = {
   },
 };
 
+function assertModelLoadAccess(id: string | undefined, ctx: ToolContext, oci: boolean): void {
+  if (ctx.signal.aborted) {
+    throw new ToolExecutionError({ code: ToolErrorCode.CANCELLED, message: 'model_load was cancelled.' });
+  }
+  const live = ctx.currentScope?.() ?? ctx.scope;
+  if (!scopeAllows(live, 'read')) {
+    throw new ToolExecutionError({ code: ToolErrorCode.PERMISSION_DENIED, message: 'This token no longer has read scope.' });
+  }
+  if (oci && !scopeAllows(live, 'mutate')) {
+    throw new ToolExecutionError({ code: ToolErrorCode.PERMISSION_DENIED, message: 'Loading an OCI model requires mutate scope.' });
+  }
+  if (id !== undefined) {
+    assertMayLoadAs(id, ctx, live);
+    assertMayDiscard(id, ctx, live);
+  }
+}
+
+/**
+ * `model_load` needs only `read` scope (#11534), so it must not become a way
+ * around the token's model allowlist: the registry disposes a model it
+ * replaces, so loading under an id the token may not access is refused.
+ * Replacing or dropping a model with unsaved edits needs `mutate` (see
+ * assertMayDiscard): a session narrowed after editing must not lose the edits.
+ */
+function assertMayLoadAs(id: string, ctx: ToolContext, scope = ctx.scope): void {
+  if (!modelAllowed(scope, id)) {
+    throw new ToolExecutionError({
+      code: ToolErrorCode.PERMISSION_DENIED,
+      message: `Access to model '${id}' is not permitted for this token.`,
+    });
+  }
+}
+
+/**
+ * Unloading or replacing a model throws away its unsaved edits. A caller that
+ * could not have made them (no `mutate` in the live scope, e.g. after setScope
+ * narrowed the session) may not discard them.
+ */
+function assertMayDiscard(id: string, ctx: ToolContext, scope: AuthScope): void {
+  const existing = ctx.registry.get(id);
+  if (!existing || scopeAllows(scope, 'mutate')) return;
+  if ((pendingOverlay(existing)?.pendingMutations ?? 0) > 0) {
+    throw new ToolExecutionError({
+      code: ToolErrorCode.PERMISSION_DENIED,
+      message: `Model '${id}' has unsaved edits; dropping or replacing it needs mutate scope. Exporting keeps a copy but does not clear them; load the file under another model_id, or use a token with mutate scope.`,
+    });
+  }
+}
+
 export const modelUnload: Tool = {
   name: 'model_unload',
-  description: 'Drop a model from session memory.',
-  scope: 'mutate',
+  description: 'Drop a model from session memory. Unsaved edits to it are lost.',
+  // `read` for the same reason as `model_load`: it frees session memory and
+  // writes nothing. A token narrowed to some models still cannot drop others.
+  scope: 'read',
+  // Read scope, but it drops unsaved edits, so clients should still ask.
+  annotations: { destructiveHint: true },
   inputSchema: {
     type: 'object',
     properties: {
@@ -200,18 +260,17 @@ export const modelUnload: Tool = {
   },
   handler(input, ctx) {
     const id = input.model_id as string;
+    // One live scope for every check (setScope may have narrowed it).
+    const live = ctx.currentScope?.() ?? ctx.scope;
+    // Allowlist first, so a narrowed token cannot probe which ids are loaded.
+    assertMayLoadAs(id, ctx, live);
     if (!ctx.registry.get(id)) {
       throw new ToolExecutionError({
         code: ToolErrorCode.MODEL_NOT_FOUND,
         message: `Model '${id}' is not loaded.`,
       });
     }
-    if (!modelAllowed(ctx.scope, id)) {
-      throw new ToolExecutionError({
-        code: ToolErrorCode.PERMISSION_DENIED,
-        message: `Access to model '${id}' is not permitted for this token.`,
-      });
-    }
+    assertMayDiscard(id, ctx, live);
     ctx.registry.remove(id);
     return okResult(`Unloaded model '${id}'.`, { id });
   },

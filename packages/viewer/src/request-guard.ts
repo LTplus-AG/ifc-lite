@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Who the loopback-only viewer server answers.
+ * Where the viewer server listens, and who it answers.
  *
  * A page on another site can still send requests to it even though CORS
  * stops that page reading the answers, and a DNS-rebound name could read
@@ -13,23 +13,32 @@
 
 import type { IncomingMessage } from 'node:http';
 
+/**
+ * The address the viewer server binds. Clients dial it rather than
+ * `localhost`, which may resolve to ::1, where another process can hold the
+ * same port.
+ */
+export const VIEWER_HOST = '127.0.0.1';
+
+/** `http://127.0.0.1:<port><path>`: the viewer server's own URL. */
+export function viewerUrl(port: number, path = ''): string {
+  return `http://${VIEWER_HOST}:${port}${path}`;
+}
+
 /** A page served from this machine: `http(s)://localhost` or `127.0.0.1`, any port. */
 const LOCAL_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
 
-/** The Host values a server listening on 127.0.0.1:`port` answers to. Clients leave the default port out. */
-export function ownHosts(port: number): ReadonlySet<string> {
-  return new Set(['localhost', '127.0.0.1'].flatMap((h) => (port === 80 ? [h, `${h}:80`] : [`${h}:${port}`])));
-}
+export type RequestVerdict = { refuse: true } | { refuse: false; corsOrigin: string | null };
 
-/** The request's Origin when it is a local page (CORS may echo it), else null. */
-export function localOrigin(req: IncomingMessage): string | null {
+/** Refuse `req`, or serve it, echoing its Origin for CORS when that is a local page. */
+export function checkRequest(req: IncomingMessage, port: number): RequestVerdict {
+  const host = req.headers.host?.toLowerCase();
+  // Clients leave the default port out of Host.
+  const ownHost = ['localhost', VIEWER_HOST].some((h) => host === `${h}:${port}` || (port === 80 && host === h));
+  if (!ownHost) return { refuse: true };
   const origin = req.headers.origin;
-  return origin !== undefined && LOCAL_ORIGIN.test(origin) ? origin : null;
-}
-
-/** True when the server must refuse `req` outright. */
-export function refuseRequest(req: IncomingMessage, hosts: ReadonlySet<string>): boolean {
-  if (!hosts.has(req.headers.host?.toLowerCase() ?? '')) return true;
-  // Clients that send no Origin (the CLI, the MCP server) are not pages.
-  return req.method === 'POST' && req.headers.origin !== undefined && localOrigin(req) === null;
+  if (origin === undefined) return { refuse: false, corsOrigin: null }; // the CLI, the MCP server: not a page
+  const local = LOCAL_ORIGIN.test(origin);
+  if (!local && req.method === 'POST') return { refuse: true };
+  return { refuse: false, corsOrigin: local ? origin : null };
 }

@@ -438,16 +438,11 @@ describe('viewer server — loopback only', () => {
   });
 
   // A DNS-rebound name reaches 127.0.0.1 but still sends its own name as Host.
-  for (const host of ['evil.com', '127.0.0.1:1', 'localhost']) {
-    it(`refuses Host ${host}`, TEST_TIMEOUT, async () => {
+  it('refuses a foreign Host, even on the right port', TEST_TIMEOUT, async () => {
+    for (const host of ['evil.com', `evil.com:${port}`, '127.0.0.1:1', 'localhost']) {
       const res = await req(port, '/model.ifc', { headers: { host } });
-      assert.equal(res.status, 403);
-    });
-  }
-
-  it('refuses a foreign Host even on the right port', TEST_TIMEOUT, async () => {
-    const res = await req(port, '/model.ifc', { headers: { host: `evil.com:${port}` } });
-    assert.equal(res.status, 403);
+      assert.equal(res.status, 403, host);
+    }
   });
 
   for (const host of ['localhost', '127.0.0.1', 'LOCALHOST']) {

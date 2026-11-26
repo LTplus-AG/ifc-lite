@@ -16,6 +16,7 @@ import {
   VALID_ACTIONS,
   type CreateHandler,
   type ViewerServer,
+  viewerUrl,
 } from '@ifc-lite/viewer-core';
 
 export { VALID_ACTIONS };
@@ -30,7 +31,7 @@ export async function viewCommand(args: string[]): Promise<void> {
   if (sendPayload && portStr) {
     const port = parseInt(portStr, 10);
     try {
-      const resp = await fetch(`http://127.0.0.1:${port}/api/command`, {
+      const resp = await fetch(viewerUrl(port, '/api/command'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: sendPayload,
@@ -242,7 +243,7 @@ function setupStdinCommands(port: number, viewer: ViewerServer): void {
         break;
       case 'clear':
       case 'clearCreated':
-        fetch(`http://127.0.0.1:${port}/api/clear-created`, { method: 'POST' }).catch(() => {});
+        fetch(viewerUrl(port, '/api/clear-created'), { method: 'POST' }).catch(() => {});
         break;
       case 'showall':
         command = { action: 'showall' };

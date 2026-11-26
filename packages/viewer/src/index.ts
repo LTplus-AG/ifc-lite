@@ -11,6 +11,7 @@ export {
   type CreateHandler,
   type CreateResult,
 } from './server.js';
+export { VIEWER_HOST, viewerUrl } from './request-guard.js';
 export {
   createStreamingViewerAdapter,
   createStreamingVisibilityAdapter,

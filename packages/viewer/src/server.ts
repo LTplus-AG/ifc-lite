@@ -16,7 +16,7 @@ import { readFile, stat } from 'node:fs/promises';
 import { dirname, extname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getViewerHtml } from './viewer-html.js';
-import { localOrigin, ownHosts, refuseRequest } from './request-guard.js';
+import { checkRequest, VIEWER_HOST, viewerUrl } from './request-guard.js';
 
 /** Valid command actions that the viewer understands */
 export const VALID_ACTIONS = new Set([
@@ -161,12 +161,12 @@ export async function startViewerServer(opts: ViewerServerOptions): Promise<View
   // Track IFC content created via /api/create for export
   const createdSegments: string[] = [];
 
-  // The Host values this server answers to, set once it is listening. No
-  // request can arrive before that.
-  let hosts: ReadonlySet<string> = new Set();
+  // Set once listening; no request arrives before that.
+  let boundPort = 0;
 
   const server = createServer(async (req, res) => {
-    if (refuseRequest(req, hosts)) {
+    const verdict = checkRequest(req, boundPort);
+    if (verdict.refuse) {
       res.writeHead(403, { 'Content-Type': 'text/plain' });
       res.end('Forbidden');
       return;
@@ -175,10 +175,8 @@ export async function startViewerServer(opts: ViewerServerOptions): Promise<View
     const url = new URL(req.url ?? '/', `http://${req.headers.host}`);
     const path = url.pathname;
 
-    // CORS headers — restrict to localhost origins only
-    const origin = localOrigin(req);
-    if (origin) {
-      res.setHeader('Access-Control-Allow-Origin', origin);
+    if (verdict.corsOrigin) {
+      res.setHeader('Access-Control-Allow-Origin', verdict.corsOrigin);
     }
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -383,13 +381,12 @@ export async function startViewerServer(opts: ViewerServerOptions): Promise<View
     server.once('error', onListenError);
 
     // Loopback only: the server has no authentication.
-    server.listen(requestedPort, '127.0.0.1', () => {
+    server.listen(requestedPort, VIEWER_HOST, () => {
       server.off('error', onListenError);
       const addr = server.address();
       const port = typeof addr === 'object' && addr ? addr.port : requestedPort;
-      // Not `localhost`: it may resolve to ::1, where another process can hold this port.
-      const url = `http://127.0.0.1:${port}`;
-      hosts = ownHosts(port);
+      const url = viewerUrl(port);
+      boundPort = port;
 
       if (opts.onReady) {
         try {

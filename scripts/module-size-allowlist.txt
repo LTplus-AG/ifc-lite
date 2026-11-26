@@ -146,7 +146,7 @@
    439 packages/clash/src/bcf-bridge.ts
    433 packages/clash/src/duplicates.ts
    547 packages/cli/src/commands/ask.ts
-   501 packages/cli/src/commands/create.ts
+   499 packages/cli/src/commands/create.ts
    482 packages/cli/src/commands/extract-entities.ts
    501 packages/cli/src/commands/query.ts
    457 packages/codegen/src/express-parser.ts
@@ -261,7 +261,7 @@
    444 packages/server-client/src/parquet-tables.ts
    595 packages/server-client/src/types.ts
    406 packages/source-dalux/src/provider.ts
-   412 packages/viewer/src/server.ts
+   409 packages/viewer/src/server.ts
   1485 packages/viewer/src/viewer-html.ts
    500 scripts/check-agents-md-size.mjs
    680 scripts/check-changeset-bump.mjs

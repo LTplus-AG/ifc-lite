@@ -26,6 +26,7 @@ import {
   createStreamingViewerAdapter,
   createStreamingVisibilityAdapter,
   startViewerServer,
+  viewerUrl,
 } from '@ifc-lite/viewer-core';
 import { EntityNode } from '@ifc-lite/query';
 import type { LoadedModel } from './context.js';
@@ -83,7 +84,7 @@ export class ViewerManager {
     if (!this.server) return null;
     return {
       port: this.port,
-      url: `http://127.0.0.1:${this.port}/`,
+      url: viewerUrl(this.port, '/'),
       modelId: this.modelId,
       startedAt: this.startedAt,
       clientCount: this.server.clientCount(),
@@ -166,7 +167,7 @@ export class ViewerManager {
   /** Send a one-off command via the viewer's REST API. */
   async sendCommand(action: string, payload: Record<string, unknown> = {}): Promise<void> {
     if (!this.server) throw new Error('Viewer is not open. Call viewer_open first.');
-    const res = await fetch(`http://127.0.0.1:${this.port}/api/command`, {
+    const res = await fetch(viewerUrl(this.port, '/api/command'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action, ...payload }),
@@ -196,7 +197,7 @@ export class ViewerManager {
   }
 
   private async consumeSse(signal: AbortSignal): Promise<void> {
-    const url = `http://127.0.0.1:${this.port}/events`;
+    const url = viewerUrl(this.port, '/events');
     const res = await fetch(url, { signal, headers: { Accept: 'text/event-stream' } });
     if (!res.body || signal.aborted) return;
     this.listeningToEvents = true;

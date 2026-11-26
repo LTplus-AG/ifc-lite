@@ -31,7 +31,11 @@ export async function listenLoopback(
   const wss = new WebSocketServer({ noServer: true, maxPayload });
   http.on('upgrade', (req, socket, head) => onUpgrade(wss, req, socket, head));
   await new Promise<void>((resolve, reject) => {
-    http.once('error', reject);
+    http.once('error', (err) => {
+      // Not bound: nothing to keep.
+      wss.close();
+      reject(err);
+    });
     // 127.0.0.1 only, never a public interface.
     http.listen(port, '127.0.0.1', () => {
       http.off('error', reject);

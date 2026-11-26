@@ -242,7 +242,8 @@ function statusResult(bridge: TabBridge, pairNewTab: boolean): CallToolResult {
           toolCount: tab.tools.length,
         },
       } : {}),
-      ...(pairing ? { pairingCode: pairing.code, pairingUrl: pairing.url } : {}),
+      // After a fallback the code is not offered for typing (see manualPairingHint): the link only.
+      ...(pairing ? { pairingUrl: pairing.url, ...(bridge.fellBackFrom === null ? { pairingCode: pairing.code } : {}) } : {}),
     },
   };
 }

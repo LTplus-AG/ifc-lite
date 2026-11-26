@@ -183,7 +183,7 @@ async function main(): Promise<void> {
     }
     process.stderr.write(`[ifc-lite-mcp] ready on stdio (read-only=${opts.readOnly}${bridged ? ', browser bridge on' : ''})\n`);
     if (bridged) {
-      process.stderr.write('[ifc-lite-mcp] the browser bridge listens once the agent calls bridge_status, which returns the pairing link.\n');
+      process.stderr.write('[ifc-lite-mcp] the agent pairs a browser tab with bridge_status, which returns the link.\n');
     }
 
     if (opts.autoViewer && registry.count() > 0) {
@@ -289,7 +289,8 @@ async function startBridge(opts: CliOptions, headless: HeadlessParts, logger: Lo
       port: opts.bridgePort ?? DEFAULT_BRIDGE_PORT,
       // An explicit --bridge-port is a promise to the user; only the default falls back.
       portFallback: opts.bridgePort === undefined,
-      lazy: true,
+      // An explicit port is bound at start, so a taken one fails here as it always did.
+      lazy: opts.bridgePort === undefined,
       headless,
       readOnly: opts.readOnly,
       channel: opts.channel,
@@ -300,7 +301,11 @@ async function startBridge(opts: CliOptions, headless: HeadlessParts, logger: Lo
       logger,
     });
   } catch (err) {
-    process.stderr.write(`[ifc-lite-mcp] cannot start the bridge: ${(err as Error).message}\n`);
+    const e = err as NodeJS.ErrnoException;
+    const why = e.code === 'EADDRINUSE'
+      ? `port ${opts.bridgePort} on 127.0.0.1 is in use (another bridge running?). Pass another --bridge-port, or drop it to let the bridge pick a free one.`
+      : e.message;
+    process.stderr.write(`[ifc-lite-mcp] cannot start the bridge: ${why}\n`);
     process.exitCode = 1;
     return null;
   }

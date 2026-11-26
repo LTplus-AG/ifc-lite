@@ -160,7 +160,8 @@ describe.skipIf(!built)('ifc-lite-mcp --bridge binary', () => {
     const dir = await mkdtemp(join(tmpdir(), 'ifc-lite-mcp-bridge-'));
     const file = join(dir, 'building.ifc');
     await writeFile(file, MODEL, 'utf-8');
-    const { child, closed, out, client } = await spawnCli([file, '--bridge', '--bridge-port', '0']);
+    // No --bridge-port: the default is bound lazily (and falls back if another session holds 21517).
+    const { child, closed, out, client } = await spawnCli([file, '--bridge']);
     try {
       expect(out.stderr).not.toMatch(/ws:\/\/127\.0\.0\.1:\d+/);
       client.send({ id: 2, method: 'tools/list' });
@@ -226,20 +227,17 @@ describe.skipIf(!built)('ifc-lite-mcp --bridge binary', () => {
     await new Promise<void>((ok) => probe.close(() => ok()));
   }, 30_000);
 
-  it('P2: an explicit --bridge-port that is taken fails bridge_status, not the server', async () => {
+  it('explains an occupied explicit --bridge-port at startup instead of falling back', async () => {
     const holder = createServer();
     await new Promise<void>((ok) => holder.listen(0, '127.0.0.1', () => ok()));
     const port = (holder.address() as AddressInfo).port;
     try {
-      const { child, closed, client } = await spawnCli(['--bridge', '--bridge-port', String(port)]);
-      const result = await status(client, 2);
-      expect(result.isError).toBe(true);
-      expect(JSON.stringify(result.structuredContent)).toContain('EADDRINUSE');
-      // The headless tools keep working.
-      client.send({ id: 3, method: 'tools/call', params: { name: 'model_list', arguments: {} } });
-      expect((await client.reply(3)).result).not.toHaveProperty('isError', true);
-      child.stdin.end();
-      expect(await closed).toBe(0);
+      const child = spawn(process.execPath, [CLI, '--bridge', '--bridge-port', String(port)], { stdio: ['pipe', 'pipe', 'pipe'] });
+      let stderr = '';
+      child.stderr.setEncoding('utf8').on('data', (d: string) => { stderr += d; });
+      const code = await new Promise<number | null>((done) => child.once('close', (c) => done(c)));
+      expect(code).toBe(1);
+      expect(stderr).toContain(`port ${port} on 127.0.0.1 is in use`);
     } finally {
       await new Promise<void>((ok) => holder.close(() => ok()));
     }

@@ -204,6 +204,7 @@ describe('lazy listener and port fallback', () => {
     // Off the default port the code is not offered for typing: it would go to whatever holds the default.
     expect((status.content[0] as { text: string }).text).toContain(`Use the link: it carries port ${port}`);
     expect((status.content[0] as { text: string }).text).not.toContain('enter the code');
+    expect(status.structuredContent).not.toHaveProperty('pairingCode');
     expect(lines.some((l) => l.includes(`port ${taken} is in use`))).toBe(true);
   });
 

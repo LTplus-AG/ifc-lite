@@ -177,8 +177,8 @@ describe('list_changed', () => {
   it('commits a registry add even when a listener throws, and still runs the others', () => {
     const registry = new InMemoryModelRegistry();
     let ran = 0;
-    registry.onChange(() => { throw new Error('bad host listener'); });
-    registry.onChange(() => { ran++; });
+    registry.onChange?.(() => { throw new Error('bad host listener'); });
+    registry.onChange?.(() => { ran++; });
     const stderr = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     expect(() => registry.add(fakeModel('kept'))).not.toThrow();
     expect(() => registry.remove('kept')).not.toThrow();

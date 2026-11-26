@@ -51,7 +51,8 @@ function anonymizeSeeds(m: LoadedModel, input: Record<string, unknown>): Set<num
     if (matched.length === 0) throw invalid(`types: no ${type} entities.`);
     for (const e of matched) seeds.add(e.ref.expressId);
   }
-  const key = typeof input.storey === 'string' ? input.storey.trim() : '';
+  const authored = typeof input.storey === 'string' ? input.storey : '';
+  const key = authored.trim();
   if (typeof input.storey === 'string' && !key) throw invalid('storey must not be blank.');
   if (key) {
     const id = key.replace(/^#/, '');
@@ -64,13 +65,13 @@ function anonymizeSeeds(m: LoadedModel, input: Record<string, unknown>): Set<num
     // Name first, then LongName, as extract's --storey resolves it.
     const longName = (s: (typeof storeys)[number]) =>
       m.bim.attributes(s.ref).find((a) => a.name === 'LongName')?.value;
-    const byName = isId ? [] : storeys.filter((s) => s.name?.trim() === key);
-    const named = isId || byName.length > 0 ? byName : storeys.filter((s) => String(longName(s) ?? '').trim() === key);
+    const byName = isId ? [] : storeys.filter((s) => s.name === authored);
+    const named = isId || byName.length > 0 ? byName : storeys.filter((s) => longName(s) === authored);
     // A bare number that is one storey's id and another storey's name is ambiguous.
     if (byId && /^\d+$/.test(key) && named.some((s) => s !== byId)) {
       throw invalid(`storey: '${key}' is storey #${key} and the name of another storey; pass #${key} or a GlobalId.`);
     }
-    if (!byId && named.length > 1) throw invalid(`storey: ${named.length} storeys are named '${key}'; pass a GlobalId or express id.`);
+    if (!byId && named.length > 1) throw invalid(`storey: ${named.length} storeys are named '${authored}'; pass a GlobalId or express id.`);
     const exact = byId ?? named[0];
     if (!exact && fragment.length > 1) throw invalid(`storey: '${key}' matches ${fragment.map((s) => s.name).join(', ')}; name one exactly.`);
     const storey = exact ?? fragment[0];

@@ -238,10 +238,12 @@ const modelExtract: Tool = {
     const globalIds = nonBlank(input.global_ids as string[] | undefined);
     const expressIds = (input.express_ids as number[] | undefined) ?? [];
     const types = nonBlank(input.types as string[] | undefined).map(withIfcPrefix);
-    const storeys = nonBlank(input.storeys as string[] | undefined);
+    const storeys = ((input.storeys as unknown[] | undefined) ?? []).filter(
+      (token): token is string => typeof token === 'string' && token.trim().length > 0,
+    );
     if (expressIds.length > 0) refuseSourceIdsWhilePending(m, 'express_ids');
     // A bare number can resolve to a storey id, so it is refused too.
-    if (storeys.some((s) => /^#?\d+$/.test(s))) refuseSourceIdsWhilePending(m, 'A storey given as a number');
+    if (storeys.some((s) => /^#?\d+$/.test(s.trim()))) refuseSourceIdsWhilePending(m, 'A storey given as a number');
     if (globalIds.length + expressIds.length + types.length + storeys.length === 0) {
       throw invalid('Select something: global_ids, express_ids, types or storeys.');
     }

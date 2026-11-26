@@ -95,8 +95,8 @@ export function resolveStorey(token: string, parsed: ParsedStep): { storeyId: nu
   const byName = (): number | undefined => {
     const storeys = [...parsed.instances.values()].filter((inst) => inst.type === 'IFCBUILDINGSTOREY');
     for (const index of [NAME, LONG_NAME]) {
-      const hits = storeys.filter((inst) => storeyText(inst.body, index)?.trim() === t).map((inst) => inst.id);
-      if (hits.length > 1) throw new SubsetSelectionError('invalid', `${hits.length} storeys are named '${t}' (#${hits.join(', #')}); pass a GlobalId or #id.`);
+      const hits = storeys.filter((inst) => storeyText(inst.body, index) === token).map((inst) => inst.id);
+      if (hits.length > 1) throw new SubsetSelectionError('invalid', `${hits.length} storeys are named '${token}' (#${hits.join(', #')}); pass a GlobalId or #id.`);
       if (hits.length === 1) return hits[0];
     }
     return undefined;

@@ -457,7 +457,7 @@ describe('compact meshes in the scene', () => {
     assert.equal(decoded(), 0);
   });
 
-  it('come back as pages through the renderer\'s whole recovery sequence, and the scene settles', async () => {
+  it('come back as pages through the renderer\'s whole recovery sequence, and the scene settles (#11525)', async () => {
     // device-recovery.ts: prepare (pages queued again), discard, teardown and init turn the quantized pipelines
     // off, prepare again, pipelines back on, restore, prepare once more. Sent to the bucket queue while the
     // pipelines were off, the queued meshes became streaming fragments no stream finalized: the scene never
@@ -481,14 +481,16 @@ describe('compact meshes in the scene', () => {
     assert.equal(decoded(), 0);
   });
 
-  it('decode queued meshes at the next drain when the quantized pipelines stay off', async () => {
+  it('decode queued meshes at the next drain, into buckets, when the quantized pipelines stay off (#11525)', async () => {
     const gpu = fakeGpu(), scene = await newScene();
     scene.queueMeshes(compactBatch([{ expressId: 330, at: [0, 0, 0], size: 1, color: GREY }]));
     scene.setQuantizedBatches(false);
     assert.equal(scene.hasQueuedMeshes(), true, 'still queued, still compact');
     flushAll(scene, gpu);
     assert.equal(pages(scene).length, 0);
+    assert.deepEqual(entitiesOf(buckets(scene)), [330]);
     assert.equal(scene.getMeshDataPieces(330)?.[0].compact, undefined);
+    assert.equal(scene.hasStreamingFragments(), false, 'appended outside a stream: no fragment waits for a finalize');
   });
 
   it('recover as pages after a device loss even when a demotion was pending', async () => {

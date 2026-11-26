@@ -146,12 +146,13 @@ export class SceneCompact {
     const queue: MeshData[] = [];
     const scene = this.scene;
     const pages = scene.quantizedBatchesEnabled && !scene.ephemeralStreamingMode && !scene.geometryReleased;
+    const decoded: MeshData[] = [];
     for (const mesh of this.queue) {
       if (pages && this.eligible(mesh)) { queue.push(mesh); continue; }
-      materializeCompactMesh(mesh);
-      this.scene.meshQueue.push(...this.scene.splitMeshForStreaming(mesh));
+      decoded.push(mesh);
     }
     this.queue = [];
+    this.toBuckets(decoded);
     if (queue.length === 0) return true;
     try {
       this.store.append(queue, device, pipeline, (mesh, ref) => {
@@ -233,19 +234,38 @@ export class SceneCompact {
 
   /** Queued meshes `selection` names go to the bucket queue, decoded. Returns whether any did. */
   private demoteQueued(selection: Selection): boolean {
-    if (this.queue.length === 0) return false;
-    const keep: MeshData[] = [];
-    let moved = false;
+    // With no device yet (a recovery's queue before its first drain) they wait for `drain` to judge them.
+    if (this.queue.length === 0 || (!this.gpu && !this.streaming)) return false;
+    const keep: MeshData[] = [], decoded: MeshData[] = [];
     for (const mesh of this.queue) {
       const selected = selection === undefined || ('modelIndex' in selection
         ? (mesh.modelIndex ?? 0) === selection.modelIndex : selection.ids.has(mesh.expressId));
-      if (!selected) { keep.push(mesh); continue; }
-      materializeCompactMesh(mesh);
-      this.scene.meshQueue.push(...this.scene.splitMeshForStreaming(mesh));
-      moved = true;
+      (selected ? decoded : keep).push(mesh);
     }
     this.queue = keep;
-    return moved;
+    this.toBuckets(decoded);
+    return decoded.length > 0;
+  }
+
+  /** A stream (or its finalize) is under way: bucket meshes join it as fragments, and its finalize merges them. */
+  private get streaming(): boolean {
+    const scene = this.scene;
+    return scene.streamingFragments.length > 0 || scene.streamedBucketKeys.size > 0 || scene.finalizeInProgress;
+  }
+
+  /**
+   * Decoded queued meshes onto the bucket path. During a stream they join its queue; outside one they are
+   * appended at once, since a streaming fragment would wait for a finalize that never comes (a device
+   * recovery whose pipelines did not come back, an edit right after one). One the bucket path refuses
+   * keeps the queue, as any f32 mesh would.
+   */
+  private toBuckets(meshes: MeshData[]): void {
+    if (meshes.length === 0) return;
+    const scene = this.scene;
+    for (const mesh of meshes) materializeCompactMesh(mesh);
+    const now = this.gpu && !this.streaming ? meshes.filter((mesh) => !scene.refusesBucketPath(scene.modelTranslations.placeMesh(mesh))) : [];
+    if (now.length > 0) scene.appendToBatches(now, this.gpu!.device, this.gpu!.pipeline, false, false);
+    for (const mesh of meshes) if (!now.includes(mesh)) scene.meshQueue.push(...scene.splitMeshForStreaming(mesh));
   }
 
   /**
@@ -302,7 +322,7 @@ export class SceneCompact {
     });
     // `drain` uploaded them, so its device is known. While a stream or its finalize is under way they
     // join it as fragments; a synchronous rebuild would republish the batch list without the stream's.
-    const streaming = scene.streamingFragments.length > 0 || scene.streamedBucketKeys.size > 0 || scene.finalizeInProgress;
+    const streaming = this.streaming;
     let failure: unknown;
     let failed = false;
     try {

@@ -145,16 +145,16 @@ const MISSING_NAMESPACE = /of undefined|undefined is not/;
 
 interface HintContext {
   /** The error came from the sandbox itself or is QuickJS's own InternalError, not script-thrown text. */
-  host: boolean;
+  trusted: boolean;
   /** The token holds the export scope. */
   exportAllowed: boolean;
   /** script_run_mutate is callable by this session (mutate scope, not --read-only). */
   mutateAvailable: boolean;
 }
 
-function hintFor(mode: Mode, code: string, message: string, { host, exportAllowed, mutateAvailable }: HintContext): string | undefined {
-  if (host && QUICKJS_OUT_OF_MEMORY.test(message)) return `Raise memory_mb (max ${MAX_MEMORY_MB}) or keep less in memory.`;
-  if (host && QUICKJS_STACK_OVERFLOW.test(message)) return 'Stack overflow: the script recursed too deep (make it iterative or shallower), a logged value is nested too deeply, or a bim call walked a very deeply nested model.';
+function hintFor(mode: Mode, code: string, message: string, { trusted, exportAllowed, mutateAvailable }: HintContext): string | undefined {
+  if (trusted && QUICKJS_OUT_OF_MEMORY.test(message)) return `Raise memory_mb (max ${MAX_MEMORY_MB}) or keep less in memory.`;
+  if (trusted && QUICKJS_STACK_OVERFLOW.test(message)) return 'Stack overflow: the script recursed too deep (make it iterative or shallower), a logged value is nested too deeply, or a bim call walked a very deeply nested model.';
   // Only when the failure looks like touching a namespace that is absent.
   if (mode === 'read' && MUTATE_ONLY_USE.test(code) && MISSING_NAMESPACE.test(message)) {
     // Point at script_run_mutate only when this server and token would let it help.
@@ -188,13 +188,13 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
   const memoryMb = intInput(input.memory_mb, 'memory_mb', 8, MAX_MEMORY_MB, DEFAULT_MEMORY_MB);
   const cancelled = (details?: Record<string, unknown>) =>
     new ToolExecutionError({ code: ToolErrorCode.CANCELLED, message: 'Script cancelled by the client.', details });
-  const scriptError = (message: string, details: Record<string, unknown>, host = false) => new ToolExecutionError({
+  const scriptError = (message: string, details: Record<string, unknown>, trusted = false) => new ToolExecutionError({
     // kind tells a script failure from INVALID_INPUT on the tool's own arguments.
     code: ToolErrorCode.INVALID_INPUT,
     // Envelope messages arrive clipped; a ScriptError's is clipped where it is caught.
     message: `Script error: ${message}`,
     details: { kind: 'script', ...details },
-    hint: hintFor(mode, code, message, { host, exportAllowed, mutateAvailable }),
+    hint: hintFor(mode, code, message, { trusted, exportAllowed, mutateAvailable }),
   });
   if (ctx.signal.aborted) throw cancelled();
   const mutatePermissions: SandboxPermissions = { ...MUTATE_PERMISSIONS, export: exportAllowed };

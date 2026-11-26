@@ -49,14 +49,17 @@
  *               passed, failure when one failed, nothing when they were
  *               cancelled or skipped.
  *   --cancelled the trusted completion workflow marks a cancelled run’s
- *               pending status as failure if that run still owns it.
+ *               pending status as failure if the newest Test run on this
+ *               sha is still the cancelled attempt that owns the status.
  *
  * Every pending says "if stuck: re-run all jobs": a pending is stuck only
  * when its run was cancelled, timed out or broke before its verdict.
  *
  * ORDERING on one sha (the status is last-write-wins): within a run, entry
  * precedes the verdict (the tests job and viewer-shards-status need
- * `changes`). Across runs, test.yml's concurrency group cancels an older
+ * `changes`). The status-writing jobs and the cancellation reporter share
+ * a per-sha concurrency group, so the reporter's reads and POST cannot
+ * straddle another writer's POST. test.yml's workflow group cancels an older
  * non-`edited` run when a newer one starts, and a cancelled run posts nothing,
  * so its verdict cannot land after the newer run's entry. An `edited` run is
  * not cancelling: it queues behind the running one, so it starts after that
@@ -216,6 +219,15 @@ async function postCancellation(env) {
   const current = statuses.find(({ context }) => context === STATUS_CONTEXT);
   if (current?.state !== 'pending' ||
       (current.target_url !== runUrl && !current.target_url?.startsWith(`${runUrl}/job/`))) return 0;
+
+  // GitHub lists runs newest first. Check after reading the pending status
+  // because a newer run may have started or the same run may have retried.
+  // The shared job concurrency group prevents another status writer from
+  // running between this check and the POST.
+  const { workflow_runs: runs } = await api(env, 'GET',
+    `${path}/actions/workflows/test.yml/runs?event=pull_request&head_sha=${sha}&per_page=100`);
+  const latest = runs.find((candidate) => candidate.head_repository?.full_name === repo);
+  if (!latest || String(latest.id) !== id || String(latest.run_attempt) !== attempt) return 0;
 
   await api(env, 'POST', `${path}/statuses/${sha}`, {
     state: 'failure',

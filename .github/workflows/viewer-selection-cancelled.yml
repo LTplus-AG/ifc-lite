@@ -20,6 +20,10 @@ jobs:
       github.event.workflow_run.event == 'pull_request' &&
       github.event.workflow_run.conclusion == 'cancelled' &&
       github.event.workflow_run.head_repository.full_name == github.repository
+    # All writers of this commit status share the per-head-SHA group in Test.
+    concurrency:
+      group: viewer-selection-status-${{ github.event.workflow_run.head_sha }}
+      queue: max
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

@@ -14,7 +14,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -103,10 +103,12 @@ async function withApi(code, fn, reads = {}) {
   const server = createServer((req, res) => {
     let body = '';
     req.on('data', (c) => { body += c; });
-    req.on('end', () => {
+    req.on('end', async () => {
       if (req.method === 'GET') {
+        const read = reads[req.url];
+        const data = typeof read === 'function' ? await read() : read;
         res.writeHead(200, { 'content-type': 'application/json' });
-        res.end(JSON.stringify(reads[req.url] ?? { jobs: [{ name: 'Viewer tests, advisory (selected for this PR)', html_url: 'https://github.com/x/job/9' }] }));
+        res.end(JSON.stringify(data ?? { jobs: [{ name: 'Viewer tests, advisory (selected for this PR)', html_url: 'https://github.com/x/job/9' }] }));
         return;
       }
       posts.push({ url: req.url, auth: req.headers.authorization, body: JSON.parse(body) });
@@ -123,15 +125,21 @@ async function withApi(code, fn, reads = {}) {
 }
 
 const SHA = 'a'.repeat(40);
+const STATUS_PATH = `/repos/${REPO}/commits/${SHA}/status?per_page=100`;
+const RUNS_PATH = `/repos/${REPO}/actions/workflows/test.yml/runs?event=pull_request&head_sha=${SHA}&per_page=100`;
+const CANCELLED_ENV = { CANCELLED_RUN_ID: '42', CANCELLED_RUN_ATTEMPT: '1' };
+const CANCELLED_RUN = { id: 42, head_sha: SHA, head_repository: { full_name: REPO }, run_attempt: 1, conclusion: 'cancelled' };
+const CANCELLED_RUN_URL = `https://github.com/${REPO}/actions/runs/42`;
+const CANCELLED_RUN_PATH = `/repos/${REPO}/actions/runs/42`;
 const env = (api, extra = {}) => ({
   GITHUB_API_URL: api, GITHUB_TOKEN: 't0k', GITHUB_REPOSITORY: REPO, GITHUB_RUN_ID: '7', GITHUB_RUN_ATTEMPT: '1',
   HEAD_SHA: SHA, HEAD_REPO: REPO, CI_PR_VIEWER_SELECT: 'on', ...extra,
 });
 
 test('cancelled Test completion fails only the pending status owned by that attempt', async () => {
-  const runUrl = `https://github.com/${REPO}/actions/runs/42`;
+  const runUrl = CANCELLED_RUN_URL;
   const pending = { context: STATUS_CONTEXT, state: 'pending', target_url: `${runUrl}/job/99` };
-  const cancelled = { head_sha: SHA, run_attempt: 1, conclusion: 'cancelled' };
+  const cancelled = CANCELLED_RUN;
   const cases = [
     { run: cancelled, statuses: [pending], expected: true },
     { run: cancelled, statuses: [{ ...pending, target_url: runUrl }], expected: true },
@@ -139,13 +147,17 @@ test('cancelled Test completion fails only the pending status owned by that atte
     { run: cancelled, statuses: [{ ...pending, state: 'success' }], expected: false },
     { run: cancelled, statuses: [], expected: false },
     { run: { ...cancelled, run_attempt: 2 }, statuses: [pending], expected: false },
+    { run: cancelled, latest: [{ ...cancelled, run_attempt: 2 }], statuses: [pending], expected: false },
+    { run: cancelled, latest: [{ ...cancelled, id: 43, conclusion: null }, cancelled], statuses: [pending], expected: false },
+    { run: cancelled, latest: [], statuses: [pending], expected: false },
+    { run: cancelled, latest: [{ ...cancelled, id: 43, head_repository: { full_name: 'fork/ifc-lite' } }, cancelled], statuses: [pending], expected: true },
     { run: { ...cancelled, conclusion: null }, statuses: [pending], expected: false },
     { run: cancelled, statuses: [pending], headRepo: 'fork/ifc-lite', expected: false },
   ];
-  for (const { run, statuses, headRepo, expected } of cases) {
+  for (const { run, statuses, headRepo, latest = [run], expected } of cases) {
     await withApi(201, async (api, posts) => {
       await main(['--cancelled'], env(api, {
-        HEAD_REPO: headRepo ?? REPO, CANCELLED_RUN_ID: '42', CANCELLED_RUN_ATTEMPT: '1',
+        HEAD_REPO: headRepo ?? REPO, ...CANCELLED_ENV,
       }));
       assert.deepEqual(posts, expected ? [{
         url: `/repos/${REPO}/statuses/${SHA}`,
@@ -156,8 +168,9 @@ test('cancelled Test completion fails only the pending status owned by that atte
         },
       }] : []);
     }, {
-      [`/repos/${REPO}/actions/runs/42`]: run,
-      [`/repos/${REPO}/commits/${SHA}/status?per_page=100`]: { statuses },
+      [CANCELLED_RUN_PATH]: run,
+      [STATUS_PATH]: { statuses },
+      [RUNS_PATH]: { workflow_runs: latest },
     });
   }
 });
@@ -178,6 +191,40 @@ test('main --final posts the verdict on the head sha with the job link', async (
 });
 
 const entryEnv = { EVENT: 'pull_request', LANE: 'fast', BATCH: 'false', NOOP: 'false', FRONTEND: 'true', RUST: 'false' };
+
+test('PR #11355: newest success wins whether it lands before, during or after cancellation reporting', async (t) => {
+  const pending = { context: STATUS_CONTEXT, state: 'pending', target_url: CANCELLED_RUN_URL };
+  const newer = { ...CANCELLED_RUN, id: 43, conclusion: 'success' };
+  for (const timing of ['before', 'during', 'after']) {
+    await t.test(timing, async () => {
+      let postNewerVerdict;
+      let latest = [CANCELLED_RUN];
+      let current = pending;
+      await withApi(201, async (api, posts) => {
+        postNewerVerdict = async () => {
+          latest = [newer, CANCELLED_RUN];
+          await main(['--shards'], env(api, {
+            ...entryEnv, GITHUB_RUN_ID: String(newer.id), LANE: 'full', SHARDS_RESULT: 'success',
+          }));
+          current = posts.at(-1).body;
+        };
+        if (timing === 'before') await postNewerVerdict();
+        await main(['--cancelled'], env(api, CANCELLED_ENV));
+        if (timing === 'after') await postNewerVerdict();
+        assert.deepEqual(posts.map(({ body }) => body.state), timing === 'after' ? ['failure', 'success'] : ['success']);
+        assert.equal(posts.at(-1).body.target_url, `https://github.com/${REPO}/actions/runs/${newer.id}`);
+      }, {
+        [CANCELLED_RUN_PATH]: CANCELLED_RUN,
+        [STATUS_PATH]: async () => {
+          const snapshot = current;
+          if (timing === 'during') await postNewerVerdict();
+          return { statuses: [snapshot] };
+        },
+        [RUNS_PATH]: () => ({ workflow_runs: latest }),
+      });
+    });
+  }
+});
 
 test('main: a failed post fails --final (the pending status still holds the gate) but never --entry (fails open)', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'viewer-status-'));
@@ -403,4 +450,19 @@ test('WIRING: .mergify.yml keeps a failing or pending status out, by the name th
   const gate = JSON.stringify(cfg.merge_protections_settings.auto_merge_conditions);
   assert.ok(gate.includes(`-check-failure=${STATUS_CONTEXT}`)); // @source-text-assertion-ok subject is the parsed config
   assert.ok(gate.includes(`-check-pending=${STATUS_CONTEXT}`)); // @source-text-assertion-ok subject is the parsed config
+});
+
+test('WIRING: all status writers queue in the same per-head-SHA concurrency group', () => {
+  const path = join(REPO_ROOT, '.github/workflows/viewer-selection-cancelled.yml');
+  const reporter = existsSync(path) ? parse(readFileSync(path, 'utf8')).jobs.report : undefined;
+  /* eslint-disable no-template-curly-in-string */
+  assert.deepEqual(reporter?.concurrency, {
+    group: 'viewer-selection-status-${{ github.event.workflow_run.head_sha }}', queue: 'max',
+  });
+  for (const job of [CHANGES, TESTS, SHARDS_STATUS]) {
+    assert.deepEqual(job.concurrency, {
+      group: 'viewer-selection-status-${{ github.event.pull_request.head.sha || github.run_id }}', queue: 'max',
+    }, job.name);
+  }
+  /* eslint-enable no-template-curly-in-string */
 });

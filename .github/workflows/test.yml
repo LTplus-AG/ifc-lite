@@ -121,6 +121,11 @@ jobs:
   # Doc-only and non-test changes skip every expensive job below.
   changes:
     name: Detect changes
+    # Serialize status writers with the cancellation reporter for this head SHA.
+    # Allow multiple waiting writers so a reporter cannot evict a pending verdict.
+    concurrency:
+      group: viewer-selection-status-${{ github.event.pull_request.head.sha || github.run_id }}
+      queue: max
     # Free GitHub-hosted runner. ifc-lite is a PUBLIC repo, so standard
     # `ubuntu-latest` runners are free + unlimited (GitHub only bills public
     # repos for *larger* runners). Light jobs — path filter, lint, the gate —
@@ -1647,6 +1652,9 @@ jobs:
   # it need not start a runner. Advisory to the run like the job below.
   viewer-shards-status:
     name: Viewer shards status (full lane)
+    concurrency:
+      group: viewer-selection-status-${{ github.event.pull_request.head.sha || github.run_id }}
+      queue: max
     needs: [changes, viewer-tests]
     continue-on-error: true
     # Runs exactly when the shards reached a verdict, which is when they ran:
@@ -1716,6 +1724,9 @@ jobs:
   # is still the full gate.
   viewer-tests-selected:
     name: Viewer tests, advisory (selected for this PR)
+    concurrency:
+      group: viewer-selection-status-${{ github.event.pull_request.head.sha || github.run_id }}
+      queue: max
     needs: [changes, build]
     continue-on-error: true
     # Keep in step with gateApplies() in scripts/ci-viewer-select-status.mjs.

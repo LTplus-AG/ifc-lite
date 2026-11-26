@@ -1246,6 +1246,26 @@ describe('compact pages take the decisions of the bucket batches they stand in f
     assert.deepEqual(entitiesOf(buckets(on)), [1, 9]);
   });
 
+  it('group a mesh whose first vertex lies just below a chunk plane as the bucket path does, from its source anchor (#11606)', async () => {
+    // Box 1's first corner is 0.2 mm below the 32 m plane: its level 10 record rounds onto the plane (chunk 1), the
+    // f32 load files it in chunk 0 with box 2. The payload's anchors carry the source value.
+    const boxes: Box[] = [{ expressId: 1, at: [31.9998, 0, 0], size: 0.5, color: GREY }, { expressId: 2, at: [20, 0, 0], size: 0.5, color: GREY }];
+    const keys = async (anchored: boolean): Promise<number> => {
+      const on = await lodScene(true), gpu = fakeGpu();
+      const meshes = compactBatch(boxes, 1); // both in compact cell 1 ([16, 48) m): one page
+      if (anchored) meshes[0].compact!.payload.anchors = Float64Array.from(boxes.flatMap((box) => box.at));
+      upload(on, gpu, meshes);
+      settle(on, gpu);
+      return pages(on)[0].lodParts!.length;
+    };
+    assert.equal(await keys(true), 1, 'one group: chunk 0, as the f32 load files both');
+    assert.equal(await keys(false), 2, 'without anchors (an older wasm build) the first record decides: chunk 1');
+    const off = await lodScene(false), gpuOff = fakeGpu();
+    upload(off, gpuOff, boxes.map(boxSoup).map((mesh, i) => i === 0 ? { ...mesh, positions: mesh.positions.map((v, k) => (k % 3 === 0 ? v - Math.round(boxes[0].at[0] * 1024) / 1024 + 31.9998 : v)) } : mesh));
+    settle(off, gpuOff);
+    assert.equal(buckets(off).length, 1, 'the bucket path: one bucket');
+  });
+
   it('keep pages whole when bucket batches build no LOD1', async () => {
     const gpu = fakeGpu(), scene = await newScene();
     scene.setSpatialChunking({ cellSize: 32 });

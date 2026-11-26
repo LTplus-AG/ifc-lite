@@ -33,6 +33,11 @@ export interface CompactPayload {
   bounds: Float64Array;
   /** Per row: cell indices xyz at the row's level. */
   cells: Int32Array;
+  /**
+   * Per row: the first source vertex (`origin + position`, f64), where the f32 load takes a mesh's spatial chunk.
+   * Absent from a wasm build that predates it: consumers then take the first record, within half a step of it.
+   */
+  anchors?: Float64Array;
 }
 
 /** A compact mesh's row: its payload and row number. */
@@ -58,6 +63,8 @@ interface CompactBatchJs {
   readonly windows: Float64Array;
   readonly bounds: Float64Array;
   readonly cells: Int32Array;
+  /** Absent before the wasm build that writes it. */
+  readonly anchors?: Float64Array;
   free(): void;
 }
 
@@ -105,7 +112,7 @@ export function compactBounds(ref: CompactRef): Float64Array {
 
 /** Every array of a payload. One compact mesh keeps the whole payload of its batch alive, not only its own rows. */
 function payloadArrays(p: CompactPayload): ArrayBufferView[] {
-  return [p.records, p.indices, p.table, p.windows, p.bounds, p.cells];
+  return p.anchors ? [p.records, p.indices, p.table, p.windows, p.bounds, p.cells, p.anchors] : [p.records, p.indices, p.table, p.windows, p.bounds, p.cells];
 }
 
 /** The payload's buffers, for a transfer list (each wasm getter returned a standalone copy). */
@@ -164,6 +171,8 @@ export function encodeCompactCollection(
       records: batch.records, indices: batch.indices, table: compactTableOf(batch.table, count),
       windows: batch.windows, bounds: batch.bounds, cells: batch.cells,
     };
+    const anchors = batch.anchors; // read once: every wasm getter copies
+    if (anchors && anchors.length === count * 3) payload.anchors = anchors;
     const index = payloads.length;
     payloads.push(payload);
     const rows = new Map<number, CompactWireRef>();

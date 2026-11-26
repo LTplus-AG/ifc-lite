@@ -124,10 +124,12 @@ function addWritten(group: Group, mesh: MeshData): void {
   group.kept = -1;
 }
 
-/** World position of a row's first record. */
+/** A row's chunk anchor: its first source vertex when the payload carries it, else its first record (within half a step). */
 function firstVertex(ref: CompactRef): [number, number, number] {
+  const a = ref.payload.anchors, r = ref.row * 3;
+  if (a) return [a[r], a[r + 1], a[r + 2]];
   const { vertexStart, level } = compactRow(ref);
-  const step = compactStep(level), w = ref.payload.windows, r = ref.row * 3, records = ref.payload.records;
+  const step = compactStep(level), w = ref.payload.windows, records = ref.payload.records;
   const view = new DataView(records.buffer, records.byteOffset + vertexStart * COMPACT_RECORD_BYTES, 6);
   return [(w[r] + view.getUint16(0, true)) * step, (w[r + 1] + view.getUint16(2, true)) * step, (w[r + 2] + view.getUint16(4, true)) * step];
 }

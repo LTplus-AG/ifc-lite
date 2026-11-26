@@ -448,3 +448,28 @@ fn a_shared_corner_is_one_node_whatever_the_window() {
     assert_ne!(ahead_window, behind_window, "the two meshes use different windows");
     assert_eq!(ahead.first(), behind.last());
 }
+
+#[test]
+fn each_row_carries_its_first_source_vertex_exactly() {
+    // A box whose first corner lies 0.2 mm below a 32 m chunk plane: its level 10 record rounds onto the plane
+    // (32 m), the f32 load files it below it. The anchor keeps the source value.
+    let mut c = MeshCollection::new();
+    c.add(flat_box(3, [31.9998, 0.5, 0.25], 0.5));
+    c.add(flat_box(4, [-1.0, 2.0, 3.0], 1.0));
+    let b = c.encode_compact(32.0);
+    assert_eq!(b.mesh_count(), 2);
+    let first = |row: usize| {
+        let r = &b.records[b.table[row * TABLE_STRIDE + 1] as usize * RECORD_BYTES..];
+        (0..3).map(|axis| (b.windows[row * 3 + axis] + u16::from_le_bytes([r[axis * 2], r[axis * 2 + 1]]) as f64) * step_of(b.table[row * TABLE_STRIDE + 5])).collect::<Vec<_>>()
+    };
+    assert_eq!(b.anchors.len(), 6);
+    // Row order is by cell: find the near-plane box by its collection index.
+    let row = (0..2).find(|&r| b.table[r * TABLE_STRIDE] == 0).unwrap();
+    assert_eq!(b.anchors[row * 3], 31.9998, "x: origin + first position, exactly");
+    assert!(first(row)[0] >= 32.0, "the record's first vertex rounds onto the chunk plane: {:?}", first(row));
+    assert!(b.anchors[row * 3] < 32.0);
+    // The other box: its first corner is its origin (Z-up (-1, 2, 3) -> Y-up (-1, 3, -2)).
+    let other = 1 - row;
+    assert_eq!(&b.anchors[other * 3..other * 3 + 3], &[-1.0, 3.0, -2.0]);
+}
+

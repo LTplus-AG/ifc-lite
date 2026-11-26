@@ -114,6 +114,7 @@ pub struct CompactBatch {
     windows: Vec<f64>,
     bounds: Vec<f64>,
     cells: Vec<i32>,
+    anchors: Vec<f64>,
     totals: [f64; 4],
     refusals: [u32; REFUSAL_KINDS],
 }
@@ -157,6 +158,13 @@ impl CompactBatch {
     #[wasm_bindgen(getter)]
     pub fn cells(&self) -> js_sys::Int32Array {
         js_sys::Int32Array::from(&self.cells[..])
+    }
+    /// Three f64 per encoded mesh: its first source vertex in the collection's frame (`origin + position`,
+    /// computed as the renderer's `chunkCellKey` computes it). Records hold that vertex only to within half
+    /// a step, which can put a mesh on the other side of a spatial chunk plane than the f32 load files it.
+    #[wasm_bindgen(getter)]
+    pub fn anchors(&self) -> js_sys::Float64Array {
+        js_sys::Float64Array::from(&self.anchors[..])
     }
     /// `[inVertices, inTriangles, outVertices, outTriangles]` over the encoded meshes.
     #[wasm_bindgen(getter)]
@@ -315,6 +323,8 @@ impl CompactBatch {
         self.windows.extend(fit.window.iter().map(|&w| w as f64));
         self.bounds.extend_from_slice(&bounds);
         self.cells.extend_from_slice(&fit.cell);
+        // `origin + positions[0]` in f64, f32 position widened: the bucket path's chunk anchor (no vertex: the origin).
+        self.anchors.extend((0..3).map(|axis| mesh.origin[axis] + mesh.positions.get(axis).map_or(0.0, |&p| p as f64)));
         self.totals[0] += source_vertices as f64;
         self.totals[1] += (mesh.indices.len() / 3) as f64;
         self.totals[2] += s.nodes.len() as f64;

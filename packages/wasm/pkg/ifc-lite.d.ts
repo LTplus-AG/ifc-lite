@@ -397,6 +397,12 @@ export class CompactBatch {
     free(): void;
     [Symbol.dispose](): void;
     /**
+     * Three f64 per encoded mesh: its first source vertex in the collection's frame (`origin + position`,
+     * computed as the renderer's `chunkCellKey` computes it). Records hold that vertex only to within half
+     * a step, which can put a mesh on the other side of a spatial chunk plane than the f32 load files it.
+     */
+    readonly anchors: Float64Array;
+    /**
      * Six f64 per encoded mesh: its AABB in the collection's frame (Y-up,
      * RTC-relative `origin + position`), min x, y, z then max x, y, z.
      */
@@ -2828,6 +2834,7 @@ export interface InitOutput {
     readonly clashsession_ingest: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number) => void;
     readonly clashsession_new: () => number;
     readonly clashsession_runRule: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => number;
+    readonly compactbatch_anchors: (a: number) => number;
     readonly compactbatch_bounds: (a: number) => number;
     readonly compactbatch_cells: (a: number) => number;
     readonly compactbatch_indices: (a: number) => number;

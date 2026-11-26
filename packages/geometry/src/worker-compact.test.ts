@@ -72,6 +72,27 @@ describe('the worker side of compact geometry', () => {
     expect(() => encodeSessionCompact({ cumulativeMeshBytes: 0 }, stale)).toThrow(/expected 7 or 6 columns/);
   });
 
+  it('carries each row\'s source anchor when the wasm build writes one, and works without it (#11606)', () => {
+    setCompactCellSize(32);
+    const withAnchors = fakeCollection(2);
+    const encode = withAnchors.encodeCompact;
+    withAnchors.encodeCompact = (cellSize: number) => ({ ...encode(cellSize), anchors: Float64Array.from([31.9998, 0, 0, 1, 2, 3]) });
+    const session = { cumulativeMeshBytes: 0 };
+    encodeSessionCompact(session, withAnchors);
+    const transfers: ArrayBuffer[] = [];
+    const [payload] = takeSessionCompact(session, transfers).compactBatches!;
+    expect([...payload.anchors!]).toEqual([31.9998, 0, 0, 1, 2, 3]);
+    expect(transfers).toHaveLength(7);
+    // An older wasm build has no anchors (and a wrong-sized column is ignored): the payload has none, as before.
+    for (const anchors of [undefined, new Float64Array(5)]) {
+      const old = fakeCollection(2), oldEncode = old.encodeCompact;
+      old.encodeCompact = (cellSize: number) => ({ ...oldEncode(cellSize), ...(anchors ? { anchors } : {}) });
+      const s2 = { cumulativeMeshBytes: 0 };
+      encodeSessionCompact(s2, old);
+      expect(takeSessionCompact(s2, []).compactBatches![0].anchors).toBeUndefined();
+    }
+  });
+
   it('keeps each session to its own payloads', () => {
     setCompactCellSize(32);
     const a = { cumulativeMeshBytes: 0 }, b = { cumulativeMeshBytes: 0 };

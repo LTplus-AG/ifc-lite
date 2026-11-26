@@ -36,6 +36,8 @@ export const LATTICE_KEY_SUFFIX = '~lattice';
 /** Reused per-mesh scratch for `markOffLattice`: batch-frame positions and their lattice nodes. */
 let scratchPositions = new Float32Array(0);
 let scratchNodes = new Int32Array(0);
+/** Scratch kept between appends, in floats: a larger one (a huge mesh's) is dropped after use. */
+const SCRATCH_KEEP = 1 << 20;
 
 /**
  * Add `mesh`'s triangles to the loss of the entity each belongs to (`lossOf`
@@ -97,6 +99,10 @@ export function markOffLattice(
     for (const { loss, meshes: parts } of entities.values()) {
       if (latticeLoses(loss)) for (const mesh of parts) into.add(mesh);
     }
+  }
+  if (scratchPositions.length > SCRATCH_KEEP) {
+    scratchPositions = new Float32Array(0);
+    scratchNodes = new Int32Array(0);
   }
 }
 

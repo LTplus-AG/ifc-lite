@@ -193,15 +193,15 @@ function readEnvelope(dumped: unknown): Outcome {
   if (state?.type === 'pending') return { error: 'The script returned a promise that never settled (only bim host calls resolve; there are no timers).' };
   const envelope = state?.type === 'fulfilled' ? state.value : dumped;
   if (typeof envelope !== 'string') return { error: 'The script produced no result.' };
-  const body = envelope.slice(1);
-  // The wrapper bounds these, but re-check on the host so a script that
-  // subverted it still cannot hand back an unbounded value or message.
-  if (envelope[0] !== 'J' && body.length > MAX_MESSAGE_CHARS) return readEnvelope(envelope.slice(0, MAX_MESSAGE_CHARS + 1));
+  // The wrapper bounds these; the host re-checks so a script that subverted
+  // it still cannot pass an unbounded value or message on to the client.
+  const body = envelope.slice(1, envelope[0] === 'J' ? undefined : MAX_MESSAGE_CHARS + 1);
   switch (envelope[0]) {
-    case 'J': return body.length > MAX_VALUE_CHARS
-      ? { value: null, value_truncated: true, value_preview: clipUtf16(body, VALUE_PREVIEW_CHARS) }
-      : { value: JSON.parse(body) as unknown, value_truncated: false };
-    // The wrapper cuts one unit past the preview so this clip can back off a split surrogate pair.
+    case 'J':
+      if (body.length <= MAX_VALUE_CHARS) return { value: JSON.parse(body) as unknown, value_truncated: false };
+    // The wrapper cuts one unit past the preview so this clip can back off a
+    // split surrogate pair. An over-cap J body is a preview like P.
+    // falls through
     case 'P': return { value: null, value_truncated: true, value_preview: clipUtf16(body, VALUE_PREVIEW_CHARS) };
     case 'U': return { error: /out of memory/i.test(body)
       ? 'Ran out of memory serialising the value; raise memory_mb or return less.'

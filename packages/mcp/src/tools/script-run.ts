@@ -197,7 +197,8 @@ function readEnvelope(dumped: unknown): Outcome {
   if (typeof envelope !== 'string') return { error: 'The script produced no result.' };
   // The wrapper bounds these; the host re-checks so a script that subverted
   // it still cannot pass an unbounded value or message on to the client.
-  const body = envelope.slice(1, envelope[0] === 'J' ? undefined : MAX_MESSAGE_CHARS + 1);
+  // One unit past the cap, so clipUtf16 can see a split surrogate pair.
+  const body = envelope.slice(1, envelope[0] === 'J' ? undefined : MAX_MESSAGE_CHARS + 2);
   switch (envelope[0]) {
     case 'J':
       if (body.length <= MAX_VALUE_CHARS) return { value: JSON.parse(body) as unknown, value_truncated: false };

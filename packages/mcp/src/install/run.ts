@@ -75,12 +75,19 @@ export function nodeInstallIo(): InstallIo {
     },
     writeFile(path, text) {
       mkdirSync(dirname(path), { recursive: true });
-      // A dotfiles symlink stays a symlink: write its target.
-      const target = existing(path) ? realpathSync(path) : path;
+      // A dotfiles symlink stays a symlink (write its target), and the mode is kept.
+      let target = path;
+      let mode: number | undefined;
+      try {
+        target = realpathSync(path);
+        mode = statSync(target).mode & 0o7777;
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+      }
       // Write beside the target and rename, so a crash never leaves half a config.
       const tmp = `${target}.${process.pid}.tmp`;
       writeFileSync(tmp, text);
-      if (existing(target)) chmodSync(tmp, statSync(target).mode & 0o7777);
+      if (mode !== undefined) chmodSync(tmp, mode);
       renameSync(tmp, target);
     },
     copyFile: (from, to) => copyFileSync(from, to, constants.COPYFILE_EXCL),
@@ -96,16 +103,6 @@ export function nodeInstallIo(): InstallIo {
     err: (text) => process.stderr.write(text),
     now: () => new Date(),
   };
-}
-
-function existing(path: string): boolean {
-  try {
-    statSync(path);
-    return true;
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return false;
-    throw err;
-  }
 }
 
 function installHelp(invokedAs: string): string {
@@ -218,7 +215,7 @@ function commandLine(command: string, args: string[], platform: NodeJS.Platform)
 
 /** Milliseconds in the name, and the copy refuses to overwrite, so no backup is lost. */
 function backupPath(path: string, now: Date): string {
-  const stamp = now.toISOString().replace(/[-:]/g, '').replace('T', '-').replace('.', '').replace('Z', '');
+  const stamp = now.toISOString().replace(/\D/g, '').replace(/^(\d{8})/, '$1-');
   return `${path}.bak-${stamp}`;
 }
 
@@ -253,7 +250,7 @@ function runCommandPlan(
   label: string,
   io: InstallIo,
 ): number {
-  const remove = args.force && plan.remove ? plan.remove : undefined;
+  const remove = args.force ? plan.remove : undefined;
   if (args.force && !plan.remove) {
     io.err(`[ifc-lite-mcp install] --force has no effect here; \`${plan.command}\` decides what happens to an existing "${args.name}".\n`);
   }

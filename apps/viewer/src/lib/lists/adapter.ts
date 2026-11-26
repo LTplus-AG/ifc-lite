@@ -29,7 +29,7 @@ import { resolveEntityPredefinedType, typePropertySetsFor } from '@ifc-lite/rule
 import { buildSpatialAncestryIndex, type SpatialAncestryIndex } from '../../utils/spatialHierarchy.js';
 import { validEntry } from '../zones/index.js';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
-import { effectiveListEntitySets, effectiveListStringAttribute, effectiveListTypeName, effectiveTypeQuantitySets } from './effective-provider-entities.js';
+import { effectiveListEntitySets, effectiveListStringAttribute, effectiveListTypeName, effectiveOccurrenceQuantitySets, effectiveTypeQuantitySets } from './effective-provider-entities.js';
 import type { ZoneListContext } from './zone-list-context.js';
 import { materialNamesOf } from './list-material-names.js';
 export type { ZoneListContext } from './zone-list-context.js';
@@ -143,9 +143,7 @@ export function createListDataProvider(
   }
 
   function getQuantitySetsFor(entityId: number): QuantitySet[] {
-    if (view?.isDeleted(entityId)) return [];
-    if (view) return view.getQuantitiesForEntity(entityId,
-      view.hasQuantityBase() ? undefined : (baseId) => extractQuantitiesOnDemand(store, baseId));
+    if (view) return effectiveOccurrenceQuantitySets(store, entityId, view);
     if (usesOnDemandQtos) return extractQuantitiesOnDemand(store, entityId) as QuantitySet[];
     return store.quantities?.getForEntity(entityId) ?? [];
   }

@@ -5,6 +5,7 @@
 import { IfcTypeEnum, IfcTypeEnumFromString, exactTypeName, type QuantitySet } from '@ifc-lite/data';
 import { iterateEffectiveEntityIds, type MutablePropertyView } from '@ifc-lite/mutations';
 import {
+  extractQuantitiesOnDemand,
   getAttributeNamesForSchema,
   isQueryableObjectType,
   normalizeIfcTypeName,
@@ -81,6 +82,13 @@ export function effectiveListTypeName(store: IfcDataStore, view: MutableProperty
     ?? view?.getNewEntity(expressId)?.type
     ?? exactTypeName(store.entities, expressId);
   return type ? normalizeIfcTypeName(type) : '';
+}
+
+/** Apply occurrence edits over the view's base or the model's source sets. */
+export function effectiveOccurrenceQuantitySets(store: IfcDataStore, entityId: number, view: MutablePropertyView): QuantitySet[] {
+  if (view.isDeleted(entityId)) return [];
+  return view.getQuantitiesForEntity(entityId,
+    view.hasQuantityBase() ? undefined : (baseId) => extractQuantitiesOnDemand(store, baseId));
 }
 
 /** Apply type edits with the type-specific source sets as the quantity base. */

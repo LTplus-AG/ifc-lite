@@ -142,6 +142,19 @@ describe('the Material a downgraded IfcMaterialProperties names (#10763)', () =>
     expect(dangling.lines.find((l) => l.startsWith('#5='))).toBeUndefined();
   });
 
+  // #11243: a created member deleted again has no source record, but its tombstone still says the
+  // writer leaves it out of the list, so the set resolves through the surviving layer.
+  it('leaves a created then deleted layer out of its set (#11243)', async () => {
+    const { lines, warnings } = await editedExport(LAYERED, (_view, editor) => {
+      const layer = editor.addEntity('IfcMaterialLayer', ['#9', 0.1, null, null, null, null, null]).expressId;
+      editor.setPositionalAttribute(13, 0, ['#10', `#${layer}`]);
+      editor.removeEntity(layer);
+    });
+    expect(lines.find((l) => l.startsWith('#13='))).toBe("#13=IFCMATERIALLAYERSET((#10),'Wall');");
+    expect(lines.find((l) => l.startsWith('#5='))).toBe("#5=IFCEXTENDEDMATERIALPROPERTIES(#8,(#6),'d','Pset_x');");
+    expect(warnings.join('\n')).not.toContain('IfcMaterialProperties record(s)');
+  });
+
   it('leaves a deleted layer out of its set, so the surviving layer names the material', async () => {
     const { lines, warnings } = await editedExport(LAYERED, (view) => view.deleteEntity(12));
     expect(lines.find((l) => l.startsWith('#5='))).toBe("#5=IFCEXTENDEDMATERIALPROPERTIES(#8,(#6),'d','Pset_x');");

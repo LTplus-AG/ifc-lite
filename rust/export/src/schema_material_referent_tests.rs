@@ -155,6 +155,21 @@ fn a_deleted_layer_leaves_its_set_one_material_10763() {
     assert!(!warnings.iter().any(|w| w.contains("IfcMaterialProperties record(s)")), "{warnings:?}");
 }
 
+/// #11243: a created layer deleted again has no source record, only a
+/// tombstone, and the writer leaves it out of the list, so the set resolves
+/// through the surviving layer. Twin of the TypeScript case.
+#[test]
+fn a_created_then_deleted_layer_leaves_its_set_one_material_11243() {
+    // The log `MutablePropertyView.exportMutations` writes: deleting a created
+    // entity purges its CREATE_ENTITY, so only the tombstone and the set edit remain.
+    let (out, warnings) = log_export(&model("IFC4", LAYERED), r##"{"mutations":[
+        {"type":"UPDATE_POSITIONAL_ATTRIBUTE","entityId":13,"attributeName":"@0","newValue":["#10","#61"]},
+        {"type":"DELETE_ENTITY","entityId":61}]}"##);
+    assert_eq!(record(&out, "#13="), "#13=IFCMATERIALLAYERSET((#10),'Wall');", "{out}");
+    assert_eq!(record(&out, "#5="), "#5=IFCEXTENDEDMATERIALPROPERTIES(#8,(#6),'d','Pset_x');", "{out}");
+    assert!(!warnings.iter().any(|w| w.contains("IfcMaterialProperties record(s)")), "{warnings:?}");
+}
+
 /// A set member the export still writes
 /// but no longer as a layer (retyped away), or one no record has, names no
 /// material, so the set names no single one and the record is left out; only

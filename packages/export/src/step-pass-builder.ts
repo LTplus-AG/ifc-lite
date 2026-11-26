@@ -374,8 +374,10 @@ export function buildExportPass(input: PassBuildInput): ExportPass {
     };
     // A readable material record (by its source or its effective type) the export leaves out. As Rust's
     // `with_effective`, which drops an unreadable one from both maps, an unreadable one names no material.
-    const gone = (id: number) => !pass.willBeEmitted(id) && source.slots(id) !== undefined
-      && [source.type(id), effective.typeOf(id)].some((t) => t?.startsWith('IFCMATERIAL'));
+    // A created record deleted again has no source but a tombstone, so the writers leave it out of the
+    // list too (#11243); an id that never existed has neither and still names no material.
+    const gone = (id: number) => !pass.willBeEmitted(id) && (source.type(id) === undefined ? effective.isDeleted(id)
+      : source.slots(id) !== undefined && [source.type(id), effective.typeOf(id)].some((t) => t?.startsWith('IFCMATERIAL')));
     pass.enums.materials.rearm({ typeOf: (id) => (pass.willBeEmitted(id) ? effective.typeOf(id) : undefined), slots, gone });
   }
   // The same object, deliberately. See the file header.

@@ -55,7 +55,7 @@ export class ExpressionTranslator {
   private typeLiteral(value: string): string | undefined {
     const m = /^([A-Za-z0-9_]+)\.([A-Za-z0-9_]+)(\.[A-Za-z0-9_]+)?$/.exec(value);
     if (!m || (!this.index.entity(m[2]) && !this.index.type(m[2]))) return undefined;
-    return `${this.index.typePrefix}.${m[2].toUpperCase()}${(m[3] ?? '').toUpperCase()}`;
+    return value.toUpperCase();
   }
 
   translate(e: Expr, scope: Scope): string {
@@ -185,7 +185,7 @@ export class ExpressionTranslator {
     if (op === 'IN' && left.k === 'str' && right.k === 'call' && right.name.toUpperCase() === 'TYPEOF' && right.args.length === 1) {
       const literal = this.typeLiteral(left.value);
       // A three-part 'SCHEMA.ENTITY.ATTR' literal names an attribute role, never a type.
-      if (literal && literal.split('.').length === 2) {
+      if (literal && literal.startsWith(this.index.typePrefix + '.') && literal.split('.').length === 2) {
         const name = literal.slice(literal.lastIndexOf('.') + 1);
         return `r.typeIs(m, ${this.translate(right.args[0], scope)}, ${JSON.stringify(name)})`;
       }

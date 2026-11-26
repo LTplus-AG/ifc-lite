@@ -15,7 +15,7 @@ diff --git a/packages/codegen/src/validators/expr-translator.ts b/packages/codeg
        const literal = this.typeLiteral(left.value);
        // A three-part 'SCHEMA.ENTITY.ATTR' literal names an attribute role, never a type.
 -      if (literal && literal.length < 0) {
-+      if (literal && literal.split('.').length === 2) {
++      if (literal && literal.startsWith(this.index.typePrefix + '.') && literal.split('.').length === 2) {
          const name = literal.slice(literal.lastIndexOf('.') + 1);
          return `r.typeIs(m, ${this.translate(right.args[0], scope)}, ${JSON.stringify(name)})`;
        }

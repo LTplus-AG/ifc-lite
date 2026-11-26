@@ -82,9 +82,8 @@ export async function viewCommand(args: string[]): Promise<void> {
     return creator.toIfc();
   };
 
-  let viewer: ViewerServer;
   try {
-    viewer = await startViewerServer({
+    const viewer = await startViewerServer({
       filePath,
       fileName,
       port: requestedPort,
@@ -110,7 +109,7 @@ export async function viewCommand(args: string[]): Promise<void> {
         fatal(`Server error: ${err.message}`);
       },
     });
-    // After the await: inside onReady, `viewer` is not assigned yet.
+    // Not in onReady: that runs before startViewerServer resolves.
     setupStdinCommands(viewer);
   } catch (e: unknown) {
     fatal(`Failed to start viewer: ${(e as Error).message}`);

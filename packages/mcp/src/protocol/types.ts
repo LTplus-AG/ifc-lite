@@ -11,19 +11,17 @@
  * tool implementations get strong type-checking out of the box.
  */
 
-export const PROTOCOL_VERSION = '2025-11-05';
+export const PROTOCOL_VERSION = '2025-11-25';
 
 /**
- * Protocol versions we are willing to negotiate. The server's wire surface
+ * Published MCP revisions we negotiate. The server's wire surface
  * (initialize, tools/{list,call}, resources/*, prompts/*, notifications/*,
- * logging) has been backwards-compatible across these spec revisions, so we
- * accept any of them and echo the requested version back during initialize.
- * Unrecognized versions get downgraded to PROTOCOL_VERSION instead.
+ * logging) is compatible across them, so we echo the requested version back
+ * during initialize. Anything else gets PROTOCOL_VERSION.
  */
 export const SUPPORTED_PROTOCOL_VERSIONS: ReadonlySet<string> = new Set([
   '2025-03-26',
   '2025-06-18',
-  '2025-11-05',
   '2025-11-25',
 ]);
 
@@ -75,6 +73,8 @@ export const JsonRpcErrorCode = {
   InternalError: -32603,
   // MCP-defined extension range starts at -32000.
   ServerNotInitialized: -32002,
+  /** MCP resources spec: resources/read on a URI that names nothing. Shares -32002 with the code above. */
+  ResourceNotFound: -32002,
   RequestCancelled: -32800,
 } as const;
 
@@ -126,11 +126,18 @@ export interface ImageContent {
   mimeType: string;
 }
 
+/** A pointer to a resource the client may read; the content is not inlined. */
 export interface ResourceLink {
-  type: 'resource';
-  resource: { uri: string; mimeType?: string; text?: string };
+  type: 'resource_link';
+  uri: string;
+  name: string;
+  title?: string;
+  description?: string;
+  mimeType?: string;
+  size?: number;
 }
 
+/** A resource whose contents are inlined in the message. */
 export interface EmbeddedResource {
   type: 'resource';
   resource: ResourceContents;
@@ -161,9 +168,14 @@ export interface ToolDefinition {
   description: string;
   inputSchema: JsonSchema;
   annotations?: ToolAnnotations;
-  _meta?: { ui?: { resourceUri: string; visibility?: Array<'model' | 'app'> } };
-  /** Optional metadata: which scope a token needs to call this tool. */
-  scope?: ToolScope;
+  _meta?: ToolMeta;
+}
+
+/** `_meta` on a tool definition. Keys outside the spec carry a vendor prefix. */
+export interface ToolMeta {
+  ui?: { resourceUri: string; visibility?: Array<'model' | 'app'> };
+  /** Which scope a token needs to call this tool. */
+  'ifc-lite/scope'?: ToolScope;
 }
 
 export interface ListToolsResult {
@@ -199,6 +211,19 @@ export interface ListResourcesResult {
   nextCursor?: string;
 }
 
+/** An RFC 6570 URI template for resources the client builds itself. */
+export interface ResourceTemplate {
+  uriTemplate: string;
+  name: string;
+  description?: string;
+  mimeType?: string;
+}
+
+export interface ListResourceTemplatesResult {
+  resourceTemplates: ResourceTemplate[];
+  nextCursor?: string;
+}
+
 export interface ReadResourceParams { uri: string }
 
 export interface ReadResourceResult {
@@ -231,7 +256,7 @@ export interface GetPromptParams {
 }
 
 export interface PromptMessage {
-  role: 'user' | 'assistant' | 'system';
+  role: 'user' | 'assistant';
   content: ContentBlock;
 }
 
@@ -253,8 +278,14 @@ export interface ResourceUpdatedNotification {
   uri: string;
 }
 
+/** RFC 5424 severities, lowest first. */
+export const LOGGING_LEVELS = ['debug', 'info', 'notice', 'warning', 'error', 'critical', 'alert', 'emergency'] as const;
+export type LoggingLevel = typeof LOGGING_LEVELS[number];
+
+export interface SetLevelParams { level: LoggingLevel }
+
 export interface LogNotification {
-  level: 'debug' | 'info' | 'notice' | 'warning' | 'error' | 'critical';
+  level: LoggingLevel;
   logger?: string;
   data: unknown;
 }

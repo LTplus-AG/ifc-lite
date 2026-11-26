@@ -315,11 +315,11 @@ function spliceArgument(
   replacement: string,
 ): string | null {
   const open = inst.bodyStart !== undefined ? inst.bodyStart - 1 : inst.full.indexOf('(');
-  // `body` is by construction the slice of `full` between its first `(` and the
-  // matching `)`: the id and type name that precede it hold no parenthesis. A
-  // mismatch would mean the parser and this module disagree about where the
-  // arguments are, and splicing on that offset corrupts the record, so drop it
-  // instead of emitting something malformed.
+  // `bodyStart` from the parser is the authority (a comment before the type
+  // may hold a `(`); the first `(` is only the fallback for records built
+  // without it. A mismatch would mean the parser and this module disagree about
+  // where the arguments are, and splicing on that offset corrupts the record,
+  // so drop it instead of emitting something malformed.
   if (open < 0 || inst.full.slice(open + 1, open + 1 + inst.body.length) !== inst.body) return null;
   const next = [...args];
   next[index] = replacement;

@@ -109,8 +109,7 @@ export function parseStep(text: string): ParsedStep {
     while (i < n && data[i] >= '0' && data[i] <= '9') idStr += data[i++];
     if (idStr === '') continue; // a `#` inside something odd; skip
     // expect optional spaces then '='
-    let j = i;
-    j = skipStepTrivia(data, j);
+    let j = skipStepTrivia(data, i);
     if (j < 0) break;
     if (data[j] !== '=') continue; // `#42` as a REFERENCE, not a definition
     j = skipStepTrivia(data, j + 1);

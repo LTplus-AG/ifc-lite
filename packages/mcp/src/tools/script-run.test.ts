@@ -262,6 +262,13 @@ describe('script_run', () => {
     expect(err.message.length).toBeLessThan(4_100);
   });
 
+  it('reports runaway recursion as a script error and keeps the sandbox healthy', async () => {
+    const err = await runError('function f() { return f(); } f()');
+    expect(err).toMatchObject({ code: 'INVALID_INPUT', details: { kind: 'script' } });
+    expect(err.hint).toMatch(/recursed/);
+    expect((await run('5 + 5')).structuredContent?.value).toBe(10);
+  });
+
   it('tags a script failure apart from bad arguments', async () => {
     expect((await runError("throw new Error('no walls')")).details?.kind).toBe('script');
   });

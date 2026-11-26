@@ -61,6 +61,7 @@ export function wrapScript(code: string): string {
     if (m === '') return 'an empty ' + (typeof e) + ' was thrown';
     return apply(slice, m, [0, L.maxMessage + 1]);
   }
+  function bigintText(b) { return Str(b) + 'n'; }
   function omitted(v) { var t = typeof v; return t === 'undefined' || t === 'function' || t === 'symbol'; }
   function resolve(v, k) {
     if (v !== null && (typeof v === 'object' || typeof v === 'function' || typeof v === 'bigint')) {
@@ -95,10 +96,10 @@ export function wrapScript(code: string): string {
     var onPath = new SetCtor();
     function write(v) {
       if (v === null) { out += 'null'; return; }
-      if (forLog && typeof v === 'bigint') { out += stringify(Str(v) + 'n'); return; }
+      if (forLog && typeof v === 'bigint') { out += stringify(bigintText(v)); return; }
       if (typeof v === 'object') {
         var box = unboxed(v);
-        if (box) { out += forLog && typeof box.v === 'bigint' ? stringify(Str(box.v) + 'n') : stringify(box.v); return; }
+        if (box) { out += stringify(forLog && typeof box.v === 'bigint' ? bigintText(box.v) : box.v); return; }
         if (forLog && apply(isInstance, ErrorCtor, [v])) { out += stringify(msg(v)); return; }
         if (apply(setHas, onPath, [v])) throw new TypeErrorCtor('the value is cyclic');
         if (sp >= L.maxDepth) throw new ErrorCtor('the value is nested deeper than ' + L.maxDepth + ' levels');
@@ -153,7 +154,7 @@ export function wrapScript(code: string): string {
   }
   function logArg(a) {
     if (typeof a === 'string') return a;
-    if (typeof a === 'bigint') return Str(a) + 'n';
+    if (typeof a === 'bigint') return bigintText(a);
     if (typeof a === 'number') return Str(a);
     try {
       if (apply(isInstance, ErrorCtor, [a])) {

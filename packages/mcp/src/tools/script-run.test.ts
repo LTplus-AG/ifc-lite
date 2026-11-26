@@ -382,8 +382,7 @@ describe('script_run', () => {
     const rateLimited = (r: PromiseSettledResult<unknown>) => r.status === 'rejected' && (r.reason as { code?: string }).code === 'RATE_LIMITED';
     const sameSession = await Promise.allSettled([run('1'), run('2')]);
     expect(sameSession.filter(rateLimited)).toHaveLength(1);
-    const three = await Promise.allSettled(['a', 'b', 'c'].map((id) => scriptRunTool.handler({ code: '1' }, as(id))));
-    const settled = three;
+    const settled = await Promise.allSettled(['a', 'b', 'c'].map((id) => scriptRunTool.handler({ code: '1' }, as(id))));
     expect(settled.filter(rateLimited)).toHaveLength(1);
     expect((await run('4')).structuredContent?.value).toBe(4);
   }, 30_000);

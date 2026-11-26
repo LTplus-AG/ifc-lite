@@ -45,8 +45,7 @@ const MAX_TIMEOUT_MS = 30_000;
  * it started (bim.clash.run, say) may still finish on the host.
  */
 const MAX_CONCURRENT_SCRIPTS = 2;
-let runningScripts = 0;
-/** Sessions holding a slot (stdio and in-process callers share the '' key). */
+/** Sessions holding a script slot; its size is the process-wide count (stdio and in-process callers share the '' key). */
 const sessionsRunning = new Set<string>();
 const DEFAULT_MEMORY_MB = 64;
 // Kept well under the 4 GB wasm32 ceiling: the QuickJS module's linear memory
@@ -313,7 +312,7 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
 
 /** Holds one of the process-wide script slots for the duration of `run`. */
 async function withScriptSlot<T>(session: string, run: () => Promise<T>): Promise<T> {
-  if (runningScripts >= MAX_CONCURRENT_SCRIPTS) {
+  if (sessionsRunning.size >= MAX_CONCURRENT_SCRIPTS) {
     throw new ToolExecutionError({
       code: ToolErrorCode.RATE_LIMITED,
       message: `${MAX_CONCURRENT_SCRIPTS} scripts are already running on this server; retry when one finishes.`,
@@ -326,12 +325,10 @@ async function withScriptSlot<T>(session: string, run: () => Promise<T>): Promis
       message: 'This session already has a script running; retry when it finishes.',
     });
   }
-  runningScripts++;
   sessionsRunning.add(session);
   try {
     return await run();
   } finally {
-    runningScripts--;
     sessionsRunning.delete(session);
   }
 }

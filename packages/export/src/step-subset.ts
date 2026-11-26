@@ -18,10 +18,11 @@
  */
 import { stepStringLiteralEnd } from '@ifc-lite/encoding';
 import { expandTypes } from '@ifc-lite/parser';
-import { planSpatialRelations, refsOutsideStrings, type StepRecord, type Subset } from './step-subset-relations.js';
+import { planSpatialRelations, refsOutsideStrings, SubsetSelectionError, type StepRecord, type Subset } from './step-subset-relations.js';
 import { spatialAncestors } from './step-subset-spatial-ancestors.js';
 import { productsUnderPlacement, resolveStoreyPlacement } from './step-subset-storey.js';
 
+export { SubsetSelectionError } from './step-subset-relations.js';
 export type { StepRecord, Subset } from './step-subset-relations.js';
 
 export interface ParsedStep {
@@ -118,11 +119,11 @@ export function resolveToId(token: string, parsed: ParsedStep): number {
   const t = token.trim();
   if (t.startsWith('#') || /^\d+$/.test(t)) {
     const id = parseInt(t.startsWith('#') ? t.slice(1) : t, 10);
-    if (!parsed.instances.has(id)) throw new Error(`expressId not found in model: #${id}`);
+    if (!parsed.instances.has(id)) throw new SubsetSelectionError('not-found', `expressId not found in model: #${id}`);
     return id;
   }
   const id = parsed.guidToId.get(t);
-  if (id === undefined) throw new Error(`GlobalId not found in model: ${t}`);
+  if (id === undefined) throw new SubsetSelectionError('not-found', `GlobalId not found in model: ${t}`);
   return id;
 }
 

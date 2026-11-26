@@ -6121,6 +6121,7 @@
     "StepExportProgress: interface",
     "StepExportResult: interface",
     "StepExporter: class",
+    "SubsetSelectionError: class",
     "SubsetSelectors: interface",
     "TableColumn: type",
     "TableToCsvOptions: interface",

@@ -37,6 +37,7 @@ export {
   buildSubset,
   serializeSubset,
   selectSubsetSeeds,
+  SubsetSelectionError,
   type ParsedStep,
   type SubsetSelectors,
 } from './step-subset.js';

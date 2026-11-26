@@ -74,6 +74,18 @@ import { stepStringLiteralEnd } from '@ifc-lite/encoding';
 import { skipStepComment } from './step-comment-skip.js';
 
 /**
+ * A selector that cannot be satisfied: `not-found` when it names nothing in the
+ * file, `invalid` when it names the wrong kind of record. Callers map `kind` to
+ * their own error codes instead of matching the message.
+ */
+export class SubsetSelectionError extends Error {
+  constructor(readonly kind: 'not-found' | 'invalid', message: string) {
+    super(message);
+    this.name = 'SubsetSelectionError';
+  }
+}
+
+/**
  * One parsed STEP record, as `step-subset.ts`'s `parseStep` produces it.
  * Declared HERE and imported there, rather than the other way round, so the
  * dependency runs one way: `step-subset.ts` imports this module, never

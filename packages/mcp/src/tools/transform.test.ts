@@ -21,6 +21,7 @@ import { loadIfcModel } from '../loader.js';
 import { buildDefaultToolRegistry } from './index.js';
 import { validateInput } from '../validate.js';
 import { toolError } from '../errors.js';
+import { CASE_INSENSITIVE_FS } from './transform-schema.js';
 import type { CallToolResult } from '../protocol/index.js';
 
 const HELLO_WALL = fileURLToPath(new URL('../../../../apps/viewer/public/samples/hello-wall.ifc', import.meta.url));
@@ -220,7 +221,7 @@ describe('model_anonymize', () => {
     const out = join(tmp, 'same.ifc');
     await expect(call('model_anonymize', { global_ids: ['000000000000000000WA1A'], file_path: out, guid_map_path: out }))
       .rejects.toMatchObject({ code: 'INVALID_INPUT' });
-    if (process.platform === 'darwin' || process.platform === 'win32') {
+    if (CASE_INSENSITIVE_FS) {
       await expect(call('model_anonymize', { global_ids: ['000000000000000000WA1A'], file_path: out, guid_map_path: join(tmp, 'SAME.ifc') }))
         .rejects.toMatchObject({ code: 'INVALID_INPUT' });
     }

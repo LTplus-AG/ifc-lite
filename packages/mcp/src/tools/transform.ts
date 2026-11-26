@@ -19,6 +19,7 @@ import {
   MergedExporter,
   parseStep,
   selectSubsetSeeds,
+  SubsetSelectionError,
   serializeSubset,
   type IfcSchemaVersion,
 } from '@ifc-lite/export';
@@ -37,6 +38,9 @@ import {
   requireNoPendingEdits,
   stringList,
 } from './transform-schema.js';
+
+/** Trimmed, non-blank selector tokens. */
+const nonBlank = (list: readonly string[] | undefined): string[] => (list ?? []).map((t) => t.trim()).filter(Boolean);
 
 const ROOT_MODES = ['single', 'by-name'];
 const STOREY_MODES = ['by-name', 'by-elevation', 'by-name-then-elevation'];
@@ -205,13 +209,12 @@ const modelExtract: Tool = {
   async handler(input, ctx) {
     const m = resolveModel(ctx, input.model_id as string | undefined);
     const filePath = await resolveSafePath(input.file_path, ctx, 'write');
-    const nonBlank = (list: unknown) => ((list as string[] | undefined) ?? []).map((t) => t.trim()).filter(Boolean);
     const products = [
-      ...nonBlank(input.global_ids),
+      ...nonBlank(input.global_ids as string[] | undefined),
       ...((input.express_ids as number[] | undefined) ?? []).map((id) => `#${id}`),
     ];
-    const types = nonBlank(input.types);
-    const storeys = nonBlank(input.storeys);
+    const types = nonBlank(input.types as string[] | undefined);
+    const storeys = nonBlank(input.storeys as string[] | undefined);
     if (products.length + types.length + storeys.length === 0) {
       throw invalid('Select something: global_ids, express_ids, types or storeys.');
     }
@@ -229,11 +232,9 @@ const modelExtract: Tool = {
       try {
         seeds = selectSubsetSeeds(parsed, { products, types, storeys });
       } catch (err) {
-        // The selector errors `selectSubsetSeeds` documents; anything else is a real failure.
-        const message = err instanceof Error ? err.message : String(err);
-        if (/not found/i.test(message)) throw new ToolExecutionError({ code: ToolErrorCode.ENTITY_NOT_FOUND, message });
-        if (/not an IfcBuildingStorey|has no IfcLocalPlacement/.test(message)) throw invalid(message);
-        throw err;
+        if (!(err instanceof SubsetSelectionError)) throw err;
+        if (err.kind === 'invalid') throw invalid(err.message);
+        throw new ToolExecutionError({ code: ToolErrorCode.ENTITY_NOT_FOUND, message: err.message });
       }
       if (seeds.size === 0) {
         const tried: string[] = [];

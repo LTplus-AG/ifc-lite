@@ -51,9 +51,12 @@ export function fileOutputSchema(extra: Record<string, JsonSchema>): JsonSchema 
  */
 export function requireDistinctPaths(a: string, b: string | null | undefined, name: string): void {
   if (b == null) return;
-  const fold = process.platform === 'darwin' || process.platform === 'win32' ? (p: string) => p.toLowerCase() : (p: string) => p;
+  const fold = (p: string) => (CASE_INSENSITIVE_FS ? p.toLowerCase() : p);
   if (fold(a) === fold(b)) throw invalid(`${name} must differ from file_path.`);
 }
+
+/** The default filesystems of macOS and Windows ignore case. */
+export const CASE_INSENSITIVE_FS = process.platform === 'darwin' || process.platform === 'win32';
 
 export function invalid(message: string): ToolExecutionError {
   return new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message });

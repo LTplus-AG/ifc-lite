@@ -8,7 +8,7 @@
  * through that storey's placement.
  */
 import { walkPlacementChain } from '@ifc-lite/data';
-import { refsOutsideStrings } from './step-subset-relations.js';
+import { refsOutsideStrings, SubsetSelectionError } from './step-subset-relations.js';
 import type { ParsedStep } from './step-subset.js';
 
 /** Map each IfcLocalPlacement to its parent placement (or null when top-level). */
@@ -74,10 +74,10 @@ export function resolveStoreyPlacement(token: string, parsed: ParsedStep): numbe
       }
     }
   }
-  if (storeyId === undefined) throw new Error(`Storey not found: ${token}`);
+  if (storeyId === undefined) throw new SubsetSelectionError('not-found', `Storey not found: ${token}`);
   const storey = parsed.instances.get(storeyId);
   if (!storey || storey.type !== 'IFCBUILDINGSTOREY') {
-    throw new Error(`#${storeyId} is ${storey?.type ?? 'missing'}, not an IfcBuildingStorey`);
+    throw new SubsetSelectionError('invalid', `#${storeyId} is ${storey?.type ?? 'missing'}, not an IfcBuildingStorey`);
   }
   // IfcBuildingStorey ObjectPlacement is attribute 6 (after Guid, Owner, Name,
   // Description, ObjectType) — the last #ref before LongName/Elevation. Grab the
@@ -87,6 +87,6 @@ export function resolveStoreyPlacement(token: string, parsed: ParsedStep): numbe
   // #99'`) naming an unrelated IfcLocalPlacement.
   const refs = refsOutsideStrings(storey.body);
   const placementId = refs.find((r) => parsed.instances.get(r)?.type === 'IFCLOCALPLACEMENT');
-  if (placementId === undefined) throw new Error(`Storey #${storeyId} has no IfcLocalPlacement`);
+  if (placementId === undefined) throw new SubsetSelectionError('invalid', `Storey #${storeyId} has no IfcLocalPlacement`);
   return placementId;
 }

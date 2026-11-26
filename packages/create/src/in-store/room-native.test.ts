@@ -87,11 +87,14 @@ it.skipIf(!available)('a split room takes every GlobalId it authors, its aggrega
     const { store, editor } = await session();
     const plate = fromRects(flattenRoomRects(rects), .05, Number.MIN_VALUE);
     try {
-      let state = seed >>> 0;
-      const guidRandom = () => ((state = (Math.imul(state, 1664525) + 1013904223) >>> 0) / 4294967296);
+      const source = (start: number) => {
+        let state = start >>> 0;
+        return () => ((state = (Math.imul(state, 1664525) + 1013904223) >>> 0) / 4294967296);
+      };
       const [face] = candidates(store, editor, plate);
-      // The split room's GlobalId derives from this room's, so it is seeded too.
-      createRoomsInStore(store, editor, 42, [{ outline: face.inner, height: 3, z: 0, Name: 'Room', grossArea: face.grossArea, netArea: face.netArea, derived: true }], { guidRandom });
+      // The split room's GlobalId derives from this room's, so this room gets one fixed seed for every run.
+      createRoomsInStore(store, editor, 42, [{ outline: face.inner, height: 3, z: 0, Name: 'Room', grossArea: face.grossArea, netArea: face.netArea, derived: true }], { guidRandom: source(1) });
+      const guidRandom = source(seed);
       const before = candidates(store, editor, plate);
       expect(applyLayoutOp(plate, { kind: 'split', a: [21, 20], b: [21, 23] }, .01)).toBe(true);
       const existing = new Set(editor.getNewEntities().map((e) => e.expressId));
@@ -103,10 +106,11 @@ it.skipIf(!available)('a split room takes every GlobalId it authors, its aggrega
         .sort();
     } finally { plate.free(); }
   };
+  const aggregation = (ids: string[]) => ids.filter((id) => id.startsWith('IFCRELAGGREGATES '));
   const first = await splitOnce(42);
-  expect(first.some((id) => id.startsWith('IFCRELAGGREGATES '))).toBe(true);
+  expect(aggregation(first)).toHaveLength(1);
   expect(await splitOnce(42)).toEqual(first);
-  expect(await splitOnce(7)).not.toEqual(first);
+  expect(aggregation(await splitOnce(7))).not.toEqual(aggregation(first));
 });
 
 it.skipIf(!available)('update/no-room refusal preserves graph and creation late refusal preserves allocator', async () => {

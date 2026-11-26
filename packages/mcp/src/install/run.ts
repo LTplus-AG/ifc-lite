@@ -27,7 +27,7 @@ import {
   type InstallScope,
   type ServerCommand,
 } from './clients.js';
-import { describeEntry, mergeServer } from './merge.js';
+import { canonical, describeEntry, mergeServer } from './merge.js';
 import { checkServerArgs, EXIT_FLAGS } from './server-args.js';
 import { isMcpValueFlag, MCP_BOOLEAN_FLAGS } from '../cli-args.js';
 import { nodeInstallIo, type InstallIo } from './io.js';
@@ -108,16 +108,26 @@ function parseInstallArgs(argv: string[], host: HostEnv): InstallArgs | 'help' {
   return { client, scope, name, dryRun, force, serverArgs, hasPaths };
 }
 
-/** True when `existing` is `entry` with another `@ifc-lite/mcp@…` pin and nothing else changed. */
+/**
+ * True when writing `entry` over `existing` changes nothing but a pin that
+ * install itself writes (`@ifc-lite/mcp` or `@ifc-lite/mcp@^x.y.z`). Keys the
+ * user added (env, cwd) stay either way; a hand-picked pin such as `@1.2.3`
+ * or `@latest` is not ours to move.
+ */
 function onlyPinDiffers(existing: unknown, entry: Record<string, unknown>): boolean {
-  const unpin = (e: unknown): string => {
-    if (typeof e !== 'object' || e === null) return '';
-    const { args, ...rest } = e as { args?: unknown };
-    const a = Array.isArray(args) ? args.map((x) => (typeof x === 'string' && /^@ifc-lite\/mcp(@|$)/.test(x) ? '@ifc-lite/mcp' : x)) : args;
-    return JSON.stringify(Object.entries({ ...rest, args: a }).sort(([x], [y]) => (x < y ? -1 : x > y ? 1 : 0)));
+  if (typeof existing !== 'object' || existing === null) return false;
+  const unpin = (e: object): string | undefined => {
+    const { args } = e as { args?: unknown };
+    if (!Array.isArray(args)) return undefined;
+    const pins = args.filter((x) => typeof x === 'string' && x.startsWith('@ifc-lite/mcp'));
+    if (pins.length !== 1 || !OUR_PIN.test(pins[0] as string)) return undefined;
+    return canonical({ ...e, args: args.map((x) => (x === pins[0] ? '@ifc-lite/mcp' : x)) });
   };
-  return unpin(existing) !== '' && unpin(existing) === unpin(entry);
+  const before = unpin(existing);
+  return before !== undefined && before === unpin({ ...existing, ...entry });
 }
+
+const OUR_PIN = /^@ifc-lite\/mcp(@\^\d+\.\d+\.\d+)?$/;
 
 /** `npx` pinned to this release line, so the flags written here are ones it knows. */
 function serverCommand(version: string, serverArgs: string[]): ServerCommand {
@@ -203,7 +213,6 @@ function runCommandPlan(
   if (result.status !== 0) {
     let hint = '';
     if (removed) hint = ` The old "${args.name}" entry was already removed; fix the error and run again:\n${line}`;
-    else if (remove) hint = ` The remove step failed too; check \`${plan.command} mcp list\`.`;
     else if (plan.remove) hint = ' If the name is taken, pass --force or --name.';
     io.err(`[ifc-lite-mcp install] \`${plan.command}\` exited with ${result.status}.${hint}\n`);
     return result.status;

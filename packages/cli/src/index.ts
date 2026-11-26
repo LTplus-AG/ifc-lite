@@ -49,8 +49,9 @@ async function main(): Promise<void> {
   if (args[0] === 'mcp' && args[1] === 'install') {
     activeCommand = 'mcp';
     const raw = process.argv.slice(2);
-    const at = raw.findIndex((a, i) => a === 'mcp' && raw[i + 1] === 'install');
-    const tail = raw.slice(at + 2);
+    // Global flags may sit before or between `mcp` and `install`; they are the CLI's.
+    const at = raw.indexOf('install', raw.indexOf('mcp') + 1);
+    const tail = raw.slice(at + 1);
     const dd = tail.indexOf('--');
     // Global flags before `--` are the CLI's (already applied above); after it they are the server's.
     const own = parseVerbosity(dd < 0 ? tail : tail.slice(0, dd)).rest;

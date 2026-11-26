@@ -258,6 +258,19 @@ describe('ifc-lite-mcp install: existing configs', () => {
     expect(JSON.parse(io.files.get(path) ?? 'null').mcpServers['ifc-lite'].args).toEqual(['-y', PKG]);
   });
 
+  it('an older entry with the user\'s env is still updated without --force', () => {
+    const io = fakeIo();
+    io.files.set(path, JSON.stringify({ mcpServers: { 'ifc-lite': { command: 'npx', args: ['-y', '@ifc-lite/mcp@^0.20.0'], env: { T: '1' } } } }));
+    expect(install(['--client', 'cursor'], io)).toBe(0);
+    expect(JSON.parse(io.files.get(path) ?? 'null').mcpServers['ifc-lite']).toEqual({ command: 'npx', args: ['-y', PKG], env: { T: '1' } });
+  });
+
+  it('a hand-picked exact pin is not moved without --force', () => {
+    const io = fakeIo();
+    io.files.set(path, JSON.stringify({ mcpServers: { 'ifc-lite': { command: 'npx', args: ['-y', '@ifc-lite/mcp@0.20.1'] } } }));
+    expect(install(['--client', 'cursor'], io)).toBe(1);
+  });
+
   it('an older entry with other flags still needs --force', () => {
     const io = fakeIo();
     io.files.set(path, JSON.stringify({ mcpServers: { 'ifc-lite': { command: 'npx', args: ['-y', '@ifc-lite/mcp@^0.20.0', '--read-only'] } } }));

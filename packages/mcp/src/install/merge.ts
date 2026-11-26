@@ -99,7 +99,7 @@ function originOf(url: string): string {
 }
 
 /** JSON with object keys sorted, so key order does not make two entries differ. */
-function canonical(value: unknown): string {
+export function canonical(value: unknown): string {
   return JSON.stringify(value, (_key, v: unknown) =>
     isObject(v) ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) : v,
   );

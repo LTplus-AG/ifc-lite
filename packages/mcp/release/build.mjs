@@ -30,7 +30,7 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -96,21 +96,24 @@ function resolvedTree(nodeModules) {
  * one of them were skipped. Every line a patch adds must be in the staged file.
  */
 const nameOf = (spec) => spec.slice(0, spec.lastIndexOf('@'));
-const isAdded = (line) => line.startsWith('+') && !line.startsWith('+++ ') && line.trim() !== '+';
-const isRemoved = (line) => line.startsWith('-') && !line.startsWith('--- ') && line.trim() !== '-';
 
 /** A patch as files, each with the lines it adds and the lines it only removes. */
 function parsePatch(text) {
   const files = [];
   // A CRLF checkout of patches/ (core.autocrlf) must still compare equal.
+  let prev = '';
   for (const line of text.split(/\r?\n/)) {
-    if (line.startsWith('+++ ')) {
+    // A file header is `+++ ` right after `--- `; inside a hunk it is an added `++ ` line.
+    const header = line.startsWith('+++ ') && prev.startsWith('--- ');
+    prev = line;
+    if (header) {
       // A deleted file (+++ /dev/null) has nothing to look for.
       files.push({ name: line === '+++ /dev/null' ? null : line.slice(4).replace(/^b\//, ''), added: [], removed: [] });
-    } else if (files.length && isAdded(line)) files.at(-1).added.push(line.slice(1));
-    else if (files.length && isRemoved(line)) files.at(-1).removed.push(line.slice(1));
+    } else if (files.length && line.startsWith('+') && line.trim() !== '+') files.at(-1).added.push(line.slice(1));
+    else if (files.length && line.startsWith('-') && !line.startsWith('--- ') && line.trim() !== '-') files.at(-1).removed.push(line.slice(1));
   }
-  for (const f of files) f.removed = f.removed.filter((l) => !f.added.includes(l));
+  // A removed line that lives on inside an added one (`f(x)` -> `f(x, y)`) proves nothing.
+  for (const f of files) f.removed = f.removed.filter((l) => !f.added.some((a) => a.includes(l)));
   return files.filter((f) => f.name !== null);
 }
 
@@ -133,13 +136,27 @@ function assertPatchesApplied(staged) {
         const text = readFileSync(join(pkgRoot, name), 'utf-8');
         const missing = added.find((l) => !text.includes(l));
         if (missing !== undefined) throw new Error(`${pkgRoot}/${name} is staged without ${patch} (missing: ${missing.trim()})`);
-        // Added lines can be generic (`}`), so a line the patch only removes must also be gone.
-        if (removed.length && removed.every((l) => text.includes(l))) {
+        // Added lines can be generic (`}`), so a line the patch only removes must
+        // also be gone, compared as a whole line.
+        const present = new Set(text.split(/\r?\n/).map((l) => l.trim()));
+        if (removed.length && removed.every((l) => present.has(l.trim()))) {
           throw new Error(`${pkgRoot}/${name} still has every line ${patch} removes`);
         }
       }
     }
   }
+}
+
+/** The newest modification time of a .rs or Cargo file under `dir`. */
+function newestMtime(dir) {
+  let newest = 0;
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (entry.name === 'target' || entry.name.startsWith('.')) continue;
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) newest = Math.max(newest, newestMtime(path));
+    else if (/\.rs$|^Cargo\.(toml|lock)$/.test(entry.name)) newest = Math.max(newest, statSync(path).mtimeMs);
+  }
+  return newest;
 }
 
 function missingWasm(root) {
@@ -194,6 +211,11 @@ if (!flags['no-bundle']) {
     '--filter', pkg.name, 'deploy', '--prod', '--legacy', join(stage, BUNDLE_SERVER_DIR),
   ], pkgDir);
   pruneStage(join(stage, BUNDLE_SERVER_DIR));
+  // build-wasm.sh keeps the old runtime when a wasm-pack build fails outside CI,
+  // so a runtime older than the Rust sources is a stale one.
+  const rustNewest = newestMtime(resolve(pkgDir, '..', '..', 'rust'));
+  const stale = WASM.filter((f) => statSync(resolve(pkgDir, '..', 'wasm', f)).mtimeMs < rustNewest);
+  if (stale.length) throw new Error(`packages/wasm/${stale.join(', ')} is older than the Rust sources: rebuild it (scripts/build-wasm.sh)`);
   const staged = missingWasm(join(stage, BUNDLE_SERVER_DIR, 'node_modules', '@ifc-lite', 'wasm'));
   if (staged.length) throw new Error(`the deployed stage is missing ${staged.join(', ')}`);
   // Hoisted deploy resolves within package.json ranges, not the lockfile, so the
@@ -203,7 +225,8 @@ if (!flags['no-bundle']) {
   assertPatchesApplied(tree);
   writeFileSync(join(stage, 'manifest.json'), `${JSON.stringify(mcpbManifest(pkg), null, 2)}\n`);
   // Source maps and type declarations are about 30 MB of the stage and never run.
-  writeFileSync(join(stage, '.mcpbignore'), '*.map\n*.d.ts\n*.d.mts\n*.d.cts\n');
+  // pnpm's state files hold this host's store paths and do nothing at runtime.
+  writeFileSync(join(stage, '.mcpbignore'), '*.map\n*.d.ts\n*.d.mts\n*.d.cts\n.modules.yaml\n.pnpm-workspace-state*\n');
   run('npx', ['-y', MCPB_CLI, 'pack', stage, bundle], pkgDir);
   process.stdout.write(`wrote ${bundle}\n`);
   // A few hundred MB, with its own copy of this package's package.json.

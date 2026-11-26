@@ -21,13 +21,12 @@ const PKG = `@ifc-lite/mcp@^${VERSION}`;
 
 interface Fake extends InstallIo {
   files: Map<string, string>;
-  runs: Array<{ command: string; args: string[]; quiet?: boolean }>;
+  runs: Array<{ command: string; args: string[] }>;
   stdout: string;
   stderr: string;
 }
 
-/** `statuses`: exit status of each run in turn (default 0). */
-function fakeIo(host: Partial<HostEnv> = {}, opts: { missing?: boolean; statuses?: number[] } = {}): Fake {
+function fakeIo(host: Partial<HostEnv> = {}, opts: { missing?: boolean } = {}): Fake {
   const io: Fake = {
     host: { platform: 'darwin', home: '/Users/u', cwd: '/work/proj', env: {}, listDir: () => [], isFile: () => true, warn: () => {}, ...host },
     files: new Map(),
@@ -37,9 +36,9 @@ function fakeIo(host: Partial<HostEnv> = {}, opts: { missing?: boolean; statuses
     readConfig: (p) => io.files.get(p),
     writeFile: (p, t) => void io.files.set(p, t),
     copyFile: (from, to) => void io.files.set(to, io.files.get(from) ?? ''),
-    run(command, args, quiet) {
-      io.runs.push(quiet ? { command, args, quiet } : { command, args });
-      return opts.missing ? { status: 127, missing: true } : { status: opts.statuses?.[io.runs.length - 1] ?? 0 };
+    run(command, args) {
+      io.runs.push({ command, args });
+      return opts.missing ? { status: 127, missing: true } : { status: 0 };
     },
     out: (t) => void (io.stdout += t),
     err: (t) => void (io.stderr += t),
@@ -184,13 +183,17 @@ describe('ifc-lite-mcp install: where each client is configured', () => {
     expect(install(['--client', 'cursor', '--', '--transport', 'stdio'], io)).toBe(0);
   });
 
-  it('Claude Code --force says the old entry is gone when the add then fails', () => {
-    const io = fakeIo({}, { statuses: [0, 1] });
+  it('Claude Code --force preserves the prior config when the write fails (#11580)', () => {
+    const io = fakeIo();
+    const path = '/Users/u/.claude.json';
+    const before = '{"mcpServers":{"ifc-lite":{"command":"old","env":{"TOKEN":"private"}}}}';
+    io.files.set(path, before);
+    io.writeFile = () => { throw new InstallError('EACCES: permission denied'); };
     expect(install(['--client', 'claude-code', '--force'], io)).toBe(1);
-    expect(io.stderr).toContain('already removed');
-    const none = fakeIo({}, { statuses: [1, 1] });
-    install(['--client', 'claude-code', '--force'], none);
-    expect(none.stderr).not.toContain('already removed');
+    expect(io.files.get(path)).toBe(before);
+    expect(io.files.get(`${path}.bak-20261126-102030000`)).toBe(before);
+    expect(io.stderr).toContain('install did not write the file');
+    expect(io.runs).toEqual([]);
   });
 
   it('a file-system error is reported, not thrown, and names the backup', () => {
@@ -205,6 +208,14 @@ describe('ifc-lite-mcp install: where each client is configured', () => {
     const io = fakeIo({ platform: 'win32', home: 'C:\\Users\\u', cwd: 'C:\\w' });
     expect(install(['--client', 'claude-code'], io)).toBe(0);
     expect(io.runs[0].args).toEqual(['mcp', 'add', '--scope', 'user', 'ifc-lite', '--', 'cmd', '/c', 'npx', '-y', PKG.replace('^', '~')]);
+  });
+
+  it('Claude Code --force keeps the Windows launcher and pin (#11580)', () => {
+    const io = fakeIo({ platform: 'win32', home: 'C:\\Users\\u', cwd: 'C:\\work' });
+    expect(install(['--client', 'claude-code', '--force'], io)).toBe(0);
+    expect(JSON.parse(io.files.get('C:\\Users\\u\\.claude.json') ?? 'null')).toEqual({
+      mcpServers: { 'ifc-lite': { type: 'stdio', command: 'cmd', args: ['/c', 'npx', '-y', PKG.replace('^', '~')] } },
+    });
   });
 
   it('Claude Code on Windows refuses a model path cmd /c would interpret', () => {
@@ -228,11 +239,23 @@ describe('ifc-lite-mcp install: where each client is configured', () => {
     expect(warned).toContain('is Claude Desktop installed?');
   });
 
-  it('Claude Code --force removes the old entry first', () => {
-    const io = fakeIo();
-    install(['--client', 'claude-code', '--force', '--scope', 'project'], io);
-    expect(io.runs[0]).toEqual({ command: 'claude', args: ['mcp', 'remove', '--scope', 'project', 'ifc-lite'], quiet: true });
-    expect(io.runs[1].args.slice(0, 5)).toEqual(['mcp', 'add', '--scope', 'project', 'ifc-lite']);
+  it.each([
+    ['project', '/work/proj/.mcp.json'],
+    ['user', '/work/claude-config/.claude.json'],
+  ])('Claude Code --force merges only the %s entry (#11580)', (scope, path) => {
+    const io = fakeIo({ env: { CLAUDE_CONFIG_DIR: '../claude-config' } });
+    const other = { command: 'other', args: [] };
+    const custom = { env: { TOKEN: 'private' }, cwd: '/models' };
+    io.files.set(path, JSON.stringify({
+      theme: 'dark',
+      mcpServers: { other, 'ifc-lite': { type: 'sse', url: 'https://example.com/mcp', ...custom } },
+    }));
+    expect(install(['--client', 'claude-code', '--force', '--scope', scope], io)).toBe(0);
+    expect(io.runs).toEqual([]);
+    expect(JSON.parse(io.files.get(path) ?? 'null')).toEqual({
+      theme: 'dark',
+      mcpServers: { other, 'ifc-lite': { type: 'stdio', command: 'npx', args: ['-y', PKG], ...custom } },
+    });
   });
 });
 
@@ -413,10 +436,16 @@ describe('ifc-lite-mcp install: dry run and usage errors', () => {
     expect(io.stdout).toBe(`claude mcp add --scope user ifc-lite -- npx -y '${PKG}' '/My Models/a.ifc'\n`);
   });
 
-  it('--dry-run --force prints the remove step a real run takes first', () => {
+  it('Claude Code --dry-run --force previews the merge without exposing existing settings (#11580)', () => {
     const io = fakeIo();
-    install(['--client', 'claude-code', '--dry-run', '--force'], io);
-    expect(io.stdout.split('\n')[0]).toBe('claude mcp remove --scope user ifc-lite');
+    const path = '/Users/u/.claude.json';
+    const before = '{"mcpServers":{"ifc-lite":{"command":"old","env":{"TOKEN":"private"}}}}';
+    io.files.set(path, before);
+    expect(install(['--client', 'claude-code', '--dry-run', '--force'], io)).toBe(0);
+    expect(io.runs).toEqual([]);
+    expect([...io.files]).toEqual([[path, before]]);
+    expect(JSON.parse(io.stdout)).toEqual({ mcpServers: { 'ifc-lite': { type: 'stdio', command: 'npx', args: ['-y', PKG] } } });
+    expect(io.stdout + io.stderr).not.toContain('private');
   });
 
   it('quotes the printed command for cmd.exe on Windows', () => {

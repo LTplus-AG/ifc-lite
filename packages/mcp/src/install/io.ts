@@ -38,8 +38,8 @@ export interface InstallIo {
   writeFile(path: string, text: string, expected: string | undefined): void;
   /** Copy, failing rather than overwriting an existing `to`. */
   copyFile(from: string, to: string): void;
-  /** Run a program with inherited stdio (or none, `quiet`). `missing` when it is not on PATH. */
-  run(command: string, args: string[], quiet?: boolean): { status: number; missing?: boolean };
+  /** Run a program with inherited stdio. `missing` when it is not on PATH. */
+  run(command: string, args: string[]): { status: number; missing?: boolean };
   out(text: string): void;
   err(text: string): void;
   now(): Date;
@@ -90,8 +90,8 @@ export function nodeInstallIo(): InstallIo {
       }
     }),
     copyFile: (from, to) => userFacing(() => copyFileSync(from, to, constants.COPYFILE_EXCL)),
-    run: (command, args, quiet) => userFacing(() => {
-      const r = crossSpawn.sync(command, args, { stdio: quiet ? 'ignore' : 'inherit' });
+    run: (command, args) => userFacing(() => {
+      const r = crossSpawn.sync(command, args, { stdio: 'inherit' });
       if (r.error) {
         if ((r.error as NodeJS.ErrnoException).code === 'ENOENT') return { status: 127, missing: true };
         throw r.error;

@@ -63,8 +63,6 @@ export interface CommandPlan {
   kind: 'command';
   command: string;
   args: string[];
-  /** Run first under --force, because the CLI refuses an existing name. */
-  remove?: string[];
   /** The CLI silently replaces an existing entry of the same name. */
   overwrites?: boolean;
 }
@@ -89,16 +87,28 @@ export function planInstall(
   name: string,
   server: ServerCommand,
   host: HostEnv,
+  force: boolean,
 ): InstallPlan {
   const path = pathFor(host);
   switch (client) {
-    case 'claude-code':
+    case 'claude-code': {
+      const [command, ...args] = claudeCodeLaunch(server, host);
+      if (force) {
+        const configDir = host.env.CLAUDE_CONFIG_DIR;
+        const userDir = configDir ? path.resolve(host.cwd, configDir) : host.home;
+        return {
+          kind: 'file',
+          path: scope === 'project' ? path.join(host.cwd, '.mcp.json') : path.join(userDir, '.claude.json'),
+          key: 'mcpServers',
+          entry: { type: 'stdio', command, args },
+        };
+      }
       return {
         kind: 'command',
         command: 'claude',
-        args: ['mcp', 'add', '--scope', scope, name, '--', ...claudeCodeLaunch(server, host)],
-        remove: ['mcp', 'remove', '--scope', scope, name],
+        args: ['mcp', 'add', '--scope', scope, name, '--', command, ...args],
       };
+    }
     case 'claude-desktop':
       if (scope === 'project') throw new InstallError('Claude Desktop has no project config; drop --scope project.');
       return { kind: 'file', path: claudeDesktopConfigPath(host), key: 'mcpServers', entry: { ...server } };

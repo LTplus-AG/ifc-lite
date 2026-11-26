@@ -551,11 +551,14 @@ ifc-lite mcp install --client claude-desktop ./model.ifc
 npx -y @ifc-lite/mcp install --client cursor -- --bridge
 ```
 
-Clients: `claude-code` (runs `claude mcp add`), `claude-desktop`, `cursor`,
+Clients: `claude-code` (uses `claude mcp add` for ordinary installs), `claude-desktop`, `cursor`,
 `vscode` (user scope runs `code --add-mcp`). `--scope project` writes the
 current directory's `.mcp.json`, `.cursor/mcp.json` or `.vscode/mcp.json`.
 Flags after `--` go to the server. Model paths become absolute. Use
 `--force` to replace an existing IFClite entry, including an older npm pin.
+For Claude Code, `--force` backs up and updates `.mcp.json` at project scope
+or `~/.claude.json` at user scope (under `CLAUDE_CONFIG_DIR` when set).
+It preserves custom server settings such as `env`.
 VS Code user-scope installs also require `--force` because its CLI replaces
 same-name entries. On Windows, use project scope or open the VS Code user
 configuration and paste the entry printed by install.

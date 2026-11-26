@@ -7,8 +7,8 @@
  * with an MCP client in one step.
  *
  * File-based clients get their config merged (other servers kept, a backup
- * written first). Claude Code and VS Code's user profile get their own CLI
- * run, because that is their documented way in. `--dry-run` prints what
+ * written first). Claude Code adds entries through its CLI and uses the file
+ * merge for --force. VS Code's user profile uses its CLI. `--dry-run` prints what
  * would happen and touches nothing.
  */
 
@@ -50,9 +50,9 @@ function installHelp(invokedAs: string): string {
     --dry-run               Print the config or command; change nothing.
     --force                 Replace an existing entry with the same name, e.g.
                             after an upgrade. File clients keep the entry's
-                            own keys (env, cwd); Claude Code and VS Code user
-                            scope replace the whole entry. VS Code user scope
-                            needs it, since install cannot see that entry.
+                            own keys (env, cwd), including Claude Code. VS Code
+                            user scope requires --force and replaces the whole
+                            entry.
 
   Examples:
     ${invokedAs} --client claude-code
@@ -150,7 +150,7 @@ export function runInstall(
       io.out(installHelp(invokedAs));
       return 0;
     }
-    const plan = planInstall(args.client, args.scope, args.name, serverCommand(version, args.serverArgs), io.host);
+    const plan = planInstall(args.client, args.scope, args.name, serverCommand(version, args.serverArgs), io.host, args.force);
     if (args.scope === 'project' && args.hasPaths) {
       io.err(note('note: the project file gets absolute paths, which only work on this machine.'));
     }
@@ -172,7 +172,6 @@ function runCommandPlan(
   label: string,
   io: InstallIo,
 ): number {
-  const remove = args.force ? plan.remove : undefined;
   if (plan.overwrites && !args.force && !args.dryRun) {
     throw new InstallError(
       `\`${plan.command} ${plan.args[0]}\` replaces any existing "${args.name}" entry, and install cannot check for one first. ` +
@@ -181,27 +180,16 @@ function runCommandPlan(
   }
   const line = commandLine(plan.command, plan.args, io.host.platform);
   if (args.dryRun) {
-    if (remove) io.out(`${commandLine(plan.command, remove, io.host.platform)}\n`);
     io.out(`${line}\n`);
     return 0;
   }
-  // A non-zero exit from the remove step only means there was nothing to remove.
-  const removed = remove !== undefined && io.run(plan.command, remove, true).status === 0;
-  let result;
-  try {
-    result = io.run(plan.command, plan.args);
-  } catch (err) {
-    if (removed && err instanceof InstallError) throw new InstallError(`${err.message}. The old "${args.name}" entry was already removed; run again:\n${line}`);
-    throw err;
-  }
+  const result = io.run(plan.command, plan.args);
   if (result.missing) {
     io.err(note(`\`${plan.command}\` is not on PATH. Run this yourself:\n${line}`));
     return 1;
   }
   if (result.status !== 0) {
-    let hint = '';
-    if (removed) hint = ` The old "${args.name}" entry was already removed; fix the error and run again:\n${line}`;
-    else if (plan.remove && !args.force) hint = ' If the name is taken, pass --force or --name.';
+    const hint = args.client === 'claude-code' ? ' If the name is taken, pass --force or --name.' : '';
     io.err(note(`\`${plan.command}\` exited with ${result.status}.${hint}`));
     return result.status;
   }

@@ -129,6 +129,13 @@ async function main(): Promise<void> {
   if (process.argv.includes('--check')) {
     const expected = readJson<{ files: FileComparison[] }>(join(here, 'report.json'));
     const baseline = new Map(expected.files.map(file => [file.path, file]));
+    const actual = new Set(comparisons.map(file => file.path));
+    const optional = new Set(process.env.IFC_LITE_REQUIRE_FIXTURES === '1' ? [] : missing);
+    const absent = [...baseline.keys()].filter(path => !actual.has(path) && !optional.has(path));
+    const unexpected = [...actual].filter(path => !baseline.has(path));
+    if (absent.length || unexpected.length) {
+      throw new Error(`Parity input paths changed. Missing: ${absent.join(', ')}. Unexpected: ${unexpected.join(', ')}.`);
+    }
     for (const file of comparisons) {
       const prior = baseline.get(file.path);
       if (!prior || file.oracleError) throw new Error(`No usable baseline for ${file.path}`);

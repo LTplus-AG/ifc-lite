@@ -237,6 +237,19 @@ describe('script_run', () => {
     }
   });
 
+  it('bounds error messages a script controls, and sees through a patched hasInstance', async () => {
+    for (const code of [
+      "const p = Promise.resolve(1); Object.defineProperty(p, 'constructor', { get() { throw 'x'.repeat(500000); } }); p",
+      "throw new Error('a'.repeat(3999) + '\\u{1F600}')",
+    ]) {
+      const err = await runError(code);
+      expect(err.message.length).toBeLessThan(4_100);
+      expect(/[\uD800-\uDBFF]$/.test(err.message)).toBe(false);
+    }
+    expect((await run("Object.defineProperty(Promise, Symbol.hasInstance, { value() { return false; } }); (async () => 7)()")).structuredContent?.value).toBe(7);
+    expect((await run("Object.defineProperty(Promise, Symbol.hasInstance, { value() { throw 'y'; } }); 1")).structuredContent?.value).toBe(1);
+  });
+
   it('tags a script failure apart from bad arguments', async () => {
     expect((await runError("throw new Error('no walls')")).details?.kind).toBe('script');
   });

@@ -159,7 +159,7 @@ function wrapScript(code: string): string {
   // tagged primitive string, which no prototype or toJSON patch can reshape
   // on its way through vm.dump, and an oversized value is cut down inside the
   // sandbox so only the preview crosses to the host.
-  return `(function (run, P, then, apply, slice, Str, stringify, max, preview) {
+  return `(function (run, P, isInstance, then, apply, slice, Str, stringify, max, preview) {
   function msg(e) {
     try { return e && typeof e.message === 'string' ? e.message : Str(e); }
     catch (_) { return 'unprintable error'; }
@@ -171,15 +171,17 @@ function wrapScript(code: string): string {
     return j.length > max ? 'P' + apply(slice, j, [0, preview + 1]) : 'J' + j;
   }
   function fail(e) { return 'T' + msg(e); }
-  var r;
-  try { r = run(); } catch (e) { return fail(e); }
-  if (!(r instanceof P)) return env(r);
+  var r, isPromise;
+  try { r = run(); isPromise = apply(isInstance, P, [r]); } catch (e) { return fail(e); }
+  if (!isPromise) return env(r);
   // Settle through a promise the wrapper owns: then() on the script's
-  // promise builds its result via the script-controlled species constructor.
+  // promise builds its result via the script-controlled species constructor,
+  // and a throwing constructor getter becomes an ordinary script failure.
   return new P(function (resolve) {
-    apply(then, r, [function (v) { resolve(env(v)); }, function (e) { resolve(fail(e)); }]);
+    try { apply(then, r, [function (v) { resolve(env(v)); }, function (e) { resolve(fail(e)); }]); }
+    catch (e) { resolve(fail(e)); }
   });
-})(function () { return eval(${JSON.stringify(code)}); }, Promise, Promise.prototype.then, Reflect.apply, String.prototype.slice, String, JSON.stringify, ${MAX_VALUE_CHARS}, ${VALUE_PREVIEW_CHARS})`;
+})(function () { return eval(${JSON.stringify(code)}); }, Promise, Function.prototype[Symbol.hasInstance], Promise.prototype.then, Reflect.apply, String.prototype.slice, String, JSON.stringify, ${MAX_VALUE_CHARS}, ${VALUE_PREVIEW_CHARS})`;
 }
 
 type Outcome =
@@ -205,8 +207,8 @@ function readEnvelope(dumped: unknown): Outcome {
     case 'P': return { value: null, value_truncated: true, value_preview: clipUtf16(body, VALUE_PREVIEW_CHARS) };
     case 'U': return { error: /out of memory/i.test(body)
       ? 'Ran out of memory serialising the value; raise memory_mb or return less.'
-      : `The script's value is not JSON-serialisable: ${body}` };
-    case 'T': return { error: body };
+      : `The script's value is not JSON-serialisable: ${clipUtf16(body, MAX_MESSAGE_CHARS)}` };
+    case 'T': return { error: clipUtf16(body, MAX_MESSAGE_CHARS) };
     default: return { error: 'The script produced no result.' };
   }
 }
@@ -223,7 +225,8 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
     new ToolExecutionError({ code: ToolErrorCode.CANCELLED, message: 'Script cancelled by the client.', details });
   const scriptError = (message: string, details: Record<string, unknown>) => new ToolExecutionError({
     // kind tells a script failure from INVALID_INPUT on the tool's own arguments.
-    code: ToolErrorCode.INVALID_INPUT, message: `Script error: ${message}`, details: { kind: 'script', ...details },
+    // Clipped here too: a ScriptError from the sandbox can carry a script-sized message.
+    code: ToolErrorCode.INVALID_INPUT, message: `Script error: ${clipUtf16(message, MAX_MESSAGE_CHARS)}`, details: { kind: 'script', ...details },
     hint: mode === 'read' && /\bbim\.(mutate|store)\b/.test(code)
       ? 'script_run has no bim.mutate or bim.store; use script_run_mutate to edit the model.'
       : undefined,

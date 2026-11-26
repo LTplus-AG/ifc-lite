@@ -72,7 +72,8 @@ import { ResourceRegistry } from './resources/types.js';
 import { disposeSessionResources } from './session-cleanup.js';
 import { ToolRegistry } from './tools/types.js';
 import { withScanHint } from './tools/util.js';
-import { advertisedInputSchema, validateInput } from './validate.js';
+import { validateInput } from './validate.js';
+import { fitOutputSchema, toToolDefinition } from './tool-wire.js';
 import { ViewerManager } from './viewer-manager.js';
 import type { ViewerState } from './viewer-manager.js';
 
@@ -255,7 +256,7 @@ export class MCPServer {
         case 'tools/list':
           return successResponse(req.id, this.handleListTools());
         case 'tools/call':
-          return successResponse(req.id, this.fitOutputSchema(req, await this.handleCallTool(req)));
+          return successResponse(req.id, fitOutputSchema(await this.handleCallTool(req), this.tools.get((req.params as CallToolParams | undefined)?.name ?? '')));
         case 'resources/list':
           return successResponse(req.id, await this.handleListResources());
         case 'resources/read':
@@ -349,19 +350,6 @@ export class MCPServer {
     }
     const tools: ToolDefinition[] = visible.map(toToolDefinition);
     return { tools };
-  }
-
-  /**
-   * MCP clients validate any `structuredContent` against the tool's
-   * `outputSchema`, error results included (the TS SDK client does), and the
-   * error envelope `{ code, message, details }` matches no success schema.
-   * For tools that declare one, the envelope moves into the text block.
-   */
-  private fitOutputSchema(req: JsonRpcRequest, result: CallToolResult): CallToolResult {
-    if (!result.isError || result.structuredContent === undefined) return result;
-    if (!this.tools.get((req.params as CallToolParams | undefined)?.name ?? '')?.outputSchema) return result;
-    const { structuredContent, ...rest } = result;
-    return { ...rest, content: [...result.content, { type: 'text', text: JSON.stringify(structuredContent) }] };
   }
 
   private async handleCallTool(req: JsonRpcRequest): Promise<CallToolResult> {
@@ -528,19 +516,6 @@ export class MCPServer {
   hasModelAccess(modelId: string): boolean {
     return modelAllowed(this.scope, modelId);
   }
-}
-
-function toToolDefinition(tool: Omit<ToolDefinition, 'scope'> & { scope?: string }): ToolDefinition {
-  return {
-    name: tool.name,
-    ...(tool.title !== undefined ? { title: tool.title } : {}),
-    description: tool.description,
-    inputSchema: advertisedInputSchema(tool.inputSchema),
-    scope: tool.scope as ToolDefinition['scope'],
-    ...(tool.outputSchema !== undefined ? { outputSchema: tool.outputSchema } : {}),
-    ...(tool.annotations !== undefined ? { annotations: tool.annotations } : {}),
-    ...(tool._meta !== undefined ? { _meta: tool._meta } : {}),
-  };
 }
 
 const SERVER_INSTRUCTIONS = `

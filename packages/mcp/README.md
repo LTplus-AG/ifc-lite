@@ -110,9 +110,21 @@ ifc-lite mcp ./model.ifc
 ifc-lite mcp ./model.ifc --read-only
 ```
 
+### Add it to a client in one step
+
+```bash
+npx -y @ifc-lite/mcp install --client claude-desktop ./model.ifc
+npx -y @ifc-lite/mcp install --client claude-code -- --bridge
+npx -y @ifc-lite/mcp install --client cursor --dry-run
+```
+
+Clients: `claude-code`, `claude-desktop`, `cursor`, `vscode`. Existing configs
+are merged (other servers kept, a backup written first); `--dry-run` prints
+what would change. `install --help` lists the options.
+
 ### Claude Desktop
 
-Drop this into `claude_desktop_config.json`:
+Or drop this into `claude_desktop_config.json` yourself:
 
 ```json
 {

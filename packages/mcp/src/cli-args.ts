@@ -50,6 +50,8 @@ export const MCP_BOOLEAN_FLAGS: readonly string[] = [
   '-v',
 ];
 
+const KNOWN_FLAGS: ReadonlySet<string> = new Set([...MCP_VALUE_FLAGS, ...MCP_BOOLEAN_FLAGS]);
+
 /** True when `arg` consumes the next argv token. */
 export function isMcpValueFlag(arg: string): boolean {
   return MCP_VALUE_FLAGS.includes(arg);
@@ -86,8 +88,6 @@ export interface CliOptions {
   bridgePort?: number;
   /** `--bridge-viewer-url`: base of the pairing link; its origin may connect. */
   bridgeViewerUrl?: string;
-  /** Bridge value flags given without an operand; `bridgeConflict` reports them. */
-  bridgeMissingOperand?: string[];
   /** `--help`/`-h` was passed. The caller prints usage and exits. */
   help: boolean;
   /** `--version`/`-v` was passed. The caller prints the version and exits. */
@@ -125,7 +125,6 @@ export function parseArgs(argv: string[]): CliOptions {
     warnings: [],
     errors: [],
   };
-  const known = new Set([...MCP_VALUE_FLAGS, ...MCP_BOOLEAN_FLAGS]);
   let i = 0;
   /**
    * The value after the flag at `i`, consumed. A known flag is never a value:
@@ -134,7 +133,7 @@ export function parseArgs(argv: string[]): CliOptions {
    */
   const value = (flag: string): string | undefined => {
     const next = argv[i + 1];
-    if (next === undefined || next === '' || known.has(next)) {
+    if (next === undefined || next === '' || KNOWN_FLAGS.has(next)) {
       opts.errors.push(`${flag} needs a value.`);
       return undefined;
     }
@@ -149,8 +148,14 @@ export function parseArgs(argv: string[]): CliOptions {
       opts.warnings.push('--federate does nothing: every file passed is loaded into the same session. Drop it.');
     }
     else if (arg === '--insecure') opts.insecure = true;
-    else if (arg === '--transport') opts.transport = (value(arg) as 'stdio' | 'http' | undefined) ?? 'stdio';
-    else if (arg === '--port') opts.port = Number(value(arg) ?? 8765);
+    else if (arg === '--transport') {
+      const v = value(arg);
+      if (v !== undefined) opts.transport = v as 'stdio' | 'http';
+    }
+    else if (arg === '--port') {
+      const v = value(arg);
+      if (v !== undefined) opts.port = Number(v);
+    }
     else if (arg === '--host') opts.host = value(arg);
     else if (arg === '--token' || arg === '--read-only-token') {
       const token = value(arg);
@@ -158,22 +163,18 @@ export function parseArgs(argv: string[]): CliOptions {
     }
     else if (arg === '--bsdd') opts.bsdd = value(arg);
     else if (arg === '--viewer') opts.autoViewer = true;
-    else if (arg === '--viewer-port') opts.viewerPort = Number(value(arg) ?? 0);
+    else if (arg === '--viewer-port') {
+      const v = value(arg);
+      if (v !== undefined) opts.viewerPort = Number(v);
+    }
     else if (arg === '--open') { opts.autoViewer = true; opts.openBrowser = true; }
     else if (arg === '--bridge') opts.bridge = true;
     else if (arg === '--channel') opts.channel = true;
-    else if (arg === '--bridge-port' || arg === '--bridge-viewer-url') {
-      // A missing operand (end of argv, or the next flag) is a usage error,
-      // not a silent fall-back to the default port or viewer URL.
-      const value = argv[i + 1];
-      if (value === undefined || value === '' || value.startsWith('-')) {
-        (opts.bridgeMissingOperand ??= []).push(arg);
-        continue;
-      }
-      i++;
-      if (arg === '--bridge-port') opts.bridgePort = Number(value);
-      else opts.bridgeViewerUrl = value;
+    else if (arg === '--bridge-port') {
+      const v = value(arg);
+      if (v !== undefined) opts.bridgePort = Number(v);
     }
+    else if (arg === '--bridge-viewer-url') opts.bridgeViewerUrl = value(arg);
     else if (arg === '--allow') {
       const path = value(arg);
       if (path !== undefined) (opts.allowedPaths ??= []).push(resolve(path));
@@ -199,7 +200,6 @@ export function parseArgs(argv: string[]): CliOptions {
  */
 export function bridgeConflict(opts: CliOptions): string | null {
   if (!opts.bridge) return opts.channel ? '--channel needs --bridge: it pushes events from the paired viewer tab.' : null;
-  if (opts.bridgeMissingOperand?.length) return `${opts.bridgeMissingOperand.join(', ')} needs a value.`;
   if (opts.files.length > 0) return `--bridge serves the model open in a browser tab and loads no files; drop ${opts.files.join(', ')}.`;
   if (opts.transport !== 'stdio') return '--bridge speaks MCP over stdio only; drop --transport http.';
   if (opts.autoViewer) return '--bridge cannot be combined with --viewer or --open: the browser tab is the viewer.';

@@ -73,6 +73,8 @@ mod tables_tests;
 /// `line`, record `id` of source `schema`, with every id in `omitted` removed from the references it holds; the
 /// warning that says so when nothing is left to write (#11457). The plain writer's use of the log writer's filter.
 pub(crate) fn scrub_omitted(line: String, id: u32, schema: &str, omitted: &std::collections::HashSet<u32>) -> Result<String, String> {
+    // Most records name no omitted id: only those go through the filter, which also withholds what it cannot read.
+    if !crate::step_text::ref_spans(line.as_bytes()).filter_map(|span| span.id).any(|r| omitted.contains(&r)) { return Ok(line) }
     let Some(head) = crate::step_record_frame::record_head(&line) else { return Ok(line) };
     let upper = head.type_name(&line).to_ascii_uppercase();
     match refilter::filter_source_line(&line, id, &upper, schema, &|r| omitted.contains(&r), true) {

@@ -39,12 +39,18 @@ function unrelated(line: string, from: string): boolean {
 
 export class SpaceBoundaryElements {
   private readonly dropped = new Set<number>();
+  /** Set by `note`: the writer listed what it leaves out up front, and only those are left out. */
+  private noted = false;
 
-  /** `line` unchanged, or null when it is a boundary the upgrade cannot write. */
+  /**
+   * `line` unchanged, or null when it is a boundary the upgrade cannot write. After `note`, only a noted boundary
+   * is left out: an edited or created one is written as before, so no referrer names a record that is not there.
+   */
   apply(line: string, from: string, to: string): string | null {
     if (!requiresBoundaryElement(from, to) || !unrelated(line, from)) return line;
     const head = stepRecordHead(line);
     const id = head ? slotRef(line.slice(0, head.eq)) : null;
+    if (this.noted && (id === null || !this.dropped.has(id))) return line;
     if (id !== null) this.dropped.add(id);
     return null;
   }
@@ -63,12 +69,12 @@ export class SpaceBoundaryElements {
    * that precedes a boundary in the file is already scrubbed of it (#11457).
    * `apply` adds the same ids again at conversion, which changes nothing.
    */
-  note(ids: Iterable<number>): void { for (const id of ids) this.dropped.add(id); }
+  note(ids: Iterable<number>): void { this.noted = true; for (const id of ids) this.dropped.add(id); }
 
   warnings(): string[] {
     if (!this.dropped.size) return [];
     const sites = [...this.dropped].sort((a, b) => a - b).map((id) => `#${id}`);
-    return [`${this.dropped.size} IfcRelSpaceBoundary record(s) were not written: IFC4 requires RelatedBuildingElement and the source names none: ${sites.join(', ')}.`];
+    return [`${this.dropped.size} IfcRelSpaceBoundary record(s) were not written: IFC4 and IFC4X3 require RelatedBuildingElement and the source names none: ${sites.join(', ')}.`];
   }
 }
 
@@ -90,10 +96,11 @@ export function spaceBoundaryLoss(store: Parameters<typeof spaceBoundariesNotWri
 
 /**
  * Note the source boundaries a StepExporter pass leaves out (#11457) before any record is converted, so the
- * relationship filters scrub them from the records that name them. An edited or created boundary is judged by the
- * conversion itself, which reads its edited line.
+ * relationship filters scrub them from the records that name them. Only an unedited source boundary this pass
+ * writes is judged; an edited, retyped or created one is written as before (`SpaceBoundaryElements.apply`).
  */
 export function noteBoundariesLeftOut(pass: ExportPass, store: Parameters<typeof spaceBoundariesNotWritten>[0]): void {
-  pass.enums.boundaries.note(spaceBoundariesNotWritten(store, pass.sourceSchema, pass.schema)
-    .filter((id) => pass.effective.has(id) && !pass.modifiedAttributes.has(id) && !pass.effective.isOverlayCreated(id)));
+  pass.enums.boundaries.note(spaceBoundariesNotWritten(store, pass.sourceSchema, pass.schema).filter((id) =>
+    pass.willBeEmitted(id) && !pass.modifiedAttributes.has(id) && !pass.effective.isOverlayCreated(id)
+      && !pass.effective.hasSourceMutation?.(id) && pass.effective.typeOf(id) === BOUNDARY));
 }

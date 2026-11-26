@@ -51,6 +51,8 @@ pub(crate) fn left_out<'a>(records: impl Iterator<Item = (u32, std::borrow::Cow<
 #[derive(Default)]
 pub(crate) struct SpaceBoundaryElements {
     dropped: BTreeSet<u32>,
+    /// Set by [`Self::restrict`]: the writer listed what it leaves out up front, and only those are left out.
+    only: Option<HashSet<u32>>,
 }
 
 impl SpaceBoundaryElements {
@@ -58,17 +60,21 @@ impl SpaceBoundaryElements {
     /// record, or one whose arity is not IFC2X3's, is never judged.
     pub(crate) fn apply(&mut self, id: u32, line: &str, from: &str, to: &str, dropped: &mut usize) -> bool {
         match unrelated(line, from, to) {
+            Some(_) if self.only.as_ref().is_some_and(|only| !only.contains(&id)) => true,
             Some(values) => { *dropped += values; self.dropped.insert(id); false }
             None => true,
         }
     }
+    /// Leave out only the boundaries in `ids`, the ones [`left_out`] judged before any record was written: an edited
+    /// or created boundary is written as before, so no referrer names a record that is not there (#11457).
+    pub(crate) fn restrict(&mut self, ids: &HashSet<u32>) { self.only = Some(ids.clone()); }
     /// The ids `apply` left out, in the id space the writer passed.
     pub(crate) fn ids(&self) -> impl Iterator<Item = u32> + '_ { self.dropped.iter().copied() }
     pub(crate) fn warnings(&self) -> Vec<String> {
         if self.dropped.is_empty() { return Vec::new(); }
         let sites: Vec<String> = self.dropped.iter().map(|id| format!("#{id}")).collect();
         vec![format!(
-            "{} IfcRelSpaceBoundary record(s) were not written: IFC4 requires RelatedBuildingElement and the source names none: {}.",
+            "{} IfcRelSpaceBoundary record(s) were not written: IFC4 and IFC4X3 require RelatedBuildingElement and the source names none: {}.",
             self.dropped.len(),
             sites.join(", ")
         )]

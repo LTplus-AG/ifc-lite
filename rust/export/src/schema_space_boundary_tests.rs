@@ -17,7 +17,7 @@ fn convert(line: &str, from: &str, to: &str) -> String {
     convert_step_line(line, from, to, 1, &mut Ifc2x3SlotFill::new(None), None).unwrap()
 }
 
-/// Every upgrade target that requires the element leaves a boundary without one out; one naming an element stays.
+/// #11457: every upgrade target that requires the element leaves a boundary without one out; one naming an element stays.
 #[test]
 fn convert_step_line_omits_a_boundary_with_no_element() {
     for to in ["IFC4", "IFC4X3"] {
@@ -27,21 +27,21 @@ fn convert_step_line_omits_a_boundary_with_no_element() {
     }
 }
 
-/// An upgrade rule only: the other directions keep the record.
+/// #11457: an upgrade rule only, the other directions keep the record.
 #[test]
 fn the_other_directions_keep_it() {
     assert_eq!(convert(VIRTUAL, "IFC4", "IFC4X3"), VIRTUAL);
     assert_ne!(convert(VIRTUAL, "IFC4", "IFC2X3"), "");
 }
 
-/// The export writes the others, counts the values dropped and names the sites.
+/// #11457: the export writes the others, counts the values dropped and names the sites.
 #[test]
 fn the_export_names_what_it_left_out() {
     let options = StepOptions { schema: Some("IFC4".into()), ..StepOptions::default() };
     let (out, stats, warnings) = export_step_with_diagnostics(model("IFC2X3", &data()).as_bytes(), &options).unwrap();
     let kept: Vec<&str> = out.lines().filter(|l| l.contains("=IFCRELSPACEBOUNDARY(")).map(|l| &l[..l.find('=').unwrap()]).collect();
     assert_eq!(kept, ["#21"]);
-    assert!(warnings.iter().any(|w| w.contains("2 IfcRelSpaceBoundary record(s) were not written: IFC4 requires RelatedBuildingElement and the source names none: #20, #22.")), "{warnings:?}");
+    assert!(warnings.iter().any(|w| w.contains("2 IfcRelSpaceBoundary record(s) were not written: IFC4 and IFC4X3 require RelatedBuildingElement and the source names none: #20, #22.")), "{warnings:?}");
     assert_eq!(stats.attribute_values_dropped, 11);
 }
 
@@ -85,4 +85,20 @@ fn the_merged_writer_scrubs_a_left_out_boundary() {
     assert!(dangling.is_empty(), "{dangling:?}\n{out}");
     assert_eq!(out.lines().filter(|l| l.contains("=IFCRELSPACEBOUNDARY(")).count(), 2, "{out}");
     assert!(stats.warnings.iter().any(|w| w.contains("#33 (IFCRELASSOCIATESCLASSIFICATION) was omitted because a required IFC4 attribute lost a reference")), "{:?}", stats.warnings);
+}
+
+/// #11457: an edited boundary with no element is written as before, by both single-model writers, so a relationship
+/// naming it (written first) does not dangle.
+#[test]
+fn an_edited_boundary_is_written_as_before() {
+    let rels = "#31=IFCCLASSIFICATION('S','E',$,'N');\n#32=IFCRELASSOCIATESCLASSIFICATION('4XigBlHYfFnxzvgV9_gBmP',$,$,$,(#20,#11),#31);";
+    let source = model("IFC2X3", &format!("{rels}\n{}", data()));
+    let options = StepOptions {
+        schema: Some("IFC4".into()),
+        attribute_mutations: vec![crate::step_api::AttrMutation { express_id: 20, index: 2, value: "'Edited'".into() }],
+        ..StepOptions::default()
+    };
+    let (out, _, _) = export_step_with_diagnostics(source.as_bytes(), &options).unwrap();
+    assert!(out.contains("#20=IFCRELSPACEBOUNDARY('3XigBlHYfFnxzvgV9_gBmP',$,'Edited',"), "{out}");
+    assert!(out.contains("(#20,#11),#31);"), "{out}");
 }

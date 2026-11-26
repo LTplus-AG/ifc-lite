@@ -280,7 +280,7 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
         let upper = pass.type_of(id).unwrap_or_default();
         let filtered = {
             let excluded = |r: u32| pass.is_omitted(r);
-            filter_source_line(&text, id, &upper, pass.schema, &excluded, !pass.overlay.tombstones.is_empty())
+            filter_source_line(&text, id, &upper, pass.schema, &excluded, !pass.overlay.tombstones.is_empty() || !pass.left_out.is_empty())
         };
         let text = match filtered {
             Filtered::Keep => Some(text),
@@ -306,6 +306,7 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
     let mut slot_fill = crate::schema_ifc2x3_slots::Ifc2x3SlotFill::new(pass.fallback_owner_history());
     let mut checks = checks_for(content, &source_label, &target, opts, log, &src, &mut pass); // #10763: its material records too
     checks.typed_properties.enabled = typed_properties;
+    checks.boundaries.restrict(&pass.left_out); // #11457: only the boundaries judged up front
     let defer_varying = body_has(&pass, content, |bytes| checks.structural.buffers_varying(bytes));
     let date_buffer = body_has(&pass, content, |bytes| {
         crate::schema_value_forms::ValueForms::buffer_for_dates(bytes, &source_label, &target)
@@ -344,7 +345,7 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
                 let upper = pass.type_of(id).unwrap_or_default();
                 let filtered = {
                     let excluded = |r: u32| pass.is_omitted(r);
-                    filter_source_line(&raw, id, &upper, pass.schema, &excluded, !pass.overlay.tombstones.is_empty())
+                    filter_source_line(&raw, id, &upper, pass.schema, &excluded, !pass.overlay.tombstones.is_empty() || !pass.left_out.is_empty())
                 };
                 owned = match filtered {
                     Filtered::Keep => raw,

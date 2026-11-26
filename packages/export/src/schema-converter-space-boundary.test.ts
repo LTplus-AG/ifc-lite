@@ -8,6 +8,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
+import { MutablePropertyView } from '@ifc-lite/mutations';
 import { MergedExporter } from './merged-exporter.js';
 import { StepExporter } from './step-exporter.js';
 import { convertStepLine } from './schema-converter.js';
@@ -33,7 +34,7 @@ ${PHYSICAL_UNBOUND}`;
 const out = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
 const ids = (text: string) => text.split('\n').filter((l) => l.includes('=IFCRELSPACEBOUNDARY(')).map((l) => l.slice(0, l.indexOf('=')));
 
-describe('IFC2X3 upgrade of an IfcRelSpaceBoundary with no RelatedBuildingElement', () => {
+describe('IFC2X3 upgrade of an IfcRelSpaceBoundary with no RelatedBuildingElement (#11457)', () => {
   for (const to of ['IFC4', 'IFC4X3'] as const) {
     it(`convertStepLine omits it for ${to} and keeps one that names an element`, () => {
       expect(convertStepLine(VIRTUAL, 'IFC2X3', to)).toBeNull();
@@ -52,7 +53,7 @@ describe('IFC2X3 upgrade of an IfcRelSpaceBoundary with no RelatedBuildingElemen
     const store = await parse(model('IFC2X3', DATA));
     const result = new StepExporter(store).export({ schema: 'IFC4' });
     expect(ids(out(result.content))).toEqual(['#21']);
-    expect(result.stats.warnings.join('\n')).toContain('2 IfcRelSpaceBoundary record(s) were not written: IFC4 requires RelatedBuildingElement and the source names none: #20, #22.');
+    expect(result.stats.warnings.join('\n')).toContain('2 IfcRelSpaceBoundary record(s) were not written: IFC4 and IFC4X3 require RelatedBuildingElement and the source names none: #20, #22.');
     const entry = analyzeConversionLoss(store, 'IFC2X3', 'IFC4').entries.find((e) => e.sourceType === 'IFCRELSPACEBOUNDARY');
     expect(entry).toMatchObject({ targetType: 'IFCRELSPACEBOUNDARY', kind: 'lossy', droppedAttributes: ['RelatedBuildingElement'], expressIds: [20, 22] });
     expect(analyzeConversionLoss(store, 'IFC2X3', 'IFC2X3').entries.find((e) => e.sourceType === 'IFCRELSPACEBOUNDARY')).toBeUndefined();
@@ -100,5 +101,19 @@ describe('a merged upgrade naming a left-out IfcRelSpaceBoundary (#11457)', () =
     expect(ids(text)).toHaveLength(2);
     expect(relLines(text).every((line) => line.includes('(#'))).toBe(true);
     expect(result.stats.warnings.join('\n')).toMatch(/#33 \(IFCRELASSOCIATESCLASSIFICATION\) was omitted because a required IFC4 attribute lost a reference/);
+  });
+});
+
+describe('an edited IfcRelSpaceBoundary with no element (#11457)', () => {
+  it('is written as before, so a relationship that names it does not dangle', async () => {
+    // The referrer comes first, so a boundary judged only at conversion would already have been named.
+    const store = await parse(model('IFC2X3', `${CLASS}\n${MIXED}\n${DATA}`));
+    const view = new MutablePropertyView(null, 'm');
+    view.setAttribute(20, 'Name', 'Edited');
+    const text = out(new StepExporter(store, view).export({ schema: 'IFC4' }).content);
+    const defined = new Set([...text.matchAll(/^#(\d+)=/gm)].map((m) => m[1]));
+    const named = [...text.slice(text.indexOf('DATA;')).matchAll(/#(\d+)(?!\d|=)/g)].map((m) => m[1]);
+    expect(named.filter((id) => !defined.has(id))).toEqual([]);
+    expect(ids(text)).toEqual(['#20', '#21']);
   });
 });

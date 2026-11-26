@@ -236,6 +236,7 @@ fn emit<W: std::io::Write>(
                 .filter_map(|id| line_of.get(id).map(|&(s, e)| (*id, String::from_utf8_lossy(&content[s..e])))),
             crate::schema_convert::canon(&source_schema), crate::schema_convert::canon(&schema))
     } else { HashSet::new() };
+    checks.boundaries.restrict(&boundaries_left_out);
     let mut withheld_warnings: Vec<String> = Vec::new();
 
     // Copy-on-write, resolved before the emit loop so the copies and the

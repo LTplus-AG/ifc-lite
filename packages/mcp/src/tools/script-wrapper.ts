@@ -88,6 +88,8 @@ export function wrapScript(code: string): string {
   // and arrays skip the brand-checked valueOf calls entirely; anything with
   // another prototype (a boxed value, a subclass of one, a class instance)
   // tries each, and a valueOf that rejects the receiver means "not this type".
+  // A Number or String subclass that overrides valueOf or toString is written
+  // from its internal value (native JSON calls the override).
   // A boxed value whose prototype was reset to Object.prototype or null is
   // written as an object, unlike native JSON; plain objects stay cheap.
   function unboxed(v) {
@@ -155,7 +157,7 @@ export function wrapScript(code: string): string {
       }
       // A string past the cap is cut before it is escaped, so the preview path
       // runs instead of copying a huge string into out.
-      if (typeof v === 'string' && limit !== Infinity && out.length + v.length > limit) v = apply(slice, v, [0, limit - out.length + 1]);
+      if (typeof v === 'string' && limit !== Infinity && out.length + v.length > limit) v = apply(slice, v, [0, out.length > limit ? 0 : limit - out.length + 1]);
       out += omitted(v) ? 'null' : stringify(v);
     }
     var top = resolve(root, '', { '': root }, fn);
@@ -182,6 +184,8 @@ export function wrapScript(code: string): string {
         var k = ks[fi[i]]; fi[i] = fi[i] + 1;
         var v = resolve(o[k], k, o, fn);
         if (omitted(v)) continue;
+        // A long key can pass the cap on its own; stop before copying more.
+        if (out.length > limit) return out;
         if (fw[i]) out += ',';
         fw[i] = true;
         if (gap) out += '\\n' + indent(sp);

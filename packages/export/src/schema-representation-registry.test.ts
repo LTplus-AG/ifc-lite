@@ -97,7 +97,8 @@ describe('an IFC2X3 -> IFC4 upgrade writes each route, and the loss report names
     expect(entry('IFCRELOCCUPIESSPACES')).toBeUndefined();
     expect(entry('IFCSERVICELIFE')).toMatchObject({ kind: 'proxied', targetType: 'IFCPROXY', expressIds: [7] });
     expect(line(8)).toBe("#8=IFCRELASSIGNSTOCONTROL('0FvctVUKr0kugbFTf53O9L',$,$,$,(#5),$,#9);");
-    expect(entry('IFCRELASSIGNSTASKS')).toMatchObject({ kind: 'lossy', targetType: 'IFCRELASSIGNSTOCONTROL', droppedAttributes: ['TimeForTask'], expressIds: [8] });
+    // #11326: record #8 leaves TimeForTask unset (`$`), so nothing is lost; the Rust writer counts 0 too.
+    expect(entry('IFCRELASSIGNSTASKS')).toBeUndefined();
     expect(entry('IFCMOVE')).toMatchObject({ kind: 'lossy', targetType: 'IFCTASK', droppedAttributes: ['PunchList'], expressIds: [5] });
     expect(entry('IFCCALENDARDATE')).toMatchObject({ kind: 'lossy', targetType: 'IFCCALENDARDATE', expressIds: [6] });
   });

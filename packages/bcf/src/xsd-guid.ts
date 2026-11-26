@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { isValidUuid } from '@ifc-lite/encoding';
+import { isValidUuid, uuidFromSeed } from '@ifc-lite/encoding';
+import type { BCFDocumentReference, BCFTopic } from './types.js';
 
 /**
  * The guid as it must be written for `version`; every guid emitter shares this.
@@ -15,6 +16,12 @@ export function bcfGuid(guid: string, version: '2.1' | '3.0'): string {
   return version === '3.0' && isValidUuid(guid) ? guid.toLowerCase() : guid;
 }
 
+/** BCF 3.0 requires a GUID even for references imported from BCF 2.1 without one. */
+export function documentReferenceGuid3(ref: BCFDocumentReference, topicGuid: string, index: number): string {
+  const docKey = ref.documentGuid ?? ref.url ?? ref.referencedDocument ?? '';
+  return ref.guid || uuidFromSeed(`${topicGuid}|${docKey}|${index}`);
+}
+
 /**
  * BCF 3.0 lowercases every guid, so two topics (or two comments, viewpoints or
  * document references of one topic) whose guids differ only by case would both
@@ -25,38 +32,43 @@ export function bcfGuid(guid: string, version: '2.1' | '3.0'): string {
  * `viewpoints in topic "<guid>"`.
  */
 function assertNoCaseOnlyGuidClash(
-  items: Iterable<{ guid?: string }>,
+  items: Iterable<{ guid?: string; generated?: boolean }>,
   version: '2.1' | '3.0',
   what: string,
 ): void {
   if (version !== '3.0') return;
-  const written = new Map<string, string>();
-  for (const { guid } of items) {
+  const written = new Map<string, { guid: string; generated?: boolean }>();
+  for (const { guid, generated } of items) {
     if (!guid) continue;
     const out = bcfGuid(guid, version);
     const clash = written.get(out);
-    // An exact duplicate is not a case-only clash; lowercasing does not create it.
-    if (clash !== undefined && clash !== guid) {
+    // Exact duplicates supplied by the caller predate normalization.
+    if (clash && (clash.guid !== guid || clash.generated || generated)) {
       throw new Error(
-        `BCF ${version} guids are lowercase, so ${what} "${clash}" and "${guid}" ` +
+        `BCF ${version} guids are lowercase, so ${what} "${clash.guid}" and "${guid}" ` +
           `would both be written as "${out}". Give one of them a different guid before writing.`
       );
     }
-    written.set(out, guid);
+    written.set(out, { guid, generated });
   }
 }
 
 /** The writer's preflight: every topic, and each topic's comments, viewpoints and document references. */
 export function assertNoCaseOnlyGuidClashes(
-  topics: Iterable<{ guid: string; comments: { guid?: string }[]; viewpoints: { guid?: string }[]; documentReferences?: { guid?: string }[] }>,
+  topics: Iterable<BCFTopic>,
   version: '2.1' | '3.0',
 ): void {
+  if (version !== '3.0') return;
   const all = [...topics];
   assertNoCaseOnlyGuidClash(all, version, 'topics');
   for (const topic of all) {
     const inTopic = `in topic "${topic.guid}"`;
     assertNoCaseOnlyGuidClash(topic.comments, version, `comments ${inTopic}`);
     assertNoCaseOnlyGuidClash(topic.viewpoints, version, `viewpoints ${inTopic}`);
-    assertNoCaseOnlyGuidClash(topic.documentReferences ?? [], version, `document references ${inTopic}`);
+    const refs = topic.documentReferences?.map((ref, index) => ({
+      guid: documentReferenceGuid3(ref, topic.guid, index),
+      generated: !ref.guid,
+    }));
+    assertNoCaseOnlyGuidClash(refs ?? [], version, `document references ${inTopic}`);
   }
 }

@@ -14,6 +14,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import JSZip from 'jszip';
 import { validateXML } from 'xmllint-wasm';
+import { uuidFromSeed } from '@ifc-lite/encoding';
 import { writeBCF } from './writer.js';
 import { readBCF } from './reader.js';
 import type { BCFProject } from './types.js';
@@ -154,6 +155,21 @@ describe('guids that differ only by case', () => {
     const refs = [...q.topics.values()][0].documentReferences!;
     refs.push({ ...refs[0], guid: DOCREF.toLowerCase() });
     await expect(writeBCF(q)).rejects.toThrow(/document references in topic/);
+  });
+
+  it.each([false, true])('refuses collisions with a generated document-reference GUID (uppercase=%s)', async (uppercase) => {
+    const p = project('3.0');
+    const topic = [...p.topics.values()][0];
+    const url = 'https://example.com/document';
+    const generated = uuidFromSeed(`${topic.guid}|${url}|0`);
+    const implicit = { url };
+    topic.documentReferences = [
+      implicit,
+      { guid: uppercase ? generated.toUpperCase() : generated, url: 'https://example.com/other' },
+    ];
+
+    await expect(writeBCF(p)).rejects.toThrow(/document references in topic/);
+    expect(implicit).not.toHaveProperty('guid');
   });
 
   it('in different topics\' viewpoints are not a clash', async () => {

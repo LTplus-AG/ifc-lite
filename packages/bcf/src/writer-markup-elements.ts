@@ -21,9 +21,8 @@ import type {
 } from './types.js';
 import { xsdDouble, xsdPointElement } from './numeric.js';
 import { escapeXml } from './xml-text.js';
-import { bcfGuid } from './xsd-guid.js';
+import { bcfGuid, documentReferenceGuid3 } from './xsd-guid.js';
 import { xsdOptionalDateTime } from './xsd-required-string.js';
-import { uuidFromSeed } from '@ifc-lite/encoding';
 
 /**
  * Write line XML
@@ -178,11 +177,7 @@ export function writeDocumentReference(
   // and two references naming different documents could collide. The result
   // is written back onto `docRef` so the in-memory project agrees with the
   // file rather than reporting no guid at all.
-  const docKey = docRef.documentGuid ?? docRef.url ?? docRef.referencedDocument ?? '';
-  const guid =
-    version === '3.0'
-      ? docRef.guid || uuidFromSeed(`${topicGuid}|${docKey}|${index}`)
-      : docRef.guid;
+  const guid = version === '3.0' ? documentReferenceGuid3(docRef, topicGuid, index) : docRef.guid;
   if (version === '3.0' && !docRef.guid) docRef.guid = guid;
   const guidAttr = guid ? ` Guid="${escapeXml(bcfGuid(guid, version))}"` : '';
 

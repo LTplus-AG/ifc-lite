@@ -129,6 +129,11 @@ export async function runMcpCli(argv: string[], identity: McpCliIdentity): Promi
     return undefined;
   }
   for (const w of opts.warnings) process.stderr.write(`${tag} warning: ${w}\n`);
+  if (opts.errors.length > 0) {
+    for (const e of opts.errors) process.stderr.write(`${tag} ${e}\n`);
+    process.exitCode = 2;
+    return undefined;
+  }
   if (opts.bridge || opts.channel) {
     await runBridge(opts, tag);
     return undefined;

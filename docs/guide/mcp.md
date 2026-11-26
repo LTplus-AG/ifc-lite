@@ -73,7 +73,7 @@ By default the server binds `127.0.0.1`. Binding a non-loopback host requires ei
 | `--bridge-viewer-url <url>` | Base of the pairing link (default `https://ifclite.com`). Its origin replaces the default in the allowlist |
 | `--allow-origin <origin>` | HTTP: let a browser origin read responses. Bridge: an extra origin that may connect (repeatable) |
 
-An unknown flag prints a warning on stderr and is otherwise ignored, so a config written for another version still starts. `--federate` is accepted for the same reason and does nothing: every file passed already loads into one session.
+An unknown flag prints a warning on stderr and is otherwise ignored, so a config written for another version still starts. A value flag with no value (`--token --read-only`) is a usage error: the server exits with code 2 rather than guess. `--federate` is accepted for the same reason and does nothing: every file passed already loads into one session.
 
 ## Scopes and permissions
 

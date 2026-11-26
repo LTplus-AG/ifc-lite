@@ -28,10 +28,16 @@ export function serverScope(opts: CliOptions): AuthScope {
  * The bearer tokens `opts` registers, each with its scope. `--token` gets
  * the server's scope; `--read-only-token` gets read scope. A token given
  * under both flags keeps the narrower scope.
+ *
+ * Each token gets its own `user` (`token-1`, `token-2`, …, in argv order).
+ * The HTTP transport binds a session to its scope by content, so without
+ * one, two tokens with equal scopes could use each other's sessions.
  */
 export function tokenScopes(opts: CliOptions): Map<string, AuthScope> {
   const tokens = new Map<string, AuthScope>();
   for (const t of opts.tokens) tokens.set(t, serverScope(opts));
   for (const t of opts.readOnlyTokens) tokens.set(t, readOnlyScope());
+  let n = 0;
+  for (const scope of tokens.values()) scope.user = `token-${++n}`;
   return tokens;
 }

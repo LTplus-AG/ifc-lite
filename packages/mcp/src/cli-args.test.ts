@@ -109,17 +109,26 @@ describe('flag fixes (#11534)', () => {
     expect(opts.warnings).toEqual([]);
   });
 
-  it('warns about a token flag with no value instead of registering undefined', () => {
+  it('makes a value flag with no value a usage error, not a silent default', () => {
     const opts = parseArgs(['--token']);
     expect(opts.tokens).toEqual([]);
-    expect(opts.warnings).toEqual(['--token needs a value; ignored.']);
+    expect(opts.errors).toEqual(['--token needs a value.']);
   });
 
-  it('does not take the next flag as a token', () => {
-    const opts = parseArgs(['--token', '--read-only']);
-    expect(opts.tokens).toEqual([]);
-    expect(opts.readOnly).toBe(true);
-    expect(opts.warnings).toEqual(['--token needs a value; ignored.']);
+  it('does not take a known flag as a value, so --read-only is not lost', () => {
+    for (const flag of ['--token', '--read-only-token', '--allow', '--allow-origin', '--host', '--bsdd', '--transport']) {
+      const opts = parseArgs([flag, '--read-only', 'model.ifc']);
+      expect(opts.readOnly, flag).toBe(true);
+      expect(opts.files, flag).toEqual(['model.ifc']);
+      expect(opts.errors, flag).toEqual([`${flag} needs a value.`]);
+    }
+  });
+
+  it('accepts a token that starts with a dash', () => {
+    const opts = parseArgs(['--token', '-s3cr3t']);
+    expect(opts.tokens).toEqual(['-s3cr3t']);
+    expect(opts.errors).toEqual([]);
+    expect(opts.warnings).toEqual([]);
   });
 
   it('warns about unknown flags and still parses the rest', () => {

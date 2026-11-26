@@ -193,6 +193,8 @@ export const modelUnload: Tool = {
   // `read` for the same reason as `model_load`: it frees session memory and
   // writes nothing. A token narrowed to some models still cannot drop others.
   scope: 'read',
+  // Read scope, but it drops unsaved edits, so clients should still ask.
+  annotations: { destructiveHint: true },
   inputSchema: {
     type: 'object',
     properties: {
@@ -203,16 +205,17 @@ export const modelUnload: Tool = {
   },
   handler(input, ctx) {
     const id = input.model_id as string;
-    if (!ctx.registry.get(id)) {
-      throw new ToolExecutionError({
-        code: ToolErrorCode.MODEL_NOT_FOUND,
-        message: `Model '${id}' is not loaded.`,
-      });
-    }
+    // Allowlist first, so a narrowed token cannot probe which ids are loaded.
     if (!modelAllowed(ctx.scope, id)) {
       throw new ToolExecutionError({
         code: ToolErrorCode.PERMISSION_DENIED,
         message: `Access to model '${id}' is not permitted for this token.`,
+      });
+    }
+    if (!ctx.registry.get(id)) {
+      throw new ToolExecutionError({
+        code: ToolErrorCode.MODEL_NOT_FOUND,
+        message: `Model '${id}' is not loaded.`,
       });
     }
     ctx.registry.remove(id);

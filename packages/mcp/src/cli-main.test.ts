@@ -42,7 +42,7 @@ interface RpcResult {
 }
 
 class Client {
-  private sessionId?: string;
+  sessionId?: string;
   private nextId = 1;
   constructor(private port: number, private token: string) {}
 
@@ -121,6 +121,27 @@ describe('HTTP mode of runMcpCli (#11534)', () => {
     expect(refused.result?.isError).toBe(true);
   });
 
+  it('keeps another token out of a session even when the scopes match', async () => {
+    const owner = new Client(running!.port, 'full');
+    await owner.initialize();
+    const res = await fetch(`http://127.0.0.1:${running!.port}/`, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ro', 'Content-Type': 'application/json', 'Mcp-Session-Id': owner.sessionId! },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 9, method: 'tools/list', params: {} }),
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('exits with a usage error when a value flag has no value', async () => {
+    const before = process.exitCode;
+    try {
+      await expect(runMcpCli(['--transport', 'http', '--token'], { command: 'ifc-lite-mcp' })).resolves.toBeUndefined();
+      expect(process.exitCode).toBe(2);
+    } finally {
+      process.exitCode = before;
+    }
+  });
+
   it('refuses file arguments instead of starting a server that ignores them', async () => {
     const before = process.exitCode;
     try {
@@ -139,6 +160,11 @@ describe('tokenScopes (#11534)', () => {
     expect(scopes.get('a')?.scopes).toContain('mutate');
     expect(scopes.get('b')?.scopes).toContain('mutate');
     expect(scopes.get('r')?.scopes).not.toContain('mutate');
+  });
+
+  it('gives each token its own identity, so equal scopes do not share sessions', () => {
+    const scopes = tokenScopes(parseArgs(['--token', 'a', '--token', 'b', '--read-only-token', 'r']));
+    expect([...scopes.values()].map((s) => s.user)).toEqual(['token-1', 'token-2', 'token-3']);
   });
 
   it('narrows every token under --read-only, and a doubly listed token to read', () => {

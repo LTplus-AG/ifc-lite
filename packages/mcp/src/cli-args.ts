@@ -99,6 +99,11 @@ export interface CliOptions {
    * flags this version dropped.
    */
   warnings: string[];
+  /**
+   * Usage errors: a value flag with no value. The caller prints them and
+   * exits without starting, since guessing could drop a token or --read-only.
+   */
+  errors: string[];
 }
 
 export function parseArgs(argv: string[]): CliOptions {
@@ -118,8 +123,25 @@ export function parseArgs(argv: string[]): CliOptions {
     help: false,
     version: false,
     warnings: [],
+    errors: [],
   };
-  for (let i = 0; i < argv.length; i++) {
+  const known = new Set([...MCP_VALUE_FLAGS, ...MCP_BOOLEAN_FLAGS]);
+  let i = 0;
+  /**
+   * The value after the flag at `i`, consumed. A known flag is never a value:
+   * `--token --read-only` must not register '--read-only' as a credential and
+   * drop read-only mode. Anything else is, so a token may start with '-'.
+   */
+  const value = (flag: string): string | undefined => {
+    const next = argv[i + 1];
+    if (next === undefined || next === '' || known.has(next)) {
+      opts.errors.push(`${flag} needs a value.`);
+      return undefined;
+    }
+    i++;
+    return next;
+  };
+  for (; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === '--read-only') opts.readOnly = true;
     // TODO(remove-by: @ifc-lite/mcp 1.0, louistrue): drop --federate (#11534).
@@ -127,22 +149,16 @@ export function parseArgs(argv: string[]): CliOptions {
       opts.warnings.push('--federate does nothing: every file passed is loaded into the same session. Drop it.');
     }
     else if (arg === '--insecure') opts.insecure = true;
-    else if (arg === '--transport') opts.transport = (argv[++i] as 'stdio' | 'http') ?? 'stdio';
-    else if (arg === '--port') opts.port = Number(argv[++i] ?? 8765);
-    else if (arg === '--host') opts.host = argv[++i];
+    else if (arg === '--transport') opts.transport = (value(arg) as 'stdio' | 'http' | undefined) ?? 'stdio';
+    else if (arg === '--port') opts.port = Number(value(arg) ?? 8765);
+    else if (arg === '--host') opts.host = value(arg);
     else if (arg === '--token' || arg === '--read-only-token') {
-      // The next flag is not a token: `--token --read-only` must not register
-      // '--read-only' as a credential and drop read-only mode.
-      const token = argv[i + 1];
-      if (!token || token.startsWith('-')) opts.warnings.push(`${arg} needs a value; ignored.`);
-      else {
-        i++;
-        (arg === '--token' ? opts.tokens : opts.readOnlyTokens).push(token);
-      }
+      const token = value(arg);
+      if (token !== undefined) (arg === '--token' ? opts.tokens : opts.readOnlyTokens).push(token);
     }
-    else if (arg === '--bsdd') opts.bsdd = argv[++i];
+    else if (arg === '--bsdd') opts.bsdd = value(arg);
     else if (arg === '--viewer') opts.autoViewer = true;
-    else if (arg === '--viewer-port') opts.viewerPort = Number(argv[++i] ?? 0);
+    else if (arg === '--viewer-port') opts.viewerPort = Number(value(arg) ?? 0);
     else if (arg === '--open') { opts.autoViewer = true; opts.openBrowser = true; }
     else if (arg === '--bridge') opts.bridge = true;
     else if (arg === '--channel') opts.channel = true;
@@ -159,11 +175,11 @@ export function parseArgs(argv: string[]): CliOptions {
       else opts.bridgeViewerUrl = value;
     }
     else if (arg === '--allow') {
-      const path = argv[++i];
-      if (path) (opts.allowedPaths ??= []).push(resolve(path));
+      const path = value(arg);
+      if (path !== undefined) (opts.allowedPaths ??= []).push(resolve(path));
     } else if (arg === '--allow-origin') {
-      const origin = argv[++i];
-      if (origin) (opts.allowedOrigins ??= []).push(origin);
+      const origin = value(arg);
+      if (origin !== undefined) (opts.allowedOrigins ??= []).push(origin);
     } else if (arg === '--help' || arg === '-h') {
       opts.help = true;
     } else if (arg === '--version' || arg === '-v') {

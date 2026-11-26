@@ -299,13 +299,14 @@ export function selectSubsetSeeds(parsed: ParsedStep, selectors: SubsetSelectors
   for (const token of selectors.storeys ?? []) {
     if (!token.trim()) continue;
     const under = productsUnderPlacement(resolveStoreyPlacement(token, parsed), parsed);
-    // `under` also holds the storey and its placement records; seed the products only
-    // (the closure keeps the placements, and the storey is a spatial ancestor).
+    // `under` also holds placement records (the products' closure keeps those) and
+    // the storey itself, which is kept as asked even if no product is contained in it.
     const products = [...under].filter((id) => {
       const type = parsed.instances.get(id)?.type;
       return type !== 'IFCBUILDINGSTOREY' && type !== 'IFCLOCALPLACEMENT';
     });
     if (selectors.requireEachMatch && products.length === 0) throw new SubsetSelectionError('invalid', `Nothing is placed under storey ${token}.`);
+    for (const id of under) if (parsed.instances.get(id)?.type === 'IFCBUILDINGSTOREY') seeds.add(id);
     for (const id of products) seeds.add(id);
   }
   return seeds;

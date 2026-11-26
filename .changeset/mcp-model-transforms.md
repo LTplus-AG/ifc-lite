@@ -8,4 +8,4 @@ MCP: add `model_merge`, `model_convert`, `model_extract`, `model_anonymize`, `mo
 
 `@ifc-lite/export` now holds the raw STEP subset engine behind `ifc-lite extract-entities` (`parseStep`, `selectSubsetSeeds`, `buildSubset`, `serializeSubset`, and `SubsetSelectionError` for selectors that match nothing), so the CLI and MCP share one implementation.
 
-`ifc-lite extract-entities --storey` now matches the storey's decoded Name exactly, then its LongName (doubled quotes, `\X2\` escapes and raw UTF-8 included), instead of any quoted text in the record, refuses a name two storeys share, reads a bare number that is no storey id as a name, and seeds only the products under the storey, so an empty storey selects nothing and the product count is right.
+`ifc-lite extract-entities --storey` now matches the storey's decoded Name exactly, then its LongName (doubled quotes, `\X2\` escapes and raw UTF-8 included), instead of any quoted text in the record, refuses a name two storeys share, reads a bare number that is no storey id as a name, and seeds the storey and the products under it but not their placement records, so the reported count is the selection.

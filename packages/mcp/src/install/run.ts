@@ -126,7 +126,7 @@ function unpin(e: object): { rest: string; version?: number[] } | undefined {
 
 /**
  * True when replacing `existing` with `entry` changes nothing but a pin that
- * install itself writes, and does not move it to an older release. A
+ * install itself writes, moving it to a newer release. A
  * hand-picked pin such as `@1.2.3` or `@latest` is not ours to move.
  */
 function onlyPinDiffers(existing: unknown, entry: Record<string, unknown>): boolean {
@@ -134,11 +134,12 @@ function onlyPinDiffers(existing: unknown, entry: Record<string, unknown>): bool
   const before = unpin(existing);
   const after = unpin(replacedEntry(existing, entry));
   if (!before || !after || before.rest !== after.rest) return false;
-  if (!before.version || !after.version) return true;
-  // x.y.z only: a prerelease of the same x.y.z counts as equal.
+  // Both pinned, and strictly newer by x.y.z. Bare to pinned, a downgrade, or a
+  // prerelease of the same x.y.z is the user's call (--force).
+  if (!before.version || !after.version) return false;
   const [b, n] = [before.version, after.version];
   const i = b.findIndex((v, k) => v !== n[k]);
-  return i < 0 || n[i] > b[i];
+  return i >= 0 && n[i] > b[i];
 }
 
 /** `npx` pinned to this release line, so the flags written here are ones it knows. */

@@ -195,13 +195,16 @@ describe('headless plans draw door and window symbols (#10932)', () => {
   });
 
   it('keeps the body of a door whose operation has no symbol, and draws SINGLE_SWING_LEFT hinged left', async () => {
-    const operations = ['ROLLINGUP', 'SWING_FIXED_RIGHT', 'DOUBLE_DOOR_FOLDING', 'USERDEFINED', 'SWING_FIXED_LEFT', 'SINGLE_SWING_LEFT'];
+    const operations = [
+      'ROLLINGUP', 'SWING_FIXED_RIGHT', 'DOUBLE_DOOR_FOLDING', 'USERDEFINED', 'SWING_FIXED_LEFT',
+      'DOUBLE_DOOR_SINGLE_SWING_OPPOSITE_LEFT', 'DOUBLE_DOOR_SINGLE_SWING_OPPOSITE_RIGHT', 'SINGLE_SWING_LEFT',
+    ];
     const meshes = [host, ...operations.flatMap((_, i) => door(20 + i, [0.2 + 1.2 * i, 0, 0]))];
     const openings = new Map(operations.map((operationType, i) => [makeEntityKey(0, 20 + i), { operationType }]));
     const drawing = await generateFloorPlan(meshes, 1.2, { ...options, openings });
-    expect(symbolsOf(drawing, 'door').map((s) => s.entityId)).toEqual([25]);
-    expect(swing(drawing, 25).hingePoint.x).toBeCloseTo(6.2, 5);
-    expect([...new Set(drawing.cutPolygons.filter((p) => p.ifcType === 'IfcDoor').map((p) => p.entityId))].sort()).toEqual([20, 21, 22, 23, 24]);
+    expect(symbolsOf(drawing, 'door').map((s) => s.entityId)).toEqual([27]);
+    expect(swing(drawing, 27).hingePoint.x).toBeCloseTo(8.6, 5);
+    expect([...new Set(drawing.cutPolygons.filter((p) => p.ifcType === 'IfcDoor').map((p) => p.entityId))].sort()).toEqual([20, 21, 22, 23, 24, 25, 26]);
   });
 
   it('hinges a door rotated 90 degrees about Y in its own frame', async () => {

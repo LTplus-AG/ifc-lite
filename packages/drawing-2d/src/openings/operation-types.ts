@@ -6,6 +6,7 @@ import type { DoorOperationType, WindowPartitioningType } from '../types.js';
 
 const DOOR_OPERATIONS: Record<DoorOperationType, true> = {
   SINGLE_SWING_LEFT: true, SINGLE_SWING_RIGHT: true, DOUBLE_DOOR_SINGLE_SWING: true,
+  DOUBLE_DOOR_SINGLE_SWING_OPPOSITE_LEFT: true, DOUBLE_DOOR_SINGLE_SWING_OPPOSITE_RIGHT: true,
   DOUBLE_DOOR_DOUBLE_SWING: true, DOUBLE_SWING_LEFT: true, DOUBLE_SWING_RIGHT: true,
   SLIDING_TO_LEFT: true, SLIDING_TO_RIGHT: true, DOUBLE_DOOR_SLIDING: true,
   FOLDING_TO_LEFT: true, FOLDING_TO_RIGHT: true, DOUBLE_DOOR_FOLDING: true,

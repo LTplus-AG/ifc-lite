@@ -13,9 +13,10 @@
  * on resolves that `deliver()` call, anything else goes to the sink.
  */
 
-import type { JSONRPCMessage, Transport } from '@modelcontextprotocol/server';
+import { isJSONRPCRequest, type JSONRPCMessage, type Transport } from '@modelcontextprotocol/server';
 import { JsonRpcErrorCode, type JsonRpcId, type JsonRpcMessage, type JsonRpcResponse } from '../protocol/index.js';
 import { errorResponse, isJsonRpcNotification, isJsonRpcRequest, isJsonRpcResponse } from '../protocol/jsonrpc.js';
+import { describeThrown } from '../errors.js';
 
 export interface LoopbackSink {
   send(message: JsonRpcMessage): Promise<void> | void;
@@ -28,6 +29,10 @@ export class LoopbackTransport implements Transport {
   private waiting = new Map<JsonRpcId, (response: JsonRpcResponse | null) => void>();
   /** The error the sink threw synchronously during the latest send, if it did. */
   private syncFailure: { error: unknown } | null = null;
+  /** Id of the initialize request whose response has not gone out yet. */
+  private pendingInitialize: JsonRpcId | undefined;
+  /** Whether a response to `initialize` has reached the client. */
+  handshakeSent = false;
 
   constructor(private readonly sink: () => LoopbackSink | null) {}
 
@@ -49,7 +54,12 @@ export class LoopbackTransport implements Transport {
     if (isJsonRpcResponse(message)) {
       // Every request arrives through deliver(), so a response nobody waits
       // for answers a cancelled request: the client asked us not to send it.
-      this.take(message.id)?.(message as JsonRpcResponse);
+      const settle = this.take(message.id);
+      if (settle && message.id === this.pendingInitialize) {
+        this.pendingInitialize = undefined;
+        if ('result' in message) this.handshakeSent = true;
+      }
+      settle?.(message as JsonRpcResponse);
       return Promise.resolve();
     }
     const sink = this.sink();
@@ -86,11 +96,23 @@ export class LoopbackTransport implements Transport {
   deliver(message: JsonRpcMessage): Promise<JsonRpcResponse | null> {
     if (!this.onmessage) return Promise.resolve(null);
     if (isJsonRpcRequest(message)) {
+      // The SDK drops a request its strict envelope schema refuses (null or
+      // fractional id, array params, extra members) without answering it.
+      if (!isJSONRPCRequest(message)) {
+        const id = typeof message.id === 'string' || typeof message.id === 'number' ? message.id : null;
+        return Promise.resolve(errorResponse(id, JsonRpcErrorCode.InvalidRequest, 'Invalid JSON-RPC request'));
+      }
       if (this.waiting.has(message.id)) {
         return Promise.resolve(errorResponse(message.id, JsonRpcErrorCode.InvalidRequest, `Request id ${String(message.id)} is already in flight`));
       }
       const answered = new Promise<JsonRpcResponse | null>((resolve) => this.waiting.set(message.id, resolve));
-      this.onmessage(message as JSONRPCMessage);
+      if (message.method === 'initialize') this.pendingInitialize = message.id;
+      try {
+        this.onmessage(message as JSONRPCMessage);
+      } catch (err) {
+        this.take(message.id);
+        return Promise.resolve(errorResponse(message.id, JsonRpcErrorCode.InternalError, describeThrown(err)));
+      }
       return answered;
     }
     this.onmessage(message as JSONRPCMessage);

@@ -359,7 +359,9 @@ export class HttpTransport {
     const need = this.sessions.size + this.building - max + 1;
     if (need <= 0) return true;
     const idleMs = this.opts.sessionIdleMs ?? DEFAULT_SESSION_IDLE_MS;
-    for (const id of pickReclaimable(this.sessions, idleMs, need, draftCount)) this.endSession(id);
+    // A cancelled call is answered at once but its handler may still run: count it as in flight.
+    const busy = new Map([...this.sessions].map(([id, s]) => [id, { ...s, inFlight: s.inFlight + s.server.runningCalls() }]));
+    for (const id of pickReclaimable(busy, idleMs, need, draftCount)) this.endSession(id);
     return this.sessions.size + this.building < max;
   }
 

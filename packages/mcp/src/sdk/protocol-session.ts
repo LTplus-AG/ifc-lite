@@ -46,7 +46,7 @@ import {
 } from '../protocol/index.js';
 import { RequestError } from '../protocol/jsonrpc.js';
 import type { Logger, ProgressReporter } from '../context.js';
-import { describeThrown } from '../errors.js';
+import { describeThrown, ToolErrorCode, toolError } from '../errors.js';
 import { LoopbackTransport, type LoopbackSink } from './loopback-transport.js';
 
 /** What one tool call gets from the connection that carries it. */
@@ -79,13 +79,19 @@ export interface ProtocolDomain {
 /** Oldest last: the SDK offers the first entry when a client asks for a version we do not speak. */
 const NEGOTIABLE_VERSIONS = [PROTOCOL_VERSION, ...[...SUPPORTED_PROTOCOL_VERSIONS].filter((v) => v !== PROTOCOL_VERSION).sort().reverse()];
 
+/** How far a request got into our own handler (see `guard`). */
+type HandlerReach = 'entered' | 'threw';
+const reached = new WeakMap<ServerContext, HandlerReach>();
+
 /**
  * The SDK `Server` with two changes, applied to every request handler:
  * - requests other than initialize/ping before the handshake answer -32600,
  *   ahead of the SDK's param validation (the SDK itself does not gate them);
- * - a request the SDK's spec schemas refuse answers -32602, not -32603. The
- *   SDK throws a plain `Error` from that validation step; our handlers only
- *   throw `ProtocolError` (see `guard`), and SDK faults are `SdkError`.
+ * - errors are labelled by where they arose. Before our handler ran, a bare
+ *   `Error` is the SDK's param validation: -32602. Our handler's own errors
+ *   keep their code. After our handler returned, an SDK error (its result
+ *   validation) is a server fault: -32603, or an INTERNAL_ERROR tool result
+ *   for `tools/call` so the client keeps the structured envelope.
  */
 class IfcProtocolServer extends Server {
   private answeredInitialize = false;
@@ -108,7 +114,15 @@ class IfcProtocolServer extends Server {
       try {
         result = await inner(request, ctx);
       } catch (err) {
-        throw toProtocolError(err);
+        const reach = reached.get(ctx);
+        if (reach === 'threw' && err instanceof ProtocolError) throw err;
+        if (reach === undefined && !(err instanceof SdkError)) {
+          throw err instanceof ProtocolError ? err : new ProtocolError(ProtocolErrorCode.InvalidParams, describeThrown(err));
+        }
+        const message = describeThrown(err);
+        this.onerror?.(new Error(`${method} produced a result the protocol refused: ${message}`));
+        if (method === 'tools/call') return toolError({ code: ToolErrorCode.INTERNAL_ERROR, message }) as unknown as Result;
+        throw new ProtocolError(ProtocolErrorCode.InternalError, message);
       }
       if (method === 'initialize') {
         this.answeredInitialize = true;
@@ -122,12 +136,6 @@ class IfcProtocolServer extends Server {
       return result;
     };
   }
-}
-
-function toProtocolError(err: unknown): ProtocolError {
-  if (err instanceof ProtocolError) return err;
-  if (err instanceof SdkError) return new ProtocolError(ProtocolErrorCode.InternalError, err.message);
-  return new ProtocolError(ProtocolErrorCode.InvalidParams, err instanceof Error ? err.message : String(err));
 }
 
 /**
@@ -172,7 +180,8 @@ export class ProtocolSession {
 
   /** Send a server notification. Dropped until initialize; a failing sink is logged, never thrown at the caller. */
   notify(method: string, params: Record<string, unknown>): void {
-    if (!this.server.ready) return;
+    // Not before the client has the initialize result: nothing may overtake it.
+    if (!this.transport.handshakeSent) return;
     const failed = (err: unknown) => this.domain.baseLogger.log('warning', `notify ${method} failed`, { error: describeThrown(err) });
     try {
       this.server.notification({ method, params }).catch(failed);
@@ -230,9 +239,11 @@ export class ProtocolSession {
   // each result against the spec schema at runtime anyway.
   private guard<P>(method: string, handler: (request: P, ctx: ServerContext) => unknown): (request: P, ctx: ServerContext) => Promise<unknown> {
     return async (request, ctx) => {
+      reached.set(ctx, 'entered');
       try {
         return await handler(request, ctx);
       } catch (err) {
+        reached.set(ctx, 'threw');
         if (err instanceof ProtocolError) throw err;
         if (err instanceof RequestError) throw new ProtocolError(err.code, err.message, err.data);
         const message = describeThrown(err);

@@ -26,6 +26,10 @@ function build() {
   const tools = new ToolRegistry();
   let release: () => void = () => undefined;
   tools.register({
+    name: 'bad_result', description: 'Returns structuredContent the spec refuses.', scope: 'read', inputSchema: { type: 'object' },
+    handler: () => ({ content: [], structuredContent: [1, 2] as unknown as Record<string, unknown> }),
+  } satisfies Tool);
+  tools.register({
     name: 'wait', description: 'Waits until released or cancelled.', scope: 'read', inputSchema: { type: 'object' },
     handler: (_input, ctx) => new Promise((resolve) => {
       release = () => resolve({ content: [{ type: 'text', text: 'done' }] });
@@ -95,5 +99,35 @@ describe('SDK protocol adapter lifecycle', () => {
     server.notifyResourceUpdated('ifc-lite://viewer/selection');
     await request('tools/list');
     expect(sent.map((m) => (m as { method?: string }).method)).toEqual([]);
+  });
+
+  it('answers requests the SDK envelope schema refuses with -32600 instead of hanging', async () => {
+    const { server, initialize } = build();
+    await initialize();
+    const send = (message: unknown) => server.handleMessage(message as JsonRpcMessage) as Promise<Reply>;
+    expect((await send({ jsonrpc: '2.0', id: 1.5, method: 'tools/list' }))?.error?.code).toBe(-32600);
+    expect((await send({ jsonrpc: '2.0', id: 3, method: 'tools/list', params: [] }))?.error?.code).toBe(-32600);
+    expect((await send({ jsonrpc: '2.0', id: null, method: 'tools/list' }))?.error?.code).toBe(-32600);
+    // The id is free again afterwards.
+    expect((await send({ jsonrpc: '2.0', id: 3, method: 'tools/list' }))?.result).toBeDefined();
+  });
+
+  it('turns a tool result the spec refuses into an INTERNAL_ERROR tool result, not -32602', async () => {
+    const { request, initialize } = build();
+    await initialize();
+    const reply = await request('tools/call', { name: 'bad_result', arguments: {} });
+    expect(reply?.error).toBeUndefined();
+    expect(reply?.result).toMatchObject({ isError: true, structuredContent: { code: 'INTERNAL_ERROR' } });
+  });
+
+  it('counts a tool call as running until its handler settles (HTTP reclaim reads it)', async () => {
+    const { server, initialize, release } = build();
+    await initialize();
+    const pending = server.handleMessage({ jsonrpc: '2.0', id: 'c', method: 'tools/call', params: { name: 'wait', arguments: {} } });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(server.runningCalls()).toBe(1);
+    release();
+    await pending;
+    expect(server.runningCalls()).toBe(0);
   });
 });

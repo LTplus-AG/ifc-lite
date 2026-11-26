@@ -99,12 +99,12 @@ function Harness({ value }: { value: Inputs }): null {
 
 /** Hold every cut at the cutter's async boundary until `releaseHeld()` or `release()`. */
 function holdCutter() {
-  const original = Drawing2DGenerator.prototype.generate;
+  const original = Drawing2DGenerator.prototype.generateFromSource;
   let open = false;
   const held: Array<() => void> = [];
   const started: Array<() => void> = [];
   let calls = 0;
-  Drawing2DGenerator.prototype.generate = async function (...args) {
+  Drawing2DGenerator.prototype.generateFromSource = async function (...args) {
     calls++;
     for (const notify of started.splice(0)) notify();
     if (!open) await new Promise<void>((resolve) => held.push(resolve));
@@ -118,7 +118,7 @@ function holdCutter() {
     releaseHeld,
     /** Let this cut and every later one run. */
     release() { open = true; releaseHeld(); },
-    restore() { open = true; releaseHeld(); Drawing2DGenerator.prototype.generate = original; },
+    restore() { open = true; releaseHeld(); Drawing2DGenerator.prototype.generateFromSource = original; },
   };
 }
 
@@ -250,12 +250,12 @@ describe('useDrawingGeneration terminal state on cancel (D1, #3921 queue)', () =
   });
 
   it('a first cut that fails ends in error, not generating (#9488 review)', async () => {
-    const original = Drawing2DGenerator.prototype.generate;
-    Drawing2DGenerator.prototype.generate = async () => { throw new Error('cutter failed'); };
+    const original = Drawing2DGenerator.prototype.generateFromSource;
+    Drawing2DGenerator.prototype.generateFromSource = async () => { throw new Error('cutter failed'); };
     try {
       await render({ geometryResult: geometry(), panelVisible: true });
       await settle();
-    } finally { Drawing2DGenerator.prototype.generate = original; }
+    } finally { Drawing2DGenerator.prototype.generateFromSource = original; }
     assert.ok(statuses.includes('generating'), `the first cut raised the overlay: ${statuses.join(' -> ')}`);
     assert.equal(useViewerStore.getState().drawing2DStatus, 'error');
     assert.equal(useViewerStore.getState().drawing2DError, 'cutter failed');
@@ -324,12 +324,12 @@ describe('BCF capture pending flag ends with its generation (D4, #4802)', () => 
     await settle();
     const kept = useViewerStore.getState().drawing2D;
     assert.ok(kept);
-    const original = Drawing2DGenerator.prototype.generate;
-    Drawing2DGenerator.prototype.generate = async () => { throw new Error('cutter failed'); };
+    const original = Drawing2DGenerator.prototype.generateFromSource;
+    Drawing2DGenerator.prototype.generateFromSource = async () => { throw new Error('cutter failed'); };
     try {
       await render({ sectionPlane: { axis: 'down', position: 40, flipped: false } });
       await settle();
-    } finally { Drawing2DGenerator.prototype.generate = original; }
+    } finally { Drawing2DGenerator.prototype.generateFromSource = original; }
     assert.equal(useViewerStore.getState().drawing2DError, 'cutter failed');
     mountCanvasFor(kept);
     assert.equal(hasActiveDrawingCanvas(), true, 'the failed generation released the pending flag');
@@ -341,10 +341,10 @@ describe('BCF capture pending flag ends with its generation (D4, #4802)', () => 
 // through a second route (per-cut gates; a geometry-change first cut).
 describe('#9488 independent review probes', () => {
   it('cancelling a running regenerate that superseded a first cut leaves no generating (#9488 probe P1)', async () => {
-    const original = Drawing2DGenerator.prototype.generate;
+    const original = Drawing2DGenerator.prototype.generateFromSource;
     const gates: Array<() => void> = [];
     const starts: Array<() => void> = [];
-    Drawing2DGenerator.prototype.generate = async function (...args) {
+    Drawing2DGenerator.prototype.generateFromSource = async function (...args) {
       for (const notify of starts.splice(0)) notify();
       await new Promise<void>((resolve) => gates.push(resolve));
       return original.call(this, ...args);
@@ -366,7 +366,7 @@ describe('#9488 independent review probes', () => {
       assert.notEqual(useViewerStore.getState().drawing2DStatus, 'generating', `statuses ${statuses.join(' -> ')}`);
     } finally {
       for (const resume of gates.splice(0)) resume();
-      Drawing2DGenerator.prototype.generate = original;
+      Drawing2DGenerator.prototype.generateFromSource = original;
     }
   });
 
@@ -413,12 +413,12 @@ describe('#9488 re-review: failures outside computeDrawing\'s try, and kept erro
     await render({ geometryResult: geometry(), panelVisible: true });
     await settle();
     assert.ok(useViewerStore.getState().drawing2D);
-    const original = Drawing2DGenerator.prototype.generate;
-    Drawing2DGenerator.prototype.generate = async () => { throw new Error('cutter failed'); };
+    const original = Drawing2DGenerator.prototype.generateFromSource;
+    Drawing2DGenerator.prototype.generateFromSource = async () => { throw new Error('cutter failed'); };
     try {
       await render({ sectionPlane: { axis: 'down', position: 40, flipped: false } });
       await settle();
-    } finally { Drawing2DGenerator.prototype.generate = original; }
+    } finally { Drawing2DGenerator.prototype.generateFromSource = original; }
     assert.equal(useViewerStore.getState().drawing2DStatus, 'error');
     const cutter = holdCutter();
     try {

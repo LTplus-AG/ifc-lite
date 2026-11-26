@@ -24,6 +24,8 @@
 //! is set so the caller can gate that case to the JS path.
 
 mod empty;
+mod entry_points;
+pub use entry_points::try_export_merged;
 mod guid;
 mod header;
 mod line_edit;
@@ -38,10 +40,10 @@ use std::collections::{HashMap, HashSet};
 
 use crate::schema_detect::detect_schema;
 
-use guid::{read_leading_guid, replace_global_id, GuidMinter};
+use guid::{can_unify_by_global_id, is_rooted_entity_type, read_leading_guid, replace_global_id, GuidMinter};
 pub use guid::{deterministic_global_id, extract_global_id_fast, leading_rooted_global_id};
 use line_edit::{rewrite_refs, LineDecision};
-use plan::{build_plan, model_salt, ModelIndex, PlanCtx};
+use plan::{build_plan, model_salt, GuidRecord, ModelIndex, PlanCtx};
 use crate::schema_ifc2x3_slots::Ifc2x3SlotFill;
 use crate::schema_enum::ConversionChecks;
 use units::resolve_model_modes;
@@ -134,10 +136,13 @@ pub struct MergedStats {
     pub warnings: Vec<String>,
 }
 
-/// Merge `models` (raw IFC byte slices) into one STEP/IFC string. Convenience
-/// wrapper over [`export_merged_models`] that exports each model in full.
+/// Merge whole models into a STEP file. A refused merge reports its diagnostic
+/// to stderr and returns an empty string. Use [`try_export_merged`] to handle the error.
 pub fn export_merged(models: &[&[u8]], opts: &MergedOptions) -> String {
-    export_merged_with_stats(models, opts).0
+    try_export_merged(models, opts).unwrap_or_else(|error| {
+        eprintln!("{error}");
+        String::new()
+    })
 }
 
 /// Like [`export_merged`] but also returns coverage stats.
@@ -152,20 +157,11 @@ pub fn export_merged_with_stats(models: &[&[u8]], opts: &MergedOptions) -> (Stri
 
 /// Merge several parsed models into one STEP/IFC string, honoring per-model
 /// visibility, spatial-merge strategies, and unit reconciliation.
+/// An unrepresentable bounded property (#11117) yields empty output and a diagnostic.
 pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (String, MergedStats) {
     let schema = header::output_schema(models, opts);
-
     let mut out = header::merged_header(opts, &schema);
-
-    let mut stats = MergedStats {
-        models: models.len(),
-        written: 0,
-        federated_model_count: 0,
-        unmerged_model_count: 0,
-        unit_rescale_required: false,
-        dropped_container_count: 0,
-        warnings: Vec::new(),
-    };
+    let mut stats = MergedStats::new(models.len());
 
     if models.is_empty() {
         out.push_str("ENDSEC;\nEND-ISO-10303-21;\n");
@@ -183,6 +179,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
     // for why this is a diagnostic about the source file, not a completeness
     // gap in the merge (#3752).
     let mut refused_refs_total = 0usize;
+    let mut upgrade_seeds = HashSet::new();
     // #5116: a non-rooted type with no representation in the target schema
     // (e.g. `IfcCartesianPointList3D` downgraded to IFC2X3) cannot become an
     // `IFCPROXY` either, so `convert_step_line` errs instead of guessing.
@@ -221,13 +218,15 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
     let drop_plan = empty::plan_drops(models, opts, &spatial_lookup, &modes);
     stats.dropped_container_count = drop_plan.as_ref().map_or(0, |p| p.count);
 
-    // Running cross-model state.
-    let mut guid_to_final: HashMap<String, (u32, f64)> = HashMap::new();
+    let mut guid_to_final: HashMap<String, GuidRecord> = HashMap::new();
     let mut emitted_guids: HashSet<String> = HashSet::new();
     let mut minter = GuidMinter::new();
     let mut offset: u32 = 0;
     let mut slot_fill = Ifc2x3SlotFill::new(None);
-    let mut checks = ConversionChecks::new(); // IFC4-required `$` slots (#5307), enums (#5365)
+    let mut checks = ConversionChecks::new(crate::schema_material_referent::MaterialReferents::for_target(crate::schema_convert::canon(&schema)));
+    checks.merged = true;
+    checks.forms.enable_dates();
+    checks.typed_properties.enabled = true;
     let mut parents = single_parents::ParentClaims::for_schema(&schema); // one rel per single-valued inverse (#5727, #5802, #5774, #5923)
 
     for (i, model) in models.iter().enumerate() {
@@ -267,6 +266,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
             drop_plan.as_ref().and_then(|p| p.per_model.get(i)).filter(|d| !d.is_empty());
 
         let salt = model_salt(model, i);
+        let source_schema = detect_schema(model.content);
         let plan = build_plan(&index, is_first, compatible, PlanCtx {
             canonical_project,
             first_infra: &first_infra,
@@ -276,9 +276,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
             merge_storeys: opts.merge_storeys,
             primary_scale,
             guid_to_final: &guid_to_final,
-            emitted_guids: &emitted_guids,
-            minter: &mut minter,
-            salt: salt.clone(),
+            schemas: (crate::schema_convert::canon(&source_schema), crate::schema_convert::canon(&schema)),
         });
 
         // IFC2X3 `$` OwnerHistory: this model's first written one, else an earlier model's (#4686).
@@ -290,9 +288,9 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
             }).map(|id| id.saturating_add(offset)));
         }
 
-        // Emit.
-        let source_schema = detect_schema(model.content);
-        let converting = crate::schema_convert::needs_conversion(&source_schema, &schema);
+        let converting = index.add_materials(&mut checks.materials, &source_schema, &schema, &included, &plan, offset);
+        let upgrading = crate::schema_unrooted_upgrade::Upgrade::between(&source_schema, &schema);
+        let preserve_latin1 = crate::schema_typed_properties::applies_to_source(model.content, &source_schema, &schema);
         let mut flatten = crate::schema_style_flatten::StyleFlatten::for_export(model.content, &source_schema, &schema); // D57
         flatten.retain_grids(|id| included.contains(&id) && !plan.skip.contains(&id));
         for &id in &index.order {
@@ -300,6 +298,8 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
                 continue;
             }
             let Some(bytes) = index.line_bytes(id) else { continue };
+            let source_text = preserve_latin1.then(|| crate::schema_typed_properties::source_text(bytes, true));
+            let bytes = source_text.as_deref().map_or(bytes, str::as_bytes);
             // A dropped container is never written, and any line naming one is
             // rewritten without it (or dropped with it), so the merge emits no
             // reference to a line it did not write — no clean-up pass needed.
@@ -328,18 +328,11 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
             } else {
                 rewrite_refs(bytes, offset, &|n| plan.shared_remap.get(&n).copied())
             };
-            let after_guid = match plan.guid_rewrite.get(&id) {
-                Some(g) => replace_global_id(&remapped, g),
-                None => remapped,
-            };
             let final_text = if converting {
-                // Pass the GLOBAL id (offset applied): a schema downgrade with no
-                // target type falls back to IFCPROXY with a `placeholder_guid(id)`
-                // GlobalId, so two models sharing a source-local id must not seed the
-                // same placeholder (Greptile P1). rewrite_refs already offset the
-                // line's own `#id`, so this keeps the proxy guid consistent with it.
+                // Pass the remapped id so a proxy that needs a generated GlobalId
+                // has a distinct seed even when two models share the same local id.
                 //
-                // Falls back to the UNCONVERTED line on `Err`, not `?`/panic: the
+                // Falls back to the UNCONVERTED line for unknown types: the
                 // merged API has no fallible signature (a separate, deliberate
                 // change; the TS twin documents the same scope, #5114), and a
                 // non-rooted type with no target representation is COMMON input
@@ -347,7 +340,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
                 // abort a merge the single-model path only mis-converted before
                 // #5116, and wasm cannot unwind. Reported in `stats.warnings`.
                 match crate::schema_convert::convert_step_line(
-                    &after_guid,
+                    &remapped,
                     &source_schema,
                     &schema,
                     id.saturating_add(offset),
@@ -355,22 +348,21 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
                     Some(&mut checks),
                 ) {
                     Ok(text) => text,
+                    Err(e) if e.reason.is_some() => return stats.refused(e),
                     Err(e) => {
                         unrepresented_types_kept.insert(e.entity_type);
-                        after_guid.clone()
+                        remapped
                     }
                 }
             } else {
-                after_guid
+                remapped
             };
 
             let ty = index.type_of.get(&id).map_or("", String::as_str);
-            let Some(mut final_text) = parents.claim(ty, final_text, !is_first && compatible) else { continue };
+            let Some(mut final_text) = (!final_text.is_empty()).then_some(final_text).and_then(|t| parents.claim(ty, t, !is_first && compatible)) else { continue }; // empty: not written (#10763)
 
-            if let Some(local_guid) = plan.local_guids.get(&id) {
-                let mut emitted = read_leading_guid(&final_text)
-                    .or_else(|| plan.guid_rewrite.get(&id).cloned())
-                    .unwrap_or_else(|| local_guid.clone());
+            let has_guid_slot = plan.local_guids.contains_key(&id) || (converting && is_rooted_entity_type(ty));
+            if let Some(mut emitted) = has_guid_slot.then(|| read_leading_guid(&final_text)).flatten() {
                 // A schema-conversion placeholder (an alignment/linear entity
                 // downgraded to IFCPROXY) is minted at emit time, AFTER GlobalId
                 // reconciliation, so it can still collide with a rooted GlobalId an
@@ -382,19 +374,15 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
                     final_text = replace_global_id(&final_text, &minted);
                     emitted = minted;
                 }
-                let final_id = id.saturating_add(offset);
-                guid_to_final.insert(emitted.clone(), (final_id, effective_scale));
+                let record = GuidRecord { final_id: id.saturating_add(offset), scale: effective_scale,
+                    can_unify: can_unify_by_global_id(ty, converting.then_some(&final_text)) };
+                guid_to_final.insert(emitted.clone(), record);
                 emitted_guids.insert(emitted);
-                // Also key reconciliation on the SOURCE GlobalId: schema conversion
-                // may have replaced this rooted entity's GlobalId with a proxy
-                // placeholder, so `emitted` is no longer the id a later compatible
-                // model would carry. Without this, that later model could not unify
-                // and would emit a second proxy for the same entity (CR #2952).
-                // `or_insert` never overwrites — a re-stamped duplicate keeps
-                // pointing at its first instance.
-                guid_to_final.entry(local_guid.clone()).or_insert((final_id, effective_scale));
             }
 
+            if upgrading.is_some_and(|upgrade| upgrade.seeds(final_text.as_bytes()).next().is_some()) {
+                upgrade_seeds.insert(id.saturating_add(offset));
+            }
             out.push_str(&final_text);
             out.push('\n');
             stats.written += 1;
@@ -404,12 +392,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
     }
 
     warnings::push_merge_warnings(&mut stats, refused_refs_total, unrepresented_types_kept, &schema);
-    stats.warnings.extend(slot_fill.warnings());
-    stats.warnings.extend(checks.warnings());
-    stats.warnings.extend(parents.apply_folds(&mut out)); // #5774 folds, after every model is written
-    // One product per placement in IFC2X3 (#9209); the header holds no record to change.
-    stats.written = stats.written.saturating_add_signed(crate::schema_ifc2x3_placements::place_text_for_schema(&schema, &mut out));
-    out.push_str("ENDSEC;\nEND-ISO-10303-21;\n");
+    warnings::finish_output(&mut out, &mut stats, &schema, &slot_fill, &mut checks, parents, &upgrade_seeds, offset, models);
     (out, stats)
 }
 

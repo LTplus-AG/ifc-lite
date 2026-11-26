@@ -32,6 +32,8 @@ interface TranslationScene {
   device: GPUDevice | undefined;
   evictHighlight: (id: number) => void;
   clearPartial: () => void;
+  /** GPU-driven pool hook: a template's records and anchors were rewritten. */
+  placedTemplate?: (slot: number) => void;
   unionBounds: (id: number, view: DataView, offset: number, anchors: Float64Array, min: Triple, max: Triple) => {
     minX: number; minY: number; minZ: number; maxX: number; maxY: number; maxZ: number;
   };
@@ -89,9 +91,11 @@ export function placeSceneInstances(scene: TranslationScene, modelIndex: number)
       cpu.canonicalAnchors,
       cpu.canonicalMatrixTranslations,
     )) {
-      scene.device?.queue.writeBuffer(gpu.instanceBuffer, 0, cpu.instanceData);
+      // A GPU-pool template keeps a 16 B stand-in; the pool re-uploads via placedTemplate.
+      if (gpu.instanceBuffer.size >= cpu.instanceData.byteLength) scene.device?.queue.writeBuffer(gpu.instanceBuffer, 0, cpu.instanceData);
       // placeInstances moved the canonical anchors the delta stream derives from.
       invalidateInstancedRteDeltas(gpu.rteDeltas);
+      scene.placedTemplate?.(i);
     }
     gpu.bounds = null;
     // A yaw (unlike a pure translation) changes each occurrence's WORLD-AXIS

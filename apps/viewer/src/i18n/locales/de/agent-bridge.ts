@@ -40,6 +40,7 @@ export const agentBridgeDe = {
   "agentBridge.panel.error": "Fehler {code}",
   "agentBridge.panel.cancelled": "abgebrochen",
   "agentBridge.panel.duration": "{ms} ms",
+  "agentBridge.panel.repeated": "×{count}",
   "agentBridge.failure.unreachable": "Keine Verbindung zur Brücke auf Port {port}, oder sie hat die Verbindung getrennt. Starten Sie die Brücke auf diesem Computer mit dem Befehl unten, prüfen Sie den Port und koppeln Sie mit dem ausgegebenen Code. Läuft sie bereits, hat sie die Verbindung womöglich abgelehnt, weil zu viele Tabs gleichzeitig koppeln wollten: Schließen Sie diese und versuchen Sie es erneut.",
   "agentBridge.failure.origin": "Viewer nicht auf ifclite.com? Starten Sie die Brücke mit --bridge-viewer-url {origin}, damit sie diese Seite akzeptiert.",
   "agentBridge.failure.permissionDenied": "Der Browser hat dieser Website den Zugriff auf Apps auf diesem Computer verweigert. Erlauben Sie es in den Website-Einstellungen (Symbol links neben der Adresse): in Chrome „Apps on device“, in Firefox „Device apps and services“ (je nach Browsersprache übersetzt). Versuchen Sie es dann erneut.",
@@ -75,4 +76,9 @@ export const agentBridgeDe = {
   "agentBridge.panel.editChange": "{entity} · {field}: {before} → {after}",
   "agentBridge.panel.editDeleted": "{entity} · {field} gelöscht (war {before})",
   "agentBridge.panel.editUnchanged": "{entity} · {field} war bereits {after}; nichts geändert",
+  'agentBridge.surfaces.title': "Von Ihrem Agenten",
+  'agentBridge.surfaces.dismiss': "{title} schließen",
+  'agentBridge.surfaces.clear': "Alle entfernen",
+  'agentBridge.surfaces.untitled': "Agenten-Ergebnis",
+  'agentBridge.surfaces.sent': "An Ihren Agenten gesendet",
 } satisfies Catalogue;

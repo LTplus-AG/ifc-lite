@@ -5,6 +5,7 @@
 import { usePlacementCoordinateInfo } from '@/hooks/usePlacementCoordinateInfo';
 import { useFederatedGeometry } from './useFederatedGeometry';
 import { useFilteredGeometry } from './useFilteredGeometry';
+import { withTypeHidden } from './type-hidden-index.js';
 import { modelIndices } from '@/lib/model-placement/model-indices';
 import { Suspense, useMemo, useRef, useState, useCallback, useEffect, useSyncExternalStore } from 'react';
 import { lazyChunk } from '@/lib/lazy-chunk';
@@ -40,7 +41,7 @@ import { CesiumOverlay } from './CesiumOverlay';
 import { CesiumPlacementGizmo } from './placement/CesiumPlacementGizmo';
 import { useSolarEnvironment } from '@/hooks/useSolarEnvironment';
 import { useSolarSweep } from '@/hooks/useSolarSweep';
-import { getViewerStoreApi, useViewerStore } from '@/store';
+import { getViewerStoreApi, useViewerStore, LiveViewerScope } from '@/store';
 import { isMeshTypeVisible } from '@/store/typeVisibilityFilter';
 import { useRetypedClasses } from '@/hooks/useViewerSelectors';
 import { hasInstancedShards } from '@/store/instancedShardModels';
@@ -67,6 +68,7 @@ import { recordDownloadedSourceFile } from '@/lib/sources/persistence';
 import { sanitizeFilename } from '@/lib/export/download';
 import { enqueueSourceLoad } from '@/lib/sources/loadQueue';
 import { toast, Toaster } from '@/components/ui/toast';
+import { refuseWhileWorkflowBusy } from '@/lib/flow/workflow-busy-refusal';
 import { reloadActiveModelInPlace } from './reloadActiveModel';
 import { reportFileOpenRejected } from '@/hooks/ingest/fileOpenRejected';
 import { Upload, AlertTriangle, ChevronDown, ExternalLink, Plus } from 'lucide-react';
@@ -90,7 +92,12 @@ const ScanDetectionOverlay = lazyChunk(() => import('./useScanDetectionOverlay')
     return { default: () => null };
   }));
 
+/** The viewport takes an edit's geometry in the edit's own task, so it reads live state (#10535). */
 export function ViewportContainer() {
+  return <LiveViewerScope><ViewportContainerLive /></LiveViewerScope>;
+}
+
+function ViewportContainerLive() {
   // Drive Stacked / Solo / Exploded level display from the slice.
   // Mount-once hook — it self-gates on mode + gap + model changes.
   useLevelDisplayEffect();
@@ -156,9 +163,12 @@ export function ViewportContainer() {
   /**
    * Aggregate point clouds across visible models.
    *
-   * Phase 0: identity-stamping with modelIndex. Returns the same array
-   * reference when nothing has changed so the consumer effect skips work.
+   * Phase 0: identity-stamping with modelIndex. A type toggle over models
+   * without point clouds keeps the previous empty array, so it does not
+   * re-sync them: that recomputes the renderer's model bounds and refits the
+   * sun shadows although nothing changed (#10264).
    */
+  const pointCloudSourceRef = useRef<{ sources: readonly unknown[]; list: PointCloudAsset[] } | null>(null);
   const mergedPointClouds = useMemo(() => {
     const collected: PointCloudAsset[] = [];
     if (storeModels.size > 0) {
@@ -181,6 +191,10 @@ export function ViewportContainer() {
         collected.push(asset);
       }
     }
+    const sources = [storeModels, geometryResult, modelIdToIndex];
+    const previous = pointCloudSourceRef.current;
+    if (collected.length === 0 && previous?.list.length === 0 && previous.sources.every((source, i) => source === sources[i])) return previous.list;
+    pointCloudSourceRef.current = { sources, list: collected };
     return collected;
   }, [storeModels, geometryResult, modelIdToIndex, typeVisibility, structuralViewMode, retypedClasses]);
 
@@ -327,6 +341,8 @@ export function ViewportContainer() {
     // Read the loaded state now, not at render: bundle preparation awaits
     // before routing, and a model that arrived meanwhile must be added to,
     // not replaced (#4476 review).
+    // Every branch's load is refused under a workflow lease; say so before any clear.
+    if (refuseWhileWorkflowBusy(t)) return;
     const current = viewerStoreApi.getState();
     const hasModelsLoaded = current.models.size > 0 || (current.geometryResult?.meshes?.length ?? 0) > 0;
     if (hasModelsLoaded) {
@@ -341,9 +357,13 @@ export function ViewportContainer() {
       clearAllModels();
       void loadFilesSequentially(files, handles);
     }
-  }, [loadFile, loadFilesSequentially, resetViewerState, clearAllModels, viewerStoreApi]);
+  }, [loadFile, loadFilesSequentially, resetViewerState, clearAllModels, viewerStoreApi, t]);
 
   const prepareAndRoute = usePreparedModelFileRoute(routeLoad, setRecentFiles);
+  // The welcome card's recent files and demo load straight through loadFile.
+  const loadWelcomeFile = useCallback(async (file: File) => {
+    if (!refuseWhileWorkflowBusy(t)) await loadFile(file);
+  }, [loadFile, t]);
 
   // Cloud source providers (Dalux Build, etc.) download bytes outside the
   // viewer and hand them off via this event rather than calling addModel()
@@ -374,6 +394,8 @@ export function ViewportContainer() {
         // that their batch died rather than watching nothing happen.
         try {
           const store = useViewerStore.getState();
+          // Refuse on every branch: with models loaded each add would be refused one by one.
+          if (refuseWhileWorkflowBusy(t)) return;
           const anyLoaded =
             store.models.size > 0 || (store.geometryResult?.meshes?.length ?? 0) > 0;
           if (!anyLoaded) {
@@ -384,6 +406,7 @@ export function ViewportContainer() {
           for (let i = 0; i < batch.length; i++) {
             const item = batch[i];
             if (!item) continue;
+            if (refuseWhileWorkflowBusy(t)) break; // a workflow took the lease between items
             batch[i] = null; // release the buffer once this iteration owns it
             // `item.name` comes from a remote provider's file listing — it is
             // untrusted input reaching a filename position (the File
@@ -425,7 +448,7 @@ export function ViewportContainer() {
     window.addEventListener(SOURCE_DOWNLOAD_EVENT, handleSourceDownload);
     return () =>
       window.removeEventListener(SOURCE_DOWNLOAD_EVENT, handleSourceDownload);
-  }, [addModel, resetViewerState, clearAllModels, sourceHost]);
+  }, [addModel, resetViewerState, clearAllModels, sourceHost, t]);
 
   // Window drops on any viewer chrome route through the same guarded loader.
   // Unsupported WebGPU reports through the shared load-error card (#5851).
@@ -541,7 +564,7 @@ export function ViewportContainer() {
   // Check if any models are loaded (even if hidden) - used to show empty 3D vs starting UI
   const hasLoadedModels = storeModels.size > 0 || (geometryResult?.meshes && geometryResult.meshes.length > 0);
 
-  const { hasTypeGeometry, filteredGeometry, geometryVersion, geometryReplacementVersion } = useFilteredGeometry(
+  const { hasTypeGeometry, sceneGeometry, geometryVersion, geometryReplacementVersion, typeHidden } = useFilteredGeometry(
     mergedGeometryResult, geometryContentVersion, typeVisibility, typeViewMode, structuralViewMode, retypedClasses);
 
   // Publish to the store so the toolbar can hide the Model/Types switch when
@@ -550,32 +573,31 @@ export function ViewportContainer() {
     setHasTypeGeometry(hasTypeGeometry);
   }, [hasTypeGeometry, setHasTypeGeometry]);
 
-  // 3D-context (Cesium) geometry must honour the SAME type-visibility filter as
-  // the WebGPU viewport, or openings/spaces hidden in 2D/3D reappear in the
-  // world view. The Cesium GLB builder reads `geometryResult.meshes`, so wrap the
-  // result with the already-filtered mesh list (`filteredGeometry`) rather than
-  // the raw `mergedGeometryResult` (issue #1337: a 900 m-tall IfcOpeningElement
-  // roof-cutter rendered as a giant salmon column over the building because the
-  // Cesium path skipped the opening filter that the viewport applies). Memoised
-  // on geometryVersion so the GLB rebuilds when the visible set changes.
+  // 3D-context (Cesium) geometry must honour the SAME type visibility as the
+  // WebGPU viewport, or openings/spaces hidden in 2D/3D reappear in the world
+  // view (issue #1337: a 900 m-tall IfcOpeningElement roof-cutter rendered as
+  // a giant salmon column). The viewport hides them by id on the GPU; the
+  // Cesium GLB builder reads `geometryResult.meshes`, so it gets the list
+  // without them. A list of references, built only while the world view is on.
   const cesiumGeometryResult = useMemo(() => {
-    if (!mergedGeometryResult || !filteredGeometry) return null;
-    return { ...mergedGeometryResult, meshes: filteredGeometry };
+    if (!cesiumEnabled || !mergedGeometryResult || !sceneGeometry) return null;
+    const hidden = typeHidden.ids;
+    return { ...mergedGeometryResult, meshes: hidden.size ? sceneGeometry.filter((mesh) => !hidden.has(mesh.expressId)) : sceneGeometry };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mergedGeometryResult, filteredGeometry, geometryVersion]);
+  }, [cesiumEnabled, mergedGeometryResult, sceneGeometry, geometryVersion, typeHidden]);
 
   const computedIsolatedIds = useVisibilityIsolation();
 
   const visibleResultEmpty = useMemo(() => isVisibleResultEmpty({
-    ...useViewerStore.getState(), models: storeModels, geometryResult, hiddenEntities,
+    ...useViewerStore.getState(), models: storeModels, geometryResult, hiddenEntities: withTypeHidden(hiddenEntities, typeHidden),
   }, {
-    meshes: filteredGeometry,
+    meshes: sceneGeometry,
     pointClouds: mergedPointClouds,
     isolatedIds: computedIsolatedIds,
     hasUnenumeratedInstances: [...storeModels].some(([id, model]) => model.visible
       && hasInstancedShards(id) && !model.geometryResult?.instancedGeometryHashes?.size),
-  }), [storeModels, geometryResult, filteredGeometry, geometryVersion, mergedPointClouds,
-    computedIsolatedIds, hiddenEntities, typeVisibility, structuralViewMode, mutationVersion]);
+  }), [storeModels, geometryResult, sceneGeometry, geometryVersion, mergedPointClouds,
+    computedIsolatedIds, hiddenEntities, typeHidden, structuralViewMode, mutationVersion]);
 
   // Empty state when no file is loaded at all (show starting UI)
   // But NOT when models are loaded but just hidden - in that case show empty 3D canvas
@@ -689,7 +711,7 @@ export function ViewportContainer() {
             onOpenClick={() => { void handleOpenClick(); }}
             onStartBlank={() => { void handleStartBlank(); }}
             recentFiles={recentFiles}
-            loadFile={loadFile}
+            loadFile={loadWelcomeFile}
           />
 
           </div>
@@ -746,7 +768,8 @@ export function ViewportContainer() {
         />
       )}
       <Viewport
-        geometry={filteredGeometry}
+        geometry={sceneGeometry}
+        typeHidden={typeHidden}
         geometryVersion={geometryVersion}
         geometryReplacementVersion={geometryReplacementVersion}
         geometryContentVersion={geometryContentVersion}

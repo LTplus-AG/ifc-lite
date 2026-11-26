@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { withoutComments } from './step-comment-skip.js';
 import { splitTopLevelStepArguments } from './step-argument-parser.js';
 import { isRootedType } from './merged-guid.js';
 
@@ -55,14 +56,14 @@ export class OwnerHistoryFill {
    * `TYPE` is an `IfcRoot` subtype and the slot is `$`. Every other byte of
    * the line is kept; a line that does not parse is returned unchanged.
    */
-  apply(line: string): string {
+  apply(line: string, maxReferenceId?: number): string {
     const open = line.indexOf('(');
     const close = line.lastIndexOf(')');
     const eq = line.indexOf('=');
     if (eq < 0 || open <= eq || close <= open) return line;
     if (!isRooted(line.slice(eq + 1, open).trim())) return line;
-    const slots = splitTopLevelStepArguments(line.slice(open + 1, close));
-    if (slots === null || slots.length < 2 || slots[1].trim() !== '$') return line;
+    const slots = splitTopLevelStepArguments(line.slice(open + 1, close), maxReferenceId);
+    if (slots === null || slots.length < 2 || withoutComments(slots[1]) !== '$') return line;
     if (this.ref === null) {
       this.unfilled++;
       return line;

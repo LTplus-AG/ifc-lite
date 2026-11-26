@@ -13,7 +13,7 @@ import { addStructuralSurfaceMemberToStore, resolveSpatialAnchor, readStructural
 import * as shapeModule from './structural-derive-shape.js';
 import * as faceModule from './_structural-face.js';
 import * as planModule from './structural-derive-plan.js';
-import * as polygonModule from './room-footprint-offset.js';
+import * as polygonModule from './polygon-2d.js';
 import { plateOpenings, openingSection } from './structural-opening-section.js';
 import { prepareStructuralFace } from './_structural-face.js';
 import type { Vec3 } from './structural-derive-types.js';

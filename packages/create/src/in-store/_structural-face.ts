@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { StoreEditor } from '@ifc-lite/mutations';
-import { pointInPolygon } from './room-footprint-offset.js';
+import { pointInPolygon } from './polygon-2d.js';
 import type { Point3D } from '../types.js';
 import { vecCross, vecLen, vecNorm } from '../ifc-creator-math.js';
 import { toNativePoint3, type SpatialAnchor } from './anchor.js';

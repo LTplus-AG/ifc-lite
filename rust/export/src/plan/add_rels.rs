@@ -17,6 +17,7 @@
 //! start from delete's rewritten list when there is one, so a plan that
 //! deletes one wall from a storey and adds another keeps both edits.
 
+use crate::step_slot::slot_is;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use crate::step_ids::IdAllocator;
@@ -185,7 +186,7 @@ impl<'a> RelAccumulator<'a> {
 /// `(#a,#b)` plus `[c, d]` -> `(#a,#b,#c,#d)`. `$` (an unset optional list)
 /// becomes a list of just the new entries.
 fn extend_list_text(current: &str, added: &[u32]) -> Option<String> {
-    let mut entries: Vec<String> = if current.trim() == "$" {
+    let mut entries: Vec<String> = if slot_is(current, "$") {
         Vec::new()
     } else {
         let mut items = ifc_lite_core::StepListItems::of_list(current.as_bytes())?;
@@ -209,6 +210,7 @@ mod tests {
         assert_eq!(extend_list_text("(#1,#2)", &[5]).as_deref(), Some("(#1,#2,#5)"));
         assert_eq!(extend_list_text("()", &[5, 6]).as_deref(), Some("(#5,#6)"));
         assert_eq!(extend_list_text("$", &[5]).as_deref(), Some("(#5)"));
+        assert_eq!(extend_list_text("$/* no related objects: #99 */", &[5]).as_deref(), Some("(#5)")); // #11149
         assert_eq!(extend_list_text("#3", &[5]), None);
     }
 

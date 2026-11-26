@@ -1935,6 +1935,10 @@
     "value": "{ms} ms",
     "reason": "Runtime placeholder with a unit symbol (milliseconds); no English prose."
   },
+  "agentBridge.panel.repeated": {
+    "value": "×{count}",
+    "reason": "Runtime count with a multiplication sign; no English prose."
+  },
   "viewportLighting.container.emptyState.formats.rhino": {
     "value": "Rhino",
     "reason": "Format family name on the welcome card: Rhino is the product name of the authoring tool behind .3dm and is not localized in any language."
@@ -1966,5 +1970,13 @@
   "cityJsonExport.sequence": {
     "value": "CityJSONSeq (.city.jsonl)",
     "reason": "Canonical interoperable file format name and extension."
+  },
+  "a2ui.noValue": {
+    "value": "—",
+    "reason": "Placeholder dash for an empty cell in an A2UI table or card; a symbol, not English prose."
+  },
+  "a2ui.table.group": {
+    "value": "{group} ({count})",
+    "reason": "Group header made only of runtime placeholders (the group value and its row count); no English prose."
   }
 }

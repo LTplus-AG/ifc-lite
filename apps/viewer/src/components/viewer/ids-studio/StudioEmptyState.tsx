@@ -16,6 +16,7 @@ import { useTranslation } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { importStudioFile } from '@/lib/ids-studio/import';
 import { cn } from '@/lib/utils';
+import { StudioDrafts } from './StudioDrafts';
 
 export function StudioEmptyState() {
   const { t } = useTranslation();
@@ -26,7 +27,9 @@ export function StudioEmptyState() {
   const [error, setError] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const openFile = async (file: File) => {
+    const revision = useViewerStore.getState().idsStudioRevision;
     const result = await importStudioFile(file);
+    if (useViewerStore.getState().idsStudioRevision !== revision) return;
     if (result.ok) { setError(null); open(result.doc); } else setError(result.error);
   };
   const [dragging, setDragging] = useState(false);
@@ -52,6 +55,7 @@ export function StudioEmptyState() {
         <p className="text-xs text-muted-foreground">{t('idsStudio.empty.body')}</p>
       </div>
     </div>
+    <StudioDrafts />
     <form className="space-y-2 rounded border border-border p-2" onSubmit={(event) => {
       event.preventDefault();
       open(createStudioDocument({ title: title.trim() || t('idsStudio.empty.defaultTitle') }));

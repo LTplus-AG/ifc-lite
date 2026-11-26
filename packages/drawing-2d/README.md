@@ -11,10 +11,30 @@ npm install @ifc-lite/drawing-2d
 ## Floor plan
 
 ```typescript
-import { generateFloorPlan, exportToSVG, PAPER_SIZES, COMMON_SCALES } from '@ifc-lite/drawing-2d';
+import { generateFloorPlan, exportToSVG, PAPER_SIZES, COMMON_SCALES, type StoreyCut } from '@ifc-lite/drawing-2d';
 
-// Cut at 1.2 m above floor level (standard architectural plan height)
-const drawing = await generateFloorPlan(meshes, 1.2, {
+// Cut 1.2 m above a storey floor (standard architectural plan height). The
+// meshes sit in a shifted render frame; the frame moves the storey's Elevation
+// into it (storeyCutElevation returns that render-frame Y as a number).
+// storeyElevation is IfcBuildingStorey.Elevation in metres, measured from the
+// building placement. Take it from the storey's Elevation attribute. If that is
+// unset, resolve the storey's placement chain (PlacementRelTo) into the building
+// frame, or stop with an error: an entry in spatialHierarchy.storeyElevations
+// does not establish that frame, since its placement fallback reads only the
+// storey's own location.
+const storeyElevation = 0.5;
+// The parsed store does not carry the building placement. ASSUMPTION: the
+// building sits at its site's origin, so its local Z is 0 m. For a building
+// placed off it, set buildingZ to its local Z in metres: the Z of
+// IfcBuilding.ObjectPlacement.RelativePlacement.Location, relative to the site
+// placement, times store.lengthUnitScale.
+const buildingZ = 0;
+const cut: StoreyCut = {
+  storeyElevation,
+  cutHeight: 1.2,
+  frame: { ...geometryResult.coordinateInfo, buildingOrigin: { z: buildingZ } },
+};
+const drawing = await generateFloorPlan(geometryResult.meshes, cut, {
   includeHiddenLines: true,
   includeProjection: true,
 });
@@ -68,6 +88,61 @@ const hatchLines = generator.generateHatching(drawing);
 console.log(`${hatchLines.length} hatch lines`);
 
 generator.dispose();
+```
+
+## Streamed geometry
+
+When the meshes are not one resident array (for example read back from local
+storage in chunks), give `generateFromSource` a `DrawingMeshSource`. The
+generator reads it in at most two passes (`'geometry'`, then `'occlusion'`
+when hidden lines or an open surface need it) and keeps no mesh: each batch
+can be released as soon as the generator asks for the next. Every pass must
+yield the same meshes in the same order. The drawing equals `generate` over
+one pass's meshes; an error thrown by the source, or an aborted
+`options.signal`, rejects it.
+
+```typescript
+import type { Drawing2DGenerator, DrawingMeshSource, SectionConfig } from '@ifc-lite/drawing-2d';
+import type { MeshData } from '@ifc-lite/geometry';
+
+declare const generator: Drawing2DGenerator, config: SectionConfig, signal: AbortSignal;
+declare const chunks: number[];                                                            // the host's stored chunk ids
+declare function leaseChunk(chunk: number): Promise<{ meshes: MeshData[]; release(): void }>; // reads one chunk back
+
+const source: DrawingMeshSource = {
+  async *pass() {
+    for (const chunk of chunks) {
+      const held = await leaseChunk(chunk);
+      try { yield held.meshes; } finally { held.release(); }
+    }
+  },
+};
+const drawing = await generator.generateFromSource(source, config, { signal });
+```
+
+To push chunks instead (each lease released before the next), use a session. `finish()` throws until the occlusion phase has fed what `endGeometry()` asked for (every batch again for a depth raster, or the open-surface entities' meshes), so a skipped replay is refused rather than drawn without free edges:
+
+```typescript
+import type { Drawing2DGenerator, EntityKey, GeneratorOptions, SectionConfig } from '@ifc-lite/drawing-2d';
+import type { MeshData } from '@ifc-lite/geometry';
+
+declare const generator: Drawing2DGenerator, config: SectionConfig, options: Partial<GeneratorOptions>;
+declare const chunks: number[];                                                            // the host's stored chunk ids
+declare function leaseChunk(chunk: number): Promise<{ meshes: MeshData[]; release(): void }>; // reads one chunk back
+declare function chunksOf(entities: ReadonlySet<EntityKey>): number[];                     // the chunks holding these entities
+
+const session = generator.beginDrawing(config, options);
+for (const chunk of chunks) {
+  const held = await leaseChunk(chunk);
+  try { await session.addGeometry(held.meshes); } finally { held.release(); }
+}
+const needs = session.endGeometry();
+// needs.depthRaster: feed every chunk again; otherwise only needs.openSurfaceEntities' meshes.
+for (const chunk of needs.depthRaster ? chunks : chunksOf(needs.openSurfaceEntities)) {
+  const held = await leaseChunk(chunk);
+  try { session.addOcclusion(held.meshes); } finally { held.release(); }
+}
+const drawing = session.finish(); // or session.cancel()
 ```
 
 ## Graphic overrides

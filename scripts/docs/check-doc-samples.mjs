@@ -224,9 +224,9 @@ function extractBlocks(relPath) {
   return blocks;
 }
 
-/** Build the tsconfig `paths` map for @ifc-lite packages to their src. */
+/** Resolve published packages and the viewer host entry to source. */
 function buildPaths() {
-  const paths = {};
+  const paths = { '@/bootstrap': ['apps/viewer/src/bootstrap.tsx'] };
   const packagesDir = join(ROOT, 'packages');
   for (const { dir, pkg } of publishedPackages()) {
     // A manifest with no `name` is not in the published set's business, but it
@@ -307,11 +307,11 @@ try {
   const tsconfig = {
     compilerOptions: {
       target: 'ES2022',
+      jsx: 'preserve',
       module: 'ESNext',
       moduleResolution: 'bundler',
       lib: ['ES2022', 'DOM', 'DOM.Iterable', 'ESNext.Disposable'],
       strict: false,
-      noImplicitAny: false,
       noUnusedLocals: false,
       noUnusedParameters: false,
       skipLibCheck: true,

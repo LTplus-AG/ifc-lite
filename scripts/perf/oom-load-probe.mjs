@@ -20,7 +20,7 @@
  * hard error (exit 2), never a skip.
  *
  * Usage:
- *   node scripts/perf/oom-load-probe.mjs --dist apps/viewer/dist --expect killed|not-killed|loaded|refused
+ *   node scripts/perf/oom-load-probe.mjs --dist apps/viewer/dist --expect killed|not-killed|loaded|refused|awaiting-decision
  *        (--fixture FILE.ifc | --kind tfs|brep --target-mb N [--seed 1])
  *        --cap 3G [--device-memory 4] [--cores 4] [--cpu-quota 400%]
  *        [--gl swiftshader|hardware] [--out DIR] [--limit-min 10] [--keep-fixture]

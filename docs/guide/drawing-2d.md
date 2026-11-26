@@ -143,10 +143,31 @@ content.
 ### Generating a Floor Plan
 
 ```typescript
-import { generateFloorPlan } from '@ifc-lite/drawing-2d';
+import { generateFloorPlan, type StoreyCut } from '@ifc-lite/drawing-2d';
 
-// generateFloorPlan(meshes: MeshData[], elevation: number, options?)
-const drawing = await generateFloorPlan(meshData, 1.2, {
+// generateFloorPlan(meshes: MeshData[], elevation: number | StoreyCut, options?)
+// A number is a render-frame Y. A StoreyCut is a height above a storey floor:
+// the storey's Elevation is moved into the render frame with the geometry's
+// coordinateInfo (storeyCutElevation gives the same Y as a number).
+// storeyElevation is IfcBuildingStorey.Elevation in metres, measured from the
+// building placement. Take it from the storey's Elevation attribute. If that is
+// unset, resolve the storey's placement chain (PlacementRelTo) into the building
+// frame, or stop with an error: an entry in spatialHierarchy.storeyElevations
+// does not establish that frame, since its placement fallback reads only the
+// storey's own location.
+const storeyElevation = 0.5;
+// The parsed store does not carry the building placement. ASSUMPTION: the
+// building sits at its site's origin, so its local Z is 0 m. For a building
+// placed off it, set buildingZ to its local Z in metres: the Z of
+// IfcBuilding.ObjectPlacement.RelativePlacement.Location, relative to the site
+// placement, times store.lengthUnitScale.
+const buildingZ = 0;
+const cut: StoreyCut = {
+  storeyElevation,
+  cutHeight: 1.2,
+  frame: { ...geometryResult.coordinateInfo, buildingOrigin: { z: buildingZ } },
+};
+const drawing = await generateFloorPlan(geometryResult.meshes, cut, {
   includeHiddenLines: true,
   includeProjection: true,
 });
@@ -229,10 +250,10 @@ encoder mismatches that declared codepage, and any real DXF reader
 import { exportToDXF, encodeDxfCp1252 } from '@ifc-lite/drawing-2d';
 
 declare const dxf: ReturnType<typeof exportToDXF>;
-const { bytes, hadUnmappable } = encodeDxfCp1252(dxf);
+const { bytes, hadEscaped, hadUnmappable } = encodeDxfCp1252(dxf);
 // bytes is a Uint8Array ready to write to disk or a Blob.
-// hadUnmappable is true if a character outside windows-1252 (e.g. CJK)
-// was replaced with '?' — R12 TEXT has no wider single-byte encoding.
+// hadEscaped reports lossless DXF Unicode escapes for BMP text outside windows-1252.
+// hadUnmappable reports replacement with '?' for unsupported characters such as emoji.
 ```
 
 ## Drawing Sheets
@@ -346,6 +367,36 @@ if (isGPUComputeAvailable()) {
   const result = await cutter.cutMeshes(meshData, sectionConfig);
 }
 ```
+
+### Streamed Geometry
+
+`Drawing2DGenerator.generateFromSource(source, config, options)` draws from a
+`DrawingMeshSource` instead of one mesh array. The source yields batches in at
+most two passes, `'geometry'` (section cut and projection) and, only when
+needed, `'occlusion'` (hidden-line depth raster and the free-edge test of
+open surfaces). The generator keeps only 2D output, one depth raster and
+per-entity edge parity between batches, so its working input is one batch,
+not the model. Every pass must yield the same meshes in the same order; the
+drawing then equals `generate` over those meshes. A source error or an
+aborted `options.signal` rejects the drawing.
+
+Callers that push leased chunks instead use `generator.beginDrawing(config,
+options)`, which returns a `DrawingSession`: call `addGeometry(batch)` for each
+chunk, then `endGeometry()`. Its result says whether the hidden-line raster
+needs every chunk again (`depthRaster`), or only the meshes of
+`openSurfaceEntities`. Feed those to `addOcclusion(batch)`, then call
+`finish()` (or `cancel()`). No batch is kept, so each lease can be released
+before the next one is taken. Joins across chunks, occlusion and projection
+stay the same, because `generate` drives this same session.
+
+The viewer uses it for the Drawing panel and the 3D section overlay. Resident
+models are cut as before. A model whose CPU arrays were released (today only
+by the test-only release, #10264) is read back from its local backing one
+chunk at a time, and its instanced occurrences are expanded from the backed
+shards in bounded groups. A backing that is missing, incomplete or replaced
+while it is read fails the drawing instead of drawing partial geometry.
+GPU-instanced occurrences are cut like flat geometry in both cases; before,
+the drawing left them out.
 
 ## Viewer Integration
 

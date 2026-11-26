@@ -1,0 +1,61 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * A2UI result surfaces (`components/a2ui/`, the chat's surface parts). A lazy
+ * catalogue: it loads with the A2UI chunk and registers itself
+ * (`lazy-catalogues.ts`), so it adds nothing to the page's first load.
+ */
+export const a2uiEn = {
+  'a2ui.loading': 'Building the view…',
+  'a2ui.surfaceLabel': 'Interactive answer',
+  'a2ui.noValue': '—',
+  'a2ui.noGroupValue': 'No value',
+  'a2ui.empty': 'No matching elements.',
+  'a2ui.unloadedModel': 'Model {model} is not loaded, so these elements cannot be shown.',
+  'a2ui.queryProblem': 'The query has a problem at {path}: {message}',
+  'a2ui.truncated': 'Showing the first {shown} of {total} matches.',
+  'a2ui.error.title': 'Part of this answer could not be shown',
+  'a2ui.error.fix': 'Ask to fix',
+  'a2ui.table.caption': '{shown} of {total}',
+  'a2ui.table.sortBy': 'Sort by {column}',
+  'a2ui.table.previous': 'Previous page',
+  'a2ui.table.next': 'Next page',
+  'a2ui.table.page': 'Page {page} of {pages}',
+  'a2ui.table.group': '{group} ({count})',
+  'a2ui.table.rowLabel': 'Select {name} in 3D',
+  'a2ui.list.itemLabel': 'Select {name} in 3D',
+  'a2ui.card.selectionEmpty': 'Select an element in the 3D view to see it here.',
+  'a2ui.card.notFound': 'This element was not found in the loaded models.',
+  'a2ui.card.attributes': 'Attributes',
+  'a2ui.card.properties': 'Properties',
+  'a2ui.card.quantities': 'Quantities',
+  'a2ui.card.materials': 'Materials',
+  'a2ui.card.classifications': 'Classifications',
+  'a2ui.card.spatial': 'Location',
+  'a2ui.card.flyTo': 'Fly to',
+  'a2ui.stat.unavailable': 'n/a',
+  'a2ui.chart.other': 'Other',
+  'a2ui.chart.someNoNumbers': 'Left out, no number at {path}: {count}',
+  'a2ui.chart.noNumbers': 'No element has a number at {path}, so there is nothing to sum.',
+  'a2ui.chart.label': 'Chart of {title}. Pick a group to select it in 3D.',
+  'a2ui.chart.groups': 'Groups',
+  'a2ui.chart.selectGroup': 'Select {group}: {value}',
+  'a2ui.legend.apply': 'Apply colours',
+  'a2ui.legend.applied': 'Colours applied',
+  'a2ui.legend.reset': 'Reset view',
+  'a2ui.legend.toggle': 'Show or hide {value}',
+  'a2ui.action.select': 'Select',
+  'a2ui.action.isolate': 'Isolate',
+  'a2ui.action.hide': 'Hide',
+  'a2ui.action.show': 'Show',
+  'a2ui.action.colorize': 'Colour',
+  'a2ui.action.flyTo': 'Fly to',
+  'a2ui.action.resetView': 'Reset view',
+  'a2ui.action.exportCsv': 'Export CSV',
+  'a2ui.action.count': { one: '{count} element', other: '{count} elements' },
+  'a2ui.action.refused': 'That action is not allowed here: {reason}',
+  'a2ui.action.failed': 'The action failed: {reason}',
+  'a2ui.followUps': 'Suggested questions',
+} as const;

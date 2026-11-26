@@ -21,11 +21,13 @@
  * Sequence:
  *
  *   tab    -> bridge  hello    { protocol, pairingCode, permission, tools, client? }
- *   bridge -> tab     welcome  { protocol, sessionId, permission, readOnlyCeiling, bridge }
+ *   bridge -> tab     welcome  { protocol, sessionId, permission, readOnlyCeiling, bridge, features? }
  *   bridge -> tab     call     { sessionId, id, name, arguments }
+ *   bridge -> tab     a2ui-surface { sessionId, id, surface } (opt-in via hello.a2uiSurface)
  *   tab    -> bridge  result   { sessionId, id, result }
  *   bridge -> tab     cancel   { sessionId, id, reason }
  *   tab    -> bridge  update   { sessionId, permission?, tools? }
+ *   tab    -> bridge  ui-event { sessionId, event } (once welcome.features lists ui-events)
  *   bridge -> tab     error    { code, message }  (followed by a close on fatal codes)
  *
  * `hello` must be the first frame and arrive within the handshake timeout.
@@ -47,8 +49,19 @@
  * instructions; the bridge says so in its MCP `instructions`.
  */
 
-import { checkJsonBounds, checkSchemaShape, utf8Length } from './json-bounds.js';
+import type { BridgeHelloMessage, BridgeTabMessage, BridgeUpdateMessage } from './message-types.js';
+export type {
+  BridgeHelloMessage, BridgeResultMessage, BridgeUpdateMessage, BridgeTabMessage,
+  BridgeWelcomeMessage, BridgeCallMessage, BridgeCancelMessage, BridgeErrorMessage, BridgeServerMessage, BridgeResultAckMessage, BridgeSurfaceMessage,
+} from './message-types.js';
+import { checkJsonBounds, checkSchemaShape, isRecord, utf8Length } from './json-bounds.js';
 import { clip, quoted } from './sanitize.js';
+import { BRIDGE_IMAGE_LIMITS, validateResultContent, type BridgeContent } from './result-content.js';
+
+export { BRIDGE_FEATURE_IMAGE_CONTENT, BRIDGE_FEATURES } from './result-content.js';
+export { BRIDGE_FEATURE_UI_EVENTS, BRIDGE_UI_EVENTS_TOOL, UI_EVENT_LIMITS, type BridgeUiEvent, type BridgeUiEventMessage } from './ui-events.js';
+import { BRIDGE_UI_EVENTS_TOOL, parseUiEvent } from './ui-events.js';
+export type { BridgeContent, BridgeImageContent, BridgeImageMimeType, BridgeTextContent } from './result-content.js';
 
 /** Bumped on any incompatible change. The bridge rejects any other value. */
 export const BRIDGE_PROTOCOL_VERSION = 1;
@@ -61,6 +74,10 @@ export const DEFAULT_BRIDGE_VIEWER_URL = 'https://ifclite.com';
 
 /** The bridge-owned tool, always listed. A tab may not register a tool with this name. */
 export const BRIDGE_STATUS_TOOL = 'bridge_status';
+export const BRIDGE_SURFACE_TOOL = 'viewer_show_ui';
+
+/** Tools the bridge serves itself; a tab may not register these names. */
+export const BRIDGE_RESERVED_TOOLS: ReadonlySet<string> = new Set([BRIDGE_STATUS_TOOL, BRIDGE_SURFACE_TOOL, BRIDGE_UI_EVENTS_TOOL]);
 
 /** Key in the pairing link's URL fragment that marks it as a bridge pairing link. */
 export const PAIRING_FRAGMENT_KEY = 'mcp-bridge';
@@ -107,6 +124,7 @@ export const BRIDGE_LIMITS = {
   maxResultDepth: 64,
   /** JSON values in one `result` value. */
   maxResultNodes: 250_000,
+  ...BRIDGE_IMAGE_LIMITS,
 } as const;
 
 /**
@@ -133,91 +151,16 @@ export interface BridgeToolDescriptor {
   readOnly: boolean;
 }
 
-/** Content the bridge accepts in a result: text only. Other MCP content types (image, resource) are refused. */
-export interface BridgeTextContent {
-  type: 'text';
-  text: string;
-}
-
-/** MCP `CallToolResult`, as the tab returns it. Passed through unchanged once valid. */
+/**
+ * MCP `CallToolResult`, as the tab returns it. Passed through unchanged once
+ * valid. Content is text, or images (send those only when `welcome.features`
+ * lists `image-content`); other MCP content types (resource) are refused.
+ */
 export interface BridgeCallResult {
-  content: BridgeTextContent[];
+  content: BridgeContent[];
   structuredContent?: Record<string, unknown>;
   isError?: boolean;
 }
-
-// ── tab -> bridge ────────────────────────────────────────────────────────
-
-export interface BridgeHelloMessage {
-  type: 'hello';
-  protocol: number;
-  /** The one-time code the bridge printed. Case and `-`/space separators are ignored. */
-  pairingCode: string;
-  permission: BridgePermission;
-  tools: BridgeToolDescriptor[];
-  client?: { name: string; version?: string };
-}
-
-export interface BridgeResultMessage {
-  type: 'result';
-  sessionId: string;
-  /** The `id` of the `call` being answered. */
-  id: string;
-  result: BridgeCallResult;
-}
-
-export interface BridgeUpdateMessage {
-  type: 'update';
-  sessionId: string;
-  permission?: BridgePermission;
-  tools?: BridgeToolDescriptor[];
-}
-
-export type BridgeTabMessage = BridgeHelloMessage | BridgeResultMessage | BridgeUpdateMessage;
-
-// ── bridge -> tab ────────────────────────────────────────────────────────
-
-export interface BridgeWelcomeMessage {
-  type: 'welcome';
-  protocol: number;
-  sessionId: string;
-  /** Effective permission: the tab's grant, capped by the bridge's ceiling. */
-  permission: BridgePermission;
-  /**
-   * True when the bridge was started `--read-only`. The tab MUST then refuse
-   * every model-changing call itself (see the read-only obligation above).
-   */
-  readOnlyCeiling: boolean;
-  bridge: { name: string; version: string };
-}
-
-export interface BridgeCallMessage {
-  type: 'call';
-  sessionId: string;
-  /** Unique across the bridge process's lifetime, never reused. */
-  id: string;
-  name: string;
-  arguments: Record<string, unknown>;
-}
-
-export interface BridgeCancelMessage {
-  type: 'cancel';
-  sessionId: string;
-  id: string;
-  reason: 'cancelled' | 'timeout';
-}
-
-export interface BridgeErrorMessage {
-  type: 'error';
-  code: BridgeErrorCode;
-  message: string;
-}
-
-export type BridgeServerMessage =
-  | BridgeWelcomeMessage
-  | BridgeCallMessage
-  | BridgeCancelMessage
-  | BridgeErrorMessage;
 
 /** Codes in `error` frames. Fatal ones end the channel (on the WebSocket transport: a close with the matching {@link BridgeCloseCode}). */
 export const BridgeErrorCode = {
@@ -248,10 +191,6 @@ export type ParseResult<T> = { ok: true; value: T } | { ok: false; error: string
 
 const TOOL_NAME = /^[A-Za-z0-9_.-]+$/;
 
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null && !Array.isArray(v);
-}
-
 function isPermission(v: unknown): v is BridgePermission {
   return v === 'read-only' || v === 'read-write';
 }
@@ -270,7 +209,7 @@ export function validateToolDescriptors(raw: unknown): ParseResult<BridgeToolDes
     if (typeof name !== 'string' || name.length === 0 || name.length > BRIDGE_LIMITS.maxToolNameLength || !TOOL_NAME.test(name)) {
       return { ok: false, error: `tools[${i}].name must match ${TOOL_NAME} and be 1-${BRIDGE_LIMITS.maxToolNameLength} characters` };
     }
-    if (name === BRIDGE_STATUS_TOOL) return { ok: false, error: `tools[${i}].name '${BRIDGE_STATUS_TOOL}' is reserved for the bridge` };
+    if (BRIDGE_RESERVED_TOOLS.has(name)) return { ok: false, error: `tools[${i}].name '${name}' is reserved for the bridge` };
     if (seen.has(name)) return { ok: false, error: `tools[${i}].name '${name}' is listed twice` };
     seen.add(name);
     if (typeof description !== 'string' || description.length > BRIDGE_LIMITS.maxDescriptionLength) {
@@ -299,12 +238,8 @@ function validateCallResult(raw: unknown): ParseResult<BridgeCallResult> {
   if (!isRecord(raw)) return { ok: false, error: 'result must be an object' };
   const bounds = checkJsonBounds(raw, { maxDepth: BRIDGE_LIMITS.maxResultDepth, maxNodes: BRIDGE_LIMITS.maxResultNodes }, 'result');
   if (bounds) return { ok: false, error: bounds };
-  if (!Array.isArray(raw.content)) return { ok: false, error: 'result.content must be an array' };
-  for (const [i, c] of raw.content.entries()) {
-    if (!isRecord(c) || c.type !== 'text' || typeof c.text !== 'string') {
-      return { ok: false, error: `result.content[${i}] must be {type: 'text', text: string}; the bridge accepts text content only` };
-    }
-  }
+  const content = validateResultContent(raw.content);
+  if (!content.ok) return content;
   if (raw.structuredContent !== undefined && !isRecord(raw.structuredContent)) {
     return { ok: false, error: 'result.structuredContent must be an object' };
   }
@@ -315,7 +250,7 @@ function validateCallResult(raw: unknown): ParseResult<BridgeCallResult> {
   // and all), bounded only by the result limits. It is not clipped like the
   // bridge's own diagnostics; the MCP `instructions` tell the agent it is data.
   const value: BridgeCallResult = {
-    content: (raw.content as Array<{ text: string }>).map((c) => ({ type: 'text', text: c.text })),
+    content: content.value,
     ...(raw.structuredContent !== undefined ? { structuredContent: raw.structuredContent as Record<string, unknown> } : {}),
     ...(raw.isError !== undefined ? { isError: raw.isError } : {}),
   };
@@ -369,7 +304,7 @@ export function parseTabMessage(text: string): ParseResult<BridgeTabMessage> {
       }
       return {
         ok: true,
-        value: { type: 'hello', protocol: raw.protocol, pairingCode: raw.pairingCode, permission: raw.permission, tools: tools.value, client },
+        value: { type: 'hello', protocol: raw.protocol, pairingCode: raw.pairingCode, permission: raw.permission, tools: tools.value, client, ...(raw.a2uiSurface === true ? { a2uiSurface: true } : {}), ...(raw.resultAck === true ? { resultAck: true } : {}) },
       };
     }
     case 'result': {
@@ -377,7 +312,7 @@ export function parseTabMessage(text: string): ParseResult<BridgeTabMessage> {
       if (typeof raw.id !== 'string') return { ok: false, error: 'result.id must be a string' };
       const result = validateCallResult(raw.result);
       if (!result.ok) return result;
-      return { ok: true, value: { type: 'result', sessionId: raw.sessionId, id: raw.id, result: result.value } };
+      return { ok: true, value: { type: 'result', sessionId: raw.sessionId, id: raw.id, result: result.value, ...(raw.resultAck === true ? { resultAck: true } : {}) } };
     }
     case 'update': {
       if (typeof raw.sessionId !== 'string') return { ok: false, error: 'update.sessionId must be a string' };
@@ -392,6 +327,11 @@ export function parseTabMessage(text: string): ParseResult<BridgeTabMessage> {
         msg.tools = tools.value;
       }
       return { ok: true, value: msg };
+    }
+    case 'ui-event': {
+      if (typeof raw.sessionId !== 'string') return { ok: false, error: 'ui-event.sessionId must be a string' };
+      const event = parseUiEvent(raw.event);
+      return event.ok ? { ok: true, value: { type: 'ui-event', sessionId: raw.sessionId, event: event.value } } : event;
     }
     default:
       return { ok: false, error: `unknown message type ${quoted(raw.type, 32)}` };

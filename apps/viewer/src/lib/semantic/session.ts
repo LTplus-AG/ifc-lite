@@ -4,7 +4,7 @@
 
 import { create } from 'zustand';
 import type { IdentityFields } from './resolver-context';
-import { DEFAULT_PROFILE, DEFAULT_RESOURCE_URI_CONFIG, assertResourceUriIdentityConfig, assertProfile, sanitizeSource, exportWorkspace, importWorkspace, parseProfileDocument,
+import { LIMITS, DEFAULT_PROFILE, DEFAULT_RESOURCE_URI_CONFIG, assertResourceUriIdentityConfig, assertProfile, sanitizeSource, exportWorkspace, importWorkspace, parseProfileDocument,
   type ResourceUriIdentityConfig, type ValidationReport, type BindingMapping, type ResourceIdentityLink, type ProfileDefinition, type SemanticWorkspace, type SemanticDocument, type SparqlResults, type ValidationFinding } from '@ifc-lite/semantic';
 
 interface SemanticSession {
@@ -44,12 +44,12 @@ export const useSemanticSession = create<SemanticSession>((set, get) => ({
       datasets: [{ id: 'current', source: state.document?.source ?? 'urn:ifc-lite:local', completeness: state.document?.completeness ?? 'partial',
         profileId: state.profile.id, rows: state.results, graph: state.graph || undefined, graphFormat: state.graph ? state.graphFormat : undefined }] });
     const serialized = JSON.stringify({ version: 1, workspace: JSON.parse(workspace) as unknown, profile: state.profile, document: state.document ? { ...parseProfileDocument(state.document, state.profile), source: sanitizeSource(state.document.source) } : undefined, strategy: state.strategy, uriConfig: state.uriConfig.mode === 'template' ? { mode: state.uriConfig.mode, template: state.uriConfig.template } : { mode: state.uriConfig.mode }, identityFields: { GlobalId: state.identityFields.GlobalId, modelRevision: state.identityFields.modelRevision } });
-    if (new TextEncoder().encode(serialized).length > 5 * 1024 * 1024) throw new Error('Workspace exceeds byte limit');
+    if (new TextEncoder().encode(serialized).length > LIMITS.bytes) throw new Error('Workspace exceeds byte limit');
     localStorage.setItem(STORAGE_KEY, serialized);
     return serialized;
   },
   restore(serialized) {
-    if (new TextEncoder().encode(serialized).length > 5 * 1024 * 1024) throw new Error('Workspace exceeds byte limit');
+    if (new TextEncoder().encode(serialized).length > LIMITS.bytes) throw new Error('Workspace exceeds byte limit');
     const raw: unknown = JSON.parse(serialized);
     if (!raw || typeof raw !== 'object' || !('version' in raw) || raw.version !== 1 || !('workspace' in raw) || !('profile' in raw)) throw new Error('Unsupported viewer workspace');
     assertProfile(raw.profile);

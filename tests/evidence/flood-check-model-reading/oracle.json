@@ -1,6 +1,0 @@
-{
-  "issue": 7955,
-  "key": "packages/flood-check/src/model/locate.ts",
-  "mutation": "tests/evidence/flood-check-model-reading/behaviour.oracle.patch",
-  "why": "The PR adds the @ifc-lite/flood-check package, so reverting production files removes the modules the tests import. Reverse application keeps every export but drops the rule that a placement alone is never an exact level: a door or window with no readable body or filled opening, and equipment with no body, then read as exact. The readability matrix and the earlier instances in test/level-quality.test.ts, which expect an upper estimate for every such row, go red."
-}

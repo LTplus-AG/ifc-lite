@@ -1,5 +1,22 @@
 # @ifc-lite/rules
 
+## 0.8.3
+
+### Patch Changes
+
+- Updated dependencies [[`d5f096a`](https://github.com/LTplus-AG/ifc-lite/commit/d5f096a1bb97139e68fd9a35a9cc2f8d92c8e165), [`b899ebb`](https://github.com/LTplus-AG/ifc-lite/commit/b899ebbcd2e5d8f4a048bcb129448ba1ecd06c7e), [`f871ca3`](https://github.com/LTplus-AG/ifc-lite/commit/f871ca39f33775921e90647a6fad49f2e8b4f1a6)]:
+  - @ifc-lite/ids@3.5.2
+  - @ifc-lite/parser@11.0.1
+
+## 0.8.2
+
+### Patch Changes
+
+- Updated dependencies [[`054569a`](https://github.com/LTplus-AG/ifc-lite/commit/054569a4f3719b4bff505a45d1cbed4eb6520192), [`1c90760`](https://github.com/LTplus-AG/ifc-lite/commit/1c9076074d07eea0811a713d227f3839a4fe9756), [`bc8fd0c`](https://github.com/LTplus-AG/ifc-lite/commit/bc8fd0c4bac2c94f4e1ad5085ded2f6080c08d9b), [`7053690`](https://github.com/LTplus-AG/ifc-lite/commit/7053690af8cd5e2c0c6853a8a9e7215fe4f69db3), [`38ef050`](https://github.com/LTplus-AG/ifc-lite/commit/38ef050d9585a468132f11c4ec822ceaf157d6b2), [`80f01cc`](https://github.com/LTplus-AG/ifc-lite/commit/80f01cc596cd541237c8083f7b17b9e62b068f44), [`a1c2588`](https://github.com/LTplus-AG/ifc-lite/commit/a1c25887acfaba313db68b556059c357c72283e1), [`1ad48ac`](https://github.com/LTplus-AG/ifc-lite/commit/1ad48ac88d255d9bcc6b5986072fdf4021ca247c)]:
+  - @ifc-lite/mutations@4.1.0
+  - @ifc-lite/parser@11.0.0
+  - @ifc-lite/ids@3.5.1
+
 ## 0.8.1
 
 ### Patch Changes

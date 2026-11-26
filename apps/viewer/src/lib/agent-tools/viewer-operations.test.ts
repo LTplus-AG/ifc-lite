@@ -8,6 +8,7 @@ import { beforeEach, describe, it } from 'node:test';
 import { once } from 'node:events';
 import { setImmediate } from 'node:timers/promises';
 import type { Renderer } from '@ifc-lite/renderer';
+import { coordinationDashboard } from '@/lib/charts/presets';
 import { registerAgentViewportHost } from '@/lib/agent-bridge/viewport-host';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { configuredView } from '@/test/agent-tools-fixture';
@@ -18,7 +19,10 @@ import { useViewerStore } from '@/store';
 import { seedCoincidentWalls } from '@/test/clash-run-fixture';
 import { resetFeaturesForTest } from '@/lib/features';
 import { createMainViewerToolHost } from './main-viewer-host';
-import { dispatchMainViewerTool } from './main-viewer-dispatch';
+import { dispatchMainViewerTool, mainViewerTool } from './main-viewer-dispatch';
+import { nativeExportRegistryInventory } from './operations/export-native-inventory';
+import { EXPORT_COMMAND_IDS } from '@/components/viewer/toolbar/export-commands';
+import { WORKSPACE_PANELS } from '@/lib/panels/registry';
 import { viewerOperations } from './operations/registry';
 import type { ToolHost } from './types';
 
@@ -35,6 +39,11 @@ const execute = (id: string, input: unknown = {}, extra: Record<string, unknown>
 const inspect = (id: string, input: unknown = {}, extra: Record<string, unknown> = {}) =>
   dispatchMainViewerTool(host, 'viewer_operation_inspect', { ...(viewerOperations().find(operation => operation.id === id)?.needs === 'model' ? { model_id: 'A' } : {}), operation_id: id, input, ...extra });
 const job = (job_id: string) => dispatchMainViewerTool(host, 'viewer_operation_job', { job_id });
+async function loadCoverageAudit() {
+  // Check the coverage tool is registered before importing its module, so a missing tool fails a test instead of the file load.
+  assert.ok(mainViewerTool('viewer_operation_coverage'), 'coverage is registered as a viewer tool');
+  return import('./operations/coverage');
+}
 function data<T>(value: { structured: unknown; isError: boolean; text: string }): T { assert.equal(value.isError, false, value.text); return value.structured as T; }
 /** Holds `ClashNamespace.run` until its abort signal fires and, unless `released`, until `release()`. */
 function holdClashRunner(t: { mock: { method: typeof import('node:test').mock.method } }, { released = false } = {}) {
@@ -98,7 +107,9 @@ describe('parameterized native viewer operations (#10525 follow-up)', () => {
     assert.equal((await pending).errorCode, 'READ_ONLY');
   });
   it('validates all model-local entity IDs before changing either selection channel', async () => {
-    assert.equal((await execute('selection.replace', { express_ids: [1, 987654] })).errorCode, 'ENTITY_NOT_FOUND');
+    const missing = await execute('selection.replace', { express_ids: [1, 987654] });
+    assert.equal(missing.errorCode, 'INVALID_INPUT');
+    assert.equal((missing.structured as { reason: string }).reason, 'unknown-target');
     assert.equal(useViewerStore.getState().selectedEntityId, null);
     const applied = await execute('selection.replace', { express_ids: [1, 2] });
     assert.equal(applied.isError, false, applied.text);
@@ -143,6 +154,16 @@ describe('parameterized native viewer operations (#10525 follow-up)', () => {
     assert.match(unload.text, /unexported changes/);
     assert.ok(useViewerStore.getState().models.has('A'));
   });
+  it('reports the actual artifact filename for a long single-model name (#10795 item 82)', async () => {
+    const models = new Map(useViewerStore.getState().models);
+    models.set('A', { ...models.get('A')!, name: `${'long-name-'.repeat(12)}.ifc` });
+    const view = new MutablePropertyView(null, 'A');
+    view.setAttribute(1, 'Name', 'Renamed');
+    useViewerStore.setState({ models, mutationViews: new Map([['A', view]]), mutationVersion: 1 });
+    const { result } = data<{ result: { artifact: { filename: string }; files: Array<{ filename: string }> } }>(await execute('exports.changedModels'));
+    assert.equal(result.files[0].filename, result.artifact.filename);
+    assert.match(result.artifact.filename, /\.ifc$/);
+  });
   it('validates every basket reference before changing native basket isolation', async () => {
     useViewerStore.getState().clearBasket();
     const before = useViewerStore.getState().isolatedEntities;
@@ -178,6 +199,16 @@ describe('parameterized native viewer operations (#10525 follow-up)', () => {
     const mergedText = Buffer.from(data<{ data: string }>(await dispatchMainViewerTool(host, 'viewer_artifact_read', { artifact_id: merged.result.artifact.artifact_id })).data, 'base64').toString('utf8');
     for (const id of ['A', 'B']) assert.equal(mergedText.split(`Merged marker ${id}`).length - 1, 1, id);
   });
+  it('evaluates a native BCF dashboard before any IFC model is loaded', async () => {
+    useViewerStore.setState({ models: new Map(), ifcDataStore: null, bcfProject: null });
+    assert.equal((await execute('bcf.createProject', { value: 'Native coordination' })).isError, false);
+    for (const status of ['Open', 'Closed']) assert.equal((await execute('bcf.createTopic', { title: status, description: '', status })).isError, false);
+    const dashboard = coordinationDashboard();
+    assert.equal(useViewerStore.getState().upsertDashboard(dashboard), true);
+    const chart = dashboard.charts.find(row => row.source === 'bcf'); assert.ok(chart);
+    const result = data<{ result: { total: number; categories: unknown[] } }>(await inspect('charts.evaluate', { dashboard_id: dashboard.id, chart_id: chart.id }));
+    assert.equal(result.result.total, 2); assert.equal(result.result.categories.length, 2);
+  });
   it('runs native Rules filters, rejects stale configuration, and pages the published result', async () => {
     const state = data<{ result: { native_json: string } }>(await inspect('filters.state'));
     const initial = JSON.parse(state.result.native_json) as { configuration_json: string };
@@ -188,12 +219,20 @@ describe('parameterized native viewer operations (#10525 follow-up)', () => {
     const result = await execute('filters.run', { expected_json: configured.configuration_json });
     assert.equal(result.isError, false, result.text);
     assert.equal(useViewerStore.getState().searchFilterResult?.rows.length, 4);
-    const page = data<{ result: { native_json: string } }>(await inspect('filters.results', { offset: 1, limit: 2 }));
+    const first = data<{ result: { native_json: string } }>(await inspect('filters.results', { offset: 0, limit: 1 }));
+    const { next_offset: offset, page_revision } = JSON.parse(first.result.native_json) as { next_offset: number; page_revision: string };
+    assert.equal(offset, 1); assert.ok(page_revision);
+    const page = data<{ result: { native_json: string } }>(await inspect('filters.results', { offset, page_revision, limit: 2 }));
     const rows = JSON.parse(page.result.native_json) as { total: number; rows: unknown[][]; current: boolean };
     assert.equal(rows.total, 4); assert.equal(rows.rows.length, 2); assert.equal(rows.current, true);
     useViewerStore.setState({ mutationVersion: 1 });
     const stale = data<{ result: { native_json: string } }>(await inspect('filters.results', { offset: 0, limit: 1 }));
     assert.equal((JSON.parse(stale.result.native_json) as { current: boolean }).current, false);
+    // #10877: replacement rows would shift the next offset even when the request keeps the same filter.
+    const store = useViewerStore.getState(), published = store.searchFilterResult;
+    assert.ok(published);
+    store.setSearchFilterResult({ ...published, rows: published.rows.slice(1) });
+    assert.equal((await inspect('filters.results', { offset, page_revision, limit: 2 })).errorCode, 'STATE_CHANGED');
   });
   it('uses native pick visibility and ownership while rejecting a scene changed during GPU readback', async () => {
     const models = new Map(useViewerStore.getState().models);
@@ -236,6 +275,89 @@ describe('parameterized native viewer operations (#10525 follow-up)', () => {
       const [a, b] = await Promise.all([inspect('viewport.pick', { x: 0.25, y: 0.5 }), inspect('viewport.pick', { x: 0.25, y: 0.5 })]);
       assert.equal(a.isError, false, a.text); assert.equal(b.isError, false, b.text);
     } finally { unregister(); }
+  });
+  it('audits every built-in panel, tool and export while retaining native boundaries', async () => {
+    const { viewerOperationCoverage } = await loadCoverageAudit();
+    const report = viewerOperationCoverage();
+    assert.equal(report.panel_count, WORKSPACE_PANELS.length); assert.equal(report.all_controls_automatable, false);
+    assert.deepEqual(new Set(report.panels.map(panel => panel.id)), new Set(WORKSPACE_PANELS.map(panel => panel.id)));
+    assert.deepEqual(report.panels.flatMap(panel => panel.gaps.map(gap => `${panel.id}: ${gap.id}: ${gap.reason}`)), []);
+    assert.deepEqual(report.tools.flatMap(tool => tool.gaps.map(gap => `${tool.id}: ${gap.id}: ${gap.reason}`)), []);
+    assert.deepEqual(report.exports.flatMap(item => item.gaps.map(gap => `${item.id}: ${gap.id}: ${gap.reason}`)), []);
+    assert.equal(report.complete, true);
+    assert.ok(report.panels.every(panel => panel.controls.length > 0));
+    assert.ok(report.panels.some(panel => panel.controls.some(control => control.classification === 'native-boundary')));
+    assert.ok(report.human_only.length > 0);
+    // Boundaries are classified controls, not prose notes (#10592 review).
+    const classes = (id: string) => report.panels.find(panel => panel.id === id)?.controls.map(control => control.classification) ?? [];
+    assert.ok(classes('lists').includes('presentation-only'));
+    assert.ok(classes('bcf').includes('native-boundary'));
+    assert.ok(classes('hierarchy').includes('native-boundary'), 'unload with unexported changes keeps its native confirmation');
+    // A joined control is marked grouped rather than claiming a per-control binding (#10592 review).
+    assert.ok(report.panels.find(panel => panel.id === 'bcf')?.controls.some(control => 'grouped' in control && control.grouped === true));
+    assert.ok(report.non_panel.find(row => row.id === 'preferences')?.notes?.length);
+    for (const id of ['contextual-entity', 'tours-mobile']) assert.ok(report.non_panel.find(row => row.id === id)?.notes?.some(note => note.includes('bound to an audited')), id);
+    assert.deepEqual(report.unbound_operations, [], 'every registered operation is bound to an audited control');
+    // Non-panel families are bound to audited controls too, and count toward complete.
+    assert.deepEqual(report.non_panel.flatMap(row => row.gaps.map(gap => `${row.id}: ${gap.id}: ${gap.reason}`)), []);
+  });
+  it('reports a toolbar export without an inventory entry as incomplete (#10592)', async () => {
+    const { viewerOperationCoverage } = await loadCoverageAudit();
+    const id = 'ion';
+    assert.ok(EXPORT_COMMAND_IDS.includes(id));
+    const inventory = nativeExportRegistryInventory.filter(row => row.registry_id !== id);
+    const report = viewerOperationCoverage(inventory);
+    // Ion has no registered operation, so only the toolbar comparison can detect the missing audit.
+    assert.deepEqual(report.unbound_operations, []);
+    assert.equal(report.complete, false);
+    const entry = report.exports.find(row => row.id === id);
+    assert.equal(entry?.complete, false);
+    assert.deepEqual(entry?.gaps.map(gap => gap.id), [id]);
+  });
+  it('only names registered tools in the control audit (#10592)', async () => {
+    const { auditedToolIds } = await loadCoverageAudit();
+    const { toolControlAudits } = await import('./operations/coverage-audit');
+    assert.deepEqual(Object.keys(toolControlAudits).filter(id => !auditedToolIds.includes(id)), []);
+  });
+  it('refuses bad operation tool arguments with the typed invalid-value reason (#10592)', async () => {
+    const badLimit = await dispatchMainViewerTool(host, 'viewer_operation_coverage', { section: 'tools', limit: 0 });
+    assert.equal(badLimit.isError, true); assert.equal((badLimit.structured as { reason?: string } | null)?.reason, 'invalid-value');
+    const badJob = await dispatchMainViewerTool(host, 'viewer_operation_job', { job_id: 42 });
+    assert.equal(badJob.isError, true); assert.equal((badJob.structured as { reason?: string } | null)?.reason, 'invalid-value');
+  });
+  it('summarizes coverage by default and serves bounded details on request (#10592)', async () => {
+    const coverage = (args: Record<string, unknown> = {}) => dispatchMainViewerTool(host, 'viewer_operation_coverage', args);
+    const summary = await coverage();
+    const overview = data<{ complete: boolean; exports: unknown[] }>(summary);
+    assert.equal(overview.complete, true);
+    assert.deepEqual(overview.exports.find(row => typeof row === 'object' && row !== null && 'id' in row && row.id === 'ion'),
+      { id: 'ion', complete: true, gap_count: 0, gap_ids: [] });
+    assert.ok(Buffer.byteLength(summary.text) < 20_000);
+
+    const { viewerOperationCoverage } = await loadCoverageAudit();
+    const full = viewerOperationCoverage();
+    const rows: typeof full.exports = [];
+    let offset: number | null = 0;
+    while (offset !== null) {
+      const page: { rows: typeof rows; total: number; offset: number; next_offset: number | null } =
+        data(await coverage({ section: 'exports', offset, limit: 5 }));
+      assert.equal(page.total, full.exports.length);
+      assert.equal(page.offset, offset);
+      assert.ok(page.rows.length > 0 && page.rows.length <= 5);
+      assert.equal(page.next_offset, offset + 5 < page.total ? offset + 5 : null);
+      rows.push(...page.rows);
+      offset = page.next_offset;
+    }
+    assert.deepEqual(rows, full.exports);
+
+    const detail = data<{ rows: typeof full.panels; next_offset: number | null }>(await coverage({ section: 'panels', row_id: 'appearance' }));
+    assert.deepEqual(detail.rows, full.panels.filter(row => row.id === 'appearance'));
+    assert.equal(detail.next_offset, null);
+    const boundaries = data<{ rows: typeof full.human_only }>(await coverage({ section: 'human_only', limit: 5 }));
+    assert.deepEqual(boundaries.rows, full.human_only);
+    for (const args of [{ limit: 1 }, { section: 'exports', limit: 6 }, { section: 'panels', row_id: 'ion' }, { section: 'nope' }]) {
+      assert.equal((await coverage(args)).errorCode, 'INVALID_INPUT');
+    }
   });
   it('refuses overflow coordinates and incomplete closed perimeters', async () => {
     assert.equal((await execute('measurements.distance', { start: [0, 0, 0], end: [1e308, 0, 0] })).isError, true);

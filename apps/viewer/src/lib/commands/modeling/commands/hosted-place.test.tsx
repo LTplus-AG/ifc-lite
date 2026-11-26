@@ -18,7 +18,7 @@ import { act } from 'react';
 import { IfcParser } from '@ifc-lite/parser';
 import { placedBodyExtent, resolveHostAnchor, readHostedFill } from '@ifc-lite/create';
 import { useViewerStore } from '@/store';
-import { cleanup, press, render, type } from '@/test/render.js';
+import { cleanup, press, render, settle, type } from '@/test/render.js';
 import { MODEL_ID, STOREY, TILTED_SLAB, seedModelingSession } from '@/test/modeling-session-fixture';
 import { CommandFieldsBar } from '@/components/viewer/tools/command/CommandFieldsBar';
 import { editedModelBytes } from '@/lib/export/edited-model-bytes';
@@ -317,7 +317,7 @@ describe('opening.place slab shaft (#9296)', () => {
     assert.ok(cut.min[2] < body.min[2] && cut.max[2] > body.max[2], 'still through the thickened slab');
     assert.equal(readHostedFill(live().dataStore, opening, live().view)?.hostId, id);
   });
-  it('draws a readable shaft outline through the command scene and follows typed dimensions (#9296)', () => {
+  it('draws a readable shaft outline through the command scene and follows typed dimensions (#9296)', async () => {
     const id = slab();
     const s = useViewerStore.getState();
     // An orthographic top camera: 100 px per metre in the render X/-Z plane.
@@ -325,6 +325,7 @@ describe('opening.place slab shaft (#9296)', () => {
       projectToScreen: p => ({ x: p.x * 100, y: -p.z * 100 }) }, selectedEntityId: id });
     s.startCommand('opening.place');
     act(() => commandPointerMove(at(1,1)));
+    await settle();
     const { container, flush } = renderScene(<CommandScene />);
     flush();
     const dimensions = () => {

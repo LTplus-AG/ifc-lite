@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import type { Renderer } from '@ifc-lite/renderer';
 import type { MeshData } from '@ifc-lite/geometry';
 import { adoptedSceneOutlivesEmptyGeometry, sceneSnapshotKey, setPendingSceneSnapshot, takeSceneSnapshotGeometry, takeSnapshotModelArrival, withdrawPendingSceneSnapshot } from './sceneSnapshotOwnership.js';
+import { currentSceneGeometry, noteSceneGeometry } from '@/lib/released-mesh-provenance';
 
 const bounds = { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } };
 const point = { x: 1, y: 2, z: 3 };
@@ -28,15 +29,14 @@ const refs = () => ({
 });
 
 describe('sceneSnapshotKey', () => {
-  const visibility = { spaces: false, openings: false };
-
-  it('changes with the policy, the view mode and any type filter, and is stable otherwise', () => {
-    const key = sceneSnapshotKey('p', 'model', visibility);
-    assert.equal(sceneSnapshotKey('p', 'model', { ...visibility }), key);
-    assert.notEqual(sceneSnapshotKey('other', 'model', visibility), key);
-    assert.notEqual(sceneSnapshotKey('p', 'model', visibility, 'physical'), key, '#9923 mode belongs to the saved snapshot key');
-    assert.notEqual(sceneSnapshotKey('p', 'types', visibility), key);
-    assert.notEqual(sceneSnapshotKey('p', 'model', { ...visibility, spaces: true }), key);
+  it('changes with the policy only, and never matches an entry a type filter chose pieces for (#10264)', () => {
+    assert.equal(sceneSnapshotKey('p'), sceneSnapshotKey('p'));
+    assert.notEqual(sceneSnapshotKey('other'), sceneSnapshotKey('p'));
+    // The key format written before every mesh was uploaded: policy~viewMode~typeVisibility[~mode].
+    const filtered = `p~model~${JSON.stringify({ spaces: false, openings: false })}`;
+    for (const old of [filtered, `${filtered}~physical`, `p~types~${JSON.stringify({ spaces: true })}`]) {
+      assert.notEqual(sceneSnapshotKey('p'), old, old);
+    }
   });
 });
 
@@ -60,6 +60,22 @@ describe('takeSceneSnapshotGeometry', () => {
     const again = refs();
     assert.equal(take(geometry, 0, again), false, 'a rebuild uploads as usual');
     assert.equal(again.cameraFittedRef.current, false);
+  });
+
+  it('#10937 a committed hydration records exactly what the scene now draws (the route step never sees it)', () => {
+    const geometry = [mesh(), mesh()];
+    noteSceneGeometry([]);
+    setPendingSceneSnapshot(adoption);
+    assert.equal(take(geometry), true);
+    assert.equal(currentSceneGeometry(), geometry, 'a released device recovery rebuilds this list, not an empty one');
+  });
+
+  it('a refused hydration records nothing: the ordinary upload that follows does', () => {
+    hydrates = false;
+    noteSceneGeometry(undefined);
+    setPendingSceneSnapshot(adoption);
+    assert.equal(take([mesh()]), false);
+    assert.equal(currentSceneGeometry(), undefined);
   });
 
   it('falls through to the ordinary path when the scene refuses the geometry', () => {

@@ -16,16 +16,17 @@
 
 import { useViewerStore } from '@/store';
 
-type RuntimeModule = typeof import('./runtime');
+type RuntimeModules = [typeof import('./runtime'), typeof import('./draft-viewer')];
 
-let loading: Promise<RuntimeModule> | null = null;
+let loading: Promise<RuntimeModules> | null = null;
 
 /** Load the runtime once per page and install it in the store (again, if the store lost it). */
 export function loadIdsStudioRuntime(): Promise<void> {
-  const current = (loading ??= import('./runtime'));
+  const current = (loading ??= Promise.all([import('./runtime'), import('./draft-viewer')]));
   current.catch(() => { if (loading === current) loading = null; });
-  return current.then(({ idsStudioRuntime }) => {
+  return current.then(([{ idsStudioRuntime }, { startIdsDraftAutosave }]) => {
     const store = useViewerStore.getState();
     if (store.idsStudioRuntime !== idsStudioRuntime) store.idsStudioSetRuntime(idsStudioRuntime);
+    startIdsDraftAutosave();
   });
 }

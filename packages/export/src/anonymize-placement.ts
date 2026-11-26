@@ -37,6 +37,7 @@
  * would silently drift the day an entity's attribute layout changes.
  */
 
+import { withoutComments } from './step-comment-skip.js';
 import { walkPlacementChain } from '@ifc-lite/data';
 import type { IfcSourceBytes } from '@ifc-lite/parser';
 import type { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
@@ -374,8 +375,7 @@ function parseRef(token: string | undefined): number | null {
  *  through as the `"#42"` string `addEntity` recognizes. */
 function verbatimAttr(token: string | undefined): IfcAttributeValue {
   if (!token) return null;
-  const trimmed = token.trim();
-  return trimmed === '$' || trimmed === '' ? null : trimmed;
+  return withoutComments(token) === '$' ? null : token.trim() || null;
 }
 
 /** Parse an `IfcCartesianPoint.Coordinates` token — a parenthesized,

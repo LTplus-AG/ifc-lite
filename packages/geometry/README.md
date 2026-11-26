@@ -158,6 +158,50 @@ are byte-identical. If you pass `wasmUrls.wasm`, point it at the core binary as 
 - **Worker support:** files > 50 MB process off-main-thread automatically
 - **Native (Tauri):** `preferNative: true` enables the native Rust pipeline when running under a Tauri host — an extension point for third parties building their own desktop app (`@tauri-apps/api` is an optional dep; web builds never load it). See the [Building for Desktop](https://ifclite.dev/docs/guide/desktop/) guide.
 
+## Compact GPU records (opt-in)
+
+Await `loadCompactGeometry()` from `@ifc-lite/geometry/compact` (and, with `@ifc-lite/renderer`,
+its `loadCompactPages()`, or its scenes decode the records instead of uploading them), then set
+`compactCellSize`
+(metres, `COMPACT_CELL_METRES`) on a `GeometryProcessor` or pass it in `ProcessParallelOptions`,
+and the worker pool encodes eligible flat meshes as final quantized GPU vertices instead of f32
+arrays. The record decoder is a chunk of its own that only `loadCompactGeometry()` fetches; without
+it the option has no effect. Such a mesh arrives with
+`MeshData.compact` set. A renderer that understands the records uploads them as they are
+(`@ifc-lite/renderer` does). Everything else can keep reading `positions`, `normals` and `indices`:
+they decode from the records on first read, flat-shaded and at most half a lattice step (0.49 mm
+by default) from the source on each axis. Off by default; meshes the encoder cannot take, and
+every path other than the worker pool, deliver f32 meshes as before.
+
+`@ifc-lite/geometry/compact` also has the small helpers for such meshes (`meshTriangleCount`,
+`copyMeshShell`, `materializeCompactMesh`, `compactBounds`). Importing it loads neither the wasm
+engine nor the decoder.
+
+## Out-of-core ingest (opt-in)
+
+By default every geometry worker of the pool holds a copy of the source file and its own entity
+index. With `?perf.ooc=1` in the page URL (or `globalThis.__IFC_LITE_OOC = 1` before a load), a
+worker holds neither: it keeps a bounded arena of source records and, before each batch, reads the
+byte ranges that batch's reference closure needs from the shared source buffer, resolved against
+one shared index. A worker's source memory is then an arena that is dropped back to its start
+once a batch leaves it over budget (`?perf.oocBudgetMb`, 192 MiB by default), whatever the file
+size; one batch whose own closure is larger than the budget still grows it past that. Meshes and instancing shards are byte-identical to the default
+path.
+
+It needs `SharedArrayBuffer` (a cross-origin isolated page), as the worker pool does. With it on,
+the pre-pass runs on one worker instead of sharded across the pool, so the first geometry of a
+mid-size file arrives later. A load stays on the default path when the arena could not give the
+same output: with `mergeLayers`, with the global instance plan, and for a file that contains
+annotation fill areas or reuses an entity id. A batch whose records cannot all be found after four retries is
+refused, and the pool's usual recovery splits it. The main thread, the parser and the pre-pass
+still hold the file: this lowers the pool's share of a load's memory, not the 2 GiB source limit.
+
+A host that rolls the flag out itself (the viewer's `perf-ooc` ramp) sets `GeometryProcessor.outOfCore = true`
+(`ProcessParallelOptions.outOfCore`) for the loads it chooses; left unset, the pool reads the global and the URL
+param. `onOutOfCoreDecision(ran)` then hears once per pool load whether it meshed out of core: `false` at the start
+of a load that does not, or the pre-pass scan's outcome (sparse sources, or the whole-file index for a file the
+arena cannot serve).
+
 ## API
 
 See the [Geometry Guide](https://ifclite.dev/docs/guide/geometry/) and [API Reference](https://ifclite.dev/docs/api/typescript/#ifc-litegeometry).

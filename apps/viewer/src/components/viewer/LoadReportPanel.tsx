@@ -22,6 +22,7 @@ import { IconButton } from '@/components/ui/icon-button';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import type { TranslationKey } from '@/i18n';
+import { focusLoadReportEntity } from '@/lib/load-report-focus';
 import { buildLoadReports, downloadLoadReportJSON, hasOmittedTypeRecords, type LoadReportAffectedEntity, type LoadReportSummary } from '@/lib/loadReport';
 import { cn } from '@/lib/utils';
 import { AssistantAction } from './assistant/AssistantAction';
@@ -140,27 +141,12 @@ function ModelReportCard({
 export function LoadReportPanel({ onClose }: LoadReportPanelProps) {
   const { t } = useTranslation();
   const models = useViewerStore((s) => s.models);
-  const setSelectedEntityId = useViewerStore((s) => s.setSelectedEntityId);
-  const setSelectedEntity = useViewerStore((s) => s.setSelectedEntity);
-  const setSelectedEntityIds = useViewerStore((s) => s.setSelectedEntityIds);
-  const cameraCallbacks = useViewerStore((s) => s.cameraCallbacks);
 
   const reports = useMemo(() => buildLoadReports(models), [models]);
 
-  const handleSelectEntity = useCallback(
-    (modelId: string, entity: LoadReportAffectedEntity) => {
-      // Two-channel selection (see AGENTS.md): the global id drives 3D
-      // highlight/pick, the {modelId, expressId} ref drives the properties
-      // panel — both must be set or highlighting silently breaks.
-      setSelectedEntityIds([]);
-      setSelectedEntityId(entity.globalId);
-      setSelectedEntity({ modelId, expressId: entity.productId });
-      if (cameraCallbacks.frameSelection) {
-        window.setTimeout(() => cameraCallbacks.frameSelection?.(), 50);
-      }
-    },
-    [setSelectedEntityIds, setSelectedEntityId, setSelectedEntity, cameraCallbacks],
-  );
+  const handleSelectEntity = useCallback((modelId: string, entity: LoadReportAffectedEntity) => {
+    focusLoadReportEntity(modelId, entity.productId);
+  }, []);
 
   const handleExport = useCallback(() => downloadLoadReportJSON(reports), [reports]);
 

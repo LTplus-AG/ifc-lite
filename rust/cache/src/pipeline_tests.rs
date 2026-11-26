@@ -3,6 +3,20 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use super::*;
+use crate::buf::Buf;
+use crate::format::Limits;
+use crate::geometry::{coordinate_info, SectionWriter};
+
+/// The retained pass's meshes in emit order, and its frame metadata.
+fn run(source: &[u8]) -> (Vec<CacheMesh>, Pass) {
+    let mut meshes = Vec::new();
+    let pass = run_retained(source, |mesh| {
+        meshes.push(mesh);
+        Ok(())
+    })
+    .unwrap();
+    (meshes, pass)
+}
 
 /// `IfcSite` at (1000000, 2000000, 0), its x axis along world +Y (90° about
 /// Z), holding one tetrahedron with local corners (0,0,0), (10,0,0), (0,1,0)
@@ -19,11 +33,10 @@ fn reader_world(mesh: &CacheMesh, at: usize, rtc: [f64; 3]) -> [f64; 3] {
 
 #[test]
 fn a_rotated_site_puts_each_local_corner_at_its_world_point() {
-    let geometry = run(ROTATED_SITE);
-    let rtc = geometry.coordinate_info.wasm_rtc_offset.expect("the site tier re-bases");
+    let (meshes, pass) = run(ROTATED_SITE);
+    let rtc = pass.coordinate_info.wasm_rtc_offset.expect("the site tier re-bases");
     assert_eq!(rtc, [1_000_000.0, 2_000_000.0, 0.0]);
-    let mut world: Vec<[f64; 3]> = geometry
-        .meshes
+    let mut world: Vec<[f64; 3]> = meshes
         .iter()
         .flat_map(|mesh| (0..mesh.positions.len() / 3).map(move |at| reader_world(mesh, at, rtc)))
         .collect();
@@ -40,16 +53,29 @@ fn a_rotated_site_puts_each_local_corner_at_its_world_point() {
             [1_000_000.0, 2_000_010.0, 0.0],
         ]
     );
-    let info = &geometry.coordinate_info;
-    assert_eq!(info.original_bounds, [[-1.0, 0.0, -10.0], [0.0, 3.0, 0.0]], "bounds follow the restored vertices");
-    assert_eq!(info.shifted_bounds, info.original_bounds);
+    // Bounds follow the restored vertices: the section writer that sees the
+    // meshes writes exactly this CoordinateInfo into the geometry head.
+    let mut expected = pass.coordinate_info.clone();
+    expected.original_bounds = [[-1.0, 0.0, -10.0], [0.0, 3.0, 0.0]];
+    expected.shifted_bounds = expected.original_bounds;
+    let mut expected_bytes = Buf::new();
+    coordinate_info::write(&mut expected_bytes, &expected);
+    let expected_bytes = expected_bytes.into_vec();
+    let mut writer = SectionWriter::new(false, 0, Limits::FORMAT);
+    let mut body = Vec::new();
+    for mesh in &meshes {
+        writer.push(mesh, &mut body).unwrap();
+    }
+    let head = writer.finish(pass.coordinate_info.clone(), &mut body).unwrap();
+    // headLength u32, then meshCount, totalVertices, totalTriangles u32 each.
+    assert_eq!(&head.bytes[16..16 + expected_bytes.len()], expected_bytes.as_slice(), "bounds follow the restored vertices");
 }
 
 #[test]
 fn a_rotated_site_turns_each_normal_with_its_face() {
-    let geometry = run(ROTATED_SITE);
+    let (meshes, _) = run(ROTATED_SITE);
     let mut faces = 0;
-    for mesh in &geometry.meshes {
+    for mesh in &meshes {
         let at = |i: u32| {
             let i = i as usize * 3;
             [0, 1, 2].map(|a| f64::from(mesh.positions[i + a]))
@@ -89,6 +115,13 @@ fn mesh() -> MeshData {
         .with_local_to_world(Some(row_major))
 }
 
+/// `to_cache_mesh` over [`mesh`], as both passes call it.
+fn convert(rotation: Option<SiteRotation>) -> CacheMesh {
+    let source = mesh();
+    let arrays = (source.positions.clone(), source.normals.clone(), source.indices.clone());
+    to_cache_mesh(&source, arrays, None, None, rotation)
+}
+
 #[test]
 fn only_a_frame_that_removed_a_rotation_restores_one() {
     assert!(SiteRotation::removed_by(site(placement([0.0, 1.0]))).is_some());
@@ -100,8 +133,8 @@ fn only_a_frame_that_removed_a_rotation_restores_one() {
 #[test]
 fn the_restore_rotates_points_and_directions_and_leaves_captured_transforms() {
     let frame = site(placement([0.0, 1.0]));
-    let restored = to_cache_mesh(mesh(), None, None, SiteRotation::removed_by(frame));
-    let unrotated = to_cache_mesh(mesh(), None, None, None);
+    let restored = convert(SiteRotation::removed_by(frame));
+    let unrotated = convert(None);
     // R · (x, y, z) = (-y, x, z), then Y-up (x, z, -y).
     assert_eq!(restored.positions, vec![0.0, 0.0, -10.0, 3.5, 1.0, -0.25]);
     assert_eq!(restored.normals, vec![-1.0, 0.0, 0.0, 0.0, 0.0, -1.0]);

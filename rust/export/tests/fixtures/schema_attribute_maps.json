@@ -1,0 +1,374 @@
+{
+ "_comment": "Shared attribute maps for schema conversion of types whose attributes IFC4 INSERTED, REORDERED or RETYPED mid-list relative to IFC2X3 (#10763), so neither list is a name prefix of the other and a trim or pad would shift values. A target slot takes the source value of the same-named attribute or of the `renamed` pair ([IFC2X3 name, IFC4 name]); every other target slot is $ and every other source value is reported dropped. `retyped`: same name in both lists, but a value of one type is invalid in the other, so it is not carried. `upOnly`: same name, IFC4 widened the reference type, so an upgrade carries it and a downgrade drops it (only where IFC2X3 does not require the slot). `setOfOne`: an IFC2X3 single reference that IFC4 made a SET; an upgrade wraps it, a downgrade keeps the first member and reports the rest dropped. IFC4X3 declares the same lists as IFC4 for every type here. `why` quotes the IFC4 change notes (IFC4.3 documentation, which carries them). Pinned in both twins: rust/export/src/schema_attr_maps.rs and packages/export/src/schema-converter-attr-maps.ts each compare their table with this file; their conversions are pinned by schema_upconvert_sweep.json rows. DO NOT hand-edit to make a test pass.",
+ "maps": [
+  {
+   "ifc2x3": "IFCAPPROVAL",
+   "ifc4": "IFCAPPROVAL",
+   "renamed": [["ApprovalStatus", "Status"], ["ApprovalLevel", "Level"], ["ApprovalQualifier", "Qualifier"]],
+   "retyped": [],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "TimeOfApproval: 'Attribute data type changed to IfcDateTime using ISO 8601 representation, renamed from ApprovalDateTime and made OPTIONAL' (an entity reference is not a string, so it is dropped). RequestingApproval and GivingApproval are new, 'replacing IfcApprovalActorRelationship'"
+  },
+  {
+   "ifc2x3": "IFCAPPROVALRELATIONSHIP",
+   "ifc4": "IFCAPPROVALRELATIONSHIP",
+   "renamed": [],
+   "retyped": [],
+   "upOnly": [],
+   "setOfOne": ["RelatedApproval", "RelatedApprovals"],
+   "why": "'Subtyped from IfcResourceLevelRelationship, order of attributes changed.' RelatedApprovals: 'The cardinality of this attribute has been changed to SET.'"
+  },
+  {
+   "ifc2x3": "IFCBLOBTEXTURE",
+   "ifc4": "IFCBLOBTEXTURE",
+   "renamed": [],
+   "retyped": ["RasterCode"],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "'Data type of RasterCode has been corrected to BINARY' (IFC2X3 declared BOOLEAN). IfcSurfaceTexture: 'Attribute TextureType replaces by Mode, attributes Parameter and MapsTo added'"
+  },
+  {
+   "ifc2x3": "IFCIMAGETEXTURE",
+   "ifc4": "IFCIMAGETEXTURE",
+   "renamed": [["UrlReference", "URLReference"]],
+   "retyped": [],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "IfcSurfaceTexture: 'Attribute TextureType replaces by Mode, attributes Parameter and MapsTo added'. URLReference is the IFC2X3 UrlReference (IfcIdentifier to IfcURIReference, both strings)"
+  },
+  {
+   "ifc2x3": "IFCPIXELTEXTURE",
+   "ifc4": "IFCPIXELTEXTURE",
+   "renamed": [],
+   "retyped": [],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "IfcSurfaceTexture: 'Attribute TextureType replaces by Mode, attributes Parameter and MapsTo added'"
+  },
+  {
+   "ifc2x3": "IFCTEXTURECOORDINATEGENERATOR",
+   "ifc4": "IFCTEXTURECOORDINATEGENERATOR",
+   "renamed": [],
+   "retyped": ["Parameter"],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "Parameter: 'Data type restricted to REAL' (IFC2X3: LIST OF IfcSimpleValue). Maps is new and required; IFC2X3 linked coordinates from IfcAnnotationSurface, which IFC4 deleted, so an upgrade leaves it $ and counts it"
+  },
+  {
+   "ifc2x3": "IFCTEXTUREMAP",
+   "ifc4": "IFCTEXTUREMAP",
+   "renamed": [],
+   "retyped": [],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "'The attribute TextureMap is replaced by Vertices, and the attribute AppliedTo is added.' Nothing carries: IFC2X3 TextureMaps lists IfcVertexBasedTextureMap, which IFC4 deleted"
+  },
+  {
+   "ifc2x3": "IFCCONSTRUCTIONEQUIPMENTRESOURCE",
+   "ifc4": "IFCCONSTRUCTIONEQUIPMENTRESOURCE",
+   "renamed": [["ResourceIdentifier", "Identification"], ["ResourceGroup", "LongDescription"]],
+   "retyped": ["BaseQuantity"],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "IfcConstructionResource: 'promote ResourceIdentifer and ResourceGroup (renamed to LongDescription) to supertype IfcResource'. BaseQuantity is an IFC4 'New attribute' (IfcPhysicalQuantity, IFC2X3 IfcMeasureWithUnit)"
+  },
+  {
+   "ifc2x3": "IFCCONSTRUCTIONMATERIALRESOURCE",
+   "ifc4": "IFCCONSTRUCTIONMATERIALRESOURCE",
+   "renamed": [["ResourceIdentifier", "Identification"], ["ResourceGroup", "LongDescription"]],
+   "retyped": ["BaseQuantity"],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "As IfcConstructionEquipmentResource. 'The attribute Suppliers has been deleted ... The attribute UsageRatio has been deleted'"
+  },
+  {
+   "ifc2x3": "IFCCONSTRUCTIONPRODUCTRESOURCE",
+   "ifc4": "IFCCONSTRUCTIONPRODUCTRESOURCE",
+   "renamed": [["ResourceIdentifier", "Identification"], ["ResourceGroup", "LongDescription"]],
+   "retyped": ["BaseQuantity"],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "As IfcConstructionEquipmentResource"
+  },
+  {
+   "ifc2x3": "IFCCREWRESOURCE",
+   "ifc4": "IFCCREWRESOURCE",
+   "renamed": [["ResourceIdentifier", "Identification"], ["ResourceGroup", "LongDescription"]],
+   "retyped": ["BaseQuantity"],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "As IfcConstructionEquipmentResource"
+  },
+  {
+   "ifc2x3": "IFCLABORRESOURCE",
+   "ifc4": "IFCLABORRESOURCE",
+   "renamed": [["ResourceIdentifier", "Identification"], ["ResourceGroup", "LongDescription"]],
+   "retyped": ["BaseQuantity"],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "As IfcConstructionEquipmentResource. 'The attribute Skillset has been deleted; use LongDescription', which already holds ResourceGroup, so SkillSet is dropped"
+  },
+  {
+   "ifc2x3": "IFCSUBCONTRACTRESOURCE",
+   "ifc4": "IFCSUBCONTRACTRESOURCE",
+   "renamed": [["ResourceIdentifier", "Identification"], ["ResourceGroup", "LongDescription"]],
+   "retyped": ["BaseQuantity"],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "As IfcConstructionEquipmentResource. 'The attribute SubContractor has been deleted ... The attribute JobDescription has been deleted; use LongDescription', which already holds ResourceGroup"
+  },
+  {
+   "ifc2x3": "IFCCOSTSCHEDULE",
+   "ifc4": "IFCCOSTSCHEDULE",
+   "renamed": [["ID", "Identification"]],
+   "retyped": ["SubmittedOn", "UpdateDate"],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "'Attribute ID renamed to Identification and promoted to supertype IfcControl, PredefinedType made optional, attributes PreparedBy, SubmittedBy, TargetUsers removed.' SubmittedOn and UpdateDate: 'Type changed from IfcDateTimeSelect'"
+  },
+  {
+   "ifc2x3": "IFCCURRENCYRELATIONSHIP",
+   "ifc4": "IFCCURRENCYRELATIONSHIP",
+   "renamed": [],
+   "retyped": ["RateDateTime"],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "'Subtyped from IfcResourceLevelRelationship, attribute order changed.' RateDateTime: 'Type changed from IfcDateTimeSelect. Attribute made optional.'"
+  },
+  {
+   "ifc2x3": "IFCDOCUMENTINFORMATIONRELATIONSHIP",
+   "ifc4": "IFCDOCUMENTINFORMATIONRELATIONSHIP",
+   "renamed": [],
+   "retyped": [],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "'Subtyped from IfcResourceLevelRelationship, order of attributes changed.'"
+  },
+  {
+   "ifc2x3": "IFCLIBRARYINFORMATION",
+   "ifc4": "IFCLIBRARYINFORMATION",
+   "renamed": [],
+   "retyped": ["VersionDate"],
+   "upOnly": ["Publisher"],
+   "setOfOne": null,
+   "why": "'Location and Description attributes added; Publisher and VersionDate data type changed; HasLibraryReferences inverse attribute added (previous LibraryReference changed to inverse).' Publisher went from IfcOrganization to IfcActorSelect, which an optional IFC2X3 slot cannot hold for a person"
+  },
+  {
+   "ifc2x3": "IFCEXTENDEDMATERIALPROPERTIES",
+   "ifc4": "IFCMATERIALPROPERTIES",
+   "renamed": [["ExtendedProperties", "Properties"]],
+   "retyped": [],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "IFC2X3 IfcMaterialProperties is abstract. IFC4: 'Entity made non-abstract. The subtypes ... IfcExtendedMaterialProperties have been deleted, use IfcMaterialProperties instead.' An upgrade writes IfcMaterialProperties (#10777). A downgrade writes IfcExtendedMaterialProperties (#10911) and resolves its IfcMaterialDefinition to exactly one IfcMaterial. If the referent cannot be resolved, the converter omits the record and reports the loss"
+  },
+  {
+   "ifc2x3": "IFCGENERALPROFILEPROPERTIES",
+   "ifc4": "IFCPROFILEPROPERTIES",
+   "renamed": [],
+   "retyped": [],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "IFC2X3 IfcProfileProperties is abstract. IFC4: 'Entity made non-abstract. Subtypes IfcGeneralProfileProperties, IfcStructuralProfileProperties, and IfcStructuralSteelProfileProperties deleted. Attribute ProfileName deleted ... Attribute ProfileDefinition made mandatory.' A downgrade writes IfcGeneralProfileProperties, an upgrade IfcProfileProperties (#10777)"
+  },
+  {
+   "ifc2x3": "IFCMECHANICALMATERIALPROPERTIES",
+   "ifc4": "IFCMATERIALPROPERTIES",
+   "renamed": [],
+   "retyped": [],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "IfcMaterialProperties: 'The subtypes IfcMechanicalMaterialProperties, IfcThermalMaterialProperties, IfcHygroscopicMaterialProperties, IfcGeneralMaterialProperties, IfcOpticalMaterialProperties, IfcWaterProperties, IfcFuelProperties, IfcProductsOfCombustionProperties, IfcExtendedMaterialProperties have been deleted, use IfcMaterialProperties instead.' An upgrade writes IfcMaterialProperties. Only Material carries: IFC4 holds the measures as IfcProperty records (#10797), so each is dropped, and the required Properties stays $ and is counted"
+  },
+  {
+   "ifc2x3": "IFCMECHANICALCONCRETEMATERIALPROPERTIES",
+   "ifc4": "IFCMATERIALPROPERTIES",
+   "renamed": [],
+   "retyped": [],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "As IfcMechanicalMaterialProperties"
+  },
+  {
+   "ifc2x3": "IFCMECHANICALSTEELMATERIALPROPERTIES",
+   "ifc4": "IFCMATERIALPROPERTIES",
+   "renamed": [],
+   "retyped": [],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "As IfcMechanicalMaterialProperties"
+  },
+  {
+   "ifc2x3": "IFCTHERMALMATERIALPROPERTIES",
+   "ifc4": "IFCMATERIALPROPERTIES",
+   "renamed": [],
+   "retyped": [],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "As IfcMechanicalMaterialProperties"
+  },
+  {
+   "ifc2x3": "IFCHYGROSCOPICMATERIALPROPERTIES",
+   "ifc4": "IFCMATERIALPROPERTIES",
+   "renamed": [],
+   "retyped": [],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "As IfcMechanicalMaterialProperties"
+  },
+  {
+   "ifc2x3": "IFCGENERALMATERIALPROPERTIES",
+   "ifc4": "IFCMATERIALPROPERTIES",
+   "renamed": [],
+   "retyped": [],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "As IfcMechanicalMaterialProperties"
+  },
+  {
+   "ifc2x3": "IFCOPTICALMATERIALPROPERTIES",
+   "ifc4": "IFCMATERIALPROPERTIES",
+   "renamed": [],
+   "retyped": [],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "As IfcMechanicalMaterialProperties"
+  },
+  {
+   "ifc2x3": "IFCWATERPROPERTIES",
+   "ifc4": "IFCMATERIALPROPERTIES",
+   "renamed": [],
+   "retyped": [],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "As IfcMechanicalMaterialProperties"
+  },
+  {
+   "ifc2x3": "IFCFUELPROPERTIES",
+   "ifc4": "IFCMATERIALPROPERTIES",
+   "renamed": [],
+   "retyped": [],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "As IfcMechanicalMaterialProperties"
+  },
+  {
+   "ifc2x3": "IFCPRODUCTSOFCOMBUSTIONPROPERTIES",
+   "ifc4": "IFCMATERIALPROPERTIES",
+   "renamed": [],
+   "retyped": [],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "As IfcMechanicalMaterialProperties"
+  },
+  {
+   "ifc2x3": "IFCSTRUCTURALPROFILEPROPERTIES",
+   "ifc4": "IFCPROFILEPROPERTIES",
+   "renamed": [],
+   "retyped": [],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "IfcProfileProperties: 'Subtypes IfcGeneralProfileProperties, IfcStructuralProfileProperties, and IfcStructuralSteelProfileProperties deleted. Attribute ProfileName deleted, use ProfileDefinition.ProfileName instead.' An upgrade writes IfcProfileProperties. Only ProfileDefinition carries: the measures are dropped (#10797), and the required Properties stays $ and is counted"
+  },
+  {
+   "ifc2x3": "IFCSTRUCTURALSTEELPROFILEPROPERTIES",
+   "ifc4": "IFCPROFILEPROPERTIES",
+   "renamed": [],
+   "retyped": [],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "As IfcStructuralProfileProperties"
+  },
+  {
+   "ifc2x3": "IFCRIBPLATEPROFILEPROPERTIES",
+   "ifc4": "IFCPROFILEPROPERTIES",
+   "renamed": [],
+   "retyped": [],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "IFC4 has no IfcRibPlateProfileProperties either; as IfcStructuralProfileProperties"
+  },
+  {
+   "ifc2x3": "IFCPERFORMANCEHISTORY",
+   "ifc4": "IFCPERFORMANCEHISTORY",
+   "renamed": [],
+   "retyped": [],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "Identification is inherited from IfcControl, inserted before LifeCyclePhase; PredefinedType: 'The attribute has been added at the end of the entity definition.'"
+  },
+  {
+   "ifc2x3": "IFCTASK",
+   "ifc4": "IFCTASK",
+   "renamed": [["TaskId", "Identification"]],
+   "retyped": [],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "'Attributes TaskTime and PredefinedType added.' Identification (IfcProcess) and LongDescription are inherited and inserted before Status; TaskId is the IFC2X3 identifier"
+  },
+  {
+   "ifc2x3": "IFCMOVE",
+   "ifc4": "IFCTASK",
+   "renamed": [["TaskId", "Identification"]],
+   "retyped": [],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "IFC4 deleted this IFC2X3 subtype of IfcTask; an upgrade writes it as IfcTask, TaskId as Identification (#10902). MoveFrom, MoveTo and PunchList have no IfcTask slot and are lost"
+  },
+  {
+   "ifc2x3": "IFCORDERACTION",
+   "ifc4": "IFCTASK",
+   "renamed": [["TaskId", "Identification"]],
+   "retyped": [],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "IFC4 deleted this IFC2X3 subtype of IfcTask; an upgrade writes it as IfcTask, TaskId as Identification (#10902). ActionID has no IfcTask slot and is lost"
+  },
+  {
+   "ifc2x3": "IFCPROPERTYDEPENDENCYRELATIONSHIP",
+   "ifc4": "IFCPROPERTYDEPENDENCYRELATIONSHIP",
+   "renamed": [],
+   "retyped": [],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "'Made subtype of IfcResourceLevelRelationship (attribute order changed).'"
+  },
+  {
+   "ifc2x3": "IFCELECTRICDISTRIBUTIONPOINT",
+   "ifc4": "IFCELECTRICDISTRIBUTIONBOARD",
+   "renamed": [["DistributionPointFunction", "PredefinedType"]],
+   "retyped": [],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "#10824. IFC4 replaced IfcElectricDistributionPoint with IfcElectricDistributionBoard (schema_convert::map_2x3_to_4, schema_mep back), its PredefinedType taking the place of DistributionPointFunction at the same index. IFC2X3 UserDefinedFunction has no IFC4 attribute; schema_userdefined_label carries it through ObjectType. Before this, the record kept all ten IFC2X3 attributes under the nine-attribute IFC4 type"
+  },
+  {
+   "ifc2x3": "IFCPROCEDURE",
+   "ifc4": "IFCPROCEDURE",
+   "renamed": [["ProcedureID", "Identification"], ["ProcedureType", "PredefinedType"]],
+   "retyped": [],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "#10807. 'ProcedureType renamed to PredefinedType and made optional (upward compatible).' ProcedureID is the IFC2X3 identifier, Identification its IfcProcess home. LongDescription is new. IFC2X3 UserDefinedProcedureType has no IFC4 slot of its own and is dropped"
+  },
+  {
+   "ifc2x3": "IFCOBJECTIVE",
+   "ifc4": "IFCOBJECTIVE",
+   "renamed": [],
+   "retyped": ["CreationTime"],
+   "upOnly": ["BenchmarkValues"],
+   "setOfOne": ["BenchmarkValues", "BenchmarkValues"],
+   "why": "#10807. 'Attribute BenchmarkValues modified to be a LIST of IfcConstraint, attribute ResultValues replaced with IfcLogicalOperatorEnum.' An IFC2X3 IfcMetric is an IfcConstraint, so an upgrade wraps it; a downgrade drops it, even a single member, as IFC2X3 holds only an IfcMetric there, the converter cannot see the member's type, and the slot is optional. CreationTime went from IfcDateTimeSelect to IfcDateTime"
+  },
+  {
+   "ifc2x3": "IFCDOCUMENTINFORMATION",
+   "ifc4": "IFCDOCUMENTINFORMATION",
+   "renamed": [["DocumentId", "Identification"]],
+   "retyped": ["CreationTime", "LastRevisionTime", "ElectronicFormat", "ValidFrom", "ValidUntil"],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "#10807. 'Attribute renamed from DocumentId.' Location: 'New attribute added at the place of the removed attribute DocumentReferences' (now the inverse HasDocumentReferences; the link is lost, #10846). CreationTime and LastRevisionTime: 'changed to IfcDateTime'; ValidFrom and ValidUntil: 'changed to IfcDate'; ElectronicFormat: 'changed from entity data type to IfcIdentifier' (the MIME type sits in the referenced IFC2X3 record, so it is dropped)"
+  }
+ ]
+}

@@ -12,7 +12,7 @@ let AxisConstructor: typeof import('@ifc-lite/wasm').AlignmentAxisJs;
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { configureMutationView } from '@/utils/configureMutationView';
 import { act } from 'react';
-import { render, cleanup, click, advance, press } from '@/test/render';
+import { render, cleanup, click, advance, press, settle, waitFor } from '@/test/render';
 import { ViewportHud } from '@/components/viewport-ui/hud/ViewportHud';
 import { ToolOverlays } from '@/components/viewer/ToolOverlays';
 import { SceneOverlayRoot } from '@/components/viewport-ui/scene';
@@ -105,13 +105,14 @@ test('real alignment binding survives unrelated updates, detaches on drag, reacq
     assert.equal(useViewerStore.getState().sectionPlane.enabled, false);
     const pendingUi = render(<><ViewportHud /><SectionToolbar /></>);
     act(() => useViewerStore.setState({ mutationViews: new Map([['owner', view]]), mutationVersion: state.mutationVersion + 1 }));
-    const edited = AxisWorker.instances.at(-1); assert.ok(edited);
     const distanceField = pendingUi.querySelector<HTMLElement>('[role="spinbutton"][aria-label="Horizontal distance from start"]');
     assert.ok(distanceField); assert.equal(distanceField.getAttribute('aria-disabled'), 'true');
     const queuedIntent = setAlignmentDistance(6);
     press(distanceField, 'ArrowUp');
-    assert.equal(edited.queued.length, 1, 'no station RPC can overtake the pending open');
     await queuedIntent;
+    await waitFor(() => AxisWorker.instances.at(-1) !== worker, 'edited alignment worker opened');
+    const edited = AxisWorker.instances.at(-1); assert.ok(edited);
+    assert.equal(edited.queued.length, 1, 'no station RPC can overtake the pending open');
     edited.flush();
     await new Promise<void>(resolve => setTimeout(resolve, 0)); edited.flush();
     await new Promise<void>(resolve => setTimeout(resolve, 0));
@@ -128,6 +129,7 @@ test('real alignment binding survives unrelated updates, detaches on drag, reacq
     assert.equal(edited.frees, 1); assert.equal(edited.terminations, 1);
     chooseAlignmentMode();
     const reacquire = bindAlignment('owner', 20);
+    await waitFor(() => AxisWorker.instances.at(-1) !== edited, 'alignment worker reopened');
     const next = AxisWorker.instances.at(-1); assert.ok(next); next.flush(); await reacquire;
     assert.equal(useViewerStore.getState().sectionPlane.custom?.alignment?.expressId, 20);
     useViewerStore.setState({ models: new Map([['other', other]]) });
@@ -155,11 +157,12 @@ test('real alignment binding survives unrelated updates, detaches on drag, reacq
 });
 
 
-test('mounted section toolbar enters alignment chooser and returns to ordinary cardinal cuts (#6603, #7545)', () => {
+test('mounted section toolbar enters alignment chooser and returns to ordinary cardinal cuts (#6603, #7545)', async () => {
   const state = useViewerStore.getState();
   const model = { ...fixtureModel('model', { entities: [{ expressId: 20, type: 'IfcAlignment', name: 'Road' }] }), geometryResult: geometry };
   useViewerStore.setState({ ...fixtureModels(model), sectionPlane: { ...getDefaultSectionPlane(), custom: undefined, box: undefined },
     inactiveSectionPlanes: [], sectionUndo: null, sectionPickMode: false });
+  await settle();
   try {
     const ui = render(<><ViewportHud /><SectionToolbar /></>);
     const chip = (name: string) => [...ui.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find(candidate => candidate.textContent?.trim() === name);
@@ -190,6 +193,7 @@ test('the Section tool arms nothing on open, so a chosen alignment mode is never
   useViewerStore.setState({ activeTool: 'section', sectionPlane: { ...getDefaultSectionPlane(), custom: undefined, box: undefined },
     inactiveSectionPlanes: [], sectionUndo: null, sectionPickMode: false });
   useViewerStore.getState().addSectionPlane('down');
+  await settle();
   try {
     const ui = render(<><ViewportHud /><SceneOverlayRoot><ToolOverlays /></SceneOverlayRoot></>);
     assert.equal(useViewerStore.getState().sectionPickMode, false, 'opening the tool arms no face pick');

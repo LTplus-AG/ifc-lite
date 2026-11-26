@@ -311,7 +311,7 @@ afterEach(async () => {
 
 type ViewerModels = ReturnType<typeof useViewerStore.getState>['models'];
 
-async function load(entry: CacheResult, isStale: () => boolean): Promise<CacheLoadResult> {
+async function load(entry: CacheResult, isStale: () => boolean, trace?: import('@ifc-lite/load-trace').LoadTrace): Promise<CacheLoadResult> {
   // useIfcLoader upserts the primary model (making it active) before it calls
   // loadFromCache, and appendGeometryBatch only files meshes under a known or
   // active model (#4922). Register it the same way here, or every chunk is dropped.
@@ -321,7 +321,7 @@ async function load(entry: CacheResult, isStale: () => boolean): Promise<CacheLo
   });
   let result!: CacheLoadResult;
   await act(async () => {
-    result = await loadFromCache!(entry, 'old.ifc', 'model-old', undefined, undefined, isStale);
+    result = await loadFromCache!(entry, 'old.ifc', 'model-old', undefined, undefined, isStale, trace);
   });
   return result;
 }
@@ -386,6 +386,7 @@ describe('loadFromCache — a superseded load writes nothing (#2301)', () => {
     let calls = 0;
     const result = await load(entry, () => ++calls >= 3);
     assert.ok(calls >= 3, 'the in-loop guard must have been reached');
+    assert.equal(result.superseded, true, 'the result says superseded, so the loader never reparses (r4655016554)');
     // Not one chunk may land: the flip happens while `readChunk(0)` is still in
     // flight, so the very first append is already superseded.
     assertStreamAbandoned(result, 0);
@@ -468,6 +469,61 @@ describe('loadFromCache — a superseded load writes nothing (#2301)', () => {
       'the entry guard must have let this load through (otherwise this proves nothing)',
     );
     assert.equal(after.ifcDataStore, null, 'the IFC data store must not be written');
+  });
+});
+
+describe('loadFromCache — a model discarded and re-added while its hit loads (#10888)', () => {
+  it('r4655425393 a discard inside the metadata decode (isStale false) publishes no metadata into the re-added model', async () => {
+    const { NOOP_LOAD_TRACE } = await import('@ifc-lite/load-trace');
+    // A metadata-only entry: no pre-stream re-check follows, so only the after-metadata check can refuse it.
+    const entry = await buildCacheEntry({ withGeometry: false });
+    useViewerStore.setState({ ifcDataStore: null } as never);
+    const trace = Object.create(NOOP_LOAD_TRACE) as typeof NOOP_LOAD_TRACE;
+    trace.span = ((name: string, fn: () => unknown, attrs?: Record<string, unknown>) => {
+      if (name === 'cache.decode') discardInstancedShards('model-old'); // the model is removed while its metadata decodes
+      return NOOP_LOAD_TRACE.span(name, fn as never, attrs as never);
+    }) as typeof NOOP_LOAD_TRACE.span;
+    const result = await load(entry, () => false, trace);
+    assert.equal(result.superseded, true);
+    assert.equal(useViewerStore.getState().ifcDataStore, null, 'no old metadata reaches the re-added model');
+  });
+
+  it('r4655425345 a discard while the hit\'s scene capture is armed (isStale false) never raises the streaming flag', async () => {
+    const entry = await buildCacheEntry();
+    useViewerStore.setState({ geometryResult: null, geometryStreamingActive: false });
+    let raised = false;
+    const unsubscribe = useViewerStore.subscribe((state) => { if (state.geometryStreamingActive) raised = true; });
+    let calls = 0;
+    try {
+      // Call 2 is the pre-stream guard; the queued discard runs during the capture await right after it.
+      const result = await load(entry, () => { if (++calls === 2) queueMicrotask(() => discardInstancedShards('model-old')); return false; });
+      assert.equal(result.superseded, true);
+    } finally { unsubscribe(); }
+    assert.equal(raised, false, 'the old hit never raises the replacement model\'s streaming flag');
+  });
+
+  it('r4655099399 a discard between geometry chunks (isStale false) stops the stream as superseded', async () => {
+    const entry = await buildCacheEntry();
+    useViewerStore.setState({ geometryResult: null, geometryStreamingActive: false });
+    let calls = 0;
+    // Call 3 is the in-loop guard for chunk 0 (see "supersession BETWEEN geometry chunks"): the discard lands there.
+    const result = await load(entry, () => { if (++calls === 3) discardInstancedShards('model-old'); return false; });
+    assert.ok(calls >= 3, 'the in-loop guard must have been reached');
+    assert.equal(result.superseded, true, 'superseded, never a served or fallen-back hit');
+    assert.equal(useViewerStore.getState().geometryStreamingActive, false);
+    assert.equal(queuedShards.filter((shard) => shard.modelId === 'model-old').length, 0, 'no old shard queued for the re-added model');
+  });
+
+  it('r4655084060 / r4655084108 a discard of the model\'s shard supply mid-load, isStale still false, streams and publishes nothing', async () => {
+    const entry = await buildCacheEntry();
+    useViewerStore.setState({ geometryResult: null, geometryStreamingActive: false });
+    let discarded = false;
+    // The model is removed and re-added under the same id while the hit reads (no newer load session).
+    const result = await load(entry, () => { if (!discarded) { discarded = true; discardInstancedShards('model-old'); } return false; });
+    assert.equal(result.success, false);
+    assert.equal(result.superseded, true, 'superseded: no fallback parse either');
+    assert.equal(useViewerStore.getState().geometryResult, null, 'the old entry never streams into the re-added model');
+    assert.equal(useViewerStore.getState().geometryStreamingActive, false);
   });
 });
 

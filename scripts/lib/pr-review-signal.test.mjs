@@ -130,8 +130,10 @@ test('the REAL test.yml derives the lane names the REAL rollup publishes', () =>
     // The silent-revert guard (#8377): git only, judged by the required aggregate.
     'Silent revert guard',
     'Build + WASM + Rust + Node',
-    // #3878: the two CSG accept gates are feature builds nothing else compiles.
-    'CSG accept gates (feature builds)',
+    // #3878: each CSG feature combination has its own check.
+    'CSG accept gates (manifold)',
+    'CSG accept gates (topology)',
+    'CSG accept gates (both)',
     // #6959: the perf-ratchet gate, judging the measurement `build` uploads.
     'Perf ratchet ceilings',
     // #6982: the callgrind measurement the perf-ratchet gate judges.
@@ -140,6 +142,9 @@ test('the REAL test.yml derives the lane names the REAL rollup publishes', () =>
     // Not in the aggregate's `needs`; with CI_PR_VIEWER_SELECT off it
     // publishes `skipped`, which is presence.
     'Viewer tests, advisory (selected for this PR)',
+    // The full-lane verdict of the `PR viewer selection` status
+    // (scripts/ci-viewer-select-status.mjs --shards); `skipped` on a fast-lane run.
+    'Viewer shards status (full lane)',
     // The release PR lean lane's own checks (scripts/ci-release-lane.mjs).
     // `skipped` on every other PR, and on the release PR unless the switch is on.
     'Release PR checks',
@@ -149,7 +154,7 @@ test('the REAL test.yml derives the lane names the REAL rollup publishes', () =>
   ]) {
     assert.ok(names.includes(observed), `derived set is missing the observed lane "${observed}"`);
   }
-  assert.equal(names.length, 55);
+  assert.equal(names.length, 58);
 });
 
 test('FAIL CLOSED: an empty workflow file is NO_WORKFLOW_TEXT, not an empty lane set', () => {

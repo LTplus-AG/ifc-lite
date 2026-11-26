@@ -11,10 +11,10 @@
  * 0, so the tests never depend on a fixed port.
  */
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, expectTypeOf, it } from 'vitest';
 import type { CallToolResult, JsonRpcMessage, JsonRpcResponse, ToolDefinition } from '../protocol/index.js';
 import { startBridgeServer, type RunningBridge } from './run.js';
-import { BridgeCloseCode, BRIDGE_STATUS_TOOL, parsePairingFragment } from './bridge-protocol.js';
+import { BridgeCloseCode, BRIDGE_STATUS_TOOL, parsePairingFragment, parseServerMessage, type BridgeServerMessage } from './bridge-protocol.js';
 import {
   MUTATING_TOOL,
   READ_TOOL,
@@ -90,6 +90,45 @@ async function pair(agent: Agent, extra: Partial<Parameters<typeof pairTab>[0]> 
   tabs.push(paired.tab);
   return paired;
 }
+
+it('#11029: the legacy parser and union require explicit opt-in for acknowledgement frames', () => {
+  expectTypeOf<BridgeServerMessage['type']>().toEqualTypeOf<'welcome' | 'call' | 'a2ui-surface' | 'cancel' | 'error'>();
+  const frame = JSON.stringify({ type: 'result-ack', sessionId: 'session', id: 'c1', accepted: true });
+  expectTypeOf<ReturnType<typeof parseServerMessage>>().toEqualTypeOf<import('./bridge-protocol.js').ParseResult<BridgeServerMessage>>();
+  expect(parseServerMessage(frame).ok).toBe(false);
+  expect(parseServerMessage(frame, { resultAck: true })).toEqual({
+    ok: true, value: { type: 'result-ack', sessionId: 'session', id: 'c1', accepted: true },
+  });
+});
+
+it('#11029: acknowledges only accepted intact results for the negotiated session', async () => {
+  const agent = await startAgent();
+  const { tab, welcome } = await pair(agent, { resultAck: true });
+  expect(welcome.resultAck).toBe(true);
+  const reply = (id: string, result: unknown) => tab.sendRaw({
+    type: 'result', sessionId: welcome.sessionId, id, resultAck: true, result,
+  });
+
+  const received = agent.call(READ_TOOL.name);
+  const first = await tab.next('call');
+  reply(first.id, textResult('retained token'));
+  expect((await received).content).toEqual([{ type: 'text', text: 'retained token' }]);
+  expect(await tab.next('result-ack')).toMatchObject({ id: first.id, accepted: true });
+
+  const cancelled = agent.call(READ_TOOL.name, {}, 987);
+  const second = await tab.next('call');
+  await agent.cancel(987);
+  await tab.next('cancel');
+  reply(second.id, textResult('expired token'));
+  expect(await tab.next('result-ack')).toMatchObject({ id: second.id, accepted: false });
+  expect((await cancelled).isError).toBe(true);
+
+  const malformed = agent.call(READ_TOOL.name);
+  const third = await tab.next('call');
+  reply(third.id, { content: 'invalid' });
+  expect(await tab.next('result-ack')).toMatchObject({ id: third.id, accepted: false });
+  expect((await malformed).isError).toBe(true);
+});
 
 describe('1. read-only pairing', () => {
   it('neither lists nor forwards a mutating tool', async () => {
@@ -420,4 +459,32 @@ describe('6. no connected viewer', () => {
     tab.close();
     await expect.poll(changed).toBe(2);
   });
+});
+
+it('delivers validated A2UI to a capable paired tab and waits for its result', async () => {
+  const agent = await startAgent({ readOnly: true });
+  const spec = { surfaceId: 'floor', sections: [{ kind: 'text', text: 'Floor results' }] };
+  expect(code(await agent.call('viewer_show_ui', { spec }))).toBe('VIEWER_NOT_CONNECTED');
+  await pair(agent);
+  expect(await agent.listTools()).not.toContain('viewer_show_ui');
+  const { tab, welcome } = await pair(agent, { code: agent.bridge.rotatePairingCode(), a2uiSurface: true });
+  expect(await agent.listTools()).toContain('viewer_show_ui');
+  expect(code(await agent.call('viewer_show_ui', { messages: [{ version: '1.0', createSurface: {} }] }))).toBe('INVALID_INPUT');
+  expect(tab.received.some(frame => frame.type === 'a2ui-surface')).toBe(false);
+  const delivery = agent.call('viewer_show_ui', { title: 'Results', spec });
+  const frame = await tab.next('a2ui-surface');
+  expect(frame).toMatchObject({
+    sessionId: welcome.sessionId,
+    surface: { title: 'Results', messages: [{ version: '1.0', createSurface: { surfaceId: 'floor' } }] },
+  });
+  // The title labels the viewer's panel only; the card does not repeat it.
+  expect(JSON.stringify(frame.surface.messages)).not.toContain('Results');
+  tab.reply(welcome.sessionId, frame.id, textResult('Delivered'));
+  await expect(delivery).resolves.toEqual(textResult('Delivered'));
+
+  const rawDelivery = agent.call('viewer_show_ui', { messages: frame.surface.messages });
+  const rawFrame = await tab.next('a2ui-surface');
+  expect(rawFrame.surface).toEqual({ messages: frame.surface.messages });
+  tab.reply(welcome.sessionId, rawFrame.id, textResult('Delivered'));
+  await expect(rawDelivery).resolves.toEqual(textResult('Delivered'));
 });

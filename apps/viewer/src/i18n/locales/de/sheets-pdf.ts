@@ -100,6 +100,8 @@ export const sheetsPdfDe = {
   "sheetsPdf.pdfView.pageReadoutFits": "Geschätzte Seite: {width} x {height} mm (passend für {paperName}). Die Größe der exportierten Seite entspricht der Zeichnung selbst und wird nie größer.",
   "sheetsPdf.pdfView.pageReadoutOversizeIso": "Geschätzte Seite: {width} x {height} mm (größer als jedes ISO-Blatt). Die Größe der exportierten Seite entspricht der Zeichnung selbst und wird nie größer.",
   "sheetsPdf.pdfView.pageReadoutUnavailable": "Die Seitengröße ist noch nicht verfügbar. Laden Sie ein Modell und wählen Sie einen gültigen Maßstab.",
+  "sheetsPdf.pdfView.releasedLoading": "Die Modellgeometrie wird aus dem lokalen Speicher gelesen…",
+  "sheetsPdf.pdfView.releasedUnavailable": "Die Modellgeometrie ist im lokalen Speicher noch nicht verfügbar. Der Export wird möglich, sobald sie es ist.",
   "sheetsPdf.pdfView.oversizeTitle": "Seite zu groß zum Drucken",
   "sheetsPdf.pdfView.oversizeDescription": "Diese Skala benötigt eine Seite von {width} x {height} mm. Eine PDF-Seite darf die Seitenlänge von {maxDimension} mm nicht überschreiten. Wählen Sie einen kleineren Maßstab.",
   "sheetsPdf.pdfView.perspectiveTitle": "Perspektivische Kamera",

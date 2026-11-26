@@ -14,8 +14,10 @@ import { afterEach, beforeEach, mock, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { act, useState } from 'react';
 import { useViewerStore } from '@/store';
-import { cleanup, render, type, waitFor } from '@/test/render.js';
+import { useLayerAutomationReview } from '@/lib/layers/automation-review';
+import { cleanup, click, render, type, waitFor } from '@/test/render.js';
 import { installHeldCapture, type HeldCapture } from '@/test/bcf-held-capture.js';
+import { deferred } from '@/test/race.js';
 import type { LayerRegistryClient, RegistryReviewSummary } from '@/lib/layers/registry-client';
 import { LayerReviewSection } from './LayerReviewSection.js';
 
@@ -23,22 +25,24 @@ const REVIEW: RegistryReviewSummary = {
   id: 'review-1', layerId: 'candidate-1', into: 'main', reviewers: [], status: 'open', openedAt: '2026-01-01T00:00:00.000Z', topics: [],
 };
 
+const WALL_A = '2O2Fr$t4X7Zf8NOew3FLOH';
+const WALL_B = '2O2Fr$t4X7Zf8NOew3FLOI';
 let capture: HeldCapture;
 let posts = 0;
 const client = {
   listReviews: async () => ({ reviews: [REVIEW] }),
-  postTopic: async () => { posts += 1; return {}; },
+  postTopic: async (..._args: Parameters<LayerRegistryClient['postTopic']>) => { posts += 1; return {}; },
 } as unknown as LayerRegistryClient;
 
 beforeEach(() => {
   posts = 0;
   capture = installHeldCapture();
-  useViewerStore.setState({ layerStackPathToId: new Map([['2O2Fr$t4X7Zf8NOew3FLOH', 7]]), selectedEntityId: 7, selectedEntityIds: new Set([7]) });
+  useViewerStore.setState({ layerStackPathToId: new Map([[WALL_A, 7], [WALL_B, 8]]), selectedEntityId: 7, selectedEntityIds: new Set([7]) });
 });
-afterEach(() => { cleanup(); useViewerStore.setState({ collabSelfToken: null }); capture.dispose(); mock.restoreAll(); document.body.innerHTML = ''; });
+afterEach(() => { cleanup(); useLayerAutomationReview.setState({ candidate: null }); useViewerStore.setState({ collabSelfToken: null }); capture.dispose(); mock.restoreAll(); document.body.innerHTML = ''; });
 
-async function readyToComment(): Promise<HTMLButtonElement> {
-  render(<LayerReviewSection client={client} candidateId="candidate-1" refName="main" />);
+async function readyToComment(registry = client): Promise<HTMLButtonElement> {
+  render(<LayerReviewSection client={registry} candidateId="candidate-1" refName="main" />);
   await waitFor(() => document.body.querySelector('input[aria-label="Review comment title"]') !== null, 'the review loaded');
   const title = document.body.querySelector<HTMLInputElement>('input[aria-label="Review comment title"]');
   assert.ok(title, 'title input');
@@ -47,6 +51,12 @@ async function readyToComment(): Promise<HTMLButtonElement> {
   assert.ok(comment, 'Comment button');
   assert.equal(comment.disabled, false);
   return comment;
+}
+/** A client whose postTopic stays in flight until `gate` resolves. */
+function gatedClient() {
+  const gate = deferred();
+  const gated = { ...client, postTopic: async () => { posts += 1; await gate.promise; return {}; } } as unknown as LayerRegistryClient;
+  return { gate, gated };
 }
 const settle = () => act(async () => { await new Promise(resolve => setTimeout(resolve, 100)); });
 
@@ -71,6 +81,129 @@ test('C-2 layer review: a capture that settles after the section unmounted posts
   capture.releaseAll();
   await settle();
   assert.equal(posts, 0);
+});
+
+test('#10591 layer review skips posting when selection changes during viewpoint capture', async () => {
+  const comment = await readyToComment();
+  click(comment);
+  await waitFor(() => capture.frames() === 1, 'the viewpoint is capturing');
+  act(() => useViewerStore.getState().setSelectedEntityIds([8]));
+  await capture.release(1);
+  await waitFor(() => posts > 0 || !comment.disabled, 'the capture has settled');
+  assert.equal(posts, 0);
+  assert.equal(document.querySelector<HTMLInputElement>('input[aria-label="Review comment title"]')?.value, 'Check this wall');
+});
+
+for (const event of ['editing the title', 'clearing the title', 'staging a non-comment action'] as const) {
+  test(`#10591 layer review follows the live selection after ${event}`, async () => {
+    const staged = { id: `staged-comment-${event}`, candidateId: REVIEW.layerId, refName: REVIEW.into,
+      action: 'comment' as const, entity: WALL_A, title: 'Staged note', description: '', withViewpoint: false };
+    useLayerAutomationReview.setState({ candidate: staged });
+    const post = mock.method(client, 'postTopic');
+    const ui = render(<LayerReviewSection client={client} candidateId={REVIEW.layerId} refName={REVIEW.into} />);
+    const title = () => ui.querySelector<HTMLInputElement>('input[aria-label="Review comment title"]');
+    await waitFor(() => title()?.value === staged.title, 'the staged comment is visible');
+    act(() => useViewerStore.getState().setSelectedEntityIds([8]));
+    if (event === 'staging a non-comment action') {
+      act(() => useLayerAutomationReview.setState({ candidate: { ...staged, id: 'staged-merge', action: 'merge' } }));
+      await waitFor(() => title()?.value === '', 'the withdrawn staged comment is cleared, not posted on the new selection');
+      type(title()!, 'Manual note');
+    } else if (event === 'clearing the title') {
+      type(title()!, '');
+      assert.ok(title()?.placeholder.includes(WALL_B), 'the empty title follows the live selection');
+      type(title()!, 'Manual note');
+    } else {
+      type(title()!, 'Manual note');
+    }
+    const comment = [...ui.querySelectorAll('button')].find(button => button.textContent?.trim() === 'Comment');
+    assert.ok(comment);
+    await act(async () => click(comment));
+    assert.equal(posts, 1, 'the comment reaches the registry');
+    assert.equal(post.mock.calls[0]?.arguments[1]?.entity, WALL_B);
+  });
+}
+
+test('#10591 layer review posts nothing when a newer action withdraws the staged comment during capture', async () => {
+  const staged = { id: 'staged-capture', candidateId: REVIEW.layerId, refName: REVIEW.into,
+    action: 'comment' as const, entity: WALL_A, title: 'Staged note', description: '', withViewpoint: true };
+  useLayerAutomationReview.setState({ candidate: staged });
+  const ui = render(<LayerReviewSection client={client} candidateId={REVIEW.layerId} refName={REVIEW.into} />);
+  const title = () => ui.querySelector<HTMLInputElement>('input[aria-label="Review comment title"]');
+  await waitFor(() => title()?.value === staged.title, 'the staged comment is visible');
+  act(() => useViewerStore.getState().setSelectedEntityIds([7]));
+  const comment = [...ui.querySelectorAll('button')].find(button => button.textContent?.trim() === 'Comment');
+  assert.ok(comment); click(comment);
+  await waitFor(() => capture.frames() === 1, 'the viewpoint is capturing');
+  act(() => useLayerAutomationReview.setState({ candidate: { ...staged, id: 'staged-capture-merge', action: 'merge' } }));
+  await capture.release(1);
+  await settle();
+  assert.equal(posts, 0);
+});
+
+test('#10591 layer review keeps a newer staged comment that arrives while a post is in flight', async () => {
+  const { gate, gated } = gatedClient();
+  const first = { id: 'staged-first', candidateId: REVIEW.layerId, refName: REVIEW.into,
+    action: 'comment' as const, entity: WALL_A, title: 'First note', description: '', withViewpoint: false };
+  useLayerAutomationReview.setState({ candidate: first });
+  const ui = render(<LayerReviewSection client={gated} candidateId={REVIEW.layerId} refName={REVIEW.into} />);
+  const title = () => ui.querySelector<HTMLInputElement>('input[aria-label="Review comment title"]');
+  await waitFor(() => title()?.value === first.title, 'the first staged comment is visible');
+  const comment = [...ui.querySelectorAll('button')].find(button => button.textContent?.trim() === 'Comment');
+  assert.ok(comment); click(comment);
+  await waitFor(() => posts === 1, 'the first post is in flight');
+  act(() => useLayerAutomationReview.setState({ candidate: { ...first, id: 'staged-second', title: 'Second note', entity: WALL_B } }));
+  await waitFor(() => title()?.value === 'Second note', 'the second staged comment is visible');
+  await act(async () => { gate.resolve(); });
+  await settle();
+  assert.equal(title()?.value, 'Second note', 'the finished post did not clear the newer draft');
+});
+
+test('#10591 layer review keeps an edit made while a manual post captures its viewpoint', async () => {
+  const post = mock.method(client, 'postTopic');
+  const comment = await readyToComment();
+  const title = document.querySelector<HTMLInputElement>('input[aria-label="Review comment title"]')!;
+  click(comment);
+  await waitFor(() => capture.frames() === 1, 'the viewpoint is capturing');
+  type(title, 'A new note');
+  await capture.release(1);
+  await waitFor(() => posts === 1, 'the manual comment was submitted');
+  await settle();
+  assert.equal(post.mock.calls[0].arguments[1].title, 'Check this wall');
+  assert.equal(title.value, 'A new note');
+});
+
+for (const [label, edits] of [['edited back to its posted text', ['x', '']], ['given a new description', ['Cracked plaster']]] as const) {
+  test(`#10591 layer review keeps a draft ${label} while the post is in flight`, async () => {
+    const { gate, gated } = gatedClient();
+    const comment = await readyToComment(gated);
+    const title = document.querySelector<HTMLInputElement>('input[aria-label="Review comment title"]')!;
+    const description = document.querySelector<HTMLTextAreaElement>('textarea[aria-label="Review comment description"]')!;
+    click(comment);
+    await capture.release(1);
+    await waitFor(() => posts === 1, 'the post is in flight');
+    for (const edit of edits) type(description, edit);
+    await act(async () => { gate.resolve(); });
+    await settle();
+    assert.equal(title.value, 'Check this wall');
+    assert.equal(description.value, edits.at(-1));
+  });
+}
+
+test('#10591 layer review posts nothing when the staged title is edited during capture', async () => {
+  const staged = { id: 'staged-edit-capture', candidateId: REVIEW.layerId, refName: REVIEW.into,
+    action: 'comment' as const, entity: WALL_A, title: 'Staged note', description: '', withViewpoint: true };
+  useLayerAutomationReview.setState({ candidate: staged });
+  const ui = render(<LayerReviewSection client={client} candidateId={REVIEW.layerId} refName={REVIEW.into} />);
+  const title = () => ui.querySelector<HTMLInputElement>('input[aria-label="Review comment title"]');
+  await waitFor(() => title()?.value === staged.title, 'the staged comment is visible');
+  const comment = [...ui.querySelectorAll('button')].find(button => button.textContent?.trim() === 'Comment');
+  assert.ok(comment); click(comment);
+  await waitFor(() => capture.frames() === 1, 'the viewpoint is capturing');
+  type(title()!, 'Edited note');
+  await capture.release(1);
+  await settle();
+  assert.equal(posts, 0, 'the old staged title is not posted');
+  assert.equal(title()?.value, 'Edited note', 'the edit is kept');
 });
 
 test('C-2 layer review: a viewpoint capture that resolves null toasts once and posts nothing', async () => {

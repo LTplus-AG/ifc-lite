@@ -1,0 +1,6 @@
+{
+  "issue": 7955,
+  "why": "Keep the umbrella module loadable while ignoring perf.huge and the PostHog ramps: the umbrella and ramp tests must go red.",
+  "key": "apps/viewer/src/utils/hugeGeometryConfig.ts",
+  "mutation": "tests/evidence/huge-geometry-umbrella/behaviour.oracle.patch"
+}

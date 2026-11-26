@@ -7,8 +7,8 @@
       "bytes": 2526384
     },
     "AC20-FZK-Haus->IFC2X3": {
-      "fnv1a64": "d7e0222d9ebbf991",
-      "bytes": 2475141
+      "fnv1a64": "cf6c90e6ac86c7f7",
+      "bytes": 2475237
     },
     "IfcOpenHouse_IFC4": {
       "fnv1a64": "dea19a2cc3fb1210",
@@ -23,7 +23,7 @@
       "bytes": 2906
     },
     "bath_csg_solid->IFC2X3": {
-      "fnv1a64": "395f7bc441dac2d2",
+      "fnv1a64": "6da6b9eb8ef0ac8a",
       "bytes": 2861
     },
     "bonsai-terrain": {

@@ -7,14 +7,15 @@
  * Handles entity type renaming and attribute rewriting when converting
  * between IFC schema versions (IFC2X3, IFC4, IFC4X3, IFC5).
  *
- * This module works at the STEP text level: it rewrites entity type names
- * and adjusts attribute counts via regex replacement on raw STEP lines.
+ * Rewrites entity type names and slot layouts in STEP text.
  */
 
+import { withoutComments } from './step-comment-skip.js';
+import { needsIfc4x3SlotMap, remapIfc4x3Slots, upgradeIfc4x3Type } from './schema-converter-ifc4x3-upgrade.js';
 import { structuralAttributes } from './schema-converter-structural.js';
 import { generateIfcGuid, type RandomSource } from '@ifc-lite/encoding';
 import { deterministicGlobalId, getSchemaRegistryForVersion } from '@ifc-lite/parser';
-import { resolveUnrepresentedEntity } from './schema-untranslatable.js';
+import { missingTypeRoute, resolveUnrepresentedEntity } from './schema-untranslatable.js';
 import { BY_NAME_ATTR_REMAP_TYPES, isGridPlacementInSourceLayout, remapRenamedAttributesByName } from './schema-converter-attr-remap.js';
 import { splitTopLevelStepArguments } from './step-argument-parser.js';
 import { frameArgs, stepRecordFrame } from './step-record-frame.js';
@@ -22,22 +23,16 @@ import { skipStepTrivia } from './step-slot-grammar.js';
 import { Ifc2x3SlotFill } from './schema-converter-ifc2x3-slots.js';
 import type { Ifc4SlotCheck } from './schema-converter-ifc4-slots.js';
 import type { EnumReconciliation } from './schema-converter-enums.js';
+import { MaterialReferents } from './schema-converter-material-referent.js';
 import { referencesAnyExpressId } from './step-ref-scan.js';
 import { productProxy } from './schema-converter-product-proxy.js';
 import { MEP_IFC2X3_TYPES } from './schema-converter-mep.js';
 import { isStrictAttrPrefix, replacedSlot } from './schema-converter-renames.js';
-
+import { carryUserDefinedLabel } from './schema-converter-userdefined-label.js';
+import { attrMapFor, DELETED_SUBTYPES, remapByAttrMap, upgradeCountsIfc4Slots, upgradeRename } from './schema-converter-attr-maps.js';
+import { retypeInPlace } from './schema-converter-retyped.js';
 export { computeWithheldRefIds } from './schema-untranslatable.js';
-
 export type IfcSchemaVersion = 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
-/**
- * Entity type name mappings between schema versions.
- *
- * Maps (sourceSchema, entityType) → targetEntityType.
- * Only entries that actually differ are listed — types that are the same
- * across all schemas are passed through unchanged.
- */
-
 // ─── IFC2X3 → IFC4 type renames ────────────────────────────────────────────
 const IFC2X3_TO_IFC4: Map<string, string> = new Map([
   ['IFCELECTRICDISTRIBUTIONPOINT', 'IFCELECTRICDISTRIBUTIONBOARD'],
@@ -45,6 +40,7 @@ const IFC2X3_TO_IFC4: Map<string, string> = new Map([
   ['IFCEQUIPMENTELEMENT', 'IFCBUILDINGELEMENTPROXY'],
   ['IFCRELCONNECTSSTRUCTURALELEMENT', 'IFCRELASSIGNSTOPRODUCT'],
 ]);
+const IFC2X3_UP = new Map([...IFC2X3_TO_IFC4, ...DELETED_SUBTYPES]); // + the subtypes IFC4 deleted, not for IFC5 (#10902)
 
 // ─── IFC4 → IFC2X3 type renames (reverse) ──────────────────────────────────
 const IFC4_TO_IFC2X3: Map<string, string> = new Map([
@@ -88,6 +84,9 @@ const IFC4_TO_IFC2X3: Map<string, string> = new Map([
   // of the other — `BY_NAME_ATTR_REMAP_TYPES` reconciles both by name.
   ['IFCSTRUCTURALCURVEACTION', 'IFCSTRUCTURALLINEARACTION'],
   ['IFCSTRUCTURALSURFACEACTION', 'IFCSTRUCTURALPLANARACTION'],
+  // #10763: IFC4 deleted these subtypes for their now-concrete supertypes (see the reviewed attribute maps).
+  ['IFCMATERIALPROPERTIES', 'IFCEXTENDEDMATERIALPROPERTIES'],
+  ['IFCPROFILEPROPERTIES', 'IFCGENERALPROFILEPROPERTIES'],
   // IFC4X3 spatial structure → IFC2X3 equivalents
   ['IFCFACILITY', 'IFCBUILDING'],
   ['IFCFACILITYPART', 'IFCBUILDINGSTOREY'],
@@ -109,6 +108,7 @@ const IFC4_TO_IFC4X3: Map<string, string> = new Map([
   // IfcBuildingElement → IfcBuiltElement (IFC4X3 rename)
   // Note: both exist in IFC4X3 for backwards compat, but IfcBuiltElement is canonical
 ]);
+let ifc2x3ToIfc4x3: Map<string, string> | undefined, ifc2x3ToIfc5: Map<string, string> | undefined;
 
 // ─── IFC4X3 → IFC4 type renames ────────────────────────────────────────────
 const IFC4X3_TO_IFC4: Map<string, string> = new Map([
@@ -161,8 +161,12 @@ export function convertEntityType(
   if (fromSchema === toSchema) return entityType;
 
   const upper = entityType.toUpperCase();
-  const mepTarget = toSchema === 'IFC2X3' ? MEP_IFC2X3_TYPES.get(upper) : undefined;
-  if (mepTarget) return mepTarget;
+  if (toSchema === 'IFC4X3' && (fromSchema === 'IFC2X3' || fromSchema === 'IFC4')) {
+    const upgrade = upgradeIfc4x3Type(upper);
+    if (upgrade) return upgrade;
+  }
+  const target = (toSchema === 'IFC2X3' ? MEP_IFC2X3_TYPES.get(upper) : undefined) ?? upgradeRename(upper, fromSchema, toSchema);
+  if (target) return target;
 
   const map = getConversionMap(fromSchema, toSchema);
   return map?.get(upper) ?? upper;
@@ -176,7 +180,7 @@ function getConversionMap(
   from: IfcSchemaVersion,
   to: IfcSchemaVersion,
 ): Map<string, string> | null {
-  if (from === 'IFC2X3' && to === 'IFC4') return IFC2X3_TO_IFC4;
+  if (from === 'IFC2X3' && to === 'IFC4') return IFC2X3_UP;
   if (from === 'IFC4' && to === 'IFC2X3') return IFC4_TO_IFC2X3;
   if (from === 'IFC4' && to === 'IFC4X3') return IFC4_TO_IFC4X3;
   if (from === 'IFC4X3' && to === 'IFC4') return IFC4X3_TO_IFC4;
@@ -188,9 +192,8 @@ function getConversionMap(
   if (from === 'IFC4' && to === 'IFC5') return IFC4_TO_IFC4X3;
 
   // Multi-step: IFC2X3 → IFC4X3 = IFC2X3 → IFC4 → IFC4X3
-  if (from === 'IFC2X3' && (to === 'IFC4X3' || to === 'IFC5')) {
-    return chainMaps(IFC2X3_TO_IFC4, IFC4_TO_IFC4X3);
-  }
+  if (from === 'IFC2X3' && to === 'IFC4X3') return ifc2x3ToIfc4x3 ??= chainMaps(IFC2X3_UP, IFC4_TO_IFC4X3);
+  if (from === 'IFC2X3' && to === 'IFC5') return ifc2x3ToIfc5 ??= chainMaps(IFC2X3_TO_IFC4, IFC4_TO_IFC4X3);
 
   // Multi-step: IFC4X3 → IFC2X3 = IFC4X3 → IFC4 → IFC2X3
   if ((from === 'IFC4X3' || from === 'IFC5') && to === 'IFC2X3') {
@@ -200,9 +203,7 @@ function getConversionMap(
   return null;
 }
 
-/**
- * Chain two conversion maps: apply map1 first, then map2 on the result.
- */
+/** Chain two conversion maps: apply map1 first, then map2 on the result. */
 function chainMaps(
   map1: Map<string, string>,
   map2: Map<string, string>,
@@ -244,8 +245,8 @@ export function attrNameTable(schema: IfcSchemaVersion): Map<string, readonly st
 
 /** Count top-level (comma-separated) STEP attributes, respecting nested
  *  parentheses and single-quoted strings. Empty list → 0. */
-function requireTopLevelAttributes(attrsRaw: string): string[] {
-  const attrs = splitTopLevelStepArguments(attrsRaw);
+function requireTopLevelAttributes(attrsRaw: string, maxReferenceId?: number): string[] {
+  const attrs = splitTopLevelStepArguments(attrsRaw, maxReferenceId);
   if (attrs === null) throw new Error('Schema conversion refused an invalid STEP argument list.');
   return attrs;
 }
@@ -263,20 +264,18 @@ function requireTopLevelAttributes(attrsRaw: string): string[] {
  * @param toSchema - Target schema version
  * @param random - Optional seeded `RandomSource` for the GlobalId of any IFCPROXY
  *   placeholder minted here; pass one when output must be byte-reproducible.
- * @param slots - This package's exporters pass one; it carries the owner
- *   history they reuse (#4686) and collects what they could not settle.
- *   Omitted, a throwaway stands in, so the generated table's own defaults are
- *   still written but the OwnerHistory reuse and both counts are lost.
- * @param ifc4Slots - Counts IFC4-required slots left `$` (IFC4X3/IFC5 → IFC4 only, #5202).
+ * @param slots - Reuses OwnerHistory (#4686) and counts unsettled slots.
+ *   Without a collector, required-slot filling uses the generated defaults.
+ * @param ifc4Slots - Counts IFC4-required slots left `$` (IFC4X3/IFC5 → IFC4, #5202; mapped or structural IFC2X3 → IFC4, #10763).
  * @param enums - Resolves enum members the target lacks and reports losses (#5365).
  * @param withheldRefIds - Express ids this export is OMITTING outright
  *   ({@link computeWithheldRefIds}, #4206) — a record whose attributes name
  *   one is redirected to the same "no representation" resolution as its own
  *   unmapped type would get, so it cannot ship a now-dangling `#N`.
- * @returns Converted line (entities without valid target representation become
- *   IFCPROXY placeholders), or `null` when this record itself is one of the
- *   narrow set `resolveUnrepresentedEntity` can safely OMIT rather than throw
- *   for — the caller must not write a `null` result.
+ * @param maxReferenceId - Bound for remapped STEP ids; source conversion uses the parser's u32 bound.
+ * @returns Converted line (no valid target representation: an IFCPROXY placeholder),
+ *   or `null` for a record the export OMITS: one `resolveUnrepresentedEntity` can omit, or an
+ *   IfcMaterialProperties naming no single IfcMaterial (#10763); a `null` is never written.
  */
 export function convertStepLine(
   line: string,
@@ -287,18 +286,21 @@ export function convertStepLine(
   withheldRefIds?: ReadonlySet<number>,
   ifc4Slots?: Ifc4SlotCheck,
   enums?: EnumReconciliation,
+  maxReferenceId?: number,
 ): string | null {
   if (fromSchema === toSchema) return line;
-  let converted = convertRecord(line, fromSchema, toSchema, random, withheldRefIds, fromSchema === 'IFC2X3' && toSchema === 'IFC4' ? enums?.structural.axes.axis(line) : undefined, enums?.structural);
+  const kept = (enums?.materials ?? new MaterialReferents()).apply(line, fromSchema, toSchema); // #10763: null when Material names no one IfcMaterial
+  let converted = kept === null ? null : retypeInPlace(convertRecord(kept, fromSchema, toSchema, random, withheldRefIds, fromSchema === 'IFC2X3' && toSchema === 'IFC4' ? enums?.structural.axes.axis(kept) : undefined, enums?.structural, maxReferenceId), fromSchema, toSchema);
+  converted = carryUserDefinedLabel(line, converted, fromSchema, toSchema, maxReferenceId); // #10824
   if (converted === null) return null;
-  if (enums && toSchema !== 'IFC5') converted = enums.structural.after(enums.apply(converted, toSchema), withheldRefIds);
-  if (toSchema === 'IFC2X3') return (slots ?? new Ifc2x3SlotFill()).apply(converted);
-  if (toSchema === 'IFC4' && (fromSchema !== 'IFC2X3' || /=\s*IFCSTRUCTURAL/i.test(converted))) ifc4Slots?.apply(converted);
+  if (enums && toSchema !== 'IFC5') converted = enums.structural.after(enums.documents.apply(enums.apply(enums.forms.apply(converted, fromSchema, toSchema, maxReferenceId), toSchema, maxReferenceId), maxReferenceId), withheldRefIds);
+  if (toSchema === 'IFC2X3') return (slots ?? new Ifc2x3SlotFill()).apply(converted, maxReferenceId);
+  if (enums?.typedProperties.capture(line, converted, fromSchema, toSchema, maxReferenceId)) return converted;
+  if (ifc4Slots && toSchema === 'IFC4' && (fromSchema !== 'IFC2X3' || upgradeCountsIfc4Slots(converted))) ifc4Slots.apply(converted);
   return converted;
 }
 
-/** {@link convertStepLine} before the IFC2X3 required-slot fills, between two
- *  different schemas. */
+/** Convert before applying required-slot fills. */
 function convertRecord(
   line: string,
   fromSchema: IfcSchemaVersion,
@@ -307,6 +309,7 @@ function convertRecord(
   withheldRefIds?: ReadonlySet<number>,
   structuralAxis?: string,
   structuralDiagnostics?: EnumReconciliation['structural'],
+  maxReferenceId?: number,
 ): string | null {
   const frame = stepRecordFrame(line, { allowMissingSemicolon: true });
   if (frame === null) return line;
@@ -319,7 +322,7 @@ function convertRecord(
   // Validate before choosing any conversion branch. A malformed slot list
   // must not still receive a type rename, proxy replacement, trim, or padding:
   // that would partially convert a record whose positions are untrustworthy.
-  const args = requireTopLevelAttributes(attrsRaw);
+  const args = requireTopLevelAttributes(attrsRaw, maxReferenceId);
 
   const newType = convertEntityType(entityType, fromSchema, toSchema);
 
@@ -334,7 +337,7 @@ function convertRecord(
   // proxy. Checked before `shouldSkipEntity` and the attribute-table lookup
   // below so it wins over both.
   if (withheldRefIds && withheldRefIds.size > 0 && referencesAnyExpressId(attrsRaw, withheldRefIds)) {
-    return resolveUnrepresentedEntity(prefix, entityType, attrsRaw, toSchema, random, withheldRefIds !== undefined);
+    return resolveUnrepresentedEntity(prefix, entityType, attrsRaw, args, toSchema, expressId, true);
   }
   structuralDiagnostics?.inspect(expressId, line, fromSchema, toSchema);
   if (structuralAxis) return `${prefix}${newType}(${args.join(',')},${structuralAxis});`;
@@ -363,8 +366,7 @@ function convertRecord(
     // in merged-exporter.ts, which seeds from the original id plus the model's
     // stable id.
     //
-    // A caller-supplied seeded source still wins, so an export that already
-    // pins its randomness keeps its existing behaviour.
+    // A caller-supplied seeded source still wins.
     const guid = random
       ? generateIfcGuid(random)
       : deterministicGlobalId(`ifcproxy:${prefix}${entityType}(${attrsRaw})`);
@@ -387,28 +389,26 @@ function convertRecord(
   // [Identifier, Name, Description, …]; IfcMaterialProperties [Material] →
   // [Name, Description, Properties, Material]), and trimming the tail or
   // appending `$` there would leave values in the wrong, type-invalid slots.
-  // Those types are left alone. The appended attributes are optional, so `$` is
-  // a valid pad.
+  // Those take a reviewed attribute map (#10763) or are left alone.
+  // Appended attributes are optional, so `$` is a valid pad.
   //
-  // The two branches cannot both apply: each needs ITS OWN list strictly shorter.
   // Source attrs keyed on the ORIGINAL type; target on the (possibly renamed) type.
   let finalAttrs = attrsRaw;
   const targetTable = attrNameTable(toSchema);
   const srcAttrs = attrNameTable(fromSchema)?.get(entityType);
   const tgtAttrs = targetTable?.get(newType);
   // `shouldSkipEntity` above only catches its hand-listed alignment types;
-  // a type entirely unknown to `targetTable` (not merely a strict-prefix
-  // attribute mismatch, handled below) has no representation in `toSchema` at
-  // all — see `resolveUnrepresentedEntity` for why it can't just pass through.
-  // On IFC2X3 even with no source entry, as Rust's `has_representation`: a
-  // non-entity head (`#1=IFCLABEL('x');`) fails closed (#7683, D3).
-  if (targetTable && !tgtAttrs && (toSchema === 'IFC2X3' || (toSchema === 'IFC4' && fromSchema === 'IFC4X3' && srcAttrs))) {
-    return resolveUnrepresentedEntity(prefix, entityType, attrsRaw, toSchema, random, withheldRefIds !== undefined);
+  // The same missing-type policy governs exports and loss previews (#10902).
+  if (missingTypeRoute(entityType, fromSchema, toSchema, srcAttrs !== undefined, !targetTable || tgtAttrs !== undefined) === 'unrepresented') {
+    return resolveUnrepresentedEntity(prefix, entityType, attrsRaw, args, toSchema, expressId, withheldRefIds !== undefined);
   }
   if (srcAttrs && tgtAttrs) {
-    const replaced = replacedSlot(entityType, srcAttrs, tgtAttrs); // #10758: no value carries there
-    if (replaced !== undefined && replaced < args.length && args[replaced].trim() !== '$') { args[replaced] = '$'; finalAttrs = args.join(','); }
-    if (isStrictAttrPrefix(tgtAttrs, srcAttrs, entityType)) {
+    const mapped = args.length > 0 ? attrMapFor(entityType, newType, fromSchema, toSchema) : undefined; // #10763
+    const replaced = mapped ? undefined : replacedSlot(entityType, srcAttrs, tgtAttrs); // #10758: no value carries there
+    if (replaced !== undefined && replaced < args.length && withoutComments(args[replaced]) !== '$') { args[replaced] = '$'; finalAttrs = args.join(','); }
+    if (toSchema === 'IFC4X3' && entityType !== newType && needsIfc4x3SlotMap(entityType)) finalAttrs = remapIfc4x3Slots(entityType, srcAttrs, tgtAttrs, args);
+    else if (mapped) finalAttrs = remapByAttrMap(mapped.map, mapped.up, args, srcAttrs, tgtAttrs);
+    else if (isStrictAttrPrefix(tgtAttrs, srcAttrs, entityType)) {
       finalAttrs = trimAttributes(attrsRaw, args, tgtAttrs.length);
     } else if (isStrictAttrPrefix(srcAttrs, tgtAttrs, entityType)) {
       const currentCount = args.length;
@@ -418,7 +418,7 @@ function convertRecord(
     } else if (isGridPlacementInSourceLayout(entityType, args.length, tgtAttrs.length) || (entityType !== newType
       && (BY_NAME_ATTR_REMAP_TYPES.has(entityType) || (toSchema === 'IFC2X3' && MEP_IFC2X3_TYPES.has(entityType))))) {
       // MEP controls need ControlElementId, never the source PredefinedType (#8019).
-      const remapped = remapRenamedAttributesByName(finalAttrs, srcAttrs, tgtAttrs);
+      const remapped = remapRenamedAttributesByName(finalAttrs, srcAttrs, tgtAttrs, maxReferenceId);
       if (remapped === null) throw new Error('Schema conversion refused an invalid STEP argument list.');
       finalAttrs = remapped;
     }
@@ -448,21 +448,15 @@ export function shouldSkipEntity(entityType: string, toSchema: IfcSchemaVersion)
   return toSchema !== 'IFC4X3' && toSchema !== 'IFC5' && SKIP_TYPES.has(entityType);
 }
 
-/**
- * Trim a STEP attribute list to a maximum number of attributes.
- *
- * Keeps the first `maxCount` of `args`, the record's already-validated split
- * (one split per record, #7683).
- */
+/** Keep the first `maxCount` of `args`, the record's already-validated split
+ *  (one split per record, #7683). */
 function trimAttributes(attrsRaw: string, args: readonly string[], maxCount: number): string {
   if (!attrsRaw.trim()) return attrsRaw;
   // An entity with no attributes in the target schema keeps none.
   return args.slice(0, Math.max(0, maxCount)).join(',');
 }
 
-/**
- * Check if a conversion between two schema versions requires entity type changes.
- */
+/** Check if a conversion between two schema versions requires entity type changes. */
 export function needsConversion(
   fromSchema: IfcSchemaVersion,
   toSchema: IfcSchemaVersion,

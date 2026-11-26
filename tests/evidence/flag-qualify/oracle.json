@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "why": "Keep the flag-qualify modules loadable while breaking the pixel threshold, the URL-param override, the registry global binding and the noise rule: the qualification tests must go red.",
+  "key": "scripts/perf/flag-qualify-lib.mjs",
+  "mutation": "tests/evidence/flag-qualify/behaviour.oracle.patch",
+  "test": "scripts/perf/flag-qualify.test.mjs"
+}

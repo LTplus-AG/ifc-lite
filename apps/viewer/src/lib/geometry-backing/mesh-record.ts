@@ -28,7 +28,7 @@
 
 import type { MeshData } from '@ifc-lite/geometry';
 
-type FieldKind = 'scalar' | 'array' | 'appearance' | 'texture' | 'bitmap';
+type FieldKind = 'scalar' | 'array' | 'appearance' | 'texture' | 'bitmap' | 'unstored';
 
 /** Exhaustive at compile time: adding a `MeshData` field fails `satisfies`. */
 const MESH_FIELDS = {
@@ -38,6 +38,9 @@ const MESH_FIELDS = {
   texture: 'texture', textureRef: 'scalar', textureBitmap: 'bitmap', geometryHash: 'scalar',
   geometryAabb: 'scalar', geometryVolume: 'scalar', geometryClass: 'scalar', origin: 'scalar',
   occurrenceKey: 'scalar', localBounds: 'scalar', localToWorld: 'scalar',
+  // A compact mesh (`?compactGeom`) is stored as the f32 arrays its three properties decode to, so its
+  // record is an ordinary mesh: the row into a worker payload is not part of the image.
+  compact: 'unstored',
 } as const satisfies Record<keyof MeshData, FieldKind>;
 
 type ArrayField = 'positions' | 'normals' | 'indices' | 'entityIds' | 'uvs';
@@ -156,6 +159,8 @@ export function encodeMeshRecord(mesh: MeshData, pool: SourcePool, bitmaps: Text
     // Slot the fence first: a source aliasing it (or any other array of this
     // mesh) must stay that slot so decode restores the identity; else pool it.
     const fence = slot(appearance.indices);
+    // The corner mapping is slotted before the source too: a source aliasing it must stay that slot.
+    const corners = appearance.cornerIndices !== undefined ? slot(appearance.cornerIndices) : undefined;
     const local = slotOf.get(appearance.sourceIndices);
     let source: { pooled: number } | { slot: number };
     if (local !== undefined) source = { slot: local };
@@ -166,7 +171,7 @@ export function encodeMeshRecord(mesh: MeshData, pool: SourcePool, bitmaps: Text
     }
     record.appearance = {
       kind: 'canonical-item', fence, source,
-      ...(appearance.cornerIndices !== undefined ? { corners: slot(appearance.cornerIndices) } : {}),
+      ...(corners !== undefined ? { corners } : {}),
     };
   }
   if (mesh.textureBitmap !== undefined) {

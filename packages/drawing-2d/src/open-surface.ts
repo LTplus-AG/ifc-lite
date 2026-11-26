@@ -27,7 +27,19 @@ export class OpenSurfaceIndex {
   private byEntity: Map<EntityKey, MeshData[]> | null = null;
   private readonly known = new Map<EntityKey, boolean>();
 
+  /**
+   * `meshes`: the whole input, grouped lazily per entity. A streamed drawing
+   * instead resolves the entities it needs while it replays its source and
+   * hands them over through {@link OpenSurfaceIndex.resolved}.
+   */
   constructor(private readonly meshes: readonly MeshData[]) {}
+
+  /** An index whose answers are already known (see {@link OpenSurfaceAccumulator}). */
+  static resolved(known: ReadonlyMap<EntityKey, boolean>): OpenSurfaceIndex {
+    const index = new OpenSurfaceIndex([]);
+    for (const [key, open] of known) index.known.set(key, open);
+    return index;
+  }
 
   /** Whether this cut crosses a real boundary of the entity: chain ends left, and free edges. */
   cutsOpen(key: EntityKey, segments: readonly CutSegment[]): boolean {
@@ -38,7 +50,9 @@ export class OpenSurfaceIndex {
   has(key: EntityKey): boolean {
     let open = this.known.get(key);
     if (open === undefined) {
-      open = hasFreeEdge(this.entityMeshes().get(key) ?? []);
+      const parity = new FreeEdgeParity();
+      for (const mesh of this.entityMeshes().get(key) ?? []) parity.add(mesh);
+      open = parity.open;
       this.known.set(key, open);
     }
     return open;
@@ -48,13 +62,57 @@ export class OpenSurfaceIndex {
     if (this.byEntity) return this.byEntity;
     const byEntity = new Map<EntityKey, MeshData[]>();
     for (const mesh of this.meshes) {
-      const key = makeEntityKey(mesh.modelIndex || 0, mesh.expressId);
+      const key = meshEntityKey(mesh);
       const bucket = byEntity.get(key);
       if (bucket) bucket.push(mesh);
       else byEntity.set(key, [mesh]);
     }
     this.byEntity = byEntity;
     return byEntity;
+  }
+}
+
+const meshEntityKey = (mesh: MeshData): EntityKey => makeEntityKey(mesh.modelIndex || 0, mesh.expressId);
+
+/**
+ * The entities whose cut leaves chain ends: the only ones the polygon builder
+ * asks {@link OpenSurfaceIndex.cutsOpen} about past its chain-end test.
+ */
+export function openSurfaceCandidates(segments: readonly CutSegment[]): Set<EntityKey> {
+  const byEntity = new Map<EntityKey, CutSegment[]>();
+  for (const segment of segments) {
+    const key = makeEntityKey(segment.modelIndex, segment.entityId);
+    const bucket = byEntity.get(key);
+    if (bucket) bucket.push(segment);
+    else byEntity.set(key, [segment]);
+  }
+  const out = new Set<EntityKey>();
+  for (const [key, bucket] of byEntity) if (hasChainEnd(bucket)) out.add(key);
+  return out;
+}
+
+/**
+ * Free-edge state of the candidate entities, fed one batch of meshes at a time
+ * (a replay of a streamed source). Holds welded edge parity only, never a mesh,
+ * so it is bounded by the candidates' geometry, not by the model.
+ */
+export class OpenSurfaceAccumulator {
+  private readonly parity = new Map<EntityKey, FreeEdgeParity>();
+
+  constructor(candidates: ReadonlySet<EntityKey>) {
+    for (const key of candidates) this.parity.set(key, new FreeEdgeParity());
+  }
+
+  get needed(): boolean { return this.parity.size > 0; }
+
+  add(meshes: readonly MeshData[]): void {
+    for (const mesh of meshes) this.parity.get(meshEntityKey(mesh))?.add(mesh);
+  }
+
+  index(): OpenSurfaceIndex {
+    const known = new Map<EntityKey, boolean>();
+    for (const [key, parity] of this.parity) known.set(key, parity.open);
+    return OpenSurfaceIndex.resolved(known);
   }
 }
 
@@ -73,13 +131,16 @@ function hasChainEnd(segments: readonly CutSegment[]): boolean {
 /**
  * Parity over welded edges: a closed mesh uses every edge an even number of times,
  * so toggling each use leaves only the free ones. World space, since sub-meshes of
- * one entity need not share an origin.
+ * one entity need not share an origin. Fed one sub-mesh at a time, in any batches.
  */
-function hasFreeEdge(meshes: readonly MeshData[]): boolean {
-  const weldIds = new Map<string, number>();
-  const oddEdges = new Set<number>();
+class FreeEdgeParity {
+  private readonly weldIds = new Map<string, number>();
+  private readonly oddEdges = new Set<number>();
 
-  for (const { positions, indices, origin } of meshes) {
+  get open(): boolean { return this.oddEdges.size > 0; }
+
+  add({ positions, indices, origin }: MeshData): void {
+    const { weldIds, oddEdges } = this;
     const vertexIds = new Int32Array(positions.length / 3).fill(-1);
     const weldedId = (vertex: number): number => {
       if (vertexIds[vertex] !== -1) return vertexIds[vertex];
@@ -107,5 +168,4 @@ function hasFreeEdge(meshes: readonly MeshData[]): boolean {
       }
     }
   }
-  return oddEdges.size > 0;
 }

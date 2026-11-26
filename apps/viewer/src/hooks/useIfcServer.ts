@@ -27,7 +27,8 @@ import {
   type ProcessingStats,
 } from '@ifc-lite/server-client';
 
-import { getProcessingServerUrl, type ProcessedModelSource } from '../lib/processed-model.js';
+import type { ProcessedModelSource } from '../lib/processed-model.js';
+import { getProcessingServerUrl, hasRuntimeProcessingServer } from '../lib/processing-server.js';
 import { isServerAvailable, isServerReachable } from './ingest/serverAvailability.js';
 import { ProcessedModelUnavailable } from './ingest/processedModel.js';
 import {
@@ -104,7 +105,10 @@ export function useIfcServer() {
       // Silent server availability check (cached, no error logging). A processed model skips the
       // health round trip: its geometry request asks the same question, and a down server ends in
       // the same error card either way.
-      const serverAvailable = processed ? isServerReachable(serverUrl) : await isServerAvailable(serverUrl, client);
+      const explicitlyConfigured = (processed && file.serverUrl !== undefined) || hasRuntimeProcessingServer();
+      const serverAvailable = processed
+        ? isServerReachable(serverUrl, undefined, explicitlyConfigured)
+        : await isServerAvailable(serverUrl, client, explicitlyConfigured);
       if (!serverAvailable) {
         if (processed) throw new ProcessedModelUnavailable(serverUrl === '' ? 'no-server' : 'unreachable');
         return false; // Silently fall back - caller handles logging

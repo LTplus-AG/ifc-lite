@@ -12,6 +12,8 @@
  * `ViewerConfigError` and the entry shows an error instead of mounting.
  */
 
+import { normalizeProcessedModelHash } from '@ifc-lite/server-client/processed-model';
+import { isLoopbackHostname } from '../loopback.js';
 import type { FeatureSelection } from './index';
 
 export interface ViewerRuntimeConfig {
@@ -20,6 +22,10 @@ export interface ViewerRuntimeConfig {
   features?: FeatureSelection;
   /** BCP 47 tag the host prefers. A language the user chose in Settings still wins. */
   locale?: string;
+  /** The processing server for server-processed models: a path on this origin or an http(s) URL. Replaces `VITE_IFC_SERVER_URL`. */
+  server?: { url: string };
+  /** A model the processing server already processed, opened at start without the IFC reaching the browser. */
+  open?: { processedModel: { sha256: string; bytes: number; name: string } };
 }
 
 /** Why a configuration could not be used. `code` is stable; `message` is for the console. */
@@ -51,6 +57,50 @@ function stringList(value: unknown, where: string): string[] | undefined {
   return value as string[];
 }
 
+const SAME_ORIGIN = 'https://viewer.invalid';
+// The member's name only, to keep the eager bundle small; the rules are in docs/guide/viewer-deployment-config.md.
+const BAD_SERVER = 'server.url';
+const BAD_OPEN = 'open.processedModel';
+
+/**
+ * A same-origin path (`/…`, not `//…`) or an absolute `https:` URL; `http:` only
+ * from an `http:` page or to a loopback host. Kept in normalized form. No
+ * query, fragment or credentials: the client appends `/api/v1/…` to it.
+ */
+function parseServer(value: unknown, pageUrl: string | undefined): { url: string } {
+  if (!isRecord(value) || typeof value.url !== 'string' || value.url.trim() === '') invalid(BAD_SERVER);
+  const raw = value.url.trim();
+  const isPath = raw.startsWith('/') && !raw.startsWith('//');
+  let url: URL;
+  try {
+    url = new URL(raw, isPath ? SAME_ORIGIN : undefined);
+  } catch {
+    invalid(BAD_SERVER);
+  }
+  // A literal ? or # always opens a query or fragment, even an empty one that `search`/`hash` report as ''.
+  if (/[?#]/.test(raw) || url.username || url.password) invalid(BAD_SERVER);
+  if (isPath) {
+    // `/\host` parses as another host, and dot segments can normalize to `//host`.
+    if (url.origin !== SAME_ORIGIN || url.pathname.startsWith('//')) invalid(BAD_SERVER);
+    return { url: url.pathname };
+  }
+  const httpPage = pageUrl !== undefined && new URL(pageUrl).protocol === 'http:';
+  if (url.protocol !== 'https:' && !(url.protocol === 'http:' && (httpPage || isLoopbackHostname(url.hostname)))) {
+    invalid(BAD_SERVER);
+  }
+  return { url: url.href };
+}
+
+/** The start model, its hash lowercased by the server client's rule. */
+function parseOpen(value: unknown): NonNullable<ViewerRuntimeConfig['open']> {
+  if (!isRecord(value) || !isRecord(value.processedModel)) invalid(BAD_OPEN);
+  const { sha256, bytes, name } = value.processedModel;
+  const hash = normalizeProcessedModelHash(sha256) ?? invalid(BAD_OPEN);
+  if (typeof bytes !== 'number' || !Number.isSafeInteger(bytes) || bytes < 0) invalid(BAD_OPEN);
+  if (typeof name !== 'string' || name.trim() === '') invalid(BAD_OPEN);
+  return { processedModel: { sha256: hash, bytes, name } };
+}
+
 function parseFeatures(value: unknown): FeatureSelection {
   if (!isRecord(value)) invalid('features must be an object');
   if (value.default !== 'all' && value.default !== 'none') invalid("features.default must be 'all' or 'none'");
@@ -65,7 +115,11 @@ function parseFeatures(value: unknown): FeatureSelection {
  * Check an untrusted value against the version 1 shape. Members this viewer
  * does not know are dropped, not refused: a newer host may send more.
  */
-export function parseViewerRuntimeConfig(value: unknown): ViewerRuntimeConfig {
+export function parseViewerRuntimeConfig(
+  value: unknown,
+  /** The page the viewer runs on; decides whether an `http:` server URL is allowed. */
+  pageUrl: string | undefined = typeof location === 'undefined' ? undefined : location.href,
+): ViewerRuntimeConfig {
   if (!isRecord(value)) invalid('expected a JSON object');
   if (value.version !== 1) invalid(`unsupported version ${JSON.stringify(value.version)}; this viewer reads version 1`);
   const config: ViewerRuntimeConfig = { version: 1 };
@@ -74,6 +128,8 @@ export function parseViewerRuntimeConfig(value: unknown): ViewerRuntimeConfig {
     if (typeof value.locale !== 'string' || value.locale.trim() === '') invalid('locale must be a non-empty string');
     config.locale = value.locale;
   }
+  if (value.server !== undefined) config.server = parseServer(value.server, pageUrl);
+  if (value.open !== undefined) config.open = parseOpen(value.open);
   return config;
 }
 
@@ -155,5 +211,5 @@ async function fetchConfig(target: URL, page: URL, fetchImpl: typeof fetch, sign
     if (signal.aborted) throw new ViewerConfigError('unreachable', 'The viewer configuration did not arrive in time', { cause: error });
     throw new ViewerConfigError('not-json', 'The viewer configuration is not JSON', { cause: error });
   }
-  return parseViewerRuntimeConfig(body);
+  return parseViewerRuntimeConfig(body, page.href);
 }

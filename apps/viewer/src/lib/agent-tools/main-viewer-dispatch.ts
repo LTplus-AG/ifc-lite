@@ -10,6 +10,7 @@
  * This module is loaded by the local agent connection, off the eager viewer path.
  */
 
+import { invalidInput } from './operations/refusals.js';
 import { ToolErrorCode, ToolExecutionError, validateInput } from '@ifc-lite/mcp/browser';
 import { isAbortError } from '@/lib/runs/abort';
 import { LEGACY_MODEL_ID, LEGACY_MUTATION_MODEL_ID } from '@/sdk/adapters/model-compat';
@@ -298,9 +299,7 @@ async function assertAdvertisedInput(toolName: string, input: Record<string, unk
   // A spread is an object type, which carries the implicit index signature JsonSchema asks for.
   const validation = validateInput({ ...schema }, input);
   if (validation.valid) return;
-  throw new ToolExecutionError({
-    code: ToolErrorCode.INVALID_INPUT,
-    message: `Input validation failed for ${toolName}: ${validation.errors.slice(0, 3).map((e) => `${e.path}: ${e.message}`).join('; ')}`,
-    details: { errors: validation.errors },
-  });
+  throw invalidInput('invalid-value',
+    `Input validation failed for ${toolName}: ${validation.errors.slice(0, 3).map((e) => `${e.path}: ${e.message}`).join('; ')}`,
+    { errors: validation.errors });
 }

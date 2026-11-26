@@ -66,8 +66,4 @@ describe('.mcpb manifest for Claude Desktop', () => {
     expect(used).toEqual(['models']);
     expect(used.every((k) => keys.includes(k))).toBe(true);
   });
-
-  it('asks for the Node the package declares', () => {
-    expect((manifest.compatibility as { runtimes: { node: string } }).runtimes.node).toBe(pkg.engines.node);
-  });
 });

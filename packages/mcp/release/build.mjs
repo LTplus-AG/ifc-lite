@@ -39,7 +39,8 @@ const MCPB_CLI = '@anthropic-ai/mcpb@2.1.2';
 
 const pkgDir = dirname(dirname(fileURLToPath(import.meta.url)));
 const { values: flags } = parseArgs({ options: { out: { type: 'string' }, 'no-bundle': { type: 'boolean' } } });
-const out = resolve(flags.out ?? join(pkgDir, 'release-out'));
+// pnpm runs scripts in packages/mcp; a relative --out means where the user typed it.
+const out = flags.out ? resolve(process.env.INIT_CWD ?? process.cwd(), flags.out) : join(pkgDir, 'release-out');
 const pkg = JSON.parse(readFileSync(join(pkgDir, 'package.json'), 'utf-8'));
 
 /**
@@ -61,6 +62,26 @@ function pruneStage(dir) {
  */
 const WASM = [join('pkg', 'ifc-lite_bg.wasm'), join('pkg-diff', 'ifc-lite-diff_bg.wasm'), join('pkg-rhino', 'ifc-lite-rhino_bg.wasm')];
 
+/** Every package in a hoisted node_modules as name@version, sorted, for the release record. */
+function resolvedTree(nodeModules) {
+  const found = [];
+  const visit = (dir) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
+      const path = join(dir, entry.name);
+      if (entry.name.startsWith('@')) { visit(path); continue; }
+      const manifest = join(path, 'package.json');
+      if (existsSync(manifest)) {
+        const { name, version } = JSON.parse(readFileSync(manifest, 'utf-8'));
+        found.push(`${name}@${version}`);
+      }
+      if (existsSync(join(path, 'node_modules'))) visit(join(path, 'node_modules'));
+    }
+  };
+  visit(nodeModules);
+  return [...new Set(found)].sort();
+}
+
 function missingWasm(root) {
   return WASM.filter((f) => !existsSync(join(root, f)));
 }
@@ -71,12 +92,17 @@ const win = process.platform === 'win32';
 function run(command, args, cwd) {
   const r = spawnSync(command, win ? args.map((a) => `"${a}"`) : args, { cwd, stdio: 'inherit', shell: win });
   if (r.error) throw r.error;
-  if (r.status !== 0) throw new Error(`${command} ${args.join(' ')} exited with ${r.status}`);
+  if (r.status !== 0) throw new Error(`${command} ${args.join(' ')} exited with ${r.status ?? r.signal}`);
 }
 
 mkdirSync(out, { recursive: true });
 writeFileSync(join(out, 'server.json'), `${JSON.stringify(serverJson(pkg), null, 2)}\n`);
 process.stdout.write(`wrote ${join(out, 'server.json')}\n`);
+// The registry verifies ownership through the npm package's mcpName.
+const onNpm = spawnSync('npm', ['view', `${pkg.name}@${pkg.version}`, 'mcpName'], { encoding: 'utf-8', shell: win });
+if (onNpm.stdout?.trim() !== pkg.mcpName) {
+  process.stdout.write(`note: ${pkg.name}@${pkg.version} on npm has no mcpName ${pkg.mcpName}; publish this version before server.json\n`);
+}
 
 if (!flags['no-bundle']) {
   // Checked before the slow deploy, and again in the stage after it.
@@ -94,6 +120,11 @@ if (!flags['no-bundle']) {
   pruneStage(join(stage, BUNDLE_SERVER_DIR));
   const staged = missingWasm(join(stage, BUNDLE_SERVER_DIR, 'node_modules', '@ifc-lite', 'wasm'));
   if (staged.length) throw new Error(`the deployed stage is missing ${staged.join(', ')}`);
+  // Hoisted deploy resolves within package.json ranges, not the lockfile, so the
+  // exact tree is recorded next to the bundle to audit or reproduce a release.
+  const deps = join(out, `ifc-lite-${pkg.version}.deps.txt`);
+  writeFileSync(deps, `${resolvedTree(join(stage, BUNDLE_SERVER_DIR, 'node_modules')).join('\n')}\n`);
+  process.stdout.write(`wrote ${deps}\n`);
   writeFileSync(join(stage, 'manifest.json'), `${JSON.stringify(mcpbManifest(pkg), null, 2)}\n`);
   // Source maps and type declarations are about 30 MB of the stage and never run.
   writeFileSync(join(stage, '.mcpbignore'), '*.map\n*.d.ts\n*.d.mts\n*.d.cts\n');

@@ -14,7 +14,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -128,12 +128,34 @@ const SHA = 'a'.repeat(40);
 const STATUS_PATH = `/repos/${REPO}/commits/${SHA}/status?per_page=100`;
 const RUNS_PATH = `/repos/${REPO}/actions/workflows/test.yml/runs?event=pull_request&head_sha=${SHA}&per_page=100`;
 const CANCELLED_ENV = { CANCELLED_RUN_ID: '42', CANCELLED_RUN_ATTEMPT: '1' };
-const CANCELLED_RUN = { id: 42, head_sha: SHA, head_repository: { full_name: REPO }, run_attempt: 1, conclusion: 'cancelled' };
+const CANCELLED_RUN = { id: 42, event: 'pull_request', head_sha: SHA, head_repository: { full_name: REPO }, run_attempt: 1, conclusion: 'cancelled' };
 const CANCELLED_RUN_URL = `https://github.com/${REPO}/actions/runs/42`;
 const CANCELLED_RUN_PATH = `/repos/${REPO}/actions/runs/42`;
 const env = (api, extra = {}) => ({
   GITHUB_API_URL: api, GITHUB_TOKEN: 't0k', GITHUB_REPOSITORY: REPO, GITHUB_RUN_ID: '7', GITHUB_RUN_ATTEMPT: '1',
   HEAD_SHA: SHA, HEAD_REPO: REPO, CI_PR_VIEWER_SELECT: 'on', ...extra,
+});
+
+test('PR #11355: resolve a cancelled Test run to its historical PR head even if the event has a merge SHA', async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'viewer-status-head-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const output = join(dir, 'output');
+  const event = { workflow_run: { ...CANCELLED_RUN, head_sha: 'b'.repeat(40) } };
+  const run = { ...CANCELLED_RUN, pull_requests: [{ head: { sha: 'c'.repeat(40) } }] };
+  await withApi(201, async (api, posts) => {
+    const runEnv = env(api, { ...CANCELLED_ENV, GITHUB_OUTPUT: output, HEAD_SHA: event.workflow_run.head_sha });
+    assert.equal(await main(['--cancelled-head'], runEnv), 0);
+    const [, resolved] = readFileSync(output, 'utf8').trim().split('=');
+    assert.equal(resolved, SHA);
+    await main(['--cancelled'], runEnv);
+    assert.equal(posts.length, 0, 'a wrong reporting SHA never reaches the status API');
+    await main(['--cancelled'], { ...runEnv, HEAD_SHA: resolved });
+    assert.deepEqual(posts.map(({ url, body }) => [url, body.state]), [[`/repos/${REPO}/statuses/${SHA}`, 'failure']]);
+  }, {
+    [CANCELLED_RUN_PATH]: run,
+    [STATUS_PATH]: { statuses: [] },
+    [RUNS_PATH]: { workflow_runs: [run] },
+  });
 });
 
 test('cancelled Test completion requires the newest attempt and preserves its completed verdict', async () => {
@@ -480,11 +502,15 @@ test('WIRING: .mergify.yml keeps a failing or pending status out, by the name th
 
 test('WIRING: all status writers queue in the same per-head-SHA concurrency group', () => {
   const path = join(REPO_ROOT, '.github/workflows/viewer-selection-cancelled.yml');
-  const reporter = existsSync(path) ? parse(readFileSync(path, 'utf8')).jobs.report : undefined;
+  const jobs = existsSync(path) ? parse(readFileSync(path, 'utf8')).jobs : {};
+  const reporter = jobs.report;
   /* eslint-disable no-template-curly-in-string */
   assert.deepEqual(reporter?.concurrency, {
-    group: 'viewer-selection-status-${{ github.event.workflow_run.head_sha }}', queue: 'max',
+    group: 'viewer-selection-status-${{ needs.resolve.outputs.sha }}', queue: 'max',
   });
+  assert.equal(reporter.needs, 'resolve');
+  assert.equal(reporter.steps.at(-1).env.HEAD_SHA, '${{ needs.resolve.outputs.sha }}');
+  assert.equal(jobs.resolve.outputs.sha, '${{ steps.head.outputs.sha }}');
   for (const job of [CHANGES, TESTS, SHARDS_STATUS]) {
     assert.deepEqual(job.concurrency, {
       group: 'viewer-selection-status-${{ github.event.pull_request.head.sha || github.run_id }}', queue: 'max',

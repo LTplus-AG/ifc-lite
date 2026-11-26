@@ -12,18 +12,45 @@ on:
 permissions:
   actions: read
   contents: read
-  statuses: write
+
+env:
+  HEAD_REPO: ${{ github.event.workflow_run.head_repository.full_name }}
+  CANCELLED_RUN_ID: ${{ github.event.workflow_run.id }}
+  CANCELLED_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
 
 jobs:
-  report:
+  resolve:
     if: >-
       github.event.workflow_run.event == 'pull_request' &&
       github.event.workflow_run.conclusion == 'cancelled' &&
       github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      sha: ${{ steps.head.outputs.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          sparse-checkout: scripts
+          persist-credentials: false
+      - name: Resolve the historical PR head from the Test run record
+        id: head
+        run: node scripts/ci-viewer-select-status.mjs --cancelled-head
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+  report:
+    needs: resolve
+    if: needs.resolve.outputs.sha != ''
     # All writers of this commit status share the per-head-SHA group in Test.
     concurrency:
-      group: viewer-selection-status-${{ github.event.workflow_run.head_sha }}
+      group: viewer-selection-status-${{ needs.resolve.outputs.sha }}
       queue: max
+    permissions:
+      actions: read
+      contents: read
+      statuses: write
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -38,7 +65,4 @@ jobs:
         run: node scripts/ci-viewer-select-status.mjs --cancelled
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          HEAD_REPO: ${{ github.event.workflow_run.head_repository.full_name }}
-          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
-          CANCELLED_RUN_ID: ${{ github.event.workflow_run.id }}
-          CANCELLED_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          HEAD_SHA: ${{ needs.resolve.outputs.sha }}

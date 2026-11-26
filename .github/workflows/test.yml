@@ -1646,10 +1646,10 @@ jobs:
   # The full-lane verdict of the `PR viewer selection` status: on a full-lane
   # PR run the `changes` job posted `pending` ("waiting for the viewer
   # shards"), and this posts success only when every shard passed, failure
-  # when one failed, and nothing when they were cancelled or skipped. So a full-lane run on a sha an earlier
-  # fast run held never releases it before the shards have actually passed.
-  # !cancelled(), not always(): a cancelled run posts nothing either way, so
-  # it need not start a runner. Advisory to the run like the job below.
+  # when one failed, and nothing when they were cancelled or skipped. A full
+  # lane releases an earlier hold only after its shards pass. The completion
+  # workflow handles cancellation, so this job need not start on a cancelled
+  # run. Advisory to the run like the job below.
   viewer-shards-status:
     name: Viewer shards status (full lane)
     concurrency:
@@ -1717,8 +1717,8 @@ jobs:
   # .mergify.yml's auto_merge_conditions keep a PR whose status is failing or
   # pending out of the queue; absent (fork PR) passes. Per sha, so a push
   # starts clean. A flake: re-run this job within a day (build-output is kept
-  # one day); after that, re-run all jobs or push. On cancellation, the
-  # completion workflow reports failure if this run still owns the pending status.
+  # one day); after that, re-run all jobs or push. The completion workflow
+  # reports failure if the latest Test attempt cancels without a viewer verdict.
   # ROLLBACK: CI_PR_VIEWER_SELECT=off releases every held PR on its next run
   # (push, or close and reopen), which posts "not gated". The queue's full run
   # is still the full gate.

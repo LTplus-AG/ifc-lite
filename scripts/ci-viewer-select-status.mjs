@@ -48,10 +48,11 @@
  *               changes + viewer-tests): success when every viewer shard
  *               passed, failure when one failed, nothing when they were
  *               cancelled or skipped.
- *   --cancelled the trusted completion workflow posts failure when the
- *               newest Test attempt on the sha was cancelled before
- *               posting a verdict. This also closes holds left by the
- *               previous run when the replacement never posted entry.
+ *   --cancelled-head resolves the cancelled attempt's historical PR head.
+ *   --cancelled the trusted completion workflow reports failure with a
+ *               rerun remedy if the cancelled attempt is still newest and
+ *               its status is pending, missing, or a superseded success.
+ *               An existing failure or the latest attempt's success stands.
  *
  * Every pending says "if stuck: re-run all jobs": a pending is stuck only
  * when its run was cancelled, timed out or broke before its verdict.
@@ -78,10 +79,11 @@
  * for --entry and --shards also EVENT, LANE, BATCH, NOOP, FRONTEND, RUST, and
  * SHARDS_RESULT for --shards; for --final JOB_STATUS, SELECT_OUTCOME,
  * SELECT_RUN, DOWNLOAD_OUTCOME, RUN_OUTCOME. JOB_NAME (any phase) links that
- * job's page instead of the run's.
+ * job's page instead of the run's. Cancellation uses CANCELLED_RUN_ID and
+ * CANCELLED_RUN_ATTEMPT. --cancelled-head writes the sha to GITHUB_OUTPUT.
  */
 
-import { readFileSync } from 'node:fs';
+import { appendFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { isMainEntry } from './lib/is-main-entry.mjs';
@@ -208,19 +210,28 @@ function attemptUrl(url, attempt) {
   return target.href;
 }
 
-// The completion workflow runs from the default branch and never checks out
-// the PR. A rerun uses the same run ID, so also verify the attempt.
-async function postCancellation(env) {
-  const { GITHUB_REPOSITORY: repo, HEAD_REPO: headRepo, HEAD_SHA: sha,
+// The Actions run record pins the historical PR head. The associated PR
+// record can advance after the cancelled run, so don't use its current head.
+async function cancelledHead(env) {
+  const { GITHUB_REPOSITORY: repo, HEAD_REPO: headRepo,
     CANCELLED_RUN_ID: id, CANCELLED_RUN_ATTEMPT: attempt } = env;
-  if (!repo || repo !== headRepo) return 0;
-  if (!/^[0-9a-f]{40}$/.test(sha ?? '') || !/^\d+$/.test(id ?? '') || !/^\d+$/.test(attempt ?? '')) {
+  if (!repo || repo !== headRepo) return '';
+  if (!/^\d+$/.test(id ?? '') || !/^\d+$/.test(attempt ?? '')) {
     throw new Error('Invalid cancelled Test run identity');
   }
+  const run = await api(env, 'GET', `repos/${repo}/actions/runs/${id}`);
+  if (String(run.run_attempt) !== attempt || run.conclusion !== 'cancelled' ||
+      run.event !== 'pull_request' || run.head_repository?.full_name !== repo) return '';
+  if (!/^[0-9a-f]{40}$/.test(run.head_sha ?? '')) throw new Error('Invalid cancelled Test head SHA');
+  return run.head_sha;
+}
+
+async function postCancellation(env) {
+  const sha = await cancelledHead(env);
+  if (!sha || sha !== env.HEAD_SHA) return 0;
+  const { GITHUB_REPOSITORY: repo, CANCELLED_RUN_ID: id, CANCELLED_RUN_ATTEMPT: attempt } = env;
   const path = `repos/${repo}`;
   const runPrefix = `${env.GITHUB_SERVER_URL || 'https://github.com'}/${repo}/actions/runs/`;
-  const run = await api(env, 'GET', `${path}/actions/runs/${id}`);
-  if (String(run.run_attempt) !== attempt || run.conclusion !== 'cancelled' || run.head_sha !== sha) return 0;
 
   const { statuses } = await api(env, 'GET', `${path}/commits/${sha}/status?per_page=100`);
   const current = statuses.find(({ context }) => context === STATUS_CONTEXT);
@@ -254,8 +265,13 @@ async function postCancellation(env) {
 
 export async function main(argv, env = process.env) {
   const [cmd, dir] = argv;
+  if (cmd === '--cancelled-head') {
+    const sha = await cancelledHead(env);
+    if (sha) appendFileSync(env.GITHUB_OUTPUT, `sha=${sha}\n`);
+    return 0;
+  }
   if (cmd === '--cancelled') return postCancellation(env);
-  if (cmd !== '--entry' && cmd !== '--shards' && !(cmd === '--final' && dir)) throw new Error('usage: --entry | --shards | --final <dir> | --cancelled');
+  if (cmd !== '--entry' && cmd !== '--shards' && !(cmd === '--final' && dir)) throw new Error('usage: --entry | --shards | --final <dir> | --cancelled-head | --cancelled');
   const phase = cmd.slice(2);
   const decision = decideStatus({
     phase,

@@ -13,7 +13,8 @@
  *   that re-homes ids or recolours a mesh after the worker encoded it gets the
  *   bucket path for that mesh);
  * - its model has no placement and its `origin` is the one it was adopted with (records cannot move);
- * - the scene keeps CPU geometry and has the quantized pipelines that draw 12-byte records;
+ * - the scene keeps CPU geometry and has the quantized pipelines that draw 12-byte records
+ *   (while the renderer is still probing for them, meshes wait in the queue, still compact);
  * - it is one entity with one colour and no texture.
  *
  * Any other compact mesh is decoded (`@ifc-lite/geometry` compact-shell.ts) and
@@ -39,6 +40,19 @@ import { normalize, recordedLane, unmoved, type CompactSelection, type SceneComp
 
 export type { CompactSelection, SceneCompactHost } from './scene-compact-host.js';
 
+/**
+ * Why a queued compact mesh went to the bucket path decoded: the scene had no quantized pipelines
+ * (`pipelines`) or keeps no CPU geometry (`no-cpu-geometry`), or the mesh no longer matches its
+ * records (`written`: its geometry was replaced) or needs what a page cannot draw.
+ */
+export type CompactDecodeReason = 'pipelines' | 'no-cpu-geometry' | 'written' | 'id' | 'texture' | 'placed' | 'moved' | 'lane';
+
+/** What `Scene.getCompactStats` reports: meshes drawn from pages, and those a load decoded to buckets by reason. */
+export interface CompactSceneStats { paged: number; decodes: Readonly<Partial<Record<CompactDecodeReason, number>>> }
+
+/** Pages now, wait for the probe in flight, or the scene-wide reason every compact mesh decodes. */
+type PageMode = 'pages' | 'wait' | Extract<CompactDecodeReason, 'pipelines' | 'no-cpu-geometry'>;
+
 export class SceneCompact {
   private readonly store: CompactGeometryStore;
   private queue: MeshData[] = [];
@@ -52,21 +66,43 @@ export class SceneCompact {
   private demotionPages = new Set<BatchedMesh>();
   /** Paged meshes the bucket path refused: a frame's split request no longer asks for them. */
   private refused = new WeakSet<MeshData>();
-  /** Pages were rebuilt outside a stream (after a device loss): trim them at the drain that uploads them. */
+  /** Pages fill outside a stream (after a device loss, or a queue that outlived its stream): trim them at the drain that uploads them. */
   private trimAfterDrain = false;
+  /** Meshes handed to the bucket path decoded since the last `clear`, by reason (`take` and `drain`; edits that demote are not counted). */
+  decodes: Partial<Record<CompactDecodeReason, number>> = {};
 
   constructor(private readonly scene: SceneCompactHost, private readonly deps: CompactPageDeps) {
     this.store = new CompactGeometryStore(deps);
   }
 
-  private eligible(mesh: MeshData): boolean {
+  /**
+   * Whether eligible meshes draw from pages now (`'pages'`), wait queued for the quantized pipeline
+   * probe in flight (`'wait'`), or decode to the bucket path (the reason). A scene that keeps no CPU
+   * geometry (ephemeral streaming, released) has no bucket path to fall back to.
+   */
+  private pageMode(): PageMode {
+    const scene = this.scene;
+    if (scene.ephemeralStreamingMode || scene.geometryReleased) return 'no-cpu-geometry';
+    return scene.quantizedBatchesEnabled ? 'pages' : scene.quantizedBatchesPending ? 'wait' : 'pipelines';
+  }
+
+  /** Why `mesh` cannot draw from a page (null when it can). */
+  private refusal(mesh: MeshData): CompactDecodeReason | null {
     const ref = mesh.compact;
-    return ref !== undefined
-      && mesh.expressId >= 0 && mesh.expressId <= 0x00ffffff
-      && !mesh.entityIds && !mesh.uvs && !mesh.texture && !mesh.textureRef
-      && !this.scene.modelTranslations.isPlaced(mesh.modelIndex ?? 0)
-      && unmoved(mesh, ref)
-      && recordedLane(ref) === this.deps.laneOf(mesh);
+    if (!ref) return 'written';
+    if (!(mesh.expressId >= 0 && mesh.expressId <= 0x00ffffff) || mesh.entityIds) return 'id';
+    if (mesh.uvs || mesh.texture || mesh.textureRef) return 'texture';
+    if (this.scene.modelTranslations.isPlaced(mesh.modelIndex ?? 0)) return 'placed';
+    if (!unmoved(mesh, ref)) return 'moved';
+    return recordedLane(ref) === this.deps.laneOf(mesh) ? null : 'lane';
+  }
+
+  /** Whether `mesh` may go to a page under `mode`; counts the reason when it may not. */
+  private pageable(mesh: MeshData, mode: PageMode): boolean {
+    const reason = mode === 'pages' || mode === 'wait' ? this.refusal(mesh) : mode;
+    if (reason === null) return true;
+    this.decodes[reason] = (this.decodes[reason] ?? 0) + 1;
+    return false;
   }
 
   /**
@@ -76,12 +112,10 @@ export class SceneCompact {
    */
   take(meshes: MeshData[]): MeshData[] {
     if (!meshes.some((mesh) => mesh.compact)) return meshes;
-    const scene = this.scene;
-    // A scene that keeps no CPU geometry (ephemeral streaming, released) has no bucket path to fall back to.
-    const pages = scene.quantizedBatchesEnabled && !scene.ephemeralStreamingMode && !scene.geometryReleased;
+    const mode = this.pageMode();
     const rest: MeshData[] = [];
     for (const mesh of meshes) {
-      if (pages && this.eligible(mesh)) { this.queue.push(mesh); continue; }
+      if (mesh.compact && this.pageable(mesh, mode)) { this.queue.push(mesh); continue; }
       materializeCompactMesh(mesh);
       rest.push(mesh);
     }
@@ -141,14 +175,15 @@ export class SceneCompact {
       demoted = this.demoteChosen(chosen, false);
     }
     if (this.queue.length === 0) return demoted;
+    const mode = this.pageMode();
+    // Until the probe settles, nothing is uploaded: a decode now would be for good.
+    if (mode === 'wait') return demoted;
     // A queued mesh may have changed since `take`: its geometry written, or its id, colour, origin or
     // model placement set. Judged again here, it goes to the bucket queue when a page no longer draws it.
     const queue: MeshData[] = [];
-    const scene = this.scene;
-    const pages = scene.quantizedBatchesEnabled && !scene.ephemeralStreamingMode && !scene.geometryReleased;
     const decoded: MeshData[] = [];
     for (const mesh of this.queue) {
-      if (pages && this.eligible(mesh)) { queue.push(mesh); continue; }
+      if (this.pageable(mesh, mode)) { queue.push(mesh); continue; }
       decoded.push(mesh);
     }
     this.queue = [];
@@ -193,10 +228,11 @@ export class SceneCompact {
     return { sharedOrigin: this.store.origin, quantized: compactRow(mesh.compact).level === 10 };
   }
 
-  /** Stream end: upload what is queued and trim the pages to size. */
+  /** Stream end: upload what is queued and trim the pages to size (after the upload, when the queue waits for a pipeline probe). */
   settle(device: GPUDevice, pipeline: RenderPipeline): void {
     this.drain(device, pipeline);
-    if (this.store.untrimmed) this.store.trim(device);
+    if (this.queue.length > 0) this.trimAfterDrain = true;
+    else if (this.store.untrimmed) this.store.trim(device);
   }
 
   /** Take the page-time registrations of these members out of the Scene's mesh map (they are registered again later). */
@@ -391,5 +427,6 @@ export class SceneCompact {
     this.demotionPages.clear();
     this.refused = new WeakSet();
     this.trimAfterDrain = false;
+    this.decodes = {};
   }
 }

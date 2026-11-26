@@ -25,7 +25,7 @@ export interface CompactPayload {
   /** Mesh-local u16 triangle indices. */
   indices: Uint16Array;
   /** Per row (`COMPACT_TABLE_STRIDE` columns): mesh index in its collection, vertex start, vertex
-   *  count, index start, index count, lattice level (step = 2^-level m). */
+   *  count, index start, index count, lattice level (step = 2^-level m), source vertex count. */
   table: Uint32Array;
   /** Per row: lattice window origin in units of the row's step, xyz. */
   windows: Float64Array;
@@ -62,7 +62,7 @@ interface CompactBatchJs {
 }
 
 /** u32 columns per table row. */
-export const COMPACT_TABLE_STRIDE = 6;
+export const COMPACT_TABLE_STRIDE = 7;
 /** Bytes per vertex record. */
 export const COMPACT_RECORD_BYTES = 12;
 /** Cell size the viewer encodes at: half a level-10 window, the largest the encoder accepts. */
@@ -84,11 +84,13 @@ export interface CompactRow {
   indexCount: number;
   /** Lattice level: step = 2^-level metres. */
   level: number;
+  /** Vertices of the source f32 mesh, before welding: what a scan of its positions would count. */
+  sourceVertexCount: number;
 }
 
 export function compactRow(ref: CompactRef): CompactRow {
   const t = ref.payload.table, r = ref.row * COMPACT_TABLE_STRIDE;
-  return { vertexStart: t[r + 1], vertexCount: t[r + 2], indexStart: t[r + 3], indexCount: t[r + 4], level: t[r + 5] };
+  return { vertexStart: t[r + 1], vertexCount: t[r + 2], indexStart: t[r + 3], indexCount: t[r + 4], level: t[r + 5], sourceVertexCount: t[r + 6] };
 }
 
 /** Lattice step of a level in metres (level 10 is the renderer's `QUANT_STEP`). */

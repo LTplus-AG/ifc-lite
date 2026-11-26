@@ -25,11 +25,24 @@ export function worldBounds(meshes: readonly MeshData[]): {
   return { minX, minY, minZ, maxX, maxY, maxZ };
 }
 
-/** World-space bbox centre selected by the automatic batch-frame path. */
+/**
+ * The lattice an automatic batch frame snaps to: the coarsest step compact
+ * records use (level 9, `compact-store.ts`), a multiple of the quantized
+ * batch step 2^-10 (`quantize.ts`). A quantized batch puts its vertices on
+ * nodes `origin + k * 2^-10`; with the origin on this lattice those are the
+ * absolute nodes the wasm compact encoder writes, so a mesh lands on the same
+ * node whether it is drawn from a bucket or from a compact page.
+ */
+export const BATCH_ORIGIN_STEP = 2 ** -9;
+
+/** Midpoint of [lo, hi], rounded to the `BATCH_ORIGIN_STEP` lattice. */
+const latticeCentre = (lo: number, hi: number): number => Math.round((lo + hi) / 2 / BATCH_ORIGIN_STEP) * BATCH_ORIGIN_STEP;
+
+/** World-space bbox centre selected by the automatic batch-frame path, on the `BATCH_ORIGIN_STEP` lattice. */
 export function automaticBatchOrigin(meshes: readonly MeshData[]): [number, number, number] {
   const { minX, minY, minZ, maxX, maxY, maxZ } = worldBounds(meshes);
   return Number.isFinite(minX)
-    ? [(minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2]
+    ? [latticeCentre(minX, maxX), latticeCentre(minY, maxY), latticeCentre(minZ, maxZ)]
     : [0, 0, 0];
 }
 

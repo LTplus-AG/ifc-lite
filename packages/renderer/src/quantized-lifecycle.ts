@@ -12,7 +12,7 @@ export async function enableRendererQuantizedBatches(host: RendererRecoveryHost)
   const generation = host.initGeneration;
   const lossSequence = host.deviceLossSequence;
   if (!pipeline || host.destroyed || host.deviceLost) return false;
-  const ok = await pipeline.ensureQuantizedPipelines();
+  const ok = await host.scene.awaitQuantizedPipelines(pipeline.ensureQuantizedPipelines());
   if (host.pipeline !== pipeline || host.initGeneration !== generation
     || host.deviceLossSequence !== lossSequence || host.destroyed || host.deviceLost) return false;
   if (ok) host.scene.setQuantizedBatches(true);

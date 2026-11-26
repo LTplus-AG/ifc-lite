@@ -50,7 +50,7 @@ function buildTestCompactPayload(meshes: readonly TestCompactMesh[], level = 10)
     const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
     for (const v of mesh.vertices) for (let a = 0; a < 3; a++) { min[a] = Math.min(min[a], v[a]); max[a] = Math.max(max[a], v[a]); }
     const window = min.map((v) => Math.floor(v * scale) - scale);
-    payload.table.set([row, vertexAt, mesh.vertices.length, indexAt, mesh.triangles.length * 3, level], row * COMPACT_TABLE_STRIDE);
+    payload.table.set([row, vertexAt, mesh.vertices.length, indexAt, mesh.triangles.length * 3, level, mesh.vertices.length], row * COMPACT_TABLE_STRIDE);
     payload.windows.set(window, row * 3);
     payload.bounds.set([...min, ...max], row * 6);
     payload.cells.set(window.map((w) => Math.floor(w / (32 * 1024))), row * 3);
@@ -250,7 +250,7 @@ describe('bounds without decoding', () => {
 it('the test payload has the wire layout the decoder reads', () => {
   const payload = buildTestCompactPayload([testCompactBox(5, [0, 0, 0], 1)]);
   expect(payload.records.length).toBe(8 * COMPACT_RECORD_BYTES);
-  expect(Array.from(payload.table)).toEqual([0, 0, 8, 0, 36, 10]);
+  expect(Array.from(payload.table)).toEqual([0, 0, 8, 0, 36, 10, 8]);
   expect(payload.table.length).toBe(COMPACT_TABLE_STRIDE);
 });
 

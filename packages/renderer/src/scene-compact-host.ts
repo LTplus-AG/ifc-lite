@@ -22,6 +22,8 @@ export interface SceneCompactHost {
   geometryReleased: boolean;
   /** The quantized pipelines exist: without them a 12-byte page cannot be drawn. */
   quantizedBatchesEnabled: boolean;
+  /** The quantized pipelines are being probed: queued compact meshes wait for the outcome. */
+  quantizedBatchesPending: boolean;
   finalizeInProgress: boolean;
   nextBatchId: number;
   streamingFragments: readonly BatchedMesh[];

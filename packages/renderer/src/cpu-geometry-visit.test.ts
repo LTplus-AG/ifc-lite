@@ -129,7 +129,7 @@ describe('scene CPU geometry walk (#10264)', () => {
   it('counts a compact mesh by every array of its payload, without reading (and so decoding) its arrays', async () => {
     const { visitMeshArrays } = await load();
     const payload = {
-      records: new Uint8Array(96), indices: new Uint16Array(36), table: new Uint32Array(6),
+      records: new Uint8Array(96), indices: new Uint16Array(36), table: new Uint32Array(7),
       windows: new Float64Array(3), bounds: new Float64Array(6), cells: new Int32Array(3),
     };
     const shell = { compact: { payload, row: 0 } } as unknown as Parameters<typeof visitMeshArrays>[1];
@@ -140,7 +140,7 @@ describe('scene CPU geometry walk (#10264)', () => {
     visitMeshArrays('store.models', shell, (_o, array, kind) => seen.push([array, kind]));
     assert.deepEqual(seen.map(([, kind]) => kind), ['other', 'indices', 'other', 'other', 'other', 'other']);
     assert.deepEqual(seen.map(([array]) => array), [payload.records, payload.indices, payload.table, payload.windows, payload.bounds, payload.cells]);
-    assert.equal(seen.reduce((sum, [array]) => sum + array.byteLength, 0), 96 + 72 + 24 + 24 + 48 + 12);
+    assert.equal(seen.reduce((sum, [array]) => sum + array.byteLength, 0), 96 + 72 + 28 + 24 + 48 + 12);
   });
 
   it('exposes the BVH arrays it holds, and none after clear', () => {

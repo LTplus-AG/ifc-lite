@@ -50,12 +50,13 @@ export function toCatalogEntry(tool: Tool): ToolCatalogEntry {
   };
 }
 
-/** A period that ends a sentence: not after e.g./i.e./etc./vs., and followed by a capital or the end. */
-const SENTENCE_END = /(?<!\b(?:e\.g|i\.e|etc|vs))\.(?=\s+[A-Z]|$)/;
+/** A period that ends a sentence: not after e.g./i.e./etc./vs., and followed by a sentence start or the end. */
+const SENTENCE_END = /(?<!\b(?:e\.g|i\.e|etc|vs))\.(?=\s+[A-Z0-9`"'(]|$)/;
 
 function firstSentence(text: string): string {
   const flat = text.trim().replace(/\s+/g, ' ');
   const end = flat.search(SENTENCE_END);
   const sentence = end === -1 ? flat : flat.slice(0, end + 1);
-  return sentence.length > PURPOSE_MAX ? `${sentence.slice(0, PURPOSE_MAX - 1)}…` : sentence;
+  const chars = Array.from(sentence);
+  return chars.length > PURPOSE_MAX ? `${chars.slice(0, PURPOSE_MAX - 1).join('')}…` : sentence;
 }

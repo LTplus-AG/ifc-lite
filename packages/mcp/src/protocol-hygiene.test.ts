@@ -152,6 +152,13 @@ describe('list_changed', () => {
     expect(methods(notes, 'notifications/resources/list_changed')).toHaveLength(1);
   });
 
+  it('sends no list_changed for a capability the server does not advertise', async () => {
+    const { server, notes } = await initialized({ capabilities: { tools: {}, resources: {} } });
+    server.registry.add(fakeModel('quiet'));
+    server.setScope(readOnlyScope());
+    expect(notes.filter((n) => n.method?.endsWith('list_changed'))).toEqual([]);
+  });
+
   it('sends no list_changed before initialize', async () => {
     const { server, notes } = build();
     server.registry.add(fakeModel('early'));
@@ -225,6 +232,8 @@ describe('instructions and manifest', () => {
     expect(entry('First. Second.').purpose).toBe('First.');
     expect(entry('Property sets for an entity (e.g. Pset_WallCommon for IfcWall).').purpose).toBe('Property sets for an entity (e.g. Pset_WallCommon for IfcWall).');
     expect(entry('A sentence wrapped\nover two lines. Then more.').purpose).toBe('A sentence wrapped over two lines.');
+    expect(entry('Export rows. `type` filters them.').purpose).toBe('Export rows.');
+    expect(Array.from(entry('😀'.repeat(200)).purpose)).toHaveLength(160);
   });
 });
 

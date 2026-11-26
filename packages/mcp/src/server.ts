@@ -529,10 +529,10 @@ export class MCPServer {
   notify(method: string, params: Record<string, unknown>): void { if (this.initialized) void this.sink?.send(notification(method, params)); }
 
   /** Notify clients that the tool list has changed (e.g., after model load). */
-  notifyToolsChanged(): void { this.notify('notifications/tools/list_changed', {}); }
+  notifyToolsChanged(): void { if (this.capabilities.tools?.listChanged) this.notify('notifications/tools/list_changed', {}); }
 
   /** Notify clients that resources/list changed (a model was loaded, unloaded or hidden by scope). */
-  notifyResourcesChanged(): void { this.notify('notifications/resources/list_changed', {}); }
+  notifyResourcesChanged(): void { if (this.capabilities.resources?.listChanged) this.notify('notifications/resources/list_changed', {}); }
 
   /** Read-only access to the auth scope for transports that need to gate access. */
   hasModelAccess(modelId: string): boolean {

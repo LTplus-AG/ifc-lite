@@ -716,6 +716,8 @@ const initResp = await transport.send({
 
 The server negotiates MCP protocol version `2025-11-25` and accepts the earlier published revisions `2025-06-18` and `2025-03-26`. Any other requested version gets `2025-11-25`.
 
+Besides tools, resources and prompts, the server answers `resources/templates/list` (the entity URI template) and `logging/setLevel` (server log lines at or above the level arrive as `notifications/message`). A tool's required scope is at `_meta["ifc-lite/scope"]` in `tools/list`. `notifications/resources/list_changed` follows the loaded models: a custom `ModelRegistry` that implements the optional `onChange` gets it for every change, one without it only for changes made by a tool call.
+
 ## Why agents plus BIM
 
 MCP is the richest integration: stateful sessions, live viewer control, subscriptions, and a permission model. But it is not the only way to give an agent BIM capability. If your agent already runs shell commands, the [CLI](cli.md) is often enough:

@@ -52,9 +52,16 @@ export function mergeServer(
 
   const existing = servers[name];
   if (existing !== undefined) {
-    if (JSON.stringify(existing) === JSON.stringify(entry)) return { status: 'unchanged' };
+    if (canonical(existing) === canonical(entry)) return { status: 'unchanged' };
     if (!force) return { status: 'conflict', existing };
   }
   const next = { ...root, [key]: { ...servers, [name]: entry } };
   return { status: existing === undefined ? 'added' : 'replaced', text: `${JSON.stringify(next, null, 2)}\n` };
+}
+
+/** JSON with object keys sorted, so key order does not make two entries differ. */
+function canonical(value: unknown): string {
+  return JSON.stringify(value, (_key, v: unknown) =>
+    isObject(v) ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) : v,
+  );
 }

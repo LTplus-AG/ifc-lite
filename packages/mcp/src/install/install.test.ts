@@ -20,14 +20,14 @@ const PKG = `@ifc-lite/mcp@^${VERSION}`;
 
 interface Fake extends InstallIo {
   files: Map<string, string>;
-  runs: Array<{ command: string; args: string[] }>;
+  runs: Array<{ command: string; args: string[]; quiet?: boolean }>;
   stdout: string;
   stderr: string;
 }
 
 function fakeIo(host: Partial<HostEnv> = {}, opts: { missing?: boolean; status?: number } = {}): Fake {
   const io: Fake = {
-    host: { platform: 'darwin', home: '/Users/u', cwd: '/work/proj', env: {}, ...host },
+    host: { platform: 'darwin', home: '/Users/u', cwd: '/work/proj', env: {}, listDir: () => [], ...host },
     files: new Map(),
     runs: [],
     stdout: '',
@@ -35,8 +35,8 @@ function fakeIo(host: Partial<HostEnv> = {}, opts: { missing?: boolean; status?:
     readFile: (p) => io.files.get(p),
     writeFile: (p, t) => void io.files.set(p, t),
     copyFile: (from, to) => void io.files.set(to, io.files.get(from) ?? ''),
-    run(command, args) {
-      io.runs.push({ command, args });
+    run(command, args, quiet) {
+      io.runs.push(quiet ? { command, args, quiet } : { command, args });
       return opts.missing ? { status: 127, missing: true } : { status: opts.status ?? 0 };
     },
     out: (t) => void (io.stdout += t),
@@ -59,6 +59,19 @@ describe('ifc-lite-mcp install: where each client is configured', () => {
     expect(JSON.parse(io.files.get(path) ?? 'null')).toEqual({
       mcpServers: { 'ifc-lite': { command: 'npx', args: ['-y', PKG] } },
     });
+  });
+
+  it('Claude Desktop from the Microsoft Store reads its virtualized AppData', () => {
+    const io = fakeIo({
+      platform: 'win32',
+      home: 'C:\\Users\\u',
+      env: { LOCALAPPDATA: 'C:\\Users\\u\\AppData\\Local' },
+      listDir: (p) => (p === 'C:\\Users\\u\\AppData\\Local\\Packages' ? ['Microsoft.Foo_1', 'Claude_pzs8sxrjxfjjc'] : []),
+    });
+    install(['--client', 'claude-desktop'], io);
+    expect([...io.files.keys()]).toEqual([
+      'C:\\Users\\u\\AppData\\Local\\Packages\\Claude_pzs8sxrjxfjjc\\LocalCache\\Roaming\\Claude\\claude_desktop_config.json',
+    ]);
   });
 
   it('Cursor user and project scope', () => {
@@ -117,7 +130,7 @@ describe('ifc-lite-mcp install: where each client is configured', () => {
   it('Claude Code --force removes the old entry first', () => {
     const io = fakeIo();
     install(['--client', 'claude-code', '--force', '--scope', 'project'], io);
-    expect(io.runs[0]).toEqual({ command: 'claude', args: ['mcp', 'remove', '--scope', 'project', 'ifc-lite'] });
+    expect(io.runs[0]).toEqual({ command: 'claude', args: ['mcp', 'remove', '--scope', 'project', 'ifc-lite'], quiet: true });
     expect(io.runs[1].args.slice(0, 5)).toEqual(['mcp', 'add', '--scope', 'project', 'ifc-lite']);
   });
 });
@@ -149,6 +162,13 @@ describe('ifc-lite-mcp install: existing configs', () => {
     expect(JSON.parse(io.files.get(path) ?? 'null').mcpServers['ifc-lite'].command).toBe('npx');
   });
 
+  it('an entry with the same content in another key order is unchanged', () => {
+    const io = fakeIo();
+    io.files.set(path, JSON.stringify({ mcpServers: { 'ifc-lite': { args: ['-y', PKG], command: 'npx' } } }));
+    expect(install(['--client', 'cursor'], io)).toBe(0);
+    expect(io.stderr).toContain('already has');
+  });
+
   it('a second run with the same entry changes nothing', () => {
     const io = fakeIo();
     install(['--client', 'cursor'], io);
@@ -176,11 +196,20 @@ describe('ifc-lite-mcp install: existing configs', () => {
 });
 
 describe('ifc-lite-mcp install: dry run and usage errors', () => {
-  it('--dry-run prints the merged JSON and writes nothing', () => {
+  it('--dry-run prints only the new entry, never other servers, and writes nothing', () => {
     const io = fakeIo();
+    const path = '/Users/u/Library/Application Support/Claude/claude_desktop_config.json';
+    io.files.set(path, JSON.stringify({ mcpServers: { gh: { command: 'gh', env: { GITHUB_TOKEN: 'secret' } } } }));
     expect(install(['--client', 'claude-desktop', '--dry-run'], io)).toBe(0);
-    expect(io.files.size).toBe(0);
-    expect(JSON.parse(io.stdout).mcpServers['ifc-lite'].command).toBe('npx');
+    expect(io.files.size).toBe(1);
+    expect(io.stdout).not.toContain('secret');
+    expect(JSON.parse(io.stdout)).toEqual({ mcpServers: { 'ifc-lite': { command: 'npx', args: ['-y', PKG] } } });
+  });
+
+  it('--scope project warns about model paths given after --', () => {
+    const io = fakeIo();
+    install(['--client', 'cursor', '--scope', 'project', '--', '--read-only', 'model.ifc'], io);
+    expect(io.stderr).toContain('only work on this machine');
   });
 
   it('--dry-run for a CLI client prints the command, quoted', () => {
@@ -221,6 +250,7 @@ describe('ifc-lite-mcp install: dry run and usage errors', () => {
     [['--client', 'cursor', '--read-only'], 'Server flags go after --'],
     [['--client', 'cursor', '--', '--transport', 'http'], 'drop --transport'],
     [['--client', 'cursor', '--', '--transport'], 'drop --transport'],
+    [['--client', 'cursor', '--', '--transport', 'stdio', '--transport', 'http'], 'drop --transport'],
     [['--client', 'claude-desktop', '--scope', 'project'], 'no project config'],
     [['--client', 'cursor', '--name', 'a b'], '--name'],
   ])('%j is refused', (argv, message) => {
@@ -240,7 +270,7 @@ describe('ifc-lite-mcp install: real files', () => {
     mkdirSync(join(dir, '.cursor'));
     const path = join(dir, '.cursor', 'mcp.json');
     writeFileSync(path, JSON.stringify({ mcpServers: { other: { command: 'x' } } }));
-    const io: InstallIo = { ...nodeInstallIo(), host: { platform: process.platform, home: dir, cwd: dir, env: {} }, err: () => {} };
+    const io: InstallIo = { ...nodeInstallIo(), host: { platform: process.platform, home: dir, cwd: dir, env: {}, listDir: () => [] }, err: () => {} };
     expect(install(['--client', 'cursor'], io)).toBe(0);
     expect(Object.keys(JSON.parse(readFileSync(path, 'utf-8')).mcpServers)).toEqual(['other', 'ifc-lite']);
     expect(readdirSync(join(dir, '.cursor')).sort()).toEqual([
@@ -254,7 +284,7 @@ describe('ifc-lite-mcp install: real files', () => {
     // A directory where the config file should be: reading it fails with EISDIR.
     mkdirSync(join(dir, '.cursor', 'mcp.json'), { recursive: true });
     let stderr = '';
-    const io: InstallIo = { ...nodeInstallIo(), host: { platform: process.platform, home: dir, cwd: dir, env: {} }, err: (t) => void (stderr += t) };
+    const io: InstallIo = { ...nodeInstallIo(), host: { platform: process.platform, home: dir, cwd: dir, env: {}, listDir: () => [] }, err: (t) => void (stderr += t) };
     expect(install(['--client', 'cursor'], io)).toBe(1);
     expect(stderr).toContain('EISDIR');
   });
@@ -264,7 +294,7 @@ describe('ifc-lite-mcp install: real files', () => {
     mkdirSync(join(dir, '.cursor'));
     const real = join(dir, 'dotfiles', 'cursor', 'mcp.json');
     symlinkSync(real, join(dir, '.cursor', 'mcp.json'));
-    const io: InstallIo = { ...nodeInstallIo(), host: { platform: process.platform, home: dir, cwd: dir, env: {} }, err: () => {} };
+    const io: InstallIo = { ...nodeInstallIo(), host: { platform: process.platform, home: dir, cwd: dir, env: {}, listDir: () => [] }, err: () => {} };
     expect(install(['--client', 'cursor'], io)).toBe(0);
     expect(lstatSync(join(dir, '.cursor', 'mcp.json')).isSymbolicLink()).toBe(true);
     expect(JSON.parse(readFileSync(real, 'utf-8')).mcpServers['ifc-lite'].command).toBe('npx');
@@ -278,7 +308,7 @@ describe('ifc-lite-mcp install: real files', () => {
     writeFileSync(real, '{}');
     chmodSync(real, 0o600);
     symlinkSync(real, join(dir, '.cursor', 'mcp.json'));
-    const io: InstallIo = { ...nodeInstallIo(), host: { platform: process.platform, home: dir, cwd: dir, env: {} }, err: () => {} };
+    const io: InstallIo = { ...nodeInstallIo(), host: { platform: process.platform, home: dir, cwd: dir, env: {}, listDir: () => [] }, err: () => {} };
     expect(install(['--client', 'cursor'], io)).toBe(0);
     expect(lstatSync(join(dir, '.cursor', 'mcp.json')).isSymbolicLink()).toBe(true);
     expect(JSON.parse(readFileSync(real, 'utf-8')).mcpServers['ifc-lite'].command).toBe('npx');

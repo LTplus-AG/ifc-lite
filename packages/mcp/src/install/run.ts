@@ -17,6 +17,7 @@ import {
   constants,
   copyFileSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   readlinkSync,
   realpathSync,
@@ -57,8 +58,8 @@ export interface InstallIo {
   writeFile(path: string, text: string): void;
   /** Copy, failing rather than overwriting an existing `to`. */
   copyFile(from: string, to: string): void;
-  /** Run a program with inherited stdio. `missing` when it is not on PATH. */
-  run(command: string, args: string[]): { status: number; missing?: boolean };
+  /** Run a program with inherited stdio (or none, `quiet`). `missing` when it is not on PATH. */
+  run(command: string, args: string[], quiet?: boolean): { status: number; missing?: boolean };
   out(text: string): void;
   err(text: string): void;
   now(): Date;
@@ -66,7 +67,20 @@ export interface InstallIo {
 
 export function nodeInstallIo(): InstallIo {
   return {
-    host: { platform: process.platform, home: homedir(), cwd: process.cwd(), env: process.env },
+    host: {
+      platform: process.platform,
+      home: homedir(),
+      cwd: process.cwd(),
+      env: process.env,
+      listDir: (path) => userFacing(() => {
+        try {
+          return readdirSync(path);
+        } catch (err) {
+          if ((err as NodeJS.ErrnoException).code === 'ENOENT') return [];
+          throw err;
+        }
+      }),
+    },
     readFile: (path) => userFacing(() => {
       try {
         return readFileSync(path, 'utf-8');
@@ -90,8 +104,8 @@ export function nodeInstallIo(): InstallIo {
       }
     }),
     copyFile: (from, to) => userFacing(() => copyFileSync(from, to, constants.COPYFILE_EXCL)),
-    run: (command, args) => userFacing(() => {
-      const r = crossSpawn.sync(command, args, { stdio: 'inherit' });
+    run: (command, args, quiet) => userFacing(() => {
+      const r = crossSpawn.sync(command, args, { stdio: quiet ? 'ignore' : 'inherit' });
       if (r.error) {
         if ((r.error as NodeJS.ErrnoException).code === 'ENOENT') return { status: 127, missing: true };
         throw r.error;
@@ -166,7 +180,7 @@ interface InstallArgs {
   dryRun: boolean;
   force: boolean;
   serverArgs: string[];
-  /** Model files or --allow roots were given, so serverArgs holds machine-specific paths. */
+  /** serverArgs holds model paths or --allow roots, which only exist on this machine. */
   hasPaths: boolean;
 }
 
@@ -200,12 +214,10 @@ function parseInstallArgs(argv: string[], host: HostEnv): InstallArgs | 'help' {
   if (!isClientId(client)) throw new InstallError(`Unknown client "${client}". Use one of ${CLIENT_IDS.join(', ')}.`);
   if (scope !== 'user' && scope !== 'project') throw new InstallError('--scope must be user or project.');
   if (!/^[A-Za-z0-9_-]+$/.test(name)) throw new InstallError('--name may use letters, digits, - and _ only.');
-  const transport = passThrough.indexOf('--transport');
-  if (transport >= 0 && passThrough[transport + 1] !== 'stdio') {
+  if (passThrough.some((a, i) => a === '--transport' && passThrough[i + 1] !== 'stdio')) {
     throw new InstallError('Clients start ifc-lite-mcp over stdio; drop --transport. For HTTP, give the client the server URL.');
   }
-  const serverArgs = absolutePaths([...files, ...passThrough], host);
-  const hasPaths = files.length > 0 || passThrough.includes('--allow');
+  const { args: serverArgs, hasPaths } = absolutePaths([...files, ...passThrough], host);
   return { client, scope, name, dryRun, force, serverArgs, hasPaths };
 }
 
@@ -213,9 +225,13 @@ function parseInstallArgs(argv: string[], host: HostEnv): InstallArgs | 'help' {
  * The client starts the server from a directory we do not know, so model
  * paths and `--allow` roots are fixed to absolute paths now.
  */
-function absolutePaths(args: string[], host: HostEnv): string[] {
+function absolutePaths(args: string[], host: HostEnv): { args: string[]; hasPaths: boolean } {
   const path = host.platform === 'win32' ? win32 : posix;
-  const abs = (p: string) => (path.isAbsolute(p) ? p : path.resolve(host.cwd, p));
+  let hasPaths = false;
+  const abs = (p: string) => {
+    hasPaths = true;
+    return path.isAbsolute(p) ? p : path.resolve(host.cwd, p);
+  };
   const out: string[] = [];
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -225,7 +241,7 @@ function absolutePaths(args: string[], host: HostEnv): string[] {
       out.push(arg === '--allow' ? abs(args[i]) : args[i]);
     }
   }
-  return out;
+  return { args: out, hasPaths };
 }
 
 /** `npx` pinned to this release line, so the flags written here are ones it knows. */
@@ -302,7 +318,7 @@ function runCommandPlan(
     return 0;
   }
   // A non-zero exit from the remove step only means there was nothing to remove.
-  if (remove) io.run(plan.command, remove);
+  if (remove) io.run(plan.command, remove, true);
   const result = io.run(plan.command, plan.args);
   if (result.missing) {
     io.err(`[ifc-lite-mcp install] \`${plan.command}\` is not on PATH. Run this yourself:\n${line}\n`);
@@ -345,8 +361,9 @@ function writeFilePlan(
     );
   }
   if (args.dryRun) {
-    io.err(`[ifc-lite-mcp install] would write ${plan.path}:\n`);
-    io.out(merged.text);
+    // Only our entry: the rest of the file can hold other servers' secrets.
+    io.err(`[ifc-lite-mcp install] would ${merged.status === 'added' ? 'add' : 'replace'} this in ${plan.path}, keeping everything else:\n`);
+    io.out(`${JSON.stringify({ [plan.key]: { [args.name]: plan.entry } }, null, 2)}\n`);
     return 0;
   }
   let backup = '';

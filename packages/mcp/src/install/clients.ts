@@ -38,6 +38,8 @@ export interface HostEnv {
   home: string;
   cwd: string;
   env: Record<string, string | undefined>;
+  /** Entry names in a directory; [] when it does not exist. */
+  listDir(path: string): string[];
 }
 
 /** The command a client spawns to start the server. */
@@ -112,6 +114,12 @@ function claudeDesktopConfigPath(host: HostEnv): string {
     return posix.join(host.home, 'Library', 'Application Support', 'Claude', file);
   }
   if (host.platform === 'win32') {
+    // The Microsoft Store (MSIX) build reads a virtualized AppData under its
+    // package folder, which shadows %APPDATA%\Claude once the app has run.
+    const localAppData = host.env.LOCALAPPDATA ?? win32.join(host.home, 'AppData', 'Local');
+    const packages = win32.join(localAppData, 'Packages');
+    const msix = host.listDir(packages).find((d) => d.startsWith('Claude_'));
+    if (msix) return win32.join(packages, msix, 'LocalCache', 'Roaming', 'Claude', file);
     const appData = host.env.APPDATA ?? win32.join(host.home, 'AppData', 'Roaming');
     return win32.join(appData, 'Claude', file);
   }

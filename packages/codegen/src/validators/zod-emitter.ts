@@ -50,7 +50,7 @@ class ZodWriter {
           case 'BOOLEAN': return 'z.boolean()';
           case 'LOGICAL': return "z.union([z.boolean(), z.literal('UNKNOWN')])";
           case 'BINARY': {
-            const base = 'z.string().regex(/^(?:0|[0-3][0-9A-Fa-f]+)$/)';
+            const base = 'z.string().regex(/^(?:0|1[0-7]|2[0-3]|3[01])[0-9A-Fa-f]*$/)';
             return width === undefined ? base : `${base}.refine(value => (value.length - 1) * 4 - Number(value[0]) ${spec.fixed ? '===' : '<='} ${width}, 'invalid BINARY bit length')`;
           }
           default: return width === undefined ? 'z.string()' : `z.string().${spec.fixed ? 'length' : 'max'}(${width})`;

@@ -216,3 +216,41 @@ it('reconciles a value form beside a remapped unit reference above u32 (#10970)'
     expect(result.stats.warnings).toContainEqual(expect.stringContaining('IFCPROPERTYSINGLEVALUE.NominalValue'));
   }
 });
+
+it('reports only the trimmed curve whose required basis is omitted in IFC4X3 (#10971)', async () => {
+  const raw = readFileSync(new URL('../../../rust/export/tests/fixtures/schema_unrooted_upgrade.ifc', import.meta.url), 'utf8');
+  const source = raw.replace('ENDSEC;\nEND-ISO',
+    '#32=IFCTRIMMEDCURVE(#3,(IFCPARAMETERVALUE(0.)),(IFCPARAMETERVALUE(1.)),.T.,.PARAMETER.);\n'
+    + '#33=IFCTRIMMEDCURVE(#36,(IFCPARAMETERVALUE(0.)),(IFCPARAMETERVALUE(1.)),.T.,.PARAMETER.);\n'
+    + '#34=IFCDIRECTION((1.,0.));\n#35=IFCVECTOR(#34,1.);\n#36=IFCLINE(#1,#35);\nENDSEC;\nEND-ISO');
+  const store = await new IfcParser().parseColumnar(new TextEncoder().encode(source).buffer);
+  const out = new TextDecoder().decode(new StepExporter(store).export({ schema: 'IFC4X3' }).content);
+  expect(out).not.toMatch(/^#(?:3|6|7|32)=/m);
+  expect(out).toMatch(/^#33=IFCTRIMMEDCURVE/m);
+  const report = analyzeConversionLoss(store, 'IFC2X3', 'IFC4X3');
+  expect(report.entries.find(entry => entry.sourceType === 'IFCTRIMMEDCURVE')).toMatchObject({ kind: 'lossy', expressIds: [32] });
+  expect(report.entries.find(entry => entry.sourceType === 'IFCCOMPOSITECURVE')).toMatchObject({ kind: 'lossy', expressIds: [7] });
+  expect(report.describe()).toContain('1 × IFCTRIMMEDCURVE (#32) will be omitted because a required IFC4X3 attribute lost a reference.');
+  const sourceOnly = analyzeConversionLoss({ entityIndex: store.entityIndex }, 'IFC2X3', 'IFC4X3');
+  expect(sourceOnly.entries.find(entry => entry.sourceType === 'IFCTRIMMEDCURVE')).toBeUndefined();
+});
+
+it('clears only the optional Zone of a retained IFC2X3 local time in IFC4X3 (#10971)', async () => {
+  // A damaged HourOffset refers to an obsolete curve, so the offset is pruned.
+  const raw = readFileSync(new URL('../../../rust/export/tests/fixtures/schema_ifc4x3_legacy_optional.ifc', import.meta.url));
+  const store = await new IfcParser().parseColumnar(Uint8Array.from(raw).buffer);
+  const merged = new MergedExporter([{ id: 'source', name: 'source', dataStore: store }]);
+  const options = { schema: 'IFC4X3' } as const;
+  for (const result of [new StepExporter(store).export(options), merged.export(options), await merged.exportAsync(options)]) {
+    const output = new TextDecoder().decode(result.content);
+    expect(output).toContain('#5=IFCLOCALTIME(10,30,15.,$,$);');
+    expect(output).toContain('#7=IFCDATEANDTIME(#6,#5);');
+    expect(output).not.toMatch(/^#(?:3|4)=/m);
+    expect(result.stats.warnings).toContainEqual(expect.stringContaining('#4 (IFCCOORDINATEDUNIVERSALTIMEOFFSET) was omitted'));
+    expect(result.stats.warnings).not.toContainEqual(expect.stringContaining('#5 (IFCLOCALTIME) was omitted'));
+  }
+  const description = analyzeConversionLoss(store, 'IFC2X3', 'IFC4X3').describe().join('\n');
+  expect(description).toContain('IFCCOORDINATEDUNIVERSALTIMEOFFSET (#4) will be omitted');
+  expect(description).not.toContain('IFCLOCALTIME (#5) will be omitted');
+  expect(description).not.toContain('IFCDATEANDTIME (#7) will be omitted');
+});

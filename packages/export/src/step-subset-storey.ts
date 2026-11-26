@@ -83,8 +83,8 @@ function storeyText(body: string, index: number): string | null {
   }
 }
 
-/** Resolve a --storey selector (GUID / name / expressId) to its placement id. */
-export function resolveStoreyPlacement(token: string, parsed: ParsedStep): number {
+/** Resolve a --storey selector (GUID / name / expressId) to the storey and its placement. */
+export function resolveStorey(token: string, parsed: ParsedStep): { storeyId: number; placementId: number } {
   let storeyId: number | undefined;
   const t = token.trim();
   // Exact match on the decoded Name, then on LongName (Revit writes '02' as
@@ -131,7 +131,7 @@ export function resolveStoreyPlacement(token: string, parsed: ParsedStep): numbe
   const refs = refsOutsideStrings(storey.body);
   const placementId = refs.find((r) => parsed.instances.get(r)?.type === 'IFCLOCALPLACEMENT');
   if (placementId === undefined) throw new SubsetSelectionError('invalid', `Storey #${storeyId} has no IfcLocalPlacement`);
-  return placementId;
+  return { storeyId, placementId };
 }
 
 /**

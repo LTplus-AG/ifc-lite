@@ -17,6 +17,7 @@
 import {
   ProtocolError,
   ProtocolErrorCode,
+  SdkError,
   Server,
   type JSONRPCRequest,
   type RequestMethod,
@@ -60,6 +61,8 @@ export interface ProtocolDomain {
   readonly version: string;
   readonly capabilities: ServerCapabilities;
   readonly instructions: string;
+  /** The server's logger: lines also reach clients that set a log level. */
+  readonly logger: Logger;
   /** Host-side logger, never forwarded to the client: adapter faults go here. */
   readonly baseLogger: Logger;
   initialized(info: { client: unknown; protocol: string; negotiated: string }): void;
@@ -77,13 +80,16 @@ export interface ProtocolDomain {
 const NEGOTIABLE_VERSIONS = [PROTOCOL_VERSION, ...[...SUPPORTED_PROTOCOL_VERSIONS].filter((v) => v !== PROTOCOL_VERSION).sort().reverse()];
 
 /**
- * The SDK `Server` with one change: a request the SDK's spec schemas refuse
- * (missing or malformed params) answers -32602, not -32603. The SDK throws a
- * plain `Error` from its validation step; every error our own handlers raise
- * is already a `ProtocolError` (see `guard`), so an error without a code can
- * only come from that validation.
+ * The SDK `Server` with two changes, applied to every request handler:
+ * - requests other than initialize/ping before the handshake answer -32600,
+ *   ahead of the SDK's param validation (the SDK itself does not gate them);
+ * - a request the SDK's spec schemas refuse answers -32602, not -32603. The
+ *   SDK throws a plain `Error` from that validation step; our handlers only
+ *   throw `ProtocolError` (see `guard`), and SDK faults are `SdkError`.
  */
 class IfcProtocolServer extends Server {
+  /** Set once `initialize` has been answered. */
+  ready = false;
   /** Runs after the SDK answered `initialize`, with the request and the negotiated result. */
   onInitialize?: (params: { protocolVersion: string; clientInfo?: unknown }, result: { protocolVersion: string }) => void;
 
@@ -92,20 +98,35 @@ class IfcProtocolServer extends Server {
     handler: (request: JSONRPCRequest, ctx: ServerContext) => Promise<Result>,
   ): (request: JSONRPCRequest, ctx: ServerContext) => Promise<Result> {
     const inner = super._wrapHandler(method, handler);
-    const run: typeof inner = method !== 'initialize' ? inner : async (request, ctx) => {
-      const result = await inner(request, ctx);
-      this.onInitialize?.(request.params as { protocolVersion: string }, result as { protocolVersion: string });
+    const opening = method === 'initialize' || method === 'ping';
+    return async (request, ctx) => {
+      if (!opening && !this.ready) {
+        throw new ProtocolError(JsonRpcErrorCode.ServerNotInitialized, 'Server not initialized — send `initialize` first');
+      }
+      let result: Result;
+      try {
+        result = await inner(request, ctx);
+      } catch (err) {
+        throw toProtocolError(err);
+      }
+      if (method === 'initialize') {
+        this.ready = true;
+        // A failing observer must not fail a handshake the SDK already answered.
+        try {
+          this.onInitialize?.(request.params as { protocolVersion: string }, result as { protocolVersion: string });
+        } catch (err) {
+          this.onerror?.(err instanceof Error ? err : new Error(String(err)));
+        }
+      }
       return result;
     };
-    return async (request, ctx) => {
-      try {
-        return await run(request, ctx);
-      } catch (err) {
-        if (err instanceof ProtocolError) throw err;
-        throw new ProtocolError(ProtocolErrorCode.InvalidParams, err instanceof Error ? err.message : String(err));
-      }
-    };
   }
+}
+
+function toProtocolError(err: unknown): ProtocolError {
+  if (err instanceof ProtocolError) return err;
+  if (err instanceof SdkError) return new ProtocolError(ProtocolErrorCode.InternalError, err.message);
+  return new ProtocolError(ProtocolErrorCode.InvalidParams, err instanceof Error ? err.message : String(err));
 }
 
 /**
@@ -116,7 +137,6 @@ export class ProtocolSession {
   private readonly server: IfcProtocolServer;
   private readonly transport: LoopbackTransport;
   private readonly subscriptions = new Set<string>();
-  private initialized = false;
 
   constructor(private readonly domain: ProtocolDomain, sink: () => LoopbackSink | null) {
     const capabilities = domain.capabilities;
@@ -135,7 +155,7 @@ export class ProtocolSession {
   }
 
   isInitialized(): boolean {
-    return this.initialized;
+    return this.server.ready;
   }
 
   /** One inbound message; resolves with the response, or null for notifications. */
@@ -151,7 +171,7 @@ export class ProtocolSession {
 
   /** Send a server notification. Dropped until initialize; a failing sink is logged, never thrown at the caller. */
   notify(method: string, params: Record<string, unknown>): void {
-    if (!this.initialized) return;
+    if (!this.server.ready) return;
     const failed = (err: unknown) => this.domain.baseLogger.log('warning', `notify ${method} failed`, { error: describeThrown(err) });
     try {
       this.server.notification({ method, params }).catch(failed);
@@ -168,7 +188,6 @@ export class ProtocolSession {
     const s = this.server;
     // The SDK answers initialize and negotiates the version; we only record it.
     s.onInitialize = (params, result) => {
-      this.initialized = true;
       this.domain.initialized({ client: params.clientInfo, protocol: params.protocolVersion, negotiated: result.protocolVersion });
     };
     const on = <M extends RequestMethod>(method: M, handler: (request: RequestTypeMap[M], ctx: ServerContext) => unknown) =>
@@ -201,26 +220,22 @@ export class ProtocolSession {
   }
 
   /**
-   * Every domain handler runs through here: requests before initialize are
-   * refused, a `RequestError` keeps its code, anything else is an internal
-   * error. All leave as `ProtocolError`, which `IfcProtocolServer` passes
-   * through untouched.
+   * Every domain handler runs through here: a `RequestError` keeps its code,
+   * anything else is an internal error. Both leave as `ProtocolError`, which
+   * `IfcProtocolServer` passes through untouched.
    */
   // `on` casts the result: our wire types (protocol/types.ts) are structurally
   // looser than the SDK's zod-derived ones, and the SDK encodes and checks
   // each result against the spec schema at runtime anyway.
   private guard<P>(method: string, handler: (request: P, ctx: ServerContext) => unknown): (request: P, ctx: ServerContext) => Promise<unknown> {
     return async (request, ctx) => {
-      if (!this.initialized) {
-        throw new ProtocolError(JsonRpcErrorCode.ServerNotInitialized, 'Server not initialized — send `initialize` first');
-      }
       try {
         return await handler(request, ctx);
       } catch (err) {
         if (err instanceof ProtocolError) throw err;
         if (err instanceof RequestError) throw new ProtocolError(err.code, err.message, err.data);
         const message = describeThrown(err);
-        this.domain.baseLogger.log('error', `Request ${method} failed`, { error: message });
+        this.domain.logger.log('error', `Request ${method} failed`, { error: message });
         throw new ProtocolError(ProtocolErrorCode.InternalError, message);
       }
     };
@@ -233,6 +248,7 @@ export class ProtocolSession {
         const params: Record<string, unknown> = { progressToken: token, progress };
         if (total !== undefined) params.total = total;
         if (message !== undefined) params.message = message;
+        this.transport.takeSyncFailure(); // drop a failure left by an earlier, unrelated send
         const sent = ctx.mcpReq.notify({ method: 'notifications/progress', params });
         // A sink that throws fails the producer on purpose (#7372): rethrow here.
         const failure = this.transport.takeSyncFailure();

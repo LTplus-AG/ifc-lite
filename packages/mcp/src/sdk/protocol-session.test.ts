@@ -55,6 +55,8 @@ describe('SDK protocol adapter lifecycle', () => {
     const { request, initialize } = build();
     const early = await request('resources/read', { uri: 'nope://x' });
     expect(early?.error?.code).toBe(-32600);
+    // The gate runs before the SDK's param validation.
+    expect((await request('tools/call'))?.error?.code).toBe(-32600);
     await initialize();
     expect((await request('resources/read', { uri: 'nope://x' }))?.error).toMatchObject({ code: -32602, data: { uri: 'nope://x' } });
   });

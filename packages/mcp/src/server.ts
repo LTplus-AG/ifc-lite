@@ -108,7 +108,7 @@ export class MCPServer implements ProtocolDomain {
   readonly instructions: string;
 
   private scope: AuthScope;
-  private logger: Logger;
+  readonly logger: Logger;
   private logForwarder: ClientLogForwarder;
   private sink: OutgoingMessageSink | null = null;
   /** The live MCP connection; built on first use. */

@@ -693,3 +693,30 @@ describe('HttpTransport session cap (#6943)', () => {
     });
   });
 });
+
+describe('HttpTransport cancelled request', () => {
+  it('answers a cancelled JSON-mode POST with -32800, not an empty body (SDK cancellation sends no response)', async () => {
+    const { ToolRegistry } = await import('../tools/types.js');
+    const tools = new ToolRegistry();
+    tools.register({
+      name: 'wait', description: 'Waits until cancelled.', scope: 'read', inputSchema: { type: 'object' },
+      handler: (_input, ctx) => new Promise((resolve) => {
+        ctx.signal.addEventListener('abort', () => resolve({ content: [{ type: 'text', text: 'aborted' }] }));
+      }),
+    });
+    const transport = makeTransport({ build: (scope, sessionId) => createMCPServer({ version: VERSION, scope, sessionId, tools }) });
+    await transport.listen();
+    try {
+      const port = transport.port() as number;
+      const sessionId = await initSession(port, 'alice-token');
+      const call = request(port, 'alice-token', { method: 'POST', sessionId,
+        body: JSON.stringify({ jsonrpc: '2.0', id: 9, method: 'tools/call', params: { name: 'wait', arguments: {} } }) });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      await request(port, 'alice-token', { method: 'POST', sessionId,
+        body: JSON.stringify({ jsonrpc: '2.0', method: 'notifications/cancelled', params: { requestId: 9 } }) });
+      expect(await (await call).json()).toMatchObject({ id: 9, error: { code: -32800 } });
+    } finally {
+      await transport.close();
+    }
+  });
+});

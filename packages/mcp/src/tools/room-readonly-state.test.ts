@@ -67,7 +67,7 @@ for (const fault of ['cancel','changed'] as const) it.skipIf(!available)(`#6232 
   let release!: () => void, started!: () => void;
   const barrier = new Promise<void>(resolve => { release = resolve; }), entered = new Promise<void>(resolve => { started = resolve; });
   const actual = GeometryProcessor.prototype.process;
-  vi.spyOn(GeometryProcessor.prototype, 'process').mockImplementation(async function(this: GeometryProcessor, ...args: Parameters<GeometryProcessor['process']>) { started(); await barrier; return actual.apply(this,args); });
+  const processing = vi.spyOn(GeometryProcessor.prototype, 'process').mockImplementation(async function(this: GeometryProcessor, ...args: Parameters<GeometryProcessor['process']>) { started(); await barrier; return actual.apply(this,args); });
   try {
     const before = snapshot(model);
     const pending = transport.send({ jsonrpc:'2.0',id:901,method:'tools/call',params:{name:'room_command',arguments:{storey_express_id:42,command:{action:'query'}}} });
@@ -79,7 +79,9 @@ for (const fault of ['cancel','changed'] as const) it.skipIf(!available)(`#6232 
     if (fault === 'cancel') {
       // A cancelled request gets no response (MCP cancellation, via the SDK); the model is untouched.
       expect(await pending).toBeNull();
-      await new Promise(resolve => setTimeout(resolve, 50));
+      // Wait for the aborted command's geometry run itself, then one turn for its result handling.
+      await Promise.allSettled(processing.mock.results.map(r => r.value));
+      await new Promise(resolve => setImmediate(resolve));
     } else {
       const result = (await pending as {result:CallToolResult}).result;
       expect(result.structuredContent?.code).toBe('STATE_CHANGED');

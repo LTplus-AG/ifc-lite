@@ -36,20 +36,24 @@ let activeCommand = '';
 let debugFlag = false;
 
 async function main(): Promise<void> {
-  // `mcp install` parses all of its argv itself, the server flags after `--`
-  // included, so it runs before the global flag handling below.
-  if (process.argv[2] === 'mcp' && process.argv[3] === 'install') {
-    activeCommand = 'mcp';
-    const { runInstall } = await import('@ifc-lite/mcp/install');
-    process.exitCode = runInstall(process.argv.slice(4), undefined, 'ifc-lite mcp install');
-    return;
-  }
   // Global verbosity flags are parsed and STRIPPED before dispatch so a
   // command's positional-argument scan never mistakes them for a file path.
   const verbosity = parseVerbosity(process.argv.slice(2));
   logger.configure({ level: verbosity.level });
   debugFlag = verbosity.debug;
   const args = verbosity.rest;
+
+  // `mcp install` parses its own argv, the server flags after `--` included, so
+  // it gets the raw tail (not the verbosity-stripped one) before the global
+  // --help/--version/--out handling below.
+  if (args[0] === 'mcp' && args[1] === 'install') {
+    activeCommand = 'mcp';
+    const raw = process.argv.slice(2);
+    const at = raw.findIndex((a, i) => a === 'mcp' && raw[i + 1] === 'install');
+    const { runInstall } = await import('@ifc-lite/mcp/install');
+    process.exitCode = runInstall(raw.slice(at + 2), undefined, 'ifc-lite mcp install');
+    return;
+  }
 
   const wantsHelp = args.includes('--help') || args.includes('-h');
   if (args.length === 0) {

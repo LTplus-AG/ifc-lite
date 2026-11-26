@@ -251,6 +251,20 @@ describe('ifc-lite-mcp install: existing configs', () => {
     expect(io.stderr).not.toContain('sk-secret');
   });
 
+  it('an entry an older install wrote is updated without --force', () => {
+    const io = fakeIo();
+    io.files.set(path, JSON.stringify({ mcpServers: { 'ifc-lite': { command: 'npx', args: ['-y', '@ifc-lite/mcp@^0.20.0'] } } }));
+    expect(install(['--client', 'cursor'], io)).toBe(0);
+    expect(JSON.parse(io.files.get(path) ?? 'null').mcpServers['ifc-lite'].args).toEqual(['-y', PKG]);
+  });
+
+  it('--open is written with a warning that it opens a tab at every start', () => {
+    let warned = '';
+    const io = fakeIo({ warn: (t) => void (warned += t) });
+    expect(install(['--client', 'cursor', 'm.ifc', '--', '--open'], io)).toBe(0);
+    expect(warned).toContain('every time');
+  });
+
   it('refuses a different entry with the same name unless --force', () => {
     const io = fakeIo();
     const mine = JSON.stringify({ mcpServers: { 'ifc-lite': { command: 'node', args: ['mine.js'] } } });
@@ -360,6 +374,9 @@ describe('ifc-lite-mcp install: dry run and usage errors', () => {
     [['--client', 'cursor', 'model.ifc', '--', '--bridge'], 'loads no files'],
     [['--client', 'cursor', '-v'], 'not an install option'],
     [['--client', 'cursor', '--', '--readonly'], 'no --readonly flag'],
+    [['--client', 'cursor', '--', '--bridge-port', '9000'], 'nothing without --bridge'],
+    [['--client', 'cursor', '--', '--viewer-port', '9000'], 'nothing without --viewer'],
+    [['--client', 'cursor', '--', '--viewer', '--viewer-port', 'abc'], 'integer from 0 to 65535'],
     [['--client', 'cursor', ''], 'empty argument'],
     [['--client', 'cursor', '--', '--allow', ''], '--allow needs a value'],
     [['--client', 'cursor', '--', '--token', 'abc'], 'for --transport http'],

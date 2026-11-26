@@ -12,10 +12,9 @@
  * would happen and touches nothing.
  */
 
-import { dirname, join, posix, win32 } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readPackageVersion, UNKNOWN_VERSION } from '@ifc-lite/data/node';
-import { bridgeConflict, isMcpValueFlag, MCP_BOOLEAN_FLAGS, parseArgs } from '../cli-args.js';
 import {
   CLIENTS,
   InstallError,
@@ -29,13 +28,10 @@ import {
   type ServerCommand,
 } from './clients.js';
 import { describeEntry, mergeServer } from './merge.js';
+import { checkServerArgs, EXIT_FLAGS } from './server-args.js';
 import { nodeInstallIo, type InstallIo } from './io.js';
 
 const CLIENT_IDS = Object.keys(CLIENTS);
-/** Read only by the HTTP transport, which an installed server never runs. */
-const HTTP_ONLY_FLAGS = ['--port', '--host', '--token'];
-/** Server flags that print and exit; `--help`/`-h` are install's own. */
-const EXIT_FLAGS = ['--help', '-h', '--version', '-v'];
 
 function installHelp(invokedAs: string): string {
   return `
@@ -104,67 +100,15 @@ function parseInstallArgs(argv: string[], host: HostEnv): InstallArgs | 'help' {
   if (!isClientId(client)) throw new InstallError(`Unknown client "${client}". Use one of ${CLIENT_IDS.join(', ')}.`);
   if (scope !== 'user' && scope !== 'project') throw new InstallError('--scope must be user or project.');
   if (!/^[A-Za-z0-9_-]+$/.test(name)) throw new InstallError('--name may use letters, digits, - and _ only.');
-  const { args: serverArgs, hasPaths } = serverArgsFor([...files, ...passThrough], host);
-  // What the server would refuse at launch is refused now, in the server's own words.
-  const parsed = parseArgs(serverArgs);
-  if (parsed.transport !== 'stdio') {
-    throw new InstallError('Clients start ifc-lite-mcp over stdio; drop --transport. For HTTP, give the client the server URL.');
-  }
-  const conflict = bridgeConflict(parsed);
-  if (conflict) throw new InstallError(conflict);
-  // loader.ts's exact rule, so what it refuses at load is refused here (its '/'-only
-  // join also refuses Windows paths today; install says so rather than write it).
-  const roots = parsed.allowedPaths ?? [];
-  const outside = roots.length > 0 && parsed.files.find((f) => !roots.some((r) => f === r || f.startsWith(r + '/')));
-  if (outside) throw new InstallError(`${outside} is outside every --allow root; the server would refuse it.`);
-  if (!parsed.bridge && (parsed.insecure || parsed.allowedOrigins)) {
-    throw new InstallError('--insecure and --allow-origin only act with --bridge here; for HTTP, give the client the server URL.');
-  }
+  const { args: serverArgs, hasPaths } = checkServerArgs([...files, ...passThrough], host);
   return { client, scope, name, dryRun, force, serverArgs, hasPaths };
 }
 
-/**
- * The server's argv as it will be written, walked once the way the server
- * reads it. Whatever the server would ignore or exit on (a typo such as
- * --readonly, --x=y, a value flag with no value, --version) is refused here,
- * because once written it fails silently at every launch. The client starts
- * the server from a directory we do not know, so model paths and `--allow`
- * roots are made absolute.
- */
-function serverArgsFor(args: string[], host: HostEnv): { args: string[]; hasPaths: boolean } {
-  const path = host.platform === 'win32' ? win32 : posix;
-  let hasPaths = false;
-  const abs = (p: string) => {
-    hasPaths = true;
-    // resolve, not isAbsolute: a Windows `\\dir\\m.ifc` also needs its drive.
-    return path.resolve(host.cwd, p);
-  };
-  const out: string[] = [];
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-    if (arg === '') {
-      throw new InstallError('An empty argument would become this directory; is a variable unset?');
-    } else if (!arg.startsWith('-')) {
-      if (!host.isFile(abs(arg))) throw new InstallError(`No model file at ${abs(arg)}.`);
-      out.push(abs(arg));
-    } else if (arg.includes('=')) {
-      throw new InstallError(`The server reads ${arg.split('=')[0]} <value>, with a space; it would ignore ${arg}.`);
-    } else if (HTTP_ONLY_FLAGS.includes(arg)) {
-      throw new InstallError(`${arg} is for --transport http; clients start the server over stdio.`);
-    } else if (isMcpValueFlag(arg)) {
-      const value = args[i + 1];
-      if (!value || value.startsWith('-')) throw new InstallError(`${arg} needs a value.`);
-      i++;
-      out.push(arg, arg === '--allow' ? abs(value) : value);
-    } else if (EXIT_FLAGS.includes(arg)) {
-      throw new InstallError(`${arg} makes the server print and exit at every launch; drop it.`);
-    } else if (MCP_BOOLEAN_FLAGS.includes(arg)) {
-      out.push(arg);
-    } else {
-      throw new InstallError(`The server has no ${arg} flag (ifc-lite-mcp --help lists them).`);
-    }
-  }
-  return { args: out, hasPaths };
+/** An entry an earlier `install` wrote: npx running @ifc-lite/mcp. */
+function isOurs(entry: unknown): boolean {
+  if (typeof entry !== 'object' || entry === null) return false;
+  const { command, args } = entry as { command?: unknown; args?: unknown };
+  return command === 'npx' && Array.isArray(args) && args.some((a) => typeof a === 'string' && /^@ifc-lite\/mcp(@|$)/.test(a));
 }
 
 /** `npx` pinned to this release line, so the flags written here are ones it knows. */
@@ -270,6 +214,10 @@ function writeFilePlan(
   let merged;
   try {
     merged = mergeServer(before, plan.key, args.name, plan.entry, args.force);
+    // Our own older entry (a new version pin, other flags) is replaced without --force.
+    if (merged.status === 'conflict' && isOurs(merged.existing)) {
+      merged = mergeServer(before, plan.key, args.name, plan.entry, true);
+    }
   } catch (err) {
     if (!(err instanceof InstallError)) throw err;
     const snippet = JSON.stringify({ [plan.key]: { [args.name]: plan.entry } }, null, 2);

@@ -21,9 +21,6 @@ export const IDS_OPS_SCHEMA_URI = 'ifc-lite://schemas/ids-ops-v1.json';
 
 type Defs = Record<string, JsonSchema>;
 
-/** Value types spelled out after the per-kind lines, in this order. */
-const LEGEND = ['FacetDraft', 'ValueInput', 'Section', 'Optionality', 'IfcVersion'];
-
 function refName(schema: JsonSchema | undefined): string | undefined {
   const ref = schema?.$ref;
   return typeof ref === 'string' ? ref.slice(ref.lastIndexOf('/') + 1) : undefined;
@@ -54,12 +51,45 @@ function fail(message: string): never {
   throw new Error(`ids ops schema: ${message}`);
 }
 
+/** `$defs` names a schema refers to at its own level: a property, an array item or a union branch. */
+function directRefs(schema: JsonSchema): string[] {
+  const subs = [...Object.values(schema.properties ?? {}), ...(Array.isArray(schema.oneOf) ? schema.oneOf as JsonSchema[] : [])];
+  return subs.flatMap((sub) => [refName(sub), refName(sub.items)]).filter((n): n is string => n !== undefined);
+}
+
+/**
+ * Every type a payload field names, and the types those name in turn, so an
+ * agent that does not read resources still sees each shape. Uuid is covered
+ * by the closing line.
+ */
+function legendNames(defs: Defs): string[] {
+  const seen = new Set<string>(['Uuid']);
+  const queue = OP_KINDS.flatMap((kind) => directRefs(defs[`Op_${kind.replace(/\./g, '_')}`]?.properties?.payload ?? {}));
+  const out: string[] = [];
+  while (queue.length > 0) {
+    const name = queue.shift()!;
+    if (seen.has(name)) continue;
+    seen.add(name);
+    const def = defs[name] ?? fail(`no $def ${name}`);
+    out.push(name);
+    const branches = Array.isArray(def.oneOf) ? (def.oneOf as JsonSchema[]).map((b) => defs[refName(b) ?? ''] ?? b) : [def];
+    queue.push(...branches.flatMap(directRefs));
+  }
+  return out;
+}
+
 function legendLine(name: string, defs: Defs): string {
   const def = defs[name];
-  if (!def) fail(`no $def ${name}`);
   if (Array.isArray(def.enum)) return `${name} = ${def.enum.map((v) => JSON.stringify(v)).join(' | ')}`;
-  const branches = Array.isArray(def.oneOf) ? (def.oneOf as JsonSchema[]) : [];
-  return `${name} = ${branches.map((b) => branchShape(defs[refName(b) ?? ''] ?? fail(`unresolved branch of ${name}`))).join(' | ')}`;
+  if (Array.isArray(def.oneOf)) {
+    return `${name} = ${(def.oneOf as JsonSchema[]).map((b) => {
+      const target = refName(b);
+      return target ? (defs[target]?.properties ? branchShape(defs[target]) : target) : branchShape(b);
+    }).join(' | ')}`;
+  }
+  if (def.properties) return `${name} = ${branchShape(def)}`;
+  if (def.type === 'array') return `${name} = [${refName(def.items) ?? String(def.items?.type ?? 'any')}]`;
+  return `${name} = ${Array.isArray(def.type) ? def.type.join('|') : String(def.type ?? 'any')}`;
 }
 
 function payloadDescription(defs: Defs): string {
@@ -67,7 +97,7 @@ function payloadDescription(defs: Defs): string {
     'Fields by kind (required, then [optional]):',
     ...OP_KINDS.map((kind) => kindLine(kind, defs)),
     'Types:',
-    ...LEGEND.map((name) => legendLine(name, defs)),
+    ...legendNames(defs).map((name) => legendLine(name, defs)),
     `Ids (specId, facetId, opId, ...) are lowercase UUIDs. Full schema: resource ${IDS_OPS_SCHEMA_URI}.`,
   ].join('\n');
 }

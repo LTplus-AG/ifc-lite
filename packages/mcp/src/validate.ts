@@ -49,7 +49,7 @@ export interface ValidationResult {
 /**
  * Keywords `validateInput` enforces, plus the annotation-only ones it may
  * ignore by definition (`description`, `title`, `format`, `examples`, `$schema`,
- * `$id`, `$comment`, `$defs`).
+ * `$comment`). `$id` is not listed: it would change the base `$ref` resolves against.
  */
 export const ENFORCED_KEYWORDS: ReadonlySet<string> = new Set([
   'type', 'enum', 'const', 'default',
@@ -58,7 +58,7 @@ export const ENFORCED_KEYWORDS: ReadonlySet<string> = new Set([
   'minimum', 'exclusiveMinimum', 'maximum',
   'minLength', 'maxLength', 'pattern',
   'anyOf', 'oneOf', '$ref', '$defs',
-  'description', 'title', 'format', 'examples', '$schema', '$id', '$comment',
+  'description', 'title', 'format', 'examples', '$schema', '$comment',
 ]);
 
 export function validateInput(schema: JsonSchema, input: unknown): ValidationResult {
@@ -106,7 +106,8 @@ function walk(schema: JsonSchema | boolean, input: unknown, path: string, errors
     // Both see the caller's input; a default the target fills must not trip a sibling `additionalProperties: false`.
     const fromRef = walk(resolveRef(ref, opts.root), input, path, errors, { ...opts, refs: new Set([...(opts.refs ?? []), ref]) });
     const fromSiblings = walk(siblings, input, path, errors, opts);
-    if (!matchesType('object', fromRef) || !matchesType('object', fromSiblings)) return fromRef;
+    // A default may sit on either side; keep whichever result exists.
+    if (!matchesType('object', fromRef) || !matchesType('object', fromSiblings)) return fromRef !== undefined ? fromRef : fromSiblings;
     // The target's result, with the properties the siblings declare taken from theirs.
     const merged = { ...(fromRef as Record<string, unknown>) };
     for (const key of Object.keys(siblings.properties ?? {})) {

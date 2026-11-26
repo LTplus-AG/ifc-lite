@@ -351,5 +351,10 @@ describe('validateInput: code-review cases for $ref siblings, items:false, enum 
     expect(validateInput(schema, { v: 1 }).valid).toBe(false);
     expect(() => validateInput({ $ref: '#/$defs/%E0' }, {})).toThrow(/bad percent-escape/);
   });
+
+  it('keeps a default written next to a $ref', () => {
+    const schema = { type: 'object', properties: { x: { $ref: '#/$defs/A', default: 5 } }, $defs: { A: { type: 'integer' } } };
+    expect(validateInput(schema, {}).value).toEqual({ x: 5 });
+  });
 });
 

@@ -8199,7 +8199,8 @@
     "firstNonBlank: function",
     "isBlank: function",
     "isProductType: const",
-    "toolError: function"
+    "toolError: function",
+    "validateInput: function"
   ],
   "@ifc-lite/mcp/cli-args": [
     "CliOptions: interface",

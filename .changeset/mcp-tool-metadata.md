@@ -4,7 +4,7 @@
 
 Every tool in the default registry now has a `title` and all four MCP annotation hints (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`), so clients can auto-approve reads and warn before deletes, overwrites or file writes. Following the spec (`destructiveHint: false` means additive only), setters that replace a value are marked destructive. Tool definitions accept `outputSchema` and `icons` and pass them through `tools/list`; the protocol types export `Icon`.
 
-Input validation now enforces `oneOf`, `$ref`/`$defs`, `const`, `pattern`, `uniqueItems` and schema-valued `additionalProperties`. A test fails if any tool schema uses a keyword the validator does not enforce, and every schema must compile under ajv 2020-12 strict mode.
+Browser integrations can import `validateInput` from `@ifc-lite/mcp/browser`. Input validation now enforces `oneOf`, `$ref`/`$defs`, `const`, `pattern`, `uniqueItems` and schema-valued `additionalProperties`. A test fails if any tool schema uses a keyword the validator does not enforce, and every schema must compile under ajv 2020-12 strict mode.
 
 `ids_apply_ops` advertises a compact op list (`kind` enum, `opId`, `payload`) with a generated per-kind field summary. The full op schema moved to the resource `ifc-lite://schemas/ids-ops-v1.json`; the handler still checks every op against it. `tools/list` shrinks from ~143 KB to ~134 KB with the new titles and annotations included, and a test holds it under a budget.
 

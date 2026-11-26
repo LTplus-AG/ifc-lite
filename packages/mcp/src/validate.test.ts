@@ -416,3 +416,16 @@ describe('validateInput: code-review cases for items:false, enum discriminators,
   });
 });
 
+
+it('bounds defaults supplied beside a recursive reference (#11550)', () => {
+  const schema = { properties: { next: { $ref: '#', default: {} } } };
+  expect(validateInput(schema, {}).errors[0].message).toMatch(/Circular \$ref/);
+  expect(validateInput(schema, { next: null }).valid).toBe(true);
+});
+
+it('reports malformed items as schema issues (#11550)', () => {
+  for (const items of [null, 17, [], 'integer']) {
+    const schema = { type: 'array', items } as unknown as Parameters<typeof validateInput>[0];
+    expect(validateInput(schema, [1]).errors[0]).toMatchObject({ path: '$', message: expect.stringMatching(/schema/i) });
+  }
+});

@@ -45,6 +45,9 @@ export type {
   ModelRegistry,
 } from './context.js';
 export { ToolErrorCode, ToolExecutionError, toolError } from './errors.js';
+// The same JSON Schema validator the server runs, so an in-page dispatcher
+// enforces exactly what its advertised tool schemas say (node-free).
+export { validateInput } from './validate.js';
 export type { ToolErrorCodeValue, ToolErrorOptions } from './errors.js';
 export {
   PROTOCOL_VERSION,

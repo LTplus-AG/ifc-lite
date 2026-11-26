@@ -84,3 +84,7 @@ function readDefinitions(scopes: Map<string, string>): AgentToolDefinition[] {
     };
   });
 }
+
+export function mainViewerInputSchema(name: string): AgentToolDefinition['inputSchema'] | undefined {
+  return mainViewerToolDefinitions().find((definition) => definition.name === name)?.inputSchema;
+}

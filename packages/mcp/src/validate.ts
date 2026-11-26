@@ -117,12 +117,15 @@ const constMismatches = new WeakSet<ValidationIssue>();
 
 const REF_SIBLINGS: ReadonlySet<string> = new Set(['default', 'description', 'title', 'format', 'examples', '$comment', '$defs', '$schema']);
 
-function walk(schema: JsonSchema | boolean, input: unknown, path: string, errors: ValidationIssue[], opts: WalkOptions): unknown {
+function walk(schema: JsonSchema | boolean, input: unknown, path: string, errors: ValidationIssue[], opts: WalkOptions, fromRefDefault = false): unknown {
   // Boolean subschemas (2020-12): `true` accepts anything, `false` nothing.
   if (schema === true) return input;
   if (schema === false) {
     if (input !== undefined) errors.push({ path, message: 'No value is allowed here' });
     return input;
+  }
+  if (schema === null || typeof schema !== 'object' || Array.isArray(schema)) {
+    throw new SchemaError(`Expected an object or boolean schema at ${path}`);
   }
   if (typeof schema.$ref === 'string') {
     const { $ref: ref, ...siblings } = schema;
@@ -131,8 +134,9 @@ function walk(schema: JsonSchema | boolean, input: unknown, path: string, errors
     // validated results has too many edge cases for a feature no schema uses.
     const constraint = Object.keys(siblings).find((k) => !REF_SIBLINGS.has(k));
     if (constraint) throw new SchemaError(`Keyword '${constraint}' next to $ref '${ref}' is not supported; move it into the referenced schema`);
-    if (opts.fillDefaults && input === undefined && siblings.default !== undefined) input = clone(siblings.default);
-    return walk(resolveRef(ref, opts.root), input, path, errors, { ...opts, refs: new Set([...(opts.refs ?? []), ref]) });
+    const fillsSibling = opts.fillDefaults && input === undefined && siblings.default !== undefined;
+    if (fillsSibling) input = clone(siblings.default);
+    return walk(resolveRef(ref, opts.root), input, path, errors, { ...opts, refs: new Set([...(opts.refs ?? []), ref]) }, fromRefDefault || fillsSibling);
   }
   const filled = opts.fillDefaults && input === undefined && schema.default !== undefined;
   if (filled) input = clone(schema.default);
@@ -188,7 +192,7 @@ function walk(schema: JsonSchema | boolean, input: unknown, path: string, errors
         // Own properties only: a schema property named `toString` or
         // `constructor` must not read the value inherited from Object.prototype.
         const supplied = own(obj, key);
-        const value = walk(sub, supplied, childPath, errors, filled && supplied === undefined ? opts : child);
+        const value = walk(sub, supplied, childPath, errors, (filled || fromRefDefault) && supplied === undefined ? opts : child);
         // defineProperty, not `result[key] =`: a `__proto__` key must stay data.
         if (value !== undefined) defineData(result, key, value);
       }

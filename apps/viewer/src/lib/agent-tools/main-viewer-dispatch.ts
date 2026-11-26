@@ -10,7 +10,7 @@
  * This module is loaded by the local agent connection, off the eager viewer path.
  */
 
-import { ToolErrorCode, ToolExecutionError } from '@ifc-lite/mcp/browser';
+import { ToolErrorCode, ToolExecutionError, validateInput } from '@ifc-lite/mcp/browser';
 import { isAbortError } from '@/lib/runs/abort';
 import { LEGACY_MODEL_ID, LEGACY_MUTATION_MODEL_ID } from '@/sdk/adapters/model-compat';
 import { CATALOG } from '@/components/mcp/data';
@@ -248,6 +248,7 @@ export async function dispatchMainViewerTool(
       throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message: 'Tool arguments must be a JSON object.' });
     }
     const input = (args ?? {}) as Record<string, unknown>;
+    await assertAdvertisedInput(toolName, input);
     assertDispatchActive(ctx.signal);
     if (tool.needs === 'none') {
       const out = await untilAborted(tool.run(host, input, { signal: ctx.signal, canEdit: ctx.canEdit, commitState, claimDelivery }), ctx.signal, () => commitState.committed || commitState.committing === true);
@@ -281,4 +282,25 @@ export async function dispatchMainViewerTool(
       errorCode: ToolErrorCode.INTERNAL_ERROR,
     };
   }
+}
+
+/**
+ * Refuse arguments that break the schema this tab advertised, before any
+ * handler runs. The MCP server leaves `pattern` and `oneOf` in a tab schema to
+ * the tab (it will not run a tab's regex), so they are enforced here, with
+ * the server's own validator. Loaded lazily: the definitions module imports
+ * this one.
+ */
+async function assertAdvertisedInput(toolName: string, input: Record<string, unknown>): Promise<void> {
+  const { mainViewerInputSchema } = await import('./main-viewer-tool-definitions.js');
+  const schema = mainViewerInputSchema(toolName);
+  if (!schema) throw new ToolExecutionError({ code: ToolErrorCode.UNSUPPORTED_OPERATION, message: `Tool ${toolName} is unavailable.` });
+  // A spread is an object type, which carries the implicit index signature JsonSchema asks for.
+  const validation = validateInput({ ...schema }, input);
+  if (validation.valid) return;
+  throw new ToolExecutionError({
+    code: ToolErrorCode.INVALID_INPUT,
+    message: `Input validation failed for ${toolName}: ${validation.errors.slice(0, 3).map((e) => `${e.path}: ${e.message}`).join('; ')}`,
+    details: { errors: validation.errors },
+  });
 }

@@ -375,8 +375,8 @@ export function buildExportPass(input: PassBuildInput): ExportPass {
     // A set member the export leaves out of the list. A source record counts when it is a readable material
     // (by its source or its effective type): as Rust's `with_effective`, which drops an unreadable one from both
     // maps, an unreadable one names no material. A created record deleted again has no source and an unknown
-    // type, only a tombstone, and the writer drops it from the list whatever it was (#11243). An id that never
-    // existed has neither, so it still names no material.
+    // type, only a tombstone, and the writer drops it from the list whatever it was (#11243; Rust reads the set
+    // as written, the reference already stripped). An id that never existed has neither: it names no material.
     const gone = (id: number) => {
       if (pass.willBeEmitted(id)) return false;
       const type = source.type(id);

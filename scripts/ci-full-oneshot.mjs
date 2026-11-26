@@ -62,7 +62,7 @@ export const FAST_SKIPPED_JOB_NAMES = {
   'viewer-e2e': 'Viewer E2E smoke (',
   'node-tests': 'Node tests (shard ',
   'provenance-tests': 'Provenance tests',
-  'rust-retained': 'Rust tests (retained)',
+  'rust-retained': 'Rust tests (retained ',
 };
 
 /** Did any fast-skipped job run to `success` in this run? */

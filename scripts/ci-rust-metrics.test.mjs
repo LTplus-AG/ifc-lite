@@ -164,11 +164,15 @@ test('each retained and CSG command has a distinct summary identity (#10279)', (
   const workflow = parse(readFileSync(new URL('../.github/workflows/test.yml', import.meta.url), 'utf8'));
   for (const job of ['rust-retained', 'csg-accept-gates']) {
     const identities = new Set();
-    let commands = 0;
     const { steps, strategy } = workflow.jobs[job];
-    const legs = strategy?.matrix.include ?? [{}];
-    const runLines = steps.flatMap((step) => (step.run || '').split('\n'));
+    const { matrix } = strategy;
+    const legs = matrix.include ?? matrix.leg.map((leg) => ({ leg }));
+    const commandsByLeg = {};
     for (const leg of legs) {
+      let commands = 0;
+      const runLines = steps
+        .filter((step) => !leg.leg || !step.if || step.if === `matrix.leg == '${leg.leg}'`)
+        .flatMap((step) => (step.run || '').split('\n'));
       for (const runLine of runLines) {
         const line = runLine.replace(/\$\{\{ matrix\.features \}\}/g, () => {
           assert.ok(leg.features, 'each CSG leg supplies its Cargo features');
@@ -181,7 +185,10 @@ test('each retained and CSG command has a distinct summary identity (#10279)', (
         identities.add(identity);
         commands++;
       }
+      commandsByLeg[leg.leg ?? leg.gate] = commands;
     }
-    assert.equal(commands, job === 'rust-retained' ? 17 : 6);
+    assert.deepEqual(commandsByLeg, job === 'rust-retained'
+      ? { browser: 1, cli: 3, rust: 13 }
+      : { manifold: 2, topology: 2, both: 2 });
   }
 });

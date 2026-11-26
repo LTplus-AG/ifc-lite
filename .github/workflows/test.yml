@@ -3122,21 +3122,22 @@ jobs:
       # ON push to main and in the merge queue, where the aggregate judges
       # them. See that job for why each exists.
 
-  # #7955: the opt-in retained legs, in their own job. They were steps at the
-  # end of `rust-tests` and pushed that lane past its 45 min cap (cancelled
-  # on main and PRs, 2026-10-27). Same trigger as `rust-tests`, run in
-  # parallel, own cache prefix (feature builds differ from the default tree),
-  # and in the aggregate's `needs:` and results map, so nothing got weaker.
+  # #7955: run the independent retained browser, CLI and Rust checks in
+  # parallel. The CLI build and report share one workspace; the browser test
+  # builds its own WASM module and stages its own test peer. The aggregate
+  # judges all three legs through needs.rust-retained.result.
   rust-retained:
-    name: Rust tests (retained)
+    name: Rust tests (retained ${{ matrix.leg }})
     needs: changes
     if: (needs.changes.outputs.rust == 'true') && needs.changes.outputs.replay != 'true' && needs.changes.outputs.lane != 'fast'
     runs-on: ${{ ((vars.SELF_HOSTED_QUEUE == 'true' && github.event_name == 'merge_group') || (vars.SELF_HOSTED_RUST == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted'))))) && fromJSON('["self-hosted","linux","x64","ifclite-rust"]') || (((vars.SELF_HOSTED_QUEUE == 'true' && github.event_name == 'merge_group') || (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted'))))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest') }}
     timeout-minutes: 45
-    # DISK (hosted runners): at full DWARF these legs leave a 22.9 GB target
-    # dir (CARGO_INCREMENTAL=0), and a hosted runner ran out of disk here
-    # (merge-queue #8502, job 124766198979). Line tables, as rust-tests uses:
-    # 9.1 GB for the same legs.
+    strategy:
+      fail-fast: false
+      matrix:
+        leg: [browser, cli, rust]
+    # Full DWARF exhausted hosted-runner disk (#8502). Keep line tables for
+    # file:line in panics, as in rust-tests.
     env:
       HAS_MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN != '' }}
       CARGO_PROFILE_DEV_DEBUG: line-tables-only
@@ -3146,14 +3147,12 @@ jobs:
         with:
           lfs: false
           persist-credentials: false
-      # Persistent self-hosted Rust runner (vars.SELF_HOSTED_RUST): one warm
-      # target dir per job on the runner's rust-target volume, outside the
-      # workspace that the runner wipes. A job killed mid-compile (reboot) can
-      # leave truncated dep-info, so an unfinished marker discards the dir.
+      # Persistent self-hosted Rust runner: one warm target dir per leg.
+      # An unfinished marker guards against truncated dep-info after a reboot.
       - name: Warm target dir (self-hosted Rust runner)
         if: startsWith(runner.name, 'ifclite-rust')
         run: |
-          dir="/cache/rust-target/${GITHUB_JOB}"
+          dir="/cache/rust-target/${GITHUB_JOB}-${{ matrix.leg }}"
           if [ -e "$dir/.unfinished" ]; then echo "previous job did not finish; discarding $dir"; rm -rf "$dir"; fi
           mkdir -p "$dir" && touch "$dir/.unfinished"
           echo "CARGO_TARGET_DIR=$dir" >> "$GITHUB_ENV"
@@ -3174,17 +3173,17 @@ jobs:
           else
             echo "::warning::lld could not be installed; linking with the default linker"
           fi
-      # One owner restores/saves this mixed native+WASM dependency tree.
-      # Two overlapping rust-cache post actions prune and save the same paths.
+      # The feature builds and profiles differ by leg. Each leg owns one
+      # Cargo cache, with the pinned WASM toolchain for its WASM commands.
       - uses: ./.github/actions/setup-wasm-build
         id: retained_cache
         with:
-          cache-prefix: rust-retained-runtime
+          cache-prefix: rust-retained-runtime-${{ matrix.leg }}
       # Hosted Ubuntu images ship a matched chromedriver; the runner image has
       # only Chrome. Fetch the Chrome-for-Testing driver for the EXACT installed
       # Chrome build once onto the runner volume.
       - name: ChromeDriver matching Chrome (self-hosted Rust runner)
-        if: startsWith(runner.name, 'ifclite-rust')
+        if: matrix.leg == 'browser' && startsWith(runner.name, 'ifclite-rust')
         run: |
           set -euo pipefail
           version=$(google-chrome --version | grep -oE '[0-9]+(\.[0-9]+){3}')
@@ -3199,16 +3198,21 @@ jobs:
           "$dir/chromedriver-linux64/chromedriver" --version
           echo "IFCLITE_REAL_CHROMEDRIVER=$dir/chromedriver-linux64/chromedriver" >> "$GITHUB_ENV"
       - name: SMLib-free retained runtime in a real WASM module
+        if: matrix.leg == 'browser'
         env:
           RUST_CI_CACHE_HIT: ${{ env.CARGO_TARGET_DIR != '' && 'warm-target' || steps.retained_cache.outputs.cache-hit }}
         run: node scripts/ci-rust-metrics.mjs retained-browser-boundary command node scripts/retained-browser-runtime-tests.mjs
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        if: matrix.leg == 'cli'
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: matrix.leg != 'browser'
         with:
           node-version: 22
       - run: pnpm install --frozen-lockfile
+        if: matrix.leg == 'cli'
       - name: SMLib-free CLI report over the real retained WASM boundary
         id: retained_node_tests
+        if: matrix.leg == 'cli'
         env:
           RUST_CI_CACHE_HIT: ${{ env.CARGO_TARGET_DIR != '' && 'warm-target' || steps.retained_cache.outputs.cache-hit }}
         run: |
@@ -3216,7 +3220,7 @@ jobs:
           node scripts/ci-rust-metrics.mjs retained-cli-build command pnpm build --filter=@ifc-lite/cli
           node scripts/ci-rust-metrics.mjs retained-cli-report command node --test --test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml scripts/retained-compare/inert.test.mjs scripts/retained-compare/metrics.test.mjs scripts/retained-compare/tolerances.test.mjs scripts/retained-compare/browser-metrics.test.mjs scripts/retained-compare/browser-corpus-pages.test.mjs scripts/retained-compare/real-authoring-support.test.mjs scripts/retained-compare/corpus-shards.test.mjs
       - name: Mergify CI Upload
-        if: (success() || failure()) && env.HAS_MERGIFY_TOKEN == 'true' && hashFiles('mergify-junit.xml') != ''
+        if: (success() || failure()) && matrix.leg == 'cli' && env.HAS_MERGIFY_TOKEN == 'true' && hashFiles('mergify-junit.xml') != ''
         continue-on-error: true
         uses: ./.github/actions/mergify-upload
         with:
@@ -3225,6 +3229,7 @@ jobs:
           test_step_outcome: ${{ steps.retained_node_tests.outcome }}
 
       - name: Rust tests and Clippy (retained controller and executor)
+        if: matrix.leg == 'rust'
         env:
           RUST_CI_CACHE_HIT: ${{ env.CARGO_TARGET_DIR != '' && 'warm-target' || steps.retained_cache.outputs.cache-hit }}
         # #7955 M1: the opt-in `retained-runtime` feature is outside the
@@ -3251,7 +3256,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: rust-ci-metrics-${{ github.job }}-${{ github.run_attempt }}
+          name: rust-ci-metrics-${{ github.job }}-${{ matrix.leg }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/rust-ci-metrics.jsonl
           if-no-files-found: error
           retention-days: 14

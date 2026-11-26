@@ -78,6 +78,7 @@ export function createMCPServer(opts: Partial<MCPServerOptions> = {}): MCPServer
     logger: opts.logger,
     capabilities: opts.capabilities,
     sessionId: opts.sessionId,
+    instructions: opts.instructions,
     tools: opts.tools ?? buildDefaultToolRegistry(),
     resources: opts.resources ?? buildDefaultResourceRegistry(),
     prompts: opts.prompts ?? buildDefaultPromptRegistry(),

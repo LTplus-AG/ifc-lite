@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { MeshData } from '@ifc-lite/geometry';
+import { materializeCompactMesh } from '@ifc-lite/geometry/compact';
 import { cpuMeshAliases } from './geometry-cpu-aliases';
 import { meshCpuReleaseBuffers, sharesCpuBuffer } from './geometry-cpu-buffers';
 import { notifyReleasedGeometryMetadataChanged } from './geometry-backing/released-geometry-metadata';
@@ -14,6 +15,8 @@ const EMPTY_INDICES = new Uint32Array(0);
 /** Canonical CPU-only release; preserve independent fields on derived copies. */
 export function releaseCpuMeshBuffers(meshes: MeshData[]): void {
   for (const mesh of meshes) {
+    // A compact shell (?compactGeom) and its wrappers share one decode: they release as the f32 meshes they decode to.
+    for (const alias of cpuMeshAliases(mesh)) materializeCompactMesh(alias);
     const buffers = meshCpuReleaseBuffers(mesh);
     for (const alias of cpuMeshAliases(mesh)) {
       const positionsShared = sharesCpuBuffer(alias.positions, buffers);

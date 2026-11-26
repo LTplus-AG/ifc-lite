@@ -3,7 +3,7 @@
 The `view` and `analyze` commands turn the CLI into a visual BIM analysis tool. Launch an interactive WebGL 2 viewer in the browser, then drive it from the terminal, scripts, or AI assistants via a REST API.
 
 !!! info "Viewer package"
-    The viewer is provided by `@ifc-lite/viewer-core`, which installs with the CLI. Its server only starts with `view` (or the MCP `--viewer`); `analyze --viewer` and `create --viewer` send to one that is already running.
+    The viewer is provided by `@ifc-lite/viewer-core`, which installs with the CLI.
 
 ## `view` — Launch 3D Viewer
 

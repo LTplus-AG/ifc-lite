@@ -8,7 +8,7 @@ import { MutablePropertyView } from '@ifc-lite/mutations';
 import { PropertyValueType, QuantityType } from '@ifc-lite/data';
 import { StepExporter } from './step-exporter.js';
 
-// A source set name is read from the file as raw STEP text and was compared
+// #11462: a source set name is read from the file as raw STEP text and was compared
 // with the DECODED name the overlay carries, so a set whose name holds a
 // directive (`\X2\…\X0\`), a doubled quote or a doubled backslash never
 // matched: editing one of its properties left the source set on the element
@@ -31,8 +31,10 @@ const NAMES: Array<[string, string, string]> = [
   ['a backslash', 'Pset_C:\\\\x', 'Pset_C:\\x'],
   ['a code point beyond the BMP', 'Pset_\\X4\\0001F3E0\\X0\\', 'Pset_🏠'],
   ['a code page in force past a backslash', 'Pset_\\PB\\A\\\\\\S\\!', 'Pset_A\\Ą'],
+  ['an unknown page letter after a code page', 'Pset_\\PB\\\\PZ\\A\\\\\\S\\!', 'Pset_A\\Ą'],
+  ['a page directive with a digit', 'Pset_\\P1\\\\\\x', 'Pset_\\x'],
 ];
-const CODE_PAGE = NAMES[NAMES.length - 1][1];
+const CODE_PAGE = NAMES[4][1];
 
 async function exportEdited(rawSetName: string, decoded: string): Promise<string> {
   const src = wrap([

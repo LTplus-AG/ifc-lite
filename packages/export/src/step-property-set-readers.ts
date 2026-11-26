@@ -19,7 +19,7 @@
 
 import type { IfcDataStore, IfcAttributeValue, EntityExtractor } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
-import { decodeStepStringLiteral, generateIfcGuid, stepStringLiteralEnd, type RandomSource } from '@ifc-lite/encoding';
+import { decodeIfcString, generateIfcGuid, stepStringLiteralEnd, type RandomSource } from '@ifc-lite/encoding';
 import { createSourceRefReader, decodeRange } from './source-ref-bounds.js';
 import { findLengthUnitReference, normalizeMapUnitName } from './step-map-unit.js';
 import { authoredEntityRefs, type EffectiveEntityIndex } from './effective-index.js';
@@ -155,8 +155,8 @@ export function entityLineText(ctx: PropertySetContext, entityId: number): strin
 
 /**
  * Get the DECODED name of a property set (the form the mutation overlay and
- * callers' name sets carry; the raw text misses names with a quote, backslash
- * or non-ASCII letter).
+ * callers' name sets carry; the raw text misses names written with a STEP
+ * escape, a quote or a backslash).
  */
 export function getPropertySetName(ctx: PropertySetContext, psetId: number): string | null {
   const entityText = currentSetLine(ctx, psetId);
@@ -169,13 +169,14 @@ export function getPropertySetName(ctx: PropertySetContext, psetId: number): str
 /**
  * The decoded text of the literal opening where `prefix` (global, ending at the
  * opening `'`) first matches with a literal that closes, read whole so `''` and
- * a `\S\'` PAGE operand do not cut it short (#7589).
+ * a `\S\'` PAGE operand do not cut it short (#7589). Decoded as the parser decodes
+ * a name, so it equals the name the overlay carries (#11462).
  */
 function decodedThirdLiteral(entityText: string, prefix: RegExp): string | null {
   for (const match of entityText.matchAll(prefix)) {
     const open = match.index + match[0].length - 1;
     const end = stepStringLiteralEnd(entityText, open);
-    if (end !== -1) return decodeStepStringLiteral(entityText.slice(open + 1, end - 1));
+    if (end !== -1) return decodeIfcString(entityText.slice(open + 1, end - 1).replace(/''/g, "'"));
   }
   return null;
 }

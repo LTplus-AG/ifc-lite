@@ -10,12 +10,14 @@
 
 use ifc_lite_export::{export_step_with_log, MutationLog, StepOptions};
 
-const NAMES: [(&str, &str, &str); 5] = [
+const NAMES: [(&str, &str, &str); 7] = [
     ("non-ASCII letter", r"Pset_\X2\0103\X0\", "Pset_ă"),
     ("apostrophe", "Pset_O''Brien", "Pset_O'Brien"),
     ("backslash", r"Pset_C:\\x", r"Pset_C:\x"),
     ("beyond the BMP", r"Pset_\X4\0001F3E0\X0\", "Pset_\u{1F3E0}"),
     ("code page in force past a backslash", CODE_PAGE, "Pset_A\\\u{104}"),
+    ("unknown page letter after a code page", r"Pset_\PB\\PZ\A\\\S\!", "Pset_A\\\u{104}"),
+    ("page directive with a digit", r"Pset_\P1\\\x", r"Pset_\x"),
 ];
 const CODE_PAGE: &str = r"Pset_\PB\A\\\S\!";
 

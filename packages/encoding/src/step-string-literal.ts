@@ -61,7 +61,6 @@ export function decodeStepStringLiteral(inner: string): string {
   const value = inner.replace(/''/g, "'");
   let out = '';
   let seg = ''; // pending directive-bearing text, flushed through decodeIfcString
-  let page = ''; // the last `\Px\` directive: it stays in force past a `\\` flush, as in Rust's decoder
   let i = 0;
   while (i < value.length) {
     if (value[i] === '\\') {
@@ -83,14 +82,13 @@ export function decodeStepStringLiteral(inner: string): string {
         i += 5;
         continue;
       } else if (/^\\P[A-Z]\\/.test(value.slice(i, i + 4))) {
-        page = value.slice(i, i + 4);
-        seg += page;
+        seg += value.slice(i, i + 4);
         i += 4;
         continue;
       }
       if (value[i + 1] === '\\') {
         out += decodeIfcString(seg) + '\\';
-        seg = page;
+        seg = '';
         i += 2;
         continue;
       }

@@ -16,7 +16,7 @@ import type { Tool } from './types.js';
 import type { JsonSchema } from '../protocol/index.js';
 import { okResult, resolveModel } from './util.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
-import { EDIT_NETWORK, READ_ONLY_NETWORK } from './annotations.js';
+import { DESTRUCTIVE_NETWORK, READ_ONLY_NETWORK } from './annotations.js';
 
 const PLAN_PROPS: Record<string, JsonSchema> = {
   apply: { type: 'array', items: { type: 'string' }, description: 'Fix ids (from georeferencing_check) to use instead of their finding\'s preferred fix.' },
@@ -82,7 +82,7 @@ export const georeferencingCheckTool: Tool = {
 };
 
 export const georeferencingFixTool: Tool = {
-  name: 'georeferencing_fix', title: 'Fix georeferencing', annotations: EDIT_NETWORK,
+  name: 'georeferencing_fix', title: 'Fix georeferencing', annotations: DESTRUCTIVE_NETWORK,
   description: [
     'Apply the georeferencing fixes georeferencing_check marks ready (same inputs: apply, values, accept_approximate_datum), held in the session like georeferencing_write and saved by export_ifc / model_save, then check again.',
     'Never applies a fix that needs a value nobody supplied, that the checker marks uncertain, or that the write API cannot carry; returns what was applied and what remains.',

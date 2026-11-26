@@ -26,20 +26,23 @@ export const READ_ONLY_NETWORK = hints(true, false, true, true);
 export const VIEWER_DISPLAY = hints(false, false, true);
 /** Adds to the session (new elements, topics, layers); each call adds again. */
 export const EDIT = hints(false, false, false);
-/** Edit that also calls an external service (Flow AI nodes, CRS lookups). */
+/** Additive edit that also calls an external service (Flow proposals with AI nodes). */
 export const EDIT_NETWORK = hints(false, false, false, true);
-/** Sets a value; repeating the same call leaves the same state. */
+/** Adds something a repeated call reuses instead of duplicating (classification references). */
 export const EDIT_IDEMPOTENT = hints(false, false, true);
 /** Idempotent edit of local state after reading an external server (BCF publication checks). */
 export const EDIT_IDEMPOTENT_NETWORK = hints(false, false, true, true);
 /**
- * Deletes or removes data (an element, a property, a storey, a model, the
- * georeferencing); repeating the call changes nothing more. Setting a value
- * that `mutation_undo` can restore is an edit, not destructive.
+ * Deletes, overwrites or moves existing data; repeating the same call changes
+ * nothing more. The spec reads `destructiveHint: false` as "only additive
+ * updates", so any setter that replaces a value is destructive here, even
+ * when `mutation_undo` can restore it.
  */
 export const DESTRUCTIVE = hints(false, true, true);
-/** May delete or discard data, and each call can do so again. */
+/** May delete, overwrite or move data, and each call can do so again (relative moves, appends). */
 export const DESTRUCTIVE_NOT_IDEMPOTENT = hints(false, true, false);
+/** Overwrites data after consulting an external service (georeferencing fixes with allow_network). */
+export const DESTRUCTIVE_NETWORK = hints(false, true, true, true);
 /** Writes a file to disk and may overwrite one at the same path. */
 export const FILE_WRITE = hints(false, true, true);
 /** Runs a Flow graph, which may edit the model and call external services. */

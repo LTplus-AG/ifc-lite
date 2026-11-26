@@ -95,15 +95,15 @@ describe('schema keywords the bridge cannot enforce (CodeRabbit json-bounds.ts:8
 });
 
 describe('tab patterns are published, not run server-side (code review: a tab regex could stall the server)', () => {
-  it('forwards a call that breaks a tab pattern to the tab instead of running ^(a+)+$ on it', async () => {
+  // A cheap pattern, so a regression fails the test instead of hanging the worker (CodeRabbit on #11550).
+  it('forwards a call that breaks a tab pattern to the tab instead of refusing it', async () => {
     const agent = await start();
-    const inputSchema = { type: 'object', properties: { type: { type: 'string', pattern: '^(a+)+$' } } };
+    const inputSchema = { type: 'object', properties: { type: { type: 'string', pattern: '^x$' } } };
     const p = await pairTab({ port: agent.bridge.port, code: agent.bridge.pairingCode(), tools: [{ ...READ_TOOL, inputSchema }] });
     tabs.push(p.tab);
-    const started = Date.now();
-    const pending = agent.call(READ_TOOL.name, { type: `${'a'.repeat(40)}!` });
+    const pending = agent.call(READ_TOOL.name, { type: 'y' });
     const c = await p.tab.next('call');
-    expect(Date.now() - started).toBeLessThan(1_000);
+    expect(c.arguments).toEqual({ type: 'y' });
     p.tab.reply(p.welcome.sessionId, c.id, textResult('ok'));
     expect((await pending).isError).toBeUndefined();
   });

@@ -2,7 +2,7 @@
 "@ifc-lite/mcp": minor
 ---
 
-Every tool in the default registry now has a `title` and all four MCP annotation hints (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`), so clients can auto-approve reads and warn before deletes or file writes. Tool definitions accept `outputSchema` and `icons` and pass them through `tools/list`; the protocol types export `Icon`.
+Every tool in the default registry now has a `title` and all four MCP annotation hints (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`), so clients can auto-approve reads and warn before deletes, overwrites or file writes. Following the spec (`destructiveHint: false` means additive only), setters that replace a value are marked destructive. Tool definitions accept `outputSchema` and `icons` and pass them through `tools/list`; the protocol types export `Icon`.
 
 Input validation now enforces `oneOf`, `$ref`/`$defs`, `const`, `pattern`, `uniqueItems` and schema-valued `additionalProperties`. A test fails if any tool schema uses a keyword the validator does not enforce, and every schema must compile under ajv 2020-12 strict mode.
 

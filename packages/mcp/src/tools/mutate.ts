@@ -51,7 +51,7 @@ import { storeyFollowUpTools } from './storey-follow-ups.js';
 import { storeyTools } from './storeys.js';
 import { georeferencingWriteTool } from './georef.js';
 import { georeferencingFixTool } from './georef-doctor.js';
-import { DESTRUCTIVE, DESTRUCTIVE_NOT_IDEMPOTENT, EDIT_IDEMPOTENT, FILE_WRITE, READ_ONLY } from './annotations.js';
+import { DESTRUCTIVE, DESTRUCTIVE_NOT_IDEMPOTENT, FILE_WRITE, READ_ONLY } from './annotations.js';
 
 interface MutationContext {
   m: ReturnType<typeof resolveModel>;
@@ -116,7 +116,7 @@ function applySetProperty(ctx: MutationContext, args: { expressId: number; pset:
 }
 
 const entitySetProperty: Tool = {
-  name: 'entity_set_property', title: 'Set property', annotations: EDIT_IDEMPOTENT,
+  name: 'entity_set_property', title: 'Set property', annotations: DESTRUCTIVE,
   description: 'Set or create a property on an entity. Mutations are queued; call `export_ifc` to persist.',
   scope: 'mutate',
   inputSchema: entityTargetSchema({
@@ -168,7 +168,7 @@ const entityDeleteProperty: Tool = {
 };
 
 const entitySetAttribute: Tool = {
-  name: 'entity_set_attribute', title: 'Set attribute', annotations: EDIT_IDEMPOTENT,
+  name: 'entity_set_attribute', title: 'Set attribute', annotations: DESTRUCTIVE,
   description: 'Set a top-level IFC attribute (Name, Description, ObjectType, Tag).',
   scope: 'mutate',
   inputSchema: entityTargetSchema({

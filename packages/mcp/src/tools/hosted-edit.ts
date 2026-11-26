@@ -6,11 +6,11 @@ import type { HostedElementEdit } from '@ifc-lite/create';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import type { Tool } from './types.js';
 import { okResult, resolveModel } from './util.js';
-import { EDIT } from './annotations.js';
+import { DESTRUCTIVE_NOT_IDEMPOTENT } from './annotations.js';
 
 /** #6232 D5: hosted.slide and inspector dimensions share their physical edit core. */
 export const hostedEditTool: Tool = {
-  name: 'edit_hosted_element', title: 'Edit hosted element', annotations: EDIT,
+  name: 'edit_hosted_element', title: 'Edit hosted element', annotations: DESTRUCTIVE_NOT_IDEMPOTENT,
   description: 'Move or resize a live wall-hosted opening, door or window together with its actual cut. '
     + 'Offset and Sill are metres in the host frame; OverallWidth/OverallHeight are metres. '
     + 'Identity and relationships are retained. Overlap, out-of-host and unsupported geometry edits are refused atomically. '

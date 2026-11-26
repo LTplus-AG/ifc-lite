@@ -28,7 +28,7 @@ import {
 import { requireOwnedReview, requireReview, visibleDraftIds } from './layer-access.js';
 import type { LayerReview, LayerWorkspace, ReviewDecision, ReviewStatus } from './layer-store.js';
 import { publishDraftFile } from './layer.js';
-import { EDIT, READ_ONLY } from './annotations.js';
+import { DESTRUCTIVE_NOT_IDEMPOTENT, EDIT, READ_ONLY } from './annotations.js';
 
 interface ResolvedCandidate {
   /** Files composing the candidate's full state (base + delta). */
@@ -259,7 +259,7 @@ interface DecisionInput {
 }
 
 const addReviewFeedback: Tool = {
-  name: 'add_review_feedback', title: 'Add review feedback', annotations: EDIT,
+  name: 'add_review_feedback', title: 'Add review feedback', annotations: DESTRUCTIVE_NOT_IDEMPOTENT,
   description: 'Record per-entity reviewer decisions (and optionally a status change) on an open review.',
   scope: 'mutate',
   inputSchema: {

@@ -17,7 +17,7 @@ import type { ToolContext } from '../context.js';
 import type { Tool } from './types.js';
 import { okResult, resolveModel } from './util.js';
 import { storeyAddInput } from './storey-add-input.js';
-import { DESTRUCTIVE, EDIT, EDIT_IDEMPOTENT, READ_ONLY } from './annotations.js';
+import { DESTRUCTIVE, DESTRUCTIVE_NOT_IDEMPOTENT, EDIT, READ_ONLY } from './annotations.js';
 
 const modelId: JsonSchema = { type: 'string', description: 'Required when multiple models are loaded.' };
 const storeyId: JsonSchema = { type: 'integer', minimum: 1, description: 'IfcBuildingStorey express id.' };
@@ -80,7 +80,7 @@ const storeyAdd: Tool = {
 };
 
 const storeyRename: Tool = {
-  name: 'storey_rename', title: 'Rename storey', annotations: EDIT_IDEMPOTENT,
+  name: 'storey_rename', title: 'Rename storey', annotations: DESTRUCTIVE,
   description: 'Rename a storey (IfcRoot.Name). One mutation_undo reverts it.',
   scope: 'mutate',
   inputSchema: { type: 'object', properties: { model_id: modelId, storey_express_id: storeyId, Name: { type: 'string', minLength: 1 } }, required: ['storey_express_id', 'Name'], additionalProperties: false },
@@ -113,7 +113,7 @@ const storeyPlanEdit: Tool = {
 };
 
 const storeyEdit: Tool = {
-  name: 'storey_edit', title: 'Edit storey elevation', annotations: EDIT,
+  name: 'storey_edit', title: 'Edit storey elevation', annotations: DESTRUCTIVE_NOT_IDEMPOTENT,
   description: 'Re-level a storey: `elevation` moves that storey only, `floor_height` shifts every storey above by the same amount. '
     + 'Contents move with their storey through real placement writes; walls attached to the storey above resize and stairs refit. '
     + 'Refused (nothing written) when storey_plan_edit reports a refusal. One mutation_undo reverts the whole edit.',

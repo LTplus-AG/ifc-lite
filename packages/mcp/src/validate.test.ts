@@ -261,6 +261,9 @@ describe('validateInput: 2020-12 keywords beyond the original subset', () => {
     const schema = { type: 'object', properties: { v: { const: { a: 1, b: [2] } } } };
     expect(validateInput(schema, { v: { b: [2], a: 1 } }).valid).toBe(true);
     expect(validateInput(schema, { v: { a: 1, b: [3] } }).valid).toBe(false);
+    const listed = { type: 'object', properties: { v: { enum: [{ a: 1, b: [2] }] } } };
+    expect(validateInput(listed, { v: { b: [2], a: 1 } }).valid).toBe(true);
+    expect(validateInput(listed, { v: { a: 1, b: [2, 3] } }).valid).toBe(false);
   });
 
   it('rejects duplicate items under uniqueItems', () => {
@@ -308,6 +311,7 @@ describe('validateInput: 2020-12 keywords beyond the original subset', () => {
 
   it('resolves an empty JSON Pointer segment as a key, not as the parent', () => {
     const schema = { type: 'object', properties: { o: { $ref: '#/$defs/' } }, $defs: { '': { type: 'string' } } };
+    expect(validateInput(schema, { o: 'x' }).valid).toBe(true);
     expect(validateInput(schema, { o: 3 }).valid).toBe(false);
   });
 
@@ -345,6 +349,7 @@ describe('validateInput: code-review cases for items:false, enum discriminators,
 
   it('decodes percent-escapes in a $ref pointer', () => {
     const schema = { type: 'object', properties: { v: { $ref: '#/$defs/a%20b' } }, $defs: { 'a b': { type: 'string' } } };
+    expect(validateInput(schema, { v: 'x' }).valid).toBe(true);
     expect(validateInput(schema, { v: 1 }).valid).toBe(false);
     expect(validateInput({ $ref: '#/$defs/%E0' }, {}).errors[0].message).toMatch(/bad percent-escape/);
   });
@@ -383,6 +388,21 @@ describe('validateInput: code-review cases for items:false, enum discriminators,
   it('reports a pattern that compiles in neither mode as a schema error', () => {
     const r = validateInput({ type: 'object', properties: { a: { type: 'string', pattern: '(' } } }, { a: 'x' });
     expect(r.errors[0].message).toMatch(/Tool schema error: pattern "\(" does not compile/);
+  });
+
+  // CodeRabbit on #11550: a default that re-enters its own schema overflowed the stack.
+  it('reports a default that re-enters its own schema as a circular $ref', () => {
+    const r = validateInput({ type: 'object', properties: { next: { $ref: '#' } }, default: {} }, undefined);
+    expect(r.errors[0].message).toMatch(/Circular \$ref '#'/);
+    // Finite recursive input through the same schema is still fine.
+    expect(validateInput({ type: 'object', properties: { next: { $ref: '#' } } }, { next: { next: {} } }).valid).toBe(true);
+  });
+
+  // CodeRabbit on #11550: uniqueness is judged on the items the handler receives.
+  it('checks uniqueItems after item defaults are filled', () => {
+    const schema = { type: 'array', uniqueItems: true, items: { type: 'object', properties: { n: { default: 1 } } } };
+    expect(validateInput(schema, [{}, { n: 1 }]).errors).toEqual([{ path: '$[1]', message: 'Duplicate array item' }]);
+    expect(validateInput(schema, [{}, { n: 2 }]).valid).toBe(true);
   });
 });
 

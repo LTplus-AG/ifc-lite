@@ -7,7 +7,7 @@ import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import type { Tool } from './types.js';
 import { okResult, resolveModel } from './util.js';
 import { storeyAddInput } from './storey-add-input.js';
-import { EDIT, EDIT_IDEMPOTENT, READ_ONLY } from './annotations.js';
+import { DESTRUCTIVE, EDIT, READ_ONLY } from './annotations.js';
 
 const id: JsonSchema = { type: 'integer', minimum: 1 };
 const modelId: JsonSchema = { type: 'string', description: 'Required when multiple models are loaded.' };
@@ -40,7 +40,7 @@ export const storeyFollowUpTools: Tool[] = [
     },
   },
   {
-    name: 'set_top_constraint', scope: 'mutate', title: 'Set top constraint', annotations: EDIT_IDEMPOTENT,
+    name: 'set_top_constraint', scope: 'mutate', title: 'Set top constraint', annotations: DESTRUCTIVE,
     description: 'Fit an element top to the next storey, an explicit storey, a slab underside, a roof underside (walls), or make it fixed. The constraint has the SDK shape. One mutation_undo reverts placement, geometry and attachment together.',
     inputSchema: { type: 'object', properties: {
       model_id: modelId, express_id: id, constraint: { anyOf: [constraint('fixed'), constraint('storeyAbove'),

@@ -21,6 +21,7 @@ import { InProcessTransport } from '../transport/in-process.js';
 import { ENFORCED_KEYWORDS } from '../validate.js';
 import { VIEWER_DISPLAY } from './annotations.js';
 import { buildDefaultToolRegistry } from './index.js';
+import { ToolRegistry } from './types.js';
 
 /** Bytes of the full-scope `tools/list` result. Lower it when the catalog shrinks; raising it needs a reason in the commit message. */
 const TOOLS_LIST_BUDGET = 133_000;
@@ -95,6 +96,25 @@ describe('tool catalog', () => {
   it('tools/list fits the byte budget', async () => {
     const { tools: listed, bytes } = await listTools();
     expect(listed).toHaveLength(tools.length);
+    // The wire carries the metadata, not just the registry (CodeRabbit on #11550).
+    for (const t of listed) {
+      expect(t.title, t.name).toBeTruthy();
+      expect(Object.keys(t.annotations ?? {}).sort(), t.name).toEqual(['destructiveHint', 'idempotentHint', 'openWorldHint', 'readOnlyHint']);
+    }
+    expect(listed.find((t) => t.name === 'cost_data')).toMatchObject({ title: 'Cost data', annotations: { readOnlyHint: true, openWorldHint: false } });
     expect(bytes).toBeLessThanOrEqual(TOOLS_LIST_BUDGET);
   });
+
+  // CodeRabbit on #11550: toToolDefinition must carry outputSchema and icons onto the wire.
+  it('tools/list carries outputSchema and icons when a tool sets them', async () => {
+    const registry = new ToolRegistry();
+    const outputSchema = { type: 'object', properties: { n: { type: 'integer' } }, required: ['n'] };
+    const icons = [{ src: 'data:image/svg+xml;base64,PHN2Zy8+', mimeType: 'image/svg+xml', sizes: ['any'] }];
+    registry.register({ name: 'probe', description: 'Probe.', inputSchema: { type: 'object' }, outputSchema, icons, handler: () => ({ content: [] }) });
+    const server = new MCPServer({ version: 'test', registry: new InMemoryModelRegistry(), tools: registry, resources: new ResourceRegistry(), prompts: new PromptRegistry(), scope: fullScope() });
+    await server.handleMessage({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'catalog', version: 'test' } } });
+    const res = (await server.handleMessage({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} })) as { result: { tools: ToolDefinition[] } };
+    expect(res.result.tools[0]).toMatchObject({ outputSchema, icons });
+  });
 });
+

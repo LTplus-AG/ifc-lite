@@ -5,7 +5,7 @@ import type { ClassificationInStoreParams, MirrorElementsParams } from '@ifc-lit
 import type { Tool } from './types.js';
 import { okResult, resolveModel } from './util.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
-import { EDIT, EDIT_IDEMPOTENT } from './annotations.js';
+import { DESTRUCTIVE_NOT_IDEMPOTENT, EDIT_IDEMPOTENT } from './annotations.js';
 const modelId = { type: 'string', description: 'Required when several models are loaded.' };
 const ids = { type: 'array', items: { type: 'integer', minimum: 1 }, minItems: 1, maxItems: 10000 };
 const point = { type: 'array', items: { type: 'number' }, minItems: 2, maxItems: 2 };
@@ -16,7 +16,7 @@ function invoke(input: Record<string, unknown>, ctx: Parameters<Tool['handler']>
 }
 export const modellingC5Tools: Tool[] = [
   {
-    name: 'mirror_elements', scope: 'mutate', title: 'Mirror elements', annotations: EDIT,
+    name: 'mirror_elements', scope: 'mutate', title: 'Mirror elements', annotations: DESTRUCTIVE_NOT_IDEMPOTENT,
     description: 'Mirror upright products about a storey-local XY axis line in metres, in place or as copies. Hosted openings stay hosted; door handedness flips. Grids are refused atomically.',
     inputSchema: { type: 'object', properties: { model_id: modelId, express_ids: ids, axis: { type: 'array', items: point, minItems: 2, maxItems: 2 }, copy: { type: 'boolean' } }, required: ['express_ids', 'axis'], additionalProperties: false },
     handler: (input, ctx) => invoke(input, ctx, model => model.bim.store.mirrorElements(model.id, input.express_ids as number[], { axis: input.axis as MirrorElementsParams['axis'], copy: input.copy as boolean | undefined })),

@@ -135,11 +135,13 @@ function walk(schema: JsonSchema | boolean, input: unknown, path: string, errors
     if (opts.fillDefaults && input === undefined && siblings.default !== undefined) input = clone(siblings.default);
     return walk(resolveRef(ref, opts.root), input, path, errors, { ...opts, refs: new Set([...(opts.refs ?? []), ref]) });
   }
-  // Children start a fresh `$ref` chain: a recursive schema is fine once it descends into the input.
-  const child: WalkOptions = opts.refs ? { ...opts, refs: undefined } : opts;
-  if (opts.fillDefaults && input === undefined && schema.default !== undefined) {
-    input = clone(schema.default);
-  }
+  const filled = opts.fillDefaults && input === undefined && schema.default !== undefined;
+  if (filled) input = clone(schema.default);
+  // Children start a fresh `$ref` chain once they descend into the caller's
+  // input. Under a filled default they do not, so a schema whose default
+  // re-enters itself (`{properties: {next: {$ref: '#'}}, default: {}}`) is a
+  // circular $ref instead of a stack overflow.
+  const child: WalkOptions = opts.refs && !filled ? { ...opts, refs: undefined } : opts;
   if (input === undefined || input === null) return input;
 
   if (schema.enum && !schema.enum.some((v) => sameValue(v, input))) {
@@ -219,18 +221,17 @@ function walk(schema: JsonSchema | boolean, input: unknown, path: string, errors
     if (schema.maxItems !== undefined && arr.length > schema.maxItems) {
       errors.push({ path, message: `Array longer than ${schema.maxItems} item(s)` });
     }
+    const items = schema.items === undefined ? arr : arr.map((item, i) => walk(schema.items as JsonSchema, item, `${path}[${i}]`, errors, child));
+    // Checked on the default-filled items: `[{}, {n: 1}]` with an `n` default of 1 is a duplicate.
     if (schema.uniqueItems === true) {
       const seen = new Set<string>();
-      arr.forEach((item, i) => {
+      items.forEach((item, i) => {
         const key = stableKey(item);
         if (seen.has(key)) errors.push({ path: `${path}[${i}]`, message: 'Duplicate array item' });
         seen.add(key);
       });
     }
-    if (schema.items !== undefined) {
-      return arr.map((item, i) => walk(schema.items as JsonSchema, item, `${path}[${i}]`, errors, child));
-    }
-    return arr;
+    return items;
   }
 
   if (typeof input === 'number') {

@@ -28,7 +28,7 @@ import type { Tool } from './types.js';
 import { fmtInt, okResult } from './util.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import { resolveSafePath } from '../safe-path.js';
-import { EDIT, EDIT_IDEMPOTENT, FILE_WRITE, READ_ONLY } from './annotations.js';
+import { DESTRUCTIVE, DESTRUCTIVE_NOT_IDEMPOTENT, EDIT, FILE_WRITE, READ_ONLY } from './annotations.js';
 
 // One project per server instance. We keep it on a module-level Map keyed by
 // session — for stdio that's exactly one entry; for HTTP each session gets
@@ -113,7 +113,7 @@ const bcfTopicCreate: Tool = {
 };
 
 const bcfTopicUpdate: Tool = {
-  name: 'bcf_topic_update', title: 'Update BCF topic', annotations: EDIT,
+  name: 'bcf_topic_update', title: 'Update BCF topic', annotations: DESTRUCTIVE_NOT_IDEMPOTENT,
   description: 'Update topic fields or append a comment.',
   scope: 'mutate',
   inputSchema: {
@@ -146,7 +146,7 @@ const bcfTopicUpdate: Tool = {
 };
 
 const bcfTopicClose: Tool = {
-  name: 'bcf_topic_close', title: 'Close BCF topic', annotations: EDIT_IDEMPOTENT,
+  name: 'bcf_topic_close', title: 'Close BCF topic', annotations: DESTRUCTIVE,
   description: 'Mark a topic resolved (status="Closed").',
   scope: 'mutate',
   inputSchema: {

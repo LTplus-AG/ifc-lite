@@ -217,7 +217,7 @@ export function createModellingStoreBackendWithoutStoreys(resolve: ModellingStor
       const { model, anchor } = authoring(modelId);
       requireKinds(model, 'assignType', [[[typeExpressId], ['IfcTypeObject']], [objectExpressIds, ['IfcObject']]]);
       // An occurrence drawn with its old type follows the new type's layers, not the old type's (#9296).
-      followTypeLayersOnRetypeInStore(editTarget(model), typeExpressId, objectExpressIds);
+      followTypeLayersOnRetypeInStore(editTarget(model), typeExpressId, objectExpressIds, { guidRandom: model.guidRandom });
       const existing = readRelatedLists(model.store, 'IfcRelDefinesByType', model.mutationView);
       const rel = assignTypeInStore(model.editor, anchor, typeExpressId, objectExpressIds, existing).relId;
       // A layered type drives the thickness of what it types, in the same record (one undo step).

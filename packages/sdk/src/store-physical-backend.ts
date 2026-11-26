@@ -46,7 +46,7 @@ export function createPhysicalStoreBackend(resolve: ModellingStoreModelResolver)
     },
     trimExtendElement(ref, params) {
       const model = resolve(ref.modelId);
-      const result = trimExtendElementInStore(model.store, model.editor, ref.expressId, params);
+      const result = trimExtendElementInStore(model.store, model.editor, ref.expressId, params, { guidRandom: model.guidRandom });
       return refs(model.modelId, [result.expressId, ...result.walls]);
     },
   };

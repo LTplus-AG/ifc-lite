@@ -42,6 +42,24 @@ async function authoredExport(guidRandom: RandomSource): Promise<string> {
     const c = S.addWall('m', home, { Start: [10, 10, 0], End: [12, 10, 0], Thickness: 0.2, Height: 3 });
     S.mirrorElements('m', [c.expressId], { axis: [[0, 20], [1, 20]], copy: true });
     S.splitElements('m', [{ expressId: c.expressId, cut: { kind: 'wall', distance: 1 } }]);
+    // A's join with b sits on the piece past the cut, so the split re-creates it.
+    S.splitElements('m', [{ expressId: a.expressId, cut: { kind: 'wall', distance: 5 } }]);
+    // Extending to a boundary wall joins the two.
+    const e = S.addWall('m', home, { Start: [20, 10, 0], End: [22, 10, 0], Thickness: 0.2, Height: 3 });
+    const f = S.addWall('m', home, { Start: [25, 8, 0], End: [25, 12, 0], Thickness: 0.2, Height: 3 });
+    S.trimExtendElement(e, { mode: 'extend', click: [21.9, 10], boundary: { wallId: f.expressId } });
+    // Retyping one of two walls that share a layer-set usage splits the usage.
+    const layered = (Name: string, thicknesses: number[]) => {
+      const type = S.addElementType('m', { Type: 'IfcWallType', Name }).expressId;
+      const set = S.addMaterialLayerSet('m', { MaterialLayers: thicknesses.map((LayerThickness) => ({ LayerThickness })) }).expressId;
+      S.assignMaterial('m', set, [type]);
+      return { type, set };
+    };
+    const [before, after] = [layered('Old', [0.2]), layered('New', [0.15, 0.05])];
+    S.assignType('m', before.type, [e.expressId, f.expressId]);
+    const usage = S.addMaterialLayerSetUsage('m', { ForLayerSet: before.set, LayerSetDirection: 'AXIS2', OffsetFromReferenceLine: -0.1 }).expressId;
+    S.assignMaterial('m', usage, [e.expressId, f.expressId]);
+    S.assignType('m', after.type, [e.expressId]);
     bim.mutate.setProperty(a, 'Pset_WallCommon', 'IsExternal', true);
     const content = bim.export.ifc();
     return typeof content === 'string' ? content : new TextDecoder().decode(content);

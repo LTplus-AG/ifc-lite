@@ -24,7 +24,7 @@ import { effectiveMetadataRecord, type IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { EditTarget } from './edit/target.js';
 import { liveEntityConforms, readRelatedLists, resolveAuthoringAnchor } from './resolve-relations.js';
-import { fromNativeLength } from './anchor.js';
+import { fromNativeLength, type AuthoringGuidOptions } from './anchor.js';
 import { addMaterialLayerSetUsageToStore, assignMaterialInStore } from './material.js';
 import { typeOccurrencesInStore } from './type-layer-thickness.js';
 
@@ -71,10 +71,10 @@ export function typeLayerSetInStore(target: Reader, typeId: number, own = ownMat
  * and the impact preview resizes, follows. Returns the occurrences re-pointed;
  * the caller sizes them with the rest.
  */
-export function retargetInheritingLayerUsagesInStore(target: EditTarget, typeId: number, newLayerSetId: number): number[] {
+export function retargetInheritingLayerUsagesInStore(target: EditTarget, typeId: number, newLayerSetId: number, guidOptions: AuthoringGuidOptions = {}): number[] {
   const scope = typeLayerScopeInStore(target, typeId);
   if (scope.layerSetId === null || scope.layerSetId === newLayerSetId) return [];
-  return repointUsages(target, scope.inheriting, scope.layerSetId, newLayerSetId, ownMaterials(target));
+  return repointUsages(target, scope.inheriting, scope.layerSetId, newLayerSetId, ownMaterials(target), guidOptions);
 }
 
 /**
@@ -89,7 +89,7 @@ export function retargetInheritingLayerUsagesInStore(target: EditTarget, typeId:
  * without a layer set changes nothing: the occurrence keeps the layers it had,
  * as its own. Returns the occurrences re-pointed; the caller sizes them.
  */
-export function followTypeLayersOnRetypeInStore(target: EditTarget, newTypeId: number, objectIds: readonly number[]): number[] {
+export function followTypeLayersOnRetypeInStore(target: EditTarget, newTypeId: number, objectIds: readonly number[], guidOptions: AuthoringGuidOptions = {}): number[] {
   const own = ownMaterials(target);
   const newSet = typeLayerSetInStore(target, newTypeId, own);
   if (newSet === null) return [];
@@ -106,14 +106,14 @@ export function followTypeLayersOnRetypeInStore(target: EditTarget, newTypeId: n
     if (oldSet === null || oldSet === newSet || usageSet(target, material) !== oldSet) continue;
     byOldSet.set(oldSet, [...(byOldSet.get(oldSet) ?? []), id]);
   }
-  return [...byOldSet].flatMap(([oldSet, ids]) => repointUsages(target, ids, oldSet, newSet, own));
+  return [...byOldSet].flatMap(([oldSet, ids]) => repointUsages(target, ids, oldSet, newSet, own, guidOptions));
 }
 
 /**
  * Point the usages of `followers` (elements whose usage places `oldSetId`) at
  * `newSetId`, splitting a usage an element outside `followers` shares.
  */
-function repointUsages(target: EditTarget, followers: readonly number[], oldSetId: number, newLayerSetId: number, own: Map<number, number>): number[] {
+function repointUsages(target: EditTarget, followers: readonly number[], oldSetId: number, newLayerSetId: number, own: Map<number, number>, guidOptions: AuthoringGuidOptions): number[] {
   const inheriting = new Set(followers);
   const users = new Map<number, number[]>();
   for (const rel of readRelatedLists(target.dataStore, 'IfcRelAssociatesMaterial', target.view)) {
@@ -144,7 +144,7 @@ function repointUsages(target: EditTarget, followers: readonly number[], oldSetI
     }
     // Shared with an element that keeps the old set: the inheriting ones move to a usage of their own.
     const moving = placed.filter(id => inheriting.has(id));
-    const anchor = resolveAuthoringAnchor(target.dataStore, target.view);
+    const anchor = { ...resolveAuthoringAnchor(target.dataStore, target.view), guidRandom: guidOptions.guidRandom };
     const token = (value: unknown) => String(value).replace(/\./g, '');
     const direction = token(attributes?.[1]), sense = token(attributes?.[2]);
     const split = addMaterialLayerSetUsageToStore(target.editor, anchor, {

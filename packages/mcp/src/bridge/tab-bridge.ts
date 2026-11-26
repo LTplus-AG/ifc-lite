@@ -183,7 +183,10 @@ export class TabBridge {
     if (!s) {
       return Promise.reject(new BridgeCallError('no-viewer', 'No connected viewer: no ifc-lite browser tab is paired with this bridge.'));
     }
-    if (name === BRIDGE_SURFACE_TOOL && s.a2uiSurface) {
+    if (name === BRIDGE_SURFACE_TOOL && !s.a2uiSurface) {
+      return Promise.reject(new BridgeCallError('unknown-tool', 'The connected viewer tab cannot show agent surfaces; update the viewer.'));
+    }
+    if (name === BRIDGE_SURFACE_TOOL) {
       // Recorded on send (see delivered-surfaces.ts): the tab may show it even if its answer is lost.
       if (Array.isArray(args.messages)) this.surfaces.record(args.messages);
       return s.call(name, args, this.callTimeoutMs, signal);

@@ -132,9 +132,12 @@ async function main(): Promise<void> {
     process.exitCode = 2;
     return;
   }
-  // With --bridge: full scope plus config.readOnly, so a mutating tab tool is
-  // refused with READ_ONLY, the code the tab's own read-only grant uses.
-  const scope: AuthScope = opts.readOnly && !opts.bridge ? readOnlyScope() : fullScope();
+  // With --bridge --read-only: the read-only scopes plus `mutate`, so a
+  // mutating tab tool reaches config.readOnly and is refused with READ_ONLY
+  // (the code the tab's own read-only grant uses); `admin` stays out.
+  const scope: AuthScope = !opts.readOnly ? fullScope()
+    : opts.bridge ? { ...readOnlyScope(), scopes: [...readOnlyScope().scopes, 'mutate'] }
+    : readOnlyScope();
 
   const registry = new InMemoryModelRegistry();
   if (opts.transport === 'stdio') {

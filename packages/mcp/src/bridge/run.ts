@@ -175,7 +175,6 @@ export async function startBridgeServer(opts: BridgeServerOptions): Promise<Runn
   return {
     server,
     bridge,
-    // The headless side's per-session resources (the local viewer page) go too.
-    close: () => bridge.close().then(() => server.detach()),
+    close: () => bridge.close(),
   };
 }

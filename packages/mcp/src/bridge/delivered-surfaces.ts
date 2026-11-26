@@ -78,7 +78,7 @@ function collect(value: unknown, into: Surface): void {
     return;
   }
   if (!isRecord(value)) return;
-  // A data-model update carries values, not follow-ups.
+  // A data model (an update, or createSurface's inline one) carries values, not follow-ups.
   if ('updateDataModel' in value) return;
   if (typeof value.prompt === 'string' && typeof value.label === 'string') {
     addString(into.prompts, value.prompt);
@@ -94,7 +94,7 @@ function collect(value: unknown, into: Surface): void {
       if (isRecord(event.context)) addString(into.prompts, event.context.prompt);
     }
   }
-  for (const item of Object.values(value)) collect(item, into);
+  for (const [key, item] of Object.entries(value)) if (key !== 'dataModel') collect(item, into);
 }
 
 type SurfaceCheck = { refused: string } | { promptVerified: boolean };

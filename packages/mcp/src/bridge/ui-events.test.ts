@@ -17,6 +17,9 @@ import { UiEventInbox } from './ui-events.js';
 import { IFC_CATALOG_ID } from '@ifc-lite/a2ui';
 import { pairTab, textResult, type FakeTab } from '../test/bridge-fake-tab.js';
 
+
+/** The first tab_show_ui of a process loads the A2UI validator, which can take seconds on a busy runner. */
+const SURFACE_WAIT_MS = 15_000;
 const running: RunningBridge[] = [];
 const tabs: FakeTab[] = [];
 
@@ -60,7 +63,7 @@ async function pair(agent: Awaited<ReturnType<typeof startAgent>>, a2uiSurface =
       { kind: 'text', text },
       { kind: 'actions', actions: ['isolate'], followUps: followUps.map((prompt) => ({ label: prompt, prompt })) },
     ] } });
-    const frame = await paired.tab.next('a2ui-surface');
+    const frame = await paired.tab.next('a2ui-surface', SURFACE_WAIT_MS);
     paired.tab.reply(paired.welcome.sessionId, frame.id, textResult('Delivered'));
     await delivery;
   };
@@ -73,7 +76,7 @@ async function pair(agent: Awaited<ReturnType<typeof startAgent>>, a2uiSurface =
         { id: 't', component: 'Text', text: label },
       ] } },
     ] });
-    const frame = await paired.tab.next('a2ui-surface');
+    const frame = await paired.tab.next('a2ui-surface', SURFACE_WAIT_MS);
     paired.tab.reply(paired.welcome.sessionId, frame.id, textResult('Delivered'));
     await delivery;
   };
@@ -163,7 +166,7 @@ describe('tab_ui_events', () => {
     await new Promise((r) => setTimeout(r, 50));
     expect(agent.r.bridge.uiEvents.size).toBe(0);
     const delivery = agent.call('tab_show_ui', { spec: { surfaceId: 'walls', sections: [{ kind: 'actions', actions: ['isolate'], followUps: [{ label: 'n', prompt: 'new' }] }] } });
-    const frame = await second.tab.next('a2ui-surface');
+    const frame = await second.tab.next('a2ui-surface', SURFACE_WAIT_MS);
     second.tab.reply(second.welcome.sessionId, frame.id, textResult('Delivered'));
     await delivery;
     second.tab.sendRaw(event);

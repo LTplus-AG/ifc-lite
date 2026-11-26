@@ -62,7 +62,6 @@ export function bridgeFailureResult(err: BridgeCallError): CallToolResult {
   });
 }
 
-
 /**
  * The 0.32 names of the surface tools, still callable (never listed) for one
  * minor release.
@@ -157,10 +156,11 @@ function statusTool(bridge: TabBridge): Tool {
       try {
         await bridge.listen();
       } catch (err) {
+        const inUse = (err as NodeJS.ErrnoException).code === 'EADDRINUSE';
         return toolError({
           code: ToolErrorCode.INTERNAL_ERROR,
           message: `The bridge could not listen on 127.0.0.1: ${describeThrown(err)}`,
-          hint: 'Another program may hold the port. Restart the MCP server with another --bridge-port.',
+          ...(inUse ? { hint: 'Another program holds the port. Restart the MCP server with another --bridge-port.' } : {}),
         });
       }
       return statusResult(bridge, input.pair_new_tab === true);

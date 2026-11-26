@@ -10,7 +10,8 @@
 //! reference. [`run`] owns the order of the side effects: the cancel check
 //! before every chunk, the metadata step, `on_finishes` (when asked for),
 //! `on_batch`, mesh retention and the one-time replay of deferred styles as
-//! `on_color_update`.
+//! `on_color_update` (before the first chunk instead, with no update, when
+//! instanced finishes need the resolved styles while meshing).
 
 use super::diagnostics::DiagnosticCollectors;
 use super::entity_index::ProcessingIndex;
@@ -47,7 +48,8 @@ pub(super) struct PassContext<'c> {
     pub(super) quality: TessellationQuality,
     pub(super) material_layers: Option<Arc<ifc_lite_geometry::MaterialLayerIndex>>,
     pub(super) skipped_entity_ids: HashSet<u32>,
-    /// Swapped once, after the first batch, when styles were deferred.
+    /// Swapped once when styles were deferred: after the first batch, or before
+    /// it for instanced finishes.
     pub(super) geometry_style_index: Arc<FxHashMap<u32, GeometryStyleInfo>>,
     /// One owned model snapshot shared by every job, re-taken on style replay.
     pub(super) run: RunSnapshot,
@@ -296,13 +298,6 @@ pub(super) fn run<'c>(
     let mut current_chunk_size = initial_chunk_size;
     let mut deferred_styles_applied = !defer_style_updates;
     let mut deferred_style_refusals: Vec<u32> = Vec::new();
-    // Instances and recovered flats keep the style source chosen while meshing,
-    // and the replay below recolours flat meshes only. So with instanced
-    // finishes, apply the deferred styles before the first chunk (#10698).
-    if defer_style_updates && req.instancing && req.features.finishes {
-        replay_deferred_styles(&mut ctx, sink, &[], &deferred_styled_item_positions, &indexed_colour_index, &mut deferred_style_refusals);
-        deferred_styles_applied = true;
-    }
 
     let geometry_span = tracing::info_span!(target: "ifc_lite_processing::processor",
         "geometry",
@@ -314,6 +309,14 @@ pub(super) fn run<'c>(
         phase_ms = tracing::field::Empty,
     );
     let geometry_guard = geometry_span.clone().entered();
+
+    // Instances and recovered flats keep the style source chosen while meshing,
+    // and the replay below recolours flat meshes only. So with instanced
+    // finishes, apply the deferred styles before the first chunk (#10698).
+    if defer_style_updates && req.instancing && req.features.finishes && !cancelled(req) {
+        replay_deferred_styles(&mut ctx, sink, &[], &deferred_styled_item_positions, &indexed_colour_index, &mut deferred_style_refusals);
+        deferred_styles_applied = true;
+    }
 
     while chunk_start < total_jobs {
         if cancelled(req) {

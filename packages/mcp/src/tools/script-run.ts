@@ -128,15 +128,18 @@ function journalMutationIds(model: LoadedModel): string[] {
   return model.backend.getMutationView()?.getMutations().map((m) => m.id) ?? [];
 }
 
-// The QuickJS forms only (InternalError, the wrapper's own wording), so a
-// script's own 'out of memory' text does not earn the hint.
-const QUICKJS_ERROR = '(^|: )(InternalError: )?';
-const OUT_OF_MEMORY = new RegExp(`${QUICKJS_ERROR}out of memory\\b|out of memory while printing|envelope could not be built`);
-const STACK_OVERFLOW = new RegExp(`${QUICKJS_ERROR}stack overflow|stack overflow while printing|Maximum call stack size exceeded`);
+// Inside the script, only QuickJS's own InternalError (the wrapper keeps its
+// name) and the wrapper's own wording count, so a script throwing
+// Error('out of memory') does not earn the hint. A ScriptError or host
+// RangeError from the sandbox itself is trusted as-is (host).
+const SCRIPT_OUT_OF_MEMORY = /InternalError: out of memory\b|out of memory while printing/;
+const SCRIPT_STACK_OVERFLOW = /InternalError: stack overflow\b|stack overflow while printing/;
+const HOST_OUT_OF_MEMORY = /^out of memory\b/;
+const HOST_STACK_OVERFLOW = /^(stack overflow|Maximum call stack size exceeded)\b/;
 
-function hintFor(mode: Mode, code: string, message: string): string | undefined {
-  if (OUT_OF_MEMORY.test(message)) return `Raise memory_mb (max ${MAX_MEMORY_MB}) or keep less in memory.`;
-  if (STACK_OVERFLOW.test(message)) return 'Stack overflow: the script recursed too deep (make it iterative or shallower), a logged value is nested too deeply, or a bim call walked a very deeply nested model.';
+function hintFor(mode: Mode, code: string, message: string, host: boolean): string | undefined {
+  if ((host ? HOST_OUT_OF_MEMORY : SCRIPT_OUT_OF_MEMORY).test(message)) return `Raise memory_mb (max ${MAX_MEMORY_MB}) or keep less in memory.`;
+  if ((host ? HOST_STACK_OVERFLOW : SCRIPT_STACK_OVERFLOW).test(message)) return 'Stack overflow: the script recursed too deep (make it iterative or shallower), a logged value is nested too deeply, or a bim call walked a very deeply nested model.';
   // Only when the failure looks like touching a namespace that is absent.
   if (mode === 'read' && MUTATE_ONLY_USE.test(code) && /of undefined|undefined is not/.test(message)) {
     return `script_run has no ${MUTATE_ONLY_LIST}; use script_run_mutate for them.`;
@@ -154,13 +157,13 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
   const memoryMb = intInput(input.memory_mb, 'memory_mb', 8, MAX_MEMORY_MB, DEFAULT_MEMORY_MB);
   const cancelled = (details?: Record<string, unknown>) =>
     new ToolExecutionError({ code: ToolErrorCode.CANCELLED, message: 'Script cancelled by the client.', details });
-  const scriptError = (message: string, details: Record<string, unknown>) => new ToolExecutionError({
+  const scriptError = (message: string, details: Record<string, unknown>, host = false) => new ToolExecutionError({
     // kind tells a script failure from INVALID_INPUT on the tool's own arguments.
     code: ToolErrorCode.INVALID_INPUT,
     // Envelope messages arrive clipped; a ScriptError's is clipped where it is caught.
     message: `Script error: ${message}`,
     details: { kind: 'script', ...details },
-    hint: hintFor(mode, code, message),
+    hint: hintFor(mode, code, message, host),
   });
   if (ctx.signal.aborted) throw cancelled();
 
@@ -253,7 +256,7 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
       // A host RangeError counts as the script's only when it is recursion that
       // outran the host stack despite MAX_STACK_BYTES; others are server faults.
       const hostStackOverflow = err instanceof RangeError && /call stack/i.test(err.message);
-      if (err instanceof ScriptError || hostStackOverflow) throw scriptError(clipMessage(err.message), details);
+      if (err instanceof ScriptError || hostStackOverflow) throw scriptError(clipMessage(err.message), details, true);
       // Keep mutations_queued on every failure, not only script ones.
       throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: describeThrown(err), details });
     } finally {

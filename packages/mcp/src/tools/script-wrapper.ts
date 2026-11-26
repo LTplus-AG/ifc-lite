@@ -35,7 +35,7 @@ const LIMITS = {
 };
 
 export function wrapScript(code: string): string {
-  return `(function (run, P, isInstance, then, apply, slice, Str, stringify, keys, isArray, create, defineProperty, freeze, glob, ErrorCtor, SetCtor, setAdd, setHas, setDelete, L) {
+  return `(function (run, P, isInstance, then, apply, slice, Str, stringify, keys, isArray, create, defineProperty, freeze, glob, ErrorCtor, TypeErrorCtor, SetCtor, setAdd, setHas, setDelete, unbox, L) {
   function msg(e) {
     // message is read once and coerced inside the try, so a getter or
     // toString cannot throw past the wrapper and pose as a sandbox error.
@@ -66,7 +66,17 @@ export function wrapScript(code: string): string {
   // JSON text for v, stopping once it passes limit; undefined when JSON would
   // omit v. Frames live in null-prototype maps: an index setter on
   // Array.prototype cannot intercept them.
-  function ser(root, limit) {
+  // A boxed primitive's value, as native JSON unwraps it (a boxed BigInt then
+  // throws like a bare one); undefined for any other object. Each valueOf is
+  // brand-checked, so only the real wrapper types answer.
+  function unboxed(v) {
+    for (var u = 0; u < unbox.length; u++) {
+      try { return { v: apply(unbox[u], v, []) }; } catch (_) { /* not this wrapper type */ }
+    }
+    return undefined;
+  }
+  // forLog: an Error nested in a logged value prints as its message, not {}.
+  function ser(root, limit, forLog) {
     // onPath holds the objects being written, so a cycle is named as one
     // (like native JSON) before the length cap could turn it into a preview.
     var out = '', sp = 0, fo = create(null), fk = create(null), fi = create(null), fa = create(null), fw = create(null);
@@ -74,8 +84,11 @@ export function wrapScript(code: string): string {
     function write(v) {
       if (v === null) { out += 'null'; return; }
       if (typeof v === 'object') {
-        if (apply(setHas, onPath, [v])) throw new TypeError('the value is cyclic');
-        if (sp >= L.maxDepth) throw new Error('the value is nested deeper than ' + L.maxDepth + ' levels');
+        var box = unboxed(v);
+        if (box) { out += stringify(box.v); return; }
+        if (forLog && apply(isInstance, ErrorCtor, [v])) { out += stringify(msg(v)); return; }
+        if (apply(setHas, onPath, [v])) throw new TypeErrorCtor('the value is cyclic');
+        if (sp >= L.maxDepth) throw new ErrorCtor('the value is nested deeper than ' + L.maxDepth + ' levels');
         apply(setAdd, onPath, [v]);
         var a = isArray(v);
         fo[sp] = v; fk[sp] = a ? null : keys(v); fi[sp] = 0; fa[sp] = a; fw[sp] = false; sp++;
@@ -118,16 +131,18 @@ export function wrapScript(code: string): string {
   function fail(e) { return 'T' + msg(e); }
   // Console text keeps what the bridge's own dump used to show for errors
   // and BigInts, which JSON rules would turn into {} or a TypeError.
+  function cut(text, max) { return text.length > max ? apply(slice, text, [0, max]) + ' [truncated]' : text; }
   function logArg(a) {
     if (typeof a === 'string') return a;
     if (typeof a === 'bigint') return Str(a) + 'n';
+    if (typeof a === 'number') return Str(a);
     try {
       if (apply(isInstance, ErrorCtor, [a])) {
         var st = a.stack;
-        return msg(a) + (typeof st === 'string' && st !== '' ? '\\n' + apply(slice, st, [0, L.maxLog]) : '');
+        return cut(msg(a), L.maxMessage) + (typeof st === 'string' && st !== '' ? '\\n' + cut(st, L.maxLog) : '');
       }
     } catch (_) { /* an unreadable stack: fall through to the JSON form */ }
-    try { var s = ser(a, L.maxLog); return s === undefined ? Str(a) : s; }
+    try { var s = ser(a, L.maxLog, true); return s === undefined ? Str(a) : s; }
     catch (e) { return '[unserialisable: ' + msg(e) + ']'; }
   }
   var original = glob.console, safe = create(null);
@@ -160,5 +175,5 @@ export function wrapScript(code: string): string {
     }
     catch (e) { resolveWrapper(fail(e)); }
   });
-})(function () { return eval(${JSON.stringify(code)}); }, Promise, Function.prototype[Symbol.hasInstance], Promise.prototype.then, Reflect.apply, String.prototype.slice, String, JSON.stringify, Object.keys, Array.isArray, Object.create, Object.defineProperty, Object.freeze, globalThis, Error, Set, Set.prototype.add, Set.prototype.has, Set.prototype.delete, ${JSON.stringify(LIMITS)})`;
+})(function () { return eval(${JSON.stringify(code)}); }, Promise, Function.prototype[Symbol.hasInstance], Promise.prototype.then, Reflect.apply, String.prototype.slice, String, JSON.stringify, Object.keys, Array.isArray, Object.create, Object.defineProperty, Object.freeze, globalThis, Error, TypeError, Set, Set.prototype.add, Set.prototype.has, Set.prototype.delete, [Number.prototype.valueOf, String.prototype.valueOf, Boolean.prototype.valueOf, BigInt.prototype.valueOf], ${JSON.stringify(LIMITS)})`;
 }

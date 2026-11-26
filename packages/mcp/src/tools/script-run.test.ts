@@ -294,6 +294,16 @@ describe('script_run', () => {
     expect((await run("const f = () => 1; f.toJSON = () => 'fn'; ({ f })")).structuredContent?.value).toEqual({ f: 'fn' });
   });
 
+  it('unwraps boxed primitives and keeps numbers and nested errors readable in logs', async () => {
+    expect((await run("({ s: new String('ab'), n: new Number(5), b: new Boolean(false) })")).structuredContent?.value).toEqual({ s: 'ab', n: 5, b: false });
+    const result = await run("console.log(1 / 0, 0 / 0); console.log({ err: new Error('boom') }); console.error(new Error('x'.repeat(10000))); 1");
+    const logs = (result.structuredContent?.logs as Array<{ text: string }>).map((l) => l.text);
+    expect(logs[0]).toBe('Infinity NaN');
+    expect(logs[1]).toBe('{"err":"boom"}');
+    expect(logs[2].split('\n')[0].endsWith('[truncated]')).toBe(true);
+    expect((await runError("throw new Error('out of memory')")).hint).toBeUndefined();
+  });
+
   it('matches native JSON for the shapes it supports', async () => {
     const result = await run(`({ a: [1, undefined, () => 1, 'x'], b: undefined, c: { toJSON() { return 'tj'; } }, d: NaN, e: null, f: [[]], g: {} })`);
     expect(result.structuredContent?.value).toEqual({ a: [1, null, null, 'x'], c: 'tj', d: null, e: null, f: [[]], g: {} });

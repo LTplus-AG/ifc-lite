@@ -7,7 +7,7 @@ import { IfcTypeEnum, QuantityType } from '@ifc-lite/data';
 import { executeList } from './engine.js';
 import type { ListDataProvider, ListDefinition } from './types.js';
 
-describe('a non-finite quantity renders as an empty cell', () => {
+describe('a non-finite quantity renders as an empty cell (#11469)', () => {
   it('NaN becomes null and the group sum ignores it', () => {
     const provider: ListDataProvider = {
       getEntitiesByType: (t) => (t === IfcTypeEnum.IfcWall ? [1, 2] : []),

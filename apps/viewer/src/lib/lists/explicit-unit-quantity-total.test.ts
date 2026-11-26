@@ -17,6 +17,7 @@ import { IfcTypeEnum, QuantityType } from '@ifc-lite/data';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { createListDataProvider } from './adapter.js';
 import { createProjectUnitListDataProvider } from './project-unit-quantities.js';
+import { resolveBinding } from '../document/bindings.js';
 
 const STEP = `ISO-10303-21;
 HEADER;
@@ -134,5 +135,17 @@ END-ISO-10303-21;
     assert.deepEqual(r.rows.map(x => [x.values[1], x.values[2]]), [[0.5, 2], [1.5, 3]]);
     assert.equal(r.summary?.sums.w, 2);
     assert.equal(r.summary?.sums.t, 5);
+  });
+
+  it('reports a document field on a quantity whose own Unit does not resolve, instead of printing NaN', async () => {
+    // An area quantity whose Unit is a length unit: the collector marks it unresolved.
+    const source = STEP.replace("#30=IFCQUANTITYAREA('NetSideArea',$,#93,5000000.,$);", "#30=IFCQUANTITYAREA('NetSideArea',$,#91,5000000.,$);");
+    const bytes = new TextEncoder().encode(source);
+    const store = await new IfcParser().parseColumnar(bytes.buffer as ArrayBuffer, { disableWorkerScan: true });
+    const r = resolveBinding('Element[Wall000000000000000002A].Qto_WallBaseQuantities.NetSideArea', {
+      models: [{ id: 'm', name: 'm.ifc', store }], activeModelId: 'm', today: new Date(2026, 10, 26),
+    });
+    assert.equal(r.ok, false);
+    assert.notEqual(r.value, 'NaN');
   });
 });

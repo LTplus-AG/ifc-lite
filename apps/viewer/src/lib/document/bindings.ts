@@ -312,6 +312,8 @@ function elementAttribute(path: string, model: BindingModel, expressId: number, 
     for (const set of [...provider.getQuantitySets(expressId), ...(provider.getTypeQuantitySets?.(expressId) ?? [])]) {
       if (set.name !== setName) continue;
       const q = set.quantities.find((p) => p.name === propName);
+      // NaN: the quantity's own Unit does not resolve, so it has no project-unit number (#11469).
+      if (q && !Number.isFinite(q.value)) return fail(path, `${setName}.${propName} has a Unit that does not resolve`);
       if (q) return succeed(path, q.unit ? `${formatValue(q.value)} ${q.unit}` : formatValue(q.value));
     }
     return fail(path, `no ${setName}.${propName} on this element`);

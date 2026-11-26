@@ -57,12 +57,15 @@ describe('fallback resolvers never hand out a local id the model does not own (#
     assert.deepEqual(fromGlobalIdFromModels(state.models, offset + 150), { modelId: 'later', expressId: 150 });
   });
 
-  it('resolveEntityRef turns a negative renderer id into the legacy sentinel, not a local id', () => {
+  it('resolveEntityRef does not pin an unowned id on the only model behind a removed one', () => {
     laterModelAlone();
-    const ref = resolveEntityRef(-2_024_174);
-    assert.deepEqual(ref, { modelId: 'legacy', expressId: -2_024_174 });
-    // On main this ref was { later, -2024174 } and toGlobalId threw the #11527 message.
-    assertPublishable(ref);
+    // On main both became { later, id }: -2024174 made toGlobalId throw the #11527 message,
+    // and 5 (inside later's LOCAL range) silently targeted later's entity at offset + 5.
+    for (const globalId of [-2_024_174, 5]) {
+      const ref = resolveEntityRef(globalId);
+      assert.deepEqual(ref, { modelId: 'legacy', expressId: globalId });
+      assertPublishable(ref);
+    }
   });
 
   it('an id the offset-0 model owns still resolves to it', () => {

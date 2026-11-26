@@ -38,7 +38,7 @@
  * nothing.
  *
  * The export side gets the same data through `makePropertiesGetter`
- * (`hooks/drawingElementProperties.ts`) — same `fromGlobalIdFromModels` +
+ * (`hooks/drawingElementProperties.ts`), with the same `fromGlobalIdFromModels` +
  * `extractPropertiesOnDemand` resolution, same per-entity cache, same
  * same-named-set merge semantics. Both resolve no properties when
  * `fromGlobalIdFromModels` returns nothing (an id outside every loaded

@@ -25,7 +25,7 @@ import { displayedTranslation, placementFor } from '@/lib/model-placement/state'
 import type { MoveConstraint } from '@/lib/model-placement/translation';
 import { eligiblePickModelIds, modelLabels, pickableFilter, pickContext, pickPromptKey } from '@/lib/model-placement/pick-eligibility';
 import { repositionInstanceIds } from '@/lib/model-placement/pick-instance-ids';
-import { useInstancedSceneRevision } from '@/hooks/useSceneTriangleCounts';
+import { useInstancedMembershipRevision } from '@/hooks/useSceneTriangleCounts';
 import { frameModels } from '@/lib/model-placement/scene';
 import { useRepositionRuntime, type RepositionRuntime } from '@/lib/model-placement/reposition-runtime';
 import { openRepositionModels } from '@/lib/model-placement/commands';
@@ -82,7 +82,7 @@ export function LocalTab() {
   // Memoised so hover re-renders do not rescan every model's entity ids; `t`
   // keeps its identity across locale switches, so `revision` keys the locale.
   const role = runtime?.role ?? null, reference = runtime?.reference ?? '', before = placement.preview?.before;
-  const instanceRevision = useInstancedSceneRevision(role !== null);
+  const instanceRevision = useInstancedMembershipRevision(role !== null);
   const prompt = useMemo(
     () => (role ? pickPrompt(t, role, before, reference, models, hidden, isolated) : t('repositionPanel.previewPrompt')),
     [t, revision, role, before, reference, models, hidden, isolated, instanceRevision],

@@ -175,6 +175,8 @@ export interface SceneContents {
   getInstancedEntityBounds(expressId: number): BoundingBox | null;
   getInstancedEntityCount(): number;
   getInstancedEntityIds(): IterableIterator<number>;
+  /** Changes when the IDs returned by getInstancedEntityIds can change. */
+  getInstancedEntityRevision?(): number;
   /** Whether a model in the scene received keyed shards: the global instance plan applied to it. Optional so other
    *  `SceneContents` implementers keep compiling; absent reads as no. */
   hasKeyedTemplates?(): boolean;

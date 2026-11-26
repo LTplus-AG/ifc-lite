@@ -66,7 +66,13 @@ export class InstanceSuppression {
     if (id === undefined) this.entries.clear();
     else this.entries.delete(id);
   }
-  forgetModel(modelIndex: number): void {
-    for (const [id, entry] of this.entries) if (entry.modelIndex === modelIndex) this.entries.delete(id);
+  forgetModel(modelIndex: number): boolean {
+    let removedSuppression = false;
+    for (const [id, entry] of this.entries) {
+      if (entry.modelIndex !== modelIndex) continue;
+      removedSuppression ||= entry.suppressed;
+      this.entries.delete(id);
+    }
+    return removedSuppression;
   }
 }

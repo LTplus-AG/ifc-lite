@@ -34,3 +34,13 @@ export function readInstancedSceneRevision(): string {
   const count = renderer?.getScene?.()?.getInstancedEntityCount?.() ?? 0;
   return count ? `${objectIdentity(renderer)}:${renderer?.getPickGeometryRevision?.() ?? count}` : '';
 }
+
+/** Track resident instance membership without invalidating on placement edits. */
+export function readInstancedMembershipRevision(): string {
+  const renderer = getGlobalRenderer();
+  const scene = renderer?.getScene?.();
+  const count = scene?.getInstancedEntityCount?.() ?? 0;
+  if (!count) return '';
+  const revision = scene?.getInstancedEntityRevision?.() ?? renderer?.getPickGeometryRevision?.() ?? count;
+  return `${objectIdentity(renderer)}:${revision}`;
+}

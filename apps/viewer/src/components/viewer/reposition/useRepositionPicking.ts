@@ -13,7 +13,7 @@ import type { PlacementAnchor } from '@/lib/model-placement/state';
 import { explainRaycastFilter, modelEntityIds, hitModelId, isEligiblePickModel, pickableFilter, pickContext, rejectedPickMessage } from '@/lib/model-placement/pick-eligibility';
 import { resolve } from '@/i18n/registry';
 import { repositionInstanceIds } from '@/lib/model-placement/pick-instance-ids';
-import { useInstancedSceneRevision } from '@/hooks/useSceneTriangleCounts';
+import { useInstancedMembershipRevision } from '@/hooks/useSceneTriangleCounts';
 
 export type PickRole = 'source' | 'target' | null;
 
@@ -22,7 +22,7 @@ export type PickRole = 'source' | 'target' | null;
 export function useRepositionPicking(role: PickRole, finish: (role: PickRole) => void, onError: (message: string) => void, reference = '') {
   const [hover, setHover] = useState<PlacementAnchor | null>(null);
   const models = useViewerStore((state) => state.models);
-  const instanceRevision = useInstancedSceneRevision(role !== null);
+  const instanceRevision = useInstancedMembershipRevision(role !== null);
   const instances = useRef<ReturnType<typeof repositionInstanceIds>>(new Map());
   // Refresh the inventory without replacing gesture listeners mid-click.
   useEffect(() => {

@@ -457,7 +457,7 @@ describe('model repositioning user interactions (#4226)', () => {
     const target = { ...fixtureModel('scan', {
       idOffset: modelOffset, entities: [{ expressId: 7, type: 'IfcWall' }],
     }), maxExpressId: 7 };
-    mock.method(renderer.getScene(), 'getInstancedEntityIds', function* () { yield targetId; });
+    const inventory = mock.method(renderer.getScene(), 'getInstancedEntityIds', function* () { yield targetId; });
     mock.method(renderer.getScene(), 'getInstancedEntityCount', () => 1);
     mock.method(renderer, 'raycastSceneMagnetic', (...[, , , options]: Parameters<Renderer['raycastSceneMagnetic']>): ReturnType<Renderer['raycastSceneMagnetic']> => ({
       snapTarget: null,
@@ -479,8 +479,10 @@ describe('model repositioning user interactions (#4226)', () => {
       act(() => { canvas.dispatchEvent(new PointerEvent('pointerdown', { button: 0 })); });
       assert.equal(useViewerStore.getState().modelPlacement.preview?.target?.modelId, 'scan');
       const revision = renderer.getPickGeometryRevision();
+      const inventories = inventory.mock.callCount();
       await act(async () => { renderer.setModelTranslation(0, [1, 0, 0]); });
       assert.ok(renderer.getPickGeometryRevision() > revision);
+      assert.equal(inventory.mock.callCount(), inventories, 'translation does not rescan the instance inventory');
       act(() => { canvas.dispatchEvent(new MouseEvent('click', { button: 0 })); });
       assert.match(ui.textContent ?? '', /Preview the move, then Apply\./);
     } finally {

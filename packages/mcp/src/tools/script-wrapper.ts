@@ -106,6 +106,7 @@ export function wrapScript(code: string): string {
   // or stack (that must reach the host as such).
   function instanceOf(ctor, e) {
     try { return !!ctor && apply(isInstance, ctor, [e]); }
+    // isInternal calls back in here: the ctor check stops that recursing.
     catch (x) { if (ctor !== InternalErrorCtor && isInternal(x)) throw x; return false; }
   }
   function isError(e) { return instanceOf(ErrorCtor, e); }

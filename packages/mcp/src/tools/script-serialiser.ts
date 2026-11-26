@@ -37,19 +37,22 @@ export const SERIALISER_SOURCE = `
   // from its internal value (native JSON calls the override).
   // A boxed value whose prototype was reset to Object.prototype or null is
   // written as an object, unlike native JSON; plain objects stay cheap.
+  // A Proxy's getPrototypeOf trap may throw: that reads as 'no prototype to
+  // walk' (undefined), but QuickJS's own out-of-memory or stack overflow
+  // still propagates.
+  function protoOf(v) {
+    try { return getProto(v); } catch (e) { if (isInternal(e)) throw e; return undefined; }
+  }
   function unboxed(v) {
-    // A Proxy's getPrototypeOf trap may throw: treat that as 'not a box'
-    // (QuickJS's own out-of-memory or stack overflow still propagates).
-    var proto;
-    try { proto = getProto(v); } catch (e) { if (isInternal(e)) throw e; return undefined; }
-    if (proto === objectProto || proto === null || isArray(v)) return undefined;
+    var proto = protoOf(v);
+    if (proto === undefined || proto === objectProto || proto === null || isArray(v)) return undefined;
     // Walk to a box prototype first, so a class instance costs a short chain
     // walk instead of four thrown brand checks; the chain is capped in case a
     // proxy keeps inventing prototypes.
     var u = -1;
     for (var hops = 0; proto !== null && hops < 64 && u < 0; hops++) {
       for (var b = 0; b < unbox.length; b++) if (proto === unbox[b][0]) u = b;
-      if (u < 0) { try { proto = getProto(proto); } catch (e) { if (isInternal(e)) throw e; return undefined; } }
+      if (u < 0 && (proto = protoOf(proto)) === undefined) return undefined;
     }
     if (u >= 0) {
       try { return { v: apply(unbox[u][1], v, []) }; } catch (e) {

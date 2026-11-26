@@ -142,10 +142,10 @@ export function topologySafeBatchOrigin(
   // f32 frame still preserves them. Try one authored frame, validated against
   // every mesh, rather than treating exhausted preferred frames as exhaustion
   // of all frames. GPU high/low origin lanes must remain finite too (#5010).
-  // That frame on the `BATCH_ORIGIN_STEP` lattice first (a later batch inherits it as the shared frame),
-  // the exact authored origin only when a sub-millimetre shift already loses a triangle.
+  // The exact authored origin first: it keeps these wide meshes' f32 positions bit-exact, as before the
+  // lattice. Its `BATCH_ORIGIN_STEP` snap only when the authored frame itself is unusable.
   const authored: [number, number, number] = meshes[0]?.origin ?? [0, 0, 0];
   const snapped: [number, number, number] = [snap(authored[0]), snap(authored[1]), snap(authored[2])];
-  for (const frame of [snapped, authored]) if (renderableCoordinates(frame) && preserves(frame)) return frame;
+  for (const frame of [authored, snapped]) if (renderableCoordinates(frame) && preserves(frame)) return frame;
   return undefined;
 }

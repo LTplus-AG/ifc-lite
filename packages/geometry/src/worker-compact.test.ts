@@ -60,6 +60,14 @@ describe('the worker side of compact geometry', () => {
     expect(takeSessionCompact(session, [])).toEqual({});
   });
 
+  it('fails loudly on a table whose column count does not match this package (a mismatched wasm build)', () => {
+    setCompactCellSize(32);
+    const stale = fakeCollection(2);
+    const encode = stale.encodeCompact;
+    stale.encodeCompact = (cellSize: number) => ({ ...encode(cellSize), table: new Uint32Array(2 * (STRIDE - 1)) });
+    expect(() => encodeSessionCompact({ cumulativeMeshBytes: 0 }, stale)).toThrow(/mismatched @ifc-lite\/wasm build/);
+  });
+
   it('keeps each session to its own payloads', () => {
     setCompactCellSize(32);
     const a = { cumulativeMeshBytes: 0 }, b = { cumulativeMeshBytes: 0 };

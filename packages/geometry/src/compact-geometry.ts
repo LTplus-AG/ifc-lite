@@ -137,6 +137,11 @@ export function encodeCompactCollection(
   try {
     const count = batch.meshCount;
     if (count === 0) return undefined;
+    // A wasm whose table has another column count (a build out of step with this package) would misread
+    // every row. The encoder has already consumed the meshes, so there is no f32 to fall back to: fail loudly.
+    if (batch.table.length !== count * COMPACT_TABLE_STRIDE) {
+      throw new Error(`compact geometry: the wasm table has ${batch.table.length} cells for ${count} rows of ${COMPACT_TABLE_STRIDE} columns (mismatched @ifc-lite/wasm build)`);
+    }
     const payload: CompactPayload = {
       records: batch.records, indices: batch.indices, table: batch.table,
       windows: batch.windows, bounds: batch.bounds, cells: batch.cells,

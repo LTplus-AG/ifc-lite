@@ -71,7 +71,7 @@ export function rejectedPickMessage(
   if (hitModelId === null || !ctx.isVisible(hitModelId) || isEligiblePickModel(role, hitModelId, ctx)) return generic;
   const all = [...modelIds];
   const labels = modelLabels(all, nameOf);
-  const label = (id: string) => labels.get(id) ?? nameOf(id);
+  const label = (id: string) => labels.get(id) ?? displayModelName(id, nameOf);
   const expected = pickable(eligiblePickModelIds(role, all, ctx)).map(label).join(', ');
   // Nothing pickable (e.g. the only moving model is hidden): naming a model to
   // pick instead would end the sentence on an empty list.
@@ -82,6 +82,11 @@ export function rejectedPickMessage(
   return { key: 'repositionPanel.errorNotReference', params: { hit, expected } };
 }
 
+function displayModelName(id: string, nameOf: (modelId: string) => string): string {
+  const name = nameOf(id);
+  return name.trim() ? name : id;
+}
+
 /**
  * Display label per model. Models sharing a name get a load-order ordinal
  * ("A.ifc (1)", "A.ifc (2)") so a list never reads "A.ifc, A.ifc"; unique
@@ -90,14 +95,13 @@ export function rejectedPickMessage(
  * distinct.
  */
 export function modelLabels(modelIds: Iterable<string>, nameOf: (modelId: string) => string): Map<string, string> {
-  const ids = [...modelIds];
+  const entries = [...modelIds].map((id) => [id, displayModelName(id, nameOf)] as const);
   const total = new Map<string, number>();
-  for (const id of ids) total.set(nameOf(id), (total.get(nameOf(id)) ?? 0) + 1);
+  for (const [, name] of entries) total.set(name, (total.get(name) ?? 0) + 1);
   const taken = new Set([...total.keys()].filter((name) => total.get(name) === 1));
   const next = new Map<string, number>();
   const labels = new Map<string, string>();
-  for (const id of ids) {
-    const name = nameOf(id);
+  for (const [id, name] of entries) {
     if ((total.get(name) ?? 0) === 1) { labels.set(id, name); continue; }
     let n = next.get(name) ?? 1;
     while (taken.has(`${name} (${n})`)) n++;

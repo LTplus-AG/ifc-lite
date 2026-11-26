@@ -80,6 +80,15 @@ test('no hit, a hidden model or an eligible model keep the generic message', () 
   }
 });
 
+test('blank model names use model ids in wrong-model hints (#11419)', () => {
+  const blankNames = (id: string) => id === 'a' ? '' : id === 'b' ? '  ' : nameOf(id);
+  assert.deepEqual(eligibility.rejectedPickMessage('source', 'b', ctx(['a']), models.keys(), blankNames, everyEligible), {
+    key: 'repositionPanel.errorNotMoving', params: { hit: 'b', expected: 'a' },
+  });
+  const labels = eligibility.modelLabels(['a', 'b'], (id) => id === 'a' ? '' : 'a');
+  assert.deepEqual([...labels.values()], ['a (1)', 'a (2)']);
+});
+
 test('models sharing a display name get an ordinal, unique names stay plain', () => {
   const dup = new Map([['a', 'A.ifc'], ['b', 'B.ifc'], ['c', 'A.ifc']]);
   const labels = eligibility.modelLabels(dup.keys(), (id) => dup.get(id)!);

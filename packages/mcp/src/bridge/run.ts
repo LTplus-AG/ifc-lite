@@ -21,7 +21,7 @@ import { isInsecureRemoteOrigin, normalizeOrigin } from './guards.js';
 import { BRIDGE_STATUS_TOOL, BRIDGE_UI_EVENTS_TOOL, DEFAULT_BRIDGE_VIEWER_URL, TAB_SHOW_UI_TOOL } from './bridge-protocol.js';
 import { TabBridge, type TabBridgeOptions } from './tab-bridge.js';
 import { BridgeToolRegistry } from './tools.js';
-import { CHANNEL_NOTIFICATION, channelParams } from './ui-events-tool.js';
+import { CHANNEL_NOTIFICATION, channelParams, refusedChannelParams } from './ui-events-tool.js';
 
 /** What the server serves besides the tab: the headless tool set on in-process models. */
 export interface HeadlessParts {
@@ -150,8 +150,9 @@ export async function startBridgeServer(opts: BridgeServerOptions): Promise<Runn
     log: opts.log,
     ...opts.tuning,
   });
-  // Without headless parts (tests, embedding) the same server has no models
-  // or headless tools.
+  // Without headless parts (tests, embedding) the same server has no models,
+  // headless tools, resources or prompts.
+  const withHeadless = opts.headless !== undefined;
   const parts: HeadlessParts = opts.headless ?? {
     registry: new InMemoryModelRegistry(), tools: new ToolRegistry(), resources: new ResourceRegistry(),
     prompts: new PromptRegistry(), scope: fullScope(), config: {},
@@ -170,8 +171,7 @@ export async function startBridgeServer(opts: BridgeServerOptions): Promise<Runn
     prompts: parts.prompts,
     capabilities: {
       tools: { listChanged: true },
-      resources: { subscribe: true, listChanged: true },
-      prompts: { listChanged: false },
+      ...(withHeadless ? { resources: { subscribe: true, listChanged: true }, prompts: { listChanged: false } } : {}),
       logging: {},
       ...(opts.channel ? { experimental: { 'claude/channel': {} } } : {}),
     },
@@ -181,7 +181,10 @@ export async function startBridgeServer(opts: BridgeServerOptions): Promise<Runn
   // After the registry and server are built, so a throw there holds no port.
   if (!opts.lazy) await bridge.listen();
   bridge.onChange(() => server.notifyToolsChanged());
-  if (opts.channel) bridge.uiEvents.onEvent((event) => server.notify(CHANNEL_NOTIFICATION, channelParams(event)));
+  if (opts.channel) {
+    bridge.uiEvents.onEvent((event) => server.notify(CHANNEL_NOTIFICATION, channelParams(event)));
+    bridge.uiEvents.onRefused(() => server.notify(CHANNEL_NOTIFICATION, refusedChannelParams()));
+  }
   return {
     server,
     bridge,

@@ -142,6 +142,19 @@ describe('UiEventInbox', () => {
     expect((await agent.call('tab_ui_events')).structuredContent?.code).toBe('VIEWER_NOT_CONNECTED');
   });
 
+  it('reports a refusal that found the wake window full once the window clears', async () => {
+    const inbox = new UiEventInbox();
+    const notices: number[] = [];
+    inbox.onRefused(() => notices.push(Date.now()));
+    for (let i = 0; i < UI_EVENT_LIMITS.maxPerSecond; i++) inbox.refused();
+    await inbox.take(0);
+    const waiting = inbox.take(60_000);
+    inbox.refused();
+    // Not lost: reported within about a second, not at the end of the 60 s wait.
+    await expect(waiting).resolves.toMatchObject({ refused: 1 });
+    expect(notices.length).toBe(UI_EVENT_LIMITS.maxPerSecond + 1);
+  });
+
   it('stops waiting when the call is cancelled', async () => {
     const inbox = new UiEventInbox();
     const abort = new AbortController();
@@ -248,7 +261,11 @@ describe('ui-events must match a surface the agent showed (P2 item 6)', () => {
     expect(agent.r.bridge.uiEvents.size).toBe(0);
     // The agent hears that clicks were lost, since the tab told the user they were sent.
     expect((await agent.call('tab_ui_events')).structuredContent?.refused).toBe(3);
-    const channel = () => agent.notes.filter((n) => 'method' in n && n.method === 'notifications/claude/channel') as Array<{ params: { content: string } }>;
+    const notices = () => agent.notes.filter((n) => 'method' in n && n.method === 'notifications/claude/channel') as Array<{ params: { content: string; meta: { event: string } } }>;
+    // Each refusal sends a fixed notice, nothing from the tab.
+    expect(notices().filter((n) => n.params.meta.event === 'refused').length).toBeGreaterThan(0);
+    expect(notices().every((n) => !n.params.content.includes('Ignore previous'))).toBe(true);
+    const channel = () => notices().filter((n) => n.params.meta.event !== 'refused');
     expect(channel()).toHaveLength(0);
     // The surface's own follow-up, with surrounding whitespace as a renderer may send it, is the user's question.
     send({ surfaceId: 'walls', name: 'ask', prompt: '  Which walls are external? ' });

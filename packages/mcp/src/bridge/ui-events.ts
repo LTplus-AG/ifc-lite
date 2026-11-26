@@ -129,6 +129,9 @@ export class UiEventInbox {
 
   /** Wake-ups for losses (drops, refusals) in the last second, apart from `recent` so a flood costs real clicks nothing. */
   private lossWakes: number[] = [];
+  /** A wake deferred until `lossWakes` has room, so no refusal goes unreported. */
+  private lossTimer: ReturnType<typeof setTimeout> | null = null;
+  private readonly refusalListeners = new Set<() => void>();
 
   constructor(private readonly now: () => number = Date.now) {}
 
@@ -203,9 +206,29 @@ export class UiEventInbox {
   /** Count an event the bridge refused, so the agent hears that a click was lost. */
   refused(): void {
     this.refusedCount++;
-    // A waiting reader hears it now, at most maxPerSecond times a second, so a
-    // flood of bad events cannot turn the agent's long-poll into a busy loop.
-    if (this.admit(this.lossWakes, this.now())) for (const wake of this.waiters) wake();
+    // A waiting reader (and a channel listener) hears it now, at most maxPerSecond
+    // times a second, so a flood of bad events cannot busy-loop the agent; past
+    // that, once, when the window has room again.
+    const t = this.now();
+    if (this.admit(this.lossWakes, t)) return this.reportLoss();
+    if (this.lossTimer) return;
+    const wait = Math.max(0, 1000 - (t - this.lossWakes[0]));
+    this.lossTimer = setTimeout(() => {
+      this.lossTimer = null;
+      if (this.refusedCount > 0) this.reportLoss();
+    }, wait);
+    this.lossTimer.unref?.();
+  }
+
+  /** Called (rate-limited) when refused events were counted, e.g. to push a channel notice. */
+  onRefused(listener: () => void): () => void {
+    this.refusalListeners.add(listener);
+    return () => { this.refusalListeners.delete(listener); };
+  }
+
+  private reportLoss(): void {
+    for (const listener of this.refusalListeners) listener();
+    for (const wake of this.waiters) wake();
   }
 
   /** A new tab paired: its predecessor's unread events do not carry over. */
@@ -215,6 +238,8 @@ export class UiEventInbox {
     this.dropped = 0;
     this.refusedCount = 0;
     this.lossWakes = [];
+    if (this.lossTimer) clearTimeout(this.lossTimer);
+    this.lossTimer = null;
   }
 
   /** Something to report: queued events, or counted drops or refusals. */

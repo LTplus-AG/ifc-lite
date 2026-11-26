@@ -122,11 +122,19 @@ function renamer(tools: readonly BridgeToolDescriptor[]): (text: string) => stri
   return rename;
 }
 
+/** A copy of a tab tool's schema with its tool names renamed in every `description` string. */
+function renameInSchema(value: unknown, rename: (text: string) => string): unknown {
+  if (Array.isArray(value)) return value.map((item) => renameInSchema(item, rename));
+  if (value === null || typeof value !== 'object') return value;
+  return Object.fromEntries(Object.entries(value).map(([key, item]) =>
+    [key, key === 'description' && typeof item === 'string' ? rename(item) : renameInSchema(item, rename)]));
+}
+
 function forwardedTool(bridge: TabBridge, d: BridgeToolDescriptor, tools: readonly BridgeToolDescriptor[]): Tool {
   return {
     name: mcpName(d.name),
     description: renamer(tools)(d.description),
-    inputSchema: d.inputSchema as JsonSchema,
+    inputSchema: renameInSchema(d.inputSchema, renamer(tools)) as JsonSchema,
     scope: d.readOnly ? 'read' : 'mutate',
     ...(d.title !== undefined ? { title: d.title } : {}),
     annotations: d.readOnly ? { readOnlyHint: true } : { readOnlyHint: false, destructiveHint: true },

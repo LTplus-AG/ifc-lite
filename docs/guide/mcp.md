@@ -72,7 +72,7 @@ By default the server binds `127.0.0.1`. Binding a non-loopback host requires ei
 | `--viewer-port <N>` | Preferred viewer port (0 = auto) |
 | `--open` | Auto-open the viewer **and** open its URL in the browser |
 | `--bridge` | Also serve a paired ifc-lite browser tab's tools, as `tab_*` (see [Bridge to a browser tab](#bridge-to-a-browser-tab)) |
-| `--bridge-port <N>` | Bridge WebSocket port on 127.0.0.1 (default 21517, falling back to the next free one; an explicit port does not fall back; 0 = auto) |
+| `--bridge-port <N>` | Bridge WebSocket port on 127.0.0.1 (default 21517; when taken, the next nine ports and then any free one; an explicit port does not fall back; 0 = auto) |
 | `--bridge-viewer-url <url>` | Base of the pairing link (default `https://ifclite.com`). Its origin replaces the default in the allowlist |
 | `--allow-origin <origin>` | HTTP: let a browser origin read responses. Bridge: an extra origin that may connect (repeatable) |
 

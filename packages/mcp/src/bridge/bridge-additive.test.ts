@@ -120,13 +120,16 @@ describe('one server: headless and tab', () => {
   it('names the tab\'s tools by their tab_ names inside its descriptions', async () => {
     const agent = await start();
     const lister = { ...READ_TOOL, name: 'model_list', description: 'List the models.' };
-    const reader = { ...READ_TOOL, name: 'query_entities', description: 'Call model_list for ids; not tab_model_list twice, nor model_list_x. Then export the rows.' };
+    const reader = { ...READ_TOOL, name: 'query_entities', description: 'Call model_list for ids; not tab_model_list twice, nor model_list_x. Then export the rows.',
+      inputSchema: { type: 'object', properties: { model_id: { type: 'string', description: 'id from model_list' } } } };
     const word = { ...READ_TOOL, name: 'export', description: 'Export.' };
     const { tab } = await pairTab({ port: agent.r.bridge.port, code: agent.r.bridge.pairingCode(), tools: [lister, reader, word] });
     tabs.push(tab);
     const listed = (await agent.request('tools/list')).tools as ToolDefinition[];
     expect(listed.find((t) => t.name === tabTool('query_entities'))?.description)
       .toBe('Call tab_model_list for ids; not tab_model_list twice, nor model_list_x. Then export the rows.');
+    // Schema text too.
+    expect(JSON.stringify(listed.find((t) => t.name === tabTool('query_entities'))?.inputSchema)).toContain('id from tab_model_list');
   });
 
   it('still answers the 0.32 surface tool names, without listing them', async () => {

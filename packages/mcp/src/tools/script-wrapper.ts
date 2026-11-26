@@ -20,7 +20,10 @@
  * iteratively: each property and toJSON is read once, depth and output
  * length are capped, and native stringify only ever sees primitives. Console
  * methods are replaced so non-string arguments go through the same path
- * before they reach the bridge.
+ * before they reach the bridge, and the script's own JSON.stringify and
+ * JSON.parse are replaced with depth-checked versions. Still open: a deeply
+ * nested value passed as an argument to a bim.* method is dumped by the
+ * sandbox bridge unchecked (#11600).
  *
  * The catch blocks inside the generated source are not silent in the house
  * rule's sense: this code runs in the sandbox with no host logger, and each
@@ -40,7 +43,7 @@ const LIMITS = {
 };
 
 export function wrapScript(code: string): string {
-  return `(function (run, P, isInstance, then, apply, slice, Str, stringify, keys, isArray, create, defineProperty, freeze, glob, ErrorCtor, TypeErrorCtor, SetCtor, setAdd, setHas, setDelete, unbox, objectProto, getProto, parse, L) {
+  return `(function (run, P, isInstance, then, apply, slice, Str, stringify, keys, isArray, create, defineProperty, freeze, glob, ErrorCtor, TypeErrorCtor, SetCtor, setAdd, setHas, setDelete, unbox, objectProto, getProto, parse, charCodeAt, SyntaxErrorCtor, L) {
   function msg(e) {
     // message is read once and coerced inside the try, so a getter or
     // toString cannot throw past the wrapper and pose as a sandbox error.
@@ -184,6 +187,34 @@ export function wrapScript(code: string): string {
     })(L.levels[li]);
   }
   defineProperty(glob, 'console', { value: freeze(safe), writable: false, configurable: false });
+  // The script's own JSON calls hit the same C recursion, so it gets a JSON
+  // whose stringify is the wrapper's serialiser (a replacer or indent runs on
+  // its depth-capped copy) and whose parse first scans nesting depth.
+  function depthOf(text) {
+    var depth = 0, top = 0, inString = false, n = text.length;
+    for (var p = 0; p < n; p++) {
+      var ch = apply(charCodeAt, text, [p]);
+      if (inString) {
+        if (ch === 92) p++;
+        else if (ch === 34) inString = false;
+      } else if (ch === 34) inString = true;
+      else if (ch === 91 || ch === 123) { if (++depth > top) top = depth; }
+      else if (ch === 93 || ch === 125) depth--;
+    }
+    return top;
+  }
+  var safeJson = create(null);
+  safeJson.stringify = function (value, replacer, space) {
+    var text = ser(value, Infinity, false);
+    if (replacer === undefined && space === undefined) return text;
+    return text === undefined ? undefined : stringify(parse(text), replacer, space);
+  };
+  safeJson.parse = function (text, reviver) {
+    var t = Str(text);
+    if (depthOf(t) > L.maxDepth) throw new SyntaxErrorCtor('JSON text is nested deeper than ' + L.maxDepth + ' levels');
+    return reviver === undefined ? parse(t) : parse(t, reviver);
+  };
+  defineProperty(glob, 'JSON', { value: freeze(safeJson), writable: false, configurable: false });
   var r, isPromise;
   try { r = run(); isPromise = apply(isInstance, P, [r]); } catch (e) { return fail(e); }
   if (!isPromise) return env(r);
@@ -201,5 +232,5 @@ export function wrapScript(code: string): string {
     }
     catch (e) { resolveWrapper(fail(e)); }
   });
-})(function () { return eval(${JSON.stringify(code)}); }, Promise, Function.prototype[Symbol.hasInstance], Promise.prototype.then, Reflect.apply, String.prototype.slice, String, JSON.stringify, Object.keys, Array.isArray, Object.create, Object.defineProperty, Object.freeze, globalThis, Error, TypeError, Set, Set.prototype.add, Set.prototype.has, Set.prototype.delete, [Number.prototype.valueOf, String.prototype.valueOf, Boolean.prototype.valueOf, BigInt.prototype.valueOf], Object.prototype, Object.getPrototypeOf, JSON.parse, ${JSON.stringify(LIMITS)})`;
+})(function () { return eval(${JSON.stringify(code)}); }, Promise, Function.prototype[Symbol.hasInstance], Promise.prototype.then, Reflect.apply, String.prototype.slice, String, JSON.stringify, Object.keys, Array.isArray, Object.create, Object.defineProperty, Object.freeze, globalThis, Error, TypeError, Set, Set.prototype.add, Set.prototype.has, Set.prototype.delete, [Number.prototype.valueOf, String.prototype.valueOf, Boolean.prototype.valueOf, BigInt.prototype.valueOf], Object.prototype, Object.getPrototypeOf, JSON.parse, String.prototype.charCodeAt, SyntaxError, ${JSON.stringify(LIMITS)})`;
 }

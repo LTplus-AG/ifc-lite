@@ -58,8 +58,10 @@ const MAX_MEMORY_MB = 128;
  * recursion that re-enters QuickJS's C code (String(o) inside toString, a
  * self-reading getter) overflow the host. At 128 KB every recursion shape
  * probed raises QuickJS's own catchable 'stack overflow' and disposes cleanly.
- * JSON serialisation recurses without that check at any ceiling, so the
- * wrapper serialises values and console arguments itself (script-wrapper.ts).
+ * JSON serialisation and parsing recurse without that check at any ceiling,
+ * so the wrapper serialises values and console arguments itself and gives the
+ * script depth-checked JSON (script-wrapper.ts). Arguments to bim.* methods
+ * are still dumped by the sandbox bridge unchecked (#11600).
  */
 const MAX_STACK_BYTES = 128 * 1024;
 
@@ -68,7 +70,8 @@ type Mode = 'read' | 'mutate';
 // No `export` in read mode: it also enables bim.create, whose IfcCreator
 // projects live on the host heap where memory_mb does not reach.
 const READ_PERMISSIONS: SandboxPermissions = {
-  model: true, query: true, lens: true, export: false,
+  // lens is a stub on the headless backend (presets [] and create null), so it is left out.
+  model: true, query: true, lens: false, export: false,
   mutate: false, store: false, viewer: false, files: false, ui: false, network: false,
 };
 const MUTATE_PERMISSIONS: SandboxPermissions = { ...READ_PERMISSIONS, export: true, mutate: true, store: true };
@@ -350,7 +353,7 @@ function slotKey(ctx: ToolContext): string {
   return key;
 }
 
-const SHARED_DESCRIPTION = `Runs in a QuickJS sandbox with only the \`bim\` SDK global (bim.query, bim.model, bim.lens, bim.clash, bim.cost, bim.structural, bim.schedule; script_run_mutate adds ${MUTATE_ONLY_LIST}; bim.export and bim.create only with the export scope) and console; no network, filesystem, viewer or timers. Returns the last expression value plus captured console output. memory_mb bounds the QuickJS heap only, not data bim calls build on the host (such as bim.create projects in script_run_mutate). Script code runs on the server's event loop, so other requests wait while it runs (bounded by timeout_ms). At most ${MAX_CONCURRENT_SCRIPTS} scripts run at once per server process and one per session; more get RATE_LIMITED.`;
+const SHARED_DESCRIPTION = `Runs in a QuickJS sandbox with only the \`bim\` SDK global (bim.query, bim.model, bim.clash, bim.cost, bim.structural, bim.schedule; script_run_mutate adds ${MUTATE_ONLY_LIST}; bim.export and bim.create only with the export scope) and console; no network, filesystem, viewer or timers. Returns the last expression value plus captured console output. memory_mb bounds the QuickJS heap only, not data bim calls build on the host (such as bim.create projects in script_run_mutate). Script code runs on the server's event loop, so other requests wait while it runs (bounded by timeout_ms). At most ${MAX_CONCURRENT_SCRIPTS} scripts run at once per server process and one per session; more get RATE_LIMITED.`;
 
 export const scriptRunTool: Tool = {
   name: 'script_run',

@@ -327,6 +327,16 @@ describe('script_run', () => {
     expect((await runError("throw new Error('device out of memory budget')")).hint).toBeUndefined();
   });
 
+  it('gives the script a depth-checked JSON', async () => {
+    const deep = 'var o = {}, c = o; for (var i = 0; i < 20000; i++) { c.a = {}; c = c.a; }';
+    expect((await run(`${deep} try { JSON.stringify(o); 'no' } catch (e) { e.message }`)).structuredContent?.value).toMatch(/nested deeper than 1000 levels/);
+    expect((await run("try { JSON.parse('['.repeat(50000) + ']'.repeat(50000)); 'no' } catch (e) { e.name }")).structuredContent?.value).toBe('SyntaxError');
+    expect((await run("JSON.stringify({ a: [1, { b: 2 }] }, null, 1)")).structuredContent?.value).toBe(JSON.stringify({ a: [1, { b: 2 }] }, null, 1));
+    expect((await run("JSON.parse('{\"a\":[1,\"]\"]}', (k, v) => (k === '0' ? 9 : v))")).structuredContent?.value).toEqual({ a: [9, ']'] });
+    expect((await run('typeof bim.lens')).structuredContent?.value).toBe('undefined');
+    expect((await run('9 + 9')).structuredContent?.value).toBe(18);
+  });
+
   it('keeps recursion through QuickJS natives inside the realm', async () => {
     for (const code of [
       'const o = { toString() { return String(o); } }; String(o)',

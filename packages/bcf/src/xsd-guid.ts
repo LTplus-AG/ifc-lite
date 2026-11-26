@@ -60,15 +60,19 @@ export function assertNoCaseOnlyGuidClashes(
 ): void {
   if (version !== '3.0') return;
   const all = [...topics];
+  const referencesWithoutGuid = new WeakMap<BCFDocumentReference, string>();
   assertNoCaseOnlyGuidClash(all, version, 'topics');
   for (const topic of all) {
     const inTopic = `in topic "${topic.guid}"`;
     assertNoCaseOnlyGuidClash(topic.comments, version, `comments ${inTopic}`);
     assertNoCaseOnlyGuidClash(topic.viewpoints, version, `viewpoints ${inTopic}`);
-    const refs = topic.documentReferences?.map((ref, index) => ({
-      guid: documentReferenceGuid3(ref, topic.guid, index),
-      generated: !ref.guid,
-    }));
+    const refs = topic.documentReferences?.map((ref, index) => {
+      const generated = !ref.guid;
+      // Later occurrences share the GUID written back by the first occurrence.
+      const guid = referencesWithoutGuid.get(ref) ?? documentReferenceGuid3(ref, topic.guid, index);
+      if (generated) referencesWithoutGuid.set(ref, guid);
+      return { guid, generated };
+    });
     assertNoCaseOnlyGuidClash(refs ?? [], version, `document references ${inTopic}`);
   }
 }

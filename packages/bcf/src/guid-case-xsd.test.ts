@@ -172,6 +172,16 @@ describe('guids that differ only by case', () => {
     expect(implicit).not.toHaveProperty('guid');
   });
 
+  it('refuses a shared guid-less document reference before assigning a GUID', async () => {
+    const p = project('3.0');
+    const topic = [...p.topics.values()][0];
+    const ref = { url: 'https://example.com/shared.pdf' };
+    topic.documentReferences = [ref, ref];
+
+    await expect(writeBCF(p)).rejects.toThrow(/document references in topic/);
+    expect(ref).not.toHaveProperty('guid');
+  });
+
   it('in different topics\' viewpoints are not a clash', async () => {
     const p = project('3.0');
     const a = [...p.topics.values()][0];

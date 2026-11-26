@@ -11,7 +11,7 @@ CI step durations below are wall time, not CPU time or billing-weighted minutes.
 - Generated `tsconfig.tests.json` files no longer invalidate production Turbo
   build keys (#10407). The actual Turbo regression still requires production
   source/configuration changes to invalidate the key.
-- Viewer tests use 12 duration-packed shards with two-way file concurrency
+- Viewer tests use 14 duration-packed shards with two-way file concurrency
   enabled by `VIEWER_TEST_CONCURRENCY`. #10399 refreshed the existing duration
   manifest when the job still used 16 shards. Both layouts cover the full suite.
 - Retained Rust uses one Cargo archive owner for the native and WASM target
@@ -49,7 +49,7 @@ a maintenance window and restore the variable after they finish. The refresh
 script uses serial TAP timestamps for whole-file weights.
 
 If viewer concurrency 2 needs to be rolled back, unset
-`VIEWER_TEST_CONCURRENCY`. This switches the 12 viewer jobs to serial
+`VIEWER_TEST_CONCURRENCY`. This switches the 14 viewer jobs to serial
 execution and raises their caps from 25 to 35 minutes. To restore the previous
 runner layout, also restore the 16-job matrix, both `TEST_SHARDS` settings and
 the manifest count in the same change. PR review signal and the dirty-PR scanner
@@ -70,10 +70,12 @@ These estimates use shard-level wall times because concurrent TAP output
 is buffered. The viewer jobs report the number of files completed alongside
 the step durations for direct comparison on a full run. The first 12-shard
 run passed all 3,081 files and took 10.0–15.9 minutes per shard. The
-concurrency-2 layout now uses estimates calibrated to that run and to the
-four earlier runs. Serial execution still uses the serial weights. Full
-viewer runs publish file-level durations in `viewer-file-timings-N` so later
-repacking can use measured weights.
+second 12-shard run used shard-calibrated weights and still reached 15.7
+minutes. It published whole-file timings for all 3,081 files. The 14-shard
+layout packs these measured timings after normalizing each source shard
+against historical test-body timings for the same files. Serial execution
+uses the serial weights. Full viewer runs publish file-level durations in
+`viewer-file-timings-N` for future repacking.
 
 ## Rust measurements
 

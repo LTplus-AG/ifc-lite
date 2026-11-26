@@ -84,21 +84,7 @@ export function packManifest(durations, shardCount) {
   return out;
 }
 
-/**
- * Each scale vector describes an older layout packed from the serial weights.
- * Scale equals observed shard wall time divided by its estimated serial load.
- * Average the vectors' estimates for each file before packing the new layout.
- */
-function packingWeights({ seconds, concurrentScales }, concurrency) {
-  if (concurrency !== '2' || !concurrentScales) return seconds;
-  const oldLayouts = concurrentScales.map((scales) => packManifest(seconds, scales.length));
-  return Object.fromEntries(Object.entries(seconds).map(([file, serial]) => {
-    const scale = concurrentScales.reduce((sum, scales, i) => sum + scales[oldLayouts[i].get(file)], 0);
-    return [file, Math.max(0.25, serial) * scale / oldLayouts.length];
-  }));
-}
-
-/** @typedef {{ shards: number, seconds: Record<string, number>, concurrentScales?: number[][] }} DurationManifest */
+/** @typedef {{ shards: number, seconds: Record<string, number>, concurrentSeconds?: Record<string, number> }} DurationManifest */
 
 /**
  * The shard every given path runs in.
@@ -109,9 +95,8 @@ function packingWeights({ seconds, concurrentScales }, concurrency) {
  * @returns {Map<string, number>}
  */
 export function assignShards(paths, manifest, shardCount, concurrency) {
-  const packed = manifest.shards === shardCount
-    ? packManifest(packingWeights(manifest, concurrency), shardCount)
-    : new Map();
+  const weights = concurrency === '2' && manifest.concurrentSeconds ? manifest.concurrentSeconds : manifest.seconds;
+  const packed = manifest.shards === shardCount ? packManifest(weights, shardCount) : new Map();
   const out = new Map();
   for (const p of paths) out.set(p, packed.has(p) ? packed.get(p) : pathHash(p) % shardCount);
   return out;
@@ -138,7 +123,7 @@ export function parseManifest(text) {
   } catch (err) {
     throw new ShardSelectionError(`manifest is not JSON: ${err.message}`);
   }
-  const { shards, seconds: table, concurrentScales } = data ?? {};
+  const { shards, seconds: table, concurrentSeconds } = data ?? {};
   if (!Number.isInteger(shards) || shards < 1 || !table || typeof table !== 'object' || Array.isArray(table)) {
     throw new ShardSelectionError('manifest must be { "shards": <count>, "seconds": { <path>: <seconds> } }');
   }
@@ -147,13 +132,12 @@ export function parseManifest(text) {
       throw new ShardSelectionError(`manifest entry ${JSON.stringify(path)} is not a non-negative number of seconds`);
     }
   }
-  if (concurrentScales === undefined) return { shards, seconds: table };
-  if (!Array.isArray(concurrentScales) || !concurrentScales.length ||
-      concurrentScales.some((scales) => !Array.isArray(scales) || !scales.length ||
-        scales.some((scale) => typeof scale !== 'number' || !Number.isFinite(scale) || scale <= 0))) {
-    throw new ShardSelectionError('manifest concurrentScales must contain non-empty arrays of positive shard scales');
+  if (concurrentSeconds === undefined) return { shards, seconds: table };
+  if (!concurrentSeconds || typeof concurrentSeconds !== 'object' || Array.isArray(concurrentSeconds) ||
+      Object.entries(concurrentSeconds).some(([, seconds]) => typeof seconds !== 'number' || !Number.isFinite(seconds) || seconds <= 0)) {
+    throw new ShardSelectionError('manifest concurrentSeconds must map paths to positive file durations');
   }
-  return { shards, seconds: table, concurrentScales };
+  return { shards, seconds: table, concurrentSeconds };
 }
 
 /** Parse TEST_SHARDS / TEST_SHARD. Unset TEST_SHARDS means one shard holding everything. */

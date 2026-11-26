@@ -327,7 +327,7 @@ function fixtureRepo(change) {
   write(root, {
     'apps/viewer/package.json': JSON.stringify({ scripts: { test: "files=$(find src | node x.mjs) && tsx --import ./src/test/hooks.mjs --test --test-concurrency=1 $files" } }),
     'apps/viewer/tsconfig.json': JSON.stringify({ compilerOptions: { baseUrl: '.', paths: { '@/*': ['./src/*'] } } }),
-    'apps/viewer/test-durations.json': JSON.stringify({ shards: 12, seconds: { 'src/a.test.ts': 100, 'src/b.test.ts': 400 } }),
+    'apps/viewer/test-durations.json': JSON.stringify({ shards: 14, seconds: { 'src/a.test.ts': 100, 'src/b.test.ts': 400 } }),
     'apps/viewer/src/test/hooks.mjs': '',
     'apps/viewer/src/a.test.ts': "import '@/lib/util.js';",
     'apps/viewer/src/b.test.ts': "import './lib/mid.js';",

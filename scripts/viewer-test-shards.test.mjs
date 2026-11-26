@@ -22,7 +22,7 @@ import { attributeFiles, declaredTitles, parseTapLog } from './lib/viewer-test-d
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const VIEWER = join(ROOT, 'apps/viewer');
 const SCRIPT = join(ROOT, 'scripts/viewer-test-shards.mjs');
-const SHARDS = 12;
+const SHARDS = 14;
 
 /** The viewer's test files exactly as its `test` script's `find` sees them. */
 function realTestFiles() {
@@ -41,6 +41,12 @@ function realTestFiles() {
 const manifest = parseManifest(readFileSync(MANIFEST_PATH, 'utf8'));
 const files = realTestFiles();
 
+test('measured concurrency-2 durations cover the viewer inventory', () => {
+  const measured = files.filter((file) => Object.hasOwn(manifest.concurrentSeconds ?? {}, file));
+  assert.ok(measured.length >= Math.ceil(files.length * 0.95),
+    `${measured.length}/${files.length} current tests have concurrency-2 durations`);
+});
+
 test('measured durations cover at least 95% of the current viewer suite (#10279)', () => {
   // Newly added files may use the hash fallback. A refresh must keep that
   // exception small enough that LPT still schedules almost the entire suite.
@@ -54,7 +60,7 @@ test('the real test files form an exact partition in the current and rollback la
   assert.ok(files.length >= 2000, `expected the real viewer suite, got ${files.length} files`);
   assert.ok(Object.keys(manifest.seconds).length >= 2000, 'expected the committed manifest to be populated');
   assert.equal(manifest.shards, SHARDS, 'the manifest must be packed for the CI matrix size');
-  for (const [count, concurrency] of [[SHARDS, "2"], [SHARDS, ""], [16, ""]]) {
+  for (const [count, concurrency] of [[SHARDS, '2'], [SHARDS, ''], [16, '']]) {
     const layout = { ...manifest, shards: count };
     const seen = new Map();
     for (let shard = 0; shard < count; shard++) {
@@ -82,11 +88,11 @@ test('the packing balances the measured load to within one file of the mean (LPT
   assert.ok(Math.max(...load) < Math.max(...hashLoad), 'packing must lower the slowest shard');
 });
 
-test('two-way concurrency repacks calibrated weights and serial execution keeps the original assignment', () => {
+test('two-way concurrency packs the concurrent weights and serial execution keeps the original assignment', () => {
   const fixture = {
     shards: 2,
     seconds: { a: 10, b: 9, c: 6, d: 5, e: 3 },
-    concurrentScales: [[2, 0.5]],
+    concurrentSeconds: { a: 20, b: 4.5, c: 3, d: 10, e: 6 },
   };
   const paths = Object.keys(fixture.seconds);
   assert.deepEqual([...assignShards(paths, fixture, 2, '2')], [

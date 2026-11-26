@@ -19,8 +19,8 @@
  * runners. Only files present at HEAD are written.
  *
  * A maintenance tool, run by hand when the shard loads drift apart; it gates
- * nothing. Refreshing serial weights discards calibration for the old weights.
- * The selection it feeds is tested in viewer-test-shards.test.mjs.
+ * nothing. Refreshing serial weights preserves independent concurrent measurements
+ * for files still present. The selection it feeds is tested in viewer-test-shards.test.mjs.
  */
 
 import { spawnSync } from 'node:child_process';
@@ -167,7 +167,13 @@ function main() {
   for (const f of [...perFile.keys()].sort(byPath)) seconds[f] = Math.round(median(perFile.get(f)) * 10) / 10;
   // Packed for the shard count CI runs at HEAD; another count ignores it.
   const count = ciShardCount();
+  const oldManifest = parseManifest(readFileSync(MANIFEST_PATH, 'utf8'));
   const manifest = { shards: count, seconds };
+  if (oldManifest.concurrentSeconds) {
+    manifest.concurrentSeconds = Object.fromEntries(
+      Object.entries(oldManifest.concurrentSeconds).filter(([file]) => head.has(file)),
+    );
+  }
   const packed = packManifest(seconds, count);
   for (const m of measured) {
     const load = new Array(count).fill(0);

@@ -13,7 +13,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { CallToolResult } from '../protocol/index.js';
+import type { CallToolResult, ToolScope } from '../protocol/index.js';
 import {
   DEFAULT_CONFIG, InMemoryModelRegistry, NOOP_PROGRESS, SILENT_LOGGER, type ToolContext,
 } from '../context.js';
@@ -449,6 +449,16 @@ describe('script_run_mutate when the model is unloaded mid-run', () => {
     );
     expect(result.structuredContent?.mutations_queued).toBeUndefined();
     expect((result.content[0] as { text: string }).text).not.toMatch(/persist/);
+  });
+});
+
+describe('script_run_mutate scope', () => {
+  it('needs read, and grants bim.export only with the export scope', async () => {
+    const mutateOnly = { ...ctx, scope: { scopes: ['mutate'] as ToolScope[] } };
+    await expect(scriptRunMutateTool.handler({ code: '1' }, mutateOnly)).rejects.toMatchObject({ code: 'PERMISSION_DENIED' });
+    const noExport = { ...ctx, scope: { scopes: ['read', 'mutate'] as ToolScope[] } };
+    const result = await scriptRunMutateTool.handler({ code: '[typeof bim.export, typeof bim.mutate]' }, noExport);
+    expect(result.structuredContent?.value).toEqual(['undefined', 'object']);
   });
 });
 

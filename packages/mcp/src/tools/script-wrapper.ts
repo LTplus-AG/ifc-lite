@@ -137,7 +137,12 @@ export function wrapScript(code: string): string {
   // Console text keeps what the bridge's own dump used to show for errors
   // and BigInts, which JSON rules would turn into {} or a TypeError.
   // Cut a little under the host log budget so the marker itself survives it.
-  function cut(text, max) { return text.length > max ? apply(slice, text, [0, max]) + ' [truncated]' : text; }
+  function cut(text, max) {
+    if (text.length <= max) return text;
+    // Never end on the first half of a surrogate pair.
+    var c = text.charCodeAt(max - 1), end = c >= 0xD800 && c <= 0xDBFF ? max - 1 : max;
+    return apply(slice, text, [0, end]) + ' [truncated]';
+  }
   function logArg(a) {
     if (typeof a === 'string') return a;
     if (typeof a === 'bigint') return Str(a) + 'n';
@@ -148,7 +153,7 @@ export function wrapScript(code: string): string {
         return cut(msg(a), L.maxMessage) + (typeof st === 'string' && st !== '' ? '\\n' + cut(st, L.maxLog) : '');
       }
     } catch (_) { /* an unreadable stack: fall through to the JSON form */ }
-    try { var s = ser(a, L.maxLog, true); return s === undefined ? Str(a) : cut(s, L.maxLog - 32); }
+    try { var s = ser(a, L.maxLog, true); return cut(s === undefined ? Str(a) : s, L.maxLog - 32); }
     catch (e) { return '[unserialisable: ' + msg(e) + ']'; }
   }
   var original = glob.console, safe = create(null);

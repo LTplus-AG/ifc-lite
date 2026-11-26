@@ -29,6 +29,7 @@ import type { LoadedModel, ToolContext } from '../context.js';
 import type { Tool } from './types.js';
 import { okResult, resolveModel } from './util.js';
 import { ToolErrorCode, ToolExecutionError, describeThrown } from '../errors.js';
+import { scopeAllows } from '../auth/scope.js';
 
 const MAX_CODE_CHARS = 100_000;
 const DEFAULT_TIMEOUT_MS = 10_000;
@@ -39,7 +40,9 @@ const MAX_TIMEOUT_MS = 30_000;
 /**
  * Sandboxes alive at once, process-wide. All of them share one QuickJS WASM
  * module whose linear memory never shrinks, so overlapping runs that await
- * host work could otherwise each reserve up to MAX_MEMORY_MB.
+ * host work could otherwise each reserve up to MAX_MEMORY_MB. It bounds
+ * sandboxes, not host work: a cancelled run frees its slot while a bim call
+ * it started (bim.clash.run, say) may still finish on the host.
  */
 const MAX_CONCURRENT_SCRIPTS = 2;
 let runningScripts = 0;
@@ -166,6 +169,13 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
     hint: hintFor(mode, code, message, host),
   });
   if (ctx.signal.aborted) throw cancelled();
+  // A script reads the model and (in mutate mode) can export it, so the
+  // token needs those scopes too, not only the tool's own 'mutate'.
+  const scope = ctx.currentScope?.() ?? ctx.scope;
+  if (!scopeAllows(scope, 'read')) {
+    throw new ToolExecutionError({ code: ToolErrorCode.PERMISSION_DENIED, message: 'Script tools read the model and need the read scope.' });
+  }
+  const mutatePermissions: SandboxPermissions = { ...MUTATE_PERMISSIONS, export: scopeAllows(scope, 'export') };
 
   // Read mode has no write namespaces, so it cannot queue anything. In mutate
   // mode the count is mutation-journal entries that appeared during the run; a
@@ -192,7 +202,7 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
   };
   return withScriptSlot(async () => {
     const sandbox = await createSandbox(model.bim, {
-      permissions: mode === 'mutate' ? MUTATE_PERMISSIONS : READ_PERMISSIONS,
+      permissions: mode === 'mutate' ? mutatePermissions : READ_PERMISSIONS,
       limits: { timeoutMs, memoryBytes: memoryMb * 1024 * 1024, maxStackBytes: MAX_STACK_BYTES },
     });
     // dispose() can throw SandboxAbortError when QuickJS aborts tearing down a

@@ -24,9 +24,9 @@ import { formatScaleFactorLabel, type TitleBlockConfig } from '@ifc-lite/drawing
  * same defect class PR #2131 fixed for the plain (non-sheet) SVG exporter's
  * title block.
  *
- * A field that auto-populates from `drawing.scale` always gets the placed
- * scale; a field merely named 'scale' (auto-populate off, user text) is only
- * corrected when the fit clamped the drawing. Returns `titleBlock` itself when
+ * A read-only field that auto-populates from `drawing.scale` always gets the
+ * placed scale; user text (auto-populate off, or an editable field) is only
+ * corrected, for a field with the id 'scale', when the fit clamped the drawing. Returns `titleBlock` itself when
  * no field needs a new value, and a shallow copy with only those fields'
  * `value` replaced otherwise. The export and the sheet preview pass the placed
  * scale; the title block editor, which has no viewport fit, shows a read-only
@@ -43,10 +43,10 @@ export function titleBlockWithEffectiveScale(
   const nominalScaleFactor = 1000 / requestedScaleFactor;
   const clamped = Math.abs(effectiveScaleFactor - nominalScaleFactor) > 1e-9;
   const label = `1:${formatScaleFactorLabel(1000 / effectiveScaleFactor)}`;
-  // Auto-populate off means user text: like `autoPopulateTitleBlock` (`sheetSlice.ts`) it is kept,
-  // except that a field with the id 'scale' is still corrected when the fit clamped the drawing (#2131).
+  // Auto-populate off, or an editable field, means user text: like `autoPopulateTitleBlock` (`sheetSlice.ts`)
+  // it is kept, except that a field with the id 'scale' is still corrected when the fit clamped the drawing (#2131).
   const needsValue = (field: TitleBlockConfig['fields'][number]): boolean => field.value !== label
-    && ((field.autoPopulate && field.autoPopulateSource === 'drawing.scale') || (clamped && field.id === 'scale'));
+    && ((field.autoPopulate && field.autoPopulateSource === 'drawing.scale' && !field.editable) || (clamped && field.id === 'scale'));
   if (!titleBlock.fields.some(needsValue)) return titleBlock;
   return {
     ...titleBlock,

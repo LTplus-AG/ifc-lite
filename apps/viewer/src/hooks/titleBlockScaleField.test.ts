@@ -44,6 +44,11 @@ describe('titleBlockWithEffectiveScale (#11458)', () => {
     assert.equal(titleBlockWithEffectiveScale(clampedAlready, 100, 1000 / 126.58), clampedAlready);
   });
 
+  it('keeps what a user typed into an editable auto-populated Scale field (#11581)', () => {
+    const tb = blockWith({ editable: true, value: 'As indicated' });
+    assert.equal(titleBlockWithEffectiveScale(tb, 50, 20), tb);
+  });
+
   it('leaves the title block alone when there is no usable placed scale (#11581)', () => {
     const tb = blockSaying('1:100');
     for (const effective of [0, -0, Number.NaN, Number.POSITIVE_INFINITY, -5]) {

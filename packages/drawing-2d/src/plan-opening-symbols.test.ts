@@ -136,6 +136,14 @@ describe('headless plans draw door and window symbols (#10932)', () => {
     expect(drawing.lines.filter((l) => l.entityId === 30 && l.category === 'projection').length).toBeGreaterThan(0);
   });
 
+  it('keeps a projected window piece when the cut lies between disjoint pieces (#10932)', async () => {
+    const low = box(30, [4.5, 0.2, -0.1], [5.5, 1.0, 0], { ifcType: 'IfcWindow' });
+    const high = box(30, [4.5, 1.5, -0.1], [5.5, 2.0, 0], { ifcType: 'IfcWindow' });
+    const drawing = await generateFloorPlan([host, low, high], 1.2, options);
+    expect(symbolsOf(drawing, 'window')).toEqual([]);
+    expect(drawing.lines.some(line => line.entityId === 30 && line.category === 'projection')).toBe(true);
+  });
+
   it('reads the opening info of each federated model separately', async () => {
     const second = door(20, [3, 0, 0]).map((m) => ({ ...m, modelIndex: 1 }));
     const drawing = await generateFloorPlan([host, ...door(20, [1, 0, 0]), ...second], 1.2, {

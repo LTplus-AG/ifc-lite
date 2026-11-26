@@ -11,9 +11,6 @@ import { functionIdentifier, jsIdentifier, Scope, UnsupportedConstruct } from '.
 const INDENT = '  ';
 
 export class StatementTranslator {
-  /** Whether each enclosing REPEAT has an UNTIL, innermost last. */
-  private readonly loops: boolean[] = [];
-
   constructor(readonly expr: ExpressionTranslator) {}
 
   private t(e: Expr, scope: Scope): string {
@@ -51,10 +48,12 @@ export class StatementTranslator {
       case 'assign': return [pad + this.assignment(s.target, s.value, scope)];
       case 'return': return [`${pad}return ${s.value ? this.t(s.value, scope) : 'undefined'};`];
       case 'escape': return [`${pad}break;`];
-      case 'skip':
-        // `continue` would jump past the UNTIL test, which EXPRESS still evaluates after SKIP.
-        if (this.loops.at(-1) !== false) throw new UnsupportedConstruct('SKIP in a REPEAT with UNTIL, or outside REPEAT');
-        return [`${pad}continue;`];
+      case 'skip': {
+        // SKIP leaves the body but still runs the UNTIL test, so it breaks out of a labelled body block.
+        if (!scope.loop) throw new UnsupportedConstruct('SKIP outside REPEAT');
+        scope.loop.label ??= this.expr.ctx.fresh('body');
+        return [`${pad}break ${scope.loop.label};`];
+      }
       case 'block': return [`${pad}{`, ...this.statements(s.body, scope, depth + 1), `${pad}}`];
       case 'if': {
         const out = [`${pad}if (r.isTrue(${this.t(s.cond, scope)})) {`, ...this.statements(s.thenBody, scope, depth + 1)];
@@ -84,19 +83,15 @@ export class StatementTranslator {
 
   private repeat(s: Extract<Stmt, { k: 'repeat' }>, scope: Scope, depth: number): string[] {
     const pad = INDENT.repeat(depth);
-    const inner = scope.child();
+    const loop: { label?: string } = {};
+    const inner = scope.child(loop);
     const counted = s.variable && s.from && s.to;
     const v = counted ? inner.define(s.variable!, this.expr.ctx.fresh(jsIdentifier('i_', s.variable!))).js : '';
     const bodyPad = pad + INDENT.repeat(counted ? 2 : 1);
     const guard = s.whileCond ? [`${bodyPad}if (!r.isTrue(${this.t(s.whileCond, inner)})) break;`] : [];
     const tail = s.untilCond ? [`${bodyPad}if (r.isTrue(${this.t(s.untilCond, inner)})) break;`] : [];
-    this.loops.push(!!s.untilCond);
-    let body: string[];
-    try {
-      body = this.statements(s.body, inner, depth + (counted ? 2 : 1));
-    } finally {
-      this.loops.pop();
-    }
+    let body = this.statements(s.body, inner, depth + (counted ? 2 : 1));
+    if (loop.label) body = [`${bodyPad}${loop.label}: {`, ...body.map((l) => INDENT + l), `${bodyPad}}`];
     if (!counted) {
       if (!s.whileCond && !s.untilCond) throw new UnsupportedConstruct('REPEAT without increment, WHILE or UNTIL');
       return [`${pad}for (;;) {`, ...guard, ...body, ...tail, `${pad}}`];

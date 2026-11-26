@@ -112,11 +112,19 @@ END_SCHEMA;`;
 
   it.each([
     ['HIBOUND, which is not HIINDEX', 'RETURN (HIBOUND(X));', 'built-in HIBOUND is not implemented'],
-    ['SKIP that would jump past UNTIL', 'REPEAT UNTIL N > 3; N := N + 1; IF N = 2 THEN SKIP; END_IF; END_REPEAT; RETURN (N);',
-      'SKIP in a REPEAT with UNTIL, or outside REPEAT'],
+    ['SKIP outside a REPEAT', 'SKIP; RETURN (N);', 'SKIP outside REPEAT'],
   ])('refuses %s instead of compiling it wrong', (_what, body, reason) => {
     const fn = `FUNCTION F (X : LIST [1:?] OF MiniLabel) : INTEGER; LOCAL N : INTEGER := 0; END_LOCAL; ${body} END_FUNCTION;`;
     expect(generateValidators(mini('WR1 : TRUE', fn)).coverage.unsupported).toEqual([{ scope: 'function', owner: 'F', label: 'F', reason }]);
+  });
+
+  it('compiles SKIP to a break out of a labelled body, so the UNTIL test still runs', () => {
+    const fn = `FUNCTION F (X : MiniLabel) : INTEGER; LOCAL N : INTEGER := 0; END_LOCAL;
+REPEAT UNTIL N > 3; N := N + 1; IF N = 2 THEN SKIP; END_IF; END_REPEAT; RETURN (N); END_FUNCTION;`;
+    const rules = generateValidators(mini('WR1 : TRUE', fn)).files['rules.ts'];
+    const loop = rules.slice(rules.indexOf('for (;;)'), rules.indexOf('return v_n'));
+    expect(loop).toMatch(/(body\d+): \{[\s\S]*break \1;[\s\S]*\}\n\s*if \(r\.isTrue\(r\.gt\(v_n, 3\)\)\) break;/);
+    expect(loop).not.toContain('continue');
   });
 
   it("does not treat a three-part 'SCHEMA.ENTITY.ATTR' literal as a type in IN TYPEOF", () => {

@@ -23,10 +23,16 @@ export type ScopeKind = 'entity' | 'type' | 'function' | 'rule';
 export class Scope {
   private readonly vars = new Map<string, Variable>();
 
-  constructor(readonly kind: ScopeKind, readonly entity?: EntityDecl, readonly parent?: Scope) {}
+  constructor(
+    readonly kind: ScopeKind,
+    readonly entity?: EntityDecl,
+    readonly parent?: Scope,
+    /** The innermost enclosing REPEAT; a SKIP in it names `label`, assigned on first use. */
+    readonly loop?: { label?: string },
+  ) {}
 
-  child(): Scope {
-    return new Scope(this.kind, this.entity, this);
+  child(loop = this.loop): Scope {
+    return new Scope(this.kind, this.entity, this, loop);
   }
 
   define(name: string, js: string, type?: TypeSpec): Variable {

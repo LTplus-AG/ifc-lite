@@ -56,6 +56,15 @@ function onlyReasons(r: InformationRule): string[] {
 }
 
 describe('ruleSetToIds — exportable rules (#5225)', () => {
+  it('exports a classification presence check when a system is given (#11461)', () => {
+    const result = ruleSetToIds(file(rule([Rule.classification('Uniclass', 'isSet', '')])));
+    assert.deepEqual(result.refused, []);
+    assert.ok(result.xml);
+    assert.deepEqual(clean(parseIDS(result.xml).specifications[0].requirements[0].facet), {
+      type: 'classification', system: { type: 'simpleValue', value: 'Uniclass' },
+    });
+  });
+
   it('exports a property/attribute/material rule set that IDS tooling parses and audits clean', async () => {
     const result = ruleSetToIds(file(
       rule([Rule.property('Pset_WallCommon', 'FireRating', 'eq', '2HR')]),

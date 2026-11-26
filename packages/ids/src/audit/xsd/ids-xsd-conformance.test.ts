@@ -367,8 +367,12 @@ describe('IDS documents against buildingSMART ids.xsd 1.0', () => {
 
   it('accepts writer output with required/prohibited partOf and classification systems (#11461)', async () => {
     const document = parseIDS(CONFORMING_DOCUMENT);
-    const partOf = document.specifications[0].requirements.find(({ facet }) => facet.type === 'partOf')!;
-    document.specifications[0].requirements.push({ ...partOf, id: 'prohibited-part-of', optionality: 'prohibited' });
+    const partOf = document.specifications[0].requirements.find(({ facet }) => facet.type === 'partOf');
+    expect(partOf).toMatchObject({ optionality: 'required', facet: { type: 'partOf' } });
+    expect(document.specifications[1].requirements[0].facet).toMatchObject({
+      type: 'classification', system: { type: 'simpleValue', value: 'Uniclass' },
+    });
+    document.specifications[0].requirements.push({ ...partOf!, id: 'prohibited-part-of', optionality: 'prohibited' });
     expect(await schemaErrors(writeIdsXml(document))).toEqual([]);
   });
 

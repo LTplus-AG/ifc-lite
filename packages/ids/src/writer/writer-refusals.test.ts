@@ -30,7 +30,7 @@ describe('writeIdsXml refuses shapes IDS 1.0 cannot represent (#11461)', () => {
   const partOf: IDSFacet = { type: 'partOf', relation: 'IfcRelAggregates', entity: { type: 'entity', name: sv('IFCBUILDING') } };
 
   it('an optional partOf requirement', () => {
-    expect(() => writeIdsXml(docWith(partOf, 'optional'))).toThrow(/partOf requirement cannot be optional/);
+    expect(() => writeIdsXml(docWith(partOf, 'optional'))).toThrow('partOf requirement cannot be optional (specification "S", requirement "r")');
     expect(writeIdsXml(docWith(partOf, 'required'))).toContain('<partOf');
     expect(writeIdsXml(docWith(partOf, 'prohibited'))).toContain('cardinality="prohibited"');
   });
@@ -41,14 +41,14 @@ describe('writeIdsXml refuses shapes IDS 1.0 cannot represent (#11461)', () => {
   ] satisfies { description: string; facet: IDSFacet }[])(
     'a $description classification requirement without a system',
     ({ facet }) => {
-      expect(() => writeIdsXml(docWith(facet, 'required'))).toThrow(/classification facet needs a system/);
+      expect(() => writeIdsXml(docWith(facet, 'required'))).toThrow('classification facet needs a system (specification "S", requirement)');
     },
   );
 
   it('a value-only classification in applicability', () => {
     const doc = docWith(entity('IFCWALL'), 'required');
     doc.specifications[0].applicability.facets = [{ type: 'classification', value: sv('Ss_25') }];
-    expect(() => writeIdsXml(doc)).toThrow(/classification facet needs a system/);
+    expect(() => writeIdsXml(doc)).toThrow('classification facet needs a system (specification "S", applicability)');
   });
 
   it('a classification with a system and no value is writable', () => {
@@ -56,7 +56,7 @@ describe('writeIdsXml refuses shapes IDS 1.0 cannot represent (#11461)', () => {
   });
 
   it('a prohibited or optional entity requirement, which has no XML cardinality', () => {
-    expect(() => writeIdsXml(docWith(entity('IFCDOOR'), 'prohibited'))).toThrow(/entity requirement cannot be prohibited/);
+    expect(() => writeIdsXml(docWith(entity('IFCDOOR'), 'prohibited'))).toThrow('entity requirement cannot be prohibited (specification "S", requirement "r")');
     expect(() => writeIdsXml(docWith(entity('IFCDOOR'), 'optional'))).toThrow(/entity requirement cannot be optional/);
     expect(writeIdsXml(docWith(entity('IFCDOOR'), 'required'))).toContain('<entity>');
   });

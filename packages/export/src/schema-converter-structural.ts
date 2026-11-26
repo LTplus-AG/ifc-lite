@@ -2,7 +2,7 @@
 /** Browser adapter for rust/export/src/schema_structural.rs (#9668). */
 import { parseStepNumber, skipStepTrivia } from './step-slot-grammar.js';
 import { readStepSlots } from './step-argument-parser.js';
-import { getSchemaRegistryForVersion } from '@ifc-lite/parser';
+import { getSchemaRegistryForVersion, type SchemaVersionWithRegistry } from '@ifc-lite/parser';
 
 function scalarEquals(token: string, value: string): boolean {
   const start = skipStepTrivia(token, 0);
@@ -21,10 +21,17 @@ function stiffnessType(entity: string, index: number): string | null {
   return null;
 }
 
+/** Whether `from` -> `to` is IFC2X3 to or from IFC4 or IFC4X3. */
+function ifc2x3AndIfc4Family(from: string, to: string): boolean {
+  const other = from === 'IFC2X3' ? to : to === 'IFC2X3' ? from : undefined;
+  return other === 'IFC4' || other === 'IFC4X3';
+}
+
+export const isRegistrySchema = (schema: string): schema is SchemaVersionWithRegistry => schema === 'IFC2X3' || schema === 'IFC4' || schema === 'IFC4X3';
+
 /** IFC2X3's stiffness fields keep their position and units in IFC4 and IFC4X3. */
 export function isStructuralStiffnessConversion(entity: string, from: string, to: string): boolean {
-  const other = from === 'IFC2X3' ? to : to === 'IFC2X3' ? from : undefined;
-  return (other === 'IFC4' || other === 'IFC4X3') && stiffnessType(entity, 1) !== null;
+  return ifc2x3AndIfc4Family(from, to) && stiffnessType(entity, 1) !== null;
 }
 
 /** The loss reported when IFC2X3's required DestabilizingLoad is written as .F. for an unknown value. */
@@ -38,8 +45,7 @@ export function isStructuralAssignmentConversion(entity: string, from: string, t
 /** A constant linear or planar action between IFC2X3 and IFC4 or IFC4X3, mapped by attribute name:
  *  IFC2X3's CausedBy has no slot in either, and both declare the same layout (#11571). */
 export function isConstantActionConversion(entity: string, from: string, to: string): boolean {
-  const other = from === 'IFC2X3' ? to : to === 'IFC2X3' ? from : undefined;
-  return (other === 'IFC4' || other === 'IFC4X3') && (entity === 'IFCSTRUCTURALLINEARACTION' || entity === 'IFCSTRUCTURALPLANARACTION');
+  return ifc2x3AndIfc4Family(from, to) && (entity === 'IFCSTRUCTURALLINEARACTION' || entity === 'IFCSTRUCTURALPLANARACTION');
 }
 
 export function structuralAttributes(entity: string, args: readonly string[], from: string, to: string): string | null {
@@ -68,10 +74,10 @@ export function structuralAttributes(entity: string, args: readonly string[], fr
     }
     return values.join(',');
   }
-  if (!isConstantActionConversion(entity, from, to)) return null;
+  if (!isConstantActionConversion(entity, from, to) || !isRegistrySchema(from) || !isRegistrySchema(to)) return null;
   const name = entity === 'IFCSTRUCTURALLINEARACTION' ? 'IfcStructuralLinearAction' : 'IfcStructuralPlanarAction';
-  const slots = (schema: 'IFC2X3' | 'IFC4' | 'IFC4X3') => getSchemaRegistryForVersion(schema).entities[name]?.allAttributes?.map(a => a.name);
-  const src = slots(from as 'IFC2X3' | 'IFC4' | 'IFC4X3'), tgt = slots(to as 'IFC2X3' | 'IFC4' | 'IFC4X3');
+  const slots = (schema: SchemaVersionWithRegistry) => getSchemaRegistryForVersion(schema).entities[name]?.allAttributes?.map(a => a.name);
+  const src = slots(from), tgt = slots(to);
   if (!src || !tgt) return null;
   return tgt.map(name => args[src.indexOf(name)] ?? (name === 'PredefinedType' ? '.CONST.' : '$')).join(',');
 }

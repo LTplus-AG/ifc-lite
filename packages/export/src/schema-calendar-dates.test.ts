@@ -111,3 +111,10 @@ it('names a date record whose only referrer is written as IFCPROXY, in the expor
   expect(result.stats.warnings.join('\n')).toContain('were omitted because no written record references them and the target schema does not declare their type: #2 (IFCCALENDARDATE)');
   expect(analyzeConversionLoss(store, 'IFC2X3', 'IFC4').describe().join('\n')).toContain('IFCCALENDARDATE (#2) will be omitted because no written record references it');
 });
+
+it('keeps a date record a type neither schema declares still references, in the preview as in the export (#11199)', async () => {
+  const store = await legacy('#2=IFCCALENDARDATE(29,2,2024);\n#3=IFCVENDORRESOURCE(#2);');
+  const text = new TextDecoder().decode(new StepExporter(store).export({ schema: 'IFC4' }).content);
+  expect(text).toContain('#2=IFCCALENDARDATE(29,2,2024);');
+  expect(analyzeConversionLoss(store, 'IFC2X3', 'IFC4').describe().join('\n')).not.toContain('IFCCALENDARDATE (#2) will be omitted');
+});

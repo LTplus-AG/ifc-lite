@@ -8,6 +8,7 @@ import { stepRecordHead } from './step-record-frame.js';
 import { namedExpressIds } from './step-ref-scan.js';
 import { SourceRecords, type SourceStore } from './schema-converter-structural-source.js';
 import { attrNameTable, convertEntityType } from './schema-converter.js';
+import { missingTypeRoute } from './schema-untranslatable.js';
 import { MAX_SOURCE_STEP_ID, skipStepTrivia } from './step-slot-grammar.js';
 
 /** What a deferred date slot lost: all of it, its time (kept the date), or nothing but a clock precision it filled (#11199). */
@@ -146,12 +147,14 @@ export function orphanDateRecords(store: SourceStore, from: string, to: 'IFC2X3'
   const carriers = new Map<number, { slots: readonly string[] }>();
   for (const type of DATE_CARRIERS) for (const id of source.ids(type)) carriers.set(id, { slots: source.slots(id) ?? [] });
   if (!carriers.size) return new Set();
-  // A referrer the target does not declare is proxied or omitted, so its date references are not written.
-  const target = attrNameTable(to);
+  // A referrer the writer proxies or omits does not write its date references; `convertRecord`'s own route decides.
+  const [sourceTable, target] = [attrNameTable(from), attrNameTable(to)];
+  const writesRefs = (type: string) => !['unrepresented', 'omitted'].includes(
+    missingTypeRoute(type, from, to, sourceTable?.has(type) ?? false, !target || target.has(convertEntityType(type, from, to))));
   const written = function* () {
     for (const { id, text } of source.texts()) {
       const type = source.type(id);
-      if (type && (carriers.has(id) || target?.has(convertEntityType(type, from, to)))) yield text;
+      if (type && (carriers.has(id) || writesRefs(type))) yield text;
     }
   };
   const used = carrierUse(written(), carriers);

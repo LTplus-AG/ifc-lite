@@ -24,9 +24,24 @@ describe('EXPRESS expression parser', () => {
 
   it('parses QUERY, intervals, group qualifiers and indexing', () => {
     const q = expr("SIZEOF(QUERY(t <* SELF\\IfcFace.Bounds | 'IFC4.IFCEDGELOOP' IN TYPEOF(t.Bound))) = 1");
-    expect(q.k).toBe('binary');
-    expect(expr('{0 <= x < 3}')).toMatchObject({ k: 'interval', op1: '<=', op2: '<' });
-    expect(expr('a[1].b')).toMatchObject({ k: 'attr', name: 'b', base: { k: 'index' } });
+    expect(q).toEqual({
+      k: 'binary', op: '=', right: { k: 'num', value: 1, int: true },
+      left: { k: 'call', name: 'SIZEOF', args: [{
+        k: 'query', variable: 't',
+        source: { k: 'attr', name: 'Bounds', base: { k: 'group', entity: 'IfcFace', base: { k: 'self' } } },
+        predicate: {
+          k: 'binary', op: 'IN', left: { k: 'str', value: 'IFC4.IFCEDGELOOP' },
+          right: { k: 'call', name: 'TYPEOF', args: [{ k: 'attr', name: 'Bound', base: { k: 'id', name: 't' } }] },
+        },
+      }] },
+    });
+    expect(expr('{0 <= x < 3}')).toEqual({
+      k: 'interval', op1: '<=', op2: '<',
+      low: { k: 'num', value: 0, int: true }, item: { k: 'id', name: 'x' }, high: { k: 'num', value: 3, int: true },
+    });
+    expect(expr('a[1].b')).toEqual({
+      k: 'attr', name: 'b', base: { k: 'index', base: { k: 'id', name: 'a' }, index: { k: 'num', value: 1, int: true } },
+    });
   });
 
   it('keeps INTEGER and REAL literals apart', () => {

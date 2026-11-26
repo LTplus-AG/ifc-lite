@@ -46,10 +46,10 @@ function labelRules<R extends { label: string }>(rules: Unlabelled<R>[], prefix:
   return rules.map((r) => ({ ...r, label: r.label ?? generate() }) as R);
 }
 
-/** `taken` is shared with the entity's UNIQUE rules: both label kinds live in one scope. */
-function parseWhereClause(s: TokenStream, end: string, taken = new Set<string>()): WhereRule[] {
-  if (!s.acceptKeyword('WHERE')) return [];
+/** WHERE rules as written; `labelRules` names the unlabelled ones once every explicit label in scope is known. */
+function parseWhereRules(s: TokenStream, end: string, taken: Set<string>): Unlabelled<WhereRule>[] {
   const rules: Unlabelled<WhereRule>[] = [];
+  if (!s.acceptKeyword('WHERE')) return rules;
   while (!s.isKeyword(end)) {
     const label = parseRuleLabel(s, taken);
     const start = s.peek().start;
@@ -58,7 +58,12 @@ function parseWhereClause(s: TokenStream, end: string, taken = new Set<string>()
     s.expectOp(';');
     rules.push({ label, expr, source });
   }
-  return labelRules(rules, 'WR', taken);
+  return rules;
+}
+
+function parseWhereClause(s: TokenStream, end: string): WhereRule[] {
+  const taken = new Set<string>();
+  return labelRules(parseWhereRules(s, end, taken), 'WR', taken);
 }
 
 function parseAttributeName(s: TokenStream): { name: string; redeclares?: Redeclaration } {
@@ -176,13 +181,15 @@ function parseEntity(s: TokenStream): EntityDecl {
   if (s.acceptKeyword('INVERSE')) {
     while (!sectionStart()) entity.inverse.push(parseInverse(s));
   }
+  // UNIQUE and WHERE labels share one scope, so generated ones wait for every explicit one.
   const taken = new Set<string>();
+  const unique: Unlabelled<UniqueRule>[] = [];
   if (s.acceptKeyword('UNIQUE')) {
-    const unique: Unlabelled<UniqueRule>[] = [];
     while (!sectionStart()) unique.push(parseUnique(s, taken));
-    entity.unique = labelRules(unique, 'UR', taken);
   }
-  entity.where = parseWhereClause(s, 'END_ENTITY', taken);
+  const where = parseWhereRules(s, 'END_ENTITY', taken);
+  entity.unique = labelRules(unique, 'UR', taken);
+  entity.where = labelRules(where, 'WR', taken);
   s.expectKeyword('END_ENTITY');
   s.expectOp(';');
   return entity;

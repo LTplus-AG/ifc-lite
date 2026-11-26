@@ -53,6 +53,8 @@ export function parseTypeSpec(s: TokenStream): TypeSpec {
     s.next();
     let low: Expr | undefined;
     let high: Expr | undefined;
+    // AGGREGATE : T OF ... ties a generic aggregate to its type label; like GENERIC's, it is not kept.
+    if (word === 'AGGREGATE' && s.acceptOp(':')) s.expectIdentifier();
     if (s.acceptOp('[')) {
       low = parseExpression(s);
       s.expectOp(':');

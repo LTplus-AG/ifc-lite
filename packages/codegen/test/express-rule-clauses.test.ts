@@ -118,6 +118,10 @@ describe('EXPRESS rule parser: clause forms (#11110)', () => {
       ['Area', 'Width * Depth', undefined],
       ['Dim', 'HIINDEX(Points[1])', { entity: 'Thing', attribute: 'Dim' }],
     ]);
+    expect(shape.derived.map((d) => d.expr)).toEqual([
+      { k: 'binary', op: '*', left: { k: 'id', name: 'Width' }, right: { k: 'id', name: 'Depth' } },
+      { k: 'call', name: 'HIINDEX', args: [{ k: 'index', base: { k: 'id', name: 'Points' }, index: { k: 'num', value: 1, int: true } }] },
+    ]);
   });
 
   it('parses INVERSE with and without bounds, and a qualified FOR attribute', () => {
@@ -193,6 +197,16 @@ describe('EXPRESS rule parser: malformed and edge input (#11110 review)', () => 
   it('gives the UNIQUE and WHERE labels of an entity one scope', () => {
     expect(() => parseExpressRules('SCHEMA X; ENTITY A; x : INTEGER; UNIQUE UR1 : x; WHERE UR1 : x > 0; END_ENTITY; END_SCHEMA;'))
       .toThrow('duplicate rule label UR1');
+  });
+
+  it('numbers an unlabelled UNIQUE rule past an explicit WHERE label (CodeRabbit)', () => {
+    const [e] = parseExpressRules('SCHEMA X; ENTITY A; x : INTEGER; UNIQUE x; WHERE UR1 : x > 0; END_ENTITY; END_SCHEMA;').entities;
+    expect([...e.unique, ...e.where].map((r) => r.label)).toEqual(['UR2', 'UR1']);
+  });
+
+  it('accepts the type label of a generic AGGREGATE', () => {
+    const [fn] = parseExpressRules('SCHEMA X; FUNCTION F (A : AGGREGATE : T OF GENERIC : T) : BOOLEAN; RETURN (TRUE); END_FUNCTION; END_SCHEMA;').functions;
+    expect(fn.params[0].type).toMatchObject({ k: 'aggregate', kind: 'AGGREGATE', of: { k: 'generic', entity: false } });
   });
 
   it('accepts an unlabelled UNIQUE rule and numbers it UR<n>', () => {

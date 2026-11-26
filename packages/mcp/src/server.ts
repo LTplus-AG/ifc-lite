@@ -255,7 +255,7 @@ export class MCPServer {
         case 'tools/list':
           return successResponse(req.id, this.handleListTools());
         case 'tools/call':
-          return successResponse(req.id, await this.handleCallTool(req));
+          return successResponse(req.id, this.fitOutputSchema(req, await this.handleCallTool(req)));
         case 'resources/list':
           return successResponse(req.id, await this.handleListResources());
         case 'resources/read':
@@ -349,6 +349,19 @@ export class MCPServer {
     }
     const tools: ToolDefinition[] = visible.map(toToolDefinition);
     return { tools };
+  }
+
+  /**
+   * MCP clients validate any `structuredContent` against the tool's
+   * `outputSchema`, error results included (the TS SDK client does), and the
+   * error envelope `{ code, message, details }` matches no success schema.
+   * For tools that declare one, the envelope moves into the text block.
+   */
+  private fitOutputSchema(req: JsonRpcRequest, result: CallToolResult): CallToolResult {
+    if (!result.isError || result.structuredContent === undefined) return result;
+    if (!this.tools.get((req.params as CallToolParams | undefined)?.name ?? '')?.outputSchema) return result;
+    const { structuredContent, ...rest } = result;
+    return { ...rest, content: [...result.content, { type: 'text', text: JSON.stringify(structuredContent) }] };
   }
 
   private async handleCallTool(req: JsonRpcRequest): Promise<CallToolResult> {

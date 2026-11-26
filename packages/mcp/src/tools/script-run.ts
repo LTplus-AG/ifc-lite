@@ -167,7 +167,7 @@ function wrapScript(code: string): string {
     var j;
     try { j = stringify(v); } catch (e) { return 'U' + msg(e); }
     if (j === undefined) return 'Jnull';
-    return j.length > max ? 'P' + j.slice(0, preview) : 'J' + j;
+    return j.length > max ? 'P' + j.slice(0, preview + 1) : 'J' + j;
   }
   function fail(e) { return 'T' + msg(e); }
   var r;
@@ -190,7 +190,7 @@ function readEnvelope(dumped: unknown): Outcome {
   const body = envelope.slice(1);
   switch (envelope[0]) {
     case 'J': return { value: JSON.parse(body) as unknown, value_truncated: false };
-    // The wrapper already cut the preview; clipping again only mends a split surrogate pair.
+    // The wrapper cuts one unit past the preview so this clip can back off a split surrogate pair.
     case 'P': return { value: null, value_truncated: true, value_preview: clipUtf16(body, VALUE_PREVIEW_CHARS) };
     case 'U': return { error: `The script's value is not JSON-serialisable: ${body}` };
     case 'T': return { error: body };

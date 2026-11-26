@@ -218,6 +218,13 @@ describe('script_run', () => {
     await expect(pending).rejects.toMatchObject({ code: 'CANCELLED' });
   });
 
+  it('never ends a truncated preview on half a surrogate pair', async () => {
+    const result = await run("'a'.repeat(1998) + '\\u{1F600}'.repeat(200000)");
+    const preview = String(result.structuredContent?.value_preview);
+    expect(preview.length).toBe(1999);
+    expect(/[\uD800-\uDBFF]$/.test(preview)).toBe(false);
+  });
+
   it('refuses out-of-range limits', async () => {
     await expect(run('1', { timeout_ms: 10 })).rejects.toMatchObject({ code: 'INVALID_INPUT' });
     await expect(run('1', { memory_mb: 4096 })).rejects.toMatchObject({ code: 'INVALID_INPUT' });
@@ -293,6 +300,16 @@ describe('script_run under --read-only', () => {
     const call = await transport.send({
       jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'script_run_mutate', arguments: { code: '1' } },
     }) as { result: { isError: boolean; structuredContent: { code: string } } };
-    expect(call.result).toMatchObject({ isError: true, structuredContent: { code: 'READ_ONLY' } });
+    // Error envelopes leave structuredContent so clients validating it against
+    // outputSchema do not reject the error itself; the envelope is in the text.
+    expect(call.result.isError).toBe(true);
+    expect(call.result.structuredContent).toBeUndefined();
+    const texts = (call.result as unknown as { content: Array<{ text: string }> }).content.map((c) => c.text);
+    expect(JSON.parse(texts[texts.length - 1])).toMatchObject({ code: 'READ_ONLY' });
+    const failed = await transport.send({
+      jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'script_run', arguments: { code: 'throw new Error("x")' } },
+    }) as { result: { isError: boolean; structuredContent?: unknown; content: Array<{ text: string }> } };
+    expect(failed.result.structuredContent).toBeUndefined();
+    expect(JSON.parse(failed.result.content[failed.result.content.length - 1].text)).toMatchObject({ code: 'INVALID_INPUT', message: 'Script error: x' });
   });
 });

@@ -48,7 +48,11 @@ modes when file durations drift:
 - For concurrency 2, use two or three successful full runs while their
   `viewer-file-timings-N` artifacts are available. Pass each run with
   `--concurrent-run`. The refresher validates full, exact file coverage and
-  takes median whole-file durations across the supplied runs.
+  takes plain per-file medians across the supplied runs. The committed
+  `concurrentSeconds` weights were normalized offline for runner speed.
+  Refresh from several runs with varied runner assignments, or normalize
+  the file timings before repacking. Runner-speed differences can shift the
+  packing when the input includes only one run or a narrow mix of runners.
 - For serial weights, run two or three successful full runs with
   `VIEWER_TEST_CONCURRENCY` unset. Submit them in a maintenance window and
   restore the variable after they finish. Pass each serial run with `--run`
@@ -72,21 +76,16 @@ Reproduce the inventory with
 selecting successful `Viewer tests (shard N)` jobs and the exact step above.
 Subtract `started_at` from `completed_at`; exclude setup, retries and post steps.
 
-The move from 16 to 12 shards followed four successful hosted queue runs on
-2026-11-25 and 2026-11-26 with `VIEWER_TEST_CONCURRENCY=2`. The old layout
-used 145–167 summed test-step minutes. Scaling the serial file weights to
-each observed shard's wall time and replaying duration packing projected
-slowest steps of 15.8 minutes for 10 shards, 14.2 for 11 and 13.1 for 12.
-These estimates use shard-level wall times because concurrent TAP output
-is buffered. The viewer jobs report the number of files completed alongside
-the step durations for direct comparison on a full run. The first 12-shard
-run passed all 3,081 files and took 10.0–15.9 minutes per shard. The
-second 12-shard run used shard-calibrated weights and still reached 15.7
-minutes. It published whole-file timings for all 3,081 files. The 14-shard
-layout packs these measured timings after normalizing each source shard
-against historical test-body timings for the same files. Serial execution
-uses the serial weights. Full viewer runs publish file-level durations in
-`viewer-file-timings-N` for future repacking.
+The 14-shard layout passed all 3,081 files at concurrency 2 with a slowest
+test step of 13.35 minutes. It frees two hosted runner slots per queue run
+and adds about 1.2 minutes to the slowest viewer test step compared with the
+16-shard baseline. [Hosted acceptance run](https://github.com/LTplus-AG/ifc-lite/actions/runs/45773431285)
+
+Two 12-shard trials reached 15.9 and 15.7 minutes. The second trial published
+whole-file timings, which were normalized offline against historical
+test-body timings for the same files before repacking into 14 shards.
+Full viewer runs publish file-level durations in `viewer-file-timings-N`
+for future repacking.
 
 ## Rust measurements
 

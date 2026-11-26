@@ -135,8 +135,8 @@ export class SparsePool {
  * Two host options keep a load on the whole-file path, because their batch setup reads the source in a
  * way an arena cannot answer: merged material layers (a scan for the aggregate relations of layer parts)
  * and the global instance plan (its mapped sources are resolved once, before the arena holds them).
+ * `globalInstancing` is the load's plan decision; unset, it is read here.
  */
-/** `globalInstancing` is the load's plan decision; unset, it is read here. */
 export function sparsePoolFor(sharedBuffer: SharedArrayBuffer, host: SparsePoolHost, options?: { mergeLayers?: boolean; globalInstancing?: boolean }): SparsePool | null {
   delete (globalThis as { __IFC_LITE_OOC_STATS__?: OutOfCoreStats }).__IFC_LITE_OOC_STATS__; // never an earlier load's
   if (!readOutOfCoreFlag()) return null;

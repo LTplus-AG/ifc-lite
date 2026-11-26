@@ -12,6 +12,7 @@
 import { createServer, type AddressInfo, type Server } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
 import { fullScope } from '../auth/scope.js';
+import { SERVER_INSTRUCTIONS } from '../server-instructions.js';
 import { InMemoryModelRegistry } from '../context.js';
 import type { CallToolResult, JsonRpcMessage, ToolDefinition } from '../protocol/index.js';
 import { buildDefaultPromptRegistry } from '../prompts/index.js';
@@ -78,7 +79,7 @@ describe('one server: headless and tab', () => {
   it('keeps headless tools, resources and prompts, and adds the tab\'s tools as tab_* while paired', async () => {
     const agent = await start();
     expect(agent.init.capabilities).toMatchObject({ tools: { listChanged: true }, resources: { listChanged: true }, prompts: {} });
-    expect(agent.init.instructions).toMatch(/^ifc-lite-mcp exposes/);
+    expect(String(agent.init.instructions).startsWith(SERVER_INSTRUCTIONS)).toBe(true);
     expect(agent.init.instructions).toContain('Tools named tab_* run in that tab');
     const headlessNames = buildDefaultToolRegistry().list().map((t) => t.name);
     const before = await agent.tools();

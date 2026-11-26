@@ -119,7 +119,8 @@ const DESKTOP_CONFIG = 'claude_desktop_config.json';
  * `npx.cmd` shim needs `cmd /c` (its own check warns "Windows requires
  * 'cmd /c' wrapper to execute npx"). cmd reads `^` as an escape, once for
  * `cmd /c` and again in npx.cmd's `%*`, so the `^x.y.z` pin becomes
- * `~x.y.z`: no metacharacter, and the same range while the major is 0.
+ * `~x.y.z`: no metacharacter, the same range while the major is 0, and
+ * patch-only (narrower, still safe) from 1.0.
  */
 function claudeCodeLaunch(server: ServerCommand, host: HostEnv): string[] {
   // Only npx is a .cmd shim; any other command spawns as it is.

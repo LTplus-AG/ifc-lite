@@ -22,6 +22,11 @@ export class StepInteger {
   constructor(readonly value: number) {}
 }
 
+/** Retains the REAL token kind when its numeric value is integral. */
+export class StepReal {
+  constructor(readonly value: number) {}
+}
+
 export class Ref {
   constructor(readonly id: number) {}
 }
@@ -48,6 +53,7 @@ export type Value =
   | Derived
   | number
   | string
+  | StepReal
   | StepInteger
   | Ref
   | EnumValue
@@ -100,7 +106,7 @@ export function copyAggregate(a: Aggregate): Aggregate {
 /** Strip STEP integer and defined-type wrappers down to the underlying primitive. */
 export function prim(v: Value): Value {
   while (v instanceof Typed) v = v.value;
-  return v instanceof StepInteger ? v.value : v;
+  return v instanceof StepInteger || v instanceof StepReal ? v.value : v;
 }
 
 export function num(v: Value): number | undefined {

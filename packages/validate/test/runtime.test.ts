@@ -86,13 +86,13 @@ describe('STEP record reader', () => {
     expect(derived).toBe(r.DERIVED);
     expect(ref).toEqual(new r.Ref(12));
     expect(int).toEqual(new r.StepInteger(5));
-    expect(real).toBe(5);
+    expect(r.prim(real)).toBe(5);
     expect(exp).toBe(0.001);
     expect([t, u]).toEqual([true, UNKNOWN]);
     expect(en).toEqual(new r.EnumValue('ELEMENT'));
     expect(str).toBe("It's ü");
     expect(typed).toEqual(new r.Typed('IFCLABEL', 'x'));
-    expect(list).toEqual([new r.StepInteger(1), [2]]);
+    expect(list).toEqual([new r.StepInteger(1), [new r.StepReal(2)]]);
     expect(bin).toEqual(new r.BinaryValue('0FF'));
   });
 

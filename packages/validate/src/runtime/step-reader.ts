@@ -9,7 +9,7 @@
  */
 
 import { decodeStepStringLiteral } from '@ifc-lite/encoding';
-import { BinaryValue, DERIVED, EnumValue, Ref, StepInteger, Typed, UNKNOWN, type Aggregate, type Value } from './values.js';
+import { BinaryValue, DERIVED, EnumValue, Ref, StepInteger, StepReal, Typed, UNKNOWN, type Aggregate, type Value } from './values.js';
 
 export class StepRecordError extends Error {
   constructor(message: string, readonly offset: number) {
@@ -86,7 +86,7 @@ class Cursor {
     }
   }
 
-  number(): number | StepInteger {
+  number(): number | StepInteger | StepReal {
     const s = this.s;
     const start = this.i;
     if (s[this.i] === '-' || s[this.i] === '+') this.i++;
@@ -106,7 +106,8 @@ class Cursor {
     const text = s.slice(start, this.i);
     const n = Number(text);
     if (!Number.isFinite(n) || text === '-' || text === '+') this.fail(`invalid number '${text}'`);
-    return real ? n : new StepInteger(n);
+    if (!real) return new StepInteger(n);
+    return Number.isInteger(n) ? new StepReal(n) : n;
   }
 
   value(): Value {

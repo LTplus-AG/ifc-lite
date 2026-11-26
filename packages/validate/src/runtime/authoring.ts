@@ -14,7 +14,7 @@ import { violated } from './logic.js';
 import { Model } from './model.js';
 import type { TypeRef } from './schema-meta.js';
 import type { SchemaRuntime } from './schema-runtime.js';
-import { EnumValue, Ref, StepInteger, Typed, UNKNOWN, withLowerBound, markSet, type Value } from './values.js';
+import { EnumValue, Ref, StepInteger, StepReal, Typed, UNKNOWN, withLowerBound, markSet, type Value } from './values.js';
 
 export interface RefinementContext {
   addIssue(issue: { code: 'custom'; message: string; input?: unknown }): void;
@@ -51,7 +51,10 @@ export function fromAuthoring(schema: Pick<SchemaRuntime, 'canonicalName' | 'typ
   }
   if (v === 'UNKNOWN' && type?.k === 'simple' && type.name === 'LOGICAL') return UNKNOWN;
   if (typeof v === 'string' && type?.k === 'named' && schema.type(type.name)?.kind === 'enum') return new EnumValue(v.toUpperCase());
-  if (typeof v === 'number' && Number.isInteger(v) && resolvesTo(schema, type, 'INTEGER')) return new StepInteger(v);
+  if (typeof v === 'number' && Number.isInteger(v)) {
+    if (resolvesTo(schema, type, 'INTEGER')) return new StepInteger(v);
+    if (resolvesTo(schema, type, 'REAL')) return new StepReal(v);
+  }
   if (typeof v === 'number' || typeof v === 'string' || typeof v === 'boolean') return v;
   return undefined;
 }

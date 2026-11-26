@@ -91,6 +91,16 @@ ENTITY Sample; A : Bits; B : Five; C : Fixed; END_ENTITY; END_SCHEMA;`);
   expect(report.findings.filter(f => f.rule === 'invalid-type').map(f => f.instance)).toEqual([2, 2, 2]);
 });
 
+it('retains INTEGER for EXPRESS literals and SIZEOF results (#11647)', async () => {
+  const { schema } = generated(`SCHEMA S; ENTITY Sample; N : INTEGER;
+WHERE LiteralInteger : 'INTEGER' IN TYPEOF(5);
+LiteralReal : 'REAL' IN TYPEOF(5);
+CountInteger : 'INTEGER' IN TYPEOF(SIZEOF([N]));
+CountReal : 'REAL' IN TYPEOF(SIZEOF([N])); END_ENTITY; END_SCHEMA;`);
+  const report = await validateStepText('DATA;#1=SAMPLE(5);ENDSEC;', { schema });
+  expect(report.findings.filter(f => f.category === 'entity_rule').map(f => f.rule)).toEqual(['Sample.LiteralReal', 'Sample.CountReal']);
+});
+
 it('distinguishes integral REAL and INTEGER STEP tokens in TYPEOF (#11647)', async () => {
   const { schema } = generated(`SCHEMA S; ENTITY Sample; N : NUMBER;
 WHERE IsReal : 'REAL' IN TYPEOF(N); IsInteger : 'INTEGER' IN TYPEOF(N); END_ENTITY; END_SCHEMA;`);

@@ -12,7 +12,7 @@
 import { EntityInstance } from './instance.js';
 import { isTrue } from './logic.js';
 import type { Model } from './model.js';
-import { BinaryValue, int, isAggregate, isSet, lowerBound, markSet, num, prim, StepInteger, Typed, type Aggregate, type Value } from './values.js';
+import { BinaryValue, int, isAggregate, isSet, lowerBound, markSet, num, prim, StepReal, Typed, type Aggregate, type Value } from './values.js';
 
 function unwrap(v: Value): Value {
   return v instanceof Typed ? unwrap(v.value) : v;
@@ -57,7 +57,7 @@ export function typeOf(m: Model, v: Value): Value {
   if (v instanceof EntityInstance) return [...v.entity.typeofNames];
   if (v instanceof Typed) return definedTypeChain(m, v.type);
   const p = prim(v);
-  if (typeof p === 'number') return v instanceof StepInteger ? ['INTEGER', 'NUMBER'] : ['REAL', 'NUMBER'];
+  if (typeof p === 'number') return !(v instanceof StepReal) && Number.isInteger(p) ? ['INTEGER', 'NUMBER'] : ['REAL', 'NUMBER'];
   if (typeof p === 'string') return ['STRING'];
   if (typeof p === 'boolean') return ['BOOLEAN', 'LOGICAL'];
   if (p instanceof BinaryValue) return ['BINARY'];

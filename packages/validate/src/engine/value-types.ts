@@ -11,7 +11,7 @@
 
 import type { Model } from '../runtime/model.js';
 import type { TypeRef } from '../runtime/schema-meta.js';
-import { BinaryValue, EnumValue, Ref, StepInteger, Typed, UNKNOWN, type Value } from '../runtime/values.js';
+import { BinaryValue, EnumValue, Ref, StepInteger, StepReal, Typed, UNKNOWN, type Value } from '../runtime/values.js';
 
 // This operates on raw STEP attributes, before references are resolved into entity objects.
 function uniqueAggregate(items: Value[]): boolean {
@@ -19,7 +19,7 @@ function uniqueAggregate(items: Value[]): boolean {
   for (const item of items) {
     if (item === undefined) continue;
     const key = JSON.stringify(item, (_field, v: unknown) => {
-      if (v instanceof StepInteger) return v.value;
+      if (v instanceof StepInteger || v instanceof StepReal) return v.value;
       if (typeof v === 'symbol') return { logical: String(v) };
       return v;
     });
@@ -35,9 +35,9 @@ export function conforms(m: Model, v: Value, type: TypeRef): boolean {
       return true;
     case 'simple':
       switch (type.name) {
-        case 'REAL': return typeof v === 'number';
+        case 'REAL': return v instanceof StepReal || typeof v === 'number';
         case 'INTEGER': return v instanceof StepInteger;
-        case 'NUMBER': return typeof v === 'number' || v instanceof StepInteger;
+        case 'NUMBER': return v instanceof StepReal || typeof v === 'number' || v instanceof StepInteger;
         case 'BOOLEAN': return typeof v === 'boolean';
         case 'LOGICAL': return typeof v === 'boolean' || v === UNKNOWN;
         case 'STRING': return typeof v === 'string';

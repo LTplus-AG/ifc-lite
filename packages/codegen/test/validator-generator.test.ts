@@ -177,7 +177,7 @@ END_SCHEMA;`;
 REPEAT UNTIL N > 3; N := N + 1; IF N = 2 THEN SKIP; END_IF; END_REPEAT; RETURN (N); END_FUNCTION;`;
     const rules = generateValidators(mini('WR1 : TRUE', fn)).files['rules.ts'];
     const loop = rules.slice(rules.indexOf('for (;;)'), rules.indexOf('return v_n'));
-    expect(loop).toMatch(/(body\d+): \{[\s\S]*break \1;[\s\S]*\}\n\s*if \(r\.isTrue\(r\.gt\(v_n, 3\)\)\) break;/);
+    expect(loop).toMatch(/(body_\d+): \{[\s\S]*break \1;[\s\S]*\}\n\s*if \(r\.isTrue\(r\.gt\(v_n, 3\)\)\) break;/);
     expect(loop).not.toContain('continue');
   });
 
@@ -197,8 +197,43 @@ END_SCHEMA;`;
     const zod = generateValidators(schema).files['zod.ts'];
     const decl = (name: string) => zod.split('\nexport const ').find((d) => d.startsWith(`${name} =`)) ?? '';
     expect(decl('Free')).toContain('"Base.Positive"');
+    expect(decl('Fixed')).toBeTruthy();
     expect(decl('Fixed')).not.toContain('localRuleRefinement');
     expect(zod).toMatch(/export const Req = z\.strictObject\(\{\n  Tag: z\.number\(\),\n\}\)/);
+  });
+
+  it('keeps supported sibling global labels and reports skipped declarations (#11559)', () => {
+    const { coverage } = generateValidators(`SCHEMA S; ENTITY A; END_ENTITY;
+RULE R FOR (A); WHERE Good : FALSE; Bad : Mystery(1); END_RULE;
+SUBTYPE_CONSTRAINT C FOR A; END_SUBTYPE_CONSTRAINT; END_SCHEMA;`);
+    expect(coverage.counts.global).toEqual({ total: 2, compiled: 1 });
+    expect(coverage.unsupported.map(u => [u.scope, u.label])).toEqual([['schema', 'C'], ['global', 'Bad']]);
+  });
+
+  it('keeps independent same-named derived attributes compiled', () => {
+    const { coverage } = generateValidators(`SCHEMA S;
+ENTITY A; DERIVE Flag : LOGICAL := Mystery(1); WHERE W : Flag; END_ENTITY;
+ENTITY B; DERIVE Flag : LOGICAL := TRUE; WHERE W : Flag; END_ENTITY; END_SCHEMA;`);
+    expect(coverage.unsupported.map(u => [u.owner, u.label])).toEqual([['A', 'Flag'], ['A', 'W']]);
+  });
+
+  it('retains aggregate bounds, both parents, and extension members in generated metadata', () => {
+    const { files } = generateValidators(`SCHEMA S; ENTITY A; END_ENTITY; ENTITY B; END_ENTITY;
+ENTITY C SUBTYPE OF (A,B); END_ENTITY;
+TYPE T = LIST [1+1:4] OF INTEGER; END_TYPE;
+TYPE E = EXTENSIBLE ENUMERATION OF (OPEN); END_TYPE;
+TYPE F = ENUMERATION BASED_ON E WITH (CLOSED); END_TYPE;
+TYPE Sel = EXTENSIBLE SELECT (A); END_TYPE;
+TYPE More = SELECT BASED_ON Sel WITH (B); END_TYPE; END_SCHEMA;`);
+    const js = ts.transpileModule(files['schema.ts'], { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText;
+    const exports = { META: { entities: [], types: [] } };
+    runInNewContext(js, { exports });
+    expect(exports.META.entities).toContainEqual(expect.objectContaining({ name: 'C', supertypes: ['A', 'B'] }));
+    expect(exports.META.types).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'T', underlying: expect.objectContaining({ low: 2, high: 4 }) }),
+      expect.objectContaining({ name: 'F', items: ['OPEN', 'CLOSED'] }),
+      expect.objectContaining({ name: 'More', items: ['A', 'B'] }),
+    ]));
   });
 
   it('rejects a qualified enumeration item the enumeration does not declare', () => {

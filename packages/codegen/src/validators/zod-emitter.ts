@@ -54,7 +54,7 @@ class ZodWriter {
         }
       }
       case 'named': {
-        if (this.index.entity(spec.name)) return 'EntityRef';
+        if (this.index.entity(spec.name)) return '$EntityRef';
         const t = this.index.type(spec.name);
         return t ? t.name : 'z.unknown()';
       }
@@ -64,9 +64,12 @@ class ZodWriter {
         let inner = this.spec(spec.of);
         if (spec.optional) inner += '.nullable()';
         let out = `z.array(${inner})`;
-        if (low > 0) out += `.min(${low})`;
-        if (high !== undefined) out += `.max(${high})`;
-        if (spec.unique) out += ".refine(r.uniqueItems, 'aggregate items must be unique')";
+        if (spec.kind === 'ARRAY' && high !== undefined) out += `.length(${high - low + 1})`;
+        else {
+          if (low > 0) out += `.min(${low})`;
+          if (high !== undefined) out += `.max(${high})`;
+        }
+        if (spec.kind === 'SET' || spec.unique) out += ".refine(r.uniqueItems, 'aggregate items must be unique')";
         return out;
       }
       default:
@@ -74,15 +77,19 @@ class ZodWriter {
     }
   }
 
-  typeDecl(t: TypeDecl): string {
+  private baseType(t: TypeDecl): string {
     if (t.spec.k === 'enumeration') return `z.enum(${JSON.stringify(t.spec.items.map((i) => i.toUpperCase()))})`;
     if (t.spec.k === 'select') {
       const leaves = this.selectLeaves(t.name);
-      const members = leaves.values.map((v) => `typed(${JSON.stringify(v)}, ${v})`);
-      if (leaves.entities) members.unshift('EntityRef');
+      const members = leaves.values.map((v) => `$typed(${JSON.stringify(v)}, ${v})`);
+      if (leaves.entities) members.unshift('$EntityRef');
       return members.length === 1 ? members[0] : `z.union([${members.join(', ')}])`;
     }
-    const base = this.spec(t.spec);
+    return this.spec(t.spec);
+  }
+
+  typeDecl(t: TypeDecl): string {
+    const base = this.baseType(t);
     return t.where.length ? `${base}.superRefine(r.typeRuleRefinement(SCHEMA, ${JSON.stringify(t.name)}))` : base;
   }
 
@@ -150,9 +157,11 @@ import { z } from '${zodImport}';
 import * as r from '${runtimeImport}';
 import { SCHEMA } from './index.js';
 
-export const EntityRef = z.strictObject({ ref: z.number().int().positive() });
+const $EntityRef = z.strictObject({ ref: z.number().int().positive() });
 
-function typed<T extends string, S extends z.ZodType>(type: T, value: S) {
+${index.canonical('EntityRef') ? '' : 'export { $EntityRef as EntityRef };'}
+
+function $typed<T extends string, S extends z.ZodType>(type: T, value: S) {
   return z.strictObject({ typed: z.strictObject({ type: z.literal(type), value }) });
 }
 

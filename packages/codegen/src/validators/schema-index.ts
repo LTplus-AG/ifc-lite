@@ -27,8 +27,25 @@ export class SchemaIndex {
       this.entities.set(e.name.toUpperCase(), e);
       for (const a of [...e.explicit, ...e.derived, ...e.inverse]) this.attributeNames.add(a.name.toUpperCase());
     }
+    for (const t of schema.types) this.types.set(t.name.toUpperCase(), t);
+    // All consumers (including qualified enum lookup and Zod) need the effective member list.
     for (const t of schema.types) {
-      this.types.set(t.name.toUpperCase(), t);
+      const spec = t.spec;
+      if ((spec.k === 'enumeration' || spec.k === 'select') && spec.basedOn) {
+        const parts = [spec.items];
+        const seen = new Set([t.name.toUpperCase()]);
+        let base = spec.basedOn;
+        while (base) {
+          const parent = this.type(base);
+          if (!parent || parent.spec.k !== spec.k || seen.has(base.toUpperCase())) {
+            throw new Error(`Invalid ${spec.k} BASED_ON chain for ${t.name} at ${base}`);
+          }
+          seen.add(base.toUpperCase());
+          parts.push(parent.spec.items);
+          base = parent.spec.basedOn ?? '';
+        }
+        spec.items = [...new Set(parts.reverse().flat())];
+      }
       if (t.spec.k === 'enumeration') {
         for (const item of t.spec.items) {
           const list = this.enumItems.get(item.toUpperCase()) ?? [];

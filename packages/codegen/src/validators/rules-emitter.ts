@@ -16,7 +16,7 @@ import { StatementTranslator } from './stmt-translator.js';
 import { Scope, TranslateContext, UnsupportedConstruct } from './translate-context.js';
 
 export interface UnsupportedEntry {
-  scope: 'entity' | 'type' | 'derived' | 'global' | 'function';
+  scope: 'entity' | 'type' | 'derived' | 'global' | 'function' | 'schema';
   owner: string;
   label: string;
   reason: string;
@@ -84,7 +84,9 @@ function compilePass(
   const expr = new ExpressionTranslator(ctx);
   const stmts = new StatementTranslator(expr);
   const functions = compileFunctions(index, ctx, stmts);
-  const unsupported: UnsupportedEntry[] = [];
+  const unsupported: UnsupportedEntry[] = index.schema.skipped.map(({ kind, name }) => ({
+    scope: 'schema', owner: index.schema.name, label: name || kind, reason: `${kind} declaration is not evaluated`,
+  }));
   const counts: RuleCompilation['counts'] = {
     entity: { total: 0, compiled: 0 }, type: { total: 0, compiled: 0 }, derived: { total: 0, compiled: 0 },
     global: { total: 0, compiled: 0 }, function: { total: index.schema.functions.length, compiled: functions.size },
@@ -103,7 +105,7 @@ function compilePass(
         counts.derived.compiled++;
       } catch (err) {
         const reason = reasonOf(err);
-        ctx.failedDerived.set(d.name.toUpperCase(), `${e.name}.${d.name}`);
+        ctx.failedDerived.set(`${e.name}.${d.name}`.toUpperCase(), `${e.name}.${d.name}`);
         unsupported.push({ scope: 'derived', owner: e.name, label: d.name, reason });
       }
     }
@@ -133,15 +135,28 @@ function compilePass(
   const globalRules: string[] = [];
   for (const rule of index.schema.rules) {
     counts.global.total += rule.where.length;
+    const supported: typeof rule.where = [];
+    let run: string;
     try {
-      const run = stmts.ruleSource(rule);
-      const labels = rule.where.map((w) => `{ label: ${JSON.stringify(w.label)}, source: ${JSON.stringify(w.source)} }`);
-      globalRules.push(`    { name: ${JSON.stringify(rule.name)}, appliesTo: ${JSON.stringify(rule.appliesTo.map((a) => index.canonical(a) ?? a))}, rules: [${labels.join(', ')}], run: ${indent(run, '  ')} },`);
-      counts.global.compiled += rule.where.length;
+      run = stmts.ruleSource(rule, (w, compile) => {
+        try {
+          const value = compile();
+          supported.push(w);
+          return [value];
+        } catch (err) {
+          unsupported.push({ scope: 'global', owner: rule.name, label: w.label, reason: reasonOf(err) });
+          return [];
+        }
+      });
     } catch (err) {
       const reason = reasonOf(err);
       for (const w of rule.where) unsupported.push({ scope: 'global', owner: rule.name, label: w.label, reason });
+      continue;
     }
+    if (!supported.length) continue;
+    const labels = supported.map((w) => `{ label: ${JSON.stringify(w.label)}, source: ${JSON.stringify(w.source)} }`);
+    globalRules.push(`    { name: ${JSON.stringify(rule.name)}, appliesTo: ${JSON.stringify(rule.appliesTo.map((a) => index.canonical(a) ?? a))}, rules: [${labels.join(', ')}], run: ${indent(run, '  ')} },`);
+    counts.global.compiled += supported.length;
   }
 
   const constants = [...ctx.constants].map(([name, init]) => `const ${name} = ${init};`);

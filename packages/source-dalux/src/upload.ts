@@ -49,9 +49,7 @@ export const DALUX_DEFAULT_PART_BYTES = 4 * 1024 * 1024;
 const MAX_FILE_NAME_CHARS = 255;
 const MAX_ERROR_BODY_CHARS = 200;
 
-/** Thrown for an upload that cannot proceed and is not a contract conflict:
- * an unsupported file area, a name Dalux would reject, required properties we
- * cannot fill in. The message reaches the user, so it says what to do. */
+/** Thrown when the upload cannot proceed for reasons outside the conflict contract. */
 export class DaluxUploadError extends Error {
   constructor(message: string) {
     super(message);
@@ -86,18 +84,20 @@ function asDaluxFileType(value: string | undefined): DaluxFileType | undefined {
   return value === 'document' || value === 'drawing' || value === 'model' ? value : undefined;
 }
 
-/** A file name Dalux can store: non-empty, no path separators or control characters. */
-function validateFileName(fileName: string): string {
-  const trimmed = fileName.trim();
-  if (!trimmed) throw new DaluxUploadError('A file name is required to save to Dalux.');
-  if (trimmed.length > MAX_FILE_NAME_CHARS) {
-    throw new DaluxUploadError(`File name is longer than ${MAX_FILE_NAME_CHARS} characters.`);
+function destinationRefused(reason: string): UploadResult {
+  return { ok: false, conflict: { kind: 'destination-refused', reason } };
+}
+
+function fileNameRefusal(fileName: string): string | undefined {
+  if (!fileName) return 'A file name is required to save to Dalux.';
+  if (fileName.length > MAX_FILE_NAME_CHARS) {
+    return `File name is longer than ${MAX_FILE_NAME_CHARS} characters.`;
   }
+  // Dalux filenames cannot contain path separators or control characters.
   // eslint-disable-next-line no-control-regex
-  if (/[\\/\u0000-\u001f]/.test(trimmed)) {
-    throw new DaluxUploadError('A Dalux file name cannot contain slashes or control characters.');
+  if (/[\\/\u0000-\u001f]/.test(fileName)) {
+    return 'A Dalux file name cannot contain slashes or control characters.';
   }
-  return trimmed;
 }
 
 /** RFC 6266 / 5987 header value: an ASCII fallback plus the exact UTF-8 name. */
@@ -112,10 +112,6 @@ export function contentDisposition(fileName: string): string {
 
 function truncate(text: string): string {
   return text.length > MAX_ERROR_BODY_CHARS ? `${text.slice(0, MAX_ERROR_BODY_CHARS)}…` : text;
-}
-
-function isNonModelUploadBlocked(area: DaluxFileArea): boolean {
-  return ['shared', 'published'].includes(area.fileAreaType.toLowerCase());
 }
 
 /**
@@ -154,25 +150,22 @@ class DaluxPoster {
   }
 }
 
-async function loadFileArea(
+async function fileAreaRefusal(
   ctx: PluginContext,
   client: BrowserDaluxApiClient,
   projectId: string,
   fileAreaId: string,
   signal?: AbortSignal,
-): Promise<DaluxFileArea> {
+): Promise<string | undefined> {
   const raw = await fetchAllPages(client, `/5.1/projects/${enc(projectId)}/file_areas`, {}, signal);
   const area = convertListLenient<DaluxFileArea>(ctx, raw, decodeFileArea, 'FileArea').find(
     (candidate) => candidate.fileAreaId === fileAreaId,
   );
   if (!area) throw new DaluxUploadError(`Dalux file area ${fileAreaId} was not found in this project.`);
-  if (isNonModelUploadBlocked(area)) {
-    throw new DaluxUploadError(
-      `Dalux does not accept uploads into "${area.fileAreaName}" (a ${area.fileAreaType} file area). ` +
-        'Choose a folder in a regular file area.',
-    );
+  if (['shared', 'published'].includes(area.fileAreaType.toLowerCase())) {
+    return `Dalux does not accept uploads into "${area.fileAreaName}" (a ${area.fileAreaType} file area). ` +
+      'Choose a folder in a regular file area.';
   }
-  return area;
 }
 
 /**
@@ -183,7 +176,7 @@ async function loadFileArea(
  * Best effort: if the mapping lookup itself fails (older node, relay not
  * routing the version) we proceed and let Dalux's own validation speak.
  */
-async function assertNoRequiredProperties(
+async function requiredPropertiesRefusal(
   ctx: PluginContext,
   client: BrowserDaluxApiClient,
   projectId: string,
@@ -191,7 +184,7 @@ async function assertNoRequiredProperties(
   folderId: string,
   fileType: DaluxFileType,
   signal?: AbortSignal,
-): Promise<void> {
+): Promise<string | undefined> {
   let rows: unknown[];
   try {
     rows = await fetchAllPages(
@@ -220,10 +213,8 @@ async function assertNoRequiredProperties(
     .filter((name): name is string => name !== undefined);
 
   if (required.length > 0) {
-    throw new DaluxUploadError(
-      `This Dalux folder requires file properties (${required.join(', ')}) that ifc-lite cannot fill in yet. ` +
-        'Save into a folder without required properties, or add a new version of an existing file instead.',
-    );
+    return `This Dalux folder requires file properties (${required.join(', ')}) that ifc-lite cannot fill in yet. ` +
+      'Save into a folder without required properties, or add a new version of an existing file instead.';
   }
 }
 
@@ -267,19 +258,20 @@ export async function uploadToDalux(
       signal,
     );
     const current = decodeFileResponse(response).data;
-    if (current.deleted) throw new DaluxUploadError('That Dalux file has been deleted; save it as a new file instead.');
+    if (current.deleted) return destinationRefused('That Dalux file has been deleted; save it as a new file instead.');
 
     if (target.baseRevisionId !== undefined) {
       const base = nonEmptyString(target.baseRevisionId);
       const identities = [nonEmptyString(current.fileRevisionId), nonEmptyString(current.contentHash)].filter((id): id is string => id !== undefined && id !== LATEST_REVISION);
       if (!base || base === LATEST_REVISION || identities.length === 0) {
-        throw new DaluxUploadError('Cannot verify the base revision; reload a file with a revision identity before saving.');
+        return destinationRefused('Cannot verify the base revision; reload a file with a revision identity before saving.');
       }
       // A listing can expose the hash while the file response also has an ID.
       if (!identities.includes(base)) return { ok: false, conflict: { kind: 'stale-base', currentRevisionId: currentRevisionId(current) } };
     }
 
-    await loadFileArea(ctx, client, projectId, fileAreaId, signal);
+    const areaRefusal = await fileAreaRefusal(ctx, client, projectId, fileAreaId, signal);
+    if (areaRefusal) return destinationRefused(areaRefusal);
 
     fileName = current.fileName;
     fileType = asDaluxFileType(current.fileType) ?? daluxFileTypeFor(fileName);
@@ -293,17 +285,19 @@ export async function uploadToDalux(
     projectId = target.projectId;
     const container = decodeContainerId(target.containerId);
     fileAreaId = container.fileAreaId;
-    fileName = validateFileName(target.fileName);
+    fileName = target.fileName.trim();
+    const nameRefusal = fileNameRefusal(fileName);
+    if (nameRefusal) return destinationRefused(nameRefusal);
     fileType = daluxFileTypeFor(fileName);
 
-    await loadFileArea(ctx, client, projectId, fileAreaId, signal);
+    const areaRefusal = await fileAreaRefusal(ctx, client, projectId, fileAreaId, signal);
+    if (areaRefusal) return destinationRefused(areaRefusal);
 
     // The area root has no folder of its own. Sending the area id as its
     // folder id is unverified against the live API, so refuse it until it is (#11609).
     const folderId = container.folderId;
     if (!folderId) {
-      const reason = "Saving into a Dalux file area's root is not supported yet. Choose a folder inside the file area.";
-      return { ok: false, conflict: { kind: 'destination-refused', reason } };
+      return destinationRefused("Saving into a Dalux file area's root is not supported yet. Choose a folder inside the file area.");
     }
     finalizeTarget = { folderId };
     destinationFolderId = folderId;
@@ -325,7 +319,8 @@ export async function uploadToDalux(
     );
     if (clash) return { ok: false, conflict: { kind: 'name-exists', existingFileId: clash.fileId } };
 
-    await assertNoRequiredProperties(ctx, client, projectId, fileAreaId, folderId, fileType, signal);
+    const propertiesRefusal = await requiredPropertiesRefusal(ctx, client, projectId, fileAreaId, folderId, fileType, signal);
+    if (propertiesRefusal) return destinationRefused(propertiesRefusal);
   }
 
   signal?.throwIfAborted();

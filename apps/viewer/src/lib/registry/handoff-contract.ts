@@ -2,13 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { optionalLocalStorage, preserveUnreadableEntry } from '@/lib/storage/unreadable-entry';
 import { repositoryName, RegistryError } from './protocol';
 
 export const HANDOFF_PROTOCOL = 'oci-handoff/1';
 export const HANDOFF_PATH = '/open-artifact';
 export const HANDOFF_CALLBACK = '/open-artifact/callback';
 const CONNECTIONS_KEY = 'ifc-lite:oci-file-stores:v1';
-const UNREADABLE_CONNECTIONS_KEY = `${CONNECTIONS_KEY}:unreadable`;
 const MAX_CONNECTIONS = 32;
 export interface TokenExchangeSettings {
   endpoint: string;
@@ -88,7 +88,7 @@ function parseConnections(input: string): RegistryConnection[] {
   return connections;
 }
 
-/** Throws on unreadable storage; readers fall back to no stores, saves keep a copy first. */
+/** Throws on unreadable storage; readers fall back to no stores, saves move it aside first. */
 function storedConnections(): RegistryConnection[] {
   const stored = globalThis.localStorage?.getItem(CONNECTIONS_KEY);
   return stored ? parseConnections(stored) : [];
@@ -109,14 +109,11 @@ export function saveRegistryConnection(value: RegistryConnection, replace?: bool
   let existing: RegistryConnection[];
   try {
     existing = storedConnections();
-  } catch {
-    // Start over, but keep what could not be read rather than overwrite it.
-    try {
-      globalThis.localStorage.setItem(UNREADABLE_CONNECTIONS_KEY, globalThis.localStorage.getItem(CONNECTIONS_KEY) ?? '');
-    } catch {
+  } catch (error) {
+    // Start over, but move what could not be read aside rather than overwrite it.
+    if (!preserveUnreadableEntry(optionalLocalStorage(), CONNECTIONS_KEY, error)) {
       throw new RegistryError('Could not save the file store. Check that browser storage is available.');
     }
-    console.warn(`Saved file stores could not be read; kept a copy under ${UNREADABLE_CONNECTIONS_KEY}.`);
     existing = [];
   }
   const duplicate = existing.some(store => store.registry === connection.registry);

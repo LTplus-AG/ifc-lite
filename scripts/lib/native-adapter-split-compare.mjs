@@ -35,15 +35,17 @@ export const SPLIT_ONLY_MARKERS = { 'retained-browser.log': ['m1_browser_parity'
 export const SPLIT_ONLY_REFS = ['temp/native-references/m1-native-unit-rectangle.json'];
 /**
  * Fields that differ between two runs of the same commit: timings (`ms`, `*_ms`,
- * `*Ms`, `*MsP95`, `*Milliseconds`, `msPer*`, `timings`), memory (`*Bytes`, `*RssKiB`,
- * `browserMemory`), cache counters (`*_cache_hits`/`_misses`) and timestamps (`*At`).
- * Measured in the first dispatched run (44547513676).
+ * `*Ms`, `*MsP95`, `*Milliseconds`, `msPer*`, `timings`), memory (`*HeapBytes`,
+ * `*HeapPeakBytes`, `*WorkerBytes` = transferred worker sizes, `*RssKiB`, `browserMemory`),
+ * cache counters (`*_cache_hits`/`_misses`) and timestamps (`*At`).
+ * Measured in the first dispatched run (44547513676). Other `*Bytes` fields are
+ * results and compared: export sizes (`ifcBytes`, `exactUsdBytes`) are deterministic.
  */
 // nativeProductsSha256 hashes the raw products.tsv, whose ms/cutMs columns differ every run
 // (that table itself is compared without them). The viewer records' `spans` (load-trace
 // telemetry; their number varies with scheduling) and `draws` (frames drawn while polling;
 // the test asserts only > 0) count frames, not results.
-export const VOLATILE_KEY = /(?:^ms$|_ms$|Ms(?:P\d+)?$|Milliseconds$|^milliseconds$|^msPer|^timings?$|Bytes$|RssKiB$|^browserMemory$|_cache_(?:hits|misses)$|At$|^nativeProductsSha256$|^spans$|^draws$)/;
+export const VOLATILE_KEY = /(?:^ms$|_ms$|Ms(?:P\d+)?$|Milliseconds$|^milliseconds$|^msPer|^timings?$|Heap(?:Peak)?Bytes$|WorkerBytes$|RssKiB$|^browserMemory$|_cache_(?:hits|misses)$|At$|^nativeProductsSha256$|^spans$|^draws$)/;
 
 /**
  * The same, inside text: Rust Debug output carries `Instant { tv_sec: …, tv_nsec: … }`
@@ -208,8 +210,9 @@ export function timingFreeHash(name, bytes) {
 
 /**
  * Every witness marker in one log, mapped to its record's content: null for a
- * native-style line, the volatile-free sha256 of the JSON payload for a
- * registered cli/viewer record (sorted and joined if the record repeats).
+ * native-style line's count (a marker printed twice in one layout and once in
+ * the other differs), the volatile-free sha256 of each JSON payload for a
+ * registered cli/viewer record (every occurrence, sorted and joined).
  */
 export function markers(text, registered) {
   const found = new Map();
@@ -217,12 +220,15 @@ export function markers(text, registered) {
     const line = raw.replace(/^(?:# |ℹ )/, '');
     const native = line.match(/sdk witness executed: (.+?)\s*$/);
     // Some native witness lines print their own timings: compare the line without them.
-    if (native && !found.has(stripVolatileText(native[1]))) found.set(stripVolatileText(native[1]), null);
+    if (native) {
+      const key = stripVolatileText(native[1]);
+      found.set(key, (found.get(key) ?? 0) + 1);
+    }
     for (const m of registered) {
       if (!line.startsWith(`${m} `)) continue;
       let payload;
       try { payload = digest(JSON.stringify(stripVolatile(JSON.parse(line.slice(m.length + 1))))); } catch { payload = `unparseable:${digest(line)}`; }
-      found.set(m, [...new Set([...(found.get(m)?.split(',') ?? []), payload])].sort().join(','));
+      found.set(m, [...(found.get(m)?.split(',') ?? []), payload].sort().join(','));
     }
   }
   return found;

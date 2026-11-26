@@ -252,11 +252,23 @@ test('markers reads native witness lines and registered cli/viewer records, thro
   const text = '\u001b[32m# sdk witness executed: m8 real browser Worker parity\u001b[0m\nℹ cli-witness-x {"a":1}\nnoise\n';
   const found = markers(text, ['cli-witness-x', 'absent-one']);
   assert.deepEqual([...found.keys()].sort(), ['cli-witness-x', 'm8 real browser Worker parity']);
-  assert.equal(found.get('m8 real browser Worker parity'), null);
+  assert.equal(found.get('m8 real browser Worker parity'), 1);
   // A record's content is compared without its volatile fields, and not without the rest.
   const record = (payload) => markers(`cli-witness-x ${JSON.stringify(payload)}\n`, ['cli-witness-x']).get('cli-witness-x');
   assert.equal(record({ published: 3, startupMs: 1, wasmHeapPeakBytes: 9 }), record({ published: 3, startupMs: 7, wasmHeapPeakBytes: 2 }));
   assert.notEqual(record({ published: 3 }), record({ published: 4 }));
+  // Export sizes are results, not memory: a different export must not read as equal.
+  assert.notEqual(record({ ifcBytes: 2665 }), record({ ifcBytes: 2666 }));
+  assert.notEqual(record({ exactUsdBytes: 8938 }), record({ exactUsdBytes: 8000 }));
+  assert.equal(record({ smlibWorkerBytes: 1, wasmHeapBytes: 2, smlibHeapBytes: 3 }), record({ smlibWorkerBytes: 9, wasmHeapBytes: 8, smlibHeapBytes: 7 }));
+});
+
+test('markers counts repeats: a witness or record printed twice in one layout and once in the other differs', () => {
+  const nat = '# sdk witness executed: m8 parity\n';
+  assert.equal(markers(nat + nat, []).get('m8 parity'), 2);
+  assert.notEqual(markers(nat + nat, []).get('m8 parity'), markers(nat, []).get('m8 parity'));
+  const rec = 'cli-witness-x {"a":1}\n';
+  assert.notEqual(markers(rec + rec, ['cli-witness-x']).get('cli-witness-x'), markers(rec, ['cli-witness-x']).get('cli-witness-x'));
 });
 
 /** Collected evidence for both layouts, all green and identical unless `edit` changes it. */

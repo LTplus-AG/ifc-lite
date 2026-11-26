@@ -53,6 +53,9 @@
  *               rerun remedy if the cancelled attempt is still newest and
  *               its status is pending, missing, or a superseded success.
  *               An existing failure or the latest attempt's success stands.
+ *               A recorded no-op edit keeps the earlier verdict. Mergify
+ *               queue drafts can receive failure on their own SHA, which
+ *               the queue's merge conditions do not consult.
  *
  * Every pending says "if stuck: re-run all jobs": a pending is stuck only
  * when its run was cancelled, timed out or broke before its verdict.
@@ -240,19 +243,32 @@ async function postCancellation(env) {
   const owner = current?.target_url?.startsWith(runPrefix)
     ? current.target_url.slice(runPrefix.length).match(/^(\d+)(?:\/job\/\d+)?(?:\?attempt=(\d+))?$/)
     : null;
-  // A newer owner in the status itself also defeats a delayed run-list update.
-  if (owner && (BigInt(owner[1]) > BigInt(id) ||
-      (owner[1] === id && BigInt(owner[2] ?? '1') > BigInt(attempt)))) return 0;
-  if (current?.state === 'success' && owner?.[1] === id && (owner[2] ?? '1') === attempt) return 0;
+  const ownerAttempt = owner?.[2] ?? '1';
+  if (owner?.[1] === id && (BigInt(ownerAttempt) > BigInt(attempt) ||
+      (current?.state === 'success' && ownerAttempt === attempt))) return 0;
 
-  // GitHub lists runs newest first. Check after reading the pending status
-  // because a newer run may have started or the same run may have retried.
-  // The shared job concurrency group prevents another status writer from
-  // running between this check and the POST.
+  const { jobs } = await api(env, 'GET', `${path}/actions/runs/${id}/attempts/${attempt}/jobs?per_page=100`);
+  if (jobs.find(({ name }) => name === 'Detect changes')?.steps?.some(
+    ({ name, conclusion }) => name === 'Record no-op edit decision' && conclusion === 'success',
+  )) return 0;
+
+  // The API lists by run creation. A rerun can start after a higher run ID.
+  // The status writers share a concurrency group through this check and POST.
   const { workflow_runs: runs } = await api(env, 'GET',
     `${path}/actions/workflows/test.yml/runs?event=pull_request&head_sha=${sha}&per_page=100`);
-  const latest = runs.find((candidate) => candidate.head_repository?.full_name === repo);
+  const sameRepo = runs.filter((candidate) => candidate.head_repository?.full_name === repo);
+  const started = (run) => Date.parse(run.run_started_at ?? run.created_at) || 0;
+  const latest = sameRepo.reduce((newest, run) => {
+    if (!newest) return run;
+    const order = started(run) - started(newest);
+    return order > 0 || (order === 0 && BigInt(run.id) > BigInt(newest.id)) ? run : newest;
+  }, null);
   if (!latest || String(latest.id) !== id || String(latest.run_attempt) !== attempt) return 0;
+  // A higher-ID owner may be absent from a stale listing. Preserve that
+  // status unless the listing accounts for the exact attempt as older.
+  if (owner && BigInt(owner[1]) > BigInt(id) && !sameRepo.some(
+    (run) => String(run.id) === owner[1] && String(run.run_attempt) === ownerAttempt,
+  )) return 0;
 
   await api(env, 'POST', `${path}/statuses/${sha}`, {
     state: 'failure',

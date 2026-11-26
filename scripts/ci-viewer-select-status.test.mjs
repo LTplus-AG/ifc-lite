@@ -217,6 +217,47 @@ test('main --final posts the verdict on the head sha with the job link', async (
 
 const entryEnv = { EVENT: 'pull_request', LANE: 'fast', BATCH: 'false', NOOP: 'false', FRONTEND: 'true', RUST: 'false' };
 
+test('PR #11355: cancelling or rerunning a recorded no-op edit preserves the earlier success', async () => {
+  const previous = { context: STATUS_CONTEXT, state: 'success', target_url: `https://github.com/${REPO}/actions/runs/41?attempt=1` };
+  let run = CANCELLED_RUN;
+  const marker = { jobs: [{ name: 'Detect changes', steps: [{ name: 'Record no-op edit decision', conclusion: 'success' }] }] };
+  await withApi(201, async (api, posts) => {
+    await main(['--cancelled'], env(api, CANCELLED_ENV));
+    run = { ...run, run_attempt: 2 };
+    await main(['--entry'], env(api, { ...entryEnv, NOOP: 'true', GITHUB_RUN_ID: '42', GITHUB_RUN_ATTEMPT: '2' }));
+    await main(['--cancelled'], env(api, { ...CANCELLED_ENV, CANCELLED_RUN_ATTEMPT: '2' }));
+    assert.deepEqual(posts, []);
+  }, {
+    [CANCELLED_RUN_PATH]: () => run,
+    [STATUS_PATH]: { statuses: [previous] },
+    [RUNS_PATH]: () => ({ workflow_runs: [run] }),
+    [`${CANCELLED_RUN_PATH}/attempts/1/jobs?per_page=100`]: marker,
+    [`${CANCELLED_RUN_PATH}/attempts/2/jobs?per_page=100`]: marker,
+  });
+});
+
+test('PR #11355: a rerun can be the newest attempt even with an older run ID', async () => {
+  const newerRun = { ...CANCELLED_RUN, id: 43, run_started_at: '2026-11-26T05:01:00Z' };
+  const newestAttempt = { ...CANCELLED_RUN, run_attempt: 2, run_started_at: '2026-11-26T05:02:00Z' };
+  for (const state of ['pending', 'success']) {
+    const attempt = { ...newestAttempt, conclusion: state === 'pending' ? 'cancelled' : 'success' };
+    const current = { context: STATUS_CONTEXT, state, target_url: `${CANCELLED_RUN_URL}?attempt=2` };
+    await withApi(201, async (api, posts) => {
+      await main(['--cancelled'], env(api, { ...CANCELLED_ENV, CANCELLED_RUN_ID: '43' }));
+      assert.deepEqual(posts, [], 'the older attempt cannot replace the rerun’s status');
+      if (state === 'pending') {
+        await main(['--cancelled'], env(api, { ...CANCELLED_ENV, CANCELLED_RUN_ATTEMPT: '2' }));
+        assert.deepEqual(posts.map(({ body }) => [body.state, body.target_url]), [['failure', current.target_url]]);
+      }
+    }, {
+      [CANCELLED_RUN_PATH]: attempt,
+      [`/repos/${REPO}/actions/runs/43`]: newerRun,
+      [STATUS_PATH]: { statuses: [current] },
+      [RUNS_PATH]: { workflow_runs: [newerRun, attempt] },
+    });
+  }
+});
+
 for (const timing of ['before', 'during', 'after']) {
   test(`PR #11355: newest success wins when it lands ${timing} cancellation reporting`, async () => {
     const newer = { ...CANCELLED_RUN, id: 43, conclusion: 'success' };
@@ -511,6 +552,8 @@ test('WIRING: all status writers queue in the same per-head-SHA concurrency grou
   assert.equal(reporter.needs, 'resolve');
   assert.equal(reporter.steps.at(-1).env.HEAD_SHA, '${{ needs.resolve.outputs.sha }}');
   assert.equal(jobs.resolve.outputs.sha, '${{ steps.head.outputs.sha }}');
+  const noopMarker = CHANGES.steps.find(({ name }) => name === 'Record no-op edit decision');
+  assert.equal(noopMarker?.if, "always() && steps.noop.outputs.noop == 'true'");
   for (const job of [CHANGES, TESTS, SHARDS_STATUS]) {
     assert.deepEqual(job.concurrency, {
       group: 'viewer-selection-status-${{ github.event.pull_request.head.sha || github.run_id }}', queue: 'max',

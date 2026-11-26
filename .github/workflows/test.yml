@@ -273,6 +273,11 @@ jobs:
           # head means the verdict being replayed may have skipped lanes.
           REFUSE_REPLAY_AFTER: ${{ github.head_ref == 'changeset-release/main' && steps.release.outputs.lane != 'lean' && 'Release PR checks' || '' }}
         run: node scripts/ci-verdict-replay.mjs --probe
+      # The cancellation reporter reads this step's conclusion through the
+      # attempt jobs API. GitHub does not expose the probe's outputs there.
+      - name: Record no-op edit decision
+        if: always() && steps.noop.outputs.noop == 'true'
+        run: echo 'This edit replays the existing verdict.'
       # THE PUSH REPLAY, both halves (scripts/ci-push-replay.mjs). A PR run
       # records the exact tree it tests -- GitHub records neither the merge
       # commit nor its tree -- as an artifact NAMED for the tree. A push to

@@ -454,10 +454,11 @@ describe('viewer server — loopback only', () => {
   // The page may be embedded by an IDE preview pane, so CSP keeps other sites from framing it.
   it('only lets local pages and IDE webviews frame the viewer page', TEST_TIMEOUT, async () => {
     const res = await req(port, '/');
-    const csp = String(res.headers['content-security-policy']);
-    assert.match(csp, /^frame-ancestors 'self' /);
-    assert.ok(csp.includes('vscode-webview:'));
-    assert.ok(!csp.includes('*.') && !/\s\*(\s|$)/.test(csp), 'no wildcard host');
+    const [directive, ...sources] = String(res.headers['content-security-policy']).split(/\s+/);
+    assert.equal(directive, 'frame-ancestors');
+    assert.deepEqual(sources.sort(), [
+      "'self'", 'http://127.0.0.1:*', 'http://localhost:*', 'vscode-file:', 'vscode-webview:',
+    ]);
   });
 
   // An agent shares the viewer link in a web chat; clicking it must open the viewer.

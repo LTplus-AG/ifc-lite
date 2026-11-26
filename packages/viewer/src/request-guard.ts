@@ -24,8 +24,10 @@ const LOCAL_ORIGIN = new RegExp(`^https?://${LOOPBACK}$`, 'i');
 /**
  * `frame-ancestors` for the viewer page: the guard lets an IDE preview pane
  * embed it, so this stops any other site from framing it (clickjacked picks).
+ * Embedders: local pages and VS Code-family webviews (VS Code, Cursor). CSP
+ * host sources cannot name an IPv6 literal, so [::1] pages cannot frame it.
  */
-export const PAGE_FRAME_ANCESTORS = "frame-ancestors 'self' http://localhost:* http://127.0.0.1:* http://[::1]:* vscode-webview: vscode-file:";
+export const PAGE_FRAME_ANCESTORS = "frame-ancestors 'self' http://localhost:* http://127.0.0.1:* vscode-webview: vscode-file:";
 
 export type RequestVerdict = { refuse: string } | { refuse: false; corsOrigin: string | null };
 

@@ -43,7 +43,9 @@ const MAX_TIMEOUT_MS = 30_000;
 const MAX_CONCURRENT_SCRIPTS = 2;
 let runningScripts = 0;
 const DEFAULT_MEMORY_MB = 64;
-const MAX_MEMORY_MB = 256;
+// Kept well under the 4 GB wasm32 ceiling: the QuickJS module's linear memory
+// is shared by every sandbox and does not shrink after a run.
+const MAX_MEMORY_MB = 128;
 /**
  * QuickJS stack ceiling. At the sandbox's 512 KB default, runaway recursion
  * overflows Node's own stack first: the host sees a RangeError and teardown
@@ -77,7 +79,7 @@ const inputSchema: JsonSchema = {
     },
     timeout_ms: {
       type: 'integer', minimum: 100, maximum: MAX_TIMEOUT_MS, default: DEFAULT_TIMEOUT_MS,
-      description: `Execution time limit in milliseconds (default ${DEFAULT_TIMEOUT_MS}, max ${MAX_TIMEOUT_MS}). Script code is interrupted when it is exceeded; a single synchronous bim.* call already running is not cut short. Script code runs on the server's event loop, so other requests and a cancel wait until it yields or is interrupted. bim calls the script starts but does not await still count: if they outlast the limit the run is a TIMEOUT. The limit is wall-clock, so time spent waiting behind another session's script counts too.`,
+      description: `Execution time limit in milliseconds (default ${DEFAULT_TIMEOUT_MS}, max ${MAX_TIMEOUT_MS}). Script code is interrupted when it is exceeded; a single synchronous bim.* call already running is not cut short. Script code runs on the server's event loop, so other requests and a cancel wait until it yields or is interrupted. bim calls the script starts but does not await still count: if they outlast the limit the run is a TIMEOUT. The limit is wall-clock from when the script starts running, so once it has started, time spent waiting behind another session's script counts too.`,
     },
     memory_mb: {
       type: 'integer', minimum: 8, maximum: MAX_MEMORY_MB, default: DEFAULT_MEMORY_MB,

@@ -49,8 +49,8 @@ fn exact_directionless_recess_in_a_stub_wall_keeps_the_core_11318() {
 /// axis proves such a box air.
 #[cfg(feature = "csg_manifold_gate")]
 #[test]
-fn gate_rejected_directionless_opening_into_the_core_still_cuts_11318() {
-    check_material_volume("gate_rejected_directionless_opening_into_the_core_still_cuts_11318");
+fn gated_directionless_opening_into_the_core_still_cuts_11318() {
+    check_material_volume("gated_directionless_opening_into_the_core_still_cuts_11318");
 }
 
 #[cfg(not(feature = "csg_manifold_gate"))]
@@ -82,25 +82,32 @@ fn check_material_volume(test_name: &str) {
     // 4 m x 3 m x 0.2 m of core and 0.5 m x 3 m x 12 mm of finish. The
     // chamfered recess at x in [1, 2] lies beyond the finish, so nothing goes.
     // The stub wall's recess likewise lies beyond its finish.
+    let mesh_of = |content: String| {
+        let voids = build_void_index_like_production(&content);
+        let mesh = process_host_like_production(&content, 100, &voids).expect("the wall meshes");
+        let open = EdgeLedger::build(&mesh, VertexKey::GridMul(1.0e3), Degenerate::SkipTriangle).unbalanced().count();
+        (mesh_volume(&mesh), open)
+    };
     let mut failures = Vec::new();
     for offset in [2.137, 2.274, 2.411] {
         // The stub keeps 0.0918 m³, so its tolerance must stay well under
         // the 0.0006 m³ of finish a box widened along x would remove.
         let (content, expected, tolerance) = if into_core {
+            // Measured from the uncut wall at the same offset, which carries
+            // its own f32 placement error, and well under the 5e-4 m³ chamfer,
+            // so a box cut of the bounds fails.
             let y0 = 0.1;
-            (split_wall::wall_with_tessellated_cut(offset, y0), 2.418 - split_wall::tessellated_cut_volume(y0), 6.0e-4)
+            let (uncut, _) = mesh_of(split_wall::wall_with_tessellated_recess(offset));
+            (split_wall::wall_with_tessellated_cut(offset, y0), uncut - split_wall::tessellated_cut_volume(y0), 2.0e-5)
         } else if stub {
             (split_wall::stub_wall_with_tessellated_recess(offset), split_wall::stub_wall_volume(), 5.0e-5)
         } else {
             (split_wall::wall_with_tessellated_recess(offset), 2.418, 6.0e-4)
         };
-        let voids = build_void_index_like_production(&content);
-        let mesh = process_host_like_production(&content, 100, &voids).expect("the wall meshes");
-        let open = EdgeLedger::build(&mesh, VertexKey::GridMul(1.0e3), Degenerate::SkipTriangle).unbalanced().count();
-        let volume = mesh_volume(&mesh);
+        let (volume, open) = mesh_of(content);
         // A NaN volume fails the tolerance comparison silently.
         if open != 0 || !volume.is_finite() || (volume - expected).abs() > tolerance {
-            failures.push(format!("y={offset}: {volume:.6} m³, {open} unbalanced edges"));
+            failures.push(format!("y={offset}: {volume:.6} m³ against {expected:.6}, {open} unbalanced edges"));
         }
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));

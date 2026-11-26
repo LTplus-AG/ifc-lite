@@ -13,6 +13,6 @@ Fix the MCP server's command line and read-only mode ([#11534](https://github.co
 - `ifc-lite mcp` runs the same code as `ifc-lite-mcp` through the new `@ifc-lite/mcp/cli-main` subpath (`runMcpCli`, `mcpHelpText`), so it gains the bridge flags, `--allow-origin` and the new token flags. With no files it starts an empty session instead of exiting.
 - `--help` prints the Claude Desktop config path for the current OS.
 - `model_unload` is marked `destructiveHint`, and checks the model allowlist before saying whether a model is loaded.
-- `CliOptions` replaces `token` with `tokens` and `readOnlyTokens`, drops `federate` and `bridgeMissingOperand` (a missing bridge value is now in `errors`), and adds `warnings` and `errors`. `MCP_SUBCOMMAND_UNSUPPORTED_FLAGS` and `isMcpValueFlag` are removed. `--port` and `--viewer-port` must be integers from 0 to 65535.
+- `CliOptions` replaces `token` with `tokens` and `readOnlyTokens`, drops `federate` and `bridgeMissingOperand` (a missing bridge value is now in `errors`), and adds `warnings` and `errors`; `bridge` is now required. `MCP_SUBCOMMAND_UNSUPPORTED_FLAGS` and `isMcpValueFlag` are removed. `--port` and `--viewer-port` must be integers from 0 to 65535.
 - The Claude Code plugin runs `@ifc-lite/mcp@0` instead of whatever npm has, so a 1.0 cannot change it underneath. Releases before 0.32.0 ignore `--channel`.
-- `--flag=value` works for every value flag. An unknown `--flag=value` is reported by its name only.
+- `--flag=value` works for every value flag. An unknown `--flag=value` is reported by its name only, and a value on a boolean flag (`--read-only=true`) is a usage error.

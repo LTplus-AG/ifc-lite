@@ -136,6 +136,11 @@ describe('flag fixes (#11534)', () => {
     expect(opts.warnings).toEqual(['unknown flag --tokn=… ignored. Run with --help for the flags this version knows.']);
   });
 
+  it('refuses a value on a boolean flag instead of ignoring the flag', () => {
+    const opts = parseArgs(['model.ifc', '--read-only=true']);
+    expect(opts.errors).toEqual(['--read-only takes no value.']);
+  });
+
   it('takes only stdio or http as the transport', () => {
     expect(parseArgs(['--transport', 'htp']).errors).toEqual(["--transport must be stdio or http, got 'htp'."]);
     expect(parseArgs(['--transport', 'http']).transport).toBe('http');

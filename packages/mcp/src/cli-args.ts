@@ -71,12 +71,8 @@ export interface CliOptions {
   viewerPort: number;
   openBrowser: boolean;
   insecure: boolean;
-  /**
-   * `--bridge`: forward tools to a paired browser tab instead of loading files.
-   * Optional so code that builds a `CliOptions` itself keeps compiling;
-   * `parseArgs` always sets it.
-   */
-  bridge?: boolean;
+  /** `--bridge`: forward tools to a paired browser tab instead of loading files. */
+  bridge: boolean;
   /** `--channel` (bridge only): push viewer UI events as Claude Code channel messages. */
   channel?: boolean;
   /** `--bridge-port`; undefined means `DEFAULT_BRIDGE_PORT`. 0 picks a free port. */
@@ -198,8 +194,10 @@ export function parseArgs(rawArgv: string[]): CliOptions {
     } else if (!arg.startsWith('-')) {
       opts.files.push(arg);
     } else {
-      const name = arg.includes('=') ? `${arg.slice(0, arg.indexOf('='))}=…` : arg;
-      opts.warnings.push(`unknown flag ${name} ignored. Run with --help for the flags this version knows.`);
+      const flag = arg.includes('=') ? arg.slice(0, arg.indexOf('=')) : arg;
+      // `--read-only=true` must not start a writable server with a warning.
+      if (flag !== arg && MCP_BOOLEAN_FLAGS.includes(flag)) opts.errors.push(`${flag} takes no value.`);
+      else opts.warnings.push(`unknown flag ${flag === arg ? arg : `${flag}=…`} ignored. Run with --help for the flags this version knows.`);
     }
   }
   return opts;

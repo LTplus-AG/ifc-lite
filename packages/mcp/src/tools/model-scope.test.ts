@@ -29,6 +29,7 @@ import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import { loadIfcModel } from '../loader.js';
 import { discoveryTools } from './discovery.js';
 import { queryTools } from './query-tools.js';
+import { mutationTools } from './mutate.js';
 import { assertModelAccess, resolveModel } from './util.js';
 
 function guid(mnemonic: string): string {
@@ -56,7 +57,7 @@ END-ISO-10303-21;
 `;
 }
 
-const ALL_TOOLS = [...discoveryTools, ...queryTools];
+const ALL_TOOLS = [...discoveryTools, ...queryTools, ...mutationTools];
 
 function tool(name: string) {
   const found = ALL_TOOLS.find((t) => t.name === name);
@@ -162,6 +163,60 @@ describe('a token narrowed to one model', () => {
     expect(ctx.registry.get('alpha')).toBeNull();
   });
 
+  // #11534: model_load needs only read scope, so it must not replace a
+  // model outside the allowlist (the registry disposes the one it replaces).
+  it('cannot load over a model outside its allowlist', async () => {
+    const before = ctx.registry.get('beta');
+    await expect(call('model_load', { file_path: join(tmp, 'alpha.ifc'), model_id: 'beta' }))
+      .rejects.toThrow(/not permitted for this token/);
+    expect(ctx.registry.get('beta')).toBe(before);
+    // Counter-example: its own model can be replaced, since NARROWED carries admin.
+    const original = ctx.registry.get('alpha');
+    const ok = await call('model_load', { file_path: join(tmp, 'beta.ifc'), model_id: 'alpha' });
+    expect((ok.structuredContent as { id: string }).id).toBe('alpha');
+    const replaced = ctx.registry.get('alpha');
+    expect(replaced).not.toBe(original);
+    expect(replaced?.filePath).toMatch(/beta\.ifc$/);
+    // The payload, not only the metadata: alpha now holds beta's project.
+    const projects = await call('query_entities', { model_id: 'alpha', type: 'IfcProject' });
+    expect((projects.structuredContent as { entities: Array<{ globalId?: string }> }).entities.map((e) => e.globalId)).toEqual([guid('BETA')]);
+  });
+
+  // #11534: model_unload checks the allowlist against the live scope too.
+  it('refuses to unload a model whose access was revoked since the call began', async () => {
+    const before = ctx.registry.get('alpha');
+    await expect(Promise.resolve().then(() => tool('model_unload').handler({ model_id: 'alpha' }, { ...ctx, currentScope: () => ({ ...NARROWED, modelIds: ['gamma'] }) })))
+      .rejects.toThrow(/not permitted for this token/);
+    expect(ctx.registry.get('alpha')).toBe(before);
+  });
+
+  // #11534: losing read scope, or a cancel, during the parse also stops the registration.
+  it('refuses a load whose read scope was dropped or that was cancelled while the file parsed', async () => {
+    const load = tool('model_load');
+    let live: AuthScope = NARROWED;
+    const before = ctx.registry.get('alpha');
+    const pending = load.handler({ file_path: join(tmp, 'beta.ifc'), model_id: 'alpha' }, { ...ctx, currentScope: () => live });
+    live = { ...NARROWED, scopes: [] };
+    await expect(pending).rejects.toThrow(/no longer has read scope/);
+    const abort = new AbortController();
+    const cancelled = load.handler({ file_path: join(tmp, 'beta.ifc'), model_id: 'alpha' }, { ...ctx, signal: abort.signal });
+    abort.abort();
+    await expect(cancelled).rejects.toThrow(/cancelled/);
+    expect(ctx.registry.get('alpha')).toBe(before);
+  });
+
+  // #11534: the allowlist is checked again after the parse, against the live scope.
+  it('refuses a load whose model was revoked while the file parsed', async () => {
+    const load = tool('model_load');
+    let live: AuthScope = NARROWED;
+    const revoking = { ...ctx, currentScope: () => live, scope: NARROWED };
+    const pending = load.handler({ file_path: join(tmp, 'beta.ifc'), model_id: 'alpha' }, revoking);
+    live = { ...NARROWED, modelIds: ['gamma'] }; // alpha revoked before the parse finishes (an empty list means all)
+    const before = ctx.registry.get('alpha');
+    await expect(pending).rejects.toThrow(/not permitted for this token/);
+    expect(ctx.registry.get('alpha')).toBe(before);
+  });
+
   it('cannot read entities out of an out-of-scope model', async () => {
     await expect(call('query_entities', { model_id: 'beta', type: 'IfcWall' }))
       .rejects.toThrow(/not permitted for this token/);
@@ -215,3 +270,27 @@ describe('resolveModel without an explicit model_id', () => {
     }
   });
 });
+
+// #11534: model_load and model_unload need only read scope, so a session
+// narrowed after editing must not be able to throw the edits away.
+describe('unsaved edits survive a narrowed session', () => {
+  beforeEach(async () => {
+    await sessionWithScope({ scopes: ['read', 'validate', 'mutate', 'export'] });
+    await call('entity_set_attribute', { model_id: 'alpha', global_id: guid('WALL'), attribute: 'Name', value: 'edited' });
+    ctx.scope = { scopes: ['read', 'validate', 'export'] };
+  });
+
+  it('refuses to unload or replace the edited model without mutate', async () => {
+    const edited = ctx.registry.get('alpha');
+    await expect(call('model_unload', { model_id: 'alpha' })).rejects.toThrow(/unsaved edits/);
+    await expect(call('model_load', { file_path: join(tmp, 'beta.ifc'), model_id: 'alpha' })).rejects.toThrow(/unsaved edits/);
+    expect(ctx.registry.get('alpha')).toBe(edited);
+    // The edit itself survives, not only the registry entry.
+    const walls = await call('query_entities', { model_id: 'alpha', type: 'IfcWall' });
+    expect((walls.structuredContent as { entities: Array<{ name?: string }> }).entities.map((e) => e.name)).toEqual(['edited']);
+    // An unedited model can still be dropped with read scope.
+    await call('model_unload', { model_id: 'beta' });
+    expect(ctx.registry.get('beta')).toBeNull();
+  });
+});
+

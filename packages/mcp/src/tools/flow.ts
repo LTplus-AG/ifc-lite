@@ -85,7 +85,7 @@ import { okResult, paginate, resolveModel } from './util.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import { resolveSafePath } from '../safe-path.js';
 import type { ToolContext } from '../context.js';
-import { EDIT, FLOW_RUN, READ_ONLY } from './annotations.js';
+import { EDIT_NETWORK, FLOW_RUN, READ_ONLY } from './annotations.js';
 
 const flowInputSchema = {
   flow: { description: 'Inline flow document (the parsed *.flow.json object). Provide this or flow_path.' },
@@ -362,7 +362,7 @@ const resumeFlowTool: Tool = {
 };
 
 const proposeFlowTool: Tool = {
-  ...runFlowTool, name: 'propose_flow', scope: 'read', title: 'Propose flow', annotations: { ...EDIT, openWorldHint: true },
+  ...runFlowTool, name: 'propose_flow', scope: 'read', title: 'Propose flow', annotations: EDIT_NETWORK,
   description: 'Run a native read/AI-only graph to a durable pending artifact. Model and external effect nodes are refused before requesting; applying requires a separate authorized resume_flow call.',
   handler: (input, ctx) => executeFlow(input, ctx, false, true),
 };

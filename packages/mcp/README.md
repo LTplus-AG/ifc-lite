@@ -398,9 +398,8 @@ palette. Reads, selection inspection and palette discovery are available initial
   enforces `enum`, `const`, `uniqueItems`, `oneOf`, `anyOf` and schema-valued
   `additionalProperties`. Other JSON Schema keywords (`format`,
   `exclusiveMaximum`, `multipleOf`, `allOf`, …) are published to the agent but
-  not checked by the bridge; the tab must validate them. Non-finite numbers (`1e999`) are
-  refused anywhere in a frame. An oversized or
-  malformed hello is refused; an update is rejected with a non-fatal `error`;
+  not checked by the bridge; the tab must validate them. Non-finite numbers
+  (`1e999`) are refused anywhere in a frame. An oversized or malformed hello is refused; an update is rejected with a non-fatal `error`;
   a result fails its call with a message naming the limit. The size and
   depth walk is iterative and counts before it copies, and the schema-shape
   check recurses only after the 32-level bound has passed, so a value nested

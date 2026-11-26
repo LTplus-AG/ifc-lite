@@ -137,4 +137,3 @@ export function checkSchemaShape(schema: unknown, path: string): string | null {
   }
   return null;
 }
-

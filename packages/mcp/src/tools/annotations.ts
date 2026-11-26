@@ -26,8 +26,12 @@ export const READ_ONLY_NETWORK = hints(true, false, true, true);
 export const VIEWER_DISPLAY = hints(false, false, true);
 /** Adds to the session (new elements, topics, layers); each call adds again. */
 export const EDIT = hints(false, false, false);
+/** Edit that also calls an external service (Flow AI nodes, CRS lookups). */
+export const EDIT_NETWORK = hints(false, false, false, true);
 /** Sets a value; repeating the same call leaves the same state. */
 export const EDIT_IDEMPOTENT = hints(false, false, true);
+/** Idempotent edit of local state after reading an external server (BCF publication checks). */
+export const EDIT_IDEMPOTENT_NETWORK = hints(false, false, true, true);
 /**
  * Deletes or removes data (an element, a property, a storey, a model, the
  * georeferencing); repeating the call changes nothing more. Setting a value

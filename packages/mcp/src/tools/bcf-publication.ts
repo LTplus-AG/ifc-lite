@@ -10,7 +10,7 @@ import { scopeAllows } from '../auth/scope.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import type { Tool } from './types.js';
 import { okResult } from './util.js';
-import { EDIT, EDIT_IDEMPOTENT, READ_ONLY } from './annotations.js';
+import { EDIT, EDIT_IDEMPOTENT_NETWORK, READ_ONLY } from './annotations.js';
 
 /** Stable across authenticated sessions; local stdio shares the CLI journal. */
 export function mcpPublicationNamespace(ctx: ToolContext, requiresStableIdentity = true): string | undefined {
@@ -59,7 +59,7 @@ const list: Tool = {
   },
 };
 const check: Tool = {
-  name: 'bcf_publication_check', scope: 'mutate', title: 'Check BCF publication target', annotations: { ...EDIT_IDEMPOTENT, openWorldHint: true },
+  name: 'bcf_publication_check', scope: 'mutate', title: 'Check BCF publication target', annotations: EDIT_IDEMPOTENT_NETWORK,
   description: 'Read the original BCF target under explicitly supplied network.fetch grants and record the matching candidate GUIDs on the local publication entry (hence mutate scope). Read-only on the server: never sends a write or blindly retries. token_env needs its exact secret.read grant; unsafe credential-bearing results are refused; protocol keys and identifiers are preserved.',
   inputSchema: { type: 'object', properties: { ...entryProperty,
     capabilities: { type: 'array', items: { type: 'string' }, description: 'Explicit current network.fetch:<host> and optional secret.read:<NAME> grants; no prior run grant is reused.' },

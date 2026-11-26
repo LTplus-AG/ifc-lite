@@ -11,11 +11,9 @@ mod voids_common;
 #[allow(dead_code)]
 mod split_wall;
 
-use ifc_lite_core::{build_entity_index, EntityDecoder};
 use ifc_lite_geometry::kernel::mesh_volume::mesh_volume;
 use ifc_lite_geometry::mesh_check::{Degenerate, EdgeLedger, VertexKey};
-use ifc_lite_geometry::GeometryRouter;
-use voids_common::production::build_void_index_like_production;
+use voids_common::production::{build_void_index_like_production, process_host_like_production};
 
 /// With the gate, the kernel's cut is rejected and the #635 fallback runs.
 #[cfg(feature = "csg_manifold_gate")]
@@ -45,9 +43,10 @@ fn exact_directionless_recess_in_a_stub_wall_keeps_the_core_11318() {
     check_material_volume("exact_directionless_recess_in_a_stub_wall_keeps_the_core_11318");
 }
 
-/// The counterexample to skipping the cut whenever any axis proves air: the
-/// same directionless opening started 0.1 m inside the core removes core
-/// material, so no axis may prove it air and the cut must still happen.
+/// The same directionless opening started 0.1 m inside the core removes core
+/// material and must still cut it. The kernel accepts this cut even with the
+/// gate, so it does not reach the fallback; `prepare_tests.rs` pins that no
+/// axis proves such a box air.
 #[cfg(feature = "csg_manifold_gate")]
 #[test]
 fn gate_rejected_directionless_opening_into_the_core_still_cuts_11318() {
@@ -93,13 +92,10 @@ fn check_material_volume(test_name: &str) {
         } else if stub {
             (split_wall::stub_wall_with_tessellated_recess(offset), split_wall::stub_wall_volume(), 5.0e-5)
         } else {
-            (split_wall::wall_with_tessellated_recess(offset, 0.5), 2.418, 6.0e-4)
+            (split_wall::wall_with_tessellated_recess(offset), 2.418, 6.0e-4)
         };
         let voids = build_void_index_like_production(&content);
-        let mut decoder = EntityDecoder::with_index(&content, build_entity_index(&content));
-        let wall = decoder.decode_by_id(100).unwrap();
-        let router = GeometryRouter::with_scale(1.0);
-        let mesh = router.process_element_with_voids(&wall, &mut decoder, &voids).expect("the wall meshes");
+        let mesh = process_host_like_production(&content, 100, &voids).expect("the wall meshes");
         let open = EdgeLedger::build(&mesh, VertexKey::GridMul(1.0e3), Degenerate::SkipTriangle).unbalanced().count();
         let volume = mesh_volume(&mesh);
         // A NaN volume fails the tolerance comparison silently.

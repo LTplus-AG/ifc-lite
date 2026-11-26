@@ -41,22 +41,13 @@ impl ExactState {
         // authored depth, so first check the pre-weld source (#11313).
         // The wall-frame rotation can move a flush cap by a few ULPs.
         // Allow half a kernel grid step along the depth axis only. The
-        // check proves the box interior is air whichever axis is the depth,
-        // so an inferred axis needs it as much as an authored one. The
-        // inferred axis can be wrong, e.g. on a wall shorter than it is
-        // thick, so a directionless cutter also tries the other two axes.
-        // An authored cutter keeps its own axis only.
-        let candidates = match extrusion_dir {
-            Some(_) => vec![dir],
-            None => {
-                let mut axes = vec![dir];
-                axes.extend(
-                    [Vector3::x(), Vector3::y(), Vector3::z()].into_iter().filter(|axis| *axis != dir),
-                );
-                axes
-            }
-        };
-        if candidates.into_iter().any(|axis| {
+        // check proves air along any axis, so an inferred one needs it too.
+        // It can be the wrong axis (a wall shorter than it is thick), so a
+        // directionless cutter also tries the other two.
+        let others = [Vector3::x(), Vector3::y(), Vector3::z()]
+            .into_iter()
+            .filter(|axis| extrusion_dir.is_none() && *axis != dir);
+        if std::iter::once(dir).chain(others).any(|axis| {
             super::prepare::cutter_is_outside_source(
                 context.original_host, (open_min_pt, open_max_pt), axis, SNAP_GRID * 0.5,
             )

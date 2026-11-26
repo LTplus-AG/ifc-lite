@@ -42,9 +42,8 @@ pub(crate) fn wall_with_finish(
 /// no extrusion direction. It fills y in [0.2, 0.212] over x, z in [1, 2],
 /// beyond the finish, so it touches the core and encloses only air.
 #[allow(dead_code)]
-pub(crate) fn wall_with_tessellated_recess(wall_y: f64, finish_length: f64) -> String {
-    let swept = wall_with_finish([0.0; 2], 0.0, wall_y, Recess::FromInterface, finish_length);
-    tessellate_recess(&swept, CORE, &TESSELLATED_PROFILE)
+pub(crate) fn wall_with_tessellated_recess(wall_y: f64) -> String {
+    wall_with_tessellated_cut(wall_y, CORE)
 }
 
 /// The chamfered x-z profile of [`wall_with_tessellated_recess`].

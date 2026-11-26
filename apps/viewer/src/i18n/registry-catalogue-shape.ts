@@ -53,6 +53,7 @@ export const registryCatalogueShape = {
   "registry.signInFailed": [],
   "registry.denied": [],
   "registry.failed": [],
+  'registry.connectionChanged': [],
   "registry.releaseMissing": [],
   "registry.share.manage": [],
   "registry.share.notice": [],

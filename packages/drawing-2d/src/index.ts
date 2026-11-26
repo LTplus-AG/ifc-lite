@@ -116,7 +116,7 @@ export type { ProjectionBand, ProjectionBandDepths } from './projection-bands.js
 // Current-floor scoping + feature-element exclusion (issue #979 follow-up)
 export { currentFloorBands, storeyFloorsFromMeshes, StoreyFloorLevels } from './storey-bands.js';
 export type { StoreyFloorMesh } from './storey-bands.js';
-export { storeyCutElevation, DEFAULT_PLAN_CUT_HEIGHT } from './storey-cut.js';
+export { storeyCutElevation } from './storey-cut.js';
 export type { StoreyCut, StoreyCutFrame } from './storey-cut.js';
 export { isFeatureElementType } from './feature-elements.js';
 

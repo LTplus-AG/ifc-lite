@@ -5711,7 +5711,6 @@
     "DEFAULT_LAYERS: const",
     "DEFAULT_NORTH_ARROW: const",
     "DEFAULT_OBJECT_STYLES: const",
-    "DEFAULT_PLAN_CUT_HEIGHT: const",
     "DEFAULT_SCALE_BAR: const",
     "DEFAULT_SECTION_CONFIG: const",
     "DEFAULT_SHADING_DPI: const",

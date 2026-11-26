@@ -12,6 +12,9 @@ export const DEFAULT_PLAN_CUT_HEIGHT = 1.2;
  * The parts of `GeometryResult.coordinateInfo` that place a storey in the render
  * frame, plus the building's local placement Z relative to the site
  * (`buildingOrigin.z`, metres), which `IfcBuildingStorey.Elevation` is measured from.
+ * Pass the frame the meshes are drawn in: for a federated scene that is the
+ * shared frame, not each model's own. A frame without `siteOrigin` puts the
+ * site at Z 0.
  */
 export type StoreyCutFrame = RenderFrameInfo & Pick<CoordinateInfo, 'siteOrigin'> & { buildingOrigin?: Pick<Vec3, 'z'> };
 
@@ -25,9 +28,11 @@ export interface StoreyCut {
 /**
  * Render-frame Y of a plan cut `cutHeight` above a storey floor, for
  * `generateFloorPlan`. `storeyElevation` is `IfcBuildingStorey.Elevation` in
- * metres (`SpatialHierarchy.storeyElevations`), which is relative to the
- * building placement; the site's and the building's Z are added and the RTC
- * offset and origin shift the meshes were moved by are taken off (#10931).
+ * metres, which is relative to the building placement. A
+ * `SpatialHierarchy.storeyElevations` entry for a storey without Elevation is
+ * its own placement Z, which need not be in that frame. The site's and the
+ * building's Z are added and the RTC offset and origin shift the meshes were
+ * moved by are taken off (#10931).
  */
 export function storeyCutElevation(
   storeyElevation: number,

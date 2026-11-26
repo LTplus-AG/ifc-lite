@@ -39,7 +39,7 @@ const fakeModel = (id: string, name = id): LoadedModel => ({
   backend: { setPeerScopes() { /* no peers */ }, dispose() { /* nothing held */ } },
 } as unknown as LoadedModel);
 
-function build({ readOnly = false, registry = new InMemoryModelRegistry() as ModelRegistry, capabilities = undefined as ServerCapabilities | undefined, logger = SILENT_LOGGER as Logger } = {}) {
+function defaultTools(registry: ModelRegistry): ToolRegistry {
   const tools = new ToolRegistry();
   tools.register({
     name: 'load_fake', description: 'Adds a model. Second sentence.', scope: 'mutate',
@@ -55,10 +55,10 @@ function build({ readOnly = false, registry = new InMemoryModelRegistry() as Mod
       return { content: [{ type: 'text', text: 'ok' }] };
     },
   } satisfies Tool);
-  tools.register({
-    name: 'log_message_key', description: 'Logs a data.message key.', scope: 'read', inputSchema: { type: 'object' },
-    handler(_input, ctx) { ctx.log.log('error', 'export failed', { message: 'disk full' }); return { content: [] }; },
-  } satisfies Tool);
+  return tools;
+}
+
+function build({ readOnly = false, registry = new InMemoryModelRegistry() as ModelRegistry, capabilities = undefined as ServerCapabilities | undefined, logger = SILENT_LOGGER as Logger, tools = defaultTools(registry) } = {}) {
   const server = new MCPServer({
     version: '0.0.0-test', registry, config: { readOnly, samplingEnabled: false },
     tools, resources: buildDefaultResourceRegistry(), prompts: buildDefaultPromptRegistry(), capabilities, logger,
@@ -124,7 +124,12 @@ describe('logging', () => {
   });
 
   it('keeps both the log message and a data.message key', async () => {
-    const { request, notes } = await initialized();
+    const tools = new ToolRegistry();
+    tools.register({
+      name: 'log_message_key', description: 'Logs a data.message key.', inputSchema: { type: 'object' },
+      handler(_input, ctx) { ctx.log.log('error', 'export failed', { message: 'disk full' }); return { content: [] }; },
+    } satisfies Tool);
+    const { request, notes } = await initialized({ tools });
     await request('logging/setLevel', { level: 'error' });
     await request('tools/call', { name: 'log_message_key', arguments: {} });
     expect(methods(notes, 'notifications/message').map((n) => n.params)).toEqual([
@@ -250,9 +255,8 @@ describe('instructions and manifest', () => {
     expect(await read(false)).toEqual([
       { name: 'load_fake', purpose: 'Adds a model.', scope: 'mutate' },
       { name: 'log_both', title: 'Log both', purpose: 'Logs info and error.', scope: 'read' },
-      { name: 'log_message_key', purpose: 'Logs a data.message key.', scope: 'read' },
     ]);
-    expect((await read(true)).map((t) => (t as { name: string }).name)).toEqual(['log_both', 'log_message_key']);
+    expect(await read(true)).toEqual([{ name: 'log_both', title: 'Log both', purpose: 'Logs info and error.', scope: 'read' }]);
   });
 
   it('does not cut a purpose at an abbreviation', async () => {
@@ -263,12 +267,9 @@ describe('instructions and manifest', () => {
     ];
     const tools = new ToolRegistry();
     descriptions.forEach((description, i) => tools.register({ name: `t${i}`, description, inputSchema: { type: 'object' }, handler: () => ({ content: [] }) }));
-    const server = new MCPServer({ version: '0', tools, resources: buildDefaultResourceRegistry(), prompts: buildDefaultPromptRegistry() });
-    const transport = new InProcessTransport();
-    void transport.connect(server);
-    await transport.send({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: 't', version: '0' } } });
-    const res = await transport.send({ jsonrpc: '2.0', id: 2, method: 'resources/read', params: { uri: 'ifc-lite://server/manifest' } }) as { result: { contents: Array<{ text: string }> } };
-    const catalog = (JSON.parse(res.result.contents[0].text) as { tools: Array<{ purpose: string }> }).tools;
+    const { request } = await initialized({ tools });
+    const contents = (await request('resources/read', { uri: 'ifc-lite://server/manifest' })).result?.contents as Array<{ text: string }>;
+    const catalog = (JSON.parse(contents[0].text) as { tools: Array<{ purpose: string }> }).tools;
     const entry = (description: string) => catalog[descriptions.indexOf(description)];
     expect(entry('Class details for a name (e.g. "IfcWall") from bSDD.').purpose).toBe('Class details for a name (e.g. "IfcWall") from bSDD.');
     expect(entry('First. Second.').purpose).toBe('First.');

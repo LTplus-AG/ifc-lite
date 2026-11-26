@@ -216,4 +216,23 @@ describe('SDK protocol adapter lifecycle', () => {
     expect(call?.error).toMatchObject({ code: -32602, data: { issues: expect.any(Array) } });
     expect(String((call?.error as { message?: string }).message)).toMatch(/^Invalid tools\/call request: [^\n]+$/);
   });
+
+  it('lets a client retry with the id of a request it just cancelled', async () => {
+    const { server, initialize } = build();
+    await initialize();
+    const first = server.handleMessage({ jsonrpc: '2.0', id: 5, method: 'tools/call', params: { name: 'wait', arguments: {} } });
+    await new Promise((r) => setTimeout(r, 10));
+    await server.handleMessage({ jsonrpc: '2.0', method: 'notifications/cancelled', params: { requestId: 5 } });
+    const retry = await server.handleMessage({ jsonrpc: '2.0', id: 5, method: 'tools/list' }) as Reply;
+    expect(retry).toMatchObject({ id: 5, result: expect.anything() });
+    expect(await first).toBeNull();
+  });
+
+  it('refuses a request pipelined behind an initialize that fails validation', async () => {
+    const { server } = build();
+    const init = server.handleMessage({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} }) as Promise<Reply>;
+    const list = server.handleMessage({ jsonrpc: '2.0', id: 2, method: 'tools/list' }) as Promise<Reply>;
+    expect((await init)?.error?.code).toBe(-32602);
+    expect((await list)?.error?.code).toBe(-32600);
+  });
 });

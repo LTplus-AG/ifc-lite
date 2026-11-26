@@ -109,7 +109,11 @@ class IfcProtocolServer extends Server {
     info: { name: string; version: string },
     options: ConstructorParameters<typeof Server>[1],
     /** Whether initialize has arrived (requests before it are refused), and where an aborted request is reported. */
-    private readonly link: { readonly initializeSeen: boolean; abandon(id: string | number): void },
+    private readonly link: {
+      readonly handshakeSent: boolean;
+      initializeSettled(): Promise<void>;
+      take(id: string | number): ((response: null) => void) | undefined;
+    },
   ) {
     super(info, options);
   }
@@ -123,10 +127,24 @@ class IfcProtocolServer extends Server {
     return async (request, ctx) => {
       const signal = ctx.mcpReq.signal;
       const id = ctx.mcpReq.id;
+      // The SDK sends nothing for a request it aborted. On abort the id is
+      // freed at once (a retry may reuse it); the caller hears once the
+      // handler has unwound, so the retry cannot collide with the old run.
+      let held: ((response: null) => void) | undefined;
+      let unwound = false;
+      const abandon = () => {
+        held ??= this.link.take(id);
+        if (unwound) held?.(null);
+      };
+      if (signal.aborted) abandon();
+      else signal.addEventListener('abort', abandon, { once: true });
       let result: Result;
       try {
-        if (!opening && !this.link.initializeSeen) {
-          throw new HandlerError(JsonRpcErrorCode.ServerNotInitialized, 'Server not initialized — send `initialize` first');
+        if (!opening && !this.link.handshakeSent) {
+          await this.link.initializeSettled();
+          if (!this.link.handshakeSent) {
+            throw new HandlerError(JsonRpcErrorCode.ServerNotInitialized, 'Server not initialized — send `initialize` first');
+          }
         }
         result = await inner(request, ctx);
       } catch (err) {
@@ -145,11 +163,8 @@ class IfcProtocolServer extends Server {
         if (method === 'tools/call') return toolError({ code: ToolErrorCode.INTERNAL_ERROR, message }) as unknown as Result;
         throw new ProtocolError(ProtocolErrorCode.InternalError, message);
       } finally {
-        // The SDK sends nothing for a request it aborted, even one whose handler
-        // already returned. Its caller is told once the handler has unwound (a
-        // retry then cannot collide with the old run), or when a later abort lands.
-        if (signal.aborted) this.link.abandon(id);
-        else signal.addEventListener('abort', () => this.link.abandon(id), { once: true });
+        unwound = true;
+        if (signal.aborted) abandon();
       }
       if (method === 'initialize' && !signal.aborted) {
         // A failing observer must not fail a handshake the SDK already answered.

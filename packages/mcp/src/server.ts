@@ -330,7 +330,6 @@ export class MCPServer implements ProtocolDomain {
   }
 
   async readResource(params: ReadResourceParams): Promise<ReadResourceResult> {
-    if (typeof params.uri !== 'string') throw new RequestError(JsonRpcErrorCode.InvalidParams, 'resources/read needs a uri');
     const provider = this.resources.matchProvider(params.uri);
     // An empty read is a well-formed URI naming nothing (unknown model or entity).
     const contents = provider ? await provider.read(params.uri, this.makeResourceContext()) : [];

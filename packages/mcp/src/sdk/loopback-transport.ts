@@ -32,14 +32,26 @@ export class LoopbackTransport implements Transport {
   /** Initialize requests not answered yet. */
   private pendingInitialize = new Set<JsonRpcId>();
   private sentHandshake = false;
-  /**
-   * Whether requests are served: an initialize succeeded, or one is still
-   * pending (clients may pipeline requests behind it). A refused or
-   * cancelled initialize leaves this as it was before.
-   */
-  get initializeSeen(): boolean { return this.sentHandshake || this.pendingInitialize.size > 0; }
-  /** Whether an initialize result has gone out; notifications wait for it. */
+  /** Callers waiting for every pending initialize to be answered. */
+  private initializeWaiters: Array<() => void> = [];
+  /** Whether an initialize result has gone out; requests and notifications wait for it. */
   get handshakeSent(): boolean { return this.sentHandshake; }
+
+  /**
+   * Resolves once no initialize is pending, so a request pipelined behind one
+   * learns whether it succeeded (clients may pipeline; a refused or cancelled
+   * initialize leaves the connection uninitialized).
+   */
+  initializeSettled(): Promise<void> {
+    if (this.pendingInitialize.size === 0) return Promise.resolve();
+    return new Promise((resolve) => this.initializeWaiters.push(resolve));
+  }
+
+  private flushInitializeWaiters(): void {
+    const waiters = this.initializeWaiters;
+    this.initializeWaiters = [];
+    for (const resolve of waiters) resolve();
+  }
 
   constructor(private readonly sink: () => LoopbackSink | null) {}
 
@@ -54,6 +66,8 @@ export class LoopbackTransport implements Transport {
   settleAll(): void {
     for (const [id, settle] of this.waiting) settle(errorResponse(id, JsonRpcErrorCode.InternalError, 'The connection closed before the request was answered'));
     this.waiting.clear();
+    this.pendingInitialize.clear();
+    this.flushInitializeWaiters();
   }
 
   send(message: JSONRPCMessage): Promise<void> {
@@ -78,12 +92,15 @@ export class LoopbackTransport implements Transport {
     }
   }
 
-  /** Stop waiting for a response to `id`; returns its resolver, if it was waiting. */
-  private take(id: JsonRpcId | null | undefined): ((response: JsonRpcResponse | null) => void) | undefined {
+  /**
+   * Stop waiting for a response to `id` and free the id for reuse; returns
+   * its resolver, if it was waiting.
+   */
+  take(id: JsonRpcId | null | undefined): ((response: JsonRpcResponse | null) => void) | undefined {
     if (id === null || id === undefined) return undefined;
     const settle = this.waiting.get(id);
     this.waiting.delete(id);
-    this.pendingInitialize.delete(id);
+    if (this.pendingInitialize.delete(id) && this.pendingInitialize.size === 0) this.flushInitializeWaiters();
     return settle;
   }
 
@@ -128,8 +145,4 @@ export class LoopbackTransport implements Transport {
     return Promise.resolve(null);
   }
 
-  /** The protocol layer aborted request `id` and will send no response: stop waiting for one. */
-  abandon(id: JsonRpcId): void {
-    this.take(id)?.(null);
-  }
 }

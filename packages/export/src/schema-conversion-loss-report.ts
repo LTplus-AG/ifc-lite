@@ -334,14 +334,11 @@ export function analyzeConversionLoss(
       const narrowedSet = setAttribute && !mapped?.map.upOnly.includes(setAttribute) ? setAttribute : undefined;
       const attributes = attrNameTable(fromSchema)?.get(sourceType);
       const slot = narrowedSet ? attributes?.indexOf(narrowedSet) ?? -1 : -1;
-      // #11326: a type-wide drop loses only the slots the record populated (a map-less IFCREL* or IfcWorkPlan included).
-      // A type the target lacks loses the whole record (omitted or verbatim), however sparse, so it stays reported.
-      const checkUnset = records && info.kind === 'lossy' && info.droppedAttributes.length > 0
-        && info.droppedAttributes.length < (attributes?.length ?? 0);
+      // #11448: a type-wide drop loses only the slots a record populated; `()` and `''` are values (Rust
+      // `values_without_a_name`). A type the target lacks loses the whole record, however sparse.
+      const checkUnset = records && info.kind === 'lossy' && info.droppedAttributes.length > 0 && info.droppedAttributes.length < (attributes?.length ?? 0);
       const isRetained = (id: number, attribute: string) => {
         if (restored.get(id)?.has(attribute) || retainedTyped?.get(id)?.has(attribute)) return true;
-        // `()` and `''` are values; `$`, `*` and an empty slot are not (twin of Rust `values_without_a_name`).
-        // An unreadable record or an attribute the table does not name stays reported.
         const own = checkUnset ? records?.slots(id)?.[attributes?.indexOf(attribute) ?? -1] : undefined;
         if (own !== undefined && !holdsValue(own)) return true;
         if (attribute !== narrowedSet) return false;

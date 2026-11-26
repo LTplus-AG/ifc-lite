@@ -40,6 +40,7 @@ import {
   schemaOf,
   requireNoPendingEdits,
   resolveStepModel,
+  isStepModel,
   withIfcPrefix,
   stringList,
   throwIfCancelled,
@@ -81,7 +82,7 @@ const modelMerge: Tool = {
   async handler(input, ctx) {
     // Default: every loaded STEP model the token may access (IFC5 models cannot be merged).
     const ids = (input.model_ids as string[] | undefined)
-      ?? listAllowedModelIds(ctx).filter((id) => ctx.registry.get(id)?.store.schemaVersion !== 'IFC5');
+      ?? listAllowedModelIds(ctx).filter((id) => { const m = ctx.registry.get(id); return m !== null && isStepModel(m); });
     if (new Set(ids).size !== ids.length) throw invalid('model_ids lists a model more than once.');
     if (ids.length < 2) throw invalid(`model_merge needs at least 2 models; ${ids.length} given or loaded.`);
     const models = ids.map((id) => resolveStepModel(ctx, id, 'model_merge'));

@@ -73,10 +73,13 @@ export async function optionalOutputPath(input: Record<string, unknown>, key: st
 /** Trimmed, non-blank selector tokens. */
 export const nonBlank = (list: readonly string[] | undefined): string[] => (list ?? []).map((t) => t.trim()).filter(Boolean);
 
+/** False for an IFC5 (IFCX) model, which the STEP transforms cannot read. */
+export const isStepModel = (m: LoadedModel): boolean => m.store.schemaVersion !== 'IFC5';
+
 /** Resolve a model for a transform; all of them read and write STEP, so an IFC5 (IFCX) model is refused by name. */
 export function resolveStepModel(ctx: ToolContext, modelId: string | undefined, tool: string): LoadedModel {
   const m = resolveModel(ctx, modelId);
-  if (m.store.schemaVersion === 'IFC5') {
+  if (!isStepModel(m)) {
     throw new ToolExecutionError({ code: ToolErrorCode.UNSUPPORTED_OPERATION, message: `${tool} reads IFC STEP; model '${m.id}' is IFC5 (IFCX).` });
   }
   return m;

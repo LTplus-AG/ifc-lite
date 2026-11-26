@@ -90,12 +90,13 @@ export function useTwoPointAlign({ selected, reference, setRole, setError }: Opt
   const result = useMemo(() => solveAlignPoints(points), [points]);
 
   const apply = useCallback(() => {
+    const store = useViewerStore.getState();
+    if (!activeRef.current || store.modelPlacement.revision !== revisionRef.current) return;
     try {
       const solved = solveAlignPoints(pointsRef.current);
       if (!solved) throw new Error('Pick all four points first.');
       if (!solved.ok) throw new Error(t(ALIGN_REFUSAL_KEYS[solved.reason]));
       const ids = selectedRef.current;
-      const store = useViewerStore.getState();
       store.alignModels(ids, solved.alignment);
       // Back to a fresh preview for the same models, as the move Apply does.
       store.openReposition(ids);
@@ -112,9 +113,9 @@ export function useTwoPointAlign({ selected, reference, setRole, setError }: Opt
     commitPoints({}); setCleared(true); setRole('source');
   }, [revision, commitPoints, setRole]);
 
-  // The moving set changed under the session.
+  // The picked points belong to the current moving models and reference.
   const selectionKey = selected.join('|');
-  useEffect(() => { if (activeRef.current) exit(); }, [selectionKey, exit]);
+  useEffect(() => { if (activeRef.current) exit(); }, [selectionKey, reference, exit]);
 
   return { active, points, step: nextAlignStep(points), result, cleared, start, cancel: exit, repick, apply, capture };
 }

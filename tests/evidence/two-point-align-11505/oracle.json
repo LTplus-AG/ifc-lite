@@ -1,6 +1,6 @@
 {
   "issue": 7955,
-  "why": "Flip the sign of the two-point align heading and make the commit drop a model's existing heading: the math, commit and panel tests must go red.",
+  "why": "Flip the sign of the two-point align heading; the direction assertions in the math witness must fail.",
   "key": "apps/viewer/src/lib/model-placement/two-point-align.ts",
   "mutation": "tests/evidence/two-point-align-11505/behaviour.oracle.patch",
   "test": "apps/viewer/src/lib/model-placement/two-point-align.test.ts"

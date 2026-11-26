@@ -1,16 +1,3 @@
-diff --git b/apps/viewer/src/lib/model-placement/two-point-align-apply.ts a/apps/viewer/src/lib/model-placement/two-point-align-apply.ts
-index 1f08da0ade..43a654165a 100644
---- b/apps/viewer/src/lib/model-placement/two-point-align-apply.ts
-+++ a/apps/viewer/src/lib/model-placement/two-point-align-apply.ts
-@@ -40,7 +40,7 @@ export function alignPlacements(
-     const shown: ModelPlacement = preview?.before.has(id)
-       ? { ...placement, translation: addTranslation(placement.translation, preview.delta) } : placement;
-     const pivot = workspacePointToModelFrame(alignment.pivot, shown);
--    const angle = normalizeAngle(alignment.heading);
-+    const angle = normalizeAngle(shown.rotation.angle + alignment.heading);
-     const translation = subtractTranslation(target, pivot);
-     assertRenderableTranslation(translation);
-     assertRenderableTranslation(pivot);
 diff --git b/apps/viewer/src/lib/model-placement/two-point-align.ts a/apps/viewer/src/lib/model-placement/two-point-align.ts
 index 03182d8549..5cd2d2337e 100644
 --- b/apps/viewer/src/lib/model-placement/two-point-align.ts

@@ -142,6 +142,20 @@ describe('two-point align panel (#11505)', () => {
     assert.deepEqual(runtime!.align.points, {});
   });
 
+  it('discards a completed alignment when the reference changes', () => {
+    act(() => useViewerStore.setState({ models: new Map(useViewerStore.getState().models)
+      .set('other-reference', fixtureModel('other-reference')) }));
+    click(button(ui, 'Two-point align'));
+    pickAll([0, 0, 0], [3, 4, 5], [10, 0, 0], [13, 4, 5]);
+    assert.equal(button(ui, 'Apply alignment').disabled, false);
+
+    act(() => runtime!.setReference('other-reference'));
+    assert.equal(runtime!.reference, 'other-reference');
+    assert.equal(runtime!.align.active, false);
+    assert.equal(readoutText(ui), '');
+    assert.equal(useViewerStore.getState().modelPlacement.undo.length, 0);
+  });
+
   it('is a distinct mode: choosing the ordinary source pick leaves it', () => {
     click(button(ui, 'Two-point align'));
     pickPoint('source', [0, 0, 0]);

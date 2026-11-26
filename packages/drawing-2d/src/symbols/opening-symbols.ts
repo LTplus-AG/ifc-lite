@@ -82,6 +82,7 @@ interface Footprint extends PlanAxes {
   depth: number;
   minY: number;
   maxY: number;
+  hasCutPiece: boolean;
 }
 
 /** Below this sine between the projected placement axes the element is not drawn as a symbol. */
@@ -113,6 +114,9 @@ export function buildOpeningSymbols(
 
     const info = openings?.get(key);
     const isDoor = DOOR_TYPES.has((first.ifcType ?? '').toLowerCase());
+    // A door swing represents the element and its opening. A window frame
+    // follows the cut pieces, so a gap between them keeps its projection.
+    if (!isDoor && !footprint.hasCutPiece) continue;
     const operation = isDoor ? parseDoorOperation(info?.operationType) ?? 'SINGLE_SWING_LEFT' : undefined;
     if (operation && !SYMBOLIZED_DOOR_OPERATIONS.has(operation)) continue;
     const width = positiveOr(info?.width, footprint.width);
@@ -182,16 +186,21 @@ function measureFootprint(group: readonly MeshData[], plane: SectionPlaneConfig)
   const points: Point2D[] = [];
   let minY = Infinity;
   let maxY = -Infinity;
+  let hasCutPiece = false;
   for (const mesh of group) {
+    let pieceMinY = Infinity, pieceMaxY = -Infinity;
     const o = mesh.origin ?? [0, 0, 0];
     const p = mesh.positions;
     for (let i = 0; i + 2 < p.length; i += 3) {
       const world = vec3(p[i] + o[0], p[i + 1] + o[1], p[i + 2] + o[2]);
-      if (world.y < minY) minY = world.y;
-      if (world.y > maxY) maxY = world.y;
+      if (world.y < pieceMinY) pieceMinY = world.y;
+      if (world.y > pieceMaxY) pieceMaxY = world.y;
       if (local) for (const extent of local) extent.add(world);
       points.push(projectTo2D(world, plane.axis, plane.flipped));
     }
+    minY = Math.min(minY, pieceMinY);
+    maxY = Math.max(maxY, pieceMaxY);
+    hasCutPiece ||= pieceMinY < plane.position && pieceMaxY > plane.position;
   }
   if (points.length === 0) return null;
   const axes = placed ?? principalAxes(points, plane.flipped);
@@ -215,6 +224,7 @@ function measureFootprint(group: readonly MeshData[], plane: SectionPlaneConfig)
     depth: local ? local[1].size() : t1 - t0,
     minY,
     maxY,
+    hasCutPiece,
   };
 }
 

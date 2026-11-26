@@ -94,29 +94,33 @@ function isEscapable(codePoint: number): boolean {
  * treated as the one astral character it represents.
  */
 export function encodeDxfCp1252(text: string): Cp1252EncodeResult {
-  const bytes: number[] = [];
+  let bytes = new Uint8Array(text.length);
+  let length = 0;
+  let offset = 0;
   let hadUnmappable = false;
   let hadEscaped = false;
-  const pushAscii = (s: string): void => { for (let i = 0; i < s.length; i++) bytes.push(s.charCodeAt(i)); };
-  const chars = Array.from(text);
-  for (let i = 0; i < chars.length; i++) {
-    const ch = chars[i];
+  for (const ch of text) {
+    offset += ch.length;
     const codePoint = ch.codePointAt(0) ?? REPLACEMENT_BYTE;
-    if (codePoint === 0x5c && chars[i + 1] === 'U' && chars[i + 2] === '+') {
-      pushAscii('\\U+005C'); // a literal backslash before `U+` must not read as an escape
+    const byte = encodeCodePoint(codePoint);
+    const unmappable = byte === REPLACEMENT_BYTE && codePoint !== REPLACEMENT_BYTE;
+    const escape = (codePoint === 0x5c && text.startsWith('U+', offset))
+      || (unmappable && isEscapable(codePoint));
+    if (escape) {
+      // Reserve room for all remaining input plus this seven-byte escape.
+      const required = length + 7 + text.length - offset;
+      if (required > bytes.length) {
+        const grown = new Uint8Array(Math.max(required, bytes.length * 2));
+        grown.set(bytes);
+        bytes = grown;
+      }
+      const escaped = `\\U+${codePoint.toString(16).toUpperCase().padStart(4, '0')}`;
+      for (let i = 0; i < escaped.length; i++) bytes[length++] = escaped.charCodeAt(i);
       hadEscaped = true;
       continue;
     }
-    const byte = encodeCodePoint(codePoint);
-    if (byte === REPLACEMENT_BYTE && codePoint !== REPLACEMENT_BYTE) {
-      if (isEscapable(codePoint)) {
-        pushAscii(`\\U+${codePoint.toString(16).toUpperCase().padStart(4, '0')}`);
-        hadEscaped = true;
-        continue;
-      }
-      hadUnmappable = true;
-    }
-    bytes.push(byte);
+    if (unmappable) hadUnmappable = true;
+    bytes[length++] = byte;
   }
-  return { bytes: Uint8Array.from(bytes), hadUnmappable, hadEscaped };
+  return { bytes: bytes.subarray(0, length), hadUnmappable, hadEscaped };
 }

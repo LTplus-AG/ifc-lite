@@ -69,7 +69,7 @@ function abortableDelay(ms: number, signal: AbortSignal): Promise<void> {
  * Wait until the scene draws `globalIds` from exact meshes; false on timeout. A piece still drawn from
  * records holds every product back; one re-meshed now (`remeshed`) also needs its provenance.
  */
-async function sceneHasExactGeometry(globalIds: readonly number[], remeshed: ReadonlySet<number>, signal: AbortSignal): Promise<boolean> {
+async function sceneHasExactGeometry(globalIds: readonly number[], remeshed: ReadonlySet<number>, flat: ReadonlySet<number>, signal: AbortSignal): Promise<boolean> {
   const deadline = Date.now() + SCENE_SWAP_WAIT_MS;
   const stale = (id: number, piece: MeshData) => piece.compact !== undefined || (remeshed.has(id) && lacksCornerProvenance(piece));
   for (;;) {
@@ -78,8 +78,9 @@ async function sceneHasExactGeometry(globalIds: readonly number[], remeshed: Rea
     if (!scene) return true; // no viewport: binding needs one, and says so itself
     const drawn = (id: number) => {
       const pieces = scene.getMeshDataPieces(id) ?? [];
-      // A re-meshed product with no piece yet is mid-swap (an instanced-only product is never re-meshed).
-      return !(remeshed.has(id) && pieces.length === 0) && !pieces.some((piece) => stale(id, piece));
+      // A product the model holds flat meshes for, with no piece in the scene yet, is mid-swap
+      // (an instanced-only product has none, and is not waited for).
+      return !(flat.has(id) && pieces.length === 0) && !pieces.some((piece) => stale(id, piece));
     };
     if (globalIds.every(drawn)) return true;
     if (Date.now() >= deadline) return false;
@@ -100,6 +101,7 @@ export async function ensureExactSourceGeometry(modelId: string, productIds: rea
   if (!meshes?.length || productIds.length === 0) return;
   const byGlobalId = new Map(productIds.map((id) => [state.toGlobalId(modelId, id), id]));
   const missing = missingProducts(meshes, byGlobalId);
+  const flat = new Set(meshes.filter((mesh) => byGlobalId.has(mesh.expressId)).map((mesh) => mesh.expressId));
   if (missing.length > 0) {
     const outcome = await requestRemesh(useViewerStore.getState, modelId, missing, 'shape');
     signal.throwIfAborted();
@@ -112,7 +114,7 @@ export async function ensureExactSourceGeometry(modelId: string, productIds: rea
     }
   }
   const remeshed = new Set(missing.map((id) => state.toGlobalId(modelId, id)));
-  if (!await sceneHasExactGeometry([...byGlobalId.keys()], remeshed, signal)) {
+  if (!await sceneHasExactGeometry([...byGlobalId.keys()], remeshed, flat, signal)) {
     throw new Error('The exact geometry of the chosen objects is not in the 3D view yet. Refresh the preview.');
   }
 }

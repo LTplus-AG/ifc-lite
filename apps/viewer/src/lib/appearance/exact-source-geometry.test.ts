@@ -104,7 +104,7 @@ it('waits until the 3D view draws the re-meshed products before the preview bind
   polls = 0;
   await ensureExactSourceGeometry(MODEL, [10], signal());
   assert.equal(mesher.requests.length, 1, 'not re-meshed again');
-  assert.ok(polls >= 3, 'the second run waited past the compact pieces too');
+  assert.ok(polls > 3, 'the second run waited past the compact pieces and the gap too');
 });
 
 it('refuses at once, instead of re-meshing in a loop, when the re-mesh brings no provenance', async () => {

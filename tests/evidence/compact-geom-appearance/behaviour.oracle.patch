@@ -1,5 +1,5 @@
 diff --git a/apps/viewer/src/lib/appearance/exact-source-geometry.ts b/apps/viewer/src/lib/appearance/exact-source-geometry.ts
-index b3d76dc85a..d8572ba165 100644
+index 03ff18fcf9..ad839af7f2 100644
 --- a/apps/viewer/src/lib/appearance/exact-source-geometry.ts
 +++ b/apps/viewer/src/lib/appearance/exact-source-geometry.ts
 @@ -37,7 +37,8 @@ const SCENE_SWAP_POLL_MS = 50;
@@ -12,9 +12,9 @@ index b3d76dc85a..d8572ba165 100644
  }
  
  function reasonOf(outcome: Exclude<RemeshOutcome, { status: 'applied' }>): string {
-@@ -80,7 +81,7 @@ async function sceneHasExactGeometry(globalIds: readonly number[], remeshed: Rea
-       // A re-meshed product with no piece yet is mid-swap (an instanced-only product is never re-meshed).
-       return !(remeshed.has(id) && pieces.length === 0) && !pieces.some((piece) => stale(id, piece));
+@@ -81,7 +82,7 @@ async function sceneHasExactGeometry(globalIds: readonly number[], remeshed: Rea
+       // (an instanced-only product has none, and is not waited for).
+       return !(flat.has(id) && pieces.length === 0) && !pieces.some((piece) => stale(id, piece));
      };
 -    return true;
 +    if (globalIds.every(drawn)) return true;

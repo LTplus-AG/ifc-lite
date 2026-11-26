@@ -1494,7 +1494,7 @@ ifc-lite mcp model.ifc --viewer          # also start the 3D viewer
 
 !!! note "HTTP transport starts with an empty session"
     In `--transport http` mode every HTTP session gets its own empty model
-    registry, and file arguments are refused (exit code 2). Load a model into
+    registry, and file arguments load nothing (the server warns and starts). Load a model into
     the session with the `model_load` tool, which needs only `read` scope, so
     it works under `--read-only` too. The default `stdio` transport preloads
     the files you pass.
@@ -1505,7 +1505,7 @@ ifc-lite mcp model.ifc --viewer          # also start the 3D viewer
 |------|-------------|
 | `--transport <t>` | `stdio` (default) or `http` |
 | `--port <N>` | HTTP port (default 8765) |
-| `--host <h>` | HTTP host (default 127.0.0.1; non-loopback requires `--token` or `--insecure`) |
+| `--host <h>` | HTTP host (default 127.0.0.1; non-loopback requires `--token`, `--read-only-token` or `--insecure`) |
 | `--token <bearer>` | HTTP bearer token (repeatable). Full scope, or read scope under `--read-only` |
 | `--read-only-token <bearer>` | HTTP bearer token with read scope only (repeatable) |
 | `--insecure` | Allow non-loopback bind without a token (development only) |

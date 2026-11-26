@@ -10,6 +10,7 @@
  * the same code, so the two cannot drift apart again.
  */
 
+import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { bridgeConflict, parseArgs, type CliOptions } from './cli-args.js';
 import { startBridgeServer, type RunningBridge } from './bridge/run.js';
@@ -44,9 +45,9 @@ export function mcpHelpText({ command }: McpCliIdentity, platform: NodeJS.Platfo
                             LABELS as mutating; the tab enforces the rest.
     --transport <stdio|http>  Default: stdio.
     --port <n>              HTTP port (default 8765).
-    --host <h>              HTTP host. Default 127.0.0.1 (loopback). Use
-                            --insecure to allow non-loopback hosts when no
-                            token is configured.
+    --host <h>              HTTP host. Default 127.0.0.1 (loopback). A
+                            non-loopback host needs --token, --read-only-token
+                            or --insecure.
     --token <t>             Bearer token for HTTP auth (repeatable). Each gets
                             full scope, or read scope under --read-only.
     --read-only-token <t>   Bearer token with read scope only (repeatable).
@@ -149,7 +150,12 @@ function baseConfig(opts: CliOptions) {
 }
 
 async function loadFiles(registry: ModelRegistry, opts: CliOptions, log: (line: string) => void): Promise<void> {
-  for (const file of opts.files) {
+  for (const [index, file] of opts.files.entries()) {
+    // A missing file is named by position, not path: a mistyped value flag
+    // (`--tokn secret`) leaves its value here, and stderr reaches client logs.
+    if (!existsSync(resolve(file))) {
+      throw new Error(`file argument ${index + 1} of ${opts.files.length} does not exist. Check the path, and that no flag is misspelled.`);
+    }
     const m = await loadIfcModel(resolve(file), { allowedPaths: opts.allowedPaths });
     registry.add(m);
     log(`loaded ${m.name} (${m.id}) — ${fmtInt(m.store.entityCount)} entities`);
@@ -227,7 +233,7 @@ async function runHttp(opts: CliOptions, tag: string): Promise<RunningHttpCli | 
   const isLoopback = host === '127.0.0.1' || host === 'localhost' || host === '::1';
   const tokens = tokenScopes(opts);
   if (!isLoopback && tokens.size === 0 && !opts.insecure) {
-    process.stderr.write(`${tag} refusing to bind ${host} without --token. Pass --token <bearer> or --insecure to override.\n`);
+    process.stderr.write(`${tag} refusing to bind ${host} without a token. Pass --token <bearer>, --read-only-token <bearer> or --insecure to override.\n`);
     process.exitCode = 1;
     return undefined;
   }

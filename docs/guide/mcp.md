@@ -45,8 +45,8 @@ ifc-lite mcp --transport http --port 8765 --token $API_TOKEN --allow ./models
     registry, so sessions never share edits. The agent loads a model with
     `model_load`, which needs only `read` scope, so it also works under
     `--read-only` and with a read-only token. `--allow` bounds which files it
-    can open. File arguments are refused over HTTP rather than ignored:
-    preloading would cost one parse and one resident copy per session.
+    can open. File arguments load nothing over HTTP (the server warns and
+    starts): preloading would cost one parse and one resident copy per session.
     Without `--allow`, `model_load` reaches the working directory, the system
     temp directory and the directories of loaded models.
 
@@ -58,7 +58,7 @@ By default the server binds `127.0.0.1`. Binding a non-loopback host requires ei
 |------|-------------|
 | `--transport <t>` | `stdio` (default) or `http` |
 | `--port <N>` | HTTP port (default 8765) |
-| `--host <h>` | HTTP host (default 127.0.0.1; non-loopback requires `--token` or `--insecure`) |
+| `--host <h>` | HTTP host (default 127.0.0.1; non-loopback requires `--token`, `--read-only-token` or `--insecure`) |
 | `--token <bearer>` | HTTP bearer token (repeatable). Full scope, or read scope under `--read-only` |
 | `--read-only-token <bearer>` | HTTP bearer token with read scope only (repeatable) |
 | `--insecure` | Allow a non-loopback bind without a token (development only). With `--bridge`: accept a plain-`http` origin on a non-loopback host, with a warning |

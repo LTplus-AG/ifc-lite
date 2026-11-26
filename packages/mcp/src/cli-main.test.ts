@@ -158,6 +158,20 @@ describe('HTTP mode of runMcpCli (#11534)', () => {
   });
 });
 
+describe('stdio file arguments (#11534)', () => {
+  // `--tokn s3cret` warns about --tokn and leaves `s3cret` as a file: the error must not print it.
+  it('names a missing file by position, never by its value', async () => {
+    vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    try {
+      const err = await runMcpCli(['--tokn', 's3cret-value'], { command: 'ifc-lite-mcp' }).catch((e: unknown) => e);
+      expect(String(err)).toMatch(/file argument 1 of 1 does not exist/);
+      expect(String(err)).not.toContain('s3cret');
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+});
+
 describe('tokenScopes (#11534)', () => {
   it('gives --token the server scope and --read-only-token read scope', () => {
     const scopes = tokenScopes(parseArgs(['--token', 'a', '--token', 'b', '--read-only-token', 'r']));

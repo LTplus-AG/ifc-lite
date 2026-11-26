@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/mcp",
-  "version": "0.31.0",
+  "version": "0.32.0",
   "description": "Model Context Protocol server for ifc-lite — agent-native BIM via MCP (stdio + Streamable HTTP)",
   "type": "module",
   "main": "./dist/index.js",
@@ -36,13 +36,14 @@
     }
   },
   "scripts": {
-    "build": "pnpm exec tsc",
+    "build": "pnpm exec tsc && node build-a2ui-app.mjs",
     "typecheck": "node ../../scripts/typecheck-tests.mjs",
     "dev": "pnpm exec tsc --watch",
     "start": "node dist/cli.js",
     "test": "vitest run"
   },
   "dependencies": {
+    "@ifc-lite/a2ui": "workspace:^",
     "@ifc-lite/ai": "workspace:^",
     "@ifc-lite/bcf": "workspace:^",
     "@ifc-lite/cache": "workspace:^",
@@ -73,9 +74,12 @@
     "yjs": "^13.6.33"
   },
   "devDependencies": {
+    "@a2ui/web_core": "0.15.0",
     "@mergifyio/vitest": "^2026.11.8",
     "@types/node": "^26.6.6",
     "@types/ws": "^8.18.2",
+    "esbuild": "catalog:",
+    "happy-dom": "^21.0.4",
     "typescript": "^6.0.3",
     "vitest": "^5.1.0"
   },

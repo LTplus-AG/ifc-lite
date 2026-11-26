@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
-//! IFC **schema conversion** for STEP export (Phase 2 P2). Ports
-//! `packages/export/src/schema-converter.ts`: entity-type renames between
-//! IFC2X3 / IFC4 / IFC4X3 / IFC5 (with multi-step chaining), trimming or padding
-//! the attribute list wherever one schema only appended to the other (attribute
-//! names from core's EXPRESS registry, #7683), and a proxy fallback for types
-//! with no target representation.
+//! IFC schema conversion for STEP export, paired with the TypeScript converter.
+//! Chains entity renames between schema families and uses core's EXPRESS
+//! registry to trim or pad positional attributes (#7683). Types with no target
+//! representation use the schema plan's fallback.
 
 use std::borrow::Cow;
 
@@ -54,7 +52,8 @@ fn map_4_to_2x3(t: &str) -> Option<&'static str> {
         "IFCSTRUCTURALLOADCASE" => "IFCSTRUCTURALLOADGROUP",
         "IFCSTRUCTURALCURVEACTION" => "IFCSTRUCTURALLINEARACTION",
         "IFCSTRUCTURALSURFACEACTION" => "IFCSTRUCTURALPLANARACTION",
-        // #10763: IFC4 deleted this subtype for the now-concrete supertype (`schema_attr_maps`).
+        // #10763: IFC4 deleted these subtypes for the now-concrete supertype (`schema_attr_maps`).
+        "IFCMATERIALPROPERTIES" => "IFCEXTENDEDMATERIALPROPERTIES",
         "IFCPROFILEPROPERTIES" => "IFCGENERALPROFILEPROPERTIES",
         _ => return None,
     })
@@ -153,9 +152,8 @@ pub(crate) fn should_skip_entity(t: &str, to: &str) -> bool {
 
 /// Positional attribute names `entity_type` declares in the canonical schema
 /// `schema`, from core's EXPRESS registry: the one home for them (#7683).
-/// `None` for an undeclared type, and for IFC5, which has no EXPRESS
-/// registry (the TypeScript twin's `attrNameTable` answers `null` there too,
-/// so neither side adjusts an IFC5 record's attribute count).
+/// `None` for an undeclared type or IFC5, which has no EXPRESS registry.
+/// The TypeScript twin also preserves the IFC5 attribute count.
 pub(crate) fn schema_attribute_names(schema: &str, entity_type: &str) -> Option<&'static [&'static str]> {
     match schema {
         "IFC2X3" | "IFC4" | "IFC4X3" => ifc_lite_core::attribute_names_for_schema(schema, entity_type),
@@ -183,8 +181,10 @@ pub(crate) fn rename_type(u: &str, from: &str, to: &str) -> Option<&'static str>
         }
     }
     match (from, to) {
-        // IFC5 has no attribute lists for the property subtype replacements (#10777).
-        ("IFC2X3", "IFC4") | ("IFC2X3", "IFC4X3") => map_2x3_to_4(u).or_else(|| crate::schema_attr_maps::upgrade_type(u)),
+        ("IFC2X3", "IFC4") => map_2x3_to_4(u).or_else(|| crate::schema_attr_maps::upgrade_type(u)),
+        ("IFC2X3", "IFC4X3") => crate::schema_ifc4x3_upgrade::rename(u)
+            .or_else(|| rename_type(u, "IFC2X3", "IFC4")),
+        ("IFC4", "IFC4X3") => crate::schema_ifc4x3_upgrade::rename(u),
         ("IFC2X3", "IFC5") => map_2x3_to_4(u),
         ("IFC4", "IFC2X3") => map_4_to_2x3(u),
         ("IFC4X3", "IFC4") | ("IFC5", "IFC4") => map_4x3_to_4(u),
@@ -192,7 +192,6 @@ pub(crate) fn rename_type(u: &str, from: &str, to: &str) -> Option<&'static str>
             Some(s1) => Some(map_4_to_2x3(s1).unwrap_or(s1)),
             None => map_4_to_2x3(u),
         },
-        // 4 ↔ 4X3 / 5 carry no entity renames in this table.
         _ => None,
     }
 }
@@ -229,9 +228,10 @@ pub fn convert_step_line(
         return Ok(line.to_string());
     }
     let mut checks = checks;
-    let mut converted = convert_record(line, cfrom, cto, express_id, checks.as_deref_mut())?;
+    let Some(line) = (match checks.as_deref_mut() { Some(c) => c.materials.apply(express_id, line, cfrom, &mut c.attribute_values_dropped), None => crate::schema_material_referent::MaterialReferents::for_target(cto).apply(express_id, line, cfrom, &mut 0) }) else { return Ok(String::new()) };
+    let mut converted = convert_record(&line, cfrom, cto, express_id, checks.as_deref_mut())?;
     converted = crate::schema_retyped::apply(converted, cfrom, cto, checks.as_deref_mut().map(|c| &mut c.attribute_values_dropped)); // #10778
-    converted = crate::schema_userdefined_label::carry(line, converted, cfrom, cto, checks.as_deref_mut().map(|c| &mut c.attribute_values_dropped)); // #10824
+    converted = crate::schema_userdefined_label::carry(&line, converted, cfrom, cto, checks.as_deref_mut().map(|c| &mut c.attribute_values_dropped)); // #10824
     if let Some(checks) = checks {
         if let Some(repointed) = checks.structural.values.placement(express_id).and_then(|p| crate::step_log::replace_argument(&converted, 5, &format!("#{p}"))) {
             converted = repointed;
@@ -239,7 +239,8 @@ pub fn convert_step_line(
         converted = checks.enums.apply(checks.forms.apply(converted, cfrom, cto, express_id, &mut checks.attribute_values_dropped)?, cto);
         converted = checks.documents.apply(express_id, converted, &mut checks.attribute_values_dropped);
         if cto == "IFC2X3" { converted = checks.structural.after(express_id, converted); }
-        (cto == "IFC4" && (cfrom != "IFC2X3" || crate::schema_attr_maps::upgrade_counts_ifc4_slots(&converted))).then(|| checks.ifc4_slots.count(&converted));
+        let deferred = checks.typed_properties.capture(line.as_ref(), cfrom, cto, express_id);
+        (!deferred && cto == "IFC4" && (cfrom != "IFC2X3" || crate::schema_attr_maps::upgrade_counts_ifc4_slots(&converted))).then(|| checks.ifc4_slots.count(&converted));
     }
     Ok(if cto == "IFC2X3" { slots.apply(converted) } else { converted })
 }
@@ -301,6 +302,7 @@ fn convert_record(
         }
         return Ok(format!("{prefix}{}({attrs});", rename_type(&entity_type, cfrom, cto).unwrap_or(&entity_type)));
     }
+    let merged = checks.as_ref().is_some_and(|c| c.merged);
     let (plan, dropped) = match checks {
         Some(c) => (c.plans.get(&entity_type, cfrom, cto), Some(&mut c.attribute_values_dropped)),
         None => (plan_for(&entity_type, cfrom, cto), None),
@@ -308,23 +310,21 @@ fn convert_record(
     let mut lost = 0usize;
     let out = match plan {
         Plan::ProductProxy => {
-            // The proxy carries a MINTED GlobalId, not the source entity's, and the
-            // authored identity is therefore lost on a downgrade. That is
-            // deliberate on the TypeScript twin (`convertStepLine` in
-            // `packages/export/src/schema-converter.ts`), which documents the
-            // counter-example and pins it in `merged-exporter.test.ts`: two
-            // federated models can legitimately carry the SAME alignment GlobalId,
-            // and copying the source id would unify two distinct alignments into
-            // one. The two implementations do not agree on WHAT to mint — this one
-            // derives from the express id, the TypeScript one from the whole source
-            // line — so the same model downgraded by each yields different proxy
-            // ids. Left as found; changing either is a decision for the maintainer,
-            // not a side effect of a round-trip test.
+            // Alignment proxies need a fresh ID. Merged export uses the same
+            // remapped-record seed in both writers. Single-model Rust exports
+            // retain their existing express-ID-based placeholder.
             lost = args.get(7..).unwrap_or_default().iter().filter(|v| holds_value(v)).count();
-            product_proxy(prefix, &placeholder_guid(express_id), &entity_type, &args)
+            let guid = if merged {
+                ifc_lite_core::guid::deterministic(&format!("ifcproxy:#{express_id}={entity_type}({attrs})"))
+            } else { placeholder_guid(express_id) };
+            product_proxy(prefix, &guid, &entity_type, &args)
         }
         // #5116, see `resolve_unrepresented_entity`'s doc.
-        Plan::Unrepresented => return resolve_unrepresented_entity(prefix, &entity_type, cto, express_id),
+        Plan::Unrepresented => {
+            let proxy = resolve_unrepresented_entity(prefix, &entity_type, &args, cto, express_id)?;
+            lost = crate::schema_unrepresented::proxy_values_dropped(&args);
+            proxy
+        }
         // The attribute list against the target schema (#7683): see
         // `schema_plan::plan_for` for which way it moves and why.
         Plan::Write { renamed, adjust, replaced } => {
@@ -347,8 +347,6 @@ fn convert_record(
                     lost += args.iter().enumerate().skip(keep).filter(|(i, v)| Some(*i) != carried_slot && holds_value(v)).count();
                     Cow::Owned(args[..keep].join(","))
                 }
-                // An attribute-less record is left alone rather than fabricated
-                // from nothing, matching the TypeScript twin's `currentCount > 0`.
                 Adjust::Pad(n) if !args.is_empty() && n > args.len() => {
                     Cow::Owned(format!("{attrs}{}", ",$".repeat(n - args.len())))
                 }
@@ -358,6 +356,7 @@ fn convert_record(
                     lost += values_without_a_name(&args, src, tgt, cause_carried);
                     Cow::Owned(remap_attrs_by_name(&args, src, tgt))
                 }
+                Adjust::UpgradeIfc4x3(src, tgt) => Cow::Owned(crate::schema_ifc4x3_upgrade::remap(&entity_type, src, tgt, &args, &mut lost)),
                 Adjust::Mapped(map, up, src, tgt) if !args.is_empty() => Cow::Owned(crate::schema_attr_maps::remap(map, up, &args, src, tgt, &mut lost)),
                 Adjust::Trim(_) | Adjust::Pad(_) | Adjust::Mapped(..) | Adjust::Keep => Cow::Borrowed(attrs),
             };

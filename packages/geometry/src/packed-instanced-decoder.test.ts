@@ -8,6 +8,7 @@ import {
   isInstancedShard,
   INSTANCED_SHARD_MAGIC,
   INSTANCED_SHARD_VERSION,
+  INSTANCED_KEY_TRAILER_MAGIC,
 } from './packed-instanced-decoder.js';
 
 // Cross-language conformance fixtures: bytes produced by the Rust encoder via
@@ -522,5 +523,46 @@ describe('decodeInstancedShard (synthetic edge cases)', () => {
     );
 
     expect(Array.from(shard.instances[0].transform)).toEqual(m);
+  });
+});
+
+// A global instance plan appends an `IFNL` key trailer after the pools: magic,
+// template count, then (hi, lo) u32 words per template.
+function withKeyTrailer(bytes: Uint8Array, keys: Array<[number, number]>): Uint8Array {
+  const out = new Uint8Array(bytes.length + 8 + keys.length * 8);
+  out.set(bytes);
+  const view = new DataView(out.buffer);
+  view.setUint32(bytes.length, INSTANCED_KEY_TRAILER_MAGIC, true);
+  view.setUint32(bytes.length + 4, keys.length, true);
+  keys.forEach(([hi, lo], i) => {
+    view.setUint32(bytes.length + 8 + i * 8, hi, true);
+    view.setUint32(bytes.length + 12 + i * 8, lo, true);
+  });
+  return out;
+}
+
+describe('decodeInstancedShard key trailer (global instance plan)', () => {
+  const bytes = hexToBytes(FIXTURE_V2_HEX);
+
+  it('reads one key per template and changes nothing else', () => {
+    const plain = decodeInstancedShard(bytes);
+    const keyed = decodeInstancedShard(withKeyTrailer(bytes, [[21, 7], [0x80000003, 0]]));
+    expect(keyed.templateKeys).toEqual([`21:7`, `${0x80000003}:0`]);
+    expect(keyed.instances).toEqual(plain.instances);
+    expect(keyed.templates.map((t) => Array.from(t.positions))).toEqual(plain.templates.map((t) => Array.from(t.positions)));
+  });
+
+  it('reads an all-zero key as unkeyed and a plain shard as having no keys', () => {
+    expect(decodeInstancedShard(withKeyTrailer(bytes, [[0, 0], [5, 1]])).templateKeys).toEqual(['', '5:1']);
+    expect(decodeInstancedShard(bytes).templateKeys).toBeUndefined();
+  });
+
+  it('ignores trailing bytes that are not a matching trailer', () => {
+    const wrongCount = withKeyTrailer(bytes, [[1, 1]]);
+    expect(decodeInstancedShard(wrongCount).templateKeys).toBeUndefined();
+    const junk = new Uint8Array(bytes.length + 24);
+    junk.set(bytes);
+    expect(decodeInstancedShard(junk).templateKeys).toBeUndefined();
+    expect(decodeInstancedShard(junk).instances).toHaveLength(3);
   });
 });

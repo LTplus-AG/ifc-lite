@@ -84,7 +84,9 @@ export function loadSavedFlows(): SavedFlow[] {
 }
 
 /**
- * False only when the stored library was read in full and does not hold `id`.
+ * False when the stored library was read in full and does not hold `id`, or
+ * when the host has no `localStorage` at all, so nothing was ever persisted.
+ * Storage that exists but is blocked (access throws) may still hold it.
  * A damaged library that was quarantined reads as empty on reload too; one that
  * could not be preserved (not `writable`) may still hold entries dropped here.
  * Like every read here, it quarantines a damaged library as a side effect.
@@ -92,10 +94,15 @@ export function loadSavedFlows(): SavedFlow[] {
 export function storageMayHoldFlow(id: string): boolean {
   try {
     const storage = optionalLocalStorage();
-    if (!storage) return true;
+    if (!storage) return localStorageBlocked();
     const { flows, writable } = readFlows(storage);
     return !writable || flows.some((f) => f.doc.id === id);
   } catch (error) { console.warn('[Flow] Failed to read saved workflows', error); return true; }
+}
+
+/** True when `localStorage` exists but reading it throws, as under a cookie policy. */
+function localStorageBlocked(): boolean {
+  try { void globalThis.localStorage; return false; } catch { return true; }
 }
 
 /** The caller retains its in-memory library when browser storage refuses a write. */
@@ -149,7 +156,7 @@ export class BrowserTrackingStore implements TrackingStore {
 
   static read(graphId: string): TrackingSidecar | undefined {
     try {
-      const raw = localStorage.getItem(TRACKING_PREFIX + graphId);
+      const raw = optionalLocalStorage()?.getItem(TRACKING_PREFIX + graphId);
       if (!raw) return undefined;
       const parsed = JSON.parse(raw) as Partial<TrackingSidecar>;
       if (parsed.version !== TRACKING_SIDECAR_VERSION || typeof parsed.pinnedTo !== 'string') return undefined;
@@ -163,18 +170,21 @@ export class BrowserTrackingStore implements TrackingStore {
     }
   }
 
+  /** A no-op without browser storage: no sidecar can exist to clear. */
   static clear(graphId: string): void {
-    localStorage.removeItem(TRACKING_PREFIX + graphId);
+    optionalLocalStorage()?.removeItem(TRACKING_PREFIX + graphId);
   }
 
   /** Clear every graph's sidecar whose id starts with `idPrefix`. */
   static clearByIdPrefix(idPrefix: string): void {
+    const storage = optionalLocalStorage();
+    if (!storage) return;
     const keys: string[] = [];
-    for (let i = 0; i < localStorage.length; i += 1) {
-      const key = localStorage.key(i);
+    for (let i = 0; i < (storage.length ?? 0); i += 1) {
+      const key = storage.key?.(i);
       if (key?.startsWith(TRACKING_PREFIX + idPrefix)) keys.push(key);
     }
-    for (const key of keys) localStorage.removeItem(key);
+    for (const key of keys) storage.removeItem(key);
   }
 
   load(trackingKey: string): TrackedSet | undefined {
@@ -198,8 +208,10 @@ export class BrowserTrackingStore implements TrackingStore {
 
   private write(): void {
     const sidecar: TrackingSidecar = { version: TRACKING_SIDECAR_VERSION, pinnedTo: this.pinnedTo, sets: this.sets };
+    const storage = optionalLocalStorage();
+    if (!storage) { this.persistError = 'Browser storage is unavailable'; return; }
     try {
-      localStorage.setItem(TRACKING_PREFIX + this.graphId, JSON.stringify(sidecar));
+      storage.setItem(TRACKING_PREFIX + this.graphId, JSON.stringify(sidecar));
       this.persistError = undefined;
     } catch (err) {
       this.persistError = err instanceof Error ? err.message : String(err);

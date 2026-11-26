@@ -1,5 +1,11 @@
 # @ifc-lite/bcf
 
+## 5.2.3
+
+### Patch Changes
+
+- [#11487](https://github.com/LTplus-AG/ifc-lite/pull/11487) [`f048b75`](https://github.com/LTplus-AG/ifc-lite/commit/f048b753065778f6f6e304d0efcb945005e1bd57) Thanks [@petruconduraru](https://github.com/petruconduraru)! - The BCF reader no longer drops topics from archives whose XML is not UTF-8. It decodes every entry by byte-order mark and first-byte shape (UTF-16 with or without a BOM), so a UTF-16 `markup.bcf` keeps its topic and a UTF-16 `bcf.version` no longer rejects the archive, and it reads an ISO-8859-1 or windows-1252 entry that declares that encoding instead of replacing accented characters with U+FFFD. A `utf-16` declaration over UTF-8 bytes is still read as UTF-8.
+
 ## 5.2.2
 
 ### Patch Changes

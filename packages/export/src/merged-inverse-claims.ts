@@ -361,15 +361,16 @@ export function applyInverseFolds(lines: string[], claims: InverseClaims): strin
     `A later model's relationship (merged id #${rel}) was not written: an earlier model already wrote one for the same merged entity, and it could not take the ${count} other object(s) the later one named, so those objects lost that relationship.`);
   if (claims.folds.size === 0) return lost;
   const pending = new Map(claims.folds);
+  const maxReferenceId = Number.MAX_SAFE_INTEGER;
   for (let i = 0; i < lines.length && pending.size > 0; i++) {
     const rel = Number(/^#(\d+)=/.exec(lines[i])?.[1]);
     const fold = pending.get(rel);
     if (fold === undefined) continue;
-    const list = readStepSlots(lines[i])?.slots[fold.partnerIndex]?.trim();
+    const list = readStepSlots(lines[i], maxReferenceId)?.slots[fold.partnerIndex]?.trim();
     if (list === undefined || !list.startsWith('(') || !list.endsWith(')')) continue;
     const inner = list.slice(1, -1).trim();
     const added = fold.ids.map(ref => `#${ref}`).join(',');
-    const next = replaceStepArgument(lines[i], fold.partnerIndex, `(${inner === '' ? added : `${inner},${added}`})`);
+    const next = replaceStepArgument(lines[i], fold.partnerIndex, `(${inner === '' ? added : `${inner},${added}`})`, maxReferenceId);
     if (next === null) continue;
     lines[i] = next;
     pending.delete(rel);

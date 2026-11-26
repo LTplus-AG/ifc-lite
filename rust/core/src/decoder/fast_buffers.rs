@@ -62,6 +62,7 @@ impl EntityDecoder<'_> {
         coords.reserve(8);
         let point_cache = &mut self.point_cache;
         let (hits, misses) = (&mut self.point_cache_hits, &mut self.point_cache_misses);
+        let sparse_misses = self.sparse_misses.as_deref();
         let read = StepRecord::parse(bytes)?.try_each_ref_at(0, |point_id| {
             if let Some(&coord) = point_cache.get(&point_id) {
                 *hits += 1;
@@ -75,6 +76,10 @@ impl EntityDecoder<'_> {
                 .and_then(|(start, end)| bytes_full.get(start..end))
                 .and_then(parse_cartesian_point_inline)
             else {
+                // Off the hit path: an out-of-core decoder reports a point its arena lacks.
+                if let Some(sink) = sparse_misses.filter(|_| index.lookup(point_id).is_none()) {
+                    sink.record_miss(point_id);
+                }
                 return false;
             };
             *misses += 1;

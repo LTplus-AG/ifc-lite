@@ -17,6 +17,19 @@ impl IfcAPI {
         wire: &super::batch_wire::BatchWire<'_>,
         arm_instancing: bool,
     ) -> super::batch_output::BatchOutput {
+        let plan = self.governing_global_plan(arm_instancing, wire.needs_shift);
+        self.produce_batch_planned(content, wire, arm_instancing, plan.as_ref())
+    }
+
+    /// [`Self::produce_batch`] under the global instance plan `plan` governs it
+    /// with, read once by the caller so the partition keys what the setup armed.
+    pub(super) fn produce_batch_planned(
+        &self,
+        content: &[u8],
+        wire: &super::batch_wire::BatchWire<'_>,
+        arm_instancing: bool,
+        plan: Option<&super::global_plan::SharedGlobalPlan>,
+    ) -> super::batch_output::BatchOutput {
         let super::batch_wire::BatchWire {
             jobs_flat,
             style_ids,
@@ -31,7 +44,7 @@ impl IfcAPI {
         // reads per batch — negligible, always on); see `batch_host`.
         let batch_clock = super::batch_host::BatchClock::start();
 
-        let mut setup = self.prepare_batch(content, wire, arm_instancing);
+        let mut setup = self.prepare_batch(content, wire, arm_instancing, plan);
         // Keep owners outside the mutable setup borrow used by the element loop.
         let style_maps = std::sync::Arc::clone(&setup.style_maps);
         let installed_finishes = self.style_finishes_for(style_ids);

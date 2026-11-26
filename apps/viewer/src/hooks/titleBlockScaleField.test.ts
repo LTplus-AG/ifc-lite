@@ -44,6 +44,14 @@ describe('titleBlockWithEffectiveScale (#11458)', () => {
     assert.equal(titleBlockWithEffectiveScale(clampedAlready, 100, 1000 / 126.58), clampedAlready);
   });
 
+  it('leaves the title block alone when there is no usable placed scale (#11581)', () => {
+    const tb = blockSaying('1:100');
+    for (const effective of [0, -0, Number.NaN, Number.POSITIVE_INFINITY, -5]) {
+      assert.equal(titleBlockWithEffectiveScale(tb, 50, effective), tb, `effective ${effective}`);
+    }
+    assert.equal(titleBlockWithEffectiveScale(tb, 0), tb, 'a zero sheet scale');
+  });
+
   it('leaves an unclamped scale field alone when auto-populate is off', () => {
     const tb = blockWith({ autoPopulate: false, autoPopulateSource: 'drawing.scale', value: 'As indicated' });
     assert.equal(scaleValue(titleBlockWithEffectiveScale(tb, 100, 10)), 'As indicated');

@@ -28,8 +28,9 @@ import { formatScaleFactorLabel, type TitleBlockConfig } from '@ifc-lite/drawing
  * scale; a field merely named 'scale' (auto-populate off, user text) is only
  * corrected when the fit clamped the drawing. Returns `titleBlock` itself when
  * no field needs a new value, and a shallow copy with only those fields'
- * `value` replaced otherwise. The export, the sheet preview and the title
- * block editor all read the Scale through this, so they cannot disagree (#11581).
+ * `value` replaced otherwise. The export and the sheet preview pass the placed
+ * scale; the title block editor, which has no viewport fit, shows a read-only
+ * Scale at the sheet's own scale (#11581).
  */
 export function titleBlockWithEffectiveScale(
   titleBlock: TitleBlockConfig,
@@ -37,6 +38,8 @@ export function titleBlockWithEffectiveScale(
   /** mm per metre the drawing is placed at; defaults to the requested scale (no viewport fit known). */
   effectiveScaleFactor = 1000 / requestedScaleFactor
 ): TitleBlockConfig {
+  // Degenerate drawing bounds or an invalid sheet scale give no placed scale to state.
+  if (!Number.isFinite(effectiveScaleFactor) || effectiveScaleFactor <= 0) return titleBlock;
   const nominalScaleFactor = 1000 / requestedScaleFactor;
   const clamped = Math.abs(effectiveScaleFactor - nominalScaleFactor) > 1e-9;
   const label = `1:${formatScaleFactorLabel(1000 / effectiveScaleFactor)}`;

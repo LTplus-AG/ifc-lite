@@ -33,3 +33,12 @@ it('shows an auto-populated Scale at the sheet scale, not a stale stored copy (#
   const scale = document.body.querySelector<HTMLInputElement>('input[aria-label="Scale"]');
   assert.equal(scale?.value, '1:50');
 });
+
+it('leaves an editable Scale field showing what the user typed', () => {
+  const sheet = restoreSheet({ ...createDefaultSheet(), scale: { name: '1:50', factor: 50, useCase: 'x' } });
+  assert.ok(sheet);
+  sheet.titleBlock.fields = sheet.titleBlock.fields.map((f) => (f.id === 'scale' ? { ...f, editable: true, value: 'As indicated' } : f));
+  useViewerStore.setState({ activeSheet: sheet, sheetEnabled: true });
+  render(<TitleBlockEditor open onOpenChange={() => {}} />);
+  assert.equal(document.body.querySelector<HTMLInputElement>('input[aria-label="Scale"]')?.value, 'As indicated');
+});

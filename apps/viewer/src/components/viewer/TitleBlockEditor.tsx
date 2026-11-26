@@ -89,15 +89,15 @@ export function TitleBlockEditor({ open, onOpenChange }: TitleBlockEditorProps):
     if (!activeSheet) return { standard: [], custom: [] };
     const standard: TitleBlockField[] = [];
     const custom: TitleBlockField[] = [];
-
-    for (const field of titleBlockWithEffectiveScale(activeSheet.titleBlock, activeSheet.scale.factor).fields) {
+    const placed = titleBlockWithEffectiveScale(activeSheet.titleBlock, activeSheet.scale.factor).fields;
+    for (const [i, stored] of activeSheet.titleBlock.fields.entries()) {
+      const field = stored.editable ? stored : placed[i]; // a read-only Scale shows the sheet's own scale (#11581)
       if (STANDARD_FIELD_IDS.includes(field.id)) {
         standard.push(field);
       } else {
         custom.push(field);
       }
     }
-
     return { standard, custom };
   }, [activeSheet]);
 

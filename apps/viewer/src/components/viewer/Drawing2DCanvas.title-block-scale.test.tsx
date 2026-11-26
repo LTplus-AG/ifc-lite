@@ -17,8 +17,9 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import {
   GraphicOverrideEngine, PAPER_SIZE_REGISTRY, FRAME_PRESETS, TITLE_BLOCK_PRESETS,
-  DEFAULT_TITLE_BLOCK_FIELDS, DEFAULT_SCALE_BAR, DEFAULT_NORTH_ARROW, calculateViewportBounds,
+  DEFAULT_TITLE_BLOCK_FIELDS, DEFAULT_SCALE_BAR, DEFAULT_NORTH_ARROW, calculateViewportBounds, formatScaleFactorLabel,
 } from '@ifc-lite/drawing-2d';
+import { resolveSheetTransform } from '@/lib/drawing/sheet-transform';
 import type { Drawing2D, DrawingSheet } from '@ifc-lite/drawing-2d';
 import { Drawing2DCanvas } from './Drawing2DCanvas.js';
 import type { CachedSheetTransform } from '@/lib/drawing/sheet-geometry-key.js';
@@ -98,8 +99,15 @@ describe('Drawing2DCanvas title block Scale (#11581)', () => {
 
   it('previews the clamped ratio when the viewport fit shrinks the drawing', () => {
     // A 1000 m drawing cannot fit A3 at 1:100, so the fit clamps it far below that.
-    const texts = previewTexts(sheetAt(100), drawingSpanning(1000));
-    assert.ok(!texts.includes('1:100'), `the requested 1:100 is not drawn for a clamped sheet; drew ${JSON.stringify(texts)}`);
-    assert.ok(texts.some((t) => /^1:\d/.test(t)), 'a scale ratio is still drawn');
+    const sheet = sheetAt(100);
+    const drawing = drawingSpanning(1000);
+    // The label the export prints: the same resolver and helper (useDrawingExport.ts).
+    const { transform } = resolveSheetTransform({ sheet, axis: 'down', isPinned: false, cached: null,
+      drawingBounds: { minX: 0, minY: 0, maxX: 1000, maxY: 4 } });
+    const expected = `1:${formatScaleFactorLabel(1000 / transform.scaleFactor)}`;
+    assert.notEqual(expected, '1:100', 'fixture exercises the fit clamp');
+    const texts = previewTexts(sheet, drawing);
+    assert.ok(texts.includes(expected), `the preview draws the export's ${expected}; drew ${JSON.stringify(texts)}`);
+    assert.ok(!texts.includes('1:100'), 'the requested 1:100 is not drawn for a clamped sheet');
   });
 });

@@ -430,8 +430,16 @@ describe('viewer server — loopback only', () => {
     });
   }
 
+  // A foreign page could otherwise open /events and count as a connected viewer.
+  it('refuses GETs from another site too', TEST_TIMEOUT, async () => {
+    for (const path of ['/events', '/model.ifc', '/api/status']) {
+      const res = await req(port, path, { headers: { origin: 'http://evil.com' } });
+      assert.equal(res.status, 403, path);
+    }
+  });
+
   it('accepts a command from a local page and from a client that sends no Origin', TEST_TIMEOUT, async () => {
-    for (const headers of [{ origin: `http://localhost:${port}` }, {}]) {
+    for (const headers of [{ origin: `http://localhost:${port}` }, { origin: `http://LocalHost:${port}` }, {}]) {
       const res = await req(port, '/api/command', { method: 'POST', headers, body: command });
       assert.equal(res.status, 200, JSON.stringify(headers));
     }

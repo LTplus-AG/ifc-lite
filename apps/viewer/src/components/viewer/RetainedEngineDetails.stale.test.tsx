@@ -17,14 +17,19 @@ async function flush(): Promise<void> {
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
 }
 
+/** Each fetch waits until the test resolves it, in whatever order the test picks. */
+function mountWithControlledFetches() {
+  const pending: Array<(response: Response) => void> = [];
+  const fetcher = (() => new Promise<Response>((resolve) => { pending.push(resolve); })) as unknown as typeof fetch;
+  const ui = render(<RetainedEngineDetails fetcher={fetcher} />);
+  return { pending, ui, button: ui.querySelector('button')! };
+}
+
 describe('RetainedEngineDetails stale manifest answer (#11447)', () => {
   afterEach(cleanup);
 
   it('a manifest answer that arrives after the disclosure was closed does not reopen it', async () => {
-    const pending: Array<(response: Response) => void> = [];
-    const fetcher = (() => new Promise<Response>((resolve) => { pending.push(resolve); })) as unknown as typeof fetch;
-    const ui = render(<RetainedEngineDetails fetcher={fetcher} />);
-    const button = ui.querySelector('button')!;
+    const { pending, button } = mountWithControlledFetches();
     click(button); // open: request 1 in flight
     assert.equal(button.getAttribute('aria-expanded'), 'true');
     click(button); // close before it answers
@@ -35,10 +40,7 @@ describe('RetainedEngineDetails stale manifest answer (#11447)', () => {
   });
 
   it('an older request that fails last does not replace the newer answer', async () => {
-    const pending: Array<(response: Response) => void> = [];
-    const fetcher = (() => new Promise<Response>((resolve) => { pending.push(resolve); })) as unknown as typeof fetch;
-    const ui = render(<RetainedEngineDetails fetcher={fetcher} />);
-    const button = ui.querySelector('button')!;
+    const { pending, ui, button } = mountWithControlledFetches();
     click(button); click(button); click(button); // open, close, open again: two requests
     pending[1](manifestResponse('rev-new'));
     await flush();

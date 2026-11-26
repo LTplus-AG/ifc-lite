@@ -551,7 +551,7 @@ export class MergedExporter {
     setup.minted.appendTo(allEntityLines);
     enums.typedProperties.finish(allEntityLines, ifc4Slots, setup.nextAvailableId, enums.structural, Number.MAX_SAFE_INTEGER);
     for (const warning of finishMergedConversion(allEntityLines, slotFill, ifc4Slots, enums, setup.parentClaims)) normalizeWarnings.add(warning);
-    for (const warning of pruneUpgrade(allEntityLines, upgradeSeeds, schema)) normalizeWarnings.add(warning);
+    for (const warning of pruneUpgrade(allEntityLines, new Set([...upgradeSeeds, ...enums.boundaries.ids()]), schema)) normalizeWarnings.add(warning); // a left-out boundary is scrubbed from its referrers (#11457)
 
     if (onProgress) onProgress({ phase: 'assembling', percent: 0.9, entitiesProcessed: allEntityLines.length, entitiesTotal: allEntityLines.length });
     const content = assembleStepBytes(header, placeObjectsForSchema(schema, allEntityLines)); // #9209
@@ -717,7 +717,7 @@ export class MergedExporter {
     setup.minted.appendTo(allEntityLines);
     enums.typedProperties.finish(allEntityLines, ifc4Slots, setup.nextAvailableId, enums.structural, Number.MAX_SAFE_INTEGER);
     for (const warning of finishMergedConversion(allEntityLines, slotFill, ifc4Slots, enums, setup.parentClaims)) normalizeWarnings.add(warning);
-    for (const warning of pruneUpgrade(allEntityLines, upgradeSeeds, schema)) normalizeWarnings.add(warning);
+    for (const warning of pruneUpgrade(allEntityLines, new Set([...upgradeSeeds, ...enums.boundaries.ids()]), schema)) normalizeWarnings.add(warning); // a left-out boundary is scrubbed from its referrers (#11457)
 
     if (onProgress) {
       onProgress({ phase: 'assembling', percent: 0.9, entitiesProcessed: totalEntities, entitiesTotal: totalEntities });

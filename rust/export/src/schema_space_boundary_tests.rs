@@ -69,3 +69,20 @@ fn the_log_writer_scrubs_the_same_way() {
     assert_eq!(kept, ["#32=IFCRELASSOCIATESCLASSIFICATION('4XigBlHYfFnxzvgV9_gBmP',$,$,$,(#11),#31);"], "{out}");
     assert!(!out.contains("#20"), "{out}");
 }
+
+/// #11457: the merged writer scrubs a left-out boundary from its referrers in the merge id space, and omits a
+/// relationship left with no member. Twin of the TypeScript merged test.
+#[test]
+fn the_merged_writer_scrubs_a_left_out_boundary() {
+    let rels = "#31=IFCCLASSIFICATION('S','E',$,'N');\n#32=IFCRELASSOCIATESCLASSIFICATION('4XigBlHYfFnxzvgV9_gBmP',$,$,$,(#20,#11),#31);\n#33=IFCRELASSOCIATESCLASSIFICATION('5XigBlHYfFnxzvgV9_gBmP',$,$,$,(#20),#31);";
+    let source = model("IFC2X3", &format!("{}\n{rels}", data()));
+    let options = crate::merged::MergedOptions { schema: Some("IFC4".into()), ..Default::default() };
+    let (out, stats) = crate::merged::export_merged_with_stats(&[source.as_bytes(), source.as_bytes()], &options);
+    let body = &out[out.find("DATA;").unwrap()..];
+    let defined: std::collections::HashSet<&str> = body.lines().filter_map(|l| l.strip_prefix('#')?.split_once('=').map(|(id, _)| id)).collect();
+    let dangling: Vec<&str> = body.lines().flat_map(|l| l.split('#').skip(1).map(|s| s.split(|c: char| !c.is_ascii_digit()).next().unwrap()))
+        .filter(|id| !id.is_empty() && !defined.contains(id)).collect();
+    assert!(dangling.is_empty(), "{dangling:?}\n{out}");
+    assert_eq!(out.lines().filter(|l| l.contains("=IFCRELSPACEBOUNDARY(")).count(), 2, "{out}");
+    assert!(stats.warnings.iter().any(|w| w.contains("#33 (IFCRELASSOCIATESCLASSIFICATION) was omitted because a required IFC4 attribute lost a reference")), "{:?}", stats.warnings);
+}

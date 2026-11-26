@@ -51,6 +51,9 @@ export class SpaceBoundaryElements {
   /** Whether `apply` left record `id` out. */
   leftOut(id: number): boolean { return this.dropped.has(id); }
 
+  /** The ids `apply` and `note` left out. */
+  ids(): ReadonlySet<number> { return this.dropped; }
+
   /** Whether any record is left out: the gate the omitted-reference filter runs behind. */
   get any(): boolean { return this.dropped.size > 0; }
 

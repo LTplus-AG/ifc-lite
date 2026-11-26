@@ -59,6 +59,8 @@ impl SpaceBoundaryElements {
             None => true,
         }
     }
+    /// The ids `apply` left out, in the id space the writer passed.
+    pub(crate) fn ids(&self) -> impl Iterator<Item = u32> + '_ { self.dropped.iter().copied() }
     pub(crate) fn warnings(&self) -> Vec<String> {
         if self.dropped.is_empty() { return Vec::new(); }
         let sites: Vec<String> = self.dropped.iter().map(|id| format!("#{id}")).collect();

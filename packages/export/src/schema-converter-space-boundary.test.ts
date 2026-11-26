@@ -86,3 +86,19 @@ describe('a relationship naming a left-out IfcRelSpaceBoundary (#11457)', () => 
     expect(result.stats.warnings.join('\n')).toContain('#20, #22');
   });
 });
+
+describe('a merged upgrade naming a left-out IfcRelSpaceBoundary (#11457)', () => {
+  it('scrubs the boundary from every referrer, in the merge id space, and omits a relationship left empty', async () => {
+    const one = await parse(model('IFC2X3', REFS));
+    const two = await parse(model('IFC2X3', REFS));
+    const result = new MergedExporter([{ id: 'one', name: 'one', dataStore: one }, { id: 'two', name: 'two', dataStore: two }]).export({ schema: 'IFC4' });
+    const text = out(result.content);
+    const data = text.slice(text.indexOf('DATA;'));
+    const defined = new Set([...data.matchAll(/^#(\d+)=/gm)].map((m) => m[1]));
+    const named = [...data.matchAll(/#(\d+)(?!\d|=)/g)].map((m) => m[1]);
+    expect(named.filter((id) => !defined.has(id))).toEqual([]);
+    expect(ids(text)).toHaveLength(2);
+    expect(relLines(text).every((line) => line.includes('(#'))).toBe(true);
+    expect(result.stats.warnings.join('\n')).toMatch(/#33 \(IFCRELASSOCIATESCLASSIFICATION\) was omitted because a required IFC4 attribute lost a reference/);
+  });
+});

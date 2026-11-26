@@ -34,6 +34,8 @@ export interface ReqOptions {
   method?: string;
   headers?: Record<string, string>;
   body?: string;
+  /** Address to connect to. Default 127.0.0.1. */
+  address?: string;
 }
 
 /**
@@ -45,7 +47,7 @@ export function req(port: number, path: string, opts: ReqOptions = {}): Promise<
   return new Promise((resolvePromise, reject) => {
     const r = httpRequest(
       {
-        host: '127.0.0.1',
+        host: opts.address ?? '127.0.0.1',
         port,
         path,
         method: opts.method ?? 'GET',

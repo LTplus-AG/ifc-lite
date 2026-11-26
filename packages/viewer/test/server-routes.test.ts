@@ -15,7 +15,7 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 import { access, mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { networkInterfaces, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   resolvePackageDirFromModuleUrl,
@@ -402,6 +402,63 @@ describe('viewer server — /api/command allowlist', () => {
   it('does not treat POST /api/status as a status request', TEST_TIMEOUT, async () => {
     const res = await req(port, '/api/status', { method: 'POST', body: '' });
     assert.equal(res.status, 404);
+  });
+});
+
+describe('viewer server — loopback only', () => {
+  let server: ViewerServer;
+  let port: number;
+
+  before(async () => {
+    ({ server, port } = await boot());
+  }, HOOK_TIMEOUT);
+  after(() => server?.close(), HOOK_TIMEOUT);
+
+  const command = JSON.stringify({ action: 'reset' });
+
+  // A page on another site can send this POST even though CORS hides the reply.
+  for (const origin of ['http://evil.com', 'http://localhost.evil.com', 'null']) {
+    it(`refuses a command sent from ${origin}`, TEST_TIMEOUT, async () => {
+      const res = await req(port, '/api/command', { method: 'POST', headers: { origin }, body: command });
+      assert.equal(res.status, 403);
+    });
+  }
+
+  it('refuses /api/create and /api/clear-created from another site too', TEST_TIMEOUT, async () => {
+    for (const path of ['/api/create', '/api/clear-created']) {
+      const res = await req(port, path, { method: 'POST', headers: { origin: 'http://evil.com' }, body: '{}' });
+      assert.equal(res.status, 403, path);
+    }
+  });
+
+  it('accepts a command from a local page and from a client that sends no Origin', TEST_TIMEOUT, async () => {
+    for (const headers of [{ origin: `http://localhost:${port}` }, {}]) {
+      const res = await req(port, '/api/command', { method: 'POST', headers, body: command });
+      assert.equal(res.status, 200, JSON.stringify(headers));
+    }
+  });
+
+  // A DNS-rebound name reaches 127.0.0.1 but still sends its own name as Host.
+  for (const host of ['evil.com', 'evil.com:PORT', '127.0.0.1:1', 'localhost']) {
+    it(`refuses Host ${host}`, TEST_TIMEOUT, async () => {
+      const res = await req(port, '/model.ifc', { headers: { host: host.replace('PORT', String(port)) } });
+      assert.equal(res.status, 403);
+    });
+  }
+
+  for (const host of ['localhost', '127.0.0.1', 'LOCALHOST']) {
+    it(`serves Host ${host}:<port>`, TEST_TIMEOUT, async () => {
+      const res = await req(port, '/api/status', { headers: { host: `${host}:${port}` } });
+      assert.equal(res.status, 200);
+    });
+  }
+
+  it('is not reachable on a non-loopback interface', TEST_TIMEOUT, async () => {
+    const external = Object.values(networkInterfaces())
+      .flat()
+      .find((i) => i && i.family === 'IPv4' && !i.internal);
+    if (!external) return; // no external interface on this box: nothing to probe
+    await assert.rejects(req(port, '/api/status', { address: external.address }));
   });
 });
 
@@ -813,7 +870,7 @@ describe('viewer server — startup contract', () => {
     await new Promise<void>((resolve, reject) => {
       const probe = net.createServer();
       probe.once('error', reject);
-      probe.listen(seenPort, () => {
+      probe.listen(seenPort, '127.0.0.1', () => {
         probe.close(() => resolve());
       });
     });
@@ -830,7 +887,7 @@ describe('viewer server — startup contract', () => {
     const blocker = net.createServer();
     await new Promise<void>((resolve, reject) => {
       blocker.once('error', reject);
-      blocker.listen(0, () => resolve());
+      blocker.listen(0, '127.0.0.1', () => resolve());
     });
     const addr = blocker.address();
     const occupiedPort = typeof addr === 'object' && addr ? addr.port : -1;

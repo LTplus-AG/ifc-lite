@@ -10,12 +10,14 @@
 
 use ifc_lite_export::{export_step_with_log, MutationLog, StepOptions};
 
-const NAMES: [(&str, &str, &str); 4] = [
+const NAMES: [(&str, &str, &str); 5] = [
     ("non-ASCII letter", r"Pset_\X2\0103\X0\", "Pset_ă"),
     ("apostrophe", "Pset_O''Brien", "Pset_O'Brien"),
     ("backslash", r"Pset_C:\\x", r"Pset_C:\x"),
     ("beyond the BMP", r"Pset_\X4\0001F3E0\X0\", "Pset_\u{1F3E0}"),
+    ("code page in force past a backslash", CODE_PAGE, "Pset_A\\\u{104}"),
 ];
+const CODE_PAGE: &str = r"Pset_\PB\A\\\S\!";
 
 fn export(raw: &str, decoded: &str) -> String {
     let src = format!(
@@ -44,4 +46,12 @@ fn editing_a_set_with_an_escaped_name_replaces_it() {
         assert!(out.contains("IFCLABEL('new')"), "{label}: edited value written");
         assert!(!out.contains("IFCLABEL('old')"), "{label}: old value gone");
     }
+}
+
+/// Pset_A\¡ is what the name reads as if the \PB\ page is dropped at the escaped backslash: a distinct set.
+#[test]
+fn a_set_that_only_decodes_alike_under_the_wrong_code_page_is_kept() {
+    let out = export(CODE_PAGE, "Pset_A\\\u{A1}");
+    assert_eq!(out.lines().filter(|l| l.contains("=IFCPROPERTYSET(")).count(), 2, "{out}");
+    assert!(out.contains("IFCLABEL('old')"), "{out}");
 }

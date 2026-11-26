@@ -30,7 +30,9 @@ const NAMES: Array<[string, string, string]> = [
   ['an apostrophe', "Pset_O''Brien", "Pset_O'Brien"],
   ['a backslash', 'Pset_C:\\\\x', 'Pset_C:\\x'],
   ['a code point beyond the BMP', 'Pset_\\X4\\0001F3E0\\X0\\', 'Pset_🏠'],
+  ['a code page in force past a backslash', 'Pset_\\PB\\A\\\\\\S\\!', 'Pset_A\\Ą'],
 ];
+const CODE_PAGE = NAMES[NAMES.length - 1][1];
 
 async function exportEdited(rawSetName: string, decoded: string): Promise<string> {
   const src = wrap([
@@ -62,4 +64,11 @@ describe('editing a property of a source set whose name needs STEP escapes', () 
       expect(out.split('\n').filter((l) => /^#\d+=IFCELEMENTQUANTITY\(/.test(l))).toHaveLength(1);
     });
   }
+});
+
+it('keeps a source set whose name only decodes alike under the wrong code page (#11462)', async () => {
+  // Pset_A\¡ is what the name reads as if the \PB\ page is dropped at the escaped backslash.
+  const out = await exportEdited(CODE_PAGE, 'Pset_A\\¡');
+  expect(out.split('\n').filter((l) => /^#\d+=IFCPROPERTYSET\(/.test(l))).toHaveLength(2);
+  expect(out).toContain("IFCLABEL('old')");
 });

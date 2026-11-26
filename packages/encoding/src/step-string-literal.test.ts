@@ -31,6 +31,12 @@ describe('decodeStepStringLiteral', () => {
     expect(decodeStepStringLiteral('\\\\\\\\server\\\\share')).toBe('\\\\server\\share');
   });
 
+  it('keeps a \\P code page in force past an escaped backslash, as the Rust decoder does (#11462)', () => {
+    // ISO 8859-2 (\\PB\\) maps \\S\\! to U+0104; dropping the page at the flush gives ISO 8859-1 U+00A1.
+    expect(decodeStepStringLiteral('Pset_\\PB\\A\\\\\\S\\!')).toBe('Pset_A\\\u0104');
+    expect(decodeStepStringLiteral('\\PB\\\\\\\\PA\\\\S\\!')).toBe('\\\u00A1'); // a later page still wins
+  });
+
   it('keeps a directive whole when an escaped backslash follows it', () => {
     // Three backslashes in a row: the directive's terminator, then the pair.
     // A doubling pass run FIRST eats the first two and leaves `\X2\` dangling.

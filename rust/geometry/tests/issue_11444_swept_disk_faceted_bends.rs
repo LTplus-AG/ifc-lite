@@ -77,10 +77,12 @@ fn both_bars_mesh_finite_with_a_round_section_on_the_straight_legs_11444() {
                 .map(|k| (k, segment_distance(p, axis[k], axis[k + 1])))
                 .min_by(|a, b| a.1.total_cmp(&b.1))
                 .expect("segments");
-            // A leg's ring vertices (the cap centres sit on the axis). A ring shared with a bend is
-            // square to the averaged tangent, tilted half a facet angle (about 2.8°) off the leg,
-            // which puts it up to 0.12% further out; anything rougher is not a round section.
-            if legs.contains(&k) && d > RADIUS_M / 2.0 {
+            // Every vertex of a leg but the two cap centres, which are the directrix's ends. A ring
+            // shared with a bend is square to the averaged tangent, tilted half a facet angle (about
+            // 2.8°) off the leg, which puts it up to 0.12% further out; anything rougher, inward or
+            // outward, is not a round section.
+            let cap_centre = [axis[0], axis[axis.len() - 1]].iter().any(|&end| (p - end).norm() < 1e-6);
+            if legs.contains(&k) && !cap_centre {
                 on_legs += 1;
                 assert!((d - RADIUS_M).abs() < 0.01 * RADIUS_M, "#{id}: leg vertex {p:?} sits {d} m off the axis, not {RADIUS_M}");
             }

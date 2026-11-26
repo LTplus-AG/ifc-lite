@@ -1611,7 +1611,7 @@ Columns:
 | IfcCardinalPointReference | ✅ | ❌ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcCartesianPoint | ✅ | ✅ | — | ❌ | ✅ | ✅ | IFC4:✅ | rust/geometry/tests/fixtures/bath_csg_solid.ifc |
 | IfcCartesianPointList2D | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/issue_4560_wall_roof_polygonal_cutters.ifc |
-| IfcCartesianPointList3D | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/issue_4560_wall_roof_polygonal_cutters.ifc |
+| IfcCartesianPointList3D | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/issue_11444_swept_disk_faceted_bends.ifc |
 | IfcCartesianTransformationOperator2D | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcCartesianTransformationOperator2DnonUniform | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:✅ | — |
 | IfcCartesianTransformationOperator3D | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/bath_csg_solid.ifc |
@@ -1868,7 +1868,7 @@ Columns:
 | IfcImpactProtectionDevice | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcImpactProtectionDeviceType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
 | IfcIndexedColourMap | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcIndexedPolyCurve | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/issue_4560_wall_roof_polygonal_cutters.ifc |
+| IfcIndexedPolyCurve | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/issue_11444_swept_disk_faceted_bends.ifc |
 | IfcIndexedPolygonalFace | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/issue_4560_wall_roof_polygonal_cutters.ifc |
 | IfcIndexedPolygonalFaceWithVoids | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcIndexedPolygonalTextureMap | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:❌ | — |
@@ -2104,7 +2104,7 @@ Columns:
 | IfcReinforcedSoil | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcReinforcementBarProperties | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcReinforcementDefinitionProperties | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcReinforcingBar | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
+| IfcReinforcingBar | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/issue_11444_swept_disk_faceted_bends.ifc |
 | IfcReinforcingBarType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcReinforcingMesh | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcReinforcingMeshType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
@@ -2272,7 +2272,7 @@ Columns:
 | IfcSurfaceStyleRendering | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:✅ | — |
 | IfcSurfaceStyleShading | ✅ | ✅ | — | ❌ | ✅ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/issue_4560_wall_roof_polygonal_cutters.ifc |
 | IfcSurfaceStyleWithTextures | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
-| IfcSweptDiskSolid | ✅ | ✅ | — | ✅ | ✅ | ❌ | IFC4:✅ | — |
+| IfcSweptDiskSolid | ✅ | ✅ | — | ✅ | ✅ | ❌ | IFC4:✅ | rust/geometry/tests/fixtures/issue_11444_swept_disk_faceted_bends.ifc |
 | IfcSweptDiskSolidPolygonal | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcSwitchingDevice | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |
 | IfcSwitchingDeviceType | ✅ | ✅ | — | ❌ | ❌ | ❌ | IFC4:✅ | — |

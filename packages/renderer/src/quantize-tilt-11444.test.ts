@@ -168,9 +168,17 @@ describe('lattice turn guard (#11444)', () => {
 
   it('judges a colour-merged mesh per entity lane, as the batch gate does', () => {
     const bar = sweptBar(1, metres, 0.006, 24, [0.00031, 0.00047, 0.00013]);
-    const merged = colourMerged(bar, wall(3));
+    // Wall 3 sits 10 m away from wall 2, so the two cannot stand in for each other.
+    const wall3 = wall(3);
+    const merged = colourMerged(bar, { ...wall3, positions: wall3.positions.map((v, i) => (i % 3 === 0 ? v + 10 : v)) });
     assert.strictEqual(degrades(merged), true, 'the gate fails the bar lane');
     assert.deepStrictEqual(sceneBatches([merged, wall(2)]), [{ ids: [1], quantized: false }, { ids: [2], quantized: true }]);
+    // A merged mesh cannot be split: all of it, wall lane included, uploads in the f32 batch.
+    const scene = new Scene();
+    scene.setQuantizedBatches(true);
+    scene.appendToBatches([merged, wall(2)], fakeDevice(), fakePipeline);
+    const f32 = scene.getBatchedMeshes().find((batch) => batch.quantized === undefined);
+    assert.strictEqual(f32?.indexCount, merged.indices.length, 'the f32 batch holds every triangle of both lanes');
   });
 
   it('keeps the bar in an f32 batch of its own after a recolour', () => {

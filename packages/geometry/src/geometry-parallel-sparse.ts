@@ -140,12 +140,13 @@ export class SparsePool {
  * Two host options keep a load on the whole-file path, because their batch setup reads the source in a
  * way an arena cannot answer: merged material layers (a scan for the aggregate relations of layer parts)
  * and the global instance plan (its mapped sources are resolved once, before the arena holds them).
- * `outOfCore` is the host's decision for this load (a staged rollout); unset, the explicit global or URL param.
+ * `globalInstancing` is the load's plan decision; unset, it is read here. `outOfCore` is the host's decision for this
+ * load (a staged rollout); unset, the explicit global or URL param.
  */
-export function sparsePoolFor(sharedBuffer: SharedArrayBuffer, host: SparsePoolHost, options?: Pick<ProcessParallelOptions, 'mergeLayers' | 'outOfCore'>): SparsePool | null {
+export function sparsePoolFor(sharedBuffer: SharedArrayBuffer, host: SparsePoolHost, options?: Pick<ProcessParallelOptions, 'mergeLayers' | 'globalInstancing' | 'outOfCore'>): SparsePool | null {
   delete (globalThis as { __IFC_LITE_OOC_STATS__?: OutOfCoreStats }).__IFC_LITE_OOC_STATS__; // never an earlier load's
   if (!(options?.outOfCore ?? readOutOfCoreFlag())) return null;
-  const blocker = options?.mergeLayers === true ? 'merged material layers' : globalInstancingApplies(sharedBuffer.byteLength) ? 'the global instance plan' : null;
+  const blocker = options?.mergeLayers === true ? 'merged material layers' : (options?.globalInstancing ?? globalInstancingApplies(sharedBuffer.byteLength)) ? 'the global instance plan' : null;
   if (blocker !== null) {
     console.warn(`[stream][ooc] whole-file path: out-of-core ingest does not support ${blocker}`);
     return null;

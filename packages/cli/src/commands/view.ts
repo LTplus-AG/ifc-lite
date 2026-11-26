@@ -16,6 +16,7 @@ import {
   VALID_ACTIONS,
   type CreateHandler,
   type ViewerServer,
+  viewerUrl,
 } from '@ifc-lite/viewer-core';
 
 export { VALID_ACTIONS };
@@ -30,7 +31,7 @@ export async function viewCommand(args: string[]): Promise<void> {
   if (sendPayload && portStr) {
     const port = parseInt(portStr, 10);
     try {
-      const resp = await fetch(`http://localhost:${port}/api/command`, {
+      const resp = await fetch(viewerUrl(port, '/api/command'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: sendPayload,
@@ -101,8 +102,6 @@ export async function viewCommand(args: string[]): Promise<void> {
         if (!noOpen) {
           openBrowser(url);
         }
-
-        setupStdinCommands(port, viewer);
       },
       onError: (err) => {
         if (err.code === 'EADDRINUSE') {
@@ -114,6 +113,8 @@ export async function viewCommand(args: string[]): Promise<void> {
   } catch (e: unknown) {
     fatal(`Failed to start viewer: ${(e as Error).message}`);
   }
+  // Not in onReady: that runs before startViewerServer resolves.
+  setupStdinCommands(viewer);
 }
 
 /** Open URL in default browser (cross-platform) */
@@ -130,7 +131,7 @@ function openBrowser(url: string): void {
 }
 
 /** Listen for interactive commands on stdin */
-function setupStdinCommands(port: number, viewer: ViewerServer): void {
+function setupStdinCommands(viewer: ViewerServer): void {
   if (!process.stdin.isTTY) return;
 
   process.stderr.write('  Interactive commands: colorize, isolate, view, showall, reset, quit\n');
@@ -242,7 +243,9 @@ function setupStdinCommands(port: number, viewer: ViewerServer): void {
         break;
       case 'clear':
       case 'clearCreated':
-        fetch(`http://localhost:${port}/api/clear-created`, { method: 'POST' }).catch(() => {});
+        // The server is in this process: clear it directly, as /api/clear-created does.
+        viewer.createdSegments.length = 0;
+        command = { action: 'removeCreated' };
         break;
       case 'showall':
         command = { action: 'showall' };

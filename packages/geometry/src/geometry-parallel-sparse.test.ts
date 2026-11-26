@@ -106,7 +106,7 @@ describe('SparsePool', () => {
 
 describe('sparsePoolFor', () => {
   const host = { broadcast: () => {}, shareIndex: () => {}, onReady: () => {} };
-  const make = (bytes = 8, options?: { mergeLayers?: boolean; outOfCore?: boolean }) => sparsePoolFor(new SharedArrayBuffer(bytes), host, options);
+  const make = (bytes = 8, options?: { mergeLayers?: boolean; globalInstancing?: boolean; outOfCore?: boolean }) => sparsePoolFor(new SharedArrayBuffer(bytes), host, options);
 
   it('keeps a load on the whole-file path for the options an arena cannot serve', () => {
     flagHost.__IFC_LITE_OOC = 1;
@@ -115,6 +115,9 @@ describe('sparsePoolFor', () => {
     flagHost.__IFC_LITE_GLOBAL_INSTANCING = 1;
     expect(make(8), 'the plan does not apply to the small-file tier').toBeInstanceOf(SparsePool);
     expect(make(GLOBAL_INSTANCING_MIN_BYTES)).toBeNull();
+    expect(make(GLOBAL_INSTANCING_MIN_BYTES, { globalInstancing: false }), 'the load\'s own decision wins over a re-read').toBeInstanceOf(SparsePool);
+    delete flagHost.__IFC_LITE_GLOBAL_INSTANCING;
+    expect(make(8, { globalInstancing: true })).toBeNull();
   });
 
   it('clears the stats an earlier load published, whichever path this load takes', () => {

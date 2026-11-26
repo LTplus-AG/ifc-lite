@@ -62,7 +62,7 @@ export { type StallPhase, type StallPhaseHandle } from './stall-phase.js';
 export { prewarmSharedWasmModule, compileSharedWasmModule } from './wasm-shared-module.js';
 export type { GeometryMeshingSettings } from './meshing-settings.js';
 // `__IFC_LITE_*` flag bindings the host reads; the viewer registry spreads these (#6962).
-export { GEOMETRY_PERF_FLAG_BINDINGS, GLOBAL_INSTANCING_MIN_BYTES, inSmallFileTier, readGlobalInstancingFlag } from './perf-flags.js';
+export { GEOMETRY_PERF_FLAG_BINDINGS, GLOBAL_INSTANCING_MIN_BYTES, globalInstancingApplies, inSmallFileTier, readGlobalInstancingFlag } from './perf-flags.js';
 // Stale-deployment WASM-asset detection (#1363). The host app subscribes to
 // WASM_ASSET_UNAVAILABLE_EVENT and uses `isWasmAssetUnavailableError` to
 // reload onto the deployment; `notifyIfWasmAssetUnavailable` stays internal.
@@ -245,6 +245,7 @@ export class GeometryProcessor {
   private skipSmallCuts: boolean;
   private skipVoids: boolean; outOfCore?: boolean; onOutOfCoreDecision?: (ran: boolean) => void; // out-of-core ingest as the host decided it (unset = explicit global/URL) and whether each pool load ran it (`ProcessParallelOptions`)
   compactCellSize?: number; // worker-pool compact GPU records at this cell size, after `loadCompactGeometry()` (`ProcessParallelOptions.compactCellSize`); unset = off
+  globalInstancing?: boolean; onGlobalInstancingDecision?: (applies: boolean) => void; // the plan's flag as the host decided it (unset = explicit global/URL) and whether it ran per pool load (`ProcessParallelOptions`)
 
   constructor(options: GeometryProcessorOptions = {}) {
     this.bufferBuilder = new BufferBuilder();
@@ -770,9 +771,8 @@ export class GeometryProcessor {
       stallPhaseHandle, trace, outOfCore: this.outOfCore, onOutOfCoreDecision: this.onOutOfCoreDecision,
       // Every pool worker meshes with this processor's settings (#540, #924, #976, #1286; meshing-settings.ts).
       ...this.meshingSettings(),
-      compactCellSize: this.compactCellSize,
-      wasmUrls,
-      workerCountOverride,
+      compactCellSize: this.compactCellSize, globalInstancing: this.globalInstancing, onGlobalInstancingDecision: this.onGlobalInstancingDecision,
+      wasmUrls, workerCountOverride,
     });
   }
 

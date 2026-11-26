@@ -47,6 +47,14 @@ export interface ProcessParallelOptions {
    */
   compactCellSize?: number;
   /**
+   * The global instance plan's flag for this load, as the host decided it (a staged rollout); unset, the explicit
+   * global or URL param. Small files never plan (`globalInstancingApplies`). The pool decides once per load.
+   */
+  globalInstancing?: boolean;
+  /** Hears whether the plan ran for this load (the host's telemetry arm): `false` at the start when it does not
+   *  apply, or the outcome once the prepass columns reach the workers. Silent for a load with instancing off. */
+  onGlobalInstancingDecision?: (applies: boolean) => void;
+  /**
    * Out-of-core ingest for this load (`geometry-parallel-sparse.ts`), as the host decided it (a staged rollout);
    * unset, the explicit global or URL param (`?perf.ooc`). The pool decides once per load.
    */

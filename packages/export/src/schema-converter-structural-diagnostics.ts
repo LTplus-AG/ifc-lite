@@ -2,7 +2,7 @@
 /** Matches rust/export/src/schema_structural_diagnostics.rs (#9668). */
 import { getSchemaRegistryForVersion, getCanonicalEntityName } from '@ifc-lite/parser';
 import { convertEntityType } from './schema-converter.js';
-import { destabilizingUnknown, isStructuralAssignmentConversion } from './schema-converter-structural.js';
+import { destabilizingUnknown, isConstantActionConversion, isStructuralAssignmentConversion } from './schema-converter-structural.js';
 import { StructuralAxes } from './schema-converter-structural-axes.js';
 import { CAUSED_BY, StructuralCarriers } from './schema-converter-structural-carriers.js';
 import { conversionMode, namesWithheld, SourceRecords, type SourceStore } from './schema-converter-structural-source.js';
@@ -34,6 +34,8 @@ function strandedAs(entity: string, args: readonly string[], unconverted: boolea
   if (unconverted) return reaction ? entity : null;
   return cause?.restored ? null : target;
 }
+
+const isRegistrySchema = (schema: string): schema is 'IFC2X3' | 'IFC4' | 'IFC4X3' => schema === 'IFC2X3' || schema === 'IFC4' || schema === 'IFC4X3';
 
 export class StructuralDiagnostics {
   readonly axes = new StructuralAxes();
@@ -94,9 +96,13 @@ export class StructuralDiagnostics {
       this.record('IfcRelConnectsStructuralElement is mapped to IfcRelAssignsToProduct; the relationship kind is not kept in the target file');
       return;
     }
-    if (!((from === 'IFC2X3' && to === 'IFC4') || (from === 'IFC4' && to === 'IFC2X3'))) return;
+    // IFC4X3 is inspected only for the constant actions its slot map covers (#11571).
+    const ifc4 = (from === 'IFC2X3' && to === 'IFC4') || (from === 'IFC4' && to === 'IFC2X3');
+    if (!isRegistrySchema(from) || !isRegistrySchema(to)) return;
+    if (!ifc4 && !/^\s*#\d+\s*=\s*IFCSTRUCTURAL(?:LINEAR|PLANAR)ACTION\s*\(/i.test(line)) return;
     if (!/^\s*#\d+\s*=\s*(?:IFCSTRUCTURAL|IFCRELCONNECTSSTRUCTURAL|IFCRELASSOCIATESPROFILEPROPERTIES)/i.test(line)) return;
     const rec = readStepSlots(line);
+    if (rec && !ifc4 && !isConstantActionConversion(rec.type, from, to)) return;
     if (rec && this.deferredVarying && varyingTarget(rec.type)) return;
     if (!rec || !(rec.type.startsWith('IFCSTRUCTURAL') || rec.type.startsWith('IFCRELCONNECTSSTRUCTURAL') || rec.type === 'IFCRELASSOCIATESPROFILEPROPERTIES')) return;
     // Recorded here, where the record takes the generic path, never for one withheld or rewritten.

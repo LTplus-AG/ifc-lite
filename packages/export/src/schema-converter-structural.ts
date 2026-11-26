@@ -35,6 +35,13 @@ export function isStructuralAssignmentConversion(entity: string, from: string, t
   return entity === 'IFCRELCONNECTSSTRUCTURALELEMENT' && from === 'IFC2X3' && ['IFC4', 'IFC4X3', 'IFC5'].includes(to);
 }
 
+/** A constant linear or planar action between IFC2X3 and IFC4 or IFC4X3, mapped by attribute name:
+ *  IFC2X3's CausedBy has no slot in either, and both declare the same layout (#11571). */
+export function isConstantActionConversion(entity: string, from: string, to: string): boolean {
+  const other = from === 'IFC2X3' ? to : to === 'IFC2X3' ? from : undefined;
+  return (other === 'IFC4' || other === 'IFC4X3') && (entity === 'IFCSTRUCTURALLINEARACTION' || entity === 'IFCSTRUCTURALPLANARACTION');
+}
+
 export function structuralAttributes(entity: string, args: readonly string[], from: string, to: string): string | null {
   if (isStructuralAssignmentConversion(entity, from, to) && args.length === 6) {
     // IFC4's analytical assignment retains both objects, but changes relationship kind.
@@ -61,11 +68,10 @@ export function structuralAttributes(entity: string, args: readonly string[], fr
     }
     return values.join(',');
   }
-  if (!((from === 'IFC2X3' && to === 'IFC4') || (from === 'IFC4' && to === 'IFC2X3'))) return null;
-  if (entity !== 'IFCSTRUCTURALLINEARACTION' && entity !== 'IFCSTRUCTURALPLANARACTION') return null;
+  if (!isConstantActionConversion(entity, from, to)) return null;
   const name = entity === 'IFCSTRUCTURALLINEARACTION' ? 'IfcStructuralLinearAction' : 'IfcStructuralPlanarAction';
-  const slots = (schema: 'IFC2X3' | 'IFC4') => getSchemaRegistryForVersion(schema).entities[name]?.allAttributes?.map(a => a.name);
-  const src = slots(from), tgt = slots(to);
+  const slots = (schema: 'IFC2X3' | 'IFC4' | 'IFC4X3') => getSchemaRegistryForVersion(schema).entities[name]?.allAttributes?.map(a => a.name);
+  const src = slots(from as 'IFC2X3' | 'IFC4' | 'IFC4X3'), tgt = slots(to as 'IFC2X3' | 'IFC4' | 'IFC4X3');
   if (!src || !tgt) return null;
   return tgt.map(name => args[src.indexOf(name)] ?? (name === 'PredefinedType' ? '.CONST.' : '$')).join(',');
 }

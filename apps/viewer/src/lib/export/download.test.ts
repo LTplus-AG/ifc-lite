@@ -17,11 +17,10 @@ describe('sanitizeFilename', () => {
     assert.strictEqual(sanitizeFilename('COM10'), 'COM10');
   });
 
-  it('never leaves half a surrogate pair when truncating', () => {
+  it('never leaves half a surrogate pair when truncating (#11442)', () => {
     const name = `${'a'.repeat(59)}\u{20000}\u{20000}`;
     const out = sanitizeFilename(name);
     assert.strictEqual(out, 'a'.repeat(59));
-    assert.ok(out.isWellFormed());
   });
 
   it('preserves uppercase letters (issue #1299)', () => {

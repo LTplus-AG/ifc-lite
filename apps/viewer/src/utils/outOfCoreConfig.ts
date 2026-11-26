@@ -12,7 +12,7 @@ import { isPerfFlagOn } from './hugeGeometryConfig.js';
  * load's processor. The geometry host reads only the global and `?perf.ooc`; the `perf-ooc` PostHog ramp reaches a
  * load only through `processor.outOfCore`, set here, so it never reaches exports or other processors.
  *
- * The ramp applies to a first attempt of a primary load only. A federated add and a resource retry follow the
+ * The ramp applies to a first attempt of a primary load only. A federated add and a retry (resource or tier) follow the
  * explicit global or URL param alone: a retry then takes the whole-file path the file opened with before the ramp,
  * and the arm (one per session) stays the primary's. The primary records whether its pool meshed out of core as the
  * telemetry arm, while it is still the current load (`isCurrent`), so a superseded load cannot label the next one.

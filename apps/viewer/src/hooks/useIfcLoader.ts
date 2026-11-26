@@ -1304,7 +1304,7 @@ export function useIfcLoader() {
       // Armed BEFORE init() so an engine-init failure still frees whatever the
       // partially-initialised bridge allocated (dispose() is a no-op when it
       // allocated nothing).
-      geometryHandle = createGeometryProcessorDisposer(() => geometryProcessor.dispose()); configureOutOfCore(geometryProcessor, { primary: target.kind === 'primary', retry: isResourceRetryLoad, isCurrent }); // out-of-core incl. its PostHog ramp, for this load's pool only
+      geometryHandle = createGeometryProcessorDisposer(() => geometryProcessor.dispose()); configureOutOfCore(geometryProcessor, { primary: target.kind === 'primary', retry: isResourceRetryLoad || options?.tierOverride !== undefined, isCurrent }); // out-of-core incl. its PostHog ramp, for this load's pool only
       // The engine binary's own download lives here (wasm-bindgen fetches
       // `ifc-lite_bg.wasm` from `import.meta.url`), so this is the one stage a
       // first-visit user can fail in before a single IFC byte is touched.

@@ -65,6 +65,9 @@ describe('out-of-core config', () => {
     assert.equal(activePerfFlags().outOfCore, 'true');
     processor.onOutOfCoreDecision?.(false);
     assert.equal(activePerfFlags().outOfCore, undefined, 'a load the arena could not serve reports off');
+    processor.onOutOfCoreDecision?.(true);
+    resetOutOfCoreArm(); // the next primary load (a cache or server reopen reports nothing more)
+    assert.equal(activePerfFlags().outOfCore, undefined, 'a new primary load starts from the default arm');
   });
 
   it('ignores a decision from a load that is no longer current', () => {

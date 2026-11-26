@@ -19,7 +19,7 @@ import { StdioTransport } from './transport/stdio.js';
 import { routeConsoleToStderr } from './transport/stdio-console.js';
 import { HttpTransport, BearerTokenAuth, AllowAllAuth, type HttpAuthenticator, type SessionFactory } from './transport/http.js';
 import { createMCPServer, VERSION } from './index.js';
-import { deriveModelId, loadIfcModel } from './loader.js';
+import { deriveModelId, freeModelId, loadIfcModel } from './loader.js';
 import { anonymousHttpScope, claudeDesktopConfigPath, serverScope, tokenScopes } from './cli-support.js';
 import { InMemoryModelRegistry, type ModelRegistry } from './context.js';
 import { fmtInt } from './tools/util.js';
@@ -158,9 +158,7 @@ async function loadFiles(registry: ModelRegistry, opts: CliOptions, log: (line: 
     }
     // `arch/model.ifc` and `struct/model.ifc` both derive `model`; suffix the
     // later one so it cannot replace (and dispose) the earlier.
-    const base = deriveModelId(basename(file));
-    let modelId = base;
-    for (let n = 2; registry.get(modelId); n++) modelId = `${base}-${n}`;
+    const modelId = freeModelId(registry, deriveModelId(basename(file)));
     const m = await loadIfcModel(resolve(file), { allowedPaths: opts.allowedPaths, modelId });
     registry.add(m);
     log(`loaded ${m.name} (${m.id}) — ${fmtInt(m.store.entityCount)} entities`);

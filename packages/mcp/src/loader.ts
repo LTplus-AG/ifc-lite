@@ -16,7 +16,7 @@ import { basename, resolve } from 'node:path';
 import { IfcParser, validateStepInput, type IfcDataStore } from '@ifc-lite/parser';
 import { sourceModelIdentity } from '@ifc-lite/cache';
 import { createBimContext, type BimContext } from '@ifc-lite/sdk';
-import type { LoadedModel } from './context.js';
+import type { LoadedModel, ModelRegistry } from './context.js';
 import { HeadlessLikeBackend } from './headless-backend.js';
 import { rememberLoadedSource } from './loaded-source.js';
 
@@ -109,6 +109,13 @@ export async function loadIfcModelFromBytes(bytes: Uint8Array, name: string, mod
     ...(scanWarnings.length > 0 ? { scanWarnings } : {}),
     loadedAt: Date.now(),
   };
+}
+
+/** `base`, or `base_2`, `base_3`, … — the first id the registry does not hold yet. */
+export function freeModelId(registry: ModelRegistry, base: string): string {
+  let id = base;
+  for (let n = 2; registry.get(id) !== null; n += 1) id = `${base}_${n}`;
+  return id;
 }
 
 export function deriveModelId(name: string): string {

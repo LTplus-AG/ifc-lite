@@ -16,3 +16,4 @@ Fix the MCP server's command line and read-only mode ([#11534](https://github.co
 - `CliOptions` replaces `token` with `tokens` and `readOnlyTokens`, drops `federate` and `bridgeMissingOperand` (a missing bridge value is now in `errors`), and adds `warnings` and `errors`; `bridge` is now required. `MCP_SUBCOMMAND_UNSUPPORTED_FLAGS` and `isMcpValueFlag` are removed. `--port` and `--viewer-port` must be integers from 0 to 65535.
 - The Claude Code plugin runs `@ifc-lite/mcp@0` instead of whatever npm has, so a 1.0 cannot change it underneath. Releases before 0.32.0 ignore `--channel`.
 - `--flag=value` works for every value flag. An unknown `--flag=value` is reported by its name only, and a value on a boolean flag (`--read-only=true`) is a usage error.
+- Files with the same name passed together (`arch/model.ifc struct/model.ifc`) load as `model` and `model_2`; before, the second replaced the first.

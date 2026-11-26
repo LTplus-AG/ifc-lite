@@ -18,19 +18,29 @@ import { parseLocals, parseStatements, parseTypeSpec } from './statement-parser.
 import { TokenStream } from './token-stream.js';
 
 function parseWhereClause(s: TokenStream, end: string): WhereRule[] {
-  const rules: WhereRule[] = [];
-  if (!s.acceptKeyword('WHERE')) return rules;
-  let unnamed = 0;
+  const rules: (Omit<WhereRule, 'label'> & { label?: string })[] = [];
+  if (!s.acceptKeyword('WHERE')) return [];
   while (!s.isKeyword(end)) {
-    const label = s.peek().kind === 'id' && s.isOp(':', 1) ? s.expectIdentifier() : `WR${++unnamed}`;
-    if (s.isOp(':')) s.next();
+    let label: string | undefined;
+    if (s.peek().kind === 'id' && s.isOp(':', 1)) {
+      label = s.expectIdentifier();
+      s.next();
+    }
     const start = s.peek().start;
     const expr = parseExpression(s);
     const source = s.sliceFrom(start);
     s.expectOp(';');
     rules.push({ label, expr, source });
   }
-  return rules;
+  // Unlabelled rules are numbered WR1, WR2, ... skipping labels the clause already uses.
+  const taken = new Set(rules.map((r) => r.label));
+  let unnamed = 0;
+  return rules.map(({ label, expr, source }) => {
+    if (label === undefined) {
+      do label = `WR${++unnamed}`; while (taken.has(label));
+    }
+    return { label, expr, source };
+  });
 }
 
 function parseAttributeName(s: TokenStream): { name: string; redeclares?: Redeclaration } {
@@ -223,7 +233,12 @@ export function parseExpressRules(source: string): ExpressRuleSchema {
   const schema: ExpressRuleSchema = { name: s.expectIdentifier(), types: [], entities: [], functions: [], rules: [], skipped: [] };
   s.expectOp(';');
   while (!s.isKeyword('END_SCHEMA')) {
-    const t = s.next();
+    const t = s.peek();
+    if (t.kind === 'eof') s.fail('expected END_SCHEMA');
+    if (!['TYPE', 'ENTITY', 'FUNCTION', 'RULE', 'PROCEDURE', 'SUBTYPE_CONSTRAINT', 'CONSTANT'].includes(t.upper)) {
+      s.fail(`unexpected '${t.text}' at schema level`);
+    }
+    s.next();
     switch (t.upper) {
       case 'TYPE': schema.types.push(parseType(s)); break;
       case 'ENTITY': schema.entities.push(parseEntity(s)); break;
@@ -237,9 +252,10 @@ export function parseExpressRules(source: string): ExpressRuleSchema {
         schema.skipped.push({ kind: t.upper, name: '' });
         skipDeclaration(s, 'END_CONSTANT');
         break;
-      default:
-        s.fail(`unexpected '${t.text}' at schema level`);
     }
   }
+  s.next();
+  s.expectOp(';');
+  if (s.peek().kind !== 'eof') s.fail('expected end of input after END_SCHEMA');
   return schema;
 }

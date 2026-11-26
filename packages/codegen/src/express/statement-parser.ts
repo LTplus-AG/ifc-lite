@@ -121,7 +121,8 @@ function parseCase(s: TokenStream): Stmt {
     if (s.acceptKeyword('OTHERWISE')) {
       s.expectOp(':');
       otherwise = parseStatement(s);
-      continue;
+      s.expectKeyword('END_CASE');
+      break;
     }
     const labels = [parseExpression(s)];
     while (s.acceptOp(',')) labels.push(parseExpression(s));
@@ -185,8 +186,7 @@ function parseStatement(s: TokenStream): Stmt {
     s.expectOp(';');
     return { k: 'assign', target, value };
   }
+  if (target.k !== 'call' && target.k !== 'id') s.fail('expected assignment or procedure call');
   s.expectOp(';');
-  if (target.k === 'call') return { k: 'procedure', name: target.name, args: target.args };
-  if (target.k === 'id') return { k: 'procedure', name: target.name, args: [] };
-  return s.fail('expected assignment or procedure call');
+  return target.k === 'call' ? { k: 'procedure', name: target.name, args: target.args } : { k: 'procedure', name: target.name, args: [] };
 }

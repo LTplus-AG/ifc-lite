@@ -52,7 +52,8 @@ function readNumber(src: string, i: number): { end: number; real: boolean } {
   }
   if ((src[j] === 'E' || src[j] === 'e') && /[+\-\d]/.test(src[j + 1] ?? '')) {
     real = true;
-    j += 2;
+    j += src[j + 1] === '+' || src[j + 1] === '-' ? 2 : 1;
+    if (!isDigit(src.charCodeAt(j))) throw new ExpressSyntaxError('expected exponent digits', j);
     while (j < src.length && isDigit(src.charCodeAt(j))) j++;
   }
   return { end: j, real };
@@ -73,7 +74,8 @@ function readString(src: string, i: number): { end: number; value: string } {
 
 export function tokenize(src: string): Token[] {
   const tokens: Token[] = [];
-  let i = 0;
+  // A byte-order mark survives readFileSync(..., 'utf8'); it is not part of the schema.
+  let i = src.charCodeAt(0) === 0xfeff ? 1 : 0;
   const push = (kind: TokenKind, text: string, start: number, end: number) =>
     tokens.push({ kind, text, upper: kind === 'id' ? text.toUpperCase() : text, start, end });
   while (i < src.length) {

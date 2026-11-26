@@ -176,6 +176,48 @@ describe('EXPRESS rule parser: clause forms (#11110)', () => {
   });
 });
 
+describe('EXPRESS rule parser: malformed and edge input (#11110 review)', () => {
+  const typeWhere = (where: string) => `SCHEMA X; TYPE T = REAL; WHERE ${where} END_TYPE; END_SCHEMA;`;
+  const fnBody = (body: string) => `SCHEMA X; FUNCTION F : REAL; ${body} END_FUNCTION; END_SCHEMA;`;
+
+  it('numbers an unlabelled WHERE rule past the labels the clause already uses', () => {
+    const [t] = parseExpressRules(typeWhere('SELF < 9; WR1 : SELF > 0; SELF < 1;')).types;
+    expect(t.where.map((w) => w.label)).toEqual(['WR2', 'WR1', 'WR3']);
+  });
+
+  it('rejects a WHERE rule with a colon but no label', () => {
+    expect(() => parseExpressRules(typeWhere(': SELF > 0;'))).toThrow('expected expression');
+  });
+
+  it('rejects an exponent with no digits instead of producing NaN', () => {
+    expect(() => parseExpressRules(typeWhere('WR1 : SELF > 1.5E+;'))).toThrow('expected exponent digits');
+    expect(parseExpressRules(typeWhere('WR1 : SELF > 1.5E+2;')).types[0].where[0].expr)
+      .toMatchObject({ right: { k: 'num', value: 150, int: false } });
+  });
+
+  it('ignores a leading byte-order mark', () => {
+    expect(parseExpressRules('﻿SCHEMA X; END_SCHEMA;').name).toBe('X');
+  });
+
+  it('allows one OTHERWISE, as the last CASE branch', () => {
+    const twice = 'CASE 1 OF OTHERWISE : RETURN (1.); OTHERWISE : RETURN (2.); END_CASE; RETURN (0.);';
+    expect(() => parseExpressRules(fnBody(twice))).toThrow("expected END_CASE at line 1, found 'OTHERWISE'");
+    const early = 'CASE 1 OF OTHERWISE : RETURN (1.); 1 : RETURN (2.); END_CASE; RETURN (0.);';
+    expect(() => parseExpressRules(fnBody(early))).toThrow('expected END_CASE');
+  });
+
+  it('points a bad statement or declaration error at the offending token', () => {
+    expect(() => parseExpressRules(fnBody('a.b; RETURN (0.);'))).toThrow("expected assignment or procedure call at line 1, found ';'");
+    expect(() => parseExpressRules('SCHEMA X; FOO BAR; END_SCHEMA;')).toThrow("unexpected 'FOO' at schema level at line 1, found 'FOO'");
+  });
+
+  it('requires END_SCHEMA and nothing after it', () => {
+    expect(() => parseExpressRules('SCHEMA X; TYPE T = REAL; END_TYPE;')).toThrow('expected END_SCHEMA');
+    expect(() => parseExpressRules('SCHEMA X; END_SCHEMA; garbage;')).toThrow('expected end of input after END_SCHEMA');
+    expect(() => parseExpressRules('SCHEMA X; END_SCHEMA')).toThrow("expected ';'");
+  });
+});
+
 describe('EXPRESS rule parser agrees with the regex parser on every bundled schema (#11110)', () => {
   const schemaSource = (file: string) => readFileSync(join(__dirname, '..', 'schemas', file), 'utf8');
 

@@ -463,7 +463,7 @@ describe('model repositioning user interactions (#4226)', () => {
       snapTarget: null,
       intersection: options?.isolatedIds?.has(targetId) ? {
         expressId: targetId, point: { x: 1, y: 2, z: 3 }, normal: { x: 0, y: 1, z: 0 },
-        distance: 1, meshIndex: 0, triangleIndex: 0,
+        distance: 1, meshIndex: 0, triangleIndex: 0, barycentricCoord: { u: 1, v: 0, w: 0 },
       } : null,
       edgeLock: { edge: null, meshExpressId: null, edgeT: 0, shouldLock: false, shouldRelease: false, isCorner: false, cornerValence: 0 },
     }));

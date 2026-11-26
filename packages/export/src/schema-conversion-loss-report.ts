@@ -28,7 +28,7 @@ import { getCompleteEntityIndex } from './entity-iteration.js';
 import { attrMapFor, attrsDroppedByMap, dropsSetMembers } from './schema-converter-attr-maps.js';
 import { droppedIfc4x3SlotNames, needsIfc4x3SlotMap } from './schema-converter-ifc4x3-upgrade.js';
 import { previewUpgradeDependents } from './schema-converter-unrooted-upgrade.js';
-import { isUnsetSourceAttribute } from './schema-conversion-loss-unset.js';
+import { holdsValue } from './step-comment-skip.js';
 import { isRootedEntityType, missingTypeRoute } from './schema-untranslatable.js';
 
 /** How one entity TYPE's data survives a schema conversion. */
@@ -335,15 +335,18 @@ export function analyzeConversionLoss(
       const attributes = attrNameTable(fromSchema)?.get(sourceType);
       const slot = narrowedSet ? attributes?.indexOf(narrowedSet) ?? -1 : -1;
       // #11326: a type-wide drop loses only the slots the record populated (a map-less IFCREL* or IfcWorkPlan included).
-      const unsetSlots = records && info.kind === 'lossy' && info.droppedAttributes.length > 0;
+      const checkUnset = records && info.kind === 'lossy' && info.droppedAttributes.length > 0;
       const isRetained = (id: number, attribute: string) => {
         if (restored.get(id)?.has(attribute) || retainedTyped?.get(id)?.has(attribute)) return true;
-        if (unsetSlots && isUnsetSourceAttribute(records, attributes, id, attribute)) return true;
+        // `()` and `''` are values; `$`, `*` and an empty slot are not (twin of Rust `values_without_a_name`).
+        // An unreadable record or an attribute the table does not name stays reported.
+        const own = checkUnset ? records?.slots(id)?.[attributes?.indexOf(attribute) ?? -1] : undefined;
+        if (own !== undefined && !holdsValue(own)) return true;
         if (attribute !== narrowedSet) return false;
         const value = records?.slots(id)?.[slot];
         return value !== undefined && !dropsSetMembers(value);
       };
-      const entry = carrying(sourceType, info) || slot >= 0 || unsetSlots || expressIds.some((id) => retainedTyped?.has(id))
+      const entry = carrying(sourceType, info) || slot >= 0 || checkUnset || expressIds.some((id) => retainedTyped?.has(id))
         ? entryAfterRestoration(sourceType, expressIds, info, isRetained)
         : { ...info, sourceType, count: expressIds.length, expressIds };
       if (entry) entries.push(entry);

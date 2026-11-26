@@ -1303,7 +1303,7 @@ export function useIfcLoader() {
         // go.
         enableInstancing: true,
       });
-      configureGlobalInstancing(geometryProcessor); // the plan's flag incl. its PostHog ramp, for this load's pool only
+      configureGlobalInstancing(geometryProcessor, { recordArm: target.kind === 'primary' }); // the plan's flag incl. its PostHog ramp, for this load's pool only
       // Armed BEFORE init() so an engine-init failure still frees whatever the
       // partially-initialised bridge allocated (dispose() is a no-op when it
       // allocated nothing).

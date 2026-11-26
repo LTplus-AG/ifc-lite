@@ -48,19 +48,21 @@ export function configureKeyedInstancing(scene: Pick<SceneContents, 'keyedInstan
 
 /**
  * The global instance plan for one exact load's processor: its flag resolved here (global, URL param, then the
- * `perf-global-instancing` PostHog ramp), so the ramp reaches only the viewer's own loads, never exports or
- * other processors. Each worker-pool decision is recorded as the telemetry arm; {@link resetGlobalInstancingArm}
- * starts every primary load from the default, so a small file, a cache reopen or a server load reports it.
+ * `perf-global-instancing` PostHog ramp), so the ramp reaches only the viewer's own loads, never exports or other
+ * processors. A primary load (`recordArm`) records whether the plan ran as the telemetry arm; a federated add
+ * plans too but leaves the arm to its primary. {@link resetGlobalInstancingArm} starts every primary load from the
+ * default, so a small file, a cache reopen or a server load reports it.
  */
 export function configureGlobalInstancing(
   processor: Pick<GeometryProcessor, 'globalInstancing' | 'onGlobalInstancingDecision'>,
+  { recordArm }: { recordArm: boolean },
   readFeatureFlag?: (key: string) => unknown,
 ): void {
   processor.globalInstancing = isPerfFlagOn(resolvePerfFlag(getPerfFlagDefinition('globalInstancing'), readFeatureFlag));
-  processor.onGlobalInstancingDecision = (applies) => recordAppliedPerfFlag('globalInstancing', applies);
+  processor.onGlobalInstancingDecision = recordArm ? (ran) => recordAppliedPerfFlag('globalInstancing', ran) : undefined;
 }
 
-/** A primary load starts from the default arm until its pool decides. */
+/** A primary load starts from the default arm until its pool reports. */
 export function resetGlobalInstancingArm(): void {
   recordAppliedPerfFlag('globalInstancing', false);
 }

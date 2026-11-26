@@ -248,7 +248,7 @@ export class GeometryProcessor {
   /** This processor's global-instance-plan flag (`ProcessParallelOptions.globalInstancing`): a host's own decision,
    *  such as a staged rollout; unset = the explicit global or URL param. */
   globalInstancing?: boolean;
-  /** Hears each worker-pool load's plan decision (`ProcessParallelOptions.onGlobalInstancingDecision`). */
+  /** Hears whether the plan ran for each worker-pool load (`ProcessParallelOptions.onGlobalInstancingDecision`). */
   onGlobalInstancingDecision?: (applies: boolean) => void;
 
   constructor(options: GeometryProcessorOptions = {}) {

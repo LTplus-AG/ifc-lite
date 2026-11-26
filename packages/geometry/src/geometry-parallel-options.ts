@@ -51,7 +51,8 @@ export interface ProcessParallelOptions {
    * global or URL param. Small files never plan (`globalInstancingApplies`). The pool decides once per load.
    */
   globalInstancing?: boolean;
-  /** Hears the pool's once-per-load plan decision (the host's telemetry arm). */
+  /** Hears whether the plan ran for this load (the host's telemetry arm): `false` at the start when it does not
+   *  apply, or the outcome once the prepass columns reach the workers. Silent for a load with instancing off. */
   onGlobalInstancingDecision?: (applies: boolean) => void;
   /**
    * Issue #924 — per-entity geometry-hash tolerance in metres. When a

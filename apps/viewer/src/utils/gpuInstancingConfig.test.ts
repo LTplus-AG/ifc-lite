@@ -16,7 +16,7 @@ function setSearch(search: string): void {
 afterEach(() => {
   delete g.__IFC_LITE_GPU_INSTANCING;
   delete g.__IFC_LITE_GLOBAL_INSTANCING;
-  recordAppliedPerfFlag('globalInstancing', undefined);
+  recordAppliedPerfFlag('globalInstancing', false); // the module's initial arm
   Reflect.deleteProperty(globalThis, 'location');
 });
 
@@ -69,7 +69,7 @@ describe('global instance plan ramp', () => {
   it('resolves the processor\'s flag from the perf-global-instancing ramp', () => {
     for (const [value, on] of [[true, true], [false, false], [undefined, false], ['control', false]] as const) {
       const p = processor();
-      configureGlobalInstancing(p, posthog(value));
+      configureGlobalInstancing(p, { recordArm: true }, posthog(value));
       assert.equal(p.globalInstancing, on, String(value));
     }
   });
@@ -77,17 +77,21 @@ describe('global instance plan ramp', () => {
   it('lets an explicit param or global beat the ramp', () => {
     const p = processor();
     setSearch('?perf.globalInstancing=0');
-    configureGlobalInstancing(p, posthog(true));
+    configureGlobalInstancing(p, { recordArm: true }, posthog(true));
     assert.equal(p.globalInstancing, false);
     Reflect.deleteProperty(globalThis, 'location');
     g.__IFC_LITE_GLOBAL_INSTANCING = 1;
-    configureGlobalInstancing(p, posthog(false));
+    configureGlobalInstancing(p, { recordArm: true }, posthog(false));
     assert.equal(p.globalInstancing, true);
+  });
+
+  it('reports the default arm before any load, whatever the ramp says', () => {
+    assert.equal(activePerfFlags().globalInstancing, undefined);
   });
 
   it('reports what the pool decided as the telemetry arm, from the default at each primary load', () => {
     const p = processor();
-    configureGlobalInstancing(p, posthog(true));
+    configureGlobalInstancing(p, { recordArm: true }, posthog(true));
     resetGlobalInstancingArm();
     assert.equal(activePerfFlags().globalInstancing, undefined, 'before a pool decision the load runs the default');
     p.onGlobalInstancingDecision?.(false);
@@ -96,6 +100,13 @@ describe('global instance plan ramp', () => {
     assert.equal(activePerfFlags().globalInstancing, 'true');
     resetGlobalInstancingArm();
     assert.equal(activePerfFlags().globalInstancing, undefined, 'a cache reopen or server load reports the default');
+  });
+
+  it('leaves the arm to the primary: a federated add plans but does not record', () => {
+    const p = processor();
+    configureGlobalInstancing(p, { recordArm: false }, posthog(true));
+    assert.equal(p.globalInstancing, true);
+    assert.equal(p.onGlobalInstancingDecision, undefined);
   });
 
   it('never kills the keyed join from the ramp: a user outside it still joins cached plan records', () => {

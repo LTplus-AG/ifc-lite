@@ -2,7 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/** `processParallel` decides the global instance plan once per load, before any worker exists, and reports it. */
+/** `processParallel` decides the global instance plan once per load, before any worker exists. An unplanned load
+ *  reports `false` at once; a planned one reports only when its prepass columns arm the plan, which these loads,
+ *  ended by a worker that refuses to start, never reach. */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { processParallel } from './geometry-parallel.js';
@@ -34,18 +36,20 @@ async function decisions(bytes: number, options: ProcessParallelOptions): Promis
 }
 
 describe('processParallel global instance plan decision', () => {
-  it('reports one decision per load from the host flag, past the small tier only', async () => {
-    expect(await decisions(GLOBAL_INSTANCING_MIN_BYTES, { globalInstancing: true })).toEqual([true]);
-    expect(await decisions(GLOBAL_INSTANCING_MIN_BYTES - 1, { globalInstancing: true })).toEqual([false]);
+  it('reports an unplanned load at once, and a planned one not before its columns', async () => {
+    expect(await decisions(GLOBAL_INSTANCING_MIN_BYTES, { globalInstancing: true })).toEqual([]);
+    expect(await decisions(GLOBAL_INSTANCING_MIN_BYTES - 1, { globalInstancing: true }), 'small tier').toEqual([false]);
     expect(await decisions(GLOBAL_INSTANCING_MIN_BYTES, { globalInstancing: false })).toEqual([false]);
   });
 
   it('falls back to the explicit flag when the host does not decide', async () => {
+    expect(await decisions(GLOBAL_INSTANCING_MIN_BYTES, {})).toEqual([false]);
     g.__IFC_LITE_GLOBAL_INSTANCING = 1;
-    expect(await decisions(GLOBAL_INSTANCING_MIN_BYTES, {})).toEqual([true]);
+    expect(await decisions(GLOBAL_INSTANCING_MIN_BYTES, {})).toEqual([]);
   });
 
-  it('never plans or reports an arm for a load with instancing off (a federated add)', async () => {
+  it('never plans or reports for a load with instancing off', async () => {
+    expect(await decisions(GLOBAL_INSTANCING_MIN_BYTES - 1, { globalInstancing: true, enableInstancing: false })).toEqual([]);
     expect(await decisions(GLOBAL_INSTANCING_MIN_BYTES, { globalInstancing: true, enableInstancing: false })).toEqual([]);
   });
 });

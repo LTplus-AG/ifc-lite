@@ -235,9 +235,8 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
         throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: err.message, details });
       }
       // Out of memory, stack overflow, or a fault the wrapper could not catch.
-      if (err instanceof ScriptError) throw scriptError(clipMessage(err.message), details);
-      // Recursion that outran the host stack despite MAX_STACK_BYTES.
-      if (err instanceof RangeError) throw scriptError(clipMessage(err.message), details);
+      // A RangeError is recursion that outran the host stack despite MAX_STACK_BYTES.
+      if (err instanceof ScriptError || err instanceof RangeError) throw scriptError(clipMessage(err.message), details);
       // Keep mutations_queued on every failure, not only script ones.
       throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: describeThrown(err), details });
     } finally {

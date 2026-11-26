@@ -120,13 +120,31 @@ function claudeDesktopConfigPath(host: HostEnv): string {
     const localAppData = host.env.LOCALAPPDATA || win32.join(host.home, 'AppData', 'Local');
     const packages = win32.join(localAppData, 'Packages');
     // Only a Store install that has run (and so has data there) counts; a leftover folder does not.
-    for (const pkg of host.listDir(packages).filter((d) => d.startsWith('Claude_'))) {
-      const dir = win32.join(packages, pkg, 'LocalCache', 'Roaming', 'Claude');
-      if (host.listDir(dir).length > 0) return win32.join(dir, file);
-    }
+    const msix = storeConfigDir(host, packages);
+    if (msix) return win32.join(msix, file);
     const appData = host.env.APPDATA || win32.join(host.home, 'AppData', 'Roaming');
     return win32.join(appData, 'Claude', file);
   }
   const config = host.env.XDG_CONFIG_HOME || posix.join(host.home, '.config');
   return posix.join(config, 'Claude', file);
+}
+
+/**
+ * The Claude Store package's config folder, when one has data. A folder we
+ * cannot read is not one Claude Desktop uses, so it falls through to %APPDATA%.
+ */
+function storeConfigDir(host: HostEnv, packages: string): string | undefined {
+  const readable = (dir: string): string[] => {
+    try {
+      return host.listDir(dir);
+    } catch (err) {
+      if (!(err instanceof InstallError)) throw err;
+      return [];
+    }
+  };
+  for (const pkg of readable(packages).filter((d) => d.startsWith('Claude_'))) {
+    const dir = win32.join(packages, pkg, 'LocalCache', 'Roaming', 'Claude');
+    if (readable(dir).length > 0) return dir;
+  }
+  return undefined;
 }

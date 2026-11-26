@@ -32,6 +32,8 @@ import { mergeServer } from './merge.js';
 import { nodeInstallIo, type InstallIo } from './io.js';
 
 const CLIENT_IDS = Object.keys(CLIENTS);
+/** Read only by the HTTP transport, which an installed server never runs. */
+const HTTP_ONLY_FLAGS = ['--port', '--host', '--token'];
 /** Server flags that print and exit; `--help`/`-h` are install's own. */
 const EXIT_FLAGS = ['--help', '-h', '--version', '-v'];
 
@@ -110,6 +112,9 @@ function parseInstallArgs(argv: string[], host: HostEnv): InstallArgs | 'help' {
   }
   const conflict = bridgeConflict(parsed);
   if (conflict) throw new InstallError(conflict);
+  if (!parsed.bridge && (parsed.insecure || parsed.allowedOrigins)) {
+    throw new InstallError('--insecure and --allow-origin only act with --transport http or --bridge.');
+  }
   return { client, scope, name, dryRun, force, serverArgs, hasPaths };
 }
 
@@ -126,7 +131,8 @@ function serverArgsFor(args: string[], host: HostEnv): { args: string[]; hasPath
   let hasPaths = false;
   const abs = (p: string) => {
     hasPaths = true;
-    return path.isAbsolute(p) ? p : path.resolve(host.cwd, p);
+    // resolve, not isAbsolute: a Windows `\\dir\\m.ifc` also needs its drive.
+    return path.resolve(host.cwd, p);
   };
   const out: string[] = [];
   for (let i = 0; i < args.length; i++) {
@@ -135,6 +141,8 @@ function serverArgsFor(args: string[], host: HostEnv): { args: string[]; hasPath
       out.push(abs(arg));
     } else if (arg.includes('=')) {
       throw new InstallError(`The server reads ${arg.split('=')[0]} <value>, with a space; it would ignore ${arg}.`);
+    } else if (HTTP_ONLY_FLAGS.includes(arg)) {
+      throw new InstallError(`${arg} is for --transport http; clients start the server over stdio.`);
     } else if (isMcpValueFlag(arg)) {
       const value = args[i + 1];
       if (value === undefined || value.startsWith('-')) throw new InstallError(`${arg} needs a value.`);
@@ -163,7 +171,8 @@ function packageVersion(): string {
 
 /** Quote for a POSIX shell, or for cmd.exe (where `^` escapes and `""` is a literal quote). */
 function quote(arg: string, platform: NodeJS.Platform): string {
-  if (platform === 'win32') return /^[\w@+=:,./\\-]+$/.test(arg) ? arg : `"${arg.replace(/"/g, '""')}"`;
+  // `,` `;` `=` stay quoted: cmd splits on them when the target is a .cmd shim.
+  if (platform === 'win32') return /^[\w@+:./\\-]+$/.test(arg) ? arg : `"${arg.replace(/"/g, '""')}"`;
   // `^` stays quoted: zsh with EXTENDED_GLOB reads it as a glob.
   if (/^[\w@+=:,./-]+$/.test(arg)) return arg;
   return `'${arg.replace(/'/g, `'\\''`)}'`;
@@ -192,16 +201,15 @@ export function runInstall(
       io.out(installHelp(invokedAs));
       return 0;
     }
+    const plan = planInstall(args.client, args.scope, args.name, serverCommand(version, args.serverArgs), io.host);
     if (args.scope === 'project' && args.hasPaths) {
       io.err('[ifc-lite-mcp install] note: the project file gets absolute paths, which only work on this machine.\n');
     }
-    const plan = planInstall(args.client, args.scope, args.name, serverCommand(version, args.serverArgs), io.host);
     const label = CLIENTS[args.client];
     return plan.kind === 'command'
       ? runCommandPlan(plan, args, label, io)
       : writeFilePlan(plan, args, label, io);
   } catch (err) {
-    // A file-system or spawn failure (EACCES, EROFS, ...) is the user's to fix, not a crash.
     if (!(err instanceof InstallError)) throw err;
     io.err(`[ifc-lite-mcp install] ${err.message}\n`);
     return 1;

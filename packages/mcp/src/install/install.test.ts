@@ -85,6 +85,26 @@ describe('ifc-lite-mcp install: where each client is configured', () => {
     expect([...io.files.keys()]).toEqual(['/Users/u/.config/Claude/claude_desktop_config.json']);
   });
 
+  it('an unreadable Store folder falls back to %APPDATA%', () => {
+    const io = fakeIo({
+      platform: 'win32',
+      home: 'C:\\Users\\u',
+      env: { APPDATA: 'C:\\A', LOCALAPPDATA: 'C:\\L' },
+      listDir: (p) => {
+        if (p === 'C:\\L\\Packages') return ['Claude_x'];
+        throw new InstallError(`EACCES: permission denied, scandir '${p}'`);
+      },
+    });
+    expect(install(['--client', 'claude-desktop'], io)).toBe(0);
+    expect([...io.files.keys()]).toEqual(['C:\\A\\Claude\\claude_desktop_config.json']);
+  });
+
+  it('a Windows root-relative path gets the drive of the current directory', () => {
+    const io = fakeIo({ platform: 'win32', home: 'C:\\Users\\u', cwd: 'D:\\work' });
+    install(['--client', 'cursor', '\\proj\\m.ifc'], io);
+    expect(JSON.parse(io.files.get('C:\\Users\\u\\.cursor\\mcp.json') ?? 'null').mcpServers['ifc-lite'].args[2]).toBe('D:\\proj\\m.ifc');
+  });
+
   it('Cursor user and project scope', () => {
     const io = fakeIo();
     install(['--client', 'cursor'], io);
@@ -298,6 +318,8 @@ describe('ifc-lite-mcp install: dry run and usage errors', () => {
     [['--client', 'cursor', 'model.ifc', '--', '--bridge'], 'loads no files'],
     [['--client', 'cursor', '-v'], 'not an install option'],
     [['--client', 'cursor', '--', '--readonly'], 'no --readonly flag'],
+    [['--client', 'cursor', '--', '--token', 'abc'], 'for --transport http'],
+    [['--client', 'cursor', '--', '--insecure'], 'only act with'],
     [['--client', 'cursor', '--', '--read-only=true'], 'with a space'],
     [['--client', 'cursor', '--', '--allow', '--read-only'], '--allow needs a value'],
     [['--client', 'cursor', '--', '--allow'], '--allow needs a value'],

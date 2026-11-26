@@ -90,7 +90,8 @@ ${TAB_SHOW_UI_TOOL} when listed to deliver an A2UI surface to the tab, and ${BRI
   • The tool list changes (notifications/tools/list_changed) when a tab connects, disconnects or changes permission.
   • tab_* tools the tab marks as changing the model appear only when the user allowed changes in the tab. Changes land in
     the viewer's undo history; saving or writing back to a cloud source stays a user action in the viewer.
-  • viewer_* tools (no tab_ prefix) drive this process's own local viewer page, not the user's tab.
+  • viewer_* tools (no tab_ prefix) drive this process's own local viewer page, not the user's tab (except the
+    deprecated aliases viewer_show_ui and viewer_ui_events, which are tab_show_ui and tab_ui_events).
   • model_id, export_ifc and model_save above apply to models loaded in this process. tab_* tools take the tab's own
     model ids, and their edits stay in the tab until the user saves there.
   • A tool name inside a tab_* tool's schema, result or hint (e.g. "id from model_list") names the tab's own tool: call it

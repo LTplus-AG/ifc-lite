@@ -107,7 +107,7 @@ function collect(value: unknown, into: Surface): void {
 }
 
 /** Refused, or admitted with the prompt to deliver (trimmed when verified, as the agent wrote it). */
-type SurfaceCheck = { refused: string } | { promptVerified: boolean; prompt?: string };
+type SurfaceCheck = { refused: string } | { promptVerified: boolean; prompt?: string | undefined };
 
 export class DeliveredSurfaces {
   /** Surface id -> what the agent sent for it. Insertion order is age. */
@@ -153,8 +153,10 @@ export class DeliveredSurfaces {
     if (!surface) return { refused: 'names a surface the agent did not show in this tab' };
     if (event.name !== ASK_EVENT && !surface.events.has(event.name)) return { refused: 'names an event that surface does not raise' };
     const prompt = event.prompt?.trim();
-    const promptVerified = !prompt || surface.prompts.has(prompt) || prompt === genericPrompt(event.name);
-    return { promptVerified, ...(event.prompt === undefined ? {} : { prompt: promptVerified ? prompt : event.prompt }) };
+    // A blank prompt is no prompt: nothing to pass on as the user's words.
+    if (!prompt) return { promptVerified: true, ...(event.prompt === undefined ? {} : { prompt: undefined }) };
+    const promptVerified = surface.prompts.has(prompt) || prompt === genericPrompt(event.name);
+    return { promptVerified, prompt: promptVerified ? prompt : event.prompt };
   }
 
   /** A different tab paired: what the previous one was shown does not carry over. */

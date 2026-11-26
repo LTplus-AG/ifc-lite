@@ -52,6 +52,11 @@ export function isAddrInUse(err: unknown): boolean {
   return (err as NodeJS.ErrnoException | null)?.code === 'EADDRINUSE';
 }
 
+/** A port this process cannot take: held by another program, or (Windows) in a reserved range (EACCES). */
+export function isPortUnavailable(err: unknown): boolean {
+  return isAddrInUse(err) || (err as NodeJS.ErrnoException | null)?.code === 'EACCES';
+}
+
 /** How many ports after the preferred one are tried before any free port. */
 export const PORT_FALLBACK_SPAN = 9;
 
@@ -67,7 +72,7 @@ export function fallbackPorts(preferred: number): number[] {
   return [...out, 0];
 }
 
-/** `listenLoopback` on the first of `ports` that is free; any error but EADDRINUSE stops at once. */
+/** `listenLoopback` on the first of `ports` that is free; any error but an unavailable port stops at once. */
 export async function listenLoopbackFirstFree(
   ports: readonly number[],
   maxPayload: number,
@@ -79,7 +84,7 @@ export async function listenLoopbackFirstFree(
     try {
       return await listenLoopback(port, maxPayload, onUpgrade, log);
     } catch (err) {
-      if (!isAddrInUse(err)) throw err;
+      if (!isPortUnavailable(err)) throw err;
       last = err;
     }
   }

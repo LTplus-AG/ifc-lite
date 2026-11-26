@@ -29,7 +29,7 @@ import { surfacePushTool } from './surface-push.js';
 import { uiEventsTool } from './ui-events-tool.js';
 import { BRIDGE_UI_EVENTS_TOOL } from './ui-events.js';
 import { BRIDGE_STATUS_TOOL, BRIDGE_SURFACE_TOOL, DEFAULT_BRIDGE_PORT, MAX_MCP_TOOL_NAME, TAB_SHOW_UI_TOOL, TAB_TOOL_PREFIX, type BridgeToolDescriptor } from './protocol.js';
-import { isAddrInUse } from './loopback-server.js';
+import { isPortUnavailable } from './loopback-server.js';
 import { mcpName } from './tab-names.js';
 import { BridgeCallError, type BridgeCallFailure, type TabBridge } from './tab-bridge.js';
 
@@ -171,7 +171,7 @@ function statusTool(bridge: TabBridge): Tool {
       try {
         await bridge.listen();
       } catch (err) {
-        const inUse = isAddrInUse(err);
+        const inUse = isPortUnavailable(err);
         return toolError({
           code: ToolErrorCode.INTERNAL_ERROR,
           message: `The bridge could not listen on 127.0.0.1: ${describeThrown(err)}`,

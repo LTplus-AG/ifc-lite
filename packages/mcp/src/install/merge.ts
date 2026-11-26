@@ -21,6 +21,9 @@ export type MergeResult =
 
 type JsonObject = Record<string, unknown>;
 
+/** Keys that say how a client reaches a server; a replaced entry loses all of them. */
+const LAUNCH_KEYS = ['command', 'args', 'type', 'transport', 'url', 'serverUrl', 'headers'];
+
 function isObject(value: unknown): value is JsonObject {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -53,8 +56,12 @@ export function mergeServer(
 
   // hasOwn: a name like `constructor` must not find Object.prototype's.
   const existing = Object.hasOwn(servers, name) ? servers[name] : undefined;
-  // Ours are command/args/type; anything else the user added (env, cwd) is kept.
-  const merged = isObject(existing) ? { ...existing, ...entry } : entry;
+  // Ours replace the launch keys, and an old HTTP entry's url/headers go with
+  // them; anything else the user added (env, cwd, disabled) is kept.
+  const kept = isObject(existing)
+    ? Object.fromEntries(Object.entries(existing).filter(([k]) => !LAUNCH_KEYS.includes(k)))
+    : {};
+  const merged = { ...kept, ...entry };
   if (existing !== undefined) {
     if (canonical(merged) === canonical(existing)) return { status: 'unchanged' };
     if (!force) return { status: 'conflict', existing };

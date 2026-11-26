@@ -102,20 +102,10 @@ function parseInstallArgs(argv: string[], host: HostEnv): InstallArgs | 'help' {
   if (!isClientId(client)) throw new InstallError(`Unknown client "${client}". Use one of ${CLIENT_IDS.join(', ')}.`);
   if (scope !== 'user' && scope !== 'project') throw new InstallError('--scope must be user or project.');
   if (!/^[A-Za-z0-9_-]+$/.test(name)) throw new InstallError('--name may use letters, digits, - and _ only.');
-  // A typo such as --readonly would be written and then ignored at every launch.
-  const unknown = passThrough.find(
-    (a, i) => a.startsWith('-') && !a.includes('=') && !isMcpValueFlag(passThrough[i - 1] ?? '')
-      && !isMcpValueFlag(a) && !MCP_BOOLEAN_FLAGS.includes(a),
-  );
-  if (unknown) throw new InstallError(`The server has no ${unknown} flag (ifc-lite-mcp --help lists them).`);
-  const exits = passThrough.find((a) => EXIT_FLAGS.includes(a));
-  if (exits) throw new InstallError(`${exits} makes the server print and exit at every launch; drop it.`);
-  const glued = passThrough.map((a) => a.match(/^(--[\w-]+)=/)).find((m) => m && isMcpValueFlag(m[1]));
-  if (glued) throw new InstallError(`The server reads ${glued[1]} <value>, with a space; it would drop ${glued.input}.`);
-  const { args: serverArgs, hasPaths } = absolutePaths([...files, ...passThrough], host);
+  const { args: serverArgs, hasPaths } = serverArgsFor([...files, ...passThrough], host);
   // What the server would refuse at launch is refused now, in the server's own words.
   const parsed = parseArgs(serverArgs);
-  if (parsed.transport !== 'stdio' || passThrough.at(-1) === '--transport') {
+  if (parsed.transport !== 'stdio') {
     throw new InstallError('Clients start ifc-lite-mcp over stdio; drop --transport. For HTTP, give the client the server URL.');
   }
   const conflict = bridgeConflict(parsed);
@@ -124,10 +114,14 @@ function parseInstallArgs(argv: string[], host: HostEnv): InstallArgs | 'help' {
 }
 
 /**
- * The client starts the server from a directory we do not know, so model
- * paths and `--allow` roots are fixed to absolute paths now.
+ * The server's argv as it will be written, walked once the way the server
+ * reads it. Whatever the server would ignore or exit on (a typo such as
+ * --readonly, --x=y, a value flag with no value, --version) is refused here,
+ * because once written it fails silently at every launch. The client starts
+ * the server from a directory we do not know, so model paths and `--allow`
+ * roots are made absolute.
  */
-function absolutePaths(args: string[], host: HostEnv): { args: string[]; hasPaths: boolean } {
+function serverArgsFor(args: string[], host: HostEnv): { args: string[]; hasPaths: boolean } {
   const path = host.platform === 'win32' ? win32 : posix;
   let hasPaths = false;
   const abs = (p: string) => {
@@ -137,10 +131,21 @@ function absolutePaths(args: string[], host: HostEnv): { args: string[]; hasPath
   const out: string[] = [];
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
-    out.push(arg.startsWith('-') ? arg : abs(arg));
-    if (isMcpValueFlag(arg) && i + 1 < args.length) {
+    if (!arg.startsWith('-')) {
+      out.push(abs(arg));
+    } else if (arg.includes('=')) {
+      throw new InstallError(`The server reads ${arg.split('=')[0]} <value>, with a space; it would ignore ${arg}.`);
+    } else if (isMcpValueFlag(arg)) {
+      const value = args[i + 1];
+      if (value === undefined || value.startsWith('-')) throw new InstallError(`${arg} needs a value.`);
       i++;
-      out.push(arg === '--allow' ? abs(args[i]) : args[i]);
+      out.push(arg, arg === '--allow' ? abs(value) : value);
+    } else if (EXIT_FLAGS.includes(arg)) {
+      throw new InstallError(`${arg} makes the server print and exit at every launch; drop it.`);
+    } else if (MCP_BOOLEAN_FLAGS.includes(arg)) {
+      out.push(arg);
+    } else {
+      throw new InstallError(`The server has no ${arg} flag (ifc-lite-mcp --help lists them).`);
     }
   }
   return { args: out, hasPaths };

@@ -119,6 +119,21 @@ describe('ifc-lite-mcp install: where each client is configured', () => {
     }]);
   });
 
+  it('server flags with values pass through untouched', () => {
+    const io = fakeIo();
+    expect(install(['--client', 'cursor', '--', '--bsdd', 'https://x', '--read-only'], io)).toBe(0);
+    expect(JSON.parse(io.files.get('/Users/u/.cursor/mcp.json') ?? 'null').mcpServers['ifc-lite'].args)
+      .toEqual(['-y', PKG, '--bsdd', 'https://x', '--read-only']);
+  });
+
+  it('--force over an old HTTP entry drops its url and headers', () => {
+    const io = fakeIo();
+    const p = '/Users/u/.cursor/mcp.json';
+    io.files.set(p, JSON.stringify({ mcpServers: { 'ifc-lite': { url: 'http://x/mcp', headers: { A: 'b' }, env: { T: '1' } } } }));
+    expect(install(['--client', 'cursor', '--force'], io)).toBe(0);
+    expect(JSON.parse(io.files.get(p) ?? 'null').mcpServers['ifc-lite']).toEqual({ env: { T: '1' }, command: 'npx', args: ['-y', PKG] });
+  });
+
   it('accepts --transport stdio, which is what clients use anyway', () => {
     const io = fakeIo();
     expect(install(['--client', 'cursor', '--', '--transport', 'stdio'], io)).toBe(0);
@@ -278,11 +293,14 @@ describe('ifc-lite-mcp install: dry run and usage errors', () => {
     [['--client', 'zed'], 'Unknown client'],
     [['--client', 'cursor', '--read-only'], 'Server flags go after --'],
     [['--client', 'cursor', '--', '--transport', 'http'], 'drop --transport'],
-    [['--client', 'cursor', '--', '--transport'], 'drop --transport'],
+    [['--client', 'cursor', '--', '--transport'], '--transport needs a value'],
     [['--client', 'cursor', '--', '--version'], 'print and exit'],
     [['--client', 'cursor', 'model.ifc', '--', '--bridge'], 'loads no files'],
     [['--client', 'cursor', '-v'], 'not an install option'],
     [['--client', 'cursor', '--', '--readonly'], 'no --readonly flag'],
+    [['--client', 'cursor', '--', '--read-only=true'], 'with a space'],
+    [['--client', 'cursor', '--', '--allow', '--read-only'], '--allow needs a value'],
+    [['--client', 'cursor', '--', '--allow'], '--allow needs a value'],
     [['--client', 'cursor', '--', '--transport=http'], 'with a space'],
     [['--client', 'cursor', '--', '--allow=./models'], 'with a space'],
     [['--client=cursor'], 'Write --client <value>'],

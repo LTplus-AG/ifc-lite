@@ -60,9 +60,13 @@ export function productsUnderPlacement(storeyPlacementId: number, parsed: Parsed
 
 const UTF8 = new TextDecoder('utf-8', { fatal: true });
 
-/** A storey record's decoded Name (third attribute), or null when it is not a string. */
-function storeyName(body: string): string | null {
-  const text = stepString(splitTopLevelArgs(body)?.[2]);
+/** IfcBuildingStorey attribute positions: Name, then LongName (after ObjectPlacement, Representation). */
+const NAME = 2;
+const LONG_NAME = 7;
+
+/** A storey record's decoded string attribute at `index`, or null when it is not a string. */
+function storeyText(body: string, index: number): string | null {
+  const text = stepString(splitTopLevelArgs(body)?.[index]);
   if (text === null) return null;
   const name = decodeStepStringLiteral(text);
   // The subset parse reads the file as latin1, so a name a tool wrote as raw
@@ -83,15 +87,19 @@ function storeyName(body: string): string | null {
 export function resolveStoreyPlacement(token: string, parsed: ParsedStep): number {
   let storeyId: number | undefined;
   const t = token.trim();
-  // Exact match on the decoded Name attribute (the third), never on LongName,
-  // Description or ObjectType text; two storeys of one name are refused.
+  // Exact match on the decoded Name, then on LongName (Revit writes '02' as
+  // Name and 'Level 2' as LongName); never on Description or ObjectType text.
+  // Two storeys sharing the matched value are refused.
   const byName = (): number | undefined => {
-    const hits: number[] = [];
-    for (const inst of parsed.instances.values()) {
-      if (inst.type === 'IFCBUILDINGSTOREY' && storeyName(inst.body)?.trim() === t) hits.push(inst.id);
+    for (const index of [NAME, LONG_NAME]) {
+      const hits: number[] = [];
+      for (const inst of parsed.instances.values()) {
+        if (inst.type === 'IFCBUILDINGSTOREY' && storeyText(inst.body, index)?.trim() === t) hits.push(inst.id);
+      }
+      if (hits.length > 1) throw new SubsetSelectionError('invalid', `${hits.length} storeys are named '${t}' (#${hits.join(', #')}); pass a GlobalId or #id.`);
+      if (hits.length === 1) return hits[0];
     }
-    if (hits.length > 1) throw new SubsetSelectionError('invalid', `${hits.length} storeys are named '${t}' (#${hits.join(', #')}); pass a GlobalId or #id.`);
-    return hits[0];
+    return undefined;
   };
   if (/^#\d+$/.test(t)) {
     storeyId = parseInt(t.slice(1), 10);

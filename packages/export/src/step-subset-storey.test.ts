@@ -45,11 +45,17 @@ describe('resolveStoreyPlacement: a storey NAMED with a number', () => {
     expect(resolveStoreyPlacement('0', parsed)).toBe(10);
   });
 
-  it('matches the Name attribute only, and refuses a name two storeys share', () => {
+  it('matches the Name attribute, and refuses a name two storeys share', () => {
     const shared = parseStep(text.replace("'0',$,$,#10", "'1',$,$,#10"));
     expect(() => resolveStoreyPlacement('1', shared)).toThrow(/2 storeys are named '1'/);
     const described = parseStep(text.replace("'0',$,$,#10", "'Ground','1',$,#10"));
     expect(resolveStoreyPlacement('1', described)).toBe(11);
+  });
+
+  it('falls back to LongName when no Name matches, never to Description', () => {
+    const revit = parseStep(text.replace("'0',$,$,#10,$,$,.ELEMENT.", "'02','Level 2 notes',$,#10,$,'Level 2',.ELEMENT."));
+    expect(resolveStoreyPlacement('Level 2', revit)).toBe(10);
+    expect(() => resolveStoreyPlacement('Level 2 notes', revit)).toThrow(/Storey not found/);
   });
 
   it('reads a Name written as raw UTF-8 bytes (the parse is latin1)', () => {

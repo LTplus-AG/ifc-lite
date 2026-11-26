@@ -1526,6 +1526,8 @@ jobs:
           # scripts/lib/viewer-test-durations.mjs assumes serial files.
           VIEWER_TEST_CONCURRENCY: ${{ vars.VIEWER_TEST_CONCURRENCY }}
       - name: Count viewer test files that reported a result
+        if: steps.viewer_tests.outcome == 'success'
+        continue-on-error: true
         run: |
           node --input-type=module -e '
             import { readFileSync } from "node:fs";

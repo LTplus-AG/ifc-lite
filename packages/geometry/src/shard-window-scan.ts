@@ -98,7 +98,7 @@ export function scanShardWindowed(
 
 /**
  * {@link scanShardWindowed} through `api`. A runtime that refuses a view over shared memory at the wasm boundary
- * gets a copy of the window (never of the file); `onViewRefused` hears the refusal first, and may rethrow.
+ * gets a copy of the window (at most its range plus the margin, which on a small file can reach EOF); `onViewRefused` hears the refusal first, and may rethrow.
  */
 export function scanShardWindowedOn(
   api: ShardScanApi,

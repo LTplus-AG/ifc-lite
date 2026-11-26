@@ -218,7 +218,7 @@ function assertMayDiscard(id: string, ctx: ToolContext, scope: AuthScope): void 
   if ((pendingOverlay(existing)?.pendingMutations ?? 0) > 0) {
     throw new ToolExecutionError({
       code: ToolErrorCode.PERMISSION_DENIED,
-      message: `Model '${id}' has unsaved edits; dropping or replacing it needs mutate scope. Exporting keeps a copy of the edits but does not clear them.`,
+      message: `Model '${id}' has unsaved edits; dropping or replacing it needs mutate scope. Exporting keeps a copy but does not clear them; load the file under another model_id, or use a token with mutate scope.`,
     });
   }
 }

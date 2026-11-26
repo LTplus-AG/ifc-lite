@@ -12,7 +12,7 @@
  */
 
 import { constants } from 'node:fs';
-import { open, realpath } from 'node:fs/promises';
+import { open, realpath, stat } from 'node:fs/promises';
 import { basename, resolve } from 'node:path';
 import { IfcParser, validateStepInput, type IfcDataStore } from '@ifc-lite/parser';
 import { sourceModelIdentity } from '@ifc-lite/cache';
@@ -39,9 +39,12 @@ export async function loadIfcModel(filePath: string, opts: LoadIfcOptions = {}):
   }
 
   const canonical = await realpath(absolute);
-  // O_NONBLOCK: opening a FIFO with no writer would otherwise block forever.
-  // The type is checked on the opened descriptor, so a swap cannot race it.
-  const handle = await open(canonical, constants.O_RDONLY | constants.O_NONBLOCK);
+  // Refuse special files before opening them: opening a device can have side
+  // effects, and a FIFO with no writer blocks. Then open without blocking and
+  // without following a symlink swapped in since realpath, and check the
+  // opened descriptor again in case the path changed in between.
+  if (!(await stat(canonical)).isFile()) throw new Error(`Path '${absolute}' is not a regular file`);
+  const handle = await open(canonical, constants.O_RDONLY | constants.O_NONBLOCK | (constants.O_NOFOLLOW ?? 0));
   let buffer: Buffer;
   let identity: { path: string; dev: bigint; ino: bigint };
   try {

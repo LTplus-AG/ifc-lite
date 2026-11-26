@@ -156,7 +156,7 @@ export function parseArgs(rawArgv: string[]): CliOptions {
       opts.errors.push(`${flag} needs a value.`);
       return undefined;
     }
-    // A bare `--` (end of options) is left alone, like a known flag.
+    // A bare `--` is left for the main loop, like a known flag.
     if (!explicit.has(i + 1) && next.startsWith('--') && next !== '--') {
       i++;
       opts.errors.push(`${flag} needs a value; the next argument starts with '--'. Pass ${flag}=<value> if the value starts with '--'.`);

@@ -39,7 +39,7 @@ describe('MCP shared loading validation', () => {
 
   // #11534: model_load needs only read scope, so a FIFO in an allowed root
   // must fail fast instead of blocking the open forever.
-  it.skipIf(process.platform === 'win32')('refuses a FIFO without opening it', async () => {
+  it.skipIf(process.platform === 'win32')('refuses a FIFO without blocking', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'ifc-lite-fifo-'));
     try {
       const fifo = join(dir, 'pipe.ifc');

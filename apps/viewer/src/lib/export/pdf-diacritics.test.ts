@@ -13,6 +13,7 @@ import assert from 'node:assert/strict';
 import { jsPDF } from 'jspdf';
 import type { ColumnDefinition, ListRow } from '@ifc-lite/lists';
 import type { DxfUnderlayRenderData } from '@/hooks/useDxfUnderlay.js';
+import type { TextAnnotation2D } from '@/store/slices/drawing2DSlice';
 import { drawElementTagsPdf } from '@/lib/drawing/element-tag-export';
 import { buildExportModel } from '@/lib/lists/export/model';
 import { createListArtifact } from '@/lib/lists/export';
@@ -23,6 +24,11 @@ const ROOM = 'Sală de ședințe – Etaj 2, 25 m²';
 // ă ș ț are outside WinAnsi, so they keep their base letter; the en dash and m² are WinAnsi and stay.
 // jsPDF writes the WinAnsi byte for the en dash (0x96) and m² (0xB2) as one raw character each.
 const PRINTED = 'Sala de sedinte \x96 Etaj 2, 25 m²';
+
+function tag(text: string): TextAnnotation2D {
+  return { id: 'space', position: { x: 1, y: 1 }, text, fontSize: 10,
+    color: '#000000', backgroundColor: '#ffffff', borderColor: '#000000' };
+}
 
 /** The string operands of every Tj in a PDF's raw text, as jsPDF wrote them. */
 function shown(raw: string): string[] {
@@ -38,10 +44,10 @@ function assertPrinted(raw: string, expected: string): void {
   assert.ok(!raw.includes('\u0000'), 'no NUL-interleaved (two-byte) text in the page');
 }
 
-describe('PDF text with characters outside WinAnsi', () => {
+describe('PDF text with characters outside WinAnsi (#11449)', () => {
   it('element tags (space names) print readable text', () => {
     const doc = new jsPDF();
-    drawElementTagsPdf(doc, [{ position: { x: 1, y: 1 }, text: ROOM } as never], (x, y) => ({ x, y }));
+    drawElementTagsPdf(doc, [tag(ROOM)], (x, y) => ({ x, y }));
     assertPrinted(doc.output(), PRINTED);
   });
 
@@ -50,9 +56,7 @@ describe('PDF text with characters outside WinAnsi', () => {
     const data: DxfUnderlayRenderData[] = [{ id: 'dxf', opacity: 1, lines: [], fills: [], texts: [{
       x: 2, y: 3, dirX: 1, dirY: 0, height: 0.5, text: ROOM, color: '#000000', align: 'left', valign: 'baseline' }] }];
     drawDxfUnderlaysPdf(doc, data, (x, y) => ({ x: 50 + x * 10, y: 50 - y * 10 }), 10);
-    const raw = doc.output();
-    assert.ok(shown(raw).map(printed).includes(PRINTED), JSON.stringify(shown(raw)));
-    assert.ok(!raw.includes('\u0000'));
+    assertPrinted(doc.output(), PRINTED);
   });
 
   it('list (schedule) PDF prints title, headers and cells readable', async () => {
@@ -67,9 +71,12 @@ describe('PDF text with characters outside WinAnsi', () => {
     assert.ok(!raw.includes('\u0000'));
   });
 
-  it('report PDF text and tables print readable text', async () => {
+  it('report PDF text and tables print readable text', async (t) => {
     // The seam builds a DOMParser eagerly; no chart SVG is drawn here, so a bare stand-in will do.
-    (globalThis as { DOMParser?: unknown }).DOMParser ??= class {};
+    if (typeof DOMParser === 'undefined') {
+      Object.defineProperty(globalThis, 'DOMParser', { value: class {}, configurable: true });
+      t.after(() => Reflect.deleteProperty(globalThis, 'DOMParser'));
+    }
     const doc = await (await browserReportSeams(null)).createDoc('a4', 'portrait');
     doc.text(ROOM, 40, 40);
     doc.table({ startY: 60, margin: { left: 40, right: 40 }, head: [['Etaj', 'Număr']], body: [[ROOM, '3']] });
@@ -82,7 +89,7 @@ describe('PDF text with characters outside WinAnsi', () => {
 
   it('control: WinAnsi-only text is untouched', () => {
     const doc = new jsPDF();
-    drawElementTagsPdf(doc, [{ position: { x: 1, y: 1 }, text: 'Büro Größe 25 m²' } as never], (x, y) => ({ x, y }));
+    drawElementTagsPdf(doc, [tag('Büro Größe 25 m²')], (x, y) => ({ x, y }));
     assertPrinted(doc.output(), 'Büro Größe 25 m²');
   });
 });

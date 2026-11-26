@@ -172,8 +172,10 @@ export class UiEventInbox {
    * `signal` aborts) for the first.
    */
   async take(waitMs: number, signal?: AbortSignal): Promise<{ events: ReceivedUiEvent[]; dropped: number; refused: number }> {
-    // Losses already counted are news too: report them without waiting.
-    if (this.queue.length === 0 && this.dropped === 0 && this.refusedCount === 0 && waitMs > 0 && !signal?.aborted) {
+    // Losses already counted are news too: report them without waiting. Refusals
+    // end a wait under their own window, so a flood of them cannot busy-loop the reader.
+    const refusalNews = this.refusedCount > 0 && this.admit(this.refusalWakes, this.now());
+    if (this.queue.length === 0 && this.dropped === 0 && !refusalNews && waitMs > 0 && !signal?.aborted) {
       await new Promise<void>((resolve) => {
         const done = (): void => {
           clearTimeout(timer);
@@ -210,6 +212,11 @@ export class UiEventInbox {
     this.dropped = 0;
     this.refusedCount = 0;
     this.refusalWakes = [];
+  }
+
+  /** Something to report: queued events, or counted drops or refusals. */
+  get hasNews(): boolean {
+    return this.queue.length > 0 || this.dropped > 0 || this.refusedCount > 0;
   }
 
   get size(): number {

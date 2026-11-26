@@ -46,7 +46,7 @@ export function uiEventsTool(inbox: UiEventInbox, channel: boolean): Tool {
       return {
         content: [{ type: 'text', text: [...lines, '', PROVENANCE].join('\n') }],
         // An unverified prompt is quoted here too, for clients that hand structured content to the model.
-        structuredContent: { events: events.map((e) => (e.promptVerified || e.prompt === undefined ? e : { ...e, prompt: shownPrompt(e) })), dropped, refused, provenance: PROVENANCE },
+        structuredContent: { events: events.map(structuredEvent), dropped, refused, provenance: PROVENANCE },
       };
     },
   };
@@ -66,6 +66,13 @@ function shownPrompt(event: ReceivedUiEvent): string {
  */
 function quoted(value: unknown): string {
   return JSON.stringify(value).replace(/[<>&]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`);
+}
+
+/** An event as structured content: an unverified prompt quoted, and context's raw copy of it dropped. */
+function structuredEvent(e: ReceivedUiEvent): ReceivedUiEvent {
+  if (e.promptVerified || e.prompt === undefined) return e;
+  const { prompt: raw, ...context } = e.context ?? {};
+  return { ...e, prompt: shownPrompt(e), ...(e.context ? { context: raw === e.prompt ? context : { ...context, prompt: quoted(raw) } } : {}) };
 }
 
 /** A named event's prompt, as the agent should read it. */

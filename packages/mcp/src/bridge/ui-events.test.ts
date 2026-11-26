@@ -129,6 +129,19 @@ describe('UiEventInbox', () => {
     expect(woken).toBe(1);
   });
 
+  it('keeps clicks queued before the tab went away readable', async () => {
+    const agent = await startAgent();
+    const { tab, send, show } = await pair(agent);
+    await show('walls', ['Which walls?']);
+    send({ surfaceId: 'walls', name: 'ask', prompt: 'Which walls?' });
+    await expect.poll(() => agent.r.bridge.uiEvents.size).toBe(1);
+    tab.close();
+    await expect.poll(() => agent.r.bridge.tab()).toBeNull();
+    expect((await agent.call('tab_ui_events')).structuredContent?.events).toMatchObject([{ prompt: 'Which walls?' }]);
+    // Now empty, with no tab: not connected.
+    expect((await agent.call('tab_ui_events')).structuredContent?.code).toBe('VIEWER_NOT_CONNECTED');
+  });
+
   it('stops waiting when the call is cancelled', async () => {
     const inbox = new UiEventInbox();
     const abort = new AbortController();

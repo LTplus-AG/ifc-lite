@@ -11,4 +11,4 @@
  */
 
 export { compactBounds, compactRow, compactStep, isCompactCellSize, visitCompactPayload, COMPACT_CELL_METRES, COMPACT_RECORD_BYTES, type CompactPayload, type CompactRef } from './compact-geometry.js';
-export { adoptCompactMeshes, compactHydrationStats, copyMeshShell, loadCompactGeometry, materializeCompactMesh, materializeCompactMeshes, meshTriangleCount, meshVertexCount } from './compact-mesh.js';
+export { adoptCompactMeshes, compactHydrationStats, compactMeshBounds, copyMeshShell, loadCompactGeometry, materializeCompactMesh, materializeCompactMeshes, meshTriangleCount, meshVertexCount } from './compact-mesh.js';

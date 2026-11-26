@@ -16,7 +16,8 @@
  *   the reference positions;
  * - a mesh the encoder refuses keeps the reference's bytes, so the caller's
  *   f32 path draws it as before;
- * - the columns are index-parallel and in range.
+ * - the columns are index-parallel and in range, and each row carries its
+ *   source vertex count (the camera fit weighs compact meshes by it).
  */
 
 import assert from 'node:assert/strict';
@@ -24,7 +25,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const RECORD_BYTES = 12;
-const TABLE_STRIDE = 6;
+const TABLE_STRIDE = 7;
 const REFUSAL_KINDS = 9;
 const CELL_METRES = 32;
 /** Half a step, plus the f64 rounding of forming `origin + position` here and in Rust. */
@@ -89,6 +90,7 @@ function checkRow(batch, row, reference) {
   const t = row * TABLE_STRIDE;
   const vertexStart = table[t + 1], vertexCount = table[t + 2], indexStart = table[t + 3], indexCount = table[t + 4];
   const step = 2 ** -table[t + 5];
+  assert.equal(table[t + 6], reference.positions.length / 3, `row ${row}: source vertex count`);
   assert.ok(table[t + 5] >= 9 && table[t + 5] <= 14, `row ${row}: level ${table[t + 5]}`);
   assert.ok(vertexCount > 0 && vertexCount <= 65535 && indexCount > 0 && indexCount % 3 === 0, `row ${row}: counts`);
   assert.ok((vertexStart + vertexCount) * RECORD_BYTES <= records.length && indexStart + indexCount <= indices.length, `row ${row}: ranges`);

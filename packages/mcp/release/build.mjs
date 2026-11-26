@@ -187,15 +187,22 @@ if (onNpm.status !== 0 && /E404/.test(onNpm.stderr ?? '')) {
 
 if (!flags['no-bundle']) {
   // build-wasm.sh keeps the runtime on disk when wasm-pack is missing, so a
-  // release host without it would bundle an old engine.
-  // The same two places build-wasm.sh looks.
+  // release host without it would bundle an old engine. Looked for where
+  // build-wasm.sh looks: PATH, then ~/.cargo/bin.
   const cargoWasmPack = join(homedir(), '.cargo', 'bin', win ? 'wasm-pack.exe' : 'wasm-pack');
   if (spawnSync('wasm-pack', ['--version'], { shell: win }).status !== 0 && !existsSync(cargoWasmPack)) {
     throw new Error('wasm-pack is not installed: a release must rebuild the wasm runtime (scripts/build-wasm.sh)');
   }
-  // Checked before the slow deploy, and again in the stage after it.
-  const source = missingWasm(resolve(pkgDir, '..', 'wasm'));
+  // Checked before the slow deploy (present, and newer than the Rust sources),
+  // and again in the stage after it.
+  const wasmDir = resolve(pkgDir, '..', 'wasm');
+  const source = missingWasm(wasmDir);
   if (source.length) throw new Error(`packages/wasm is missing ${source.join(', ')}: build it (scripts/build-wasm.sh) first`);
+  // build-wasm.sh also keeps the old runtime when a wasm-pack build fails
+  // outside CI, so a runtime older than the Rust sources is a stale one.
+  const rustNewest = newestMtime(resolve(pkgDir, '..', '..', 'rust'));
+  const stale = WASM.filter((f) => statSync(join(wasmDir, f)).mtimeMs < rustNewest);
+  if (stale.length) throw new Error(`packages/wasm/${stale.join(', ')} is older than the Rust sources: rebuild it (scripts/build-wasm.sh)`);
   // A folder this script owns: --out may already hold a user's own `mcpb`.
   const stage = join(out, '.ifc-lite-mcpb-stage');
   const deps = join(out, `ifc-lite-${pkg.version}.deps.txt`);
@@ -211,11 +218,6 @@ if (!flags['no-bundle']) {
     '--filter', pkg.name, 'deploy', '--prod', '--legacy', join(stage, BUNDLE_SERVER_DIR),
   ], pkgDir);
   pruneStage(join(stage, BUNDLE_SERVER_DIR));
-  // build-wasm.sh keeps the old runtime when a wasm-pack build fails outside CI,
-  // so a runtime older than the Rust sources is a stale one.
-  const rustNewest = newestMtime(resolve(pkgDir, '..', '..', 'rust'));
-  const stale = WASM.filter((f) => statSync(resolve(pkgDir, '..', 'wasm', f)).mtimeMs < rustNewest);
-  if (stale.length) throw new Error(`packages/wasm/${stale.join(', ')} is older than the Rust sources: rebuild it (scripts/build-wasm.sh)`);
   const staged = missingWasm(join(stage, BUNDLE_SERVER_DIR, 'node_modules', '@ifc-lite', 'wasm'));
   if (staged.length) throw new Error(`the deployed stage is missing ${staged.join(', ')}`);
   // Hoisted deploy resolves within package.json ranges, not the lockfile, so the

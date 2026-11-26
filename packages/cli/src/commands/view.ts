@@ -103,7 +103,7 @@ export async function viewCommand(args: string[]): Promise<void> {
           openBrowser(url);
         }
 
-        setupStdinCommands(port, viewer);
+        setupStdinCommands(viewer);
       },
       onError: (err) => {
         if (err.code === 'EADDRINUSE') {
@@ -131,7 +131,7 @@ function openBrowser(url: string): void {
 }
 
 /** Listen for interactive commands on stdin */
-function setupStdinCommands(port: number, viewer: ViewerServer): void {
+function setupStdinCommands(viewer: ViewerServer): void {
   if (!process.stdin.isTTY) return;
 
   process.stderr.write('  Interactive commands: colorize, isolate, view, showall, reset, quit\n');
@@ -243,9 +243,9 @@ function setupStdinCommands(port: number, viewer: ViewerServer): void {
         break;
       case 'clear':
       case 'clearCreated':
-        fetch(viewerUrl(port, '/api/clear-created'), { method: 'POST' })
-          .then((res) => { if (!res.ok) process.stderr.write(`clear failed: HTTP ${res.status}\n`); })
-          .catch((err: unknown) => process.stderr.write(`clear failed: ${String(err)}\n`));
+        // The server is in this process: clear it directly, as /api/clear-created does.
+        viewer.createdSegments.length = 0;
+        command = { action: 'removeCreated' };
         break;
       case 'showall':
         command = { action: 'showall' };

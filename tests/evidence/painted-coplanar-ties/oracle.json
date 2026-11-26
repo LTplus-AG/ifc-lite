@@ -1,0 +1,6 @@
+{
+  "issue": 7955,
+  "why": "Let the masks keep a stale colour-table group and give painted surfaces no levels of their own: the mask-table and painted-ranking tests must go red.",
+  "key": "packages/renderer/src/mask-color-table.ts",
+  "mutation": "tests/evidence/painted-coplanar-ties/behaviour.oracle.patch"
+}

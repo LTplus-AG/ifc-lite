@@ -18,7 +18,7 @@
  */
 
 import type { IfcDataStore, ScheduleExtraction } from '@ifc-lite/parser';
-import { injectScheduleIntoStep } from './export-adapter.js';
+import { injectScheduleIntoStep } from './export-schedule-inject.js';
 
 export interface ExportScheduleState {
   /** In-memory schedule — generated tasks, edits, or parsed+untouched. */

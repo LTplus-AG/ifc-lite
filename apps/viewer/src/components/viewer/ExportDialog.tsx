@@ -43,7 +43,6 @@ import { trackExportCompleted } from '@/lib/analytics';
 import { useOptionalExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { ensureModelExportReady } from '@/services/desktop-export';
 import type { ExportProgress } from '@ifc-lite/export';
-import { exportModelIfcx } from '@/lib/export/model-ifcx-export';
 import { downloadFile, modelExportFilename } from '@/lib/export/download';
 import { landXmlDownloadInput, landXmlIfcExportOutcome } from '@/lib/export/landXmlIfcDownload.js';
 import { landXmlExportPlan } from '@/lib/export/landXmlIfcPlan.js';
@@ -427,6 +426,7 @@ export function ExportDialog({ surface, trigger, initialChangesOnly = false }: E
           effectiveVisibleOnly = true;
         }
 
+        const { exportModelIfcx } = await import('@/lib/export/model-ifcx-export');
         const result = await exportModelIfcx({
           modelId: selectedModelId, dataStore: selectedModel.ifcDataStore,
           geometryResult: selectedModel.geometryResult, mutationView: mutationView ?? undefined,

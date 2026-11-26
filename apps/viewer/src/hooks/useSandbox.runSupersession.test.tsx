@@ -57,6 +57,7 @@ import type { ScriptResult, SandboxConfig } from '@ifc-lite/sandbox';
 import { BimReactContext } from '@/sdk/BimProvider.js';
 import { useViewerStore } from '@/store';
 import { SANDBOX_ABORT_MESSAGE } from '@/lib/sandboxAbort.js';
+import { cancelNativeScriptRun } from '@/lib/scripts/native-script-runner';
 import { useSandbox } from './useSandbox.js';
 
 const CONFIG: SandboxConfig = { limits: { memoryBytes: 64 * 1024 * 1024, timeoutMs: 10_000 } };
@@ -301,6 +302,15 @@ describe('useSandbox().execute() — cross-instance run supersession', () => {
     );
   });
 
+  it('publishes script result surfaces through the hook and viewer store', async () => {
+    await act(async () => {
+      const result = await execute1!('bim.ui.callout({ text: "Viewer result" });');
+      assert.ok(result?.surfaces?.length);
+      assert.equal(result.surfaces[0][0].createSurface.surfaceId, result.value);
+      assert.deepEqual(useViewerStore.getState().scriptLastResult?.surfaces, result.surfaces);
+    });
+  });
+
   it('does not gate a run that nothing supersedes', async () => {
     // The counter-example to the test above: same fixture, same gate, same
     // late settle — but no second instance running. Every store write must
@@ -417,21 +427,33 @@ describe('useSandbox().execute() — cross-instance run supersession', () => {
     // run reach its gate before resetting, by which point a
     // capture-after-await has already happened. Here `reset()` fires
     // synchronously, in the same turn as `execute()`, before any await —
-    // exactly the window a late capture would miss.
-    let rA: ScriptResult | null | undefined;
+    // exactly the window a late capture would miss. The run is instance B's
+    // and the reset instance A's: a reset on the run's own instance also
+    // cancels it before eval, which would hide a late capture.
     await act(async () => {
-      const pA = execute1!(GATED).then((r) => { rA = r; });
+      const pB = execute2!(GATED);
       reset1!();
       await waitForGates(1);
-      assert.equal(gates.length, 1, 'the superseded run still runs to its gate — reset() only bumps the epoch here, it has no sandbox to dispose yet');
+      assert.equal(gates.length, 1, "another instance's reset does not cancel B's run, so it reaches its gate");
       gates[0]!({ marker: 'stale' });
-      await pA;
+      await pB;
     });
 
-    assert.equal(rA, null, "a run reset() superseded before its first await must resolve null");
     const state = useViewerStore.getState();
     assert.equal(state.scriptLastResult, null, "the run must not publish over what reset() cleared");
     assert.equal(state.scriptLastError, null, "the run must not publish an error over what reset() cleared");
+    assert.equal(state.scriptExecutionState, 'idle', 'the run must not move the state reset() left');
+  });
+
+  it('explicit native cancellation before sandbox creation prevents guest effects while ordinary supersession still drains (#10525)', async () => {
+    await act(async () => {
+      const pending = execute1!(GATED);
+      const epoch = useViewerStore.getState().scriptRunEpoch;
+      assert.equal(cancelNativeScriptRun(epoch), true);
+      assert.equal(await pending, null);
+      assert.equal(gates.length, 0, 'a cancelled preparation never enters the guest or starts its host effect');
+    });
+    assert.equal(useViewerStore.getState().scriptExecutionState, 'idle');
   });
 
   it("a second execute() on the SAME instance makes the first resolve null to its own caller", async () => {
@@ -463,6 +485,46 @@ describe('useSandbox().execute() — cross-instance run supersession', () => {
     assert.ok(rSecond, 'the newer run on the same instance must resolve with its result');
     assert.equal((rSecond as ScriptResult).value, 'B-result');
     assert.deepEqual(useViewerStore.getState().scriptLastResult?.value, 'B-result');
+  });
+
+  it("reset() still stops a run its own instance superseded after the newer run finished (#10591 review)", async () => {
+    let rFirst: ScriptResult | null | undefined;
+    let settled = false;
+    let stoppedByReset = false;
+    await act(async () => {
+      const pFirst = execute1!(GATED).then((r) => { settled = true; rFirst = r; });
+      await execute1!(UNGATED);
+      await waitForGates(1);
+      assert.equal(gates.length, 1, 'the superseded run must be parked on its host gate');
+      try {
+        reset1!();
+        // Well inside the sandbox timeout: a run that only ends by timing out was never stopped.
+        await Promise.race([pFirst, new Promise((resolve) => setTimeout(resolve, 2_000))]);
+        // Read before the cleanup can release the gate, which would settle the run anyway.
+        stoppedByReset = settled;
+      } finally {
+        // On failure the run is still parked; release it so it cannot leak into the next test.
+        if (!settled) { gates[0]!({ marker: 'leaked' }); await pFirst; }
+      }
+    });
+    assert.ok(stoppedByReset, 'the superseded run must stop on reset without its host gate being released');
+    assert.equal(rFirst, null);
+  });
+
+  it("script.cancel for a run that already finished cancels nothing, even while an older run is parked (#10591 review)", async () => {
+    let settled = false;
+    await act(async () => {
+      const pFirst = execute1!(GATED).then(() => { settled = true; });
+      await execute1!(UNGATED);
+      await waitForGates(1);
+      const finishedEpoch = useViewerStore.getState().scriptRunEpoch;
+      assert.equal(cancelNativeScriptRun(finishedEpoch), false, 'a finished run is not cancellable');
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      assert.equal(settled, false, 'the parked older run was not disposed');
+      assert.equal(useViewerStore.getState().scriptLastResult?.value, 'B-result', 'the finished result stays published');
+      gates[0]!({ marker: 'released' });
+      await pFirst;
+    });
   });
 
   it("reset() on instance A leaves a coherent state while a DIFFERENT instance's run is in flight", async () => {

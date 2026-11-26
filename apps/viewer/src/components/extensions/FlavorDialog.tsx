@@ -16,7 +16,7 @@
  * Spec: docs/architecture/ai-customization/05-flavors-and-sharing.md §6.
  */
 
-import { encodeSavedLens } from '@/lib/lens/migrate-saved-lens';
+import { captureNativeFlavor, createNativeFlavor } from '@/services/extensions/flavor-capture';
 import { trackExportCompleted } from '@/lib/analytics';
 import { useEffect, useRef, useState } from 'react';
 import { Palette } from 'lucide-react';
@@ -36,7 +36,6 @@ import { HelpHint } from './HelpHint';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { formatLocaleNumber } from '@/i18n/intlFormat';
-import { captureClashConfig } from './flavor-dialog-capture';
 import { localizedFlavorName } from './localized-flavor-metadata';
 
 interface FlavorDialogProps {
@@ -130,29 +129,7 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
         toast.error(t('extensionsFlavors.flavorDialog.toast.notFound', { id: flavorId }));
         return;
       }
-      const savedLenses = useViewerStore.getState().savedLenses;
-      const lenses = savedLenses.map((lens) => ({
-        id: lens.id,
-        name: lens.name ?? lens.id,
-        definition: encodeSavedLens(lens) as unknown as Parameters<typeof host.flavors.put>[0]['lenses'][number]['definition'],
-      }));
-      const next = {
-        ...target,
-        lenses,
-        settings: { ...target.settings, clash: captureClashConfig() } as typeof target.settings,
-        // Capture the workspace-sidebar layout (#1208) into the reserved opaque
-        // layout slot so it travels with the flavor (order / visible set / mode / width).
-        layout: {
-          // Preserve any other layout fields an imported / future flavor carries;
-          // only the sidebar entry of `state` is being (re)captured here (#1208).
-          ...target.layout,
-          state: {
-            ...target.layout?.state,
-            sidebar: useViewerStore.getState().serializeSidebarLayout() as unknown as (typeof target.layout)['state'][string],
-          },
-        },
-        updatedAt: new Date().toISOString(),
-      };
+      const next = captureNativeFlavor(target); const lenses = next.lenses;
       await host.flavors.put(next, 'capture current state');
       toast.success(t('extensionsFlavors.flavorDialog.toast.captured', { count: lenses.length, countDisplay: formatLocaleNumber(locale, lenses.length), name: localizedFlavorName(target, t) }));
     } catch (err) {
@@ -170,38 +147,7 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
   const handleCreate = async (opts: { name: string; snapshot: boolean }) => {
     setBusy(true);
     try {
-      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-      // Slugify the name for a stable id; fall back to a timestamp.
-      const slug = opts.name.toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '');
-      const id = `local.${slug || 'flavor'}.${stamp}`;
-      const now = new Date().toISOString();
-      const lenses = opts.snapshot
-        ? useViewerStore.getState().savedLenses.map((lens) => ({
-            id: lens.id,
-            name: lens.name ?? lens.id,
-            definition: encodeSavedLens(lens) as unknown as Parameters<typeof host.flavors.put>[0]['lenses'][number]['definition'],
-          }))
-        : [];
-      const flavor: Flavor = {
-        schemaVersion: 1,
-        id,
-        name: opts.name,
-        description: opts.snapshot
-          ? t('extensionsFlavors.flavorDialog.snapshotDescription')
-          : t('extensionsFlavors.flavorDialog.emptyDescription'),
-        createdAt: now,
-        updatedAt: now,
-        extensions: [],
-        lenses,
-        savedQueries: [],
-        keybindings: [],
-        layout: {
-          state: opts.snapshot
-            ? { sidebar: useViewerStore.getState().serializeSidebarLayout() }
-            : {},
-        } as unknown as Flavor['layout'],
-        settings: (opts.snapshot ? { clash: captureClashConfig() } : {}) as Flavor['settings'],
-      };
+      const flavor = createNativeFlavor(opts.name, t(opts.snapshot ? 'extensionsFlavors.flavorDialog.snapshotDescription' : 'extensionsFlavors.flavorDialog.emptyDescription'), opts.snapshot); const id = flavor.id, lenses = flavor.lenses;
       await host.flavors.put(flavor, opts.snapshot ? 'created from current state' : 'created empty');
       await host.flavors.activate(id);
       toast.success(opts.snapshot
@@ -242,7 +188,7 @@ export function FlavorDialog({ open, onClose }: FlavorDialogProps) {
         toast.error(t('extensionsFlavors.flavorDialog.toast.notFound', { id }));
         return;
       }
-      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-').toLowerCase();
       const newId = `${target.id}.copy.${stamp}`;
       const now = new Date().toISOString();
       const clone: Flavor = {

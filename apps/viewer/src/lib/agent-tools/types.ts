@@ -139,12 +139,20 @@ export interface ToolCallContext {
   canEdit?: () => boolean;
 }
 
+/** An image a tool returns alongside its text: `data` is base64 of the file bytes. */
+export interface AgentToolImage {
+  data: string;
+  mimeType: 'image/png' | 'image/jpeg';
+}
+
 /** What a tool returns on success. Failures are thrown as `ToolExecutionError`. */
 export interface ToolOutput {
   text: string;
   structured: unknown;
   /** Set by edit tools: what the call changed. */
   edit?: AgentEdit;
+  /** Set by tools that show the agent something (`viewer_screenshot`). Hosts that cannot carry images drop it. */
+  image?: AgentToolImage;
 }
 
 /**

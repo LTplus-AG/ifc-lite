@@ -55,6 +55,20 @@
     "1": { "8": ".SINGLE_SWING_LEFT.", "9": ".NOTDEFINED.", "10": ".F.", "11": ".F." }
    },
    "unfilled": 2
+  },
+  {
+   "why": "#11149 commented unset mandatory slots are defaulted or counted",
+   "schema": "IFC4",
+   "data": [
+    "#11=IFCTABLEROW(/* no cells */$,$/* no header flag */);"
+   ],
+   "slots": {
+    "11": {
+     "0": "/* no cells */$",
+     "1": ".F."
+    }
+   },
+   "unfilled": 1
   }
  ]
 }

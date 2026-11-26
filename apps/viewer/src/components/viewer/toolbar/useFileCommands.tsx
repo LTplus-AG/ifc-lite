@@ -21,6 +21,8 @@ import {
   readFreshFile,
 } from '@/services/file-system-access';
 import { toast } from '@/components/ui/toast';
+import { refuseWhileWorkflowBusy } from '@/lib/flow/workflow-busy-refusal';
+import { startWorkflowRun } from '@/lib/flow/run-session';
 import { lazyChunk } from '@/lib/lazy-chunk';
 import { useCollabShareReview } from '@/lib/collab/share-review';
 import { useTranslation } from '@/i18n';
@@ -29,6 +31,7 @@ import { ingestDxfFiles, splitDxfFiles } from '@/hooks/ingest/dxfIngest';
 import { reportFileOpenRejected } from '@/hooks/ingest/fileOpenRejected';
 import { usePreparedModelFileRoute } from '@/hooks/ingest/usePreparedModelFileRoute';
 import { useFileHostRegistration } from './useFileHostRegistration';
+import { isIfcxModelFile, useAgentModelLoader } from './useAgentModelLoader';
 import { FederationSetupControls } from '../FederationSetupControls';
 
 import { FILE_ACCEPT, isModelSidecarFile, isSupportedModelFile } from '@/services/supported-model-files';
@@ -51,11 +54,6 @@ const ShareDialog = lazyChunk(loadShareDialog);
 
 /** Re-exported so the toolbar's existing call sites keep their import path. */
 export { isSupportedModelFile };
-
-/** Case-insensitive IFCX check (filenames are accepted case-insensitively). */
-function isIfcxModelFile(f: File): boolean {
-  return f.name.toLowerCase().endsWith('.ifcx');
-}
 
 export interface FileCommands {
   /**
@@ -129,6 +127,7 @@ export function useFileCommands(): FileCommands {
           console.warn('[useFileCommands] ifc-lite:load-file ignored - a load is already in progress');
           return;
         }
+        if (refuseWhileWorkflowBusy(t)) return;
         recordRecentFiles([{ name: file.name, size: file.size }]);
         void loadFile(file);
       }
@@ -137,13 +136,13 @@ export function useFileCommands(): FileCommands {
     // replacing it (the compare tour loads demo revision B this way).
     const addHandler = (e: Event) => {
       const file = (e as CustomEvent<unknown>).detail;
-      if (file instanceof File) void addModel(file);
+      if (file instanceof File && !refuseWhileWorkflowBusy(t)) void addModel(file);
     };
     // Layer-stack variant: load a File[] as a composed .ifcx federation
     // (the Layers panel demo + tour dispatch this, see lib/layers/demo-stack).
     const stackHandler = (e: Event) => {
       const files = (e as CustomEvent<unknown>).detail;
-      if (Array.isArray(files) && files.every((f) => f instanceof File) && files.length > 0) {
+      if (Array.isArray(files) && files.every((f) => f instanceof File) && files.length > 0 && !refuseWhileWorkflowBusy(t)) {
         void loadFederatedIfcx(files as File[]);
       }
     };
@@ -155,11 +154,15 @@ export function useFileCommands(): FileCommands {
       window.removeEventListener('ifc-lite:add-model', addHandler);
       window.removeEventListener('ifc-lite:load-layer-stack', stackHandler);
     };
-  }, [loadFile, addModel, loadFederatedIfcx]);
+  }, [loadFile, addModel, loadFederatedIfcx, t]);
+
+  useAgentModelLoader(loadFile, addModel, loadFederatedIfcx);
 
   const hasModelsLoaded = useViewerStore(selectHasModelsLoaded);
 
   const routeOpenedFiles = useCallback((supportedFiles: File[], handles?: (FileSystemFileHandle | undefined)[]) => {
+    // Every branch's load is refused under a workflow lease; say so before any clear.
+    if (refuseWhileWorkflowBusy(t)) return;
     if (supportedFiles.length === 1) {
       void loadFile(supportedFiles[0], { kind: 'primary' }, { sourceHandle: handles?.[0] });
       return;
@@ -169,7 +172,7 @@ export function useFileCommands(): FileCommands {
     clearAllModels();
     if (allIfcx) void loadFederatedIfcx(supportedFiles);
     else void loadFilesSequentially(supportedFiles, handles);
-  }, [loadFile, loadFilesSequentially, loadFederatedIfcx, resetViewerState, clearAllModels]);
+  }, [loadFile, loadFilesSequentially, loadFederatedIfcx, resetViewerState, clearAllModels, t]);
 
   const prepareAndOpen = usePreparedModelFileRoute(routeOpenedFiles);
 
@@ -204,6 +207,8 @@ export function useFileCommands(): FileCommands {
     handles?: (FileSystemFileHandle | undefined)[],
   ) => {
     if (supportedFiles.length === 0) return;
+    // Every branch's load is refused under a workflow lease; an IFCX overlay would also reset the scene first.
+    if (refuseWhileWorkflowBusy(t)) return;
     const newFilesAreIfcx = supportedFiles.every(isIfcxModelFile);
     const existingIsIfcx = isIfcxDataStore(ifcDataStore);
 
@@ -290,6 +295,7 @@ export function useFileCommands(): FileCommands {
       .filter((m): m is FederatedModel & { sourceHandle: FileSystemFileHandle } => Boolean(m.sourceHandle))
       .sort((a, b) => (a.loadedAt ?? 0) - (b.loadedAt ?? 0));
     if (targets.length === 0) return;
+    if (refuseWhileWorkflowBusy(t)) return;
 
     // Re-read every handle BEFORE clearing anything, so a failed read never
     // leaves the viewer empty.
@@ -312,6 +318,9 @@ export function useFileCommands(): FileCommands {
       return;
     }
 
+    // A workflow may have started while the reads (and any permission prompt) were pending.
+    if (refuseWhileWorkflowBusy(t)) return;
+
     // Model tags die with the model; an explicit reload must keep them (#4215).
     const carry = captureModelTags(useViewerStore.getState());
     recordRecentFiles(ok.map((r) => ({ name: r.fresh.name, size: r.fresh.size })));
@@ -323,28 +332,23 @@ export function useFileCommands(): FileCommands {
       const reloadedId = useViewerStore.getState().activeModelId;
       if (reloadedId) restoreModelTags(useViewerStore.getState(), carry, ok[0].model.id, reloadedId);
     } else {
-      // Rebuild the federation from fresh bytes, preserving id + order + state.
-      clearAllModels();
-      for (const r of ok) {
-        const reloadedId = await addModel(r.fresh, {
-          name: r.model.name,
-          modelId: r.model.id,
-          loadedAt: r.model.loadedAt,
-          visible: r.model.visible,
-          collapsed: r.model.collapsed,
-          sourceHandle: r.model.sourceHandle,
-        });
-        if (reloadedId) restoreModelTags(useViewerStore.getState(), carry, r.model.id, reloadedId);
-        if (reloadedId && r.model.visible === false) {
-          useViewerStore.getState().setModelVisibility(r.model.id, false);
+      // Rebuild from fresh bytes (id + order + state kept), holding the lease like Re-align so a flow run cannot refuse the remaining adds.
+      const lease = startWorkflowRun('refresh');
+      try {
+        clearAllModels();
+        for (const { fresh, model } of ok) {
+          const { id, name, loadedAt, visible, collapsed, sourceHandle } = model;
+          const reloadedId = await addModel(fresh, { name, modelId: id, loadedAt, visible, collapsed, sourceHandle, workflowOwner: lease.id });
+          if (reloadedId) restoreModelTags(useViewerStore.getState(), carry, id, reloadedId);
+          if (reloadedId && visible === false) useViewerStore.getState().setModelVisibility(id, false);
         }
-      }
+      } finally { lease.release(); }
     }
 
     // Any failed read returned early above, so reaching here means every
     // targeted model was re-read and reloaded.
     toast.success(ok.length === 1 ? `Refreshed "${ok[0].fresh.name}"` : `Refreshed ${ok.length} models`);
-  }, [loadFile, addModel, clearAllModels]);
+  }, [loadFile, addModel, clearAllModels, t]);
 
   useFileHostRegistration({ handleOpenClick, handleAddModelClick, handleRefresh,
     openShareDialog: collabEnabled ? openShareDialog : undefined,

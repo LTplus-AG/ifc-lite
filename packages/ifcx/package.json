@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/ifcx",
-  "version": "4.7.0",
+  "version": "4.7.1",
   "description": "IFC5 (IFCX) parser for IFC-Lite",
   "type": "module",
   "sideEffects": false,
@@ -26,6 +26,7 @@
     "@noble/hashes": "^2.4.0"
   },
   "devDependencies": {
+    "esbuild": "^0.28.2",
     "tsx": "^4.23.15",
     "typescript": "^6.0.3"
   },

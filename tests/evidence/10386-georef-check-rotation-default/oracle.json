@@ -1,6 +1,0 @@
-{
-  "issue": 7955,
-  "key": "packages/georef-check/src/detectors/rotation.ts",
-  "mutation": "tests/evidence/10386-georef-check-rotation-default/behaviour.oracle.patch",
-  "why": "Reverse application keeps every export the tests import but drops the early exit for a half-set axis whose filled-in default is a unit vector, so (1, unset) and (unset, 0) raise ROTATION_INVALID again and the clean-rotation-filled-default fixture and the finding-8 cases in diagnose.test.ts go red."
-}

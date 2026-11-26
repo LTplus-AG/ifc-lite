@@ -6,7 +6,7 @@ import { vecCross, vecLen } from '../ifc-creator-math.js';
 import { add, sub, scale, dot, areaVector } from './structural-derive-idealise.js';
 import type { PhysicalElementFact, SkippedOpening, PrismFact, Vec3 } from './structural-derive-types.js';
 import { OPENING_TYPES } from './hosted-fill-read.js';
-import { pointInPolygon } from './room-footprint-offset.js';
+import { pointInPolygon } from './polygon-2d.js';
 import { checkOpening, type prepareStructuralFace } from './_structural-face.js';
 
 const ANGLE_TOLERANCE = Math.PI / 180;

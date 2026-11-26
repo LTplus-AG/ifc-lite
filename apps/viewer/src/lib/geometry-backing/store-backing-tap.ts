@@ -3,84 +3,30 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Test/debug-only ingestion of the canonical loader's output into the live
- * geometry backing. NOTHING releases CPU geometry here; product release stays
- * disabled until the parent integration consults `acknowledge`/`verify`.
- *
- * The tap mirrors each model's store mesh list, which every load path
- * (streaming, cache hit, federated finalize) and every mesh edit writes:
- * - the loader grows `models.get(id).geometryResult.meshes` IN PLACE, so a
- *   longer array with the same identity is an append: only the new suffix is
- *   written (a tap started mid-load first writes what is already resident);
- * - any other change (new array, shorter array, `geometryContentVersion` bump
- *   from realign/rebase/rotation/collab, model removal) starts a new
- *   generation from the current list, so an old disk image never answers as
- *   current geometry;
- * - instanced shards are taken from the shard queue as they are enqueued. A
- *   flat-list change (recolour copies, prune, authored mesh) leaves instanced
- *   geometry alone, so committed shards are carried into the new generation.
- *   A content-version bump may move occurrences, so a model that had shards
- *   is then reported `instancedLost` and never complete (fail closed) for the
- *   rest of this tap's life: this layer has no re-supply proof (a fresh supply
- *   stated whole and drawn is #10888's), so later shards never clear it. So is a model whose shards were
- *   enqueued before the tap started (the queue's revision is ahead of what
- *   the tap saw): those shards never reached the backing.
- * Appends for one model are chained in order; a writer failure is reported in
- * `status()` and stops that model's chain, never retried.
- *
- * Known limit, recorded for the consumer audit: geometry written into the
- * existing typed arrays without a list or content-version change (in-place
- * entity translation) is not seen here; such paths must invalidate explicitly
- * before release can rely on the backing.
+ * Test/debug-only ingestion of the loader's output into the live geometry backing (#10264); nothing releases CPU
+ * geometry here. Each model's store list is mirrored: an in-place grow appends its suffix; any other change (new or
+ * shorter array, content bump, removal) starts a generation staged beside the acknowledged one until a seal
+ * acknowledges it. The backing holds exactly the shards the scene drew; a content bump (or shards enqueued before the
+ * tap) loses instancing until a fresh set is stated whole (`instanced-resupply.ts`). A writer failure stops that
+ * model's chain and shows in `status()`. Known limit: rewrites inside the existing typed arrays are not seen here.
  */
 
 import { decodeInstancedShard, type DecodedInstancedShard, type MeshData } from '@ifc-lite/geometry';
 import type { StoreApi } from 'zustand';
-import { subscribeInstancedShards } from '@/store/instancedShardQueue';
-import { instancedShardRevision } from '@/store/instancedShardModels';
+import { type InstancedShardSupply, type PendingInstancedShard, hasPendingInstancedShards, instancedShardGeneration, instancedShardModelEpoch, subscribeInstancedShards, subscribeInstancedShardSupply } from '@/store/instancedShardQueue';
+import { PreTapSupply } from './pre-tap-supply';
 import { isReleasedMesh } from '@/lib/released-mesh-provenance';
 import { applyFederationOffsetToShard } from '@/components/viewer/instancedFederationOffset';
+import { addMeshAreas } from './released-mesh-areas';
+import { appendMembers, backingStatusRow, flatRecordsComplete, releaseCandidateOf, type ModelBackingStatus, type TapState, type Tracked } from './store-backing-tap-model';
+import { acceptStatement, admitShard, statementVoided, supplyPoint, type SupplyPoint } from './instanced-resupply';
+import { notifyReleasedGeometryMetadataChanged, setReleasedGeometryMetadata } from './released-geometry-metadata';
+import { type PreviousGeneration, replayStoreList } from './generation-replay';
+import { carryBackedShards } from './carry-shards';
 import { GeometryBackingRegistry, type ModelBackingOptions, type ModelGeometryBacking } from './geometry-backing-registry';
 import type { BackingDatabaseOptions } from './backing-database';
 
-/** The store fields the tap reads. */
-export interface TapState {
-  models: ReadonlyMap<string, { geometryResult: { meshes: MeshData[] } | null; idOffset?: number }>;
-  geometryContentVersion: number;
-}
-
-interface Tracked {
-  backing?: ModelGeometryBacking;
-  meshes: MeshData[] | undefined;
-  consumed: number;
-  chain: Promise<void>;
-  failure?: Error;
-  instancedLost: boolean;
-  shards: number;
-  /** The store list changed after a CPU release: this generation is kept durable but no longer answers. */
-  stale?: Error;
-  /** Replaced (or removed) before its generation began: superseded as soon as it does. */
-  replaced?: boolean;
-  /** A carry of the predecessor's shards is still pending: they count as this generation's shards. */
-  carrying?: boolean;
-  /** The store has listed this model: only then can its absence mean a removal (a shard may arrive first). */
-  registered?: boolean;
-  /** A seal acknowledged (or is acknowledging) this generation: its writer is closed to further appends. */
-  sealed?: boolean;
-}
-
-export interface ModelBackingStatus {
-  modelId: string;
-  generation: number;
-  meshes: number;
-  chunks: number;
-  shards: number;
-  storedBytes: number;
-  pendingBytes: number;
-  complete: boolean;
-  instancedLost: boolean;
-  error?: string;
-}
+export type { ModelBackingStatus, TapState } from './store-backing-tap-model';
 
 const APPEND_BATCH = 256;
 
@@ -88,19 +34,21 @@ export class StoreGeometryBackingTap {
   private readonly tracked = new Map<string, Tracked>();
   private contentVersion: number;
   private readonly stops: Array<() => void> = [];
-  /** Shard enqueue events seen per model since start, compared with the queue's revision. */
-  private readonly shardEvents = new Map<string, number>();
-  private stopped = false;
-  /** Deferred cleanups of removed models' generations, awaited by `whenIdle`. */
-  private readonly removals = new Set<Promise<void>>();
+  // Shard enqueue events seen per model since start, compared with the queue's revision.
+  private readonly shardEvents = new Map<string, number>(); private readonly preTap = new PreTapSupply(); // `pre-tap-supply.ts`
+  private readonly acknowledged = new Map<string, Tracked>(); // per model, the last generation acknowledged complete: the only replay source
+  private stopped = false; private sequence = 0;
+  private readonly unbacked = new WeakSet<PendingInstancedShard>(); // ingested, never backed: not membership
+  private readonly removals = new Set<Promise<void>>(); // deferred cleanups of removed models' generations, awaited by `whenIdle` (#10876)
+  private readonly revisions = new Map<string, number>(); // per model: moved by every change to the drawn shard set
+  private bump(modelId: string): number { const r = (this.revisions.get(modelId) ?? 0) + 1; this.revisions.set(modelId, r); return r; }
 
   private constructor(
     private readonly registry: GeometryBackingRegistry,
-    // The store subscription in `start` drives every sync; a shard reads its model's id offset here, live.
     private readonly store: StoreApi<TapState>,
     private readonly options: ModelBackingOptions,
   ) {
-    this.contentVersion = this.store.getState().geometryContentVersion;
+    this.contentVersion = store.getState().geometryContentVersion;
   }
 
   static async start(store: StoreApi<TapState>, options: ModelBackingOptions & { database?: BackingDatabaseOptions } = {}):
@@ -108,21 +56,52 @@ export class StoreGeometryBackingTap {
     const registry = await GeometryBackingRegistry.open(options.database);
     const tap = new StoreGeometryBackingTap(registry, store, options);
     tap.stops.push(store.subscribe((state) => tap.sync(state)));
+    tap.stops.push(subscribeInstancedShardSupply((supply) => tap.onSupply(supply)));
     tap.stops.push(subscribeInstancedShards((event) => {
-      if (event.kind !== 'enqueued' || !event.shards) return;
+      // Dropped or discarded before upload: the backing must hold exactly what the scene drew. A full
+      // discard (a reset) moved the generation: abandon. Otherwise withhold just those shards.
+      if (event.kind === 'discarded' || event.kind === 'dropped') {
+        const g = instancedShardGeneration();
+        for (const id of event.modelIds) {
+          if (event.full) tap.abandon(id, { generation: g - 1, epoch: Infinity });
+          else tap.withhold(id, (event.withheld ?? []).filter((shard) => shard.modelId === id));
+        }
+        return;
+      }
+      if (event.kind === 'unattested') { for (const id of event.modelIds) tap.abandon(id, supplyPoint(id)); return; } // drawn, never attested
+      if ((event.kind !== 'enqueued' && event.kind !== 'adopted') || !event.shards) return;
       for (const modelId of event.modelIds) tap.shardEvents.set(modelId, (tap.shardEvents.get(modelId) ?? 0) + 1);
-      for (const shard of event.shards) tap.ingestShard(shard.modelId, shard.bytes);
+      for (const shard of event.shards) tap.ingestShard(shard);
     }));
     tap.sync(store.getState());
+    // Only a complete, current generation answers; anything else is unavailable.
+    setReleasedGeometryMetadata({ bounds: (modelId, id) => tap.completeBacking(modelId)?.directory.summary(id)?.bounds,
+      area: (modelId, id) => (tap.completeBacking(modelId) ? tap.tracked.get(modelId)?.areas.get(id) : undefined) });
     return tap;
   }
 
   get registryHandle(): GeometryBackingRegistry { return this.registry; }
 
+  private completeBacking(modelId: string): ModelGeometryBacking | undefined {
+    const tracked = this.tracked.get(modelId), backing = tracked?.backing;
+    return backing && !tracked.failure && !tracked.stale && backing.isCurrent && backing.isComplete ? backing : undefined;
+  }
+
   /** The model's current backing generation, for readback consumers. */
   backing(modelId: string): ModelGeometryBacking | undefined {
     const tracked = this.tracked.get(modelId);
     return tracked && !tracked.stale ? tracked.backing : undefined;
+  }
+
+  /** The acknowledged generation holds exactly the shards the scene draws: nothing ingested or withheld since, none still queued. */
+  holdsDrawnShards(modelId: string): boolean {
+    const ack = this.acknowledged.get(modelId); return !!ack && ack.revision === this.drawnShardRevision(modelId) && !hasPendingInstancedShards(modelId);
+  }
+  drawnShardRevision(modelId: string): number { return this.revisions.get(modelId) ?? 0; }
+
+  /** The last acknowledged generation and its store members: what released meshes are replayed from. */
+  replaySource(modelId: string): PreviousGeneration | undefined {
+    const ack = this.acknowledged.get(modelId); return ack && { meshes: ack.members, backing: ack.backing };
   }
 
   private sync(state: TapState): void {
@@ -134,33 +113,31 @@ export class StoreGeometryBackingTap {
       const tracked = this.tracked.get(modelId);
       if (tracked) tracked.registered = true;
       if (!tracked) {
-        // A list already released when the tap first sees it (a restart after release-for-test) has no
-        // arrays to back: never back its empty records as a generation.
+        // A list already released when the tap first sees it (a restart after release-for-test) has no arrays
+        // to back and no acknowledged generation to replay from: never back its empty records (#10876).
         if (meshes?.some(isReleasedMesh)) {
-          const stale = new Error('The store list was released before the tap saw it; nothing can be backed');
-          this.tracked.set(modelId, { meshes, consumed: meshes.length, chain: Promise.resolve(), instancedLost: false, shards: 0, stale });
-          console.error(`[GeometryBacking] ${modelId}: ${stale.message}`);
+          const stale = this.blank(modelId, meshes);
+          stale.stale = new Error('The store list was released before the tap saw it; nothing can be backed');
+          stale.consumed = meshes.length;
+          this.tracked.set(modelId, stale);
+          console.error(`[GeometryBacking] ${modelId}: ${stale.stale.message}`);
         } else this.regenerate(modelId, meshes, 'none');
         this.tracked.get(modelId)!.registered = true;
         continue;
       }
       // A content change loses committed instancing until re-supply is proved, on EVERY path, including the
-      // stale and released-list exits below that build no successor now: a later carry must not revive it.
-      if (versionChanged && (tracked.shards > 0 || tracked.carrying)) tracked.instancedLost = true;
+      // stale exit below that builds no successor now: a later carry must not revive it (#10876).
+      if (versionChanged && (tracked.occurrences > 0 || tracked.carrying) && !tracked.instancedLost) {
+        tracked.instancedLost = true; tracked.lostAt = supplyPoint(modelId);
+      }
       // First geometry of a model whose shards arrived earlier: an append.
       if (!versionChanged && tracked.meshes === undefined && tracked.consumed === 0 && meshes) tracked.meshes = meshes;
-      // A stale (released) generation answers nothing; only a fresh resident list may replace it.
+      // A stale generation answers nothing; only a fresh resident list may replace it (#10876).
       if (tracked.stale && !(meshes && meshes !== tracked.meshes && meshes.length > 0 && !meshes.some(isReleasedMesh))) continue;
       if (versionChanged || meshes !== tracked.meshes || (meshes && meshes.length < tracked.consumed)) {
-        // A released list has no arrays to back, and a new generation would delete the
-        // acknowledged one: keep that durable, stop answering from it, never back empties.
-        if (meshes?.some(isReleasedMesh)) {
-          tracked.stale = new Error('The store list changed after a CPU release; its backing no longer answers');
-          this.supersede(tracked); // retained handles too: not current, its old bytes durable for the tap alone
-          console.error(`[GeometryBacking] ${modelId}: ${tracked.stale.message}`);
-          continue;
-        }
-        const hadShards = tracked.shards > 0 || tracked.instancedLost || !!tracked.carrying;
+        // Released members are replayed from the acknowledged generation, which stays
+        // durable until the replacement commits (`regenerate`).
+        const hadShards = tracked.occurrences > 0 || tracked.instancedLost || !!tracked.carrying;
         this.regenerate(modelId, meshes, !hadShards ? 'none' : versionChanged ? 'lost' : 'carry');
         continue;
       }
@@ -169,65 +146,82 @@ export class StoreGeometryBackingTap {
           tracked.stale = new Error('Released meshes were appended; they have no arrays to back');
           this.supersede(tracked);
           console.error(`[GeometryBacking] ${modelId}: ${tracked.stale.message}`);
+          notifyReleasedGeometryMetadataChanged();
           continue;
         }
-        // A sealed generation's writer is closed: an in-place append after the seal starts a successor
-        // with the whole list (the acknowledged one is superseded at once, never left verifying without it).
-        if (tracked.sealed) {
-          const hadShards = tracked.shards > 0 || tracked.instancedLost || !!tracked.carrying;
-          this.regenerate(modelId, meshes, hadShards ? 'carry' : 'none');
-        } else this.appendSuffix(tracked, meshes);
+        // Sealed, or being sealed (its writer is closing): the late append goes to a successor.
+        if (this.acknowledged.get(modelId) === tracked || tracked.sealing) this.regenerate(modelId, meshes, 'carry');
+        else this.appendSuffix(tracked, meshes);
       }
     }
-    for (const modelId of [...this.tracked.keys()]) {
-      // A generation begun by a shard that arrived before its model was registered waits for the model.
-      if (!state.models.has(modelId) && this.tracked.get(modelId)?.registered) this.drop(modelId, 'Model was removed');
+    for (const [modelId, tracked] of [...this.tracked]) {
+      // Only a model the store has listed can be removed: a shard may arrive before its model registers.
+      if (tracked.registered && !state.models.has(modelId)) this.drop(modelId, 'Model was removed');
     }
   }
 
-  /** The store replaced this generation's geometry: not current from now on, even before its successor begins. */
+  /** A generation record with nothing in it yet. */
+  private blank(modelId: string, meshes: MeshData[] | undefined, previous?: Tracked): Tracked {
+    return { key: `${modelId}\u0001${++this.sequence}`, number: (previous?.number ?? 0) + 1, meshes, members: [], consumed: 0,
+      chain: Promise.resolve(), instancedLost: false, shards: 0, occurrences: 0, sources: [], areas: new Map(),
+      retained: previous ? [...previous.retained, previous.key] : [], registered: previous?.registered, revision: this.revisions.get(modelId) ?? 0 };
+  }
+
+  /** The store replaced this generation's geometry: not current for consumers from now on, even before its
+   * successor begins (#10876). Its records stay durable for the tap's own replay and carry until retired. */
   private supersede(tracked: Tracked | undefined): void {
     if (!tracked) return;
     if (tracked.backing) tracked.backing.supersede(); else tracked.replaced = true;
   }
 
-  /**
-   * The only place a successor generation is built. Released arrays are terminal: a successor built from
-   * them would persist zero-length meshes and replace the backing that holds the real geometry. Refuse,
-   * leave the acknowledged generation durable (it stops answering: it lacks what arrived), and report false.
-   */
-  private regenerate(modelId: string, meshes: MeshData[] | undefined, shards: 'none' | 'carry' | 'lost'): boolean {
+  private regenerate(modelId: string, meshes: MeshData[] | undefined, shards: 'none' | 'carry' | 'lost' | 'withhold', withheld?: ReadonlySet<PendingInstancedShard>): void {
     const previous = this.tracked.get(modelId);
-    if (meshes?.some(isReleasedMesh)) {
-      if (previous) {
-        previous.stale ??= new Error('Geometry arrived for a model whose CPU geometry was released; a fresh load must register it again');
-        this.supersede(previous);
-        console.error(`[GeometryBacking] ${modelId}: ${previous.stale.message}`);
-      }
-      return false;
-    }
+    // A retained handle (the acknowledged one included) must never answer the geometry the store just replaced.
     this.supersede(previous);
-    const next: Tracked = { meshes, consumed: 0, chain: Promise.resolve(), instancedLost: shards === 'lost', shards: 0, carrying: shards === 'carry',
-      registered: previous?.registered };
+    if (this.acknowledged.get(modelId) !== previous) this.supersede(this.acknowledged.get(modelId));
+    const key = `${modelId}\u0001${++this.sequence}`;
+    // Every older generation stays durable until this one is acknowledged complete (`seal`).
+    const next: Tracked = { key, number: (previous?.number ?? 0) + 1, meshes, members: [], consumed: 0,
+      // Lost instancing is sticky: no later edit may fall back to pre-loss (stale) occurrences.
+      chain: Promise.resolve(), instancedLost: shards === 'lost' || shards === 'withhold' || (shards === 'carry' && !!previous?.instancedLost),
+      lostAt: shards === 'lost' ? supplyPoint(modelId) : shards === 'withhold' ? { ...supplyPoint(modelId), epoch: instancedShardModelEpoch(modelId) - 1 } : previous?.lostAt,
+      resupply: shards === 'carry' ? previous?.resupply : undefined, supplied: shards === 'carry' ? previous?.supplied : undefined, shards: 0, occurrences: 0, sources: [], areas: new Map(),
+      retained: previous ? [...previous.retained, previous.key] : [], registered: previous?.registered,
+      carrying: shards === 'carry' || shards === 'withhold', revision: this.revisions.get(modelId) ?? 0 };
+    const preTap = this.preTap.lost(modelId); if (preTap && !next.instancedLost) { next.instancedLost = true; next.lostAt = preTap; } // drawn before the tap
     const begun = (previous?.chain ?? Promise.resolve()).then(async () => {
-      // Read committed shards before `begin` deletes the previous generation (its own carry has run).
-      const carried: DecodedInstancedShard[] = [];
-      if (shards === 'carry') {
-        if (!previous?.backing || previous.failure || previous.instancedLost) next.instancedLost = true;
-        else for await (const shard of previous.backing.carryReader.instancedShards()) carried.push(shard);
-      }
-      next.backing = await this.registry.begin(modelId, this.options);
+      next.backing = await this.registry.begin(key, this.options);
       if (next.replaced) next.backing.supersede(); // replaced again before it began
-      for (const shard of carried) {
-        next.shards++;
-        await next.backing.writer.appendInstancedShard(shard);
+      if (shards === 'withhold' || (shards === 'carry' && (!next.instancedLost || next.resupply))) {
+        // Resolved after the chain. A re-supplying predecessor holds only fresh shards; `withhold` keeps all the scene drew.
+        const source = shards === 'withhold' || next.resupply || (previous?.backing && !previous.failure) ? previous : this.acknowledged.get(modelId);
+        // A failed predecessor may have drawn shards the acknowledged fallback lacks: lost, never sealed without them (r4655067145).
+        if (!source?.backing || source.failure || (previous?.failure && source !== previous) || (source.instancedLost && !next.resupply && shards !== 'withhold')) { next.instancedLost = true; next.lostAt ??= supplyPoint(modelId); }
+        else await carryBackedShards(source, next, withheld); // `carry-shards.ts`
       }
       next.carrying = false;
     });
     next.chain = this.settle(next, begun);
     this.tracked.set(modelId, next);
-    if (meshes && meshes.length > 0) this.appendSuffix(next, meshes);
-    return true;
+    // A content bump keeps the list identity; the provider now answers from an incomplete generation.
+    if (previous) notifyReleasedGeometryMetadataChanged();
+    if (meshes && meshes.length > 0) {
+      if (meshes.some(isReleasedMesh)) this.replay(modelId, next, meshes);
+      else this.appendSuffix(next, meshes);
+    }
+  }
+
+  /** Released members come from the acknowledged generation's records, chunk by chunk (no CPU restore). */
+  private replay(modelId: string, next: Tracked, meshes: MeshData[]): void {
+    const list = meshes.slice(); next.consumed = list.length; next.members = list;
+    this.enqueue(next, async () => {
+      // Captured when the step runs: overlapping edits all replay from the one acknowledged source,
+      // and a released copy of a copy reaches its record through its ancestry.
+      for await (const batch of replayStoreList(list, this.replaySource(modelId) ?? { meshes: undefined, backing: undefined }, APPEND_BATCH)) {
+        addMeshAreas(next.areas, batch);
+        await this.writer(next).append(batch);
+      }
+    });
   }
 
   private writer(tracked: Tracked): ModelGeometryBacking['writer'] {
@@ -240,6 +234,8 @@ export class StoreGeometryBackingTap {
     tracked.consumed = to;
     // Snapshot the suffix now: the array keeps growing in place.
     const slice = meshes.slice(from, to);
+    appendMembers(tracked.members, slice);
+    addMeshAreas(tracked.areas, slice); // while the arrays are resident
     this.enqueue(tracked, async () => {
       for (let i = 0; i < slice.length; i += APPEND_BATCH) {
         await this.writer(tracked).append(slice.slice(i, i + APPEND_BATCH));
@@ -247,51 +243,66 @@ export class StoreGeometryBackingTap {
     });
   }
 
-  private ingestShard(modelId: string, bytes: ArrayBuffer): void {
+  private ingestShard(entry: PendingInstancedShard, { modelId, bytes } = entry): void {
     if (this.stopped) return;
-    let tracked = this.tracked.get(modelId);
-    if (!tracked) {
-      this.regenerate(modelId, undefined, 'none');
-      tracked = this.tracked.get(modelId)!;
-    }
-    // A stale generation answers nothing and takes nothing more (released arrays are terminal).
-    if (tracked.stale) return;
-    // A sealed generation's writer is closed and its acknowledgement must stop verifying NOW, not when the
-    // deferred append runs: supersede it and stage a successor (its shards carried) for this one.
-    if (tracked.sealed) {
-      if (!this.regenerate(modelId, tracked.meshes, 'carry')) return;
-      tracked = this.tracked.get(modelId)!;
-    }
-    const target = tracked;
+    // A sealed generation's writer is closed: stage a successor that carries it, then append there.
+    if (!this.tracked.has(modelId)) this.regenerate(modelId, undefined, 'none');
+    else if (this.acknowledged.get(modelId) === this.tracked.get(modelId) || this.tracked.get(modelId)!.sealing) this.regenerate(modelId, this.tracked.get(modelId)!.meshes, 'carry');
+    const target = this.tracked.get(modelId)!;
+    target.revision = this.bump(modelId); // drawn from now on, admitted or not
+    // A stale generation answers nothing and takes nothing more (released arrays are terminal, #10876).
+    if (target.stale) { this.unbacked.add(entry); return; }
+    if (!admitShard(target, supplyPoint(modelId))) { this.unbacked.add(entry); return; } // `instanced-resupply.ts`
     target.shards++;
-    // Decode a private copy: the drain may transfer or reuse the queued bytes. A shard that does not decode
-    // is a failure of this generation (never acknowledged), not an exception that skips it unrecorded.
+    // Decode a private copy: the drain may transfer or reuse the queued bytes. A shard that does not decode is a
+    // failure of this generation (never acknowledged), not an exception that skips it unrecorded (#10876).
     let shard: DecodedInstancedShard;
     try { shard = decodeInstancedShard(bytes.slice(0)); } catch (error) {
+      this.unbacked.add(entry);
       void this.settle(target, Promise.reject(error));
       return;
     }
+    target.occurrences += shard.instances.length;
+    if (target.resupply) target.resupply.received++;
     this.enqueue(target, async () => {
-      // The drain re-homes shard ids into the federated id space after decoding; do the same, so backed occurrences
-      // answer the ids picks and flat meshes use. Read when the append runs: a shard may arrive before its model
-      // registers (the drain waits for it too). Still unregistered by then: its instancing is not backed (fail closed).
-      // A registered model without an offset is model 0's space (offset 0), as in the drain.
+      // Re-home ids into the federated id space, as the drain does: backed occurrences answer the ids picks use.
+      // Read when the append runs: a shard may arrive before its model registers (the drain waits for it too).
+      // Still unregistered by then: its instancing is not backed (fail closed). No offset: model 0's space.
       const model = this.store.getState().models.get(modelId);
       if (!model) {
-        target.instancedLost = true;
-        console.error(`[GeometryBacking] shard for unregistered model ${modelId}; its instancing is not backed`);
-        return;
+        this.unbacked.add(entry); target.instancedLost = true; if (target.resupply) target.resupply.broken = true;
+        console.error(`[GeometryBacking] shard for unregistered model ${modelId}; its instancing is not backed`); return;
       }
       applyFederationOffsetToShard(shard, model.idOffset ?? 0);
-      await this.writer(target).appendInstancedShard(shard);
+      // Recorded in backed order (after any carried shards), for `withhold`.
+      await this.writer(target).appendInstancedShard(shard); target.sources.push(entry);
     });
   }
 
+  /** Lost instancing is whole again only by the model's own statement, matched shard for shard. */
+  private onSupply(supply: InstancedShardSupply): void {
+    const tracked = this.stopped ? undefined : this.tracked.get(supply.modelId);
+    if (tracked) { acceptStatement(tracked, supply); if (!tracked.instancedLost) this.preTap.resupplied(supply.modelId); }
+  }
+
+  /** Shards dropped before upload: keep exactly what the scene drew, lost until the rest is stated. */
+  private withhold(modelId: string, entries: readonly PendingInstancedShard[]): void {
+    const tracked = this.stopped ? undefined : this.tracked.get(modelId); // resolved against backed order once the chain settles
+    // A never-backed entry was never membership: withholding it changes nothing it held.
+    if (tracked && this.store.getState().models.has(modelId)) { this.bump(modelId); this.regenerate(modelId, tracked.meshes, 'withhold', new Set(entries.filter((e) => !this.unbacked.has(e)))); }
+  }
+
+  /** Instancing whose shards were dropped before upload: a fresh lost generation, never carrying the abandoned shards. */
+  private abandon(modelId: string, lostAt: SupplyPoint): void {
+    const tracked = this.stopped ? undefined : this.tracked.get(modelId);
+    if (!tracked || !this.store.getState().models.has(modelId)) return;
+    this.bump(modelId); this.regenerate(modelId, tracked.meshes, 'lost');
+    this.tracked.get(modelId)!.lostAt = lostAt;
+  }
+
   private enqueue(tracked: Tracked, step: () => Promise<void>): void {
-    tracked.chain = this.settle(tracked, tracked.chain.then(() => {
-      if (tracked.failure) return undefined;
-      return step();
-    }));
+    tracked.flatSealed = false; // a write after the seal: its flat records are no longer proven whole
+    tracked.chain = this.settle(tracked, tracked.chain.then(() => (tracked.failure ? undefined : step())));
   }
 
   /** Record the first failure per generation; later steps are skipped, not retried. */
@@ -300,85 +311,90 @@ export class StoreGeometryBackingTap {
       if (tracked.failure) return;
       tracked.failure = error instanceof Error ? error : new Error(String(error));
       console.error('[GeometryBacking] model backing failed; CPU geometry must stay resident', tracked.failure);
+      notifyReleasedGeometryMetadataChanged(); // its bounds and areas stop answering in place
     });
   }
 
   private drop(modelId: string, reason: string): void {
-    const tracked = this.tracked.get(modelId);
-    if (!tracked) return;
+    const tracked = this.tracked.get(modelId); if (!tracked) return;
     this.tracked.delete(modelId);
+    const acknowledged = this.acknowledged.get(modelId);
+    this.acknowledged.delete(modelId);
     this.supersede(tracked); // a retained handle stops being current now, not once the pending append ends
-    // Retire exactly this generation (a re-added model's must survive); whenIdle waits for it.
-    const removal = this.settle(tracked, tracked.chain.then(() => (tracked.backing ? this.registry.retire(tracked.backing, reason) : undefined)));
+    if (acknowledged !== tracked) this.supersede(acknowledged);
+    notifyReleasedGeometryMetadataChanged();
+    // Retire exactly this model's generations; `whenIdle` (and so `stop`) waits for them (#10876).
+    const removal = this.settle(tracked, tracked.chain.then(async () => {
+      for (const key of [...tracked.retained, tracked.key]) await this.registry.invalidate(key, reason);
+    }));
     this.removals.add(removal);
     void removal.then(() => { this.removals.delete(removal); });
   }
 
   /** Resolve once every queued append has been handed to its writer. */
-  async whenIdle(): Promise<void> {
-    // Steps may enqueue more steps or regenerate; settle until nothing moved.
-    for (;;) {
-      const chains = [...[...this.tracked.values()].map((tracked) => tracked.chain), ...this.removals];
-      await Promise.all(chains);
-      const now = [...[...this.tracked.values()].map((tracked) => tracked.chain), ...this.removals];
-      if (now.length === chains.length && now.every((chain, i) => chain === chains[i])) return;
+  async whenIdle(): Promise<void> { // steps may enqueue more steps or regenerate: settle until nothing moved
+    for (const chains = () => [...[...this.tracked.values()].map((tracked) => tracked.chain), ...this.removals]; ;) {
+      const before = chains(); await Promise.all(before);
+      const now = chains(); if (now.length === before.length && now.every((chain, i) => chain === before[i])) return;
     }
   }
 
   /** Close every model's writer and acknowledge complete generations. */
   async seal(): Promise<ModelBackingStatus[]> {
+    // A statement holds only while its queue generation does: a full discard since (even of nothing, so with
+    // no event) voids it. Checked again after every await, so one during the seal is never acknowledged.
+    const voided = (modelId: string, tracked: Tracked) => {
+      if (statementVoided(tracked, supplyPoint(modelId))) { this.abandon(modelId, { ...tracked.supplied! }); return true; } return false;
+    };
+    for (const [modelId, tracked] of this.tracked) voided(modelId, tracked);
     await this.whenIdle();
-    for (const [modelId, tracked] of this.tracked) {
+    let acknowledged = false;
+    for (const [modelId, tracked] of [...this.tracked]) {
       // No geometry yet (`geometryResult: null` before the first batch) is not an empty model: never acknowledged.
-      if (tracked.failure || tracked.instancedLost || this.missedShards(modelId) || !tracked.backing || tracked.meshes === undefined) continue;
-      tracked.sealed = true;
-      await this.settle(tracked, tracked.backing.acknowledge().then(() => undefined));
+      if (voided(modelId, tracked) || tracked.failure || tracked.stale || !tracked.backing || tracked.meshes === undefined) continue;
+      if (tracked.instancedLost) { // never acknowledged; its flat records alone answer flat-only readers once flushed
+        const flushed = tracked.backing.writer.flush().then(() => { tracked.flatSealed = this.tracked.get(modelId) === tracked && !tracked.failure; });
+        await this.settle(tracked, flushed); acknowledged ||= !!tracked.flatSealed; continue;
+      }
+      if (this.missedShards(modelId) || hasPendingInstancedShards(modelId)) continue; // undrawn shards: not what the scene shows yet
+      const backing = tracked.backing;
+      tracked.sealing = true; // from here its writer closes: a late append or shard stages a successor
+      await this.settle(tracked, backing.acknowledge().then(async (ack) => {
+        // Only a verified, complete, still-current replacement whose statement still holds may retire what it replaces.
+        if (!this.registry.verify(ack) || this.tracked.get(modelId) !== tracked || tracked.failure || voided(modelId, tracked) || hasPendingInstancedShards(modelId) || this.missedShards(modelId)) return; // an upload during the wait: r4655067178
+        acknowledged ||= this.acknowledged.get(modelId) !== tracked;
+        tracked.supplied = undefined;
+        this.acknowledged.set(modelId, tracked);
+        for (const old of tracked.retained.splice(0)) await this.registry.invalidate(old, 'Replaced by an acknowledged generation');
+      }));
     }
+    if (acknowledged) notifyReleasedGeometryMetadataChanged(); // complete generations answer in place
     return this.status();
   }
 
-  /**
-   * The release allowlist (#10876): the model's current generation and the exact list it verified, only
-   * when it is registered, sealed, idle-complete (every listed mesh consumed, no shard pending, carried
-   * or missed), current, not stale or failed, and backs resident arrays. Anything else: undefined.
-   */
+  /** The release allowlist (#10876): the current generation and the exact list it verified (`releaseCandidateOf`). */
   releaseCandidate(modelId: string): { backing: ModelGeometryBacking; meshes: MeshData[] } | undefined {
-    const tracked = this.tracked.get(modelId);
-    const backing = tracked?.backing, meshes = tracked?.meshes;
-    if (!tracked || !backing || !meshes || !tracked.registered || !tracked.sealed || tracked.stale || tracked.failure
-      || tracked.instancedLost || tracked.carrying || tracked.replaced || this.missedShards(modelId)) return undefined;
-    if (!backing.isCurrent || !backing.isComplete || tracked.consumed !== meshes.length || meshes.some(isReleasedMesh)) return undefined;
-    return { backing, meshes };
+    return releaseCandidateOf(modelId, this.tracked.get(modelId), this.acknowledged.get(modelId), this.missedShards(modelId));
   }
 
   /** Shards were enqueued for this model that the tap never saw. */
-  private missedShards(modelId: string): boolean {
-    return instancedShardRevision(modelId) > (this.shardEvents.get(modelId) ?? 0);
-  }
+  /** The current generation lost only its instancing and every flat record is sealed and durable (`BackingSource.flatComplete`). */
+  flatComplete(modelId: string): boolean { return flatRecordsComplete(this.tracked.get(modelId)); }
+  private missedShards(modelId: string): boolean { return this.preTap.missed(modelId, this.shardEvents.get(modelId) ?? 0); }
 
   status(): ModelBackingStatus[] {
-    return [...this.tracked].map(([modelId, tracked]) => {
-      const backing = tracked.backing;
-      const instancedLost = tracked.instancedLost || this.missedShards(modelId);
-      const error = tracked.stale ?? tracked.failure ?? backing?.writer.error;
-      return {
-        modelId, generation: backing?.generation ?? 0, meshes: tracked.consumed,
-        chunks: backing?.directory.chunks.length ?? 0, shards: backing?.directory.shards.length ?? 0,
-        storedBytes: backing?.directory.storedBytes ?? 0, pendingBytes: backing?.writer.pendingBytes ?? 0,
-        complete: !!backing?.isComplete && !instancedLost && !tracked.failure && !tracked.stale && tracked.meshes !== undefined,
-        instancedLost, ...(error ? { error: `${error.name}: ${error.message}` } : {}),
-      };
-    });
+    return [...this.tracked].map(([modelId, tracked]) => backingStatusRow(modelId, tracked, this.missedShards(modelId)));
   }
 
   /** Stop observing and delete this page's backing. */
   async stop(): Promise<void> {
     this.stopped = true;
+    setReleasedGeometryMetadata(null);
     for (const stop of this.stops.splice(0)) stop();
-    // Every owned chain AND every pending removal's retirement (their deletes included) before the registry
-    // and its database close: a deferred delete after close would leave orphan records. Failures are settled.
+    // Every owned chain AND every pending removal (their deletes included) before the registry and its database
+    // close: a deferred delete after close would leave orphan records (#10876). Failures are settled.
     await this.whenIdle();
-    this.tracked.clear();
+    this.tracked.clear(); this.acknowledged.clear();
     await this.registry.close();
   }
 }

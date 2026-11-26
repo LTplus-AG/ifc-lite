@@ -135,6 +135,15 @@ describe('varying structural actions IFC2X3 <-> IFC4 #9668', () => {
     expect(result.stats.warnings.join('\n')).toContain('1 structural conversion record(s): IFCSTRUCTURALCURVEACTION.DestabilizingLoad is unknown');
   });
 
+  it('reports a commented unset DestabilizingLoad on a rewritten varying action (#11001)', async () => {
+    const ifc4 = model('IFC4', `${SHARED}
+#25=IFCSTRUCTURALLOADCONFIGURATION($,(#20,#21),$);
+#30=IFCSTRUCTURALCURVEACTION('0d2HL$ILbNDhwyUI0qw12$',$,'Line',$,$,$,#10,#25,.GLOBAL_COORDS.,/* unknown */$,$,.LINEAR.);`);
+    const result = new StepExporter(await parse(ifc4)).export({ schema: 'IFC2X3' });
+    expect(line(new TextDecoder().decode(result.content), 30)).toMatch(/^#30=IFCSTRUCTURALLINEARACTIONVARYING\(/);
+    expect(result.stats.warnings.join('\n')).toContain('IFCSTRUCTURALCURVEACTION.DestabilizingLoad is unknown');
+  });
+
   it('takes only distributions linear between the values', async () => {
     const ifc4 = model('IFC4', `${SHARED}
 #25=IFCSTRUCTURALLOADCONFIGURATION($,(#20,#21),$);
@@ -181,8 +190,10 @@ describe('varying structural actions IFC2X3 <-> IFC4 #9668', () => {
     }
   });
 
-  it('needs the source store, so a subset export keeps the varying action unconverted', async () => {
+  it('converts a subset that retains the varying action and its load locations (#11037)', async () => {
     const result = new StepExporter(await parse(IFC2X3)).export({ schema: 'IFC4', subsetEntityIds: new Set([1, 10, 11, 20, 21, 30]) });
-    expect(line(new TextDecoder().decode(result.content), 30)).toMatch(/^#30=IFCSTRUCTURALLINEARACTIONVARYING\(/);
+    const output = new TextDecoder().decode(result.content);
+    expect(line(output, 30)).toMatch(/^#30=IFCSTRUCTURALCURVEACTION\(/);
+    expect(records(output, 'IFCSTRUCTURALLOADCONFIGURATION')).toEqual([expect.stringContaining('(#20,#21),$);')]);
   });
 });

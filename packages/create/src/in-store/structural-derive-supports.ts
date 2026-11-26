@@ -5,7 +5,7 @@
 /** Guessed supports: which lowest-level nodes of a derivation plan bear on the ground. */
 
 import { vecLen as length } from '../ifc-creator-math.js';
-import { pointInPolygon } from './room-footprint-offset.js';
+import { pointInPolygon } from './polygon-2d.js';
 import { add, areaVector, sub, scale, dot } from './structural-derive-idealise.js';
 import { jointReachOf } from './structural-derive-joints.js';
 import type { PlannedCurveMember, PlannedNode, PlannedSurfaceMember, PrismFact, Vec3 } from './structural-derive-types.js';

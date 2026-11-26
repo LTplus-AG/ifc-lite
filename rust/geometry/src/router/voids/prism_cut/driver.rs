@@ -147,6 +147,10 @@ impl Execution {
                 defer(3);
             } else {
                 let mut pf = cand.pf.clone();
+                if super::paired_cap::has_oblique_paired_cap(&pf, &tris) {
+                    residual_idx.extend(cand.ops.iter().copied());
+                    continue;
+                }
                 // Host projection intervals on the prism axes: no-overlap ⇒
                 // silent no-op (the exact path owns that diagnostic); engulf ⇒
                 // the exact path owns the redundant-void machinery (#964,
@@ -165,7 +169,7 @@ impl Execution {
                     defer(4);
                 } else {
                     let aabbs: Vec<(V3, V3)> = tris.iter().map(PTri::aabb).collect();
-                    extend_prism_caps(&mut pf, &tris, &aabbs);
+                    let existing_floors = extend_prism_caps(&mut pf, &tris, &aabbs);
                     extend_profile_edges(&mut pf, &tris, &aabbs);
                     let plo = [pf.bb.0[0], pf.bb.0[1], pf.d0()];
                     let phi = [pf.bb.1[0], pf.bb.1[1], pf.d1()];
@@ -173,7 +177,7 @@ impl Execution {
                     if engulfs {
                         defer(5);
                     } else {
-                        match cut_prism(&tris, &pf) {
+                        match cut_prism(&tris, &pf, existing_floors) {
                             Ok(outcome) => {
                                 committed_cutter_volume += pf.volume();
                                 tris = outcome;

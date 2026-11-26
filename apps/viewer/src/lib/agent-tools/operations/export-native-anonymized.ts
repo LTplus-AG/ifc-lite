@@ -33,6 +33,7 @@ const schema = { type: 'object', properties: {
 }, required: ['target_model_id', 'seed_ids', 'excluded_ids', 'excluded_types', 'relations', 'anonymize', 'file_stem'], additionalProperties: false } satisfies JSONSchemaType<Input>;
 async function prepare(i: Input, check: () => void) {
   const model = nativeExportTarget(i.target_model_id); const store = await ensureModelExportReady(model.id); check(); if (!store) throw unavailable('Native anonymization source store is unavailable.');
+  if (!store.source?.byteLength) throw unavailable('Native anonymization requires original IFC STEP source bytes.');
   const view = useViewerStore.getState().getMutationView(model.id);
   // @raw-entity-enumeration-ok native anonymization exports source records; overlay-created seeds are refused on this same line
   if (i.seed_ids.some(id => view?.hasNewEntity(id) || store.entityIndex.byId.get(id) === undefined)) throw invalidInput('invalid-value', 'Native anonymization reads source records; overlay-created or unknown seeds cannot be exported.');
@@ -60,7 +61,7 @@ export const exportNativeAnonymizedOperations = [
   } satisfies JSONSchemaType<Input & { expected_included_ids: number[] }>, async (i, c) => {
     const check = nativeExportGuard(c, [i.target_model_id]); check(); const p = await prepare(i, check);
     if (JSON.stringify([...p.included].sort((a, b) => a - b)) !== JSON.stringify([...i.expected_included_ids].sort((a, b) => a - b))) throw stale('Native anonymized membership changed since preview.');
-    const out = produceAnonymizedExport({ store: p.store, fileStem: i.file_stem, includedIds: p.included, options: toAnonymizeOptions(i.anonymize) });
+    const out = await produceAnonymizedExport({ store: p.store, fileStem: i.file_stem, includedIds: p.included, options: toAnonymizeOptions(i.anonymize) });
     // Keep this projection explicit. The coordinates removed from root placements stay private (#10695).
     const { entityCount, includedRootEntityCount, prunedRelationshipIds, droppedPropertySetIds, droppedPropertyReferenceIds, warnings, zeroedPlacements } = out.result.stats;
     const diagnostics = {

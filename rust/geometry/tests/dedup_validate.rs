@@ -910,6 +910,33 @@ fn content_dedup_extra_facesets_byte_identical_when_flagged() {
     assert_eq!(unique_on, 2, "the two identical facesets must collapse to 1 (+1 distinct = 2)");
 }
 
+#[test]
+fn shared_face_set_dedup_preserves_the_local_frame_policy_10835() {
+    let _extra_on = DedupExtraOverrideGuard::set(true);
+    let content = "ISO-10303-21;HEADER;FILE_SCHEMA(('IFC4'));ENDSEC;DATA;
+        #1=IFCTRIANGULATEDFACESET(#2,$,.F.,((1,2,3)),$);
+        #2=IFCCARTESIANPOINTLIST3D(((10000.,0.,0.),(10001.,0.,0.),(10000.,1.,0.)));
+        ENDSEC;END-ISO-10303-21;";
+    let cache = GeometryRouter::new_dedup_cache();
+    let mesh = |local_frame, cache| {
+        let mut decoder = EntityDecoder::with_index(content, build_entity_index(content));
+        let mut router = GeometryRouter::with_scale_and_local_frame(1.0, local_frame);
+        router.set_rtc_offset((100.0, 0.0, 0.0));
+        router.enable_content_dedup_shared(cache);
+        let item = decoder.decode_by_id(1).expect("triangulated face set");
+        router.process_representation_item(&item, &mut decoder).expect("triangle")
+    };
+
+    let absolute = mesh(false, cache.clone());
+    let shared_local = mesh(true, cache);
+    let fresh_local = mesh(true, GeometryRouter::new_dedup_cache());
+
+    assert_eq!(fresh_local.indices.len(), 3);
+    assert_ne!(absolute.origin, fresh_local.origin);
+    assert_eq!(shared_local.origin, fresh_local.origin);
+    assert_eq!(shared_local.positions, fresh_local.positions);
+}
+
 // #7911 / review 4330063641: the extra-family cache must not hide the
 // newly recoverable absent-face refusal on a subsequent independent rebuild.
 fn polygonal_dedup_model_7911(face_refs: &str) -> String {

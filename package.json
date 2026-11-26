@@ -1,6 +1,6 @@
 {
   "name": "ifc-lite",
-  "version": "12.3.0",
+  "version": "13.1.0",
   "description": "High-performance browser IFC parser & renderer",
   "private": true,
   "type": "module",
@@ -64,6 +64,7 @@
     "check:ifc4-express-corrections": "node scripts/generate-ifc4-express-corrections.mjs --check",
     "check:ifc4-required-slots": "node scripts/generate-ifc4-required-slots.mjs --check",
     "check:enum-reconciliation": "node scripts/generate-enum-reconciliation.mjs --check",
+    "check:value-forms": "node scripts/generate-value-forms.mjs --check",
     "check:step-log-tables": "node scripts/generate-step-log-tables.mjs --check",
     "lint:module-size-baseline": "node scripts/check-module-size.mjs --update",
     "check:unbounded-frame-wait": "node scripts/check-unbounded-frame-wait.mjs",
@@ -205,7 +206,10 @@
       "@swc/core@1.15.8": "patches/@swc__core@1.15.8.patch",
       "@radix-ui/react-popover@1.1.23": "patches/@radix-ui__react-popover@1.1.23.patch",
       "typedoc@0.28.20": "patches/typedoc@0.28.20.patch",
-      "@luma.gl/splats@9.4.2": "patches/@luma.gl__splats@9.4.2.patch"
+      "@luma.gl/splats@9.4.2": "patches/@luma.gl__splats@9.4.2.patch",
+      "@a2ui/web_core@0.15.0": "patches/@a2ui__web_core@0.15.0.patch",
+      "@a2ui/agent@0.1.0": "patches/@a2ui__agent@0.1.0.patch",
+      "@a2ui/react@0.15.0": "patches/@a2ui__react@0.15.0.patch"
     }
   }
 }

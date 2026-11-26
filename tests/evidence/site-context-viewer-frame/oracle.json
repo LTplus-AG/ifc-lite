@@ -1,6 +1,0 @@
-{
-  "issue": 7955,
-  "key": "apps/viewer/src/lib/site-context/site-context-model.ts",
-  "mutation": "tests/evidence/site-context-viewer-frame/behaviour.oracle.patch",
-  "why": "Reverse application keeps every export but stops negating northing into the viewer's south axis, so every site-context vertex is mirrored north-south: the ingest test's exact per-vertex frame check and the federation tests' 1 cm placement against the rotated EPSG:2056 and LV03 anchors go red."
-}

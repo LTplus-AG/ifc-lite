@@ -32,10 +32,10 @@ import { toNativeLength, type HostBounds } from './anchor.js';
 import {
   axisOverlap,
   clippedPolygonArea,
-  polygonArea,
   polygonPerimeter,
   sectionMeasures,
 } from './base-quantities-measure.js';
+import { polygonArea } from './polygon-2d.js';
 import { asExpressIdRef, readAttributes, resolvePlacementChain } from './edit/placement-core.js';
 import { getModelLengthUnitScale } from './edit/length-unit-scale.js';
 import { readLinearBodyMeasures } from './edit/linear-element-edit.js';

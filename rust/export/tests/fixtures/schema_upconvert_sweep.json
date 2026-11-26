@@ -1185,11 +1185,11 @@
    "why": "appended attributes are padded (IFCCIVILELEMENT 8 -> 9), renamed to IFCBUILDINGELEMENTPROXY"
   },
   {
-   "expect": "#7=IFCCLASSIFICATION('a0','a1','a2','a3');",
+   "expect": "#7=IFCCLASSIFICATION('a0','a1',$,'a3');",
    "from": "IFC4",
    "line": "#7=IFCCLASSIFICATION('a0','a1','a2','a3','a4','a5','a6');",
    "to": "IFC2X3",
-   "why": "dropped trailing attributes are trimmed (IFCCLASSIFICATION 7 -> 4)"
+   "why": "dropped trailing attributes are trimmed (IFCCLASSIFICATION 7 -> 4); a placeholder string in a slot of another value form is written $ (#10847)"
   },
   {
    "expect": "#7=IFCCOLUMN('a0','a1','a2','a3','a4','a5','a6','a7');",
@@ -1381,11 +1381,11 @@
    "why": "dropped trailing attributes are trimmed (IFCMEMBER 9 -> 8)"
   },
   {
-   "expect": "#7=IFCMETRIC('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9');",
+   "expect": "#7=IFCMETRIC('a0','a1','a2','a3','a4',$,'a6','a7','a8','a9');",
    "from": "IFC4",
    "line": "#7=IFCMETRIC('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10');",
    "to": "IFC2X3",
-   "why": "dropped trailing attributes are trimmed (IFCMETRIC 11 -> 10)"
+   "why": "dropped trailing attributes are trimmed (IFCMETRIC 11 -> 10); a placeholder string in a slot of another value form is written $ (#10847)"
   },
   {
    "expect": "#7=IFCOPENINGELEMENT('a0','a1','a2','a3','a4','a5','a6','a7');",
@@ -1724,11 +1724,11 @@
    "why": "appended attributes are padded (IFCCIVILELEMENT 8 -> 9), renamed to IFCBUILDINGELEMENTPROXY"
   },
   {
-   "expect": "#7=IFCCLASSIFICATION('a0','a1','a2','a3');",
+   "expect": "#7=IFCCLASSIFICATION('a0','a1',$,'a3');",
    "from": "IFC4X3",
    "line": "#7=IFCCLASSIFICATION('a0','a1','a2','a3','a4','a5','a6');",
    "to": "IFC2X3",
-   "why": "dropped trailing attributes are trimmed (IFCCLASSIFICATION 7 -> 4)"
+   "why": "dropped trailing attributes are trimmed (IFCCLASSIFICATION 7 -> 4); a placeholder string in a slot of another value form is written $ (#10847)"
   },
   {
    "expect": "#7=IFCCOLUMN('a0','a1','a2','a3','a4','a5','a6','a7');",
@@ -1969,11 +1969,11 @@
    "why": "dropped trailing attributes are trimmed (IFCMEMBER 9 -> 8)"
   },
   {
-   "expect": "#7=IFCMETRIC('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9');",
+   "expect": "#7=IFCMETRIC('a0','a1','a2','a3','a4',$,'a6','a7','a8','a9');",
    "from": "IFC4X3",
    "line": "#7=IFCMETRIC('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10');",
    "to": "IFC2X3",
-   "why": "dropped trailing attributes are trimmed (IFCMETRIC 11 -> 10)"
+   "why": "dropped trailing attributes are trimmed (IFCMETRIC 11 -> 10); a placeholder string in a slot of another value form is written $ (#10847)"
   },
   {
    "expect": "#7=IFCOBJECTPLACEMENT();",
@@ -2578,18 +2578,18 @@
    "expect": "#7=IFCCOSTVALUE('a0','a1','a2','a3','a4','a5','a6','a7',$,$);"
   },
   {
-   "why": "an in-place rename no longer blocks the trim/pad: trimmed (IFCCOSTVALUE 10 -> 8); renamed CostType->Category (#7739)",
+   "why": "an in-place rename no longer blocks the trim/pad: trimmed (IFCCOSTVALUE 10 -> 8); renamed CostType->Category (#7739); a placeholder string in a slot of another value form is written $ (#10847)",
    "from": "IFC4",
    "to": "IFC2X3",
    "line": "#7=IFCCOSTVALUE('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9');",
-   "expect": "#7=IFCCOSTVALUE('a0','a1','a2','a3','a4','a5','a6','a7');"
+   "expect": "#7=IFCCOSTVALUE('a0','a1','a2','a3',$,$,'a6','a7');"
   },
   {
-   "why": "an in-place rename no longer blocks the trim/pad: trimmed (IFCCOSTVALUE 10 -> 8); renamed CostType->Category (#7739)",
+   "why": "an in-place rename no longer blocks the trim/pad: trimmed (IFCCOSTVALUE 10 -> 8); renamed CostType->Category (#7739); a placeholder string in a slot of another value form is written $ (#10847)",
    "from": "IFC4X3",
    "to": "IFC2X3",
    "line": "#7=IFCCOSTVALUE('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9');",
-   "expect": "#7=IFCCOSTVALUE('a0','a1','a2','a3','a4','a5','a6','a7');"
+   "expect": "#7=IFCCOSTVALUE('a0','a1','a2','a3',$,$,'a6','a7');"
   },
   {
    "why": "an in-place rename no longer blocks the trim/pad: padded (IFCSTAIRFLIGHT 12 -> 13); renamed NumberOfRiser->NumberOfRisers (#7739)",
@@ -2634,18 +2634,18 @@
    "expect": "#7=IFCWORKPLAN('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13');"
   },
   {
-   "why": "an in-place rename no longer blocks the trim/pad: padded (IFCWORKPLAN 14 -> 15); renamed Identifier->Identification, WorkControlType->PredefinedType (#7739)",
+   "why": "an in-place rename no longer blocks the trim/pad: padded (IFCWORKPLAN 14 -> 15); renamed Identifier->Identification, WorkControlType->PredefinedType (#7739); a placeholder string in a slot of another value form is written $ (#10847)",
    "from": "IFC4",
    "to": "IFC2X3",
    "line": "#7=IFCWORKPLAN('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13');",
-   "expect": "#7=IFCWORKPLAN('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13',$);"
+   "expect": "#7=IFCWORKPLAN('a0','a1','a2','a3','a4','a5',$,'a7','a8',$,$,$,$,'a13',$);"
   },
   {
-   "why": "an in-place rename no longer blocks the trim/pad: padded (IFCWORKPLAN 14 -> 15); renamed Identifier->Identification, WorkControlType->PredefinedType (#7739)",
+   "why": "an in-place rename no longer blocks the trim/pad: padded (IFCWORKPLAN 14 -> 15); renamed Identifier->Identification, WorkControlType->PredefinedType (#7739); a placeholder string in a slot of another value form is written $ (#10847)",
    "from": "IFC4X3",
    "to": "IFC2X3",
    "line": "#7=IFCWORKPLAN('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13');",
-   "expect": "#7=IFCWORKPLAN('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13',$);"
+   "expect": "#7=IFCWORKPLAN('a0','a1','a2','a3','a4','a5',$,'a7','a8',$,$,$,$,'a13',$);"
   },
   {
    "why": "an in-place rename no longer blocks the trim/pad: trimmed (IFCWORKSCHEDULE 15 -> 14); renamed Identifier->Identification, WorkControlType->PredefinedType (#7739)",
@@ -2662,18 +2662,18 @@
    "expect": "#7=IFCWORKSCHEDULE('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13');"
   },
   {
-   "why": "an in-place rename no longer blocks the trim/pad: padded (IFCWORKSCHEDULE 14 -> 15); renamed Identifier->Identification, WorkControlType->PredefinedType (#7739)",
+   "why": "an in-place rename no longer blocks the trim/pad: padded (IFCWORKSCHEDULE 14 -> 15); renamed Identifier->Identification, WorkControlType->PredefinedType (#7739); a placeholder string in a slot of another value form is written $ (#10847)",
    "from": "IFC4",
    "to": "IFC2X3",
    "line": "#7=IFCWORKSCHEDULE('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13');",
-   "expect": "#7=IFCWORKSCHEDULE('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13',$);"
+   "expect": "#7=IFCWORKSCHEDULE('a0','a1','a2','a3','a4','a5',$,'a7','a8',$,$,$,$,'a13',$);"
   },
   {
-   "why": "an in-place rename no longer blocks the trim/pad: padded (IFCWORKSCHEDULE 14 -> 15); renamed Identifier->Identification, WorkControlType->PredefinedType (#7739)",
+   "why": "an in-place rename no longer blocks the trim/pad: padded (IFCWORKSCHEDULE 14 -> 15); renamed Identifier->Identification, WorkControlType->PredefinedType (#7739); a placeholder string in a slot of another value form is written $ (#10847)",
    "from": "IFC4X3",
    "to": "IFC2X3",
    "line": "#7=IFCWORKSCHEDULE('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13');",
-   "expect": "#7=IFCWORKSCHEDULE('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13',$);"
+   "expect": "#7=IFCWORKSCHEDULE('a0','a1','a2','a3','a4','a5',$,'a7','a8',$,$,$,$,'a13',$);"
   },
   {
    "why": "an in-place rename no longer blocks the trim/pad: padded (IFCPROPERTYBOUNDEDVALUE 5 -> 6); renamed Description->Specification (#7739)",
@@ -2921,6 +2921,47 @@
   {"why":"#10807 reconciled by its attribute map (IFCDOCUMENTINFORMATION 17 -> IFCDOCUMENTINFORMATION 17)","from":"IFC2X3","to":"IFC4","line":"#7=IFCDOCUMENTINFORMATION('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13','a14','a15','a16');","expect":"#7=IFCDOCUMENTINFORMATION('a0','a1','a2',$,'a4','a5','a6','a7','a8','a9',$,$,$,$,$,'a15','a16');","lost":["DocumentReferences","CreationTime","LastRevisionTime","ElectronicFormat","ValidFrom","ValidUntil"]},
   {"why":"#10807 reconciled by its attribute map (IFCDOCUMENTINFORMATION 17 -> IFCDOCUMENTINFORMATION 17)","from":"IFC2X3","to":"IFC4X3","line":"#7=IFCDOCUMENTINFORMATION('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13','a14','a15','a16');","expect":"#7=IFCDOCUMENTINFORMATION('a0','a1','a2',$,'a4','a5','a6','a7','a8','a9',$,$,$,$,$,'a15','a16');","lost":["DocumentReferences","CreationTime","LastRevisionTime","ElectronicFormat","ValidFrom","ValidUntil"]},
   {"why":"#10807 reconciled by its attribute map (IFCDOCUMENTINFORMATION 17 -> IFCDOCUMENTINFORMATION 17)","from":"IFC4","to":"IFC2X3","line":"#7=IFCDOCUMENTINFORMATION('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13','a14','a15','a16');","expect":"#7=IFCDOCUMENTINFORMATION('a0','a1','a2',$,'a4','a5','a6','a7','a8','a9',$,$,$,$,$,'a15','a16');","lost":["Location","CreationTime","LastRevisionTime","ElectronicFormat","ValidFrom","ValidUntil"]},
-  {"why":"#10807 reconciled by its attribute map (IFCDOCUMENTINFORMATION 17 -> IFCDOCUMENTINFORMATION 17)","from":"IFC4X3","to":"IFC2X3","line":"#7=IFCDOCUMENTINFORMATION('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13','a14','a15','a16');","expect":"#7=IFCDOCUMENTINFORMATION('a0','a1','a2',$,'a4','a5','a6','a7','a8','a9',$,$,$,$,$,'a15','a16');","lost":["Location","CreationTime","LastRevisionTime","ElectronicFormat","ValidFrom","ValidUntil"]}
+  {"why":"#10807 reconciled by its attribute map (IFCDOCUMENTINFORMATION 17 -> IFCDOCUMENTINFORMATION 17)","from":"IFC4X3","to":"IFC2X3","line":"#7=IFCDOCUMENTINFORMATION('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13','a14','a15','a16');","expect":"#7=IFCDOCUMENTINFORMATION('a0','a1','a2',$,'a4','a5','a6','a7','a8','a9',$,$,$,$,$,'a15','a16');","lost":["Location","CreationTime","LastRevisionTime","ElectronicFormat","ValidFrom","ValidUntil"]},
+  {"why":"#10824 reconciled by its attribute map (IFCELECTRICDISTRIBUTIONPOINT 10 -> IFCELECTRICDISTRIBUTIONBOARD 9)","from":"IFC2X3","to":"IFC4","line":"#7=IFCELECTRICDISTRIBUTIONPOINT('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9');","expect":"#7=IFCELECTRICDISTRIBUTIONBOARD('a0','a1','a2','a3','a4','a5','a6','a7','a8');","lost":["UserDefinedFunction"]},
+  {"why":"#10824 reconciled by its attribute map (IFCELECTRICDISTRIBUTIONPOINT 10 -> IFCDISTRIBUTIONBOARD 9)","from":"IFC2X3","to":"IFC4X3","line":"#7=IFCELECTRICDISTRIBUTIONPOINT('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9');","expect":"#7=IFCDISTRIBUTIONBOARD('a0','a1','a2','a3','a4','a5','a6','a7','a8');","lost":["UserDefinedFunction"]},
+  {"why":"#10824 reconciled by its attribute map (IFCELECTRICDISTRIBUTIONBOARD 9 -> IFCELECTRICDISTRIBUTIONPOINT 10)","from":"IFC4","to":"IFC2X3","line":"#7=IFCELECTRICDISTRIBUTIONBOARD('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCELECTRICDISTRIBUTIONPOINT('a0','a1','a2','a3','a4','a5','a6','a7','a8',$);","lost":[]},
+  {"why":"#10824 reconciled by its attribute map (IFCELECTRICDISTRIBUTIONBOARD 9 -> IFCELECTRICDISTRIBUTIONPOINT 10)","from":"IFC4X3","to":"IFC2X3","line":"#7=IFCELECTRICDISTRIBUTIONBOARD('a0','a1','a2','a3','a4','a5','a6','a7','a8');","expect":"#7=IFCELECTRICDISTRIBUTIONPOINT('a0','a1','a2','a3','a4','a5','a6','a7','a8',$);","lost":[]},
+  {"why":"#10777 renamed and reconciled by its attribute map (IFCEXTENDEDMATERIALPROPERTIES 4 -> IFCMATERIALPROPERTIES 4)","from":"IFC2X3","to":"IFC4","line":"#7=IFCEXTENDEDMATERIALPROPERTIES('a0','a1','a2','a3');","expect":"#7=IFCMATERIALPROPERTIES('a3','a2','a1','a0');","lost":[]},
+  {"why":"#10777 renamed and reconciled by its attribute map (IFCEXTENDEDMATERIALPROPERTIES 4 -> IFCMATERIALPROPERTIES 4)","from":"IFC2X3","to":"IFC4X3","line":"#7=IFCEXTENDEDMATERIALPROPERTIES('a0','a1','a2','a3');","expect":"#7=IFCMATERIALPROPERTIES('a3','a2','a1','a0');","lost":[]},
+  {"why":"#10777 renamed and reconciled by its attribute map (IFCGENERALPROFILEPROPERTIES 7 -> IFCPROFILEPROPERTIES 4)","from":"IFC2X3","to":"IFC4","line":"#7=IFCGENERALPROFILEPROPERTIES('a0','a1','a2','a3','a4','a5','a6');","expect":"#7=IFCPROFILEPROPERTIES($,$,$,'a1');","lost":["ProfileName","PhysicalWeight","Perimeter","MinimumPlateThickness","MaximumPlateThickness","CrossSectionArea"]},
+  {"why":"#10777 renamed and reconciled by its attribute map (IFCGENERALPROFILEPROPERTIES 7 -> IFCPROFILEPROPERTIES 4)","from":"IFC2X3","to":"IFC4X3","line":"#7=IFCGENERALPROFILEPROPERTIES('a0','a1','a2','a3','a4','a5','a6');","expect":"#7=IFCPROFILEPROPERTIES($,$,$,'a1');","lost":["ProfileName","PhysicalWeight","Perimeter","MinimumPlateThickness","MaximumPlateThickness","CrossSectionArea"]},
+  {"why":"#10777 renamed and reconciled by its attribute map (IFCMECHANICALMATERIALPROPERTIES 6 -> IFCMATERIALPROPERTIES 4)","from":"IFC2X3","to":"IFC4","line":"#7=IFCMECHANICALMATERIALPROPERTIES('a0','a1','a2','a3','a4','a5');","expect":"#7=IFCMATERIALPROPERTIES($,$,$,'a0');","lost":["DynamicViscosity","YoungModulus","ShearModulus","PoissonRatio","ThermalExpansionCoefficient"]},
+  {"why":"#10777 renamed and reconciled by its attribute map (IFCMECHANICALMATERIALPROPERTIES 6 -> IFCMATERIALPROPERTIES 4)","from":"IFC2X3","to":"IFC4X3","line":"#7=IFCMECHANICALMATERIALPROPERTIES('a0','a1','a2','a3','a4','a5');","expect":"#7=IFCMATERIALPROPERTIES($,$,$,'a0');","lost":["DynamicViscosity","YoungModulus","ShearModulus","PoissonRatio","ThermalExpansionCoefficient"]},
+  {"why":"#10777 renamed and reconciled by its attribute map (IFCMECHANICALCONCRETEMATERIALPROPERTIES 12 -> IFCMATERIALPROPERTIES 4)","from":"IFC2X3","to":"IFC4","line":"#7=IFCMECHANICALCONCRETEMATERIALPROPERTIES('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11');","expect":"#7=IFCMATERIALPROPERTIES($,$,$,'a0');","lost":["DynamicViscosity","YoungModulus","ShearModulus","PoissonRatio","ThermalExpansionCoefficient","CompressiveStrength","MaxAggregateSize","AdmixturesDescription","Workability","ProtectivePoreRatio","WaterImpermeability"]},
+  {"why":"#10777 renamed and reconciled by its attribute map (IFCMECHANICALCONCRETEMATERIALPROPERTIES 12 -> IFCMATERIALPROPERTIES 4)","from":"IFC2X3","to":"IFC4X3","line":"#7=IFCMECHANICALCONCRETEMATERIALPROPERTIES('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11');","expect":"#7=IFCMATERIALPROPERTIES($,$,$,'a0');","lost":["DynamicViscosity","YoungModulus","ShearModulus","PoissonRatio","ThermalExpansionCoefficient","CompressiveStrength","MaxAggregateSize","AdmixturesDescription","Workability","ProtectivePoreRatio","WaterImpermeability"]},
+  {"why":"#10777 renamed and reconciled by its attribute map (IFCMECHANICALSTEELMATERIALPROPERTIES 13 -> IFCMATERIALPROPERTIES 4)","from":"IFC2X3","to":"IFC4","line":"#7=IFCMECHANICALSTEELMATERIALPROPERTIES('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12');","expect":"#7=IFCMATERIALPROPERTIES($,$,$,'a0');","lost":["DynamicViscosity","YoungModulus","ShearModulus","PoissonRatio","ThermalExpansionCoefficient","YieldStress","UltimateStress","UltimateStrain","HardeningModule","ProportionalStress","PlasticStrain","Relaxations"]},
+  {"why":"#10777 renamed and reconciled by its attribute map (IFCMECHANICALSTEELMATERIALPROPERTIES 13 -> IFCMATERIALPROPERTIES 4)","from":"IFC2X3","to":"IFC4X3","line":"#7=IFCMECHANICALSTEELMATERIALPROPERTIES('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12');","expect":"#7=IFCMATERIALPROPERTIES($,$,$,'a0');","lost":["DynamicViscosity","YoungModulus","ShearModulus","PoissonRatio","ThermalExpansionCoefficient","YieldStress","UltimateStress","UltimateStrain","HardeningModule","ProportionalStress","PlasticStrain","Relaxations"]},
+  {"why":"#10777 renamed and reconciled by its attribute map (IFCTHERMALMATERIALPROPERTIES 5 -> IFCMATERIALPROPERTIES 4)","from":"IFC2X3","to":"IFC4","line":"#7=IFCTHERMALMATERIALPROPERTIES('a0','a1','a2','a3','a4');","expect":"#7=IFCMATERIALPROPERTIES($,$,$,'a0');","lost":["SpecificHeatCapacity","BoilingPoint","FreezingPoint","ThermalConductivity"]},
+  {"why":"#10777 renamed and reconciled by its attribute map (IFCTHERMALMATERIALPROPERTIES 5 -> IFCMATERIALPROPERTIES 4)","from":"IFC2X3","to":"IFC4X3","line":"#7=IFCTHERMALMATERIALPROPERTIES('a0','a1','a2','a3','a4');","expect":"#7=IFCMATERIALPROPERTIES($,$,$,'a0');","lost":["SpecificHeatCapacity","BoilingPoint","FreezingPoint","ThermalConductivity"]},
+  {"why":"#10777 renamed and reconciled by its attribute map (IFCHYGROSCOPICMATERIALPROPERTIES 6 -> IFCMATERIALPROPERTIES 4)","from":"IFC2X3","to":"IFC4","line":"#7=IFCHYGROSCOPICMATERIALPROPERTIES('a0','a1','a2','a3','a4','a5');","expect":"#7=IFCMATERIALPROPERTIES($,$,$,'a0');","lost":["UpperVaporResistanceFactor","LowerVaporResistanceFactor","IsothermalMoistureCapacity","VaporPermeability","MoistureDiffusivity"]},
+  {"why":"#10777 renamed and reconciled by its attribute map (IFCHYGROSCOPICMATERIALPROPERTIES 6 -> IFCMATERIALPROPERTIES 4)","from":"IFC2X3","to":"IFC4X3","line":"#7=IFCHYGROSCOPICMATERIALPROPERTIES('a0','a1','a2','a3','a4','a5');","expect":"#7=IFCMATERIALPROPERTIES($,$,$,'a0');","lost":["UpperVaporResistanceFactor","LowerVaporResistanceFactor","IsothermalMoistureCapacity","VaporPermeability","MoistureDiffusivity"]},
+  {"why":"#10777 renamed and reconciled by its attribute map (IFCGENERALMATERIALPROPERTIES 4 -> IFCMATERIALPROPERTIES 4)","from":"IFC2X3","to":"IFC4","line":"#7=IFCGENERALMATERIALPROPERTIES('a0','a1','a2','a3');","expect":"#7=IFCMATERIALPROPERTIES($,$,$,'a0');","lost":["MolecularWeight","Porosity","MassDensity"]},
+  {"why":"#10777 renamed and reconciled by its attribute map (IFCGENERALMATERIALPROPERTIES 4 -> IFCMATERIALPROPERTIES 4)","from":"IFC2X3","to":"IFC4X3","line":"#7=IFCGENERALMATERIALPROPERTIES('a0','a1','a2','a3');","expect":"#7=IFCMATERIALPROPERTIES($,$,$,'a0');","lost":["MolecularWeight","Porosity","MassDensity"]},
+  {"why":"#10777 renamed and reconciled by its attribute map (IFCOPTICALMATERIALPROPERTIES 10 -> IFCMATERIALPROPERTIES 4)","from":"IFC2X3","to":"IFC4","line":"#7=IFCOPTICALMATERIALPROPERTIES('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9');","expect":"#7=IFCMATERIALPROPERTIES($,$,$,'a0');","lost":["VisibleTransmittance","SolarTransmittance","ThermalIrTransmittance","ThermalIrEmissivityBack","ThermalIrEmissivityFront","VisibleReflectanceBack","VisibleReflectanceFront","SolarReflectanceFront","SolarReflectanceBack"]},
+  {"why":"#10777 renamed and reconciled by its attribute map (IFCOPTICALMATERIALPROPERTIES 10 -> IFCMATERIALPROPERTIES 4)","from":"IFC2X3","to":"IFC4X3","line":"#7=IFCOPTICALMATERIALPROPERTIES('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9');","expect":"#7=IFCMATERIALPROPERTIES($,$,$,'a0');","lost":["VisibleTransmittance","SolarTransmittance","ThermalIrTransmittance","ThermalIrEmissivityBack","ThermalIrEmissivityFront","VisibleReflectanceBack","VisibleReflectanceFront","SolarReflectanceFront","SolarReflectanceBack"]},
+  {"why":"#10777 renamed and reconciled by its attribute map (IFCWATERPROPERTIES 8 -> IFCMATERIALPROPERTIES 4)","from":"IFC2X3","to":"IFC4","line":"#7=IFCWATERPROPERTIES('a0','a1','a2','a3','a4','a5','a6','a7');","expect":"#7=IFCMATERIALPROPERTIES($,$,$,'a0');","lost":["IsPotable","Hardness","AlkalinityConcentration","AcidityConcentration","ImpuritiesContent","PHLevel","DissolvedSolidsContent"]},
+  {"why":"#10777 renamed and reconciled by its attribute map (IFCWATERPROPERTIES 8 -> IFCMATERIALPROPERTIES 4)","from":"IFC2X3","to":"IFC4X3","line":"#7=IFCWATERPROPERTIES('a0','a1','a2','a3','a4','a5','a6','a7');","expect":"#7=IFCMATERIALPROPERTIES($,$,$,'a0');","lost":["IsPotable","Hardness","AlkalinityConcentration","AcidityConcentration","ImpuritiesContent","PHLevel","DissolvedSolidsContent"]},
+  {"why":"#10777 renamed and reconciled by its attribute map (IFCFUELPROPERTIES 5 -> IFCMATERIALPROPERTIES 4)","from":"IFC2X3","to":"IFC4","line":"#7=IFCFUELPROPERTIES('a0','a1','a2','a3','a4');","expect":"#7=IFCMATERIALPROPERTIES($,$,$,'a0');","lost":["CombustionTemperature","CarbonContent","LowerHeatingValue","HigherHeatingValue"]},
+  {"why":"#10777 renamed and reconciled by its attribute map (IFCFUELPROPERTIES 5 -> IFCMATERIALPROPERTIES 4)","from":"IFC2X3","to":"IFC4X3","line":"#7=IFCFUELPROPERTIES('a0','a1','a2','a3','a4');","expect":"#7=IFCMATERIALPROPERTIES($,$,$,'a0');","lost":["CombustionTemperature","CarbonContent","LowerHeatingValue","HigherHeatingValue"]},
+  {"why":"#10777 renamed and reconciled by its attribute map (IFCPRODUCTSOFCOMBUSTIONPROPERTIES 5 -> IFCMATERIALPROPERTIES 4)","from":"IFC2X3","to":"IFC4","line":"#7=IFCPRODUCTSOFCOMBUSTIONPROPERTIES('a0','a1','a2','a3','a4');","expect":"#7=IFCMATERIALPROPERTIES($,$,$,'a0');","lost":["SpecificHeatCapacity","N20Content","COContent","CO2Content"]},
+  {"why":"#10777 renamed and reconciled by its attribute map (IFCPRODUCTSOFCOMBUSTIONPROPERTIES 5 -> IFCMATERIALPROPERTIES 4)","from":"IFC2X3","to":"IFC4X3","line":"#7=IFCPRODUCTSOFCOMBUSTIONPROPERTIES('a0','a1','a2','a3','a4');","expect":"#7=IFCMATERIALPROPERTIES($,$,$,'a0');","lost":["SpecificHeatCapacity","N20Content","COContent","CO2Content"]},
+  {"why":"#10777 renamed and reconciled by its attribute map (IFCSTRUCTURALPROFILEPROPERTIES 23 -> IFCPROFILEPROPERTIES 4)","from":"IFC2X3","to":"IFC4","line":"#7=IFCSTRUCTURALPROFILEPROPERTIES('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13','a14','a15','a16','a17','a18','a19','a20','a21','a22');","expect":"#7=IFCPROFILEPROPERTIES($,$,$,'a1');","lost":["ProfileName","PhysicalWeight","Perimeter","MinimumPlateThickness","MaximumPlateThickness","CrossSectionArea","TorsionalConstantX","MomentOfInertiaYZ","MomentOfInertiaY","MomentOfInertiaZ","WarpingConstant","ShearCentreZ","ShearCentreY","ShearDeformationAreaZ","ShearDeformationAreaY","MaximumSectionModulusY","MinimumSectionModulusY","MaximumSectionModulusZ","MinimumSectionModulusZ","TorsionalSectionModulus","CentreOfGravityInX","CentreOfGravityInY"]},
+  {"why":"#10777 renamed and reconciled by its attribute map (IFCSTRUCTURALPROFILEPROPERTIES 23 -> IFCPROFILEPROPERTIES 4)","from":"IFC2X3","to":"IFC4X3","line":"#7=IFCSTRUCTURALPROFILEPROPERTIES('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13','a14','a15','a16','a17','a18','a19','a20','a21','a22');","expect":"#7=IFCPROFILEPROPERTIES($,$,$,'a1');","lost":["ProfileName","PhysicalWeight","Perimeter","MinimumPlateThickness","MaximumPlateThickness","CrossSectionArea","TorsionalConstantX","MomentOfInertiaYZ","MomentOfInertiaY","MomentOfInertiaZ","WarpingConstant","ShearCentreZ","ShearCentreY","ShearDeformationAreaZ","ShearDeformationAreaY","MaximumSectionModulusY","MinimumSectionModulusY","MaximumSectionModulusZ","MinimumSectionModulusZ","TorsionalSectionModulus","CentreOfGravityInX","CentreOfGravityInY"]},
+  {"why":"#10777 renamed and reconciled by its attribute map (IFCSTRUCTURALSTEELPROFILEPROPERTIES 27 -> IFCPROFILEPROPERTIES 4)","from":"IFC2X3","to":"IFC4","line":"#7=IFCSTRUCTURALSTEELPROFILEPROPERTIES('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13','a14','a15','a16','a17','a18','a19','a20','a21','a22','a23','a24','a25','a26');","expect":"#7=IFCPROFILEPROPERTIES($,$,$,'a1');","lost":["ProfileName","PhysicalWeight","Perimeter","MinimumPlateThickness","MaximumPlateThickness","CrossSectionArea","TorsionalConstantX","MomentOfInertiaYZ","MomentOfInertiaY","MomentOfInertiaZ","WarpingConstant","ShearCentreZ","ShearCentreY","ShearDeformationAreaZ","ShearDeformationAreaY","MaximumSectionModulusY","MinimumSectionModulusY","MaximumSectionModulusZ","MinimumSectionModulusZ","TorsionalSectionModulus","CentreOfGravityInX","CentreOfGravityInY","ShearAreaZ","ShearAreaY","PlasticShapeFactorY","PlasticShapeFactorZ"]},
+  {"why":"#10777 renamed and reconciled by its attribute map (IFCSTRUCTURALSTEELPROFILEPROPERTIES 27 -> IFCPROFILEPROPERTIES 4)","from":"IFC2X3","to":"IFC4X3","line":"#7=IFCSTRUCTURALSTEELPROFILEPROPERTIES('a0','a1','a2','a3','a4','a5','a6','a7','a8','a9','a10','a11','a12','a13','a14','a15','a16','a17','a18','a19','a20','a21','a22','a23','a24','a25','a26');","expect":"#7=IFCPROFILEPROPERTIES($,$,$,'a1');","lost":["ProfileName","PhysicalWeight","Perimeter","MinimumPlateThickness","MaximumPlateThickness","CrossSectionArea","TorsionalConstantX","MomentOfInertiaYZ","MomentOfInertiaY","MomentOfInertiaZ","WarpingConstant","ShearCentreZ","ShearCentreY","ShearDeformationAreaZ","ShearDeformationAreaY","MaximumSectionModulusY","MinimumSectionModulusY","MaximumSectionModulusZ","MinimumSectionModulusZ","TorsionalSectionModulus","CentreOfGravityInX","CentreOfGravityInY","ShearAreaZ","ShearAreaY","PlasticShapeFactorY","PlasticShapeFactorZ"]},
+  {"why":"#10777 renamed and reconciled by its attribute map (IFCRIBPLATEPROFILEPROPERTIES 7 -> IFCPROFILEPROPERTIES 4)","from":"IFC2X3","to":"IFC4","line":"#7=IFCRIBPLATEPROFILEPROPERTIES('a0','a1','a2','a3','a4','a5','a6');","expect":"#7=IFCPROFILEPROPERTIES($,$,$,'a1');","lost":["ProfileName","Thickness","RibHeight","RibWidth","RibSpacing","Direction"]},
+  {"why":"#10777 renamed and reconciled by its attribute map (IFCRIBPLATEPROFILEPROPERTIES 7 -> IFCPROFILEPROPERTIES 4)","from":"IFC2X3","to":"IFC4X3","line":"#7=IFCRIBPLATEPROFILEPROPERTIES('a0','a1','a2','a3','a4','a5','a6');","expect":"#7=IFCPROFILEPROPERTIES($,$,$,'a1');","lost":["ProfileName","Thickness","RibHeight","RibWidth","RibSpacing","Direction"]},
+  {
+   "why": "#11149 an already unset replaced slot keeps its STEP comment",
+   "from": "IFC2X3",
+   "to": "IFC4",
+   "line": "#7=IFCASYMMETRICISHAPEPROFILEDEF(.AREA.,'p',#8,1.,2.,0.5,0.6,$,$,0.8,$,/* not given */$);",
+   "expect": "#7=IFCASYMMETRICISHAPEPROFILEDEF(.AREA.,'p',#8,1.,2.,0.5,0.6,$,$,0.8,$,/* not given */$,$,$,$);"
+  }
  ]
 }

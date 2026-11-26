@@ -51,6 +51,15 @@ function get(host: ToolHost, id: string): Artifact {
 export function listArtifacts(host: ToolHost): ArtifactMetadata[] {
   live(host); return [...artifacts(host).values()].map(entry => ({ ...entry.metadata }));
 }
+/** Read a complete JSON artifact only within the operation's decoded byte budget. */
+export async function readJsonArtifactText(host: ToolHost, id: string, maxBytes: number): Promise<string> {
+  const { blob, metadata } = get(host, id);
+  if (metadata.mime_type !== 'application/json') throw invalidInput('invalid-value', 'Expected a JSON artifact.');
+  if (blob.size > maxBytes) throw invalidInput('limit', 'The JSON artifact exceeds the import byte limit.', { limit: maxBytes });
+  const text = await blob.text();
+  live(host);
+  return text;
+}
 export async function readArtifact(host: ToolHost, id: string, offset: number, length: number) {
   const artifact = get(host, id);
   if (!Number.isSafeInteger(offset) || offset < 0 || offset > artifact.blob.size || !Number.isSafeInteger(length) || length < 1 || length > 65536) throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message: 'Read requires a valid byte offset and length from 1 to 65536.' });

@@ -5,6 +5,10 @@
 import { fileSchemaIdentifier } from '@ifc-lite/data';
 import { generateHeader } from '@ifc-lite/parser';
 import type { MergeExportOptions } from './merged-exporter.js';
+import { applyInverseFolds, type InverseClaims } from './merged-inverse-claims.js';
+import type { EnumReconciliation } from './schema-converter-enums.js';
+import type { Ifc2x3SlotFill } from './schema-converter-ifc2x3-slots.js';
+import type { Ifc4SlotCheck } from './schema-converter-ifc4-slots.js';
 import type { IfcSchemaVersion } from './schema-converter.js';
 
 /**
@@ -27,4 +31,12 @@ export function buildMergedHeader(
     application: options.application || 'ifc-lite',
     filename: options.filename || 'merged.ifc',
   });
+}
+
+/** Resolve document-wide conversions before collecting their diagnostics. */
+export function finishMergedConversion(
+  lines: string[], slots: Ifc2x3SlotFill, required: Ifc4SlotCheck, enums: EnumReconciliation, claims: InverseClaims,
+): string[] {
+  enums.forms.dates.finish(lines, Number.MAX_SAFE_INTEGER);
+  return [...slots.warnings(), ...required.warnings(), ...enums.warnings(), ...applyInverseFolds(lines, claims)];
 }

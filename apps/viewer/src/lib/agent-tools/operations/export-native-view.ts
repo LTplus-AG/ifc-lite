@@ -1,10 +1,10 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { withReleasedExportGeometry } from '@/utils/instancedExport';
 import type { JSONSchemaType } from 'ajv';
 import { useViewerStore } from '@/store';
 import { getGlobalRenderer } from '@/hooks/useBCF';
-import { captureViewportFrame } from '@/lib/viewport-capture';
 import { modelExportFilename, activeModelName, dataUrlToBytes } from '@/lib/export/download';
 import { readViewPdfSource, readViewZoom, readCameraSnapshot } from '@/lib/export/view-pdf/view-pdf-export-source';
 import { deriveDisplayedScaleFactor, describePage } from '@/lib/export/view-pdf/view-pdf-scale';
@@ -15,20 +15,21 @@ import { produceNativeViewPdf } from '@/lib/export/native-view-pdf';
 import { viewerOperation } from './contract';
 import { exportMetadata } from './exports-common';
 import { nativeExportGuard, nativeArtifact } from './export-native-runtime';
+import { captureNativeViewport } from './native-viewport-frame';
 import { internal, invalidInput, stale, unavailable } from './refusals';
 export const exportNativeViewOperations = [
   viewerOperation<{ scope: 'current-view' }>(exportMetadata('exports.screenshot', 'Await the native viewport-frame capture and return real PNG bytes for the current rendered federation. Requires the live native renderer; this is a current-view snapshot with the same effects as the toolbar screenshot action.'), {
     type: 'object', properties: { scope: { type: 'string', const: 'current-view' } }, required: ['scope'], additionalProperties: false,
   } satisfies JSONSchemaType<{ scope: 'current-view' }>, async (_, c) => {
-    const s = useViewerStore.getState(); const check = nativeExportGuard(c, [...s.models.keys()]); check(); const renderer = getGlobalRenderer(); if (!renderer) throw unavailable('Native viewport renderer is not ready.');
-    const image = await captureViewportFrame(renderer, { read: canvas => canvas.toDataURL('image/png') }); check(); if (!image?.startsWith('data:image/png;base64,')) throw internal('Native viewport did not produce a PNG.');
+    const s = useViewerStore.getState(); const check = nativeExportGuard(c, [...s.models.keys()]); check();
+    const image = await captureNativeViewport(canvas => canvas.toDataURL('image/png'), c.signal); check(); if (!image?.startsWith('data:image/png;base64,')) throw internal('Native viewport did not produce a PNG.');
     const bytes = dataUrlToBytes(image); if (!bytes) throw internal('Native viewport did not produce a PNG.');
     return nativeArtifact(c, new Blob([bytes], { type: 'image/png' }), modelExportFilename(activeModelName(s), 'png', '_screenshot'), { scope: 'current-view' }, check);
   }),
   viewerOperation<{ scope: 'current-view'; scale_mode: 'displayed' | 'numerical'; scale: number; include_hidden_lines: boolean; render_mode: 'shaded' | 'lines'; include_scale_stamp: boolean }>(exportMetadata('exports.viewPdf', 'Await the toolbar to-scale current-view PDF producer with explicit displayed/numerical scale, shaded/line mode, hidden edges and scale stamp. Preserves current view visibility, all section cuts, native camera orientation and PDF page-size refusal; return actual PDF bytes plus native page/stroke/raster diagnostics.'), {
     type: 'object', properties: { scope: { type: 'string', const: 'current-view' }, scale_mode: { type: 'string', enum: ['displayed', 'numerical'] }, scale: { type: 'integer', minimum: 1, maximum: 1000000 }, include_hidden_lines: { type: 'boolean' }, render_mode: { type: 'string', enum: ['shaded', 'lines'] }, include_scale_stamp: { type: 'boolean' } }, required: ['scope', 'scale_mode', 'scale', 'include_hidden_lines', 'render_mode', 'include_scale_stamp'], additionalProperties: false,
   } satisfies JSONSchemaType<{ scope: 'current-view'; scale_mode: 'displayed' | 'numerical'; scale: number; include_hidden_lines: boolean; render_mode: 'shaded' | 'lines'; include_scale_stamp: boolean }>, async (i, c) => {
-    const s = useViewerStore.getState(); const guard = nativeExportGuard(c, [...s.models.keys()]); guard(); const source = readViewPdfSource(s); const camera = source.camera;
+    const s = useViewerStore.getState(); const guard = nativeExportGuard(c, [...s.models.keys()]); guard(); const source = await withReleasedExportGeometry((context) => readViewPdfSource(s, context)); const camera = source.camera; // #10264: released geometry read back
     if (!camera) throw unavailable('Native viewport camera is unavailable.'); const pose = JSON.stringify(camera); const renderer = getGlobalRenderer();
     const check = () => { guard(); if (renderer !== getGlobalRenderer() || JSON.stringify(readCameraSnapshot()) !== pose) throw stale('Native camera changed during view PDF production.'); };
     const zoom = readViewZoom();

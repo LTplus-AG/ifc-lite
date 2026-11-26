@@ -1,5 +1,22 @@
 # @ifc-lite/ids
 
+## 3.5.2
+
+### Patch Changes
+
+- [#11167](https://github.com/LTplus-AG/ifc-lite/pull/11167) [`d5f096a`](https://github.com/LTplus-AG/ifc-lite/commit/d5f096a1bb97139e68fd9a35a9cc2f8d92c8e165) Thanks [@quotentiroler](https://github.com/quotentiroler)! - Importing `@ifc-lite/ids` no longer loads `@xmldom/xmldom`. The Node fallback for a missing `DOMParser` used to run as a top-level `await import()` whenever `process.versions.node` was set, which is also true in Cloudflare workerd, so any bundle that reached the IDS parser (including `@ifc-lite/sdk`) failed to load there unless a `DOMParser` placeholder was installed first. The fallback now loads on the first `parseIDS` call that needs it, through `process.getBuiltinModule`; parsing on Node behaves as before, and a runtime with neither a `DOMParser` nor Node reports why in the `IDSParseError` details.
+
+- [#11484](https://github.com/LTplus-AG/ifc-lite/pull/11484) [`b899ebb`](https://github.com/LTplus-AG/ifc-lite/commit/b899ebbcd2e5d8f4a048bcb129448ba1ecd06c7e) Thanks [@petruconduraru](https://github.com/petruconduraru)! - IDS `partOf` now keeps `IfcRelAggregates` and `IfcRelNests` apart when a `relation` is given: a nested element no longer satisfies an `IfcRelAggregates` requirement, and an aggregated element no longer satisfies an `IfcRelNests` one. With no relation, both still count.
+- Updated dependencies [[`f871ca3`](https://github.com/LTplus-AG/ifc-lite/commit/f871ca39f33775921e90647a6fad49f2e8b4f1a6)]:
+  - @ifc-lite/parser@11.0.1
+
+## 3.5.1
+
+### Patch Changes
+
+- Updated dependencies [[`bc8fd0c`](https://github.com/LTplus-AG/ifc-lite/commit/bc8fd0c4bac2c94f4e1ad5085ded2f6080c08d9b), [`80f01cc`](https://github.com/LTplus-AG/ifc-lite/commit/80f01cc596cd541237c8083f7b17b9e62b068f44), [`1ad48ac`](https://github.com/LTplus-AG/ifc-lite/commit/1ad48ac88d255d9bcc6b5986072fdf4021ca247c)]:
+  - @ifc-lite/parser@11.0.0
+
 ## 3.5.0
 
 ### Minor Changes

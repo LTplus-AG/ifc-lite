@@ -276,6 +276,18 @@ describe('exportAnonymizedSubset — full-subset export invariants (#2934 A6)', 
     expect(new Set(result.guidMap.values()).size).toBe(result.guidMap.size);
   });
 
+  it('copies a commented unset placement Axis as an unset slot (#11149)', async () => {
+    const store = await parse(FIXTURE_MODEL.replace(
+      '#21=IFCAXIS2PLACEMENT3D(#22,$,#23);',
+      '#21=IFCAXIS2PLACEMENT3D(#22,/* default axis */$,#23);',
+    ));
+    const result = exportAnonymizedSubset(store, FULL_INCLUDED_IDS, { guidRandom: seededRandom(4) });
+    const output = decode(result.content);
+    const placement = output.match(/^#20=IFCLOCALPLACEMENT\(\$,(#\d+)\);$/m);
+    expect(placement?.[1]).toBeDefined();
+    expect(output).toMatch(new RegExp(`^${placement![1]}=IFCAXIS2PLACEMENT3D\\(#\\d+,\\$,#23\\);$`, 'm'));
+  });
+
   it('zeroes the site\'s root placement translation, keeps its rotation, and leaves the building\'s child placement byte-identical', async () => {
     const { result, content } = await runFullExport({ guidRandom: seededRandom(4) });
 

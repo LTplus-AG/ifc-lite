@@ -20,8 +20,10 @@ import type { Duplex } from 'node:stream';
 import type { WebSocketServer, WebSocket, RawData } from 'ws';
 import { capUnpairedBytes, closeLoopback, listenLoopback, refuseUpgrade } from './loopback-server.js';
 import {
+  BRIDGE_FEATURES,
   BRIDGE_LIMITS,
   BRIDGE_PROTOCOL_VERSION,
+  BRIDGE_SURFACE_TOOL,
   BridgeCloseCode,
   BridgeErrorCode,
   buildPairingUrl,
@@ -32,23 +34,16 @@ import {
 } from './bridge-protocol.js';
 import { hostAllowed, normalizeOrigin, originAllowed } from './guards.js';
 import { PairingCodes } from './pairing.js';
-import {
-  DEFAULT_CALL_TIMEOUT_MS,
-  DEFAULT_CLOSE_GRACE_MS,
-  DEFAULT_HANDSHAKE_TIMEOUT_MS,
-  type TabBridgeOptions,
-  type TabSnapshot,
-  type PairingStats,
-  type Slot,
-} from './tab-bridge-options.js';
+import { DEFAULT_CALL_TIMEOUT_MS, DEFAULT_CLOSE_GRACE_MS, DEFAULT_HANDSHAKE_TIMEOUT_MS } from './tab-bridge-options.js';
+import type { TabBridgeOptions, TabSnapshot, PairingStats, Slot } from './tab-bridge-options.js';
 import { BLOCKED_LINE, ChangeSignal, CoalescedLog, PairingGate } from './rate-limits.js';
 import { clip } from './sanitize.js';
 import { describeThrown } from '../errors.js';
 import { BridgeCallError, BridgeSession, failSocket, rawToString } from './session.js';
 import { handleSessionFrame } from './session-frames.js';
+import { UiEventInbox } from './ui-events.js';
 
 export { BridgeCallError, type BridgeCallFailure } from './session.js';
-
 export { DEFAULT_CALL_TIMEOUT_MS, DEFAULT_CLOSE_GRACE_MS, DEFAULT_HANDSHAKE_TIMEOUT_MS, type TabBridgeOptions, type TabSnapshot } from './tab-bridge-options.js';
 
 export class TabBridge {
@@ -58,6 +53,8 @@ export class TabBridge {
   private readonly maxPendingHandshakes: number;
   private readonly closeGraceMs: number;
   private readonly origins = new Set<string>();
+  /** User events from the paired tab's agent surfaces, unread by the agent. */
+  readonly uiEvents = new UiEventInbox();
   private readonly pairing = new PairingCodes();
   private readonly gate: PairingGate;
   private readonly noisy: CoalescedLog;
@@ -119,19 +116,17 @@ export class TabBridge {
     return this.changed.subscribe(listener);
   }
 
-  /** The paired tab, or null. */
   tab(): TabSnapshot | null {
     const s = this.active;
     if (!s) return null;
-    return { sessionId: s.id, permission: this.effectivePermission(s), tools: s.tools, client: s.client, connectedAt: s.connectedAt };
+    return { sessionId: s.id, permission: this.effectivePermission(s), tools: s.tools, a2uiSurface: s.a2uiSurface, client: s.client, connectedAt: s.connectedAt };
   }
 
-  /** The live pairing code, minting one if none is live. */
+  /** Return the live pairing code, minting one if none is live. */
   pairingCode(): string {
     return this.pairing.current();
   }
 
-  /** Retire any live code and mint a fresh one (to pair a replacement tab). */
   rotatePairingCode(): string {
     return this.pairing.rotate();
   }
@@ -154,6 +149,7 @@ export class TabBridge {
     if (!s) {
       return Promise.reject(new BridgeCallError('no-viewer', 'No connected viewer: no ifc-lite browser tab is paired with this bridge.'));
     }
+    if (name === BRIDGE_SURFACE_TOOL && s.a2uiSurface) return s.call(name, args, this.callTimeoutMs, signal);
     const tool = s.tools.find((t) => t.name === name);
     if (!tool) return Promise.reject(new BridgeCallError('unknown-tool', `The connected viewer does not offer a tool named '${name}'.`));
     if (!tool.readOnly && this.effectivePermission(s) === 'read-only') {
@@ -339,8 +335,9 @@ export class TabBridge {
     slot.paired = true;
     this.slots.delete(slot);
     const previous = this.active;
-    const session = new BridgeSession(ws, randomUUID(), hello.permission, hello.tools, hello.client, this.log, hello.resultAck === true);
+    const session = new BridgeSession(ws, randomUUID(), hello.permission, hello.tools, hello.client, this.log, hello.resultAck === true, hello.a2uiSurface === true);
     this.active = session;
+    this.uiEvents.clear();
     paired(session);
     if (previous) {
       previous.failAll('replaced', 'Another viewer tab was paired and replaced this one before it answered.');
@@ -353,6 +350,7 @@ export class TabBridge {
       permission: this.effectivePermission(session),
       readOnlyCeiling: this.opts.readOnlyCeiling,
       bridge: this.opts.bridgeInfo,
+      features: [...BRIDGE_FEATURES],
       ...(session.resultAck ? { resultAck: true } : {}),
     });
     // client name/version were clipped to one line by the parser.
@@ -367,6 +365,9 @@ export class TabBridge {
       log: this.log,
       effectivePermission: () => this.effectivePermission(s),
       changed: () => this.changed.fire(),
+      uiEvent: (event) => {
+        if (!this.uiEvents.push(event)) this.noisy.note('ui events over the rate limit', 'dropped a ui-event over the rate limit');
+      },
     });
   }
 

@@ -98,7 +98,10 @@ describe('a graph prepare the executor refuses keeps no candidate (#10910)', () 
         try { assert.equal(operationJob(host, job.id).state, 'running'); await new Promise(resolve => setTimeout(resolve, 0)); } catch (error) { refusal = error; }
       }
       assert.match(String((refusal as Error)?.message), /Model replaced, closed, or edited during the operation/);
-      assert.equal(operationJob(host, job.id).state, 'failed', 'refused once, then reported failed');
+      const terminal = operationJob(host, job.id);
+      assert.equal(terminal.state, 'failed', 'refused once, then reported failed');
+      assert.equal(terminal.error_code, 'STATE_CHANGED');
+      assert.equal(terminal.error_details?.reason, 'stale');
     }
     mock.restoreAll();
     answer(await invoke('authoring.group.prepare', { proposal_json: await groupProposal() }));
@@ -195,7 +198,9 @@ describe('a graph prepare the executor refuses keeps no candidate (#10910)', () 
     assert.equal(succeeded, true);
     lifetime.abort(new Error('Session closed'));
     assert.throws(() => operationJob(host, job.id));
-    assert.equal(operationJob(host, job.id).state, 'cancelled');
+    const terminal = operationJob(host, job.id);
+    assert.equal(terminal.state, 'cancelled');
+    assert.equal(terminal.error_code, 'CANCELLED');
   });
 
   it('#10918: succeeded background prepares evicted before anyone collected them keep no candidate', async () => {

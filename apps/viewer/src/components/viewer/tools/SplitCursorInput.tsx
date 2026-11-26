@@ -25,6 +25,7 @@ import { useTranslation } from '@/i18n';
 import { commitCommand, notifyCommandRefusal, updateCommandGesture } from '@/lib/commands/modeling/runtime';
 import type { SplitGesture } from '@/lib/commands/modeling/commands/element-split';
 import { CursorInput } from '../../viewport-ui/scene';
+import { parseTypedNumber } from '../../viewport-ui/hud/HudValueField';
 
 /**
  * `raw` → a cut distance in metres, or `null` when it does not parse.
@@ -34,8 +35,10 @@ export function parseCutDistance(raw: string, hoverDistance: number, length: num
   const text = raw.trim();
   if (text === '') return hoverDistance;
   const percent = text.endsWith('%');
-  const value = Number.parseFloat(percent ? text.slice(0, -1) : text);
-  if (!Number.isFinite(value)) return null;
+  // `parseFloat` would read `1,5` (a decimal comma) as 1 and `1.5 ft` as 1.5, cutting at a distance the
+  // user did not type; `parseTypedNumber` reads the whole text or refuses it.
+  const value = parseTypedNumber(percent ? text.slice(0, -1) : text.replace(/\s*m$/i, ''));
+  if (value === null) return null;
   return percent ? (value / 100) * length : value;
 }
 

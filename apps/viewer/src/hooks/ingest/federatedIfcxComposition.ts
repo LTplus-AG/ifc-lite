@@ -61,6 +61,9 @@ export function publishFederatedIfcxComposition(
   // Get layer info with mesh counts
   const layers = result.layerStack.getLayers();
 
+  // Clear the previous federation before publishing the new stack and its selection map.
+  state.clearAllModels();
+
   // Layers panel (#1717): expose the stack behind this composition.
   // getLayers() is strongest-first; the panel slice keeps composition
   // order (weakest first). The parser retains each parsed IfcxFile, so
@@ -109,10 +112,6 @@ export function publishFederatedIfcxComposition(
 
   // IfcxDataStore extends IfcDataStore (with schemaVersion: 'IFC5'), so this is safe
   state.setIfcDataStore(dataStore);
-
-  // Clear existing models and add each layer as a "model" in the Models panel
-  // This shows users all the files that contributed to the composition
-  state.clearAllModels();
 
   // Find max expressId for proper ID range tracking
   // This is needed for resolveGlobalIdFromModels to work correctly

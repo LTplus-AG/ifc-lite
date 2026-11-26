@@ -1,0 +1,12 @@
+diff --git b/packages/renderer/src/compact-lod-vertices.ts a/packages/renderer/src/compact-lod-vertices.ts
+--- b/packages/renderer/src/compact-lod-vertices.ts
++++ a/packages/renderer/src/compact-lod-vertices.ts
+@@ -55,7 +55,7 @@
+     nx /= length; ny /= length; nz /= length;
+     for (let k = 0; k < 3; k++) {
+       const v = source[t + k] * 3;
+-      if (Number.isNaN(smallest[v]) || precedes(smallest[v], smallest[v + 1], smallest[v + 2], nx, ny, nz)) {
++      if (Number.isNaN(smallest[v]) || precedes(nx, ny, nz, smallest[v], smallest[v + 1], smallest[v + 2])) {
+         smallest[v] = nx; smallest[v + 1] = ny; smallest[v + 2] = nz;
+       }
+     }

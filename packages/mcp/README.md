@@ -27,6 +27,20 @@ npx @ifc-lite/mcp ./model.ifc --viewer
 npx @ifc-lite/mcp ./model.ifc --open
 ```
 
+## Building client distribution artifacts
+
+From the repository root:
+
+```bash
+pnpm --filter @ifc-lite/mcp release:manifests --out ./mcp-artifacts
+```
+
+With the project's WASM build toolchain installed, this builds a Claude
+Desktop `.mcpb`, a dependency inventory and the MCP Registry `server.json`
+for the package version. Use `--no-bundle` to generate only `server.json`.
+The Registry entry identifies the matching npm release. Registry publication
+requires that npm version to exist with the same `mcpName`.
+
 ## Embedded loaded-model authoring
 
 For embedded HTTP servers, `HttpTransport` accepts `maxSessions` (default

@@ -46,9 +46,7 @@ function anonymizeSeeds(m: LoadedModel, input: Record<string, unknown>): Set<num
     if (!ids) throw new ToolExecutionError({ code: ToolErrorCode.ENTITY_NOT_FOUND, message: `global_ids: GlobalId ${g} not found.` });
     for (const id of ids) seeds.add(id);
   }
-  for (const raw of (input.types as string[] | undefined) ?? []) {
-    const trimmed = raw.trim();
-    if (!trimmed) continue;
+  for (const trimmed of nonBlank(input.types as unknown[] | undefined)) {
     const type = withIfcPrefix(trimmed);
     const matched = m.bim.query().byType(type).toArray();
     if (matched.length === 0) throw invalid(`types: no ${type} entities.`);

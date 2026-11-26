@@ -18,7 +18,7 @@
  */
 import { stepStringLiteralEnd } from '@ifc-lite/encoding';
 import { expandTypes } from '@ifc-lite/parser';
-import { planSpatialRelations, refsOutsideStrings, SubsetSelectionError, type StepRecord, type Subset } from './step-subset-relations.js';
+import { planSpatialRelations, refsOutsideStrings, splitTopLevelArgs, SubsetSelectionError, type StepRecord, type Subset } from './step-subset-relations.js';
 import { spatialAncestors } from './step-subset-spatial-ancestors.js';
 import { productsUnderPlacement, resolveStoreyPlacement } from './step-subset-storey.js';
 
@@ -244,6 +244,20 @@ export function serializeSubset({ keep, rewritten }: Subset, parsed: ParsedStep)
   return parsed.header + lines.join('\n') + '\nENDSEC;\nEND-ISO-10303-21;\n';
 }
 
+/** RelatedElements of every IfcRelContainedInSpatialStructure whose RelatingStructure is in `structures`. */
+function containedIn(structures: ReadonlySet<number>, parsed: ParsedStep): number[] {
+  const out: number[] = [];
+  if (structures.size === 0) return out;
+  for (const inst of parsed.instances.values()) {
+    if (inst.type !== 'IFCRELCONTAINEDINSPATIALSTRUCTURE') continue;
+    const args = splitTopLevelArgs(inst.body);
+    const relating = args?.[5] === undefined ? undefined : refsOutsideStrings(args[5])[0];
+    if (relating === undefined || !structures.has(relating)) continue;
+    for (const id of refsOutsideStrings(args![4] ?? '')) if (parsed.instances.has(id)) out.push(id);
+  }
+  return out;
+}
+
 /** IfcObjectPlacement subtypes: placement records a storey walk returns, never products. */
 const PLACEMENT_TYPES = new Set(['IFCLOCALPLACEMENT', 'IFCGRIDPLACEMENT', 'IFCLINEARPLACEMENT']);
 
@@ -307,11 +321,16 @@ export function selectSubsetSeeds(parsed: ParsedStep, selectors: SubsetSelectors
     // `under` also holds placement records (the products' closure keeps those) and
     // the storey itself, which is kept as asked even if no product is contained in it.
     const products: number[] = [];
+    const storeyIds = new Set<number>();
     for (const id of under) {
       const type = parsed.instances.get(id)?.type;
-      if (type === 'IFCBUILDINGSTOREY') seeds.add(id);
+      if (type === 'IFCBUILDINGSTOREY') storeyIds.add(id);
       else if (type !== undefined && !PLACEMENT_TYPES.has(type)) products.push(id);
     }
+    for (const id of storeyIds) seeds.add(id);
+    // Elements contained in the storey but placed elsewhere (world or building
+    // placement) are its products too.
+    products.push(...containedIn(storeyIds, parsed));
     if (selectors.requireEachMatch && products.length === 0) throw new SubsetSelectionError('invalid', `Nothing is placed under storey ${token}.`);
     for (const id of products) seeds.add(id);
   }

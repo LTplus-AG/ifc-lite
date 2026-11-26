@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'vitest';
-import { parseStep } from './step-subset.js';
+import { parseStep, selectSubsetSeeds } from './step-subset.js';
 import { productsUnderPlacement, resolveStoreyPlacement } from './step-subset-storey.js';
 
 /** A storey placement #1000, `depth` nested placements below it, and a wall on the deepest. */
@@ -25,6 +25,22 @@ describe('productsUnderPlacement (#7791, D27: no depth guard)', () => {
     // never reaches #1000.
     const text = nested(3).replace('#1001=IFCLOCALPLACEMENT(#1000,#1);', '#1001=IFCLOCALPLACEMENT(#1003,#1);');
     expect(productsUnderPlacement(1000, parseStep(text)).has(9000)).toBe(false);
+  });
+});
+
+describe('selectSubsetSeeds: storey members by containment, not only by placement', () => {
+  it('seeds an element contained in the storey even when it is placed in world coordinates', () => {
+    const text = [
+      'ISO-10303-21;', 'HEADER;', 'ENDSEC;', 'DATA;',
+      '#2=IFCAXIS2PLACEMENT3D(#3,$,$);', '#3=IFCCARTESIANPOINT((0.,0.,0.));',
+      '#10=IFCLOCALPLACEMENT($,#2);', '#11=IFCLOCALPLACEMENT($,#2);',
+      "#20=IFCBUILDINGSTOREY('0000000000000000000ST0',$,'L1',$,$,#10,$,$,.ELEMENT.,0.);",
+      "#30=IFCWALL('0000000000000000000WA0',$,'W',$,$,#11,$,$,$);",
+      "#40=IFCRELCONTAINEDINSPATIALSTRUCTURE('0000000000000000000RC0',$,$,$,(#30),#20);",
+      'ENDSEC;', 'END-ISO-10303-21;', '',
+    ].join('\n');
+    const seeds = selectSubsetSeeds(parseStep(text), { storeys: ['L1'], requireEachMatch: true });
+    expect([...seeds].sort((a, b) => a - b)).toEqual([20, 30]);
   });
 });
 

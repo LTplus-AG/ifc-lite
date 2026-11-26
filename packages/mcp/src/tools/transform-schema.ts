@@ -71,7 +71,8 @@ export async function optionalOutputPath(input: Record<string, unknown>, key: st
 }
 
 /** Trimmed, non-blank selector tokens. */
-export const nonBlank = (list: readonly string[] | undefined): string[] => (list ?? []).map((t) => t.trim()).filter(Boolean);
+export const nonBlank = (list: readonly unknown[] | undefined): string[] =>
+  (list ?? []).filter((t): t is string => typeof t === 'string').map((t) => t.trim()).filter(Boolean);
 
 /** False for an IFC5 (IFCX) model, which the STEP transforms cannot read. */
 export const isStepModel = (m: LoadedModel): boolean => m.store.schemaVersion !== 'IFC5';

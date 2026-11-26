@@ -93,6 +93,8 @@ export interface StepRecord {
   body: string;
   /** The verbatim `#id= TYPE(...);` text. */
   full: string;
+  /** Offset of `body` within `full`, when the parser knows it (a comment before the type may hold a `(`). */
+  bodyStart?: number;
 }
 
 /**
@@ -312,7 +314,7 @@ function spliceArgument(
   index: number,
   replacement: string,
 ): string | null {
-  const open = inst.full.indexOf('(');
+  const open = inst.bodyStart !== undefined ? inst.bodyStart - 1 : inst.full.indexOf('(');
   // `body` is by construction the slice of `full` between its first `(` and the
   // matching `)`: the id and type name that precede it hold no parenthesis. A
   // mismatch would mean the parser and this module disagree about where the

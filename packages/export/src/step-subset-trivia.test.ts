@@ -46,6 +46,31 @@ describe('parseStep framing', () => {
     expect(parsed.guidToId.get('0000000000000000000WA1')).toBe(10);
   });
 
+  it('reads a record with a comment before = and a ; inside a comment before its terminator', () => {
+    const text = file([
+      "#5 /* p */ =IFCLOCALPLACEMENT($,$);",
+      "#10=IFCWALL('0000000000000000000WA1',$,'W',$,$,#5,$,$,$) /* a;b */;",
+      "#11=IFCWALL('0000000000000000000WA2',$,'W2',$,$,$,$,$,$);",
+    ]);
+    const parsed = parseStep(text);
+    expect([...parsed.instances.keys()]).toEqual([5, 10, 11]);
+    expect(parsed.instances.get(10)?.full.endsWith('/* a;b */;')).toBe(true);
+    const out = serializeSubset(buildSubset(new Set([10]), parsed), parsed);
+    expect(out).toContain('#5 /* p */ =IFCLOCALPLACEMENT');
+  });
+
+  it('rewrites a relation whose head carries a comment with a parenthesis', () => {
+    const text = file([
+      "#1=IFCPROJECT('0000000000000000000PRJ',$,'P',$,$,$,$,$,$);",
+      "#2=IFCSITE('0000000000000000000SI2',$,'S',$,$,$,$,$,.ELEMENT.,$,$,$,$,$);",
+      "#4=IFCSITE('0000000000000000000SI4',$,'S4',$,$,$,$,$,.ELEMENT.,$,$,$,$,$);",
+      "#3= /* (x */ IFCRELAGGREGATES('0000000000000000000AG3',$,$,$,#1,(#2,#4));",
+    ]);
+    const parsed = parseStep(text);
+    const out = serializeSubset(buildSubset(new Set([2]), parsed), parsed);
+    expect(out).toContain("IFCRELAGGREGATES('0000000000000000000AG3',$,$,$,#1,(#2));");
+  });
+
   it('treats comments between and inside records as trivia', () => {
     const text = file([
       "#10=IFCWALL('0000000000000000000WA1',$,'W',$,$,$,$,$,$);",

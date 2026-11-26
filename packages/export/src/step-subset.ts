@@ -110,7 +110,8 @@ export function parseStep(text: string): ParsedStep {
     if (idStr === '') continue; // a `#` inside something odd; skip
     // expect optional spaces then '='
     let j = i;
-    while (j < n && (data[j] === ' ' || data[j] === '\t')) j++;
+    j = skipStepTrivia(data, j);
+    if (j < 0) break;
     if (data[j] !== '=') continue; // `#42` as a REFERENCE, not a definition
     j = skipStepTrivia(data, j + 1);
     if (j < 0) break; // an unclosed comment runs to the end
@@ -144,13 +145,14 @@ export function parseStep(text: string): ParsedStep {
     }
     const bodyEnd = j - 1; // index of the matching ')'
     // consume up to and including the terminating ';'
-    while (j < n && data[j] !== ';') j++;
+    // A comment before the `;` may hold one; it is not the terminator.
+    while (j < n && data[j] !== ';') j = data[j] === '/' && data[j + 1] === '*' ? skipStepComment(data, j) : j + 1;
     const semi = j;
     const id = parseInt(idStr, 10);
     const body = data.slice(bodyStart, bodyEnd);
     const full = data.slice(hashStart, semi + 1).trim();
     const upperType = type.toUpperCase();
-    instances.set(id, { id, type: upperType, body, full });
+    instances.set(id, { id, type: upperType, body, full, bodyStart: bodyStart - hashStart });
     // Only IfcRoot records carry a GlobalId (their first attribute); a property
     // or material whose first string happens to be 22 characters must not answer for one.
     if (rooted.has(upperType)) {

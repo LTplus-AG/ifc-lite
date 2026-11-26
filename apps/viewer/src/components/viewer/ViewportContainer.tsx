@@ -65,7 +65,7 @@ import {
 } from '@/services/sources/source-host';
 import { useOptionalSourceHost } from '@/services/sources/SourceHostProvider';
 import { recordDownloadedSourceFile } from '@/lib/sources/persistence';
-import { sanitizeFilename } from '@/lib/export/download';
+import { sanitizeModelFilename } from '@/lib/export/download';
 import { enqueueSourceLoad } from '@/lib/sources/loadQueue';
 import { toast, Toaster } from '@/components/ui/toast';
 import { refuseWhileWorkflowBusy } from '@/lib/flow/workflow-busy-refusal';
@@ -412,7 +412,7 @@ function ViewportContainerLive() {
             // untrusted input reaching a filename position (the File
             // constructor, the model name, and every toast below). Sanitize
             // once and use the sanitized value everywhere downstream.
-            const safeName = sanitizeFilename(item.name, { fallback: 'model.ifc' });
+            const safeName = sanitizeModelFilename(item.name);
             const file = new File([item.buffer], safeName);
             const providerTitle =
               sourceHost?.get(item.tag.provider)?.manifest.title ?? item.tag.provider;

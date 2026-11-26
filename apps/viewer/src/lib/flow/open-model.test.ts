@@ -61,6 +61,12 @@ describe('model.openFromSource in the viewer', () => {
     assert.deepEqual(out, { kind: 'item', value: add.ids[0] });
   });
 
+  it('preserves the loader extension when escaping a full-length reserved filename (#11442)', async () => {
+    const add = recordingAddModel('ok');
+    await createViewerOpenModel(add.addModel)(IFC, `CON.${'a'.repeat(52)}.xyz`);
+    assert.equal(add.calls[0].name, `_CON.${'a'.repeat(51)}.xyz`);
+  });
+
   it('fails the node when the model never registered', async () => {
     const add = recordingAddModel('fail');
     await assert.rejects(createViewerOpenModel(add.addModel)(IFC, 'a.ifc'), /a\.ifc could not be loaded/);

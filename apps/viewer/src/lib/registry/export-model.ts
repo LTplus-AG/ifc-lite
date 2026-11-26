@@ -7,7 +7,7 @@ import { ensureModelExportReady } from '@/services/desktop-export';
 import { exportChangedModelToStep } from '@/lib/export/changed-model-export';
 import { collectChangedModels } from '@/lib/export/model-changes';
 import { mapStepSchema } from '@/lib/export/artifact-naming';
-import { sanitizeFilename } from '@/lib/export/download';
+import { sanitizeModelFilename } from '@/lib/export/download';
 import { RegistryError } from './protocol';
 
 /** Export the active model through the same complete, mutation-aware path as Export modified IFC. */
@@ -33,7 +33,7 @@ export async function exportRegistryModel(): Promise<{ bytes: Uint8Array<ArrayBu
     throw new RegistryError('The model changed while exporting. Please publish again.');
   }
   if (result.ext !== 'ifc' || result.skippedCount) throw new RegistryError('This demo publishes plain IFC files. This model needs a different export format.');
-  let filename = sanitizeFilename(model.name, { fallback: 'model.ifc' });
+  let filename = sanitizeModelFilename(model.name);
   if (!filename.toLowerCase().endsWith('.ifc')) filename += '.ifc';
   return { bytes: typeof result.content === 'string' ? new TextEncoder().encode(result.content) : new Uint8Array(result.content), filename };
 }

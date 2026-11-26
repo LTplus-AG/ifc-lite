@@ -11,7 +11,7 @@
  */
 
 import type { FlowHost } from '@ifc-lite/flow-nodes';
-import { sanitizeFilename } from '@/lib/export/download';
+import { sanitizeModelFilename } from '@/lib/export/download';
 import { enqueueSourceLoad } from '@/lib/sources/loadQueue';
 
 export type AddModel = (file: File, options?: { readonly name?: string; readonly modelId?: string }) => Promise<string | null>;
@@ -22,7 +22,7 @@ export type OpenModel = NonNullable<FlowHost['openModel']>;
 export function createViewerOpenModel(addModel: AddModel): OpenModel {
   return async (bytes, name) => {
     // `name` came from a remote server: sanitize it once, before it reaches a File or the model list.
-    const safeName = sanitizeFilename(name, { fallback: 'model.ifc' });
+    const safeName = sanitizeModelFilename(name);
     const file = new File([bytes.slice()], safeName);
     const modelId = await enqueueSourceLoad(() => addModel(file, { name: safeName }));
     if (modelId === null) throw new Error(`model.openFromSource: ${safeName} could not be loaded`);

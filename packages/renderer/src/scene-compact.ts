@@ -126,7 +126,7 @@ export class SceneCompact {
   /** Upload the queued meshes (or run a requested demotion, or a slice of the pages' LOD build). Returns whether anything changed. */
   drain(device: GPUDevice, pipeline: RenderPipeline, budgetMs = 8): boolean {
     this.gpu = { device, pipeline };
-    if (this.retired && !this.lod && this.queue.length === 0 && !this.streaming) this.trim(device, this.retired === 'all' ? undefined : this.retired);
+    if (this.retired && !this.store.untrimmed && this.queue.length === 0 && !this.streaming) this.trim(device, this.retired); // not before the stream's own trim
     let demoted = this.lod !== null; // a slice of the LOD build (compact-lod.ts), half the budget: uploads get the rest
     if (this.lod?.step(budgetMs / 2)) this.lod = null;
     // A time-sliced finalize owns the batch list until it swaps: the demotion waits for it.
@@ -208,7 +208,7 @@ export class SceneCompact {
   }
 
   /** Trim the pages and take their buckets' decisions (compact-lod.ts): exact groups move to buckets, decoded, now; the LOD build runs in drains. */
-  private trim(device: GPUDevice, retired?: ReadonlySet<MeshData>): void {
+  private trim(device: GPUDevice, retired?: ReadonlySet<MeshData> | 'all'): void {
     this.store.trim(device);
     this.lod = settlePages(this.store, this.scene, device, this.deps, (meshes, reason) => {
       this.decodes[reason] = (this.decodes[reason] ?? 0) + meshes.length;

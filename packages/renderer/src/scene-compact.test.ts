@@ -1033,6 +1033,29 @@ describe('compact pages take the decisions of the bucket batches they stand in f
     assert.equal(red.lodParts, redParts, 'a page of other groups only keeps its parts');
   });
 
+  it('run the stream end\'s moves even when a mesh retires just before it (#11606)', async () => {
+    const on = await lodScene(true), gpu = fakeGpu();
+    const exact = compactBatch([{ expressId: 1, at: [0, 0, 0], size: 1, color: GREY }, { expressId: 2, at: [3.001, 0.001, 0.001], size: 0.0007, color: GREY }]);
+    exact[1].compact!.payload.table[1 * 7 + 5] = 11;
+    upload(on, gpu, [...exact, ...compactBatch([{ expressId: 3, at: [0, 0, 0], size: 1, color: RED }, { expressId: 4, at: [5, 0, 0], size: 1, color: RED }])]);
+    assert.equal(on.removeMeshesForEntity(4), true);
+    settle(on, gpu);
+    assert.deepEqual(entitiesOf(buckets(on)), [1, 2], 'the edit waits for the stream\'s own build');
+  });
+
+  for (const during of [true, false]) {
+    it(`edit one entity ${during ? 'while the build runs' : 'after the build'}: only it moves, and its group keeps LOD1 (#11606)`, async () => {
+      const on = await lodScene(true), gpu = fakeGpu();
+      upload(on, gpu, compactBatch(lodBoxes(1000, 0, 28)));
+      if (during) on.finalizeStreaming(gpu.device, gpu.pipeline); else settle(on, gpu);
+      on.translateMeshesForEntity(1000, [0, 0, 0]);
+      flushAll(on, gpu);
+      assert.equal(on.getCompactStats()?.paged, 59, 'no group decoded for one edit');
+      assert.deepEqual(entitiesOf(buckets(on)), [1000]);
+      assert.deepEqual(pages(on)[0].lodParts?.map((part) => part.lod1), [true], 'the group still draws LOD1');
+    });
+  }
+
   it('move a compact group into its bucket with a same-colour f32 mesh 70 m away, which then stays f32 (#11606)', async () => {
     const on = await lodScene(true), gpu = fakeGpu();
     on.setSpatialChunking(null);

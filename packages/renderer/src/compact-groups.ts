@@ -45,7 +45,7 @@ export function bucketKeyOf(host: SceneCompactHost, mesh: MeshData, cachedOnly =
 }
 
 /** Every page's meshes, grouped by the bucket the bucket path would file them in, in page order. */
-export function collectGroups(store: CompactGeometryStore, host: SceneCompactHost, deps: CompactPageDeps): Map<string, Group> {
+export function collectGroups(store: CompactGeometryStore, host: SceneCompactHost, deps: CompactPageDeps, judge = true): Map<string, Group> {
   const groups = new Map<string, Group>();
   for (const page of store.pageList()) {
     for (const mesh of page.meshes) {
@@ -67,6 +67,7 @@ export function collectGroups(store: CompactGeometryStore, host: SceneCompactHos
       group.members.push(mesh);
     }
   }
+  if (!judge) return groups; // an edit-time build: no group moves to its bucket, so none is judged
   const { quantStep, maxQuantExtent, maxCollapsedFraction } = deps.bucket;
   // Buckets that hold meshes of their own (f32 meshes no page draws), or will once the queue is flushed: their batch is
   // the union, so the group joins it. (A queued f32 mesh is keyed as the bucket path keys it: at its own first vertex.)

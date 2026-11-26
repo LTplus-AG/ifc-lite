@@ -57,7 +57,7 @@ export interface PageLod {
 }
 
 /**
- * The pages were trimmed at the end of a stream: hand the meshes of every group whose bucket batch would
+ * The pages were trimmed at the end of a stream (or changed by an edit, `retired`): hand the meshes of every group whose bucket batch would
  * stay exact f32, or whose bucket holds f32 meshes too, to `toBuckets` now (they join the stream's finalize), and return the build of the pages'
  * parts when bucket batches build LOD1 (null otherwise). The caller runs it a slice at a time and drops it
  * when the pages change under it.
@@ -65,16 +65,16 @@ export interface PageLod {
 export function settlePages(
   store: CompactGeometryStore, host: SceneCompactHost, device: GPUDevice, deps: CompactPageDeps,
   toBuckets: (meshes: MeshData[], reason: 'exact' | 'shared') => void,
-  /** Meshes that left their pages since the last build: only the pages holding their groups are built again,
-   *  and no group moves to its bucket (an edit of one element does not decode its whole group). */
-  retired?: ReadonlySet<MeshData>,
+  /** An edit-time build, for meshes that left their pages: only the pages holding their groups are built again
+   *  ('all': every page), and no group moves to its bucket (an edit of one element does not decode its group). */
+  retired?: ReadonlySet<MeshData> | 'all',
 ): PageLodBuild | null {
   const t0 = performance.now();
-  const groups = collectGroups(store, host, deps);
-  const keys = retired && new Set([...retired].map((mesh) => bucketKeyOf(host, mesh, true)));
+  const groups = collectGroups(store, host, deps, !retired);
+  const keys = retired && retired !== 'all' ? new Set([...retired].map((mesh) => bucketKeyOf(host, mesh, true))) : undefined;
   // A retired mesh no build saw (no cached key): every page is built again.
   const only = keys && !keys.has(undefined) ? keys : undefined;
-  for (const reason of retired ? [] : ['exact', 'shared'] as const) {
+  if (!retired) for (const reason of ['exact', 'shared'] as const) {
     const meshes: MeshData[] = [];
     for (const group of groups.values()) if (group.move === reason) meshes.push(...group.members);
     if (meshes.length > 0) toBuckets(meshes, reason);

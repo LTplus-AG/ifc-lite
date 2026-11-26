@@ -42,7 +42,7 @@ import {
 import { generateUuid } from '@ifc-lite/encoding';
 import { assertNoCaseOnlyGuidClashes, bcfGuid } from './xsd-guid.js';
 import { viewpointFileName, type ViewpointFileName } from './writer-viewpoint-filename.js';
-import { BcfArchive } from './writer-archive.js';
+import { BcfArchive, sanitizeZipComponent } from './writer-archive.js';
 
 /**
  * Write a BCFProject to a .bcfzip file
@@ -135,51 +135,6 @@ function writeProjectFile(zip: BcfArchive, project: BCFProject, version: '2.1' |
 </${rootElement}>`;
 
   zip.file('project.bcfp', content);
-}
-
-/** FNV-1a 32-bit hash, hex-encoded; disambiguates sanitized folder names. */
-function shortGuidHash(guid: string): string {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < guid.length; i++) {
-    h ^= guid.charCodeAt(i);
-    h = Math.imul(h, 0x01000193) >>> 0;
-  }
-  return h.toString(16).padStart(8, '0');
-}
-
-/**
- * Sanitize an arbitrary GUID for use as a zip path component (zip-slip guard).
- *
- * Shared by both the topic-folder name and the viewpoint file base name: a
- * viewpoint GUID is parsed just as unvalidated from untrusted markup XML on
- * read (reader.ts `parseViewpointContent`) as a topic GUID is, so it carries
- * the same path-traversal hazard (`../../evil` as a topic GUID would write
- * outside the archive root). Restrict the name to safe filename characters and
- * collapse any dot-run so it can never traverse. `fallback` is used when
- * sanitization strips the name to nothing. The real GUID is still written
- * verbatim as the markup `<Topic Guid>`/`<Viewpoint Guid>` attribute, which is
- * what readers key off.
- *
- * Sanitization is lossy, so two distinct GUIDs can map to one name, which
- * would silently overwrite an entry. Any name that sanitization changed gets
- * a hash of the original GUID appended, and `usedNames` catches the
- * remaining collisions with a counter suffix. Callers MUST sanitize each
- * GUID exactly once and reuse the result everywhere that GUID's entry is
- * named (markup references and the zip entry itself) -- calling this twice
- * for the same GUID against a `usedNames` set that already contains the
- * first result produces a second, different name.
- */
-function sanitizeZipComponent(raw: string, usedNames: Set<string>, fallback: string): string {
-  const cleaned = raw.replace(/[^A-Za-z0-9._-]/g, '_').replace(/\.\.+/g, '_');
-  const base = cleaned === raw && cleaned.length > 0
-    ? cleaned
-    : `${cleaned.length > 0 ? cleaned : fallback}-${shortGuidHash(raw)}`;
-  let candidate = base;
-  for (let n = 2; usedNames.has(candidate); n++) {
-    candidate = `${base}-${n}`;
-  }
-  usedNames.add(candidate);
-  return candidate;
 }
 
 /** Write a topic folder with all its contents. */

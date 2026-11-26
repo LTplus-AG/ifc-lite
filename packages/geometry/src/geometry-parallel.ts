@@ -496,6 +496,7 @@ export async function* processParallel(
   // state every other worker is in.
   const setupLog = new PoolSetupBroadcast(workers, holdsPoolUntilPrepassEnds(sharedBuffer.byteLength, workerCount));
   const broadcastSetup = (setup: (w: Worker) => void) => setupLog.broadcast(setup); // held until the pre-pass ends on large 1-worker loads (#10264)
+  let heldPlanReport: boolean | null = null; // the plan's outcome while its columns wait in a held setup
   const postInitMessages = (worker: Worker) => postGeometryWorkerInit(worker, options, sharedWasmModule);
   setupLog.record(postInitMessages);
   // This loop runs BEFORE the try/finally below (which owns teardown for the
@@ -1264,7 +1265,11 @@ export async function* processParallel(
             console.warn('[stream] set-prepass-columns dispatch failed:', err);
           }
         });
-        if (globalPlan) options?.onGlobalInstancingDecision?.(globalPlanCountsMatch(evt)); // armed, or counts that do not match the plan
+        if (globalPlan) { // armed, or counts that do not match the plan; a held pool hears it when the columns are released
+          const armed = globalPlanCountsMatch(evt);
+          heldPlanReport = setupLog.holding ? armed : null;
+          if (!setupLog.holding) options?.onGlobalInstancingDecision?.(armed);
+        }
 
         // Not a dispatch gate (see dispatchJobsChunk); the pre-pass emits this
         // before the first jobs chunk, so drain here only for symmetry with the
@@ -1340,7 +1345,11 @@ export async function* processParallel(
     prepassDone = true;
     gateTracker.markPrepassDone();
     prepassWorker.terminate(); // first: a held pool (#10264) starts only after this; its heap is freed asynchronously
-    if (setupLog.holding) { setupLog.release(); drainQueuedChunksIfReady(); }
+    if (setupLog.holding) {
+      setupLog.release();
+      if (heldPlanReport !== null) options?.onGlobalInstancingDecision?.(heldPlanReport);
+      drainQueuedChunksIfReady();
+    }
     // Only signal stream-end to workers if they actually got
     // stream-start (which gates on `meta`). Zero-geometry files
     // never trigger meta → workers never start → no stream-end

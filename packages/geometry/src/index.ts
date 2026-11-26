@@ -245,11 +245,7 @@ export class GeometryProcessor {
   private skipSmallCuts: boolean;
   private skipVoids: boolean;
   compactCellSize?: number; // worker-pool compact GPU records at this cell size, after `loadCompactGeometry()` (`ProcessParallelOptions.compactCellSize`); unset = off
-  /** This processor's global-instance-plan flag (`ProcessParallelOptions.globalInstancing`): a host's own decision,
-   *  such as a staged rollout; unset = the explicit global or URL param. */
-  globalInstancing?: boolean;
-  /** Hears whether the plan ran for each worker-pool load (`ProcessParallelOptions.onGlobalInstancingDecision`). */
-  onGlobalInstancingDecision?: (applies: boolean) => void;
+  globalInstancing?: boolean; onGlobalInstancingDecision?: (applies: boolean) => void; // the plan's flag as the host decided it (unset = explicit global/URL) and whether it ran per pool load (`ProcessParallelOptions`)
 
   constructor(options: GeometryProcessorOptions = {}) {
     this.bufferBuilder = new BufferBuilder();
@@ -775,10 +771,8 @@ export class GeometryProcessor {
       stallPhaseHandle, trace,
       // Every pool worker meshes with this processor's settings (#540, #924, #976, #1286; meshing-settings.ts).
       ...this.meshingSettings(),
-      compactCellSize: this.compactCellSize,
-      globalInstancing: this.globalInstancing, onGlobalInstancingDecision: this.onGlobalInstancingDecision,
-      wasmUrls,
-      workerCountOverride,
+      compactCellSize: this.compactCellSize, globalInstancing: this.globalInstancing, onGlobalInstancingDecision: this.onGlobalInstancingDecision,
+      wasmUrls, workerCountOverride,
     });
   }
 

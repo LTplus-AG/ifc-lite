@@ -20,18 +20,23 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-/** Run a load up to its first worker (which refuses to start) and return the decisions it reported. */
+const REFUSED = new Error('no workers in this test');
+
+/** Run a load up to its first worker (which refuses to start) and return the decisions it reported. Any other
+ *  failure fails the test: the load must reach the worker it refuses. */
 async function decisions(bytes: number, options: ProcessParallelOptions): Promise<boolean[]> {
-  g.Worker = vi.fn().mockImplementation(() => { throw new Error('no workers in this test'); }) as unknown as typeof Worker;
+  g.Worker = vi.fn().mockImplementation(() => { throw REFUSED; }) as unknown as typeof Worker;
   vi.spyOn(console, 'warn').mockImplementation(() => {});
   vi.spyOn(console, 'error').mockImplementation(() => {});
   const decided: boolean[] = [];
   const gen = processParallel(new Uint8Array(bytes), new CoordinateHandler(), undefined, undefined, {
     workerCountOverride: 1, ...options, onGlobalInstancingDecision: (applies) => decided.push(applies),
   });
+  let ended: unknown = null;
   try {
     for (let i = 0; i < 10; i++) if ((await gen.next()).done) break;
-  } catch { /* the refused worker ends the load */ }
+  } catch (err) { ended = err; }
+  expect(ended, 'the load ends at the refused worker').toBe(REFUSED);
   return decided;
 }
 

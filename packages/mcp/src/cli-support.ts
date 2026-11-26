@@ -67,11 +67,16 @@ export function tokenScopes(opts: CliOptions): Map<string, AuthScope> {
  * `model_load` (real paths, both spellings of each root, protected home
  * entries); without, the operator's own arguments load from anywhere.
  */
-async function loadAllowed(registry: ModelRegistry, opts: CliOptions, absolute: string, modelId: string) {
-  if (!opts.allowedPaths?.length) return loadIfcModel(absolute, { modelId });
-  // Open the path that was checked, as model_load does, so a symlink cannot be repointed in between.
+async function loadAllowed(registry: ModelRegistry, opts: CliOptions, absolute: string) {
+  if (!opts.allowedPaths?.length) return loadIfcModel(absolute, { modelId: freeId(registry, absolute) });
+  // Open the path that was checked, and name the model after it, as model_load does.
   const checked = await resolveSafePath(absolute, { config: { allowedPaths: opts.allowedPaths }, registry }, 'read');
-  return loadIfcModel(checked, { modelId, allowedPaths: [checked] });
+  return loadIfcModel(checked, { modelId: freeId(registry, checked), allowedPaths: [checked] });
+}
+
+/** `arch/model.ifc` and `struct/model.ifc` both derive `model`: the later one gets `model_2`, so it cannot replace (and dispose) the earlier. */
+function freeId(registry: ModelRegistry, path: string): string {
+  return freeModelId(registry, deriveModelId(basename(path)));
 }
 
 const PRINTABLE_ERRNO = new Set(['ENOENT', 'EACCES', 'EPERM', 'EISDIR', 'ENOTDIR', 'ELOOP', 'ENAMETOOLONG']);
@@ -79,8 +84,10 @@ const PRINTABLE_ERRNO = new Set(['ENOENT', 'EACCES', 'EPERM', 'EISDIR', 'ENOTDIR
 /** A reason from a fixed list, never the error's text (which may spell the path). */
 function loadFailureReason(err: unknown): string {
   const e = err as { code?: unknown; details?: { reason?: unknown; errno?: unknown } } | undefined;
-  const errno = typeof e?.code === 'string' ? e.code : e?.details?.errno;
-  if (typeof errno === 'string' && PRINTABLE_ERRNO.has(errno)) return errno;
+  // A system error has the errno as `code`; resolveSafePath keeps it in details.errno.
+  for (const errno of [e?.code, e?.details?.errno]) {
+    if (typeof errno === 'string' && PRINTABLE_ERRNO.has(errno)) return errno;
+  }
   // resolveSafePath's refusals carry details.reason.
   switch (e?.details?.reason) {
     case 'missing': return 'ENOENT';
@@ -105,10 +112,7 @@ export async function loadFiles(registry: ModelRegistry, opts: CliOptions, log: 
       continue;
     }
     seen.set(key, index);
-    // `arch/model.ifc` and `struct/model.ifc` both derive `model`; suffix the
-    // later one so it cannot replace (and dispose) the earlier.
-    const modelId = freeModelId(registry, deriveModelId(basename(file)));
-    const m = await loadAllowed(registry, opts, absolute, modelId).catch((err: unknown) => {
+    const m = await loadAllowed(registry, opts, absolute).catch((err: unknown) => {
       // Name the argument by position and give a fixed reason, never the
       // loader's text: a mistyped value flag (`--tokn secret`) leaves its
       // value here, any message may spell the path, and stderr reaches client logs.

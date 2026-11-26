@@ -9,8 +9,8 @@
  * config path.
  */
 
-import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { chmod, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
+import { homedir, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -241,6 +241,24 @@ describe('loadFiles (#11534)', () => {
       for (const m of registry.list()) registry.remove(m.id);
       await rm(parent, { recursive: true, force: true });
     }
+  });
+
+  it('reports why a file under --allow is refused, by code', async () => {
+    const locked = join(dir, 'locked');
+    await mkdir(join(locked, 'inner'), { recursive: true });
+    await writeFile(join(locked, 'inner', 'm.ifc'), MODEL);
+    await chmod(locked, 0o000);
+    try {
+      // Root ignores directory modes, so only check EACCES when it is really enforced.
+      if (process.getuid?.() !== 0) {
+        await expect(loadFiles(new InMemoryModelRegistry(), parseArgs(['--allow', dir, join(locked, 'inner', 'm.ifc')]), () => {}))
+          .rejects.toThrow(/could not be loaded \(EACCES\)/);
+      }
+    } finally {
+      await chmod(locked, 0o755);
+    }
+    await expect(loadFiles(new InMemoryModelRegistry(), parseArgs(['--allow', homedir(), join(homedir(), '.ssh', 'model.ifc')]), () => {}))
+      .rejects.toThrow(/could not be loaded \(protected home path\)/);
   });
 
   it('reports a missing file under --allow as ENOENT', async () => {

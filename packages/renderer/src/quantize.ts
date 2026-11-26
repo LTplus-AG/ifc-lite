@@ -176,11 +176,21 @@ export function quantizeInterleaved(
 export const MAX_COLLAPSED_AREA_FRACTION = 0.01;
 
 /**
+ * cos² of the largest turn a face may take on the lattice: 25°. The shader
+ * shades a face by its snapped normal (screen-space derivatives), so a face
+ * turned further reads as another surface. A Ø12 mm rebar collapses nothing on
+ * the ~1 mm lattice but turns 2 to 20% of its area past this, wherever it sits
+ * on the lattice; at 30° some positions dropped under 1% (#11444).
+ */
+export const MIN_LATTICE_COS2 = Math.cos((25 * Math.PI) / 180) ** 2;
+
+/**
  * True when snapping a batch onto the lattice would visibly destroy shape:
  * some entity loses more than `MAX_COLLAPSED_AREA_FRACTION` of its triangle
- * area to triangles that become zero-area. Sub-millimetre slivers occur in
- * most models and stay quantized; small round members (Ø≈2 mm rods, railing
- * bars, thin pipes) collapse wholesale and must not (#9068).
+ * area to triangles that become zero-area, flip, or turn their face by more
+ * than 25° (`MIN_LATTICE_COS2`). Sub-millimetre slivers occur in most models
+ * and stay quantized; small round members (Ø≈2 mm rods, railing bars, thin
+ * pipes, rebar) collapse or crumple wholesale and must not (#9068, #11444).
  *
  * `quantMin` is lattice-aligned, so `round(p / QUANT_STEP)` is the node
  * `quantizeInterleaved` writes; the integer cross product is exact.
@@ -221,7 +231,11 @@ export function latticeCollapsesGeometry(
     const qux = nodes[nb] - nodes[na], quy = nodes[nb + 1] - nodes[na + 1], quz = nodes[nb + 2] - nodes[na + 2];
     const qvx = nodes[nc] - nodes[na], qvy = nodes[nc + 1] - nodes[na + 1], qvz = nodes[nc + 2] - nodes[na + 2];
     // Integer lattice offsets: every product is exact, so zero means collapsed.
-    if (quy * qvz - quz * qvy === 0 && quz * qvx - qux * qvz === 0 && qux * qvy - quy * qvx === 0) runCollapsed += area;
+    const qnx = quy * qvz - quz * qvy, qny = quz * qvx - qux * qvz, qnz = qux * qvy - quy * qvx;
+    const turn = nx * qnx + ny * qny + nz * qnz;
+    const qnSq = qnx * qnx + qny * qny + qnz * qnz;
+    // `area` is |n|: collapsed, flipped, or turned past 25° from the source face.
+    if (qnSq === 0 || turn <= 0 || turn * turn < MIN_LATTICE_COS2 * area * area * qnSq) runCollapsed += area;
   }
   flush();
   for (const { area, collapsed } of totals.values()) {

@@ -446,3 +446,25 @@ fn a_shared_corner_is_one_node_whatever_the_window() {
     assert_ne!(ahead_window, behind_window, "the two meshes use different windows");
     assert_eq!(ahead.first(), behind.last());
 }
+
+/// #11444: the reported Ø12 mm U-bar (an `IfcSweptDiskSolid` along a faceted `IfcIndexedPolyCurve`),
+/// meshed by the kernel. Nothing of it collapses on the 1 mm lattice, but a few percent of its area
+/// turns its face by more than 25°: crumpled bends and a non-round section. It must move to a finer
+/// level wherever it sits on the lattice.
+#[test]
+fn a_thin_swept_rebar_moves_to_a_finer_lattice_11444() {
+    let content = include_str!("../../../geometry/tests/fixtures/issue_11444_swept_disk_faceted_bends.ifc");
+    let mut decoder = ifc_lite_core::EntityDecoder::with_index(content, ifc_lite_core::build_entity_index(content));
+    let router = ifc_lite_geometry::GeometryRouter::with_units(content, &mut decoder);
+    let bar = decoder.decode_by_id(70).expect("decode the mapped bar");
+    let mesh = router.process_element(&bar, &mut decoder).expect("mesh the mapped bar");
+    for origin in [[0.0, 0.0, 0.0], [12.3456789, -4.987654321, 7.0001234], [0.1234567, 0.3, -0.0517], [-3.21, 0.77, 41.0]] {
+        let mut placed = mesh.clone();
+        placed.origin = origin;
+        let mut c = MeshCollection::new();
+        c.add(MeshDataJs::new(70, "IfcReinforcingBar".to_string(), placed, [0.5, 0.5, 0.5, 1.0]));
+        let b = c.encode_compact(32.0);
+        assert_eq!(b.mesh_count(), 1, "origin {origin:?}: refusals {:?}", b.refusals);
+        assert!(b.table[5] > BASE_LEVEL, "origin {origin:?}: encoded at level {}", b.table[5]);
+    }
+}

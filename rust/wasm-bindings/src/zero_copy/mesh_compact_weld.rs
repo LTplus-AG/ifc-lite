@@ -13,6 +13,12 @@ use super::{Refusal, Q_MAX};
 /// a finer level (the renderer's `MAX_COLLAPSED_AREA_FRACTION`, #9068).
 const MAX_COLLAPSED_AREA_FRACTION: f64 = 0.01;
 
+/// cos² of the largest turn a face may take on the lattice, 25° (the renderer's
+/// `MIN_LATTICE_COS2`). The shader shades a face by its snapped normal, so a
+/// face turned further reads as another surface: a Ø12 mm rebar collapses
+/// nothing on the 1 mm lattice but turns 2 to 20% of its area past this (#11444).
+const MIN_LATTICE_COS2: f64 = 0.821_393_804_843_269_7;
+
 /// A corner is witnessed by its node's stored normal when the cosine between
 /// them is above this. The fragment shader orients a face's derivative normal
 /// by the sign of its dot product with the vertex normal and ignores a vertex
@@ -244,7 +250,8 @@ fn split_unwitnessed_nodes(mesh: &MeshDataJs, s: &mut Scratch) -> Result<(), Ref
 }
 
 /// Remap the triangles (dropping those with a repeated welded vertex), and
-/// refuse a mesh the lattice collapses (#9068) or leaves without a triangle.
+/// refuse a mesh the lattice collapses or crumples (#9068, #11444) or leaves
+/// without a triangle.
 fn triangles(mesh: &MeshDataJs, s: &mut Scratch) -> Result<(), Refusal> {
     let p = &mesh.positions;
     let (mut area, mut collapsed) = (0.0f64, 0.0f64);
@@ -261,7 +268,7 @@ fn triangles(mesh: &MeshDataJs, s: &mut Scratch) -> Result<(), Refusal> {
         let (ra, rb, rc) = (s.remap[a], s.remap[b], s.remap[c]);
         if tri_area > 0.0 {
             area += tri_area;
-            if lattice_collapses(&s.nodes, ra, rb, rc) {
+            if lattice_degrades(&s.nodes, ra, rb, rc, n) {
                 collapsed += tri_area;
             }
         }
@@ -278,11 +285,19 @@ fn triangles(mesh: &MeshDataJs, s: &mut Scratch) -> Result<(), Refusal> {
     Ok(())
 }
 
-/// The triangle's lattice nodes are collinear: their integer cross product is zero.
-fn lattice_collapses(nodes: &[[u16; 3]], a: u16, b: u16, c: u16) -> bool {
+/// The triangle's lattice nodes lose its face: collinear (their integer cross product is zero),
+/// flipped, or turned past `MIN_LATTICE_COS2` from `source`, the source face's cross product.
+fn lattice_degrades(nodes: &[[u16; 3]], a: u16, b: u16, c: u16, source: [f64; 3]) -> bool {
     let (na, nb, nc) = (nodes[a as usize], nodes[b as usize], nodes[c as usize]);
     let d = |x: [u16; 3], y: [u16; 3], axis: usize| x[axis] as i64 - y[axis] as i64;
     let u = [d(nb, na, 0), d(nb, na, 1), d(nb, na, 2)];
     let w = [d(nc, na, 0), d(nc, na, 1), d(nc, na, 2)];
-    u[1] * w[2] - u[2] * w[1] == 0 && u[2] * w[0] - u[0] * w[2] == 0 && u[0] * w[1] - u[1] * w[0] == 0
+    let q = [u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]];
+    if q == [0; 3] {
+        return true;
+    }
+    let q = q.map(|v| v as f64);
+    let turn = source[0] * q[0] + source[1] * q[1] + source[2] * q[2];
+    let source_sq = source[0] * source[0] + source[1] * source[1] + source[2] * source[2];
+    turn <= 0.0 || turn * turn < MIN_LATTICE_COS2 * source_sq * (q[0] * q[0] + q[1] * q[1] + q[2] * q[2])
 }

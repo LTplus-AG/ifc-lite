@@ -29,7 +29,7 @@
 //! Precision: a stored position is at most half a step from its source on each
 //! axis: 0.49 mm at level 10, 0.98 mm at level 9 (meshes too wide for a level
 //! 10 window), and finer at levels 11 to 14 (meshes the level 10 lattice would
-//! collapse, the renderer's #9068 rule).
+//! collapse or crumple, the renderer's #9068 and #11444 rule).
 //!
 //! Encoded meshes have their positions, normals and indices taken (emptied),
 //! so the per-mesh getters copy nothing for them. A mesh that cannot encode is
@@ -90,7 +90,7 @@ enum Refusal {
     Extent = 4,
     /// More welded vertices than u16 indices address.
     WeldedVertices = 5,
-    /// Loses more than 1% of its area to triangles the lattice collapses: at the base level with
+    /// Loses more than 1% of its area to triangles the lattice collapses or turns past 25°: at the base level with
     /// no finer level holding it (whatever stops the retry there, the collapse is why it left the
     /// base level), or at the coarser level for a mesh too wide for the base window.
     Collapse = 6,

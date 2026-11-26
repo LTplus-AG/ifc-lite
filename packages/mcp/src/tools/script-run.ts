@@ -345,7 +345,7 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
   }
 }
 
-const SHARED_DESCRIPTION = 'Runs in a QuickJS sandbox with only the `bim` SDK global (bim.query, bim.model, bim.export, bim.lens, bim.clash, bim.cost, bim.structural, bim.schedule, bim.create) and console; no network, filesystem, viewer or timers. Returns the last expression value plus captured console output. Script code runs on the server\'s event loop, so other requests wait while it runs (bounded by timeout_ms). At most 2 scripts run at once per server; a third gets RATE_LIMITED.';
+const SHARED_DESCRIPTION = `Runs in a QuickJS sandbox with only the `bim` SDK global (bim.query, bim.model, bim.export, bim.lens, bim.clash, bim.cost, bim.structural, bim.schedule, bim.create) and console; no network, filesystem, viewer or timers. Returns the last expression value plus captured console output. Script code runs on the server's event loop, so other requests wait while it runs (bounded by timeout_ms). At most ${MAX_CONCURRENT_SCRIPTS} scripts run at once per server; a third gets RATE_LIMITED.`;
 
 export const scriptRunTool: Tool = {
   name: 'script_run',

@@ -126,6 +126,29 @@ export function visitCompactPayload(p: CompactPayload, visit: (array: ArrayBuffe
  * getters then return empty arrays), append the payload to `payloads`, and return mesh index -> wire
  * ref. `undefined` when nothing was encoded or the wasm build has no encoder.
  */
+/** The six columns an `@ifc-lite/wasm` older than the source vertex count writes per row. */
+const LEGACY_COMPACT_TABLE_STRIDE = 6;
+
+/**
+ * `table` with `COMPACT_TABLE_STRIDE` columns per row. A wasm build that predates the source vertex count
+ * (a published patch range lets it pair with this package) writes six: widen it, taking the welded vertex
+ * count as the source count, as before. Any other shape would misread every row after the encoder consumed
+ * the meshes, so there is no f32 to fall back to: fail loudly.
+ */
+export function compactTableOf(table: Uint32Array, rows: number): Uint32Array {
+  if (table.length === rows * COMPACT_TABLE_STRIDE) return table;
+  if (table.length !== rows * LEGACY_COMPACT_TABLE_STRIDE) {
+    throw new Error(`compact geometry: the wasm table has ${table.length} cells for ${rows} rows (expected ${COMPACT_TABLE_STRIDE} or ${LEGACY_COMPACT_TABLE_STRIDE} columns)`);
+  }
+  const wide = new Uint32Array(rows * COMPACT_TABLE_STRIDE);
+  for (let row = 0; row < rows; row++) {
+    const from = row * LEGACY_COMPACT_TABLE_STRIDE, to = row * COMPACT_TABLE_STRIDE;
+    wide.set(table.subarray(from, from + LEGACY_COMPACT_TABLE_STRIDE), to);
+    wide[to + 6] = table[from + 2]; // vertex count
+  }
+  return wide;
+}
+
 export function encodeCompactCollection(
   collection: object,
   cellSize: number,
@@ -137,13 +160,8 @@ export function encodeCompactCollection(
   try {
     const count = batch.meshCount;
     if (count === 0) return undefined;
-    // A wasm whose table has another column count (a build out of step with this package) would misread
-    // every row. The encoder has already consumed the meshes, so there is no f32 to fall back to: fail loudly.
-    if (batch.table.length !== count * COMPACT_TABLE_STRIDE) {
-      throw new Error(`compact geometry: the wasm table has ${batch.table.length} cells for ${count} rows of ${COMPACT_TABLE_STRIDE} columns (mismatched @ifc-lite/wasm build)`);
-    }
     const payload: CompactPayload = {
-      records: batch.records, indices: batch.indices, table: batch.table,
+      records: batch.records, indices: batch.indices, table: compactTableOf(batch.table, count),
       windows: batch.windows, bounds: batch.bounds, cells: batch.cells,
     };
     const index = payloads.length;

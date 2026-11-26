@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { afterEach, describe, expect, it } from 'vitest';
-import { COMPACT_TABLE_STRIDE as STRIDE, isCompactCellSize } from './compact-geometry.js';
+import { COMPACT_TABLE_STRIDE as STRIDE, compactTableOf, isCompactCellSize } from './compact-geometry.js';
 import { encodeSessionCompact, setCompactCellSize, tagCompactMesh, takeSessionCompact } from './worker-compact.js';
 
 /** A wasm `MeshCollection` stand-in whose encoder takes `rows` meshes of one vertex and one triangle each. */
@@ -60,12 +60,16 @@ describe('the worker side of compact geometry', () => {
     expect(takeSessionCompact(session, [])).toEqual({});
   });
 
-  it('fails loudly on a table whose column count does not match this package (a mismatched wasm build)', () => {
+  it('widens the six-column table of an older wasm, and fails loudly on any other shape', () => {
+    const legacy = Uint32Array.from([10, 0, 3, 0, 3, 10, /* row 2 */ 11, 3, 4, 3, 6, 10]);
+    expect([...compactTableOf(legacy, 2)]).toEqual([10, 0, 3, 0, 3, 10, 3, 11, 3, 4, 3, 6, 10, 4]);
+    const current = new Uint32Array(2 * STRIDE);
+    expect(compactTableOf(current, 2)).toBe(current);
     setCompactCellSize(32);
     const stale = fakeCollection(2);
     const encode = stale.encodeCompact;
-    stale.encodeCompact = (cellSize: number) => ({ ...encode(cellSize), table: new Uint32Array(2 * (STRIDE - 1)) });
-    expect(() => encodeSessionCompact({ cumulativeMeshBytes: 0 }, stale)).toThrow(/mismatched @ifc-lite\/wasm build/);
+    stale.encodeCompact = (cellSize: number) => ({ ...encode(cellSize), table: new Uint32Array(2 * 5) });
+    expect(() => encodeSessionCompact({ cumulativeMeshBytes: 0 }, stale)).toThrow(/expected 7 or 6 columns/);
   });
 
   it('keeps each session to its own payloads', () => {

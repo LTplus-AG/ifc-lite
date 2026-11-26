@@ -56,7 +56,7 @@ export type AggregateKind = 'LIST' | 'SET' | 'BAG' | 'ARRAY' | 'AGGREGATE';
 export type TypeSpec =
   | { k: 'simple'; name: SimpleTypeName; spelling?: string; width?: Expr; fixed?: boolean }
   | { k: 'named'; name: string }
-  | { k: 'aggregate'; kind: AggregateKind; low?: Expr; high?: Expr; optional: boolean; unique: boolean; of: TypeSpec }
+  | { k: 'aggregate'; kind: AggregateKind; spelling?: string; low?: Expr; high?: Expr; optional: boolean; unique: boolean; of: TypeSpec }
   | { k: 'enumeration'; items: string[]; extensible: boolean; basedOn?: string }
   | { k: 'select'; items: string[]; extensible: boolean; basedOn?: string }
   | { k: 'generic'; entity: boolean };

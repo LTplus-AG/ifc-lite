@@ -248,6 +248,20 @@ function parseRule(s: TokenStream): RuleDecl {
   return { name, appliesTo, locals, body, where };
 }
 
+function parseInterfaceClause(s: TokenStream): string {
+  s.expectKeyword('FROM');
+  const schema = s.expectIdentifier();
+  if (s.acceptOp('(')) {
+    do {
+      s.expectIdentifier();
+      if (s.acceptKeyword('AS')) s.expectIdentifier();
+    } while (s.acceptOp(','));
+    s.expectOp(')');
+  }
+  s.expectOp(';');
+  return schema;
+}
+
 function skipDeclaration(s: TokenStream, end: string): void {
   while (!s.isKeyword(end)) {
     if (s.peek().kind === 'eof') s.fail(`expected ${end}`);
@@ -266,6 +280,9 @@ export function parseExpressRules(source: string): ExpressRuleSchema {
     if (s.peek().kind === 'eof') s.fail('expected END_SCHEMA');
     const t = s.next();
     switch (t.upper) {
+      case 'USE': case 'REFERENCE':
+        schema.skipped.push({ kind: t.upper, name: parseInterfaceClause(s) });
+        break;
       case 'TYPE': schema.types.push(parseType(s)); break;
       case 'ENTITY': schema.entities.push(parseEntity(s)); break;
       case 'FUNCTION': schema.functions.push(parseFunction(s)); break;

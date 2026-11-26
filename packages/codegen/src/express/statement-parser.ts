@@ -64,7 +64,8 @@ export function parseTypeSpec(s: TokenStream): TypeSpec {
     s.expectKeyword('OF');
     const optional = s.acceptKeyword('OPTIONAL');
     const unique = s.acceptKeyword('UNIQUE');
-    return { k: 'aggregate', kind: word, low, high, optional, unique, of: parseTypeSpec(s) };
+    const of = parseTypeSpec(s);
+    return { k: 'aggregate', kind: word, low, high, optional, unique, of, spelling: s.sliceFrom(t.start, true) };
   }
   const extensible = s.acceptKeyword('EXTENSIBLE');
   if (extensible) s.acceptKeyword('GENERIC_ENTITY');

@@ -285,3 +285,18 @@ it('keeps both IFC2X3 IfcSweptSurface rules on the generator surface (#11562)', 
   expect(swept?.whereRules?.map(rule => rule.split(':')[0])).toEqual(['WR1', 'WR2']);
   expect(swept?.whereRules?.[0]).toContain('IFC2X3.IFCDERIVEDPROFILEDEF');
 });
+
+it('retains declarations after EXPRESS interface clauses (#11562)', () => {
+  for (const clause of ['USE FROM OtherSchema;', 'REFERENCE FROM OtherSchema (A AS B, C);']) {
+    const schema = parseExpressSchema(`SCHEMA S; ${clause} ENTITY E; END_ENTITY; END_SCHEMA;`);
+    expect(schema.entities.map(entity => entity.name)).toEqual(['E']);
+  }
+});
+
+it('retains the public BAG attribute type representation (#11562)', () => {
+  const schema = parseExpressSchema('SCHEMA S; ENTITY E; Members : BAG [0:?] OF INTEGER; END_ENTITY; END_SCHEMA;');
+  expect(schema.entities[0].attributes[0]).toEqual({
+    name: 'Members', type: 'BAG [0:?] OF INTEGER', optional: false,
+    isArray: false, isList: false, isSet: false,
+  });
+});

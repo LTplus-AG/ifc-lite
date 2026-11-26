@@ -77,7 +77,7 @@ function elementName(spec: TypeSpec): string {
   switch (spec.k) {
     case 'named': return spec.name;
     case 'simple': return spec.spelling ?? spec.name;
-    case 'aggregate': return `${elementName(spec.of)}[]`;
+    case 'aggregate': return spec.kind === 'BAG' && spec.spelling ? spec.spelling : `${elementName(spec.of)}[]`;
     case 'generic': return spec.entity ? 'GENERIC_ENTITY' : 'GENERIC';
     case 'enumeration': return 'ENUMERATION';
     case 'select': return 'SELECT';
@@ -95,7 +95,7 @@ export function parseExpressSchema(content: string): ExpressSchema {
     entities: ast.entities.map(e => ({
       name: e.name, isAbstract: e.abstract, supertype: e.supertypes[0], supertypeOf: e.subtypeNames,
       attributes: e.explicit.filter(a => !a.redeclares).map(a => {
-        const agg = a.type.k === 'aggregate' ? a.type : undefined;
+        const agg = a.type.k === 'aggregate' && a.type.kind !== 'BAG' ? a.type : undefined;
         const low = bound(agg?.low), high = bound(agg?.high);
         const attr: AttributeDefinition = {
           name: a.name, optional: a.optional, type: elementName(agg?.of ?? a.type),

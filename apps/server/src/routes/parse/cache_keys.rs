@@ -43,7 +43,7 @@ pub(crate) fn cache_key_from_parts(
 ///
 /// Lives beside [`cache_key_from_parts`] because that is what it protects. The
 /// hash a client supplies is concatenated into `{hash}-{filter}{quality}` and
-/// the namespace suffix (`-parquet-v8`, `-datamodel-v8`, ...) is appended after
+/// the namespace suffix (`-parquet-v8`, `-datamodel-v9`, ...) is appended after
 /// it, so a caller-shaped string is a caller-shaped cache key. Checking the
 /// shape keeps the value to the one job it has, naming a file.
 ///
@@ -240,19 +240,14 @@ pub(crate) fn parquet_optimized_metadata_cache_key(cache_key: &str) -> String {
 /// the reader (`get_data_model`): three separate literals could disagree, and a
 /// reader looking up a key nobody writes answers `202` forever.
 ///
-/// The suffix bumps on EVERY change to the data-model payload's columns.
-/// `v8` adds complete material association fields (#5296); a warm `v7` cache
-/// cannot support material value checks even after the server is upgraded.
-///
-/// The entities VARIANT (#6034) is a separate namespace, not a version:
-/// `-datamodel-v8` for every STEP instance (unchanged, so a default request
-/// keeps hitting the entries already on disk) and `-datamodel-rooted-v8` for
-/// the rooted-only table. Both carry the one version number, so a payload bump
-/// retires both at once. They coexist, and neither can answer for the other:
+/// Advance this version when a cached table would preserve obsolete values.
+/// v9 recomputes storey assignments for elements contained in spaces (#11468).
+/// The entities variant (#6034) is a separate namespace. The full and rooted
+/// entries share a version and neither can answer for the other:
 /// a client that asked for the rooted table must not be handed 60 MB it asked
 /// not to download, and one that did not must not lose rows it looks up.
 pub(crate) fn data_model_cache_key(cache_key: &str, entities: DataModelEntities) -> String {
-    format!("{cache_key}-datamodel{}-v8", entities.cache_infix())
+    format!("{cache_key}-datamodel{}-v9", entities.cache_infix())
 }
 
 /// Where a background fill records why it refused a data model (#7675: a

@@ -324,14 +324,13 @@ fn request_cache_key_separates_content_filter_and_quality() {
     assert_ne!(other, request_cache_key(data, &default_query, TessellationQuality::default()));
 }
 
-/// A warm cache from before #5296 has partial material rows and must be
-/// bypassed so material value checks receive the complete v8 payload.
+/// A v8 sidecar can omit storey assignments for elements contained in spaces.
 #[test]
 fn data_model_cache_key_is_versioned_and_retires_the_previous_payload() {
     let request_key = "0ab20f4e4014-default";
     let key = data_model_cache_key(request_key, crate::services::DataModelEntities::All);
-    assert_eq!(key, format!("{request_key}-datamodel-v8"));
-    assert_ne!(key, format!("{request_key}-datamodel-v7"));
+    assert_eq!(key, format!("{request_key}-datamodel-v9"));
+    assert_ne!(key, format!("{request_key}-datamodel-v8"));
     assert_ne!(
         key,
         format!("{request_key}-datamodel-v5"),
@@ -342,17 +341,15 @@ fn data_model_cache_key_is_versioned_and_retires_the_previous_payload() {
     assert_ne!(key, json_response_cache_key(request_key));
 }
 
-/// #6034: the default entities variant keeps the pre-#6034 key, so a warm
-/// cache still answers default requests, and the rooted variant gets its own
-/// entry under the SAME version, so one payload bump retires both.
+/// Both entity variants use the current data-model version so they retire together.
 #[test]
 fn issue_6034_data_model_variants_are_separate_entries_under_one_version() {
     use crate::services::DataModelEntities;
     let request_key = "0ab20f4e4014-default";
     let all = data_model_cache_key(request_key, DataModelEntities::All);
     let rooted = data_model_cache_key(request_key, DataModelEntities::Rooted);
-    assert_eq!(all, format!("{request_key}-datamodel-v8"), "the default key must not move");
-    assert_eq!(rooted, format!("{request_key}-datamodel-rooted-v8"));
+    assert_eq!(all, format!("{request_key}-datamodel-v9"));
+    assert_eq!(rooted, format!("{request_key}-datamodel-rooted-v9"));
     assert_ne!(all, rooted);
 }
 

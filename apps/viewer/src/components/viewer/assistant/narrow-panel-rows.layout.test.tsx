@@ -20,6 +20,7 @@ import { registerLocale, setLocale } from '@/i18n';
 import { clashGroupApplyDe } from '@/i18n/locales/de/clash-group-apply';
 import { chatDe } from '@/i18n/locales/de/chat';
 import { comparePanelDe } from '@/i18n/locales/de/compare-panel';
+import { act } from 'react';
 import { cleanup, click, render } from '@/test/render.js';
 import { CONTRAST_BROWSER_SKIP, closeContrastBrowser, warmContrastBrowser, withThemedPage } from '@/test/contrast/render-harness.js';
 import { draftFromGroups, type DraftFinding } from '@/lib/assistant/clash-group-draft';
@@ -50,15 +51,21 @@ function htmlOf(element: React.ReactElement, interact: (ui: HTMLElement) => void
   return html;
 }
 
-/** The clash editor with its first group header in rename mode, and both groups' merge rows. */
+/** The clash editor with a group in rename mode, both merge rows, and the move row set to a new group. */
 function clashEditorHtml(): string {
   const draft = draftFromGroups([
     { name: 'Walls vs pipes', explanation: '', findings: [finding('o1')] },
     { name: 'Riser', explanation: '', findings: [finding('o2')] },
   ], 2, { kind: 'sample', evidenceId: 'e', omittedFromEvidence: 0 });
-  // The header's first button is the rename pencil, in any locale.
   return htmlOf(<ClashGroupDraftEditor draft={draft} onChange={() => {}} resolve={() => undefined}
-    focusClash={() => {}} focusClashes={() => {}} />, (ui) => click(ui.querySelector<HTMLButtonElement>('h4 button')!));
+    focusClash={() => {}} focusClashes={() => {}} />, (ui) => {
+    // The header's first button is the rename pencil, in any locale.
+    click(ui.querySelector<HTMLButtonElement>('h4 button')!);
+    // A selected finding opens the move row; moving to a new group adds its name input.
+    click(ui.querySelector<HTMLInputElement>('li input[type="checkbox"]')!);
+    const move = ui.querySelector<HTMLSelectElement>('.sticky select')!;
+    act(() => { move.value = 'new'; move.dispatchEvent(new window.Event('change', { bubbles: true })); });
+  });
 }
 
 interface RowLayout { control: number; overflow: number }
@@ -79,10 +86,10 @@ async function layoutAt(html: string, width: number, selector: string): Promise<
 }
 
 const ROWS = [
-  { name: 'clash group rename and merge', html: clashEditorHtml, selector: 'form > input, div > select', count: 3 },
+  { name: 'clash group rename, merge and move', html: clashEditorHtml, selector: 'form > input, div > select, .sticky input', count: 5 },
   { name: 'saved conversation name', html: () => htmlOf(<ConversationLibrary />), selector: '#assistant-conversation-name', count: 1 },
-  { name: 'saved comparison name', html: () => htmlOf(<SavedComparisonLibrary result={null} running={false} />),
-    selector: '[data-saved-comparisons] > div.flex > input', count: 1 },
+  { name: 'saved comparison name and pick', html: () => htmlOf(<SavedComparisonLibrary result={null} running={false} />),
+    selector: '[data-saved-comparisons] > div.flex > input, [data-saved-comparisons] > label > select', count: 2 },
 ] as const;
 
 describe('narrow side-panel rows keep a usable control (#11439)', () => {

@@ -156,14 +156,14 @@ export function ClashGroupDraftEditor({ draft, onChange, resolve, focusClash, fo
     {selected.size > 0 && <div className="sticky bottom-0 space-y-1 rounded border border-primary/40 bg-background p-2">
       <p className="font-medium">{t('clashApply.selected', { count: selected.size })}</p>
       <div className="flex flex-wrap items-center gap-1">
-        <select aria-label={t('clashApply.moveTo')} className={`${field} flex-1`} value={target} onChange={event => setTarget(event.target.value)}>
+        <select aria-label={t('clashApply.moveTo')} className={cn(field, 'min-w-[8rem] flex-1')} value={target} onChange={event => setTarget(event.target.value)}>
           <option value="">{t('clashApply.moveTo')}</option>
           {draft.groups.map(group => <option key={group.key} value={group.key}>{group.name}</option>)}
           <option value="new">{t('clashApply.moveTarget.new')}</option>
           <option value="unclassified">{t('clashApply.moveTarget.unclassified')}</option>
         </select>
         {target === 'new' && <input aria-label={t('clashApply.newGroupName')} placeholder={t('clashApply.newGroupName')} maxLength={100}
-          className={`${field} flex-1`} value={newName} onChange={event => setNewName(event.target.value)} />}
+          className={cn(field, 'min-w-[8rem] flex-1')} value={newName} onChange={event => setNewName(event.target.value)} />}
         <Button type="button" size="sm" className="h-7" disabled={!target} onClick={move}>{t('clashApply.move')}</Button>
       </div>
     </div>}

@@ -36,14 +36,18 @@ export function operationArtifacts(host: ToolHost, commit: <T>(write: () => T) =
     const blob = input.data instanceof Blob ? input.data : new Blob([
       typeof input.data === 'string' ? input.data : new Uint8Array(input.data),
     ], { type: input.mimeType });
-    const entries = artifacts(host);
-    const total = [...entries.values()].reduce((sum, entry) => sum + entry.blob.size, 0);
-    if (entries.size >= MAX_ARTIFACTS || total + blob.size > MAX_BYTES) throw unavailable('Host artifact quota reached. Download or delete artifacts before creating more.');
     // The agent reads artifact bytes verbatim, so the BOM Excel needs is added
     // only to the downloaded copy; record here whether it is missing.
     const needsCsvBom = isCsvMime(input.mimeType) && !(await hasUtf8Bom(blob));
     const metadata: ArtifactMetadata = { artifact_id: crypto.randomUUID(), filename: artifactFilename(input.filename), mime_type: input.mimeType, bytes: blob.size };
-    return commit(() => { entries.set(metadata.artifact_id, { metadata, blob, needsCsvBom }); return { ...metadata }; });
+    return commit(() => {
+      live(host);
+      const entries = artifacts(host);
+      const total = [...entries.values()].reduce((sum, entry) => sum + entry.blob.size, 0);
+      if (entries.size >= MAX_ARTIFACTS || total + blob.size > MAX_BYTES) throw unavailable('Host artifact quota reached. Download or delete artifacts before creating more.');
+      entries.set(metadata.artifact_id, { metadata, blob, needsCsvBom });
+      return { ...metadata };
+    });
   } };
 }
 async function hasUtf8Bom(blob: Blob): Promise<boolean> {

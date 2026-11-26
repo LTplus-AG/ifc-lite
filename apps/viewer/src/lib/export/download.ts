@@ -198,8 +198,8 @@ export function downloadFile(
     downloadBlob(content, filename);
     return;
   }
-  if (isCsvMime(mime) && !(content instanceof ArrayBuffer)) {
-    downloadBlob(csvBlob(content, mime), filename);
+  if (isCsvMime(mime)) {
+    downloadBlob(csvBlob(content instanceof ArrayBuffer ? new Uint8Array(content) : content, mime), filename);
     return;
   }
   const part: BlobPart = content instanceof Uint8Array ? new Uint8Array(content) : content;
@@ -209,7 +209,7 @@ export function downloadFile(
 const UTF8_BOM = [0xef, 0xbb, 0xbf] as const;
 
 export function isCsvMime(mime: string): boolean {
-  return /^text\/csv\b/i.test(mime.trim());
+  return /^text\/csv\s*(?:;|$)/i.test(mime.trim());
 }
 
 /**

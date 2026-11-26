@@ -10,7 +10,7 @@
  */
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert';
-import { csvBlob, downloadFile } from './download';
+import { downloadFile } from './download';
 
 const BOM = [0xef, 0xbb, 0xbf];
 
@@ -35,7 +35,7 @@ function stubBrowser(): void {
 }
 afterEach(() => { g.document = saved.document; g.URL = saved.URL; });
 
-describe('CSV downloads carry a UTF-8 BOM', () => {
+describe('CSV downloads carry a UTF-8 BOM (#11452)', () => {
   it('downloadFile with a text/csv string', async () => {
     stubBrowser();
     downloadFile('Name\nSală\n', 'a.csv', 'text/csv;charset=utf-8');
@@ -64,10 +64,10 @@ describe('CSV downloads carry a UTF-8 BOM', () => {
     assert.strictEqual((await bytesOf(captured!))[0], 0x7b);
   });
 
-  it('csvBlob (list export, playground artifacts)', async () => {
-    const blob = csvBlob('Sală\n');
-    assert.match(blob.type, /^text\/csv/);
-    const bytes = await bytesOf(blob);
+  it('downloadFile with a CSV ArrayBuffer', async () => {
+    stubBrowser();
+    downloadFile(new TextEncoder().encode('Sală\n').buffer, 'a.csv', 'text/csv');
+    const bytes = await bytesOf(captured!);
     assert.deepStrictEqual(bytes.slice(0, 3), BOM);
     assert.strictEqual(new TextDecoder().decode(new Uint8Array(bytes.slice(3))), 'Sală\n');
   });

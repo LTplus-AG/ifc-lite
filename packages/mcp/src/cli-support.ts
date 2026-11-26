@@ -69,16 +69,28 @@ export function tokenScopes(opts: CliOptions): Map<string, AuthScope> {
  * entries); without, the operator's own arguments load from anywhere.
  */
 async function loadAllowed(registry: ModelRegistry, opts: CliOptions, absolute: string, modelId: string) {
-  if (!opts.allowedPaths?.length) return loadIfcModel(absolute, { modelId });
-  const path = await resolveSafePath(absolute, { config: { allowedPaths: opts.allowedPaths }, registry }, 'read');
-  return loadIfcModel(path, { modelId, allowedPaths: [path] });
+  // The check only: the model keeps the path the operator typed (name, filePath), as without --allow.
+  if (opts.allowedPaths?.length) await resolveSafePath(absolute, { config: { allowedPaths: opts.allowedPaths }, registry }, 'read');
+  return loadIfcModel(absolute, { modelId });
 }
 
-/** A path-free reason for a failed preload: the error code, or the error's class name. */
+const PRINTABLE_ERRNO = new Set(['ENOENT', 'EACCES', 'EPERM', 'EISDIR', 'ENOTDIR', 'ELOOP', 'ENAMETOOLONG']);
+
+/**
+ * A reason from a fixed list, never the error's text (which may spell the
+ * path). resolveSafePath reports a missing file as INVALID_INPUT and its
+ * three refusals as PERMISSION_DENIED; `details.roots` marks the bounds one.
+ */
 function loadFailureReason(err: unknown): string {
-  const code = (err as { code?: unknown } | undefined)?.code;
-  if (code === ToolErrorCode.PERMISSION_DENIED) return 'outside --allow, or a protected path';
-  if (typeof code === 'string') return code;
+  const e = err as { code?: unknown; message?: unknown; details?: { roots?: unknown } } | undefined;
+  if (typeof e?.code === 'string' && PRINTABLE_ERRNO.has(e.code)) return e.code;
+  const message = typeof e?.message === 'string' ? e.message : '';
+  if (e?.code === ToolErrorCode.INVALID_INPUT && message.endsWith('does not exist')) return 'ENOENT';
+  if (e?.code === ToolErrorCode.PERMISSION_DENIED) {
+    if (e.details?.roots !== undefined) return 'outside --allow';
+    if (message.startsWith('Refusing to access')) return 'protected home path';
+    return 'EACCES';
+  }
   return 'not a readable IFC file';
 }
 

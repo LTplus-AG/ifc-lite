@@ -184,7 +184,7 @@ describe('stdio file arguments (#11534)', () => {
       expect(String(missing)).not.toContain('s3cret');
       // An existing file outside --allow: the loader's message names the path, the CLI must not.
       const outside = await runMcpCli(['--allow', dir, '--tokn', outsideFile], { command: 'ifc-lite-mcp' }).catch((e: unknown) => e);
-      expect(String(outside)).toMatch(/file argument 1 of 1 could not be loaded \(outside --allow, or a protected path\)/);
+      expect(String(outside)).toMatch(/file argument 1 of 1 could not be loaded \(outside --allow\)/);
       expect(String(outside)).not.toContain(outsideFile);
     } finally {
       Object.assign(console, consoleBefore);
@@ -223,15 +223,28 @@ describe('loadFiles (#11534)', () => {
     }
   });
 
-  // --allow and the file may name the same directory through different links (macOS /tmp -> /private/tmp).
-  it('accepts a file inside --allow spelled through its real path', async () => {
+  // Same policy as model_load (resolveSafePath): a linked --allow root also
+  // admits files spelled through its real path, but a file spelled through a
+  // link must itself sit under a root, whatever its target.
+  it('accepts a real-path file under a linked root, and refuses a linked file under a real root', async () => {
+    const linkedRoot = join(await mkdtemp(join(tmpdir(), 'mcp-cli-load-link-')), 'root');
+    await symlink(dir, linkedRoot);
+    const real = await realpath(dir);
     const registry = new InMemoryModelRegistry();
     try {
-      await loadFiles(registry, parseArgs(['--allow', dir, join(await realpath(dir), 'arch', 'model.ifc')]), () => {});
+      await loadFiles(registry, parseArgs(['--allow', linkedRoot, join(real, 'arch', 'model.ifc')]), () => {});
       expect(registry.list().map((m) => m.id)).toEqual(['model']);
+      await expect(loadFiles(new InMemoryModelRegistry(), parseArgs(['--allow', real, join(linkedRoot, 'arch', 'model.ifc')]), () => {}))
+        .rejects.toThrow(/\(outside --allow\)/);
     } finally {
       for (const m of registry.list()) registry.remove(m.id);
+      await rm(resolve(linkedRoot, '..'), { recursive: true, force: true });
     }
+  });
+
+  it('reports a missing file under --allow as ENOENT', async () => {
+    await expect(loadFiles(new InMemoryModelRegistry(), parseArgs(['--allow', dir, join(dir, 'typo.ifc')]), () => {}))
+      .rejects.toThrow(/file argument 1 of 1 could not be loaded \(ENOENT\)/);
   });
 
   // A symlink inside --allow that points outside it must be refused, not followed.
@@ -243,7 +256,7 @@ describe('loadFiles (#11534)', () => {
     const registry = new InMemoryModelRegistry();
     try {
       await expect(loadFiles(registry, parseArgs(['--allow', dir, link]), () => {}))
-        .rejects.toThrow(/file argument 1 of 1 could not be loaded \(outside --allow, or a protected path\)/);
+        .rejects.toThrow(/file argument 1 of 1 could not be loaded \(outside --allow\)/);
       expect(registry.list()).toEqual([]);
     } finally {
       await rm(outside, { recursive: true, force: true });

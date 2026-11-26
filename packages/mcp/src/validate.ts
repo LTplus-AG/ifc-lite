@@ -66,10 +66,10 @@ export class SchemaError extends Error {}
 
 export interface ValidateOptions {
   /**
-   * The schema came from a bridge tab, written for the bridge's original
-   * enforcement: `pattern` is not run (a tab regex on agent input could stall
-   * the server) and `oneOf` is not enforced (its branches may differ only by
-   * keywords we do not run). The tab checks both.
+   * The schema came from a bridge tab: `pattern` is not run (a tab regex on
+   * agent input could stall the server) and `oneOf` is not enforced (its
+   * branches may differ only by keywords we do not run). The tab checks both.
+   * Every other enforced keyword applies as for built-in tools.
    */
   fromTab?: boolean;
 }

@@ -178,7 +178,7 @@ function refusalText(issues: readonly GateIssue[]): string {
 const idsApplyOps: Tool = {
   name: 'ids_apply_ops', title: 'Apply IDS operations', annotations: READ_ONLY,
   description:
-    'Change an IDS document by applying typed operations. Every op is validated and the batch is checked by the grounding gate against the IFC schema tables (entities, predefined types, attributes, property sets, properties, enumerations, data types). A refused batch changes nothing and returns each problem with a path and ranked candidates; fix the names and resend the whole batch. Starts from `doc`, from the XML, or from an empty document. Returns the new `doc` and its lint diagnostics.',
+    'Change an IDS document by applying typed operations. Every op is validated and the batch is checked by the grounding gate against the IFC schema tables (entities, predefined types, attributes, property sets, properties, enumerations, data types). A refused batch changes nothing and returns each problem with a path and ranked candidates in `details.issues`; fix the names and resend the whole batch. An unknown `kind` or a malformed `opId` is refused earlier by input validation (`details.errors`). Starts from `doc`, from the XML, or from an empty document. Returns the new `doc` and its lint diagnostics.',
   scope: 'read',
   inputSchema: opsInputSchema(),
   async handler(input, ctx) {

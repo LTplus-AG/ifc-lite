@@ -18,5 +18,8 @@ export const idsOpsSchemaProvider: ResourceProvider = {
     mimeType: 'application/schema+json',
   }],
   match: (uri) => uri === IDS_OPS_SCHEMA_URI,
-  read: (uri) => [{ uri, mimeType: 'application/schema+json', text: (schemaText ??= JSON.stringify(getOpJsonSchema())) }],
+  read: (uri) => {
+    if (uri !== IDS_OPS_SCHEMA_URI) throw new Error(`ids-ops-schema cannot read ${uri}`);
+    return [{ uri, mimeType: 'application/schema+json', text: (schemaText ??= JSON.stringify(getOpJsonSchema())) }];
+  },
 };

@@ -102,8 +102,6 @@ export async function viewCommand(args: string[]): Promise<void> {
         if (!noOpen) {
           openBrowser(url);
         }
-
-        setupStdinCommands(viewer);
       },
       onError: (err) => {
         if (err.code === 'EADDRINUSE') {
@@ -112,6 +110,8 @@ export async function viewCommand(args: string[]): Promise<void> {
         fatal(`Server error: ${err.message}`);
       },
     });
+    // After the await: inside onReady, `viewer` is not assigned yet.
+    setupStdinCommands(viewer);
   } catch (e: unknown) {
     fatal(`Failed to start viewer: ${(e as Error).message}`);
   }

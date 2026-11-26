@@ -11583,7 +11583,6 @@
     "CreateHandler: type",
     "CreateResult: interface",
     "VALID_ACTIONS: const",
-    "VIEWER_HOST: const",
     "ViewerServer: interface",
     "ViewerServerOptions: interface",
     "createStreamingViewerAdapter: function",

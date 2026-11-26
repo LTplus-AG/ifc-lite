@@ -33,7 +33,8 @@ export function checkRequest(req: IncomingMessage): RequestVerdict {
   // No Origin: the CLI or the MCP server, or a browser following a link or
   // loading an <iframe>. A browser says where it came from in Sec-Fetch-Site;
   // from another site, only opening the viewer page itself is allowed.
-  const openingPage = req.method === 'GET' && req.url === '/' && req.headers['sec-fetch-dest'] === 'document';
+  // Browsers without Fetch Metadata (Safari < 16.4) are not covered here.
+  const openingPage = req.method === 'GET' && req.url?.split('?')[0] === '/' && req.headers['sec-fetch-dest'] === 'document';
   if (req.headers['sec-fetch-site'] === 'cross-site' && !openingPage) return { refuse: 'cross-site request' };
   return { refuse: false, corsOrigin: null };
 }

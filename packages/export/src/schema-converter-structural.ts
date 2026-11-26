@@ -27,8 +27,6 @@ function ifc2x3AndIfc4Family(from: string, to: string): boolean {
   return other === 'IFC4' || other === 'IFC4X3';
 }
 
-export const isRegistrySchema = (schema: string): schema is SchemaVersionWithRegistry => schema === 'IFC2X3' || schema === 'IFC4' || schema === 'IFC4X3';
-
 /** IFC2X3's stiffness fields keep their position and units in IFC4 and IFC4X3. */
 export function isStructuralStiffnessConversion(entity: string, from: string, to: string): boolean {
   return ifc2x3AndIfc4Family(from, to) && stiffnessType(entity, 1) !== null;
@@ -74,9 +72,10 @@ export function structuralAttributes(entity: string, args: readonly string[], fr
     }
     return values.join(',');
   }
-  if (!isConstantActionConversion(entity, from, to) || !isRegistrySchema(from) || !isRegistrySchema(to)) return null;
+  if (!isConstantActionConversion(entity, from, to)) return null;
   const name = entity === 'IFCSTRUCTURALLINEARACTION' ? 'IfcStructuralLinearAction' : 'IfcStructuralPlanarAction';
-  const slots = (schema: SchemaVersionWithRegistry) => getSchemaRegistryForVersion(schema).entities[name]?.allAttributes?.map(a => a.name);
+  // `isConstantActionConversion` admits IFC2X3, IFC4 and IFC4X3 only, each with a registry.
+  const slots = (schema: string) => getSchemaRegistryForVersion(schema as SchemaVersionWithRegistry).entities[name]?.allAttributes?.map(a => a.name);
   const src = slots(from), tgt = slots(to);
   if (!src || !tgt) return null;
   return tgt.map(name => args[src.indexOf(name)] ?? (name === 'PredefinedType' ? '.CONST.' : '$')).join(',');

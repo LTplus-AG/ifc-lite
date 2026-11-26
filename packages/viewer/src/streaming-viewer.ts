@@ -20,7 +20,7 @@ import type {
 
 /** Post a command to the running viewer server. Fire-and-forget. */
 function sendCommand(port: number, cmd: Record<string, unknown>): void {
-  fetch(`http://localhost:${port}/api/command`, {
+  fetch(`http://127.0.0.1:${port}/api/command`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(cmd),

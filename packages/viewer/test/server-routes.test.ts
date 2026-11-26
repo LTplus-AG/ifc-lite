@@ -416,20 +416,19 @@ describe('viewer server — loopback only', () => {
 
   const command = JSON.stringify({ action: 'reset' });
 
-  // A page on another site can send this POST even though CORS hides the reply.
-  for (const origin of ['http://evil.com', 'http://localhost.evil.com', 'null']) {
-    it(`refuses a command sent from ${origin}`, TEST_TIMEOUT, async () => {
-      const res = await req(port, '/api/command', { method: 'POST', headers: { origin }, body: command });
+  // A page on another site can send these POSTs even though CORS hides the reply.
+  for (const [path, origin] of [
+    ['/api/command', 'http://evil.com'],
+    ['/api/command', 'http://localhost.evil.com'],
+    ['/api/command', 'null'],
+    ['/api/create', 'http://evil.com'],
+    ['/api/clear-created', 'http://evil.com'],
+  ]) {
+    it(`refuses POST ${path} from ${origin}`, TEST_TIMEOUT, async () => {
+      const res = await req(port, path, { method: 'POST', headers: { origin }, body: command });
       assert.equal(res.status, 403);
     });
   }
-
-  it('refuses /api/create and /api/clear-created from another site too', TEST_TIMEOUT, async () => {
-    for (const path of ['/api/create', '/api/clear-created']) {
-      const res = await req(port, path, { method: 'POST', headers: { origin: 'http://evil.com' }, body: '{}' });
-      assert.equal(res.status, 403, path);
-    }
-  });
 
   it('accepts a command from a local page and from a client that sends no Origin', TEST_TIMEOUT, async () => {
     for (const headers of [{ origin: `http://localhost:${port}` }, {}]) {
@@ -439,12 +438,17 @@ describe('viewer server — loopback only', () => {
   });
 
   // A DNS-rebound name reaches 127.0.0.1 but still sends its own name as Host.
-  for (const host of ['evil.com', 'evil.com:PORT', '127.0.0.1:1', 'localhost']) {
+  for (const host of ['evil.com', '127.0.0.1:1', 'localhost']) {
     it(`refuses Host ${host}`, TEST_TIMEOUT, async () => {
-      const res = await req(port, '/model.ifc', { headers: { host: host.replace('PORT', String(port)) } });
+      const res = await req(port, '/model.ifc', { headers: { host } });
       assert.equal(res.status, 403);
     });
   }
+
+  it('refuses a foreign Host even on the right port', TEST_TIMEOUT, async () => {
+    const res = await req(port, '/model.ifc', { headers: { host: `evil.com:${port}` } });
+    assert.equal(res.status, 403);
+  });
 
   for (const host of ['localhost', '127.0.0.1', 'LOCALHOST']) {
     it(`serves Host ${host}:<port>`, TEST_TIMEOUT, async () => {

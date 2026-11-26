@@ -120,13 +120,6 @@ async function resolveWasmDir(): Promise<string> {
 /** A page served from this machine: `http(s)://localhost` or `127.0.0.1`, any port. */
 const LOCAL_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
 
-/** True when `host` names this machine's loopback address on exactly `port`. */
-function loopbackHost(host: string | undefined, port: number): boolean {
-  if (host === undefined) return false;
-  const lower = host.toLowerCase();
-  return ['localhost', '127.0.0.1'].some((name) => lower === `${name}:${port}`);
-}
-
 /** Read full request body as string */
 function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -170,16 +163,18 @@ export async function startViewerServer(opts: ViewerServerOptions): Promise<View
   // Track IFC content created via /api/create for export
   const createdSegments: string[] = [];
 
+  // The Host values this server answers to, set once it is listening. No
+  // request can arrive before that.
+  let ownHosts = new Set<string>();
+
   const server = createServer(async (req, res) => {
     // A page on another site can still send requests here even though CORS
     // stops it reading the answers, and a DNS-rebound name could read them
     // too. Refuse any request whose Host is not this server's loopback
     // address, and any POST sent from a non-local page.
-    const addr = server.address();
-    const boundPort = typeof addr === 'object' && addr ? addr.port : requestedPort;
     const origin = req.headers.origin ?? '';
     const localOrigin = LOCAL_ORIGIN.test(origin);
-    if (!loopbackHost(req.headers.host, boundPort) || (req.method === 'POST' && origin !== '' && !localOrigin)) {
+    if (!ownHosts.has(req.headers.host?.toLowerCase() ?? '') || (req.method === 'POST' && origin !== '' && !localOrigin)) {
       res.writeHead(403, { 'Content-Type': 'text/plain' });
       res.end('Forbidden');
       return;
@@ -417,6 +412,7 @@ export async function startViewerServer(opts: ViewerServerOptions): Promise<View
       const addr = server.address();
       const port = typeof addr === 'object' && addr ? addr.port : requestedPort;
       const url = `http://localhost:${port}`;
+      ownHosts = new Set([`localhost:${port}`, `127.0.0.1:${port}`]);
 
       if (opts.onReady) {
         try {

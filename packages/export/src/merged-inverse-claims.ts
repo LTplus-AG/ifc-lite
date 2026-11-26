@@ -126,10 +126,7 @@ interface Owner {
   partners: Set<number>;
 }
 
-/**
- * Which final ids already fill each single-valued inverse in the merge output.
- * One instance per merge, grown model by model in merge order.
- */
+/** The relationships that hold each single-valued inverse across models in this merge. */
 export class InverseClaims {
   /** Relationship type (uppercase) → the rules it is claimed under. */
   readonly rules: ReadonlyMap<string, readonly InverseRule[]>;

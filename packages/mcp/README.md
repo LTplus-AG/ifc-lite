@@ -471,11 +471,13 @@ palette. Reads, selection inspection and palette discovery are available initial
   stop that program or page, or restart the bridge on another `--bridge-port`.
 
 - **UI events match what the agent showed.** A `ui-event` is accepted only
-  for a surface the agent delivered to this tab with `tab_show_ui`, with an
-  event name that surface raises (or `ask`), and with a prompt that is text
-  from that surface. Anything else is dropped and logged, so a tab cannot send
-  the agent words it framed as the user's (with `--channel`, a prompt reaches
-  the agent as the user's message).
+  for a surface the agent sent to this tab with `tab_show_ui` and an event
+  name that surface raises (or `ask`); anything else is dropped and logged.
+  Its prompt counts as the user's words only when it is follow-up text the
+  agent wrote in that surface (a `prompt`, `userMessage` or `label`). Any
+  other prompt, typed or computed, still arrives, marked
+  `promptVerified: false`, and with `--channel` it is quoted as data rather
+  than passed on as the user's message.
 
 ### Wire protocol
 

@@ -66,6 +66,13 @@ function mcpName(tabName: string): string {
   return TAB_TOOL_PREFIX + tabName;
 }
 
+/** Longest MCP tool name many clients accept; a longer `tab_` name is not served. */
+const MAX_MCP_TOOL_NAME = 64;
+
+function fitsMcpName(d: BridgeToolDescriptor): boolean {
+  return mcpName(d.name).length <= MAX_MCP_TOOL_NAME;
+}
+
 async function forward(bridge: TabBridge, name: string, input: Record<string, unknown>, signal: AbortSignal): Promise<CallToolResult> {
   try {
     // The tab's CallToolResult passes through unchanged, `isError` included.
@@ -188,10 +195,11 @@ function statusResult(bridge: TabBridge, pairNewTab: boolean): CallToolResult {
     );
   }
   if (pairing) {
-    // The dialog assumes the default port; a fallback port must be typed first.
+    // Off the default port (another program holds it), only the link: a code
+    // typed into the dialog's default port would go to whatever holds it.
     const manual = bridge.port === DEFAULT_BRIDGE_PORT
       ? `or enter the code ${pairing.code} in the viewer's "Connect local agent" dialog.`
-      : `or, in the viewer's "Connect local agent" dialog, set the port to ${bridge.port} (not the default ${DEFAULT_BRIDGE_PORT}) and enter the code ${pairing.code}.`;
+      : `Use the link: it carries port ${bridge.port}. Port ${DEFAULT_BRIDGE_PORT} belongs to another program, so do not type the code into the dialog's default port.`;
     lines.push(
       '',
       `To ${tab ? 'pair a different tab (it replaces the connected one)' : 'connect'}, open this link in the browser tab with the model:`,
@@ -250,14 +258,14 @@ export class BridgeToolRegistry extends ToolRegistry {
     const d = tab.tools.find((t) => mcpName(t.name) === name);
     // A hidden (mutating, read-only) tool still resolves, so the call gets a
     // READ_ONLY refusal from `TabBridge.call` rather than "unknown tool".
-    return d ? forwardedTool(this.bridge, d, tab.tools) : null;
+    return d && fitsMcpName(d) ? forwardedTool(this.bridge, d, tab.tools) : null;
   }
 
   override list(): Tool[] {
     const own = super.list();
     const tab = this.bridge.tab();
     if (!tab) return [...own, this.status];
-    const visible = tab.permission === 'read-only' ? tab.tools.filter((t) => t.readOnly) : tab.tools;
+    const visible = (tab.permission === 'read-only' ? tab.tools.filter((t) => t.readOnly) : tab.tools).filter(fitsMcpName);
     return [...own, this.status, ...(tab.a2uiSurface ? [this.surface, this.events] : []), ...visible.map((d) => forwardedTool(this.bridge, d, tab.tools))];
   }
 

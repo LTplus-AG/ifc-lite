@@ -134,6 +134,9 @@ describe('guids that differ only by case', () => {
   it('in one topic\'s viewpoints are kept distinct by the 2.1 writer, comment reference intact', async () => {
     const back = await readBCF(await writeBCF(twoViewpointsByCase('2.1')));
     const topic = [...back.topics.values()][0];
+    expect(topic.viewpoints.map((viewpoint) => viewpoint.guid).sort()).toEqual(
+      [VIEWPOINT, VIEWPOINT.toLowerCase()].sort(),
+    );
     const at = (guid: string) => topic.viewpoints.find((v) => v.guid === guid)?.perspectiveCamera?.cameraViewPoint;
     expect(at(VIEWPOINT)).toEqual({ x: 1, y: 2, z: 3 });
     expect(at(VIEWPOINT.toLowerCase())).toEqual({ x: 7, y: 8, z: 9 });

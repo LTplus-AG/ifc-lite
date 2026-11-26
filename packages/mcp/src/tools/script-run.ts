@@ -253,13 +253,12 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
       ctx.log.log('warning', 'script_run: sandbox teardown aborted', { error: err instanceof Error ? err.message : String(err) });
     }
   };
-  let cancelledByClient = false;
-  const onAbort = () => { cancelledByClient = true; dispose(); };
+  const onAbort = () => dispose();
   ctx.signal.addEventListener('abort', onAbort, { once: true });
   // A cancel that landed while the sandbox was being created fired no event.
   if (ctx.signal.aborted) onAbort();
   try {
-    if (cancelledByClient) throw cancelled();
+    if (ctx.signal.aborted) throw cancelled();
     const result = await sandbox.eval(wrapScript(code), { typescript: false, filename: 'script_run.js' });
     const { logs, truncated } = shapeLogs(result.logs);
     const mutationsQueued = queued();
@@ -283,7 +282,7 @@ async function runScript(mode: Mode, input: Record<string, unknown>, ctx: ToolCo
     // that carries no logs; only a ScriptError has them.
     const shaped = err instanceof ScriptError ? shapeLogs(err.logs) : { logs: [], truncated: false };
     const details = { logs: shaped.logs, logs_truncated: shaped.truncated, mutations_queued: queued() };
-    if (cancelledByClient) throw cancelled(details);
+    if (ctx.signal.aborted) throw cancelled(details);
     // Script throws are caught in the wrapper, so 'interrupted' here is the
     // sandbox's own interrupt handler (it reports nothing more specific).
     if (err instanceof ScriptError && err.message === 'interrupted') {

@@ -20,20 +20,25 @@ async function flush(): Promise<void> {
 /** Each fetch waits until the test resolves it, in whatever order the test picks. */
 function mountWithControlledFetches() {
   const pending: Array<(response: Response) => void> = [];
-  const fetcher = (() => new Promise<Response>((resolve) => { pending.push(resolve); })) as unknown as typeof fetch;
+  const signals: Array<AbortSignal | undefined> = [];
+  const fetcher = ((_url: string, init?: RequestInit) => new Promise<Response>((resolve) => {
+    pending.push(resolve);
+    signals.push(init?.signal ?? undefined);
+  })) as unknown as typeof fetch;
   const ui = render(<RetainedEngineDetails fetcher={fetcher} />);
-  return { pending, ui, button: ui.querySelector('button')! };
+  return { pending, signals, ui, button: ui.querySelector('button')! };
 }
 
 describe('RetainedEngineDetails stale manifest answer (#11447)', () => {
   afterEach(cleanup);
 
   it('a manifest answer that arrives after the disclosure was closed does not reopen it', async () => {
-    const { pending, button } = mountWithControlledFetches();
+    const { pending, signals, button } = mountWithControlledFetches();
     click(button); // open: request 1 in flight
     assert.equal(button.getAttribute('aria-expanded'), 'true');
     click(button); // close before it answers
     assert.equal(button.getAttribute('aria-expanded'), 'false');
+    assert.equal(signals[0]?.aborted, true, 'closing aborts the pending manifest fetch');
     pending[0](manifestResponse('rev-1'));
     await flush();
     assert.equal(button.getAttribute('aria-expanded'), 'false', 'the closed panel must stay closed');

@@ -42,7 +42,10 @@ export function RetainedEngineDetails({ fetcher = fetch }: { fetcher?: typeof fe
   // Closing resets the run and reopening restarts it, so only the latest open's answer can land (#11447).
   const manifest = useAsyncRun<EngineInfo>({ label: 'retained engine manifest' });
   const open = manifest.state.kind !== 'idle';
-  const info = manifest.state.kind === 'succeeded' ? manifest.state.result : null;
+  const { state } = manifest;
+  const info: EngineInfo | null = state.kind === 'succeeded' ? state.result
+    : state.kind === 'failed' ? { state: 'error', reason: state.error instanceof Error ? state.error.message : String(state.error) }
+    : null;
   const toggle = () => {
     if (open) manifest.reset();
     else void manifest.restart(({ signal }) => readManifest(fetcher, signal));

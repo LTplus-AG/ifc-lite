@@ -75,6 +75,15 @@ describe('model.openFromSource in the viewer', () => {
     assert.deepEqual(add.calls.map(call => call.name), ['Tower-.ifc', 'Tower.ifc']);
   });
 
+  it('keeps existing long source names used for validation fingerprints (#11442)', async () => {
+    const add = recordingAddModel('ok');
+    const open = createViewerOpenModel(add.addModel);
+    const prefix = 'a'.repeat(56);
+    await open(IFC, `${prefix}A.ifc`);
+    await open(IFC, `${prefix}B.ifc`);
+    assert.deepEqual(add.calls.map(call => call.name), [`${prefix}A.if`, `${prefix}B.if`]);
+  });
+
   it('fails the node when the model never registered', async () => {
     const add = recordingAddModel('fail');
     await assert.rejects(createViewerOpenModel(add.addModel)(IFC, 'a.ifc'), /a\.ifc could not be loaded/);

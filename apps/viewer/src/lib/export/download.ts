@@ -70,11 +70,16 @@ export function sanitizeFilename(name: string, options: SanitizeFilenameOptions 
 
 /** Keep a model's format suffix intact when budgeting its filesystem-safe name. */
 export function sanitizeModelFilename(name: string, fallback = 'model.ifc'): string {
-  const safe = sanitizeFilename(name, { fallback, maxLength: Infinity });
-  if (safe.length <= 60) return safe;
-  const suffix = /\.[a-z0-9]{1,16}$/i.exec(safe);
-  if (!suffix) return sanitizeFilename(name, { fallback });
-  const stem = safe.slice(0, 60 - suffix[0].length).replace(/[\uD800-\uDBFF]$/, '');
+  const bounded = sanitizeFilename(name, { fallback });
+  // Ordinary source names already participate in persisted model fingerprints.
+  if (!bounded.startsWith('_') || !WINDOWS_RESERVED_STEM.test(bounded.slice(1))) return bounded;
+  const safe = fitFilename(name, Infinity);
+  if (!WINDOWS_RESERVED_STEM.test(safe)) return bounded;
+  const escaped = `_${safe}`;
+  if (escaped.length <= 60) return bounded;
+  const suffix = /\.[a-z0-9]{1,16}$/i.exec(escaped);
+  if (!suffix || bounded.endsWith(suffix[0])) return bounded;
+  const stem = escaped.slice(0, 60 - suffix[0].length).replace(/[\uD800-\uDBFF]$/, '');
   return stem + suffix[0];
 }
 

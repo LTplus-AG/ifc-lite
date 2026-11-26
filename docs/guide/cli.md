@@ -555,7 +555,7 @@ Selectors are unioned. The output carries each selected product's full forward r
 |------|-------------|
 | `--product <id\|GUID>` | Select specific products (repeatable or comma-separated) |
 | `--type <T>` | Select every product of a type |
-| `--storey <GUID\|name\|id>` | Select every product placed under a storey |
+| `--storey <GUID\|name\|id>` | Select the storey and its elements: contained in it or in a space it aggregates (openings and parts follow their host); the placement chain decides only for elements no storey owns |
 | `--detect` | Select the meshes a geometry-triage pass ranks most unusual |
 | `--top <N>` | How many triage hits to keep (default 20, with `--detect`) |
 | `--report` | Print the triage report without extracting (with `--detect`) |

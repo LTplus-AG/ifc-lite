@@ -5,7 +5,7 @@ import { refuseCaptureHeldPick } from '@/lib/viewport-capture';
 import { isGeometryHeld, isGeometryRestoreHeld } from '@/lib/pick-gating';
 import type { EdgeLockInput } from '@ifc-lite/renderer';
 import { EDGE_LOCK_DEFAULTS } from '@/store/constants';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { getGlobalRenderer } from '@/hooks/useBCF';
 import { resolveEntityRef, useViewerStore } from '@/store';
 import { fromRenderTranslation, orthogonalAxis, constrainTranslation, subtractTranslation } from '@/lib/model-placement/translation';
@@ -23,19 +23,35 @@ export function useRepositionPicking(role: PickRole, finish: (role: PickRole) =>
   const [hover, setHover] = useState<PlacementAnchor | null>(null);
   const models = useViewerStore((state) => state.models);
   const instanceRevision = useInstancedSceneRevision(role !== null);
+  const instances = useRef<ReturnType<typeof repositionInstanceIds>>(new Map());
+  // Refresh the inventory without replacing gesture listeners mid-click.
+  useEffect(() => {
+    instances.current = role ? repositionInstanceIds() : new Map();
+  }, [role, models, instanceRevision]);
   useEffect(() => {
     const renderer = getGlobalRenderer(), canvas = renderer?.getCanvas();
     if (!role || !renderer || !canvas) { setHover(null); return; }
     const state = useViewerStore.getState(), preview = state.modelPlacement.preview;
     if (!preview) return;
-    const allowed = new Set<number>();
-    const instances = repositionInstanceIds();
+    const baked = new Set<number>();
     const ctx = pickContext(new Set(preview.before.keys()), reference, state.models);
     const accepts = (id: string) => isEligiblePickModel(role, id, ctx);
     for (const [id, model] of state.models) {
       if (!accepts(id)) continue;
-      for (const entityId of modelEntityIds(model, instances.get(id))) allowed.add(entityId);
+      for (const entityId of modelEntityIds(model)) baked.add(entityId);
     }
+    let currentInstances: typeof instances.current | undefined;
+    let allowed = baked;
+    const allowedIds = () => {
+      if (currentInstances !== instances.current) {
+        currentInstances = instances.current;
+        allowed = new Set(baked);
+        for (const [modelId, ids] of currentInstances) {
+          if (accepts(modelId)) for (const id of ids) allowed.add(id);
+        }
+      }
+      return allowed;
+    };
     let edgeLock: EdgeLockInput = { edge: null, meshExpressId: null, lockStrength: 0 };
     let lastRevision = state.modelPlacement.revision;
     const previousCursor = canvas.style.cursor;
@@ -58,7 +74,7 @@ export function useRepositionPicking(role: PickRole, finish: (role: PickRole) =>
       const hitModel = hitModelId(result, (id) => resolveEntityRef(id).modelId);
       const message = rejectedPickMessage(role, hitModel, pickContext(ctx.moving, reference, current.models),
         current.models.keys(), (modelId) => current.models.get(modelId)?.name ?? modelId,
-        pickableFilter(current.models, current.hiddenEntities, current.isolatedEntities, instances));
+        pickableFilter(current.models, current.hiddenEntities, current.isolatedEntities, instances.current));
       return resolve(message.key, message.params);
     };
     const pick = (event: PointerEvent): PlacementAnchor | null => {
@@ -68,6 +84,7 @@ export function useRepositionPicking(role: PickRole, finish: (role: PickRole) =>
         edgeLock = { edge: null, meshExpressId: null, lockStrength: 0 };
       }
       lastRevision = current.modelPlacement.revision;
+      const allowed = allowedIds();
       const isolatedIds = current.isolatedEntities === null ? allowed
         : new Set([...allowed].filter((id) => current.isolatedEntities?.has(id)));
       const result = cast(event, current, { hiddenIds: current.hiddenEntities, isolatedIds }, edgeLock);
@@ -149,6 +166,6 @@ export function useRepositionPicking(role: PickRole, finish: (role: PickRole) =>
       canvas.removeEventListener('pointerdown', down, true);
       canvas.style.cursor = previousCursor;
     };
-  }, [role, finish, onError, models, reference, instanceRevision]);
+  }, [role, finish, onError, models, reference]);
   return hover;
 }

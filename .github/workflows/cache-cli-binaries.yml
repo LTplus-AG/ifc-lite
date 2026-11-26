@@ -63,6 +63,19 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y gcc-aarch64-linux-gnu
 
+      - name: Verify the release tag matches the crate version
+        if: github.event_name == 'release' && matrix.target == 'linux-x64'
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          version=$(cargo metadata --locked --no-deps --format-version 1 |
+            jq -er '.packages[] | select(.name == "ifc-lite-cache") | .version')
+          if [[ "$RELEASE_TAG" != "cache-cli-v$version" ]]; then
+            echo "::error::Release tag must be cache-cli-v$version"
+            exit 1
+          fi
+
       - name: Install cross
         if: matrix.target == 'linux-x64-musl'
         uses: taiki-e/install-action@b47b3b9ab771927700bcf4ef8a4f79e1d7c9a8cd # cross (snapshot pinned 2026-05)
@@ -95,6 +108,11 @@ jobs:
           if [[ "$RUNNER_OS" == Windows ]]; then
             binary+=.exe
           fi
+          case "$ASSET_TARGET" in
+            linux-x64|darwin-arm64|win32-x64)
+              "target/$RUST_TARGET/release/$binary" --help
+              ;;
+          esac
           archive="ifc-build-cache-$ASSET_TARGET.tar.gz"
           tar -czf "$archive" -C "target/$RUST_TARGET/release" "$binary"
           if command -v sha256sum >/dev/null 2>&1; then
@@ -120,6 +138,8 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: write
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -131,7 +151,52 @@ jobs:
           merge-multiple: true
           path: release-assets
 
-      - name: Attach Verified Assets and Record Cache Format
+      - name: Verify Archives and Plan Missing Assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_ID: ${{ github.event.release.id }}
+        run: |
+          cd release-assets
+          shopt -s nullglob
+          archives=(ifc-build-cache-*.tar.gz)
+          sidecars=(ifc-build-cache-*.tar.gz.sha256)
+          if (( ${#archives[@]} != 6 || ${#sidecars[@]} != 6 )); then
+            echo "::error::Expected six Cache CLI archives and six checksum sidecars"
+            exit 1
+          fi
+          for archive in "${archives[@]}"; do
+            sha256sum --strict --check -- "$archive.sha256"
+          done
+          existing=$(gh api --paginate --slurp "repos/$GH_REPO/releases/$RELEASE_ID/assets")
+
+          : > "$RUNNER_TEMP/cache-cli-missing-assets.txt"
+          for file in "${archives[@]}" "${sidecars[@]}"; do
+            digest=$(jq -r --arg name "$file" '
+              [.[][] | select(.name == $name)] |
+              if length == 0 then "missing"
+              elif length == 1 and .[0].state == "uploaded" then .[0].digest // "unknown"
+              else "unknown" end
+            ' <<< "$existing")
+            if [[ "$digest" == missing ]]; then
+              printf '%s\n' "$file" >> "$RUNNER_TEMP/cache-cli-missing-assets.txt"
+            else
+              checksum=$(sha256sum -- "$file")
+              if [[ "$digest" != "sha256:${checksum%% *}" ]]; then
+                echo "::error::Existing release asset has a different or unavailable digest: $file"
+                exit 1
+              fi
+            fi
+          done
+
+      - name: Attest Cache CLI Archives
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: release-assets/ifc-build-cache-*.tar.gz
+          create-storage-record: false
+
+      - name: Attach Missing Assets and Record Cache Format
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -145,8 +210,10 @@ jobs:
           fi
 
           cd release-assets
-          sha256sum --strict --check -- *.sha256
-          gh release upload "$RELEASE_TAG" --clobber -- *.tar.gz *.tar.gz.sha256
+          mapfile -t missing < "$RUNNER_TEMP/cache-cli-missing-assets.txt"
+          if (( ${#missing[@]} > 0 )); then
+            gh release upload "$RELEASE_TAG" -- "${missing[@]}"
+          fi
 
           note="Cache format written by ifc-build-cache: v$format_version."
           gh release view "$RELEASE_TAG" --json body --jq '.body // ""' > release-notes.md

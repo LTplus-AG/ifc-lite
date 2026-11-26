@@ -6,7 +6,19 @@ The format is specified in [`packages/cache/SPEC.md`](https://github.com/LTplus-
 
 ## Installation
 
-Prebuilt binaries are attached to [GitHub releases tagged `cache-cli-v*`](https://github.com/LTplus-AG/ifc-lite/releases?q=cache-cli-v). Download the tarball and its `.sha256` sidecar for your platform, verify the checksum, then extract the binary. The release notes give the cache format version written by that build.
+Prebuilt binaries are attached to [GitHub releases tagged `cache-cli-v*`](https://github.com/LTplus-AG/ifc-lite/releases?q=cache-cli-v). Download the `.tar.gz` for your platform and verify its build provenance with the GitHub CLI before extracting it. The Windows archive contains `ifc-build-cache.exe`. The release notes give the cache format version written by that build.
+
+Set `tag` and `archive` to the release tag and downloaded filename for your platform:
+
+```sh
+tag=cache-cli-v30.0.0
+archive=ifc-build-cache-linux-x64.tar.gz
+gh attestation verify "$archive" --repo LTplus-AG/ifc-lite \
+  --signer-workflow LTplus-AG/ifc-lite/.github/workflows/cache-cli-binaries.yml \
+  --source-ref "refs/tags/$tag"
+```
+
+The published `.sha256` sidecar checks transfer integrity. CI consumers must verify the attestation or check the archive against a SHA-256 digest pinned in their own repository, as the `setup-oci-registries` action does for zot and oras.
 
 The crate is not published to crates.io. Cargo can build it from a local checkout or directly from this repository.
 

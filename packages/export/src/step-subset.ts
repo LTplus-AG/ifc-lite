@@ -215,17 +215,6 @@ export function buildSubset(seedProducts: Set<number>, parsed: ParsedStep): Subs
   const keep = new Set<number>();
   forwardClosure(seedProducts, parsed, keep);
 
-  // Context roots: IfcProject (always — units/contexts hang off it even when
-  // nothing selected reaches it) plus every spatial ancestor of what is
-  // already kept, closed forward. Backward closure, not a type list, so an
-  // unrelated storey/space is never dragged in and a product under an
-  // IfcSpace or IFC4X3 facility class keeps its parent too (#4124).
-  const rootSeeds = spatialAncestors(keep, parsed.instances);
-  for (const inst of parsed.instances.values()) {
-    if (inst.type === 'IFCPROJECT') rootSeeds.push(inst.id);
-  }
-  forwardClosure(rootSeeds, parsed, keep);
-
   // Opening (void) + filler relations. These point FROM the relation TO the host
   // wall (RelatingBuildingElement), so walking only the wall's forward closure
   // never reaches its openings — the isolated wall would lose every window/door
@@ -261,11 +250,19 @@ export function buildSubset(seedProducts: Set<number>, parsed: ParsedStep): Subs
       grew = true;
     }
   }
-  // A filler or projection the fixpoint pulled in may sit in a storey or space
-  // nothing else keeps: keep its spatial ancestors too, or its containment is
-  // dropped and it lands outside the spatial tree. Ancestors are spatial
-  // structures, never feature anchors, so the fixpoint needs no second run.
-  forwardClosure(spatialAncestors(keep, parsed.instances), parsed, keep);
+
+  // Context roots: IfcProject (always — units/contexts hang off it even when
+  // nothing selected reaches it) plus every spatial ancestor of what is
+  // kept, closed forward. Backward closure, not a type list, so an unrelated
+  // storey/space is never dragged in and a product under an IfcSpace or IFC4X3
+  // facility class keeps its parent too (#4124). After the fixpoint, so a
+  // filler or projection it pulled in keeps its own storey; ancestors are
+  // spatial structures, never feature anchors, so the fixpoint needs none.
+  const rootSeeds = spatialAncestors(keep, parsed.instances);
+  for (const inst of parsed.instances.values()) {
+    if (inst.type === 'IFCPROJECT') rootSeeds.push(inst.id);
+  }
+  forwardClosure(rootSeeds, parsed, keep);
 
   // Spatial relationships that connect kept products into the tree, each
   // relation's member SET filtered down to the kept ids rather than the whole

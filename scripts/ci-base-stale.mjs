@@ -223,7 +223,6 @@ function saveCache(path, store, liveHeads, lastMode) {
     prMeasurements: live(store.prMeasurements),
     prFiles: live(store.prFiles),
     posted: live(store.posted),
-    shadowRead: live(store.shadowRead),
     lastMode,
   }));
 }
@@ -238,6 +237,8 @@ function finish(opts, records, extra) {
   const body = `${header}${lines.join('\n') || '- no PR evaluated'}\n\nAPI calls: ${extra.stats.calls}${allowed} (${extra.stats.downloads} downloads, ${extra.stats.cacheHits} cache hits)\n`;
   console.log(body);
   if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, body);
+  // test.yml names the in-run upload after the mode the script parsed.
+  if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `gate-mode=${extra.gateMode}\n`);
   if (opts.jsonOut) writeFileSync(opts.jsonOut, records.map((r) => JSON.stringify({ ...r, ...extra, stats: undefined })).join('\n') + (records.length ? '\n' : ''));
 }
 
@@ -273,6 +274,18 @@ export function run(opts, env = process.env, makeIo = createIo) {
     return 0;
   }
   const targetUrl = env.GITHUB_RUN_ID ? `${env.GITHUB_SERVER_URL ?? 'https://github.com'}/${repo}/actions/runs/${env.GITHUB_RUN_ID}` : undefined;
+
+  // Shadow sweep: the heads an in-run step judged with the gate on. A failed
+  // lookup reads every head instead (null), the safe direction.
+  let onHeads = new Set();
+  if (sweep && gateMode !== 'on' && !opts.dryRun && cache?.lastMode === 'shadow') {
+    try {
+      onHeads = io.inRunOnHeads();
+    } catch (err) {
+      console.log(`::warning title=base-stale::could not list in-run verdicts posted with the gate on (${err.message.split('\n')[0]}); reading every head's status`);
+      onHeads = null;
+    }
+  }
 
   let targets;
   if (sweep) {
@@ -328,18 +341,15 @@ export function run(opts, env = process.env, makeIo = createIo) {
       try {
         // Shadow reads the existing status only where `on` may have left a
         // non-success: always for a single PR; in a sweep, for every head on
-        // the first complete sweep after the gate left `on`; and otherwise for
-        // a head no shadow sweep has read yet (the in-run step may have posted
-        // on it while the gate was briefly `on` between two sweeps; its posts
-        // are not in `posted`), a head judged stale (what the in-run step
-        // would have failed), or a head this workflow last posted a
-        // non-success on. A settled shadow sweep reads only new or stale heads.
+        // the first complete sweep after the gate left `on`, then for heads
+        // this workflow last posted a non-success on, and for heads whose own
+        // Test run judged with the gate `on` (those posts are not in this
+        // cache: a brief `on` between two sweeps leaves only that trace).
+        // A settled shadow sweep reads no statuses at all.
         const leftOn = cache?.lastMode !== 'shadow';
-        const seen = io.store.shadowRead?.[headSha] === true;
-        const mayHold = opts.mode !== 'sweep' || leftOn || !seen || rec.verdict === 'stale' ||
+        const mayHold = opts.mode !== 'sweep' || leftOn || onHeads === null || onHeads.has(headSha) ||
           (io.store.posted[headSha] && io.store.posted[headSha] !== 'success');
         const existing = gateMode === 'on' || !mayHold ? null : io.existingStatus(headSha, STATUS_CONTEXT);
-        if (gateMode !== 'on' && mayHold) (io.store.shadowRead ??= {})[headSha] = true;
         status = statusFor(rec, gateMode, existing);
         if (status) io.postStatus(headSha, STATUS_CONTEXT, status, targetUrl);
       } catch (err) {

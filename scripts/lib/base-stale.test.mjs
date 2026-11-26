@@ -108,10 +108,13 @@ bt('a PR that edits ceilings is unknown: its merged ceilings are not main\'s', (
   assert.equal(perf(1, { editsCeilings: true }).verdict, UNKNOWN);
 });
 
-bt('a stale latest measurement is named when main was last measured behind its tip', () => {
+bt("a pass against main measured behind its tip is unknown, not fresh: the tip's drift is unmeasured", () => {
   const r = perf(13000000, { behindTip: 3 });
-  assert.equal(r.verdict, FRESH);
-  assert.ok(r.reasons.some((x) => /3 commit\(s\) behind its tip/.test(x)));
+  assert.equal(r.verdict, UNKNOWN);
+  assert.ok(r.reasons.some((x) => x.endsWith("3 commit(s) behind main's unmeasured tip")), r.reasons.join(' | '));
+  assert.ok(r.reasons.some((x) => x.endsWith('3 commit(s) behind its tip')));
+  // Behind the tip and already over: still stale, the measured drift alone proves it.
+  assert.equal(perf(ALLOWED - 100, { atBase: 13000000, latest: 13000101, behindTip: 3 }).verdict, STALE);
 });
 
 const RUST = ['rust/**', 'Cargo.toml', 'Cargo.lock', 'apps/server/**'];

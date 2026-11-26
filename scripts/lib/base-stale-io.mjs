@@ -28,6 +28,8 @@ import { loadMeasuredFile, validateCeilingFile } from '../perf-ratchet/ceilings.
 import { gh } from './gh.mjs';
 
 export const MEASURED_ARTIFACTS = ['perf-ratchet-measured', 'perf-ratchet-measured-native'];
+/** test.yml's upload of an in-run verdict judged with CI_BASE_STALE_GATE=on. */
+export const IN_RUN_ON_ARTIFACT = 'base-stale-verdicts-pr-run-on';
 const NEGATIVE_TTL_MS = 2 * 60 * 60 * 1000;
 const COMPARE_FILE_CAP = 300;
 const COMPARE_COMMIT_CAP = 250;
@@ -53,6 +55,16 @@ export function isOwnRun(workflowRun) {
   return Boolean(workflowRun?.id) && workflowRun.repository_id !== undefined && workflowRun.head_repository_id === workflowRun.repository_id;
 }
 
+/**
+ * A `compare` response to main's moved paths. `compare` caps files at 300 and
+ * drops them past 250 commits: that is reported as capped, never as "nothing
+ * moved". The cap counts entries, not the two paths a rename expands to.
+ */
+export function compareMoved(cmp) {
+  const capped = !cmp.files || cmp.files.length >= COMPARE_FILE_CAP || cmp.total_commits >= COMPARE_COMMIT_CAP;
+  return { files: cmp.files ? changedPaths(cmp.files) : [], commits: cmp.total_commits, capped };
+}
+
 /** `pulls/<n>/files` entries to paths: a rename counts at both ends, or a move out of a crate hides it. */
 export function changedPaths(entries) {
   return entries.flatMap((f) => (f.previous_filename ? [f.filename, f.previous_filename] : [f.filename]));
@@ -65,7 +77,7 @@ export function slim(measured) {
 
 export function createIo({ repo, cwd = process.cwd(), cache = null, now = () => Date.now() }) {
   const stats = { calls: 0, downloads: 0, cacheHits: 0 };
-  const store = { mainMeasurements: {}, prMeasurements: {}, prFiles: {}, posted: {}, shadowRead: {}, ...(cache ?? {}) };
+  const store = { mainMeasurements: {}, prMeasurements: {}, prFiles: {}, posted: {}, ...(cache ?? {}) };
   let budget = Infinity;
 
   /** Count one request against this run's allowance, or refuse it. */
@@ -208,11 +220,7 @@ export function createIo({ repo, cwd = process.cwd(), cache = null, now = () => 
     }
     const cmp = api(`repos/${repo}/compare/${base}...${tip}`, `main's changes since ${base}`);
     if (cmp.status !== 'ahead' && cmp.status !== 'identical') return null;
-    const files = cmp.files ? changedPaths(cmp.files) : null;
-    // `compare` caps files at 300 and drops them past 250 commits: report that
-    // as capped, never as "nothing moved".
-    const capped = files === null || files.length >= COMPARE_FILE_CAP || cmp.total_commits >= COMPARE_COMMIT_CAP;
-    return { files: files ?? [], commits: cmp.total_commits, capped };
+    return compareMoved(cmp);
   }
 
   /**
@@ -245,6 +253,7 @@ export function createIo({ repo, cwd = process.cwd(), cache = null, now = () => 
       out.set(data.family, data);
     };
     if (haveCommit(tip)) {
+      // The trailing slash lists the directory's entries, not the directory.
       for (const p of git(['ls-tree', '--name-only', tip, 'tests/perf-ratchets/']).split('\n').filter((n) => n.endsWith('.json'))) {
         read(p, git(['show', `${tip}:${p}`]));
       }
@@ -291,6 +300,17 @@ export function createIo({ repo, cwd = process.cwd(), cache = null, now = () => 
     return list.filter((p) => !p.isDraft);
   }
 
+  /**
+   * PR heads whose own Test run judged with the gate `on`: that step posts
+   * statuses this workflow's cache never sees, so they are the heads a shadow
+   * sweep must read to release (test.yml names the upload after the mode).
+   * One call, newest 100; only this repository's runs.
+   */
+  function inRunOnHeads() {
+    const found = api(`repos/${repo}/actions/artifacts?name=${IN_RUN_ON_ARTIFACT}&per_page=100`, 'the in-run verdicts posted with the gate on');
+    return new Set((found.artifacts ?? []).filter((a) => isOwnRun(a.workflow_run) && a.workflow_run.head_sha).map((a) => a.workflow_run.head_sha));
+  }
+
   function coreRemaining() {
     // `rate_limit` does not count against the limit it reports.
     return gh(['api', 'rate_limit'], 'the API rate limit').resources?.core?.remaining ?? null;
@@ -318,5 +338,6 @@ export function createIo({ repo, cwd = process.cwd(), cache = null, now = () => 
     postStatus,
     queueCandidates,
     coreRemaining,
+    inRunOnHeads,
   };
 }

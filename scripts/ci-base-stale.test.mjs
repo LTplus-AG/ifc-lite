@@ -24,7 +24,7 @@ const core = await load('./lib/base-stale.mjs');
 const ioMod = await load('./lib/base-stale-io.mjs');
 const { callAllowance, CALL_CAP, evaluatePr, MIN_ALLOWANCE, loadCache, loadFilterGlobs, parseArgs, RATE_FLOOR, readFilterGlobs, run } = cli ?? {};
 const { prRelevance } = core ?? {};
-const { BudgetError, changedPaths, createIo, isOwnRun } = ioMod ?? {};
+const { BudgetError, changedPaths, compareMoved, createIo, isOwnRun } = ioMod ?? {};
 function ct(name, body) {
   test(name, () => {
     assert.ok(cli && core && ioMod, 'scripts/ci-base-stale.mjs, scripts/lib/base-stale.mjs or scripts/lib/base-stale-io.mjs is absent');
@@ -194,6 +194,7 @@ function runFake({ gate, cacheData = null, prs = [STALE_PR], existing = 'failure
       mainTip: () => 'tip00000001',
       ceilingsAt: realCeilings,
       setBudget: () => {},
+      inRunOnHeads: () => new Set(),
       coreRemaining: remaining,
       queueCandidates: () => prs,
       existingStatus: (sha) => { reads.push(sha); return existing; },
@@ -223,26 +224,35 @@ ct('run, on: a stale labelled PR gets a failure status; a fork gets nothing', ()
   assert.equal(posts[0].state, 'failure');
 });
 
-ct('run, shadow: a settled sweep reads no status of a head it already read that is not stale', () => {
-  const fresh = { prMeasurement: () => ({ runId: 7, mergeSha: 'cafe0000001', testedBase: 'base0000001', families: [fam(400)] }) };
-  const { posts, reads, saved } = runFake({ gate: undefined, cacheData: { version: 1, lastMode: 'shadow', shadowRead: { head5: true } }, ioOver: fresh });
+ct('run, shadow: a settled sweep reads no status and posts nothing, even for a stale PR', () => {
+  const { posts, reads, saved } = runFake({ gate: undefined, cacheData: { version: 1, lastMode: 'shadow' } });
   assert.deepEqual(posts, []);
   assert.deepEqual(reads, []);
   assert.equal(saved.lastMode, 'shadow');
 });
 
-ct('run, shadow: a settled sweep still reads a new head, and a stale one, and releases what it finds', () => {
-  // New head: the in-run step may have posted on it while the gate was
-  // briefly `on` between two sweeps, so the shadow cache cannot vouch for it.
+ct('run, shadow: a head whose own run judged with the gate on is read and released, whatever its verdict now', () => {
+  // The in-run step posted a failure during a brief `on` between two shadow
+  // sweeps; the head has since turned fresh. Only the `-on` upload records it.
   const fresh = { prMeasurement: () => ({ runId: 7, mergeSha: 'cafe0000001', testedBase: 'base0000001', families: [fam(400)] }) };
-  const first = runFake({ gate: 'shadow', cacheData: { version: 1, lastMode: 'shadow' }, ioOver: fresh });
-  assert.deepEqual(first.reads, ['head5']);
-  assert.equal(first.posts[0].state, 'success');
-  assert.equal(first.saved.shadowRead.head5, true);
-  // Already read but stale: read again, because that is what `on` would fail.
-  const stale = runFake({ gate: 'shadow', cacheData: { version: 1, lastMode: 'shadow', shadowRead: { head5: true } }, existing: null });
-  assert.deepEqual(stale.reads, ['head5']);
-  assert.deepEqual(stale.posts, []);
+  const second = { ...STALE_PR, number: 7, headRefOid: 'head7' };
+  const { reads, posts } = runFake({
+    gate: 'shadow',
+    cacheData: { version: 1, lastMode: 'shadow' },
+    prs: [STALE_PR, second],
+    ioOver: { ...fresh, inRunOnHeads: () => new Set(['head7']) },
+  });
+  assert.deepEqual(reads, ['head7']);
+  assert.deepEqual(posts.map((p) => [p.sha, p.state]), [['head7', 'success']]);
+});
+
+ct('run, shadow: when the in-run lookup fails, every head is read (the safe direction)', () => {
+  const { reads } = runFake({
+    gate: 'shadow',
+    cacheData: { version: 1, lastMode: 'shadow' },
+    ioOver: { inRunOnHeads: () => { throw new Error('HTTP 502'); } },
+  });
+  assert.deepEqual(reads, ['head5']);
 });
 
 ct('run, rollback: the first shadow sweep after `on` releases a failure the gate left', () => {
@@ -379,4 +389,14 @@ ct('io: a file main moved out of a crate still counts for that crate (local git,
   git('commit', '-qm', 'move');
   const moved = createIo({ repo: 'o/r', cwd: dir }).movedSince(base, git('rev-parse', 'HEAD'));
   assert.deepEqual([...moved.files].sort(), ['docs/a.rs', 'rust/core/src/a.rs']);
+});
+
+ct('io: the compare cap counts entries, not the two paths a rename expands to', () => {
+  const renames = (n) => Array.from({ length: n }, (_, i) => ({ filename: `rust/b/src/f${i}.rs`, previous_filename: `rust/a/src/f${i}.rs` }));
+  const under = compareMoved({ files: renames(200), total_commits: 4 });
+  assert.equal(under.files.length, 400);
+  assert.equal(under.capped, false, '200 entries is under the 300-entry cap');
+  assert.equal(compareMoved({ files: renames(300), total_commits: 4 }).capped, true);
+  assert.equal(compareMoved({ files: [], total_commits: 250 }).capped, true);
+  assert.equal(compareMoved({ total_commits: 1 }).capped, true, 'no file list is no answer');
 });

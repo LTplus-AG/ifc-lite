@@ -4247,12 +4247,14 @@ jobs:
       # The PR-side half of the shadow evidence (base-stale.yml uploads the
       # sweep's): one JSONL row per evaluation, the same shape. Every exit-0
       # path of the script writes the file, so its absence is a harness fault.
+      # Named after the mode the script parsed: a `-on` upload is how a later
+      # shadow sweep finds the statuses this step posted (rollback).
       - name: Upload the base-stale verdict
         if: always() && steps.base-stale.outcome == 'success'
         continue-on-error: true
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: base-stale-verdicts-pr-run
+          name: base-stale-verdicts-pr-run-${{ steps.base-stale.outputs.gate-mode }}
           path: ${{ runner.temp }}/base-stale-verdicts.jsonl
           retention-days: 30
           if-no-files-found: error

@@ -160,6 +160,14 @@ export function evaluatePerf({ relevant, editsCeilings = false, prMeasured, test
             `${id}: PR ${pr} on ${short(testedBase)}, main ${drift >= 0 ? '+' : ''}${drift} since (to ${short(mainLatest.sha)}); ` +
             `projected ${projected} > allowed ${allowed} by ${projected - allowed}`,
         });
+      } else if (mainLatest.behindTip > 0) {
+        // Main's tip is not measured yet (a sweep can run before its upload):
+        // a pass against an older main is not a verdict on current main.
+        rows.push({
+          ...row,
+          verdict: UNKNOWN,
+          reason: `${id}: projected ${projected} <= allowed ${allowed} as of ${short(mainLatest.sha)}, ${mainLatest.behindTip} commit(s) behind main's unmeasured tip`,
+        });
       } else {
         const note = projected > entry.ceiling ? 'within tolerance' : 'at or under ceiling';
         rows.push({ ...row, verdict: FRESH, reason: `${id}: projected ${projected} <= allowed ${allowed}, ${allowed - projected} to spare (${note})` });

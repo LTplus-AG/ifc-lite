@@ -7,7 +7,7 @@
  * tests can reach them without making them public API.
  */
 
-import { createHash } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { CliOptions } from './cli-args.js';
@@ -41,17 +41,18 @@ export function anonymousHttpScope(opts: CliOptions): AuthScope {
  * the server's scope; `--read-only-token` gets read scope. A token given
  * under both flags keeps the narrower scope.
  *
- * Each token gets its own `user`, `token-` plus a hash prefix of the token.
- * The HTTP transport binds a session to its scope by content, so without
- * one, two tokens with equal scopes could use each other's sessions. The
- * user is also the principal of durable state (the BCF publication journal,
- * layer authorship), so it comes from the token itself: stable across
- * restarts and argv order, never inherited by a different token.
+ * Each token gets its own `session`, a random id for this process. The
+ * HTTP transport binds a session to its scope by content, so without one,
+ * two tokens with equal scopes could use each other's sessions. It is not
+ * a `user`: the user is the principal of durable state (the BCF publication
+ * journal, layer authorship), and nothing here can name one that is stable
+ * across restarts without either reusing argv order (another token would
+ * inherit it) or writing a hash of the secret into shared files.
  */
 export function tokenScopes(opts: CliOptions): Map<string, AuthScope> {
   const tokens = new Map<string, AuthScope>();
   for (const t of opts.tokens) tokens.set(t, serverScope(opts));
   for (const t of opts.readOnlyTokens) tokens.set(t, readOnlyScope());
-  for (const [token, scope] of tokens) scope.user = `token-${createHash('sha256').update(token).digest('hex').slice(0, 16)}`;
+  for (const scope of tokens.values()) scope.session = `token-${randomUUID()}`;
   return tokens;
 }

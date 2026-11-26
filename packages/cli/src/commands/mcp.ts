@@ -19,7 +19,7 @@ export async function mcpCommand(args: string[]): Promise<void> {
   // Typed at a terminal with nothing else: show usage rather than wait for
   // JSON-RPC on stdin that a person will never send.
   if (args.length === 0 && (process.stdin.isTTY ?? false)) {
-    process.stderr.write(mcpHelpText(IDENTITY));
+    process.stdout.write(mcpHelpText(IDENTITY));
     return;
   }
   await runMcpCli(args, IDENTITY);

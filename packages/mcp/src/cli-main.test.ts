@@ -163,13 +163,12 @@ describe('tokenScopes (#11534)', () => {
   });
 
   it('gives each token its own identity, so equal scopes do not share sessions', () => {
-    const users = [...tokenScopes(parseArgs(['--token', 'a', '--token', 'b', '--read-only-token', 'r'])).values()].map((s) => s.user);
-    expect(new Set(users).size).toBe(3);
-    // Derived from the token, not its position: the principal of durable state
-    // (BCF journal, layer authorship) must not pass to another token on restart.
-    const reordered = tokenScopes(parseArgs(['--token', 'b', '--token', 'a']));
-    expect(reordered.get('a')?.user).toBe(users[0]);
-    expect(users[0]).toMatch(/^token-[0-9a-f]{16}$/);
+    const scopes = [...tokenScopes(parseArgs(['--token', 'a', '--token', 'b', '--read-only-token', 'r'])).values()];
+    expect(new Set(scopes.map((s) => s.session)).size).toBe(3);
+    // No principal: one derived from argv order would pass to another token
+    // on restart, and one derived from the token would put its hash in
+    // durable files (BCF journal, layer authorship).
+    expect(scopes.every((s) => s.user === undefined)).toBe(true);
   });
 
   it('narrows every token under --read-only, and a doubly listed token to read', () => {

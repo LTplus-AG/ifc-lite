@@ -1920,7 +1920,7 @@ Use `ifc-lite` CLI for BIM/IFC file operations:
 - `ifc-lite eval <file> "<expr>"` - evaluate SDK expressions
 - `ifc-lite ask <file> "<question>"` - natural language queries
 - `ifc-lite schema` - discover all SDK methods
-- `ifc-lite mcp <file>` - start an MCP server on the model
+- `ifc-lite mcp [files…]` - start an MCP server (files load over stdio; HTTP sessions start empty)
 
 Always use `--json` for machine-readable output.
 Run `ifc-lite schema` to see the full API before writing eval expressions.
@@ -1978,7 +1978,7 @@ The `semantic` command reads JSON/SPARQL providers, generates shared profile art
 | `analyze` | Query + visualize analysis results |
 | `lod` | Generate lightweight LOD artifacts |
 | `simplify` | Demesher: simplify meshes, write lighter IFC |
-| `mcp` | Start an MCP server bound to one or more IFC files |
+| `mcp` | Start an MCP server (files load over stdio) |
 | `ext` | Manage IFClite extensions (Phase 0 — validate, init) |
 | `layer` | Layered change tracking over a local store (.ifc-lite/) |
 | `ref` | Manage named refs in the layer store |

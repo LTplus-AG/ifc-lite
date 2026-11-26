@@ -7,7 +7,7 @@ Fix the MCP server's command line and read-only mode ([#11534](https://github.co
 
 - `model_load` and `model_unload` need `read` scope instead of `mutate`, so `--read-only` servers and read-only tokens can open models. `--allow` still bounds which files. `model_load` refuses an id outside the token's model allowlist.
 - `ifc-lite-mcp --transport http` honours `--allow`. Breaking: both entry points now refuse file arguments over HTTP (exit code 2) instead of ignoring them: each HTTP session starts empty and loads models with `model_load`. Drop the files from such configs.
-- `--token` is repeatable as documented, and the new repeatable `--read-only-token` registers read-scope tokens. Each token is its own principal, so one cannot use another's session. A value flag with no value (`--token --read-only`) is a usage error instead of swallowing the next flag.
+- `--token` is repeatable as documented, and the new repeatable `--read-only-token` registers read-scope tokens. A token cannot use another token's session. A value flag with no value (`--token --read-only`) is a usage error instead of swallowing the next flag.
 - An HTTP server with no token no longer gives every caller `admin` scope. Anonymous callers get `read`, `validate`, `mutate` and `export` (read scopes only under `--read-only`); `admin` needs a `--token`. stdio is unchanged.
 - Unknown flags print a warning on stderr. `--federate`, which never did anything, now warns too.
 - `ifc-lite mcp` runs the same code as `ifc-lite-mcp` through the new `@ifc-lite/mcp/cli-main` subpath (`runMcpCli`, `mcpHelpText`), so it gains the bridge flags, `--allow-origin` and the new token flags. With no files it starts an empty session instead of exiting.

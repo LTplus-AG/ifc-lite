@@ -31,15 +31,22 @@ export interface LoadIfcOptions {
 /** Load IFC bytes and retain the opened file identity for source-write protection. */
 export async function loadIfcModel(filePath: string, opts: LoadIfcOptions = {}): Promise<LoadedModel> {
   const absolute = resolve(filePath);
-  const roots = opts.allowedPaths ?? [];
-  const inRoots = (path: string) => roots.some((p) => path === p || path.startsWith(p + sep));
-  if (roots.length > 0 && !inRoots(absolute)) throw new Error(`Path '${absolute}' is outside the allowed roots`);
+  // Roots without a trailing separator, so `/data/` and `/` match too.
+  const roots = (opts.allowedPaths ?? []).map((p) => (p.length > 1 && p.endsWith(sep) ? p.slice(0, -1) : p));
+  const inRoots = (path: string, of: readonly string[]) =>
+    of.some((p) => path === p || path.startsWith(p.endsWith(sep) ? p : p + sep));
+  if (roots.length > 0 && !inRoots(absolute, roots)) throw new Error(`Path '${absolute}' is outside the allowed roots`);
 
   const canonical = await realpath(absolute);
-  // Callers pass roots they already resolved (model_load and the CLI pass the
-  // checked real path itself). If the path resolves elsewhere now, something
-  // was swapped since that check: refuse rather than follow it.
-  if (roots.length > 0 && !inRoots(canonical)) throw new Error(`Path '${absolute}' is outside the allowed roots`);
+  // Again on the real path, against the real roots: a symlink in the path
+  // (or swapped in since the caller checked it) must not lead outside them.
+  if (roots.length > 0) {
+    const realRoots = await Promise.all(roots.map((p) => realpath(p).catch((err: NodeJS.ErrnoException) => {
+      if (err.code === 'ENOENT') return p; // a root that does not exist contains nothing real
+      throw err;
+    })));
+    if (!inRoots(canonical, realRoots)) throw new Error(`Path '${absolute}' is outside the allowed roots`);
+  }
   // Refuse special files before opening them: opening a device can have side
   // effects, and a FIFO with no writer blocks. Then open without blocking and
   // without following a symlink swapped in since realpath, and check the

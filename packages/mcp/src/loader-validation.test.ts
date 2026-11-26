@@ -2,12 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 import { loadIfcModel, loadIfcModelFromBytes } from './loader.js';
+
+const MINIMAL = "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCWALL('0000000000000000000001',$,'w',$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n";
 
 // PR #7632: share input errors while preserving the existing recovery loader.
 describe('MCP shared loading validation', () => {
@@ -47,6 +49,27 @@ describe('MCP shared loading validation', () => {
       await expect(loadIfcModel(fifo)).rejects.toThrow(/not a regular file/);
     } finally {
       await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  // #11534: --allow is checked on the real path too, so a symlink inside a
+  // root cannot lead outside it; a root spelled through a link still works.
+  it.skipIf(process.platform === 'win32')('checks allowed roots against real paths', async () => {
+    const base = await mkdtemp(join(tmpdir(), 'ifc-lite-roots-'));
+    try {
+      const root = join(base, 'root');
+      const outside = join(base, 'outside');
+      await mkdir(root);
+      await mkdir(outside);
+      await writeFile(join(outside, 'm.ifc'), MINIMAL);
+      await writeFile(join(root, 'in.ifc'), MINIMAL);
+      await symlink(join(outside, 'm.ifc'), join(root, 'escape.ifc'));
+      await expect(loadIfcModel(join(root, 'escape.ifc'), { allowedPaths: [root] })).rejects.toThrow(/outside the allowed roots/);
+      // A root reached through a symlinked directory, and with a trailing separator.
+      await symlink(root, join(base, 'linked'));
+      await expect(loadIfcModel(join(base, 'linked', 'in.ifc'), { allowedPaths: [join(base, 'linked') + '/'] })).resolves.toBeDefined();
+    } finally {
+      await rm(base, { recursive: true, force: true });
     }
   });
 });

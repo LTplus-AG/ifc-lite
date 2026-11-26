@@ -13,7 +13,7 @@ import { varyingTarget } from './schema-converter-structural-varying.js';
 import { DocumentLinks } from './schema-converter-document-links.js';
 import { SourceRecords } from './schema-converter-structural-source.js';
 import { describeEntry } from './schema-conversion-loss-description.js';
-import { materialPropertiesNotWritten } from './schema-converter-material-referent.js';
+import { IFC5_MATERIAL_LAYOUT_MISSING, materialPropertiesNotWritten, omitsIfc5MaterialProperties } from './schema-converter-material-referent.js';
 import { EMPTY_SOURCE_BYTES, type IfcDataStore } from '@ifc-lite/parser';
 import {
   convertEntityType,
@@ -81,8 +81,8 @@ export function classifyEntityTypeConversion(
 ): EntityConversionInfo {
   const upper = entityType.toUpperCase();
   if (fromSchema === toSchema) return { targetType: upper, kind: 'identity', droppedAttributes: [] };
-
   const newType = convertEntityType(upper, fromSchema, toSchema);
+  if (omitsIfc5MaterialProperties(upper, fromSchema, toSchema)) return { targetType: newType, kind: 'lossy', droppedAttributes: [] };
   const srcAttrs = attrNameTable(fromSchema)?.get(upper);
   // #9668: stiffness fields survive by semantic position and unit, despite
   // renamed Linear/Translational attributes and SELECT wrappers.
@@ -381,6 +381,7 @@ export function analyzeConversionLoss(
   }
   const describe = (entry: ConversionLossEntry) => {
     if (dependent?.has(entry.expressIds[0])) return describeEntry(entry, `a required ${toSchema} attribute lost a reference`);
+    if (omitsIfc5MaterialProperties(entry.sourceType, fromSchema, toSchema)) return describeEntry(entry, IFC5_MATERIAL_LAYOUT_MISSING);
     const sourceKnown = attrNameTable(fromSchema)?.has(entry.sourceType) ?? false;
     const target = attrNameTable(toSchema);
     const route = missingTypeRoute(entry.sourceType, fromSchema, toSchema, sourceKnown, !target || target.has(entry.targetType));

@@ -23,11 +23,11 @@ import {
   useReactFlow,
   type Connection,
   type Edge,
-  type EdgeChange,
+  type OnEdgesChange,
   type FinalConnectionState,
   type HandleType,
   type IsValidConnection,
-  type NodeChange,
+  type OnNodesChange,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { isAssignable, type FlowDocument, type NodeRegistry, type NodeReport } from '@ifc-lite/flow';
@@ -67,7 +67,7 @@ export function FlowCanvas(props: FlowCanvasProps) {
   /** Set while an edge endpoint is being dragged, so a drop on empty canvas can delete it. */
   const reconnected = useRef(false);
 
-  const onNodesChange = useCallback((changes: NodeChange<CanvasNode>[]) => {
+  const onNodesChange = useCallback<OnNodesChange<CanvasNode>>((changes) => {
     let next = doc;
     let selection: string | null | undefined;
     for (const c of changes) {
@@ -85,7 +85,7 @@ export function FlowCanvas(props: FlowCanvasProps) {
     }
   }, [doc, onDocChange, onSelect]);
 
-  const onEdgesChange = useCallback((changes: EdgeChange<CanvasEdge>[]) => {
+  const onEdgesChange = useCallback<OnEdgesChange<CanvasEdge>>((changes) => {
     let next = doc;
     for (const c of changes) {
       if (c.type === 'select') {
@@ -188,7 +188,6 @@ export function FlowCanvas(props: FlowCanvasProps) {
       maxZoom={2}
       deleteKeyCode={['Backspace', 'Delete']}
       proOptions={{ hideAttribution: true }}
-      colorMode="system"
     >
       <Background gap={16} size={1} />
       <Controls showInteractive={false} />

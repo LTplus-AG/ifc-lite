@@ -2249,6 +2249,7 @@ export class Scene {
     this.dropAllPartialCaches();
     this.geometryReleased = true;
     this.ephemeralStreamingMode = false;
+    for (const listener of this.hostEvictionListeners) listener();
   }
 
   /**

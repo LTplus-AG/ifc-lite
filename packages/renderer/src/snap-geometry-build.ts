@@ -12,7 +12,7 @@
 
 import type { MeshData } from '@ifc-lite/geometry';
 import type { Vec3 } from './raycaster.js';
-import { snapToleranceFor, WeldBuild, type WeldedVertices } from './snap-weld.js';
+import { scanSnapTolerance, WeldBuild, type WeldedVertices } from './snap-weld.js';
 import type { WeldedSegment } from './snap-edge-runs.js';
 import { RunMergeBuild } from './snap-edge-merge.js';
 import type { MeshGeometryCache } from './snap-geometry-cache.js';
@@ -59,13 +59,15 @@ export function cachedStepBuild(
   };
 }
 
-type Phase = 'weld' | 'triangles' | 'classify' | 'merge' | 'done';
+type Phase = 'tolerance' | 'weld' | 'triangles' | 'classify' | 'merge' | 'done';
 
 export class GeometryCacheBuild implements StepBuild<MeshGeometryCache> {
-  private phase: Phase = 'weld';
+  private phase: Phase = 'tolerance';
   private readonly positions: ArrayLike<number> | undefined;
   private readonly indices: ArrayLike<number> | undefined;
-  private readonly tolerance: number = 0;
+  private tolerance = 0;
+  private scan: Generator<void, number> | null = null;
+  private readonly origin: MeshData['origin'];
   private weld: WeldBuild | null = null;
   private welded: WeldedVertices | null = null;
   private next = 0;
@@ -78,6 +80,7 @@ export class GeometryCacheBuild implements StepBuild<MeshGeometryCache> {
   constructor(mesh: MeshData) {
     this.positions = mesh.positions;
     this.indices = mesh.indices;
+    this.origin = mesh.origin;
     if (!this.positions || this.positions.length === 0) {
       this.value = { vertices: [], edges: [] };
       this.phase = 'done';
@@ -88,17 +91,24 @@ export class GeometryCacheBuild implements StepBuild<MeshGeometryCache> {
     // cache is built in WORLD space by lifting every absolute vertex read by the
     // per-mesh origin. (Triangle-normal math uses position *differences*, where
     // the origin cancels, and the tolerance is derived from the LOCAL magnitudes.)
-    const ox = mesh.origin ? mesh.origin[0] : 0;
-    const oy = mesh.origin ? mesh.origin[1] : 0;
-    const oz = mesh.origin ? mesh.origin[2] : 0;
-    this.tolerance = snapToleranceFor(this.positions);
-    this.weld = new WeldBuild(this.positions, ox, oy, oz, this.tolerance);
+    this.scan = scanSnapTolerance(this.positions);
   }
 
   get done(): boolean { return this.phase === 'done'; }
 
   step(): boolean {
     switch (this.phase) {
+      case 'tolerance': {
+        const step = this.scan!.next();
+        if (step.done) {
+          this.tolerance = step.value;
+          this.scan = null;
+          const [x, y, z] = this.origin ?? [0, 0, 0];
+          this.weld = new WeldBuild(this.positions!, x, y, z, this.tolerance);
+          this.phase = 'weld';
+        }
+        break;
+      }
       case 'weld': this.stepWeld(); break;
       case 'triangles': this.stepTriangles(); break;
       case 'classify': this.stepClassify(); break;

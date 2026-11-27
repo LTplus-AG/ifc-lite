@@ -5,7 +5,7 @@
 import '@/test/setup-dom.js';
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
-import { act } from 'react';
+import { act, useState } from 'react';
 import { cleanup, click, render, type, waitFor } from '@/test/render';
 import { editedRegistryModel } from '@/test/registry-model-fixture';
 import { fixtureModel } from '@/test/store-fixture';
@@ -18,6 +18,8 @@ import { pushRegistry } from '../../../../../packages/oci/test/push-registry.js'
 import { installRegistryPopup, registryCallback } from '@/test/registry-oauth-fixture';
 import { useViewerStore } from '@/store';
 import { OciPushTo } from './OciPushTo';
+import { SourcesPanel } from './SourcesPanel';
+import { SourceHostProvider } from '@/services/sources/SourceHostProvider';
 afterEach(async () => {
   cleanup();
   localStorage.clear();
@@ -52,7 +54,15 @@ function fileStoreForm(ui: HTMLElement, label: string) {
   };
 }
 
-test('Push to publishes successive IFC versions and confirms an ambiguous publish without reuploading (#9638)', async () => {
+function CloudSourcesHarness() {
+  const [open, setOpen] = useState(true);
+  return <SourceHostProvider>{open
+    ? <SourcesPanel registryEnabled onClose={() => setOpen(false)} />
+    : <button type="button" onClick={() => setOpen(true)}>Open Cloud Sources</button>}
+  </SourceHostProvider>;
+}
+
+test('Push to confirms an ambiguous publish after Cloud Sources closes without reuploading (#9638)', async () => {
   const model = await editedRegistryModel();
   const repository = 'project/model';
   const fixture = pushRegistry({
@@ -81,19 +91,14 @@ test('Push to publishes successive IFC versions and confirms an ambiguous publis
     return fixture.handler(req, res);
   }));
   const scope = 'repository:project/model:pull repository:project/model:push';
+  const connection = { registry: registry.origin, authorization_server: 'https://identity.example.test', client_id: 'ifc-lite' };
   const session = resourceSession({
     access_token: 'repository-token', token_type: 'Bearer', expires_in: 300, scope,
-  }, { registry: registry.origin, authorization_server: 'https://identity.example.test', client_id: 'ifc-lite' }, scope);
+  }, connection, scope);
+  saveRegistryConnection(connection);
   useHandoffWorkspace.setState({ repositorySession: session });
-  let ui = render(<OciPushTo onBusyChange={() => {}} />);
-  const add = fileStoreForm(ui, 'Add file store');
-  add.fill('registry', registry.origin + '/');
-  add.fill('issuer', 'https://identity.example.test');
-  add.fill('client', 'ifc-lite');
-  add.save();
-  assert.equal(ui.querySelector('form'), null);
-  cleanup();
-  ui = render(<OciPushTo onBusyChange={() => {}} />);
+  const ui = render(<CloudSourcesHarness />);
+  await waitFor(() => ui.textContent?.includes('Push to…') === true, 'the file-store controls should load');
   const button = (label: string) => {
     const element = Array.from(ui.querySelectorAll('button')).find(button => button.textContent === label);
     assert(element, label);
@@ -135,6 +140,16 @@ test('Push to publishes successive IFC versions and confirms an ambiguous publis
   assert.equal(writes.filter(request => request.url === v2Path && request.authorization === 'Bearer repository-token').length, 1);
   assert(writes.some(request => request.url.startsWith('/v2/project/model/blobs/uploads/')));
 
+  const close = ui.querySelector('button[aria-label="Close"]');
+  assert(close);
+  click(close);
+  assert.equal(ui.querySelector('input[id$="-version"]'), null);
+  click(button('Open Cloud Sources'));
+  await waitFor(() => ui.textContent?.includes('Retry confirmation') === true, 'the pending confirmation should survive closing Cloud Sources');
+  assert.equal(field('-folder').value, repository);
+  assert.equal(field('-version').value, 'model-v2');
+  assert.equal(button('Push to…').disabled, true);
+
   returnWrongVersion = true;
   click(button('Retry confirmation'));
   await waitFor(() => ui.querySelector('[role=alert]')?.textContent?.includes('different content') === true, 'a different digest should be refused');
@@ -172,7 +187,7 @@ test('Push to publishes successive IFC versions and confirms an ambiguous publis
   assert.equal(secondPublished.source.digest, fixture.store.tags.get('model-v2'));
   assert.equal(firstPublished.name, 'Registry persisted wall');
   assert.equal(secondPublished.name, 'Second registry version');
-  assert.equal(ui.querySelectorAll('a').length, 2);
+  assert.equal(ui.querySelectorAll('a[href^="/open-artifact"]').length, 2);
   assert(registry.requests.some(request => request.url === next));
   assert(registry.requests.every(request => request.url !== '/v2/_catalog'));
 });
@@ -388,4 +403,49 @@ test('OCI handoff requires callback issuer identification when advertised or whe
   } finally {
     popup.restore();
   }
+});
+
+test('launch rejects a registry grant when saved settings change during token exchange (#9638)', async () => {
+  let origin = '';
+  let replaceDuringExchange = false;
+  const scope = 'repository:project/model:pull';
+  const provider = await startServer(allowBrowser((req, res) => {
+    const headers = { 'Content-Type': 'application/json' };
+    if (req.url === '/.well-known/oauth-authorization-server') {
+      return send(res, { headers, body: JSON.stringify({
+        issuer: origin, authorization_endpoint: origin + '/authorize', token_endpoint: origin + '/token',
+        response_types_supported: ['code'], code_challenge_methods_supported: ['S256'],
+      }) });
+    }
+    const grant = { access_token: 'login-only', token_type: 'Bearer', expires_in: 300 };
+    if (req.url === '/token') return send(res, { headers, body: JSON.stringify(grant) });
+    assert.equal(req.url, '/exchange');
+    if (replaceDuringExchange) saveRegistryConnection({ ...connection, client_id: 'replacement-client' }, true);
+    return send(res, { headers, body: JSON.stringify({
+      ...grant, access_token: 'registry-only', scope,
+      issued_token_type: 'urn:ietf:params:oauth:token-type:access_token',
+    }) });
+  }));
+  origin = provider.origin;
+  const connection = {
+    registry: origin, authorization_server: origin, client_id: 'ifc-lite',
+    token_exchange: { endpoint: origin + '/exchange', authorization_resource: origin + '/files', read_scope: 'read', write_scope: 'read write' },
+  };
+  saveRegistryConnection(connection);
+  const handoff = {
+    protocol: HANDOFF_PROTOCOL, intent: 'view',
+    source: { registry: origin, repository: 'project/model', digest: 'sha256:' + 'a'.repeat(64) },
+  };
+  const launch = window.location.origin + '/open-artifact#handoff=' + Buffer.from(JSON.stringify(handoff)).toString('base64url');
+  const signal = new AbortController().signal;
+  async function finish() {
+    const authorization = await prepareHandoff(launch, signal);
+    return finishHandoff(registryCallback(new URL(authorization)), signal);
+  }
+
+  assert.equal((await finish()).session.scope, scope);
+  replaceDuringExchange = true;
+  await assert.rejects(finish(), /configuration changed/);
+  assert.equal(registryConnections()[0].client_id, 'replacement-client');
+  assert.equal(provider.requests.filter(request => request.method === 'POST' && request.url === '/exchange').length, 2);
 });

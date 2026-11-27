@@ -4,12 +4,14 @@
 
 import { create } from 'zustand';
 import type { ArtifactSource, OciHandoff } from './handoff-contract';
+import type { HandoffPublication } from './handoff-client';
 import type { ResourceSession } from './handoff-auth';
 interface HandoffWorkspace {
   handoff?: OciHandoff;
   sourceSession?: ResourceSession;
   saved?: { modelId: string; artifact: ArtifactSource };
   repositorySession?: ResourceSession;
+  unconfirmed?: { modelId: string; publication: HandoffPublication };
 }
 /** Tokens and opened content remain in this tab's memory. */
 export const useHandoffWorkspace = create<HandoffWorkspace>(() => ({}));

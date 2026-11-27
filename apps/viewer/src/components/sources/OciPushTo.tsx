@@ -12,7 +12,7 @@ import { registryEn } from '@/i18n/catalogues/registry.en';
 import { useViewerStore } from '@/store';
 import { exportRegistryModel, registryExportModelId } from '@/lib/registry/export-model';
 import { authorizeRepository, resourceAllows, type ResourceSession } from '@/lib/registry/handoff-auth';
-import { browseRepositoryVersions, confirmHandoff, HandoffAcknowledgementError, pushHandoff, type HandoffPublication } from '@/lib/registry/handoff-client';
+import { browseRepositoryVersions, confirmHandoff, HandoffAcknowledgementError, pushHandoff } from '@/lib/registry/handoff-client';
 import {
   connectionFor, handoffLink, registryConnectionIdentity, registryConnections, type RegistryConnection,
 } from '@/lib/registry/handoff-contract';
@@ -30,21 +30,24 @@ export function OciPushTo({ disabled = false, onBusyChange }: {
   const id = useId();
   const [connections, setConnections] = useState(registryConnections);
   const [form, setForm] = useState<'add' | 'edit'>();
-  const { handoff, saved: savedResult } = useHandoffWorkspace();
-  const [registry, setRegistry] = useState(handoff?.destination?.registry ?? handoff?.source.registry ?? connections[0]?.registry ?? '');
-  const selectedConnection = connections.find(connection => connection.registry === registry);
-  const [repository, setRepository] = useState(handoff?.destination?.repository ?? handoff?.source.repository ?? '');
-  const [tag, setTag] = useState('revision-2');
-  const [page, setPage] = useState<Awaited<ReturnType<typeof browseRepositoryVersions>>>();
-  const [busy, setBusy] = useState(false);
-  const [unconfirmed, setUnconfirmed] = useState<{ modelId: string; publication: HandoffPublication }>();
-  const [error, setError] = useState('');
-  const pending = useRef<AbortController | null>(null);
+  const { handoff, saved: savedResult, unconfirmed } = useHandoffWorkspace();
   const model = useViewerStore(state => {
     const id = registryExportModelId(state);
     return id ? state.models.get(id) : undefined;
   });
   const awaitingConfirmation = unconfirmed?.modelId === model?.id ? unconfirmed : undefined;
+  const target = awaitingConfirmation?.publication ?? handoff?.destination ?? handoff?.source;
+  const [registry, setRegistry] = useState(target?.registry ?? connections[0]?.registry ?? '');
+  const selectedConnection = connections.find(connection => connection.registry === registry);
+  const [repository, setRepository] = useState(target?.repository ?? '');
+  const [tag, setTag] = useState(awaitingConfirmation?.publication.tag ?? 'revision-2');
+  const [page, setPage] = useState<Awaited<ReturnType<typeof browseRepositoryVersions>>>();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const pending = useRef<AbortController | null>(null);
+  const confirmation = awaitingConfirmation?.publication;
+  const matchesTarget = confirmation?.registry === registry &&
+    confirmation.repository === repository && confirmation.tag === tag;
   const saved = savedResult?.modelId === model?.id ? savedResult?.artifact : undefined;
 
   useEffect(() => () => { pending.current?.abort(); }, []);
@@ -57,10 +60,14 @@ export function OciPushTo({ disabled = false, onBusyChange }: {
     useHandoffWorkspace.setState(state => state.saved?.modelId === model?.id ? { saved: undefined } : state);
   }
 
+  function clearUnconfirmed() {
+    if (awaitingConfirmation) useHandoffWorkspace.setState({ unconfirmed: undefined });
+  }
+
   function clearRepositoryResults() {
     setPage(undefined);
     setError('');
-    setUnconfirmed(undefined);
+    clearUnconfirmed();
     clearSaved();
   }
 
@@ -136,19 +143,18 @@ export function OciPushTo({ disabled = false, onBusyChange }: {
       } catch (failure) {
         if (!(failure instanceof HandoffAcknowledgementError)) throw failure;
         signal.throwIfAborted();
-        setUnconfirmed({ modelId: model.id, publication: failure.publication });
+        useHandoffWorkspace.setState({ unconfirmed: { modelId: model.id, publication: failure.publication } });
       }
     });
   }
 
   function retryConfirmation() {
-    if (!awaitingConfirmation) return;
+    if (!awaitingConfirmation || !matchesTarget) return;
     return run('pull', async (session, signal) => {
       const artifact = await confirmHandoff(awaitingConfirmation.publication, session, signal);
       signal.throwIfAborted();
       if (!artifact) throw new Error(t('registry.push.confirmMismatch'));
-      useHandoffWorkspace.setState({ saved: { modelId: awaitingConfirmation.modelId, artifact } });
-      setUnconfirmed(undefined);
+      useHandoffWorkspace.setState({ saved: { modelId: awaitingConfirmation.modelId, artifact }, unconfirmed: undefined });
       setPage(undefined);
     });
   }
@@ -201,11 +207,11 @@ export function OciPushTo({ disabled = false, onBusyChange }: {
     <p className="text-xs text-muted-foreground">{model ? t('registry.activeModel', { name: model.name }) : t('registry.noModel')}</p>
     <Label htmlFor={`${id}-version`}>{t('registry.newVersion')}</Label>
     <Input id={`${id}-version`} value={tag} disabled={busy || disabled} autoComplete="off"
-      onChange={e => { setTag(e.target.value); setUnconfirmed(undefined); setError(''); clearSaved(); }} />
-    <Button disabled={repositoryDisabled || !model || !tag || Boolean(awaitingConfirmation)} onClick={() => void publish()}>
+      onChange={e => { setTag(e.target.value); clearUnconfirmed(); setError(''); clearSaved(); }} />
+    <Button disabled={repositoryDisabled || !model || !tag || matchesTarget} onClick={() => void publish()}>
       {t('registry.push.action')}
     </Button>
-    {awaitingConfirmation && <>
+    {matchesTarget && <>
       <p role="status" className="text-sm">{t('registry.push.unconfirmed')}</p>
       <Button variant="outline" disabled={repositoryDisabled} onClick={() => void retryConfirmation()}>
         {t('registry.push.retryConfirmation')}

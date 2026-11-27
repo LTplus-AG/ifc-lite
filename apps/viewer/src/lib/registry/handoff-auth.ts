@@ -176,6 +176,11 @@ export async function finishHandoff(href: string, signal: AbortSignal, connectio
   const session = connection.token_exchange
     ? await exchangeRegistryToken(connection, bearerGrant(reply).token, p.scope, signal)
     : resourceSession(reply, connection, p.scope);
+  signal.throwIfAborted();
+  const latest = registryConnections().find(candidate => candidate.registry === connection.registry);
+  if (!latest || registryConnectionIdentity(latest) !== session.connectionIdentity) {
+    throw new RegistryError('The file-store configuration changed. Open the file again.');
+  }
   if (!resourceAllows(session, handoff.source.repository, 'pull')) throw new RegistryError('This account cannot open the selected folder.', 403);
   return { handoff, session };
 }

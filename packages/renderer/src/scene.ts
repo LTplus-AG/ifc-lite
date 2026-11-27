@@ -51,7 +51,8 @@ import { splitMeshDataForBufferLimit, cachedWorldAabb, worldAabbFromPieces, worl
 import { TopologyMemo } from './scene-precision.js';
 import { StreamAssembly } from './scene-stream-assembly.js';
 import { mergeSameColorPieces } from './scene-mesh-pieces.js';
-import { resolvePrecisionBucket } from './scene-bucket-routing.js';
+import { ColdPieceMembership } from './scene-cold-membership.js';
+import { LATTICE_KEY_SUFFIX, markOffLattice, resolvePrecisionBucket } from './scene-bucket-routing.js';
 import { residentBatchBytes, sumResidentGpuBytes, type ResidentGpuBytes } from './render-stats.js';
 import { composeInstancedOverrideColor, originalColorWithAlpha } from './instanced-override-color.js';
 import { writeInstanceLane } from './instance-lane-write.js';
@@ -95,6 +96,7 @@ import { discardSceneGpuResourcesForRecovery, prepareSceneDeviceRecovery, repart
 
 /** Consolidated per-bucket state — replaces six separate tracking maps. */
 interface BatchBucket {
+  coldMembers?: ColdPieceMembership;
   key: string;                      // bucket key (color hash or "hash#N")
   meshData: MeshData[];             // accumulated source mesh data
   batchedMesh: BatchedMesh | null;  // built GPU batch (null during streaming)
@@ -339,6 +341,8 @@ export class Scene {
   // Per-model shared origins keep all colours and highlights bit-coincident
   // without narrowing the distance between federated models into f32 vertices.
   private sharedFrameOrigins = new Map<number, [number, number, number]>();
+  /** Meshes whose bucket key ends in `LATTICE_KEY_SUFFIX`: the lattice would crumple their entity (#11444). */
+  private readonly offLattice = new WeakSet<MeshData>();
   private cachedMaxBufferSize: number = 0; // device.limits.maxBufferSize * safety factor (set on first use)
   private static readonly STREAMING_FRAGMENT_MAX_INDICES = 180_000;
   private static readonly STREAMING_FRAGMENT_MAX_VERTEX_BYTES = 8 * 1024 * 1024;
@@ -694,6 +698,7 @@ export class Scene {
     for (const key of evictKeys) {
       const bucket = this.buckets.get(key);
       if (!bucket || bucket.meshData.length === 0) continue;
+      bucket.coldMembers = new ColdPieceMembership(bucket.meshData.map(m => this.modelTranslations.sourceMesh(m)));
       for (const md of bucket.meshData) {
         evictedBytes += md.positions.byteLength + md.normals.byteLength + md.indices.byteLength;
         this.meshDataBucket.delete(md);
@@ -755,25 +760,25 @@ export class Scene {
         const current = this.buckets.get(key);
         if (!current || current !== bucket || !this.coldBuckets.has(key)) return;
         const baseKey = this.baseColorKey(key);
-        const idSet = new Set(shell.expressIds);
-        const members = meshes.filter(
-          (m) => idSet.has(m.expressId) && this.bucketBaseKey(m) === baseKey
-        );
+        const lattice = baseKey.endsWith(LATTICE_KEY_SUFFIX);
+        const members = bucket.coldMembers?.restore(meshes) ?? [];
         for (const source of members) {
           const m = this.modelTranslations.placeMesh(source);
+          if (lattice) this.offLattice.add(m);
           bucket.meshData.push(m);
           bucket.vertexBytes += (m.positions.length / 3) * BATCH_CONSTANTS.BYTES_PER_VERTEX;
           this.meshDataBucket.set(m, bucket);
           this.addMeshData(m);
         }
         if (members.length > 0) {
+          delete bucket.coldMembers;
           this.coldBuckets.delete(key);
           const restoredKeys = repartitionHydratedRecoveryBucket(this as unknown as SceneRecoveryHost, key, bucket, shell);
           if (bucket.batchedMesh !== shell) this.dropPartialCacheForBatch(shell); // repartitioned: shell id retired
           this.subsetResidency.requeueColdRestore(key, restoredKeys);
         } else {
           this.subsetResidency.warmOnly.delete(key);
-          console.warn(`[Scene] cold restore for ${key} found no members — bucket stays a shell`);
+          console.warn(`[Scene] cold restore for ${key} could not match every original piece — bucket stays a shell`);
         }
       })
       .catch((err) => {
@@ -925,7 +930,8 @@ export class Scene {
     // #5582: material is the mesh's OWN authored finish regardless of a
     // colour override — a recolour changes what a piece looks like, not
     // what it is physically made of.
-    const key = entityIdPageKey(source.expressId, bucketBaseKeyFor(source, this.colorKey(color ?? meshData.color, meshData.material), this.spatialChunking));
+    const key = entityIdPageKey(source.expressId, bucketBaseKeyFor(source, this.colorKey(color ?? meshData.color, meshData.material), this.spatialChunking))
+      + (this.offLattice.has(meshData) ? LATTICE_KEY_SUFFIX : '');
     return source.modelIndex ? `model${source.modelIndex}~${key}` : key;
   }
 
@@ -1139,9 +1145,14 @@ export class Scene {
 
   /** Whether `appendToBatches` refuses `meshData`: no topology-safe f32 frame holds it. */
   refusesBucketPath(meshData: MeshData, topology: TopologyMemo = new TopologyMemo()): boolean {
+    return !this.bucketFrame(meshData, topology);
+  }
+
+  /** The f32 frame a new bucket would give `meshData`, or undefined when none holds it. */
+  private bucketFrame(meshData: MeshData, topology: TopologyMemo): [number, number, number] | undefined {
     const modelIndex = meshData.modelIndex ?? 0;
     const shared = this.modelTranslations.frameOrigin(this.sharedFrameOrigins.get(modelIndex) ?? null, modelIndex);
-    return !topologySafeBatchOrigin([meshData], undefined, shared, undefined, topology);
+    return topologySafeBatchOrigin([meshData], undefined, shared, undefined, topology);
   }
 
   /**
@@ -1191,6 +1202,11 @@ export class Scene {
       }
     }
 
+    if (this.quantizedBatchesEnabled) markOffLattice(renderable, (mesh) => {
+      const base = this.bucketBaseKey(mesh), joining = this.buckets.get(this.activeBucketKey.get(base) ?? base);
+      const frame = joining?.frameOrigin ?? joining?.batchedMesh?.origin ?? this.bucketFrame(mesh, topology);
+      return frame && { base, frame };
+    }, this.offLattice);
     // Route each mesh into a size-aware bucket for its color (and, with
     // spatial chunking on, its grid cell)
     for (const meshData of renderable) {

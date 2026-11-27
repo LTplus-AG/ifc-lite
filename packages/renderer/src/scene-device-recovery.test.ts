@@ -139,10 +139,14 @@ describe('Scene device recovery (#4885)', () => {
     const key = scene['bucketBaseKey'](first);
     shell.colorKey = key; shell.gpuResident = false;
     shell.bounds = { min: [0, 0, 0], max: [1, 1, 1] };
-    scene['buckets'].set(key, { key, meshData: [], batchedMesh: shell, vertexBytes: 0 });
-    scene['batchedMeshes'] = [shell]; scene['coldBuckets'].add(key);
+    scene['buckets'].set(key, { key, meshData: [first, second], batchedMesh: shell, vertexBytes: 168 });
+    scene['batchedMeshes'] = [shell];
     scene.setColdGeometryProvider({ loadMeshesInBounds: async () => [first, second] });
 
+    scene.setHostResidencyBudget(1);
+    for (let i = 0; i < 120; i++) scene.beginResidencyFrame();
+    scene['enforceHostBudget']();
+    assert.ok(scene['coldBuckets'].has(key));
     scene.restoreGpuResourcesAfterRecovery(
       { limits: { maxBufferSize: 120 } } as unknown as GPUDevice,
       {} as RenderPipeline,

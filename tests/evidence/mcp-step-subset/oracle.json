@@ -1,6 +1,6 @@
 {
   "issue": 7955,
-  "why": "Restore the requirement for a storey placement so the subset tests must reject losing walls owned by a placement-free storey.",
+  "why": "Reverse-apply the mutant that drops all members of a storey without ObjectPlacement. The containment regression must catch the missing wall.",
   "key": "packages/export/src/step-subset-storey.ts",
   "mutation": "tests/evidence/mcp-step-subset/placement.oracle.patch"
 }

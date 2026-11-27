@@ -69,20 +69,19 @@ const LONG_NAME = 7;
 function storeyText(body: string, index: number): string | null {
   const text = stepString(splitTopLevelArgs(body)?.[index]);
   if (text === null) return null;
-  const name = decodeStepStringLiteral(text);
-  // The subset parse reads the file as latin1, so a name a tool wrote as raw
-  // UTF-8 bytes arrives as one char per byte. Re-read it as UTF-8 when the raw
-  // literal itself carries high bytes and no backslash: a directive's decoded
-  // Latin-1 text must stay as written, and a name with both raw UTF-8 and a
-  // backslash is rare enough to keep as read.
-  if (!/[\u0080-\u00ff]/.test(text) || text.includes('\\')) return name;
-  try {
-    const utf8 = new TextDecoder('utf-8', { fatal: true });
-    return utf8.decode(Uint8Array.from(name, (c) => c.charCodeAt(0)));
-  } catch (err) {
-    if (!(err instanceof TypeError)) throw err;
-    return name; // not valid UTF-8: the bytes were latin1 text after all
+  // Recover raw UTF-8 from the subset parser's byte-preserving Latin-1 view
+  // before interpreting STEP escapes, which can themselves produce Unicode.
+  let literal = text;
+  if (/[\u0080-\u00ff]/.test(text)) {
+    try {
+      const utf8 = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
+      literal = utf8.decode(Uint8Array.from(text, (c) => c.charCodeAt(0)));
+    } catch (err) {
+      if (!(err instanceof TypeError)) throw err;
+      // Invalid UTF-8: keep the literal's original Latin-1 characters.
+    }
   }
+  return decodeStepStringLiteral(literal);
 }
 
 /** Resolve a --storey selector (GUID / name / expressId) to the storey and its placement. */
@@ -139,6 +138,26 @@ export function resolveStorey(token: string, parsed: ParsedStep): { storeyId: nu
   // No placement is allowed (IFC permits a storey whose elements are placed
   // independently); membership then comes from containment alone.
   return { storeyId, placementId };
+}
+
+function isMissingStorey(error: unknown): boolean {
+  return error instanceof SubsetSelectionError && error.kind === 'not-found';
+}
+
+export function resolveStoreyArgument(token: string, parsed: ParsedStep, splitLists: boolean): ReturnType<typeof resolveStorey>[] {
+  try {
+    return [resolveStorey(token, parsed)];
+  } catch (error) {
+    if (!splitLists || !token.includes(',') || !isMissingStorey(error)) throw error;
+  }
+  return token.split(',').filter((part) => part.trim()).map((part) => {
+    try {
+      return resolveStorey(part, parsed);
+    } catch (error) {
+      if (part === part.trim() || !isMissingStorey(error)) throw error;
+      return resolveStorey(part.trim(), parsed);
+    }
+  });
 }
 
 const PART_WHOLE_RELATIONS = new Set(['IFCRELAGGREGATES', 'IFCRELNESTS']);
@@ -257,7 +276,7 @@ export function storeyMembers(
   for (const id of placed) {
     if (out.has(id) || !isCandidate(id)) continue;
     const owner = ownersOf(id);
-    if (owner.size === 0 || ownedHere(owner)) out.add(id);
+    if (owner.size === 0 && !hosts.has(id)) out.add(id);
   }
   // Unowned parts, openings and fillers of an element the placement pass took
   // come with it, wherever they are placed (fixpoint: parts of parts).

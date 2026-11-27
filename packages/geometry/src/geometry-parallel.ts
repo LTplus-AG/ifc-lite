@@ -233,7 +233,7 @@ export async function* processParallel(
   // deliver the entity index early (instead of waiting for the pre-pass
   // worker's single-threaded post-scan `entity-index` event). Measures the
   // parser-tail-contention blocker from prior art dd56ea9e.
-  // Out-of-core ingest (`?perf.ooc`, geometry-parallel-sparse.ts): null on the whole-file path. Its preamble comes from the serial pre-pass.
+  // Out-of-core ingest (`?perf.ooc`, geometry-parallel-sparse.ts): null on the whole-file path; preamble from the pre-pass.
   const shareIndex = (ids: SharedArrayBuffer, starts: SharedArrayBuffer, lengths: SharedArrayBuffer) => broadcastSetup(entityIndexSetup(() => ({
     ids: new Uint32Array(ids), starts: new Uint32Array(starts), lengths: new Uint32Array(lengths),
   })));
@@ -241,7 +241,7 @@ export async function* processParallel(
     broadcast: (setup) => broadcastSetup(setup), shareIndex, onReady: () => drainQueuedChunksIfReady(), onDecision: options?.onOutOfCoreDecision,
   }, { mergeLayers: options?.mergeLayers, globalInstancing: globalPlan, outOfCore: options?.outOfCore });
   if (!sparse) options?.onOutOfCoreDecision?.(false); // the arm is what ran: a sparse pool reports once its scan decides
-  const shardScanEnabled = readShardScanFlag() && !sparse;
+  const shardScanEnabled = readShardScanFlag();
   let entityIndexDeliveredEarly = false;
   const shardResults: (ShardColumns | null)[] = [];
   let shardResultsRemaining = 0;
@@ -301,7 +301,7 @@ export async function* processParallel(
         // SPIKE: one worker's entity-index shard. Store it; when all shards are
         // in, stitch on this thread and deliver the index early.
         const si = msg.shardIndex as number;
-        shardResults[si] = {
+        shardResults[si] = msg.windowRefused === true ? null : { // out of core: no window confirmed this shard
           ids: msg.ids as Uint32Array,
           starts: msg.starts as Uint32Array,
           lengths: msg.lengths as Uint32Array,
@@ -315,7 +315,7 @@ export async function* processParallel(
         };
         if (trace.enabled) trace.span('geometry.shardScanReceived', () => {}, { worker: workerIndex, shard: si }, shardScanSpan);
         shardResultsRemaining--;
-        console.log(`[stream][shard] worker[${workerIndex}] shard ${si} done @ ${elapsed()}ms (${(msg.ids as Uint32Array).length} entities, remaining=${shardResultsRemaining})`);
+        console.log(`[stream][shard] worker[${workerIndex}] shard ${si} done @ ${elapsed()}ms (${(msg.ids as Uint32Array | undefined)?.length ?? 'no window'} entities, remaining=${shardResultsRemaining})`);
         if (shardResultsRemaining === 0) {
           onAllShardsReceived();
         }
@@ -796,8 +796,8 @@ export async function* processParallel(
         new Uint32Array(sabStarts).set(starts);
         new Uint32Array(sabLengths).set(lengths);
       }
-      if (sparse) sparse.offerIndex(sabIds, sabStarts, sabLengths);
-      else shareIndex(sabIds, sabStarts, sabLengths);
+      if (!sparse) shareIndex(sabIds, sabStarts, sabLengths);
+      else if (source === 'prepass') sparse.offerIndex(sabIds, sabStarts, sabLengths); // else the sharded pre-pass sorts it
       if (options?.onEntityIndex) {
         try {
           options.onEntityIndex(
@@ -836,7 +836,7 @@ export async function* processParallel(
    * slices out for parallel style resolution, and start the SHARDED pre-pass
    * (its start was deferred; it receives the stitched index so it skips its
    * own index build, resolves meta against the full index, and leaves styles
-   * to the shards). On a stitch miss (rare handoff-not-found), fall back to
+   * to the shards; out of core it resolves them itself). On a stitch miss (rare handoff-not-found), fall back to
    * the serial pre-pass path — identical to flag-off behaviour.
    */
   const onAllShardsReceived = () => {
@@ -845,12 +845,12 @@ export async function* processParallel(
     shardScanSettled = true;
     gateTracker.markShardScanDone();
     trace.end(shardScanSpan);
-    const shards = shardResults as ShardColumns[];
-    const stitched = trace.span('shard.stitch', () => stitchShards(shards), undefined, poolSpan);
+    const shards = shardResults.every(Boolean) ? shardResults as ShardColumns[] : null; // null: a window refused
+    const stitched = shards && trace.span('shard.stitch', () => stitchShards(shards), undefined, poolSpan);
     // An EMPTY stitch falls back too: workers store an empty index as none, so
     // the sharded-only finalize-styles always threw "no entity index".
     if (!stitched || stitched.ids.length === 0) {
-      console.warn(`[stream][shard] stitch fallback (${stitched ? 'no entities' : 'handoff not found'}) — serial pre-pass`);
+      console.warn(`[stream][shard] stitch fallback (${stitched ? 'no entities' : shards ? 'handoff not found' : 'unconfirmed window'}) — serial pre-pass`);
       startPrepass(false);
       return;
     }
@@ -871,7 +871,8 @@ export async function* processParallel(
     // set-entity-index reaches every worker FIRST (FIFO), so the style-shard
     // messages below always find the index installed.
     deliverEntityIndex(ids, starts, lengths, 'sharded', oversizedIdCount, malformedRecordCount);
-
+    // Out of core the workers hold no source to resolve style slices from (their shard scans copied windows only).
+    if (sparse) return startPrepass(true, { ids, starts, lengths, classes: stitched.classes });
     // Extract the styled-item span triples (class 4) in FILE ORDER from the
     // stitched columns, split into one contiguous slice per worker, and
     // resolve them in parallel while everyone waits on the pre-pass scan.
@@ -1007,7 +1008,7 @@ export async function* processParallel(
       const rangeStart = Math.floor((i * len) / n);
       const rangeEnd = i + 1 === n ? len : Math.floor(((i + 1) * len) / n);
       workers[i].postMessage({
-        type: 'scan-shard' as const, sourceSessionId,
+        type: 'scan-shard' as const, ...(sparse ? { windowed: true } : { sourceSessionId }),
         sharedBuffer,
         shardIndex: i,
         rangeStart,
@@ -1027,7 +1028,7 @@ export async function* processParallel(
       // that worker is wedged, not just slow — and the fallback's own
       // stream-start/chunks/stream-end would queue forever behind it.
       for (let i = 0; i < n; i++) {
-        if (!shardResults[i]) replacePreWorkerPhaseWorker(i, 'shard-scan-timeout');
+        if (shardResults[i] === undefined) replacePreWorkerPhaseWorker(i, 'shard-scan-timeout'); // null: a refused window answered
       }
       startPrepass(false);
     });
@@ -1200,9 +1201,10 @@ export async function* processParallel(
         const starts = evt.starts as Uint32Array;
         const lengths = evt.lengths as Uint32Array;
         if (entityIndexDeliveredEarly) {
-          // Sharded mode never reaches here (the sharded pre-pass skips the
-          // entity-index event); guard against double delivery regardless.
-          console.log(`[stream] pre-pass entity-index arrived @ ${elapsed()}ms (already delivered via shards; ignoring)`);
+          // Out of core the sharded pre-pass sends its sorted index (the shards' stitch is in file order); otherwise
+          // it skips this event, so this only guards against double delivery.
+          if (sparse) sparse.offerSortedIndex(ids, starts, lengths);
+          else console.log(`[stream] pre-pass entity-index arrived @ ${elapsed()}ms (already delivered via shards; ignoring)`);
         } else {
           // TODO(#3699): the Rust pre-pass emits no malformed count yet, so
           // this is undefined ("nothing reported"), carried as such.
@@ -1418,7 +1420,7 @@ export async function* processParallel(
         indexIds: indexColumns.ids,
         indexStarts: indexColumns.starts,
         indexLengths: indexColumns.lengths,
-        indexClasses: indexColumns.classes,
+        indexClasses: indexColumns.classes, ...(sparse ? { emitSparseFacts: true } : {}),
       }, transfers);
     } else {
       prepassWorker.postMessage({

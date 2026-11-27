@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { GeometryProcessor } from '@ifc-lite/geometry';
+import { createMCPServer, fullScope, InMemoryModelRegistry, InProcessTransport, loadIfcModel } from '@ifc-lite/mcp';
 import { scoreTriage, extractEntitiesCommand } from './extract-entities.js';
 
 // The subset engine itself (parseStep, buildSubset, ...) is tested next to it in
@@ -131,6 +132,199 @@ DATA;
 ENDSEC;
 END-ISO-10303-21;
 `;
+
+it('extracts the same grid-placed storey members via CLI and MCP in IFC4X3_ADD2 (#11583)', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'ifc-extract-grid-storey-'));
+  try {
+    const src = join(dir, 'in.ifc');
+    const cliPath = join(dir, 'cli.ifc');
+    const mcpPath = join(dir, 'mcp.ifc');
+    const fixture = TWO_STOREY_MODEL
+      .replace("FILE_DESCRIPTION((''),'2;1')", "FILE_DESCRIPTION(('IFC5 Exporter'),'2;1')")
+      .replace("FILE_SCHEMA(('IFC4'))", "FILE_SCHEMA(('IFC4X3_ADD2'))")
+      .replace('#50= IFCLOCALPLACEMENT(#40,#21);', [
+        '#50= IFCGRIDPLACEMENT(#40,#58,$);',
+        '#55= IFCPOLYLINE((#22,#23));', '#56= IFCPOLYLINE((#22,#24));',
+        '#23= IFCCARTESIANPOINT((1.,0.,0.));', '#24= IFCCARTESIANPOINT((0.,1.,0.));',
+        "#57= IFCGRIDAXIS('A',#55,.T.);", "#59= IFCGRIDAXIS('1',#56,.T.);",
+        '#58= IFCVIRTUALGRIDINTERSECTION((#57,#59),(0.,0.));',
+      ].join('\n'));
+    await writeFile(src, fixture, 'latin1');
+    await extractEntitiesCommand([src, '--storey', 'L01', '--out', cliPath]);
+    const cli = await readFile(cliPath, 'latin1');
+    expect(cli).toContain('#70= IFCWALLSTANDARDCASE');
+    expect(cli).toContain('#50= IFCGRIDPLACEMENT(#40,#58,$);');
+    expect(cli).not.toContain('#90=');
+
+    const model = await loadIfcModel(src);
+    const registry = new InMemoryModelRegistry();
+    registry.add(model);
+    const transport = new InProcessTransport();
+    try {
+      await transport.connect(createMCPServer({ registry, scope: fullScope(), config: { allowedPaths: [dir] } }));
+      await transport.send({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {
+        protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'extract parity', version: '1' },
+      } });
+      await transport.send({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: {
+        name: 'model_extract', arguments: { storeys: ['L01'], file_path: mcpPath },
+      } });
+      expect(await readFile(mcpPath, 'latin1')).toBe(cli);
+    } finally {
+      transport.close();
+      model.backend.dispose();
+    }
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+it.each(['utf8', 'latin1'] as const)('selects %s storey Name and LongName with STEP escapes via CLI and MCP (#11583)', async (encoding) => {
+  const dir = await mkdtemp(join(tmpdir(), 'ifc-extract-storey-text-'));
+  try {
+    const src = join(dir, 'in.ifc');
+    const authoredName = String.raw`Café \X2\00FC\X0` + '\\';
+    const authoredLongName = String.raw`Étage d''été \\Annexe \X4\0001F600\X0` + '\\';
+    const fixture = TWO_STOREY_MODEL
+      .replace("'L01','dup of #44'", `'${authoredName}','dup of #44'`)
+      .replace("'L02',$,$,#44,$,$", `'L02',$,$,#44,$,'${authoredLongName}'`);
+    await writeFile(src, Buffer.from(fixture, encoding));
+
+    const model = await loadIfcModel(src);
+    const registry = new InMemoryModelRegistry();
+    registry.add(model);
+    const transport = new InProcessTransport();
+    try {
+      await transport.connect(createMCPServer({ registry, scope: fullScope(), config: { allowedPaths: [dir] } }));
+      await transport.send({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {
+        protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'storey text parity', version: '1' },
+      } });
+      for (const [index, [selector, authored, member, excluded]] of [
+        ['Café ü', authoredName, '#70=', '#90='],
+        [String.raw`Étage d'été \Annexe 😀`, authoredLongName, '#90=', '#70='],
+      ].entries()) {
+        const cliPath = join(dir, 'cli.ifc');
+        const mcpPath = join(dir, `mcp-${index}.ifc`);
+        await extractEntitiesCommand([src, '--storey', selector, '--out', cliPath]);
+        const cli = await readFile(cliPath);
+        expect(cli.includes(Buffer.from(authored, encoding))).toBe(true);
+        expect(cli.toString('latin1')).toContain(member);
+        expect(cli.toString('latin1')).not.toContain(excluded);
+        await transport.send({ jsonrpc: '2.0', id: 2 + index, method: 'tools/call', params: {
+          name: 'model_extract', arguments: { storeys: [selector], file_path: mcpPath },
+        } });
+        expect(await readFile(mcpPath)).toEqual(cli);
+      }
+    } finally {
+      transport.close();
+      model.backend.dispose();
+    }
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+it('keeps the ordered IfcRelNests list when extracting an assembly with selected parts (#11583)', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'ifc-extract-nests-'));
+  try {
+    const src = join(dir, 'in.ifc');
+    const fixture = TWO_STOREY_MODEL.replace('ENDSEC;\nEND-ISO', [
+      "#76= IFCELEMENTASSEMBLY('ASSE000000000000000001',#5,'Assembly',$,$,$,$,$,.NOTDEFINED.,.NOTDEFINED.);",
+      "#77= IFCRELNESTS('NEST000000000000000001',#5,$,$,#76,(#90,#70));",
+      'ENDSEC;', 'END-ISO',
+    ].join('\n'));
+    for (const [products, sourceMembers, members, omitted] of [
+      ['#76,#70', '(#90,#70)', '(#70)', '#90='],
+      ['#76,#70,#90', '(#90,#95,#70)', '(#90,#70)', '#95='],
+    ]) {
+      await writeFile(src, fixture.replace('(#90,#70));', `${sourceMembers});`), 'latin1');
+      const out = join(dir, 'sub.ifc');
+      await extractEntitiesCommand([src, '--product', products, '--out', out]);
+      const text = await readFile(out, 'latin1');
+      expect(text).toContain('#76= IFCELEMENTASSEMBLY');
+      expect(text).toContain(`#77= IFCRELNESTS('NEST000000000000000001',#5,$,$,#76,${members});`);
+      expect(text).not.toContain(omitted);
+      const data = text.slice(text.indexOf('DATA;')).replace(/'(?:[^']|'')*'/g, "''");
+      const definitions = new Set(Array.from(data.matchAll(/^#(\d+)\s*=/gm), ([, id]) => id));
+      for (const [, id] of data.matchAll(/#(\d+)/g)) expect(definitions.has(id)).toBe(true);
+    }
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+it.each(['IFCRELNESTS', 'IFCRELAGGREGATES'])('narrows split assembly records including %s across one anchor (#11583)', async (relationType) => {
+  const dir = await mkdtemp(join(tmpdir(), 'ifc-extract-split-assembly-'));
+  try {
+    const src = join(dir, 'in.ifc');
+    const fixture = TWO_STOREY_MODEL.replace('ENDSEC;\nEND-ISO', [
+      "#76= IFCELEMENTASSEMBLY('ASSE000000000000000001',#5,'Assembly A',$,$,$,$,$,.NOTDEFINED.,.NOTDEFINED.);",
+      "#78= IFCELEMENTASSEMBLY('ASSE000000000000000002',#5,'Assembly B',$,$,$,$,$,.NOTDEFINED.,.NOTDEFINED.);",
+      `#77= ${relationType}('RELN000000000000000001',#5,$,$,#76,(#90));`,
+      "#79= IFCRELNESTS('RELN000000000000000002',#5,$,$,#76,(#70));",
+      "#80= IFCRELNESTS('RELN000000000000000003',#5,$,$,#78,(#95));",
+      'ENDSEC;', 'END-ISO',
+    ].join('\n'));
+    await writeFile(src, fixture, 'latin1');
+    for (const [products, expected, excluded] of [
+      ['#76,#70,#78', [70, 76, 78, 79, 80, 95], [77, 90]],
+      ['#76', [70, 76, 77, 79, 90], [78, 80, 95]],
+    ] as const) {
+      const out = join(dir, 'sub.ifc');
+      await extractEntitiesCommand([src, '--product', products, '--out', out]);
+      const text = await readFile(out, 'latin1');
+      const data = text.slice(text.indexOf('DATA;')).replace(/'(?:[^']|'')*'/g, "''");
+      const definitions = new Set(Array.from(data.matchAll(/^#(\d+)\s*=/gm), ([, id]) => Number(id)));
+      expect(text).toContain("#79= IFCRELNESTS('RELN000000000000000002',#5,$,$,#76,(#70));");
+      if (products.includes('#78')) expect(text).toContain("#80= IFCRELNESTS('RELN000000000000000003',#5,$,$,#78,(#95));");
+      for (const id of expected) expect(definitions.has(id), `expected #${id} for ${products}`).toBe(true);
+      for (const id of excluded) expect(definitions.has(id), `unexpected #${id} for ${products}`).toBe(false);
+      for (const [, id] of data.matchAll(/#(\d+)/g)) expect(definitions.has(Number(id)), `dangling #${id}`).toBe(true);
+    }
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+it('resolves spaced comma lists, exact comma names, and mixed host placement (#11583)', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'ifc-extract-storey-lists-'));
+  try {
+    const src = join(dir, 'in.ifc');
+    const out = join(dir, 'sub.ifc');
+    await writeFile(src, TWO_STOREY_MODEL);
+    await extractEntitiesCommand([src, '--storey', 'L01, L02', '--out', out]);
+    expect(await readFile(out, 'latin1')).toMatch(/#70=[\s\S]*#90=/);
+    const splitPlacement = TWO_STOREY_MODEL.replace('ENDSEC;\nEND-ISO', [
+      "#76= IFCELEMENTASSEMBLY('ASSE000000000000000001',#5,'Assembly',$,$,#50,$,$,.NOTDEFINED.,.NOTDEFINED.);",
+      "#77= IFCRELNESTS('NEST000000000000000001',#5,$,$,#76,(#90));",
+      'ENDSEC;', 'END-ISO',
+    ].join('\n'));
+    await writeFile(src, splitPlacement.replace("'L01'", "'L01, Annex'"));
+    await extractEntitiesCommand([src, '--storey', 'L01, Annex', '--out', out]);
+    expect(await readFile(out, 'latin1')).toMatch(/#76=[\s\S]*#77=[\s\S]*#90=/);
+    await extractEntitiesCommand([src, '--storey', 'L02', '--out', out]);
+    const away = await readFile(out, 'latin1');
+    expect(away).toContain('#45= IFCBUILDINGSTOREY');
+    expect(away).not.toMatch(/#(?:76|77|90)=/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+it('rejects a numeric GlobalId that also names a different express ID (#11583)', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'ifc-extract-id-collision-'));
+  try {
+    const src = join(dir, 'in.ifc');
+    const out = join(dir, 'sub.ifc');
+    await writeFile(src, TWO_STOREY_MODEL.replace('WALL000000000000000001', '0000000000000000000090')
+      .replace('WALL000000000000000002', '0000000000000000000099'));
+    await expect(extractEntitiesCommand([src, '--product', '0000000000000000000090', '--out', out]))
+      .rejects.toThrow(/Ambiguous product selector/);
+    await extractEntitiesCommand([src, '--product', '0000000000000000000099', '--out', out]);
+    expect(await readFile(out, 'latin1')).toContain('#90= IFCWALLSTANDARDCASE');
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
 
 it('selects each exact authored storey Name, including surrounding spaces (#11583)', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'ifc-extract-authored-storey-'));

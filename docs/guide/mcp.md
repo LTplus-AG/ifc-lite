@@ -156,9 +156,10 @@ specification, facet and constraint. Reading the same XML twice gives the
 same ids.
 
 `ids_apply_ops` is the only tool that changes a document. It takes typed
-operations (IDS ops vocabulary v1). The tool's input schema lists each op
-kind with its payload fields; the full JSON Schema of an op is the resource
-`ifc-lite://schemas/ids-ops-v1.json`. The tool passes the whole batch through the grounding gate first:
+operations (IDS ops vocabulary v1). The tool's input schema lists all operation kinds and shows the payload fields
+for `facet.add` as an example. To construct another operation such as `spec.add`,
+use `resources/read` with `ifc-lite://schemas/ids-ops-v1.json` to look up its
+payload shape and required fields. The tool passes the whole batch through the grounding gate first:
 every op is validated, and every literal name is checked against the IFC
 schema tables (entities, predefined types, attributes, property sets,
 properties, enumeration values, data types). If one name is wrong, nothing

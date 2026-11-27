@@ -1,0 +1,13 @@
+diff --git b/apps/viewer/src/lib/model-placement/two-point-align.ts a/apps/viewer/src/lib/model-placement/two-point-align.ts
+index 03182d8549..5cd2d2337e 100644
+--- b/apps/viewer/src/lib/model-placement/two-point-align.ts
++++ a/apps/viewer/src/lib/model-placement/two-point-align.ts
+@@ -81,7 +81,7 @@ export function alignTwoPoints(input: TwoPointAlignInput): TwoPointAlignResult {
+   if (referencePlan < MIN_PLAN_SEPARATION_M) return { ok: false, reason: 'reference-pair-degenerate' };
+   // atan2 of the cross and dot products is the signed angle between the two
+   // plan vectors in one step, without subtracting two near-pi atan2 results.
+-  const heading = wrapHeading(Math.atan2(abY * refX - abX * refY, abX * refX + abY * refY));
++  const heading = wrapHeading(Math.atan2(abX * refY - abY * refX, abX * refX + abY * refY));
+   const cos = Math.cos(heading), sin = Math.sin(heading);
+   // Where B lands relative to A' (A lands on A'), then its offset from B'.
+   const landedX = abX * cos - abY * sin, landedY = abX * sin + abY * cos;

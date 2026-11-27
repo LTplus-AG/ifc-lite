@@ -38,7 +38,7 @@ import { QUANT_BYTES_PER_VERTEX } from './quantize.js';
 import { BATCH_CONSTANTS } from './constants.js';
 import { TopologyMemo } from './scene-precision.js';
 import { colorSaltByte, writeMergedRecords } from './scene-geometry.js';
-import { createBatchUniform } from './scene-batch-upload.js';
+import { createBatchUniform, noteQuantization } from './scene-batch-upload.js';
 import type { BatchQuantization } from './scene-derived-batches.js';
 import type { MergedBatchBytes } from './scene-snapshot-batches.js';
 import { createStaticGpuBuffer } from './gpu-static-upload.js';
@@ -220,7 +220,7 @@ export class StreamAssembly {
       options.onMerged?.({ vertexData: concatBytes(runs, vertexBytes, stride, !!quantized), indices,
         ...(lod1IndexBuffer ? { lod1Indices: lodIndices! } : {}) });
 
-      return {
+      return noteQuantization(options.quantized, {
         id: options.id,
         colorKey: options.colorKey,
         vertexBuffer,
@@ -237,7 +237,7 @@ export class StreamAssembly {
         origin: options.origin,
         ...(lod1IndexBuffer ? { lod1IndexBuffer, lod1IndexCount } : {}),
         ...(quantized ? { quantized: { min: quantized.min, step: quantized.step } } : {}),
-      };
+      });
     } catch (error) {
       uniformSlot?.release();
       for (const buffer of allocated) {

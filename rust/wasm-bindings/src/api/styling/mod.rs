@@ -6,5 +6,5 @@
 
 mod prepass;
 
-pub(crate) use ifc_lite_processing::style::resolve_element_color;
+pub(crate) use ifc_lite_processing::style::resolve_element_style;
 pub(crate) use prepass::combined_pre_pass;

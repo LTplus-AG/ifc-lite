@@ -27,6 +27,21 @@ npx @ifc-lite/mcp ./model.ifc --viewer
 npx @ifc-lite/mcp ./model.ifc --open
 ```
 
+## Building client distribution artifacts
+
+From the repository root:
+
+```bash
+pnpm --filter @ifc-lite/mcp release:manifests
+```
+
+With the project's WASM build toolchain installed, this builds a Claude
+Desktop `.mcpb`, a dependency inventory and the MCP Registry `server.json`
+for the package version under the gitignored `packages/mcp/release-out/`
+directory. Use `--no-bundle` to generate only `server.json`.
+The Registry entry identifies the matching npm release. Registry publication
+requires that npm version to exist with the same `mcpName`.
+
 ## Embedded loaded-model authoring
 
 For embedded HTTP servers, `HttpTransport` accepts `maxSessions` (default
@@ -109,6 +124,18 @@ You can also reach it via the unified CLI:
 ifc-lite mcp ./model.ifc
 ifc-lite mcp ./model.ifc --read-only
 ```
+
+### Add it to a client in one step
+
+```bash
+npx -y @ifc-lite/mcp install --client claude-desktop ./model.ifc
+npx -y @ifc-lite/mcp install --client claude-code -- --bridge
+npx -y @ifc-lite/mcp install --client cursor --dry-run
+```
+
+Clients: `claude-code`, `claude-desktop`, `cursor`, `vscode`. Existing configs
+are merged (other servers kept, a backup written first); `--dry-run` prints
+what would change. `install --help` lists the options.
 
 ### Claude Desktop
 

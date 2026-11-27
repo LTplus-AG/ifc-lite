@@ -107,8 +107,8 @@ function methodDoc(name: string): string {
   if (name === 'addIfcGableRoof') return 'Add a dual-pitch gable roof. `Slope` is in radians. Returns roof expressId.';
   if (name === 'addIfcWallDoor') return 'Add a door hosted in a wall opening. Position is wall-local [alongWall, 0, baseHeight]. Returns door expressId.';
   if (name === 'addIfcWallWindow') return 'Add a window hosted in a wall opening. Position is wall-local [alongWall, 0, sillHeight]. Returns window expressId.';
-  if (name === 'addElement') return 'Create ANY IFC type with a profile at a placement. Returns expressId.';
-  if (name === 'addAxisElement') return 'Create ANY IFC type extruded along a Start→End axis. Returns expressId.';
+  if (name === 'addElement') return 'Create an IFC product a storey can hold (element, other product or IfcSpace; groups and other spatial elements throw) with a profile at a placement. Returns expressId.';
+  if (name === 'addAxisElement') return 'Create an IFC product a storey can hold (element, other product or IfcSpace; groups and other spatial elements throw) extruded along a Start→End axis. Returns expressId.';
   if (name === 'createProfile') return 'Create a profile from a ProfileDef union. Returns profile ID.';
   if (name === 'getWorldPlacementId') return 'Get the world placement ID for use with addLocalPlacement.';
   if (name.startsWith('addIfc')) {

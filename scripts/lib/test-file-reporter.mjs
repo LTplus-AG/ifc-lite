@@ -19,13 +19,22 @@
  * nothing, which the probe reads as zero files reported.
  *
  *   --test-reporter=<this file> --test-reporter-destination=<out.json>
+ * With TEST_FILE_REPORT_FORMAT=durations, report viewer-relative paths and
+ * each file's duration in seconds using the same file-level events.
  */
+import { relative } from 'node:path';
+
 export default async function* testFileReporter(source) {
-  const files = new Set();
+  const files = new Map();
+  const durations = process.env.TEST_FILE_REPORT_FORMAT === 'durations';
   for await (const event of source) {
     if (event.type !== 'test:complete') continue;
-    const { nesting, name, file } = event.data ?? {};
-    if (nesting === 0 && typeof file === 'string' && typeof name === 'string' && (file === name || file.endsWith(`/${name}`))) files.add(file);
+    const { nesting, name, file, details } = event.data ?? {};
+    if (nesting === 0 && typeof file === 'string' && typeof name === 'string' && (file === name || file.endsWith(`/${name}`))) files.set(file, details?.duration_ms);
   }
-  yield `${JSON.stringify([...files].sort())}\n`;
+  const paths = [...files.keys()].sort();
+  const result = durations ? Object.fromEntries(paths.map((file) => [
+    relative(process.cwd(), file).split('\\').join('/'), files.get(file) / 1000,
+  ])) : paths;
+  yield `${JSON.stringify(result)}\n`;
 }

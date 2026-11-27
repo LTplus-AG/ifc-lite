@@ -241,6 +241,22 @@ describe('--channel', () => {
     expect(agent.r.bridge.uiEvents.size).toBe(3);
   });
 
+  it('sends one trailing refusal notice for refusals the 5 s interval held back', async () => {
+    const agent = await startAgent(true);
+    const { send } = await pair(agent);
+    const refusedNotices = () => agent.notes.filter((n) => 'method' in n && n.method === 'notifications/claude/channel'
+      && (n as { params: { meta: { event: string } } }).params.meta.event === 'refused') as Array<{ params: { meta: { count: string } } }>;
+    send({ surfaceId: 'nowhere', name: 'ask', prompt: 'a' });
+    await expect.poll(() => refusedNotices().length).toBe(1);
+    send({ surfaceId: 'nowhere', name: 'ask', prompt: 'b' });
+    send({ surfaceId: 'nowhere', name: 'ask', prompt: 'c' });
+    await new Promise((r) => setTimeout(r, 300));
+    expect(refusedNotices()).toHaveLength(1);
+    // After the interval, one more notice with every refusal not yet read.
+    await expect.poll(() => refusedNotices().length, { timeout: 8000 }).toBe(2);
+    expect(refusedNotices()[1].params.meta.count).toBe('3');
+  }, 20_000);
+
   it('is off by default', async () => {
     const agent = await startAgent();
     expect(agent.capabilities.experimental).toBeUndefined();

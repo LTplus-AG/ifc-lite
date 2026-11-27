@@ -441,8 +441,9 @@ palette. Reads, selection inspection and palette discovery are available initial
   unknown id or an already answered call is ignored. Calls time out after
   120 s (`TIMEOUT`, and the tab gets a `cancel`); closing the socket fails all
   pending calls.
-- **No tab.** No `tab_*` tool is listed, and a call to one fails at once
-  with `VIEWER_NOT_CONNECTED`. `notifications/tools/list_changed` is sent when
+- **No tab.** No `tab_*` tool is listed (except `tab_ui_events` while it
+  still holds clicks from a tab that went away), and a call to one fails at
+  once with `VIEWER_NOT_CONNECTED`. `notifications/tools/list_changed` is sent when
   the listed tools can change: on connect, disconnect, replacement, and an
   `update` that actually changes the effective permission or the tool list. At
   most one is sent per 200 ms; no-op updates send none.
@@ -475,8 +476,9 @@ palette. Reads, selection inspection and palette discovery are available initial
   for a surface the agent sent to this tab with `tab_show_ui` and an event
   name that surface raises (or `ask`); anything else is dropped and logged.
   Its prompt counts as the user's words only when it is follow-up text the
-  agent wrote in that surface (a follow-up's `prompt`, or an event's
-  `userMessage` or `context.prompt`); labels and data values never count. Any
+  agent wrote in that surface (a follow-up's `prompt`, an event's
+  `userMessage`, or an `ask` event's `context.prompt`); labels and data
+  values never count. Any
   other prompt, typed or computed, still arrives, marked
   `promptVerified: false`, and with `--channel` it is quoted as data rather
   than passed on as the user's message.

@@ -183,13 +183,24 @@ export async function startBridgeServer(opts: BridgeServerOptions): Promise<Runn
   bridge.onChange(() => server.notifyToolsChanged());
   if (opts.channel) {
     bridge.uiEvents.onEvent((event) => server.notify(CHANNEL_NOTIFICATION, channelParams(event)));
-    // At most one refusal notice per interval, carrying the count; tab_ui_events has the rest.
+    // At most one refusal notice per interval, carrying the count. Refusals the
+    // interval held back get one trailing notice, unless the agent read them meanwhile.
     let lastNotice = -Infinity;
-    bridge.uiEvents.onRefused((pending) => {
-      const now = Date.now();
-      if (now - lastNotice < REFUSED_NOTICE_INTERVAL_MS) return;
-      lastNotice = now;
+    let trailing: ReturnType<typeof setTimeout> | null = null;
+    const notice = (pending: number): void => {
+      lastNotice = Date.now();
       server.notify(CHANNEL_NOTIFICATION, refusedChannelParams(pending));
+    };
+    bridge.uiEvents.onRefused((pending) => {
+      const wait = lastNotice + REFUSED_NOTICE_INTERVAL_MS - Date.now();
+      if (wait <= 0) return notice(pending);
+      if (trailing) return;
+      trailing = setTimeout(() => {
+        trailing = null;
+        const left = bridge.uiEvents.pendingRefused;
+        if (left > 0) notice(left);
+      }, wait);
+      trailing.unref?.();
     });
   }
   return {

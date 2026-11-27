@@ -242,6 +242,11 @@ export class UiEventInbox {
     this.lossTimer = null;
   }
 
+  /** Refusals counted since the last read. */
+  get pendingRefused(): number {
+    return this.refusedCount;
+  }
+
   /** Something to report: queued events, or counted drops or refusals. */
   get hasNews(): boolean {
     return this.queue.length > 0 || this.dropped > 0 || this.refusedCount > 0;

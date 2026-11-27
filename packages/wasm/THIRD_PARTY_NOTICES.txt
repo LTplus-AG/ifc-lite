@@ -9582,7 +9582,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 
-=== i_float 4.1.0 ===
+=== i_float 5.0.0 ===
 Licence declaration: MIT
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)
@@ -9611,12 +9611,12 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 
-=== i_key_sort 0.11.0 ===
+=== i_key_sort 0.12.0 ===
 Licence declaration: MIT
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)
 
---- https://raw.githubusercontent.com/iShape-Rust/iKeySort/d8c914dc29afd4d4824dacd2c134dbc16168e78c/LICENSE (sha256 47e00f18b265d350a2860d3899f17dd1c7689b966545e929df8ffa7033f5acdc) ---
+--- https://raw.githubusercontent.com/iShape-Rust/iKeySort/688424e09b7758d04e62e350160d164c7384f54b/LICENSE (sha256 47e00f18b265d350a2860d3899f17dd1c7689b966545e929df8ffa7033f5acdc) ---
 MIT License
 
 Copyright (c) 2024 iShape-Rust
@@ -9640,14 +9640,14 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 
-=== i_overlay 8.1.2 ===
+=== i_overlay 9.2.0 ===
 Licence declaration: MIT OR Apache-2.0
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)
 Licence election: MIT
-Attribution: i_overlay 8.1.2, licensed under MIT by maintainer default from MIT OR Apache-2.0
+Attribution: i_overlay 9.2.0, licensed under MIT by maintainer default from MIT OR Apache-2.0
 
---- https://raw.githubusercontent.com/iShape-Rust/iOverlay/340bd5d1eaa21692fd2048574554ed95b781af63/LICENSE-APACHE (sha256 59899c6091b540582ed617e8eeaac4919dc985ccfc35459ee9752b699be5205b) ---
+--- https://raw.githubusercontent.com/iShape-Rust/iOverlay/955096214d8c0d54bcd4a650ab0b117be9928018/LICENSE-APACHE (sha256 59899c6091b540582ed617e8eeaac4919dc985ccfc35459ee9752b699be5205b) ---
                                  Apache License
                            Version 2.0, January 2004
                         http://www.apache.org/licenses/
@@ -9825,10 +9825,10 @@ Attribution: i_overlay 8.1.2, licensed under MIT by maintainer default from MIT 
 
    END OF TERMS AND CONDITIONS
 
---- https://raw.githubusercontent.com/iShape-Rust/iOverlay/340bd5d1eaa21692fd2048574554ed95b781af63/LICENSE-MIT (sha256 260cc580f53a756821a0f35475e2cd6da790f8fed0efc058252fe1bed8f2689e) ---
+--- https://raw.githubusercontent.com/iShape-Rust/iOverlay/955096214d8c0d54bcd4a650ab0b117be9928018/LICENSE-MIT (sha256 260cc580f53a756821a0f35475e2cd6da790f8fed0efc058252fe1bed8f2689e) ---
 Full text reproduced above under this SHA-256.
 
-=== i_shape 4.0.0 ===
+=== i_shape 5.0.0 ===
 Licence declaration: MIT
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)
@@ -9836,7 +9836,7 @@ Scope: default pkg + pkg-retained; pkg-rhino (locked production closure, include
 --- LICENSE (sha256 260cc580f53a756821a0f35475e2cd6da790f8fed0efc058252fe1bed8f2689e) ---
 Full text reproduced above under this SHA-256.
 
-=== i_tree 0.19.0 ===
+=== i_tree 0.20.0 ===
 Licence declaration: MIT
 Source: registry+https://github.com/rust-lang/crates.io-index
 Scope: default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)

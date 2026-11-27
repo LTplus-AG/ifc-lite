@@ -1,6 +1,6 @@
 {
   "format": 2,
-  "manifestSha256": "58a0df2f9bc8b31a632f4cf5f3faa08380d9bf719a56d1dcf580d15dbc57f2a9",
+  "manifestSha256": "c02ac54d36c99253dc59df5359431bd60f8fa2c5bc02dcab3549d52dbc720455",
   "inputs": {
     "cargoClosures": {
       "ifc-lite-wasm": [
@@ -462,33 +462,33 @@
         },
         {
           "name": "i_float",
-          "version": "4.1.0",
+          "version": "5.0.0",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
-          "checksum": "c614c2cfc06cfe8809ccc48cd445864502478e673721ca2a05931fc057ec33a0"
+          "checksum": "9ecaff1ce29bcacd72cdf581ba6fce636ef4c4e0b2da7e7846dd0137d98141e2"
         },
         {
           "name": "i_key_sort",
-          "version": "0.11.0",
+          "version": "0.12.0",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
-          "checksum": "7c6c58d0c60705e66264ce0f788a69a2f21472aeb8188559e7c8c619dbdc10fa"
+          "checksum": "14269ee362009550495e20650ff3c2bca14a8147fe251e216760381ffed90b6f"
         },
         {
           "name": "i_overlay",
-          "version": "8.1.2",
+          "version": "9.2.0",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
-          "checksum": "997dfc291f5192f34b4f3ddc67e60086a27ee9f3b880154933582490c6e218d3"
+          "checksum": "e19f30f6631721dcdfdd424da135bde0ffb0f6aca1036947eff2137527f5e926"
         },
         {
           "name": "i_shape",
-          "version": "4.0.0",
+          "version": "5.0.0",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
-          "checksum": "67ec1fc3ad980a24e4761b763bf5bfbf58c1d88be1bffb14654d369d7f420258"
+          "checksum": "fa1878f91ef7921feaf1b2346253ebc5e661878b22d5715195c1d5dcf0f20ae5"
         },
         {
           "name": "i_tree",
-          "version": "0.19.0",
+          "version": "0.20.0",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
-          "checksum": "1e9d4a992a9fe83130f41ceacceac3bb116a4355dfc9c8d6ecea4f1e4b4c6caf"
+          "checksum": "048af31de955890c62a8506fec511335a5089e91e1c516537add16f96c507d84"
         },
         {
           "name": "iana-time-zone",
@@ -1894,33 +1894,33 @@
         },
         {
           "name": "i_float",
-          "version": "4.1.0",
+          "version": "5.0.0",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
-          "checksum": "c614c2cfc06cfe8809ccc48cd445864502478e673721ca2a05931fc057ec33a0"
+          "checksum": "9ecaff1ce29bcacd72cdf581ba6fce636ef4c4e0b2da7e7846dd0137d98141e2"
         },
         {
           "name": "i_key_sort",
-          "version": "0.11.0",
+          "version": "0.12.0",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
-          "checksum": "7c6c58d0c60705e66264ce0f788a69a2f21472aeb8188559e7c8c619dbdc10fa"
+          "checksum": "14269ee362009550495e20650ff3c2bca14a8147fe251e216760381ffed90b6f"
         },
         {
           "name": "i_overlay",
-          "version": "8.1.2",
+          "version": "9.2.0",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
-          "checksum": "997dfc291f5192f34b4f3ddc67e60086a27ee9f3b880154933582490c6e218d3"
+          "checksum": "e19f30f6631721dcdfdd424da135bde0ffb0f6aca1036947eff2137527f5e926"
         },
         {
           "name": "i_shape",
-          "version": "4.0.0",
+          "version": "5.0.0",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
-          "checksum": "67ec1fc3ad980a24e4761b763bf5bfbf58c1d88be1bffb14654d369d7f420258"
+          "checksum": "fa1878f91ef7921feaf1b2346253ebc5e661878b22d5715195c1d5dcf0f20ae5"
         },
         {
           "name": "i_tree",
-          "version": "0.19.0",
+          "version": "0.20.0",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
-          "checksum": "1e9d4a992a9fe83130f41ceacceac3bb116a4355dfc9c8d6ecea4f1e4b4c6caf"
+          "checksum": "048af31de955890c62a8506fec511335a5089e91e1c516537add16f96c507d84"
         },
         {
           "name": "iana-time-zone",
@@ -2669,10 +2669,10 @@
     "supplemental": [
       {
         "name": "i_key_sort",
-        "version": "0.11.0",
+        "version": "0.12.0",
         "notices": [
           {
-            "origin": "https://raw.githubusercontent.com/iShape-Rust/iKeySort/d8c914dc29afd4d4824dacd2c134dbc16168e78c/LICENSE",
+            "origin": "https://raw.githubusercontent.com/iShape-Rust/iKeySort/688424e09b7758d04e62e350160d164c7384f54b/LICENSE",
             "file": "texts/47e00f18b265d350a2860d3899f17dd1c7689b966545e929df8ffa7033f5acdc.txt",
             "sha256": "47e00f18b265d350a2860d3899f17dd1c7689b966545e929df8ffa7033f5acdc"
           }
@@ -2680,15 +2680,15 @@
       },
       {
         "name": "i_overlay",
-        "version": "8.1.2",
+        "version": "9.2.0",
         "notices": [
           {
-            "origin": "https://raw.githubusercontent.com/iShape-Rust/iOverlay/340bd5d1eaa21692fd2048574554ed95b781af63/LICENSE-APACHE",
+            "origin": "https://raw.githubusercontent.com/iShape-Rust/iOverlay/955096214d8c0d54bcd4a650ab0b117be9928018/LICENSE-APACHE",
             "file": "texts/59899c6091b540582ed617e8eeaac4919dc985ccfc35459ee9752b699be5205b.txt",
             "sha256": "59899c6091b540582ed617e8eeaac4919dc985ccfc35459ee9752b699be5205b"
           },
           {
-            "origin": "https://raw.githubusercontent.com/iShape-Rust/iOverlay/340bd5d1eaa21692fd2048574554ed95b781af63/LICENSE-MIT",
+            "origin": "https://raw.githubusercontent.com/iShape-Rust/iOverlay/955096214d8c0d54bcd4a650ab0b117be9928018/LICENSE-MIT",
             "file": "texts/260cc580f53a756821a0f35475e2cd6da790f8fed0efc058252fe1bed8f2689e.txt",
             "sha256": "260cc580f53a756821a0f35475e2cd6da790f8fed0efc058252fe1bed8f2689e"
           }
@@ -4503,7 +4503,7 @@
     },
     {
       "name": "i_float",
-      "version": "4.1.0",
+      "version": "5.0.0",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
       "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
@@ -4517,13 +4517,13 @@
     },
     {
       "name": "i_key_sort",
-      "version": "0.11.0",
+      "version": "0.12.0",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
       "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
-          "origin": "https://raw.githubusercontent.com/iShape-Rust/iKeySort/d8c914dc29afd4d4824dacd2c134dbc16168e78c/LICENSE",
+          "origin": "https://raw.githubusercontent.com/iShape-Rust/iKeySort/688424e09b7758d04e62e350160d164c7384f54b/LICENSE",
           "file": "texts/47e00f18b265d350a2860d3899f17dd1c7689b966545e929df8ffa7033f5acdc.txt",
           "sha256": "47e00f18b265d350a2860d3899f17dd1c7689b966545e929df8ffa7033f5acdc"
         }
@@ -4531,18 +4531,18 @@
     },
     {
       "name": "i_overlay",
-      "version": "8.1.2",
+      "version": "9.2.0",
       "license": "MIT OR Apache-2.0",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
       "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
       "notices": [
         {
-          "origin": "https://raw.githubusercontent.com/iShape-Rust/iOverlay/340bd5d1eaa21692fd2048574554ed95b781af63/LICENSE-APACHE",
+          "origin": "https://raw.githubusercontent.com/iShape-Rust/iOverlay/955096214d8c0d54bcd4a650ab0b117be9928018/LICENSE-APACHE",
           "file": "texts/59899c6091b540582ed617e8eeaac4919dc985ccfc35459ee9752b699be5205b.txt",
           "sha256": "59899c6091b540582ed617e8eeaac4919dc985ccfc35459ee9752b699be5205b"
         },
         {
-          "origin": "https://raw.githubusercontent.com/iShape-Rust/iOverlay/340bd5d1eaa21692fd2048574554ed95b781af63/LICENSE-MIT",
+          "origin": "https://raw.githubusercontent.com/iShape-Rust/iOverlay/955096214d8c0d54bcd4a650ab0b117be9928018/LICENSE-MIT",
           "file": "texts/260cc580f53a756821a0f35475e2cd6da790f8fed0efc058252fe1bed8f2689e.txt",
           "sha256": "260cc580f53a756821a0f35475e2cd6da790f8fed0efc058252fe1bed8f2689e"
         }
@@ -4550,7 +4550,7 @@
     },
     {
       "name": "i_shape",
-      "version": "4.0.0",
+      "version": "5.0.0",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
       "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",
@@ -4564,7 +4564,7 @@
     },
     {
       "name": "i_tree",
-      "version": "0.19.0",
+      "version": "0.20.0",
       "license": "MIT",
       "source": "registry+https://github.com/rust-lang/crates.io-index",
       "scope": "default pkg + pkg-retained; pkg-rhino (locked production closure, includes optional/target-specific dependencies and build tools)",

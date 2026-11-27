@@ -75,38 +75,3 @@ pub(super) fn to_seconds(token: &str) -> Option<String> {
     };
     total.is_finite().then(|| crate::step_log::format_step_real(sign * total))
 }
-
-pub(super) const TIME_UNIT_WARNING: &str = "Work-control duration conversion assumed seconds despite a non-second project TIMEUNIT. The exported duration or total float may have changed (#11192).";
-
-pub(super) fn has_non_second_project_time_unit(content: &[u8]) -> bool {
-    use ifc_lite_core::{slot, AttributeValue, EntityDecoder, EntityScanner, IfcType};
-    let mut projects = EntityScanner::new(content);
-    let mut decoder = EntityDecoder::new(content);
-    while let Some((id, ty, _, _)) = projects.next_entity() {
-        if !ty.eq_ignore_ascii_case("IFCPROJECT") {
-            continue;
-        }
-        let Some(assignment) = decoder.decode_by_id(id).ok()
-            .filter(|project| project.ifc_type == IfcType::IfcProject)
-            .and_then(|project| project.ref_at(slot::IfcProject::UNITS_IN_CONTEXT))
-        else {
-            continue;
-        };
-        let Some(units) = decoder.decode_by_id(assignment).ok()
-            .filter(|assignment| assignment.ifc_type == IfcType::IfcUnitAssignment)
-            .and_then(|assignment| assignment.ref_list_at(slot::IfcUnitAssignment::UNITS))
-        else {
-            continue;
-        };
-        if units.into_iter().any(|id| decoder.decode_by_id(id).is_ok_and(|unit| {
-            unit.ifc_type.is_subtype_of(IfcType::IfcNamedUnit)
-                && unit.enum_at(slot::IfcNamedUnit::UNIT_TYPE).is_some_and(|t| t.eq_ignore_ascii_case("TIMEUNIT"))
-                && !(unit.ifc_type == IfcType::IfcSIUnit
-                    && matches!(unit.attr(slot::IfcSIUnit::PREFIX), Some(AttributeValue::Null))
-                    && unit.enum_at(slot::IfcSIUnit::NAME).is_some_and(|name| name.eq_ignore_ascii_case("SECOND")))
-        })) {
-            return true;
-        }
-    }
-    false
-}

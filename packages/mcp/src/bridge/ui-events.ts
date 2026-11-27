@@ -131,7 +131,7 @@ export class UiEventInbox {
   private lossWakes: number[] = [];
   /** A wake deferred until `lossWakes` has room, so no refusal goes unreported. */
   private lossTimer: ReturnType<typeof setTimeout> | null = null;
-  private readonly refusalListeners = new Set<() => void>();
+  private readonly refusalListeners = new Set<(pending: number) => void>();
 
   constructor(private readonly now: () => number = Date.now) {}
 
@@ -220,14 +220,14 @@ export class UiEventInbox {
     this.lossTimer.unref?.();
   }
 
-  /** Called (rate-limited) when refused events were counted, e.g. to push a channel notice. */
-  onRefused(listener: () => void): () => void {
+  /** Called (rate-limited) with the refusals counted since the last read, e.g. to push a channel notice. */
+  onRefused(listener: (pending: number) => void): () => void {
     this.refusalListeners.add(listener);
     return () => { this.refusalListeners.delete(listener); };
   }
 
   private reportLoss(): void {
-    for (const listener of this.refusalListeners) listener();
+    for (const listener of this.refusalListeners) listener(this.refusedCount);
     for (const wake of this.waiters) wake();
   }
 
@@ -243,11 +243,6 @@ export class UiEventInbox {
   }
 
   /** Something to report: queued events, or counted drops or refusals. */
-  /** Refusals counted since the last read. */
-  get pendingRefused(): number {
-    return this.refusedCount;
-  }
-
   get hasNews(): boolean {
     return this.queue.length > 0 || this.dropped > 0 || this.refusedCount > 0;
   }

@@ -185,11 +185,11 @@ export async function startBridgeServer(opts: BridgeServerOptions): Promise<Runn
     bridge.uiEvents.onEvent((event) => server.notify(CHANNEL_NOTIFICATION, channelParams(event)));
     // At most one refusal notice per interval, carrying the count; tab_ui_events has the rest.
     let lastNotice = -Infinity;
-    bridge.uiEvents.onRefused(() => {
+    bridge.uiEvents.onRefused((pending) => {
       const now = Date.now();
       if (now - lastNotice < REFUSED_NOTICE_INTERVAL_MS) return;
       lastNotice = now;
-      server.notify(CHANNEL_NOTIFICATION, refusedChannelParams(bridge.uiEvents.pendingRefused));
+      server.notify(CHANNEL_NOTIFICATION, refusedChannelParams(pending));
     });
   }
   return {

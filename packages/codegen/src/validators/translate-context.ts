@@ -29,10 +29,11 @@ export class Scope {
     readonly parent?: Scope,
     /** The innermost enclosing REPEAT; a SKIP in it names `label`, assigned on first use. */
     readonly loop?: { label?: string },
+    readonly returnsSet = false,
   ) {}
 
   child(loop = this.loop): Scope {
-    return new Scope(this.kind, this.entity, this, loop);
+    return new Scope(this.kind, this.entity, this, loop, this.returnsSet);
   }
 
   define(name: string, js: string, type?: TypeSpec): Variable {

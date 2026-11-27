@@ -194,11 +194,13 @@ END_SCHEMA;`;
 
   it('compiles SKIP to a break out of a labelled body, so the UNTIL test still runs', () => {
     const fn = `FUNCTION F (X : MiniLabel) : INTEGER; LOCAL N : INTEGER := 0; END_LOCAL;
-REPEAT UNTIL N > 3; N := N + 1; IF N = 2 THEN SKIP; END_IF; END_REPEAT; RETURN (N); END_FUNCTION;`;
-    const rules = generateValidators(mini('WR1 : TRUE', fn)).files['rules.ts'];
-    const loop = rules.slice(rules.indexOf('for (;;)'), rules.indexOf('return v_n'));
-    expect(loop).toMatch(/(body_\d+): \{[\s\S]*break \1;[\s\S]*\}\n\s*if \(r\.isTrue\(r\.gt\(v_n, 3\)\)\) break;/);
-    expect(loop).not.toContain('continue');
+REPEAT UNTIL N > 1; N := N + 1; IF N = 2 THEN SKIP; END_IF; END_REPEAT; RETURN (N); END_FUNCTION;`;
+    const { files } = generateValidators(mini("WR1 : F('x') = 2", fn));
+    const [rule] = loadRules(files['rules.ts'], {
+      ...setRuntime, assign: (x: number) => x, add: (a: number, b: number) => a + b,
+      gt: (a: number, b: number) => a > b, isTrue: Boolean,
+    });
+    expect(rule.check({}, {})).toBe(true);
   });
 
   it("does not treat a three-part 'SCHEMA.ENTITY.ATTR' literal as a type in IN TYPEOF", () => {
@@ -286,6 +288,7 @@ ENTITY C SUBTYPE OF (A,B); END_ENTITY;
 TYPE T = LIST [1+1:4] OF INTEGER; END_TYPE;
 TYPE E = EXTENSIBLE ENUMERATION OF (OPEN); END_TYPE;
 TYPE F = ENUMERATION BASED_ON E WITH (CLOSED); END_TYPE;
+TYPE G = ENUMERATION BASED_ON E WITH (OTHER); END_TYPE;
 TYPE Sel = EXTENSIBLE SELECT (A); END_TYPE;
 TYPE More = SELECT BASED_ON Sel WITH (B); END_TYPE; END_SCHEMA;`);
     const js = ts.transpileModule(files['schema.ts'], { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText;
@@ -294,9 +297,23 @@ TYPE More = SELECT BASED_ON Sel WITH (B); END_TYPE; END_SCHEMA;`);
     expect(exports.META.entities).toContainEqual(expect.objectContaining({ name: 'C', supertypes: ['A', 'B'] }));
     expect(exports.META.types).toEqual(expect.arrayContaining([
       expect.objectContaining({ name: 'T', underlying: expect.objectContaining({ low: 2, high: 4 }) }),
+      expect.objectContaining({ name: 'E', items: ['OPEN', 'CLOSED', 'OTHER'] }),
+      expect.objectContaining({ name: 'Sel', items: ['A', 'B'] }),
       expect.objectContaining({ name: 'F', items: ['OPEN', 'CLOSED'] }),
       expect.objectContaining({ name: 'More', items: ['A', 'B'] }),
     ]));
+  });
+
+  it('reports unsafe operands even when their rounded difference fits (#11646)', () => {
+    const { coverage } = generateValidators('SCHEMA S; TYPE T = LIST [0:9007199254740993 - 9007199254740992] OF INTEGER; END_TYPE; END_SCHEMA;');
+    expect(coverage.unsupported.map(u => u.label)).toEqual(['T upper bound']);
+  });
+
+  it('applies declared SET return semantics (#11646)', () => {
+    const { files } = generateValidators(mini('W : SIZEOF(F()) = 1',
+      'FUNCTION F : SET [1:?] OF INTEGER; RETURN([1,1]); END_FUNCTION;'));
+    const [rule] = loadRules(files['rules.ts'], { ...setRuntime, assignSet: (items: number[]) => [...new Set(items)] });
+    expect(rule.check({}, {})).toBe(true);
   });
 
   it('rejects a qualified enumeration item the enumeration does not declare', () => {

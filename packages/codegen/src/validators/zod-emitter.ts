@@ -133,13 +133,13 @@ class ZodWriter {
       for (const d of level.derived) if (d.redeclares) derived.add(d.redeclares.attribute.toUpperCase());
     }
     const fields: string[] = [];
-    const retyped = new Map<string, { type: TypeSpec; optional: boolean }>();
+    const retyped = new Map<string, { name: string; type: TypeSpec; optional: boolean }>();
     for (const level of chain) for (const a of level.explicit) if (a.redeclares) retyped.set(a.redeclares.attribute.toUpperCase(), a);
     for (const level of chain) {
       for (const a of level.explicit) {
         if (a.redeclares || derived.has(a.name.toUpperCase())) continue;
         const declared = retyped.get(a.name.toUpperCase()) ?? a;
-        fields.push(`  ${a.name}: ${this.spec(declared.type)}${declared.optional ? '.nullish()' : ''},`);
+        fields.push(`  ${declared.name}: ${this.spec(declared.type)}${declared.optional ? '.nullish()' : ''},`);
       }
     }
     const localRules = chain.flatMap((level) => level.where

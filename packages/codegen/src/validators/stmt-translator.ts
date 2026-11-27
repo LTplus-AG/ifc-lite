@@ -46,7 +46,10 @@ export class StatementTranslator {
     switch (s.k) {
       case 'null': return [];
       case 'assign': return [pad + this.assignment(s.target, s.value, scope)];
-      case 'return': return [`${pad}return ${s.value ? this.t(s.value, scope) : 'undefined'};`];
+      case 'return': {
+        const value = s.value ? this.t(s.value, scope) : 'undefined';
+        return [`${pad}return ${scope.returnsSet ? `r.assignSet(${value})` : value};`];
+      }
       case 'escape':
         if (!scope.loop) throw new UnsupportedConstruct('ESCAPE outside REPEAT');
         return [`${pad}break;`];
@@ -139,7 +142,8 @@ export class StatementTranslator {
   }
 
   functionSource(fn: FunctionDecl): string {
-    const scope = new Scope('function');
+    const result = this.resolveType(fn.returns);
+    const scope = new Scope('function', undefined, undefined, undefined, result?.k === 'aggregate' && result.kind === 'SET');
     const params = fn.params.map((p) => `${scope.define(p.name, jsIdentifier('p_', p.name), p.type).js}: r.Value`);
     const setParams = fn.params
       .filter((p) => {

@@ -11,7 +11,7 @@
 import type { BinaryOp, Expr, TypeSpec } from '../express/ast.js';
 import { functionIdentifier, Scope, TranslateContext, UnsupportedConstruct } from './translate-context.js';
 
-const BUILTINS: Record<string, { fn: string; arity: number; model?: boolean }> = {
+export const BUILTINS: Record<string, { fn: string; arity: number; model?: boolean }> = {
   SIZEOF: { fn: 'sizeof', arity: 1 },
   HIINDEX: { fn: 'hiindex', arity: 1 },
   LOINDEX: { fn: 'loindex', arity: 1 },

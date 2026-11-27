@@ -21,7 +21,7 @@ impl<'a> MappingControl<'a> {
             textures: None,
             rep_map: None,
             allow_instancing: false,
-            meshes: SubMeshCollection::new(),
+            meshes: StyledParts::new(),
             textured: Vec::new(),
             levels: Vec::new(),
             action,
@@ -41,7 +41,7 @@ impl<'a> MappingControl<'a> {
 
     /// One styled representation item, appending to `meshes`. A plain item
     /// is meshed under its own id; a mapped item walks its source.
-    pub(in crate::program) fn styled(root: Reached<'a>, meshes: SubMeshCollection, allow_instancing: bool,
+    pub(in crate::program) fn styled(root: Reached<'a>, meshes: StyledParts, allow_instancing: bool,
         textures: Textures<'a>, offset: (f64, f64, f64)) -> Self {
         let item = root.item();
         let action = if item.ifc_type == ifc_lite_core::IfcType::IfcMappedItem {

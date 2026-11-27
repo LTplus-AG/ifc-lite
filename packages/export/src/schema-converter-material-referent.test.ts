@@ -29,6 +29,24 @@ const LAYERS = `#10=IFCMATERIALLAYER(#8,0.2,$,$,$,$,$);
 #12=IFCMATERIALLAYER(#8,0.1,$,$,$,$,$);`;
 
 describe('the Material a downgraded IfcMaterialProperties names (#10763)', () => {
+  it('omits unverified IFC5 material properties and reports their ids (#11132)', async () => {
+    const source = model('IFC5', `#5=IFCMATERIALPROPERTIES('Pset_x',$,(#6),#8);
+#6=IFCPROPERTYSINGLEVALUE('p',$,IFCLABEL('v'),$);
+#8=IFCMATERIAL('Concrete');`);
+    const store = await parse(source);
+    const merged = new MergedExporter([{ id: 'ifc5', name: 'IFC5', dataStore: store }]);
+    const options = { schema: 'IFC2X3' } as const;
+    for (const result of [new StepExporter(store).export(options), merged.export(options), await merged.exportAsync(options)]) {
+      const out = new TextDecoder().decode(result.content);
+      expect(out).toContain("#8=IFCMATERIAL('Concrete');");
+      expect(out).not.toContain('#5=');
+      expect(result.stats.warnings.join(' ')).toMatch(/IFC5 has no EXPRESS attribute registry.*#5/);
+    }
+    const report = analyzeConversionLoss(store, 'IFC5', 'IFC2X3');
+    expect(report.entries).toContainEqual(expect.objectContaining({ sourceType: 'IFCMATERIALPROPERTIES', kind: 'lossy', expressIds: [5] }));
+    expect(report.describe()).toContain('1 × IFCMATERIALPROPERTIES (#5) will be omitted because IFC5 has no EXPRESS attribute registry.');
+  });
+
   it('carries an IfcMaterial as it is', async () => {
     for (const from of ['IFC4', 'IFC4X3']) {
       expect((await down(from, "#5=IFCMATERIALPROPERTIES('Pset_x','d',(#6),#8);")).line, from)
@@ -140,6 +158,31 @@ describe('the Material a downgraded IfcMaterialProperties names (#10763)', () =>
     expect(missing, 'the set names #10 (one material) and a missing #99').toContain('((#10,#99)');
     const dangling = await editedExport(missing, () => {});
     expect(dangling.lines.find((l) => l.startsWith('#5='))).toBeUndefined();
+  });
+
+  // #11243: a created member deleted again has no source record, but its tombstone still says the
+  // writer leaves it out of the list, so the set resolves through the surviving layer.
+  it('leaves a created then deleted layer out of its set (#11243)', async () => {
+    const { lines, warnings } = await editedExport(LAYERED, (_view, editor) => {
+      const layer = editor.addEntity('IfcMaterialLayer', ['#9', 0.1, null, null, null, null, null]).expressId;
+      editor.setPositionalAttribute(13, 0, ['#10', `#${layer}`]);
+      editor.removeEntity(layer);
+    });
+    expect(lines.find((l) => l.startsWith('#13='))).toBe("#13=IFCMATERIALLAYERSET((#10),'Wall');");
+    expect(lines.find((l) => l.startsWith('#5='))).toBe("#5=IFCEXTENDEDMATERIALPROPERTIES(#8,(#6),'d','Pset_x');");
+    expect(warnings.join('\n')).not.toContain('IfcMaterialProperties record(s)');
+  });
+
+  it('leaves a created then deleted layer out of a created set (#11243)', async () => {
+    let created = 0;
+    const { lines, warnings } = await editedExport('#10=IFCMATERIALLAYER(#8,0.2,$,$,$,$,$);', (_view, editor) => {
+      const layer = editor.addEntity('IfcMaterialLayer', ['#9', 0.1, null, null, null, null, null]).expressId;
+      const set = editor.addEntity('IfcMaterialLayerSet', [['#10', `#${layer}`], 'Wall', null]).expressId;
+      created = editor.addEntity('IfcMaterialProperties', ['Q', null, ['#6'], `#${set}`]).expressId;
+      editor.removeEntity(layer);
+    });
+    expect(lines.find((l) => l.startsWith(`#${created}=`))).toBe(`#${created}=IFCEXTENDEDMATERIALPROPERTIES(#8,(#6),$,'Q');`);
+    expect(warnings.join('\n')).not.toContain('IfcMaterialProperties record(s)');
   });
 
   it('leaves a deleted layer out of its set, so the surviving layer names the material', async () => {

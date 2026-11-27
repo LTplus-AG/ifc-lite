@@ -25,6 +25,20 @@ fn a_material_is_carried_10763() {
     }
 }
 
+#[test]
+fn ifc5_material_properties_are_omitted_with_a_warning_11132() {
+    let source = model("IFC5", "#5=IFCMATERIALPROPERTIES('Pset_x',$,(#6),#8);\n#6=IFCPROPERTYSINGLEVALUE('p',$,IFCLABEL('v'),$);\n#8=IFCMATERIAL('Steel');");
+    let opts = crate::StepOptions { schema: Some("IFC2X3".into()), ..Default::default() };
+    let (single, stats, warnings) = crate::export_step_with_diagnostics(source.as_bytes(), &opts).unwrap();
+    let (merged, merged_stats) = crate::export_merged_models(&[crate::MergedModel::new(source.as_bytes())], &crate::MergedOptions { schema: opts.schema, ..Default::default() });
+    for (out, warnings) in [(single, warnings), (merged, merged_stats.warnings)] {
+        assert!(record(&out, "#8=").starts_with("#8=IFCMATERIAL("), "{out}");
+        assert_eq!(record(&out, "#5="), "", "{out}");
+        assert!(warnings.iter().any(|w| w.contains("IFC5 has no EXPRESS attribute registry") && w.contains("#5")), "{warnings:?}");
+    }
+    assert_eq!(stats.attribute_values_dropped, 3);
+}
+
 /// A layer, or a set whose members name one material (an air gap names
 /// none), is pointed at that material.
 #[test]
@@ -150,6 +164,21 @@ fn a_retyped_material_is_not_named_10763() {
 #[test]
 fn a_deleted_layer_leaves_its_set_one_material_10763() {
     let (out, warnings) = log_export(&model("IFC4", LAYERED), r#"{"mutations":[{"type":"DELETE_ENTITY","entityId":12}]}"#);
+    assert_eq!(record(&out, "#13="), "#13=IFCMATERIALLAYERSET((#10),'Wall');", "{out}");
+    assert_eq!(record(&out, "#5="), "#5=IFCEXTENDEDMATERIALPROPERTIES(#8,(#6),'d','Pset_x');", "{out}");
+    assert!(!warnings.iter().any(|w| w.contains("IfcMaterialProperties record(s)")), "{warnings:?}");
+}
+
+/// #11243: a created layer deleted again has no source record, only a
+/// tombstone, and the writer leaves it out of the list, so the set resolves
+/// through the surviving layer. Twin of the TypeScript case.
+#[test]
+fn a_created_then_deleted_layer_leaves_its_set_one_material_11243() {
+    // The log `MutablePropertyView.exportMutations` writes: deleting a created
+    // entity purges its CREATE_ENTITY, so only the tombstone and the set edit remain.
+    let (out, warnings) = log_export(&model("IFC4", LAYERED), r##"{"mutations":[
+        {"type":"UPDATE_POSITIONAL_ATTRIBUTE","entityId":13,"attributeName":"@0","newValue":["#10","#61"]},
+        {"type":"DELETE_ENTITY","entityId":61}]}"##);
     assert_eq!(record(&out, "#13="), "#13=IFCMATERIALLAYERSET((#10),'Wall');", "{out}");
     assert_eq!(record(&out, "#5="), "#5=IFCEXTENDEDMATERIALPROPERTIES(#8,(#6),'d','Pset_x');", "{out}");
     assert!(!warnings.iter().any(|w| w.contains("IfcMaterialProperties record(s)")), "{warnings:?}");

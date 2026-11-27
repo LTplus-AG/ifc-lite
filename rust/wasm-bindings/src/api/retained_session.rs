@@ -188,8 +188,9 @@ fn event<'c>(outcome: ProductOutcome, view: bool, rtc: [f64; 3], finishes: &mut 
             set(&result, "consumedParts", &(product.consumed_parts as f64).into())?;
             let mut meshes = MeshCollection::with_capacity(product.parts.len());
             meshes.set_rtc_offset(rtc[0], rtc[1], rtc[2]);
-            for mesh in view_meshes(&product, rtc) {
-                let finish = finishes.get_or_insert_with(|| ModelFinishes::from_source(source, styled_items)).finish_for_mesh(&mesh);
+            for (mesh, style) in view_meshes(&product, rtc) {
+                // By the source the part's colour came from, not by colour (#10698).
+                let finish = finishes.get_or_insert_with(|| ModelFinishes::from_source(source, styled_items)).finish_for_source(style);
                 meshes.add(mesh_js_with_finish(mesh, finish));
             }
             super::retained_presentation::product_fields(&result, &product, true)?;

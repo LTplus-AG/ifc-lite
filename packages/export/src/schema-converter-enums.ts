@@ -22,7 +22,6 @@
 import { TypedPropertyUpgrade } from './schema-converter-typed-properties.js';
 import { StructuralDiagnostics } from './schema-converter-structural-diagnostics.js';
 import { DocumentLinks } from './schema-converter-document-links.js';
-import type { SourceStore } from './schema-converter-structural-source.js';
 import { ValueForms } from './schema-converter-value-forms.js';
 import { MaterialReferents } from './schema-converter-material-referent.js';
 import { SpaceBoundaryElements } from './schema-converter-space-boundary.js';
@@ -86,8 +85,8 @@ export class EnumReconciliation {
   /** The IfcRelSpaceBoundary records an IFC2X3 upgrade leaves out for want of their element. */
   readonly boundaries = new SpaceBoundaryElements();
 
-  constructor(deferConversions = false, timeUnitSources?: readonly SourceStore[]) {
-    this.forms = new ValueForms(deferConversions, timeUnitSources);
+  constructor(deferConversions = false) {
+    this.forms = new ValueForms(deferConversions);
     this.typedProperties = new TypedPropertyUpgrade(deferConversions);
     this.materials = new MaterialReferents();
   }

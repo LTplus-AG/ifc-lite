@@ -230,11 +230,7 @@ fn emit<W: std::io::Write>(
     let mut boundaries_left_out = if converting { crate::schema_space_boundary::plain_left_out(opts, content, &index, &included, &muts_by_id, &source_schema, &schema) } else { HashSet::new() };
     let mut withheld_warnings: Vec<String> = Vec::new();
 
-    // Copy-on-write, resolved before the emit loop so the copies and the
-    // repointed referrers both go through it. Its own module: the pass has four
-    // rules now and every one of them is a file that came out wrong without it.
-    // One allocator for the copies and the property sets after them
-    // (#7682, EXPORT-STEP-9), the one `checks` drew from above.
+    // Emit copies and repointed referrers together. Share the allocator with property sets (#7682).
     let resolved = crate::step_cow::resolve(&opts.copy_on_write, content, line_of, &included, &muts_by_id, &mut ids);
     let copies_refused = resolved.refused;
     let copies = resolved.copies; flatten.note_edits(content, &copies, &muts_by_id); flatten.retain_grids(|id| included.contains(&id));
@@ -252,15 +248,15 @@ fn emit<W: std::io::Write>(
     crate::step_header::write_header(out, opts, source_header.as_ref(), header_schema)?;
     // IFC2X3 places one product per placement (#9209): its records are held to adapt them.
     use std::io::Write as _;
-    let date_buffer = crate::schema_value_forms::ValueForms::buffer_for_dates(content, &source_schema, &schema);
+    let temporal_buffer = crate::schema_value_forms::ValueForms::buffers_temporal_values(content, &source_schema, &schema);
     // A withheld copy can already be named by a repointed source record.
     // Close those references in the same final pass as other upgrade losses.
     let repair_boundary_copies = !copies.is_empty() && !boundaries_left_out.is_empty();
-    let mut body = crate::schema_ifc2x3_placements::Body::for_conversion(&mut *out, targets_ifc2x3, date_buffer || checks.structural.buffers_varying(content) || checks.typed_properties.enabled, upgrading.filter(|_| may_prune_upgrade || repair_boundary_copies));
+    let mut body = crate::schema_ifc2x3_placements::Body::for_conversion(&mut *out, targets_ifc2x3, temporal_buffer || checks.structural.buffers_varying(content) || checks.typed_properties.enabled, upgrading.filter(|_| may_prune_upgrade || repair_boundary_copies));
     if repair_boundary_copies {
         for &id in &boundaries_left_out { body.note_omitted(id); }
     }
-    if targets_ifc2x3 || date_buffer { checks.forms.enable_dates(); }
+    if targets_ifc2x3 || temporal_buffer { checks.forms.defer_temporal_values(); }
 
     let mut written = 0usize;
     for id in order {
@@ -367,6 +363,7 @@ fn emit<W: std::io::Write>(
         written += 2;
     }
 
+    checks.forms.durations.finish_model(|| crate::schema_project_time_unit::effective_source_scale(content, &index, &muts_by_id, &repointed, &copies));
     written = written.checked_add_signed(checks.finish(body, targets_ifc2x3.then_some(&mut slot_fill), ids)?).unwrap_or(written);
     out.write_all(b"ENDSEC;\nEND-ISO-10303-21;\n")?;
 
@@ -384,7 +381,7 @@ fn emit<W: std::io::Write>(
         attribute_values_dropped: checks.attribute_values_dropped,
         property_mutations_refused,
         duplicate_records_dropped: index.duplicates.len(),
-    }, { let mut warnings = checks.warnings_for_sources(std::iter::once(content)); warnings.extend(withheld_warnings); warnings }))
+    }, { let mut warnings = checks.warnings(); warnings.extend(withheld_warnings); warnings }))
 }
 
 #[cfg(test)]

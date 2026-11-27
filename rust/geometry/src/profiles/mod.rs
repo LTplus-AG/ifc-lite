@@ -14,7 +14,7 @@ use std::cell::Cell;
 
 mod curves_2d;
 mod curves_3d;
-mod directrix;
+pub(crate) mod directrix;
 mod outline;
 mod placement;
 mod regions;

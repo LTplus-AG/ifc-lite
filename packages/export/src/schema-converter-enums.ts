@@ -75,7 +75,7 @@ export class EnumReconciliation {
   readonly typedProperties: TypedPropertyUpgrade;
 
   /** Reuses this per-export collector so both STEP writers forward structural losses. */
-  readonly structural = new StructuralDiagnostics();
+  readonly structural: StructuralDiagnostics;
   /** The IfcDocumentInformation <-> IfcDocumentReference link (#10846). */
   readonly documents = new DocumentLinks();
   /** Values a target slot's type cannot hold (#10847). */
@@ -83,7 +83,8 @@ export class EnumReconciliation {
   /** The IfcMaterial a downgraded IfcMaterialProperties names (#10763). */
   readonly materials: MaterialReferents;
 
-  constructor(deferConversions = false, timeUnitSources?: readonly SourceStore[]) {
+  constructor(deferConversions = false, timeUnitSources?: readonly SourceStore[], structural = new StructuralDiagnostics()) {
+    this.structural = structural;
     this.forms = new ValueForms(deferConversions, timeUnitSources);
     this.typedProperties = new TypedPropertyUpgrade(deferConversions);
     this.materials = new MaterialReferents();

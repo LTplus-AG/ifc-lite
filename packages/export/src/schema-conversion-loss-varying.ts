@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: MPL-2.0 */
+import { attrNameTable } from './schema-converter.js';
 import type { ConversionLossEntry } from './schema-conversion-loss-report.js';
 import { varyingTarget } from './schema-converter-structural-varying.js';
 import type { StructuralRoundTrip } from './schema-converter-structural-diagnostics.js';
@@ -14,7 +15,11 @@ export function varyingLossEntries(varying: readonly (readonly [string, readonly
   const entries: ConversionLossEntry[] = [];
   for (const [sourceType, ids] of varying) {
     const byGroup = new Map<string, { targetType: string; droppedAttributes: string[]; expressIds: number[] }>();
+    const blocked = ids.filter(id => round.blockedActions.has(id));
+    if (blocked.length) entries.push({ sourceType, targetType: varyingTarget(sourceType) ?? sourceType,
+      kind: 'blocked', droppedAttributes: attrNameTable('IFC2X3')?.get(sourceType) ?? [], count: blocked.length, expressIds: blocked });
     for (const id of ids) {
+      if (round.blockedActions.has(id)) continue;
       const stranded = round.stranded.get(id);
       const droppedAttributes = [...(stranded ? ['CausedBy'] : []), ...(round.constantDropped.get(id) ?? [])];
       const targetType = stranded ?? varyingTarget(sourceType);

@@ -548,6 +548,17 @@ ENDSEC;\nEND`), why: 'converted, among several causes', target: 'IFCSTRUCTURALCU
     expect(Object.keys(complete).filter((k) => k.startsWith(`${key}.`) && !k.endsWith('.CausedBy'))).toEqual([]);
   });
 
+  it('reports an unusable required load even alongside omitted resources (#11354)', async () => {
+    const source = varying('(#16),').replace(',#9,#15,#11,', ',#9,#15,$,')
+      .replace('ENDSEC;\nEND', '#99=IFCRELAXATION(0.1,0.2);\nENDSEC;\nEND');
+    const report = analyzeConversionLoss(await parse(source), 'IFC2X3', 'IFC4');
+    expect(report.hasBlocking).toBe(true);
+    expect(report.describe().join('\n')).toContain('(#30) cannot convert to a constant action without a usable AppliedLoad');
+    expect(report.entries).toContainEqual(expect.objectContaining({
+      sourceType: 'IFCSTRUCTURALLINEARACTIONVARYING', kind: 'blocked', expressIds: [30],
+    }));
+  });
+
   it('names the written type for record groups that drop different attributes but are written as one type (#11354)', async () => {
     const incomplete = varying('(#16),');
     const first = incomplete.split('\n').find((l) => l.startsWith('#30='))!;

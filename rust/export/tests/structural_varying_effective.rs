@@ -64,7 +64,7 @@ fn edited_export_keeps_a_commented_applied_load_in_the_constant_action_11354() {
             ..Default::default()
         };
         let (output, _, warnings) = ifc_lite_export::export_step_with_diagnostics(text.as_bytes(), &options).unwrap();
-        assert!(output.contains(&format!(",{slot},.GLOBAL_COORDS.,.F.,.TRUE_LENGTH.,.CONST.);")), "{slot}: {output}");
+        assert!(output.lines().any(|line| line.starts_with("#30=") && line.contains(&format!(",{slot},.GLOBAL_COORDS.,.F.,.TRUE_LENGTH.,.CONST.);"))), "{slot}: {output}");
         assert!(!warnings.iter().any(|w| w.contains("no usable AppliedLoad")), "{slot}: {warnings:?}");
     }
 }

@@ -51,6 +51,7 @@ export class StructuralDiagnostics {
   /** Source record id -> the type an IFC2X3 varying action is written as when the export reports its CausedBy (`strandedAs`). */
   private readonly stranded = new Map<number, string>();
   /** Source record id -> the attributes of an IFC2X3 varying action the constant fallback drops (`StructuralRewrite.dropped`). */
+  private readonly blockedActions = new Set<number>();
   private readonly constantDropped = new Map<number, readonly string[]>();
 
   /** `roundTrip`: also find what the reverse conversion restores (`structuralRoundTrip`); an export does not. */
@@ -168,7 +169,10 @@ export class StructuralDiagnostics {
     const rewrite = attrs ? { body: `IFCRELCONNECTSSTRUCTURALELEMENT(${attrs})`, losses: [LINK] }
       : this.varying.rewrite(id, entity, args, carried) ?? this.carriers.rewrite(id, entity, args, withheld)
         ?? this.thickness.rewrite(id, entity, args) ?? this.axes.rewrite(id, args, withheld);
-    if (rewrite?.unusableAppliedLoad && !this.roundTrip) throw unusableAppliedLoad(id, entity);
+    if (rewrite?.unusableAppliedLoad) {
+      if (!this.roundTrip) throw unusableAppliedLoad(id, entity);
+      this.blockedActions.add(id);
+    }
     if (!rewrite || (withheld && rewrite.body !== null && referencesAnyExpressId(rewrite.body, withheld))) return undefined;
     rewrite.losses.forEach((loss) => this.record(loss));
     if (this.roundTrip && rewrite.dropped?.length) this.constantDropped.set(id, rewrite.dropped);
@@ -186,7 +190,7 @@ export class StructuralDiagnostics {
   }
 
   /** What `rewrite` found: per source record id, the attributes a carrier writes back on the reverse conversion, and the target type of a varying action whose CausedBy the export reports. */
-  roundTripResult(): StructuralRoundTrip { return { restored: this.restored, stranded: this.stranded, constantDropped: this.constantDropped }; }
+  roundTripResult(): StructuralRoundTrip { return { blockedActions: this.blockedActions, restored: this.restored, stranded: this.stranded, constantDropped: this.constantDropped }; }
 
   /** Convert retained varying actions and return the number of records appended. */
   finishEffectiveVarying(lines: string[]): number {
@@ -208,6 +212,7 @@ export class StructuralDiagnostics {
  * for any other schema pair, and for a file the export refuses.
  */
 export interface StructuralRoundTrip {
+  readonly blockedActions: ReadonlySet<number>;
   readonly restored: ReadonlyMap<number, ReadonlySet<string>>;
   readonly stranded: ReadonlyMap<number, string>;
   /** Source record id -> the attributes of an IFC2X3 varying action the export writes constant and so drops (#11354). */
@@ -215,7 +220,7 @@ export interface StructuralRoundTrip {
 }
 
 /** The round trip of a file the carriers do not run for. */
-export const NO_ROUND_TRIP: StructuralRoundTrip = { restored: new Map(), stranded: new Map(), constantDropped: new Map() };
+export const NO_ROUND_TRIP: StructuralRoundTrip = { blockedActions: new Set(), restored: new Map(), stranded: new Map(), constantDropped: new Map() };
 
 export function structuralRoundTrip(store: SourceStore, from: string, to: string, ids: readonly number[]): StructuralRoundTrip {
   if (!conversionMode(from, to) || !ids.length) return NO_ROUND_TRIP;

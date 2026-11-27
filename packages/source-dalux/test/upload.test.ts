@@ -242,70 +242,55 @@ describe('Dalux write-back', () => {
     expect(result.revision.createdBy).toBeUndefined();
   });
 
-  it('reads the revision identity back when the finalize response has none (#9522)', async () => {
-    const inner = createDaluxApiMock(WORLD, { pageSize: 100 });
-    const stripping = (async (input: RequestInfo | URL, init?: RequestInit) => {
-      const response = await inner(input, init);
-      if (!input.toString().includes('/finalize')) return response;
-      const json = (await response.json()) as { data: Record<string, unknown> };
-      delete json.data.fileRevisionId;
-      delete json.data.contentHash;
-      return new Response(JSON.stringify(json), { status: response.status, headers: response.headers });
-    }) as typeof fetch;
+  it.each([
+    ['new-version', 'missing'],
+    ['new-file', 'missing'],
+    ['new-version', 'revision ID'],
+    ['new-file', 'content hash'],
+  ] as const)('%s uses only its own finalize response for revision identity (%s, #11651)', async (mode, identity) => {
+    const { ctx, provider, fetchImpl, posts } = setup();
+    const otherWriter = createDaluxMockContext(fetchImpl);
     const controller = new AbortController();
-    const cancelling = (async (input: RequestInfo | URL, init?: RequestInit) => {
-      const response = await stripping(input, init);
-      // The user cancels just after the write landed; the read-back must still run.
-      if (input.toString().includes('/finalize')) controller.abort();
-      return response;
-    }) as typeof fetch;
-    const ctx = createDaluxMockContext(cancelling);
-    const result = ok(await new DaluxBuildProvider().uploadFile(
-      ctx, { mode: 'new-version', ref: FILE_A }, bytesOf('A-TWO'), { signal: controller.signal },
-    ));
-    expect(result.revision.id).not.toBe(LATEST_REVISION);
-    expect(result.revision.id).not.toBe('rev-1');
-    expect(result.file.currentRevisionId).toBe(result.revision.id);
-  });
-
-  it.each(['timeout', 'missing identity', 'previous revision', 'previous content hash'])('keeps a committed upload successful after read-back with %s (#11651)', async (failure) => {
-    const { ctx, provider, posts } = setup();
-    let finalized = false;
-    let previous: Response | undefined;
-    const readBackSignals: (AbortSignal | null | undefined)[] = [];
+    const target = mode === 'new-version'
+      ? { mode, ref: FILE_A, baseRevisionId: 'rev-1' } as const
+      : { mode, projectId: FILE_A.projectId, containerId: FILE_A.containerId, fileName: 'new.ifc' } as const;
+    let committed: { ref: SourceFileRef; revisionId: string } | undefined;
+    let laterGets = 0;
     const fetch: typeof ctx.fetch = async (input, init) => {
-      const path = String(input);
-      const isFinalize = path.endsWith('/finalize');
-      const isFile = path.endsWith('/files/file-a');
-      const isReadBack = finalized && isFile;
-      if (isReadBack) {
-        readBackSignals.push(init?.signal);
-        if (failure === 'timeout') throw new DOMException('Read-back timed out', 'TimeoutError');
-        if ((failure === 'previous revision' || failure === 'previous content hash') && previous) return previous;
-      }
+      if (committed && (init?.method ?? 'GET') === 'GET') laterGets++;
       const response = await ctx.fetch(input, init);
-      if (!isFinalize && !isFile) return response;
-      if (isFinalize) finalized = true;
-      const payload = await response.json() as { data: Record<string, unknown> };
-      if (isFile && !isReadBack) {
-        if (failure === 'previous content hash') {
-          delete payload.data.fileRevisionId;
-          payload.data.contentHash = 'previous-hash';
-        }
-        previous = new Response(JSON.stringify(payload), { status: response.status, headers: response.headers });
-        return previous.clone();
-      }
-      delete payload.data.fileRevisionId;
-      delete payload.data.contentHash;
+      if (!String(input).endsWith('/finalize')) return response;
+      const payload = await response.json() as { data: { fileId: string; fileRevisionId?: string; contentHash?: string } };
+      const ref = { ...FILE_A, fileId: payload.data.fileId };
+      const revisionId = payload.data.fileRevisionId;
+      if (!revisionId) throw new Error('expected the fixture revision ID');
+      committed = { ref, revisionId };
+      // A second writer advances the exact same file before our finalize response arrives.
+      await provider.uploadFile(otherWriter, { mode: 'new-version', ref, baseRevisionId: revisionId }, bytesOf('C'));
+      controller.abort();
+      if (identity !== 'revision ID') delete payload.data.fileRevisionId;
+      if (identity === 'content hash') payload.data.contentHash = 'finalize-b-hash';
+      if (identity === 'missing') delete payload.data.contentHash;
       return new Response(JSON.stringify(payload), { status: response.status, headers: response.headers });
     };
 
-    const result = await provider.uploadFile({ ...ctx, fetch }, { mode: 'new-version', ref: FILE_A }, bytesOf('A-TWO'));
-    expect(result).toMatchObject({ ok: true, file: { id: FILE_A.fileId }, revision: null });
-    expect(readBackSignals).toHaveLength(1);
-    expect(readBackSignals[0]).toBeInstanceOf(AbortSignal);
+    const result = await provider.uploadFile({ ...ctx, fetch }, target, bytesOf('B'), { signal: controller.signal });
+    if (!committed) throw new Error('expected the upload to finalize');
+    const revisionId = identity === 'revision ID' ? committed.revisionId : 'finalize-b-hash';
+    expect(result).toMatchObject({
+      ok: true,
+      file: {
+        id: committed.ref.fileId,
+        containerId: committed.ref.containerId,
+        currentRevisionId: identity === 'missing' ? LATEST_REVISION : revisionId,
+      },
+      revision: identity === 'missing' ? null : { id: revisionId },
+    });
+    expect(laterGets).toBe(0);
     expect(posts()).toHaveLength(3);
-    expect(await textOf(provider, ctx, FILE_A)).toBe('A-TWO');
+    expect(await textOf(provider, otherWriter, { ...committed.ref, revisionId: committed.revisionId })).toBe('B');
+    expect(await textOf(provider, otherWriter, committed.ref)).toBe('C');
+    if (mode === 'new-version') expect(await textOf(provider, otherWriter, { ...FILE_A, revisionId: 'rev-1' })).toBe('A-ONE');
   });
 
   it('keeps the requested folder when the finalize response omits folderId (#9522)', async () => {

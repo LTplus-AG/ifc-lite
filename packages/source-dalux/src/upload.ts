@@ -253,7 +253,6 @@ export async function uploadToDalux(
   let fileType: DaluxFileType;
   let finalizeTarget: { fileId: string } | { folderId: string };
   let carriedProperties: unknown[] | undefined;
-  let previousRevision: Pick<DaluxFile, 'fileRevisionId' | 'contentHash'> | undefined;
   /** Where the file lands, for a finalize response that omits its folder. */
   let destinationFolderId: string | undefined;
 
@@ -269,7 +268,6 @@ export async function uploadToDalux(
     );
     const current = decodeFileResponse(response).data;
     if (current.deleted) throw new DaluxUploadError('That Dalux file has been deleted; save it as a new file instead.');
-    previousRevision = { fileRevisionId: current.fileRevisionId, contentHash: current.contentHash };
 
     if (target.baseRevisionId !== undefined) {
       const base = nonEmptyString(target.baseRevisionId);
@@ -381,6 +379,6 @@ export async function uploadToDalux(
   const created = decodeFileResponse(await finalizeResponse.json()).data;
   return {
     ok: true,
-    ...(await uploadedFile(ctx, client, { projectId, fileAreaId, destinationFolderId }, created, total, previousRevision)),
+    ...uploadedFile({ fileAreaId, destinationFolderId }, created, total),
   };
 }

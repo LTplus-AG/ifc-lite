@@ -106,6 +106,10 @@ are listed with `acceptsUploads: false`, until the root mapping is verified
 live (#11609). Check-then-write is not atomic: Dalux has no
 conditional write, so a concurrent writer can still win the gap.
 
+The revision identity comes from the finalize response. If that response omits
+the revision ID and content hash, the upload still succeeds with
+`revision: null`. A later lookup could show a different writer's revision.
+
 Not verified against the live API: whether the area root accepts its own file
 area id as `folderId` (refused until it is), which `fileType` Dalux files non-IFC extensions under, and
 which API-identity permissions allow uploads.

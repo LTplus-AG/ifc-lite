@@ -4,26 +4,10 @@
 
 /** Turns a finalized Dalux upload into the contract's file and revision (#9522). */
 
-import type { PluginContext, SourceFile, SourceRevision } from '@ifc-lite/plugin-api';
+import type { SourceFile, SourceRevision } from '@ifc-lite/plugin-api';
 
-import { decodeFileResponse } from './dalux-types.js';
 import type { DaluxFile } from './dalux-types.js';
-import type { BrowserDaluxApiClient } from './http-client.js';
-import { currentRevisionId, enc, LATEST_REVISION, nonEmptyString, toSourceFile } from './mapping.js';
-
-/** A read-back the user can no longer cancel still must not hang the save. */
-const READ_BACK_TIMEOUT_MS = 15_000;
-
-type RevisionIdentity = Pick<DaluxFile, 'fileRevisionId' | 'contentHash'>;
-
-function hasChangedRevision(previous: RevisionIdentity, fresh: RevisionIdentity): boolean {
-  const previousId = nonEmptyString(previous.fileRevisionId);
-  const freshId = nonEmptyString(fresh.fileRevisionId);
-  if (previousId && freshId) return previousId !== freshId;
-  const previousHash = nonEmptyString(previous.contentHash);
-  const freshHash = nonEmptyString(fresh.contentHash);
-  return !!previousHash && !!freshHash && previousHash !== freshHash;
-}
+import { currentRevisionId, LATEST_REVISION, nonEmptyString, toSourceFile } from './mapping.js';
 
 function toSourceRevision(file: DaluxFile, sizeBytes: number): SourceRevision | null {
   const id = currentRevisionId(file);
@@ -38,35 +22,15 @@ function toSourceRevision(file: DaluxFile, sizeBytes: number): SourceRevision | 
   };
 }
 
-export async function uploadedFile(
-  ctx: PluginContext,
-  client: BrowserDaluxApiClient,
-  where: { projectId: string; fileAreaId: string; destinationFolderId: string | undefined },
+export function uploadedFile(
+  where: { fileAreaId: string; destinationFolderId: string | undefined },
   finalized: DaluxFile,
   sizeBytes: number,
-  previousRevision?: RevisionIdentity,
-): Promise<{ file: SourceFile; revision: SourceRevision | null }> {
-  let created = finalized;
-  // A response without a revision identity would bind the model to the
-  // no-revision sentinel, which a later new version cannot verify. Read the
-  // file once more. The write has landed, so a cancel no longer applies and a
-  // failure here leaves the committed upload without a verified revision.
-  if (currentRevisionId(created) === LATEST_REVISION) {
-    try {
-      const fresh = decodeFileResponse(await client.get(
-        `/5.0/projects/${enc(where.projectId)}/file_areas/${enc(where.fileAreaId)}/files/${enc(created.fileId)}`, {}, AbortSignal.timeout(READ_BACK_TIMEOUT_MS),
-      )).data;
-      // A new-version lookup can still serve the preceding revision. Compare
-      // identities of the same kind before adopting the read-back metadata.
-      if (!previousRevision || hasChangedRevision(previousRevision, fresh)) {
-        created = { ...created, fileRevisionId: fresh.fileRevisionId, contentHash: fresh.contentHash };
-      }
-    } catch (err) {
-      ctx.log.warn('Dalux: could not read the uploaded file\'s revision', { error: err instanceof Error ? err.message : String(err) });
-    }
-  }
-  // Without this a response lacking folderId would file the result under the
-  // area root, which write-back then refuses as a destination.
-  if (!nonEmptyString(created.folderId)) created = { ...created, folderId: where.destinationFolderId };
+): { file: SourceFile; revision: SourceRevision | null } {
+  // A later lookup can observe another writer's revision. Finalize is the
+  // only response tied to this write.
+  const created = nonEmptyString(finalized.folderId)
+    ? finalized
+    : { ...finalized, folderId: where.destinationFolderId };
   return { file: toSourceFile(where.fileAreaId, created), revision: toSourceRevision(created, sizeBytes) };
 }

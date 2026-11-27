@@ -26,8 +26,23 @@ export interface GpuAdapterReport {
 }
 
 function isSoftwareAdapter(adapter: GpuAdapterReport | null): boolean {
-  return !adapter || adapter.fallback || !isHardwareAdapter(adapter) ||
+  return !adapter || adapter.fallback || !isHardwareAdapter({ ...adapter, vendor: adapter.vendor.trim() || adapter.description.trim() || adapter.device.trim() }) ||
     /lavapipe|microsoft basic render/i.test(JSON.stringify(adapter));
+}
+
+// A stalled remote close must still allow the worker to attempt the next cleanup.
+async function closeWithDeadline(resource: { close(): Promise<void> }): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([resource.close(), new Promise<void>((resolve) => {
+      timer = setTimeout(() => {
+        console.warn('GPU probe cleanup timed out');
+        resolve();
+      }, 1000);
+    })]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** The attached browser's WebGPU adapter, from a secure (`*.localhost`) page served by Playwright itself. */
@@ -55,7 +70,7 @@ async function adapterOf(browser: Browser): Promise<GpuAdapterReport | null> {
     return await Promise.race([request, timeout]);
   } finally {
     clearTimeout(timer);
-    await context.close();
+    await closeWithDeadline(context);
   }
 }
 
@@ -71,7 +86,7 @@ export async function useHardwareGpu(browser: Browser, use: (browser: Browser) =
     }
     await use(browser);
   } finally {
-    await browser.close();
+    await closeWithDeadline(browser);
   }
 }
 

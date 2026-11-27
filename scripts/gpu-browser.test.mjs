@@ -8,7 +8,7 @@ import { tsImport } from 'tsx/esm/api';
 const { useHardwareGpu } = await tsImport('../tests/e2e/gpu-browser.ts', import.meta.url);
 const { ADAPTER_REQUEST_TIMEOUT_MS } = await tsImport('../packages/renderer/src/adapter-request.ts', import.meta.url);
 
-function fakeBrowser(t, requestAdapter) {
+function fakeBrowser(t, requestAdapter, stallClose = false) {
   t.mock.getter(globalThis, 'navigator', () => ({ gpu: { requestAdapter } }));
   const events = [];
   const page = {
@@ -18,12 +18,12 @@ function fakeBrowser(t, requestAdapter) {
   };
   const context = {
     newPage: async () => page,
-    close: async () => { events.push('context closed'); },
+    close: async () => { events.push('context closed'); if (stallClose) await new Promise(() => {}); },
   };
   const browser = {
     newContext: async () => context,
     version: () => 'fixture',
-    close: async () => { events.push('browser closed'); },
+    close: async () => { events.push('browser closed'); if (stallClose) await new Promise(() => {}); },
   };
   return { browser, events, use: async () => { events.push('used'); } };
 }
@@ -34,6 +34,7 @@ test('#11345 CDP worker refuses software adapters and admits hardware', async (t
     [{ vendor: 'Mesa', architecture: 'lavapipe', isFallbackAdapter: false }, true],
     [{ vendor: 'Microsoft', description: 'Microsoft Basic Render Driver', isFallbackAdapter: false }, true],
     [{ vendor: 'NVIDIA', isFallbackAdapter: true }, true],
+    [{ vendor: '', description: 'NVIDIA GeForce RTX 4090' }, false],
     [{ vendor: 'NVIDIA', architecture: 'ampere', isFallbackAdapter: false }, false],
   ]) {
     await t.test(info.device ?? info.description ?? JSON.stringify(info), async (sub) => {
@@ -61,4 +62,19 @@ test('#11345 a stalled CDP adapter request fails at the renderer deadline and cl
   t.mock.timers.tick(1);
   await assert.rejects(Promise.race([result, new Promise((resolve) => setImmediate(resolve))]), /GPU adapter request timed out/);
   assert.deepEqual(events, ['context closed', 'browser closed']);
+});
+
+test('#11345 unresponsive CDP cleanup preserves the adapter timeout and attempts both closes', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const { browser, events, use } = fakeBrowser(t, () => new Promise(() => {}), true);
+  const failed = assert.rejects(useHardwareGpu(browser, use), /GPU adapter request timed out/);
+  await new Promise(setImmediate);
+  t.mock.timers.tick(ADAPTER_REQUEST_TIMEOUT_MS);
+  await new Promise(setImmediate);
+  assert.deepEqual(events, ['context closed']);
+  t.mock.timers.tick(1000);
+  await new Promise(setImmediate);
+  assert.deepEqual(events, ['context closed', 'browser closed']);
+  t.mock.timers.tick(1000);
+  await failed;
 });

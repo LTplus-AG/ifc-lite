@@ -102,8 +102,8 @@ type SurfaceCheck = { refused: string } | { promptVerified: boolean; event: Brid
 export class DeliveredSurfaces {
   /** Surface id -> what the agent sent for it. Insertion order is age. */
   private readonly surfaces = new Map<string, Surface>();
-  /** The first surface id of each of the last {@link AGENT_SURFACE_PANELS} calls: the id the tab names that panel's clicks by. */
-  private readonly panels: string[] = [];
+  /** Surface ids in each panel the tab may still display. */
+  private readonly panels: string[][] = [];
 
   /**
    * Remember the messages of one `tab_show_ui` call. The tab shows a call as
@@ -114,8 +114,7 @@ export class DeliveredSurfaces {
   record(messages: readonly unknown[]): void {
     const ids = new Set(messages.map(a2uiSurfaceId).filter((id): id is string => id !== null));
     if (ids.size === 0) return;
-    const [first] = ids;
-    this.panels.push(first);
+    this.panels.push([...ids]);
     if (this.panels.length > AGENT_SURFACE_PANELS) this.panels.shift();
     for (const message of messages) {
       const id = a2uiSurfaceId(message);
@@ -128,7 +127,7 @@ export class DeliveredSurfaces {
     }
     // Forget the oldest ids, never one this call named or one that names a panel the tab may still show.
     if (this.surfaces.size <= MAX_DELIVERED_SURFACES) return;
-    const kept = new Set([...ids, ...this.panels]);
+    const kept = new Set(this.panels.flat());
     for (const id of this.surfaces.keys()) {
       if (this.surfaces.size <= MAX_DELIVERED_SURFACES) break;
       if (!kept.has(id)) this.surfaces.delete(id);

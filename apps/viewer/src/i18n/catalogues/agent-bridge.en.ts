@@ -87,6 +87,7 @@ export const agentBridgeEn = {
   'agentBridge.surfaces.clear': "Clear all",
   'agentBridge.surfaces.untitled': "Agent result",
   'agentBridge.dialog.confirmInTab': 'Switch to the model tab to confirm the connection.',
+  'agentBridge.dialog.refreshTabs': 'Refresh model tabs',
   'agentBridge.dialog.useModelTab': 'Connect in the tab with {name}',
   'agentBridge.surfaces.unsent': 'Could not send this action to your agent.',
   'agentBridge.surfaces.sent': "Sent to your agent",

@@ -110,6 +110,37 @@ function deferredSession() {
 }
 
 describe('pairing link (#9523)', () => {
+  it('refreshes stale model-tab offers and delivers to the reloaded tab (#11674)', async () => {
+    const channel = new MessageChannel();
+    const previous = Object.getOwnPropertyDescriptor(globalThis, 'SharedWorker');
+    let discoveries = 0;
+    let deliveredTo: string | undefined;
+    channel.port2.onmessage = ({ data }) => {
+      if (data.type === 'discover') {
+        discoveries++;
+        channel.port2.postMessage({ type: 'offer', from: String(discoveries), name: 'model.ifc' });
+      } else if (data.type === 'deliver') deliveredTo = data.to;
+    };
+    Object.defineProperty(globalThis, 'SharedWorker', { configurable: true, value: class { port = channel.port1; } });
+    try {
+      const fragment = new URL(buildPairingUrl('https://ifclite.com', 21600, CODE)).hash;
+      render(withBim(<AgentBridgeDialog request={{ source: 'link', fragment }} onClose={() => {}} />));
+      const offers = () => [...document.body.querySelectorAll('button')].filter((btn) => btn.textContent.includes('model.ifc'));
+      await waitFor(() => offers().length === 1, 'initial model offer');
+      const refresh = [...document.body.querySelectorAll('button')].find((btn) => btn.textContent === 'Refresh model tabs');
+      assert.ok(refresh);
+      click(refresh);
+      assert.equal(offers().length, 0);
+      await waitFor(() => offers().length === 1, 'reloaded model offer');
+      click(offers()[0]);
+      await waitFor(() => deliveredTo === '2', 'pairing link delivered to the new port id');
+    } finally {
+      channel.port2.close();
+      if (previous) Object.defineProperty(globalThis, 'SharedWorker', previous);
+      else Reflect.deleteProperty(globalThis, 'SharedWorker');
+    }
+  });
+
   it('a link opened in this tab: the code leaves the URL, the dialog states what is true, nothing connects until Connect', async () => {
     render(withBim(<AgentBridgeHost />));
     openLink(21518);

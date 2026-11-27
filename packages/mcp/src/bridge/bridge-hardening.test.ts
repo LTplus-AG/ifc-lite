@@ -394,6 +394,10 @@ describe('verified viewer pairing (#9523)', () => {
     await leave(initial.tab, 'page hidden');
     const resumed = await hello(initial.next, true);
     expect(await resumed.tab.next('welcome')).toMatchObject({ proof: resumed.proof, permission: 'read-only' });
+    const resumedSession = bridge.tab()?.sessionId;
+    expect(resumedSession).toBeDefined();
+    expect(await (await hello(initial.next, true)).tab.next('error')).toMatchObject({ code: 'PAIRING_FAILED' });
+    expect(bridge.tab()?.sessionId).toBe(resumedSession);
     await leave(resumed.tab, 'disconnected by the user');
     for (const obsolete of [initial.next, resumed.next]) {
       expect(await (await hello(obsolete, true)).tab.next('error')).toMatchObject({ code: 'PAIRING_FAILED' });

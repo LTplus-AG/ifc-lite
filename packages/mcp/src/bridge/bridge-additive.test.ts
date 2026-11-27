@@ -384,9 +384,9 @@ describe('DeliveredSurfaces', () => {
     ledger.record(Array.from({ length: 128 }, (_, i) => followUp(`a${i}`, 'Go')));
     ledger.record(Array.from({ length: 128 }, (_, i) => followUp(`b${i}`, 'Go')));
     ledger.record(Array.from({ length: 128 }, (_, i) => followUp(`c${i}`, 'Go')));
-    // a0 names the first panel's clicks; a1 is only a second id inside it.
+    // Each rendering surface routes its own clicks (#11674).
     expect(ledger.check({ surfaceId: 'a0', name: 'ask', prompt: 'Go' })).toMatchObject(ok);
-    expect(ledger.check({ surfaceId: 'a1', name: 'ask', prompt: 'Go' })).toMatchObject({ refused: expect.any(String) });
+    expect(ledger.check({ surfaceId: 'a1', name: 'ask', prompt: 'Go' })).toMatchObject(ok);
   });
 
   it('never forgets an id of the call being recorded, however many it names', () => {

@@ -81,6 +81,7 @@ export const agentBridgeFr = {
   'agentBridge.surfaces.clear': "Tout effacer",
   'agentBridge.surfaces.untitled': "Résultat de l'agent",
   'agentBridge.dialog.confirmInTab': "Passez à l’onglet du modèle pour confirmer la connexion.",
+  'agentBridge.dialog.refreshTabs': 'Actualiser les onglets de modèles',
   'agentBridge.dialog.useModelTab': "Se connecter dans l’onglet contenant {name}",
   'agentBridge.surfaces.unsent': "Impossible d’envoyer cette action à votre agent.",
   'agentBridge.surfaces.sent': "Envoyé à votre agent",

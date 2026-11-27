@@ -11,11 +11,13 @@ export function ModelTabPicker({ fragment }: { fragment: string }) {
   const { t } = useTranslation();
   const port = useRef<MessagePort | undefined>(undefined);
   const [tabs, setTabs] = useState<Record<string, string>>({});
+  const [available, setAvailable] = useState(false);
   const [received, setReceived] = useState(false);
   useEffect(() => {
     const connection = openModelTabPort();
     if (!connection) return;
     port.current = connection;
+    setAvailable(true);
     connection.onmessage = ({ data }) => {
       if (data.type === 'offer') setTabs((prev) => ({ ...prev, [data.from]: data.name }));
       if (data.type === 'received') setReceived(true);
@@ -28,5 +30,10 @@ export function ModelTabPicker({ fragment }: { fragment: string }) {
     <Button key={id} variant="outline" onClick={() => port.current?.postMessage({ type: 'deliver', to: id, fragment })}>
       {t('agentBridge.dialog.useModelTab', { name })}
     </Button>
-  ))}</>;
+  ))}
+    {available && <Button variant="ghost" onClick={() => {
+      setTabs({});
+      port.current?.postMessage({ type: 'discover' });
+    }}>{t('agentBridge.dialog.refreshTabs')}</Button>}
+  </>;
 }

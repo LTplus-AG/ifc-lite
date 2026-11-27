@@ -161,7 +161,7 @@ export interface DxfWriterOptions {
  * {@link cssToAci}.
  */
 export class DxfWriter {
-  private readonly layers = new Map<string, DxfLayerRecord>();
+  private readonly layers = new Map<string, DxfLayerRecord>(); // uppercase sanitized names
   /** Raw (pre-sanitization) name → assigned safe name, for stable reuse + collision disambiguation. */
   private readonly layerNameBySource = new Map<string, string>();
   private readonly entities: EntityWrite[] = [];
@@ -204,20 +204,20 @@ export class DxfWriter {
    * `addPolyline`/`addLine`/`addText`. Re-registering the same source name
    * with a different colour/linetype is a no-op (first registration wins) —
    * callers should derive one style per logical layer. DIFFERENT source
-   * names whose sanitized forms collide (`Wände`/`Wønde` → `W_nde`) get a
-   * numeric suffix (`W_nde`, `W_nde_2`, …) instead of silently merging onto
-   * one layer.
+   * names whose sanitized forms compare equal case-insensitively get a
+   * numeric suffix (`Walls`, `walls_2`, …). AutoCAD reserves Defpoints
+   * for its non-plotting layer.
    */
   layer(name: string, cssColor: string, linetype: DxfLinetype = 'CONTINUOUS'): string {
     const assigned = this.layerNameBySource.get(name);
     if (assigned !== undefined) return assigned;
     const base = sanitizeDxfLayerName(name);
     let safe = base;
-    for (let n = 2; this.layers.has(safe); n++) {
+    for (let n = 2; this.layers.has(safe.toUpperCase()) || safe.toUpperCase() === 'DEFPOINTS'; n++) {
       const suffix = `_${n}`;
       safe = base.slice(0, MAX_LAYER_NAME_LENGTH - suffix.length) + suffix;
     }
-    this.layers.set(safe, { name: safe, aci: cssToAci(cssColor), linetype });
+    this.layers.set(safe.toUpperCase(), { name: safe, aci: cssToAci(cssColor), linetype });
     this.layerNameBySource.set(name, safe);
     return safe;
   }

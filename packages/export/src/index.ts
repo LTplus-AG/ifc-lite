@@ -30,6 +30,19 @@ export type {
   AnonymizeOptions,
   AnonymizeResult,
 } from './anonymize-types.js';
+// Raw STEP subset extraction: a selection plus its closure and context roots,
+// records copied byte-for-byte (CLI `extract-entities`, MCP `model_extract`).
+export {
+  parseStep,
+  buildSubset,
+  serializeSubset,
+  selectSubsetSeeds,
+  SubsetSelectionError,
+  type ParsedStep,
+  type StepRecord,
+  type Subset,
+  type SubsetSelectors,
+} from './step-subset.js';
 export { MergedExporter, type MergeModelInput, type MergeExportOptions, type MergeExportResult, type MergeBlobExportResult, type ExportProgress } from './merged-exporter.js';
 export { collectReferencedEntityIds, getVisibleEntityIds } from './reference-collector.js';
 export { renumberStepIds, type RenumberStepIdsOptions, type RenumberStepIdsResult } from './renumber-step-ids.js';
@@ -81,6 +94,7 @@ export { columnsToParquet, isParquet } from './columns-to-parquet.js';
 // are the guard's internals, and the parity suite imports them from the module
 // directly. Callers need the two functions and the options type.
 export { escapeCsvCell, guardSpreadsheetFormula, type CsvCellOptions } from './csv-cell.js';
+export { sanitizeSheetName, clampXlsxCellText } from './xlsx-limits.js';
 // THE CSV table writer: header + rows of row objects through the escaper above.
 export { tableToCsv, csvCellOf, type TableToCsvOptions, type TableColumn } from './csv-table.js';
 

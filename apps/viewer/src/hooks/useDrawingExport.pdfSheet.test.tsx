@@ -58,7 +58,8 @@ import {
   type Drawing2D,
   type DrawingSheet,
 } from '@ifc-lite/drawing-2d';
-import useDrawingExport from './useDrawingExport.js';
+import useDrawingExport, { type UseDrawingExportResult } from './useDrawingExport.js';
+import { toast } from '@/components/ui/toast';
 import type { DxfUnderlayRenderData } from './useDxfUnderlay';
 import { sheetTransformCacheKeyOf, type CachedSheetTransform } from '@/lib/drawing/sheet-geometry-key.js';
 
@@ -207,11 +208,11 @@ interface HarnessProps {
   axis: 'down' | 'front' | 'side';
   isPinned: boolean;
   cachedSheetTransformRef: CacheRef;
-  onReady: (fn: (scaleFactor?: number) => void) => void;
+  onReady: (exporter: UseDrawingExportResult) => void;
 }
 
 function Harness({ activeSheet, drawing, axis, isPinned, cachedSheetTransformRef, onReady, dxfUnderlays = [], activePresetId = null, entityColorMap = new Map() }: HarnessProps): null {
-  const { handleExportPDF } = useDrawingExport({
+  const exporter = useDrawingExport({
     drawing,
     displayOptions: {
       showHiddenLines: true,
@@ -238,7 +239,7 @@ function Harness({ activeSheet, drawing, axis, isPinned, cachedSheetTransformRef
     isPinned,
     cachedSheetTransformRef,
   });
-  onReady(handleExportPDF);
+  onReady(exporter);
   return null;
 }
 
@@ -316,6 +317,7 @@ async function exportPdfForSheet(
   sheet: DrawingSheet,
   drawing: Drawing2D = buildDrawing(),
   options: ExportOptions = {},
+  exportDrawing: (exporter: UseDrawingExportResult) => void | Promise<void> = (exporter) => exporter.handleExportPDF(),
 ): Promise<{
   addImageArgs: unknown[];
   svg: string;
@@ -328,7 +330,7 @@ async function exportPdfForSheet(
   const container = document.createElement('div');
   document.body.appendChild(container);
   let root: Root | null = null;
-  let exportFn: ((scaleFactor?: number) => void) | null = null;
+  let exporter: UseDrawingExportResult | null = null;
 
   // jsPDF's plugin methods (addImage included) are copied onto each
   // instance as an OWN property at construction time from `jsPDF.API`
@@ -363,15 +365,15 @@ async function exportPdfForSheet(
           axis={axis}
           isPinned={isPinned}
           cachedSheetTransformRef={cachedSheetTransformRef}
-          onReady={(fn) => {
-            exportFn = fn;
+          onReady={(handlers) => {
+            exporter = handlers;
           }}
         />,
       );
     });
 
     await act(async () => {
-      exportFn!();
+      await exportDrawing(exporter!);
       await addImageCalled;
     });
 
@@ -387,6 +389,43 @@ async function exportPdfForSheet(
     container.remove();
   }
 }
+
+it('reports a cut polygon left out of a sheet PDF and its printout (#11489)', async () => {
+  const drawing = buildDrawing();
+  const outer = [{ x: 1, y: 3 }, { x: 2, y: 3 }, { x: 2, y: 4 }];
+  drawing.cutPolygons = [
+    { polygon: { outer, holes: [] }, entityId: 1, modelIndex: 0, ifcType: 'IfcWall', isCut: true },
+    { polygon: { outer: [...outer.slice(0, 2), { x: NaN, y: 4 }], holes: [] }, entityId: 2, modelIndex: 0, ifcType: 'IfcWall', isCut: true },
+  ];
+  const notices: string[] = [];
+  const warning = '1 cut polygon with invalid coordinates was left out of the drawing.';
+  const originalInfo = toast.info;
+  const originalOpen = window.open;
+  let printHtml = '';
+  toast.info = (message: string) => { notices.push(message); };
+  window.open = (() => ({
+    document: { write: (html: string) => { printHtml = html; }, close: () => {} },
+  })) as unknown as typeof window.open;
+
+  try {
+    const { svg } = await exportPdfForSheet(buildSheet('A3_LANDSCAPE', 100, '1:100'), drawing, {}, async (exporter) => {
+      const artifact = await exporter.createPdfArtifact();
+      assert.deepEqual(artifact.warnings, [warning]);
+      assert.deepEqual(notices, [warning], 'PDF reports the omission once');
+      notices.length = 0;
+
+      exporter.handlePrint();
+      assert.deepEqual(notices, [warning], 'print reports the omission once');
+    });
+    for (const markup of [svg, printHtml]) {
+      assert.match(markup, /data-entity-id="1"/);
+      assert.doesNotMatch(markup, /data-entity-id="2"/);
+    }
+  } finally {
+    toast.info = originalInfo;
+    window.open = originalOpen;
+  }
+});
 
 /** Parse the first `<line x1="..." y1="..." x2="..." y2="...">` inside the
  *  `drawing-lines` group and return the mm distance between its endpoints —

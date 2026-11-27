@@ -70,6 +70,7 @@ function forwardedTool(bridge: TabBridge, d: BridgeToolDescriptor): Tool {
     name: d.name,
     description: d.description,
     inputSchema: d.inputSchema as JsonSchema,
+    schemaFromTab: true,
     scope: d.readOnly ? 'read' : 'mutate',
     ...(d.title !== undefined ? { title: d.title } : {}),
     annotations: d.readOnly ? { readOnlyHint: true } : { readOnlyHint: false, destructiveHint: true },

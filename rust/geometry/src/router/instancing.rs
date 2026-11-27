@@ -167,7 +167,7 @@ impl GeometryRouter {
     /// placeholders so the finalize collates them onto it. The baked geometry is
     /// untouched: its world geometry is `transform · local_transform · source`,
     /// so `m_ref` recovers the same `source` the placeholders reference.
-    pub(crate) fn retag_dont_bake_template(sub_meshes: &mut [crate::SubMesh], source_id: u32,
+    pub(crate) fn retag_dont_bake_template<'s>(sub_meshes: impl IntoIterator<Item = &'s mut crate::SubMesh>, source_id: u32,
         transform: Option<&Matrix4<f64>>) {
         let local = transform.map(mat4::from_na);
         for sub in sub_meshes {
@@ -245,3 +245,6 @@ mod tests;
 #[cfg(test)]
 #[path = "styled_walk_tests.rs"]
 mod styled_walk_tests;
+#[cfg(test)]
+#[path = "styled_chain_tests.rs"]
+mod styled_chain_tests;

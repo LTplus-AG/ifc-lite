@@ -181,7 +181,9 @@ pub(crate) fn rename_type(u: &str, from: &str, to: &str) -> Option<&'static str>
         }
     }
     match (from, to) {
-        ("IFC2X3", "IFC4") => map_2x3_to_4(u).or_else(|| crate::schema_attr_maps::upgrade_type(u)),
+        ("IFC2X3", "IFC4") => crate::schema_ifc4x3_upgrade::style_target(u)
+            .or_else(|| map_2x3_to_4(u))
+            .or_else(|| crate::schema_attr_maps::upgrade_type(u)),
         ("IFC2X3", "IFC4X3") => crate::schema_ifc4x3_upgrade::rename(u)
             .or_else(|| rename_type(u, "IFC2X3", "IFC4")),
         ("IFC4", "IFC4X3") => crate::schema_ifc4x3_upgrade::rename(u),
@@ -240,7 +242,11 @@ pub fn convert_step_line(
         converted = checks.documents.apply(express_id, converted, &mut checks.attribute_values_dropped);
         if cto == "IFC2X3" { converted = checks.structural.after(express_id, converted); }
         let deferred = checks.typed_properties.capture(line.as_ref(), cfrom, cto, express_id);
-        (!deferred && cto == "IFC4" && (cfrom != "IFC2X3" || crate::schema_attr_maps::upgrade_counts_ifc4_slots(&converted))).then(|| checks.ifc4_slots.count(&converted));
+        // Every record to IFC4; an IFC2X3 upgrade's mapped records to IFC4 or IFC4X3, each against its own target (#11135).
+        if let Some(target) = crate::schema_ifc4_slots::SlotTarget::of(cto).filter(|_| !deferred) {
+            let counts = if cfrom == "IFC2X3" { crate::schema_attr_maps::upgrade_counts_slots(&converted, target) } else { target == crate::schema_ifc4_slots::SlotTarget::Ifc4 };
+            if counts { checks.ifc4_slots.count(&converted, target); }
+        }
     }
     Ok(if cto == "IFC2X3" { slots.apply(converted) } else { converted })
 }
@@ -357,7 +363,7 @@ fn convert_record(
                     lost += values_without_a_name(&args, src, tgt, cause_carried);
                     Cow::Owned(remap_attrs_by_name(&args, src, tgt))
                 }
-                Adjust::UpgradeIfc4x3(src, tgt) => Cow::Owned(crate::schema_ifc4x3_upgrade::remap(&entity_type, src, tgt, &args, &mut lost)),
+                Adjust::UpgradeSlots(src, tgt) => Cow::Owned(crate::schema_ifc4x3_upgrade::remap(&entity_type, src, tgt, &args, &mut lost)),
                 Adjust::Mapped(map, up, src, tgt) if !args.is_empty() => Cow::Owned(crate::schema_attr_maps::remap(map, up, &args, src, tgt, &mut lost)),
                 Adjust::Trim(_) | Adjust::Pad(_) | Adjust::Mapped(..) | Adjust::Keep => Cow::Borrowed(attrs),
             };

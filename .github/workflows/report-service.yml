@@ -74,8 +74,40 @@ jobs:
       - name: Prepare pinned engine and fresh signed databases without model access
         run: |
           scanner_image="$(node --input-type=module -e 'import {SCANNER_IMAGE} from "./apps/report-service/dist/scanner-sandbox.js"; process.stdout.write(SCANNER_IMAGE)')"
+          echo "scanner_image=$scanner_image"
           docker pull "$scanner_image"
-          pnpm exec tsx apps/report-service/scripts/scan-public-once.ts update-signatures
+          docker image inspect --format 'scanner_image_id={{.Id}} scanner_image_digests={{json .RepoDigests}}' "$scanner_image"
+          updater_exit=0
+          pnpm exec tsx apps/report-service/scripts/scan-public-once.ts update-signatures || updater_exit=$?
+          echo "scanner_signature_update_exit=$updater_exit"
+          node --input-type=module <<'JS'
+          import { open } from 'node:fs/promises';
+          import { join } from 'node:path';
+
+          try {
+            const file = await open(join(process.env.REPORT_SCANNER_SIGNATURE_DIRECTORY, 'daily.cvd'), 'r');
+            const header = Buffer.alloc(512);
+            let bytesRead;
+            try {
+              ({ bytesRead } = await file.read(header, 0, header.length, 0));
+            } finally {
+              await file.close();
+            }
+            const [magic, , version, , , , , , timestamp] = header.toString('ascii').trim().split(':');
+            const epoch = Number(timestamp);
+            if (bytesRead !== header.length || magic !== 'ClamAV-VDB' || !/^\d{1,12}$/.test(version)
+                || !/^\d{1,12}$/.test(timestamp)) {
+              console.log('scanner_daily_cvd=invalid_header');
+            } else {
+              const now = Math.floor(Date.now() / 1000);
+              console.log(JSON.stringify({ scannerDailyCvdVersion: Number(version),
+                scannerDailyCvdEpoch: epoch, scannerPreparedAtEpoch: now, scannerDailyCvdAgeSeconds: now - epoch }));
+            }
+          } catch (error) {
+            console.log(error.code === 'ENOENT' ? 'scanner_daily_cvd=missing' : 'scanner_daily_cvd=unreadable');
+          }
+          JS
+          exit "$updater_exit"
       - name: Real engine, database and storage qualification
         env:
           MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN }}

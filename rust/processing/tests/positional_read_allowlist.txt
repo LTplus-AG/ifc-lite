@@ -50,7 +50,7 @@
 14 rust/geometry/src/processors/sectioned_positions.rs
 3 rust/geometry/src/processors/surface.rs
 5 rust/geometry/src/processors/swept/disk.rs
-5 rust/geometry/src/processors/swept/surface_curve.rs
+3 rust/geometry/src/processors/swept/surface_curve.rs
 2 rust/geometry/src/processors/tessellated/mod.rs
 14 rust/geometry/src/processors/texture/mod.rs
 10 rust/geometry/src/profiles/curves_2d.rs

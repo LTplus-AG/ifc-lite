@@ -13,12 +13,11 @@ CI step durations below are wall time, not CPU time or billing-weighted minutes.
   source/configuration changes to invalidate the key.
 - Viewer tests retain 16 isolated shards and their complete inventory. #10399
   refreshed the existing LPT duration manifest; no second selector was added.
-- Retained Rust uses one Cargo archive owner for the native and WASM target
-  tree, rather than restoring/saving the same paths twice. The setup action
-  already installs the required Rust toolchain and exposes its exact cache hit.
-  Keep the existing `rust-retained-runtime` namespace (the larger restored
-  archive) to reuse compatible objects instead of forcing an empty cache.
-  No time saving is asserted for this correction.
+- The retained Rust matrix runs the browser boundary, CLI report, and Rust
+  tests and Clippy on separate runners. Each leg owns its
+  `rust-retained-runtime-LEG` archive or `/cache/rust-target/rust-retained-LEG`
+  warm target. The CLI leg builds the WASM and CLI packages it reports on.
+  The aggregate judges the matrix through the single `rust-retained` job ID.
 - Keep retained, default, no-default-feature, each CSG gate, combined gates,
   and native/browser coverage distinct. CSG still cleans only geometry artifacts
   between test legs to bound disk; compatible dependency objects stay available.
@@ -64,7 +63,8 @@ artifact hit. These observations are documented in the issue's
 
 The retained and CSG jobs now invoke `scripts/ci-rust-metrics.mjs` and publish
 `rust-ci-metrics-JOB-ATTEMPT` JSONL artifacts for 14 days, plus job summaries.
-The CSG matrix includes the gate in each artifact name
+Matrix artifact names include the leg
+(`rust-ci-metrics-rust-retained-LEG-ATTEMPT`) or CSG gate
 (`rust-ci-metrics-csg-accept-gates-GATE-ATTEMPT`).
 Each row records source SHA, run, attempt, job, full command, phase, elapsed
 seconds, exit status and exact archive hit (`true`/`false`), `warm-target` or

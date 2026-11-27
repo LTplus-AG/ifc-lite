@@ -18,9 +18,9 @@ export function ClashGroupStorage() {
   const options = library.entries.some(entry => entry.id === DEFAULT_GROUP_WORKSPACE)
     ? library.entries : [{ id: DEFAULT_GROUP_WORKSPACE, name: t('clashGroups.defaultWorkspace') }, ...library.entries];
   return <div className="border-b border-border text-xs">
-    <label className="flex items-center gap-2 px-2 py-1">
+    <label className="flex flex-wrap items-center gap-2 px-2 py-1">
       {t('clashGroups.workspace')}
-      <select className="min-w-0 flex-1 rounded border border-border bg-background" value={library.activeId}
+      <select className="min-w-32 flex-1 rounded border border-border bg-background" value={library.activeId}
         disabled={library.status.phase !== 'ready'} onChange={event => useClashGroupLibrary.setState({ activeId: event.target.value })}>
         {options.map(entry => <option key={entry.id} value={entry.id}>{entry.name} · {entry.id.slice(0, 8)}</option>)}
       </select>

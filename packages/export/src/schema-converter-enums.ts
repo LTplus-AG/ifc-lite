@@ -22,7 +22,6 @@
 import { TypedPropertyUpgrade } from './schema-converter-typed-properties.js';
 import { StructuralDiagnostics } from './schema-converter-structural-diagnostics.js';
 import { DocumentLinks } from './schema-converter-document-links.js';
-import type { SourceStore } from './schema-converter-structural-source.js';
 import { ValueForms } from './schema-converter-value-forms.js';
 import { MaterialReferents } from './schema-converter-material-referent.js';
 import { getSchemaRegistryForVersion, type SchemaVersionWithRegistry } from '@ifc-lite/parser';
@@ -83,9 +82,9 @@ export class EnumReconciliation {
   /** The IfcMaterial a downgraded IfcMaterialProperties names (#10763). */
   readonly materials: MaterialReferents;
 
-  constructor(deferConversions = false, timeUnitSources?: readonly SourceStore[], structural = new StructuralDiagnostics()) {
+  constructor(deferConversions = false, structural = new StructuralDiagnostics()) {
     this.structural = structural;
-    this.forms = new ValueForms(deferConversions, timeUnitSources);
+    this.forms = new ValueForms(deferConversions);
     this.typedProperties = new TypedPropertyUpgrade(deferConversions);
     this.materials = new MaterialReferents();
   }

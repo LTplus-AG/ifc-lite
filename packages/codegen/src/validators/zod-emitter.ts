@@ -128,20 +128,24 @@ class ZodWriter {
 
   entity(e: EntityDecl): { schema: string; localRules: string[] } {
     const chain = this.index.chain(e);
-    const derived = new Set<string>();
-    for (const level of chain) {
-      for (const d of level.derived) if (d.redeclares) derived.add(d.redeclares.attribute.toUpperCase());
-    }
-    const fields: string[] = [];
-    const retyped = new Map<string, { name: string; type: TypeSpec; optional: boolean }>();
-    for (const level of chain) for (const a of level.explicit) if (a.redeclares) retyped.set(a.redeclares.attribute.toUpperCase(), a);
+    // A redeclaration changes the name/type of an existing positional slot.
+    const slots = new Map<string, { name: string; type: TypeSpec; optional: boolean }>();
+    const origins = new Map<string, string>();
     for (const level of chain) {
       for (const a of level.explicit) {
-        if (a.redeclares || derived.has(a.name.toUpperCase())) continue;
-        const declared = retyped.get(a.name.toUpperCase()) ?? a;
-        fields.push(`  ${declared.name}: ${this.spec(declared.type)}${declared.optional ? '.nullish()' : ''},`);
+        const name = a.name.toUpperCase();
+        const previous = a.redeclares?.attribute.toUpperCase() ?? name;
+        const origin = origins.get(previous) ?? previous;
+        slots.set(origin, a);
+        origins.set(name, origin);
+      }
+      for (const d of level.derived) {
+        const previous = d.redeclares?.attribute.toUpperCase();
+        if (previous) slots.delete(origins.get(previous) ?? previous);
       }
     }
+    const fields = [...slots.values()].map(a =>
+      `  ${a.name}: ${this.spec(a.type)}${a.optional ? '.nullish()' : ''},`);
     const localRules = chain.flatMap((level) => level.where
       // Attribute kinds come from the concrete entity: a subtype may redeclare an explicit attribute as DERIVE.
       .filter((w) => isLocalRule(w.expr, e, this.index))

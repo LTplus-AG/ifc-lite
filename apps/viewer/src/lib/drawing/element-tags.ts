@@ -2,25 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { effectiveMetadataRecord, extractPropertiesOnDemand, extractQuantitiesOnDemand, ProjectUnits, type IfcDataStore } from '@ifc-lite/parser';
+import { effectiveMetadataRecord, extractPropertiesOnDemand, extractQuantitiesOnDemand, ProjectUnits, readCurrentProjectUnits } from '@ifc-lite/parser';
 import { QuantityType } from '@ifc-lite/data';
-import { iterateEffectiveEntityIds, type MutablePropertyView } from '@ifc-lite/mutations';
-import { currentProjectUnitContext } from '@/lib/units/current-project-unit-context';
 import { resolveQuantityDisplay } from '@/lib/units/display';
 import { escapeXml } from '@ifc-lite/drawing-2d';
 import type { Drawing2D, DrawingPolygon } from '@ifc-lite/drawing-2d';
 import { useViewerStore } from '@/store';
 import { toGlobalIdForRef } from '@/store/globalId';
 import type { Point2D, TagAnnotation2D, TextAnnotation2D } from '@/store/slices/drawing2DSlice';
-
-/** True unless the first IfcProject's UnitsInContext is explicitly unset ($). */
-function projectDeclaresUnits(store: IfcDataStore, view: MutablePropertyView | undefined): boolean {
-  // The live project, as `readCurrentProjectUnits` picks it: overlay edits and deletions included.
-  const id = iterateEffectiveEntityIds(store, view, ['IFCPROJECT']).next().value?.expressId;
-  if (id === undefined) return true;
-  const record = effectiveMetadataRecord(store, id, view);
-  return !record || record.attributes[record.names.indexOf('UnitsInContext')] !== null;
-}
 
 /** Live IFC values, including named/positional edits and overlay-created entities. */
 export function resolveElementTagLabel(tag: TagAnnotation2D): string | null {
@@ -48,13 +37,9 @@ export function resolveElementTagLabel(tag: TagAnnotation2D): string | null {
   const title = name || 'IfcSpace';
   if (!quantity || typeof quantity.value !== 'number' || !Number.isFinite(quantity.value)) return title;
   // The value is in the file's own AREAUNIT (or the quantity's explicit Unit), never pre-converted to m².
-  const context = currentProjectUnitContext(store, view);
-  // A project with no UnitsInContext (optional in IFC4) declares nothing, so SI defaults apply, as for geometry.
-  const unitsKnown = context.value
-    ? context.value.unitForMeasure('IfcAreaMeasure') !== null
-    : !projectDeclaresUnits(store, view);
+  const context = readCurrentProjectUnits(store, view);
   const units = context.value ?? ProjectUnits.empty();
-  const { unit } = resolveQuantityDisplay(quantity.value, QuantityType.Area, units, {}, quantity, unitsKnown);
+  const { unit } = resolveQuantityDisplay(quantity.value, QuantityType.Area, units, {}, quantity, context.status === 'available');
   // Declared but unreadable units show no area rather than a number under a guessed unit.
   return unit ? `${title} · ≈ ${Number(quantity.value.toFixed(2))} ${unit}` : title;
 }

@@ -136,3 +136,13 @@ WHERE Positive : SIN(IntegerX) > 0.; END_ENTITY; END_SCHEMA;`);
   expect(schemas.IntPoint.safeParse({ IntegerX: 0 }).success).toBe(false);
   expect(schemas.IntPoint.safeParse({ X: 1 }).success).toBe(false);
 });
+
+it('retains one authoring slot through successive renames (#11646)', () => {
+  const { schemas } = generated(`SCHEMA S; ENTITY A; X : INTEGER; WHERE Valid : X > 0; END_ENTITY;
+ENTITY B SUBTYPE OF (A); SELF\\A.X RENAMED Y : INTEGER; WHERE ValidY : Y > 0; END_ENTITY;
+ENTITY C SUBTYPE OF (B); SELF\\B.Y RENAMED Zed : INTEGER; END_ENTITY; END_SCHEMA;`);
+  for (const [entity, name] of [['A', 'X'], ['B', 'Y'], ['C', 'Zed']]) {
+    for (const key of ['X', 'Y', 'Zed']) expect(schemas[entity].safeParse({ [key]: 1 }).success).toBe(key === name);
+    expect(schemas[entity].safeParse({ [name]: 0 }).success).toBe(false);
+  }
+});

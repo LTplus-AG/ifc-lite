@@ -30,16 +30,33 @@ export interface StepRecordRef {
 /** The part of `@ifc-lite/parser`'s `IfcDataStore` this package reads. */
 export interface StepRecordSource {
   source: { decodeUtf8(start: number, end: number): string };
-  entityIndex: { byId: { get(id: number): StepRecordRef | undefined; keys(): Iterable<number> } };
+  entityIndex: { byId: { get(id: number): StepRecordRef | undefined; keys(): Iterable<number>; entries?(): Iterable<[number, StepRecordRef]> } };
 }
 
 export function dataStoreRecords(store: StepRecordSource): RecordProvider {
   const byId = store.entityIndex.byId;
+  const ids = new Set<number>();
+  const duplicateIds: number[] = [];
+  for (const id of byId.keys()) {
+    if (ids.has(id)) duplicateIds.push(id);
+    ids.add(id);
+  }
+  const first = new Map<number, StepRecordRef>();
+  if (duplicateIds.length && byId.entries) {
+    const repeated = new Set(duplicateIds);
+    for (const [id, ref] of byId.entries()) {
+      if (!repeated.has(id)) continue;
+      const prior = first.get(id);
+      if (!prior || ref.byteOffset < prior.byteOffset) first.set(id, ref);
+    }
+  }
+  const record = (id: number) => first.get(id) ?? byId.get(id);
   return {
-    ids: () => byId.keys(),
-    type: (id) => byId.get(id)?.type?.toUpperCase(),
+    duplicateIds,
+    ids: () => ids.keys(),
+    type: (id) => record(id)?.type?.toUpperCase(),
     text: (id) => {
-      const ref = byId.get(id);
+      const ref = record(id);
       return ref ? store.source.decodeUtf8(ref.byteOffset, ref.byteOffset + ref.byteLength) : undefined;
     },
   };

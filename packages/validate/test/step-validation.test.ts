@@ -47,3 +47,17 @@ it('validates the actual columnar parser result (#11647)', async () => {
   expect(report.stats.instances).toBe(1);
   expect(report.findings).toEqual((await validateStepText(text)).findings);
 });
+
+it('uses the first physical record for duplicate IDs through both entry points (#11647)', async () => {
+  const { IfcParser } = await import('@ifc-lite/parser');
+  const { validateDataStore } = await import('../src/index.js');
+  const records = ['#7=IFCCARTESIANPOINT((0.,1.));', '#7=IFCCARTESIANPOINT(());'];
+  for (const body of [records.join(''), records.reverse().join('')]) {
+    const text = file(body);
+    const store = await new IfcParser().parseColumnar(new TextEncoder().encode(text).buffer, { disableWorkerScan: true });
+    const direct = await validateStepText(text), parsed = await validateDataStore(store);
+    expect(parsed.stats.instances).toBe(1);
+    expect(parsed.findings).toEqual(direct.findings);
+    expect(parsed.findings.filter(f => f.rule === 'duplicate-id').map(f => f.instance)).toEqual([7]);
+  }
+});

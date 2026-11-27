@@ -176,9 +176,14 @@ export class SchemaRuntime {
     e.chain = chain;
     const derivedHere = new Set<string>();
     const retyped = new Map<string, AttributeMeta>();
+    const origins = new Map<string, string>();
     for (const level of chain) {
       for (const name of level.meta.derivedRedeclarations ?? []) derivedHere.add(name.toUpperCase());
-      for (const [name, attr] of Object.entries(level.meta.retyped ?? {})) retyped.set(name.toUpperCase(), attr);
+      for (const [name, attr] of Object.entries(level.meta.retyped ?? {})) {
+        const origin = origins.get(name.toUpperCase()) ?? name.toUpperCase();
+        retyped.set(origin, attr);
+        origins.set(attr.name.toUpperCase(), origin);
+      }
     }
     for (const level of chain) {
       e.ancestors.add(level.upper);
@@ -204,6 +209,10 @@ export class SchemaRuntime {
         e.slots.set(inv.name.toUpperCase(), { k: 'inverse', inverse: inv });
       }
       for (const rule of this.rules.entity[level.name] ?? []) e.rules.push({ declaredBy: level.name, rule });
+    }
+    for (const [alias, origin] of origins) {
+      const slot = e.slots.get(origin);
+      if (slot) e.slots.set(alias, slot);
     }
     for (const level of chain) {
       for (const name of [...(level.meta.derived ?? []), ...(level.meta.derivedRedeclarations ?? [])]) {

@@ -51,7 +51,7 @@ export class ResolvedEntity {
       if (qualified) return qualified;
       const parent = this.chain.find(level => level.upper === group);
       const inherited = parent?.slots.get(name);
-      if (inherited?.k === 'inverse') return inherited;
+      if (inherited?.k === 'inverse' || inherited?.k === 'derived') return inherited;
     }
     return this.slots.get(name);
   }

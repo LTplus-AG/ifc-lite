@@ -79,7 +79,7 @@ export function attr(base: Value, name: string, group?: string): Value {
       const fn = slot.fn;
       const model = base.model;
       if (!fn || !model) return undefined;
-      return base.transient ? fn(base, model) : memoized(base, name, () => fn(base, model));
+      return base.transient ? fn(base, model) : memoized(base, `${slot.owner}.${name}`, () => fn(base, model));
     }
     case 'inverse': {
       const model = base.model;

@@ -424,3 +424,18 @@ ENTITY RA; Target : A; END_ENTITY; ENTITY RB; Target : B; END_ENTITY; END_SCHEMA
     [1, 'RB FOR Target has 0'], [2, 'RA FOR Target has 0'],
   ]);
 });
+
+it('reads qualified derived attributes through direct and intermediate parents (#11647)', async () => {
+  const { schema } = generated(`SCHEMA S;
+ENTITY A; LeftValue : BOOLEAN; DERIVE Flag : BOOLEAN := LeftValue; END_ENTITY;
+ENTITY Mid SUBTYPE OF (A); END_ENTITY;
+ENTITY B; RightValue : BOOLEAN; DERIVE Flag : BOOLEAN := RightValue; END_ENTITY;
+ENTITY C SUBTYPE OF (Mid,B);
+WHERE Different : SELF\\B.Flag <> SELF\\A.Flag;
+ LeftSet : SELF\\Mid.Flag;
+ RightSet : SELF\\B.Flag;
+END_ENTITY; END_SCHEMA;`);
+  const report = await validateStepText('DATA;#1=C(.T.,.F.);#2=C(.F.,.T.);#3=C(.T.,.T.);ENDSEC;', { schema, categories: ['entity_rule'] });
+  expect(report.stats.entityRuleEvaluations).toBe(9);
+  expect(report.findings.map(f => [f.instance, f.rule])).toEqual([[1, 'C.RightSet'], [2, 'C.LeftSet'], [3, 'C.Different']]);
+});

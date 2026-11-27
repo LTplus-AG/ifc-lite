@@ -67,7 +67,7 @@ function applyAggregateType(schema: SchemaRuntime, type: TypeRef, value: Aggrega
 /** `base.Name`, with `name` upper-cased by the compiler. */
 export function attr(base: Value, name: string, group?: string): Value {
   if (!(base instanceof EntityInstance)) return undefined;
-  const slot = (group ? base.entity.slots.get(`${group}.${name}`) : undefined) ?? base.entity.slots.get(name);
+  const slot = base.entity.slot(name, group);
   if (!slot) return undefined;
   switch (slot.k) {
     case 'explicit': {

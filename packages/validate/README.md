@@ -14,6 +14,8 @@ IFC validation generated from the official buildingSMART EXPRESS schemas by `@if
 | `header` | FILE_DESCRIPTION and FILE_NAME attribute types |
 | `evaluation_error` | a rule that could not be decided, for example a CASE on a missing value; reported, never passed silently |
 
+Selecting only `evaluation_error` runs type, entity and global rules and reports evaluation failures. Ordinary rule violations are filtered out. Evaluation failures encountered while running any selected rule family are always reported.
+
 Rules follow ISO 10303-11 three-valued logic: a rule is violated only when it evaluates to FALSE. Where the standard leaves an indeterminate case open, the runtime follows IfcOpenShell, the engine behind the buildingSMART validation service.
 
 ## Validate a model

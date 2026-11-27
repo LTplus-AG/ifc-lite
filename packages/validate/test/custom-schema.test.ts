@@ -219,3 +219,43 @@ WHERE First : Items[2][0] = 10; Last : Items[3][1] = 40; END_ENTITY; END_SCHEMA;
   const report = await validateStepText('DATA;#1=E(((10,20),(30,40)));#2=E(((99,20),(30,40)));#3=E(((10,20),(30,99)));ENDSEC;', { schema });
   expect(report.findings.filter(f => f.rule === 'E.First' || f.rule === 'E.Last').map(f => [f.instance, f.rule])).toEqual([[2, 'E.First'], [3, 'E.Last']]);
 });
+
+it('uses the declaring parent slot for UNIQUE, INVERSE and USEDIN (#11647)', async () => {
+  const { schema } = generated(`SCHEMA S;
+ENTITY Item;
+INVERSE Links : SET [0:?] OF A FOR X;
+WHERE ViaInverse : SIZEOF(Links) = 1; ViaRole : SIZEOF(USEDIN(SELF,'S.A.X')) = 1;
+END_ENTITY;
+ENTITY A; X : Item; UNIQUE UA : X; END_ENTITY;
+ENTITY B; X : Item; UNIQUE UB : X; END_ENTITY;
+ENTITY C SUBTYPE OF (A,B); END_ENTITY; END_SCHEMA;`);
+  const report = await validateStepText('DATA;#1=ITEM();#2=ITEM();#3=ITEM();#4=C(#1,#3);#5=C(#2,#3);#6=C(#2,#7);#7=ITEM();ENDSEC;', { schema });
+  expect(report.findings.filter(f => f.category === 'unique_rule').map(f => [f.rule, f.instance])).toEqual([['A.UA', 6], ['B.UB', 5]]);
+  for (const rule of ['Item.ViaInverse', 'Item.ViaRole']) {
+    expect(report.findings.filter(f => f.rule === rule).map(f => f.instance)).toEqual([2, 3, 7]);
+  }
+});
+
+it('selects evaluation errors across type, entity and global rules (#11647)', async () => {
+  const { schema } = generated(`SCHEMA S;
+FUNCTION Probe(N : INTEGER) : BOOLEAN;
+LOCAL Missing : INTEGER; END_LOCAL;
+IF N = 1 THEN CASE Missing OF 1 : RETURN(TRUE); END_CASE; END_IF;
+RETURN(N <> 2); END_FUNCTION;
+TYPE Num = INTEGER; WHERE T : Probe(SELF); END_TYPE;
+ENTITY E; N : Num; WHERE W : Probe(N); END_ENTITY;
+RULE Population FOR (E); WHERE G : Probe(SIZEOF(E)); END_RULE;
+END_SCHEMA;`);
+  const run = (records: string) => validateStepText('DATA;' + records + 'ENDSEC;', { schema, categories: ['evaluation_error'] });
+  const errors = await run('#1=E(1);');
+  expect(errors.valid).toBe(false);
+  expect(errors.findings.map(f => [f.category, f.rule])).toEqual([
+    ['evaluation_error', 'Num.T'], ['evaluation_error', 'E.W'], ['evaluation_error', 'Population'],
+  ]);
+  const ordinary = '#1=E(2);#2=E(2);';
+  const all = await validateStepText('DATA;' + ordinary + 'ENDSEC;', { schema, categories: ['simpletype_rule', 'entity_rule', 'global_rule'] });
+  expect(new Set(all.findings.map(f => f.rule))).toEqual(new Set(['Num.T', 'E.W', 'Population.G']));
+  for (const records of [ordinary, '#1=E(0);#2=E(0);#3=E(0);']) {
+    expect(await run(records)).toMatchObject({ valid: true, findings: [] });
+  }
+});

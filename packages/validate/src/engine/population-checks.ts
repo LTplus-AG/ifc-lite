@@ -73,8 +73,8 @@ export function checkUniqueRules(m: Model, out: ValidationFinding[]): void {
       const names = unique.attributes.map((a) => a.toUpperCase());
       for (const inst of m.population(entity.name)) {
         const parts = names.map((n) => {
-          const slot = inst.entity.slots.get(n);
-          return uniqueKey(m, attr(inst, n), slot?.k === 'explicit' ? slot.attribute.type : undefined);
+          const slot = inst.entity.slot(n, entity.upper);
+          return uniqueKey(m, attr(inst, n, entity.upper), slot?.k === 'explicit' ? slot.attribute.type : undefined);
         });
         if (parts.some((p) => p === undefined)) continue;
         const key = JSON.stringify(parts);

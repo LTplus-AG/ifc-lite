@@ -172,7 +172,7 @@ export class Model {
     const forUpper = inv.forAttribute.toUpperCase();
     return this.collectReferrers(target, inv.aggregate === 'BAG', (e, index) => {
       if (!e.isA(entity)) return false;
-      const slot = e.slots.get(forUpper);
+      const slot = e.slot(forUpper, entity);
       return slot?.k === 'explicit' ? slot.index === index : e.attributes.findIndex((a) => a.name.toUpperCase() === forUpper) === index;
     });
   }
@@ -185,7 +185,7 @@ export class Model {
     const entity = parts.pop()!;
     return this.collectReferrers(target, true, (e, index) => {
       if (!e.isA(entity)) return false;
-      const slot = e.slots.get(attr);
+      const slot = e.slot(attr, entity);
       return slot?.k === 'explicit' && slot.index === index;
     });
   }

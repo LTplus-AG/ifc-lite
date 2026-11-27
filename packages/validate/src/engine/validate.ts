@@ -25,7 +25,8 @@ export function validateModel(m: Model, options: ValidateOptions = {}): Validati
   const findings: ValidationFinding[] = [];
   const counters: InstanceCheckCounters = { typeRuleEvaluations: 0 };
   if (options.headerText !== undefined && wants('header')) checkHeader(options.headerText, findings);
-  if (wants('schema') || wants('simpletype_rule')) {
+  const evaluateErrors = wants('evaluation_error');
+  if (wants('schema') || wants('simpletype_rule') || evaluateErrors) {
     for (const message of m.syntaxErrors) findings.push({ category: 'schema', rule: 'record-syntax', message });
     for (const id of m.duplicateIds) findings.push({ category: 'schema', rule: 'duplicate-id', instance: id, message: `Duplicate STEP instance #${id}` });
     for (const id of m.ids()) checkInstance(m, id, findings, counters);
@@ -33,9 +34,9 @@ export function validateModel(m: Model, options: ValidateOptions = {}): Validati
   }
   const filter = options.entities?.map((e) => m.schema.entity(e)?.upper).filter((e): e is string => !!e);
   const include = filter ? (name: string) => filter.some((f) => m.schema.entity(name)?.isA(f) ?? false) : undefined;
-  const entityRuleEvaluations = wants('entity_rule') ? checkEntityRules(m, findings, include) : 0;
+  const entityRuleEvaluations = (wants('entity_rule') || evaluateErrors) ? checkEntityRules(m, findings, include) : 0;
   if (wants('unique_rule')) checkUniqueRules(m, findings);
-  if (wants('global_rule')) checkGlobalRules(m, findings);
+  if (wants('global_rule') || evaluateErrors) checkGlobalRules(m, findings);
   const kept = findings.filter((f) => f.category === 'evaluation_error' || wants(f.category));
   return {
     schema: m.schema.name,

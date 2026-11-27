@@ -45,6 +45,10 @@ export class ResolvedEntity {
     return this.meta.name;
   }
 
+  slot(name: string, group?: string): AttributeSlot | undefined {
+    return (group && this.slots.get(`${group}.${name}`)) || this.slots.get(name);
+  }
+
   isA(upperName: string): boolean {
     return this.ancestors.has(upperName);
   }

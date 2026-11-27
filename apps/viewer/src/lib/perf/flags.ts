@@ -105,7 +105,8 @@ export const PERF_FLAGS = [
     removalCondition: 'Delete with the per-batch instancing decision once the global instance plan is the default and has shipped two releases with no rendering or compare report.',
     introducedAt: '2026-11-23',
     default: false,
-    bindings: GEOMETRY_PERF_FLAG_BINDINGS.globalInstancing,
+    // The geometry host reads the global and URL param itself; the viewer hands its load processor the PostHog ramp (`configureGlobalInstancing`).
+    bindings: { ...GEOMETRY_PERF_FLAG_BINDINGS.globalInstancing, posthogKey: 'perf-global-instancing' },
   },
   {
     id: 'outOfCore',
@@ -114,7 +115,8 @@ export const PERF_FLAGS = [
     removalCondition: 'Delete with the full-copy geometry worker path once out-of-core ingest is the default above its size threshold and has shipped two releases with no load or parity report.',
     introducedAt: '2026-11-24',
     default: false,
-    bindings: GEOMETRY_PERF_FLAG_BINDINGS.outOfCore,
+    // The geometry host reads the global and URL param itself; the viewer hands its load processor the PostHog ramp (`configureOutOfCore`).
+    bindings: { ...GEOMETRY_PERF_FLAG_BINDINGS.outOfCore, posthogKey: 'perf-ooc' },
   },
   {
     id: 'outOfCoreBudgetMb',
@@ -285,7 +287,7 @@ export const PERF_FLAGS = [
     removalCondition: 'Compact GPU records: delete with the f32 upload of flat meshes once on by default, or delete the encoder path if dropped.',
     introducedAt: '2026-11-24',
     default: false,
-    bindings: { urlParam: 'compactGeom' },
+    bindings: { urlParam: 'compactGeom', posthogKey: 'perf-compact-geom' },
   },
   {
     id: 'gpuOnly',

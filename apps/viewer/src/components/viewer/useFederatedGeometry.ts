@@ -4,6 +4,7 @@
 
 import { useMemo, useRef } from 'react';
 import type { MeshData, CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
+import { copyMeshShell } from '@ifc-lite/geometry/compact';
 import type { FederatedModel } from '@/store';
 import { perfTally } from '@ifc-lite/load-trace';
 import { geometryWithModelIndex } from '@/lib/model-placement/model-indices';
@@ -35,6 +36,17 @@ function unionBounds(acc: Vec3Bounds | undefined, b: Vec3Bounds | undefined): Ve
     min: { x: Math.min(acc.min.x, b.min.x), y: Math.min(acc.min.y, b.min.y), z: Math.min(acc.min.z, b.min.z) },
     max: { x: Math.max(acc.max.x, b.max.x), y: Math.max(acc.max.y, b.max.y), z: Math.max(acc.max.z, b.max.z) },
   };
+}
+
+/**
+ * A merged wrapper of `mesh` stamped with its renderer model index. A compact
+ * shell (`?compactGeom`) stays a shell: a spread would read its arrays and so
+ * decode the whole model on the main thread the moment a second model joins.
+ */
+function wrapperFor(mesh: MeshData, modelIndex: number): MeshData {
+  const copy = copyMeshShell(mesh);
+  copy.modelIndex = modelIndex;
+  return carryReleasedMesh(mesh, copy);
 }
 
 /** Cache only same-array streaming appends; immutable replacement may alter any owner (#4451).
@@ -140,7 +152,7 @@ export function useFederatedGeometry(storeModels: ReadonlyMap<string, FederatedM
             continue;
           }
           for (const mesh of modelGeometry.meshes) {
-            rebuilt.push(carryReleasedMesh(mesh, { ...mesh, modelIndex }));
+            rebuilt.push(wrapperFor(mesh, modelIndex));
           }
           perfTally('viewer.modelIndexRespread', modelGeometry.meshes.length, 'meshes');
           mergedLengthsRef.current.set(modelId, modelGeometry.meshes.length);
@@ -154,7 +166,7 @@ export function useFederatedGeometry(storeModels: ReadonlyMap<string, FederatedM
           const nextMeshes = model.visible ? (modelGeometry?.meshes ?? []) : [];
           for (let i = previousLength; i < nextMeshes.length; i++) {
             const mesh = nextMeshes[i];
-            mergedCacheRef.current.push(carryReleasedMesh(mesh, { ...mesh, modelIndex }));
+            mergedCacheRef.current.push(wrapperFor(mesh, modelIndex));
           }
           if (nextMeshes.length > previousLength) {
             perfTally('viewer.modelIndexRespread', nextMeshes.length - previousLength, 'meshes');

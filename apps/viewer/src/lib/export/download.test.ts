@@ -7,6 +7,24 @@ import assert from 'node:assert';
 import { sanitizeFilename, buildExportFilename, modelExportFilename, stripExtension } from './download.js';
 
 describe('sanitizeFilename', () => {
+  it('prefixes Windows reserved device names, with or without an extension part', () => {
+    assert.strictEqual(sanitizeFilename('CON'), '_CON');
+    assert.strictEqual(sanitizeFilename('nul'), '_nul');
+    assert.strictEqual(sanitizeFilename('Com1.model'), '_Com1.model');
+    assert.strictEqual(sanitizeFilename('NUL .model'), '_NUL .model');
+    assert.strictEqual(modelExportFilename('AUX.ifc', 'pdf'), '_AUX.pdf');
+    assert.strictEqual(sanitizeFilename('CONSTRUCTION'), 'CONSTRUCTION');
+    assert.strictEqual(sanitizeFilename('COM0.ifc'), 'COM0.ifc');
+    assert.strictEqual(sanitizeFilename('LPT0.ifc'), 'LPT0.ifc');
+    assert.strictEqual(sanitizeFilename('COM10'), 'COM10');
+  });
+
+  it('never leaves half a surrogate pair when truncating (#11442)', () => {
+    const name = `${'a'.repeat(59)}\u{20000}\u{20000}`;
+    const out = sanitizeFilename(name);
+    assert.strictEqual(out, 'a'.repeat(59));
+  });
+
   it('preserves uppercase letters (issue #1299)', () => {
     assert.strictEqual(sanitizeFilename('DRAWINGS'), 'DRAWINGS');
     assert.strictEqual(sanitizeFilename('MyList'), 'MyList');
@@ -156,5 +174,49 @@ describe('modelExportFilename', () => {
     const result = modelExportFilename(`${'a'.repeat(80)}.ifc`, 'ifc', '_visible');
     assert.ok(result.endsWith('_visible.ifc'), result);
     assert.ok(result.length <= 60, `${result} is ${result.length} chars`);
+  });
+});
+
+describe('reserved-name prefix stays inside the length cap (#11442)', () => {
+  it('keeps the fallback safe and nonempty when the length is NaN (#11442)', () => {
+    assert.strictEqual(sanitizeFilename('CON', { maxLength: NaN }), 'file');
+    assert.strictEqual(sanitizeFilename('model', { maxLength: NaN, fallback: 'NUL.txt' }), '_NUL.txt');
+    assert.equal(sanitizeFilename('CON', { maxLength: NaN, fallback: 'x'.repeat(80) }).length, 60);
+  });
+
+  it('fits the fallback when a supplementary letter cannot fit the stem budget', () => {
+    const name = '\u{20000}';
+    assert.strictEqual(sanitizeFilename(name, { maxLength: 1 }), 'f');
+    assert.strictEqual(buildExportFilename(name, 'csv', 5), 'f.csv');
+    assert.strictEqual(sanitizeFilename(name, { maxLength: 1, fallback: name }), '_');
+  });
+
+  it('sanitizeFilename never exceeds maxLength once the prefix is added', () => {
+    assert.strictEqual(sanitizeFilename('CON', { maxLength: 3 }), '_CO');
+    const out = sanitizeFilename(`CON.${'x'.repeat(100)}`);
+    assert.ok(out.length <= 60 && out.startsWith('_CON.'), `${out} is ${out.length}`);
+  });
+
+  it('buildExportFilename keeps the whole name within the cap', () => {
+    const out = buildExportFilename(`CON.${'x'.repeat(100)}`, 'csv');
+    assert.ok(out.length <= 60 && out.endsWith('.csv'), `${out} is ${out.length}`);
+  });
+
+  it('modelExportFilename keeps the full suffix', () => {
+    const out = modelExportFilename(`NUL.${'y'.repeat(100)}.ifc`, 'glb', '_visible');
+    assert.ok(out.endsWith('_visible.glb'), out);
+    assert.ok(out.length <= 60, `${out} is ${out.length}`);
+    assert.ok(out.startsWith('_NUL.'), out);
+  });
+
+  it('never prefixes an extension, only the stem', () => {
+    assert.strictEqual(buildExportFilename('x', 'prn'), 'x.prn');
+    assert.strictEqual(buildExportFilename('report', '.CON'), 'report.CON');
+  });
+
+  it('treats superscript-digit COM/LPT names as reserved', () => {
+    for (const n of ['COM¹', 'COM²', 'COM³', 'LPT¹', 'LPT²', 'LPT³']) {
+      assert.strictEqual(sanitizeFilename(n), `_${n}`);
+    }
   });
 });

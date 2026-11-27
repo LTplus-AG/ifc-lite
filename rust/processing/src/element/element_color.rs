@@ -27,6 +27,7 @@ use rustc_hash::FxHashMap;
 /// chase `IfcMappedItem → IfcRepresentationMap → MappedRepresentation.Items`
 /// recursively (#913 §2.7 — mapped sub-geometry inherits its underlying
 /// item's style), to at most `MAX_MAPPED_ITEM_DEPTH` hops.
+#[cfg(test)]
 pub(crate) fn find_geometry_item_color(
     geometry_id: u32,
     geometry_styles: &FxHashMap<u32, GeometryStyleInfo>,
@@ -178,7 +179,6 @@ pub(crate) fn product_shape_style_source(
     }
     None
 }
-
 
 /// Find the first representation item of `entity` that carries a full
 /// `IfcIndexedColourMap` (#858). Drives the element-level palette split on

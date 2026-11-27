@@ -1,5 +1,18 @@
 # @ifc-lite/sandbox
 
+## 3.1.0
+
+### Minor Changes
+
+- [#11344](https://github.com/LTplus-AG/ifc-lite/pull/11344) [`3b7d64c`](https://github.com/LTplus-AG/ifc-lite/commit/3b7d64c04a9aecdc3ef7aa2b4481b3486b731980) Thanks [@louistrue](https://github.com/louistrue)! - Add `bim.ui` to sandboxed scripts so they can present computed IFC data as A2UI v1.0 result surfaces. Sandbox and SDK callers receive the optional message batches in `ScriptResult.surfaces` and can disable the namespace with the `ui` permission.
+
+### Patch Changes
+
+- [#11332](https://github.com/LTplus-AG/ifc-lite/pull/11332) [`5027560`](https://github.com/LTplus-AG/ifc-lite/commit/50275600faef3de250131acb2741bd1707421807) Thanks [@louistrue](https://github.com/louistrue)! - The esbuild.wasm CDN fallback warning logs the resolver error's message instead of the raw error object.
+- Updated dependencies [[`3b7d64c`](https://github.com/LTplus-AG/ifc-lite/commit/3b7d64c04a9aecdc3ef7aa2b4481b3486b731980), [`3b7d64c`](https://github.com/LTplus-AG/ifc-lite/commit/3b7d64c04a9aecdc3ef7aa2b4481b3486b731980), [`3b7d64c`](https://github.com/LTplus-AG/ifc-lite/commit/3b7d64c04a9aecdc3ef7aa2b4481b3486b731980)]:
+  - @ifc-lite/a2ui@0.2.0
+  - @ifc-lite/sdk@10.2.0
+
 ## 3.0.0
 
 ### Major Changes

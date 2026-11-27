@@ -163,7 +163,7 @@ export function resizeLayeredInStore(target: EditTarget, plan: readonly LayerRes
   const resize = (editor: StoreEditor, steps: readonly LayerResizeStep[]): number[] => {
     const remesh: number[] = [];
     for (const step of steps) {
-      const outcome = setElementSizeInStore({ dataStore: target.dataStore, view: editor.getMutationView(), editor }, step.id, { kind: step.kind, thickness: step.thickness });
+      const outcome = setElementSizeInStore({ dataStore: target.dataStore, view: editor.getMutationView(), editor, guidRandom: target.guidRandom }, step.id, { kind: step.kind, thickness: step.thickness });
       if (!outcome.ok) throw new LayerResizeRefused(step.id, outcome.reason);
       remesh.push(...outcome.remesh);
     }
@@ -217,7 +217,7 @@ function refreshFileQuantities(target: EditTarget, ids: Iterable<number>): void 
     for (const q of wanted.quantities) {
       const current = now.get(q.name);
       if (typeof q.value !== 'number' || (typeof current === 'number' && Math.abs(current - q.value) <= 1e-9)) continue;
-      view.setQuantity(id, wanted.name, q.name, q.value, q.type, 'unit' in q ? q.unit : undefined);
+      view.setQuantity(id, wanted.name, q.name, q.value, q.type, 'unit' in q && typeof q.unit === 'string' ? q.unit : undefined);
     }
   }
 }

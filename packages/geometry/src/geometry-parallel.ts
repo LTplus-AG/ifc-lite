@@ -34,8 +34,8 @@ import type { StreamingGeometryEvent } from './index.js';
 import { mergeGeometryDiagnostics, type GeometryDiagnostics } from './diagnostics.js';
 import { omittedTypeRecordsField, parseOmittedTypeRecords } from './omitted-type-records.js';
 import { planLoadWorkerCount } from './worker-count.js';
-import { readBatchSizingOverride, readShardScanFlag, readVisibilityFilterOverride } from './perf-flags.js';
-import { forwardKeyPlan, globalKeyPlanningField, globalPlanColumns } from './global-instance-plan.js';
+import { globalInstancingApplies, readBatchSizingOverride, readShardScanFlag, readVisibilityFilterOverride } from './perf-flags.js';
+import { forwardKeyPlan, globalKeyPlanningField, globalPlanColumns, globalPlanCountsMatch } from './global-instance-plan.js';
 import { sparsePoolFor } from './geometry-parallel-sparse.js';
 import { notifyIfWasmAssetUnavailable, notifyIfWorkerScriptUnavailable } from './wasm-asset-error.js';
 import { restashWasmPanicLocation } from './wasm-panic-forward.js';
@@ -137,6 +137,12 @@ export async function* processParallel(
   coordinator.reset();
   yield { type: 'start', totalEstimate: buffer.length / 1000 };
   yield { type: 'model-open', modelID: 0 };
+  // The global instance plan is decided once per load: a flag that changes mid-load cannot split the pre-pass request from its columns.
+  // A load with instancing off emits no instanced shards, so it never plans and reports nothing. A planned load reports
+  // only once its prepass columns arm the plan on the workers (`prepass-columns` below).
+  const instancing = options?.enableInstancing !== false;
+  const globalPlan = instancing && globalInstancingApplies(buffer.length, options?.globalInstancing);
+  if (instancing && !globalPlan) options?.onGlobalInstancingDecision?.(false);
   // Kick off the ONE shared wasm compile immediately so it overlaps the SAB setup + worker-count planning below; awaited just before the workers init
   // (see `compileSharedWasmModule`). Null ⇒ each worker self-inits (unchanged).
   const wasmModulePromise = compileSharedWasmModule(options?.wasmUrls?.wasm);
@@ -227,12 +233,15 @@ export async function* processParallel(
   // deliver the entity index early (instead of waiting for the pre-pass
   // worker's single-threaded post-scan `entity-index` event). Measures the
   // parser-tail-contention blocker from prior art dd56ea9e.
-  // Out-of-core ingest (`?perf.ooc`, geometry-parallel-sparse.ts): null on the whole-file path. Its preamble comes from the serial pre-pass.
+  // Out-of-core ingest (`?perf.ooc`, geometry-parallel-sparse.ts): null on the whole-file path; preamble from the pre-pass.
   const shareIndex = (ids: SharedArrayBuffer, starts: SharedArrayBuffer, lengths: SharedArrayBuffer) => broadcastSetup(entityIndexSetup(() => ({
     ids: new Uint32Array(ids), starts: new Uint32Array(starts), lengths: new Uint32Array(lengths),
   })));
-  const sparse = sparsePoolFor(sharedBuffer, { broadcast: (setup) => broadcastSetup(setup), shareIndex, onReady: () => drainQueuedChunksIfReady() }, options);
-  const shardScanEnabled = readShardScanFlag() && !sparse;
+  const sparse = sparsePoolFor(sharedBuffer, {
+    broadcast: (setup) => broadcastSetup(setup), shareIndex, onReady: () => drainQueuedChunksIfReady(), onDecision: options?.onOutOfCoreDecision,
+  }, { mergeLayers: options?.mergeLayers, globalInstancing: globalPlan, outOfCore: options?.outOfCore });
+  if (!sparse) options?.onOutOfCoreDecision?.(false); // the arm is what ran: a sparse pool reports once its scan decides
+  const shardScanEnabled = readShardScanFlag();
   let entityIndexDeliveredEarly = false;
   const shardResults: (ShardColumns | null)[] = [];
   let shardResultsRemaining = 0;
@@ -292,7 +301,7 @@ export async function* processParallel(
         // SPIKE: one worker's entity-index shard. Store it; when all shards are
         // in, stitch on this thread and deliver the index early.
         const si = msg.shardIndex as number;
-        shardResults[si] = {
+        shardResults[si] = msg.windowRefused === true ? null : { // out of core: no window confirmed this shard
           ids: msg.ids as Uint32Array,
           starts: msg.starts as Uint32Array,
           lengths: msg.lengths as Uint32Array,
@@ -306,7 +315,7 @@ export async function* processParallel(
         };
         if (trace.enabled) trace.span('geometry.shardScanReceived', () => {}, { worker: workerIndex, shard: si }, shardScanSpan);
         shardResultsRemaining--;
-        console.log(`[stream][shard] worker[${workerIndex}] shard ${si} done @ ${elapsed()}ms (${(msg.ids as Uint32Array).length} entities, remaining=${shardResultsRemaining})`);
+        console.log(`[stream][shard] worker[${workerIndex}] shard ${si} done @ ${elapsed()}ms (${(msg.ids as Uint32Array | undefined)?.length ?? 'no window'} entities, remaining=${shardResultsRemaining})`);
         if (shardResultsRemaining === 0) {
           onAllShardsReceived();
         }
@@ -490,6 +499,8 @@ export async function* processParallel(
   // state every other worker is in.
   const setupLog = new PoolSetupBroadcast(workers, holdsPoolUntilPrepassEnds(sharedBuffer.byteLength, workerCount));
   const broadcastSetup = (setup: (w: Worker) => void) => setupLog.broadcast(setup); // held until the pre-pass ends on large 1-worker loads (#10264)
+  let heldPlanReport: boolean | null = null; // the plan's outcome while its columns wait in a held setup
+  let prepassColumnsFailed = false; // a worker never received the plan's columns: the load is not armed
   const postInitMessages = (worker: Worker) => postGeometryWorkerInit(worker, options, sharedWasmModule);
   setupLog.record(postInitMessages);
   // This loop runs BEFORE the try/finally below (which owns teardown for the
@@ -785,8 +796,8 @@ export async function* processParallel(
         new Uint32Array(sabStarts).set(starts);
         new Uint32Array(sabLengths).set(lengths);
       }
-      if (sparse) sparse.offerIndex(sabIds, sabStarts, sabLengths);
-      else shareIndex(sabIds, sabStarts, sabLengths);
+      if (!sparse) shareIndex(sabIds, sabStarts, sabLengths);
+      else if (source === 'prepass') sparse.offerIndex(sabIds, sabStarts, sabLengths); // else the sharded pre-pass sorts it
       if (options?.onEntityIndex) {
         try {
           options.onEntityIndex(
@@ -825,7 +836,7 @@ export async function* processParallel(
    * slices out for parallel style resolution, and start the SHARDED pre-pass
    * (its start was deferred; it receives the stitched index so it skips its
    * own index build, resolves meta against the full index, and leaves styles
-   * to the shards). On a stitch miss (rare handoff-not-found), fall back to
+   * to the shards; out of core it resolves them itself). On a stitch miss (rare handoff-not-found), fall back to
    * the serial pre-pass path — identical to flag-off behaviour.
    */
   const onAllShardsReceived = () => {
@@ -834,12 +845,12 @@ export async function* processParallel(
     shardScanSettled = true;
     gateTracker.markShardScanDone();
     trace.end(shardScanSpan);
-    const shards = shardResults as ShardColumns[];
-    const stitched = trace.span('shard.stitch', () => stitchShards(shards), undefined, poolSpan);
+    const shards = shardResults.every(Boolean) ? shardResults as ShardColumns[] : null; // null: a window refused
+    const stitched = shards && trace.span('shard.stitch', () => stitchShards(shards), undefined, poolSpan);
     // An EMPTY stitch falls back too: workers store an empty index as none, so
     // the sharded-only finalize-styles always threw "no entity index".
     if (!stitched || stitched.ids.length === 0) {
-      console.warn(`[stream][shard] stitch fallback (${stitched ? 'no entities' : 'handoff not found'}) — serial pre-pass`);
+      console.warn(`[stream][shard] stitch fallback (${stitched ? 'no entities' : shards ? 'handoff not found' : 'unconfirmed window'}) — serial pre-pass`);
       startPrepass(false);
       return;
     }
@@ -860,7 +871,8 @@ export async function* processParallel(
     // set-entity-index reaches every worker FIRST (FIFO), so the style-shard
     // messages below always find the index installed.
     deliverEntityIndex(ids, starts, lengths, 'sharded', oversizedIdCount, malformedRecordCount);
-
+    // Out of core the workers hold no source to resolve style slices from (their shard scans copied windows only).
+    if (sparse) return startPrepass(true, { ids, starts, lengths, classes: stitched.classes });
     // Extract the styled-item span triples (class 4) in FILE ORDER from the
     // stitched columns, split into one contiguous slice per worker, and
     // resolve them in parallel while everyone waits on the pre-pass scan.
@@ -996,7 +1008,7 @@ export async function* processParallel(
       const rangeStart = Math.floor((i * len) / n);
       const rangeEnd = i + 1 === n ? len : Math.floor(((i + 1) * len) / n);
       workers[i].postMessage({
-        type: 'scan-shard' as const, sourceSessionId,
+        type: 'scan-shard' as const, ...(sparse ? { windowed: true } : { sourceSessionId }),
         sharedBuffer,
         shardIndex: i,
         rangeStart,
@@ -1016,7 +1028,7 @@ export async function* processParallel(
       // that worker is wedged, not just slow — and the fallback's own
       // stream-start/chunks/stream-end would queue forever behind it.
       for (let i = 0; i < n; i++) {
-        if (!shardResults[i]) replacePreWorkerPhaseWorker(i, 'shard-scan-timeout');
+        if (shardResults[i] === undefined) replacePreWorkerPhaseWorker(i, 'shard-scan-timeout'); // null: a refused window answered
       }
       startPrepass(false);
     });
@@ -1189,9 +1201,10 @@ export async function* processParallel(
         const starts = evt.starts as Uint32Array;
         const lengths = evt.lengths as Uint32Array;
         if (entityIndexDeliveredEarly) {
-          // Sharded mode never reaches here (the sharded pre-pass skips the
-          // entity-index event); guard against double delivery regardless.
-          console.log(`[stream] pre-pass entity-index arrived @ ${elapsed()}ms (already delivered via shards; ignoring)`);
+          // Out of core the sharded pre-pass sends its sorted index (the shards' stitch is in file order); otherwise
+          // it skips this event, so this only guards against double delivery.
+          if (sparse) sparse.offerSortedIndex(ids, starts, lengths);
+          else console.log(`[stream] pre-pass entity-index arrived @ ${elapsed()}ms (already delivered via shards; ignoring)`);
         } else {
           // TODO(#3699): the Rust pre-pass emits no malformed count yet, so
           // this is undefined ("nothing reported"), carried as such.
@@ -1223,7 +1236,6 @@ export async function* processParallel(
         const mliLayerMaterialIds = evt.mliLayerMaterialIds as Uint32Array;
         const mliLayerThicknesses = evt.mliLayerThicknesses as Float64Array;
         console.log(`[stream] prepass-columns @ ${elapsed()}ms (${referencedRepmaps.length} repmaps, ${instantiatedTypeIds.length} inst-types, ${mliElementIds.length} layer-elems)`);
-
         broadcastSetup((w) => {
           try {
             const rRepmaps = referencedRepmaps.slice();
@@ -1241,7 +1253,7 @@ export async function* processParallel(
                 type: 'set-prepass-columns' as const,
                 referencedRepmaps: rRepmaps,
                 instantiatedTypeIds: rTypeIds,
-                mappedInstancePlan: rMappedPlan, ...globalPlanColumns(evt, buffer.length),
+                mappedInstancePlan: rMappedPlan, ...globalPlanColumns(evt, globalPlan),
                 mliElementIds: mIds,
                 mliAxis: mAxis,
                 mliLayerCounts: mCounts,
@@ -1256,9 +1268,15 @@ export async function* processParallel(
               ],
             );
           } catch (err) {
+            prepassColumnsFailed = true;
             console.warn('[stream] set-prepass-columns dispatch failed:', err);
           }
         });
+        if (globalPlan) { // armed, or counts that do not match the plan; a held pool hears it when the columns are released
+          const armed = globalPlanCountsMatch(evt);
+          heldPlanReport = setupLog.holding ? armed : null;
+          if (!setupLog.holding) options?.onGlobalInstancingDecision?.(armed && !prepassColumnsFailed);
+        }
 
         // Not a dispatch gate (see dispatchJobsChunk); the pre-pass emits this
         // before the first jobs chunk, so drain here only for symmetry with the
@@ -1334,7 +1352,11 @@ export async function* processParallel(
     prepassDone = true;
     gateTracker.markPrepassDone();
     prepassWorker.terminate(); // first: a held pool (#10264) starts only after this; its heap is freed asynchronously
-    if (setupLog.holding) { setupLog.release(); drainQueuedChunksIfReady(); }
+    if (setupLog.holding) {
+      setupLog.release();
+      if (heldPlanReport !== null) options?.onGlobalInstancingDecision?.(heldPlanReport && !prepassColumnsFailed); // the held posts ran in release()
+      drainQueuedChunksIfReady();
+    }
     // Only signal stream-end to workers if they actually got
     // stream-start (which gates on `meta`). Zero-geometry files
     // never trigger meta → workers never start → no stream-end
@@ -1390,7 +1412,7 @@ export async function* processParallel(
       }
       prepassWorker.postMessage({
         type: 'prepass-streaming-sharded',
-        sourceFingerprint: options?.sourceFingerprint, ...globalKeyPlanningField(buffer.length),
+        sourceFingerprint: options?.sourceFingerprint, ...globalKeyPlanningField(globalPlan),
         sharedBuffer,
         chunkSize: 50_000,
         ...(visibilityFilter?.disabledTypes ? { disabledTypes: visibilityFilter.disabledTypes } : {}),
@@ -1398,12 +1420,12 @@ export async function* processParallel(
         indexIds: indexColumns.ids,
         indexStarts: indexColumns.starts,
         indexLengths: indexColumns.lengths,
-        indexClasses: indexColumns.classes,
+        indexClasses: indexColumns.classes, ...(sparse ? { emitSparseFacts: true } : {}),
       }, transfers);
     } else {
       prepassWorker.postMessage({
         type: 'prepass-streaming',
-        sourceFingerprint: options?.sourceFingerprint, ...globalKeyPlanningField(buffer.length),
+        sourceFingerprint: options?.sourceFingerprint, ...globalKeyPlanningField(globalPlan),
         sharedBuffer,
         chunkSize: 50_000,
         ...(sparse ? { emitSparseFacts: true } : {}),

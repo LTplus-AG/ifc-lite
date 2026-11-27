@@ -1,5 +1,11 @@
 # @ifc-lite/flow
 
+## 0.9.0
+
+### Minor Changes
+
+- [#11262](https://github.com/LTplus-AG/ifc-lite/pull/11262) [`c7615d0`](https://github.com/LTplus-AG/ifc-lite/commit/c7615d02921fada12dec05c21693b88154d44289) Thanks [@louistrue](https://github.com/louistrue)! - Allow hosts to reserve a review checkpoint, persist its start before applying effects, and recover expired unused reservations with their approval intact.
+
 ## 0.8.0
 
 ### Minor Changes

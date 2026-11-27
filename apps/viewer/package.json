@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/viewer",
-  "version": "7.0.0",
+  "version": "7.0.1",
   "description": "IFC-Lite viewer application",
   "private": true,
   "type": "module",
@@ -104,7 +104,7 @@
     "@radix-ui/react-tooltip": "^1.2.16",
     "@tanstack/react-virtual": "^3.14.26",
     "@vercel/analytics": "^2.0.1",
-    "@xyflow/react": "^12.12.1",
+    "@xyflow/react": "^13.0.0",
     "apache-arrow": "^21.2.0",
     "autoprefixer": "^10.6.2",
     "cesium": "^1.147.0",

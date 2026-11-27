@@ -19,6 +19,8 @@ pub(super) struct ScannedPrepass {
     pub(super) plane_angle_to_radians: f64,
     pub(super) oversized_id_count: usize,
     pub(super) malformed_record_found: bool,
+    /// The host already holds the index (stitched shard columns) and resolves
+    /// styles in its own slices: no `entity-index` and no `styles` event.
     pub(super) external_styles: bool,
 }
 
@@ -58,10 +60,18 @@ pub(super) fn scan(
         PrepassMode::Sharded(columns) => {
             // Discover file-order classes before sorting/deduplicating columns.
             // Existing with_arc_columnar_index reuse is retained, not new work.
+            // Out-of-core ingest: the geometry workers hold no source to resolve
+            // style slices from, so this pass resolves styles itself (serially,
+            // as the serial pre-pass does) and ships the serial `sparse-facts`,
+            // after the sorted `entity-index` the workers look ids up in (the
+            // host's stitched columns are in file order).
+            let sparse = api.emits_sparse_facts();
             let (index, mut discovery) = columns
-                .discover_and_build(content, disabled_types)
+                .discover_and_build(content, disabled_types, sparse)
                 .map_err(|m| JsValue::from_str(&m))?;
-            discovery.prepass_spans.styled_items = Vec::new();
+            if !sparse {
+                discovery.prepass_spans.styled_items = Vec::new();
+            }
             let index = Arc::new(index);
             let mut decoder = EntityDecoder::with_arc_columnar_index(content, index.clone());
             let plane_angle_to_radians = emit_meta(
@@ -79,7 +89,7 @@ pub(super) fn scan(
                 plane_angle_to_radians,
                 oversized_id_count: 0,
                 malformed_record_found: false,
-                external_styles: true,
+                external_styles: !sparse,
             })
         }
         PrepassMode::Serial => scan_serial(content, disabled_types, api.emits_sparse_facts(), |discovery, decoder, mode| {

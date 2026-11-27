@@ -63,8 +63,8 @@ export function SavedValidationReports() {
         )}
         {report ? (
           <div className="mt-2 flex flex-col gap-2">
-            <div className="flex gap-2">
-              <input className="min-w-0 flex-1 rounded border border-input bg-background px-2" aria-label={t('validationPanel.history.name')} key={report.id + report.name} defaultValue={report.name} onBlur={(e) => rename(report.id, e.target.value)} />
+            <div className="flex flex-wrap gap-2">
+              <input className="min-w-32 flex-1 rounded border border-input bg-background px-2" aria-label={t('validationPanel.history.name')} key={report.id + report.name} defaultValue={report.name} onBlur={(e) => rename(report.id, e.target.value)} />
               <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => remove(report.id)}>{t('validationPanel.history.remove')}</Button>
             </div>
             {reuse && <>

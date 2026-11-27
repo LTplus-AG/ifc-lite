@@ -38,7 +38,7 @@ import {
   type WorldAabb,
 } from './geometrySummary.js';
 import { totalYupOffset } from '../geo/coordinate-frame.js';
-import { downloadBlob, sanitizeFilename } from '../export/download.js';
+import { downloadFile, sanitizeFilename } from '../export/download.js';
 
 export type { CompareReportRow } from './reportRows.js';
 
@@ -340,6 +340,6 @@ export function downloadCompareReport(
   const name = `compare-${modelName(report.baseModel)}-vs-${modelName(report.headModel)}`;
   const body = format === 'csv' ? reportToCsv(report) : reportToJson(report);
   const type = format === 'csv' ? 'text/csv;charset=utf-8;' : 'application/json;charset=utf-8;';
-  downloadBlob(new Blob([body], { type }), `${name}.${format}`);
+  downloadFile(body, `${name}.${format}`, type);
   trackExportCompleted({ format, surface: 'compare_panel' });
 }

@@ -9,6 +9,8 @@ const uploadFields: readonly (keyof MeshData)[] = [
   'origin', 'material', 'uvs', 'texture', 'textureRef', 'textureBitmap', 'appearanceSource',
 ];
 
+const GEOMETRY_FIELDS: ReadonlySet<keyof MeshData> = new Set(['positions', 'normals', 'indices']);
+
 /** Federation rebuilds wrapper objects when a mesh-less model joins (#6953).
  * Those wrappers still describe the same upload. Buffer/reference identity
  * detects immutable replacement without hashing vertices; in-place changes
@@ -17,6 +19,11 @@ const uploadFields: readonly (keyof MeshData)[] = [
 export function sameMeshUpload(a: MeshData | undefined, b: MeshData): boolean {
   if (a === b) return true;
   if (!a) return false;
-  for (const field of uploadFields) if (a[field] !== b[field]) return false;
+  // Two wrappers of one compact shell (?compactGeom) draw the same records; reading their arrays would decode them.
+  const sameRecords = a.compact !== undefined && a.compact === b.compact;
+  for (const field of uploadFields) {
+    if (sameRecords && GEOMETRY_FIELDS.has(field)) continue;
+    if (a[field] !== b[field]) return false;
+  }
   return true;
 }

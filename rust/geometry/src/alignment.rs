@@ -453,11 +453,11 @@ impl AlignmentCurve {
         // −90° → (sin h, −cos h). Stays horizontal regardless of slope.
         let right = Vector3::new(sin_h, -cos_h, 0.0);
         let up = Vector3::new(0.0, 0.0, 1.0);
-        // 3D tangent: (cos h, sin h) scaled by cos(atan slope) plus a
-        // sin(atan slope) vertical component. Equivalent to taking the
-        // unit-length 3D derivative of (x(s), y(s), z(s)) w.r.t. station.
-        let inv_norm = (1.0 + slope * slope).sqrt();
-        let tangent = Vector3::new(cos_h / inv_norm, sin_h / inv_norm, slope / inv_norm);
+        // Unit 3D derivative (cos h, sin h, slope) / norm; where the norm overflows
+        // (a circular profile's vertical end, slope ±inf) it is (0, 0, ±1), not NaN.
+        let n = (1.0 + slope * slope).sqrt();
+        let (n, dz) = if n.is_finite() { (n, slope / n) } else { (slope.abs(), slope.signum()) };
+        let tangent = Vector3::new(cos_h / n, sin_h / n, dz);
         AlignmentFrame {
             origin: Point3::new(x, y, z),
             right,
@@ -492,7 +492,7 @@ impl AlignmentCurve {
     /// station 100 onward put station 0 at the LAST segment's exit grade
     /// extrapolated backwards across the whole alignment (z = -15 where
     /// the first segment's start height 10 was right).
-    fn evaluate_vertical_frame(&self, station: f64) -> (f64, f64) {
+    pub(crate) fn evaluate_vertical_frame(&self, station: f64) -> (f64, f64) {
         if let Some(profile) = &self.gradient {
             return profile.evaluate(station + profile.first_station());
         }

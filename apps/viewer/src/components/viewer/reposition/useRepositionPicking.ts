@@ -131,6 +131,7 @@ export function useRepositionPicking(role: PickRole, finish: (role: PickRole) =>
       canvas.removeEventListener('pointermove', move, true);
       canvas.removeEventListener('pointerdown', down, true);
       canvas.style.cursor = previousCursor;
+      renderer.cornerMarkers?.set(null);
       useViewerStore.getState().setRepositionPicking(false);
     };
   }, [role, finish, onError, models, reference]);

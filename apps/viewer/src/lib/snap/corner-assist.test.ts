@@ -59,7 +59,9 @@ describe('marker list derivation', () => {
   });
 
   it('marks none active when the pick used none of the corners', () => {
-    assert.ok(cornerMarkerViews(markers(-1), 'v').every((v) => !v.active));
+    assert.deepEqual(cornerMarkerViews(markers(-1), 'v').map(v => [v.x, v.y, v.active]), [
+      [10, 10, false], [20, 20, false], [30, 30, false],
+    ]);
   });
 
   it('draws nothing once the view differs from the one the corners were projected under', () => {

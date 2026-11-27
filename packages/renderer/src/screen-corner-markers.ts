@@ -40,7 +40,7 @@ function same(a: ScreenCornerMarkers | null, b: ScreenCornerMarkers | null): boo
   if (!a || !b || a.viewKey !== b.viewKey || a.activeIndex !== b.activeIndex || a.candidates.length !== b.candidates.length) return false;
   return a.candidates.every((c, i) => {
     const o = b.candidates[i];
-    return c.expressId === o.expressId && c.screen.x === o.screen.x && c.screen.y === o.screen.y
+    return c.distancePx === o.distancePx && c.expressId === o.expressId && c.screen.x === o.screen.x && c.screen.y === o.screen.y
       && c.position.x === o.position.x && c.position.y === o.position.y && c.position.z === o.position.z;
   });
 }

@@ -24,7 +24,7 @@ import type { UseMouseControlsParams } from './useMouseControls.js';
 import { handleMeasureTap } from './touchRouting.js';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 import { syncMeasureScreenCoords } from './measureHandlers.js';
-import type { Renderer } from '@ifc-lite/renderer';
+import { Renderer } from '@ifc-lite/renderer';
 import { captureViewportFrame, registerViewportCapture, viewportCaptureOwnsFrame } from '@/lib/viewport-capture';
 
 const s = () => useViewerStore.getState();
@@ -1151,6 +1151,21 @@ describe('the Distance end over background (#9049)', () => {
     fire(canvas, 'pointermove', 500, 250);
     flushFrames();
     assert.equal(xy(s().activeMeasurement?.current), '5,0', 'the end did not follow the cursor back onto the model');
+  });
+
+  it('#11746 a reduced Measure hover drops markers from the previous full pick', () => {
+    const { canvas, ctx } = mount();
+    click(canvas, 200, 300);
+    const channel = new Renderer(canvas).cornerMarkers;
+    Object.assign(ctx.renderer, { cornerMarkers: channel });
+    channel.set({ viewKey: 'fixed', activeIndex: 0, candidates: [{
+      expressId: 42, position: { x: 2, y: 0, z: 0 }, screen: { x: 200, y: 300 }, distancePx: 0,
+    }] });
+    ctx.lastMeasureRaycastDurationRef.current = 1e6;
+    fire(canvas, 'pointermove', 500, 250);
+    flushFrames();
+    assert.equal(xy(s().activeMeasurement?.current), '5,0');
+    assert.equal(channel.get(), null);
   });
 
   it('after a slow frame, a reduced pick that misses within the full snap reach keeps the corner a click would measure', () => {

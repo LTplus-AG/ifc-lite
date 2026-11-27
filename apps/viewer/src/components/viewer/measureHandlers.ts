@@ -153,6 +153,7 @@ export function moveRubberBand(ctx: MouseHandlerContext, x: number, y: number, u
     // Simpler on the Shift axis or after a slow frame; nothing with Snap off (#8995)
     snapOptions: measureSnapOptions(ctx, { axis: !!useOrthogonalConstraint, reduced }),
   });
+  if (reduceComplexity && !useOrthogonalConstraint) renderer.cornerMarkers?.set(null);
   let result = pick(reduceComplexity);
 
   // Track raycast duration for adaptive throttling: the first pick's, so the retry below keeps no frame reduced

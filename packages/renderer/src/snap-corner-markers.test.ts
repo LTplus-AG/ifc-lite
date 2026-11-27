@@ -188,6 +188,12 @@ describe('corner marker channel through the engine (#11504)', () => {
     assert.deepEqual(active.position, result.snapTarget?.position);
     assert.equal(active.expressId, result.snapTarget?.expressId);
     assert.equal(markers.candidates[0].distancePx <= markers.candidates[1].distancePx, true);
+    // Keep only this vertex so a changed candidate order cannot mask a stale distance.
+    const channel = engine.cornerMarkers;
+    const atCursor = (x: number) => ({ ...active, distancePx: Math.hypot(active.screen.x - x, active.screen.y - 300) });
+    channel.set({ viewKey: markers.viewKey, activeIndex: 0, candidates: [atCursor(435)] });
+    channel.set({ viewKey: markers.viewKey, activeIndex: 0, candidates: [atCursor(436)] });
+    assert.equal(channel.get()!.candidates[0].distancePx, atCursor(436).distancePx);
   });
 
   it('publishes nothing unless the pick asks for markers, and does not clear another pick\'s', () => {

@@ -26,17 +26,18 @@ import { SnapGlyphShape, useProjectorTick } from '../../viewport-ui/scene';
 const HALF = 3;
 
 export function SnapCornerMarkers(): ReactNode {
-  const picking = useViewerStore((s) => isSnapPicking(s) && s.snapEnabled);
+  const picking = useViewerStore((s) => s.snapEnabled && isSnapPicking(s) ? (s.repositionPicking ? 'reposition' : s.activeTool) : null);
   const [markers, setMarkers] = useState<ScreenCornerMarkers | null>(null);
   useEffect(() => {
     const renderer = picking ? getGlobalRenderer() : null;
     if (!renderer) { setMarkers(null); return; }
     const channel = renderer.cornerMarkers;
     setMarkers(channel.get());
-    return channel.subscribe(() => setMarkers(channel.get()));
+    const unsubscribe = channel.subscribe(() => setMarkers(channel.get()));
+    return () => { unsubscribe(); channel.set(null); };
   }, [picking]);
   // Re-render when the camera moves, so markers projected under an old view go away at once.
-  void useProjectorTick(picking && markers !== null);
+  void useProjectorTick(!!picking && markers !== null);
   if (!picking || !markers) return null;
   const views = cornerMarkerViews(markers, getGlobalRenderer()?.readbackRaycastViewKey() ?? null);
   if (views.length === 0) return null;

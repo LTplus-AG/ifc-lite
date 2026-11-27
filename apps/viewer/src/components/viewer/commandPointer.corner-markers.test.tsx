@@ -60,7 +60,7 @@ async function scene(t: TestContext, elevation: number) {
   }
   for (let i = 0; i < 60 && !ui.querySelector('[data-snap-corner-marker]'); i++) { await move(); await new Promise(resolve => setTimeout(resolve, 10)); }
   assert.ok(ui.querySelector('[data-snap-corner-marker]'), 'the settled corner grid supplied the mounted overlay');
-  return { ui, camera, corner, renderer, view,
+  return { ui, camera, corner, renderer, view, hiddenIds, move,
     click: () => act(() => { routeCommandPointer(ctx, 'down', cursor.x, cursor.y); }),
     key: (type: 'keydown' | 'keyup') => act(async () => {
       window.dispatchEvent(new window.KeyboardEvent(type, { key: 'Alt', altKey: type === 'keydown' })); await frame();
@@ -97,4 +97,44 @@ it('#11517 Alt clears the corner glyphs at a still pointer and release restores 
   assert.equal(active(), transform);
   assert.deepEqual(getCommandRuntime().snap?.render, [4, 0, -3]);
   assert.equal(renderer.readbackRaycastViewKey(), stamp);
+});
+
+it('#11746 replaces the hidden command pick when a host swaps IDs in place', async t => {
+  const { ui, hiddenIds, move } = await scene(t, 0);
+  hiddenIds.add(101);
+  for (let i = 0; i < 60; i++) {
+    await move();
+    if (ui.querySelector('[data-snap-corner-marker="active"]')) break;
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+  assert.ok(ui.querySelector('[data-snap-corner-marker="active"]'));
+  hiddenIds.delete(101);
+  hiddenIds.add(42);
+  await move();
+  assert.ok(!ui.querySelector('[data-snap-corner-marker]'));
+});
+
+it('#11746 reopening a Reposition pick at a fixed camera starts without old glyphs', async t => {
+  const { ui, renderer, camera, corner } = await scene(t, 0);
+  const setPicking = (on: boolean) => act(() => {
+    useViewerStore.setState({ activeTool: 'select', repositionPicking: on });
+  });
+  setPicking(true);
+  const at = camera.projectToScreen(corner, 800, 600)!;
+  const isolatedIds = new Set([42]);
+  for (let i = 0; i < 60 && !ui.querySelector('[data-snap-corner-marker="active"]'); i++) {
+    act(() => {
+      renderer.raycastSceneMagnetic(at.x, at.y, { edge: null, meshExpressId: null, lockStrength: 0 },
+        { isolatedIds, snapOptions: { snapToVertices: true, screenCornerSnap: { markers: true } } });
+    });
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+  assert.ok(ui.querySelector('[data-snap-corner-marker="active"]'));
+  const stamp = renderer.readbackRaycastViewKey();
+  setPicking(false);
+  setPicking(true);
+  assert.equal(renderer.readbackRaycastViewKey(), stamp);
+  assert.ok(!ui.querySelector('[data-snap-corner-marker]'));
+  assert.equal(renderer.cornerMarkers.get(), null);
+  setPicking(false);
 });

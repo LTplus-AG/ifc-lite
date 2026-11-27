@@ -136,7 +136,10 @@ and deletions. Exporting and reloading an IFC file first is unnecessary.
 
 `export_ifc`, `export_csv`, `export_json`, `export_glb`, `export_gltf`,
 `export_obj` and `export_jsonld` accept `storey`, `where` and `limit` in
-addition to `type`. A storey matches by name or express ID. The optional
+addition to `type`. A storey matches by name or express ID. Membership follows
+spatial ownership through spaces, with placement as the fallback for unassigned
+elements. For GLB, glTF, OBJ and JSON-LD exports with pending edits, select the
+storey by name because serialization can change express IDs. The optional
 `where` object has `set`, `property`, `operator` and `value` fields. For
 example, `{"set":"Pset_WallCommon","property":"FireRating","operator":"=","value":"REI60"}`
 selects entities with that fire rating. `limit` caps the results after the

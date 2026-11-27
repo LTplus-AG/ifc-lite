@@ -88,7 +88,70 @@ it('applies the STEP export limit after the GlobalId allowlist (#11583)', async 
   const filePath = join(root, 'limited.ifc');
   const result = await run('export_ifc', { file_path: filePath, global_ids: ['0WALL00000000000000001'], limit: 1 });
   expect(result.structuredContent).toMatchObject({ exportedCount: 1 });
-  expect(await readFile(filePath, 'utf-8')).toContain("Other wall");
+  const written = await readFile(filePath, 'utf-8');
+  expect(written).toContain('Other wall');
+  expect(written).not.toContain('Existing wall');
+});
+
+const storeyFixture = () => new TextEncoder().encode(new TextDecoder().decode(source)
+  .replace('(#41));', '(#41,#51));')
+  .replace('(#72),#41);', '(#72),#51);')
+  .replace('$,#40,$,$,$);\nENDSEC;', '$,#49,#64,$,$);\nENDSEC;')
+  .replace('ENDSEC;\nEND-ISO', [
+    '#48=IFCLOCALPLACEMENT($,#21);',
+    '#49=IFCLOCALPLACEMENT(#40,#21);',
+    "#51=IFCBUILDINGSTOREY('0STOREY00000000000000Y',$,'Level 2',$,$,#48,$,$,.ELEMENT.,3.);",
+    "#52=IFCSPACE('0SPACE000000000000000X',$,'Room',$,$,#49,$,$,.ELEMENT.,.INTERNAL.,$);",
+    "#53=IFCRELAGGREGATES('0AGGR0000000000000000Y',$,$,$,#41,(#52));",
+    "#54=IFCRELCONTAINEDINSPATIALSTRUCTURE('0CONT0000000000000000Y',$,$,$,(#73),#52);",
+    '#60=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,2.,0.2);',
+    '#61=IFCEXTRUDEDAREASOLID(#60,#21,#62,3.);',
+    '#62=IFCDIRECTION((0.,0.,1.));',
+    "#63=IFCSHAPEREPRESENTATION(#20,'Body','SweptSolid',(#61));",
+    '#64=IFCPRODUCTDEFINITIONSHAPE($,$,(#63));',
+    "#73=IFCWALL('0WALL00000000000000001',$,'Space-owned wall',$,$,#48,#64,$,$);",
+    "#74=IFCWALL('0WALL00000000000000002',$,'Placement-only wall',$,$,#49,#64,$,$);",
+    'ENDSEC;', 'END-ISO',
+  ].join('\n')));
+
+it.each(['export_ifc', 'export_csv', 'export_json'])('%s follows space ownership and unowned placement, excluding the other storey (#11623)', async (name) => {
+  ctx.registry.add(await loadIfcModelFromBytes(storeyFixture(), 'storeys.ifc'));
+  const filePath = join(root, name);
+  await run(name, { file_path: filePath, storey: '#41', type: 'IfcWall' });
+  const written = await readFile(filePath, 'utf-8');
+  expect(written).toContain('Space-owned wall');
+  expect(written).toContain('Placement-only wall');
+  expect(written).not.toContain('Existing wall');
+});
+
+it.skipIf(!existsSync(wasm))('filters Rust exports by storey, refusing numeric selectors before baking pending edits (#11623)', async () => {
+  const model = await loadIfcModelFromBytes(storeyFixture(), 'storeys.ifc');
+  ctx.registry.add(model);
+  const glb = await artifact('export_gltf', { storey: '#41', type: 'IfcWall', name_by_global_id: true });
+  expect(countGlbMeshes(glb)).toBeGreaterThan(0);
+  const body = JSON.parse(glb.subarray(20, 20 + glb.readUInt32LE(12)).toString('utf8')) as {
+    nodes: { name?: string }[];
+  };
+  const ids = body.nodes.flatMap((node) => node.name ?? []).sort();
+  expect(ids).toEqual(['0WALL00000000000000001', '0WALL00000000000000002']);
+
+  model.bim.mutate.setAttribute({ modelId: model.id, expressId: 73 }, 'Name', 'Edited space-owned wall');
+  for (const name of ['export_glb', 'export_gltf', 'export_obj', 'export_jsonld']) {
+    for (const selector of ['#41', '41']) {
+      const out = join(root, `refused-${name}`);
+      await expect(run(name, { file_path: out, storey: selector, type: 'IfcWall' }))
+        .rejects.toMatchObject({ code: 'INVALID_INPUT', message: expect.stringContaining('unsaved edits') });
+      expect(existsSync(out)).toBe(false);
+    }
+  }
+  const live = await run('export_json', { storey: '#41', type: 'IfcWall' });
+  expect(live.structuredContent).toMatchObject({
+    rows: [expect.objectContaining({ Name: 'Edited space-owned wall' }), expect.objectContaining({ Name: 'Placement-only wall' })],
+  });
+  const baked = (await artifact('export_jsonld', { storey: 'Level 1', type: 'IfcWall' })).toString('utf8');
+  expect(baked).toContain('Edited space-owned wall');
+  expect(baked).toContain('Placement-only wall');
+  expect(baked).not.toContain('Existing wall');
 });
 
 it.skipIf(!existsSync(wasm))('writes binary glTF and a property-bearing JSON-LD graph', async () => {

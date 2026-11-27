@@ -16,7 +16,7 @@ import { loadIfcModelFromBytes } from '../loader.js';
 import { writeTransformOutput } from './transform-schema.js';
 import { cityAndEnergyExportTools } from './export-city-energy.js';
 import { export3dmTool } from './export-3dm.js';
-import { hasExportFilter, selectExportEntities, exportIsolation, exportFilterProperties } from './export-selection.js';
+import { checkStoreyBeforeBaking, hasExportFilter, selectExportEntities, exportIsolation, exportFilterProperties } from './export-selection.js';
 import { basename } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { writeFile } from 'node:fs/promises';
@@ -62,7 +62,7 @@ const exportIfc: Tool = {
       const wanted = new Set(input.global_ids as string[]);
       const matched = new Set<string>();
       const { limit, ...filters } = input;
-      for (const e of selectExportEntities(m.bim, filters)) {
+      for (const e of await selectExportEntities(m, filters)) {
         if (!wanted.has(e.globalId)) continue;
         refs.push(e.ref);
         matched.add(e.globalId);
@@ -80,7 +80,7 @@ const exportIfc: Tool = {
       }
     }
     if (refs === undefined && hasExportFilter(input)) {
-      refs = selectExportEntities(m.bim, input).map((entity) => entity.ref);
+      refs = (await selectExportEntities(m, input)).map((entity) => entity.ref);
       if (refs.length === 0) {
         throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message: 'Export filters matched no entities - nothing to export.' });
       }
@@ -120,7 +120,7 @@ const exportCsv: Tool = {
     const m = resolveModel(ctx, input.model_id as string | undefined);
     const cols = (input.columns as string[] | undefined) ?? ['GlobalId', 'Type', 'Name'];
     const sep = (input.separator as string | undefined) ?? ',';
-    const refs = selectExportEntities(m.bim, input).map((entity) => entity.ref);
+    const refs = (await selectExportEntities(m, input)).map((entity) => entity.ref);
     const csv = m.bim.export.csv(refs, { columns: cols, separator: sep });
     if (typeof input.file_path === 'string') {
       const filePath = await resolveSafePath(input.file_path, ctx, 'write');
@@ -148,7 +148,7 @@ const exportJson: Tool = {
   async handler(input, ctx) {
     const m = resolveModel(ctx, input.model_id as string | undefined);
     const cols = (input.columns as string[] | undefined) ?? ['GlobalId', 'Type', 'Name'];
-    const refs = selectExportEntities(m.bim, input).map((entity) => entity.ref);
+    const refs = (await selectExportEntities(m, input)).map((entity) => entity.ref);
     const rows = m.bim.export.json(refs, cols);
     if (typeof input.file_path === 'string') {
       const filePath = await resolveSafePath(input.file_path, ctx, 'write');
@@ -197,19 +197,21 @@ function artifactTool(name: keyof typeof artifactFormats, description: string): 
     async handler(input, ctx) {
       const model = resolveModel(ctx, input.model_id as string | undefined);
       const filePath = await resolveSafePath(input.file_path, ctx, 'write');
+      checkStoreyBeforeBaking(model, input);
       const reparseSelection = hasExportFilter(input) && model.backend.hasPendingChanges();
-      const baseIsolation = reparseSelection ? undefined : exportIsolation(model.bim, input);
       const artifact = await withIfcBytes(model, async (bytes) => {
-        let isolated = baseIsolation;
+        let isolated;
         if (reparseSelection) {
           // Isolation IDs must name the records in the STEP bytes the engine
           // gets. A baked edit can change those IDs.
           const baked = await loadIfcModelFromBytes(bytes, model.name);
           try {
-            isolated = exportIsolation(baked.bim, input);
+            isolated = await exportIsolation(baked, input, bytes);
           } finally {
             baked.backend.dispose();
           }
+        } else {
+          isolated = await exportIsolation(model, input, bytes);
         }
         const processor = new GeometryProcessor();
         try {

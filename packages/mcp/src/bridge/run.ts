@@ -21,7 +21,7 @@ import { isInsecureRemoteOrigin, normalizeOrigin } from './guards.js';
 import { BRIDGE_STATUS_TOOL, BRIDGE_UI_EVENTS_TOOL, DEFAULT_BRIDGE_VIEWER_URL, TAB_SHOW_UI_TOOL } from './bridge-protocol.js';
 import { TabBridge, type TabBridgeOptions } from './tab-bridge.js';
 import { BridgeToolRegistry } from './tools.js';
-import { CHANNEL_NOTIFICATION, channelParams, refusedChannelParams } from './ui-events-tool.js';
+import { CHANNEL_NOTIFICATION, REFUSED_NOTICE_INTERVAL_MS, channelParams, refusedChannelParams } from './ui-events-tool.js';
 
 /** What the server serves besides the tab: the headless tool set on in-process models. */
 export interface HeadlessParts {
@@ -183,7 +183,14 @@ export async function startBridgeServer(opts: BridgeServerOptions): Promise<Runn
   bridge.onChange(() => server.notifyToolsChanged());
   if (opts.channel) {
     bridge.uiEvents.onEvent((event) => server.notify(CHANNEL_NOTIFICATION, channelParams(event)));
-    bridge.uiEvents.onRefused(() => server.notify(CHANNEL_NOTIFICATION, refusedChannelParams()));
+    // At most one refusal notice per interval, carrying the count; tab_ui_events has the rest.
+    let lastNotice = -Infinity;
+    bridge.uiEvents.onRefused(() => {
+      const now = Date.now();
+      if (now - lastNotice < REFUSED_NOTICE_INTERVAL_MS) return;
+      lastNotice = now;
+      server.notify(CHANNEL_NOTIFICATION, refusedChannelParams(bridge.uiEvents.pendingRefused));
+    });
   }
   return {
     server,

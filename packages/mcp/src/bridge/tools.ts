@@ -321,11 +321,11 @@ export class BridgeToolRegistry extends ToolRegistry {
       const tab = this.bridge.tab();
       if (tab?.a2uiSurface || this.bridge.uiEvents.hasNews) return this.events;
       // A paired tab without surfaces has no such tool; with no tab, fail at once.
-      return tab ? null : notConnectedTool(name);
+      return tab ? null : notConnectedTool(requested);
     }
     if (!name.startsWith(TAB_TOOL_PREFIX)) return super.get(name);
     const tab = this.bridge.tab();
-    if (!tab) return notConnectedTool(name);
+    if (!tab) return notConnectedTool(requested);
     const d = servable(tab.tools).find((t) => mcpName(t.name) === name);
     // A hidden (mutating, read-only) tool still resolves, so the call gets a
     // READ_ONLY refusal from `TabBridge.call` rather than "unknown tool".
@@ -335,9 +335,11 @@ export class BridgeToolRegistry extends ToolRegistry {
   override list(): Tool[] {
     const own = super.list();
     const tab = this.bridge.tab();
-    if (!tab) return [...own, this.status];
+    // tab_ui_events stays listed while it holds news, as get() serves it.
+    const news = this.bridge.uiEvents.hasNews ? [this.events] : [];
+    if (!tab) return [...own, this.status, ...news];
     const visible = servable(tab.tools).filter((t) => tab.permission !== 'read-only' || t.readOnly);
-    return [...own, this.status, ...(tab.a2uiSurface ? [this.surface, this.events] : []), ...visible.map((d) => forwardedTool(this.bridge, d, tab.tools))];
+    return [...own, this.status, ...(tab.a2uiSurface ? [this.surface, this.events] : news), ...visible.map((d) => forwardedTool(this.bridge, d, tab.tools))];
   }
 
   override has(name: string): boolean {

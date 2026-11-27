@@ -89,12 +89,15 @@ function repeatsPrompt(e: ReceivedUiEvent): boolean {
 }
 
 /** The channel notice for refused clicks: fixed text, nothing from the tab. */
-export function refusedChannelParams(): { content: string; meta: Record<string, string> } {
+export function refusedChannelParams(count: number): { content: string; meta: Record<string, string> } {
   return {
-    content: 'A click in the paired viewer tab was refused: it named a surface or event you did not show there. Ask the user what they clicked, or show the surface again.',
-    meta: { event: 'refused' },
+    content: `${count} click${count === 1 ? ' was' : 's were'} refused in the paired viewer tab: they named a surface or event you did not show there. Ask the user what they clicked, or show the surface again.`,
+    meta: { event: 'refused', count: String(count) },
   };
 }
+
+/** Least time between two refusal channel notices, so a misbehaving tab cannot flood the session. */
+export const REFUSED_NOTICE_INTERVAL_MS = 5000;
 
 /** A named event's prompt, as the agent should read it. */
 function promptNote(event: ReceivedUiEvent): string {

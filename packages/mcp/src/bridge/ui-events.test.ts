@@ -264,8 +264,8 @@ describe('ui-events must match a surface the agent showed (P2 item 6)', () => {
     // The agent hears that clicks were lost, since the tab told the user they were sent.
     expect((await agent.call('tab_ui_events')).structuredContent?.refused).toBe(3);
     const notices = () => agent.notes.filter((n) => 'method' in n && n.method === 'notifications/claude/channel') as Array<{ params: { content: string; meta: { event: string } } }>;
-    // Each refusal sends a fixed notice, nothing from the tab.
-    expect(notices().filter((n) => n.params.meta.event === 'refused').length).toBeGreaterThan(0);
+    // Refusals send one notice per interval with the count, nothing from the tab.
+    expect(notices().filter((n) => n.params.meta.event === 'refused')).toHaveLength(1);
     expect(notices().every((n) => !n.params.content.includes('Ignore previous'))).toBe(true);
     const channel = () => notices().filter((n) => n.params.meta.event !== 'refused');
     expect(channel()).toHaveLength(0);

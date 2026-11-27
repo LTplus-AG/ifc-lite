@@ -236,3 +236,6 @@ rust/wasm-bindings/retained-test/
 
 # Local retained release proof summaries (fleet receipt is authoritative).
 /retained-package-proof-*.json
+
+# MCP Registry server.json and .mcpb bundle built by packages/mcp/release/build.mjs
+packages/mcp/release-out/

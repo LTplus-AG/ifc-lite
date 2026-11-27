@@ -27,6 +27,21 @@ npx @ifc-lite/mcp ./model.ifc --viewer
 npx @ifc-lite/mcp ./model.ifc --open
 ```
 
+## Building client distribution artifacts
+
+From the repository root:
+
+```bash
+pnpm --filter @ifc-lite/mcp release:manifests
+```
+
+With the project's WASM build toolchain installed, this builds a Claude
+Desktop `.mcpb`, a dependency inventory and the MCP Registry `server.json`
+for the package version under the gitignored `packages/mcp/release-out/`
+directory. Use `--no-bundle` to generate only `server.json`.
+The Registry entry identifies the matching npm release. Registry publication
+requires that npm version to exist with the same `mcpName`.
+
 ## Embedded loaded-model authoring
 
 For embedded HTTP servers, `HttpTransport` accepts `maxSessions` (default
@@ -110,6 +125,18 @@ ifc-lite mcp ./model.ifc
 ifc-lite mcp ./model.ifc --read-only
 ```
 
+### Add it to a client in one step
+
+```bash
+npx -y @ifc-lite/mcp install --client claude-desktop ./model.ifc
+npx -y @ifc-lite/mcp install --client claude-code -- --bridge
+npx -y @ifc-lite/mcp install --client cursor --dry-run
+```
+
+Clients: `claude-code`, `claude-desktop`, `cursor`, `vscode`. Existing configs
+are merged (other servers kept, a backup written first); `--dry-run` prints
+what would change. `install --help` lists the options.
+
 ### Claude Desktop
 
 Drop this into `claude_desktop_config.json` (`~/Library/Application Support/Claude/` on macOS, `%APPDATA%\Claude\` on Windows):
@@ -149,6 +176,7 @@ The same `npx` command works as a stdio server in any MCP-aware client.
 | bSDD | `bsdd_search`, `bsdd_class`, `bsdd_property_sets`, `bsdd_match` |
 | Diff | `model_diff` (`by_content` for content-keyed matching), `quantity_diff` |
 | Export | `export_ifc`, `export_csv`, `export_json`, `export_glb`, `export_obj`, `export_ifcx`, `export_3dm` |
+| Model transforms | `model_merge`, `model_convert`, `model_extract`, `model_anonymize`, `model_simplify`, `model_lod`: write to `file_path` and leave the loaded model alone. An existing file there is replaced (a loaded model's source never is). `model_merge` and `model_anonymize` refuse a model with unsaved edits |
 | Viewer | `viewer_ask`, `viewer_open`, `viewer_close`, `viewer_status`, `viewer_select`, `viewer_colorize`, `viewer_isolate`, `viewer_hide`, `viewer_show`, `viewer_reset`, `viewer_fly_to`, `viewer_set_section`, `viewer_clear_section`, `viewer_color_by_storey`, `viewer_color_by_property`, `viewer_get_selection`, `viewer_wait_for_selection`, `viewer_describe_selection` |
 
 `join_walls` joins two straight walls in the same placement frame through the
@@ -403,13 +431,18 @@ palette. Reads, selection inspection and palette discovery are available initial
   well-formed for the keywords the bridge validates (`properties` of schemas,
   `required` as strings, numeric bounds as numbers, ...), `type` must name a
   type the bridge enforces (`string`, `number`, `integer`, `boolean`, `array`,
-  `object`, `null`), and `additionalProperties` must be `true` or `false` (a
-  schema there would not be enforced). Other JSON Schema keywords (`pattern`,
-  `format`, `oneOf`, `const`, …) are published to the agent but not checked by
-  the bridge; the tab must validate them. Non-finite numbers (`1e999`) are
-  refused anywhere in a frame. An oversized or
-  malformed hello is refused; an update is rejected with a non-fatal `error`;
-  a result fails its call with a message naming the limit. The size and
+  `object`, `null`), `additionalProperties` must be `true` or `false`,
+  `anyOf` must be an array of schemas and `oneOf` a non-empty one, `pattern`
+  must compile, and `$ref` is refused (a tab schema has no `$defs` to resolve
+  against). The bridge enforces `type`, `properties`, `required`, `items`,
+  `enum`, `const`, `uniqueItems`, numeric and length bounds, `anyOf` and
+  `additionalProperties: false`. `pattern` and `oneOf` are published but not
+  enforced on the server (a tab regex on agent input could stall it, and
+  `oneOf` branches may differ only by `pattern`), and neither are other
+  keywords (`format`, `exclusiveMaximum`, `multipleOf`, `allOf`, …); the tab
+  must validate them. Non-finite numbers (`1e999`) are refused anywhere in a
+  frame. An oversized or malformed hello is refused; an update is rejected
+  with a non-fatal `error`; a result fails its call with a message naming the limit. The size and
   depth walk is iterative and counts before it copies, and the schema-shape
   check recurses only after the 32-level bound has passed, so a value nested
   30,000 deep or an 8-million-element array is refused cheaply rather than

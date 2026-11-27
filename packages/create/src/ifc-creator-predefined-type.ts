@@ -76,35 +76,71 @@ export function classificationToken(schema: CreatorSchema, request: Classificati
   return `.${token}.`;
 }
 
+/** Canonical entity names by upper-case name, built once per schema. */
+const ENTITY_BY_UPPER = new Map<CreatorSchema, Map<string, string>>();
+function entityNamed(schema: CreatorSchema, ifcTypeUpper: string): string | undefined {
+  let index = ENTITY_BY_UPPER.get(schema);
+  if (!index) {
+    index = new Map(Object.keys(getSchemaRegistryForVersion(schema).entities).map((name) => [name.toUpperCase(), name]));
+    ENTITY_BY_UPPER.set(schema, index);
+  }
+  return index.get(ifcTypeUpper);
+}
+
 /**
- * The attributes after `Tag` for a generic element writer (`addElement`,
- * `addAxisElement`), written from the target schema's own attribute list:
- * - the classification slot (`PredefinedType`, else the first enum slot, e.g. IFC2X3
- *   `CompositionType` / `ShapeType`) gets the caller's value, checked against its enum,
- *   defaulting to NOTDEFINED where the enum has it and `$` where it is optional;
- * - every other optional slot (IfcDoor `OverallHeight`, …) is `$`, a required enum
- *   slot is NOTDEFINED, and any other required slot throws;
- * - a caller value with no classification slot throws.
- * Entities the schema does not know keep the historical `,.TOKEN.` tail.
+ * Every attribute after `Representation` for a generic product writer
+ * (`addElement`, `addAxisElement`), from the target schema's own attribute
+ * list, so each product gets its full record (#11577):
+ * - `Tag` gets the caller's tag, and a spatial element's `CompositionType` is ELEMENT
+ *   (its enum has no NOTDEFINED; `addIfcSpace` writes the same);
+ * - the classification slot (`PredefinedType`, else the first other enum slot) gets
+ *   the caller's value, checked against its enum, defaulting to NOTDEFINED where the
+ *   enum has it and `$` where it is optional;
+ * - every other optional slot is `$`, a required enum slot is NOTDEFINED, and any
+ *   other required slot throws; a caller value with no classification slot throws.
+ *
+ * Only what a storey can hold is written: an `IfcElement` or another product
+ * is contained, an `IfcSpace` is aggregated (#11498). A non-product (a group
+ * such as `IfcZone`, or a context such as `IfcProject`), an abstract entity,
+ * another spatial element, a feature element (`IfcOpeningElement`, which voids a
+ * host), a type the target schema does not define, and USERDEFINED without an
+ * ObjectType all throw. Callers run this before writing any record, so a refusal
+ * leaves nothing behind.
  */
-export function genericElementTail(schema: CreatorSchema, ifcTypeUpper: string, predefinedType: string | undefined): string {
+export function genericProductTail(
+  schema: CreatorSchema, ifcTypeUpper: string, op: string, tag: string, predefinedType: string | undefined, objectType?: string,
+): string {
+  const entity = entityNamed(schema, ifcTypeUpper);
+  if (!entity) throw new Error(`${op}: ${ifcTypeUpper} is not an entity in ${schema}`);
   const registry = getSchemaRegistryForVersion(schema);
-  const entity = Object.keys(registry.entities).find((name) => name.toUpperCase() === ifcTypeUpper);
-  if (!entity) return `,.${predefinedType ?? 'NOTDEFINED'}.`;
-  const rest = (registry.entities[entity].allAttributes ?? []).slice(8);
-  const target = rest.find((a) => a.name === 'PredefinedType') ?? rest.find((a) => registry.enums[a.type]);
-  if (predefinedType !== undefined && !target) throw new Error(`${entity} has no PredefinedType attribute in ${schema}`);
+  const chain = registry.entities[entity].inheritanceChain ?? [];
+  if (!chain.includes('IfcProduct')) throw new Error(`${op}: ${entity} is not a product and cannot be placed in a storey`);
+  const spatial = chain.includes('IfcSpatialElement') || chain.includes('IfcSpatialStructureElement');
+  if (spatial && entity !== 'IfcSpace') throw new Error(`${op}: ${entity} is a spatial element and cannot be placed in a storey`);
+  if (chain.includes('IfcFeatureElement')) {
+    throw new Error(`${op}: ${entity} is a feature element; it voids or projects from a host and is never contained in a storey`);
+  }
+  if (registry.entities[entity].isAbstract) throw new Error(`${op}: ${entity} is abstract in ${schema} and cannot be instantiated`);
+  const rest = (registry.entities[entity].allAttributes ?? []).slice(7);
+  const composition = (name: string) => spatial && name === 'CompositionType';
+  const target = rest.find((a) => a.name === 'PredefinedType') ?? rest.find((a) => registry.enums[a.type] && !composition(a.name));
+  if (predefinedType !== undefined && !target) throw new Error(`${op}: ${entity} has no PredefinedType attribute in ${schema}`);
   return rest.map((attr) => {
+    if (attr.name === 'Tag') return `,${tag}`;
+    if (composition(attr.name)) return ',.ELEMENT.';
     const allowed = registry.enums[attr.type] ?? [];
     if (attr === target && predefinedType !== undefined && !(predefinedType === 'NOTDEFINED' && !allowed.includes('NOTDEFINED'))) {
       if (!allowed.includes(predefinedType)) {
-        throw new Error(`${entity}.${attr.name} must be one of ${allowed.join(', ')} in ${schema}; got ${predefinedType}`);
+        throw new Error(`${op}: ${entity}.${attr.name} must be one of ${allowed.join(', ')} in ${schema}; got ${predefinedType}`);
+      }
+      if (predefinedType === 'USERDEFINED' && !objectType?.trim()) {
+        throw new Error(`${op}: ${entity}.ObjectType is required when ${attr.name} is USERDEFINED`);
       }
       return `,.${predefinedType}.`;
     }
     if (attr === target && allowed.includes('NOTDEFINED')) return ',.NOTDEFINED.';
     if (attr.optional) return ',$';
     if (allowed.includes('NOTDEFINED')) return ',.NOTDEFINED.';
-    throw new Error(`${entity}.${attr.name} is required in ${schema} and cannot be written by the generic element writer`);
+    throw new Error(`${op}: ${entity}.${attr.name} is required in ${schema} and cannot be written by the generic writer`);
   }).join('');
 }

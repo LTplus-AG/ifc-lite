@@ -119,6 +119,7 @@ Tools are grouped by capability. Everything below is registered in the default t
 | bSDD | `bsdd_search`, `bsdd_class`, `bsdd_property_sets`, `bsdd_match` |
 | Diff | `model_diff`, `quantity_diff` |
 | Export | `export_ifc`, `export_csv`, `export_json`, `export_glb`, `export_obj`, `export_ifcx`, `export_usd`, `export_3dm` |
+| Model transforms | `model_merge`, `model_convert`, `model_extract`, `model_anonymize`, `model_simplify`, `model_lod`: write to `file_path` and leave the loaded model alone. An existing file there is replaced (a loaded model's source never is). `model_merge` and `model_anonymize` refuse a model with unsaved edits |
 | Flow | `describe_flow`, `run_flow`, `propose_flow`, `resume_flow` |
 | Viewer | `viewer_ask`, `viewer_open`, `viewer_close`, `viewer_status`, `viewer_colorize`, `viewer_isolate`, `viewer_hide`, `viewer_show`, `viewer_reset`, `viewer_fly_to`, `viewer_set_section`, `viewer_clear_section`, `viewer_color_by_storey`, `viewer_color_by_property`, `viewer_get_selection`, `viewer_wait_for_selection`, `viewer_describe_selection` |
 | Draft layers & review | `create_draft_layer`, `draft_apply_ops`, `publish_layer`, `diff_layer`, `dry_run_merge`, `list_conflicts`, `request_review`, `add_review_feedback`, `get_review_feedback`, `add_review_topic`, `respond_to_review` |
@@ -140,8 +141,9 @@ specification, facet and constraint. Reading the same XML twice gives the
 same ids.
 
 `ids_apply_ops` is the only tool that changes a document. It takes typed
-operations (IDS ops vocabulary v1; the JSON Schema is part of the tool's
-input schema) and passes the whole batch through the grounding gate first:
+operations (IDS ops vocabulary v1). The tool's input schema lists each op
+kind with its payload fields; the full JSON Schema of an op is the resource
+`ifc-lite://schemas/ids-ops-v1.json`. The tool passes the whole batch through the grounding gate first:
 every op is validated, and every literal name is checked against the IFC
 schema tables (entities, predefined types, attributes, property sets,
 properties, enumeration values, data types). If one name is wrong, nothing
@@ -468,6 +470,10 @@ ifc-lite-mcp --bridge --read-only  # tools the tab labels as mutating stay off w
 - **Hostile frames.** Frames are bounded as a whole before any field is read; an unpaired connection may send at most 1.25 MiB; diagnostic strings derived from tab input (errors, log lines, client name) are clipped and stripped of control characters; tool names, descriptions and schemas are bounded by `BRIDGE_LIMITS`; tool results pass through unaltered within the result limits, and the agent is told to treat them as data; frame handlers run under a guard, so a frame cannot crash the process. A local process, or a page on an allowed origin (pages on other origins are refused before a slot is allocated), CAN block pairing for as long as it keeps attacking, by keeping the 4 unpaired slots busy so the real tab gets HTTP 429. It still cannot pair without the code. Allow only origins whose content you trust. The bridge logs "pairing is being blocked: every unpaired slot is busy …", and `bridge_status` reports `pairingPressure` and what to do.
 - **No tab.** No `tab_*` tool is listed (except `tab_ui_events` while it still holds clicks from a tab that went away), and a call to one fails at once with `VIEWER_NOT_CONNECTED`. A tab that closes fails its pending calls the same way.
 
+Browser integrations can import `validateInput` from `@ifc-lite/mcp/browser` to validate tool arguments against their own schemas. The viewer uses it to enforce constraints such as `pattern` and `oneOf` before calling a tool handler. A failed validation returns `valid: false` and an `errors` array with paths and messages.
+
+In the browser viewer and playground, `query_entities` accepts numbers or numeric strings for `limit` and `offset`. It truncates fractions, clamps the page size to 0–200 and the offset to a nonnegative safe integer, and defaults to 50 results at offset 0 for omitted or nonnumeric values.
+
 The tab<->bridge frame protocol is transport-neutral and exported, browser-safe, as `@ifc-lite/mcp/bridge-protocol`. Tools are listed with MCP `annotations` (`readOnlyHint`, and `destructiveHint` for tools labelled mutating). In the viewer, open the pairing link in the tab that holds the model (or use **Sources → Local agent → Connect local agent**, or **Connect local agent…** in the command palette, and type the code). The viewer strips the code from the address bar at once and asks for confirmation before it connects; it serves its read tools, and property and attribute edits only when the user allows them (below); palette discovery is also available. Command execution and selection changes require the explicit commands-and-edits grant described below. While paired, the status bar shows *Local agent connected · read-only* with Disconnect and an activity log (tool, model, duration, outcome; no arguments or results). When the link opens in an empty viewer, choose a model tab by filename and confirm in that tab. Cross-tab selection requires same-origin tabs in the same browser profile with SharedWorker support. A confirmed tab keeps a rotating key in session storage. Reloading reconnects read-only to the same running bridge after verifying its proof. Disconnect, replacing the pairing, or restarting the bridge requires a fresh link. Update both the viewer and MCP bridge for verified pairing. Verified from a public `https` origin in Chromium 156 and Firefox 157: both block `ws://127.0.0.1` until the site may reach apps on this device (permission `loopback-network`). Chrome asks "Access other apps and services on this device" (site setting *Apps on device*); Firefox asks "<site> wants to access other apps and services on this device" (setting *Device apps and services*). Granting the older `local-network` / `local-network-access` permissions does not help. Safari is not verified. The full security model is in the [package README](https://github.com/LTplus-AG/ifc-lite/blob/main/packages/mcp/README.md#bridge-to-a-browser-tab---bridge).
 
 When both peers support result acknowledgements, a prepared operation result is handed off once the bridge accepts the intact response for a pending call. The viewer limits the calls waiting for confirmation and ends the pairing if delivery remains unconfirmed.
@@ -541,6 +547,41 @@ A failed native library save carries the library's reason in `details.save`. Sto
 - **Anonymized export diagnostics.** `exports.anonymized` reports `prunedRelationshipCount`, `droppedPropertySetCount` and `droppedPropertyReferenceCount` with corresponding `SampleIds` arrays of up to 32 IDs. `warningCount` is the total and `warnings` shows up to 32 warning messages, each capped at 512 characters. These bounds apply to the diagnostics response. The IFC artifact uses the complete reviewed membership.
 
 ## Wiring it into a client
+
+`install` writes the config for you. It merges into an existing file, keeps
+every other server, and backs the file up first. `--dry-run` prints the JSON
+or command and changes nothing.
+
+```bash
+ifc-lite mcp install --client claude-desktop ./model.ifc
+npx -y @ifc-lite/mcp install --client cursor -- --bridge
+```
+
+Clients: `claude-code` (uses `claude mcp add` for ordinary installs), `claude-desktop`, `cursor`,
+`vscode` (user scope runs `code --add-mcp`). `--scope project` writes the
+current directory's `.mcp.json`, `.cursor/mcp.json` or `.vscode/mcp.json`.
+Flags after `--` go to the server. Model paths become absolute. Use
+`--force` to replace an existing IFClite entry, including an older npm pin.
+For Claude Code, `--force` backs up and updates `.mcp.json` at project scope
+or `~/.claude.json` at user scope (under `CLAUDE_CONFIG_DIR` when set).
+It preserves custom server settings such as `env`.
+VS Code user-scope installs also require `--force` because its CLI replaces
+same-name entries. On Windows, use project scope or open the VS Code user
+configuration and paste the entry printed by install.
+
+For file-based updates, concurrent IFClite installers targeting the same
+resolved file coordinate through a lock. The installer backs up an existing
+file under that lock, checks that the target and contents still match the
+merge input, then publishes the complete replacement with a single rename.
+A detected change aborts the update. A completed backup can remain if the
+replacement fails. Other editors and client processes do not share the lock.
+An external write between the final check and rename can still be overwritten,
+so avoid editing or saving that config while running the installer.
+
+On macOS, Claude Desktop launched from the Dock may have a different PATH
+from your terminal. If it cannot find `npx`, use a Claude Desktop bundle when
+available, or configure absolute paths for your Node installation and ensure
+the server's PATH includes that installation's bin directory.
 
 === "Claude Code"
 
@@ -618,6 +659,22 @@ A failed native library save carries the library's reason in `details.save`. Sto
     Each session starts empty: call `model_load` first.
 
 Cursor, Windsurf, Goose, and Zed all accept the same `npx @ifc-lite/mcp <file>` stdio command.
+
+### Claude Desktop bundle
+
+If you have an `ifc-lite-<version>.mcpb` bundle, open it in Claude Desktop
+and follow the extension installation prompt. You can select multiple IFC
+files to load on startup. The server can also open files from the selected
+models' folders. If a selected file moves, update the extension configuration
+before restarting it. The bundle includes the server, its dependencies and
+WASM runtimes, and uses Claude Desktop's Node runtime.
+
+### MCP Registry
+
+The Registry identifier is `io.github.LTplus-AG/ifc-lite`. Once a version is
+listed, registry-aware clients can use the entry to configure the matching
+`@ifc-lite/mcp` npm version over stdio. You can supply IFC paths as optional
+positional arguments to load models on startup.
 
 ## Errors that keep the agent in the loop
 

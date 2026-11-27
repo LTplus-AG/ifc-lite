@@ -297,8 +297,8 @@ export function readQuantitySetRecord(
  * same 2 m wall authored in millimetres carries the raw value `2000`
  * instead of `2`.
  *
- * `1` for `Count`/`Weight`/`Time`/`Number` — this only scales the three
- * quantity types that are themselves `IfcLengthMeasure`-family measures.
+ * `Weight` and `Time` scale by the project's `MASSUNIT`/`TIMEUNIT` (a value in
+ * a tonne project is in tonnes); `1` for `Count`/`Number`.
  *
  * Area and Volume scale by the SQUARE and CUBE of the length factor (a
  * millimetre-authored 1 m² is stored as `1e6`, not `1e3`) — but only as a
@@ -328,6 +328,11 @@ export function quantitySiScale(quantity: CollectedQuantity, units: ProjectUnits
             const length = units.unitForMeasure('IfcLengthMeasure')?.siScale ?? 1;
             return length ** 3;
         }
+        // A conversion-based project unit (tonne, minute) scales the value too (#11469).
+        case QuantityType.Weight:
+            return units.unitForMeasure('IfcMassMeasure')?.siScale ?? 1;
+        case QuantityType.Time:
+            return units.unitForMeasure('IfcTimeMeasure')?.siScale ?? 1;
         default:
             return 1;
     }

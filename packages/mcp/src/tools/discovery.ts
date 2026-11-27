@@ -9,6 +9,7 @@
  * out what models are loaded and what's in them.
  */
 
+import { withSourceWriteLock } from '../source-write-lock.js';
 import {
   extractGeoreferencingOnDemand,
   extractLengthUnitScale,
@@ -28,9 +29,10 @@ import { resolveSafePath } from '../safe-path.js';
 import { modelAllowed, scopeAllows, type AuthScope } from '../auth/scope.js';
 import type { ToolContext } from '../context.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
+import { DESTRUCTIVE, READ_ONLY } from './annotations.js';
 
 export const modelInfo: Tool = {
-  name: 'model_info',
+  name: 'model_info', title: 'Model info', annotations: READ_ONLY,
   description: 'Return schema, entity counts, file metadata, georeferencing, and units for the active (or named) model.',
   scope: 'read',
   inputSchema: {
@@ -81,7 +83,7 @@ export const modelInfo: Tool = {
 };
 
 export const modelList: Tool = {
-  name: 'model_list',
+  name: 'model_list', title: 'List loaded models', annotations: READ_ONLY,
   description: 'List all currently loaded models with metadata.',
   scope: 'read',
   inputSchema: { type: 'object', properties: {}, additionalProperties: false },
@@ -117,7 +119,7 @@ export const modelList: Tool = {
 };
 
 export const modelLoad: Tool = {
-  name: 'model_load',
+  name: 'model_load', title: 'Load IFC model', annotations: DESTRUCTIVE,
   description: 'Load an IFC file from disk into the session. The path must be inside the configured allowedPaths roots (when set).',
   // `read`, not `mutate`: loading adds a model to this session and changes no
   // model, so a --read-only server or a read-only token can still open files.
@@ -140,35 +142,29 @@ export const modelLoad: Tool = {
     const filePath = await resolveSafePath(input.file_path, ctx, 'read');
     // The id the loader would pick, so a refusal costs no parse.
     const id = (input.model_id as string | undefined) ?? deriveModelId(basename(filePath));
-    // Cheap checks before the parse, against the live scope (setScope may have narrowed it).
-    assertMayLoadAs(id, ctx, ctx.currentScope?.() ?? ctx.scope);
-    assertMayDiscard(id, ctx, ctx.currentScope?.() ?? ctx.scope);
     try {
-      const loaded = await loadIfcModel(filePath, {
-        modelId: id,
-        // The checked path is the only root: the loader refuses it if the file
-        // was swapped for a symlink since the check (see loadIfcModel for limits).
-        allowedPaths: [filePath],
-      });
-      // While the file parsed, the scope may have been narrowed (setScope) or
-      // the call cancelled: check again before the registry replaces anything.
-      try {
-        const live = ctx.currentScope?.() ?? ctx.scope;
-        if (!scopeAllows(live, 'read')) {
-          throw new ToolExecutionError({ code: ToolErrorCode.PERMISSION_DENIED, message: 'This token no longer has read scope.' });
-        }
-        assertMayLoadAs(id, ctx, live);
-        assertMayDiscard(id, ctx, live);
-        if (ctx.signal.aborted) throw new ToolExecutionError({ code: ToolErrorCode.CANCELLED, message: 'model_load was cancelled.' });
-      } catch (refused) {
+      const loaded = await withSourceWriteLock(ctx.registry, async () => {
+        assertModelLoadAccess(id, ctx);
+        const model = await loadIfcModel(filePath, {
+          modelId: id,
+          // The checked path is the only root: the loader refuses it if the file
+          // was swapped for a symlink since the check (see loadIfcModel for limits).
+          allowedPaths: [filePath],
+        });
+        // The scope, pending edits or cancellation can change during the parse.
         try {
-          loaded.backend.dispose();
-        } catch (disposeError) {
-          ctx.log.log('warning', 'model_load: dispose after refusal failed', { error: String(disposeError) });
+          assertModelLoadAccess(id, ctx);
+        } catch (refused) {
+          try {
+            model.backend.dispose();
+          } catch (disposeError) {
+            ctx.log.log('warning', 'model_load: dispose after refusal failed', { error: String(disposeError) });
+          }
+          throw refused;
         }
-        throw refused;
-      }
-      ctx.registry.add(loaded);
+        ctx.registry.add(model);
+        return model;
+      });
       ctx.log.log('info', 'model_load', { id: loaded.id, file: filePath, entities: loaded.store.entityCount });
       // A model the scan read short is reported as such, in the text the
       // agent reads and in the structured result (#7610).
@@ -190,6 +186,18 @@ export const modelLoad: Tool = {
     }
   },
 };
+
+function assertModelLoadAccess(id: string, ctx: ToolContext): void {
+  if (ctx.signal.aborted) {
+    throw new ToolExecutionError({ code: ToolErrorCode.CANCELLED, message: 'model_load was cancelled.' });
+  }
+  const live = ctx.currentScope?.() ?? ctx.scope;
+  if (!scopeAllows(live, 'read')) {
+    throw new ToolExecutionError({ code: ToolErrorCode.PERMISSION_DENIED, message: 'This token no longer has read scope.' });
+  }
+  assertMayLoadAs(id, ctx, live);
+  assertMayDiscard(id, ctx, live);
+}
 
 /**
  * `model_load` needs only `read` scope (#11534), so it must not become a way
@@ -224,13 +232,11 @@ function assertMayDiscard(id: string, ctx: ToolContext, scope: AuthScope): void 
 }
 
 export const modelUnload: Tool = {
-  name: 'model_unload',
+  name: 'model_unload', title: 'Unload model', annotations: DESTRUCTIVE,
   description: 'Drop a model from session memory. Unsaved edits to it are lost.',
   // `read` for the same reason as `model_load`: it frees session memory and
   // writes nothing. A token narrowed to some models still cannot drop others.
   scope: 'read',
-  // Read scope, but it drops unsaved edits, so clients should still ask.
-  annotations: { destructiveHint: true },
   inputSchema: {
     type: 'object',
     properties: {
@@ -291,7 +297,7 @@ function inheritanceChainRootToLeaf(type: string): string[] {
 }
 
 export const schemaDescribe: Tool = {
-  name: 'schema_describe',
+  name: 'schema_describe', title: 'Describe IFC entity type', annotations: READ_ONLY,
   description: 'Describe an IFC entity type: attributes, parents, inheritance chain. Useful for an agent to know the legal shape before mutating. '
     + 'Classes outside the IFC4_ADD2_TC1 codegen pin (IFC2X3-only and IFC4X3-only ones) are answered from the bundled schema union, '
     + 'which carries names but not attribute types — `schemaSource` says which table answered.',

@@ -195,6 +195,8 @@ it('space tag area carries the file\'s declared AREAUNIT, not a hard-coded m\u00
   const label = resolveElementTagLabel(tag(20));
   assert.ok(label && !label.endsWith(' m\u00b2'), `label must not claim m\u00b2 for a square-foot value: ${label}`);
   assert.match(label ?? '', /1076\.39 (sq ?ft|ft\u00b2|square foot)/i);
+  useViewerStore.setState({ mutationViews: new Map() });
+  assert.equal(resolveElementTagLabel(tag(20)), label);
 });
 
 it('space tag area keeps m\u00b2 in a millimetre-length model whose AREAUNIT is SI square metre', async () => {
@@ -208,6 +210,8 @@ it('space tag area keeps m\u00b2 in a millimetre-length model whose AREAUNIT is 
 it('space tag area keeps m\u00b2 when the project declares no unit assignment (IFC4 UnitsInContext is optional)', async () => {
   await unitFixtureUndeclared('12.5');
   assert.equal(resolveElementTagLabel(tag(20)), 'Office \u00b7 \u2248 12.5 m\u00b2');
+  useViewerStore.setState({ mutationViews: new Map() });
+  assert.equal(resolveElementTagLabel(tag(20)), 'Office \u00b7 \u2248 12.5 m\u00b2');
 });
 
 it('space tag area is omitted when the declared unit assignment is unreadable', async () => {
@@ -215,6 +219,8 @@ it('space tag area is omitted when the declared unit assignment is unreadable', 
 #3=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
 #4=IFCCONVERSIONBASEDUNIT(#9,.AREAUNIT.,'broken',#9);
 #9=IFCDIMENSIONALEXPONENTS(2,0,0,0,0,0,0);`, '12.5');
+  assert.equal(resolveElementTagLabel(tag(20)), 'Office');
+  useViewerStore.setState({ mutationViews: new Map() });
   assert.equal(resolveElementTagLabel(tag(20)), 'Office');
 });
 

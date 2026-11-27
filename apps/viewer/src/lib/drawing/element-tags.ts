@@ -50,7 +50,9 @@ export function resolveElementTagLabel(tag: TagAnnotation2D): string | null {
   // The value is in the file's own AREAUNIT (or the quantity's explicit Unit), never pre-converted to m².
   const context = currentProjectUnitContext(store, view);
   // A project with no UnitsInContext (optional in IFC4) declares nothing, so SI defaults apply, as for geometry.
-  const unitsKnown = context.status !== 'unavailable' || !projectDeclaresUnits(store, view);
+  const unitsKnown = context.value
+    ? context.value.unitForMeasure('IfcAreaMeasure') !== null
+    : !projectDeclaresUnits(store, view);
   const units = context.value ?? ProjectUnits.empty();
   const { unit } = resolveQuantityDisplay(quantity.value, QuantityType.Area, units, {}, quantity, unitsKnown);
   // Declared but unreadable units show no area rather than a number under a guessed unit.

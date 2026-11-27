@@ -387,7 +387,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
             out.push('\n');
             stats.written += 1;
         }
-        checks.forms.durations.finish_model(|| crate::schema_project_time_unit::project_time_scale(model.content));
+        checks.forms.durations.finish_merged_model(model.content, plan.written_projects(&index.projects, &included, offset));
         offset = next;
     }
 

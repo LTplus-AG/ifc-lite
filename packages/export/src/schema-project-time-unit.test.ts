@@ -62,3 +62,27 @@ it('uses an edited factor outside the exported subset for both upgrade targets (
     expect(result.stats.warnings.join(' ')).not.toContain('assumed seconds');
   }
 });
+
+it('writes durations in each retained federated project’s time unit (#11192)', async () => {
+  for (const schema of ['IFC4', 'IFC4X3'] as const) {
+    const models = [];
+    for (const [index, text] of [minutes, seconds].entries()) {
+      const legacy = text.replace(/IFCUNITASSIGNMENT\(\(#(\d+)\)\)/, 'IFCUNITASSIGNMENT((#$1,#8))')
+        .replace('#7=', `#8=IFCSIUNIT(*,.LENGTHUNIT.,${index ? '.MILLI.' : '$'},.METRE.);\n#7=`);
+      const modern = decode(new StepExporter(await parse(legacy)).export({ schema }));
+      models.push({id: String(index), name: String(index), dataStore: await parse(modern)});
+    }
+    const merge = new MergedExporter(models);
+    for (const result of [merge.export({schema:'IFC2X3'}), await merge.exportAsync({schema:'IFC2X3'})]) {
+      expect(result.stats.federatedModelCount).toBe(1);
+      expect(decode(result).match(/=IFCPROJECT\(/g)).toHaveLength(2);
+      expect(decode(result)).toMatch(/IFCWORKPLAN\([^;]*,10\.,-2\.,/);
+      expect(decode(result)).toMatch(/IFCWORKSCHEDULE\([^;]*,10\.,-2\.,/);
+      expect(result.stats.warnings.join(' ')).not.toContain('assumed seconds');
+    }
+    const conflicting = decode(new StepExporter(models[1].dataStore).export({schema})).replace('((#3,#8))', '((#3,#6,#8))');
+    const mixed = new MergedExporter([models[0], {...models[1], dataStore: await parse(conflicting)}]).export({schema:'IFC2X3'});
+    expect(decode(mixed)).toMatch(/IFCWORKPLAN\([^;]*,10\.,-2\.,/);
+    expect(mixed.stats.warnings.filter(w => w.includes('assumed seconds'))).toHaveLength(1);
+  }
+});

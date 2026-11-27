@@ -47,6 +47,7 @@ function secondsPerUnit(records: Records, id: number | null): number | undefined
 function resolve(projects: readonly number[], records: Records): number | undefined {
   let scale: number | undefined;
   for (const project of projects) {
+    if (records.type(project) !== 'IFCPROJECT') return undefined;
     const assignment = slotRef(records.slots(project)?.[8]);
     if (records.type(assignment) !== 'IFCUNITASSIGNMENT') return undefined;
     let found = false;
@@ -87,7 +88,7 @@ export function editedTimeScale(store: SourceStore, view: MutablePropertyView | 
   });
 }
 
-export function writtenTimeScale(lines: readonly string[], bound: number): number | undefined {
+export function writtenTimeScale(lines: readonly string[], bound: number): (owners?: readonly number[]) => number | undefined {
   const units = new Map<number, NonNullable<ReturnType<typeof readStepSlots>>>();
   const projects: number[] = [];
   for (const line of lines) {
@@ -100,5 +101,5 @@ export function writtenTimeScale(lines: readonly string[], bound: number): numbe
     units.set(id, record);
     if (type === 'IFCPROJECT') projects.push(id);
   }
-  return resolve(projects, { type: id => units.get(id ?? -1)?.type, slots: id => units.get(id ?? -1)?.slots });
+  return (owners = projects) => resolve(owners, { type: id => units.get(id ?? -1)?.type, slots: id => units.get(id ?? -1)?.slots });
 }

@@ -265,6 +265,17 @@ pub(super) struct ModelPlan {
     pub(super) local_guids: HashMap<u32, String>,
 }
 
+impl ModelPlan {
+    /// Final project ids governing this model after folding, filtering and renumbering.
+    pub(super) fn written_projects<'a>(&'a self, projects: &'a [u32], included: &'a HashSet<u32>, offset: u32) -> impl Iterator<Item = u32> + 'a {
+        projects.iter().filter_map(move |id| {
+            self.shared_remap.get(id).copied().or_else(|| {
+                (included.contains(id) && !self.skip.contains(id)).then(|| id.saturating_add(offset))
+            })
+        })
+    }
+}
+
 #[derive(Clone, Copy)]
 pub(super) struct GuidRecord {
     pub(super) final_id: u32,

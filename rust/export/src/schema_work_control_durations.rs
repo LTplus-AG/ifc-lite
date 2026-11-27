@@ -1,16 +1,18 @@
 // SPDX-License-Identifier: MPL-2.0
 use super::durations;
-use crate::schema_project_time_unit::project_time_scale;
+use crate::schema_project_time_unit::{project_time_scale, scale_for_projects};
 use crate::step_record_frame::record_frame;
 use crate::step_slot::split_top_level_args;
-use ifc_lite_core::EntityScanner;
+use ifc_lite_core::{EntityDecoder, EntityScanner};
 use std::collections::HashMap;
 
 #[derive(Default)]
 pub(crate) struct WorkControlDurations {
     pending: HashMap<u32, Vec<(u8, bool)>>,
     model_upgrades: Vec<u32>,
-    source_scale: HashMap<u32, Option<f64>>,
+    model_downgrades: Vec<u32>,
+    downgrade_groups: Vec<(Vec<u32>, Vec<u32>)>,
+    model_scale: HashMap<u32, Option<f64>>,
     unresolved: bool,
     overflow: bool,
 }
@@ -20,6 +22,8 @@ impl WorkControlDurations {
         self.pending.entry(id).or_default().push((index, up));
         if up {
             self.model_upgrades.push(id);
+        } else {
+            self.model_downgrades.push(id);
         }
     }
 
@@ -29,7 +33,15 @@ impl WorkControlDurations {
         }
         let scale = source_scale();
         for id in self.model_upgrades.drain(..) {
-            self.source_scale.insert(id, scale);
+            self.model_scale.insert(id, scale);
+        }
+    }
+
+    /// The merge plan maps folded projects to the primary and offsets retained projects.
+    pub(crate) fn finish_merged_model(&mut self, source: &[u8], projects: impl Iterator<Item = u32>) {
+        self.finish_model(|| project_time_scale(source));
+        if !self.model_downgrades.is_empty() {
+            self.downgrade_groups.push((std::mem::take(&mut self.model_downgrades), projects.collect()));
         }
     }
 
@@ -37,7 +49,14 @@ impl WorkControlDurations {
         if self.pending.is_empty() {
             return None;
         }
-        let effective = project_time_scale(text.as_bytes());
+        if !self.downgrade_groups.is_empty() {
+            let mut decoder = EntityDecoder::new(text.as_bytes());
+            for (controls, projects) in self.downgrade_groups.drain(..) {
+                let factor = scale_for_projects(&mut decoder, projects);
+                self.model_scale.extend(controls.into_iter().map(|id| (id, factor)));
+            }
+        }
+        let effective = if self.model_scale.len() < self.pending.len() { project_time_scale(text.as_bytes()) } else { None };
         let mut scanner = EntityScanner::new(text);
         let mut output = String::new();
         let mut last = 0;
@@ -45,7 +64,7 @@ impl WorkControlDurations {
             let Some(slots) = self.pending.remove(&id) else {
                 continue;
             };
-            let factor = self.source_scale.get(&id).copied().unwrap_or(effective);
+            let factor = self.model_scale.get(&id).copied().unwrap_or(effective);
             let Some(factor) = factor else {
                 self.unresolved = true;
                 continue;

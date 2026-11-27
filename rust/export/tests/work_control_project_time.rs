@@ -188,3 +188,33 @@ fn subset_upgrade_reads_edits_to_units_outside_the_subset_11192() {
         }
     }
 }
+
+#[test]
+fn federated_downgrade_uses_each_retained_project_time_unit_11192() {
+    let minutes = LEGACY.replace("((#6))", "((#6,#8))")
+        .replace("#7=", "#8=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);\n#7=")
+        .replace("10.,$,$,$,.ACTUAL.", "10.,-2.,$,$,.ACTUAL.");
+    let seconds = minutes.replace("#6,#8", "#3,#8").replace("LENGTHUNIT.,$", "LENGTHUNIT.,.MILLI.")
+        .replace("1Yvct", "2Yvct").replace("IFCWORKPLAN(", "IFCWORKSCHEDULE(");
+    for schema in ["IFC4", "IFC4X3"] {
+        let a = export_step(minutes.as_bytes(), &options(schema)).unwrap();
+        let b = export_step(seconds.as_bytes(), &options(schema)).unwrap();
+        let (out, stats) = export_merged_models(
+            &[MergedModel::new(a.as_bytes()), MergedModel::new(b.as_bytes())],
+            &MergedOptions { schema: Some("IFC2X3".into()), ..Default::default() },
+        );
+        assert_eq!(stats.federated_model_count, 1);
+        assert_eq!(out.matches("=IFCPROJECT(").count(), 2);
+        for ty in ["IFCWORKPLAN(", "IFCWORKSCHEDULE("] {
+            assert!(out.lines().any(|line| line.contains(ty) && line.contains(",10.,-2.,")), "{out}");
+        }
+        assert!(!stats.warnings.iter().any(|w| w.contains("assumed seconds")), "{:?}", stats.warnings);
+        let conflict = b.replace("((#3,#8))", "((#3,#6,#8))");
+        let (out, stats) = export_merged_models(
+            &[MergedModel::new(a.as_bytes()), MergedModel::new(conflict.as_bytes())],
+            &MergedOptions { schema: Some("IFC2X3".into()), ..Default::default() },
+        );
+        assert!(out.lines().any(|line| line.contains("IFCWORKPLAN(") && line.contains(",10.,-2.,")), "{out}");
+        assert_eq!(stats.warnings.iter().filter(|w| w.contains("assumed seconds")).count(), 1);
+    }
+}

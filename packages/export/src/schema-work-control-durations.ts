@@ -6,25 +6,32 @@ import { durationFromSeconds, durationToSeconds } from './schema-converter-durat
 import { sourceTimeScale, writtenTimeScale } from './schema-project-time-unit.js';
 import { toStepReal } from './step-serialization.js';
 
-type Conversion = { index: number; up: boolean; source?: SourceStore };
+type Model = { source: SourceStore; projects: readonly number[] };
+type Conversion = { index: number; up: boolean; model?: Model };
 export class WorkControlDurations {
   private readonly pending = new Map<number, Conversion[]>();
-  private readonly sourceScales = new Map<SourceStore, number | undefined>();
   private unresolved = false;
   private overflow = false;
   upgradeScale?: () => number | undefined;
-  mergedSource?: SourceStore;
+  private model?: Model;
+
+  beginModel(source: SourceStore, projects: readonly number[], remap: ReadonlyMap<number, number>, offset: number, written: (id: number) => boolean): void {
+    // Folded projects use the primary id. Retained projects use their emitted id.
+    const owners = projects.filter(id => remap.has(id) || written(id)).map(id => remap.get(id) ?? id + offset);
+    this.model = { source, projects: owners };
+  }
 
   capture(id: number, index: number, up: boolean): void {
     const slots = this.pending.get(id) ?? [];
-    slots.push({ index, up, source: up ? this.mergedSource : undefined });
+    slots.push({ index, up, model: this.model });
     this.pending.set(id, slots);
   }
 
   finish(lines: string[], bound = 0xffffffff): void {
     if (!this.pending.size) return;
     const downgrade = Array.from(this.pending.values()).some(slots => slots.some(slot => !slot.up));
-    const effective = downgrade ? writtenTimeScale(lines, bound) : this.upgradeScale?.();
+    const written = downgrade ? writtenTimeScale(lines, bound) : undefined;
+    const scales = new Map<Model | undefined, number | undefined>();
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i], head = stepRecordHead(line);
       const id = head && slotRef(line.slice(0, head.eq));
@@ -33,9 +40,12 @@ export class WorkControlDurations {
       const record = readStepSlots(line, bound);
       if (!record) continue;
       const slots = [...record.slots];
-      for (const {index, up, source} of pending) {
-        if (source && !this.sourceScales.has(source)) this.sourceScales.set(source, sourceTimeScale(source));
-        const factor = source ? this.sourceScales.get(source) : effective;
+      for (const {index, up, model} of pending) {
+        if (!scales.has(model)) {
+          const factor = up ? (model ? sourceTimeScale(model.source) : this.upgradeScale?.()) : written?.(model?.projects);
+          scales.set(model, factor);
+        }
+        const factor = scales.get(model);
         if (factor === undefined) { this.unresolved = true; continue; }
         if (factor === 1) continue;
         const seconds = up ? durationToSeconds(slots[index]) : slots[index];

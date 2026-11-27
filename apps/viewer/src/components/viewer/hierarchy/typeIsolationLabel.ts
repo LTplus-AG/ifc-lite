@@ -20,14 +20,11 @@ export type TypeIsolationModelMapLike = ReadonlyMap<
  *
  * Each id is resolved through `fromGlobalIdFromModels` — the canonical
  * offset-range resolver — before it is looked up. `fromGlobalIdFromModels`
- * only returns `undefined` when there is more than one federated model and
- * the id falls outside every model's offset range (a stale/foreign id); in
+ * returns `undefined` when the id falls outside every model's offset range (a
+ * stale/foreign id; with a single model, an id below its offset, #11527); in
  * that case the id is SKIPPED rather than queried against the wrong store
  * with its raw (un-offset) value as an expressId, which could coincidentally
- * hit an unrelated entity and mislabel or falsely "homogenize" the chip
- * (single-model mode never hits this: `fromGlobalIdFromModels` already
- * degrades to `expressId === globalId` internally when there is exactly one
- * model or none).
+ * hit an unrelated entity and mislabel or falsely "homogenize" the chip.
  *
  * Classes are read through `overlay` (the session's mutation views), so an
  * element authored this session labels as its own class rather than the

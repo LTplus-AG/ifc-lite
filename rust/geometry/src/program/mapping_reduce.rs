@@ -267,7 +267,7 @@ impl MappingControl<'_> {
                     // first holds the source geometry (meshed once model-wide),
                     // so the finalize can recover it even if the template never
                     // materialized; then the instance-only placeholder.
-                    let placeholder = Placeholder { solid_id, source_id, transform };
+                    let placeholder = Placeholder { item_id, solid_id, source_id, transform };
                     self.action = match router.shared_mapped_source_needed(source_id) {
                         Err(error) => return Event::Deliver { item_id, truncated: false, value: Err(error) },
                         Ok(true) => Action::SharedItems(Reached::Nested(representation), source_id, Some(placeholder)),

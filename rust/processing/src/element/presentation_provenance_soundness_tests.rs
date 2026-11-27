@@ -151,7 +151,7 @@ fn run_fallback(run: &Run, edit: impl FnOnce(&mut ifc_lite_geometry::Mesh)) -> V
     let job = job(&entity, &meta);
     let mut mesh = router.process_element_parts(&entity, &mut decoder).unwrap().remove(0);
     edit(&mut mesh);
-    super::presentation_source::fallback(
+    super::presentation_source::fallback_plain(
         &AssemblyJob::from(&job).with_provenance(true),
         &entity,
         mesh,

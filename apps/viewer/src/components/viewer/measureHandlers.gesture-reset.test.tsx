@@ -13,7 +13,7 @@
  */
 
 import '@/test/setup-dom.js';
-import { afterEach, beforeEach, describe, it } from 'node:test';
+import { afterEach, beforeEach, describe, it, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -1156,11 +1156,7 @@ describe('the Distance end over background (#9049)', () => {
     assert.equal(xy(s().activeMeasurement?.current), '5,0', 'the end did not follow the cursor back onto the model');
   });
 
-  it('#11746 the Shift-constrained endpoint retains nearby corners and highlights only a matching vertex', async t => {
-    const { canvas, ctx } = mount();
-    click(canvas, 0, 300);
-    assert.equal(xy(s().activeMeasurement?.start), '0,0');
-
+  async function cornerScene(t: TestContext, canvas: HTMLCanvasElement, ctx: MouseHandlerContext) {
     const renderer = new Renderer(canvas);
     const camera = renderer.getCamera();
     camera.setAspect(800 / 600);
@@ -1169,12 +1165,13 @@ describe('the Distance end over background (#9049)', () => {
     camera.setPosition(0, 0, 10);
     camera.setTarget(0, 0, 0);
     t.mock.method(canvas, 'getBoundingClientRect', () => ({ left: 0, top: 0, width: 800, height: 600 }));
-    const mesh = { expressId: 42, positions: Float32Array.of(2,1,0, 2.3,1,0, 2,1.3,0),
+    const mesh = { expressId: 42, positions: Float32Array.of(2,1,0, 3,1,0, 2,2,0),
       indices: Uint32Array.of(0,1,2), normals: Float32Array.of(0,0,1, 0,0,1, 0,0,1), color: [1,1,1,1] };
     const handles = [{ expressId: mesh.expressId }];
     t.mock.method(renderer.getScene(), 'getMeshes', () => handles);
     t.mock.method(renderer.getScene(), 'getMeshDataPieces', () => [mesh]);
     Object.assign(ctx.renderer, { cornerMarkers: renderer.cornerMarkers,
+      raycastScene: renderer.raycastScene.bind(renderer),
       raycastSceneMagnetic: renderer.raycastSceneMagnetic.bind(renderer) });
     setGlobalRendererRef({ current: renderer });
     const overlay = render(<SnapCornerMarkers />);
@@ -1192,6 +1189,15 @@ describe('the Distance end over background (#9049)', () => {
     }
     const glyph = active()?.getAttribute('transform');
     assert.equal(glyph, `translate(${at.x} ${at.y})`);
+    return { at, hover, active, glyph, overlay, renderer };
+  }
+
+  it('#11746 the Shift-constrained endpoint retains nearby corners and highlights only a matching vertex', async t => {
+    const { canvas, ctx } = mount();
+    click(canvas, 0, 300);
+    assert.equal(xy(s().activeMeasurement?.start), '0,0');
+
+    const { at, hover, active, glyph, overlay } = await cornerScene(t, canvas, ctx);
     assert.equal(xy(s().activeMeasurement?.current), '2,1');
     const count = () => overlay.querySelectorAll('[data-snap-corner-marker]').length;
     const nearby = count();
@@ -1208,6 +1214,36 @@ describe('the Distance end over background (#9049)', () => {
     assert.equal(xy(s().measurements.at(-1)?.end), '2,0');
     assert.ok(!active(), 'release also reconciles the freshly picked vertex');
     assert.equal(count(), nearby);
+  });
+
+  it('#11746 an unconstrained release on the adjacent face demotes the starting corner', async t => {
+    const { canvas, ctx } = mount();
+    const { at, active, overlay, renderer } = await cornerScene(t, canvas, ctx);
+    // Both clicks snap to this vertex, but the second is a distinct press on its face.
+    click(canvas, at.x - 6, at.y);
+    assert.equal(xy(s().activeMeasurement?.start), '2,1');
+    const x = at.x + 5, y = at.y - 3;
+    fire(canvas, 'pointermove', x, y);
+    flushFrames();
+    assert.equal(xy(s().activeMeasurement?.current), '2,1');
+    assert.ok(active());
+    const count = () => overlay.querySelectorAll('[data-snap-corner-marker]').length;
+    const nearby = count();
+    assert.ok(nearby >= 2);
+    const surface = renderer.raycastScene(x, y)?.intersection.point;
+    assert.ok(surface && surface.x > 2 && surface.y > 1);
+    click(canvas, x, y);
+    const end = s().measurements.at(-1)?.end;
+    assert.ok(end);
+    assert.deepEqual([end.x, end.y, end.z], [surface.x, surface.y, surface.z]);
+    assert.equal(count(), nearby);
+    assert.ok(!active(), 'the committed surface point differs from the magnetic vertex');
+
+    const other = renderer.getCamera().projectToScreen({ x: 3, y: 1, z: 0 }, 800, 600)!;
+    click(canvas, other.x, other.y);
+    click(canvas, at.x, at.y);
+    assert.equal(xy(s().measurements.at(-1)?.end), '2,1');
+    assert.equal(active()?.getAttribute('transform'), `translate(${at.x} ${at.y})`);
   });
 
   it('#11746 a reduced Measure hover drops markers from the previous full pick', () => {

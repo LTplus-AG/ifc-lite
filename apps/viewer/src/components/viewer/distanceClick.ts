@@ -121,6 +121,7 @@ export function finishDistance(ctx: MouseHandlerContext, end: MeasurePoint, at?:
   // measure to the exact surface under the pointer instead of dropping the press (#8788).
   if (at) end = unsnapFromPrevious(ctx, active.start, end, at);
   if (isDuplicateClickPoint(active.start, end)) return false;
+  alignCornerHighlight(ctx.renderer, [end.x, end.y, end.z]);
   ctx.updateMeasurement(end);
   ctx.finalizeMeasurement();
   return true;

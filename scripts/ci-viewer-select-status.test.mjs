@@ -263,7 +263,7 @@ test('PR #11355: a rerun can be the newest attempt even with an older run ID', a
 test('PR #11355: a same-second cancellation cannot overwrite the later rerun’s status', async () => {
   const run43 = { ...CANCELLED_RUN, id: 43 };
   for (const state of ['pending', 'success']) {
-    const rerun = { ...CANCELLED_RUN, run_attempt: 2, conclusion: state === 'success' ? 'success' : 'cancelled' };
+    const rerun = { ...CANCELLED_RUN, run_attempt: 2, conclusion: state === 'success' ? 'success' : null };
     for (const listing of [
       [run43, rerun],
       [run43, { ...rerun, run_started_at: null, created_at: '2026-11-26T04:59:00Z' }],
@@ -296,24 +296,45 @@ test('PR #11355: creation time alone cannot establish that a first attempt is ol
   }
 });
 
-test('PR #11355: tied cancellations without a status write one failure in either reporter order', async () => {
-  const run43 = { ...CANCELLED_RUN, id: 43 };
-  for (const order of [['42', '43'], ['43', '42']]) {
-    let current;
-    await withApi(201, async (api, posts) => {
-      for (const id of order) {
-        assert.equal(await main(['--cancelled'], env(api, { ...CANCELLED_ENV, CANCELLED_RUN_ID: id })), 0);
-        current = posts.at(-1)?.body ?? current;
-      }
-      assert.deepEqual(posts.map(({ body }) => [body.state, body.target_url]), [
-        ['failure', `https://github.com/${REPO}/actions/runs/${order[0]}?attempt=1`],
-      ]);
-    }, {
-      [CANCELLED_RUN_PATH]: CANCELLED_RUN,
-      [`/repos/${REPO}/actions/runs/43`]: run43,
-      [STATUS_PATH]: () => ({ statuses: current ? [current] : [] }),
-      [RUNS_PATH]: { workflow_runs: [run43, CANCELLED_RUN] },
-    });
+test('PR #11355: tied cancellation status transitions are safe in either reporter order', async () => {
+  const run43 = { ...CANCELLED_RUN, id: 43, run_attempt: 2 };
+  const runUrl = ({ id, run_attempt }) => `https://github.com/${REPO}/actions/runs/${id}?attempt=${run_attempt}`;
+  const status = (state, target_url) => ({ context: STATUS_CONTEXT, state, target_url });
+  const cases = [
+    { name: 'absent status', writes: true },
+    { name: 'pending on first attempt', current: status('pending', runUrl(CANCELLED_RUN)), writes: true },
+    { name: 'pending on exact rerun', current: status('pending', runUrl(run43)), writes: true },
+    { name: 'pending on stale attempt', current: status('pending', runUrl({ ...run43, run_attempt: 1 })) },
+    { name: 'pending on foreign repo', current: status('pending', runUrl(run43).replace(REPO, 'fork/ifc-lite')) },
+    { name: 'pending with unparseable owner', current: status('pending', 'https://example.com/check') },
+    { name: 'pending on an older attempt', current: status('pending', runUrl({ id: 41, run_attempt: 1 })),
+      extra: { ...CANCELLED_RUN, id: 41, run_started_at: '2026-11-26T04:59:00Z' } },
+    { name: 'pending on an attempt with unknown start', current: status('pending', runUrl({ id: 41, run_attempt: 1 })),
+      extra: { ...CANCELLED_RUN, id: 41, run_started_at: null } },
+    ...['success', 'failure', 'error'].map((state) => ({ name: state, current: status(state, runUrl(run43)) })),
+    ...[null, 'success'].map((conclusion) => ({
+      name: `pending on ${conclusion ?? 'live'} owner`, current: status('pending', runUrl(run43)), conclusion,
+    })),
+  ];
+  for (const { name, current: initial, writes, extra, conclusion = 'cancelled' } of cases) {
+    const second = { ...run43, conclusion };
+    for (const order of [[CANCELLED_RUN, second], [second, CANCELLED_RUN]]) {
+      let current = initial;
+      await withApi(201, async (api, posts) => {
+        for (const { id, run_attempt } of order) {
+          assert.equal(await main(['--cancelled'], env(api, { CANCELLED_RUN_ID: String(id), CANCELLED_RUN_ATTEMPT: String(run_attempt) })), 0);
+          current = posts.at(-1)?.body ?? current;
+        }
+        assert.deepEqual(posts.map(({ body }) => [body.state, body.target_url]), writes ? [
+          ['failure', runUrl(order[0])],
+        ] : [], `${name}, reporter ${order[0].id} first`);
+      }, {
+        [CANCELLED_RUN_PATH]: CANCELLED_RUN,
+        [`/repos/${REPO}/actions/runs/43`]: second,
+        [STATUS_PATH]: () => ({ statuses: current ? [current] : [] }),
+        [RUNS_PATH]: { workflow_runs: [second, CANCELLED_RUN, ...(extra ? [extra] : [])] },
+      });
+    }
   }
 });
 

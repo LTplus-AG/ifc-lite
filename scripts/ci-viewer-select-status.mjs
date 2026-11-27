@@ -279,18 +279,21 @@ async function postCancellation(env) {
   if (cancelled?.conclusion !== 'cancelled') return 0;
   const started = (run) => Date.parse(run.run_started_at);
   const cancelledStart = started(cancelled);
+  const ownerRun = owner && sameRepo.find(
+    (run) => String(run.id) === owner[1] && String(run.run_attempt) === ownerAttempt,
+  );
+  // A stale listing can miss the status owner's attempt, even at a lower ID.
+  if (owner && owner[1] !== id && !ownerRun) return 0;
+  const canSettleTie = !current || (current.state === 'pending' &&
+    ownerRun?.conclusion === 'cancelled' && started(ownerRun) === cancelledStart);
   // Creation times and run IDs cannot establish when an attempt started.
-  // An absent status passes Mergify's viewer condition. With no status to
-  // protect, ties are safe only when all tied attempts are cancelled.
+  // An absent status or a pending status owned by the tied attempts can
+  // be settled once every attempt at that start time is confirmed cancelled.
   if (!Number.isFinite(cancelledStart) || !sameRepo.every((run) => {
     if (run === cancelled) return true;
     const start = started(run);
-    return start < cancelledStart || (!current && start === cancelledStart && run.conclusion === 'cancelled');
+    return start < cancelledStart || (canSettleTie && start === cancelledStart && run.conclusion === 'cancelled');
   })) return 0;
-  // A stale listing can miss the status owner's attempt, even at a lower ID.
-  if (owner && owner[1] !== id && !sameRepo.some(
-    (run) => String(run.id) === owner[1] && String(run.run_attempt) === ownerAttempt,
-  )) return 0;
 
   await api(env, 'POST', `${path}/statuses/${sha}`, {
     state: 'failure',

@@ -260,6 +260,20 @@ WHERE NewName : Broken > 0; OldGroup : SELF\\Parent.Value > 0; END_ENTITY; END_S
     expect(rule.check({ VALUE: 0 }, {})).toBe(false);
   });
 
+  it('resolves a constructor receiver before checking DERIVE dependencies (#11646)', () => {
+    const { files, coverage } = generateValidators(`SCHEMA S;
+ENTITY Bad; DERIVE Flag : LOGICAL := Mystery(1); END_ENTITY;
+ENTITY Good; Flag : LOGICAL; END_ENTITY;
+ENTITY Probe; WHERE Positive : Good(TRUE).Flag; Negative : Good(FALSE).Flag;
+Missing : Bad().Flag; END_ENTITY; END_SCHEMA;`);
+    expect(coverage.unsupported.map(u => [u.owner, u.label])).toEqual([['Bad', 'Flag'], ['Probe', 'Missing']]);
+    const rules = loadRules(files['rules.ts'], {
+      construct: (_m: object, _name: string, args: boolean[]) => ({ FLAG: args[0] }),
+      attr: (obj: Record<string, boolean>, name: string) => obj[name],
+    }, 'Probe');
+    expect(rules.map(rule => rule.check({}, {}))).toEqual([true, false]);
+  });
+
   it('uses an entity parameter type to resolve failed DERIVE dependencies (#11646)', () => {
     const { coverage, files } = generateValidators(`SCHEMA S;
 ENTITY A; DERIVE Flag : LOGICAL := Mystery(1); WHERE W : ReadA(SELF); END_ENTITY;

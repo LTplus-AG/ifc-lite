@@ -17,6 +17,8 @@ import { literalInt } from './meta-emitter.js';
 import type { SchemaIndex } from './schema-index.js';
 
 class ZodWriter {
+  private readonly deferred = new Set<string>();
+
   constructor(readonly index: SchemaIndex) {}
 
   /** Select members flattened through nested selects: entity names and value-type names. */
@@ -94,7 +96,10 @@ class ZodWriter {
 
   typeDecl(t: TypeDecl): string {
     const base = this.baseType(t);
-    return t.where.length ? `${base}.superRefine(r.typeRuleRefinement(SCHEMA, ${JSON.stringify(t.name)}))` : base;
+    const schema = t.where.length ? `${base}.superRefine(r.typeRuleRefinement(SCHEMA, ${JSON.stringify(t.name)}))` : base;
+    return this.deferred.has(t.name)
+      ? `export const ${t.name}: z.ZodType = z.lazy(() => ${schema});`
+      : `export const ${t.name} = ${schema};`;
   }
 
   /** Type declarations ordered so each schema is defined before it is referenced. */
@@ -106,7 +111,9 @@ class ZodWriter {
       state.set(t.name, 'visiting');
       for (const dep of this.dependencies(t)) {
         const d = this.index.type(dep);
-        if (d && state.get(d.name) !== 'visiting') visit(d);
+        if (!d) continue;
+        if (state.get(d.name) === 'visiting') this.deferred.add(t.name);
+        else visit(d);
       }
       state.set(t.name, 'done');
       out.push(t);
@@ -158,7 +165,7 @@ class ZodWriter {
 
 export function emitZodSchemas(index: SchemaIndex, header: string, runtimeImport: string, zodImport: string): string {
   const w = new ZodWriter(index);
-  const types = w.orderedTypes().map((t) => `export const ${t.name} = ${w.typeDecl(t)};`);
+  const types = w.orderedTypes().map((t) => w.typeDecl(t));
   const entities = index.schema.entities.map((e) => `export const ${e.name} = ${w.entity(e).schema};`);
   return `${header}
 import { z } from ${JSON.stringify(zodImport)};

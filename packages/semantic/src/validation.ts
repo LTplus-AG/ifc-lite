@@ -7,7 +7,6 @@ import type { NodeObject } from 'jsonld';
 import jsonld from 'jsonld';
 import { Parser, Store } from 'n3';
 import SHACLValidator from 'rdf-validate-shacl';
-import ShapesGraph from 'rdf-validate-shacl/src/shapes-graph.js';
 import { DEFAULT_PROFILE, assertProfile, isUri, type ProfileDefinition } from './profiles.js';
 import { exchangeSchema, resourceSchema, profileContext, shapesTurtle } from './profile-artifacts.js';
 import type { SemanticDocument, SemanticResource, ValidationFinding } from './profile-types.js';
@@ -144,21 +143,6 @@ export async function validateGraph(rdf: string, options: GraphValidationOptions
   const targets = countShapeTargets(data, shapes);
   if (!targets) throw new Error('No targets found for SHACL; validation would have no focus nodes');
   const validator = new SHACLValidator(shapes, { maxErrors });
-  // rdf-validate-shacl 0.6.5 counts UTF-16 units. SHACL and JSON Schema
-  // count Unicode codepoints; correct only this trusted built-in component.
-  validator.validators.set(validator.ns.sh.MaxLengthConstraintComponent, {
-    validate(context, _focusNode, valueNode, constraint) {
-      if (valueNode.termType === 'BlankNode') return false;
-      const limit = Number(constraint.getParameterValue(context.ns.sh.maxLength).value);
-      let count = 0;
-      for (const _character of valueNode.value) if (++count > limit) return false;
-      return true;
-    },
-    validationMessage: 'Value has more than {$maxLength} characters',
-  });
-  // Components bind their registry callbacks at construction, so rebuild the
-  // typed library graph after installing the correction, before any validation.
-  validator.shapesGraph = new ShapesGraph(validator);
   const report = await validator.validate(data);
   return report.results.map(result => ({ engine: 'SHACL', resourceId: result.focusNode.value, path: result.path?.value ?? '',
     severity: result.severity.value === SH + 'Warning' ? 'Warning' : result.severity.value === SH + 'Info' ? 'Info' : 'Violation',

@@ -35,6 +35,18 @@ it('PR #6652 review: SHACL maxLength counts supplementary Unicode characters and
   for (const invalid of ['-1', '1.5', '"bad"', '"1"']) await expect(validateGraph('<urn:a> <urn:p> "x".', { shapes: shapes.replace('maxLength 1', `maxLength ${invalid}`) })).rejects.toThrow('non-negative integer');
 });
 
+it('#11655: SHACL language ranges match complete subtags and compare case-insensitively', async () => {
+  const shape = (range: string) => `@prefix sh:<http://www.w3.org/ns/shacl#>.
+    <urn:s> sh:targetNode <urn:a>; sh:property [sh:path <urn:label>; sh:languageIn ("${range}")].`;
+  const label = (language: string) => `<urn:a> <urn:label> "Label"@${language}.`;
+  expect(await validateGraph(label('en-GB'), { shapes: shape('EN') })).toEqual([]);
+  expect(await validateGraph(label('eng'), { shapes: shape('en') })).toEqual([
+    expect.objectContaining({ resourceId: 'urn:a', path: 'urn:label', severity: 'Violation' }),
+  ]);
+  expect(await validateGraph(label('fr'), { shapes: shape('*') })).toEqual([]);
+  expect(await validateGraph('<urn:a> <urn:label> "Label".', { shapes: shape('*') })).toHaveLength(1);
+});
+
 it('charter #6643 review: explicit SHACL targets validate absent nodes and reject invalid work limits', async () => {
   const data = '<urn:unrelated> <urn:p> "x".';
   const shapes = '@prefix sh:<http://www.w3.org/ns/shacl#>. <urn:s> a sh:NodeShape;sh:targetNode <urn:absent>;sh:property [sh:path <urn:required>;sh:minCount 1].';

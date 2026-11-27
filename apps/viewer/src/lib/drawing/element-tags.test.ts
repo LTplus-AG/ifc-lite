@@ -190,6 +190,15 @@ END-ISO-10303-21;`;
 
 const unitFixtureUndeclared = (area: string) => unitFixture('', area, '$');
 
+it('#11456 a space tag omits project-unit area after UnitsInContext is cleared', async () => {
+  await unitFixture(SQUARE_FOOT_UNITS, '1076.39');
+  assert.match(resolveElementTagLabel(tag(20)) ?? '', /1076\.39 square foot/i);
+  const view = useViewerStore.getState().mutationViews.get('m')!;
+  view.setPositionalAttribute(1, 8, null);
+  assert.equal(resolveElementTagLabel(tag(20)), 'Office');
+});
+
+
 it('space tag area carries the file\'s declared AREAUNIT, not a hard-coded m\u00b2', async () => {
   await unitFixture(SQUARE_FOOT_UNITS, '1076.39');
   const label = resolveElementTagLabel(tag(20));

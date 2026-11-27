@@ -71,11 +71,6 @@ function add(set: Set<string>, value: string): void {
   if (trimmed) keep(set, trimmed);
 }
 
-/** `from` is already trimmed; only the cap applies. */
-function merge(into: Set<string>, from: Set<string>): void {
-  for (const value of from) keep(into, value);
-}
-
 function addString(set: Set<string>, value: unknown): void {
   if (typeof value === 'string') add(set, value);
 }
@@ -125,8 +120,7 @@ export class DeliveredSurfaces {
 
   /**
    * Remember the messages of one `tab_show_ui` call. The tab shows a call as
-   * one panel and names its clicks by the panel's first surface id, so every
-   * id in the call gets the whole call. Ids are unioned across calls and
+   * one panel, but each click belongs to its rendering surface. Ids are unioned across calls and
    * never forgotten on `deleteSurface`: the tab keeps an older panel on
    * screen, and its buttons stay clickable.
    */
@@ -136,12 +130,11 @@ export class DeliveredSurfaces {
     const [first] = ids;
     this.panels.push(first);
     if (this.panels.length > AGENT_SURFACE_PANELS) this.panels.shift();
-    const call = emptySurface();
-    collect(messages, call);
-    for (const id of ids) {
+    for (const message of messages) {
+      const id = a2uiSurfaceId(message);
+      if (!id) continue;
       const surface = this.surfaces.get(id) ?? emptySurface();
-      merge(surface.prompts, call.prompts);
-      merge(surface.events, call.events);
+      collect(message, surface);
       // Re-inserted, so a surface the agent keeps updating is the newest.
       this.surfaces.delete(id);
       this.surfaces.set(id, surface);

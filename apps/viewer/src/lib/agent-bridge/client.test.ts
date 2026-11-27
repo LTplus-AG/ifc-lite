@@ -760,7 +760,7 @@ describe('local agent bridge client: endings (#9523)', () => {
     assert.equal(h.client.status.kind, 'connected', 'a hidden tab stays connected');
     h.lifecycle.dispatchEvent(new Event('pagehide'));
     assert.deepEqual(h.client.status, { kind: 'disconnected', reason: 'page-hidden' });
-    assert.equal(h.socket().closedWith?.code, 1001);
+    assert.equal(h.socket().closedWith?.code, 1000);
   });
 
   it('a throwing status listener does not escape into the event loop', () => {

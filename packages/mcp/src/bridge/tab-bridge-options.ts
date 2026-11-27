@@ -61,6 +61,8 @@ export const DEFAULT_CLOSE_GRACE_MS = 250;
 
 /** One unpaired connection's claim on the handshake slots. */
 export interface Slot {
+  origin?: string;
+  proof?: string;
   socket: Duplex;
   ws: WebSocket | null;
   paired: boolean;

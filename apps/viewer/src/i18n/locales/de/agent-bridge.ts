@@ -80,5 +80,8 @@ export const agentBridgeDe = {
   'agentBridge.surfaces.dismiss': "{title} schließen",
   'agentBridge.surfaces.clear': "Alle entfernen",
   'agentBridge.surfaces.untitled': "Agenten-Ergebnis",
+  'agentBridge.dialog.confirmInTab': "Zum Bestätigen zum Modell-Tab wechseln.",
+  'agentBridge.dialog.useModelTab': "Im Tab mit {name} verbinden",
+  'agentBridge.surfaces.unsent': "Die Aktion konnte nicht an Ihren Agenten gesendet werden.",
   'agentBridge.surfaces.sent': "An Ihren Agenten gesendet",
 } satisfies Catalogue;

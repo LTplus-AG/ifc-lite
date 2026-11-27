@@ -9,11 +9,16 @@
  * `import()`. Neither imports the bridge client or the tool host.
  */
 
+import { useContext } from 'react';
+import { BimReactContext } from '@/sdk/BimProvider';
+import { savedTicket, saveTicket } from '@/lib/agent-bridge/resume';
+import { isFramed } from '@/lib/agent-bridge/pairing-fragment';
+import { listenForModelTabLinks } from '@/lib/agent-bridge/model-tabs';
 import { isFeatureEnabled } from '@/lib/features';
 import { Suspense, useEffect, useSyncExternalStore } from 'react';
 import { lazyChunk } from '@/lib/lazy-chunk';
 import { consumePendingPairingFragment, onPairingFragment } from '@/lib/agent-bridge/pairing-fragment';
-import { closeAgentBridgeDialog, requestAgentBridgeDialog, useAgentBridgeState, type AgentBridgeStatus } from '@/lib/agent-bridge/state';
+import { closeAgentBridgeDialog, getAgentBridgeState, requestAgentBridgeDialog, useAgentBridgeState, type AgentBridgeStatus } from '@/lib/agent-bridge/state';
 import { useViewerStore } from '@/store';
 import { agentSurfaces } from '@/lib/agent-bridge/agent-surfaces';
 
@@ -43,6 +48,7 @@ function visible(status: AgentBridgeStatus): boolean {
  */
 export function AgentBridgeHost() {
   const { dialog, status } = useAgentBridgeState();
+  const bim = useContext(BimReactContext);
   const isMobile = useViewerStore((s) => s.isMobile);
   // The bridge pairs a local AI agent, so it goes with the AI feature (`lib/features`).
   const enabled = isFeatureEnabled('ai.assistant');
@@ -54,8 +60,39 @@ export function AgentBridgeHost() {
       if (fragment) requestAgentBridgeDialog({ source: 'link', fragment });
     };
     take();
-    return onPairingFragment(take);
+    const stopTabs = listenForModelTabLinks();
+    const stopLinks = onPairingFragment(take);
+    return () => { stopTabs(); stopLinks(); };
   }, [enabled]);
+  useEffect(() => {
+    if (!enabled || !bim || isFramed()) return;
+    let cancelled = false;
+    const resume = () => {
+      const { status } = getAgentBridgeState();
+      if (status.kind === 'connected' || status.kind === 'connecting') return;
+      const ticket = savedTicket();
+      if (!ticket) return;
+      void import('@/lib/agent-bridge/session').then(({ connectAgentBridge }) => {
+        if (!cancelled && !getAgentBridgeState().dialog && savedTicket()?.key === ticket.key) {
+          connectAgentBridge({ port: ticket.port, code: ticket.key, resume: true, bim });
+        }
+      });
+    };
+    const navigation = performance.getEntriesByType?.('navigation')[0] as PerformanceNavigationTiming | undefined;
+    if (navigation?.type === 'reload') resume();
+    else if (navigation?.type === 'navigate' && getAgentBridgeState().status.kind === 'idle') saveTicket();
+    const wake = () => { if (!document.hidden && getAgentBridgeState().status.kind === 'disconnected') resume(); };
+    document.addEventListener('visibilitychange', wake);
+    const restore = (event: PageTransitionEvent) => { if (event.persisted) resume(); };
+    window.addEventListener('pageshow', restore);
+    window.addEventListener('online', resume);
+    return () => {
+      cancelled = true;
+      document.removeEventListener('visibilitychange', wake);
+      window.removeEventListener('pageshow', restore);
+      window.removeEventListener('online', resume);
+    };
+  }, [enabled, bim]);
   if (!enabled) return null;
   return (
     <>

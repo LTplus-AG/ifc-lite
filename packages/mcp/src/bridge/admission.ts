@@ -10,6 +10,8 @@
  * leaves. What a paired session becomes is the caller's business (`admit`).
  */
 
+import { createHmac, timingSafeEqual } from 'node:crypto';
+import { normalizePairingCode } from './pairing-link.js';
 import type { WebSocket } from 'ws';
 import {
   BRIDGE_PROTOCOL_VERSION,
@@ -32,11 +34,37 @@ export interface AdmissionHost {
   guard(ws: WebSocket, what: string, fn: () => void): void;
   /** The slot no longer counts against the unpaired cap. */
   release(slot: Slot): void;
+  paired?(): boolean;
   /** The hello passed: make it the paired session. */
   admit(ws: WebSocket, slot: Slot, hello: BridgeHelloMessage): void;
 }
 
 export class PairingAdmission {
+  private resume: { key: string; origin?: string } | null = null;
+
+  disconnected(code: number, reason: string): void {
+    if (code !== 1006 && code !== 1001 && !(code === 1000 && reason === 'page hidden')) this.forget();
+  }
+
+  forget(): void { this.resume = null; }
+
+  private authenticate(hello: BridgeHelloMessage, slot: Slot): boolean {
+    if (!hello.nonce) {
+      if (this.codes.consume(hello.pairingCode) !== 'ok') return false;
+      this.forget();
+      return true;
+    }
+    if (hello.resume && this.host.paired?.()) return false;
+    const key = hello.resume ? this.resume?.key : normalizePairingCode(this.codes.current());
+    if (!key || (hello.resume && (slot.origin !== this.resume?.origin || hello.permission !== 'read-only'))) return false;
+    const mac = (role: string) => createHmac('sha256', key).update('ifc-lite/' + role + '/' + hello.nonce).digest('hex');
+    if (!/^[a-f0-9]{64}$/.test(hello.pairingCode) || !timingSafeEqual(Buffer.from(mac('tab')), Buffer.from(hello.pairingCode))) return false;
+    this.codes.consume(this.codes.current());
+    this.resume = { key: mac('next'), origin: slot.origin };
+    slot.proof = mac('bridge');
+    return true;
+  }
+
   readonly codes = new PairingCodes();
   private readonly gate: PairingGate;
   /** Code comparisons made, including attempts whose peer left before theirs. */
@@ -105,7 +133,7 @@ export class PairingAdmission {
       this.host.release(slot);
       return;
     }
-    if (this.codes.consume(hello.pairingCode) !== 'ok') {
+    if (!this.authenticate(hello, slot)) {
       this.failed();
       this.host.note('wrong pairing codes', 'refused a wrong pairing code');
       this.host.kill(ws, BridgeErrorCode.PAIRING_FAILED, 'Pairing code not accepted. Use the latest link or code from bridge_status.', BridgeCloseCode.PAIRING_FAILED);

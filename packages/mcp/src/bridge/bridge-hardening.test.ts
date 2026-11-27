@@ -7,6 +7,7 @@
  * block names the review item it pins. Every bridge binds port 0.
  */
 
+import { createHmac, randomBytes } from 'node:crypto';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { CallToolResult, JsonRpcMessage, ToolDefinition } from '../protocol/index.js';
 import { bridgeOrigins, startBridgeServer, type RunningBridge } from './run.js';
@@ -354,5 +355,43 @@ describe('frame limits and binary frames', () => {
     tab.ws.send(Buffer.from([1, 2, 3]), { binary: true });
     expect(await tab.closed()).toBe(BridgeCloseCode.INVALID_MESSAGE);
     expect((await pending).structuredContent?.code).toBe('VIEWER_NOT_CONNECTED');
+  });
+});
+
+describe('verified viewer pairing (#9523)', () => {
+  it('rotates the key on read-only resume and retires it on disconnect or a new pairing link', async () => {
+    const { bridge } = await start();
+    const hello = async (key: string, resume: boolean) => {
+      const opened = await openSocket({ port: bridge.port, origin: 'https://ifclite.com' });
+      if (!('tab' in opened)) throw new Error('upgrade refused');
+      const tab = opened.tab;
+      tabs.push(tab);
+      const nonce = randomBytes(16).toString('hex');
+      const mac = (role: string) => createHmac('sha256', key).update('ifc-lite/' + role + '/' + nonce).digest('hex');
+      tab.sendRaw({ type: 'hello', protocol: 1, pairingCode: mac('tab'), nonce, resume, permission: 'read-only', tools: [READ_TOOL] });
+      return { tab, proof: mac('bridge'), next: mac('next') };
+    };
+    const leave = async (tab: FakeTab, reason: string) => {
+      tab.ws.close(1000, reason);
+      await tab.closed();
+      await expect.poll(() => bridge.tab()).toBeNull();
+    };
+    const pair = async () => {
+      const initial = await hello(bridge.pairingCode().replaceAll('-', ''), false);
+      expect(await initial.tab.next('welcome')).toMatchObject({ proof: initial.proof });
+      return initial;
+    };
+    const initial = await pair();
+    await leave(initial.tab, 'page hidden');
+    const resumed = await hello(initial.next, true);
+    expect(await resumed.tab.next('welcome')).toMatchObject({ proof: resumed.proof, permission: 'read-only' });
+    await leave(resumed.tab, 'disconnected by the user');
+    for (const obsolete of [initial.next, resumed.next]) {
+      expect(await (await hello(obsolete, true)).tab.next('error')).toMatchObject({ code: 'PAIRING_FAILED' });
+    }
+    const replaced = await pair();
+    await leave(replaced.tab, 'page hidden');
+    bridge.rotatePairingCode();
+    expect(await (await hello(replaced.next, true)).tab.next('error')).toMatchObject({ code: 'PAIRING_FAILED' });
   });
 });

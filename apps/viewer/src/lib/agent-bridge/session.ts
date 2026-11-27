@@ -25,6 +25,7 @@ import {
   AGENT_BRIDGE_ACTIVITY_LIMIT, getAgentBridgeState, registerAgentBridgeControls, updateAgentBridgeState,
   foldActivity, type AgentBridgeActivity, type AgentBridgePermission, type AgentBridgeStatus,
 } from './state';
+import { saveTicket } from './resume';
 import { isFramed } from './pairing-fragment';
 import { agentSurfaces } from './agent-surfaces';
 import { ENDED_KEYS } from './outcome-keys';
@@ -91,6 +92,7 @@ export async function queryLocalNetworkPermission(pageHost: string | undefined =
 export interface ConnectAgentBridgeOptions {
   port: number;
   code: string;
+  resume?: boolean;
   bim: BimContext;
   /** Test seam; the browser's `WebSocket` otherwise. */
   WebSocket?: BridgeClientOptions['WebSocket'];
@@ -122,12 +124,13 @@ function announceEnded(status: AgentBridgeStatus): void {
 }
 
 /** Pair this tab with the bridge on `port`. Replaces any connection this tab had. Refused when framed. */
-export function connectAgentBridge({ port, code, bim, WebSocket }: ConnectAgentBridgeOptions): void {
+export function connectAgentBridge({ port, code, bim, WebSocket, resume = false }: ConnectAgentBridgeOptions): void {
   if (isFramed()) {
     updateAgentBridgeState({ status: { kind: 'error', code: 'framed', port } });
     return;
   }
   active?.disconnect();
+  saveTicket();
   // Surfaces belong to the agent that pushed them: a click must never reach a different agent.
   agentSurfaces.clear();
   const lifetime = new AbortController();
@@ -137,7 +140,9 @@ export function connectAgentBridge({ port, code, bim, WebSocket }: ConnectAgentB
   let wasConnected = false;
   const client: BridgeClient = new BridgeClient({
     port,
+    onRefusedEvent: () => toast.error(resolve('agentBridge.surfaces.unsent')),
     pairingCode: code,
+    authenticate: { resume, accepted: (key) => saveTicket({ port, key }) },
     tools: mainViewerBridgeTools(),
     // The grant is read from the client at dispatch and again at the write: a revoke refuses what is not yet written.
     dispatch: (name, args, signal, onDelivery) => dispatchMainViewerTool(host, name, args, { signal, onDelivery, canEdit: () => client.canEditNow() }),
@@ -150,7 +155,9 @@ export function connectAgentBridge({ port, code, bim, WebSocket }: ConnectAgentB
       if (status.kind !== 'connected' && status.kind !== 'connecting') lifetime.abort();
       if (active !== client) return;
       if (status.kind !== 'connected' && status.kind !== 'connecting') flushActivity();
+      if (status.kind === 'disconnected' && status.reason !== 'connection-lost' && status.reason !== 'page-hidden') saveTicket();
       updateAgentBridgeState({ status });
+      if (resume && status.kind === 'error') toast.error(resolve('agentBridge.failure.pairingFailed'), 'agent-bridge-resume');
       if (wasConnected) announceEnded(status);
       wasConnected = status.kind === 'connected';
     },
@@ -171,6 +178,7 @@ export function sendAgentUiEvent(event: BridgeUiEvent): boolean {
 
 /** Close the connection at the user's request. */
 export function disconnectAgentBridge(): void {
+  saveTicket();
   const client = active;
   if (!client) {
     updateAgentBridgeState({ status: { kind: 'idle' } });

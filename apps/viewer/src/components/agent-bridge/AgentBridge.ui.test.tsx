@@ -12,6 +12,7 @@
 import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { createHmac } from 'node:crypto';
 import type { ReactNode } from 'react';
 import { buildPairingUrl } from '@ifc-lite/mcp/bridge-protocol';
 import { createBimContext } from '@ifc-lite/sdk';
@@ -389,7 +390,8 @@ describe('a live connection is visible with Disconnect in every layout (#9523 re
       onopen: ((e: unknown) => void) | null = null; onmessage: ((e: { data: unknown }) => void) | null = null;
       onclose: ((e: { code: number; reason: string }) => void) | null = null; onerror: ((e: unknown) => void) | null = null;
       constructor() { LiveSocket.last = this; }
-      send(): void {}
+      nonce?: string;
+      send(text: string): void { this.nonce = JSON.parse(text).nonce; }
       close(): void { this.readyState = 3; }
     }
     render(<><Toaster /><LocalAgentSourceRow /></>);
@@ -397,7 +399,9 @@ describe('a live connection is visible with Disconnect in every layout (#9523 re
     const socket = LiveSocket.last as LiveSocket;
     socket.readyState = 1;
     socket.onopen?.({});
-    socket.onmessage?.({ data: JSON.stringify({ type: 'welcome', protocol: 1, sessionId: 's', permission: 'read-only', readOnlyCeiling: false, bridge: { name: 'b', version: '1' } }) });
+    await waitFor(() => !!socket.nonce, 'the tab sent a verified hello');
+    const proof = createHmac('sha256', CODE.replaceAll('-', '')).update('ifc-lite/bridge/' + socket.nonce).digest('hex');
+    socket.onmessage?.({ data: JSON.stringify({ type: 'welcome', proof, protocol: 1, sessionId: 's', permission: 'read-only', readOnlyCeiling: false, bridge: { name: 'b', version: '1' } }) });
     assert.equal(getAgentBridgeState().status.kind, 'connected');
     socket.readyState = 3;
     socket.onclose?.({ code: 4400, reason: '' });

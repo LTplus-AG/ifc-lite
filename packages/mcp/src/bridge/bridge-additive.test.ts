@@ -284,10 +284,11 @@ describe('DeliveredSurfaces', () => {
     expect(ledger.check({ surfaceId: 'a', name: 'ask', prompt: 'New' })).toMatchObject(ok);
   });
 
-  it('gives every surface id in one call the whole call, as the tab names a panel by its first id', () => {
+  it('attributes the click to its own surface in a multi-surface panel', () => {
     const ledger = new DeliveredSurfaces();
     ledger.record([{ version: '1.0', createSurface: { surfaceId: 'a', catalogId: 'c' } }, button('b', 'pick')]);
-    expect(ledger.check({ surfaceId: 'a', name: 'pick', prompt: 'Action: pick' })).toMatchObject(ok);
+    expect(ledger.check({ surfaceId: 'a', name: 'pick', prompt: 'Action: pick' })).toHaveProperty('refused');
+    expect(ledger.check({ surfaceId: 'b', name: 'pick', prompt: 'Action: pick' })).toMatchObject(ok);
   });
 
   it('verifies the literal prompt of a follow-up whose label is bound', () => {

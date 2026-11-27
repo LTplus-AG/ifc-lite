@@ -190,6 +190,7 @@ export const BridgeErrorCode = {
   HANDSHAKE_TIMEOUT: 'HANDSHAKE_TIMEOUT',
   INVALID_MESSAGE: 'INVALID_MESSAGE',
   REPLACED: 'REPLACED',
+  UI_EVENT_REFUSED: 'UI_EVENT_REFUSED',
   BUSY: 'BUSY',
   SHUTTING_DOWN: 'SHUTTING_DOWN',
 } as const;
@@ -314,6 +315,7 @@ export function parseTabMessage(text: string): ParseResult<BridgeTabMessage> {
       if (typeof raw.protocol !== 'number') return { ok: false, error: 'hello.protocol must be a number' };
       if (typeof raw.pairingCode !== 'string') return { ok: false, error: 'hello.pairingCode must be a string' };
       if (!isPermission(raw.permission)) return { ok: false, error: "hello.permission must be 'read-only' or 'read-write'" };
+      if (raw.nonce !== undefined && (typeof raw.nonce !== 'string' || !/^[a-f0-9]{32}$/.test(raw.nonce))) return { ok: false, error: 'invalid hello nonce' };
       const tools = validateToolDescriptors(raw.tools);
       if (!tools.ok) return tools;
       let client: BridgeHelloMessage['client'];
@@ -325,7 +327,7 @@ export function parseTabMessage(text: string): ParseResult<BridgeTabMessage> {
       }
       return {
         ok: true,
-        value: { type: 'hello', protocol: raw.protocol, pairingCode: raw.pairingCode, permission: raw.permission, tools: tools.value, client, ...(raw.a2uiSurface === true ? { a2uiSurface: true } : {}), ...(raw.resultAck === true ? { resultAck: true } : {}) },
+        value: { type: 'hello', protocol: raw.protocol, pairingCode: raw.pairingCode, ...(typeof raw.nonce === 'string' ? { nonce: raw.nonce, resume: raw.resume === true } : {}), permission: raw.permission, tools: tools.value, client, ...(raw.a2uiSurface === true ? { a2uiSurface: true } : {}), ...(raw.resultAck === true ? { resultAck: true } : {}) },
       };
     }
     case 'result': {

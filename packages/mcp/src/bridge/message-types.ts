@@ -12,6 +12,9 @@ export interface BridgeHelloMessage {
   protocol: number;
   /** The one-time code the bridge printed. Case and `-`/space separators are ignored. */
   pairingCode: string;
+  /** With a nonce, pairingCode carries a domain-separated HMAC, never the secret. */
+  nonce?: string;
+  resume?: boolean;
   permission: BridgePermission;
   tools: BridgeToolDescriptor[];
   client?: { name: string; version?: string };
@@ -41,6 +44,7 @@ export type BridgeTabMessage = BridgeHelloMessage | BridgeResultMessage | Bridge
 
 export interface BridgeWelcomeMessage {
   type: 'welcome';
+  proof?: string;
   protocol: number;
   sessionId: string;
   /** Effective permission: the tab's grant, capped by the bridge's ceiling. */

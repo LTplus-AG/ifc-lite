@@ -9,21 +9,20 @@ import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 const operators: ComparisonOp[] = ['=', '!=', '>', '<', '>=', '<=', 'contains', 'exists', 'matches'];
 
 export const exportFilterProperties = {
-  type: { type: 'string', description: 'Filter by IFC type (for example IfcWall).' },
-  storey: { type: 'string', minLength: 1, description: 'Keep entities contained in the named storey or storey express ID.' },
+  type: { type: 'string', description: 'IFC type, e.g. IfcWall.' },
+  storey: { type: 'string', minLength: 1, description: 'Storey name or express ID.' },
   where: {
     type: 'object',
-    description: 'Filter on a property or quantity in a named set.',
     properties: {
-      set: { type: 'string', description: 'IFC property or quantity set name.' },
-      property: { type: 'string', description: 'Property or quantity name.' },
+      set: { type: 'string', description: 'Property or quantity set.' },
+      property: { type: 'string' },
       operator: { type: 'string', enum: operators },
-      value: { type: 'string', description: 'Value to compare. Omit for exists.' },
+      value: { type: 'string', description: 'Omit for exists.' },
     },
     required: ['set', 'property', 'operator'],
     additionalProperties: false,
   },
-  limit: { type: 'integer', minimum: 1, description: 'Maximum number of matching entities after other filters.' },
+  limit: { type: 'integer', minimum: 1, description: 'Maximum matches.' },
 } satisfies Record<string, JsonSchema>;
 
 export function hasExportFilter(input: Record<string, unknown>): boolean {

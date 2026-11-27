@@ -184,8 +184,8 @@ function artifactTool(name: keyof typeof artifactFormats, description: string): 
     inputSchema: {
       type: 'object',
       properties: {
-        model_id: { type: 'string', description: 'Loaded model ID. Defaults to the active model.' },
-        file_path: { type: 'string', description: 'Output path inside the allowed paths.' },
+        model_id: { type: 'string' },
+        file_path: { type: 'string' },
         ...exportFilterProperties,
         ...(format === 'glb' ? {
           name_by_global_id: { type: 'boolean', description: 'Name glTF element nodes using IFC GlobalId.' },

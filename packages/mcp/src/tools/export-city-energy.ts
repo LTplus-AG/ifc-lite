@@ -52,8 +52,8 @@ const wholeModelOutput = {
 };
 
 const commonInput = {
-  model_id: { type: 'string' as const, description: 'Loaded model ID. Defaults to the active model.' },
-  file_path: { type: 'string' as const, description: 'Output path inside the allowed paths.' },
+  model_id: { type: 'string' as const },
+  file_path: { type: 'string' as const },
 };
 
 const annotations = { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false };

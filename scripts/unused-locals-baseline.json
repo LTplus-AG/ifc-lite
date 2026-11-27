@@ -17,7 +17,7 @@
   "packages/charts": 0,
   "packages/clash": 1,
   "packages/cli": 6,
-  "packages/codegen": 5,
+  "packages/codegen": 1,
   "packages/collab": 4,
   "packages/collab-server": 2,
   "packages/create": 0,

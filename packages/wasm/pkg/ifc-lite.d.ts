@@ -423,8 +423,9 @@ export class CompactBatch {
      */
     readonly refusals: Uint32Array;
     /**
-     * Six u32 per encoded mesh: mesh index in the collection, vertex start,
-     * vertex count, index start, index count, lattice level (step = 2^-level m).
+     * Seven u32 per encoded mesh: mesh index in the collection, vertex start,
+     * vertex count, index start, index count, lattice level (step = 2^-level m),
+     * source vertex count (before welding).
      */
     readonly table: Uint32Array;
     /**

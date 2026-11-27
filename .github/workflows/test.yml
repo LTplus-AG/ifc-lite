@@ -1279,8 +1279,9 @@ jobs:
       - name: Prove the changed tests observe the production change
         # `&&` binds tighter than `||`: python is tested first so a PR that
         # changes both keeps the wheel builds' 85 minutes (which also covers
-        # the <= ~36-minute browser path); a browser-only PR gets 40.
-        timeout-minutes: ${{ needs.changes.outputs.python == 'true' && 85 || steps.browser.outputs.needed == 'true' && 40 || 18 }}
+        # the <= ~36-minute browser path); the browser path gets 40.
+        # Rust can rebuild multiple feature targets before and after the revert (#11734).
+        timeout-minutes: ${{ needs.changes.outputs.python == 'true' && 85 || steps.browser.outputs.needed == 'true' && 40 || needs.changes.outputs.rust == 'true' && 30 || 18 }}
         env:
           # Type-only viewer changes compile the same test program as the Typecheck lane.
           NODE_OPTIONS: --max-old-space-size=8192

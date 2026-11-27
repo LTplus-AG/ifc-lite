@@ -16,6 +16,7 @@
 import { generateIfcGuid, isValidIfcGuid } from '@ifc-lite/encoding';
 import { StoreEditor, type MutablePropertyView } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
+import type { AuthoringGuidOptions } from '../anchor.js';
 import { ownerHistoryRef } from '../_emit-helpers.js';
 import { placementInAncestor, refId } from '../host-geometry-frame.js';
 import { assertHostedGlobalIdAvailable } from '../hosted-global-id.js';
@@ -149,7 +150,7 @@ export function planStoreyAdd(inventory: StoreyInventory, params: AddStoreyParam
 }
 
 /** Add a storey atomically. Throws (writing nothing) when the storey cannot be placed. */
-export function addStoreyInStore(store: IfcDataStore, editor: StoreEditor, params: AddStoreyParams): AddStoreyResult {
+export function addStoreyInStore(store: IfcDataStore, editor: StoreEditor, params: AddStoreyParams, options: AuthoringGuidOptions = {}): AddStoreyResult {
   return editor.runAtomic((draft) => {
     const inventory = readStoreyInventory(store, draft.getMutationView());
     if (params.GlobalId !== undefined) {
@@ -172,7 +173,7 @@ export function addStoreyInStore(store: IfcDataStore, editor: StoreEditor, param
       : params.Elevation / inventory.scale;
 
     const storeyId = draft.addEntity('IfcBuildingStorey', [
-      params.GlobalId ?? generateIfcGuid(),
+      params.GlobalId ?? generateIfcGuid(options.guidRandom),
       ownerHistoryRef(ownerHistoryId),
       params.Name.trim(),
       params.Description ?? null,
@@ -184,7 +185,7 @@ export function addStoreyInStore(store: IfcDataStore, editor: StoreEditor, param
       { real: roundNative(elevationAttribute) },
     ]).expressId;
 
-    const relAggregatesId = aggregateUnder(draft, inventory, parentId, storeyId, ownerHistoryId, reference?.aggregateRelId ?? null);
+    const relAggregatesId = aggregateUnder(draft, inventory, parentId, storeyId, ownerHistoryId, reference?.aggregateRelId ?? null, options);
     const guid = String(draft.getNewEntity(storeyId)?.attributes[0]);
     const floor = placementInAncestor(inventory.reader, placementId, null);
     if (!floor) throw new Error(`${OP}: the new storey floor cannot be read`);
@@ -259,7 +260,7 @@ function directionRef(value: unknown): string | null {
 /** Extend the parent's existing decomposition, or start one. */
 function aggregateUnder(
   draft: StoreEditor, inventory: StoreyInventory, parentId: number, storeyId: number,
-  ownerHistoryId: number | null, preferredRelId: number | null,
+  ownerHistoryId: number | null, preferredRelId: number | null, options: AuthoringGuidOptions,
 ): number {
   const view: MutablePropertyView = draft.getMutationView();
   const existing = (inventory.outgoing.get(parentId) ?? []).filter((rel) => rel.type === 'IFCRELAGGREGATES');
@@ -269,6 +270,6 @@ function aggregateUnder(
     return rel.id;
   }
   return draft.addEntity('IfcRelAggregates', [
-    generateIfcGuid(), ownerHistoryRef(ownerHistoryId), null, null, ref(parentId), [ref(storeyId)],
+    generateIfcGuid(options.guidRandom), ownerHistoryRef(ownerHistoryId), null, null, ref(parentId), [ref(storeyId)],
   ]).expressId;
 }

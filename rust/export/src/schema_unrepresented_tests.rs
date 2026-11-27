@@ -122,6 +122,24 @@ fn an_upgrade_counts_only_populated_move_and_order_action_slots_11326() {
     assert_eq!(dropped(&format!("#6=IFCORDERACTION({head},'A-1');")), 1);
 }
 
+/// #11326: the same holds for an IFCREL* subtype IFC4 deleted (no attribute map) and for a type
+/// whose list shrinks (IfcWorkPlan): an unset slot counts 0, a populated one (`''` included) 1.
+#[test]
+fn an_upgrade_counts_only_populated_slots_of_unmapped_dropped_attributes_11326() {
+    let dropped = |data: &str| {
+        let src = format!("ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t.ifc','',(''),(''),'','','');\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n{data}\nENDSEC;\nEND-ISO-10303-21;\n");
+        let opts = crate::step::StepOptions { schema: Some("IFC4".into()), ..Default::default() };
+        crate::export_step_with_stats(src.as_bytes(), &opts).unwrap().1.attribute_values_dropped
+    };
+    let tasks = |time: &str| format!("#8=IFCRELASSIGNSTASKS('0FvctVUKr0kugbFTf53O9L',$,$,$,(#5),$,#9,{time});");
+    assert_eq!(dropped(&tasks("$")), 0);
+    assert_eq!(dropped(&tasks("'a'")), 1);
+    assert_eq!(dropped(&tasks("''")), 1);
+    let plan = |user: &str| format!("#9=IFCWORKPLAN('0GvctVUKr0kugbFTf53O9L',$,'Plan',$,$,'WP1',$,$,$,$,$,$,$,$,{user});");
+    assert_eq!(dropped(&plan("$")), 0);
+    assert_eq!(dropped(&plan("'X'")), 1);
+}
+
 #[test]
 fn prunes_references_to_removed_ifc2x3_resources_10970() {
     let source = include_bytes!("../tests/fixtures/schema_unrooted_upgrade.ifc");

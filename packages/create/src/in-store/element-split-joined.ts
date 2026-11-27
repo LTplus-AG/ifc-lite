@@ -4,9 +4,8 @@
 
 import { readWallJoinTarget, type WallJoinRead, type WallJoinRel } from './wall-join-read.js';
 import { joinWallsInStore, reshapeWallsInStore, resolveWallJoinAnchor } from './wall-join-edit.js';
-import { resolveSpatialAnchor } from './resolve-anchor.js';
 import { emitOrdinaryElement, type OrdinaryInStoreElement } from './ordinary-element.js';
-import { preserveSplitParentPlacement } from './element-split-placement.js';
+import { preserveSplitParentPlacement, splitAnchor } from './element-split-placement.js';
 import { keepsFirstPiece } from './edit/split-guid.js';
 import { MIN_WALL_SEGMENT_LENGTH } from './edit/wall-edit.js';
 import type { SplitEnvironment } from './element-split.js';
@@ -45,7 +44,7 @@ export function splitJoinedWallDraft(
     Name: env.name,
     GlobalId: env.newGlobalId,
   } };
-  const addedId = emitOrdinaryElement(env.editor, resolveSpatialAnchor(env.dataStore, env.storeyExpressId, env.view), element);
+  const addedId = emitOrdinaryElement(env.editor, splitAnchor(env), element);
 
   preserveSplitParentPlacement(env, addedId, read.parentPlacementId);
 
@@ -66,7 +65,7 @@ export function splitJoinedWallDraft(
 
   const draft = env.editor;
   {
-      const anchor = resolveWallJoinAnchor(env.dataStore, draft.getMutationView());
+      const anchor = resolveWallJoinAnchor(env.dataStore, draft.getMutationView(), env.guidRandom);
       const moving = rels.filter(movesToNew);
       for (const rel of moving) draft.removeEntity(rel.relId);
       reshapeWallsInStore(draft, env.dataStore, anchor, [{ wallId: expressId, start: kept.start, end: kept.end }]);

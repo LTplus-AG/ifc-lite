@@ -1,6 +1,7 @@
 {
   "name": "@ifc-lite/mcp",
   "version": "0.32.0",
+  "mcpName": "io.github.LTplus-AG/ifc-lite",
   "description": "Model Context Protocol server for ifc-lite — agent-native BIM via MCP (stdio + Streamable HTTP)",
   "type": "module",
   "main": "./dist/index.js",
@@ -30,6 +31,10 @@
       "import": "./dist/cli-args.js",
       "types": "./dist/cli-args.d.ts"
     },
+    "./cli-main": {
+      "import": "./dist/cli-main.js",
+      "types": "./dist/cli-main.d.ts"
+    },
     "./bridge-protocol": {
       "import": "./dist/bridge/bridge-protocol.js",
       "types": "./dist/bridge/bridge-protocol.d.ts"
@@ -40,6 +45,7 @@
     "typecheck": "node ../../scripts/typecheck-tests.mjs",
     "dev": "pnpm exec tsc --watch",
     "start": "node dist/cli.js",
+    "release:manifests": "node release/build.mjs",
     "test": "vitest run"
   },
   "dependencies": {

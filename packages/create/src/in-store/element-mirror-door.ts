@@ -2,6 +2,7 @@
 import { generateIfcGuid } from '@ifc-lite/encoding';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
+import type { AuthoringGuidOptions } from './anchor.js';
 import { AnchorEntityReader } from './resolve-anchor.js';
 import { liveEntityConforms } from './resolve-relations.js';
 import { refId } from './host-geometry-frame.js';
@@ -11,6 +12,7 @@ import { refId } from './host-geometry-frame.js';
 export function mirrorDoorHandedness(
   store: IfcDataStore, editor: StoreEditor, products: ReadonlySet<number>,
   referencing: (id: number) => readonly number[],
+  options: AuthoringGuidOptions = {},
 ): void {
   const view = editor.getMutationView(), reader = new AnchorEntityReader(store, view);
   const doors = new Set([...products].filter(id => liveEntityConforms(store, id, 'IfcDoor', view)));
@@ -39,7 +41,7 @@ export function mirrorDoorHandedness(
     let clone = clones.get(typeId);
     if (clone === undefined) {
       const attributes = [...structuredClone(type.attributes)];
-      attributes[type.names.indexOf('GlobalId')] = generateIfcGuid();
+      attributes[type.names.indexOf('GlobalId')] = generateIfcGuid(options.guidRandom);
       const nameSlot = type.names.indexOf('Name');
       if (nameSlot >= 0 && typeof attributes[nameSlot] === 'string') attributes[nameSlot] += ' (mirrored)';
       attributes[slot] = operation;
@@ -50,7 +52,7 @@ export function mirrorDoorHandedness(
     if (remaining.length) editor.setPositionalAttribute(id, 4, remaining);
     else editor.removeEntity(id);
     const attributes = [...structuredClone(rel.attributes)];
-    attributes[rel.names.indexOf('GlobalId')] = generateIfcGuid();
+    attributes[rel.names.indexOf('GlobalId')] = generateIfcGuid(options.guidRandom);
     attributes[4] = selected;
     attributes[5] = `#${clone}`;
     editor.addEntity(rel.type, attributes as Parameters<StoreEditor['addEntity']>[1]);

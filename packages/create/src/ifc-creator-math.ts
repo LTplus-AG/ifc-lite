@@ -60,15 +60,6 @@ export function vecLen(v: Point3D): number {
   return Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
 }
 
-/**
- * IFC types that do NOT follow the IfcElement attribute layout (no Tag/PredefinedType).
- * addElement/addAxisElement skip Tag+PredefinedType for these types.
- */
-export const NON_ELEMENT_TYPES = new Set([
-  'IFCBUILDING', 'IFCSITE', 'IFCBUILDINGSTOREY', 'IFCPROJECT',
-  'IFCSPACE', 'IFCZONE', 'IFCSYSTEM', 'IFCGROUP',
-]);
-
 /** Normalize vector — throws on zero-length (indicates geometry bug like Start === End) */
 export function vecNorm(v: Point3D): Point3D {
   const len = vecLen(v);

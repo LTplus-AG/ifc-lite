@@ -73,7 +73,9 @@ export function AgentBridgeHost() {
       const ticket = savedTicket();
       if (!ticket) return;
       void import('@/lib/agent-bridge/session').then(({ connectAgentBridge }) => {
-        if (!cancelled && !getAgentBridgeState().dialog && savedTicket()?.key === ticket.key) {
+        const current = getAgentBridgeState();
+        if (!cancelled && !current.dialog && current.status.kind !== 'connecting'
+            && current.status.kind !== 'connected' && savedTicket()?.key === ticket.key) {
           connectAgentBridge({ port: ticket.port, code: ticket.key, resume: true, bim });
         }
       });
@@ -81,7 +83,10 @@ export function AgentBridgeHost() {
     const navigation = performance.getEntriesByType?.('navigation')[0] as PerformanceNavigationTiming | undefined;
     if (navigation?.type === 'reload') resume();
     else if (navigation?.type === 'navigate' && getAgentBridgeState().status.kind === 'idle') saveTicket();
-    const wake = () => { if (!document.hidden && getAgentBridgeState().status.kind === 'disconnected') resume(); };
+    const wake = () => {
+      const { kind } = getAgentBridgeState().status;
+      if (!document.hidden && (kind === 'disconnected' || kind === 'error')) resume();
+    };
     document.addEventListener('visibilitychange', wake);
     const restore = (event: PageTransitionEvent) => { if (event.persisted) resume(); };
     window.addEventListener('pageshow', restore);

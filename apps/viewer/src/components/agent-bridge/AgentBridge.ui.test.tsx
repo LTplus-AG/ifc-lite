@@ -42,6 +42,17 @@ class SpySocket {
   close(): void {}
 }
 
+class LiveSocket {
+  static last: LiveSocket | null = null;
+  readyState = 0;
+  onopen: ((e: unknown) => void) | null = null; onmessage: ((e: { data: unknown }) => void) | null = null;
+  onclose: ((e: { code: number; reason: string }) => void) | null = null; onerror: ((e: unknown) => void) | null = null;
+  constructor() { LiveSocket.last = this; }
+  nonce?: string;
+  send(text: string): void { this.nonce = JSON.parse(text).nonce; }
+  close(): void { this.readyState = 3; }
+}
+
 const realWebSocket = globalThis.WebSocket;
 const bim = createBimContext({ backend: new LocalBackend(useViewerStore) });
 
@@ -380,21 +391,51 @@ describe('a live connection is visible with Disconnect in every layout (#9523 re
     assert.ok(button(/^Connect local agent$/), 'back to the connect action');
   });
 
+  it('retries a transiently failed resume on visibility and rotates the ticket only after welcome (#11674)', async () => {
+    const session = await import('@/lib/agent-bridge/session');
+    const storage = window.sessionStorage;
+    const storageKey = 'ifc-lite.bridge.resume';
+    const key = 'ab'.repeat(32);
+    const ticket = JSON.stringify({ port: 21517, key });
+    globalThis.WebSocket = LiveSocket as unknown as typeof WebSocket;
+    render(withBim(<AgentBridgeHost />));
+    storage.setItem(storageKey, ticket);
+    try {
+      const previous = LiveSocket.last;
+      window.dispatchEvent(new window.Event('online'));
+      await waitFor(() => LiveSocket.last !== previous, 'first reconnect opened a socket');
+      const first = LiveSocket.last!;
+      first.onclose?.({ code: 1006, reason: '' });
+      assert.equal(storage.getItem(storageKey), ticket);
+      document.dispatchEvent(new window.Event('visibilitychange'));
+      await waitFor(() => LiveSocket.last !== first, 'visibility retried the saved ticket');
+      const second = LiveSocket.last!;
+      second.readyState = 1;
+      second.onopen?.({});
+      await waitFor(() => !!second.nonce, 'retry sent its verified hello');
+      const mac = (role: string) => createHmac('sha256', key).update('ifc-lite/' + role + '/' + second.nonce).digest('hex');
+      assert.equal(storage.getItem(storageKey), ticket);
+      second.onmessage?.({ data: JSON.stringify({ type: 'welcome', proof: mac('bridge'), protocol: 1,
+        sessionId: 'resumed', permission: 'read-only', readOnlyCeiling: false }) });
+      assert.equal(getAgentBridgeState().status.kind, 'connected');
+      assert.deepEqual(JSON.parse(storage.getItem(storageKey)!), { port: 21517, key: mac('next') });
+      session.disconnectAgentBridge();
+      assert.equal(storage.getItem(storageKey), null);
+      storage.setItem(storageKey, ticket);
+      window.dispatchEvent(new window.Event('online'));
+      await waitFor(() => LiveSocket.last !== second, 'opened a socket for the rejected ticket');
+      LiveSocket.last!.onclose?.({ code: 4401, reason: 'pairing failed' });
+      assert.equal(storage.getItem(storageKey), null);
+    } finally {
+      session.disconnectAgentBridge();
+    }
+  });
+
   it('a drop while no dialog is open is announced with a toast and stays in the Sources row', async () => {
     const { Toaster } = await import('@/components/ui/toast');
     const { latestToast } = await import('@/test/toasts');
     const { LocalAgentSourceRow } = await import('@/components/sources/LocalAgentSourceRow');
     const session = await import('@/lib/agent-bridge/session');
-    class LiveSocket {
-      static last: LiveSocket | null = null;
-      readyState = 0;
-      onopen: ((e: unknown) => void) | null = null; onmessage: ((e: { data: unknown }) => void) | null = null;
-      onclose: ((e: { code: number; reason: string }) => void) | null = null; onerror: ((e: unknown) => void) | null = null;
-      constructor() { LiveSocket.last = this; }
-      nonce?: string;
-      send(text: string): void { this.nonce = JSON.parse(text).nonce; }
-      close(): void { this.readyState = 3; }
-    }
     render(<><Toaster /><LocalAgentSourceRow /></>);
     session.connectAgentBridge({ port: 21517, code: CODE, bim, WebSocket: LiveSocket as unknown as NonNullable<Parameters<typeof session.connectAgentBridge>[0]['WebSocket']> });
     const socket = LiveSocket.last as LiveSocket;

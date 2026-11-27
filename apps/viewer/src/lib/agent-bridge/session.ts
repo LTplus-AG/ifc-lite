@@ -130,7 +130,7 @@ export function connectAgentBridge({ port, code, bim, WebSocket, resume = false 
     return;
   }
   active?.disconnect();
-  saveTicket();
+  if (!resume) saveTicket();
   // Surfaces belong to the agent that pushed them: a click must never reach a different agent.
   agentSurfaces.clear();
   const lifetime = new AbortController();
@@ -157,7 +157,10 @@ export function connectAgentBridge({ port, code, bim, WebSocket, resume = false 
       if (status.kind !== 'connected' && status.kind !== 'connecting') flushActivity();
       if (status.kind === 'disconnected' && status.reason !== 'connection-lost' && status.reason !== 'page-hidden') saveTicket();
       updateAgentBridgeState({ status });
-      if (resume && status.kind === 'error') toast.error(resolve('agentBridge.failure.pairingFailed'), 'agent-bridge-resume');
+      if (resume && status.kind === 'error' && status.code === 'pairing-failed') {
+        saveTicket();
+        toast.error(resolve('agentBridge.failure.pairingFailed'), 'agent-bridge-resume');
+      }
       if (wasConnected) announceEnded(status);
       wasConnected = status.kind === 'connected';
     },

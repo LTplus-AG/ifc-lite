@@ -71,27 +71,25 @@ function addString(set: Set<string>, value: unknown): void {
  * a follow-up's `prompt` (`{ label, prompt }`), and an event action's
  * `userMessage` and `context.prompt`.
  */
-function collect(messages: readonly unknown[], into: Surface): void {
-  for (const message of messages) {
-    if (!isRecord(message)) continue;
-    const body = message.createSurface ?? message.updateComponents;
-    if (!isRecord(body)) continue;
-    const components = body.components;
-    if (!Array.isArray(components)) continue;
-    for (const component of components) {
-      if (!isRecord(component)) continue;
-      if (component.component === 'ActionBar' && Array.isArray(component.followUps)) {
-        for (const entry of component.followUps) {
-          if (isRecord(entry) && 'label' in entry) addString(into.prompts, entry.prompt);
-        }
+function collect(message: unknown, into: Surface): void {
+  if (!isRecord(message)) return;
+  const body = message.createSurface ?? message.updateComponents;
+  if (!isRecord(body)) return;
+  const components = body.components;
+  if (!Array.isArray(components)) return;
+  for (const component of components) {
+    if (!isRecord(component)) continue;
+    if (component.component === 'ActionBar' && Array.isArray(component.followUps)) {
+      for (const entry of component.followUps) {
+        if (isRecord(entry) && 'label' in entry) addString(into.prompts, entry.prompt);
       }
-      if (component.component !== 'Button' || !isRecord(component.action)) continue;
-      const event = component.action.event;
-      if (!isRecord(event) || typeof event.name !== 'string') continue;
-      addString(into.events, event.name);
-      addString(into.prompts, event.userMessage);
-      if (event.name === ASK_EVENT && isRecord(event.context)) addString(into.prompts, event.context.prompt);
     }
+    if (component.component !== 'Button' || !isRecord(component.action)) continue;
+    const event = component.action.event;
+    if (!isRecord(event) || typeof event.name !== 'string') continue;
+    addString(into.events, event.name);
+    addString(into.prompts, event.userMessage);
+    if (event.name === ASK_EVENT && isRecord(event.context)) addString(into.prompts, event.context.prompt);
   }
 }
 

@@ -238,7 +238,9 @@ pub fn convert_step_line(
         if let Some(repointed) = checks.structural.values.placement(express_id).and_then(|p| crate::step_log::replace_argument(&converted, 5, &format!("#{p}"))) {
             converted = repointed;
         }
-        converted = checks.enums.apply(checks.forms.apply(converted, cfrom, cto, express_id, &mut checks.attribute_values_dropped)?, cto);
+        let formed = checks.forms.apply(converted, cfrom, cto, express_id, &mut checks.attribute_values_dropped)?;
+        converted = if cto == "IFC2X3" { checks.enums.apply_with_source(formed, cto, Some((&line, cfrom))) }
+            else { checks.enums.apply(formed, cto) };
         converted = checks.documents.apply(express_id, converted, &mut checks.attribute_values_dropped);
         if cto == "IFC2X3" { converted = checks.structural.after(express_id, converted); }
         let deferred = checks.typed_properties.capture(line.as_ref(), cfrom, cto, express_id);
@@ -309,9 +311,9 @@ fn convert_record(
         return Ok(format!("{prefix}{}({attrs});", rename_type(&entity_type, cfrom, cto).unwrap_or(&entity_type)));
     }
     let merged = checks.as_ref().is_some_and(|c| c.merged);
-    let (plan, dropped) = match checks {
-        Some(c) => (c.plans.get(&entity_type, cfrom, cto), Some(&mut c.attribute_values_dropped)),
-        None => (plan_for(&entity_type, cfrom, cto), None),
+    let plan = match checks.as_deref_mut() {
+        Some(c) => c.plans.get(&entity_type, cfrom, cto),
+        None => plan_for(&entity_type, cfrom, cto),
     };
     let mut lost = 0usize;
     let out = match plan {
@@ -339,7 +341,9 @@ fn convert_record(
             let rebuilt;
             let attrs = match replaced.filter(|&i| args.get(i).is_some_and(|v| !slot_is(v, "$"))) {
                 Some(i) => {
-                    lost += usize::from(holds_value(&args[i]));
+                    if holds_value(&args[i]) {
+                        lost += 1;
+                    }
                     args[i] = "$".to_owned();
                     rebuilt = args.join(",");
                     rebuilt.as_str()
@@ -359,6 +363,9 @@ fn convert_record(
                 // `GridFrames` already wrote this one in the target's layout.
                 Adjust::ByName(_, tgt) if &*entity_type == crate::schema_grid_frames::GRID_PLACEMENT && args.len() == tgt.len() => Cow::Borrowed(attrs),
                 Adjust::ByName(src, tgt) => {
+                    if new_type == "IFCBUILDINGSTOREY" {
+                        if let Some(c) = checks.as_deref_mut() { c.forms.omit_storey_attributes(&entity_type, &args, src, tgt); }
+                    }
                     lost += values_without_a_name(&args, src, tgt, cause_carried);
                     Cow::Owned(remap_attrs_by_name(&args, src, tgt))
                 }
@@ -369,8 +376,8 @@ fn convert_record(
             format!("{prefix}{new_type}({final_attrs});")
         }
     };
-    if let Some(dropped) = dropped {
-        *dropped += lost;
+    if let Some(c) = checks {
+        c.attribute_values_dropped += lost;
     }
     Ok(out)
 }
@@ -380,7 +387,6 @@ pub(crate) fn targets_ifc2x3(to: &str) -> bool {
     SchemaFamily::from_label(to) == Some(SchemaFamily::Ifc2x3)
 }
 
-/// True when converting between these schemas changes entity types/attributes.
 pub fn needs_conversion(from: &str, to: &str) -> bool {
     canon(from) != canon(to)
 }

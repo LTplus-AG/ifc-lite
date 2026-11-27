@@ -98,9 +98,9 @@ for (const behindSpace of [false, true]) {
     const handles = behindSpace ? [mesh, space] : [mesh];
     t.mock.method(renderer.getScene(), 'getMeshes', () => handles);
     t.mock.method(renderer.getScene(), 'getMeshDataPieces', (id: number) => [id === 9100 ? space : mesh]);
-    const ctx = pointer(), hiddenIds = new Set([99]);
+    const ctx = pointer(), hiddenIds = new Set(behindSpace ? [99] : []);
     ctx.renderer = renderer;
-    ctx.getPickOptions = () => ({ hiddenIds, isolatedIds: null, isStreaming: false });
+    ctx.getPickOptions = () => ({ hiddenIds: hiddenIds.size ? hiddenIds : new Set(), isolatedIds: null, isStreaming: false });
     let picked: number | undefined;
     ctx.setSnapTarget = snap => { picked = snap?.expressId; };
     const at = camera.projectToScreen({ x: 4, y: 0, z: -3 }, 800, 600)!;

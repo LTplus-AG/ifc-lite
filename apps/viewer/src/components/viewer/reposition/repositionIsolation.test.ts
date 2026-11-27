@@ -25,6 +25,27 @@ describe('Reposition isolation set (#11504)', () => {
     assert.equal(isolationFor(isolated), isolationFor(isolated));
   });
 
+  it('#11753 tracks eligible additions on the same isolation set', () => {
+    const isolationFor = createIsolationFor(allowed);
+    const isolated = new Set([1]);
+    assert.deepEqual([...isolationFor(isolated)], [1]);
+    isolated.add(2);
+    const expanded = isolationFor(isolated);
+    assert.deepEqual([...expanded], [1, 2]);
+    assert.equal(isolationFor(isolated), expanded);
+  });
+
+  it('#11753 replaces eligible ID 1 with 3 when isolation size stays constant', () => {
+    const isolationFor = createIsolationFor(allowed);
+    const isolated = new Set([1, 2]);
+    assert.deepEqual([...isolationFor(isolated)], [1, 2]);
+    isolated.delete(1);
+    isolated.add(3);
+    const swapped = isolationFor(isolated);
+    assert.deepEqual([...swapped], [2, 3]);
+    assert.equal(isolationFor(isolated), swapped);
+  });
+
   it('returns a new set when the isolation changes', () => {
     const isolationFor = createIsolationFor(allowed);
     const first = isolationFor(new Set([1, 2]));

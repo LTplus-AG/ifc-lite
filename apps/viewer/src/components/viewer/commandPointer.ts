@@ -85,7 +85,7 @@ function onPlane(ctx: MouseHandlerContext, plane: Workplane, x: number, y: numbe
 // The idle corner grid keys visibility by set identity. Reuse the combined mask
 // while the host visibility and the command's few extra exclusions are unchanged.
 const commandMasks = new WeakMap<MouseHandlerContext, {
-  base: Set<number>; members: number[]; extra: number[]; hidden: Set<number>;
+  members: number[]; extra: number[]; hidden: Set<number>;
 }>();
 
 /** Pick options that never hit the command's own ghost preview. */
@@ -101,14 +101,14 @@ function pickOptions(ctx: MouseHandlerContext, command: ModelingCommand, spaces:
     for (let i = 0; i < GHOST_PICK_GUARD; i++) extra.push(first + i);
   }
   const cached = commandMasks.get(ctx);
-  if (cached?.base === options.hiddenIds && cached.members.length === options.hiddenIds.size
+  if (cached && cached.members.length === options.hiddenIds.size
     && cached.members.every(id => options.hiddenIds.has(id))
     && cached.extra.length === extra.length && extra.every((id, i) => id === cached.extra[i])) {
     return { ...options, hiddenIds: cached.hidden };
   }
   const hiddenIds = new Set(options.hiddenIds);
   for (const id of extra) hiddenIds.add(id);
-  commandMasks.set(ctx, { base: options.hiddenIds, members: [...options.hiddenIds], extra, hidden: hiddenIds });
+  commandMasks.set(ctx, { members: [...options.hiddenIds], extra, hidden: hiddenIds });
   return { ...options, hiddenIds };
 }
 

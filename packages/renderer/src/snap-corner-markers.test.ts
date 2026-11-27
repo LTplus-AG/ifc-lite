@@ -121,6 +121,7 @@ describe('ScreenCornerIndex.candidatesNear (#11504)', () => {
       return new Set(index.candidatesNear(405, 295, 48, 12).map((c) => c.expressId));
     };
     assert.deepEqual([...idsNear()], [2], 'only the corners of the covering box');
+    assert.deepEqual([...idsNear({ occlusionTolerance: NaN })], [2], '#11746 markers use the same guarded depth as picking');
     assert.deepEqual([...idsNear({ ignoreOcclusion: true })].sort(), [1, 2], 'x-ray lists the hidden corners too');
     const nothingHit = new ScreenCornerIndex();
     run(nothingHit, pieces, { x: 405, y: 295 }, { hitDistance: null });

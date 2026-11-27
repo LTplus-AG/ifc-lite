@@ -470,6 +470,46 @@ describe('RaycastEngine.raycastScene', () => {
     assert.equal(settle({ isolatedIds: new Set([1025]) }, new Set([7])).snapTarget?.expressId, 1025);
   });
 
+  for (const field of ['hiddenIds', 'isolatedIds'] as const) {
+    it(`#11753 keeps the run-start ${field} during sliced occurrence discovery`, () => {
+      const scene = new Scene();
+      const shard = instancedTriangle(1025);
+      const other = { ...shard.instances[0], entityId: 1026, transform: shard.instances[0].transform.slice() };
+      other.transform[3] = 15;
+      shard.instances.push(other);
+      scene.addInstancedShard(instancedDevice(), shard, 7);
+      const camera = orthoCameraLookingDownZ([0, 0, 0], 50);
+      const initialMember = field === 'isolatedIds' ? 1025 : 1026;
+      const original = new Set([initialMember]);
+      const current = new Set(original);
+      function picker() {
+        const engine = engineFor(scene, camera), idle = new ManualIdleHost();
+        const pick = (x: number, ids: Set<number>) => {
+          const at = camera.projectToScreen({ x, y: 5, z: 0 }, 800, 600)!;
+          return engine.raycastSceneMagnetic(at.x, at.y - 5,
+            { edge: null, meshExpressId: null, lockStrength: 0 },
+            { [field]: ids, snapOptions: { screenCornerSnap: { idleHost: idle, settleMs: 0 } } }).snapTarget?.expressId;
+        };
+        return { idle, pick };
+      }
+      const fresh = picker();
+      fresh.pick(0, current);
+      fresh.idle.drain();
+      const expected = [fresh.pick(0, current), fresh.pick(15, current)];
+      assert.deepEqual(expected, [1025, undefined]);
+      const sliced = picker();
+      sliced.pick(0, original);
+      assert.ok(sliced.idle.tick(0));
+      sliced.pick(0, current);
+      original.clear();
+      original.add(initialMember === 1025 ? 1026 : 1025);
+      sliced.idle.drain();
+      original.clear();
+      original.add(initialMember);
+      assert.deepEqual([sliced.pick(0, current), sliced.pick(15, current)], expected);
+    });
+  }
+
   it('#11753 builds an on-screen GPU corner before offscreen flat geometry', t => {
     const scene = new Scene();
     for (let i = 0; i < 24; i++) {

@@ -9,6 +9,7 @@
  * out what models are loaded and what's in them.
  */
 
+import { withSourceWriteLock } from '../source-write-lock.js';
 import {
   extractGeoreferencingOnDemand,
   extractLengthUnitScale,
@@ -141,35 +142,29 @@ export const modelLoad: Tool = {
     const filePath = await resolveSafePath(input.file_path, ctx, 'read');
     // The id the loader would pick, so a refusal costs no parse.
     const id = (input.model_id as string | undefined) ?? deriveModelId(basename(filePath));
-    // Cheap checks before the parse, against the live scope (setScope may have narrowed it).
-    assertMayLoadAs(id, ctx, ctx.currentScope?.() ?? ctx.scope);
-    assertMayDiscard(id, ctx, ctx.currentScope?.() ?? ctx.scope);
     try {
-      const loaded = await loadIfcModel(filePath, {
-        modelId: id,
-        // The checked path is the only root: the loader refuses it if the file
-        // was swapped for a symlink since the check (see loadIfcModel for limits).
-        allowedPaths: [filePath],
-      });
-      // While the file parsed, the scope may have been narrowed (setScope) or
-      // the call cancelled: check again before the registry replaces anything.
-      try {
-        const live = ctx.currentScope?.() ?? ctx.scope;
-        if (!scopeAllows(live, 'read')) {
-          throw new ToolExecutionError({ code: ToolErrorCode.PERMISSION_DENIED, message: 'This token no longer has read scope.' });
-        }
-        assertMayLoadAs(id, ctx, live);
-        assertMayDiscard(id, ctx, live);
-        if (ctx.signal.aborted) throw new ToolExecutionError({ code: ToolErrorCode.CANCELLED, message: 'model_load was cancelled.' });
-      } catch (refused) {
+      const loaded = await withSourceWriteLock(ctx.registry, async () => {
+        assertModelLoadAccess(id, ctx);
+        const model = await loadIfcModel(filePath, {
+          modelId: id,
+          // The checked path is the only root: the loader refuses it if the file
+          // was swapped for a symlink since the check (see loadIfcModel for limits).
+          allowedPaths: [filePath],
+        });
+        // The scope, pending edits or cancellation can change during the parse.
         try {
-          loaded.backend.dispose();
-        } catch (disposeError) {
-          ctx.log.log('warning', 'model_load: dispose after refusal failed', { error: String(disposeError) });
+          assertModelLoadAccess(id, ctx);
+        } catch (refused) {
+          try {
+            model.backend.dispose();
+          } catch (disposeError) {
+            ctx.log.log('warning', 'model_load: dispose after refusal failed', { error: String(disposeError) });
+          }
+          throw refused;
         }
-        throw refused;
-      }
-      ctx.registry.add(loaded);
+        ctx.registry.add(model);
+        return model;
+      });
       ctx.log.log('info', 'model_load', { id: loaded.id, file: filePath, entities: loaded.store.entityCount });
       // A model the scan read short is reported as such, in the text the
       // agent reads and in the structured result (#7610).
@@ -191,6 +186,18 @@ export const modelLoad: Tool = {
     }
   },
 };
+
+function assertModelLoadAccess(id: string, ctx: ToolContext): void {
+  if (ctx.signal.aborted) {
+    throw new ToolExecutionError({ code: ToolErrorCode.CANCELLED, message: 'model_load was cancelled.' });
+  }
+  const live = ctx.currentScope?.() ?? ctx.scope;
+  if (!scopeAllows(live, 'read')) {
+    throw new ToolExecutionError({ code: ToolErrorCode.PERMISSION_DENIED, message: 'This token no longer has read scope.' });
+  }
+  assertMayLoadAs(id, ctx, live);
+  assertMayDiscard(id, ctx, live);
+}
 
 /**
  * `model_load` needs only `read` scope (#11534), so it must not become a way

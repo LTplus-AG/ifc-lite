@@ -21,10 +21,11 @@ import { InProcessTransport } from '../transport/in-process.js';
 import { ENFORCED_KEYWORDS } from '../validate.js';
 import { VIEWER_DISPLAY } from './annotations.js';
 import { buildDefaultToolRegistry } from './index.js';
+import { transformTools } from './transform.js';
 import { ToolRegistry } from './types.js';
 
 /** Bytes of the full-scope `tools/list` result. Lower it when the catalog shrinks; raising it needs a reason in the commit message. */
-const TOOLS_LIST_BUDGET = 135_000;
+const TOOLS_LIST_BUDGET = 149_000;
 
 /**
  * `propose_flow` is read scope by design (a read token may propose; a
@@ -108,6 +109,11 @@ describe('tool catalog', () => {
       expect(Object.keys(t.annotations ?? {}).sort(), t.name).toEqual(['destructiveHint', 'idempotentHint', 'openWorldHint', 'readOnlyHint']);
     }
     expect(listed.find((t) => t.name === 'cost_data')).toMatchObject({ title: 'Cost data', annotations: { readOnlyHint: true, openWorldHint: false } });
+    // Preserve the pre-transform budget while accounting for the six new wire contracts (#11583).
+    const transformNames = new Set(transformTools.map((tool) => tool.name));
+    const transformBytes = listed.filter((tool) => transformNames.has(tool.name))
+      .reduce((sum, tool) => sum + Buffer.byteLength(JSON.stringify(tool)) + 1, 0); // includes each array separator
+    expect(bytes - transformBytes).toBeLessThanOrEqual(135_000);
     expect(bytes).toBeLessThanOrEqual(TOOLS_LIST_BUDGET);
   });
 

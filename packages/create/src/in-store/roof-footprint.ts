@@ -26,7 +26,7 @@ import { PropertyValueType } from '@ifc-lite/data';
 import { effectiveReferencers } from '@ifc-lite/export';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
-import { toNativeLength, type SpatialAnchor } from './anchor.js';
+import { toNativeLength, type AuthoringGuidOptions, type SpatialAnchor } from './anchor.js';
 import { emitExtrudedSolid, emitPolygonProfile } from './_emit-helpers.js';
 import { getModelLengthUnitScale } from './edit/length-unit-scale.js';
 import { refId } from './host-geometry-frame.js';
@@ -284,7 +284,7 @@ export function readFootprintRoofInStore(store: IfcDataStore, roofId: number, vi
  * thickness) and rebuild its planes, as one atomic edit: a refusal writes nothing.
  * Identity, placement, containment and properties are kept; the body is replaced.
  */
-export function editFootprintRoofInStore(store: IfcDataStore, editor: StoreEditor, roofId: number, patch: RoofFootprintEdit): FootprintRoofDefinition {
+export function editFootprintRoofInStore(store: IfcDataStore, editor: StoreEditor, roofId: number, patch: RoofFootprintEdit, options: AuthoringGuidOptions = {}): FootprintRoofDefinition {
   return editor.runAtomic((draft) => {
     const view = draft.getMutationView();
     const current = readFootprintRoofInStore(store, roofId, view);
@@ -320,7 +320,7 @@ export function editFootprintRoofInStore(store: IfcDataStore, editor: StoreEdito
     if (roof.attributes.length > 8) draft.setPositionalAttribute(roofId, 8, `.${body.plan.shapeType}.`);
     const definition = { ...next, PredefinedType: body.plan.shapeType };
     writeFootprintDefinition(view, roofId, definition);
-    writeRoofPlaneParts(draft, { ...scale, getMeasureUnitScales: () => projectMeasureScales(store) }, roofId, body, next.Thickness, store, body.planeMeasurements);
+    writeRoofPlaneParts(draft, { ...scale, getMeasureUnitScales: () => projectMeasureScales(store), guidRandom: options.guidRandom }, roofId, body, next.Thickness, store, body.planeMeasurements);
     removeUnusedRoofBodies(store, draft, oldBodies);
     removeReplacedPlanes(store, draft, replaced);
     refreshTopAttachmentsInStore({ dataStore: store, view, editor: draft }, [roofId]);

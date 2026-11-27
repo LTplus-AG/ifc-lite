@@ -9,6 +9,7 @@ import { getSchemaRegistryForVersion, type IfcDataStore } from '@ifc-lite/parser
 import { recordSessionMutation, type StoreEditor } from '@ifc-lite/mutations';
 import { addSpaceToStore } from './space.js';
 import { GENERATED_SPACE_OBJECTTYPE } from './generate-spaces.js';
+import type { AuthoringGuidOptions } from './anchor.js';
 import { resolveSpatialAnchor } from './resolve-anchor.js';
 import { resolveSplitTarget, type SlabSplitChain } from './edit/split-target.js';
 import { getModelLengthUnitScale } from './edit/length-unit-scale.js';
@@ -51,10 +52,10 @@ export function roomChainInStore(store: IfcDataStore, editor: StoreEditor, id: n
 }
 
 /** Auto/pick/draw commit their supplied native outlines together as one operation. */
-export function createRoomsInStore(store: IfcDataStore, editor: StoreEditor, storeyId: number, rooms: readonly NewRoom[]): number[] {
+export function createRoomsInStore(store: IfcDataStore, editor: StoreEditor, storeyId: number, rooms: readonly NewRoom[], options: AuthoringGuidOptions = {}): number[] {
   if (rooms.length > 10000) throw new Error('Room batch exceeds 10000 rooms');
   return editor.runAtomic(draft => {
-    const anchor = resolveSpatialAnchor(store, storeyId, draft.getMutationView());
+    const anchor = { ...resolveSpatialAnchor(store, storeyId, draft.getMutationView()), guidRandom: options.guidRandom };
     return rooms.map(room => addSpaceToStore(draft, anchor, {
       Profile: 'polygon', OuterCurve: room.outline, Position: [0, 0, room.z], Height: room.height, Name: room.Name,
       ...(room.PredefinedType !== undefined ? { PredefinedType: room.PredefinedType } : {}),
@@ -120,7 +121,7 @@ function faceHolding<F extends LayoutFace>(faces: readonly F[], p: Pt): F | null
 }
 
 /** Native layout edit keeps the larger split/merged room identity and its metadata. */
-export function syncRoomLayoutInStore(store: IfcDataStore, editor: StoreEditor, before: readonly RoomCandidate[], after: readonly LayoutFace[], globalIdScopes: readonly GlobalIdScope[] = [], editedStoreyId?: number): LayoutSync {
+export function syncRoomLayoutInStore(store: IfcDataStore, editor: StoreEditor, before: readonly RoomCandidate[], after: readonly LayoutFace[], globalIdScopes: readonly GlobalIdScope[] = [], editedStoreyId?: number, options: AuthoringGuidOptions = {}): LayoutSync {
   return editor.runAtomic(draft => {
     const out: LayoutSync = { created: [], deleted: [], remesh: [] }, view = draft.getMutationView();
     const seen = new Set(view.getMutations().map(mutation => mutation.id));
@@ -143,7 +144,7 @@ export function syncRoomLayoutInStore(store: IfcDataStore, editor: StoreEditor, 
       if (classification == null && !registry.entities.IfcSpace.allAttributes![9].optional) throw new Error('Room layout requires source classification');
       const target = roomChainInStore(store, draft, link.expressId);
       if (!target.ok) throw new Error('Room layout requires a storey');
-      const added = addSpaceToStore(draft, resolveSpatialAnchor(store, target.storeyId, view), {
+      const added = addSpaceToStore(draft, { ...resolveSpatialAnchor(store, target.storeyId, view), guidRandom: options.guidRandom }, {
         Profile: 'polygon', Position: [0, 0, chain.baseElevation], OuterCurve: outlineOf(cutFace, link), Height: chain.thickness,
         ...(typeof attrs[2] === 'string' ? { Name: attrs[2] } : {}),
         ...(typeof classification === 'string' ? { PredefinedType: classification.replace(/^\.|\.$/g, '') } : {}),

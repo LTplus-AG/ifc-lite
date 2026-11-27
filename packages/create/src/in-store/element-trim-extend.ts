@@ -5,7 +5,7 @@
 import { editOwnershipRefusal } from '@ifc-lite/export';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { StoreEditor } from '@ifc-lite/mutations';
-import { toNativeLength } from './anchor.js';
+import { toNativeLength, type AuthoringGuidOptions } from './anchor.js';
 import { readWallJoinTarget } from './wall-join-read.js';
 import { joinWallsInStore, resolveWallJoinAnchor } from './wall-join-edit.js';
 import { reanchorHostedOpeningsInStore } from './hosted-placement-edit.js';
@@ -36,7 +36,7 @@ export interface ElementTrimExtendResult {
 
 /** #6232 D5: live planning, resize, hosted refit and boundary join commit as
  * one atomic edit. No UI-only write path can diverge from this operation. */
-export function trimExtendElementInStore(store: IfcDataStore, editor: StoreEditor, id: number, params: ElementTrimExtendParams): ElementTrimExtendResult {
+export function trimExtendElementInStore(store: IfcDataStore, editor: StoreEditor, id: number, params: ElementTrimExtendParams, guidOptions: AuthoringGuidOptions = {}): ElementTrimExtendResult {
   if (params.mode !== 'trim' && params.mode !== 'extend') throw new Error('Trim/extend mode must be trim or extend');
   if (params.click.length !== 2 || !params.click.every(Number.isFinite)) throw new Error('Trim/extend click must be finite');
   return editor.runAtomic(draft => {
@@ -75,7 +75,7 @@ export function trimExtendElementInStore(store: IfcDataStore, editor: StoreEdito
     if (!plan.ok) throw new Error(`Trim/extend refused: ${plan.reason}${plan.detail ? `: ${plan.detail}` : ''}`);
     const walls = new Set<number>([id]);
     if (read) {
-      const result = resizeWallInStore({ dataStore: store, view, editor: draft }, id, plan.start, plan.stop);
+      const result = resizeWallInStore({ dataStore: store, view, editor: draft, guidRandom: guidOptions.guidRandom }, id, plan.start, plan.stop);
       if (!result.ok) throw new Error(result.reason);
       for (const wall of result.walls) walls.add(wall);
       const after = readWallJoinTarget(store, view, id, scale);
@@ -88,7 +88,7 @@ export function trimExtendElementInStore(store: IfcDataStore, editor: StoreEdito
           reanchorHostedOpeningsInStore(store, draft, id, [toNativeLength({ lengthUnitScale: scale }, along), toNativeLength({ lengthUnitScale: scale }, across), 0]);
       }
       if ('wallId' in params.boundary) {
-        joinWallsInStore(draft, store, resolveWallJoinAnchor(store, view), params.boundary.wallId, id);
+        joinWallsInStore(draft, store, resolveWallJoinAnchor(store, view, guidOptions.guidRandom), params.boundary.wallId, id);
         walls.add(params.boundary.wallId);
       }
     } else {

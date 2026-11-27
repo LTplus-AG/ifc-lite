@@ -54,12 +54,12 @@ import {
   type WallJoinApplyOptions,
   addStairToStore,
   addRailingToStore,
-  resolveSpatialAnchor,
   type StairInStoreParams,
   type RailingInStoreParams,
   removeStairInStore,
   replaceElementInStore,
 } from '@ifc-lite/create';
+import { seededSpatialAnchor } from './seeded-anchor.js';
 import type { CostStoreModelResolution } from './cost-store-backend.js';
 import type { ModellingStoreBackendMethodsWithoutStoreys } from './store-modelling-types.js';
 import type { EntityRef } from './types.js';
@@ -77,10 +77,10 @@ export type ModellingStoreModelResolver = (modelId?: string) => CostStoreModelRe
  */
 export function createModellingStoreBackendWithoutStoreys(resolve: ModellingStoreModelResolver): ModellingStoreBackendMethodsWithoutStoreys {
   const ref = (modelId: string, expressId: number): EntityRef => ({ modelId, expressId });
-  const editTarget = (model: CostStoreModelResolution) => ({ dataStore: model.store, view: model.mutationView, editor: model.editor });
+  const editTarget = (model: CostStoreModelResolution) => ({ dataStore: model.store, view: model.mutationView, editor: model.editor, guidRandom: model.guidRandom });
   const authoring = (modelId: string) => {
     const model = resolve(modelId);
-    return { model, anchor: { ...resolveAuthoringAnchor(model.store, model.mutationView), ownerHistoryId: model.ownerHistoryId } };
+    return { model, anchor: { ...resolveAuthoringAnchor(model.store, model.mutationView), ownerHistoryId: model.ownerHistoryId, guidRandom: model.guidRandom } };
   };
   /**
    * Refuse, before anything is written, a relating entity or an object that is
@@ -100,39 +100,39 @@ export function createModellingStoreBackendWithoutStoreys(resolve: ModellingStor
   return {
     mirrorElements(modelId, ids, params) {
       const model = resolve(modelId);
-      return mirrorElementsInStore(model.store, model.editor, ids, params).map(id => ref(model.modelId, id));
+      return mirrorElementsInStore(model.store, model.editor, ids, params, { guidRandom: model.guidRandom }).map(id => ref(model.modelId, id));
     },
     addClassification(modelId, params) {
       const model = resolve(modelId);
-      return ref(model.modelId, addClassificationInStore(model.store, model.editor, params));
+      return ref(model.modelId, addClassificationInStore(model.store, model.editor, params, { guidRandom: model.guidRandom }));
     },
     assignClassification(modelId, classificationId, objects) {
       const model = resolve(modelId);
-      return ref(model.modelId, assignClassificationInStore(model.store, model.editor, classificationId, objects));
+      return ref(model.modelId, assignClassificationInStore(model.store, model.editor, classificationId, objects, { guidRandom: model.guidRandom }));
     },
     ...createPhysicalStoreBackend(resolve),
     ...createRoofStoreBackend(resolve),
     copyElements(modelId, expressIds, transforms) {
       const model = resolve(modelId);
-      const results = copyBatchInStore(model.store, model.editor, expressIds, transforms);
+      const results = copyBatchInStore(model.store, model.editor, expressIds, transforms, { guidRandom: model.guidRandom });
       return copiedElementRefs(model.modelId, copiesOfSelection(expressIds, results, transforms.length).flat());
     },
     copyToStoreys(modelId, expressIds, storeyIds) {
       const model = resolve(modelId);
-      return copyToStoreysInStore(model.store, model.editor, expressIds, storeyIds)
+      return copyToStoreysInStore(model.store, model.editor, expressIds, storeyIds, { guidRandom: model.guidRandom })
         .map(({ storeyId, copies }) => ({ storeyId, refs: copiedElementRefs(model.modelId, copies) }));
     },
     duplicateElement(entity, options) {
       const model = resolve(entity.modelId);
       const [result] = copyBatchInStore(model.store, model.editor, [entity.expressId], [{ offset: options.offset }],
-        { duplicate: { name: options.Name } });
+        { duplicate: { name: options.Name }, guidRandom: model.guidRandom });
       return ref(model.modelId, result.copyId);
     },
     arrayElements(modelId, expressIds, params) {
       const transforms = arrayCopyTransforms(params);
       if (!transforms) throw new Error('Array requires an anchor and a nonzero linear direction');
       const model = resolve(modelId);
-      const results = copyBatchInStore(model.store, model.editor, expressIds, transforms);
+      const results = copyBatchInStore(model.store, model.editor, expressIds, transforms, { guidRandom: model.guidRandom });
       return copiedElementRefs(model.modelId, copiesOfSelection(expressIds, results, transforms.length).flat());
     },
     editHostedElement(entity, patch) {
@@ -143,7 +143,7 @@ export function createModellingStoreBackendWithoutStoreys(resolve: ModellingStor
     addCurtainWall(modelId, storeyExpressId, { TopConstraint, ...params }) {
       const model = resolve(modelId);
       const built = model.editor.runAtomic(draft => {
-        const wall = addCurtainWallToStore(draft, resolveSpatialAnchor(model.store, storeyExpressId, draft.getMutationView()), params);
+        const wall = addCurtainWallToStore(draft, seededSpatialAnchor(model, storeyExpressId, draft.getMutationView()), params);
         applyNewElementTop(model.store, draft, wall.curtainWallId, TopConstraint ?? 'auto', storeyExpressId);
         return wall;
       });
@@ -152,14 +152,14 @@ export function createModellingStoreBackendWithoutStoreys(resolve: ModellingStor
     addGrid(modelId, storeyExpressId, params) {
       const model = resolve(modelId);
       const built = model.editor.runAtomic(draft => addGridToStore(
-        draft, resolveSpatialAnchor(model.store, storeyExpressId, draft.getMutationView()), params,
+        draft, seededSpatialAnchor(model, storeyExpressId, draft.getMutationView()), params,
       ));
       return ref(model.modelId, built.gridId);
     },
     addColumnOnGrid(modelId, storeyExpressId, { TopConstraint, ...params }, binding) {
       const model = resolve(modelId);
       const built = model.editor.runAtomic(draft => {
-        const column = addColumnOnGridToStore(draft, model.store, resolveSpatialAnchor(model.store, storeyExpressId, draft.getMutationView()), params, binding);
+        const column = addColumnOnGridToStore(draft, model.store, seededSpatialAnchor(model, storeyExpressId, draft.getMutationView()), params, binding);
         applyNewElementTop(model.store, draft, column.columnId, TopConstraint ?? 'auto', storeyExpressId);
         return column;
       });
@@ -168,7 +168,7 @@ export function createModellingStoreBackendWithoutStoreys(resolve: ModellingStor
     replaceElement(entity, storeyExpressId, element) {
       const model = resolve(entity.modelId);
       const built = replaceElementInStore(model.store, model.editor, entity.expressId,
-        draft => resolveSpatialAnchor(model.store, storeyExpressId, draft.getMutationView()), element);
+        draft => seededSpatialAnchor(model, storeyExpressId, draft.getMutationView()), element);
       return ref(model.modelId, built.expressId);
     },
     removeStair(entity: EntityRef): boolean {
@@ -179,35 +179,35 @@ export function createModellingStoreBackendWithoutStoreys(resolve: ModellingStor
     addStair(modelId: string, storeyExpressId: number, params: StairInStoreParams): EntityRef {
       const model = resolve(modelId);
       const built = model.editor.runAtomic(draft => addStairToStore(
-        draft, resolveSpatialAnchor(model.store, storeyExpressId, draft.getMutationView()), params,
+        draft, seededSpatialAnchor(model, storeyExpressId, draft.getMutationView()), params,
       ));
       return ref(model.modelId, built.stairId);
     },
     addRailing(modelId: string, storeyExpressId: number, params: RailingInStoreParams): EntityRef {
       const model = resolve(modelId);
       const built = model.editor.runAtomic(draft => addRailingToStore(
-        draft, resolveSpatialAnchor(model.store, storeyExpressId, draft.getMutationView()), params,
+        draft, seededSpatialAnchor(model, storeyExpressId, draft.getMutationView()), params,
       ));
       return ref(model.modelId, built.railingId);
     },
     joinWalls(modelId: string, aExpressId: number, bExpressId: number, options: WallJoinApplyOptions = {}): EntityRef {
       const model = resolve(modelId);
       const joined = model.editor.runAtomic(draft => joinWallsInStore(
-        draft, model.store, resolveWallJoinAnchor(model.store, draft.getMutationView()), aExpressId, bExpressId, options,
+        draft, model.store, resolveWallJoinAnchor(model.store, draft.getMutationView(), model.guidRandom), aExpressId, bExpressId, options,
       ));
       return ref(model.modelId, joined.relId);
     },
     addOpening(modelId: string, hostExpressId: number, params: OpeningInStoreParams): EntityRef {
       const model = resolve(modelId);
-      return ref(model.modelId, addHostedElementInStore(model.store, model.editor, hostExpressId, { kind: 'opening', params }).expressId);
+      return ref(model.modelId, addHostedElementInStore(model.store, model.editor, hostExpressId, { kind: 'opening', params }, { guidRandom: model.guidRandom }).expressId);
     },
     addHostedDoor(modelId: string, hostExpressId: number, params: HostedDoorInStoreParams): EntityRef {
       const model = resolve(modelId);
-      return ref(model.modelId, addHostedElementInStore(model.store, model.editor, hostExpressId, { kind: 'door', params }).expressId);
+      return ref(model.modelId, addHostedElementInStore(model.store, model.editor, hostExpressId, { kind: 'door', params }, { guidRandom: model.guidRandom }).expressId);
     },
     addHostedWindow(modelId: string, hostExpressId: number, params: HostedWindowInStoreParams): EntityRef {
       const model = resolve(modelId);
-      return ref(model.modelId, addHostedElementInStore(model.store, model.editor, hostExpressId, { kind: 'window', params }).expressId);
+      return ref(model.modelId, addHostedElementInStore(model.store, model.editor, hostExpressId, { kind: 'window', params }, { guidRandom: model.guidRandom }).expressId);
     },
     addElementType(modelId: string, params: ElementTypeInStoreParams): EntityRef {
       const { model, anchor } = authoring(modelId);

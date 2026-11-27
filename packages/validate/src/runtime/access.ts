@@ -5,6 +5,8 @@
 /** Attribute access, indexing, entity constructors and assignment for compiled EXPRESS. */
 
 import { EntityInstance } from './instance.js';
+import type { TypeRef } from './schema-meta.js';
+import type { SchemaRuntime } from './schema-runtime.js';
 import type { Model } from './model.js';
 import { uniqueMembers } from './arithmetic.js';
 import { EvaluationError } from './errors.js';
@@ -50,6 +52,18 @@ export function resolve(model: Model | undefined, v: Value): Value {
   return v;
 }
 
+function applyAggregateType(schema: SchemaRuntime, type: TypeRef, value: Aggregate): Aggregate {
+  const aggregate = schema.aggregateType(type);
+  if (!aggregate) return value;
+  if (schema.aggregateType(aggregate.of)) {
+    for (const item of value) {
+      if (isAggregate(item)) applyAggregateType(schema, aggregate.of, item);
+    }
+  }
+  if (aggregate.kind === 'ARRAY' && aggregate.low !== undefined) return withLowerBound(value, aggregate.low);
+  return aggregate.kind === 'SET' ? markSet(value) : value;
+}
+
 /** `base.Name`, with `name` upper-cased by the compiler. */
 export function attr(base: Value, name: string, group?: string): Value {
   if (!(base instanceof EntityInstance)) return undefined;
@@ -59,10 +73,7 @@ export function attr(base: Value, name: string, group?: string): Value {
     case 'explicit': {
       const raw = base.attributes[slot.index];
       const value = base.transient ? raw : resolve(base.model, raw);
-      if (!isAggregate(value)) return value;
-      const agg = base.model?.schema.aggregateType(slot.attribute.type);
-      if (agg?.kind === 'ARRAY' && agg.low !== undefined) return withLowerBound(value, agg.low);
-      return agg?.kind === 'SET' ? markSet(value) : value;
+      return isAggregate(value) && base.model ? applyAggregateType(base.model.schema, slot.attribute.type, value) : value;
     }
     case 'derived': {
       const fn = slot.fn;

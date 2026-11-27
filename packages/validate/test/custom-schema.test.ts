@@ -206,3 +206,16 @@ it('compares SET OF BINARY members by bit value through STEP validation (#11647)
   const report = await validateStepText('DATA;#1=E(("0FF","0ff"));#2=E(("0FF","0fe"));#3=E(("01F","31f"));ENDSEC;', { schema, categories: ['schema'] });
   expect(report.findings.map(f => [f.instance, f.rule])).toEqual([[1, 'invalid-type']]);
 });
+
+it('applies BLENGTH in generated BINARY refinements (#11647)', () => {
+  const { schemas } = generated('SCHEMA S; TYPE Bits = BINARY; WHERE Eight : BLENGTH(SELF) = 8; END_TYPE; END_SCHEMA;');
+  expect(schemas.Bits.safeParse('0FF').success).toBe(true);
+  expect(schemas.Bits.safeParse('0F').success).toBe(false);
+});
+
+it('indexes nested ARRAY attributes with both declared bounds (#11647)', async () => {
+  const { schema } = generated(`SCHEMA S; ENTITY E; Items : ARRAY [2:3] OF ARRAY [0:1] OF INTEGER;
+WHERE First : Items[2][0] = 10; Last : Items[3][1] = 40; END_ENTITY; END_SCHEMA;`);
+  const report = await validateStepText('DATA;#1=E(((10,20),(30,40)));#2=E(((99,20),(30,40)));#3=E(((10,20),(30,99)));ENDSEC;', { schema });
+  expect(report.findings.filter(f => f.rule === 'E.First' || f.rule === 'E.Last').map(f => [f.instance, f.rule])).toEqual([[2, 'E.First'], [3, 'E.Last']]);
+});

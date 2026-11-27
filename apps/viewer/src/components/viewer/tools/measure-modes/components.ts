@@ -16,6 +16,7 @@
  */
 
 import { formatDistance } from '../formatDistance';
+import { signedByPrintedValue } from '../signedByPrintedValue';
 
 export interface Point3 {
   x: number;
@@ -62,8 +63,7 @@ export function distanceComponents(start: Point3, end: Point3): DistanceComponen
  * auto-scaled-metric behaviour.
  */
 export function formatSignedDistance(meters: number, overrides: Record<string, string> = {}): string {
-  const magnitude = formatDistance(Math.abs(meters), overrides);
-  return meters < 0 ? `-${magnitude}` : magnitude;
+  return signedByPrintedValue(meters, (magnitude) => formatDistance(magnitude, overrides), false);
 }
 
 /** One-line per-axis readout, e.g. `dX 3.000 m  dY 12.000 m  dZ 4.000 m`. */

@@ -25,7 +25,7 @@ import type { MeshGeometryCache } from './snap-geometry-cache.js';
 import { finishedBuild, type StepBuild } from './snap-geometry-build.js';
 import { CandidateBuild, type PieceCandidates } from './snap-corner-candidates.js';
 import { CornerGrid, type ScreenSnapCamera } from './snap-corner-grid.js';
-import { gridKey, idsOf } from './snap-corner-key.js';
+import { eligibleModelsKey, gridKey, idsOf } from './snap-corner-key.js';
 import { buildInstanceCorners } from './snap-corner-instances.js';
 import { PriorityOrder } from './snap-corner-priority.js';
 import { browserIdleHost, type IdleHost, type IdleSlice } from './snap-idle-host.js';
@@ -143,7 +143,7 @@ export class CornerBuildPipeline {
   }
 
   private activeOf(ctx: BuildContext): MeshData[] {
-    const filterKey = `${idsOf(ctx.hiddenIds)}|${idsOf(ctx.isolatedIds)}|${idsOf(ctx.eligible)}`;
+    const filterKey = `${idsOf(ctx.hiddenIds)}|${idsOf(ctx.isolatedIds)}|${eligibleModelsKey(ctx.eligible)}`;
     const c = this.activeCache;
     if (c && c.pieces === ctx.pieces && c.filterKey === filterKey) return c.list;
     const list = ctx.pieces.filter((p) =>

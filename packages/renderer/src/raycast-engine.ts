@@ -52,7 +52,7 @@ export class RaycastEngine {
         this.raycaster = new Raycaster();
         this.snapDetector = new SnapDetector();
         this.flatIndex = new RaycastFlatIndex(scene, BVH_THRESHOLD);
-        this.unsubscribeEviction = scene.onHostEviction?.(() => this.invalidateBVHCache());
+        this.unsubscribeEviction = scene.onHostEviction?.(() => this.clearCaches());
     }
 
     /** Slab ray-AABB test, used to cull instanced occurrences before materializing

@@ -1,9 +1,9 @@
 --- a/apps/viewer/src/components/viewer/reposition/repositionIsolation.ts
 +++ b/apps/viewer/src/components/viewer/reposition/repositionIsolation.ts
 @@ -20,5 +20,5 @@
-     if (lastResult !== null && lastIsolated === isolated) return lastResult;
+     if (lastResult && members.length === isolated.size && members.every(id => isolated.has(id))) return lastResult;
      const narrowed = new Set<number>();
 -    for (const id of allowed) narrowed.add(id);
 +    for (const id of allowed) if (isolated.has(id)) narrowed.add(id);
-     lastIsolated = isolated;
+     members = [...isolated];
      lastResult = narrowed;

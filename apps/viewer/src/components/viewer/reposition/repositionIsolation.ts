@@ -6,21 +6,18 @@
  * The isolation set a Reposition pick hands the renderer: the entities of the
  * eligible models, narrowed by the user's isolation when there is one.
  *
- * The renderer's screen-space corner index (#11504) recognises a visibility
- * set by identity and size, so the same set must come back for the same
- * inputs. Building a fresh `Set` on every pointer move made every move look
- * like a visibility change: the corner grid was never "settled" and, with any
- * isolation active, corner snapping never engaged.
+ * Reuse the narrowed set while user isolation has the same members so that
+ * repeated pointer moves can settle the renderer's corner grid.
  */
 export function createIsolationFor(allowed: Set<number>) {
-  let lastIsolated: Set<number> | null = null;
+  let members: number[] = [];
   let lastResult: Set<number> | null = null;
   return (isolated: Set<number> | null): Set<number> => {
     if (isolated === null) return allowed;
-    if (lastResult !== null && lastIsolated === isolated) return lastResult;
+    if (lastResult && members.length === isolated.size && members.every(id => isolated.has(id))) return lastResult;
     const narrowed = new Set<number>();
     for (const id of allowed) if (isolated.has(id)) narrowed.add(id);
-    lastIsolated = isolated;
+    members = [...isolated];
     lastResult = narrowed;
     return narrowed;
   };

@@ -47,7 +47,7 @@ describe('analyzeCommand --out', () => {
     const written = JSON.parse(await readFile(out, 'utf-8'));
     expect(Array.isArray(written)).toBe(true);
     expect(written[0]).toMatchObject({ rule: 'IfcWall' });
-    expect(fetchSpy).toHaveBeenCalledWith('http://localhost:3456/api/command', expect.objectContaining({ method: 'POST' }));
+    expect(fetchSpy).toHaveBeenCalledWith('http://127.0.0.1:3456/api/command', expect.objectContaining({ method: 'POST' }));
 
     // --out must suppress the stdout JSON payload — it goes to the file, not both places.
     const stdoutCalls = stdoutSpy.mock.calls.map((c: unknown[]) => String(c[0]));
@@ -63,7 +63,7 @@ describe('analyzeCommand --out', () => {
 
     const stdoutCalls = stdoutSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('');
     expect(stdoutCalls).toContain('"rule"');
-    expect(fetchSpy).toHaveBeenCalledWith('http://localhost:3456/api/command', expect.objectContaining({ method: 'POST' }));
+    expect(fetchSpy).toHaveBeenCalledWith('http://127.0.0.1:3456/api/command', expect.objectContaining({ method: 'POST' }));
   });
 });
 

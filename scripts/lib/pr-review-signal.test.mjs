@@ -116,7 +116,9 @@ test('the REAL test.yml derives the lane names the REAL rollup publishes', () =>
     'Provenance tests',
     'Rust tests',
     // #7955: the opt-in retained legs, split out so `Rust tests` fits its cap.
-    'Rust tests (retained)',
+    'Rust tests (retained browser)',
+    'Rust tests (retained cli)',
+    'Rust tests (retained rust)',
     'Rust crate semver',
     // #7655: eight unchanged-budget smoke shards each publish a distinct check run.
     ...Array.from({ length: 8 }, (_, index) => `Viewer E2E smoke (${index + 1}/8)`),
@@ -155,7 +157,7 @@ test('the REAL test.yml derives the lane names the REAL rollup publishes', () =>
   ]) {
     assert.ok(names.includes(observed), `derived set is missing the observed lane "${observed}"`);
   }
-  assert.equal(names.length, 59);
+  assert.equal(names.length, 61);
 });
 
 test('FAIL CLOSED: an empty workflow file is NO_WORKFLOW_TEXT, not an empty lane set', () => {

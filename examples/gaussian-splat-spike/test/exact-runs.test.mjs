@@ -3,14 +3,24 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { registerHooks } from 'node:module';
+import { register } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { Buffer, Device } from '@luma.gl/core';
 
 // Exercise the actual Vite transform and upstream implementation, not a copy of
 // its partitioner. On production removal, use the published renderer: its
 // approximation must fail the same ordering/preservation assertions (#8564).
-async function rendererClass(exact) {
+const rendererClasses = new Map();
+function rendererClass(exact) {
+  let renderer = rendererClasses.get(exact);
+  if (!renderer) {
+    renderer = loadRendererClass(exact);
+    rendererClasses.set(exact, renderer);
+  }
+  return renderer;
+}
+
+async function loadRendererClass(exact) {
   const pluginURL = new URL('../contract/exact-runs-plugin.mjs', import.meta.url);
   let plugin;
   try { plugin = await import(pluginURL.href); }
@@ -20,13 +30,12 @@ async function rendererClass(exact) {
   const url = new URL('splat-renderer.js', import.meta.resolve('@luma.gl/splats'));
   const transformed = await plugin?.exactRunsPlugin(exact).load(fileURLToPath(url));
   const target = `${url.href}?contract-test=${exact}`;
-  const hook = registerHooks({ load(id, context, next) {
-    return id === target && transformed
-      ? { format: 'module', source: transformed.code, shortCircuit: true }
-      : next(id, context);
-  } });
-  try { return (await import(target)).SplatRenderer; }
-  finally { hook.deregister(); }
+  if (transformed) {
+    register(new URL(`./exact-runs-loader.mjs?exact=${exact}`, import.meta.url), {
+      data: { target, source: transformed.code },
+    });
+  }
+  return (await import(target)).SplatRenderer;
 }
 
 // CPU storage at the device boundary only. Renderer partitioning, buffer reuse,

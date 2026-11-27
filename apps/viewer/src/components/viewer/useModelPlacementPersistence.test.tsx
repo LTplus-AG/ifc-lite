@@ -134,8 +134,8 @@ it('a restore made while an RTC anchor is already live never pins the frame, and
 });
 
 /** Round 6 review: `federationRtcRebase.ts` converges by calling the real
- * `rebasePlacementFrame` (a no-op by identity for translation-only
- * placements, `rebasePlacementPivots`) and then `updateModel(id, {})`, which
+ * `rebasePlacementFrame` (preserving the translation-only placements map)
+ * and then `updateModel(id, {})`, which
  * replaces `state.models` while `placements` keeps its identity. The old
  * subscription guard returned early on every `models` change, so the save
  * under the NEW rtc-suffixed key never happened, and the old key has no

@@ -14,6 +14,7 @@ import { preparePdfPagePreview } from '../pdf/page-preview.js';
 import { prepareAppearanceEntities } from '../prepare-plan.js';
 import type { CapturedAssignment } from './capture.js';
 import { resolveAppearanceAssignments } from './resolve.js';
+import { ensureExactSourceGeometry, planProductIds } from '../exact-source-geometry.js';
 
 export interface PreparedAssignmentStep {
   assignmentId: string;
@@ -101,6 +102,8 @@ async function prepareAssignments(options: PrepareAssignmentsOptions) {
     if (!plan.items.length || plan.exclusions.length || !bitmap) {
       throw new Error(`${assignment.model.name}: ${plan.exclusions[0]?.reason ?? 'Some assigned objects cannot receive this appearance. Review the scope and explicit exclusions.'}`);
     }
+    await ensureExactSourceGeometry(modelId, planProductIds(plan), signal); // compact meshes carry no corner provenance
+    validate();
     const prepared = await prepareAppearanceEntities(new StoreEditor(model.ifcDataStore, shadow), shadow, plan, snapshot.revision, { signal });
     try { validate(); prepared.prepared.commit(); } finally { prepared.prepared.dispose(); }
     steps.push({ assignmentId: assignment.id, modelId, plan, bitmap, imageUri,

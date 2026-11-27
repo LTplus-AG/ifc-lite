@@ -120,7 +120,8 @@ export function commitPlacement(state: PlacementState): PlacementState {
   return commitPlacements(state, preview.before, after);
 }
 
-function commitPlacements(
+/** Shared by the other placement commands (`two-point-align-apply.ts`): one undoable command for a group. */
+export function commitPlacements(
   state: PlacementState, before: ReadonlyMap<string, ModelPlacement>, after: ReadonlyMap<string, ModelPlacement>,
 ): PlacementState {
   const changed = [...after].some(([id, value]) => !samePlacement(value,
@@ -247,9 +248,7 @@ export function rebasePlacementPivots(
   state: PlacementState, deltas: ReadonlyMap<string, Translation>,
 ): PlacementState {
   if (deltas.size === 0) return state;
-  // Unchanged placements are returned by IDENTITY throughout, so the no-op case
-  // can be detected and the revision left alone — bumping it would cancel an
-  // in-flight asynchronous pick for nothing.
+  // Preserve the identity of placements whose pivots did not move.
   const shift = (id: string, placement: ModelPlacement): ModelPlacement => {
     const delta = deltas.get(id);
     // A zero angle carries no meaningful pivot (`equalRotation` ignores it), so
@@ -283,7 +282,10 @@ export function rebasePlacementPivots(
     ? null : state.preview;
   if (placements === state.placements && preview === state.preview
     && undo.every((command, index) => command === state.undo[index])
-    && redo.every((command, index) => command === state.redo[index])) return state;
+    && redo.every((command, index) => command === state.redo[index])) {
+    // Workspace picks can still go stale when a reference without a pivot moves.
+    return { ...state, revision: state.revision + 1 };
+  }
   return { ...state, placements, preview, undo, redo, revision: state.revision + 1 };
 }
 

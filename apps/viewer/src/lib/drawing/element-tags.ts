@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { effectiveMetadataRecord, extractPropertiesOnDemand, extractQuantitiesOnDemand } from '@ifc-lite/parser';
+import { escapeXml } from '@ifc-lite/drawing-2d';
 import type { Drawing2D, DrawingPolygon } from '@ifc-lite/drawing-2d';
 import { useViewerStore } from '@/store';
 import { toGlobalIdForRef } from '@/store/globalId';
@@ -69,7 +70,6 @@ export function resolvedElementTags(drawing: Drawing2D): TextAnnotation2D[] {
   });
 }
 
-const escapeXml = (value: string) => value.replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' })[char]!);
 export function elementTagsSvg(tags: readonly TextAnnotation2D[], map: (x: number, y: number) => Point2D, height: number): string {
   return `<g id="element-tags" fill="#000" font-family="sans-serif" font-size="${height}">` + tags.map(tag => {
     const p = map(tag.position.x, tag.position.y);

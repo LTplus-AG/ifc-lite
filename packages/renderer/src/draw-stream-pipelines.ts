@@ -4,7 +4,7 @@
 
 /** Bind group layout, pipeline layout and the lazily built render pipelines of the draw stream. */
 import type { RenderPipeline } from './pipeline.js';
-import type { OpaqueDrawMode } from './opaque-draw-variants.js';
+import { BASE_OPAQUE_MODE, type OpaqueDrawMode } from './opaque-draw-variants.js';
 import { MESH_VERTEX_BUFFERS, QUANTIZED_VERTEX_BUFFERS } from './instanced-vertex-layout.js';
 import { withSectionExclusions } from './section-exclusions.js';
 import { mainShaderSource } from './shaders/main.wgsl.js';
@@ -69,6 +69,28 @@ export class StreamPipelines {
         (err) => { if (building !== this.building) return; building.set(slot, 'failed'); console.warn(`[DrawStream] ${descriptor.label} failed to build asynchronously:`, err); });
     }
     return pending ? false : failed ? null : true;
+  }
+
+  /**
+   * The mode this frame's stream can draw with, never compiling on the frame: `mode` once both its pipelines are built
+   * (requesting their async build otherwise), else a built mode that paints the same pixels (the discarding shader
+   * where nothing clips, object-id writes the edge pass ignores), else null: the stream sits the frame out and the
+   * per-batch loop draws it. Engaging the stream, or the edge pass switching on or off as a gesture starts, used to
+   * build the new mode synchronously: one DXC compile of ~100 ms inside the next submit (orbit start on the PC RTX).
+   * A mode whose async build failed resolves to itself, and `get` builds it synchronously as before. A resting
+   * discard-free mode also starts its object-id twin off the frame, so the edge pass switching finds it built.
+   */
+  resolve(mode: OpaqueDrawMode): OpaqueDrawMode | null {
+    const ready = this.ready(mode);
+    if (ready === true && mode.discardFree) this.ready({ ...mode, objectId: !mode.objectId });
+    if (ready !== false) return mode;
+    const fallbacks: OpaqueDrawMode[] = [{ ...mode, objectId: true }, { ...mode, discardFree: false }, BASE_OPAQUE_MODE];
+    return fallbacks.find((m) => this.has(m)) ?? null;
+  }
+
+  /** Whether both layouts' pipelines for `mode` exist (starts nothing). */
+  private has(mode: OpaqueDrawMode): boolean {
+    return this.pipelines[slotOf(false, mode)] !== undefined && this.pipelines[slotOf(true, mode)] !== undefined;
   }
 
   private describe(slot: number, quantized: boolean, mode: OpaqueDrawMode): { descriptor: GPURenderPipelineDescriptor; source: string } {

@@ -171,6 +171,8 @@ test('the real test.yml aggregate is fully covered', () => {
   assert.ok(agg, 'the `test:` job must be findable by name');
   assert.ok(agg.needs.length > 5, `expected a real needs list, got ${agg.needs.length}`);
   assert.ok(agg.needs.includes('changes'), 'the path-filter job must be a dependency');
+  assert.ok(agg.needs.includes('rust-retained'), 'the retained matrix must be a dependency');
+  assert.ok(agg.judged.includes('rust-retained'), 'the retained matrix result must be judged');
   assert.deepEqual(unjudged(agg), [], 'every dependency must be judged');
   assert.deepEqual(unreachable(agg), [], 'every judgement must name a dependency');
   assert.deepEqual(agg.mismatched, [], 'every row must judge the job it names');

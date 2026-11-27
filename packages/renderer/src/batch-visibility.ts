@@ -21,7 +21,7 @@
 
 import { isEntityVisible } from './entity-visibility.js';
 import { batchEntityIdAnchor } from './entity-color-table.js';
-import { batchEntities } from './batch-entities.js';
+import { batchEntities, batchEntryStamp } from './batch-entities.js';
 import type { BatchedMesh } from './types.js';
 import type { AlphaBatchLike } from './xray-alpha.js';
 
@@ -74,10 +74,11 @@ export class BatchVisibilityCache {
   private epoch = -1;
   private cache = new WeakMap<BatchedMesh, BatchVisibility>();
   /**
-   * Entry count each verdict was computed for. A compact page (compact-store.ts) is one batch object
-   * that keeps growing while a model streams, so a page judged "all visible" must be judged again once
-   * a later mesh joins it: a mesh hidden by id that arrived after the visible meshes of its cell would
-   * otherwise be drawn (a type-library mesh, on a host whose batch order put it last).
+   * Entry stamp each verdict was computed for (`batchEntryStamp`). A compact page (compact-store.ts) is
+   * one batch object that keeps growing while a model streams, and loses a mesh when it is retired, so a
+   * page judged "all visible" must be judged again once its ids change: a mesh hidden by id that arrived
+   * after the visible meshes of its cell would otherwise be drawn (a type-library mesh, on a host whose
+   * batch order put it last), even when another mesh left the page in the same flush.
    */
   private sizes = new WeakMap<BatchedMesh, number>();
 
@@ -93,10 +94,10 @@ export class BatchVisibilityCache {
       this.epoch = epoch;
     }
     let vis = this.cache.get(batch);
-    if (vis === undefined || this.sizes.get(batch) !== batch.expressIds.length) {
+    if (vis === undefined || this.sizes.get(batch) !== batchEntryStamp(batch)) {
       vis = classifyBatch(batch, hiddenIds, isolatedIds);
       this.cache.set(batch, vis);
-      this.sizes.set(batch, batch.expressIds.length);
+      this.sizes.set(batch, batchEntryStamp(batch));
     }
     return vis;
   }

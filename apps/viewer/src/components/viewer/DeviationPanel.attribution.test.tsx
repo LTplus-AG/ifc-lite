@@ -101,7 +101,10 @@ async function exportCsv(): Promise<Array<Record<string, string>>> {
     URL.createObjectURL = originalCreate;
     HTMLAnchorElement.prototype.click = originalClick;
   }
-  const [header, ...lines] = (await blobs[0].text()).trimEnd().split('\n');
+  const bytes = new Uint8Array(await blobs[0].arrayBuffer());
+  assert.deepEqual([...bytes.subarray(0, 3)], [0xef, 0xbb, 0xbf]);
+  const csv = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  const [header, ...lines] = csv.trimEnd().split('\n');
   const columns = header.split(',');
   return lines.map((line) => Object.fromEntries(line.split(',').map((cell, i) => [columns[i], cell])));
 }

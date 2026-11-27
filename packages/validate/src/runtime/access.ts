@@ -206,5 +206,8 @@ export function setIndex(base: Value, i: Value, v: Value): void {
   const k = int(i);
   if (!isAggregate(base) || k === undefined) throw new EvaluationError('indexed assignment outside an aggregate');
   if (v === undefined) throw new EvaluationError('indeterminate value stored in an aggregate element');
-  base[k - lowerBound(base)] = assign(v);
+  const low = lowerBound(base);
+  const offset = k - low;
+  if (offset < 0 || offset >= base.length) throw new EvaluationError(`index ${k} outside aggregate bounds [${low}:${low + base.length - 1}]`);
+  base[offset] = assign(v);
 }

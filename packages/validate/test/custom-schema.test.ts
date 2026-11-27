@@ -439,3 +439,33 @@ END_ENTITY; END_SCHEMA;`);
   expect(report.stats.entityRuleEvaluations).toBe(9);
   expect(report.findings.map(f => [f.instance, f.rule])).toEqual([[1, 'C.RightSet'], [2, 'C.LeftSet'], [3, 'C.Different']]);
 });
+
+it('checks both bounds before indexed assignment in a generated function (#11647)', async () => {
+  const { schema } = generated(`SCHEMA S; FUNCTION WriteAt(I : INTEGER) : INTEGER;
+LOCAL A : ARRAY [3:4] OF INTEGER := [1,2]; END_LOCAL;
+A[I] := 9; RETURN(A[3] + A[4]); END_FUNCTION;
+ENTITY E; I : INTEGER; Expected : INTEGER; WHERE W : WriteAt(I) = Expected; END_ENTITY; END_SCHEMA;`);
+  const report = await validateStepText('DATA;#1=E(2,3);#2=E(5,3);#3=E(3,11);#4=E(4,10);#5=E(4,11);ENDSEC;', { schema, categories: ['entity_rule'] });
+  expect(report.stats.entityRuleEvaluations).toBe(5);
+  expect(report.findings.map(f => [f.instance, f.rule, f.category])).toEqual([
+    [1, 'E.W', 'evaluation_error'], [2, 'E.W', 'evaluation_error'], [5, 'E.W', 'entity_rule'],
+  ]);
+});
+
+it('preserves declared REAL results for numeric builtins in generated rules (#11647)', async () => {
+  const calls = ['SQRT(N)', 'SIN(0)', 'COS(0)', 'TAN(0)', 'ASIN(0)', 'ACOS(1)', 'ATAN(0,1)', 'EXP(0)', 'LOG(1)', 'LOG2(1)', 'LOG10(1)'];
+  const checks = calls.map((call, i) => `W${i} : 'REAL' IN TYPEOF(${call});`).join('\n');
+  const { schema } = generated(`SCHEMA S; ENTITY E; N : REAL; WHERE ${checks}
+ValueOK : SQRT(N) = 2; WrongType : 'INTEGER' IN TYPEOF(SQRT(N)); END_ENTITY; END_SCHEMA;`);
+  const report = await validateStepText('DATA;#1=E(4.);ENDSEC;', { schema, categories: ['entity_rule'] });
+  expect(report.stats.entityRuleEvaluations).toBe(calls.length + 2);
+  expect(report.findings.map(f => f.rule)).toEqual(['E.WrongType']);
+});
+
+it('counts Unicode characters in generated LENGTH rules (#11647)', async () => {
+  const { schema } = generated(`SCHEMA S; ENTITY E; Text : STRING; Expected : INTEGER;
+WHERE Count : LENGTH(Text) = Expected; Kind : 'INTEGER' IN TYPEOF(LENGTH(Text)); END_ENTITY; END_SCHEMA;`);
+  const report = await validateStepText("DATA;#1=E('😀',1);#2=E('a😀b',3);#3=E('',0);#4=E('😀',2);ENDSEC;", { schema, categories: ['entity_rule'] });
+  expect(report.stats.entityRuleEvaluations).toBe(8);
+  expect(report.findings.map(f => [f.instance, f.rule])).toEqual([[4, 'E.Count']]);
+});

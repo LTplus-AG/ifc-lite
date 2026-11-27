@@ -104,12 +104,16 @@ export function aggregate(items: Array<[Value, Value?]>): Aggregate {
   return out;
 }
 
+function realResult(n: number): Value {
+  if (!Number.isFinite(n)) return undefined;
+  return Number.isInteger(n) ? new StepReal(n) : n;
+}
+
 function math(f: (x: number) => number): (v: Value) => Value {
   return (v) => {
     const x = num(v);
     if (x === undefined) return undefined;
-    const r = f(x);
-    return Number.isFinite(r) ? r : undefined;
+    return realResult(f(x));
   };
 }
 
@@ -128,7 +132,7 @@ export function atan(y: Value, x: Value): Value {
   const a = num(y);
   const b = num(x);
   if (a === undefined || b === undefined) return undefined;
-  return Math.atan2(a, b);
+  return realResult(Math.atan2(a, b));
 }
 
 export function odd(v: Value): Value {
@@ -145,5 +149,5 @@ export function blength(v: Value): Value {
 
 export function length(v: Value): Value {
   const s = prim(v);
-  return typeof s === 'string' ? s.length : undefined;
+  return typeof s === 'string' ? Array.from(s).length : undefined;
 }

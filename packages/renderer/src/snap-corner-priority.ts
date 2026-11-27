@@ -16,11 +16,11 @@ import type { Camera } from './camera.js';
 /** A piece with more triangles than this is built after the others: its snap cache is one uninterruptible step. */
 export const BIG_PIECE_TRIANGLES = 20_000;
 
-const boundsOf = new WeakMap<MeshData, Float64Array>();
+const boundsOf = new WeakMap<object, Float64Array>();
 
 /** World AABB (minX, minY, minZ, maxX, maxY, maxZ); `origin` is the piece's f64 frame offset. */
-function* pieceBounds(piece: MeshData): Generator<void, Float64Array> {
-  let b = boundsOf.get(piece);
+export function* pieceBounds(piece: MeshData, cacheKey: object = piece): Generator<void, Float64Array> {
+  let b = boundsOf.get(cacheKey);
   if (b) return b;
   const p = piece.positions, o = piece.origin;
   let x0 = Infinity, y0 = Infinity, z0 = Infinity, x1 = -Infinity, y1 = -Infinity, z1 = -Infinity;
@@ -34,7 +34,7 @@ function* pieceBounds(piece: MeshData): Generator<void, Float64Array> {
   b = new Float64Array(6);
   if (x0 > x1) b.fill(0);
   else b.set([x0 + (o?.[0] ?? 0), y0 + (o?.[1] ?? 0), z0 + (o?.[2] ?? 0), x1 + (o?.[0] ?? 0), y1 + (o?.[1] ?? 0), z1 + (o?.[2] ?? 0)]);
-  boundsOf.set(piece, b);
+  boundsOf.set(cacheKey, b);
   return b;
 }
 
@@ -55,10 +55,13 @@ export class PriorityOrder {
     private readonly pieces: readonly MeshData[],
     private readonly camera: Pick<Camera, 'projectToScreen' | 'getPosition'>,
     private readonly viewport: { width: number; height: number },
+    private readonly occurrences: readonly MeshData[] = [],
+    private readonly occurrenceBounds?: ReadonlyMap<MeshData, Float64Array>,
   ) {
-    this.dist = new Float64Array(pieces.length);
-    this.onScreen = new Uint8Array(pieces.length);
-    this.big = new Uint8Array(pieces.length);
+    const count = pieces.length + occurrences.length;
+    this.dist = new Float64Array(count);
+    this.onScreen = new Uint8Array(count);
+    this.big = new Uint8Array(count);
     this.eye = camera.getPosition();
   }
 
@@ -74,23 +77,25 @@ export class PriorityOrder {
       const s = this.camera.projectToScreen(p, this.viewport.width, this.viewport.height);
       return !!s && s.x >= 0 && s.y >= 0 && s.x <= this.viewport.width && s.y <= this.viewport.height;
     };
-    const idx = new Int32Array(pieces.length);
-    for (let i = 0; i < pieces.length; i++) {
+    const pieceAt = (i: number) => i < pieces.length ? pieces[i] : this.occurrences[i - pieces.length];
+    const idx = new Int32Array(dist.length);
+    for (let i = 0; i < idx.length; i++) {
       idx[i] = i;
-      const b = yield* pieceBounds(pieces[i]);
+      const piece = pieceAt(i);
+      const b = this.occurrenceBounds?.get(piece) ?? (yield* pieceBounds(piece));
       const cx = (b[0] + b[3]) / 2, cy = (b[1] + b[4]) / 2, cz = (b[2] + b[5]) / 2;
       dist[i] = (cx - eye.x) ** 2 + (cy - eye.y) ** 2 + (cz - eye.z) ** 2;
       let on = inView({ x: cx, y: cy, z: cz });
       for (let k = 0; k < 8 && !on; k++) on = inView({ x: b[k & 1 ? 3 : 0], y: b[k & 2 ? 4 : 1], z: b[k & 4 ? 5 : 2] });
       onScreen[i] = on ? 1 : 0;
-      big[i] = pieces[i].indices.length / 3 > BIG_PIECE_TRIANGLES ? 1 : 0;
+      big[i] = piece.indices.length / 3 > BIG_PIECE_TRIANGLES ? 1 : 0;
       yield;
     }
     const sorter = new ChunkedSort(idx, (a, c) => onScreen[c] - onScreen[a] || big[a] - big[c] || dist[a] - dist[c] || a - c);
     while (!sorter.step()) yield;
     const ordered: MeshData[] = [];
     for (const i of sorter.result()) {
-      ordered.push(pieces[i]);
+      ordered.push(pieceAt(i));
       if (ordered.length % 1024 === 0) yield;
     }
     this.sorted = ordered;

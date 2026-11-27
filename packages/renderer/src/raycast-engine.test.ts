@@ -19,6 +19,7 @@
  * `Raycaster` and `BVH` are exercised unmodified.
  */
 
+import { CornerGrid } from './snap-corner-grid.js';
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 
@@ -467,6 +468,43 @@ describe('RaycastEngine.raycastScene', () => {
     assert.equal(settle({ isolatedIds: new Set([99]) }).snapTarget, null);
     assert.equal(settle({}, new Set([8])).snapTarget, null);
     assert.equal(settle({ isolatedIds: new Set([1025]) }, new Set([7])).snapTarget?.expressId, 1025);
+  });
+
+  it('#11753 builds an on-screen GPU corner before offscreen flat geometry', t => {
+    const scene = new Scene();
+    for (let i = 0; i < 24; i++) {
+      addRegularMesh(scene, makeQuad({ expressId: i + 1, translate: [200 + i * 20, 0, 0] }));
+    }
+    const shard = instancedTriangle(1025);
+    const offscreen = { ...shard.instances[0], entityId: 1026, transform: shard.instances[0].transform.slice() };
+    offscreen.transform[3] = 500;
+    shard.instances.unshift(offscreen);
+    scene.addInstancedShard(instancedDevice(), shard, 7);
+    assert.equal(scene.getMeshDataPieces(1025), undefined);
+    const camera = orthoCameraLookingDownZ([0, 0, 0], 50);
+    const engine = engineFor(scene, camera), idle = new ManualIdleHost();
+    const project = t.mock.method(CornerGrid.prototype, 'addPieceStep');
+    const builds = t.mock.method(engine.getSnapDetector(), 'startGeometryCache');
+    const at = camera.projectToScreen({ x: 0, y: 5, z: 0 }, 800, 600)!;
+    const pick = () => engine.raycastSceneMagnetic(at.x, at.y - 5,
+      { edge: null, meshExpressId: null, lockStrength: 0 },
+      { snapOptions: { screenCornerSnap: { idleHost: idle, settleMs: 0 } } });
+    let result = pick();
+    assert.equal(result.snapTarget, null);
+    let slices = 0;
+    while (!result.snapTarget && slices < 2000 && idle.tick(0)) {
+      slices++;
+      result = pick();
+    }
+    t.diagnostic(`first GPU corner after ${slices} exhausted slices and ${builds.mock.callCount()} flat builds`);
+    assert.equal(result.intersection, null);
+    assert.equal(result.snapTarget?.expressId, 1025);
+    assert.deepEqual(result.snapTarget?.position, { x: 0, y: 5, z: 0 });
+    assert.equal(builds.mock.callCount(), 0);
+    assert.equal(project.mock.calls[0].arguments[0].expressId, 1025);
+    assert.ok(slices > 1 && slices < 2 * 24 + 32);
+    idle.drain();
+    assert.equal(builds.mock.callCount(), 24);
   });
 
   it('#11753 spreads large occurrence tolerance discovery over exhausted idle slices', () => {

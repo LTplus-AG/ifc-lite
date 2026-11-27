@@ -20,6 +20,8 @@ use crate::step_slot::split_top_level_args;
 
 #[path = "schema_durations.rs"]
 mod durations;
+#[path = "schema_work_control_durations.rs"]
+mod work_control_durations;
 
 #[path = "schema_calendar_dates.rs"]
 mod calendar_dates;
@@ -150,23 +152,28 @@ pub(crate) struct ValueForms {
     narrowed_dates: BTreeMap<String, usize>,
     /// Times written with a minute or second the IFC2X3 source left unset (#11199).
     filled_dates: BTreeMap<String, usize>,
-    duration_converted: bool,
+    pub(crate) durations: work_control_durations::WorkControlDurations,
 }
 
 impl ValueForms {
-    pub(crate) fn enable_dates(&mut self) {
+    pub(crate) fn defer_temporal_values(&mut self) {
         self.dates.enabled = true;
     }
 
-    /// Legacy date carriers must be visible to the final pass after edits and ref remapping.
-    pub(crate) fn buffer_for_dates(content: &[u8], from: &str, to: &str) -> bool {
+    /// Buffer only upgrades with legacy dates or work-control durations to finish after edits.
+    pub(crate) fn buffers_temporal_values(content: &[u8], from: &str, to: &str) -> bool {
         crate::schema_convert::canon(from) == "IFC2X3"
             && matches!(crate::schema_convert::canon(to), "IFC4" | "IFC4X3")
-            && calendar_dates::has_carriers(content)
+            && {
+                let mut scanner = ifc_lite_core::EntityScanner::new(content);
+                std::iter::from_fn(|| scanner.next_entity()).any(|(_, ty, _, _)| calendar_dates::carrier(ty)
+                    || ty.eq_ignore_ascii_case("IFCWORKPLAN") || ty.eq_ignore_ascii_case("IFCWORKSCHEDULE"))
+            }
     }
 
-    pub(crate) fn finish_dates(&mut self, text: &str, dropped: &mut usize, pruned: impl FnMut(&str)) -> Option<(String, isize)> {
-        self.dates.finish(text, |required, loss, site| {
+    pub(crate) fn finish_temporal_values(&mut self, text: &str, dropped: &mut usize, pruned: &mut dyn FnMut(&str)) -> Option<(String, isize)> {
+        let scaled = self.durations.finish(text);
+        self.dates.finish(scaled.as_deref().unwrap_or(text), |required, loss, site| {
             use calendar_dates::DateLoss;
             // A filled clock precision is reported, not a dropped value.
             if loss != DateLoss::Filled { *dropped += 1; }
@@ -177,7 +184,7 @@ impl ValueForms {
                 DateLoss::Dropped => &mut self.dropped,
             };
             *into.entry(site).or_default() += 1;
-        }, pruned)
+        }, pruned).or_else(|| scaled.map(|body| (body, 0)))
     }
 
     /// `line`, already converted from `cfrom` to `cto`, with every slot in a
@@ -203,7 +210,9 @@ impl ValueForms {
                     continue;
                 }
             }
-            let (mut fixed, lost) = fix(slot, "", rows, &mut self.duration_converted);
+            let mut converted = false;
+            let (mut fixed, lost) = fix(slot, "", rows, &mut converted);
+            if converted && self.dates.enabled { self.durations.capture(express_id, index, cfrom == "IFC2X3"); }
             if lost > 0 && !whole.is_empty() {
                 // Positional members: every slot of the group goes whole, each named for what it held.
                 for &i in whole {
@@ -246,11 +255,6 @@ impl ValueForms {
         Ok(if changed { frame.with_args(&line, &args.join(",")) } else { line })
     }
 
-    pub(crate) fn duration_warning<'a>(&self, mut sources: impl Iterator<Item = &'a [u8]>) -> Option<String> {
-        (self.duration_converted && sources.any(durations::has_non_second_project_time_unit))
-            .then(|| durations::TIME_UNIT_WARNING.to_owned())
-    }
-
     /// One warning per kind, naming every slot a value was dropped from (#10847).
     pub(crate) fn warnings(&self) -> Vec<String> {
         let sites = |where_: &BTreeMap<String, usize>, what: &dyn Fn(usize, String) -> String| {
@@ -264,6 +268,7 @@ impl ValueForms {
             .chain(self.dates.warnings())
             .chain(sites(&self.narrowed_dates, &|total, list| format!("{total} date value(s) kept the calendar date and dropped the time and any timezone: {list} (#10879).")))
             .chain(sites(&self.filled_dates, &|total, list| format!("{total} time value(s) wrote an unset minute or second as 00, a precision the IFC2X3 source does not state: {list} (#11199).")))
+            .chain(self.durations.warnings())
             .collect()
     }
 }

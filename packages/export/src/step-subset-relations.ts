@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 /**
- * Spatial-structure relations for an extracted subset: which ones join it, and
+ * Spatial and nesting relations for an extracted subset: which ones join it, and
  * what text each one emits.
  *
  * `IfcRelContainedInSpatialStructure` is one-to-MANY, and a real exporter
@@ -22,16 +22,10 @@
  * still dangles. That is the rest of the rules:
  *   - the RELATING object (`RelatingStructure` / `RelatingObject`, the spatial
  *     parent) is a hard requirement. A containment with no parent is
- *     meaningless, and it would dangle. A KNOWN residual gap follows from that,
- *     and it is not this module's to close: `buildSubset` force-keeps only
- *     `IfcProject` / `IfcSite` / `IfcBuilding` / `IfcBuildingStorey`, so a
- *     product contained in an `IfcSpace` or `IfcSpatialZone` still has an
- *     unkept parent and still loses containment. Widening that type list is the
- *     wrong close, because it force-keeps every space AND its forward closure in
- *     every extraction; the right one is a BACKWARD closure from each kept
- *     product up its containment and aggregation edges, which keeps exactly the
- *     seeds' ancestors and needs no type list at all. Either way it is a change
- *     to how `buildSubset` seeds, not to the rule here. Filed as #4124.
+ *     meaningless, and it would dangle. `buildSubset` keeps every spatial
+ *     ancestor of what it selected (a backward closure, #4124, see
+ *     `step-subset-spatial-ancestors.ts`), so a kept product's parent is kept
+ *     too, an `IfcSpace` included.
  *   - an empty intersection drops the relation.
  *   - every other non-set reference must be kept too. That is attribute 1,
  *     `OwnerHistory`; usually it already is, because each kept product's own
@@ -54,37 +48,42 @@
  * A relation that loses NO member re-emits its source line verbatim, so an
  * extraction that happened to keep every member does not churn.
  *
- * ## What this module re-implements, and why
+ * ## Near-twins elsewhere in this package
  *
- * Three things here already exist in `@ifc-lite/export`, and all three are
- * copied for ONE reason: that package's `exports` map exposes only `.`, and its
- * `index.ts` re-exports none of them, so reaching any of them would mean adding
- * a published export (and an `api-surface` entry) to a v4.0.0 package in order
- * to fix a CLI bug.
+ * This module moved here from the CLI, where `@ifc-lite/export`'s internals
+ * were out of reach. Two near-twins remain, each different on purpose:
  *
- *   - `filterHiddenRefsFromRelationshipLine` (`reference-collector.ts`) is the
- *     same job, done better: it filters EVERY parenthesised attribute of ANY
- *     `IFCREL*` line against an `isExcluded` predicate, so it needs no slot
- *     table at all, and it carries an edge case this module has no equivalent
- *     of (`IfcRelConnectsStructuralMember`'s optional trailing placement).
- *     Adopting it would delete most of this file. The export barrier above is
- *     the whole reason it is not adopted here, and nothing else: fed only
- *     today's three types it would change no behaviour, because the CALLER
- *     picks which lines it sees. Widening the type set is the separate decision,
- *     and that is the one that changes which relations survive an extraction.
- *     Consolidation follow-up: #4125.
- *   - `splitTopLevelStepArguments` (`step-argument-parser.ts`) and
- *     `skipStepComment` (`step-comment-skip.ts`): see {@link splitTopLevelArgs}.
- *   - `STRUCTURE_RELATIONS` (`merged-empty-containers.ts`): three lines, see
- *     below.
+ *   - `filterHiddenRefsFromRelationshipLine` (`reference-collector.ts`) does
+ *     the same job for EVERY parenthesised attribute of ANY `IFCREL*` line.
+ *     Fed only today's three types it would change no behaviour, because the
+ *     CALLER picks which lines it sees; widening the type set is the separate
+ *     decision that changes which relations survive an extraction.
+ *   - `splitTopLevelStepArguments` (`step-argument-parser.ts`): see
+ *     {@link splitTopLevelArgs} for the two ways it differs.
+ *
+ * `merged-empty-containers.ts` keeps a private copy of `STRUCTURE_RELATIONS`.
  */
 
 import { stepStringLiteralEnd } from '@ifc-lite/encoding';
+import { skipStepComment, withoutComments } from './step-comment-skip.js';
+import { slotRef } from './schema-converter-structural-source.js';
 
 /**
- * One parsed STEP record, as `extract-entities.ts`'s `parseStep` produces it.
+ * A selector that cannot be satisfied: `not-found` when it names nothing in the
+ * file, `invalid` when it names the wrong kind of record. Callers map `kind` to
+ * their own error codes instead of matching the message.
+ */
+export class SubsetSelectionError extends Error {
+  constructor(readonly kind: 'not-found' | 'invalid', message: string) {
+    super(message);
+    this.name = 'SubsetSelectionError';
+  }
+}
+
+/**
+ * One parsed STEP record, as `step-subset.ts`'s `parseStep` produces it.
  * Declared HERE and imported there, rather than the other way round, so the
- * dependency runs one way: `extract-entities.ts` imports this module, never
+ * dependency runs one way: `step-subset.ts` imports this module, never
  * the reverse.
  */
 export interface StepRecord {
@@ -94,6 +93,8 @@ export interface StepRecord {
   body: string;
   /** The verbatim `#id= TYPE(...);` text. */
   full: string;
+  /** Offset of `body` within `full`, when the parser knows it (a comment before the type may hold a `(`). */
+  bodyStart?: number;
 }
 
 /**
@@ -126,11 +127,9 @@ export interface SpatialRelationPlan {
 /**
  * Spatial-structure relations, as `[relatingAttributeIndex, relatedAttributeIndex]`.
  * `IfcRelAggregates` names the whole (`RelatingObject`) first; the two containment
- * relations name the parts (`RelatedElements`) first. Same table as `STRUCTURE_RELATIONS`
- * in `@ifc-lite/export`'s `merged-empty-containers.ts`, which reads the same three
- * records, copied rather than imported because that module is internal to
- * `@ifc-lite/export` and exporting it would widen a published API surface for a
- * three-line constant.
+ * relations name the parts (`RelatedElements`) first. Same table as the private
+ * `STRUCTURE_RELATIONS` in `merged-empty-containers.ts`, which reads the same three
+ * records.
  *
  * `IfcRelReferencedInSpatialStructure` is here for the same reason the other two are:
  * same shape (one relating parent, one related SET), same one-per-storey authoring,
@@ -144,8 +143,16 @@ export const STRUCTURE_RELATIONS: Record<string, [number, number]> = {
   IFCRELREFERENCEDINSPATIALSTRUCTURE: [5, 4],
 };
 
+// Nesting has the same slots as aggregation. Its related objects are ordered,
+// and the member filter below preserves their original order. Keep this row
+// out of STRUCTURE_RELATIONS so nesting does not add spatial ancestors.
+const SUBSET_RELATIONS: Record<string, [number, number]> = {
+  ...STRUCTURE_RELATIONS,
+  IFCRELNESTS: STRUCTURE_RELATIONS.IFCRELAGGREGATES,
+};
+
 /**
- * All three are `GlobalId, OwnerHistory, Name, Description` plus the relating/related
+ * These relations are `GlobalId, OwnerHistory, Name, Description` plus the relating/related
  * pair: exactly 6 attributes in every schema that defines them. A record that does not
  * split into 6 was mis-scanned (or is not the entity the type name claims), so it falls
  * back to keep-whole-or-drop-whole rather than having a slot index written into
@@ -155,16 +162,12 @@ export const STRUCTURE_RELATIONS: Record<string, [number, number]> = {
  * therefore cannot simply be added as a row above: it would fail this check on every
  * record and fall silently back to keep-whole-or-drop-whole, which is the bug this
  * module exists to fix. Such a type needs the count moved into the table value first,
- * or the whole table derived from the schema registry, which returns 7 for that entity
- * and would make row four safe rather than forbidden. Filed as #4123.
+ * or the table derived from the schema registry, which returns 7 for that entity. Filed as #4123.
  */
 export const STRUCTURE_RELATION_ATTRS = 6;
 
-/** A single `#id` and nothing else: an object reference in one slot. */
-export const SINGLE_REF_RE = /^#(\d+)$/;
-
 /**
- * Decide every spatial-structure relation against a kept-id set.
+ * Decide every spatial or nesting relation against a kept-id set.
  *
  * Pure in both arguments: adding relation ids to `keep` afterwards cannot
  * change any verdict, because a relation of these types references products,
@@ -178,7 +181,7 @@ export function planSpatialRelations(
   const rewritten = new Map<number, string>();
   const blockedOn: number[][] = [];
   for (const inst of instances) {
-    const slots = STRUCTURE_RELATIONS[inst.type];
+    const slots = SUBSET_RELATIONS[inst.type];
     if (slots === undefined) continue;
     const line = relationLine(inst, slots, keep, blockedOn);
     if (line === null) continue;
@@ -191,7 +194,7 @@ export function planSpatialRelations(
 /**
  * The record text this relation contributes to the subset, or null to drop it.
  * Returns `inst.full` unchanged when nothing was filtered out. Appends ONE entry
- * to `blocked` when the ONLY thing standing in the way is unkept non-SET
+ * to `blocked` when the ONLY thing standing in the way is unkept non-member
  * references; see {@link SpatialRelationPlan.blockedOn}.
  */
 function relationLine(
@@ -206,29 +209,30 @@ function relationLine(
   const args = splitTopLevelArgs(inst.body);
   if (args === null || args.length !== STRUCTURE_RELATION_ATTRS) return keepWhole(inst, keep);
 
-  const setText = args[relatedIdx];
+  // Comments around the member list and its references are trivia.
+  const setText = withoutComments(args[relatedIdx]);
   if (!setText.startsWith('(') || !setText.endsWith(')')) return keepWhole(inst, keep);
   const members = splitTopLevelArgs(setText.slice(1, -1));
   if (members === null) return keepWhole(inst, keep);
   const memberIds: number[] = [];
   for (const member of members) {
-    const ref = SINGLE_REF_RE.exec(member);
-    // A SET member that is not a plain object reference is not something this
+    const ref = slotRef(member);
+    // A member that is not a plain object reference is not something this
     // rewrite understands; fall back rather than guess at it.
     if (ref === null) return keepWhole(inst, keep);
-    memberIds.push(Number(ref[1]));
+    memberIds.push(ref);
   }
 
   // The relating parent must be a real, kept reference. The `every reference
-  // outside the SET is kept` loop below would pass VACUOUSLY on a `$` here,
+  // outside the member list is kept` loop below would pass VACUOUSLY on a `$` here,
   // emitting a containment with no parent.
-  const relating = SINGLE_REF_RE.exec(args[relatingIdx]);
-  if (relating === null || !keep.has(Number(relating[1]))) return null;
+  const relating = slotRef(args[relatingIdx]);
+  if (relating === null || !keep.has(relating)) return null;
 
   const kept = memberIds.filter((id) => keep.has(id));
   if (kept.length === 0) return null;
 
-  // Every other non-set reference (OwnerHistory) must be kept or the emitted
+  // Every other reference (OwnerHistory) must be kept or the emitted
   // record dangles. Ordered AFTER the intersection so `blocked` names only the
   // references of a relation that would OTHERWISE survive; both checks drop the
   // relation, so which one runs first changes no verdict.
@@ -266,7 +270,7 @@ function relationLine(
  * established in general. There, over-counting references (drop the record) is
  * the safe error, while under-counting (emit a dangling `#id`) is not.
  *
- * Exported for `extract-entities.ts`'s `forwardClosure`, which has the same
+ * Exported for `step-subset.ts`'s `forwardClosure`, which has the same
  * hazard scanning a whole record body for its reference closure: nothing here
  * assumes `arg` is one split ARGUMENT rather than a whole body, since a comma
  * or `)` outside a string does not affect the in-string/out-of-string state
@@ -276,15 +280,20 @@ export function refsOutsideStrings(arg: string): number[] {
   const ids: number[] = [];
   for (let i = 0; i < arg.length; i++) {
     const char = arg[i];
-    if (char === "'") {
+    if (char === '/' && arg[i + 1] === '*') {
+      // A comment is trivia: a `#id` inside it is not a reference.
+      i = skipStepComment(arg, i) - 1;
+    } else if (char === "'") {
       // #7589: the shared literal-end rule (`''`, PAGE-directive operand).
       const end = stepStringLiteralEnd(arg, i);
       if (end < 0) break; // never closes: the rest is string text
       i = end - 1;
     } else if (char === '#') {
-      let end = i + 1;
+      let start = i + 1;
+      while (start < arg.length && /\s/.test(arg[start])) start++;
+      let end = start;
       while (end < arg.length && arg[end] >= '0' && arg[end] <= '9') end++;
-      if (end > i + 1) ids.push(Number(arg.slice(i + 1, end)));
+      if (end > start) ids.push(Number(arg.slice(start, end)));
       i = end - 1;
     }
   }
@@ -298,7 +307,8 @@ export function refsOutsideStrings(arg: string): number[] {
  * no rewriting.
  */
 function keepWhole(inst: StepRecord, keep: ReadonlySet<number>): string | null {
-  const refs = [...inst.body.matchAll(/#(\d+)/g)].map((m) => Number(m[1]));
+  // Comments are trivia; string text is still over-counted, the safe direction.
+  const refs = [...withoutComments(inst.body).matchAll(/#\s*(\d+)/g)].map((m) => Number(m[1]));
   return refs.length > 0 && refs.every((r) => keep.has(r)) ? inst.full : null;
 }
 
@@ -314,27 +324,16 @@ function spliceArgument(
   index: number,
   replacement: string,
 ): string | null {
-  const open = inst.full.indexOf('(');
-  // `body` is by construction the slice of `full` between its first `(` and the
-  // matching `)`: the id and type name that precede it hold no parenthesis. A
-  // mismatch would mean the parser and this module disagree about where the
-  // arguments are, and splicing on that offset corrupts the record, so drop it
-  // instead of emitting something malformed.
+  const open = inst.bodyStart !== undefined ? inst.bodyStart - 1 : inst.full.indexOf('(');
+  // `bodyStart` from the parser is the authority (a comment before the type
+  // may hold a `(`); the first `(` is only the fallback for records built
+  // without it. A mismatch would mean the parser and this module disagree about
+  // where the arguments are, and splicing on that offset corrupts the record,
+  // so drop it instead of emitting something malformed.
   if (open < 0 || inst.full.slice(open + 1, open + 1 + inst.body.length) !== inst.body) return null;
   const next = [...args];
   next[index] = replacement;
   return inst.full.slice(0, open + 1) + next.join(',') + inst.full.slice(open + 1 + inst.body.length);
-}
-
-/**
- * Skip a `/* ... *\/` comment atomically: index of `/` in, index past its
- * close marker (or end-of-text when unterminated) out. Byte-identical copy of
- * `@ifc-lite/export`'s `skipStepComment` (not imported, see the module
- * header): #4227's third copy of the same missing logic.
- */
-function skipStepComment(text: string, i: number): number {
-  const end = text.indexOf('*/', i + 2);
-  return end === -1 ? text.length : end + 2;
 }
 
 /**
@@ -350,9 +349,9 @@ function skipStepComment(text: string, i: number): number {
  * orphaned-storey symptom (#4126) this module exists to fix, by a different
  * route. An EMPTY INTERIOR slot (`a,,b`) is one part, not rejected.
  *
- * Near-twin of `@ifc-lite/export`'s `splitTopLevelStepArguments` (see the
- * module header). Two differences: each part is `trim`med (because
- * {@link SINGLE_REF_RE} is anchored), and a TRAILING empty slot (`a,b,`)
+ * Near-twin of `splitTopLevelStepArguments` in `step-argument-parser.ts` (see
+ * the module header). Two differences: each part is `trim`med (because
+ * `slotRef` reads one reference per slot), and a TRAILING empty slot (`a,b,`)
  * yields 2 parts, not 3.
  */
 export function splitTopLevelArgs(text: string): string[] | null {

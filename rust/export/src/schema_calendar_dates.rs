@@ -14,13 +14,8 @@ use crate::step_slot::split_top_level_args;
 use crate::step_text::refs_in_line;
 use values::{from_legacy, to_legacy, DateRecord, Kind, DATE_CARRIERS};
 
-fn carrier(ty: &str) -> bool {
+pub(super) fn carrier(ty: &str) -> bool {
     DATE_CARRIERS.iter().any(|name| ty.eq_ignore_ascii_case(name))
-}
-
-pub(super) fn has_carriers(content: &[u8]) -> bool {
-    let mut scanner = EntityScanner::new(content);
-    std::iter::from_fn(|| scanner.next_entity()).any(|(_, ty, _, _)| carrier(ty))
 }
 
 struct PendingDate {

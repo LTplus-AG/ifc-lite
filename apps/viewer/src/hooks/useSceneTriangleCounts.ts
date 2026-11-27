@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { useSyncExternalStore } from 'react';
-import { getGlobalRenderer, readInstancedSceneRevision, subscribeGlobalRenderer } from '../lib/renderer-ref.js';
+import { getGlobalRenderer, readInstancedMembershipRevision, readInstancedSceneRevision, subscribeGlobalRenderer } from '../lib/renderer-ref.js';
 
 export function readSceneTriangleCounts(): ReadonlyMap<number, number> | null {
   const scene = getGlobalRenderer()?.getScene();
@@ -27,6 +27,10 @@ export function useSceneTriangleCounts() {
 
 export function useInstancedSceneRevision(enabled: boolean): string {
   return useSyncExternalStore(enabled ? subscribe : noSubscription, enabled ? readInstancedSceneRevision : emptyRevision, emptyRevision);
+}
+
+export function useInstancedMembershipRevision(enabled: boolean): string {
+  return useSyncExternalStore(enabled ? subscribe : noSubscription, enabled ? readInstancedMembershipRevision : emptyRevision, emptyRevision);
 }
 
 const emptyRevision = () => '';

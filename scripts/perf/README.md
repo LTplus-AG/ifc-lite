@@ -8,6 +8,19 @@ Citations to `evidence/`, `tests/evidence/` and `docs/architecture/evidence/` pa
 at commit [`f98785c722`](https://github.com/LTplus-AG/ifc-lite/tree/f98785c722); the retained
 bundles left the tree in #9054.
 
+## Gradient-curve directrix sweeps cost only where they occur (#9969)
+
+**Measured, no regression.** Swept solids along an `IfcGradientCurve` now sample the
+vertical profile until every chord is within `CHORD_TOL_M`, at most 1,024 splits per
+span, and build their frames from the curve's evaluated tangents. The sampler runs
+only for a gradient directrix, so files without one produce byte-identical meshes
+(same mesh, vertex and triangle counts) at the same speed; on a file that has them
+the extra time is the extra stations.
+
+Lesson: bound the refinement per span and report when the bound is hit
+(`diag_warn`), so a pathological profile costs a fixed amount of work and says so
+instead of returning chords that silently miss the advertised tolerance.
+
 ## Flush recesses at touching body interfaces (#10528)
 
 The native load probe produced identical mesh fingerprints on FZK-Haus,
@@ -8121,3 +8134,11 @@ for size recovers the space with byte-identical STEP and GLB output on the
 ArchiCAD FZK-Haus sample. STEP conversion trades some throughput for the
 smaller bundle. GLB export timing was comparable and native builds retain
 their existing optimization level.
+
+## Shared STEP attribute masks (#11664)
+
+The mutation-log writer uses enum, string and schema-specific REAL masks to
+serialize named edits. Most entity types share a mask layout. Referencing a
+static layout per type reduced the engine WASM below its existing allowance
+with the same release profile. Interleaved FZK-Haus IFC4 STEP exports retained
+baseline throughput and produced byte-identical output.

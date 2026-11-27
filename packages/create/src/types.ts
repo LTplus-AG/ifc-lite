@@ -702,8 +702,8 @@ export interface GenericElementParams extends ElementAttributes {
    * IFC entity type name in UPPERCASE (e.g. 'IFCFLOWSEGMENT', 'IFCFLOWFITTING',
    * 'IFCELECTRICALAPPLIANCE', 'IFCWALLSTANDARDCASE', etc.).
    *
-   * Any IFC product type can be used. The only requirement is that it extends
-   * IfcProduct in the IFC schema (i.e. it can have a placement and representation).
+   * Any concrete IFC product a storey can hold: an IfcElement or another
+   * product (contained), or an IfcSpace (aggregated). Groups and other spatial elements throw.
    */
   IfcType: string;
 

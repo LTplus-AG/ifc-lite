@@ -151,6 +151,7 @@
    "from": "IFC2X3",
    "to": "IFC4",
    "line": "#5=IFCCALENDARDATE(1,1,2000);",
+   "fullExportOmitsOrphan": true,
    "expect": "#5=IFCCALENDARDATE(1,1,2000);"
   },
   {
@@ -158,6 +159,7 @@
    "from": "IFC2X3",
    "to": "IFC4X3",
    "line": "#5=IFCCALENDARDATE(1,1,2000);",
+   "fullExportOmitsOrphan": true,
    "expect": "#5=IFCCALENDARDATE(1,1,2000);"
   },
   {
@@ -165,6 +167,7 @@
    "from": "IFC2X3",
    "to": "IFC4",
    "line": "#5=IFCCALENDARDATE(1,1,2020);",
+   "fullExportOmitsOrphan": true,
    "expect": "#5=IFCCALENDARDATE(1,1,2020);"
   },
   {
@@ -186,6 +189,7 @@
    "from": "IFC2X3",
    "to": "IFC4",
    "line": "#5=IFCCALENDARDATE(1,2,2020);",
+   "fullExportOmitsOrphan": true,
    "expect": "#5=IFCCALENDARDATE(1,2,2020);"
   },
   {

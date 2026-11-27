@@ -20,6 +20,44 @@ import { createSheetSlice, type SheetSlice } from './sheetSlice.js';
 
 const make = () => createStore<SheetSlice>(createSheetSlice);
 
+describe('sheetSlice: changing the drawing scale (#11620)', () => {
+  const newScale = { factor: 50, name: '1:50', useCase: 'Floor plans' };
+
+  it('preserves the Scale text when auto-populate is off or uses another source', () => {
+    for (const settings of [
+      { autoPopulate: false, autoPopulateSource: 'drawing.scale' },
+      { autoPopulate: true, autoPopulateSource: 'project.name' },
+    ]) {
+      const s = make();
+      s.getState().createSheet();
+      const field = s.getState().activeSheet?.titleBlock.fields.find(({ id }) => id === 'scale');
+      assert.ok(field);
+      s.getState().removeTitleBlockField(field.id);
+      s.getState().addTitleBlockField({ ...field, ...settings, value: 'As indicated' });
+
+      s.getState().setDrawingScale(newScale);
+
+      const sheet = s.getState().activeSheet;
+      assert.equal(sheet?.scale.factor, 50);
+      assert.equal(sheet?.titleBlock.fields.find(({ id }) => id === 'scale')?.value, 'As indicated');
+    }
+  });
+
+  it('updates every field sourced from the drawing scale, including custom fields', () => {
+    const s = make();
+    s.getState().createSheet();
+    const field = s.getState().activeSheet?.titleBlock.fields.find(({ id }) => id === 'scale');
+    assert.ok(field);
+    s.getState().addTitleBlockField({ ...field, id: 'detail-scale' });
+
+    s.getState().setDrawingScale(newScale);
+
+    const fields = s.getState().activeSheet?.titleBlock.fields;
+    assert.equal(fields?.find(({ id }) => id === 'scale')?.value, '1:50');
+    assert.equal(fields?.find(({ id }) => id === 'detail-scale')?.value, '1:50');
+  });
+});
+
 describe('sheetSlice: clearSheet does not destroy saved templates', () => {
   it('preserves savedSheetTemplates across a clearSheet call', () => {
     const s = make();

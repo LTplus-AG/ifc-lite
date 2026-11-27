@@ -156,7 +156,7 @@ export function previewUpgradeDependents(store: SourceStore, from: IfcSchemaVers
   if (seeds.size === 0) return seeds;
 
   const styles = StyleFlatten.fromStore(store, from, to);
-  const enums = new EnumReconciliation(true, [store]);
+  const enums = new EnumReconciliation(true);
   enums.structural.fromStore(store, from, to, source);
   let nextId = getMaxExpressId(getCompleteEntityIndex(store)) + 1;
   enums.structural.ids = () => nextId++;

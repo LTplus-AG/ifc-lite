@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { CellValue } from '@ifc-lite/lists';
+import { clampXlsxCellText, sanitizeSheetName } from '@ifc-lite/export';
 import { displayCell, neutralizeSpreadsheetFormula, totalsRowCells, type ExportModel, type ExportColumn } from './model';
 
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
@@ -18,14 +19,14 @@ function cellValue(v: CellValue, c: ExportColumn): string | number | null {
   if (c.numeric && typeof v === 'number' && Number.isFinite(v)) return v;
   // String cells derive from attacker-controllable IFC values — neutralize
   // spreadsheet formula injection before Excel treats a leading =/+/-/@ as one.
-  return neutralizeSpreadsheetFormula(displayCell(v));
+  return clampXlsxCellText(neutralizeSpreadsheetFormula(displayCell(v)));
 }
 
 export async function toXlsx(model: ExportModel): Promise<Blob> {
   const ExcelJS = (await import('exceljs')).default;
   const wb = new ExcelJS.Workbook();
   wb.creator = 'IFC-Lite';
-  const ws = wb.addWorksheet((model.title || 'List').slice(0, 31), {
+  const ws = wb.addWorksheet(sanitizeSheetName(model.title, 'List'), {
     views: [{ state: 'frozen', ySplit: 4 }],
   });
 
@@ -36,17 +37,17 @@ export async function toXlsx(model: ExportModel): Promise<Blob> {
   const ncol = cols.length;
 
   // Title + meta.
-  ws.addRow([model.title || 'List']);
+  ws.addRow([clampXlsxCellText(model.title || 'List')]);
   ws.mergeCells(1, 1, 1, ncol);
   ws.getCell(1, 1).font = { bold: true, size: 14 };
-  ws.addRow([`${model.totals.count.toLocaleString()} elements · ${model.generatedAt}`]);
+  ws.addRow([clampXlsxCellText(`${model.totals.count.toLocaleString()} elements · ${model.generatedAt}`)]);
   ws.mergeCells(2, 1, 2, ncol);
   ws.getCell(2, 1).font = { italic: true, size: 9, color: { argb: 'FF94A3B8' } };
   ws.addRow([]);
 
   // Header. Column labels can be user-authored (custom pset/regex columns), so
   // they pass through the same formula-injection guard.
-  const header = ws.addRow(cols.map((c) => neutralizeSpreadsheetFormula(c.label)));
+  const header = ws.addRow(cols.map((c) => clampXlsxCellText(neutralizeSpreadsheetFormula(c.label))));
   header.font = { bold: true, color: { argb: 'FFFFFFFF' } };
   header.eachCell((cell) => {
     cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF334155' } };
@@ -73,7 +74,7 @@ export async function toXlsx(model: ExportModel): Promise<Blob> {
     // Outline levels are clamped to Excel's maximum of 8.
     const MAX_OUTLINE = 8;
     for (const g of model.groups) {
-      const gr = ws.addRow(cols.map((c, i) => (i === 0 ? `${'  '.repeat(g.level)}${neutralizeSpreadsheetFormula(g.label)} (${g.count})` : (c.summed ? g.sums[c.id] : null))));
+      const gr = ws.addRow(cols.map((c, i) => (i === 0 ? clampXlsxCellText(`${'  '.repeat(g.level)}${neutralizeSpreadsheetFormula(g.label)} (${g.count})`) : (c.summed ? g.sums[c.id] : null))));
       gr.font = { bold: true };
       gr.eachCell((cell) => { cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } }; });
       if (g.level > 0) gr.outlineLevel = Math.min(g.level, MAX_OUTLINE);
@@ -86,7 +87,7 @@ export async function toXlsx(model: ExportModel): Promise<Blob> {
 
   // Grand total.
   if (model.sumColumnIds.length > 0) {
-    const tr = ws.addRow(totalsRowCells(model, cols, `Total (${model.totals.count})`));
+    const tr = ws.addRow(totalsRowCells(model, cols, `Total (${model.totals.count})`).map((v) => (typeof v === 'string' ? clampXlsxCellText(v) : v)));
     tr.font = { bold: true };
     tr.eachCell((cell) => { cell.border = { top: { style: 'double', color: { argb: 'FF334155' } } }; });
   }

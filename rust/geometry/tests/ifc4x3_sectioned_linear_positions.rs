@@ -132,6 +132,16 @@ DATA;
 #130=IFCDIRECTION((1.,0.,0.));
 #131=IFCAXIS2PLACEMENTLINEAR(#63,#130,$);
 #132=IFCSECTIONEDSOLIDHORIZONTAL(#62,(#4,#4),(#131,#66));
+#140=IFCCARTESIANPOINT((0.,100.));
+#141=IFCAXIS2PLACEMENT2D(#140,#21);
+#142=IFCCIRCLE(#22,10.);
+#143=IFCCURVESEGMENT(.CONTINUOUS.,#141,IFCLENGTHMEASURE(0.),IFCLENGTHMEASURE(15.707963267948966),#142);
+#144=IFCCURVESEGMENT(.CONTINUOUS.,#22,IFCLENGTHMEASURE(0.),IFCLENGTHMEASURE(10.),#24);
+#145=IFCCOMPOSITECURVE((#144),.F.);
+#146=IFCGRADIENTCURVE((#143),.F.,#145,$);
+#147=IFCDISTANCEEXPRESSION(0.,0.,0.,0.,.F.);
+#148=IFCDISTANCEEXPRESSION(15.707963267948966,0.,0.,0.,.F.);
+#149=IFCSECTIONEDSOLIDHORIZONTAL(#146,(#4,#4),(#147,#148));
 ENDSEC;
 END-ISO-10303-21;
 "#;
@@ -325,6 +335,22 @@ fn gradient_curve_distance_along_is_horizontal_station() {
     close(b.max[2], 40.25, "end elevation");
 }
 
+
+#[test]
+fn distance_along_the_3d_curve_reaches_a_vertical_profile_end() {
+    // PR #9969 review: #146 has a final circular profile of radius 10 m from
+    // a level start, 5π m of arc, which ends vertical at station 10 and
+    // 110 m. Its IFC4x1 DistanceAlong is 3D length (AlongHorizontal .F.), so
+    // the section at 5π stands at x = 10, its 0.5 m depth centred on 110 m.
+    // The cumulative 3D length overran that end (the sections stopped at
+    // x = 9.01) before the arc-length map integrated it.
+    let mesh = mesh(149);
+    assert!(mesh.positions.iter().all(|c| c.is_finite()), "non-finite vertex");
+    let b = bbox(149);
+    assert!((b.max[0] - 10.0).abs() < 1e-3, "end station: {}", b.max[0]);
+    assert!((b.max[2] - 110.25).abs() < 1e-3, "end top: {}", b.max[2]);
+    assert!((b.min[2] - 99.75).abs() < 1e-3, "start bottom: {}", b.min[2]);
+}
 
 #[test]
 fn axis_parallel_to_tangent_reports_error() {

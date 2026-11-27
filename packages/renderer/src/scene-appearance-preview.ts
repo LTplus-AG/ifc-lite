@@ -22,7 +22,8 @@ export interface SceneAppearanceAccess {
   meshes(): TexturedMesh[];
   data: Map<number, MeshData[]>;
   instances: InstanceAppearanceAccess;
-  ready(): boolean;
+  /** Resident, finalized geometry for appearance work; with an `owner`, that owner's meshes off compact pages first. */
+  ready(owner?: { expressId: number }): boolean;
   buckets: AppearanceBucketAccess;
   adopt(part: MeshData): MeshData;
   source(part: MeshData): MeshData;
@@ -87,7 +88,7 @@ export function createSceneAppearancePreview(
       return () => { instance(); companion(); };
     },
     capture(owner, originals, companionOriginals, companionHidden) {
-      if (!access.ready()) throw new Error('Appearance requires finalized resident geometry.');
+      if (!access.ready(owner)) throw new Error('Appearance requires finalized resident geometry.');
       if (companionOriginals && (originals || access.instances.has(owner.expressId))) throw new Error('Instanced companions are not supported.');
       const companion = companionOriginals ? companions.capture(owner, companionOriginals, access.data.get(owner.expressId), part => access.source(part), companionHidden) : undefined;
       if (companion && (companion.absent || companion.hidden)) return { parts: companion.absent ? [] : companion.originals, resources: [], companionOriginals: companion.originals, abandon: () => companions.finish(owner, companion) };
@@ -100,7 +101,7 @@ export function createSceneAppearancePreview(
           .meshes()
           .filter((mesh) => mesh.expressId === owner.expressId);
         if (
-          !access.ready() ||
+          !access.ready(owner) ||
           !parts?.length ||
           (access.instances.has(owner.expressId) && !record) ||
           meshes.length !== parts.filter(textured).length ||

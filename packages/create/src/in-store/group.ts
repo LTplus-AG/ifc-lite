@@ -1,7 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-import { generateIfcGuid } from '@ifc-lite/encoding';
+import { generateIfcGuid, type RandomSource } from '@ifc-lite/encoding';
 import { StoreEditor, type MutablePropertyView } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { conformsTo, schemaRegistry } from './schema-attributes.js';
@@ -13,6 +13,8 @@ export interface GroupStoreContext {
   ownerHistoryId: number | null;
   /** A reviewed draft may replay its native allocations at commit; ownership checks still apply. */
   guidSource?: () => string;
+  /** Seeded randomness for authored GlobalIds when no `guidSource` replays them; see `SpatialAnchor.guidRandom`. */
+  guidRandom?: RandomSource;
 }
 export interface GroupInStoreParams {
   Name: string;
@@ -50,6 +52,10 @@ function members(graph: GroupGraph, values: readonly GroupRootIdentity[], groupI
   });
   if (new Set(ids).size !== ids.length) throw new Error('Group membership contains duplicate identities');
   return ids;
+}
+
+function guidSourceOf(context: GroupStoreContext): () => string {
+  return context.guidSource ?? (() => generateIfcGuid(context.guidRandom));
 }
 
 function newGuid(graph: GroupGraph, reserved: ReadonlySet<string> = new Set(), source: () => string = generateIfcGuid): string {
@@ -99,9 +105,9 @@ export function addGroupToStore(context: GroupStoreContext, params: GroupInStore
     text(params.Name, 'Name'); text(params.Description, 'Description'); text(params.ObjectType, 'ObjectType');
     if (typeof params.Name !== 'string' || !params.Name.length) throw new Error('Group Name is required');
     const ids = members(graph, params.RelatedObjects);
-    const GlobalId = params.GlobalId ?? newGuid(graph, undefined, context.guidSource); graph.availableGuid(GlobalId);
+    const GlobalId = params.GlobalId ?? newGuid(graph, undefined, guidSourceOf(context)); graph.availableGuid(GlobalId);
     const history = owner(graph, context.ownerHistoryId);
-    const relationGuid = ids.length ? newGuid(graph, new Set([GlobalId]), context.guidSource) : undefined;
+    const relationGuid = ids.length ? newGuid(graph, new Set([GlobalId]), guidSourceOf(context)) : undefined;
     const expressId = editor.addEntity('IfcGroup', [GlobalId, history, params.Name, params.Description ?? null, params.ObjectType ?? null]).expressId;
     if (relationGuid) editor.addEntity('IfcRelAssignsToGroup', [relationGuid, history, null, null, ids.map(id => `#${id}`), null, `#${expressId}`]);
     return { expressId, GlobalId };
@@ -129,7 +135,7 @@ export function updateGroupInStore(context: GroupStoreContext, expected: GroupSn
     const removed = new Set(current.memberships.map(row => row.relationship.expressId).filter(id => id !== keep));
     protectRelationships(graph, removed);
     const history = owner(graph, context.ownerHistoryId);
-    const relationGuid = ids.length && keep === undefined ? newGuid(graph, undefined, context.guidSource) : undefined;
+    const relationGuid = ids.length && keep === undefined ? newGuid(graph, undefined, guidSourceOf(context)) : undefined;
     for (const [name, index] of [['Name', 2], ['Description', 3], ['ObjectType', 4]] as const) {
       if (patch[name] !== undefined) editor.setPositionalAttribute(current.expressId, index, patch[name]);
     }

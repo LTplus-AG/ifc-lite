@@ -2,20 +2,21 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { readPerfFlag } from '../lib/perf/flags.js';
+import { getPerfFlagDefinition, resolvePerfFlag } from '../lib/perf/flags.js';
+import { recordAppliedPerfFlag } from '../lib/perf/flags-applied.js';
+import { isPerfFlagOn } from './hugeGeometryConfig.js';
 
 /**
- * Whether a load asks its geometry workers for compact GPU records
- * (`?compactGeom=1`, OFF by default).
+ * Whether a load asks its geometry workers for compact GPU records, OFF by
+ * default: `?compactGeom=1`, else the `perf-compact-geom` PostHog ramp.
  *
  * Only a primary load does. A federated model's ids are re-homed after its
  * workers ran, so its records would carry the wrong ids: the renderer would
  * decode every one of them onto its f32 path again.
  */
-export function compactGeometryRequested(kind: 'primary' | 'federated'): boolean {
+export function compactGeometryRequested(kind: 'primary' | 'federated', readFeatureFlag?: (key: string) => unknown): boolean {
   if (kind !== 'primary') return false;
-  const raw = readPerfFlag('compactGeom');
-  return raw === 1 || raw === '1' || raw === true || raw === 'true';
+  return isPerfFlagOn(resolvePerfFlag(getPerfFlagDefinition('compactGeom'), readFeatureFlag));
 }
 
 /** How long a load waits for the compact code before it goes on without it. */
@@ -28,9 +29,24 @@ const COMPACT_CODE_WAIT_MS = 10_000;
  * through it, the record decoder and the renderer's page code. A load that
  * does not ask fetches nothing, and one whose fetch fails or stalls uses f32
  * meshes.
+ *
+ * A primary load records its decision as the telemetry arm (`activePerfFlags`):
+ * on only when the encoder is turned on, so a failed or stalled fetch reports
+ * off. A load superseded meanwhile (`isCurrent` false) records nothing. Until a
+ * primary load has decided, as for a cache hit, the arm is the ramp's assignment.
  */
-export async function compactCellSizeForLoad(kind: 'primary' | 'federated'): Promise<number | undefined> {
-  if (!compactGeometryRequested(kind)) return undefined;
+export async function compactCellSizeForLoad(
+  kind: 'primary' | 'federated',
+  { readFeatureFlag, isCurrent = () => true }: { readFeatureFlag?: (key: string) => unknown; isCurrent?: () => boolean } = {},
+): Promise<number | undefined> {
+  if (kind !== 'primary') return undefined;
+  const size = await cellSizeFor(compactGeometryRequested(kind, readFeatureFlag));
+  if (isCurrent()) recordAppliedPerfFlag('compactGeom', size !== undefined);
+  return size;
+}
+
+async function cellSizeFor(requested: boolean): Promise<number | undefined> {
+  if (!requested) return undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     // A fetch that stalls must not hold the load: after the wait it proceeds on f32 meshes.

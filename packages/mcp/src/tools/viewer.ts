@@ -666,7 +666,7 @@ const viewerAsk: Tool = {
     return okResult(
       [
         `Ask the user: "I'd like to open the 3D viewer for ${m.name} ${reason}. May I?"`,
-        `If they agree, call \`viewer_open\` with model_id="${m.id}". After it returns, share the URL with the user (\`http://localhost:<port>/\`) and tell them clicks in the viewer will sync back automatically.`,
+        `If they agree, call \`viewer_open\` with model_id="${m.id}". After it returns, share the URL with the user (\`http://127.0.0.1:<port>/\`) and tell them clicks in the viewer will sync back automatically.`,
       ].join(' '),
       { modelId: m.id, suggestedTool: 'viewer_open', suggestedArgs: { model_id: m.id } },
     );

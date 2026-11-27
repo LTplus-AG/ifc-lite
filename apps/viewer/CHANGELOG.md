@@ -1,5 +1,36 @@
 # @ifc-lite/viewer
 
+## 7.0.1
+
+### Patch Changes
+
+- [#11161](https://github.com/LTplus-AG/ifc-lite/pull/11161) [`0a30e5f`](https://github.com/LTplus-AG/ifc-lite/commit/0a30e5f97446b06068b9f80fbff7bc4484e0d708) Thanks [@quotentiroler](https://github.com/quotentiroler)! - `Drawing2DGenerator.generate`, and with it `generateFloorPlan` and `generateSection`, no longer cuts type-library geometry: `IfcWallType`, `IfcDoorType` and other representation maps meshed at the origin (`geometryClass` 1 and 2) are left out by the rule the viewer's Model view applies. A file with no placed elements still draws its orphan type geometry. The rule now lives in `@ifc-lite/geometry/geometry-class` as `selectModelMeshes` and `isModelViewGeometryClass`, and the viewer uses it from there.
+
+- [#10893](https://github.com/LTplus-AG/ifc-lite/pull/10893) [`d940c62`](https://github.com/LTplus-AG/ifc-lite/commit/d940c62bbef6ab6e0ab5b31daf35807114699377) Thanks [@louistrue](https://github.com/louistrue)! - The Drawing panel and the 3D section overlay now cut GPU-instanced occurrences too; before, they left them out. Geometry whose CPU arrays were released (test-only today, [#10264](https://github.com/LTplus-AG/ifc-lite/issues/10264)) is read back from the local backing one chunk at a time. A missing, incomplete or replaced backing fails the drawing instead of drawing part of the model. A model whose geometry is all instanced now draws too. While its instanced shards are still on their way to the scene, the drawing waits for them instead of being published without them.
+- Updated dependencies [[`3b7d64c`](https://github.com/LTplus-AG/ifc-lite/commit/3b7d64c04a9aecdc3ef7aa2b4481b3486b731980), [`f048b75`](https://github.com/LTplus-AG/ifc-lite/commit/f048b753065778f6f6e304d0efcb945005e1bd57), [`0a5bc3b`](https://github.com/LTplus-AG/ifc-lite/commit/0a5bc3b1b60697c789ed9e248bccba5f44cce80c), [`515ba8a`](https://github.com/LTplus-AG/ifc-lite/commit/515ba8a310958d2b934a0eeeaceb93d6e788964d), [`0842da2`](https://github.com/LTplus-AG/ifc-lite/commit/0842da279c4dc942d167647bf6c427a2eb34edaa), [`2ae4a57`](https://github.com/LTplus-AG/ifc-lite/commit/2ae4a57762b360271a295b6be4bd6ecbfbf59104), [`a9483ae`](https://github.com/LTplus-AG/ifc-lite/commit/a9483ae86580d34d0cdc3cc1f67484736a7c1a8a), [`7c5a170`](https://github.com/LTplus-AG/ifc-lite/commit/7c5a170d0fbd392c34726445c306a7f36f96b50e), [`d61d11f`](https://github.com/LTplus-AG/ifc-lite/commit/d61d11f52fc453d2cd9ea5892b98c4849d624b73), [`a5811b0`](https://github.com/LTplus-AG/ifc-lite/commit/a5811b0e6092a27947ceff35efdf48cd6fa3fe07), [`7f0dc47`](https://github.com/LTplus-AG/ifc-lite/commit/7f0dc47ef53508b8d97b626106ce77f97f2d42e8), [`72c4b7f`](https://github.com/LTplus-AG/ifc-lite/commit/72c4b7f4ac35a1b71bb4ab0dbd8f474634ca0b5b), [`700ac23`](https://github.com/LTplus-AG/ifc-lite/commit/700ac231eff8d013de92136c6c10296f0d3acc5f), [`4d5c3c6`](https://github.com/LTplus-AG/ifc-lite/commit/4d5c3c652634dfb32ec4bd32bcf878a26fa6b119), [`c1eeb86`](https://github.com/LTplus-AG/ifc-lite/commit/c1eeb86bbda4adbd17ffb6de6758ef5e90085af9), [`bc0ed4e`](https://github.com/LTplus-AG/ifc-lite/commit/bc0ed4ea86766bd88806f4f1bc448591bde74613), [`690dc7d`](https://github.com/LTplus-AG/ifc-lite/commit/690dc7d0b19bac9104d11402a5ca95f6e2462011), [`36b96cb`](https://github.com/LTplus-AG/ifc-lite/commit/36b96cb1672a1b56edc948a418155b7f3e136a68), [`d5f096a`](https://github.com/LTplus-AG/ifc-lite/commit/d5f096a1bb97139e68fd9a35a9cc2f8d92c8e165), [`b899ebb`](https://github.com/LTplus-AG/ifc-lite/commit/b899ebbcd2e5d8f4a048bcb129448ba1ecd06c7e), [`3b7d64c`](https://github.com/LTplus-AG/ifc-lite/commit/3b7d64c04a9aecdc3ef7aa2b4481b3486b731980), [`6330892`](https://github.com/LTplus-AG/ifc-lite/commit/6330892f5e5a1e3e92e1868c2951c19ce63b240b), [`f21465f`](https://github.com/LTplus-AG/ifc-lite/commit/f21465fa926def147ec1019be816d4620c9028bc), [`2f49f98`](https://github.com/LTplus-AG/ifc-lite/commit/2f49f9845560eb41f36186067eff01cbe39ec326), [`fc89b27`](https://github.com/LTplus-AG/ifc-lite/commit/fc89b27342853551e36dbd4577c7374ff1d251c6), [`f871ca3`](https://github.com/LTplus-AG/ifc-lite/commit/f871ca39f33775921e90647a6fad49f2e8b4f1a6), [`3b7d64c`](https://github.com/LTplus-AG/ifc-lite/commit/3b7d64c04a9aecdc3ef7aa2b4481b3486b731980), [`7e86803`](https://github.com/LTplus-AG/ifc-lite/commit/7e86803e82b335f308e101e8d14151de3139fc57), [`21fc7f9`](https://github.com/LTplus-AG/ifc-lite/commit/21fc7f9f521356b7e5ec4fc02aed75a1f4af1ec6), [`e186d8c`](https://github.com/LTplus-AG/ifc-lite/commit/e186d8c4e2b3e58fd957946520d06d437a4983d9), [`36885cd`](https://github.com/LTplus-AG/ifc-lite/commit/36885cd9d173483553b88a1c5588b165eedc37f9), [`e6d1027`](https://github.com/LTplus-AG/ifc-lite/commit/e6d1027113164b8e0aba6670f35cd323bb271fda), [`3b7eea5`](https://github.com/LTplus-AG/ifc-lite/commit/3b7eea519cf52430a7ee3b0127297866fbe4ca11), [`a38f750`](https://github.com/LTplus-AG/ifc-lite/commit/a38f7508502f6437d0abe76f0ea49f5858e7525a), [`5027560`](https://github.com/LTplus-AG/ifc-lite/commit/50275600faef3de250131acb2741bd1707421807), [`3b7d64c`](https://github.com/LTplus-AG/ifc-lite/commit/3b7d64c04a9aecdc3ef7aa2b4481b3486b731980), [`5b6ff10`](https://github.com/LTplus-AG/ifc-lite/commit/5b6ff10e17a202e3212a511f6a1285d010ab3b81), [`c7615d0`](https://github.com/LTplus-AG/ifc-lite/commit/c7615d02921fada12dec05c21693b88154d44289), [`356ece7`](https://github.com/LTplus-AG/ifc-lite/commit/356ece76880b114fa7bc3a8f85779c927bea1885), [`0a30e5f`](https://github.com/LTplus-AG/ifc-lite/commit/0a30e5f97446b06068b9f80fbff7bc4484e0d708)]:
+  - @ifc-lite/a2ui@0.2.0
+  - @ifc-lite/bcf@5.2.3
+  - @ifc-lite/export@6.0.0
+  - @ifc-lite/wasm@13.1.0
+  - @ifc-lite/cache@3.8.1
+  - @ifc-lite/geometry@8.4.0
+  - @ifc-lite/renderer@7.4.0
+  - @ifc-lite/drawing-2d@5.2.0
+  - @ifc-lite/ids@3.5.2
+  - @ifc-lite/mcp@0.32.0
+  - @ifc-lite/parser@11.0.1
+  - @ifc-lite/sandbox@3.1.0
+  - @ifc-lite/sdk@10.2.0
+  - @ifc-lite/flow@0.9.0
+  - @ifc-lite/ai@0.2.3
+  - @ifc-lite/create@6.1.1
+  - @ifc-lite/flow-nodes@0.12.5
+  - @ifc-lite/diff@0.13.4
+  - @ifc-lite/ids-agent@0.3.2
+  - @ifc-lite/ids-authoring@0.3.7
+  - @ifc-lite/rules@0.8.3
+  - @ifc-lite/lists@3.3.2
+
 ## 7.0.0
 
 ### Major Changes

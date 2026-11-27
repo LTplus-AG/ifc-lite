@@ -11,7 +11,7 @@
  */
 
 import { withoutComments } from './step-comment-skip.js';
-import { needsIfc4x3SlotMap, remapIfc4x3Slots, upgradeIfc4x3Type } from './schema-converter-ifc4x3-upgrade.js';
+import { needsUpgradeSlotMap, remapUpgradeSlots, upgradeNamedType } from './schema-converter-ifc4x3-upgrade.js';
 import { structuralAttributes } from './schema-converter-structural.js';
 import { generateIfcGuid, type RandomSource } from '@ifc-lite/encoding';
 import { deterministicGlobalId, getSchemaRegistryForVersion } from '@ifc-lite/parser';
@@ -29,7 +29,7 @@ import { productProxy } from './schema-converter-product-proxy.js';
 import { MEP_IFC2X3_TYPES } from './schema-converter-mep.js';
 import { isStrictAttrPrefix, replacedSlot } from './schema-converter-renames.js';
 import { carryUserDefinedLabel } from './schema-converter-userdefined-label.js';
-import { attrMapFor, DELETED_SUBTYPES, remapByAttrMap, upgradeCountsIfc4Slots, upgradeRename } from './schema-converter-attr-maps.js';
+import { attrMapFor, DELETED_SUBTYPES, remapByAttrMap, upgradeCountsSlots, upgradeRename } from './schema-converter-attr-maps.js';
 import { retypeInPlace } from './schema-converter-retyped.js';
 export { computeWithheldRefIds } from './schema-untranslatable.js';
 export type IfcSchemaVersion = 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
@@ -161,10 +161,8 @@ export function convertEntityType(
   if (fromSchema === toSchema) return entityType;
 
   const upper = entityType.toUpperCase();
-  if (toSchema === 'IFC4X3' && (fromSchema === 'IFC2X3' || fromSchema === 'IFC4')) {
-    const upgrade = upgradeIfc4x3Type(upper);
-    if (upgrade) return upgrade;
-  }
+  const upgraded = upgradeNamedType(upper, fromSchema, toSchema);
+  if (upgraded) return upgraded;
   const target = (toSchema === 'IFC2X3' ? MEP_IFC2X3_TYPES.get(upper) : undefined) ?? upgradeRename(upper, fromSchema, toSchema);
   if (target) return target;
 
@@ -266,7 +264,7 @@ function requireTopLevelAttributes(attrsRaw: string, maxReferenceId?: number): s
  *   placeholder minted here; pass one when output must be byte-reproducible.
  * @param slots - Reuses OwnerHistory (#4686) and counts unsettled slots.
  *   Without a collector, required-slot filling uses the generated defaults.
- * @param ifc4Slots - Counts IFC4-required slots left `$` (IFC4X3/IFC5 → IFC4, #5202; mapped or structural IFC2X3 → IFC4, #10763).
+ * @param ifc4Slots - Counts required slots left `$` against the target (IFC4X3/IFC5 → IFC4, #5202; mapped or structural IFC2X3 → IFC4, #10763, or → IFC4X3, #11135).
  * @param enums - Resolves enum members the target lacks and reports losses (#5365).
  * @param withheldRefIds - Express ids this export is OMITTING outright
  *   ({@link computeWithheldRefIds}, #4206) — a record whose attributes name
@@ -296,7 +294,9 @@ export function convertStepLine(
   if (enums && toSchema !== 'IFC5') converted = enums.structural.after(enums.documents.apply(enums.apply(enums.forms.apply(converted, fromSchema, toSchema, maxReferenceId), toSchema, maxReferenceId), maxReferenceId), withheldRefIds);
   if (toSchema === 'IFC2X3') return (slots ?? new Ifc2x3SlotFill()).apply(converted, maxReferenceId);
   if (enums?.typedProperties.capture(line, converted, fromSchema, toSchema, maxReferenceId)) return converted;
-  if (ifc4Slots && toSchema === 'IFC4' && (fromSchema !== 'IFC2X3' || upgradeCountsIfc4Slots(converted))) ifc4Slots.apply(converted);
+  // Every record to IFC4; an IFC2X3 upgrade's mapped records to IFC4 or IFC4X3, each against its own target (#11135).
+  const target = toSchema === 'IFC4' || toSchema === 'IFC4X3' ? toSchema : undefined;
+  if (ifc4Slots && target && (fromSchema === 'IFC2X3' ? upgradeCountsSlots(converted, target) : target === 'IFC4')) ifc4Slots.apply(converted, target);
   return converted;
 }
 
@@ -406,7 +406,7 @@ function convertRecord(
     const mapped = args.length > 0 ? attrMapFor(entityType, newType, fromSchema, toSchema) : undefined; // #10763
     const replaced = mapped ? undefined : replacedSlot(entityType, srcAttrs, tgtAttrs); // #10758: no value carries there
     if (replaced !== undefined && replaced < args.length && withoutComments(args[replaced]) !== '$') { args[replaced] = '$'; finalAttrs = args.join(','); }
-    if (toSchema === 'IFC4X3' && entityType !== newType && needsIfc4x3SlotMap(entityType)) finalAttrs = remapIfc4x3Slots(entityType, srcAttrs, tgtAttrs, args);
+    if (entityType !== newType && needsUpgradeSlotMap(entityType, fromSchema, toSchema)) finalAttrs = remapUpgradeSlots(entityType, srcAttrs, tgtAttrs, args);
     else if (mapped) finalAttrs = remapByAttrMap(mapped.map, mapped.up, args, srcAttrs, tgtAttrs);
     else if (isStrictAttrPrefix(tgtAttrs, srcAttrs, entityType)) {
       finalAttrs = trimAttributes(attrsRaw, args, tgtAttrs.length);

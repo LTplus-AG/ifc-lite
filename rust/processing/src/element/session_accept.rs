@@ -26,7 +26,7 @@ impl ProductState<'_> {
                     &assembly,
                     (map_id, class),
                     parts,
-                    self.element_color,
+                    (self.element_color, self.element_style),
                     ctx,
                     decoder,
                 ));
@@ -36,10 +36,12 @@ impl ProductState<'_> {
                 match outcome {
                     PrimaryOutcome::RefusedAnnotation => return,
                     PrimaryOutcome::Candidate(sub_meshes) => {
+                        let ids_are_materials = sub_meshes.ids_are_materials();
                         let (meshes, occurrences) = presentation_source::submeshes(
                             &assembly,
-                            sub_meshes,
-                            self.element_color,
+                            sub_meshes.into_iter_with_occurrences(),
+                            ids_are_materials,
+                            (self.element_color, self.element_style),
                             ctx,
                             decoder,
                             &mut self.hasher,
@@ -95,7 +97,7 @@ impl ProductState<'_> {
                 assembly,
                 self.job.entity,
                 mesh,
-                self.element_color,
+                (self.element_color, self.element_style),
                 ctx,
                 decoder,
                 &mut self.hasher,

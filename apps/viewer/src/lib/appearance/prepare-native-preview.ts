@@ -12,6 +12,7 @@ import { appearanceAssets, modelAppearanceAssets } from './model-assets';
 import { appearanceMapping } from './settings';
 import { preparePdfPagePreview } from './pdf/page-preview';
 import { AppearancePreviewSession, bindAppearancePreview } from './preview';
+import { ensureExactSourceGeometry, planProductIds } from './exact-source-geometry';
 
 /** Native Rust planning and retained image preparation shared by panel and operations. */
 export async function prepareNativeAppearancePlan(input: {
@@ -34,6 +35,8 @@ export async function prepareNativeAppearancePlan(input: {
     representationPolicy: settings.representationPolicy ?? 'preserve', mapping: appearanceMapping(settings),
     ...(faceMasks ? { faceMasks } : {}) }, { signal });
   signal.throwIfAborted(); snapshot.validate();
+  await ensureExactSourceGeometry(modelId, planProductIds(plan), signal); // compact meshes carry no corner provenance
+  snapshot.validate();
   return { source, assetIds: page?.assetIds ?? [assetId], plan, bitmap, imageUri, itemImages: page?.itemImages };
 }
 export function stageNativeAppearancePreview(modelId: string, prepared: Awaited<ReturnType<typeof prepareNativeAppearancePlan>>, settings: AppearanceDraftSettings, renderer: Renderer) {

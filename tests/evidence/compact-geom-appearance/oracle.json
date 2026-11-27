@@ -1,0 +1,6 @@
+{
+  "issue": 7955,
+  "why": "Treat no mesh as compact (so planned compact products are never re-meshed) and bind before the 3D view draws the re-meshed products: the appearance re-mesh tests must go red.",
+  "key": "apps/viewer/src/lib/appearance/exact-source-geometry.ts",
+  "mutation": "tests/evidence/compact-geom-appearance/behaviour.oracle.patch"
+}

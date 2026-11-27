@@ -9,6 +9,8 @@ export interface Tool {
   name: string;
   description: string;
   inputSchema: JsonSchema;
+  /** JSON Schema of `structuredContent` on success (MCP 2025-06-18). */
+  outputSchema?: JsonSchema;
   scope?: ToolScope;
   /** Human-readable name for `tools/list`. */
   title?: string;

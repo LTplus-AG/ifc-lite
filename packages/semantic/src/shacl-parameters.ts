@@ -46,13 +46,4 @@ export function assertShapeParameters(shapes: Store): void {
     shapes.removeQuad(quad);
     shapes.addQuad(quad.subject, quad.predicate, DataFactory.literal(quad.object.value === '1' ? 'true' : 'false', DataFactory.namedNode(XSD + 'boolean')), quad.graph);
   }
-  // SHACL uses SPARQL/XPath regex semantics: Unicode is intrinsic and 'u' is
-  // not a portable flag. Adapt only this private, parsed runtime graph for the
-  // JavaScript-based engine; generated/exported shapes retain standard flags.
-  const flagsPredicate = DataFactory.namedNode(SH + 'flags');
-  for (const pattern of shapes.getQuads(null, SH + 'pattern', null, null)) {
-    const flags = shapes.getQuads(pattern.subject, flagsPredicate, null, null)[0];
-    if (flags) shapes.removeQuad(flags);
-    shapes.addQuad(pattern.subject, flagsPredicate, DataFactory.literal((flags?.object.value ?? '') + 'u'), flags?.graph ?? pattern.graph);
-  }
 }

@@ -542,6 +542,41 @@ A failed native library save carries the library's reason in `details.save`. Sto
 
 ## Wiring it into a client
 
+`install` writes the config for you. It merges into an existing file, keeps
+every other server, and backs the file up first. `--dry-run` prints the JSON
+or command and changes nothing.
+
+```bash
+ifc-lite mcp install --client claude-desktop ./model.ifc
+npx -y @ifc-lite/mcp install --client cursor -- --bridge
+```
+
+Clients: `claude-code` (uses `claude mcp add` for ordinary installs), `claude-desktop`, `cursor`,
+`vscode` (user scope runs `code --add-mcp`). `--scope project` writes the
+current directory's `.mcp.json`, `.cursor/mcp.json` or `.vscode/mcp.json`.
+Flags after `--` go to the server. Model paths become absolute. Use
+`--force` to replace an existing IFClite entry, including an older npm pin.
+For Claude Code, `--force` backs up and updates `.mcp.json` at project scope
+or `~/.claude.json` at user scope (under `CLAUDE_CONFIG_DIR` when set).
+It preserves custom server settings such as `env`.
+VS Code user-scope installs also require `--force` because its CLI replaces
+same-name entries. On Windows, use project scope or open the VS Code user
+configuration and paste the entry printed by install.
+
+For file-based updates, concurrent IFClite installers targeting the same
+resolved file coordinate through a lock. The installer backs up an existing
+file under that lock, checks that the target and contents still match the
+merge input, then publishes the complete replacement with a single rename.
+A detected change aborts the update. A completed backup can remain if the
+replacement fails. Other editors and client processes do not share the lock.
+An external write between the final check and rename can still be overwritten,
+so avoid editing or saving that config while running the installer.
+
+On macOS, Claude Desktop launched from the Dock may have a different PATH
+from your terminal. If it cannot find `npx`, use a Claude Desktop bundle when
+available, or configure absolute paths for your Node installation and ensure
+the server's PATH includes that installation's bin directory.
+
 === "Claude Code"
 
     The repository is a plugin marketplace. The `ifc-lite` plugin bundles the

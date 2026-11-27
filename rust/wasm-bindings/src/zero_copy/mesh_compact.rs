@@ -108,6 +108,7 @@ const REFUSAL_KINDS: usize = 9;
 #[derive(Default)]
 pub struct CompactBatch {
     records: Vec<u8>,
+    lod_normals: Vec<f32>,
     indices: Vec<u16>,
     table: Vec<u32>,
     /// Window origins are integers held as f64 (exact below 2^53).
@@ -130,6 +131,11 @@ impl CompactBatch {
     #[wasm_bindgen(getter)]
     pub fn records(&self) -> js_sys::Uint8Array {
         js_sys::Uint8Array::from(&self.records[..])
+    }
+    /// Lexicographically first referenced authored corner normal per welded vertex.
+    #[wasm_bindgen(getter, js_name = lodNormals)]
+    pub fn lod_normals(&self) -> js_sys::Float32Array {
+        js_sys::Float32Array::from(&self.lod_normals[..])
     }
     /// Mesh-local u16 triangle indices.
     #[wasm_bindgen(getter)]
@@ -321,6 +327,7 @@ impl CompactBatch {
             self.records.extend_from_slice(&oct_encode(n[0], n[1], n[2]).to_le_bytes());
             self.records.extend_from_slice(&lane.to_le_bytes());
         }
+        s.append_lod_normals(mesh, &mut self.lod_normals);
         self.indices.extend_from_slice(&s.tris);
         let source_vertices = (mesh.positions.len() / 3) as u32;
         self.table.extend_from_slice(&[index as u32, vertex_start, s.nodes.len() as u32, index_start, s.tris.len() as u32, fit.level, source_vertices]);

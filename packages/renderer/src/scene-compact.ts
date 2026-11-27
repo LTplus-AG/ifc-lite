@@ -6,16 +6,6 @@
  * The Scene's compact geometry: which queued meshes may draw from compact
  * pages (`compact-store.ts`), their upload, and the way back.
  *
- * A compact mesh draws from its records when they match the bucket path:
- *
- * - its records carry the id and colour salt the scene draws it with (a host
- *   that re-homes ids or recolours a mesh after the worker encoded it gets the
- *   bucket path for that mesh);
- * - its model has no placement and its `origin` is the one it was adopted with (records cannot move);
- * - the scene keeps CPU geometry and has the quantized pipelines that draw 12-byte records
- *   (while the renderer is still probing for them, meshes wait in the queue, still compact);
- * - it is one entity with one colour and no texture.
- *
  * Any other compact mesh is decoded (`@ifc-lite/geometry` compact-shell.ts) and
  * handed back to the caller as an ordinary f32 mesh.
  *
@@ -58,7 +48,14 @@ export class SceneCompact {
   private retired: Set<MeshData> | 'all' | null = null; // retired since the last build ('all': one was dropped): a drain builds their pages again
   /** Pages fill outside a stream (after a device loss, or a queue that outlived its stream): trim them at the drain that uploads them. */
   private trimAfterDrain = false;
-  private movedInStream = false; // meshes moved to buckets while a stream ran: its end cannot tell their buckets from the stream's
+  private editPieces = new WeakSet<MeshData>();
+  private arrivals = new Set<string>();
+
+  /** Record the actual destination of a retained stream write before the scene registers its key. */
+  noteBucketWrite(mesh: MeshData, baseKey: string): void {
+    if (this.scene.streamedBucketKeys.size === 0) this.arrivals.clear();
+    if (!this.editPieces.has(mesh)) this.arrivals.add(baseKey);
+  }
   /** Meshes handed to the bucket path decoded since the last `clear`, by reason (`take` and `drain`; edits that demote are not counted). */
   decodes: Partial<Record<CompactDecodeReason, number>> = {};
 
@@ -126,7 +123,6 @@ export class SceneCompact {
   /** Upload the queued meshes (or run a requested demotion, or a slice of the pages' LOD build). Returns whether anything changed. */
   drain(device: GPUDevice, pipeline: RenderPipeline, budgetMs = 8): boolean {
     this.gpu = { device, pipeline };
-    if (!this.streaming) this.movedInStream = false; // the keys its edits wrote are gone (a rolled-back finalize keeps them, and the flag)
     if (this.retired && !this.store.untrimmed && this.queue.length === 0 && !this.streaming) this.trim(device, this.retired); // not before the stream's own trim
     let demoted = this.lod !== null; // a slice of the LOD build (compact-lod.ts), half the budget: uploads get the rest
     if (this.lod?.step(budgetMs / 2)) { const { written } = this.lod; this.lod = null; if (written.length > 0) this.retired = this.retired === 'all' ? 'all' : new Set([...(this.retired ?? []), ...written]); }
@@ -208,8 +204,8 @@ export class SceneCompact {
     this.drain(device, pipeline);
     if (this.queue.length > 0) this.trimAfterDrain = true;
     else if (this.store.untrimmed) this.trim(device);
-    // A stream that grew no page may have written f32 meshes into a page's bucket (not when an edit wrote buckets during it too).
-    else if (this.members.size > 0 && !this.movedInStream && (this.scene.streamedBucketKeys.size > 0 || this.scene.meshQueue.length > 0)) this.trim(device, undefined, true);
+    // A stream that grew no page may have written f32 meshes into a page's bucket.
+    else if (this.members.size > 0 && (this.scene.streamedBucketKeys.size > 0 || this.scene.meshQueue.length > 0)) this.trim(device, undefined, true);
   }
 
   /** Trim the pages and take their buckets' decisions (compact-lod.ts): exact groups move to buckets, decoded, now; the LOD build runs in drains. */
@@ -221,7 +217,7 @@ export class SceneCompact {
       // A stream with only f32 arrivals can change an existing group's verdict even if every move was refused.
       if (judgeOnly && this.scene.lodBuildsEnabled && meshes.some(mesh => this.members.has(mesh))) this.retired = 'all';
       if (paged > this.members.size) this.decodes[reason] = (this.decodes[reason] ?? 0) + paged - this.members.size;
-    }, retired, judgeOnly);
+    }, retired, judgeOnly ? { arrivals: this.arrivals, edits: this.editPieces } : undefined);
     if (!judgeOnly) { this.lod = build; this.retired = null; } // this build covers them (and the meshes its own moves retired)
   }
 
@@ -254,8 +250,7 @@ export class SceneCompact {
       (selected ? decoded : keep).push(mesh);
     }
     this.queue = keep;
-    this.toBuckets(decoded);
-    this.movedInStream ||= this.streaming && decoded.length > 0;
+    this.toBuckets(decoded, true);
     return decoded.length > 0;
   }
 
@@ -271,13 +266,17 @@ export class SceneCompact {
    * recovery whose pipelines did not come back, an edit right after one). One the bucket path refuses
    * keeps the queue, as any f32 mesh would.
    */
-  private toBuckets(meshes: MeshData[]): void {
+  private toBuckets(meshes: MeshData[], edit = false): void {
     if (meshes.length === 0) return;
     const scene = this.scene;
     for (const mesh of meshes) materializeCompactMesh(mesh);
     const now = this.gpu && !this.streaming ? meshes.filter((mesh) => !scene.refusesBucketPath(scene.modelTranslations.placeMesh(mesh))) : [];
     if (now.length > 0) scene.appendToBatches(now, this.gpu!.device, this.gpu!.pipeline, false, false);
-    for (const mesh of meshes) if (!now.includes(mesh)) scene.meshQueue.push(...scene.splitMeshForStreaming(mesh));
+    for (const mesh of meshes) if (!now.includes(mesh)) {
+      const pieces = scene.splitMeshForStreaming(mesh);
+      if (edit) for (const piece of pieces) this.editPieces.add(scene.modelTranslations.placeMesh(piece));
+      scene.meshQueue.push(...pieces);
+    }
   }
 
   /**
@@ -335,7 +334,7 @@ export class SceneCompact {
     // `drain` uploaded them, so its device is known. While a stream or its finalize is under way they
     // join it as fragments; a synchronous rebuild would republish the batch list without the stream's.
     const streaming = this.streaming;
-    this.movedInStream ||= streaming;
+    if (streaming) for (const [, kept] of moving) this.editPieces.add(kept);
     let failure: unknown, failed = false;
     try { scene.appendToBatches(sources, this.gpu!.device, this.gpu!.pipeline, streaming, true); } catch (error) { failure = error; failed = true; }
     // The append validates before it changes anything and builds GPU batches last. If it refused the
@@ -394,7 +393,7 @@ export class SceneCompact {
     this.combined = this.lod = this.retired = null;
     this.demotionPages.clear();
     this.refused = new WeakSet();
-    this.trimAfterDrain = this.movedInStream = false; this.decodes = {};
+    this.arrivals.clear(); this.editPieces = new WeakSet(); this.trimAfterDrain = false; this.decodes = {};
     forgetGroups(this.scene); // its chunking may change before the same meshes come back
   }
 }

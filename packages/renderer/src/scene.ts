@@ -1159,9 +1159,6 @@ export class Scene {
   }
 
   /**
-   * Append meshes to color batches incrementally
-   * Merges new meshes into existing color groups or creates new ones
-   *
    * STREAMING OPTIMIZATION: During streaming, creates lightweight "fragment"
    * batches from ONLY the new meshes instead of re-merging all accumulated
    * data. This reduces streaming from O(N²) to O(N). Call finalizeStreaming()
@@ -1231,7 +1228,10 @@ export class Scene {
         this.addMeshData(meshData);
 
         // Non-streaming rebuilds now; streamed buckets wait for finalize.
-        if (isStreaming) this.streamedBucketKeys.add(bucketKey);
+        if (isStreaming) {
+          this.compact?.noteBucketWrite(meshData, baseKey);
+          this.streamedBucketKeys.add(bucketKey);
+        }
         else this.pendingBatchKeys.add(bucketKey);
       }
     }

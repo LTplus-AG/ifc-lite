@@ -41,11 +41,11 @@ import type { CompactPageDeps } from './compact-page-deps.js';
 import type { CompactGeometryStore, CompactPage } from './compact-store.js';
 import type { LodPart } from './lod-parts.js';
 import type { SceneCompactHost } from './scene-compact-host.js';
-import { bucketKeyOf, collectGroups, type Group } from './compact-groups.js';
+import { bucketKeyOf, collectGroups, type StreamWrites, type Group } from './compact-groups.js';
 import { lod1Vertices } from './compact-lod-vertices.js';
 
 /** Scratch record per vertex: position xyz (page frame) and the u32 entity lane. */
-const SCRATCH_FLOATS = 4;
+const SCRATCH_FLOATS = 7;
 /** Vertices a page holds at most: every page draws with u16 indices (compact-store.ts). */
 export const MAX_PAGE_VERTICES = 65536;
 
@@ -69,10 +69,10 @@ export function settlePages(
    *  ('all': every page), and no group moves to its bucket (an edit of one element does not decode its group). */
   retired?: ReadonlySet<MeshData> | 'all',
   /** A stream end that grew no page: only groups whose bucket the stream wrote f32 meshes into move; their moves rebuild their pages. */
-  judgeOnly = false,
+  judgeOnly?: StreamWrites,
 ): PageLodBuild | null {
   const t0 = performance.now();
-  const groups = collectGroups(store, host, deps, judgeOnly ? 'streamed' : !retired);
+  const groups = collectGroups(store, host, deps, judgeOnly ?? !retired);
   const keys = retired && retired !== 'all' ? new Set([...retired].map((mesh) => bucketKeyOf(host, mesh, true))) : undefined;
   // A retired mesh no build saw (no cached key): every page is built again.
   const only = keys && !keys.has(undefined) ? keys : undefined;
@@ -183,10 +183,10 @@ function* buildPageLods(
         if (!decoded) { readRecords(store, page, scratch, lanes, nodes); decoded = true; }
         const source = sourceIndices(store, meshes);
         const out = simplify(scratch.subarray(0, page.vertexCount * SCRATCH_FLOATS), SCRATCH_FLOATS, source,
-          lodCellSize(group.bounds.min, group.bounds.max), { idLaneOffset: 3, frameOrigin: store.origin!, unconditional: true });
+          lodCellSize(group.bounds.min, group.bounds.max), { normalOffset: 4, idLaneOffset: 3, frameOrigin: store.origin!, unconditional: true });
         if (out) {
           group.kept += out.length;
-          ({ indices: lod1, records } = lod1Vertices(out, source, { positions: scratch, lanes, nodes, vertexCount: page.vertexCount }, deps.bucket.octEncode));
+          ({ indices: lod1, records } = lod1Vertices(out, scratch, lanes, nodes, deps.bucket.octEncode));
           // The clustering is entity-scoped: every corner of a triangle carries its entity's lane.
           const idOf = new Map<number, number>();
           for (const mesh of meshes) idOf.set(lanes[store.slotOf(mesh)!.base * SCRATCH_FLOATS + 3], mesh.expressId);
@@ -229,6 +229,8 @@ function readRecords(store: CompactGeometryStore, page: CompactPage, scratch: Fl
         nodes[n + axis] = view.getUint16(at + axis * 2, true);
         scratch[out + axis] = q.min[axis] + nodes[n + axis] * q.step;
       }
+      const normal = (compactRow(ref).vertexStart + v) * 3;
+      for (let k = 0; k < 3; k++) scratch[out + 4 + k] = ref.payload.lodNormals?.[normal + k] ?? 0;
       lanes[out + 3] = view.getUint32(at + 8, true);
     }
   }

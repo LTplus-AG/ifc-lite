@@ -18,6 +18,9 @@ const ZERO_POSITION = new Float32Array(3);
 /** The stream end's verdicts per Scene: bucket keys whose groups move to their buckets. */
 const streamVerdicts = new WeakMap<SceneCompactHost, Map<string, 'exact' | 'shared'>>();
 
+/** Genuine f32 arrivals and pieces queued by an edit survive a failed finalize together. */
+export interface StreamWrites { arrivals: ReadonlySet<string>; edits: WeakSet<MeshData> }
+
 /** The bucket a set of paged meshes would share. */
 export interface Group {
   bounds: { min: [number, number, number]; max: [number, number, number] };
@@ -57,7 +60,7 @@ export function bucketKeyOf(host: SceneCompactHost, mesh: MeshData, cachedOnly =
  * bucket this stream wrote f32 meshes into move, as 'shared': earlier verdicts stand, and a bucket an edit wrote decodes nothing);
  * false for an edit-time build (the stream's verdicts).
  */
-export function collectGroups(store: CompactGeometryStore, host: SceneCompactHost, deps: CompactPageDeps, judge: boolean | 'streamed' = true): Map<string, Group> {
+export function collectGroups(store: CompactGeometryStore, host: SceneCompactHost, deps: CompactPageDeps, judge: boolean | StreamWrites = true): Map<string, Group> {
   const groups = new Map<string, Group>();
   for (const page of store.pageList()) {
     for (const mesh of page.meshes) {
@@ -77,6 +80,7 @@ export function collectGroups(store: CompactGeometryStore, host: SceneCompactHos
       group.triangles += row.indexCount / 3;
       // A lattice finer than the bucket batch's: the bucket's collapsed it (one coarser only outgrew its window).
       if (compactStep(row.level) < deps.bucket.quantStep) group.fine = true;
+      if (!ref.payload.lodNormals) group.kept = -1; // Older encoders discarded the authored corners: keep full detail.
       group.members.push(mesh);
     }
   }
@@ -87,22 +91,28 @@ export function collectGroups(store: CompactGeometryStore, host: SceneCompactHos
     for (const [key, group] of groups) group.move = verdicts?.get(key) ?? null;
     return groups;
   }
-  const previous = judge === 'streamed' ? streamVerdicts.get(host) : undefined;
+  const previous = typeof judge === 'object' ? streamVerdicts.get(host) : undefined;
   const verdicts = previous ?? new Map<string, 'exact' | 'shared'>();
   streamVerdicts.set(host, verdicts);
   const { quantStep, maxQuantExtent, collapses } = deps.bucket;
   // Buckets that hold meshes of their own (f32 meshes no page draws), or will once the queue is flushed: their batch is
   // the union, so the group joins it. (A queued f32 mesh is keyed as the bucket path keys it: at its own first vertex.)
   const shared = new Set<string>();
-  for (const [key, bucket] of host.buckets) if (bucket.meshData.length > 0 && (judge === true || host.streamedBucketKeys.has(key))) shared.add(key.replace(/#\d+$/, ''));
-  for (const mesh of host.meshQueue) if (!mesh.compact) shared.add(host.bucketBaseKey(mesh, undefined, mesh));
+  for (const [key, bucket] of host.buckets) {
+    const base = key.replace(/#\d+$/, '');
+    if (bucket.meshData.length && (judge === true || (host.streamedBucketKeys.has(key) && judge.arrivals.has(base)))) shared.add(base);
+  }
+  for (const mesh of host.meshQueue) {
+    if (mesh.compact || (judge !== true && judge.edits.has(host.modelTranslations.placeMesh(mesh)))) continue;
+    shared.add(host.bucketBaseKey(mesh, undefined, mesh));
+  }
   for (const [key, group] of groups) {
     if (shared.has(key)) {
       group.move = 'shared';
       verdicts.set(key, group.move);
       continue;
     }
-    if (judge === 'streamed') continue;
+    if (typeof judge === 'object') continue;
     // quantize.ts: the batch's lower corner floors to the lattice; past `maxQuantExtent` above it the batch stays f32.
     const { min, max } = group.bounds;
     for (let axis = 0; axis < 3; axis++) if (max[axis] - Math.floor(min[axis] / quantStep) * quantStep > maxQuantExtent) group.move = 'exact';

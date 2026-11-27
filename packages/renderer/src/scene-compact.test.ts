@@ -69,9 +69,10 @@ const boxCorner = (box: Box, corner: number, axis: number): number => box.at[axi
  * A worker batch of welded boxes in the layout the wasm encoder writes: level 10, every box in the
  * window of cell 0 (16 m below the origin), lanes stamped with the id and colour salt.
  */
-function compactBatch(boxes: readonly Box[], cellX = 0): MeshData[] {
+function compactBatch(boxes: readonly Box[], cellX = 0, reverseNormals = false): MeshData[] {
   const scale = 1024, window = -16 * scale, windowX = (cellX * 32 - 16) * scale;
   const payload: CompactPayload = {
+    lodNormals: new Float32Array(boxes.length * 8 * 3),
     records: new Uint8Array(boxes.length * 8 * 12), indices: new Uint16Array(boxes.length * 36),
     table: new Uint32Array(boxes.length * 7), windows: new Float64Array(boxes.length * 3).fill(window),
     bounds: new Float64Array(boxes.length * 6), cells: new Int32Array(boxes.length * 3),
@@ -90,6 +91,10 @@ function compactBatch(boxes: readonly Box[], cellX = 0): MeshData[] {
       }
       // Outward corner normal, oct-encoded: +-1/3 on each axis folds to bytes 85/170 (or their mirror for -z).
       const sign = [(corner & 1) * 2 - 1, ((corner >> 1) & 1) * 2 - 1, ((corner >> 2) & 1) * 2 - 1];
+      if (reverseNormals) for (let k = 0; k < 3; k++) sign[k] *= -1;
+      const faceNormals = [[sign[0], 0, 0], [0, sign[1], 0], [0, 0, sign[2]]];
+      faceNormals.sort((a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2]);
+      payload.lodNormals!.set(faceNormals[0], (row * 8 + corner) * 3);
       const oct = (v: number) => Math.round((v * 0.5 + 0.5) * 255);
       const ox = sign[2] > 0 ? sign[0] / 3 : sign[0] * (2 / 3), oy = sign[2] > 0 ? sign[1] / 3 : sign[1] * (2 / 3);
       view.setUint16(at + 6, (oct(ox) << 8) | oct(oy), true);
@@ -851,15 +856,19 @@ function settle(scene: Scene, gpu: ReturnType<typeof fakeGpu>): void {
 }
 
 describe('compact pages take the decisions of the bucket batches they stand in for', () => {
-  it('build each bucket\'s LOD1 over their pages, the triangles the bucket path builds for the same meshes', async () => {
+  for (const reverseNormals of [false, true]) it(`matches actual bucket LOD1 triangles and authored normals (reversed=${reverseNormals}, #11606)`, async () => {
     const boxes = [...lodBoxes(1000, 0, 28), ...lodBoxes(2000, 0, 28, RED)];
     const off = await lodScene(false), gpuOff = fakeGpu();
-    upload(off, gpuOff, boxes.map(boxSoup));
+    upload(off, gpuOff, boxes.map(box => {
+      const mesh = boxSoup(box);
+      if (reverseNormals) mesh.normals = mesh.normals.map(n => -n);
+      return mesh;
+    }));
     settle(off, gpuOff);
     assert.equal(buckets(off).length, 2);
 
     const on = await lodScene(true), gpuOn = fakeGpu(), decodedOff = decoded();
-    upload(on, gpuOn, compactBatch(boxes));
+    upload(on, gpuOn, compactBatch(boxes, 0, reverseNormals));
     settle(on, gpuOn);
     assert.equal(buckets(on).length, 0);
     assert.equal(decoded() - decodedOff, 0, 'built from the records: no mesh decoded');
@@ -1041,6 +1050,23 @@ describe('compact pages take the decisions of the bucket batches they stand in f
     assert.throws(() => on.finalizeStreaming(gpu.device, gpu.pipeline), /the rebuild failed/);
     settle(on, gpu); // the retry: the rollback put the edit's bucket key back
     assert.deepEqual(entitiesOf(pages(on)), [2, 3], 'the retry decodes no other mesh of the edited group');
+  });
+
+  for (const same of [true, false]) it(`reconciles real stream arrivals across edit and finalize retry (same bucket=${same}, #11606)`, async () => {
+    const on = await lodScene(true), gpu = fakeGpu();
+    upload(on, gpu, compactBatch([{ expressId: 1, at: [2, 0, 0], size: 1, color: GREY }, { expressId: 2, at: [4, 0, 0], size: 1, color: GREY }, { expressId: 3, at: [2, 0, 0], size: 1, color: RED }]));
+    settle(on, gpu);
+    const flat: MeshData = {
+      expressId: 9, modelIndex: 0, color: same ? GREY : RED,
+      positions: new Float32Array([2, 0, 0, 3, 0, 0, 2, 1, 0]), normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]), indices: new Uint32Array([0, 1, 2]),
+    };
+    upload(on, gpu, [flat]);
+    assert.equal(on.translateMeshesForEntity(1, [0.25, 0, 0]), true);
+    const rebuild = on['rebuildAndPublishBatches'];
+    on['rebuildAndPublishBatches'] = () => { on['rebuildAndPublishBatches'] = rebuild; throw new Error('the rebuild failed'); };
+    assert.throws(() => on.finalizeStreaming(gpu.device, gpu.pipeline), /the rebuild failed/);
+    settle(on, gpu); // the retry: the rollback put the edit's bucket key back
+    assert.deepEqual(entitiesOf(pages(on)), same ? [3] : [2], 'only the bucket receiving genuine f32 geometry reconciles');
   });
 
   it('keep a bucket paged whose mesh only outgrew its window (level 9)', async () => {

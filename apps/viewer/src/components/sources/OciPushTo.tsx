@@ -92,7 +92,14 @@ export function OciPushTo({ disabled = false, onBusyChange }: {
       const session = previous ?? await authorizeRepository(connection, repository, action, controller.signal, storedConnections);
       controller.signal.throwIfAborted();
       // Another tab can replace the saved settings while the sign-in popup is open.
-      if (registryConnectionIdentity(connectionFor(registry)) !== identity) throw new Error(t('registry.push.storeChanged'));
+      const latestConnections = registryConnections();
+      const latestConnection = latestConnections.find(candidate => candidate.registry === connection.registry);
+      const latestIdentity = latestConnection && registryConnectionIdentity(latestConnection);
+      if (latestIdentity !== identity) {
+        clearFileStoreSessions(connection.registry, latestIdentity);
+        setConnections(latestConnections);
+        throw new Error(t('registry.push.storeChanged'));
+      }
       if (!previous) useHandoffWorkspace.setState({ repositorySession: session });
       await operation(session, controller.signal);
     } catch (failure) {

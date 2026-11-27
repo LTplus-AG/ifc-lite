@@ -386,3 +386,27 @@ WHERE RealType : 'REAL' IN TYPEOF(ABS(R)); IntegerType : 'INTEGER' IN TYPEOF(ABS
   expect(report.stats.entityRuleEvaluations).toBe(5);
   expect(report.findings.map(f => f.rule)).toEqual(['Sample.WrongReal', 'Sample.WrongInteger']);
 });
+
+it('evaluates both TYPEOF forms on SELECT WHERE SELF entity references (#11647)', async () => {
+  const { schema } = generated(`SCHEMA S; ENTITY Node; END_ENTITY; ENTITY Child SUBTYPE OF (Node); END_ENTITY;
+ENTITY Other; END_ENTITY; TYPE Choice = SELECT (Node, Other);
+WHERE Fast : 'S.NODE' IN TYPEOF(SELF); Full : SIZEOF(TYPEOF(SELF) * ['S.NODE']) = 1; END_TYPE;
+ENTITY E; V : Choice; END_ENTITY; END_SCHEMA;`);
+  const report = await validateStepText('DATA;#1=NODE();#2=CHILD();#3=OTHER();#4=E(#1);#5=E(#2);#6=E(#3);ENDSEC;', { schema, categories: ['schema', 'simpletype_rule'] });
+  expect(report.stats.typeRuleEvaluations).toBe(6);
+  expect(report.findings.map(f => [f.instance, f.rule])).toEqual([[6, 'Choice.Fast'], [6, 'Choice.Full']]);
+});
+
+it('validates and reads each parent’s same-named inverse independently (#11647)', async () => {
+  const { schema } = generated(`SCHEMA S; ENTITY A; INVERSE Links : SET [1:?] OF RA FOR Target; END_ENTITY;
+ENTITY B; INVERSE Links : SET [1:?] OF RB FOR Target; END_ENTITY;
+ENTITY C SUBTYPE OF (A,B); WHERE AHas : SIZEOF(SELF\\A.Links) > 0; BHas : SIZEOF(SELF\\B.Links) > 0; END_ENTITY;
+ENTITY RA; Target : A; END_ENTITY; ENTITY RB; Target : B; END_ENTITY; END_SCHEMA;`);
+  const report = await validateStepText('DATA;#1=C();#2=C();#3=C();#4=C();#5=RA(#1);#6=RB(#2);#7=RA(#3);#8=RB(#3);ENDSEC;', { schema, categories: ['entity_rule', 'schema'] });
+  expect(report.findings.filter(f => f.rule === 'inverse-cardinality').map(f => [f.instance, f.message.split(' OF ')[1]])).toEqual([
+    [1, 'RB FOR Target has 0'], [2, 'RA FOR Target has 0'], [4, 'RA FOR Target has 0'], [4, 'RB FOR Target has 0'],
+  ]);
+  expect(report.findings.filter(f => f.category === 'entity_rule').map(f => [f.instance, f.rule])).toEqual([
+    [1, 'C.BHas'], [2, 'C.AHas'], [4, 'C.AHas'], [4, 'C.BHas'],
+  ]);
+});

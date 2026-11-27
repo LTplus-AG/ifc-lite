@@ -30,7 +30,7 @@ export class ResolvedEntity {
   readonly subtypes: ResolvedEntity[] = [];
   chain: ResolvedEntity[] = [];
   attributes: ResolvedAttribute[] = [];
-  inverses: InverseMeta[] = [];
+  inverses: Array<InverseMeta & { declaredBy: string }> = [];
   rules: ResolvedEntityRule[] = [];
   readonly slots = new Map<string, AttributeSlot>();
   readonly ancestors = new Set<string>();
@@ -218,11 +218,18 @@ export class SchemaRuntime {
         e.attributes.push(resolved);
       }
       for (const inv of level.meta.inverse ?? []) {
-        e.inverses = e.inverses.filter((x) => x.name.toUpperCase() !== inv.name.toUpperCase());
-        e.inverses.push(inv);
-        e.slots.set(inv.name.toUpperCase(), { k: 'inverse', inverse: inv });
+        const name = inv.name.toUpperCase();
+        // A subtype may refine an inherited inverse. Independent parents keep their own roles.
+        e.inverses = e.inverses.filter(previous => previous.name.toUpperCase() !== name ||
+          !this.entity(previous.declaredBy)?.descendants().includes(level));
+        const inverse = { ...inv, declaredBy: level.name };
+        e.inverses.push(inverse);
+        e.slots.set(name, { k: 'inverse', inverse });
       }
       for (const rule of this.rules.entity[level.name] ?? []) e.rules.push({ declaredBy: level.name, rule });
+    }
+    for (const inverse of e.inverses) {
+      e.slots.set(`${inverse.declaredBy.toUpperCase()}.${inverse.name.toUpperCase()}`, { k: 'inverse', inverse });
     }
     for (const [alias, origin] of origins) {
       const slot = e.slots.get(origin);

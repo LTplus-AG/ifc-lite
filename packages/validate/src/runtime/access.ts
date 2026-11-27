@@ -5,7 +5,7 @@
 /** Attribute access, indexing, entity constructors and assignment for compiled EXPRESS. */
 
 import { EntityInstance } from './instance.js';
-import type { TypeRef } from './schema-meta.js';
+import type { InverseMeta, TypeRef } from './schema-meta.js';
 import type { SchemaRuntime } from './schema-runtime.js';
 import type { Model } from './model.js';
 import { uniqueMembers } from './arithmetic.js';
@@ -17,9 +17,9 @@ import {
 export { EvaluationError } from './errors.js';
 
 const IN_PROGRESS = Symbol('IN_PROGRESS');
-const memo = new WeakMap<EntityInstance, Map<string, Value | typeof IN_PROGRESS>>();
+const memo = new WeakMap<EntityInstance, Map<string | InverseMeta, Value | typeof IN_PROGRESS>>();
 
-function memoized(inst: EntityInstance, key: string, compute: () => Value): Value {
+function memoized(inst: EntityInstance, key: string | InverseMeta, compute: () => Value): Value {
   let cache = memo.get(inst);
   if (!cache) memo.set(inst, (cache = new Map()));
   const hit = cache.get(key);
@@ -85,7 +85,7 @@ export function attr(base: Value, name: string, group?: string): Value {
       const model = base.model;
       if (!model || base.transient) return slot.inverse.aggregate ? [] : undefined;
       const inv = slot.inverse;
-      return memoized(base, name, () => {
+      return memoized(base, inv, () => {
         const found = model.inverse(base, inv);
         if (!inv.aggregate) return found[0];
         return inv.aggregate === 'SET' ? markSet(found) : found;

@@ -8,7 +8,7 @@ import { violated } from '../runtime/logic.js';
 import type { Model } from '../runtime/model.js';
 import type { TypeRef } from '../runtime/schema-meta.js';
 import type { ResolvedEntity } from '../runtime/schema-runtime.js';
-import { DERIVED, Typed, withLowerBound, type Value } from '../runtime/values.js';
+import { DERIVED, Ref, Typed, withLowerBound, type Value } from '../runtime/values.js';
 import type { ValidationFinding } from './findings.js';
 import { conforms } from './value-types.js';
 import { guard } from './guard.js';
@@ -50,7 +50,7 @@ function checkTypeRules(m: Model, id: number, entity: ResolvedEntity, attribute:
     const result = guard(out, ruleId, id, entity.name, () => {
       const agg = m.schema.aggregateType(type);
       const value = Array.isArray(v) && agg?.kind === 'ARRAY' && agg.low !== undefined ? withLowerBound(v, agg.low) : v;
-      return rule.check(value, m);
+      return rule.check(value instanceof Ref ? m.get(value.id) : value, m);
     });
     if (result.ok && violated(result.value)) {
       out.push({ category: 'simpletype_rule', rule: ruleId, instance: id, entity: entity.name, attribute, message: `${rule.source} is FALSE for ${describe(v)}` });

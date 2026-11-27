@@ -42,8 +42,7 @@ pub(super) struct CalendarDates {
     target: &'static str,
     pending: HashMap<u32, Vec<PendingDate>>,
     retained: usize,
-    /// `(id, TYPE)` of each legacy date record no written record reached
-    /// before slots converted, so it was left out (#11199).
+    /// Legacy date records neither successfully converted nor retained (#11199).
     omitted: Vec<(u32, String)>,
 }
 
@@ -82,8 +81,8 @@ impl CalendarDates {
         }
         let upgrade = self.carriers_written || self.pending.values().any(|dates| dates.iter().any(|date| date.up));
         let (carriers, maximum) = collect_carriers(text, upgrade);
-        // What no written record reaches before slots convert carries no value anywhere: it is omitted, and named (#11199).
-        let reached = retained_carriers(text, &carriers, &HashMap::new(), self.target);
+        // Mask failed upgrades when counting references that carried a value.
+        let mut discarded = HashMap::new();
         let mut ids = IdAllocator::after(maximum);
         let mut appended = Vec::new();
         let mut rewrites = HashMap::new();
@@ -93,6 +92,7 @@ impl CalendarDates {
             let line = &text[begin..end];
             let Some(frame) = record_frame(line) else { continue };
             let Some(mut slots) = split_top_level_args(frame.args(line)) else { continue };
+            let mut failed_slots = Vec::new();
             for date in dates {
                 let Some(value) = slots.get_mut(usize::from(date.slot)) else { continue };
                 let fixed = if date.up {
@@ -100,6 +100,7 @@ impl CalendarDates {
                 } else {
                     restored_date(value, date.kind, &mut ids, &mut appended).map(|value| (value, false, false))
                 };
+                if date.up && fixed.is_none() { failed_slots.push(usize::from(date.slot)); }
                 let lost = match fixed {
                     None => Some(DateLoss::Dropped),
                     Some((_, true, _)) => Some(DateLoss::Narrowed),
@@ -111,9 +112,15 @@ impl CalendarDates {
                 }
                 *value = fixed.map_or_else(|| "$".to_owned(), |(value, _, _)| value);
             }
+            if !failed_slots.is_empty() {
+                let mut accounting = split_top_level_args(frame.args(line)).expect("already split");
+                for slot in failed_slots { accounting[slot] = "$".to_owned(); }
+                discarded.insert(id, frame.with_args(line, &accounting.join(",")));
+            }
             rewrites.insert(id, frame.with_args(line, &slots.join(",")));
         }
         self.pending.clear();
+        let reached = retained_carriers(text, &carriers, &discarded, self.target);
         self.omitted.extend(carriers.iter().filter(|(id, _)| !reached.contains(id)).map(|(id, date)| (*id, date.ty.clone())));
         let used = retained_carriers(text, &carriers, &rewrites, self.target);
         self.retained = used.len();

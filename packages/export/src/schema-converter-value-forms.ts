@@ -48,7 +48,7 @@ interface Rules { readonly arity: number; readonly rules: readonly Rule[] }
 const RULES = new Map<string, Map<string, Rules>>();
 const NONE: Rules = { arity: 0, rules: [] };
 
-function rulesFor(from: string, to: string, type: string): Rules {
+export function rulesFor(from: string, to: string, type: string): Rules {
   const key = `${from}>${to}`;
   let byType = RULES.get(key);
   if (!byType) RULES.set(key, (byType = new Map()));

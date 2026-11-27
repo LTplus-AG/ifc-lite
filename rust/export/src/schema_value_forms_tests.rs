@@ -362,3 +362,18 @@ fn a_date_record_whose_referrer_is_proxied_or_omitted_is_named_11199() {
         assert!(!named.contains("still referenced"), "{schema}: {named}");
     }
 }
+
+#[test]
+fn discarded_timestamp_carrier_is_named_unless_consumed_or_retained_11199() {
+    for other in ["", "#4=IFCVENDORRESOURCE(#2);", "#4=IFCCLASSIFICATION('Source','1',#2,'Other');"] {
+        let input = legacy_model(&format!("#2=IFCCALENDARDATE(29,2,2024);\n#3=IFCIRREGULARTIMESERIESVALUE(#2,(IFCREAL(1.)));\n{other}"));
+        for schema in ["IFC4", "IFC4X3"] {
+            let options = crate::StepOptions { schema: Some(schema.into()), ..Default::default() };
+            let (output, _, warnings) = crate::export_step_with_diagnostics(input.as_bytes(), &options).unwrap();
+            assert!(output.contains("#3=IFCIRREGULARTIMESERIESVALUE($,(IFCREAL(1.)));"), "{output}");
+            assert_eq!(output.contains("#2=IFCCALENDARDATE"), other.contains("VENDOR"));
+            if other.contains("CLASSIFICATION") { assert!(output.contains("'2024-02-29'")); }
+            assert_eq!(warnings.join("\n").contains("#2 (IFCCALENDARDATE)"), other.is_empty(), "{warnings:?}");
+        }
+    }
+}

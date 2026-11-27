@@ -122,3 +122,21 @@ it('keeps a date record a type neither schema declares still references, in the 
   expect(text).toContain('#2=IFCCALENDARDATE(29,2,2024);');
   expect(analyzeConversionLoss(store, 'IFC2X3', 'IFC4').describe().join('\n')).not.toContain('IFCCALENDARDATE (#2) will be omitted');
 });
+
+it('reports a discarded TimeStamp carrier unless another slot consumes or retains it (#11199)', async () => {
+  for (const [other, omitted] of [
+    ['', true], ['#4=IFCVENDORRESOURCE(#2);', false],
+    ["#4=IFCCLASSIFICATION('Source','1',#2,'Other');", false],
+  ] as const) {
+    const store = await legacy('#2=IFCCALENDARDATE(29,2,2024);\n#3=IFCIRREGULARTIMESERIESVALUE(#2,(IFCREAL(1.)));\n' + other);
+    for (const schema of ['IFC4', 'IFC4X3'] as const) {
+      const result = new StepExporter(store).export({ schema });
+      const text = new TextDecoder().decode(result.content);
+      expect(text).toContain('#3=IFCIRREGULARTIMESERIESVALUE($,(IFCREAL(1.)));');
+      expect(text.includes('#2=IFCCALENDARDATE')).toBe(other.includes('VENDOR'));
+      if (other.includes('CLASSIFICATION')) expect(text).toContain("'2024-02-29'");
+      expect(result.stats.warnings.join('\n').includes('#2 (IFCCALENDARDATE)')).toBe(omitted);
+      expect(analyzeConversionLoss(store, 'IFC2X3', schema).describe().join('\n').includes('IFCCALENDARDATE (#2) will be omitted')).toBe(omitted);
+    }
+  }
+});

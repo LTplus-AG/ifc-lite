@@ -6,8 +6,9 @@ import {
 import { readStepSlots } from './step-argument-parser.js';
 import { stepRecordHead } from './step-record-frame.js';
 import { namedExpressIds } from './step-ref-scan.js';
-import { SourceRecords, type SourceStore } from './schema-converter-structural-source.js';
-import { attrNameTable, convertEntityType } from './schema-converter.js';
+import { slotRef, SourceRecords, type SourceStore } from './schema-converter-structural-source.js';
+import { attrNameTable, convertEntityType, convertStepLine } from './schema-converter.js';
+import { rulesFor } from './schema-converter-value-forms.js';
 import { missingTypeRoute } from './schema-untranslatable.js';
 import { MAX_SOURCE_STEP_ID, skipStepTrivia } from './step-slot-grammar.js';
 
@@ -25,7 +26,7 @@ function recordId(text: string): number {
 export class CalendarDates {
   private readonly pending = new Map<number, PendingDate[]>();
   private retained = 0;
-  /** Each legacy date record no written record reached before slots converted, so it was left out (#11199). */
+  /** Each legacy date record neither successfully converted nor retained (#11199). */
   private readonly omitted: [id: number, type: string][] = [];
   /** An IFC2X3 upgrade wrote a legacy date record, so those nothing references go even when no slot converts (#11199). */
   private carriersWritten = false;
@@ -66,10 +67,9 @@ export class CalendarDates {
       const record = readStepSlots(line, maxReferenceId);
       if (record) carriers.set(id, record);
     }
-    // What no written record reaches before slots convert carries no value anywhere: it is omitted, and named (#11199).
-    // The upgrade prune runs later and drops omitted-route records, so their references do not count.
-    const written = (): Iterable<string> => carrierReferrers(lines, this.target);
-    const reached = carriers.size ? carrierUse(written(), carriers) : new Set<number>();
+    // For loss accounting keep successful conversion inputs and surviving refs.
+    // A failed conversion contributes neither, even when the source slot held a ref.
+    const accounted = new Map<number, string>();
     const added: string[] = [];
     for (let index = 0; index < lines.length; index++) {
       const dates = this.pending.get(recordId(lines[index]));
@@ -77,6 +77,7 @@ export class CalendarDates {
       const record = readStepSlots(lines[index], maxReferenceId);
       if (!record) continue;
       const slots = [...record.slots];
+      let accountingSlots: string[] | undefined;
       for (const date of dates) {
         const value = slots[date.slot];
         let fixed: string | null;
@@ -84,6 +85,7 @@ export class CalendarDates {
         if (date.up) {
           const result = fromLegacyDate(value, date.kind, (id) => id === null ? undefined : carriers.get(id));
           fixed = result?.value ?? null;
+          if (!result) (accountingSlots ??= [...record.slots])[date.slot] = '$';
           narrowed = result?.narrowed ?? false;
           filled = result?.filled ?? false;
         } else {
@@ -98,12 +100,15 @@ export class CalendarDates {
         if (fixed === null || narrowed || filled) date.lost(fixed === null ? 'dropped' : narrowed ? 'narrowed' : 'filled');
         slots[date.slot] = fixed ?? '$';
       }
+      if (upgrade) accounted.set(recordId(lines[index]), accountingSlots
+        ? record.prefix + accountingSlots.join(',') + record.suffix : lines[index]);
       lines[index] = record.prefix + slots.join(',') + record.suffix;
     }
     this.pending.clear();
     if (carriers.size) {
+      const reached = carrierUse(carrierReferrers(lines, this.target, accounted), carriers);
       for (const [id, record] of carriers) if (!reached.has(id)) this.omitted.push([id, record.type]);
-      const used = carrierUse(written(), carriers);
+      const used = carrierUse(carrierReferrers(lines, this.target), carriers);
       this.retained = used.size;
       let kept = 0;
       for (const line of lines) {
@@ -137,10 +142,10 @@ function writesReferences(type: string, to: 'IFC4' | 'IFC4X3', converted: boolea
 }
 
 /** The output lines of an IFC2X3 upgrade to `to` whose references survive the upgrade prune. */
-function* carrierReferrers(lines: readonly string[], to: 'IFC4' | 'IFC4X3'): Generator<string> {
+function* carrierReferrers(lines: readonly string[], to: 'IFC4' | 'IFC4X3', accounted?: ReadonlyMap<number, string>): Generator<string> {
   for (const line of lines) {
     const head = stepRecordHead(line);
-    if (!head || writesReferences(line.slice(head.typeStart, head.typeEnd).toUpperCase(), to, true)) yield line;
+    if (!head || writesReferences(line.slice(head.typeStart, head.typeEnd).toUpperCase(), to, true)) yield accounted?.get(recordId(line)) ?? line;
   }
 }
 
@@ -166,14 +171,31 @@ function carrierUse(lines: Iterable<string>, carriers: ReadonlyMap<number, { slo
 export function orphanDateRecords(store: SourceStore, from: string, to: 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5'): Set<number> {
   if (from !== 'IFC2X3' || (to !== 'IFC4' && to !== 'IFC4X3')) return new Set();
   const source = new SourceRecords(store);
-  const carriers = new Map<number, { slots: readonly string[] }>();
-  for (const type of DATE_CARRIERS) for (const id of source.ids(type)) carriers.set(id, { slots: source.slots(id) ?? [] });
+  const carriers = new Map<number, DateRecord>();
+  for (const type of DATE_CARRIERS) for (const id of source.ids(type)) carriers.set(id, { type, slots: source.slots(id) ?? [] });
   if (!carriers.size) return new Set();
+  const targets = new Set(carriers.keys());
   // A referrer the writer proxies or omits does not write its date references, as in the export.
   const written = function* () {
     for (const { id, text } of source.texts()) {
+      if (carriers.has(id) || !namedExpressIds(text.slice(stepRecordHead(text)?.open ?? 0), targets).size) continue;
       const type = source.type(id);
-      if (type && writesReferences(type, to, false)) yield text;
+      if (!type || !writesReferences(type, to, false)) continue;
+      const { arity, rules } = rulesFor(from, to, convertEntityType(type, 'IFC2X3', to));
+      if (!rules.some(rule => rule.hasCalendar)) { yield text; continue; }
+      // Calendar rules address the writer's target slots, including remapped attributes.
+      const converted = convertStepLine(text, 'IFC2X3', to);
+      if (!converted) continue;
+      const record = readStepSlots(converted);
+      if (!record || record.slots.length !== arity) { yield converted; continue; }
+      const slots = [...record.slots];
+      for (const rule of rules) {
+        const operator = rule.forms.get('#');
+        const slot = slots[rule.index];
+        if (operator?.startsWith('C+:') && slotRef(slot) !== null &&
+            !fromLegacyDate(slot, operator.slice(3) as CalendarKind, id => id === null ? undefined : carriers.get(id))) slots[rule.index] = '$';
+      }
+      yield record.prefix + slots.join(',') + record.suffix;
     }
   };
   const used = carrierUse(written(), carriers);

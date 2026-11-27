@@ -7,10 +7,6 @@ const styleTypes = new Map([
   ['IFCWINDOWSTYLE', 'IFCWINDOWTYPE'],
 ]);
 
-export function upgradeStyleType(source: string): string | undefined {
-  return styleTypes.get(source);
-}
-
 // IFC4X3 dropped the old case entities. Their supertypes have the same slots.
 // Replacements with a changed layout use a name-based map.
 const renamed = new Map([
@@ -30,8 +26,11 @@ const renamed = new Map([
   ['IFCPROXY', 'IFCBUILDINGELEMENTPROXY'],
 ]);
 
-export function upgradeIfc4x3Type(source: string): string | undefined {
-  return renamed.get(source) ?? upgradeStyleType(source);
+export function upgradeNamedType(source: string, from: IfcSchemaVersion, to: IfcSchemaVersion): string | undefined {
+  if (to === 'IFC4X3' && (from === 'IFC2X3' || from === 'IFC4')) {
+    return renamed.get(source) ?? styleTypes.get(source);
+  }
+  return from === 'IFC2X3' && to === 'IFC4' ? styleTypes.get(source) : undefined;
 }
 
 export function needsUpgradeSlotMap(source: string, from: IfcSchemaVersion, to: IfcSchemaVersion): boolean {

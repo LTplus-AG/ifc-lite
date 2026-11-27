@@ -11,7 +11,7 @@
  */
 
 import { withoutComments } from './step-comment-skip.js';
-import { needsUpgradeSlotMap, remapUpgradeSlots, upgradeIfc4x3Type, upgradeStyleType } from './schema-converter-ifc4x3-upgrade.js';
+import { needsUpgradeSlotMap, remapUpgradeSlots, upgradeNamedType } from './schema-converter-ifc4x3-upgrade.js';
 import { structuralAttributes } from './schema-converter-structural.js';
 import { generateIfcGuid, type RandomSource } from '@ifc-lite/encoding';
 import { deterministicGlobalId, getSchemaRegistryForVersion } from '@ifc-lite/parser';
@@ -161,14 +161,8 @@ export function convertEntityType(
   if (fromSchema === toSchema) return entityType;
 
   const upper = entityType.toUpperCase();
-  if (toSchema === 'IFC4X3' && (fromSchema === 'IFC2X3' || fromSchema === 'IFC4')) {
-    const upgrade = upgradeIfc4x3Type(upper);
-    if (upgrade) return upgrade;
-  }
-  if (fromSchema === 'IFC2X3' && toSchema === 'IFC4') {
-    const upgrade = upgradeStyleType(upper);
-    if (upgrade) return upgrade;
-  }
+  const upgraded = upgradeNamedType(upper, fromSchema, toSchema);
+  if (upgraded) return upgraded;
   const target = (toSchema === 'IFC2X3' ? MEP_IFC2X3_TYPES.get(upper) : undefined) ?? upgradeRename(upper, fromSchema, toSchema);
   if (target) return target;
 

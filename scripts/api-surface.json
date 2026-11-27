@@ -7130,6 +7130,7 @@
     "adoptCompactMeshes: function",
     "compactBounds: function",
     "compactHydrationStats: function",
+    "compactMeshBounds: function",
     "compactRow: function",
     "compactStep: function",
     "copyMeshShell: function",

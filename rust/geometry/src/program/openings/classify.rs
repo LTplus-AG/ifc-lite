@@ -11,12 +11,14 @@ use crate::router::OpeningDiagnostic;
 use crate::{GeometryRouter, Mesh, Result};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use nalgebra::Matrix3;
+use crate::router::voids::{aligned_bodies::AlignedOpening, probe::RectProbe, RectParam};
+use std::sync::Arc;
 use std::cell::OnceCell;
 use std::collections::VecDeque;
 
 pub(crate) struct Classifier<'a> {
     host: &'a DecodedEntity,
-    wall_axes: OnceCell<Option<Matrix3<f64>>>,
+    wall_boxes: OnceCell<Option<(Arc<[RectParam]>, bool)>>,
     ids: Ids<'a>,
     /// QUIET mode (`false`) is a full no-op for statistics and diagnostics: a
     /// residual subset of an already classified host must not count twice.
@@ -68,7 +70,7 @@ struct Occurrence {
     parts: VecDeque<Mesh>,
     bounds: OpeningBounds,
     meshes: Vec<Mesh>,
-    aligned_wall_opening: bool,
+    aligned_wall_opening: Option<AlignedOpening>,
     triangles: usize,
     vertices: usize,
 }
@@ -87,7 +89,7 @@ impl<'a> Classifier<'a> {
     fn with_ids(host: &'a DecodedEntity, ids: Ids<'a>, count: usize, recording: bool) -> Self {
         Self {
             host,
-            wall_axes: OnceCell::new(),
+            wall_boxes: OnceCell::new(),
             ids,
             recording,
             requested: 0,
@@ -176,16 +178,16 @@ impl<'a> Classifier<'a> {
             (None, Some(current), OpeningSource::AlignedWallOpening) => {
                 // Compare authored f64 box axes. Even independent turns below the
                 // mesher's near-axis threshold must retain their established cut.
-                let wall = self.wall_axes.get_or_init(|| {
-                    let items = router.parametric_rect_probe_all(self.host, decoder)?;
+                let wall = self.wall_boxes.get_or_init(|| {
+                    let (items, whole) = router.probe_rect_items(self.host, decoder, RectProbe::Alignment)?;
                     let axes = items.first()?.r;
-                    items.iter().all(|item| shares_axes(&axes, &item.r)).then_some(axes)
+                    let split = whole && items.len() == 2 && !items[0].intersects_interior(&items[1]);
+                    items.iter().all(|item| shares_axes(&axes, &item.r)).then(|| (Arc::from(items), split))
                 });
-                let aligned = wall.as_ref().is_some_and(|axes| {
-                    router.parametric_rect_probe_all(&current.entity, decoder).is_some_and(|items| {
-                        items.len() == current.meshes.len()
-                            && items.iter().all(|item| shares_axes(axes, &item.r))
-                    })
+                let aligned = wall.as_ref().and_then(|(hosts, split)| {
+                    let (items, whole) = router.probe_rect_items(&current.entity, decoder, RectProbe::Alignment)?;
+                    (items.len() == current.meshes.len() && items.iter().all(|item| shares_axes(&hosts[0].r, &item.r)))
+                        .then(|| AlignedOpening { hosts: Arc::clone(hosts), openings: items.into_iter(), partition: *split && whole })
                 });
                 OpeningReply::AlignedWallOpening(aligned)
             }
@@ -233,7 +235,7 @@ impl<'a> Classifier<'a> {
                         parts: VecDeque::new(),
                         bounds: Vec::new(),
                         meshes: Vec::new(),
-                        aligned_wall_opening: false,
+                        aligned_wall_opening: None,
                         triangles: 0,
                         vertices: 0,
                     });

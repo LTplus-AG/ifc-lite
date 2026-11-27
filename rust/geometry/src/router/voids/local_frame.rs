@@ -42,7 +42,7 @@ pub(super) fn vertical_depth_wall_frame(
         CutterKind::DiagonalRectangular(_, frame)
             if frame.cross_a.z.abs() <= 0.2 && frame.cross_b.z.abs() <= 0.2 =>
         {
-            Some(*frame)
+            Some(frame)
         }
         _ => None,
     })?;

@@ -4,7 +4,8 @@ use crate::program::opening::OpeningBounds;
 use crate::router::voids::geom::{
     bounds_are_the_box, infer_opening_frame, is_axis_aligned_direction, is_rectangular_box_mesh,
 };
-use crate::router::voids::CutterKind;
+use crate::router::voids::{CutterKind, RectParam, aligned_bodies::{AlignedBodies, AlignedOpening}};
+use std::sync::Arc;
 use crate::router::{ClassificationKind, OpeningKindDiag};
 use crate::{Mesh, Point3, Vector3};
 
@@ -40,7 +41,7 @@ type ItemBounds = (Point3<f64>, Point3<f64>, Option<Vector3<f64>>);
 /// earlier cutters keep their original order if a later predicate unwinds.
 pub(crate) struct Decisions {
     inputs: Inputs,
-    aligned_wall_opening: bool,
+    aligned_wall_opening: Option<AlignedOpening>,
 }
 enum Inputs {
     Parts(std::collections::vec_deque::IntoIter<Mesh>),
@@ -55,7 +56,7 @@ pub(super) fn classify(
     parts: std::collections::VecDeque<Mesh>,
     bounds: OpeningBounds,
     meshes: Vec<Mesh>,
-    aligned_wall_opening: bool,
+    aligned_wall_opening: Option<AlignedOpening>,
 ) -> Decisions {
     let inputs = if bounds.is_empty() {
         Inputs::Parts(parts.into_iter())
@@ -80,7 +81,10 @@ impl Iterator for Decisions {
             }
             Inputs::Meshes(meshes) => {
                 meshes.next().map(|((min, max, dir), mesh)| {
-                    classify_item(min, max, dir, mesh, self.aligned_wall_opening)
+                    let aligned = self.aligned_wall_opening.as_mut().and_then(|wall| {
+                        wall.openings.next().map(|op| (&wall.hosts, op, wall.partition))
+                    });
+                    classify_item(min, max, dir, mesh, aligned)
                 })
             }
         }
@@ -95,17 +99,20 @@ fn classify_item(
     max: Point3<f64>,
     dir: Option<Vector3<f64>>,
     mesh: Mesh,
-    aligned_wall_opening: bool,
+    aligned_wall_opening: Option<(&Arc<[RectParam]>, RectParam, bool)>,
 ) -> CutterKind {
     let frame = infer_opening_frame(&mesh, dir.as_ref());
     let diagonal = dir.map(|d| !is_axis_aligned_direction(&d)).unwrap_or(false);
     let clean_box = is_rectangular_box_mesh(&mesh);
-    if let Some(frame) = frame {
+    if let Some(mut frame) = frame {
         if !clean_box {
             CutterKind::NonRectangular(mesh, min, max, dir)
-        } else if diagonal || !frame.is_axis_aligned()
-            || (aligned_wall_opening && !bounds_are_the_box(&mesh))
-        {
+        } else if diagonal || !frame.is_axis_aligned() {
+            CutterKind::DiagonalRectangular(mesh, frame)
+        } else if let Some((hosts, opening, partition)) = aligned_wall_opening.filter(|_| !bounds_are_the_box(&mesh)) {
+            if partition {
+                frame.aligned_bodies = AlignedBodies::for_opening(hosts, &opening);
+            }
             CutterKind::DiagonalRectangular(mesh, frame)
         } else {
             CutterKind::Rectangular(min, max, dir)

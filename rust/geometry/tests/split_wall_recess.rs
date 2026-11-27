@@ -179,7 +179,15 @@ fn finish_wall_volume(length: f64) -> f64 {
 /// Plan turns within `cos(1°)` of the axes, about both axes and in both senses.
 const NEAR_AXIS_TURNS: [f64; 5] = [0.0, 0.5, 1.0, -0.5, 89.5];
 
-fn rotated_flush_recess_failures() -> Vec<String> {
+fn rotated_flush_recess_failures(forced_exact: bool) -> Vec<String> {
+    let mut limits = std::collections::BTreeMap::new();
+    let offset = 1 + 2 * usize::from(forced_exact) + 4 * usize::from(cfg!(feature = "csg_manifold_gate"));
+    for row in include_str!("split_wall_recess/flush_overuse.tsv").lines().filter(|r| !r.starts_with('#')) {
+        let fields: Vec<_> = row.split_whitespace().collect();
+        assert_eq!(fields.len(), 9);
+        let pair: [usize; 2] = std::array::from_fn(|i| fields[offset + i].parse().unwrap());
+        assert!(limits.insert(fields[0], pair).is_none());
+    }
     let mut failures = Vec::new();
     for turn in NEAR_AXIS_TURNS {
         for length in [0.5, 1.0, 1.25, 1.5, 2.0, 3.0, 4.0] {
@@ -187,15 +195,20 @@ fn rotated_flush_recess_failures() -> Vec<String> {
                 let content = split_wall::wall_with_finish([0.0; 2], turn, 2.274, recess, length);
                 let (mesh, _) = fixture_host(&content, false);
                 let delta = (mesh_volume(&mesh) - finish_wall_volume(length)) * 1000.0;
-                let unmatched = [VertexKey::BitsZeroFolded, VertexKey::GridMul(1.0e3)].map(|key| {
-                    EdgeLedger::build(&mesh, key, Degenerate::SkipTriangle).unbalanced().count()
+                let id = format!("{turn}/{length}/{recess:?}");
+                let limit = limits.remove(id.as_str()).expect("missing flush baseline");
+                let [exact, mm] = [VertexKey::BitsZeroFolded, VertexKey::GridMul(1.0e3)].map(|key| {
+                    let ledger = EdgeLedger::build(&mesh, key, Degenerate::SkipTriangle);
+                    (ledger.unbalanced().count(), ledger.multiplicity_defects().over_used)
                 });
-                if !(delta.abs() <= 0.6) || unmatched != [0, 0] {
-                    failures.push(format!("{turn}° finish {length} m {recess:?}: {delta:+.3} L, unmatched [exact, mm] = {unmatched:?}"));
+                if !delta.is_finite() || delta.abs() > 0.6 || exact.0 != 0 || mm.0 != 0 || exact.1 > limit[0] || mm.1 > limit[1] {
+                    failures.push(format!("{id}: {delta:+.6} L, unmatched {}/{}, overused {}/{} (base {}/{})",
+                        exact.0, mm.0, exact.1, mm.1, limit[0], limit[1]));
                 }
             }
         }
     }
+    assert!(limits.is_empty(), "unexercised flush cases");
     failures
 }
 
@@ -204,7 +217,7 @@ fn rotated_flush_recess_failures() -> Vec<String> {
 /// axis-aligned wall on the default route.
 #[test]
 fn slightly_rotated_flush_recess_keeps_the_core() {
-    let failures = rotated_flush_recess_failures();
+    let failures = rotated_flush_recess_failures(false);
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
@@ -228,7 +241,7 @@ fn slightly_rotated_flush_recess_keeps_the_core_on_the_exact_route() {
         assert!(stdout.contains("1 passed; 0 failed"), "{stdout}");
         return;
     }
-    let failures = rotated_flush_recess_failures();
+    let failures = rotated_flush_recess_failures(true);
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
@@ -255,37 +268,39 @@ fn slightly_rotated_vertical_slot_cuts_only_the_slot() {
     }
 }
 
-/// #11321: an axis-aligned recess whose profile carries a collinear point is
-/// still the box its bounds describe. The extra vertex sits mid-edge, on a
-/// face of the bounds but not at a corner, and must not push the opening off
-/// the Rectangular kind or make its wall seed a rotated frame.
+/// #11423: a straight-side subdivision preserves the authored opening frame,
+/// its classification on a turned wall, and the material removed from that wall.
 #[test]
 fn axis_aligned_recess_with_a_collinear_profile_point_stays_rectangular() {
     use ifc_lite_geometry::OpeningKindDiag;
-    for turn in [0.0, 90.0] {
+    for (turn, expected_kind) in [
+        (0.0, OpeningKindDiag::Rectangular),
+        (0.5, OpeningKindDiag::Diagonal),
+        (90.0, OpeningKindDiag::Rectangular),
+    ] {
         for length in [1.0, 4.0] {
-            let content = split_wall::wall_with_finish([0.0; 2], turn, 2.274, Recess::FromInterface, length)
-                .replace(
-                    "#122=IFCRECTANGLEPROFILEDEF(.AREA.,'Recess',#121,1.0,1.0);",
-                    "#126=IFCCARTESIANPOINT((0.,0.));#127=IFCCARTESIANPOINT((0.5,0.));\
-                     #128=IFCCARTESIANPOINT((1.,0.));#129=IFCCARTESIANPOINT((1.,1.));\
-                     #130=IFCCARTESIANPOINT((0.,1.));\
-                     #131=IFCPOLYLINE((#126,#127,#128,#129,#130,#126));\
-                     #122=IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,'Recess',#131);",
-                );
-            assert!(content.contains("IFCARBITRARYCLOSEDPROFILEDEF"));
-            let (mesh, router) = fixture_host(&content, false);
-            let kinds: Vec<_> = router
-                .take_host_opening_diagnostics()
-                .remove(&100)
-                .expect("the wall records its openings")
-                .openings
-                .iter()
-                .map(|opening| opening.kind)
-                .collect();
-            assert_eq!(kinds, [OpeningKindDiag::Rectangular], "{turn}° finish {length} m");
-            let delta = (mesh_volume(&mesh) - finish_wall_volume(length)) * 1000.0;
-            assert!(delta.abs() < 0.6, "{turn}° finish {length} m: {delta:+.3} L");
+            let base = split_wall::wall_with_finish([0.0; 2], turn, 2.274, Recess::FromInterface, length);
+            let four_corners = split_wall::polyline_recess(&base, false);
+            let with_midpoint = split_wall::polyline_recess(&base, true);
+            let measure = |content: &str| {
+                let (mesh, router) = fixture_host(content, false);
+                let openings = router.take_host_opening_diagnostics().remove(&100).unwrap().openings;
+                assert_eq!(openings.len(), 1);
+                assert_eq!(openings[0].kind, expected_kind, "{turn}° finish {length} m");
+                let mut decoder = EntityDecoder::new(content);
+                let entity = decoder.decode_by_id(200).unwrap();
+                let cut_frame = router.parametric_rect_probe(&entity, &mut decoder)
+                    .map(|frame| (frame.r, frame.center, frame.half));
+                (mesh_volume(&mesh), cut_frame)
+            };
+            let (volume, frame) = measure(&four_corners);
+            let (split_volume, split_frame) = measure(&with_midpoint);
+            assert!(frame.is_some());
+            assert_eq!(frame, measure(&base).1, "{turn}° four-corner frame");
+            // The analytical subtraction probe keeps its four-corner contract.
+            assert!(split_frame.is_none(), "{turn}° subdivision admitted for analytical subtraction");
+            assert!((volume - finish_wall_volume(length)).abs() < 0.0006, "{turn}° finish {length} m: {volume}");
+            assert!((split_volume - volume).abs() < 1e-8, "{turn}° finish {length} m: {split_volume} vs {volume}");
         }
     }
 }

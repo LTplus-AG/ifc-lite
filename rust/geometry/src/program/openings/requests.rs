@@ -92,7 +92,7 @@ pub(crate) enum OpeningReply {
     /// A request its controller could not serve (a protocol fault).
     Refused(crate::Error),
     Decoded(Result<DecodedEntity>),
-    AlignedWallOpening(bool),
+    AlignedWallOpening(Option<crate::router::voids::aligned_bodies::AlignedOpening>),
     /// A body source or an item child's frame parts.
     Parts(Result<Vec<Mesh>>),
     Probe(Result<(Vec<DecodedEntity>, Matrix4<f64>)>, SourceHygiene, WorldFrame),

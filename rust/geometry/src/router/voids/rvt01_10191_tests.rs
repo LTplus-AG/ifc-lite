@@ -127,6 +127,7 @@ fn rvt01_panel_10191_stays_closed_with_a_near_normal_authored_cutter_3977() {
                 cross_a: Vector3::new(0.0, 0.0, 1.0),
                 cross_b: Vector3::new(-0.742921115270792, 0.6693789782214578, 0.0),
                 depth_is_authored: true,
+                ..OpeningFrame::from_depth(Vector3::z()).unwrap()
             },
         ),
         CutterKind::DiagonalRectangular(
@@ -136,6 +137,7 @@ fn rvt01_panel_10191_stays_closed_with_a_near_normal_authored_cutter_3977() {
                 cross_a: Vector3::new(0.0, 0.0, 1.0),
                 cross_b: Vector3::new(-0.7429459422683111, 0.669351422548015, 0.0),
                 depth_is_authored: true,
+                ..OpeningFrame::from_depth(Vector3::z()).unwrap()
             },
         ),
     ];

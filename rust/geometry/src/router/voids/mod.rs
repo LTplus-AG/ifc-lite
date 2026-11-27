@@ -40,6 +40,7 @@ use rustc_hash::FxHashMap;
 
 mod aabb_clip;
 mod admission;
+pub(crate) mod aligned_bodies;
 mod context;
 pub use context::RectParam;
 pub(crate) use context::{ParamRectCut, VoidContext};
@@ -171,10 +172,17 @@ impl Execution {
     /// `world = origin + position` holds for the renderer.
     pub(crate) fn apply_void_context(
         &self,
-        mut mesh: Mesh,
+        mesh: Mesh,
         ctx: &VoidContext,
         element_id: u32,
     ) -> Mesh {
+        if let Some(result) = self.cut_intersected_bodies(&mesh, ctx, element_id) {
+            return result;
+        }
+        self.cut_whole_mesh(mesh, ctx, element_id)
+    }
+
+    fn cut_whole_mesh(&self, mut mesh: Mesh, ctx: &VoidContext, element_id: u32) -> Mesh {
         // Stage A: the whole-host strategies, in the frozen order of
         // `strategy::HOST_STAGES`. The first to accept ends the cut; a residual
         // it leaves is cut by recursion on the accepted result, and that

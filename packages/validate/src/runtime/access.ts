@@ -5,7 +5,7 @@
 /** Attribute access, indexing, entity constructors and assignment for compiled EXPRESS. */
 
 import { EntityInstance } from './instance.js';
-import type { InverseMeta, TypeRef } from './schema-meta.js';
+import type { AttributeMeta, InverseMeta, TypeRef } from './schema-meta.js';
 import type { SchemaRuntime } from './schema-runtime.js';
 import type { Model } from './model.js';
 import { uniqueMembers } from './arithmetic.js';
@@ -125,9 +125,15 @@ export function slice(base: Value, lo: Value, hi: Value): Value {
  * is OPTIONAL. Failing here (as IfcOpenShell does) keeps a rule that depends on
  * such a construction from passing on missing data.
  */
-function checkStored(entityName: string, name: string, optional: boolean, v: Value): void {
-  const bad = v === undefined ? !optional : isAggregate(v) && v.some((x) => x === undefined);
-  if (bad) throw new EvaluationError(`indeterminate value stored in ${entityName}.${name}`);
+function checkStored(model: Model | undefined, entityName: string, attribute: AttributeMeta, v: Value): void {
+  if (v === undefined && attribute.optional) return;
+  if (v !== undefined) {
+    if (!isAggregate(v) || !v.includes(undefined)) return;
+    const type = attribute.type;
+    const aggregate = type.k === 'aggregate' ? type : model?.schema.aggregateType(type);
+    if (aggregate?.kind === 'ARRAY' && aggregate.optional) return;
+  }
+  throw new EvaluationError(`indeterminate value stored in ${entityName}.${attribute.name}`);
 }
 
 /** An EXPRESS entity constructor `Entity(args)`: a transient instance with the entity's own attributes set. */
@@ -139,7 +145,7 @@ export function construct(m: Model, entityName: string, args: Value[]): Value {
   for (let i = 0; i < entity.attributes.length; i++) {
     const a = entity.attributes[i];
     if (a.declaredBy !== entity.name || k >= args.length) continue;
-    checkStored(entity.name, a.name, a.optional, args[k]);
+    checkStored(m, entity.name, a, args[k]);
     values[i] = args[k++];
   }
   return new EntityInstance(m, -1, entity, values, true);
@@ -203,7 +209,7 @@ export function setAttr(base: Value, name: string, v: Value): void {
   if (!base.transient) throw new EvaluationError(`assignment to attribute ${name} of model instance ${base}`);
   const slot = base.entity.slots.get(name);
   if (slot?.k !== 'explicit') throw new EvaluationError(`assignment to non-explicit attribute ${name}`);
-  checkStored(base.entity.name, slot.attribute.name, slot.attribute.optional, v);
+  checkStored(base.model, base.entity.name, slot.attribute, v);
   base.attributes[slot.index] = assign(v);
 }
 

@@ -114,3 +114,15 @@ it('rejects excess FILE_NAME arguments in header-only validation (#11647)', asyn
     expect(report.findings.map(f => f.rule)).toEqual(expected);
   }
 });
+
+it('validates records from every DATA section (#11647)', async () => {
+  for (const [record, rules] of [
+    ['#2=IFCUNKNOWN();', ['unknown-entity']],
+    ['#2=IFCCARTESIANPOINT((2.,3.));', []],
+  ] as const) {
+    const text = file("#1=IFCCARTESIANPOINT((0.,1.)); ENDSEC; /* DATA; #3=IFCUNKNOWN(); */ DATA('second',('IFC4')); " + record);
+    const report = await validateStepText(text, { categories: ['schema'] });
+    expect(report.stats.instances).toBe(2);
+    expect(report.findings.map(f => [f.instance, f.rule])).toEqual(rules.map(rule => [2, rule]));
+  }
+});

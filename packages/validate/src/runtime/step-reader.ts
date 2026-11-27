@@ -222,7 +222,12 @@ export function* sectionRecords(text: string, section: 'HEADER' | 'DATA'): Gener
       continue;
     }
     const keyword = /^[A-Z0-9_-]+/i.exec(statement)?.[0].toUpperCase();
-    if (keyword === 'ENDSEC' && active) return;
+    if (keyword === 'END-ISO-10303-21') return;
+    if (keyword === 'ENDSEC' && active) {
+      if (section === 'HEADER') return;
+      active = false;
+      continue;
+    }
     if (keyword === section) active = true;
     else if (active) yield statement;
   }

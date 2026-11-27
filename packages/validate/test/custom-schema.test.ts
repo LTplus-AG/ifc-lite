@@ -497,3 +497,24 @@ ENTITY Probe; A : Node; B : Node; WHERE
   expect(report.stats.entityRuleEvaluations).toBe(11);
   expect(report.findings.map(f => f.rule)).toEqual(['Probe.FalseControl']);
 });
+
+it('respects OPTIONAL ARRAY elements in entity constructors and assignments (#11647)', async () => {
+  const { schema } = generated(`SCHEMA S;
+TYPE Sparse = ARRAY [1:2] OF OPTIONAL INTEGER; END_TYPE;
+ENTITY Box; Items : Sparse; END_ENTITY;
+ENTITY Full; Items : ARRAY [1:2] OF INTEGER; END_ENTITY;
+FUNCTION EditBox : Box; LOCAL V : Box := Box([1,1]); END_LOCAL;
+V.Items := [?,2]; RETURN(V); END_FUNCTION;
+FUNCTION EditFull : Full; LOCAL V : Full := Full([1,1]); END_LOCAL;
+V.Items := [?,2]; RETURN(V); END_FUNCTION;
+ENTITY Probe; WHERE
+ SparseCtor : (NOT EXISTS(Box([?,2]).Items[1])) AND (Box([?,2]).Items[2] = 2);
+ SparseEdit : (NOT EXISTS(EditBox().Items[1])) AND (EditBox().Items[2] = 2);
+ DenseCtor : Full([1,2]).Items[2] = 2;
+ BadCtor : Full([?,2]).Items[2] = 2;
+ BadEdit : EditFull().Items[2] = 2;
+END_ENTITY; END_SCHEMA;`);
+  const report = await validateStepText('DATA;#1=PROBE();ENDSEC;', { schema, categories: ['entity_rule'] });
+  expect(report.stats.entityRuleEvaluations).toBe(5);
+  expect(report.findings.map(f => [f.rule, f.category])).toEqual([['Probe.BadCtor', 'evaluation_error'], ['Probe.BadEdit', 'evaluation_error']]);
+});

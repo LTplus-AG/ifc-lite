@@ -143,8 +143,8 @@ function cascadeOmissions(records: Iterable<OutputRecord | undefined>, seeds: Re
 }
 
 /** Preview required-reference losses on the target layouts of an unedited source. */
-export function previewUpgradeDependents(store: SourceStore, from: IfcSchemaVersion, to: IfcSchemaVersion): Set<number> {
-  const seeds = new Set<number>();
+export function previewUpgradeDependents(store: SourceStore, from: IfcSchemaVersion, to: IfcSchemaVersion, boundaryIds: readonly number[]): Set<number> {
+  const seeds = new Set(boundaryIds);
   if (!removesObsoleteResources(from, to) || from === 'IFC5' || (to !== 'IFC4' && to !== 'IFC4X3')) return seeds;
   const routeOf = (type: string) => missingTypeRoute(type, from, to, attributes(type, from) !== undefined,
     attributes(convertEntityType(type, from, to), to) !== undefined);

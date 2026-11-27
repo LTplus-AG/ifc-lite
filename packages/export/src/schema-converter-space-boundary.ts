@@ -89,8 +89,7 @@ export function spaceBoundariesNotWritten(store: Pick<SourceStore, 'entityIndex'
 }
 
 /** The loss-report entry (none, or one) for the boundaries an IFC2X3 upgrade leaves out: IFC4 requires an element and none is invented. */
-export function spaceBoundaryLoss(store: Parameters<typeof spaceBoundariesNotWritten>[0], from: string, to: string): Array<{ sourceType: string; targetType: string; kind: 'lossy'; droppedAttributes: string[]; count: number; expressIds: number[] }> {
-  const expressIds = spaceBoundariesNotWritten(store, from, to);
+export function spaceBoundaryLoss(expressIds: number[]): Array<{ sourceType: string; targetType: string; kind: 'lossy'; droppedAttributes: string[]; count: number; expressIds: number[] }> {
   return expressIds.length ? [{ sourceType: BOUNDARY, targetType: BOUNDARY, kind: 'lossy', droppedAttributes: [ELEMENT], count: expressIds.length, expressIds }] : [];
 }
 

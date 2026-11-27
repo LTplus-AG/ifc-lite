@@ -78,15 +78,19 @@ const MIXED_KEPT = "#32=IFCRELASSOCIATESCLASSIFICATION('4XigBlHYfFnxzvgV9_gBmP',
 const relLines = (text: string) => text.split('\n').filter((l) => l.includes('=IFCRELASSOCIATESCLASSIFICATION('));
 
 describe('a relationship naming a left-out IfcRelSpaceBoundary (#11457)', () => {
-  it('has the boundary removed from its list; one left with no member is withheld and reported', async () => {
+  it.each(['IFC4', 'IFC4X3'] as const)('previews exactly the relationship withheld by the %s export', async (schema) => {
     const store = await parse(model('IFC2X3', REFS));
-    const result = new StepExporter(store).export({ schema: 'IFC4' });
+    const result = new StepExporter(store).export({ schema });
     const text = out(result.content);
     expect(ids(text)).toEqual(['#21']);
     expect(relLines(text)).toEqual([MIXED_KEPT]);
     expect(text).not.toMatch(/#20\b/);
     expect(result.stats.warnings.join('\n').toLowerCase()).toContain('relationship #33 (ifcrelassociatesclassification) was withheld');
     expect(result.stats.warnings.join('\n')).toContain('#20, #22');
+    const report = analyzeConversionLoss(store, 'IFC2X3', schema);
+    expect(report.entries.filter(e => e.sourceType === 'IFCRELASSOCIATESCLASSIFICATION').flatMap(e => e.expressIds)).toEqual([33]);
+    expect(report.entries.filter(e => e.sourceType === 'IFCRELSPACEBOUNDARY').flatMap(e => e.expressIds)).toEqual([20, 22]);
+    expect(report.describe().join('\n')).toContain(`#33) will be omitted because a required ${schema} attribute lost a reference`);
   });
 });
 

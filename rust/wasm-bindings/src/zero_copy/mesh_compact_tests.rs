@@ -168,7 +168,9 @@ fn the_two_sides_of_a_sheet_are_not_welded_together() {
 fn a_box_is_not_split() {
     let mut c = MeshCollection::new();
     c.add(flat_box(1, [0.0, 0.0, 0.0], 2.0));
-    assert_eq!(c.encode_compact(32.0).table[2], 8);
+    let b = c.encode_compact(32.0);
+    assert_eq!(b.table[2], 8);
+    assert_eq!(b.table[6], 24, "the row keeps the source vertex count, four per face");
 }
 
 /// Every source vertex decodes to within half a lattice step of itself on each axis: the precision the

@@ -9,6 +9,8 @@ import { applyFederationOffsetToMesh } from './ingest/federationOffset.js';
 import { meshedFillItems } from './symbolic-meshed-fills.js';
 import { buildSymbolicRichChannels } from './symbolic-rich-channels.js';
 import { createEmptyFlatSymbolic, buildParseResult } from '../lib/overlay-parse/symbolic-parse.js';
+import { adoptCompactMeshes, compactHydrationStats, loadCompactGeometry, type CompactPayload } from '@ifc-lite/geometry/compact';
+import { meshGeometryCounts } from '../lib/released-mesh-provenance.js';
 
 function mesh(owner: number, item?: number): MeshData {
   return { expressId: owner, geometryItemId: item,
@@ -104,4 +106,20 @@ it('retains uploaded identity after actual bounded CPU geometry release (#4459)'
     present.geometryItemId = 12;
     assert.equal(meshedFillItems([present], id => id)(1, 12), false, 'stale identity cannot claim a replacement item');
   } finally { state.clearAllModels(); useViewerStore.setState({ boundedGeometryMode: false }); }
+});
+
+it('reads a compact mesh\'s counts from its row, without decoding it (lane L9)', async () => {
+  // A compact mesh's arrays decode on first read and stay decoded: this lookup runs over every mesh of a
+  // load, so reading `indices` here decoded the whole `?compactGeom` model (+7 to +106 MiB JS heap).
+  await loadCompactGeometry();
+  const payload: CompactPayload = { records: new Uint8Array(36), indices: Uint16Array.from([0, 1, 2]),
+    table: Uint32Array.from([0, 0, 3, 0, 3, 10, 9]), windows: new Float64Array(3), bounds: new Float64Array(6), cells: new Int32Array(3) };
+  const shell = { expressId: 1, geometryItemId: 11, color: [1, 0, 0, 1], positions: new Float32Array(0), normals: new Float32Array(0),
+    indices: new Uint32Array(0), compact: { batch: 0, row: 0 } } as unknown as MeshData;
+  adoptCompactMeshes([shell], [payload]);
+  const decoded = compactHydrationStats().meshes;
+  assert.equal(meshedFillItems([shell], id => id)(1, 11), true);
+  assert.deepEqual(meshGeometryCounts(shell), { triangles: 1, vertices: 9 }, 'vertices as the load totals them: the source count, not the 3 welded');
+  assert.equal(compactHydrationStats().meshes, decoded, 'no compact mesh was decoded');
+  assert.ok(shell.compact, 'still a compact mesh');
 });

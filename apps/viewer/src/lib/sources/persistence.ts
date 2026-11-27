@@ -150,12 +150,8 @@ export function saveSourceCatalogCache(
   return entry;
 }
 
-export function makeDownloadedSourceFileKey(
-  providerId: string,
-  projectId: string,
-  fileId: string,
-): string {
-  return `${providerId}:${projectId}:${fileId}`;
+function makeDownloadedSourceFileKey(providerId: string, projectId: string, containerId: string, fileId: string): string {
+  return JSON.stringify([providerId, projectId, containerId, fileId]);
 }
 
 export function loadDownloadedSourceFileRecords(): Map<string, DownloadedSourceFileRecord> {
@@ -178,11 +174,7 @@ export function loadDownloadedSourceFileRecords(): Map<string, DownloadedSourceF
         return [];
       }
       return [[
-        makeDownloadedSourceFileKey(
-          record.providerId,
-          record.projectId,
-          record.fileId,
-        ),
+        makeDownloadedSourceFileKey(record.providerId, record.projectId, record.containerId, record.fileId),
         {
           providerId: record.providerId,
           projectId: record.projectId,
@@ -228,7 +220,7 @@ export function recordDownloadedSourceFile(
     loadedAt: tag.loadedAt,
   };
   records.set(
-    makeDownloadedSourceFileKey(tag.provider, tag.projectId, sourceFile.id),
+    makeDownloadedSourceFileKey(tag.provider, tag.projectId, sourceFile.containerId, sourceFile.id),
     record,
   );
   saveDownloadedSourceFileRecords(records);
@@ -239,9 +231,9 @@ export function getDownloadedSourceFileRecord(
   records: ReadonlyMap<string, DownloadedSourceFileRecord>,
   providerId: string,
   projectId: string,
-  fileId: string,
+  file: Pick<SourceFile, 'containerId' | 'id'>,
 ): DownloadedSourceFileRecord | undefined {
-  return records.get(makeDownloadedSourceFileKey(providerId, projectId, fileId));
+  return records.get(makeDownloadedSourceFileKey(providerId, projectId, file.containerId, file.id));
 }
 
 export function getDownloadedSourceFileStatus(

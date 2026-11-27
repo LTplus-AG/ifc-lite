@@ -316,7 +316,7 @@ export function SourceFolderStep({
                 <ul className="divide-y">
                   {sortedFiles.map((f) => {
                     const downloadedRecord = selectedProject
-                      ? getDownloadedSourceFileRecord(downloadedRecords, providerName, selectedProject.id, f.id)
+                      ? getDownloadedSourceFileRecord(downloadedRecords, providerName, selectedProject.id, f)
                       : undefined;
 
                     return (

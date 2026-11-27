@@ -9,7 +9,11 @@ import { MutablePropertyView } from '@ifc-lite/mutations';
 import { PLUGIN_API_VERSION, type FileSourceProvider, type SourceTag, type UploadTarget, type UploadResult } from '@ifc-lite/plugin-api';
 import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
-import { saveSourceCatalogCache, loadSourceCatalogCache, readSourceCatalogCacheOwner, syncSourceCatalogCacheOwner } from '@/lib/sources/persistence';
+import {
+  getDownloadedSourceFileRecord, getDownloadedSourceFileStatus, loadDownloadedSourceFileRecords,
+  loadSourceCatalogCache, readSourceCatalogCacheOwner, recordDownloadedSourceFile,
+  saveSourceCatalogCache, syncSourceCatalogCacheOwner,
+} from '@/lib/sources/persistence';
 import { editedModelBytes } from '@/lib/export/edited-model-bytes';
 import { configureMutationView } from '@/utils/configureMutationView';
 import { SourceHost } from './source-host';
@@ -157,6 +161,21 @@ it('#11650 renames a model that follows the same file ID in a different containe
   assert.equal(state.sourceTags.get('m')?.containerId, 'chosen');
   assert.equal(state.sourceTags.get('m')?.fileId, tag.fileId);
   assert.equal(state.models.get('m')?.name, 'Moved.ifc');
+});
+
+it('#11650 a save with the same file ID in another container keeps the downloaded status of both files', async () => {
+  const original = { id: tag.fileId, containerId: tag.containerId, name: 'House.ifc', currentRevisionId: 'v1' };
+  const saved = { ...success.file, containerId: 'chosen', name: 'Moved.ifc' };
+  const s = await setup(async () => ({ ...success, file: saved }));
+  recordDownloadedSourceFile(tag, original);
+
+  await saveSourceModel(s.host, s.binding, { mode: 'new-location', containerId: 'chosen', fileName: saved.name });
+
+  const records = loadDownloadedSourceFileRecords();
+  for (const file of [original, saved]) {
+    const record = getDownloadedSourceFileRecord(records, tag.provider, tag.projectId, file);
+    assert.equal(getDownloadedSourceFileStatus(file, record), 'loaded-current', file.containerId);
+  }
 });
 
 it('#9522 a failed or cancelled upload still drops the cached listing, since the write may have landed',async()=>{

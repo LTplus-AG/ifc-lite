@@ -922,6 +922,24 @@ describe('compact pages take the decisions of the bucket batches they stand in f
     assert.equal(on.getCompactStats()?.decodes.exact, 2);
   });
 
+  it('moves a mixed wall and thin plate to its exact bucket even when only the rim collapses (#11579, #11606)', async () => {
+    const on = await lodScene(true), gpu = fakeGpu();
+    const [wall] = compactBatch([{ expressId: 1, at: [0, 0, 0], size: 1, color: GREY },
+      { expressId: 1, at: [2, 0, 0], size: 1, color: GREY }]);
+    const { payload } = wall.compact!;
+    // One level-14 row with a thick wall and a disconnected two-step (122 µm) plate.
+    payload.table.set([0, 0, 16, 0, 72, 14, 48]);
+    const records = new DataView(payload.records.buffer);
+    for (let corner = 0; corner < 8; corner++) records.setUint16((8 + corner) * 12 + 4, 16384 + ((corner >> 2) * 2), true);
+    for (let index = 36; index < 72; index++) payload.indices[index] += 8;
+    payload.bounds.set([0, 0, 0, 3 / 16, 1 / 16, 1 / 16]);
+    upload(on, gpu, [wall]);
+    assert.deepEqual(entitiesOf(pages(on)), [1]);
+    settle(on, gpu);
+    assert.deepEqual(entitiesOf(buckets(on)), [1]);
+    assert.equal(buckets(on)[0].quantized, undefined);
+  });
+
   it('keep a bucket paged whose finer-level entity loses no area on the bucket lattice (judged per entity, #11606)', async () => {
     const on = await lodScene(true), gpu = fakeGpu();
     const meshes = compactBatch([{ expressId: 1, at: [0, 0, 0], size: 1, color: GREY }, { expressId: 2, at: [3, 0, 0], size: 1, color: GREY }]);

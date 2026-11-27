@@ -74,3 +74,37 @@ fn zero_length_direction_is_unresolvable_not_silently_dropped() {
     assert!(frame("#7", "$").is_err());
     assert!(frame("$", "#7").is_err());
 }
+
+/// PR #9969 review: a DistanceAlong of 3D length along an `IfcGradientCurve`
+/// whose final circular profile (radius 10 m, level start, 5π m of arc) ends
+/// vertical at station 10 lands on the arc up to that end: R(sin θ, 0,
+/// 1 - cos θ) above (0, 0, 100) with θ = DistanceAlong / R. The cumulative
+/// 3D length overran the end, and 5π landed at station 9.01.
+#[test]
+fn distance_along_a_gradient_curve_reaches_its_vertical_end() {
+    let radius = 10.0_f64;
+    let pi = std::f64::consts::PI;
+    for along in [2.5 * pi, 5.0 * pi - 0.06, 5.0 * pi] {
+        let src = format!(
+            "#1=IFCCARTESIANPOINT((0.,0.));\n#2=IFCDIRECTION((1.,0.));\n#3=IFCVECTOR(#2,1.);\n\
+             #4=IFCLINE(#1,#3);\n#5=IFCAXIS2PLACEMENT2D(#1,#2);\n\
+             #6=IFCCURVESEGMENT(.CONTINUOUS.,#5,IFCLENGTHMEASURE(0.),IFCLENGTHMEASURE(10.),#4);\n\
+             #7=IFCCOMPOSITECURVE((#6),.F.);\n#8=IFCCARTESIANPOINT((0.,100.));\n\
+             #9=IFCAXIS2PLACEMENT2D(#8,#2);\n#10=IFCCIRCLE(#5,10.);\n\
+             #11=IFCCURVESEGMENT(.CONTINUOUS.,#9,IFCLENGTHMEASURE(0.),IFCLENGTHMEASURE(15.707963267948966),#10);\n\
+             #12=IFCGRADIENTCURVE((#11),.F.,#7,$);\n\
+             #13=IFCPOINTBYDISTANCEEXPRESSION(IFCLENGTHMEASURE({along:?}),$,$,$,#12);\n\
+             #14=IFCAXIS2PLACEMENTLINEAR(#13,$,$);\n#15=IFCLINEARPLACEMENT($,#14,$);\n"
+        );
+        let mut decoder = EntityDecoder::new(&src);
+        let placement = decoder.decode_by_id(15).unwrap();
+        let m = GeometryRouter::new()
+            .resolve_linear_placement_local_strict(&placement, &mut decoder)
+            .unwrap();
+        assert!(m.iter().all(|v| v.is_finite()), "{along}: {m:?}");
+        let angle = along / radius;
+        let want = [radius * angle.sin(), 0.0, 100.0 + radius * (1.0 - angle.cos())];
+        let got = col(&m, 3);
+        assert!(got.iter().zip(want).all(|(g, w)| (g - w).abs() < 1e-4), "{along}: got {got:?}, want {want:?}");
+    }
+}

@@ -908,7 +908,7 @@ const IMPLS: Record<string, ToolImpl> = {
     const filename = coerceFilename(args.file_path as string | undefined, 'csv', filterType ?? 'entities');
     const blob = new Blob([csv], { type: 'text/csv' });
     const file = playgroundFiles.add({
-      filename, mimeType: 'text/csv', size: blob.size, blob,
+      filename, mimeType: 'text/csv', size: blob.size, blob, needsCsvBom: !csv.startsWith('\uFEFF'),
       source: 'export_csv', description: `${refs.length} row(s) · ${cols.join(', ')}`,
     });
     return {

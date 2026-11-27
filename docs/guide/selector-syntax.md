@@ -67,7 +67,7 @@ exists only as part of `*=`. Use a regular expression for wildcards.
 | `Qto_….Quantity > 10` | ⚠️ | only a `Qto_` set, and only a numeric comparison — see below |
 | `material=` | ✅ | matches a material **Name or Category** |
 | `classification=`, `= NULL`, `!= NULL` | ✅ | matches the code or the name |
-| `location="Level 3"` | ✅ | reaches one level through a containing space — see below |
+| `location="Level 3"` | ✅ | reaches through containing spaces, nested ones too — see below |
 | GlobalId terms, `! <GlobalId>` | ✅ | several terms union (add) or subtract, mirroring class terms |
 | `GlobalId=`, `GlobalId!=` | ✅ | reuses the same globalId rule the bare term builds; `*=`, `>`/`>=`/`<`/`<=`, `/regex/`, and `NULL` are reported |
 | `Description=`, `ObjectType=`, `Tag=`, any other schema attribute | ✅ | all eight operators, `= NULL` / `!= NULL` as presence — see below |
@@ -130,16 +130,12 @@ bare GlobalId term (`325Q7Fhnf67OZC$$r43uzK`) — see the grammar table above.
 ### How far `location=` reaches
 
 `location="Level 3"` becomes a storey-name rule, and that rule matches an element the
-storey **contains directly**, its aggregated parts, and — one hop through a containing
-`IfcSpace`/`IfcSpatialZone` — an element inside a space on that storey. So
-IfcOpenShell's example `IfcPump, location="Level 3"` — a pump in a room on Level 3 —
-now finds the pump in IFClite too. This is measured, not assumed: see `storey rule
-reach` in `@ifc-lite/rules`'s `filter-evaluate.test.ts`.
-
-The reach stops at one hop: an element inside a space nested inside *another* space,
-rather than directly under the storey, is not resolved. That deeper case is
-uncommon (most authoring tools put a space directly under its storey) and is left
-open in #4094 rather than guessed at.
+storey **contains directly**, the spaces it aggregates, an element inside an
+`IfcSpace`/`IfcSpatialZone` the storey aggregates (also through a space nested in
+another space, #11468), and the aggregated parts of those elements. So IfcOpenShell's
+example `IfcPump, location="Level 3"` — a pump in a room on Level 3 — finds the pump
+in IFClite too. This is measured, not assumed: see `storey rule reach` in
+`@ifc-lite/rules`'s `filter-evaluate.test.ts`.
 
 ### How far `parent=` reaches, and why it is not `location=`
 
@@ -147,7 +143,7 @@ open in #4094 rather than guessed at.
 spatial hierarchy, of an element named `Level 3` — walking upward through **both**
 `IfcRelContainedInSpatialStructure` (containment) and `IfcRelAggregates`
 (aggregation) edges, to **any** depth. That is deliberately wider than `location=`,
-which stops at one hop through a containing space: `parent=` also reaches a
+which stops at the storey and the spaces it aggregates: `parent=` also reaches a
 grandparent (a wall's storey's building), a part aggregated under an assembly that
 itself sits in a storey, and any combination of the two edge kinds in one walk.
 

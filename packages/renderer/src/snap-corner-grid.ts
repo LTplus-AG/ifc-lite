@@ -90,6 +90,31 @@ export class CornerGrid {
     if (list) list.push(v); else m.set(k, [v]);
   }
 
+  /** Visit only visible grid strips along the dominant axis. Inside one strip the
+   * minor coordinate spans at most one cell width, so even an offscreen-to-offscreen
+   * edge costs at most two registrations per strip, independent of its length. */
+  private registerEdge(x0: number, y0: number, x1: number, y1: number, idx: number): void {
+    const vertical = Math.abs(y1 - y0) > Math.abs(x1 - x0);
+    let u0 = vertical ? y0 : x0, v0 = vertical ? x0 : y0;
+    let u1 = vertical ? y1 : x1, v1 = vertical ? x1 : y1;
+    if (u1 < u0) { [u0, u1] = [u1, u0]; [v0, v1] = [v1, v0]; }
+    const slope = u1 === u0 ? 0 : (v1 - v0) / (u1 - u0);
+    const first = Math.max(-1, Math.floor(u0 / this.cell));
+    const last = Math.min((vertical ? this.rows : this.cols) - 2, Math.floor(u1 / this.cell));
+    const maxMinor = (vertical ? this.cols : this.rows) - 2;
+    for (let u = first; u <= last; u++) {
+      const start = Math.max(u0, u * this.cell), end = Math.min(u1, (u + 1) * this.cell);
+      const v = v0 + (start - u0) * slope;
+      const w = v + (end - start) * slope;
+      const low = Math.max(-1, Math.floor(Math.min(v, w) / this.cell));
+      const high = Math.min(maxMinor, Math.floor(Math.max(v, w) / this.cell));
+      for (let minor = low; minor <= high; minor++) {
+        const key = vertical ? (u + 1) * this.cols + minor + 1 : (minor + 1) * this.cols + u + 1;
+        CornerGrid.push(this.edgeCells, key, idx);
+      }
+    }
+  }
+
   /** Project one whole piece's candidates into the grid. */
   addPiece(piece: MeshData, cand: PieceCandidates): void {
     while (!this.addPieceStep(piece, cand, Infinity)) { /* one step finishes it */ }
@@ -109,7 +134,7 @@ export class CornerGrid {
       cur = this.cursor = { piece, cand, pi: this.pieces.push(piece) - 1, corner: 0, edge: 0 };
       this.cands.push(cand);
     }
-    const g = this, { camera, viewport, clip, cell } = this;
+    const g = this, { camera, viewport, clip } = this;
     const pi = cur.pi;
     let budget = maxItems;
     const ec = entityClip(clip, piece.expressId);
@@ -143,17 +168,7 @@ export class CornerGrid {
       g.ex0.push(sa.x); g.ey0.push(sa.y); g.ex1.push(sb.x); g.ey1.push(sb.y);
       g.edgePiece.push(pi); g.edgeOrd.push(i / 6);
       if (a !== a0 || b !== b0) g.clippedEnds.set(idx, Float64Array.of(a.x, a.y, a.z, b.x, b.y, b.z));
-      // Register the edge in every cell it passes through (clipped to the viewport band).
-      const len = Math.hypot(sb.x - sa.x, sb.y - sa.y);
-      const steps = Math.min(4096, Math.max(1, Math.ceil(len / (cell / 4))));
-      let last = -1;
-      for (let k = 0; k <= steps; k++) {
-        const t = k / steps;
-        const c = this.cellOf(sa.x + (sb.x - sa.x) * t, sa.y + (sb.y - sa.y) * t);
-        if (c === null || c === last) continue;
-        last = c;
-        CornerGrid.push(g.edgeCells, c, idx);
-      }
+      this.registerEdge(sa.x, sa.y, sb.x, sb.y, idx);
     }
     if (cur.corner < cand.corners.length || cur.edge < cand.edges.length) return false;
     this.cursor = null;

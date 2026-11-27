@@ -127,7 +127,9 @@ export class ScreenCornerIndex {
     const cornerR = screenRadius(options.cornerRadiusPx, DEFAULT_CORNER_RADIUS_PX);
     const edgeR = screenRadius(options.edgeRadiusPx, DEFAULT_EDGE_RADIUS_PX);
     if (!(cornerR > 0) && !(edgeR > 0)) return null;
-    const cell = Math.max(cornerR, edgeR);
+    // Bound per-edge registration even with tiny radii or a very large canvas.
+    // The grid is a broad phase; the exact distance test still uses each requested radius.
+    const cell = Math.max(cornerR, edgeR, Math.max(viewport.width, viewport.height) / 1024);
     const eligible = options.eligibleModelIndices;
     const pipeline = this.pipeline ??= new CornerBuildPipeline(options.idleHost);
 
@@ -144,8 +146,9 @@ export class ScreenCornerIndex {
     const grid = pipeline.gridFor(viewKey);
     if (!grid) return null;
     const hit = args.hitDistance;
+    const slack = options.occlusionTolerance;
     const maxDepth = options.ignoreOcclusion || hit == null || !Number.isFinite(hit) ? Infinity
-      : hit + (options.occlusionTolerance ?? 0.05 + 0.01 * hit);
+      : hit + (slack !== undefined && Number.isFinite(slack) && slack >= 0 ? slack : 0.05 + 0.01 * hit);
     return grid.search(x, y, args.ray, cornerR, edgeR, maxDepth, args.kinds);
   }
 }

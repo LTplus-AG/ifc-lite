@@ -104,6 +104,42 @@ describe('screen-space corner snapping (#11504)', () => {
     assert.equal(pick(sceneWith(boxA()), 370, 258).snapTarget, null, '12 px off the edge is outside both radii');
   });
 
+  for (const vertical of [false, true]) {
+    it(`#11753 covers a 300,000-pixel ${vertical ? 'vertical' : 'horizontal'} edge throughout the viewport`, () => {
+      const scene = sceneWith(vertical
+        ? makeBox(7, [-2, -10000, 0], [2, 10000, 2])
+        : makeBox(7, [-10000, -2, 0], [10000, 2, 2]));
+      const host = new ManualIdleHost(), engine = new RaycastEngine(cameraDownZ(), scene, canvas);
+      const run = (along: number, offset: number) => engine.raycastSceneMagnetic(
+        vertical ? 430 + offset : along, vertical ? along : 270 - offset, lock,
+        { snapOptions: { ...base, screenCornerSnap: { settleMs: 0, idleHost: host } } });
+      run(1, 5); host.drain();
+      for (let px = 0; px < (vertical ? 600 : 800); px += 3) {
+        const result = run(px, 5);
+        assert.equal(result.intersection, null);
+        assert.equal(result.snapTarget?.type, 'edge', `5 CSS pixels away at ${px}`);
+        assert.equal(result.snapTarget?.expressId, 7);
+      }
+      assert.equal(run(430, 7).snapTarget, null);
+    });
+  }
+
+  it('#11753 indexes a long diagonal for subpixel radii without broadening the pick', () => {
+    const mesh = makeBox(8, [-10000,-10000,0], [10000,10000,2]);
+    mesh.indices = Uint32Array.of(0, 1, 3);
+    const engine = new RaycastEngine(cameraDownZ(), sceneWith(mesh), canvas), host = new ManualIdleHost();
+    const pickEdge = (x: number, offset: number) => engine.raycastSceneMagnetic(x, 700 - x - offset, lock,
+      { snapOptions: { ...base, snapToVertices: false, screenCornerSnap: {
+        settleMs: 0, idleHost: host, edgeRadiusPx: 0.002, cornerRadiusPx: 0 } } });
+    pickEdge(400, 0.001); host.drain();
+    for (let px = 110; px < 690; px += 13) {
+      const inside = pickEdge(px, 0.001);
+      assert.equal(inside.intersection, null);
+      assert.equal(inside.snapTarget?.expressId, 8);
+      assert.equal(pickEdge(px, 0.01).snapTarget, null);
+    }
+  });
+
   it('edge-only mode keeps the eligible edge when a corner is also near the cursor (#11504 review)', () => {
     // (396, 265) is 6.4 px from the corner (400, 270) and 5 px from the top edge y = 270 px.
     const edgeOnly = { ...base, snapToVertices: false, screenCornerSnap: { settleMs: 0 } };
@@ -168,6 +204,15 @@ describe('screen-space corner snapping (#11504)', () => {
     assert.equal(shaded.intersection?.expressId, 2);
     assert.equal(shaded.snapTarget?.expressId, 2, 'the hidden corner of A does not win');
     assert.notEqual(shaded.snapTarget?.type, 'vertex');
+    for (const occlusionTolerance of [NaN, Infinity, -1]) {
+      const guarded = pick(scene(), 405, 265, { snapOptions: { ...base,
+        screenCornerSnap: { settleMs: 0, occlusionTolerance } } });
+      assert.equal(guarded.intersection?.expressId, 2);
+      assert.deepEqual(guarded.snapTarget, shaded.snapTarget, '#11753 invalid slack uses the normal depth guard');
+    }
+    const withinSlack = pick(scene(), 405, 265, { snapOptions: { ...base,
+      screenCornerSnap: { settleMs: 0, occlusionTolerance: 5 } } });
+    assert.equal(withinSlack.snapTarget?.expressId, 1);
     const xray = pick(scene(), 405, 265, { snapOptions: { ...base, screenCornerSnap: { settleMs: 0, ignoreOcclusion: true } } });
     assert.equal(xray.snapTarget?.type, 'vertex');
     assert.deepEqual([xray.snapTarget?.expressId, xray.snapTarget?.position.z], [1, 2]);

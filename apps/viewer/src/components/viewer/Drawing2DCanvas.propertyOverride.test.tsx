@@ -40,6 +40,9 @@ import {
   type Drawing2D,
   type GraphicOverrideRule,
 } from '@ifc-lite/drawing-2d';
+import { MutablePropertyView } from '@ifc-lite/mutations';
+import { fixtureModel } from '@/test/store-fixture';
+import { makePropertiesGetter } from '@/hooks/drawingElementProperties';
 import { useViewerStore } from '@/store';
 import { Drawing2DCanvas } from './Drawing2DCanvas.js';
 
@@ -188,14 +191,14 @@ function installCanvasStub(): { fillStyleCalls: string[]; restore: () => void } 
 
 const mounted: Array<{ root: Root; container: HTMLElement }> = [];
 
-function renderCanvas(overrideEngine: GraphicOverrideEngine): void {
+function renderCanvas(overrideEngine: GraphicOverrideEngine, drawing = EMPTY_DRAWING): void {
   const container = document.createElement('div');
   document.body.appendChild(container);
   const root = createRoot(container);
   act(() => {
     root.render(
       <Drawing2DCanvas
-        drawing={EMPTY_DRAWING}
+        drawing={drawing}
         transform={{ x: 0, y: 0, scale: 1 }}
         showHiddenLines={false}
         overrideEngine={overrideEngine}
@@ -235,6 +238,35 @@ describe('Drawing2DCanvas live-canvas property overrides (#3523 gap: the export 
         `the base rule's fill colour "#AAAAAA" should have lost to the higher-priority FireRating rule; got ${JSON.stringify(stub.fillStyleCalls)}`,
       );
     } finally {
+      stub.restore();
+    }
+  });
+
+  it('styles an unpublished overlay and drops its properties after the view is removed (#11640)', () => {
+    const model = fixtureModel('wall', { entities: [{ expressId: 1, type: 'IfcWall' }] });
+    const view = new MutablePropertyView(null, model.id);
+    view.setExpressIdWatermark(100);
+    const { expressId } = view.createEntity('IfcWall', []);
+    assert.equal(expressId, 101);
+    view.setProperty(expressId, 'Pset_WallCommon', 'FireRating', 120);
+    const models = new Map([[model.id, model]]), mutationViews = new Map([[model.id, view]]);
+    const previous = useViewerStore.getState();
+    const stub = installCanvasStub();
+    try {
+      useViewerStore.setState({ models, mutationViews });
+      const lookup = makePropertiesGetter(models, null, mutationViews);
+      assert.equal(lookup(101)?.Pset_WallCommon.FireRating, 120);
+      assert.equal(lookup(102), undefined);
+      renderCanvas(new GraphicOverrideEngine([BASE_RULE, FIRE_RULE]), {
+        ...EMPTY_DRAWING, cutPolygons: [{ ...EMPTY_DRAWING.cutPolygons[0], entityId: expressId }],
+      });
+      assert.ok(stub.fillStyleCalls.includes('#FF0000'));
+      stub.fillStyleCalls.length = 0;
+      act(() => useViewerStore.setState({ mutationViews: new Map() }));
+      assert.ok(stub.fillStyleCalls.includes('#AAAAAA'));
+      assert.ok(!stub.fillStyleCalls.includes('#FF0000'));
+    } finally {
+      act(() => useViewerStore.setState({ models: previous.models, mutationViews: previous.mutationViews }));
       stub.restore();
     }
   });

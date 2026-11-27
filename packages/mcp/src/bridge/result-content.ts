@@ -14,12 +14,13 @@
  */
 
 import { isRecord } from './json-bounds.js';
+import { BRIDGE_FEATURE_UI_EVENTS } from './ui-events.js';
 
 /** `welcome.features` entry: this bridge forwards `image` result content. Older bridges refuse it. */
 export const BRIDGE_FEATURE_IMAGE_CONTENT = 'image-content';
 
 /** Every feature this bridge advertises in `welcome.features`. */
-export const BRIDGE_FEATURES: readonly string[] = [BRIDGE_FEATURE_IMAGE_CONTENT];
+export const BRIDGE_FEATURES: readonly string[] = [BRIDGE_FEATURE_IMAGE_CONTENT, BRIDGE_FEATURE_UI_EVENTS];
 
 export const BRIDGE_IMAGE_LIMITS = {
   /** Base64 characters of one image. Leaves room for text under `maxResultBytes` (4 MiB). */

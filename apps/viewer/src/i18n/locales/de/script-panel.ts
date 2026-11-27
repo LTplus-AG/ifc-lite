@@ -45,6 +45,7 @@ export const scriptPanelDe = {
   'scriptPanel.output.bimCode': 'bim.*',
   'scriptPanel.output.sandboxHintSuffix': 'APIs für Nebeneffekte in Viewer, Daten und Export.',
   'scriptPanel.output.fixWithLlmButton': 'Mit LLM beheben',
+  'scriptPanel.output.surfaces': { one: '{count} Ergebnisansicht', other: '{count} Ergebnisansichten' },
   'scriptPanel.output.returnLabel': 'Rückgabe:',
   'scriptPanel.output.emptyState': 'Drücken Sie Ausführen oder {keys}, um das Skript auszuführen',
   'scriptPanel.deleteDialog.title': 'Skript löschen',

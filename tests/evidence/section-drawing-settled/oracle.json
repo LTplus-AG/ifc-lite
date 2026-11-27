@@ -1,0 +1,6 @@
+{
+  "issue": 7955,
+  "why": "Let a running section-drawing generation count as settled unless its status was raised, and accept any applied cap: the settled-signal tests must go red.",
+  "key": "apps/viewer/src/lib/section-drawing-settled.ts",
+  "mutation": "tests/evidence/section-drawing-settled/behaviour.oracle.patch"
+}

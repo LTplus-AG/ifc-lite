@@ -10,7 +10,9 @@
 //! Both read indices through `indices` (one CoordIndex/`PnIndex` rule) and
 //! orient through [`orients_outward`] (one `Closed` policy), #7689.
 
+mod anchor;
 mod indices;
+pub(crate) use anchor::referenced_point_centre;
 mod mesh_build;
 mod polygonal;
 mod triangulate;

@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "why": "Keep the instanced-presence module loadable while restoring the flat-length emptiness test: an instanced-only model then draws nothing.",
+  "key": "apps/viewer/src/lib/drawing/drawing-instanced-presence.ts",
+  "mutation": "tests/evidence/drawing-instanced-only-10264/behaviour.oracle.patch",
+  "test": "apps/viewer/src/hooks/useDrawingGeneration.instanced.test.tsx"
+}

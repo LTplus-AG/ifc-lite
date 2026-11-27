@@ -28,8 +28,8 @@ import { splitTopLevelStepArguments } from './step-argument-parser.js';
  * `splitTopLevelStepArguments("'a' ,  $  , #3 ")` returns
  * `["'a' ", "  $  ", " #3 "]`, and no test pinned the trimming half.
  */
-export function splitTopLevelAttributes(attrsRaw: string): string[] | null {
-  return splitTopLevelStepArguments(attrsRaw);
+export function splitTopLevelAttributes(attrsRaw: string, maxReferenceId?: number): string[] | null {
+  return splitTopLevelStepArguments(attrsRaw, maxReferenceId);
 }
 
 /**
@@ -109,8 +109,9 @@ export function remapRenamedAttributesByName(
   attrsRaw: string,
   srcNames: readonly string[],
   tgtNames: readonly string[],
+  maxReferenceId?: number,
 ): string | null {
-  const values = splitTopLevelAttributes(attrsRaw);
+  const values = splitTopLevelAttributes(attrsRaw, maxReferenceId);
   if (values === null) return null;
   const byName = new Map<string, string>();
   for (let i = 0; i < srcNames.length && i < values.length; i++) {

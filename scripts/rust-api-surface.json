@@ -46,6 +46,9 @@
     "SourceBundle": "struct {  }",
     "SourceCache": "struct {  }",
     "SpanBeyondU32": "struct { end: usize; id: u32; start: usize }",
+    "SparseIndex": "struct {  }",
+    "SparseSource": "struct {  }",
+    "SparseStats": "struct { arena_bytes: usize; base_bytes: usize; installed_bytes_total: u64; installed_records_total: u64; records: usize; referrer_generation: u32; resets: u32 }",
     "StepListItems": "struct {  }",
     "StepNumber": "enum { Integer(i64); Real(f64); Unrepresentable(&'a [u8]) }",
     "StreamConfig": "struct { only_types: Option<Vec<IfcType>>; progress_interval: usize; skip_types: Vec<IfcType> }",
@@ -56,6 +59,7 @@
     "UnknownIfcType": "struct {  }",
     "attribute_names_for_schema": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "build_entity_index": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
+    "build_sparse_preamble": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "declared_schema_bounded": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "decode_ifc_string": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "decode_step_binary": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
@@ -232,6 +236,7 @@
     "SimplifyOptions": "struct { boxify: bool; drop_cavities: bool; min_triangles: u32; target_ratio: Option<f32>; weld_eps: f32 }",
     "SimplifyStats": "struct { cavity_components_dropped: u32; cavity_triangles_dropped: u32; cell_iterations: u32; passthrough: bool; tris_after: u32; tris_before: u32 }",
     "SkippedProfile": "struct { express_id: u32; ifc_type: String; reason: String }",
+    "StyledSubMeshes": "struct (non_exhaustive)",
     "SubMesh": "struct { geometry_id: u32; mesh: Mesh; texture: Option<crate::processors::texture::TextureAttachment>; uvs: Option<Vec<f32>> }",
     "SubMeshCollection": "struct { ids_are_materials: bool; sub_meshes: Vec<SubMesh> }",
     "SurfaceOfLinearExtrusionProcessor": "struct (unit)",
@@ -300,6 +305,7 @@
     "point_in_contour": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "propagate_voids_to_parts": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "propagate_voids_via_aggregates": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
+    "recomposes": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "representation::Flow": "enum { Continue; SkipChildren; Stop }",
     "representation::MAX_WALK_LEVELS": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "representation::MappedLevel": "struct { item: DecodedEntity; map: DecodedEntity; mapped_rep: DecodedEntity }",
@@ -758,7 +764,8 @@
     "try_export_glb_with_stats": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "try_export_glb_with_stats_with_index": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
     "try_export_kmz_collada_from_meshes": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
-    "try_export_landxml_terrain": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)"
+    "try_export_landxml_terrain": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)",
+    "try_export_merged": "unresolved (not a local struct/enum — fn/const/trait/type or unknown)"
   },
   "ifc-lite-ffi": {
     "ifc_lite_free": "fn",

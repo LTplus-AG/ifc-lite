@@ -7,7 +7,19 @@ import { getBoolean, getNumber, getReference, getReferences } from './attribute-
 import { resolveEntityLengthUnitScale } from './unit-extractor.js';
 import type { IfcDataStore } from './columnar-parser.js';
 import type { MaterialRecordReader } from './material-overlay.js';
+import { getInheritanceChain } from './ifc-schema.js';
 import type { MaterialInfo, MaterialLayerInfo, MaterialProfileInfo, MaterialConstituentInfo } from './material-resolver.js';
+
+/**
+ * True when a set member's record is the expected entity or one of its schema
+ * subtypes. `IfcMaterialLayerWithOffsets` and `IfcMaterialProfileWithOffsets`
+ * (IFC4) are instances of `IfcMaterialLayer` / `IfcMaterialProfile`, so an
+ * exact-name test dropped every member a tapered or offset layer set carried.
+ */
+function isMaterialMemberOf(typeUpper: string, expectedUpper: string): boolean {
+    return typeUpper === expectedUpper
+        || getInheritanceChain(typeUpper).some((ancestor) => ancestor.toUpperCase() === expectedUpper);
+}
 
 /**
  * Resolve a material entity by ID, handling all IFC material types. `visited`
@@ -55,7 +67,7 @@ export function resolveMaterial(
             for (const layerId of layerIds) {
                 // @raw-entity-enumeration-ok decode this material set's referenced layer record
                 const layerRef = read(layerId);
-                if (!layerRef || layerRef.type.toUpperCase() !== 'IFCMATERIALLAYER') { unresolved = true; continue; }
+                if (!layerRef || !isMaterialMemberOf(layerRef.type.toUpperCase(), 'IFCMATERIALLAYER')) { unresolved = true; continue; }
                 const layerEntity = layerRef;
                 if (!layerEntity) continue;
 
@@ -110,7 +122,7 @@ export function resolveMaterial(
             for (const profId of profileIds) {
                 // @raw-entity-enumeration-ok decode this profile set's referenced profile record
                 const profRef = read(profId);
-                if (!profRef || profRef.type.toUpperCase() !== 'IFCMATERIALPROFILE') { unresolved = true; continue; }
+                if (!profRef || !isMaterialMemberOf(profRef.type.toUpperCase(), 'IFCMATERIALPROFILE')) { unresolved = true; continue; }
                 const profEntity = profRef;
                 if (!profEntity) continue;
 
@@ -156,7 +168,7 @@ export function resolveMaterial(
             for (const constId of constituentIds) {
                 // @raw-entity-enumeration-ok decode this constituent set's referenced constituent record
                 const constRef = read(constId);
-                if (!constRef || constRef.type.toUpperCase() !== 'IFCMATERIALCONSTITUENT') { unresolved = true; continue; }
+                if (!constRef || !isMaterialMemberOf(constRef.type.toUpperCase(), 'IFCMATERIALCONSTITUENT')) { unresolved = true; continue; }
                 const constEntity = constRef;
                 if (!constEntity) continue;
 

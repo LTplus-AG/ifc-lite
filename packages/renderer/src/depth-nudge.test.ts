@@ -24,6 +24,7 @@ import {
   PERSPECTIVE_DEPTH_NUDGE_PER_LEVEL,
   PERSPECTIVE_MAX_DEPTH_NUDGE_RELATIVE,
   PERSPECTIVE_OVERLAY_DEPTH_LIFT,
+  orthographicOverlayLiftLevels,
 } from './shaders/depth-nudge.wgsl.js';
 
 /** One unit of a 24-bit depth buffer, in NDC. */
@@ -43,9 +44,9 @@ function nudgeLevels(depthRange: number): number {
   return Math.min(Math.max(Math.floor(steps), 0), MAX_DEPTH_NUDGE_HASH) + 1;
 }
 
-/** WGSL ortho overlay lift. */
+/** WGSL ortho overlay lift (shared with CPU annotation picking): above every level, painted ones included. */
 function overlayLift(depthRange: number): number {
-  return Math.max(PERSPECTIVE_OVERLAY_DEPTH_LIFT, (nudgeLevels(depthRange) + 1) * ORTHOGRAPHIC_DEPTH_NUDGE_PER_LEVEL);
+  return Math.max(PERSPECTIVE_OVERLAY_DEPTH_LIFT, orthographicOverlayLiftLevels(nudgeLevels(depthRange)) * ORTHOGRAPHIC_DEPTH_NUDGE_PER_LEVEL);
 }
 
 /** A kilometre site, the scale the issue's glitches showed at. */
@@ -126,9 +127,18 @@ describe('depth nudge (#6729)', () => {
 });
 
 describe('overlay depth lift (#812, #6729)', () => {
+  it('orthographic: the lift clears unpainted and painted levels (literal)', () => {
+    assert.equal(orthographicOverlayLiftLevels(256), 256 + 63 + 1);
+    assert.equal(orthographicOverlayLiftLevels(9), 9 + 2 + 1);
+    assert.equal(orthographicOverlayLiftLevels(1), 1 + 1 + 1);
+  });
+
   it('orthographic: text and lines stay above the most-nudged face, depth bias included', () => {
     for (const range of [0.5, 10, 100, 205, 1_000, 1_560, 10_000, 100_000]) {
-      const maxNudge = (nudgeLevels(range) - 1) * ORTHOGRAPHIC_DEPTH_NUDGE_PER_LEVEL;
+      const levels = nudgeLevels(range);
+      // The top painted level, restated from the contract (a quarter of the unpainted steps, at least one),
+      // not read back through `orthographicPaintedLevels`, so a broken helper cannot lower both sides.
+      const maxNudge = (levels + Math.max((levels - 1) >> 2, 1) - 1) * ORTHOGRAPHIC_DEPTH_NUDGE_PER_LEVEL;
       assert.ok(overlayLift(range) - TEXT_DEPTH_BIAS_UNITS * DEPTH_UNIT > maxNudge, `${range} m`);
       assert.ok(overlayLift(range) >= PERSPECTIVE_OVERLAY_DEPTH_LIFT, `${range} m: never lower than before`);
     }

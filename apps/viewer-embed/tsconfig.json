@@ -10,6 +10,7 @@
       "@ifc-lite/parser": ["../../packages/parser/src"],
       "@ifc-lite/parser/structural-glyphs": ["../../packages/parser/src/structural-glyphs"],
       "@ifc-lite/geometry": ["../../packages/geometry/src"],
+      "@ifc-lite/geometry/compact": ["../../packages/geometry/src/compact"],
       "@ifc-lite/geometry/geometry-class": ["../../packages/geometry/src/geometry-class"],
       "@ifc-lite/renderer": ["../../packages/renderer/src"],
       "@ifc-lite/query": ["../../packages/query/src"],

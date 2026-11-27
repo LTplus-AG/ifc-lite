@@ -36,12 +36,16 @@ pub(crate) fn carry(source: &str, converted: String, cfrom: &str, cto: &str, dro
     // The head names the type; most records stop here.
     let Some(head) = crate::step_record_frame::record_head(&converted) else { return converted };
     let ty = head.type_name(&converted);
-    let Some(&(ifc2x3, ifc4, enum_2x3, label_2x3)) = LABEL_CARRIES.iter().find(|c| ty.eq_ignore_ascii_case(if up { c.1 } else { c.0 })) else { return converted };
+    const IFC4X3_BOARD: &str = "IFCDISTRIBUTIONBOARD";
+    let renamed_board = up && cto == "IFC4X3" && ty.eq_ignore_ascii_case(IFC4X3_BOARD);
+    let layout_type = if renamed_board { "IFCELECTRICDISTRIBUTIONBOARD" } else { ty };
+    let Some(&(ifc2x3, ifc4, enum_2x3, label_2x3)) = LABEL_CARRIES.iter().find(|c| layout_type.eq_ignore_ascii_case(if up { c.1 } else { c.0 })) else { return converted };
     let Some(frame) = crate::step_record_frame::record_frame(&converted) else { return converted };
     let Some(mut out) = split_top_level_args(frame.args(&converted)) else { return converted };
     let index = |schema: &str, ty: &str, name: &str| schema_attribute_names(schema, ty)?.iter().position(|n| *n == name);
     if up {
-        let (Some(ot), Some(e), Some(l)) = (index(cto, ifc4, "ObjectType"), index(cfrom, ifc2x3, enum_2x3), index(cfrom, ifc2x3, label_2x3)) else { return converted };
+        let target_type = if renamed_board { IFC4X3_BOARD } else { ifc4 };
+        let (Some(ot), Some(e), Some(l)) = (index(cto, target_type, "ObjectType"), index(cfrom, ifc2x3, enum_2x3), index(cfrom, ifc2x3, label_2x3)) else { return converted };
         // `convert_record` also accepts a record without its ';'.
         let read = |line: &str| crate::step_record_frame::record_frame(line).and_then(|f| split_top_level_args(f.args(line)));
         let Some(src) = read(source).or_else(|| read(&format!("{source};"))) else { return converted };

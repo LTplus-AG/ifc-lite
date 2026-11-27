@@ -1,0 +1,6 @@
+{
+  "issue": 7955,
+  "why": "Keep the GPU instancing modules loadable while dropping the cull's precision fence, draw-group sharing and the viewer switch: the pool, scene-pool and config tests must go red.",
+  "key": "packages/renderer/src/gpu-instance-cull.ts",
+  "mutation": "tests/evidence/gpu-instancing-pool/behaviour.oracle.patch"
+}

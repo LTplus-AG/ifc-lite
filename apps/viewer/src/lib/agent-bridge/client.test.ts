@@ -901,3 +901,61 @@ describe('local agent bridge client: allowing edits (#9523)', () => {
     assert.ok(result && !JSON.stringify(result).includes('"mutating"'), 'the activity marker never goes over the wire');
   });
 });
+
+it('stores the paired bridge surface and acknowledges delivery without dispatching a viewer tool', async () => {
+  const h = harness({ dispatch: async () => { throw new Error('surface bypasses the viewer tool registry'); } });
+  h.client.connect();
+  const socket = h.socket();
+  socket.open();
+  assert.equal(socket.hello().a2uiSurface, true);
+  socket.welcome();
+  const { agentSurfaces } = await import('./agent-surfaces');
+  let updates = 0;
+  const stop = agentSurfaces.subscribe(() => { updates++; });
+  try {
+    const surface = { title: 'Floor results', messages: [{ version: '1.0', createSurface: { surfaceId: 'floor' } }] };
+    socket.frame({ type: 'a2ui-surface', sessionId: 'older-session', id: 'wrong', surface });
+    socket.frame({ type: 'call', sessionId: 'session-1', name: 'viewer_show_ui', id: 'wrong-type', arguments: surface });
+    socket.frame({ type: 'a2ui-surface', sessionId: 'session-1', id: 'c1', surface });
+    await flush();
+    assert.deepEqual(agentSurfaces.getSnapshot(), [surface]);
+    assert.equal(updates, 1);
+    assert.deepEqual(socket.results().map(({ id, result }) => [id, result.isError]), [['c1', undefined]]);
+  } finally {
+    stop();
+    agentSurfaces.clear();
+    h.client.disconnect();
+  }
+});
+
+describe('UI events back to the agent', () => {
+  const welcomeWith = (socket: FakeSocket, features: string[]) => socket.frame({
+    type: 'welcome', protocol: BRIDGE_PROTOCOL_VERSION, sessionId: 'session-1', permission: 'read-only', readOnlyCeiling: false,
+    bridge: { name: 'ifc-lite-mcp', version: 't' }, features,
+  });
+
+  it('sends a bounded ui-event only to a bridge that advertised ui-events', () => {
+    const old = harness();
+    old.client.connect();
+    old.socket().open();
+    welcomeWith(old.socket(), []);
+    assert.equal(old.client.sendUiEvent({ surfaceId: 'walls', name: 'ask', prompt: 'next' }), false);
+    old.client.disconnect();
+
+    const h = harness();
+    assert.equal(h.client.sendUiEvent({ surfaceId: 'walls', name: 'ask' }), false, 'not before pairing');
+    h.client.connect();
+    h.socket().open();
+    welcomeWith(h.socket(), ['ui-events']);
+    assert.equal(h.client.sendUiEvent({ surfaceId: 'walls', name: 'ask', prompt: 'Isolate them', context: { refs: ['m:1'] } }), true);
+    const frame = parseTabMessage(h.socket().sent.at(-1) ?? '');
+    assert.ok(frame.ok);
+    assert.deepEqual(frame.value, { type: 'ui-event', sessionId: 'session-1', event: { surfaceId: 'walls', name: 'ask', prompt: 'Isolate them', context: { refs: ['m:1'] } } });
+
+    // A context over the bound is dropped; the prompt still goes.
+    assert.equal(h.client.sendUiEvent({ surfaceId: 'walls', name: 'ask', prompt: 'All of them', context: { refs: Array.from({ length: 2000 }, (_, i) => `m:${i + 1}`) } }), true);
+    const big = parseTabMessage(h.socket().sent.at(-1) ?? '');
+    assert.ok(big.ok && big.value.type === 'ui-event' && big.value.event.context === undefined && big.value.event.prompt === 'All of them');
+    h.client.disconnect();
+  });
+});

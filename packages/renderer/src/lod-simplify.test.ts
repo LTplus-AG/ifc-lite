@@ -161,7 +161,7 @@ describe('simplifyIndicesByClustering', () => {
     // the guard to `memo !== 0` leaves all ten tests green, verified by
     // running it. A falsy sentinel makes vertex 0 look permanently
     // unmemoized, so it is re-resolved on every reference through the same
-    // `repOfCell` lookup, which returns the same answer. That is a
+    // `cellOfKey` lookup, which returns the same answer. That is a
     // performance regression with no observable output difference, and no
     // assertion on the returned buffer can see it. The sentinel choice is
     // therefore documented at the declaration rather than defended here.
@@ -203,6 +203,116 @@ describe('simplifyIndicesByClustering', () => {
     const lodA = simplifyIndicesByClustering(a.vertexData, STRIDE, a.indices, 1.0)!;
     const lodB = simplifyIndicesByClustering(b.vertexData, STRIDE, b.indices, 1.0)!;
     assert.ok(Math.abs(lodA.length - lodB.length) <= 6, `${lodA.length} vs ${lodB.length}`);
+  });
+});
+
+/**
+ * One batch as the scene builds it: `pieces` meshes, two per entity, laid out
+ * in WORLD space on exact binary fractions. Each piece is one triangle spanning
+ * three cells (it survives) and one tiny triangle (it collapses). The two
+ * pieces of an entity share their first corner at the same position with
+ * different normals, so that cell has coincident candidates from both pieces.
+ */
+function campusPieces(pieces: number) {
+  return Array.from({ length: pieces }, (_, k) => {
+    const entity = 100 + (k >> 1);
+    const x = (k >> 1) * 4.375 + 0.375, y = 0.625, z = 0.125, d = 1 / 64;
+    const odd = (k & 1) === 1;
+    const n = odd ? [0, 0, 1] : [0, 1, 0];
+    const big = odd ? [[x, y], [x + 2.5, y + 2.5], [x, y + 2.5]] : [[x, y], [x + 2.5, y], [x, y + 2.5]];
+    return { entity, vertices: [...big, [x + d, y + d], [x + 2 * d, y + d], [x + d, y + 2 * d]].map(([px, py]) => [px, py, z, ...n]) };
+  });
+}
+
+/** The batch the pieces make in `order`, its positions relative to `frame`. */
+function batchOf(pieces: ReturnType<typeof campusPieces>, order: readonly number[], frame: readonly [number, number, number]) {
+  const vertexData = new Float32Array(pieces.length * 6 * STRIDE);
+  const lanes = new Uint32Array(vertexData.buffer);
+  const indices = new Uint32Array(pieces.length * 6);
+  order.forEach((k, slot) => pieces[k].vertices.forEach((v, i) => {
+    const at = (slot * 6 + i) * STRIDE;
+    vertexData.set([v[0] - frame[0], v[1] - frame[1], v[2] - frame[2], v[3], v[4], v[5]], at);
+    lanes[at + 6] = pieces[k].entity;
+    indices[slot * 6 + i] = slot * 6 + i;
+  }));
+  return { vertexData, indices };
+}
+
+/** Each LOD triangle as the world-space records of its corners, sorted: what the GPU draws. */
+function drawnTriangles(vertexData: Float32Array, lod: Uint32Array, frame: readonly [number, number, number]) {
+  const lanes = new Uint32Array(vertexData.buffer);
+  const record = (v: number) => {
+    const at = v * STRIDE;
+    return [vertexData[at] + frame[0], vertexData[at + 1] + frame[1], vertexData[at + 2] + frame[2],
+      vertexData[at + 3], vertexData[at + 4], vertexData[at + 5], lanes[at + 6]].join(',');
+  };
+  const out: string[] = [];
+  for (let i = 0; i < lod.length; i += 3) out.push([lod[i], lod[i + 1], lod[i + 2]].map(record).join(' '));
+  return out.sort();
+}
+
+describe('simplifyIndicesByClustering is a function of the batch contents (load order)', () => {
+  const pieces = campusPieces(400); // 800 triangles: above LOD_MIN_TRIANGLES
+  const inOrder = pieces.map((_, k) => k);
+  const reversed = [...inOrder].reverse();
+  const origin: [number, number, number] = [0, 0, 0];
+  // Exact binary fractions: every position is exact in both frames, so only the frame differs.
+  const shifted: [number, number, number] = [3.5, -2.25, 7];
+  /** What the GPU draws at LOD1 for the batch the pieces make in `order`, in `frame`. */
+  const drawn = (order: readonly number[], frame: readonly [number, number, number]) => {
+    const { vertexData, indices } = batchOf(pieces, order, frame);
+    const lod = simplifyIndicesByClustering(vertexData, STRIDE, indices, 1, { frameOrigin: frame });
+    assert.ok(lod, 'the batch must simplify');
+    assert.strictEqual(lod.length, pieces.length * 3, 'every big triangle survives, every tiny one collapses');
+    return drawnTriangles(vertexData, lod, frame);
+  };
+
+  it('draws the same triangles whatever order the pieces arrived in', () => {
+    assert.deepStrictEqual(drawn(reversed, origin), drawn(inOrder, origin));
+  });
+
+  it('draws the same triangles whichever frame the batch is in', () => {
+    assert.deepStrictEqual(drawn(inOrder, shifted), drawn(inOrder, origin));
+  });
+
+  it('elects the coincident vertex with the smaller normal, not the first one referenced', () => {
+    for (const order of [inOrder, reversed]) {
+      // Entity 100's shared corner (0.375, 0.625, 0.125): +Z (0,0,1) sorts before +Y (0,1,0).
+      const corners = drawn(order, origin).flatMap((t) => t.split(' ')).filter((r) => r.startsWith('0.375,0.625,0.125,'));
+      assert.deepStrictEqual([...new Set(corners)], ['0.375,0.625,0.125,0,0,1,100']);
+    }
+  });
+});
+
+describe('simplifyIndicesByClustering layout argument', () => {
+  it('keeps the numeric form free of a normal tie-break, as before', () => {
+    // Entity 100's coincident corner: by index the +Y piece (piece 0) comes first; the normal rule would pick +Z.
+    const pieces = campusPieces(400);
+    const { vertexData, indices } = batchOf(pieces, pieces.map((_, k) => k), [0, 0, 0]);
+    const lod = simplifyIndicesByClustering(vertexData, STRIDE, indices, 1, 6)!;
+    const corners = drawnTriangles(vertexData, lod, [0, 0, 0]).flatMap((t) => t.split(' ')).filter((r) => r.startsWith('0.375,0.625,0.125,'));
+    assert.deepStrictEqual([...new Set(corners)], ['0.375,0.625,0.125,0,1,0,100']);
+  });
+
+  it('still reads a bare number as the entity-lane offset', () => {
+    const pieces = campusPieces(400);
+    const order = pieces.map((_, k) => k);
+    const { vertexData, indices } = batchOf(pieces, order, [0, 0, 0]);
+    const numeric = simplifyIndicesByClustering(vertexData, STRIDE, indices, 1, 6);
+    assert.ok(numeric, 'the batch must simplify');
+    assert.strictEqual(numeric.length, pieces.length * 3, 'the lane offset is honoured: no cross-entity merges');
+  });
+
+  it('ranks a NaN normal last, whichever vertex comes first', () => {
+    const pieces = campusPieces(400);
+    // Piece 1 (entity 100, +Z normal) gets a NaN normal: piece 0's +Y corner must win in either order.
+    pieces[1].vertices = pieces[1].vertices.map(([x, y, z]) => [x, y, z, NaN, 0, 1]);
+    for (const order of [pieces.map((_, k) => k), pieces.map((_, k) => k).reverse()]) {
+      const { vertexData, indices } = batchOf(pieces, order, [0, 0, 0]);
+      const lod = simplifyIndicesByClustering(vertexData, STRIDE, indices, 1)!;
+      const corners = drawnTriangles(vertexData, lod, [0, 0, 0]).flatMap((t) => t.split(' ')).filter((r) => r.startsWith('0.375,0.625,0.125,'));
+      assert.deepStrictEqual([...new Set(corners)], ['0.375,0.625,0.125,0,1,0,100']);
+    }
   });
 });
 

@@ -8,7 +8,9 @@
  */
 
 import type { StateCreator } from 'zustand';
-import type { ChatMessage, ChatRepairRequest, ChatStatus, CodeExecResult, FileAttachment } from '../../lib/llm/types.js';
+import type { ChatMessage, ChatRepairRequest, ChatStatus, CodeExecResult, FileAttachment, PersistedA2ui } from '../../lib/llm/types.js';
+import { getMessagesStorageKey, loadStoredMessages, persistMessages, trimChatMessages } from './chatPersistence.js';
+export { __resetChatPersistWarningForTests } from './chatPersistence.js';
 import { coerceModelForEntitlement, DEFAULT_FREE_MODEL } from '../../lib/llm/models.js';
 import { extractCodeBlocks } from '../../lib/llm/code-extractor.js';
 import type { ScriptDiagnostic } from '../../lib/llm/script-diagnostics.js';
@@ -16,17 +18,11 @@ import { formatDiagnosticsForPrompt, getPrimaryRootCause, groupDiagnosticsByRoot
 import { hasAnyApiKey as hasAnyApiKeyAtInit } from '../../services/api-keys.js';
 
 const MODEL_STORAGE_KEY = 'ifc-lite-chat-model';
-const MESSAGES_STORAGE_KEY = 'ifc-lite-chat-messages';
 const AUTO_EXEC_STORAGE_KEY = 'ifc-lite-chat-auto-execute';
 const PANEL_VISIBLE_STORAGE_KEY = 'ifc-lite-chat-panel-visible';
-const MAX_MESSAGES = 200;
 
 function getModelStorageKey(userId: string | null): string {
   return userId ? `${MODEL_STORAGE_KEY}:${userId}` : MODEL_STORAGE_KEY;
-}
-
-function getMessagesStorageKey(userId: string | null): string {
-  return userId ? `${MESSAGES_STORAGE_KEY}:${userId}` : `${MESSAGES_STORAGE_KEY}:anonymous`;
 }
 
 export interface ChatSlice {
@@ -65,6 +61,7 @@ export interface ChatSlice {
   setChatError: (error: string | null) => void;
   setChatAbortController: (controller: AbortController | null) => void;
   setCodeExecResult: (messageId: string, blockIndex: number, result: CodeExecResult) => void;
+  setChatMessageA2ui: (messageId: string, a2ui: PersistedA2ui) => void;
   addChatAttachment: (attachment: FileAttachment) => void;
   removeChatAttachment: (attachmentId: string) => void;
   clearChatAttachments: () => void;
@@ -189,102 +186,6 @@ function loadStoredPanelVisible(): boolean {
   }
 }
 
-/** Load persisted messages from localStorage. */
-function loadStoredMessages(userId: string | null): ChatMessage[] {
-  try {
-    const raw = localStorage.getItem(getMessagesStorageKey(userId));
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as Array<Record<string, unknown>>;
-    return trimChatMessages(parsed.flatMap(deserializeStoredMessage));
-  } catch {
-    return [];
-  }
-}
-
-/** One-shot latch for the persist-failure warning (see persistMessages). */
-let persistWarned = false;
-
-/** Reset the persist-failure latch. Test-only seam. */
-export function __resetChatPersistWarningForTests(): void {
-  persistWarned = false;
-}
-
-/** Persist messages to localStorage. */
-function persistMessages(messages: ChatMessage[], userId: string | null) {
-  try {
-    // Only keep last 50 messages in storage to avoid quota issues
-    const toStore = trimChatMessages(messages).slice(-50).map((m) => ({
-      id: m.id,
-      role: m.role,
-      content: m.content,
-      createdAt: m.createdAt,
-      codeBlocks: m.codeBlocks,
-      attachments: m.attachments,
-      // Serialize Map as array of entries
-      execResults: m.execResults ? Array.from(m.execResults.entries()) : undefined,
-    }));
-    localStorage.setItem(getMessagesStorageKey(userId), JSON.stringify(toStore));
-  } catch (err) {
-    // Non-fatal: the in-memory conversation is unaffected, but nothing will
-    // survive a reload. Latched to once per session — this runs on EVERY
-    // message add / exec-result update, so an unlatched log would flood the
-    // console for the whole session once the quota is full.
-    if (!persistWarned) {
-      persistWarned = true;
-      console.warn(
-        '[chat] Could not persist chat history to localStorage (quota exceeded or storage blocked); '
-        + 'this conversation will not survive a reload. Further failures are not logged.',
-        err,
-      );
-    }
-  }
-}
-
-function trimChatMessages(messages: ChatMessage[]): ChatMessage[] {
-  if (messages.length <= MAX_MESSAGES) return messages;
-  return messages.slice(-MAX_MESSAGES);
-}
-
-function deserializeStoredMessage(value: Record<string, unknown>): ChatMessage[] {
-  const id = typeof value.id === 'string' ? value.id : null;
-  const role = value.role;
-  const content = typeof value.content === 'string' ? value.content : null;
-  const createdAt = typeof value.createdAt === 'number' ? value.createdAt : null;
-  if (!id || content === null || createdAt === null || !isValidRole(role)) {
-    return [];
-  }
-  const attachments = Array.isArray(value.attachments)
-    ? value.attachments.filter(isValidAttachment)
-    : undefined;
-  const execResults = Array.isArray(value.execResults)
-    ? new Map((value.execResults as Array<[number, CodeExecResult]>).filter(
-      (entry): entry is [number, CodeExecResult] => Array.isArray(entry) && typeof entry[0] === 'number',
-    ))
-    : undefined;
-  return [{
-    id,
-    role,
-    content,
-    createdAt,
-    codeBlocks: value.codeBlocks as ChatMessage['codeBlocks'],
-    attachments: attachments && attachments.length > 0 ? attachments : undefined,
-    execResults,
-  }];
-}
-
-function isValidRole(value: unknown): value is ChatMessage['role'] {
-  return value === 'user' || value === 'assistant' || value === 'system';
-}
-
-function isValidAttachment(value: unknown): value is FileAttachment {
-  if (!value || typeof value !== 'object') return false;
-  const attachment = value as Record<string, unknown>;
-  return typeof attachment.id === 'string'
-    && typeof attachment.name === 'string'
-    && typeof attachment.type === 'string'
-    && typeof attachment.size === 'number';
-}
-
 export const createChatSlice: StateCreator<ChatSlice, [], [], ChatSlice> = (set, get) => ({
   // Initial state
   chatPanelVisible: loadStoredPanelVisible(),
@@ -378,6 +279,12 @@ export const createChatSlice: StateCreator<ChatSlice, [], [], ChatSlice> = (set,
       execResults.set(blockIndex, result);
       return { ...msg, execResults };
     });
+    set({ chatMessages: messages });
+    persistMessages(messages, get().chatStorageUserId);
+  },
+
+  setChatMessageA2ui: (messageId, a2ui) => {
+    const messages = get().chatMessages.map((msg) => (msg.id === messageId ? { ...msg, a2ui } : msg));
     set({ chatMessages: messages });
     persistMessages(messages, get().chatStorageUserId);
   },

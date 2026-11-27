@@ -11,7 +11,7 @@ use crate::representation::{is_drawing_camera_annotation, product_shape, Select}
 use ifc_lite_core::{is_geometry_job, DecodedEntity, EntityDecoder, IfcType, RtcVerdict};
 
 mod mapped_vote;
-mod raw_coordinate;
+pub(in crate::router) mod raw_coordinate;
 
 impl GeometryRouter {
     /// Compute median-based RTC offset from sampled translations.

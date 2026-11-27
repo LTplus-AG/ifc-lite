@@ -90,11 +90,26 @@ describe('MergedExporter georeference edits it cannot write (#10669)', () => {
     expect(content).toMatch(/IFCMAPCONVERSION\(#\d+,#\d+,2600000\./);
   });
 
-  it('names an edit the exporter wrote only in part', async () => {
-    // A position with no CRS to target: the exporter writes nothing and says so.
+  it('names an edit the exporter wrote only in part (#10669)', async () => {
+    // With no context to reference as SourceCRS, only the projected CRS can be written.
+    const source = model('A', '0ProjectA000000000000a')
+      .replace(',(#14),#9);', ',$,#9);')
+      .replace(/^#14=.*\n/m, '');
+    const a: MergeModelInput = { id: 'a', name: 'A', dataStore: await parse(source), georefMutations: GEOREF };
+    const result = await new MergedExporter([a]).exportAsync({ schema: 'IFC4' });
+    const content = decode(result.content);
+    expect(content).toContain("IFCPROJECTEDCRS('EPSG:2056'");
+    expect(content).not.toContain('IFCMAPCONVERSION');
+    expect(result.stats.warnings.some(warning => /^A: Cannot create IfcMapConversion: .*SourceCRS/.test(warning))).toBe(true);
+  });
+
+  it('names a refused map conversion without a projected CRS (#11259)', async () => {
     const a: MergeModelInput = { id: 'a', name: 'A', dataStore: await parse(model('A', '0ProjectA000000000000a')), georefMutations: { mapConversion: { eastings: 2600000 } } };
     const result = await new MergedExporter([a]).exportAsync({ schema: 'IFC4' });
-    expect(result.stats.warnings.some(warning => /^A: Cannot create IfcMapConversion/.test(warning))).toBe(true);
+    const content = decode(result.content);
+    expect(content).not.toContain('IFCPROJECTEDCRS');
+    expect(content).not.toContain('IFCMAPCONVERSION');
+    expect(result.stats.warnings.some(warning => /^A: Georeferencing edits were not written\. Georeferencing was not exported: Cannot create IfcMapConversion: .*TargetCRS/.test(warning))).toBe(true);
   });
 
   it('leaves georeference edits out of an IFC2X3 merge, which has no IfcMapConversion', async () => {

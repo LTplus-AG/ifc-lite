@@ -202,9 +202,12 @@ export class ShadowPass {
       }], rte?.cameraWorld ?? [0, 0, 0])[0]!;
     }
 
-    if (draws.length > this.drawBufferSlots) {
+    // One extra slot (identity model, no origin) for the pool's instanced draws.
+    const pool = rte?.instancePool ?? null;
+    const slotsNeeded = draws.length + (pool ? 1 : 0);
+    if (slotsNeeded > this.drawBufferSlots) {
       let slots = this.drawBufferSlots;
-      while (slots < draws.length) slots *= 2;
+      while (slots < slotsNeeded) slots *= 2;
       this.drawBufferSlots = slots;
       this.drawBuffer.destroy();
       this.drawBuffer = this.createDrawBuffer(slots);
@@ -242,13 +245,14 @@ export class ShadowPass {
         drawable[i] = tryPackRteDrawableDelta(origin, camera, this.drawScratch, base + 20);
       }
     }
-    if (draws.length > 0) {
+    if (pool) { const o = draws.length * strideFloats; this.drawScratch.fill(0, o, o + strideFloats); for (const k of [0, 5, 10, 15]) this.drawScratch[o + k] = 1; }
+    if (slotsNeeded > 0) {
       this.device.queue.writeBuffer(
         this.drawBuffer,
         0,
         this.drawScratch.buffer,
         this.drawScratch.byteOffset,
-        draws.length * this.drawStride,
+        slotsNeeded * this.drawStride,
       );
     }
 
@@ -271,7 +275,7 @@ export class ShadowPass {
       bindSectionExclusions(pass, this.device, 1);
       pass.setBindGroup(0, this.drawBindGroup, [i * this.drawStride]);
       pass.setVertexBuffer(0, d.vertexBuffer);
-      pass.setIndexBuffer(d.indexBuffer, 'uint32');
+      pass.setIndexBuffer(d.indexBuffer, d.indexFormat ?? 'uint32');
       if (d.kind === 'instanced') {
         const runs = instanceRuns[i];
         if (!runs || !d.instanceBuffer || !d.rteDeltas) continue;
@@ -281,6 +285,14 @@ export class ShadowPass {
       } else {
         pass.drawIndexed(d.indexCount);
       }
+    }
+
+    if (pool) {
+      // Hidden, isolated-out and tombstoned occurrences are already compacted out of these streams.
+      pass.setPipeline((clipping ? this.clipPipelines! : this.pipelines).instanced);
+      bindSectionExclusions(pass, this.device, 1);
+      pass.setBindGroup(0, this.drawBindGroup, [draws.length * this.drawStride]);
+      pool.draw(pass);
     }
 
     pass.end();

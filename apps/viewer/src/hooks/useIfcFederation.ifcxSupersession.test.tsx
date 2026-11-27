@@ -16,7 +16,7 @@
 
 import '@/test/setup-dom.js';
 import { readFileSync } from 'node:fs';
-import { afterEach, beforeEach, it } from 'node:test';
+import { afterEach, beforeEach, it, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -165,6 +165,88 @@ it('a composition that fails on its own reports the error and ends its load UI',
   assert.equal(after.activeLoadCanceller, null, 'and no Cancel');
   assert.equal(after.loadingFileName, null);
   assert.equal(compositionRow()?.outcome, 'failed');
+});
+
+/** Holds the read of the file named `name` until `allowRead` resolves. */
+async function holdFileRead(t: TestContext, name: string) {
+  const { deferred } = await import('@/test/race');
+  const entered = deferred(), allowRead = deferred();
+  const arrayBuffer = File.prototype.arrayBuffer;
+  t.mock.method(File.prototype, 'arrayBuffer', async function (this: File) {
+    if (this.name === name) {
+      entered.resolve();
+      await allowRead.promise;
+    }
+    return arrayBuffer.call(this);
+  });
+  return { entered, allowRead };
+}
+
+/** An operation context whose commits run inline on the real viewer host. */
+async function operationContext() {
+  const { viewerHost } = await import('@/test/agent-tools-fixture');
+  const { operationArtifacts } = await import('@/lib/agent-tools/operations/artifacts');
+  const host = viewerHost();
+  const commit = <T,>(write: () => T) => write();
+  return { host, commit, commitAsync: commit, ownGeometry: <T,>(work: () => T) => work(), retain() {}, artifacts: operationArtifacts(host, commit) };
+}
+
+it('#10591 refuses a stack replacement when IFC edits change during its file read', async (t) => {
+  const { coordinationFinalControlOperations } = await import('@/lib/agent-tools/operations/coordination-final-controls');
+  const { attachCoordinationComposition } = await import('@/services/coordination-loader');
+  cleanups.push(attachCoordinationComposition(hookApi!));
+
+  const model = fixtureModel('keep');
+  useViewerStore.getState().addModel(model);
+  const { mutationVersion } = useViewerStore.getState();
+  const source = await ifcxFile('base.ifcx').text();
+  const { entered, allowRead } = await holdFileRead(t, 'held.ifcx');
+
+  const operation = coordinationFinalControlOperations.find(op => op.id === 'layers.loadStack')!;
+  const pending = operation.execute({
+    files: [{ name: 'held.ifcx', content: source }],
+    expected_model_ids: [model.id],
+    expected_mutation_version: mutationVersion,
+  }, await operationContext());
+
+  await entered.promise;
+  useViewerStore.setState({ mutationVersion: mutationVersion + 1 });
+  const refused = assert.rejects(pending, /federation or IFC edits changed/);
+  await act(async () => { allowRead.resolve(); await refused; });
+  assert.equal(useViewerStore.getState().models.get(model.id), model);
+  assert.equal(useViewerStore.getState().mutationVersion, mutationVersion + 1);
+});
+
+it('follow-up to #11254: refuses a local ref load when IFC edits appear during its file read', async (t) => {
+  const { coordinationLayerWorkflowOperations } = await import('@/lib/agent-tools/operations/coordination-layer-workflows');
+  const { attachCoordinationComposition } = await import('@/services/coordination-loader');
+  const { getBrowserLayerStore } = await import('@/lib/layers/browser-store');
+  const { computeLayerId } = await import('@ifc-lite/ifcx');
+  cleanups.push(attachCoordinationComposition(hookApi!));
+
+  const model = fixtureModel('keep');
+  useViewerStore.getState().addModel(model);
+  const layer = JSON.parse(await ifcxFile('base.ifcx').text());
+  layer.header.id = computeLayerId(layer);
+  const store = await getBrowserLayerStore();
+  store.storeLayer(layer);
+  const refName = `held-ref-${crypto.randomUUID()}`;
+  store.setRef(refName, { layers: [layer.header.id] });
+  const { entered, allowRead } = await holdFileRead(t, 'layer-0.ifcx');
+
+  const operation = coordinationLayerWorkflowOperations.find(op => op.id === 'layers.loadLocalRef')!;
+  const pending = operation.execute({ ref_name: refName, expected_ref_json: JSON.stringify(store.getRef(refName)) },
+    await operationContext());
+
+  await entered.promise;
+  const edit = { mapConversion: { eastings: 1, northings: 2, orthogonalHeight: 0 }, projectedCRS: { name: 'EPSG:2056' } };
+  useViewerStore.setState({ georefMutations: new Map([[model.id, edit]]) });
+  // clearAllModels keeps georef edits on purpose, so beforeEach would not drop this one.
+  cleanups.push(() => useViewerStore.setState({ georefMutations: new Map() }));
+  const refused = assert.rejects(pending, /export or discard the unexported edits/);
+  await act(async () => { allowRead.resolve(); await refused; });
+  assert.equal(useViewerStore.getState().models.get(model.id), model);
+  assert.equal(useViewerStore.getState().georefMutations.get(model.id), edit);
 });
 
 it('#10591 a federated IFCX load keeps its layer stack and path map, with path IDs in the renderer ID range', async () => {

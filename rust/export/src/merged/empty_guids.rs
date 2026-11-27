@@ -4,7 +4,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use super::super::guid::{extract_global_id_fast, is_relationship_type};
+use super::super::guid::{can_unify_by_global_id, can_unify_converted_type, extract_global_id_fast};
 use super::super::plan::ModelIndex;
 use super::super::units::units_compatible;
 use super::is_container_type;
@@ -24,7 +24,7 @@ pub(super) struct GuidModel<'a> {
     pub(super) base: u32,
     pub(super) scale: f64,
     /// Exported across schemas: a placeholder may replace the source GlobalId.
-    pub(super) converting: bool,
+    pub(super) schemas: (&'static str, &'static str),
 }
 
 /// The emit loop's GlobalId reconciliation (`plan::reconcile_global_ids`),
@@ -72,7 +72,7 @@ impl PlannerGuids {
                 Some(prior) => {
                     let known = prior.filter(|&(_, scale, container)| {
                         !repeated && m.compatible && units_compatible(scale, self.primary_scale)
-                            && !is_relationship_type(ty) && container == is_container_type(ty)
+                            && can_unify_converted_type(ty, m.schemas) && container == is_container_type(ty)
                     });
                     if let Some((final_id, _, _)) = known {
                         unified.insert(*id, final_id);
@@ -80,7 +80,7 @@ impl PlannerGuids {
                 }
                 None if repeated => written.push((g.clone(), None)),
                 None if m.included.contains(id) => {
-                    let known = !m.converting && !is_relationship_type(ty);
+                    let known = m.schemas.0 == m.schemas.1 && can_unify_by_global_id(ty, None);
                     written.push((g.clone(), known.then(|| (id.saturating_add(m.base), m.scale, is_container_type(ty)))));
                 }
                 None => {}

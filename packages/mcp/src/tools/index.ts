@@ -24,7 +24,10 @@ import { structuralTools } from './structural.js';
 import { flowTools } from './flow.js';
 import { idsAuthoringTools } from './ids-authoring.js';
 import { idsAuthoringModelTools } from './ids-authoring-model.js';
+import { presentationTools } from './presentation.js';
+import { surfaceAction, viewerSelect } from './surface-action.js';
 import { idsSchemaTools } from './ids-schema.js';
+import { transformTools } from './transform.js';
 
 /** Agent draft-layer family (06-agents.md): draft lifecycle + review loop. */
 export const layerTools = [...draftLayerTools, ...layerReviewTools];
@@ -82,5 +85,9 @@ export function buildDefaultToolRegistry(): ToolRegistry {
   registry.registerAll(idsAuthoringModelTools);
   registry.registerAll(idsSchemaTools);
   registry.registerAll(layerTools);
+  registry.registerAll(presentationTools);
+  registry.registerAll(transformTools);
+  registry.register(surfaceAction);
+  registry.register(viewerSelect);
   return registry;
 }

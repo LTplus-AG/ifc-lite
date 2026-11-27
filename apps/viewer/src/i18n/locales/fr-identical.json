@@ -2234,5 +2234,17 @@
   "cityJsonExport.sequence": {
     "value": "CityJSONSeq (.city.jsonl)",
     "reason": "Canonical interoperable file format name and extension."
+  },
+  "a2ui.noValue": {
+    "value": "—",
+    "reason": "Placeholder dash for an empty cell in an A2UI table or card; a symbol, not English prose."
+  },
+  "a2ui.table.group": {
+    "value": "{group} ({count})",
+    "reason": "Group header made only of runtime placeholders (the group value and its row count); no English prose."
+  },
+  "a2ui.card.classifications": {
+    "value": "Classifications",
+    "reason": "The French word for classification systems is spelled the same as the English one."
   }
 }

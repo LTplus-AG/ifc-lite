@@ -21,7 +21,7 @@
  */
 
 import { perfTally } from '@ifc-lite/load-trace';
-import { noteInstancedShardModel } from './instancedShardModels.js';
+import { forgetInstancedShardsBeforeReset, noteInstancedShardModel } from './instancedShardModels.js';
 
 /** One queued shard. The entry object itself is its identity: two entries may share bytes. */
 export interface PendingInstancedShard {
@@ -153,7 +153,7 @@ export function drainInstancedShards(
  * takes the id next, nor fall back to another model's index).
  */
 export function discardInstancedShards(modelId?: string): void {
-  if (modelId === undefined) generation++;
+  if (modelId === undefined) { generation++; forgetInstancedShardsBeforeReset(); }
   // A model-scoped discard ends that model's supply even when nothing was queued: a load
   // still running for it must not feed the next supply (`instancedShardSupplyToken`).
   else bumpModelEpoch(modelId);

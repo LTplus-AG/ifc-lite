@@ -23,9 +23,11 @@
  *   tab    -> bridge  hello    { protocol, pairingCode, permission, tools, client? }
  *   bridge -> tab     welcome  { protocol, sessionId, permission, readOnlyCeiling, bridge, features? }
  *   bridge -> tab     call     { sessionId, id, name, arguments }
+ *   bridge -> tab     a2ui-surface { sessionId, id, surface } (opt-in via hello.a2uiSurface)
  *   tab    -> bridge  result   { sessionId, id, result }
  *   bridge -> tab     cancel   { sessionId, id, reason }
  *   tab    -> bridge  update   { sessionId, permission?, tools? }
+ *   tab    -> bridge  ui-event { sessionId, event } (once welcome.features lists ui-events)
  *   bridge -> tab     error    { code, message }  (followed by a close on fatal codes)
  *
  * `hello` must be the first frame and arrive within the handshake timeout.
@@ -50,13 +52,15 @@
 import type { BridgeHelloMessage, BridgeTabMessage, BridgeUpdateMessage } from './message-types.js';
 export type {
   BridgeHelloMessage, BridgeResultMessage, BridgeUpdateMessage, BridgeTabMessage,
-  BridgeWelcomeMessage, BridgeCallMessage, BridgeCancelMessage, BridgeErrorMessage, BridgeServerMessage, BridgeResultAckMessage,
+  BridgeWelcomeMessage, BridgeCallMessage, BridgeCancelMessage, BridgeErrorMessage, BridgeServerMessage, BridgeResultAckMessage, BridgeSurfaceMessage,
 } from './message-types.js';
 import { checkJsonBounds, checkSchemaShape, isRecord, utf8Length } from './json-bounds.js';
 import { clip, quoted } from './sanitize.js';
 import { BRIDGE_IMAGE_LIMITS, validateResultContent, type BridgeContent } from './result-content.js';
 
 export { BRIDGE_FEATURE_IMAGE_CONTENT, BRIDGE_FEATURES } from './result-content.js';
+export { BRIDGE_FEATURE_UI_EVENTS, BRIDGE_UI_EVENTS_TOOL, UI_EVENT_LIMITS, type BridgeUiEvent, type BridgeUiEventMessage } from './ui-events.js';
+import { BRIDGE_UI_EVENTS_TOOL, parseUiEvent } from './ui-events.js';
 export type { BridgeContent, BridgeImageContent, BridgeImageMimeType, BridgeTextContent } from './result-content.js';
 
 /** Bumped on any incompatible change. The bridge rejects any other value. */
@@ -70,6 +74,10 @@ export const DEFAULT_BRIDGE_VIEWER_URL = 'https://ifclite.com';
 
 /** The bridge-owned tool, always listed. A tab may not register a tool with this name. */
 export const BRIDGE_STATUS_TOOL = 'bridge_status';
+export const BRIDGE_SURFACE_TOOL = 'viewer_show_ui';
+
+/** Tools the bridge serves itself; a tab may not register these names. */
+export const BRIDGE_RESERVED_TOOLS: ReadonlySet<string> = new Set([BRIDGE_STATUS_TOOL, BRIDGE_SURFACE_TOOL, BRIDGE_UI_EVENTS_TOOL]);
 
 /** Key in the pairing link's URL fragment that marks it as a bridge pairing link. */
 export const PAIRING_FRAGMENT_KEY = 'mcp-bridge';
@@ -201,7 +209,7 @@ export function validateToolDescriptors(raw: unknown): ParseResult<BridgeToolDes
     if (typeof name !== 'string' || name.length === 0 || name.length > BRIDGE_LIMITS.maxToolNameLength || !TOOL_NAME.test(name)) {
       return { ok: false, error: `tools[${i}].name must match ${TOOL_NAME} and be 1-${BRIDGE_LIMITS.maxToolNameLength} characters` };
     }
-    if (name === BRIDGE_STATUS_TOOL) return { ok: false, error: `tools[${i}].name '${BRIDGE_STATUS_TOOL}' is reserved for the bridge` };
+    if (BRIDGE_RESERVED_TOOLS.has(name)) return { ok: false, error: `tools[${i}].name '${name}' is reserved for the bridge` };
     if (seen.has(name)) return { ok: false, error: `tools[${i}].name '${name}' is listed twice` };
     seen.add(name);
     if (typeof description !== 'string' || description.length > BRIDGE_LIMITS.maxDescriptionLength) {
@@ -296,7 +304,7 @@ export function parseTabMessage(text: string): ParseResult<BridgeTabMessage> {
       }
       return {
         ok: true,
-        value: { type: 'hello', protocol: raw.protocol, pairingCode: raw.pairingCode, permission: raw.permission, tools: tools.value, client, ...(raw.resultAck === true ? { resultAck: true } : {}) },
+        value: { type: 'hello', protocol: raw.protocol, pairingCode: raw.pairingCode, permission: raw.permission, tools: tools.value, client, ...(raw.a2uiSurface === true ? { a2uiSurface: true } : {}), ...(raw.resultAck === true ? { resultAck: true } : {}) },
       };
     }
     case 'result': {
@@ -319,6 +327,11 @@ export function parseTabMessage(text: string): ParseResult<BridgeTabMessage> {
         msg.tools = tools.value;
       }
       return { ok: true, value: msg };
+    }
+    case 'ui-event': {
+      if (typeof raw.sessionId !== 'string') return { ok: false, error: 'ui-event.sessionId must be a string' };
+      const event = parseUiEvent(raw.event);
+      return event.ok ? { ok: true, value: { type: 'ui-event', sessionId: raw.sessionId, event: event.value } } : event;
     }
     default:
       return { ok: false, error: `unknown message type ${quoted(raw.type, 32)}` };

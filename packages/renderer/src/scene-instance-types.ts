@@ -31,6 +31,8 @@ export interface InstancedTemplateGPU {
    *  selected occurrence is exempt from contribution culling so the highlight
    *  can't vanish while the entity is the user's focus. */
   selectedCount: number;
+  /** Draw group in the GPU-driven pool (`gpu-instance-pool.ts`); absent on the per-template path. */
+  poolGroup?: number;
 }
 
 /** One occurrence's location in the instanced buffers, for per-instance selection
@@ -48,6 +50,8 @@ export interface InstancedOccurrence {
   /** The occurrence's finish bits in the flags lane (#5984,
    *  `INSTANCE_FINISH_FLAGS_MASK`), re-ORed by every selection/visibility write. */
   finishBits?: number;
+  /** Occurrence id in the GPU-driven pool, -1 (or absent) on the per-template path. */
+  poolIndex?: number;
 }
 
 /** Compact CPU-side copy of one instanced template, retained so CPU consumers

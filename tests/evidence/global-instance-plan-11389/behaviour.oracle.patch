@@ -1,0 +1,35 @@
+diff --git b/rust/wasm-bindings/src/api/gpu_meshes/global_instancing.rs a/rust/wasm-bindings/src/api/gpu_meshes/global_instancing.rs
+index c9aff830ba..ed93c000c8 100644
+--- b/rust/wasm-bindings/src/api/gpu_meshes/global_instancing.rs
++++ a/rust/wasm-bindings/src/api/gpu_meshes/global_instancing.rs
+@@ -205,7 +205,7 @@ fn encode_keyed_shard(keys: &[u64], templates: &FxHashMap<u64, Mesh>, occurrence
+     }
+     let mut buf = ifc_lite_geometry::encode_refs_with_finishes(&refs, &collated, &finishes);
+     buf.reserve(8 + 8 * keys.len());
+-    for word in [0, keys.len() as u32].into_iter().chain(keys.iter().flat_map(|k| [(k >> 32) as u32, *k as u32])) {
++    for word in [KEY_TRAILER_MAGIC, keys.len() as u32].into_iter().chain(keys.iter().flat_map(|k| [(k >> 32) as u32, *k as u32])) {
+         buf.extend_from_slice(&word.to_le_bytes());
+     }
+     buf
+diff --git b/rust/wasm-bindings/src/api/gpu_meshes/global_key_plan.rs a/rust/wasm-bindings/src/api/gpu_meshes/global_key_plan.rs
+index dafe55cf94..094fada6f3 100644
+--- b/rust/wasm-bindings/src/api/gpu_meshes/global_key_plan.rs
++++ a/rust/wasm-bindings/src/api/gpu_meshes/global_key_plan.rs
+@@ -61,7 +61,7 @@ pub(super) fn build_key_plan(job_ids: &[u32], keys: &[Option<u128>], voided: &Fx
+         }
+     }
+     let mut planned: Vec<(u32, u128)> =
+-        groups.into_iter().filter(|(_, (n, _))| *n > gate).map(|(k, (_, first))| (first, k)).collect();
++        groups.into_iter().filter(|(_, (n, _))| *n >= gate).map(|(k, (_, first))| (first, k)).collect();
+     planned.sort_unstable();
+     planned.truncate(KEY_PLAN_MAX_KEYS);
+     let index: FxHashMap<u128, u32> = planned.iter().enumerate().map(|(i, (_, k))| (*k, i as u32)).collect();
+@@ -83,7 +83,7 @@ pub(super) fn voided_hosts(content: &[u8], void_rels: &[(u32, usize, usize)]) ->
+ fn topology_hash(vertex_count: usize, sub: usize, indices: &[u32]) -> u32 {
+     let mut h = ifc_lite_core::hash::Fnv1a64::new();
+     h.mix_word(vertex_count as u64).mix_word(sub as u64);
+-    for &i in indices.iter().take(0) {
++    for &i in indices {
+         h.mix_word(u64::from(i));
+     }
+     let h = h.finish();

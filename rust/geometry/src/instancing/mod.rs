@@ -155,7 +155,7 @@ mod tests;
 
 pub use collate::{
     bake_source_at_world, collate_instances, compose_instance_world_row_major,
-    instance_rel_row_major_f32, verify_recomposition, Collated, InstanceMeshRef,
+    instance_rel_row_major_f32, recomposes, verify_recomposition, Collated, InstanceMeshRef,
     InstanceOccurrence, InstanceTemplate,
 };
 pub use group::{collate_refs, collate_refs_in_basis, collate_refs_verified_in};

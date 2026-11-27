@@ -46,6 +46,7 @@ import type { IndividualMeshGpu } from './individual-mesh-upload.js';
 import type { HoveredMesh, SelectableMesh } from './selection-mask-pass.js';
 import type { InstancedMaskFrame, InstancedMaskTemplate } from './selection-mask-pipelines.js';
 import type { InstancedTemplateGPU } from './scene-instance-types.js';
+import type { GpuInstancePool } from './gpu-instance-pool.js';
 import type { BatchedMesh, ClipBox, ExtraClipPlane, Mesh } from './types.js';
 
 export interface SelectionOutlineSource {
@@ -70,6 +71,8 @@ export interface SelectionOutlineSource {
   instancedTemplates?: readonly InstancedTemplateGPU[];
   /** Instanced templates holding an occurrence of `hoveredId` (#5745). */
   instancedHovered?: readonly InstancedMaskTemplate[];
+  /** GPU-driven instancing: draw the mask from the pool's compacted streams. */
+  instancePool?: GpuInstancePool | null;
 }
 
 /**
@@ -100,8 +103,10 @@ export function hoverSources(selected: readonly Mesh[], id: number | null, model
 
 function toSelectable(mesh: Mesh): SelectableMesh | null {
   if (!mesh.bindGroup) return null;
-  const quantized = highlightBatchOf(mesh)?.quantized !== undefined;
-  return { vertexBuffer: mesh.vertexBuffer, indexBuffer: mesh.indexBuffer, indexCount: mesh.indexCount, bindGroup: mesh.bindGroup,
+  const batch = highlightBatchOf(mesh), quantized = batch?.quantized !== undefined;
+  const page = batch?.indexFormat ? batch : undefined; // a compact page grows in place: its current buffers and count
+  return { vertexBuffer: page?.vertexBuffer ?? mesh.vertexBuffer, indexBuffer: page?.indexBuffer ?? mesh.indexBuffer, indexCount: page?.indexCount ?? mesh.indexCount, bindGroup: mesh.bindGroup,
+    ...(page ? { indexFormat: page.indexFormat } : {}),
     ...(isBorrowedSelection(mesh) ? { vertexStride: 36 as const } : {}), ...(quantized ? { quantized: true as const } : {}) };
 }
 
@@ -180,6 +185,7 @@ function buildInstancedMaskFrame(source: SelectionOutlineSource): InstancedMaskF
     selected,
     hovered,
     hoveredId: source.hoveredId ?? 0,
+    pool: source.instancePool ?? null,
   };
 }
 
@@ -202,7 +208,7 @@ export function buildSelectionOutlineFrame(source: SelectionOutlineSource): Sele
     if (source.hoverBatches) {
       for (const batch of source.hoverBatches) {
         const uniforms = packBatchHoverUniforms(source, batch, hoveredId);
-        if (uniforms) hovered.push({ vertexBuffer: batch.vertexBuffer, indexBuffer: batch.indexBuffer, indexCount: batch.indexCount, uniforms, ...(batch.quantized ? { quantized: true as const } : {}) });
+        if (uniforms) hovered.push({ vertexBuffer: batch.vertexBuffer, indexBuffer: batch.indexBuffer, indexCount: batch.indexCount, uniforms, ...(batch.indexFormat ? { indexFormat: batch.indexFormat } : {}), ...(batch.quantized ? { quantized: true as const } : {}) });
       }
     } else if (!already.some((m) => m.hydrated === true)) {
       for (const piece of source.hoverPieces) {

@@ -18,6 +18,7 @@ import { AsciiPointsStreamingSource } from '@ifc-lite/pointcloud';
 import { useViewerStore } from '@/store';
 import { modelIndices } from '@/lib/model-placement/model-indices';
 import { addIfcModel, loadScan, scanTestRenderer } from '@/test/scan-federation';
+import { fixtureModels } from '@/test/store-fixture';
 import { gaussianPly, gaussianTestRenderer, installInThreadGaussianWorker, setGaussianBuild } from '@/test/gaussian-loader-harness';
 import { useIfcLoader, type LoadTarget } from './useIfcLoader.js';
 import { render, cleanup, settle } from '@/test/render.js';
@@ -59,9 +60,17 @@ const load = (file: File, target: Parameters<NonNullable<typeof hookApi>['loadFi
 
 /** No load left a slot held: with no models the shared allocator resets to 0. */
 function assertNoHeldSlot(): void {
-  modelIndices(new Map());
-  assert.equal(modelIndices(new Map([['probe', 1]])).get('probe'), 0, 'a held model-index reservation blocked the reset');
-  modelIndices(new Map());
+  const { models, activeModelId } = useViewerStore.getState();
+  const empty = fixtureModels();
+  useViewerStore.setState(empty);
+  const probe = modelIndices.reserve('probe', empty.models);
+  try {
+    assert.equal(probe.index, 0, 'a held model-index reservation blocked the reset');
+  } finally {
+    probe.release();
+    modelIndices(empty.models);
+    useViewerStore.setState({ models, activeModelId });
+  }
 }
 
 beforeEach(async () => {

@@ -1,0 +1,10 @@
+diff --git a/src/utils/envelope-validation.d.ts b/src/utils/envelope-validation.d.ts
+index 3f07c250d752684f9839b423b9b2c1c66cd391d4..3e3148989c86dfdeef61ca7018013a853c7cc9e7 100644
+--- a/src/utils/envelope-validation.d.ts
++++ b/src/utils/envelope-validation.d.ts
+@@ -1,4 +1,4 @@
+-import { z } from 'zod';
++import { z } from 'zod/v3';
+ /**
+  * Returns the agent-to-renderer message schemas of a protocol version, keyed by the
+  * envelope name each message carries (`createSurface`, `updateComponents`, and so on).

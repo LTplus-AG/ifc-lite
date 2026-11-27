@@ -241,3 +241,11 @@ export function planLoadWorkerCount(fileSizeMB: number, workerCountOverride?: nu
   });
   return { ...result, cores };
 }
+
+/** Whether this environment can run the geometry worker pool at all: shared memory, workers and more than one core. */
+export function canRunWorkerPool(): boolean {
+  return typeof SharedArrayBuffer !== 'undefined'
+    && typeof Worker !== 'undefined'
+    && typeof navigator !== 'undefined'
+    && (navigator.hardwareConcurrency ?? 1) > 1;
+}

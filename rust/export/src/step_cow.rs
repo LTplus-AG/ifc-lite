@@ -21,6 +21,16 @@ use crate::CopyOnWriteMutation;
 /// that differ in the copy.
 pub(crate) type Copy = (u32, u32, BTreeMap<usize, String>);
 
+/// A copy inherits explicit edits on its source, with its own edits taking precedence.
+#[cfg_attr(target_arch = "wasm32", inline(never))]
+pub(crate) fn apply_copy_edits(
+    line: &str, source_edits: Option<&BTreeMap<usize, String>>,
+    copy_edits: &BTreeMap<usize, String>, refused: &mut usize,
+) -> String {
+    let edits = crate::step_text::merge_edits(source_edits, Some(copy_edits)).expect("copy has edits");
+    crate::step_text::apply_attr_mutations_counted(line, &edits, refused)
+}
+
 /// What the pass produces. `repointed` is keyed by referrer id and then by
 /// attribute index, which is the shape the emit loop applies.
 pub(crate) struct Resolved {

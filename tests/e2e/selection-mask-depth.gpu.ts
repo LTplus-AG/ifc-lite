@@ -5,6 +5,7 @@
 import { OpaqueVisibilityPass } from '../../packages/renderer/src/opaque-visibility-pass.js';
 import { takeOpaqueVisibilityCommands } from '../../packages/renderer/src/opaque-visibility-commands.js';
 import { SelectionMaskPass } from '../../packages/renderer/src/selection-mask-pass.js';
+import { colorTableLayout, emptyColorTableGroup } from './color-table-binding.js';
 import { MESH_UNIFORM_FLOATS } from '../../packages/renderer/src/mesh-rte-uniforms.js';
 import { mainShaderSource } from '../../packages/renderer/src/shaders/main.wgsl.js';
 import { uploadIndividualMesh } from '../../packages/renderer/src/individual-mesh-upload.js';
@@ -101,7 +102,7 @@ export async function runMaskDepthWitness(sampledDepthView = false): Promise<Mas
           @fragment fn fs_depth(input: VertexOutput) -> @location(0) vec4<f32> { return vec4<f32>(1); }`;
         const sceneShader = device.createShaderModule({ code: sceneSource });
         const scenePipeline = (writes: boolean) => visibility.create({
-          layout: device.createPipelineLayout({ bindGroupLayouts: [meshLayout, device.createBindGroupLayout({ entries: [] })] }), vertex: { ...vertexState, module: sceneShader },
+          layout: device.createPipelineLayout({ bindGroupLayouts: [meshLayout, colorTableLayout(device)] }), vertex: { ...vertexState, module: sceneShader },
           fragment: { module: sceneShader, entryPoint: 'fs_depth', targets: [] },
           primitive: { topology: 'triangle-list', cullMode: 'none' },
           depthStencil: { format: 'depth24plus-stencil8', depthWriteEnabled: writes, depthCompare: 'greater' }, multisample: { count: samples },
@@ -128,7 +129,7 @@ export async function runMaskDepthWitness(sampledDepthView = false): Promise<Mas
               view: depth.createView(), depthLoadOp: 'clear', depthStoreOp: 'store', depthClearValue: 0,
               stencilLoadOp: 'clear', stencilStoreOp: 'store', stencilClearValue: 0,
             } }, geometric && !perspective, SIZE, SIZE);
-            scene.setPipeline(opaque); scene.setBindGroup(0, bindGroup); scene.setVertexBuffer(0, vertex); scene.setIndexBuffer(indices, 'uint32');
+            scene.setPipeline(opaque); scene.setBindGroup(1, emptyColorTableGroup(device)); scene.setBindGroup(0, bindGroup); scene.setVertexBuffer(0, vertex); scene.setIndexBuffer(indices, 'uint32');
             if (family === 'instanced') { scene.setVertexBuffer(1, template.instanceBuffer); scene.setVertexBuffer(2, template.rteDeltas.buffer); }
             // Alter the model's world z, retaining all source rasterization inputs.
             const offset = kind === 'occluded-1mm' || kind === 'transparent-occluded' ? 0.001 : kind === 'transparent-selected' ? -0.001 : 0;

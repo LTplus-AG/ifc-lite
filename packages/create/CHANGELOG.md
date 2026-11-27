@@ -1,5 +1,14 @@
 # @ifc-lite/create
 
+## 6.1.1
+
+### Patch Changes
+
+- Updated dependencies [[`0a5bc3b`](https://github.com/LTplus-AG/ifc-lite/commit/0a5bc3b1b60697c789ed9e248bccba5f44cce80c), [`0842da2`](https://github.com/LTplus-AG/ifc-lite/commit/0842da279c4dc942d167647bf6c427a2eb34edaa), [`2ae4a57`](https://github.com/LTplus-AG/ifc-lite/commit/2ae4a57762b360271a295b6be4bd6ecbfbf59104), [`7c5a170`](https://github.com/LTplus-AG/ifc-lite/commit/7c5a170d0fbd392c34726445c306a7f36f96b50e), [`4d5c3c6`](https://github.com/LTplus-AG/ifc-lite/commit/4d5c3c652634dfb32ec4bd32bcf878a26fa6b119), [`c1eeb86`](https://github.com/LTplus-AG/ifc-lite/commit/c1eeb86bbda4adbd17ffb6de6758ef5e90085af9), [`690dc7d`](https://github.com/LTplus-AG/ifc-lite/commit/690dc7d0b19bac9104d11402a5ca95f6e2462011), [`6330892`](https://github.com/LTplus-AG/ifc-lite/commit/6330892f5e5a1e3e92e1868c2951c19ce63b240b), [`f21465f`](https://github.com/LTplus-AG/ifc-lite/commit/f21465fa926def147ec1019be816d4620c9028bc), [`fc89b27`](https://github.com/LTplus-AG/ifc-lite/commit/fc89b27342853551e36dbd4577c7374ff1d251c6), [`f871ca3`](https://github.com/LTplus-AG/ifc-lite/commit/f871ca39f33775921e90647a6fad49f2e8b4f1a6), [`7e86803`](https://github.com/LTplus-AG/ifc-lite/commit/7e86803e82b335f308e101e8d14151de3139fc57), [`21fc7f9`](https://github.com/LTplus-AG/ifc-lite/commit/21fc7f9f521356b7e5ec4fc02aed75a1f4af1ec6), [`36885cd`](https://github.com/LTplus-AG/ifc-lite/commit/36885cd9d173483553b88a1c5588b165eedc37f9), [`3b7eea5`](https://github.com/LTplus-AG/ifc-lite/commit/3b7eea519cf52430a7ee3b0127297866fbe4ca11), [`a38f750`](https://github.com/LTplus-AG/ifc-lite/commit/a38f7508502f6437d0abe76f0ea49f5858e7525a), [`5b6ff10`](https://github.com/LTplus-AG/ifc-lite/commit/5b6ff10e17a202e3212a511f6a1285d010ab3b81), [`356ece7`](https://github.com/LTplus-AG/ifc-lite/commit/356ece76880b114fa7bc3a8f85779c927bea1885), [`0a30e5f`](https://github.com/LTplus-AG/ifc-lite/commit/0a30e5f97446b06068b9f80fbff7bc4484e0d708)]:
+  - @ifc-lite/export@6.0.0
+  - @ifc-lite/geometry@8.4.0
+  - @ifc-lite/parser@11.0.1
+
 ## 6.1.0
 
 ### Minor Changes

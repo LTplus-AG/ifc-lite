@@ -96,6 +96,8 @@ pub(super) fn emit_columns(
     // batch path arms its router with these so a repeated single-solid mapped
     // source materializes once per batch and the rest ride as shard instances.
     let mapped_instance_plan = type_plan.browser_instance_sources();
+    // Model-wide counts, parallel to the plan (the global plan's gate).
+    let mapped_instance_counts = type_plan.browser_instance_counts();
     let material_layer_flat = material_layers.to_flat();
 
     let repmaps_arr: Vec<u32> = type_plan
@@ -120,6 +122,11 @@ pub(super) fn emit_columns(
         &columns_event,
         "mappedInstancePlan",
         &js_sys::Uint32Array::from(mapped_instance_plan.as_slice()),
+    );
+    crate::api::set_js_prop(
+        &columns_event,
+        "mappedInstanceCounts",
+        &js_sys::Uint32Array::from(mapped_instance_counts.as_slice()),
     );
     crate::api::set_js_prop(
         &columns_event,

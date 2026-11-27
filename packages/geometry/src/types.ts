@@ -134,6 +134,10 @@ export interface MeshData {
    *  the getter. Consumed by the model-diff / compare feature to tell a move
    *  from a reshape (#1891); renderers ignore it. */
   geometryAabb?: EntityWorldAabb;
+  /** The mesh's compact GPU records, when the worker encoded it (compact-geometry.ts). Its three
+   *  arrays then decode from the records on first read (compact-shell.ts), and the property is
+   *  non-enumerable: a spread copy is an ordinary f32 mesh without it. */
+  compact?: import('./compact-geometry.js').CompactRef;
   /** Whole-entity enclosed volume in CUBIC METRES, from the SAME hashing pass
    *  as {@link MeshData.geometryHash} (`MeshCollection.geometryVolumeValues`,
    *  #1993). Like the hash and the box, all submeshes of one entity carry the

@@ -74,8 +74,8 @@ use nalgebra::{Matrix4, Vector4};
 const ABS_FLOOR_M: f64 = 1e-6;
 use crate::math::tol::F32_ULP_8 as ULP_FACTOR;
 
-fn tolerance(mag: f64) -> f64 {
-    (mag * ULP_FACTOR).max(ABS_FLOOR_M)
+fn tolerance(mag: f64, floor_m: f64) -> f64 {
+    (mag * ULP_FACTOR).max(floor_m)
 }
 
 /// Largest absolute component of vertex `v`'s STORED (origin-relative) position.
@@ -127,6 +127,18 @@ pub(super) fn verify_pairing(
     target_positions: &[f32],
     rel: &Matrix4<f64>,
 ) -> bool {
+    verify_pairing_with_floor(template_origin, template_positions, target_origin, target_positions, rel, ABS_FLOOR_M)
+}
+
+/// [`verify_pairing`] with an absolute tolerance floor in metres.
+fn verify_pairing_with_floor(
+    template_origin: [f64; 3],
+    template_positions: &[f32],
+    target_origin: [f64; 3],
+    target_positions: &[f32],
+    rel: &Matrix4<f64>,
+    floor_m: f64,
+) -> bool {
     let n = template_positions.len() / 3;
     if target_positions.len() / 3 != n {
         return false;
@@ -173,7 +185,7 @@ pub(super) fn verify_pairing(
         // propagates through the matrix multiply and subtraction into a NaN
         // `err`), so an unguarded comparison here is fail-open in the one
         // check that exists to fail closed on a bad reconstruction.
-        if err.is_nan() || err > tolerance(mag) {
+        if err.is_nan() || err > tolerance(mag, floor_m) {
             return false;
         }
     }
@@ -236,20 +248,46 @@ pub fn verify_recomposition(meshes: &[Mesh], collated: &Collated) -> f64 {
     max_err
 }
 
+/// Whether placing a template (`template_origin + template_positions`) by the
+/// row-major `rel` reproduces an occurrence's own baked vertices within the
+/// reconstruction tolerance, never tighter than `floor_m` metres: the #3666
+/// gate [`verify_pairing`] applies to every collated group, for callers that
+/// pair templates with occurrences themselves (the browser's global instance
+/// plan). A collision misplaces geometry by metres, so a sub-millimetre floor
+/// still refuses it while making the verdict independent of which occurrence
+/// defined the template (f32 noise sits near the ULP-scaled bound).
+pub fn recomposes(
+    template_origin: [f64; 3],
+    template_positions: &[f32],
+    target_origin: [f64; 3],
+    target_positions: &[f32],
+    rel_row_major: &[f64; 16],
+    floor_m: f64,
+) -> bool {
+    verify_pairing_with_floor(
+        template_origin,
+        template_positions,
+        target_origin,
+        target_positions,
+        &Matrix4::from_row_slice(rel_row_major),
+        floor_m,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn tolerance_scales_with_magnitude_above_the_floor() {
-        assert_eq!(tolerance(0.0), ABS_FLOOR_M);
-        assert_eq!(tolerance(1.0), ABS_FLOOR_M);
+        assert_eq!(tolerance(0.0, ABS_FLOOR_M), ABS_FLOOR_M);
+        assert_eq!(tolerance(1.0, ABS_FLOOR_M), ABS_FLOOR_M);
         // At 220km (the rect_fast.rs far-from-origin precedent), the
         // ULP-scale term dominates and lands in the low-decimetre range —
         // wider than the origin floor, narrower than the metre-scale
         // collision residual #3666 measured (so a genuine collision still
         // fails this check by an order of magnitude even at this range).
-        let far = tolerance(220_000.0);
+        let far = tolerance(220_000.0, ABS_FLOOR_M);
         assert!(
             far > ABS_FLOOR_M && far < 1.0,
             "expected a sub-metre tolerance at 220km, got {far}"

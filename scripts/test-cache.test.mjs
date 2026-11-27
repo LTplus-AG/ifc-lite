@@ -188,8 +188,13 @@ test('PID-directed cancellation stops Turbo tasks and returns the interrupt stat
   const pkg = join(root, 'packages/embed-protocol');
   const manifest = JSON.parse(readFileSync(join(pkg, 'package.json'), 'utf8'));
   json(join(pkg, 'package.json'), { ...manifest, scripts: { ...manifest.scripts, test: 'node wait.mjs' } });
-  write(join(pkg, 'wait.mjs'), `import {writeFileSync} from 'node:fs';
-writeFileSync('worker.pid', String(process.pid));
+  // #11303: publish an empty PID file first, then replace it with the complete PID.
+  write(join(pkg, 'wait.mjs'), `import {renameSync,writeFileSync} from 'node:fs';
+writeFileSync('worker.pid', '');
+setTimeout(() => {
+  writeFileSync('worker.pid.tmp', String(process.pid));
+  renameSync('worker.pid.tmp', 'worker.pid');
+}, 500);
 setInterval(() => {}, 1000);
 `);
   write(join(root, 'launch.mjs'), `import {runTests} from ${JSON.stringify(new URL('./test-cache.mjs', import.meta.url).href)};
@@ -214,11 +219,16 @@ process.exitCode = await runTests(process.cwd(), process.argv.slice(2));
   try {
     const deadline = Date.now() + 10_000;
     while (Date.now() < deadline) {
-      try { pid = Number(readFileSync(join(pkg, 'worker.pid'), 'utf8')); break; }
-      catch (error) { if (error.code !== 'ENOENT') throw error; }
+      try {
+        const candidate = Number(readFileSync(join(pkg, 'worker.pid'), 'utf8'));
+        if (Number.isSafeInteger(candidate) && candidate > 0) {
+          pid = candidate;
+          break;
+        }
+      } catch (error) { if (error.code !== 'ENOENT') throw error; }
       await new Promise(accept => setTimeout(accept, 20));
     }
-    assert.ok(pid, `long-running task never started: ${output}`);
+    assert.notEqual(pid, undefined, `long-running task never started: ${output}`);
     assert.equal(alive(pid), true);
     child.kill('SIGINT');
     const outcome = await Promise.race([exited,

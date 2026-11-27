@@ -23,7 +23,7 @@ const PARTOF_REL_MAP: Record<PartOfRelation, readonly RelationshipType[]> = {
   IfcRelAggregates: [RelationshipType.Aggregates],
   IfcRelAssignsToGroup: [RelationshipType.AssignsToGroup],
   IfcRelContainedInSpatialStructure: [RelationshipType.ContainsElements],
-  IfcRelNests: [RelationshipType.Aggregates],
+  IfcRelNests: [RelationshipType.Nests],
   IfcRelVoidsElement: [RelationshipType.VoidsElement],
   IfcRelFillsElement: [RelationshipType.FillsElement],
   'IfcRelVoidsElement IfcRelFillsElement': [
@@ -61,7 +61,14 @@ export function resolvePartOfAncestors(
   while (queue.length > 0) {
     const id = queue.shift()!;
     for (const relType of relTypes) {
-      const parents = relationships.getRelated(id, relType, 'inverse');
+      let parents = relationships.getRelated(id, relType, 'inverse');
+      if (relationType === 'IfcRelAggregates' && relType === RelationshipType.Aggregates) {
+        // The parser files every IfcRelNests edge under the Aggregates bucket
+        // too; IDS treats the two relations as distinct, so drop the nested
+        // wholes (partof-facet.md: only the specified relation is considered).
+        const nestedParents = new Set(relationships.getRelated(id, RelationshipType.Nests, 'inverse'));
+        if (nestedParents.size > 0) parents = parents.filter((p) => !nestedParents.has(p));
+      }
       for (const parentId of parents || []) {
         if (seen.has(parentId)) continue;
         seen.add(parentId);

@@ -10,6 +10,36 @@ fn convert(line: &str, from: &str, to: &str) -> (String, usize, Vec<String>) {
     (out, checks.attribute_values_dropped, checks.forms.warnings())
 }
 
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ParityVectors {
+    durations: Vec<DurationVector>,
+    calendar_warnings: Vec<String>,
+}
+
+#[derive(serde::Deserialize)]
+struct DurationVector {
+    label: String,
+    from: String,
+    to: String,
+    line: String,
+    expected: String,
+    dropped: usize,
+}
+
+fn parity_vectors() -> ParityVectors {
+    serde_json::from_str(include_str!("../tests/fixtures/schema_value_form_vectors.json"))
+        .expect("valid shared value-form vectors")
+}
+
+#[test]
+fn work_control_duration_vectors_match_typescript_10879() {
+    for case in parity_vectors().durations {
+        let (out, dropped, warnings) = convert(&case.line, &case.from, &case.to);
+        assert_eq!((out, dropped, warnings.len()), (case.expected, case.dropped, case.dropped), "{}", case.label);
+    }
+}
+
 /// The issue's examples: a date reference in an IFC4 date string slot, a time
 /// measure in a duration string slot, a real in an IfcLagTime reference slot,
 /// and a date string in an IFC2X3 date reference slot.
@@ -18,8 +48,8 @@ fn a_value_the_target_slot_cannot_hold_is_dropped_and_named_10847() {
     let (out, dropped, warnings) = convert("#5=IFCCLASSIFICATION('src','1',#9,'name');", "IFC2X3", "IFC4");
     assert_eq!((out.as_str(), dropped), ("#5=IFCCLASSIFICATION('src','1',$,'name',$,$,$);", 1));
     assert_eq!(warnings, ["1 value(s) of a type the target slot does not accept were dropped: IFCCLASSIFICATION.EditionDate (#10847)."]);
-    let (out, dropped, _) = convert("#5=IFCWORKPLAN('g',$,'n',$,$,'id',#9,$,$,10.,2.,#10,$,.ACTUAL.);", "IFC2X3", "IFC4");
-    assert_eq!((out.as_str(), dropped), ("#5=IFCWORKPLAN('g',$,'n',$,$,'id',$,$,$,$,$,$,$,.ACTUAL.);", 4));
+    let (out, dropped, _) = convert("#5=IFCWORKPLAN('g',$,'n',$,$,'id',#9,$,$,10.,2.,#10,$,.ACTUAL.,$);", "IFC2X3", "IFC4");
+    assert_eq!((out.as_str(), dropped), ("#5=IFCWORKPLAN('g',$,'n',$,$,'id',$,$,$,'PT10S','PT2S',$,$,.ACTUAL.);", 2));
     let (out, _, _) = convert("#5=IFCRELSEQUENCE('g',$,$,$,#6,#7,2.,.START_START.);", "IFC2X3", "IFC4");
     assert_eq!(out, "#5=IFCRELSEQUENCE('g',$,$,$,#6,#7,$,.START_START.,$);");
     let (out, _, _) = convert("#5=IFCCLASSIFICATION('src','1','2020-01-01','name',$,$,$);", "IFC4", "IFC2X3");
@@ -29,9 +59,9 @@ fn a_value_the_target_slot_cannot_hold_is_dropped_and_named_10847() {
 /// A typed value IFC2X3 has no type for is dropped, and only that member of a list.
 #[test]
 fn a_typed_value_the_target_lacks_is_dropped_member_by_member_10847() {
-    let (out, dropped, _) = convert("#5=IFCPROPERTYSINGLEVALUE('n',$,IFCDATE('2020-01-01'),$);", "IFC4X3", "IFC2X3");
+    let (out, dropped, _) = convert("#5=IFCPROPERTYSINGLEVALUE('n',$,IFCBINARY(\"0A\"),$);", "IFC4X3", "IFC2X3");
     assert_eq!((out.as_str(), dropped), ("#5=IFCPROPERTYSINGLEVALUE('n',$,$,$);", 1));
-    let (out, dropped, _) = convert("#5=IFCPROPERTYLISTVALUE('n',$,(IFCLABEL('a'),IFCDATE('2020-01-01')),$);", "IFC4X3", "IFC2X3");
+    let (out, dropped, _) = convert("#5=IFCPROPERTYLISTVALUE('n',$,(IFCLABEL('a'),IFCBINARY(\"0A\")),$);", "IFC4X3", "IFC2X3");
     assert_eq!((out.as_str(), dropped), ("#5=IFCPROPERTYLISTVALUE('n',$,(IFCLABEL('a')),$);", 1));
     // A value the target accepts is left as written, comments and all.
     let kept = "#5=IFCPROPERTYSINGLEVALUE('n',$,IFCLABEL('a') /* c */,$);";
@@ -95,7 +125,7 @@ fn a_fraction_float_rounding_hides_is_still_dropped_10847() {
 /// still loses only the member.
 #[test]
 fn positional_members_are_dropped_whole_with_their_partners_10847() {
-    let table = "#5=IFCPROPERTYTABLEVALUE('t',$,(IFCDATE('2020-01-01'),IFCLABEL('k')),(IFCLABEL('v1'),IFCLABEL('v2')),$,$,$,$);";
+    let table = "#5=IFCPROPERTYTABLEVALUE('t',$,(IFCBINARY(\"0A\"),IFCLABEL('k')),(IFCLABEL('v1'),IFCLABEL('v2')),$,$,$,$);";
     let (out, dropped, warnings) = convert(table, "IFC4", "IFC2X3");
     assert_eq!((out.as_str(), dropped), ("#5=IFCPROPERTYTABLEVALUE('t',$,$,$,$,$,$);", 4));
     assert_eq!(warnings, ["4 value(s) of a type the target slot does not accept left a slot the target requires as $, so the file is not valid against its header: IFCPROPERTYTABLEVALUE.DefinedValues, IFCPROPERTYTABLEVALUE.DefiningValues (#10847)."]);
@@ -103,8 +133,8 @@ fn positional_members_are_dropped_whole_with_their_partners_10847() {
     let (out, dropped, warnings) = convert(uri, "IFC4X3", "IFC4");
     assert_eq!((out.as_str(), dropped), ("#5=IFCPROPERTYTABLEVALUE('t',$,$,$,$,$,$,$);", 4));
     assert_eq!(warnings, ["4 value(s) of a type the target slot does not accept were dropped: IFCPROPERTYTABLEVALUE.DefinedValues, IFCPROPERTYTABLEVALUE.DefiningValues (#10847)."]);
-    assert_eq!(convert("#5=IFCTABLEROW((IFCLABEL('a'),IFCDATE('2020-01-01')),.F.);", "IFC4", "IFC2X3").0, "#5=IFCTABLEROW($,.F.);");
-    let (out, dropped, _) = convert("#5=IFCPROPERTYLISTVALUE('n',$,(IFCLABEL('a'),IFCDATE('2020-01-01')),$);", "IFC4", "IFC2X3");
+    assert_eq!(convert("#5=IFCTABLEROW((IFCLABEL('a'),IFCBINARY(\"0A\")),.F.);", "IFC4", "IFC2X3").0, "#5=IFCTABLEROW($,.F.);");
+    let (out, dropped, _) = convert("#5=IFCPROPERTYLISTVALUE('n',$,(IFCLABEL('a'),IFCBINARY(\"0A\")),$);", "IFC4", "IFC2X3");
     assert_eq!((out.as_str(), dropped), ("#5=IFCPROPERTYLISTVALUE('n',$,(IFCLABEL('a')),$);", 1));
 }
 
@@ -149,4 +179,133 @@ fn a_typed_count_payload_becomes_an_ifc4x3_integer_10847() {
     // IFC4X3 -> IFC4 widens IfcCountMeasure back to a number: nothing to convert.
     let integer = "#5=IFCPROPERTYSINGLEVALUE('n',$,IFCCOUNTMEASURE(3),$);";
     assert_eq!(convert(integer, "IFC4X3", "IFC4"), (integer.to_owned(), 0, Vec::<String>::new()));
+}
+
+#[test]
+fn newer_ifc_value_keeps_its_step_string_on_downgrade_10879() {
+    let input = "#5=IFCPROPERTYLISTVALUE('n',$,(IFCDATETIME('2026-11-20T10:30:00Z'),IFCURIREFERENCE('https://example.org/a''b'),IFCBINARY(\"0A\")),$);";
+    let (out, dropped, _) = convert(input, "IFC4X3", "IFC2X3");
+    assert_eq!(out, "#5=IFCPROPERTYLISTVALUE('n',$,(IFCTEXT('2026-11-20T10:30:00Z'),IFCTEXT('https://example.org/a''b')),$);");
+    assert_eq!(dropped, 1);
+}
+
+#[test]
+fn fractional_work_control_duration_requires_the_last_unit_10879() {
+    for (duration, seconds) in [
+        ("PT1.5H", "5400."), ("PT1H30.5M", "5430."), ("P0.5D", "43200."), ("P0.5W", "302400."),
+        ("PT1.5H30M", "$"), ("P0.5DT1H", "$"),
+    ] {
+        let line = format!("#5=IFCWORKPLAN('g',$,'n',$,$,'id',$,$,$,'{duration}',$,$,$,.ACTUAL.);");
+        let (out, dropped, _) = convert(&line, "IFC4", "IFC2X3");
+        assert_eq!(out, format!("#5=IFCWORKPLAN('g',$,'n',$,$,'id',$,$,$,{seconds},$,$,$,.ACTUAL.,$);"), "{duration}");
+        assert_eq!(dropped, usize::from(seconds == "$"), "{duration}");
+    }
+}
+
+#[test]
+fn work_control_durations_convert_exact_seconds_and_refuse_calendar_months_10879() {
+    let upgrade = "#5=IFCWORKPLAN('g',$,'n',$,$,'id',$,$,$,12.5,2.E-2,$,$,.ACTUAL.,$);";
+    let (out, dropped, _) = convert(upgrade, "IFC2X3", "IFC4");
+    assert_eq!((out.as_str(), dropped), ("#5=IFCWORKPLAN('g',$,'n',$,$,'id',$,$,$,'PT12.5S','PT0.02S',$,$,.ACTUAL.);", 0));
+    let down = "#5=IFCWORKPLAN('g',$,'n',$,$,'id',$,$,$,'P1DT2H3M4.50S','P1M',$,$,.ACTUAL.);";
+    let (out, dropped, _) = convert(down, "IFC4X3", "IFC2X3");
+    assert_eq!((out.as_str(), dropped), ("#5=IFCWORKPLAN('g',$,'n',$,$,'id',$,$,$,93784.5,$,$,$,.ACTUAL.,$);", 1));
+}
+
+#[test]
+fn calendar_dates_and_zoned_times_round_trip_10879() {
+    let input = include_bytes!("../tests/fixtures/schema_calendar_dates.ifc");
+    let up = crate::StepOptions { schema: Some("IFC4".to_owned()), ..Default::default() };
+    let (up, stats, warnings) = crate::export_step_with_diagnostics(input, &up).unwrap();
+    assert_eq!(stats.attribute_values_dropped, 1);
+    assert_eq!(warnings, parity_vectors().calendar_warnings);
+    assert!(up.contains("#1=IFCCLASSIFICATION('Source','1','2024-02-29','Classification',$,$,$);"), "{up}");
+    assert!(up.contains("#3=IFCIRREGULARTIMESERIESVALUE('2024-02-29T10:30:15.5+05:30',(IFCREAL(1.)));"), "{up}");
+    assert!(up.contains("#7=IFCCOSTVALUE('Estimate',$,$,$,'2024-02-29','2024-02-29','Materials',$,$,$);"), "{up}");
+    for obsolete in ["IFCCALENDARDATE(", "IFCDATEANDTIME(", "IFCLOCALTIME(", "IFCCOORDINATEDUNIVERSALTIMEOFFSET("] {
+        assert!(!up.contains(obsolete), "{up}");
+    }
+    let down = crate::StepOptions { schema: Some("IFC2X3".to_owned()), ..Default::default() };
+    let step = crate::export_step(up.as_bytes(), &down).unwrap();
+    let (log, _) = crate::export_step_with_log(up.as_bytes(), &down, &crate::MutationLog::default()).unwrap();
+    let merged = crate::export_merged(&[up.as_bytes()], &crate::MergedOptions { schema: down.schema.clone(), ..Default::default() });
+    for output in [&step, &log, &merged] {
+        assert!(output.contains("IFCCALENDARDATE(29,2,2024);"), "{output}");
+        assert!(output.contains("IFCLOCALTIME(10,30,15.5,#"), "{output}");
+        assert!(output.contains("IFCCOORDINATEDUNIVERSALTIMEOFFSET(5,30,.AHEAD.);"), "{output}");
+    }
+}
+
+#[test]
+fn direct_upgrade_finishes_classification_dates_10879() {
+    let input = include_bytes!("../tests/fixtures/schema_calendar_dates.ifc");
+    let options = crate::StepOptions { schema: Some("IFC4".into()), ..Default::default() };
+    let (output, stats, warnings) = crate::export_step_with_diagnostics(input, &options).unwrap();
+    assert_finished_classification_date(&output, stats.written, &warnings);
+}
+
+#[test]
+fn logged_upgrade_finishes_classification_dates_10879() {
+    let input = include_bytes!("../tests/fixtures/schema_calendar_dates.ifc");
+    let options = crate::StepOptions { schema: Some("IFC4".into()), ..Default::default() };
+    let (output, stats) = crate::export_step_with_log(input, &options, &crate::MutationLog::default()).unwrap();
+    assert_finished_classification_date(&output, stats.written, &stats.warnings);
+}
+
+fn assert_finished_classification_date(output: &str, written: usize, warnings: &[String]) {
+    assert!(output.contains("#1=IFCCLASSIFICATION('Source','1','2024-02-29','Classification',$,$,$);"), "{output}");
+    assert!(!output.contains("=IFCCALENDARDATE("), "{output}");
+    assert_eq!(written, output.lines().filter(|line| line.starts_with('#')).count());
+    assert!(!warnings.iter().any(|warning| warning.contains("IFCCALENDARDATE")), "{warnings:?}");
+}
+
+#[test]
+fn merged_dates_follow_the_written_classification_ids_10879() {
+    let model = |name: &str, day: u8| format!(
+        "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('classification.ifc','',(''),(''),'','','');\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n\
+         #5=IFCCLASSIFICATION('Source','1',#6,'{name}');\n#6=IFCCALENDARDATE({day},2,2024);\nENDSEC;\nEND-ISO-10303-21;\n"
+    );
+    let first = model("First", 28);
+    let second = model("Second", 29);
+    let options = crate::MergedOptions { schema: Some("IFC4".into()), ..Default::default() };
+    let (output, stats) = crate::export_merged_with_stats(&[first.as_bytes(), second.as_bytes()], &options);
+    let classifications: Vec<_> = output.lines().filter(|line| line.contains("=IFCCLASSIFICATION(")).collect();
+    assert_eq!(classifications, [
+        "#5=IFCCLASSIFICATION('Source','1','2024-02-28','First',$,$,$);",
+        "#11=IFCCLASSIFICATION('Source','1','2024-02-29','Second',$,$,$);",
+    ], "{output}");
+    assert!(!output.contains("IFCCALENDARDATE("), "{output}");
+    assert!(stats.warnings.is_empty(), "{:?}", stats.warnings);
+}
+
+#[test]
+fn durations_warn_about_non_second_project_time_units_10879() {
+    let input = include_bytes!("../tests/fixtures/schema_duration_timeunit.ifc");
+    let upgrade = crate::StepOptions { schema: Some("IFC4".to_owned()), ..Default::default() };
+    let modern = crate::export_step(input, &upgrade).unwrap();
+    for (source, schema, expected) in [
+        (input.as_slice(), "IFC4", ",'id',$,$,$,'PT10S',"),
+        (modern.as_bytes(), "IFC2X3", ",'id',$,$,$,10.,"),
+    ] {
+        let options = crate::StepOptions { schema: Some(schema.to_owned()), ..Default::default() };
+        let (direct, _, direct_warnings) = crate::export_step_with_diagnostics(source, &options).unwrap();
+        let (logged, log) = crate::export_step_with_log(source, &options, &crate::MutationLog::default()).unwrap();
+        let (merged, merge) = crate::export_merged_models(&[crate::MergedModel::new(source)], &crate::MergedOptions { schema: options.schema, ..Default::default() });
+        for (output, warnings) in [(direct, direct_warnings), (logged, log.warnings), (merged, merge.warnings)] {
+            assert!(output.contains(expected), "{output}");
+            assert!(warnings.iter().any(|warning| warning.contains("assumed seconds")), "{warnings:?}");
+        }
+    }
+    let seconds = std::str::from_utf8(input).unwrap().replace("IFCUNITASSIGNMENT((#6))", "IFCUNITASSIGNMENT((#3))");
+    let (_, _, warnings) = crate::export_step_with_diagnostics(seconds.as_bytes(), &upgrade).unwrap();
+    assert!(!warnings.iter().any(|warning| warning.contains("assumed seconds")), "{warnings:?}");
+}
+
+
+#[test]
+fn commented_typed_date_keeps_its_text_on_downgrade_10879() {
+    let line = "#5=IFCPROPERTYSINGLEVALUE('Date',$,IFCDATE(/* before */'2024-01-01'),$);";
+    let (out, dropped, _) = convert(line, "IFC4", "IFC2X3");
+    assert_eq!(out, "#5=IFCPROPERTYSINGLEVALUE('Date',$,IFCTEXT('2024-01-01'),$);");
+    assert_eq!(dropped, 0);
 }

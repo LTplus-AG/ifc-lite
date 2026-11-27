@@ -245,11 +245,7 @@ export class NativeScriptRunner {
       // itself must not hear about it. Only THIS instance's own newer call
       // (or its own `reset()`) supersedes what execute() resolves with.
       if (stillCurrent()) {
-        setResult({
-          value: result.value,
-          logs: result.logs,
-          durationMs: result.durationMs,
-        });
+        setResult(result);
         // Successful-run signal for baseline consumers (scripting tour run
         // gate). Deliberately NOT bumped on the error-path setResult below
         // (that call only preserves captured logs), on reset(), or on the

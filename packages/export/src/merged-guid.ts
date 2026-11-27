@@ -15,6 +15,8 @@ import { deterministicGlobalId, getInheritanceChainAcrossSchemas } from '@ifc-li
 import type { IfcSourceBytes } from '@ifc-lite/parser';
 import { asSourceBytes } from '@ifc-lite/parser';
 import type { ExportEntityRef } from './entity-iteration.js';
+import { stepRecordHead } from './step-record-frame.js';
+import { skipStepTrivia } from './step-slot-grammar.js';
 
 /**
  * An IfcGloballyUniqueId is exactly 22 characters of the buildingSMART base64
@@ -31,6 +33,18 @@ const GLOBAL_ID_RE = /^[0-9A-Za-z_$]{22}$/;
 /** True for IfcRelationship subtypes (objectified relationships), which GlobalId reconciliation never unifies. */
 export function isRelationshipType(typeUpper: string): boolean {
   return typeUpper.startsWith('IFCREL');
+}
+
+/** Relationships and conversion-created proxies keep distinct records. */
+export function canUnifyByGlobalId(sourceType: string, writtenType = sourceType): boolean {
+  return !isRelationshipType(sourceType) && !isRelationshipType(writtenType)
+    && (writtenType !== 'IFCPROXY' || sourceType === writtenType);
+}
+
+export function canUnifyEmittedRecord(sourceType: string, converted?: string): boolean {
+  if (converted === undefined) return canUnifyByGlobalId(sourceType);
+  const head = stepRecordHead(converted);
+  return head !== null && canUnifyByGlobalId(sourceType, converted.slice(head.typeStart, head.typeEnd).toUpperCase());
 }
 
 /**
@@ -55,20 +69,19 @@ export function isRootedType(type: string): boolean {
   return getInheritanceChainAcrossSchemas(type).includes('IfcRoot');
 }
 
-/**
- * Read the GlobalId (first quoted attribute) from an already-rendered STEP
- * line. Used to register the id that was actually emitted, after any id
- * remap, GlobalId re-stamp, or schema conversion. Returns null if the first
- * quoted token is not a 22-char GlobalId.
- */
+function leadingGuidStart(entityText: string): number {
+  let open = entityText.indexOf('(');
+  if (open >= 0 && entityText.slice(0, open).includes('/*')) open = stepRecordHead(entityText)?.open ?? -1;
+  if (open === -1) return -1;
+  const quote = skipStepTrivia(entityText, open + 1);
+  return entityText[quote] === "'" ? quote + 1 : -1;
+}
+
+/** Read the GlobalId actually emitted after remap, re-stamping or conversion. */
 export function readLeadingGuid(entityText: string): string | null {
-  const open = entityText.indexOf('(');
-  if (open === -1) return null;
-  const q1 = entityText.indexOf("'", open + 1);
-  if (q1 === -1) return null;
-  const q2 = entityText.indexOf("'", q1 + 1);
-  if (q2 === -1) return null;
-  const raw = entityText.slice(q1 + 1, q2);
+  const start = leadingGuidStart(entityText);
+  if (start === -1 || entityText[start + 22] !== "'") return null;
+  const raw = entityText.slice(start, start + 22);
   return GLOBAL_ID_RE.test(raw) ? raw : null;
 }
 
@@ -95,7 +108,7 @@ export function mintUniqueGuid(
 }
 
 /**
- * Read an entity's GlobalId (first attribute) by decoding only its head.
+ * Read an entity's GlobalId (first attribute), usually from its head alone.
  * Returns the 22-char id for a rooted entity, or `null` for any entity whose
  * first attribute is not a GlobalId (geometry, lists, property atoms, …).
  */
@@ -107,21 +120,12 @@ export function extractGlobalIdFast(
   // lead with a Name string that can itself be 22 charset chars; never treat
   // those as a GlobalId or reconciliation would drop/rename them.
   if (!isRootedType(ref.type ?? '')) return null;
-  // 128 bytes comfortably spans `#<id>=<LONGEST_TYPE_NAME>('<22-char id>'`,
-  // so the GlobalId is always fully inside the window.
-  const end = Math.min(ref.byteOffset + 128, ref.byteOffset + ref.byteLength);
-  const head = asSourceBytes(source).decodeUtf8(ref.byteOffset, end);
-  const open = head.indexOf('(');
-  if (open === -1) return null;
-  let i = open + 1;
-  while (i < head.length && (head[i] === ' ' || head[i] === '\t' || head[i] === '\n' || head[i] === '\r')) i++;
-  if (head[i] !== "'") return null;
-  // A GlobalId never contains a quote (charset excludes it), so the next
-  // quote closes it.
-  const close = head.indexOf("'", i + 1);
-  if (close === -1) return null;
-  const raw = head.slice(i + 1, close);
-  return GLOBAL_ID_RE.test(raw) ? raw : null;
+  const bytes = asSourceBytes(source);
+  const recordEnd = ref.byteOffset + ref.byteLength;
+  const headEnd = Math.min(ref.byteOffset + 128, recordEnd);
+  const guid = readLeadingGuid(bytes.decodeUtf8(ref.byteOffset, headEnd));
+  // Leading trivia can put the first slot outside the usual head window.
+  return guid ?? (headEnd < recordEnd ? readLeadingGuid(bytes.decodeUtf8(ref.byteOffset, recordEnd)) : null);
 }
 
 /** Every rooted entity's GlobalId, by local id in index order: what GlobalId reconciliation works from. */
@@ -142,11 +146,9 @@ export function readLocalGuids(
  * `newGuid` is a 22-char IFC id (no quote in its charset), so this is safe.
  */
 export function replaceGlobalId(entityText: string, newGuid: string): string {
-  const open = entityText.indexOf('(');
-  if (open === -1) return entityText;
-  const q1 = entityText.indexOf("'", open + 1);
-  if (q1 === -1) return entityText;
-  const q2 = entityText.indexOf("'", q1 + 1);
+  const start = leadingGuidStart(entityText);
+  if (start === -1) return entityText;
+  const q2 = entityText.indexOf("'", start);
   if (q2 === -1) return entityText;
-  return entityText.slice(0, q1 + 1) + newGuid + entityText.slice(q2);
+  return entityText.slice(0, start) + newGuid + entityText.slice(q2);
 }

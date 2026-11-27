@@ -2,7 +2,7 @@
 /** Matches rust/export/src/schema_structural_diagnostics.rs (#9668). */
 import { getSchemaRegistryForVersion, getCanonicalEntityName } from '@ifc-lite/parser';
 import { convertEntityType } from './schema-converter.js';
-import { destabilizingUnknown, isStructuralAssignmentConversion } from './schema-converter-structural.js';
+import { destabilizingUnknown, isConstantActionConversion, isStructuralAssignmentConversion } from './schema-converter-structural.js';
 import { StructuralAxes } from './schema-converter-structural-axes.js';
 import { CAUSED_BY, StructuralCarriers } from './schema-converter-structural-carriers.js';
 import { conversionMode, namesWithheld, SourceRecords, type SourceStore } from './schema-converter-structural-source.js';
@@ -13,6 +13,7 @@ import { SHARED_CONFIGURATION, StructuralVarying, varyingTarget } from './schema
 import { computeWithheldRefIds } from './schema-untranslatable.js';
 import { readStepSlots } from './step-argument-parser.js';
 import { referencesAnyExpressId } from './step-ref-scan.js';
+import { finishEffectiveVarying } from './schema-structural-varying-effective.js';
 
 const NONE: ReadonlySet<string> = new Set();
 const CAUSED_BY_UNCONVERTED = "IFC2X3 CausedBy of a varying action that stays unconverted is kept only in that IFC2X3 record; no 'Causes' relationship is written";
@@ -38,6 +39,7 @@ export class StructuralDiagnostics {
   readonly axes = new StructuralAxes();
   readonly links = new StructuralLinks();
   readonly varying = new StructuralVarying();
+  deferredVarying?: { includeRelationships: boolean };
   readonly carriers = new StructuralCarriers();
   readonly thickness = new StructuralThickness();
   private readonly losses = new Map<string, number>();
@@ -78,15 +80,27 @@ export class StructuralDiagnostics {
     return filled.line;
   }
 
+  /** Clear one omission once the writer has emitted a replacement property. */
+  restoreOmittedValue(entity: string, attribute: string, to: string): void {
+    const message = entity + '.' + attribute + ' has no slot in ' + to + '; its value is omitted';
+    const count = this.losses.get(message);
+    if (count === 1) this.losses.delete(message);
+    else if (count) this.losses.set(message, count - 1);
+  }
+
   inspect(id: number, line: string, from: string, to: string): void {
     const assignment = /^\s*#\d+\s*=\s*IFCRELCONNECTSSTRUCTURALELEMENT\s*\(/i.test(line) ? readStepSlots(line) : null;
     if (assignment && isStructuralAssignmentConversion(assignment.type, from, to)) {
       this.record('IfcRelConnectsStructuralElement is mapped to IfcRelAssignsToProduct; the relationship kind is not kept in the target file');
       return;
     }
-    if (!((from === 'IFC2X3' && to === 'IFC4') || (from === 'IFC4' && to === 'IFC2X3'))) return;
+    if (!((from === 'IFC2X3' && (to === 'IFC4' || to === 'IFC4X3')) || ((from === 'IFC4' || from === 'IFC4X3') && to === 'IFC2X3'))) return;
+    // IFC4X3 is inspected only for the constant actions its slot map covers (#11571).
+    const ifc4 = from === 'IFC4' || to === 'IFC4';
     if (!/^\s*#\d+\s*=\s*(?:IFCSTRUCTURAL|IFCRELCONNECTSSTRUCTURAL|IFCRELASSOCIATESPROFILEPROPERTIES)/i.test(line)) return;
     const rec = readStepSlots(line);
+    if (rec && !ifc4 && !isConstantActionConversion(rec.type, from, to)) return;
+    if (rec && this.deferredVarying && varyingTarget(rec.type)) return;
     if (!rec || !(rec.type.startsWith('IFCSTRUCTURAL') || rec.type.startsWith('IFCRELCONNECTSSTRUCTURAL') || rec.type === 'IFCRELASSOCIATESPROFILEPROPERTIES')) return;
     // Recorded here, where the record takes the generic path, never for one withheld or rewritten.
     const notice = this.thickness.notice(id, rec.type, rec.slots);
@@ -171,6 +185,12 @@ export class StructuralDiagnostics {
 
   /** What `rewrite` found: per source record id, the attributes a carrier writes back on the reverse conversion, and the target type of a varying action whose CausedBy the export reports. */
   roundTripResult(): StructuralRoundTrip { return { restored: this.restored, stranded: this.stranded }; }
+
+  /** Convert retained varying actions and return the number of records appended. */
+  finishEffectiveVarying(lines: string[]): number {
+    const deferred = this.deferredVarying;
+    return deferred ? finishEffectiveVarying(lines, deferred.includeRelationships, (message) => this.record(message)) : 0;
+  }
 
   private record(message: string): void { this.losses.set(message, (this.losses.get(message) ?? 0) + 1); }
   warnings(): string[] { return [...this.losses].sort(([a], [b]) => a.localeCompare(b)).map(([message, count]) => `${count} structural conversion record(s): ${message} (#9668).`); }

@@ -29,7 +29,8 @@ use std::ops::Range;
 /// the digits unchanged leaves the reference exactly as authored and exactly as
 /// dangling, and agrees with [`crate::step_text::refs_in_line`], which no longer
 /// collects it (#3740).
-pub fn rewrite_refs(line: &[u8], offset: u32, remap: &impl Fn(u32) -> Option<u32>) -> String {
+#[cfg_attr(target_arch = "wasm32", inline(never))]
+pub fn rewrite_refs(line: &[u8], offset: u32, remap: &dyn Fn(u32) -> Option<u32>) -> String {
     let mut out: Vec<u8> = Vec::with_capacity(line.len() + 8);
     let mut copied = 0;
     for span in crate::step_text::ref_spans(line) {

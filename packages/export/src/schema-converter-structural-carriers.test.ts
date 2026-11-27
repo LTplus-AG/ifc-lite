@@ -465,14 +465,14 @@ ENDSEC;\nEND`);
     expect(up.warnings).toContain('IFCSTRUCTURALLINEARACTIONVARYING has no representation in IFC4; record remains unconverted');
   });
 
-  it('reports no CausedBy message when the prepass is not armed', async () => {
+  it('carries the selected reaction when a subset falls back to the primary load (#11037)', async () => {
     const result = new StepExporter(await parse(varying('(#16),'))).export({ schema: 'IFC4', subsetEntityIds: new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 17, 20, 30]) });
     const step = new TextDecoder().decode(result.content);
-    expect(line(step, 30)).toMatch(/^#30=IFCSTRUCTURALLINEARACTIONVARYING\(/);
-    expect(records(step, 'IFCRELASSIGNSTOPRODUCT')).toEqual([]);
+    expect(line(step, 30)).toMatch(/^#30=IFCSTRUCTURALCURVEACTION\(.*\.CONST\.\);$/);
+    expect(records(step, 'IFCRELASSIGNSTOPRODUCT')).toEqual([expect.stringContaining("'Causes',$,(#20),$,#30);")]);
     const warnings = result.stats.warnings.join('\n');
-    expect(warnings).toContain('IFCSTRUCTURALLINEARACTIONVARYING has no representation in IFC4; record remains unconverted');
-    expect(warnings).not.toContain('CausedBy');
+    expect(warnings).toContain('no complete load configuration');
+    expect(warnings).toContain('CausedBy is written as');
   });
 });
 
@@ -781,7 +781,8 @@ describe('curve member Axis IFC4 -> IFC2X3 -> IFC4 #9668', () => {
     // The upgrade reads it back and keeps the association, which is the source's.
     const up = await convert(down.step, 'IFC4');
     expect(line(up.step, 20)).toBe(line(own, 20));
-    expect(line(up.step, 40)).toBe(line(own, 40));
+    // #10777: the IFC2X3 profile properties IFC4 deleted become IfcProfileProperties; ProfileName has no IFC4 slot.
+    expect(line(up.step, 40)).toBe('#40=IFCPROFILEPROPERTIES($,$,$,$);');
   });
 
   it('fills the Axis orientation in a split-line association and keeps it in the preview', async () => {

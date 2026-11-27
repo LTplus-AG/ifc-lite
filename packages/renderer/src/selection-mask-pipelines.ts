@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { emptyBindGroup, emptyBindGroupLayout, sectionExclusions, withSectionExclusions } from './section-exclusions.js';
+import { emptyBindGroup, sectionExclusions, withSectionExclusions } from './section-exclusions.js';
+import { MaskTableGroup, maskTableLayout } from './mask-color-table.js';
 /**
  * The selection/hover mask pipelines (#5390), and the instanced variant that
  * outlines GPU-instanced occurrences (#5745): repeated windows, doors,
@@ -24,6 +25,7 @@ import { INSTANCED_RTE_DELTA_SLOT, INSTANCED_VERTEX_BUFFERS, MESH_VERTEX_BUFFERS
 import { drawInstanceRuns, uploadInstancedRteDeltas, type InstanceRun } from './instanced-rte.js';
 import type { WorldPoint } from './relative-to-eye.js';
 import type { InstancedTemplateGPU } from './scene-instance-types.js';
+import type { GpuInstancePool } from './gpu-instance-pool.js';
 import { mainShaderSource } from './shaders/main.wgsl.js';
 import { PIPELINE_CONSTANTS } from './constants.js';
 import { opaqueVisibilityLayout } from './opaque-visibility-pass.js';
@@ -62,7 +64,7 @@ export function maskVertexStage(module: GPUShaderModule, layout: MaskVertexLayou
 
 export function createGeometricMaskPipelines(device: GPUDevice, meshLayout: GPUBindGroupLayout, samples: number, hoverLayout?: GPUBindGroupLayout, vertexLayout: MaskVertexLayout = 'flat'): MaskPipelines {
   const instanced = hoverLayout !== undefined;
-  const layout = device.createPipelineLayout({ bindGroupLayouts: withSectionExclusions(device, [meshLayout, hoverLayout ?? emptyBindGroupLayout(device), opaqueVisibilityLayout(device, samples)]) });
+  const layout = device.createPipelineLayout({ bindGroupLayouts: withSectionExclusions(device, [meshLayout, hoverLayout ?? maskTableLayout(device, false), opaqueVisibilityLayout(device, samples)]) });
   const module = device.createShaderModule({ code: mainShaderSource.replace('@location(8) @interpolate(linear)', '@location(8) @interpolate(linear, sample)') });
   const vertex: GPUVertexState = instanced ? { module, entryPoint: 'vs_instanced', buffers: INSTANCED_VERTEX_BUFFERS } : maskVertexStage(module, vertexLayout);
   return createMaskPipelines(device, 'geometric-mask', layout, vertex, device.createShaderModule({ code: selectionMaskFragmentSource(instanced, samples) }), samples);
@@ -103,7 +105,7 @@ export function createMaskPipelines(
 /** What the instanced mask draws of a template: its geometry and its instance records. */
 export type InstancedMaskTemplate = Pick<
   InstancedTemplateGPU,
-  'vertexBuffer' | 'indexBuffer' | 'indexCount' | 'instanceBuffer' | 'instanceCount' | 'canonicalAnchors' | 'rteDeltas'
+  'vertexBuffer' | 'indexBuffer' | 'indexCount' | 'instanceBuffer' | 'instanceCount' | 'canonicalAnchors' | 'rteDeltas' | 'poolGroup'
 >;
 
 export interface InstancedMaskFrame {
@@ -124,6 +126,8 @@ export interface InstancedMaskFrame {
   selected: readonly InstancedMaskTemplate[];
   /** Templates holding an occurrence of `hoveredId`; empty when nothing is hovered. */
   hovered: readonly InstancedMaskTemplate[];
+  /** GPU-driven pool: draw these templates' groups from its compacted streams instead of their own buffers. */
+  pool?: GpuInstancePool | null;
   hoveredId: number;
 }
 
@@ -147,19 +151,17 @@ export class InstancedSelectionMask {
   private readonly meshBindGroupLayout: GPUBindGroupLayout;
   private meshUniform: { buffer: GPUBuffer; bindGroup: GPUBindGroup } | null = null;
   private readonly hoverBuffer: GPUBuffer;
-  private readonly hoverBindGroup: GPUBindGroup;
+  private readonly hoverGroup: MaskTableGroup;
   private readonly hoverScratch = new Uint32Array(4);
   /** This frame's drawable runs per template, from `prepare`. */
   private runs = new Map<InstancedMaskTemplate, readonly InstanceRun[]>();
+  private pool: GpuInstancePool | null = null;
 
   constructor(device: GPUDevice, meshBindGroupLayout: GPUBindGroupLayout, sampleCount: number) {
     this.sampleCount = sampleCount;
     this.device = device;
     this.meshBindGroupLayout = meshBindGroupLayout;
-    const hoverLayout = device.createBindGroupLayout({
-      label: 'selection-mask-instanced-hover-bgl',
-      entries: [{ binding: 0, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } }],
-    });
+    const hoverLayout = maskTableLayout(device, true); // hover uniform + the colour table (painted depth nudge)
     this.hoverLayout = hoverLayout;
     const groups: GPUBindGroupLayout[] = [];
     groups[0] = meshBindGroupLayout;
@@ -181,10 +183,7 @@ export class InstancedSelectionMask {
       size: this.hoverScratch.byteLength,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
-    this.hoverBindGroup = device.createBindGroup({
-      layout: hoverLayout,
-      entries: [{ binding: 0, resource: { buffer: this.hoverBuffer } }],
-    });
+    this.hoverGroup = new MaskTableGroup(device, this.hoverBuffer);
   }
 
   /** Upload this frame's uniforms. Call once per frame, before `draw`. */
@@ -206,6 +205,8 @@ export class InstancedSelectionMask {
     this.device.queue.writeBuffer(this.meshUniform.buffer, 0, uniforms);
     this.hoverScratch[0] = frame.hoveredId >>> 0;
     this.device.queue.writeBuffer(this.hoverBuffer, 0, this.hoverScratch);
+    this.pool = frame.pool ?? null;
+    if (this.pool) { this.runs.clear(); return; }
     // Without this a template the colour pass culled this frame would read a
     // delta stream packed for an older camera (or never packed at all).
     const templates = [...new Set([...frame.selected, ...frame.hovered])];
@@ -214,7 +215,7 @@ export class InstancedSelectionMask {
   }
 
   /** Draw `templates` into the open mask pass, one instanced draw per in-envelope run. */
-  draw(pass: GPURenderPassEncoder, kind: MaskKind, templates: readonly InstancedMaskTemplate[], geometricVisibility?: GPUBindGroup): void {
+  draw(pass: GPURenderPassEncoder, kind: MaskKind, templates: readonly InstancedMaskTemplate[], geometricVisibility?: GPUBindGroup, entityColorTable?: GPUBuffer | null): void {
     if (templates.length === 0 || !this.meshUniform) return;
     if (geometricVisibility && kind !== 'selectedAll') {
       this.geometricPipelines ??= createGeometricMaskPipelines(this.device, this.meshBindGroupLayout, this.sampleCount, this.hoverLayout);
@@ -222,7 +223,13 @@ export class InstancedSelectionMask {
     } else { pass.setPipeline(this.pipelines[kind]); pass.setBindGroup(OPAQUE_VISIBILITY_GROUP, emptyBindGroup(this.device)); }
     pass.setBindGroup(3, sectionExclusions(this.device).bindGroup);
     pass.setBindGroup(0, this.meshUniform.bindGroup);
-    pass.setBindGroup(SELECTION_MASK_HOVER_GROUP, this.hoverBindGroup);
+    pass.setBindGroup(SELECTION_MASK_HOVER_GROUP, this.hoverGroup.get(entityColorTable));
+    if (this.pool) {
+      // The frame's cull already compacted these groups (selection bit applied).
+      const groups = [...new Set(templates.map((t) => t.poolGroup).filter((g): g is number => g !== undefined && g >= 0))];
+      this.pool.draw(pass, groups);
+      return;
+    }
     for (const t of templates) {
       pass.setVertexBuffer(0, t.vertexBuffer);
       pass.setVertexBuffer(1, t.instanceBuffer);
@@ -237,5 +244,6 @@ export class InstancedSelectionMask {
     this.meshUniform = null;
     this.runs.clear();
     this.hoverBuffer.destroy();
+    this.hoverGroup.destroy();
   }
 }

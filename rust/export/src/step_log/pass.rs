@@ -50,7 +50,7 @@ pub(crate) struct Pass<'s, 'a> {
     /// Source lines the log rewrites, with what each carries.
     pub(crate) mutated_lines: HashMap<u32, (Option<String>, Delivery)>,
     pub(crate) warnings: Vec<String>,
-    ids: crate::step_ids::IdAllocator,
+    pub(super) ids: crate::step_ids::IdAllocator,
     owner_history_of: HashMap<u32, Option<u32>>,
     owner_history_fallback: Option<Option<u32>>,
 }

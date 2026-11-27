@@ -109,7 +109,7 @@ const AMBIENT_TYPE_NAMES = new Set([
 ]);
 
 /**
- * Collect top-level `interface` / `type` declarations from the source files,
+ * Collect top-level types and string tuples used by typeof type aliases,
  * keyed by name. Later files do not override earlier ones — a duplicate name
  * across sources is ambiguous, so it is refused rather than silently resolved.
  */
@@ -119,9 +119,22 @@ function collectDeclarations(sources) {
     const path = join(ROOT, rel);
     const text = readFileSync(path, 'utf-8');
     const sourceFile = ts.createSourceFile(path, text, ts.ScriptTarget.ES2022, true);
-    for (const statement of sourceFile.statements) {
-      if (!ts.isInterfaceDeclaration(statement) && !ts.isTypeAliasDeclaration(statement)) continue;
-      const name = statement.name.text;
+    const candidates = sourceFile.statements.flatMap(statement => {
+      if (ts.isInterfaceDeclaration(statement) || ts.isTypeAliasDeclaration(statement)) {
+        return [{ name: statement.name.text, node: statement, sourceFile, source: rel }];
+      }
+      if (!ts.isVariableStatement(statement) || !(statement.declarationList.flags & ts.NodeFlags.Const)) return [];
+      return statement.declarationList.declarations.flatMap(node => {
+        const init = node.initializer;
+        if (!ts.isIdentifier(node.name) || !init || !ts.isAsExpression(init) ||
+            init.type.getText(sourceFile) !== 'const' || !ts.isArrayLiteralExpression(init.expression) ||
+            !init.expression.elements.every(ts.isStringLiteral)) return [];
+        const name = node.name.text;
+        return [{ name, node, sourceFile, source: rel, text: `const ${name}: readonly ${init.expression.getText(sourceFile)};` }];
+      });
+    });
+    for (const entry of candidates) {
+      const { name } = entry;
       const existing = byName.get(name);
       if (existing && existing.source !== rel) {
         console.error(
@@ -130,7 +143,7 @@ function collectDeclarations(sources) {
         );
         process.exit(1);
       }
-      byName.set(name, { node: statement, sourceFile, source: rel });
+      byName.set(name, entry);
     }
   }
   return byName;
@@ -139,12 +152,15 @@ function collectDeclarations(sources) {
 /** Every identifier used in a type position inside `node`. */
 function referencedTypeNames(node) {
   const names = new Set();
+  const typeParameters = new Set(node.typeParameters?.map(parameter => parameter.name.text));
   const visit = n => {
     if (ts.isTypeReferenceNode(n)) {
       // Only the leftmost identifier of a qualified name matters; the extracted
       // sources use none, but a `ns.Type` must not be read as `Type`.
       const root = ts.isQualifiedName(n.typeName) ? undefined : n.typeName.text;
-      if (root) names.add(root);
+      if (root && !typeParameters.has(root)) names.add(root);
+    } else if (ts.isTypeQueryNode(n) && ts.isIdentifier(n.exprName)) {
+      names.add(n.exprName.text);
     }
     ts.forEachChild(n, visit);
   };
@@ -160,6 +176,7 @@ function referencedTypeNames(node) {
  * LAST leading comment block, and only when it is JSDoc.
  */
 function declarationText(entry) {
+  if (entry.text) return entry.text;
   const { node, sourceFile } = entry;
   const full = sourceFile.getFullText();
   const body = node.getText(sourceFile);
@@ -196,7 +213,7 @@ function derivedTypeGroupLines(group) {
       process.exit(1);
     }
     emitted.push(entry);
-    for (const ref of referencedTypeNames(entry.node)) {
+    for (const ref of entry.text ? [] : referencedTypeNames(entry.node)) {
       if (AMBIENT_TYPE_NAMES.has(ref) || seen.has(ref)) continue;
       queue.push(ref);
     }

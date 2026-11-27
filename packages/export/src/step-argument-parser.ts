@@ -98,10 +98,10 @@ export interface StepRecordSlots {
  * allows it (around the `=`, before the `(`, between the `)` and the `;`) is
  * kept in `prefix` / `suffix` rather than making the record unreadable.
  */
-export function readStepSlots(entityText: string): StepRecordSlots | null {
+export function readStepSlots(entityText: string, maxReferenceId?: number): StepRecordSlots | null {
   const frame = stepRecordFrame(entityText);
   if (frame === null) return null;
-  const slots = splitTopLevelStepArguments(frameArgs(entityText, frame));
+  const slots = splitTopLevelStepArguments(frameArgs(entityText, frame), maxReferenceId);
   if (slots === null) return null;
   return {
     prefix: entityText.slice(0, frame.head.open + 1),
@@ -137,8 +137,9 @@ export function replaceStepArgument(
   entityText: string,
   attrIndex: number,
   replacement: string,
+  maxReferenceId?: number,
 ): string | null {
-  const record = readStepSlots(entityText);
+  const record = readStepSlots(entityText, maxReferenceId);
   // Load-bearing, and covered: the bounds check below READS `attrs.length`, so a
   // null reaches it as a TypeError rather than falling through to a rejection.
   // Deleting this line fails exactly the three malformed-input cases in
@@ -210,7 +211,7 @@ export function replaceStepArgument(
  * check in {@link replaceStepArgument} — which is the right answer for a record
  * that has no slots.
  */
-export function splitTopLevelStepArguments(input: string): string[] | null {
+export function splitTopLevelStepArguments(input: string, maxReferenceId?: number): string[] | null {
   // STEP whitespace only (core's `is_step_space`), never `trim()`: a no-break
   // space is not padding, and `String.prototype.trim` strips it.
   if (isStepBlank(input)) return [];
@@ -286,7 +287,7 @@ export function splitTopLevelStepArguments(input: string): string[] | null {
   // a null here is what lets `replaceStepArgument`'s by-index write refuse
   // instead of landing on the wrong attribute.
   for (const part of parts) {
-    if (!isWellFormedStepSlot(part)) return null;
+    if (!isWellFormedStepSlot(part, maxReferenceId)) return null;
   }
   return parts;
 }

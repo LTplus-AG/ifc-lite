@@ -99,7 +99,8 @@ export class FinishedBatchCapture {
 }
 
 /** Create every batch's GPU resources; on a throw, free what was created. */
-export function stageSnapshotBatches(snapshot: SceneSnapshot, device: GPUDevice, pipeline: RenderPipeline, firstBatchId: number): BatchedMesh[] {
+export function stageSnapshotBatches(snapshot: SceneSnapshot, device: GPUDevice, pipeline: RenderPipeline, firstBatchId: number, arenaCopySource = false): BatchedMesh[] {
+  const copy = arenaCopySource ? GPUBufferUsage.COPY_SRC : 0;
   const staged: BatchedMesh[] = [];
   let loose: GPUBuffer[] = [];
   let looseSlot: MeshUniformSlot | undefined;
@@ -108,9 +109,9 @@ export function stageSnapshotBatches(snapshot: SceneSnapshot, device: GPUDevice,
     for (const source of snapshot.batches) {
       loose = [];
       looseSlot = undefined;
-      const vertexBuffer = track(createStaticGpuBuffer(device, source.vertexData, GPUBufferUsage.VERTEX));
-      const indexBuffer = track(createStaticGpuBuffer(device, source.indices, GPUBufferUsage.INDEX));
-      const lod1IndexBuffer = source.lod1Indices ? track(createStaticGpuBuffer(device, source.lod1Indices, GPUBufferUsage.INDEX)) : undefined;
+      const vertexBuffer = track(createStaticGpuBuffer(device, source.vertexData, GPUBufferUsage.VERTEX | copy));
+      const indexBuffer = track(createStaticGpuBuffer(device, source.indices, GPUBufferUsage.INDEX | copy));
+      const lod1IndexBuffer = source.lod1Indices ? track(createStaticGpuBuffer(device, source.lod1Indices, GPUBufferUsage.INDEX | copy)) : undefined;
       const uniformSlot = looseSlot = meshUniformArena(device, pipeline.getUniformBufferSize()).allocate();
       const bindGroup = device.createBindGroup({ layout: pipeline.getBindGroupLayout(), entries: [
         { binding: 0, resource: { buffer: uniformSlot.buffer, offset: uniformSlot.offset, size: uniformSlot.size } },

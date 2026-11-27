@@ -45,6 +45,7 @@ async function renderWith(root, role, allow, browser, openPage, query = '') {
       'ifc-lite-renderer-under-test': resolve(root, 'packages/renderer/src/index.ts'),
       '@ifc-lite/spatial': resolve(root, 'packages/spatial/src/index.ts'),
       '@ifc-lite/load-trace': resolve(root, 'packages/load-trace/src/index.ts'),
+      '@ifc-lite/geometry/compact': resolve(root, 'packages/geometry/src/compact.ts'),
     } },
     optimizeDeps: { noDiscovery: true, include: [] },
     server: { host: '127.0.0.1', port: 0, fs: { allow } },

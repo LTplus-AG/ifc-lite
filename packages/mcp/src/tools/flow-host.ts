@@ -15,17 +15,10 @@ import type { Capability } from '@ifc-lite/extensions';
 import type { FlowHost } from '@ifc-lite/flow-nodes';
 import { createNativeBcfWriteGateway } from '@ifc-lite/flow-nodes/bcf-publication-node';
 import type { LoadedModel, ModelRegistry, ToolContext } from '../context.js';
-import { deriveModelId, loadIfcModelFromBytes } from '../loader.js';
+import { deriveModelId, freeModelId, loadIfcModelFromBytes } from '../loader.js';
 import { buildIdsAccessor } from './ids-accessor.js';
 import { readNativeReview, readPortableReview } from '@ifc-lite/sdk/review';
 import { nativeReviewModel, reviewCaptures, reviewAccess } from './review-captures.js';
-
-/** `base`, or `base_2`, `base_3`, … — the first id the registry does not hold yet. */
-function freeModelId(registry: ModelRegistry, base: string): string {
-  let id = base;
-  for (let n = 2; registry.get(id) !== null; n += 1) id = `${base}_${n}`;
-  return id;
-}
 
 export function createMcpFlowHost(initial: LoadedModel, registry: ModelRegistry, networkGrants: readonly Capability[], services: Pick<FlowHost, 'ai' | 'grants'> = {}, context?: ToolContext, publication: Parameters<typeof createNativeBcfWriteGateway>[0] = {}): FlowHost {
   let active = initial;

@@ -48,6 +48,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { isMainEntry } from './lib/is-main-entry.mjs';
+import { shardFilters as e2eShardFilters } from './ci-e2e-shards.mjs';
 import { MANIFEST_PATH, assignShards, parseManifest, shardFromEnv } from './viewer-test-shards.mjs';
 import {
   MAX_RETRY_FILES,
@@ -202,14 +203,14 @@ function retryViewer(env, mode, reportDir) {
 }
 
 /** The E2E retry's command and environment; only `on` reports the retry to Mergify. */
-export function e2eRetryCommand({ mode, shard, lastFailedFile, env, budgetMs }) {
+export function e2eRetryCommand({ mode, files, lastFailedFile, env, budgetMs }) {
   const reporters = mode === 'on' ? 'list,@mergifyio/playwright,json' : 'list,json';
   // `--reporter` replaces the config's list, withMergify's entry included.
   const { MERGIFY_TOKEN: _token, ...rest } = env;
   return {
     args: [
       '--signal=INT', '--kill-after=30s', `${Math.floor(budgetMs / 1000)}s`,
-      'pnpm', 'test:e2e:ci', `--shard=${shard}`, `--reporter=${reporters}`,
+      'pnpm', 'test:e2e:ci', ...files, `--reporter=${reporters}`,
       '--last-failed', `--last-failed-file=${lastFailedFile}`, '--output=test-results/retry',
     ],
     env: mode === 'on' ? env : rest,
@@ -234,14 +235,15 @@ function retryE2e(env, mode, reportDir) {
 
   // The retry reads, and then overwrites, a COPY: test-results/.last-run.json
   // stays the first attempt's. `--output` keeps the first attempt's traces in
-  // test-results/ for the failure-context upload. `--shard` is kept because
-  // Playwright applies the last-failed filter AFTER sharding, so the ids
-  // resolve exactly as they did in the first attempt.
+  // test-results/ for the failure-context upload. The shard's file filters
+  // (scripts/ci-e2e-shards.mjs, what the first attempt was given) are kept
+  // because Playwright applies the last-failed filter AFTER selecting files,
+  // so the ids resolve exactly as they did in the first attempt.
   const lastFailedFile = join(reportDir, 'e2e-retry-last-run.json');
   copyFileSync(lastRun, lastFailedFile);
   const retryJson = join(reportDir, 'e2e-retry-report.json');
   console.log(`[ci-shard-retry] rerunning ${ids.length} test(s): ${tests.map((t) => t.title).join('; ')}`);
-  const cmd = e2eRetryCommand({ mode, shard, lastFailedFile, env, budgetMs: budget });
+  const cmd = e2eRetryCommand({ mode, files: e2eShardFilters(shard), lastFailedFile, env, budgetMs: budget });
   const r = spawnSync('timeout', cmd.args, { cwd: REPO_ROOT, stdio: 'inherit', env: { ...cmd.env, PLAYWRIGHT_JSON_OUTPUT_FILE: retryJson } });
   record.result = judgeE2eRetry({ exitCode: r.status, ids, report: readJsonOptional(retryJson, "the retry's JSON report"), first: index });
   return record;

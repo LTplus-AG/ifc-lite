@@ -58,7 +58,7 @@ pub(super) type BatchOutput = (
 type Finish = Option<ifc_lite_processing::style::SpecularMaterial>;
 type FinishedMesh = (ifc_lite_processing::MeshData, Finish);
 
-fn rtc(wire: &BatchWire<'_>) -> [f64; 3] {
+pub(super) fn rtc(wire: &BatchWire<'_>) -> [f64; 3] {
     if wire.needs_shift {
         [wire.rtc_x, wire.rtc_y, wire.rtc_z]
     } else {
@@ -129,7 +129,11 @@ pub(super) fn instanced((outputs, _, _): BatchOutput, wire: &BatchWire<'_>) -> V
 pub(super) fn partitioned(
     (outputs, csg_diag, shard_occurrences): BatchOutput,
     wire: &BatchWire<'_>,
+    global_plan: Option<super::global_plan::SharedGlobalPlan>,
 ) -> PartitionedBatch {
+    if let Some(plan) = global_plan {
+        return super::global_instancing::partitioned_global(outputs, csg_diag, &plan, wire);
+    }
     let mut mesh_collection = MeshCollection::with_capacity(wire.jobs_flat.len() / 3);
     if wire.needs_shift {
         mesh_collection.set_rtc_offset(wire.rtc_x, wire.rtc_y, wire.rtc_z);

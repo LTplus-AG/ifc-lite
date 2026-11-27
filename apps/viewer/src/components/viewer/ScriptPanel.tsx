@@ -58,6 +58,7 @@ import { useViewerStore } from '@/store';
 import { posthog } from '@/lib/analytics';
 import { isFeatureEnabled } from '@/lib/features';
 import { useSandbox } from '@/hooks/useSandbox';
+import { ScriptSurfaces } from './script-surfaces/ScriptSurfaces';
 import { SCRIPT_TEMPLATES } from '@/lib/scripts/templates';
 import { CodeEditor } from './CodeEditor';
 import { ChatPanel } from './ChatPanel';
@@ -509,7 +510,7 @@ export function ScriptPanel() {
                   <MemoizedLogLine key={i} log={log} />
                 ))}
 
-                {/* Return value */}
+                {lastResult?.surfaces && <ScriptSurfaces surfaces={lastResult.surfaces} />}
                 {lastResult && lastResult.value !== undefined && lastResult.value !== null && (
                   <div className="text-muted-foreground mt-1 pt-1 border-t border-border/50">
                     <span className="opacity-60">{t('scriptPanel.output.returnLabel')} </span>

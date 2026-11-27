@@ -13,7 +13,7 @@
 import type { DecodedInstance, DecodedInstancedShard, DecodedInstancedTemplate } from '@ifc-lite/geometry';
 import { UnsupportedBackingFieldError } from './mesh-record';
 
-const SHARD_FIELDS = { templates: true, instances: true, carriesItemIds: true, carriesFinishes: true } as const satisfies Record<keyof DecodedInstancedShard, true>;
+const SHARD_FIELDS = { templates: true, instances: true, carriesItemIds: true, carriesFinishes: true, templateKeys: true } as const satisfies Record<keyof DecodedInstancedShard, true>;
 const TEMPLATE_FIELDS = { positions: true, normals: true, indices: true, origin: true } as const satisfies Record<keyof DecodedInstancedTemplate, true>;
 const INSTANCE_FIELDS = {
   templateIndex: true, entityId: true, color: true, transform: true, itemId: true, metallic: true, roughness: true,
@@ -64,6 +64,8 @@ export function encodeShardRecord(shard: DecodedInstancedShard): EncodedShard {
   const record: ShardRecord = {
     templates, instances, carriesItemIds: shard.carriesItemIds,
     ...(shard.carriesFinishes !== undefined ? { carriesFinishes: shard.carriesFinishes } : {}),
+    // Keyed records (global instance plan) rejoin their model-wide slot on replay.
+    ...(shard.templateKeys !== undefined ? { templateKeys: [...shard.templateKeys] } : {}),
   };
   return { record, bytes, entityIds: Uint32Array.from([...entities].sort((a, b) => a - b)) };
 }

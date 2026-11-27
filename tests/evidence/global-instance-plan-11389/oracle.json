@@ -1,0 +1,6 @@
+{
+  "issue": 7955,
+  "why": "Keep the global instance plan modules loadable while breaking the key plan's gate, the topology part of template keys and the IFNL trailer magic: the key-plan, keyed-shard and flat-reference parity tests must go red.",
+  "key": "rust/wasm-bindings/src/api/gpu_meshes/global_key_plan.rs",
+  "mutation": "tests/evidence/global-instance-plan-11389/behaviour.oracle.patch"
+}

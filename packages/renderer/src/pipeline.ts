@@ -58,6 +58,7 @@ export class RenderPipeline {
     private entityColorTableBuffer: GPUBuffer;
     private texturedPipeline: GPURenderPipeline;  // Pipeline for textured meshes (#961): UV lane + albedo texture/sampler
     private texturedBindGroupLayout: GPUBindGroupLayout;  // group(0): uniform + texture + sampler
+    private streamBaseDescriptor!: GPURenderPipelineDescriptor; // opaque base the draw-stream pipelines derive from
     private depthTexture: GPUTexture;
     private depthTextureView: GPUTextureView;
     // depth-only view of depthTexture for sampling as texture_depth_2d in
@@ -187,7 +188,7 @@ export class RenderPipeline {
                 },
                 { binding: 3, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
                 { binding: 4, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } }, // selectionColorUniform (#5484)
-                { binding: 5, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } }, // entity colour table (#6076)
+                { binding: 5, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } }, // entity colour table (#6076); vertex: painted depth nudge
             ],
         });
         this.environmentBuffer = this.device.createBuffer({
@@ -266,6 +267,7 @@ export class RenderPipeline {
         } as GPURenderPipelineDescriptor;
 
         this.pipeline = this.visibility.create(pipelineDescriptor);
+        this.streamBaseDescriptor = pipelineDescriptor;
 
         // GPU-instancing pipeline: same fragment/targets/depth/MSAA as the opaque
         // pipeline, but vs_instanced + a SECOND vertex buffer (slot 1, stepMode
@@ -637,6 +639,8 @@ export class RenderPipeline {
         this.device.queue.writeBuffer(this.environmentBuffer, 0, this.environmentScratch);
     }
 
+    /** Base opaque descriptor + group(1) layout for the draw-stream pipelines (draw-stream.ts). */
+    getStreamBase(): { descriptor: GPURenderPipelineDescriptor; environmentLayout: GPUBindGroupLayout; colorFormat: GPUTextureFormat; depthFormat: GPUTextureFormat; sampleCount: number } { return { descriptor: this.streamBaseDescriptor, environmentLayout: this.environmentBindGroupLayout, colorFormat: this.colorFormat, depthFormat: this.depthFormat, sampleCount: this.sampleCount }; }
     /** Lighting-environment bind group — set at group(1) once per render pass. */
     getEnvironmentBindGroup(): GPUBindGroup {
         return this.environmentBindGroup;

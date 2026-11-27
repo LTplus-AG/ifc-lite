@@ -1,6 +1,6 @@
 {
   "name": "ifc-lite",
-  "version": "13.0.0",
+  "version": "13.1.0",
   "description": "High-performance browser IFC parser & renderer",
   "private": true,
   "type": "module",
@@ -206,7 +206,10 @@
       "@swc/core@1.15.8": "patches/@swc__core@1.15.8.patch",
       "@radix-ui/react-popover@1.1.23": "patches/@radix-ui__react-popover@1.1.23.patch",
       "typedoc@0.28.20": "patches/typedoc@0.28.20.patch",
-      "@luma.gl/splats@9.4.2": "patches/@luma.gl__splats@9.4.2.patch"
+      "@luma.gl/splats@9.4.2": "patches/@luma.gl__splats@9.4.2.patch",
+      "@a2ui/web_core@0.15.0": "patches/@a2ui__web_core@0.15.0.patch",
+      "@a2ui/agent@0.1.0": "patches/@a2ui__agent@0.1.0.patch",
+      "@a2ui/react@0.15.0": "patches/@a2ui__react@0.15.0.patch"
     }
   }
 }

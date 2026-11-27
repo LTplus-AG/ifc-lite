@@ -21,7 +21,11 @@ mod batch_from_source;
 pub(in crate::api) mod batch_host;
 mod batch_partition;
 mod instancing;
+mod global_instancing;
+mod global_key_plan;
+pub(crate) mod global_plan;
 pub(crate) mod prepass;
+mod prepass_key_plan;
 mod prepass_mode;
 mod prepass_discovery;
 mod prepass_index;
@@ -37,6 +41,10 @@ pub(super) mod style_finishes;
 mod prepass_from_source;
 mod prepass_affinity;
 mod source_fingerprint_prepass;
+mod sparse;
+mod sparse_facts;
+mod sparse_emit;
+pub(in crate::api) use sparse::SparseSession;
 
 /// Scan `content` into the compact columnar index. Its one refusal is a span
 /// past `u32::MAX` (#7675, CORE-24), which a wasm32 `&[u8]` cannot reach: the
@@ -58,3 +66,7 @@ mod c4_11a_tests;
 #[cfg(test)]
 #[path = "c4_7b_tests.rs"]
 mod c4_7b_tests;
+
+#[cfg(test)]
+#[path = "global_instancing_parity_tests.rs"]
+mod global_instancing_parity_tests;

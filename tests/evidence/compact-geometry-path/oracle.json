@@ -1,0 +1,6 @@
+{
+  "issue": 7955,
+  "why": "Keep the compact path loadable while admitting any mesh to a page (wrong id, or no quantized pipeline), leaving page-time registrations behind on the way back to buckets, anchoring a growing page on its first ids, ignoring the stored normals in the decode, decoding on a shell copy and asking federated loads for records: the scene, shell and config tests must go red.",
+  "key": "packages/renderer/src/scene-compact.ts",
+  "mutation": "tests/evidence/compact-geometry-path/behaviour.oracle.patch"
+}

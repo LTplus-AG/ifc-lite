@@ -13,14 +13,17 @@
  * round the queue again. Running the few viewer tests a change can affect, on
  * the PR, tells the author in minutes.
  *
- * ADVISORY, NOT A GATE. The job is not in the aggregate's `needs`, it carries
- * job-level `continue-on-error`, and `--run` exits 0 when tests fail (with a
- * warning annotation, the summary and a result file in the artifact). A red
- * advisory job would turn the whole Test run's conclusion to failure, and
- * scripts/ci-push-replay.mjs replays only a PR run that concluded success, so
- * a flake here would cost a full re-run on the push to main. The merge queue
- * still runs the whole suite and is still the gate. A pass here means "the
- * sampled tests passed", never "the viewer suite passes".
+ * ADVISORY TO THE TEST RUN, A GATE ON QUEUE ENTRY. The job is not in the
+ * aggregate's `needs`, it carries job-level `continue-on-error`, and `--run`
+ * exits 0 when tests fail. A red job would turn the whole Test run's
+ * conclusion to failure, and scripts/ci-push-replay.mjs replays only a PR run
+ * that concluded success, so a flake here would cost a full re-run on the push
+ * to main. Instead, `--run` writes its verdict (after the shards' one retry,
+ * scripts/lib/viewer-select-run.mjs) to result.json, and
+ * scripts/ci-viewer-select-status.mjs posts it as the `PR viewer selection`
+ * commit status on the PR head, which .mergify.yml's auto_merge_conditions
+ * require not to be failing or pending. A pass here means "the sampled tests
+ * passed", never "the viewer suite passes"; the queue's full run still is.
  *
  * THE SWITCH is the repo variable `CI_PR_VIEWER_SELECT`:
  *   unset / `off`  the job is skipped by its `if:`; nothing runs.
@@ -43,10 +46,11 @@
  *       writes <dir>/selection.json and <dir>/files.txt, outputs run/count
  *   node scripts/ci-viewer-select.mjs --run <dir>
  *       runs <dir>/files.txt with the viewer `test` script's own tsx command,
- *       writes <dir>/result.json, and exits 0 even when tests fail
+ *       retries failed files once, writes <dir>/result.json, exits 0 even
+ *       when tests fail
  */
 
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { appendFileSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -55,6 +59,7 @@ import { isBatchBranch } from './ci-pr-lane.mjs';
 import { isMainEntry } from './lib/is-main-entry.mjs';
 import { parseManifest, pathHash } from './viewer-test-shards.mjs';
 import { median } from './lib/viewer-test-durations.mjs';
+import { runSelectedTests } from './lib/viewer-select-run.mjs';
 import {
   affectedTests, buildGraph, createResolver, extensionless, isCodeFile, isViewerTest, packageNode,
 } from './lib/viewer-import-graph.mjs';
@@ -328,23 +333,8 @@ export function run(argv, env = process.env, root = ROOT) {
     throw new Error('usage: --select <dir> | --run <dir>');
   }
   if (cmd === '--run') {
-    const files = readFileSync(join(dir, 'files.txt'), 'utf8').split('\n').filter(Boolean);
-    if (files.length === 0) throw new Error('files.txt is empty; tsx would fall back to its default glob');
     const pkg = JSON.parse(readFileSync(join(root, VIEWER, 'package.json'), 'utf8'));
-    const [bin, ...args] = runnerArgs(pkg.scripts?.test);
-    const r = spawnSync('pnpm', ['exec', bin, ...args, ...files], { cwd: join(root, VIEWER), stdio: 'inherit' });
-    if (r.error) throw r.error;
-    const status = r.status ?? 1;
-    writeFileSync(join(dir, 'result.json'), `${JSON.stringify({ files: files.length, exitCode: status, signal: r.signal ?? null })}\n`);
-    if (status !== 0) {
-      const msg = `Advisory: ${files.length} selected viewer test file(s) ran and at least one failed (exit ${status}). The merge queue runs the full suite; see the log above.`;
-      console.log(`::warning title=Selected viewer tests (advisory)::${msg}`);
-      writeSummary(env, ['', `**${msg}**`]);
-    } else {
-      writeSummary(env, ['', `${files.length} selected viewer test file(s) passed.`]);
-    }
-    // Advisory: see the header for why a failure must not fail the Test run.
-    return 0;
+    return runSelectedTests({ root, viewer: VIEWER, dir, env, runner: runnerArgs(pkg.scripts?.test) });
   }
   const decision = decideViewerSelect({
     mode: env.CI_PR_VIEWER_SELECT, event: env.GITHUB_EVENT_NAME, lane: env.LANE, headRef: env.HEAD_REF, noop: env.NOOP,

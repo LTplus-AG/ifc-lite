@@ -1,0 +1,17 @@
+ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');
+FILE_NAME('project-order.ifc','2026-01-01T00:00:00',('Fixture'),('Fixture'),'Fixture','Fixture','');
+FILE_SCHEMA(('IFC2X3'));
+ENDSEC;
+DATA;
+#1=IFCPERSON($,'Order','Checker',$,$,$,$,$);
+#2=IFCORGANIZATION($,'Fixture',$,$,$);
+#3=IFCPERSONANDORGANIZATION(#1,#2,$);
+#4=IFCAPPLICATION(#2,'1','Fixture','FIXTURE');
+#5=IFCOWNERHISTORY(#3,#4,$,.ADDED.,1,#3,#4,1);
+#6=IFCWALL('0YvctVUKr0kugbFTf53O9L',#5,'Wall',$,$,$,$,$);
+#7=IFCPROJECTORDER('0AvctVUKr0kugbFTf53O9L',#5,'Order',$,$,'PO-7',.PURCHASEORDER.,'Issued');
+#8=IFCRELASSIGNSTOPROJECTORDER('0BvctVUKr0kugbFTf53O9L',#5,$,$,(#6),$,#7);
+ENDSEC;
+END-ISO-10303-21;

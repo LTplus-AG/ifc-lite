@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { it } from 'node:test';
 import { Renderer } from '@ifc-lite/renderer';
 import { useViewerStore, type FederatedModel } from '@/store';
-import { fixtureModel } from '@/test/store-fixture';
+import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { appearanceInstanceScene } from '@/test/appearance-instance-scene';
 import { sectionNativeGeometry, sectionIndexedBounds, sourceDigest } from '@/test/section-native-geometry';
 import { applyFederationOffsetToMesh } from '@/hooks/ingest/federationOffset';
@@ -45,6 +45,7 @@ for (const count of [1, 2]) it(`#7525: complete native section extents precede t
       scene.addInstancedShard(allocation.device, native.shard, i);
     }
     scene.finalizeStreaming(allocation.device, allocation.pipeline);
+    useViewerStore.setState({ models });
     setGlobalRendererRef({ current: renderer });
     const ids = [...owners.values()].flat(), source = first.coordinateInfo;
     const originalMetadata = structuredClone(source);
@@ -63,9 +64,11 @@ for (const count of [1, 2]) it(`#7525: complete native section extents precede t
       assert.ok(Math.abs(after.shiftedBounds[edge].y - expectedBefore[edge].y - 100) < 0.0001);
     }
     if (count === 2) {
-      const other = models.get('native-1')!; models.set('native-1', { ...other, visible: false });
-      renderer.setModelTranslation(modelIndices(models).get('native-1')!, [0, 500, 0]);
-      assert.deepEqual(placementCoordinateInfo(source, models, moved)?.shiftedBounds,
+      const other = models.get('native-1')!;
+      const updatedModels = new Map(models).set('native-1', { ...other, visible: false });
+      useViewerStore.setState({ models: updatedModels });
+      renderer.setModelTranslation(modelIndices(updatedModels).get('native-1')!, [0, 500, 0]);
+      assert.deepEqual(placementCoordinateInfo(source, updatedModels, moved)?.shiftedBounds,
         sectionIndexedBounds(scene, owners.get('native-0')!), 'invisible federation owner never expands the extent');
     }
     setGlobalRendererRef({ current: null });
@@ -82,4 +85,35 @@ for (const count of [1, 2]) it(`#7525: complete native section extents precede t
     setGlobalRendererRef({ current: previous }); scene.clear(); allocation.scene.clear();
     useViewerStore.getState().clearAllModels(); modelIndices(new Map());
   }
+});
+
+it('#11246 uses captured producer bounds when the model no longer has a renderer index', t => {
+  const initial = useViewerStore.getState(), previous = getGlobalRenderer();
+  t.after(() => {
+    setGlobalRendererRef({ current: previous });
+    useViewerStore.setState(initial, true);
+    modelIndices(initial.models);
+  });
+  useViewerStore.setState(fixtureModels());
+  modelIndices(useViewerStore.getState().models);
+
+  const live = fixtureModel('live');
+  const liveBounds = { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } };
+  const capturedBounds = { min: { x: 100, y: 0, z: 0 }, max: { x: 101, y: 1, z: 1 } };
+  const source = { shiftedBounds: capturedBounds, originalBounds: capturedBounds,
+    originShift: { x: 0, y: 0, z: 0 }, hasLargeCoordinates: false };
+  const removed = { ...fixtureModel('removed'), geometryResult: {
+    coordinateInfo: source, meshes: [], totalTriangles: 0, totalVertices: 0,
+  } };
+  const captured = fixtureModels(live, removed);
+  useViewerStore.setState(captured);
+  assert.equal(modelIndices(captured.models).get(live.id), 0);
+  useViewerStore.setState(fixtureModels(live));
+
+  const renderer = new Renderer(document.createElement('canvas'));
+  t.mock.method(renderer, 'getModelPlacementBounds', (index: number) => index === 0 ? liveBounds : null);
+  setGlobalRendererRef({ current: renderer });
+
+  assert.deepEqual(placementCoordinateInfo(source, captured.models, emptyPlacementState())?.shiftedBounds,
+    { min: liveBounds.min, max: capturedBounds.max });
 });

@@ -91,6 +91,20 @@ describe('MergedExporter keeps one IfcRelDefinesByProperties per property set in
     expect(content).not.toContain(guid('rb'));
   });
 
+  it('folds into a relationship with output references above u32 (#11119)', async () => {
+    const { content, warnings } = await mergeWithStats([
+      await model('prefix', ['#4294967295=IFCCARTESIANPOINT((0.,0.));']),
+      await model('a', DEFINED('pa', ['wall'], 'ra')),
+      await model('b', DEFINED('pb', ['door'], 'rb')),
+    ]);
+    const pset = idOf(content, guid('pset'));
+    expect(pset).toBeGreaterThan(0xffffffff);
+    expect(definers(content).filter(rel => rel.pset === pset)).toEqual([
+      { objects: ['wall', 'door'].map(tag => idOf(content, guid(tag))), pset },
+    ]);
+    expect(warnings.some(warning => warning.includes('objects lost that relationship'))).toBe(false);
+  });
+
   it('folds a third model into the same definer, once per object', async () => {
     const content = await merge([
       await model('a', DEFINED('pa', ['wall'], 'ra')),

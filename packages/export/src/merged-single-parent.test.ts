@@ -427,12 +427,11 @@ describe('MergedExporter dropEmptyContainers after GlobalId-only unification (#5
     expectSingleParents(content);
   });
 
-  it('resolves a GlobalId a model writes twice onto the copy the emit pass records: the last', async () => {
-    // B repeats one storey GlobalId: the first copy under Building b1, the
-    // second with no parent. C's storey carries it too, and the emit pass
-    // unifies it onto B's LAST copy, which C's Building then parents.
-    // Resolving it onto the first copy (already parented) would withhold that
-    // edge, drop C's Building and leave the storey with no parent (WR41).
+  it('resolves a repeated GlobalId to the first copy, which keeps the original ID', async () => {
+    // B repeats one storey GlobalId. Its first copy has no parent and the
+    // second is under Building b1. C's Building parents the first storey
+    // after GlobalId unification. Resolving to the second would withhold that
+    // edge and leave the first storey orphaned.
     const storey = (id: number, name: string) => `#${id}=IFCBUILDINGSTOREY('${guid('dup')}',$,'${name}',$,$,$,$,$,.ELEMENT.,$);`;
     const holds = (id: number, tag: string, container: number) => [
       `#${id}=IFCBUILDINGELEMENTPROXY('${guid(`x${tag}`)}',$,'P',$,$,$,$,$,$);`,
@@ -441,7 +440,7 @@ describe('MergedExporter dropEmptyContainers after GlobalId-only unification (#5
     const b = [
       `#1=IFCPROJECT('${guid('pb')}',$,'B',$,$,$,$,$,$);`,
       `#2=IFCBUILDING('${guid('b1')}',$,'b1',$,$,$,$,$,.ELEMENT.,$,$,$);`, storey(3, 'S b1'),
-      `#4=IFCRELAGGREGATES('${guid('rb0')}',$,$,$,#1,(#2));`, `#5=IFCRELAGGREGATES('${guid('rb1')}',$,$,$,#2,(#3));`,
+      `#4=IFCRELAGGREGATES('${guid('rb0')}',$,$,$,#1,(#2));`, `#5=IFCRELAGGREGATES('${guid('rb1')}',$,$,$,#2,(#8));`,
       ...holds(6, 'b1', 3), storey(8, 'S b2'), ...holds(9, 'b2', 8),
     ];
     const c = [
@@ -458,8 +457,10 @@ describe('MergedExporter dropEmptyContainers after GlobalId-only unification (#5
     const content = await merge([await model('a', siteOnly), await model('b', b), await model('c', c)], {
       ...byName, mergeStoreys: 'by-name',
     });
-    // B's second copy, which the source leaves unparented, gets C's Building.
+    // B's first copy, which the source leaves unparented, gets C's Building.
     expect(content).toContain(guid('bc'));
+    expect(content).toContain(`IFCBUILDINGSTOREY('${guid('dup')}',$,'S b1'`);
+    expect(content.split(guid('dup'))).toHaveLength(2);
     expectNoOrphanedContainers(content);
     expectSingleParents(content);
   });

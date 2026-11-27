@@ -15,7 +15,7 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 import { access, mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { networkInterfaces, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   resolvePackageDirFromModuleUrl,
@@ -143,9 +143,13 @@ describe('viewer server — static routes and CORS', () => {
     'ftp://localhost',
     'http://localhost:notaport',
   ]) {
-    it(`withholds Access-Control-Allow-Origin for ${origin}`, TEST_TIMEOUT, async () => {
-      const res = await req(port, '/api/status', { headers: { origin } });
-      assert.equal(res.headers['access-control-allow-origin'], undefined);
+    // A foreign page could otherwise open /events and count as a connected viewer.
+    it(`refuses ${origin} outright, with no Access-Control-Allow-Origin`, TEST_TIMEOUT, async () => {
+      for (const path of ['/api/status', '/events', '/model.ifc']) {
+        const res = await req(port, path, { headers: { origin } });
+        assert.equal(res.status, 403, path);
+        assert.equal(res.headers['access-control-allow-origin'], undefined, path);
+      }
     });
   }
 
@@ -338,7 +342,7 @@ describe('viewer server — /api/command allowlist', () => {
     'colorize', 'isolate', 'xray', 'flyto', 'highlight',
     'colorizeEntities', 'isolateEntities', 'hideEntities', 'showEntities', 'resetColorEntities',
     'section', 'clearSection', 'colorByStorey', 'addGeometry',
-    'showall', 'reset', 'picked', 'setView', 'removeCreated', 'camera',
+    'showall', 'reset', 'picked', 'selectEntities', 'setView', 'removeCreated', 'camera',
   ]) {
     it(`accepts the "${action}" action`, TEST_TIMEOUT, async () => {
       assert.ok(VALID_ACTIONS.has(action), `${action} must be exported in VALID_ACTIONS`);
@@ -351,10 +355,10 @@ describe('viewer server — /api/command allowlist', () => {
     });
   }
 
-  it('exports exactly the twenty actions the viewer implements', () => {
+  it('exports exactly the twenty-one actions the viewer implements', () => {
     // Pins the size in both directions: the per-action tests above catch a
     // removal, this catches a silent addition.
-    assert.equal(VALID_ACTIONS.size, 20);
+    assert.equal(VALID_ACTIONS.size, 21);
   });
 
   it('rejects an action outside the allowlist and lists the valid ones', TEST_TIMEOUT, async () => {
@@ -402,6 +406,115 @@ describe('viewer server — /api/command allowlist', () => {
   it('does not treat POST /api/status as a status request', TEST_TIMEOUT, async () => {
     const res = await req(port, '/api/status', { method: 'POST', body: '' });
     assert.equal(res.status, 404);
+  });
+});
+
+// #11532: loopback bind, DNS rebinding and cross-site refusal.
+describe('viewer server — loopback only', () => {
+  let server: ViewerServer;
+  let port: number;
+
+  before(async () => {
+    ({ server, port } = await boot());
+  }, HOOK_TIMEOUT);
+  after(() => server?.close(), HOOK_TIMEOUT);
+
+  const command = JSON.stringify({ action: 'reset' });
+
+  // A page on another site can send these POSTs even though CORS hides the reply.
+  for (const [path, origin] of [
+    ['/api/command', 'http://evil.com'],
+    ['/api/command', 'http://localhost.evil.com'],
+    ['/api/command', 'null'],
+    ['/api/create', 'http://evil.com'],
+    ['/api/clear-created', 'http://evil.com'],
+  ]) {
+    it(`refuses POST ${path} from ${origin}`, TEST_TIMEOUT, async () => {
+      const res = await req(port, path, { method: 'POST', headers: { origin }, body: command });
+      assert.equal(res.status, 403);
+    });
+  }
+
+  // An <iframe src> or link from another site sends no Origin, only Sec-Fetch-Site.
+  it('refuses a cross-site navigation that carries no Origin', TEST_TIMEOUT, async () => {
+    const res = await req(port, '/model.ifc', { headers: { 'sec-fetch-site': 'cross-site' } });
+    assert.equal(res.status, 403);
+    assert.equal(res.body.toString(), 'Forbidden: cross-site request');
+  });
+
+  it('serves the address bar and the page itself', TEST_TIMEOUT, async () => {
+    for (const site of ['none', 'same-origin']) {
+      const page = await req(port, '/', { headers: { 'sec-fetch-site': site, 'sec-fetch-dest': 'document' } });
+      assert.equal(page.status, 200, `page, ${site}`);
+      const api = await req(port, '/api/status', { headers: { 'sec-fetch-site': site } });
+      assert.equal(api.status, 200, `api, ${site}`);
+    }
+  });
+
+  // The page may be embedded by an IDE preview pane, so CSP keeps other sites from framing it.
+  it('only lets local pages and IDE webviews frame the viewer page', TEST_TIMEOUT, async () => {
+    const res = await req(port, '/');
+    // Exact set on purpose: each added source is one more site that may frame the viewer.
+    const [directive, ...sources] = String(res.headers['content-security-policy']).split(/\s+/);
+    assert.equal(directive, 'frame-ancestors');
+    assert.deepEqual(sources.sort(), [
+      "'self'", 'http://127.0.0.1:*', 'http://localhost:*', 'https://127.0.0.1:*', 'https://localhost:*',
+      'vscode-file:', 'vscode-webview:',
+    ]);
+  });
+
+  // An agent shares the viewer link in a web chat; clicking it must open the viewer.
+  it('opens the viewer page from a link on another site', TEST_TIMEOUT, async () => {
+    for (const [path, dest] of [['/', 'document'], ['/?ref=chat', 'document'], ['/', 'iframe']]) {
+      const res = await req(port, path, { headers: { 'sec-fetch-site': 'cross-site', 'sec-fetch-dest': dest } });
+      assert.equal(res.status, 200, `${path} as ${dest}`);
+    }
+    // Anything else embedded from another site stays refused.
+    const res = await req(port, '/events', { headers: { 'sec-fetch-site': 'cross-site', 'sec-fetch-dest': 'iframe' } });
+    assert.equal(res.status, 403);
+  });
+
+  // localhost and 127.0.0.1 are different sites to a browser, but both are local pages.
+  it('lets a local page on another loopback name post a command', TEST_TIMEOUT, async () => {
+    const res = await req(port, '/api/command', {
+      method: 'POST',
+      headers: { origin: 'http://localhost:5173', 'sec-fetch-site': 'cross-site' },
+      body: command,
+    });
+    assert.equal(res.status, 200);
+  });
+
+  it('accepts a command from a local page and from a client that sends no Origin', TEST_TIMEOUT, async () => {
+    const cases: Record<string, string>[] = [{ origin: `http://localhost:${port}` }, { origin: `http://LocalHost:${port}` }, {}];
+    for (const headers of cases) {
+      const res = await req(port, '/api/command', { method: 'POST', headers, body: command });
+      assert.equal(res.status, 200, JSON.stringify(headers));
+    }
+  });
+
+  // A DNS-rebound name reaches 127.0.0.1 but still sends its own name as Host.
+  it('refuses a foreign Host, even on the right port', TEST_TIMEOUT, async () => {
+    for (const host of ['evil.com', `evil.com:${port}`, 'localhost.evil.com', '127.0.0.1.nip.io']) {
+      const res = await req(port, '/model.ifc', { headers: { host } });
+      assert.equal(res.status, 403, host);
+    }
+  });
+
+  // A tunnel (ssh -L 9000:127.0.0.1:<port>) or port 80 changes the Host port.
+  for (const host of ['localhost:9000', '127.0.0.1:9000', '[::1]:9000', 'LOCALHOST:9000', 'localhost']) {
+    it(`serves Host ${host}`, TEST_TIMEOUT, async () => {
+      const res = await req(port, '/api/status', { headers: { host } });
+      assert.equal(res.status, 200);
+    });
+  }
+
+  it('is not reachable on a non-loopback interface', TEST_TIMEOUT, async (t) => {
+    const external = Object.values(networkInterfaces())
+      .flat()
+      .find((i) => i && i.family === 'IPv4' && !i.internal);
+    if (!external) return t.skip('no external IPv4 interface to probe');
+    // Refused or dropped (timeout) both reject; only a reachable server answers.
+    await assert.rejects(fetch(`http://${external.address}:${port}/api/status`, { signal: AbortSignal.timeout(2_000) }));
   });
 });
 
@@ -766,7 +879,7 @@ describe('viewer server — startup contract', () => {
     try {
       assert.ok(seenPort > 0);
       assert.equal(seenPort, port);
-      assert.equal(seenUrl, `http://localhost:${seenPort}`);
+      assert.equal(seenUrl, `http://127.0.0.1:${seenPort}`);
       const res = await req(seenPort, '/api/status');
       assert.equal(res.status, 200);
     } finally {
@@ -813,7 +926,7 @@ describe('viewer server — startup contract', () => {
     await new Promise<void>((resolve, reject) => {
       const probe = net.createServer();
       probe.once('error', reject);
-      probe.listen(seenPort, () => {
+      probe.listen(seenPort, '127.0.0.1', () => {
         probe.close(() => resolve());
       });
     });
@@ -830,7 +943,7 @@ describe('viewer server — startup contract', () => {
     const blocker = net.createServer();
     await new Promise<void>((resolve, reject) => {
       blocker.once('error', reject);
-      blocker.listen(0, () => resolve());
+      blocker.listen(0, '127.0.0.1', () => resolve());
     });
     const addr = blocker.address();
     const occupiedPort = typeof addr === 'object' && addr ? addr.port : -1;

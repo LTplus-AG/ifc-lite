@@ -85,6 +85,29 @@ if (sandbox.moduleRetired) {
 - Machine-readable bridge schema (`NAMESPACE_SCHEMAS`, exported at `@ifc-lite/sandbox/schema`) for LLM tool integration
 - Survives the upstream QuickJS teardown abort by retiring the WASM module it poisons (`SandboxAbortError`, `Sandbox.moduleRetired` — see above)
 
+## Present script results
+
+`bim.ui` emits A2UI v1.0 messages alongside a script's return value and logs.
+For example, use the rows returned by the query directly:
+
+```js
+const walls = bim.query.byType('IfcWall');
+bim.ui.table({ columns: [{ path: 'Name' }], rows: walls });
+```
+
+Use `table`, `stats`, `chart`, `legend`, `actions`, `callout`, `entity` or `list`
+for a single section. Use `show({ title, sections })` for several sections in one
+surface. Sections have a `kind` matching the helper name, or `text` for a plain
+text section. Entity references accept `{ modelId, expressId }` or a
+`"modelId:expressId"` string. A table can also use custom row objects with an
+optional `ref` and values keyed by column path.
+
+Each call returns a host-generated surface ID. `ScriptResult.surfaces` contains
+one message batch per successful call, in call order. The sandbox allows up to
+8 surfaces per run, 2,000 rows per table and 256 KiB of UTF-8 JSON per run.
+A call that exceeds a limit throws a script error. Disable the namespace with
+`permissions: { ui: false }`.
+
 ## Links
 
 - Docs: https://ifclite.dev/docs/

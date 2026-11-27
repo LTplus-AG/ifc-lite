@@ -45,6 +45,7 @@ let runtime: FastPathRuntime | null = null;
  * one-line change. With it off nothing is prepared and every load meshes as before.
  */
 export function fastPathSwitch(): unknown {
+  // The global instance plan applies only past this tier (`GLOBAL_INSTANCING_MIN_BYTES`), so it keeps the fast path.
   return readPerfFlag('fastPath') ?? getPerfFlagDefinition('fastPath').default;
 }
 

@@ -101,9 +101,7 @@ fn adjusted_type_universe() -> std::collections::BTreeMap<(&'static str, &'stati
                 let name = ty.name().to_ascii_uppercase();
                 let Some(src) = super::schema_attribute_names(from, &name) else { continue };
                 let new_type = super::convert_entity_type(&name, from, to);
-                if super::should_skip_entity(&new_type, to)
-                    || !crate::schema_unrepresented::has_representation(true, &new_type, to)
-                {
+                if super::should_skip_entity(&new_type, to) {
                     continue;
                 }
                 let Some(tgt) = super::schema_attribute_names(to, &new_type) else { continue };
@@ -159,7 +157,7 @@ const SOURCE_LAYOUT_EXEMPT: &[(&str, &str)] = &[
     ("IFCCONSTRUCTIONRESOURCE", "abstract in both schemas"),
     ("IFCWORKCONTROL", "abstract in both schemas"),
     ("IFCSURFACETEXTURE", "abstract in both schemas"),
-    ("IFCMATERIALPROPERTIES", "abstract in IFC2X3; its downgrade needs the Material referent resolved, so it stays as on main here (#10763 follow-up)"),
+    ("IFCMATERIALPROPERTIES", "abstract in IFC2X3, so only the IFC4 downgrade (renamed) has instances"),
     ("IFCPROFILEPROPERTIES", "abstract in IFC2X3, so only the IFC4 downgrade (renamed) has instances"),
     ("IFCSTRUCTURALLINEARACTION", "schema_structural::attributes"),
     ("IFCSTRUCTURALPLANARACTION", "schema_structural::attributes"),

@@ -117,10 +117,17 @@ mutation) plus pre-baked prompts.
 ```bash
 ifc-lite mcp ./model.ifc                 # stdio transport (default)
 ifc-lite mcp ./model.ifc --read-only     # hide all mutation tools
-ifc-lite mcp ./arch.ifc ./struct.ifc --federate
+ifc-lite mcp ./arch.ifc ./struct.ifc     # several files, one session
 ifc-lite mcp --transport http --port 8765 --token <secret>
 # (equivalent standalone binary: ifc-lite-mcp …)
 ```
 
-Tool families and the discovery-first calling pattern are documented in
+In Claude Code, the `ifc-lite` plugin from this repository runs the viewer bridge for you:
+
+```bash
+claude plugin marketplace add LTplus-AG/ifc-lite
+claude plugin install ifc-lite@ifc-lite
+```
+
+Tool families, the discovery-first calling pattern and interactive result surfaces are documented in
 [`mcp-tools.md`](./mcp-tools.md).

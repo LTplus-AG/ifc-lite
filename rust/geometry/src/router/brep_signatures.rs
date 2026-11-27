@@ -8,7 +8,7 @@ use super::*;
 
 /// Model-scoped memo of completed fast BREP signatures, keyed by express id.
 /// Create a fresh cache for every source/model; identical ids in different
-/// models must never share this cache. Quality, scale and RTC are folded later.
+/// models must never share this cache. Quality, scale, RTC and frame policy are folded later.
 #[derive(Clone, Default)]
 pub struct SharedBrepSignatureCache(Arc<Mutex<FxHashMap<u32, u128>>>);
 
@@ -25,7 +25,8 @@ impl GeometryRouter {
         self.shared_brep_signatures = Some(cache);
     }
 
-    fn brep_key_with_params(&self, structural: u128, rtc: (f64, f64, f64)) -> u128 {
+    fn meshed_item_key(&self, structural: u128, rtc: (f64, f64, f64)) -> u128 {
+        let structural = super::content_hash::fold(structural, u64::from(self.local_frame_enabled()));
         super::content_hash::key_with_params(structural, self.tessellation_quality().to_index(), self.unit_scale(), rtc)
     }
 
@@ -36,7 +37,7 @@ impl GeometryRouter {
     }
 
     /// Cache key for an item: its structural hash combined with the router params
-    /// that change the meshed output (tessellation quality / unit scale / RTC), or
+    /// that change the meshed output (tessellation quality / unit scale / RTC / frame policy), or
     /// `None` when dedup is disabled (skips the hash walk so disabled = zero
     /// overhead). The quality fold is what keeps `setTessellationQuality` correct —
     /// the shared cache persists across quality changes on a worker, so the key
@@ -87,7 +88,7 @@ impl GeometryRouter {
             if let Some(cache) = &self.shared_brep_signatures {
                 let hit = cache.0.lock().unwrap_or_else(|e| e.into_inner()).get(&item.id).copied();
                 if let Some(signature) = hit {
-                    return Some(self.brep_key_with_params(signature, rtc));
+                    return Some(self.meshed_item_key(signature, rtc));
                 }
             }
             if let Some(face_count) = super::content_hash::faceted_brep_face_count(decoder, item.id) {
@@ -104,13 +105,13 @@ impl GeometryRouter {
                     if let Some(signature) = super::content_hash::try_faceted_brep_signature(decoder, item.id) {
                         self.content_sig_memo.borrow_mut().insert(item.id, signature);
                         cache.0.lock().unwrap_or_else(|e| e.into_inner()).insert(item.id, signature);
-                        return Some(self.brep_key_with_params(signature, rtc));
+                        return Some(self.meshed_item_key(signature, rtc));
                     }
                 }
                 let mut memo = self.content_sig_memo.borrow_mut();
                 let mut refused = self.content_hash_oversized_ref_drops.borrow_mut();
                 let signature = super::content_hash::item_signature_after_failed_brep(decoder, item.id, &mut memo, &mut refused);
-                return Some(self.brep_key_with_params(signature, rtc));
+                return Some(self.meshed_item_key(signature, rtc));
             }
         }
         let structural = {
@@ -118,12 +119,7 @@ impl GeometryRouter {
             let mut refused = self.content_hash_oversized_ref_drops.borrow_mut();
             super::content_hash::item_signature(decoder, item.id, &mut memo, &mut refused)
         };
-        Some(super::content_hash::key_with_params(
-            structural,
-            self.tessellation_quality().to_index(),
-            self.unit_scale(),
-            rtc,
-        ))
+        Some(self.meshed_item_key(structural, rtc))
     }
 
 }

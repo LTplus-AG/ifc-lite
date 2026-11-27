@@ -5,6 +5,14 @@
 /** Source-owned type groups emitted into the sandbox scripting declarations. */
 export const BIM_DERIVED_TYPE_GROUPS = [
   {
+    title: 'Script result surface types', namespace: 'BimUi',
+    sources: [
+      'packages/sandbox/src/bridge-ui.ts', 'packages/a2ui/src/builders.ts',
+      'packages/a2ui/src/query.ts', 'packages/a2ui/src/policy.ts', 'packages/sdk/src/types.ts',
+    ],
+    roots: ['ScriptUiSurface'],
+  },
+  {
     title: 'Generic group lifecycle types', namespace: 'BimGroup',
     sources: ['packages/sdk/src/store-group-types.ts', 'packages/sdk/src/types.ts',
       'packages/create/src/in-store/group.ts', 'packages/create/src/in-store/group-graph.ts'],

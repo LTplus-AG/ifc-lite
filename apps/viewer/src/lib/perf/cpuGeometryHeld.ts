@@ -14,6 +14,7 @@
 
 import type { Renderer } from '@ifc-lite/renderer';
 import type { MeshData } from '@ifc-lite/geometry';
+import { visitCompactPayload } from '@ifc-lite/geometry/compact';
 
 /** The renderer's visitor contract (`Renderer.visitCpuGeometry`), without widening the package's exports. */
 type CpuGeometryVisitor = Parameters<Renderer['visitCpuGeometry']>[0];
@@ -21,6 +22,11 @@ type CpuGeometryKind = Parameters<CpuGeometryVisitor>[2];
 
 /** Store meshes: the same arrays the renderer's walk visits for its own pieces. */
 function visitMeshArrays(owner: string, mesh: MeshData, visit: CpuGeometryVisitor): void {
+  if (mesh.compact) {
+    // A compact mesh holds its batch's payload, not arrays: reading the three properties would decode it.
+    visitCompactPayload(mesh.compact.payload, (array, kind) => visit(owner, array, kind));
+    return;
+  }
   visit(owner, mesh.positions, 'positions');
   visit(owner, mesh.normals, 'normals');
   visit(owner, mesh.indices, 'indices');

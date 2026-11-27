@@ -34,7 +34,7 @@ export function assertModelAccess(ctx: ToolContext, model: LoadedModel): LoadedM
 }
 
 /** Model IDs the caller's scope permits — never leak identifiers outside scope. */
-function listAllowedModelIds(ctx: ToolContext): string[] {
+export function listAllowedModelIds(ctx: ToolContext): string[] {
   return ctx.registry.list().filter((m) => modelAllowed(ctx.scope, m.id)).map((m) => m.id);
 }
 
@@ -161,6 +161,8 @@ export function resolveGlobalIds(model: LoadedModel, globalIds: Iterable<string>
   return carriers;
 }
 
+export function okResult<T extends Record<string, unknown>>(text: string, structured: T): CallToolResult & { structuredContent: T };
+export function okResult(text: string, structured?: Record<string, unknown>): CallToolResult;
 export function okResult(text: string, structured?: Record<string, unknown>): CallToolResult {
   const content: ContentBlock[] = [{ type: 'text', text }];
   if (structured) {

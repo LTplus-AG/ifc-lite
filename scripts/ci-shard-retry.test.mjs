@@ -555,10 +555,13 @@ test('#9788 review: in `shadow` no retry result reaches Mergify; in `on` both at
   // eslint-disable-next-line no-template-curly-in-string
   assert.equal(e2eRetry.env.MERGIFY_TOKEN, "${{ vars.CI_SHARD_RETRY == 'on' && secrets.MERGIFY_TOKEN || '' }}");
   const env = { MERGIFY_TOKEN: 'secret', PATH: '/bin' };
-  const shadow = e2eRetryCommand({ mode: 'shadow', shard: '3/8', lastFailedFile: 'f', env, budgetMs: 60_000 });
+  const shadow = e2eRetryCommand({ mode: 'shadow', files: ['tests/e2e/a\\.e2e\\.spec\\.ts$'], lastFailedFile: 'f', env, budgetMs: 60_000 });
   assert.deepEqual(shadow.args.filter((a) => a.startsWith('--reporter=')), ['--reporter=list,json']); // @source-text-assertion-ok filters the derived argv, not a source file
   assert.equal(shadow.env.MERGIFY_TOKEN, undefined);
-  const on = e2eRetryCommand({ mode: 'on', shard: '3/8', lastFailedFile: 'f', env, budgetMs: 60_000 });
+  // The shard is selected by file filters, passed through ahead of the flags; `--shard` is gone.
+  assert.equal(shadow.args[shadow.args.indexOf('test:e2e:ci') + 1], 'tests/e2e/a\\.e2e\\.spec\\.ts$'); // @source-text-assertion-ok inspects the derived argv, not a source file
+  assert.deepEqual(shadow.args.filter((a) => a.startsWith('--shard')), []); // @source-text-assertion-ok inspects the derived argv, not a source file
+  const on = e2eRetryCommand({ mode: 'on', files: ['tests/e2e/a\\.e2e\\.spec\\.ts$'], lastFailedFile: 'f', env, budgetMs: 60_000 });
   assert.deepEqual(on.args.filter((a) => a.startsWith('--reporter=')), ['--reporter=list,@mergifyio/playwright,json']); // @source-text-assertion-ok filters the derived argv, not a source file
   assert.equal(on.env.MERGIFY_TOKEN, 'secret');
 });

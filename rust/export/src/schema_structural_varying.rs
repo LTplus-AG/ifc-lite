@@ -150,7 +150,11 @@ impl StructuralVarying {
     pub(crate) fn needs_ids(&self) -> impl Iterator<Item = u32> + '_ { self.planned.keys().copied() }
 
     /// Whether `entity` is an IFC2X3 varying action.
-    pub(crate) fn is_varying(entity: &str) -> bool { KINDS.iter().any(|k| k.ifc2x3 == entity) }
+    pub(crate) fn is_varying(entity: &str) -> bool { Self::target(entity).is_some() }
+
+    pub(crate) fn target(entity: &str) -> Option<&'static str> {
+        KINDS.iter().find(|kind| entity.eq_ignore_ascii_case(kind.ifc2x3)).map(|kind| kind.ifc4)
+    }
 
     /// Whether this varying action converts and still needs a configuration id.
     pub(crate) fn plans(&self, id: u32) -> bool { self.planned.contains_key(&id) }
@@ -314,11 +318,11 @@ mod tests {
     }
 
     #[test]
-    fn a_subset_keeps_the_varying_action_unconverted_9668() {
+    fn a_subset_with_all_load_locations_converts_the_varying_action_11037() {
         let source = model("IFC2X3", LINE);
         let (out, _) = export_step_with_stats(source.as_bytes(), &StepOptions { included: Some(vec![1, 10, 11, 20, 21, 30]), ..to("IFC4") }).unwrap();
-        assert!(record(&out, "#30=").starts_with("#30=IFCSTRUCTURALLINEARACTIONVARYING("), "{out}");
-        assert!(configs(&out).is_empty(), "{out}");
+        assert!(record(&out, "#30=").starts_with("#30=IFCSTRUCTURALCURVEACTION("), "{out}");
+        assert_eq!(configs(&out), ["#31=IFCSTRUCTURALLOADCONFIGURATION($,(#20,#21),$);"]);
     }
 
     #[test]

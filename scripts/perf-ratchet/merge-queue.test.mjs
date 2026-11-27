@@ -24,15 +24,21 @@ import { parse } from 'yaml';
 const REPO_ROOT = fileURLToPath(new URL('../..', import.meta.url));
 const cfg = parse(readFileSync(join(REPO_ROOT, '.mergify.yml'), 'utf8'));
 const CEILING_FILES = readdirSync(join(REPO_ROOT, 'tests/perf-ratchets'))
+  // @source-text-assertion-ok a directory listing of ceiling files by name, not file text
   .filter((f) => f.endsWith('.json'))
   .map((f) => `tests/perf-ratchets/${f}`);
 
-/** @param {string} cond @param {{ labels: string[], draft: boolean, files: string[], head: string, statuses: string[], unresolvedThreads: number }} pr */
+/**
+ * `statuses` are the green checks/statuses, `failing` and `pending` the others
+ * by name; a name in none of them is absent.
+ * @param {string} cond
+ * @param {{ labels: string[], draft: boolean, files: string[], head: string, statuses: string[], failing: string[], pending: string[], unresolvedThreads: number }} pr
+ */
 function matches(cond, pr) {
   if (cond.or) return cond.or.some((c) => matches(c, pr));
   if (cond.and) return cond.and.every((c) => matches(c, pr));
   // @source-text-assertion-ok subject is the parsed config, evaluated as conditions
-  const [, negated, kind, arg] = /^(-?)(draft$|label=|files~=|head=|status-success=|check-success=|#review-threads-unresolved=)(.*)$/.exec(cond) ?? [];
+  const [, negated, kind, arg] = /^(-?)(draft$|label=|files~=|head=|status-success=|check-success=|check-failure=|check-pending=|#review-threads-unresolved=)(.*)$/.exec(cond) ?? [];
   if (!kind) throw new Error(`merge-queue.test.mjs cannot evaluate Mergify condition ${JSON.stringify(cond)}; teach matches() its meaning`);
   const hit = {
     draft: () => pr.draft,
@@ -43,6 +49,8 @@ function matches(cond, pr) {
     'head=': () => pr.head === arg,
     'status-success=': () => pr.statuses.includes(arg),
     'check-success=': () => pr.statuses.includes(arg),
+    'check-failure=': () => pr.failing.includes(arg),
+    'check-pending=': () => pr.pending.includes(arg),
     '#review-threads-unresolved=': () => pr.unresolvedThreads === Number(arg),
   }[kind]();
   return negated ? !hit : hit;
@@ -66,7 +74,14 @@ const entersQueue = (pr) => queueFor(pr) !== null && all(cfg.merge_protections_s
 const READY = ['CLA', 'PR review signal'];
 /** One ordinary PR and one ceiling PR, one per non-release queue. */
 const QUEUED_FILES = [['apps/viewer/src/main.tsx'], ['tests/perf-ratchets/bundle.json']];
-const pr = (files, extra = {}) => ({ labels: ['mergify-trial'], draft: false, files, head: 'feature/x', statuses: READY, unresolvedThreads: 0, ...extra });
+const pr = (files, extra = {}) => ({ labels: ['mergify-trial'], draft: false, files, head: 'feature/x', statuses: READY, failing: [], pending: [], unresolvedThreads: 0, ...extra });
+/**
+ * The status the selected viewer tests post (test.yml). A literal, not an
+ * import of the new poster, so the revert oracle can still load this file on
+ * main's production code; ci-viewer-select-status.test.mjs pins the poster's
+ * name against .mergify.yml.
+ */
+const VIEWER_SELECTION = 'PR viewer selection';
 const RELEASE = 'changeset-release/main';
 
 test('a lowering PR like #8459 goes to the ceilings queue, for every committed ceiling family', () => {
@@ -127,4 +142,27 @@ test('a labelled PR waits outside the queue until its review gate is green and i
     assert.equal(entersQueue(pr(files, { unresolvedThreads: 2 })), false, 'review threads still open');
   }
   assert.ok(entersQueue(pr(['Cargo.toml'], { head: RELEASE, statuses: ['CLA'], unresolvedThreads: 1 })), 'the release PR has no review gate');
+});
+
+test('a failing or pending PR viewer selection status keeps a PR out; an absent one does not (the job is skipped)', () => {
+  for (const files of QUEUED_FILES) {
+    assert.ok(entersQueue(pr(files)), 'absent: full lane, docs-only, fork PR or switch off');
+    assert.ok(entersQueue(pr(files, { statuses: [...READY, VIEWER_SELECTION] })), 'success');
+    assert.equal(entersQueue(pr(files, { failing: [VIEWER_SELECTION] })), false, 'a selected viewer test failed');
+    assert.equal(entersQueue(pr(files, { pending: [VIEWER_SELECTION] })), false, 'the selected tests have not reported yet');
+  }
+  assert.ok(entersQueue(pr(['Cargo.toml'], { head: RELEASE, failing: [VIEWER_SELECTION] })), 'the release PR is exempt');
+});
+
+test('the viewer selection status gates entry only: no queue re-checks it while queued, which would dequeue on a re-run', () => {
+  // A re-run of the job turns the status pending, then maybe failing: a queued PR stays queued and mergeable.
+  const red = { failing: [VIEWER_SELECTION], pending: [VIEWER_SELECTION] };
+  for (const files of QUEUED_FILES) {
+    const q = queueFor(pr(files, red));
+    assert.ok(q, 'still admitted by its queue');
+    // Every check green except this status, which is failing and pending: a
+    // queue condition of any kind on it would fail here.
+    const green = { includes: (name) => name !== VIEWER_SELECTION };
+    assert.ok(all(q.merge_conditions, pr(files, { ...red, statuses: green })), `${q.name}: still mergeable`);
+  }
 });

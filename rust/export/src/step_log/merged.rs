@@ -55,6 +55,9 @@ pub fn export_merged_models_with_logs(
         })
         .collect();
     let (out, mut stats) = export_merged_models(&inputs, opts);
+    if out.is_empty() {
+        return Err(io::Error::new(io::ErrorKind::InvalidData, stats.warnings.join("\n")));
+    }
     if georef_dropped > 0 {
         stats.warnings.push(format!(
             "{georef_dropped} model log(s) carried georeferencing edits, which a merged export does not apply (as MergedExporter does not); export the model on its own to write them."

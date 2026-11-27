@@ -1,0 +1,44 @@
+diff --git a/scripts/perf/flag-qualify-lib.mjs b/scripts/perf/flag-qualify-lib.mjs
+index 61fdb7cf01..a48743148a 100644
+--- a/scripts/perf/flag-qualify-lib.mjs
++++ b/scripts/perf/flag-qualify-lib.mjs
+@@ -30,7 +30,7 @@ export function registryFlagSpec(id, registrySource) {
+   const entry = new RegExp(`id: '${id.replace(/[^\w.-]/g, '')}',(?:(?!id: ')[\\s\\S])*?bindings: \\{([^}]*)\\}`).exec(registrySource);
+   if (!entry) return null;
+   const binding = (key) => new RegExp(`${key}: '([^']+)'`).exec(entry[1])?.[1];
+-  const parts = [binding('urlParam') && `${binding('urlParam')}=1`].filter(Boolean);
++  const parts = [binding('urlParam') && `${binding('urlParam')}=1`, binding('global') && `${binding('global')}=1`].filter(Boolean);
+   return parts.length ? parts.join(',') : null;
+ }
+ 
+@@ -85,7 +85,7 @@ export function flagBootScript(flagSet) {
+   const url = new URL(location.href);
+   let changed = false;
+   for (const [name, value] of Object.entries(forced.params)) {
+-    if (!url.searchParams.has(name)) { url.searchParams.set(name, value); changed = true; }
++    if (url.searchParams.get(name) !== value) { url.searchParams.set(name, value); changed = true; }
+   }
+   if (changed) history.replaceState(history.state, '', url);
+   globalThis.__IFC_LITE_QUALIFY_FLAGS__ = forced;
+@@ -221,7 +221,7 @@ export function compareArms(off, on, { pixelMaxPct = 0.1, threshold = 8, readFil
+     // differs by clearly more than that (twice main's own difference plus the gate).
+     const noisy = noisePct !== null && noisePct > pixelMaxPct;
+     const gated = !noisy ? (cmp.stats.overPct <= pixelMaxPct ? 'pass' : 'fail')
+-      : cmp.stats.overPct > 20 * noisePct + pixelMaxPct ? 'fail' : 'skip';
++      : cmp.stats.overPct > 2 * noisePct + pixelMaxPct ? 'fail' : 'skip';
+     const verdict = gated === 'pass' && !settled ? 'skip' : gated;
+     add(area, `${id} pixels`, verdict,
+       `${noisy && verdict === 'skip' ? 'inconclusive, main is not deterministic here: ' : ''}${cmp.stats.overPct}% > ${threshold}/255 (max ${cmp.stats.max}, ${cmp.stats.isolatedPct}% isolated; gate ${pixelMaxPct}%${noisePct === null ? '' : `, main vs main ${noisePct}%`})${unstable}`, diff || b.frame.path);
+diff --git a/scripts/perf/flag-qualify-pixels.mjs b/scripts/perf/flag-qualify-pixels.mjs
+index 229d9dafa9..d84f84ba80 100644
+--- a/scripts/perf/flag-qualify-pixels.mjs
++++ b/scripts/perf/flag-qualify-pixels.mjs
+@@ -24,7 +24,7 @@ export function pixelStats(a, b, width, height, { threshold = 8 } = {}) {
+     const d = Math.max(Math.abs(a[i] - b[i]), Math.abs(a[i + 1] - b[i + 1]), Math.abs(a[i + 2] - b[i + 2]));
+     if (d) differing++;
+     if (d > max) max = d;
+-    if (d >= threshold) { over[p] = 1; count++; }
++    if (d > threshold) { over[p] = 1; count++; }
+   }
+   let isolated = 0;
+   for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {

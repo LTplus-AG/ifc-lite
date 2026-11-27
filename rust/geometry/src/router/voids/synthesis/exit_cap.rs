@@ -11,6 +11,7 @@
 //! Occupancy beyond a cap still separates an exit from a jamb, independent of
 //! host winding. Uncertain finite-contact arithmetic retains the old verdict.
 
+mod paired;
 use super::super::geom::{mesh_point, point_inside_mesh_agreed, project_aabb_in_frame};
 use super::super::{OpeningFrame, NORMALIZE_EPSILON};
 // Re-exported (not just imported) so `exit_cap::any_vertex_is_large` and
@@ -392,8 +393,8 @@ pub(super) fn detect(host: &Mesh, f: &CutterFrame, pad: f64) -> ExitCaps {
             Some(_) => Cap::Free,
         }
     };
-    ExitCaps {
+    paired::retain_floor(ExitCaps {
         min: classify(min_has_surface, min_local, omn, -1.0, host_at_min),
         max: classify(max_has_surface, max_local, omx, 1.0, host_at_max),
-    }
+    }, host, f)
 }

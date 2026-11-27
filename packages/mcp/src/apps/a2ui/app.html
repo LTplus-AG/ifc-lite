@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ifc-lite result</title>
+<style>
+:root { color-scheme: light dark; font: 14px/1.45 system-ui, sans-serif; --accent: light-dark(#176478, #82cfdf); --border: light-dark(#d1dce0, #38464a); --raised: light-dark(#f4f8f9, #212b2f); }
+:root[data-theme=light] { color-scheme: light; }
+:root[data-theme=dark] { color-scheme: dark; }
+*, *::before, *::after { box-sizing: border-box; }
+body { margin: 0; padding: .75rem; color: CanvasText; }
+main, .column, .card { display: grid; gap: .85rem; min-width: 0; }
+h1, h2, p, dl, dd, ul { margin: 0; }
+h1 { font-size: 1.25rem; }
+h2 { font-size: 1rem; margin-block-end: .5rem; }
+.card { border: 1px solid var(--border); border-radius: .65rem; padding: 1rem; }
+.row, .stats, .actions { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
+.tile { background: var(--raised); border-radius: .4rem; padding: .6rem .85rem; }
+dd { font-size: 1.3rem; font-weight: 650; }
+.table-scroll { overflow: auto; }
+table { border-collapse: collapse; width: 100%; }
+th, td { text-align: start; vertical-align: top; padding: .45rem; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+th { background: var(--raised); }
+td button { text-align: start; }
+.chart, .legend { padding: 0; list-style: none; display: grid; gap: .4rem; }
+.chart li { display: grid; grid-template-columns: minmax(0, 12rem) minmax(0, 1fr); align-items: center; gap: .65rem; }
+.chart svg { display: block; width: 100%; height: .6rem; fill: var(--accent); }
+.legend li { display: flex; align-items: center; gap: .5rem; }
+.swatch { width: .9rem; height: .9rem; border: 1px solid var(--border); border-radius: .2rem; }
+.callout { background: var(--raised); border-inline-start: 3px solid var(--accent); padding: .6rem .85rem; }
+button, input, textarea, select { font: inherit; color: inherit; }
+button { border: 1px solid var(--border); border-radius: .35rem; background: var(--raised); padding: .22rem .55rem; cursor: pointer; }
+button:disabled { cursor: default; opacity: .5; }
+button:focus-visible, button[aria-pressed=true] { outline: 2px solid var(--accent); }
+nav { margin-block-start: .55rem; }
+label { display: flex; gap: .5rem; align-items: center; }
+.muted, #status { color: var(--accent); }
+#status:not(:empty) { margin-block-start: .6rem; }
+</style>
+</head>
+<body>
+<main aria-label="IFC result"><p>Waiting for IFC results…</p></main>
+<p id="status" role="status"></p>
+<!-- APP_SCRIPT -->
+</body>
+</html>

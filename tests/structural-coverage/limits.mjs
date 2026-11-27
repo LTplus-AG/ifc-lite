@@ -64,7 +64,7 @@ const nonConformingOnly = (entity, schema, why) => new RegExp(`^(.+): (\\d+) of 
 const idsOf = (m) => m[3].split(', ').map((id) => Number(id.slice(1)));
 const IFC2X3_AXIS = nonConformingOnly('\\w+', 'IFC4', 'Axis: required value empty');
 const OWNER_HISTORY = nonConformingOnly('\\w+', 'IFC2X3', 'OwnerHistory: required value empty');
-const LOST = /^(.+)#(\d+): lost$/;
+const CAME_BACK_AS_PROXY = /^(.+)#(\d+): came back as IFCPROXY$/;
 
 const axisSchema = (entity, cite) => ({
   row: `IFC2X3/${entity}`, level: 'convert', kind: 'schema', problem: IFC2X3_AXIS, cite,
@@ -78,7 +78,7 @@ const axisSchema = (entity, cite) => ({
 });
 
 const reactionSchema = (entity, what) => ({
-  row: `IFC4/${entity}`, level: 'convert', kind: 'schema', problem: LOST,
+  row: `IFC4/${entity}`, level: 'convert', kind: 'schema', problem: CAME_BACK_AS_PROXY,
   cite: `IFC2X3 IfcStructuralReaction is ONEOF(IfcStructuralPointReaction) (IFC2X3_TC1.exp:7480): no IFC2X3 entity holds a ${what} reaction`,
   holds: (f, m) => recordOf(f, m)?.type === entity.toUpperCase() && !f.has('IFC2X3', entity),
 });
@@ -105,16 +105,6 @@ export const LIMITS = [
     },
   },
   {
-    row: 'IFC4/IfcRelConnectsStructuralActivity', level: 'convert', kind: 'schema',
-    problem: /^(.+)#(\d+): RelatedStructuralActivity "[^"]*", was "[^"]*"$/,
-    cite: 'the activity it names came back as another record because IFC2X3 held it only as IfcProxy (same cause as above)',
-    holds: (f, m) => {
-      const step = f.file(m[1]);
-      const rel = recordOf(f, m);
-      return rel?.type === 'IFCRELCONNECTSSTRUCTURALACTIVITY' && proxied(f, step, step.get(rel.args[5]));
-    },
-  },
-  {
     row: 'IFC4/IfcStructuralAnalysisModel', level: 'convert', kind: 'schema',
     problem: /^(.+)#(\d+): SharedPlacement "#IFCLOCALPLACEMENT", was null$/,
     cite: 'IFC2X3 IfcStructuralAnalysisModel has no SharedPlacement (IFC2X3_TC1.exp:7251); a source that left it empty and one that set it to the placement its items share give the same IFC2X3 file, and IFC4 informal proposition 1 says it is provided when items are grouped',
@@ -122,7 +112,7 @@ export const LIMITS = [
       && f.slot('IFC2X3', 'IfcStructuralAnalysisModel', 'SharedPlacement') === null,
   },
   {
-    row: 'IFC4/IfcStructuralCurveAction', level: 'convert', kind: 'schema', problem: LOST,
+    row: 'IFC4/IfcStructuralCurveAction', level: 'convert', kind: 'schema', problem: CAME_BACK_AS_PROXY,
     cite: 'IFC2X3 has no IfcStructuralCurveAction (IfcStructuralAction ONEOF, IFC2X3_TC1.exp:7230); its varying action has no PredefinedType (IFC2X3_TC1.exp:7312), so a LINEAR or POLYGONAL action cannot come back as such',
     holds: (f, m) => {
       const rec = recordOf(f, m);

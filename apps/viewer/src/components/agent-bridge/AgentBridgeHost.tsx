@@ -10,11 +10,12 @@
  */
 
 import { isFeatureEnabled } from '@/lib/features';
-import { Suspense, useEffect } from 'react';
+import { Suspense, useEffect, useSyncExternalStore } from 'react';
 import { lazyChunk } from '@/lib/lazy-chunk';
 import { consumePendingPairingFragment, onPairingFragment } from '@/lib/agent-bridge/pairing-fragment';
 import { closeAgentBridgeDialog, requestAgentBridgeDialog, useAgentBridgeState, type AgentBridgeStatus } from '@/lib/agent-bridge/state';
 import { useViewerStore } from '@/store';
+import { agentSurfaces } from '@/lib/agent-bridge/agent-surfaces';
 
 const AgentBridgeDialog = lazyChunk(() => import('./AgentBridgeDialog').then((m) => ({ default: m.AgentBridgeDialog })));
 /** A fresh dialog per request, so a second link re-seeds the code and port. */
@@ -27,6 +28,7 @@ function requestKey(request: object): number {
 }
 
 const AgentBridgeChip = lazyChunk(() => import('./AgentBridgeChip').then((m) => ({ default: m.AgentBridgeChip })));
+const AgentSurfacesDock = lazyChunk(() => import('./AgentSurfacesDock').then((m) => ({ default: m.AgentSurfacesDock })));
 const AgentBridgeMobileIndicator = lazyChunk(() => import('./AgentBridgeMobileIndicator').then((m) => ({ default: m.AgentBridgeMobileIndicator })));
 
 /** A live or just-ended connection is shown; a failed attempt stays in its dialog. */
@@ -44,6 +46,7 @@ export function AgentBridgeHost() {
   const isMobile = useViewerStore((s) => s.isMobile);
   // The bridge pairs a local AI agent, so it goes with the AI feature (`lib/features`).
   const enabled = isFeatureEnabled('ai.assistant');
+  const hasSurfaces = useSyncExternalStore(agentSurfaces.subscribe, () => agentSurfaces.getSnapshot().length > 0);
   useEffect(() => {
     if (!enabled) return undefined;
     const take = () => {
@@ -57,6 +60,7 @@ export function AgentBridgeHost() {
   return (
     <>
       {isMobile && visible(status) && <Suspense fallback={null}><AgentBridgeMobileIndicator /></Suspense>}
+      {hasSurfaces && <Suspense fallback={null}><AgentSurfacesDock /></Suspense>}
       {dialog && <Suspense fallback={null}><AgentBridgeDialog key={requestKey(dialog)} request={dialog} onClose={closeAgentBridgeDialog} /></Suspense>}
     </>
   );

@@ -256,3 +256,16 @@ describe('alpha-split slot keys', () => {
         assert.match(key, ALPHA_SLOT_KEY);
     });
 });
+
+describe('XRayAlpha on a batch that gains ids', () => {
+    it('resolves a grown batch again instead of answering for its first ids', () => {
+        // A compact page (compact-store.ts) is one batch object whose id list grows while a model streams.
+        const xray = new XRayAlpha({ ghostExceptIds: new Set([7]) }, NONE);
+        const page = batchOf(1, 2);
+        assert.strictEqual(xray.isGhostBatch(page), true);
+        assert.strictEqual(xray.groupsForBatch(page, 1), null);
+        (page.expressIds as number[]).push(7);
+        assert.strictEqual(xray.isGhostBatch(page), false, 'id 7 is not a ghost');
+        assert.strictEqual(xray.groupsForBatch(page, 1)?.length, 2, 'the page now needs a split');
+    });
+});

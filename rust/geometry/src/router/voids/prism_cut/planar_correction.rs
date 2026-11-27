@@ -34,8 +34,8 @@ pub(in crate::router::voids) fn correct_planar_overlap(
         let opening = CutterKind::NonRectangular(cutter.clone(), lo.cast(), hi.cast(), None);
         let mut prism = prepare_prism(&opening, mesh)?;
         let aabbs: Vec<_> = tris.iter().map(PTri::aabb).collect();
-        extend_prism_caps(&mut prism, &tris, &aabbs);
-        tris = cut_prism(&tris, &prism).ok()?;
+        let existing_floors = extend_prism_caps(&mut prism, &tris, &aabbs);
+        tris = cut_prism(&tris, &prism, existing_floors).ok()?;
     }
     let out = dedup_cut_vertices(&mesh_from_ptris(&tris, mesh), mesh);
     closed_enough_to_emit(&out).then_some(out)

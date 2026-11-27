@@ -302,6 +302,15 @@ describe('useSandbox().execute() — cross-instance run supersession', () => {
     );
   });
 
+  it('publishes script result surfaces through the hook and viewer store', async () => {
+    await act(async () => {
+      const result = await execute1!('bim.ui.callout({ text: "Viewer result" });');
+      assert.ok(result?.surfaces?.length);
+      assert.equal(result.surfaces[0][0].createSurface.surfaceId, result.value);
+      assert.deepEqual(useViewerStore.getState().scriptLastResult?.surfaces, result.surfaces);
+    });
+  });
+
   it('does not gate a run that nothing supersedes', async () => {
     // The counter-example to the test above: same fixture, same gate, same
     // late settle — but no second instance running. Every store write must

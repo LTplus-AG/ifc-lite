@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "why": "Keep the viewer drawing source loadable while dropping the model placement of read-back chunks: a released federated drawing then differs from the complete-model oracle.",
+  "key": "apps/viewer/src/lib/drawing/drawing-geometry-source.ts",
+  "mutation": "tests/evidence/drawing-readback-source-10264/behaviour.oracle.patch",
+  "test": "apps/viewer/src/lib/drawing/drawing-geometry-source.test.ts"
+}

@@ -3,6 +3,10 @@
 import { describe, expect, it } from 'vitest';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { StepExporter, exportToStep } from './step-exporter.js';
+import { convertStepLine } from './schema-converter.js';
+import { EnumReconciliation } from './schema-converter-enums.js';
+import { SourceRecords } from './schema-converter-structural-source.js';
+import { remapEntityText } from './merged-remap.js';
 import { analyzeConversionLoss } from './schema-conversion-loss-report.js';
 
 const model = (schema: string, data: string): string =>
@@ -20,7 +24,7 @@ describe('IfcDocumentInformation <-> IfcDocumentReference link (#10846)', () => 
     const ifc4 = `#1=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'P',$,$,$,$,$,$);
 #5=IFCDOCUMENTINFORMATION('D1','Doc',$,$,$,$,$,$,$,$,$,$,$,$,$,$,$);
 #6=IFCDOCUMENTREFERENCE('a.pdf','A1',$,$,#5);
-#7=IFCDOCUMENTREFERENCE('b.pdf','B1',$,$,#5);
+#7=IFCDOCUMENTREFERENCE('b.pdf','B1',$,'note',#5);
 #6=IFCPROPERTYSINGLEVALUE('Replacement',$,IFCLABEL('Value'),$);`;
     const bytes = new TextEncoder().encode(model('IFC4', ifc4));
     const store = await new IfcParser().parseColumnar(bytes.buffer as ArrayBuffer, {
@@ -130,4 +134,16 @@ describe('IfcDocumentInformation <-> IfcDocumentReference link (#10846)', () => 
     const out = exportToStep(await parse(model('IFC2X3', IFC2X3)), { schema: 'IFC4', subsetEntityIds: new Set([5, 6, 7]) });
     expect(record(out, 6)).toBe("#6=IFCDOCUMENTREFERENCE('a.pdf','A1',$,$,$);");
   });
+});
+
+
+it('moves a prepared link beside a wide output reference through schema conversion (#10846)', async () => {
+  const doc = "#5=IFCDOCUMENTINFORMATION('D1','Doc',$,$,$,$,$,$,#1,$,$,$,$,$,$,$,$);";
+  const data = "#1=IFCPERSON($,'P',$,$,$,$,$,$);\n" + doc + "\n#6=IFCDOCUMENTREFERENCE('a.pdf','A1',$,$,#5);";
+  const enums = new EnumReconciliation();
+  enums.documents.fromSource(new SourceRecords(await parse(model('IFC4', data))), 'IFC4', 'IFC2X3');
+  const remapped = remapEntityText(doc, 0, new Map([[1, 4294967296]]), true);
+  expect(() => convertStepLine(remapped, 'IFC4', 'IFC2X3')).toThrow('invalid STEP argument list');
+  expect(convertStepLine(remapped, 'IFC4', 'IFC2X3', undefined, undefined, undefined, undefined, enums, Number.MAX_SAFE_INTEGER))
+    .toContain("'D1','Doc',$,(#6),$,$,$,$,#4294967296,");
 });

@@ -1,0 +1,26 @@
+diff --git a/packages/renderer/src/draw-stream-picks.ts b/packages/renderer/src/draw-stream-picks.ts
+--- a/packages/renderer/src/draw-stream-picks.ts
++++ b/packages/renderer/src/draw-stream-picks.ts
+@@ -29,7 +29,7 @@
+   const far = Math.sqrt(farDist2(node.min, node.max, f.eye));
+   if (node.minRadius * pxPerMetre(f.projection, far) * 0.999 >= Math.max(f.contribPx, f.lodPx)) return MemberPick.Lod0;
+   const pickOf = (k: number): MemberPick => {
+-    const b = members[node.members[k]!]!, px = f.projectedPx(node.min, node.max);
++    const b = members[node.members[k]!]!, px = b.bounds ? f.projectedPx(b.bounds.min, b.bounds.max) : Infinity;
+     if (f.contribPx > 0 && px < f.contribPx) return MemberPick.Cull;
+     if (!(b.lod1IndexBuffer && b.lod1IndexCount)) return MemberPick.AnyLod;
+     return f.lodPx > 0 && px < f.lodPx ? MemberPick.Lod1 : MemberPick.Lod0;
+diff --git a/packages/renderer/src/draw-stream-nodes.ts b/packages/renderer/src/draw-stream-nodes.ts
+--- a/packages/renderer/src/draw-stream-nodes.ts
++++ b/packages/renderer/src/draw-stream-nodes.ts
+@@ -28,9 +28,7 @@
+   // first of two coincident surfaces wins, and coincident duplicates (a federated revision) share
+   // one AABB and so one node. Sorting f32 members first drew a quantized model's copy over the
+   // other one's colour override (#11370 qualification, federation).
+-  const nodes = [...byCell.values()];
+-  for (const n of nodes) n.members.sort((a, b) => Number(!!members[a]!.quantized) - Number(!!members[b]!.quantized));
+-  return nodes;
++  return [...byCell.values()];
+ }
+ 
+ export interface HlodLinks {

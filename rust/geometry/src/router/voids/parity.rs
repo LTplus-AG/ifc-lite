@@ -59,29 +59,34 @@ pub(in crate::router::voids) fn axis_line_crosses_mesh(
     point: Point3<f64>,
     axis: &Vector3<f64>,
 ) -> bool {
-    for tri in mesh.indices.chunks_exact(3) {
-        let (Some(a), Some(b), Some(c)) = (
-            mesh_point(mesh, tri[0]),
-            mesh_point(mesh, tri[1]),
-            mesh_point(mesh, tri[2]),
-        ) else {
-            continue;
-        };
-        if ray_triangle_param(
+    axis_mesh_intersections(mesh, point, *axis).next().is_some()
+}
+
+/// Whether the forward half of the line intersects any face.
+pub(in crate::router::voids) fn axis_ray_crosses_mesh(
+    mesh: &Mesh,
+    point: Point3<f64>,
+    axis: Vector3<f64>,
+) -> bool {
+    axis_mesh_intersections(mesh, point, axis).any(|t| t >= 0.0)
+}
+
+fn axis_mesh_intersections(
+    mesh: &Mesh,
+    point: Point3<f64>,
+    axis: Vector3<f64>,
+) -> impl Iterator<Item = f64> + '_ {
+    mesh.indices.chunks_exact(3).filter_map(move |tri| {
+        ray_triangle_param(
             point.into(),
-            (*axis).into(),
-            a.into(),
-            b.into(),
-            c.into(),
+            axis.into(),
+            mesh_point(mesh, tri[0])?.into(),
+            mesh_point(mesh, tri[1])?.into(),
+            mesh_point(mesh, tri[2])?.into(),
             1e-9,
             1e-9,
         )
-        .is_some()
-        {
-            return true;
-        }
-    }
-    false
+    })
 }
 
 /// Whether `opening` is a redundant cutter — every column through its footprint

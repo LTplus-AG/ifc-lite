@@ -147,6 +147,7 @@ pub mod material_layer_index;
 /// op-order and FMA contract.
 pub mod math;
 pub mod mesh;
+mod styled_parts;
 // Closure / pairing / volume checks over triangle soups; `pub` only for the shared test oracles.
 #[cfg(feature = "test-support")]
 pub mod mesh_check;
@@ -243,7 +244,7 @@ pub use extrusion::{extrude_profile, extrude_profile_lofted, extrude_profile_wit
 pub use instancing::{
     bake_source_at_world, collate_and_encode, collate_instances, collate_refs,
     collate_refs_in_basis, collate_refs_verified_in, compose_instance_world_row_major, decode_instance_finishes, decode_instanced,
-    encode_instanced, encode_refs, encode_refs_with_finishes, instance_rel_row_major_f32, verify_recomposition, Collated,
+    encode_instanced, encode_refs, encode_refs_with_finishes, instance_rel_row_major_f32, recomposes, verify_recomposition, Collated,
     DecodedInstance, DecodedInstanced, DecodedTemplate, InstanceMeshRef, InstanceOccurrence,
     InstanceTemplate, INSTANCED_MAGIC, INSTANCED_VERSION,
 };
@@ -251,6 +252,7 @@ pub use material_layer_index::{
     LayerAxis, LayerBuildup, LayerInfo, MaterialLayerFlat, MaterialLayerIndex,
 };
 pub use mesh::{InstanceMeta, Mesh, SubMesh, SubMeshCollection};
+pub use styled_parts::StyledSubMeshes;
 pub use mesh_orient::{orient_mesh_outward, orient_mesh_outward_verdict, OrientVerdict};
 pub use processors::{
     AdvancedBrepProcessor, BooleanClippingProcessor, ExtrudedAreaSolidProcessor,

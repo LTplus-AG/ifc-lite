@@ -13,7 +13,8 @@ export interface SegmentOption<Value extends string> {
 
 interface SegmentedControlProps<Value extends string> {
   label: string;
-  value: Value;
+  /** Absent: no option is selected. */
+  value?: Value;
   options: readonly SegmentOption<Value>[];
   onValueChange: (value: Value) => void;
   disabled?: boolean;

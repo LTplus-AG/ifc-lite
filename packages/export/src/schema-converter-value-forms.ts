@@ -15,13 +15,16 @@
  */
 
 import { getCanonicalEntityName, getSchemaRegistryForVersion, type SchemaVersionWithRegistry } from '@ifc-lite/parser';
+import { CalendarDates } from './schema-calendar-dates.js';
 import { valueForm, valueFormSlotsOf } from './schema-value-form-policy.js';
 import { getAttrMaps } from './schema-converter-attr-maps.js';
-import { withoutComments } from './step-comment-skip.js';
+import { holdsValue, withoutComments } from './step-comment-skip.js';
 import { listItems } from './schema-converter-structural-axes.js';
 import { readStepSlots } from './step-argument-parser.js';
+import { DURATION_TIME_UNIT_WARNING, durationFromSeconds, durationToSeconds, hasNonSecondProjectTimeUnit } from './schema-converter-durations.js';
+import type { SourceStore } from './schema-converter-structural-source.js';
 import { stepRecordHead } from './step-record-frame.js';
-import { parseStepNumber, skipStepTrivia } from './step-slot-grammar.js';
+import { isStepValue, parseStepNumber, skipStepTrivia } from './step-slot-grammar.js';
 
 interface Rule {
   readonly index: number;
@@ -35,6 +38,7 @@ interface Rule {
   readonly forms: ReadonlyMap<string, string | null>;
   /** Typed forms with a payload row (`T:NAME(F)`), the only ones whose payload is read. */
   readonly payload: ReadonlySet<string>;
+  readonly hasCalendar: boolean;
 }
 
 const SCHEMAS = new Set(['IFC2X3', 'IFC4', 'IFC4X3']);
@@ -62,6 +66,7 @@ function rulesFor(from: string, to: string, type: string): Rules {
     empty: slot.empty,
     whole: slot.whole,
     forms: new Map(slot.rejected.map((f) => [f.split('>')[0], f.split('>')[1] ?? null])),
+    hasCalendar: slot.rejected.some((f) => f.includes('>C')),
     payload: new Set(slot.rejected.filter((f) => f.split('>')[0].endsWith(')')).map((f) => f.slice(0, f.indexOf('(')))),
   })) };
   byType.set(type, rules);
@@ -76,8 +81,8 @@ function wholeDecimal(token: string): boolean {
 }
 
 /** How many values a slot holds: its members, or one unless it is `$`. */
-function valueCount(slot: string): number {
-  return listItems(slot)?.length ?? (valueForm(withoutComments(slot)) === null ? 0 : 1);
+function valueCount(slot: string, maxReferenceId?: number): number {
+  return listItems(slot, maxReferenceId)?.length ?? (valueForm(withoutComments(slot)) === null ? 0 : 1);
 }
 
 /** A typed value's argument, `NAME(arg)` -> `arg`. */
@@ -86,9 +91,14 @@ function unwrapped(body: string): string | null {
   return close < 0 ? null : body.slice(body.indexOf('(') + 1, close).trim();
 }
 
+/** Retype exactly one STEP string without decoding its escapes. */
+function asText(value: string | null): string | null {
+  return value?.startsWith("'") && isStepValue(value) ? 'IFCTEXT(' + value + ')' : null;
+}
+
 /** The one member of an aggregate; null for any other count. */
-function onlyMember(list: string | null): string | null {
-  const members = list === null ? null : listItems(list);
+function onlyMember(list: string | null, maxReferenceId?: number): string | null {
+  const members = list === null ? null : listItems(list, maxReferenceId);
   return members?.length === 1 ? members[0].trim() : null;
 }
 
@@ -108,16 +118,16 @@ function narrowed(value: string, body: string, form: string, rule: Rule): { valu
 }
 
 /** `value` in the target's form (null to drop it), and how many values that lost. */
-function fix(value: string, prefix: string, rule: Rule): { value: string | null; lost: number } {
+function fix(value: string, prefix: string, rule: Rule, markDuration: () => void, maxReferenceId?: number): { value: string | null; lost: number } {
   const start = skipStepTrivia(value, 0);
   if (start < 0) return { value, lost: 0 };
   if (value[start] === '(') {
-    const members = listItems(value);
+    const members = listItems(value, maxReferenceId);
     if (!members) return { value, lost: 0 };
     const kept: string[] = [];
     let lost = 0;
     for (const member of members) {
-      const fixed = fix(member, `${prefix}A`, rule);
+      const fixed = fix(member, `${prefix}A`, rule, markDuration, maxReferenceId);
       lost += fixed.lost;
       if (fixed.value !== null) kept.push(fixed.value);
     }
@@ -132,13 +142,17 @@ function fix(value: string, prefix: string, rule: Rule): { value: string | null;
   // The shared STEP number grammar gates the integer form; `wholeDecimal` reads the digits.
   const fixed = to === null ? null
     : to.startsWith('T:') ? `${to.slice(2)}(${body})`
+    : to === 'TEXT' ? asText(unwrapped(body))
+    : to === 'D+' ? durationFromSeconds(body)
+    : to === 'D-' ? durationToSeconds(body)
     : to === 'U' ? unwrapped(body)
-    : to === 'U1' ? onlyMember(unwrapped(body))
+    : to === 'U1' ? onlyMember(unwrapped(body), maxReferenceId)
     : asInteger(body); // an integer form, `I` or `AI`
   // A set of references that could not be unwrapped loses each of them, and at least one value,
   // so an emptied slot is always named.
+  if (fixed !== null && (to === 'D+' || to === 'D-')) markDuration();
   const inner = to === 'U1' ? unwrapped(body) : null;
-  const lost = fixed === null ? Math.max(1, inner === null ? 1 : valueCount(inner)) : 0;
+  const lost = fixed === null ? Math.max(1, inner === null ? 1 : valueCount(inner, maxReferenceId)) : 0;
   return { value: fixed, lost };
 }
 
@@ -147,26 +161,37 @@ export class ValueForms {
   /** Per `TYPE.Attribute`: values dropped, and those that left a required slot `$`. */
   private readonly dropped = new Map<string, number>();
   private readonly emptied = new Map<string, number>();
+  private readonly narrowedDates = new Map<string, number>();
+  readonly dates: CalendarDates;
+  private durationConverted = false;
+  private readonly markDuration = () => { this.durationConverted = true; };
+
+  constructor(deferDates = false, private readonly timeUnitSources: readonly SourceStore[] = []) { this.dates = new CalendarDates(deferDates); }
 
   /** `line`, already converted from `from` to `to`, with every slot in a form the target accepts. */
-  apply(line: string, from: string, to: string): string {
+  apply(line: string, from: string, to: string, maxReferenceId?: number): string {
     if (!SCHEMAS.has(from) || !SCHEMAS.has(to) || from === to) return line;
     // The head names the type; most records stop before their slots are split.
     const head = stepRecordHead(line);
-    const { arity, rules } = head ? rulesFor(from, to, line.slice(head.typeStart, head.typeEnd).toUpperCase()) : NONE;
-    const record = rules.length ? readStepSlots(line) : null;
+    if (!head) return line;
+    const { arity, rules } = rulesFor(from, to, line.slice(head.typeStart, head.typeEnd).toUpperCase());
+    const record = rules.length ? readStepSlots(line, maxReferenceId) : null;
     // A record whose arity is not the target's is left alone: slot i need not be attribute i.
     if (!record || record.slots.length !== arity) return line;
     const slots = [...record.slots];
     let changed = false;
     for (const rule of rules) {
       if (rule.index >= slots.length) continue;
-      const fixed = fix(slots[rule.index], '', rule);
+      const form = rule.hasCalendar ? valueForm(withoutComments(slots[rule.index])) : null;
+      const calendar = form === null ? null : rule.forms.get(form);
+      if (calendar?.startsWith('C') && this.dates.defer(line, rule.index, calendar,
+        (narrowed) => this.count(narrowed ? this.narrowedDates : rule.required ? this.emptied : this.dropped, rule.where, 1))) continue;
+      const fixed = fix(slots[rule.index], '', rule, this.markDuration, maxReferenceId);
       if (fixed.lost && rule.whole.length) {
         // Positional members: every slot of the group goes whole, each named for what it held.
         for (const i of rule.whole) {
           // The generator gives every slot of a group a row like this one.
-          const own = rules.find((r) => r.index === i), held = own ? valueCount(slots[i]) : 0;
+          const own = rules.find((r) => r.index === i), held = own ? valueCount(slots[i], maxReferenceId) : 0;
           if (!own || !held) continue;
           const emptied = own.empty && own.required ? '()' : '$';
           this.count(emptied === '$' && own.required ? this.emptied : this.dropped, own.where, held);
@@ -184,6 +209,11 @@ export class ValueForms {
         changed = true;
       }
     }
+    if (to === 'IFC2X3' && record.type === 'IFCPROPERTYBOUNDEDVALUE' && !holdsValue(slots[2]) && !holdsValue(slots[3])) {
+      // Leaving out the record could strand references from property sets or other resources.
+      const instance = line.slice(0, head.eq).trim();
+      throw new Error(`Cannot convert ${instance} (IfcPropertyBoundedValue) to IFC2X3: WR22 requires UpperBoundValue or LowerBoundValue, and neither bound can be carried.`);
+    }
     return changed ? `${record.prefix}${slots.join(',')}${record.suffix}` : line;
   }
 
@@ -200,6 +230,11 @@ export class ValueForms {
     return [
       ...line(this.dropped, 'were dropped'),
       ...line(this.emptied, 'left a slot the target requires as $, so the file is not valid against its header'),
+      ...this.dates.warnings(),
+      ...(this.narrowedDates.size ? [
+        `${[...this.narrowedDates.values()].reduce((sum, count) => sum + count, 0)} date value(s) kept the calendar date and dropped the time and any timezone: ${[...this.narrowedDates.keys()].sort().join(', ')} (#10879).`,
+      ] : []),
+      ...(this.durationConverted && this.timeUnitSources.some(hasNonSecondProjectTimeUnit) ? [DURATION_TIME_UNIT_WARNING] : []),
     ];
   }
 }

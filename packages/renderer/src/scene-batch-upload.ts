@@ -18,6 +18,19 @@ import {
   LOD_MIN_TRIANGLES,
 } from './lod-simplify.js';
 
+/**
+ * Batches built while the scene drew no quantized vertices (`'off'`), e.g. before the quantized
+ * pipeline probe resolved. `requantizeEarlyBatches` (quantized-lifecycle.ts) rebuilds the bucket
+ * batches among them once the pipelines exist.
+ */
+export const builtUnquantized = new WeakSet<BatchedMesh>();
+
+/** Record `batch` in `builtUnquantized` when it was built with quantization off; returns it. */
+export function noteQuantization(quantized: BatchQuantization, batch: BatchedMesh): BatchedMesh {
+  if (quantized === 'off') builtUnquantized.add(batch);
+  return batch;
+}
+
 /** Stage a complete GPU batch. No Scene state changes until this succeeds. */
 export function createSceneBatch(
   meshDataArray: MeshData[],
@@ -38,6 +51,8 @@ export function createSceneBatch(
     lattice?: LatticeFrame;
     /** The vertex buffer can be copied from (a fragment a finalize may assemble from). */
     copySource?: boolean;
+    /** Vertex and index buffers can be copied from (draw-stream arenas, `Scene.setDrawStreamArena`). */
+    arenaCopySource?: boolean;
   },
   bucketKey?: string,
 ): BatchedMesh {
@@ -101,7 +116,8 @@ export function createSceneBatch(
         'its partial-batch depth will not match the base geometry (#4832).',
       );
     }
-    const vertexUsage = GPUBufferUsage.VERTEX | (options.copySource ? GPUBufferUsage.COPY_SRC : 0);
+    const arenaUsage = options.arenaCopySource ? GPUBufferUsage.COPY_SRC : 0;
+    const vertexUsage = GPUBufferUsage.VERTEX | (options.copySource ? GPUBufferUsage.COPY_SRC : 0) | arenaUsage;
     if (quantizedData) {
       vertexBuffer = track(createStaticGpuBuffer(device, quantizedData.vertexData, vertexUsage));
       quantized = { min: quantizedData.quantMin, step: quantizedData.step };
@@ -110,7 +126,7 @@ export function createSceneBatch(
     }
 
     // Create index buffer
-    const indexBuffer = track(createStaticGpuBuffer(device, merged.indices, GPUBufferUsage.INDEX));
+    const indexBuffer = track(createStaticGpuBuffer(device, merged.indices, GPUBufferUsage.INDEX | arenaUsage));
 
     const uniform = createBatchUniform(device, pipeline);
     uniformSlot = uniform.uniformSlot;
@@ -120,8 +136,8 @@ export function createSceneBatch(
     // vertex buffer. Bucket-owned batches only (`bucketKey` present) — the
     // transient streaming fragments and partial/overlay sub-batches never pay
     // the build. Positions in `merged.vertexData` are relative to the batch
-    // origin, which is fine: clustering is translation-invariant as long as
-    // the cell size comes from the same-space bounds extent.
+    // origin; `frameOrigin` anchors the cells in world space, so the result
+    // does not depend on which batch set the shared frame (lod-simplify.ts).
     let lod1IndexBuffer: GPUBuffer | undefined;
     let lod1IndexCount: number | undefined;
     let lodIndices: Uint32Array | null | undefined;
@@ -140,15 +156,16 @@ export function createSceneBatch(
         BATCH_CONSTANTS.BYTES_PER_VERTEX / 4,
         merged.indices,
         cellSize,
+        { frameOrigin: options.origin },
       );
       if (lodIndices) {
-        lod1IndexBuffer = track(createStaticGpuBuffer(device, lodIndices, GPUBufferUsage.INDEX));
+        lod1IndexBuffer = track(createStaticGpuBuffer(device, lodIndices, GPUBufferUsage.INDEX | arenaUsage));
         lod1IndexCount = lodIndices.length;
       }
     }
     options.onMerged?.({ vertexData: quantizedData?.vertexData ?? merged.vertexData, indices: merged.indices, ...(lodIndices ? { lod1Indices: lodIndices } : {}) });
 
-    return {
+    return noteQuantization(options.quantized, {
       id: options.id,
       colorKey: options.colorKey,
       vertexBuffer,
@@ -169,7 +186,7 @@ export function createSceneBatch(
       origin: merged.origin,
       ...(lod1IndexBuffer ? { lod1IndexBuffer, lod1IndexCount } : {}),
       ...(quantized ? { quantized } : {}),
-    };
+    });
   } catch (error) {
     uniformSlot?.release();
     for (const buffer of allocated) {

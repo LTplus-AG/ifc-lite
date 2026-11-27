@@ -55,8 +55,8 @@ export class Ifc2x3SlotFill {
   }
 
   /** Apply both fills to an already-converted IFC2X3 line `#id=TYPE(attrs);`. */
-  apply(line: string): string {
-    return this.fillRequired(this.ownerHistory.apply(line));
+  apply(line: string, maxReferenceId?: number): string {
+    return this.fillRequired(this.ownerHistory.apply(line, maxReferenceId), maxReferenceId);
   }
 
   /** One warning per non-zero counter, in the channel the exporters already
@@ -88,14 +88,14 @@ export class Ifc2x3SlotFill {
    * Such a record is left alone AND not counted: nothing about its required
    * slots was established.
    */
-  private fillRequired(line: string): string {
+  private fillRequired(line: string, maxReferenceId?: number): string {
     const open = line.indexOf('(');
     const close = line.lastIndexOf(')');
     const eq = line.indexOf('=');
     if (eq < 0 || open <= eq || close <= open) return line;
     const row = BY_TYPE.get(line.slice(eq + 1, open).trim().toUpperCase());
     if (row === undefined) return line;
-    const values = splitTopLevelStepArguments(line.slice(open + 1, close));
+    const values = splitTopLevelStepArguments(line.slice(open + 1, close), maxReferenceId);
     if (values === null || values.length !== row.arity) return line;
     let changed = false;
     for (const [index, , fill] of row.slots) {

@@ -137,7 +137,7 @@ fn uses_userdefined_control_type_for_an_unrecognized_member_11006() {
 fn fills_commented_unset_userdefined_control_type_11006() {
     for unset in ["$", "*"] {
         let line = format!("#7=IFCWORKPLAN('g',#2,'P',$,$,'WP',$,$,$,$,$,$,$,.CUSTOMPLAN.,/* unset */{unset});");
-        let mut checks = ConversionChecks::new();
+        let mut checks = ConversionChecks::default();
         let out = checks.enums.apply(line, "IFC2X3");
         assert!(out.ends_with(",.USERDEFINED.,'CUSTOMPLAN');"), "{out}");
         let warnings = checks.enums.warnings();

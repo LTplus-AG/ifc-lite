@@ -159,6 +159,7 @@ export function collectShadowOccluders(
       ...(filtered ? { visibilityFiltered: true } : {}),
       vertexBuffer: batch.vertexBuffer,
       indexBuffer: batch.indexBuffer,
+      ...(batch.indexFormat ? { indexFormat: batch.indexFormat } : {}),
       indexCount: batch.indexCount,
       model: originModelMatrix(batch.origin),
       origin: batch.origin,

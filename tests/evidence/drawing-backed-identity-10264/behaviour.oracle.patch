@@ -1,0 +1,13 @@
+diff --git a/apps/viewer/src/lib/drawing/drawing-geometry-source.ts b/apps/viewer/src/lib/drawing/drawing-geometry-source.ts
+index 559a8150be..c8cceacf8b 100644
+--- a/apps/viewer/src/lib/drawing/drawing-geometry-source.ts
++++ b/apps/viewer/src/lib/drawing/drawing-geometry-source.ts
+@@ -227,7 +227,7 @@ export class DrawingGeometry {
+         // The backing mirrors the store list in order: the mesh at each position
+         // must be that list's mesh, not merely one of the model's.
+         const current = expected[read++];
+-        if (!current) {
++        if (!current || meshIdentity(current) !== meshIdentity(mesh)) {
+           throw new GeometryUnavailableError(`Model ${modelId}'s backed mesh ${read - 1} (#${mesh.expressId}) is not its current mesh${current ? ` #${current.expressId}` : ''}`);
+         }
+         if (!keep(mesh)) continue;

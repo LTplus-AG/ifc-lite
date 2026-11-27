@@ -23,6 +23,17 @@ pub(super) fn emit_jobs_chunk(
     jobs: &[(u32, usize, usize, IfcType)],
     affinity: &[u32],
 ) -> Result<(), JsValue> {
+    emit_planned_jobs_chunk(on_event, jobs, affinity, None)
+}
+
+/// [`emit_jobs_chunk`] plus, when the pre-pass plans content keys, each job's
+/// plan index (`planIndex`, parallel to the jobs; see `prepass_key_plan.rs`).
+pub(super) fn emit_planned_jobs_chunk(
+    on_event: &Function,
+    jobs: &[(u32, usize, usize, IfcType)],
+    affinity: &[u32],
+    plan: Option<&[u32]>,
+) -> Result<(), JsValue> {
     if jobs.is_empty() {
         return Ok(());
     }
@@ -40,6 +51,9 @@ pub(super) fn emit_jobs_chunk(
     crate::api::set_js_prop(&event, "type", &"jobs".into());
     crate::api::set_js_prop(&event, "jobs", &arr);
     crate::api::set_js_prop(&event, "affinity", &aff);
+    if let Some(plan) = plan {
+        crate::api::set_js_prop(&event, "planIndex", &js_sys::Uint32Array::from(plan));
+    }
     on_event.call1(&JsValue::NULL, &event.into())?;
     Ok(())
 }

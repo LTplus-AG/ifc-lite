@@ -3,23 +3,26 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { perfTally } from '@ifc-lite/load-trace';
+import { peekViewerStore } from '@/store/viewerStoreHandle';
 
 /** Retained GPU instance templates must keep their owner index after another
  * model is removed. Never compact indices in a live federation.
  *
  * The returned map is shared until an assignment changes (#7021): a streamed
  * append re-creates the store's `models` map, and a fresh index map per append
- * re-ran every memo keyed on it. Treat it as read-only.
+ * re-ran every memo keyed on it. Treat it as read-only. A captured map can
+ * scope the result, while the live federation alone drives assignments.
  *
  * `reserve` holds an id's slot before its model is registered (#8565: a
  * renderer asset created first must carry its final index). A held slot is
  * never reassigned or reset; the returned map lists registered models only. */
-export function createModelIndexAllocator() {
+export function createModelIndexAllocator(liveModels?: () => ReadonlyMap<string, unknown> | undefined) {
   let next = 0;
   const assigned = new Map<string, number>();
   const reserved = new Map<string, number>();
   let snapshot = new Map<string, number>();
-  const allocate = (models: ReadonlyMap<string, unknown>): Map<string, number> => {
+  const allocate = (requested: ReadonlyMap<string, unknown>): Map<string, number> => {
+    const models = liveModels?.() ?? requested;
     let changed = false;
     if (!models.size && !reserved.size && (assigned.size || next)) { assigned.clear(); next = 0; changed = true; }
     for (const id of assigned.keys()) if (!models.has(id) && !reserved.has(id)) { assigned.delete(id); changed = true; }
@@ -27,7 +30,9 @@ export function createModelIndexAllocator() {
     if (changed || snapshot.size !== models.size || [...snapshot.keys()].some((id) => !models.has(id))) {
       snapshot = new Map([...assigned].filter(([id]) => models.has(id)));
     }
-    return snapshot;
+    if (requested === models) return snapshot;
+    const scoped = [...snapshot].filter(([id]) => requested.has(id));
+    return scoped.length === snapshot.size ? snapshot : new Map(scoped);
   };
   const reserve = (id: string, models: ReadonlyMap<string, unknown>) => {
     allocate(models);
@@ -47,7 +52,7 @@ export function createModelIndexAllocator() {
   };
   return Object.assign(allocate, { reserve, assignedIndex: (id: string) => assigned.get(id) });
 }
-export const modelIndices = createModelIndexAllocator();
+export const modelIndices = createModelIndexAllocator(() => peekViewerStore()?.getState().models);
 
 /** How far each mesh array has been stamped, and with which index. */
 const stamped = new WeakMap<readonly MeshData[], { index: number; length: number }>();

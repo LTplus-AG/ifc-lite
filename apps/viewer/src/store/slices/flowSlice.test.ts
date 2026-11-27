@@ -124,6 +124,25 @@ describe('flowSlice', () => {
     assert.equal(useViewerStore.getState().flowDoc, null);
   });
 
+  it('deletes a graph when browser storage is unavailable, since nothing could have persisted it', () => {
+    delete g.localStorage;
+    const id = useViewerStore.getState().createFlow('No storage')!;
+    assert.equal(useViewerStore.getState().deleteFlow(id), true);
+    assert.equal(useViewerStore.getState().savedFlows.length, 0);
+    assert.equal(useViewerStore.getState().flowDoc, null);
+  });
+
+  it('refuses a delete when browser storage is blocked, since it may still hold the graph', () => {
+    const id = useViewerStore.getState().createFlow('Blocked later')!;
+    Object.defineProperty(globalThis, 'localStorage', { configurable: true, get() { throw new Error('SecurityError'); } });
+    try {
+      assert.equal(useViewerStore.getState().deleteFlow(id), false);
+      assert.equal(useViewerStore.getState().savedFlows[0]?.doc.id, id);
+    } finally {
+      delete g.localStorage;
+    }
+  });
+
   it('refuses a delete when an unreadable library cannot rule out that it holds the graph (#11258)', (t) => {
     const setItem = ls.setItem.bind(ls);
     t.mock.method(ls, 'setItem', (key: string, value: string) => {

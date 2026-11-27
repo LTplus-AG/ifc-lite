@@ -312,7 +312,7 @@ describe('item 8: aggregate limits, text-only content, provenance', () => {
   it('advertises image-content and forwards a valid image to the agent unchanged', async () => {
     const agent = await start();
     const { tab, welcome } = await paired(agent);
-    expect(welcome.features).toEqual(['image-content']);
+    expect(welcome.features).toEqual(['image-content', 'ui-events']);
     const pending = agent.call(READ_TOOL.name);
     const c = await tab.next('call');
     const data = btoa(String.fromCharCode(0xff, 0xd8, 0xff, 0xe0, 0, 16, 0x4a, 0x46, 0x49, 0x46, 0, 1));

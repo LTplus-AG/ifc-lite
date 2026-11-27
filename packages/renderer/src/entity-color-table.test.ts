@@ -144,6 +144,15 @@ describe('lane -> federated id (#6076)', () => {
     assert.equal(batchHasColorOverride(batch, new Map<number, Rgba>([[9, RED]]), 2), false);
     assert.equal(batchHasColorOverride(batch, null, 3), false);
   });
+
+  it('re-evaluates a batch that gained an entity within one generation (a compact page grows while streaming)', async () => {
+    const { batchHasColorOverride } = await requireColorTable();
+    const page = { expressIds: [1, 2] };
+    const overrides = new Map<number, Rgba>([[7, RED]]);
+    assert.equal(batchHasColorOverride(page, overrides, 4), false);
+    page.expressIds.push(7);
+    assert.equal(batchHasColorOverride(page, overrides, 4), true);
+  });
 });
 
 describe('entity colour table layout (#6076)', () => {

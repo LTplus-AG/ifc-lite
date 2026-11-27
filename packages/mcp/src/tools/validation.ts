@@ -3,12 +3,10 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Validation tools (spec §7.4): IDS, audit, gherkin.
+ * Validation tools (spec §7.4): IDS and audit.
  *
  * IDS validation pulls in the buildingSMART rule engine via @ifc-lite/ids.
  * model_audit produces a Lighthouse-style health score per category.
- * gherkin_check is stubbed (UNSUPPORTED_OPERATION) until the bSI Gherkin
- * engine ships into the workspace.
  */
 
 import { readFile } from 'node:fs/promises';
@@ -26,7 +24,7 @@ import { buildIdsAccessor } from './ids-accessor.js';
 import { nativeReviewModel, reviewCaptures, reviewAccess } from './review-captures.js';
 import { buildDropCensusIssues, dropCensusJson } from './drop-census-issues.js';
 
-const idsValidate: Tool = {
+export const idsValidate = {
   name: 'ids_validate',
   description: 'Run an IDS rule set against the model. Either pass `ids_xml` inline or `ids_path` to read from disk.',
   scope: 'validate',
@@ -79,7 +77,7 @@ const idsValidate: Tool = {
       throw error;
     }
   },
-};
+} satisfies Tool;
 
 /**
  * Resolve IDS source from `ids_xml` (inline) or `ids_path` (disk),
@@ -330,21 +328,4 @@ function clamp(v: number): number {
   return Math.max(0, Math.min(100, v));
 }
 
-const gherkinCheck: Tool = {
-  name: 'gherkin_check',
-  description: 'Run buildingSMART Gherkin validation rules. Not implemented in v0.1.',
-  scope: 'validate',
-  inputSchema: {
-    type: 'object',
-    properties: { model_id: { type: 'string' } },
-    additionalProperties: false,
-  },
-  handler() {
-    throw new ToolExecutionError({
-      code: ToolErrorCode.UNSUPPORTED_OPERATION,
-      message: 'gherkin_check is planned for v0.2; use ids_validate or model_audit.',
-    });
-  },
-};
-
-export const validationTools: Tool[] = [idsValidate, idsExplain, modelAudit, gherkinCheck];
+export const validationTools: Tool[] = [idsValidate, idsExplain, modelAudit];

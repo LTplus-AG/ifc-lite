@@ -22,16 +22,15 @@ import type { SandboxPermissions, LogEntry } from './types.js';
 import { DEFAULT_PERMISSIONS, SANDBOX_CONSOLE_LEVELS } from './types.js';
 import { HostWorkQueue } from './bridge-async.js';
 import { buildSchemaNamespaces, disposeSchemaNamespaceSession, type BridgeCallContext } from './bridge-schema.js';
+import { createScriptSurfaceCapture } from './script-surfaces.js';
 import type { FetchTransport } from './network-request.js';
 
 /**
  * Build the `bim` API object inside the QuickJS VM.
  *
- * Returns the captured log entries from console.* calls, plus `resetLogs` —
- * the caller must invoke it at the start of every run, because the capture
- * budget is scoped to one run (see `buildConsole`) — plus `hostWork`, the
- * queue of in-flight host promises the caller must settle before reading a
- * run's result (#2305, see bridge-async.ts).
+ * Call `resetLogs` at the start of every run to reset logs, surfaces and their
+ * budgets. Settle `hostWork` before reading the logs and taking the surfaces
+ * (#2305, see bridge-async.ts).
  */
 export function buildBridge(
   vm: QuickJSContext,
@@ -40,12 +39,14 @@ export function buildBridge(
   context: BridgeCallContext,
   networkGrants: readonly Capability[] = [],
   networkTransport?: FetchTransport,
-): { logs: LogEntry[]; resetLogs: () => void; hostWork: HostWorkQueue; dispose: () => void } {
+): { logs: LogEntry[]; resetLogs: () => void; hostWork: HostWorkQueue; takeSurfaces: ReturnType<typeof createScriptSurfaceCapture>['take']; dispose: () => void } {
   const perms = { ...DEFAULT_PERMISSIONS, ...permissions } as Required<SandboxPermissions>;
   const logs: LogEntry[] = [];
 
   // ── console.log / warn / error / info ──────────────────────
   const resetLogs = buildConsole(vm, logs);
+  const surfaces = createScriptSurfaceCapture();
+  const bridgeContext = { ...context, appendUiSurface: surfaces.append };
 
   // ── bim global ─────────────────────────────────────────────
   // The handle is freed in a `finally`: if namespace construction throws,
@@ -55,7 +56,7 @@ export function buildBridge(
   const bimHandle = vm.newObject();
   try {
     // All namespaces are schema-driven (model, query, viewer, mutate, lens, export, network)
-    buildSchemaNamespaces(vm, bimHandle, sdk, perms, context, hostWork, networkGrants, networkTransport);
+    buildSchemaNamespaces(vm, bimHandle, sdk, perms, bridgeContext, hostWork, networkGrants, networkTransport);
 
     vm.setProp(vm.global, 'bim', bimHandle);
   } finally {
@@ -64,11 +65,16 @@ export function buildBridge(
 
   return {
     logs,
-    resetLogs,
+    resetLogs: () => {
+      resetLogs();
+      surfaces.reset();
+    },
+    takeSurfaces: surfaces.take,
     hostWork,
     dispose: () => {
       // Before the vm/runtime frees: an unsettled deferred's resolver handles
       // are unmanaged lifetimes, and an orphan there aborts the module (#1905).
+      surfaces.take();
       hostWork.dispose();
       disposeSchemaNamespaceSession(context);
     },

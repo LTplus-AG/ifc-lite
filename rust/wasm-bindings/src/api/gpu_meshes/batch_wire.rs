@@ -50,6 +50,9 @@ impl crate::api::IfcAPI {
         source: BatchSource<'_>,
         wire: BatchWire<'_>,
     ) -> super::partitioned_batch::PartitionedBatch {
-        super::batch_output::partitioned(self.produce_batch(source.as_ref(), &wire, true), &wire)
+        // One read of the plan: the batch setup arms with it and the partition keys with it.
+        let plan = self.governing_global_plan(true, wire.needs_shift);
+        let output = self.produce_batch_planned(source.as_ref(), &wire, true, plan.as_ref());
+        super::batch_output::partitioned(output, &wire, plan)
     }
 }

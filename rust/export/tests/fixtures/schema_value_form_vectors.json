@@ -1,0 +1,47 @@
+{
+  "durations": [
+    {
+      "label": "large exponent",
+      "from": "IFC2X3",
+      "to": "IFC4",
+      "line": "#5=IFCWORKPLAN('g',$,'n',$,$,'id',$,$,$,1e100,$,$,$,.ACTUAL.,$);",
+      "expected": "#5=IFCWORKPLAN('g',$,'n',$,$,'id',$,$,$,'PT10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000S',$,$,$,.ACTUAL.);",
+      "dropped": 0
+    },
+    {
+      "label": "empty time part",
+      "from": "IFC4",
+      "to": "IFC2X3",
+      "line": "#5=IFCWORKPLAN('g',$,'n',$,$,'id',$,$,$,'P1DT',$,$,$,.ACTUAL.);",
+      "expected": "#5=IFCWORKPLAN('g',$,'n',$,$,'id',$,$,$,$,$,$,$,.ACTUAL.,$);",
+      "dropped": 1
+    },
+    {
+      "label": "trailing comment on downgrade (#11242)",
+      "from": "IFC4",
+      "to": "IFC2X3",
+      "line": "#5=IFCWORKPLAN('g',$,'n',$,$,'id',$,$,$,'PT10S' /* note */,$,$,$,.ACTUAL.);",
+      "expected": "#5=IFCWORKPLAN('g',$,'n',$,$,'id',$,$,$,10.,$,$,$,.ACTUAL.,$);",
+      "dropped": 0
+    },
+    {
+      "label": "leading comment on downgrade (#11242)",
+      "from": "IFC4",
+      "to": "IFC2X3",
+      "line": "#5=IFCWORKPLAN('g',$,'n',$,$,'id',$,$,$,/* note */ 'PT10S',$,$,$,.ACTUAL.);",
+      "expected": "#5=IFCWORKPLAN('g',$,'n',$,$,'id',$,$,$,10.,$,$,$,.ACTUAL.,$);",
+      "dropped": 0
+    },
+    {
+      "label": "trailing comment on upgrade (#11242)",
+      "from": "IFC2X3",
+      "to": "IFC4",
+      "line": "#5=IFCWORKPLAN('g',$,'n',$,$,'id',$,$,$,10. /* note */,$,$,$,.ACTUAL.,$);",
+      "expected": "#5=IFCWORKPLAN('g',$,'n',$,$,'id',$,$,$,'PT10S',$,$,$,.ACTUAL.);",
+      "dropped": 0
+    }
+  ],
+  "calendarWarnings": [
+    "1 date value(s) kept the calendar date and dropped the time and any timezone: IFCCOSTVALUE.ApplicableDate (#10879)."
+  ]
+}

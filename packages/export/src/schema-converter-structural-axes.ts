@@ -45,13 +45,13 @@ const IDENTITY: Frame = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
 /** A member's Axis on the downgrade: in the world frame, its source direction, and its placement's rotation. */
 type Plan = { world: Vec3; axis: number; frame: Frame };
 
-export function listItems(token: string | undefined): readonly string[] | null {
+export function listItems(token: string | undefined, maxReferenceId?: number): readonly string[] | null {
   if (token === undefined) return null;
   const start = skipStepTrivia(token, 0);
   if (start < 0 || token[start] !== '(') return null;
   // Reuse the shared record frame for a standalone tuple, including trailing
   // comments containing ')'. This parsing envelope is never exported.
-  return readStepSlots(`#0=IFCDIRECTION${token};`)?.slots ?? null;
+  return readStepSlots(`#0=IFCDIRECTION${token};`, maxReferenceId)?.slots ?? null;
 }
 
 /** The three finite ratios of a direction tuple, not all zero, or null. */

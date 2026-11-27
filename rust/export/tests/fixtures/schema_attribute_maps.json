@@ -155,13 +155,139 @@
    "why": "'Location and Description attributes added; Publisher and VersionDate data type changed; HasLibraryReferences inverse attribute added (previous LibraryReference changed to inverse).' Publisher went from IfcOrganization to IfcActorSelect, which an optional IFC2X3 slot cannot hold for a person"
   },
   {
+   "ifc2x3": "IFCEXTENDEDMATERIALPROPERTIES",
+   "ifc4": "IFCMATERIALPROPERTIES",
+   "renamed": [["ExtendedProperties", "Properties"]],
+   "retyped": [],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "IFC2X3 IfcMaterialProperties is abstract. IFC4: 'Entity made non-abstract. The subtypes ... IfcExtendedMaterialProperties have been deleted, use IfcMaterialProperties instead.' An upgrade writes IfcMaterialProperties (#10777). A downgrade writes IfcExtendedMaterialProperties (#10911) and resolves its IfcMaterialDefinition to exactly one IfcMaterial. If the referent cannot be resolved, the converter omits the record and reports the loss"
+  },
+  {
    "ifc2x3": "IFCGENERALPROFILEPROPERTIES",
    "ifc4": "IFCPROFILEPROPERTIES",
    "renamed": [],
    "retyped": [],
    "upOnly": [],
    "setOfOne": null,
-   "why": "IFC2X3 IfcProfileProperties is abstract. IFC4: 'Entity made non-abstract. Subtypes IfcGeneralProfileProperties, IfcStructuralProfileProperties, and IfcStructuralSteelProfileProperties deleted. Attribute ProfileName deleted ... Attribute ProfileDefinition made mandatory.' A downgrade writes IfcGeneralProfileProperties"
+   "why": "IFC2X3 IfcProfileProperties is abstract. IFC4: 'Entity made non-abstract. Subtypes IfcGeneralProfileProperties, IfcStructuralProfileProperties, and IfcStructuralSteelProfileProperties deleted. Attribute ProfileName deleted ... Attribute ProfileDefinition made mandatory.' A downgrade writes IfcGeneralProfileProperties, an upgrade IfcProfileProperties (#10777)"
+  },
+  {
+   "ifc2x3": "IFCMECHANICALMATERIALPROPERTIES",
+   "ifc4": "IFCMATERIALPROPERTIES",
+   "renamed": [],
+   "retyped": [],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "IfcMaterialProperties: 'The subtypes IfcMechanicalMaterialProperties, IfcThermalMaterialProperties, IfcHygroscopicMaterialProperties, IfcGeneralMaterialProperties, IfcOpticalMaterialProperties, IfcWaterProperties, IfcFuelProperties, IfcProductsOfCombustionProperties, IfcExtendedMaterialProperties have been deleted, use IfcMaterialProperties instead.' An upgrade writes IfcMaterialProperties. Only Material carries: IFC4 holds the measures as IfcProperty records (#10797), so each is dropped, and the required Properties stays $ and is counted"
+  },
+  {
+   "ifc2x3": "IFCMECHANICALCONCRETEMATERIALPROPERTIES",
+   "ifc4": "IFCMATERIALPROPERTIES",
+   "renamed": [],
+   "retyped": [],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "As IfcMechanicalMaterialProperties"
+  },
+  {
+   "ifc2x3": "IFCMECHANICALSTEELMATERIALPROPERTIES",
+   "ifc4": "IFCMATERIALPROPERTIES",
+   "renamed": [],
+   "retyped": [],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "As IfcMechanicalMaterialProperties"
+  },
+  {
+   "ifc2x3": "IFCTHERMALMATERIALPROPERTIES",
+   "ifc4": "IFCMATERIALPROPERTIES",
+   "renamed": [],
+   "retyped": [],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "As IfcMechanicalMaterialProperties"
+  },
+  {
+   "ifc2x3": "IFCHYGROSCOPICMATERIALPROPERTIES",
+   "ifc4": "IFCMATERIALPROPERTIES",
+   "renamed": [],
+   "retyped": [],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "As IfcMechanicalMaterialProperties"
+  },
+  {
+   "ifc2x3": "IFCGENERALMATERIALPROPERTIES",
+   "ifc4": "IFCMATERIALPROPERTIES",
+   "renamed": [],
+   "retyped": [],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "As IfcMechanicalMaterialProperties"
+  },
+  {
+   "ifc2x3": "IFCOPTICALMATERIALPROPERTIES",
+   "ifc4": "IFCMATERIALPROPERTIES",
+   "renamed": [],
+   "retyped": [],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "As IfcMechanicalMaterialProperties"
+  },
+  {
+   "ifc2x3": "IFCWATERPROPERTIES",
+   "ifc4": "IFCMATERIALPROPERTIES",
+   "renamed": [],
+   "retyped": [],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "As IfcMechanicalMaterialProperties"
+  },
+  {
+   "ifc2x3": "IFCFUELPROPERTIES",
+   "ifc4": "IFCMATERIALPROPERTIES",
+   "renamed": [],
+   "retyped": [],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "As IfcMechanicalMaterialProperties"
+  },
+  {
+   "ifc2x3": "IFCPRODUCTSOFCOMBUSTIONPROPERTIES",
+   "ifc4": "IFCMATERIALPROPERTIES",
+   "renamed": [],
+   "retyped": [],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "As IfcMechanicalMaterialProperties"
+  },
+  {
+   "ifc2x3": "IFCSTRUCTURALPROFILEPROPERTIES",
+   "ifc4": "IFCPROFILEPROPERTIES",
+   "renamed": [],
+   "retyped": [],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "IfcProfileProperties: 'Subtypes IfcGeneralProfileProperties, IfcStructuralProfileProperties, and IfcStructuralSteelProfileProperties deleted. Attribute ProfileName deleted, use ProfileDefinition.ProfileName instead.' An upgrade writes IfcProfileProperties. Only ProfileDefinition carries: the measures are dropped (#10797), and the required Properties stays $ and is counted"
+  },
+  {
+   "ifc2x3": "IFCSTRUCTURALSTEELPROFILEPROPERTIES",
+   "ifc4": "IFCPROFILEPROPERTIES",
+   "renamed": [],
+   "retyped": [],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "As IfcStructuralProfileProperties"
+  },
+  {
+   "ifc2x3": "IFCRIBPLATEPROFILEPROPERTIES",
+   "ifc4": "IFCPROFILEPROPERTIES",
+   "renamed": [],
+   "retyped": [],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "IFC4 has no IfcRibPlateProfileProperties either; as IfcStructuralProfileProperties"
   },
   {
    "ifc2x3": "IFCPERFORMANCEHISTORY",
@@ -180,6 +306,24 @@
    "upOnly": [],
    "setOfOne": null,
    "why": "'Attributes TaskTime and PredefinedType added.' Identification (IfcProcess) and LongDescription are inherited and inserted before Status; TaskId is the IFC2X3 identifier"
+  },
+  {
+   "ifc2x3": "IFCMOVE",
+   "ifc4": "IFCTASK",
+   "renamed": [["TaskId", "Identification"]],
+   "retyped": [],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "IFC4 deleted this IFC2X3 subtype of IfcTask; an upgrade writes it as IfcTask, TaskId as Identification (#10902). MoveFrom, MoveTo and PunchList have no IfcTask slot and are lost"
+  },
+  {
+   "ifc2x3": "IFCORDERACTION",
+   "ifc4": "IFCTASK",
+   "renamed": [["TaskId", "Identification"]],
+   "retyped": [],
+   "upOnly": [],
+   "setOfOne": null,
+   "why": "IFC4 deleted this IFC2X3 subtype of IfcTask; an upgrade writes it as IfcTask, TaskId as Identification (#10902). ActionID has no IfcTask slot and is lost"
   },
   {
    "ifc2x3": "IFCPROPERTYDEPENDENCYRELATIONSHIP",

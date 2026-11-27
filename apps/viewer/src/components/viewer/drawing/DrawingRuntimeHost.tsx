@@ -29,6 +29,7 @@ import { useDrawing2DPersistence } from '@/hooks/useDrawing2DPersistence';
 import { useDrawingMarkupRestoreOnLoad } from '@/hooks/useDrawingMarkupRestoreOnLoad';
 import { placedViewGeometry } from '@/lib/model-placement/view-geometry';
 import { publishDrawingRuntime } from '@/lib/drawing/drawing-runtime';
+import { isDrawingPanelShown } from '@/lib/section-drawing-settled';
 
 interface DrawingRuntimeHostProps {
   mergedGeometry?: GeometryResult | null;
@@ -41,11 +42,8 @@ export function DrawingRuntimeHost({ mergedGeometry, computedIsolatedIds }: Draw
   useDrawing2DPersistence();
   useDrawingMarkupRestoreOnLoad();
 
-  // A drawing view is on screen when the panel is docked in the bottom strip,
-  // floating, or popped out (#5493). Opening another bottom panel clears the
-  // dock flag but leaves a floating / popped-out drawing showing.
-  const panelVisible = useViewerStore((s) => s.drawing2DPanelVisible
-    || s.floatingPanels.some((p) => p.id === 'drawing') || s.poppedOutIds.includes('drawing'));
+  // Docked, floating or popped out (#5493); the settled signal uses the same rule.
+  const panelVisible = useViewerStore(isDrawingPanelShown);
   const sourceDrawing = useViewerStore((s) => s.drawing2D);
   const setDrawing = useViewerStore((s) => s.setDrawing2D);
   const setDrawingStatus = useViewerStore((s) => s.setDrawing2DStatus);

@@ -12,20 +12,35 @@ Model Context Protocol (MCP) server for **ifc-lite** — agent-native BIM via JS
 # Run against a local IFC file over stdio (the default for Claude Desktop / Cursor)
 npx @ifc-lite/mcp ./model.ifc
 
-# Federate multiple files
-npx @ifc-lite/mcp ./arch.ifc ./struct.ifc ./mep.ifc --federate
+# Several files in one session
+npx @ifc-lite/mcp ./arch.ifc ./struct.ifc ./mep.ifc
 
 # Read-only (no mutation tools advertised)
 npx @ifc-lite/mcp ./model.ifc --read-only
 
 # HTTP / Streamable HTTP for remote agents
-npx @ifc-lite/mcp ./model.ifc --transport http --port 8765 --token $API_TOKEN
+npx @ifc-lite/mcp --transport http --port 8765 --token $API_TOKEN --allow ./models
 
 # Auto-open the WebGL viewer at startup. Add --open to also pop the URL in
 # the system browser.
 npx @ifc-lite/mcp ./model.ifc --viewer
 npx @ifc-lite/mcp ./model.ifc --open
 ```
+
+## Building client distribution artifacts
+
+From the repository root:
+
+```bash
+pnpm --filter @ifc-lite/mcp release:manifests
+```
+
+With the project's WASM build toolchain installed, this builds a Claude
+Desktop `.mcpb`, a dependency inventory and the MCP Registry `server.json`
+for the package version under the gitignored `packages/mcp/release-out/`
+directory. Use `--no-bundle` to generate only `server.json`.
+The Registry entry identifies the matching npm release. Registry publication
+requires that npm version to exist with the same `mcpName`.
 
 ## Embedded loaded-model authoring
 
@@ -53,6 +68,23 @@ references. Public `run_flow` routes `element.stair` / `element.railing` through
 `model.addElement`; each successful graph creation has one `mutation_undo`.
 Tracking is fresh per RPC call, so cross-call update/remove needs a persistent
 caller-owned tracking store. No separate creation or Redo RPC is added.
+
+## Interactive IFC results
+
+MCP Apps hosts can open interactive IFC result surfaces from the model-serving tools.
+
+| Tool | Inputs |
+| --- | --- |
+| `present_query` | `query` (IFC types, conditions, storey, modelId, limit), `columns` (field paths and optional labels), optional `modelId`, `groupBy` and `title` |
+| `present_ids_results` | The `ids_validate` inputs and an optional `title` |
+| `present_clash_results` | The `clash_check` inputs and an optional `title` |
+
+The tools include a text summary and an A2UI v1.0 payload rendered by
+`ui://ifc-lite/a2ui-surface`. Connect the browser viewer through `viewer_open` to
+use row selection and the other viewer controls. In `--bridge` mode,
+`viewer_show_ui` delivers validated messages or a builder spec to a compatible
+paired main viewer tab. See the [A2UI architecture guide](../../docs/architecture/a2ui.md#mcp-result-surfaces)
+for a Claude Desktop walkthrough.
 
 ## 3D viewer integration
 
@@ -93,9 +125,21 @@ ifc-lite mcp ./model.ifc
 ifc-lite mcp ./model.ifc --read-only
 ```
 
+### Add it to a client in one step
+
+```bash
+npx -y @ifc-lite/mcp install --client claude-desktop ./model.ifc
+npx -y @ifc-lite/mcp install --client claude-code -- --bridge
+npx -y @ifc-lite/mcp install --client cursor --dry-run
+```
+
+Clients: `claude-code`, `claude-desktop`, `cursor`, `vscode`. Existing configs
+are merged (other servers kept, a backup written first); `--dry-run` prints
+what would change. `install --help` lists the options.
+
 ### Claude Desktop
 
-Drop this into `claude_desktop_config.json`:
+Drop this into `claude_desktop_config.json` (`~/Library/Application Support/Claude/` on macOS, `%APPDATA%\Claude\` on Windows):
 
 ```json
 {
@@ -119,7 +163,7 @@ The same `npx` command works as a stdio server in any MCP-aware client.
 | Discovery | `model_info`, `model_list`, `model_load`, `model_unload`, `schema_describe` |
 | Query | `query_entities`, `count_entities`, `get_entity`, `get_entities_bulk`, `spatial_hierarchy`, `containment_chain`, `relationships`, `properties_unique`, `materials_list`, `classifications_list`, `georeferencing`, `georeferencing_check`, `units`, `cost_data`, `cost_evaluate` |
 | Geometry | `geometry_bbox`, `geometry_volume`, `geometry_area`, `geometry_get`, `raycast`, `clash_check`, `clash_matrix` |
-| Validation | `ids_validate`, `ids_explain`, `model_audit`, `gherkin_check` |
+| Validation | `ids_validate`, `ids_explain`, `model_audit` |
 | IDS authoring | `ids_audit`, `ids_lint`, `ids_read`, `ids_apply_ops` (grounding-gated), `ids_write`, `ids_schema_search`, `ids_schema_entity`, `ids_schema_pset`, `ids_diff`, `ids_preview`, `ids_infer`, `ids_coverage`, `ids_test` |
 | Mutation | `entity_set_property`, `entity_delete_property`, `entity_set_attribute`, `entity_create`, `entity_delete`, `georeferencing_write`, `georeferencing_fix`, `mutation_batch`, `mutation_undo`, `mutation_diff`, `model_save` |
 | Hosted modelling | `place_opening`, `place_door`, `place_window` |
@@ -131,8 +175,9 @@ The same `npx` command works as a stdio server in any MCP-aware client.
 | BCF | `bcf_topic_list`, `bcf_topic_create`, `bcf_topic_update`, `bcf_topic_close`, `bcf_viewpoint_create`, `bcf_export` |
 | bSDD | `bsdd_search`, `bsdd_class`, `bsdd_property_sets`, `bsdd_match` |
 | Diff | `model_diff` (`by_content` for content-keyed matching), `quantity_diff` |
-| Export | `export_ifc`, `export_csv`, `export_json`, `export_glb`, `export_obj`, `export_ifcx`, `export_3dm`, `export_pdf_report` |
-| Viewer | `viewer_ask`, `viewer_open`, `viewer_close`, `viewer_status`, `viewer_colorize`, `viewer_isolate`, `viewer_hide`, `viewer_show`, `viewer_reset`, `viewer_fly_to`, `viewer_set_section`, `viewer_clear_section`, `viewer_color_by_storey`, `viewer_color_by_property`, `viewer_get_selection`, `viewer_wait_for_selection`, `viewer_describe_selection` |
+| Export | `export_ifc`, `export_csv`, `export_json`, `export_glb`, `export_obj`, `export_ifcx`, `export_3dm` |
+| Model transforms | `model_merge`, `model_convert`, `model_extract`, `model_anonymize`, `model_simplify`, `model_lod`: write to `file_path` and leave the loaded model alone. An existing file there is replaced (a loaded model's source never is). `model_merge` and `model_anonymize` refuse a model with unsaved edits |
+| Viewer | `viewer_ask`, `viewer_open`, `viewer_close`, `viewer_status`, `viewer_select`, `viewer_colorize`, `viewer_isolate`, `viewer_hide`, `viewer_show`, `viewer_reset`, `viewer_fly_to`, `viewer_set_section`, `viewer_clear_section`, `viewer_color_by_storey`, `viewer_color_by_property`, `viewer_get_selection`, `viewer_wait_for_selection`, `viewer_describe_selection` |
 
 `join_walls` joins two straight walls in the same placement frame through the
 viewer/SDK core. It writes `IfcRelConnectsPathElements` and rewrites bodies and
@@ -243,7 +288,7 @@ const initResp = await transport.send({
   jsonrpc: '2.0',
   id: 1,
   method: 'initialize',
-  params: { protocolVersion: '2025-11-05', capabilities: {}, clientInfo: { name: 'host', version: '1' } },
+  params: { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'host', version: '1' } },
 });
 ```
 
@@ -457,6 +502,7 @@ protocol version `1`; `--bridge` carries them over a loopback WebSocket at
 |-----------|--------|--------|
 | tab → bridge | `hello` (first frame) | `protocol`, `pairingCode`, `permission`, `tools[]` (`name`, `title?`, `description`, `inputSchema`, `readOnly`), `client?`, `resultAck?` |
 | bridge → tab | `welcome` | `protocol`, `sessionId`, `permission` (effective), `readOnlyCeiling`, `bridge`, `features?` ([`image-content`]), `resultAck?` |
+| bridge → tab | `a2ui-surface` | `sessionId`, `id`, `surface` (messages and optional title), sent when the tab advertises `hello.a2uiSurface` |
 | bridge → tab | `call` | `sessionId`, `id`, `name`, `arguments` |
 | tab → bridge | `result` | `sessionId`, `id`, `result` (an MCP `CallToolResult` with text, and image content when `welcome.features` lists `image-content`, passed through), `resultAck?` |
 | bridge → tab | `result-ack` | `sessionId`, `id`, `accepted` |
@@ -490,8 +536,7 @@ area), clash, IDS validation, mutation, BCF, bSDD, diff, export (IFC, CSV, JSON,
 GLB, OBJ, IFCX), and live viewer control.
 
 Planned: mesh geometry (`geometry_get`) and `raycast` (both need the WASM
-geometry pipeline), Gherkin validation (`gherkin_check`), and PDF report export
-(`export_pdf_report`) — these tools are registered but currently return
+geometry pipeline). These tools are registered but currently return
 `UNSUPPORTED_OPERATION`. Also planned: OAuth 2.1 with PKCE and hosted
 multi-tenant deployment, sampling for natural-language descriptions, and public
 registry listing.

@@ -54,6 +54,8 @@ export interface FrameStats {
    * interaction throttle.
    */
   cpuMs: number;
+  /** Draw stream: nodes culled/drawn, draws and triangles it submitted, bundles (re)recorded. */
+  stream?: import('./draw-stream.js').StreamFrameStats;
 }
 
 /** Minimal structural slice of a GPU buffer (real `GPUBuffer` satisfies it). */

@@ -64,6 +64,10 @@ pub(super) fn emit_scanned(
         on_event.call1(&JsValue::NULL, &index_event.into())?;
     }
 
+    if let Some(facts) = discovery.sparse.take() {
+        super::sparse_emit::emit_sparse_facts(on_event, content, &entity_index_arc, &facts)?;
+    }
+
     let mut decoder = EntityDecoder::with_arc_columnar_index(content, entity_index_arc.clone())
         .with_strict_reals(); // #7678
     decoder.seed_unit_scales(1.0, plane_angle_to_radians);
@@ -91,32 +95,45 @@ pub(super) fn emit_scanned(
     let mut type_plan =
         super::prepass_columns::emit_columns(api, on_event, content, &discovery, &mut decoder)?;
     const FIRST_WAVE_JOBS: usize = 1024;
-    let first_n = buffered_jobs.len().min(FIRST_WAVE_JOBS);
-    if first_n > 0 {
-        let first_aff: Vec<u32> = buffered_jobs[..first_n]
-            .iter()
-            .map(|&(id, ..)| id)
-            .collect();
-        emit_jobs_chunk(on_event, &buffered_jobs[..first_n], &first_aff)?;
-    }
-
-    {
-        let mut akey_decoder =
-            EntityDecoder::with_arc_columnar_index(content, entity_index_arc.clone());
-        let akey_router = GeometryRouter::new(); // not drained: meshes nothing (issue_3821_auxiliary_routers_mesh_nothing.rs)
-        let rest = &buffered_jobs[first_n..];
-        super::affinity_chunks::emit_affinity_chunks(
-            rest,
+    if api.global_key_planning() {
+        super::prepass_key_plan::emit_planned_jobs(
+            on_event,
+            content,
+            &entity_index_arc,
+            buffered_jobs,
+            &discovery.prepass_spans.void_rels,
             chunk_size,
-            |&(id, _s, _e, _)| match akey_decoder.decode_by_id(id) {
-                Ok(ent) => akey_router
-                    .geometry_routing_key(&ent, &mut akey_decoder)
-                    .map(fold_u128_to_u32)
-                    .unwrap_or(id),
-                Err(_) => id,
-            },
-            |jobs_chunk, affinity| emit_jobs_chunk(on_event, jobs_chunk, affinity),
+            FIRST_WAVE_JOBS,
         )?;
+    } else {
+        let first_n = buffered_jobs.len().min(FIRST_WAVE_JOBS);
+        if first_n > 0 {
+            let first_aff: Vec<u32> = buffered_jobs[..first_n]
+                .iter()
+                .map(|&(id, ..)| id)
+                .collect();
+            emit_jobs_chunk(on_event, &buffered_jobs[..first_n], &first_aff)?;
+        }
+
+        {
+            let mut akey_decoder =
+                EntityDecoder::with_arc_columnar_index(content, entity_index_arc.clone());
+            let akey_router = GeometryRouter::new(); // not drained: meshes nothing (issue_3821_auxiliary_routers_mesh_nothing.rs)
+            let rest = &buffered_jobs[first_n..];
+            super::affinity_chunks::emit_affinity_chunks(
+                rest,
+                chunk_size,
+                |&(id, _s, _e, _)| match akey_decoder.decode_by_id(id) {
+                    Ok(ent) => akey_router
+                        .geometry_routing_key(&ent, &mut akey_decoder)
+                        .map(fold_u128_to_u32)
+                        .unwrap_or(id),
+                    Err(_) => id,
+                },
+                |jobs_chunk, affinity| emit_jobs_chunk(on_event, jobs_chunk, affinity),
+            )?;
+        }
+
     }
 
     // Release occurrence payloads before the type-library tail, as before.
@@ -129,7 +146,9 @@ pub(super) fn emit_scanned(
         if !type_jobs.is_empty() {
             total_jobs += type_jobs.len() as u32;
             let type_affinity: Vec<u32> = type_jobs.iter().map(|&(id, ..)| id).collect();
-            emit_jobs_chunk(on_event, &type_jobs, &type_affinity)?;
+            // Under key planning every `jobs` event carries a plan column; type geometry is never planned.
+            let unplanned = api.global_key_planning().then(|| vec![super::global_key_plan::KEY_PLAN_NONE; type_jobs.len()]);
+            super::prepass_events::emit_planned_jobs_chunk(on_event, &type_jobs, &type_affinity, unplanned.as_deref())?;
         }
     }
 

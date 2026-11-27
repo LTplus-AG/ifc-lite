@@ -29,6 +29,7 @@
 import type { GeometryMeshingSettings, StreamingGeometryEvent } from '@ifc-lite/geometry';
 import type { PickStartContext, PickStarter } from '@/hooks/ingest/pickStart';
 import { sameMeshingSettings, type FastClaim, type FastGeometryRun } from '@/hooks/ingest/fastPath';
+import { inSmallFileTier } from '@ifc-lite/geometry';
 import { CACHE_SIZE_THRESHOLD } from '@/utils/ifcConfig';
 
 /**
@@ -55,7 +56,7 @@ const WARM_SETTINGS: GeometryMeshingSettings = {
 /** Whether a pick may take the fast path. */
 export function fastPathEligible(ctx: PickStartContext): boolean {
   return ctx.target.kind === 'primary' && ctx.kernel.kind === 'exact' && !ctx.retry
-    && /\.ifc$/i.test(ctx.file.name) && ctx.file.size > 0 && ctx.file.size < FAST_PATH_MAX_BYTES;
+    && /\.ifc$/i.test(ctx.file.name) && ctx.file.size > 0 && inSmallFileTier(ctx.file.size); // the global instance plan's complement
 }
 
 export interface FastPathDeps {

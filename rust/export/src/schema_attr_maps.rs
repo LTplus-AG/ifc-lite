@@ -82,14 +82,37 @@ pub(crate) const ATTR_MAPS: &[AttrMap] = &[
     AttrMap { retyped: &["RateDateTime"], ..same("IFCCURRENCYRELATIONSHIP") },
     same("IFCDOCUMENTINFORMATIONRELATIONSHIP"),
     AttrMap { retyped: &["VersionDate"], up_only: &["Publisher"], ..same("IFCLIBRARYINFORMATION") },
-    // IFC4 deleted this IFC2X3 subtype and made the abstract supertype concrete
-    // in its place, so a downgrade writes the deleted subtype
-    // (`schema_convert::map_4_to_2x3`). Downgrade only: nothing renames the
-    // IFC2X3 subtype on an upgrade. IfcMaterialProperties is left unmapped
-    // here: its Material referent must be resolved first (#10763 follow-up).
+    // IFC4 deleted these IFC2X3 subtypes and made the abstract supertype
+    // concrete in their place. A downgrade writes IfcGeneralProfileProperties
+    // or IfcExtendedMaterialProperties after resolving its Material referent.
+    // An IFC4 or IFC4X3 upgrade writes each
+    // as its IFC4 supertype (`upgrade_type`, #10777). The typed subtypes keep
+    // only `Material` or `ProfileDefinition`: IFC4 holds their measures as
+    // IfcProperty records, so each is counted dropped.
+    AttrMap {
+        renamed: &[("ExtendedProperties", "Properties")],
+        ..map("IFCEXTENDEDMATERIALPROPERTIES", "IFCMATERIALPROPERTIES")
+    },
     map("IFCGENERALPROFILEPROPERTIES", "IFCPROFILEPROPERTIES"),
+    map("IFCMECHANICALMATERIALPROPERTIES", "IFCMATERIALPROPERTIES"),
+    map("IFCMECHANICALCONCRETEMATERIALPROPERTIES", "IFCMATERIALPROPERTIES"),
+    map("IFCMECHANICALSTEELMATERIALPROPERTIES", "IFCMATERIALPROPERTIES"),
+    map("IFCTHERMALMATERIALPROPERTIES", "IFCMATERIALPROPERTIES"),
+    map("IFCHYGROSCOPICMATERIALPROPERTIES", "IFCMATERIALPROPERTIES"),
+    map("IFCGENERALMATERIALPROPERTIES", "IFCMATERIALPROPERTIES"),
+    map("IFCOPTICALMATERIALPROPERTIES", "IFCMATERIALPROPERTIES"),
+    map("IFCWATERPROPERTIES", "IFCMATERIALPROPERTIES"),
+    map("IFCFUELPROPERTIES", "IFCMATERIALPROPERTIES"),
+    map("IFCPRODUCTSOFCOMBUSTIONPROPERTIES", "IFCMATERIALPROPERTIES"),
+    map("IFCSTRUCTURALPROFILEPROPERTIES", "IFCPROFILEPROPERTIES"),
+    map("IFCSTRUCTURALSTEELPROFILEPROPERTIES", "IFCPROFILEPROPERTIES"),
+    map("IFCRIBPLATEPROFILEPROPERTIES", "IFCPROFILEPROPERTIES"),
     same("IFCPERFORMANCEHISTORY"),
     AttrMap { renamed: &[("TaskId", "Identification")], ..same("IFCTASK") },
+    // IFC4 deleted both subtypes for IfcTask: an upgrade writes them as IfcTask
+    // (`deleted_subtype`), losing MoveFrom, MoveTo, PunchList and ActionID (#10902).
+    AttrMap { renamed: &[("TaskId", "Identification")], ..map("IFCMOVE", "IFCTASK") },
+    AttrMap { renamed: &[("TaskId", "Identification")], ..map("IFCORDERACTION", "IFCTASK") },
     same("IFCPROPERTYDEPENDENCYRELATIONSHIP"),
     // #10824: renamed both ways (`map_2x3_to_4`, `schema_mep`); IFC4's
     // PredefinedType replaces the function enum, and the IFC2X3 label is
@@ -113,6 +136,18 @@ pub(crate) const ATTR_MAPS: &[AttrMap] = &[
     },
 ];
 
+/// The IFC4 type of an IFC2X3 subtype retired in IFC4. Attribute maps cover
+/// property and process subtypes; relationships retain their supertype slots.
+pub(crate) fn upgrade_type(ifc2x3: &str) -> Option<&'static str> {
+    ATTR_MAPS.iter().find(|m| m.ifc2x3 == ifc2x3 && m.ifc4 != m.ifc2x3)
+        .map(|m| m.ifc4)
+        .or(match ifc2x3 {
+            "IFCRELOCCUPIESSPACES" => Some("IFCRELASSIGNSTOACTOR"),
+            "IFCRELASSIGNSTASKS" | "IFCRELASSIGNSTOPROJECTORDER" | "IFCRELSCHEDULESCOSTITEMS" => Some("IFCRELASSIGNSTOCONTROL"),
+            _ => None,
+        })
+}
+
 /// The map for writing `entity_type` as `new_type` from `cfrom` to `cto`, and
 /// whether it runs upward (IFC2X3 source).
 pub(crate) fn attr_map(entity_type: &str, new_type: &str, cfrom: &str, cto: &str) -> Option<(&'static AttrMap, bool)> {
@@ -124,17 +159,21 @@ pub(crate) fn attr_map(entity_type: &str, new_type: &str, cfrom: &str, cto: &str
     };
     let (src, tgt) = if up { (entity_type, new_type) } else { (new_type, entity_type) };
     // IFC4X3 also declares the renamed IfcDistributionBoard with the same carried slots (#11021).
-    let tgt = if cfrom == "IFC4X3" && tgt == "IFCDISTRIBUTIONBOARD" { "IFCELECTRICDISTRIBUTIONBOARD" } else { tgt };
+    let tgt = if (cfrom == "IFC4X3" || cto == "IFC4X3") && tgt == "IFCDISTRIBUTIONBOARD" { "IFCELECTRICDISTRIBUTIONBOARD" } else { tgt };
     ATTR_MAPS.iter().find(|m| m.ifc2x3 == src && m.ifc4 == tgt).map(|m| (m, up))
 }
 
-/// True when an IFC4 `line` upgraded from IFC2X3 gets its required slots
+/// True when a `target` `line` upgraded from IFC2X3 gets its required slots
 /// counted: a structural record, or one a map wrote, which can leave a
-/// required slot with no source value (#10763). The type is read from the
-/// record head. Twin of the TypeScript `upgradeCountsIfc4Slots`.
-pub(crate) fn upgrade_counts_ifc4_slots(line: &str) -> bool {
+/// required slot with no source value (#10763, #11135). A map's IFC4X3 type is
+/// its IFC4 one, but for the distribution board. The type is read from the
+/// record head. Twin of the TypeScript `upgradeCountsSlots`.
+pub(crate) fn upgrade_counts_slots(line: &str, target: crate::schema_ifc4_slots::SlotTarget) -> bool {
+    use crate::schema_ifc4_slots::SlotTarget;
     let ty = crate::step_record_frame::record_head(line).map_or("", |head| head.type_name(line));
-    ty.starts_with("IFCSTRUCTURAL") || ATTR_MAPS.iter().any(|m| m.ifc4 == ty)
+    if ty.starts_with("IFCSTRUCTURAL") { return true; }
+    let ty = if target == SlotTarget::Ifc4x3 && ty == "IFCDISTRIBUTIONBOARD" { "IFCELECTRICDISTRIBUTIONBOARD" } else { ty };
+    ATTR_MAPS.iter().any(|m| m.ifc4 == ty)
 }
 
 /// How a target slot is filled from its source value.

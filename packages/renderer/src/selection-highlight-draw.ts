@@ -86,9 +86,11 @@ export function drawSelectionHighlights(meshes: readonly Mesh[], f: HighlightDra
 
     f.usePipeline(pipeline);
     pass.setBindGroup(0, mesh.bindGroup);
-    pass.setVertexBuffer(0, mesh.vertexBuffer);
-    pass.setIndexBuffer(mesh.indexBuffer, 'uint32');
-    pass.drawIndexed(mesh.indexCount, 1, 0, 0, 0);
+    // A compact page grows in place while a model streams: draw its current buffers and count, not the record's.
+    const page = batch?.indexFormat ? batch : undefined;
+    pass.setVertexBuffer(0, page?.vertexBuffer ?? mesh.vertexBuffer);
+    pass.setIndexBuffer(page?.indexBuffer ?? mesh.indexBuffer, page?.indexFormat ?? 'uint32');
+    pass.drawIndexed(page?.indexCount ?? mesh.indexCount, 1, 0, 0, 0);
     draws++;
   }
   return draws;

@@ -270,6 +270,37 @@ fn f32_bits_eq(a: &[f32], b: &[f32]) -> bool {
     a.len() == b.len() && a.iter().zip(b).all(|(x, y)| x.to_bits() == y.to_bits())
 }
 
+impl GeometryRouter {
+    /// Content key over an element's geometry ITEMS only: the sorted multiset
+    /// of the item signatures across all of its representations, or `None`
+    /// without items. Unlike [`Self::geometry_routing_key`] it ignores the
+    /// representation wrappers (identifiers, contexts, per-element
+    /// `IfcShapeRepresentation` records), so identical solids exported with
+    /// per-element wrappers share a key. Meshing-free; reuses the same memo.
+    /// The global instance plan counts these keys model-wide.
+    pub fn geometry_item_key(&self, element: &ifc_lite_core::DecodedEntity, decoder: &mut ifc_lite_core::EntityDecoder) -> Option<u128> {
+        use crate::representation::structural::{pds_representation_ids, product_shape_id, rep_item_ids};
+        let shape = decoder.decode_by_id(product_shape_id(element)?).ok()?;
+        let mut memo = self.content_sig_memo.borrow_mut();
+        let mut refused = self.content_hash_oversized_ref_drops.borrow_mut();
+        let mut signatures: Vec<u128> = Vec::new();
+        for rep_id in pds_representation_ids(&shape) {
+            let Ok(rep) = decoder.decode_by_id(rep_id) else { continue };
+            let items: Vec<u32> = rep_item_ids(&rep).collect();
+            for item in items {
+                signatures.push(super::content_hash::item_signature(decoder, item, &mut memo, &mut refused));
+            }
+        }
+        if signatures.is_empty() {
+            return None;
+        }
+        signatures.sort_unstable();
+        let mix = super::content_hash::fold;
+        let h = signatures.into_iter().fold(mix(0, 0x17E3_C0DE), |h, s| mix(mix(h, s as u64), (s >> 64) as u64));
+        Some(h)
+    }
+}
+
 #[cfg(test)]
 #[path = "caching_tests.rs"]
 mod tests;

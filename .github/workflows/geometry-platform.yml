@@ -250,8 +250,23 @@ jobs:
           ref: c9c5979f04cea8c38213004d4f04df0dcfb40d05
           path: upstream-smlib
           persist-credentials: false
-      - name: Install build tools
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends cmake ninja-build
+      - name: Ensure CMake and Ninja are available
+        shell: bash
+        run: |
+          missing=()
+          command -v cmake || missing+=(cmake)
+          command -v ninja || missing+=(ninja-build)
+          if (( ${#missing[@]} )); then
+            for attempt in 1 2 3; do
+              sudo apt-get install -y --no-install-recommends "${missing[@]}" && break
+              if (( attempt < 3 )); then
+                sleep $((attempt * 15))
+                sudo apt-get update || true
+              fi
+            done
+          fi
+          cmake --version
+          ninja --version
       - name: Build native owned boundary and worker
         run: |
           cmake -S native/smlib-adapter -B "$RUNNER_TEMP/smlib-native" -G Ninja \
@@ -270,7 +285,11 @@ jobs:
         run: ctest --test-dir "$RUNNER_TEMP/smlib-native" --output-on-failure
       - uses: ./.github/actions/setup-wasm-build
         with:
-          cache-prefix: geometry-platform
+          cache-prefix: geometry-platform-adapter-v1
+          pinned-rust-cache: 'true'
+          cache-bin: 'false'
+          # Seed from main using the full adapter build. Queue and PR runs restore only.
+          save-if: ${{ github.ref == 'refs/heads/main' && !inputs.bisect_sha && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
       - name: Real Rust subprocess integration
         id: native-consumers
         continue-on-error: true
@@ -383,7 +402,26 @@ jobs:
           IFCLITE_REQUIRE_SMLIB=1 IFCLITE_SMLIB_NATIVE_BUILD="$RUNNER_TEMP/smlib-native" \
             node --test scripts/smlib-open-tessellation.test.mjs | tee "$RUNNER_TEMP/open-tessellation.log"
           grep -F "sdk witness executed: open_tessellation_rebuilt_worker" "$RUNNER_TEMP/open-tessellation.log"
-      - run: pnpm exec playwright install --with-deps chromium
+      - name: Resolve Playwright version
+        id: playwright-version
+        shell: bash
+        run: |
+          version=$(pnpm exec playwright --version)
+          echo "version=${version#Version }" >> "$GITHUB_OUTPUT"
+      - name: Cache Playwright Chromium
+        id: playwright-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: native-adapter-chromium-ubuntu24.04-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright-version.outputs.version }}
+      - name: Install Playwright Chromium on cache miss
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: pnpm exec playwright install chromium
+      - name: Ensure Playwright Chromium system dependencies are available
+        run: |
+          # The dry run simulates apt and reports the missing packages for this image.
+          pnpm exec playwright install-deps --dry-run chromium ||
+            pnpm exec playwright install-deps chromium
       - name: Actual module Workers over the staged /smlib bundle
         id: browser-workers
         continue-on-error: true
@@ -636,7 +674,11 @@ jobs:
           cmake --build "$RUNNER_TEMP/smlib-native" --parallel 4
       - uses: ./.github/actions/setup-wasm-build
         with:
-          cache-prefix: geometry-platform
+          cache-prefix: geometry-platform-adapter-v1
+          pinned-rust-cache: 'true'
+          cache-bin: 'false'
+          # A shard builds only retained_compare. It must not seed the adapter cache.
+          save-if: 'false'
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:

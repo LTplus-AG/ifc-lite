@@ -62,6 +62,11 @@ export function markActiveDrawingGenerationSettled(): void {
   notifyListeners();
 }
 
+/** A drawing generation is running: started, not yet completed or settled. */
+export function isDrawingGenerationPending(): boolean {
+  return generationPending;
+}
+
 /** Identify the replacement drawing that a completed generation produced. */
 export function markActiveDrawingGenerationCompleted(drawing: Drawing2D): void {
   generationPending = false;

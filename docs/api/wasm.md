@@ -385,10 +385,21 @@ setTessellationQuality(level?: string | null): void;
 setComputeGeometryHashes(tolerance?: number | null): void;
 setReferencedRepmaps(ids: Uint32Array): void;
 setMappedInstancePlan(sourceIds: Uint32Array): void;
+setGlobalInstancePlan(sourceIds: Uint32Array, counts: Uint32Array): void;
+addGlobalKeyPlan(jobIds: Uint32Array, planIndex: Uint32Array): void;
+setGlobalKeyPlanning(on: boolean): void;
 setInstantiatedTypeIds(ids: Uint32Array): void;
 setMaterialLayerIndex(/* per-element layer buildup columns, see the .d.ts */): void;
 clearPrePassCache(): void;
 ```
+
+The global instance plan is opt-in; nothing changes until it is installed.
+
+- `setGlobalKeyPlanning(true)` makes the streaming pre-pass plan repeated content. Before the first dispatch it emits a `global-key-plan` event (`keys`, `plannedJobs`). From then on every `jobs` event carries a `planIndex` column, one entry per job, with `0xffffffff` for an unplanned job.
+- The `prepass-columns` event always carries `mappedInstanceCounts`, the model-wide `IfcMappedItem` count per `mappedInstancePlan` entry.
+- To install the plan, a worker passes both columns to `setGlobalInstancePlan`, then calls `addGlobalKeyPlan` with each chunk's planned job ids and indices.
+- With the plan installed, `processGeometryBatchPartitioned*` meshes exactly as without it, so flat meshes and geometry fingerprints are unchanged. It instances the planned geometry whatever the batch holds.
+- The shard appends an `IFNL` key trailer after the data pools: the magic, a u32 template count, then one u64 key per template record as (hi, lo) u32 words. Records sharing a key across shards of one model are one template, and every keyed record carries its geometry. Readers that predate the trailer ignore it.
 
 `getPipelineDiagnostics()` returns a plain object with `schemaVersion: 2`.
 In version 2, `silentNoOps` counts clean rectangular cuts whose area and
@@ -658,7 +669,7 @@ class MeshDataJs {
 ```typescript
 type PrePassEvent =
   | { type: 'meta'; unitScale: number; rtcOffset: [number, number, number]; needsShift: boolean; buildingRotation?: number }
-  | { type: 'jobs'; jobs: Uint32Array }   // [id, start, end] triples
+  | { type: 'jobs'; jobs: Uint32Array; affinity?: Uint32Array; planIndex?: Uint32Array }   // [id, start, end] triples; planIndex only under setGlobalKeyPlanning(true)
   | { type: 'complete'; totalJobs: number }
   // Auxiliary events — carry data the pre-pass already computed so callers can
   // skip a second file scan. Consumers that only need geometry jobs can ignore
@@ -667,10 +678,11 @@ type PrePassEvent =
   // `geometry-parallel.ts`).
   | { type: 'entity-index'; ids: Uint32Array; starts: Uint32Array; lengths: Uint32Array }
   | { type: 'styles'; styleIds: Uint32Array; styleColors: Uint8Array; voidKeys: Uint32Array; voidCounts: Uint32Array; voidValues: Uint32Array }
-  | { type: 'prepass-columns'; referencedRepmaps: Uint32Array; instantiatedTypeIds: Uint32Array; mliElementIds: Uint32Array };
+  | { type: 'prepass-columns'; referencedRepmaps: Uint32Array; instantiatedTypeIds: Uint32Array; mappedInstancePlan: Uint32Array; mappedInstanceCounts: Uint32Array; mliElementIds: Uint32Array }
+  | { type: 'global-key-plan'; keys: number; plannedJobs: number };   // only under setGlobalKeyPlanning(true)
 ```
 
-The auxiliary events (`entity-index`, `styles`, `prepass-columns`) carry the scanned entity index, style colours, and pre-pass column data. Type the callback against the full union above so exhaustive handling does not silently miss them.
+The auxiliary events (`entity-index`, `styles`, `prepass-columns`, and `global-key-plan` when key planning is on) carry the scanned entity index, style colours, and pre-pass column data. Type the callback against the full union above so exhaustive handling does not silently miss them.
 
 ## Error Handling
 

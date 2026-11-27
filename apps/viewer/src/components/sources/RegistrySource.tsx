@@ -13,7 +13,7 @@ import { registerEnglish, useTranslation } from '@/i18n';
 import { registryEn } from '@/i18n/catalogues/registry.en';
 import { useViewerStore } from '@/store';
 import { useIfcLoader } from '@/hooks/useIfcLoader';
-import { sanitizeFilename } from '@/lib/export/download';
+import { sanitizeModelFilename } from '@/lib/export/download';
 import { RegistryError } from '@/lib/registry/protocol';
 import { parseRegistryAddress } from '@/lib/registry/connection';
 import { clearRegistrySession, registryTransport, updateRegistryWorkspace as update, useRegistryWorkspace } from '@/lib/registry/workspace';
@@ -96,7 +96,7 @@ export function RegistrySource({ expanded, navigationDisabled, onToggle, onBusyC
       throw new RegistryError(t('registry.sessionChanged'));
     }
     const modelId = crypto.randomUUID();
-    await loadFile(new File([received.bytes], sanitizeFilename(received.filename, { fallback: 'model.ifc' }), { type: 'application/x-step' }), { kind: 'primary', modelId });
+    await loadFile(new File([received.bytes], sanitizeModelFilename(received.filename), { type: 'application/x-step' }), { kind: 'primary', modelId });
     signal.throwIfAborted();
     const state = useViewerStore.getState();
     const loaded = state.models.get(modelId);

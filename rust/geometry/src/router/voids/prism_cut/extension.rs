@@ -12,6 +12,7 @@ use super::frame::PrismFrame;
 use super::kit::{dot, lerp, V2, V3};
 use super::plane2::{pip, seg_cross_param};
 use super::profile::ccw_area;
+use super::paired_cap::ExistingFloors;
 use super::ptri::PTri;
 
 // ─────────────────────────── ray parity (point in solid) ─────────────────────
@@ -47,7 +48,7 @@ pub(super) fn point_inside(tris: &[PTri], aabbs: &[(V3, V3)], point: V3) -> bool
 /// solid. A flush window cap then becomes a clean transversal crossing, while
 /// a genuine blind-recess bottom (host material beyond the cap) keeps its
 /// authored plane.
-pub(super) fn extend_prism_caps(pf: &mut PrismFrame, tris: &[PTri], aabbs: &[(V3, V3)]) {
+pub(super) fn extend_prism_caps(pf: &mut PrismFrame, tris: &[PTri], aabbs: &[(V3, V3)]) -> ExistingFloors {
     let span = pf.d1() - pf.d0();
     let delta = (span * 0.1).clamp(0.005, 0.5);
     let mag = pf.corner_mag();
@@ -88,6 +89,7 @@ pub(super) fn extend_prism_caps(pf: &mut PrismFrame, tris: &[PTri], aabbs: &[(V3
             pf.planes[0] -= delta;
         }
     }
+    super::paired_cap::adjust_paired_cap(pf, tris)
 }
 
 /// Push a profile EDGE outward past the host surface when the swept band

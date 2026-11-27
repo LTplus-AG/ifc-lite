@@ -1,0 +1,6 @@
+{
+  "issue": 7955,
+  "why": "Keep the draw stream modules loadable while breaking flag parsing, node bounds and the highlight index: the config, node/cull/HLOD-link and index tests must go red.",
+  "key": "packages/renderer/src/draw-stream-config.ts",
+  "mutation": "tests/evidence/draw-stream-11370/behaviour.oracle.patch"
+}

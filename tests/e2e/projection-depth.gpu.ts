@@ -11,6 +11,7 @@ import { quantizeInterleaved } from '../../packages/renderer/src/quantize.js';
 import { INSTANCED_VERTEX_BUFFERS } from '../../packages/renderer/src/instanced-vertex-layout.js';
 import { packRteOrigin } from '../../packages/renderer/src/relative-to-eye.js';
 import { OpaqueVisibilityPass } from '../../packages/renderer/src/opaque-visibility-pass.js';
+import { colorTableLayout, emptyColorTableGroup } from './color-table-binding.js';
 import { takeOpaqueVisibilityCommands } from '../../packages/renderer/src/opaque-visibility-commands.js';
 import {
   DEPTH_SIZE, PROBE_MIN, PROBE_MAX, ORBIT_ANGLES, DEPTH_RANGES, DEPTH_GAPS,
@@ -95,7 +96,7 @@ export async function runProjectionDepthWitness(): Promise<ProjectionDepthReport
         const source = sources[mode] + witnessFragment;
         const shader = device.createShaderModule({ code: source });
         const descriptor: GPURenderPipelineDescriptor = {
-          layout: device.createPipelineLayout({ bindGroupLayouts: [layout, device.createBindGroupLayout({ entries: [] })] }),
+          layout: device.createPipelineLayout({ bindGroupLayouts: [layout, colorTableLayout(device)] }),
           vertex: { module: shader, entryPoint: family === 'flat' ? 'vs_main' : family === 'quantized' ? 'vs_main_quantized' : 'vs_instanced',
             buffers: family === 'instanced' ? INSTANCED_VERTEX_BUFFERS : [family === 'flat' ? FLAT_LAYOUT : QUANT_LAYOUT] },
           fragment: { module: shader, entryPoint: 'fs_witness', targets: [{ format: 'rgba8unorm' }] },
@@ -172,7 +173,7 @@ async function drawReadback(device: GPUDevice, visibility: OpaqueVisibilityPass,
     const encoder = device.createCommandEncoder();
     const pass = visibility.begin(encoder, { colorAttachments: [{ view: color.createView(), ...(samples === 1 ? {} : { resolveTarget: resolved.createView() }), loadOp: 'clear', storeOp: 'store' }],
       depthStencilAttachment: { view: depth.createView(), depthLoadOp: 'clear', depthStoreOp: 'store', depthClearValue: 0, stencilLoadOp: 'clear', stencilStoreOp: 'store', stencilClearValue: 0 } }, orthographic, DEPTH_SIZE, DEPTH_SIZE);
-    pass.setPipeline(pipeline); pass.setIndexBuffer(index, 'uint32');
+    pass.setPipeline(pipeline); pass.setBindGroup(1, emptyColorTableGroup(device)); pass.setIndexBuffer(index, 'uint32');
     for (const piece of pieces) {
       pass.setBindGroup(0, piece.bindGroup); pass.setVertexBuffer(0, piece.vertex);
       if (piece.instance && piece.delta) { pass.setVertexBuffer(1, piece.instance); pass.setVertexBuffer(2, piece.delta); }

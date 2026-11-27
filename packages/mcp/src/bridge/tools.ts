@@ -19,7 +19,10 @@
 import type { CallToolResult, JsonSchema } from '../protocol/index.js';
 import { ToolErrorCode, toolError, type ToolErrorCodeValue } from '../errors.js';
 import { ToolRegistry, type Tool } from '../tools/types.js';
-import { BRIDGE_STATUS_TOOL, type BridgeToolDescriptor } from './protocol.js';
+import { surfacePushTool } from './surface-push.js';
+import { uiEventsTool } from './ui-events-tool.js';
+import { BRIDGE_UI_EVENTS_TOOL } from './ui-events.js';
+import { BRIDGE_STATUS_TOOL, BRIDGE_SURFACE_TOOL, type BridgeToolDescriptor } from './protocol.js';
 import { BridgeCallError, type BridgeCallFailure, type TabBridge } from './tab-bridge.js';
 
 const FAILURE_CODE: Record<BridgeCallFailure, ToolErrorCodeValue> = {
@@ -173,10 +176,14 @@ function statusResult(bridge: TabBridge, pairNewTab: boolean): CallToolResult {
 
 export class BridgeToolRegistry extends ToolRegistry {
   private readonly status: Tool;
+  private readonly surface: Tool;
+  private readonly events: Tool;
 
-  constructor(private readonly bridge: TabBridge) {
+  constructor(private readonly bridge: TabBridge, channel = false) {
     super();
     this.status = statusTool(bridge);
+    this.surface = surfacePushTool((args, signal) => forward(bridge, BRIDGE_SURFACE_TOOL, args, signal));
+    this.events = uiEventsTool(bridge.uiEvents, channel);
   }
 
   override register(): void {
@@ -185,6 +192,8 @@ export class BridgeToolRegistry extends ToolRegistry {
 
   override get(name: string): Tool | null {
     if (name === BRIDGE_STATUS_TOOL) return this.status;
+    if (name === BRIDGE_SURFACE_TOOL) return this.surface;
+    if (name === BRIDGE_UI_EVENTS_TOOL) return this.events;
     const tab = this.bridge.tab();
     if (!tab) return notConnectedTool(this.bridge, name);
     const d = tab.tools.find((t) => t.name === name);
@@ -197,7 +206,7 @@ export class BridgeToolRegistry extends ToolRegistry {
     const tab = this.bridge.tab();
     if (!tab) return [this.status];
     const visible = tab.permission === 'read-only' ? tab.tools.filter((t) => t.readOnly) : tab.tools;
-    return [this.status, ...visible.map((d) => forwardedTool(this.bridge, d))];
+    return [this.status, ...(tab.a2uiSurface ? [this.surface, this.events] : []), ...visible.map((d) => forwardedTool(this.bridge, d))];
   }
 
   override has(name: string): boolean {

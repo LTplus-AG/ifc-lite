@@ -11,6 +11,7 @@ export {
   type CreateHandler,
   type CreateResult,
 } from './server.js';
+export { viewerUrl } from './url.js';
 export {
   createStreamingViewerAdapter,
   createStreamingVisibilityAdapter,

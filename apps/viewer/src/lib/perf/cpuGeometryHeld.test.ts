@@ -36,6 +36,24 @@ describe('CPU geometry held (#10264)', () => {
     assert.equal(held.owners['scene.buckets'].exclusiveBytes, 0);
   });
 
+  it('counts every array of a compact payload once for the meshes that share it, decoding none', async () => {
+    const { measureCpuGeometryHeld } = await load();
+    const payload = {
+      records: new Uint8Array(96), indices: new Uint16Array(36), table: new Uint32Array(12),
+      windows: new Float64Array(6), bounds: new Float64Array(12), cells: new Int32Array(6),
+    };
+    const shells = [0, 1].map((row) => {
+      const shell = { expressId: row + 1, color: [1, 1, 1, 1], compact: { payload, row } };
+      for (const key of ['positions', 'normals', 'indices']) {
+        Object.defineProperty(shell, key, { enumerable: true, get: () => { throw new Error(`${key} was read`); } });
+      }
+      return shell as unknown as MeshData;
+    });
+    const held = measureCpuGeometryHeld({ models: [{ geometryResult: { meshes: shells } }], renderer: { visitCpuGeometry: () => {} } });
+    assert.equal(held.totalBytes, 96 + 72 + 48 + 48 + 96 + 24);
+    assert.equal(held.byKind.indices, 72);
+  });
+
   it('counts a buffer shared by a streaming fragment and finalized scene batch once', async () => {
     const { measureCpuGeometryHeld } = await load();
     const positions = new Float32Array(12);

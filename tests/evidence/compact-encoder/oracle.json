@@ -1,0 +1,6 @@
+{
+  "issue": 7955,
+  "why": "Keep the compact encoder compiling while breaking lattice rounding, the opposed-normal split and the collapse refusal: the half-step, two-sided sheet, unwitnessed-node and thin-rod tests must go red.",
+  "key": "rust/wasm-bindings/src/zero_copy/mesh_compact_weld.rs",
+  "mutation": "tests/evidence/compact-encoder/behaviour.oracle.patch"
+}

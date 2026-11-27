@@ -37,7 +37,7 @@ pub(crate) mod structural_face_plan;
 pub(crate) mod surface;
 pub(crate) mod swept;
 mod tessellated;
-pub(crate) use tessellated::{polygonal_plan, triangulated_plan};
+pub(crate) use tessellated::{polygonal_plan, referenced_point_centre, triangulated_plan};
 #[cfg(any(all(test, any(not(target_arch = "wasm32"), feature = "wasm_source_capture")), feature = "retained-runtime"))]
 pub(crate) use tessellated::{read_point_list_f64, PolygonalFaceSetProcessor as PolygonalFaces, SourceTriangles};
 pub(crate) use brep::{faceted_plan, SurfaceModelPlan};

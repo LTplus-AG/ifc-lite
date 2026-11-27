@@ -68,3 +68,19 @@ export function isPlacedGeometryClass(geometryClass: number): boolean {
 export function isTypeLibraryGeometryClass(geometryClass: number): boolean {
   return geometryClass === GEOM_CLASS_ORPHAN_TYPE || geometryClass === GEOM_CLASS_INSTANCED_TYPE;
 }
+
+/**
+ * Does the Model view draw this class? Instanced type duplicates never; orphan
+ * type-library geometry only when the model has no placed geometry at all.
+ */
+export function isModelViewGeometryClass(geometryClass: number, hasPlacedGeometry: boolean): boolean {
+  if (geometryClass === GEOM_CLASS_INSTANCED_TYPE) return false;
+  if (geometryClass === GEOM_CLASS_ORPHAN_TYPE) return !hasPlacedGeometry;
+  return true;
+}
+
+/** The meshes the Model view draws, in input order: what a 2D drawing cuts (#2058). */
+export function selectModelMeshes<T extends { geometryClass?: number }>(meshes: readonly T[]): T[] {
+  const hasPlacedGeometry = meshes.some((m) => isPlacedGeometryClass(geometryClassOf(m)));
+  return meshes.filter((m) => isModelViewGeometryClass(geometryClassOf(m), hasPlacedGeometry));
+}

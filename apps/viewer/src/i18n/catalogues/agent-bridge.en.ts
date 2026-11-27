@@ -82,4 +82,9 @@ export const agentBridgeEn = {
   'agentBridge.panel.editChange': '{entity} · {field}: {before} → {after}',
   'agentBridge.panel.editDeleted': '{entity} · {field} deleted (was {before})',
   'agentBridge.panel.editUnchanged': '{entity} · {field} was already {after}; nothing changed',
+  'agentBridge.surfaces.title': "From your agent",
+  'agentBridge.surfaces.dismiss': "Dismiss {title}",
+  'agentBridge.surfaces.clear': "Clear all",
+  'agentBridge.surfaces.untitled': "Agent result",
+  'agentBridge.surfaces.sent': "Sent to your agent",
 } as const;

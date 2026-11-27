@@ -31,6 +31,7 @@ const TRACKED: &[&str] = &[
 
 pub(crate) struct Source<'a> {
     pub(crate) content: &'a [u8],
+    pub(crate) preserve_latin1: bool,
     /// Every record id in the order the TypeScript exporter visits them: the
     /// parser's compact entity index is sorted by express id, and
     /// `writeSourceEntityLines` iterates it.
@@ -60,7 +61,7 @@ impl<'a> Source<'a> {
         }
         let crate::step_index::RecordIndex { mut order, spans: line_of, max_id, duplicates } = index;
         order.sort_unstable();
-        Source { content, order, line_of, max_id, duplicates, by_type }
+        Source { content, order, line_of, max_id, duplicates, by_type, preserve_latin1: false }
     }
 
     pub(crate) fn has(&self, id: u32) -> bool {
@@ -74,7 +75,7 @@ impl<'a> Source<'a> {
     /// The record's text, exactly as the file has it.
     pub(crate) fn line(&self, id: u32) -> Option<Cow<'a, str>> {
         let (s, e) = self.span(id)?;
-        Some(String::from_utf8_lossy(&self.content[s..e]))
+        Some(crate::schema_typed_properties::source_text(&self.content[s..e], self.preserve_latin1))
     }
 
     /// The record's UPPERCASE type, read off its text.

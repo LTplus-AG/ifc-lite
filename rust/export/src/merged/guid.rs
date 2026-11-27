@@ -8,6 +8,7 @@
 use std::collections::HashSet;
 
 use crate::rooted_type::is_rooted_type;
+use ifc_lite_core::{guid, parser::{keyword_starts_with, StepRecord}};
 
 /// Deterministic 22-char GlobalId from a seed, byte-identical to
 /// `@ifc-lite/parser`'s `deterministicGlobalId`. See [`ifc_lite_core::guid::deterministic`].
@@ -29,6 +30,30 @@ pub fn is_relationship_type(type_upper: &str) -> bool {
     type_upper.starts_with("IFCREL")
 }
 
+fn can_unify_types(source: &str, written: &str) -> bool {
+    !is_relationship_type(source) && !keyword_starts_with(written, "IFCREL")
+        && (!written.eq_ignore_ascii_case("IFCPROXY") || source == "IFCPROXY")
+}
+
+/// Relationships and conversion-created proxies keep distinct records.
+pub(super) fn can_unify_by_global_id(type_upper: &str, converted: Option<&str>) -> bool {
+    match converted {
+        Some(line) => StepRecord::parse(line.as_bytes())
+            .and_then(|record| record.keyword())
+            .is_some_and(|written| can_unify_types(type_upper, written)),
+        None => can_unify_types(type_upper, type_upper),
+    }
+}
+
+pub(super) fn can_unify_converted_type(ty: &str, (from, to): (&'static str, &'static str)) -> bool {
+    use crate::schema_plan::{plan_for, Plan};
+    if from == to { return can_unify_by_global_id(ty, None); }
+    match plan_for(ty, from, to) {
+        Plan::Write { renamed, .. } => can_unify_types(ty, renamed.unwrap_or(ty)),
+        Plan::ProductProxy | Plan::Unrepresented => false,
+    }
+}
+
 /// True when `type_upper` is a **rooted** entity (an `IfcRoot` subtype). Delegates
 /// to the crate's shared, schema-driven [`crate::rooted_type::is_rooted_type`],
 /// which decides rootedness from the EXPRESS inheritance graph (plus the legacy
@@ -45,12 +70,25 @@ pub fn is_rooted_entity_type(type_upper: &str) -> bool {
 
 /// The leading 22-char GlobalId of a rooted entity's raw STEP line, or `None` if
 /// the type is not rooted or the first attribute is not a GlobalId string.
-/// Only inspects the first 128 bytes (a GlobalId is always the first attribute).
 pub fn extract_global_id_fast(type_upper: &str, line: &[u8]) -> Option<String> {
     if !is_rooted_entity_type(type_upper) {
         return None;
     }
-    ifc_lite_core::guid::leading_global_id(line).map(str::to_string)
+    leading_guid(line).map(str::to_string)
+}
+
+fn leading_guid(line: &[u8]) -> Option<&str> {
+    let head = &line[..line.len().min(128)];
+    // A comment can contain a fake opening parenthesis or GUID. Use the
+    // STEP reader for commented heads and when trivia runs past the window.
+    if !head.windows(2).any(|pair| pair == b"/*") {
+        if let Some(id) = guid::leading_global_id(head) {
+            return Some(id);
+        }
+    }
+    let first = StepRecord::parse(line)?.attrs().next()?;
+    let id = std::str::from_utf8(first.strip_prefix(b"'")?.strip_suffix(b"'")?).ok()?;
+    guid::is_global_id_shaped(id).then_some(id)
 }
 
 /// The uppercase entity type token of a `#id=TYPE(...)` line, tolerating
@@ -70,20 +108,22 @@ pub fn leading_rooted_global_id(line: &[u8]) -> Option<String> {
     extract_global_id_fast(&type_upper, line)
 }
 
-/// Read the GlobalId of an already-rendered STEP line (first `'…'` after the
-/// first `(`). Used to register the *actually emitted* GUID after remap /
+/// Read the GlobalId of an already-rendered STEP line. Used to register the
+/// *actually emitted* GUID after remap /
 /// re-stamp / schema conversion. Returns `None` when the first string is not a
 /// GlobalId (safe — the caller then falls back to the known local GUID).
 pub fn read_leading_guid(text: &str) -> Option<String> {
-    ifc_lite_core::guid::read_leading_global_id(text).map(str::to_string)
+    leading_guid(text.as_bytes()).map(str::to_string)
 }
 
 /// Rewrite the leading GlobalId field of a STEP line with `new_guid`. Safe
-/// because the GUID charset excludes the apostrophe, so the first `'…'`
-/// after `(` is exactly the GlobalId slot. Returns the input unchanged if no
-/// quoted first attribute is found.
+/// for a GlobalId-shaped first attribute, even when comments surround it.
 pub fn replace_global_id(text: &str, new_guid: &str) -> String {
-    ifc_lite_core::guid::replace_rendered_global_id(text, new_guid)
+    let Some(id) = leading_guid(text.as_bytes()) else { return text.to_owned() };
+    let start = id.as_ptr() as usize - text.as_ptr() as usize;
+    let mut out = text.to_owned();
+    out.replace_range(start..start + id.len(), new_guid);
+    out
 }
 
 /// Mints deterministic replacement GlobalIds that avoid collisions with both the

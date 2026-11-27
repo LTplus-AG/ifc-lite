@@ -44,7 +44,7 @@ const FACETED_BREP_TAG: u64 = 0xFACE_7B16_5160_0001;
 
 /// Fold a 64-bit value into a 128-bit running state across two independent lanes.
 #[inline]
-fn fold(state: u128, v: u64) -> u128 {
+pub(super) fn fold(state: u128, v: u64) -> u128 {
     let lo = state as u64;
     let hi = (state >> 64) as u64;
     let lo2 = mix64(lo.wrapping_add(v).wrapping_mul(0x9E37_79B9_7F4A_7C15));

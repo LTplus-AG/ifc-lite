@@ -44,6 +44,7 @@
  * pinned for both by `rust/export/tests/fixtures/schema_grid_placement_vectors.json`.
  */
 
+import { wrapDirectStyles } from './schema-ifc2x3-style-assignments.js';
 import { forEachExpressRef } from './step-ref-scan.js';
 import { withoutComments } from './step-comment-skip.js';
 import { formatStepReal } from '@ifc-lite/data';
@@ -124,6 +125,14 @@ export function placeEachObjectOnce(lines: readonly string[]): string[] | null {
   };
 
   for (const rec of records.list) {
+    if (rec?.type === 'IFCSTYLEDITEM') {
+      const wrapped = wrapDirectStyles(records, rec, next);
+      if (wrapped) {
+        rewrites.set(rec.id, wrapped[0]);
+        added.push(wrapped[1]);
+        next++;
+      }
+    }
     if (rec?.type !== GRID_PLACEMENT || others.has(rec.id) || products.has(rec.id)) continue;
     const g = records.slots(rec);
     const kids = children.get(rec.id) ?? [];

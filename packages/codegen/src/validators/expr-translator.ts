@@ -8,7 +8,7 @@
  * indeterminate values and three-valued logic follow ISO 10303-11.
  */
 
-import type { BinaryOp, Expr, TypeSpec } from '../express/ast.js';
+import type { BinaryOp, EntityDecl, Expr, TypeSpec } from '../express/ast.js';
 import { functionIdentifier, Scope, TranslateContext, UnsupportedConstruct } from './translate-context.js';
 
 export const BUILTINS: Record<string, { fn: string; arity: number; model?: boolean }> = {
@@ -100,20 +100,48 @@ export class ExpressionTranslator {
     }
   }
 
-  private queryElement(source: Expr, scope: Scope): TypeSpec | undefined {
-    const name = source.k === 'id' || (source.k === 'attr' && source.base.k === 'self') ? source.name : undefined;
-    if (!name) return undefined;
-    const variable = source.k === 'id' ? scope.lookup(name) : undefined;
-    let type = variable?.type;
-    if (!variable && scope.entity) {
-      for (const level of this.index.chain(scope.entity).reverse()) {
-        const attr = [...level.explicit, ...level.derived, ...level.inverse].find(a => a.name.toUpperCase() === name.toUpperCase());
-        if (!attr) continue;
-        if ('type' in attr) type = attr.type;
-        else if (attr.aggregate) return { k: 'named', name: attr.entity };
-        break;
-      }
+  private attributeType(owner: EntityDecl | undefined, name: string): TypeSpec | undefined {
+    if (!owner) return undefined;
+    for (const level of this.index.chain(owner).reverse()) {
+      const attr = [...level.explicit, ...level.derived, ...level.inverse].find(a => a.name.toUpperCase() === name.toUpperCase());
+      if (!attr) continue;
+      if ('type' in attr) return attr.type;
+      const of: TypeSpec = { k: 'named', name: attr.entity };
+      return attr.aggregate ? { k: 'aggregate', kind: attr.aggregate, of, optional: false, unique: false } : of;
     }
+    return undefined;
+  }
+
+  private expressionType(e: Expr, scope: Scope): TypeSpec | undefined {
+    switch (e.k) {
+      case 'self': return scope.entity && { k: 'named', name: scope.entity.name };
+      case 'group': return { k: 'named', name: e.entity };
+      case 'call': return this.index.function(e.name)?.returns ?? { k: 'named', name: e.name };
+      case 'id': {
+        const variable = scope.lookup(e.name);
+        return variable ? variable.type : this.attributeType(scope.entity, e.name);
+      }
+      case 'attr': return this.attributeType(this.receiver(e.base, scope), e.name);
+      case 'index': return e.upper ? this.expressionType(e.base, scope) : this.queryElement(e.base, scope);
+      case 'query': return this.expressionType(e.source, scope);
+      default: return undefined;
+    }
+  }
+
+  private receiver(e: Expr, scope: Scope): EntityDecl | undefined {
+    let type = this.expressionType(e, scope);
+    const seen = new Set<string>();
+    while (type?.k === 'named' && !seen.has(type.name.toUpperCase())) {
+      const entity = this.index.entity(type.name);
+      if (entity) return entity;
+      seen.add(type.name.toUpperCase());
+      type = this.index.type(type.name)?.spec;
+    }
+    return undefined;
+  }
+
+  private queryElement(source: Expr, scope: Scope): TypeSpec | undefined {
+    let type = this.expressionType(source, scope);
     const seen = new Set<string>();
     while (type?.k === 'named') {
       const alias = type.name.toUpperCase();
@@ -148,11 +176,7 @@ export class ExpressionTranslator {
     }
     const upper = e.name.toUpperCase();
     if (!this.index.attributeNames.has(upper)) throw new UnsupportedConstruct(`no entity declares attribute ${e.name}`);
-    const variableType = e.base.k === 'id' ? scope.lookup(e.base.name)?.type : undefined;
-    let owner = scope.entity;
-    if (e.base.k === 'group') owner = this.index.entity(e.base.entity);
-    else if (e.base.k === 'call') owner = this.index.entity(e.base.name);
-    else if (e.base.k !== 'self') owner = variableType?.k === 'named' ? this.index.entity(variableType.name) : undefined;
+    const owner = this.receiver(e.base, scope);
     if (e.base.k === 'group' && e.base.base.k === 'self' && scope.entity) {
       const group = e.base.entity.toUpperCase();
       for (const level of this.index.chain(scope.entity).reverse()) {

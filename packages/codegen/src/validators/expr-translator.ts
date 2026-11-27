@@ -151,6 +151,7 @@ export class ExpressionTranslator {
     const variableType = e.base.k === 'id' ? scope.lookup(e.base.name)?.type : undefined;
     let owner = scope.entity;
     if (e.base.k === 'group') owner = this.index.entity(e.base.entity);
+    else if (e.base.k === 'call') owner = this.index.entity(e.base.name);
     else if (e.base.k !== 'self') owner = variableType?.k === 'named' ? this.index.entity(variableType.name) : undefined;
     if (e.base.k === 'group' && e.base.base.k === 'self' && scope.entity) {
       const group = e.base.entity.toUpperCase();

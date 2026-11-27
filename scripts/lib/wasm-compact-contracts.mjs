@@ -109,7 +109,7 @@ function checkRow(batch, row, reference) {
   // elected from the original referenced corners before welding (#11606).
   const least = (map, key, normal) => {
     const old = map.get(key);
-    if (!old || (normal[0] - old[0] || normal[1] - old[1] || normal[2] - old[2]) < 0) map.set(key, normal);
+    if (!old || (normal[0] - old[0] || normal[1] - old[1] || normal[2] - old[2]) < 0) map.set(key, normal.map(component => component || 0));
   };
   const authored = new Map(), stored = new Map();
   for (const i of reference.indices) {

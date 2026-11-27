@@ -56,7 +56,7 @@ export function bucketKeyOf(host: SceneCompactHost, mesh: MeshData, cachedOnly =
 }
 
 /**
- * Every page's meshes, grouped by the bucket the bucket path would file them in, in page order. `judge`: true at a stream end that grew pages (every group judged afresh); 'streamed' at one that grew none (only groups whose
+ * Every page's meshes, grouped by the bucket the bucket path would file them in, in page order. `judge`: true at a stream end that grew pages (every group judged afresh); the stream writes at one that grew none (only groups whose
  * bucket this stream wrote f32 meshes into move, as 'shared': earlier verdicts stand, and a bucket an edit wrote decodes nothing);
  * false for an edit-time build (the stream's verdicts).
  */

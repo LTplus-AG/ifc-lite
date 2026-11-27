@@ -29,8 +29,8 @@
  *   Whether a group gets LOD1 at all is decided over all its parts, as for one
  *   batch. The draw loop then culls and picks LOD per part on the group's box.
  *
- * Only indices are written: positions are read from the records into a
- * per-page scratch that is reused, and no f32 copy of any mesh is kept.
+ * The build uploads indices and compact LOD1 vertex records. It reuses one
+ * scratch buffer for the clustering input across pages.
  * Clustering is per page, so two meshes of one entity in one group but on
  * different pages do not share a cell's vertex (the bucket path's would).
  */
@@ -44,7 +44,7 @@ import type { SceneCompactHost } from './scene-compact-host.js';
 import { bucketKeyOf, collectGroups, type StreamWrites, type Group } from './compact-groups.js';
 import { lod1Vertices } from './compact-lod-vertices.js';
 
-/** Scratch record per vertex: position xyz (page frame) and the u32 entity lane. */
+/** Position xyz (page frame), u32 entity lane, then the authored normal xyz. */
 const SCRATCH_FLOATS = 7;
 /** Vertices a page holds at most: every page draws with u16 indices (compact-store.ts). */
 export const MAX_PAGE_VERTICES = 65536;
@@ -222,14 +222,15 @@ function readRecords(store: CompactGeometryStore, page: CompactPage, scratch: Fl
   const q = page.batch.quantized!;
   for (const mesh of page.meshes) {
     const slot = store.slotOf(mesh)!, ref = mesh.compact!, records = ref.payload.records;
-    const view = new DataView(records.buffer, records.byteOffset + compactRow(ref).vertexStart * COMPACT_RECORD_BYTES, slot.vertexCount * COMPACT_RECORD_BYTES);
+    const { vertexStart } = compactRow(ref);
+    const view = new DataView(records.buffer, records.byteOffset + vertexStart * COMPACT_RECORD_BYTES, slot.vertexCount * COMPACT_RECORD_BYTES);
     for (let v = 0, at = 0, out = slot.base * SCRATCH_FLOATS; v < slot.vertexCount; v++, at += COMPACT_RECORD_BYTES, out += SCRATCH_FLOATS) {
       const n = (slot.base + v) * 3;
       for (let axis = 0; axis < 3; axis++) {
         nodes[n + axis] = view.getUint16(at + axis * 2, true);
         scratch[out + axis] = q.min[axis] + nodes[n + axis] * q.step;
       }
-      const normal = (compactRow(ref).vertexStart + v) * 3;
+      const normal = (vertexStart + v) * 3;
       for (let k = 0; k < 3; k++) scratch[out + 4 + k] = ref.payload.lodNormals?.[normal + k] ?? 0;
       lanes[out + 3] = view.getUint32(at + 8, true);
     }

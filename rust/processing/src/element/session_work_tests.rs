@@ -251,7 +251,7 @@ fn stale_session_packet_and_previously_accepted_ticket_cannot_append_again() {
     assert_eq!(rejected.error, WorkError::StaleTicket);
     unassembled(&second);
     first.accept(rejected.reply, &h.context.borrowed(), &mut h.decoder, &h.router).unwrap();
-    let positions = first.meshes[0].positions.clone();
+    let positions = first.meshes[0].mesh.positions.clone();
     let count = first.meshes.len();
     let mut reply = second.execute(second_request, &other.context.borrowed(), &mut other.decoder, &other.router).unwrap();
     // Reusing an accepted ticket with another genuine packet must not append
@@ -260,7 +260,7 @@ fn stale_session_packet_and_previously_accepted_ticket_cannot_append_again() {
     let rejected = first.accept(reply, &h.context.borrowed(), &mut h.decoder, &h.router).unwrap_err();
     assert_eq!(rejected.error, WorkError::StaleTicket);
     assert_eq!(first.meshes.len(), count);
-    assert_eq!(first.meshes[0].positions, positions);
+    assert_eq!(first.meshes[0].mesh.positions, positions);
     let mut reply = rejected.reply;
     reply.request = second_request;
     second.accept(reply, &other.context.borrowed(), &mut other.decoder, &other.router).unwrap();
@@ -365,6 +365,6 @@ fn live_epoch_refuses_forged_packets_through_the_shipped_checks() {
     })
     .unwrap();
     assert_eq!(h.calls.get(), 1);
-    assert_same(&output.unwrap(), &canonical(10, false));
+    assert_same(&output.unwrap().into_produced(), &canonical(10, false));
     assert!(h.decoder.try_execution_lease().is_ok() && h.router.try_execution_lease().is_ok());
 }

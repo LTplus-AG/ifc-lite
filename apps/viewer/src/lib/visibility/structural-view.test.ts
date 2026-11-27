@@ -12,7 +12,6 @@ import { TYPE_VISIBILITY_SEMANTIC_DEFAULTS } from '@/store/constants';
 import { hasStructuralData, isAnalyticalProduct, resolveViewHiddenEntities, structuralGlyphsVisible, withClassHiddenRetypes } from './structural-view';
 import { useViewerStore } from '@/store';
 import { resolveExportVisibility } from '@/store/exportVisibility';
-import { sceneSnapshotKey } from '@/components/viewer/sceneSnapshotOwnership';
 
 for (const count of [1,2]) {
   it(`#9923: mode masks newly authored physical and analytical products (${count} models)`, () => {
@@ -47,9 +46,9 @@ for (const count of [1,2]) {
     assert.ok([...models.keys()].every((id)=>hiddenAnalytical.has(state.toGlobalId(id,7))));
     assert.ok([...models.keys()].every((id)=>!hiddenAnalytical.has(state.toGlobalId(id,8))),
       'analytical mode leaves property resources available for the visible products');
-    // Saved scene/cache ownership must distinguish the product mode and survive JSON storage.
+    // The product mode survives JSON storage. Saved scene snapshots hold every
+    // mesh, so the mode hides by id after adoption and is not part of their key (#10264).
     const restored = JSON.parse(JSON.stringify({typeVisibility:physicalMode.typeVisibility,structuralViewMode:physicalMode.structuralViewMode}));
-    assert.notEqual(sceneSnapshotKey('p','model',restored.typeVisibility,restored.structuralViewMode),sceneSnapshotKey('p','model',state.typeVisibility));
     assert.equal(structuralGlyphsVisible(restored.typeVisibility,restored.structuralViewMode),false);
   });
 }

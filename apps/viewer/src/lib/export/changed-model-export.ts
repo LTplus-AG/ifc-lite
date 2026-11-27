@@ -17,8 +17,6 @@
  */
 
 import { viewerDrawingAnnotations } from '@/lib/export/viewer-drawing-annotations';
-import { StepExporter } from '@ifc-lite/export';
-import { exportModelIfcx } from './model-ifcx-export';
 import { prepareAppearanceSerialization } from '../appearance/serialization.js';
 import { packagePortableIfcAsync } from './portable-ifc.js';
 import type { IfcDataStore } from '@ifc-lite/parser';
@@ -43,6 +41,7 @@ export async function exportChangedModelToStep(
   view: MutablePropertyView | undefined,
   invocation: StepExportInvocation,
 ): Promise<ChangesExportArtifact> {
+  const { StepExporter } = await import('@/lib/export/step-export-runtime');
   const serialized = prepareAppearanceSerialization(modelId, dataStore, view);
   const exporter = new StepExporter(dataStore, viewerDrawingAnnotations(modelId, dataStore, serialized.view));
   const result = await exporter.exportAsync({
@@ -76,6 +75,7 @@ export async function exportChangedModelToIfcx(
   view: MutablePropertyView | undefined,
   invocation: IfcxExportInvocation,
 ): Promise<ChangesExportArtifact> {
+  const { exportModelIfcx } = await import('./model-ifcx-export');
   const result = await exportModelIfcx({
     modelId, dataStore, geometryResult: invocation.geometryResult, mutationView: view,
     idOffset: invocation.idOffset, maxExpressId: invocation.maxExpressId, models: invocation.models,

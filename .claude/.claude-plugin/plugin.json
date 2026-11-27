@@ -1,0 +1,34 @@
+{
+  "name": "ifc-lite",
+  "displayName": "ifc-lite",
+  "description": "Work with IFC / BIM models from Claude Code: the use-ifclite skill (CLI and MCP) plus the ifc-lite MCP bridge to a live viewer tab, where Claude can show interactive A2UI results and hear back what you click.",
+  "author": {
+    "name": "LTplus AG"
+  },
+  "homepage": "https://ifclite.com",
+  "repository": "https://github.com/LTplus-AG/ifc-lite",
+  "license": "MPL-2.0",
+  "keywords": [
+    "ifc",
+    "bim",
+    "mcp",
+    "a2ui",
+    "buildingsmart"
+  ],
+  "mcpServers": {
+    "ifc-lite-viewer": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@ifc-lite/mcp@0",
+        "--bridge",
+        "--channel"
+      ]
+    }
+  },
+  "channels": [
+    {
+      "server": "ifc-lite-viewer"
+    }
+  ]
+}

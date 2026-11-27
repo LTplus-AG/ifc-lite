@@ -1,0 +1,19 @@
+diff --git a/apps/viewer/src/utils/hugeGeometryConfig.ts b/apps/viewer/src/utils/hugeGeometryConfig.ts
+--- a/apps/viewer/src/utils/hugeGeometryConfig.ts
++++ b/apps/viewer/src/utils/hugeGeometryConfig.ts
+@@ -22,7 +22,7 @@
+  * `?perf.huge=1&m6.hlod=0` or `&perf.gpuInstancing=0` turns one part off.
+  */
+ export function isHugeGeometryEnabled(): boolean {
+-  return isPerfFlagOn(readPerfFlag('hugeGeometry')) && false;
++  return isPerfFlagOn(readPerfFlag('hugeGeometry'));
+ }
+ 
+ /**
+@@ -30,5 +30,5 @@
+  * only while the umbrella is off. `readFeatureFlag` is injectable for tests.
+  */
+ export function readRampFlag(id: PerfFlagId, umbrellaOn: boolean, readFeatureFlag?: (key: string) => unknown): unknown {
+-  return resolvePerfFlag(getPerfFlagDefinition(id), umbrellaOn ? () => undefined : () => (readFeatureFlag, undefined));
++  return resolvePerfFlag(getPerfFlagDefinition(id), umbrellaOn ? () => undefined : readFeatureFlag);
+ }

@@ -53,6 +53,8 @@
  * the renderer rebinds it at frame start (`RenderPipeline.setEntityColorTableBuffer`).
  */
 
+import { batchEntities, batchEntryStamp, type BatchEntityIds } from './batch-entities.js';
+
 type Rgba = readonly [number, number, number, number];
 
 /** Key value of an unused slot. Federated ids stop far below it (`FederationRegistry`'s 2e9 limit). */
@@ -199,17 +201,26 @@ export function entityIdPageKey(id: number, key: string): string {
 
 const anchorCache = new WeakMap<object, number | null>();
 
-/** {@link entityIdAnchor} of a batch, cached per batch object (a batch's `expressIds` never change). */
-export function batchEntityIdAnchor(batch: { readonly expressIds: readonly number[] }): number | null {
+/**
+ * Fix a batch's anchor ahead of its ids. For a batch that gains entries after it was first drawn (a
+ * compact page, whose ids are all below 2^24 so anchor 0 resolves every lane): the cached minimum of
+ * the first ids would otherwise resolve a later, smaller id to the wrong entity.
+ */
+export function pinBatchEntityIdAnchor(batch: BatchEntityIds, anchor: number): void {
+  anchorCache.set(batch, anchor);
+}
+
+/** {@link entityIdAnchor} of a batch, cached per batch object (a bucket batch's `expressIds` never change). */
+export function batchEntityIdAnchor(batch: BatchEntityIds): number | null {
   let anchor = anchorCache.get(batch);
   if (anchor === undefined) {
-    anchor = entityIdAnchor(batch.expressIds);
+    anchor = entityIdAnchor(batchEntities(batch)); // secondary lane ids must share the page too (#10653)
     anchorCache.set(batch, anchor);
   }
   return anchor;
 }
 
-const hasOverrideCache = new WeakMap<object, { generation: number; has: boolean }>();
+const hasOverrideCache = new WeakMap<object, { generation: number; count: number; has: boolean }>();
 
 /**
  * Whether any entity of `batch` is overridden, cached per batch for one
@@ -217,15 +228,16 @@ const hasOverrideCache = new WeakMap<object, { generation: number; has: boolean 
  * is drawn with the table off, so its fragments skip the lookup entirely.
  */
 export function batchHasColorOverride(
-  batch: { readonly expressIds: readonly number[] },
+  batch: BatchEntityIds,
   overrides: ReadonlyMap<number, unknown> | null,
   generation: number,
 ): boolean {
   if (!overrides || overrides.size === 0) return false;
   const cached = hasOverrideCache.get(batch);
-  if (cached && cached.generation === generation) return cached.has;
-  const has = batch.expressIds.some((id) => overrides.has(id));
-  hasOverrideCache.set(batch, { generation, has });
+  const count = batchEntryStamp(batch); // a compact page gains and loses entries within one generation
+  if (cached && cached.generation === generation && cached.count === count) return cached.has;
+  const has = batchEntities(batch).some((id) => overrides.has(id));
+  hasOverrideCache.set(batch, { generation, count, has });
   return has;
 }
 

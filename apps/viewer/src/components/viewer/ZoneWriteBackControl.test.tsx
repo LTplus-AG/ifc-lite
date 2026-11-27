@@ -16,7 +16,7 @@ import '@/test/setup-dom.js';
 import { describe, it, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
-import { render, click, cleanup } from '@/test/render.js';
+import { render, click, cleanup, settle } from '@/test/render.js';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { useViewerStore } from '@/store/index.js';
@@ -86,6 +86,7 @@ after(cleanup);
 describe('ZonesPanel: writing zone data into the model', () => {
   beforeEach(async () => {
     await seed();
+    await settle(); // earlier tests' panels stay mounted (cleanup runs after all); let their edits settle (#10535)
   });
 
   it('disables writer controls and explains Edit mode while preserving the export controls (#5901)', () => {
@@ -101,10 +102,32 @@ describe('ZonesPanel: writing zone data into the model', () => {
     assert.ok(useViewerStore.getState().dirtyModels.has('m1'));
   });
 
+  it('explains server property loading and failure as the write target changes (#10469)', () => {
+    const ui = render(<ZoneWriteBackControl zoneSet={ZONE_SET} />);
+    const store = useViewerStore.getState();
+    const model = store.models.get('m1')!;
+    assert.equal(writeButton(ui).disabled, false);
+
+    try {
+      act(() => store.setServerPropertiesRun('m1', { kind: 'running', runId: 1, owner: { model } }));
+      assert.equal(writeButton(ui).disabled, true);
+      assert.match(ui.querySelector('output')?.textContent ?? '', /properties are still loading/);
+      assert.equal(button(ui, 'CSV').disabled, false);
+
+      act(() => store.setServerPropertiesRun('m1', { kind: 'failed', runId: 1, error: 'offline' }));
+      assert.match(ui.querySelector('output')?.textContent ?? '', /properties could not be loaded/);
+    } finally {
+      act(() => store.setServerPropertiesRun('m1', { kind: 'idle' }));
+    }
+    assert.equal(writeButton(ui).disabled, false);
+    assert.equal(ui.querySelector('output'), null);
+  });
+
   it('explains unavailable write targets and enables a mixed federated set (#5901)', async () => {
     const data = await seed();
     const missing: FederatedModel = { ...fixtureModel('m1'), maxExpressId: WALL_ID, ifcDataStore: null };
     useViewerStore.setState({ models: new Map([['m1', missing]]) });
+    await settle();
     const ui = render(<ZoneWriteBackControl zoneSet={ZONE_SET} />);
     assert.equal(writeButton(ui).disabled, true);
     assert.match(writeButton(ui).title, /no editable IFC data/);

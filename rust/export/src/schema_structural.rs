@@ -51,6 +51,13 @@ pub(crate) fn constant_action(entity: &str) -> bool {
     matches!(entity, "IFCSTRUCTURALLINEARACTION" | "IFCSTRUCTURALPLANARACTION")
 }
 
+/// A constant linear or planar action between IFC2X3 and IFC4 or IFC4X3, mapped
+/// by attribute name: IFC2X3's CausedBy has no slot in either, and both declare
+/// the same layout (#11571).
+pub(crate) fn is_constant_action_conversion(entity: &str, from: &str, to: &str) -> bool {
+    matches!((from, to), ("IFC2X3", "IFC4" | "IFC4X3") | ("IFC4" | "IFC4X3", "IFC2X3")) && constant_action(entity)
+}
+
 pub(crate) fn is_assignment_conversion(entity: &str, from: &str, to: &str) -> bool {
     entity == "IFCRELCONNECTSSTRUCTURALELEMENT" && from == "IFC2X3" && matches!(to, "IFC4" | "IFC4X3" | "IFC5")
 }
@@ -66,14 +73,15 @@ pub(crate) fn attributes(entity: &str, args: &[String], from: &str, to: &str) ->
         // IfcRelAssignsToProduct. The inverse is `schema_structural_links`.
         return Some(format!("{},({}),$,{}", args[..4].join(","), args[5], args[4]));
     }
-    if !matches!((from, to), ("IFC2X3", "IFC4") | ("IFC4", "IFC2X3")) { return None; }
-    if stiffness_type(entity, 1).is_some() {
+    if matches!((from, to), ("IFC2X3", "IFC4" | "IFC4X3") | ("IFC4" | "IFC4X3", "IFC2X3"))
+        && stiffness_type(entity, 1).is_some()
+    {
         let mut values = args.to_vec();
         for (index, value) in values.iter_mut().enumerate().skip(1) {
             let Some(measure) = stiffness_type(entity, index) else { continue };
             let token = value.trim();
             if scalar_equals(token, "$") { continue; }
-            if to == "IFC4" {
+            if from == "IFC2X3" {
                 // IFC2X3 uses -1 for an infinitely stiff restraint. Zero is a
                 // finite measure too; keeping that encoding avoids rounding.
                 *value = if stiffness_number(token) == Some(-1.0) {
@@ -85,7 +93,7 @@ pub(crate) fn attributes(entity: &str, args: &[String], from: &str, to: &str) ->
         }
         return Some(values.join(","));
     }
-    if constant_action(entity) {
+    if is_constant_action_conversion(entity, from, to) {
         let src = crate::schema_convert::schema_attribute_names(from, entity)?;
         let tgt = crate::schema_convert::schema_attribute_names(to, entity)?;
         return Some(tgt.iter().map(|name| {
@@ -121,6 +129,26 @@ mod tests {
     }
 
     #[test]
+    fn ifc4x3_uses_the_same_stiffness_selects_and_rigid_sentinel_as_ifc4_10847() {
+        for (entity, values) in [
+            ("IFCBOUNDARYNODECONDITION", "1.,2.,3.,-1.,5.,6."),
+            ("IFCBOUNDARYNODECONDITIONWARPING", "1.,2.,3.,4.,5.,6.,-1."),
+            ("IFCBOUNDARYEDGECONDITION", "1.,2.,3.,-1.,5.,6."),
+            ("IFCBOUNDARYFACECONDITION", "1.,-1.,3."),
+        ] {
+            let source = format!("#23={entity}('Support',{values});");
+            let convert = |line: &str, from, to| {
+                let mut checks = crate::schema_enum::ConversionChecks::default();
+                convert_step_line(line, from, to, 23, &mut Ifc2x3SlotFill::new(None), Some(&mut checks)).unwrap()
+            };
+            let ifc4 = convert(&source, "IFC2X3", "IFC4");
+            assert!(ifc4.contains("IFCBOOLEAN(.T.)"), "{ifc4}");
+            assert_eq!(convert(&source, "IFC2X3", "IFC4X3"), ifc4, "{entity}");
+            assert_eq!(convert(&ifc4, "IFC4X3", "IFC2X3"), source, "{entity}");
+        }
+    }
+
+    #[test]
     fn constant_actions_keep_projected_or_true_in_its_named_slot_9668() {
         for entity in ["IFCSTRUCTURALLINEARACTION", "IFCSTRUCTURALPLANARACTION"] {
             let source = format!("#50={entity}('id',#1,$,$,$,$,$,#22,.GLOBAL_COORDS.,.F.,$,.TRUE_LENGTH.);");
@@ -128,6 +156,20 @@ mod tests {
             let there = convert_step_line(&source, "IFC2X3", "IFC4", 50, &mut slots, None).unwrap();
             assert!(there.ends_with(".F.,.TRUE_LENGTH.,.CONST.);"), "{there}");
             assert_eq!(convert_step_line(&there, "IFC4", "IFC2X3", 50, &mut slots, None).unwrap(), source);
+        }
+    }
+
+    /// #11571: IFC2X3 and IFC4X3 constant actions have the same arity, so a
+    /// positional copy put CausedBy into ProjectedOrTrue. Twin of the TypeScript case.
+    #[test]
+    fn constant_actions_map_by_name_to_and_from_ifc4x3_11571() {
+        let convert = |line: &str, from: &str, to: &str| convert_step_line(line, from, to, 50, &mut Ifc2x3SlotFill::new(None), None).unwrap();
+        for entity in ["IFCSTRUCTURALLINEARACTION", "IFCSTRUCTURALPLANARACTION"] {
+            let source = format!("#50={entity}('id',#1,$,$,$,$,$,#22,.GLOBAL_COORDS.,.F.,#20,.TRUE_LENGTH.);");
+            let ifc4 = convert(&source, "IFC2X3", "IFC4");
+            assert_eq!(ifc4, format!("#50={entity}('id',#1,$,$,$,$,$,#22,.GLOBAL_COORDS.,.F.,.TRUE_LENGTH.,.CONST.);"));
+            assert_eq!(convert(&source, "IFC2X3", "IFC4X3"), ifc4, "{entity}");
+            assert_eq!(convert(&ifc4, "IFC4X3", "IFC2X3"), format!("#50={entity}('id',#1,$,$,$,$,$,#22,.GLOBAL_COORDS.,.F.,$,.TRUE_LENGTH.);"), "{entity}");
         }
     }
 }
@@ -144,7 +186,7 @@ mod diagnostic_tests {
             ("#50=IFCSTRUCTURALPOINTACTION('id',#1,$,$,$,$,$,#22,.GLOBAL_COORDS.,.F.,#77);", "IFC2X3", "IFC4", "CausedBy"),
             ("#50=IFCSTRUCTURALPOINTCONNECTION('id',#1,$,$,$,$,$,#22,#77);", "IFC4", "IFC2X3", "ConditionCoordinateSystem"),
         ] {
-            let mut checks = ConversionChecks::new();
+            let mut checks = ConversionChecks::default();
             let out = convert_step_line(source, from, to, 50, &mut Ifc2x3SlotFill::new(None), Some(&mut checks)).unwrap();
             assert!(!out.contains("#77"));
             assert!(checks.warnings().iter().any(|w| w.contains(field) && w.contains("omitted")), "{:?}", checks.warnings());
@@ -156,7 +198,7 @@ mod diagnostic_tests {
     fn physical_analytical_link_retains_both_objects_in_ifc4_9668() {
         let source = "#50=IFCRELCONNECTSSTRUCTURALELEMENT('id',#1,$,$,#22,#77);";
         for target in ["IFC4", "IFC4X3", "IFC5"] {
-            let mut checks = ConversionChecks::new();
+            let mut checks = ConversionChecks::default();
             let out = convert_step_line(source, "IFC2X3", target, 50, &mut Ifc2x3SlotFill::new(None), Some(&mut checks)).unwrap();
             assert_eq!(out, "#50=IFCRELASSIGNSTOPRODUCT('id',#1,$,$,(#77),$,#22);");
             assert!(checks.warnings().iter().any(|w| w.contains("the relationship kind is not kept in the target file")));
@@ -176,6 +218,8 @@ mod review_regressions {
         for (schema, target, record, field) in [
             ("IFC4", "IFC2X3", "#50=IFCSTRUCTURALPOINTCONNECTION('id',#1,$,$,$,$,$,#22,#77);", "ConditionCoordinateSystem"),
             ("IFC2X3", "IFC4", "#50=IFCSTRUCTURALPOINTACTION('id',#1,$,$,$,$,$,#22,.GLOBAL_COORDS.,.F.,#77);", "CausedBy"),
+            // #11571: a constant action's CausedBy is named on IFC4X3 as on IFC4.
+            ("IFC2X3", "IFC4X3", "#50=IFCSTRUCTURALLINEARACTION('id',#1,$,$,$,$,$,#22,.GLOBAL_COORDS.,.F.,#77,.TRUE_LENGTH.);", "CausedBy"),
         ] {
             let source = format!("ISO-10303-21;HEADER;FILE_SCHEMA(('{schema}'));ENDSEC;DATA;\n{record}\nENDSEC;END-ISO-10303-21;");
             let options = StepOptions { schema: Some(target.into()), ..StepOptions::default() };
@@ -196,7 +240,7 @@ mod review_regressions {
     #[test]
     fn native_ifc2x3_varying_action_is_unconverted_and_warned_9668() {
         let source = "#50=IFCSTRUCTURALPLANARACTIONVARYING('id',#1,$,$,$,$,$,#22,.GLOBAL_COORDS.,.F.,$,.TRUE_LENGTH.,#88,(#23));";
-        let mut checks = ConversionChecks::new();
+        let mut checks = ConversionChecks::default();
         let out = convert_step_line(source, "IFC2X3", "IFC4", 50, &mut Ifc2x3SlotFill::new(None), Some(&mut checks)).unwrap();
         assert_eq!(out, source);
         assert!(checks.warnings().iter().any(|w| w.contains("record remains unconverted; output does not conform to IFC4")));

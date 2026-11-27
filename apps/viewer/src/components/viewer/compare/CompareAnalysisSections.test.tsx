@@ -16,7 +16,7 @@ import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { useViewerStore } from '@/store';
-import { render, click, cleanup } from '@/test/render';
+import { render, click, cleanup, settle } from '@/test/render';
 import { fixtureModels } from '@/test/store-fixture';
 import { revisionPair, runClash, type RevisionPair } from '@/lib/compare/revision-pair.test-support';
 import { captureAnalysisStamp, stampAnalysisReport } from '@/hooks/useAnalysisStaleness';
@@ -128,6 +128,7 @@ describe('Compare panel impact and reconciliation sections (#6921)', () => {
     assert.ok(root.querySelector('output'), 'the current outcome is shown');
 
     edit();
+    await settle();
     assert.equal(root.querySelector('output') !== null, false, 'a stale outcome is not presented as current');
     assert.match(root.textContent ?? '', /The models changed after these runs/);
 
@@ -149,6 +150,7 @@ describe('Compare panel impact and reconciliation sections (#6921)', () => {
     act(() => click(button(root, /Reconcile findings across revisions/)));
     act(() => click(button(root, /Capture current run/)));
     await publishClash(pair, 0.01);
+    await settle();
     act(() => click(button(root, /Capture current run/)));
     const [base, head] = [...root.querySelectorAll('select')];
     // Reconcile the earlier run with itself, then pick the other head.

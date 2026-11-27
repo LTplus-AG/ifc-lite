@@ -14,6 +14,8 @@ export { ParquetExporter, type ParquetExportOptions } from './parquet-exporter.j
 // JSONLDExporter removed — JSON-LD is now produced in Rust (ifc-lite-export).
 // Use GeometryProcessor.exportJsonld(bytes, …).
 export { StepExporter, exportToStep, type StepExportOptions, type StepExportResult, type StepExportProgress } from './step-exporter.js';
+export { isGeorefRefusal } from './step-coordinate-options.js';
+export { mergeWarningLabel } from './merged-bake.js';
 export { isExpressibleMapUnit } from './step-map-unit.js';
 export { declaresMapConversionScaled } from './step-georeferencing.js';
 // Anonymized isolated export (#2934): pick a seed selection, expand it by
@@ -79,6 +81,7 @@ export { columnsToParquet, isParquet } from './columns-to-parquet.js';
 // are the guard's internals, and the parity suite imports them from the module
 // directly. Callers need the two functions and the options type.
 export { escapeCsvCell, guardSpreadsheetFormula, type CsvCellOptions } from './csv-cell.js';
+export { sanitizeSheetName, clampXlsxCellText } from './xlsx-limits.js';
 // THE CSV table writer: header + rows of row objects through the escaper above.
 export { tableToCsv, csvCellOf, type TableToCsvOptions, type TableColumn } from './csv-table.js';
 

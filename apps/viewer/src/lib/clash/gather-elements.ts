@@ -5,13 +5,13 @@
 import { useViewerStore } from '@/store';
 import { elementsFromStep } from '@ifc-lite/clash/step';
 import type { ClashElement, ExclusionSet } from '@ifc-lite/clash';
-import { withInstancedMeshes } from '@/utils/instancedExport';
+import { withInstancedMeshes, type ReleasedExportContext } from '@/utils/instancedExport';
 import { recordGatheredModel } from '@/lib/federation/federation-identity';
 import { rememberPlacementSnapshot } from '@/lib/model-placement/placement-snapshot';
 import type { ClashFederationIdentity } from './federation-identity';
 
 /** Canonical live geometry collection shared by panel orchestration and agent analysis. */
-export function gatherClashElements(modelIds?: ReadonlySet<string>): {
+export function gatherClashElements(modelIds?: ReadonlySet<string>, context?: ReleasedExportContext): {
   elements: ClashElement[]; exclusions: ExclusionSet; federationIdentity: ClashFederationIdentity;
 } {
     const state = useViewerStore.getState();
@@ -49,7 +49,7 @@ export function gatherClashElements(modelIds?: ReadonlySet<string>): {
       const meshes = withInstancedMeshes(geometryResult, {
         modelId: model.id, idOffset: model.idOffset ?? 0,
         maxExpressId: model.maxExpressId ?? 0,
-      }).meshes;
+      }, context).meshes;
       if (meshes.length === 0) continue;
       // `useIfcLoader` shifts every `mesh.expressId` into the GLOBAL id space by
       // this model's `idOffset` while `ifcDataStore` stays LOCAL, so the adapter

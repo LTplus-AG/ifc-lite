@@ -4,7 +4,10 @@
 import { useViewerStore } from '@/store';
 import { viewerOperation } from './contract';
 import { assertToolActive } from '../cancellation';
-import { currentClash, clashSettings } from './clash-native';
+import { IFC_ENTITY_NAMES } from '@ifc-lite/data';
+import { currentClash, clashSettings, clashViewSettingsSignature } from './clash-native';
+import { invalidInput, stale, parseJsonInput, saveRefusal } from './refusals';
+import type { SaveResult } from '@/lib/clash/persistence';
 const outputSchema = {
   type: 'object',
   properties: { native_json: { type: 'string' } },
@@ -21,8 +24,8 @@ const meta = (id: string, description: string) => ({
   implementation: 'native-store' as const,
   outputSchema,
 });
-function saved(result: { ok: boolean }) {
-  if (!result.ok) throw new Error(`Native clash persistence refused: ${JSON.stringify(result)}`);
+function saved(result: SaveResult) {
+  if (!result.ok) throw saveRefusal(result);
   return result;
 }
 export const clashSettingsOperations = [
@@ -32,11 +35,12 @@ export const clashSettingsOperations = [
     focusMode: 'highlight' | 'isolate' | 'ghost';
     showRegionBox: boolean;
     statusFilter: Array<'open' | 'resolved' | 'accepted'>;
-    expected_settings: string;
+    expected_settings?: string | null;
+    expected_view_settings?: string | null;
   }>(
     meta(
       'clash.viewSettings',
-      'Set native sort/touching/review-status filters, focus mode and region-box display after inspecting the exact settings. These change presentation, not detection results.',
+      'Set native sort/touching/review-status filters, focus mode and region-box display. Use expected_view_settings from clash.state to guard the review filter too. Legacy callers may send expected_settings. If both are supplied, expected_view_settings takes precedence. These change presentation, not detection results.',
     ),
     {
       type: 'object',
@@ -51,23 +55,30 @@ export const clashSettingsOperations = [
           uniqueItems: true,
           items: { type: 'string', enum: ['open', 'resolved', 'accepted'] },
         },
-        expected_settings: { type: 'string', maxLength: 20000 },
+        expected_settings: { type: 'string', nullable: true, maxLength: 20000 },
+        expected_view_settings: { type: 'string', nullable: true, maxLength: 20000 },
       },
-      required: ['sortBy', 'hideTouching', 'focusMode', 'showRegionBox', 'statusFilter', 'expected_settings'],
+      required: ['sortBy', 'hideTouching', 'focusMode', 'showRegionBox', 'statusFilter'],
+      anyOf: [
+        { properties: { expected_settings: { type: 'string' } }, required: ['expected_settings'] },
+        { properties: { expected_view_settings: { type: 'string' } }, required: ['expected_view_settings'] },
+      ],
       additionalProperties: false,
     },
     (i, c) =>
       out(
         c.commit(() => {
           const s = useViewerStore.getState();
-          if (JSON.stringify(clashSettings()) !== i.expected_settings) throw new Error('Clash settings changed.');
+          const expected = i.expected_view_settings ?? i.expected_settings;
+          const current = i.expected_view_settings != null ? clashViewSettingsSignature() : JSON.stringify(clashSettings());
+          if (current !== expected) throw stale('Clash settings changed.');
           s.setClashSortBy(i.sortBy);
           s.setClashHideTouching(i.hideTouching);
           s.setClashFocusMode(i.focusMode);
           s.setShowClashRegionBox(i.showRegionBox);
           for (const status of ['open', 'resolved', 'accepted'] as const)
             if (s.clashStatusFilter.has(status) !== i.statusFilter.includes(status)) s.toggleClashStatusFilter(status);
-          return { settings: clashSettings(), statusFilter: [...useViewerStore.getState().clashStatusFilter] };
+          return { settings: clashSettings(), expected_view_settings: clashViewSettingsSignature(), statusFilter: [...useViewerStore.getState().clashStatusFilter] };
         }),
       ),
   ),
@@ -87,20 +98,20 @@ export const clashSettingsOperations = [
     },
     async (i, c) => {
       const { normalizeSettings } = await import('@/lib/clash/persistence');
-      const raw: unknown = JSON.parse(i.settings_json);
-      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('Expected canonical settings object.');
+      const raw: unknown = parseJsonInput(i.settings_json, 'settings_json');
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw invalidInput('invalid-value', 'Expected canonical settings object.');
       const settings = normalizeSettings(raw);
       const record = raw as Record<string, unknown>;
       if (
         Object.keys(record).some((key) => !Object.hasOwn(settings, key)) ||
         Object.entries(settings).some(([key, value]) => record[key] !== value)
       )
-        throw new Error('Provide every canonical setting with valid native values/bounds.');
+        throw invalidInput('invalid-value', 'Provide every canonical setting with valid native values/bounds.');
       assertToolActive(c);
       return out(
         c.commit(() => {
           const s = useViewerStore.getState();
-          if (JSON.stringify(clashSettings()) !== i.expected_settings) throw new Error('Clash settings changed.');
+          if (JSON.stringify(clashSettings()) !== i.expected_settings) throw stale('Clash settings changed.');
           return saved(s.applyClashFlavorConfig({ settings, presets: s.clashPresets }));
         }),
       );
@@ -130,28 +141,31 @@ export const clashSettingsOperations = [
       additionalProperties: false,
     },
     async (i, c) => {
-      const { isValidStoredPreset, storedPresetToPreset, importPresets } = await import('@/lib/clash/persistence');
-      const imported =
-        i.action === 'import'
-          ? await importPresets(new File([i.preset_json], 'clash-presets.json', { type: 'application/json' }))
-          : null;
+      const { isValidStoredPreset, storedPresetToPreset, decodeImportedPresets, MAX_PRESETS } = await import('@/lib/clash/persistence');
+      const imported = i.action === 'import' ? decodeImportedPresets(parseJsonInput(i.preset_json, 'preset_json')) : null;
       // The panel refuses an import with no valid rules (noValidRulesToast); so does the operation.
-      if (imported && !imported.length) throw new Error('The preset file contains no valid clash rules.');
+      if (imported && !imported.length) throw invalidInput('invalid-value', 'The preset file contains no valid clash rules.');
       let preset;
       if (i.action === 'create' || i.action === 'update') {
-        const value: unknown = JSON.parse(i.preset_json);
-        if (!isValidStoredPreset(value)) throw new Error('Invalid canonical ClashPreset.');
+        const value: unknown = parseJsonInput(i.preset_json, 'preset_json');
+        if (!isValidStoredPreset(value)) throw invalidInput('invalid-value', 'Invalid canonical ClashPreset.');
         preset = storedPresetToPreset(value, false);
       }
       assertToolActive(c);
       return out(
         c.commit(() => {
           const s = useViewerStore.getState();
-          if (JSON.stringify(s.clashPresets) !== i.expected_presets) throw new Error('Clash presets changed.');
+          if ((i.action === 'update' || i.action === 'delete' || i.action === 'enabled') && !s.clashPresets.some(p => p.id === i.id))
+            throw invalidInput('unknown-target', 'Unknown native preset.');
+          if (JSON.stringify(s.clashPresets) !== i.expected_presets) throw stale('Clash presets changed.');
           if (i.action === 'reset') return saved(s.resetClashPresets());
-          if (i.action === 'import') return saved(s.importClashPresets(imported!));
+          if (i.action === 'import') {
+            const result = s.importClashPresets(imported!);
+            // With room left in the library a smaller file can succeed; a full library stays unavailable.
+            if (!result.ok && result.reason === 'too_many' && s.clashPresets.filter(p => !p.builtin).length < MAX_PRESETS) throw invalidInput('limit', result.message, { save: result.reason });
+            return saved(result);
+          }
           if (i.action === 'create') return saved(s.createClashPreset(preset!));
-          if (!s.clashPresets.some((p) => p.id === i.id)) throw new Error('Unknown native preset.');
           return saved(
             i.action === 'update'
               ? s.updateClashPreset(
@@ -190,7 +204,7 @@ export const clashSettingsOperations = [
     async (i, c) => {
       const [{ clashReviewKey }, { MAX_COMMENT }] = await Promise.all([import('@ifc-lite/clash'), import('@/lib/clash/persistence')]);
       if (i.comment.trim().length > MAX_COMMENT)
-        throw new Error(`Review comments are limited to ${MAX_COMMENT} characters after trimming.`);
+        throw invalidInput('limit', `Review comments are limited to ${MAX_COMMENT} characters after trimming.`);
       assertToolActive(c);
       return out(
         c.commit(() =>
@@ -239,17 +253,18 @@ export const clashSettingsOperations = [
       return out(
         c.commit(() => {
           const s = useViewerStore.getState();
-          if (JSON.stringify(s.clashExclusions) !== i.expected_exclusions) throw new Error('Clash exclusions changed.');
+          if ((i.action === 'remove' || i.action === 'enabled') && !s.clashExclusions.some(rule => rule.id === i.id))
+            throw invalidInput('unknown-target', 'Unknown native exclusion.');
+          if (JSON.stringify(s.clashExclusions) !== i.expected_exclusions) throw stale('Clash exclusions changed.');
           if (i.action === 'clear') return saved(s.clearClashExclusions());
           if (i.action === 'remove' || i.action === 'enabled') {
-            if (!s.clashExclusions.some((rule) => rule.id === i.id)) throw new Error('Unknown native exclusion.');
             return saved(
               i.action === 'remove' ? s.removeClashExclusion(i.id) : s.setClashExclusionEnabled(i.id, i.enabled),
             );
           }
           if (i.action === 'typeAny') {
-            const tag = i.tag.trim();
-            if (!tag) throw new Error('An IFC class is required.');
+            const tag = IFC_ENTITY_NAMES[i.tag.trim().toUpperCase()];
+            if (!tag) throw invalidInput('invalid-value', 'A known IFC class is required.');
             return saved(s.addClashExclusion(typeAnyExclusion(tag)));
           }
           const pair = currentClash(i.run_seq, i.clash_id);

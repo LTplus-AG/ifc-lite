@@ -14,9 +14,19 @@ type E2EState = { loading: boolean; geometryStreamingActive: boolean; models: Ma
 type E2EWindow = typeof globalThis & {
   __ifc_lite_geometry_restore_test__?: { releaseDelayMs?: number; geometryRestoreBackstopFires?: () => number };
   __ifc_lite_viewer_store__?: { getState(): E2EState };
-  __IFC_LITE_LOAD_TRACE__?: { latest(): { spans?: Array<{ name: string; end: number | null }> } | undefined };
+  __IFC_LITE_LOAD_TRACE__?: { latest(): { end: number | null; spans?: Array<{ name: string; end: number | null; attrs?: { outcome?: string; reason?: string } }> } | undefined };
+  __ifc_lite_render_frame__?: () => { timestamp: number } | undefined;
   __ifc_lite_scene_owner__?: (id: number) => { screen: { x: number; y: number } | null };
 };
+
+async function waitForLoadedFrame(page: Page): Promise<void> {
+  await page.waitForFunction(() => {
+    const g = globalThis as E2EWindow;
+    const end = g.__IFC_LITE_LOAD_TRACE__?.latest()?.end;
+    const frame = g.__ifc_lite_render_frame__?.();
+    return end != null && frame && frame.timestamp > end;
+  }, null, { timeout: deadline, polling: 100 });
+}
 
 test('#10218 reopen ignores a viewport click until restored geometry can be picked', async ({ context }) => {
   test.skip(!existsSync(join(process.cwd(), FIXTURE)) || !existsSync(join(process.cwd(), WARMUP)), 'IFC fixtures missing — run `pnpm fixtures`');
@@ -26,15 +36,25 @@ test('#10218 reopen ignores a viewport click until restored geometry can be pick
   };
   // Cold load (as cold-load-scene-snapshot does): warm-up model first, then the fixture, until its scene snapshot is written.
   const cold = await context.newPage();
+  // Listen before startup, then let the warm-up load and quantized admission finish.
+  const admitted = cold.waitForEvent('console', {
+    predicate: (msg) => msg.text().startsWith('[Viewport] quantized vertices'),
+    timeout: deadline,
+  });
   await cold.goto('/?perfTrace=1');
   await cold.waitForFunction(() => Boolean((globalThis as E2EWindow).__ifc_lite_viewer_store__));
   await cold.locator('#file-input-open').setInputFiles(join(process.cwd(), WARMUP));
   await cold.waitForFunction(settled, null, { timeout: deadline });
+  await admitted;
   await cold.locator('#file-input-open').setInputFiles(join(process.cwd(), FIXTURE));
   await cold.waitForFunction(() => {
     const load = (globalThis as E2EWindow).__IFC_LITE_LOAD_TRACE__?.latest();
     return Boolean(load?.spans?.some((s: { name: string; end: number | null }) => s.name === 'cache.writeSceneSnapshot' && s.end !== null));
   }, null, { timeout: deadline, polling: 250 });
+  const snapshot = await cold.evaluate(() => (globalThis as E2EWindow).__IFC_LITE_LOAD_TRACE__?.latest()
+    ?.spans?.find((span) => span.name === 'cache.writeSceneSnapshot')?.attrs);
+  expect(snapshot, 'the cold load must write the scene that the reopen will adopt').toMatchObject({ outcome: 'written' });
+  await waitForLoadedFrame(cold);
   // A point of the canvas that selects an element of the fixture, and that element's express id (offsets differ per page).
   const selectedExpressId = (page: Page) => page.evaluate(() => {
     const s = (globalThis as E2EWindow).__ifc_lite_viewer_store__!.getState() as unknown as { selectedEntityId: number | null; activeModelId: string | null; models: Map<string, { idOffset: number }> };
@@ -96,6 +116,7 @@ test('#10218 reopen ignores a viewport click until restored geometry can be pick
     const state = (globalThis as E2EWindow).__ifc_lite_viewer_store__!.getState();
     return { id: state.selectedEntityId, ids: [...state.selectedEntityIds] };
   })).toEqual(heldSelection);
+  await waitForLoadedFrame(page);
   // Clear it, so the post-release click has to select on its own.
   await page.evaluate(() => (globalThis as E2EWindow).__ifc_lite_viewer_store__!.getState().setSelectedEntityId(null));
   expect(await selectedExpressId(page)).toBeNull();

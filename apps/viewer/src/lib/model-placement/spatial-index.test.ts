@@ -82,6 +82,31 @@ it('publishes spatial queries at the moved position and prevents a late source b
   assert.deepEqual(Array.from(mesh.positions), [0, 0, 0, 1, 0, 0, 0, 1, 0], 'spatial indexing does not rewrite source vertices');
 });
 
+it('#11246 a queued spatial index build preserves the index of a newly loaded model', async (t) => {
+  const initial = useViewerStore.getState();
+  t.after(() => {
+    useViewerStore.setState(initial, true);
+    modelIndices(initial.models);
+  });
+  const mesh: MeshData = { expressId: 1, positions: Float32Array.from([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+    indices: Uint32Array.from([0, 1, 2]), normals: new Float32Array(9), color: [1, 1, 1, 1] };
+  const a = { ...fixtureModel('index-owner'), maxExpressId: 10,
+    geometryResult: { meshes: [mesh], totalTriangles: 1 } as GeometryResult };
+  const b = fixtureModel('loaded-while-indexing', { idOffset: 100 });
+  useViewerStore.setState({ ...fixtureModels(a), modelPlacement: emptyPlacementState() });
+  const captured = useViewerStore.getState();
+  modelIndices(captured.models);
+
+  const pending = buildPlacedSpatialIndex(captured, a.id);
+  const live = fixtureModels(a, b);
+  useViewerStore.setState(live);
+  const bIndex = modelIndices(live.models).get(b.id);
+  assert.notEqual(bIndex, undefined);
+
+  assert.equal(await pending, true, 'the captured model remained current and its index published');
+  assert.equal(modelIndices(live.models).get(b.id), bIndex, 'building the BVH must preserve the newer model index');
+});
+
 it('waits for GPU shard drain and indexes pure instances for primary and federated models (#5275)', async () => {
   const occurrence = (x: number, id: number, modelIndex: number): MeshData => ({
     expressId: id, modelIndex, positions: new Float32Array([x, 0, 0, x + 1, 0, 0, x, 1, 0]),
@@ -352,6 +377,23 @@ it('records the first placed build after a load as that load\'s bvh.build span, 
   const builds = tracer.latest()!.spans.filter((s) => s.name === 'bvh.build');
   assert.equal(builds.length, 1, 'a rebuild after the load is not recorded on it');
   assert.ok(builds[0].end !== null && builds[0].end >= builds[0].start, 'the span closes when the index publishes');
+});
+
+it('#10887 r4653239427 a placed build queued behind an export never publishes from geometry replaced while it waited', async () => {
+  const { withReleasedExportGeometry } = await import('@/utils/instancedExport');
+  const tri = (expressId: number, x: number): MeshData => ({ expressId, positions: new Float32Array([x, 0, 0, x + 1, 0, 0, x, 1, 0]),
+    indices: new Uint32Array([0, 1, 2]), normals: new Float32Array(9), color: [1, 1, 1, 1] });
+  const geometry = (mesh: MeshData) => ({ meshes: [mesh], totalTriangles: 1, totalVertices: 3,
+    coordinateInfo: { originShift: { x: 0, y: 0, z: 0 } } }) as unknown as GeometryResult;
+  const model = { ...fixtureModel('queued'), idOffset: 0, maxExpressId: 10, geometryResult: geometry(tri(1, 0)) } as unknown as FederatedModel;
+  useViewerStore.setState({ ...fixtureModels(model), modelPlacement: emptyPlacementState() });
+  let release!: () => void;
+  const held = withReleasedExportGeometry(() => new Promise<void>((resolve) => { release = resolve; })); // another export holds the queue
+  const build = buildPlacedSpatialIndex(useViewerStore.getState(), 'queued');
+  // The model's geometry is replaced (a reload, a re-bake) while the build waits, in the same store.
+  useViewerStore.setState({ models: new Map([['queued', { ...model, geometryResult: geometry(tri(1, 50)) }]]) } as never);
+  await settle('the placed build waits behind the held export'); release(); await held;
+  assert.equal(await build, false, 'never a placed index built from the superseded geometry');
 });
 
 it('builds no placed index while the scene is still draining or finalizing, then builds it once settled (L1)', async () => {

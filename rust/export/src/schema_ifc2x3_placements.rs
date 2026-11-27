@@ -34,6 +34,9 @@
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 
+#[path = "schema_ifc2x3_style_assignments.rs"]
+mod style_assignments;
+
 use crate::schema_ifc2x3_records::{
     is_dollar, list, num, ref_id, triple, GridFrame, Records, EPS, GRID_PLACEMENT, INTERSECTION, LOCAL, OBJECT_PLACEMENT, RELATIVE_PLACEMENT, Z,
 };
@@ -42,38 +45,6 @@ use crate::step_record_frame::record_frame;
 use crate::step_slot::slots_of;
 
 pub(crate) use crate::schema_ifc2x3_body::Body;
-
-/// The `#n` references in `text` from `from` on, outside string literals.
-fn references(text: &str, from: usize) -> Vec<u32> {
-    let b = text.as_bytes();
-    let mut ids = Vec::new();
-    let mut i = from;
-    while i < b.len() {
-        if b[i] == b'\'' {
-            i += 1;
-            while i < b.len() {
-                if b[i] == b'\'' && b.get(i + 1) == Some(&b'\'') {
-                    i += 2;
-                } else if b[i] == b'\'' {
-                    break;
-                } else {
-                    i += 1;
-                }
-            }
-        } else if b[i] == b'#' {
-            let mut j = i + 1;
-            while j < b.len() && b[j].is_ascii_digit() {
-                j += 1;
-            }
-            if let Ok(id) = text[i + 1..j].parse() {
-                ids.push(id);
-            }
-            i = j - 1;
-        }
-        i += 1;
-    }
-    ids
-}
 
 /// Who names each placement and intersection.
 #[derive(Default)]
@@ -99,7 +70,7 @@ fn users(records: &Records) -> Users {
     }
     for rec in records.list.iter().flatten() {
         let mut hits = Vec::new();
-        for id in references(rec.text, rec.open) {
+        for id in crate::step_text::ref_spans(&rec.text.as_bytes()[rec.open..]).filter_map(|span| span.id) {
             if placements.contains(&id) {
                 hits.push(id);
             } else if let Some(n) = found.crossings.get_mut(&id) {
@@ -253,6 +224,13 @@ pub(crate) fn place_each_object_once(body: &str) -> Option<Placed> {
     };
 
     for rec in records.list.iter().flatten() {
+        if rec.ty == "IFCSTYLEDITEM" {
+            if let Some((styled, assignment)) = style_assignments::wrap_direct_styles(&records, rec, next) {
+                rewrites.insert(rec.id, styled);
+                added.push(assignment);
+                next += 1;
+            }
+        }
         if rec.ty != GRID_PLACEMENT || others.contains(&rec.id) || products.contains_key(&rec.id) {
             continue;
         }

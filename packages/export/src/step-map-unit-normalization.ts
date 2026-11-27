@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { withoutComments } from './step-comment-skip.js';
 import { SI_PREFIX_MULTIPLIERS } from '@ifc-lite/parser';
 import { ifc4Registry } from './ifc4-registry.js';
 import { readStepSlots, splitTopLevelListItems, type StepRecordSlots } from './step-argument-parser.js';
@@ -59,7 +60,7 @@ function normalizeMapUnitsToMetres(pass: ExportPass, allocateId: () => number): 
     }
   }
   let metreId = [...records.values()].find(({ record }) => record.type === 'IFCSIUNIT'
-    && enumeration(record.slots[1]) === 'LENGTHUNIT' && record.slots[2]?.trim() === '$'
+    && enumeration(record.slots[1]) === 'LENGTHUNIT' && withoutComments(record.slots[2] ?? '') === '$'
     && enumeration(record.slots[3]) === 'METRE')?.id;
   const warn = (id: number, reason: string): void => {
     const message = `Cannot normalize IfcProjectedCRS #${id} map units to metres: ${reason}. Its map units and coordinate operations were preserved.`;
@@ -81,7 +82,7 @@ function normalizeMapUnitsToMetres(pass: ExportPass, allocateId: () => number): 
       warn(crs.id, 'a retained WKT definition may declare its own coordinate units'); continue;
     }
     const authoredUnit = crs.record.slots[6]?.trim();
-    const unitId = authoredUnit === '$' ? projectUnitForContexts(consumers, records, schema) : ref(authoredUnit);
+    const unitId = withoutComments(authoredUnit ?? '') === '$' ? projectUnitForContexts(consumers, records, schema) : ref(authoredUnit);
     const factor = unitId === undefined ? undefined : lengthUnitFactor(unitId, records);
     if (factor === undefined) { warn(crs.id, 'the applicable length unit is missing, ambiguous, or unsupported'); continue; }
     if (factor === 1) continue;
@@ -91,7 +92,7 @@ function normalizeMapUnitsToMetres(pass: ExportPass, allocateId: () => number): 
     const replacements = new Map<RecordEntry, string[]>();
     for (const operation of consumers) {
       const slots = operation.record.slots.map(token => token.trim());
-      const values = [2, 3, 4, 7].map(index => index === 7 && slots[index] === '$' ? 1 : real(slots[index]));
+      const values = [2, 3, 4, 7].map(index => index === 7 && withoutComments(slots[index] ?? '') === '$' ? 1 : real(slots[index]));
       if (slots.length < 8 || values.some(value => !Number.isFinite(value))
         || values[3] <= 0 || values.some(value => !Number.isFinite(value * factor))
         || values[3] * factor <= 0) break;
@@ -126,7 +127,7 @@ function lengthUnitFactor(id: number, records: Map<number, RecordEntry>): number
     if (record.type === 'IFCSIUNIT') {
       if (enumeration(record.slots[3]) !== 'METRE') return undefined;
       const prefix = record.slots[2]?.trim();
-      const multiplier = prefix === '$' ? 1 : SI_PREFIX_MULTIPLIERS[enumeration(prefix)];
+      const multiplier = withoutComments(prefix ?? '') === '$' ? 1 : SI_PREFIX_MULTIPLIERS[enumeration(prefix)];
       const result = factor * multiplier;
       return Number.isFinite(result) && result > 0 ? result : undefined;
     }

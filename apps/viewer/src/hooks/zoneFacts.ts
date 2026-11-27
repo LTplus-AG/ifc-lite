@@ -55,7 +55,7 @@ function volumeScaleOf(store: IfcDataStore | null, view: MutablePropertyView) {
 /** Get-or-create a model's overlay. Write-back is often the FIRST thing in a
  *  session to touch a model's properties, so unlike the panels it cannot assume
  *  a view already exists. */
-export function contextFor(modelId: string, cache: Map<string, ModelContext | null>): ModelContext | null {
+export function contextFor(modelId: string, cache: Map<string, ModelContext | null>, registerView = true): ModelContext | null {
   const cached = cache.get(modelId);
   if (cached !== undefined) return cached;
 
@@ -68,7 +68,7 @@ export function contextFor(modelId: string, cache: Map<string, ModelContext | nu
       return null;
     }
     view = createModelMutationView(store, modelId);
-    state.registerMutationView(modelId, view);
+    if (registerView) state.registerMutationView(modelId, view);
   }
   const units = volumeScaleOf(store, view);
   const context: ModelContext = { view, volumeSiScale: units.scale, declaredUnitsAvailable: units.available, store };
@@ -231,6 +231,10 @@ export interface ZoneFactsRow {
   volumeSiScale: number;
 }
 
+export function ensureZoneApportionment(zoneSet: ZoneSet) {
+  return validEntry(useViewerStore.getState().zoneApportionment, zoneSet) ?? computeZoneApportionmentNow(zoneSet);
+}
+
 /**
  * Every element of `zoneSet`, with its per-zone volumes on `basis`.
  *
@@ -241,7 +245,7 @@ export interface ZoneFactsRow {
 export function gatherZoneFacts(zoneSet: ZoneSet, basis: VolumeBasis): ZoneFactsRow[] {
   const state = useViewerStore.getState();
   const zoneNameById = new Map(zoneSet.zones.map((z) => [z.id, z.name]));
-  const apportioned = validEntry(state.zoneApportionment, zoneSet) ?? computeZoneApportionmentNow(zoneSet);
+  const apportioned = ensureZoneApportionment(zoneSet);
   const proved = gatherProvedVolumes();
   const contexts = new Map<string, ModelContext | null>();
   const rows: ZoneFactsRow[] = [];

@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, it, expect } from 'vitest';
-import { referencesAnyExpressId } from './step-ref-scan.js';
+import { namesAnyRecord, referencesAnyExpressId } from './step-ref-scan.js';
 
 describe('referencesAnyExpressId', () => {
   it('finds a bare reference', () => {
@@ -43,5 +43,16 @@ describe('referencesAnyExpressId', () => {
 
   it('ignores a hash-number inside a /* ... */ comment', () => {
     expect(referencesAnyExpressId('$/* was #326 */,#1', new Set([326]))).toBe(false);
+  });
+});
+
+describe('namesAnyRecord', () => {
+  it('finds a reference past a string that ends in a \\S\\ directive operand', () => {
+    // The quote after `\S\` is the directive's operand, and the next one closes the string (#10915).
+    expect(namesAnyRecord("IFCPROPERTYSINGLEVALUE('Eastings','survey \\S\\'',IFCLENGTHMEASURE(2600100.),#3)")).toBe(true);
+  });
+
+  it('passes over a hash-number inside a string or comment', () => {
+    expect(namesAnyRecord("IFCPROPERTYSINGLEVALUE('Eastings','survey #1',IFCLENGTHMEASURE(2600100.),$) /* #2 */")).toBe(false);
   });
 });

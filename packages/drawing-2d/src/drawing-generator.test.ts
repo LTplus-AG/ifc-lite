@@ -15,7 +15,7 @@
 
 import { describe, it, expect } from 'vitest';
 import type { MeshData } from '@ifc-lite/geometry';
-import { Drawing2DGenerator } from './drawing-generator.js';
+import { Drawing2DGenerator, generateFloorPlan } from './drawing-generator.js';
 import { projectTo2D } from './math.js';
 import type {
   DrawingLine,
@@ -487,5 +487,24 @@ describe('generate() cut rings carry only real corners', () => {
     expect(edges[1]).toBeCloseTo(0.2, 6);
     expect(edges[2]).toBeCloseTo(6, 6);
     expect(edges[3]).toBeCloseTo(6, 6);
+  });
+});
+
+describe('generateFloorPlan() storey-relative cut (#10931)', () => {
+  it('cuts a storey of a building placed above its site 1.2 m above that storey floor', async () => {
+    // Site Z 14.23, building Z 3, storey Elevation 0.5, RTC offset Z 14.73: the storey floor is at render Y 3.
+    const frame = { siteOrigin: { x: 0, y: 0, z: 14.23 }, buildingOrigin: { z: 3 }, wasmRtcOffset: { x: 0, y: 0, z: 14.73 } };
+    const parapet = boxMesh(1, [0, 3, 0], [4, 4.5, 0.2]);
+    const wallBelow = boxMesh(2, [0, -0.5, 1], [4, 2.9, 1.2]);
+    const drawing = await generateFloorPlan([parapet, wallBelow], { storeyElevation: 0.5, cutHeight: 1.2, frame }, {
+      useGPU: false, includeHiddenLines: false,
+    });
+    expect(drawing.cutPolygons.map((p) => p.entityId)).toEqual([1]);
+    expect(drawing.config.plane.position).toBeCloseTo(4.2, 9);
+  });
+
+  it('still takes a render-frame Y as a number', async () => {
+    const drawing = await generateFloorPlan([boxMesh(1, [0, 0, 0], [4, 1.5, 0.2])], 1.2, { useGPU: false, includeHiddenLines: false });
+    expect(drawing.cutPolygons.map((p) => p.entityId)).toEqual([1]);
   });
 });

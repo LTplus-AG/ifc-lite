@@ -9,6 +9,15 @@
 //! afterwards: the wasm batch, its instanced (IFNS) occurrences, and the
 //! server's JSON and Parquet transports. They all join here, once.
 //!
+//! TWO ENTRIES. The exact one, `finish_for_source`, takes the
+//! [`StyleSource`] production paired with the mesh when it chose the colour
+//! (#10698): a `Style(id)` mesh takes `id`'s finish, any other none. No colour
+//! is compared. Every in-repo consumer uses it. The colour-based one,
+//! `finish`/`finish_for_mesh`, is kept for callers that hold only a
+//! `MeshData`; it reconstructs the source by the rule below, with the blind
+//! spots that rule documents, and it cannot tell two occurrences of one
+//! shared item apart.
+//!
 //! THE RULE: a mesh's finish comes from the style its colour came from, never
 //! from another. So the join asks the colour walks themselves which styled
 //! item the colour was taken from (`crate::element`'s style-source walks), in
@@ -39,9 +48,17 @@
 
 use crate::prepass::{resolve_geometry_finishes, PrepassSpans, Span};
 use crate::style::{GeometryStyleInfo, SpecularMaterial};
+use crate::element::StyleSource;
 use crate::types::mesh::MeshData;
 use ifc_lite_core::{EntityDecoder, EntityIndex, EntityScanner, IfcType};
 use rustc_hash::FxHashMap;
+
+/// The exact join: the finish `source`'s styled item authors, if the colour
+/// came from a styled item and that style authors one (a fill-only style
+/// authors none).
+fn finish_of_source(source: StyleSource, finishes: &FxHashMap<u32, SpecularMaterial>) -> Option<SpecularMaterial> {
+    finishes.get(&source.style()?).copied().filter(|f| f.metallic.is_some() || f.roughness.is_some())
+}
 
 /// Element id → its element-level style-source candidates, in colour order.
 type ElementSources = FxHashMap<u32, Vec<u32>>;
@@ -153,6 +170,12 @@ impl<'a> MeshFinishJoin<'a> {
     pub fn finish_for_mesh(&mut self, mesh: &MeshData, decoder: &mut EntityDecoder) -> Option<SpecularMaterial> {
         self.finish(mesh.express_id, mesh.geometry_item_id, mesh.color, decoder)
     }
+
+    /// The finish of a mesh or occurrence whose colour came from `source`
+    /// (from production, paired with the mesh): exact, no colour compared.
+    pub fn finish_for_source(&self, source: StyleSource) -> Option<SpecularMaterial> {
+        finish_of_source(source, self.finishes)
+    }
 }
 
 /// The finish join resolved from a file's bytes alone, for a consumer that
@@ -216,13 +239,28 @@ impl<'c> ModelFinishes<'c> {
         self.finishes.is_empty()
     }
 
+    /// The finish of a mesh or occurrence whose colour came from `source`
+    /// (from production, paired with the mesh): exact, no colour compared.
+    pub fn finish_for_source(&self, source: StyleSource) -> Option<SpecularMaterial> {
+        finish_of_source(source, &self.finishes)
+    }
+
     /// The finish `mesh` carries, by the module's rule.
     pub fn finish_for_mesh(&mut self, mesh: &MeshData) -> Option<SpecularMaterial> {
+        self.finish_for_item(mesh.express_id, mesh.geometry_item_id, mesh.color)
+    }
+
+    fn finish_for_item(
+        &mut self,
+        express_id: u32,
+        geometry_item_id: Option<u32>,
+        color: [f32; 4],
+    ) -> Option<SpecularMaterial> {
         let styles = &self.geometry_styles;
         join_finish(
-            mesh.express_id,
-            mesh.geometry_item_id,
-            mesh.color,
+            express_id,
+            geometry_item_id,
+            color,
             &|id| styles.get(&id).map(|s| s.color),
             &self.finishes,
             &mut self.element_sources,

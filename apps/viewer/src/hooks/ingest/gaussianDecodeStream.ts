@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
-import { createChunkDataPool, materializeToDataTable, readPly, readSplat, ReadStream, type ChunkSource } from '@playcanvas/splat-transform';
+import { createChunkDataPool, readPly, readSplat, ReadStream, type ChunkSource } from '@playcanvas/splat-transform';
 import { inspectGaussianDecodeAdmission } from './gaussianAdmission.js';
 import { validateGaussianDecoded, gaussianDecodedChannels } from './gaussianDecoded.js';
 import type { GaussianCaptureSummary } from './gaussianDecodeSession.js';
+import { GAUSSIAN_LAYERS, materializeGaussianLayers } from './gaussianMaterialize.js';
 import {
   accumulateGaussianBounds, emptyGaussianBounds, gaussianBoundsOrigin, gaussianPositionLayout, gaussianSourcePositions,
   writeRebasedPositions, type GaussianPositionLayout,
@@ -60,7 +61,6 @@ class BlobReadStream extends ReadStream {
 
 /** Upstream reads at most this many record bytes per chunk; also the decoder's pooled scratch cap. */
 const SCRATCH_BYTES = 16 * 1024 * 1024;
-const LAYERS = new Set(['position', 'geometric', 'color'] as const);
 
 /** Chunks [first, first + chunks) of `source` as a source of their own, for windowed materialization. */
 function windowOf(source: ChunkSource, first: number, chunks: number, rows: number): ChunkSource {
@@ -125,7 +125,7 @@ async function openDecoder(file: File, windowRows: number): Promise<Decoder> {
     const meta = source.meta;
     if (meta.numGaussians !== admission.count || meta.shBands !== admission.shDegree
       || meta.numLods !== 1 || meta.model !== 'default'
-      || !['position', 'geometric', 'color'].every(layer => meta.availableLayers.has(layer as 'position' | 'geometric' | 'color'))) {
+      || !GAUSSIAN_LAYERS.every(layer => meta.availableLayers.has(layer))) {
       throw new Error('Unsupported or inconsistent decoded Gaussian schema.');
     }
     const count = meta.numGaussians;
@@ -156,7 +156,7 @@ async function openDecoder(file: File, windowRows: number): Promise<Decoder> {
         const last = Math.ceil(end / chunkSize);
         const windowStart = first * chunkSize;
         const windowEnd = Math.min(count, last * chunkSize);
-        const table = await materializeToDataTable(windowOf(opened, first, last - first, windowEnd - windowStart), pool, LAYERS);
+        const table = await materializeGaussianLayers(windowOf(opened, first, last - first, windowEnd - windowStart), pool);
         if (table.numRows !== windowEnd - windowStart) throw new Error('Unsupported or inconsistent decoded Gaussian schema.');
         const rows = end - start;
         const offset = start - windowStart;

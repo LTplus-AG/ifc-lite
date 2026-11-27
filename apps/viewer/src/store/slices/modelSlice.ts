@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { discardOverlappingRetainedEdits, discardUnchangedMutationViews } from '@/utils/model-mutation-view';
+import { discardUnchangedMutationViews, registerModelWithRetainedEdits } from '@/utils/model-mutation-view';
 import { refreshModelOverlayCapacity } from '../overlay-capacity.js';
 
 /**
@@ -111,10 +111,12 @@ export interface ModelSlice {
    * Not the only spelling in the repo, and this doc must not claim otherwise:
    * `store/globalId.ts` `fromGlobalIdFromModels` holds an independent copy that
    * deliberately differs — it does not sort by `idOffset`, and it has a
-   * single-model fallback that answers even when the range check misses, for
-   * legacy single-store behaviour. Unifying them is a separate change with its
-   * own risk; what this pair guarantees is that the SCOPED and UNSCOPED
-   * resolvers on this slice always agree.
+   * single-model fallback that answers any id above the model's parse range
+   * (where overlay allocations land) when the range check misses, for legacy
+   * single-store behaviour; an id below the model's offset gets no answer
+   * (#11527). Unifying them is a separate change with its own risk; what
+   * this pair guarantees is that the SCOPED and UNSCOPED resolvers on this
+   * slice always agree.
    */
   resolveGlobalIdInModel: (modelId: string, globalId: number) => GlobalIdLookup | null;
 }
@@ -563,9 +565,7 @@ export const createModelSlice: StateCreator<ViewerState, [], [], ModelSlice> = (
   hasModels: () => get().models.size > 0,
 
   // Federation Registry helpers
-  registerModelOffset: (modelId: string, maxExpressId: number) => {
-    return federationRegistry.registerModel(modelId, maxExpressId, discardOverlappingRetainedEdits(get(), modelId, maxExpressId));
-  },
+  registerModelOffset: (modelId, maxExpressId) => registerModelWithRetainedEdits(get, modelId, maxExpressId),
 
   toGlobalId: (modelId: string, expressId: number) => toPublishedGlobalIdFromState(federationRegistry, get(), modelId, expressId),
 

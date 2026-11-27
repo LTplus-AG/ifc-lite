@@ -12,6 +12,7 @@ import { filterResultBySeverity } from '@/lib/clash/severity-filter';
 import type { ClashBcfConfig } from '@/lib/clash/bcf-export-config';
 import { trackExportCompleted } from '@/lib/analytics';
 import { bcfExportFilename, downloadBlob, dataUrlToBytes } from '@/lib/export/download';
+import { analysisStampFrom, isAnalysisStale } from '@/hooks/useAnalysisStaleness';
 const SNAPSHOT_CLEAR_COLOR: [number, number, number, number] = [0.04, 0.05, 0.1, 1];
 export function createClashExport(
   options: { signal?: AbortSignal; emit?: (blob: Blob, filename: string) => void | Promise<void> } = {},
@@ -49,6 +50,14 @@ export function createClashExport(
       if (renderer) {
         const total = Math.min(groups.length, config.maxTopics);
         let done = 0;
+        // Group members name renderer ids of the models loaded at start; another set of models makes one-sided PNGs.
+        const stamp = analysisStampFrom(state, true);
+        // Checked after each capture: the gate refuses once cancelled, and a model can change while a frame renders.
+        const assertScene = () => {
+          options.signal?.throwIfAborted();
+          if (isAnalysisStale(stamp, useViewerStore.getState()))
+            throw new Error('The models were edited, moved or unloaded during the clash BCF export. Export again.');
+        };
         snapshotProvider = async (group: ClashGroup): Promise<Uint8Array | undefined> => {
           const b = group.bounds;
           const isolation = new Set<number>();
@@ -61,7 +70,9 @@ export function createClashExport(
             mode: 'isolate',
             bounds: { min: { x: b.min[0], y: b.min[1], z: b.min[2] }, max: { x: b.max[0], y: b.max[1], z: b.max[2] } },
             clearColor: SNAPSHOT_CLEAR_COLOR,
+            signal: options.signal,
           });
+          assertScene();
           done += 1;
           onProgress?.(done, total);
           return dataUrl ? dataUrlToBytes(dataUrl) : undefined;

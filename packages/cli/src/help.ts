@@ -91,7 +91,7 @@ export function buildHelp(version: string): string {
     analyze   <file.ifc> --viewer <port>        Query + visualize analysis results
     lod       <file.ifc> --level 0|1            Generate lightweight LOD artifacts
     simplify  <file.ifc> --out F [--level 1..5] [--ids 1,2,...] [--json]  Demesher: simplify meshes, write lighter IFC
-    mcp       <file.ifc> [--transport stdio|http] Start an MCP server bound to one or more IFC files
+    mcp       [files…] [--transport stdio|http] Start an MCP server (files load over stdio)
     ext       validate <path>|init <dir>          Manage IFClite extensions (Phase 0 — validate, init)
     layer     <publish|diff|merge|log|bake|...>    Layered change tracking over a local store (.ifc-lite/)
     ref       <list|create|move|protect>           Manage named refs in the layer store
@@ -183,7 +183,7 @@ export function buildHelp(version: string): string {
     ifc-lite ask model.ifc "list materials" --explain
     ifc-lite view model.ifc
     ifc-lite view model.ifc --port 3456
-    curl -X POST http://localhost:3456/api/command -H 'Content-Type: application/json' -d '{"action":"colorize","type":"IfcWall","color":[1,0,0,1]}'
+    curl -X POST http://127.0.0.1:3456/api/command -H 'Content-Type: application/json' -d '{"action":"colorize","type":"IfcWall","color":[1,0,0,1]}'
     ifc-lite analyze model.ifc --viewer 3456 --type IfcWall --missing "Pset_WallCommon.FireRating" --color red
     ifc-lite analyze model.ifc --viewer 3456 --type IfcSlab --where "GrossArea>100" --color orange --isolate
     ifc-lite analyze model.ifc --viewer 3456 --type IfcWall --heatmap "Qto_WallBaseQuantities.GrossSideArea"
@@ -192,8 +192,8 @@ export function buildHelp(version: string): string {
     ifc-lite lod model.ifc --level 1 --out model.glb --meta model.lod1.json
     ifc-lite mcp model.ifc
     ifc-lite mcp model.ifc --read-only
-    ifc-lite mcp arch.ifc struct.ifc --federate
-    ifc-lite mcp model.ifc --transport http --port 8765 --token abc
+    ifc-lite mcp arch.ifc struct.ifc
+    ifc-lite mcp --transport http --port 8765 --token abc
     ifc-lite georef show model.ifc --json
     ifc-lite georef check model.ifc
     ifc-lite georef fix model.ifc --out fixed.ifc

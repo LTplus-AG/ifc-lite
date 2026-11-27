@@ -10,8 +10,9 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Native writer for the browser-readable .ifclite binary cache (@ifc-lite/cache format v28)"
-# Not published until the crate's public surface and CLI distribution are
-# settled (#9584): slice 2 is the library writer and its conformance only.
+# Not published (#9584): the CLI is distributed through cargo from this
+# repository (`cargo install --path rust/cache`), with no prebuilt binaries
+# until a consumer asks for them.
 publish = false
 
 [lints]
@@ -30,6 +31,9 @@ miniz_oxide = "0.9"
 # in the graph through ifc-lite-core; MIT, see rust/core/Cargo.toml.
 twox-hash = { version = "2.1", default-features = false, features = ["xxhash64"] }
 thiserror.workspace = true
+# `ifc-build-cache` maps its input rather than copying it onto the heap; the
+# version already in the lock (through another member's dependency graph).
+memmap2 = "0.5"
 
 [dev-dependencies]
 ifc-lite-testkit = { path = "../testkit" }

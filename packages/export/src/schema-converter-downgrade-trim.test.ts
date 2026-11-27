@@ -21,7 +21,18 @@
 import { describe, it, expect } from 'vitest';
 import { getSchemaRegistryForVersion, type SchemaVersionWithRegistry } from '@ifc-lite/parser';
 import { convertStepLine, type IfcSchemaVersion } from './schema-converter.js';
+import { downgradesMaterial } from './schema-converter-material-referent.js';
 import { isStrictAttrPrefix } from './schema-converter-renames.js';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
+/** The same-name types the shared fixture maps (#10763), read from the fixture, not from `attrMapFor`,
+ *  so the oracle cannot share a dispatch defect. A map runs between IFC2X3 and IFC4/IFC4X3 only. */
+const MAPPED: ReadonlySet<string> = new Set((JSON.parse(readFileSync(fileURLToPath(new URL('../../../rust/export/tests/fixtures/schema_attribute_maps.json', import.meta.url)), 'utf8')) as { maps: { ifc2x3: string; ifc4: string }[] }).maps
+  .filter((m) => m.ifc2x3 === m.ifc4).map((m) => m.ifc2x3));
+const ifc4Like = (s: IfcSchemaVersion) => s === 'IFC4' || s === 'IFC4X3';
+const mapped = (type: string, from: IfcSchemaVersion, to: IfcSchemaVersion) =>
+  MAPPED.has(type) && ((from === 'IFC2X3' && ifc4Like(to)) || (to === 'IFC2X3' && ifc4Like(from)));
 
 // Derived from `@ifc-lite/parser`'s EXPRESS-derived schema registries —
 // deliberately NOT from `@ifc-lite/data`'s `ENTITIES_IFC2X3`/`ENTITIES_IFC4`/
@@ -70,8 +81,10 @@ function makeLine(type: string, n: number): string {
  * an IFCPROXY placeholder.
  */
 function isDivertedByConversion(type: string, from: IfcSchemaVersion, to: IfcSchemaVersion): boolean {
-  const out = convertStepLine(makeLine(type, 1), from, to)!;
-  return !out.startsWith(`#1=${type}(`);
+  const out = convertStepLine(makeLine(type, 1), from, to);
+  // Only the IfcMaterialProperties a downgrade checks may go unwritten (#10763); any other null is a lost record.
+  if (out === null && !(type === 'IFCMATERIALPROPERTIES' && downgradesMaterial(from, to))) throw new Error(`${from} -> ${to} wrote no ${type}`);
+  return out === null || !out.startsWith(`#1=${type}(`);
 }
 
 describe.each([
@@ -107,13 +120,15 @@ describe.each([
     expect(wrong).toEqual([]);
   });
 
-  it('never trims an entity whose attributes were inserted mid-list, not appended', () => {
+  // #10763: a type with a reviewed attribute map is written at the target's arity instead.
+  it('never trims an entity whose attributes were inserted mid-list, unless an attribute map reconciles it', () => {
     const wrong = notPrefix
       // Reconciled by name instead (#9026 item 14), see schema-grid-frames.parity.test.ts.
       .filter(([type]) => type !== 'IFCGRIDPLACEMENT')
-      .map(([type, srcN]) => {
+      .map(([type, srcN, tgtN]) => {
+        const want = mapped(type, from, to) ? tgtN : srcN;
         const got = argCount(convertStepLine(makeLine(type, srcN), from, to)!);
-        return got === srcN ? null : `${type}: expected ${srcN} args untouched, got ${got}`;
+        return got === want ? null : `${type}: expected ${want} args, got ${got}`;
       })
       .filter((x): x is string => x !== null);
     expect(wrong).toEqual([]);
@@ -161,8 +176,8 @@ describe('convertStepLine downgrade trim — worked examples', () => {
     expect(convertStepLine(line, 'IFC4X3', 'IFC4')).toBe("#6=IFCANNOTATION('guid',$,'Note',$,$,$,$);");
   });
 
-  it('IFC4 IfcApproval is left alone — IFC2X3 inserted its extra attributes mid-list', () => {
-    const line = "#9=IFCAPPROVAL('desc',$,'name',$,$,$,$,$,'id');";
-    expect(convertStepLine(line, 'IFC4', 'IFC2X3')).toBe(line);
+  it('IFC4 IfcApproval is reconciled by its attribute map, not trimmed (#10763)', () => {
+    const line = "#9=IFCAPPROVAL('id','name','desc',$,$,$,$,$,$);";
+    expect(convertStepLine(line, 'IFC4', 'IFC2X3')).toBe("#9=IFCAPPROVAL('desc',$,$,$,$,'name','id');");
   });
 });

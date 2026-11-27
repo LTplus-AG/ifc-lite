@@ -47,6 +47,8 @@ export interface Mutation {
   newValue?: PropertyValue;
   /** Value type */
   valueType?: PropertyValueType;
+  /** IFC measure dataType of a deleted property, which its undo restores — for DELETE_PROPERTY */
+  dataType?: string;
   /** Quantity type (Length, Area, Volume, etc.) — for CREATE/UPDATE_QUANTITY */
   quantityType?: number;
   /** Previous quantity class; absent only in older history entries. */

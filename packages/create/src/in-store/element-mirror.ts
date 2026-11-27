@@ -4,6 +4,7 @@
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import { expandAffectedSet, editOwnershipRefusal, effectiveReferencers } from '@ifc-lite/export';
+import { retireProductShape } from './product-shape-retire.js';
 import { copyBatchInStore } from './copy-batch.js';
 import { AnchorEntityReader } from './resolve-anchor.js';
 import { planElementTransform } from './element-transform-plan.js';
@@ -121,17 +122,7 @@ export function mirrorElementsInStore(store: IfcDataStore, editor: StoreEditor, 
           return emit('IfcShapeRepresentation', [`#${refId(rep.attributes[0])}`, rep.attributes[1] as string, 'MappedRepresentation', [item]]);
         });
         draft.setPositionalAttribute(id, 6, emit('IfcProductDefinitionShape', [null, null, reps]));
-        // IfcProductDefinitionShape.ShapeOfProduct is mandatory, and a shape
-        // representation belongs to exactly one product representation OR map.
-        // Retain shared source shapes; retire only now-unreferenced owners.
-        if (shapeId !== null && effectiveReferencers(store, view)(shapeId).length === 0) {
-          draft.removeEntity(shapeId);
-          const remainingReferences = effectiveReferencers(store, view);
-          for (const old of shape.attributes[2]) {
-            const oldId = refId(old);
-            if (oldId !== null && remainingReferences(oldId).length === 0) draft.removeEntity(oldId);
-          }
-        }
+        if (shapeId !== null) retireProductShape(store, draft, shapeId);
       }
     }
     mirrorDoorHandedness(store, draft, products, references);

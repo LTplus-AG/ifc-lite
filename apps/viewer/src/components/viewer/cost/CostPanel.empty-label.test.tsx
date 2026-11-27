@@ -20,6 +20,7 @@ import { useViewerStore } from '@/store/index.js';
 import type { FederatedModel } from '@/store/types.js';
 import { createStoreAdapter } from '@/sdk/adapters/store-adapter.js';
 import { CostPanel } from '../CostPanel.js';
+import { settle } from '@/test/render.js';
 
 interface LocalStepRef { expressId: number; type: string; byteOffset: number; byteLength: number; lineNumber: number }
 
@@ -122,13 +123,14 @@ describe('CostPanel display of an explicit empty IfcLabel (#4881)', () => {
 });
 
 describe('CostPanel loaded-model authoring refresh (#4857)', () => {
-  it('shows a script-authored cost item without remounting the open panel', () => {
+  it('shows a script-authored cost item without remounting the open panel', async () => {
     const container = renderPanel("'Existing'");
     assert.equal(itemRow(container).textContent?.trim(), 'Existing');
 
     act(() => {
       createStoreAdapter(useViewerStore).addCostItem('modelA', { Name: 'Script-authored' });
     });
+    await settle();
 
     const labels = Array.from(container.querySelectorAll<HTMLElement>('[role="treeitem"]'))
       .map(row => row.textContent?.trim());

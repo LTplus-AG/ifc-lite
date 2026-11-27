@@ -59,7 +59,7 @@ const { content } = creator.toIfc(); // IFC STEP text
   required relationship endpoints (whose relationship is deleted) from optional scalar and list
   attributes on non-relationship owners. Optional scalars are rewritten to `$`; optional lists retain
   their surviving members, or become `$` when emptied, so detaching a cost value never deletes its owner.
-- Space generation: `generateSpacesFromWalls` and `detectEnclosedAreas` derive IfcSpace footprints from wall layouts
+- Space generation: `generateSpacesFromWalls` and `detectEnclosedAreas` derive IfcSpace footprints from wall layouts; `polygonArea` and `pointInPolygon` measure and test those outlines with the same rules
 - Fully typed parameter objects for every element
 
 ## Links

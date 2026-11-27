@@ -219,6 +219,11 @@ const client = new IfcServerClient({
 
 ### Parse Methods
 
+Pass an `AbortSignal` in the parse options to cancel a request or stop reading
+its response. The client's request timeout still applies. If the caller cancels
+a Parquet cache probe, the client stops without starting an upload.
+
+
 #### parseParquet (Recommended)
 
 Best for most use cases - roughly 15x smaller payloads than JSON.
@@ -1098,25 +1103,37 @@ URL, or a same-origin path such as `/ifc` behind a reverse proxy), it opens
 ```
 
 from the server alone: no IFC is requested, and there is no local fallback.
+If a page URL contains both `?processed=` and `?model=`, the viewer uses the
+processed entry and skips the `?model=` request. A malformed processed hash
+still shows its link error.
 A host that builds its own entry does the same without a URL, and can name the
 server at runtime instead of at build time:
 
-<!-- docs-check: skip -->
 ```typescript
-import { openProcessedModel } from '@/lib/processed-model';
+import { mountViewer, type ProcessedModelRequest } from '@/bootstrap';
 
-// Only this request and its Retry use /ifc; local uploads keep the global server.
-openProcessedModel({ sha256, bytes, name }, { serverUrl: '/ifc' });
+function startViewer(container: HTMLElement, firstModel: ProcessedModelRequest) {
+  const viewer = mountViewer(container, {
+    processedModel: { ...firstModel, serverUrl: '/ifc' },
+  });
+
+  return (nextModel: ProcessedModelRequest) => {
+    viewer.openProcessedModel(nextModel, { serverUrl: '/ifc' });
+  };
+}
 ```
 
-The call may come before the viewer mounts; the request waits for it, and a
-`?processed=` or `?model=` in the page URL is then ignored (each logged once), so the host's model wins.
-A collaboration link (`?room=`) is refused the same way. If its join is still in progress,
-the viewer leaves it before it can hydrate or seed the host's model. A call after the join
-has finished does not leave the room.
-The `serverUrl` option applies only to this request and its Retry; it does not redirect local uploads.
-Without it, the load asks the global server as it stands when the load runs.
-`setProcessingServerUrl(url)` explicitly sets the global server. This URL replaces
+The `processedModel` option opens the first model at mount and takes precedence
+over a start model in the deployment configuration. The handle opens a later
+model in the same viewer. The host's model takes precedence over
+`?processed=` and `?model=` in the page URL. A collaboration link (`?room=`)
+also yields. If the page has started joining its room, the viewer leaves it
+before opening the host's model. A room the user joined independently keeps
+its session.
+
+Each `serverUrl` applies to that request and its Retry. Without it, the request
+uses the global server at load time. `viewer.setProcessingServerUrl(url)`
+sets that global server. This URL replaces
 `VITE_IFC_SERVER_URL` for every server request, so in a build with
 `VITE_USE_SERVER=true` it also receives the uploads of IFC files opened from
 disk. `VITE_USE_SERVER` still decides whether such uploads happen at all.

@@ -8,6 +8,7 @@ import {
   markActiveDrawingGenerationSettled,
   markActiveDrawingGenerationStarted,
 } from '@/lib/drawing/active-canvas-snapshot';
+import { DrawingGeometryPendingError, instancedDrainSettled } from '@/lib/drawing/drawing-instanced-presence';
 import { createDrawingRequestQueue } from './drawingRequestQueue.js';
 
 type DrawingStatus = 'idle' | 'generating' | 'ready' | 'error';
@@ -60,7 +61,16 @@ export function useDrawingRequests({
       setIsRegenerating(isRegenerate);
       if (!isRegenerate) overlayRaised.current = true;
       try {
-        await computeDrawing(isRegenerate, isCurrent);
+        // Instanced shards still queued: cut again once the queue moves, whether or not the panel
+        // is open to re-request it; a queue that stops moving rejects (r4661532635).
+        for (;;) {
+          try { await computeDrawing(isRegenerate, isCurrent); break; } catch (error) {
+            if (!(error instanceof DrawingGeometryPendingError)) throw error;
+            if (!isCurrent()) return;
+            await instancedDrainSettled(isCurrent);
+            if (!isCurrent()) return;
+          }
+        }
       } catch (error) {
         if (isCurrent()) setDrawingError(error instanceof Error ? error.message : 'Generation failed');
         throw error;

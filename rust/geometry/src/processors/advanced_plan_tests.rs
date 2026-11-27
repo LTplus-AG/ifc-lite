@@ -259,35 +259,202 @@ fn malformed_shell_face_with_compatible_attribute_shape_retains_permissive_const
             lower_brep(&entity, &mut decoder, TessellationQuality::Medium, None).unwrap()
         };
         let mesh = plan.evaluate().unwrap();
-        // The unchanged production spline sampler stops 1e-6 inside each
-        // knot-domain end. This degree-one patch therefore covers a square
-        // with side 4*(1-1e-6), rounded to f32 at vertex emission, rather
-        // than the entire 4x4 analytic surface.
-        let sampled_side = (4. * (1. - 1e-6)) as f32 as f64;
-        let expected_area = if spline {
-            sampled_side * sampled_side
-        } else {
-            12.
-        };
+        // A flat control net is its plane, so the spline face is trimmed by
+        // the same bounds as the plane face: the 4x4 square less its 2x2
+        // opening, wound by its loops, which carry the face's sense.
         let actual_area = area(&mesh);
         assert!(
-            (actual_area - expected_area).abs() < 1e-8,
-            "spline={spline}: sampled area {actual_area}, expected {expected_area}"
+            (actual_area - 12.).abs() < 1e-8,
+            "spline={spline}: area {actual_area}, expected 12"
         );
-        if spline {
-            for triangle in mesh.indices.chunks_exact(3) {
-                let p = |index: u32| {
-                    let k = index as usize * 3;
-                    [mesh.positions[k], mesh.positions[k + 1]]
-                };
-                let a = p(triangle[0]);
-                let b = p(triangle[1]);
-                let c = p(triangle[2]);
-                assert!(
-                    (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]) < 0.,
-                    "the permissive parameterized face still honors false SameSense"
-                );
-            }
+        for triangle in mesh.indices.chunks_exact(3) {
+            let p = |index: u32| {
+                let k = index as usize * 3;
+                [mesh.positions[k], mesh.positions[k + 1]]
+            };
+            let a = p(triangle[0]);
+            let b = p(triangle[1]);
+            let c = p(triangle[2]);
+            assert!(
+                (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]) > 0.,
+                "spline={spline}: the permissive face keeps its loops' winding"
+            );
         }
+    }
+}
+
+fn triangle_normals(positions: &[f32], indices: &[u32]) -> Vec<Vector3<f32>> {
+    indices
+        .chunks_exact(3)
+        .map(|t| {
+            let p = |i: u32| {
+                let k = i as usize * 3;
+                Vector3::new(positions[k], positions[k + 1], positions[k + 2])
+            };
+            (p(t[1]) - p(t[0])).cross(&(p(t[2]) - p(t[0])))
+        })
+        .collect()
+}
+
+/// A curved, unbounded B-spline face: a degree (2, 1) arch over the XY plane
+/// whose surface normal Su x Sv points up (+Z) everywhere. #10590: the grid
+/// used to wind along -(Su x Sv), so SameSense=.F. faces faced their solid.
+fn arch_face(same_sense: &str) -> String {
+    format!(
+        "#1=IFCADVANCEDFACE((),#10,{same_sense});\n\
+        #10=IFCBSPLINESURFACEWITHKNOTS(2,1,((#11,#12),(#13,#14),(#15,#16)),.UNSPECIFIED.,.F.,.F.,.F.,(3,3),(2,2),(0.,1.),(0.,1.),.UNSPECIFIED.);\n\
+        #11=IFCCARTESIANPOINT((0.,0.,0.));#12=IFCCARTESIANPOINT((0.,1.,0.));\n\
+        #13=IFCCARTESIANPOINT((1.,0.,1.));#14=IFCCARTESIANPOINT((1.,1.,1.));\n\
+        #15=IFCCARTESIANPOINT((2.,0.,0.));#16=IFCCARTESIANPOINT((2.,1.,0.));"
+    )
+}
+
+#[test]
+fn bspline_face_winds_along_su_cross_sv_and_same_sense_reverses_it() {
+    for (sense, up) in [(".T.", true), (".F.", false)] {
+        let source = arch_face(sense);
+        let mut decoder = EntityDecoder::new(&source);
+        let face = decoder.decode_by_id(1).unwrap();
+        let plan = lower_face(&face, &mut decoder, TessellationQuality::Medium, None).unwrap();
+        let (positions, indices) = plan.evaluate().unwrap();
+        assert!(!indices.is_empty());
+        for n in triangle_normals(&positions, &indices) {
+            assert_eq!(n.z > 0., up, "SameSense={sense}: normal {n:?}");
+        }
+    }
+}
+
+/// A flat 20 x 20 B-spline patch whose surface normal points down (-Z), used
+/// with SameSense=.F. (so the face faces up, as Revit writes sloped and
+/// trimmed slab faces) and bounded by a unit right triangle, wound
+/// counter-clockwise about +Z. #10590: the whole patch used to be drawn.
+fn trimmed_flat_bspline_face() -> String {
+    trimmed_flat_bspline_face_weighted("((1.,1.),(1.,1.))")
+}
+
+/// [`trimmed_flat_bspline_face`] with the given rational `WeightsData`.
+fn trimmed_flat_bspline_face_weighted(weights: &str) -> String {
+    format!(
+        "#1=IFCADVANCEDFACE((#2),#10,.F.);#2=IFCFACEOUTERBOUND(#3,.T.);\n\
+        #3=IFCEDGELOOP((#21,#22,#23));\n\
+        #21=IFCORIENTEDEDGE(*,*,#51,.T.);#22=IFCORIENTEDEDGE(*,*,#52,.T.);#23=IFCORIENTEDEDGE(*,*,#53,.T.);\n\
+        #51=IFCEDGECURVE(#31,#32,$,.T.);#52=IFCEDGECURVE(#32,#33,$,.T.);#53=IFCEDGECURVE(#33,#31,$,.T.);\n\
+        #31=IFCVERTEXPOINT(#41);#32=IFCVERTEXPOINT(#42);#33=IFCVERTEXPOINT(#43);\n\
+        #41=IFCCARTESIANPOINT((0.,0.,5.));#42=IFCCARTESIANPOINT((1.,0.,5.));#43=IFCCARTESIANPOINT((0.,1.,5.));\n\
+        #10=IFCRATIONALBSPLINESURFACEWITHKNOTS(1,1,((#11,#12),(#13,#14)),.UNSPECIFIED.,.F.,.F.,.F.,(2,2),(2,2),(0.,1.),(0.,1.),.UNSPECIFIED.,{weights});\n\
+        #11=IFCCARTESIANPOINT((-10.,-10.,5.));#12=IFCCARTESIANPOINT((10.,-10.,5.));\n\
+        #13=IFCCARTESIANPOINT((-10.,10.,5.));#14=IFCCARTESIANPOINT((10.,10.,5.));"
+    )
+}
+
+/// The bounded triangle's area and whether every triangle faces up.
+fn trimmed_area_facing_up(source: &str) -> (f32, bool) {
+    let mut decoder = EntityDecoder::new(source);
+    let face = decoder.decode_by_id(1).unwrap();
+    let plan = lower_face(&face, &mut decoder, TessellationQuality::Medium, None).unwrap();
+    let (positions, indices) = plan.evaluate().unwrap();
+    assert!(positions.chunks_exact(3).all(|p| p[2] == 5.));
+    let normals = triangle_normals(&positions, &indices);
+    let area = normals.iter().map(|n| n.norm() * 0.5).sum();
+    (area, normals.iter().all(|n| n.z > 0.))
+}
+
+#[test]
+fn flat_bspline_face_is_trimmed_by_its_bounds_and_faces_its_sense() {
+    let (area, up) = trimmed_area_facing_up(&trimmed_flat_bspline_face());
+    assert!(
+        (area - 0.5).abs() < 1e-5,
+        "the bounded triangle, not the 20 x 20 patch: {area}"
+    );
+    assert!(up, "faces up");
+}
+
+/// #10590: valid non-uniform weights do not move a flat surface off its
+/// plane, so the face still trims to its bounds.
+#[test]
+fn flat_rational_bspline_face_with_valid_weights_trims_to_its_bounds() {
+    let (area, up) = trimmed_area_facing_up(&trimmed_flat_bspline_face_weighted(
+        "((1.,2.),(3.,0.5))",
+    ));
+    assert!((area - 0.5).abs() < 1e-5, "the bounded triangle: {area}");
+    assert!(up, "faces up");
+}
+
+/// #10590: a flat face is trimmed only after its surface passes every check
+/// the B-spline path applies, so surface data that path refuses (weights,
+/// degree, knots, multiplicities) is refused on a flat face too; and bounds
+/// that cannot be read refuse the face as they refuse an `IfcPlane` face,
+/// instead of drawing the whole untrimmed patch.
+#[test]
+fn flat_bspline_face_refuses_what_the_spline_path_and_plane_faces_refuse() {
+    let valid = trimmed_flat_bspline_face();
+    let surface = "IFCRATIONALBSPLINESURFACEWITHKNOTS(1,1,";
+    let knots = "(2,2),(2,2),(0.,1.),(0.,1.)";
+    let cases = [
+        ("zero weight", trimmed_flat_bspline_face_weighted("((1.,1.),(1.,0.))")),
+        ("negative weight", trimmed_flat_bspline_face_weighted("((1.,1.),(1.,-1.))")),
+        ("missing weight", trimmed_flat_bspline_face_weighted("((1.,$),(1.,1.))")),
+        ("short weight row", trimmed_flat_bspline_face_weighted("((1.,1.),(1.))")),
+        ("no weights", trimmed_flat_bspline_face_weighted("$")),
+        (
+            "degree over the bound",
+            valid.replace(surface, "IFCRATIONALBSPLINESURFACEWITHKNOTS(100,1,"),
+        ),
+        (
+            "non-numeric knot",
+            valid.replace(knots, "(2,2),(2,2),(0.,'x'),(0.,1.)"),
+        ),
+        (
+            "missing multiplicities",
+            valid.replace(knots, "$,(2,2),(0.,1.),(0.,1.)"),
+        ),
+        (
+            "unresolvable bound",
+            valid.replace("IFCADVANCEDFACE((#2)", "IFCADVANCEDFACE((#2,#999)"),
+        ),
+    ];
+    for (case, source) in cases {
+        assert_ne!(source, valid, "{case}: the fixture edit applied");
+        take_face_refused();
+        let mut decoder = EntityDecoder::new(&source);
+        let face = decoder.decode_by_id(1).unwrap();
+        assert!(
+            lower_face(&face, &mut decoder, TessellationQuality::Medium, None).is_err(),
+            "{case}: the face must be refused"
+        );
+        assert_eq!(
+            take_face_refused(),
+            [IfcType::IfcAdvancedFace],
+            "{case}: the refusal is noted"
+        );
+    }
+}
+
+/// #10590: numeric knots too short to cover the control net are not
+/// refused by admission, but the evaluator draws nothing for them. A flat
+/// bounded face with such knots must not be drawn by its bounds instead: it
+/// stays a B-spline face and comes out empty, unrefused, as before.
+#[test]
+fn flat_bspline_face_with_knots_too_short_for_its_net_draws_nothing() {
+    let valid = trimmed_flat_bspline_face();
+    let knots = "(2,2),(2,2),(0.,1.),(0.,1.)";
+    for (case, edit) in [
+        ("short U knots", "(1,1),(2,2),(0.,1.),(0.,1.)"),
+        ("short V knots", "(2,2),(1,1),(0.,1.),(0.,1.)"),
+    ] {
+        let source = valid.replace(knots, edit);
+        assert_ne!(source, valid, "{case}: the fixture edit applied");
+        take_face_refused();
+        let mut decoder = EntityDecoder::new(&source);
+        let face = decoder.decode_by_id(1).unwrap();
+        let plan = lower_face(&face, &mut decoder, TessellationQuality::Medium, None)
+            .unwrap_or_else(|e| panic!("{case}: admission does not refuse it: {e}"));
+        let (positions, indices) = plan.evaluate().unwrap();
+        assert!(
+            positions.is_empty() && indices.is_empty(),
+            "{case}: nothing is drawn, not the bounded triangle ({} indices)",
+            indices.len()
+        );
+        assert!(take_face_refused().is_empty(), "{case}: no refusal");
     }
 }

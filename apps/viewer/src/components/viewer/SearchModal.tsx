@@ -21,7 +21,8 @@
  *   • ⌘⇧F / Ctrl+⇧F — toggle modal closed (symmetric with open)
  */
 
-import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { lazyChunk } from '@/lib/lazy-chunk';
 import { Search, SlidersHorizontal } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
@@ -35,7 +36,7 @@ import { collectSearchResults } from '@/lib/search/collect-results';
 import { pushRecentSearch } from '@/lib/search/recent-searches';
 import { SearchModalText } from './SearchModal.text';
 import { SearchModalFilter } from './SearchModal.filter';
-const NativeLibrarySearch = lazy(() => import('./libraries/NativeLibrarySearch').then(module => ({ default: module.NativeLibrarySearch })));
+const NativeLibrarySearch = lazyChunk(() => import('./libraries/NativeLibrarySearch').then(module => ({ default: module.NativeLibrarySearch })));
 
 const DEBOUNCE_MS = 80;
 

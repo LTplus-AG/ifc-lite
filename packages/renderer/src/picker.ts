@@ -26,6 +26,8 @@ import { drawInstanceRuns, uploadInstancedRteDeltas } from './instanced-rte.js';
 import { INSTANCED_RTE_DELTA_SLOT, INSTANCED_VERTEX_BUFFERS } from './instanced-vertex-layout.js';
 import { EXTRA_CLIP_BYTES, EXTRA_CLIP_FLOATS, packExtraClip } from './extra-clip-planes.js';
 import { flatPickShaderWgsl, instancedPickShaderWgsl } from './picker-shaders.js';
+import { FrustumUtils } from '@ifc-lite/spatial';
+import { POOL_VIEW_PICK, type GpuInstancePool } from './gpu-instance-pool.js';
 import { LanePickPass, type LanePickInput } from './lane-pick-pass.js';
 
 /** Point-pick sizing parameters forwarded to the GPU pipeline. */
@@ -47,6 +49,8 @@ export class Picker {
   private instancedPickPipeline: GPURenderPipeline | null = null;  // GPU-instancing: pick pass for instanced occurrences; null if the backend rejected it
   private instancedPickBindGroup: GPUBindGroup | null = null;
   private instancedPickReady = false;
+  /** GPU-driven instancing: the scene's pool, when that path is on. */
+  private instancePoolProvider: (() => GpuInstancePool | null) | null = null;
   private instancedUniformBuffer: GPUBuffer;
   /** Extra cutting planes (#7545), one block shared by every pick draw; rewritten per pass. */
   private extraClipBuffer: GPUBuffer;
@@ -209,6 +213,11 @@ export class Picker {
       if (!pending || !(await pending)) break;
     }
     return !this.destroyed && !this.readbacks.deviceLost;
+  }
+
+  /** Let instanced picks draw from the scene's GPU-driven pool when it exists. */
+  setInstancePoolProvider(provider: (() => GpuInstancePool | null) | null): void {
+    this.instancePoolProvider = provider;
   }
 
   /**
@@ -455,6 +464,16 @@ export class Picker {
     const depthView = targets.depth.createView();
 
     const encoder = this.device.createCommandEncoder();
+    // Pool path: compact against the PICK camera (frustum only, no contribution
+    // cull, so a tiny occurrence stays pickable) in this encoder, before the pass.
+    const instancePool = instancedTemplates && instancedTemplates.length > 0 && pointRteSnapshot ? this.instancePoolProvider?.() ?? null : null;
+    if (instancePool && pointRteSnapshot) {
+      instancePool.flush();
+      instancePool.cull(encoder, {
+        eye: pointRteSnapshot.getCameraWorld(), thresholdPx: 0,
+        planes: FrustumUtils.fromViewProjMatrix(pointRteSnapshot.getViewProjection().m).planes,
+      }, undefined, POOL_VIEW_PICK);
+    }
     const pass = encoder.beginRenderPass({
       colorAttachments: [{
         view: colorView,
@@ -519,7 +538,13 @@ export class Picker {
     // GPU-instanced occurrences — drawn into the SAME r32uint + depth target so
     // occlusion is shared with flat meshes/points. The shader writes
     // (bit30 | express id) per occurrence; the decoder returns the entity.
-    if (instancedTemplates && instancedTemplates.length > 0 && this.instancedPickPipeline && this.instancedPickBindGroup && pointRteSnapshot) {
+    if (instancePool && this.instancedPickPipeline && this.instancedPickBindGroup && pointRteSnapshot) {
+      writeInstancedPickUniforms(this.device, this.instancedUniformBuffer, this.instancedUniformScratch, this.instancedClipFlags, pointRteSnapshot, clip);
+      pass.setPipeline(this.instancedPickPipeline);
+      bindSectionExclusions(pass, this.device, 1);
+      pass.setBindGroup(0, this.instancedPickBindGroup);
+      instancePool.draw(pass);
+    } else if (instancedTemplates && instancedTemplates.length > 0 && this.instancedPickPipeline && this.instancedPickBindGroup && pointRteSnapshot) {
       const instanceRuns = uploadInstancedRteDeltas(this.device, instancedTemplates, pointRteSnapshot.getCameraWorld());
       writeInstancedPickUniforms(
         this.device,

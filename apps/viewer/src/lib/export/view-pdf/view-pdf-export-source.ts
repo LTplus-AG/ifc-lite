@@ -37,7 +37,7 @@ import { resolveBoxSectionInputs, resolveExtraSectionInputs, resolveSectionInput
 import { selectModelMeshes } from '@/lib/type-view-visibility';
 import { computeIsolationFilterSet } from '@/store/basketVisibleSet';
 import { clippingSectionPlanes } from '@/store/section-active';
-import { withInstancedMeshes, type InstancedModelRange } from '@/utils/instancedExport';
+import { withInstancedMeshes, type InstancedModelRange, type ReleasedExportContext } from '@/utils/instancedExport';
 import type { useViewerStore } from '@/store';
 import type { ViewMeshInput } from './collect-view-meshes';
 import type { ViewCameraSnapshot } from './generate-view-pdf';
@@ -61,8 +61,8 @@ export interface ViewPdfSource {
 }
 
 /** Read the current viewport state into one plain, testable bundle. */
-export function readViewPdfSource(state: ViewerState): ViewPdfSource {
-  const meshes = gatherDrawnMeshes(state);
+export function readViewPdfSource(state: ViewerState, context?: ReleasedExportContext): ViewPdfSource {
+  const meshes = gatherDrawnMeshes(state, context);
   const camera = readCameraSnapshot();
   const canvas = getGlobalCanvas();
 
@@ -101,7 +101,7 @@ export function readViewPdfSource(state: ViewerState): ViewPdfSource {
  * drawing pipeline does: a printed drawing draws the building, never the type
  * library (#2058).
  */
-function gatherDrawnMeshes(state: ViewerState): MeshData[] {
+function gatherDrawnMeshes(state: ViewerState, context?: ReleasedExportContext): MeshData[] {
   const results: {
     geometry: GeometryResult;
     instancedModelRange: InstancedModelRange | null;
@@ -131,7 +131,7 @@ function gatherDrawnMeshes(state: ViewerState): MeshData[] {
     // be one model's whole mesh list, which on a large federated model can
     // exceed the engine's maximum argument count and throw a RangeError. Same
     // failure mode as `clipMeshesToHalfSpace` in packages/drawing-2d.
-    for (const mesh of selectModelMeshes(withInstancedMeshes(geometry, instancedModelRange).meshes)) {
+    for (const mesh of selectModelMeshes(withInstancedMeshes(geometry, instancedModelRange, context).meshes)) {
       meshes.push(mesh);
     }
   }

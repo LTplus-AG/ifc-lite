@@ -53,7 +53,7 @@ export interface CompleteEntityIndex {
  * Fast path: when there is no deferred index the primary index is returned
  * directly (no wrapper allocation, identical iteration order and cost).
  */
-export function getCompleteEntityIndex(dataStore: IfcDataStore): CompleteEntityIndex {
+export function getCompleteEntityIndex(dataStore: Pick<IfcDataStore, 'entityIndex' | 'deferredEntityIndex'>): CompleteEntityIndex {
   // @raw-entity-enumeration-ok combines primary and deferred SOURCE records; createEffectiveEntityIndex folds in the overlay afterward
   const byId = dataStore.entityIndex.byId as unknown as CompleteEntityIndex;
   const deferred = dataStore.deferredEntityIndex as unknown as CompleteEntityIndex | undefined;

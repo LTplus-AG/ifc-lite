@@ -13,6 +13,7 @@ import { describe, it, expect } from 'vitest';
 import { IfcParser } from '@ifc-lite/parser';
 import { convertStepLine } from './schema-converter.js';
 import { StepExporter } from './step-exporter.js';
+import { resolveMissingEnumMember } from './schema-enum-policy.js';
 
 type Schema = 'IFC2X3' | 'IFC4' | 'IFC4X3';
 
@@ -64,5 +65,17 @@ describe('schema conversion reconciles enum members the target lacks (#5365)', (
   it('convertStepLine without a reconciliation object is unchanged (callers opt in)', () => {
     const line = "#20=IFCDOORTYPE('1a2B3c4D5e6F7g8H9i0J1k',$,'Turnstile',$,$,$,$,$,$,.TURNSTILE.,.SINGLE_SWING_LEFT.,.T.,$);";
     expect(convertStepLine(line, 'IFC4X3', 'IFC4')).toContain('.TURNSTILE.');
+  });
+
+  it('finds a label IFC2X3 names by the end of the enum attribute, only when one fits (#10856)', () => {
+    const attrs = (...names: string[]) => names.map((name) => ({ name, type: 'IfcLabel', optional: true }));
+    const members = ['A', 'USERDEFINED', 'NOTDEFINED'];
+    const label = (...names: string[]) => resolveMissingEnumMember(attrs(...names), 0, members);
+    expect(label('DistributionPointFunction', 'UserDefinedFunction')).toEqual({ kind: 'userdefined', labelIndex: 1 });
+    expect(label('PointFunction', 'UserDefinedFunction', 'UserDefinedPointFunction')).toEqual({ kind: 'userdefined', labelIndex: 2 });
+    expect(label('DistributionPointFunction', 'UserDefinedFunction', 'UserDefinedPointFunction')).toEqual({ kind: 'notdefined' });
+    expect(label('DistributionPointFunction', 'UserDefinedType')).toEqual({ kind: 'notdefined' });
+    // `Function` owns `UserDefinedFunction` by its full name.
+    expect(label('PointFunction', 'Function', 'UserDefinedFunction')).toEqual({ kind: 'notdefined' });
   });
 });

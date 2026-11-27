@@ -46,6 +46,9 @@ import { getSpatialChunkingConfig } from '../../utils/spatialChunkConfig.js';
 import { getGpuResidencyBudgetBytes, getHostResidencyBudgetBytes } from '../../utils/gpuBudgetConfig.js';
 import { getLodScreenPx } from '../../utils/lodConfig.js';
 import { isQuantizedEnabled } from '../../utils/quantizedConfig.js';
+import { configureDrawStream } from '../../utils/drawStreamConfig.js';
+import { configureGpuInstancing, configureKeyedInstancing } from '../../utils/gpuInstancingConfig.js';
+import { forgetAppliedRenderPaths } from '../../utils/hugeGeometryConfig.js';
 import { unionEntityBounds, getThemeClearColor, hasPendingMeasurementState, type BoundingBox3D } from '../../utils/viewportUtils.js';
 import { registerAgentViewportHost } from '@/lib/agent-bridge/viewport-host';
 import { setGlobalCanvasRef, setGlobalRendererRef, clearGlobalRefs } from '../../hooks/useBCF.js';
@@ -84,17 +87,19 @@ import { useClashRendererOverlays } from './useClashRendererOverlays';
 import { useTranslation } from '@/i18n';
 import { createCentreSurfaceZoom } from './zoomSurface.js';
 import type { MeasureCameraState } from './measureCameraState';
+import type { TypeHiddenIds } from './type-hidden-index.js';
 import { observeViewportCanvas } from './viewportCanvasObserver';
 import { useViewportCursor } from './useViewportCursor.js';
 import { deferSelectionFrameWhileHeld } from './heldSelection.js';
 
 interface ViewportProps {
   geometry: MeshData[] | null;
+  /** Ids type visibility hides; every mesh is uploaded whatever they say (#10264). */
+  typeHidden?: TypeHiddenIds;
   /** Reused-array updates and changes to existing mesh uploads (#7047). */
   geometryVersion?: number;
   geometryReplacementVersion?: number;
-  /** Bumps when existing mesh vertex/normal data has been mutated in place
-   *  (e.g. realignFederation). Forces the streaming hook to re-upload buffers. */
+  /** Bumps when mesh data was mutated in place (realignFederation): the streaming hook re-uploads. */
   geometryContentVersion?: number;
   /** Point cloud assets aggregated across visible federated models. */
   pointClouds?: ReadonlyArray<PointCloudAsset> | null;
@@ -102,24 +107,21 @@ interface ViewportProps {
   sectionCoordinateInfo?: CoordinateInfo;
   computedIsolatedIds?: Set<number> | null;
   modelIdToIndex?: Map<string, number>;
-  /** When true, the WebGPU canvas uses a transparent clear color so the
-   *  CesiumJS globe behind it is visible. */
+  /** When true, the WebGPU canvas clears transparent so the CesiumJS globe behind it is visible. */
   cesiumActive?: boolean;
   releaseGeometryAfterStream?: boolean;
   onGeometryReleased?: () => void;
 }
 
 export function Viewport({
-  geometry,
+  geometry, typeHidden,
   geometryVersion, geometryReplacementVersion, geometryContentVersion,
   pointClouds,
-  coordinateInfo,
-  sectionCoordinateInfo,
+  coordinateInfo, sectionCoordinateInfo,
   computedIsolatedIds,
   modelIdToIndex,
   cesiumActive,
-  releaseGeometryAfterStream = false,
-  onGeometryReleased,
+  releaseGeometryAfterStream = false, onGeometryReleased,
 }: ViewportProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<Renderer | null>(null);
@@ -209,7 +211,7 @@ export function Viewport({
 
   // Visibility state - use computedIsolatedIds from parent (includes storey selection)
   // Fall back to store isolation if computedIsolatedIds is not provided
-  const { hiddenEntities, isolatedEntities: storeIsolatedEntities, ghostExceptEntities } = useVisibilityState();
+  const { hiddenEntities, isolatedEntities: storeIsolatedEntities, ghostExceptEntities } = useVisibilityState(typeHidden);
   const isolatedEntities = effectiveIsolatedIds(computedIsolatedIds, storeIsolatedEntities);
 
   // Tool state — `sectionPickMode` arms a face-pick on the next click for
@@ -509,6 +511,7 @@ export function Viewport({
   const fastZoomRef = useLatestRef(!!cesiumActive);
   const terrainClipYRef = useLatestRef(cesiumActive ? cesiumTerrainClipY : null);
   const geometryRef = useLatestRef(geometry);
+  const typeHiddenRef = useLatestRef(typeHidden);
 
   // Hover throttling
   const lastHoverCheckRef = useRef<number>(0);
@@ -613,6 +616,8 @@ export function Viewport({
 
     renderer.init().then(() => {
       if (aborted) return;
+      configureDrawStream(renderer); // flat-batch draw stream (m6.* flags), OFF by default
+      configureGpuInstancing(renderer); configureKeyedInstancing(renderer.getScene()); // GPU-driven instancing OFF by default; keyed joins ON
       // Spatial chunk bucketing (issue #1682 phase 2) — must be configured
       // before any geometry streams into the scene. ON by default since the
       // flip sweep; kill switch __IFC_LITE_CHUNKS = 0.
@@ -737,7 +742,7 @@ export function Viewport({
         return (id: number): BoundingBox3D | null => {
           const hit = cache.get(id);
           if (hit !== undefined) return hit;
-          const b = meshBounds(id) ?? scene?.getInstancedEntityBounds(id) ?? null;
+          const b = (typeHiddenRef.current?.ids.has(id) ? null : meshBounds(id)) ?? scene?.getInstancedEntityBounds(id) ?? null; // type-hidden reads as absent
           cache.set(id, b);
           return b;
         };
@@ -949,7 +954,7 @@ export function Viewport({
           const geom = geometryRef.current;
           const scene = rendererRef.current?.getScene();
           const EXCLUDE = new Set(['IfcSite', 'IfcSpace']);
-          let bounds = geom ? placedBoundsExcludingTypes(geom, EXCLUDE) : null;
+          let bounds = geom ? placedBoundsExcludingTypes(geom, EXCLUDE, typeHiddenRef.current?.ids) : null;
           // Merge in instanced occurrences (not present in flat meshes), skipping
           // excluded types via each id's OWN model store — instanced ids are
           // federated global ids, so resolve them through the registry instead
@@ -1104,7 +1109,7 @@ export function Viewport({
       rendererRef.current = null;
       // Free all WebGPU resources held by this renderer instance.
       // destroy() is idempotent, so this is safe even if init() rejected.
-      renderer.destroy();
+      renderer.destroy(); forgetAppliedRenderPaths(); // telemetry stops reporting this renderer's paths
       // Clear BCF global refs to prevent memory leaks
       clearGlobalRefs();
       clearViewportDebugHooks();
@@ -1362,7 +1367,7 @@ export function Viewport({
     isInitialized,
     geometry,
     geometryVersion, geometryReplacementVersion, geometryContentVersion, gpuRecoveryEpoch,
-    appearanceSourceGeometry,
+    appearanceSourceGeometry, fitExcludedIds: typeHidden?.ids,
     coordinateInfo,
     isStreaming,
     modelCount: modelIdToIndex?.size ?? 0,

@@ -161,6 +161,8 @@ export function resolveGlobalIds(model: LoadedModel, globalIds: Iterable<string>
   return carriers;
 }
 
+export function okResult<T extends Record<string, unknown>>(text: string, structured: T): CallToolResult & { structuredContent: T };
+export function okResult(text: string, structured?: Record<string, unknown>): CallToolResult;
 export function okResult(text: string, structured?: Record<string, unknown>): CallToolResult {
   const content: ContentBlock[] = [{ type: 'text', text }];
   if (structured) {

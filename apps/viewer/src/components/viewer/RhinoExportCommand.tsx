@@ -9,10 +9,11 @@
  * arrives the caller's trigger renders as the fallback.
  */
 
-import { lazy, Suspense } from 'react';
+import { Suspense } from 'react';
+import { lazyChunk } from '@/lib/lazy-chunk';
 import type { ExportSurface } from '@/lib/analytics-export-events';
 
-const RhinoExportDialog = lazy(() =>
+const RhinoExportDialog = lazyChunk(() =>
   import('./RhinoExportDialog').then((m) => ({ default: m.RhinoExportDialog })),
 );
 

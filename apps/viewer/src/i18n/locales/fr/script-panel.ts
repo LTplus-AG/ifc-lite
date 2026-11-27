@@ -50,6 +50,7 @@ export const scriptPanelFr = {
   'scriptPanel.output.bimCode': 'bim.*',
   'scriptPanel.output.sandboxHintSuffix': 'pour les effets sur la visionneuse, les données et l’export.',
   'scriptPanel.output.fixWithLlmButton': 'Corriger avec le LLM',
+  'scriptPanel.output.surfaces': { one: '{count} vue de résultats', many: '{count} de vues de résultats', other: '{count} vues de résultats' },
   'scriptPanel.output.returnLabel': 'Retour :',
   'scriptPanel.output.emptyState': 'Appuyez sur Exécuter ou sur {keys} pour lancer',
   // Delete confirmation dialog

@@ -23,7 +23,7 @@ import { useViewerStore } from '@/store/index.js';
 import { resolveEntityRef } from '@/store/resolveEntityRef.js';
 import { pathForEntity, pathForGuid, registerEntityPath, registerStoreSlot } from '@/lib/collab/entity-paths.js';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
-import { cleanup, click, render, type as typeInput } from '@/test/render.js';
+import { cleanup, click, render, settle, type as typeInput } from '@/test/render.js';
 import { AddMaterialDialog } from '@/components/viewer/PropertyEditor.js';
 import { PropertiesPanel } from '@/components/viewer/PropertiesPanel.js';
 
@@ -235,13 +235,14 @@ describe('Add Classification / Add Material create real IFC entities (#5876)', (
       assert.deepEqual(extractAllMaterialsOnDemand(undone.reparsed, 11).map((m) => m.name), ['Concrete']);
     });
 
-    it('the mounted Properties panel shows source-reused classification and material associations', () => {
+    it('the mounted Properties panel shows source-reused classification and material associations', async () => {
       assert.deepEqual(api().addClassificationAssociation('m', 10, { system: 'OmniClass', identification: '23-11' }), { ok: true });
       assert.deepEqual(api().addMaterialAssociation('m', 10, { name: 'Concrete' }), { ok: true });
       useViewerStore.setState({
         selectedEntity: { modelId: 'm', expressId: 10 }, selectedEntityId: 10,
         selectedModelId: null, selectedEntities: [], selectedEntityIds: new Set([10]),
       });
+      await settle();
       const panel = render(<PropertiesPanel />);
       assert.match(panel.textContent ?? '', /OmniClass/);
       assert.match(panel.textContent ?? '', /23-11/);

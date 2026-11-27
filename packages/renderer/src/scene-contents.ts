@@ -175,15 +175,22 @@ export interface SceneContents {
   getInstancedEntityBounds(expressId: number): BoundingBox | null;
   getInstancedEntityCount(): number;
   getInstancedEntityIds(): IterableIterator<number>;
+  /** Whether a model in the scene received keyed shards: the global instance plan applied to it. Optional so other
+   *  `SceneContents` implementers keep compiling; absent reads as no. */
+  hasKeyedTemplates?(): boolean;
+  /** The keyed-record join (global instance plan); `enabled` is on by default, false opts the scene out. */
+  readonly keyedInstancing?: { enabled: boolean };
   getInstancedModelIndices(): number[];
   removeInstancedTemplatesForModel(modelIndex: number): number;
   setInstancedVisible(visible: boolean): void;
 
   // ─── Authoring mutations ─────────────────────────────────────────────
   removeMeshesForEntities(expressIds: Iterable<number>): number;
-  translateMeshesForEntities(updates: Map<number, [number, number, number]>): number;
+  /** `beforeWrite` observes a flat piece immediately before its vertex buffers change. */
+  translateMeshesForEntities(updates: Map<number, [number, number, number]>, beforeWrite?: (mesh: MeshData) => void): number;
   rotateMeshesForEntities(
     updates: Map<number, { angle: number; pivot: [number, number, number] }>,
+    beforeWrite?: (mesh: MeshData) => void,
   ): number;
   /**
    * Turn `modelIndex`'s GPU-instanced occurrences about the render-frame

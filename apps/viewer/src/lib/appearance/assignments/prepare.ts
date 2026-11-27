@@ -1,7 +1,6 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-import { StepExporter } from '@ifc-lite/export';
 import { StoreEditor, type MutablePropertyView } from '@ifc-lite/mutations';
 import { useViewerStore } from '@/store';
 import type { AppearancePlanner } from '../planner-worker-client.js';
@@ -15,6 +14,7 @@ import { preparePdfPagePreview } from '../pdf/page-preview.js';
 import { prepareAppearanceEntities } from '../prepare-plan.js';
 import type { CapturedAssignment } from './capture.js';
 import { resolveAppearanceAssignments } from './resolve.js';
+import { ensureExactSourceGeometry, planProductIds } from '../exact-source-geometry.js';
 
 export interface PreparedAssignmentStep {
   assignmentId: string;
@@ -78,6 +78,8 @@ async function prepareAssignments(options: PrepareAssignmentsOptions) {
       shadow = view.prepareAtomic(draft => draft).result;
       shadows.set(modelId, shadow); snapshots.set(modelId, snapshot);
     } else {
+      const { StepExporter } = await import('@/lib/export/step-export-runtime');
+      validate();
       const exported = await new StepExporter(model.ifcDataStore, shadow).exportAsync({ schema: snapshot.schema,
         applyMutations: true, includeGeometry: true, visibleOnly: false, onProgress: validate });
       validate();
@@ -100,6 +102,8 @@ async function prepareAssignments(options: PrepareAssignmentsOptions) {
     if (!plan.items.length || plan.exclusions.length || !bitmap) {
       throw new Error(`${assignment.model.name}: ${plan.exclusions[0]?.reason ?? 'Some assigned objects cannot receive this appearance. Review the scope and explicit exclusions.'}`);
     }
+    await ensureExactSourceGeometry(modelId, planProductIds(plan), signal); // compact meshes carry no corner provenance
+    validate();
     const prepared = await prepareAppearanceEntities(new StoreEditor(model.ifcDataStore, shadow), shadow, plan, snapshot.revision, { signal });
     try { validate(); prepared.prepared.commit(); } finally { prepared.prepared.dispose(); }
     steps.push({ assignmentId: assignment.id, modelId, plan, bitmap, imageUri,

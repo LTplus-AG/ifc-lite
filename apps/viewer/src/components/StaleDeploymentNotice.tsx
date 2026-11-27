@@ -19,26 +19,28 @@ import { useSyncExternalStore, type ReactNode } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { useTranslation } from '@/i18n';
 import { reloadKeepingOpenModels } from '@/lib/reload-resume';
-import { isStaleDeploymentReported, subscribeStaleDeployment } from '@/lib/stale-deployment';
+import { getDeploymentNotice, subscribeStaleDeployment } from '@/lib/stale-deployment';
 
 export function StaleDeploymentNotice(): ReactNode {
   const { t } = useTranslation();
-  const stale = useSyncExternalStore(subscribeStaleDeployment, isStaleDeploymentReported, isStaleDeploymentReported);
-  if (!stale) return null;
+  const notice = useSyncExternalStore(subscribeStaleDeployment, getDeploymentNotice, getDeploymentNotice);
+  if (!notice) return null;
   return (
     <div
       role="alert"
       className="fixed left-1/2 top-4 z-[9999] flex max-w-[calc(100vw-2rem)] -translate-x-1/2 items-center gap-3 rounded-md border border-border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-lg"
     >
-      <span>{t('viewerShell.staleDeployment.notice')}</span>
-      <button
+      <span>{t(notice === 'offline' ? 'viewerShell.staleDeployment.offline'
+        : notice === 'reconnected' ? 'viewerShell.staleDeployment.reconnected'
+          : 'viewerShell.staleDeployment.notice')}</span>
+      {notice !== 'offline' && <button
         type="button"
         onClick={() => reloadKeepingOpenModels('user')}
         className="inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs transition-colors hover:bg-accent"
       >
         <RefreshCw className="h-3 w-3" aria-hidden />
         {t('viewerShell.chunkError.reload')}
-      </button>
+      </button>}
     </div>
   );
 }

@@ -9,6 +9,9 @@ import type { Renderer } from '@ifc-lite/renderer';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { setGlobalRendererRef } from '../hooks/useBCF.js';
 import { resolveInstancedExportGate, withInstancedMeshes } from './instancedExport.js';
+import { modelIndices } from '@/lib/model-placement/model-indices';
+import { useViewerStore } from '@/store';
+import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 
 function mesh(expressId: number, verts: number, tris: number): MeshData {
   return {
@@ -133,14 +136,20 @@ describe('resolveInstancedExportGate', () => {
     assert.equal(result.instancedModelRange, null);
   });
 
-  it('resolves the model\'s own bracket and allows the export when the id matches', () => {
-    const models = new Map([
-      ['a', { idOffset: 0, maxExpressId: 50 }],
-      ['b', { idOffset: 50, maxExpressId: 30 }],
-    ]);
+  it('resolves the model\'s own bracket and allows the export when the id matches', (t) => {
+    const initial = useViewerStore.getState();
+    t.after(() => useViewerStore.setState(initial, true));
+    const federation = fixtureModels(
+      { ...fixtureModel('a'), maxExpressId: 50 },
+      { ...fixtureModel('b', { idOffset: 50 }), maxExpressId: 30 },
+    );
+    useViewerStore.setState(federation);
+    const { models } = federation;
+    const owner = modelIndices(models).get('b');
+    assert.notEqual(owner, undefined);
     const result = resolveInstancedExportGate('b', models);
     assert.equal(result.canExport, true);
-    assert.deepEqual(result.instancedModelRange, { modelId: 'b', idOffset: 50, maxExpressId: 30 });
+    assert.deepEqual(result.instancedModelRange, { modelId: 'b', idOffset: 50, maxExpressId: 30, rendererModelIndex: owner });
   });
 
   // `null` (no filter) is safe ONLY when this is provably the sole loaded
@@ -156,5 +165,29 @@ describe('resolveInstancedExportGate', () => {
     const result = resolveInstancedExportGate(undefined, new Map());
     assert.equal(result.canExport, true);
     assert.equal(result.instancedModelRange, null);
+  });
+});
+
+describe('instanced range owner (#10695)', () => {
+  afterEach(() => {
+    setGlobalRendererRef({ current: null } as RefObject<Renderer | null>);
+  });
+
+  it('the KMZ range keeps an overlapping-id model\'s instanced occurrences out', (t) => {
+    // A collab model can share the id bracket; only the renderer model index tells its occurrences apart.
+    const initial = useViewerStore.getState();
+    t.after(() => useViewerStore.setState(initial, true));
+    const federation = fixtureModels(
+      { ...fixtureModel('A'), maxExpressId: 10 },
+      { ...fixtureModel('B'), maxExpressId: 10 },
+    );
+    useViewerStore.setState(federation);
+    const { models } = federation;
+    const index = modelIndices(models);
+    assert.equal(index.size, 2);
+    setRenderer([{ ...mesh(5, 3, 1), modelIndex: index.get('A') }, { ...mesh(5, 3, 1), modelIndex: index.get('B') }]);
+    const { instancedModelRange } = resolveInstancedExportGate('A', models);
+    const out = withInstancedMeshes(baseGeometry(), instancedModelRange);
+    assert.deepEqual(out.meshes.map(m => m.modelIndex), [undefined, index.get('A')]);
   });
 });

@@ -13,16 +13,15 @@
  *   (`entity-visibility-table.ts`). No sub-batch is cut from the CPU copy of
  *   the geometry, so this keeps working once that copy is released.
  *
- * Classification reads primary entries (`expressIds`, one per piece), as
- * before S2. Only partly visible batches test secondary vertex-lane ids. An
- * all-visible primary list can therefore leave a hidden secondary drawn;
- * an all-hidden list can drop a visible secondary. Only host-supplied foreign
- * `MeshData.entityIds` reach this limitation; no in-tree producer emits them.
- * #10653 tracks complete lane coverage before those producers or their release.
+ * Classification reads every entity the batch draws: its primary entries and
+ * the secondary vertex-lane ids of colour-merged pieces (`batchEntities`,
+ * #10653), so a hidden secondary forces the per-fragment test and a visible
+ * secondary keeps an otherwise hidden batch drawn, with or without CPU pieces.
  */
 
 import { isEntityVisible } from './entity-visibility.js';
 import { batchEntityIdAnchor } from './entity-color-table.js';
+import { batchEntities, batchEntryStamp } from './batch-entities.js';
 import type { BatchedMesh } from './types.js';
 import type { AlphaBatchLike } from './xray-alpha.js';
 
@@ -37,19 +36,22 @@ export interface PartlyVisibleBatch extends AlphaBatchLike {
 
 export type BatchVisibility = 'none' | 'all' | PartlyVisibleBatch;
 
+export { batchEntities } from './batch-entities.js'; // for renderer.ts, inside its line budget
+
 export function classifyBatch(
-  batch: Pick<BatchedMesh, 'expressIds' | 'color'>,
+  batch: Pick<BatchedMesh, 'expressIds' | 'laneIds' | 'color'>,
   hiddenIds: ReadonlySet<number> | null | undefined,
   isolatedIds: ReadonlySet<number> | null | undefined,
 ): BatchVisibility {
   if ((hiddenIds == null || hiddenIds.size === 0) && isolatedIds == null) return 'all';
   const visibleIds = new Set<number>();
   let visibleEntries = 0;
-  for (const id of batch.expressIds) {
+  const entities = batchEntities(batch);
+  for (const id of entities) {
     if (isEntityVisible(id, hiddenIds, isolatedIds)) { visibleIds.add(id); visibleEntries++; }
   }
   if (visibleIds.size === 0) return 'none';
-  if (visibleEntries === batch.expressIds.length) return 'all';
+  if (visibleEntries === entities.length) return 'all';
   return { expressIds: [...visibleIds], color: batch.color, visibleIds };
 }
 
@@ -59,7 +61,7 @@ export function classifyBatch(
  * full ids (its entries lie in one 2^24 page, true of every scene batch).
  * Otherwise the batch must be left out, never drawn with its hidden entities.
  */
-export function canFilterOnGpu(batch: Pick<BatchedMesh, 'expressIds'>, tableReady: boolean): boolean {
+export function canFilterOnGpu(batch: Pick<BatchedMesh, 'expressIds' | 'laneIds'>, tableReady: boolean): boolean {
   return tableReady && batchEntityIdAnchor(batch) !== null;
 }
 
@@ -71,6 +73,14 @@ export function canFilterOnGpu(batch: Pick<BatchedMesh, 'expressIds'>, tableRead
 export class BatchVisibilityCache {
   private epoch = -1;
   private cache = new WeakMap<BatchedMesh, BatchVisibility>();
+  /**
+   * Entry stamp each verdict was computed for (`batchEntryStamp`). A compact page (compact-store.ts) is
+   * one batch object that keeps growing while a model streams, and loses a mesh when it is retired, so a
+   * page judged "all visible" must be judged again once its ids change: a mesh hidden by id that arrived
+   * after the visible meshes of its cell would otherwise be drawn (a type-library mesh, on a host whose
+   * batch order put it last), even when another mesh left the page in the same flush.
+   */
+  private sizes = new WeakMap<BatchedMesh, number>();
 
   classify(
     batch: BatchedMesh,
@@ -80,12 +90,14 @@ export class BatchVisibilityCache {
   ): BatchVisibility {
     if (epoch !== this.epoch) {
       this.cache = new WeakMap();
+      this.sizes = new WeakMap();
       this.epoch = epoch;
     }
     let vis = this.cache.get(batch);
-    if (vis === undefined) {
+    if (vis === undefined || this.sizes.get(batch) !== batchEntryStamp(batch)) {
       vis = classifyBatch(batch, hiddenIds, isolatedIds);
       this.cache.set(batch, vis);
+      this.sizes.set(batch, batchEntryStamp(batch));
     }
     return vis;
   }

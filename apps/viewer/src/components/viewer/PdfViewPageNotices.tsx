@@ -28,6 +28,8 @@ export interface PdfViewPageNoticesProps {
   /** `null` when no camera has been read yet. */
   projectionMode: 'orthographic' | 'perspective' | null;
   onSwitchToOrthographic: () => void;
+  /** Released geometry being read back, or not readable yet (#10264); export stays off meanwhile. */
+  sourceStatus?: 'none' | 'ready' | 'loading' | 'unavailable';
   /** Millimetre formatter, shared with the dialog so both round identically. */
   formatMm: (value: number) => string;
 }
@@ -38,6 +40,7 @@ export function PdfViewPageNotices({
   projectionMode,
   onSwitchToOrthographic,
   formatMm,
+  sourceStatus = 'none',
 }: PdfViewPageNoticesProps) {
   const { t } = useTranslation();
   return (
@@ -59,6 +62,15 @@ export function PdfViewPageNotices({
             })
           : t('sheetsPdf.pdfView.pageReadoutUnavailable')}
       </p>
+
+      {(sourceStatus === 'loading' || sourceStatus === 'unavailable') && (
+        <Alert data-testid="pdf-view-source-status" variant={sourceStatus === 'unavailable' ? 'destructive' : 'default'} aria-live="polite">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>
+            {t(sourceStatus === 'loading' ? 'sheetsPdf.pdfView.releasedLoading' : 'sheetsPdf.pdfView.releasedUnavailable')}
+          </AlertDescription>
+        </Alert>
+      )}
 
       {oversize && preview && (
         <Alert variant="destructive">

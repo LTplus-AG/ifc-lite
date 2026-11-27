@@ -49,6 +49,7 @@ ifc-lite ships its public npm packages under the `@ifc-lite/*` scope, plus the `
 | [`@ifc-lite/wasm`](#ifc-litewasm) | WebAssembly bindings for IFC-Lite |
 | [`@ifc-lite/codegen`](#ifc-litecodegen) | TypeScript code generator from IFC EXPRESS schemas |
 | [`create-ifc-lite`](#create-ifc-lite) | Create IFC-Lite projects with one command |
+| [`@ifc-lite/a2ui`](https://www.npmjs.com/package/@ifc-lite/a2ui) | A2UI v1.0 catalog, agent helpers and surface builders for IFC result surfaces |
 | [`@ifc-lite/ai`](https://www.npmjs.com/package/@ifc-lite/ai) | Provider-independent AI request core: transport contract, typed outcomes, root budgets, usage receipts and bounded JSON output parsing |
 | [`@ifc-lite/bcf-api`](https://www.npmjs.com/package/@ifc-lite/bcf-api) | BCF API (OpenCDE) REST client for connecting to BCF servers |
 | [`@ifc-lite/charts`](https://www.npmjs.com/package/@ifc-lite/charts) | Headless chart data binding for IFC-Lite: aggregate model rows into buckets that keep their element ids, build ECharts options, render SVG |
@@ -543,6 +544,8 @@ Other exports: `Camera`, `Picker`, `Raycaster`, `SnapDetector`, `BVH`, `RaycastE
 An appearance preview may carry an `AppearancePartition` whose `sourceGeometryItemId` and `triangleCount` name one canonical evaluated surface. Its `before` and `after` parts use side-local `partId` values and canonical triangle ordinals, allowing repeated representation-item ids across streaming fragments. `validateAppearancePartition(partition, before, after)` verifies bounded, disjoint and complete provenance plus exact ownership, placement and corner geometry; `invertAppearancePartition(partition)` describes the reverse transition for Undo.
 
 `Scene` and `Section2DOverlayRenderer` are package-internal from 2.0: reach the scene through `getScene(): SceneContents`, and the 3D line overlays through `Renderer.setLineOverlay`. `PickingManager` is package-internal from 2.0 as well: its constructor takes the now-internal `Scene`, so an exported class nobody could construct would have been worse than no export. Pick through `Renderer.pick` / `Renderer.pickRect`.
+
+`SceneContents.translateMeshesForEntities` and `rotateMeshesForEntities` accept an optional callback that receives each affected flat mesh immediately before its vertex buffers change.
 
 ---
 
@@ -1057,8 +1060,15 @@ function createTranslationService(locale: 'en' | 'de' | 'fr' | 'it'): Translatio
 class Drawing2DGenerator {
   initialize(): Promise<void>;
   generate(meshes: MeshData[], config: SectionConfig, options?: Partial<GeneratorOptions>): Promise<Drawing2D>;
+  // Same drawing from a replayable source, one batch at a time (see DrawingMeshSource)
+  generateFromSource(source: DrawingMeshSource, config: SectionConfig, options?: Partial<GeneratorOptions>): Promise<Drawing2D>;
+  // Push chunks one at a time: addGeometry → endGeometry → addOcclusion → finish | cancel
+  beginDrawing(config: SectionConfig, options?: Partial<GeneratorOptions>, profiles?: ProfileEntry[]): DrawingSession;
   dispose(): void;
 }
+
+interface DrawingMeshSource { pass(pass: 'geometry' | 'occlusion'): AsyncIterable<readonly MeshData[]>; }
+class StoreyFloorLevels { add(meshes): void; floors(): number[]; } // storeyFloorsFromMeshes, batch by batch
 
 function generateFloorPlan(meshes: MeshData[], elevation: number, options?: Partial<GeneratorOptions>): Promise<Drawing2D>;
 function generateSection(meshes: MeshData[], axis: 'x' | 'z', position: number, options?: Partial<GeneratorOptions>): Promise<Drawing2D>;

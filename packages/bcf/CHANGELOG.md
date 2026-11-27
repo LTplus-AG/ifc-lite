@@ -1,5 +1,19 @@
 # @ifc-lite/bcf
 
+## 5.2.3
+
+### Patch Changes
+
+- [#11487](https://github.com/LTplus-AG/ifc-lite/pull/11487) [`f048b75`](https://github.com/LTplus-AG/ifc-lite/commit/f048b753065778f6f6e304d0efcb945005e1bd57) Thanks [@petruconduraru](https://github.com/petruconduraru)! - The BCF reader no longer drops topics from archives whose XML is not UTF-8. It decodes every entry by byte-order mark and first-byte shape (UTF-16 with or without a BOM), so a UTF-16 `markup.bcf` keeps its topic and a UTF-16 `bcf.version` no longer rejects the archive, and it reads an ISO-8859-1 or windows-1252 entry that declares that encoding instead of replacing accented characters with U+FFFD. A `utf-16` declaration over UTF-8 bytes is still read as UTF-8.
+
+## 5.2.2
+
+### Patch Changes
+
+- [#11115](https://github.com/LTplus-AG/ifc-lite/pull/11115) [`cf65b36`](https://github.com/LTplus-AG/ifc-lite/commit/cf65b3686136786a72b3bfabf0f1222ab211e675) Thanks [@louistrue](https://github.com/louistrue)! - Distinguish malformed BCF archive errors from resource-limit errors so callers can classify import refusals.
+
+- [#11222](https://github.com/LTplus-AG/ifc-lite/pull/11222) [`327a733`](https://github.com/LTplus-AG/ifc-lite/commit/327a733e8acd386c5b2252cc605117175f9c8c20) Thanks [@louistrue](https://github.com/louistrue)! - Classify missing or ambiguous BCF archive version files as malformed archive errors.
+
 ## 5.2.1
 
 ### Patch Changes

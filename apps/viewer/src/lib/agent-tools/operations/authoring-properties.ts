@@ -6,10 +6,14 @@ import { operation, type OperationContext } from './contract';
 import { resolveRef } from '../refs';
 import { assertToolActive } from '../cancellation';
 import type { PropertyValueType } from '@ifc-lite/data';
+import { invalidInput, stale } from './refusals';
 const outputSchema = { type: 'object', properties: { native_json: { type: 'string' } }, required: ['native_json'], additionalProperties: false };
 const out = (value: unknown) => ({ native_json: JSON.stringify(value) });
 // A refusal throws inside commit, so it is not recorded as a committed write.
-const commitOrRefuse = (c: OperationContext, write: () => boolean, refusal: string) => c.commit(() => { if (!write()) throw new Error(refusal); });
+const commitOrRefuse = (c: OperationContext, write: (onError: (reason: string) => void) => boolean, fallback: string) => c.commit(() => {
+  let refusal = fallback;
+  if (!write(reason => { refusal = reason; })) throw invalidInput('refused', refusal);
+});
 const meta = (id: string, description: string, write = false) => ({ id, owner: 'properties', description, effects: write ? ['model'] as const : ['read'] as const,
   capability: write ? 'commands-and-edits' as const : 'read' as const, implementation: 'native-store' as const, outputSchema, policy: write ? { model: 'native-reviewed' as const } : undefined });
 async function inspect(c: OperationContext, id: number) {
@@ -18,7 +22,7 @@ async function inspect(c: OperationContext, id: number) {
   const s = useViewerStore.getState(), view = s.mutationViews.get(c.model.id);
   const properties = view?.getForEntity(id) ?? c.model.store.properties.getForEntity(id);
   const inherited = effectiveTypeProperties(c.model.store, id, view);
-  const entity = c.model.bim.entity({ modelId: c.model.id, expressId: id }); if (!entity) throw new Error('Native entity is no longer available.');
+  const entity = c.model.bim.entity({ modelId: c.model.id, expressId: id }); if (!entity) throw stale('Native entity is no longer available.');
   return { properties, inherited, IfcClass: entity.type };
 }
 export const propertyInspectorOperations = [
@@ -31,20 +35,20 @@ export const propertyInspectorOperations = [
     }, required: ['name', 'value', 'type'], additionalProperties: false } } }, required: ['express_id', 'pset', 'properties', 'expected_properties'], additionalProperties: false,
   }, async (i, c) => {
     const [{ addToPropertySet }, { runInspectorEdit }] = await Promise.all([import('@/lib/properties/add-to-property-set'), import('@/components/viewer/model-inspector/inspector-edits')]); const value = await inspect(c, i.express_id);
-    if (JSON.stringify(value) !== i.expected_properties) throw new Error('Occurrence/type properties changed. Inspect again.');
-    const names = new Set<string>(); for (const p of i.properties) { if (names.has(p.name)) throw new Error('Duplicate property.'); names.add(p.name);
-      if ((p.type === 1 || p.type === 2) ? typeof p.value !== 'number' || (p.type === 2 && !Number.isInteger(p.value)) : (p.type === 3 || p.type === 4) ? typeof p.value !== 'boolean' : typeof p.value !== 'string') throw new Error('Scalar value does not match the supplied native property type.');
+    if (JSON.stringify(value) !== i.expected_properties) throw stale('Occurrence/type properties changed. Inspect again.');
+    const names = new Set<string>(); for (const p of i.properties) { if (names.has(p.name)) throw invalidInput('invalid-value', 'Duplicate property.'); names.add(p.name);
+      if ((p.type === 1 || p.type === 2) ? typeof p.value !== 'number' || (p.type === 2 && !Number.isInteger(p.value)) : (p.type === 3 || p.type === 4) ? typeof p.value !== 'boolean' : typeof p.value !== 'string') throw invalidInput('invalid-value', 'Scalar value does not match the supplied native property type.');
     }
     const inheritedFrom = value.inherited && !value.IfcClass.endsWith('Type') ? { typeId: value.inherited.typeId, typeName: value.inherited.typeName, psetNames: value.inherited.psets.map(p => p.name).filter(name => !value.properties.some(p => p.name === name)) } : null;
-    commitOrRefuse(c, () => runInspectorEdit(c.model.id, tx => { const result = addToPropertySet(tx.store, { modelId: c.model.id, entityId: i.express_id, existingPsets: value.properties.map(p => p.name), inheritedFrom }, i.pset, i.properties);
-      if (!result.ok) throw new Error(`Native inherited property refusal: ${result.uncopyable.join(', ')}`); return [];
-    }), 'The native property transaction refused this add.'); return out({ added: i.properties.length });
+    commitOrRefuse(c, onError => runInspectorEdit(c.model.id, tx => { const result = addToPropertySet(tx.store, { modelId: c.model.id, entityId: i.express_id, existingPsets: value.properties.map(p => p.name), inheritedFrom }, i.pset, i.properties);
+      if (!result.ok) throw invalidInput('refused', `Native inherited property refusal: ${result.uncopyable.join(', ')}`); return [];
+    }, onError), 'The native property transaction refused this add.'); return out({ added: i.properties.length });
   }),
   operation<{ express_id: number; IfcClass: string; PredefinedType: string; expected_class: string }>(meta('properties.reassignClass', 'Reassign the exact element IFC class/PredefinedType using the native Properties writer inside one rollback-capable transaction. expected_class guards against a concurrent retype; native keyword/export constraints remain authoritative.', true), {
     type: 'object', properties: { express_id: { type: 'integer', minimum: 1 }, IfcClass: { type: 'string', pattern: '^Ifc[A-Za-z][A-Za-z0-9_]*$', maxLength: 200 }, PredefinedType: { type: 'string', maxLength: 100 }, expected_class: { type: 'string', minLength: 1, maxLength: 200 } }, required: ['express_id', 'IfcClass', 'PredefinedType', 'expected_class'], additionalProperties: false,
   }, async (i, c) => { const { runInspectorEdit } = await import('@/components/viewer/model-inspector/inspector-edits'); resolveRef(c.model, { express_id: i.express_id }); assertToolActive(c);
-    if (c.model.bim.entity({ modelId: c.model.id, expressId: i.express_id })?.type !== i.expected_class) throw new Error('IFC class changed. Inspect again.');
-    commitOrRefuse(c, () => runInspectorEdit(c.model.id, tx => { if (!tx.store.setEntityType(c.model.id, i.express_id, i.IfcClass, i.PredefinedType || null)) throw new Error('Native retype refused.'); return []; }),
+    if (c.model.bim.entity({ modelId: c.model.id, expressId: i.express_id })?.type !== i.expected_class) throw stale('IFC class changed. Inspect again.');
+    commitOrRefuse(c, onError => runInspectorEdit(c.model.id, tx => { if (!tx.store.setEntityType(c.model.id, i.express_id, i.IfcClass, i.PredefinedType || null)) throw invalidInput('refused', 'Native retype refused.'); return []; }, onError),
       'The native retype transaction refused this change.'); return out({ IfcClass: i.IfcClass, express_id: i.express_id });
   }),
 ];

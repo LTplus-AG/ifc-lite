@@ -1,5 +1,31 @@
 # @ifc-lite/drawing-2d
 
+## 5.2.0
+
+### Minor Changes
+
+- [#10892](https://github.com/LTplus-AG/ifc-lite/pull/10892) [`700ac23`](https://github.com/LTplus-AG/ifc-lite/commit/700ac231eff8d013de92136c6c10296f0d3acc5f) Thanks [@louistrue](https://github.com/louistrue)! - Draw from streamed geometry ([#10264](https://github.com/LTplus-AG/ifc-lite/issues/10264)):
+  
+  - `Drawing2DGenerator.generateFromSource(source, config, options, profiles?)` draws from a `DrawingMeshSource`, a replayable source of mesh batches. It reads at most two passes: `'geometry'`, and `'occlusion'` only when hidden lines or an open surface need it. It keeps no mesh between batches, so a source can lease each batch from storage and release it when the generator moves on. The drawing equals `generate` over the same meshes, and `generate` now runs on the same code. `GeneratorOptions.signal` aborts between batches.
+  - `Drawing2DGenerator.beginDrawing(config, options, profiles?)` returns a `DrawingSession` for callers that push leased chunks instead of being pulled: `addGeometry(batch)`, `endGeometry()` (which returns `DrawingOcclusionNeeds`: whether to feed everything again for the hidden-line raster, or only the open-surface entities), `addOcclusion(batch)`, `finish()` and `cancel()`. No batch is kept, so each lease can be released before the next one. `generate` and `generateFromSource` are drivers over this session.
+  - `StoreyFloorLevels` computes `storeyFloorsFromMeshes` one batch at a time.
+
+### Patch Changes
+
+- [#11161](https://github.com/LTplus-AG/ifc-lite/pull/11161) [`0a30e5f`](https://github.com/LTplus-AG/ifc-lite/commit/0a30e5f97446b06068b9f80fbff7bc4484e0d708) Thanks [@quotentiroler](https://github.com/quotentiroler)! - `Drawing2DGenerator.generate`, and with it `generateFloorPlan` and `generateSection`, no longer cuts type-library geometry: `IfcWallType`, `IfcDoorType` and other representation maps meshed at the origin (`geometryClass` 1 and 2) are left out by the rule the viewer's Model view applies. A file with no placed elements still draws its orphan type geometry. The rule now lives in `@ifc-lite/geometry/geometry-class` as `selectModelMeshes` and `isModelViewGeometryClass`, and the viewer uses it from there.
+- Updated dependencies [[`2ae4a57`](https://github.com/LTplus-AG/ifc-lite/commit/2ae4a57762b360271a295b6be4bd6ecbfbf59104), [`c1eeb86`](https://github.com/LTplus-AG/ifc-lite/commit/c1eeb86bbda4adbd17ffb6de6758ef5e90085af9), [`690dc7d`](https://github.com/LTplus-AG/ifc-lite/commit/690dc7d0b19bac9104d11402a5ca95f6e2462011), [`21fc7f9`](https://github.com/LTplus-AG/ifc-lite/commit/21fc7f9f521356b7e5ec4fc02aed75a1f4af1ec6), [`0a30e5f`](https://github.com/LTplus-AG/ifc-lite/commit/0a30e5f97446b06068b9f80fbff7bc4484e0d708)]:
+  - @ifc-lite/geometry@8.4.0
+
+## 5.1.1
+
+### Patch Changes
+
+- [#11160](https://github.com/LTplus-AG/ifc-lite/pull/11160) [`0c71074`](https://github.com/LTplus-AG/ifc-lite/commit/0c71074c8a337aa164c0ff5618c1f407742b92b2) Thanks [@quotentiroler](https://github.com/quotentiroler)! - `exportToSVG` draws cardinal floor plans north-up. It flipped paper Y for every view, but a plan cut projects render Z, which already points south, so plans came out mirrored with north at the bottom. Vertical sections and custom-plane cuts still flip, so model up stays at the top of the sheet.
+
+- [#11159](https://github.com/LTplus-AG/ifc-lite/pull/11159) [`19a96f3`](https://github.com/LTplus-AG/ifc-lite/commit/19a96f3594fb3e16c47b6d49f93119e8974bf7ec) Thanks [@quotentiroler](https://github.com/quotentiroler)! - `exportToSVG` defines a `<pattern>` for every hatch type a cut can be filled with. A cut `IfcRoof` filled with `url(#hatch-cross-hatch)` while the defs only carried `hatch-cross`, and `vertical`, `brick`, `insulation`, `earth` and `wood` had no definition at all, so those fills silently rendered empty.
+- Updated dependencies [[`b95d529`](https://github.com/LTplus-AG/ifc-lite/commit/b95d529e4fe1fcc2cf25dd75809ef79bd57b7d20), [`469ec7d`](https://github.com/LTplus-AG/ifc-lite/commit/469ec7d4750c1c47290aa7f6c8ffaba0d929751e), [`8c30d45`](https://github.com/LTplus-AG/ifc-lite/commit/8c30d455cf70cbfb45a83a813d9d3c40e92bcdef)]:
+  - @ifc-lite/geometry@8.3.0
+
 ## 5.1.0
 
 ### Minor Changes

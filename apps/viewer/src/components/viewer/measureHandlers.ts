@@ -20,6 +20,7 @@ import { pressPastClickSlop } from './pointerGesture.js';
 import { measureCursor, noteMeasureCursor } from './measureCursor.js';
 import { isGeometryHeld } from '@/lib/pick-gating';
 import { useViewerStore } from '@/store';
+import { cancelMeasureReadbacks, viaReadback } from './measureReadback.js';
 
 /**
  * Projects a world position onto the closest orthogonal constraint axis.
@@ -112,8 +113,10 @@ export function handleMeasureDrag(ctx: MouseHandlerContext, e: MouseEvent, x: nu
       ctx.measureRaycastPendingRef.current = false;
       ctx.measureRaycastFrameRef.current = null;
       if (isGeometryHeld(useViewerStore.getState())) return;
-      // Shift can change while a view change prevents its immediate re-pick (#9242).
-      moveRubberBand(ctx, x, y, measureCursor(ctx)?.orthogonal ?? useOrthogonalConstraint);
+      // Shift can change while a view change prevents its immediate re-pick (#9242). A released scene
+      // reads the drag point back first: the hover's neighbourhood does not reach a point a metre away.
+      const move = () => moveRubberBand(ctx, x, y, measureCursor(ctx)?.orthogonal ?? useOrthogonalConstraint);
+      if (!viaReadback(ctx, 'drag', move, x, y)) move();
     });
   }
 
@@ -269,46 +272,50 @@ export function handleMeasureHover(
       ctx.measureRaycastPendingRef.current = false;
       ctx.measureRaycastFrameRef.current = null;
       if (isGeometryHeld(useViewerStore.getState())) return;
-      if (pick) { pick(ctx, x, y); return; }
-
-      // Use magnetic snap for hover preview
-      const currentLock = ctx.edgeLockStateRef.current;
-      const result = renderer.raycastSceneMagnetic(x, y, {
-        edge: currentLock.edge,
-        meshExpressId: currentLock.meshExpressId,
-        lockStrength: currentLock.lockStrength,
-      }, {
-        hiddenIds: ctx.hiddenEntitiesRef.current,
-        isolatedIds: ctx.isolatedEntitiesRef.current,
-        snapOptions: measureSnapOptions(ctx, { radius: 40 }), // Good radius for hover snap detection
-      });
-
-      // Update snap target for visual feedback
-      if (result.snapTarget) {
-        ctx.setSnapTarget(result.snapTarget);
-
-        // Update edge lock state for hover
-        if (result.edgeLock.shouldRelease) {
-          ctx.clearEdgeLock();
-          updateSnapViz(ctx, result.snapTarget);
-        } else if (result.edgeLock.shouldLock && result.edgeLock.edge) {
-          ctx.setEdgeLock(result.edgeLock.edge, result.edgeLock.meshExpressId!, result.edgeLock.edgeT);
-          updateSnapViz(ctx, result.snapTarget, {
-            edgeT: result.edgeLock.edgeT,
-            isCorner: result.edgeLock.isCorner,
-            cornerValence: result.edgeLock.cornerValence,
-          });
-        } else {
-          updateSnapViz(ctx, result.snapTarget);
-        }
-      } else {
-        ctx.setSnapTarget(null);
-        ctx.clearEdgeLock();
-        updateSnapViz(ctx, null);
-      }
+      const run = () => { if (pick) pick(ctx, x, y); else hoverSnap(); };
+      // Released CPU geometry (#10264): read the pieces under the pointer back first, latest wins.
+      if (!viaReadback(ctx, 'hover', run, x, y)) run();
     });
   }
   return true; // Don't fall through to other tool handlers
+
+  function hoverSnap(): void {
+    // Use magnetic snap for hover preview
+    const currentLock = ctx.edgeLockStateRef.current;
+    const result = renderer.raycastSceneMagnetic(x, y, {
+      edge: currentLock.edge,
+      meshExpressId: currentLock.meshExpressId,
+      lockStrength: currentLock.lockStrength,
+    }, {
+      hiddenIds: ctx.hiddenEntitiesRef.current,
+      isolatedIds: ctx.isolatedEntitiesRef.current,
+      snapOptions: measureSnapOptions(ctx, { radius: 40 }), // Good radius for hover snap detection
+    });
+
+    // Update snap target for visual feedback
+    if (result.snapTarget) {
+      ctx.setSnapTarget(result.snapTarget);
+
+      // Update edge lock state for hover
+      if (result.edgeLock.shouldRelease) {
+        ctx.clearEdgeLock();
+        updateSnapViz(ctx, result.snapTarget);
+      } else if (result.edgeLock.shouldLock && result.edgeLock.edge) {
+        ctx.setEdgeLock(result.edgeLock.edge, result.edgeLock.meshExpressId!, result.edgeLock.edgeT);
+        updateSnapViz(ctx, result.snapTarget, {
+          edgeT: result.edgeLock.edgeT,
+          isCorner: result.edgeLock.isCorner,
+          cornerValence: result.edgeLock.cornerValence,
+        });
+      } else {
+        updateSnapViz(ctx, result.snapTarget);
+      }
+    } else {
+      ctx.setSnapTarget(null);
+      ctx.clearEdgeLock();
+      updateSnapViz(ctx, null);
+    }
+  }
 }
 
 /**
@@ -375,6 +382,7 @@ export { CLOSE_LOOP_SCREEN_RADIUS_PX, DUPLICATE_POINT_SCREEN_RADIUS_PX, isDuplic
 
 /** Drop a queued rubber-band or hover raycast, so it cannot land after the press or gesture it served. */
 export function cancelMeasureRaycast(ctx: MouseHandlerContext): void {
+  cancelMeasureReadbacks(); // an in-flight read never acts after the press or gesture that cancelled it
   if (ctx.measureRaycastFrameRef.current !== null) cancelAnimationFrame(ctx.measureRaycastFrameRef.current);
   ctx.measureRaycastFrameRef.current = null;
   ctx.measureRaycastPendingRef.current = false;

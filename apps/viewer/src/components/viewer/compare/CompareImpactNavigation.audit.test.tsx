@@ -8,7 +8,7 @@ import { act } from 'react';
 import { setValidationSourceChoice, useValidationSourceChoice } from '@/lib/validation/validation-source-choice';
 import { federationRegistry } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
-import { render, click, cleanup } from '@/test/render';
+import { render, click, cleanup, settle } from '@/test/render';
 import { fixtureModels } from '@/test/store-fixture';
 import { revisionPair, runClash, PINS } from '@/lib/compare/revision-pair.test-support';
 import { captureAnalysisStamp, stampAnalysisReport } from '@/hooks/useAnalysisStaleness';
@@ -24,7 +24,7 @@ async function publishComparison(pair: RevisionPair) {
  const comparison = comparePreparedPair(built, { scope: 'both', excludedTypes: [], matchByContent: false });
  act(() => useViewerStore.setState({ compareResult: comparison })); return comparison;
 }
-afterEach(() => { cleanup(); useViewerStore.setState(initial, true); federationRegistry.clear(); setValidationSourceChoice(null); });
+afterEach(async () => { cleanup(); useViewerStore.setState(initial, true); federationRegistry.clear(); setValidationSourceChoice(null); await settle(); });
 it('native revision-pair control selects the added duct in its owning head model', async t => {
  const pair = await revisionPair(t); if (!pair) return;
  useViewerStore.setState({ ...fixtureModels(pair.base, pair.head), compareResult: pair.compare });
@@ -144,6 +144,7 @@ it('7307 held impact actions refuse native source replacement and model edits be
  const select = [...row.querySelectorAll('button')].find(b => b.textContent?.includes(PINS.clashAdded)); assert.ok(select);
  act(() => { useViewerStore.setState({ mutationVersion: useViewerStore.getState().mutationVersion + 1 }); click(select); });
  assert.equal(useViewerStore.getState().selectedEntity, null, 'held callback cannot select pre-edit evidence');
+ await settle();
  assert.match(root.textContent ?? '', /run before later edits/);
  assert.equal(openButton(impactRow(root, PINS.clashAdded)).disabled, true);
 });

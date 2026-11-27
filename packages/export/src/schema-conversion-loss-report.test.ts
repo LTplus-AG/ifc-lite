@@ -3,11 +3,19 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, it, expect, vi } from 'vitest';
-import { IfcParser } from '@ifc-lite/parser';
+import { EMPTY_SOURCE_BYTES, IfcParser } from '@ifc-lite/parser';
 import { classifyEntityTypeConversion, analyzeConversionLoss } from './schema-conversion-loss-report.js';
 import { exportToStep } from './step-exporter.js';
 
 describe('classifyEntityTypeConversion', () => {
+  it('names the user-defined function slot omitted by the IFC4X3 board layout (#10971)', () => {
+    expect(classifyEntityTypeConversion('IFCELECTRICDISTRIBUTIONPOINT', 'IFC2X3', 'IFC4X3')).toEqual({
+      targetType: 'IFCDISTRIBUTIONBOARD',
+      kind: 'lossy',
+      droppedAttributes: ['UserDefinedFunction'],
+    });
+  });
+
   it('is identity when schemas match', () => {
     expect(classifyEntityTypeConversion('IFCWALL', 'IFC4', 'IFC4')).toEqual({
       targetType: 'IFCWALL',
@@ -40,6 +48,14 @@ describe('classifyEntityTypeConversion', () => {
     expect(info.kind).toBe('proxied');
     expect(info.targetType).toBe('IFCPROXY');
     expect(info.droppedAttributes.length).toBeGreaterThan(0);
+  });
+
+  it('reports only the attributes a generic proxy drops (#11322)', () => {
+    expect(classifyEntityTypeConversion('IFCRELPOSITIONS', 'IFC4X3', 'IFC4')).toEqual({
+      targetType: 'IFCPROXY',
+      kind: 'proxied',
+      droppedAttributes: ['OwnerHistory', 'Description', 'RelatingPositioningElement', 'RelatedProducts'],
+    });
   });
 
   it('is blocked for a non-rooted type IFC2X3 has no representation for at all', () => {
@@ -89,6 +105,13 @@ describe('analyzeConversionLoss', () => {
   function storeOf(byType: Record<string, number[]>) {
     return { entityIndex: { byType: new Map(Object.entries(byType)), byId: new Map() as never } };
   }
+
+  it('keeps blocking entries in a type-only preview with a source placeholder (#11007)', () => {
+    const store = { ...storeOf({ IFCTRIANGULATEDFACESET: [42] }), source: EMPTY_SOURCE_BYTES };
+    const report = analyzeConversionLoss(store, 'IFC4', 'IFC2X3');
+    expect(report.hasBlocking).toBe(true);
+    expect(report.entries).toMatchObject([{ sourceType: 'IFCTRIANGULATEDFACESET', kind: 'blocked', expressIds: [42] }]);
+  });
 
   it('is empty when the schemas match', () => {
     const report = analyzeConversionLoss(storeOf({ IFCWALL: [1, 2] }), 'IFC4', 'IFC4');
@@ -145,6 +168,35 @@ describe('analyzeConversionLoss', () => {
     const lines = report.describe();
     expect(lines.some((l) => l.includes('IFCSTRUCTURALLOADCONFIGURATION') && l.includes('#326'))).toBe(true);
     expect(lines.some((l) => l.includes('IFCSTRUCTURALCURVEREACTION'))).toBe(true);
+  });
+
+  it.each([
+    [['(#3)'], []],
+    [['(#3,#6,#7)'], [5]],
+    [['/* before */(#3,/* empty */$)/* after */'], []],
+    [['(#3)', '(#3,#6,#7)'], [10]],
+  ] as const)('reports only the approvals discarded from %j (#10763, PR #10781)', async (related, lostIds) => {
+    const relationships = related.map((set, index) => `#${5 + 5 * index}=IFCAPPROVALRELATIONSHIP('n','d',#4,${set});`).join('\n');
+    const text = "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('approval.ifc','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n"
+      + relationships + "\nENDSEC;\nEND-ISO-10303-21;\n";
+    const store = await new IfcParser().parseColumnar(new TextEncoder().encode(text).buffer);
+    const report = analyzeConversionLoss(store, 'IFC4', 'IFC2X3');
+    expect(report.hasLoss).toBe(lostIds.length > 0);
+    expect(report.entries).toEqual(lostIds.length ? [{
+      sourceType: 'IFCAPPROVALRELATIONSHIP', targetType: 'IFCAPPROVALRELATIONSHIP',
+      kind: 'lossy', count: lostIds.length, expressIds: lostIds, droppedAttributes: ['RelatedApprovals'],
+    }] : []);
+  });
+
+  it.each(['(#20)', '(#20,#21)'])('reports an up-only BenchmarkValues SET %s on downgrade (#10807)', async (set) => {
+    const text = "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('objective.ifc','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n"
+      + `#5=IFCOBJECTIVE('id',$,'Objective',$,$,$,$,${set},$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n`;
+    const store = await new IfcParser().parseColumnar(new TextEncoder().encode(text).buffer);
+    const report = analyzeConversionLoss(store, 'IFC4', 'IFC2X3');
+    expect(report.entries.find(({ sourceType }) => sourceType === 'IFCOBJECTIVE')).toMatchObject({
+      expressIds: [5],
+      droppedAttributes: expect.arrayContaining(['BenchmarkValues']),
+    });
   });
 
   it('skips a type the store lists with zero instances', () => {

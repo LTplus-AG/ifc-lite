@@ -295,9 +295,10 @@ impl<'a> GeometryProgram<'a> {
         self.finish_parts()
     }
 
-    /// [`Self::drain`] for a styled program: its sub-meshes.
-    pub(crate) fn drain_styled(mut self, router: &GeometryRouter, decoder: &mut EntityDecoder)
-        -> Result<crate::SubMeshCollection> {
+    /// [`Self::drain`] for a styled program: its sub-meshes, each paired with
+    /// its occurrence chain (`crate::styled_parts`).
+    pub(crate) fn drain_styled_parts(mut self, router: &GeometryRouter, decoder: &mut EntityDecoder)
+        -> Result<crate::styled_parts::StyledParts> {
         self.run(router, decoder)?;
         match self.finish_output()? {
             Output::Mapping(MappingOutput::Styled(meshes)) | Output::Product(ProductOutput::Styled(meshes)) => Ok(meshes),

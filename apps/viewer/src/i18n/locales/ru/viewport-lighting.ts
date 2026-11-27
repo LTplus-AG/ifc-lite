@@ -53,6 +53,7 @@ export const viewportLightingRu = {
   "viewportLighting.container.loadErrorCard.dismiss": "Закрыть",
   "viewportLighting.container.loadErrorCard.webgpuChecking": "Поддержка WebGPU всё ещё проверяется. Попробуйте открыть модель ещё раз через некоторое время.",
   "viewportLighting.container.loadErrorCard.webgpuUnsupported": "Этот браузер не поддерживает необходимый для просмотра веб-графический рендерер WebGPU. Попробуйте использовать последние версии Chrome, Edge, Firefox или Safari — см. ссылку на поддержку браузеров в верхней части окна просмотра.",
+  "viewportLighting.container.loadErrorCard.wasmSimdUnsupported": "Этот браузер не может выполнять инструкции WebAssembly SIMD, необходимые геометрическому движку. Обновите его или попробуйте последние версии Chrome, Edge, Firefox или Safari. Некоторые настройки безопасности и старые процессоры также отключают SIMD.",
   "viewportLighting.container.modelUrlAutoload.malformedUrl": "Указанный адрес модели не является допустимым URL-адресом.",
   "viewportLighting.container.processedModelAutoload.malformedLink": "Ссылка на модель неполная или повреждена.",
   "viewportLighting.container.processedModel.notPrimary": "Обработанную модель можно открыть только как первую модель.",

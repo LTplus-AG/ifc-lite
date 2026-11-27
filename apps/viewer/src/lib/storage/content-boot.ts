@@ -4,6 +4,7 @@
 
 import { assistantLibrary } from '../assistant/library.js';
 import { clashGroupLibrary } from '../clash/group-workspace.js';
+import { idsStudioDraftLibrary } from '../ids-studio/draft-library.js';
 import { bcfDraftLibrary } from '../bcf-drafts/draft-library.js';
 import { bcfOutboxLibrary, initializeBcfOutbox } from '../bcf-publication/outbox-store.js';
 import { modelChangeLibrary } from '../actions/receipts.js';
@@ -25,6 +26,7 @@ function contentHosts() {
   return {
     assistant: { initialize: assistantLibrary.initialize, refresh: assistantLibrary.refresh },
     clashGroups: { initialize: clashGroupLibrary.initialize, refresh: clashGroupLibrary.refresh },
+    idsStudioDrafts: { initialize: idsStudioDraftLibrary.initialize, refresh: idsStudioDraftLibrary.refresh },
     bcfDrafts: { initialize: bcfDraftLibrary.initialize, refresh: bcfDraftLibrary.refresh },
     bcfOutbox: { initialize: initializeBcfOutbox, refresh: bcfOutboxLibrary.refresh },
     modelChanges: { initialize: modelChangeLibrary.initialize, refresh: modelChangeLibrary.refresh },
@@ -45,6 +47,11 @@ let installed = false;
 export function initializeUserContent(): void {
   if (installed) return;
   installed = true;
+  const { initializeBcfAutosave, flushBcfAutosave } = useViewerStore.getState();
+  void initializeBcfAutosave();
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') void flushBcfAutosave();
+  });
   void Promise.all(Object.values(contentHosts()).map(host => host.initialize()));
   const refresh = () => {
     void Promise.all(Object.values(contentHosts()).map(host => host.refresh()));

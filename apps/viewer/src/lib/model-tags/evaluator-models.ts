@@ -22,6 +22,9 @@ import type { EvaluatorModel } from '@ifc-lite/rules';
 import type { ModelTag } from '@ifc-lite/rules';
 import type { Lens } from '@ifc-lite/lens';
 import { customGroupingsFromLenses } from '../lens/custom-groupings.js';
+/** Re-exported for the validation operations, which already load this module: importing the lens module directly
+ * from them would split it out of the eager chunk. */
+export { isGroupingLens } from '../lens/custom-groupings.js';
 
 /** The slice of store state this reads. Structural so tests need no store. */
 export interface ModelTagState {

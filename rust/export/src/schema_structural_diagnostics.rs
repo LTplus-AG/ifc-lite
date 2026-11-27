@@ -1,13 +1,18 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Explicit losses where the other structural schema has no semantic slot (#9668).
+use crate::step_slot::slot_is;
 use std::collections::{BTreeMap, BTreeSet};
 use crate::schema_convert::{rename_type, schema_attribute_names};
+
+#[path = "schema_structural_varying_effective.rs"]
+mod varying_effective;
 
 const LINK: &str = "IfcRelAssignsToProduct linking one structural member to its element is written as IfcRelConnectsStructuralElement, the IFC2X3 physical-to-analytical link";
 
 #[derive(Default)]
 pub(crate) struct StructuralDiagnostics {
     losses: BTreeMap<String, usize>,
+    pub(crate) defer_varying: bool,
     pub(crate) values: crate::schema_structural_values::StructuralValues,
     pub(crate) axes: crate::schema_structural_axes::StructuralAxes,
     pub(crate) links: crate::schema_structural_links::StructuralLinks,
@@ -17,12 +22,16 @@ pub(crate) struct StructuralDiagnostics {
 
 impl StructuralDiagnostics {
     pub(crate) fn inspect(&mut self, id: u32, entity: &str, args: &[String], from: &str, to: &str, axis_known: bool) {
+        if self.defer_varying && crate::schema_structural_varying::StructuralVarying::is_varying(entity) {
+            return;
+        }
         let cause_carried = self.cause(id, entity).is_some();
         if crate::schema_structural::is_assignment_conversion(entity, from, to) {
             self.record("IfcRelConnectsStructuralElement is mapped to IfcRelAssignsToProduct; the relationship kind is not kept in the target file".into());
             return;
         }
-        if !matches!((from, to), ("IFC2X3", "IFC4") | ("IFC4", "IFC2X3"))
+        // IFC4X3 is inspected only for the constant actions its slot map covers (#11571).
+        if !(matches!((from, to), ("IFC2X3", "IFC4") | ("IFC4", "IFC2X3")) || crate::schema_structural::is_constant_action_conversion(entity, from, to))
             || !(entity.starts_with("IFCSTRUCTURAL") || entity.starts_with("IFCRELCONNECTSSTRUCTURAL") || entity == "IFCRELASSOCIATESPROFILEPROPERTIES") { return; }
         let Some(src) = schema_attribute_names(from, entity) else { return };
         let target = rename_type(entity, from, to).unwrap_or(entity);
@@ -33,13 +42,14 @@ impl StructuralDiagnostics {
         };
         for (name, value) in src.iter().zip(args) {
             // CONST is intrinsic to IFC2X3 linear/planar actions, not lost data.
-            if *name == "PredefinedType" && value.trim() == ".CONST."
+            if *name == "PredefinedType" && slot_is(value, ".CONST.")
                 && matches!(entity, "IFCSTRUCTURALCURVEACTION" | "IFCSTRUCTURALSURFACEACTION" | "IFCSTRUCTURALLINEARACTION" | "IFCSTRUCTURALPLANARACTION") { continue; }
-            if *name == "DestabilizingLoad" && value.trim() == "$" && to == "IFC2X3" {
+            if *name == "DestabilizingLoad" && slot_is(value, "$") && to == "IFC2X3" {
                 self.record(crate::schema_structural::destabilizing_unknown(entity));
             }
             if *name == "CausedBy" && cause_carried { continue; }
-            if !tgt.contains(name) && !matches!(value.trim(), "$" | "*" | "") {
+            // The dropped count's own test (#10779): a comment-only slot is no value.
+            if !tgt.contains(name) && crate::schema_convert::holds_value(value) {
                 let effect = if *name == "ConditionCoordinateSystem" { "; restraint directions in that coordinate system are not preserved" } else { "" };
                 self.record(format!("{entity}.{name} has no slot in {to}; its value is omitted{effect}"));
             }
@@ -50,6 +60,31 @@ impl StructuralDiagnostics {
             // model relationships; absent that evidence, report the missing axis.
             self.record(format!("{entity}.Axis is required by IFC4 but unknown; output does not conform until the model's section orientation is resolved"));
         }
+    }
+
+    /// Clear one omission once the writer has emitted a replacement property.
+    pub(crate) fn restore_omitted_value(&mut self, entity: &str, attribute: &str, to: &str) {
+        let message = format!("{entity}.{attribute} has no slot in {to}; its value is omitted");
+        if let Some(count) = self.losses.get_mut(&message) {
+            *count -= 1;
+            if *count == 0 {
+                self.losses.remove(&message);
+            }
+        }
+    }
+
+    pub(crate) fn buffers_varying(&self, content: &[u8]) -> bool {
+        self.defer_varying && varying_effective::contains_varying(content)
+    }
+
+    pub(crate) fn finish_effective_varying(&mut self, text: &str, dropped: &mut usize) -> Option<(String, Vec<u32>)> {
+        if !self.defer_varying {
+            return None;
+        }
+        let output = varying_effective::finish(text)?;
+        *dropped += output.dropped;
+        output.warnings.into_iter().for_each(|warning| self.record(warning));
+        Some((output.body, output.added))
     }
 
     fn record(&mut self, message: String) { *self.losses.entry(message).or_default() += 1; }

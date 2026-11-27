@@ -2,7 +2,7 @@
 /** Browser adapter for rust/export/src/schema_structural.rs (#9668). */
 import { parseStepNumber, skipStepTrivia } from './step-slot-grammar.js';
 import { readStepSlots } from './step-argument-parser.js';
-import { getSchemaRegistryForVersion } from '@ifc-lite/parser';
+import { getSchemaRegistryForVersion, type SchemaVersionWithRegistry } from '@ifc-lite/parser';
 
 function scalarEquals(token: string, value: string): boolean {
   const start = skipStepTrivia(token, 0);
@@ -21,8 +21,16 @@ function stiffnessType(entity: string, index: number): string | null {
   return null;
 }
 
-/** Same semantic stiffness fields; only their EXPRESS names/value wrappers changed. */
-export function isStructuralBoundaryCondition(entity: string): boolean { return stiffnessType(entity, 1) !== null; }
+/** Whether `from` -> `to` is IFC2X3 to or from IFC4 or IFC4X3. */
+function ifc2x3AndIfc4Family(from: string, to: string): boolean {
+  const other = from === 'IFC2X3' ? to : to === 'IFC2X3' ? from : undefined;
+  return other === 'IFC4' || other === 'IFC4X3';
+}
+
+/** IFC2X3's stiffness fields keep their position and units in IFC4 and IFC4X3. */
+export function isStructuralStiffnessConversion(entity: string, from: string, to: string): boolean {
+  return ifc2x3AndIfc4Family(from, to) && stiffnessType(entity, 1) !== null;
+}
 
 /** The loss reported when IFC2X3's required DestabilizingLoad is written as .F. for an unknown value. */
 export const destabilizingUnknown = (entity: string): string => `${entity}.DestabilizingLoad is unknown; IFC2X3 requires a boolean, so the writer substitutes .F.`;
@@ -32,18 +40,23 @@ export function isStructuralAssignmentConversion(entity: string, from: string, t
   return entity === 'IFCRELCONNECTSSTRUCTURALELEMENT' && from === 'IFC2X3' && ['IFC4', 'IFC4X3', 'IFC5'].includes(to);
 }
 
+/** A constant linear or planar action between IFC2X3 and IFC4 or IFC4X3, mapped by attribute name:
+ *  IFC2X3's CausedBy has no slot in either, and both declare the same layout (#11571). */
+export function isConstantActionConversion(entity: string, from: string, to: string): boolean {
+  return ifc2x3AndIfc4Family(from, to) && (entity === 'IFCSTRUCTURALLINEARACTION' || entity === 'IFCSTRUCTURALPLANARACTION');
+}
+
 export function structuralAttributes(entity: string, args: readonly string[], from: string, to: string): string | null {
   if (isStructuralAssignmentConversion(entity, from, to) && args.length === 6) {
     // IFC4's analytical assignment retains both objects, but changes relationship kind.
     return `${args.slice(0, 4).join(',')},(${args[5]}),$,${args[4]}`;
   }
-  if (!((from === 'IFC2X3' && to === 'IFC4') || (from === 'IFC4' && to === 'IFC2X3'))) return null;
-  if (stiffnessType(entity, 1)) {
+  if (isStructuralStiffnessConversion(entity, from, to)) {
     const values = [...args];
     for (let i = 1; i < values.length; i++) {
       const measure = stiffnessType(entity, i), token = values[i].trim();
       if (!measure || scalarEquals(token, '$')) continue;
-      if (to === 'IFC4') {
+      if (from === 'IFC2X3') {
         // IFC2X3's -1 sentinel means rigid. Zero retains its measure encoding.
         values[i] = parseStepNumber(token) === -1 ? 'IFCBOOLEAN(.T.)' : `${measure}(${token})`;
       } else {
@@ -59,9 +72,10 @@ export function structuralAttributes(entity: string, args: readonly string[], fr
     }
     return values.join(',');
   }
-  if (entity !== 'IFCSTRUCTURALLINEARACTION' && entity !== 'IFCSTRUCTURALPLANARACTION') return null;
+  if (!isConstantActionConversion(entity, from, to)) return null;
   const name = entity === 'IFCSTRUCTURALLINEARACTION' ? 'IfcStructuralLinearAction' : 'IfcStructuralPlanarAction';
-  const slots = (schema: 'IFC2X3' | 'IFC4') => getSchemaRegistryForVersion(schema).entities[name]?.allAttributes?.map(a => a.name);
+  // `isConstantActionConversion` admits IFC2X3, IFC4 and IFC4X3 only, each with a registry.
+  const slots = (schema: string) => getSchemaRegistryForVersion(schema as SchemaVersionWithRegistry).entities[name]?.allAttributes?.map(a => a.name);
   const src = slots(from), tgt = slots(to);
   if (!src || !tgt) return null;
   return tgt.map(name => args[src.indexOf(name)] ?? (name === 'PredefinedType' ? '.CONST.' : '$')).join(',');

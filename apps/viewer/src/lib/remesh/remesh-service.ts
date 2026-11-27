@@ -30,6 +30,7 @@ import { hostsOtherEntities } from '@ifc-lite/renderer';
 import type { MeshData } from '@ifc-lite/geometry';
 import { RemeshClient, filterStyleWire, type RemeshConfig, type RemeshRequest, type RemeshResult, type StyleWire } from '@ifc-lite/geometry/remesh';
 import type { ViewerState } from '@/store';
+import { holdSettledState } from '@/store/settled-store';
 import type { FederatedModel } from '@/store/types';
 import { isIfcxDataStore } from '@/store/types';
 import { toGlobalIdFromModels } from '@/store/globalId';
@@ -272,7 +273,19 @@ export function requestRemesh(
   return request;
 }
 
+/** Panels wait for the edit's geometry, up to the settle cap (#10535). */
 async function remesh(
+  get: Get, modelId: string, expressIds: Iterable<number>, cause: RemeshCause,
+): Promise<RemeshOutcome> {
+  const release = holdSettledState();
+  try {
+    return await remeshHeld(get, modelId, expressIds, cause);
+  } finally {
+    release();
+  }
+}
+
+async function remeshHeld(
   get: Get, modelId: string, expressIds: Iterable<number>, cause: RemeshCause,
 ): Promise<RemeshOutcome> {
   const start = performance.now();

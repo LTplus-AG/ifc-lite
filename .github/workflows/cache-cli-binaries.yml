@@ -1,0 +1,261 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+name: Cache CLI Binaries
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+
+jobs:
+  build:
+    name: Build Cache CLI (${{ matrix.target }})
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.event.release.tag_name, 'cache-cli-v')
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        # Match the release-server-binaries target and libc choices.
+        include:
+          - target: linux-x64
+            os: ubuntu-latest
+            rust-target: x86_64-unknown-linux-gnu
+          - target: linux-arm64
+            os: ubuntu-latest
+            rust-target: aarch64-unknown-linux-gnu
+          - target: linux-x64-musl
+            os: ubuntu-latest
+            rust-target: x86_64-unknown-linux-musl
+          - target: darwin-x64
+            # Like Server Binaries, cross-build x64 on the hosted ARM64 image.
+            os: macos-15
+            rust-target: x86_64-apple-darwin
+          - target: darwin-arm64
+            os: macos-15
+            rust-target: aarch64-apple-darwin
+          - target: win32-x64
+            os: windows-latest
+            rust-target: x86_64-pc-windows-msvc
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set Up Rust
+        # Cargo selects the pinned nightly in rust-toolchain.toml.
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master 2026-05
+        with:
+          toolchain: stable
+          targets: ${{ matrix.rust-target }}
+
+      - name: Install ARM64 GNU Linker
+        if: matrix.target == 'linux-arm64'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+
+      - name: Verify the release tag matches the crate version
+        if: github.event_name == 'release' && matrix.target == 'linux-x64'
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          version=$(cargo metadata --locked --no-deps --format-version 1 |
+            jq -er '.packages[] | select(.name == "ifc-lite-cache") | .version')
+          if [[ "$RELEASE_TAG" != "cache-cli-v$version" ]]; then
+            echo "::error::Release tag must be cache-cli-v$version"
+            exit 1
+          fi
+
+      - name: Install cross
+        if: matrix.target == 'linux-x64-musl'
+        uses: taiki-e/install-action@b47b3b9ab771927700bcf4ef8a4f79e1d7c9a8cd # cross (snapshot pinned 2026-05)
+
+      - name: Install musl Tools
+        if: matrix.target == 'linux-x64-musl'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools musl-dev
+
+      - name: Build Cache CLI
+        shell: bash
+        env:
+          RUST_TARGET: ${{ matrix.rust-target }}
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+        run: |
+          if [[ "$RUST_TARGET" == x86_64-unknown-linux-musl ]]; then
+            cross build --locked --release -p ifc-lite-cache --bin ifc-build-cache --target "$RUST_TARGET"
+          else
+            CARGO_UNSTABLE_BUILD_STD=std,panic_abort cargo build --locked --release -p ifc-lite-cache --bin ifc-build-cache --target "$RUST_TARGET"
+          fi
+
+      - name: Create Tarball and Checksum
+        shell: bash
+        env:
+          RUST_TARGET: ${{ matrix.rust-target }}
+          ASSET_TARGET: ${{ matrix.target }}
+        run: |
+          binary=ifc-build-cache
+          python_cmd=python3
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            binary+=.exe
+            python_cmd=python
+          fi
+          case "$ASSET_TARGET:$RUNNER_ARCH" in
+            linux-x64:X64|darwin-arm64:ARM64|win32-x64:X64)
+              "target/$RUST_TARGET/release/$binary" --help
+              ;;
+          esac
+          archive="ifc-build-cache-$ASSET_TARGET.tar.gz"
+          commit_time=$(git show -s --format=%ct HEAD)
+          # Emit one USTAR member with fixed metadata on GNU tar and BSD tar hosts.
+          "$python_cmd" - "$archive" "target/$RUST_TARGET/release/$binary" "$commit_time" <<'PY'
+          import gzip
+          import sys
+          import tarfile
+          from pathlib import Path
+
+          archive, path, commit_time = sys.argv[1:]
+          binary = Path(path)
+          member = tarfile.TarInfo(binary.name)
+          member.size = binary.stat().st_size
+          member.mtime = int(commit_time)
+          member.mode = 0o755
+          member.uid = member.gid = 0
+          with open(archive, "wb") as output, binary.open("rb") as source:
+              with gzip.GzipFile(filename="", mode="wb", fileobj=output, mtime=0) as compressed:
+                  with tarfile.open(fileobj=compressed, mode="w", format=tarfile.USTAR_FORMAT) as tar:
+                      tar.addfile(member, source)
+          PY
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "$archive" > "$archive.sha256"
+          else
+            shasum -a 256 "$archive" > "$archive.sha256"
+          fi
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ifc-build-cache-${{ matrix.target }}
+          path: |
+            ifc-build-cache-${{ matrix.target }}.tar.gz
+            ifc-build-cache-${{ matrix.target }}.tar.gz.sha256
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    name: Attach Cache CLI Assets
+    if: github.event_name == 'release' && startsWith(github.event.release.tag_name, 'cache-cli-v')
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: ifc-build-cache-*
+          merge-multiple: true
+          path: release-assets
+
+      - name: Verify Archives and Plan Missing Assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_ID: ${{ github.event.release.id }}
+        run: |
+          cd release-assets
+          shopt -s nullglob
+          archives=(ifc-build-cache-*.tar.gz)
+          sidecars=(ifc-build-cache-*.tar.gz.sha256)
+          if (( ${#archives[@]} != 6 || ${#sidecars[@]} != 6 )); then
+            echo "::error::Expected six Cache CLI archives and six checksum sidecars"
+            exit 1
+          fi
+          for archive in "${archives[@]}"; do
+            sha256sum --strict --check -- "$archive.sha256"
+          done
+          existing=$(gh api --paginate --slurp "repos/$GH_REPO/releases/$RELEASE_ID/assets")
+
+          : > "$RUNNER_TEMP/cache-cli-missing-assets.txt"
+          for file in "${archives[@]}" "${sidecars[@]}"; do
+            digest=$(jq -r --arg name "$file" '
+              [.[][] | select(.name == $name)] |
+              if length == 0 then "missing"
+              elif length == 1 and .[0].state == "uploaded" then .[0].digest // "unknown"
+              else "unknown" end
+            ' <<< "$existing")
+            if [[ "$digest" == missing ]]; then
+              printf '%s\n' "$file" >> "$RUNNER_TEMP/cache-cli-missing-assets.txt"
+            else
+              checksum=$(sha256sum -- "$file")
+              if [[ "$digest" != "sha256:${checksum%% *}" ]]; then
+                echo "::error::Existing release asset has a different or unavailable digest: $file"
+                echo "To recover, use gh release delete-asset to remove partial or mismatching Cache CLI assets from this release, including their matching archive or checksum files if present, then rerun the original release-triggered workflow run."
+                exit 1
+              fi
+            fi
+          done
+
+      - name: Attest Cache CLI Archives
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: release-assets/ifc-build-cache-*.tar.gz
+          # The action uploads to GitHub's attestations API independently of
+          # the optional artifact metadata records for OCI registry pushes.
+          create-storage-record: false
+
+      - name: Verify Published Provenance
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          for archive in release-assets/ifc-build-cache-*.tar.gz; do
+            gh attestation verify "$archive" --repo "$GH_REPO" \
+              --signer-workflow "$GH_REPO/.github/workflows/cache-cli-binaries.yml" \
+              --source-ref "refs/tags/$RELEASE_TAG"
+          done
+
+      - name: Attach Missing Assets and Record Cache Format
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          format_version=$(sed -nE 's/^pub const FORMAT_VERSION: u16 = ([0-9]+);$/\1/p' rust/cache/src/format.rs)
+          if [[ ! "$format_version" =~ ^[0-9]+$ ]]; then
+            echo "::error::Could not determine the cache format version from the release source"
+            exit 1
+          fi
+
+          cd release-assets
+          mapfile -t missing < "$RUNNER_TEMP/cache-cli-missing-assets.txt"
+          if (( ${#missing[@]} > 0 )); then
+            gh release upload "$RELEASE_TAG" -- "${missing[@]}"
+          fi
+
+          note="Cache format written by ifc-build-cache: v$format_version."
+          gh release view "$RELEASE_TAG" --json body --jq '.body // ""' > release-notes.md
+          if ! grep -Fxq -- "$note" release-notes.md; then
+            printf '\n%s\n' "$note" >> release-notes.md
+            gh release edit "$RELEASE_TAG" --notes-file release-notes.md
+          fi

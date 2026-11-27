@@ -9,6 +9,7 @@ import type { BoundingBox } from './scene-raycaster.js';
 import { foldOccurrenceWorldBox, INSTANCE_STRIDE_BYTES } from './instanced-render.js';
 import { worldAabbFromPieces } from './scene-geometry.js';
 import { invalidateInstancedRteDeltas } from './instanced-rte.js';
+import { batchEntities } from './batch-entities.js';
 
 type Triple = [number, number, number];
 interface CpuTemplate {
@@ -31,6 +32,8 @@ interface TranslationScene {
   device: GPUDevice | undefined;
   evictHighlight: (id: number) => void;
   clearPartial: () => void;
+  /** GPU-driven pool hook: a template's records and anchors were rewritten. */
+  placedTemplate?: (slot: number) => void;
   unionBounds: (id: number, view: DataView, offset: number, anchors: Float64Array, min: Triple, max: Triple) => {
     minX: number; minY: number; minZ: number; maxX: number; maxY: number; maxZ: number;
   };
@@ -41,7 +44,7 @@ export function translateSceneModel(scene: TranslationScene, modelIndex: number,
   if (!scene.translations.set(modelIndex, translation)) return false;
   const releasedIds = new Set(scene.translations.releasedEntityIds(modelIndex));
   for (const batch of scene.batches) {
-    if ((batch.modelIndices?.[0] ?? 0) === modelIndex) for (const id of batch.expressIds) releasedIds.add(id);
+    if ((batch.modelIndices?.[0] ?? 0) === modelIndex) for (const id of batchEntities(batch)) releasedIds.add(id);
   }
   for (const mesh of [...scene.textured, ...scene.meshes]) if ((mesh.modelIndex ?? 0) === modelIndex) releasedIds.add(mesh.expressId);
   for (const id of releasedIds) {
@@ -88,9 +91,11 @@ export function placeSceneInstances(scene: TranslationScene, modelIndex: number)
       cpu.canonicalAnchors,
       cpu.canonicalMatrixTranslations,
     )) {
-      scene.device?.queue.writeBuffer(gpu.instanceBuffer, 0, cpu.instanceData);
+      // A GPU-pool template keeps a 16 B stand-in; the pool re-uploads via placedTemplate.
+      if (gpu.instanceBuffer.size >= cpu.instanceData.byteLength) scene.device?.queue.writeBuffer(gpu.instanceBuffer, 0, cpu.instanceData);
       // placeInstances moved the canonical anchors the delta stream derives from.
       invalidateInstancedRteDeltas(gpu.rteDeltas);
+      scene.placedTemplate?.(i);
     }
     gpu.bounds = null;
     // A yaw (unlike a pure translation) changes each occurrence's WORLD-AXIS

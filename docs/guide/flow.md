@@ -134,6 +134,8 @@ move a `Table` to and from a mapping spreadsheet:
   text (`data` in/out). The underlying `readXlsxTable`/`writeXlsxTable` functions are
   exported from `@ifc-lite/flow-nodes` as a shared module — both the CLI and the
   viewer read/write `.xlsx` through the same code.
+  The writer uses `@ifc-lite/export`'s `sanitizeSheetName` and `clampXlsxCellText` to
+  fit Excel's worksheet-name and cell limits. Truncated text ends in an ellipsis.
 
 `table.joinByKey` joins spreadsheet rows to model entities by `globalId`, `tag`,
 `name`, or an indexed `property` (`pset`/`prop` params) and produces three outputs:
@@ -320,6 +322,15 @@ consume the same approval. `resumeOutputs` refuses prepared, rejected, completed
 partially committed and expired checkpoints; proposal inspection uses
 `checkpointProposal` and grants no permission to resume. The scheduler accepts only the unchanged, single-use map returned by `resumeOutputs` for an approved checkpoint with a live claim; raw paused outputs, edited maps and reused maps are refused before any node executes. A value that is not plain JSON (a viewer-only
 handle) makes the run uncheckpointable, named by node and port.
+
+Hosts with asynchronous admission can reserve an approved checkpoint with
+`claimCheckpoint` using the `deferStart` claim option. Persist
+`startCheckpoint(current, reserved)` with `updateCheckpoint` before calling
+`resumeOutputs`. To abandon an unused reservation, persist
+`releaseCheckpoint(current, reserved)`. If the release cannot be saved,
+recovery returns the expired reservation to `reviewed` with its approval.
+Recovery treats existing claims and durably started resumes as potentially
+committed.
 
 ```ts
 import { runFlow, type FlowDocument, type NodeRegistry } from '@ifc-lite/flow';

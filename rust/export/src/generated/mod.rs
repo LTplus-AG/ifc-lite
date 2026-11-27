@@ -8,4 +8,6 @@
 pub mod enum_reconciliation;
 pub mod ifc2x3_required_slots;
 pub mod ifc4_required_slots;
+pub(crate) mod ifc2x3_typed_properties;
 pub mod step_log_tables;
+pub mod value_forms;

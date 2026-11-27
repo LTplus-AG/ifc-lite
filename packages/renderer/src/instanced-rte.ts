@@ -119,6 +119,37 @@ export function uploadInstancedRteDeltas(
   });
 }
 
+/**
+ * Pack only `[first, first + count)` for the camera `stream` already
+ * holds (instances appended to a model-wide keyed template), upload that span
+ * and extend the drawable runs. A stream with no camera is left alone: its
+ * next upload repacks everything anyway. Keeps a streaming append O(appended)
+ * instead of invalidating, which repacked every occurrence on every frame.
+ */
+export function extendInstancedRteDeltas(
+  device: GPUDevice,
+  stream: InstancedRteDeltaStream,
+  anchors: Float64Array,
+  first: number,
+  count: number,
+): void {
+  const camera = stream.camera;
+  if (!camera || count <= 0) return;
+  const tail = packInstanceDeltas(anchors.subarray(first * 3, (first + count) * 3), count, camera,
+    stream.scratch.subarray(first * DELTA_FLOATS, (first + count) * DELTA_FLOATS));
+  if (tail.length === 0) return;
+  device.queue.writeBuffer(stream.buffer, first * INSTANCED_RTE_DELTA_STRIDE_BYTES,
+    stream.scratch.subarray(first * DELTA_FLOATS, (first + count) * DELTA_FLOATS));
+  const runs = stream.runs.slice();
+  for (const run of tail) {
+    const shifted = { first: run.first + first, count: run.count };
+    const last = runs[runs.length - 1];
+    if (last && last.first + last.count === shifted.first) runs[runs.length - 1] = { first: last.first, count: last.count + shifted.count };
+    else runs.push(shifted);
+  }
+  stream.runs = runs;
+}
+
 /** Throws `splitFloat64ForRte`'s own error unless `value` lies in the f64 source envelope. */
 function checkSourceAxis(value: number): void {
   // |value| <= 1e9 also guarantees a finite f32 high part.

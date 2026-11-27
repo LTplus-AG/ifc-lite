@@ -27,6 +27,7 @@
  */
 
 import { batchEntityIdAnchor } from './entity-color-table.js';
+import { batchEntities } from './batch-entities.js';
 import { MathUtils } from './math.js';
 import { meshUniformArena, stageMeshUniforms, type MeshUniformSlot } from './mesh-uniform-arena.js';
 import type { RenderPipeline } from './pipeline.js';
@@ -40,6 +41,8 @@ export interface BatchHighlightResources {
   pipeline: Pick<RenderPipeline, 'getUniformBufferSize' | 'getBindGroupLayout' | 'getBatchSelectionPipeline'>;
   /** Asks for a frame once a highlight pipeline that was still being built is ready. */
   onPipelineReady?: () => void;
+  /** Resolve wanted ids through the entity -> batch index instead of scanning every batch (`DrawStreamConfig.hlIndex`). */
+  entityIndex?: boolean;
 }
 
 /** What {@link BatchHighlight.sync} decided. */
@@ -91,7 +94,10 @@ export function batchesHolding(
   const blocked = new Set<number>();
   const found = new Set<number>();
   const list = scene.getBatchedMeshes();
-  for (let index = 0; index < list.length; index++) {
+  const candidates = resources.entityIndex ? indexedCandidates(scene, list, ids) : null;
+  const count = candidates ? candidates.length : list.length;
+  for (let k = 0; k < count; k++) {
+    const index = candidates ? candidates[k]! : k;
     const batch = list[index]!;
     const models = batch.modelIndices;
     let holds = false;
@@ -104,13 +110,98 @@ export function batchesHolding(
       found.add(id);
       holds = true;
     }
+    // A deliberate second pass: secondary lane ids carry no model, so under a one-model selection a
+    // batch that also holds another model's entries cannot tell them apart (#10653).
+    let mixed: boolean | undefined;
+    if (batch.laneIds) for (const id of batch.laneIds) {
+      if (!ids.has(id)) continue;
+      mixed ??= modelIndex !== undefined && models?.some((model) => model !== undefined && model !== modelIndex) === true;
+      if (mixed) { blocked.add(id); continue; }
+      found.add(id);
+      holds = true;
+    }
     if (!holds) continue;
     if (drawable(batch, resources)) { batches.set(batch, index); continue; }
     if (batch.gpuResident === false) { scene.requestBatchResidency(batch); evicted.set(batch, index); }
     if (!hasPipeline(batch, resources)) awaitsPipeline = true;
-    for (const id of batch.expressIds) if (ids.has(id)) blocked.add(id);
+    for (const id of batchEntities(batch)) if (ids.has(id)) blocked.add(id);
   }
   return { batches, evicted, blocked, found, awaitsPipeline };
+}
+
+/**
+ * Entity -> batch-index reverse index, so a selection
+ * or hover resync visits only the batches that hold a wanted id instead of
+ * every entry of every batch (O(selected) instead of O(elements) per resync).
+ * Rebuilt when the batch list, its length or the pick-geometry revision moves.
+ * Used when `BatchHighlightResources.entityIndex` is set.
+ */
+class EntityBatchIndex {
+  private readonly byId = new Map<number, number | number[]>();
+  /** The batch at each index when built, to notice in-place swaps (residency restore, recovery). */
+  private readonly batches: BatchedMesh[];
+  constructor(readonly list: readonly BatchedMesh[], readonly length: number, readonly revision: number) {
+    this.batches = [...list];
+    const add = (id: number, index: number): void => {
+      const at = this.byId.get(id);
+      if (at === undefined) this.byId.set(id, index);
+      else if (typeof at === 'number') { if (at !== index) this.byId.set(id, [at, index]); }
+      else if (at[at.length - 1] !== index) at.push(index);
+    };
+    for (let index = 0; index < list.length; index++) {
+      const b = list[index]!;
+      for (const id of b.expressIds) add(id, index);
+      if (b.laneIds) for (const id of b.laneIds) add(id, index);
+    }
+  }
+  /**
+   * Whether the index still describes the list: O(batches) identity checks,
+   * not O(entries). A batch swapped in place with the same ids (a residency
+   * restore) is adopted; any other swap needs a rebuild.
+   */
+  current(): boolean {
+    for (let i = 0; i < this.batches.length; i++) {
+      const now = this.list[i]!, then = this.batches[i]!;
+      if (now === then) continue;
+      if (!sameIds(now.expressIds, then.expressIds) || !sameIds(now.laneIds ?? [], then.laneIds ?? [])) return false;
+      this.batches[i] = now;
+    }
+    return true;
+  }
+  /** Ascending, de-duplicated batch indices holding any of `ids` (the full scan's visiting order). */
+  candidates(ids: ReadonlySet<number>): number[] {
+    const out: number[] = [];
+    for (const id of ids) {
+      const at = this.byId.get(id);
+      if (at === undefined) continue;
+      if (typeof at === 'number') out.push(at); else for (const i of at) out.push(i);
+    }
+    out.sort((x, y) => x - y);
+    let w = 0;
+    for (let r = 0; r < out.length; r++) if (r === 0 || out[r] !== out[r - 1]) out[w++] = out[r]!;
+    out.length = w;
+    return out;
+  }
+}
+
+function sameIds(a: ArrayLike<number>, b: ArrayLike<number>): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
+/** One index per scene, so renderers sharing a page never evict each other's. */
+const indexByScene = new WeakMap<BatchHighlightScene, EntityBatchIndex>();
+/** Batch indices holding any of `ids`, from the scene's index (rebuilt when the list, revision or a candidate batch changed). */
+function indexedCandidates(scene: BatchHighlightScene, list: readonly BatchedMesh[], ids: ReadonlySet<number>): number[] {
+  const revision = scene.getPickGeometryRevision();
+  let index = indexByScene.get(scene);
+  if (!index || index.list !== list || index.length !== list.length || index.revision !== revision || !index.current()) {
+    index = new EntityBatchIndex(list, list.length, revision);
+    indexByScene.set(scene, index);
+  }
+  return index.candidates(ids);
 }
 
 /** Whether the quantized highlight pipeline a batch waited for exists now (only quantized pipelines are built late). */
@@ -176,7 +267,7 @@ export class BatchHighlight {
     const draws: Mesh[] = [];
     const drawn = new Map<BatchedMesh, number>();
     for (const [batch, index] of batches) {
-      if (!batch.expressIds.some((id) => covered.has(id))) continue;
+      if (!batchEntities(batch).some((id) => covered.has(id))) continue;
       draws.push(this.record(batch, resources));
       drawn.set(batch, index);
     }

@@ -46,7 +46,8 @@
  *   `IfcMeasureWithUnit`, `IfcUnitAssignment`, …): their numbers define units, not
  *   data, and must survive verbatim.
  * - Georeferencing (`IfcMapConversion`): its offsets are in the map/CRS unit,
- *   independent of the project length unit.
+ *   independent of the project length unit. The merged exporter keeps every
+ *   coordinate operation away from this rescale (`merged-georef-normalize.ts`).
  * - A quantity or property that carries its own explicit unit reference (`Unit`,
  *   or `DefiningUnit`/`DefinedUnit` on `IfcPropertyTableValue`): its value is
  *   already in that unit, not the global one.
@@ -54,10 +55,11 @@
  *   length/area/volume measure, so they are excluded automatically.
  */
 
-import { getAllAttributesForEntity, STEP_TRIVIA } from '@ifc-lite/parser';
+import { getAllAttributesForEntity, getCanonicalEntityName, getSchemaRegistryForVersion, STEP_TRIVIA } from '@ifc-lite/parser';
 import { formatStepReal } from '@ifc-lite/data';
 import { splitTopLevelStepArguments } from './step-argument-parser.js';
 import { findOuterArgs, mapOutsideStepStrings } from './step-outer-args.js';
+import { parseStepNumber } from './step-slot-grammar.js';
 
 /** IFC defined types whose values are lengths (STEP writes them as bare reals). */
 const LENGTH_MEASURE_TYPES = new Set([
@@ -134,18 +136,26 @@ function attrBaseType(type: string, flags: { isList: boolean; isArray: boolean; 
  * type name from the generated schema registry. Excluded types (unit definitions,
  * georeferencing) and unknown/abstract types return the empty plan.
  */
-export function getEntityLengthPlan(typeUpper: string): EntityLengthPlan {
-  const cached = planCache.get(typeUpper);
+export function getEntityLengthPlan(typeUpper: string, legacySchema?: 'IFC2X3'): EntityLengthPlan {
+  const key = legacySchema ? `${legacySchema}:${typeUpper}` : typeUpper;
+  const cached = planCache.get(key);
   if (cached !== undefined) return cached;
-  const plan = buildEntityLengthPlan(typeUpper);
-  planCache.set(typeUpper, plan);
+  const plan = buildEntityLengthPlan(typeUpper, legacySchema);
+  planCache.set(key, plan);
   return plan;
 }
 
-function buildEntityLengthPlan(typeUpper: string): EntityLengthPlan {
+function sourceAttributes(typeUpper: string, legacySchema?: 'IFC2X3') {
+  if (!legacySchema) return getAllAttributesForEntity(typeUpper);
+  const registry = getSchemaRegistryForVersion(legacySchema);
+  const name = getCanonicalEntityName(registry, typeUpper);
+  return name ? registry.entities[name].allAttributes : undefined;
+}
+
+function buildEntityLengthPlan(typeUpper: string, legacySchema?: 'IFC2X3'): EntityLengthPlan {
   if (isRescaleExcluded(typeUpper)) return EMPTY_PLAN;
 
-  const attrs = getAllAttributesForEntity(typeUpper);
+  const attrs = sourceAttributes(typeUpper, legacySchema);
   if (!attrs || attrs.length === 0) return EMPTY_PLAN;
 
   const listIdx: number[] = [];
@@ -268,7 +278,7 @@ function scaleMeasureNumber(num: string, factor: number): string {
 function scaleScalarArg(arg: string, factor: number): string {
   const trimmed = arg.trim();
   if (trimmed === '' || trimmed === '$' || trimmed === '*') return arg;
-  const n = Number(trimmed);
+  const n = trimmed.includes('/*') ? parseStepNumber(trimmed) : Number(trimmed);
   // Only a bare real is a directly-typed length; a typed token (IFC…MEASURE(…))
   // is left to the measure pass, so it is never scaled twice.
   if (!Number.isFinite(n)) return arg;
@@ -289,17 +299,18 @@ export function rescaleEntityLengths(
   lengthFactor: number,
   areaFactor: number,
   volumeFactor: number,
+  legacySchema?: 'IFC2X3',
 ): string {
   if (lengthFactor === 1 && areaFactor === 1 && volumeFactor === 1) return line;
   if (!Number.isFinite(lengthFactor) || !Number.isFinite(areaFactor) || !Number.isFinite(volumeFactor)) return line;
   if (isRescaleExcluded(typeUpper)) return line;
 
-  const plan = getEntityLengthPlan(typeUpper);
+  const plan = getEntityLengthPlan(typeUpper, legacySchema);
   const hasStructural = plan.listIdx.length > 0 || plan.scalarIdx.length > 0
     || plan.areaIdx.length > 0 || plan.volumeIdx.length > 0;
 
-  // Fast path: nothing structural, no unit override to weigh, and no typed measure.
-  if (!hasStructural && plan.unitGuardIdx.length === 0 && !line.includes('MEASURE')) return line;
+  // A unit override only matters when there is a length, area or volume to scale.
+  if (!hasStructural && !line.includes('MEASURE')) return line;
 
   const bounds = findOuterArgs(line);
   if (!bounds) return line;

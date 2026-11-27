@@ -6,8 +6,8 @@
  * #10264 S2 hardware acceptance: hide, isolate and storey isolation draw a
  * partly hidden colour batch whole and discard its hidden entities on the GPU
  * (colour and shadow passes), instead of cutting a sub-batch from the CPU copy
- * of the geometry. (Type visibility is not covered: it filters the mesh list
- * before upload, see docs/architecture/viewer-cpu-geometry.md.)
+ * of the geometry. Type visibility rides the same table and has its own
+ * spec, gpu-type-visibility.e2e.spec.ts.
  *
  * Oracle: the frame the old CPU path drew is the frame of the visible pieces
  * alone. So each scenario captures the production colour frame (A), then
@@ -17,6 +17,18 @@
  * hidden entity drawn, no visible batchmate missing. A third frame without the
  * filter (C) must differ from A, so the comparison is not vacuous. Picks under
  * the same visibility must never return a hidden entity.
+ *
+ * Grid axes, annotation text and structural glyphs are off for every test
+ * (`open()`): they load in idle time after the model and raced the captures
+ * (#10853). Of the three toggles only `ifcAnnotations` gates meshes
+ * (typeVisibilityFilter.ts maps it to IfcAnnotation); the grid and glyph
+ * toggles gate overlays only. The cost is that IfcAnnotation meshes are not
+ * uploaded, so no scenario here exercises them as hidden or visible
+ * batchmates, or carries them through a model move.
+ *
+ * #10767 (last test) uses its own oracle: after a model move, the frame with
+ * instanced state carried through the move must equal the frame with the same
+ * state written again at the moved position.
  *
  * Opt-in: GPU_PICK_PARITY=1 on a real WebGPU adapter (gpu-batch-pick.config.ts).
  */
@@ -30,6 +42,7 @@ const FIXTURES = {
   institute: 'tests/models/ara3d/C20-Institute-Var-2.ifc',
   duplex: 'tests/models/ara3d/duplex.ifc',
   georef: 'tests/models/ara3d/ISSUE_098_R8_F1_MAB_AR_M3_XX_XXX_MO_7000.IFC',
+  tower: 'tests/models/ara3d/ISSUE_053_20181220Holter_Tower_10.ifc',
 };
 const LOAD_TIMEOUT = 300_000;
 
@@ -44,6 +57,7 @@ interface SceneHandle {
   rebuildPendingBatches(device: unknown, pipeline: unknown): void;
   releaseGeometryData(): void;
   getMeshDataPieces(id: number): unknown[] | undefined;
+  getInstancedEntityIds(): Iterable<number>;
 }
 interface RendererHandle { getScene(): SceneHandle; requestRender(): void; device: { getDevice(): unknown }; pipeline: unknown }
 type Store = { getState(): Record<string, unknown> & {
@@ -68,6 +82,11 @@ test.beforeAll(async () => { server = await startViewerDevServer('gpu-entity-vis
 test.afterAll(async () => { await server?.close(); });
 
 async function open(page: Page, quantized = true): Promise<void> {
+  // Grid axes, annotation text and structural glyphs load after the model, in idle time, and can
+  // land between two captures (#10853). No test here is about them, so they are off for all.
+  await page.addInitScript(() => {
+    for (const key of ['ifc-lite-ifc-annotations-visible', 'ifc-lite-ifc-grid-visible', 'ifc-lite-structural-glyphs-visible']) localStorage.setItem(key, 'false');
+  });
   if (!quantized) await page.addInitScript(() => { (globalThis as ProbeWindow).__IFC_LITE_QUANTIZED = 0; });
   await page.goto(server!.url);
   await page.waitForFunction(() => Boolean((globalThis as ProbeWindow).__ifc_lite_viewer_store__), null, { timeout: 120_000 });
@@ -83,6 +102,12 @@ async function load(page: Page, file: string, count: number): Promise<void> {
       && g.__ifc_lite_capture_color_frame__ && g.__ifc_lite_pick_parity__);
   }, count, { timeout: LOAD_TIMEOUT, polling: 250 });
   await settle(page);
+  // open() turned the late overlays off (#10853); every test relies on it.
+  const overlays = await page.evaluate(() => {
+    const visibility = (globalThis as ProbeWindow).__ifc_lite_viewer_store__!.getState().typeVisibility as Record<string, boolean>;
+    return [visibility.ifcAnnotations, visibility.ifcGrid, visibility.structuralGlyphs];
+  });
+  expect(overlays, 'grid, annotation and glyph overlays are off').toEqual([false, false, false]);
 }
 
 async function settle(page: Page): Promise<void> {
@@ -120,10 +145,10 @@ async function act(page: Page, steps: Step[], ids: number[] = []): Promise<void>
   await settle(page);
 }
 
-async function capture(page: Page, info: TestInfo, name: string): Promise<string> {
+async function capture(page: Page, info: TestInfo, name: string, attach = true): Promise<string> {
   const png = await page.evaluate(() => (globalThis as ProbeWindow).__ifc_lite_capture_color_frame__!());
   expect(png, `${name}: the renderer returned its colour frame`).toBeTruthy();
-  await info.attach(`${name}.png`, { body: Buffer.from(png!.split(',')[1]!, 'base64'), contentType: 'image/png' });
+  if (attach) await info.attach(`${name}.png`, { body: Buffer.from(png!.split(',')[1]!, 'base64'), contentType: 'image/png' });
   return png!;
 }
 
@@ -138,6 +163,7 @@ async function diff(page: Page, a: string, b: string): Promise<Diff> {
       return context.getImageData(0, 0, bitmap.width, bitmap.height);
     };
     const [p, q] = await Promise.all([pixels(x), pixels(y)]);
+    if (p.width !== q.width || p.height !== q.height) throw new Error(`frames differ in size: ${p.width}x${p.height} vs ${q.width}x${q.height}`);
     const out = new ImageData(p.width, p.height);
     let differing = 0;
     let strong = 0;
@@ -352,4 +378,209 @@ test('after the scene releases its CPU geometry, hide and isolate draw the same 
   await act(page, [['showAll'], ['isolateEntities', 'ids']], ids);
   await capture(page, info, 'released-isolate');
   await picksNeverHidden(page, info, 'released-isolate', await hiddenFlat(page), false);
+});
+
+/** Pixels that differ between `a` and `b` (> 2/255; strong > 48/255) inside the mask where `on` and `off` differ. */
+async function diffWithin(page: Page, a: string, b: string, on: string, off: string): Promise<{ mask: number; differing: number; strong: number }> {
+  return page.evaluate(async (urls) => {
+    const data = await Promise.all(urls.map(async (url) => {
+      const bitmap = await createImageBitmap(await (await fetch(url)).blob());
+      const context = new OffscreenCanvas(bitmap.width, bitmap.height).getContext('2d')!;
+      context.drawImage(bitmap, 0, 0);
+      return context.getImageData(0, 0, bitmap.width, bitmap.height).data;
+    }));
+    const [pa, pb, pon, poff] = data as [Uint8ClampedArray, Uint8ClampedArray, Uint8ClampedArray, Uint8ClampedArray];
+    if (new Set(data.map((d) => d.length)).size !== 1) throw new Error('frames differ in size');
+    const d = (p: Uint8ClampedArray, q: Uint8ClampedArray, i: number) => Math.max(Math.abs(p[i]! - q[i]!), Math.abs(p[i + 1]! - q[i + 1]!), Math.abs(p[i + 2]! - q[i + 2]!));
+    let mask = 0, differing = 0, strong = 0;
+    for (let i = 0; i < pa.length; i += 4) {
+      if (d(pon, poff, i) <= 2) continue;
+      mask++;
+      const delta = d(pa, pb, i);
+      if (delta > 2) differing++;
+      if (delta > 48) strong++;
+    }
+    return { mask, differing, strong };
+  }, [a, b, on, off]);
+}
+
+/** A still frame: wait until two frames 20 animation frames apart match. Residency and
+ * batch rebuilds settle a few frames after a change (#10767), so captures wait for it. */
+async function stillCapture(page: Page, info: TestInfo, name: string): Promise<string> {
+  const grab = () => capture(page, info, name, false);
+  let frame = await grab();
+  let still = false;
+  for (let i = 0; i < 20 && !still; i++) {
+    await settle(page);
+    const next = await grab();
+    still = (await diff(page, frame, next)).differing === 0;
+    frame = next;
+  }
+  expect(still, `${name}: the frame settles`).toBe(true);
+  await info.attach(`${name}.png`, { body: Buffer.from(frame.split(',')[1]!, 'base64'), contentType: 'image/png' });
+  return frame;
+}
+
+test('deleted instanced occurrences stay off the frame and the picks with nothing else hidden (#10639)', async ({ page }, info) => {
+  await open(page);
+  await load(page, FIXTURES.institute, 1);
+  await info.attach('adapter.json', { body: JSON.stringify(await adapter(page)), contentType: 'application/json' });
+  // Instanced-only entities: deleting them leaves no flat piece, so only the
+  // instance flag (and the discarding shader) can keep them off the frame.
+  const ids = await page.evaluate(async () => {
+    const module = '/src/hooks/useBCF.ts';
+    const { getGlobalRenderer }: { getGlobalRenderer(): RendererHandle | null } = await import(module);
+    const scene = getGlobalRenderer()!.getScene();
+    return [...scene.getInstancedEntityIds()].filter((id) => !scene.getMeshDataPieces(id)?.length);
+  });
+  expect(ids.length, 'the fixture has instanced-only entities').toBeGreaterThan(0);
+  // Where those occurrences are on screen: the frame with only them isolated against an empty
+  // isolation. The mask also holds their lighting footprint (shadow, AO), which is small here.
+  await act(page, [['isolateEntities', 'ids']], ids);
+  const only = await stillCapture(page, info, 'delete-M-occurrences-only');
+  await act(page, [['clearIsolation']]);
+  await act(page, [['isolateEntities', 'ids']], [2 ** 30]); // an id with no geometry: nothing is drawn
+  const none = await stillCapture(page, info, 'delete-M-nothing');
+  await act(page, [['clearIsolation'], ['showAll']]);
+
+  const c = await stillCapture(page, info, 'delete-C-before');
+  // B: the same occurrences hidden through the ordinary instanced hide path.
+  await act(page, [['hideEntities', 'ids']], ids);
+  const b = await stillCapture(page, info, 'delete-B-hidden');
+  const shown = await diffWithin(page, b, c, only, none);
+  await act(page, [['showAll']]);
+  // A: delete them with nothing else hidden, the state #10639 drew them again in. This drives the
+  // renderer's removal directly; the viewer's delete action reaches the same removeMeshesForEntities.
+  await page.evaluate(async (deleted) => {
+    const module = '/src/hooks/useBCF.ts';
+    const { getGlobalRenderer }: { getGlobalRenderer(): RendererHandle | null } = await import(module);
+    const renderer = getGlobalRenderer()!;
+    renderer.getScene().removeMeshesForEntities(deleted);
+    renderer.requestRender();
+  }, ids);
+  const a = await stillCapture(page, info, 'delete-A-deleted');
+  const ab = await diff(page, a, b);
+  const abInside = await diffWithin(page, a, b, only, none);
+  const ac = await diffWithin(page, a, c, only, none);
+  await info.attach('delete-A-vs-B-diff.png', { body: Buffer.from(ab.diffPng.split(',')[1]!, 'base64'), contentType: 'image/png' });
+  const pixels = ab.width * ab.height;
+  const row = { deleted: ids.length, pixels, occurrenceMask: shown.mask, occurrencesShown: shown.differing, occurrencesShownStrong: shown.strong,
+    occurrencesGoneOnDelete: ac.differing, differingAB: ab.differing, strongAB: ab.strong, differingABInMask: abInside.differing };
+  await info.attach('delete.json', { body: JSON.stringify(row, null, 2), contentType: 'application/json' });
+  // Only instanced-occurrence pixels count toward "on screen" (#10853): hiding them must change
+  // their own pixels, and so must deleting them.
+  expect(shown.mask, 'the occurrence mask is non-empty').toBeGreaterThan(100);
+  // The "nothing" frame must really draw nothing: then the mask is the occurrences' own footprint
+  // (plus their lighting), a small part of the frame (4.8 % on Institute).
+  expect(shown.mask, 'the occurrence mask is not the whole model (the empty isolation drew nothing)').toBeLessThan(pixels * 0.1);
+  expect(shown.strong, 'the occurrences are on screen (hiding them strongly changes their pixels)').toBeGreaterThan(50);
+  expect(ac.strong, 'deleting them strongly changes their pixels (not a vacuous comparison)').toBeGreaterThan(50);
+  expect(abInside.differing, 'a deleted occurrence draws nothing a hidden one does not').toBeLessThanOrEqual(Math.floor(shown.differing * 0.05));
+  // Same whole-frame bound as the S2 scenarios (compareScenario): geometry appearing moves pixels > 48/255.
+  expect(ab.strong, 'and nothing else in the frame moves').toBeLessThanOrEqual(Math.ceil(pixels * 0.0005));
+  await picksNeverHidden(page, info, 'deleted', ids);
+  // A later visibility change must not bring them back: hide surviving instanced entities (a frame
+  // renders with the instanced hidden set non-empty), then show all again, which empties it.
+  const survivors = await page.evaluate(async () => {
+    const module = '/src/hooks/useBCF.ts';
+    const { getGlobalRenderer }: { getGlobalRenderer(): RendererHandle | null } = await import(module);
+    return [...getGlobalRenderer()!.getScene().getInstancedEntityIds()].slice(0, 3);
+  });
+  expect(survivors.length, 'instanced entities survive the delete').toBeGreaterThan(0);
+  await act(page, [['hideEntities', 'ids']], survivors);
+  await stillCapture(page, info, 'delete-A2-survivors-hidden');
+  await act(page, [['showAll']]);
+  const a3 = await stillCapture(page, info, 'delete-A3-after-visibility-change');
+  const again = await diffWithin(page, a3, b, only, none);
+  expect(again.differing, 'still absent after a visibility change').toBeLessThanOrEqual(Math.floor(shown.differing * 0.05));
+  expect((await diff(page, a3, b)).strong, 'and nothing else in the frame moves').toBeLessThanOrEqual(Math.ceil(pixels * 0.0005));
+});
+
+type StoreCall = [method: string, ...args: unknown[]];
+/** Store calls in the page. Map and Set do not cross page.evaluate, so they travel tagged and are rebuilt there. */
+async function storeCalls(page: Page, calls: StoreCall[]): Promise<void> {
+  const tag = (value: unknown): unknown => value instanceof Map ? { __map: [...value].map(([k, v]) => [k, tag(v)]) }
+    : value instanceof Set ? { __set: [...value] }
+    : Array.isArray(value) ? value.map(tag)
+    : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).map(([k, v]) => [k, tag(v)])) : value;
+  await page.evaluate((list) => {
+    const untag = (value: unknown): unknown => {
+      if (Array.isArray(value)) return value.map(untag);
+      if (!value || typeof value !== 'object') return value;
+      const o = value as Record<string, unknown>;
+      if ('__map' in o) return new Map((o.__map as [unknown, unknown][]).map(([k, v]) => [k, untag(v)]));
+      if ('__set' in o) return new Set(o.__set as unknown[]);
+      return Object.fromEntries(Object.entries(o).map(([k, v]) => [k, untag(v)]));
+    };
+    const st = (globalThis as ProbeWindow).__ifc_lite_viewer_store__!.getState() as unknown as Record<string, (...a: unknown[]) => void>;
+    for (const [method, ...args] of list as StoreCall[]) st[method]!(...args.map(untag));
+  }, calls.map(([method, ...args]) => [method, ...args.map(tag)]));
+}
+
+/**
+ * #10767 oracle: a model move re-uploads whole instance buffers, which used to
+ * drop state written to the GPU only. At the MOVED position, the frame with the
+ * state carried through the move (M) must equal the frame after the same state
+ * is cleared and written again (R). The state must be visible before the move,
+ * and the move must change the frame, so neither comparison is vacuous.
+ */
+test('a model move and rotation keep instanced hide, selection, colour override and X-Ray (#10767)', async ({ page }, info) => {
+  await open(page);
+  await load(page, FIXTURES.tower, 1);
+  await info.attach('adapter.json', { body: JSON.stringify(await adapter(page)), contentType: 'application/json' });
+  // Every instanced-only entity (no flat pieces): only the instance path draws them, and on the
+  // tower they are the facade members, so each state moves thousands of pixels.
+  const ids = await page.evaluate(async () => {
+    const module = '/src/hooks/useBCF.ts';
+    const { getGlobalRenderer }: { getGlobalRenderer(): RendererHandle | null } = await import(module);
+    const scene = getGlobalRenderer()!.getScene();
+    return [...scene.getInstancedEntityIds()].filter((id) => !scene.getMeshDataPieces(id)?.length);
+  });
+  expect(ids.length, 'the fixture has instanced-only entities').toBeGreaterThan(100);
+  const modelId = await page.evaluate(() => [...(globalThis as ProbeWindow).__ifc_lite_viewer_store__!.getState().models.keys()][0]!);
+  const states: Array<{ name: string; set: StoreCall[]; clear: StoreCall[] }> = [
+    { name: 'hide', set: [['hideEntities', ids]], clear: [['showAll']] },
+    { name: 'select', set: [['setSelectedEntityIds', ids]], clear: [['setSelectedEntityIds', []]] },
+    // The overlay compositor is the shared colour-override path (lens, animation, compare). Single model, idOffset 0.
+    { name: 'colour', set: [['registerOverlayLayer', { id: 'e2e-10767', priority: 50, hiddenIds: null, colorOverrides: new Map(ids.map((id) => [id, [1, 0, 0, 1]])) }]],
+      clear: [['removeOverlayLayer', 'e2e-10767']] },
+    { name: 'xray', set: [['setGhostExceptEntities', new Set<number>()]], clear: [['setGhostExceptEntities', null]] },
+  ];
+  // A move draws a preview frame before it is applied, as during a drag.
+  const moves: Record<'move' | 'rotate', { preview: StoreCall[]; apply: StoreCall[] }> = {
+    move: { preview: [['openReposition', [modelId]], ['previewModelTranslation', [5, 0, 0]]], apply: [['applyModelTranslation'], ['closeReposition']] },
+    rotate: { preview: [['setModelRotation', [modelId], { angle: Math.PI / 2, pivot: [0, 0, 0] }]], apply: [] },
+  };
+  const rows: Record<string, unknown>[] = [];
+  const check = async (name: string, state: { set: StoreCall[]; clear: StoreCall[] }, kind: 'move' | 'rotate') => {
+    const plain = await stillCapture(page, info, `${name}-0-plain`);
+    await storeCalls(page, state.set);
+    try {
+      const before = await stillCapture(page, info, `${name}-1-state`);
+      const shown = await diff(page, before, plain);
+      await storeCalls(page, moves[kind].preview);
+      await settle(page);
+      await storeCalls(page, moves[kind].apply);
+      const carried = await stillCapture(page, info, `${name}-2-moved-carried`);
+      const moved = await diff(page, carried, before);
+      await storeCalls(page, state.clear);
+      const movedPlain = await stillCapture(page, info, `${name}-3-moved-cleared`);
+      await storeCalls(page, state.set);
+      const rewritten = await stillCapture(page, info, `${name}-4-moved-rewritten`);
+      const visible = await diff(page, rewritten, movedPlain);
+      const lost = await diff(page, carried, rewritten);
+      await info.attach(`${name}-carried-vs-rewritten-diff.png`, { body: Buffer.from(lost.diffPng.split(',')[1]!, 'base64'), contentType: 'image/png' });
+      rows.push({ name, shownDiffering: shown.differing, movedDiffering: moved.differing, visibleAfterMove: visible.differing, lostDiffering: lost.differing, lostStrong: lost.strong });
+      expect(shown.differing, `${name}: the state is on screen`).toBeGreaterThan(200);
+      expect(moved.differing, `${name}: the move changed the frame`).toBeGreaterThan(1000);
+      expect(visible.differing, `${name}: the state is still on screen after the move`).toBeGreaterThan(200);
+      // Losing the state repaints thousands of facade pixels; allow only edge noise.
+      expect(lost.differing, `${name}: the moved frame keeps the state (carried = rewritten)`).toBeLessThanOrEqual(50);
+    } finally {
+      await storeCalls(page, [...state.clear, ['undoModelTranslation']]);
+      await settle(page);
+    }
+  };
+  for (const kind of ['move', 'rotate'] as const) for (const state of states) await check(`${kind}-${state.name}`, state, kind);
+  await info.attach('move.json', { body: JSON.stringify({ instancedOnly: ids.length, rows }, null, 2), contentType: 'application/json' });
 });

@@ -4,11 +4,10 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { isChunkLoadError, isCssPreloadFailure } from './chunk-load-error.js';
 
 import {
   handlePreloadError,
-  isChunkLoadError,
-  isCssPreloadFailure,
   shouldSuppressChunkSkewNoise,
   type ChunkSkewDeps,
   type VitePreloadErrorEvent,
@@ -28,6 +27,9 @@ function makeEvent(payload: unknown): VitePreloadErrorEvent & { defaultPrevented
 interface Harness {
   deps: ChunkSkewDeps;
   reloads: number;
+  /** How many times the user was asked to reload instead. */
+  refused: number;
+  offline: number;
   pendingAt: number | null;
   /** Epoch-ms of the last recorded reload, mirroring the sessionStorage key. */
   stored: number | null;
@@ -49,6 +51,8 @@ function makeDeps(opts: {
 } = {}): Harness {
   const h: Harness = {
     reloads: 0,
+    refused: 0,
+    offline: 0,
     pendingAt: null,
     stored: opts.lastReloadAt ?? null,
     clock: opts.now ?? 1_000_000,
@@ -56,6 +60,7 @@ function makeDeps(opts: {
   };
   h.deps = {
     now: () => h.clock,
+    isReloadPending: () => false,
     reload: () => { h.reloads += 1; },
     // The production reader returns `true` when storage throws, so an
     // unrecordable attempt is never performed.
@@ -67,6 +72,7 @@ function makeDeps(opts: {
       return true;
     },
     markReloadPending: (now) => { h.pendingAt = now; },
+    reportRefused: (reason) => { if (reason === 'offline') h.offline += 1; else h.refused += 1; },
   };
   return h;
 }
@@ -169,12 +175,31 @@ describe('handlePreloadError', () => {
     assert.equal(h.reloads, 1);
   });
 
+  it('recovers from a Vite preload rejection with unrecognized wording (#10684)', () => {
+    const h = makeDeps();
+    const event = makeEvent(new Error('Module load rejected'));
+    assert.equal(handlePreloadError(event, h.deps), 'reloaded');
+    assert.equal(event.defaultPrevented, false);
+    assert.equal(h.reloads, 1);
+    assert.equal(h.refused, 0);
+  });
+
   it('never spends two reloads on one skew', () => {
     const h = makeDeps();
     assert.equal(handlePreloadError(makeEvent(new Error('boom')), h.deps), 'reloaded');
     assert.equal(handlePreloadError(makeEvent(new Error('boom')), h.deps), 'surfaced');
     assert.equal(handlePreloadError(makeEvent(new Error('boom')), h.deps), 'surfaced');
     assert.equal(h.reloads, 1);
+  });
+
+  it('shares the pending reload across concurrent failures (#10684)', () => {
+    const h = makeDeps();
+    h.deps.isReloadPending = () => h.pendingAt !== null;
+    const failure = makeEvent(new Error('boom'));
+    assert.equal(handlePreloadError(failure, h.deps), 'reloaded');
+    assert.equal(handlePreloadError(failure, h.deps), 'reloaded');
+    assert.equal(h.reloads, 1);
+    assert.equal(h.refused, 0, 'the notice waits until recovery is refused in the new page');
   });
 
   it('does not loop on a chunk that stays missing across reloads', () => {
@@ -234,11 +259,32 @@ describe('handlePreloadError', () => {
   it('still suppresses the CSS arm when no reload is allowed', () => {
     // The two decisions are independent: whether to reload is a budget question,
     // whether to suppress is about what the import resolves to.
-    const h = makeDeps({ unreadable: true });
-    const event = makeEvent(new Error('Unable to preload CSS for /assets/panel.css'));
-    assert.equal(handlePreloadError(event, h.deps), 'surfaced');
-    assert.equal(event.defaultPrevented, true);
-    assert.equal(h.reloads, 0);
+    for (const options of [{ lastReloadAt: 999_000 }, { unreadable: true }, { unwritable: true }]) {
+      const h = makeDeps(options);
+      const event = makeEvent(new Error('Unable to preload CSS for /assets/panel.css'));
+      assert.equal(handlePreloadError(event, h.deps), 'surfaced');
+      assert.equal(event.defaultPrevented, true);
+      assert.equal(h.reloads, 0);
+      assert.equal(h.refused, 0, 'a prevented CSS failure leaves no reload notice');
+    }
+  });
+
+  // #10684: the wasm sibling already raised the reload notice when its reload
+  // was refused; this one let the failure reach each call site on its own.
+  it('asks the user to reload when the automatic reload is refused, and only then', () => {
+    const fresh = makeDeps();
+    handlePreloadError(makeEvent(new Error('error loading dynamically imported module: /assets/x.js')), fresh.deps);
+    assert.equal(fresh.refused, 0, 'a reload is coming; no notice');
+
+    const spent = makeDeps({ lastReloadAt: 999_000 });
+    assert.equal(handlePreloadError(makeEvent(new Error('error loading dynamically imported module: /assets/x.js')), spent.deps), 'surfaced');
+    assert.equal(spent.refused, 1, 'budget spent');
+
+    for (const opts of [{ unreadable: true }, { unwritable: true }]) {
+      const h = makeDeps(opts);
+      handlePreloadError(makeEvent(new Error('boom')), h.deps);
+      assert.equal(h.refused, 1, JSON.stringify(opts));
+    }
   });
 
   it('marks the reload pending only on the path that actually reloads', () => {
@@ -321,6 +367,12 @@ it('offline panel imports surface without navigation or spending reload recovery
     assert.equal(h.reloads, 0);
     assert.equal(h.stored, null, 'offline failures do not consume the reload budget');
     assert.equal(h.pendingAt, null, 'offline errors are not suppressed as reload noise');
+    assert.equal(h.refused, 0, 'offline failures do not claim there is a new version');
+    assert.equal(h.offline, 1, 'offline failures offer a connection-specific notice');
+    const css = makeEvent(new Error('Unable to preload CSS for /assets/panel.css'));
+    handlePreloadError(css, h.deps);
+    assert.equal(css.defaultPrevented, true);
+    assert.equal(h.offline, 1, 'a prevented CSS failure leaves no offline notice');
     network.onLine = true;
     assert.equal(handlePreloadError(event, h.deps), 'reloaded', 'online deploy-skew recovery still works');
     assert.equal(h.reloads, 1);

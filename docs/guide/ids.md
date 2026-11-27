@@ -2,6 +2,24 @@
 
 IFClite supports **IDS (Information Delivery Specification)**, the buildingSMART standard for defining and validating information requirements in BIM models. The `@ifc-lite/ids` package implements IDS 1.0 with full facet and constraint support.
 
+
+## IDS Studio drafts
+
+IDS Studio autosaves the working document after a short pause. The draft includes
+the rules, stable node IDs and Studio metadata. Undo history and uncommitted field
+text belong to the current editor session. Each draft can hold up to 4 MiB of
+document data. If saving fails, Studio displays a message and you can export the
+open document to keep a separate copy.
+
+When you reopen the viewer and enter IDS Studio, it loads the most recent readable
+draft if you have not opened another IDS. Use **IDS drafts** to switch
+documents or to **Discard draft** after closing it. Closing a document or
+exporting it as `.ids` or `.idsz` keeps its saved draft.
+
+Drafts live in this browser's user-content library and are included when you export
+a library backup. Import that backup to recover drafts in another browser or
+profile. Clearing site data can remove local drafts.
+
 ## What is IDS?
 
 IDS allows you to define **specifications** that describe what information an IFC model should contain. Each specification has:
@@ -309,7 +327,9 @@ Bounds on `xs:decimal` and the integer bases are written without an exponent.
 What has no valid IDS 1.0 form is refused with an error naming it, never
 written as a weaker check: unparseable bounds, two patterns or two
 enumerations in one conjunction (XSD would OR them), conjunctive facets with
-different bases, and a bounds restriction without any facet. Line breaks and
+different bases, and a bounds restriction without any facet. The writer also
+refuses a classification without a system, an optional `partOf` requirement,
+and an entity requirement marked optional or prohibited. Line breaks and
 tabs in attributes such as `instructions` are written as character
 references, so they read back unchanged; a control character XML cannot carry
 is refused with the element or attribute it is in. Every pass/fail case of the

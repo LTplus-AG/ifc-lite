@@ -326,8 +326,6 @@ export class Scene {
   // 12-byte quantized batch vertices (issue #1682 phase 6): off unless the
   // renderer probed its quantized pipelines and enabled it.
   private quantizedBatchesEnabled = false;
-  // Quantized pipeline probes in flight (`beginQuantizedProbe`). Compact meshes wait for their outcome
-  // instead of decoding to f32: a load that races the probe would otherwise decode whatever arrived first.
   private quantizedProbes = 0;
   // True while a (possibly time-sliced) finalize rebuild is running. The
   // preamble clears streamingFragments synchronously, so hasStreamingFragments
@@ -593,14 +591,9 @@ export class Scene {
     if (!enabled) this.compact?.demotePages(); // pages are 12-byte records: only the quantized pipelines draw them; the queue waits for the next drain
   }
 
-  /** A quantized pipeline probe is in flight: whether compact meshes may draw from pages is not decided yet. */
   get quantizedBatchesPending(): boolean { return this.quantizedProbes > 0; }
 
-  /**
-   * A quantized pipeline probe starts: compact meshes stay queued, still compact, until the returned
-   * function is called. Call it after the probe's outcome reached `setQuantizedBatches` (or the probe
-   * was abandoned): the queue then drains to pages or, with the pipelines off, decodes to buckets.
-   */
+  /** Hold queued compact meshes until this probe settles. Releasing a hold twice is safe. */
   beginQuantizedProbe(): () => void {
     this.quantizedProbes++;
     let settled = false;

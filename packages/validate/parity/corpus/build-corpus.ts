@@ -39,6 +39,7 @@ for (const { release, fileSchema, dir } of RELEASES) {
   mkdirSync(join(root, 'broken'), { recursive: true });
   writeFileSync(join(root, dir ? 'base.ifc' : 'base-ifc4.ifc'), serialize(baseRecords(), { ...DEFAULT_HEADER, schema: fileSchema }));
   for (const m of MUTATIONS) {
+    if (m.release && m.release !== release) continue;
     const records = baseRecords();
     const result = m.apply(records);
     const header = { ...(result ? result.header : DEFAULT_HEADER), schema: fileSchema };

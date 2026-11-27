@@ -8,6 +8,7 @@ import { DEFAULT_HEADER, guid, type Records } from './base-model.js';
 
 export interface Mutation {
   name: string;
+  release?: 'IFC4' | 'IFC4X3';
   /** The rule (or schema check) the defect targets, in report notation. */
   targets: string;
   apply(r: Records): void | { header: typeof DEFAULT_HEADER };
@@ -43,6 +44,7 @@ export const MUTATIONS: Mutation[] = [
   { name: 'direction-zero', targets: 'IfcDirection.MagnitudeGreaterZero', apply: (r) => edit(r, 32, '(1.,0.)', '(0.,0.)') },
   { name: 'point-one-coordinate', targets: 'IfcCartesianPoint.CP2Dor3D', apply: (r) => edit(r, 55, '(0.5,0.1)', '(0.5)') },
   { name: 'extrusion-in-profile-plane', targets: 'IfcExtrudedAreaSolid.ValidExtrusionDirection', apply: (r) => edit(r, 35, '#14,#12,3.', '#14,#13,3.') },
+  { name: 'rectangle-zero-dimensions', release: 'IFC4', targets: 'IfcPositiveLengthMeasure.WR1', apply: (r) => edit(r, 34, '5.,0.2', '0.,0.') },
   { name: 'rectangle-zero-width', targets: 'IfcPositiveLengthMeasure.WR1', apply: (r) => edit(r, 34, '5.,0.2', '5.,0.') },
   { name: 'shape-without-type', targets: 'IfcShapeRepresentation.HasRepresentationType', apply: (r) => edit(r, 85, "'SweptSolid'", '$') },
   { name: 'shape-wrong-type', targets: 'IfcShapeRepresentation.CorrectItemsForType', apply: (r) => edit(r, 85, "'SweptSolid'", "'Brep'") },

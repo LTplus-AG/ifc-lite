@@ -170,6 +170,20 @@ describe('screen-space corner snapping (#11504)', () => {
     assert.equal(pick(scene, 405, 265, only([1])).snapTarget?.type, 'vertex');
   });
 
+  it('#11753 swaps eligible models in place without serving the previous grid', () => {
+    const scene = sceneWith(makeBox(1, [-4,-2,0], [0,2,2], 1), makeBox(2, [-4,-2,0], [0,2,2], 2));
+    const engine = new RaycastEngine(cameraDownZ(), scene, canvas), host = new ManualIdleHost();
+    const eligibleModelIndices = new Set([1]);
+    const run = () => engine.raycastSceneMagnetic(405, 265, lock, { snapOptions: { ...base,
+      screenCornerSnap: { eligibleModelIndices, settleMs: 0, idleHost: host } } });
+    run(); host.drain();
+    assert.equal(run().snapTarget?.expressId, 1);
+    eligibleModelIndices.delete(1); eligibleModelIndices.add(2);
+    assert.equal(run().snapTarget, null);
+    host.drain();
+    assert.equal(run().snapTarget?.expressId, 2);
+  });
+
   it('(d) ignores corners of hidden entities, and of anything outside the isolated set', () => {
     const scene = sceneWith(boxA());
     assert.equal(pick(scene, 405, 265, { hiddenIds: new Set([1]) }).snapTarget, null);

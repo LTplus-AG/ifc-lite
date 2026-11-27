@@ -23,9 +23,14 @@ export function idsOf(s: ReadonlySet<number> | null | undefined): string {
   return `${id}:${s.size}`;
 }
 
+/** Model eligibility is a small, mutable set. Snapshot its members for both grid caches. */
+export function eligibleModelsKey(models: ReadonlySet<number> | undefined): string {
+  return models === undefined ? '*' : Array.from(models).sort((a, b) => a - b).join(',');
+}
+
 export function gridKey(viewKey: string, clip: PickClipState | null | undefined, w: number, h: number,
   hidden: ReadonlySet<number> | undefined, isolated: ReadonlySet<number> | null | undefined,
   cell: number, eligible: ReadonlySet<number> | undefined): string {
   const clipKey = clip ? JSON.stringify([clip.sectionPlane, clip.extraPlanes, clip.clipBox, idsOf(clip.sectionExcludedIds)]) : '';
-  return [viewKey, clipKey, w, h, idsOf(hidden), idsOf(isolated), idsOf(eligible), cell].join('|');
+  return [viewKey, clipKey, w, h, idsOf(hidden), idsOf(isolated), eligibleModelsKey(eligible), cell].join('|');
 }

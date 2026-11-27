@@ -1047,13 +1047,15 @@ describe('RaycastEngine flat index (#9504)', () => {
       assert.equal(engine.isCacheWarm(), true);
       const idle = new ManualIdleHost();
       const cornerIndex = engine['screenCorners'];
-      const cornerPick = (hiddenIds?: Set<number>) => engine.raycastSceneMagnetic(478, 222, {
+      const cornerPick = (hiddenIds?: Set<number>, x = 478, y = 222) => engine.raycastSceneMagnetic(x, y, {
         edge: null, meshExpressId: null, lockStrength: 0,
       }, { hiddenIds, snapOptions: { snapToVertices: true, screenCornerSnap: { settleMs: 0, idleHost: idle, markers: !hiddenIds } } });
       cornerPick();
       idle.drain();
       assert.equal(cornerPick().snapTarget?.expressId, 7, 'the warm grid picks the corner over background');
       assert.ok(cornerIndex.stats()?.complete);
+      const weldCache = engine.getSnapDetector()['geometryCache'];
+      assert.ok(weldCache.size >= quads.length);
       // Start another grid over the same resident MeshData. Evict before its first idle callback.
       cornerPick(new Set([100]));
       assert.ok(idle.pending > 0);
@@ -1076,16 +1078,22 @@ describe('RaycastEngine flat index (#9504)', () => {
       assert.deepEqual({ retainedGrid: cornerIndex.stats() !== null, pendingWork: idle.pending },
         { retainedGrid: false, pendingWork: 0 });
       assert.equal(engine.cornerMarkers.get(), null);
+      assert.equal(weldCache.size, 0);
       assert.equal(idle.drain(), 0);
       assertReleased(engine);
       assert.equal(engine.isCacheWarm(), false, 'the index still holds the evicted pieces');
       assert.equal(engine.raycastScene(400, 300), null, 'evicted geometry is not pickable, as before #9504');
       if (ephemeral) return; // This scene has finished streaming.
-      addRegularQuad(scene, makeQuad({ expressId: 8 }));
-      assert.equal(engine.raycastScene(400, 300)?.intersection.expressId, 8);
-      cornerPick();
+      const reloaded = makeQuad({ expressId: 7 });
+      reloaded.positions[3] = 6; // Same cache-key samples, different lower-right vertex.
+      addRegularQuad(scene, reloaded);
+      assert.equal(engine.raycastScene(400, 300)?.intersection.expressId, 7);
+      cornerPick(undefined, 523, 378);
       idle.drain();
-      assert.equal(cornerPick().snapTarget?.expressId, 8, 'new resident geometry builds a fresh corner grid');
+      const snap = cornerPick(undefined, 523, 378).snapTarget;
+      assert.equal(snap?.expressId, 7);
+      assert.deepEqual(snap?.position, { x: 6, y: -5, z: 0 });
+      assert.equal(weldCache.size, 1);
     });
   }
 });

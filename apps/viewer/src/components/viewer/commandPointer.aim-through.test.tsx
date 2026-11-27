@@ -81,41 +81,50 @@ afterEach(() => {
   useViewerStore.getState().exitModelWorkspace();
 });
 
-it('#11753 ghost-preview moves settle on an off-ray corner and respect same-size hidden-ID swaps', async t => {
-  useViewerStore.getState().startCommand('column.place');
-  assert.ok(getCommandRuntime().command?.ghost);
-  const canvas = document.createElement('canvas');
-  canvas.width = 800; canvas.height = 600;
-  t.mock.method(canvas, 'getBoundingClientRect', () => ({ width: 800, height: 600 }));
-  const renderer = new Renderer(canvas), camera = renderer.getCamera();
-  camera.setAspect(800 / 600); camera.setProjectionMode('orthographic'); camera.setOrthoSize(6);
-  camera.setPosition(4, 10, 8); camera.setTarget(4, 0, -3);
-  const mesh = { expressId: 42, positions: Float32Array.of(4,0,-3, 7,0,-3, 4,0,-6),
-    indices: Uint32Array.of(0,1,2), normals: Float32Array.of(0,1,0, 0,1,0, 0,1,0), color: [1,1,1,1] };
-  const handles = [{ expressId: 42 }];
-  t.mock.method(renderer.getScene(), 'getMeshes', () => handles);
-  t.mock.method(renderer.getScene(), 'getMeshDataPieces', () => [mesh]);
-  const ctx = pointer(), hiddenIds = new Set([99]);
-  ctx.renderer = renderer;
-  ctx.getPickOptions = () => ({ hiddenIds, isolatedIds: null, isStreaming: false });
-  let picked: number | undefined;
-  ctx.setSnapTarget = snap => { picked = snap?.expressId; };
-  const at = camera.projectToScreen({ x: 4, y: 0, z: -3 }, 800, 600)!;
-  const move = async (i: number) => {
-    const x = at.x - 4 - i % 2;
-    assert.equal(renderer.raycastScene(x, at.y), null);
-    routeCommandPointer(ctx, 'move', x, at.y);
-    await nextFrame();
-  };
-  for (let i = 0; i < 60 && picked !== 42; i++) {
-    await move(i);
-    await new Promise(resolve => setTimeout(resolve, 10));
-  }
-  assert.equal(picked, 42, 'repeated ghost moves reach the settled off-ray vertex');
-  hiddenIds.delete(99); hiddenIds.add(42);
-  await move(0);
-  assert.equal(picked, undefined);
-});
+for (const behindSpace of [false, true]) {
+  it(`#11753 ghost-preview moves settle on an off-ray corner and respect hidden-ID swaps (IFCSPACE ${behindSpace})`, async t => {
+    if (behindSpace) await seedModelingSession({ roomGeometry: true });
+    useViewerStore.getState().startCommand('column.place');
+    assert.ok(getCommandRuntime().command?.ghost);
+    const canvas = document.createElement('canvas');
+    canvas.width = 800; canvas.height = 600;
+    t.mock.method(canvas, 'getBoundingClientRect', () => ({ width: 800, height: 600 }));
+    const renderer = new Renderer(canvas), camera = renderer.getCamera();
+    camera.setAspect(800 / 600); camera.setProjectionMode('orthographic'); camera.setOrthoSize(6);
+    camera.setPosition(4, 10, 8); camera.setTarget(4, 0, -3);
+    const mesh = { expressId: 42, positions: Float32Array.of(4,0,-3, 7,0,-3, 4,0,-6),
+      indices: Uint32Array.of(0,1,2), normals: Float32Array.of(0,1,0, 0,1,0, 0,1,0), color: [1,1,1,1] };
+    const space = { ...mesh, expressId: 9100, positions: Float32Array.of(-20,1,-20, 30,1,-20, 4,1,30) };
+    const handles = behindSpace ? [mesh, space] : [mesh];
+    t.mock.method(renderer.getScene(), 'getMeshes', () => handles);
+    t.mock.method(renderer.getScene(), 'getMeshDataPieces', (id: number) => [id === 9100 ? space : mesh]);
+    const ctx = pointer(), hiddenIds = new Set([99]);
+    ctx.renderer = renderer;
+    ctx.getPickOptions = () => ({ hiddenIds, isolatedIds: null, isStreaming: false });
+    let picked: number | undefined;
+    ctx.setSnapTarget = snap => { picked = snap?.expressId; };
+    const at = camera.projectToScreen({ x: 4, y: 0, z: -3 }, 800, 600)!;
+    const move = async (i: number) => {
+      const x = at.x - 4 - i % 2;
+      assert.equal(renderer.raycastScene(x, at.y)?.intersection.expressId, behindSpace ? 9100 : undefined);
+      routeCommandPointer(ctx, 'move', x, at.y);
+      await nextFrame();
+    };
+    for (let i = 0; i < 60 && picked !== 42; i++) {
+      await move(i);
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    assert.equal(picked, 42, 'repeated ghost moves reach the settled off-ray vertex');
+    hiddenIds.delete(99); hiddenIds.add(42);
+    await move(0);
+    assert.equal(picked, undefined);
+    if (behindSpace) {
+      assert.ok(useViewerStore.getState().setEntityType(MODEL_ID, 9100, 'IfcWall'));
+      await move(0);
+      assert.equal(picked, 9100, 'a retyped physical element becomes pickable again');
+    }
+  });
+}
 
 describe('aiming through to the workplane (#9201)', () => {
   it('#9296 snaps blank-model clicks to a zoom-scaled increment and Alt suspends it', () => {

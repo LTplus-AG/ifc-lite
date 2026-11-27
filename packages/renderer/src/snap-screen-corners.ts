@@ -20,8 +20,8 @@
  * Corners are endpoints (and junctions) of the geometry cache's feature edges
  * (boundary and crease edges, collinear runs merged), not triangle seams, so a
  * wall with openings offers its true corners. Corners outrank edges inside
- * their radius. The 3D point of an edge snap is the point of the edge nearest
- * the cursor RAY, so it stays exact under perspective.
+ * their radius. The returned edge point projects to the nearest point on the
+ * screen segment, including under perspective.
  */
 
 import type { MeshData } from '@ifc-lite/geometry';

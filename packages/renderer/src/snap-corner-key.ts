@@ -6,21 +6,20 @@
 
 import type { PickClipState } from './pick-types.js';
 
-const setStamps = new WeakMap<object, number>();
+// Store the membership behind each stamp so same-size edits invalidate both grid caches.
+// Unchanged sets pay a linear membership check but require no sort or allocation.
+const setStamps = new WeakMap<object, { members: number[]; stamp: number }>();
 let nextSetStamp = 1;
-/**
- * A set's identity plus its size: hashing thousands of hidden ids on every
- * mouse move would cost more than the query. Hosts replace these sets when
- * visibility changes; an in-place edit that keeps the size is not seen.
- * Empty sets are all equal: hosts hand over a fresh empty set per pick, and
- * keying those by identity restarted the grid on (nearly) every pick.
- */
+
 export function idsOf(s: ReadonlySet<number> | null | undefined): string {
   if (s == null) return '-';
   if (s.size === 0) return '0';
-  let id = setStamps.get(s);
-  if (id === undefined) setStamps.set(s, id = nextSetStamp++);
-  return `${id}:${s.size}`;
+  let cached = setStamps.get(s);
+  if (!cached || cached.members.length !== s.size || !cached.members.every(id => s.has(id))) {
+    cached = { members: [...s], stamp: nextSetStamp++ };
+    setStamps.set(s, cached);
+  }
+  return String(cached.stamp);
 }
 
 /** Model eligibility is a small, mutable set. Snapshot its members for both grid caches. */

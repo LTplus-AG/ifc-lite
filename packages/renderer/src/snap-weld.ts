@@ -137,7 +137,8 @@ export class WeldBuild {
   private readonly xs: Float64Array;
   private readonly ys: Float64Array;
   private readonly zs: Float64Array;
-  private readonly valid: number[] = [];
+  private readonly valid: Int32Array;
+  private validCount = 0;
   private phase: 'coords' | 'sort' | 'cluster' | 'done' = 'coords';
   private next = 0;
   private sort: ChunkedSort | null = null;
@@ -154,7 +155,8 @@ export class WeldBuild {
     private readonly tol: number
   ) {
     const count = this.count = Math.floor(positions.length / 3);
-    this.ids = new Int32Array(count).fill(-1);
+    this.ids = new Int32Array(count);
+    this.valid = new Int32Array(count);
     this.xs = new Float64Array(count);
     this.ys = new Float64Array(count);
     this.zs = new Float64Array(count);
@@ -181,6 +183,7 @@ export class WeldBuild {
     const { positions: p, xs, ys, zs } = this;
     const end = Math.min(this.count, this.next + COORD_CHUNK);
     for (let i = this.next; i < end; i++) {
+      this.ids[i] = -1;
       const x = p[i * 3] + this.ox;
       const y = p[i * 3 + 1] + this.oy;
       const z = p[i * 3 + 2] + this.oz;
@@ -188,11 +191,11 @@ export class WeldBuild {
       xs[i] = x;
       ys[i] = y;
       zs[i] = z;
-      this.valid.push(i);
+      this.valid[this.validCount++] = i;
     }
     this.next = end;
     if (end < this.count) return;
-    this.sort = new ChunkedSort(Int32Array.from(this.valid),
+    this.sort = new ChunkedSort(this.valid.subarray(0, this.validCount),
       (i, j) => (xs[i] - xs[j]) || (ys[i] - ys[j]) || (zs[i] - zs[j]));
     this.phase = 'sort';
   }

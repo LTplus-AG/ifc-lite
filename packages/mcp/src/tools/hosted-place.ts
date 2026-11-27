@@ -9,6 +9,7 @@ import type { JsonSchema } from '../protocol/index.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import { okResult, resolveModel } from './util.js';
 import type { Tool } from './types.js';
+import { EDIT } from './annotations.js';
 
 const common: Record<string, JsonSchema> = {
   Width: { type: 'number', minimum: 0 },
@@ -50,7 +51,7 @@ function hostedTool(kind: 'opening' | 'door' | 'window'): Tool {
     }],
   } : wallParams;
   return {
-    name: `place_${kind}`,
+    name: `place_${kind}`, title: `Place ${kind}`, annotations: EDIT,
     description: `Place ${type} in a loaded ${kind === 'opening' ? 'wall or slab' : 'wall'} through the same creation core as the Model workspace and SDK. `
       + 'Dimensions are metres in the host frame. Wall cuts refuse outside or overlapping cuts and unreadable opening geometry. '
       + (kind === 'opening' ? 'Slab openings use Position/Width/Depth; footprint fit and overlap are not checked. ' : '')

@@ -82,18 +82,32 @@ function onPlane(ctx: MouseHandlerContext, plane: Workplane, x: number, y: numbe
   return ray ? plane.intersectRay(ray)?.local ?? null : null;
 }
 
+// The idle corner grid keys visibility by set identity. Reuse the combined mask
+// while the host visibility and the command's few extra exclusions are unchanged.
+const commandMasks = new WeakMap<MouseHandlerContext, {
+  base: Set<number>; members: number[]; extra: number[]; hidden: Set<number>;
+}>();
+
 /** Pick options that never hit the command's own ghost preview. */
 function pickOptions(ctx: MouseHandlerContext, command: ModelingCommand) {
   const options = ctx.getPickOptions();
   const excluded = command.pickExclusions?.(getCommandRuntime().gesture) ?? [];
   if (!command.ghost && !excluded.length) return options;
-  const hiddenIds = new Set(options.hiddenIds);
   const state = useViewerStore.getState();
-  for (const ref of excluded) hiddenIds.add(toGlobalIdFromModels(state.models, ref.modelId, ref.expressId));
+  const extra = excluded.map(ref => toGlobalIdFromModels(state.models, ref.modelId, ref.expressId));
   if (command.ghost) {
     const first = commandGhostId(state);
-    for (let i = 0; i < GHOST_PICK_GUARD; i++) hiddenIds.add(first + i);
+    for (let i = 0; i < GHOST_PICK_GUARD; i++) extra.push(first + i);
   }
+  const cached = commandMasks.get(ctx);
+  if (cached?.base === options.hiddenIds && cached.members.length === options.hiddenIds.size
+    && cached.members.every(id => options.hiddenIds.has(id))
+    && cached.extra.length === extra.length && extra.every((id, i) => id === cached.extra[i])) {
+    return { ...options, hiddenIds: cached.hidden };
+  }
+  const hiddenIds = new Set(options.hiddenIds);
+  for (const id of extra) hiddenIds.add(id);
+  commandMasks.set(ctx, { base: options.hiddenIds, members: [...options.hiddenIds], extra, hidden: hiddenIds });
   return { ...options, hiddenIds };
 }
 
@@ -102,7 +116,7 @@ function magneticPick(ctx: MouseHandlerContext, command: ModelingCommand, x: num
   const lock = ctx.edgeLockStateRef.current;
   const options = pickOptions(ctx, command);
   const construction = command.id.endsWith('.place') && command.aimsAtElement?.(getCommandRuntime().gesture) !== true;
-  const hiddenIds = new Set(options.hiddenIds);
+  let hiddenIds = options.hiddenIds;
   // Spatial volumes may extend through the next floor. They are not physical
   // construction references. Bound retries even if a renderer ignores exclusions.
   for (let attempt = 0; attempt < 16; attempt++) {
@@ -118,6 +132,7 @@ function magneticPick(ctx: MouseHandlerContext, command: ModelingCommand, x: num
       ?? s.models.get(ref.modelId)?.ifcDataStore?.entities.getTypeName(ref.expressId));
     if (type?.toUpperCase() !== 'IFCSPACE') return pick;
     if (id === undefined || hiddenIds.has(id)) break;
+    if (hiddenIds === options.hiddenIds) hiddenIds = new Set(hiddenIds);
     hiddenIds.add(id);
   }
   return { snapTarget: null, intersection: null, edgeLock: { shouldLock: false, shouldRelease: true, edge: null, meshExpressId: null, edgeT: 0, isCorner: false, cornerValence: 0 } };

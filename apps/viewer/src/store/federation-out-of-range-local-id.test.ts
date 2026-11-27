@@ -13,6 +13,7 @@
 import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { MutablePropertyView } from '@ifc-lite/mutations';
 import { federationRegistry } from '@ifc-lite/renderer';
 import { fixtureModel } from '@/test/store-fixture.js';
 import { useViewerStore } from './index.js';
@@ -53,7 +54,8 @@ describe('fallback resolvers never hand out a local id the model does not own (#
     assert.equal(state.models.size, 1);
     const ref = fromGlobalIdFromModels(state.models, 5);
     assert.equal(ref, undefined, `got ${JSON.stringify(ref)}`);
-    // An overlay id above the parse range is still rescued for the single model.
+    // Publish overlay ownership above the parse range before resolving it.
+    federationRegistry.publishOverlayRange('later', 101, 150);
     assert.deepEqual(fromGlobalIdFromModels(state.models, offset + 150), { modelId: 'later', expressId: 150 });
   });
 
@@ -71,5 +73,54 @@ describe('fallback resolvers never hand out a local id the model does not own (#
   it('an id the offset-0 model owns still resolves to it', () => {
     assert.equal(loadModel('only'), 0);
     assert.deepEqual(resolveEntityRef(7), { modelId: 'only', expressId: 7 });
+  });
+});
+
+describe('positive renderer ID ownership (#11607)', () => {
+  beforeEach(() => federationRegistry.clear());
+  afterEach(() => { useViewerStore.setState(initial, true); federationRegistry.clear(); });
+
+  it('does not attribute a removed model’s pick to the remaining offset-zero model', () => {
+    loadModel('primary');
+    const removedId = loadModel('removed') + 7;
+    useViewerStore.getState().removeModel('removed');
+
+    const state = useViewerStore.getState();
+    assert.equal(state.models.size, 1);
+    assert.equal(fromGlobalIdFromModels(state.models, removedId), undefined);
+    const ref = resolveEntityRef(removedId);
+    assert.deepEqual(ref, { modelId: 'legacy', expressId: removedId });
+    assert.equal(state.toGlobalId(ref.modelId, ref.expressId), removedId);
+  });
+
+  it('uses the published range of a streaming primary with a zero parse max', () => {
+    const offset = federationRegistry.reserveModel('stream', 100);
+    useViewerStore.getState().addModel({ ...fixtureModel('stream', { idOffset: offset }), maxExpressId: 0 });
+    federationRegistry.publishRange('stream', 1, 25);
+
+    const state = useViewerStore.getState();
+    const ref = { modelId: 'stream', expressId: 25 };
+    assert.deepEqual(resolveEntityRef(25), ref);
+    assert.deepEqual(fromGlobalIdFromModels(state.models, 25), ref);
+    assertPublishable(ref);
+    assert.deepEqual(resolveEntityRef(26), { modelId: 'legacy', expressId: 26 });
+    assert.equal(fromGlobalIdFromModels(state.models, 26), undefined);
+  });
+
+  it('resolves an authored entity before the registry publishes its ID', () => {
+    loadModel('editable');
+    loadModel('peer');
+    const view = new MutablePropertyView(null, 'editable');
+    view.setExpressIdWatermark(100);
+    const { expressId } = view.createEntity('IfcWall', []);
+    const mutationViews = new Map([['editable', view]]);
+    useViewerStore.setState({ mutationViews });
+
+    const state = useViewerStore.getState();
+    const ref = { modelId: 'editable', expressId };
+    assert.equal(federationRegistry.fromGlobalId(expressId), null);
+    assert.deepEqual(resolveEntityRef(expressId), ref);
+    assert.deepEqual(fromGlobalIdFromModels(state.models, expressId, (id) => mutationViews.get(id)), ref);
+    assertPublishable(ref);
   });
 });

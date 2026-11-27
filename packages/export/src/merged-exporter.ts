@@ -1192,7 +1192,6 @@ export class MergedExporter {
     const stripped = applyRelMemberStrip(entityText, localId, plan.relMemberStrip);
     if (stripped === null) return null;
     entityText = stripped;
-
     const converting = needsConversion(sourceSchema, targetSchema);
     const remapIds = offset !== 0 || plan.sharedRemap.size !== 0;
     let finalText = remapIds ? remapEntityText(entityText, offset, plan.sharedRemap, converting) : entityText;
@@ -1204,9 +1203,11 @@ export class MergedExporter {
     else if (mode.normalized && !mode.inheritedUnits?.selectionHasExplicitUnit(entityRef.type, entityText)) {
       const type = entityRef.type.toUpperCase();
       const legacySchema = isTypedPropertyUpgrade(type, sourceSchema, targetSchema) ? 'IFC2X3' : undefined;
-      finalText = rescaleEntityLengths(finalText, type, mode.lengthFactor, mode.areaFactor, mode.volumeFactor, mode.profileFactors, legacySchema, mode.inheritedUnits?.tableRowExplicitColumns(type, localId));
+      const sampleUnit = mode.inheritedUnits?.sampleUnit(type, localId);
+      const scaled = sampleUnit === 'explicit' ? finalText : rescaleEntityLengths(finalText, type, mode.lengthFactor, mode.areaFactor, mode.volumeFactor, mode.profileFactors, legacySchema, mode.inheritedUnits?.tableRowExplicitColumns(type, localId));
+      if (sampleUnit === 'mixed' && scaled !== finalText) throw new Error(`Cannot normalize shared time series sample #${localId} with both project and explicit units`);
+      finalText = scaled;
     }
-
     if (converting) {
       // No `withheldRefIds` (6th arg), so `resolveUnrepresentedEntity` never omits here (#4206): the federated
       // pipeline has no such set in its offset id space, and keeps "proxy or throw" rather than omit in the

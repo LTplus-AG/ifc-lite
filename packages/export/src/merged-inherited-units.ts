@@ -10,7 +10,7 @@ import { holdsValue, withoutComments } from './step-comment-skip.js';
 import { listItems } from './schema-converter-structural-axes.js';
 import { slotRef } from './schema-converter-structural-source.js';
 
-/** Resolve EnumerationReference in source id space, once per referenced domain. */
+/** Resolve unit ownership in source id space, independent of STEP record order. */
 export function inheritedUnitLookup(model: IfcDataStore) {
   const index = getCompleteEntityIndex(model);
   const cache = new Map<number, boolean>();
@@ -27,6 +27,29 @@ export function inheritedUnitLookup(model: IfcDataStore) {
     const explicit = domain !== undefined && holdsValue(readStepSlots(domain)?.slots[2] ?? '');
     cache.set(id, explicit);
     return explicit;
+  }
+  type SampleUnit = 'explicit' | 'project' | 'mixed';
+  let samples: Map<number, SampleUnit> | undefined;
+  function sampleUnit(type: string, id: number): SampleUnit | undefined {
+    if (type !== 'IFCTIMESERIESVALUE' && type !== 'IFCIRREGULARTIMESERIESVALUE') return undefined;
+    if (samples) return samples.get(id);
+    samples = new Map();
+    for (const [, owner] of index) {
+      const name = owner.type.toUpperCase();
+      if (name !== 'IFCREGULARTIMESERIES' && name !== 'IFCIRREGULARTIMESERIES') continue;
+      const text = model.source?.decodeUtf8(owner.byteOffset, owner.byteOffset + owner.byteLength);
+      const slots = text && readStepSlots(text)?.slots;
+      if (!slots) continue;
+      const unit = slotRef(slots[7]) === null ? 'project' : 'explicit';
+      // In all three schemas, only the regular series inserts TimeStep before Values.
+      for (const token of listItems(slots[name === 'IFCREGULARTIMESERIES' ? 9 : 8]) ?? []) {
+        const sample = slotRef(token);
+        if (sample === null) continue;
+        const previous = samples.get(sample);
+        samples.set(sample, previous && previous !== unit ? 'mixed' : unit);
+      }
+    }
+    return samples.get(id);
   }
   let rows: Map<number, Set<number>> | undefined;
   function tableRowExplicitColumns(type: string, id: number) {
@@ -54,5 +77,5 @@ export function inheritedUnitLookup(model: IfcDataStore) {
     }
     return rows.get(id);
   }
-  return { selectionHasExplicitUnit, tableRowExplicitColumns };
+  return { selectionHasExplicitUnit, tableRowExplicitColumns, sampleUnit };
 }

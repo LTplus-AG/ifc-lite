@@ -1352,6 +1352,59 @@ describe('MergedExporter', () => {
       }
     });
 
+    it.each(['IFC4', 'IFC4X3', 'IFC2X3'] as const)('normalizes regular and irregular samples by their owning %s time series (#11333)', async schema => {
+      const date = schema === 'IFC2X3' ? '#40' : "'2020-01-01T12:00:00'";
+      const values = (n: number) => `(IFCMASSPERLENGTHMEASURE(${n}.))`;
+      const series = (name: string, unit: string) => `'${name}',$,${date},${date},.DISCRETE.,.MEASURED.,$,${unit}`;
+      const secondary = mmModel([
+        [18, 'IFCTIMESERIESVALUE', `#18=IFCTIMESERIESVALUE(${values(50)});`],
+        [19, 'IFCSIUNIT', '#19=IFCSIUNIT(*,.MASSUNIT.,$,.GRAM.);'],
+        [20, 'IFCSIUNIT', '#20=IFCSIUNIT(*,.LENGTHUNIT.,.CENTI.,.METRE.);'],
+        [21, 'IFCDERIVEDUNITELEMENT', '#21=IFCDERIVEDUNITELEMENT(#19,1);'],
+        [22, 'IFCDERIVEDUNITELEMENT', '#22=IFCDERIVEDUNITELEMENT(#20,-1);'],
+        [23, 'IFCDERIVEDUNIT', '#23=IFCDERIVEDUNIT((#21,#22),.MASSPERLENGTHUNIT.,$);'],
+        [24, 'IFCREGULARTIMESERIES', `#24=IFCREGULARTIMESERIES(${series('Explicit regular', '#23')},1.,(/* sample */ #18));`],
+        [25, 'IFCTIMESERIESVALUE', `#25=IFCTIMESERIESVALUE(${values(51)});`],
+        [26, 'IFCREGULARTIMESERIES', `#26=IFCREGULARTIMESERIES(${series('Default regular', '$')},1.,(#25));`],
+        [27, 'IFCIRREGULARTIMESERIESVALUE', `#27=IFCIRREGULARTIMESERIESVALUE(${date},${values(52)});`],
+        [28, 'IFCIRREGULARTIMESERIES', `#28=IFCIRREGULARTIMESERIES(${series('Explicit irregular', '/* g/cm */ #23')},(#27));`],
+        [29, 'IFCIRREGULARTIMESERIESVALUE', `#29=IFCIRREGULARTIMESERIESVALUE(${date},${values(53)});`],
+        [30, 'IFCIRREGULARTIMESERIES', `#30=IFCIRREGULARTIMESERIES(${series('Default irregular', '$')},(#29));`],
+        ...(schema === 'IFC2X3' ? [[40, 'IFCCALENDARDATE', '#40=IFCCALENDARDATE(1,1,2020);'] as [number,string,string]] : []),
+      ]);
+      const primary = metreModel();
+      for (const model of [primary, secondary]) (model.dataStore as { schemaVersion: string }).schemaVersion = schema;
+      const exporter = new MergedExporter([primary, secondary]);
+      const options = { schema, unitReconciliation: 'normalize' } as const;
+      for (const result of [exporter.export(options), await exporter.exportAsync(options)]) {
+        const output = decode(result.content);
+        const unit = output.match(/(#\d+)=IFCDERIVEDUNIT\([^;]*\.MASSPERLENGTHUNIT\./)?.[1];
+        expect(unit).toBeDefined();
+        for (const [name, n] of [['Explicit regular', 50], ['Default regular', 51000], ['Explicit irregular', 52], ['Default irregular', 53000]] as const) {
+          const sample = output.split('\n').find(line => line.includes(values(n)))?.match(/(#\d+)=/)?.[1];
+          expect(sample).toBeDefined();
+          const owner = output.split('\n').find(line => line.includes(`'${name}'`));
+          expect(owner).toContain(`${sample}));`);
+          const expectedUnit = name.startsWith('Explicit') ? unit : '$';
+          expect(owner).toContain(`${expectedUnit},${name.endsWith('irregular') ? '(' : '1.,('}`);
+        }
+        expect(findDanglingRefs(output)).toEqual([]);
+      }
+    });
+
+    it('rejects a shared time series sample when only one owner needs its value scaled (#11333)', async () => {
+      const attrs = "'Sample',$,'2020-01-01T12:00:00','2020-01-01T12:00:00',.DISCRETE.,.MEASURED.,$";
+      const secondary = mmModel([
+        [18, 'IFCTIMESERIESVALUE', '#18=IFCTIMESERIESVALUE((IFCLENGTHMEASURE(50.)));'],
+        [19, 'IFCREGULARTIMESERIES', `#19=IFCREGULARTIMESERIES(${attrs},#8,1.,(#18));`],
+        [20, 'IFCREGULARTIMESERIES', `#20=IFCREGULARTIMESERIES(${attrs},$,1.,(#18));`],
+      ]);
+      const exporter = new MergedExporter([metreModel(), secondary]);
+      const options = { schema: 'IFC4', unitReconciliation: 'normalize' } as const;
+      expect(() => exporter.export(options)).toThrow(/shared time series sample #18/);
+      await expect(exporter.exportAsync(options)).rejects.toThrow(/shared time series sample #18/);
+    });
+
     it('scales an undeclared mass per length by the mass unit too (#11329)', () => {
       // 50 g/mm is 50 kg/m: the length ratio alone would give 50000.
       const secondary = mmModel([

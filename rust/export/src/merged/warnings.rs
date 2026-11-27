@@ -84,7 +84,6 @@ pub(super) fn finish_output(
     parents: super::single_parents::ParentClaims,
     upgrade_seeds: &std::collections::HashSet<u32>,
     offset: u32,
-    models: &[super::MergedModel],
 ) {
     if let Some((text, added)) = checks.finish_typed_properties(out.as_bytes(), || {
         // Earlier conversion output may have used IDs beyond the model offset.
@@ -99,8 +98,8 @@ pub(super) fn finish_output(
         stats.written += added;
     }
     stats.warnings.extend(slot_fill.warnings());
-    stats.written = stats.written.saturating_add_signed(checks.finish_dates(out));
-    stats.warnings.extend(checks.warnings_for_sources(models.iter().map(|m| m.content)));
+    stats.written = stats.written.saturating_add_signed(checks.finish_temporal_values(out));
+    stats.warnings.extend(checks.warnings());
     stats.warnings.extend(parents.apply_folds(out)); // #5774 folds, after every model is written
     // One product per placement in IFC2X3 (#9209); the header holds no record to change.
     stats.written = stats.written.saturating_add_signed(crate::schema_ifc2x3_placements::place_text_for_schema(schema, out));

@@ -21,11 +21,12 @@ import { materialFallbackName } from '../material-naming.js';
 import { pendingMutationsField, pendingOverlay } from '@ifc-lite/sdk/headless';
 import { buildSpatialTree } from '../spatial-tree.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
+import { READ_ONLY } from './annotations.js';
 
 const COMPARISON_OPS: ComparisonOp[] = ['=', '!=', '>', '<', '>=', '<=', 'contains', 'exists', 'matches'];
 
 const queryEntities: Tool = {
-  name: 'query_entities',
+  name: 'query_entities', title: 'Query entities', annotations: READ_ONLY,
   description:
     'Filter entities by IFC type, property, material, or spatial container. Returns matching IDs and minimal metadata. ' +
     '`selector` (an IfcOpenShell-style selector string, e.g. "IfcWall, Pset_WallCommon.FireRating=2HR") composes with ' +
@@ -180,7 +181,7 @@ function shapeEntities(entities: EntityData[], fields?: string[]): unknown[] {
 }
 
 const countEntities: Tool = {
-  name: 'count_entities',
+  name: 'count_entities', title: 'Count entities', annotations: READ_ONLY,
   description: 'Count BIM entities (the same set `query_entities` returns), optionally grouped by a key (type, storey, material). Returns aggregates rather than the full set. For raw STEP record counts use `model_info`.',
   scope: 'read',
   inputSchema: {
@@ -263,7 +264,7 @@ const countEntities: Tool = {
 };
 
 const getEntity: Tool = {
-  name: 'get_entity',
+  name: 'get_entity', title: 'Get entity', annotations: READ_ONLY,
   description: 'Full data for a single entity: attributes, properties, quantities, classifications, materials, relationships.',
   scope: 'read',
   inputSchema: {
@@ -335,7 +336,7 @@ function resolveExpressId(m: ReturnType<typeof resolveModel>, input: Record<stri
 }
 
 const getEntitiesBulk: Tool = {
-  name: 'get_entities_bulk',
+  name: 'get_entities_bulk', title: 'Get entities in bulk', annotations: READ_ONLY,
   description: 'Batch version of get_entity. Up to 1000 IDs per call. Returns a map keyed by globalId, resolved the same way '
     + '`get_entity` resolves one: an entity this session created wins over a same-GlobalId entity in the file, and deleted '
     + 'entities are never returned. A GlobalId naming more than one entity is listed in `ambiguousGlobalIds`.',
@@ -450,7 +451,7 @@ const getEntitiesBulk: Tool = {
 };
 
 const spatialHierarchy: Tool = {
-  name: 'spatial_hierarchy',
+  name: 'spatial_hierarchy', title: 'Spatial hierarchy', annotations: READ_ONLY,
   description: 'Project → Site → Building → Storey → Space tree. Compact form by default (set `include_elements` to expand).',
   scope: 'read',
   inputSchema: {
@@ -473,7 +474,7 @@ const spatialHierarchy: Tool = {
 };
 
 const containmentChain: Tool = {
-  name: 'containment_chain',
+  name: 'containment_chain', title: 'Containment chain', annotations: READ_ONLY,
   description: 'For an entity, return its spatial containment chain from the entity up to the project root.',
   scope: 'read',
   inputSchema: {
@@ -498,7 +499,7 @@ const containmentChain: Tool = {
 };
 
 const relationships: Tool = {
-  name: 'relationships',
+  name: 'relationships', title: 'Entity relationships', annotations: READ_ONLY,
   description: 'Inbound and outbound relationships of an entity (voids, fills, groups, connections, …).',
   scope: 'read',
   inputSchema: {
@@ -518,7 +519,7 @@ const relationships: Tool = {
 };
 
 const propertiesUnique: Tool = {
-  name: 'properties_unique',
+  name: 'properties_unique', title: 'Unique property values', annotations: READ_ONLY,
   description: 'Unique values for a single property across a type set. Useful for filter UIs and stats.',
   scope: 'read',
   inputSchema: {
@@ -558,7 +559,7 @@ const propertiesUnique: Tool = {
 };
 
 const materialsList: Tool = {
-  name: 'materials_list',
+  name: 'materials_list', title: 'List materials', annotations: READ_ONLY,
   description: 'All materials present in the model with usage counts.',
   scope: 'read',
   inputSchema: {
@@ -584,7 +585,7 @@ const materialsList: Tool = {
 };
 
 const classificationsList: Tool = {
-  name: 'classifications_list',
+  name: 'classifications_list', title: 'List classifications', annotations: READ_ONLY,
   description: 'All classification references in the model with usage counts.',
   scope: 'read',
   inputSchema: {
@@ -610,7 +611,7 @@ const classificationsList: Tool = {
 };
 
 const units: Tool = {
-  name: 'units',
+  name: 'units', title: 'Model units', annotations: READ_ONLY,
   description: 'Length unit scale (factor that converts stored lengths to meters) and other unit metadata.',
   scope: 'read',
   inputSchema: { type: 'object', properties: { model_id: { type: 'string' } }, additionalProperties: false },

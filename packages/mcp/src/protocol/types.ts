@@ -161,14 +161,25 @@ export interface ToolAnnotations {
   openWorldHint?: boolean;
 }
 
+/** An icon a client may show next to a tool, resource or prompt (MCP 2025-11-25). */
+export interface Icon {
+  /** An https: or data: URI. */
+  src: string;
+  mimeType?: string;
+  /** Sizes such as "48x48", or "any" for scalable formats. */
+  sizes?: string[];
+  theme?: 'light' | 'dark';
+}
+
 export interface ToolDefinition {
   name: string;
   /** Human-readable name (MCP 2025-06-18). */
   title?: string;
   description: string;
   inputSchema: JsonSchema;
-  /** JSON Schema of `structuredContent` on success (MCP 2025-06-18). */
+  /** Schema of `structuredContent` on success (MCP 2025-06-18). */
   outputSchema?: JsonSchema;
+  icons?: Icon[];
   annotations?: ToolAnnotations;
   _meta?: ToolMeta;
 }

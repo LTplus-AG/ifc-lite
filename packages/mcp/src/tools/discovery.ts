@@ -30,9 +30,10 @@ import { resolveSafePath } from '../safe-path.js';
 import { modelAllowed, scopeAllows, type AuthScope } from '../auth/scope.js';
 import type { ToolContext } from '../context.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
+import { DESTRUCTIVE, READ_ONLY } from './annotations.js';
 
 export const modelInfo: Tool = {
-  name: 'model_info',
+  name: 'model_info', title: 'Model info', annotations: READ_ONLY,
   description: 'Return schema, entity counts, file metadata, georeferencing, and units for the active (or named) model.',
   scope: 'read',
   inputSchema: {
@@ -83,7 +84,7 @@ export const modelInfo: Tool = {
 };
 
 export const modelList: Tool = {
-  name: 'model_list',
+  name: 'model_list', title: 'List loaded models', annotations: READ_ONLY,
   description: 'List all currently loaded models with metadata.',
   scope: 'read',
   inputSchema: { type: 'object', properties: {}, additionalProperties: false },
@@ -119,9 +120,9 @@ export const modelList: Tool = {
 };
 
 export const modelLoad: Tool = {
-  name: 'model_load',
+  name: 'model_load', title: 'Load IFC model', annotations: DESTRUCTIVE,
   description: 'Load IFC STEP, IFCZIP or IFCX from an allowed local path. Loading from an allowed OCI registry also requires mutate scope.',
-  annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+  // Local loading needs read scope. The model allowlist also governs replacements.
   scope: 'read',
   inputSchema: {
     type: 'object',
@@ -238,13 +239,11 @@ function assertMayDiscard(id: string, ctx: ToolContext, scope: AuthScope): void 
 }
 
 export const modelUnload: Tool = {
-  name: 'model_unload',
+  name: 'model_unload', title: 'Unload model', annotations: DESTRUCTIVE,
   description: 'Drop a model from session memory. Unsaved edits to it are lost.',
   // `read` for the same reason as `model_load`: it frees session memory and
   // writes nothing. A token narrowed to some models still cannot drop others.
   scope: 'read',
-  // Read scope, but it drops unsaved edits, so clients should still ask.
-  annotations: { destructiveHint: true },
   inputSchema: {
     type: 'object',
     properties: {
@@ -305,7 +304,7 @@ function inheritanceChainRootToLeaf(type: string): string[] {
 }
 
 export const schemaDescribe: Tool = {
-  name: 'schema_describe',
+  name: 'schema_describe', title: 'Describe IFC entity type', annotations: READ_ONLY,
   description: 'Describe an IFC entity type: attributes, parents, inheritance chain. Useful for an agent to know the legal shape before mutating. '
     + 'Classes outside the IFC4_ADD2_TC1 codegen pin (IFC2X3-only and IFC4X3-only ones) are answered from the bundled schema union, '
     + 'which carries names but not attribute types — `schemaSource` says which table answered.',

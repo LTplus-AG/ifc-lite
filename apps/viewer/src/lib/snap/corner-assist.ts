@@ -41,7 +41,7 @@ export function isSnapXrayActive(s: Pick<SnapPickState, 'activeTool' | 'repositi
  * The `screenCornerSnap` option of a pick: markers on, and with X-ray the
  * occlusion rule off, so corners behind other geometry can be snapped.
  */
-export function screenCornerSnapConfig(xray: boolean): ScreenCornerSnapOptions {
+export function screenCornerSnapConfig(xray = false): ScreenCornerSnapOptions {
   return xray ? { markers: true, ignoreOcclusion: true } : { markers: true };
 }
 

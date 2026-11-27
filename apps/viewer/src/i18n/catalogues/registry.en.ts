@@ -87,5 +87,8 @@ export const registryEn = {
   'registry.push.saved': 'Your new version was saved.',
   'registry.push.modelChanged': 'The active model changed. Select the model you want to save and try again.',
   'registry.push.storeChanged': 'The file-store settings changed during sign-in. Try again.',
+  'registry.push.unconfirmed': 'The registry did not confirm the previous upload. Check that version before uploading again.',
+  'registry.push.retryConfirmation': 'Retry confirmation',
+  'registry.push.confirmMismatch': 'The version tag points to different content. The previous upload could not be confirmed.',
   'registry.handoff.explain': 'Opening the sign-in page to authorize access to the selected folder.',
 } as const;

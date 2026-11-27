@@ -12,7 +12,7 @@ import { registryEn } from '@/i18n/catalogues/registry.en';
 import { useViewerStore } from '@/store';
 import { exportRegistryModel, registryExportModelId } from '@/lib/registry/export-model';
 import { authorizeRepository, resourceAllows, type ResourceSession } from '@/lib/registry/handoff-auth';
-import { browseRepositoryVersions, pushHandoff } from '@/lib/registry/handoff-client';
+import { browseRepositoryVersions, confirmHandoff, HandoffAcknowledgementError, pushHandoff, type HandoffPublication } from '@/lib/registry/handoff-client';
 import {
   connectionFor, handoffLink, registryConnectionIdentity, registryConnections, type RegistryConnection,
 } from '@/lib/registry/handoff-contract';
@@ -37,12 +37,14 @@ export function OciPushTo({ disabled = false, onBusyChange }: {
   const [tag, setTag] = useState('revision-2');
   const [page, setPage] = useState<Awaited<ReturnType<typeof browseRepositoryVersions>>>();
   const [busy, setBusy] = useState(false);
+  const [unconfirmed, setUnconfirmed] = useState<{ modelId: string; publication: HandoffPublication }>();
   const [error, setError] = useState('');
   const pending = useRef<AbortController | null>(null);
   const model = useViewerStore(state => {
     const id = registryExportModelId(state);
     return id ? state.models.get(id) : undefined;
   });
+  const awaitingConfirmation = unconfirmed?.modelId === model?.id ? unconfirmed : undefined;
   const saved = savedResult?.modelId === model?.id ? savedResult?.artifact : undefined;
 
   useEffect(() => () => { pending.current?.abort(); }, []);
@@ -58,6 +60,7 @@ export function OciPushTo({ disabled = false, onBusyChange }: {
   function clearRepositoryResults() {
     setPage(undefined);
     setError('');
+    setUnconfirmed(undefined);
     clearSaved();
   }
 
@@ -125,9 +128,27 @@ export function OciPushTo({ disabled = false, onBusyChange }: {
       if (registryExportModelId(useViewerStore.getState()) !== model.id) throw new Error(t('registry.push.modelChanged'));
       const source = await exportRegistryModel();
       signal.throwIfAborted();
-      const artifact = await pushHandoff(registry, repository, tag, source.bytes, source.filename, session, signal);
+      try {
+        const artifact = await pushHandoff(registry, repository, tag, source.bytes, source.filename, session, signal);
+        signal.throwIfAborted();
+        useHandoffWorkspace.setState({ saved: { modelId: model.id, artifact } });
+        setPage(undefined);
+      } catch (failure) {
+        if (!(failure instanceof HandoffAcknowledgementError)) throw failure;
+        signal.throwIfAborted();
+        setUnconfirmed({ modelId: model.id, publication: failure.publication });
+      }
+    });
+  }
+
+  function retryConfirmation() {
+    if (!awaitingConfirmation) return;
+    return run('pull', async (session, signal) => {
+      const artifact = await confirmHandoff(awaitingConfirmation.publication, session, signal);
       signal.throwIfAborted();
-      useHandoffWorkspace.setState({ saved: { modelId: model.id, artifact } });
+      if (!artifact) throw new Error(t('registry.push.confirmMismatch'));
+      useHandoffWorkspace.setState({ saved: { modelId: awaitingConfirmation.modelId, artifact } });
+      setUnconfirmed(undefined);
       setPage(undefined);
     });
   }
@@ -180,10 +201,16 @@ export function OciPushTo({ disabled = false, onBusyChange }: {
     <p className="text-xs text-muted-foreground">{model ? t('registry.activeModel', { name: model.name }) : t('registry.noModel')}</p>
     <Label htmlFor={`${id}-version`}>{t('registry.newVersion')}</Label>
     <Input id={`${id}-version`} value={tag} disabled={busy || disabled} autoComplete="off"
-      onChange={e => { setTag(e.target.value); clearSaved(); }} />
-    <Button disabled={repositoryDisabled || !model || !tag} onClick={() => void publish()}>
+      onChange={e => { setTag(e.target.value); setUnconfirmed(undefined); setError(''); clearSaved(); }} />
+    <Button disabled={repositoryDisabled || !model || !tag || Boolean(awaitingConfirmation)} onClick={() => void publish()}>
       {t('registry.push.action')}
     </Button>
+    {awaitingConfirmation && <>
+      <p role="status" className="text-sm">{t('registry.push.unconfirmed')}</p>
+      <Button variant="outline" disabled={repositoryDisabled} onClick={() => void retryConfirmation()}>
+        {t('registry.push.retryConfirmation')}
+      </Button>
+    </>}
     {busy && <output className="text-sm">{t('registry.working')}</output>}
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
     {saved && <>

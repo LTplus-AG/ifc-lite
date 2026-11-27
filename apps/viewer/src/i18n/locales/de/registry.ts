@@ -89,5 +89,8 @@ export const registryDe = {
   "registry.push.saved": "Ihre neue Version wurde gespeichert.",
   "registry.push.modelChanged": "Das aktive Modell hat sich geändert. Wählen Sie das Modell aus, das Sie speichern möchten, und versuchen Sie es erneut.",
   "registry.push.storeChanged": "Die Dateispeicher-Einstellungen haben sich während der Anmeldung geändert. Versuchen Sie es erneut.",
+  "registry.push.unconfirmed": "Die Registry hat den vorherigen Upload nicht bestätigt. Prüfen Sie diese Version vor einem weiteren Upload.",
+  "registry.push.retryConfirmation": "Bestätigung erneut versuchen",
+  "registry.push.confirmMismatch": "Das Versions-Tag verweist auf andere Inhalte. Der vorherige Upload konnte nicht bestätigt werden.",
   "registry.handoff.explain": "Die Anmeldeseite wird geöffnet, um den Zugriff auf den ausgewählten Ordner zu genehmigen."
 } satisfies Catalogue;

@@ -89,5 +89,8 @@ export const registryFr = {
   "registry.push.saved": "Votre nouvelle version a été enregistrée.",
   "registry.push.modelChanged": "Le modèle actif a changé. Sélectionnez le modèle à enregistrer et réessayez.",
   "registry.push.storeChanged": "Les paramètres de l’espace de stockage ont changé pendant la connexion. Réessayez.",
+  "registry.push.unconfirmed": "Le registre n’a pas confirmé le téléversement précédent. Vérifiez cette version avant de téléverser à nouveau.",
+  "registry.push.retryConfirmation": "Réessayer la confirmation",
+  "registry.push.confirmMismatch": "Le tag de version pointe vers un autre contenu. Le téléversement précédent n’a pas pu être confirmé.",
   "registry.handoff.explain": "Ouverture de la page de connexion pour autoriser l’accès au dossier sélectionné."
 } satisfies Catalogue;

@@ -89,5 +89,8 @@ export const registryIt = {
   "registry.push.saved": "La nuova versione è stata salvata.",
   "registry.push.modelChanged": "Il modello attivo è cambiato. Seleziona il modello da salvare e riprova.",
   "registry.push.storeChanged": "Le impostazioni dell'archivio file sono cambiate durante l'accesso. Riprova.",
+  "registry.push.unconfirmed": "Il registro non ha confermato il caricamento precedente. Verifica la versione prima di caricarla di nuovo.",
+  "registry.push.retryConfirmation": "Riprova la conferma",
+  "registry.push.confirmMismatch": "Il tag della versione punta a contenuti diversi. Non è stato possibile confermare il caricamento precedente.",
   "registry.handoff.explain": "Apertura della pagina di accesso per autorizzare l’accesso alla cartella selezionata."
 } satisfies Catalogue;

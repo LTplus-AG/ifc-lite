@@ -52,10 +52,16 @@ function fileStoreForm(ui: HTMLElement, label: string) {
   };
 }
 
-test('Push to publishes successive IFC versions and Browse reopens each pinned digest (#9638)', async () => {
+test('Push to publishes successive IFC versions and confirms an ambiguous publish without reuploading (#9638)', async () => {
   const model = await editedRegistryModel();
   const repository = 'project/model';
-  const fixture = pushRegistry({ repository, accept: token => token === 'Bearer repository-token' });
+  const fixture = pushRegistry({
+    repository,
+    accept: token => token === 'Bearer repository-token',
+    manifestStatus: reference => reference === 'model-v2' ? 502 : 201,
+  });
+  let returnWrongVersion = false;
+  const v2Path = '/v2/project/model/manifests/model-v2';
   const next = '/v2/project/model/tags/list?last=model-v1';
   const registry = await startServer(allowBrowser((req, res) => {
     if (req.url === '/v2/project/model/tags/list' || req.url === next) {
@@ -66,6 +72,11 @@ test('Push to publishes successive IFC versions and Browse reopens each pinned d
         ? ['model-v2']
         : ['model-v1', ...Array.from({ length: 11 }, (_, i) => 'tag-that-disappeared-' + i)];
       return send(res, { headers, body: JSON.stringify({ name: repository, tags }) });
+    }
+    if (returnWrongVersion && req.method === 'GET' && req.url === v2Path) {
+      if (req.headers.authorization !== 'Bearer repository-token') return send(res, { status: 401 });
+      const first = fixture.store.manifests.get(fixture.store.tags.get('model-v1')!)!;
+      return send(res, { headers: { 'Content-Type': first.mediaType }, body: first.bytes });
     }
     return fixture.handler(req, res);
   }));
@@ -115,8 +126,27 @@ test('Push to publishes successive IFC versions and Browse reopens each pinned d
   });
   type(field('-version'), 'model-v2');
   click(button('Push to…'));
-  await waitFor(() => Boolean(link('Open saved version')), 'the operation should complete');
+  await waitFor(() => ui.textContent?.includes('Retry confirmation') === true, 'the acknowledgement should be ambiguous');
+  assert.equal(link('Open saved version'), undefined);
+  assert.equal(button('Push to…').disabled, true);
+
+  const isWrite = ({ method }: { method?: string }) => method === 'PUT' || method === 'POST';
+  const writes = registry.requests.filter(isWrite);
+  assert.equal(writes.filter(request => request.url === v2Path && request.authorization === 'Bearer repository-token').length, 1);
+  assert(writes.some(request => request.url.startsWith('/v2/project/model/blobs/uploads/')));
+
+  returnWrongVersion = true;
+  click(button('Retry confirmation'));
+  await waitFor(() => ui.querySelector('[role=alert]')?.textContent?.includes('different content') === true, 'a different digest should be refused');
+  assert.equal(link('Open saved version'), undefined);
+  assert.equal(registry.requests.filter(isWrite).length, writes.length);
+
+  returnWrongVersion = false;
+  click(button('Retry confirmation'));
+  await waitFor(() => Boolean(link('Open saved version')), 'the original uploaded digest should be confirmed');
+  assert.equal(registry.requests.filter(isWrite).length, writes.length);
   const second = link('Open saved version')!.href;
+  assert.equal(readHandoff(second).source.digest, fixture.store.tags.get('model-v2'));
   assert.notEqual(second, first);
   assert.equal((await openVersion(second)).name, 'Second registry version');
   assert.equal((await openVersion(first)).name, 'Registry persisted wall');

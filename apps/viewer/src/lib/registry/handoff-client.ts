@@ -22,12 +22,12 @@ function ifcLayer({ value }: OciManifestResult): OciDescriptor | undefined {
   }
 }
 
-function connection(session: ResourceSession, registry: string, repository: string, action: 'pull' | 'push') {
+function connection(session: ResourceSession, registry: string, repository: string, action: 'pull' | 'push', fetcher?: typeof fetch) {
   registryOrigin(registry); repositoryName(repository);
   if (session.registry !== registry || !resourceAllows(session, repository, action)) throw new RegistryError('Sign in to this file store for the selected folder and action.', 403);
   const origin = new URL(registry), insecureHosts = origin.protocol === 'http:' ? [origin.host] : undefined;
   // Built from the validated origin: a reference string would misread a single-label host as a path.
-  return { client: new OciClient({ credentials: { token: session.accessToken }, insecureHosts }),
+  return { client: new OciClient({ credentials: { token: session.accessToken }, insecureHosts, fetch: fetcher }),
     reference: (version: Pick<OciReference, 'tag' | 'digest'> = {}): OciReference => ({ registry: origin.host, origin: origin.origin, repository, ...version }) };
 }
 
@@ -63,6 +63,23 @@ export async function pullHandoff(source: ArtifactSource, session: ResourceSessi
   const bytes = await client.blob(ref, layer, { signal, maxBytes: MAX_IFC_BYTES });
   return { bytes: new Uint8Array(bytes), filename: layer.annotations?.['org.opencontainers.image.title']?.split(/[\\/]/).pop() || 'model.ifc' };
 }
+export type HandoffPublication = ArtifactSource & { tag: string };
+
+export class HandoffAcknowledgementError extends Error {
+  constructor(readonly publication: HandoffPublication, cause: OciError) {
+    super(cause.message, { cause });
+  }
+}
+
+/** Verify the tag still points to the exact manifest we attempted to publish. */
+export async function confirmHandoff(publication: HandoffPublication, session: ResourceSession, signal: AbortSignal): Promise<ArtifactSource | undefined> {
+  const { registry, repository, tag, digest } = publication;
+  const { client, reference } = connection(session, registry, repository, 'pull',
+    (input, init) => fetch(input, { ...init, cache: 'no-store' }));
+  const manifest = await client.manifest(reference({ tag }), { signal });
+  if (manifest.digest === digest) return { registry, repository, digest };
+}
+
 export async function pushHandoff(registry: string, repository: string, tag: string, bytes: Uint8Array<ArrayBuffer>, filename: string, session: ResourceSession, signal?: AbortSignal): Promise<ArtifactSource> {
   releaseName(tag);
   if (bytes.length > MAX_IFC_BYTES || !new TextDecoder().decode(bytes.subarray(0, 64)).trimStart().startsWith('ISO-10303-21;')) throw new RegistryError('Choose an IFC STEP model up to 512 MiB.');
@@ -76,6 +93,14 @@ export async function pushHandoff(registry: string, repository: string, tag: str
   const file = await client.pushBlob(ref, bytes, { signal });
   const built = await buildImageManifest({ artifactType: IFC_ARTIFACT_TYPE, config,
     layers: [{ mediaType: 'application/x-step', ...file, annotations: { 'org.opencontainers.image.title': filename } }] });
-  const saved = await client.pushManifest(ref, built.bytes, built.mediaType, { signal });
-  return { registry, repository, digest: saved.digest };
+  try {
+    const saved = await client.pushManifest(ref, built.bytes, built.mediaType, { signal });
+    return { registry, repository, digest: saved.digest };
+  } catch (error) {
+    if (error instanceof OciError && (error.code === 'NETWORK' || (error.status ?? 0) >= 500 ||
+        (error.code === 'DIGEST_MISMATCH' && error.status === undefined))) {
+      throw new HandoffAcknowledgementError({ registry, repository, tag, digest: built.digest }, error);
+    }
+    throw error;
+  }
 }

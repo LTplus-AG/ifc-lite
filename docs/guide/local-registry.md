@@ -296,6 +296,8 @@ with independent ORAS integrity verification.
 5. In Subsoil, open that version with **Open with… → Edit with IFC Lite**. Edit the model, then **Push to…** the same repository with a fresh tag such as `model-v2`.
 6. **Open saved version** reopens the exact published digest. In the same folder, **Browse versions** lists tagged IFC packages so you can open either version. Subsoil also lists both versions in **My workspace**.
 
+If the registry does not acknowledge a manifest publish, select **Retry confirmation** in **Cloud Sources**. IFC Lite checks whether the version tag points to the exact manifest from the previous upload. The check sends no model data. A matching digest reveals **Open saved version**. Later edits need a new save under a fresh tag.
+
 ### OCI connections
 
 Start with a repository from the handoff, workspace configuration, or **Folder**. **Browse versions** uses `@ifc-lite/oci` to follow tag pages and check manifest digests. It shows tags with supported IFC packages. Untagged manifests can still be opened when you have their digest. The existing registry browser can discover repository names on servers that expose the optional Distribution catalog and grant you access. [OCI tag listing](https://github.com/opencontainers/distribution-spec/blob/main/spec.md#listing-tags) · [Distribution catalog](https://distribution.github.io/distribution/spec/api/#listing-repositories)

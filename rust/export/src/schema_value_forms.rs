@@ -169,7 +169,7 @@ impl ValueForms {
             }
     }
 
-    pub(crate) fn finish_temporal_values(&mut self, text: &str, dropped: &mut usize, pruned: impl FnMut(&str)) -> Option<(String, isize)> {
+    pub(crate) fn finish_temporal_values(&mut self, text: &str, dropped: &mut usize, pruned: &mut dyn FnMut(&str)) -> Option<(String, isize)> {
         let scaled = self.durations.finish(text);
         self.dates.finish(scaled.as_deref().unwrap_or(text), |required, narrowed, site| {
             *dropped += 1;

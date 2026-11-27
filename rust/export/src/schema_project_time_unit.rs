@@ -64,13 +64,13 @@ pub(crate) fn project_time_scale(content: &[u8]) -> Option<f64> {
     let mut scanner = EntityScanner::new(content);
     let mut decoder = EntityDecoder::new(content);
     let projects = std::iter::from_fn(|| scanner.next_entity())
-        .filter_map(|(id, ty, _, _)| ty.eq_ignore_ascii_case("IFCPROJECT").then_some(id));
-    scale_for_projects(&mut decoder, projects)
+        .filter_map(|(id, ty, _, _)| ty.eq_ignore_ascii_case("IFCPROJECT").then_some(id)).collect::<Vec<_>>();
+    scale_for_projects(&mut decoder, &projects)
 }
 
-pub(crate) fn scale_for_projects(decoder: &mut EntityDecoder, projects: impl IntoIterator<Item = u32>) -> Option<f64> {
+pub(crate) fn scale_for_projects(decoder: &mut EntityDecoder, projects: &[u32]) -> Option<f64> {
     let mut scale = None;
-    for id in projects {
+    for &id in projects {
         let project = decoder.decode_by_id(id).ok()?;
         if project.ifc_type != IfcType::IfcProject { return None; }
         let assignment = decoder

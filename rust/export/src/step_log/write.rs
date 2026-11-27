@@ -365,7 +365,7 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
     for (id, line) in appended.filter(|(id, _)| !flatten.drops(*id)) {
         written += usize::from(write_line(&mut body, line, *id, converting, &source_label, &target, &mut slot_fill, &mut checks, &flatten)?);
     }
-    let (delta, deferred_entities) = checks.finish_with_header(body, target_is_ifc2x3.then_some(&mut slot_fill), pass.ids, |out, varying, omitted| {
+    let (delta, deferred_entities) = checks.finish_with_header(body, target_is_ifc2x3.then_some(&mut slot_fill), pass.ids, &mut |out, varying, omitted| {
         if !delay_header { return Ok(()); }
         new_entities -= pass.generated.iter().chain(&pass.georef_lines).chain(&pass.created_lines)
             .filter(|(id, _)| omitted.contains(id)).count();

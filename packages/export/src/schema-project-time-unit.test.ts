@@ -83,6 +83,7 @@ it('writes durations in each retained federated project’s time unit (#11192)',
     const conflicting = decode(new StepExporter(models[1].dataStore).export({schema})).replace('((#3,#8))', '((#3,#6,#8))');
     const mixed = new MergedExporter([models[0], {...models[1], dataStore: await parse(conflicting)}]).export({schema:'IFC2X3'});
     expect(decode(mixed)).toMatch(/IFCWORKPLAN\([^;]*,10\.,-2\.,/);
+    expect(decode(mixed)).toMatch(/IFCWORKSCHEDULE\([^;]*,10\.,-2\.,/);
     expect(mixed.stats.warnings.filter(w => w.includes('assumed seconds'))).toHaveLength(1);
   }
 });

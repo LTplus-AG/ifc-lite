@@ -215,6 +215,7 @@ fn federated_downgrade_uses_each_retained_project_time_unit_11192() {
             &MergedOptions { schema: Some("IFC2X3".into()), ..Default::default() },
         );
         assert!(out.lines().any(|line| line.contains("IFCWORKPLAN(") && line.contains(",10.,-2.,")), "{out}");
+        assert!(out.lines().any(|line| line.contains("IFCWORKSCHEDULE(") && line.contains(",10.,-2.,")), "{out}");
         assert_eq!(stats.warnings.iter().filter(|w| w.contains("assumed seconds")).count(), 1);
     }
 }

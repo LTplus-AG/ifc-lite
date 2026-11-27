@@ -206,6 +206,9 @@ pub(crate) struct ConversionChecks {
     upgrade_omissions: Vec<String>,
 }
 
+// One implementation of the deferred conversion pass for plain and mutation-log writers.
+type DeferredHeader<'a> = dyn FnMut(&mut dyn std::io::Write, usize, &std::collections::HashSet<u32>) -> std::io::Result<()> + 'a;
+
 impl ConversionChecks {
     /// The checks for one export, with the material records it writes.
     pub(crate) fn new(materials: crate::schema_material_referent::MaterialReferents) -> Self {
@@ -268,7 +271,7 @@ impl ConversionChecks {
         slots: Option<&mut crate::schema_ifc2x3_slots::Ifc2x3SlotFill>,
         ids: crate::step_ids::IdAllocator,
     ) -> std::io::Result<isize> {
-        self.finish_with_header(body, slots, ids, |_, _, _| Ok(())).map(|(delta, _)| delta)
+        self.finish_with_header(body, slots, ids, &mut |_, _, _| Ok(())).map(|(delta, _)| delta)
     }
 
     /// Return the DATA record delta and the number of records minted by the deferred passes.
@@ -277,7 +280,7 @@ impl ConversionChecks {
         mut body: crate::schema_ifc2x3_body::Body<'_>,
         mut slots: Option<&mut crate::schema_ifc2x3_slots::Ifc2x3SlotFill>,
         ids: crate::step_ids::IdAllocator,
-        header: impl FnOnce(&mut dyn std::io::Write, usize, &std::collections::HashSet<u32>) -> std::io::Result<()>,
+        header: &mut DeferredHeader<'_>,
     ) -> std::io::Result<(isize, usize)> {
         use std::io::Write as _;
         let mut added = self.structural.added();
@@ -295,16 +298,16 @@ impl ConversionChecks {
         let typed_added = body.rewrite_held(|text| self.finish_typed_properties(text, || ids));
         let varying_ids = std::cell::RefCell::new(Vec::new());
         let surviving_deferred = std::cell::Cell::new(typed_added);
-        let body_delta = body.finish_with_header(|text| {
+        let body_delta = body.finish_with_header(&mut |text| {
             let varying = self.structural.finish_effective_varying(text, &mut self.attribute_values_dropped)
                 .map(|(text, ids)| { varying_ids.replace(ids); text });
             let added = varying_ids.borrow().len() as isize;
             let source = varying.as_deref().unwrap_or(text);
-            match self.forms.finish_temporal_values(source, &mut self.attribute_values_dropped, |ty| self.plans.forget_verbatim(ty)) {
+            match self.forms.finish_temporal_values(source, &mut self.attribute_values_dropped, &mut |ty| self.plans.forget_verbatim(ty)) {
                 Some((body, delta)) => Some((body, added + delta)),
                 None => varying.map(|body| (body, added)),
             }
-        }, |out, omitted| {
+        }, &mut |out, omitted| {
             let varying = varying_ids.borrow().iter().filter(|id| !omitted.contains(id)).count();
             // Typed properties reserve a contiguous range starting at the supplied allocator.
             let typed_removed = ids.peek().map_or(0, |first| omitted.iter()
@@ -320,7 +323,7 @@ impl ConversionChecks {
     }
 
     pub(crate) fn finish_temporal_values(&mut self, text: &mut String) -> isize {
-        if let Some((rewritten, delta)) = self.forms.finish_temporal_values(text, &mut self.attribute_values_dropped, |ty| self.plans.forget_verbatim(ty)) {
+        if let Some((rewritten, delta)) = self.forms.finish_temporal_values(text, &mut self.attribute_values_dropped, &mut |ty| self.plans.forget_verbatim(ty)) {
             *text = rewritten;
             delta
         } else {

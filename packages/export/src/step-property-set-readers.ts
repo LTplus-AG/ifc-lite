@@ -19,7 +19,7 @@
 
 import type { IfcDataStore, IfcAttributeValue, EntityExtractor } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
-import { generateIfcGuid, stepStringLiteralEnd, type RandomSource } from '@ifc-lite/encoding';
+import { decodeIfcString, generateIfcGuid, stepStringLiteralEnd, type RandomSource } from '@ifc-lite/encoding';
 import { createSourceRefReader, decodeRange } from './source-ref-bounds.js';
 import { findLengthUnitReference, normalizeMapUnitName } from './step-map-unit.js';
 import { authoredEntityRefs, type EffectiveEntityIndex } from './effective-index.js';
@@ -154,40 +154,40 @@ export function entityLineText(ctx: PropertySetContext, entityId: number): strin
 }
 
 /**
- * Get the name of a property set by parsing the entity
+ * Get the DECODED name of a property set (the form the mutation overlay and
+ * callers' name sets carry; the raw text misses names written with a STEP
+ * escape, a quote or a backslash).
  */
 export function getPropertySetName(ctx: PropertySetContext, psetId: number): string | null {
   const entityText = currentSetLine(ctx, psetId);
   if (entityText === null) return null;
 
   // Parse: IFCPROPERTYSET('guid',$,'Name',$,...) - Name is 3rd argument
-  return rawThirdLiteral(entityText, /IFCPROPERTYSET\s*\([^,]*,[^,]*,'/gi);
+  return decodedThirdLiteral(entityText, /IFCPROPERTYSET\s*\([^,]*,[^,]*,'/gi);
 }
 
 /**
- * The raw text of the literal opening where `prefix` (global, ending at the
- * opening `'`) first matches with a literal that closes. Read whole by the
- * shared rule, so `''` and a `\S\'` PAGE operand do not cut the name short
- * (#7589).
+ * The decoded text of the literal opening where `prefix` (global, ending at the
+ * opening `'`) first matches with a literal that closes, read whole so `''` and
+ * a `\S\'` PAGE operand do not cut it short (#7589). Decoded as the parser decodes
+ * a name, so it equals the name the overlay carries (#11462).
  */
-function rawThirdLiteral(entityText: string, prefix: RegExp): string | null {
+function decodedThirdLiteral(entityText: string, prefix: RegExp): string | null {
   for (const match of entityText.matchAll(prefix)) {
     const open = match.index + match[0].length - 1;
     const end = stepStringLiteralEnd(entityText, open);
-    if (end !== -1) return entityText.slice(open + 1, end - 1);
+    if (end !== -1) return decodeIfcString(entityText.slice(open + 1, end - 1).replace(/''/g, "'"));
   }
   return null;
 }
 
-/**
- * Get the name of an element quantity set by parsing the entity
- */
+/** Get the DECODED name of an element quantity set (see {@link getPropertySetName}). */
 export function getElementQuantityName(ctx: PropertySetContext, entityId: number): string | null {
   const entityText = entityLineText(ctx, entityId);
   if (entityText === null) return null;
 
   // Parse: IFCELEMENTQUANTITY('guid',$,'Name',...) - Name is 3rd argument
-  return rawThirdLiteral(entityText, /IFCELEMENTQUANTITY\s*\([^,]*,[^,]*,'/gi);
+  return decodedThirdLiteral(entityText, /IFCELEMENTQUANTITY\s*\([^,]*,[^,]*,'/gi);
 }
 
 /**

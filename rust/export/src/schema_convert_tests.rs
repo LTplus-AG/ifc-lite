@@ -247,13 +247,21 @@ fn ifcwindowtype_maps_to_ifcwindowstyle_preserving_globalid_and_name() {
 }
 
 #[test]
-fn ifcdoorstyle_upgrade_leg_is_a_pure_pass_through() {
-    // IfcDoorStyle is valid (deprecated) in IFC4 too, so IFC2X3 -> IFC4 was
-    // never the buggy direction: no rename entry, no attribute remap.
-    let line = "#1=IFCDOORSTYLE('1mW6gHB0W7lxCAqIKVEzia',#2,'Door Style',$,$,$,$,$,\
-                .SINGLE_SWING_LEFT.,$,.T.,$);";
-    let out = convert_step_line(line, "IFC2X3", "IFC4", 1, &mut none(), None).unwrap();
-    assert_eq!(out, line, "upgrade leg is untouched: {out}");
+fn ifc2x3_door_style_upgrades_to_an_assignable_type_11454() {
+    let record = "#1=IFCDOORSTYLE('1mW6gHB0W7lxCAqIKVEzia',#2,'Door Style',$,$,(#3),(#4),'tag',.SINGLE_SWING_LEFT.,.WOOD.,.T.,.F.);";
+    let expected = "#1=IFCDOORTYPE('1mW6gHB0W7lxCAqIKVEzia',#2,'Door Style',$,$,(#3),(#4),'tag',$,.NOTDEFINED.,.SINGLE_SWING_LEFT.,.T.,$);";
+    for target in ["IFC4", "IFC4X3"] {
+        assert_eq!(convert_step_line(record, "IFC2X3", target, 1, &mut none(), None).unwrap(), expected, "{target}");
+    }
+}
+
+#[test]
+fn ifc2x3_window_style_upgrades_to_an_assignable_type_11454() {
+    let record = "#5=IFCWINDOWSTYLE('3Vnz8SzMO$_GklsTTZo$zj',#2,'Window Style',$,$,(#3),(#4),'tag',.STEEL.,.SINGLE_PANEL.,.F.,.T.);";
+    let expected = "#5=IFCWINDOWTYPE('3Vnz8SzMO$_GklsTTZo$zj',#2,'Window Style',$,$,(#3),(#4),'tag',$,.NOTDEFINED.,.SINGLE_PANEL.,.F.,$);";
+    for target in ["IFC4", "IFC4X3"] {
+        assert_eq!(convert_step_line(record, "IFC2X3", target, 5, &mut none(), None).unwrap(), expected, "{target}");
+    }
 }
 
 #[test]

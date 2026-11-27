@@ -81,12 +81,16 @@ describe('convertStepLine maps IfcDoorType/IfcWindowType to their IFC2X3 IfcDoor
     expect(out).toContain("'Window Type'");
   });
 
-  it('round-trips IFC2X3 → IFC4 → IFC2X3 without renaming IfcDoorStyle (control: already-lossless direction unchanged)', () => {
-    const line = "#1=IFCDOORSTYLE('1mW6gHB0W7lxCAqIKVEzia',#2,'Door Style',$,$,$,$,$,.SINGLE_SWING_LEFT.,$,.T.,$);";
-    // IfcDoorStyle is valid (deprecated) in IFC4 too, so the upgrade leg is a
-    // pure pass-through -- this direction was never the bug.
-    const upgraded = convertStepLine(line, 'IFC2X3', 'IFC4');
-    expect(upgraded).toBe(line);
+  it.each(['IFC4', 'IFC4X3'] as const)('upgrades IFC2X3 door and window style assignments for %s (#11454)', (target) => {
+    const door = "#1=IFCDOORSTYLE('1mW6gHB0W7lxCAqIKVEzia',#2,'Door Style',$,$,(#3),(#4),'tag',.SINGLE_SWING_LEFT.,.WOOD.,.T.,.F.);";
+    const window = "#5=IFCWINDOWSTYLE('3Vnz8SzMO$_GklsTTZo$zj',#2,'Window Style',$,$,(#3),(#4),'tag',.STEEL.,.SINGLE_PANEL.,.F.,.T.);";
+
+    expect(convertStepLine(door, 'IFC2X3', target)).toBe(
+      "#1=IFCDOORTYPE('1mW6gHB0W7lxCAqIKVEzia',#2,'Door Style',$,$,(#3),(#4),'tag',$,.NOTDEFINED.,.SINGLE_SWING_LEFT.,.T.,$);",
+    );
+    expect(convertStepLine(window, 'IFC2X3', target)).toBe(
+      "#5=IFCWINDOWTYPE('3Vnz8SzMO$_GklsTTZo$zj',#2,'Window Style',$,$,(#3),(#4),'tag',$,.NOTDEFINED.,.SINGLE_PANEL.,.F.,$);",
+    );
   });
 
   it('a different IFC4→IFC2X3 rename with mismatched attribute names (IFCBRIDGE→IFCBUILDING) is left untouched (control: the by-name remap is NOT applied outside the allowlist)', () => {

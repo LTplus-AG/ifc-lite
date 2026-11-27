@@ -145,7 +145,7 @@ function forwardedTool(bridge: TabBridge, d: BridgeToolDescriptor, tools: readon
 }
 
 /** Stand-in for a `tab_` name while no tab is paired: no schema of its own, fails at once. */
-function notConnectedTool(bridge: TabBridge, name: string): Tool {
+function notConnectedTool(name: string): Tool {
   return {
     name,
     description: '',
@@ -308,11 +308,11 @@ export class BridgeToolRegistry extends ToolRegistry {
       const tab = this.bridge.tab();
       if (tab?.a2uiSurface || this.bridge.uiEvents.hasNews) return this.events;
       // A paired tab without surfaces has no such tool; with no tab, fail at once.
-      return tab ? null : notConnectedTool(this.bridge, name);
+      return tab ? null : notConnectedTool(name);
     }
     if (!name.startsWith(TAB_TOOL_PREFIX)) return super.get(name);
     const tab = this.bridge.tab();
-    if (!tab) return notConnectedTool(this.bridge, name);
+    if (!tab) return notConnectedTool(name);
     const d = servable(tab.tools).find((t) => mcpName(t.name) === name);
     // A hidden (mutating, read-only) tool still resolves, so the call gets a
     // READ_ONLY refusal from `TabBridge.call` rather than "unknown tool".

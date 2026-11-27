@@ -76,6 +76,6 @@ export function carryWallJoinsInStore(target: EditTarget, plan: TransformPlan, t
     if (checked) refresh.push(root.expressId);
   }
   if (refresh.length === 0) return [];
-  const outcome = reshapeWallsInStore(target.editor, dataStore, resolveWallJoinAnchor(dataStore, view), [...edits.values()], { refresh, extendJoinedAxes: extended });
+  const outcome = reshapeWallsInStore(target.editor, dataStore, resolveWallJoinAnchor(dataStore, view, target.guidRandom), [...edits.values()], { refresh, extendJoinedAxes: extended });
   return outcome.walls.filter((id) => !rigid.has(id));
 };

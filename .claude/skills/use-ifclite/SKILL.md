@@ -117,7 +117,7 @@ mutation) plus pre-baked prompts.
 ```bash
 ifc-lite mcp ./model.ifc                 # stdio transport (default)
 ifc-lite mcp ./model.ifc --read-only     # hide all mutation tools
-ifc-lite mcp ./arch.ifc ./struct.ifc --federate
+ifc-lite mcp ./arch.ifc ./struct.ifc     # several files, one session
 ifc-lite mcp --transport http --port 8765 --token <secret>
 # (equivalent standalone binary: ifc-lite-mcp …)
 ```

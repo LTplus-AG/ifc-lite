@@ -113,6 +113,7 @@ export async function resolveSafePath(
       throw new ToolExecutionError({
         code: ToolErrorCode.PERMISSION_DENIED,
         message: `Permission denied while validating file path '${raw}'.`,
+        details: { reason: 'permission', errno: code },
       });
     }
     throw error;
@@ -198,7 +199,7 @@ function ensureWithinRoots(absolute: string, roots: string[]): void {
     throw new ToolExecutionError({
       code: ToolErrorCode.PERMISSION_DENIED,
       message: `Path '${absolute}' is outside allowed roots`,
-      details: { roots },
+      details: { roots, reason: 'outside' },
     });
   }
 }
@@ -213,6 +214,7 @@ function rejectIfSensitiveHome(absolute: string): void {
     throw new ToolExecutionError({
       code: ToolErrorCode.PERMISSION_DENIED,
       message: `Refusing to access '${absolute}': sensitive home entry '${first}'`,
+      details: { reason: 'protected' },
     });
   }
 }
@@ -227,6 +229,7 @@ async function canonicalise(p: string, mode: PathMode): Promise<string> {
     throw new ToolExecutionError({
       code: ToolErrorCode.INVALID_INPUT,
       message: `Path '${p}' does not exist`,
+      details: { reason: 'missing' },
     });
   }
   // Write target: walk up until we find an existing ancestor, realpath it,

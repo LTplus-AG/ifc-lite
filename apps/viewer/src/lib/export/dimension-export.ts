@@ -22,6 +22,7 @@ import type { jsPDF } from 'jspdf';
 import { isDxfDimensionExportable } from '@ifc-lite/drawing-2d';
 import type { Dimension2D } from '@/store/slices/drawing2DDimensions';
 import { pdfRotatedTextStart } from './pdf-text-placement';
+import { toStandardFontText } from '@/lib/document/standard-font-text';
 import {
   dimensionGraphics,
   type DimensionGraphics,
@@ -145,10 +146,11 @@ export function drawDimensionsPdf(doc: jsPDF, graphics: readonly DimensionGraphi
     // jsPDF applies `align`/`baseline` along the page axes, not along a
     // rotated baseline, so place the start of the baseline centred along it
     // and half a cap height down across it.
-    const start = pdfRotatedTextStart(t, (t.angleDeg * Math.PI) / 180, doc.getTextWidth(g.text.value), t.size,
+    const label = toStandardFontText(g.text.value).text;
+    const start = pdfRotatedTextStart(t, (t.angleDeg * Math.PI) / 180, doc.getTextWidth(label), t.size,
       'center', 'middle');
     // jsPDF angles turn counter-clockwise as seen on the page.
-    doc.text(g.text.value, start.x, start.y, { angle: -t.angleDeg });
+    doc.text(label, start.x, start.y, { angle: -t.angleDeg });
   }
   doc.restoreGraphicsState();
 }

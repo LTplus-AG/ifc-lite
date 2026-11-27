@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Preserve the original boundary of a rectangular wall item that an aligned
 //! recess only touches. The intersection is decided from IFC dimensions.
-use super::{world_host_bounds, CutterKind, RectParam, VoidContext};
-use crate::mesh_check::EdgeLedger;
-use crate::program::openings::execute::Execution;
+use super::RectParam;
 use crate::{Mesh, Point3, Vector3};
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
@@ -16,7 +14,7 @@ pub(crate) struct AlignedOpening {
 
 pub(crate) struct AlignedBodies {
     pub(crate) hosts: Arc<[RectParam]>,
-    affected: [bool; 2],
+    pub(super) affected: [bool; 2],
 }
 
 impl AlignedBodies {
@@ -61,7 +59,7 @@ impl RectParam {
 
     /// Recognize the eight corners of the original extrusion in an emitted
     /// closed shell. A clipped, sliced or differently framed mesh defers.
-    fn matches_shell(&self, mesh: &Mesh, indices: &[u32]) -> bool {
+    pub(super) fn matches_shell(&self, mesh: &Mesh, indices: &[u32]) -> bool {
         let mut corners = 0u8;
         let rt = self.r.transpose();
         let center = self.center - Vector3::from(mesh.origin);
@@ -82,75 +80,6 @@ impl RectParam {
             corners |= 1 << corner;
         }
         corners == u8::MAX
-    }
-}
-
-impl Execution {
-    pub(super) fn cut_intersected_bodies(
-        &self,
-        mesh: &Mesh,
-        ctx: &VoidContext,
-        id: u32,
-    ) -> Option<Mesh> {
-        let [CutterKind::DiagonalRectangular(_, frame)] = ctx.openings.as_slice() else {
-            return None;
-        };
-        let bodies = frame.aligned_bodies.as_ref()?;
-        // An unsubdivided cuboid has twelve triangles. Only the original
-        // one-item or two-item stream can qualify for this partition.
-        if !matches!(mesh.indices.len(), 36 | 72) {
-            return None;
-        }
-        let ranges = EdgeLedger::closed_shell_ranges(mesh)?;
-        if ranges.len() == 1 && bodies.affected == [false; 2] {
-            // A single styled item with no sibling being cut already uses its
-            // ordinary solitary-body path. There is no assembly to partition.
-            return None;
-        }
-        let mut seen = [false; 2];
-        let mut selected = Vec::with_capacity(ranges.len());
-        for range in &ranges {
-            let matches =
-                [0, 1].map(|i| bodies.hosts[i].matches_shell(mesh, &mesh.indices[range.clone()]));
-            let owner = match matches {
-                [true, false] => 0,
-                [false, true] => 1,
-                _ => return None,
-            };
-            if std::mem::replace(&mut seen[owner], true) {
-                return None;
-            }
-            selected.push(bodies.affected[owner]);
-        }
-        let before = mesh.triangle_count();
-        let result = if !selected.iter().any(|&hit| hit) {
-            mesh.clone()
-        } else {
-            // A manifold-gated cut can unite touching solids and remove both
-            // contact faces. A positive intersection must go through that gate.
-            if cfg!(feature = "csg_manifold_gate") || selected.iter().all(|&hit| hit) {
-                return None;
-            }
-            let mut result = Mesh::new();
-            for (range, hit) in ranges.into_iter().zip(selected) {
-                let source = shell(mesh, &mesh.indices[range]);
-                let part = if hit {
-                    self.cut_whole_mesh(source, ctx, id)
-                } else {
-                    source
-                };
-                result.merge(&part);
-            }
-            result
-        };
-        self.record_host_cut_effect(
-            id,
-            before,
-            result.triangle_count(),
-            ctx.rect_opening_count(),
-            world_host_bounds(mesh),
-        );
-        Some(result)
     }
 }
 

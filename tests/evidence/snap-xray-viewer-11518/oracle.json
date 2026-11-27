@@ -1,6 +1,0 @@
-{
-  "issue": 7955,
-  "why": "Keep the corner-assist exports loadable while making X-ray always on, ignoring the picking context, ghosting regardless of X-ray, drawing stale markers and losing the draw order of the active marker: the X-ray option, appearance and marker-list tests must go red.",
-  "key": "apps/viewer/src/lib/snap/corner-assist.ts",
-  "mutation": "tests/evidence/snap-xray-viewer-11518/behaviour.oracle.patch"
-}

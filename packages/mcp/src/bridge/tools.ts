@@ -124,16 +124,24 @@ function renamer(tools: readonly BridgeToolDescriptor[]): (text: string) => stri
   return rename;
 }
 
-/** A copy of a tab tool's schema with its tool names renamed in every `description` string. */
 /** Schema keywords whose value is literal argument data, never schema text: left as the tab wrote them. */
 const LITERAL_KEYWORDS: ReadonlySet<string> = new Set(['const', 'enum', 'default', 'examples']);
+/** Keywords whose value maps names (property names, definitions) to subschemas. */
+const NAME_MAPS: ReadonlySet<string> = new Set(['properties', 'patternProperties', '$defs', 'definitions', 'dependentSchemas']);
 
-function renameInSchema(value: unknown, rename: (text: string) => string): unknown {
+/**
+ * A copy of a tab tool's schema with its tool names renamed in every schema
+ * `description`. Inside a name map the keys are names (a parameter may be
+ * called `default`), so only their values are walked as schemas.
+ */
+function renameInSchema(value: unknown, rename: (text: string) => string, namesMap = false): unknown {
   if (Array.isArray(value)) return value.map((item) => renameInSchema(item, rename));
   if (value === null || typeof value !== 'object') return value;
   return Object.fromEntries(Object.entries(value).map(([key, item]) => {
+    if (namesMap) return [key, renameInSchema(item, rename)];
     if (LITERAL_KEYWORDS.has(key)) return [key, item];
-    return [key, key === 'description' && typeof item === 'string' ? rename(item) : renameInSchema(item, rename)];
+    if (key === 'description' && typeof item === 'string') return [key, rename(item)];
+    return [key, renameInSchema(item, rename, NAME_MAPS.has(key))];
   }));
 }
 

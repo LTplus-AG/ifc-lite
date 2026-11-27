@@ -11,24 +11,18 @@ import { entityClip } from './section-exclusions.js';
 import { Camera } from './camera.js';
 import { isEntityVisible } from './entity-visibility.js';
 import { Raycaster, type Intersection, type Ray } from './raycaster.js';
-import { SnapDetector, SnapType, type SnapTarget, type SnapOptions, type EdgeLockInput, type MagneticSnapResult } from './snap-detector.js';
+import { SnapDetector, type SnapTarget, type SnapOptions, type EdgeLockInput, type MagneticSnapResult } from './snap-detector.js';
 import { RaycastFlatIndex, type RaycastScene } from './raycast-flat-index.js';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { PickClipState, PickOptions } from './types.js';
 import { pointClipped } from './scene-raycaster.js';
 import { ScreenCornerIndex } from './snap-screen-corners.js';
+import { withScreenCorner } from './raycast-screen-corner.js';
 import type { SourceSnapCurve } from './source-curve-snap.js';
 import { querySourceCurves } from './raycast-source-curve-query.js';
 import type { CpuGeometryVisitor } from './cpu-geometry-visit.js';
-import {
-    queryPointClouds,
-    releasedEdgeLock,
-    pointCloudSnapEnabled,
-    pointCloudWinsOverMeshSnap,
-    pointCloudWinsOverSourceSnap,
-    type PointCloudRayProvider,
-    type PointCloudSnapCamera,
-} from './raycast-point-cloud-query.js';
+import { releasedEdgeLock, type PointCloudRayProvider } from './raycast-point-cloud-query.js';
+import { withPointCloudSnap } from './raycast-point-cloud-snap.js';
 export type { PointCloudRaySource, PointCloudRayProvider } from './raycast-point-cloud-query.js';
 /** Below this many flat pieces a BVH costs more than testing them all. */
 const BVH_THRESHOLD = 100;
@@ -277,58 +271,18 @@ export class RaycastEngine {
                 );
             }
 
-            magneticResult = this.withScreenCorner(magneticResult, x, y, ray, viewport, options, clip, intersection?.distance ?? null);
+            magneticResult = withScreenCorner(this.screenCorners,
+                { camera: this.camera, viewKey: () => this.readbackViewKey(), pieces: this.flatIndex.allPieces(), snapDetector: this.snapDetector },
+                magneticResult, x, y, ray, viewport, options, clip, intersection?.distance ?? null);
 
             const source = querySourceCurves(this.sourceSnapCurves, magneticResult.snapTarget,
                 this.camera, ray, x, y, viewport, options, clip);
             if (source) magneticResult = { snapTarget: source, edgeLock: releasedEdgeLock() };
 
-            // Point-cloud snapping (#1860): search up to whatever the mesh
-            // path already found (or the whole scene, if there was no mesh
-            // hit at all) — a real mesh surface in front of a scan point
-            // should still win the pick. Gated on the caller's snap config
-            // so the measure tool's snap toggle disables scan-point
-            // magnetism exactly like mesh vertex/edge magnetism.
-            const snapCamera: PointCloudSnapCamera = {
-                fov: cameraFov,
-                canvasHeightPx: viewport.height,
+            magneticResult = withPointCloudSnap(this.pointCloudProvider, magneticResult, {
+                ray, intersection, options, clip, cameraFov, viewportHeight: viewport.height,
                 orthoHalfHeight: this.camera.getProjectionMode() === 'orthographic' ? this.camera.getOrthoSize() : null,
-            };
-            const maxPointDistance = intersection ? intersection.distance : Infinity;
-            const pointHit = pointCloudSnapEnabled(options?.snapOptions)
-                ? queryPointClouds(this.pointCloudProvider, ray, snapCamera, maxPointDistance, options, clip)
-                : null;
-            if (pointHit) {
-                // A point-cloud hit only OVERRIDES an existing mesh snap
-                // target (vertex/edge/face/...) when it's meaningfully in
-                // front of the mesh surface, not just scan noise a few mm
-                // nearer along the ray — otherwise a scan overlapping its
-                // as-designed model would non-deterministically steal
-                // intended vertex/corner snaps on most measurements over
-                // scanned-over geometry (#1860 review finding 2). When the
-                // mesh path found no snap target at all (bare face hit, or
-                // no mesh hit), the point snap wins as before.
-                const sourceTarget = magneticResult.snapTarget?.metadata?.sourceCurve ? magneticResult.snapTarget : null;
-                const wins = sourceTarget
-                    ? pointCloudWinsOverSourceSnap(pointHit, sourceTarget, ray, snapCamera)
-                    : pointCloudWinsOverMeshSnap({
-                        pointHit,
-                        meshSnapTarget: magneticResult.snapTarget,
-                        meshIntersectionDistance: intersection ? intersection.distance : null,
-                        camera: snapCamera,
-                    });
-                if (wins) {
-                    magneticResult = {
-                        snapTarget: {
-                            type: SnapType.POINT_CLOUD,
-                            position: pointHit.position,
-                            expressId: pointHit.expressId,
-                            confidence: 1,
-                        },
-                        edgeLock: releasedEdgeLock(),
-                    };
-                }
-            }
+            });
 
             return {
                 intersection,
@@ -342,42 +296,6 @@ export class RaycastEngine {
                 edgeLock: releasedEdgeLock(),
             };
         }
-    }
-
-    /**
-     * CAD-style corner snapping (#11504). With `snapOptions.screenCornerSnap` set and vertex or edge snapping on,
-     * the nearest feature corner of the eligible, visible, unclipped pieces within the corner radius of the cursor
-     * replaces the ray-based result, whatever the ray hit; failing that the nearest edge within the edge radius
-     * replaces a face-only or empty result. An existing vertex/edge snap otherwise stands.
-     */
-    private withScreenCorner(
-        current: MagneticSnapResult, x: number, y: number, ray: Ray, viewport: { width: number; height: number },
-        options: (PickOptions & { snapOptions?: Partial<SnapOptions> }) | undefined, clip?: PickClipState | null,
-        hitDistance: number | null = null,
-    ): MagneticSnapResult {
-        const snap = options?.snapOptions;
-        const config = snap?.screenCornerSnap;
-        if (!config || (snap.snapToVertices === false && snap.snapToEdges === false)) return current;
-        const hit = this.screenCorners.query({
-            x, y, ray, camera: this.camera, viewKey: this.readbackViewKey(), liveViewKey: () => this.readbackViewKey(), viewport,
-            pieces: this.flatIndex.allPieces(), geometryFor: mesh => this.snapDetector.getGeometryCache(mesh),
-            startGeometry: mesh => this.snapDetector.startGeometryCache(mesh),
-            options: config, hiddenIds: options?.hiddenIds, isolatedIds: options?.isolatedIds, clip, hitDistance,
-            // Only the enabled kinds are searched: a disabled kind must not win the grid and then be dropped below.
-            kinds: { corners: snap.snapToVertices !== false, edges: snap.snapToEdges !== false },
-        });
-        if (!hit) return current;
-        const kind = current.snapTarget?.type;
-        if (hit.kind === 'edge' && (kind === SnapType.VERTEX || kind === SnapType.EDGE)) return current;
-        if (hit.kind === 'corner' ? snap.snapToVertices === false : snap.snapToEdges === false) return current;
-        return {
-            snapTarget: {
-                type: hit.kind === 'corner' ? SnapType.VERTEX : SnapType.EDGE,
-                position: hit.position, expressId: hit.expressId, confidence: 1,
-                metadata: hit.edge ? { vertices: [hit.edge.v0, hit.edge.v1] } : undefined,
-            },
-            edgeLock: releasedEdgeLock(),
-        };
     }
 
     /**

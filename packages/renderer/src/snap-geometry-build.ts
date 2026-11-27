@@ -35,6 +35,30 @@ export function finishedBuild<T>(value: T): StepBuild<T> {
   return { done: true, step: () => true, result: () => value };
 }
 
+/**
+ * `cache`'s entry for `key` as a `StepBuild`: a finished build when already cached,
+ * else `build` stepwise. The entry is stored when the build's `result` is read, unless
+ * something built it meanwhile, in which case that one is kept so every reader sees one object.
+ */
+export function cachedStepBuild(
+  cache: Map<string, MeshGeometryCache>, key: string, build: () => StepBuild<MeshGeometryCache>,
+): StepBuild<MeshGeometryCache> {
+  const cached = cache.get(key);
+  if (cached) return finishedBuild(cached);
+  const inner = build();
+  return {
+    get done() { return inner.done; },
+    step: () => inner.step(),
+    result: () => {
+      const existing = cache.get(key);
+      if (existing) return existing;
+      const made = inner.result();
+      cache.set(key, made);
+      return made;
+    },
+  };
+}
+
 type Phase = 'weld' | 'triangles' | 'classify' | 'merge' | 'done';
 
 export class GeometryCacheBuild implements StepBuild<MeshGeometryCache> {

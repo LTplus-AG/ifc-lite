@@ -88,7 +88,7 @@ function wallWithSliver(expressId: number): MeshData {
 const STRIDE = 7;
 function collapses(...meshes: MeshData[]): boolean {
   const merged = mergeGeometry(meshes, [0, 0, 0]);
-  return latticeCollapsesGeometry(merged.vertexData, STRIDE, merged.indices);
+  return latticeCollapsesGeometry(merged.vertexData, STRIDE, merged.indices, meshes);
 }
 
 function fakeDevice(): GPUDevice {
@@ -105,6 +105,13 @@ function batch(meshes: MeshData[], quantized: BatchQuantization) {
 }
 
 describe('lattice collapse guard (#9068)', () => {
+  it('keeps the two faces of a 100 µm plate at distinct depths (#11579)', () => {
+    const plate = box(0, 0, 0, 0.6, 0.6, 0.0001);
+    assert.equal(batch([mesh(1, plate.p, plate.i), wallWithSliver(2)], 'auto').quantized, undefined);
+    const flat = box(0, 0, 0, 0.6, 0.6, 0);
+    assert.ok(batch([mesh(1, flat.p, flat.i)], 'auto').quantized);
+  });
+
   it('flags the Ø2 mm rods of the reported footing', () => {
     assert.strictEqual(collapses(footing(1)), true);
   });

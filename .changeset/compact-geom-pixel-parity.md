@@ -9,6 +9,7 @@
 `?compactGeom` (off by default) comes much closer to what the f32 load draws, and keeps its memory win. It still differs where buckets draw LOD1 (compact pages have none yet) and where the f32 path keeps a whole batch exact (#9068):
 
 - Quantized bucket batches now place their frame origin on the 2^-9 m lattice, so a vertex lands on the same 2^-10 m node whether it is drawn from a bucket or from a compact page. Before, the bucket lattice was offset by an arbitrary sub-step, which moved edges and flipped near-coplanar faces between the two paths.
+- A thin solid whose entire thickness would round to one lattice node stays f32 in ordinary buckets. Compact pages try a finer lattice for the same solid.
 - Compact meshes that arrive while the renderer is still probing its quantized pipelines wait, still compact, instead of being decoded to the bucket path for good. Paging no longer depends on how fast that probe finishes.
 - The spatial index and the symbolic-annotation fill lookup read a compact mesh's row (its box, its counts) instead of its arrays, which decoded every compact mesh of a load and kept the decode.
   The new `compactMeshBounds` export from `@ifc-lite/geometry/compact` reads the bounds without materializing the mesh.

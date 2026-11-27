@@ -256,6 +256,10 @@ fn cell_window(bounds: &[f64; 6], cell_q: i64, step: f64) -> Result<([i32; 3], [
         // Absolute node first, then the integer window, as `weld_mesh` places each vertex.
         let lo = round_half_up(bounds[axis] / step) as i64 - window[axis];
         let hi = round_half_up(bounds[axis + 3] / step) as i64 - window[axis];
+        // A thin solid can lose its thickness while retaining nearly all its surface area (#11579).
+        if lo == hi && bounds[axis] < bounds[axis + 3] {
+            return Err(Refusal::Collapse);
+        }
         if lo < 0 || hi > Q_MAX {
             return Err(Refusal::Extent);
         }

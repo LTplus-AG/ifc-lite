@@ -127,6 +127,19 @@ fn a_thin_rod_moves_to_a_finer_lattice() {
 }
 
 #[test]
+fn a_plate_retains_its_thickness_when_its_sides_have_negligible_area() {
+    let mut plate = flat_box(1, [0.0; 3], 0.6);
+    for p in plate.positions.chunks_exact_mut(3) {
+        if p[2] > 0.0 { p[2] = 0.0001; }
+    }
+    let mut collection = MeshCollection::new();
+    collection.add(plate);
+    let batch = collection.encode_compact(32.0);
+    assert_eq!(batch.mesh_count(), 1);
+    assert!(batch.table[5] > BASE_LEVEL);
+}
+
+#[test]
 fn a_wide_slab_moves_to_a_coarser_lattice() {
     let mut c = MeshCollection::new();
     c.add(flat_box(9, [0.0, 0.0, 0.0], 80.0));

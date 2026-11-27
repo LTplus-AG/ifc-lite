@@ -175,6 +175,26 @@ export function quantizeInterleaved(
 /** Share of one entity's surface that may collapse on the lattice before its batch stays f32 (#9068). */
 export const MAX_COLLAPSED_AREA_FRACTION = 0.01;
 
+/** A thin solid can lose an entire dimension while losing very little triangle area.
+ * Check each source piece against the nodes used for upload.
+ * Once two distinct nodes occur on an axis, that axis cannot have collapsed. */
+function latticeFlattensPiece(data: Float32Array, stride: number, nodes: Int32Array, start: number, end: number): boolean {
+  for (let axis = 0; axis < 3; axis++) {
+    const first = data[start * stride + axis];
+    const node = nodes[start * 3 + axis];
+    let hasExtent = false;
+    for (let v = start + 1; v < end; v++) {
+      if (nodes[v * 3 + axis] !== node) {
+        hasExtent = false;
+        break;
+      }
+      if (data[v * stride + axis] !== first) hasExtent = true;
+    }
+    if (hasExtent) return true;
+  }
+  return false;
+}
+
 /**
  * True when snapping a batch onto the lattice would visibly destroy shape:
  * some entity loses more than `MAX_COLLAPSED_AREA_FRACTION` of its triangle
@@ -189,12 +209,19 @@ export function latticeCollapsesGeometry(
   vertexData: Float32Array,
   strideFloats: number,
   indices: Uint32Array,
+  pieces: readonly { positions: Float32Array }[],
 ): boolean {
   const vertexCount = (vertexData.length / strideFloats) | 0;
   const ids = new Uint32Array(vertexData.buffer, vertexData.byteOffset, vertexData.length);
   const nodes = new Int32Array(vertexCount * 3);
   for (let v = 0; v < vertexCount; v++) {
     for (let axis = 0; axis < 3; axis++) nodes[v * 3 + axis] = Math.round(vertexData[v * strideFloats + axis] / QUANT_STEP);
+  }
+  let start = 0;
+  for (const piece of pieces) {
+    const end = start + piece.positions.length / 3;
+    if (end > start && latticeFlattensPiece(vertexData, strideFloats, nodes, start, end)) return true;
+    start = end;
   }
   // Merged batches keep each entity's triangles contiguous: accumulate a run,
   // judge it when the entity changes (an entity split across runs is summed).

@@ -450,6 +450,13 @@ describe('ifc-lite-mcp install: dry run and usage errors', () => {
     );
   });
 
+  it('installs a model alongside the forwarded --bridge flag (#11660)', () => {
+    const io = fakeIo();
+    expect(install(['--client', 'cursor', 'model.ifc', '--', '--bridge'], io)).toBe(0);
+    const config = JSON.parse(io.files.get('/Users/u/.cursor/mcp.json') ?? 'null');
+    expect(config.mcpServers['ifc-lite'].args).toEqual(['-y', PKG, '/work/proj/model.ifc', '--bridge']);
+  });
+
   it('a bridge viewer URL the bridge would refuse is refused at install', () => {
     const io = fakeIo();
     expect(install(['--client', 'cursor', '--', '--bridge', '--bridge-viewer-url', 'http://viewer.example'], io)).toBe(1);
@@ -471,7 +478,7 @@ describe('ifc-lite-mcp install: dry run and usage errors', () => {
     [['--client', 'cursor', '--', '--transport', 'http'], 'drop --transport'],
     [['--client', 'cursor', '--', '--transport'], '--transport needs a value'],
     [['--client', 'cursor', '--', '--version'], 'print and exit'],
-    [['--client', 'cursor', 'model.ifc', '--', '--bridge'], 'loads no files'],
+    [['--client', 'cursor', 'model.ifc', '--bridge'], 'put it after --'],
     [['--client', 'cursor', '-v'], 'not an install option'],
     [['--client', 'cursor', '--', '--readonly'], 'no --readonly flag'],
     [['--client', 'cursor', '--', '--bridge', '--bridge-port', 'abc'], '--bridge-port must be an integer'],

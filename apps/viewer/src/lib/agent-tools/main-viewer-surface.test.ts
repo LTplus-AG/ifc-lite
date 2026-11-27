@@ -56,6 +56,27 @@ async function seedMainViewer(bytes: Uint8Array) {
 }
 
 describe('main viewer tool allowlist (#9523)', () => {
+  it('enforces the advertised oneOf and pattern before dispatch (#11550)', async (t) => {
+    const host = await seedMainViewer(new Uint8Array(await readFile(HELLO_WALL)));
+    const tool = mainViewerTool('viewer_get_selection');
+    assert.ok(tool);
+    const handler = t.mock.method(tool, 'run');
+    const properties = VIEWER_COMMAND_SPECS.viewer_get_selection.inputSchema.properties;
+    Object.defineProperty(properties, 'id', { configurable: true, enumerable: true, value: {
+      oneOf: [{ type: 'string', pattern: '^A' }, { type: 'string', pattern: '^B' }],
+    } });
+    try {
+      for (const id of [17, 'C']) {
+        assert.equal((await dispatchMainViewerTool(host, 'viewer_get_selection', { id })).errorCode, 'INVALID_INPUT');
+      }
+      assert.equal(handler.mock.callCount(), 0);
+      await dispatchMainViewerTool(host, 'viewer_get_selection', { id: 'A' });
+      assert.equal(handler.mock.callCount(), 1);
+    } finally {
+      Reflect.deleteProperty(properties, 'id');
+    }
+  });
+
   it('admits only read-scope catalog tools, each with a shared implementation', () => {
     const scopes = new Map(CATALOG.tools.map((tool) => [tool.name, tool.scope]));
     for (const name of MAIN_VIEWER_TOOL_ALLOWLIST) {

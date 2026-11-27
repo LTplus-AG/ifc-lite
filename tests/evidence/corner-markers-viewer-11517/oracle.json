@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "why": "Keep the corner-assist exports loadable while leaving Reposition picks out of the marker overlay, dropping the markers opt-in, drawing stale markers and losing the draw order of the active marker: the marker pick and marker-list tests must go red.",
+  "key": "apps/viewer/src/lib/snap/corner-assist.ts",
+  "mutation": "tests/evidence/corner-markers-viewer-11517/behaviour.oracle.patch",
+  "test": "apps/viewer/src/lib/snap/corner-assist.test.ts"
+}

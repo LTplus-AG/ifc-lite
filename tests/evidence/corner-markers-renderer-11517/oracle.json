@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "why": "Disabling the selected vertex match removes the active marker from a successful corner pick.",
+  "key": "packages/renderer/src/screen-corner-markers.ts",
+  "mutation": "tests/evidence/corner-markers-renderer-11517/behaviour.oracle.patch",
+  "test": "packages/renderer/src/snap-corner-markers.test.ts"
+}

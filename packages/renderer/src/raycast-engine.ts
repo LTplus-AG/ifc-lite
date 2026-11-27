@@ -16,6 +16,7 @@ import { RaycastFlatIndex, type RaycastScene } from './raycast-flat-index.js';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { PickClipState, PickOptions } from './types.js';
 import { pointClipped } from './scene-raycaster.js';
+import { CornerMarkerChannel } from './screen-corner-markers.js';
 import { ScreenCornerIndex } from './snap-screen-corners.js';
 import { withScreenCorner } from './raycast-screen-corner.js';
 import type { SourceSnapCurve } from './source-curve-snap.js';
@@ -34,6 +35,7 @@ export class RaycastEngine {
     private raycaster: Raycaster;
     private snapDetector: SnapDetector;
     private flatIndex: RaycastFlatIndex;
+    readonly cornerMarkers = new CornerMarkerChannel();
     private screenCorners = new ScreenCornerIndex();
     private pointCloudProvider: PointCloudRayProvider | null = null;
     private sourceSnapCurves: readonly SourceSnapCurve[] = [];
@@ -284,6 +286,8 @@ export class RaycastEngine {
                 orthoHalfHeight: this.camera.getProjectionMode() === 'orthographic' ? this.camera.getOrthoSize() : null,
             });
 
+            const markers = options?.snapOptions?.screenCornerSnap;
+            if (markers?.markers) this.cornerMarkers.publish(this.screenCorners, markers, x, y, this.readbackViewKey(), magneticResult.snapTarget);
             return {
                 intersection,
                 ...magneticResult,
@@ -304,6 +308,7 @@ export class RaycastEngine {
     invalidateBVHCache(): void {
         this.flatIndex.invalidate();
         this.screenCorners.clear();
+        this.cornerMarkers.set(null);
     }
 
     /** Diagnostic (#10264): CPU geometry the raycast index and its BVH still reference. */
@@ -321,6 +326,7 @@ export class RaycastEngine {
         this.flatIndex.dispose();
         this.snapDetector.clearCache();
         this.screenCorners.clear();
+        this.cornerMarkers.set(null);
         this.pointCloudProvider = null;
         this.sourceSnapCurves = [];
     }

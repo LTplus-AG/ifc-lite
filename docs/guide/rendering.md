@@ -401,6 +401,8 @@ Advanced "magnetic" edge snapping for precision measurement and interaction.
 | `face_center` | Snap to face centroids | Medium |
 | `point_cloud` | Snap to a point-cloud scan point | See below |
 
+For CAD-style corner markers, pass `screenCornerSnap: { markers: true }` in the magnetic pick's `snapOptions`. Read `renderer.cornerMarkers.get()` after the pick or subscribe with `renderer.cornerMarkers.subscribe(listener)`. The settled view supplies up to `markerLimit` corners (default 12) within `markerRadiusPx` CSS pixels (default 48). Draw each candidate at its `screen` coordinates and highlight `candidates[activeIndex]` when the index is nonnegative. Hide the markers when their `viewKey` differs from `renderer.readbackRaycastViewKey()`.
+
 Point-cloud snapping is produced by `raycastSceneMagnetic` (not
 `SnapDetector` itself) whenever point-cloud assets are loaded: the nearest
 scan point within a small screen-space tolerance of the cursor ray is

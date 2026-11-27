@@ -34,6 +34,7 @@ export function withScreenCorner(
     hitDistance: number | null = null,
 ): MagneticSnapResult {
     const snap = options?.snapOptions;
+    index.dropLive();
     const config = snap?.screenCornerSnap;
     if (!config || (snap.snapToVertices === false && snap.snapToEdges === false)) return current;
     const hit = index.query({

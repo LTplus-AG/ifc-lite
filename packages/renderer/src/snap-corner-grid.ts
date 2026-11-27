@@ -17,6 +17,7 @@ import { pointClipped } from './scene-raycaster.js';
 import { planesFor } from './snap-clip.js';
 import { clipSegmentInterval } from './clip-half-spaces.js';
 import type { PieceCandidates } from './snap-corner-candidates.js';
+import type { ScreenCornerCandidate } from './snap-screen-corners.js';
 import type { Camera } from './camera.js';
 
 /** The camera pieces a query needs; `Camera` satisfies it. */
@@ -174,6 +175,33 @@ export class CornerGrid {
   private edgeEnds(i: number): [Vec3, Vec3] {
     const w = this.clippedEnds.get(i) ?? this.cands[this.edgePiece[i]].edges.subarray(this.edgeOrd[i] * 6, this.edgeOrd[i] * 6 + 6);
     return [{ x: w[0], y: w[1], z: w[2] }, { x: w[3], y: w[4], z: w[5] }];
+  }
+
+  candidatesNear(x: number, y: number, radiusPx: number, limit: number, ray: Ray, maxDepth: number): ScreenCornerCandidate[] {
+    if (!Number.isFinite(radiusPx) || !(radiusPx > 0) || !(limit > 0)) return [];
+    const g = this;
+    const span = Math.ceil(radiusPx / g.cell);
+    const c0 = Math.floor(x / g.cell) + 1, r0 = Math.floor(y / g.cell) + 1;
+    const found: { i: number; d: number }[] = [];
+    for (let r = Math.max(0, r0 - span); r <= Math.min(g.rows - 1, r0 + span); r++) {
+      for (let c = Math.max(0, c0 - span); c <= Math.min(g.cols - 1, c0 + span); c++) {
+        for (const i of g.cornerCells.get(r * g.cols + c) ?? []) {
+          const d = Math.hypot(g.cx[i] - x, g.cy[i] - y);
+          if (d > radiusPx) continue;
+          const p = g.cornerAt(i);
+          if ((p.x - ray.origin.x) * ray.direction.x + (p.y - ray.origin.y) * ray.direction.y
+            + (p.z - ray.origin.z) * ray.direction.z > maxDepth) continue;
+          found.push({ i, d });
+        }
+      }
+    }
+    found.sort((a, b) => Math.abs(a.d - b.d) > 1e-9 ? a.d - b.d : this.cornerBefore(a.i, b.i, ray) ? -1 : 1);
+    return found.slice(0, limit).map(({ i, d }) => ({
+      screen: { x: g.cx[i], y: g.cy[i] },
+      position: g.cornerAt(i),
+      expressId: g.pieces[g.cornerPiece[i]].expressId,
+      distancePx: d,
+    }));
   }
 
   search(

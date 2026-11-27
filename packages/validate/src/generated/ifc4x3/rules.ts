@@ -777,7 +777,7 @@ function fn_IfcListToArray(m: r.Model, p_lis: r.Value, p_low: r.Value, p_u: r.Va
   if (r.isTrue(r.ne(v_n, r.add(r.sub(p_u, p_low), 1)))) {
     return undefined;
   } else {
-    v_res = r.assignArray(r.aggregate([[r.index(p_lis, 1), v_n]]), p_low);
+    v_res = r.assignArray(r.aggregate([[r.index(p_lis, 1), v_n]]), p_low, p_u);
     {
       const from_51 = r.int(2), to_52 = r.int(v_n), by_53 = 1;
       if (from_51 !== undefined && to_52 !== undefined && by_53) for (let i_i_50 = from_51; by_53 > 0 ? i_i_50 <= to_52 : i_i_50 >= to_52; i_i_50 += by_53) {
@@ -811,7 +811,7 @@ function fn_IfcMakeArrayOfArray(m: r.Model, p_lis: r.Value, p_low1: r.Value, p_u
   if (r.isTrue(r.ne(r.add(r.sub(p_u2, p_low2), 1), r.sizeof(r.index(p_lis, 1))))) {
     return undefined;
   }
-  v_res = r.assignArray(r.aggregate([[fn_IfcListToArray(m, r.index(p_lis, 1), p_low2, p_u2), r.add(r.sub(p_u1, p_low1), 1)]]), p_low1);
+  v_res = r.assignArray(r.aggregate([[fn_IfcListToArray(m, r.index(p_lis, 1), p_low2, p_u2), r.add(r.sub(p_u1, p_low1), 1)]]), p_low1, p_u1);
   {
     const from_59 = r.int(2), to_60 = r.int(r.hiindex(p_lis)), by_61 = 1;
     if (from_59 !== undefined && to_60 !== undefined && by_61) for (let i_i_58 = from_59; by_61 > 0 ? i_i_58 <= to_60 : i_i_58 >= to_60; i_i_58 += by_61) {
@@ -1213,7 +1213,7 @@ function fn_IfcShapeRepresentationTypes(m: r.Model, p_reptype: r.Value, p_items:
 
 function fn_IfcSurfaceWeightsPositive(m: r.Model, p_b: r.Value): r.Value {
   let v_result: r.Value = r.assign(true);
-  let v_weights: r.Value = r.assignArray(r.attr(p_b, "WEIGHTS"), 0);
+  let v_weights: r.Value = r.assignArray(r.attr(p_b, "WEIGHTS"), 0, r.attr(p_b, "UUPPER", "IFCBSPLINESURFACE"));
   {
     const from_123 = r.int(0), to_124 = r.int(r.attr(p_b, "UUPPER", "IFCBSPLINESURFACE")), by_125 = 1;
     if (from_123 !== undefined && to_124 !== undefined && by_125) for (let i_i_118 = from_123; by_125 > 0 ? i_i_118 <= to_124 : i_i_118 >= to_124; i_i_118 += by_125) {

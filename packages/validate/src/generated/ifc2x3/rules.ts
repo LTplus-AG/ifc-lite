@@ -714,7 +714,7 @@ function fn_IfcListToArray(m: r.Model, p_lis: r.Value, p_low: r.Value, p_u: r.Va
   if (r.isTrue(r.ne(v_n, r.add(r.sub(p_u, p_low), 1)))) {
     return undefined;
   } else {
-    v_res = r.assignArray(r.aggregate([[r.index(p_lis, 1), v_n]]), p_low);
+    v_res = r.assignArray(r.aggregate([[r.index(p_lis, 1), v_n]]), p_low, p_u);
     {
       const from_43 = r.int(2), to_44 = r.int(v_n), by_45 = 1;
       if (from_43 !== undefined && to_44 !== undefined && by_45) for (let i_i_42 = from_43; by_45 > 0 ? i_i_42 <= to_44 : i_i_42 >= to_44; i_i_42 += by_45) {

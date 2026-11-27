@@ -469,3 +469,17 @@ WHERE Count : LENGTH(Text) = Expected; Kind : 'INTEGER' IN TYPEOF(LENGTH(Text));
   expect(report.stats.entityRuleEvaluations).toBe(8);
   expect(report.findings.map(f => [f.instance, f.rule])).toEqual([[4, 'E.Count']]);
 });
+
+it('enforces the declared length when initializing a local ARRAY (#11647)', async () => {
+  for (const [initializer, index, invalid] of [
+    ['[1,2,3]', 5, true], ['[1]', 3, true], ['[1,2]', 3, false], ['[1,2]', 4, false], ['[?,2]', 3, false],
+  ] as const) {
+    const { schema } = generated(`SCHEMA S; FUNCTION WriteAt(I : INTEGER) : INTEGER;
+LOCAL A : ARRAY [3:4] OF ${initializer.includes('?') ? 'OPTIONAL ' : ''}INTEGER := ${initializer}; END_LOCAL;
+A[I] := 9; RETURN(A[I]); END_FUNCTION;
+ENTITY E; WHERE W : WriteAt(${index}) = 9; END_ENTITY; END_SCHEMA;`);
+    const report = await validateStepText('DATA;#1=E();ENDSEC;', { schema, categories: ['entity_rule'] });
+    expect(report.stats.entityRuleEvaluations).toBe(1);
+    expect(report.findings.map(f => [f.category, f.rule])).toEqual(invalid ? [['evaluation_error', 'E.W']] : []);
+  }
+});

@@ -127,7 +127,10 @@ export class StatementTranslator {
   /** Value semantics of assignment to a variable of `type`: ARRAY bounds and SET uniqueness carry over. */
   private coerce(value: string, type: TypeSpec | undefined, scope: Scope): string {
     type = this.resolveType(type);
-    if (type?.k === 'aggregate' && type.kind === 'ARRAY' && type.low) return `r.assignArray(${value}, ${this.t(type.low, scope)})`;
+    if (type?.k === 'aggregate' && type.kind === 'ARRAY' && type.low) {
+      const high = type.high ? `, ${this.t(type.high, scope)}` : '';
+      return `r.assignArray(${value}, ${this.t(type.low, scope)}${high})`;
+    }
     if (type?.k === 'aggregate' && type.kind === 'SET') return `r.assignSet(${value})`;
     return `r.assign(${value})`;
   }

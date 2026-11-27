@@ -188,9 +188,14 @@ export function caseSelector(v: Value): Value {
 }
 
 /** Assign to a variable declared `ARRAY [low:...]`, so later indexing uses that base. */
-export function assignArray(v: Value, low: Value): Value {
+export function assignArray(v: Value, low: Value, high?: Value): Value {
+  if (!isAggregate(v)) return assign(v);
   const l = int(low);
-  return isAggregate(v) && l !== undefined ? withLowerBound(copyAggregate(v), l) : assign(v);
+  const h = int(high);
+  if (l !== undefined && h !== undefined && v.length !== h - l + 1) {
+    throw new EvaluationError(`ARRAY [${l}:${h}] cannot hold ${v.length} elements`);
+  }
+  return l === undefined ? assign(v) : withLowerBound(copyAggregate(v), l);
 }
 
 export function setAttr(base: Value, name: string, v: Value): void {

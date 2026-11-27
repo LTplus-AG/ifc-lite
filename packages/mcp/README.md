@@ -301,8 +301,9 @@ tab's `model_audit` is `tab_model_audit`, next to this server's own
 `model_audit`) and removed when it disconnects, each time with
 `notifications/tools/list_changed`. `tab_*` calls go over a WebSocket on
 `127.0.0.1` to the paired tab, which runs them against its model. `viewer_*`
-tools without the prefix drive this process's own local viewer page, not the
-tab. `--transport http` is refused. With the default port, nothing is bound
+tools drive this process's local viewer page, with two compatibility exceptions:
+the unlisted aliases `viewer_show_ui` and `viewer_ui_events` target the paired tab
+as `tab_show_ui` and `tab_ui_events` until 0.34. `--transport http` is refused. With the default port, nothing is bound
 until the agent first calls `bridge_status`, so a session that never pairs
 holds none; an explicit `--bridge-port` is bound at start. The bridge
 stops, freeing its port, when stdin ends, closes or errors, and on SIGINT or

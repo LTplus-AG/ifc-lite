@@ -210,6 +210,7 @@ describe('connect dialog outcomes (#9523)', () => {
     await waitFor(() => dialog() !== null, 'the dialog rendered');
     // P2 item 5: the agent runs the bridge; the dialog shows the one-time agent setup, not a terminal command.
     assert.match(dialog()?.textContent ?? '', /claude mcp add ifc-lite -- npx -y @ifc-lite\/mcp@latest --bridge/, 'the agent setup is shown');
+    assert.ok(dialog()?.textContent?.includes(`add --bridge --bridge-viewer-url ${window.location.origin} to its arguments`));
     click(button(/^Connect$/));
     assert.match(dialog()?.textContent ?? '', /Enter the pairing code/);
     assert.equal(loads, 0, 'invalid input loads nothing');

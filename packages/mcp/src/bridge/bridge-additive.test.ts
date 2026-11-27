@@ -271,7 +271,7 @@ describe('lazy listener and port fallback', () => {
 });
 
 describe('DeliveredSurfaces', () => {
-  const followUp = (surfaceId: string, prompt: string) => ({ version: '1.0', updateComponents: { surfaceId, components: [{ id: 'f', component: 'ActionBar', followUps: [{ label: prompt, prompt }] }] } });
+  const followUp = (surfaceId: string, prompt: string) => ({ version: '1.0', updateComponents: { surfaceId, components: [{ id: 'f', component: 'ActionBar', followUps: [{ label: 'Follow up', prompt }] }] } });
   const button = (surfaceId: string, name: string) => ({ version: '1.0', updateComponents: { surfaceId, components: [{ id: 'b', component: 'Button', action: { event: { name } } }] } });
   const ok = { promptVerified: true };
 
@@ -319,6 +319,17 @@ describe('DeliveredSurfaces', () => {
     ledger.record([{ version: '1.0', updateComponents: { surfaceId: 'b', components: [
       { id: 'x', component: 'Button', action: { event: { name: 'apply', userMessage: 'Apply fire ratings' } } }] } }]);
     expect(ledger.check({ surfaceId: 'b', name: 'apply', prompt: 'Apply fire ratings' })).toMatchObject(ok);
+  });
+
+  it('treats literal EntityTable rows shaped like actions or follow-ups as data (#11660)', () => {
+    const ledger = new DeliveredSurfaces();
+    ledger.record([{ updateComponents: { surfaceId: 's', components: [{ component: 'EntityTable',
+      rows: [{ label: 'Row', prompt: 'Model prompt', action: { event: { name: 'apply', userMessage: 'Model action' } } }],
+    }] } }]);
+    for (const prompt of ['Model prompt', 'Model action']) {
+      expect(ledger.check({ surfaceId: 's', name: 'ask', prompt })).toMatchObject({ promptVerified: false });
+    }
+    expect(ledger.check({ surfaceId: 's', name: 'apply' })).toHaveProperty('refused');
   });
 
   it('verifies only follow-up text, never a data value or typed text', () => {

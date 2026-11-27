@@ -30,7 +30,7 @@ afterEach(async () => {
 let nextId = 1;
 
 async function startAgent(channel = false) {
-  const r = await startBridgeServer({ version: '0.0.0-test', port: 0, readOnly: true, channel });
+  const r = await startBridgeServer({ version: '0.0.0-test', port: 0, readOnly: true, channel, tuning: { changeThrottleMs: 0 } });
   running.push(r);
   const notes: JsonRpcMessage[] = [];
   r.server.attach({ send: (m) => { notes.push(m); } });
@@ -60,7 +60,7 @@ async function pair(agent: Awaited<ReturnType<typeof startAgent>>, a2uiSurface =
   const show = async (surfaceId: string, followUps: string[], text = surfaceId) => {
     const delivery = agent.call('tab_show_ui', { spec: { surfaceId, sections: [
       { kind: 'text', text },
-      { kind: 'actions', actions: ['isolate'], followUps: followUps.map((prompt) => ({ label: prompt, prompt })) },
+      { kind: 'actions', actions: ['isolate'], followUps: followUps.map((prompt) => ({ label: `Label for ${prompt}`, prompt })) },
     ] } });
     const frame = await paired.tab.next('a2ui-surface', SURFACE_WAIT_MS);
     paired.tab.reply(paired.welcome.sessionId, frame.id, textResult('Delivered'));
@@ -139,7 +139,12 @@ describe('UiEventInbox', () => {
     await expect.poll(() => agent.r.bridge.uiEvents.size).toBe(1);
     tab.close();
     await expect.poll(() => agent.r.bridge.tab()).toBeNull();
+    expect(await agent.listTools()).toContain('tab_ui_events');
+    const changes = () => agent.notes.filter(n => 'method' in n && n.method === 'notifications/tools/list_changed').length;
+    const before = changes();
     expect((await agent.call('tab_ui_events')).structuredContent?.events).toMatchObject([{ prompt: 'Which walls?' }]);
+    await expect.poll(changes).toBe(before + 1);
+    expect(await agent.listTools()).not.toContain('tab_ui_events');
     // Now empty, with no tab: not connected.
     expect((await agent.call('tab_ui_events')).structuredContent?.code).toBe('VIEWER_NOT_CONNECTED');
   });
@@ -216,6 +221,18 @@ describe('tab_ui_events', () => {
 });
 
 describe('--channel', () => {
+  it('verifies an ActionBar prompt and quotes its distinct label (#11660)', async () => {
+    const agent = await startAgent();
+    const { send, show } = await pair(agent);
+    await show('walls', ['Inspect walls']);
+    for (const prompt of ['Label for Inspect walls', 'Inspect walls']) send({ surfaceId: 'walls', name: 'ask', prompt });
+    await expect.poll(() => agent.r.bridge.uiEvents.size).toBe(2);
+    expect((await agent.call('tab_ui_events')).structuredContent?.events).toMatchObject([
+      { promptVerified: false, prompt: JSON.stringify('Label for Inspect walls') },
+      { promptVerified: true, prompt: 'Inspect walls' },
+    ]);
+  });
+
   it('admits the same click and verifies its fallback text only when explicitly authored (#11660)', async () => {
     const agent = await startAgent();
     const { send, showEvent } = await pair(agent);

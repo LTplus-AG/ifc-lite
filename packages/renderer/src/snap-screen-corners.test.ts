@@ -169,6 +169,31 @@ describe('screen-space corner snapping (#11504)', () => {
     }
   });
 
+  it('#11753 arbitrates against the selected corner with a background face on the ray', () => {
+    const camera = cameraDownZ();
+    const ray = camera.unprojectToRay(405, 265, 800, 600);
+    const z = (depth: number) => ray.origin.z - depth;
+    const scene = sceneWith(makeBox(1, [-4, -2, z(6)], [0, 2, z(5)]),
+      makeBox(2, [-10, -10, z(21)], [10, 10, z(20)]));
+    const host = new ManualIdleHost(), engine = new RaycastEngine(camera, scene, canvas);
+    const run = () => engine.raycastSceneMagnetic(405, 265, lock, { snapOptions: {
+      ...base, screenCornerSnap: { settleMs: 0, idleHost: host },
+    } });
+    run();
+    host.drain();
+    const initial = run();
+    assert.ok(initial.intersection && Math.abs(initial.intersection.distance - 20) < 0.001);
+    assert.ok(initial.snapTarget);
+    assert.equal(initial.snapTarget.expressId, 1);
+    assert.ok(Math.abs(initial.snapTarget.position.z - z(5)) < 0.001);
+    for (const [depth, expected] of [[8, 1], [2, 77]]) {
+      const index = new PointCloudSpatialIndex(1);
+      index.insertRange(Float32Array.of(ray.origin.x, ray.origin.y, z(depth)), 1, null);
+      engine.setPointCloudProvider(() => [{ expressId: 77, index }]);
+      assert.equal(run().snapTarget?.expressId, expected, `scan at depth ${depth}`);
+    }
+  });
+
   for (const crossesEye of [false, true]) {
     it(`#11753 perspective edge reprojects to the closest screen point (crosses eye: ${crossesEye})`, () => {
       const camera = cameraDownZ();

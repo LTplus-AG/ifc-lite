@@ -7,7 +7,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import type { MeshData } from '@ifc-lite/geometry';
-import { candidatesFromCache } from './snap-corner-candidates.js';
+import { CandidateBuild, candidatesFromCache } from './snap-corner-candidates.js';
 import { ChunkedSort } from './snap-chunked-sort.js';
 import { RunMergeBuild } from './snap-edge-merge.js';
 import { GeometryCacheBuild } from './snap-geometry-build.js';
@@ -49,6 +49,32 @@ it('#11753 emits each welded box corner once across incident feature edges and s
     const actual = Array.from({ length: 8 }, (_, i) => Array.from(corners.subarray(i * 3, i * 3 + 3)).join(','));
     assert.deepEqual(new Set(actual), new Set(cache.vertices.map(p => [p.x, p.y, p.z].join(','))));
   }
+});
+
+it('#11753 budgets junction reads and final packing for a single reconstructed edge', () => {
+  const count = 4096, budget = 32;
+  let reads = 0;
+  const point = (x: number) => ({ x, y: 0, z: 0 });
+  const junctions = Array.from({ length: count }, (_, i) => ({
+    get point() { reads++; return point(i + 1); }, valence: 3, t: (i + 1) / (count + 1),
+  }));
+  const edge = { v0: point(0), v1: point(count + 1), index: 0, length: count + 1,
+    v0Valence: 3, v1Valence: 3, junctions };
+  const build = new CandidateBuild(1, { vertices: [], edges: [edge] });
+  let packingSteps = 0;
+  while (!build.done) {
+    const before = reads;
+    build.step(budget);
+    assert.ok(reads - before <= budget, `one step read ${reads - before} junctions`);
+    if (before === count) packingSteps++;
+  }
+  assert.equal(reads, count);
+  assert.ok(packingSteps >= count / budget, 'final packing spans slices');
+  const result = build.result();
+  assert.equal(result.corners, build.result().corners);
+  const expected = [0, count + 1, ...Array.from({ length: count }, (_, i) => i + 1)];
+  assert.deepEqual([...result.corners], expected.flatMap(x => [x, 0, 0]));
+  assert.deepEqual([...result.edges], [0, 0, 0, count + 1, 0, 0]);
 });
 
 it('#11753 bounds comparisons at a crowded weld and traversal of one long run', t => {

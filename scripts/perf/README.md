@@ -8135,6 +8135,28 @@ ArchiCAD FZK-Haus sample. STEP conversion trades some throughput for the
 smaller bundle. GLB export timing was comparable and native builds retain
 their existing optimization level.
 
+## iOverlay 9 upgrade (#10834)
+
+The paired native probe found no phase change beyond the existing timing
+thresholds on FZK-Haus, ISSUE_129 and Holter. Mesh, vertex and triangle counts
+matched in every round. The export audit records the mesh payload changes
+that came with the upgrade.
+
+Use one integer grid for the precursor and correction steps of mixed planar
+openings. Independent grids created slivers on the ISSUE_129 slab and sent
+it through a full opening retry. Keep the shared-grid witness and verify
+topology before refreshing export goldens. The precise probe and matching
+physical CPU affinity made the short phases measurable. An isolated FZK-Haus
+timing spike still invalidated the first comparison. Retain that run and
+qualify a separate quiet window against the same thresholds.
+
+The upgrade exceeded the main WASM engine's size ceiling. Compiling only the
+embedded JPEG decoder for size in that bundle cleared the ceiling and kept
+the embedded texture output byte-identical. The stricter size setting slowed
+the larger texture decode beyond the accepted limit. Use an identical-engine
+control before comparing cold texture loads. Batching independent fresh loads
+made the short decode cases repeatable without warming the decoder.
+
 ## Shared STEP attribute masks (#11664)
 
 The mutation-log writer uses enum, string and schema-specific REAL masks to

@@ -47,8 +47,8 @@ export function cachedStepBuild(
   if (cached) return finishedBuild(cached);
   const inner = build();
   return {
-    get done() { return inner.done; },
-    step: () => inner.step(),
+    get done() { return cache.has(key) || inner.done; },
+    step: () => cache.has(key) || inner.step(),
     result: () => {
       const existing = cache.get(key);
       if (existing) return existing;
@@ -159,12 +159,15 @@ export class GeometryCacheBuild implements StepBuild<MeshGeometryCache> {
         const key = idx0 < idx1 ? `${idx0}_${idx1}` : `${idx1}_${idx0}`;
         const existing = edgeData.get(key);
         if (existing) existing.normals.push(normal);
-        else edgeData.set(key, { segment: { a: idx0, b: idx1 }, normals: [normal] });
+        else {
+          const record = { segment: { a: idx0, b: idx1 }, normals: [normal] };
+          edgeData.set(key, record);
+          this.edgeList.push(record);
+        }
       }
     }
     this.next = end;
     if (end < indices!.length) return;
-    this.edgeList = [...edgeData.values()];
     this.edgeData.clear();
     this.next = 0;
     this.phase = 'classify';

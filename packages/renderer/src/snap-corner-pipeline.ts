@@ -25,7 +25,7 @@ import type { MeshGeometryCache } from './snap-geometry-cache.js';
 import { finishedBuild, type StepBuild } from './snap-geometry-build.js';
 import { CandidateBuild, type PieceCandidates } from './snap-corner-candidates.js';
 import { CornerGrid, type ScreenSnapCamera } from './snap-corner-grid.js';
-import { gridKey, idsOf } from './snap-corner-key.js';
+import { eligibleModelsKey, gridKey, idsOf } from './snap-corner-key.js';
 import { buildInstanceCorners } from './snap-corner-instances.js';
 import { PriorityOrder } from './snap-corner-priority.js';
 import { browserIdleHost, type IdleHost, type IdleSlice } from './snap-idle-host.js';
@@ -112,6 +112,15 @@ export class CornerBuildPipeline {
 
   /** Called on every pick: remember what the view wants and make sure an idle slice is scheduled if work remains. */
   observe(ctx: BuildContext, key: string): void {
+    if (this.run && this.run.pieces !== ctx.pieces) {
+      const previous = this.run.pieces;
+      // Revisionless adapters can collect the same pieces into a fresh array on every pick.
+      if (previous.length === ctx.pieces.length && previous.every((piece, i) => piece === ctx.pieces[i])) {
+        this.run.pieces = ctx.pieces;
+      } else {
+        this.run = null; // Removed pieces (including a partial projection) cannot serve another pick.
+      }
+    }
     this.ctx = ctx;
     const t = ctx.now();
     if (this.seen?.key !== key) this.seen = { key, at: t };
@@ -143,7 +152,7 @@ export class CornerBuildPipeline {
   }
 
   private activeOf(ctx: BuildContext): MeshData[] {
-    const filterKey = `${idsOf(ctx.hiddenIds)}|${idsOf(ctx.isolatedIds)}|${idsOf(ctx.eligible)}`;
+    const filterKey = `${idsOf(ctx.hiddenIds)}|${idsOf(ctx.isolatedIds)}|${eligibleModelsKey(ctx.eligible)}`;
     const c = this.activeCache;
     if (c && c.pieces === ctx.pieces && c.filterKey === filterKey) return c.list;
     const list = ctx.pieces.filter((p) =>
@@ -186,14 +195,13 @@ export class CornerBuildPipeline {
 
     let run = this.run;
     if (!run || run.key !== key || run.pieces !== ctx.pieces) {
-      // Same view, more pieces (geometry still arriving): keep filling the grid we have.
-      const grid = run && run.key === key && !ctx.snapOccurrences ? run.grid : this.startGrid(ctx, key);
+      const grid = this.startGrid(ctx, key);
       const active = this.activeOf(ctx);
       run = this.run = { key, pieces: ctx.pieces, grid, ordering: null, order: null, cursor: 0, active,
         instances: ctx.snapOccurrences ? buildInstanceCorners(ctx.snapOccurrences(), ctx, grid, this.templateCandidates) : null };
     }
     if (run.order === null) {
-      run.ordering ??= new PriorityOrder(run.active.filter((q) => !run!.grid.has(q)), ctx.camera, ctx.viewport);
+      run.ordering ??= new PriorityOrder(run.active, ctx.camera, ctx.viewport);
       run.ordering.step(over);
       if (!run.ordering.done) { this.schedule(); return; }
       run.order = run.ordering.result();

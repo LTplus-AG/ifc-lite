@@ -12,6 +12,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 
+import { PointCloudSpatialIndex } from './pointcloud/point-cloud-spatial-index.js';
+import { PriorityOrder } from './snap-corner-priority.js';
 import { ManualIdleHost } from './snap-idle-test-host.js';
 import { RaycastEngine } from './raycast-engine.js';
 import { Camera } from './camera.js';
@@ -104,6 +106,42 @@ describe('screen-space corner snapping (#11504)', () => {
     assert.equal(pick(sceneWith(boxA()), 370, 258).snapTarget, null, '12 px off the edge is outside both radii');
   });
 
+  for (const vertical of [false, true]) {
+    it(`#11753 covers a 300,000-pixel ${vertical ? 'vertical' : 'horizontal'} edge throughout the viewport`, () => {
+      const scene = sceneWith(vertical
+        ? makeBox(7, [-2, -10000, 0], [2, 10000, 2])
+        : makeBox(7, [-10000, -2, 0], [10000, 2, 2]));
+      const host = new ManualIdleHost(), engine = new RaycastEngine(cameraDownZ(), scene, canvas);
+      const run = (along: number, offset: number) => engine.raycastSceneMagnetic(
+        vertical ? 430 + offset : along, vertical ? along : 270 - offset, lock,
+        { snapOptions: { ...base, screenCornerSnap: { settleMs: 0, idleHost: host } } });
+      run(1, 5); host.drain();
+      for (let px = 0; px < (vertical ? 600 : 800); px += 3) {
+        const result = run(px, 5);
+        assert.equal(result.intersection, null);
+        assert.equal(result.snapTarget?.type, 'edge', `5 CSS pixels away at ${px}`);
+        assert.equal(result.snapTarget?.expressId, 7);
+      }
+      assert.equal(run(430, 7).snapTarget, null);
+    });
+  }
+
+  it('#11753 indexes a long diagonal for subpixel radii without broadening the pick', () => {
+    const mesh = makeBox(8, [-10000,-10000,0], [10000,10000,2]);
+    mesh.indices = Uint32Array.of(0, 1, 3);
+    const engine = new RaycastEngine(cameraDownZ(), sceneWith(mesh), canvas), host = new ManualIdleHost();
+    const pickEdge = (x: number, offset: number) => engine.raycastSceneMagnetic(x, 700 - x - offset, lock,
+      { snapOptions: { ...base, snapToVertices: false, screenCornerSnap: {
+        settleMs: 0, idleHost: host, edgeRadiusPx: 0.002, cornerRadiusPx: 0 } } });
+    pickEdge(400, 0.001); host.drain();
+    for (let px = 110; px < 690; px += 13) {
+      const inside = pickEdge(px, 0.001);
+      assert.equal(inside.intersection, null);
+      assert.equal(inside.snapTarget?.expressId, 8);
+      assert.equal(pickEdge(px, 0.01).snapTarget, null);
+    }
+  });
+
   it('edge-only mode keeps the eligible edge when a corner is also near the cursor (#11504 review)', () => {
     // (396, 265) is 6.4 px from the corner (400, 270) and 5 px from the top edge y = 270 px.
     const edgeOnly = { ...base, snapToVertices: false, screenCornerSnap: { settleMs: 0 } };
@@ -115,6 +153,89 @@ describe('screen-space corner snapping (#11504)', () => {
     assert.equal(pick(sceneWith(boxA()), 396, 265, { snapOptions: vertexOnly }).snapTarget?.type, 'vertex');
     assert.equal(pick(sceneWith(boxA()), 370, 265, { snapOptions: vertexOnly }).snapTarget, null, 'vertex-only never returns an edge');
   });
+
+  it('#11753 compares scans against the off-ray snap depth', () => {
+    const engine = new RaycastEngine(cameraDownZ(), sceneWith(boxA()), canvas), host = new ManualIdleHost();
+    const run = () => engine.raycastSceneMagnetic(405, 265, lock, { snapOptions: { ...base,
+      screenCornerSnap: { settleMs: 0, idleHost: host } } });
+    run(); host.drain();
+    for (const [z, expected] of [[-30, 1], [2.01, 1], [20, 77]]) {
+      const index = new PointCloudSpatialIndex(1);
+      index.insertRange(Float32Array.of(5 / 15, 35 / 15, z), 1, null);
+      engine.setPointCloudProvider(() => [{ expressId: 77, index }]);
+      const result = run();
+      assert.equal(result.intersection, null);
+      assert.equal(result.snapTarget?.expressId, expected);
+    }
+  });
+
+  it('#11753 arbitrates against the selected corner with a background face on the ray', () => {
+    const camera = cameraDownZ();
+    const ray = camera.unprojectToRay(405, 265, 800, 600);
+    const z = (depth: number) => ray.origin.z - depth;
+    const scene = sceneWith(makeBox(1, [-4, -2, z(6)], [0, 2, z(5)]),
+      makeBox(2, [-10, -10, z(21)], [10, 10, z(20)]));
+    const host = new ManualIdleHost(), engine = new RaycastEngine(camera, scene, canvas);
+    const run = () => engine.raycastSceneMagnetic(405, 265, lock, { snapOptions: {
+      ...base, screenCornerSnap: { settleMs: 0, idleHost: host },
+    } });
+    run();
+    host.drain();
+    const initial = run();
+    assert.ok(initial.intersection && Math.abs(initial.intersection.distance - 20) < 0.001);
+    assert.ok(initial.snapTarget);
+    assert.equal(initial.snapTarget.expressId, 1);
+    assert.ok(Math.abs(initial.snapTarget.position.z - z(5)) < 0.001);
+    for (const [depth, expected] of [[8, 1], [2, 77]]) {
+      const index = new PointCloudSpatialIndex(1);
+      index.insertRange(Float32Array.of(ray.origin.x, ray.origin.y, z(depth)), 1, null);
+      engine.setPointCloudProvider(() => [{ expressId: 77, index }]);
+      assert.equal(run().snapTarget?.expressId, expected, `scan at depth ${depth}`);
+    }
+  });
+
+  for (const crossesEye of [false, true]) {
+    it(`#11753 perspective edge reprojects to the closest screen point (crosses eye: ${crossesEye})`, () => {
+      const camera = cameraDownZ();
+      camera.setProjectionMode('perspective');
+      const a = { x: 1, y: -1, z: crossesEye ? 51 : 48 }, b = { x: 4, y: 3, z: 14 };
+      // Pick a point inside the visible segment and offset the cursor along its screen normal.
+      const visiblePoint = (t: number) => camera.projectToScreen({
+        x: a.x + (b.x-a.x)*t, y: a.y + (b.y-a.y)*t, z: a.z + (b.z-a.z)*t }, 800, 600)!;
+      const at = visiblePoint(0.35), next = visiblePoint(0.5);
+      const dx = next.x-at.x, dy = next.y-at.y, len = Math.hypot(dx,dy);
+      const x = at.x - 5*dy/len, y = at.y + 5*dx/len;
+      const host = new ManualIdleHost(), index = new ScreenCornerIndex();
+      const piece = boxA(), pieces = [piece];
+      const query = () => index.query({ x,y, camera, viewKey: 'perspective', viewport: { width:800,height:600 },
+        ray: camera.unprojectToRay(x,y,800,600), pieces,
+        geometryFor: () => ({vertices:[a,b], edges:[{v0:a,v1:b,v0Valence:1,v1Valence:1,index:0,length:40,junctions:[]}]}),
+        options:{ idleHost:host, settleMs:0 } });
+      query(); host.drain();
+      const hit = query();
+      assert.ok(hit && hit.kind === 'edge');
+      const projected = camera.projectToScreen(hit.position,800,600)!;
+      assert.ok(Math.hypot(projected.x-at.x, projected.y-at.y) < 1e-5);
+    });
+  }
+
+  for (const channel of ['hidden', 'isolated', 'section'] as const) {
+    it(`#11753 sees in-place ${channel} membership replacements before idle`, () => {
+      const scene = sceneWith(boxA(), makeBox(2, [-4,-2,0], [0,2,2]));
+      const engine = new RaycastEngine(cameraDownZ(),scene,canvas), host = new ManualIdleHost(), ids = new Set([1]);
+      const filter = channel === 'hidden' ? { hiddenIds: ids } : channel === 'isolated' ? { isolatedIds: ids } : {};
+      const clip = channel === 'section' ? { sectionExcludedIds: ids,
+        sectionPlane:{normal:[0,0,1] as V3, distance:-1, flipped:false} } : undefined;
+      const run = () => engine.raycastSceneMagnetic(405,265,lock,{ ...filter,
+        snapOptions:{ ...base, screenCornerSnap:{ settleMs:0, idleHost:host } } },clip);
+      run(); host.drain();
+      assert.equal(run().snapTarget?.expressId, channel === 'hidden' ? 2 : 1);
+      ids.delete(1); ids.add(2);
+      assert.equal(run().snapTarget, null);
+      host.drain();
+      assert.equal(run().snapTarget?.expressId, channel === 'hidden' ? 1 : 2);
+    });
+  }
 
   it('(b) a corner of another element wins over the element under the ray', () => {
     // B is taller and sits to the right of A's corner; the cursor is over B,
@@ -132,6 +253,20 @@ describe('screen-space corner snapping (#11504)', () => {
     const only = (indices: number[]) => ({ snapOptions: { ...base, screenCornerSnap: { settleMs: 0, eligibleModelIndices: new Set(indices) } } });
     assert.equal(pick(scene, 405, 265, only([0])).snapTarget, null);
     assert.equal(pick(scene, 405, 265, only([1])).snapTarget?.type, 'vertex');
+  });
+
+  it('#11753 swaps eligible models in place without serving the previous grid', () => {
+    const scene = sceneWith(makeBox(1, [-4,-2,0], [0,2,2], 1), makeBox(2, [-4,-2,0], [0,2,2], 2));
+    const engine = new RaycastEngine(cameraDownZ(), scene, canvas), host = new ManualIdleHost();
+    const eligibleModelIndices = new Set([1]);
+    const run = () => engine.raycastSceneMagnetic(405, 265, lock, { snapOptions: { ...base,
+      screenCornerSnap: { eligibleModelIndices, settleMs: 0, idleHost: host } } });
+    run(); host.drain();
+    assert.equal(run().snapTarget?.expressId, 1);
+    eligibleModelIndices.delete(1); eligibleModelIndices.add(2);
+    assert.equal(run().snapTarget, null);
+    host.drain();
+    assert.equal(run().snapTarget?.expressId, 2);
   });
 
   it('(d) ignores corners of hidden entities, and of anything outside the isolated set', () => {
@@ -168,6 +303,15 @@ describe('screen-space corner snapping (#11504)', () => {
     assert.equal(shaded.intersection?.expressId, 2);
     assert.equal(shaded.snapTarget?.expressId, 2, 'the hidden corner of A does not win');
     assert.notEqual(shaded.snapTarget?.type, 'vertex');
+    for (const occlusionTolerance of [NaN, Infinity, -1]) {
+      const guarded = pick(scene(), 405, 265, { snapOptions: { ...base,
+        screenCornerSnap: { settleMs: 0, occlusionTolerance } } });
+      assert.equal(guarded.intersection?.expressId, 2);
+      assert.deepEqual(guarded.snapTarget, shaded.snapTarget, '#11753 invalid slack uses the normal depth guard');
+    }
+    const withinSlack = pick(scene(), 405, 265, { snapOptions: { ...base,
+      screenCornerSnap: { settleMs: 0, occlusionTolerance: 5 } } });
+    assert.equal(withinSlack.snapTarget?.expressId, 1);
     const xray = pick(scene(), 405, 265, { snapOptions: { ...base, screenCornerSnap: { settleMs: 0, ignoreOcclusion: true } } });
     assert.equal(xray.snapTarget?.type, 'vertex');
     assert.deepEqual([xray.snapTarget?.expressId, xray.snapTarget?.position.z], [1, 2]);
@@ -200,7 +344,7 @@ function harness(pieces: MeshData[], options: Record<string, unknown> = {}) {
   host.onWait = (ms) => { state.clock += ms; };
   const query = (x: number, y: number, extra: Partial<Parameters<ScreenCornerIndex['query']>[0]> = {}) => index.query({
     x, y, ray: camera.unprojectToRay(x, y, VIEW.width, VIEW.height), camera, viewKey: state.key, ...extra,
-    liveViewKey: () => state.key, viewport: VIEW, pieces,
+    liveViewKey: () => state.key, viewport: VIEW, pieces: extra.pieces ?? pieces,
     geometryFor: (m) => { state.clock += 1; state.built.push(m.expressId); return buildGeometryCache(m); },
     options: { idleHost: host, settleMs: 100, maxSliceMs: 5, ...options }, now: () => state.clock,
   });
@@ -241,6 +385,73 @@ describe('screen corner idle build (#11504)', () => {
     assert.equal(t.query(...near, { kinds: { edges: false } })?.kind, 'corner');
     assert.equal(t.query(m.x, m.y - 3, { kinds: { edges: false } }), null, 'vertex-only never returns an edge');
     assert.equal(t.query(c.x + 5, c.y - 5, { kinds: { corners: false } }), null, 'edge-only: a corner alone is no hit');
+  });
+
+  it('#11753 an invalid idle duration respects exhausted slices and eventually finishes', () => {
+    const t = harness(boxRow(40), { settleMs: 0, maxSliceMs: NaN });
+    t.query(400, 300);
+    assert.equal(t.state.built.length, 0);
+    assert.ok(t.host.tick(0));
+    assert.equal(t.index.stats()?.complete, false);
+    assert.ok(t.host.pending > 0);
+    let slices = 1;
+    while (t.host.pending && slices < 2000) {
+      const before = t.state.built.length;
+      t.host.tick(0);
+      assert.ok(t.state.built.length - before <= 1, 'an exhausted slice starts at most one piece');
+      slices++;
+    }
+    assert.equal(t.index.stats()?.complete, true);
+    assert.equal(t.state.built.length, 40);
+  });
+
+  it('#11753 drops removed pieces immediately and after the replacement build', () => {
+    const pieces = [boxA()], t = harness(pieces, {settleMs:0});
+    const at = t.at(0,2,2);
+    t.query(at.x,at.y); t.host.drain();
+    assert.equal(t.query(at.x,at.y)?.expressId, 1);
+    assert.equal(t.query(at.x,at.y,{ pieces:[...pieces] })?.expressId, 1, 'fresh inventory with identical members keeps its grid');
+    const empty: MeshData[] = [];
+    assert.equal(t.query(at.x,at.y,{ pieces:empty }), null);
+    t.host.drain();
+    assert.equal(t.query(at.x,at.y,{ pieces:empty }), null);
+  });
+
+  it('#11753 a reordered partial grid never drains a large piece in the next exhausted slice', () => {
+    const big = boxSoup(1000,1), small = boxA();
+    small.expressId = 2;
+    const t = harness([big], {settleMs:0});
+    const at = t.at(0,2,2);
+    t.query(at.x,at.y);
+    while (!t.index.stats()?.gridPieces) assert.ok(t.host.tick(0));
+    assert.equal(t.index.stats()?.complete,false);
+    const pieces = [small,big];
+    assert.equal(t.query(at.x,at.y,{pieces}),null);
+    assert.equal(t.index.stats()?.gridPieces,0);
+    assert.ok(t.host.tick(0));
+    assert.equal(t.index.stats()?.complete,false);
+    t.host.drain();
+    assert.equal(t.query(at.x,at.y,{pieces})?.expressId,2);
+  });
+
+  it('#11753 bounds position reads and yields while ordering a large inventory', () => {
+    const large = boxSoup(3000,1), original = large.positions;
+    let reads = 0;
+    large.positions = new Proxy(original, { get(target, key) {
+      if (typeof key === 'string' && /^\d+$/.test(key)) reads++;
+      return Reflect.get(target,key,target);
+    } });
+    const order = new PriorityOrder([large],cameraDownZ(),VIEW);
+    order.step(() => true);
+    assert.ok(reads > 0 && reads < original.length);
+    while (!order.done) order.step(() => true);
+    assert.deepEqual(order.result(),[large]);
+    const inventory = Array.from({length:6000}, () => large);
+    const many = new PriorityOrder(inventory,cameraDownZ(),VIEW);
+    for (let i = 0; i <= inventory.length; i++) many.step(() => true);
+    assert.equal(many.done,false,'sort and permutation span additional slices');
+    while (!many.done) many.step(() => true);
+    assert.equal(many.result().length, inventory.length);
   });
 
   it('a pick never runs a candidate-build chunk or a grid rebuild; only idle slices do', () => {

@@ -90,12 +90,13 @@ const commandMasks = new WeakMap<MouseHandlerContext, {
 }>();
 
 /** Pick options that never hit the command's own ghost preview. */
-function pickOptions(ctx: MouseHandlerContext, command: ModelingCommand) {
+function pickOptions(ctx: MouseHandlerContext, command: ModelingCommand, spaces: readonly number[] = []) {
   const options = ctx.getPickOptions();
   const excluded = command.pickExclusions?.(getCommandRuntime().gesture) ?? [];
-  if (!command.ghost && !excluded.length) return options;
+  if (!command.ghost && !excluded.length && !spaces.length) return options;
   const state = useViewerStore.getState();
   const extra = excluded.map(ref => toGlobalIdFromModels(state.models, ref.modelId, ref.expressId));
+  extra.push(...spaces);
   if (command.ghost) {
     const first = commandGhostId(state);
     for (let i = 0; i < GHOST_PICK_GUARD; i++) extra.push(first + i);
@@ -112,29 +113,39 @@ function pickOptions(ctx: MouseHandlerContext, command: ModelingCommand) {
   return { ...options, hiddenIds };
 }
 
+// Keep recently rejected volumes in the initial mask, so successive moves observe
+// the same grid. Recheck their types: a model replacement or retype can reuse an ID.
+const MAX_SPACE_ATTEMPTS = 16;
+const retrySpaces = new WeakMap<MouseHandlerContext, readonly number[]>();
+function isConstructionSpace(id: number): boolean {
+  const state = useViewerStore.getState();
+  const ref = state.resolveGlobalIdFromModels(id);
+  if (!ref) return false;
+  const view = state.mutationViews.get(ref.modelId);
+  const type = view?.getEntityTypeMutation(ref.expressId)?.newType ?? view?.getNewEntity(ref.expressId)?.type
+    ?? state.models.get(ref.modelId)?.ifcDataStore?.entities.getTypeName(ref.expressId);
+  return type?.toUpperCase() === 'IFCSPACE';
+}
+
 /** The renderer's magnetic pick at the cursor, given the held edge lock. */
 function magneticPick(ctx: MouseHandlerContext, command: ModelingCommand, x: number, y: number): MeshPick | null {
   const lock = ctx.edgeLockStateRef.current;
-  const options = pickOptions(ctx, command);
   const construction = command.id.endsWith('.place') && command.aimsAtElement?.(getCommandRuntime().gesture) !== true;
-  let hiddenIds = options.hiddenIds;
+  const spaces = construction ? (retrySpaces.get(ctx) ?? []).filter(isConstructionSpace) : [];
+  let options = pickOptions(ctx, command, spaces);
   // Spatial volumes may extend through the next floor. They are not physical
   // construction references. Bound retries even if a renderer ignores exclusions.
-  for (let attempt = 0; attempt < 16; attempt++) {
+  for (let attempt = 0; attempt < MAX_SPACE_ATTEMPTS; attempt++) {
     const pick = ctx.renderer.raycastSceneMagnetic(x, y, {
       edge: lock.edge, meshExpressId: lock.meshExpressId, lockStrength: lock.lockStrength,
-    }, { ...options, hiddenIds, snapOptions: { snapToVertices: true, snapToEdges: true, snapToFaces: true, screenSnapRadius: 40, screenCornerSnap: screenCornerSnapConfig(false) } }) as MeshPick;
+    }, { ...options, snapOptions: { snapToVertices: true, snapToEdges: true, snapToFaces: true, screenSnapRadius: 40, screenCornerSnap: screenCornerSnapConfig(false) } }) as MeshPick;
     if (!pick || !construction) return pick;
     const id = pick.snapTarget?.expressId ?? pick.intersection?.expressId;
-    const s = useViewerStore.getState();
-    const ref = id === undefined ? null : s.resolveGlobalIdFromModels(id);
-    const view = ref && s.mutationViews.get(ref.modelId);
-    const type = ref && (view?.getEntityTypeMutation(ref.expressId)?.newType ?? view?.getNewEntity(ref.expressId)?.type
-      ?? s.models.get(ref.modelId)?.ifcDataStore?.entities.getTypeName(ref.expressId));
-    if (type?.toUpperCase() !== 'IFCSPACE') return pick;
-    if (id === undefined || hiddenIds.has(id)) break;
-    if (hiddenIds === options.hiddenIds) hiddenIds = new Set(hiddenIds);
-    hiddenIds.add(id);
+    if (id === undefined || !isConstructionSpace(id)) return pick;
+    if (options.hiddenIds.has(id)) break;
+    spaces.push(id);
+    retrySpaces.set(ctx, spaces.slice(-MAX_SPACE_ATTEMPTS));
+    options = pickOptions(ctx, command, spaces);
   }
   return { snapTarget: null, intersection: null, edgeLock: { shouldLock: false, shouldRelease: true, edge: null, meshExpressId: null, edgeT: 0, isCorner: false, cornerValence: 0 } };
 }

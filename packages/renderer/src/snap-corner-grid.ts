@@ -18,10 +18,11 @@ import { planesFor } from './snap-clip.js';
 import { clipSegmentInterval } from './clip-half-spaces.js';
 import type { PieceCandidates } from './snap-corner-candidates.js';
 import type { ScreenCornerCandidate } from './snap-screen-corners.js';
+import { lerp, edgeProjector } from './snap-project-edge.js';
 import type { Camera } from './camera.js';
 
 /** The camera pieces a query needs; `Camera` satisfies it. */
-export type ScreenSnapCamera = Pick<Camera, 'projectToScreen'>;
+export type ScreenSnapCamera = Pick<Camera, 'projectToScreen'> & Partial<Pick<Camera, 'getRelativeToEyeFrame'>>;
 
 export interface ScreenCornerHit {
   kind: 'corner' | 'edge';
@@ -47,6 +48,7 @@ interface PieceCursor { piece: MeshData; cand: PieceCandidates; pi: number; corn
 export class CornerGrid {
   /** The pieces `cornerPiece` / `edgePiece` index into, in the order they were added. */
   readonly pieces: MeshData[] = [];
+  private readonly projectEdge: ReturnType<typeof edgeProjector>;
   /** Pieces fully projected. A piece being projected (`cursor`) is not in it. */
   private readonly added = new WeakSet<MeshData>();
   private cursor: PieceCursor | null = null;
@@ -63,6 +65,7 @@ export class CornerGrid {
   private readonly edgeCells = new Map<number, number[]>();
   private readonly ex0: number[] = []; private readonly ey0: number[] = [];
   private readonly ex1: number[] = []; private readonly ey1: number[] = [];
+  private readonly weightRatio: number[] = [];
   private readonly edgePiece: number[] = []; private readonly edgeOrd: number[] = [];
   /** World endpoints of the edges a section plane shortened; every other edge reads its candidates. */
   private readonly clippedEnds = new Map<number, Float64Array>();
@@ -75,6 +78,7 @@ export class CornerGrid {
     private readonly cell: number,
     private readonly clip: PickClipState | null | undefined,
   ) {
+    this.projectEdge = edgeProjector(camera, viewport.width, viewport.height);
     this.cols = Math.ceil(viewport.width / cell) + 3;
     this.rows = Math.ceil(viewport.height / cell) + 3;
   }
@@ -91,6 +95,31 @@ export class CornerGrid {
     if (list) list.push(v); else m.set(k, [v]);
   }
 
+  /** Visit only visible grid strips along the dominant axis. Inside one strip the
+   * minor coordinate spans at most one cell width, so even an offscreen-to-offscreen
+   * edge costs at most two registrations per strip, independent of its length. */
+  private registerEdge(x0: number, y0: number, x1: number, y1: number, idx: number): void {
+    const vertical = Math.abs(y1 - y0) > Math.abs(x1 - x0);
+    let u0 = vertical ? y0 : x0, v0 = vertical ? x0 : y0;
+    let u1 = vertical ? y1 : x1, v1 = vertical ? x1 : y1;
+    if (u1 < u0) { [u0, u1] = [u1, u0]; [v0, v1] = [v1, v0]; }
+    const slope = u1 === u0 ? 0 : (v1 - v0) / (u1 - u0);
+    const first = Math.max(-1, Math.floor(u0 / this.cell));
+    const last = Math.min((vertical ? this.rows : this.cols) - 2, Math.floor(u1 / this.cell));
+    const maxMinor = (vertical ? this.cols : this.rows) - 2;
+    for (let u = first; u <= last; u++) {
+      const start = Math.max(u0, u * this.cell), end = Math.min(u1, (u + 1) * this.cell);
+      const v = v0 + (start - u0) * slope;
+      const w = v + (end - start) * slope;
+      const low = Math.max(-1, Math.floor(Math.min(v, w) / this.cell));
+      const high = Math.min(maxMinor, Math.floor(Math.max(v, w) / this.cell));
+      for (let minor = low; minor <= high; minor++) {
+        const key = vertical ? (u + 1) * this.cols + minor + 1 : (minor + 1) * this.cols + u + 1;
+        CornerGrid.push(this.edgeCells, key, idx);
+      }
+    }
+  }
+
   /** Project one whole piece's candidates into the grid. */
   addPiece(piece: MeshData, cand: PieceCandidates): void {
     while (!this.addPieceStep(piece, cand, Infinity)) { /* one step finishes it */ }
@@ -105,12 +134,12 @@ export class CornerGrid {
     if (this.added.has(piece)) return true;
     let cur = this.cursor;
     if (!cur || cur.piece !== piece) {
-      // A different piece was left half done (the build was reordered): finish it first so the grid never holds two open pieces.
-      if (cur) this.addPieceStep(cur.piece, cur.cand, Infinity);
+      // Piece inventory changes discard the grid; a single run projects its pieces in order.
+      if (cur) throw new Error('A partially indexed piece must finish before starting another');
       cur = this.cursor = { piece, cand, pi: this.pieces.push(piece) - 1, corner: 0, edge: 0 };
       this.cands.push(cand);
     }
-    const g = this, { camera, viewport, clip, cell } = this;
+    const g = this, { camera, viewport, clip } = this;
     const pi = cur.pi;
     let budget = maxItems;
     const ec = entityClip(clip, piece.expressId);
@@ -137,24 +166,16 @@ export class CornerGrid {
         a = lo > 0 ? lerp(a0, b0, lo) : a0;
         b = hi < 1 ? lerp(a0, b0, hi) : b0;
       }
-      const sa = camera.projectToScreen(a, viewport.width, viewport.height);
-      const sb = camera.projectToScreen(b, viewport.width, viewport.height);
-      if (!sa || !sb) continue;
+      const projection = this.projectEdge(a, b);
+      if (!projection) continue;
+      const { sa, sb, wa, wb } = projection;
+      a = projection.a; b = projection.b;
       const idx = g.ex0.length;
+      g.weightRatio.push(wb / wa);
       g.ex0.push(sa.x); g.ey0.push(sa.y); g.ex1.push(sb.x); g.ey1.push(sb.y);
       g.edgePiece.push(pi); g.edgeOrd.push(i / 6);
       if (a !== a0 || b !== b0) g.clippedEnds.set(idx, Float64Array.of(a.x, a.y, a.z, b.x, b.y, b.z));
-      // Register the edge in every cell it passes through (clipped to the viewport band).
-      const len = Math.hypot(sb.x - sa.x, sb.y - sa.y);
-      const steps = Math.min(4096, Math.max(1, Math.ceil(len / (cell / 4))));
-      let last = -1;
-      for (let k = 0; k <= steps; k++) {
-        const t = k / steps;
-        const c = this.cellOf(sa.x + (sb.x - sa.x) * t, sa.y + (sb.y - sa.y) * t);
-        if (c === null || c === last) continue;
-        last = c;
-        CornerGrid.push(g.edgeCells, c, idx);
-      }
+      this.registerEdge(sa.x, sa.y, sb.x, sb.y, idx);
     }
     if (cur.corner < cand.corners.length || cur.edge < cand.edges.length) return false;
     this.cursor = null;
@@ -164,7 +185,7 @@ export class CornerGrid {
 
   /** Rough heap held by the grid's own arrays, in bytes (8 per stored number; cell lists excluded; candidates are counted by their owner). */
   approxBytes(): number {
-    return 8 * (this.cx.length * 3 + this.ex0.length * 5 + this.clippedEnds.size * 6);
+    return 8 * (this.cx.length * 3 + this.ex0.length * 6 + this.clippedEnds.size * 6);
   }
 
   private cornerAt(i: number): Vec3 {
@@ -215,6 +236,7 @@ export class CornerGrid {
       + (py - ray.origin.y) * ray.direction.y + (pz - ray.origin.z) * ray.direction.z;
     const c0 = Math.floor(x / g.cell) + 1, r0 = Math.floor(y / g.cell) + 1;
     let bestCorner = -1, bestCornerD = cornerR * cornerR;
+    let bestPoint: Vec3 | null = null;
     let bestEdge = -1, bestEdgeD = edgeR * edgeR;
     for (let r = r0 - 1; r <= r0 + 1; r++) {
       for (let c = c0 - 1; c <= c0 + 1; c++) {
@@ -232,13 +254,15 @@ export class CornerGrid {
           }
         }
         for (const i of wantEdges ? g.edgeCells.get(k) ?? [] : []) {
-          const d = segDist2(x, y, g.ex0[i], g.ey0[i], g.ex1[i], g.ey1[i]);
+          const dx = g.ex1[i] - g.ex0[i], dy = g.ey1[i] - g.ey0[i];
+          const len2 = dx * dx + dy * dy;
+          const t = len2 ? Math.max(0, Math.min(1, ((x - g.ex0[i]) * dx + (y - g.ey0[i]) * dy) / len2)) : 0;
+          const d = (x - g.ex0[i] - dx * t) ** 2 + (y - g.ey0[i] - dy * t) ** 2;
           if (d >= bestEdgeD) continue;
-          if (maxDepth !== Infinity) {
-            const [e0, e1] = g.edgeEnds(i);
-            const p = closestPointOnSegmentToRay(e0, e1, ray);
-            if (depthOf(p.x, p.y, p.z) > maxDepth) continue;
-          }
+          const [e0, e1] = g.edgeEnds(i);
+          const point = lerp(e0, e1, t / (t + (1 - t) * g.weightRatio[i]));
+          if (depthOf(point.x, point.y, point.z) > maxDepth) continue;
+          bestPoint = point;
           bestEdge = i; bestEdgeD = d;
         }
       }
@@ -255,7 +279,7 @@ export class CornerGrid {
       const [v0, v1] = g.edgeEnds(bestEdge);
       return {
         kind: 'edge',
-        position: closestPointOnSegmentToRay(v0, v1, ray),
+        position: bestPoint!,
         expressId: g.pieces[g.edgePiece[bestEdge]].expressId,
         distancePx: Math.sqrt(bestEdgeD),
         edge: { v0, v1 },
@@ -285,18 +309,6 @@ export class CornerGrid {
     }
     return false;
   }
-}
-
-function lerp(a: Vec3, b: Vec3, t: number): Vec3 {
-  return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, z: a.z + (b.z - a.z) * t };
-}
-
-/** Squared distance from (px, py) to segment (ax, ay)-(bx, by). */
-function segDist2(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
-  const dx = bx - ax, dy = by - ay;
-  const len2 = dx * dx + dy * dy;
-  const t = len2 > 0 ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len2)) : 0;
-  return (px - ax - dx * t) ** 2 + (py - ay - dy * t) ** 2;
 }
 
 /** The point of segment a-b nearest the ray's line (clamped to the segment). */

@@ -51,6 +51,10 @@ export function mergeCollinearRuns(
 export class RunMergeBuild {
   private phase: Phase = 'orient';
   private next = 0;
+  private sortIndices: Int32Array;
+  private valenceWork = this.computeValences();
+  private runOperations = 0;
+  private runWork = this.growRuns();
   private oriented: WeldedSegment[] = [];
   private sort: ChunkedSort | null = null;
   private sorted: Int32Array | null = null;
@@ -66,7 +70,7 @@ export class RunMergeBuild {
     private readonly segments: WeldedSegment[],
     private readonly points: Vec3[],
     private readonly tol: number
-  ) {}
+  ) { this.sortIndices = new Int32Array(segments.length); }
 
   get done(): boolean { return this.phase === 'done'; }
 
@@ -77,9 +81,9 @@ export class RunMergeBuild {
       case 'sort': this.sortSegments(); break;
       case 'permute': this.permute(); break;
       case 'incident': this.indexIncident(); break;
-      case 'valence': this.computeValences(); break;
+      case 'valence': this.valenceWork.next(); break;
       case 'adjacency': this.indexAdjacency(); break;
-      case 'runs': this.growRuns(); break;
+      case 'runs': this.runWork.next(); break;
       case 'done': break;
     }
     return this.phase === 'done';
@@ -94,13 +98,14 @@ export class RunMergeBuild {
     for (let i = this.next; i < end; i++) {
       const s = segments[i];
       if (s.a === s.b || points[s.a] === undefined || points[s.b] === undefined) continue;
+      this.sortIndices[this.oriented.length] = this.oriented.length;
       this.oriented.push(compareVec3(points[s.a], points[s.b]) <= 0 ? { a: s.a, b: s.b } : { a: s.b, b: s.a });
     }
     this.next = end;
     if (end < segments.length) return;
     const oriented = this.oriented;
-    const idx = new Int32Array(oriented.length);
-    for (let i = 0; i < idx.length; i++) idx[i] = i;
+    const idx = this.sortIndices.subarray(0, oriented.length);
+    this.sortIndices = new Int32Array(0);
     this.sort = new ChunkedSort(idx, (i, j) => {
       const s1 = oriented[i], s2 = oriented[j];
       const byA = compareVec3(points[s1.a], points[s2.a]);
@@ -137,7 +142,7 @@ export class RunMergeBuild {
     const add = (v: number, other: number) => {
       const list = incident.get(v);
       if (list) list.push(other);
-      else incident.set(v, [other]);
+      else { incident.set(v, [other]); this.incidentVertices.push(v); }
     };
     const end = Math.min(ordered.length, this.next + ITEM_CHUNK);
     for (let i = this.next; i < end; i++) {
@@ -146,7 +151,6 @@ export class RunMergeBuild {
     }
     this.next = end;
     if (end < ordered.length) return;
-    this.incidentVertices = [...incident.keys()];
     this.next = 0;
     this.phase = 'valence';
   }
@@ -179,15 +183,15 @@ export class RunMergeBuild {
  * interior weld vertex whenever the two half-segments are lopsided, because
  * the vertex's f32 noise is amplified by the length ratio.)
  */
-  private computeValences(): void {
+  private *computeValences(): Generator<void> {
     const { points, tol, incident, incidentVertices } = this;
-    const end = Math.min(incidentVertices.length, this.next + VERTEX_CHUNK);
-    for (let n = this.next; n < end; n++) {
-      const v = incidentVertices[n];
+    let work = 0;
+    for (const v of incidentVertices) {
       const others = incident.get(v)!;
       const origin = points[v];
       const reps: Array<{ dir: Vec3; len: number }> = [];
       for (const o of others) {
+        if (++work % VERTEX_CHUNK === 0) yield;
         const p = points[o];
         const dx = p.x - origin.x, dy = p.y - origin.y, dz = p.z - origin.z;
         const len = Math.sqrt(dx * dx + dy * dy + dz * dz);
@@ -195,6 +199,7 @@ export class RunMergeBuild {
         const dir = { x: dx / len, y: dy / len, z: dz / len };
         let matched = false;
         for (const rep of reps) {
+          if (++work % VERTEX_CHUNK === 0) yield;
           // Sine of the angle between the two LINES: the cross product magnitude
           // of the unit directions, which is identical for opposite orientations,
           // so a straight run passing through the vertex still counts as one line.
@@ -211,8 +216,6 @@ export class RunMergeBuild {
       }
       this.valence.set(v, reps.length);
     }
-    this.next = end;
-    if (end < incidentVertices.length) return;
     this.incident = new Map();
     this.incidentVertices = [];
     this.next = 0;
@@ -236,23 +239,16 @@ export class RunMergeBuild {
     this.phase = 'runs';
   }
 
-  /** Grow runs from successive seeds until about `SEED_WORK` segments are handled. */
-  private growRuns(): void {
-    const ordered = this.ordered;
-    let work = 0;
-    while (this.next < ordered.length && work < SEED_WORK) {
-      const seed = this.next++;
-      if (this.visited[seed]) continue;
-      work += this.growRun(seed);
+  private *growRuns(): Generator<void> {
+    for (let seed = 0; seed < this.ordered.length; seed++) {
+      if (seed % SEED_WORK === SEED_WORK - 1) yield;
+      if (!this.visited[seed]) yield* this.growRun(seed);
     }
-    if (this.next >= ordered.length) {
-      this.phase = 'done';
-      this.ordered = [];
-    }
+    this.ordered = [];
+    this.phase = 'done';
   }
 
-  /** The run seeded at `seed`; returns the number of segments it consumed. */
-  private growRun(seed: number): number {
+  private *growRun(seed: number): Generator<void> {
     const { ordered: oriented, points, tol, adjacency, visited, valence, edges } = this;
     const origin = points[oriented[seed].a];
     const far = points[oriented[seed].b];
@@ -260,7 +256,7 @@ export class RunMergeBuild {
     const len = Math.sqrt(dx * dx + dy * dy + dz * dz);
     if (len <= tol) {
       visited[seed] = 1;
-      return 1;
+      return;
     }
     const dir = { x: dx / len, y: dy / len, z: dz / len };
 
@@ -275,6 +271,7 @@ export class RunMergeBuild {
       const cur = queue.pop() as number;
       for (const v of [oriented[cur].a, oriented[cur].b]) {
         for (const nb of adjacency.get(v) ?? []) {
+          if (++this.runOperations % SEED_WORK === 0) yield;
           if (visited[nb]) continue;
           if (perpDistance(points[oriented[nb].a], origin, dir) > tol) continue;
           if (perpDistance(points[oriented[nb].b], origin, dir) > tol) continue;
@@ -293,13 +290,14 @@ export class RunMergeBuild {
     const intervals: Interval[] = [];
     const seen = new Map<number, number>();
     for (const m of members) {
+      if (++this.runOperations % SEED_WORK === 0) yield;
       const { a, b } = oriented[m];
       const ta = project(a), tb = project(b);
       seen.set(a, ta);
       seen.set(b, tb);
       intervals.push(ta <= tb ? { t0: ta, t1: tb, v0: a, v1: b } : { t0: tb, t1: ta, v0: b, v1: a });
     }
-    intervals.sort((i1, i2) => i1.t0 - i2.t0 || i1.t1 - i2.t1);
+    yield* sortInSteps(intervals, (i1, i2) => i1.t0 - i2.t0 || i1.t1 - i2.t1);
 
     // 1D union. The gap tolerance is the SAME ~15 um as collinearity, never a
     // round number: two openings aligned on one line in a slab are distinct
@@ -308,6 +306,7 @@ export class RunMergeBuild {
     const runs: Interval[] = [];
     let cur = intervals[0];
     for (let i = 1; i < intervals.length; i++) {
+      if (++this.runOperations % SEED_WORK === 0) yield;
       const next = intervals[i];
       if (next.t0 <= cur.t1 + tol) {
         if (next.t1 > cur.t1) cur = { t0: cur.t0, t1: next.t1, v0: cur.v0, v1: next.v1 };
@@ -329,13 +328,14 @@ export class RunMergeBuild {
       const span = run.t1 - run.t0;
       const junctions: SnapEdgeJunction[] = [];
       for (const [v, t] of seen) {
+        if (++this.runOperations % SEED_WORK === 0) yield;
         if (t <= run.t0 + tol || t >= run.t1 - tol) continue;
         const val = valence.get(v) ?? 0;
         if (val < MIN_CORNER_VALENCE) continue;
         const along = span > 0 ? (t - run.t0) / span : 0;
         junctions.push({ point: points[v], valence: val, t: reversed ? 1 - along : along });
       }
-      junctions.sort((j1, j2) => j1.t - j2.t);
+      yield* sortInSteps(junctions, (j1, j2) => j1.t - j2.t);
       const ex = p1.x - p0.x, ey = p1.y - p0.y, ez = p1.z - p0.z;
       edges.push({
         v0: p0,
@@ -347,6 +347,27 @@ export class RunMergeBuild {
         junctions,
       });
     }
-    return members.length;
+
+  }
+}
+
+/** Preserve the stable interval and junction order without a whole-run sort or copy. */
+function* sortInSteps<T>(values: T[], compare: (a: T, b: T) => number): Generator<void> {
+  if (values.length <= SEED_WORK) { values.sort(compare); return; }
+  const idx = new Int32Array(values.length);
+  for (let i = 0; i < idx.length; i++) {
+    idx[i] = i;
+    if ((i + 1) % SEED_WORK === 0) yield;
+  }
+  const sorter = new ChunkedSort(idx, (i, j) => compare(values[i], values[j]), SEED_WORK);
+  while (!sorter.step()) yield;
+  const ordered: T[] = [];
+  for (const i of sorter.result()) {
+    ordered.push(values[i]);
+    if (ordered.length % SEED_WORK === 0) yield;
+  }
+  for (let i = 0; i < values.length; i++) {
+    values[i] = ordered[i];
+    if ((i + 1) % SEED_WORK === 0) yield;
   }
 }

@@ -20,8 +20,8 @@
  * Corners are endpoints (and junctions) of the geometry cache's feature edges
  * (boundary and crease edges, collinear runs merged), not triangle seams, so a
  * wall with openings offers its true corners. Corners outrank edges inside
- * their radius. The 3D point of an edge snap is the point of the edge nearest
- * the cursor RAY, so it stays exact under perspective.
+ * their radius. The returned edge point projects to the nearest point on the
+ * screen segment, including under perspective.
  */
 
 import type { MeshData } from '@ifc-lite/geometry';
@@ -149,25 +149,30 @@ export class ScreenCornerIndex {
     const cornerR = screenRadius(options.cornerRadiusPx, DEFAULT_CORNER_RADIUS_PX);
     const edgeR = screenRadius(options.edgeRadiusPx, DEFAULT_EDGE_RADIUS_PX);
     if (!(cornerR > 0) && !(edgeR > 0)) return null;
-    const cell = Math.max(cornerR, edgeR);
+    // Bound per-edge registration even with tiny radii or a very large canvas.
+    // The grid is a broad phase; the exact distance test still uses each requested radius.
+    const cell = Math.max(cornerR, edgeR, Math.max(viewport.width, viewport.height) / 1024);
     const eligible = options.eligibleModelIndices;
     const pipeline = this.pipeline ??= new CornerBuildPipeline(options.idleHost);
 
     // The view as the grid sees it: what a grid is built for, and what the settle timer runs on.
     const viewKey = gridKey(args.viewKey, args.clip, viewport.width, viewport.height, args.hiddenIds, args.isolatedIds, cell, eligible);
     const liveViewKey = args.liveViewKey;
+    const maxSliceMs = options.maxSliceMs;
     pipeline.observe({
       snapOccurrences: args.snapOccurrences, pieces: args.pieces, geometryFor: args.geometryFor, startGeometry: args.startGeometry, camera: args.camera, viewport,
       liveViewKey: liveViewKey ? () => liveViewKey() : () => args.viewKey,
       hiddenIds: args.hiddenIds, isolatedIds: args.isolatedIds, eligible, clip: args.clip, cell,
-      settleMs: options.settleMs ?? DEFAULT_SETTLE_MS, maxSliceMs: options.maxSliceMs ?? DEFAULT_MAX_SLICE_MS,
+      settleMs: options.settleMs ?? DEFAULT_SETTLE_MS,
+      maxSliceMs: maxSliceMs !== undefined && Number.isFinite(maxSliceMs) && maxSliceMs >= 0 ? maxSliceMs : DEFAULT_MAX_SLICE_MS,
       now: args.now ?? (() => performance.now()),
     }, viewKey);
     const grid = pipeline.gridFor(viewKey);
     if (!grid) return null;
     const hit = args.hitDistance;
+    const slack = options.occlusionTolerance;
     const maxDepth = options.ignoreOcclusion || hit == null || !Number.isFinite(hit) ? Infinity
-      : hit + (options.occlusionTolerance ?? 0.05 + 0.01 * hit);
+      : hit + (slack !== undefined && Number.isFinite(slack) && slack >= 0 ? slack : 0.05 + 0.01 * hit);
     if (args.kinds?.corners !== false) this.live = { grid, ray: args.ray, maxDepth };
     return grid.search(x, y, args.ray, cornerR, edgeR, maxDepth, args.kinds);
   }

@@ -12,7 +12,6 @@ import {
     releasedEdgeLock,
     pointCloudSnapEnabled,
     pointCloudWinsOverMeshSnap,
-    pointCloudWinsOverSourceSnap,
     type PointCloudRayProvider,
     type PointCloudSnapCamera,
 } from './raycast-point-cloud-query.js';
@@ -48,25 +47,8 @@ export function withPointCloudSnap(
         ? queryPointClouds(provider, ray, snapCamera, maxPointDistance, options, clip)
         : null;
     if (pointHit) {
-        // A point-cloud hit only OVERRIDES an existing mesh snap
-        // target (vertex/edge/face/...) when it's meaningfully in
-        // front of the mesh surface, not just scan noise a few mm
-        // nearer along the ray — otherwise a scan overlapping its
-        // as-designed model would non-deterministically steal
-        // intended vertex/corner snaps on most measurements over
-        // scanned-over geometry (#1860 review finding 2). When the
-        // mesh path found no snap target at all (bare face hit, or
-        // no mesh hit), the point snap wins as before.
-        const sourceTarget = magneticResult.snapTarget?.metadata?.sourceCurve ? magneticResult.snapTarget : null;
-        const wins = sourceTarget
-            ? pointCloudWinsOverSourceSnap(pointHit, sourceTarget, ray, snapCamera)
-            : pointCloudWinsOverMeshSnap({
-                pointHit,
-                meshSnapTarget: magneticResult.snapTarget,
-                meshIntersectionDistance: intersection ? intersection.distance : null,
-                camera: snapCamera,
-            });
-        if (wins) {
+        // The face bounded the search. The selected feature can be closer than that face.
+        if (pointCloudWinsOverMeshSnap(pointHit, magneticResult.snapTarget, ray, snapCamera)) {
             magneticResult = {
                 snapTarget: {
                     type: SnapType.POINT_CLOUD,

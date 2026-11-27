@@ -19,20 +19,20 @@ export interface PieceCandidates {
   edges: Float64Array;
 }
 
-/** Edges one `step` of a `CandidateBuild` processes: the most a slice can overshoot its budget by. */
+/** Work units one `step` of a `CandidateBuild` processes: the most a slice can overshoot its budget by. */
 export const CANDIDATE_CHUNK = 256;
 
 /**
- * Resumable build of one piece's candidates: `step` handles up to `maxEdges`
- * edges and reports whether the piece is finished, so an idle slice can stop
+ * Resumable build of one piece's candidates: `step` handles edge headers, junctions and corner-buffer writes in bounded batches and reports whether the piece is finished, so an idle slice can stop
  * inside a very large piece and the next slice continues from the cursor.
  */
 export class CandidateBuild {
   private readonly seen = new Set<string>();
   private readonly corners: number[] = [];
   private readonly edges: Float64Array;
-  private next = 0;
-  get done(): boolean { return this.next >= this.cache.edges.length; }
+  private readonly work = this.build();
+  private finished: PieceCandidates | null = null;
+  get done(): boolean { return this.finished !== null; }
 
   constructor(private readonly expressId: number, private readonly cache: MeshGeometryCache) {
     this.edges = new Float64Array(cache.edges.length * 6);
@@ -47,23 +47,43 @@ export class CandidateBuild {
     this.corners.push(p.x, p.y, p.z);
   }
 
-  /** Process up to `maxEdges` more edges; true once every edge is done. */
-  step(maxEdges: number = CANDIDATE_CHUNK): boolean {
-    const all = this.cache.edges;
-    const end = Math.min(all.length, this.next + maxEdges);
-    for (; this.next < end; this.next++) {
-      const edge = all[this.next];
-      this.edges.set([edge.v0.x, edge.v0.y, edge.v0.z, edge.v1.x, edge.v1.y, edge.v1.z], this.next * 6);
+  step(budget: number = CANDIDATE_CHUNK): boolean {
+    for (let i = 0; i < budget && !this.done; i++) this.work.next();
+    return this.done;
+  }
+
+  private *build(): Generator<void> {
+    let offset = 0;
+    for (const edge of this.cache.edges) {
+      this.edges[offset] = edge.v0.x;
+      this.edges[offset + 1] = edge.v0.y;
+      this.edges[offset + 2] = edge.v0.z;
+      this.edges[offset + 3] = edge.v1.x;
+      this.edges[offset + 4] = edge.v1.y;
+      this.edges[offset + 5] = edge.v1.z;
       this.addCorner(edge.v0, edge.v0Valence);
       this.addCorner(edge.v1, edge.v1Valence);
-      for (const j of edge.junctions) this.addCorner(j.point, j.valence);
+      offset += 6;
+      yield;
+      for (const junction of edge.junctions) {
+        this.addCorner(junction.point, junction.valence);
+        yield;
+      }
     }
-    return this.done;
+    const packed = new Float64Array(this.corners.length);
+    for (let i = 0; i < packed.length; i += 3) {
+      packed[i] = this.corners[i];
+      packed[i + 1] = this.corners[i + 1];
+      packed[i + 2] = this.corners[i + 2];
+      yield;
+    }
+    this.finished = { expressId: this.expressId, corners: packed, edges: this.edges };
   }
 
   /** The finished candidates; only valid once `step` returned true. */
   result(): PieceCandidates {
-    return { expressId: this.expressId, corners: Float64Array.from(this.corners), edges: this.edges };
+    if (!this.finished) throw new Error('Snap candidates are still building');
+    return this.finished;
   }
 }
 

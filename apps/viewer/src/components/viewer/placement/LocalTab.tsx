@@ -250,7 +250,7 @@ export function LocalTab() {
       {runtime.error && <p role="alert" className="text-destructive">{runtime.error}</p>}
 
       <div className="flex flex-wrap gap-1">
-        <Button size="sm" disabled={!preview} onClick={runtime.apply}>{t('repositionPanel.applyButton')}</Button>
+        <Button size="sm" disabled={!runtime.canApply} onClick={runtime.apply}>{t('repositionPanel.applyButton')}</Button>
         <Button size="sm" variant="outline" disabled={!placement.undo.length} onClick={() => useViewerStore.getState().undoModelTranslation()}>{t('repositionPanel.undoButton')}</Button>
         <Button size="sm" variant="outline" disabled={!placement.redo.length} onClick={() => useViewerStore.getState().redoModelTranslation()}>{t('repositionPanel.redoButton')}</Button>
         <Button size="sm" variant="outline" disabled={!runtime.selected.length || runtime.selected.some((id) => placementFor(placement, id).locked)}

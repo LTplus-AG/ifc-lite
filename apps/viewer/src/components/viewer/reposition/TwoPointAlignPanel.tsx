@@ -77,7 +77,7 @@ export function TwoPointAlignPanel() {
     </fieldset>}
     <p className="text-muted-foreground">{t('repositionPanel.twoPoint.previewNote')}</p>
     <div className="flex flex-wrap gap-1">
-      <Button size="sm" disabled={!readout} onClick={align.apply}>{t('repositionPanel.twoPoint.applyButton')}</Button>
+      <Button size="sm" disabled={!runtime.canApply} onClick={runtime.apply}>{t('repositionPanel.twoPoint.applyButton')}</Button>
       <Button size="sm" variant="outline" disabled={!readout} onClick={copy}>{t('repositionPanel.twoPoint.copyButton')}</Button>
       <Button size="sm" variant="outline" disabled={!align.points.a} onClick={align.repick}>{t('repositionPanel.twoPoint.repickButton')}</Button>
       <Button size="sm" variant="outline" onClick={align.cancel}>{t('repositionPanel.twoPoint.cancelButton')}</Button>

@@ -45,11 +45,11 @@ export function RepositionRuntimeHost() {
   const [role, setRole] = useState<PickRole>(null);
   const align = useTwoPointAlign({ selected, reference, setRole, setError });
   const { active: alignActive, apply: applyAlignment } = align;
-  const alignmentReady = align.result?.ok === true;
   const hover = useRepositionPicking(role, setRole, setError, reference, align.active ? align.capture : undefined);
   // Choosing the ordinary source/target pick leaves the two-point align.
   const pickRole = useCallback((next: PickRole) => { if (next !== null && align.active) align.cancel(); setRole(next); }, [align]);
   const preview = placement.preview;
+  const canApply = alignActive ? align.result?.ok === true : preview !== null;
   const delta = preview?.delta ?? [0, 0, 0];
   const run = useCallback((action: () => void) => {
     try { action(); setError(''); } catch (err) { setError(err instanceof Error ? err.message : String(err)); }
@@ -57,12 +57,16 @@ export function RepositionRuntimeHost() {
   const ensurePreview = useCallback(() => {
     if (!useViewerStore.getState().modelPlacement.preview) useViewerStore.getState().openReposition(selected);
   }, [selected]);
-  const apply = useCallback(() => run(() => {
-    const state = useViewerStore.getState();
-    state.applyModelTranslation();
-    state.openReposition(selected);
-    setRole(null);
-  }), [run, selected]);
+  const apply = useCallback(() => {
+    if (!canApply) return;
+    if (alignActive) { applyAlignment(); return; }
+    run(() => {
+      const state = useViewerStore.getState();
+      state.applyModelTranslation();
+      state.openReposition(selected);
+      setRole(null);
+    });
+  }, [alignActive, applyAlignment, canApply, run, selected]);
 
   useEffect(() => {
     const value = mode === 'absolute' && preview?.source ? addTranslation(preview.source.point, delta) : delta;
@@ -85,8 +89,7 @@ export function RepositionRuntimeHost() {
     const eligibleTarget = (event: KeyboardEvent) => !isTextEntryTarget(event) && !isPressableTarget(event);
     const removeApply = registerKeyboardCommand('reposition.apply', (event) => {
       if (!eligibleTarget(event)) return false;
-      if (!alignActive) apply();
-      else if (alignmentReady) applyAlignment();
+      apply();
     }, { ignoreModifiers: true });
     const removeConstrain = registerKeyboardCommand('reposition.constrain', (event) => {
       if (!eligibleTarget(event) || event.ctrlKey || event.metaKey) return false;
@@ -108,7 +111,7 @@ export function RepositionRuntimeHost() {
       });
     }, { ignoreModifiers: true });
     return () => { removeCancel(); removeApply(); removeConstrain(); removeNudge(); };
-  }, [alignActive, alignmentReady, apply, applyAlignment, ensurePreview, run]);
+  }, [apply, ensurePreview, run]);
 
   const chooseModels = useCallback((ids: readonly string[]) => run(() => {
     useViewerStore.getState().openReposition(ids); setSelected(ids); setRole(null);
@@ -148,10 +151,10 @@ export function RepositionRuntimeHost() {
     publishRepositionRuntime({
       selected, reference, fields, mode, nudgeField, error, distance, role, hover,
       align, setError, setReference, setFieldAt, setMode, setNudgeField, setDistance, setRole: pickRole,
-      chooseModels, previewFields, previewDistance, nearReference, applyNudge, apply,
+      chooseModels, previewFields, previewDistance, nearReference, applyNudge, canApply, apply,
     });
   }, [selected, reference, fields, mode, nudgeField, error, distance, role, hover, align, pickRole,
-    chooseModels, previewFields, previewDistance, nearReference, applyNudge, apply, setFieldAt]);
+    chooseModels, previewFields, previewDistance, nearReference, applyNudge, canApply, apply, setFieldAt]);
   useEffect(() => () => publishRepositionRuntime(null), []);
 
   const projected = hover && project ? (() => {

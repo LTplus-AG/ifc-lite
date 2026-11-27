@@ -47,6 +47,7 @@ export interface RepositionRuntime {
   previewDistance: () => void;
   nearReference: () => void;
   applyNudge: () => void;
+  canApply: boolean;
   apply: () => void;
 }
 

@@ -13,7 +13,7 @@ import type { GeometryResult } from '@ifc-lite/geometry';
 import type { Renderer } from '@ifc-lite/renderer';
 import { convergeFederationRtcFrame } from '@/hooks/ingest/federationRtcRebase';
 import { setGlobalRendererRef } from '@/lib/renderer-ref';
-import { render, cleanup, click, press } from '@/test/render';
+import { render, cleanup, click, press, type } from '@/test/render';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { useViewerStore } from '@/store';
 import { emptyPlacementState, placementFor } from '@/lib/model-placement/state';
@@ -67,6 +67,14 @@ describe('two-point align panel (#11505)', () => {
     canvas.focus();
     assert.equal(document.activeElement, canvas);
     press(canvas, 'Enter');
+  }
+
+  function previewFiveMetres() {
+    const deltaX = ui.querySelector<HTMLInputElement>('input[aria-label="Delta X"]');
+    assert.ok(deltaX);
+    type(deltaX, '5');
+    click(button(ui, 'Preview values'));
+    assert.deepEqual(useViewerStore.getState().modelPlacement.preview?.delta, [5, 0, 0]);
   }
 
   it('walks the four prompts in order and enables Apply only once the result exists', () => {
@@ -134,6 +142,47 @@ describe('two-point align panel (#11505)', () => {
 
     click(button(ui, 'Cancel align'));
     pressCanvasEnter();
+    const applied = useViewerStore.getState().modelPlacement;
+    assert.equal(applied.undo.length, 1);
+    assert.deepEqual(placementFor(applied, 'ifc').translation, [5, 0, 0]);
+  });
+
+  it('applies and undoes the displayed alignment from the main Apply button (#11629)', () => {
+    previewFiveMetres();
+    click(button(ui, 'Two-point align'));
+    pickAll([5, 0, 0], [20, 0, 0], [15, 0, 0], [20, 10, 0]);
+    assert.match(readoutText(ui), /Rotation \+90\.00°/);
+
+    click(button(ui, 'Apply'));
+    const placed = useViewerStore.getState().modelPlacement;
+    assert.equal(placed.undo.length, 1);
+    assert.equal(placementFor(placed, 'ifc').rotation.angle, Math.PI / 2);
+    assert.deepEqual(placementFor(placed, 'ifc').translation, [20, 0, 0]);
+
+    click(button(ui, 'Undo placement'));
+    const restored = placementFor(useViewerStore.getState().modelPlacement, 'ifc');
+    assert.equal(restored.rotation.angle, 0);
+    assert.deepEqual(restored.translation, [0, 0, 0]);
+  });
+
+  it('disables main Apply for incomplete or invalid alignment and restores the ordinary move control on cancel (#11629)', () => {
+    previewFiveMetres();
+    click(button(ui, 'Two-point align'));
+    pickPoint('source', [5, 0, 0]);
+    const apply = button(ui, 'Apply');
+    click(apply);
+    assert.equal(useViewerStore.getState().modelPlacement.undo.length, 0);
+    assert.equal(apply.disabled, true);
+
+    pickPoint('target', [20, 0, 0]);
+    pickPoint('source', [5, 0, 0]);
+    pickPoint('target', [20, 10, 0]);
+    assert.equal(button(ui, 'Apply').disabled, true);
+    assert.deepEqual(useViewerStore.getState().modelPlacement.preview?.delta, [5, 0, 0]);
+
+    click(button(ui, 'Cancel align'));
+    assert.equal(button(ui, 'Apply').disabled, false);
+    click(button(ui, 'Apply'));
     const applied = useViewerStore.getState().modelPlacement;
     assert.equal(applied.undo.length, 1);
     assert.deepEqual(placementFor(applied, 'ifc').translation, [5, 0, 0]);

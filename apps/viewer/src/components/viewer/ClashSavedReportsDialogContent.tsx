@@ -58,8 +58,8 @@ function ReportRow({ report, confirming, onConfirm, onCancel, onDeleted, onDocum
   };
   return (
     <li className={`space-y-1 rounded-md border border-border p-2 ${requested ? 'bg-primary/5' : ''}`} data-clash-report={report.id} aria-current={requested ? 'true' : undefined}>
-      <div className="flex gap-1.5">
-        <input className="min-w-0 flex-1 rounded border border-border bg-transparent px-1.5 py-0.5 text-xs" value={name}
+      <div className="flex flex-wrap gap-1.5">
+        <input className="min-w-32 flex-1 rounded border border-border bg-transparent px-1.5 py-0.5 text-xs" value={name}
           maxLength={CLASH_REPORT_LIMITS.name} onChange={(event) => setName(event.target.value)} aria-label={t('clashTools.savedReports.renameLabel', { name: report.name })} />
         <Button variant="outline" size="sm" className="h-6 px-2 text-xs" disabled={!name.trim() || name.trim() === report.name}
           onClick={() => void state().renameSavedClashReport(report.id, name).then(persisted)}>{t('clashTools.savedReports.renameButton')}</Button>
@@ -133,8 +133,8 @@ export function ClashSavedReportsDialogContent({ open, onOpenChange }: { open: b
         </DialogHeader>
         <div className="space-y-3">
           <div className="space-y-1.5 rounded-md border border-border p-2.5">
-            <div className="flex gap-1.5">
-              <input className="min-w-0 flex-1 rounded border border-border bg-transparent px-1.5 py-0.5 text-xs" value={name}
+            <div className="flex flex-wrap gap-1.5">
+              <input className="min-w-32 flex-1 rounded border border-border bg-transparent px-1.5 py-0.5 text-xs" value={name}
                 maxLength={CLASH_REPORT_LIMITS.name} onChange={(event) => setName(event.target.value)} aria-label={t('clashTools.savedReports.nameLabel')}
                 placeholder={result ? defaultClashReportName(result, new Date()) : t('clashTools.savedReports.nameLabel')} />
               <Button variant="outline" size="sm" className="h-7 shrink-0 gap-1" disabled={!result || running} onClick={() => void saveCurrent()}>

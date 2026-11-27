@@ -58,6 +58,8 @@ export interface RelatedEntityOptions {
    * valid reproduction of anything.
    */
   IfcRelContainedInSpatialStructure?: boolean;
+  /** Follow spatial IfcRelAggregates ancestors when containment is enabled (default true). */
+  includeSpatialAggregates?: boolean;
   /**
    * An included object's property sets (`IfcRelDefinesByProperties`).
    * Default `false` — psets are the majority of what this feature exists to

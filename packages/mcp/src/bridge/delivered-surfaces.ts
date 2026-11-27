@@ -14,7 +14,7 @@
  *
  * An admitted event's prompt is VERIFIED only when it is follow-up text the
  * agent wrote in that surface: a follow-up's `prompt`, an event action's
- * `userMessage` or `context.prompt`, or the renderer's generic
+ * `userMessage`, an `ask` action's `context.prompt`, or the renderer's generic
  * `Action: <name>` line: the texts the renderer sends as a prompt. Labels
  * never verify (the renderer never sends one, and agents put entity names in
  * them), nor do data values (entity names, property values, legend rows,
@@ -100,7 +100,8 @@ function collect(value: unknown, into: Surface): void {
       addString(into.events, event.name);
       // A2UI v1.0 keeps the button's user message inside the event.
       addString(into.prompts, event.userMessage);
-      if (isRecord(event.context)) addString(into.prompts, event.context.prompt);
+      // The renderer sends context.prompt only for `ask` (eventToFollowUp); for any other event it is data.
+      if (event.name === ASK_EVENT && isRecord(event.context)) addString(into.prompts, event.context.prompt);
     }
   }
   // An action's event context is data the renderer resolves, not follow-up definitions: its

@@ -125,11 +125,16 @@ function renamer(tools: readonly BridgeToolDescriptor[]): (text: string) => stri
 }
 
 /** A copy of a tab tool's schema with its tool names renamed in every `description` string. */
+/** Schema keywords whose value is literal argument data, never schema text: left as the tab wrote them. */
+const LITERAL_KEYWORDS: ReadonlySet<string> = new Set(['const', 'enum', 'default', 'examples']);
+
 function renameInSchema(value: unknown, rename: (text: string) => string): unknown {
   if (Array.isArray(value)) return value.map((item) => renameInSchema(item, rename));
   if (value === null || typeof value !== 'object') return value;
-  return Object.fromEntries(Object.entries(value).map(([key, item]) =>
-    [key, key === 'description' && typeof item === 'string' ? rename(item) : renameInSchema(item, rename)]));
+  return Object.fromEntries(Object.entries(value).map(([key, item]) => {
+    if (LITERAL_KEYWORDS.has(key)) return [key, item];
+    return [key, key === 'description' && typeof item === 'string' ? rename(item) : renameInSchema(item, rename)];
+  }));
 }
 
 function forwardedTool(bridge: TabBridge, d: BridgeToolDescriptor, tools: readonly BridgeToolDescriptor[]): Tool {

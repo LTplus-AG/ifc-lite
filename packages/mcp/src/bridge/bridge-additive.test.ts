@@ -140,15 +140,19 @@ describe('one server: headless and tab', () => {
     const agent = await start();
     const lister = { ...READ_TOOL, name: 'model_list', description: 'List the models.' };
     const reader = { ...READ_TOOL, name: 'query_entities', description: 'Call model_list for ids; not tab_model_list twice, nor model_list_x. Then export the rows.',
-      inputSchema: { type: 'object', properties: { model_id: { type: 'string', description: 'id from model_list' } } } };
+      inputSchema: { type: 'object', properties: { model_id: { type: 'string', description: 'id from model_list' },
+        filter: { type: 'object', default: { description: 'see model_list' }, enum: [{ description: 'model_list' }] } } } };
     const word = { ...READ_TOOL, name: 'export', description: 'Export.' };
     const { tab } = await pairTab({ port: agent.r.bridge.port, code: agent.r.bridge.pairingCode(), tools: [lister, reader, word] });
     tabs.push(tab);
     const listed = (await agent.request('tools/list')).tools as ToolDefinition[];
     expect(listed.find((t) => t.name === tabTool('query_entities'))?.description)
       .toBe('Call tab_model_list for ids; not tab_model_list twice, nor model_list_x. Then export the rows.');
-    // Schema text too.
-    expect(JSON.stringify(listed.find((t) => t.name === tabTool('query_entities'))?.inputSchema)).toContain('id from tab_model_list');
+    // Schema text too, but never literal argument data.
+    const schema = JSON.stringify(listed.find((t) => t.name === tabTool('query_entities'))?.inputSchema);
+    expect(schema).toContain('id from tab_model_list');
+    expect(schema).toContain('"default":{"description":"see model_list"}');
+    expect(schema).toContain('"enum":[{"description":"model_list"}]');
   });
 
   it('still answers the 0.32 surface tool names, without listing them', async () => {
@@ -288,6 +292,15 @@ describe('DeliveredSurfaces', () => {
     ledger.record([{ version: '1.0', updateComponents: { surfaceId: 'f', components: [
       { id: 'a', component: 'ActionBar', followUps: [{ label: { path: '/l' }, prompt: 'Which walls are external?' }] }] } }]);
     expect(ledger.check({ surfaceId: 'f', name: 'ask', prompt: 'Which walls are external?' })).toMatchObject(ok);
+  });
+
+  it('takes context.prompt only from an ask action (CodeRabbit)', () => {
+    const ledger = new DeliveredSurfaces();
+    ledger.record([{ version: '1.0', updateComponents: { surfaceId: 'k', components: [
+      { id: 'b', component: 'Button', action: { event: { name: 'select', context: { prompt: 'Model text here' } } } },
+      { id: 'q', component: 'Button', action: { event: { name: 'ask', context: { prompt: 'Which walls?' } } } }] } }]);
+    expect(ledger.check({ surfaceId: 'k', name: 'select', prompt: 'Model text here' })).toMatchObject({ promptVerified: false });
+    expect(ledger.check({ surfaceId: 'k', name: 'ask', prompt: 'Which walls?' })).toMatchObject(ok);
   });
 
   it('does not take follow-ups from inside an event context (CodeRabbit)', () => {

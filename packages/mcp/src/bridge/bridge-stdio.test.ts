@@ -145,7 +145,13 @@ async function spawnCli(args: string[]) {
   const client = stdioClient((line) => child.stdin.write(line));
   child.stdout.setEncoding('utf8').on('data', (c: string) => client.feed(c));
   client.send({ id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 't', version: '1' } } });
-  await client.reply(1, 15_000);
+  try {
+    await client.reply(1, 15_000);
+  } catch (err) {
+    // No answer: the caller never gets the child, so stop it here.
+    child.kill();
+    throw err;
+  }
   return { child, closed, out, client };
 }
 
@@ -158,11 +164,13 @@ async function status(client: ReturnType<typeof stdioClient>, id: number) {
 describe.skipIf(!built)('ifc-lite-mcp --bridge binary', () => {
   it('P2: binds no port until bridge_status, then serves the tab next to the headless tools over pure JSON-RPC stdout', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'ifc-lite-mcp-bridge-'));
-    const file = join(dir, 'building.ifc');
-    await writeFile(file, MODEL, 'utf-8');
-    // No --bridge-port: the default is bound lazily (and falls back if another session holds 21517).
-    const { child, closed, out, client } = await spawnCli([file, '--bridge']);
+    let spawned: Awaited<ReturnType<typeof spawnCli>> | null = null;
     try {
+      const file = join(dir, 'building.ifc');
+      await writeFile(file, MODEL, 'utf-8');
+      // No --bridge-port: the default is bound lazily (and falls back if another session holds 21517).
+      spawned = await spawnCli([file, '--bridge']);
+      const { out, client } = spawned;
       expect(out.stderr).not.toMatch(/ws:\/\/127\.0\.0\.1:\d+/);
       client.send({ id: 2, method: 'tools/list' });
       const before = ((await client.reply(2)).result as { tools: Array<{ name: string }> }).tools.map((t) => t.name);
@@ -195,10 +203,10 @@ describe.skipIf(!built)('ifc-lite-mcp --bridge binary', () => {
       // The effective allowlist is printed once, when the listener binds.
       expect(out.stderr.match(/allowed origins \(exactly these\): https:\/\/ifclite\.com\n/g)).toHaveLength(1);
     } finally {
-      child.stdin.end();
+      spawned?.child.stdin.end();
       await rm(dir, { recursive: true, force: true });
     }
-    expect(await closed).toBe(0);
+    expect(await spawned!.closed).toBe(0);
   }, 30_000);
 
   it('answers a pending call on SIGTERM before exiting (bridge closed before the transport)', async () => {

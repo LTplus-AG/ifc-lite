@@ -45,3 +45,4 @@ packages/*/THIRD_PARTY_NOTICES.txt -text -whitespace linguist-generated=true
 licenses/retained/manifest.json linguist-generated=true
 # Recorded 3D Tiles fixtures (open data, see packages/tiles3d/fixtures/README.md).
 packages/tiles3d/fixtures/**/*.b3dm binary
+packages/validate/src/generated/** linguist-generated=true

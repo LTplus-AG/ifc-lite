@@ -60,6 +60,11 @@ function shownPrompt(event: ReceivedUiEvent): string {
   return event.promptVerified ? event.prompt ?? '' : quoted(event.prompt ?? '');
 }
 
+/** Text for a channel message: `<`, `>` and `&` escaped, so even agent-written text that embeds model data cannot close the `<channel>` tag. */
+function forChannel(text: string): string {
+  return text.replace(/[<>&]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`);
+}
+
 /**
  * JSON of tab-supplied data with `<`, `>` and `&` escaped (still valid JSON),
  * so it cannot close or forge the `<channel>` tag the client wraps around it.
@@ -122,5 +127,6 @@ export function channelParams(event: ReceivedUiEvent): { content: string; meta: 
   } else {
     content = `The user triggered "${event.name}" on surface ${event.surfaceId}${promptNote(event)}.${context}`;
   }
+  content = forChannel(content);
   return { content, meta: { event_id: event.id, event: event.name, surface_id: event.surfaceId } };
 }

@@ -181,12 +181,12 @@ export async function startBridgeServer(opts: BridgeServerOptions): Promise<Runn
   // After the registry and server are built, so a throw there holds no port.
   if (!opts.lazy) await bridge.listen();
   bridge.onChange(() => server.notifyToolsChanged());
+  let trailing: ReturnType<typeof setTimeout> | null = null;
   if (opts.channel) {
     bridge.uiEvents.onEvent((event) => server.notify(CHANNEL_NOTIFICATION, channelParams(event)));
     // At most one refusal notice per interval, carrying the count. Refusals the
     // interval held back get one trailing notice, unless the agent read them meanwhile.
     let lastNotice = -Infinity;
-    let trailing: ReturnType<typeof setTimeout> | null = null;
     const notice = (pending: number): void => {
       lastNotice = Date.now();
       server.notify(CHANNEL_NOTIFICATION, refusedChannelParams(pending));
@@ -206,6 +206,9 @@ export async function startBridgeServer(opts: BridgeServerOptions): Promise<Runn
   return {
     server,
     bridge,
-    close: () => bridge.close(),
+    close: () => {
+      if (trailing) clearTimeout(trailing);
+      return bridge.close();
+    },
   };
 }

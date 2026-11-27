@@ -17,11 +17,17 @@ import { useInstancedMembershipRevision } from '@/hooks/useSceneTriangleCounts';
 
 export type PickRole = 'source' | 'target' | null;
 
+/** Two-point align (#11505) takes the picks over: a stable callback that files the
+ * anchor itself, in place of the move preview's source/target anchors, and
+ * returns the role to pick next (null when finished). */
+export type PickCapture = (role: 'source' | 'target', anchor: PlacementAnchor) => PickRole;
+
 /** Uses the measurement tool's real mesh/scan snap path. Navigation remains
  * available on the other mouse buttons while left-click selects an anchor. */
-export function useRepositionPicking(role: PickRole, finish: (role: PickRole) => void, onError: (message: string) => void, reference = '') {
+export function useRepositionPicking(role: PickRole, finish: (role: PickRole) => void, onError: (message: string) => void, reference = '', capture?: PickCapture) {
   const [hover, setHover] = useState<PlacementAnchor | null>(null);
   const models = useViewerStore((state) => state.models);
+  const previewModelIds = useViewerStore((state) => state.modelPlacement.preview?.modelIds);
   const instanceRevision = useInstancedMembershipRevision(role !== null);
   const instances = useRef<ReturnType<typeof repositionInstanceIds>>(new Map());
   // Refresh the inventory without replacing gesture listeners mid-click.
@@ -119,15 +125,16 @@ export function useRepositionPicking(role: PickRole, finish: (role: PickRole) =>
       if (refuseCaptureHeldPick(renderer)) return;
       const hit = pick(event);
       setHover(hit);
-      if (hit && role === 'target') {
+      if (hit && role === 'target' && !capture) {
         try { updateAnchor(event, hit); }
         catch (error) { onError(error instanceof Error ? error.message : String(error)); }
       }
     };
     let nextRole: PickRole | undefined;
+    let pendingCapture: { hit: PlacementAnchor; revision: number } | undefined;
     const down = (event: PointerEvent) => {
       if (event.button !== 0) return;
-      event.preventDefault(); event.stopImmediatePropagation(); nextRole = undefined;
+      event.preventDefault(); event.stopImmediatePropagation(); nextRole = undefined; pendingCapture = undefined;
       if (isGeometryRestoreHeld(useViewerStore.getState())) {
         return;
       }
@@ -139,8 +146,8 @@ export function useRepositionPicking(role: PickRole, finish: (role: PickRole) =>
         return;
       }
       try {
-        updateAnchor(event, hit);
-        nextRole = role === 'source' ? 'target' : null;
+        if (capture) pendingCapture = { hit, revision: useViewerStore.getState().modelPlacement.revision };
+        else { updateAnchor(event, hit); nextRole = role === 'source' ? 'target' : null; }
       } catch (error) { onError(error instanceof Error ? error.message : String(error)); }
     };
     // Finish on click, after consuming the whole gesture. Changing the role on
@@ -149,11 +156,16 @@ export function useRepositionPicking(role: PickRole, finish: (role: PickRole) =>
     const release = (event: MouseEvent) => {
       if (event.button !== 0) return;
       event.preventDefault(); event.stopImmediatePropagation();
-      if (event.type === 'click' && nextRole !== undefined) {
-        // A click during a reopen's restore hold is ignored, even for a press picked just before it began.
-        if (isGeometryRestoreHeld(useViewerStore.getState())) { nextRole = undefined; return; }
-        finish(nextRole);
-      }
+      if (event.type !== 'click') return;
+      const captured = pendingCapture;
+      const next = nextRole;
+      pendingCapture = undefined;
+      nextRole = undefined;
+      const state = useViewerStore.getState();
+      // A click during a reopen's restore hold is ignored, even for a press picked just before it began.
+      if (isGeometryRestoreHeld(state)) return;
+      if (capture && captured?.revision === state.modelPlacement.revision) finish(capture(role, captured.hit));
+      else if (next !== undefined) finish(next);
     };
     canvas.addEventListener('pointerup', release, true);
     canvas.addEventListener('click', release, true);
@@ -166,6 +178,6 @@ export function useRepositionPicking(role: PickRole, finish: (role: PickRole) =>
       canvas.removeEventListener('pointerdown', down, true);
       canvas.style.cursor = previousCursor;
     };
-  }, [role, finish, onError, models, reference]);
+  }, [role, finish, onError, models, previewModelIds, reference, capture]);
   return hover;
 }

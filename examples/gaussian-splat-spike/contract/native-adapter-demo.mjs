@@ -9,7 +9,7 @@
 // ?journey=1 (autoplay the 30 s demo-camera journey), ?center=x,y,z&radius=r&azimuth=deg.
 import { Renderer, normalizeGaussianAttributes } from '../../../packages/renderer/src/index.ts';
 import { DEMO_DURATION_SECONDS, demoCameraAt } from '../demo-camera.mjs';
-import { loadCaptureColumns, loadIfcMeshes } from './native-adapter-demo-assets.mjs';
+import { captureDecodeStatus, loadCaptureColumns, loadIfcMeshes } from './native-adapter-demo-assets.mjs';
 
 const QUALIFICATION = Object.freeze({ qualification: 'internal-unqualified' });
 const canvas = document.querySelector('#scene');
@@ -121,7 +121,7 @@ async function main() {
   const handles = {}, counts = {};
   demo.phase = 'captures';
   for (const asset of adapter ? assets : []) {
-    status.textContent = `Decoding ${asset.id} with @playcanvas/splat-transform 3.11.2 (${asset.format} reader)…`;
+    status.textContent = captureDecodeStatus(asset);
     const attributes = normalizeGaussianAttributes(await loadCaptureColumns(asset.url, asset.format));
     counts[asset.id] = { count: attributes.count, shDegree: attributes.sphericalHarmonicsDegree };
     status.textContent = `Uploading ${asset.id} (${attributes.count.toLocaleString()} Gaussians) to the viewer device…`;

@@ -387,7 +387,6 @@ pub(crate) fn targets_ifc2x3(to: &str) -> bool {
     SchemaFamily::from_label(to) == Some(SchemaFamily::Ifc2x3)
 }
 
-/// True when converting between these schemas changes entity types/attributes.
 pub fn needs_conversion(from: &str, to: &str) -> bool {
     canon(from) != canon(to)
 }

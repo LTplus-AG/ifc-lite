@@ -16,6 +16,8 @@
  */
 
 import { test as base, type Browser } from '@playwright/test';
+import { ADAPTER_REQUEST_TIMEOUT_MS } from '../../packages/renderer/src/adapter-request.js';
+import { isHardwareAdapter } from '../../scripts/perf/hardware-adapter.mjs';
 
 export { expect } from '@playwright/test';
 
@@ -23,50 +25,61 @@ export interface GpuAdapterReport {
   vendor: string; architecture: string; device: string; description: string; fallback: boolean;
 }
 
-/** Software adapters (SwiftShader, fallback) are not GPU evidence. */
-export function isSoftwareAdapter(adapter: GpuAdapterReport | null): boolean {
-  if (!adapter) return true;
-  const text = `${adapter.vendor} ${adapter.architecture} ${adapter.device} ${adapter.description}`.toLowerCase();
-  return adapter.fallback || text.includes('swiftshader');
+function isSoftwareAdapter(adapter: GpuAdapterReport | null): boolean {
+  return !adapter || adapter.fallback || !isHardwareAdapter(adapter) ||
+    /lavapipe|microsoft basic render/i.test(JSON.stringify(adapter));
 }
 
 /** The attached browser's WebGPU adapter, from a secure (`*.localhost`) page served by Playwright itself. */
 async function adapterOf(browser: Browser): Promise<GpuAdapterReport | null> {
   const context = await browser.newContext();
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     const page = await context.newPage();
     const url = 'http://ifc-gpu-adapter.localhost/';
     await page.route(url, (route) => route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>adapter</title>' }));
     await page.goto(url);
-    return await page.evaluate(async () => {
+    const request = page.evaluate(async () => {
       type Info = { vendor?: string; architecture?: string; device?: string; description?: string; isFallbackAdapter?: boolean };
       const gpu = (navigator as unknown as { gpu?: { requestAdapter(o?: object): Promise<{ info?: Info; isFallbackAdapter?: boolean } | null> } }).gpu;
       const adapter = await gpu?.requestAdapter({ powerPreference: 'high-performance' });
       if (!adapter) return null;
       const info = adapter.info ?? {};
       return { vendor: info.vendor ?? '', architecture: info.architecture ?? '', device: info.device ?? '',
-        description: info.description ?? '', fallback: Boolean(info.isFallbackAdapter ?? adapter.isFallbackAdapter) };
+        description: info.description ?? '', fallback: Boolean(info.isFallbackAdapter || adapter.isFallbackAdapter) };
     });
+    // Bound the browser-side request from the worker, even if evaluation stalls over CDP.
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error('GPU adapter request timed out')), ADAPTER_REQUEST_TIMEOUT_MS);
+    });
+    return await Promise.race([request, timeout]);
   } finally {
+    clearTimeout(timer);
     await context.close();
   }
 }
 
 const cdpUrl = process.env.IFC_GPU_CDP_URL;
 
+export async function useHardwareGpu(browser: Browser, use: (browser: Browser) => Promise<void>): Promise<void> {
+  try {
+    const adapter = await adapterOf(browser);
+    // Marked line: on the PC fleet host only stdout comes back.
+    console.log(`IFC_GPU_ADAPTER ${JSON.stringify({ cdp: true, version: browser.version(), adapter })}`);
+    if (isSoftwareAdapter(adapter)) {
+      throw new Error(`IFC_GPU_CDP_URL browser has no hardware WebGPU adapter: ${JSON.stringify(adapter)}`);
+    }
+    await use(browser);
+  } finally {
+    await browser.close();
+  }
+}
+
 export const test: typeof base = cdpUrl
   ? base.extend<object, { browser: Browser }>({
     browser: [async ({ playwright }, use) => {
       const browser = await playwright.chromium.connectOverCDP(cdpUrl);
-      const adapter = await adapterOf(browser);
-      // Marked line: on the PC fleet host only stdout comes back.
-      console.log(`IFC_GPU_ADAPTER ${JSON.stringify({ cdp: true, version: browser.version(), adapter })}`);
-      if (isSoftwareAdapter(adapter)) {
-        await browser.close();
-        throw new Error(`IFC_GPU_CDP_URL browser has no hardware WebGPU adapter: ${JSON.stringify(adapter)}`);
-      }
-      await use(browser);
-      await browser.close();
+      await useHardwareGpu(browser, use);
     }, { scope: 'worker' }],
   }) as unknown as typeof base
   : base;

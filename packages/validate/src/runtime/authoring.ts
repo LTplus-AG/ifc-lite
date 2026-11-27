@@ -13,7 +13,7 @@ import { EntityInstance } from './instance.js';
 import { violated } from './logic.js';
 import { Model } from './model.js';
 import type { TypeRef } from './schema-meta.js';
-import type { SchemaRuntime } from './schema-runtime.js';
+import { underlyingType, type SchemaRuntime } from './schema-runtime.js';
 import { BinaryValue, EnumValue, Ref, StepInteger, StepReal, Typed, UNKNOWN, withLowerBound, markSet, type Value } from './values.js';
 
 export interface RefinementContext {
@@ -49,27 +49,17 @@ export function fromAuthoring(schema: Pick<SchemaRuntime, 'canonicalName' | 'typ
     }
     return undefined;
   }
-  if (typeof v === 'string' && resolvesTo(schema, type, 'BINARY')) return new BinaryValue(v);
-  if (v === 'UNKNOWN' && resolvesTo(schema, type, 'LOGICAL')) return UNKNOWN;
-  if (typeof v === 'string' && type?.k === 'named' && schema.type(type.name)?.kind === 'enum') return new EnumValue(v.toUpperCase());
+  const base = underlyingType(schema, type);
+  const simple = base?.k === 'simple' ? base.name : undefined;
+  if (typeof v === 'string' && simple === 'BINARY') return new BinaryValue(v);
+  if (v === 'UNKNOWN' && simple === 'LOGICAL') return UNKNOWN;
+  if (typeof v === 'string' && base?.k === 'named' && schema.type(base.name)?.kind === 'enum') return new EnumValue(v.toUpperCase());
   if (typeof v === 'number' && Number.isInteger(v)) {
-    if (resolvesTo(schema, type, 'INTEGER')) return new StepInteger(v);
-    if (resolvesTo(schema, type, 'REAL')) return new StepReal(v);
+    if (simple === 'INTEGER') return new StepInteger(v);
+    if (simple === 'REAL') return new StepReal(v);
   }
   if (typeof v === 'number' || typeof v === 'string' || typeof v === 'boolean') return v;
   return undefined;
-}
-
-function resolvesTo(schema: Pick<SchemaRuntime, 'type'>, type: TypeRef | undefined, simple: string): boolean {
-  const seen = new Set<string>();
-  for (let t = type; t;) {
-    if (t.k === 'simple') return t.name === simple;
-    if (t.k !== 'named' || seen.has(t.name)) return false;
-    seen.add(t.name);
-    const decl = schema.type(t.name);
-    t = decl?.kind === 'defined' ? decl.underlying : undefined;
-  }
-  return false;
 }
 
 function refineRule(ctx: RefinementContext, input: unknown, id: string, source: string, check: () => Value): void {

@@ -74,8 +74,9 @@ export function typeIs(m: Model, v: Value, upperName: string): boolean {
 }
 
 export function usedIn(m: Model, v: Value, role: Value): Value {
-  if (!(v instanceof EntityInstance) || v.transient) return [];
-  return m.usedIn(v, typeof role === 'string' ? role : '');
+  const name = prim(role);
+  if (!(v instanceof EntityInstance) || v.transient || typeof name !== 'string') return [];
+  return m.usedIn(v, name);
 }
 
 export function query(source: Value, predicate: (item: Value) => Value): Value {

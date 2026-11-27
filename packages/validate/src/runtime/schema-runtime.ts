@@ -77,6 +77,19 @@ export interface ResolvedTypeRule {
   rule: CompiledRule<TypeRuleFn>;
 }
 
+export function underlyingType(schema: Pick<SchemaRuntime, 'type'>, type: TypeRef | undefined): TypeRef | undefined {
+  const seen = new Set<string>();
+  while (type?.k === 'named') {
+    const name = type.name.toUpperCase();
+    if (seen.has(name)) return undefined;
+    seen.add(name);
+    const decl = schema.type(name);
+    if (decl?.kind !== 'defined') break;
+    type = decl.underlying;
+  }
+  return type;
+}
+
 export class SchemaRuntime {
   readonly name: string;
   readonly upperName: string;
@@ -114,16 +127,7 @@ export class SchemaRuntime {
   }
 
   underlyingType(type: TypeRef | undefined): TypeRef | undefined {
-    const seen = new Set<string>();
-    while (type?.k === 'named') {
-      const name = type.name.toUpperCase();
-      if (seen.has(name)) return undefined;
-      seen.add(name);
-      const decl = this.type(name);
-      if (decl?.kind !== 'defined') break;
-      type = decl.underlying;
-    }
-    return type;
+    return underlyingType(this, type);
   }
 
   aggregateType(type: TypeRef | undefined): Extract<TypeRef, { k: 'aggregate' }> | undefined {

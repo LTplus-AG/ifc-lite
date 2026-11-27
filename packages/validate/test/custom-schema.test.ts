@@ -356,3 +356,23 @@ WHERE FromA : NVL(MakeC(1,2).X, -1) = First;
   expect(report.stats.entityRuleEvaluations).toBe(6);
   expect(report.findings.map(f => [f.instance, f.rule])).toEqual([[2, 'Probe.FromA'], [2, 'Probe.FromB']]);
 });
+
+it('evaluates local enum comparisons through direct and aliased authoring attributes (#11647)', () => {
+  const { schemas } = generated(`SCHEMA S; TYPE E = ENUMERATION OF (YES, NO); END_TYPE;
+TYPE FirstChoice = E; END_TYPE; TYPE SecondChoice = FirstChoice; END_TYPE;
+ENTITY Direct; Item : E; WHERE Allowed : Item = E.YES; END_ENTITY;
+ENTITY Indirect; Item : SecondChoice; WHERE Allowed : Item = E.YES; END_ENTITY; END_SCHEMA;`);
+  for (const name of ['Direct', 'Indirect']) {
+    expect(schemas[name].safeParse({ Item: 'YES' }).success).toBe(true);
+    expect(schemas[name].safeParse({ Item: 'NO' }).error?.issues).toMatchObject([{ message: expect.stringContaining(name + '.Allowed') }]);
+  }
+});
+
+it('distinguishes an unset USEDIN role from the explicit empty role (#11647)', async () => {
+  const { schema } = generated(`SCHEMA S; ENTITY Item; Role : OPTIONAL STRING; Expected : INTEGER;
+WHERE Count : SIZEOF(USEDIN(SELF, Role)) = Expected; END_ENTITY;
+ENTITY Link; Target : Item; END_ENTITY; END_SCHEMA;`);
+  const report = await validateStepText("DATA;#1=ITEM($,0);#2=ITEM('',1);#3=ITEM('S.LINK.TARGET',1);#4=ITEM('S.LINK.OTHER',0);#5=ITEM($,1);#6=LINK(#1);#7=LINK(#2);#8=LINK(#3);#9=LINK(#4);#10=LINK(#5);ENDSEC;", { schema, categories: ['entity_rule'] });
+  expect(report.stats.entityRuleEvaluations).toBe(5);
+  expect(report.findings.map(f => [f.instance, f.rule])).toEqual([[5, 'Item.Count']]);
+});

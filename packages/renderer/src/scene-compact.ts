@@ -212,9 +212,9 @@ export class SceneCompact {
   private trim(device: GPUDevice, retired?: ReadonlySet<MeshData> | 'all'): void {
     this.store.trim(device);
     this.lod = settlePages(this.store, this.scene, device, this.deps, (meshes, reason) => {
-      this.decodes[reason] = (this.decodes[reason] ?? 0) + meshes.length;
-      // A failed bucket build leaves each mesh on its page or in its (pending) bucket: neither loses it, so the stream goes on.
+      const paged = this.members.size; // counted by what left the pages (a refused mesh stays); a failed build loses none either
       try { this.demoteChosen(meshes.map((source) => [source, this.members.get(source)!]), false); } catch (error) { console.warn(`[compactGeom] moving ${reason} groups to buckets`, error); }
+      if (paged > this.members.size) this.decodes[reason] = (this.decodes[reason] ?? 0) + paged - this.members.size;
     }, retired);
     this.retired = null; // this build covers them (and the meshes its own moves retired)
   }

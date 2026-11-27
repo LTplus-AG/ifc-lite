@@ -13,6 +13,8 @@
  * drawn over summed normals can be lit from the other side than the bucket's. The page therefore
  * draws LOD1 from records of its own: each representative's position and lane, and the smallest
  * face normal among the triangles that touch that position for that entity, as the bucket elects.
+ * The election sees one page's triangles, as the clustering does (compact-lod.ts): where two meshes of
+ * one entity in one bucket sit on different pages and share a position, each page elects over its own.
  */
 
 import { COMPACT_RECORD_BYTES } from '@ifc-lite/geometry/compact';

@@ -990,7 +990,7 @@ describe('compact pages take the decisions of the bucket batches they stand in f
     assert.equal(page.lod1IndexBuffer, undefined);
     assert.equal(isDestroyed(lod1), true);
     settle(on, gpu);
-    assert.equal(page.lodParts?.[0].lod0Count, page.indexCount);
+    assert.equal(pages(on)[0].lodParts?.[0].lod0Count, page.indexCount, 'the next settle rebuilds them');
     assert.equal(triangles(page, u16(page.indexBuffer)).length, 61 * 12);
   });
 
@@ -1083,6 +1083,19 @@ describe('compact pages take the decisions of the bucket batches they stand in f
       assert.deepEqual(pages(on)[0].lodParts?.map((part) => part.lod1), [true], 'the group still draws LOD1');
     });
   }
+
+  it('count only the meshes that left their pages as decoded, not those the bucket path refused (#11606)', async () => {
+    const on = await lodScene(true), gpu = fakeGpu();
+    const exact = compactBatch([{ expressId: 1, at: [0, 0, 0], size: 1, color: GREY }, { expressId: 2, at: [3.001, 0.001, 0.001], size: 0.0007, color: GREY }]);
+    exact[1].compact!.payload.table[1 * 7 + 5] = 11;
+    upload(on, gpu, exact);
+    const refuses = on.refusesBucketPath.bind(on);
+    on.refusesBucketPath = (mesh: MeshData) => mesh.expressId === 1 || refuses(mesh); // mesh 1 has no f32 frame
+    settle(on, gpu);
+    assert.deepEqual(entitiesOf(pages(on)), [1], 'the refused mesh stays paged');
+    assert.deepEqual(entitiesOf(buckets(on)), [2], 'the other reached its bucket');
+    assert.equal(on.getCompactStats()?.decodes.exact, 1, 'one decode, the mesh that moved');
+  });
 
   it('move a compact group into its bucket with a same-colour f32 mesh 70 m away, which then stays f32 (#11606)', async () => {
     const on = await lodScene(true), gpu = fakeGpu();

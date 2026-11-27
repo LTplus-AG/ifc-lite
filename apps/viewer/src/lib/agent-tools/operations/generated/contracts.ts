@@ -22722,7 +22722,10 @@ export const operationContracts: readonly OperationContract[] = [
           "type": "string"
         },
         "limit": {
-          "type": "integer"
+          "description": "Page size. Numbers and numeric strings are truncated and clamped to 0–200. Other values use 50."
+        },
+        "offset": {
+          "description": "Matches to skip. Numbers and numeric strings are truncated and clamped to a nonnegative safe integer. Other values use 0."
         }
       },
       "required": [],

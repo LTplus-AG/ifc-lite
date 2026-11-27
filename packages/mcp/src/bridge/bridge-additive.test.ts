@@ -117,6 +117,25 @@ describe('one server: headless and tab', () => {
     expect(status.text).toContain('1 more tools are not served');
   });
 
+  it('never forwards tab_ui_events to a tab\'s own ui_events tool', async () => {
+    const agent = await start();
+    const { tab } = await pairTab({ port: agent.r.bridge.port, code: agent.r.bridge.pairingCode(), tools: [{ ...READ_TOOL, name: 'ui_events' }] });
+    tabs.push(tab);
+    const res = await agent.r.server.handleMessage({ jsonrpc: '2.0', id: nextId++, method: 'tools/call', params: { name: 'tab_ui_events', arguments: {} } });
+    expect(JSON.stringify(res)).not.toContain('VIEWER_NOT_CONNECTED');
+    await new Promise((r) => setTimeout(r, 50));
+    expect(tab.received.some((f) => f.type === 'call')).toBe(false);
+  });
+
+  it('names the tool by its tab_ name when the tab times out', async () => {
+    const agent = await start({ tuning: { callTimeoutMs: 100 } });
+    const { tab } = await pairTab({ port: agent.r.bridge.port, code: agent.r.bridge.pairingCode() });
+    tabs.push(tab);
+    const timedOut = await agent.call(tabTool(READ_TOOL.name));
+    expect(timedOut.structuredContent?.code).toBe('TIMEOUT');
+    expect(JSON.stringify(timedOut.content)).toContain(`'${tabTool(READ_TOOL.name)}'`);
+  });
+
   it('names the tab\'s tools by their tab_ names inside its descriptions', async () => {
     const agent = await start();
     const lister = { ...READ_TOOL, name: 'model_list', description: 'List the models.' };

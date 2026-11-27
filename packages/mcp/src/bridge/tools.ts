@@ -96,8 +96,10 @@ async function forward(bridge: TabBridge, name: string, input: Record<string, un
     // The tab's CallToolResult passes through unchanged, `isError` included.
     return (await bridge.call(name, input, signal)) as unknown as CallToolResult;
   } catch (err) {
-    if (err instanceof BridgeCallError) return bridgeFailureResult(err);
-    throw err;
+    if (!(err instanceof BridgeCallError)) throw err;
+    // The session names the tab-side tool; the agent knows it by its MCP name.
+    const shown = name === BRIDGE_SURFACE_TOOL ? TAB_SHOW_UI_TOOL : mcpName(name);
+    return bridgeFailureResult(new BridgeCallError(err.reason, err.message.split(`'${name}'`).join(`'${shown}'`)));
   }
 }
 
@@ -149,7 +151,8 @@ function notConnectedTool(bridge: TabBridge, name: string): Tool {
     description: '',
     inputSchema: { type: 'object' },
     scope: 'read',
-    handler: (input, ctx) => forward(bridge, name.slice(TAB_TOOL_PREFIX.length), input, ctx.signal),
+    // Never forwarded: a tab that pairs meanwhile is reached only through its servable tools.
+    handler: async () => bridgeFailureResult(new BridgeCallError('no-viewer', `No connected viewer: '${name}' needs a paired ifc-lite browser tab.`)),
   };
 }
 
@@ -184,7 +187,7 @@ function statusTool(bridge: TabBridge): Tool {
           code: ToolErrorCode.INTERNAL_ERROR,
           message: `The bridge could not listen on 127.0.0.1: ${describeThrown(err)}`,
           // Only the lazy default port binds here, after trying its neighbours and any free port.
-          ...(unavailable ? { hint: 'No loopback port could be bound: the preferred port, its neighbours and any free port were all refused. Something on this machine blocks local listening (a sandbox or policy).' } : {}),
+          ...(unavailable ? { hint: 'No port the bridge may use could be bound on 127.0.0.1 (with the default port it tries its neighbours and any free port). Another program holds it, or something on this machine blocks local listening.' } : {}),
         });
       }
       return statusResult(bridge, input.pair_new_tab === true);
@@ -301,7 +304,12 @@ export class BridgeToolRegistry extends ToolRegistry {
     if (name === TAB_SHOW_UI_TOOL) return this.surface;
     // With no tab and nothing left to read, fail at once like the other tab_ stand-ins;
     // events queued before the tab went away stay readable.
-    if (name === BRIDGE_UI_EVENTS_TOOL) return this.bridge.tab()?.a2uiSurface || this.bridge.uiEvents.hasNews ? this.events : notConnectedTool(this.bridge, name);
+    if (name === BRIDGE_UI_EVENTS_TOOL) {
+      const tab = this.bridge.tab();
+      if (tab?.a2uiSurface || this.bridge.uiEvents.hasNews) return this.events;
+      // A paired tab without surfaces has no such tool; with no tab, fail at once.
+      return tab ? null : notConnectedTool(this.bridge, name);
+    }
     if (!name.startsWith(TAB_TOOL_PREFIX)) return super.get(name);
     const tab = this.bridge.tab();
     if (!tab) return notConnectedTool(this.bridge, name);

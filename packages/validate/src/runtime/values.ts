@@ -36,7 +36,8 @@ export class EnumValue {
 }
 
 export class BinaryValue {
-  constructor(readonly hex: string) {}
+  readonly hex: string;
+  constructor(hex: string) { this.hex = hex.toUpperCase(); }
 }
 
 /** A value qualified by its defined type, `IFCLABEL('x')` in STEP. */

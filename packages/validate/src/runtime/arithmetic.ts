@@ -6,14 +6,21 @@
 
 import { EvaluationError } from './errors.js';
 import { eq } from './compare.js';
-import { copyAggregate, EnumValue, Typed, isAggregate, isSet, markSet, num, prim, type Aggregate, type Value } from './values.js';
+import { copyAggregate, BinaryValue, EnumValue, StepReal, Typed, isAggregate, isSet, markSet, num, prim, type Aggregate, type Value } from './values.js';
 
-function numeric(a: Value, b: Value, f: (x: number, y: number) => number): Value {
+function realOperand(v: Value): boolean {
+  while (v instanceof Typed) v = v.value;
+  return v instanceof StepReal || (typeof v === 'number' && !Number.isInteger(v));
+}
+
+function numeric(a: Value, b: Value, f: (x: number, y: number) => number, kind: 'promote' | 'real' | 'integer' = 'promote'): Value {
   const x = num(a);
   const y = num(b);
   if (x === undefined || y === undefined) return undefined;
-  const r = f(x, y);
-  return Number.isFinite(r) ? r : undefined;
+  const result = f(x, y);
+  if (!Number.isFinite(result)) return undefined;
+  const real = kind === 'real' || (kind === 'promote' && (realOperand(a) || realOperand(b)));
+  return real && Number.isInteger(result) ? new StepReal(result) : result;
 }
 
 function contains(agg: Aggregate, v: Value): boolean {
@@ -32,6 +39,7 @@ function memberKey(v: Value): string | undefined {
     case 'number': return `n${p}`;
     case 'boolean': return `b${p}`;
   }
+  if (p instanceof BinaryValue) return `binary:${p.hex}`;
   return p instanceof EnumValue ? `e${p.name}` : undefined;
 }
 
@@ -92,7 +100,7 @@ export function add(a: Value, b: Value): Value {
   const x = prim(a);
   const y = prim(b);
   if (typeof x === 'string' && typeof y === 'string') return x + y;
-  return numeric(x, y, (p, q) => p + q);
+  return numeric(a, b, (p, q) => p + q);
 }
 
 export function sub(a: Value, b: Value): Value {
@@ -120,15 +128,15 @@ export function mul(a: Value, b: Value): Value {
 }
 
 export function div(a: Value, b: Value): Value {
-  return numeric(a, b, (p, q) => (q === 0 ? NaN : p / q));
+  return numeric(a, b, (p, q) => (q === 0 ? NaN : p / q), 'real');
 }
 
 export function intDiv(a: Value, b: Value): Value {
-  return numeric(a, b, (p, q) => (q === 0 ? NaN : Math.trunc(p / q)));
+  return numeric(a, b, (p, q) => (q === 0 ? NaN : Math.trunc(p / q)), 'integer');
 }
 
 export function mod(a: Value, b: Value): Value {
-  return numeric(a, b, (p, q) => (q === 0 ? NaN : p - q * Math.floor(p / q)));
+  return numeric(a, b, (p, q) => (q === 0 ? NaN : p - q * Math.floor(p / q)), 'integer');
 }
 
 export function pow(a: Value, b: Value): Value {
@@ -136,10 +144,9 @@ export function pow(a: Value, b: Value): Value {
 }
 
 export function neg(a: Value): Value {
-  const x = num(a);
-  return x === undefined ? undefined : -x;
+  return numeric(0, a, (zero, x) => zero - x);
 }
 
 export function pos(a: Value): Value {
-  return num(a);
+  return numeric(0, a, (zero, x) => zero + x);
 }

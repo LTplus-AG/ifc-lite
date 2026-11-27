@@ -188,3 +188,21 @@ END_ENTITY; FUNCTION CountMembers(X : SET OF GENERIC) : INTEGER; RETURN(SIZEOF(X
   expect(report.stats.entityRuleEvaluations).toBe(3);
   expect(report.findings).toEqual([]);
 });
+
+it('retains REAL arithmetic results in generated TYPEOF rules (#11647)', async () => {
+  const { schema } = generated(`SCHEMA S; ENTITY E; N : REAL; I : INTEGER; WHERE
+Quotient : 'REAL' IN TYPEOF(N / 1.); IntegerQuotient : 'REAL' IN TYPEOF(I / I);
+Sum : 'REAL' IN TYPEOF(I + N); Product : 'REAL' IN TYPEOF(N * I);
+Difference : 'REAL' IN TYPEOF(N - N); Negative : 'REAL' IN TYPEOF(-N);
+Whole : 'INTEGER' IN TYPEOF(I + I); Truncated : 'INTEGER' IN TYPEOF(N DIV I);
+Opposite : 'INTEGER' IN TYPEOF(N / 1.); END_ENTITY; END_SCHEMA;`);
+  const report = await validateStepText('DATA;#1=E(5.,1);ENDSEC;', { schema, categories: ['entity_rule'] });
+  expect(report.stats.entityRuleEvaluations).toBe(9);
+  expect(report.findings.map(f => f.rule)).toEqual(['E.Opposite']);
+});
+
+it('compares SET OF BINARY members by bit value through STEP validation (#11647)', async () => {
+  const { schema } = generated('SCHEMA S; ENTITY E; Items : SET OF BINARY; END_ENTITY; END_SCHEMA;');
+  const report = await validateStepText('DATA;#1=E(("0FF","0ff"));#2=E(("0FF","0fe"));#3=E(("01F","31f"));ENDSEC;', { schema, categories: ['schema'] });
+  expect(report.findings.map(f => [f.instance, f.rule])).toEqual([[1, 'invalid-type']]);
+});

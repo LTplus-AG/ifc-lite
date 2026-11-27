@@ -16,7 +16,7 @@ import { BRIDGE_LIMITS, BridgeCloseCode, parseTabMessage } from './bridge-protoc
 import { checkJsonBounds, type JsonBoundsStats } from './json-bounds.js';
 import { PairingGate } from './rate-limits.js';
 import { clip } from './sanitize.js';
-import { READ_TOOL, TEST_ORIGIN, connectTab, openSocket, pairTab, textResult, type FakeTab } from '../test/bridge-fake-tab.js';
+import { READ_TOOL, TEST_ORIGIN, connectTab, openSocket, pairTab, textResult, type FakeTab, tabTool } from '../test/bridge-fake-tab.js';
 
 const running: RunningBridge[] = [];
 const tabs: FakeTab[] = [];
@@ -75,7 +75,7 @@ describe('item 1: a deeply nested `type` cannot crash the bridge', () => {
     const { tab, welcome } = await pairWith(agent);
     tab.sendRaw(`{"type":${deepArray(30_000)}}`);
     expect((await tab.next('error')).code).toBe('INVALID_MESSAGE');
-    const pending = agent.call(READ_TOOL.name);
+    const pending = agent.call(tabTool(READ_TOOL.name));
     const c = await tab.next('call');
     tab.reply(welcome.sessionId, c.id, textResult('still here'));
     expect(resultText(await pending)).toBe('still here');
@@ -86,7 +86,7 @@ describe('item 2 and 9: tab-derived text reaching the agent or stderr is bounded
   it('clips a 12 MiB `type` in the error that fails the matching call', async () => {
     const agent = await start();
     const { tab, welcome } = await pairWith(agent);
-    const pending = agent.call(READ_TOOL.name);
+    const pending = agent.call(tabTool(READ_TOOL.name));
     const c = await tab.next('call');
     tab.sendRaw(JSON.stringify({ sessionId: welcome.sessionId, id: c.id, type: 'x'.repeat(12 * 1024 * 1024) }));
     const result = await pending;
@@ -126,7 +126,7 @@ describe('item 2 and 9: tab-derived text reaching the agent or stderr is bounded
   it('passes tool result text through unaltered (it is model data, not a diagnostic)', async () => {
     const agent = await start();
     const { tab, welcome } = await pairWith(agent);
-    const pending = agent.call(READ_TOOL.name);
+    const pending = agent.call(tabTool(READ_TOOL.name));
     const c = await tab.next('call');
     const text = `line 1\nline 2\r\n\u0007${'z'.repeat(300_000)}`;
     tab.reply(welcome.sessionId, c.id, textResult(text));

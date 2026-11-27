@@ -13,7 +13,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { CallToolResult } from '../protocol/index.js';
 import { startBridgeServer, type RunningBridge } from './run.js';
 import { BRIDGE_LIMITS, parseTabMessage } from './bridge-protocol.js';
-import { READ_TOOL, connectTab, openSocket, pairTab, textResult, type FakeTab } from '../test/bridge-fake-tab.js';
+import { READ_TOOL, connectTab, openSocket, pairTab, textResult, type FakeTab, tabTool } from '../test/bridge-fake-tab.js';
 
 const running: RunningBridge[] = [];
 const tabs: FakeTab[] = [];
@@ -53,7 +53,7 @@ describe('non-finite numbers (CodeRabbit json-bounds.ts:44)', () => {
     const agent = await start();
     const p = await pairTab({ port: agent.bridge.port, code: agent.bridge.pairingCode() });
     tabs.push(p.tab);
-    const pending = agent.call(READ_TOOL.name);
+    const pending = agent.call(tabTool(READ_TOOL.name));
     const c = await p.tab.next('call');
     p.tab.sendRaw(`{"type":"result","sessionId":"${p.welcome.sessionId}","id":"${c.id}","result":{"content":[],"structuredContent":{"count":-1e999}}}`);
     const result = await pending;
@@ -87,10 +87,10 @@ describe('outbound bounds (CodeRabbit session.ts:124)', () => {
     const agent = await start();
     const p = await pairTab({ port: agent.bridge.port, code: agent.bridge.pairingCode() });
     tabs.push(p.tab);
-    const result = await agent.call(READ_TOOL.name, { type: 'x'.repeat(BRIDGE_LIMITS.maxCallBytes) });
+    const result = await agent.call(tabTool(READ_TOOL.name), { type: 'x'.repeat(BRIDGE_LIMITS.maxCallBytes) });
     expect(result.structuredContent).toMatchObject({ code: 'INVALID_INPUT', details: { reason: 'invalid-arguments' } });
     // Prove nothing went out: the next call is the first the tab sees.
-    const next = agent.call(READ_TOOL.name, { type: 'IfcWall' });
+    const next = agent.call(tabTool(READ_TOOL.name), { type: 'IfcWall' });
     const c = await p.tab.next('call');
     expect(c.arguments).toEqual({ type: 'IfcWall' });
     p.tab.reply(p.welcome.sessionId, c.id, textResult('ok'));
@@ -101,9 +101,9 @@ describe('outbound bounds (CodeRabbit session.ts:124)', () => {
     const agent = await start();
     const p = await pairTab({ port: agent.bridge.port, code: agent.bridge.pairingCode() });
     tabs.push(p.tab);
-    const waiting = Array.from({ length: BRIDGE_LIMITS.maxPendingCalls }, () => agent.call(READ_TOOL.name));
+    const waiting = Array.from({ length: BRIDGE_LIMITS.maxPendingCalls }, () => agent.call(tabTool(READ_TOOL.name)));
     await expect.poll(() => p.tab.calls().length).toBe(BRIDGE_LIMITS.maxPendingCalls);
-    const over = await agent.call(READ_TOOL.name);
+    const over = await agent.call(tabTool(READ_TOOL.name));
     expect(over.structuredContent).toMatchObject({ code: 'RATE_LIMITED', details: { reason: 'backpressure' } });
     expect(p.tab.calls()).toHaveLength(BRIDGE_LIMITS.maxPendingCalls);
     for (const c of p.tab.calls()) p.tab.reply(p.welcome.sessionId, c.id, textResult('ok'));
@@ -116,7 +116,7 @@ describe('outbound non-finite arguments', () => {
     const agent = await start();
     const p = await pairTab({ port: agent.bridge.port, code: agent.bridge.pairingCode(), tools: [{ ...READ_TOOL, inputSchema: { type: 'object' } }] });
     tabs.push(p.tab);
-    const result = await agent.call(READ_TOOL.name, JSON.parse('{"count": 1e999}') as Record<string, unknown>);
+    const result = await agent.call(tabTool(READ_TOOL.name), JSON.parse('{"count": 1e999}') as Record<string, unknown>);
     expect(result.structuredContent).toMatchObject({ code: 'INVALID_INPUT', details: { reason: 'invalid-arguments' } });
     expect((result.content[0] as { text: string }).text).toMatch(/non-finite number/);
     expect(p.tab.calls()).toEqual([]);

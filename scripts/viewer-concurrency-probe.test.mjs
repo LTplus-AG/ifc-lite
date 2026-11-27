@@ -21,6 +21,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
+import { MANIFEST_PATH, parseManifest } from './viewer-test-shards.mjs';
 
 // When the revert oracle reverses this PR's production files, every test must
 // still run and fail on its own assertion, not the whole file at load with
@@ -70,18 +71,31 @@ test("apps/viewer's script bounds VIEWER_TEST_CONCURRENCY: only 2, the value the
   }
 });
 
-test('the gate step hands the repo variable to that script, which is the one place it is bounded', () => {
-  const env = TEST_YML.jobs['viewer-tests'].steps.find((s) => s.id === 'viewer_tests').env;
+test('the gate uses the concurrency variable and the same duration-packed shards for tests and retries', () => {
+  const viewerJob = TEST_YML.jobs['viewer-tests'];
+  const env = viewerJob.steps.find((s) => s.id === 'viewer_tests').env;
   // A GitHub Actions expression, compared as written.
   // eslint-disable-next-line no-template-curly-in-string
   assert.equal(env.VIEWER_TEST_CONCURRENCY, '${{ vars.VIEWER_TEST_CONCURRENCY }}');
-  assert.equal(TEST_YML.jobs['viewer-tests'].strategy.matrix.shard.length, 16, 'the gate keeps sixteen shards');
+  // The job cap also leaves space for setup and retries in the serial fallback.
+  // eslint-disable-next-line no-template-curly-in-string
+  assert.equal(viewerJob['timeout-minutes'], "${{ vars.VIEWER_TEST_CONCURRENCY == '2' && 25 || 35 }}");
+  const { shards } = parseManifest(readFileSync(MANIFEST_PATH, 'utf8'));
+  assert.deepEqual(viewerJob.strategy.matrix.shard, Array.from({ length: shards }, (_, shard) => shard));
+  const retryEnv = viewerJob.steps.find((s) => s.id === 'viewer_retry').env;
+  assert.equal(env.TEST_SHARDS, String(shards));
+  assert.equal(retryEnv.TEST_SHARDS, env.TEST_SHARDS);
+  assert.equal(retryEnv.TEST_SHARD, env.TEST_SHARD);
+  assert.equal(retryEnv.VIEWER_TEST_CONCURRENCY, env.VIEWER_TEST_CONCURRENCY);
+  const artifact = viewerJob.steps.find((s) => s.name === 'Upload the retry record');
+  // eslint-disable-next-line no-template-curly-in-string
+  assert.equal(artifact.with.name, 'shard-retry-viewer-${{ matrix.shard }}');
 });
 
 // ------------------------------ what ran, through the real reporter
 
 /** Run node:test over scratch files with the probe's file reporter; return what it wrote. */
-function reporterRun(name, files) {
+function reporterRun(name, files, format = '') {
   const root = join(TMP, name);
   for (const [path, body] of Object.entries(files)) {
     mkdirSync(dirname(join(root, path)), { recursive: true });
@@ -93,7 +107,7 @@ function reporterRun(name, files) {
   spawnSync(TSX, ['--test', '--test-concurrency=2', ...entries], {
     cwd: root,
     encoding: 'utf8',
-    env: { ...env, NODE_OPTIONS: `--test-reporter=tap --test-reporter-destination=/dev/null --test-reporter=${FILE_REPORTER} --test-reporter-destination=${out}` },
+    env: { ...env, TEST_FILE_REPORT_FORMAT: format, NODE_OPTIONS: `--test-reporter=tap --test-reporter-destination=/dev/null --test-reporter=${FILE_REPORTER} --test-reporter-destination=${out}` },
   });
   return { root: realpathSync(root), text: readFileSync(out, 'utf8') };
 }
@@ -109,6 +123,17 @@ test('#9791 review: the probe counts every file whose run completed: passing, cr
     'src/helpers/contract.ts': "import test from 'node:test';\nexport function contract() { test('h', () => {}); }\n",
   });
   assert.deepEqual(reportedFiles(text, root), ['src/a.test.ts', 'src/b.test.ts', 'src/d/c.test.tsx', 'src/e.test.ts']);
+});
+
+test('the duration reporter records whole-file elapsed seconds under concurrent execution', () => {
+  const { text } = reporterRun('timings', {
+    'src/wait.test.ts': "import test from 'node:test'; test('wait', () => new Promise((r) => setTimeout(r, 100)));",
+    'src/fast.test.ts': "import test from 'node:test'; test('fast', () => {});",
+  }, 'durations');
+  const timings = JSON.parse(text);
+  assert.deepEqual(Object.keys(timings), ['src/fast.test.ts', 'src/wait.test.ts']);
+  assert.ok(timings['src/fast.test.ts'] > 0);
+  assert.ok(timings['src/wait.test.ts'] >= 0.1, 'the file duration includes the test body');
 });
 
 test('#9791 review: a runner that wrote no file list (killed mid-shard) reported nothing, and the report fails on it', () => {

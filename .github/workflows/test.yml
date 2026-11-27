@@ -4118,13 +4118,7 @@ jobs:
           workspaces: ". -> target/phase-markers"
           save-if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'merge_group' }}
       - name: Install valgrind
-        # Retried: a package mirror outage is not a verdict on the change.
-        run: |
-          for attempt in 1 2 3; do
-            sudo apt-get update && sudo apt-get install -y --no-install-recommends valgrind && exit 0
-            sleep $((attempt * 15))
-          done
-          exit 1
+        run: bash -e scripts/perf-ratchet/install-valgrind.sh
       - name: Fetch the FZK-Haus fixture
         run: node scripts/fixtures/fetch-fixtures.mjs ara3d/AC20-FZK-Haus.ifc
       - name: Measure perf-ratchet native-instructions family

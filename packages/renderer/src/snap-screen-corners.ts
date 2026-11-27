@@ -114,6 +114,8 @@ export class ScreenCornerIndex {
     /** Distance along the ray to the first surface it hit, or null when it hit nothing. */
     hitDistance?: number | null;
     now?: () => number;
+    /** Candidate kinds that may be returned (default both). A disabled kind is excluded before the grid search. */
+    kinds?: { corners?: boolean; edges?: boolean };
   }): ScreenCornerHit | null {
     const { x, y, viewport, options } = args;
     const cornerR = options.cornerRadiusPx ?? DEFAULT_CORNER_RADIUS_PX;
@@ -138,6 +140,6 @@ export class ScreenCornerIndex {
     const hit = args.hitDistance;
     const maxDepth = options.ignoreOcclusion || hit == null || !Number.isFinite(hit) ? Infinity
       : hit + (options.occlusionTolerance ?? 0.05 + 0.01 * hit);
-    return grid.search(x, y, args.ray, cornerR, edgeR, maxDepth);
+    return grid.search(x, y, args.ray, cornerR, edgeR, maxDepth, args.kinds);
   }
 }

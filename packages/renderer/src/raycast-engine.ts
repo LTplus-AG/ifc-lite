@@ -363,6 +363,8 @@ export class RaycastEngine {
             pieces: this.flatIndex.allPieces(), geometryFor: mesh => this.snapDetector.getGeometryCache(mesh),
             startGeometry: mesh => this.snapDetector.startGeometryCache(mesh),
             options: config, hiddenIds: options?.hiddenIds, isolatedIds: options?.isolatedIds, clip, hitDistance,
+            // Only the enabled kinds are searched: a disabled kind must not win the grid and then be dropped below.
+            kinds: { corners: snap.snapToVertices !== false, edges: snap.snapToEdges !== false },
         });
         if (!hit) return current;
         const kind = current.snapTarget?.type;

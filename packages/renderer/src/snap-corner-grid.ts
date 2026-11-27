@@ -176,7 +176,12 @@ export class CornerGrid {
     return [{ x: w[0], y: w[1], z: w[2] }, { x: w[3], y: w[4], z: w[5] }];
   }
 
-  search(x: number, y: number, ray: Ray, cornerR: number, edgeR: number, maxDepth: number): ScreenCornerHit | null {
+  search(
+    x: number, y: number, ray: Ray, cornerR: number, edgeR: number, maxDepth: number,
+    /** Candidate kinds the caller can use; a disabled kind is never selected, so it cannot shadow an enabled one. Default: both. */
+    kinds: { corners?: boolean; edges?: boolean } = {},
+  ): ScreenCornerHit | null {
+    const wantCorners = kinds.corners !== false, wantEdges = kinds.edges !== false;
     const g = this;
     const depthOf = (px: number, py: number, pz: number) => (px - ray.origin.x) * ray.direction.x
       + (py - ray.origin.y) * ray.direction.y + (pz - ray.origin.z) * ray.direction.z;
@@ -187,7 +192,7 @@ export class CornerGrid {
       for (let c = c0 - 1; c <= c0 + 1; c++) {
         if (c < 0 || r < 0 || c >= g.cols || r >= g.rows) continue;
         const k = r * g.cols + c;
-        for (const i of g.cornerCells.get(k) ?? []) {
+        for (const i of wantCorners ? g.cornerCells.get(k) ?? [] : []) {
           const d = (g.cx[i] - x) ** 2 + (g.cy[i] - y) ** 2;
           if (d > bestCornerD + 1e-9) continue;
           if (maxDepth !== Infinity) {
@@ -198,7 +203,7 @@ export class CornerGrid {
             bestCorner = i; bestCornerD = d;
           }
         }
-        for (const i of g.edgeCells.get(k) ?? []) {
+        for (const i of wantEdges ? g.edgeCells.get(k) ?? [] : []) {
           const d = segDist2(x, y, g.ex0[i], g.ey0[i], g.ex1[i], g.ey1[i]);
           if (d >= bestEdgeD) continue;
           if (maxDepth !== Infinity) {

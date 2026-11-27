@@ -130,6 +130,18 @@ describe('screen-space corner snapping (#11504)', () => {
     assert.equal(pick(sceneWith(boxA()), 370, 258).snapTarget, null, '12 px off the edge is outside both radii');
   });
 
+  it('edge-only mode keeps the eligible edge when a corner is also near the cursor (#11504 review)', () => {
+    // (396, 265) is 6.4 px from the corner (400, 270) and 5 px from the top edge y = 270 px.
+    const edgeOnly = { ...base, snapToVertices: false, screenCornerSnap: { settleMs: 0 } };
+    const result = pick(sceneWith(boxA()), 396, 265, { snapOptions: edgeOnly });
+    assert.equal(result.snapTarget?.type, 'edge', 'the nearby corner must not shadow the enabled edge kind');
+    assert.ok(Math.abs((result.snapTarget?.position.y ?? 0) - 2) < 1e-6);
+    // Vertex-only: the corner is returned, and mid-edge (no corner in range) returns no edge.
+    const vertexOnly = { ...base, snapToEdges: false, screenCornerSnap: { settleMs: 0 } };
+    assert.equal(pick(sceneWith(boxA()), 396, 265, { snapOptions: vertexOnly }).snapTarget?.type, 'vertex');
+    assert.equal(pick(sceneWith(boxA()), 370, 265, { snapOptions: vertexOnly }).snapTarget, null, 'vertex-only never returns an edge');
+  });
+
   it('(b) a corner of another element wins over the element under the ray', () => {
     // B is taller and sits to the right of A's corner; the cursor is over B,
     // 6.4 px from A's corner (0, 2, 2) and 0.5 px from B's own left edge.
@@ -244,6 +256,19 @@ function boxRow(n: number): MeshData[] {
 }
 
 describe('screen corner idle build (#11504)', () => {
+  it('query applies the enabled kinds before the grid search, in both directions', () => {
+    const t = harness([makeBox(1, [-4, -2, 0], [0, 2, 2])], { settleMs: 0 });
+    const c = t.at(0, 2, 2), m = t.at(-2, 2, 2);
+    const near = [c.x - 4, c.y - 5] as const; // 6.4 px from the corner, 5 px from the top edge
+    t.query(...near);
+    t.host.drain();
+    assert.equal(t.query(...near)?.kind, 'corner', 'default: the corner wins');
+    assert.equal(t.query(...near, { kinds: { corners: false } })?.kind, 'edge', 'edge-only: the near corner is not selected');
+    assert.equal(t.query(...near, { kinds: { edges: false } })?.kind, 'corner');
+    assert.equal(t.query(m.x, m.y - 3, { kinds: { edges: false } }), null, 'vertex-only never returns an edge');
+    assert.equal(t.query(c.x + 5, c.y - 5, { kinds: { corners: false } }), null, 'edge-only: a corner alone is no hit');
+  });
+
   it('a pick never runs a candidate-build chunk or a grid rebuild; only idle slices do', () => {
     const t = harness(boxRow(100));
     const first = t.at(0, 0);

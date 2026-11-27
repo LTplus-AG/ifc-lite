@@ -10,11 +10,12 @@ import type { Tool } from './types.js';
 import { withIfcBytes, refusingEmpty } from './export-source.js';
 import { okResult, resolveModel, fmtInt } from './util.js';
 import { resolveSafePath } from '../safe-path.js';
+import { FILE_WRITE } from './annotations.js';
 
 const EMPTY_3DM = '3DM export produced 0 meshes - the model has no exportable render geometry.';
 
 export const export3dmTool: Tool = {
-  name: 'export_3dm',
+  name: 'export_3dm', title: 'Export Rhino 3DM', annotations: FILE_WRITE,
   description: 'Save the whole model to Rhino .3dm with IFC layers, blocks, materials and user text via the shared Rust scene builder.',
   scope: 'export',
   inputSchema: {

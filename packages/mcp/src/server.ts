@@ -374,6 +374,12 @@ export class MCPServer {
         hint: 'Use `tools/list` to discover available tools.',
       });
     }
+    if (this.config.readOnly && tool.scope === 'mutate') {
+      return toolError({
+        code: ToolErrorCode.READ_ONLY,
+        message: `Server started in read-only mode; '${params.name}' rejected.`,
+      });
+    }
     if (!scopeAllows(this.scope, tool.scope)) {
       return toolError({
         code: ToolErrorCode.PERMISSION_DENIED,
@@ -381,14 +387,8 @@ export class MCPServer {
         details: { required: tool.scope, granted: this.scope.scopes },
       });
     }
-    if (this.config.readOnly && tool.scope === 'mutate') {
-      return toolError({
-        code: ToolErrorCode.READ_ONLY,
-        message: `Server started in read-only mode; '${params.name}' rejected.`,
-      });
-    }
 
-    const validation = validateInput(tool.inputSchema, params.arguments ?? {});
+    const validation = validateInput(tool.inputSchema, params.arguments ?? {}, { fromTab: tool.schemaFromTab === true });
     if (!validation.valid) {
       return toolError({
         code: ToolErrorCode.INVALID_INPUT,

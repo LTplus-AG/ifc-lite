@@ -289,10 +289,10 @@ export function convertStepLine(
   if (fromSchema === toSchema) return line;
   if ((enums?.boundaries ?? new SpaceBoundaryElements()).apply(line, fromSchema, toSchema) === null) return null; // an IfcRelSpaceBoundary IFC4 cannot take without its element
   const kept = (enums?.materials ?? new MaterialReferents()).apply(line, fromSchema, toSchema); // #10763: null when Material names no one IfcMaterial
-  let converted = kept === null ? null : retypeInPlace(convertRecord(kept, fromSchema, toSchema, random, withheldRefIds, fromSchema === 'IFC2X3' && toSchema === 'IFC4' ? enums?.structural.axes.axis(kept) : undefined, enums?.structural, maxReferenceId), fromSchema, toSchema);
+  let converted = kept === null ? null : retypeInPlace(convertRecord(kept, fromSchema, toSchema, random, withheldRefIds, fromSchema === 'IFC2X3' && toSchema === 'IFC4' ? enums?.structural.axes.axis(kept) : undefined, enums, maxReferenceId), fromSchema, toSchema);
   converted = carryUserDefinedLabel(line, converted, fromSchema, toSchema, maxReferenceId); // #10824
   if (converted === null) return null;
-  if (enums && toSchema !== 'IFC5') converted = enums.structural.after(enums.documents.apply(enums.apply(enums.forms.apply(converted, fromSchema, toSchema, maxReferenceId), toSchema, maxReferenceId), maxReferenceId), withheldRefIds);
+  if (enums && toSchema !== 'IFC5') converted = enums.structural.after(enums.documents.apply(enums.apply(enums.forms.apply(converted, fromSchema, toSchema, maxReferenceId), toSchema, maxReferenceId, line, fromSchema), maxReferenceId), withheldRefIds);
   if (toSchema === 'IFC2X3') return (slots ?? new Ifc2x3SlotFill()).apply(converted, maxReferenceId);
   if (enums?.typedProperties.capture(line, converted, fromSchema, toSchema, maxReferenceId)) return converted;
   // Every record to IFC4; an IFC2X3 upgrade's mapped records to IFC4 or IFC4X3, each against its own target (#11135).
@@ -309,7 +309,7 @@ function convertRecord(
   random?: RandomSource,
   withheldRefIds?: ReadonlySet<number>,
   structuralAxis?: string,
-  structuralDiagnostics?: EnumReconciliation['structural'],
+  diagnostics?: EnumReconciliation,
   maxReferenceId?: number,
 ): string | null {
   const frame = stepRecordFrame(line, { allowMissingSemicolon: true });
@@ -329,7 +329,7 @@ function convertRecord(
 
   // A structural rewrite replaces the withheld reference it was written for (an IFC4
   // load configuration); one still naming a withheld id falls to the check below.
-  const rewritten = structuralDiagnostics?.rewrite(expressId, entityType, args, withheldRefIds);
+  const rewritten = diagnostics?.structural.rewrite(expressId, entityType, args, withheldRefIds);
   if (rewritten !== undefined) return rewritten === null ? null : `${prefix}${rewritten};`;
   // A record whose attribute list references an id this export is OMITTING
   // (`withheldRefIds`, #4206) cannot carry that reference forward, no matter
@@ -340,7 +340,7 @@ function convertRecord(
   if (withheldRefIds && withheldRefIds.size > 0 && referencesAnyExpressId(attrsRaw, withheldRefIds)) {
     return resolveUnrepresentedEntity(prefix, entityType, attrsRaw, args, toSchema, expressId, true);
   }
-  structuralDiagnostics?.inspect(expressId, line, fromSchema, toSchema);
+  diagnostics?.structural.inspect(expressId, line, fromSchema, toSchema);
   if (structuralAxis) return `${prefix}${newType}(${args.join(',')},${structuralAxis});`;
   const structural = structuralAttributes(entityType, args, fromSchema, toSchema);
   if (structural !== null) return `${prefix}${newType}(${structural});`;
@@ -391,9 +391,6 @@ function convertRecord(
   // [Name, Description, Properties, Material]), and trimming the tail or
   // appending `$` there would leave values in the wrong, type-invalid slots.
   // Those take a reviewed attribute map (#10763) or are left alone.
-  // Appended attributes are optional, so `$` is a valid pad.
-  //
-  // Source attrs keyed on the ORIGINAL type; target on the (possibly renamed) type.
   let finalAttrs = attrsRaw;
   const targetTable = attrNameTable(toSchema);
   const srcAttrs = attrNameTable(fromSchema)?.get(entityType);
@@ -417,8 +414,9 @@ function convertRecord(
         finalAttrs = `${finalAttrs}${',$'.repeat(tgtAttrs.length - currentCount)}`;
       }
     } else if (isGridPlacementInSourceLayout(entityType, args.length, tgtAttrs.length) || (entityType !== newType
-      && (BY_NAME_ATTR_REMAP_TYPES.has(entityType) || (toSchema === 'IFC2X3' && MEP_IFC2X3_TYPES.has(entityType))))) {
+      && (newType === 'IFCBUILDINGSTOREY' || BY_NAME_ATTR_REMAP_TYPES.has(entityType) || (toSchema === 'IFC2X3' && MEP_IFC2X3_TYPES.has(entityType))))) {
       // MEP controls need ControlElementId, never the source PredefinedType (#8019).
+      if (newType === 'IFCBUILDINGSTOREY') diagnostics?.forms.omitStoreyAttributes(entityType, args, srcAttrs, tgtAttrs);
       const remapped = remapRenamedAttributesByName(finalAttrs, srcAttrs, tgtAttrs, maxReferenceId);
       if (remapped === null) throw new Error('Schema conversion refused an invalid STEP argument list.');
       finalAttrs = remapped;

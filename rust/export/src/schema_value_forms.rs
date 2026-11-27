@@ -245,6 +245,14 @@ impl ValueForms {
         Ok(if changed { frame.with_args(&line, &args.join(",")) } else { line })
     }
 
+    pub(crate) fn omit_storey_attributes(&mut self, ty: &str, values: &[String], source: &[&str], target: &[&str]) {
+        for (name, value) in source.iter().zip(values) {
+            if !target.contains(name) && crate::schema_convert::holds_value(value) {
+                *self.dropped.entry(format!("{ty}.{name}")).or_default() += 1;
+            }
+        }
+    }
+
     /// One warning per kind, naming every slot a value was dropped from (#10847).
     pub(crate) fn warnings(&self) -> Vec<String> {
         let line = |where_: &BTreeMap<String, usize>, what: &str| {

@@ -98,8 +98,7 @@ impl SpaceBoundaryElements {
     /// Leave out only the boundaries in `ids`, the ones [`left_out`] judged before any record was written: an edited
     /// or created boundary is written as before, so no referrer names a record that is not there (#11457).
     pub(crate) fn restrict(&mut self, ids: &HashSet<u32>) { self.only = Some(ids.clone()); }
-    /// The ids `apply` left out, in the id space the writer passed.
-    pub(crate) fn ids(&self) -> impl Iterator<Item = u32> + '_ { self.dropped.iter().copied() }
+    pub(crate) fn left_out(&self, id: u32) -> bool { self.dropped.contains(&id) }
     pub(crate) fn warnings(&self) -> Vec<String> {
         if self.dropped.is_empty() { return Vec::new(); }
         let sites: Vec<String> = self.dropped.iter().map(|id| format!("#{id}")).collect();

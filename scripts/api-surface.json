@@ -7130,6 +7130,7 @@
     "adoptCompactMeshes: function",
     "compactBounds: function",
     "compactHydrationStats: function",
+    "compactMeshBounds: function",
     "compactRow: function",
     "compactStep: function",
     "copyMeshShell: function",
@@ -8050,6 +8051,7 @@
     "HttpAuthenticator: interface",
     "HttpTransport: class",
     "HttpTransportOptions: interface",
+    "Icon: interface",
     "ImageContent: interface",
     "InMemoryModelRegistry: class",
     "InProcessTransport: class",
@@ -8146,6 +8148,7 @@
     "toolError: function"
   ],
   "@ifc-lite/mcp/bridge-protocol": [
+    "AGENT_SURFACE_PANELS: const",
     "BRIDGE_FEATURES: const",
     "BRIDGE_FEATURE_IMAGE_CONTENT: const",
     "BRIDGE_FEATURE_UI_EVENTS: const",
@@ -8179,10 +8182,14 @@
     "BridgeWelcomeMessage: interface",
     "DEFAULT_BRIDGE_PORT: const",
     "DEFAULT_BRIDGE_VIEWER_URL: const",
+    "MAX_MCP_TOOL_NAME: const",
     "PAIRING_FRAGMENT_KEY: const",
     "PairingFragment: interface",
     "ParseResult: type",
+    "TAB_SHOW_UI_TOOL: const",
+    "TAB_TOOL_PREFIX: const",
     "UI_EVENT_LIMITS: const",
+    "a2uiSurfaceId: function",
     "buildPairingUrl: function",
     "normalizePairingCode: function",
     "parsePairingFragment: function",
@@ -8211,7 +8218,8 @@
     "firstNonBlank: function",
     "isBlank: function",
     "isProductType: const",
-    "toolError: function"
+    "toolError: function",
+    "validateInput: function"
   ],
   "@ifc-lite/mcp/cli-args": [
     "CliOptions: interface",
@@ -8234,6 +8242,7 @@
     "EmbeddedResource: interface",
     "GetPromptParams: interface",
     "GetPromptResult: interface",
+    "Icon: interface",
     "ImageContent: interface",
     "InitializeParams: interface",
     "InitializeResult: interface",

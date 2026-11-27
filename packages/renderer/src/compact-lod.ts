@@ -80,7 +80,9 @@ export function settlePages(
     if (meshes.length > 0) toBuckets(meshes, reason);
   }
   store.stats.settleMs += performance.now() - t0;
-  return host.lodBuildsEnabled ? new PageLodBuild(store, buildPageLods(store, groups, device, deps, only && affectedPages(store, host, only))) : null;
+  if (!host.lodBuildsEnabled) return null;
+  const written: MeshData[] = [];
+  return new PageLodBuild(store, buildPageLods(store, groups, device, deps, written, only && affectedPages(store, host, only)), written);
 }
 
 /**
@@ -108,7 +110,11 @@ function affectedPages(store: CompactGeometryStore, host: SceneCompactHost, keys
  * parts), then installing them. A page draws whole until its step installs its parts.
  */
 export class PageLodBuild {
-  constructor(private readonly store: CompactGeometryStore, private readonly steps: Iterator<void>) {}
+  constructor(
+    private readonly store: CompactGeometryStore, private readonly steps: Iterator<void>,
+    /** Meshes written between their page's clustering and its install: their groups' other pages were judged without the write. */
+    readonly written: readonly MeshData[],
+  ) {}
 
   /** Run steps until `budgetMs` has passed (at least one); returns whether the build finished. */
   step(budgetMs: number): boolean {
@@ -136,7 +142,8 @@ interface PagePlan {
  * group decision changes: a group that moves gets no LOD1, nor do the meshes of it a bucket refused).
  */
 function* buildPageLods(
-  store: CompactGeometryStore, groups: Map<string, Group>, device: GPUDevice, deps: CompactPageDeps, pages?: (page: CompactPage) => boolean,
+  store: CompactGeometryStore, groups: Map<string, Group>, device: GPUDevice, deps: CompactPageDeps, written: MeshData[],
+  pages?: (page: CompactPage) => boolean,
 ): Generator<void, void, void> {
   const { simplify, lodCellSize, lodMinTriangles, lodMaxKeptFraction } = deps.bucket;
   const groupOf = new Map<MeshData, Group>();
@@ -197,8 +204,11 @@ function* buildPageLods(
   const pays = (group: Group): boolean => group.kept > 0 && group.kept < group.triangles * 3 * lodMaxKeptFraction;
   for (const plan of plans) for (const part of plan.parts) if (!pays(part.group)) part.lod1 = null;
   for (const plan of plans) {
-    // Written since it was clustered: its records are gone, so the page stays as it is.
-    if (plan.parts.every((part) => part.meshes.every((mesh) => mesh.compact && plan.page.meshes.has(mesh)))) install(store, plan, device);
+    // Written since it was clustered: its records are gone, so the page draws whole (its old parts no longer describe it),
+    // and the caller builds its groups again, as a write seen at clustering would have built them.
+    const fresh = plan.parts.flatMap((part) => part.meshes.filter((mesh) => !mesh.compact || !plan.page.meshes.has(mesh)));
+    if (fresh.length === 0) install(store, plan, device);
+    else { dropPageLod(store, plan.page); written.push(...fresh); }
     yield;
   }
 }

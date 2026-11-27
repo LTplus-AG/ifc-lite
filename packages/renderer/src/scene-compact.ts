@@ -128,7 +128,7 @@ export class SceneCompact {
     this.gpu = { device, pipeline };
     if (this.retired && !this.store.untrimmed && this.queue.length === 0 && !this.streaming) this.trim(device, this.retired); // not before the stream's own trim
     let demoted = this.lod !== null; // a slice of the LOD build (compact-lod.ts), half the budget: uploads get the rest
-    if (this.lod?.step(budgetMs / 2)) this.lod = null;
+    if (this.lod?.step(budgetMs / 2)) { const { written } = this.lod; this.lod = null; if (written.length > 0) this.retired = this.retired === 'all' ? 'all' : new Set([...(this.retired ?? []), ...written]); }
     // A time-sliced finalize owns the batch list until it swaps: the demotion waits for it.
     if (this.demotionPages.size > 0 && !this.scene.finalizeInProgress) {
       const pages = this.demotionPages;

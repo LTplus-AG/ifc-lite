@@ -1112,6 +1112,27 @@ describe('compact pages take the decisions of the bucket batches they stand in f
     assert.equal(bucket.quantized, undefined, 'one bucket 71 m wide: f32, as the f32 load draws it');
   });
 
+  it('drop a page\'s old parts when one of its meshes is written after the retire rebuild planned it (#11606)', async () => {
+    const on = await lodScene(true), gpu = fakeGpu();
+    const near = compactBatch(lodBoxes(1000, 0, 15));
+    upload(on, gpu, [...near, ...compactBatch(lodBoxes(2000, 17, 13), 1)]);
+    settle(on, gpu);
+    const nearPage = pages(on).find((page) => page.expressIds.includes(1001))!, farPage = pages(on).find((page) => page.expressIds.includes(2000))!;
+    const old = nearPage.lodParts;
+    assert.ok(old);
+    assert.deepEqual(farPage.lodParts?.map((part) => part.lod1), [true], 'built');
+    assert.equal(on.removeMeshesForEntity(2001), true); // the group's two pages are built again, a step per drain
+    on.flushPending(gpu.device, gpu.pipeline, 0); // plans the near page
+    on.flushPending(gpu.device, gpu.pipeline, 0); // plans the far page
+    assert.equal(nearPage.lodParts, old, 'not installed yet: the old parts still draw');
+    near[0].positions = new Float32Array([-5, 0, 0, -4, 0, 0, -5, 1, 0]); // written before its install
+    near[0].indices = new Uint32Array([0, 1, 2]);
+    flushAll(on, gpu);
+    assert.equal(nearPage.lodParts, undefined, 'its old parts (stale box and LOD1) no longer draw: the page draws whole');
+    assert.deepEqual(farPage.lodParts?.map((part) => part.lod1), [false], 'built again: no LOD1 on any page of the written mesh\'s group');
+    assert.equal(farPage.lodParts![0].bounds.min[0], -5, 'the written mesh counts for the box');
+  });
+
   it('leave a page whole when one of its meshes is written while the build runs', async () => {
     const on = await lodScene(true), gpu = fakeGpu();
     const meshes = compactBatch(lodBoxes(1000, 0, 28));

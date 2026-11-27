@@ -94,6 +94,25 @@ describe('a relationship naming a left-out IfcRelSpaceBoundary (#11457)', () => 
   });
 });
 
+// IFC2X3 IfcRelAssociates.WR21 forbids relationship members. Permissive input
+// must still produce a closed reference graph when an upgrade removes one.
+it.each(['IFC4', 'IFC4X3'] as const)('closes transitive boundary losses independent of record order in %s', async schema => {
+  const mixed = MIXED.replace('#32=', '#34=').replace('(#20,#11)', '(#33,#11)');
+  const sole = SOLE.replace('#33=', '#35=').replace('(#20)', '(#33)');
+  const cycle = SOLE.replace('#33=', '#36=').replace('(#20)', '(#35,#37)');
+  const back = SOLE.replace('#33=', '#37=').replace('(#20)', '(#36)');
+  for (const reversed of [false, true]) {
+    const rows = [DATA, CLASS, SOLE, mixed, sole, cycle, back];
+    const store = await parse(model('IFC2X3', (reversed ? rows.reverse() : rows).join('\n')));
+    const preview = analyzeConversionLoss(store, 'IFC2X3', schema);
+    const lost = preview.entries.filter(e => e.sourceType === 'IFCRELASSOCIATESCLASSIFICATION').flatMap(e => e.expressIds);
+    expect(lost.sort((a, b) => a - b)).toEqual([33, 35]);
+    const step = out(new StepExporter(store).export({ schema }).content);
+    expect(step).not.toMatch(/#(?:20|33|35)\b/);
+    expect(relLines(step).sort()).toEqual([mixed.replace('(#33,#11)', '(#11)'), cycle.replace('(#35,#37)', '(#37)'), back]);
+  }
+});
+
 describe('a merged upgrade naming a left-out IfcRelSpaceBoundary (#11457)', () => {
   it('scrubs the boundary from every referrer, in the merge id space, and omits a relationship left empty', async () => {
     const one = await parse(model('IFC2X3', REFS));

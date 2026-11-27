@@ -249,13 +249,8 @@ fn emit<W: std::io::Write>(
     // IFC2X3 places one product per placement (#9209): its records are held to adapt them.
     use std::io::Write as _;
     let temporal_buffer = crate::schema_value_forms::ValueForms::buffers_temporal_values(content, &source_schema, &schema);
-    // A withheld copy can already be named by a repointed source record.
-    // Close those references in the same final pass as other upgrade losses.
-    let repair_boundary_copies = !copies.is_empty() && !boundaries_left_out.is_empty();
-    let mut body = crate::schema_ifc2x3_placements::Body::for_conversion(&mut *out, targets_ifc2x3, temporal_buffer || checks.structural.buffers_varying(content) || checks.typed_properties.enabled, upgrading.filter(|_| may_prune_upgrade || repair_boundary_copies));
-    if repair_boundary_copies {
-        for &id in &boundaries_left_out { body.note_omitted(id); }
-    }
+    let mut body = crate::schema_ifc2x3_placements::Body::for_conversion(&mut *out, targets_ifc2x3, temporal_buffer || checks.structural.buffers_varying(content) || checks.typed_properties.enabled, upgrading.filter(|_| may_prune_upgrade || !boundaries_left_out.is_empty()));
+    for &id in &boundaries_left_out { body.note_omitted(id); }
     if targets_ifc2x3 || temporal_buffer { checks.forms.defer_temporal_values(); }
 
     let mut written = 0usize;

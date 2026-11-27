@@ -118,6 +118,7 @@ pub(crate) fn write_created(pass: &mut Pass<'_, '_>) -> Result<(), Unwritable> {
             Filtered::Keep => line,
             Filtered::Rewrite(l) => l,
             Filtered::Withhold(w) => {
+                if !pass.left_out.is_empty() { pass.withheld_created.push(id); }
                 pass.warnings.push(w);
                 continue;
             }

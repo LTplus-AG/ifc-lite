@@ -39,6 +39,17 @@ function unrelated(line: string, from: string): boolean {
 
 export class SpaceBoundaryElements {
   private readonly dropped = new Set<number>();
+  private readonly withheldReferrers = new Set<number>();
+
+  noteWithheldReferrer(id: number): void {
+    if (this.any) this.withheldReferrers.add(id);
+  }
+
+  *pruningSeeds(): Iterable<number> {
+    yield* this.dropped;
+    yield* this.withheldReferrers;
+  }
+
   /** Set by `note`: the writer listed what it leaves out up front, and only those are left out. */
   private noted = false;
 

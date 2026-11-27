@@ -173,3 +173,25 @@ fn a_boundary_with_a_property_edit_is_written_as_before() {
     assert!(out.lines().any(|l| l.starts_with("#20=IFCRELSPACEBOUNDARY(")), "{out}");
     assert!(out.lines().any(|l| l.contains("IFCRELDEFINESBYPROPERTIES(") && l.contains("(#20)")), "{out}");
 }
+
+#[test]
+fn transitive_boundary_omissions_in_both_single_writers_11457() {
+    let class = "#31=IFCCLASSIFICATION('S','E',$,'N');";
+    let rel = |id, members| format!("#{id}=IFCRELASSOCIATESCLASSIFICATION('0XigBlHYfFnxzvgV9_gBmP',$,$,$,({members}),#31);");
+    for target in ["IFC4", "IFC4X3"] {
+        let opts = StepOptions { schema: Some(target.into()), ..Default::default() };
+        let mut rows = [data(), class.into(), rel(33,"#20"), rel(34,"#33,#11"), rel(35,"#33"), rel(36,"#35,#37"), rel(37,"#36")];
+        for _ in 0..2 {
+            let source = model("IFC2X3", &rows.join("\n"));
+            let direct = crate::export_step(source.as_bytes(), &opts).unwrap();
+            let (logged, _) = crate::export_step_with_log(source.as_bytes(), &opts, &Default::default()).unwrap();
+            for step in [direct, logged] {
+                assert!(!["#20", "#33", "#35"].iter().any(|id| step.contains(id)), "{step}");
+                for kept in [rel(34,"#11"), rel(36,"#37"), rel(37,"#36")] {
+                    assert!(step.contains(&kept), "{step}");
+                }
+            }
+            rows.reverse();
+        }
+    }
+}

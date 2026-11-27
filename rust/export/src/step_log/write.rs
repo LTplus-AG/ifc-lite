@@ -305,12 +305,13 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
     if target_is_ifc2x3 || temporal_buffer { checks.forms.defer_temporal_values(); }
     let may_prune_upgrade = crate::schema_unrooted_upgrade::Upgrade::between(&source_label, &target).filter(|upgrade|
         !pass.overlay.retype_order.is_empty() || !pass.created_lines.is_empty()
-            || upgrade.seeds(content).next().is_some());
+            || !pass.left_out.is_empty() || upgrade.seeds(content).next().is_some());
     let mut new_entities = pass.new_entity_count;
     let delay_header = defer_varying || may_prune_upgrade.is_some();
     let header = |mut out: &mut dyn Write, created| write_header(&mut out, opts, content, converting, &target, pass.ledger.modified_count() + created);
     if !delay_header { header(out, new_entities)?; }
     let mut body = crate::schema_ifc2x3_placements::Body::for_conversion(&mut *out, target_is_ifc2x3, defer_varying || temporal_buffer || typed_properties, may_prune_upgrade);
+    for &id in pass.left_out.iter().chain(&pass.withheld_created) { body.note_omitted(id); }
     let mut flatten = crate::schema_style_flatten::StyleFlatten::for_export(content, &source_label, &target); flatten.note_all(content, pass.mutated_lines.iter().filter_map(|(id, (t, _))| Some((*id, t.as_deref()?)))
         .chain(pass.generated.iter().chain(&pass.rewritten_lines).chain(&pass.georef_lines).chain(&pass.created_lines).map(|(id, l)| (*id, l.as_str()))));
     flatten.retain_grids(|id| !pass.skip.contains(&id) && !pass.is_deleted(id));
@@ -323,6 +324,7 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
         let text: &str = match pass.mutated_lines.get(&id) {
             Some((Some(text), _)) => text,
             Some((None, _)) => {
+                body.note_omitted(id);
                 let upper = pass.type_of(id).unwrap_or_default();
                 pass.warnings.push(format!("Relationship #{id} ({upper}) was withheld from the export: it names at least one entity that has no line in this export, in a slot with no spelling for an omitted reference (a single-valued attribute, or a set whose every member is omitted). Anything else that relationship associated is no longer associated in the output."));
                 continue;
@@ -342,6 +344,7 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
                     Filtered::Keep => raw,
                     Filtered::Rewrite(t) => t,
                     Filtered::Withhold(w) => {
+                        body.note_omitted(id);
                         pass.warnings.push(w);
                         continue;
                     }
@@ -351,12 +354,7 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
         };
         written += usize::from(write_line(&mut body, text, id, converting, &source_label, &target, &mut slot_fill, &mut checks, &flatten)?);
     }
-    // Every appended record goes out through the same `write_line` as a
-    // source one, in the TypeScript exporter's order: generated sets, the
-    // repointed type objects, the georeferencing records, the created
-    // entities. Each is in the source schema's layout, so a converting export
-    // converts it (renames, the quantity `Formula` slot, the IFC2X3 slot fill
-    // and its counters) instead of writing it raw (#7682, EXPORT-STEP-3).
+    // Convert each appended source-layout record through the same writer, in TypeScript export order (#7682).
     let appended = pass
         .generated
         .iter()

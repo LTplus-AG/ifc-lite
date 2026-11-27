@@ -214,9 +214,9 @@ export function pruneUpgrade(lines: string[], seeds: ReadonlySet<number>, to: If
 
 
 /** Single-model output contains only converted records, including pending edits. */
-export function pruneUpgradeFromSource(lines: string[], from: IfcSchemaVersion, to: IfcSchemaVersion, onOmitted: (id: number) => void): string[] {
+export function pruneUpgradeFromSource(lines: string[], from: IfcSchemaVersion, to: IfcSchemaVersion, omitted: Iterable<number>, onOmitted: (id: number) => void): string[] {
   if (!removesObsoleteResources(from, to)) return [];
-  const seeds = new Set<number>();
+  const seeds = new Set(omitted);
   for (const line of lines) noteUpgradeSeed(line, seeds, from, to);
   return pruneUpgrade(lines, seeds, to, onOmitted);
 }

@@ -189,9 +189,9 @@ export class TabBridge {
       if (!s.a2uiSurface) {
         return Promise.reject(new BridgeCallError('unknown-tool', 'The connected viewer tab cannot show agent surfaces; update the viewer.'));
       }
-      // Recorded on send (see delivered-surfaces.ts): the tab may show it even if its answer is lost.
-      if (Array.isArray(args.messages)) this.surfaces.record(args.messages);
-      return s.call(name, args, this.callTimeoutMs, signal);
+      // Recorded once actually sent (see delivered-surfaces.ts): the tab may show it even if its answer is lost.
+      const messages = args.messages;
+      return s.call(name, args, this.callTimeoutMs, signal, () => { if (Array.isArray(messages)) this.surfaces.record(messages); });
     }
     const tool = s.tools.find((t) => t.name === name);
     const shown = mcpName(name);

@@ -181,7 +181,9 @@ describe.skipIf(!built)('ifc-lite-mcp --bridge binary', () => {
 
       // The headless tool answers from the file loaded here; the tab_ one from the tab.
       client.send({ id: 5, method: 'tools/call', params: { name: 'count_entities', arguments: { type: 'IfcWall' } } });
-      expect(JSON.stringify((await client.reply(5)).result)).toContain('1');
+      const counted = (await client.reply(5)).result as { isError?: boolean; structuredContent: { total: number } };
+      expect(counted.isError).toBeUndefined();
+      expect(counted.structuredContent.total).toBe(1);
       client.send({ id: 6, method: 'tools/call', params: { name: tabTool(READ_TOOL.name), arguments: {} } });
       const call = await tab.next('call');
       expect(call.name).toBe(READ_TOOL.name);

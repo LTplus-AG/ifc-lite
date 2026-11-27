@@ -71,7 +71,8 @@ export class BridgeSession {
   }
 
   /** Send a `call` and wait for its `result`, a timeout, a cancel or the session's end. */
-  call(name: string, args: Record<string, unknown>, timeoutMs: number, signal?: AbortSignal): Promise<BridgeCallResult> {
+  /** `onSend` runs once the frame passed every check and is about to go out. */
+  call(name: string, args: Record<string, unknown>, timeoutMs: number, signal?: AbortSignal, onSend?: () => void): Promise<BridgeCallResult> {
     const fail = (reason: BridgeCallFailure, message: string) => Promise.reject(new BridgeCallError(reason, message));
     if (signal?.aborted) return fail('cancelled', `Call to '${name}' was cancelled.`);
     // Outbound bounds: a stalled or slow tab must not let calls or queued bytes pile up.
@@ -123,6 +124,7 @@ export class BridgeSession {
         reject: (e) => { finish(); reject(e); },
       });
     });
+    onSend?.();
     this.sendText(frame);
     return settled;
   }

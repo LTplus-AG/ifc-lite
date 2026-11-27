@@ -122,11 +122,13 @@ describe('UiEventInbox', () => {
     inbox.refused();
     // Already counted: the read does not wait out its 60 s.
     await expect(inbox.take(60_000)).resolves.toEqual({ events: [], dropped: 0, refused: 1 });
-    let woken = 0;
-    const waiting = inbox.take(60_000).then((r) => { woken++; return r; });
+    let notices = 0;
+    inbox.onRefused(() => { notices++; });
+    const waiting = inbox.take(60_000);
     for (let i = 0; i < 3 * UI_EVENT_LIMITS.maxPerSecond; i++) inbox.refused();
+    // The first refusal and the first read took two slots in the window; the flood gets the rest, not one per refusal.
+    expect(notices).toBe(UI_EVENT_LIMITS.maxPerSecond - 2);
     await expect(waiting).resolves.toMatchObject({ refused: 3 * UI_EVENT_LIMITS.maxPerSecond });
-    expect(woken).toBe(1);
   });
 
   it('keeps clicks queued before the tab went away readable', async () => {

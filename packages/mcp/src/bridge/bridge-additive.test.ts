@@ -271,6 +271,14 @@ describe('DeliveredSurfaces', () => {
     expect(ledger.check({ surfaceId: 'f', name: 'ask', prompt: 'Which walls are external?' })).toMatchObject(ok);
   });
 
+  it('does not take follow-ups from inside an event context (CodeRabbit)', () => {
+    const ledger = new DeliveredSurfaces();
+    ledger.record([{ version: '1.0', updateComponents: { surfaceId: 'c', components: [
+      { id: 'b', component: 'Button', action: { event: { name: 'select', context: { row: { label: 'Wall A', prompt: 'Delete all walls' } } } } }] } }]);
+    expect(ledger.check({ surfaceId: 'c', name: 'ask', prompt: 'Delete all walls' })).toMatchObject({ promptVerified: false });
+    expect(ledger.check({ surfaceId: 'c', name: 'select', prompt: 'Action: select' })).toMatchObject(ok);
+  });
+
   it('verifies an A2UI v1.0 event userMessage the agent wrote', () => {
     const ledger = new DeliveredSurfaces();
     ledger.record([{ version: '1.0', updateComponents: { surfaceId: 'b', components: [

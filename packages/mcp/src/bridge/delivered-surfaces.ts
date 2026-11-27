@@ -23,7 +23,8 @@
  * unverified, and the agent reads it as quoted data rather than as the
  * user's words (`channelParams`).
  *
- * A surface is recorded when it is sent, not when the tab confirms it: a tab
+ * A surface is recorded when its frame is sent (past the session's own checks),
+ * not when the tab confirms it: a tab
  * may store and show it even if its answer is lost or the call times out,
  * and what is recorded is only text the agent wrote.
  */
@@ -102,8 +103,10 @@ function collect(value: unknown, into: Surface): void {
       if (isRecord(event.context)) addString(into.prompts, event.context.prompt);
     }
   }
+  // An action's event context is data the renderer resolves, not follow-up definitions: its
+  // `userMessage` and `context.prompt` were taken above, and nothing deeper in it is walked.
   for (const [key, item] of Object.entries(value)) {
-    if (!DATA_MODEL_KEYS.has(key)) collect(item, into);
+    if (!DATA_MODEL_KEYS.has(key) && key !== 'action') collect(item, into);
   }
 }
 

@@ -3431,6 +3431,9 @@ jobs:
 
       - name: Clippy (canonical opening work diagnostic)
         run: cargo clippy -p ifc-lite-processing --features opening-perf-trace --example opening_work_probe -- -D warnings
+
+      - name: Rust tests (precise native probe phases)
+        run: cargo test --locked -p ifc-lite-processing --features probe-phase-timings --example perf_probe
       - name: Disk left on the runner
         if: always()
         run: df -h .

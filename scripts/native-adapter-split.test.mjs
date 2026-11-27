@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -293,7 +293,7 @@ function layouts(base, edit = () => {}) {
   const tempOf = (job) => (job === 'na-native' ? temp : ['na-browser', 'na-cli-parity'].includes(job) ? restored : join(base, 'empty'));
   for (const job of SPLIT_LANE_JOBS) collect(job, join(base, 'split', `na-split-evidence-${job}`), tempOf(job), { ...env, STEPS_JSON: JSON.stringify(ok(jobLaneSteps(job))) }, root);
   edit(base);
-  return { mono: join(base, 'mono'), split: join(base, 'split'), needs: { 'native-adapter': { result: 'success' }, ...greenNeeds(), [SPLIT_JUDGE]: { result: 'success' } }, root: REPO };
+  return { mono: join(base, 'mono'), split: join(base, 'split'), needs: { 'native-adapter': { result: 'success' }, ...greenNeeds(), [SPLIT_JUDGE]: { result: 'success', outputs: { status: 'success' } } }, root: REPO };
 }
 
 test('identical layouts match, with the split-only M1 reference and marker allowed', async (context) => {
@@ -441,5 +441,24 @@ test('green lanes under a red or absent judge job are no green split', async (co
     assert.equal(report.match, false, report.markdown);
     assert.ok(report.problems.includes(`${SPLIT_JUDGE} result ${judgeJob?.result ?? 'absent'}: the split has no verdict of its own`), report.markdown);
     assert.ok(report.problems.includes('verdicts differ: single green, split red'), report.markdown);
+  }
+});
+
+test('#10858 compare rejects a masked judge upload failure or missing job status', (context) => {
+  const base = scratch(context);
+  const { mono, split, needs } = layouts(base);
+  const report = join(base, 'report.md');
+  assert.equal(judge(needs).ok, true);
+  for (const [status, expectedExit] of [['success', 0], ['failure', 1], ['', 1]]) {
+    needs[SPLIT_JUDGE].outputs.status = status;
+    const run = spawnSync(process.execPath, [
+      'scripts/native-adapter-split.mjs', 'compare', '--mono', mono, '--split', split, '--report', report,
+    ], { cwd: REPO, env: { ...process.env, NEEDS_JSON: JSON.stringify(needs), GH_TOKEN: '', GITHUB_STEP_SUMMARY: '' }, encoding: 'utf8' });
+    assert.equal(run.status, expectedExit, run.stderr || run.stdout);
+    if (expectedExit === 0) assert.match(run.stdout, /\*\*MATCH\*\*/);
+    else {
+      assert.match(run.stdout, /\*\*MISMATCH\*\*/);
+      assert.ok(run.stdout.includes(`${SPLIT_JUDGE} job status ${status || 'absent'}`), run.stdout);
+    }
   }
 });

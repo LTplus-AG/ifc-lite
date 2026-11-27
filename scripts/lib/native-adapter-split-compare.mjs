@@ -292,11 +292,14 @@ export async function compareLayouts({ mono: monoDir, split: splitDir, needs, ro
   for (const [label, e] of [['native-adapter', mono], ...Object.entries(split)]) if (!e.present) problems.push(`no evidence from ${label} (${e.dir}); nothing of it was compared`);
   const monoGreen = needs?.['native-adapter']?.result === 'success';
   const j = judge(needs);
-  // The judge job is the split's verdict: green lanes under a red or absent judge job are not a green split.
-  const judgeResult = needs?.[SPLIT_JUDGE]?.result ?? 'absent';
-  const splitGreen = j.ok && judgeResult === 'success';
+  // The job output preserves failures that job-level continue-on-error can mask.
+  const judgeJob = needs?.[SPLIT_JUDGE];
+  const judgeResult = judgeJob?.result ?? 'absent';
+  const judgeStatus = judgeJob?.outputs?.status || 'absent';
+  const splitGreen = j.ok && judgeResult === 'success' && judgeStatus === 'success';
   lines.push(`Verdict: single job **${needs?.['native-adapter']?.result ?? 'absent'}**, split judge **${splitGreen ? 'success' : 'failure'}**`);
   if (judgeResult !== 'success') problems.push(`${SPLIT_JUDGE} result ${judgeResult}: the split has no verdict of its own`);
+  else if (judgeStatus !== 'success') problems.push(`${SPLIT_JUDGE} job status ${judgeStatus}: the split has no successful judge job`);
   if (monoGreen !== splitGreen) problems.push(`verdicts differ: single ${monoGreen ? 'green' : 'red'}, split ${splitGreen ? 'green' : 'red'}${j.problems.length ? ` (${j.problems.join('; ')})` : ''}`);
   for (const id of new Set(SPLIT_LANE_JOBS.map((job) => split[job].meta.head).filter(Boolean))) if (mono.meta.head && id !== mono.meta.head) problems.push(`split job commit ${id} is not the single job's ${mono.meta.head}`);
 

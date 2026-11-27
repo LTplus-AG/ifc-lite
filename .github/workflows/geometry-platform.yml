@@ -1606,6 +1606,8 @@ jobs:
   # nightly coverage record and the bisect read by id.
   na-split-judge:
     needs: [na-native, na-emscripten, na-wasm, na-viewer, na-browser, na-cli-parity]
+    outputs:
+      status: ${{ steps.judge-status.outputs.status }}
     if: >-
       !cancelled() && (!inputs.bisect_sha || inputs.bisect_adapter) && (
       inputs.batch == true ||
@@ -1650,6 +1652,13 @@ jobs:
         env:
           NEEDS_JSON: ${{ toJSON(needs) }}
         run: node scripts/native-adapter-split.mjs judge
+      # Publish the final status before job-level continue-on-error can mask it.
+      - name: Record judge job status
+        id: judge-status
+        if: always()
+        env:
+          JOB_STATUS: ${{ job.status }}
+        run: printf 'status=%s\n' "$JOB_STATUS" >> "$GITHUB_OUTPUT"
 
   # Report only (job-level continue-on-error): both layouts on this commit, per lane.
   na-split-compare:

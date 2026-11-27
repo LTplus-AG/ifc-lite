@@ -43,6 +43,24 @@ try {
 }
 ```
 
+Edits made through `model.bim.store` get fresh random GlobalIds. To make an edit session reproducible, pass a seeded `[0, 1)` source as `backend.guidRandom`: every GlobalId the session authors, including the property sets `bim.export.ifc()` writes, then comes from it, so the same model, edits and seed export the same `DATA` section. The header carries a timestamp, so compare from `DATA;` on. Every call that writes GlobalIds draws from the one source, an `export.ifc()` included, so the guarantee holds for the same sequence of calls: an extra export or check in between moves the GlobalIds that follow it.
+
+```typescript
+import { readFile } from 'node:fs/promises';
+import { openModel } from '@ifc-lite/sdk/headless';
+
+let state = 42;
+const guidRandom = () => ((state = (state * 1664525 + 1013904223) >>> 0) / 4294967296);
+const model = await openModel(await readFile('model.ifc'), { backend: { guidRandom } });
+try {
+  const storey = model.bim.store.listStoreyLevels('model')[0].expressId;
+  model.bim.store.addWall('model', storey, { Start: [0, 0, 0], End: [5, 0, 0], Thickness: 0.2, Height: 3 });
+  console.log(model.bim.export.ifc());
+} finally {
+  model.close();
+}
+```
+
 For a terminal workflow:
 
 ```bash

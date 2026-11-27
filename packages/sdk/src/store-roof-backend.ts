@@ -8,12 +8,12 @@ import type { CostStoreModelResolution } from './cost-store-backend.js';
 import type { RoofStoreBackendMethods } from './store-roof-types.js';
 
 export function createRoofStoreBackend(
-  resolve: (modelId: string) => Pick<CostStoreModelResolution, 'modelId' | 'store' | 'editor'>,
+  resolve: (modelId: string) => Pick<CostStoreModelResolution, 'modelId' | 'store' | 'editor' | 'guidRandom'>,
 ): Required<RoofStoreBackendMethods> {
   return {
     editRoof(ref, patch) {
       const model = resolve(ref.modelId);
-      editFootprintRoofInStore(model.store, model.editor, ref.expressId, patch);
+      editFootprintRoofInStore(model.store, model.editor, ref.expressId, patch, { guidRandom: model.guidRandom });
       return { modelId: model.modelId, expressId: ref.expressId };
     },
   };

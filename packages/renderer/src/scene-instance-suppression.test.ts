@@ -39,6 +39,32 @@ function fixture(modelIndex = 3) {
 }
 
 describe('occurrence appearance resource lifetime (#4404)', () => {
+  it('tracks pickable instance IDs independently of model placement (#11419)', () => {
+    const { scene, device, shard } = fixture();
+    const before = scene.getInstancedEntityRevision();
+    const pickRevision = scene.getPickGeometryRevision();
+    scene.setModelTranslation(3, [2, 0, 0]);
+    assert.ok(scene.getPickGeometryRevision() > pickRevision);
+    assert.equal(scene.getInstancedEntityRevision(), before);
+
+    const lease = scene.retainInstancedOccurrence(41, 3);
+    lease.setSuppressed(true);
+    const suppressed = scene.getInstancedEntityRevision();
+    assert.ok(suppressed > before);
+    assert.deepEqual([...scene.getInstancedEntityIds()], [42]);
+    lease.release();
+    const restored = scene.getInstancedEntityRevision();
+    assert.ok(restored > suppressed);
+    assert.deepEqual([...scene.getInstancedEntityIds()], [41, 42]);
+
+    scene.removeInstancedTemplatesForModel(3);
+    const removed = scene.getInstancedEntityRevision();
+    assert.ok(removed > restored);
+    scene.addInstancedShard(device, shard, 3);
+    assert.ok(scene.getInstancedEntityRevision() > removed);
+    assert.deepEqual([...scene.getInstancedEntityIds()], [41, 42]);
+  });
+
   it('suppresses only the retained occurrence through selection and hide/isolate updates', () => {
     const { scene, gpu, flags, color } = fixture();
     const sibling = scene.getInstancedMeshDataPieces(42)![0];

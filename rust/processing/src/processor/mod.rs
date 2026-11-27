@@ -33,6 +33,8 @@ pub use entry_points::{
     process_geometry_streaming_with_options_and_bootstrap, process_geometry_with_index,
 };
 mod finalize;
+#[cfg(feature = "probe-phase-timings")]
+mod probe_phase_timings;
 pub(crate) mod instancing;
 mod job;
 use job::{normalize_optional_string, EntityJob};

@@ -1,7 +1,7 @@
 {
   "issue": 7955,
   "why": "Remove the precise timing event while keeping the feature, probe and ordinary statistics. The live IFC test must fail because the measured invocation no longer supplies precise phases.",
-  "key": "rust/processing/src/processor/finalize.rs",
+  "key": "rust/processing/src/processor/probe_phase_timings.rs",
   "mutation": "tests/evidence/precise-probe-timings-11669/behaviour.oracle.patch",
   "test": "rust/processing/tests/probe_phase_timings.rs"
 }

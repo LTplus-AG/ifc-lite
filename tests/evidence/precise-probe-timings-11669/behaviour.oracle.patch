@@ -1,21 +1,19 @@
-diff --git a/rust/processing/src/processor/finalize.rs b/rust/processing/src/processor/finalize.rs
-index 6cb86faa3a..2b0735c42e 100644
---- a/rust/processing/src/processor/finalize.rs
-+++ b/rust/processing/src/processor/finalize.rs
-@@ -211,16 +211,6 @@ pub(super) fn finish(
-     record_geometry_span(&geometry_span, total_meshes, total_triangles, backstop_dropped, total_csg_failures, geometry_time);
+diff --git a/rust/processing/src/processor/probe_phase_timings.rs b/rust/processing/src/processor/probe_phase_timings.rs
+index 8ea301b730..f548715fc2 100644
+--- a/rust/processing/src/processor/probe_phase_timings.rs
++++ b/rust/processing/src/processor/probe_phase_timings.rs
+@@ -6,13 +6,5 @@ use super::resolve::Times;
+ use std::time::Duration;
  
-     let total_time = mark(Mark::TotalEnd, total_start.elapsed());
--    #[cfg(feature = "probe-phase-timings")]
+ pub(super) fn record(times: &Times, geometry_time: Duration, total_time: Duration) {
 -    tracing::trace!(
 -        target: "ifc_lite_processing::probe_phase_timings",
--        parse_ns = facts.times.parse.as_nanos() as u64,
--        scan_ns = facts.times.entity_scan.as_nanos() as u64,
--        lookup_ns = facts.times.lookup.as_nanos() as u64,
--        preprocess_ns = facts.times.preprocess.as_nanos() as u64,
+-        parse_ns = times.parse.as_nanos() as u64,
+-        scan_ns = times.entity_scan.as_nanos() as u64,
+-        lookup_ns = times.lookup.as_nanos() as u64,
+-        preprocess_ns = times.preprocess.as_nanos() as u64,
 -        geometry_ns = geometry_time.as_nanos() as u64,
 -        total_ns = total_time.as_nanos() as u64,
 -    );
-     pipeline_span.record("element_count", total_jobs as u64);
-     pipeline_span.record("total_ms", total_time.as_millis() as u64);
-     tracing::info!(target: "ifc_lite_processing::processor",
++    let _ = (times, geometry_time, total_time);
+ }

@@ -382,7 +382,7 @@ impl<'a> Classifier<'a> {
 
 // Authored axes can be composed in a different order in the two placements.
 fn shares_axes(a: &Matrix3<f64>, b: &Matrix3<f64>) -> bool {
-    signed_permutation_map(&(a.transpose() * b), 1.0e-10).is_some()
+    signed_permutation_map(&(a.transpose() * b), crate::math::tol::WALL_OPENING_AXIS_EPS).is_some()
 }
 
 fn probe_bounds(output: Option<OpeningOutput>) -> Result<OpeningBounds> {

@@ -51,7 +51,7 @@ impl RectParam {
         let roundoff = 16.0 * f64::EPSILON * scale;
         // At large world coordinates the subtraction itself is uncertain.
         // Hand that case back to the normal cut.
-        if !roundoff.is_finite() || roundoff > 1e-9 || !offset.iter().all(|v| v.is_finite()) {
+        if !roundoff.is_finite() || roundoff > crate::math::tol::WALL_OPENING_MAX_ROUNDOFF_M || !offset.iter().all(|v| v.is_finite()) {
             return true;
         }
         (0..3).all(|k| self.half[k] + projected[k] - offset[k].abs() > roundoff)

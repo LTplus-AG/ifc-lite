@@ -5,10 +5,10 @@
 /**
  * @ifc-lite/validate: IFC validation generated from the buildingSMART EXPRESS
  * schemas by `@ifc-lite/codegen`. Runs without Node built-ins (browsers,
- * Workers). Schemas load per release so a bundle only carries the one it uses.
+ * Workers). Schema loading uses a dynamic import for each release.
  */
 
-import { headerRecords } from './runtime/step-reader.js';
+import { headerBoundaryReached, headerRecords } from './runtime/step-reader.js';
 import { Model, type StepRecordSource } from './runtime/model.js';
 import type { SchemaRuntime } from './runtime/schema-runtime.js';
 import type { ValidationReport } from './engine/findings.js';
@@ -69,10 +69,21 @@ export interface DataStoreLike extends StepRecordSource {
 
 const HEADER_PREFIX_BYTES = 1 << 16;
 
+function readHeader(source: DataStoreLike['source']): string {
+  let end = Math.min(source.byteLength ?? HEADER_PREFIX_BYTES, HEADER_PREFIX_BYTES);
+  let previousLength = -1;
+  for (;;) {
+    const text = source.decodeUtf8(0, end);
+    if (end === source.byteLength || text.length === previousLength || headerBoundaryReached(text)) return text;
+    previousLength = text.length;
+    end = Math.min(end * 2, source.byteLength ?? Infinity);
+  }
+}
+
 /** Validate a model parsed by `@ifc-lite/parser` (its `IfcDataStore`). */
 export async function validateDataStore(store: DataStoreLike, options: ValidateInput = {}): Promise<ValidationReport> {
   const identifier = store.sourceHeader?.schemaIdentifiers?.[0] ?? store.schemaVersion;
   const schema = await schemaOrThrow(identifier, options.schema);
-  const headerText = options.headerText ?? store.source.decodeUtf8(0, Math.min(store.source.byteLength ?? HEADER_PREFIX_BYTES, HEADER_PREFIX_BYTES));
+  const headerText = options.headerText ?? readHeader(store.source);
   return validateModel(Model.fromDataStore(store, schema), { ...options, headerText });
 }

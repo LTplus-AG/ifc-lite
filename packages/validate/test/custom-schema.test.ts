@@ -146,3 +146,23 @@ ENTITY C SUBTYPE OF (B); SELF\\B.Y RENAMED Zed : INTEGER; END_ENTITY; END_SCHEMA
     expect(schemas[entity].safeParse({ [name]: 0 }).success).toBe(false);
   }
 });
+
+it('compares SELECT tags and values consistently for SET uniqueness (#11647)', async () => {
+  const { schema, schemas } = generated(`SCHEMA S; TYPE A = INTEGER; END_TYPE; TYPE B = INTEGER; END_TYPE;
+TYPE Choice = SELECT (A,B); END_TYPE; ENTITY Sample; Members : SET OF Choice; END_ENTITY; END_SCHEMA;`);
+  for (const [tag, value, valid] of [['B', 1, true], ['A', 1, false], ['A', 2, true]] as const) {
+    const members = [{ typed: { type: 'A', value: 1 } }, { typed: { type: tag, value } }];
+    expect(schemas.Sample.safeParse({ Members: members }).success).toBe(valid);
+    const report = await validateStepText(`DATA;#1=SAMPLE((A(1),${tag}(${value})));ENDSEC;`, { schema, categories: ['schema'] });
+    expect(report.valid).toBe(valid);
+  }
+});
+
+it('executes a supported constructor attribute beside a failed unrelated DERIVE (#11646)', async () => {
+  const { schema, coverage } = generated(`SCHEMA S; ENTITY Bad; DERIVE Flag : LOGICAL := Mystery(1); END_ENTITY;
+ENTITY Good; Flag : LOGICAL; END_ENTITY; ENTITY Probe; WHERE Pass : Good(TRUE).Flag;
+Fail : Good(FALSE).Flag; Unsupported : Bad().Flag; END_ENTITY; END_SCHEMA;`);
+  expect(coverage.unsupported.map(row => [row.owner, row.label])).toEqual([['Bad','Flag'], ['Probe','Unsupported']]);
+  const report = await validateStepText('DATA;#1=PROBE();ENDSEC;', {schema, categories: ['entity_rule']});
+  expect(report.findings.map(f => f.rule)).toEqual(['Probe.Fail']);
+});

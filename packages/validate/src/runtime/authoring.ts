@@ -8,7 +8,7 @@
  * can refine with them. Structural only: no zod import here.
  */
 
-import { eq } from './compare.js';
+import { uniqueAggregate } from './unique-aggregate.js';
 import { EntityInstance } from './instance.js';
 import { violated } from './logic.js';
 import { Model } from './model.js';
@@ -103,13 +103,5 @@ const SCALAR = {
 };
 
 export function uniqueItems(items: unknown[]): boolean {
-  const values = items.map((x) => fromAuthoring(SCALAR, undefined, x));
-  for (let i = 0; i < values.length; i++) {
-    for (let j = i + 1; j < values.length; j++) {
-      const a = values[i];
-      const b = values[j];
-      if (a instanceof Ref && b instanceof Ref ? a.id === b.id : eq(a, b) === true) return false;
-    }
-  }
-  return true;
+  return uniqueAggregate(items.map(x => fromAuthoring(SCALAR, undefined, x)));
 }

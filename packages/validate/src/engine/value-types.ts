@@ -13,21 +13,7 @@ import type { Model } from '../runtime/model.js';
 import type { TypeRef } from '../runtime/schema-meta.js';
 import { BinaryValue, EnumValue, Ref, StepInteger, StepReal, Typed, UNKNOWN, type Value } from '../runtime/values.js';
 
-// This operates on raw STEP attributes, before references are resolved into entity objects.
-function uniqueAggregate(items: Value[]): boolean {
-  const seen = new Set<string>();
-  for (const item of items) {
-    if (item === undefined) continue;
-    const key = JSON.stringify(item, (_field, v: unknown) => {
-      if (v instanceof StepInteger || v instanceof StepReal) return v.value;
-      if (typeof v === 'symbol') return { logical: String(v) };
-      return v;
-    });
-    if (seen.has(key)) return false;
-    seen.add(key);
-  }
-  return true;
-}
+import { uniqueAggregate } from '../runtime/unique-aggregate.js';
 
 export function conforms(m: Model, v: Value, type: TypeRef): boolean {
   switch (type.k) {

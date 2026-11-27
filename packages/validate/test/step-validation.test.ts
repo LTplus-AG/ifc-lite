@@ -61,3 +61,16 @@ it('uses the first physical record for duplicate IDs through both entry points (
     expect(parsed.findings.filter(f => f.rule === 'duplicate-id').map(f => f.instance)).toEqual([7]);
   }
 });
+
+it('reads complete long HEADER records from an actual parsed store (#11647)', async () => {
+  const { IfcParser } = await import('@ifc-lite/parser');
+  const { validateDataStore } = await import('../src/index.js');
+  const authors = Array(400).fill("'" + 'a'.repeat(175) + ";ENDSEC;'").join(',');
+  for (const name of ['valid', 'x'.repeat(257)]) {
+    const text = file('#1=IFCCARTESIANPOINT((0.,1.));').replace("'a','b',('c')", `'${name}','b',(${authors})`);
+    const store = await new IfcParser().parseColumnar(new TextEncoder().encode(text).buffer, { disableWorkerScan: true });
+    const direct = await validateStepText(text);
+    expect(direct.findings.map(f => f.rule)).toEqual(name === 'valid' ? [] : ['FILE_NAME.name']);
+    expect((await validateDataStore(store)).findings).toEqual(direct.findings);
+  }
+});

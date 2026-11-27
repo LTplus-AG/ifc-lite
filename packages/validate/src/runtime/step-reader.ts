@@ -201,6 +201,14 @@ function* statements(text: string): Generator<string> {
   }
 }
 
+/** A complete section delimiter outside quoted values and comments ends the header prefix. */
+export function headerBoundaryReached(text: string): boolean {
+  for (const statement of statements(text)) {
+    if (/^(?:ENDSEC|DATA)\b/i.test(statement) && statement.endsWith(';')) return true;
+  }
+  return false;
+}
+
 export function* sectionRecords(text: string, section: 'HEADER' | 'DATA'): Generator<string> {
   let active = false;
   let bare = section === 'DATA';

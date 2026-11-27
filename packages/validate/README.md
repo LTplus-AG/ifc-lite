@@ -38,7 +38,7 @@ const store = await new IfcParser().parseColumnar(buffer);
 const report = await validateDataStore(store);
 ```
 
-The release is picked from `FILE_SCHEMA` (`IFC4X3_ADD2` validates with the IFC4X3 rules). Each release is loaded on demand, so a bundle carries only the one it uses. `report.notEvaluated` lists rules the generator could not compile; for the bundled schemas it is empty.
+The release is picked from `FILE_SCHEMA` (`IFC4X3_ADD2` validates with the IFC4X3 rules). The root entry dynamically imports the selected release. A single-file browser IIFE includes all three releases. An ESM build with code splitting can load the selected release’s chunk on demand. `report.notEvaluated` lists rules the generator could not compile; for the bundled schemas it is empty.
 
 ## Validate before writing (zod)
 

@@ -126,6 +126,12 @@ describe('scaleTypedMeasures', () => {
       .toBe('IFCLENGTHMEASURE(0.1)');
   });
 
+  it('retains the separator and numeric-slot trivia when requested (#11333)', () => {
+    const input = 'IFCLENGTHMEASURE /* mm */ ( 100. /* value */)';
+    expect(scaleTypedMeasures(input, 0.001, 1, 1, undefined, true))
+      .toBe('IFCLENGTHMEASURE /* mm */ ( 0.1 /* value */)');
+  });
+
   it('two-way rule: an unterminated comment before "(" is not treated as trivia', () => {
     const input = 'IFCLENGTHMEASURE/* never closes (100.)';
     expect(scaleTypedMeasures(input, 0.001, 1, 1)).toBe(input);

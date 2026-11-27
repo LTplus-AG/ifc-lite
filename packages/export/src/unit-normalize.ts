@@ -260,7 +260,7 @@ export function scaleTypedMeasures(
         : profileFactor(kw, profileFactors, lengthFactor);
       if (preserveTrivia && factor === 1) return full;
       const scaled = scaleMeasureNumber(before, num, after, factor, preserveTrivia);
-      return scaled === undefined ? full : `${keyword}${preserveTrivia || separator.includes('/*') ? separator : ''}(${scaled})`;
+      return scaled === undefined ? full : `${keyword}${preserveTrivia ? separator : ''}(${scaled})`;
     },
   ));
 }
@@ -364,7 +364,7 @@ export function rescaleEntityLengths(
   // Typed measures live in property/quantity value slots (an IfcValue SELECT is
   // written with its explicit type). Skipped when the entity declares its own unit.
   if (!skipValues && /measure/i.test(inner)) {
-    inner = scaleTypedMeasures(inner, lengthFactor, areaFactor, volumeFactor, profileFactors);
+    inner = scaleTypedMeasures(inner, lengthFactor, areaFactor, volumeFactor, profileFactors, true);
   }
 
   return line.slice(0, bounds.open + 1) + inner + line.slice(bounds.close);

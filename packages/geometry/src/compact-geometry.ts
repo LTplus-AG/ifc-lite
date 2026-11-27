@@ -25,7 +25,7 @@ export interface CompactPayload {
   /** Mesh-local u16 triangle indices. */
   indices: Uint16Array;
   /** Per row (`COMPACT_TABLE_STRIDE` columns): mesh index in its collection, vertex start, vertex
-   *  count, index start, index count, lattice level (step = 2^-level m). */
+   *  count, index start, index count, lattice level (step = 2^-level m), source vertex count. */
   table: Uint32Array;
   /** Per row: lattice window origin in units of the row's step, xyz. */
   windows: Float64Array;
@@ -62,7 +62,7 @@ interface CompactBatchJs {
 }
 
 /** u32 columns per table row. */
-export const COMPACT_TABLE_STRIDE = 6;
+export const COMPACT_TABLE_STRIDE = 7;
 /** Bytes per vertex record. */
 export const COMPACT_RECORD_BYTES = 12;
 /** Cell size the viewer encodes at: half a level-10 window, the largest the encoder accepts. */
@@ -84,11 +84,13 @@ export interface CompactRow {
   indexCount: number;
   /** Lattice level: step = 2^-level metres. */
   level: number;
+  /** Vertices of the source f32 mesh, before welding: what a scan of its positions would count. */
+  sourceVertexCount: number;
 }
 
 export function compactRow(ref: CompactRef): CompactRow {
   const t = ref.payload.table, r = ref.row * COMPACT_TABLE_STRIDE;
-  return { vertexStart: t[r + 1], vertexCount: t[r + 2], indexStart: t[r + 3], indexCount: t[r + 4], level: t[r + 5] };
+  return { vertexStart: t[r + 1], vertexCount: t[r + 2], indexStart: t[r + 3], indexCount: t[r + 4], level: t[r + 5], sourceVertexCount: t[r + 6] };
 }
 
 /** Lattice step of a level in metres (level 10 is the renderer's `QUANT_STEP`). */
@@ -124,6 +126,29 @@ export function visitCompactPayload(p: CompactPayload, visit: (array: ArrayBuffe
  * getters then return empty arrays), append the payload to `payloads`, and return mesh index -> wire
  * ref. `undefined` when nothing was encoded or the wasm build has no encoder.
  */
+/** The six columns an `@ifc-lite/wasm` older than the source vertex count writes per row. */
+const LEGACY_COMPACT_TABLE_STRIDE = 6;
+
+/**
+ * `table` with `COMPACT_TABLE_STRIDE` columns per row. A wasm build that predates the source vertex count
+ * (a published patch range lets it pair with this package) writes six: widen it, taking the welded vertex
+ * count as the source count, as before. Any other shape would misread every row after the encoder consumed
+ * the meshes, so there is no f32 to fall back to: fail loudly.
+ */
+export function compactTableOf(table: Uint32Array, rows: number): Uint32Array {
+  if (table.length === rows * COMPACT_TABLE_STRIDE) return table;
+  if (table.length !== rows * LEGACY_COMPACT_TABLE_STRIDE) {
+    throw new Error(`compact geometry: the wasm table has ${table.length} cells for ${rows} rows (expected ${COMPACT_TABLE_STRIDE} or ${LEGACY_COMPACT_TABLE_STRIDE} columns)`);
+  }
+  const wide = new Uint32Array(rows * COMPACT_TABLE_STRIDE);
+  for (let row = 0; row < rows; row++) {
+    const from = row * LEGACY_COMPACT_TABLE_STRIDE, to = row * COMPACT_TABLE_STRIDE;
+    wide.set(table.subarray(from, from + LEGACY_COMPACT_TABLE_STRIDE), to);
+    wide[to + 6] = table[from + 2]; // vertex count
+  }
+  return wide;
+}
+
 export function encodeCompactCollection(
   collection: object,
   cellSize: number,
@@ -136,7 +161,7 @@ export function encodeCompactCollection(
     const count = batch.meshCount;
     if (count === 0) return undefined;
     const payload: CompactPayload = {
-      records: batch.records, indices: batch.indices, table: batch.table,
+      records: batch.records, indices: batch.indices, table: compactTableOf(batch.table, count),
       windows: batch.windows, bounds: batch.bounds, cells: batch.cells,
     };
     const index = payloads.length;

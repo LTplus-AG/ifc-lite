@@ -286,3 +286,26 @@ it('counts LOGICAL UNKNOWN in UNIQUE while omitting unset optional values (#1164
   const report = await validateStepText('DATA;#1=E(.U.);#2=E(.T.);#3=E(.F.);#4=E($);#5=E($);#6=E(.U.);ENDSEC;', { schema, categories: ['schema', 'unique_rule'] });
   expect(report.findings.map(f => [f.instance, f.rule])).toEqual([[6, 'E.U']]);
 });
+
+it('distinguishes LOGICAL UNKNOWN from a missing value in TYPEOF (#11647)', async () => {
+  const { schema } = generated(`SCHEMA S; ENTITY E; X : OPTIONAL LOGICAL;
+WHERE EmptyTypes : SIZEOF(TYPEOF(X)) = 0;
+ HasLogical : 'LOGICAL' IN TYPEOF(X);
+ HasBoolean : 'BOOLEAN' IN TYPEOF(X); END_ENTITY; END_SCHEMA;`);
+  const report = await validateStepText('DATA;#1=E(.U.);#2=E($);#3=E(.T.);#4=E(.F.);ENDSEC;', { schema, categories: ['entity_rule'] });
+  expect(report.findings.map(f => [f.instance, f.rule])).toEqual([
+    [1, 'E.EmptyTypes'], [1, 'E.HasBoolean'], [2, 'E.HasLogical'], [2, 'E.HasBoolean'],
+    [3, 'E.EmptyTypes'], [4, 'E.EmptyTypes'],
+  ]);
+});
+
+it('requires an explicit aggregate repetition count to be a nonnegative integer (#11647)', async () => {
+  const { schema } = generated(`SCHEMA S; ENTITY E; N : OPTIONAL INTEGER; Expected : INTEGER;
+WHERE Repeated : SIZEOF([9, 1:N]) = Expected;
+ Singleton : SIZEOF([1]) = 1; END_ENTITY; END_SCHEMA;`);
+  const report = await validateStepText('DATA;#1=E($,2);#2=E(0,1);#3=E(2,3);#4=E(2,2);#5=E(-1,1);ENDSEC;', { schema, categories: ['entity_rule'] });
+  expect(report.findings.map(f => [f.instance, f.category, f.rule])).toEqual([
+    [1, 'evaluation_error', 'E.Repeated'], [4, 'entity_rule', 'E.Repeated'], [5, 'evaluation_error', 'E.Repeated'],
+  ]);
+  expect(report.stats.entityRuleEvaluations).toBe(10);
+});

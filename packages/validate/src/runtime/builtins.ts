@@ -9,10 +9,11 @@
  * indeterminate operand give an empty aggregate.
  */
 
+import { EvaluationError } from './errors.js';
 import { EntityInstance } from './instance.js';
 import { isTrue } from './logic.js';
 import type { Model } from './model.js';
-import { BinaryValue, int, isAggregate, isSet, lowerBound, markSet, num, prim, StepReal, Typed, type Aggregate, type Value } from './values.js';
+import { BinaryValue, int, isAggregate, isSet, lowerBound, markSet, num, prim, StepReal, Typed, UNKNOWN, type Aggregate, type Value } from './values.js';
 
 function unwrap(v: Value): Value {
   return v instanceof Typed ? unwrap(v.value) : v;
@@ -59,6 +60,7 @@ export function typeOf(m: Model, v: Value): Value {
   const p = prim(v);
   if (typeof p === 'number') return !(v instanceof StepReal) && Number.isInteger(p) ? ['INTEGER', 'NUMBER'] : ['REAL', 'NUMBER'];
   if (typeof p === 'string') return ['STRING'];
+  if (p === UNKNOWN) return ['LOGICAL'];
   if (typeof p === 'boolean') return ['BOOLEAN', 'LOGICAL'];
   if (p instanceof BinaryValue) return ['BINARY'];
   return [];
@@ -86,12 +88,16 @@ export function query(source: Value, predicate: (item: Value) => Value): Value {
 /** `[a, b : n, ...]`; a repeat count applies to the item it follows. */
 export function aggregate(items: Array<[Value, Value?]>): Aggregate {
   const out: Aggregate = [];
-  for (const [value, repeat] of items) {
-    if (repeat === undefined) {
+  for (const item of items) {
+    const [value, repeat] = item;
+    if (item.length === 1) {
       out.push(value);
       continue;
     }
-    const n = int(repeat) ?? 0;
+    const n = num(repeat);
+    if (n === undefined || !Number.isInteger(n) || n < 0 || unwrap(repeat) instanceof StepReal) {
+      throw new EvaluationError('aggregate repetition count must be a nonnegative INTEGER');
+    }
     for (let i = 0; i < n; i++) out.push(value);
   }
   return out;

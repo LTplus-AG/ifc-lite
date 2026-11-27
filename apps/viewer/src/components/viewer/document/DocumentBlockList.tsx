@@ -66,7 +66,7 @@ export function DocumentBlockList({ document, selected, onToggle, onSelectOnly, 
   return <>
     <div className="sticky top-0 z-10 flex flex-wrap items-center gap-2 rounded-md border border-border bg-card p-2" data-block-selection-toolbar>
       <span className="text-muted-foreground">{t('document.selection.count', { count: String(selected.size) })}</span>
-      <select className="min-w-0 flex-1 rounded border border-border bg-card p-1" value="" disabled={!selected.size}
+      <select className="min-w-32 flex-1 rounded border border-border bg-card p-1" value="" disabled={!selected.size}
         aria-label={t('document.selection.moveBefore')} onChange={event => { if (event.target.value) move(selected, event.target.value); }}>
         <option value="">{t('document.selection.moveBefore')}</option>
         {document.blocks.map((block, index) => !selected.has(block.id) && <option key={block.id} value={block.id}>{label(block, index)}</option>)}

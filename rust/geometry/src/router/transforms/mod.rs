@@ -13,7 +13,7 @@ pub(crate) mod operator;
 use super::GeometryRouter;
 use crate::math::mat4;
 use crate::placement;
-use crate::{Mesh, Result, SubMeshCollection};
+use crate::{Mesh, Result};
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
 use nalgebra::Matrix4;
 
@@ -146,8 +146,8 @@ impl GeometryRouter {
     /// [`Self::place_mesh`] gives. Every per-style channel (plain, layered,
     /// textured) converges here, so one loop covers them all, and the sub-mesh
     /// weld carries `SubMesh::uvs` through the same remap.
-    pub(crate) fn place_sub_meshes(&self, sub_meshes: &mut SubMeshCollection, placement: &ObjectPlacement) {
-        for sub in &mut sub_meshes.sub_meshes {
+    pub(crate) fn place_sub_meshes(&self, sub_meshes: &mut crate::styled_parts::StyledParts, placement: &ObjectPlacement) {
+        for sub in sub_meshes.subs_mut(0) {
             crate::mesh_weld::weld_sub_mesh(sub);
         }
         // Instancing: record the per-element world placement on EACH sub-mesh's
@@ -161,13 +161,13 @@ impl GeometryRouter {
         // dedup made it look like repeated geometry was "missing".
         if placement.placed && instancing_enabled() {
             let row_major = mat4::from_na(&placement.transform);
-            for sub in &mut sub_meshes.sub_meshes {
+            for sub in sub_meshes.subs_mut(0) {
                 if let Some(im) = sub.mesh.instance_meta.as_mut() {
                     im.transform = row_major;
                 }
             }
         }
-        for sub in &mut sub_meshes.sub_meshes {
+        for sub in sub_meshes.subs_mut(0) {
             self.transform_mesh_world(&mut sub.mesh, &placement.transform);
         }
     }

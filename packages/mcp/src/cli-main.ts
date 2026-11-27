@@ -7,18 +7,22 @@
  * standalone `ifc-lite-mcp` binary (`./cli.ts`) and the `ifc-lite mcp`
  * subcommand in `@ifc-lite/cli`. Each passes its argv and the name it prints
  * in usage and log lines; everything else (flags, transports, the bridge) is
- * the same code, so the two cannot drift apart again.
+ * the same code, including client installation.
  */
 
 import { bridgeConflict, parseArgs, type CliOptions } from './cli-args.js';
-import { startBridgeServer, type RunningBridge } from './bridge/run.js';
+import { startBridgeServer, type HeadlessParts, type RunningBridge } from './bridge/run.js';
 import { DEFAULT_BRIDGE_PORT, DEFAULT_BRIDGE_VIEWER_URL } from './bridge/protocol.js';
 import { StdioTransport } from './transport/stdio.js';
 import { routeConsoleToStderr } from './transport/stdio-console.js';
 import { HttpTransport, BearerTokenAuth, AllowAllAuth, type HttpAuthenticator, type SessionFactory } from './transport/http.js';
 import { createMCPServer, VERSION } from './index.js';
 import { anonymousHttpScope, claudeDesktopConfigPath, loadFiles, serverScope, tokenScopes } from './cli-support.js';
-import { InMemoryModelRegistry } from './context.js';
+import { buildDefaultToolRegistry } from './tools/index.js';
+import { buildDefaultResourceRegistry } from './resources/index.js';
+import { buildDefaultPromptRegistry } from './prompts/index.js';
+import { isPortUnavailable } from './bridge/loopback-server.js';
+import { InMemoryModelRegistry, type Logger } from './context.js';
 
 export interface McpCliIdentity {
   /** How the user invoked us, for usage text: `ifc-lite-mcp` or `ifc-lite mcp`. */
@@ -30,6 +34,8 @@ export function mcpHelpText({ command }: McpCliIdentity, platform: NodeJS.Platfo
   ${command} v${VERSION} — Model Context Protocol server for ifc-lite
 
   Usage: ${command} [files…] [options]
+         ${command} install --client <claude-code|claude-desktop|cursor|vscode>
+           Add this server to a client config. See \`${command} install --help\`.
 
   Over stdio the files are loaded at startup. Over HTTP each session starts
   empty and the agent loads models with model_load.
@@ -68,11 +74,14 @@ export function mcpHelpText({ command }: McpCliIdentity, platform: NodeJS.Platfo
     --viewer-port <n>       Preferred viewer port (0 = auto).
     --open                  Implies --viewer; also tries to open the URL in
                             the default browser via the OS opener.
-    --bridge                Serve the model open in an ifc-lite browser tab:
-                            stdio MCP here, forwarded to one paired tab over
-                            ws://127.0.0.1. Loads no files. Pair through the
-                            link printed below or the bridge_status tool.
-    --bridge-port <n>       Bridge port (default ${DEFAULT_BRIDGE_PORT}; 0 = pick a free one).
+    --bridge                Also serve the model open in an ifc-lite browser
+                            tab: its tools are added as tab_* once a tab
+                            pairs over ws://127.0.0.1. Files and every other
+                            tool still work. The agent pairs with the
+                            bridge_status tool, which returns the link.
+    --bridge-port <n>       Bridge port (default ${DEFAULT_BRIDGE_PORT}; if taken, the next nine
+                            ports, then any free one; an explicit port does
+                            not fall back; 0 = any free port).
     --bridge-viewer-url <u> Base of the pairing link (default
                             ${DEFAULT_BRIDGE_VIEWER_URL}). Its origin replaces the
                             default in the allowed origins; add
@@ -89,7 +98,7 @@ export function mcpHelpText({ command }: McpCliIdentity, platform: NodeJS.Platfo
     ${command} ./arch.ifc ./struct.ifc
     ${command} ./model.ifc --read-only
     ${command} --transport http --port 8765 --token abc
-    ${command} --bridge
+    ${command} ./model.ifc --bridge
 
   Claude Desktop config (${claudeDesktopConfigPath(platform)}):
     {
@@ -116,6 +125,11 @@ export interface RunningHttpCli {
  * starting anything. Load failures reject, for the caller's fatal handler.
  */
 export async function runMcpCli(argv: string[], identity: McpCliIdentity): Promise<RunningHttpCli | undefined> {
+  if (argv[0] === 'install') {
+    const { runInstall } = await import('./install/run.js');
+    process.exitCode = runInstall(argv.slice(1), undefined, `${identity.command} install`);
+    return undefined;
+  }
   const opts = parseArgs(argv);
   const tag = `[${identity.command}]`;
   // `process.exitCode` + return, NOT `process.exit(0)`: writes to a pipe are
@@ -136,8 +150,10 @@ export async function runMcpCli(argv: string[], identity: McpCliIdentity): Promi
     process.exitCode = 2;
     return undefined;
   }
-  if (opts.bridge || opts.channel) {
-    await runBridge(opts, tag);
+  const conflict = bridgeConflict(opts);
+  if (conflict) {
+    process.stderr.write(`${tag} ${conflict}\n`);
+    process.exitCode = 2;
     return undefined;
   }
   if (opts.transport === 'http') return runHttp(opts, tag);
@@ -154,34 +170,43 @@ async function runStdio(opts: CliOptions, tag: string): Promise<void> {
   const registry = new InMemoryModelRegistry();
   // Before the first model loads: the engine logs while it works.
   routeConsoleToStderr();
-  // stderr only: stdout is the JSON-RPC channel.
-  await loadFiles(registry, opts, (line) => process.stderr.write(`${tag} ${line}\n`));
-
-  const server = createMCPServer({
-    version: VERSION,
-    registry,
-    scope: serverScope(opts),
-    config: {
-      ...baseConfig(opts),
-      autoOpenViewer: opts.autoViewer,
-      viewerPort: opts.viewerPort,
+  const config = { ...baseConfig(opts), autoOpenViewer: opts.autoViewer, viewerPort: opts.viewerPort };
+  const logger: Logger = {
+    log(level, message, data) {
+      if (level !== 'debug') process.stderr.write(`${tag} ${level} ${message}${data ? ` ${JSON.stringify(data)}` : ''}\n`);
     },
-    logger: {
-      log(level, message, data) {
-        if (level === 'debug') return;
-        process.stderr.write(`${tag} ${level} ${message}${data ? ` ${JSON.stringify(data)}` : ''}\n`);
-      },
-    },
-  });
+  };
+  const scope = serverScope(opts);
+  const log = (line: string): void => { process.stderr.write(`${tag.slice(0, -1)} bridge] ${line}\n`); };
+  const bridged = opts.bridge ? await startBridge(opts, {
+    registry, scope, config, tools: buildDefaultToolRegistry(),
+    resources: buildDefaultResourceRegistry(), prompts: buildDefaultPromptRegistry(),
+  }, logger, log, tag) : null;
+  if (opts.bridge && !bridged) return;
+  try {
+    await loadFiles(registry, opts, (line) => process.stderr.write(`${tag} ${line}\n`));
+  } catch (err) {
+    await bridged?.close();
+    throw err;
+  }
+  const server = bridged?.server ?? createMCPServer({ version: VERSION, registry, scope, config, logger });
   const transport = new StdioTransport();
   await transport.connect(server);
-  // The peer stopped reading stdout (EPIPE): nothing can be answered, so leave
-  // cleanly instead of serving into a dead pipe or dying on an unhandled error.
-  transport.onClose((reason) => {
-    if (reason !== 'stdout-error') return;
-    process.exitCode = 0;
-    setTimeout(() => process.exit(0), 1000).unref();
-  });
+  if (bridged) {
+    stopBridgeWithClient(bridged, transport, log);
+    if (bridged.bridge.port) {
+      const code = bridged.bridge.pairingCode();
+      log(`to connect a viewer tab open ${bridged.bridge.pairingUrl(code)} or enter the one-time code ${code}.`);
+    } else {
+      log('the agent pairs a browser tab with bridge_status, which returns the link.');
+    }
+  } else {
+    transport.onClose((reason) => {
+      if (reason !== 'stdout-error') return;
+      process.exitCode = 0;
+      setTimeout(() => process.exit(0), 1000).unref();
+    });
+  }
   process.stderr.write(`${tag} ready on stdio (read-only=${opts.readOnly})\n`);
 
   if (opts.autoViewer && registry.count() > 0) {
@@ -283,43 +308,41 @@ async function runHttp(opts: CliOptions, tag: string): Promise<RunningHttpCli | 
 /** Longest a --bridge shutdown may take, whatever stdout does. */
 const SHUTDOWN_DEADLINE_MS = 2000;
 
-async function runBridge(opts: CliOptions, tag: string): Promise<void> {
-  const conflict = bridgeConflict(opts);
-  if (conflict) {
-    process.stderr.write(`${tag} ${conflict}\n`);
-    process.exitCode = 2;
-    return;
-  }
-  routeConsoleToStderr();
-  const bridgeTag = `${tag.slice(0, -1)} bridge]`;
-  const log = (line: string): void => { process.stderr.write(`${bridgeTag} ${line}\n`); };
-  const port = opts.bridgePort ?? DEFAULT_BRIDGE_PORT;
-  let running: RunningBridge;
+async function startBridge(opts: CliOptions, headless: HeadlessParts, logger: Logger, log: (line: string) => void, tag: string): Promise<RunningBridge | null> {
+  // An explicit --bridge-port is a promise to the user: bound at start, no
+  // fallback, so a taken one fails here as it always did. Only the default
+  // waits for bridge_status and falls back.
+  const explicitPort = opts.bridgePort !== undefined;
   try {
-    running = await startBridgeServer({
+    return await startBridgeServer({
       version: VERSION,
-      port,
+      port: opts.bridgePort ?? DEFAULT_BRIDGE_PORT,
+      portFallback: !explicitPort,
+      lazy: !explicitPort,
+      headless,
       readOnly: opts.readOnly,
       channel: opts.channel,
       viewerUrl: opts.bridgeViewerUrl,
       extraOrigins: opts.allowedOrigins,
       allowInsecureOrigins: opts.insecure,
       log,
+      logger,
     });
   } catch (err) {
-    const e = err as NodeJS.ErrnoException;
-    const why = e.code === 'EADDRINUSE'
-      ? `port ${port} on 127.0.0.1 is in use (another bridge running?). Pass --bridge-port <n>; the pairing link carries the port.`
-      : e.message;
+    const why = explicitPort && isPortUnavailable(err)
+      ? `port ${opts.bridgePort} on 127.0.0.1 is in use or reserved (another bridge running?). Pass another --bridge-port, or drop it to let the bridge pick a free one.`
+      : (err as Error).message;
     process.stderr.write(`${tag} cannot start the bridge: ${why}\n`);
     process.exitCode = 1;
-    return;
+    return null;
   }
-  const { server, bridge } = running;
-  const transport = new StdioTransport();
-  await transport.connect(server);
-  // The bridge's listener keeps the process alive, so every way the MCP
-  // client can go away (or a signal) closes it and frees the port.
+}
+
+/**
+ * The bridge's listener keeps the process alive, so every way the MCP client
+ * can go away (or a signal) closes it and frees the port.
+ */
+function stopBridgeWithClient(running: RunningBridge, transport: StdioTransport, log: (line: string) => void): void {
   let stopping = false;
   const stop = (why: string, exitCode: number): void => {
     if (stopping) return;
@@ -345,9 +368,4 @@ async function runBridge(opts: CliOptions, tag: string): Promise<void> {
   process.stdin.once('error', (err) => stop(`stdin error: ${err.message}`, 1));
   process.once('SIGINT', () => stop('SIGINT', 130));
   process.once('SIGTERM', () => stop('SIGTERM', 143));
-  const code = bridge.pairingCode();
-  log(`ready on stdio; listening on ws://127.0.0.1:${bridge.port} (read-only=${opts.readOnly})`);
-  log(`allowed origins (exactly these): ${bridge.allowedOrigins.join(', ')}`);
-  log(`to connect a viewer tab open ${bridge.pairingUrl(code)}`);
-  log(`or enter the one-time code ${code}. The agent can also call bridge_status for it.`);
 }

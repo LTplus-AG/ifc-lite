@@ -1205,6 +1205,11 @@ occurrences; the renderer mirrors `selectedIds`, `hiddenIds`, and
 primary-model only: disable it (`enableInstancing: false` on the
 `GeometryProcessor`) for federated multi-model loads.
 
+Consumers that cache the IDs from `SceneContents.getInstancedEntityIds()` can
+read `getInstancedEntityRevision?.()` when `onGeometryChange` fires. Model
+translation and rotation leave the membership revision stable. Uploads,
+removals, and occurrence suppression can change it.
+
 ## Annotation Overlays
 
 IFC annotation content — dimension lines, leaders, room labels, grid axes and their

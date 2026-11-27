@@ -70,7 +70,7 @@ export interface CliOptions {
   viewerPort: number;
   openBrowser: boolean;
   insecure: boolean;
-  /** `--bridge`: forward tools to a paired browser tab instead of loading files. */
+  /** `--bridge`: add tools from a paired browser tab. */
   bridge: boolean;
   /** `--channel` (bridge only): push viewer UI events as Claude Code channel messages. */
   channel?: boolean;
@@ -222,17 +222,10 @@ export function parseArgs(rawArgv: string[]): CliOptions {
   return opts;
 }
 
-/**
- * Why `--bridge` cannot run with these options, or null. The bridge has no
- * model of its own and speaks stdio only.
- */
+/** A paired tab shares the stdio session with locally loaded models. */
 export function bridgeConflict(opts: CliOptions): string | null {
   if (!opts.bridge) return opts.channel ? '--channel needs --bridge: it pushes events from the paired viewer tab.' : null;
-  // The count, not the values: a mistyped value flag leaves its value
-  // (maybe a token) as a positional, and stderr ends up in client logs.
-  if (opts.files.length > 0) return `--bridge serves the model open in a browser tab and loads no files; drop the ${opts.files.length} file argument(s).`;
   if (opts.transport !== 'stdio') return '--bridge speaks MCP over stdio only; drop --transport http.';
-  if (opts.autoViewer) return '--bridge cannot be combined with --viewer or --open: the browser tab is the viewer.';
   return null;
 }
 

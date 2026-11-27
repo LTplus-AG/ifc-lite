@@ -96,6 +96,10 @@ and the TypeScript tokenizer fallback, then builds an `IfcDataStore` for
 on-demand extraction. `parse()` remains as a compatibility adapter for callers
 that still need the older eager `ParseResult` shape.
 
+For schema detection without building the entity store, pass the STEP bytes and
+their parsed header to `detectSchemaVersion(bytes, parseSourceHeader(bytes))`.
+Both functions are exported by `@ifc-lite/parser`.
+
 ### Columnar Parsing (Recommended)
 
 The columnar parser returns an `IfcDataStore` with memory-efficient data structures:
@@ -905,10 +909,12 @@ function verifiedCurrentTypeQuantities(store: IfcDataStore, expressId: number, v
 ```
 
 When a quantity's `Unit` is unset, its raw value uses the current project's
-`UnitsInContext`. `readCurrentProjectUnits(store, view, projectId?)` follows the
-current project, unit assignment and canonical unit dependencies. The optional
-project id selects an owning project; omission keeps the canonical default-project
-convention. Available results hold a `ProjectUnits` resolver. Unreadable, deleted,
+`UnitsInContext`. `readCurrentProjectUnits(store, view?, projectId?)` follows the
+current project, unit assignment and canonical unit dependencies. Omit the view
+to validate units from the saved IFC. A saved unset `UnitsInContext` uses SI
+defaults, while an explicit clear in the live view makes the context unavailable.
+The optional project id selects an owning project. Omission keeps the canonical
+default-project convention. Available results hold a `ProjectUnits` resolver. Unreadable, deleted,
 unsupported, cyclic or oversized contexts yield `value: null` and an explicit
 unavailable reason. Preserve that coverage instead of substituting the source
 snapshot or interpreting a raw occurrence quantity as SI. These current reads

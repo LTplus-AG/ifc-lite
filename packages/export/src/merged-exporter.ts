@@ -18,7 +18,7 @@ import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { collectReferencedEntityIds, getVisibleEntityIds, filterHiddenRefsFromRelationshipLine } from './reference-collector.js';
 import { collectStyleEntities, STYLE_RESCUE_TYPES } from './style-closure.js';
 import { collectGeoreferencingEntities } from './georef-closure.js';
-import { noteUpgradeSeed, pruneUpgrade } from './schema-converter-unrooted-upgrade.js';
+import { MergedUpgradePruning } from './schema-converter-unrooted-upgrade.js';
 import { convertStepLine, needsConversion, type IfcSchemaVersion } from './schema-converter.js';
 import { classifyEntityTypeConversion } from './schema-conversion-loss-report.js';
 import { StyleFlatten } from './schema-style-flatten.js';
@@ -195,12 +195,7 @@ interface ModelMergePlan {
   relMemberStrip: Map<number, Set<number>>;
 }
 
-/**
- * Where an already-emitted GlobalId landed: its final express id and the unit
- * scale of the model that emitted it. The scale lets a later model decide
- * whether it can truly unify with that instance (same unit space) or must stay
- * distinct (a federated, differently-scaled instance) — see {@link MergedExporter.planModel}.
- */
+/** Final id and unit scale used to decide whether a later model can reuse a GlobalId. */
 interface GuidRecord {
   finalId: number;
   scale: number;
@@ -503,7 +498,7 @@ export class MergedExporter {
     const setup = this.buildMergeSetup(options, models);
     const containerDrops = this.planContainerDrops(options, models, setup);
 
-    const allEntityLines: string[] = [], upgradeSeeds = new Set<number>();
+    const allEntityLines: string[] = [], upgradePruning = new MergedUpgradePruning(schema);
     // Tracks every GlobalId already emitted → its final express id + unit scale,
     // so later models can unify against (shared unit) or stay unique from
     // (federated / different unit) it.
@@ -512,14 +507,14 @@ export class MergedExporter {
     let federatedModelCount = 0;
     let normalizedModelCount = 0;
     const normalizeWarnings = new Set<string>();
-    const [slotFill, ifc4Slots, enums] = [new Ifc2x3SlotFill(), new Ifc4SlotCheck(), new EnumReconciliation(true, models.map((m) => m.dataStore))]; // #4714, #5202, #5365
+    const [slotFill, ifc4Slots, enums] = [new Ifc2x3SlotFill(), new Ifc4SlotCheck(), new EnumReconciliation(true)]; // #4714, #5202, #5365
 
     for (const model of models) {
       const offset = setup.modelOffsets.get(model.id)!;
+      const modelStart = allEntityLines.length;
       const source = model.dataStore.source;
       if (!source || source.length === 0) continue;
 
-      // Include deferred property atoms in both closure and emission.
       const completeIndex = getCompleteEntityIndex(model.dataStore);
       const visibility = this.computeIncludedEntityIds(model, options, completeIndex, source);
 
@@ -530,6 +525,7 @@ export class MergedExporter {
       this.applyContainerDrops(plan, containerDrops?.byModel.get(model.id));
       this.claimParents(model, plan, visibility, completeIndex, !isFirstModel && mode.compatible, setup);
       const written = armMergedModel(enums.materials, model.dataStore, (id) => (visibility === null || visibility.included.has(id)) && !plan.skipEntityIds.has(id), offset, plan.sharedRemap);
+      enums.forms.durations.beginModel(model.dataStore, this.findEntitiesByType(model.dataStore, 'IFCPROJECT'), plan.sharedRemap, offset, written);
       if (schema === 'IFC2X3') {
         // @raw-entity-enumeration-ok sync merge rejects overlays, so this is an unedited source index
         slotFill.prefer(firstWrittenOwnerHistoryRef(model.dataStore.entityIndex.byType.get('IFCOWNERHISTORY'), written, offset));
@@ -542,8 +538,9 @@ export class MergedExporter {
           expressId, entityRef, source, offset, plan, sourceSchema, schema, guidToFinalId, mode,
           visibility?.hiddenProductIds ?? null, completeIndex, visibility?.included ?? null, slotFill, ifc4Slots, enums, styleFlatten,
         );
-        if (line !== null) { allEntityLines.push(line); noteUpgradeSeed(line, upgradeSeeds, sourceSchema, schema); }
+        if (line !== null) { allEntityLines.push(line); upgradePruning.note(line, sourceSchema); }
       }
+      if (model !== models.at(-1)) upgradePruning.forgetOmittedGuids(allEntityLines, modelStart, guidToFinalId, setup.parentClaims);
 
       isFirstModel = false;
     }
@@ -551,8 +548,7 @@ export class MergedExporter {
     setup.minted.appendTo(allEntityLines);
     enums.typedProperties.finish(allEntityLines, ifc4Slots, setup.nextAvailableId, enums.structural, Number.MAX_SAFE_INTEGER);
     for (const warning of finishMergedConversion(allEntityLines, slotFill, ifc4Slots, enums, setup.parentClaims)) normalizeWarnings.add(warning);
-    for (const warning of pruneUpgrade(allEntityLines, upgradeSeeds, schema)) normalizeWarnings.add(warning);
-
+    for (const warning of upgradePruning.finish(allEntityLines)) normalizeWarnings.add(warning);
     if (onProgress) onProgress({ phase: 'assembling', percent: 0.9, entitiesProcessed: allEntityLines.length, entitiesTotal: allEntityLines.length });
     const content = assembleStepBytes(header, placeObjectsForSchema(schema, allEntityLines)); // #9209
 
@@ -633,7 +629,7 @@ export class MergedExporter {
     const setup = this.buildMergeSetup(options, models);
     const containerDrops = this.planContainerDrops(options, models, setup);
 
-    const allEntityLines: string[] = [], upgradeSeeds = new Set<number>();
+    const allEntityLines: string[] = [], upgradePruning = new MergedUpgradePruning(schema);
     const guidToFinalId = new Map<string, GuidRecord>();
 
     let totalEntities = 0;
@@ -647,12 +643,13 @@ export class MergedExporter {
     let normalizedModelCount = 0;
     const normalizeWarnings = new Set<string>(baked.warnings);
     const YIELD_INTERVAL = 2000;
-    const [slotFill, ifc4Slots, enums] = [new Ifc2x3SlotFill(), new Ifc4SlotCheck(), new EnumReconciliation(true, models.map((m) => m.dataStore))]; // #4714, #5202, #5365
+    const [slotFill, ifc4Slots, enums] = [new Ifc2x3SlotFill(), new Ifc4SlotCheck(), new EnumReconciliation(true)]; // #4714, #5202, #5365
 
     if (onProgress) onProgress({ phase: 'preparing', percent: 0, entitiesProcessed: 0, entitiesTotal: totalEntities });
 
     for (const model of models) {
       const offset = setup.modelOffsets.get(model.id)!;
+      const modelStart = allEntityLines.length;
       const source = model.dataStore.source;
       if (!source || source.length === 0) continue;
 
@@ -676,6 +673,7 @@ export class MergedExporter {
       this.applyContainerDrops(plan, containerDrops?.byModel.get(model.id));
       this.claimParents(model, plan, visibility, completeIndex, !isFirstModel && mode.compatible, setup);
       const written = armMergedModel(enums.materials, model.dataStore, (id) => (visibility === null || visibility.included.has(id)) && !plan.skipEntityIds.has(id), offset, plan.sharedRemap);
+      enums.forms.durations.beginModel(model.dataStore, this.findEntitiesByType(model.dataStore, 'IFCPROJECT'), plan.sharedRemap, offset, written);
       if (schema === 'IFC2X3') {
         // @raw-entity-enumeration-ok async merge first bakes and reparses edited models into source snapshots
         slotFill.prefer(firstWrittenOwnerHistoryRef(model.dataStore.entityIndex.byType.get('IFCOWNERHISTORY'), written, offset));
@@ -691,7 +689,7 @@ export class MergedExporter {
           expressId, entityRef, source, offset, plan, sourceSchema, schema, guidToFinalId, mode,
           visibility?.hiddenProductIds ?? null, completeIndex, visibility?.included ?? null, slotFill, ifc4Slots, enums, styleFlatten,
         );
-        if (line !== null) { allEntityLines.push(line); noteUpgradeSeed(line, upgradeSeeds, sourceSchema, schema); }
+        if (line !== null) { allEntityLines.push(line); upgradePruning.note(line, sourceSchema); }
 
         entityCount++;
         entitiesProcessed++;
@@ -711,13 +709,14 @@ export class MergedExporter {
         }
       }
 
+      if (model !== models.at(-1)) upgradePruning.forgetOmittedGuids(allEntityLines, modelStart, guidToFinalId, setup.parentClaims);
       isFirstModel = false;
     }
     listKeptContexts(allEntityLines, setup.firstProjectIds.length ? setup.firstProjectIds[0] + setup.firstModelOffset : undefined, setup.keptContexts);
     setup.minted.appendTo(allEntityLines);
     enums.typedProperties.finish(allEntityLines, ifc4Slots, setup.nextAvailableId, enums.structural, Number.MAX_SAFE_INTEGER);
     for (const warning of finishMergedConversion(allEntityLines, slotFill, ifc4Slots, enums, setup.parentClaims)) normalizeWarnings.add(warning);
-    for (const warning of pruneUpgrade(allEntityLines, upgradeSeeds, schema)) normalizeWarnings.add(warning);
+    for (const warning of upgradePruning.finish(allEntityLines)) normalizeWarnings.add(warning);
 
     if (onProgress) {
       onProgress({ phase: 'assembling', percent: 0.9, entitiesProcessed: totalEntities, entitiesTotal: totalEntities });
@@ -1196,7 +1195,6 @@ export class MergedExporter {
     const converting = needsConversion(sourceSchema, targetSchema);
     const remapIds = offset !== 0 || plan.sharedRemap.size !== 0;
     let finalText = remapIds ? remapEntityText(entityText, offset, plan.sharedRemap, converting) : entityText;
-
     // Normalize in the source schema while its attribute indices still match the record.
     // Only numeric literals and the georeference (#10886) change here.
     const georef = normalizeGeorefRecord(finalText, localId, mode.georef);

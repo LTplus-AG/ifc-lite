@@ -1,0 +1,640 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * Model transform tools (merge, convert, extract, anonymize, simplify, LOD).
+ * Each result is checked by reading the written file back, not by trusting the
+ * tool's own counts. Simplify and LOD run the real wasm mesher on the
+ * committed `hello-wall.ifc` sample.
+ */
+
+import { statSync } from 'node:fs';
+import * as fs from 'node:fs/promises';
+import { link, mkdtemp, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { splitStepTopLevel } from '@ifc-lite/encoding';
+import { parseStep } from '@ifc-lite/export';
+import type { ToolContext } from '../context.js';
+import { DEFAULT_CONFIG, InMemoryModelRegistry, NOOP_PROGRESS, SILENT_LOGGER } from '../context.js';
+import { fullScope } from '../auth/scope.js';
+import { loadIfcModel } from '../loader.js';
+import { withSourceWriteLock } from '../source-write-lock.js';
+import { buildDefaultToolRegistry } from './index.js';
+import { toToolDefinition } from '../tool-catalog.js';
+import { validateInput } from '../validate.js';
+import { toolError } from '../errors.js';
+import type { CallToolResult } from '../protocol/index.js';
+
+vi.mock('node:fs/promises', { spy: true });
+
+
+const HELLO_WALL = fileURLToPath(new URL('../../../../apps/viewer/public/samples/hello-wall.ifc', import.meta.url));
+
+const model = (tag: string, storey: string, extra = ''): string => `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('Acme-Tower-${tag}.ifc','2026',('Jane Architect'),('Acme Corp'),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1= IFCPROJECT('0000000000000000000PR${tag}',$,'Acme Tower ${tag}',$,$,$,$,(#20),#30);
+#20= IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#21,$);
+#21= IFCAXIS2PLACEMENT3D(#22,$,$);
+#22= IFCCARTESIANPOINT((0.,0.,0.));
+#30= IFCUNITASSIGNMENT((#31));
+#31= IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#40= IFCLOCALPLACEMENT($,#21);
+#41= IFCBUILDINGSTOREY('0000000000000000000ST${tag}',$,'${storey}',$,$,#40,$,$,.ELEMENT.,0.);
+#42= IFCRELAGGREGATES('0000000000000000000AG${tag}',$,$,$,#1,(#41));
+#50= IFCLOCALPLACEMENT(#40,#21);
+#72= IFCWALL('000000000000000000WA1${tag}',$,'Wall A ${tag}',$,$,#50,$,'tagA',$);
+#73= IFCWALL('000000000000000000WA2${tag}',$,'Wall B ${tag}',$,$,#50,$,'tagB',$);
+#74= IFCSLAB('000000000000000000SL1${tag}',$,'Slab ${tag}',$,$,#50,$,$,$);
+#80= IFCRELCONTAINEDINSPATIALSTRUCTURE('0000000000000000000RC${tag}',$,$,$,(#72,#73,#74),#41);
+${extra}ENDSEC;
+END-ISO-10303-21;
+`;
+
+const registry = buildDefaultToolRegistry();
+const tool = (name: string) => {
+  const t = registry.get(name);
+  if (!t) throw new Error(`${name} not registered`);
+  return t;
+};
+const call = async (name: string, input: Record<string, unknown>) =>
+  (await tool(name).handler(input, ctx)) as CallToolResult & { structuredContent: Record<string, unknown> };
+
+let tmp: string;
+let ctx: ToolContext;
+
+beforeAll(async () => {
+  tmp = await realpath(await mkdtemp(join(tmpdir(), 'ifc-lite-mcp-transform-')));
+  await writeFile(join(tmp, 'a.ifc'), model('A', 'Level 1'), 'utf-8');
+  await writeFile(join(tmp, 'b.ifc'), model('B', 'Level 1'), 'utf-8');
+});
+
+afterAll(async () => {
+  await rm(tmp, { recursive: true, force: true });
+});
+
+beforeEach(async () => {
+  ctx = {
+    registry: new InMemoryModelRegistry(),
+    scope: fullScope(),
+    progress: NOOP_PROGRESS,
+    log: SILENT_LOGGER,
+    signal: new AbortController().signal,
+    config: { ...DEFAULT_CONFIG, allowedPaths: [tmp, HELLO_WALL] },
+  };
+  ctx.registry.add(await loadIfcModel(join(tmp, 'a.ifc'), { modelId: 'a' }));
+});
+
+const TRANSFORMS = ['model_merge', 'model_convert', 'model_extract', 'model_anonymize', 'model_simplify', 'model_lod'];
+
+/** A success result validates against the tool's outputSchema and names the file it wrote. */
+function expectMatchesOutputSchema(name: string, structured: Record<string, unknown>): void {
+  expect(validateInput(tool(name).outputSchema!, structured)).toMatchObject({ valid: true, errors: [] });
+  expect(structured).toHaveProperty('filePath');
+  expect(structured).toHaveProperty('bytes');
+}
+
+describe('transform tool metadata', () => {
+  it.each(TRANSFORMS)('%s has a title, write annotations, an outputSchema and export scope', (name) => {
+    const t = tool(name);
+    expect(t.title).toBeTruthy();
+    expect(t.scope).toBe('export');
+    // destructive: each one replaces an existing file at file_path.
+    expect(t.annotations).toMatchObject({ readOnlyHint: false, destructiveHint: true });
+    expect(t.outputSchema).toMatchObject({ type: 'object', additionalProperties: false });
+    // tools/list carries it to the client.
+    expect(toToolDefinition(t).outputSchema).toBe(t.outputSchema);
+    // An error result's structuredContent must validate too, for clients that check it.
+    for (const incomplete of [{}, { filePath: '/out.ifc' }, { bytes: 12 }, { code: 'INVALID_INPUT' }]) {
+      expect(validateInput(t.outputSchema!, incomplete).valid).toBe(false);
+    }
+    for (const hint of [undefined, 'Select a valid model.']) {
+      const err = toolError({ code: 'INVALID_INPUT', message: 'Invalid model.', hint });
+      const wire = JSON.parse(JSON.stringify(err)) as CallToolResult;
+      expect(validateInput(t.outputSchema!, wire.structuredContent)).toMatchObject({ valid: true, errors: [] });
+    }
+    expect(t.inputSchema.required).toContain('file_path');
+    for (const [key, prop] of Object.entries(t.inputSchema.properties ?? {})) {
+      expect((prop as { description?: string }).description, `${name}.${key}`).toBeTruthy();
+    }
+  });
+});
+
+describe('IFC5 sources', () => {
+  it.each(TRANSFORMS)('%s refuses an IFC5 (IFCX) model by name instead of reading it as STEP', async (name) => {
+    const m = ctx.registry.get('a')!;
+    (m.store as { schemaVersion: string }).schemaVersion = 'IFC5';
+    const input: Record<string, unknown> = { file_path: join(tmp, 'ifc5-out.ifc'), schema: 'IFC4', level: 0, types: ['IfcWall'] };
+    if (name === 'model_merge') input.model_ids = ['a', 'a2'];
+    if (name === 'model_merge') ctx.registry.add(await loadIfcModel(join(tmp, 'b.ifc'), { modelId: 'a2' }));
+    await expect(call(name, input)).rejects.toMatchObject({ code: 'UNSUPPORTED_OPERATION', message: expect.stringContaining('IFC5') });
+  });
+});
+
+describe('model_merge', () => {
+  it('writes one file holding both models, storeys unified by name', async () => {
+    ctx.registry.add(await loadIfcModel(join(tmp, 'b.ifc'), { modelId: 'b' }));
+    const out = join(tmp, 'merged.ifc');
+    const res = await call('model_merge', { file_path: out });
+    expectMatchesOutputSchema('model_merge', res.structuredContent);
+    expect(res.structuredContent.modelCount).toBe(2);
+
+    const merged = await loadIfcModel(out, { modelId: 'm' });
+    const walls = merged.bim.query().byType('IfcWall').toArray().map((e) => e.name).sort();
+    expect(walls).toEqual(['Wall A A', 'Wall A B', 'Wall B A', 'Wall B B']);
+    expect(merged.bim.storeys().map((s) => s.name)).toEqual(['Level 1']);
+  });
+
+  it('defaults to the models the token may access, and refuses a model listed twice', async () => {
+    ctx.registry.add(await loadIfcModel(join(tmp, 'b.ifc'), { modelId: 'b' }));
+    await writeFile(join(tmp, 'h.ifc'), model('H', 'Level 1'), 'utf-8');
+    ctx.registry.add(await loadIfcModel(join(tmp, 'h.ifc'), { modelId: 'hidden' }));
+    ctx.scope = { ...fullScope(), modelIds: ['a', 'b'] };
+    const res = await call('model_merge', { file_path: join(tmp, 'scoped.ifc') });
+    expect(res.structuredContent.modelCount).toBe(2);
+    const scoped = await readFile(join(tmp, 'scoped.ifc'), 'utf-8');
+    expect(scoped).toContain("'Wall A B'");
+    expect(scoped).not.toContain("'Wall A H'");
+    await expect(call('model_merge', { model_ids: ['a', 'a'], file_path: join(tmp, 'dup.ifc') })).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+  });
+
+  it('keeps the first model\'s schema by default and reports converting the other model', async () => {
+    const x3 = join(tmp, 'b-2x3.ifc');
+    ctx.registry.add(await loadIfcModel(join(tmp, 'b.ifc'), { modelId: 'b' }));
+    await call('model_convert', { model_id: 'b', schema: 'IFC2X3', file_path: x3 });
+    ctx.registry.remove('a');
+    ctx.registry.remove('b');
+    ctx.registry.add(await loadIfcModel(x3, { modelId: 'old' }));
+    ctx.registry.add(await loadIfcModel(join(tmp, 'a.ifc'), { modelId: 'a' }));
+    const out = join(tmp, 'merged-2x3.ifc');
+    await call('model_merge', { model_ids: ['old', 'a'], file_path: out });
+    expect(await readFile(out, 'utf-8')).toContain("FILE_SCHEMA(('IFC2X3'))");
+  });
+
+  it('leaves an IFC5 model out of the default list', async () => {
+    ctx.registry.add(await loadIfcModel(join(tmp, 'b.ifc'), { modelId: 'b' }));
+    ctx.registry.add(await loadIfcModel(join(tmp, 'b.ifc'), { modelId: 'x' }));
+    (ctx.registry.get('x')!.store as { schemaVersion: string }).schemaVersion = 'IFC5';
+    const res = await call('model_merge', { file_path: join(tmp, 'no-ifc5.ifc') });
+    expect(res.structuredContent.modelCount).toBe(2);
+  });
+
+  it('refuses fewer than two models', async () => {
+    await expect(call('model_merge', { file_path: join(tmp, 'one.ifc') })).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+  });
+
+  it('refuses a model with unsaved edits instead of merging the stale source', async () => {
+    ctx.registry.add(await loadIfcModel(join(tmp, 'b.ifc'), { modelId: 'b' }));
+    await call('entity_set_attribute', { model_id: 'b', express_id: 72, attribute: 'Name', value: 'Edited' });
+    await expect(call('model_merge', { file_path: join(tmp, 'edited.ifc') })).rejects.toMatchObject({ code: 'UNSUPPORTED_OPERATION' });
+  });
+
+  it('rechecks edits queued during the destination stat before writing (#11583)', async () => {
+    ctx.registry.add(await loadIfcModel(join(tmp, 'b.ifc'), { modelId: 'b' }));
+    const out = join(tmp, 'interleaved-merge.ifc');
+    await writeFile(out, 'existing destination');
+    const { stat: originalStat } = await vi.importActual<typeof fs>('node:fs/promises');
+    let destinationStats = 0;
+    const statSpy = vi.spyOn(fs, 'stat').mockImplementation(async (...args) => {
+      const info = await originalStat(...args);
+      // The first stat checks safe-path provenance. The second reserves the output.
+      if (args[0] === out && ++destinationStats === 2) {
+        await call('entity_set_attribute', { model_id: 'b', express_id: 72, attribute: 'Name', value: 'Interleaved edit' });
+      }
+      return info;
+    });
+    try {
+      await expect(call('model_merge', { file_path: out })).rejects.toMatchObject({ code: 'UNSUPPORTED_OPERATION' });
+      expect(destinationStats).toBe(3);
+      expect(await readFile(out, 'utf-8')).toBe('existing destination');
+    } finally {
+      statSpy.mockRestore();
+    }
+  });
+});
+
+describe('model_convert', () => {
+  it('downgrades to IFC2X3 with pending edits included and returns the loss report', async () => {
+    await call('entity_set_attribute', { express_id: 72, attribute: 'Name', value: 'Renamed wall' });
+    const out = join(tmp, 'converted.ifc');
+    const res = await call('model_convert', { schema: 'IFC2X3', file_path: out });
+    expectMatchesOutputSchema('model_convert', res.structuredContent);
+    expect(res.structuredContent).toMatchObject({ sourceSchema: 'IFC4', targetSchema: 'IFC2X3' });
+
+    const text = await readFile(out, 'utf-8');
+    expect(text).toContain("FILE_SCHEMA(('IFC2X3'))");
+    expect(text).toContain("'Renamed wall'");
+    const reloaded = await loadIfcModel(out, { modelId: 'c' });
+    expect(reloaded.store.schemaVersion).toBe('IFC2X3');
+  });
+});
+
+it('protects an output registered by model_load during transform preparation (#11583)', async () => {
+  const out = join(tmp, 'concurrently-loaded.ifc');
+  const original = model('D', 'Destination');
+  await writeFile(out, original);
+  const { stat: originalStat } = await vi.importActual<typeof fs>('node:fs/promises');
+  let destinationStats = 0;
+  const statSpy = vi.spyOn(fs, 'stat').mockImplementation(async (...args) => {
+    const info = await originalStat(...args);
+    if (args[0] === out && ++destinationStats === 2) {
+      await call('model_load', { file_path: out, model_id: 'destination' });
+    }
+    return info;
+  });
+  try {
+    await expect(call('model_convert', { model_id: 'a', schema: 'IFC2X3', file_path: out }))
+      .rejects.toMatchObject({ code: 'PERMISSION_DENIED' });
+    expect(ctx.registry.get('destination')?.store.schemaVersion).toBe('IFC4');
+    expect(await readFile(out, 'utf-8')).toBe(original);
+  } finally {
+    statSpy.mockRestore();
+  }
+});
+
+it('returns CANCELLED for a queued model load and lets the next load proceed (#11583)', async () => {
+  const registry = ctx.registry;
+  let release!: () => void;
+  const hold = new Promise<void>((resolve) => { release = resolve; });
+  const predecessor = withSourceWriteLock(registry, () => hold);
+  const abort = new AbortController();
+  let enteredQueue!: () => void;
+  const queued = new Promise<void>((resolve) => { enteredQueue = resolve; });
+  const result = tool('model_load').handler({ file_path: join(tmp, 'b.ifc'), model_id: 'cancelled' }, {
+    ...ctx,
+    signal: abort.signal,
+    // Read-path validation uses configured roots. The registry lookup here
+    // occurs immediately before joining the source-write queue.
+    get registry() {
+      enteredQueue();
+      return registry;
+    },
+  });
+  try {
+    await queued;
+    abort.abort();
+  } finally {
+    release();
+    await predecessor;
+  }
+  await expect(result).rejects.toMatchObject({ code: 'CANCELLED' });
+  expect(registry.get('cancelled')).toBeNull();
+
+  const malformed = join(tmp, 'malformed.ifc');
+  await writeFile(malformed, 'not an IFC file');
+  await expect(call('model_load', { file_path: malformed, model_id: 'malformed' }))
+    .rejects.toMatchObject({ code: 'PARSE_FAILED' });
+  expect(registry.get('malformed')).toBeNull();
+  await call('model_load', { file_path: join(tmp, 'b.ifc'), model_id: 'next' });
+  expect(registry.get('next')?.store.schemaVersion).toBe('IFC4');
+});
+
+describe('model_extract', () => {
+  it('keeps the selected product and its context, not its siblings', async () => {
+    const out = join(tmp, 'extract.ifc');
+    const res = await call('model_extract', { global_ids: ['000000000000000000WA1A'], file_path: out });
+    expectMatchesOutputSchema('model_extract', res.structuredContent);
+    expect(res.structuredContent.seedCount).toBe(1);
+
+    const sub = await loadIfcModel(out, { modelId: 's' });
+    expect(sub.bim.query().byType('IfcWall').toArray().map((e) => e.name)).toEqual(['Wall A A']);
+    expect(sub.bim.query().byType('IfcSlab').toArray()).toHaveLength(0);
+    expect(sub.bim.storeys().map((s) => s.name)).toEqual(['Level 1']);
+  });
+
+  it('unions selectors: a type plus an express id', async () => {
+    const out = join(tmp, 'extract-union.ifc');
+    const res = await call('model_extract', { types: ['IfcSlab'], express_ids: [73], file_path: out });
+    expect(res.structuredContent.seedCount).toBe(2);
+    const text = await readFile(out, 'latin1');
+    expect(text).toContain("'Slab A'");
+    expect(text).toContain("'Wall B A'");
+    expect(text).not.toContain("'Wall A A'");
+  });
+
+  it('reads an unprefixed type as Ifc-prefixed, like model_anonymize and the CLI', async () => {
+    const res = await call('model_extract', { types: ['Slab'], file_path: join(tmp, 'extract-slab.ifc') });
+    expect(res.structuredContent.seedCount).toBe(1);
+  });
+
+  it('expands subtypes for the model\'s own schema, not the union of all schemas', async () => {
+    // IfcReinforcingBar is an IfcBuildingElement subtype in IFC2X3 only; this model is IFC4.
+    await writeFile(join(tmp, 'rebar.ifc'), model('Q', 'Level 1', "#90= IFCREINFORCINGBAR('000000000000000000RB1Q',$,'Bar',$,$,#50,$,$,$,$,$,$,$,$,$);\n"), 'utf-8');
+    ctx.registry.remove('a');
+    ctx.registry.add(await loadIfcModel(join(tmp, 'rebar.ifc'), { modelId: 'q' }));
+    await call('model_extract', { types: ['IfcBuildingElement'], file_path: join(tmp, 'be.ifc') });
+    const text = await readFile(join(tmp, 'be.ifc'), 'utf-8');
+    expect(text).toContain("'Wall A Q'");
+    expect(text).not.toContain("'Bar'");
+  });
+
+  it('refuses a type that matches nothing even when another selector matches', async () => {
+    await expect(call('model_extract', { global_ids: ['000000000000000000WA1A'], types: ['IfcWal'], file_path: join(tmp, 'x.ifc') }))
+      .rejects.toMatchObject({ code: 'INVALID_INPUT', message: expect.stringContaining('IfcWal') });
+  });
+
+  it('refuses a storey with nothing placed under it, and a digit-only global_ids entry', async () => {
+    await writeFile(join(tmp, 'empty-storey.ifc'), model('E', 'Level 1').replace('#80= IFCRELCONTAINEDINSPATIALSTRUCTURE', "#45= IFCLOCALPLACEMENT($,#21);\n#46= IFCBUILDINGSTOREY('0000000000000000000S2E',$,'Empty',$,$,#45,$,$,.ELEMENT.,9.);\n#80= IFCRELCONTAINEDINSPATIALSTRUCTURE"), 'utf-8');
+    ctx.registry.remove('a');
+    ctx.registry.add(await loadIfcModel(join(tmp, 'empty-storey.ifc'), { modelId: 'e' }));
+    await expect(call('model_extract', { storeys: ['Empty'], file_path: join(tmp, 'x.ifc') }))
+      .rejects.toMatchObject({ code: 'INVALID_INPUT', message: expect.stringContaining('Empty') });
+    await expect(call('model_extract', { global_ids: ['72'], file_path: join(tmp, 'x.ifc') }))
+      .rejects.toMatchObject({ code: 'ENTITY_NOT_FOUND' });
+  });
+
+  it('refuses express_ids while edits are pending, since they name source-file records', async () => {
+    await call('entity_set_attribute', { express_id: 72, attribute: 'Name', value: 'Edited' });
+    await expect(call('model_extract', { express_ids: [72], file_path: join(tmp, 'x.ifc') }))
+      .rejects.toMatchObject({ code: 'INVALID_INPUT', message: expect.stringContaining('GlobalId') });
+    await expect(call('model_extract', { storeys: ['#41'], file_path: join(tmp, 'x.ifc') }))
+      .rejects.toMatchObject({ code: 'INVALID_INPUT' });
+    await expect(call('model_simplify', { express_ids: [72], file_path: join(tmp, 'x.ifc') }))
+      .rejects.toMatchObject({ code: 'INVALID_INPUT', message: expect.stringContaining('express_ids') });
+  });
+
+  it('refuses to write once the live scope no longer allows the model', async () => {
+    const out = join(tmp, 'withdrawn.ifc');
+    ctx.currentScope = () => ({ ...fullScope(), modelIds: ['someone-else'] });
+    await expect(call('model_extract', { types: ['IfcWall'], file_path: out })).rejects.toMatchObject({ code: 'PERMISSION_DENIED' });
+    await expect(readFile(out)).rejects.toThrow();
+  });
+
+  it('treats blank selectors as no selection', async () => {
+    await expect(call('model_extract', { global_ids: [''], storeys: [' '], file_path: join(tmp, 'x.ifc') }))
+      .rejects.toMatchObject({ code: 'INVALID_INPUT', message: expect.stringContaining('Select something') });
+  });
+
+  it('accepts an all-digit storey GlobalId with pending edits, and rejects source IDs (#11583)', async () => {
+    const guid = '0000000000000000000041';
+    const src = join(tmp, 'numeric-storey-guid.ifc');
+    const out = join(tmp, 'numeric-storey-output.ifc');
+    await writeFile(src, model('N', 'Level').replace('0000000000000000000STN', guid));
+    await call('model_load', { file_path: src, model_id: 'numeric' });
+    await call('entity_set_attribute', { model_id: 'numeric', express_id: 72, attribute: 'Name', value: 'Edited numeric GUID wall' });
+    await expect(call('model_extract', { model_id: 'numeric', storeys: ['#41'], file_path: out }))
+      .rejects.toMatchObject({ code: 'INVALID_INPUT' });
+    await call('model_extract', { model_id: 'numeric', storeys: [guid], file_path: out });
+    expect(await readFile(out, 'utf-8')).toContain("'Edited numeric GUID wall'");
+  });
+
+  it('fails loudly on a GlobalId the model does not have, and on a type that matches nothing', async () => {
+    await expect(call('model_extract', { global_ids: ['NOPE00000000000000000X'], file_path: join(tmp, 'x.ifc') }))
+      .rejects.toMatchObject({ code: 'ENTITY_NOT_FOUND' });
+    await expect(call('model_extract', { types: ['IfcDoor'], file_path: join(tmp, 'x.ifc') }))
+      .rejects.toMatchObject({ code: 'INVALID_INPUT' });
+  });
+});
+
+describe('model_anonymize', () => {
+  it('removes the old GUID map before replacing an IFC when access is withdrawn mid-write (#11583)', async () => {
+    const out = join(tmp, 'revoked-anonymize.ifc');
+    const map = join(tmp, 'revoked-map.json');
+    await writeFile(out, 'old IFC');
+    await writeFile(map, 'old map');
+    let revoked = false;
+    ctx.currentScope = () => revoked ? { ...fullScope(), scopes: [] } : fullScope();
+    const { writeFile: originalWrite } = await vi.importActual<typeof fs>('node:fs/promises');
+    const writeSpy = vi.spyOn(fs, 'writeFile').mockImplementation(async (...args) => {
+      await originalWrite(...args);
+      if (args[0] === out) revoked = true;
+    });
+    try {
+      await expect(call('model_anonymize', { express_ids: [72], file_path: out, guid_map_path: map }))
+        .rejects.toMatchObject({ code: 'PERMISSION_DENIED', message: expect.stringMatching(/writing .* failed/) });
+      expect(await readFile(out, 'utf-8')).toContain('IFCWALL(');
+      await expect(readFile(map)).rejects.toMatchObject({ code: 'ENOENT' });
+    } finally {
+      writeSpy.mockRestore();
+    }
+  });
+
+  it('excludes spatial IfcRelAggregates ancestors while keeping containment (#11583)', async () => {
+    const src = join(tmp, 'spatial-exclusion.ifc');
+    const buildingGuid = '0000000000000000000BLD';
+    const relationGuid = '0000000000000000000REL';
+    const data = model('X', 'Level', [
+      `#43= IFCBUILDING('${buildingGuid}',$,'Building',$,$,#40,$,$,.ELEMENT.,$,$,$);`,
+      `#44= IFCRELAGGREGATES('${relationGuid}',$,$,$,#43,(#41));\n`,
+    ].join('\n')).replace('#1,(#41)', '#1,(#43)');
+    await writeFile(src, data);
+    await call('model_load', { file_path: src, model_id: 'spatial' });
+    for (const exclude of [false, true]) {
+      const out = join(tmp, `spatial-${exclude}.ifc`);
+      const map = join(tmp, `spatial-${exclude}.json`);
+      await call('model_anonymize', {
+        model_id: 'spatial', express_ids: [72], file_path: out, guid_map_path: map,
+        exclude_relationships: exclude ? ['IfcRelAggregates'] : [],
+      });
+      const guids = JSON.parse(await readFile(map, 'utf-8')) as Record<string, string>;
+      expect(guids).toHaveProperty('0000000000000000000STX');
+      expect(guids).toHaveProperty('0000000000000000000RCX');
+      expect(Object.hasOwn(guids, buildingGuid)).toBe(!exclude);
+      expect(Object.hasOwn(guids, relationGuid)).toBe(!exclude);
+    }
+  });
+
+  it('strips project-identifying names and writes a separate GUID map', async () => {
+    const out = join(tmp, 'anon.ifc');
+    const map = join(tmp, 'anon-guids.json');
+    const res = await call('model_anonymize', { global_ids: ['000000000000000000WA1A'], file_path: out, guid_map_path: map });
+    expectMatchesOutputSchema('model_anonymize', res.structuredContent);
+
+    const text = await readFile(out, 'latin1');
+    for (const secret of ['Acme', 'Jane Architect', 'Wall A A', '000000000000000000WA1A']) expect(text).not.toContain(secret);
+    expect(text).toContain('IFCWALL(');
+    const guidMap = JSON.parse(await readFile(map, 'utf-8')) as Record<string, string>;
+    const anon = await loadIfcModel(out, { modelId: 'anon' });
+    const [wall] = anon.bim.query().byType('IfcWall').toArray();
+    expect(guidMap['000000000000000000WA1A']).toBe(wall.globalId);
+    if (process.platform !== 'win32') expect((await stat(map)).mode & 0o777).toBe(0o600);
+  });
+
+  it('matches a storey by case-insensitive name fragment, as the CLI does', async () => {
+    const res = await call('model_anonymize', { storey: 'level', file_path: join(tmp, 'anon-storey.ifc') });
+    expect(res.structuredContent.seedCount).toBe(3);
+  });
+
+  it('refuses a GUID map path equal to the output path, so the map cannot replace the anonymized file', async () => {
+    const out = join(tmp, 'same.ifc');
+    await expect(call('model_anonymize', { global_ids: ['000000000000000000WA1A'], file_path: out, guid_map_path: out }))
+      .rejects.toMatchObject({ code: 'INVALID_INPUT' });
+    await writeFile(out, 'probe');
+    const caseAlias = join(tmp, 'SAME.ifc');
+    if (statSync(caseAlias, { throwIfNoEntry: false })?.ino === (await stat(out)).ino) {
+      await expect(call('model_anonymize', { global_ids: ['000000000000000000WA1A'], file_path: out, guid_map_path: join(tmp, 'SAME.ifc') }))
+        .rejects.toMatchObject({ code: 'INVALID_INPUT' });
+    }
+  });
+
+  it('refuses a blank storey and a name fragment that matches several storeys', async () => {
+    await expect(call('model_anonymize', { storey: ' ', file_path: join(tmp, 'x.ifc') })).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+    await writeFile(join(tmp, 'two.ifc'), model('C', 'Level 10').replace('ENDSEC;\nEND', "#43= IFCBUILDINGSTOREY('0000000000000000000S2C',$,'Level 11',$,$,#40,$,$,.ELEMENT.,3.);\nENDSEC;\nEND"), 'utf-8');
+    ctx.registry.remove('a');
+    ctx.registry.add(await loadIfcModel(join(tmp, 'two.ifc'), { modelId: 'two' }));
+    await expect(call('model_anonymize', { storey: 'level 1', file_path: join(tmp, 'x.ifc') }))
+      .rejects.toMatchObject({ code: 'INVALID_INPUT', message: expect.stringContaining('Level 10, Level 11') });
+  });
+
+  it('reads an unprefixed type as Ifc-prefixed, like the CLI', async () => {
+    const res = await call('model_anonymize', { types: [' Wall'], file_path: join(tmp, 'anon-type.ifc') });
+    expect(res.structuredContent.seedCount).toBe(2);
+  });
+
+  it('reads a null guid_map_path as absent', async () => {
+    const res = await call('model_anonymize', { global_ids: ['000000000000000000WA1A'], file_path: join(tmp, 'anon-null.ifc'), guid_map_path: null });
+    expect(res.structuredContent.guidMapPath).toBeNull();
+  });
+
+  it('falls back to the storey LongName, as model_extract does', async () => {
+    await writeFile(join(tmp, 'revit.ifc'), model('R', '02').replace("'02',$,$,#40,$,$,.ELEMENT.", "'02',$,$,#40,$,'Level 2',.ELEMENT."), 'utf-8');
+    ctx.registry.remove('a');
+    ctx.registry.add(await loadIfcModel(join(tmp, 'revit.ifc'), { modelId: 'r' }));
+    const res = await call('model_anonymize', { storey: 'Level 2', file_path: join(tmp, 'anon-long.ifc') });
+    expect(res.structuredContent.seedCount).toBe(3);
+    await call('model_extract', { storeys: ['Level 2'], file_path: join(tmp, 'extract-long.ifc') });
+    const text = await readFile(join(tmp, 'extract-long.ifc'), 'utf-8');
+    for (const name of ['Wall A R', 'Wall B R', 'Slab R']) expect(text).toContain(`'${name}'`);
+  });
+
+  it.each(['Name', 'LongName'].flatMap((attribute) =>
+    ['model_extract', 'model_anonymize'].map((toolName) => ({ attribute, toolName })),
+  ))('keeps authored whitespace in storey $attribute for $toolName (#11583)', async ({ attribute, toolName }) => {
+    const fixture = model('S', attribute === 'Name' ? 'L01' : '01').replace('(#41));', '(#41,#43));');
+    const first = attribute === 'Name' ? fixture : fixture.replace("#40,$,$,.ELEMENT.,0.);", "#40,$,'L01',.ELEMENT.,0.);");
+    const otherStorey = attribute === 'Name' ? "' L01 ',$,$,#40,$,$" : "'02',$,$,#40,$,' L01 '";
+    const text = first.replace('ENDSEC;\nEND-ISO', [
+      `#43= IFCBUILDINGSTOREY('0000000000000000000S2S',$,${otherStorey},.ELEMENT.,3.);`,
+      "#75= IFCWALL('000000000000000000WA3S',$,'Other storey wall',$,$,#50,$,$,$);",
+      "#81= IFCRELCONTAINEDINSPATIALSTRUCTURE('000000000000000000RC2S',$,$,$,(#75),#43);",
+      'ENDSEC;', 'END-ISO',
+    ].join('\n'));
+    const path = join(tmp, `authored-${attribute}.ifc`);
+    await writeFile(path, text);
+    ctx.registry.remove('a');
+    ctx.registry.add(await loadIfcModel(path, { modelId: 'authored' }));
+
+    for (const [index, selector] of ['L01', ' L01 '].entries()) {
+      const output = join(tmp, `${toolName}-${attribute}-${index}.ifc`);
+      const guidMap = join(tmp, `guids-${attribute}-${index}.json`);
+      const expected = index === 0 ? '000000000000000000WA1S' : '000000000000000000WA3S';
+      const excluded = index === 0 ? '000000000000000000WA3S' : '000000000000000000WA1S';
+      if (toolName === 'model_extract') {
+        await call(toolName, { storeys: [null, selector], file_path: output });
+        const extracted = await readFile(output, 'utf-8');
+        expect(extracted).toContain(expected);
+        expect(extracted).not.toContain(excluded);
+      } else {
+        await call(toolName, { storey: selector, file_path: output, guid_map_path: guidMap });
+        const map = JSON.parse(await readFile(guidMap, 'utf-8')) as Record<string, string>;
+        expect(Object.keys(map)).toContain(expected);
+        expect(Object.keys(map)).not.toContain(excluded);
+      }
+    }
+    if (toolName === 'model_anonymize' && attribute === 'Name') {
+      await expect(call(toolName, { storey: 'l01', file_path: join(tmp, 'ambiguous.ifc') }))
+        .rejects.toMatchObject({ code: 'INVALID_INPUT' });
+    }
+  });
+
+  it('accepts a storey express id written as #id', async () => {
+    const res = await call('model_anonymize', { storey: '#41', file_path: join(tmp, 'anon-hash.ifc') });
+    expect(res.structuredContent.seedCount).toBe(3);
+  });
+
+  it('fails loudly on a storey that does not exist', async () => {
+    await expect(call('model_anonymize', { storey: 'Level 9', file_path: join(tmp, 'x.ifc') })).rejects.toMatchObject({ code: 'ENTITY_NOT_FOUND' });
+  });
+});
+
+describe('model_simplify and model_lod on a real model (wasm)', () => {
+  beforeEach(async () => {
+    ctx.registry.remove('a');
+    ctx.registry.add(await loadIfcModel(HELLO_WALL, { modelId: 'hw' }));
+  });
+
+  it('model_simplify at level 5 replaces element bodies with box face sets and the IFC still loads', async () => {
+    const source = fileURLToPath(new URL('../../../../apps/viewer/public/samples/building-architecture.ifc', import.meta.url));
+    ctx.registry.add(await loadIfcModel(source, { modelId: 'architecture' }));
+    const wallId = 262;
+    const out = join(tmp, 'simple.ifc');
+    const res = await call('model_simplify', { model_id: 'architecture', level: 5, express_ids: [wallId, 999999], file_path: out });
+    expect(res.structuredContent).toMatchObject({ replaced: 1, skipped: 1, exportSkipped: 0 });
+    expectMatchesOutputSchema('model_simplify', res.structuredContent);
+    const s = res.structuredContent as { simplified: number; replaced: number; trianglesAfter: number; trianglesBefore: number; bytes: number };
+    expect(s.replaced).toBeGreaterThan(0);
+    expect((await readFile(out)).length).toBe(s.bytes);
+    // Level 5 is a bounding box per element: 12 triangles each, written as one face set per replacement.
+    expect(s.trianglesAfter).toBe(12 * s.simplified);
+    const written = await readFile(out, 'latin1');
+    expect((written.match(/IFCTRIANGULATEDFACESET\(/g) ?? []).length).toBeGreaterThanOrEqual(s.replaced);
+    const reloaded = await loadIfcModel(out, { modelId: 'r' });
+    expect(reloaded.bim.query().byType('IfcWall').toArray().map((wall) => wall.ref.expressId)).toContain(wallId);
+    const { instances } = parseStep(written);
+    const args = (id: number) => splitStepTopLevel(instances.get(id)!.body);
+    const ref = (slot: string) => Number(slot.trim().slice(1));
+    const representation = args(ref(args(wallId)[6]));
+    const bodyId = Array.from(representation[2].matchAll(/#(\d+)/g), ([, id]) => Number(id))
+      .find((id) => args(id)[1].trim() === "'Body'");
+    expect(bodyId).toBeDefined();
+    const [faceId] = Array.from(args(bodyId!)[3].matchAll(/#(\d+)/g), ([, id]) => Number(id));
+    expect(instances.get(faceId)?.type).toBe('IFCTRIANGULATEDFACESET');
+    expect(splitStepTopLevel(args(faceId)[3].trim().slice(1, -1))).toHaveLength(12);
+  }, 60_000);
+
+  it('model_lod level 1 on a model with no geometry reports the box fallback as degraded', async () => {
+    ctx.registry.add(await loadIfcModel(join(tmp, 'a.ifc'), { modelId: 'a' }));
+    // No mesh: generateLod1 falls back to LOD0 boxes and says so, as `ifc-lite lod` does.
+    const res = await call('model_lod', { model_id: 'a', level: 1, file_path: join(tmp, 'boxes-lod1.glb') });
+    expect(res.structuredContent).toMatchObject({ status: 'degraded' });
+    expect(res.content[0]).toMatchObject({ text: expect.stringContaining('degraded') });
+  }, 60_000);
+
+  it('rejects LOD1 outputs that are hard links to the same file (#11583)', async () => {
+    const glb = join(tmp, 'linked.glb');
+    const meta = join(tmp, 'linked.json');
+    await writeFile(glb, 'previous file');
+    await link(glb, meta);
+    await expect(call('model_lod', { level: 1, file_path: glb, meta_path: meta }))
+      .rejects.toMatchObject({ code: 'INVALID_INPUT' });
+    expect(await readFile(glb, 'utf-8')).toBe('previous file');
+  }, 60_000);
+
+  it('model_lod level 0 writes one JSON row per element; level 1 writes a GLB and its metadata', async () => {
+    const json = join(tmp, 'lod0.json');
+    const res0 = await call('model_lod', { level: 0, file_path: json });
+    expectMatchesOutputSchema('model_lod', res0.structuredContent);
+    const lod0 = JSON.parse(await readFile(json, 'utf-8')) as { elements: { expressID: number }[] };
+    expect(lod0.elements.length).toBe(res0.structuredContent.elementCount);
+    const wallIds = ctx.registry.get('hw')!.bim.query().byType('IfcWall').toArray().map((e) => e.ref.expressId);
+    expect(wallIds.length).toBeGreaterThan(0);
+    for (const id of wallIds) expect(lod0.elements.map((e) => e.expressID)).toContain(id);
+
+    const glb = join(tmp, 'lod1.glb');
+    const meta = join(tmp, 'lod1.json');
+    const res1 = await call('model_lod', { level: 1, file_path: glb, meta_path: meta });
+    expectMatchesOutputSchema('model_lod', res1.structuredContent);
+    const glbBytes = await readFile(glb);
+    expect(glbBytes.subarray(0, 4).toString('latin1')).toBe('glTF');
+    expect(glbBytes.subarray(16, 20).toString('latin1')).toBe('JSON');
+    const gltf = JSON.parse(glbBytes.subarray(20, 20 + glbBytes.readUInt32LE(12)).toString('utf-8')) as {
+      nodes: { mesh?: number; extras?: { expressId?: number } }[];
+      meshes: { primitives: unknown[] }[];
+    };
+    const metaJson = JSON.parse(await readFile(meta, 'utf-8')) as { lod: number; mapping: Record<string, { node: number }> };
+    expect(metaJson.lod).toBe(1);
+    for (const id of wallIds) {
+      const node = gltf.nodes[metaJson.mapping[String(id)].node];
+      expect(node.extras?.expressId).toBe(id);
+      expect(gltf.meshes[node.mesh!]?.primitives.length).toBeGreaterThan(0);
+    }
+  }, 60_000);
+});

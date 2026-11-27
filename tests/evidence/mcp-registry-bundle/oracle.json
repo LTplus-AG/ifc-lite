@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "why": "Keep the manifest builders loadable while naming the registry entry by the npm name instead of mcpName and pointing the bundle at the library entry instead of the bin: the ownership and bin tests must go red.",
+  "key": "packages/mcp/src/release/manifests.ts",
+  "mutation": "tests/evidence/mcp-registry-bundle/behaviour.oracle.patch",
+  "test": "packages/mcp/test/release-manifests.test.ts"
+}

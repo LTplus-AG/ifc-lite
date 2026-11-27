@@ -23,6 +23,7 @@ import type { ToolContext } from '../context.js';
 import { resolveSafePath } from '../safe-path.js';
 import type { Tool } from './types.js';
 import { okResult } from './util.js';
+import { READ_ONLY } from './annotations.js';
 
 async function loadSide(input: Record<string, unknown>, side: 'before' | 'after', ctx: ToolContext): Promise<IDSDocument> {
   const inline = input[`${side}_xml`];
@@ -40,7 +41,7 @@ async function loadSide(input: Record<string, unknown>, side: 'before' | 'after'
 }
 
 const idsDiff: Tool = {
-  name: 'ids_diff',
+  name: 'ids_diff', title: 'Diff IDS revisions', annotations: READ_ONLY,
   description:
     'Semantic diff of two IDS revisions. Specifications and facets are paired by identifier, then name and applicability, then similarity, so a rename or an edited requirement is one change. Returns added / removed / changed entries with XML paths and a plain-language line each.',
   scope: 'read',
@@ -81,7 +82,7 @@ const IDS_SOURCE = {
 const MODEL_LOOP = 'the IDS model loop (funnel, inference and coverage engines)';
 
 const idsPreview: Tool = {
-  name: 'ids_preview',
+  name: 'ids_preview', title: 'Preview IDS funnel', annotations: READ_ONLY,
   description: 'Funnel counts per specification against a loaded model: how many elements each applicability facet keeps, and how many pass each requirement. Not available yet.',
   scope: 'validate',
   inputSchema: { type: 'object', properties: { model_id: MODEL_ID, ...IDS_SOURCE, spec_id: { type: 'string' } }, additionalProperties: false },
@@ -89,7 +90,7 @@ const idsPreview: Tool = {
 };
 
 const idsInfer: Tool = {
-  name: 'ids_infer',
+  name: 'ids_infer', title: 'Infer IDS specifications', annotations: READ_ONLY,
   description: 'Infer specifications from the elements a selector picks in a loaded model (IfcOpenShell selector syntax). Returns ops for ids_apply_ops. Not available yet.',
   scope: 'validate',
   inputSchema: {
@@ -102,7 +103,7 @@ const idsInfer: Tool = {
 };
 
 const idsCoverage: Tool = {
-  name: 'ids_coverage',
+  name: 'ids_coverage', title: 'IDS coverage', annotations: READ_ONLY,
   description: 'Element classes in a loaded model that no specification of the IDS governs. Not available yet.',
   scope: 'validate',
   inputSchema: { type: 'object', properties: { model_id: MODEL_ID, ...IDS_SOURCE }, additionalProperties: false },
@@ -110,7 +111,7 @@ const idsCoverage: Tool = {
 };
 
 const idsTest: Tool = {
-  name: 'ids_test',
+  name: 'ids_test', title: 'Run IDS test suites', annotations: READ_ONLY,
   description: 'Run the test suites stored in an .idsz bundle (fixtures that must pass or fail each specification). Not available yet.',
   scope: 'validate',
   inputSchema: { type: 'object', properties: { idsz_path: { type: 'string' } }, required: ['idsz_path'], additionalProperties: false },

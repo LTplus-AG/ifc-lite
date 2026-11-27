@@ -13,7 +13,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { CallToolResult } from '../protocol/index.js';
 import { startBridgeServer, type RunningBridge } from './run.js';
 import { BRIDGE_LIMITS, parseTabMessage } from './bridge-protocol.js';
-import { READ_TOOL, connectTab, openSocket, pairTab, textResult, type FakeTab } from '../test/bridge-fake-tab.js';
+import { READ_TOOL, connectTab, openSocket, pairTab, textResult, type FakeTab, tabTool } from '../test/bridge-fake-tab.js';
 
 const running: RunningBridge[] = [];
 const tabs: FakeTab[] = [];
@@ -53,7 +53,7 @@ describe('non-finite numbers (CodeRabbit json-bounds.ts:44)', () => {
     const agent = await start();
     const p = await pairTab({ port: agent.bridge.port, code: agent.bridge.pairingCode() });
     tabs.push(p.tab);
-    const pending = agent.call(READ_TOOL.name);
+    const pending = agent.call(tabTool(READ_TOOL.name));
     const c = await p.tab.next('call');
     p.tab.sendRaw(`{"type":"result","sessionId":"${p.welcome.sessionId}","id":"${c.id}","result":{"content":[],"structuredContent":{"count":-1e999}}}`);
     const result = await pending;
@@ -80,6 +80,33 @@ describe('schema keywords the bridge cannot enforce (CodeRabbit json-bounds.ts:8
   it('refuses a schema-valued additionalProperties, which would be published but not enforced', async () => {
     expect(await refusal({ type: 'object', additionalProperties: { type: 'integer' } })).toMatch(/additionalProperties must be true or false/);
   });
+
+  // validateInput would throw on every call for these, as a JSON-RPC InternalError
+  // instead of a refusal at hello (code review of the 2020-12 validator). The viewer's
+  // own tab schemas use valid `pattern`s, so a compiling one is accepted and enforced.
+  it('refuses $ref, an invalid pattern and a non-array or empty oneOf', async () => {
+    expect(await refusal({ type: 'object', properties: { a: { $ref: '#/$defs/A' } } })).toMatch(/\$ref is not supported/);
+    expect(await refusal({ type: 'object', properties: { a: { oneOf: { type: 'string' } } } })).toMatch(/oneOf must be a non-empty array/);
+    expect(await refusal({ type: 'object', properties: { a: { oneOf: [] } } })).toMatch(/oneOf must be a non-empty array/);
+    expect(await refusal({ type: 'object', properties: { a: { type: 'array', uniqueItems: 'true' } } })).toMatch(/uniqueItems must be true or false/);
+    expect(await refusal({ type: 'object', properties: { a: { oneOf: [{ type: 'strng' }] } } })).toMatch(/oneOf\[0\]\.type must be one of/);
+    expect(await refusal({ type: 'object', properties: { a: { type: 'string', pattern: '[' } } })).toMatch(/pattern must be a valid regular expression/);
+  });
+});
+
+describe('tab patterns are published, not run server-side (code review: a tab regex could stall the server)', () => {
+  // A cheap pattern, so a regression fails the test instead of hanging the worker (CodeRabbit on #11550).
+  it('forwards a call that breaks a tab pattern to the tab instead of refusing it', async () => {
+    const agent = await start();
+    const inputSchema = { type: 'object', properties: { type: { type: 'string', pattern: '^x$' } } };
+    const p = await pairTab({ port: agent.bridge.port, code: agent.bridge.pairingCode(), tools: [{ ...READ_TOOL, inputSchema }] });
+    tabs.push(p.tab);
+    const pending = agent.call(tabTool(READ_TOOL.name), { type: 'y' });
+    const c = await p.tab.next('call');
+    expect(c.arguments).toEqual({ type: 'y' });
+    p.tab.reply(p.welcome.sessionId, c.id, textResult('ok'));
+    expect((await pending).isError).toBeUndefined();
+  });
 });
 
 describe('outbound bounds (CodeRabbit session.ts:124)', () => {
@@ -87,10 +114,10 @@ describe('outbound bounds (CodeRabbit session.ts:124)', () => {
     const agent = await start();
     const p = await pairTab({ port: agent.bridge.port, code: agent.bridge.pairingCode() });
     tabs.push(p.tab);
-    const result = await agent.call(READ_TOOL.name, { type: 'x'.repeat(BRIDGE_LIMITS.maxCallBytes) });
+    const result = await agent.call(tabTool(READ_TOOL.name), { type: 'x'.repeat(BRIDGE_LIMITS.maxCallBytes) });
     expect(result.structuredContent).toMatchObject({ code: 'INVALID_INPUT', details: { reason: 'invalid-arguments' } });
     // Prove nothing went out: the next call is the first the tab sees.
-    const next = agent.call(READ_TOOL.name, { type: 'IfcWall' });
+    const next = agent.call(tabTool(READ_TOOL.name), { type: 'IfcWall' });
     const c = await p.tab.next('call');
     expect(c.arguments).toEqual({ type: 'IfcWall' });
     p.tab.reply(p.welcome.sessionId, c.id, textResult('ok'));
@@ -101,9 +128,9 @@ describe('outbound bounds (CodeRabbit session.ts:124)', () => {
     const agent = await start();
     const p = await pairTab({ port: agent.bridge.port, code: agent.bridge.pairingCode() });
     tabs.push(p.tab);
-    const waiting = Array.from({ length: BRIDGE_LIMITS.maxPendingCalls }, () => agent.call(READ_TOOL.name));
+    const waiting = Array.from({ length: BRIDGE_LIMITS.maxPendingCalls }, () => agent.call(tabTool(READ_TOOL.name)));
     await expect.poll(() => p.tab.calls().length).toBe(BRIDGE_LIMITS.maxPendingCalls);
-    const over = await agent.call(READ_TOOL.name);
+    const over = await agent.call(tabTool(READ_TOOL.name));
     expect(over.structuredContent).toMatchObject({ code: 'RATE_LIMITED', details: { reason: 'backpressure' } });
     expect(p.tab.calls()).toHaveLength(BRIDGE_LIMITS.maxPendingCalls);
     for (const c of p.tab.calls()) p.tab.reply(p.welcome.sessionId, c.id, textResult('ok'));
@@ -116,7 +143,7 @@ describe('outbound non-finite arguments', () => {
     const agent = await start();
     const p = await pairTab({ port: agent.bridge.port, code: agent.bridge.pairingCode(), tools: [{ ...READ_TOOL, inputSchema: { type: 'object' } }] });
     tabs.push(p.tab);
-    const result = await agent.call(READ_TOOL.name, JSON.parse('{"count": 1e999}') as Record<string, unknown>);
+    const result = await agent.call(tabTool(READ_TOOL.name), JSON.parse('{"count": 1e999}') as Record<string, unknown>);
     expect(result.structuredContent).toMatchObject({ code: 'INVALID_INPUT', details: { reason: 'invalid-arguments' } });
     expect((result.content[0] as { text: string }).text).toMatch(/non-finite number/);
     expect(p.tab.calls()).toEqual([]);

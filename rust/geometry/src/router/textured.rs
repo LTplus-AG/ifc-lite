@@ -41,18 +41,29 @@ impl GeometryRouter {
         decoder: &mut EntityDecoder,
         texture_index: &rustc_hash::FxHashMap<u32, crate::processors::texture::ResolvedTextureMap>,
     ) -> Result<SubMeshCollection> {
-        let textures = if texture_index.is_empty() {
-            None
-        } else {
-            Some(texture_index)
-        };
-        self.process_element_with_submeshes_impl(
-            element,
-            decoder,
-            true,
-            textures,
-            super::processing::SourceHygiene::Watertight,
-        )
+        self.styled_submeshes_textured(element, decoder, texture_index).map(crate::styled_parts::StyledParts::into_collection)
+    }
+
+    /// [`Self::process_element_with_submeshes_textured`] with each sub-mesh's
+    /// `IfcMappedItem` occurrence chain ([`crate::StyledSubMeshes`], #10698):
+    /// the same sub-meshes in the same order.
+    pub fn process_element_with_styled_submeshes_textured(
+        &self,
+        element: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        texture_index: &rustc_hash::FxHashMap<u32, crate::processors::texture::ResolvedTextureMap>,
+    ) -> Result<crate::StyledSubMeshes> {
+        self.styled_submeshes_textured(element, decoder, texture_index).map(crate::StyledSubMeshes::new)
+    }
+
+    fn styled_submeshes_textured(
+        &self,
+        element: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        texture_index: &rustc_hash::FxHashMap<u32, crate::processors::texture::ResolvedTextureMap>,
+    ) -> Result<crate::styled_parts::StyledParts> {
+        let textures = if texture_index.is_empty() { None } else { Some(texture_index) };
+        self.process_element_with_submeshes_impl(element, decoder, true, textures, super::processing::SourceHygiene::Watertight)
     }
 
     /// Tessellate an `IfcRepresentationMap`'s `MappedRepresentation` and bake

@@ -33,6 +33,7 @@ import { Ifc2x3SlotFill } from './schema-converter-ifc2x3-slots.js';
 import { Ifc4SlotCheck } from './schema-converter-ifc4-slots.js';
 import { EnumReconciliation } from './schema-converter-enums.js';
 import { documentLinksApply } from './schema-converter-document-links.js';
+import { editedTimeScale } from './schema-project-time-unit.js';
 import { SourceRecords } from './schema-converter-structural-source.js';
 import { downgradesMaterial } from './schema-converter-material-referent.js';
 import { effectiveCreatedRecord } from './effective-source-record.js';
@@ -331,10 +332,11 @@ export function buildExportPass(input: PassBuildInput): ExportPass {
     georeferencingWarnings: [],
     slotFill: new Ifc2x3SlotFill(),
     ifc4Slots: new Ifc4SlotCheck(),
-    enums: new EnumReconciliation(true, [dataStore]),
+    enums: new EnumReconciliation(true),
     withheldRefIds: computeWithheldRefIds(dataStore, schema, effective),
     styleFlatten: StyleFlatten.fromStore(dataStore, sourceSchema, schema),
   };
+  pass.enums.forms.durations.upgradeScale = () => editedTimeScale(dataStore, pass.overlayActive ? mutationView : null, effective);
   // Structural and document-link prepasses read source types and references, so only an unedited full export arms them.
   // The schema pair is tested first (the document pairs include the structural ones): no other export reads the options here.
   if (documentLinksApply(sourceSchema, schema) && (!mutationView || !applyMutations) && !options.visibleOnly && !options.deltaOnly
@@ -372,10 +374,17 @@ export function buildExportPass(input: PassBuildInput): ExportPass {
       if (!read.has(id)) { const text = written(id); read.set(id, text === undefined ? undefined : readStepSlots(text)?.slots); }
       return read.get(id);
     };
-    // A readable material record (by its source or its effective type) the export leaves out. As Rust's
-    // `with_effective`, which drops an unreadable one from both maps, an unreadable one names no material.
-    const gone = (id: number) => !pass.willBeEmitted(id) && source.slots(id) !== undefined
-      && [source.type(id), effective.typeOf(id)].some((t) => t?.startsWith('IFCMATERIAL'));
+    // A set member the export leaves out of the list. A source record counts when it is a readable material
+    // (by its source or its effective type): as Rust's `with_effective`, which drops an unreadable one from both
+    // maps, an unreadable one names no material. A created record deleted again has no source and an unknown
+    // type, only a tombstone, and the writer drops it from the list whatever it was (#11243; Rust reads the set
+    // as written, the reference already stripped). An id that never existed has neither: it names no material.
+    const gone = (id: number) => {
+      if (pass.willBeEmitted(id)) return false;
+      const type = source.type(id);
+      if (type === undefined) return effective.isDeleted(id);
+      return source.slots(id) !== undefined && [type, effective.typeOf(id)].some((t) => t?.startsWith('IFCMATERIAL'));
+    };
     pass.enums.materials.rearm({ typeOf: (id) => (pass.willBeEmitted(id) ? effective.typeOf(id) : undefined), slots, gone });
   }
   // The same object, deliberately. See the file header.

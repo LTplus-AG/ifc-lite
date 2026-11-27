@@ -33,6 +33,8 @@ enum Loss {
 }
 
 impl Loss {
+    const ALL: [Self; 4] = [Self::LabelOccupied, Self::NotDefined, Self::Omit, Self::Refuse];
+
     fn text(self) -> &'static str {
         match self {
             Loss::LabelOccupied => "written as .USERDEFINED. but the label slot already held a value, so the member name was not kept",
@@ -46,7 +48,7 @@ impl Loss {
 /// Enum reconciliation for one export: rewrites, and counts what it lost.
 #[derive(Default)]
 pub(crate) struct EnumReconciliation {
-    losses: BTreeMap<Loss, BTreeMap<String, usize>>,
+    losses: [BTreeMap<String, usize>; Loss::ALL.len()],
     /// Records written `.USERDEFINED.` with the label their rule needs unset, per type (#10780).
     unlabelled: BTreeMap<String, usize>,
 }
@@ -54,7 +56,11 @@ pub(crate) struct EnumReconciliation {
 impl EnumReconciliation {
     /// Reconcile `line`, already converted to the canonical schema `to`.
     pub(crate) fn apply(&mut self, line: String, to: &str) -> String {
-        let line = self.reconcile(&line, to).unwrap_or(line);
+        self.apply_with_source(line, to, None)
+    }
+
+    pub(crate) fn apply_with_source(&mut self, line: String, to: &str, source: Option<(&str, &str)>) -> String {
+        let line = self.reconcile(&line, to, source).unwrap_or(line);
         self.check_user_defined(&line, to);
         line
     }
@@ -92,8 +98,8 @@ impl EnumReconciliation {
                 names.join(", ")
             )
         });
-        self.losses
-            .iter()
+        Loss::ALL.into_iter().zip(&self.losses)
+            .filter(|(_, sites)| !sites.is_empty())
             .map(|(loss, where_)| {
                 // Every site is named: distinct sites are bounded by the ledger.
                 let total: usize = where_.values().sum();
@@ -109,15 +115,15 @@ impl EnumReconciliation {
     }
 
     fn count(&self, loss: Loss) -> usize {
-        self.losses.get(&loss).map_or(0, |m| m.values().sum())
+        self.losses[loss as usize].values().sum()
     }
 
     fn record(&mut self, loss: Loss, where_: String) {
-        *self.losses.entry(loss).or_default().entry(where_).or_insert(0) += 1;
+        *self.losses[loss as usize].entry(where_).or_default() += 1;
     }
 
     /// `None` when the line is left exactly as it is.
-    fn reconcile(&mut self, line: &str, to: &str) -> Option<String> {
+    fn reconcile(&mut self, line: &str, to: &str, source: Option<(&str, &str)>) -> Option<String> {
         let table: &[EnumEntityRow] = match to {
             "IFC2X3" => IFC2X3_ENUM_SLOTS,
             "IFC4" => IFC4_ENUM_SLOTS,
@@ -137,11 +143,23 @@ impl EnumReconciliation {
         let mut changed = false;
         for &(index, attribute, members, outcome) in slots {
             let index = usize::from(index);
-            let Some(member) = enum_member(&values[index]) else { continue };
+            let proxy_composition = to == "IFC2X3" && entity_type == "IFCBUILDINGELEMENTPROXY" && index == 8;
+            let token = &values[index];
+            let member = if proxy_composition && token.contains("/*") {
+                enum_member(&crate::step_slot::without_comments(token))
+            } else {
+                enum_member(token)
+            };
+            let Some(member) = member else { continue };
             if members.iter().any(|m| m.eq_ignore_ascii_case(&member)) {
                 continue;
             }
-            let where_ = format!("{entity_type}.{attribute} .{member}.");
+            let mut where_ = format!("{entity_type}.{attribute} .{member}.");
+            if proxy_composition {
+                if let Some(original) = proxy_classification_source(source) {
+                    where_.push_str(&format!(" (source {original}.PredefinedType)"));
+                }
+            }
             match outcome {
                 EnumOutcome::UserDefined(label) => {
                     values[index] = ".USERDEFINED.".to_string();
@@ -168,6 +186,14 @@ impl EnumReconciliation {
         }
         changed.then(|| format!("{}{}{}", &line[..=open], values.join(","), &line[close..]))
     }
+}
+
+fn proxy_classification_source(source: Option<(&str, &str)>) -> Option<String> {
+    let (line, from) = source?;
+    let original = crate::step_record_frame::record_head(line)?.type_name(line).to_ascii_uppercase();
+    if original == "IFCBUILDINGELEMENTPROXY" { return None; }
+    let attrs = crate::schema_convert::schema_attribute_names(from, &original)?;
+    (attrs.len() == 9 && attrs[8] == "PredefinedType").then_some(original)
 }
 
 /// The member of an enum token `.X.`, uppercased; `None` for anything else.
@@ -205,6 +231,9 @@ pub(crate) struct ConversionChecks {
     pub(crate) attribute_values_dropped: usize,
     upgrade_omissions: Vec<String>,
 }
+
+// One implementation of the deferred conversion pass for plain and mutation-log writers.
+type DeferredHeader<'a> = dyn FnMut(&mut dyn std::io::Write, usize, &std::collections::HashSet<u32>) -> std::io::Result<()> + 'a;
 
 impl ConversionChecks {
     /// The checks for one export, with the material records it writes.
@@ -268,7 +297,7 @@ impl ConversionChecks {
         slots: Option<&mut crate::schema_ifc2x3_slots::Ifc2x3SlotFill>,
         ids: crate::step_ids::IdAllocator,
     ) -> std::io::Result<isize> {
-        self.finish_with_header(body, slots, ids, |_, _, _| Ok(())).map(|(delta, _)| delta)
+        self.finish_with_header(body, slots, ids, &mut |_, _, _| Ok(())).map(|(delta, _)| delta)
     }
 
     /// Return the DATA record delta and the number of records minted by the deferred passes.
@@ -277,7 +306,7 @@ impl ConversionChecks {
         mut body: crate::schema_ifc2x3_body::Body<'_>,
         mut slots: Option<&mut crate::schema_ifc2x3_slots::Ifc2x3SlotFill>,
         ids: crate::step_ids::IdAllocator,
-        header: impl FnOnce(&mut dyn std::io::Write, usize, &std::collections::HashSet<u32>) -> std::io::Result<()>,
+        header: &mut DeferredHeader<'_>,
     ) -> std::io::Result<(isize, usize)> {
         use std::io::Write as _;
         let mut added = self.structural.added();
@@ -295,16 +324,16 @@ impl ConversionChecks {
         let typed_added = body.rewrite_held(|text| self.finish_typed_properties(text, || ids));
         let varying_ids = std::cell::RefCell::new(Vec::new());
         let surviving_deferred = std::cell::Cell::new(typed_added);
-        let body_delta = body.finish_with_header(|text| {
+        let body_delta = body.finish_with_header(&mut |text| {
             let varying = self.structural.finish_effective_varying(text, &mut self.attribute_values_dropped)
                 .map(|(text, ids)| { varying_ids.replace(ids); text });
             let added = varying_ids.borrow().len() as isize;
             let source = varying.as_deref().unwrap_or(text);
-            match self.forms.finish_dates(source, &mut self.attribute_values_dropped, |ty| self.plans.forget_verbatim(ty)) {
+            match self.forms.finish_temporal_values(source, &mut self.attribute_values_dropped, &mut |ty| self.plans.forget_verbatim(ty)) {
                 Some((body, delta)) => Some((body, added + delta)),
                 None => varying.map(|body| (body, added)),
             }
-        }, |out, omitted| {
+        }, &mut |out, omitted| {
             let varying = varying_ids.borrow().iter().filter(|id| !omitted.contains(id)).count();
             // Typed properties reserve a contiguous range starting at the supplied allocator.
             let typed_removed = ids.peek().map_or(0, |first| omitted.iter()
@@ -319,19 +348,13 @@ impl ConversionChecks {
         self.typed_properties.finish(text, ids, &mut self.ifc4_slots, &mut self.attribute_values_dropped, &mut self.structural)
     }
 
-    pub(crate) fn finish_dates(&mut self, text: &mut String) -> isize {
-        if let Some((rewritten, delta)) = self.forms.finish_dates(text, &mut self.attribute_values_dropped, |ty| self.plans.forget_verbatim(ty)) {
+    pub(crate) fn finish_temporal_values(&mut self, text: &mut String) -> isize {
+        if let Some((rewritten, delta)) = self.forms.finish_temporal_values(text, &mut self.attribute_values_dropped, &mut |ty| self.plans.forget_verbatim(ty)) {
             *text = rewritten;
             delta
         } else {
             0
         }
-    }
-
-    pub(crate) fn warnings_for_sources<'a>(&self, sources: impl Iterator<Item = &'a [u8]>) -> Vec<String> {
-        let mut warnings = self.warnings();
-        warnings.extend(self.forms.duration_warning(sources));
-        warnings
     }
 
     /// Both checks' warnings, IFC4 slots first.

@@ -26,6 +26,7 @@ export function validateModel(m: Model, options: ValidateOptions = {}): Validati
   const counters: InstanceCheckCounters = { typeRuleEvaluations: 0 };
   if (options.headerText !== undefined && wants('header')) checkHeader(options.headerText, findings);
   if (wants('schema') || wants('simpletype_rule')) {
+    for (const message of m.syntaxErrors) findings.push({ category: 'schema', rule: 'record-syntax', message });
     for (const id of m.duplicateIds) findings.push({ category: 'schema', rule: 'duplicate-id', instance: id, message: `Duplicate STEP instance #${id}` });
     for (const id of m.ids()) checkInstance(m, id, findings, counters);
     checkGlobalIds(m, findings);

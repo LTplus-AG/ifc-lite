@@ -68,6 +68,11 @@ export function checkInstance(m: Model, id: number, out: ValidationFinding[], co
   const typeName = m.typeName(id) ?? '?';
   const entity = m.entityOf(id);
   if (!entity) {
+    if (!typeName) {
+      m.decode(id);
+      out.push({ category: 'schema', rule: 'record-syntax', instance: id, message: m.decodeErrors.get(id) ?? 'Missing record type' });
+      return;
+    }
     out.push({ category: 'schema', rule: 'unknown-entity', instance: id, message: `${typeName} is not an entity of ${m.schema.name}` });
     return;
   }

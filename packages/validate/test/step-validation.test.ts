@@ -74,3 +74,11 @@ it('reads complete long HEADER records from an actual parsed store (#11647)', as
     expect((await validateDataStore(store)).findings).toEqual(direct.findings);
   }
 });
+
+it('includes malformed DATA statements in the validation report (#11647)', async () => {
+  const bad = await validateStepText(file('#1=; nonsense; #2=IFCCARTESIANPOINT((0.,0.));'));
+  expect(bad.valid).toBe(false);
+  expect(bad.stats.instances).toBe(2);
+  expect(bad.findings.filter(f => f.rule === 'record-syntax').map(f => f.instance)).toEqual([undefined,1]);
+  expect((await validateStepText(file('#1 /* comment */ = IFCCARTESIANPOINT((0.,0.));'))).valid).toBe(true);
+});

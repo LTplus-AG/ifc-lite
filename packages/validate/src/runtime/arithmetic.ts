@@ -6,7 +6,7 @@
 
 import { EvaluationError } from './errors.js';
 import { eq } from './compare.js';
-import { copyAggregate, EnumValue, isAggregate, isSet, markSet, num, prim, type Aggregate, type Value } from './values.js';
+import { copyAggregate, EnumValue, Typed, isAggregate, isSet, markSet, num, prim, type Aggregate, type Value } from './values.js';
 
 function numeric(a: Value, b: Value, f: (x: number, y: number) => number): Value {
   const x = num(a);
@@ -22,6 +22,10 @@ function contains(agg: Aggregate, v: Value): boolean {
 
 /** Identity key for SET membership: value for primitives and enumerations, `undefined` for structured values. */
 function memberKey(v: Value): string | undefined {
+  if (v instanceof Typed) {
+    const inner = memberKey(v.value);
+    return inner === undefined ? undefined : JSON.stringify([v.type.toUpperCase(), inner]);
+  }
   const p = prim(v);
   switch (typeof p) {
     case 'string': return `s${p}`;
@@ -40,13 +44,13 @@ export function uniqueMembers(items: Aggregate, base: Aggregate = []): Aggregate
   const remember = (x: Value) => {
     const key = memberKey(x);
     if (key !== undefined) keys.add(key);
-    else if (isAggregate(x)) structured.push(x);
+    else if (isAggregate(x) || x instanceof Typed) structured.push(x);
     else objects.add(x);
   };
   for (const x of out) remember(x);
   for (const x of items) {
     const key = memberKey(x);
-    const seen = key !== undefined ? keys.has(key) : isAggregate(x) ? structured.some((y) => eq(x, y) === true) : objects.has(x);
+    const seen = key !== undefined ? keys.has(key) : (isAggregate(x) || x instanceof Typed) ? structured.some((y) => eq(x, y) === true) : objects.has(x);
     if (seen) continue;
     remember(x);
     out.push(x);

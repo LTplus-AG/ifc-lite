@@ -7,7 +7,7 @@
 import { EntityInstance } from './instance.js';
 import type { TypeRef } from './schema-meta.js';
 import { not } from './logic.js';
-import { BinaryValue, EnumValue, isAggregate, isSet, markSet, prim, Ref, UNKNOWN, type Logical, type Value } from './values.js';
+import { BinaryValue, EnumValue, isAggregate, isSet, markSet, prim, Ref, Typed, UNKNOWN, type Logical, type Value } from './values.js';
 
 const MAX_VALUE_DEPTH = 16;
 
@@ -73,6 +73,10 @@ function valuesEqual(a: Value[], b: Value[], depth: number, ownerA?: EntityInsta
 }
 
 function equal(a: Value, b: Value, depth: number, ownerA?: EntityInstance, ownerB?: EntityInstance): Logical {
+  if (a instanceof Typed && b instanceof Typed) {
+    if (a.type.toUpperCase() !== b.type.toUpperCase()) return false;
+    return equal(a.value, b.value, depth + 1, ownerA, ownerB);
+  }
   const x = prim(ownerA ? resolveRef(a, ownerA) : a);
   const y = prim(ownerB ? resolveRef(b, ownerB) : b);
   if (x === undefined || y === undefined) return UNKNOWN;

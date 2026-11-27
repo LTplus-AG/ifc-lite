@@ -240,9 +240,22 @@ export function headerRecords(text: string): Map<string, Value[]> {
   return records;
 }
 
-export function* splitStepRecords(text: string): Generator<{ id: number; type: string; text: string }> {
+export function* splitStepRecords(text: string, onMalformed?: (message: string) => void): Generator<{ id: number; type: string; text: string }> {
   for (const record of sectionRecords(text, 'DATA')) {
     const m = /^#(\d+)\s*=\s*([A-Za-z0-9_]+)/.exec(record);
-    if (m) yield { id: Number(m[1]), type: m[2].toUpperCase(), text: record };
+    if (m) {
+      yield { id: Number(m[1]), type: m[2].toUpperCase(), text: record };
+      continue;
+    }
+    // The fast path also misses legal comments between the instance id and its type.
+    try {
+      const parsed = readStepRecord(record);
+      yield { id: parsed.id, type: parsed.type, text: record };
+    } catch (error) {
+      if (!(error instanceof StepRecordError)) throw error;
+      const id = /^#(\d+)/.exec(record);
+      if (id) yield { id: Number(id[1]), type: '', text: record };
+      else onMalformed?.(error.message);
+    }
   }
 }

@@ -14,6 +14,7 @@ import { readStepRecord, splitStepRecords, StepRecordError } from './step-reader
 import { Ref, Typed, type Value } from './values.js';
 
 export interface RecordProvider {
+  syntaxErrors?: string[];
   duplicateIds?: number[];
   ids(): Iterable<number>;
   /** Upper-case STEP type name of a record. */
@@ -65,11 +66,12 @@ export function dataStoreRecords(store: StepRecordSource): RecordProvider {
 export function stepTextRecords(text: string): RecordProvider {
   const records = new Map<number, { type: string; text: string }>();
   const duplicateIds: number[] = [];
-  for (const r of splitStepRecords(text)) {
+  const syntaxErrors: string[] = [];
+  for (const r of splitStepRecords(text, message => syntaxErrors.push(message))) {
     if (records.has(r.id)) duplicateIds.push(r.id);
     else records.set(r.id, { type: r.type, text: r.text });
   }
-  return { duplicateIds, ids: () => records.keys(), type: (id) => records.get(id)?.type, text: (id) => records.get(id)?.text };
+  return { duplicateIds, syntaxErrors, ids: () => records.keys(), type: (id) => records.get(id)?.type, text: (id) => records.get(id)?.text };
 }
 
 function collectRefs(v: Value, out: number[], referrer: number, index: number): void {
@@ -89,6 +91,8 @@ export class Model {
   constructor(readonly schema: SchemaRuntime, private readonly records: RecordProvider) {
     this.allIds = [...records.ids()].sort((a, b) => a - b);
   }
+
+  get syntaxErrors(): readonly string[] { return this.records.syntaxErrors ?? []; }
 
   get duplicateIds(): readonly number[] { return this.records.duplicateIds ?? []; }
 

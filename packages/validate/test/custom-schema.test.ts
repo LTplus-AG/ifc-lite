@@ -166,3 +166,12 @@ Fail : Good(FALSE).Flag; Unsupported : Bad().Flag; END_ENTITY; END_SCHEMA;`);
   const report = await validateStepText('DATA;#1=PROBE();ENDSEC;', {schema, categories: ['entity_rule']});
   expect(report.findings.map(f => f.rule)).toEqual(['Probe.Fail']);
 });
+
+it('preserves typed SELECT identity in compiled SET assignment (#11647)', async () => {
+  const { schema } = generated(`SCHEMA S; TYPE A = INTEGER; END_TYPE; TYPE B = INTEGER; END_TYPE;
+TYPE Choice = SELECT (A,B); END_TYPE; ENTITY Sample; Items : LIST OF Choice;
+WHERE W : CountItems(Items) = 2; END_ENTITY;
+FUNCTION CountItems(X : SET OF Choice) : INTEGER; RETURN(SIZEOF(X)); END_FUNCTION; END_SCHEMA;`);
+  const report = await validateStepText('DATA;#1=SAMPLE((A(1),B(1)));#2=SAMPLE((A(1),A(1)));#3=SAMPLE((A(1),A(2)));ENDSEC;', {schema, categories:['entity_rule']});
+  expect(report.findings.map(f => [f.instance,f.rule])).toEqual([[2,'Sample.W']]);
+});

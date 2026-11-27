@@ -8134,3 +8134,11 @@ for size recovers the space with byte-identical STEP and GLB output on the
 ArchiCAD FZK-Haus sample. STEP conversion trades some throughput for the
 smaller bundle. GLB export timing was comparable and native builds retain
 their existing optimization level.
+
+## Shared STEP attribute masks (#11664)
+
+The mutation-log writer uses enum, string and schema-specific REAL masks to
+serialize named edits. Most entity types share a mask layout. Referencing a
+static layout per type reduced the engine WASM below its existing allowance
+with the same release profile. Interleaved FZK-Haus IFC4 STEP exports retained
+baseline throughput and produced byte-identical output.

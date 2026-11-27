@@ -45,7 +45,7 @@ function workflowFixture({ branches = '[main]', nodeJob = 'node' } = {}) {
   const path = join(TMP, `workflow-${(seq += 1)}.yml`);
   writeFileSync(
     path,
-    `on:\n  pull_request:\n    branches: ${branches}\njobs:\n  lint:\n    name: Lint\n    runs-on: ubuntu-latest\n    steps:\n      - run: true\n  ${nodeJob}:\n    name: Node tests\n    runs-on: ubuntu-latest\n    steps:\n      - run: true\n`,
+    `on:\n  pull_request:\n    branches: ${branches}\njobs:\n  lint:\n    name: Lint\n    runs-on: ubuntu-latest\n    steps:\n      - run: true\n  ${nodeJob}:\n    name: Node tests\n    runs-on: ubuntu-latest\n    steps:\n      - run: true\n  viewer-e2e-selected:\n    name: Viewer E2E shadow (selected for this PR)\n    runs-on: ubuntu-latest\n    steps:\n      - run: true\n`,
   );
   return path;
 }
@@ -87,7 +87,7 @@ test('GREEN: a clean PR with every required lane present passes', () => {
   assert.match(output, /✅/);
 });
 
-test('GREEN: a conflicted PR whose lanes already ran (the #3417 shape) passes', () => {
+test('GREEN: a conflicted PR with every required lane and no advisory E2E lane passes (#11515)', () => {
   const { code, output } = run([
     {
       number: 3417,
@@ -99,6 +99,7 @@ test('GREEN: a conflicted PR whose lanes already ran (the #3417 shape) passes', 
     },
   ]);
   assert.equal(code, 0, output);
+  assert.match(output, /silent-prs=$/m);
 });
 
 test('zero open PRs passes trivially', () => {

@@ -512,14 +512,13 @@ export class MergedExporter {
     let federatedModelCount = 0;
     let normalizedModelCount = 0;
     const normalizeWarnings = new Set<string>();
-    const [slotFill, ifc4Slots, enums] = [new Ifc2x3SlotFill(), new Ifc4SlotCheck(), new EnumReconciliation(true, models.map((m) => m.dataStore))]; // #4714, #5202, #5365
+    const [slotFill, ifc4Slots, enums] = [new Ifc2x3SlotFill(), new Ifc4SlotCheck(), new EnumReconciliation(true)]; // #4714, #5202, #5365
 
     for (const model of models) {
       const offset = setup.modelOffsets.get(model.id)!;
       const source = model.dataStore.source;
       if (!source || source.length === 0) continue;
 
-      // Include deferred property atoms in both closure and emission.
       const completeIndex = getCompleteEntityIndex(model.dataStore);
       const visibility = this.computeIncludedEntityIds(model, options, completeIndex, source);
 
@@ -530,6 +529,7 @@ export class MergedExporter {
       this.applyContainerDrops(plan, containerDrops?.byModel.get(model.id));
       this.claimParents(model, plan, visibility, completeIndex, !isFirstModel && mode.compatible, setup);
       const written = armMergedModel(enums.materials, model.dataStore, (id) => (visibility === null || visibility.included.has(id)) && !plan.skipEntityIds.has(id), offset, plan.sharedRemap);
+      enums.forms.durations.beginModel(model.dataStore, this.findEntitiesByType(model.dataStore, 'IFCPROJECT'), plan.sharedRemap, offset, written);
       if (schema === 'IFC2X3') {
         // @raw-entity-enumeration-ok sync merge rejects overlays, so this is an unedited source index
         slotFill.prefer(firstWrittenOwnerHistoryRef(model.dataStore.entityIndex.byType.get('IFCOWNERHISTORY'), written, offset));
@@ -647,7 +647,7 @@ export class MergedExporter {
     let normalizedModelCount = 0;
     const normalizeWarnings = new Set<string>(baked.warnings);
     const YIELD_INTERVAL = 2000;
-    const [slotFill, ifc4Slots, enums] = [new Ifc2x3SlotFill(), new Ifc4SlotCheck(), new EnumReconciliation(true, models.map((m) => m.dataStore))]; // #4714, #5202, #5365
+    const [slotFill, ifc4Slots, enums] = [new Ifc2x3SlotFill(), new Ifc4SlotCheck(), new EnumReconciliation(true)]; // #4714, #5202, #5365
 
     if (onProgress) onProgress({ phase: 'preparing', percent: 0, entitiesProcessed: 0, entitiesTotal: totalEntities });
 
@@ -676,6 +676,7 @@ export class MergedExporter {
       this.applyContainerDrops(plan, containerDrops?.byModel.get(model.id));
       this.claimParents(model, plan, visibility, completeIndex, !isFirstModel && mode.compatible, setup);
       const written = armMergedModel(enums.materials, model.dataStore, (id) => (visibility === null || visibility.included.has(id)) && !plan.skipEntityIds.has(id), offset, plan.sharedRemap);
+      enums.forms.durations.beginModel(model.dataStore, this.findEntitiesByType(model.dataStore, 'IFCPROJECT'), plan.sharedRemap, offset, written);
       if (schema === 'IFC2X3') {
         // @raw-entity-enumeration-ok async merge first bakes and reparses edited models into source snapshots
         slotFill.prefer(firstWrittenOwnerHistoryRef(model.dataStore.entityIndex.byType.get('IFCOWNERHISTORY'), written, offset));

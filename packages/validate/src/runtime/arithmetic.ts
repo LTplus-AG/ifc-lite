@@ -39,18 +39,26 @@ function memberKey(v: Value): string | undefined {
 export function uniqueMembers(items: Aggregate, base: Aggregate = []): Aggregate {
   const out = copyAggregate(base);
   const keys = new Set<string>();
+  const taggedValues = new Set<string>();
   const objects = new Set<Value>();
   const structured: Value[] = [];
   const remember = (x: Value) => {
     const key = memberKey(x);
-    if (key !== undefined) keys.add(key);
+    if (key !== undefined) {
+      keys.add(key);
+      if (x instanceof Typed) taggedValues.add(memberKey(prim(x))!);
+    }
     else if (isAggregate(x) || x instanceof Typed) structured.push(x);
     else objects.add(x);
   };
   for (const x of out) remember(x);
   for (const x of items) {
     const key = memberKey(x);
-    const seen = key !== undefined ? keys.has(key) : (isAggregate(x) || x instanceof Typed) ? structured.some((y) => eq(x, y) === true) : objects.has(x);
+    // A bare primitive equals a tagged copy of that value, while two tagged
+    // members must agree on their defined type as well.
+    const seen = key !== undefined
+      ? keys.has(key) || (x instanceof Typed ? keys.has(memberKey(prim(x))!) : taggedValues.has(key))
+      : (isAggregate(x) || x instanceof Typed) ? structured.some(y => eq(x, y) === true) : objects.has(x);
     if (seen) continue;
     remember(x);
     out.push(x);

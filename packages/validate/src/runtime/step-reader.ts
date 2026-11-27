@@ -163,7 +163,9 @@ export function readStepRecord(text: string, resolve: TypeNameResolver = identit
   c.skip();
   if (text.charCodeAt(c.i) !== 35) c.fail("expected '#'");
   c.i++;
-  const id = Number(c.word());
+  const token = c.word();
+  if (!/^\d+$/.test(token)) c.fail('expected decimal instance id');
+  const id = Number(token);
   c.skip();
   if (text.charCodeAt(c.i) !== 61) c.fail("expected '='");
   c.i++;
@@ -253,7 +255,7 @@ export function* splitStepRecords(text: string, onMalformed?: (message: string) 
       yield { id: parsed.id, type: parsed.type, text: record };
     } catch (error) {
       if (!(error instanceof StepRecordError)) throw error;
-      const id = /^#(\d+)/.exec(record);
+      const id = /^#(\d+)(?=\s|=|\/\*|$)/.exec(record);
       if (id) yield { id: Number(id[1]), type: '', text: record };
       else onMalformed?.(error.message);
     }

@@ -175,3 +175,16 @@ FUNCTION CountItems(X : SET OF Choice) : INTEGER; RETURN(SIZEOF(X)); END_FUNCTIO
   const report = await validateStepText('DATA;#1=SAMPLE((A(1),B(1)));#2=SAMPLE((A(1),A(1)));#3=SAMPLE((A(1),A(2)));ENDSEC;', {schema, categories:['entity_rule']});
   expect(report.findings.map(f => [f.instance,f.rule])).toEqual([[2,'Sample.W']]);
 });
+
+it('agrees on SET size, membership and equality for typed and untagged values (#11647)', async () => {
+  const { schema } = generated(`SCHEMA S; TYPE A = INTEGER; END_TYPE; TYPE B = INTEGER; END_TYPE;
+ENTITY Probe; WHERE
+Mixed : (A(1) = 1) AND (1 IN [A(1)]) AND (A(1) IN [1]) AND (CountMembers([A(1),1]) = 1) AND (CountMembers([1,A(1)]) = 1);
+DistinctTags : (A(1) <> B(1)) AND NOT (B(1) IN [A(1)]) AND (CountMembers([A(1),B(1)]) = 2);
+DistinctValues : CountMembers([A(1),2]) = 2;
+END_ENTITY; FUNCTION CountMembers(X : SET OF GENERIC) : INTEGER; RETURN(SIZEOF(X)); END_FUNCTION; END_SCHEMA;`);
+  const report = await validateStepText('DATA;#7=PROBE();ENDSEC;', {schema, categories:['entity_rule']});
+  expect(report.notEvaluated).toEqual([]);
+  expect(report.stats.entityRuleEvaluations).toBe(3);
+  expect(report.findings).toEqual([]);
+});

@@ -82,3 +82,11 @@ it('includes malformed DATA statements in the validation report (#11647)', async
   expect(bad.findings.filter(f => f.rule === 'record-syntax').map(f => f.instance)).toEqual([undefined,1]);
   expect((await validateStepText(file('#1 /* comment */ = IFCCARTESIANPOINT((0.,0.));'))).valid).toBe(true);
 });
+
+it('rejects nondecimal instance ids without indexing a numeric prefix (#11647)', async () => {
+  for (const token of ['abc', '12abc', '0x10', '1e2']) {
+    const report = await validateStepText(file(`#${token}=IFCCARTESIANPOINT((0.,0.));#12=IFCCARTESIANPOINT((1.,0.));`));
+    expect(report.findings.map(f => [f.rule, f.instance])).toEqual([['record-syntax', undefined]]);
+    expect(report.stats.instances).toBe(1);
+  }
+});

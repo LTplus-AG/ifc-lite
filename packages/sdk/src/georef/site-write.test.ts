@@ -9,13 +9,17 @@
  * millionth of a second, refused cleanly, and undone in one step.
  */
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { extractGeoreferencingOnDemand, parseModel } from '@ifc-lite/parser';
 import { undoRecordedMutationOperations, type MutablePropertyView, type Mutation } from '@ifc-lite/mutations';
 import { HeadlessBackend } from '../headless.js';
 import { BimContext } from '../context.js';
 import { fromCompoundPlaneAngle, toCompoundPlaneAngle } from './site-angle.js';
 import { GeoreferencingError } from './types.js';
+
+// The refusal assertions compare the whole STEP file, including its clock-based FILE_NAME.
+const exportClock = Date.parse('2026-01-01T00:00:00Z');
+afterEach(() => { vi.useRealTimers(); });
 import { planSiteWrite } from './site-write.js';
 
 function step(schema: string, data: string): Uint8Array {
@@ -110,6 +114,7 @@ describe('bim.georef.setSite', () => {
     const { bim, backend } = await session('IFC4');
     bim.georef.setSite({ RefLatitude: 47, RefLongitude: 8 });
     backend.getMutationView()!.setEntityType(6, 'IfcBuilding');
+    vi.useFakeTimers({ toFake: ['Date'], now: exportClock });
     const before = String(bim.export.ifc());
     expect(() => bim.georef.setSite({ RefLatitude: 47, RefLongitude: 8 })).toThrow(/retyped/);
     expect(String(bim.export.ifc())).toBe(before);
@@ -157,6 +162,7 @@ it('refuses an external positional location edit but allows repeated setSite wri
   bim.georef.setSite({ RefLatitude: 48, RefLongitude: 9 });
   const view = backend.getMutationView()!;
   view.setPositionalAttribute(6, 9, [1, 0, 0, 0]);
+  vi.useFakeTimers({ toFake: ['Date'], now: exportClock });
   const before = String(bim.export.ifc());
   expect(() => bim.georef.setSite({ RefLatitude: 49, RefLongitude: 10 })).toThrow(/outside setSite/);
   expect(String(bim.export.ifc())).toBe(before);

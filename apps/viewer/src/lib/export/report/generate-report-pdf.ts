@@ -18,6 +18,7 @@ import { drawChartSourceMessage } from './render-source-message.js';
 import { renderChartSvg, type Aggregation, type ChartTheme, DEFAULT_THEME } from '@ifc-lite/charts';
 import { composeReport, REPORT_MARGIN, type ComposeReportInput, type ReportChartBlock, type ReportLayout } from './compose.js';
 import type { SnapshotCapture } from './snapshots.js';
+import { toStandardFontText } from '@/lib/document/standard-font-text';
 
 /** The subset of jsPDF the generator drives; a test records the calls. */
 export interface ReportDoc {
@@ -109,9 +110,9 @@ export async function browserReportSeams(capture: SnapshotCapture | null, theme:
           if (typeof grayOrRgb === 'string') doc.setTextColor(grayOrRgb);
           else doc.setTextColor(grayOrRgb);
         },
-        text: (t, x, y) => { doc.text(t, x, y); },
+        text: (t, x, y) => { doc.text(toStandardFontText(t).text, x, y); },
         fillRect: (x, y, w, h, color) => { doc.setFillColor(color); doc.rect(x, y, w, h, 'F'); },
-        textWidth: (t) => doc.getTextWidth(t),
+        textWidth: (t) => doc.getTextWidth(toStandardFontText(t).text),
         addImage: (bytes, format, x, y, w, h) => { doc.addImage(bytes, format, x, y, w, h); },
         svg: async (svg, x, y, w, h) => {
           const { svg2pdf } = await import('svg2pdf.js/dist/svg2pdf.es.min.js');
@@ -139,7 +140,9 @@ export async function browserReportSeams(capture: SnapshotCapture | null, theme:
             ? Object.fromEntries(columns.map((c, i) => [i, { halign: c.align, cellWidth: c.width }]))
             : { 1: { halign: 'right' }, 2: { halign: 'right' } };
           autoTable(doc, {
-            startY, margin: { ...margin, top: REPORT_MARGIN, bottom: REPORT_MARGIN }, head, body,
+            startY, margin: { ...margin, top: REPORT_MARGIN, bottom: REPORT_MARGIN },
+            head: head.map((row) => row.map((c) => toStandardFontText(c).text)),
+            body: body.map((row) => row.map((c) => toStandardFontText(c).text)),
             // `pageBreak: 'avoid'` is the belt to `AUTOTABLE_ROW_HEIGHT`: the document composer only
             // ever hands over a chunk that fits.
             styles: { fontSize: 8 * scale, cellPadding: 2 * scale, minCellHeight: AUTOTABLE_ROW_HEIGHT * scale, overflow: 'ellipsize', lineColor: [226, 232, 240], lineWidth: 0.5 * scale },

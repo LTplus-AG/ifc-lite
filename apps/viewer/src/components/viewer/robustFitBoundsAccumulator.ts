@@ -40,6 +40,7 @@
  * Stage 2 (#1394) is the vertex-mass trim above, applied to what stage 1 kept.
  */
 
+import { compactBounds, compactRow, type CompactRef } from '@ifc-lite/geometry/compact';
 import { detachedMinorityClusters } from './detachedClusters.js';
 
 export type Bounds = { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } };
@@ -47,6 +48,8 @@ export type Bounds = { min: { x: number; y: number; z: number }; max: { x: numbe
 export interface RobustFitMeshInput {
   positions: Float32Array | Float64Array;
   origin?: readonly [number, number, number] | null;
+  /** A compact mesh (`?compactGeom`): its row carries the exact source box, so `positions` (a decode) is not read. */
+  compact?: CompactRef;
   /** IFC class; an `IfcBuildingElementProxy` may be a coordination marker (#5633). */
   ifcType?: string;
   /** Entity id, matched against `RobustFitOptions.excludedIds`. */
@@ -54,6 +57,38 @@ export interface RobustFitMeshInput {
 }
 
 const isProxy = (m: RobustFitMeshInput) => m.ifcType === 'IfcBuildingElementProxy';
+
+const garbage = (x: number, y: number, z: number) =>
+  !(Math.abs(x) < ROBUST_GARBAGE_COORD && Math.abs(y) < ROBUST_GARBAGE_COORD && Math.abs(z) < ROBUST_GARBAGE_COORD);
+
+/**
+ * One mesh's box over its usable vertices and how many there are (its weight), or null when none is.
+ * A compact mesh reads its row's box: the f64 `origin + position` box of its source vertices, the same
+ * min and max a scan of the f32 mesh gives, where reading `positions` would decode it on the main thread
+ * (and scan lattice positions up to half a step off). Its weight is its welded vertex count, not the f32
+ * mesh's vertex count, which only shifts the relative mass the robust trim weighs.
+ */
+function meshBox(mesh: RobustFitMeshInput): { box: Float64Array; n: number } | null {
+  if (mesh.compact) {
+    const b = compactBounds(mesh.compact);
+    // A garbage corner means some vertex is garbage: only a scan can keep the others, as for an f32 mesh.
+    if (!garbage(b[0], b[1], b[2]) && !garbage(b[3], b[4], b[5])) return { box: Float64Array.from(b), n: compactRow(mesh.compact).vertexCount };
+  }
+  const positions = mesh.positions;
+  const o = mesh.origin;
+  const ox = o ? o[0] : 0, oy = o ? o[1] : 0, oz = o ? o[2] : 0;
+  let mnX = Infinity, mnY = Infinity, mnZ = Infinity;
+  let mxX = -Infinity, mxY = -Infinity, mxZ = -Infinity;
+  let n = 0;
+  for (let i = 0; i < positions.length; i += 3) {
+    const x = positions[i] + ox, y = positions[i + 1] + oy, z = positions[i + 2] + oz;
+    if (garbage(x, y, z)) continue;
+    if (x < mnX) mnX = x; if (y < mnY) mnY = y; if (z < mnZ) mnZ = z;
+    if (x > mxX) mxX = x; if (y > mxY) mxY = y; if (z > mxZ) mxZ = z;
+    n++;
+  }
+  return n > 0 ? { box: Float64Array.of(mnX, mnY, mnZ, mxX, mxY, mxZ), n } : null;
+}
 
 /** `streaming`: the mesh set is still growing (#5633), see detachedClusters.ts.
  *  `quiet`: no log line for a trim (Fit All runs this on every press).
@@ -84,26 +119,15 @@ export function robustFitBoundsFull(meshes: readonly RobustFitMeshInput[], opts:
   const ids: (number | undefined)[] = [];
   let cwX = 0, cwY = 0, cwZ = 0, totalW = 0;
   for (let gi = 0; gi < meshes.length; gi++) {
-    const positions = meshes[gi].positions;
-    const o = meshes[gi].origin;
-    const ox = o ? o[0] : 0, oy = o ? o[1] : 0, oz = o ? o[2] : 0;
-    let mnX = Infinity, mnY = Infinity, mnZ = Infinity;
-    let mxX = -Infinity, mxY = -Infinity, mxZ = -Infinity;
-    let n = 0;
-    for (let i = 0; i < positions.length; i += 3) {
-      const x = positions[i] + ox, y = positions[i + 1] + oy, z = positions[i + 2] + oz;
-      if (Math.abs(x) < ROBUST_GARBAGE_COORD && Math.abs(y) < ROBUST_GARBAGE_COORD && Math.abs(z) < ROBUST_GARBAGE_COORD) {
-        if (x < mnX) mnX = x; if (y < mnY) mnY = y; if (z < mnZ) mnZ = z;
-        if (x > mxX) mxX = x; if (y > mxY) mxY = y; if (z > mxZ) mxZ = z;
-        n++;
-      }
-    }
-    if (n > 0) {
+    const measured = meshBox(meshes[gi]);
+    if (measured) {
+      const { box, n } = measured;
+      const mnX = box[0], mnY = box[1], mnZ = box[2], mxX = box[3], mxY = box[4], mxZ = box[5];
       if (mnX < fMinX) fMinX = mnX; if (mnY < fMinY) fMinY = mnY; if (mnZ < fMinZ) fMinZ = mnZ;
       if (mxX > fMaxX) fMaxX = mxX; if (mxY > fMaxY) fMaxY = mxY; if (mxZ > fMaxZ) fMaxZ = mxZ;
       const mcx = (mnX + mxX) / 2, mcy = (mnY + mxY) / 2, mcz = (mnZ + mxZ) / 2;
       cx.push(mcx); cy.push(mcy); cz.push(mcz); w.push(n);
-      bb.push(Float64Array.of(mnX, mnY, mnZ, mxX, mxY, mxZ));
+      bb.push(box);
       proxy.push(isProxy(meshes[gi]));
       ids.push(meshes[gi].expressId);
       cwX += mcx * n; cwY += mcy * n; cwZ += mcz * n; totalW += n;
@@ -260,26 +284,15 @@ export function createRobustFitBoundsAccumulator(): RobustFitBoundsAccumulator {
     }
 
     for (let gi = scannedLen; gi < meshes.length; gi++) {
-      const positions = meshes[gi].positions;
-      const o = meshes[gi].origin;
-      const ox = o ? o[0] : 0, oy = o ? o[1] : 0, oz = o ? o[2] : 0;
-      let mnX = Infinity, mnY = Infinity, mnZ = Infinity;
-      let mxX = -Infinity, mxY = -Infinity, mxZ = -Infinity;
-      let n = 0;
-      for (let i = 0; i < positions.length; i += 3) {
-        const x = positions[i] + ox, y = positions[i + 1] + oy, z = positions[i + 2] + oz;
-        if (Math.abs(x) < ROBUST_GARBAGE_COORD && Math.abs(y) < ROBUST_GARBAGE_COORD && Math.abs(z) < ROBUST_GARBAGE_COORD) {
-          if (x < mnX) mnX = x; if (y < mnY) mnY = y; if (z < mnZ) mnZ = z;
-          if (x > mxX) mxX = x; if (y > mxY) mxY = y; if (z > mxZ) mxZ = z;
-          n++;
-        }
-      }
-      if (n > 0) {
+      const measured = meshBox(meshes[gi]);
+      if (measured) {
+        const { box, n } = measured;
+        const mnX = box[0], mnY = box[1], mnZ = box[2], mxX = box[3], mxY = box[4], mxZ = box[5];
         if (mnX < fMinX) fMinX = mnX; if (mnY < fMinY) fMinY = mnY; if (mnZ < fMinZ) fMinZ = mnZ;
         if (mxX > fMaxX) fMaxX = mxX; if (mxY > fMaxY) fMaxY = mxY; if (mxZ > fMaxZ) fMaxZ = mxZ;
         const mcx = (mnX + mxX) / 2, mcy = (mnY + mxY) / 2, mcz = (mnZ + mxZ) / 2;
         cx.push(mcx); cy.push(mcy); cz.push(mcz); w.push(n);
-        bb.push(Float64Array.of(mnX, mnY, mnZ, mxX, mxY, mxZ));
+        bb.push(box);
         proxy.push(isProxy(meshes[gi]));
         ids.push(meshes[gi].expressId);
         cwX += mcx * n; cwY += mcy * n; cwZ += mcz * n; totalW += n;

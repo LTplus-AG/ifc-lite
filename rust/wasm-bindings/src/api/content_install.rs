@@ -17,6 +17,7 @@ impl IfcAPI {
     pub fn clear_pre_pass_cache(&self) {
         self.clear_content_derived();
         self.content.cached_source_bytes.lock().unwrap_or_else(std::sync::PoisonError::into_inner).take();
+        self.content.sparse.lock().unwrap_or_else(std::sync::PoisonError::into_inner).take();
         self.clear_style_finishes();
         // Keep diagnostics readable after the JS wrapper's finally cleanup.
     }

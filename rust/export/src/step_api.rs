@@ -152,6 +152,8 @@ pub struct StepStats {
     /// invents one: no measure, label, identifier, reference, flag or enum.
     /// Non-zero means the file is not valid IFC4. Counted per slot, not per
     /// record. Applies to structural upgrades from IFC2X3 as well as IFC4X3 downgrades.
+    /// IFC4 only: an IFC2X3 -> IFC4X3 upgrade's unfilled IFC4X3 slots are named
+    /// in the warnings, not here (#11135).
     pub ifc4_required_slots_unfilled: usize,
     /// Enum values the target schema does not define that a conversion wrote
     /// as `.NOTDEFINED.` or `$`, or as `.USERDEFINED.` without room for the

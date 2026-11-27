@@ -27,10 +27,9 @@
  * as bare integers.
  */
 import {
-  GEOM_CLASS_INSTANCED_TYPE,
   GEOM_CLASS_OCCURRENCE,
-  GEOM_CLASS_ORPHAN_TYPE,
   geometryClassOf,
+  isModelViewGeometryClass,
   isPlacedGeometryClass,
   isTypeLibraryGeometryClass,
 } from '@ifc-lite/geometry/geometry-class';
@@ -73,33 +72,15 @@ export function isMeshVisibleInViewMode(
     // Type library only: orphan + instanced type geometry.
     return isTypeLibraryGeometryClass(geometryClass);
   }
-  // Model view.
-  if (geometryClass === GEOM_CLASS_INSTANCED_TYPE) return false; // duplicates never show here
-  if (geometryClass === GEOM_CLASS_ORPHAN_TYPE) {
-    // Orphan type-library geometry: hide it once the model has real placed
-    // geometry (it lives in the Types view); keep it only for pure type-library
-    // files so the Model view isn't empty.
-    return !hasOccurrenceGeometry;
-  }
-  // class 0 (occurrence) and class 3 (layer slice) are the real model.
-  return true;
+  return isModelViewGeometryClass(geometryClass, hasOccurrenceGeometry);
 }
 
 /**
- * The real-model subset of a mesh list — what a 2D drawing cuts (#2058).
- *
- * `geometryResult.meshes` carries the whole scene, type library included, and
- * the Model/Types switch is a 3D control: a standard 2D section, plan or
- * sketch underlay always draws the building. So this resolves
- * `hasOccurrenceGeometry` over the list and applies `isMeshVisibleInViewMode`
- * pinned to `'model'` — one predicate for every consumer rather than a second,
- * differently-shaped guard that drifts. A pure type-library file (no placed
- * occurrence at all) still keeps its orphan class-1 geometry, exactly as the
- * Model view does.
+ * The real-model subset of a mesh list, what a 2D drawing cuts (#2058). The
+ * rule lives in `@ifc-lite/geometry/geometry-class` so headless drawings
+ * (`@ifc-lite/drawing-2d`) apply the same one.
  */
-export function selectModelMeshes<T extends { geometryClass?: number }>(meshes: readonly T[]): T[] {
-  return meshes.filter(modelMeshGate(meshes));
-}
+export { selectModelMeshes } from '@ifc-lite/geometry/geometry-class';
 
 /** `selectModelMeshes` as a per-mesh predicate resolved over `meshes`, for a
  * drawing that reads its geometry in batches (#10264) rather than as this list. */

@@ -25,11 +25,11 @@ import type { PropertySet, QuantitySet } from '@ifc-lite/data';
 import { RelationshipType, exactTypeName } from '@ifc-lite/data';
 import { ENTITY_ATTRIBUTES } from '@ifc-lite/lists';
 import type { ListDataProvider, ListClassificationRef, DiscoveredColumns } from '@ifc-lite/lists';
-import { quantitySetsFor, resolveEntityPredefinedType, typePropertySetsFor } from '@ifc-lite/rules';
+import { resolveEntityPredefinedType, typePropertySetsFor } from '@ifc-lite/rules';
 import { buildSpatialAncestryIndex, type SpatialAncestryIndex } from '../../utils/spatialHierarchy.js';
 import { validEntry } from '../zones/index.js';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
-import { effectiveListEntitySets, effectiveListStringAttribute, effectiveListTypeName, effectiveTypeQuantitySets } from './effective-provider-entities.js';
+import { effectiveListEntitySets, effectiveListStringAttribute, effectiveListTypeName, effectiveOccurrenceQuantitySets, effectiveTypeQuantitySets } from './effective-provider-entities.js';
 import type { ZoneListContext } from './zone-list-context.js';
 import { materialNamesOf } from './list-material-names.js';
 export type { ZoneListContext } from './zone-list-context.js';
@@ -143,7 +143,7 @@ export function createListDataProvider(
   }
 
   function getQuantitySetsFor(entityId: number): QuantitySet[] {
-    if (view) return view.isDeleted(entityId) ? [] : quantitySetsFor(store, entityId, view) as QuantitySet[];
+    if (view) return effectiveOccurrenceQuantitySets(store, entityId, view);
     if (usesOnDemandQtos) return extractQuantitiesOnDemand(store, entityId) as QuantitySet[];
     return store.quantities?.getForEntity(entityId) ?? [];
   }

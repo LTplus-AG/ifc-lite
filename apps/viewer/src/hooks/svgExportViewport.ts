@@ -53,6 +53,15 @@ export interface SvgExportViewport {
   effectiveScale: number;
 }
 
+export function assertValidSvgDrawingBounds({ min, max }: SvgExportBounds): void {
+  if (!Number.isFinite(min.x) || !Number.isFinite(min.y) || !Number.isFinite(max.x) || !Number.isFinite(max.y)) {
+    throw new Error('Invalid drawing bounds for SVG export: the section is empty or its bounds are not finite.');
+  }
+  if (max.x < min.x || max.y < min.y) {
+    throw new Error('Invalid drawing bounds for SVG export: max must be >= min on both axes.');
+  }
+}
+
 /**
  * Compute the direct SVG export's paper dimensions, `viewBox`, and
  * axis-driven mirroring from the drawing bounds, the requested scale
@@ -73,18 +82,23 @@ export function computeSvgExportViewport(
   scale: number,
   axis: SectionAxis,
 ): SvgExportViewport {
-  const width = bounds.max.x - bounds.min.x;
-  const height = bounds.max.y - bounds.min.y;
+  const { min, max } = bounds;
+  assertValidSvgDrawingBounds(bounds);
+  const width = max.x - min.x;
+  const height = max.y - min.y;
 
-  // Padding around the drawing, in world units.
-  const padding = Math.max(width, height) * 0.1;
-  const viewMinX = bounds.min.x - padding;
-  const viewMinY = bounds.min.y - padding;
+  // Padding around the drawing, in world units. A single point (zero extent)
+  // would give a 0x0 viewBox, which the SVG spec renders as nothing, so it
+  // gets a 1 m margin instead.
+  const extent = Math.max(width, height);
+  const padding = extent > 0 ? extent * 0.1 : 1;
+  const viewMinX = min.x - padding;
+  const viewMinY = min.y - padding;
   const viewBoxWidth = width + padding * 2;
   const viewBoxHeight = height + padding * 2;
 
   // SVG dimensions in mm (assuming model is in metres, scale 1:100 default).
-  const effectiveScale = scale || 100;
+  const effectiveScale = svgExportScale(scale);
   const widthMm = (viewBoxWidth * 1000) / effectiveScale;
   const heightMm = (viewBoxHeight * 1000) / effectiveScale;
 
@@ -104,6 +118,12 @@ export function computeSvgExportViewport(
  * the same effective scale {@link computeSvgExportViewport} resolved —
  * `mm * scale / 1000`, the inverse ratio `widthMm`/`viewBoxWidth` encodes.
  */
+/** The paper scale the direct SVG export uses: the drawing's own when finite and positive, else 1:100.
+ *  Everything sized in paper millimetres (viewBox, dimension graphics) must use this one value. */
+export function svgExportScale(scale: number): number {
+  return Number.isFinite(scale) && scale > 0 ? scale : 100;
+}
+
 export function svgExportMmToWorld(mm: number, effectiveScale: number): number {
   return (mm * effectiveScale) / 1000;
 }

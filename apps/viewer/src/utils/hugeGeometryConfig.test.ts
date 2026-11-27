@@ -6,7 +6,7 @@ import { describe, it, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { configureDrawStream, getDrawStreamConfig, HUGE_GEOMETRY_DRAW_STREAM } from './drawStreamConfig.js';
 import { configureGpuInstancing, isGpuInstancingEnabled } from './gpuInstancingConfig.js';
-import { activePerfFlags, recordAppliedPerfFlag } from '../lib/perf/flags.js';
+import { activePerfFlags, recordAppliedPerfFlag } from '../lib/perf/flags-applied.js';
 import { forgetAppliedRenderPaths, isHugeGeometryEnabled } from './hugeGeometryConfig.js';
 
 const g = globalThis as Record<string, unknown>;

@@ -3,12 +3,10 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Validation tools (spec §7.4): IDS, audit, gherkin.
+ * Validation tools (spec §7.4): IDS and audit.
  *
  * IDS validation pulls in the buildingSMART rule engine via @ifc-lite/ids.
  * model_audit produces a Lighthouse-style health score per category.
- * gherkin_check is stubbed (UNSUPPORTED_OPERATION) until the bSI Gherkin
- * engine ships into the workspace.
  */
 
 import { readFile } from 'node:fs/promises';
@@ -25,9 +23,10 @@ import type { ToolContext } from '../context.js';
 import { buildIdsAccessor } from './ids-accessor.js';
 import { nativeReviewModel, reviewCaptures, reviewAccess } from './review-captures.js';
 import { buildDropCensusIssues, dropCensusJson } from './drop-census-issues.js';
+import { READ_ONLY } from './annotations.js';
 
 export const idsValidate = {
-  name: 'ids_validate',
+  name: 'ids_validate', title: 'Validate against IDS', annotations: READ_ONLY,
   description: 'Run an IDS rule set against the model. Either pass `ids_xml` inline or `ids_path` to read from disk.',
   scope: 'validate',
   inputSchema: {
@@ -142,7 +141,7 @@ function summarizeIdsReport(report: IDSValidationReport): {
 }
 
 const idsExplain: Tool = {
-  name: 'ids_explain',
+  name: 'ids_explain', title: 'Explain IDS specification', annotations: READ_ONLY,
   description: 'Produce a natural-language explanation of a single IDS specification (applicability + requirements).',
   scope: 'read',
   inputSchema: {
@@ -177,7 +176,7 @@ const idsExplain: Tool = {
 };
 
 const modelAudit: Tool = {
-  name: 'model_audit',
+  name: 'model_audit', title: 'Model health audit', annotations: READ_ONLY,
   description: 'Comprehensive model health check: required entities, GlobalId uniqueness, orphan detection, naming conventions, broken relationships. Returns Lighthouse-style scores per category.',
   scope: 'validate',
   inputSchema: {
@@ -330,21 +329,4 @@ function clamp(v: number): number {
   return Math.max(0, Math.min(100, v));
 }
 
-const gherkinCheck: Tool = {
-  name: 'gherkin_check',
-  description: 'Run buildingSMART Gherkin validation rules. Not implemented in v0.1.',
-  scope: 'validate',
-  inputSchema: {
-    type: 'object',
-    properties: { model_id: { type: 'string' } },
-    additionalProperties: false,
-  },
-  handler() {
-    throw new ToolExecutionError({
-      code: ToolErrorCode.UNSUPPORTED_OPERATION,
-      message: 'gherkin_check is planned for v0.2; use ids_validate or model_audit.',
-    });
-  },
-};
-
-export const validationTools: Tool[] = [idsValidate, idsExplain, modelAudit, gherkinCheck];
+export const validationTools: Tool[] = [idsValidate, idsExplain, modelAudit];

@@ -240,7 +240,7 @@ describe('extension exporters are export-registry entries (#1907, #5838)', () =>
     // Argument ORDER is part of the contract: (exporterId, extensionId).
     assert.deepEqual(host.exporterRuns, [{ exporterId: EXPORTER_ID, extensionId: 'ext.alpha' }]);
 
-    const bytes = new TextEncoder().encode('a,b\n1,2\n');
+    const bytes = new TextEncoder().encode('Name,Count\nSală,2\n');
     await act(async () => {
       host.resolvePendingRun(payload, bytes);
     });
@@ -250,7 +250,11 @@ describe('extension exporters are export-registry entries (#1907, #5838)', () =>
     assert.equal(createdBlobs.length, 1);
     assert.equal(anchorClicks[0].href, 'blob:ifc-lite-test-1', 'anchor points at the produced blob');
     assert.equal(createdBlobs[0].type, 'text/csv', 'blob carries the contribution mime type');
-    assert.deepEqual(new Uint8Array(await createdBlobs[0].arrayBuffer()), bytes, 'the exporter bytes reach the download unmodified');
+    assert.deepEqual(
+      new Uint8Array(await createdBlobs[0].arrayBuffer()),
+      new Uint8Array([0xef, 0xbb, 0xbf, ...bytes]),
+      'the CSV download adds exactly one UTF-8 BOM before the original exporter bytes (#11452)',
+    );
     assert.deepEqual(downloadedKinds, ['csv'], 'tour event fires from the download choke point');
   });
 
@@ -267,9 +271,14 @@ describe('extension exporters are export-registry entries (#1907, #5838)', () =>
     });
     assert.deepEqual(host.exporterRuns, [{ exporterId: EXPORTER_ID, extensionId: 'ext.alpha' }]);
     await act(async () => {
-      host.resolvePendingRun(payload, 'x');
+      host.resolvePendingRun(payload, '\uFEFFName\nSală');
     });
     assert.equal(anchorClicks[0]?.download, 'Haus.csv');
+    assert.deepEqual(
+      new Uint8Array(await createdBlobs[0].arrayBuffer()),
+      new TextEncoder().encode('\uFEFFName\nSală'),
+      'an existing BOM is preserved once (#11452)',
+    );
   });
 
   it('same exporter id in two extensions: second button runs the SECOND extension and is the only busy one (#1930)', async () => {

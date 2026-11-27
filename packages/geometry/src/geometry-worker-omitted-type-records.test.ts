@@ -57,9 +57,9 @@ beforeEach(async () => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-async function send(type: string): Promise<void> {
+async function send(type: string, emitSparseFacts = false): Promise<void> {
   (self as unknown as Worker).onmessage!({ data: {
-    type, sharedBuffer: new SharedArrayBuffer(16),
+    type, emitSparseFacts, sharedBuffer: new SharedArrayBuffer(16),
     indexIds: new Uint32Array(), indexStarts: new Uint32Array(),
     indexLengths: new Uint32Array(), indexClasses: new Uint8Array(),
   } } as MessageEvent);
@@ -93,4 +93,12 @@ describe('prepass worker relays omitted type records on complete (#8341)', () =>
       expect('omittedTypeRecords' in complete).toBe(false);
     });
   }
+});
+
+it('#11478: requesting sparse facts from older WASM reports an error before emitting jobs', async () => {
+  await send('prepass-streaming', true);
+  expect(posted.filter((m) => m.type === 'error')).toEqual([
+    { type: 'error', message: 'Out-of-core geometry requires a WASM build with sparse pre-pass support' },
+  ]);
+  expect(prepassEvents()).toEqual([]);
 });

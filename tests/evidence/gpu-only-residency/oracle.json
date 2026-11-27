@@ -1,0 +1,6 @@
+{
+  "issue": 7955,
+  "why": "Keep GPU-only residency loadable while breaking what makes it safe: the controller arms loads the switch does not ask for (auto ignores the size threshold), does not cancel when a second model joins, can be cancelled after its release has begun, releases although the scene never settled, leaves its own tap running after a failure, and the release allowlist accepts unbacked undo geometry. The controller, switch and real-backing tests must go red.",
+  "key": "apps/viewer/src/lib/geometry-backing/gpu-only-residency.ts",
+  "mutation": "tests/evidence/gpu-only-residency/behaviour.oracle.patch"
+}

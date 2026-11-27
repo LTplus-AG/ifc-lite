@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { getPerfFlagDefinition, readPerfFlag, recordAppliedPerfFlag, resolvePerfFlag, type PerfFlagId } from '../lib/perf/flags.js';
+import { getPerfFlagDefinition, readPerfFlag, resolvePerfFlag, type PerfFlagId } from '../lib/perf/flags.js';
+import { recordAppliedPerfFlag } from '../lib/perf/flags-applied.js';
 
 /** A boolean perf flag as globals, URL params and PostHog spell it. */
 export function isPerfFlagOn(raw: unknown): boolean {

@@ -1,5 +1,13 @@
 # @ifc-lite/cache
 
+## 3.8.1
+
+### Patch Changes
+
+- [#11300](https://github.com/LTplus-AG/ifc-lite/pull/11300) [`515ba8a`](https://github.com/LTplus-AG/ifc-lite/commit/515ba8a310958d2b934a0eeeaceb93d6e788964d) Thanks [@NikChao](https://github.com/NikChao)! - Point the README at the native `ifc-build-cache` CLI and its guide, for building a cache outside the browser ([#9584](https://github.com/LTplus-AG/ifc-lite/issues/9584)).
+- Updated dependencies [[`2ae4a57`](https://github.com/LTplus-AG/ifc-lite/commit/2ae4a57762b360271a295b6be4bd6ecbfbf59104), [`c1eeb86`](https://github.com/LTplus-AG/ifc-lite/commit/c1eeb86bbda4adbd17ffb6de6758ef5e90085af9), [`690dc7d`](https://github.com/LTplus-AG/ifc-lite/commit/690dc7d0b19bac9104d11402a5ca95f6e2462011), [`21fc7f9`](https://github.com/LTplus-AG/ifc-lite/commit/21fc7f9f521356b7e5ec4fc02aed75a1f4af1ec6), [`0a30e5f`](https://github.com/LTplus-AG/ifc-lite/commit/0a30e5f97446b06068b9f80fbff7bc4484e0d708)]:
+  - @ifc-lite/geometry@8.4.0
+
 ## 3.8.0
 
 ### Minor Changes

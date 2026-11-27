@@ -56,7 +56,8 @@ export function describeThrown(err: unknown): string {
 
 export function toolError(opts: ToolErrorOptions): CallToolResult {
   return {
-    content: [{ type: 'text', text: opts.message }],
+    // The hint goes in the text too: clients without structured output never see structuredContent.
+    content: [{ type: 'text', text: opts.hint ? `${opts.message}\nHint: ${opts.hint}` : opts.message }],
     structuredContent: {
       code: opts.code,
       message: opts.message,

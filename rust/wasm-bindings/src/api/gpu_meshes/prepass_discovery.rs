@@ -23,6 +23,8 @@ pub(super) struct ColumnsDiscovery {
     pub mapped_item_spans: Vec<(u32, usize, usize)>,
     pub type_candidate_spans: Vec<(u32, usize, usize, ifc_lite_core::IfcType)>,
     pub has_layer_set: bool,
+    /// Out-of-core ingest: collected only when the host asked for it.
+    pub sparse: Option<super::sparse_facts::SparseFacts>,
 }
 
 impl ColumnsDiscovery {
@@ -50,6 +52,9 @@ impl ColumnsDiscovery {
     ) {
         use ifc_lite_processing::scan::ScanClass;
         let class = ScanClass::classify(kw);
+        if let Some(sparse) = self.sparse.as_mut() {
+            sparse.observe(content, id, kw, start, end);
+        }
         let job = shared.observe_browser(content, class, id, kw, start, end);
         self.project_id = shared.project_id;
         if class == ScanClass::Site {
@@ -85,6 +90,36 @@ fn keyword_at(content: &[u8], start: usize, end: usize) -> &str {
         .and_then(StepRecord::parse)
         .and_then(|record| record.keyword())
         .unwrap_or("")
+}
+
+impl ColumnsDiscovery {
+    /// Out-of-core facts from the stitched columns (file order, duplicate ids
+    /// included): the same `SparseFacts::observe` call, record for record, that
+    /// the serial scan makes, so a sharded pre-pass ships the serial
+    /// `sparse-facts`. Named rows that no fact depends on skip the keyword read.
+    pub(super) fn observe_sparse_columns(
+        &mut self,
+        content: &[u8],
+        ids: &[u32],
+        starts: &[u32],
+        lengths: &[u32],
+        classes: &[u8],
+    ) {
+        use ifc_lite_processing::{scan::ScanClass, PREPASS_CLASS_CODE_MASK};
+        let sparse = self.sparse.get_or_insert_with(Default::default);
+        for (((&id, &start), &length), &class) in ids.iter().zip(starts).zip(lengths).zip(classes) {
+            let start = start as usize;
+            let end = start.saturating_add(length as usize);
+            let kw = match ScanClass::try_from(class & PREPASS_CLASS_CODE_MASK).unwrap_or(ScanClass::Other) {
+                ScanClass::Project => "IFCPROJECT",
+                ScanClass::Site => "IFCSITE",
+                ScanClass::IndexedColourMap => "IFCINDEXEDCOLOURMAP",
+                ScanClass::Other => keyword_at(content, start, end),
+                _ => "", // counted, never a fact
+            };
+            sparse.observe(content, id, kw, start, end);
+        }
+    }
 }
 
 /// Is the raw keyword `kw` in the caller's load-time skip set? The set holds

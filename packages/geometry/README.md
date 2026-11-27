@@ -177,6 +177,35 @@ every path other than the worker pool, deliver f32 meshes as before.
 `copyMeshShell`, `materializeCompactMesh`, `compactBounds`). Importing it loads neither the wasm
 engine nor the decoder.
 
+## Out-of-core ingest (opt-in)
+
+By default every geometry worker of the pool holds a copy of the source file and its own entity
+index. With `?perf.ooc=1` in the page URL (or `globalThis.__IFC_LITE_OOC = 1` before a load), a
+worker holds neither: it keeps a bounded arena of source records and, before each batch, reads the
+byte ranges that batch's reference closure needs from the shared source buffer, resolved against
+one shared index. A worker's source memory is then an arena that is dropped back to its start
+once a batch leaves it over budget (`?perf.oocBudgetMb`, 192 MiB by default), whatever the file
+size; one batch whose own closure is larger than the budget still grows it past that. Meshes and instancing shards are byte-identical to the default
+path.
+
+It needs `SharedArrayBuffer` (a cross-origin isolated page), as the worker pool does. The pre-pass
+stays sharded across the pool: each worker scans its byte range from a window of the shared buffer
+(its range plus a margin of at most 64 MiB, which on a file of a few tens of MiB can reach the end of the
+file), and the pre-pass worker resolves the styles and ships the sparse
+facts and its sorted index. Files in the small-file tier (under 10 MiB) never take out-of-core ingest: they load on the default path
+(which may itself shard the pre-pass from 8 MiB, copying the whole file into each scanning worker), where
+those copies are small. A load also stays on the default path when the arena could not give the
+same output: with `mergeLayers`, with the global instance plan, and for a file that contains
+annotation fill areas or reuses an entity id. A batch whose records cannot all be found after four retries is
+refused, and the pool's usual recovery splits it. The main thread, the parser and the pre-pass
+still hold the file: this lowers the pool's share of a load's memory, not the 2 GiB source limit.
+
+A host that rolls the flag out itself (the viewer's `perf-ooc` ramp) sets `GeometryProcessor.outOfCore = true`
+(`ProcessParallelOptions.outOfCore`) for the loads it chooses; left unset, the pool reads the global and the URL
+param. `onOutOfCoreDecision(ran)` then hears once per pool load whether it meshed out of core: `false` at the start
+of a load that does not, or the pre-pass scan's outcome (sparse sources, or the whole-file index for a file the
+arena cannot serve).
+
 ## API
 
 See the [Geometry Guide](https://ifclite.dev/docs/guide/geometry/) and [API Reference](https://ifclite.dev/docs/api/typescript/#ifc-litegeometry).

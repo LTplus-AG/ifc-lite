@@ -81,7 +81,7 @@ export { ColumnarParser, type IfcDataStore, type EntityByIdIndex, extractPropert
 export { OccurrenceQuantityReadError } from './occurrence-quantity-read-error.js';
 export type { MaterialPropertiesView } from './on-demand-extractors.js';
 export type { IfcStoreBase, IfcSourceHeader, SpatialHierarchy, EntityTable } from '@ifc-lite/data';
-export { parseSourceHeader } from './source-header.js';
+export { detectSchemaVersion, parseSourceHeader } from './source-header.js';
 export type { ExtractedProperty } from './property-value-parser.js';
 export { COMPLEX_PROPERTY_BUDGET_MARKER } from './property-complex-value.js';
 export { complexPropertyCuts } from './complex-property-store.js';

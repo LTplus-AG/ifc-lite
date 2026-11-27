@@ -21,7 +21,9 @@
  * canonical structural fixture, not a hand-built line.
  */
 import { describe, it, expect } from 'vitest';
+import { IfcParser } from '@ifc-lite/parser';
 import { convertStepLine } from './schema-converter.js';
+import { StepExporter } from './step-exporter.js';
 
 describe('convertStepLine maps structural analysis IFC4 types to their IFC2X3 targets (#4206)', () => {
   it('IFCSTRUCTURALLOADCASE trims to IFCSTRUCTURALLOADGROUP (strict attribute-name prefix, no by-name remap needed)', () => {
@@ -100,5 +102,34 @@ describe('convertStepLine maps structural analysis IFC4 types to their IFC2X3 ta
     expect(upgraded).toBe(
       "#1=IFCSTRUCTURALLOADGROUP('guid',$,'Group',$,$,.LOAD_GROUP.,.NOTDEFINED.,.NOTDEFINED.,1.,$);",
     );
+  });
+});
+
+// #11571: IFC2X3 and IFC4X3 constant actions have the same arity, so a positional copy put
+// CausedBy into ProjectedOrTrue and ProjectedOrTrue into PredefinedType. Both are mapped by name, as for IFC4.
+describe('constant structural actions keep ProjectedOrTrue in its named slot on IFC4X3 (#11571)', () => {
+  for (const entity of ['IFCSTRUCTURALLINEARACTION', 'IFCSTRUCTURALPLANARACTION']) {
+    it(`${entity} converts to and from IFC4X3 as it does to and from IFC4`, () => {
+      const source = `#50=${entity}('id',#1,$,$,$,$,$,#22,.GLOBAL_COORDS.,.F.,#20,.TRUE_LENGTH.);`;
+      const ifc4 = convertStepLine(source, 'IFC2X3', 'IFC4') ?? '';
+      expect(ifc4).toBe(`#50=${entity}('id',#1,$,$,$,$,$,#22,.GLOBAL_COORDS.,.F.,.TRUE_LENGTH.,.CONST.);`);
+      expect(convertStepLine(source, 'IFC2X3', 'IFC4X3')).toBe(ifc4);
+      expect(convertStepLine(ifc4, 'IFC4X3', 'IFC2X3')).toBe(convertStepLine(ifc4, 'IFC4', 'IFC2X3'));
+      expect(convertStepLine(ifc4, 'IFC4X3', 'IFC2X3')).toBe(`#50=${entity}('id',#1,$,$,$,$,$,#22,.GLOBAL_COORDS.,.F.,$,.TRUE_LENGTH.);`);
+    });
+  }
+
+  it('names the omitted CausedBy on an IFC4X3 export, as on IFC4', async () => {
+    const step = `ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t.ifc','',(''),(''),'','','');\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;
+#1=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'P',$,$,$,$,$,$);
+#9=IFCSTRUCTURALLOADLINEARFORCE('L',1.,0.,0.,0.,0.,0.);
+#5=IFCSTRUCTURALLINEARACTION('1YvctVUKr0kugbFTf53O9L',$,'A',$,$,$,$,#9,.GLOBAL_COORDS.,.F.,#20,.TRUE_LENGTH.);
+ENDSEC;\nEND-ISO-10303-21;\n`;
+    const store = await new IfcParser().parseColumnar(new TextEncoder().encode(step).buffer as ArrayBuffer);
+    for (const schema of ['IFC4', 'IFC4X3'] as const) {
+      const result = new StepExporter(store).export({ schema });
+      expect(new TextDecoder().decode(result.content)).toContain("#5=IFCSTRUCTURALLINEARACTION('1YvctVUKr0kugbFTf53O9L',$,'A',$,$,$,$,#9,.GLOBAL_COORDS.,.F.,.TRUE_LENGTH.,.CONST.);");
+      expect(result.stats.warnings.join('\n')).toContain(`IFCSTRUCTURALLINEARACTION.CausedBy has no slot in ${schema}; its value is omitted`);
+    }
   });
 });

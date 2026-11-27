@@ -225,7 +225,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
     let mut slot_fill = Ifc2x3SlotFill::new(None);
     let mut checks = ConversionChecks::new(crate::schema_material_referent::MaterialReferents::for_target(crate::schema_convert::canon(&schema)));
     checks.merged = true;
-    checks.forms.enable_dates();
+    checks.forms.defer_temporal_values();
     checks.typed_properties.enabled = true;
     let mut parents = single_parents::ParentClaims::for_schema(&schema); // one rel per single-valued inverse (#5727, #5802, #5774, #5923)
 
@@ -289,7 +289,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
         }
 
         let converting = index.add_materials(&mut checks.materials, &source_schema, &schema, &included, &plan, offset);
-        let upgrading = crate::schema_unrooted_upgrade::applies(&source_schema, &schema);
+        let upgrading = crate::schema_unrooted_upgrade::Upgrade::between(&source_schema, &schema);
         let preserve_latin1 = crate::schema_typed_properties::applies_to_source(model.content, &source_schema, &schema);
         let mut flatten = crate::schema_style_flatten::StyleFlatten::for_export(model.content, &source_schema, &schema); // D57
         flatten.retain_grids(|id| included.contains(&id) && !plan.skip.contains(&id));
@@ -380,19 +380,19 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
                 emitted_guids.insert(emitted);
             }
 
-            if upgrading && crate::schema_unrooted_upgrade::omitted_type(ty) {
+            if upgrading.is_some_and(|upgrade| upgrade.seeds(final_text.as_bytes()).next().is_some()) {
                 upgrade_seeds.insert(id.saturating_add(offset));
             }
             out.push_str(&final_text);
             out.push('\n');
             stats.written += 1;
         }
-
+        checks.forms.durations.finish_merged_model(model.content, plan.written_projects(&index.projects, &included, offset));
         offset = next;
     }
 
     warnings::push_merge_warnings(&mut stats, refused_refs_total, unrepresented_types_kept, &schema);
-    warnings::finish_output(&mut out, &mut stats, &schema, &slot_fill, &mut checks, parents, &upgrade_seeds, offset, models);
+    warnings::finish_output(&mut out, &mut stats, &schema, &slot_fill, &mut checks, parents, &upgrade_seeds, offset);
     (out, stats)
 }
 

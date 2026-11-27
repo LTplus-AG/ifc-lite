@@ -74,7 +74,7 @@ fn presentation_invalid_uv_falls_through_to_palette_and_retopology_rejects_it() 
     assert!(submeshes.sub_meshes[0].texture.is_some(), "actual texture-producing router path");
     submeshes.sub_meshes[0].uvs.as_mut().unwrap().truncate(2);
     let mut hasher = Some(GeometryHasher::new(1e-5, [0.; 3]));
-    let (split, occurrences) = super::presentation_source::submeshes(
+    let (split, occurrences) = super::presentation_source::submeshes_plain(
         &AssemblyJob::from(&job),
         submeshes,
         [0.8; 4],
@@ -92,7 +92,7 @@ fn presentation_invalid_uv_falls_through_to_palette_and_retopology_rejects_it() 
     assert!(!hasher.as_ref().unwrap().is_empty());
     let mut merged = router.process_element_parts(&entity, &mut decoder).unwrap().remove(0);
     merged.indices.truncate(9); // stated invariant: topology changed after source colour indexing
-    let fallback = super::presentation_source::fallback(
+    let fallback = super::presentation_source::fallback_plain(
         &AssemblyJob::from(&job),
         &entity,
         merged,
@@ -121,7 +121,7 @@ fn presentation_fallback_palette_uses_source_map_geometry_id_and_hashes_the_unsp
     let job = job(&entity, &meta);
     let mesh = router.process_element_parts(&entity, &mut decoder).unwrap().remove(0);
     let mut hasher = Some(GeometryHasher::new(1e-5, [0.; 3]));
-    let split = super::presentation_source::fallback(
+    let split = super::presentation_source::fallback_plain(
         &AssemblyJob::from(&job),
         &entity,
         mesh,

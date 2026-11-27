@@ -41,12 +41,27 @@ const ORIGIN_STEP = 2 ** -9;
 const MAX_PAGE_VERTICES = 65536;
 
 interface CompactPage {
+  key: string;
   batch: BatchedMesh;
   window: [number, number, number];
   vertexCount: number;
   vertexCapacity: number;
   indexCount: number;
   indexCapacity: number;
+  /** Meshes still drawn from this page; when the last one leaves, the page is destroyed. */
+  meshes: Set<MeshData>;
+}
+
+/** Where one mesh's triangles sit in its page: retiring it rewrites that index range. */
+interface CompactSlot {
+  page: CompactPage;
+  /** First index (u16 element) of the mesh in the page's index buffer, and how many it wrote (with padding). */
+  indexStart: number;
+  indexCount: number;
+  /** The page vertex its rebased indices start at; a retired range repeats it. */
+  base: number;
+  vertexCount: number;
+  triangles: number;
 }
 
 export interface CompactStoreStats {
@@ -70,6 +85,10 @@ export class CompactGeometryStore {
   constructor(private readonly deps: CompactPageDeps) {}
 
   private readonly pages = new Map<string, CompactPage[]>();
+  private readonly slots = new Map<MeshData, CompactSlot>();
+  private readonly byBatch = new Map<BatchedMesh, CompactPage>();
+  /** Page names stay unique after a page is destroyed (a list's length would hand one out twice). */
+  private nextOrdinal = 0;
   readonly batches: BatchedMesh[] = [];
   /** Bumps whenever `batches` or a page's draw range changes. */
   version = 0;
@@ -133,12 +152,15 @@ export class CompactGeometryStore {
       for (let i = indexCount; i < padded; i++) out[i] = base;
       device.queue.writeBuffer(page.batch.indexBuffer, page.indexCount * 2, out, 0, padded);
       this.stats.indexWrites++;
+      this.slots.set(mesh, { page, indexStart: page.indexCount, indexCount: padded, base, vertexCount, triangles: indexCount / 3 });
+      page.meshes.add(mesh);
       page.indexCount += padded;
       page.vertexCount += vertexCount;
       page.batch.indexCount = page.indexCount;
       unionBounds(page.batch, ref);
       page.batch.expressIds.push(mesh.expressId);
       page.batch.modelIndices?.push(mesh.modelIndex);
+      page.batch.entryRevision!++;
       this.stats.meshes++;
       this.stats.vertices += vertexCount;
       this.stats.triangles += indexCount / 3;
@@ -148,6 +170,60 @@ export class CompactGeometryStore {
     this.untrimmed = true;
     this.version++;
     this.stats.appendMs += performance.now() - t0;
+  }
+
+  /** The meshes `page` (one of `batches`) draws; undefined for any other batch. */
+  meshesOn(page: BatchedMesh): ReadonlySet<MeshData> | undefined {
+    return this.byBatch.get(page)?.meshes;
+  }
+
+  /**
+   * Stop drawing `meshes` from their pages, leaving every other mesh where it
+   * is: each one's index range is rewritten to repeat a single vertex (empty
+   * triangles, which rasterize nothing), its id leaves the page's id list, and
+   * a page with no mesh left is destroyed. The vertex records stay until then.
+   */
+  retire(meshes: Iterable<MeshData>, device: GPUDevice): void {
+    const slots: CompactSlot[] = [];
+    for (const mesh of meshes) {
+      const slot = this.slots.get(mesh);
+      if (!slot) continue;
+      this.slots.delete(mesh);
+      slots.push(slot);
+      const { batch } = slot.page;
+      const at = batch.expressIds.indexOf(mesh.expressId);
+      if (at >= 0) { batch.expressIds.splice(at, 1); batch.modelIndices?.splice(at, 1); batch.entryRevision!++; }
+      slot.page.meshes.delete(mesh);
+      this.stats.meshes--;
+      this.stats.vertices -= slot.vertexCount;
+      this.stats.triangles -= slot.triangles;
+    }
+    if (slots.length === 0) return;
+    // A page every mesh left is destroyed whole; only the ranges of pages that keep drawing are rewritten.
+    for (const slot of slots) {
+      if (slot.page.meshes.size === 0) continue;
+      if (this.scratch.length < slot.indexCount) this.scratch = new Uint16Array(Math.max(slot.indexCount, this.scratch.length * 2));
+      this.scratch.fill(slot.base, 0, slot.indexCount);
+      device.queue.writeBuffer(slot.page.batch.indexBuffer, slot.indexStart * 2, this.scratch, 0, slot.indexCount);
+      this.stats.indexWrites++;
+    }
+    for (const page of new Set(slots.map((slot) => slot.page))) if (page.meshes.size === 0) this.destroyPage(page);
+    this.version++;
+  }
+
+  private destroyPage(page: CompactPage): void {
+    const list = this.pages.get(page.key);
+    const at = list?.indexOf(page) ?? -1;
+    if (at >= 0) list!.splice(at, 1);
+    if (list?.length === 0) this.pages.delete(page.key);
+    const batch = this.batches.indexOf(page.batch);
+    if (batch >= 0) this.batches.splice(batch, 1);
+    this.byBatch.delete(page.batch);
+    this.deps.destroyGpuResources(page.batch);
+    this.stats.pages--;
+    this.stats.allocatedBytes -= page.vertexCapacity * RECORD_BYTES + page.indexCapacity * 2;
+    this.stats.usedBytes -= page.vertexCount * RECORD_BYTES + page.indexCount * 2;
+    if (this.batches.length === 0) { this.origin = null; this.untrimmed = false; } // as `destroy` leaves an empty store
   }
 
   /** Shrink every page's buffers to what it uses (GPU copies only). */
@@ -187,6 +263,8 @@ export class CompactGeometryStore {
     if (release) for (const batch of this.batches) this.deps.destroyGpuResources(batch);
     this.batches.length = 0;
     this.pages.clear();
+    this.slots.clear();
+    this.byBatch.clear();
     this.origin = null;
     this.untrimmed = false;
     this.version++;
@@ -208,7 +286,7 @@ export class CompactGeometryStore {
     let page = list[list.length - 1];
     if (!page || page.vertexCount + vertexCount > MAX_PAGE_VERTICES) {
       flushRun();
-      page = this.createPage(key, list.length, mesh, window, step, vertexCount, device, pipeline, nextId());
+      page = this.createPage(key, this.nextOrdinal++, mesh, window, step, vertexCount, device, pipeline, nextId());
       list.push(page);
     } else {
       this.ensureVertexCapacity(page, page.vertexCount + vertexCount, device, flushRun);
@@ -241,6 +319,7 @@ export class CompactGeometryStore {
       color: mesh.color,
       ...(mesh.material ? { finish: mesh.material } : {}),
       expressIds: [],
+      entryRevision: 0,
       modelIndices: [],
       bindGroup,
       uniformSlot,
@@ -250,7 +329,9 @@ export class CompactGeometryStore {
     };
     this.deps.pinBatchEntityIdAnchor(batch, 0); // the page grows: its ids (all below 2^24) are not known yet
     this.batches.push(batch);
-    return { batch, window, vertexCount: 0, vertexCapacity, indexCount: 0, indexCapacity };
+    const page: CompactPage = { key, batch, window, vertexCount: 0, vertexCapacity, indexCount: 0, indexCapacity, meshes: new Set() };
+    this.byBatch.set(batch, page);
+    return page;
   }
 
   private ensureVertexCapacity(page: CompactPage, needed: number, device: GPUDevice, flushRun: () => void): void {

@@ -1,0 +1,21 @@
+diff --git a/apps/viewer/src/lib/appearance/exact-source-geometry.ts b/apps/viewer/src/lib/appearance/exact-source-geometry.ts
+--- a/apps/viewer/src/lib/appearance/exact-source-geometry.ts
++++ b/apps/viewer/src/lib/appearance/exact-source-geometry.ts
+@@ -38,7 +38,7 @@ function reasonOf(outcome: Exclude<RemeshOutcome, { status: 'applied' }>): strin
+   return 'the model changed';
+ }
+ 
+-const isCompact = (_mesh: MeshData): boolean => false;
++const isCompact = (mesh: MeshData): boolean => mesh.compact !== undefined;
+ /** What a re-meshed product must not come back as: drawn from records, or without corner provenance. Reads no array. */
+ const lacksExactProvenance = (mesh: MeshData): boolean => isCompact(mesh) || mesh.appearanceSource === undefined;
+ 
+@@ -76,7 +76,7 @@ async function sceneHasExactGeometry(expected: ReadonlyMap<number, number>, sign
+       const pieces = scene.getMeshDataPieces(id) ?? [];
+       return pieces.length >= count && !pieces.some(isCompact);
+     };
+-    return true;
++    if ([...expected].every(drawn)) return true;
+     if (Date.now() >= deadline) return false;
+     await abortableDelay(SCENE_SWAP_POLL_MS, signal);
+   }

@@ -134,6 +134,8 @@ move a `Table` to and from a mapping spreadsheet:
   text (`data` in/out). The underlying `readXlsxTable`/`writeXlsxTable` functions are
   exported from `@ifc-lite/flow-nodes` as a shared module — both the CLI and the
   viewer read/write `.xlsx` through the same code.
+  The writer uses `@ifc-lite/export`'s `sanitizeSheetName` and `clampXlsxCellText` to
+  fit Excel's worksheet-name and cell limits. Truncated text ends in an ellipsis.
 
 `table.joinByKey` joins spreadsheet rows to model entities by `globalId`, `tag`,
 `name`, or an indexed `property` (`pset`/`prop` params) and produces three outputs:

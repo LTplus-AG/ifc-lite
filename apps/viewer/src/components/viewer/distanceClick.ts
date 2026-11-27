@@ -16,6 +16,7 @@ import { projectToCssScreen } from '../../utils/projectScreen.js';
 import { IFC_AXIS_COLORS } from '@/lib/viewport-ui/overlay-theme';
 import { measureSnapOptions, pickMeasurePoint } from './measurePick.js';
 import { cancelQueuedHover } from './measurePointMode.js';
+import { alignCornerHighlight } from '@/lib/snap/corner-assist';
 import { cancelMeasureRaycast, isDuplicateClickPoint, projectOntoConstraintAxis } from './measureHandlers.js';
 import { forgetVertexPress, rememberVertexPress, unsnapFromPrevious } from './measurePress.js';
 import { noteMeasureCursor } from './measureCursor.js';
@@ -286,6 +287,7 @@ export function handleMeasureUp(ctx: MouseHandlerContext, e: PointerEvent): bool
           const start = ctx.activeMeasurementRef.current.start;
           const projected = projectOntoConstraintAxis(start, pos, constraint);
           pos = projected.projectedPos;
+          alignCornerHighlight(renderer, [pos.x, pos.y, pos.z]);
         }
 
         const screenPos = projectToCssScreen(camera, canvas, pos);

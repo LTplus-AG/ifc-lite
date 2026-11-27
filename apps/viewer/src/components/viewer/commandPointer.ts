@@ -48,7 +48,7 @@ import { createMeshSource, type MeshPick } from '@/lib/snap/sources/mesh';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 import { cancelMeasureRaycast } from './measureHandlers.js';
 import { isGeometryHeld } from '@/lib/pick-gating';
-import { screenCornerSnapConfig } from '@/lib/snap/corner-assist';
+import { alignCornerHighlight, screenCornerSnapConfig } from '@/lib/snap/corner-assist';
 
 /** Ghost ids a command preview may use (`ghost.ts` allocates from `commandGhostId`). */
 const GHOST_PICK_GUARD = 4;
@@ -185,16 +185,7 @@ function resolveCommandSnap(
   if (aim === 'snap' && plane.spec.kind !== 'section') sources.push(...modelSnapSources(commandCtx.modelId));
   ctx.setSnapTarget(pick?.snapTarget ?? null);
   const solved = solveCommandSnap(runtime, plane, { cursor, metresPerPixel, sources, mods, aim });
-  const channel = ctx.renderer.cornerMarkers;
-  const markers = channel?.get();
-  if (markers && markers.activeIndex >= 0) {
-    const p = markers.candidates[markers.activeIndex].position;
-    const placed = solved?.render;
-    // Projection onto the workplane or an axis lock can move the command point.
-    if (!placed || Math.hypot(p.x - placed[0], p.y - placed[1], p.z - placed[2]) > 1e-6) {
-      channel.set({ ...markers, activeIndex: -1 });
-    }
-  }
+  alignCornerHighlight(ctx.renderer, solved?.render);
   return solved;
 }
 

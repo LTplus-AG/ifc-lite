@@ -15,6 +15,7 @@ import { getEntityCenter } from '../../utils/viewportUtils.js';
 import { projectToCssScreen } from '../../utils/projectScreen.js';
 import { reprojectMeasurementsForCamera } from './measureCameraState.js';
 import type { MeshData } from '@ifc-lite/geometry';
+import { alignCornerHighlight } from '@/lib/snap/corner-assist';
 import { measureSnapOptions, updateSnapViz } from './measurePick.js';
 import { pressPastClickSlop } from './pointerGesture.js';
 import { measureCursor, noteMeasureCursor } from './measureCursor.js';
@@ -181,6 +182,7 @@ export function moveRubberBand(ctx: MouseHandlerContext, x: number, y: number, u
     const start = ctx.activeMeasurementRef.current.start;
     const projected = projectOntoConstraintAxis(start, pos, constraint);
     pos = projected.projectedPos;
+    alignCornerHighlight(renderer, [pos.x, pos.y, pos.z]);
 
     // Update active axis for visualization
     ctx.updateConstraintActiveAxis(projected.activeAxis);

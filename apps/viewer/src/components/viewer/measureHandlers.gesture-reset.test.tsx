@@ -24,6 +24,9 @@ import type { UseMouseControlsParams } from './useMouseControls.js';
 import { handleMeasureTap } from './touchRouting.js';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 import { syncMeasureScreenCoords } from './measureHandlers.js';
+import { SnapCornerMarkers } from './tools/SnapCornerMarkers';
+import { render, cleanup } from '@/test/render';
+import { setGlobalRendererRef } from '@/lib/renderer-ref';
 import { Renderer } from '@ifc-lite/renderer';
 import { captureViewportFrame, registerViewportCapture, viewportCaptureOwnsFrame } from '@/lib/viewport-capture';
 
@@ -1151,6 +1154,60 @@ describe('the Distance end over background (#9049)', () => {
     fire(canvas, 'pointermove', 500, 250);
     flushFrames();
     assert.equal(xy(s().activeMeasurement?.current), '5,0', 'the end did not follow the cursor back onto the model');
+  });
+
+  it('#11746 the Shift-constrained endpoint retains nearby corners and highlights only a matching vertex', async t => {
+    const { canvas, ctx } = mount();
+    click(canvas, 0, 300);
+    assert.equal(xy(s().activeMeasurement?.start), '0,0');
+
+    const renderer = new Renderer(canvas);
+    const camera = renderer.getCamera();
+    camera.setAspect(800 / 600);
+    camera.setProjectionMode('orthographic');
+    camera.setOrthoSize(10);
+    camera.setPosition(0, 0, 10);
+    camera.setTarget(0, 0, 0);
+    t.mock.method(canvas, 'getBoundingClientRect', () => ({ left: 0, top: 0, width: 800, height: 600 }));
+    const mesh = { expressId: 42, positions: Float32Array.of(2,1,0, 2.3,1,0, 2,1.3,0),
+      indices: Uint32Array.of(0,1,2), normals: Float32Array.of(0,0,1, 0,0,1, 0,0,1), color: [1,1,1,1] };
+    const handles = [{ expressId: mesh.expressId }];
+    t.mock.method(renderer.getScene(), 'getMeshes', () => handles);
+    t.mock.method(renderer.getScene(), 'getMeshDataPieces', () => [mesh]);
+    Object.assign(ctx.renderer, { cornerMarkers: renderer.cornerMarkers,
+      raycastSceneMagnetic: renderer.raycastSceneMagnetic.bind(renderer) });
+    setGlobalRendererRef({ current: renderer });
+    const overlay = render(<SnapCornerMarkers />);
+    t.after(() => { cleanup(); setGlobalRendererRef(null); });
+    const at = camera.projectToScreen({ x: 2, y: 1, z: 0 }, 800, 600)!;
+    const hover = (shiftKey: boolean) => {
+      ctx.lastMeasureRaycastDurationRef.current = 0;
+      fire(canvas, 'pointermove', at.x, at.y, { shiftKey });
+      flushFrames();
+    };
+    const active = () => overlay.querySelector('[data-snap-corner-marker="active"]');
+    for (let i = 0; i < 60 && !active(); i++) {
+      hover(false);
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    const glyph = active()?.getAttribute('transform');
+    assert.equal(glyph, `translate(${at.x} ${at.y})`);
+    assert.equal(xy(s().activeMeasurement?.current), '2,1');
+    const count = () => overlay.querySelectorAll('[data-snap-corner-marker]').length;
+    const nearby = count();
+    assert.ok(nearby >= 2);
+    hover(true);
+    assert.equal(xy(s().activeMeasurement?.current), '2,0');
+    assert.equal(count(), nearby);
+    assert.ok(!active(), 'the measured endpoint is one metre below the vertex');
+    hover(false);
+    assert.equal(xy(s().activeMeasurement?.current), '2,1');
+    assert.equal(active()?.getAttribute('transform'), glyph);
+    fire(canvas, 'pointerdown', at.x, at.y, { shiftKey: true });
+    fire(canvas, 'pointerup', at.x, at.y, { shiftKey: true });
+    assert.equal(xy(s().measurements.at(-1)?.end), '2,0');
+    assert.ok(!active(), 'release also reconciles the freshly picked vertex');
+    assert.equal(count(), nearby);
   });
 
   it('#11746 a reduced Measure hover drops markers from the previous full pick', () => {

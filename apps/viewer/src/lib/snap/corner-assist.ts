@@ -10,7 +10,7 @@
  * share are tested without a renderer.
  */
 
-import type { ScreenCornerMarkers, ScreenCornerSnapOptions } from '@ifc-lite/renderer';
+import type { Renderer, ScreenCornerMarkers, ScreenCornerSnapOptions } from '@ifc-lite/renderer';
 
 /** The tool and picking state the rules read. */
 export interface SnapPickState {
@@ -53,4 +53,15 @@ export function cornerMarkerViews(markers: ScreenCornerMarkers | null, currentVi
     key: `${i}:${c.expressId}`, x: c.screen.x, y: c.screen.y, active: i === markers.activeIndex,
   }));
   return [...views.filter((v) => !v.active), ...views.filter((v) => v.active)];
+}
+
+/** Only the corner at the final tool endpoint may keep the active glyph. */
+export function alignCornerHighlight(renderer: Renderer, point?: readonly [number, number, number]): void {
+  const channel = renderer.cornerMarkers;
+  const markers = channel?.get();
+  if (!markers || markers.activeIndex < 0) return;
+  const p = markers.candidates[markers.activeIndex].position;
+  if (!point || Math.hypot(p.x - point[0], p.y - point[1], p.z - point[2]) > 1e-6) {
+    channel.set({ ...markers, activeIndex: -1 });
+  }
 }

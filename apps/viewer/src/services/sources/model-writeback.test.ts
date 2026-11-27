@@ -142,7 +142,7 @@ it('#9522 forwards the caller\'s abort signal so a stalled upload can be cancell
 });
 
 it('#9522 a model that follows a newly created file takes that file\'s name; a new version keeps it',async()=>{
-  const created:UploadResult={ok:true,file:{id:'copy',containerId:'folder',name:'House-edited.ifc',currentRevisionId:'c1'},revision:{id:'c1',label:'1',createdAt:'2026-11-26'}};
+  const created={ok:true,file:{id:'copy',containerId:'folder',name:'House-edited.ifc',currentRevisionId:'c1'},revision:{id:'c1',label:'1',createdAt:'2026-11-26'}} satisfies UploadResult;
   const s=await setup(async(_ctx,target)=>target.mode==='new-version'?{...created,revision:{...created.revision,id:'c2'}}:created);
   await saveSourceModel(s.host,s.binding,{mode:'new-file',containerId:'folder',fileName:'House-edited.ifc'});
   assert.equal(useViewerStore.getState().models.get('m')?.name,'House-edited.ifc');

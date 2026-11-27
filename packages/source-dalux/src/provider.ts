@@ -76,6 +76,8 @@ export class DaluxBuildProvider implements FileSourceProvider {
         items: fileAreas.map((fileArea) => ({
           id: fileAreaContainerId(fileArea.fileAreaId),
           name: fileArea.fileAreaName,
+          // Uploading into the area root is unverified against the live API (#11609).
+          acceptsUploads: false,
           meta: { kind: 'file-area' },
         })),
         cursor: page.cursor,

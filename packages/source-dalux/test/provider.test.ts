@@ -179,7 +179,7 @@ describe('DaluxBuildProvider', () => {
       const ctx = createMockCtx(mockFetch as unknown as typeof fetch);
       const page = await provider.listContainers(ctx, 'proj1');
 
-      expect(page.items).toEqual([{ id: 'fa1', name: 'Area', meta: { kind: 'file-area' } }]);
+      expect(page.items).toEqual([{ id: 'fa1', name: 'Area', acceptsUploads: false, meta: { kind: 'file-area' } }]);
       expect(mockFetch).not.toHaveBeenCalledWith(expect.stringContaining('/folders'), expect.any(Object));
     });
 

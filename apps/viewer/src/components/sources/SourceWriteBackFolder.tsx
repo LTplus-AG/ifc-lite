@@ -31,7 +31,7 @@ export function SourceWriteBackFolder({ provider, ctx, projectId, onChoose }: {
     <p>{trail.map(folder => folder.name).join(' / ') || t('sources.writeBack.projectFolders')}</p>
     {parent && <div className="flex gap-2">
       <Button type="button" size="sm" variant="outline" onClick={() => setTrail(trail.slice(0, -1))}>{t('sources.writeBack.up')}</Button>
-      <Button type="button" size="sm" onClick={() => onChoose(parent)}>{t('sources.writeBack.useFolder')}</Button>
+      {parent.acceptsUploads !== false && <Button type="button" size="sm" onClick={() => onChoose(parent)}>{t('sources.writeBack.useFolder')}</Button>}
     </div>}
     {error && <p role="alert">{error}</p>}
     {folders.loading && <output>{t('sources.writeBack.loading')}</output>}

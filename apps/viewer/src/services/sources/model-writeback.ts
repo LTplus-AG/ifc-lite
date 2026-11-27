@@ -55,11 +55,12 @@ export async function saveSourceModel(
   }
   if (!result.ok) return { kind: 'conflict', conflict: result.conflict };
   // Never relink to an identity the provider did not give back.
-  const linked = !!result.file.id && !!result.revision.id && isSourceBindingCurrent(binding);
+  const revision = result.revision;
+  const linked = !!result.file.id && !!revision?.id && isSourceBindingCurrent(binding);
   if (linked) {
     const file = { ...result.file, containerId: result.file.containerId || (target.mode === 'new-version' ? target.ref.containerId : target.containerId) };
     const nextTag: SourceTag = { ...tag, containerId: file.containerId, fileId: file.id,
-      revisionId: result.revision.id, loadedAt: Date.now() };
+      revisionId: revision.id, loadedAt: Date.now() };
     const store = useViewerStore.getState();
     store.setSourceTag(binding.modelId, nextTag);
     // Following a different file: name the model after it, so the next save names the file it writes to.

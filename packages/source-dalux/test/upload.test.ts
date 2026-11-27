@@ -7,7 +7,7 @@ import type { SourceFileRef, UploadResult } from '@ifc-lite/plugin-api';
 
 import { DaluxBuildProvider } from '../src/provider.js';
 import { DALUX_MANIFEST } from '../src/manifest.js';
-import { fileAreaContainerId, folderContainerId } from '../src/mapping.js';
+import { fileAreaContainerId, folderContainerId, LATEST_REVISION } from '../src/mapping.js';
 import {
   contentDisposition,
   daluxFileTypeFor,
@@ -34,6 +34,7 @@ const WORLD: DaluxMockWorld = {
           fileAreaType: 'files',
           folders: [
             { folderId: 'fld-ifc', folderName: 'IFC' },
+            { folderId: 'fld-other', folderName: 'Other' },
             { folderId: 'fld-strict', folderName: 'Strict', requiredProperties: ['Discipline'] },
           ],
           files: [
@@ -93,7 +94,8 @@ const textOf = async (provider: DaluxBuildProvider, ctx: ReturnType<typeof setup
 
 function ok(result: UploadResult) {
   if (!result.ok) throw new Error(`expected success, got conflict ${JSON.stringify(result.conflict)}`);
-  return result;
+  if (!result.revision) throw new Error('expected an identified uploaded revision');
+  return { ...result, revision: result.revision };
 }
 
 const FILE_A: SourceFileRef = {
@@ -218,22 +220,111 @@ describe('Dalux write-back', () => {
     ).toBe('NEW-BYTES');
   });
 
-  it('new-location: the file area root uses the area id as the folder id', async () => {
+  it('refuses a file area root as a destination until it is verified live, before posting (#9522)', async () => {
     const { ctx, provider, posts } = setup();
-    const result = ok(
-      await provider.uploadFile(
+    for (const mode of ['new-file', 'new-location'] as const) {
+      const result = await provider.uploadFile(
         ctx,
-        {
-          mode: 'new-location',
-          projectId: 'p1',
-          containerId: fileAreaContainerId('fa-files'),
-          fileName: 'moved.ifc',
-        },
+        { mode, projectId: 'p1', containerId: fileAreaContainerId('fa-files'), fileName: 'moved.ifc' },
+        bytesOf('M'),
+      );
+      expect(result).toEqual({
+        ok: false,
+        conflict: { kind: 'destination-refused', reason: expect.stringMatching(/file area's root is not supported yet/) },
+      });
+    }
+    expect(posts()).toHaveLength(0);
+  });
+
+  it('does not report a raw Dalux user id as the new revision\'s author (#9522)', async () => {
+    const { ctx, provider } = setup();
+    const result = ok(await provider.uploadFile(ctx, { mode: 'new-version', ref: FILE_A }, bytesOf('A-TWO')));
+    expect(result.revision.createdBy).toBeUndefined();
+  });
+
+  it.each([
+    ['new-version', 'missing'],
+    ['new-file', 'missing'],
+    ['new-version', 'revision ID'],
+    ['new-file', 'content hash'],
+  ] as const)('%s uses only its own finalize response for revision identity (%s, #11651)', async (mode, identity) => {
+    const { ctx, provider, fetchImpl, posts } = setup();
+    const otherWriter = createDaluxMockContext(fetchImpl);
+    const controller = new AbortController();
+    const target = mode === 'new-version'
+      ? { mode, ref: FILE_A, baseRevisionId: 'rev-1' } as const
+      : { mode, projectId: FILE_A.projectId, containerId: FILE_A.containerId, fileName: 'new.ifc' } as const;
+    let committed: { ref: SourceFileRef; revisionId: string } | undefined;
+    let laterGets = 0;
+    const fetch: typeof ctx.fetch = async (input, init) => {
+      if (committed && (init?.method ?? 'GET') === 'GET') laterGets++;
+      const response = await ctx.fetch(input, init);
+      if (!String(input).endsWith('/finalize')) return response;
+      const payload = await response.json() as { data: { fileId: string; fileRevisionId?: string; contentHash?: string } };
+      const ref = { ...FILE_A, fileId: payload.data.fileId };
+      const revisionId = payload.data.fileRevisionId;
+      if (!revisionId) throw new Error('expected the fixture revision ID');
+      committed = { ref, revisionId };
+      // A second writer advances the exact same file before our finalize response arrives.
+      await provider.uploadFile(otherWriter, { mode: 'new-version', ref, baseRevisionId: revisionId }, bytesOf('C'));
+      controller.abort();
+      if (identity !== 'revision ID') delete payload.data.fileRevisionId;
+      if (identity === 'content hash') payload.data.contentHash = 'finalize-b-hash';
+      if (identity === 'missing') delete payload.data.contentHash;
+      return new Response(JSON.stringify(payload), { status: response.status, headers: response.headers });
+    };
+
+    const result = await provider.uploadFile({ ...ctx, fetch }, target, bytesOf('B'), { signal: controller.signal });
+    if (!committed) throw new Error('expected the upload to finalize');
+    const revisionId = identity === 'revision ID' ? committed.revisionId : 'finalize-b-hash';
+    expect(result).toMatchObject({
+      ok: true,
+      file: {
+        id: committed.ref.fileId,
+        containerId: committed.ref.containerId,
+        currentRevisionId: identity === 'missing' ? LATEST_REVISION : revisionId,
+      },
+      revision: identity === 'missing' ? null : { id: revisionId },
+    });
+    expect(laterGets).toBe(0);
+    expect(posts()).toHaveLength(3);
+    expect(await textOf(provider, otherWriter, { ...committed.ref, revisionId: committed.revisionId })).toBe('B');
+    expect(await textOf(provider, otherWriter, committed.ref)).toBe('C');
+    if (mode === 'new-version') expect(await textOf(provider, otherWriter, { ...FILE_A, revisionId: 'rev-1' })).toBe('A-ONE');
+  });
+
+  it('keeps the requested folder when the finalize response omits folderId (#9522)', async () => {
+    const inner = createDaluxApiMock(WORLD, { pageSize: 100 });
+    const stripping = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const response = await inner(input, init);
+      if (!input.toString().includes('/finalize')) return response;
+      const json = (await response.json()) as { data: Record<string, unknown> };
+      delete json.data.folderId;
+      return new Response(JSON.stringify(json), { status: response.status, headers: response.headers });
+    }) as typeof fetch;
+    const ctx = createDaluxMockContext(stripping);
+    const container = folderContainerId('fa-files', 'fld-other');
+    const created = ok(
+      await new DaluxBuildProvider().uploadFile(
+        ctx,
+        { mode: 'new-location', projectId: 'p1', containerId: container, fileName: 'moved.ifc' },
         bytesOf('M'),
       ),
     );
-    expect(JSON.parse(String(posts().at(-1)?.body)).folderId).toBe('fa-files');
-    expect(result.file.containerId).toBe(fileAreaContainerId('fa-files'));
+    expect(created.file.containerId).toBe(container);
+    const revised = ok(
+      await new DaluxBuildProvider().uploadFile(ctx, { mode: 'new-version', ref: FILE_A }, bytesOf('A-TWO')),
+    );
+    expect(revised.file.containerId).toBe(FILE_A.containerId);
+  });
+
+  it('marks file areas, and only file areas, as not accepting uploads (#9522)', async () => {
+    const { ctx, provider } = setup();
+    const areas = await provider.listContainers(ctx, 'p1');
+    expect(areas.items.map((area) => area.acceptsUploads)).toEqual([false, false]);
+    const folders = await provider.listContainers(ctx, 'p1', fileAreaContainerId('fa-files'));
+    expect(folders.items.length).toBeGreaterThan(0);
+    expect(folders.items.every((folder) => folder.acceptsUploads === undefined)).toBe(true);
   });
 
   it('name-exists: same name in the same folder (case-insensitive) conflicts and posts nothing', async () => {
@@ -257,7 +348,7 @@ describe('Dalux write-back', () => {
     ok(
       await provider.uploadFile(
         ctx,
-        { mode: 'new-location', projectId: 'p1', containerId: fileAreaContainerId('fa-files'), fileName: 'a.ifc' },
+        { mode: 'new-location', projectId: 'p1', containerId: folderContainerId('fa-files', 'fld-other'), fileName: 'a.ifc' },
         bytesOf('X'),
       ),
     );

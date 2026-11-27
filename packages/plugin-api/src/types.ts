@@ -300,12 +300,10 @@ export interface SourceContainer {
   readonly name: string;
   /** Parent container id, or `undefined` for root-level containers. */
   readonly parentId?: string;
-  /**
-   * `false` when the provider knows this container has no child containers,
-   * letting the host render a leaf without a round-trip. `undefined` means
-   * unknown.
-   */
+  /** `false` when the provider knows there are no child containers, so the host renders a leaf; `undefined` is unknown. */
   readonly hasChildren?: boolean;
+  /** `false` when `uploadFile` cannot create a file directly here (a Dalux file area root); hosts must not offer it. */
+  readonly acceptsUploads?: boolean;
   readonly meta?: Record<string, unknown>;
 }
 

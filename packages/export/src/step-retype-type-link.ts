@@ -24,12 +24,13 @@ export function createRetypedAssignmentFilter(
 
     const assignedChain = registry.entities[assignedName].inheritanceChain;
     const chain = registry.entities[occurrenceName].inheritanceChain;
+    if (!assignedChain || !chain) return undefined;
     for (let index = chain.length - 1; index >= 0; index--) {
       const name = chain[index];
       const expected = schema === 'IFC2X3' && (name === 'IfcDoor' || name === 'IfcWindow')
         ? `${name}Style`
         : `${name}Type`;
-      if (registry.entities[expected]?.inheritanceChain.includes('IfcTypeObject')) {
+      if (registry.entities[expected]?.inheritanceChain?.includes('IfcTypeObject')) {
         return assignedChain.includes(expected);
       }
     }

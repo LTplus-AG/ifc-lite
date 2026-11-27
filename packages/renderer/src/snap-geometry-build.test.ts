@@ -9,6 +9,7 @@ import assert from 'node:assert';
 import type { MeshData } from '@ifc-lite/geometry';
 import { candidatesFromCache } from './snap-corner-candidates.js';
 import { ChunkedSort } from './snap-chunked-sort.js';
+import { RunMergeBuild } from './snap-edge-merge.js';
 import { GeometryCacheBuild } from './snap-geometry-build.js';
 import { buildGeometryCache } from './snap-geometry-cache.js';
 import { SnapDetector } from './snap-detector.js';
@@ -50,6 +51,30 @@ it('#11753 emits each welded box corner once across incident feature edges and s
   }
 });
 
+it('#11753 bounds comparisons at a crowded weld and traversal of one long run', t => {
+  const sqrt = Math.sqrt;
+  let operations = 0;
+  t.mock.method(Math, 'sqrt', (x: number) => { operations++; return sqrt(x); });
+  for (const chain of [false, true]) {
+    const count = chain ? 12000 : 300;
+    const points = [{ x: 0, y: 0, z: 0 }];
+    const segments = [];
+    for (let i = 1; i <= count; i++) {
+      points.push(chain ? {x:i,y:0,z:0} : {x:1,y:i/count,z:0});
+      segments.push({a:chain ? i-1 : 0,b:i});
+    }
+    const build = new RunMergeBuild(segments,points,1e-8);
+    while (!build.done) {
+      operations = 0;
+      build.step();
+      assert.ok(operations <= 4096, `one merge step did ${operations} square roots`);
+    }
+    assert.equal(build.result().length, chain ? 1 : count);
+    if (chain) assert.equal(build.result()[0].length,count);
+    else assert.ok(build.result().every(edge => edge.v0Valence === count));
+  }
+});
+
 describe('ChunkedSort', () => {
   for (const n of [0, 1, 2, 2047, 2048, 2049, 5000, 20001]) {
     it(`sorts ${n} indices like Array.prototype.sort, ties in input order`, () => {
@@ -76,6 +101,18 @@ describe('GeometryCacheBuild', () => {
       assert.deepStrictEqual(json(build.result()), json(buildGeometryCache(mesh)));
     });
   }
+
+  it('#11753 returns exactly the twelve axis-aligned edges of one box', () => {
+    const cache = buildGeometryCache(boxes(1));
+    const h = Math.fround(0.1);
+    const vertex = (bits: number) => [1000.5 + (bits & 1 ? h : 0), 20 + (bits & 2 ? h : 0), 3 + (bits & 4 ? h : 0)].join(',');
+    const pair = (a: string, b: string) => [a, b].sort().join('|');
+    const expected: string[] = [];
+    for (let i = 0; i < 8; i++) for (const axis of [1, 2, 4]) {
+      if (!(i & axis)) expected.push(pair(vertex(i), vertex(i | axis)));
+    }
+    assert.deepEqual(cache.edges.map(({ v0, v1 }) => pair([v0.x,v0.y,v0.z].join(','), [v1.x,v1.y,v1.z].join(','))).sort(), expected.sort());
+  });
 
   it('an empty mesh and a mesh without indices finish at once', () => {
     const empty = { ...boxes(1), positions: new Float32Array(0) } as MeshData;
@@ -105,7 +142,7 @@ describe('SnapDetector.startGeometryCache', () => {
     const build = detector.startGeometryCache(mesh);
     build.step();
     const fromPick = detector.getGeometryCache(mesh);
-    while (!build.step()) { /* idle steps */ }
+    assert.ok(build.done && build.step(), 'the pick completed the cache while idle work was suspended');
     assert.strictEqual(build.result(), fromPick);
   });
 });

@@ -12,6 +12,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 
+import { PointCloudSpatialIndex } from './pointcloud/point-cloud-spatial-index.js';
+import { PriorityOrder } from './snap-corner-priority.js';
 import { ManualIdleHost } from './snap-idle-test-host.js';
 import { RaycastEngine } from './raycast-engine.js';
 import { Camera } from './camera.js';
@@ -152,6 +154,64 @@ describe('screen-space corner snapping (#11504)', () => {
     assert.equal(pick(sceneWith(boxA()), 370, 265, { snapOptions: vertexOnly }).snapTarget, null, 'vertex-only never returns an edge');
   });
 
+  it('#11753 compares scans against the off-ray snap depth', () => {
+    const engine = new RaycastEngine(cameraDownZ(), sceneWith(boxA()), canvas), host = new ManualIdleHost();
+    const run = () => engine.raycastSceneMagnetic(405, 265, lock, { snapOptions: { ...base,
+      screenCornerSnap: { settleMs: 0, idleHost: host } } });
+    run(); host.drain();
+    for (const [z, expected] of [[-30, 1], [2.01, 1], [20, 77]]) {
+      const index = new PointCloudSpatialIndex(1);
+      index.insertRange(Float32Array.of(5 / 15, 35 / 15, z), 1, null);
+      engine.setPointCloudProvider(() => [{ expressId: 77, index }]);
+      const result = run();
+      assert.equal(result.intersection, null);
+      assert.equal(result.snapTarget?.expressId, expected);
+    }
+  });
+
+  for (const crossesEye of [false, true]) {
+    it(`#11753 perspective edge reprojects to the closest screen point (crosses eye: ${crossesEye})`, () => {
+      const camera = cameraDownZ();
+      camera.setProjectionMode('perspective');
+      const a = { x: 1, y: -1, z: crossesEye ? 51 : 48 }, b = { x: 4, y: 3, z: 14 };
+      // Pick a point inside the visible segment and offset the cursor along its screen normal.
+      const visiblePoint = (t: number) => camera.projectToScreen({
+        x: a.x + (b.x-a.x)*t, y: a.y + (b.y-a.y)*t, z: a.z + (b.z-a.z)*t }, 800, 600)!;
+      const at = visiblePoint(0.35), next = visiblePoint(0.5);
+      const dx = next.x-at.x, dy = next.y-at.y, len = Math.hypot(dx,dy);
+      const x = at.x - 5*dy/len, y = at.y + 5*dx/len;
+      const host = new ManualIdleHost(), index = new ScreenCornerIndex();
+      const piece = boxA(), pieces = [piece];
+      const query = () => index.query({ x,y, camera, viewKey: 'perspective', viewport: { width:800,height:600 },
+        ray: camera.unprojectToRay(x,y,800,600), pieces,
+        geometryFor: () => ({vertices:[a,b], edges:[{v0:a,v1:b,v0Valence:1,v1Valence:1,index:0,length:40,junctions:[]}]}),
+        options:{ idleHost:host, settleMs:0 } });
+      query(); host.drain();
+      const hit = query();
+      assert.ok(hit && hit.kind === 'edge');
+      const projected = camera.projectToScreen(hit.position,800,600)!;
+      assert.ok(Math.hypot(projected.x-at.x, projected.y-at.y) < 1e-5);
+    });
+  }
+
+  for (const channel of ['hidden', 'isolated', 'section'] as const) {
+    it(`#11753 sees in-place ${channel} membership replacements before idle`, () => {
+      const scene = sceneWith(boxA(), makeBox(2, [-4,-2,0], [0,2,2]));
+      const engine = new RaycastEngine(cameraDownZ(),scene,canvas), host = new ManualIdleHost(), ids = new Set([1]);
+      const filter = channel === 'hidden' ? { hiddenIds: ids } : channel === 'isolated' ? { isolatedIds: ids } : {};
+      const clip = channel === 'section' ? { sectionExcludedIds: ids,
+        sectionPlane:{normal:[0,0,1] as V3, distance:-1, flipped:false} } : undefined;
+      const run = () => engine.raycastSceneMagnetic(405,265,lock,{ ...filter,
+        snapOptions:{ ...base, screenCornerSnap:{ settleMs:0, idleHost:host } } },clip);
+      run(); host.drain();
+      assert.equal(run().snapTarget?.expressId, channel === 'hidden' ? 2 : 1);
+      ids.delete(1); ids.add(2);
+      assert.equal(run().snapTarget, null);
+      host.drain();
+      assert.equal(run().snapTarget?.expressId, channel === 'hidden' ? 1 : 2);
+    });
+  }
+
   it('(b) a corner of another element wins over the element under the ray', () => {
     // B is taller and sits to the right of A's corner; the cursor is over B,
     // 6.4 px from A's corner (0, 2, 2) and 0.5 px from B's own left edge.
@@ -259,7 +319,7 @@ function harness(pieces: MeshData[], options: Record<string, unknown> = {}) {
   host.onWait = (ms) => { state.clock += ms; };
   const query = (x: number, y: number, extra: Partial<Parameters<ScreenCornerIndex['query']>[0]> = {}) => index.query({
     x, y, ray: camera.unprojectToRay(x, y, VIEW.width, VIEW.height), camera, viewKey: state.key, ...extra,
-    liveViewKey: () => state.key, viewport: VIEW, pieces,
+    liveViewKey: () => state.key, viewport: VIEW, pieces: extra.pieces ?? pieces,
     geometryFor: (m) => { state.clock += 1; state.built.push(m.expressId); return buildGeometryCache(m); },
     options: { idleHost: host, settleMs: 100, maxSliceMs: 5, ...options }, now: () => state.clock,
   });
@@ -318,6 +378,55 @@ describe('screen corner idle build (#11504)', () => {
     }
     assert.equal(t.index.stats()?.complete, true);
     assert.equal(t.state.built.length, 40);
+  });
+
+  it('#11753 drops removed pieces immediately and after the replacement build', () => {
+    const pieces = [boxA()], t = harness(pieces, {settleMs:0});
+    const at = t.at(0,2,2);
+    t.query(at.x,at.y); t.host.drain();
+    assert.equal(t.query(at.x,at.y)?.expressId, 1);
+    assert.equal(t.query(at.x,at.y,{ pieces:[...pieces] })?.expressId, 1, 'fresh inventory with identical members keeps its grid');
+    const empty: MeshData[] = [];
+    assert.equal(t.query(at.x,at.y,{ pieces:empty }), null);
+    t.host.drain();
+    assert.equal(t.query(at.x,at.y,{ pieces:empty }), null);
+  });
+
+  it('#11753 a reordered partial grid never drains a large piece in the next exhausted slice', () => {
+    const big = boxSoup(1000,1), small = boxA();
+    small.expressId = 2;
+    const t = harness([big], {settleMs:0});
+    const at = t.at(0,2,2);
+    t.query(at.x,at.y);
+    while (!t.index.stats()?.gridPieces) assert.ok(t.host.tick(0));
+    assert.equal(t.index.stats()?.complete,false);
+    const pieces = [small,big];
+    assert.equal(t.query(at.x,at.y,{pieces}),null);
+    assert.equal(t.index.stats()?.gridPieces,0);
+    assert.ok(t.host.tick(0));
+    assert.equal(t.index.stats()?.complete,false);
+    t.host.drain();
+    assert.equal(t.query(at.x,at.y,{pieces})?.expressId,2);
+  });
+
+  it('#11753 bounds position reads and yields while ordering a large inventory', () => {
+    const large = boxSoup(3000,1), original = large.positions;
+    let reads = 0;
+    large.positions = new Proxy(original, { get(target, key) {
+      if (typeof key === 'string' && /^\d+$/.test(key)) reads++;
+      return Reflect.get(target,key,target);
+    } });
+    const order = new PriorityOrder([large],cameraDownZ(),VIEW);
+    order.step(() => true);
+    assert.ok(reads > 0 && reads < original.length);
+    while (!order.done) order.step(() => true);
+    assert.deepEqual(order.result(),[large]);
+    const inventory = Array.from({length:6000}, () => large);
+    const many = new PriorityOrder(inventory,cameraDownZ(),VIEW);
+    for (let i = 0; i <= inventory.length; i++) many.step(() => true);
+    assert.equal(many.done,false,'sort and permutation span additional slices');
+    while (!many.done) many.step(() => true);
+    assert.equal(many.result().length, inventory.length);
   });
 
   it('a pick never runs a candidate-build chunk or a grid rebuild; only idle slices do', () => {

@@ -57,9 +57,9 @@ export function withPointCloudSnap(
         // scanned-over geometry (#1860 review finding 2). When the
         // mesh path found no snap target at all (bare face hit, or
         // no mesh hit), the point snap wins as before.
-        const sourceTarget = magneticResult.snapTarget?.metadata?.sourceCurve ? magneticResult.snapTarget : null;
-        const wins = sourceTarget
-            ? pointCloudWinsOverSourceSnap(pointHit, sourceTarget, ray, snapCamera)
+        const targetWithOwnDepth = !intersection || magneticResult.snapTarget?.metadata?.sourceCurve ? magneticResult.snapTarget : null;
+        const wins = targetWithOwnDepth
+            ? pointCloudWinsOverSourceSnap(pointHit, targetWithOwnDepth, ray, snapCamera)
             : pointCloudWinsOverMeshSnap({
                 pointHit,
                 meshSnapTarget: magneticResult.snapTarget,

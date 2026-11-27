@@ -53,7 +53,13 @@ export class CandidateBuild {
     const end = Math.min(all.length, this.next + maxEdges);
     for (; this.next < end; this.next++) {
       const edge = all[this.next];
-      this.edges.set([edge.v0.x, edge.v0.y, edge.v0.z, edge.v1.x, edge.v1.y, edge.v1.z], this.next * 6);
+      const offset = this.next * 6;
+      this.edges[offset] = edge.v0.x;
+      this.edges[offset + 1] = edge.v0.y;
+      this.edges[offset + 2] = edge.v0.z;
+      this.edges[offset + 3] = edge.v1.x;
+      this.edges[offset + 4] = edge.v1.y;
+      this.edges[offset + 5] = edge.v1.z;
       this.addCorner(edge.v0, edge.v0Valence);
       this.addCorner(edge.v1, edge.v1Valence);
       for (const j of edge.junctions) this.addCorner(j.point, j.valence);

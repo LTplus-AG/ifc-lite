@@ -136,12 +136,12 @@ export class ScreenCornerIndex {
     // The view as the grid sees it: what a grid is built for, and what the settle timer runs on.
     const viewKey = gridKey(args.viewKey, args.clip, viewport.width, viewport.height, args.hiddenIds, args.isolatedIds, cell, eligible);
     const liveViewKey = args.liveViewKey;
-    const maxSliceMs = options.maxSliceMs;
+    const { settleMs, maxSliceMs } = options;
     pipeline.observe({
       snapOccurrences: args.snapOccurrences, pieces: args.pieces, geometryFor: args.geometryFor, startGeometry: args.startGeometry, camera: args.camera, viewport,
       liveViewKey: liveViewKey ? () => liveViewKey() : () => args.viewKey,
       hiddenIds: args.hiddenIds, isolatedIds: args.isolatedIds, eligible, clip: args.clip, cell,
-      settleMs: options.settleMs ?? DEFAULT_SETTLE_MS,
+      settleMs: settleMs !== undefined && Number.isFinite(settleMs) && settleMs >= 0 ? settleMs : DEFAULT_SETTLE_MS,
       maxSliceMs: maxSliceMs !== undefined && Number.isFinite(maxSliceMs) && maxSliceMs >= 0 ? maxSliceMs : DEFAULT_MAX_SLICE_MS,
       now: args.now ?? (() => performance.now()),
     }, viewKey);

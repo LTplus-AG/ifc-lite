@@ -40,6 +40,7 @@ export class RaycastEngine {
     private sourceSnapCurves: readonly SourceSnapCurve[] = [];
     /** Flat pieces read back for released geometry (#10264); empty when unused. */
     private readbackMeshes: readonly MeshData[] = [];
+    private cornerInventory: { resident: readonly MeshData[]; pieces: readonly MeshData[] } | null = null;
     /** The one ray they were prepared for: canvas point and view stamp at set time. */
     private readbackCoverage: { x: number; y: number; view: string } | null = null;
     /** Host state a ray's answer also depends on, folded into the view stamp (the renderer's pick-clip revision). */
@@ -88,6 +89,12 @@ export class RaycastEngine {
     /** Released geometry read back for an imminent raycast or snap (#10264), under the same visibility and clip
      *  rules as flat candidates; `null` clears. The host owns their lifetime and frame (`placeAppearanceSource`). */
     setReadbackMeshes(meshes: readonly MeshData[] | null, at?: { x: number; y: number }): void {
+        if (this.cornerInventory && (meshes?.length !== this.readbackMeshes.length ||
+            !meshes.every((piece, i) => piece === this.readbackMeshes[i]))) {
+            // Release the previous readback inventory and any pending idle build before its leases end.
+            this.screenCorners.clear();
+            this.cornerInventory = null;
+        }
         this.readbackMeshes = meshes ?? [];
         this.readbackCoverage = meshes && at ? { x: at.x, y: at.y, view: this.readbackViewKey() } : null;
     }
@@ -106,11 +113,25 @@ export class RaycastEngine {
             Array.from(c.getViewProjMatrix().m).join(','), `${v?.width ?? 0}x${v?.height ?? 0}`, this.viewStampExtra()].join('|');
     }
 
+    private readbackForRay(at?: { x: number; y: number }): readonly MeshData[] {
+        return this.readbackCoverage === null || (at && this.readbackCovers(at.x, at.y)) ? this.readbackMeshes : [];
+    }
+
+    private piecesForCorners(x: number, y: number): readonly MeshData[] {
+        const resident = this.flatIndex.allPieces();
+        const readback = this.readbackForRay({ x, y });
+        if (!readback.length) return resident;
+        if (this.cornerInventory?.resident !== resident) {
+            const pieces = resident.length ? Array.from(new Set([...resident, ...readback])) : readback;
+            this.cornerInventory = { resident, pieces };
+        }
+        return this.cornerInventory.pieces;
+    }
+
     /** Flat candidates near the ray, plus ray-culled instanced occurrences. */
     private meshesForRay(options: PickOptions | undefined, ray: Ray, at?: { x: number; y: number }): MeshData[] {
         const allMeshData = this.flatIndex.query(ray, this.visibilityFilter(options));
-        const covered = this.readbackCoverage === null || (at !== undefined && this.readbackCovers(at.x, at.y));
-        if (covered) for (const piece of this.readbackMeshes) {
+        for (const piece of this.readbackForRay(at)) {
             if (isEntityVisible(piece.expressId, options?.hiddenIds, options?.isolatedIds)) allMeshData.push(piece);
         }
         const seenInstancedKeys = new Set<string>();
@@ -276,7 +297,7 @@ export class RaycastEngine {
             const ordinaryTarget = magneticResult.snapTarget;
             magneticResult = withScreenCorner(this.screenCorners,
                 { camera: this.camera, viewKey: () => [this.readbackViewKey(), this.scene.getPickGeometryRevision?.(), this.scene.getInstancedEntityRevision?.()].join('|'),
-                  snapOccurrences: this.scene.snapOccurrences?.bind(this.scene), getPieces: () => this.flatIndex.allPieces(), snapDetector: this.snapDetector },
+                  snapOccurrences: this.scene.snapOccurrences?.bind(this.scene), getPieces: () => this.piecesForCorners(x, y), snapDetector: this.snapDetector },
                 magneticResult, x, y, ray, viewport, options, clip, intersection?.distance ?? null);
 
             const source = querySourceCurves(this.sourceSnapCurves, magneticResult.snapTarget,
@@ -307,6 +328,7 @@ export class RaycastEngine {
      * Invalidate BVH cache (call when geometry changes)
      */
     invalidateBVHCache(): void {
+        this.cornerInventory = null;
         this.flatIndex.invalidate();
         this.screenCorners.clear();
     }
@@ -324,6 +346,7 @@ export class RaycastEngine {
     /** Release this engine before discarding it; create a new engine to resume picking. */
     dispose(): void {
         this.unsubscribeEviction?.();
+        this.cornerInventory = null;
         this.flatIndex.invalidate();
         this.snapDetector.clearCache();
         this.screenCorners.clear();

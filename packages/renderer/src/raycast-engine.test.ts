@@ -1129,6 +1129,70 @@ describe('RaycastEngine flat index (#9504)', () => {
 });
 
 describe('RaycastEngine readback meshes (#10264)', () => {
+  it('#11753 snaps the prepared readback corner only within the covered ray and view', () => {
+    const scene = new Scene(), quad = makeQuad({ expressId: 17, modelIndex: 3 });
+    addRegularQuad(scene, quad);
+    const camera = orthoCameraLookingDownZ([0, 0, 0], 50);
+    const engine = engineFor(scene, camera), idle = new ManualIdleHost();
+    scene.releaseGeometryData();
+    const corner = { x: 5, y: 5, z: 0 };
+    const at = camera.projectToScreen(corner, 800, 600)!;
+    // Five pixels inward on each axis: the ray hits the face, about seven pixels from its vertex.
+    const cursor = { x: at.x - 5, y: at.y + 5 };
+    const run = (x = cursor.x, hiddenIds?: Set<number>) => engine.raycastSceneMagnetic(x, cursor.y,
+      { edge: null, meshExpressId: null, lockStrength: 0 }, { hiddenIds, snapOptions: {
+        snapToEdges: false, screenSnapRadius: 1, screenCornerSnap: { settleMs: 0, idleHost: idle },
+      } });
+    const prepared = { ...quad, positions: quad.positions.slice() };
+    engine.setReadbackMeshes([prepared], cursor);
+    assert.equal(run().snapTarget?.type, 'face');
+    idle.drain();
+    assert.deepEqual(run().snapTarget?.position, corner);
+    assert.equal(run().snapTarget?.type, 'vertex');
+    assert.equal(run(cursor.x - 2).snapTarget, null, 'a neighbouring uncovered ray cannot reuse the warm grid');
+    run(); idle.drain();
+    assert.equal(run(cursor.x, new Set([17])).snapTarget, null);
+    camera.setPosition(0, 0, 51);
+    assert.equal(run().snapTarget, null);
+    engine.setReadbackMeshes([{ ...prepared, expressId: 18 }], cursor);
+    run(); idle.drain();
+    assert.equal(run().snapTarget?.expressId, 18);
+    run(cursor.x, new Set([18]));
+    assert.equal(idle.pending, 1);
+    engine.setReadbackMeshes(null);
+    assert.equal(idle.pending, 0, 'clearing a prepared inventory cancels its pending build');
+    assert.equal(run().snapTarget, null);
+  });
+
+  it('#11753 NaN settle time waits through camera motion and builds after 120 quiet milliseconds', t => {
+    const scene = new Scene();
+    addRegularQuad(scene, makeQuad({ expressId: 19 }));
+    const camera = orthoCameraLookingDownZ([0, 0, 0], 50);
+    const engine = engineFor(scene, camera), idle = new ManualIdleHost();
+    let now = 0;
+    t.mock.method(performance, 'now', () => now);
+    const builds = t.mock.method(engine.getSnapDetector(), 'startGeometryCache');
+    const pick = () => {
+      const at = camera.projectToScreen({ x: 5, y: 5, z: 0 }, 800, 600)!;
+      return engine.raycastSceneMagnetic(at.x + 5, at.y, { edge: null, meshExpressId: null, lockStrength: 0 },
+        { snapOptions: { screenCornerSnap: { settleMs: NaN, idleHost: idle } } });
+    };
+    for (let i = 1; i <= 12; i++) {
+      now += 16;
+      camera.setPosition(0, 0, 50 + i);
+      assert.equal(pick().snapTarget, null);
+      assert.ok(idle.tick());
+      assert.equal(builds.mock.callCount(), 0);
+    }
+    now += 119;
+    idle.tick();
+    assert.equal(builds.mock.callCount(), 0);
+    now++;
+    idle.drain();
+    assert.equal(pick().snapTarget?.expressId, 19);
+    assert.deepEqual(pick().snapTarget?.position, { x: 5, y: 5, z: 0 });
+  });
+
   it('raycasts and snaps released geometry read back from storage, under hide/isolate, and clears', () => {
     const scene = new Scene();
     const resident = makeQuad({ expressId: 1, translate: [0, 0, -10] });

@@ -19,9 +19,6 @@ export interface PieceCandidates {
   edges: Float64Array;
 }
 
-/** Corner quantisation used to drop duplicates within a piece (0.1 mm). */
-const QUANT = 1e4;
-
 /** Edges one `step` of a `CandidateBuild` processes: the most a slice can overshoot its budget by. */
 export const CANDIDATE_CHUNK = 256;
 
@@ -43,7 +40,8 @@ export class CandidateBuild {
 
   private addCorner(p: Vec3, valence: number): void {
     if (valence < MIN_CORNER_VALENCE) return;
-    const key = `${Math.round(p.x * QUANT)},${Math.round(p.y * QUANT)},${Math.round(p.z * QUANT)}`;
+    // Edge endpoints and junctions already use welded positions. Only collapse exact repeats.
+    const key = `${p.x},${p.y},${p.z}`;
     if (this.seen.has(key)) return;
     this.seen.add(key);
     this.corners.push(p.x, p.y, p.z);

@@ -76,6 +76,11 @@ export interface ScreenCornerSnapOptions {
 export const DEFAULT_CORNER_RADIUS_PX = 10;
 export const DEFAULT_EDGE_RADIUS_PX = 6;
 
+function screenRadius(value: number | undefined, fallback: number): number {
+  const radius = value ?? fallback;
+  return Number.isFinite(radius) && radius > 0 ? radius : 0;
+}
+
 export class ScreenCornerIndex {
   private pipeline: CornerBuildPipeline | null = null;
 
@@ -119,8 +124,8 @@ export class ScreenCornerIndex {
     kinds?: { corners?: boolean; edges?: boolean };
   }): ScreenCornerHit | null {
     const { x, y, viewport, options } = args;
-    const cornerR = options.cornerRadiusPx ?? DEFAULT_CORNER_RADIUS_PX;
-    const edgeR = options.edgeRadiusPx ?? DEFAULT_EDGE_RADIUS_PX;
+    const cornerR = screenRadius(options.cornerRadiusPx, DEFAULT_CORNER_RADIUS_PX);
+    const edgeR = screenRadius(options.edgeRadiusPx, DEFAULT_EDGE_RADIUS_PX);
     if (!(cornerR > 0) && !(edgeR > 0)) return null;
     const cell = Math.max(cornerR, edgeR);
     const eligible = options.eligibleModelIndices;

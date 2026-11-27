@@ -395,6 +395,46 @@ describe('RaycastEngine.raycastScene', () => {
     { expressId: 1_025, modelIndex: 7, geometryItemId: 1_011, sourceTriangleIndex: 0 });
   });
 
+  it('#11753 selects each of two welded feature corners 40 micrometres apart at zoom', () => {
+    const scene = new Scene(), mesh = makeQuad({ expressId: 72 });
+    // One piece with two triangles. Each apex is shared by two feature edges.
+    mesh.positions = Float32Array.of(-0.002,-0.002,0, 0,-0.002,0, 0,0,0,
+      0.00004,0,0, 0.00004,-0.002,0, 0.002,-0.002,0);
+    mesh.indices = Uint32Array.of(0,1,2,3,4,5);
+    addRegularMesh(scene, mesh);
+    const camera = orthoCameraLookingDownZ([0,0,0], 1, 0.01);
+    const engine = engineFor(scene, camera, fakeCanvas(4000, 4000)), idle = new ManualIdleHost();
+    for (const x of [0, mesh.positions[9]]) {
+      const at = camera.projectToScreen({ x, y: 0, z: 0 }, 4000, 4000)!;
+      const pick = () => engine.raycastSceneMagnetic(at.x, at.y - 2, { edge: null, meshExpressId: null, lockStrength: 0 },
+        { snapOptions: { snapToVertices: true, snapToEdges: false,
+          screenCornerSnap: { cornerRadiusPx: 4, settleMs: 0, idleHost: idle } } });
+      pick(); idle.drain();
+      const hit = pick();
+      assert.equal(hit.intersection, null);
+      assert.deepEqual(hit.snapTarget?.position, { x, y: 0, z: 0 });
+    }
+  });
+
+  for (const kind of ['edge', 'vertex'] as const) {
+    it(`#11753 preserves the valid ${kind} radius when the other radius is NaN`, () => {
+      const scene = new Scene();
+      addRegularMesh(scene, makeQuad({ expressId: 73 }));
+      const camera = orthoCameraLookingDownZ([0,0,0], 50);
+      const engine = engineFor(scene, camera), idle = new ManualIdleHost();
+      const at = camera.projectToScreen({ x: kind === 'edge' ? 0 : 5, y: 5, z: 0 }, 800, 600)!;
+      const pick = () => engine.raycastSceneMagnetic(at.x, at.y - 3, { edge: null, meshExpressId: null, lockStrength: 0 },
+        { snapOptions: { snapToVertices: true, snapToEdges: true, screenCornerSnap: {
+          cornerRadiusPx: kind === 'vertex' ? 10 : NaN, edgeRadiusPx: kind === 'edge' ? 6 : NaN,
+          settleMs: 0, idleHost: idle } } });
+      pick(); idle.drain();
+      const hit = pick();
+      assert.equal(hit.intersection, null);
+      assert.equal(hit.snapTarget?.type, kind);
+      assert.equal(hit.snapTarget?.expressId, 73);
+    });
+  }
+
   it('#11753 finds an off-ray transformed corner of a GPU-only occurrence during idle slices', () => {
     const scene = new Scene();
     const shard = instancedTriangle(1025);

@@ -58,7 +58,8 @@ export const isBatchBranch = (headRef) => String(headRef ?? '').startsWith(BATCH
 /**
  * Jobs a fast `pull_request` run skips whole. Measured mean job-minutes per
  * green PR run (30 runs, 2026-10-31): viewer-tests 16 x 12.2, viewer-e2e
- * 8 x 5.1, node-tests 4 x 5.7, rust-retained 21.9, provenance-tests 3.0.
+ * 8 x 5.1, node-tests 4 x 5.7, rust-retained 21.9 (before the matrix split),
+ * provenance-tests 3.0.
  * viewer-e2e is otherwise PR-only, so in fast mode it moves to `merge_group`.
  */
 export const FAST_SKIPPED_JOBS = ['viewer-tests', 'viewer-e2e', 'node-tests', 'provenance-tests', 'rust-retained'];

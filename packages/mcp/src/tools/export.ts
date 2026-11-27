@@ -27,9 +27,10 @@ import type { Tool } from './types.js';
 import { fmtInt, okResult, resolveModel } from './util.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import { resolveSafePath } from '../safe-path.js';
+import { FILE_WRITE } from './annotations.js';
 
 const exportIfc: Tool = {
-  name: 'export_ifc',
+  name: 'export_ifc', title: 'Export IFC', annotations: FILE_WRITE,
   description: 'Write the model (with pending mutations) to .ifc/.ifczip on disk.',
   scope: 'export',
   inputSchema: {
@@ -101,7 +102,7 @@ const exportIfc: Tool = {
 };
 
 const exportCsv: Tool = {
-  name: 'export_csv',
+  name: 'export_csv', title: 'Export CSV', annotations: FILE_WRITE,
   description: 'Tabular property/quantity export. Columns may be plain attributes (Name, Type, GlobalId) or `Pset_X.Property` / `Qto_X.Quantity` paths.',
   scope: 'export',
   inputSchema: {
@@ -131,7 +132,7 @@ const exportCsv: Tool = {
 };
 
 const exportJson: Tool = {
-  name: 'export_json',
+  name: 'export_json', title: 'Export JSON', annotations: FILE_WRITE,
   description: 'Structured JSON dump of attributes/properties/quantities for a type set.',
   scope: 'export',
   inputSchema: {
@@ -173,7 +174,7 @@ function artifactTool(name: keyof typeof artifactFormats, description: string): 
     title,
     description,
     scope: 'export',
-    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
+    annotations: FILE_WRITE,
     outputSchema: {
       type: 'object',
       properties: { filePath: { type: 'string' }, bytes: { type: 'integer' } },
@@ -246,7 +247,7 @@ const exportObj = artifactTool('obj', 'Wavefront OBJ export of model geometry wi
 const exportJsonld = artifactTool('jsonld', 'JSON-LD export of the model graph with IFC properties.');
 
 const exportIfcx: Tool = {
-  name: 'export_ifcx',
+  name: 'export_ifcx', title: 'Export IFCX', annotations: FILE_WRITE,
   description: 'Save to .ifcx (IFC5 / USD-style node graph) via the Rust exporter: spatial hierarchy + classes + known IFC5 properties.',
   scope: 'export',
   inputSchema: {
@@ -280,7 +281,7 @@ const exportIfcx: Tool = {
 };
 
 const exportUsd: Tool = {
-  name: 'export_usd',
+  name: 'export_usd', title: 'Export USD', annotations: FILE_WRITE,
   description: 'Save to .usda (OpenUSD ASCII) via the Rust exporter: a real Z-up USD stage — spatial hierarchy of Xform prims, UsdGeomMesh geometry, UsdPreviewSurface materials, and IFC metadata as custom attributes. Whole-model (geometry-backed); opens in usdview / Blender / Omniverse.',
   scope: 'export',
   inputSchema: {

@@ -32,9 +32,14 @@ describe('agent tool arguments (#9523)', () => {
 
   it('query_entities bounds limit and offset at both ends (review: limit -1 returned all but the last)', async () => {
     for (const [host, run] of await hosts()) {
-      const page = async (args: Record<string, unknown>) => (await run('query_entities', args)).structured as { count: number; entities: unknown[] };
+      const page = async (args: Record<string, unknown>) => {
+        const result = await run('query_entities', args);
+        assert.equal(result.isError, false, `${host}: ${result.text}`);
+        return result.structured as { count: number; entities: unknown[] };
+      };
       const all = await page({ limit: 200 });
       assert.ok(all.count > 1, host);
+      assert.deepEqual((await page({ limit: '2', offset: '1' })).entities, all.entities.slice(1, 3), host);
       assert.equal((await page({ limit: -1 })).entities.length, 0, `${host}: a negative limit is 0, not "all but the last"`);
       assert.equal((await page({ limit: 1.7 })).entities.length, 1, `${host}: a fraction is truncated`);
       assert.equal((await page({ limit: 1e12 })).entities.length, Math.min(all.count, 200), `${host}: a huge limit is the cap`);

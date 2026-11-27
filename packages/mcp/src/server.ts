@@ -374,17 +374,17 @@ export class MCPServer {
         hint: 'Use `tools/list` to discover available tools.',
       });
     }
+    if (this.config.readOnly && tool.scope === 'mutate') {
+      return toolError({
+        code: ToolErrorCode.READ_ONLY,
+        message: `Server started in read-only mode; '${params.name}' rejected.`,
+      });
+    }
     if (!scopeAllows(this.scope, tool.scope)) {
       return toolError({
         code: ToolErrorCode.PERMISSION_DENIED,
         message: `Tool '${params.name}' requires scope '${tool.scope}'`,
         details: { required: tool.scope, granted: this.scope.scopes },
-      });
-    }
-    if (this.config.readOnly && tool.scope === 'mutate') {
-      return toolError({
-        code: ToolErrorCode.READ_ONLY,
-        message: `Server started in read-only mode; '${params.name}' rejected.`,
       });
     }
 

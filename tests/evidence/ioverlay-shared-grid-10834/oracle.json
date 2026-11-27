@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "why": "Use a separate grid only for the mandatory overlap correction while retaining the iOverlay 9 API and lockfiles. The ISSUE_129 mixed slab must fall back and fail its established triangle count.",
+  "key": "rust/geometry/src/bool2d/staged_grid.rs",
+  "mutation": "tests/evidence/ioverlay-shared-grid-10834/behaviour.oracle.patch",
+  "test": "rust/geometry/tests/triangulation_invariance.rs"
+}

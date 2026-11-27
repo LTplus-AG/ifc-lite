@@ -1,0 +1,14 @@
+diff --git b/rust/geometry/src/bool2d.rs a/rust/geometry/src/bool2d.rs
+index 01afa49325..c3af97481b 100644
+--- b/rust/geometry/src/bool2d.rs
++++ a/rust/geometry/src/bool2d.rs
+@@ -143,8 +143,7 @@ pub(crate) fn subtract_staged_2d_counted(
+         .count();
+     let precursor = shapes_to_profile(&result)?;
+     let union = ccw_paths(void_contours.iter().map(Vec::as_slice));
+-    let correction = profile_to_paths(&precursor)
+-        .overlay(&union, OverlayRule::Intersect, FillRule::NonZero);
++    let correction = overlay(&profile_to_paths(&precursor), &union, OverlayRule::Intersect, FillRule::NonZero);
+     let correction = correction
+         .iter()
+         .map(|s| shapes_to_profile(std::slice::from_ref(s)))

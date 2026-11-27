@@ -483,3 +483,17 @@ ENTITY E; WHERE W : WriteAt(${index}) = 9; END_ENTITY; END_SCHEMA;`);
     expect(report.findings.map(f => [f.category, f.rule])).toEqual(invalid ? [['evaluation_error', 'E.W']] : []);
   }
 });
+
+it('applies EXPRESS IN precedence and instance equality in public WHERE rules (#11647)', async () => {
+  const { schema } = generated(`SCHEMA S; ENTITY Node; N : INTEGER; END_ENTITY;
+ENTITY Probe; A : Node; B : Node; WHERE
+  Pending : 1 IN [?,2]; UnknownResult : (1 IN [?,2]) = UNKNOWN;
+  MissingLeft : (? IN []) = UNKNOWN; MissingRight : (1 IN ?) = UNKNOWN;
+  MatchLast : (1 IN [?,1]) = TRUE; MatchFirst : (1 IN [1,?]) = TRUE;
+  Miss : (1 IN [2,3]) = FALSE; Empty : (1 IN []) = FALSE;
+  SameInstance : A IN [A]; DistinctInstances : NOT (A IN [B]);
+  FalseControl : 1 IN [2,3]; END_ENTITY; END_SCHEMA;`);
+  const report = await validateStepText('DATA;#1=NODE(1);#2=NODE(1);#3=PROBE(#1,#2);ENDSEC;', { schema, categories: ['entity_rule'] });
+  expect(report.stats.entityRuleEvaluations).toBe(11);
+  expect(report.findings.map(f => f.rule)).toEqual(['Probe.FalseControl']);
+});

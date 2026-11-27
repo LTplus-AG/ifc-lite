@@ -139,13 +139,15 @@ export function ge(a: Value, b: Value): Logical {
   return o === undefined ? UNKNOWN : o >= 0;
 }
 
-/** `e IN agg`: membership by instance identity first, then by value. */
+/** EXPRESS §12.2.3: an instance-equal match takes precedence over an indeterminate member. */
 export function isIn(e: Value, agg: Value): Logical {
   if (e === undefined || !isAggregate(agg)) return UNKNOWN;
+  let result: Logical = false;
   for (const item of agg) {
-    if (item === e || eq(e, item) === true) return true;
+    if (item === undefined) result = UNKNOWN;
+    else if (same(e, item) === true) return true;
   }
-  return false;
+  return result;
 }
 
 export function interval(low: Value, op1: '<' | '<=', item: Value, op2: '<' | '<=', high: Value): Logical {

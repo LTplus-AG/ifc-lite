@@ -110,9 +110,10 @@ impl FixedGridComposition {
         let af = floats(&a.rings);
         let bf = floats(&b.rings);
         let radius = (1_u64 << 51) as f64;
-        let unit =
-            FloatPointAdapter::try_with_scale(FloatRect::new(-radius, radius, -radius, radius), 1.)
-                .map_err(|e| format!("Fixed-grid composition unit range: {e:?}"))?;
+        let rect = FloatRect::new(-radius, radius, -radius, radius)
+            .map_err(|e| format!("Fixed-grid composition unit range: {e:?}"))?;
+        let unit = FloatPointAdapter::try_with_scale(rect, 1.)
+            .map_err(|e| format!("Fixed-grid composition unit range: {e:?}"))?;
         crate::contour_grid_guard::validate_with_adapter(&af, &bf, 1., &unit)
             .map_err(|e| format!("PDF integer stage qualification: {e}"))?;
         let rule = match op {
@@ -124,7 +125,7 @@ impl FixedGridComposition {
             ContourFillRule::NonZero => FillRule::NonZero,
             ContourFillRule::EvenOdd => FillRule::EvenOdd,
         };
-        let shapes = Overlay::with_contours(&a.rings, &b.rings).overlay(rule, fill);
+        let shapes = Overlay::from_subj_and_clip(&a.rings, &b.rings).overlay(rule, fill);
         let mut group = Group {
             rings: vec![],
             shape_offsets: vec![],

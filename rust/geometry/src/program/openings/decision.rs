@@ -38,7 +38,10 @@ type ItemBounds = (Point3<f64>, Point3<f64>, Option<Vector3<f64>>);
 
 /// Decide and publish one cutter at a time, so the classification effects of
 /// earlier cutters keep their original order if a later predicate unwinds.
-pub(crate) struct Decisions(Inputs);
+pub(crate) struct Decisions {
+    inputs: Inputs,
+    aligned_wall_opening: bool,
+}
 enum Inputs {
     Parts(std::collections::vec_deque::IntoIter<Mesh>),
     Bounds(std::vec::IntoIter<ItemBounds>),
@@ -52,20 +55,22 @@ pub(super) fn classify(
     parts: std::collections::VecDeque<Mesh>,
     bounds: OpeningBounds,
     meshes: Vec<Mesh>,
+    aligned_wall_opening: bool,
 ) -> Decisions {
-    Decisions(if bounds.is_empty() {
+    let inputs = if bounds.is_empty() {
         Inputs::Parts(parts.into_iter())
     } else if meshes.len() != bounds.len() {
         Inputs::Bounds(bounds.into_iter())
     } else {
         Inputs::Meshes(bounds.into_iter().zip(meshes))
-    })
+    };
+    Decisions { inputs, aligned_wall_opening }
 }
 
 impl Iterator for Decisions {
     type Item = CutterKind;
     fn next(&mut self) -> Option<Self::Item> {
-        match &mut self.0 {
+        match &mut self.inputs {
             Inputs::Parts(parts) => parts.next().map(|mesh| {
                 let (min, max) = world_bounds(&mesh);
                 CutterKind::Rectangular(min, max, None)
@@ -74,7 +79,9 @@ impl Iterator for Decisions {
                 bounds.next().map(|(min, max, dir)| CutterKind::Rectangular(min, max, dir))
             }
             Inputs::Meshes(meshes) => {
-                meshes.next().map(|((min, max, dir), mesh)| classify_item(min, max, dir, mesh))
+                meshes.next().map(|((min, max, dir), mesh)| {
+                    classify_item(min, max, dir, mesh, self.aligned_wall_opening)
+                })
             }
         }
     }
@@ -88,6 +95,7 @@ fn classify_item(
     max: Point3<f64>,
     dir: Option<Vector3<f64>>,
     mesh: Mesh,
+    aligned_wall_opening: bool,
 ) -> CutterKind {
     let frame = infer_opening_frame(&mesh, dir.as_ref());
     let diagonal = dir.map(|d| !is_axis_aligned_direction(&d)).unwrap_or(false);
@@ -95,7 +103,9 @@ fn classify_item(
     if let Some(frame) = frame {
         if !clean_box {
             CutterKind::NonRectangular(mesh, min, max, dir)
-        } else if diagonal || !frame.is_axis_aligned() || !bounds_are_the_box(&mesh) {
+        } else if diagonal || !frame.is_axis_aligned()
+            || (aligned_wall_opening && !bounds_are_the_box(&mesh))
+        {
             CutterKind::DiagonalRectangular(mesh, frame)
         } else {
             CutterKind::Rectangular(min, max, dir)

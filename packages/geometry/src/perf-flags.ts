@@ -22,6 +22,10 @@ export const GEOMETRY_PERF_FLAG_BINDINGS = {
   shardScan: { global: '__IFC_LITE_SHARD_SCAN', urlParam: 'perf.shardScan' },
   /** Decide GPU instancing once per model (global instance plan). Off by default. */
   globalInstancing: { global: '__IFC_LITE_GLOBAL_INSTANCING', urlParam: 'perf.globalInstancing' },
+  /** Out-of-core ingest: geometry workers mesh from a sparse arena fed by range reads. Off by default. */
+  outOfCore: { global: '__IFC_LITE_OOC', urlParam: 'perf.ooc' },
+  /** Out-of-core ingest: per-worker sparse arena budget in MiB. */
+  outOfCoreBudgetMb: { global: '__IFC_LITE_OOC_BUDGET_MB', urlParam: 'perf.oocBudgetMb' },
 } as const satisfies Record<string, PerfFlagBinding>;
 
 /**
@@ -88,7 +92,25 @@ export function inSmallFileTier(byteLength: number): boolean {
 }
 
 /** Whether the plan applies to a source of `byteLength` bytes (the bytes the pool meshes: for a compressed source,
- *  its decompressed IFC): the flag is on and the source is past the small tier. */
-export function globalInstancingApplies(byteLength: number): boolean {
-  return !inSmallFileTier(byteLength) && readGlobalInstancingFlag();
+ *  its decompressed IFC): the flag is on and the source is past the small tier. `flag` is a host's own decision
+ *  (the viewer's PostHog ramp, `GeometryProcessor.globalInstancing`); unset, the explicit global or URL param. */
+export function globalInstancingApplies(byteLength: number, flag?: boolean): boolean {
+  return !inSmallFileTier(byteLength) && (flag ?? readGlobalInstancingFlag());
+}
+
+/**
+ * Out-of-core geometry ingest (`geometry-parallel-sparse.ts`): workers hold a
+ * bounded sparse arena fed by range reads instead of a full source copy and
+ * their own index. Off by default; `1`/true arms it. Read on the host thread
+ * when a load starts.
+ */
+export function readOutOfCoreFlag(): boolean {
+  const v = readPerfFlagRaw(GEOMETRY_PERF_FLAG_BINDINGS.outOfCore);
+  return v === 1 || v === '1' || v === true || v === 'true';
+}
+
+/** Per-worker sparse arena budget in bytes (default 192 MiB). */
+export function readOutOfCoreBudgetBytes(): number {
+  const v = Number(readPerfFlagRaw(GEOMETRY_PERF_FLAG_BINDINGS.outOfCoreBudgetMb));
+  return (Number.isFinite(v) && v > 0 ? v : 192) * 1024 * 1024;
 }

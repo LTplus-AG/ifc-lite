@@ -27,7 +27,7 @@ server.broadcast({ action: 'colorize', type: 'IfcWall', color: [1, 0, 0, 1] });
 The same command channel is exposed over REST while the server runs:
 
 ```bash
-curl -X POST http://localhost:3456/api/command \
+curl -X POST http://127.0.0.1:3456/api/command \
   -H 'Content-Type: application/json' \
   -d '{"action":"colorize","type":"IfcWall","color":[1,0,0,1]}'
 ```

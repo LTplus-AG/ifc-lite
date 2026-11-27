@@ -16,8 +16,10 @@ import { encodeDxfCp1252 } from '@ifc-lite/drawing-2d';
 /** Printable in WinAnsi: tab, newline and every non-control character windows-1252 encodes (one shared encoder). */
 export function isStandardFontChar(char: string): boolean {
   if (char === '\n' || char === '\t') return true;
-  const code = char.codePointAt(0)!;
-  return code >= 0x20 && code !== 0x7f && !encodeDxfCp1252(char).hadUnmappable;
+  const code = char.codePointAt(0);
+  if (code === undefined || code < 0x20 || code === 0x7f) return false;
+  const { hadUnmappable, hadEscaped } = encodeDxfCp1252(char);
+  return !hadUnmappable && !hadEscaped;
 }
 
 /** Plain-text spellings for symbols models and IFC files commonly carry. */

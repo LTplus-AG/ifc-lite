@@ -21,6 +21,17 @@ import type { MeshData } from '@ifc-lite/geometry';
 export interface BatchEntityIds {
   readonly expressIds: readonly number[];
   readonly laneIds?: readonly number[];
+  /** Bumped whenever `expressIds` changes, on batches whose ids can also leave (compact pages). */
+  readonly entryRevision?: number;
+}
+
+/**
+ * What a per-batch cache keys its id-derived answer on. A bucket batch only
+ * gains ids, so its length says when they changed; a compact page also loses
+ * them (a retired mesh), so it counts every change in `entryRevision`.
+ */
+export function batchEntryStamp(batch: BatchEntityIds): number {
+  return batch.entryRevision ?? batch.expressIds.length;
 }
 
 /**

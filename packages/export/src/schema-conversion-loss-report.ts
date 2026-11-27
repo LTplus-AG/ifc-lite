@@ -3,15 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * A per-TYPE preview of what a schema conversion will do to the entities a
- * store actually contains, computed WITHOUT running the export.
- *
- * `convertStepLine` makes these decisions as it writes each record and
- * throws on the first unrepresentable non-rooted entity. The preview can
- * report other affected records without writing the export.
- *
- * Classify each distinct source type once using the attribute tables, then
- * look up the kept IDs for the types with potential losses (#4206).
+ * Preview schema conversion without writing the export. Classify each source
+ * type once, then look up the kept IDs for types with potential losses (#4206).
  */
 
 import { isStructuralStiffnessConversion, isStructuralAssignmentConversion } from './schema-converter-structural.js';
@@ -20,8 +13,7 @@ import { varyingTarget } from './schema-converter-structural-varying.js';
 import { DocumentLinks } from './schema-converter-document-links.js';
 import { SourceRecords } from './schema-converter-structural-source.js';
 import { describeEntry } from './schema-conversion-loss-description.js';
-import { previewUpgradeDependents } from './schema-converter-unrooted-upgrade.js';
-import { materialPropertiesNotWritten } from './schema-converter-material-referent.js';
+import { IFC5_MATERIAL_LAYOUT_MISSING, materialPropertiesNotWritten, omitsIfc5MaterialProperties } from './schema-converter-material-referent.js';
 import { EMPTY_SOURCE_BYTES, type IfcDataStore } from '@ifc-lite/parser';
 import {
   convertEntityType,
@@ -33,9 +25,11 @@ import { BY_NAME_ATTR_REMAP_TYPES } from './schema-converter-attr-remap.js';
 import { isStrictAttrPrefix, replacedSlot } from './schema-converter-renames.js';
 import { previewTypedPropertyNames } from './schema-converter-typed-properties.js';
 import { getCompleteEntityIndex } from './entity-iteration.js';
-import { attrMapFor, attrsDroppedByMap, dropsSetMembers, DELETED_SUBTYPES } from './schema-converter-attr-maps.js';
+import { attrMapFor, attrsDroppedByMap, dropsSetMembers } from './schema-converter-attr-maps.js';
+import { droppedUpgradeSlotNames, needsUpgradeSlotMap } from './schema-converter-ifc4x3-upgrade.js';
+import { previewUpgradeDependents } from './schema-converter-unrooted-upgrade.js';
 import { holdsValue } from './step-comment-skip.js';
-import { isRootedEntityType, missingTypeRoute, OMIT_ON_UPGRADE } from './schema-untranslatable.js';
+import { isRootedEntityType, missingTypeRoute } from './schema-untranslatable.js';
 
 /** How one entity TYPE's data survives a schema conversion. */
 export type EntityConversionKind =
@@ -87,8 +81,8 @@ export function classifyEntityTypeConversion(
 ): EntityConversionInfo {
   const upper = entityType.toUpperCase();
   if (fromSchema === toSchema) return { targetType: upper, kind: 'identity', droppedAttributes: [] };
-
   const newType = convertEntityType(upper, fromSchema, toSchema);
+  if (omitsIfc5MaterialProperties(upper, fromSchema, toSchema)) return { targetType: newType, kind: 'lossy', droppedAttributes: [] };
   const srcAttrs = attrNameTable(fromSchema)?.get(upper);
   // #9668: stiffness fields survive by semantic position and unit, despite
   // renamed Linear/Translational attributes and SELECT wrappers.
@@ -131,6 +125,10 @@ export function classifyEntityTypeConversion(
     // Unknown to one of the tables (IFC5 has none) — the per-line converter
     // passes such lines through unexamined; nothing to report either way.
     return { targetType: newType, kind: upper === newType ? 'identity' : 'renamed', droppedAttributes: [] };
+  }
+
+  if (upper !== newType && needsUpgradeSlotMap(upper, fromSchema, toSchema)) {
+    return { targetType: newType, kind: 'lossy', droppedAttributes: droppedUpgradeSlotNames(upper, srcAttrs, tgtAttrs) };
   }
 
   if (srcAttrs.length === tgtAttrs.length && srcAttrs.every((name, i) => name === tgtAttrs[i])) {
@@ -336,18 +334,18 @@ export function analyzeConversionLoss(
       const narrowedSet = setAttribute && !mapped?.map.upOnly.includes(setAttribute) ? setAttribute : undefined;
       const attributes = attrNameTable(fromSchema)?.get(sourceType);
       const slot = narrowedSet ? attributes?.indexOf(narrowedSet) ?? -1 : -1;
-      // #11326: an IFC4-deleted subtype's own attributes have no IfcTask slot, so only a populated one is lost.
-      const unsetSlots = records && DELETED_SUBTYPES.has(sourceType) && attrMapFor(sourceType, info.targetType, fromSchema, toSchema)?.up
-        ? attributes : undefined;
+      // #11448: a type-wide drop loses only the slots a record populated; `()` and `''` are values (Rust
+      // `values_without_a_name`). A type the target lacks loses the whole record, however sparse.
+      const checkUnset = records && info.kind === 'lossy' && info.droppedAttributes.length > 0 && info.droppedAttributes.length < (attributes?.length ?? 0);
       const isRetained = (id: number, attribute: string) => {
         if (restored.get(id)?.has(attribute) || retainedTyped?.get(id)?.has(attribute)) return true;
-        const own = unsetSlots ? records?.slots(id)?.[unsetSlots.indexOf(attribute)] : undefined;
+        const own = checkUnset ? records?.slots(id)?.[attributes?.indexOf(attribute) ?? -1] : undefined;
         if (own !== undefined && !holdsValue(own)) return true;
         if (attribute !== narrowedSet) return false;
         const value = records?.slots(id)?.[slot];
         return value !== undefined && !dropsSetMembers(value);
       };
-      const entry = carrying(sourceType, info) || slot >= 0 || unsetSlots || expressIds.some((id) => retainedTyped?.has(id))
+      const entry = carrying(sourceType, info) || slot >= 0 || checkUnset || expressIds.some((id) => retainedTyped?.has(id))
         ? entryAfterRestoration(sourceType, expressIds, info, isRetained)
         : { ...info, sourceType, count: expressIds.length, expressIds };
       if (entry) entries.push(entry);
@@ -382,9 +380,12 @@ export function analyzeConversionLoss(
     entries.sort((a, b) => a.sourceType.localeCompare(b.sourceType));
   }
   const describe = (entry: ConversionLossEntry) => {
-    if (dependent?.has(entry.expressIds[0])) return describeEntry(entry, 'a required IFC4 attribute lost a reference');
-    const seed = fromSchema === 'IFC2X3' && toSchema === 'IFC4' && OMIT_ON_UPGRADE.has(entry.sourceType);
-    return describeEntry(entry, seed ? 'IFC4 does not declare its type' : undefined);
+    if (dependent?.has(entry.expressIds[0])) return describeEntry(entry, `a required ${toSchema} attribute lost a reference`);
+    if (omitsIfc5MaterialProperties(entry.sourceType, fromSchema, toSchema)) return describeEntry(entry, IFC5_MATERIAL_LAYOUT_MISSING);
+    const sourceKnown = attrNameTable(fromSchema)?.has(entry.sourceType) ?? false;
+    const target = attrNameTable(toSchema);
+    const route = missingTypeRoute(entry.sourceType, fromSchema, toSchema, sourceKnown, !target || target.has(entry.targetType));
+    return describeEntry(entry, route === 'omitted' ? `${toSchema} does not declare its type` : undefined);
   };
   const hasBlocking = entries.some((e) => e.kind === 'blocked');
   return {

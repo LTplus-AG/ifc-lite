@@ -79,6 +79,9 @@ pub struct EntityDecoder<'a> {
     /// Entity offsets (entity_id -> (start, end)): legacy `FxHashMap` or compact
     /// columnar index. `pub(crate)` for `crate::columnar_index`'s constructors.
     pub(crate) entity_index: Option<EntityIndexStore>,
+    /// Out-of-core decoder only (`sparse_source.rs`): where an id that is looked up and not found is
+    /// reported, so the arena's host can fetch it. `None` for every other decoder.
+    pub(crate) sparse_misses: Option<Arc<crate::SparseIndex>>,
     /// Cache of cartesian point coordinates for FacetedBrep optimization
     /// Only populated when using get_polyloop_coords_cached
     point_cache: FxHashMap<u32, (f64, f64, f64)>,
@@ -150,6 +153,7 @@ impl<'a> EntityDecoder<'a> {
             cache_revision: 0,
             cache: FxHashMap::default(),
             entity_index: None,
+            sparse_misses: None,
             point_cache: FxHashMap::default(),
             point_cache_hits: 0,
             point_cache_misses: 0,
@@ -387,7 +391,10 @@ impl<'a> EntityDecoder<'a> {
             .entity_index
             .as_ref()
             .and_then(|idx| idx.lookup(entity_id))
-            .ok_or_else(|| Error::parse(0, format!("Entity #{} not found", entity_id)))?;
+            .ok_or_else(|| {
+                self.note_missing(entity_id);
+                Error::parse(0, format!("Entity #{} not found", entity_id))
+            })?;
 
         self.decode_at(start, end)
     }
@@ -551,11 +558,22 @@ impl<'a> EntityDecoder<'a> {
         Ok(self.cache.get(&id).map(Arc::clone).unwrap_or_else(|| Arc::new(entity)))
     }
     /// Get raw bytes for an entity (for direct/fast parsing)
+    /// The miss path of an index lookup: one test, unless this decoder reads a sparse arena.
+    #[inline]
+    pub(crate) fn note_missing(&self, id: u32) {
+        if let Some(sink) = &self.sparse_misses {
+            sink.record_miss(id);
+        }
+    }
+
     /// Returns the full entity line including type and attributes
     #[inline]
     pub fn get_raw_bytes(&mut self, entity_id: u32) -> Option<&'a [u8]> {
         self.build_index();
-        let (start, end) = self.entity_index.as_ref()?.lookup(entity_id)?;
+        let Some((start, end)) = self.entity_index.as_ref()?.lookup(entity_id) else {
+            self.note_missing(entity_id);
+            return None;
+        };
         // An installed index's spans are caller data never checked against
         // these bytes (#4697); a span outside them is absent, not a panic.
         self.content.get(start..end)

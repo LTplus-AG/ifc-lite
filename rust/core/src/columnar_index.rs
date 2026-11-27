@@ -349,27 +349,7 @@ fn is_strictly_ascending(ids: &[u32]) -> bool {
     ids.windows(2).all(|w| w[0] < w[1])
 }
 
-/// The index representation an [`EntityDecoder`](crate::EntityDecoder) holds:
-/// either the legacy `FxHashMap` (native / lazily-built paths) or the compact
-/// columnar index (wasm shared-index ingestion). A thin dispatch keeps the
-/// decoder hot path (`decode_by_id`) agnostic to which one is installed.
-pub(crate) enum EntityIndexStore {
-    Hash(Arc<EntityIndex>),
-    Columnar(Arc<ColumnarEntityIndex>),
-    Dense(Arc<crate::DenseEntityIndex>),
-}
-
-impl EntityIndexStore {
-    /// Resolve `id` to its `(start, end)` byte span.
-    #[inline]
-    pub(crate) fn lookup(&self, id: u32) -> Option<(usize, usize)> {
-        match self {
-            EntityIndexStore::Hash(m) => m.get(&id).copied(),
-            EntityIndexStore::Columnar(c) => c.lookup(id),
-            EntityIndexStore::Dense(d) => d.lookup(id),
-        }
-    }
-}
+pub(crate) use crate::entity_index_store::EntityIndexStore;
 
 impl<'a> crate::EntityDecoder<'a> {
     /// Create a decoder backed by a shared columnar index (wasm shared-index

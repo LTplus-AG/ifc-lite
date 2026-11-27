@@ -12,6 +12,7 @@ import type { BatchedMesh } from './types.js';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { RenderPipeline } from './pipeline.js';
 import type { RelativeToEyeFrame } from './relative-to-eye.js';
+import type { OpaqueDrawMode } from './opaque-draw-variants.js';
 import { DrawStream, type StreamFrameInputs, type StreamFrameStats } from './draw-stream.js';
 import { DEFAULT_DRAW_STREAM_CONFIG, drawStreamUsesHighlightIndex, type DrawStreamConfig } from './draw-stream-config.js';
 import { batchEntities } from './batch-entities.js';
@@ -102,6 +103,8 @@ export class RendererDrawStream {
   private config: Readonly<DrawStreamConfig> = DEFAULT_DRAW_STREAM_CONFIG;
   private stream: DrawStream | null = null;
   private active: DrawStream | null = null;
+  /** The mode the engaged stream draws this frame (`StreamPipelines.resolve`). */
+  private mode: OpaqueDrawMode | null = null;
   private readonly gate = new DrawStreamGate();
 
   /** Whether the stream may engage at all (callers skip building its frame inputs otherwise). */
@@ -121,16 +124,21 @@ export class RendererDrawStream {
   get engaged(): boolean { return this.active !== null; }
 
   /**
-   * Start a frame. Once the batch set has settled, sync the stream and return
-   * the batches the per-batch loop still draws; otherwise return every batch.
+   * Start a frame drawn in opaque `mode`. Once the batch set has settled and the stream has pipelines for `mode`
+   * (or a twin painting the same pixels) built off the frame, sync it and return the batches the per-batch loop
+   * still draws; otherwise return every batch.
    */
-  begin(device: GPUDevice, pipeline: RenderPipeline, batches: readonly BatchedMesh[], revision: number, epoch: string, cell: number, inputs: StreamEligibilityInputs): readonly BatchedMesh[] {
+  begin(device: GPUDevice, pipeline: RenderPipeline, batches: readonly BatchedMesh[], revision: number, epoch: string, cell: number, inputs: StreamEligibilityInputs,
+    mode: OpaqueDrawMode): readonly BatchedMesh[] {
     this.active = null;
     if (!this.config.stream) return batches;
     // Unsettled (a load, an unload, a model move): free the old arena, proxies and worker now.
     if (!this.gate.settled(batches, this.config, revision, inputs.requestRender)) { this.dropStream(); return batches; }
     const stream = (this.stream ??= new DrawStream(device, pipeline, this.config));
     this.gate.sync(stream, batches, epoch, cell, inputs);
+    // Still compiling: the loop draws this frame, and the landed build asks for the next one.
+    this.mode = stream.pipelines.resolve(mode);
+    if (!this.mode) return batches;
     this.active = stream;
     return stream.legacy;
   }
@@ -143,7 +151,8 @@ export class RendererDrawStream {
     const stream = this.active;
     if (!stream) throw new Error('RendererDrawStream.encode: the stream did not engage this frame');
     stream.prepareFrame(frameUniforms, rte);
-    return stream.encode(inputs, drawn);
+    const mode = this.mode!;
+    return stream.encode(mode === inputs.mode ? inputs : { ...inputs, mode }, drawn);
   }
 
   /** Drop the stream's GPU records, arenas, bundles and proxies (config change, device loss, teardown). */

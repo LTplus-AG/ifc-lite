@@ -181,8 +181,12 @@ pub(crate) fn rename_type(u: &str, from: &str, to: &str) -> Option<&'static str>
         }
     }
     match (from, to) {
-        // IFC5 has no attribute lists for the property subtype replacements (#10777).
-        ("IFC2X3", "IFC4") | ("IFC2X3", "IFC4X3") => map_2x3_to_4(u).or_else(|| crate::schema_attr_maps::upgrade_type(u)),
+        ("IFC2X3", "IFC4") => crate::schema_ifc4x3_upgrade::style_target(u)
+            .or_else(|| map_2x3_to_4(u))
+            .or_else(|| crate::schema_attr_maps::upgrade_type(u)),
+        ("IFC2X3", "IFC4X3") => crate::schema_ifc4x3_upgrade::rename(u)
+            .or_else(|| rename_type(u, "IFC2X3", "IFC4")),
+        ("IFC4", "IFC4X3") => crate::schema_ifc4x3_upgrade::rename(u),
         ("IFC2X3", "IFC5") => map_2x3_to_4(u),
         ("IFC4", "IFC2X3") => map_4_to_2x3(u),
         ("IFC4X3", "IFC4") | ("IFC5", "IFC4") => map_4x3_to_4(u),
@@ -190,7 +194,6 @@ pub(crate) fn rename_type(u: &str, from: &str, to: &str) -> Option<&'static str>
             Some(s1) => Some(map_4_to_2x3(s1).unwrap_or(s1)),
             None => map_4_to_2x3(u),
         },
-        // 4 ↔ 4X3 / 5 carry no entity renames in this table.
         _ => None,
     }
 }
@@ -239,7 +242,11 @@ pub fn convert_step_line(
         converted = checks.documents.apply(express_id, converted, &mut checks.attribute_values_dropped);
         if cto == "IFC2X3" { converted = checks.structural.after(express_id, converted); }
         let deferred = checks.typed_properties.capture(line.as_ref(), cfrom, cto, express_id);
-        (!deferred && cto == "IFC4" && (cfrom != "IFC2X3" || crate::schema_attr_maps::upgrade_counts_ifc4_slots(&converted))).then(|| checks.ifc4_slots.count(&converted));
+        // Every record to IFC4; an IFC2X3 upgrade's mapped records to IFC4 or IFC4X3, each against its own target (#11135).
+        if let Some(target) = crate::schema_ifc4_slots::SlotTarget::of(cto).filter(|_| !deferred) {
+            let counts = if cfrom == "IFC2X3" { crate::schema_attr_maps::upgrade_counts_slots(&converted, target) } else { target == crate::schema_ifc4_slots::SlotTarget::Ifc4 };
+            if counts { checks.ifc4_slots.count(&converted, target); }
+        }
     }
     Ok(if cto == "IFC2X3" { slots.apply(converted) } else { converted })
 }
@@ -346,8 +353,6 @@ fn convert_record(
                     lost += args.iter().enumerate().skip(keep).filter(|(i, v)| Some(*i) != carried_slot && holds_value(v)).count();
                     Cow::Owned(args[..keep].join(","))
                 }
-                // An attribute-less record is left alone rather than fabricated
-                // from nothing, matching the TypeScript twin's `currentCount > 0`.
                 Adjust::Pad(n) if !args.is_empty() && n > args.len() => {
                     Cow::Owned(format!("{attrs}{}", ",$".repeat(n - args.len())))
                 }
@@ -357,6 +362,7 @@ fn convert_record(
                     lost += values_without_a_name(&args, src, tgt, cause_carried);
                     Cow::Owned(remap_attrs_by_name(&args, src, tgt))
                 }
+                Adjust::UpgradeSlots(src, tgt) => Cow::Owned(crate::schema_ifc4x3_upgrade::remap(&entity_type, src, tgt, &args, &mut lost)),
                 Adjust::Mapped(map, up, src, tgt) if !args.is_empty() => Cow::Owned(crate::schema_attr_maps::remap(map, up, &args, src, tgt, &mut lost)),
                 Adjust::Trim(_) | Adjust::Pad(_) | Adjust::Mapped(..) | Adjust::Keep => Cow::Borrowed(attrs),
             };

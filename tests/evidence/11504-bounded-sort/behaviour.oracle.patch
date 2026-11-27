@@ -1,0 +1,9 @@
+--- a/packages/renderer/src/snap-chunked-sort.ts
++++ b/packages/renderer/src/snap-chunked-sort.ts
+@@ -35,5 +35,5 @@
+     this.dst = new Int32Array(indices.length);
+     this.n = indices.length;
+-    this.chunk = this.width = Math.max(1, indices.length);
++    this.width = chunk;
+     if (this.n <= 1) this.phase = 'done';
+   }

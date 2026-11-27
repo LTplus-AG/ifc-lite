@@ -61,6 +61,8 @@ export interface GeometryWorkerInitMessage {
   wasmUrl?: string;
 }
 
+import { scanShardWindowedOn, type GeometryWorkerShardRefusedMessage, type ShardScanApi, type ShardScanColumns } from './shard-window-scan.js';
+import { WorkerSparseSession, type BatchCallArgs, type GeometryWorkerSetSparseSourceMessage, type GeometryWorkerSparseStatsMessage } from './geometry-worker-sparse.js';
 /**
  * The host sends `stream-start` once with the session metadata (minus
  * jobs), then any number of `stream-chunk` messages with new job slices,
@@ -189,12 +191,16 @@ export interface GeometryWorkerScanShardMessage {
   shardIndex: number;
   rangeStart: number;
   rangeEnd: number;
+  /** Out-of-core ingest: copy only this shard's window into wasm, never the file (`shard-window-scan.ts`). */
+  windowed?: boolean;
 }
 
 export interface GeometryWorkerPrePassMessage extends GlobalKeyPlanningField {
   type: 'prepass-streaming';
   sourceFingerprint?: SharedArrayBuffer;
   sharedBuffer: SharedArrayBuffer;
+  /** Out-of-core ingest: also emit the `sparse-facts` event (the preamble every sparse worker starts from). */
+  emitSparseFacts?: boolean;
   /** Jobs per chunk (defaults to 50_000). */
   chunkSize?: number;
   /** #1097 load-time visibility filter: uppercase STEP keywords whose
@@ -280,6 +286,7 @@ export type GeometryWorkerRequest =
   | GeometryWorkerResolveStylesShardMessage
   | GeometryWorkerPrePassShardedMessage
   | GeometryWorkerFinalizeStylesMessage
+  | GeometryWorkerSetSparseSourceMessage
   | GeometryWorkerPrePassMessage;
 
 /**
@@ -348,6 +355,12 @@ export interface GeometryWorkerPrePassShardedMessage extends GlobalKeyPlanningFi
   indexLengths: Uint32Array;
   /** Per-record prepass classes — drives columns discovery (no byte scan). */
   indexClasses: Uint8Array;
+  /**
+   * Out-of-core ingest: also emit `sparse-facts`, and resolve styles here (one
+   * `styles` event, as the serial pre-pass does): the workers hold no source
+   * to resolve style slices from.
+   */
+  emitSparseFacts?: boolean;
 }
 
 /**
@@ -524,12 +537,12 @@ function installFreshApi(): IfcAPI {
   applySkipVoids(api, skipVoids);
   entityIndexApplied = false;
   applyEntityIndexToApi();
+  sparseSession?.applyTo(api); // out-of-core: before the columns (a sparse session is a content install and clears them)
   prepassColumnsApplied = false;
   applyPrepassColumnsToApi();
-  // Re-install the session source on a recovery re-init (api = null) so the *FromSource batch path isn't silently reading an empty file — same replay
-  // contract as the entity index. No-op before a session sets cachedSourceBytes.
+  // Recover the whole-file *FromSource path. Sparse batches already have their arena.
   sourceBytesApplied = false;
-  applySourceBytesToApi();
+  if (!sparseSession) applySourceBytesToApi();
   return api;
 }
 
@@ -696,6 +709,9 @@ function applyPrepassColumnsToApi(): void {
   prepassColumnsApplied = true;
 }
 
+/** Out-of-core ingest (`?perf.ooc`): when set, batches mesh from a sparse arena fed by range reads and this worker never installs the source or the index. */
+let sparseSession: WorkerSparseSession | null = null;
+
 /** One owned WASM source per load, reused from shard scanning through meshing
  * (#3989). The JS view is retained for instance recovery; all source-taking
  * callers still support older WASM. A shard scan starts the load; stream-start
@@ -742,6 +758,21 @@ function materialiseSharedBytes(sharedBuffer: SharedArrayBuffer): Uint8Array {
  * load); shard/finalise retries first reject runtime traps, then warn once.
  */
 let sabViewFallbackWarned = false;
+/** The pre-pass emits `sparse-facts` only for an out-of-core load; a reused worker is told either way. */
+function applyEmitSparseFacts(ifcApi: IfcAPI, on: boolean): void {
+  if (typeof ifcApi.setEmitSparseFacts === 'function') ifcApi.setEmitSparseFacts(on);
+  else if (on) throw new Error('Out-of-core geometry requires a WASM build with sparse pre-pass support');
+}
+
+function postShardResult(shardIndex: number, shard: ShardScanColumns | null): void {
+  if (!shard) return (self as unknown as Worker).postMessage({ type: 'shard-result', shardIndex, windowRefused: true } satisfies GeometryWorkerShardRefusedMessage);
+  const { ids, starts, lengths, classes, handoff, oversizedIdStarts, malformedStart } = shard;
+  (self as unknown as Worker).postMessage(
+    { type: 'shard-result', shardIndex, ids, starts, lengths, classes, handoff, oversizedIdStarts, malformedStart } as GeometryWorkerShardResultMessage,
+    [ids.buffer, starts.buffer, lengths.buffer, classes.buffer, ...(oversizedIdStarts ? [oversizedIdStarts.buffer] : [])],
+  );
+}
+
 function prepareSabViewRetry(context: string, err: unknown): void {
   if (isWasmRuntimeTrap(err)) throw err;
   if (sabViewFallbackWarned) return;
@@ -1128,8 +1159,10 @@ async function processBatch(session: ProcessingSession, jobs: Uint32Array): Prom
     // runtime throws inside setSourceBytes during the copy, exactly as the legacy
     // per-call path would; the catch below materialises + retries, and the retry
     // re-installs the copy from the materialised buffer.
-    cachedSourceBytes = session.localBytes;
-    applySourceBytesToApi();
+    if (!sparseSession) {
+      cachedSourceBytes = session.localBytes;
+      applySourceBytesToApi();
+    }
     applyStyleFinishes(ifcApi, session.styleIds, session.styleFinishes);
 
     // Instanced-only path: produce geometry ONCE via a partitioned batch, which
@@ -1155,42 +1188,26 @@ async function processBatch(session: ProcessingSession, jobs: Uint32Array): Prom
       processGeometryBatchPartitioned?: (...args: unknown[]) => PartitionedBatchResult;
     }).processGeometryBatchPartitioned;
 
+    // What every batch variant takes after its source: one list, so the variants cannot drift apart.
+    const args: BatchCallArgs = [
+      jobs, session.unitScale, session.rtcX, session.rtcY, session.rtcZ, session.needsShift,
+      session.voidKeys, session.voidCounts, session.voidValues,
+      session.styleIds, session.styleColors, session.planeAngleToRadians,
+      session.materialElementIds, session.materialColorCounts, session.materialColors,
+    ];
     const wasmSpan = traceGeometryWorkerMessage.begin('worker.batch.wasm');
     try {
-    if (typeof partitionedFromSourceFn === 'function' && instancingEnabled) {
-      consumePartitioned(session, partitionedFromSourceFn.call(
-        ifcApi, jobs, session.unitScale,
-        session.rtcX, session.rtcY, session.rtcZ, session.needsShift,
-        session.voidKeys, session.voidCounts, session.voidValues,
-        session.styleIds, session.styleColors, session.planeAngleToRadians,
-        session.materialElementIds, session.materialColorCounts, session.materialColors,
-      ), wasmSpan);
+    if (sparseSession) {
+      const out = sparseSession.mesh(ifcApi, args, instancingEnabled);
+      if ('takeShard' in out) consumePartitioned(session, out, wasmSpan); else collectMeshes(session, out, wasmSpan);
+    } else if (typeof partitionedFromSourceFn === 'function' && instancingEnabled) {
+      consumePartitioned(session, partitionedFromSourceFn.call(ifcApi, ...args), wasmSpan);
     } else if (typeof batchFromSourceFn === 'function') {
-      collectMeshes(session, batchFromSourceFn.call(
-        ifcApi, jobs, session.unitScale,
-        session.rtcX, session.rtcY, session.rtcZ, session.needsShift,
-        session.voidKeys, session.voidCounts, session.voidValues,
-        session.styleIds, session.styleColors, session.planeAngleToRadians,
-        session.materialElementIds, session.materialColorCounts, session.materialColors,
-      ), wasmSpan);
+      collectMeshes(session, batchFromSourceFn.call(ifcApi, ...args), wasmSpan);
     } else if (typeof partitionedFn === 'function' && instancingEnabled) {
-      consumePartitioned(session, partitionedFn.call(
-        ifcApi, session.localBytes, jobs, session.unitScale,
-        session.rtcX, session.rtcY, session.rtcZ, session.needsShift,
-        session.voidKeys, session.voidCounts, session.voidValues,
-        session.styleIds, session.styleColors, session.planeAngleToRadians,
-        session.materialElementIds, session.materialColorCounts, session.materialColors,
-      ), wasmSpan);
+      consumePartitioned(session, partitionedFn.call(ifcApi, session.localBytes, ...args), wasmSpan);
     } else {
-      const collection = ifcApi.processGeometryBatch(
-        session.localBytes, jobs, session.unitScale,
-        session.rtcX, session.rtcY, session.rtcZ, session.needsShift,
-        session.voidKeys, session.voidCounts, session.voidValues,
-        session.styleIds, session.styleColors,
-        session.planeAngleToRadians,
-        session.materialElementIds, session.materialColorCounts, session.materialColors,
-      );
-      collectMeshes(session, collection, wasmSpan);
+      collectMeshes(session, ifcApi.processGeometryBatch(session.localBytes, ...args), wasmSpan);
     }
     } finally { traceGeometryWorkerMessage.end(wasmSpan); }
   } catch (err) {
@@ -1201,7 +1218,8 @@ async function processBatch(session: ProcessingSession, jobs: Uint32Array): Prom
     // entities could therefore blow the silent-window budget invisibly
     // (#1097, secondary window). Ping liveness before we recurse / re-init.
     postWorkerHeartbeat();
-    if (!isWasmRuntimeTrap(err) && !session.sabFallbackTaken && session.localBytes.buffer instanceof SharedArrayBuffer) {
+    // (An out-of-core session has its own copy retry, per read: a refused batch goes straight to the split.)
+    if (!sparseSession && !isWasmRuntimeTrap(err) && !session.sabFallbackTaken && session.localBytes.buffer instanceof SharedArrayBuffer) {
       session.sabFallbackTaken = true;
       console.warn(`[Worker] processGeometryBatch rejected SAB view (${msg}), falling back to copy`);
       session.localBytes = materialiseSharedBytes(session.sharedBuffer);
@@ -1382,6 +1400,7 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       (ifcApi as IfcAPIWithPrepassColumns).setGlobalKeyPlanning?.(e.data.globalInstancing === true);
       (self as unknown as Worker).postMessage({ type: 'prepass-progress', phase: 'parsing' });
       const { sharedBuffer, indexIds, indexStarts, indexLengths, indexClasses } = e.data;
+      applyEmitSparseFacts(ifcApi, e.data.emitSparseFacts === true);
       const sourceFingerprint = e.data.sourceFingerprint;
       const chunkSize = e.data.chunkSize ?? 50_000;
       const disabledTypes = e.data.disabledTypes ?? undefined;
@@ -1464,6 +1483,7 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       // #1097 load-time visibility filter (skip disabled types at job gen).
       const disabledTypes = e.data.disabledTypes ?? undefined;
       const skipTypeGeometry = e.data.skipTypeGeometry === true;
+      applyEmitSparseFacts(ifcApi, e.data.emitSparseFacts === true);
 
       // Forward Rust events 1:1 — the host (`geometry-parallel.ts`) treats
       // them as the streaming-prepass protocol. SAB-decode fallback: try the
@@ -1498,14 +1518,12 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       const ifcApi = await ensureInit();
       const { sharedBuffer, shardIndex, rangeStart, rangeEnd } = e.data;
       const view = viewSharedBytes(sharedBuffer);
-      const scanApi = (ifcApi as unknown as {
-        scanEntityIndexShard: (
-          data: Uint8Array,
-          rangeStart: number,
-          rangeEnd: number,
-          // `malformedStart` is TODO(#3699) -- not returned by Rust yet.
-        ) => { ids: Uint32Array; starts: Uint32Array; lengths: Uint32Array; classes: Uint8Array; handoff: number; oversizedIdStarts?: Uint32Array; malformedStart?: number };
-      });
+      const scanApi = ifcApi as unknown as ShardScanApi;
+      if (e.data.windowed === true) { // out of core: no source install, this worker meshes from a sparse arena
+        sourcePreparedForStream = false;
+        postShardResult(shardIndex, scanShardWindowedOn(scanApi, view, rangeStart, rangeEnd, (err) => prepareSabViewRetry('scan-entity-index-shard', err)));
+        return;
+      }
       const sourceApi = ifcApi as unknown as SourcePrepassApi;
       sourceBytesApplied = false;
       cachedSourceBytes = view;
@@ -1528,19 +1546,7 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
         sourceBytesApplied = false;
         shard = scan(materialiseSharedBytes(sharedBuffer));
       }
-      (self as unknown as Worker).postMessage(
-        {
-          type: 'shard-result',
-          shardIndex,
-          ids: shard.ids,
-          starts: shard.starts,
-          lengths: shard.lengths,
-          classes: shard.classes,
-          handoff: shard.handoff, oversizedIdStarts: shard.oversizedIdStarts,
-          malformedStart: shard.malformedStart,
-        } as GeometryWorkerShardResultMessage,
-        [shard.ids.buffer, shard.starts.buffer, shard.lengths.buffer, shard.classes.buffer, ...(shard.oversizedIdStarts ? [shard.oversizedIdStarts.buffer] : [])],
-      );
+      postShardResult(shardIndex, shard);
       return;
     }
 
@@ -1641,6 +1647,17 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       return;
     }
 
+    if (e.data.type === 'set-sparse-source') {
+      const ifcApi = await ensureInit();
+      sparseSession = new WorkerSparseSession(e.data);
+      sparseSession.applyTo(ifcApi);
+      // The session is a content install: nothing from an earlier load survives it.
+      cachedEntityIndex = cachedPrepassColumns = null;
+      entityIndexApplied = prepassColumnsApplied = false;
+      forgetAppliedFinishes(ifcApi);
+      return;
+    }
+
     if (e.data.type === 'set-prepass-columns') {
       // Install the three per-content structures the pre-pass computed once
       // (issue #957 / #563) so this worker's first batch skips its own
@@ -1710,8 +1727,12 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       if (!activeSession) {
         throw new Error('stream-end received before stream-start');
       }
+      // Before `complete`: the host terminates this worker when it sees that.
+      if (sparseSession) (self as unknown as Worker).postMessage({ type: 'sparse-stats', stats: sparseSession.stats } satisfies GeometryWorkerSparseStatsMessage);
       emitSessionEnd(activeSession);
       activeSession = null;
+      if (sparseSession) api?.sparseEnd();
+      sparseSession = null;
       // Release the per-load entity index and drop the applied flag. Workers
       // are normally terminated after a load, but a reused worker must not
       // retain the (large) index buffers across loads, nor replay a stale

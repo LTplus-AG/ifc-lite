@@ -8,8 +8,7 @@
  * `export_ifc` writes a STEP file (with any pending mutations applied),
  * `export_csv` and `export_json` produce tabular dumps, and `export_glb` /
  * `export_obj` export geometry via the Rust mesh pipeline (wasm, headless).
- * `export_ifcx` and `export_usd` export the current model via Rust too;
- * `export_pdf_report` remains stubbed pending the PDF stack.
+ * `export_ifcx` and `export_usd` export the current model via Rust too.
  */
 
 import { withIfcBytes, refusingEmpty } from './export-source.js';
@@ -22,9 +21,10 @@ import type { Tool } from './types.js';
 import { fmtInt, okResult, resolveModel } from './util.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import { resolveSafePath } from '../safe-path.js';
+import { FILE_WRITE } from './annotations.js';
 
 const exportIfc: Tool = {
-  name: 'export_ifc',
+  name: 'export_ifc', title: 'Export IFC', annotations: FILE_WRITE,
   description: 'Write the model (with pending mutations) to .ifc/.ifczip on disk.',
   scope: 'export',
   inputSchema: {
@@ -87,7 +87,7 @@ const exportIfc: Tool = {
 };
 
 const exportCsv: Tool = {
-  name: 'export_csv',
+  name: 'export_csv', title: 'Export CSV', annotations: FILE_WRITE,
   description: 'Tabular property/quantity export. Columns may be plain attributes (Name, Type, GlobalId) or `Pset_X.Property` / `Qto_X.Quantity` paths.',
   scope: 'export',
   inputSchema: {
@@ -118,7 +118,7 @@ const exportCsv: Tool = {
 };
 
 const exportJson: Tool = {
-  name: 'export_json',
+  name: 'export_json', title: 'Export JSON', annotations: FILE_WRITE,
   description: 'Structured JSON dump of attributes/properties/quantities for a type set.',
   scope: 'export',
   inputSchema: {
@@ -148,7 +148,7 @@ const exportJson: Tool = {
 };
 
 const exportGlb: Tool = {
-  name: 'export_glb',
+  name: 'export_glb', title: 'Export GLB', annotations: FILE_WRITE,
   description: 'Geometry-only glTF binary (GLB) export via the Rust mesh pipeline. Optional `type` filter isolates one IFC class.',
   scope: 'export',
   inputSchema: {
@@ -207,7 +207,7 @@ const exportGlb: Tool = {
 };
 
 const exportObj: Tool = {
-  name: 'export_obj',
+  name: 'export_obj', title: 'Export OBJ', annotations: FILE_WRITE,
   description: 'Geometry-only Wavefront OBJ export via the Rust mesh pipeline. Optional `type` filter isolates one IFC class.',
   scope: 'export',
   inputSchema: {
@@ -269,7 +269,7 @@ const exportObj: Tool = {
 };
 
 const exportIfcx: Tool = {
-  name: 'export_ifcx',
+  name: 'export_ifcx', title: 'Export IFCX', annotations: FILE_WRITE,
   description: 'Save to .ifcx (IFC5 / USD-style node graph) via the Rust exporter: spatial hierarchy + classes + known IFC5 properties.',
   scope: 'export',
   inputSchema: {
@@ -303,7 +303,7 @@ const exportIfcx: Tool = {
 };
 
 const exportUsd: Tool = {
-  name: 'export_usd',
+  name: 'export_usd', title: 'Export USD', annotations: FILE_WRITE,
   description: 'Save to .usda (OpenUSD ASCII) via the Rust exporter: a real Z-up USD stage — spatial hierarchy of Xform prims, UsdGeomMesh geometry, UsdPreviewSurface materials, and IFC metadata as custom attributes. Whole-model (geometry-backed); opens in usdview / Blender / Omniverse.',
   scope: 'export',
   inputSchema: {
@@ -339,17 +339,4 @@ const exportUsd: Tool = {
   },
 };
 
-const exportPdfReport: Tool = {
-  name: 'export_pdf_report',
-  description: 'Audit/IDS report as PDF. Planned for v0.5.',
-  scope: 'export',
-  inputSchema: { type: 'object', properties: { model_id: { type: 'string' }, file_path: { type: 'string' } }, additionalProperties: false },
-  handler() {
-    throw new ToolExecutionError({
-      code: ToolErrorCode.UNSUPPORTED_OPERATION,
-      message: 'export_pdf_report is planned for v0.5.',
-    });
-  },
-};
-
-export const exportTools: Tool[] = [exportIfc, exportCsv, exportJson, exportGlb, exportObj, exportIfcx, exportUsd, export3dmTool, exportPdfReport];
+export const exportTools: Tool[] = [exportIfc, exportCsv, exportJson, exportGlb, exportObj, exportIfcx, exportUsd, export3dmTool];

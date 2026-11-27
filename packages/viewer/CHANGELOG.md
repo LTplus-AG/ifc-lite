@@ -1,5 +1,15 @@
 # @ifc-lite/viewer-core
 
+## 0.2.31
+
+### Patch Changes
+
+- [#11344](https://github.com/LTplus-AG/ifc-lite/pull/11344) [`3b7d64c`](https://github.com/LTplus-AG/ifc-lite/commit/3b7d64c04a9aecdc3ef7aa2b4481b3486b731980) Thanks [@louistrue](https://github.com/louistrue)! - Show interactive IFC query, IDS and clash results in MCP Apps hosts with A2UI v1.0. Relay result actions to the connected viewer, support data-bound color legends, and let paired agents deliver A2UI surfaces into a live main viewer tab.
+- Updated dependencies [[`0a5bc3b`](https://github.com/LTplus-AG/ifc-lite/commit/0a5bc3b1b60697c789ed9e248bccba5f44cce80c), [`0842da2`](https://github.com/LTplus-AG/ifc-lite/commit/0842da279c4dc942d167647bf6c427a2eb34edaa), [`a9483ae`](https://github.com/LTplus-AG/ifc-lite/commit/a9483ae86580d34d0cdc3cc1f67484736a7c1a8a), [`7c5a170`](https://github.com/LTplus-AG/ifc-lite/commit/7c5a170d0fbd392c34726445c306a7f36f96b50e), [`bc0ed4e`](https://github.com/LTplus-AG/ifc-lite/commit/bc0ed4ea86766bd88806f4f1bc448591bde74613), [`6330892`](https://github.com/LTplus-AG/ifc-lite/commit/6330892f5e5a1e3e92e1868c2951c19ce63b240b), [`fc89b27`](https://github.com/LTplus-AG/ifc-lite/commit/fc89b27342853551e36dbd4577c7374ff1d251c6), [`21fc7f9`](https://github.com/LTplus-AG/ifc-lite/commit/21fc7f9f521356b7e5ec4fc02aed75a1f4af1ec6), [`3b7eea5`](https://github.com/LTplus-AG/ifc-lite/commit/3b7eea519cf52430a7ee3b0127297866fbe4ca11), [`a38f750`](https://github.com/LTplus-AG/ifc-lite/commit/a38f7508502f6437d0abe76f0ea49f5858e7525a), [`3b7d64c`](https://github.com/LTplus-AG/ifc-lite/commit/3b7d64c04a9aecdc3ef7aa2b4481b3486b731980)]:
+  - @ifc-lite/wasm@13.1.0
+  - @ifc-lite/sdk@10.2.0
+  - @ifc-lite/create@6.1.1
+
 ## 0.2.30
 
 ### Patch Changes

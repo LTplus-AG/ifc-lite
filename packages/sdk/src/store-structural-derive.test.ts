@@ -10,6 +10,7 @@ import { StepExporter } from '@ifc-lite/export';
 import { createStructuralDerivationStoreBackend } from './store-structural-derive.js';
 import { StoreNamespace } from './namespaces/store.js';
 import type { BimBackend } from './types.js';
+import type { RandomSource } from '@ifc-lite/encoding';
 
 /** One 3 m column, 0.3 m square, on a storey. */
 const MODEL = `ISO-10303-21;
@@ -42,12 +43,12 @@ DATA;
 ENDSEC;
 END-ISO-10303-21;`;
 
-async function setup(schema: string) {
+async function setup(schema: string, guidRandom?: RandomSource) {
   const parse = (text: string) => new IfcParser().parseColumnar(new TextEncoder().encode(text).buffer, { disableWorkerScan: true });
   const store = await parse(MODEL.replace('IFC2X3', schema));
   const view = new MutablePropertyView(null, 'm');
   const editor = new StoreEditor(store, view);
-  const backend = { store: createStructuralDerivationStoreBackend(() => ({ store, editor, mutationView: view, modelId: 'm', ownerHistoryId: 4 })) } as unknown as BimBackend;
+  const backend = { store: createStructuralDerivationStoreBackend(() => ({ store, editor, mutationView: view, modelId: 'm', ownerHistoryId: 4, guidRandom })) } as unknown as BimBackend;
   const exportFile = async () => {
     const { content } = new StepExporter(store, view).export({ schema: schema as 'IFC2X3', applyMutations: true });
     return parse(typeof content === 'string' ? content : new TextDecoder().decode(content));
@@ -71,6 +72,13 @@ describe('bim.store structural derivation (#9668)', () => {
     expect(structuralCounterparts(data, data.members[0].expressId)?.side).toBe('physical');
     expect(data.connections.find((c) => c.appliedCondition)?.appliedCondition?.components.RotationalStiffnessX).toBe(-1);
     expect(() => ns.deriveStructuralAnalysisModel('m')).toThrow(/no members/);
+  });
+
+  it('draws the derived GlobalIds from the resolution guidRandom (#10963)', async () => {
+    let draws = 0;
+    const { ns } = await setup('IFC4', () => { draws++; return Math.random(); });
+    ns.deriveStructuralAnalysisModel('m');
+    expect(draws).toBeGreaterThan(0);
   });
 
   it('refuses IFC5, and names a backend without the capability', async () => {

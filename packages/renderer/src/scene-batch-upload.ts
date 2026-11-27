@@ -18,6 +18,19 @@ import {
   LOD_MIN_TRIANGLES,
 } from './lod-simplify.js';
 
+/**
+ * Batches built while the scene drew no quantized vertices (`'off'`), e.g. before the quantized
+ * pipeline probe resolved. `requantizeEarlyBatches` (quantized-lifecycle.ts) rebuilds the bucket
+ * batches among them once the pipelines exist.
+ */
+export const builtUnquantized = new WeakSet<BatchedMesh>();
+
+/** Record `batch` in `builtUnquantized` when it was built with quantization off; returns it. */
+export function noteQuantization(quantized: BatchQuantization, batch: BatchedMesh): BatchedMesh {
+  if (quantized === 'off') builtUnquantized.add(batch);
+  return batch;
+}
+
 /** Stage a complete GPU batch. No Scene state changes until this succeeds. */
 export function createSceneBatch(
   meshDataArray: MeshData[],
@@ -152,7 +165,7 @@ export function createSceneBatch(
     }
     options.onMerged?.({ vertexData: quantizedData?.vertexData ?? merged.vertexData, indices: merged.indices, ...(lodIndices ? { lod1Indices: lodIndices } : {}) });
 
-    return {
+    return noteQuantization(options.quantized, {
       id: options.id,
       colorKey: options.colorKey,
       vertexBuffer,
@@ -173,7 +186,7 @@ export function createSceneBatch(
       origin: merged.origin,
       ...(lod1IndexBuffer ? { lod1IndexBuffer, lod1IndexCount } : {}),
       ...(quantized ? { quantized } : {}),
-    };
+    });
   } catch (error) {
     uniformSlot?.release();
     for (const buffer of allocated) {

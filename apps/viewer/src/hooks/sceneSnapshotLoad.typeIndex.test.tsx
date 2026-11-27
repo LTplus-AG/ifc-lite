@@ -157,6 +157,7 @@ describe('scene snapshot type index (#10264)', () => {
   ] as const) {
     it(`adopts only into an empty scene or for its sole model at index 0 (#11710): registered [${models.join(', ')}] ${adopts ? 'adopts' : 'streams'}`, async () => {
       const snapshot = await capturedEntry(`index-${models.join('-')}`);
+      useViewerStore.setState(({ typeVisibility }) => ({ typeVisibility: { ...typeVisibility, spaces: false, openings: false } }));
       render(<Viewport />);
       useViewerStore.setState({ models: new Map(models.map((id) => [id, { id }])) } as never);
       try {
@@ -164,6 +165,7 @@ describe('scene snapshot type index (#10264)', () => {
         const { scene, adopted } = await reopen(snapshot, () => { paints++; });
         if (adopts) {
           assert.ok(adopted, 'its shards land at index 0, where the model is');
+          assert.deepEqual(viewportHidden, [SPACE, OPENING], 'the installed index hides both classes');
           act(() => abandonAdoptedSceneSnapshot(adopted));
         } else {
           assert.equal(adopted, null, 'a whole-scene snapshot cannot replace another model');

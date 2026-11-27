@@ -1,9 +1,18 @@
 // SPDX-License-Identifier: MPL-2.0
 
+import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { IfcParser } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { StepExporter } from './step-exporter.js';
+
+async function exportRetyped(bytes: ArrayBuffer, retypes: Array<{ entityId: number; entityType: string }>) {
+  const store = await new IfcParser().parseColumnar(bytes, { disableWorkerScan: true });
+  const view = new MutablePropertyView(null, 'model');
+  view.importMutations(JSON.stringify({ mutations: retypes.map(retype => ({ type: 'UPDATE_ENTITY_TYPE', ...retype })) }));
+  const result = new StepExporter(store, view).export({ schema: 'IFC4' });
+  return { lines: new TextDecoder().decode(result.content).split('\n'), warnings: result.stats.warnings };
+}
 
 async function exportRetype(members: string, entityType: string) {
   const source = `ISO-10303-21;
@@ -18,15 +27,8 @@ DATA;
 ENDSEC;
 END-ISO-10303-21;
 `;
-  const bytes = new TextEncoder().encode(source);
-  const store = await new IfcParser().parseColumnar(bytes.buffer, { disableWorkerScan: true });
-  const view = new MutablePropertyView(null, 'model');
-  view.importMutations(JSON.stringify({
-    mutations: [{ type: 'UPDATE_ENTITY_TYPE', entityId: 1, entityType }],
-  }));
-  const result = new StepExporter(store, view).export({ schema: 'IFC4' });
-  const lines = new TextDecoder().decode(result.content).split('\n');
-  return { lines, relation: lines.find(line => line.startsWith('#4=')), warnings: result.stats.warnings };
+  const { lines, warnings } = await exportRetyped(new TextEncoder().encode(source).buffer, [{ entityId: 1, entityType }]);
+  return { lines, relation: lines.find(line => line.startsWith('#4=')), warnings };
 }
 
 describe('STEP type-assignment retyping #11500', () => {
@@ -49,5 +51,23 @@ describe('STEP type-assignment retyping #11500', () => {
     expect(lines.some(line => line.startsWith('#1=IFCWALLSTANDARDCASE('))).toBe(true);
     expect(relation).toMatch(/\(#1\),#3\);$/);
     expect(warnings.join('\n')).not.toContain('lost its type assignment');
+  });
+  it('detaches the wall and door types in the authored door fixture', async (context) => {
+    const fixture = new URL('../../../tests/models/various/issue-604-door.ifc', import.meta.url);
+    if (!existsSync(fixture)) {
+      context.skip('Run pnpm fixtures to fetch various/issue-604-door.ifc.');
+      return;
+    }
+    const { lines, warnings } = await exportRetyped(Uint8Array.from(readFileSync(fixture)).buffer, [
+      { entityId: 55, entityType: 'IfcSlab' },
+      { entityId: 2390, entityType: 'IfcWindow' },
+    ]);
+    for (const prefix of ['#55=IFCSLAB(', '#2390=IFCWINDOW(', '#73=IFCWALLTYPE(', '#2333=IFCDOORTYPE(']) {
+      expect(lines.some(line => line.startsWith(prefix))).toBe(true);
+    }
+    for (const id of [2424, 2425]) {
+      expect(lines.some(line => line.startsWith(`#${id}=IFCRELDEFINESBYTYPE(`))).toBe(false);
+      expect(warnings.some(warning => warning.includes(`Relationship #${id} (IFCRELDEFINESBYTYPE) lost its type assignment`))).toBe(true);
+    }
   });
 });

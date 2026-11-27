@@ -9,7 +9,7 @@ import { addRoofToStore } from './roof.js';
 import { addPlateToStore } from './plate.js';
 import { addSpaceToStore } from './space.js';
 import { reassignHostedOpeningsInStore } from './hosted-placement-edit.js';
-import { resolveSpatialAnchor } from './resolve-anchor.js';
+import { splitAnchor } from './element-split-placement.js';
 import { toNativeLength, type SpatialAnchor } from './anchor.js';
 import { computeSlabSplitGeometry } from './edit/slab-edit.js';
 import { keepsFirstPiece } from './edit/split-guid.js';
@@ -76,7 +76,7 @@ export function splitSlabDraft(env: SplitEnvironment, expressId: number, chain: 
   const originZ = hanging ? chain.baseElevation + chain.thickness : chain.baseElevation;
   const moves = planSlabOpeningCarry(env, expressId, chain, cut, cutA, cutB, originZ);
   const { editor, dataStore, view } = env;
-  const anchor = resolveSpatialAnchor(dataStore, env.storeyExpressId, view);
+  const anchor = splitAnchor(env);
   const added = buildPiece(editor, anchor, env, chain.elementType, cut, geo.thickness, originZ, hanging);
   const origin = chain.placementOrigin;
   const emitted = emitClippedProfile(editor, kept, origin, originZ - origin[2], env.lengthUnitScale, hanging);

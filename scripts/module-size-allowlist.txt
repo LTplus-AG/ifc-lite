@@ -142,7 +142,7 @@
    788 packages/bcf/src/ids-reporter.ts
    806 packages/bcf/src/reader.ts
    532 packages/bcf/src/viewpoint.ts
-   753 packages/bcf/src/writer.ts
+   748 packages/bcf/src/writer.ts
    439 packages/clash/src/bcf-bridge.ts
    433 packages/clash/src/duplicates.ts
    547 packages/cli/src/commands/ask.ts

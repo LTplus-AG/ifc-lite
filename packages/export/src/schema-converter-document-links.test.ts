@@ -24,7 +24,7 @@ describe('IfcDocumentInformation <-> IfcDocumentReference link (#10846)', () => 
     const ifc4 = `#1=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'P',$,$,$,$,$,$);
 #5=IFCDOCUMENTINFORMATION('D1','Doc',$,$,$,$,$,$,$,$,$,$,$,$,$,$,$);
 #6=IFCDOCUMENTREFERENCE('a.pdf','A1',$,$,#5);
-#7=IFCDOCUMENTREFERENCE('b.pdf','B1',$,$,#5);
+#7=IFCDOCUMENTREFERENCE('b.pdf','B1',$,'note',#5);
 #6=IFCPROPERTYSINGLEVALUE('Replacement',$,IFCLABEL('Value'),$);`;
     const bytes = new TextEncoder().encode(model('IFC4', ifc4));
     const store = await new IfcParser().parseColumnar(bytes.buffer as ArrayBuffer, {

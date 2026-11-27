@@ -175,7 +175,7 @@ export class TypedPropertyUpgrade {
       const draft = this.drafts.get(idOf(lines[index]));
       if (!draft) continue;
       lines[index] = rewritten(lines[index], draft);
-      if (draft.to === 'IFC4') slots.apply(lines[index]);
+      slots.apply(lines[index], draft.to);
     }
     for (const line of extra) lines.push(line);
     this.drafts.clear();

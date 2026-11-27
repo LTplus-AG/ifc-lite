@@ -28,11 +28,16 @@ import { remapEntityText } from './merged-remap.js';
 /** The member lists of the IFC4 material sets. */
 const MEMBERS = ['MaterialLayers', 'MaterialProfiles', 'MaterialConstituents'];
 const PROPERTIES = 'IFCMATERIALPROPERTIES';
+export const IFC5_MATERIAL_LAYOUT_MISSING = 'IFC5 has no EXPRESS attribute registry';
 /** A lookup that knows no record. */
 const NOTHING: MaterialSource = { typeOf: () => undefined, slots: () => undefined };
 
 /** Whether a `from` -> `to` export downgrades IfcMaterialProperties: the one rule the writers and the report share. */
 export const downgradesMaterial = (from: string, to: string): boolean => to === 'IFC2X3' && (from === 'IFC4' || from === 'IFC4X3');
+
+export function omitsIfc5MaterialProperties(type: string, from: string, to: string): boolean {
+  return type === PROPERTIES && from === 'IFC5' && to === 'IFC2X3';
+}
 
 /**
  * The records the export writes, by id in the line's id space: the effective
@@ -51,6 +56,7 @@ export interface MaterialSource {
 export class MaterialReferents {
   /** Record id -> why it was not written: the type its `Material` names, or `unreadable` / `no Material` / `an unread record`. */
   private readonly dropped = new Map<number, string>();
+  private ifc5Omitted?: Set<number>;
 
   /** The export's record lookup. Without one nothing resolves, so every downgraded record is left out and reported: never carried unchecked. */
   constructor(private source: MaterialSource = NOTHING) {}
@@ -101,9 +107,15 @@ export class MaterialReferents {
    * converter withholds (an IFC4-only set) is replaced first.
    */
   apply(line: string, from: string, to: string): string | null {
-    const head = downgradesMaterial(from, to) ? stepRecordHead(line) : null;
+    const omitIfc5 = omitsIfc5MaterialProperties(PROPERTIES, from, to);
+    const head = omitIfc5 || downgradesMaterial(from, to) ? stepRecordHead(line) : null;
     // A length check first, so most records never build an upper-case copy.
     if (!head || head.typeEnd - head.typeStart !== PROPERTIES.length || line.slice(head.typeStart, head.typeEnd).toUpperCase() !== PROPERTIES) return line;
+    if (omitIfc5) {
+      const id = slotRef(line.slice(0, head.eq));
+      if (id !== null) (this.ifc5Omitted ??= new Set()).add(id);
+      return null;
+    }
     const at = attrNameTable(from as IfcSchemaVersion)?.get(PROPERTIES)?.indexOf('Material') ?? -1;
     if (at < 0) return line;
     // Framed as `convertRecord` frames it, which also accepts a record without its ';'.
@@ -132,12 +144,19 @@ export class MaterialReferents {
   }
 
   /** Whether `apply` left record `id` out. */
-  leftOut(id: number): boolean { return this.dropped.has(id); }
+  leftOut(id: number): boolean { return this.dropped.has(id) || this.ifc5Omitted?.has(id) === true; }
 
   warnings(): string[] {
-    if (!this.dropped.size) return [];
-    const sites = [...this.dropped].sort(([a], [b]) => a - b).map(([id, type]) => `#${id} (${type})`);
-    return [`${this.dropped.size} IfcMaterialProperties record(s) were not written: IFC2X3 IfcExtendedMaterialProperties.Material must name one IfcMaterial, and theirs does not: ${sites.join(', ')} (#10763).`];
+    const warnings: string[] = [];
+    if (this.dropped.size) {
+      const sites = [...this.dropped].sort(([a], [b]) => a - b).map(([id, type]) => `#${id} (${type})`);
+      warnings.push(`${this.dropped.size} IfcMaterialProperties record(s) were not written: IFC2X3 IfcExtendedMaterialProperties.Material must name one IfcMaterial, and theirs does not: ${sites.join(', ')} (#10763).`);
+    }
+    if (this.ifc5Omitted) {
+      const sites = [...this.ifc5Omitted].sort((a, b) => a - b).map((id) => `#${id}`);
+      warnings.push(`${this.ifc5Omitted.size} IfcMaterialProperties record(s) were not written because ${IFC5_MATERIAL_LAYOUT_MISSING}: ${sites.join(', ')} (#11132).`);
+    }
+    return warnings;
   }
 }
 

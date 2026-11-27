@@ -106,18 +106,24 @@ describe('SparsePool', () => {
 
 describe('sparsePoolFor', () => {
   const host = { broadcast: () => {}, shareIndex: () => {}, onReady: () => {} };
-  const make = (bytes = 8, options?: { mergeLayers?: boolean; globalInstancing?: boolean; outOfCore?: boolean }) => sparsePoolFor(new SharedArrayBuffer(bytes), host, options);
+  const make = (bytes = GLOBAL_INSTANCING_MIN_BYTES, options?: { mergeLayers?: boolean; globalInstancing?: boolean; outOfCore?: boolean }) => sparsePoolFor(new SharedArrayBuffer(bytes), host, options);
 
   it('keeps a load on the whole-file path for the options an arena cannot serve', () => {
     flagHost.__IFC_LITE_OOC = 1;
-    expect(make(8, { mergeLayers: true })).toBeNull();
-    expect(make(8, { mergeLayers: false })).toBeInstanceOf(SparsePool);
+    expect(make(undefined, { mergeLayers: true })).toBeNull();
+    expect(make(undefined, { mergeLayers: false })).toBeInstanceOf(SparsePool);
     flagHost.__IFC_LITE_GLOBAL_INSTANCING = 1;
-    expect(make(8), 'the plan does not apply to the small-file tier').toBeInstanceOf(SparsePool);
-    expect(make(GLOBAL_INSTANCING_MIN_BYTES)).toBeNull();
-    expect(make(GLOBAL_INSTANCING_MIN_BYTES, { globalInstancing: false }), 'the load\'s own decision wins over a re-read').toBeInstanceOf(SparsePool);
+    expect(make()).toBeNull();
+    expect(make(undefined, { globalInstancing: false }), 'the load\'s own decision wins over a re-read').toBeInstanceOf(SparsePool);
     delete flagHost.__IFC_LITE_GLOBAL_INSTANCING;
-    expect(make(8, { globalInstancing: true })).toBeNull();
+    expect(make(undefined, { globalInstancing: true })).toBeNull();
+  });
+
+  it('keeps a source in the small-file tier on the whole-file path, whoever turned it on', () => {
+    flagHost.__IFC_LITE_OOC = 1;
+    expect(make(GLOBAL_INSTANCING_MIN_BYTES - 1)).toBeNull();
+    expect(make(GLOBAL_INSTANCING_MIN_BYTES - 1, { outOfCore: true })).toBeNull();
+    expect(make(GLOBAL_INSTANCING_MIN_BYTES)).toBeInstanceOf(SparsePool);
   });
 
   it('clears the stats an earlier load published, whichever path this load takes', () => {
@@ -135,10 +141,10 @@ describe('sparsePoolFor', () => {
   });
 
   it("follows the host's own decision over the explicit flag when it has one (a staged rollout)", () => {
-    expect(make(8, { outOfCore: true })).toBeInstanceOf(SparsePool);
+    expect(make(undefined, { outOfCore: true })).toBeInstanceOf(SparsePool);
     flagHost.__IFC_LITE_OOC = 1;
-    expect(make(8, { outOfCore: false })).toBeNull();
-    expect(make(8, { outOfCore: undefined }), 'unset reads the explicit flag').toBeInstanceOf(SparsePool);
-    expect(make(8, { outOfCore: true, mergeLayers: true }), 'the host decision does not lift a blocker').toBeNull();
+    expect(make(undefined, { outOfCore: false })).toBeNull();
+    expect(make(undefined, { outOfCore: undefined }), 'unset reads the explicit flag').toBeInstanceOf(SparsePool);
+    expect(make(undefined, { outOfCore: true, mergeLayers: true }), 'the host decision does not lift a blocker').toBeNull();
   });
 });

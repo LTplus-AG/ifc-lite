@@ -113,7 +113,6 @@ function math(f: (x: number) => number): (v: Value) => Value {
   };
 }
 
-export const abs = math(Math.abs);
 export const sqrt = math((x) => (x < 0 ? NaN : Math.sqrt(x)));
 export const sin = math(Math.sin);
 export const cos = math(Math.cos);

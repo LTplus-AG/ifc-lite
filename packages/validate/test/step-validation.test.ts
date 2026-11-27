@@ -106,3 +106,11 @@ it('validates every FILE_NAME and reports duplicate header records (#11647)', as
     expect(report.findings.map(f => f.rule)).toEqual(rules);
   }
 });
+
+it('rejects excess FILE_NAME arguments in header-only validation (#11647)', async () => {
+  for (const [suffix, expected] of [["'g');", []], ["'g','extra');", ['FILE_NAME.attribute-count']]] as const) {
+    const report = await validateStepText(file('').replace("'g');", suffix), { categories: ['header'] });
+    expect(report.valid).toBe(expected.length === 0);
+    expect(report.findings.map(f => f.rule)).toEqual(expected);
+  }
+});

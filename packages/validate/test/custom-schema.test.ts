@@ -376,3 +376,13 @@ ENTITY Link; Target : Item; END_ENTITY; END_SCHEMA;`);
   expect(report.stats.entityRuleEvaluations).toBe(5);
   expect(report.findings.map(f => [f.instance, f.rule])).toEqual([[5, 'Item.Count']]);
 });
+
+it('preserves REAL and INTEGER types and values through ABS (#11647)', async () => {
+  const { schema } = generated(`SCHEMA S; ENTITY Sample; R : REAL; I : INTEGER;
+WHERE RealType : 'REAL' IN TYPEOF(ABS(R)); IntegerType : 'INTEGER' IN TYPEOF(ABS(I));
+ WrongReal : 'INTEGER' IN TYPEOF(ABS(R)); WrongInteger : 'REAL' IN TYPEOF(ABS(I));
+ Magnitudes : (ABS(R) = 5) AND (ABS(I) = 5); END_ENTITY; END_SCHEMA;`);
+  const report = await validateStepText('DATA;#1=SAMPLE(-5.,-5);ENDSEC;', { schema, categories: ['entity_rule'] });
+  expect(report.stats.entityRuleEvaluations).toBe(5);
+  expect(report.findings.map(f => f.rule)).toEqual(['Sample.WrongReal', 'Sample.WrongInteger']);
+});

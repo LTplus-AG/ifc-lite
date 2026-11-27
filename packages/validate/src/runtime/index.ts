@@ -7,10 +7,10 @@
 export * from './values.js';
 export { logical, not, and, or, xor, isTrue, violated } from './logic.js';
 export { eq, ne, same, notSame, lt, gt, le, ge, isIn, interval } from './compare.js';
-export { add, sub, mul, div, intDiv, mod, pow, neg, pos } from './arithmetic.js';
+export { add, sub, mul, div, intDiv, mod, pow, abs, neg, pos } from './arithmetic.js';
 export {
   sizeof, hiindex, loindex, exists, nvl, typeOf, typeIs, usedIn, query, aggregate,
-  abs, sqrt, sin, cos, tan, asin, acos, atan, exp, log, log2, log10, odd, blength, length,
+  sqrt, sin, cos, tan, asin, acos, atan, exp, log, log2, log10, odd, blength, length,
 } from './builtins.js';
 export { EvaluationError, resolve, attr, index, slice, construct, complex, typed, assign, assignArray, assignSet, caseSelector, setAttr, setIndex } from './access.js';
 export { typeRuleRefinement, localRuleRefinement, uniqueItems, fromAuthoring, detachedModel, type RefinementContext } from './authoring.js';

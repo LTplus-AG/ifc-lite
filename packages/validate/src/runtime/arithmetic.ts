@@ -143,6 +143,10 @@ export function pow(a: Value, b: Value): Value {
   return numeric(a, b, (p, q) => p ** q);
 }
 
+export function abs(a: Value): Value {
+  return numeric(a, 0, Math.abs);
+}
+
 export function neg(a: Value): Value {
   return numeric(0, a, (zero, x) => zero - x);
 }

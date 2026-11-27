@@ -36,6 +36,12 @@ export function checkHeader(text: string, out: ValidationFinding[]): void {
         out.push({ category: 'header', rule: entity, message: `${entity} is missing or unreadable` });
         continue;
       }
+      if (values.length > attributes.length) {
+        out.push({
+          category: 'header', rule: `${entity}.attribute-count`,
+          message: `${entity} expects ${attributes.length} attributes, received ${values.length}`,
+        });
+      }
       attributes.forEach(([name, list], i) => {
         const v = values[i];
         const ok = list ? Array.isArray(v) && v.length > 0 && v.every(isHeaderString) : isHeaderString(v);

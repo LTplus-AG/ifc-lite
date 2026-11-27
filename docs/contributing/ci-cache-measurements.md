@@ -11,8 +11,9 @@ CI step durations below are wall time, not CPU time or billing-weighted minutes.
 - Generated `tsconfig.tests.json` files no longer invalidate production Turbo
   build keys (#10407). The actual Turbo regression still requires production
   source/configuration changes to invalidate the key.
-- Viewer tests retain 16 isolated shards and their complete inventory. #10399
-  refreshed the existing LPT duration manifest; no second selector was added.
+- Viewer tests use 14 duration-packed shards with two-way file concurrency
+  enabled by `VIEWER_TEST_CONCURRENCY`. #10399 refreshed the existing duration
+  manifest when the job still used 16 shards. Both layouts cover the full suite.
 - The retained Rust matrix runs the browser boundary, CLI report, and Rust
   tests and Clippy on separate runners. Each leg owns its
   `rust-retained-runtime-LEG` archive or `/cache/rust-target/rust-retained-LEG`
@@ -40,15 +41,50 @@ The following values come from each job's initial
 The observed maximum falls inside the earlier range; the historical packing
 prediction did not establish an equivalent improvement on fresh CI. Source,
 runner load, caches and batch contents differ. This is not a controlled A/B
-measurement and supports no percentage saving. Retain the existing shard count
-and selector; refresh from several successful full runs when measurements drift,
-rather than adding shards or optimizing one noisy sample. Post-merge replay runs
+measurement and supports no percentage saving. Refresh the weights for both
+modes when file durations drift:
+
+- For concurrency 2, use two or three successful full runs while their
+  `viewer-file-timings-N` artifacts are available. Pass each run with
+  `--concurrent-run`. The refresher validates full, exact file coverage and
+  takes plain per-file medians across the supplied runs. The committed
+  `concurrentSeconds` weights were normalized offline for runner speed.
+  Refresh from several runs with varied runner assignments, or normalize
+  the file timings before repacking. Runner-speed differences can shift the
+  packing when the input includes only one run or a narrow mix of runners.
+- For serial weights, run two or three successful full runs with
+  `VIEWER_TEST_CONCURRENCY` unset. Submit them in a maintenance window and
+  restore the variable after they finish. Pass each serial run with `--run`
+  to refresh the TAP-derived weights.
+
+Both sets of flags can be supplied to the same
+`node scripts/refresh-viewer-test-durations.mjs` command, and `--dry-run`
+previews what it would use. Refreshing one mode preserves the other mode's
+weights for files still present.
+
+If viewer concurrency 2 needs to be rolled back, unset
+`VIEWER_TEST_CONCURRENCY`. This switches the 14 viewer jobs to serial
+execution and raises their caps from 25 to 35 minutes. To restore the previous
+runner layout, also restore the 16-job matrix, both `TEST_SHARDS` settings and
+the manifest count in the same change. PR review signal and the dirty-PR scanner
+derive their expected check names from a literal matrix list. Post-merge replay runs
 that skip all shards provide no balancing evidence.
 
 Reproduce the inventory with
 `gh api repos/LTplus-AG/ifc-lite/actions/runs/RUN/jobs?per_page=100 --paginate`,
 selecting successful `Viewer tests (shard N)` jobs and the exact step above.
 Subtract `started_at` from `completed_at`; exclude setup, retries and post steps.
+
+The 14-shard layout passed all 3,081 files at concurrency 2 with a slowest
+test step of 13.35 minutes. It frees two hosted runner slots per queue run
+and adds about 1.2 minutes to the slowest viewer test step compared with the
+16-shard baseline. [Hosted acceptance run](https://github.com/LTplus-AG/ifc-lite/actions/runs/45773431285)
+
+Two 12-shard trials reached 15.9 and 15.7 minutes. The second trial published
+whole-file timings, which were normalized offline against historical
+test-body timings for the same files before repacking into 14 shards.
+Full viewer runs publish file-level durations in `viewer-file-timings-N`
+for future repacking.
 
 ## Rust measurements
 

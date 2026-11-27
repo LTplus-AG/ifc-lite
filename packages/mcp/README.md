@@ -12,20 +12,35 @@ Model Context Protocol (MCP) server for **ifc-lite** — agent-native BIM via JS
 # Run against a local IFC file over stdio (the default for Claude Desktop / Cursor)
 npx @ifc-lite/mcp ./model.ifc
 
-# Federate multiple files
-npx @ifc-lite/mcp ./arch.ifc ./struct.ifc ./mep.ifc --federate
+# Several files in one session
+npx @ifc-lite/mcp ./arch.ifc ./struct.ifc ./mep.ifc
 
 # Read-only (no mutation tools advertised)
 npx @ifc-lite/mcp ./model.ifc --read-only
 
 # HTTP / Streamable HTTP for remote agents
-npx @ifc-lite/mcp ./model.ifc --transport http --port 8765 --token $API_TOKEN
+npx @ifc-lite/mcp --transport http --port 8765 --token $API_TOKEN --allow ./models
 
 # Auto-open the WebGL viewer at startup. Add --open to also pop the URL in
 # the system browser.
 npx @ifc-lite/mcp ./model.ifc --viewer
 npx @ifc-lite/mcp ./model.ifc --open
 ```
+
+## Building client distribution artifacts
+
+From the repository root:
+
+```bash
+pnpm --filter @ifc-lite/mcp release:manifests
+```
+
+With the project's WASM build toolchain installed, this builds a Claude
+Desktop `.mcpb`, a dependency inventory and the MCP Registry `server.json`
+for the package version under the gitignored `packages/mcp/release-out/`
+directory. Use `--no-bundle` to generate only `server.json`.
+The Registry entry identifies the matching npm release. Registry publication
+requires that npm version to exist with the same `mcpName`.
 
 ## Embedded loaded-model authoring
 
@@ -110,9 +125,21 @@ ifc-lite mcp ./model.ifc
 ifc-lite mcp ./model.ifc --read-only
 ```
 
+### Add it to a client in one step
+
+```bash
+npx -y @ifc-lite/mcp install --client claude-desktop ./model.ifc
+npx -y @ifc-lite/mcp install --client claude-code -- --bridge
+npx -y @ifc-lite/mcp install --client cursor --dry-run
+```
+
+Clients: `claude-code`, `claude-desktop`, `cursor`, `vscode`. Existing configs
+are merged (other servers kept, a backup written first); `--dry-run` prints
+what would change. `install --help` lists the options.
+
 ### Claude Desktop
 
-Drop this into `claude_desktop_config.json`:
+Drop this into `claude_desktop_config.json` (`~/Library/Application Support/Claude/` on macOS, `%APPDATA%\Claude\` on Windows):
 
 ```json
 {
@@ -150,6 +177,7 @@ The same `npx` command works as a stdio server in any MCP-aware client.
 | Diff | `model_diff` (`by_content` for content-keyed matching), `quantity_diff` |
 | Export | `export_ifc`, `export_csv`, `export_json`, `export_glb`, `export_obj`, `export_ifcx`, `export_3dm` |
 | Scripting | `script_run` (read-only), `script_run_mutate` (hidden under `--read-only`): JavaScript against the `bim` SDK in the QuickJS sandbox, with time and memory limits. Both tools require `read`. `script_run_mutate` also requires `mutate`, and its `bim.export` and `bim.create` namespaces require `export`. Script code runs on the server's event loop, so other requests wait while it runs |
+| Model transforms | `model_merge`, `model_convert`, `model_extract`, `model_anonymize`, `model_simplify`, `model_lod`: write to `file_path` and leave the loaded model alone. An existing file there is replaced (a loaded model's source never is). `model_merge` and `model_anonymize` refuse a model with unsaved edits |
 | Viewer | `viewer_ask`, `viewer_open`, `viewer_close`, `viewer_status`, `viewer_select`, `viewer_colorize`, `viewer_isolate`, `viewer_hide`, `viewer_show`, `viewer_reset`, `viewer_fly_to`, `viewer_set_section`, `viewer_clear_section`, `viewer_color_by_storey`, `viewer_color_by_property`, `viewer_get_selection`, `viewer_wait_for_selection`, `viewer_describe_selection` |
 
 `join_walls` joins two straight walls in the same placement frame through the
@@ -268,7 +296,7 @@ const initResp = await transport.send({
 ## Errors
 
 Domain errors come back inside the tool result with `isError: true` and a
-stable `structuredContent.code`. Tools that declare an `outputSchema`
+stable `structuredContent.code`. Tools whose `outputSchema` only describes success
 (`script_run`, `script_run_mutate`) put that envelope as JSON in the last
 text block instead, since clients validate `structuredContent` against the
 schema:

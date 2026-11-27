@@ -144,28 +144,44 @@ pub(super) fn produce(
     decoder: &mut EntityDecoder,
     router: &GeometryRouter,
 ) -> ProducedElementMeshes {
+    produce_styled(job, StyleSource::Unavailable, ctx, opts, decoder, router).into_produced()
+}
+
+/// [`produce`] with each mesh's colour source; `element_style` is the source
+/// of `job.element_color` (`ProductState::set_element_style`).
+pub(crate) fn produce_styled(
+    job: &ElementMeshJob<'_>,
+    element_style: StyleSource,
+    ctx: &MeshProductionContext<'_>,
+    opts: &MeshProductionOptions,
+    decoder: &mut EntityDecoder,
+    router: &GeometryRouter,
+) -> StyledProduction {
+    let stopped = || StyledProduction::unstyled(stopped_output());
     with_source_resources(decoder, |decoder| {
         if ifc_lite_geometry::resource::check_current().is_err() {
-            return stopped_output();
+            return stopped();
         }
         // Borrowed APIs stay infallible: a product whose owner cannot be
         // admitted or kept (another live product holds it, or a callback
         // replaced it) publishes nothing rather than unowned output.
-        drive(job, ctx, opts, decoder, router).unwrap_or_else(|_| stopped_output())
+        drive(job, element_style, ctx, opts, decoder, router).unwrap_or_else(|_| stopped())
     })
 }
 
 /// Plan, advance every ticket and publish, inside one owner epoch.
 fn drive(
     job: &ElementMeshJob<'_>,
+    element_style: StyleSource,
     ctx: &MeshProductionContext<'_>,
     opts: &MeshProductionOptions,
     decoder: &mut EntityDecoder,
     router: &GeometryRouter,
-) -> Result<ProducedElementMeshes, WorkError> {
+) -> Result<StyledProduction, WorkError> {
     let mut publication = session_run::Publication::new(router);
     session_run::run_epoch(decoder, router, None, |decoder, router, live| {
         let mut state = ProductState::plan_live(job, ctx, opts, decoder, router, live);
+        state.set_element_style(element_style);
         while state.step_live(ctx, decoder, router)? {}
         state.finish_live(router, &mut publication.output)
     })?;

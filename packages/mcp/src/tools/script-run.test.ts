@@ -607,6 +607,25 @@ describe('script_run_mutate scope', () => {
   });
 });
 
+it('keeps structured errors for a transform tool whose output schema accepts them', async () => {
+  const server = new MCPServer({
+    version: '0.0.0-test', registry: ctx.registry, scope: fullScope(),
+    tools: buildDefaultToolRegistry(), resources: new ResourceRegistry(), prompts: new PromptRegistry(),
+  });
+  const transport = new InProcessTransport();
+  void transport.connect(server);
+  await transport.send({
+    jsonrpc: '2.0', id: 1, method: 'initialize',
+    params: { protocolVersion: PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: 't', version: '0' } },
+  });
+  const response = await transport.send({
+    jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'model_convert', arguments: {} },
+  });
+  expect(response).toMatchObject({
+    result: { isError: true, structuredContent: { code: 'INVALID_INPUT' } },
+  });
+});
+
 describe('script_run under --read-only', () => {
   it.each([
     { scope: readOnlyScope(), code: 'PERMISSION_DENIED' },

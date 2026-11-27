@@ -9,17 +9,18 @@ call BIM operations as typed tools instead of shelling out to the CLI.
 ```bash
 ifc-lite mcp ./model.ifc                       # stdio (default transport)
 ifc-lite mcp ./model.ifc --read-only           # hide all mutation tools
-ifc-lite mcp ./arch.ifc ./struct.ifc --federate
+ifc-lite mcp ./arch.ifc ./struct.ifc            # several files, one session
 ifc-lite mcp --transport http --port 8765 --token <secret>
 ifc-lite mcp ./model.ifc --viewer              # auto-open the 3D viewer
 ```
 
 The standalone binary `ifc-lite-mcp …` accepts the same flags. Useful options:
-`--read-only`, `--federate`, `--transport stdio|http`, `--port`, `--host`
-(loopback by default; non-loopback needs `--token` or `--insecure`), `--token`
-(a single bearer token for HTTP auth; combine with `--read-only` to scope the
-whole server read-only), `--bsdd <url>`, `--allow <path>` (restrict filesystem
-access).
+`--read-only`, `--transport stdio|http`, `--port`, `--host`
+(loopback by default; non-loopback needs `--token`, `--read-only-token` or `--insecure`), `--token`
+(repeatable bearer token for HTTP auth; combine with `--read-only` to scope the
+whole server read-only), `--read-only-token` (repeatable, the `--read-only` preset: no edits, but export and flow-checkpoint tools still write files under the allowed roots),
+`--bsdd <url>`, `--allow <path>` (restrict filesystem access), and the
+`--bridge` flags.
 
 Register it with Claude Code via your MCP config, e.g.:
 
@@ -85,6 +86,11 @@ One script replaces many single-purpose calls.
 
 **Export** — `export_csv`, `export_json`, `export_ifc`, `export_ifcx`,
 `export_glb`, `export_3dm`.
+
+**Model transforms** (write to `file_path`, replacing a file already there, never a loaded model's source; the loaded model is untouched):
+`model_merge`, `model_convert` (schema version, with a loss report),
+`model_extract` (byte-preserving subset), `model_anonymize`,
+`model_simplify`, `model_lod`.
 
 **BCF** — `bcf_topic_create`, `bcf_topic_update`, `bcf_topic_close`,
 `bcf_topic_list`, `bcf_viewpoint_create`, `bcf_export`.

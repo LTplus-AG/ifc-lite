@@ -11,7 +11,7 @@
 import type { CallToolResult, ToolDefinition, ToolScope } from './protocol/index.js';
 import { scopeAllows, type AuthScope } from './auth/scope.js';
 import type { Tool, ToolRegistry } from './tools/types.js';
-import { advertisedInputSchema } from './validate.js';
+import { advertisedInputSchema, validateInput } from './validate.js';
 
 /** One row of the manifest's tool catalog. */
 export interface ToolCatalogEntry {
@@ -66,11 +66,12 @@ function firstSentence(text: string): string {
  * MCP clients validate any `structuredContent` against the tool's
  * `outputSchema`, error results included (the TS SDK client does), and the
  * error envelope `{ code, message, details, hint }` matches no success
- * schema. For a tool that declares one, the envelope moves into the text
- * block.
+ * schema. Move the envelope into a text block when the schema rejects it.
+ * Tools whose schema includes an error variant keep their structured result.
  */
 export function fitOutputSchema(result: CallToolResult, tool: Tool | null): CallToolResult {
   if (!result.isError || result.structuredContent === undefined || !tool?.outputSchema) return result;
+  if (validateInput(tool.outputSchema, result.structuredContent).valid) return result;
   const { structuredContent, ...rest } = result;
   return { ...rest, content: [...result.content, { type: 'text', text: JSON.stringify(structuredContent) }] };
 }

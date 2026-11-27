@@ -28,6 +28,19 @@
  *       `.mergify.yml`'s `auto_merge_conditions` carries
  *       `-check-failure=PR base staleness` (not added here; see the PR).
  *
+ * BEFORE `on` (open by design while the gate is shadow, where no run posts
+ * anything but a release `success`). The PR that enables the gate owns:
+ *   - the job permission (`statuses: write` on test.yml's perf-ratchet), the
+ *     Mergify condition and ci-viewer-select-status.test.mjs's writer list;
+ *   - ordering between writers: a sweep, a label run and an in-run step can
+ *     judge one head against different mains at once, and the last write
+ *     wins. A re-read of main before posting narrows that, it does not close
+ *     it; the mechanism (one writer, or a compare-and-set on the main a
+ *     status names) is that PR's to choose;
+ *   - a head shared by two PRs judged in DIFFERENT runs: the status is per
+ *     commit, so one PR's `success` can replace the other's `failure`. Within
+ *     one run a failure on a shared head is kept (see run()).
+ *
  * WHEN A VERDICT IS (RE)EVALUATED. An open PR's CI does not re-run when main
  * moves, so a verdict is only as fresh as its last evaluation:
  *   1. `--in-run`: the PR's own Test run, last step of the `perf-ratchet` job,
@@ -144,10 +157,10 @@ export function readFilterGlobs(workflowText) {
  * Judge one PR. Never throws: a fault while gathering inputs is an `unknown`
  * verdict naming it, so one unreadable PR neither passes nor stops the sweep.
  */
-export function evaluatePr(io, { pr, headSha, mainTip, ceilings, globs, measured = null, prRun = null }) {
+export function evaluatePr(io, { pr, headSha, mainTip, ceilings, globs, measured = null, prRun = null, baseRef = null }) {
   const record = { pr, head: headSha, mainTip, testedBase: null, prRun: null };
   try {
-    const files = io.prFiles(pr, headSha);
+    const files = io.prFiles(pr, headSha, baseRef);
     const rel = prRelevance(files, globs);
     let prMeasured = null;
     if (measured) {
@@ -171,15 +184,22 @@ export function evaluatePr(io, { pr, headSha, mainTip, ceilings, globs, measured
       // Main has not moved since the PR was measured: main at the base IS main
       // now, so the drift is zero by construction, not by absence.
       const atTip = sameMain ? { sha: tb, behindTip: 0, families: prMeasured } : null;
-      perf = evaluatePerf({
-        relevant: rel.perf,
-        editsCeilings: rel.editsCeilings,
-        prMeasured,
-        testedBase: tb,
-        ceilings,
-        mainAtBase: needsMain ? (atTip ?? io.mainMeasurementAt(tb)) : null,
-        mainLatest: needsMain ? (atTip ?? io.latestMainMeasurement(mainTip)) : null,
-      });
+      let mainAtBase = null;
+      let mainLatest = null;
+      let mainFault = null;
+      if (needsMain) {
+        try {
+          mainAtBase = atTip ?? io.mainMeasurementAt(tb);
+          mainLatest = atTip ?? io.latestMainMeasurement(mainTip);
+        } catch (err) {
+          // Perf becomes "could not be read"; the Rust half is still judged.
+          if (err instanceof BudgetError) throw err;
+          mainFault = err.message.split('\n')[0];
+        }
+      }
+      perf = mainFault
+        ? { verdict: 'unknown', reasons: [`main's measurement could not be read (${mainFault})`], rows: [] }
+        : evaluatePerf({ relevant: rel.perf, editsCeilings: rel.editsCeilings, prMeasured, testedBase: tb, ceilings, mainAtBase, mainLatest });
     }
     let moved = null;
     if (rel.rust && tb) {
@@ -225,8 +245,14 @@ export function loadCache(path) {
  * the API budget, carries the old value through, so the first complete sweep
  * after `on` still reads every labelled head's status and releases the
  * failures the in-run step posted (they are not in `posted`).
+ *
+ * `released` is that rollback's progress: heads a shadow sweep has read (and
+ * released if held) since the gate left `on`. A rollback the budget cuts
+ * short resumes past them instead of re-reading the same prefix every time.
+ * It is emptied by any sweep with the gate `on` (which may hold again) and
+ * once a complete shadow sweep settles `lastMode`.
  */
-function saveCache(path, store, liveHeads, lastMode) {
+function saveCache(path, store, liveHeads, lastMode, released) {
   if (!path) return;
   // Keys are a head SHA, or `<head>#<pr>` for the per-PR file lists.
   const live = (map) => Object.fromEntries(Object.entries(map ?? {}).filter(([key]) => !liveHeads || liveHeads.has(key.split('#')[0])));
@@ -238,6 +264,7 @@ function saveCache(path, store, liveHeads, lastMode) {
     prMeasurements: live(store.prMeasurements),
     prFiles: live(store.prFiles),
     posted: live(store.posted),
+    released: live(released),
     lastMode,
   }));
 }
@@ -284,6 +311,7 @@ export function run(opts, env = process.env, makeIo = createIo) {
     mainTip ??= io.mainTip();
     ceilings = io.ceilingsAt(mainTip);
     if (sweep) candidates = io.queueCandidates(QUEUE_LABEL);
+    if (candidates?.capped) console.log(`::warning title=base-stale::the labelled PR list reached its limit; PRs past it are not judged and this sweep does not count as complete`);
   } catch (err) {
     // Spent before any PR was judged: the same honest skip as the floor.
     if (!(err instanceof BudgetError)) throw err;
@@ -293,10 +321,15 @@ export function run(opts, env = process.env, makeIo = createIo) {
   }
   const targetUrl = env.GITHUB_RUN_ID ? `${env.GITHUB_SERVER_URL ?? 'https://github.com'}/${repo}/actions/runs/${env.GITHUB_RUN_ID}` : undefined;
 
+  // A rollback in progress (see saveCache): heads already read since `on`.
+  const leftOn = cache?.lastMode !== 'shadow';
+  const released = sweep && gateMode !== 'on' && leftOn ? { ...(cache?.released ?? {}) } : {};
   // Shadow sweep: the heads an in-run step judged with the gate on. A failed
-  // lookup reads every head instead (null), the safe direction.
+  // lookup reads every head instead (null), the safe direction. Needed for a
+  // settled shadow, and to re-read a released head that has been judged
+  // with the gate on since.
   let onHeads = new Set();
-  if (sweep && gateMode !== 'on' && !opts.dryRun && cache?.lastMode === 'shadow') {
+  if (sweep && gateMode !== 'on' && !opts.dryRun && (!leftOn || Object.keys(released).length > 0)) {
     try {
       onHeads = io.inRunOnHeads();
     } catch (err) {
@@ -307,21 +340,24 @@ export function run(opts, env = process.env, makeIo = createIo) {
 
   let targets;
   if (sweep) {
-    targets = candidates.map((p) => ({ pr: p.number, headSha: p.headRefOid, fork: p.isCrossRepository }));
+    targets = candidates.prs.map((p) => ({ pr: p.number, headSha: p.headRefOid, fork: p.isCrossRepository, baseRef: 'main' }));
   } else if (opts.mode === 'in-run') {
     // No download (the measurement step failed): fall back to the PR's newest
     // earlier measurement, which the decision then dates honestly.
     const measured = existsSync(opts.measuredDir)
       ? { families: readdirSync(opts.measuredDir).filter((n) => n.endsWith('.json')).sort().map((f) => loadMeasuredFile(join(opts.measuredDir, f))), mergeSha: opts.mergeSha }
       : null;
-    targets = [{ pr: opts.pr, headSha: opts.headSha, fork: Boolean(env.HEAD_REPO) && env.HEAD_REPO !== repo, measured }];
+    targets = [{ pr: opts.pr, headSha: opts.headSha, fork: Boolean(env.HEAD_REPO) && env.HEAD_REPO !== repo, measured, baseRef: env.GITHUB_BASE_REF || null }];
   } else {
     targets = [{ pr: opts.pr, headSha: null, fork: false }];
   }
 
   const records = [];
   // Whether every head this sweep had to read was read; see saveCache.
-  let complete = true;
+  let complete = !candidates?.capped;
+  // Two PRs can share a head: a failure this run posted on it is not
+  // replaced by the other PR's success (the status is per commit).
+  const heldThisRun = new Map();
   let stopped = null;
   for (const t of targets) {
     if (!stopped && sweep && records.length > 0) {
@@ -336,6 +372,7 @@ export function run(opts, env = process.env, makeIo = createIo) {
     }
     let headSha = t.headSha;
     let fork = t.fork;
+    let baseRef = t.baseRef ?? null;
     if (!headSha) {
       let pull;
       try {
@@ -348,8 +385,9 @@ export function run(opts, env = process.env, makeIo = createIo) {
       }
       headSha = pull.head.sha;
       fork = pull.head.repo?.full_name !== repo;
+      baseRef = pull.base?.ref ?? null;
     }
-    const rec = { ...evaluatePr(io, { pr: t.pr, headSha, mainTip, ceilings, globs, measured: t.measured ?? null, prRun: opts.prRun ?? null }), trigger: opts.trigger ?? opts.mode, gateMode, evaluatedAt };
+    const rec = { ...evaluatePr(io, { pr: t.pr, headSha, mainTip, ceilings, globs, measured: t.measured ?? null, prRun: opts.prRun ?? null, baseRef }), trigger: opts.trigger ?? opts.mode, gateMode, evaluatedAt };
     // A verdict the budget cut short is no answer: post nothing, keep the
     // head's old status, and stop the sweep before it spends more.
     const budgetCut = rec.budget === true;
@@ -367,12 +405,20 @@ export function run(opts, env = process.env, makeIo = createIo) {
         // Test run judged with the gate `on` (those posts are not in this
         // cache: a brief `on` between two sweeps leaves only that trace).
         // A settled shadow sweep reads no statuses at all.
-        const leftOn = cache?.lastMode !== 'shadow';
-        const mayHold = opts.mode !== 'sweep' || leftOn || onHeads === null || onHeads.has(headSha) ||
+        // A rollback in progress skips heads it already read, unless they
+        // may have been held again since (an `on` in-run marker, a
+        // non-success this workflow posted).
+        const mayHold = opts.mode !== 'sweep' || (leftOn && !released[headSha]) || onHeads === null || onHeads.has(headSha) ||
           (io.store.posted[headSha] && io.store.posted[headSha] !== 'success');
         const existing = gateMode === 'on' || !mayHold ? null : io.existingStatus(headSha, STATUS_CONTEXT);
         status = statusFor(rec, gateMode, existing);
-        if (status) io.postStatus(headSha, STATUS_CONTEXT, status, targetUrl);
+        if (status && status.state === 'success' && heldThisRun.has(headSha)) {
+          status = { state: 'kept', description: `kept the failure #${heldThisRun.get(headSha)} got on this shared head` };
+        } else if (status) {
+          io.postStatus(headSha, STATUS_CONTEXT, status, targetUrl);
+          if (status.state !== 'success') heldThisRun.set(headSha, t.pr);
+        }
+        if (sweep && gateMode !== 'on' && leftOn) released[headSha] = true;
       } catch (err) {
         console.log(`::warning title=base-stale::could not read or post the ${STATUS_CONTEXT} status on #${t.pr}: ${err.message.split('\n')[0]}`);
         status = { state: 'not-posted', description: err.message.split('\n')[0] };
@@ -384,7 +430,9 @@ export function run(opts, env = process.env, makeIo = createIo) {
   if (stopped) complete = false;
   if (stopped) console.log(`::notice title=base-stale::stopped early: ${stopped}; the rest are logged as not judged`);
   const lastMode = sweep && complete && !opts.dryRun ? gateMode : (cache?.lastMode ?? null);
-  saveCache(opts.cache, io.store, sweep ? new Set(records.map((r) => r.head).filter(Boolean)) : null, lastMode);
+  // Single-PR runs carry the rollback's progress through untouched.
+  const progress = !sweep ? (cache?.released ?? {}) : gateMode === 'on' || lastMode === 'shadow' ? {} : released;
+  saveCache(opts.cache, io.store, sweep ? new Set(records.map((r) => r.head).filter(Boolean)) : null, lastMode, progress);
   finish(opts, records, { gateMode, mainTip, evaluatedAt, stats: io.stats, allowance });
   return 0;
 }

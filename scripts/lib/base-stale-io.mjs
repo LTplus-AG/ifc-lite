@@ -28,8 +28,17 @@ import { loadMeasuredFile, validateCeilingFile } from '../perf-ratchet/ceilings.
 import { gh } from './gh.mjs';
 
 export const MEASURED_ARTIFACTS = ['perf-ratchet-measured', 'perf-ratchet-measured-native'];
-/** test.yml's upload of an in-run verdict judged with CI_BASE_STALE_GATE=on. */
-export const IN_RUN_ON_ARTIFACT = 'base-stale-verdicts-pr-run-on';
+/**
+ * test.yml's marker for an in-run step about to judge with
+ * CI_BASE_STALE_GATE=on. It is uploaded BEFORE the step can post, and the
+ * step runs in `on` only when the upload succeeded, so a post the shadow
+ * rollback must find never depends on a best-effort upload after it.
+ */
+export const IN_RUN_ON_ARTIFACT = 'base-stale-in-run-on';
+/** `gh pr list --limit` for the sweep's candidates; a full page is reported as capped. */
+export const CANDIDATE_LIMIT = 200;
+/** Pages of in-run `on` markers read (100 each) before the lookup gives up and every head is read. */
+const ON_MARKER_PAGES = 5;
 const NEGATIVE_TTL_MS = 2 * 60 * 60 * 1000;
 const COMPARE_FILE_CAP = 300;
 const COMPARE_COMMIT_CAP = 250;
@@ -91,14 +100,37 @@ export function changedPaths(entries) {
   return entries.flatMap((f) => (f.previous_filename ? [f.filename, f.previous_filename] : [f.filename]));
 }
 
+/**
+ * The first complete measurement among a tree's candidate runs (newest
+ * first), else the first partial one. The native job uploads after the
+ * bundle one and some runs never upload it, so a newer bundle-only run must
+ * not hide an older run that measured both. `measure(runId)` returns the
+ * run's families or null; `need` is how many make a complete measurement.
+ */
+export function pickTreeMeasurement(runIds, measure, need) {
+  let partial = null;
+  for (const runId of runIds) {
+    const families = measure(runId);
+    if (!families) continue;
+    if (families.length >= need) return { families, runId, full: true };
+    partial ??= { families, runId, full: false };
+  }
+  return partial;
+}
+
+/** `gh pr list` output to the sweep's candidates; a list at the limit may hide more. */
+export function candidateList(raw, limit = CANDIDATE_LIMIT) {
+  return { prs: raw.filter((p) => !p.isDraft), capped: raw.length >= limit };
+}
+
 /** Only what the decision reads, so the cross-sweep cache stays small. */
 export function slim(measured) {
   return { family: measured.family, commit: measured.commit, metrics: measured.metrics.map((m) => ({ id: m.id, value: m.value })) };
 }
 
-export function createIo({ repo, cwd = process.cwd(), cache = null, now = () => Date.now() }) {
+export function createIo({ repo, cwd = process.cwd(), cache = null, now = () => Date.now(), gh: ghCall = gh }) {
   const stats = { calls: 0, downloads: 0, cacheHits: 0 };
-  const store = { mainMeasurements: {}, prMeasurements: {}, prFiles: {}, posted: {}, ...(cache ?? {}) };
+  const store = { mainMeasurements: {}, prMeasurements: {}, prFiles: {}, posted: {}, released: {}, ...(cache ?? {}) };
   let budget = Infinity;
 
   /** Count one request against this run's allowance, or refuse it. */
@@ -108,7 +140,7 @@ export function createIo({ repo, cwd = process.cwd(), cache = null, now = () => 
   };
   const api = (path, what) => {
     spend(what);
-    return gh(['api', path], what);
+    return ghCall(['api', path], what);
   };
   const git = (args) => execFileSync('git', args, { cwd, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }).trim();
   const haveCommit = (sha) => spawnSync('git', ['cat-file', '-e', `${sha}^{commit}`], { cwd, stdio: 'ignore' }).status === 0;
@@ -160,16 +192,13 @@ export function createIo({ repo, cwd = process.cwd(), cache = null, now = () => 
       .filter((a) => !a.expired && isOwnRun(a.workflow_run))
       .sort((a, b) => b.id - a.id)
       .slice(0, TREE_RUN_CAP);
-    for (const art of candidates) {
-      const families = runMeasurement(art.workflow_run.id);
-      if (families) {
-        const full = families.length >= MEASURED_ARTIFACTS.length;
-        store.mainMeasurements[tree] = { families, runId: art.workflow_run.id, ...(full ? {} : { checkedAt: now() }) };
-        return { sha, families, runId: art.workflow_run.id };
-      }
+    const picked = pickTreeMeasurement(candidates.map((a) => a.workflow_run.id), runMeasurement, MEASURED_ARTIFACTS.length);
+    if (!picked) {
+      store.mainMeasurements[tree] = { families: null, checkedAt: now() };
+      return null;
     }
-    store.mainMeasurements[tree] = { families: null, checkedAt: now() };
-    return null;
+    store.mainMeasurements[tree] = { families: picked.families, runId: picked.runId, ...(picked.full ? {} : { checkedAt: now() }) };
+    return { sha, families: picked.families, runId: picked.runId };
   }
 
   /** First-parent history of main from `tip`, newest first. */
@@ -257,12 +286,19 @@ export function createIo({ repo, cwd = process.cwd(), cache = null, now = () => 
 
   /**
    * The PR's changed files (REST, paginated; GitHub stops at 3,000), with a
-   * renamed file's old path too. Cached per head SHA: a head's diff against
-   * its merge base does not change. Counted as one call per page.
+   * renamed file's old path too. Counted as one call per page.
+   *
+   * `pulls/<n>/files` lists the PR as it is NOW, not a pinned revision, so
+   * the list is bound to the head and base branch it describes: after the
+   * pages, the PR is read once more and the list is refused when its head
+   * or base branch is no longer the one asked for (a push or a retarget
+   * during the read). Cached per PR, head and base branch: with those
+   * fixed, the diff against the merge base does not change (main moving on
+   * does not move the merge base), and a retarget is a new key.
    */
-  function prFiles(number, headSha = null) {
+  function prFiles(number, headSha = null, baseRef = null) {
     // Keyed by PR and head: two PRs can share a head against different bases.
-    const key = headSha ? `${headSha}#${number}` : null;
+    const key = headSha ? `${headSha}#${number}${baseRef ? `@${baseRef}` : ''}` : null;
     if (key && store.prFiles[key]) {
       stats.cacheHits += 1;
       return store.prFiles[key];
@@ -275,6 +311,11 @@ export function createIo({ repo, cwd = process.cwd(), cache = null, now = () => 
       // GitHub lists at most 3,000 files: a full 30th page may hide the rest,
       // and a prefix read as the whole list could call a Rust PR not relevant.
       if (page >= 30) throw new Error(`PR #${number} changes 3,000+ files; GitHub does not list them all`);
+    }
+    if (headSha) {
+      const current = pull(number);
+      if (current.head?.sha !== headSha) throw new Error(`PR #${number} moved to ${String(current.head?.sha).slice(0, 9)} while its files were read`);
+      if (baseRef && current.base?.ref !== baseRef) throw new Error(`PR #${number} was retargeted to ${current.base?.ref} while its files were read`);
     }
     if (key) store.prFiles[key] = files;
     return files;
@@ -327,34 +368,52 @@ export function createIo({ repo, cwd = process.cwd(), cache = null, now = () => 
     const args = ['api', '--method', 'POST', `repos/${repo}/statuses/${sha}`, '-f', `state=${state}`, '-f', `context=${context}`, '-f', `description=${description}`];
     if (targetUrl) args.push('-f', `target_url=${targetUrl}`);
     spend(`the ${context} status on ${sha}`);
-    gh(args, `the ${context} status on ${sha}`);
+    ghCall(args, `the ${context} status on ${sha}`);
     store.posted[sha] = state;
   }
 
-  /** Open, labelled, non-draft PRs on main, with their head SHA. */
+  /**
+   * Open, labelled, non-draft PRs on main, with their head SHA. `capped`:
+   * the list reached the limit, so a PR may be missing from it and the
+   * sweep that read it is not complete (see saveCache in ci-base-stale.mjs).
+   */
   function queueCandidates(label) {
     spend(`open PRs labelled ${label}`);
-    const list = gh(
-      ['pr', 'list', '--repo', repo, '--label', label, '--state', 'open', '--base', 'main', '--limit', '200', '--json', 'number,headRefOid,isDraft,isCrossRepository'],
+    const list = ghCall(
+      ['pr', 'list', '--repo', repo, '--label', label, '--state', 'open', '--base', 'main', '--limit', String(CANDIDATE_LIMIT), '--json', 'number,headRefOid,isDraft,isCrossRepository'],
       `open PRs labelled ${label}`,
     );
-    return list.filter((p) => !p.isDraft);
+    return candidateList(list);
   }
 
   /**
    * PR heads whose own Test run judged with the gate `on`: that step posts
    * statuses this workflow's cache never sees, so they are the heads a shadow
-   * sweep must read to release (test.yml names the upload after the mode).
-   * One call, newest 100; only this repository's runs.
+   * sweep must read to release (test.yml uploads the marker before it can
+   * post). Paged, 100 per call, at most ON_MARKER_PAGES pages; a set that
+   * may be missing markers throws, and the caller then reads every head.
+   * Only this repository's runs count.
    */
   function inRunOnHeads() {
-    const found = api(`repos/${repo}/actions/artifacts?name=${IN_RUN_ON_ARTIFACT}&per_page=100`, 'the in-run verdicts posted with the gate on');
-    return new Set((found.artifacts ?? []).filter((a) => isOwnRun(a.workflow_run) && a.workflow_run.head_sha).map((a) => a.workflow_run.head_sha));
+    const heads = new Set();
+    let seen = 0;
+    for (let page = 1; ; page += 1) {
+      const found = api(`repos/${repo}/actions/artifacts?name=${IN_RUN_ON_ARTIFACT}&per_page=100&page=${page}`, 'the in-run markers of the gate on');
+      const arts = found.artifacts ?? [];
+      seen += arts.length;
+      for (const a of arts) if (isOwnRun(a.workflow_run) && a.workflow_run.head_sha) heads.add(a.workflow_run.head_sha);
+      const total = found.total_count ?? seen;
+      if (seen >= total || arts.length < 100) {
+        if (seen < total) throw new Error(`listed ${seen} of ${total} in-run markers`);
+        return heads;
+      }
+      if (page >= ON_MARKER_PAGES) throw new Error(`more than ${seen} in-run markers; not all were read`);
+    }
   }
 
   function coreRemaining() {
     // `rate_limit` does not count against the limit it reports.
-    return gh(['api', 'rate_limit'], 'the API rate limit').resources?.core?.remaining ?? null;
+    return ghCall(['api', 'rate_limit'], 'the API rate limit').resources?.core?.remaining ?? null;
   }
 
   /** Cap this run's counted calls (including those already made). */

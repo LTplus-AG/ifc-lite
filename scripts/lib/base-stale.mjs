@@ -17,9 +17,13 @@
  *    `projected = pr + (mainLatest - mainAtBase)`, per metric, where
  *    `mainAtBase` is main's measurement at the base the PR was measured on.
  *    The projection is judged against CURRENT main's ceilings with the same
- *    `allowedMax` the ratchet uses. A PR value that is already above current
- *    main's allowance (a ceiling was lowered since) is stale without any
- *    drift. Nothing is rebuilt: the inputs are artifacts CI already uploaded.
+ *    `allowedMax` the ratchet uses. A raw PR value above current main's
+ *    allowance (a ceiling was lowered since) is not enough on its own: with
+ *    main's drift unmeasured it is `unknown`, because a lowered ceiling
+ *    usually follows main shrinking, which carries the PR down with it.
+ *    `stale` needs a projection against measured current main that exceeds
+ *    the allowance. Nothing is rebuilt: the inputs are artifacts CI already
+ *    uploaded.
  *  - RUST. A cheap signal, not a re-run: main changed Rust inputs since the
  *    PR's tested base in a scope the PR also changed (same crate directory,
  *    or both changed workspace files such as Cargo.lock). Both tiers are recorded

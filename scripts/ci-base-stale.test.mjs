@@ -22,7 +22,7 @@ const present = MODULES.every((url) => existsSync(url));
 const [cli, core, ioMod] = present ? await Promise.all(MODULES.map((url) => import(url.href))) : [null, null, null];
 const { callAllowance, CALL_CAP, evaluatePr, MIN_ALLOWANCE, loadCache, loadFilterGlobs, parseArgs, RATE_FLOOR, readFilterGlobs, run } = cli ?? {};
 const { prRelevance } = core ?? {};
-const { BudgetError, changedPaths, compareMoved, createIo, isOwnRun, MEASURED_FILE_MAX_BYTES, measuredJsonFiles } = ioMod ?? {};
+const { BudgetError, CANDIDATE_LIMIT, candidateList, changedPaths, compareMoved, createIo, IN_RUN_ON_ARTIFACT, isOwnRun, MEASURED_FILE_MAX_BYTES, measuredJsonFiles, pickTreeMeasurement } = ioMod ?? {};
 function ct(name, body) {
   test(name, () => {
     assert.ok(cli && core && ioMod, 'scripts/ci-base-stale.mjs, scripts/lib/base-stale.mjs or scripts/lib/base-stale-io.mjs is absent');
@@ -138,7 +138,7 @@ ct('evaluatePr: in-run measurement with an unreadable base is unknown, not fresh
   const io = fakeIo({ mergeParents: () => null });
   const r = evaluatePr(io, { pr: 1, headSha: 'h', mainTip: 't', ceilings, globs, measured: { families: [fam(10)], mergeSha: 'm' } });
   assert.equal(r.verdict, 'unknown');
-  assert.match(r.reasons[0], /base could not be read/);
+  assert.deepEqual(r.reasons, ["perf: the PR measurement's base could not be read"]);
 });
 
 ct('evaluatePr: no measurement for a relevant PR is unknown', () => {
@@ -194,7 +194,7 @@ function runFake({ gate, cacheData = null, prs = [STALE_PR], existing = 'failure
       setBudget: () => {},
       inRunOnHeads: () => new Set(),
       coreRemaining: remaining,
-      queueCandidates: () => prs,
+      queueCandidates: () => ({ prs, capped: false }),
       existingStatus: (sha) => { reads.push(sha); return existing; },
       postStatus: (sha, context, status) => { posts.push({ sha, context, ...status }); store.posted[sha] = status.state; },
       ...ioOver,
@@ -375,7 +375,7 @@ ct('run: a budget spent during setup is a clean skip (exit 0, one skip row), not
     opts: { onCode: (c) => { code = c; } },
   });
   assert.deepEqual([reads, posts], [[], []]);
-  assert.deepEqual(rows.map((r) => [r.skipped, r.verdict]), [['budget', undefined]]);
+  assert.deepEqual(rows.map((row) => [row.skipped, row.verdict]), [['budget', undefined]]);
   assert.equal(code, 0);
 });
 
@@ -436,7 +436,7 @@ ct('run: two PRs sharing a head keep their own file lists in the cache', () => {
       coreRemaining: () => 5000,
       mainTip: () => 'tip00000001',
       ceilingsAt: realCeilings,
-      queueCandidates: () => [{ ...STALE_PR, number: 5, headRefOid: 'same' }, { ...STALE_PR, number: 6, headRefOid: 'same' }],
+      queueCandidates: () => ({ prs: [{ ...STALE_PR, number: 5, headRefOid: 'same' }, { ...STALE_PR, number: 6, headRefOid: 'same' }], capped: false }),
       prFiles: (n, head) => (store.prFiles[`${head}#${n}`] ??= lists[n]),
       existingStatus: () => null,
       postStatus: () => {},
@@ -475,4 +475,135 @@ ct('run: a replay (--pr-run / --main-sha) is logged, never posted, even with the
     const { posts, reads } = runFake({ gate: 'on', opts: over });
     assert.deepEqual([posts, reads], [[], []], JSON.stringify(over));
   }
+});
+
+// Review round 6 (PR #11350).
+
+ct('evaluatePr: an unreadable main measurement makes perf unknown but still judges Rust', () => {
+  const io = fakeIo({
+    prFiles: () => ['rust/core/src/a.rs'],
+    mainMeasurementAt: () => { throw new Error('HTTP 502'); },
+    movedSince: () => ({ files: ['rust/core/src/b.rs'], commits: 3, capped: false }),
+  });
+  const r = evaluatePr(io, { pr: 1, headSha: 'h', mainTip: 'tip00000001', ceilings, globs });
+  assert.equal(r.perf.verdict, 'unknown');
+  assert.equal(r.rust.verdict, 'stale', 'the Rust overlap is judged despite the perf fault');
+  assert.equal(r.verdict, 'stale');
+  assert.deepEqual(r.rust.overlap, ['rust/core']);
+});
+
+ct('evaluatePr: a budget cut while reading main still stops the PR as not judged', () => {
+  const io = fakeIo({ mainMeasurementAt: () => { throw new BudgetError('the tested-tree artifact of base0000001'); } });
+  const r = evaluatePr(io, { pr: 1, headSha: 'h', mainTip: 'tip00000001', ceilings, globs });
+  assert.equal(r.verdict, 'unknown');
+  assert.equal(r.budget, true);
+});
+
+ct('io: a newer bundle-only run does not hide an older run that measured every family', () => {
+  const byRun = { 9: [fam(1)], 8: [fam(2), fam(3)], 7: [fam(4), fam(5)] };
+  const asked = [];
+  const picked = pickTreeMeasurement([9, 8, 7], (id) => { asked.push(id); return byRun[id] ?? null; }, 2);
+  assert.deepEqual([picked.runId, picked.full], [8, true]);
+  assert.deepEqual(asked, [9, 8], 'stops at the first complete one');
+  const partial = pickTreeMeasurement([9, 6], (id) => byRun[id] ?? null, 2);
+  assert.deepEqual([partial.runId, partial.full], [9, false], 'no complete run: the newest partial one');
+  assert.equal(pickTreeMeasurement([6], () => null, 2), null);
+});
+
+ct('io: a candidate list at the limit is reported as capped', () => {
+  const many = Array.from({ length: CANDIDATE_LIMIT }, (_, i) => ({ number: i + 1, headRefOid: `h${i}`, isDraft: i === 0, isCrossRepository: false }));
+  const full = candidateList(many);
+  assert.equal(full.capped, true);
+  assert.equal(full.prs.length, CANDIDATE_LIMIT - 1, 'drafts are dropped after the cap is judged');
+  assert.equal(candidateList(many.slice(1)).capped, false);
+});
+
+ct('run, rollback: a capped candidate list does not mark the rollback done', () => {
+  const { saved, reads } = runFake({ gate: 'shadow', cacheData: { version: 1, lastMode: 'on' }, ioOver: { queueCandidates: () => ({ prs: [STALE_PR], capped: true }) } });
+  assert.deepEqual(reads, ['head5']);
+  assert.equal(saved.lastMode, 'on');
+});
+
+/** A createIo over a fake `gh`: `routes` maps an API path prefix to its JSON. */
+function ioOverGh(routes) {
+  const paths = [];
+  const fakeGh = (args) => {
+    const path = args[0] === 'api' ? args[1] : args.join(' ');
+    paths.push(path);
+    for (const [prefix, answer] of routes) if (path.startsWith(prefix)) return typeof answer === 'function' ? answer(path) : answer;
+    throw new Error(`unexpected gh call ${path}`);
+  };
+  return { io: createIo({ repo: 'o/r', gh: fakeGh, cwd: tmpdir() }), paths };
+}
+
+ct('io: the in-run markers are paged past the first 100', () => {
+  const own = (sha) => ({ workflow_run: { id: 1, repository_id: 9, head_repository_id: 9, head_sha: sha } });
+  const page = (n) => Array.from({ length: n }, (_, i) => own(`p${n}-${i}`));
+  const { io, paths } = ioOverGh([[`repos/o/r/actions/artifacts?name=${IN_RUN_ON_ARTIFACT}`, (apiPath) => (apiPath.endsWith('page=1') ? { total_count: 130, artifacts: page(100) } : { total_count: 130, artifacts: page(30) })]]);
+  const heads = io.inRunOnHeads();
+  assert.equal(heads.size, 130);
+  assert.ok(heads.has('p30-29'), 'a marker on the second page is found');
+  assert.equal(paths.length, 2);
+});
+
+ct('io: an in-run marker list that cannot be read whole throws (the caller then reads every head)', () => {
+  const own = { workflow_run: { id: 1, repository_id: 9, head_repository_id: 9, head_sha: 'x' } };
+  const { io } = ioOverGh([['repos/o/r/actions/artifacts', { total_count: 1000, artifacts: Array(100).fill(own) }]]);
+  assert.throws(() => io.inRunOnHeads(), /more than 500 in-run markers/);
+  const short = ioOverGh([['repos/o/r/actions/artifacts', { total_count: 5, artifacts: [own] }]]).io;
+  assert.throws(() => short.inRunOnHeads(), /listed 1 of 5 in-run markers/);
+});
+
+ct('io: a PR file list is refused when the head moves or the PR is retargeted during the read', () => {
+  const files = [{ filename: 'rust/core/src/a.rs' }];
+  const at = (sha, ref) => ioOverGh([['repos/o/r/pulls/5/files', files], ['repos/o/r/pulls/5', { head: { sha }, base: { ref } }]]).io;
+  assert.deepEqual(at('h1', 'main').prFiles(5, 'h1', 'main'), ['rust/core/src/a.rs']);
+  assert.throws(() => at('h2', 'main').prFiles(5, 'h1', 'main'), /PR #5 moved to h2/);
+  assert.throws(() => at('h1', 'release').prFiles(5, 'h1', 'main'), /PR #5 was retargeted to release/);
+  const io = at('h1', 'main');
+  io.prFiles(5, 'h1', 'main');
+  assert.deepEqual(Object.keys(io.store.prFiles), ['h1#5@main'], 'cached per PR, head and base branch');
+});
+
+ct('run, rollback: a rollback cut short resumes past the heads it already released', () => {
+  const second = { ...STALE_PR, number: 7, headRefOid: 'head7' };
+  let n = 0;
+  const first = runFake({
+    gate: 'shadow',
+    cacheData: { version: 1, lastMode: 'on' },
+    prs: [STALE_PR, second],
+    ioOver: { prFiles: () => { n += 1; if (n === 1) return ['apps/viewer/src/a.ts']; throw new BudgetError('files of PR #7'); } },
+  });
+  assert.deepEqual(first.reads, ['head5']);
+  assert.equal(first.saved.lastMode, 'on');
+  assert.deepEqual(first.saved.released, { head5: true });
+  const next = runFake({ gate: 'shadow', cacheData: first.saved, prs: [STALE_PR, second] });
+  assert.deepEqual(next.reads, ['head7'], 'the released head is not read again');
+  assert.equal(next.saved.lastMode, 'shadow');
+  assert.deepEqual(next.saved.released, {}, 'a settled rollback keeps no progress');
+});
+
+ct('run, rollback: a released head judged with the gate on since is read again', () => {
+  const { reads } = runFake({
+    gate: 'shadow',
+    cacheData: { version: 1, lastMode: 'on', released: { head5: true } },
+    ioOver: { inRunOnHeads: () => new Set(['head5']) },
+  });
+  assert.deepEqual(reads, ['head5']);
+});
+
+ct('run, on: a sweep with the gate on clears the rollback progress', () => {
+  const { saved } = runFake({ gate: 'on', cacheData: { version: 1, lastMode: 'shadow', released: { head5: true } } });
+  assert.deepEqual(saved.released, {});
+});
+
+ct('run, on: a failure on a head two PRs share is not replaced by the other PR success in the same run', () => {
+  const freshTwin = { ...STALE_PR, number: 8 };
+  const { posts, rows } = runFake({
+    gate: 'on',
+    prs: [STALE_PR, freshTwin],
+    ioOver: { prFiles: (n) => (n === 8 ? ['docs/a.md'] : ['apps/viewer/src/a.ts']) },
+  });
+  assert.deepEqual(posts.map((p) => [p.sha, p.state]), [['head5', 'failure']]);
+  assert.equal(rows[1].posted.state, 'kept');
 });

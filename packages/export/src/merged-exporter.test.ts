@@ -1325,6 +1325,33 @@ describe('MergedExporter', () => {
       }
     });
 
+    it.each(['IFC4', 'IFC4X3', 'IFC2X3'] as const)('normalizes table row cells by the owning %s table column (#11333)', async schema => {
+      const hasColumns = schema !== 'IFC2X3';
+      const secondary = mmModel([
+        [18, 'IFCTABLEROW', '#18=IFCTABLEROW((IFCMASSPERLENGTHMEASURE /* first */ (50.), IFCMASSPERLENGTHMEASURE(50.)),.F.);'],
+        [19, 'IFCSIUNIT', '#19=IFCSIUNIT(*,.MASSUNIT.,$,.GRAM.);'],
+        [20, 'IFCSIUNIT', '#20=IFCSIUNIT(*,.LENGTHUNIT.,.CENTI.,.METRE.);'],
+        [21, 'IFCDERIVEDUNITELEMENT', '#21=IFCDERIVEDUNITELEMENT(#19,1);'],
+        [22, 'IFCDERIVEDUNITELEMENT', '#22=IFCDERIVEDUNITELEMENT(#20,-1);'],
+        [23, 'IFCDERIVEDUNIT', '#23=IFCDERIVEDUNIT((#21,#22),.MASSPERLENGTHUNIT.,$);'],
+        [24, 'IFCTABLE', hasColumns ? "#24=IFCTABLE('Loads',(/* row */ #18),(#26,/* default */ #25));" : "#24=IFCTABLE('Loads',(#18));"],
+        ...(hasColumns ? [
+          [25, 'IFCTABLECOLUMN', '#25=IFCTABLECOLUMN($,$,$,$,$);'],
+          [26, 'IFCTABLECOLUMN', '#26=IFCTABLECOLUMN($,$,$,/* g/cm */ #23,$);'],
+        ] as Array<[number, string, string]> : []),
+        [27, 'IFCSIUNIT', '#27=IFCSIUNIT(*,.MASSUNIT.,.KILO.,.GRAM.);'],
+      ], [27]);
+      const primary = metreModel([[27, 'IFCSIUNIT', '#27=IFCSIUNIT(*,.MASSUNIT.,.KILO.,.GRAM.);']], [27]);
+      for (const model of [primary, secondary]) (model.dataStore as { schemaVersion: string }).schemaVersion = schema;
+      const exporter = new MergedExporter([primary, secondary]);
+      const options = { schema, unitReconciliation: 'normalize' } as const;
+      for (const result of [exporter.export(options), await exporter.exportAsync(options)]) {
+        const output = decode(result.content);
+        expect(output).toContain(`IFCTABLEROW((IFCMASSPERLENGTHMEASURE /* first */ (${hasColumns ? '50.' : '50000.'}), IFCMASSPERLENGTHMEASURE(50000.)),.F.);`);
+        expect(findDanglingRefs(output)).toEqual([]);
+      }
+    });
+
     it('scales an undeclared mass per length by the mass unit too (#11329)', () => {
       // 50 g/mm is 50 kg/m: the length ratio alone would give 50000.
       const secondary = mmModel([

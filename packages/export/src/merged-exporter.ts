@@ -32,7 +32,7 @@ import { getCompleteEntityIndex, getMaxExpressId, type CompleteEntityIndex, type
 import { bakeMutatedModels, mergeWarningLabel, needsBake } from './merged-bake.js';
 import type { StepGeoreferencingOptions } from './step-coordinate-options.js';
 import { rescaleEntityLengths, computeNormalizeFactor } from './unit-normalize.js';
-import { enumerationUnitLookup } from './merged-enumeration-unit.js';
+import { inheritedUnitLookup } from './merged-inherited-units.js';
 import { profileMeasureFactors, readProfileProjectUnits } from './merged-profile-units.js';
 import { planInfrastructureUnify, resolvePrimaryContextState, unitScalesEqual, type PrimaryContextState } from './merged-context.js';
 import { MintedRecords, georefNormalizeCaveat, normalizeGeorefRecord, planGeorefNormalize, type GeorefNormalizePlan } from './merged-georef-normalize.js';
@@ -161,7 +161,7 @@ interface ModelMode {
   lengthFactor: number;
   areaFactor: number;
   volumeFactor: number;
-  selectionHasExplicitUnit?: ReturnType<typeof enumerationUnitLookup>;
+  inheritedUnits?: ReturnType<typeof inheritedUnitLookup>;
   profileFactors?: ReadonlyMap<string, number>;
   /**
    * Unit space the model's emitted entities end up in — the primary scale when
@@ -906,7 +906,7 @@ export class MergedExporter {
         lengthFactor: computeNormalizeFactor(modelScale, setup.primaryScale),
         areaFactor: computeNormalizeFactor(modelArea, setup.primaryAreaScale),
         volumeFactor: computeNormalizeFactor(modelVolume, setup.primaryVolumeScale),
-        selectionHasExplicitUnit: enumerationUnitLookup(model.dataStore),
+        inheritedUnits: inheritedUnitLookup(model.dataStore),
         profileFactors: profileMeasureFactors(readProfileProjectUnits(model.dataStore), setup.primaryProfileUnits, modelScale, setup.primaryScale),
         effectiveScale: setup.primaryScale,
         normalized: true,
@@ -1201,10 +1201,10 @@ export class MergedExporter {
     // Only numeric literals and the georeference (#10886) change here.
     const georef = normalizeGeorefRecord(finalText, localId, mode.georef);
     if (georef !== undefined) finalText = georef;
-    else if (mode.normalized && !mode.selectionHasExplicitUnit?.(entityRef.type, entityText)) {
+    else if (mode.normalized && !mode.inheritedUnits?.selectionHasExplicitUnit(entityRef.type, entityText)) {
       const type = entityRef.type.toUpperCase();
       const legacySchema = isTypedPropertyUpgrade(type, sourceSchema, targetSchema) ? 'IFC2X3' : undefined;
-      finalText = rescaleEntityLengths(finalText, type, mode.lengthFactor, mode.areaFactor, mode.volumeFactor, mode.profileFactors, legacySchema);
+      finalText = rescaleEntityLengths(finalText, type, mode.lengthFactor, mode.areaFactor, mode.volumeFactor, mode.profileFactors, legacySchema, mode.inheritedUnits?.tableRowExplicitColumns(type, localId));
     }
 
     if (converting) {

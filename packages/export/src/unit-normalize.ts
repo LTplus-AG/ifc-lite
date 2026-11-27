@@ -57,7 +57,7 @@
 
 import { getAllAttributesForEntity, getCanonicalEntityName, getSchemaRegistryForVersion, STEP_TRIVIA } from '@ifc-lite/parser';
 import { formatStepReal } from '@ifc-lite/data';
-import { splitTopLevelStepArguments } from './step-argument-parser.js';
+import { readStepSlots, splitTopLevelStepArguments } from './step-argument-parser.js';
 import { holdsValue } from './step-comment-skip.js';
 import { findOuterArgs, mapOutsideStepStrings } from './step-outer-args.js';
 
@@ -295,6 +295,7 @@ export function rescaleEntityLengths(
   volumeFactor: number,
   profileFactors?: ReadonlyMap<string, number>,
   legacySchema?: 'IFC2X3',
+  explicitColumns?: ReadonlySet<number>,
 ): string {
   if (lengthFactor === 1 && areaFactor === 1 && volumeFactor === 1 && !profileFactors?.size) return line;
   if (!Number.isFinite(lengthFactor) || !Number.isFinite(areaFactor) || !Number.isFinite(volumeFactor)) return line;
@@ -364,7 +365,19 @@ export function rescaleEntityLengths(
   // Typed measures live in property/quantity value slots (an IfcValue SELECT is
   // written with its explicit type). Skipped when the entity declares its own unit.
   if (!skipValues && /measure/i.test(inner)) {
-    inner = scaleTypedMeasures(inner, lengthFactor, areaFactor, volumeFactor, profileFactors, true);
+    const scale = (text: string) => scaleTypedMeasures(text, lengthFactor, areaFactor, volumeFactor, profileFactors, true);
+    if (explicitColumns?.size) {
+      const args = splitTopLevelStepArguments(inner);
+      // Frame RowCells as a record to preserve aggregate and cell trivia verbatim.
+      const prefix = '#0=IFCTABLEROW';
+      const cells = args && readStepSlots(prefix + args[0] + ';');
+      if (args && cells) {
+        args[0] = cells.prefix.slice(prefix.length)
+          + cells.slots.map((cell, i) => explicitColumns.has(i) ? cell : scale(cell)).join(',')
+          + cells.suffix.slice(0, -1);
+        inner = args.join(',');
+      }
+    } else inner = scale(inner);
   }
 
   return line.slice(0, bounds.open + 1) + inner + line.slice(bounds.close);

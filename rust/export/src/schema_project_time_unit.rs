@@ -35,14 +35,20 @@ fn seconds_per_unit(decoder: &mut EntityDecoder, mut id: u32) -> Option<f64> {
                 let (ty, number) = measure
                     .attr(slot::IfcMeasureWithUnit::VALUE_COMPONENT)?
                     .as_typed()?;
-                if !matches!(
-                    ty,
-                    "IFCTIMEMEASURE" | "IFCREAL" | "IFCINTEGER" | "IFCNUMERICMEASURE"
-                ) {
+                let value = match number {
+                    AttributeValue::Float(v) => *v,
+                    AttributeValue::Integer(v) => *v as f64,
+                    _ => return None,
+                };
+                if !value.is_finite() || value <= 0.0 {
                     return None;
                 }
-                let value = number.as_float()?;
-                if !value.is_finite() || value <= 0.0 {
+                let kind = crate::step_log::check_real_measure(
+                    Some(ifc_lite_core::SchemaFamily::Ifc2x3), ty, value, true,
+                ).ok()?;
+                if matches!(kind, crate::step_log::MeasureNumber::Integer(_))
+                    && !matches!(number, AttributeValue::Integer(_))
+                {
                     return None;
                 }
                 factor *= value;

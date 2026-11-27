@@ -15,6 +15,9 @@ const decode = (result: {content: Uint8Array}) => new TextDecoder().decode(resul
 for (const schema of ['IFC4', 'IFC4X3'] as const) {
   it(`uses each source project's unit on upgrade and the retained project on downgrade via ${schema} (#11192)`, async () => {
     const stores = await Promise.all([parse(minutes), parse(seconds)]);
+    const direct = new StepExporter(stores[0]).export({schema});
+    expect(decode(direct)).toMatch(/IFCWORKPLAN\([^;]*'PT600S','-PT120S'/);
+    expect(direct.stats.warnings.join(' ')).not.toContain('assumed seconds');
     const models = stores.map((dataStore, i) => ({ id: String(i), name: String(i), dataStore }));
     const merged = new MergedExporter(models);
     for (const result of [merged.export({ schema }), await merged.exportAsync({ schema })]) {
@@ -39,7 +42,9 @@ for (const schema of ['IFC4', 'IFC4X3'] as const) {
 }
 
 it('warns once on conflicting time units or a cyclic conversion factor (#11192)', async () => {
-  for (const text of [minutes.replace('((#6))','((#6,#3))'),minutes.replace('IFCTIMEMEASURE(60.),#3','IFCTIMEMEASURE(60.),#6')]) {
+  for (const text of [minutes.replace('((#6))','((#6,#3))'),minutes.replace('IFCRATIOMEASURE(60.),#3','IFCRATIOMEASURE(60.),#6'),
+    ...['IFCLABEL(60.)', 'IFCINTEGER(60.5)', 'IFCNORMALISEDRATIOMEASURE(60.)', 'IFCRATIOMEASURE(0.)']
+      .map(value => minutes.replace('IFCRATIOMEASURE(60.)', value))]) {
     const result = new StepExporter(await parse(text)).export({schema:'IFC4'});
     expect(decode(result)).toContain("'PT10S','-PT2S'");
     expect(result.stats.warnings.filter(w => w.includes('assumed seconds'))).toHaveLength(1);

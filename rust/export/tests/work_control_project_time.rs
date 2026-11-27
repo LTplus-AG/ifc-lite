@@ -57,6 +57,9 @@ fn upgrade_uses_each_source_unit_in_a_merge_and_the_source_unit_in_a_subset_1119
         .replace("1Yvct", "2Yvct")
         .replace("IFCWORKPLAN(", "IFCWORKSCHEDULE(");
     for schema in ["IFC4", "IFC4X3"] {
+        let (direct, _, warnings) = export_step_with_diagnostics(LEGACY.as_bytes(), &options(schema)).unwrap();
+        assert!(direct.contains("'PT600S'"), "{direct}");
+        assert!(!warnings.iter().any(|w| w.contains("assumed seconds")), "{warnings:?}");
         let (merged, _) = export_merged_models(
             &[
                 MergedModel::new(LEGACY.as_bytes()),
@@ -131,7 +134,11 @@ fn merged_downgrade_uses_the_retained_project_and_reports_unresolved_units_11192
     }
     for bad in [
         LEGACY.replace("((#6))", "((#6,#3))"),
-        LEGACY.replace("IFCTIMEMEASURE(60.),#3", "IFCTIMEMEASURE(60.),#6"),
+        LEGACY.replace("IFCRATIOMEASURE(60.)", "IFCLABEL(60.)"),
+        LEGACY.replace("IFCRATIOMEASURE(60.)", "IFCINTEGER(60.5)"),
+        LEGACY.replace("IFCRATIOMEASURE(60.)", "IFCNORMALISEDRATIOMEASURE(60.)"),
+        LEGACY.replace("IFCRATIOMEASURE(60.)", "IFCRATIOMEASURE(0.)"),
+        LEGACY.replace("IFCRATIOMEASURE(60.),#3", "IFCRATIOMEASURE(60.),#6"),
     ] {
         let (out, _, warnings) =
             export_step_with_diagnostics(bad.as_bytes(), &options("IFC4")).unwrap();

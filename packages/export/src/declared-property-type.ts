@@ -113,6 +113,7 @@
  * and which of those a null means is #2472's question, not this one.
  */
 
+import { getSchemaRegistryForVersion } from '@ifc-lite/parser';
 import { PropertyValueType } from '@ifc-lite/data';
 import { ifc4Registry } from './ifc4-registry.js';
 import { getSelectDefinedLeaves } from './select-qualification.js';
@@ -311,6 +312,18 @@ export function serializeNominalValue(
   const declared = declaredNominalValueType(value, type, dataType);
   if (declared === null) return serializePropertyValue(value, type);
   return serializeTypedMarker(declared, value as string | number | boolean);
+}
+
+/** Numeric IfcMeasureWithUnit.ValueComponent in the IFC2X3 project unit graph. */
+export function validLegacyConversionFactor(token: string, literal: string, value: number): boolean {
+  if (!Number.isFinite(value) || value <= 0) return false;
+  const leaves = getSelectDefinedLeaves('IfcValue', getSchemaRegistryForVersion('IFC2X3'));
+  for (const [name, base] of leaves) {
+    if (name.toUpperCase() !== token) continue;
+    if (base === 'INTEGER' && (!/^[+-]?\d+$/.test(literal) || !Number.isSafeInteger(value))) return false;
+    return valueFitsBase(value, base) && (CONSTRAINED_MEMBERS.get(name)?.(value) ?? true);
+  }
+  return false;
 }
 
 /** Validate an explicitly authored IfcValue declaration before a mutation can be written.

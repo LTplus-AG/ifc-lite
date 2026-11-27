@@ -10,6 +10,8 @@ import { parseStepNumber } from './step-slot-grammar.js';
 import { readStepSlots } from './step-argument-parser.js';
 import { stepRecordHead } from './step-record-frame.js';
 
+import { validLegacyConversionFactor } from './declared-property-type.js';
+
 type Records = Pick<SourceRecords, 'slots' | 'type'>;
 const token = (value: string | undefined) => withoutComments(value ?? '').trim().toUpperCase();
 
@@ -31,10 +33,11 @@ function secondsPerUnit(records: Records, id: number | null): number | undefined
     const measure = slotRef(slots[3]);
     if (records.type(measure) !== 'IFCMEASUREWITHUNIT') return undefined;
     const component = records.slots(measure);
-    const value = /^IFC(?:TIMEMEASURE|REAL|INTEGER|NUMERICMEASURE)\s*\(([^()]*)\)$/.exec(token(component?.[0]));
+    const value = /^(IFC[A-Z0-9]+)\s*\(([^()]*)\)$/.exec(token(component?.[0]));
     if (!value) return undefined;
-    const factor = parseStepNumber(value[1].trim());
-    if (!(factor > 0) || !Number.isFinite(factor)) return undefined;
+    const literal = value[2].trim();
+    const factor = parseStepNumber(literal);
+    if (!validLegacyConversionFactor(value[1], literal, factor)) return undefined;
     scale *= factor;
     id = slotRef(component?.[1]);
   }

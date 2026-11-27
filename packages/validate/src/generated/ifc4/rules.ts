@@ -794,7 +794,7 @@ function fn_IfcGetBasisSurface(m: r.Model, p_c: r.Value): r.Value {
       }
     }
   }
-  return v_surfs;
+  return r.assignSet(v_surfs);
   return undefined;
 }
 

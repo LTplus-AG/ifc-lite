@@ -32,3 +32,18 @@ it('checks the decoded character count of FILE_NAME.name at the 256-character bo
     expect(report.findings.filter(f => f.rule === 'FILE_NAME.name')).toHaveLength(length === 256 ? 0 : 1);
   }
 });
+
+it('reports duplicate DATA identifiers and keeps the first record (#11647)', async () => {
+  const report = await validateStepText(file('#1=IFCUNKNOWN();#1=IFCCARTESIANPOINT((0.,0.));'));
+  expect(report.findings.filter(f => f.instance === 1).map(f => f.rule)).toEqual(expect.arrayContaining(['duplicate-id','unknown-entity']));
+});
+
+it('validates the actual columnar parser result (#11647)', async () => {
+  const { IfcParser } = await import('@ifc-lite/parser');
+  const { validateDataStore } = await import('../src/index.js');
+  const text = file('#1=IFCCARTESIANPOINT((0.,1.));');
+  const store = await new IfcParser().parseColumnar(new TextEncoder().encode(text).buffer, { disableWorkerScan: true });
+  const report = await validateDataStore(store);
+  expect(report.stats.instances).toBe(1);
+  expect(report.findings).toEqual((await validateStepText(text)).findings);
+});

@@ -143,7 +143,7 @@ Result of `parseColumnar()`. Key fields (see `src/columnar-parser.ts` for the fu
 
 ```typescript
 interface IfcDataStore extends IfcStoreBase {
-  source: Uint8Array;
+  source: IfcSourceBytes;
   entityIndex: { byId: EntityByIdIndex; byType: Map<string, number[]> };
 
   strings: StringTable;

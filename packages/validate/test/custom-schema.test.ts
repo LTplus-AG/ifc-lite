@@ -120,3 +120,19 @@ ENTITY Link; First : Item; Second : Item; END_ENTITY; END_SCHEMA;`);
     [2, 'Item.Twice'], [3, 'Item.Twice'], [3, 'Item.FirstRole'],
   ]);
 });
+
+it('checks aggregate-valued UNIQUE using the declared order semantics (#11647)', async () => {
+  const { schema } = generated(`SCHEMA S; TYPE Members = SET OF INTEGER; END_TYPE;
+ENTITY E; Items : Members; Ordered : LIST OF INTEGER; UNIQUE US : Items; UL : Ordered; END_ENTITY; END_SCHEMA;`);
+  const report = await validateStepText('DATA;#1=E((1,2),(1,2));#2=E((2,1),(2,1));#3=E((3,4),(1,2));ENDSEC;', { schema });
+  expect(report.findings.filter(f => f.category === 'unique_rule').map(f => [f.instance, f.rule])).toEqual([[2,'E.US'], [3,'E.UL']]);
+});
+
+it('runs authoring math and resolves the renamed explicit field (#11646)', () => {
+  const { schemas } = generated(`SCHEMA S; ENTITY Point; X : REAL; END_ENTITY;
+ENTITY IntPoint SUBTYPE OF (Point); SELF\\Point.X RENAMED IntegerX : INTEGER;
+WHERE Positive : SIN(IntegerX) > 0.; END_ENTITY; END_SCHEMA;`);
+  expect(schemas.IntPoint.safeParse({ IntegerX: 1 }).success).toBe(true);
+  expect(schemas.IntPoint.safeParse({ IntegerX: 0 }).success).toBe(false);
+  expect(schemas.IntPoint.safeParse({ X: 1 }).success).toBe(false);
+});

@@ -8,7 +8,8 @@ import { attr } from '../runtime/access.js';
 import { EntityInstance } from '../runtime/instance.js';
 import { violated } from '../runtime/logic.js';
 import type { Model } from '../runtime/model.js';
-import { EnumValue, prim, Typed, type Value } from '../runtime/values.js';
+import type { TypeRef } from '../runtime/schema-meta.js';
+import { BinaryValue, EnumValue, prim, Typed, type Value } from '../runtime/values.js';
 import type { ValidationFinding } from './findings.js';
 import { guard } from './guard.js';
 
@@ -42,12 +43,24 @@ export function checkGlobalRules(m: Model, out: ValidationFinding[]): void {
   }
 }
 
-function uniqueKey(v: Value): string | undefined {
+function uniqueKey(m: Model, v: Value, type?: TypeRef): string | undefined {
+  if (v instanceof Typed) {
+    const value = uniqueKey(m, v.value, { k: 'named', name: v.type });
+    return value === undefined ? undefined : JSON.stringify(['typed', v.type, value]);
+  }
+  if (Array.isArray(v)) {
+    const agg = m.schema.aggregateType(type);
+    const parts = v.map(item => uniqueKey(m, item, agg?.of));
+    if (parts.includes(undefined)) return undefined;
+    if (agg?.kind === 'SET' || agg?.kind === 'BAG') parts.sort();
+    return JSON.stringify(['aggregate', parts]);
+  }
   const p = prim(v);
+  if (p instanceof BinaryValue) return `binary:${p.hex.toUpperCase()}`;
+
   if (p === undefined) return undefined;
   if (typeof p === 'string' || typeof p === 'number' || typeof p === 'boolean') return `${typeof p}:${String(p)}`;
   if (p instanceof EnumValue) return `enum:${p.name}`;
-  if (v instanceof Typed) return `typed:${v.type}:${uniqueKey(v.value)}`;
   if (p instanceof EntityInstance) return `#${p.id}`;
   return undefined;
 }
@@ -59,9 +72,12 @@ export function checkUniqueRules(m: Model, out: ValidationFinding[]): void {
       const seen = new Map<string, EntityInstance>();
       const names = unique.attributes.map((a) => a.toUpperCase());
       for (const inst of m.population(entity.name)) {
-        const parts = names.map((n) => uniqueKey(attr(inst, n)));
+        const parts = names.map((n) => {
+          const slot = inst.entity.slots.get(n);
+          return uniqueKey(m, attr(inst, n), slot?.k === 'explicit' ? slot.attribute.type : undefined);
+        });
         if (parts.some((p) => p === undefined)) continue;
-        const key = parts.join('\u0000');
+        const key = JSON.stringify(parts);
         const first = seen.get(key);
         if (!first) {
           seen.set(key, inst);

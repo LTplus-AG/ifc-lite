@@ -186,7 +186,7 @@ export class SchemaRuntime {
         const upper = attr.name.toUpperCase();
         const narrowed = retyped.get(upper);
         const resolved: ResolvedAttribute = {
-          ...(narrowed ?? attr), name: attr.name, declaredBy: level.name, derived: derivedHere.has(upper),
+          ...(narrowed ?? attr), declaredBy: level.name, derived: derivedHere.has(upper),
         };
         const slot: AttributeSlot = { k: 'explicit', index: e.attributes.length, attribute: resolved };
         if (e.slots.has(upper)) {
@@ -195,6 +195,7 @@ export class SchemaRuntime {
           e.slots.set(`${level.upper}.${upper}`, slot);
         }
         e.slots.set(upper, slot);
+        if (narrowed) e.slots.set(narrowed.name.toUpperCase(), slot);
         e.attributes.push(resolved);
       }
       for (const inv of level.meta.inverse ?? []) {

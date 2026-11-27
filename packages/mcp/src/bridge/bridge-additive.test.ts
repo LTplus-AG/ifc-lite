@@ -158,6 +158,23 @@ describe('one server: headless and tab', () => {
     expect(schema).toContain('a parameter named default, from tab_model_list');
   });
 
+  it('rewrites explicit calls to a single-word tab tool in the advertised catalog (#11660)', async () => {
+    const agent = await start();
+    const units = { ...READ_TOOL, name: 'units',
+      description: 'Call units to read the model units. Invoke tab_units. Call units.extra.',
+      inputSchema: { type: 'object', properties: {
+        note: { type: 'string', description: 'First invoke units.', default: 'Call units' },
+      } },
+    };
+    const { tab } = await pairTab({ port: agent.r.bridge.port, code: agent.r.bridge.pairingCode(), tools: [units] });
+    tabs.push(tab);
+    const listed = (await agent.request('tools/list')).tools as ToolDefinition[];
+    expect(listed.find(tool => tool.name === 'tab_units')).toMatchObject({
+      description: 'Call tab_units to read the model units. Invoke tab_units. Call units.extra.',
+      inputSchema: { properties: { note: { description: 'First invoke tab_units.', default: 'Call units' } } },
+    });
+  });
+
   it('still answers the 0.32 surface tool names, without listing them', async () => {
     const agent = await start();
     const { tab } = await pairTab({ port: agent.r.bridge.port, code: agent.r.bridge.pairingCode(), a2uiSurface: true });

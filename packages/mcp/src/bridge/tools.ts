@@ -114,11 +114,18 @@ const renamers = new WeakMap<readonly BridgeToolDescriptor[], (text: string) => 
 function renamer(tools: readonly BridgeToolDescriptor[]): (text: string) => string {
   let rename = renamers.get(tools);
   if (!rename) {
-    // Only names a word of prose cannot be: ones with `_` or `.`.
-    const names = servable(tools).map((t) => t.name).filter((n) => /[_.]/.test(n)).sort((a, b) => b.length - a.length).map((n) => n.replace(/[.\-]/g, '\\$&'));
+    // Punctuated names are recognizable without an invocation verb.
+    const advertised = new Set(servable(tools).map((tool) => tool.name));
+    const names = [...advertised].filter((n) => /[_.]/.test(n)).sort((a, b) => b.length - a.length).map((n) => n.replace(/[.\-]/g, '\\$&'));
     // The trailing guard mirrors the leading one: a name followed by `.word` is part of a longer dotted name.
     const pattern = names.length ? new RegExp(`(?<![A-Za-z0-9_.-])(${names.join('|')})(?![A-Za-z0-9_-]|\\.[A-Za-z0-9])`, 'g') : null;
-    rename = (text) => (pattern ? text.replace(pattern, (_m, name: string) => mcpName(name)) : text);
+    rename = (text) => {
+      const renamed = pattern ? text.replace(pattern, (_m, name: string) => mcpName(name)) : text;
+      // A plain word also occurs as prose ("model units"). Require an explicit invocation.
+      return renamed.replace(/\b(call|invoke)(\s+)([a-z0-9-]+)(?![\w-]|\.[a-z0-9])/gi,
+        (match, verb: string, space: string, name: string) =>
+          advertised.has(name) ? verb + space + mcpName(name) : match);
+    };
     renamers.set(tools, rename);
   }
   return rename;

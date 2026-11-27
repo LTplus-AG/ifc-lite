@@ -15,6 +15,7 @@
  * units where it promises SI is wrong by 1e9 while looking entirely plausible.
  */
 
+import { sourceWatermark } from '@/utils/source-watermark';
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
@@ -89,7 +90,7 @@ async function seed(): Promise<IfcDataStore> {
   const { zoneSetRevision } = await import('@/lib/zones');
   useViewerStore.setState({
     editEnabled: true,
-    models: new Map([['m1', { id: 'm1', name: 'zones.ifc', ifcDataStore: store, visible: true } as never]]),
+    models: new Map([['m1', { id: 'm1', name: 'zones.ifc', idOffset: 0, maxExpressId: sourceWatermark(store), ifcDataStore: store, visible: true } as never]]),
     zoneSets: [ZONE_SET],
     zoneAssignments: new Map([
       [WALL_ID, { 'set-1': { zoneId: 'z-a', zoneName: 'Takt A', straddles: true, touchedZoneIds: ['z-a', 'z-b'] } }],

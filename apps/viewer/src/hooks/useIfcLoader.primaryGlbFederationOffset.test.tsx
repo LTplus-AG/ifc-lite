@@ -33,7 +33,7 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { useViewerStore, type FederatedModel } from '@/store';
+import { resolveEntityRef, useViewerStore, type FederatedModel } from '@/store';
 import { useIfcLoader } from './useIfcLoader.js';
 
 // ─── A real, minimal GLB fixture (mirrors useIfcLoader.federatedIdOffset.test.tsx) ──
@@ -217,5 +217,12 @@ describe('useIfcLoader — a primary .glb must register in the federation regist
       `the federated mesh's global expressId (${federatedGlobalMeshId}) must not fall inside the primary GLB's id range [0, ${primaryExpressId}] — `
       + 'a global id inside that range is indistinguishable from one of the primary model\'s own meshes',
     );
+    // #11607: the renderer ID exported by each load round-trips only while its owner is live.
+    assert.deepEqual(resolveEntityRef(primaryExpressId), { modelId: primaryModel.id, expressId: primaryExpressId });
+    const ref = resolveEntityRef(federatedGlobalMeshId);
+    assert.deepEqual(ref, { modelId: federatedModel.id, expressId: federatedLocalExpressId });
+    assert.equal(useViewerStore.getState().toGlobalId(ref.modelId, ref.expressId), federatedGlobalMeshId);
+    act(() => useViewerStore.getState().removeModel(federatedModel.id));
+    assert.deepEqual(resolveEntityRef(federatedGlobalMeshId), { modelId: 'legacy', expressId: federatedGlobalMeshId });
   });
 });

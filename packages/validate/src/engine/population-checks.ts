@@ -70,11 +70,16 @@ export function checkUniqueRules(m: Model, out: ValidationFinding[]): void {
   for (const entity of m.schema.entities.values()) {
     for (const unique of entity.meta.unique ?? []) {
       const seen = new Map<string, EntityInstance>();
-      const names = unique.attributes.map((a) => a.toUpperCase());
+      const attributes = unique.attributes.map(attribute => {
+        const name = attribute.toUpperCase();
+        const slot = entity.slot(name);
+        const group = slot?.k === 'explicit' ? slot.attribute.declaredBy.toUpperCase() : entity.upper;
+        return { name, group };
+      });
       for (const inst of m.population(entity.name)) {
-        const parts = names.map((n) => {
-          const slot = inst.entity.slot(n, entity.upper);
-          return uniqueKey(m, attr(inst, n, entity.upper), slot?.k === 'explicit' ? slot.attribute.type : undefined);
+        const parts = attributes.map(({ name, group }) => {
+          const slot = inst.entity.slot(name, group);
+          return uniqueKey(m, attr(inst, name, group), slot?.k === 'explicit' ? slot.attribute.type : undefined);
         });
         if (parts.some((p) => p === undefined)) continue;
         const key = JSON.stringify(parts);

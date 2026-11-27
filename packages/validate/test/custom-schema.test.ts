@@ -259,3 +259,14 @@ END_SCHEMA;`);
     expect(await run(records)).toMatchObject({ valid: true, findings: [] });
   }
 });
+
+it('resolves an inherited UNIQUE attribute in the rule owner context (#11647)', async () => {
+  const { schema } = generated(`SCHEMA S; ENTITY Root; X : INTEGER; END_ENTITY;
+ENTITY A SUBTYPE OF (Root); UNIQUE UA : X; END_ENTITY;
+ENTITY B; X : INTEGER; END_ENTITY;
+ENTITY C SUBTYPE OF (A,B); END_ENTITY; END_SCHEMA;`);
+  for (const [second, expected] of [['1,20', [2]], ['2,10', []]] as const) {
+    const report = await validateStepText(`DATA;#1=C(1,10);#2=C(${second});ENDSEC;`, { schema, categories: ['unique_rule'] });
+    expect(report.findings.map(f => [f.rule, f.instance])).toEqual(expected.map(id => ['A.UA', id]));
+  }
+});

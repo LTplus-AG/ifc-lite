@@ -16,6 +16,7 @@ import { computePresentationQuery } from './presentation-query.js';
 import type { Tool } from './types.js';
 import { resolveModel } from './util.js';
 import { idsValidate } from './validation.js';
+import { READ_ONLY } from './annotations.js';
 
 const metadata: Tool['_meta'] = { ui: { resourceUri: A2UI_APP_URI, visibility: ['model', 'app'] } };
 const string = { type: 'string', minLength: 1, maxLength: 256 };
@@ -60,7 +61,7 @@ const querySchema: JsonSchema = {
 };
 
 const presentQuery: Tool = {
-  name: 'present_query',
+  name: 'present_query', title: 'Present query results', annotations: READ_ONLY,
   description: 'Query a loaded IFC model and present matching entities as an interactive table, count, and optional grouped chart.',
   scope: 'read', _meta: metadata,
   inputSchema: {
@@ -99,7 +100,7 @@ function withTitle(tool: Tool): JsonSchema {
 }
 
 const presentIds: Tool = {
-  name: 'present_ids_results',
+  name: 'present_ids_results', title: 'Present IDS results', annotations: READ_ONLY,
   description: 'Run IDS validation on a loaded IFC model and present the failures and specification counts.',
   scope: idsValidate.scope, _meta: metadata, inputSchema: withTitle(idsValidate),
   async handler({ title, ...input }, ctx) {
@@ -130,7 +131,7 @@ const presentIds: Tool = {
 };
 
 const presentClash: Tool = {
-  name: 'present_clash_results',
+  name: 'present_clash_results', title: 'Present clash results', annotations: READ_ONLY,
   description: 'Run clash checking on a loaded IFC model and present interactive rows for the top clashes.',
   scope: clashCheck.scope, _meta: metadata, inputSchema: withTitle(clashCheck),
   async handler({ title, ...input }, ctx) {

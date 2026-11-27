@@ -24,6 +24,9 @@ import { DEFAULT_CONFIG, InMemoryModelRegistry, NOOP_PROGRESS, SILENT_LOGGER } f
 import { fullScope } from '../auth/scope.js';
 import { loadIfcModel } from '../loader.js';
 import { buildDefaultResourceRegistry } from './index.js';
+import { Ajv2020 } from 'ajv/dist/2020.js';
+import { OP_KINDS } from '@ifc-lite/ids-authoring';
+import { IDS_OPS_SCHEMA_URI } from '../tools/ids-ops-schema.js';
 
 /** A 22-character IFC GlobalId from a short mnemonic. */
 function guid(mnemonic: string): string {
@@ -119,3 +122,31 @@ describe('ifc-lite://model/{id}/entity/{global_id}', () => {
   });
 });
 
+
+describe('ifc-lite://schemas/ids-ops-v1.json', () => {
+  it('serves the full op schema that ids_apply_ops only summarises', async () => {
+    const provider = buildDefaultResourceRegistry().matchProvider(IDS_OPS_SCHEMA_URI);
+    if (!provider) throw new Error('ids ops schema resource not registered');
+    expect((await provider.list(ctx)).map((r) => r.uri)).toContain(IDS_OPS_SCHEMA_URI);
+    const [contents] = await provider.read(IDS_OPS_SCHEMA_URI, ctx);
+    const schema = JSON.parse((contents as { text: string }).text) as { oneOf: Array<{ $ref: string }>; $defs: Record<string, { properties?: { kind?: { const?: string }; payload?: object }; required?: string[] }> };
+    // One branch per op kind, each resolving to the Op_* def for that kind (CodeRabbit on #11550).
+    expect(schema.oneOf).toHaveLength(OP_KINDS.length);
+    const kinds = schema.oneOf.map(({ $ref }) => schema.$defs[$ref.replace('#/$defs/', '')]?.properties?.kind?.const);
+    expect(kinds).toEqual([...OP_KINDS]);
+    for (const { $ref } of schema.oneOf) {
+      const op = schema.$defs[$ref.slice('#/$defs/'.length)];
+      expect(op.properties?.payload).toBeDefined();
+      expect(op.required).toEqual(expect.arrayContaining(['kind', 'opId', 'payload']));
+    }
+    const accepts = new Ajv2020({ strict: false }).compile(schema);
+    const opId = '00000000-0000-7000-8000-0000000000a1';
+    for (const [kind, valid, invalid] of [
+      ['spec.remove', { specId: opId }, { specId: 5 }],
+      ['bulk.retargetEntity', { from: 'IfcDoor', to: 'IfcWindow' }, { from: 'IfcDoor' }],
+    ] as const) {
+      expect(accepts({ kind, opId, payload: valid })).toBe(true);
+      expect(accepts({ kind, opId, payload: invalid })).toBe(false);
+    }
+  });
+});

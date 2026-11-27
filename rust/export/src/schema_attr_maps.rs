@@ -142,6 +142,7 @@ pub(crate) fn upgrade_type(ifc2x3: &str) -> Option<&'static str> {
     ATTR_MAPS.iter().find(|m| m.ifc2x3 == ifc2x3 && m.ifc4 != m.ifc2x3)
         .map(|m| m.ifc4)
         .or(match ifc2x3 {
+            "IFCELECTRICALCIRCUIT" => Some("IFCDISTRIBUTIONCIRCUIT"),
             "IFCRELOCCUPIESSPACES" => Some("IFCRELASSIGNSTOACTOR"),
             "IFCRELASSIGNSTASKS" | "IFCRELASSIGNSTOPROJECTORDER" | "IFCRELSCHEDULESCOSTITEMS" => Some("IFCRELASSIGNSTOCONTROL"),
             _ => None,

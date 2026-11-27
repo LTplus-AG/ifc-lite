@@ -23,8 +23,8 @@ into, which can receive any member of the source type's enum (#10856).
 | IFC4X3 → IFC4 | 108 | 402 | 7 | 0 |
 | IFC4X3 → IFC2X3 | 83 | 216 | 18 | 10 |
 | IFC4 → IFC2X3 | 63 | 111 | 14 | 7 |
-| IFC2X3 → IFC4 | 27 | 71 | 7 | 0 |
-| IFC2X3 → IFC4X3 | 28 | 71 | 8 | 0 |
+| IFC2X3 → IFC4 | 28 | 71 | 8 | 0 |
+| IFC2X3 → IFC4X3 | 29 | 71 | 9 | 0 |
 | IFC4 → IFC4X3 | 16 | 0 | 16 | 0 |
 
 ## IFC4X3 → IFC4
@@ -307,6 +307,7 @@ into, which can receive any member of the source type's enum (#10856).
 | IfcBurnerType.PredefinedType | IfcBurnerTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ElementType` |
 | IfcController.PredefinedType | IfcControllerTypeEnum | PROPORTIONALINTEGRAL, PROPORTIONALINTEGRALDERIVATIVE, TIMEDTWOPOSITION | `.USERDEFINED.`, name in `ObjectType` |
 | IfcControllerType.PredefinedType | IfcControllerTypeEnum | PROPORTIONALINTEGRAL, PROPORTIONALINTEGRALDERIVATIVE, TIMEDTWOPOSITION | `.USERDEFINED.`, name in `ElementType` |
+| IfcDistributionCircuit.PredefinedType | IfcDistributionSystemEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ObjectType` |
 | IfcElectricAppliance.PredefinedType | IfcElectricApplianceTypeEnum | COMPUTER, DIRECTWATERHEATER, ELECTRICHEATER, FACSIMILE, INDIRECTWATERHEATER, PRINTER, RADIANTHEATER, SCANNER, TELEPHONE, TV, WATERHEATER, WATERCOOLER | `.USERDEFINED.`, name in `ObjectType` |
 | IfcElectricApplianceType.PredefinedType | IfcElectricApplianceTypeEnum | COMPUTER, DIRECTWATERHEATER, ELECTRICHEATER, FACSIMILE, INDIRECTWATERHEATER, PRINTER, RADIANTHEATER, SCANNER, TELEPHONE, TV, WATERHEATER, WATERCOOLER | `.USERDEFINED.`, name in `ElementType` |
 | IfcElectricDistributionBoard.PredefinedType | IfcElectricDistributionBoardTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ObjectType` |
@@ -340,6 +341,7 @@ into, which can receive any member of the source type's enum (#10856).
 | IfcController.PredefinedType | IfcControllerTypeEnum | PROPORTIONALINTEGRAL, PROPORTIONALINTEGRALDERIVATIVE, TIMEDTWOPOSITION | `.USERDEFINED.`, name in `ObjectType` |
 | IfcControllerType.PredefinedType | IfcControllerTypeEnum | PROPORTIONALINTEGRAL, PROPORTIONALINTEGRALDERIVATIVE, TIMEDTWOPOSITION | `.USERDEFINED.`, name in `ElementType` |
 | IfcDistributionBoard.PredefinedType | IfcDistributionBoardTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ObjectType` |
+| IfcDistributionCircuit.PredefinedType | IfcDistributionSystemEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ObjectType` |
 | IfcDoorType.PredefinedType | IfcDoorTypeEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `ElementType` |
 | IfcDoorType.OperationType | IfcDoorTypeOperationEnum | (renamed into this type: any member not listed) | `.USERDEFINED.`, name in `UserDefinedOperationType` |
 | IfcElectricAppliance.PredefinedType | IfcElectricApplianceTypeEnum | COMPUTER, DIRECTWATERHEATER, ELECTRICHEATER, FACSIMILE, INDIRECTWATERHEATER, PRINTER, RADIANTHEATER, SCANNER, TELEPHONE, TV, WATERHEATER, WATERCOOLER | `.USERDEFINED.`, name in `ObjectType` |

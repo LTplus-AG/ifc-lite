@@ -70,6 +70,16 @@ it('applies storey and limit filters to a loaded model export', async () => {
   expect(result.structuredContent).toMatchObject({ rows: [expect.objectContaining({ Name: 'Existing wall' })] });
 });
 
+it.each(['', '   '])('refuses a blank IFC type before writing a file (#11623)', async (type) => {
+  ctx.registry.add(await loadIfcModelFromBytes(source, 'walls.ifc'));
+  const filePath = join(root, 'filtered.ifc');
+  const tool = exportTools.find((entry) => entry.name === 'export_ifc')!;
+  const input = { file_path: filePath, type };
+  expect(validateInput(tool.inputSchema, input).valid).toBe(false);
+  await expect(tool.handler(input, ctx)).rejects.toThrow('IFC type must not be blank');
+  expect(existsSync(filePath)).toBe(false);
+});
+
 it('applies the STEP export limit after the GlobalId allowlist (#11583)', async () => {
   const text = new TextDecoder().decode(source).replace(
     'ENDSEC;\nEND-ISO', "#73=IFCWALL('0WALL00000000000000001',$,'Other wall',$,$,#40,$,$,$);\nENDSEC;\nEND-ISO",

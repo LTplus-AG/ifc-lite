@@ -9,7 +9,7 @@ import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 const operators: ComparisonOp[] = ['=', '!=', '>', '<', '>=', '<=', 'contains', 'exists', 'matches'];
 
 export const exportFilterProperties = {
-  type: { type: 'string', description: 'IFC type, e.g. IfcWall.' },
+  type: { type: 'string', pattern: '\\S', description: 'IFC type, e.g. IfcWall.' },
   storey: { type: 'string', minLength: 1, description: 'Storey name or express ID.' },
   where: {
     type: 'object',
@@ -26,12 +26,17 @@ export const exportFilterProperties = {
 } satisfies Record<string, JsonSchema>;
 
 export function hasExportFilter(input: Record<string, unknown>): boolean {
-  return !!(input.type || input.where || input.limit) || input.storey != null;
+  return input.type !== undefined || !!(input.where || input.limit) || input.storey != null;
 }
 
 export function selectExportEntities(bim: BimContext, input: Record<string, unknown>) {
   let query = bim.query();
-  if (typeof input.type === 'string' && input.type) query = query.byType(input.type);
+  if (input.type !== undefined) {
+    if (typeof input.type !== 'string' || !input.type.trim()) {
+      throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message: 'IFC type must not be blank.' });
+    }
+    query = query.byType(input.type);
+  }
   if (input.where) {
     const { set, property, operator, value } = input.where as {
       set: string;

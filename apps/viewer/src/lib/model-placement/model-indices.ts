@@ -50,7 +50,7 @@ export function createModelIndexAllocator(liveModels?: () => ReadonlyMap<string,
       },
     };
   };
-  return Object.assign(allocate, { reserve, assignedIndex: (id: string) => assigned.get(id) });
+  return Object.assign(allocate, { reserve, hasReservations: () => reserved.size > 0, assignedIndex: (id: string) => assigned.get(id) });
 }
 export const modelIndices = createModelIndexAllocator(() => peekViewerStore()?.getState().models);
 

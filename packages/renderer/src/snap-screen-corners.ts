@@ -89,6 +89,12 @@ export interface ScreenCornerCandidate {
   /** Screen distance from the cursor, in CSS px. */
   distancePx: number;
 }
+
+function screenRadius(value: number | undefined, fallback: number): number {
+  const radius = value ?? fallback;
+  return Number.isFinite(radius) && radius > 0 ? radius : 0;
+}
+
 export class ScreenCornerIndex {
   private live: { grid: CornerGrid; ray: Ray; maxDepth: number } | null = null;
   dropLive(): void { this.live = null; }
@@ -140,8 +146,8 @@ export class ScreenCornerIndex {
   }): ScreenCornerHit | null {
     this.dropLive();
     const { x, y, viewport, options } = args;
-    const cornerR = options.cornerRadiusPx ?? DEFAULT_CORNER_RADIUS_PX;
-    const edgeR = options.edgeRadiusPx ?? DEFAULT_EDGE_RADIUS_PX;
+    const cornerR = screenRadius(options.cornerRadiusPx, DEFAULT_CORNER_RADIUS_PX);
+    const edgeR = screenRadius(options.edgeRadiusPx, DEFAULT_EDGE_RADIUS_PX);
     if (!(cornerR > 0) && !(edgeR > 0)) return null;
     const cell = Math.max(cornerR, edgeR);
     const eligible = options.eligibleModelIndices;

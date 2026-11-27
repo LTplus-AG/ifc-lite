@@ -227,6 +227,8 @@ export function latticeCollapsesGeometry(
   // judge it when the entity changes (an entity split across runs is summed).
   const totals = new Map<number, { area: number; collapsed: number }>();
   let runId = -1, runArea = 0, runCollapsed = 0;
+  // Only allocated for a rim candidate. At the cap, keep the source precision.
+  let rimSegments: Set<string> | undefined;
   const flush = (): void => {
     if (runId < 0) return;
     const entry = totals.get(runId) ?? { area: 0, collapsed: 0 };
@@ -242,17 +244,26 @@ export function latticeCollapsesGeometry(
     const area = Math.sqrt(nx * nx + ny * ny + nz * nz);
     if (!(area > 0)) continue;
     const id = ids[pa + 6];
-    if (id !== runId) { flush(); runId = id; runArea = 0; runCollapsed = 0; }
+    if (id !== runId) { rimSegments?.clear(); flush(); runId = id; runArea = 0; runCollapsed = 0; }
     runArea += area;
     const na = a * 3, nb = b * 3, nc = c * 3;
     const qux = nodes[nb] - nodes[na], quy = nodes[nb + 1] - nodes[na + 1], quz = nodes[nb + 2] - nodes[na + 2];
     const qvx = nodes[nc] - nodes[na], qvy = nodes[nc + 1] - nodes[na + 1], qvz = nodes[nc + 2] - nodes[na + 2];
     // Integer lattice offsets: every product is exact, so zero means collapsed.
     if (quy * qvz - quz * qvy === 0 && quz * qvx - qux * qvz === 0 && qux * qvy - quy * qvx === 0) {
-      // A plate's rim can become a line between distinct nodes even when its
-      // wall neighbour dominates the area. A speck snapping to one node still
-      // uses the area allowance. This works across split face vertices.
-      if (qux !== 0 || quy !== 0 || quz !== 0 || qvx !== 0 || qvy !== 0 || qvz !== 0) return true;
+      // Both triangles of a flattened rim quad span the same two lattice
+      // nodes. Match coordinates so disconnected face indices still agree.
+      const ab = !qux && !quy && !quz, ac = !qvx && !qvy && !qvz;
+      const bc = qux === qvx && quy === qvy && quz === qvz;
+      if (!(ab && ac) && (ab || ac || bc)) {
+        const other = ab ? nc : nb;
+        const aKey = `${nodes[na]},${nodes[na + 1]},${nodes[na + 2]}`;
+        const bKey = `${nodes[other]},${nodes[other + 1]},${nodes[other + 2]}`;
+        const key = aKey < bKey ? aKey + '/' + bKey : bKey + '/' + aKey;
+        rimSegments ??= new Set();
+        if (rimSegments.has(key) || rimSegments.size >= 64) return true;
+        rimSegments.add(key);
+      }
       runCollapsed += area;
     }
   }

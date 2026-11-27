@@ -247,6 +247,7 @@ fn split_unwitnessed_nodes(mesh: &MeshDataJs, s: &mut Scratch) -> Result<(), Ref
 /// refuse a mesh the lattice collapses (#9068) or leaves without a triangle.
 fn triangles(mesh: &MeshDataJs, s: &mut Scratch) -> Result<(), Refusal> {
     let p = &mesh.positions;
+    let mut rim_segments = std::collections::HashSet::new();
     let (mut area, mut collapsed) = (0.0f64, 0.0f64);
     for t in mesh.indices.chunks_exact(3) {
         let (a, b, c) = (t[0] as usize, t[1] as usize, t[2] as usize);
@@ -262,11 +263,15 @@ fn triangles(mesh: &MeshDataJs, s: &mut Scratch) -> Result<(), Refusal> {
         if tri_area > 0.0 {
             area += tri_area;
             if lattice_collapses(&s.nodes, ra, rb, rc) {
-                // Match the renderer: a positive-area side flattened to a line
-                // can be the rim of a thin solid inside a much larger mesh.
-                let node = s.nodes[ra as usize];
-                if node != s.nodes[rb as usize] || node != s.nodes[rc as usize] {
-                    return Err(Refusal::Collapse);
+                // A flattened rim quad contributes two triangles on the same
+                // lattice segment, even when different faces split vertices.
+                let [a, b, c] = [ra, rb, rc].map(|i| s.nodes[i as usize]);
+                if (a != b || a != c) && (a == b || a == c || b == c) {
+                    let other = if a == b { c } else { b };
+                    let segment = (a.min(other), a.max(other));
+                    if rim_segments.len() >= 64 || !rim_segments.insert(segment) {
+                        return Err(Refusal::Collapse);
+                    }
                 }
                 collapsed += tri_area;
             }

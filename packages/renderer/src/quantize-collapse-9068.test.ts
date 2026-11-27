@@ -126,6 +126,8 @@ describe('lattice collapse guard (#9068)', () => {
 
   it('keeps everyday geometry with a sub-millimetre sliver quantized', () => {
     assert.strictEqual(collapses(wallWithSliver(1)), false);
+    const isolated = join([box(0, 0, 0, 5, 0.2, 3), { p: [7, 0, 0, 8, 0, 0, 8, 0, 0.0001], i: [0, 1, 2] }]);
+    assert.ok(batch([mesh(1, isolated.p, isolated.i)], 'auto').quantized);
   });
 
   it('is scale-relative: the same footing at 10x (Ø20 mm rods) survives the lattice', () => {

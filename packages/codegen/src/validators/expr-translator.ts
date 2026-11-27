@@ -177,9 +177,10 @@ export class ExpressionTranslator {
     const upper = e.name.toUpperCase();
     if (!this.index.attributeNames.has(upper)) throw new UnsupportedConstruct(`no entity declares attribute ${e.name}`);
     const owner = this.receiver(e.base, scope);
-    if (e.base.k === 'group' && e.base.base.k === 'self' && scope.entity) {
+    const concrete = e.base.k === 'group' ? this.receiver(e.base.base, scope) : undefined;
+    if (e.base.k === 'group' && concrete) {
       const group = e.base.entity.toUpperCase();
-      for (const level of this.index.chain(scope.entity).reverse()) {
+      for (const level of this.index.chain(concrete).reverse()) {
         const override = [...level.explicit, ...level.derived].find(a =>
           a.redeclares?.entity.toUpperCase() === group && a.redeclares.attribute.toUpperCase() === upper);
         if (override) {

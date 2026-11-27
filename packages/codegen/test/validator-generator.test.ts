@@ -6,6 +6,7 @@ import { schemaSource } from './schema-fixture.js';
 import { runInNewContext } from 'node:vm';
 import { describe, expect, it } from 'vitest';
 import ts from 'typescript';
+import { z } from 'zod';
 import { generateValidators } from '../src/index.js';
 
 const generated = new Map<string, ReturnType<typeof generateValidators>>();
@@ -60,18 +61,21 @@ describe('generateValidators', () => {
 
   // Totals cross-checked against IfcOpenShell's compiled rule modules (#11559): every
   // entity WHERE, type WHERE and global RULE label it runs is one these schemas compile.
+  // DERIVE totals count := declarations in the DERIVE sections of the raw EXPRESS files.
   it.each([
-    ['IFC2X3_TC1.exp', 'IFC2X3', 339, 24, 2, 38],
-    ['IFC4_ADD2_TC1.exp', 'IFC4', 652, 25, 2, 47],
-    ['IFC4X3.exp', 'IFC4X3_DEV_923B0514', 752, 25, 2, 48],
-  ])('compiles every rule, DERIVE, FUNCTION and global RULE of %s', (file, typePrefix, entity, type, global, fns) => {
+    ['IFC2X3_TC1.exp', 'IFC2X3', 339, 24, 2, 38, 55],
+    ['IFC4_ADD2_TC1.exp', 'IFC4', 652, 25, 2, 47, 62],
+    ['IFC4X3.exp', 'IFC4X3_DEV_923B0514', 752, 25, 2, 48, 60],
+  ])('compiles every rule, DERIVE, FUNCTION and global RULE of %s', (file, typePrefix, entity, type, global, fns, derived) => {
     const { files, coverage } = generate(file);
     for (const [scope, c] of Object.entries(coverage.counts)) expect(c.compiled, scope).toBe(c.total);
     expect(coverage.unsupported).toEqual([]);
-    expect([coverage.counts.entity.total, coverage.counts.type.total, coverage.counts.global.total, coverage.counts.function.total])
-      .toEqual([entity, type, global, fns]);
+    expect([coverage.counts.entity.total, coverage.counts.type.total, coverage.counts.global.total, coverage.counts.function.total, coverage.counts.derived.total])
+      .toEqual([entity, type, global, fns, derived]);
     // TYPEOF literals use the qualifier the rules spell, not the file's schema name.
-    expect(files['schema.ts']).toContain(`"typePrefix": "${typePrefix}"`);
+    const exports = { META: { typePrefix: '' } };
+    runInNewContext(ts.transpileModule(files['schema.ts'], { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText, { exports });
+    expect(exports.META.typePrefix).toBe(typePrefix);
   });
 
   it('emits modules that parse as TypeScript', () => {
@@ -205,7 +209,9 @@ REPEAT UNTIL N > 1; N := N + 1; IF N = 2 THEN SKIP; END_IF; END_REPEAT; RETURN (
 
   it("does not treat a three-part 'SCHEMA.ENTITY.ATTR' literal as a type in IN TYPEOF", () => {
     const { files } = generateValidators(mini("WR1 : 'MINI.MINITHING.NAME' IN TYPEOF(SELF)"));
-    expect(files['rules.ts']).not.toContain('r.typeIs(');
+    const [rule] = loadRules(files['rules.ts'], { ...setRuntime, isIn: (item: string, names: string[]) => names.includes(item) });
+    expect(rule.check(['MINI.MINITHING.NAME'], {})).toBe(true);
+    expect(rule.check(['MINI.MINITHING'], {})).toBe(false);
   });
 
   it('runs a supertype rule as a zod refinement only where the attribute is still explicit', () => {
@@ -216,12 +222,29 @@ ENTITY Free SUBTYPE OF (Base); END_ENTITY;
 ENTITY Opt; Tag : OPTIONAL REAL; END_ENTITY;
 ENTITY Req SUBTYPE OF (Opt); SELF\\Opt.Tag : REAL; END_ENTITY;
 END_SCHEMA;`;
-    const zod = generateValidators(schema).files['zod.ts'];
-    const decl = (name: string) => zod.split('\nexport const ').find((d) => d.startsWith(`${name} =`)) ?? '';
-    expect(decl('Free')).toContain('"Base.Positive"');
-    expect(decl('Fixed')).toBeTruthy();
-    expect(decl('Fixed')).not.toContain('localRuleRefinement');
-    expect(zod).toMatch(/export const Req = z\.strictObject\(\{\n  Tag: z\.number\(\),\n\}\)/);
+    const { files } = generateValidators(schema);
+    const rules = loadRules(files['rules.ts'], {
+      attr: (self: { Size: number }, key: string) => key === 'SIZE' ? self.Size : undefined,
+      gt: (left: number, right: number) => left > right,
+    }, 'Base');
+    const qualifiedRules = new Map(rules.map(rule => [`Base.${rule.label}`, rule]));
+    const runtime = {
+      localRuleRefinement: (_schema: unknown, _entity: string, labels: string[]) =>
+        (value: object, ctx: z.RefinementCtx) => {
+          for (const label of labels) {
+            if (!qualifiedRules.get(label)!.check(value, {})) ctx.addIssue({ code: 'custom', message: label });
+          }
+        },
+    };
+    const exports = {} as Record<string, z.ZodType>;
+    const imports = { zod: { z }, '@ifc-lite/validate/runtime': runtime, './index.js': { SCHEMA: {} } };
+    const js = ts.transpileModule(files['zod.ts'], { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText;
+    runInNewContext(js, { exports, require: (name: keyof typeof imports) => imports[name] });
+    expect(exports.Free.safeParse({ Size: 1 }).success).toBe(true);
+    expect(exports.Free.safeParse({ Size: -1 }).error?.issues[0].message).toBe('Base.Positive');
+    expect(exports.Fixed.safeParse({}).success).toBe(true);
+    expect(exports.Req.safeParse({}).success).toBe(false);
+    expect(exports.Req.safeParse({ Tag: 2 }).success).toBe(true);
   });
 
   it('keeps supported sibling global labels and reports skipped declarations (#11559)', () => {
@@ -250,11 +273,12 @@ Invalid : SIZEOF(QUERY(x <* Others | x.Value > 0)) > 0; END_ENTITY; END_SCHEMA;`
 ENTITY Parent; Value : INTEGER; WHERE Original : Value > 0; END_ENTITY;
 ENTITY Child SUBTYPE OF (Parent);
 DERIVE SELF\\Parent.Value RENAMED Broken : INTEGER := Mystery(1);
-WHERE NewName : Broken > 0; OldGroup : SELF\\Parent.Value > 0; END_ENTITY; END_SCHEMA;`);
+WHERE NewName : Broken > 0; OldGroup : SELF\\Parent.Value > 0; ViaFunction : ReadValue(SELF); END_ENTITY;
+FUNCTION ReadValue(T : Child) : LOGICAL; RETURN(T\\Parent.Value > 0); END_FUNCTION; END_SCHEMA;`);
     expect(coverage.unsupported.map(u => [u.owner, u.label])).toEqual([
-      ['Child', 'Broken'], ['Child', 'NewName'], ['Child', 'OldGroup'],
+      ['ReadValue', 'ReadValue'], ['Child', 'Broken'], ['Child', 'NewName'], ['Child', 'OldGroup'], ['Child', 'ViaFunction'],
     ]);
-    expect(coverage.unsupported.slice(1).every(u => u.reason.includes('Child.Broken'))).toBe(true);
+    expect(coverage.unsupported.filter(u => u.label !== 'Broken').every(u => u.reason.includes('Child.Broken'))).toBe(true);
     const [rule] = loadRules(files['rules.ts'], { ...setRuntime, gt: (a: number, b: number) => a > b }, 'Parent');
     expect(rule.check({ VALUE: 1 }, {})).toBe(true);
     expect(rule.check({ VALUE: 0 }, {})).toBe(false);

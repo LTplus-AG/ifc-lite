@@ -248,6 +248,7 @@ export class Scene {
   /** Compacted live view of `instancedTemplates`, rebuilt on mutation. */
   private liveInstancedTemplates: InstancedTemplateGPU[] = [];
   private instancedVisible = true;                                  // GPU-instancing: hidden in Types view mode (instanced geometry is class-0 occurrences)
+  private instancedEntityRevision = 0;
   private instancedEntityMap: Map<number, InstancedOccurrence[]> = new Map(); // express_id -> occurrences, for per-instance selection/overlay patching
   /** Compact CPU geometry per template, slot-aligned with `instancedTemplates`
    *  (so equally sparse) for CPU consumers. Also emptied wholesale on geometry
@@ -263,6 +264,7 @@ export class Scene {
     this.boundingBoxes.delete(id);
     if (!this.instanceSuppression.has(id)) this.recomputeInstancedBounds(id);
     this.evictHighlightMeshes(id);
+    this.instancedEntityRevision++; this.geometryChanges.changed();
   });
   private instancedHidden: Set<number> = new Set();               // currently hidden instanced express_ids (hide/isolate)
   private readonly tombstonedTemplates = new Set<number>();         // template slots holding a deleted entity's records (#10639)
@@ -324,8 +326,6 @@ export class Scene {
   // 12-byte quantized batch vertices (issue #1682 phase 6): off unless the
   // renderer probed its quantized pipelines and enabled it.
   private quantizedBatchesEnabled = false;
-  // Quantized pipeline probes in flight (`beginQuantizedProbe`). Compact meshes wait for their outcome
-  // instead of decoding to f32: a load that races the probe would otherwise decode whatever arrived first.
   private quantizedProbes = 0;
   // True while a (possibly time-sliced) finalize rebuild is running. The
   // preamble clears streamingFragments synchronously, so hasStreamingFragments
@@ -591,14 +591,9 @@ export class Scene {
     if (!enabled) this.compact?.demotePages(); // pages are 12-byte records: only the quantized pipelines draw them; the queue waits for the next drain
   }
 
-  /** A quantized pipeline probe is in flight: whether compact meshes may draw from pages is not decided yet. */
   get quantizedBatchesPending(): boolean { return this.quantizedProbes > 0; }
 
-  /**
-   * A quantized pipeline probe starts: compact meshes stay queued, still compact, until the returned
-   * function is called. Call it after the probe's outcome reached `setQuantizedBatches` (or the probe
-   * was abandoned): the queue then drains to pages or, with the pipelines off, decodes to buckets.
-   */
+  /** Hold queued compact meshes until this probe settles. Releasing a hold twice is safe. */
   beginQuantizedProbe(): () => void {
     this.quantizedProbes++;
     let settled = false;
@@ -1422,7 +1417,7 @@ export class Scene {
       this.bumpTemplateSelectedCount(expressId, -1);
     }
     this.instanceSuppression.forget(expressId);
-    this.instancedEntityMap.delete(expressId); this.bumpPickGeometryRevision();
+    this.instancedEntityMap.delete(expressId); this.instancedEntityRevision++; this.bumpPickGeometryRevision();
     this.instancedSelected.delete(expressId);
     this.instancedHidden.delete(expressId);
     this.instancedOverridden.delete(expressId);
@@ -2921,7 +2916,8 @@ export class Scene {
    */
   removeInstancedTemplatesForModel(modelIndex: number): number {
     this.keyedInstancing.removeModel(modelIndex);
-    this.instanceSuppression.forgetModel(modelIndex); this.releasedMembership?.drop(this, modelIndex);
+    if (this.instanceSuppression.forgetModel(modelIndex)) { this.instancedEntityRevision++; this.geometryChanges.changed(); }
+    this.releasedMembership?.drop(this, modelIndex);
     const freed = new Set<number>();
     for (let i = 0; i < this.instancedTemplates.length; i++) {
       const t = this.instancedTemplates[i];
@@ -2948,7 +2944,7 @@ export class Scene {
         continue;
       }
       // Last occurrence gone: the id is no longer instanced at all.
-      this.instancedEntityMap.delete(eid);
+      this.instancedEntityMap.delete(eid); this.instancedEntityRevision++;
       this.instancedSelected.delete(eid);
       this.instancedHidden.delete(eid);
       this.instancedOverridden.delete(eid);
@@ -3045,8 +3041,13 @@ export class Scene {
     // Keyed slots and the GPU instance pool are separate opt-ins; with the pool on, records upload as before.
     const keyedEligible = !!shard.templateKeys && !this.instancePool.enabled && this.modelTranslations.get(modelIndex).every((v) => v === 0) && !this.modelTranslations.getYaw(modelIndex);
     const routed = this.keyedInstancing.route(shard, prepared, modelIndex, keyedEligible);
-    for (const keyed of routed.keyed) this.keyedInstancing.append(host, device, keyed, modelIndex, late);
-    for (const t of routed.plain) uploadInstancedTemplate(host, device, t, modelIndex, late);
+    const previousSize = this.instancedEntityMap.size;
+    try {
+      for (const keyed of routed.keyed) this.keyedInstancing.append(host, device, keyed, modelIndex, late);
+      for (const t of routed.plain) uploadInstancedTemplate(host, device, t, modelIndex, late);
+    } finally {
+      if (this.instancedEntityMap.size !== previousSize) this.instancedEntityRevision++;
+    }
     this.refreshLiveInstancedTemplates();
     // Write the selected flag for ids whose occurrences arrived after the
     // selection was recorded (idempotent for their pre-existing occurrences),
@@ -3097,6 +3098,8 @@ export class Scene {
   *getInstancedEntityIds(): IterableIterator<number> {
     for (const id of this.instancedEntityMap.keys()) if (!this.instanceSuppression.has(id)) yield id;
   }
+
+  getInstancedEntityRevision(): number { return this.instancedEntityRevision; }
 
   /** Number of distinct GPU-instanced entities. O(1) — for size heuristics
    *  (e.g. the orbit-pivot raycast skip) that must not miss instanced-heavy
@@ -3578,6 +3581,7 @@ export class Scene {
     this.instancedTemplateCpu = []; this.keyedInstancing.clear();
     this.instancePool.clear();
     this.instanceSuppression.forget();
+    if (this.instancedEntityMap.size) this.instancedEntityRevision++;
     this.instancedEntityMap.clear(); this.bumpPickGeometryRevision();
     this.instancedSelected.clear();
     this.instancedSelectedItemExpressId = this.instancedSelectedItemId = undefined;

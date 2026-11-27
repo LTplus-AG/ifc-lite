@@ -21,7 +21,7 @@ use super::session_protocol::{WorkKind, WorkPayload};
 use super::*;
 
 pub(super) enum PrimaryOutcome {
-    Candidate(SubMeshCollection),
+    Candidate(ifc_lite_geometry::StyledSubMeshes),
     Retry,
     RefusedAnnotation,
 }
@@ -75,10 +75,10 @@ fn primary(
 ) -> PrimaryOutcome {
     let result = match strategy {
         PrimaryStrategy::VoidedSubmeshes => {
-            router.process_element_with_submeshes_and_voids(job.entity, decoder, ctx.void_index)
+            router.process_element_with_styled_submeshes_and_voids(job.entity, decoder, ctx.void_index)
         }
         PrimaryStrategy::TexturedSubmeshes => {
-            router.process_element_with_submeshes_textured(job.entity, decoder, ctx.texture_index)
+            router.process_element_with_styled_submeshes_textured(job.entity, decoder, ctx.texture_index)
         }
     };
     match result {

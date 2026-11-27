@@ -35,6 +35,9 @@ pub(super) struct ProductState<'j> {
     pub(super) job: &'j ElementMeshJob<'j>,
     pub(super) stage: Stage<'j>,
     pub(super) element_color: [f32; 4],
+    /// Where `element_color` came from: `Unstyled` for the type default, else
+    /// what the caller said (`Unavailable` when it passed the RGBA alone).
+    pub(super) element_style: StyleSource,
     /// `MeshProductionOptions::presentation_provenance`, read at planning.
     pub(super) provenance: bool,
     pub(super) keep_order: bool,
@@ -45,8 +48,9 @@ pub(super) struct ProductState<'j> {
     #[cfg(test)]
     pub(super) owner: Option<super::session_owner::ProductOwner>,
     pub(super) hasher: Option<GeometryHasher>,
-    pub(super) meshes: Vec<MeshData>,
-    pub(super) occurrences: Vec<RawInstanceOccurrence>,
+    /// Each mesh and occurrence with its colour's source (`styled_output`).
+    pub(super) meshes: Vec<ProducedMesh>,
+    pub(super) occurrences: Vec<ProducedOccurrence>,
     pub(super) protocol: Protocol,
     /// Set while a synchronous driver holds the epoch open around this product.
     pub(super) live: Option<Live>,
@@ -87,10 +91,14 @@ impl<'j> ProductState<'j> {
             PlanKind::TypeMaps(maps) => Stage::TypeMaps(maps.iter()),
             PlanKind::Product { primary, layer_class } => Stage::Primary { strategy: primary, layer_class },
         };
+        // A job without an element colour falls back to the type default,
+        // which comes from no style.
+        let element_style = if job.element_color.is_some() { StyleSource::Unavailable } else { StyleSource::Unstyled };
         let mut state = Self {
             job,
             stage,
             element_color,
+            element_style,
             keep_order,
             provenance,
             #[cfg(test)]
@@ -240,6 +248,14 @@ impl<'j> ProductState<'j> {
         };
         self.remember_stop(stop);
         true
+    }
+
+    /// The source of a caller-supplied element colour, decided by the caller
+    /// together with the colour. Ignored when the job has no element colour.
+    pub(super) fn set_element_style(&mut self, source: StyleSource) {
+        if self.job.element_color.is_some() {
+            self.element_style = source;
+        }
     }
 
     pub(super) fn terminal(&self) -> Option<ProgramStop> {

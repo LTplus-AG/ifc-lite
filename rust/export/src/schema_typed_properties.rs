@@ -91,7 +91,8 @@ struct Group {
 struct Draft {
     source_type: &'static str,
     groups: Vec<Group>,
-    check_ifc4_slots: bool,
+    /// The target, whose required slots the written record is counted against (#11135).
+    target: crate::schema_ifc4_slots::SlotTarget,
 }
 
 #[derive(Default)]
@@ -105,9 +106,8 @@ impl TypedPropertyUpgrade {
     /// Remember values from the effective input, keyed by their final id.
     /// Reserve generated ids after every source and appended record is known.
     pub(crate) fn capture(&mut self, source: &str, from: &str, to: &str, id: u32) -> bool {
-        if !self.enabled || from != "IFC2X3" || !matches!(to, "IFC4" | "IFC4X3") {
-            return false;
-        }
+        // IFC2X3 -> IFC4 or IFC4X3 only, the targets whose required slots are counted.
+        let Some(target) = crate::schema_ifc4_slots::SlotTarget::of(to).filter(|_| self.enabled && from == "IFC2X3") else { return false };
         let Some(head) = record_head(source) else { return false };
         let Some(&(source_type, arity, sets)) = lookup(head.type_name(source)) else { return false };
         let Some(values) = record_frame(source).and_then(|frame| slots_of(frame.args(source))) else { return false };
@@ -125,7 +125,7 @@ impl TypedPropertyUpgrade {
         if groups.is_empty() {
             return false;
         }
-        self.drafts.insert(id, Draft { source_type, groups, check_ifc4_slots: to == "IFC4" });
+        self.drafts.insert(id, Draft { source_type, groups, target });
         true
     }
 
@@ -156,8 +156,8 @@ impl TypedPropertyUpgrade {
             if let Some(replacement) = draft.emit(&line, &mut ids, &mut appended) {
                 let restored: usize = draft.groups.iter().map(|group| group.properties.len()).sum();
                 *dropped = dropped.saturating_sub(restored);
-                if draft.check_ifc4_slots {
-                    slots.count(&replacement);
+                slots.count(&replacement, draft.target);
+                if draft.target == crate::schema_ifc4_slots::SlotTarget::Ifc4 {
                     for (attribute, _) in draft.groups.iter().flat_map(|group| &group.properties) {
                         structural.restore_omitted_value(draft.source_type, attribute, "IFC4");
                     }
@@ -165,9 +165,7 @@ impl TypedPropertyUpgrade {
                 output.extend_from_slice(replacement.as_bytes());
             } else {
                 self.refused += 1;
-                if draft.check_ifc4_slots {
-                    slots.count(&line);
-                }
+                slots.count(&line, draft.target);
                 output.extend_from_slice(&text[start..end]);
             }
         }

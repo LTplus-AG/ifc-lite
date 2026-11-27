@@ -10,7 +10,6 @@ import { meshedFillItems } from './symbolic-meshed-fills.js';
 import { buildSymbolicRichChannels } from './symbolic-rich-channels.js';
 import { createEmptyFlatSymbolic, buildParseResult } from '../lib/overlay-parse/symbolic-parse.js';
 import { adoptCompactMeshes, compactHydrationStats, loadCompactGeometry, type CompactPayload } from '@ifc-lite/geometry/compact';
-import { meshGeometryCounts } from '../lib/released-mesh-provenance.js';
 
 function mesh(owner: number, item?: number): MeshData {
   return { expressId: owner, geometryItemId: item,
@@ -119,7 +118,15 @@ it('reads a compact mesh\'s counts from its row, without decoding it (lane L9)',
   adoptCompactMeshes([shell], [payload]);
   const decoded = compactHydrationStats().meshes;
   assert.equal(meshedFillItems([shell], id => id)(1, 11), true);
-  assert.deepEqual(meshGeometryCounts(shell), { triangles: 1, vertices: 9 }, 'vertices as the load totals them: the source count, not the 3 welded');
+  // #11579: append and prune must agree when nine source vertices weld to three.
+  const previous = useViewerStore.getState();
+  try {
+    useViewerStore.setState({ models: new Map(), activeModelId: 'compact', geometryResult: null });
+    previous.appendGeometryBatch('compact', [shell]);
+    assert.equal(useViewerStore.getState().geometryResult?.totalVertices, 3);
+    previous.pruneGeometryMeshes(new Set([shell.expressId]));
+    assert.equal(useViewerStore.getState().geometryResult?.totalVertices, 0);
+  } finally { useViewerStore.setState(previous, true); }
   assert.equal(compactHydrationStats().meshes, decoded, 'no compact mesh was decoded');
   assert.ok(shell.compact, 'still a compact mesh');
 });

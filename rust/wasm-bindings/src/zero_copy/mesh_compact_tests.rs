@@ -127,6 +127,29 @@ fn a_thin_rod_moves_to_a_finer_lattice() {
 }
 
 #[test]
+fn a_plate_retains_its_thickness_when_its_sides_have_negligible_area() {
+    let mut plate = flat_box(1, [0.0; 3], 0.6);
+    for p in plate.positions.chunks_exact_mut(3) {
+        p[2] *= 0.0001 / 0.6;
+    }
+    let mut collection = MeshCollection::new();
+    let mut wall = flat_box(1, [0.0; 3], 3.0);
+    for p in wall.positions.chunks_exact_mut(3) {
+        p[0] += 1.0; // Disjoint, but both solids fit in the finer window.
+        p[1] *= 0.2 / 3.0;
+    }
+    let base = (plate.positions.len() / 3) as u32;
+    plate.positions.extend(wall.positions);
+    plate.normals.extend(wall.normals);
+    plate.indices.extend(wall.indices.into_iter().map(|i| base + i));
+    collection.add(plate);
+    let batch = collection.encode_compact(32.0);
+    assert_eq!(batch.mesh_count(), 1);
+    assert!(batch.table[5] > BASE_LEVEL);
+    assert_eq!(batch.indices.len(), 72, "both closed solids retain every side");
+}
+
+#[test]
 fn a_wide_slab_moves_to_a_coarser_lattice() {
     let mut c = MeshCollection::new();
     c.add(flat_box(9, [0.0, 0.0, 0.0], 80.0));
@@ -473,4 +496,3 @@ fn each_row_carries_its_first_source_vertex_exactly() {
     let other = 1 - row;
     assert_eq!(&b.anchors[other * 3..other * 3 + 3], &[-1.0, 3.0, -2.0]);
 }
-

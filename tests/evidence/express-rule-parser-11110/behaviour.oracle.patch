@@ -1,0 +1,30 @@
+diff --git a/packages/codegen/src/express/declaration-parser.ts b/packages/codegen/src/express/declaration-parser.ts
+--- a/packages/codegen/src/express/declaration-parser.ts
++++ b/packages/codegen/src/express/declaration-parser.ts
+@@ -39,7 +39,7 @@ function labelRules<R extends { label: string }>(rules: Unlabelled<R>[], prefix:
+   let n = 0;
+   const generate = () => {
+     let label;
+-    label = `${prefix}${++n}`;
++    do label = `${prefix}${++n}`; while (taken.has(label));
+     taken.add(label);
+     return label;
+   };
+@@ -85,7 +85,7 @@ function skipBalanced(s: TokenStream): void {
+ 
+ function parseEntityHeader(s: TokenStream, entity: EntityDecl): void {
+   for (;;) {
+-    if (s.acceptKeyword('ABSTRACT')) { continue; }
++    if (s.acceptKeyword('ABSTRACT')) { entity.abstract = true; continue; }
+     if (s.acceptKeyword('SUPERTYPE')) {
+       if (s.acceptKeyword('OF')) skipBalanced(s);
+       continue;
+@@ -108,7 +108,7 @@ function parseInverse(s: TokenStream): InverseAttribute {
+   const inv: InverseAttribute = { name, entity: '', forAttribute: '' };
+   if (redeclares) inv.redeclares = redeclares;
+   if (s.isKeyword('SET') || s.isKeyword('BAG')) {
+-    inv.aggregate = s.next().upper === 'SET' ? 'SET' : 'SET';
++    inv.aggregate = s.next().upper === 'SET' ? 'SET' : 'BAG';
+     if (s.acceptOp('[')) {
+       inv.low = parseExpression(s);
+       s.expectOp(':');

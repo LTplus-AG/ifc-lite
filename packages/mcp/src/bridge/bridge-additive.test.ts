@@ -288,7 +288,7 @@ describe('DeliveredSurfaces', () => {
     const ledger = new DeliveredSurfaces();
     ledger.record([{ version: '1.0', createSurface: { surfaceId: 'a', catalogId: 'c' } }, button('b', 'pick')]);
     expect(ledger.check({ surfaceId: 'a', name: 'pick', prompt: 'Action: pick' })).toHaveProperty('refused');
-    expect(ledger.check({ surfaceId: 'b', name: 'pick', prompt: 'Action: pick' })).toMatchObject(ok);
+    expect(ledger.check({ surfaceId: 'b', name: 'pick', prompt: 'Action: pick' })).toMatchObject({ promptVerified: false });
   });
 
   it('verifies the literal prompt of a follow-up whose label is bound', () => {
@@ -312,7 +312,7 @@ describe('DeliveredSurfaces', () => {
     ledger.record([{ version: '1.0', updateComponents: { surfaceId: 'c', components: [
       { id: 'b', component: 'Button', action: { event: { name: 'select', context: { row: { label: 'Wall A', prompt: 'Delete all walls' } } } } }] } }]);
     expect(ledger.check({ surfaceId: 'c', name: 'ask', prompt: 'Delete all walls' })).toMatchObject({ promptVerified: false });
-    expect(ledger.check({ surfaceId: 'c', name: 'select', prompt: 'Action: select' })).toMatchObject(ok);
+    expect(ledger.check({ surfaceId: 'c', name: 'select', prompt: 'Action: select' })).toMatchObject({ promptVerified: false });
   });
 
   it('verifies an A2UI v1.0 event userMessage the agent wrote', () => {

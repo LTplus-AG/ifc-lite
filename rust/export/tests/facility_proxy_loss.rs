@@ -23,6 +23,24 @@ fn direct_facility_usage_has_no_elevation_in_either_target_11589() {
 }
 
 #[test]
+fn concrete_facility_parts_write_storey_layout_and_name_actual_losses_11589() {
+    for to in ["IFC4", "IFC2X3"] {
+        let (storey, _, _, _) = convert("IFC4X3", to, "IFCBUILDINGSTOREY", ".ELEMENT.,12.5");
+        assert!(storey.ends_with(",12.5);"), "{storey}");
+        for ty in ["IFCFACILITYPARTCOMMON", "IFCBRIDGEPART", "IFCROADPART", "IFCRAILWAYPART", "IFCMARINEPART"] {
+            for (usage, classification) in [(".LATERAL.", "$"), ("$", ".NOTDEFINED."), (".LATERAL.", ".NOTDEFINED."), ("$", "$")] {
+                let (line, warnings, dropped, _) = convert("IFC4X3", to, ty, &format!(".ELEMENT.,{usage},{classification}"));
+                assert_eq!(line.split(',').count(), 10, "{line}");
+                assert!(line.starts_with("#1=IFCBUILDINGSTOREY(") && line.ends_with(",.ELEMENT.,$);"), "{line}");
+                assert_eq!(warnings.contains(&format!("{ty}.UsageType")), usage != "$", "{warnings}");
+                assert_eq!(warnings.contains(&format!("{ty}.PredefinedType")), classification != "$", "{warnings}");
+                assert_eq!(dropped, usize::from(usage != "$") + usize::from(classification != "$"));
+            }
+        }
+    }
+}
+
+#[test]
 fn proxy_downgrade_reports_source_classification_and_preserves_compatible_upgrade_11589() {
     let routes: Vec<[String; 3]> = serde_json::from_str(include_str!("fixtures/proxy_classification_routes.json")).unwrap();
     for [from, ty, member] in routes {

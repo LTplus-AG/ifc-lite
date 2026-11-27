@@ -63,9 +63,6 @@ fn newer_name<'a>(entity_type: &str, name: &'a str) -> &'a str {
 /// The index at which `entity_type`'s source list `src` and target list `tgt`
 /// hold the two sides of a [`POSITIONAL_REPLACEMENTS`] pair, in either order.
 pub(crate) fn replaced_slot(entity_type: &str, src: &[&str], tgt: &[&str]) -> Option<usize> {
-    if entity_type == "IFCFACILITYPART" && src.get(9) == Some(&"UsageType") && tgt.get(9) == Some(&"Elevation") {
-        return Some(9);
-    }
     let (_, (older, newer)) = POSITIONAL_REPLACEMENTS.iter().find(|(ty, _)| *ty == entity_type)?;
     src.iter().zip(tgt).position(|(s, t)| (s, t) == (older, newer) || (s, t) == (newer, older))
 }

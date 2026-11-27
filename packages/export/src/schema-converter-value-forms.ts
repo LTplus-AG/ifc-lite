@@ -217,8 +217,10 @@ export class ValueForms {
     return changed ? `${record.prefix}${slots.join(',')}${record.suffix}` : line;
   }
 
-  omitFacilityUsage(): void {
-    this.count(this.dropped, 'IFCFACILITYPART.UsageType', 1);
+  omitStoreyAttributes(type: string, values: readonly string[], source: readonly string[], target: readonly string[]): void {
+    source.forEach((name, i) => {
+      if (!target.includes(name) && holdsValue(values[i] ?? '')) this.count(this.dropped, `${type}.${name}`, 1);
+    });
   }
 
   private count(into: Map<string, number>, where: string, n: number): void {

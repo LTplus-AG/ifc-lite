@@ -25,6 +25,24 @@ it.each(['IFC4', 'IFC2X3'] as const)('omits direct facility UsageType from store
   expect((await convert('IFC4X3', to, 'IFCFACILITYPART', '.ELEMENT.,$')).warnings).not.toContain('UsageType');
 });
 
+const concreteParts = ['IFCFACILITYPARTCOMMON', 'IFCBRIDGEPART', 'IFCROADPART', 'IFCRAILWAYPART', 'IFCMARINEPART'];
+it.each(['IFC4', 'IFC2X3'] as const)('writes concrete facility parts in the storey layout for %s (#11589)', async to => {
+  expect((await convert('IFC4X3', to, 'IFCBUILDINGSTOREY', '.ELEMENT.,12.5')).line).toMatch(/,12\.5\);$/);
+  for (const type of concreteParts) {
+    for (const [usage, classification] of [['.LATERAL.', '$'], ['$', '.NOTDEFINED.'], ['.LATERAL.', '.NOTDEFINED.'], ['$', '$']]) {
+      const result = await convert('IFC4X3', to, type, `.ELEMENT.,${usage},${classification}`);
+      expect(result.line?.split(',').length).toBe(10);
+      expect(result.line).toMatch(/^#1=IFCBUILDINGSTOREY\(.*,\.ELEMENT\.,\$\);$/);
+      const dropped = [];
+      for (const [name, value] of [['UsageType', usage], ['PredefinedType', classification]]) {
+        expect(result.warnings.includes(`${type}.${name}`)).toBe(value !== '$');
+        if (value !== '$') dropped.push(name);
+      }
+      expect(result.preview.find(entry => entry.sourceType === type)?.droppedAttributes ?? []).toEqual(dropped);
+    }
+  }
+});
+
 it.each(routes)('%s %s reports the lost source classification .%s. (#11589)', async (from, type, member) => {
   const result = await convert(from, 'IFC2X3', type, `/* classification */ .${member}.`);
   expect(result.line).toMatch(/^#1=IFCBUILDINGELEMENTPROXY\(.*,\$\);$/);

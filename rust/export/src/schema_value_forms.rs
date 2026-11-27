@@ -241,8 +241,12 @@ impl ValueForms {
             .then(|| durations::TIME_UNIT_WARNING.to_owned())
     }
 
-    pub(crate) fn omit_facility_usage(&mut self) {
-        *self.dropped.entry("IFCFACILITYPART.UsageType".into()).or_default() += 1;
+    pub(crate) fn omit_storey_attributes(&mut self, ty: &str, values: &[String], source: &[&str], target: &[&str]) {
+        for (name, value) in source.iter().zip(values) {
+            if !target.contains(name) && crate::schema_convert::holds_value(value) {
+                *self.dropped.entry(format!("{ty}.{name}")).or_default() += 1;
+            }
+        }
     }
 
     /// One warning per kind, naming every slot a value was dropped from (#10847).

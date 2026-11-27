@@ -67,7 +67,6 @@ function newerName(entityType: string | undefined, name: string): string {
  * `replaced_slot`.
  */
 export function replacedSlot(entityType: string, src: readonly string[], tgt: readonly string[]): number | undefined {
-  if (entityType === 'IFCFACILITYPART' && src[9] === 'UsageType' && tgt[9] === 'Elevation') return 9;
   const pair = POSITIONAL_REPLACEMENTS[entityType];
   if (!pair) return undefined;
   const slot = src.findIndex((name, i) => (name === pair[0] && tgt[i] === pair[1]) || (name === pair[1] && tgt[i] === pair[0]));

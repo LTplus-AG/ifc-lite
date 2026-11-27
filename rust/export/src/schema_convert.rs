@@ -341,9 +341,6 @@ fn convert_record(
                 Some(i) => {
                     if holds_value(&args[i]) {
                         lost += 1;
-                        if entity_type == "IFCFACILITYPART" {
-                            if let Some(c) = checks.as_deref_mut() { c.forms.omit_facility_usage(); }
-                        }
                     }
                     args[i] = "$".to_owned();
                     rebuilt = args.join(",");
@@ -364,6 +361,9 @@ fn convert_record(
                 // `GridFrames` already wrote this one in the target's layout.
                 Adjust::ByName(_, tgt) if &*entity_type == crate::schema_grid_frames::GRID_PLACEMENT && args.len() == tgt.len() => Cow::Borrowed(attrs),
                 Adjust::ByName(src, tgt) => {
+                    if new_type == "IFCBUILDINGSTOREY" {
+                        if let Some(c) = checks.as_deref_mut() { c.forms.omit_storey_attributes(&entity_type, &args, src, tgt); }
+                    }
                     lost += values_without_a_name(&args, src, tgt, cause_carried);
                     Cow::Owned(remap_attrs_by_name(&args, src, tgt))
                 }

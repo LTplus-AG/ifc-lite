@@ -10,7 +10,7 @@
  * Rewrites entity type names and slot layouts in STEP text.
  */
 
-import { holdsValue, withoutComments } from './step-comment-skip.js';
+import { withoutComments } from './step-comment-skip.js';
 import { needsIfc4x3SlotMap, remapIfc4x3Slots, upgradeIfc4x3Type } from './schema-converter-ifc4x3-upgrade.js';
 import { structuralAttributes } from './schema-converter-structural.js';
 import { generateIfcGuid, type RandomSource } from '@ifc-lite/encoding';
@@ -405,7 +405,6 @@ function convertRecord(
     const mapped = args.length > 0 ? attrMapFor(entityType, newType, fromSchema, toSchema) : undefined; // #10763
     const replaced = mapped ? undefined : replacedSlot(entityType, srcAttrs, tgtAttrs); // #10758: no value carries there
     if (replaced !== undefined && replaced < args.length && withoutComments(args[replaced]) !== '$') {
-      if (entityType === 'IFCFACILITYPART' && holdsValue(args[replaced])) diagnostics?.forms.omitFacilityUsage();
       args[replaced] = '$';
       finalAttrs = args.join(',');
     }
@@ -419,8 +418,9 @@ function convertRecord(
         finalAttrs = `${finalAttrs}${',$'.repeat(tgtAttrs.length - currentCount)}`;
       }
     } else if (isGridPlacementInSourceLayout(entityType, args.length, tgtAttrs.length) || (entityType !== newType
-      && (BY_NAME_ATTR_REMAP_TYPES.has(entityType) || (toSchema === 'IFC2X3' && MEP_IFC2X3_TYPES.has(entityType))))) {
+      && (newType === 'IFCBUILDINGSTOREY' || BY_NAME_ATTR_REMAP_TYPES.has(entityType) || (toSchema === 'IFC2X3' && MEP_IFC2X3_TYPES.has(entityType))))) {
       // MEP controls need ControlElementId, never the source PredefinedType (#8019).
+      if (newType === 'IFCBUILDINGSTOREY') diagnostics?.forms.omitStoreyAttributes(entityType, args, srcAttrs, tgtAttrs);
       const remapped = remapRenamedAttributesByName(finalAttrs, srcAttrs, tgtAttrs, maxReferenceId);
       if (remapped === null) throw new Error('Schema conversion refused an invalid STEP argument list.');
       finalAttrs = remapped;

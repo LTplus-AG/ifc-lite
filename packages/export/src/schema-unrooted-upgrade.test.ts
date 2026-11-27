@@ -87,7 +87,7 @@ it('clears the pruned Representation and retains the initial AppliedLoad (#10970
 
 // #11354 covers single-model conversion. Make a future merged fix turn these witnesses red.
 for (const method of ['export', 'exportAsync'] as const) {
-  it.fails(`merged ${method} writes the incomplete action as an IFC4 constant (#11354 deferred)`, async () => {
+  it.fails(`merged ${method} writes the incomplete action as an IFC4 constant (#11698 deferred)`, async () => {
     const store = await optionalRepresentationStore();
     const merged = new MergedExporter([{ id: 'source', name: 'source', dataStore: store }]);
     const result = await merged[method]({ schema: 'IFC4' });

@@ -221,3 +221,221 @@ describe('validateInput reads own properties only (#9523 review of PR #9905)', (
     expect((value as { polluted?: unknown }).polluted).toBeUndefined();
   });
 });
+
+// oneOf / $ref / const / pattern / uniqueItems / additionalProperties schemas
+// were silently unchecked before (ids_apply_ops carried 41 KB of them).
+describe('validateInput: 2020-12 keywords beyond the original subset', () => {
+  const union = {
+    type: 'object',
+    properties: { op: { $ref: '#/$defs/Op' } },
+    $defs: {
+      Op: { oneOf: [{ $ref: '#/$defs/Add' }, { $ref: '#/$defs/Remove' }] },
+      Add: { type: 'object', properties: { kind: { const: 'add' }, name: { type: 'string', minLength: 1 } }, required: ['kind', 'name'], additionalProperties: false },
+      Remove: { type: 'object', properties: { kind: { const: 'remove' }, id: { $ref: '#/$defs/Id' } }, required: ['kind', 'id'], additionalProperties: false },
+      Id: { type: 'string', pattern: '^[0-9a-f]{4}$' },
+    },
+  };
+
+  it('resolves $ref into $defs and accepts the one matching oneOf branch', () => {
+    expect(validateInput(union, { op: { kind: 'add', name: 'x' } }).valid).toBe(true);
+    expect(validateInput(union, { op: { kind: 'remove', id: 'ab12' } }).valid).toBe(true);
+  });
+
+  it('reports only the branch whose discriminator matched', () => {
+    const r = validateInput(union, { op: { kind: 'remove', id: 'nope' } });
+    expect(r.valid).toBe(false);
+    expect(r.errors).toHaveLength(1);
+    expect(r.errors[0].message).toContain('$.op.id: Does not match pattern');
+    expect(r.errors[0].message).not.toContain('Expected constant');
+  });
+
+  it('rejects an input that matches no branch, and one that matches two', () => {
+    expect(validateInput(union, { op: { kind: 'explode' } }).valid).toBe(false);
+    const both = { oneOf: [{ type: 'string' }, { type: 'string', minLength: 1 }] };
+    const r = validateInput({ type: 'object', properties: { v: both } }, { v: 'x' });
+    expect(r.valid).toBe(false);
+    expect(r.errors[0].message).toContain('it matches 2');
+  });
+
+  it('compares const and enum structurally', () => {
+    const schema = { type: 'object', properties: { v: { const: { a: 1, b: [2] } } } };
+    expect(validateInput(schema, { v: { b: [2], a: 1 } }).valid).toBe(true);
+    expect(validateInput(schema, { v: { a: 1, b: [3] } }).valid).toBe(false);
+    const listed = { type: 'object', properties: { v: { enum: [{ a: 1, b: [2] }] } } };
+    expect(validateInput(listed, { v: { b: [2], a: 1 } }).valid).toBe(true);
+    expect(validateInput(listed, { v: { a: 1, b: [2, 3] } }).valid).toBe(false);
+  });
+
+  it('rejects duplicate items under uniqueItems', () => {
+    const schema = { type: 'object', properties: { ids: { type: 'array', uniqueItems: true } } };
+    const r = validateInput(schema, { ids: [1, 2, 1] });
+    expect(r.errors).toEqual([{ path: '$.ids[2]', message: 'Duplicate array item' }]);
+  });
+
+  it('checks extra keys against an additionalProperties schema', () => {
+    const schema = { type: 'object', properties: { a: { type: 'string' } }, additionalProperties: { type: 'number' } };
+    expect(validateInput(schema, { a: 'x', b: 1 }).valid).toBe(true);
+    expect(validateInput(schema, { a: 'x', b: 'y' }).errors[0].path).toBe('$.b');
+  });
+
+  it('reports a $ref that points nowhere as a schema error instead of skipping the check', () => {
+    expect(validateInput({ $ref: '#/$defs/Missing' }, {}).errors[0].message).toMatch(/Unresolvable \$ref/);
+  });
+
+  it('reports a $ref cycle as a schema error instead of overflowing the stack', () => {
+    const schema = { type: 'object', properties: { a: { $ref: '#/$defs/A' } }, $defs: { A: { $ref: '#/$defs/B' }, B: { $ref: '#/$defs/A' } } };
+    expect(validateInput(schema, { a: 1 }).errors[0].message).toMatch(/Circular \$ref/);
+  });
+
+  it('treats boolean subschemas as accept-all and reject-all', () => {
+    const schema = { type: 'object', properties: { yes: true, no: false } } as unknown as Parameters<typeof validateInput>[0];
+    expect(validateInput(schema, { yes: 5 }).valid).toBe(true);
+    expect(validateInput(schema, { no: 5 }).errors).toEqual([{ path: '$.no', message: 'No value is allowed here' }]);
+  });
+
+  it('a const failure deep in a payload does not hide the branch whose discriminator matched', () => {
+    const schema = { type: 'object', properties: { op: { oneOf: [
+      { type: 'object', properties: { kind: { const: 'a' }, body: { type: 'object', properties: { v: { const: 1 } } } } },
+      { type: 'object', properties: { kind: { const: 'b' } } },
+    ] } } };
+    const r = validateInput(schema, { op: { kind: 'a', body: { v: 2 } } });
+    expect(r.errors[0].message).toContain('$.op.body.v');
+    expect(r.errors[0].message).not.toContain('$.op.kind');
+  });
+
+  it('refuses a constraint next to a $ref instead of half-applying it', () => {
+    const schema = { type: 'object', properties: { op: { $ref: '#/$defs/Op', required: ['kind'] } },
+      $defs: { Op: { type: 'object', properties: { kind: { const: 'add' } } } } };
+    expect(validateInput(schema, { op: {} }).errors[0].message).toMatch(/Keyword 'required' next to \$ref/);
+  });
+
+  it('resolves an empty JSON Pointer segment as a key, not as the parent', () => {
+    const schema = { type: 'object', properties: { o: { $ref: '#/$defs/' } }, $defs: { '': { type: 'string' } } };
+    expect(validateInput(schema, { o: 'x' }).valid).toBe(true);
+    expect(validateInput(schema, { o: 3 }).valid).toBe(false);
+  });
+
+  it('resolves a $ref to a boolean schema, and allows a recursive schema that descends into the input', () => {
+    const any = { type: 'object', properties: { x: { $ref: '#/$defs/Any' } }, $defs: { Any: true } };
+    expect(validateInput(any as unknown as Parameters<typeof validateInput>[0], { x: 1 }).valid).toBe(true);
+    const tree = { $ref: '#/$defs/Node', $defs: { Node: { type: 'object', properties: { kids: { type: 'array', items: { $ref: '#/$defs/Node' } }, n: { type: 'integer' } } } } };
+    expect(validateInput(tree, { kids: [{ kids: [{ n: 1 }] }] }).valid).toBe(true);
+    expect(validateInput(tree, { kids: [{ kids: [{ n: 'x' }] }] }).errors[0].path).toBe('$.kids[0].kids[0].n');
+  });
+});
+
+describe('advertisedInputSchema', () => {
+  // A bridge tab may now send a root oneOf; the Anthropic API rejects it like a root anyOf (#5192).
+  it('strips a root oneOf as well as a root anyOf', () => {
+    const advertised = advertisedInputSchema({ type: 'object', oneOf: [{ required: ['a'] }, { required: ['b'] }] });
+    expect(advertised).toEqual({ type: 'object' });
+  });
+});
+
+describe('validateInput: code-review cases for items:false, enum discriminators, $ref defaults', () => {
+  it('items: false rejects any item', () => {
+    expect(validateInput({ type: 'array', items: false } as unknown as Parameters<typeof validateInput>[0], [1]).valid).toBe(false);
+  });
+
+  it('a one-value enum works as a oneOf discriminator', () => {
+    const schema = { type: 'object', properties: { c: { oneOf: [
+      { type: 'object', properties: { k: { enum: ['a'] }, x: { type: 'string' } }, required: ['k', 'x'] },
+      { type: 'object', properties: { k: { enum: ['b'] }, y: { type: 'string' } }, required: ['k', 'y'] },
+    ] } } };
+    const message = validateInput(schema, { c: { k: 'b', x: 'v' } }).errors[0].message;
+    expect(message).toContain('$.c.y: Required property missing');
+    expect(message).not.toContain('$.c.k');
+  });
+
+  it('decodes percent-escapes in a $ref pointer', () => {
+    const schema = { type: 'object', properties: { v: { $ref: '#/$defs/a%20b' } }, $defs: { 'a b': { type: 'string' } } };
+    expect(validateInput(schema, { v: 'x' }).valid).toBe(true);
+    expect(validateInput(schema, { v: 1 }).valid).toBe(false);
+    expect(validateInput({ $ref: '#/$defs/%E0' }, {}).errors[0].message).toMatch(/bad percent-escape/);
+  });
+
+  it('keeps a default written next to a $ref', () => {
+    const schema = { type: 'object', properties: { x: { $ref: '#/$defs/A', default: 5 } }, $defs: { A: { type: 'integer' } } };
+    expect(validateInput(schema, {}).value).toEqual({ x: 5 });
+  });
+
+  it('walks a default next to a $ref through the target', () => {
+    const schema = { type: 'object', properties: { a: { $ref: '#/$defs/A', default: {} } },
+      $defs: { A: { type: 'object', properties: { n: { type: 'integer', default: 3 } } } } };
+    expect(validateInput(schema, {}).value).toEqual({ a: { n: 3 } });
+  });
+
+  it('runs a pattern that only compiles without the u flag (hand-written escapes like \\-)', () => {
+    const schema = { type: 'object', properties: { d: { type: 'string', pattern: '^\\d{4}\\-\\d{2}$' } } };
+    expect(validateInput(schema, { d: '2026-11' }).valid).toBe(true);
+    expect(validateInput(schema, { d: '2026/11' }).valid).toBe(false);
+  });
+
+  it('a tab schema runs neither pattern nor oneOf exclusivity (fromTab)', () => {
+    const schema = { type: 'object', properties: { a: { type: 'string', pattern: '^x$' } } };
+    expect(validateInput(schema, { a: 'y' }).valid).toBe(false);
+    expect(validateInput(schema, { a: 'y' }, { fromTab: true }).valid).toBe(true);
+    // Branches that differ only by pattern: both match once patterns are off, which must not fail the call.
+    const byPattern = { type: 'object', properties: { id: { oneOf: [{ type: 'string', pattern: '^[0-9]+$' }, { type: 'string', pattern: '^[a-z]+$' }] } } };
+    expect(validateInput(byPattern, { id: 'abc' }, { fromTab: true }).valid).toBe(true);
+  });
+
+  it('refuses an anchor $ref instead of resolving it to the root', () => {
+    const r = validateInput({ type: 'object', properties: { a: { $ref: '#A' } } }, { a: 5 });
+    expect(r.errors[0].message).toMatch(/Tool schema error: Unsupported \$ref '#A'/);
+  });
+
+  it('reports a pattern that compiles in neither mode as a schema error', () => {
+    const r = validateInput({ type: 'object', properties: { a: { type: 'string', pattern: '(' } } }, { a: 'x' });
+    expect(r.errors[0].message).toMatch(/Tool schema error: pattern "\(" does not compile/);
+  });
+
+  // CodeRabbit on #11550: a default that re-enters its own schema overflowed the stack.
+  it('reports a default that re-enters its own schema as a circular $ref', () => {
+    const r = validateInput({ type: 'object', properties: { next: { $ref: '#' } }, default: {} }, undefined);
+    expect(r.errors[0].message).toMatch(/Circular \$ref '#'/);
+    // Finite recursive input through the same schema is still fine.
+    expect(validateInput({ type: 'object', properties: { next: { $ref: '#' } } }, { next: { next: {} } }).valid).toBe(true);
+  });
+
+  // CodeRabbit on #11550: uniqueness is judged on the items the handler receives.
+  it('checks uniqueItems after item defaults are filled', () => {
+    const schema = { type: 'array', uniqueItems: true, items: { type: 'object', properties: { n: { default: 1 } } } };
+    expect(validateInput(schema, [{}, { n: 1 }]).errors).toEqual([{ path: '$[1]', message: 'Duplicate array item' }]);
+    expect(validateInput(schema, [{}, { n: 2 }]).valid).toBe(true);
+  });
+
+  it('a recursive default stops at a supplied terminal value instead of reporting a cycle', () => {
+    const schema = { type: 'object', properties: { t: { $ref: '#/$defs/T' } },
+      $defs: { T: { type: 'object', default: { next: null }, properties: { next: { $ref: '#/$defs/T' } } } } };
+    expect(validateInput(schema, {}).valid).toBe(true);
+  });
+
+  it('reports a non-array enum as a schema error', () => {
+    expect(validateInput({ enum: 'abc' } as unknown as Parameters<typeof validateInput>[0], 'x').errors[0].message).toMatch(/Tool schema error: enum must be an array/);
+  });
+});
+
+
+it('bounds defaults supplied beside a recursive reference (#11550)', () => {
+  const schema = { properties: { next: { $ref: '#', default: {} } } };
+  expect(validateInput(schema, {}).errors[0].message).toMatch(/Circular \$ref/);
+  expect(validateInput(schema, { next: null }).valid).toBe(true);
+});
+
+it('reports malformed items as schema issues (#11550)', () => {
+  for (const items of [null, 17, [], 'integer']) {
+    const schema = { type: 'array', items } as unknown as Parameters<typeof validateInput>[0];
+    expect(validateInput(schema, [1]).errors[0]).toMatchObject({ path: '$', message: expect.stringMatching(/schema/i) });
+  }
+});
+
+it('reports an empty or malformed embedded oneOf as a schema issue (#11550)', () => {
+  for (const oneOf of [[], null, { type: 'string' }]) {
+    const schema = { properties: { id: { oneOf } } };
+    expect(validateInput(schema, { id: 'A' })).toMatchObject({
+      valid: false,
+      errors: [{ path: '$', message: 'Tool schema error: $.id.oneOf must be a non-empty array' }],
+    });
+  }
+});

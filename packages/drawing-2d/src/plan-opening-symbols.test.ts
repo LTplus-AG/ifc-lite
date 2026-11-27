@@ -102,6 +102,17 @@ describe('headless plans draw door and window symbols (#10932)', () => {
     }
   });
 
+  it('preserves the plan symbol when its SVG entity ID is non-finite (#11582)', async () => {
+    const drawing = await generateFloorPlan([host, ...door(20, [1, 0, 0])], 1, options);
+    const symbols = symbolsOf(drawing, 'door');
+    expect(symbols).toHaveLength(1);
+    const svg = exportToSVG({ ...drawing, planSymbols: symbols.map(symbol => ({
+      ...symbol, entityId: Number.NaN, ifcType: 'A&<B',
+    })) });
+    expect(svg).toContain('<g data-ifc-type="A&amp;&lt;B" data-symbol="door"');
+    expect(svg).not.toContain('data-entity-id="NaN"');
+  });
+
   it('keeps the ordinary drawing when the opening cut position is NaN (#10932)', async () => {
     const meshes = [host, ...door(20, [1, 0, 0])];
     const ordinary = await generateFloorPlan(meshes, Number.NaN, baseOptions);

@@ -146,3 +146,21 @@ describe('formatSplitHoverLabel', () => {
     );
   });
 });
+
+// A delta's sign must follow what is PRINTED: a tiny negative that rounds to
+// zero in the display unit used to print `-0` / `-0.000` / `-0.0 mm`, and a tiny
+// positive printed `+0` (a direction claimed for nothing).
+describe('signed readouts that round to zero (#11465)', () => {
+  it('formatSignedTriple prints an axis that rounds to zero without a sign', () => {
+    assert.strictEqual(
+      formatSignedTriple({ x: -0, y: -1e-6, z: 1e-6 }, { LENGTHUNIT: 'm' }),
+      'ΔX 0  ΔY 0  ΔZ 0',
+    );
+    // Auto-scaled path (no override): sub-millimetre-noise, 4 decimals of a metre value.
+    assert.strictEqual(formatSignedTriple({ x: 1.5, y: -0.00001, z: 2 }), 'ΔX +1.500  ΔY 0.000  ΔZ +2.000');
+  });
+
+  it('formatSignedTriple keeps the sign on a value that still shows a digit', () => {
+    assert.strictEqual(formatSignedTriple({ x: -0.0001, y: 0.0001, z: 0 }, { LENGTHUNIT: 'm' }), 'ΔX -0.0001  ΔY +0.0001  ΔZ 0');
+  });
+});

@@ -8,6 +8,7 @@ import { toolError, ToolErrorCode, ToolExecutionError } from '../errors.js';
 import type { Tool } from './types.js';
 import { okResult, resolveModel } from './util.js';
 import { viewerTools } from './viewer.js';
+import { VIEWER_DISPLAY } from './annotations.js';
 
 const ACTION_TO_TOOL = {
   select: 'viewer_select', isolate: 'viewer_isolate', colorize: 'viewer_colorize',
@@ -20,7 +21,7 @@ function invalid(message: string): never {
 
 /** The lightweight MCP viewer uses its native pick inspector for selection. */
 export const viewerSelect: Tool = {
-  name: 'viewer_select',
+  name: 'viewer_select', title: 'Select in viewer', annotations: VIEWER_DISPLAY,
   description: 'Select IFC entities from the model open in the MCP viewer.',
   scope: 'read',
   inputSchema: {
@@ -52,7 +53,7 @@ export const viewerSelect: Tool = {
 const tools = new Map([...viewerTools, viewerSelect].map((tool) => [tool.name, tool]));
 
 export const surfaceAction: Tool = {
-  name: SURFACE_ACTION_TOOL,
+  name: SURFACE_ACTION_TOOL, title: 'Viewer action from result surface', annotations: VIEWER_DISPLAY,
   description: 'Run a visual action from an IFC result surface on its model-qualified entities.',
   scope: 'read', _meta: { ui: { resourceUri: A2UI_APP_URI, visibility: ['app'] } },
   inputSchema: {

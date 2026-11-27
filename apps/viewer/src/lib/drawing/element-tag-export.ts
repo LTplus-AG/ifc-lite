@@ -8,8 +8,6 @@ import type { Point2D, TextAnnotation2D } from '@/store/slices/drawing2DSlice';
 import { resolvedElementTags } from './element-tags';
 import { toStandardFontText } from '@/lib/document/standard-font-text';
 
-export const escapeTagXml = (value: string) => value.replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' })[char]!);
-
 /** Existing DXF underlay text writer applies the same world/map transform as the cut. */
 export function elementTagsDxf(drawing: Drawing2D, height: number): DXFUnderlayOptions {
   return { underlay: { name: 'Element tags', bounds: drawing.bounds, unitScale: 1, skipped: {}, warnings: [],

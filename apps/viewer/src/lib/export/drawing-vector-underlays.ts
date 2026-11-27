@@ -150,7 +150,7 @@ export function buildDxfUnderlaySvg(
         d += ' Z';
       }
       if (!d) continue;
-      svg += `      <path d="${d}" fill="${fill.color}" fill-opacity="${fill.pattern ? 0.25 : 1}" fill-rule="evenodd" stroke="none"/>\n`;
+      svg += `      <path d="${d}" fill="${escapeXml(fill.color)}" fill-opacity="${fill.pattern ? 0.25 : 1}" fill-rule="evenodd" stroke="none"/>\n`;
     }
 
     for (const line of data.lines) {
@@ -160,7 +160,7 @@ export function buildDxfUnderlaySvg(
       const tag = line.closed ? 'polygon' : 'polyline';
       const strokeWidth = strokeWidthForMm(line.widthMm ?? 0.18);
       const dash = line.dashed ? ` stroke-dasharray="${(strokeWidth * 6).toFixed(4)} ${(strokeWidth * 4).toFixed(4)}"` : '';
-      svg += `      <${tag} points="${pointsAttr}" fill="none" stroke="${line.color}" stroke-width="${strokeWidth.toFixed(4)}" stroke-linecap="round"${dash}/>\n`;
+      svg += `      <${tag} points="${pointsAttr}" fill="none" stroke="${escapeXml(line.color)}" stroke-width="${strokeWidth.toFixed(4)}" stroke-linecap="round"${dash}/>\n`;
     }
 
     for (const text of data.texts) {
@@ -186,7 +186,7 @@ export function buildDxfUnderlaySvg(
       const fitAttr = fitLength ? ` textLength="${fitLength.toFixed(4)}" lengthAdjust="spacingAndGlyphs"` : '';
       const stretch = fitLength ? '' : text.widthScale && text.widthScale !== 1
         ? ` translate(${anchor.x.toFixed(4)} ${anchor.y.toFixed(4)}) scale(${text.widthScale.toFixed(4)} 1) translate(${(-anchor.x).toFixed(4)} ${(-anchor.y).toFixed(4)})` : '';
-      svg += `      <text x="${anchor.x.toFixed(4)}" y="${anchor.y.toFixed(4)}" font-family="Arial, sans-serif" font-size="${fontSize.toFixed(4)}" fill="${text.color}" text-anchor="${anchorAttr}" dominant-baseline="${dxfValignToBaseline(text.valign)}"${fitAttr} transform="rotate(${angle.toFixed(2)} ${anchor.x.toFixed(4)} ${anchor.y.toFixed(4)})${stretch}">${content}</text>\n`;
+      svg += `      <text x="${anchor.x.toFixed(4)}" y="${anchor.y.toFixed(4)}" font-family="Arial, sans-serif" font-size="${fontSize.toFixed(4)}" fill="${escapeXml(text.color)}" text-anchor="${anchorAttr}" dominant-baseline="${dxfValignToBaseline(text.valign)}"${fitAttr} transform="rotate(${angle.toFixed(2)} ${anchor.x.toFixed(4)} ${anchor.y.toFixed(4)})${stretch}">${content}</text>\n`;
     }
 
     svg += '    </g>\n';

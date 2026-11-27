@@ -19,10 +19,24 @@
 import { emitFileDownloaded } from '@/lib/tours/events';
 
 export interface SanitizeFilenameOptions {
-  /** Returned (and used as the base) when sanitising yields an empty string. Default `'file'`. */
+  /** Base to sanitize and fit when the supplied name yields an empty string. Default `'file'`. */
   fallback?: string;
-  /** Maximum length of the returned name. Default 60. */
+  /** Maximum length of the returned name. Default 60. NaN selects the fallback. */
   maxLength?: number;
+  /** Set to false when sanitizing a file extension. */
+  reservedStem?: boolean;
+}
+
+const WINDOWS_RESERVED_STEM = /^(?:con|prn|aux|nul|com[1-9\u00B9\u00B2\u00B3]|lpt[1-9\u00B9\u00B2\u00B3])(?: *\.|$)/i;
+
+function fitFilename(name: string, limit: number): string {
+  return name
+    .replace(/\s+/g, ' ')
+    .replace(/[^\p{L}\p{N}._ -]+/gu, '-')
+    .replace(/^[\s.-]+|[\s.-]+$/g, '')
+    .slice(0, limit)
+    .replace(/[\uD800-\uDBFF]$/, '') // Drop a surrogate pair split by slice().
+    .replace(/[\s.-]+$/, '');
 }
 
 /**
@@ -35,22 +49,29 @@ export interface SanitizeFilenameOptions {
  *
  * Pass only the stem — append the extension yourself (`${sanitizeFilename(x)}.csv`).
  *
- * Note: underscores are kept anywhere (including the ends — only space/dot/hyphen
- * are trimmed off the ends). `fallback` is returned verbatim when the result is
- * empty, so pass a clean token like `'list'` / `'model'`.
+ * Leading and trailing underscores are kept. The fallback uses the same
+ * sanitization and length limit as the supplied name.
  */
 export function sanitizeFilename(name: string, options: SanitizeFilenameOptions = {}): string {
   const fallback = options.fallback ?? 'file';
-  const maxLength = options.maxLength ?? 60;
-  const cleaned = (name || fallback)
-    .replace(/\s+/g, ' ') // collapse all whitespace (tabs, newlines, runs) to one space
-    // Keep letters (any case/script), digits, dot, underscore, space and hyphen;
-    // replace anything else (path separators, reserved chars, controls) with '-'.
-    .replace(/[^\p{L}\p{N}._ -]+/gu, '-')
-    .replace(/^[\s.-]+|[\s.-]+$/g, '') // trim leading/trailing space, dot or hyphen
-    .slice(0, maxLength)
-    .replace(/[\s.-]+$/, ''); // re-trim in case slice() left a trailing separator
-  return cleaned || fallback;
+  const invalidLength = Number.isNaN(options.maxLength);
+  const maxLength = invalidLength ? 60 : Math.max(0, options.maxLength ?? 60);
+  const source = invalidLength ? fallback : name;
+  const sliced = fitFilename(source, maxLength) || fitFilename(fallback, maxLength) || '_'.slice(0, maxLength);
+  // Windows refuses `CON`, `NUL`, `COM1`... as a file stem whatever the extension
+  // (`CON.pdf` too), so a model named for one gets a leading underscore. The
+  // prefix counts against `maxLength`: re-fit one character shorter first. An
+  // extension is not a stem, so callers sanitising one pass `reservedStem: false`.
+  if (options.reservedStem !== false && WINDOWS_RESERVED_STEM.test(sliced)) {
+    return `_${fitFilename(sliced, maxLength - 1)}`;
+  }
+  return sliced;
+}
+
+/** A source File name participates in persisted fingerprints. Apply device-name
+ * escaping at export time so opening a model preserves its existing identity. */
+export function sanitizeModelFilename(name: string, fallback = 'model.ifc'): string {
+  return sanitizeFilename(name, { fallback, reservedStem: false });
 }
 
 /** No real file extension is longer than this; caps a pathological input. */
@@ -103,7 +124,7 @@ export function buildExportFilename(
   // Reserve at least 1 char for the stem: cap the extension's own budget
   // below maxLength so stemBudget below is never zero-or-negative.
   const extBudget = Math.min(EXTENSION_MAX_LENGTH, Math.max(1, maxLength - 1));
-  const sanitizedExt = `.${sanitizeFilename(ext.slice(1), { fallback: 'dat', maxLength: extBudget })}`;
+  const sanitizedExt = `.${sanitizeFilename(ext.slice(1), { fallback: 'dat', maxLength: extBudget, reservedStem: false })}`;
   const stemBudget = Math.max(1, maxLength - sanitizedExt.length);
   const stem = sanitizeFilename(baseName, { maxLength: stemBudget });
   return `${stem}${sanitizedExt}`;
@@ -195,11 +216,43 @@ export function downloadFile(
 ): void {
   if (!canDownload()) return;
   if (content instanceof Blob) {
+    // A Blob already carries the writer's file bytes and MIME type.
     downloadBlob(content, filename);
+    return;
+  }
+  if (isCsvMime(mime)) {
+    downloadBlob(csvBlob(content instanceof ArrayBuffer ? new Uint8Array(content) : content, mime), filename);
     return;
   }
   const part: BlobPart = content instanceof Uint8Array ? new Uint8Array(content) : content;
   downloadBlob(new Blob([part], { type: mime }), filename);
+}
+
+const UTF8_BOM = [0xef, 0xbb, 0xbf] as const;
+
+/** Prefix a blob that is known to lack a UTF-8 BOM. */
+export function prependUtf8Bom(blob: Blob, mime = blob.type): Blob {
+  return new Blob([new Uint8Array(UTF8_BOM), blob], { type: mime });
+}
+
+export function isCsvMime(mime: string): boolean {
+  return /^text\/csv\s*(?:;|$)/i.test(mime.trim());
+}
+
+/**
+ * A CSV `Blob` that opens correctly in Excel. Excel on Windows decodes a
+ * double-clicked `.csv` as the ANSI code page unless the file starts with a
+ * UTF-8 byte-order mark (`Sală` would show as `SalÄƒ`), so every user-facing
+ * CSV is saved with one. Adds it once: content that already starts with a BOM
+ * is left alone. Not for CSV a program reads from a pipe (the CLI), where a BOM
+ * is a stray first-column byte.
+ */
+export function csvBlob(content: string | Uint8Array, mime = 'text/csv;charset=utf-8'): Blob {
+  if (typeof content === 'string') {
+    return new Blob([content.charCodeAt(0) === 0xfeff ? '' : '\uFEFF', content], { type: mime });
+  }
+  const hasBom = UTF8_BOM.every((byte, i) => content[i] === byte);
+  return new Blob([hasBom ? new Uint8Array(0) : new Uint8Array(UTF8_BOM), new Uint8Array(content)], { type: mime });
 }
 
 /**

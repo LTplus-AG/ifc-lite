@@ -53,6 +53,8 @@ const {
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..');
 const VIEWER = join(REPO_ROOT, 'apps/viewer');
+const viewerManifest = parseManifest(readFileSync(MANIFEST_PATH, 'utf8'));
+const viewerShardCount = viewerManifest.shards;
 const TSX = join(REPO_ROOT, 'node_modules/.bin/tsx');
 const WORKFLOW = parse(readFileSync(join(REPO_ROOT, '.github/workflows/test.yml'), 'utf8'));
 
@@ -239,14 +241,29 @@ test("through apps/viewer's real selection, the retry pattern runs exactly the f
   const listed = spawnSync('sh', ['-c', SELECT], { cwd: VIEWER, encoding: 'utf8', env: { ...process.env, TEST_SHARDS: '', TEST_SHARD: '' } });
   assert.equal(listed.status, 0, listed.stderr);
   const all = listed.stdout.trim().split('\n');
-  const file = all[Math.floor(all.length / 2)];
-  const shard = assignShards(all, parseManifest(readFileSync(MANIFEST_PATH, 'utf8')), 16).get(file);
-  const select = (s) => spawnSync('sh', ['-c', SELECT], { cwd: VIEWER, encoding: 'utf8', env: { ...process.env, TEST_SHARDS: '16', TEST_SHARD: String(s), TEST_PATTERN: viewerPattern([file]) } });
-  const own = select(shard);
-  assert.equal(own.status, 0, own.stderr);
-  assert.deepEqual(own.stdout.trim().split('\n'), [file]);
-  const other = select((shard + 1) % 16);
-  assert.notEqual(other.status, 0, 'a pattern that selects nothing in this shard fails, never falls back to every file');
+  const serial = assignShards(all, viewerManifest, viewerShardCount, '');
+  const concurrent = assignShards(all, viewerManifest, viewerShardCount, '2');
+  const file = all.find((path) => serial.get(path) !== concurrent.get(path));
+  assert.ok(file, 'the fixture needs a path whose assignment changes with concurrency');
+  for (const concurrency of new Set([process.env.VIEWER_TEST_CONCURRENCY ?? '', '2'])) {
+    const shard = assignShards([file], viewerManifest, viewerShardCount, concurrency).get(file);
+    const select = (s) => spawnSync('sh', ['-c', SELECT], {
+      cwd: VIEWER,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        TEST_SHARDS: String(viewerShardCount),
+        TEST_SHARD: String(s),
+        TEST_PATTERN: viewerPattern([file]),
+        VIEWER_TEST_CONCURRENCY: concurrency,
+      },
+    });
+    const own = select(shard);
+    assert.equal(own.status, 0, own.stderr);
+    assert.deepEqual(own.stdout.trim().split('\n'), [file]);
+    const other = select((shard + 1) % viewerShardCount);
+    assert.notEqual(other.status, 0, 'a pattern outside its shard fails the selector');
+  }
 });
 
 // ------------------------------------------------------------ the decisions
@@ -374,12 +391,20 @@ test('/code-review on #9788: tests a hook failure skipped are retried but do not
 
 test('/code-review on #9788: a failure located in a file this shard does not run is not retried', () => {
   const file = 'src/hooks/useSandbox.runSupersession.test.tsx';
-  const shard = assignShards([file], parseManifest(readFileSync(MANIFEST_PATH, 'utf8')), 16).get(file);
   const tap = join(TMP, 'other-shard.tap');
   writeFileSync(tap, `not ok 1 - ${file}\n# tests 1\n# pass 0\n# fail 1\n# cancelled 0\n# duration_ms 1\n`);
-  const r = cli('viewer', { CI_SHARD_RETRY: 'on', TAP_FILE: tap, TEST_SHARDS: '16', TEST_SHARD: String((shard + 1) % 16) });
-  assert.equal(r.record.plan.retry, false);
-  assert.match(r.record.plan.reason, /this shard does not run/); // @source-text-assertion-ok subject is the plan's reason
+  for (const concurrency of ['', '2']) {
+    const shard = assignShards([file], viewerManifest, viewerShardCount, concurrency).get(file);
+    const r = cli('viewer', {
+      CI_SHARD_RETRY: 'on',
+      TAP_FILE: tap,
+      TEST_SHARDS: String(viewerShardCount),
+      TEST_SHARD: String((shard + 1) % viewerShardCount),
+      VIEWER_TEST_CONCURRENCY: concurrency,
+    });
+    assert.equal(r.record.plan.retry, false);
+    assert.match(r.record.plan.reason, /this shard does not run/); // @source-text-assertion-ok subject is the plan's reason
+  }
 });
 
 test('titles reach the summary table and annotations on one line', () => {
@@ -543,7 +568,7 @@ for (const [job, testStep, retryStep] of [['viewer-tests', 'viewer_tests', 'view
     const touched = steps.filter((s) => SWITCH.test(JSON.stringify(s))).map((s) => s.id ?? s.name); // @source-text-assertion-ok enumerates steps that read the switch
     assert.deepEqual(touched.sort(), [testStep, retryStep, guard.name, ...ALSO_READS_SWITCH[job]].sort());
     // The retry's budget reads the job's limit, so the two must agree.
-    assert.equal(Number(retry.env.JOB_TIMEOUT_MINUTES), WORKFLOW.jobs[job]['timeout-minutes']);
+    assert.equal(retry.env.JOB_TIMEOUT_MINUTES, String(WORKFLOW.jobs[job]['timeout-minutes']));
   });
 }
 

@@ -1,0 +1,145 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+import { readFileSync } from 'node:fs';
+import { MutablePropertyView } from '@ifc-lite/mutations';
+import { IfcParser } from '@ifc-lite/parser';
+import { expect, it } from 'vitest';
+import { StepExporter } from './step-exporter.js';
+import { MergedExporter } from './merged-exporter.js';
+
+const minutes = readFileSync(new URL('../../../rust/export/tests/fixtures/schema_duration_timeunit.ifc', import.meta.url), 'utf8')
+  .replace('10.,$,$,$,.ACTUAL.', '10.,-2.,$,$,.ACTUAL.');
+const seconds = minutes.replace('((#6))', '((#3))').replace('1Yvct', '2Yvct').replace('IFCWORKPLAN(', 'IFCWORKSCHEDULE(');
+const parse = (text: string) => new IfcParser().parseColumnar(new TextEncoder().encode(text).buffer);
+const decode = (result: {content: Uint8Array}) => new TextDecoder().decode(result.content);
+
+for (const schema of ['IFC4', 'IFC4X3'] as const) {
+  it(`uses each source project's unit on upgrade and the retained project on downgrade via ${schema} (#11192)`, async () => {
+    const stores = await Promise.all([parse(minutes), parse(seconds)]);
+    const direct = new StepExporter(stores[0]).export({schema});
+    expect(decode(direct)).toMatch(/IFCWORKPLAN\([^;]*'PT600S','-PT120S'/);
+    expect(direct.stats.warnings.join(' ')).not.toContain('assumed seconds');
+    const models = stores.map((dataStore, i) => ({ id: String(i), name: String(i), dataStore }));
+    const merged = new MergedExporter(models);
+    for (const result of [merged.export({ schema }), await merged.exportAsync({ schema })]) {
+      expect(decode(result)).toMatch(/IFCWORKPLAN\([^;]*'PT600S','-PT120S'/);
+      expect(decode(result)).toMatch(/IFCWORKSCHEDULE\([^;]*'PT10S','-PT2S'/);
+    }
+    const modern = await Promise.all(stores.map(store => parse(decode(new StepExporter(store).export({schema})))));
+    const down = new MergedExporter(modern.map((dataStore, i) => ({id: String(i), name: String(i), dataStore})));
+    for (const result of [down.export({schema:'IFC2X3'}), await down.exportAsync({schema:'IFC2X3'})]) {
+      expect(decode(result)).toMatch(/IFCWORKPLAN\([^;]*,10\.,-2\.,/);
+      expect(decode(result)).toMatch(/IFCWORKSCHEDULE\([^;]*,0\.16666666666666666,-0\.03333333333333333,/);
+    }
+    const view = new MutablePropertyView(modern[1].properties, 'time edits');
+    view.setPositionalAttribute(3, 2, '.MILLI.');
+    const edited = new StepExporter(modern[1], view).export({schema:'IFC2X3'});
+    expect(decode(edited)).toContain('IFCSIUNIT(*,.TIMEUNIT.,.MILLI.,.SECOND.)');
+    expect(decode(edited)).toMatch(/IFCWORKSCHEDULE\([^;]*,10000\.,-2000\.,/);
+    expect(edited.stats.warnings.join(' ')).not.toContain('assumed seconds');
+    const subset = new StepExporter(stores[0]).export({schema,subsetEntityIds:new Set([7])});
+    expect(decode(subset)).toMatch(/IFCWORKPLAN\([^;]*'PT600S','-PT120S'/);
+  });
+}
+
+it('warns once on conflicting time units or a cyclic conversion factor (#11192)', async () => {
+  for (const text of [minutes.replace('((#6))','((#6,#3))'),minutes.replace('IFCRATIOMEASURE(60.),#3','IFCRATIOMEASURE(60.),#6'),
+    ...['IFCLABEL(60.)', 'IFCINTEGER(60.5)', 'IFCNORMALISEDRATIOMEASURE(60.)', 'IFCRATIOMEASURE(0.)']
+      .map(value => minutes.replace('IFCRATIOMEASURE(60.)', value))]) {
+    const result = new StepExporter(await parse(text)).export({schema:'IFC4'});
+    expect(decode(result)).toContain("'PT10S','-PT2S'");
+    expect(result.stats.warnings.filter(w => w.includes('assumed seconds'))).toHaveLength(1);
+  }
+});
+
+it('uses an edited factor outside the exported subset for both upgrade targets (#11192)', async () => {
+  const store = await parse(minutes);
+  const view = new MutablePropertyView(store.properties, 'time edits');
+  view.setPositionalAttribute(3, 2, '.MILLI.');
+  for (const schema of ['IFC4', 'IFC4X3'] as const) {
+    const result = new StepExporter(store, view).export({schema, subsetEntityIds: new Set([7])});
+    expect(decode(result)).not.toContain('=IFCPROJECT(');
+    expect(decode(result)).toContain("'PT0.6S','-PT0.12S'");
+    expect(result.stats.warnings.join(' ')).not.toContain('assumed seconds');
+  }
+});
+
+it('writes durations in each retained federated project’s time unit (#11192)', async () => {
+  for (const schema of ['IFC4', 'IFC4X3'] as const) {
+    const models = [];
+    for (const [index, text] of [minutes, seconds].entries()) {
+      const legacy = text.replace(/IFCUNITASSIGNMENT\(\(#(\d+)\)\)/, 'IFCUNITASSIGNMENT((#$1,#8))')
+        .replace('#7=', `#8=IFCSIUNIT(*,.LENGTHUNIT.,${index ? '.MILLI.' : '$'},.METRE.);\n#7=`);
+      const output = decode(new StepExporter(await parse(legacy)).export({ schema }));
+      const modern = index ? output.replace('.TIMEUNIT.,$,.SECOND.', '.TIMEUNIT.,.MILLI.,.SECOND.') : output;
+      models.push({id: String(index), name: String(index), dataStore: await parse(modern)});
+    }
+    const merge = new MergedExporter(models);
+    for (const result of [merge.export({schema:'IFC2X3'}), await merge.exportAsync({schema:'IFC2X3'})]) {
+      expect(result.stats.federatedModelCount).toBe(1);
+      expect(decode(result).match(/=IFCPROJECT\(/g)).toHaveLength(2);
+      expect(decode(result)).toMatch(/IFCWORKPLAN\([^;]*,10\.,-2\.,/);
+      expect(decode(result)).toMatch(/IFCWORKSCHEDULE\([^;]*,10000\.,-2000\.,/);
+      expect(result.stats.warnings.join(' ')).not.toContain('assumed seconds');
+    }
+    const conflicting = decode(new StepExporter(models[1].dataStore).export({schema})).replace('((#3,#8))', '((#3,#6,#8))');
+    const mixed = new MergedExporter([models[0], {...models[1], dataStore: await parse(conflicting)}]).export({schema:'IFC2X3'});
+    expect(decode(mixed)).toMatch(/IFCWORKPLAN\([^;]*,10\.,-2\.,/);
+    expect(decode(mixed)).toMatch(/IFCWORKSCHEDULE\([^;]*,10\.,-2\.,/);
+    expect(mixed.stats.warnings.filter(w => w.includes('assumed seconds'))).toHaveLength(1);
+  }
+});
+
+it('uses source factors and rejects invalid dimensions or a second TIMEUNIT (#11192)', async () => {
+  for (const [source, duration, fallback] of [
+    [minutes.replace('IFCRATIOMEASURE(60.)', 'IFCCOUNTMEASURE(0.5)'), 'PT5S', false],
+    [minutes.replace('IFCRATIOMEASURE(60.)', 'IFCCOUNTMEASURE(60.5)'), 'PT605S', false],
+    [minutes.replace('(0,0,1,0,0,0,0)', '(1,0,0,0,0,0,0)'), 'PT10S', true],
+    [minutes.replace('((#6))', '((#6,#8))').replace('#7=', "#8=IFCCONVERSIONBASEDUNIT(#5,.TIMEUNIT.,'MINUTE2',#4);\n#7="), 'PT10S', true],
+  ] as const) {
+    const store = await parse(source);
+    const merged = new MergedExporter([{ id: 'model', name: 'model', dataStore: store }]);
+    for (const schema of ['IFC4', 'IFC4X3'] as const) {
+      const direct = new StepExporter(store);
+      for (const result of [direct.export({schema}), direct.export({schema, subsetEntityIds: new Set([7])}),
+        merged.export({schema}), await merged.exportAsync({schema})]) {
+        expect(decode(result)).toContain(`'${duration}'`);
+        expect(result.stats.warnings.filter(w => w.includes('assumed seconds'))).toHaveLength(Number(fallback));
+      }
+    }
+  }
+});
+
+it('resolves effective factor and dimension edits in the source layout (#11192)', async () => {
+  for (const [id, slot, value, duration, fallback] of [
+    [6, 3, '#8', 'PT5S', false],
+    [5, 0, 1, 'PT10S', true],
+  ] as const) {
+    const store = await parse(minutes.replace('#7=', '#8=IFCMEASUREWITHUNIT(IFCCOUNTMEASURE(0.5),#3);\n#7='));
+    const view = new MutablePropertyView(store.properties, 'time edits');
+    view.setPositionalAttribute(id, slot, value);
+    for (const schema of ['IFC4', 'IFC4X3'] as const) {
+      const writer = new StepExporter(store, view);
+      const merged = new MergedExporter([{ id: 'edited', name: 'edited', dataStore: store, mutationView: view }]);
+      for (const result of [writer.export({ schema }), writer.export({ schema, subsetEntityIds: new Set([7]) }), await merged.exportAsync({ schema })]) {
+        expect(decode(result)).toContain(`'${duration}'`);
+        expect(result.stats.warnings.filter(w => w.includes('assumed seconds'))).toHaveLength(Number(fallback));
+      }
+    }
+  }
+});
+
+it('checks written units per assignment when downgrading (#11192)', async () => {
+  for (const schema of ['IFC4', 'IFC4X3'] as const) {
+    const modern = decode(new StepExporter(await parse(minutes)).export({schema}));
+    const project = modern.split('\n').find(line => line.startsWith('#1='))!;
+    for (const [input, payload, fallback] of [
+      [modern.replace('(0,0,1,0,0,0,0)', '(1,0,0,0,0,0,0)'), ',600.,-120.,', true],
+      [modern.replace('((#6))', '((#6,#8))').replace('#7=', "#8=IFCCONVERSIONBASEDUNIT(#5,.TIMEUNIT.,'MINUTE2',#4);\n#7="), ',600.,-120.,', true],
+      [modern.replace(project, project + '\n' + project.replace('#1=', '#9=').replace('0Yvct', '2Yvct')), ',10.,-2.,', false],
+    ] as const) {
+      const result = new StepExporter(await parse(input)).export({ schema: 'IFC2X3' });
+      expect(decode(result).split('\n').find(line => line.includes('=IFCWORKPLAN('))).toContain(payload);
+      expect(result.stats.warnings.filter(w => w.includes('assumed seconds'))).toHaveLength(Number(fallback));
+    }
+  }
+});

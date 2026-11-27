@@ -12,6 +12,7 @@
  * - Scale and paper size handling
  */
 
+import { escapeXml, entityIdAttr, svgNum } from './xml-escape.js';
 import type { Drawing2D, DrawingLine, DrawingPolygon, Point2D, Bounds2D } from './types.js';
 import type { HatchLine } from './hatch-generator.js';
 import { HatchGenerator } from './hatch-generator.js';
@@ -32,7 +33,6 @@ import {
   transformPoint,
   type Transform2D,
 } from './svg-transform.js';
-import { escapeXml, svgNum } from './svg-format.js';
 import { createPlanSymbolLayer } from './svg-plan-symbols.js';
 import { applyDxfPlacement } from './dxf/convert.js';
 import { dxfTextLineOffset } from './dxf/text-layout.js';
@@ -255,9 +255,9 @@ export class SVGExporter {
       style.dashPattern.length > 0 ? ` stroke-dasharray="${style.dashPattern.join(' ')}"` : '';
 
     return `    <line x1="${svgNum(p0.x)}" y1="${svgNum(p0.y)}" x2="${svgNum(p1.x)}" y2="${svgNum(p1.y)}"
-          stroke="${style.color}" stroke-width="${style.weight}"
+          stroke="${escapeXml(style.color)}" stroke-width="${style.weight}"
           stroke-linecap="${style.lineCap}"${dashArray}
-          data-entity-id="${line.entityId}" data-ifc-type="${escapeXml(line.ifcType)}"/>\n`;
+          ${entityIdAttr(line.entityId)} data-ifc-type="${escapeXml(line.ifcType)}"/>\n`;
   }
 
   private createHatchingLayer(
@@ -267,17 +267,25 @@ export class SVGExporter {
   ): string {
     let layer = '  <g id="hatching" inkscape:label="Hatching" inkscape:groupmode="layer">\n';
 
+    const drawableRing = (ring: Point2D[]): boolean => ring.length > 0 && ring.every(point => {
+      const paper = transformPoint(point, transform);
+      return Number.isFinite(paper.x) && Number.isFinite(paper.y);
+    });
+
     for (const polygon of polygons) {
       const pattern = getHatchPattern(polygon.ifcType);
+      if (pattern.type === 'none' || !drawableRing(polygon.polygon.outer)) continue;
 
-      if (pattern.type === 'none') continue;
+      // Fill and hatch the same rings. A rejected hole must not clip the hatch
+      // after the fill has already left that hole out.
+      const holes = polygon.polygon.holes.filter(drawableRing);
+      const drawable = holes.length === polygon.polygon.holes.length
+        ? polygon
+        : { ...polygon, polygon: { outer: polygon.polygon.outer, holes } };
+      layer += this.renderPolygon(drawable, transform, pattern);
 
-      // Render polygon with fill
-      layer += this.renderPolygon(polygon, transform, pattern);
-
-      // Generate and render hatch lines for non-solid fills
       if (pattern.type !== 'solid' && pattern.type !== 'glass') {
-        const hatchResult = this.hatchGenerator.generateHatch(polygon, scaleFactor);
+        const hatchResult = this.hatchGenerator.generateHatch(drawable, scaleFactor);
         for (const hatchLine of hatchResult.lines) {
           layer += this.renderHatchLine(hatchLine, transform, pattern);
         }
@@ -308,8 +316,8 @@ export class SVGExporter {
     }
 
     return `    <path d="${pathData}" fill="${fill}"
-          stroke="${pattern.strokeColor}" stroke-width="${pattern.lineWeight}"
-          data-entity-id="${polygon.entityId}" data-ifc-type="${escapeXml(polygon.ifcType)}"/>\n`;
+          stroke="${escapeXml(pattern.strokeColor)}" stroke-width="${pattern.lineWeight}"
+          ${entityIdAttr(polygon.entityId)} data-ifc-type="${escapeXml(polygon.ifcType)}"/>\n`;
   }
 
   private polygonToPath(polygon: { outer: Point2D[]; holes: Point2D[][] }, transform: Transform2D): string {
@@ -351,7 +359,7 @@ export class SVGExporter {
     const p1 = transformPoint(hatchLine.line.end, transform);
 
     return `    <line x1="${svgNum(p0.x)}" y1="${svgNum(p0.y)}" x2="${svgNum(p1.x)}" y2="${svgNum(p1.y)}"
-          stroke="${pattern.strokeColor}" stroke-width="${pattern.lineWeight}" stroke-linecap="butt"/>\n`;
+          stroke="${escapeXml(pattern.strokeColor)}" stroke-width="${pattern.lineWeight}" stroke-linecap="butt"/>\n`;
   }
 
   private createTitleBlock(
@@ -428,7 +436,7 @@ export class SVGExporter {
         const tag = path.closed ? 'polygon' : 'polyline';
         const strokeWidth = path.widthMm ?? 0.18;
         const dash = path.dashed ? ` stroke-dasharray="${svgNum(strokeWidth * 6)} ${svgNum(strokeWidth * 4)}"` : '';
-        layer += `      <${tag} points="${pointsAttr}" fill="none" stroke="${path.color ?? dxfLayer.color}" stroke-width="${svgNum(strokeWidth)}" stroke-linecap="round"${dash}/>\n`;
+        layer += `      <${tag} points="${pointsAttr}" fill="none" stroke="${escapeXml(path.color ?? dxfLayer.color)}" stroke-width="${svgNum(strokeWidth)}" stroke-linecap="round"${dash}/>\n`;
       }
 
       for (const text of dxfLayer.texts) {
@@ -456,7 +464,7 @@ export class SVGExporter {
         const fitLength = lines.length === 1 && text.fitWidth && text.fitWidth > 0 ? text.fitWidth * placement.scale * transform.scale : 0; // exact span; Aligned keeps its estimated height
         const stretch = fitLength ? '' : text.widthScale && text.widthScale !== 1
           ? ` translate(${svgNum(anchor.x)} ${svgNum(anchor.y)}) scale(${svgNum(text.widthScale, 4)} 1) translate(${svgNum(-anchor.x)} ${svgNum(-anchor.y)})` : '';
-        layer += `      <text x="${svgNum(anchor.x)}" y="${svgNum(anchor.y)}" font-family="Arial, sans-serif" font-size="${svgNum(heightMm)}" fill="${text.color ?? dxfLayer.color}" text-anchor="${anchorAttr}" dominant-baseline="${baseline}"${fitLength ? ` textLength="${svgNum(fitLength)}" lengthAdjust="spacingAndGlyphs"` : ''} transform="rotate(${svgNum(angle, 2)} ${svgNum(anchor.x)} ${svgNum(anchor.y)})${stretch}">${content}</text>\n`;
+        layer += `      <text x="${svgNum(anchor.x)}" y="${svgNum(anchor.y)}" font-family="Arial, sans-serif" font-size="${svgNum(heightMm)}" fill="${escapeXml(text.color ?? dxfLayer.color)}" text-anchor="${anchorAttr}" dominant-baseline="${baseline}"${fitLength ? ` textLength="${svgNum(fitLength)}" lengthAdjust="spacingAndGlyphs"` : ''} transform="rotate(${svgNum(angle, 2)} ${svgNum(anchor.x)} ${svgNum(anchor.y)})${stretch}">${content}</text>\n`;
       }
 
       layer += '    </g>\n';
@@ -465,6 +473,7 @@ export class SVGExporter {
     layer += '  </g>\n';
     return layer;
   }
+
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

@@ -13,8 +13,11 @@ export interface CurrentProjectUnitResult {
     value: ProjectUnits | null;
 }
 
-/** Current native display context, using the same resolver as source-only reads (#7353). */
-export function readCurrentProjectUnits(store: IfcDataStore, view: MetadataReadView, projectId?: number): CurrentProjectUnitResult {
+/** Strict native display context for the model and its optional overlay (#7353). */
+export function readCurrentProjectUnits(store: IfcDataStore, view?: MetadataReadView, projectId?: number): CurrentProjectUnitResult {
+    if (!view && !store.source?.length) {
+        return { status: 'unavailable', reason: 'Native project units require source or a surviving mutation view', value: null };
+    }
     try {
         const projects: number[] = [];
         for (const row of iterateEffectiveEntities(store, view, ['IfcProject'])) {
@@ -33,6 +36,12 @@ export function readCurrentProjectUnits(store: IfcDataStore, view: MetadataReadV
         const read: UnitEntityReader = id => {
             const record = effectiveMetadataRecord(store, id, view);
             if (!record) throw new ProjectUnitReadError('Native project unit dependency is unreadable');
+            // A clear remains explicit in the session overlay, even when the saved slot was $.
+            if (view && id === selected && record.attributes[8] === null &&
+                (view.getPositionalMutationsForEntity(id)?.has(8) ||
+                 view.getAttributeMutationsForEntity(id).some(edit => edit.name === 'UnitsInContext'))) {
+                throw new ProjectUnitReadError('Native project unit context is unset');
+            }
             return record;
         };
         return { status: 'available', reason: null, value: extractProjectUnits(store.source, store.entityIndex, selected, read) };

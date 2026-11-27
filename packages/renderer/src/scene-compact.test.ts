@@ -60,6 +60,11 @@ function fakeGpu(): { device: GPUDevice; pipeline: RenderPipeline } {
 
 interface Box { expressId: number; at: [number, number, number]; size: number; color: Rgba }
 
+/** A box's 12 triangles over corners 0-7 (bit `axis` of a corner: at the far side on that axis). */
+const BOX_TRIANGLES = [0, 2, 1, 1, 2, 3, 4, 5, 6, 5, 7, 6, 0, 1, 4, 1, 5, 4, 2, 6, 3, 3, 6, 7, 0, 4, 2, 2, 4, 6, 1, 3, 5, 3, 7, 5];
+/** World coordinate of `corner` of `box` on `axis`. */
+const boxCorner = (box: Box, corner: number, axis: number): number => box.at[axis] + ((corner >> axis) & 1) * box.size;
+
 /**
  * A worker batch of welded boxes in the layout the wasm encoder writes: level 10, every box in the
  * window of cell 0 (16 m below the origin), lanes stamped with the id and colour salt.
@@ -68,19 +73,18 @@ function compactBatch(boxes: readonly Box[]): MeshData[] {
   const scale = 1024, window = -16 * scale;
   const payload: CompactPayload = {
     records: new Uint8Array(boxes.length * 8 * 12), indices: new Uint16Array(boxes.length * 36),
-    table: new Uint32Array(boxes.length * 6), windows: new Float64Array(boxes.length * 3).fill(window),
+    table: new Uint32Array(boxes.length * 7), windows: new Float64Array(boxes.length * 3).fill(window),
     bounds: new Float64Array(boxes.length * 6), cells: new Int32Array(boxes.length * 3),
   };
   const view = new DataView(payload.records.buffer);
-  const triangles = [0, 2, 1, 1, 2, 3, 4, 5, 6, 5, 7, 6, 0, 1, 4, 1, 5, 4, 2, 6, 3, 3, 6, 7, 0, 4, 2, 2, 4, 6, 1, 3, 5, 3, 7, 5];
   boxes.forEach((box, row) => {
-    payload.table.set([row, row * 8, 8, row * 36, 36, 10], row * 6);
+    payload.table.set([row, row * 8, 8, row * 36, 36, 10, 24], row * 7);
     payload.bounds.set([...box.at, box.at[0] + box.size, box.at[1] + box.size, box.at[2] + box.size], row * 6);
-    payload.indices.set(triangles, row * 36);
+    payload.indices.set(BOX_TRIANGLES, row * 36);
     for (let corner = 0; corner < 8; corner++) {
       const at = (row * 8 + corner) * 12;
       for (let axis = 0; axis < 3; axis++) {
-        view.setUint16(at + axis * 2, Math.round((box.at[axis] + ((corner >> axis) & 1) * box.size) * scale) - window, true);
+        view.setUint16(at + axis * 2, Math.round(boxCorner(box, corner, axis) * scale) - window, true);
       }
       // Outward corner normal, oct-encoded: +-1/3 on each axis folds to bytes 85/170 (or their mirror for -z).
       const sign = [(corner & 1) * 2 - 1, ((corner >> 1) & 1) * 2 - 1, ((corner >> 2) & 1) * 2 - 1];
@@ -656,6 +660,106 @@ describe('compact meshes in the scene', () => {
     assert.equal(isDestroyed(page.vertexBuffer), true);
     assert.equal(scene.hasStreamingFragments(), false);
     assert.equal(scene.demoteCompact(), false);
+  });
+
+  it('wait queued, still compact, while the quantized pipeline probe is in flight, then draw from pages', async () => {
+    // The viewer probes the quantized pipelines asynchronously when the renderer starts; a load that
+    // raced the probe used to decode whatever arrived first to buckets for good (lane L9: FZK always
+    // ended with 0 pages, advanced_model with 0 or 59-90 between loads of one build).
+    const gpu = fakeGpu(), scene = new Scene();
+    await loadCompactPages();
+    const settle = scene.beginQuantizedProbe();
+    assert.equal(scene.quantizedBatchesPending, true);
+    const meshes = compactBatch([{ expressId: 401, at: [0, 0, 0], size: 1, color: GREY }, { expressId: 402, at: [2, 0, 0], size: 1, color: RED }]);
+    scene.queueMeshes(meshes);
+    for (let i = 0; i < 3; i++) scene.flushPending(gpu.device, gpu.pipeline, 0);
+    scene.finalizeStreaming(gpu.device, gpu.pipeline); // a stream that ends before the probe does
+    assert.equal(scene.getBatchedMeshes().length, 0, 'nothing drawn yet');
+    assert.equal(scene.hasQueuedMeshes(), true);
+    assert.ok(meshes.every((mesh) => mesh.compact), 'still compact');
+    assert.equal(decoded(), 0);
+
+    scene.setQuantizedBatches(true); // the probe's outcome is applied before its hold is released
+    settle();
+    settle(); // a second call is a no-op
+    assert.equal(scene.quantizedBatchesPending, false);
+    flushAll(scene, gpu);
+    assert.deepEqual(entitiesOf(pages(scene)), [401, 402]);
+    assert.equal(buckets(scene).length, 0);
+    assert.equal(pages(scene)[0].vertexBuffer.size, 8 * 12, 'trimmed at the drain that filled it: its stream had ended');
+    assert.equal(scene.hasStreamingFragments(), false);
+    assert.equal(decoded(), 0);
+    assert.deepEqual(scene.getCompactStats(), { paged: 2, decodes: {} });
+  });
+
+  it('decode the waiting queue to buckets when the probe finds no quantized pipelines', async () => {
+    const gpu = fakeGpu(), scene = new Scene();
+    await loadCompactPages();
+    const settle = scene.beginQuantizedProbe();
+    scene.queueMeshes(compactBatch([{ expressId: 411, at: [0, 0, 0], size: 1, color: GREY }]));
+    scene.flushPending(gpu.device, gpu.pipeline, 0);
+    scene.finalizeStreaming(gpu.device, gpu.pipeline);
+    assert.equal(scene.getBatchedMeshes().length, 0);
+    settle(); // the probe failed: the pipelines stay off
+    flushAll(scene, gpu);
+    assert.deepEqual(entitiesOf(buckets(scene)), [411]);
+    assert.equal(pages(scene).length, 0);
+    assert.deepEqual(scene.getCompactStats(), { paged: 0, decodes: { pipelines: 1 } });
+  });
+
+  it('count why each mesh a load sends to buckets was decoded', async () => {
+    const gpu = fakeGpu(), scene = await newScene();
+    const meshes = compactBatch([
+      { expressId: 421, at: [0, 0, 0], size: 1, color: GREY },
+      { expressId: 422, at: [2, 0, 0], size: 1, color: GREY },
+      { expressId: 423, at: [4, 0, 0], size: 1, color: GREY },
+    ]);
+    meshes[1].color = RED; // recoloured after encoding: its records carry the old colour salt
+    meshes[2].origin = [1, 0, 0]; // moved after encoding
+    upload(scene, gpu, meshes);
+    assert.deepEqual(entitiesOf(pages(scene)), [421]);
+    assert.deepEqual(scene.getCompactStats(), { paged: 1, decodes: { lane: 1, moved: 1 } });
+    scene.clear();
+    assert.deepEqual(scene.getCompactStats(), { paged: 0, decodes: {} });
+  });
+
+  it('land on the lattice nodes the bucket path draws the same mesh on, whatever the mesh frame', async () => {
+    // The bucket path quantizes onto 2^-10 nodes relative to its batch frame origin; compact records
+    // hold absolute nodes. With the frame at an arbitrary point (the first mesh's box centre) the two
+    // put a vertex up to a step apart, so the flag moved every edge and flipped near-coplanar faces
+    // (lane L9: pixel gate 0.12-7.4% on every model). The frame now snaps to the 2^-9 lattice.
+    const box: Box = { expressId: 431, at: [5.1234, 2.71828, -3.14159], size: 1.0007, color: GREY };
+    const origin: [number, number, number] = [5, 2, -3];
+    const positions = new Float32Array(24), normals = new Float32Array(24);
+    for (let corner = 0; corner < 8; corner++) {
+      for (let axis = 0; axis < 3; axis++) {
+        positions[corner * 3 + axis] = boxCorner(box, corner, axis) - origin[axis];
+        normals[corner * 3 + axis] = ((corner >> axis) & 1) * 2 - 1;
+      }
+    }
+    const flat: MeshData = { expressId: 431, modelIndex: 0, color: GREY, origin, positions, normals, indices: new Uint32Array(BOX_TRIANGLES) };
+    // Each batch's eight vertices as absolute lattice node indices (world * 1024), sorted.
+    const nodes = (batch: BatchedMesh): string[] => {
+      const view = new DataView(bytesOf(batch.vertexBuffer).buffer);
+      const out: string[] = [];
+      for (let v = 0; v < 8; v++) {
+        out.push([0, 1, 2].map((axis) => {
+          const world = batch.origin![axis] + batch.quantized!.min[axis] + view.getUint16(v * 12 + axis * 2, true) * batch.quantized!.step;
+          assert.ok(Number.isInteger(world * 1024), `axis ${axis}: ${world} is a lattice node`);
+          return world * 1024;
+        }).join());
+      }
+      return [...new Set(out)].sort();
+    };
+    const gpuOff = fakeGpu(), off = await newScene();
+    upload(off, gpuOff, [flat]);
+    off.finalizeStreaming(gpuOff.device, gpuOff.pipeline);
+    const [bucket] = buckets(off);
+    assert.ok(bucket.quantized, 'the bucket batch is quantized');
+    const gpuOn = fakeGpu(), on = await newScene();
+    upload(on, gpuOn, compactBatch([box]));
+    const [page] = pages(on);
+    assert.deepEqual(nodes(bucket), nodes(page));
   });
 
   it('mix with f32 meshes of the same batch', async () => {

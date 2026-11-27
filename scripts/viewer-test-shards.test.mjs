@@ -22,7 +22,7 @@ import { attributeFiles, declaredTitles, parseTapLog } from './lib/viewer-test-d
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const VIEWER = join(ROOT, 'apps/viewer');
 const SCRIPT = join(ROOT, 'scripts/viewer-test-shards.mjs');
-const SHARDS = 16;
+const SHARDS = 14;
 
 /** The viewer's test files exactly as its `test` script's `find` sees them. */
 function realTestFiles() {
@@ -41,6 +41,12 @@ function realTestFiles() {
 const manifest = parseManifest(readFileSync(MANIFEST_PATH, 'utf8'));
 const files = realTestFiles();
 
+test('measured concurrency-2 durations cover the viewer inventory', () => {
+  const measured = files.filter((file) => Object.hasOwn(manifest.concurrentSeconds ?? {}, file));
+  assert.ok(measured.length >= Math.ceil(files.length * 0.95),
+    `${measured.length}/${files.length} current tests have concurrency-2 durations`);
+});
+
 test('measured durations cover at least 95% of the current viewer suite (#10279)', () => {
   // Newly added files may use the hash fallback. A refresh must keep that
   // exception small enough that LPT still schedules almost the entire suite.
@@ -49,21 +55,24 @@ test('measured durations cover at least 95% of the current viewer suite (#10279)
     `${measured.length}/${files.length} current tests have measured durations; refresh the manifest from green CI`);
 });
 
-test('the REAL test files are partitioned: each runs in exactly one of the 16 shards, none is empty', () => {
+test('the real test files form an exact partition in the current and rollback layouts', () => {
   // Anti-vacuity: an empty walk or an empty manifest would partition trivially.
   assert.ok(files.length >= 2000, `expected the real viewer suite, got ${files.length} files`);
   assert.ok(Object.keys(manifest.seconds).length >= 2000, 'expected the committed manifest to be populated');
   assert.equal(manifest.shards, SHARDS, 'the manifest must be packed for the CI matrix size');
-  const seen = new Map();
-  for (let s = 0; s < SHARDS; s++) {
-    const mine = selectShard(files, manifest, s, SHARDS);
-    assert.ok(mine.length > 0, `shard ${s} is empty`);
-    for (const f of mine) {
-      assert.ok(!seen.has(f), `${f} runs in shard ${seen.get(f)} AND shard ${s}`);
-      seen.set(f, s);
+  for (const [count, concurrency] of [[SHARDS, '2'], [SHARDS, ''], [16, '']]) {
+    const layout = { ...manifest, shards: count };
+    const seen = new Map();
+    for (let shard = 0; shard < count; shard++) {
+      const mine = selectShard(files, layout, shard, count, concurrency);
+      assert.ok(mine.length > 0, `shard ${shard}/${count} is empty`);
+      for (const file of mine) {
+        assert.ok(!seen.has(file), `${file} runs in shard ${seen.get(file)} AND shard ${shard} of ${count}`);
+        seen.set(file, shard);
+      }
     }
+    assert.deepEqual([...seen.keys()].sort(), files, `the ${count}-shard layout misses a test file`);
   }
-  assert.deepEqual([...seen.keys()].sort(), files, 'some test file runs in no shard');
 });
 
 test('the packing balances the measured load to within one file of the mean (LPT bound)', () => {
@@ -77,6 +86,21 @@ test('the packing balances the measured load to within one file of the mean (LPT
   const hashLoad = new Array(SHARDS).fill(0);
   for (const f of Object.keys(manifest.seconds)) hashLoad[pathHash(f) % SHARDS] += manifest.seconds[f];
   assert.ok(Math.max(...load) < Math.max(...hashLoad), 'packing must lower the slowest shard');
+});
+
+test('two-way concurrency packs the concurrent weights and serial execution keeps the original assignment', () => {
+  const fixture = {
+    shards: 2,
+    seconds: { a: 10, b: 9, c: 6, d: 5, e: 3 },
+    concurrentSeconds: { a: 20, b: 4.5, c: 3, d: 10, e: 6 },
+  };
+  const paths = Object.keys(fixture.seconds);
+  assert.deepEqual([...assignShards(paths, fixture, 2, '2')], [
+    ['a', 0], ['b', 1], ['c', 0], ['d', 1], ['e', 1],
+  ]);
+  assert.deepEqual([...assignShards(paths, fixture, 2, '')], [
+    ['a', 0], ['b', 1], ['c', 1], ['d', 0], ['e', 0],
+  ]);
 });
 
 test('the hash fallback is bit-for-bit the awk selector it replaces, over every real path', () => {
@@ -135,6 +159,7 @@ function cli(input, env) {
   const clean = { ...process.env };
   delete clean.TEST_SHARDS;
   delete clean.TEST_SHARD;
+  delete clean.VIEWER_TEST_CONCURRENCY;
   return spawnSync(process.execPath, [SCRIPT], { input, encoding: 'utf8', env: { ...clean, ...env } });
 }
 
@@ -144,18 +169,23 @@ test('CLI: without TEST_SHARDS every file is printed (a local `pnpm test` runs e
   assert.deepEqual(r.stdout.trim().split('\n'), files);
 });
 
-test('CLI: the 16 shards together print every real file exactly once', () => {
+test('CLI: all CI shards together print every real file exactly once', () => {
   const all = [];
   for (let s = 0; s < SHARDS; s++) {
-    const r = cli(files.join('\n') + '\n', { TEST_SHARDS: String(SHARDS), TEST_SHARD: String(s) });
+    const r = cli(files.join('\n') + '\n', {
+      TEST_SHARDS: String(SHARDS), TEST_SHARD: String(s), VIEWER_TEST_CONCURRENCY: '2',
+    });
     assert.equal(r.status, 0, r.stderr);
-    all.push(...r.stdout.trim().split('\n'));
+    const selected = r.stdout.trim().split('\n');
+    assert.deepEqual(selected, selectShard(files, manifest, s, SHARDS, '2'));
+    all.push(...selected);
   }
   assert.deepEqual(all.sort(), files);
 });
 
 test('CLI: refuses an out-of-range shard and an empty selection instead of printing nothing', () => {
-  for (const env of [{ TEST_SHARDS: '16', TEST_SHARD: '16' }, { TEST_SHARDS: '0' }, { TEST_SHARDS: '16', TEST_SHARD: 'x' }]) {
+  const count = String(SHARDS);
+  for (const env of [{ TEST_SHARDS: count, TEST_SHARD: count }, { TEST_SHARDS: '0' }, { TEST_SHARDS: count, TEST_SHARD: 'x' }]) {
     const r = cli(files.join('\n') + '\n', env);
     assert.equal(r.status, 1, `expected refusal for ${JSON.stringify(env)}`);
     assert.equal(r.stdout, '');
@@ -167,7 +197,7 @@ test('CLI: refuses an out-of-range shard and an empty selection instead of print
 
 test('a malformed manifest is refused, naming the problem', () => {
   assert.throws(() => parseManifest('{"src/a.test.ts": 3}'), /shards/);
-  assert.throws(() => parseManifest('{"shards": 16, "seconds": {"src/a.test.ts": -1}}'), /src\/a\.test\.ts/);
+  assert.throws(() => parseManifest('{"shards": 2, "seconds": {"src/a.test.ts": -1}}'), /src\/a\.test\.ts/);
   assert.deepEqual(parseManifest('{"shards": 2, "seconds": {}}'), { shards: 2, seconds: {} });
   assert.deepEqual(assignShards(['src/x.test.ts'], EMPTY_MANIFEST, 4).get('src/x.test.ts'), pathHash('src/x.test.ts') % 4);
 });

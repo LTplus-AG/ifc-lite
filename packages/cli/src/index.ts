@@ -29,7 +29,7 @@ async function readVersion(): Promise<string> {
  * `Commands:` block carries. Their handlers already tested for it; before
  * #5527 that branch was simply unreachable.
  */
-const HELP_DELEGATING_COMMANDS = new Set(['layer', 'ref', 'ext', 'oci', 'georef', 'site-context']);
+const HELP_DELEGATING_COMMANDS = new Set(['layer', 'ref', 'ext', 'oci', 'georef', 'site-context', 'mcp']);
 
 let activeCommand = '';
 /** True when --debug was passed (stack traces on error). */
@@ -42,6 +42,23 @@ async function main(): Promise<void> {
   logger.configure({ level: verbosity.level });
   debugFlag = verbosity.debug;
   const args = verbosity.rest;
+
+  // `mcp install` parses its own argv, the server flags after `--` included, so
+  // it gets the raw tail (not the verbosity-stripped one) before the global
+  // --help/--version/--out handling below.
+  if (args[0] === 'mcp' && args[1] === 'install') {
+    activeCommand = 'mcp';
+    const raw = process.argv.slice(2);
+    // Global flags may sit before or between `mcp` and `install`; they are the CLI's.
+    const at = raw.indexOf('install', raw.indexOf('mcp') + 1);
+    const tail = raw.slice(at + 1);
+    const dd = tail.indexOf('--');
+    // Global flags before `--` are the CLI's (already applied above); after it they are the server's.
+    const own = parseVerbosity(dd < 0 ? tail : tail.slice(0, dd)).rest;
+    const { mcpCommand } = await import('./commands/mcp.js');
+    await mcpCommand(['install', ...own, ...(dd < 0 ? [] : tail.slice(dd))]);
+    return;
+  }
 
   const wantsHelp = args.includes('--help') || args.includes('-h');
   if (args.length === 0) {
@@ -63,7 +80,8 @@ async function main(): Promise<void> {
     }
   }
 
-  if (args.includes('--version') || args.includes('-v')) {
+  // `ifc-lite mcp --version` reports the MCP server's own version.
+  if (args[0] !== 'mcp' && (args.includes('--version') || args.includes('-v'))) {
     process.stdout.write(`ifc-lite ${await readVersion()}\n`);
     return;
   }

@@ -35,6 +35,18 @@ pub(crate) fn resolve_element_color_for_product_definition_shape(
     find_color_in_representation(product_definition_shape_id, geometry_styles, decoder)
 }
 
+/// [`resolve_element_color_for_product_definition_shape`] and the styled item
+/// the colour comes from, from the one walk (#10698).
+pub(crate) fn resolve_element_style_for_product_definition_shape(
+    product_definition_shape_id: u32,
+    geometry_styles: &FxHashMap<u32, GeometryStyleInfo>,
+    decoder: &mut EntityDecoder,
+) -> Option<([f32; 4], u32)> {
+    let source =
+        crate::element::product_shape_style_source(product_definition_shape_id, &|id| geometry_styles.contains_key(&id), decoder)?;
+    geometry_styles.get(&source).map(|style| (style.color, source))
+}
+
 pub(super) fn resolve_presentation_layer_for_product_definition_shape(
     product_definition_shape_id: u32,
     layer_by_assigned_representation: &FxHashMap<u32, String>,
@@ -273,6 +285,29 @@ pub(crate) fn resolve_product_element_color(
         shape.and_then(|shape| resolve_element_color_for_product_definition_shape(shape, geometry_styles, decoder)),
         || element_material_colors.get(&product_id).and_then(|colors| crate::style::element_material_fallback_color(colors)),
     )
+}
+
+/// [`resolve_product_element_color`] and the source of the colour it picks,
+/// from the same decision (#10698): the product shape's styled item, else
+/// `Unstyled` for the material fallback.
+#[cfg(feature = "retained-runtime")]
+pub(crate) fn resolve_product_element_style(
+    shape: Option<u32>,
+    product_id: u32,
+    geometry_styles: &FxHashMap<u32, GeometryStyleInfo>,
+    element_material_colors: &FxHashMap<u32, Vec<[f32; 4]>>,
+    decoder: &mut EntityDecoder,
+) -> Option<([f32; 4], crate::element::StyleSource)> {
+    use crate::element::StyleSource;
+    shape
+        .and_then(|shape| resolve_element_style_for_product_definition_shape(shape, geometry_styles, decoder))
+        .map(|(color, source)| (color, StyleSource::Style(source)))
+        .or_else(|| {
+            element_material_colors
+                .get(&product_id)
+                .and_then(|colors| crate::style::element_material_fallback_color(colors))
+                .map(|color| (color, StyleSource::Unstyled))
+        })
 }
 
 #[cfg(test)]

@@ -17,14 +17,14 @@
  * Consumers: `ifc-lite extract-entities` and the MCP `model_extract` tool.
  */
 import { stepStringLiteralEnd } from '@ifc-lite/encoding';
-import { expandTypes } from '@ifc-lite/parser';
+import { detectSchemaVersion, expandTypes, parseSourceHeader } from '@ifc-lite/parser';
 import { getIfcRootTypes } from './subset-roots.js';
 import { planSpatialRelations, refsOutsideStrings, splitTopLevelArgs, STRUCTURE_RELATION_ATTRS, SubsetSelectionError, type StepRecord, type Subset } from './step-subset-relations.js';
 import { slotRef } from './schema-converter-structural-source.js';
 import { skipStepTrivia } from './step-slot-grammar.js';
 import { skipStepComment } from './step-comment-skip.js';
 import { spatialAncestors } from './step-subset-spatial-ancestors.js';
-import { resolveStorey, storeyMembers } from './step-subset-storey.js';
+import { resolveStoreyArgument, storeyMembers } from './step-subset-storey.js';
 
 export { SubsetSelectionError } from './step-subset-relations.js';
 export type { StepRecord, Subset } from './step-subset-relations.js';
@@ -173,7 +173,13 @@ export function parseStep(text: string): ParsedStep {
 export function resolveToId(token: string, parsed: ParsedStep): number {
   const t = token.trim();
   const guidId = parsed.guidToId.get(t);
-  if (guidId !== undefined) return guidId;
+  if (guidId !== undefined) {
+    const numericId = /^\d+$/.test(t) ? Number(t) : undefined;
+    if (numericId !== undefined && numericId !== guidId && parsed.instances.has(numericId)) {
+      throw new SubsetSelectionError('invalid', `Ambiguous product selector '${t}': GlobalId for #${guidId} also names express id #${numericId}; use an explicit #id.`);
+    }
+    return guidId;
+  }
   if (t.startsWith('#') || /^\d+$/.test(t)) {
     if (!/^#?\d+$/.test(t)) throw new SubsetSelectionError('invalid', `Invalid expressId: ${t}`);
     const id = Number(t.replace(/^#/, ''));
@@ -224,6 +230,7 @@ export function buildSubset(seedProducts: Set<number>, parsed: ParsedStep): Subs
   // host through inverse relationships. Traverse them before adding spatial
   // context, so selecting an assembly never pulls in the contents of a storey.
   const inverse = new Map<number, number[]>();
+  const narrowedAssemblies = new Set<number>();
   for (const inst of parsed.instances.values()) {
     const assembly = ASSEMBLY_RELATIONS.has(inst.type);
     if (!assembly && !HOST_FEATURE_RELATIONS.has(inst.type)) continue;
@@ -233,8 +240,8 @@ export function buildSubset(seedProducts: Set<number>, parsed: ParsedStep): Subs
     if (anchor === null) continue;
     if (assembly) {
       if (parsed.instances.get(anchor)?.type !== 'IFCELEMENTASSEMBLY') continue;
-      // Explicit part selections narrow the assembly's RelatedObjects set.
-      if (refsOutsideStrings(args[5]).some((part) => seedProducts.has(part))) continue;
+      // A selected part narrows all decomposition records on this assembly.
+      if (refsOutsideStrings(args[5]).some((part) => seedProducts.has(part))) narrowedAssemblies.add(anchor);
     }
     const relations = inverse.get(anchor);
     if (relations) relations.push(inst.id);
@@ -244,7 +251,11 @@ export function buildSubset(seedProducts: Set<number>, parsed: ParsedStep): Subs
   // once, even for deep or cyclic assembly graphs.
   for (const id of keep) {
     const relations = inverse.get(id);
-    if (relations) forwardClosure(relations, parsed, keep);
+    if (!relations) continue;
+    const expansion = narrowedAssemblies.has(id)
+      ? relations.filter((relation) => !ASSEMBLY_RELATIONS.has(parsed.instances.get(relation)!.type))
+      : relations;
+    forwardClosure(expansion, parsed, keep);
   }
 
   // Context roots: IfcProject (always — units/contexts hang off it even when
@@ -307,6 +318,8 @@ export interface SubsetSelectors {
   requireEachMatch?: boolean;
   /** The file's schema, when known: subtypes are expanded for it alone rather than for the union of all schemas. */
   schemaVersion?: string;
+  /** Accept comma-delimited storey lists after trying each whole argument. */
+  splitStoreyLists?: boolean;
 }
 
 /**
@@ -314,12 +327,15 @@ export interface SubsetSelectors {
  * nothing throws; a type that matches nothing just adds nothing, so the caller
  * decides how to word an empty selection.
  *
- * Types go through `expandTypes` for `selectors.schemaVersion`. Without one
- * (the CLI's own lightweight parse has no resolved schema) it expands for the
- * union of the bundled schemas, the case that union documents, rather than
- * picking one on the caller's behalf.
+ * An explicit schema overrides FILE_SCHEMA. Without either, types expand across bundled schemas.
  */
 export function selectSubsetSeeds(parsed: ParsedStep, selectors: SubsetSelectors): Set<number> {
+  let schemaVersion = selectors.schemaVersion;
+  if (schemaVersion === undefined) {
+    const headerBytes = new TextEncoder().encode(parsed.header);
+    const header = parseSourceHeader(headerBytes);
+    if (header?.schemaIdentifiers.length) schemaVersion = detectSchemaVersion(headerBytes, header);
+  }
   const seeds = new Set<number>();
   for (const token of selectors.products ?? []) {
     if (token.trim()) seeds.add(resolveToId(token, parsed));
@@ -329,7 +345,7 @@ export function selectSubsetSeeds(parsed: ParsedStep, selectors: SubsetSelectors
   const requested = (selectors.types ?? []).map((t) => t.trim()).filter(Boolean);
   const wantedTypes = new Map<string, number[]>();
   requested.forEach((type, i) => {
-    for (const name of expandTypes([type], selectors.schemaVersion)) {
+    for (const name of expandTypes([type], schemaVersion)) {
       const key = name.toUpperCase();
       const from = wantedTypes.get(key);
       if (from) from.push(i);
@@ -351,12 +367,14 @@ export function selectSubsetSeeds(parsed: ParsedStep, selectors: SubsetSelectors
   }
   for (const token of selectors.storeys ?? []) {
     if (!token.trim()) continue;
-    const { storeyId, placementId } = resolveStorey(token, parsed);
-    // The storey itself is kept as asked, even if no product is contained in it.
-    seeds.add(storeyId);
-    const products = storeyMembers(storeyId, placementId, parsed, selectors.schemaVersion);
-    if (selectors.requireEachMatch && products.length === 0) throw new SubsetSelectionError('invalid', `Storey ${token} has no elements.`);
-    for (const id of products) seeds.add(id);
+    const storeys = resolveStoreyArgument(token, parsed, selectors.splitStoreyLists === true);
+    for (const { storeyId, placementId } of storeys) {
+      // Keep the storey itself, even when it is empty.
+      seeds.add(storeyId);
+      const products = storeyMembers(storeyId, placementId, parsed, schemaVersion);
+      if (selectors.requireEachMatch && products.length === 0) throw new SubsetSelectionError('invalid', `Storey ${token} has no elements.`);
+      for (const id of products) seeds.add(id);
+    }
   }
   return seeds;
 }

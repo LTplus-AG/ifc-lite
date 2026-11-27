@@ -25,6 +25,7 @@ impl EntityJob {
             end,
             product_definition_shape_id: None,
             element_color,
+            element_style: crate::element::StyleSource::Unstyled,
             global_id: None,
             name: None,
             presentation_layer: None,

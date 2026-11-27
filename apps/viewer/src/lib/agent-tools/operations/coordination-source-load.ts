@@ -5,7 +5,7 @@ import { coordinationSources } from '@/services/coordination-hosts';
 import { coordinationModelAdder } from '@/services/coordination-loader';
 import { loadResolvedSourcePrefs, isPrefsConfigured } from '@/lib/sources/preferences';
 import { enqueueSourceLoad } from '@/lib/sources/loadQueue';
-import { sanitizeFilename } from '@/lib/export/download';
+import { sanitizeModelFilename } from '@/lib/export/download';
 import { useViewerStore } from '@/store';
 import { coordination } from './coordination-common';
 import { internal, invalidInput, stale, unavailable } from './refusals';
@@ -22,7 +22,7 @@ export const coordinationSourceLoadOperations = [coordination<SourceLoad>('sourc
   const buffer = await provider.download(ctx, { projectId: i.project_id, containerId: i.container_id, fileId: i.file_id, revisionId }, {
     signal: c.signal, onProgress: (done, total) => c.progress?.({ phase: 'download', done, total: total ?? 0 }),
   });
-  c.checkpoint?.(); const filename = sanitizeFilename(i.filename, { fallback: 'model.ifc' }), modelId = crypto.randomUUID();
+  c.checkpoint?.(); const filename = sanitizeModelFilename(i.filename), modelId = crypto.randomUUID();
   // Queue waiting is preparation, not native load admission. Recheck the live
   // grant only when this request actually reaches the serialized loader.
   return enqueueSourceLoad(() => c.commitAsync(async () => {

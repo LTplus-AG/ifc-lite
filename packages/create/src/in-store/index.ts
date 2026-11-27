@@ -129,7 +129,7 @@ export { removeCostEntityInStore, type CostRemovalReferrers } from './cost-remov
 export { resolveSpatialAnchor, resolveBodyContextId } from './resolve-anchor.js';
 export { placedBodyExtent, resolveHostAnchor } from './resolve-host.js';
 export { toNativeLength, fromNativeLength } from './anchor.js';
-export type { SpatialAnchor, HostAnchor, HostBounds, HostKind } from './anchor.js';
+export type { SpatialAnchor, HostAnchor, HostBounds, HostKind, AuthoringGuidOptions } from './anchor.js';
 export {
   duplicateInStore,
   type SourceAttributes,

@@ -614,6 +614,29 @@
    "#99=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Plan',3,1.E-05,#11,$);",
    "ENDSEC;",
    "END-ISO-10303-21;"
+  ],
+  "escaped-set-names": [
+   "ISO-10303-21;",
+   "HEADER;",
+   "FILE_DESCRIPTION(('ViewDefinition [ReferenceView]'),'2;1');",
+   "FILE_NAME('src.ifc','2024-05-01T10:00:00',('Author'),('Org'),'Tool 1.0','Tool','');",
+   "FILE_SCHEMA(('IFC4'));",
+   "ENDSEC;",
+   "DATA;",
+   "#10=IFCWALL('0wall00000000000000001',$,'W',$,$,$,$,$,$);",
+   "#11=IFCPROPERTYSINGLEVALUE('Keep',$,IFCLABEL('k'),$);",
+   "#12=IFCPROPERTYSINGLEVALUE('Edit',$,IFCLABEL('old'),$);",
+   "#13=IFCPROPERTYSET('0pset00000000000000001',$,'Pset_\\X2\\0103\\X0\\',$,(#11,#12));",
+   "#14=IFCRELDEFINESBYPROPERTIES('0rel000000000000000001',$,$,$,(#10),#13);",
+   "#15=IFCPROPERTYSINGLEVALUE('Keep',$,IFCLABEL('k'),$);",
+   "#16=IFCPROPERTYSINGLEVALUE('Edit',$,IFCLABEL('old'),$);",
+   "#17=IFCPROPERTYSET('0pset00000000000000002',$,'Pset_O''Brien',$,(#15,#16));",
+   "#18=IFCRELDEFINESBYPROPERTIES('0rel000000000000000002',$,$,$,(#10),#17);",
+   "#20=IFCELEMENTQUANTITY('0qset0000000000000001',$,'Qto_O''BrienQ',$,$,(#21));",
+   "#21=IFCQUANTITYLENGTH('Len',$,$,1.,$);",
+   "#22=IFCRELDEFINESBYPROPERTIES('0rel000000000000000003',$,$,$,(#10),#20);",
+   "ENDSEC;",
+   "END-ISO-10303-21;"
   ]
  },
  "cases": [
@@ -6986,6 +7009,145 @@
     "#51=IFCPHYSICALCOMPLEXQUANTITY('Complex',$,(#48),'X',$,$);",
     "#52=IFCELEMENTQUANTITY('2Nn3Mm4Ll5Kk6Jj7Ii8Hh9',#5,'Qto_Door',$,$,(#48,#49,#50,#51));",
     "#53=IFCRELDEFINESBYPROPERTIES('0uK8j9R5T5E8Gf7Ybq5ZpA',#5,$,$,(#18),#52);",
+    "ENDSEC;",
+    "END-ISO-10303-21;"
+   ]
+  },
+  {
+   "name": "update-property-in-set-named-with-a-step-directive",
+   "why": "UPDATE_PROPERTY on a property of a source set whose name is stored as a STEP directive (Pset_\\X2\\0103\\X0\\ decodes to Pset_ă): the overlay carries the decoded name, so the source set is matched and replaced, not left beside a second set of the same name (#11462).",
+   "source": "escaped-set-names",
+   "log": {
+    "modelId": "model",
+    "mutations": [
+     {
+      "id": "m1",
+      "type": "UPDATE_PROPERTY",
+      "timestamp": 0,
+      "modelId": "model",
+      "entityId": 10,
+      "psetName": "Pset_ă",
+      "propName": "Edit",
+      "oldValue": "old",
+      "newValue": "new",
+      "valueType": 0
+     }
+    ],
+    "exportedAt": 0
+   },
+   "expected": [
+    "ISO-10303-21;",
+    "HEADER;",
+    "FILE_DESCRIPTION(('ViewDefinition [ReferenceView]','Re-exported by ifc-lite, 4 modifications'),'2;1');",
+    "FILE_NAME('export.ifc','2020-01-01T00:00:00',('Author'),('Org'),'ifc-lite','Tool','');",
+    "FILE_SCHEMA(('IFC4'));",
+    "ENDSEC;",
+    "DATA;",
+    "#10=IFCWALL('0wall00000000000000001',$,'W',$,$,$,$,$,$);",
+    "#11=IFCPROPERTYSINGLEVALUE('Keep',$,IFCLABEL('k'),$);",
+    "#15=IFCPROPERTYSINGLEVALUE('Keep',$,IFCLABEL('k'),$);",
+    "#16=IFCPROPERTYSINGLEVALUE('Edit',$,IFCLABEL('old'),$);",
+    "#17=IFCPROPERTYSET('0pset00000000000000002',$,'Pset_O''Brien',$,(#15,#16));",
+    "#18=IFCRELDEFINESBYPROPERTIES('0rel000000000000000002',$,$,$,(#10),#17);",
+    "#20=IFCELEMENTQUANTITY('0qset0000000000000001',$,'Qto_O''BrienQ',$,$,(#21));",
+    "#21=IFCQUANTITYLENGTH('Len',$,$,1.,$);",
+    "#22=IFCRELDEFINESBYPROPERTIES('0rel000000000000000003',$,$,$,(#10),#20);",
+    "#23=IFCPROPERTYSINGLEVALUE('Edit',$,IFCLABEL('new'),$);",
+    "#24=IFCPROPERTYSET('<GUID>',$,'Pset_\\X2\\0103\\X0\\',$,(#11,#23));",
+    "#25=IFCRELDEFINESBYPROPERTIES('<GUID>',$,$,$,(#10),#24);",
+    "ENDSEC;",
+    "END-ISO-10303-21;"
+   ]
+  },
+  {
+   "name": "update-property-in-set-named-with-an-apostrophe",
+   "why": "UPDATE_PROPERTY on a property of a source set whose name holds a doubled quote (Pset_O''Brien decodes to Pset_O'Brien): matched decoded, the set is replaced once (#11462).",
+   "source": "escaped-set-names",
+   "log": {
+    "modelId": "model",
+    "mutations": [
+     {
+      "id": "m1",
+      "type": "UPDATE_PROPERTY",
+      "timestamp": 0,
+      "modelId": "model",
+      "entityId": 10,
+      "psetName": "Pset_O'Brien",
+      "propName": "Edit",
+      "oldValue": "old",
+      "newValue": "new",
+      "valueType": 0
+     }
+    ],
+    "exportedAt": 0
+   },
+   "expected": [
+    "ISO-10303-21;",
+    "HEADER;",
+    "FILE_DESCRIPTION(('ViewDefinition [ReferenceView]','Re-exported by ifc-lite, 4 modifications'),'2;1');",
+    "FILE_NAME('export.ifc','2020-01-01T00:00:00',('Author'),('Org'),'ifc-lite','Tool','');",
+    "FILE_SCHEMA(('IFC4'));",
+    "ENDSEC;",
+    "DATA;",
+    "#10=IFCWALL('0wall00000000000000001',$,'W',$,$,$,$,$,$);",
+    "#11=IFCPROPERTYSINGLEVALUE('Keep',$,IFCLABEL('k'),$);",
+    "#12=IFCPROPERTYSINGLEVALUE('Edit',$,IFCLABEL('old'),$);",
+    "#13=IFCPROPERTYSET('0pset00000000000000001',$,'Pset_\\X2\\0103\\X0\\',$,(#11,#12));",
+    "#14=IFCRELDEFINESBYPROPERTIES('0rel000000000000000001',$,$,$,(#10),#13);",
+    "#15=IFCPROPERTYSINGLEVALUE('Keep',$,IFCLABEL('k'),$);",
+    "#20=IFCELEMENTQUANTITY('0qset0000000000000001',$,'Qto_O''BrienQ',$,$,(#21));",
+    "#21=IFCQUANTITYLENGTH('Len',$,$,1.,$);",
+    "#22=IFCRELDEFINESBYPROPERTIES('0rel000000000000000003',$,$,$,(#10),#20);",
+    "#23=IFCPROPERTYSINGLEVALUE('Edit',$,IFCLABEL('new'),$);",
+    "#24=IFCPROPERTYSET('<GUID>',$,'Pset_O''Brien',$,(#15,#23));",
+    "#25=IFCRELDEFINESBYPROPERTIES('<GUID>',$,$,$,(#10),#24);",
+    "ENDSEC;",
+    "END-ISO-10303-21;"
+   ]
+  },
+  {
+   "name": "update-quantity-in-set-named-with-an-apostrophe",
+   "why": "UPDATE_QUANTITY on a quantity of a source quantity set whose name holds a doubled quote: matched decoded, the set is replaced once (#11462).",
+   "source": "escaped-set-names",
+   "log": {
+    "modelId": "model",
+    "mutations": [
+     {
+      "id": "m1",
+      "type": "UPDATE_QUANTITY",
+      "timestamp": 0,
+      "modelId": "model",
+      "entityId": 10,
+      "psetName": "Qto_O'BrienQ",
+      "propName": "Len",
+      "oldValue": 1,
+      "newValue": 7,
+      "valueType": 0,
+      "quantityType": 0
+     }
+    ],
+    "exportedAt": 0
+   },
+   "expected": [
+    "ISO-10303-21;",
+    "HEADER;",
+    "FILE_DESCRIPTION(('ViewDefinition [ReferenceView]','Re-exported by ifc-lite, 4 modifications'),'2;1');",
+    "FILE_NAME('export.ifc','2020-01-01T00:00:00',('Author'),('Org'),'ifc-lite','Tool','');",
+    "FILE_SCHEMA(('IFC4'));",
+    "ENDSEC;",
+    "DATA;",
+    "#10=IFCWALL('0wall00000000000000001',$,'W',$,$,$,$,$,$);",
+    "#11=IFCPROPERTYSINGLEVALUE('Keep',$,IFCLABEL('k'),$);",
+    "#12=IFCPROPERTYSINGLEVALUE('Edit',$,IFCLABEL('old'),$);",
+    "#13=IFCPROPERTYSET('0pset00000000000000001',$,'Pset_\\X2\\0103\\X0\\',$,(#11,#12));",
+    "#14=IFCRELDEFINESBYPROPERTIES('0rel000000000000000001',$,$,$,(#10),#13);",
+    "#15=IFCPROPERTYSINGLEVALUE('Keep',$,IFCLABEL('k'),$);",
+    "#16=IFCPROPERTYSINGLEVALUE('Edit',$,IFCLABEL('old'),$);",
+    "#17=IFCPROPERTYSET('0pset00000000000000002',$,'Pset_O''Brien',$,(#15,#16));",
+    "#18=IFCRELDEFINESBYPROPERTIES('0rel000000000000000002',$,$,$,(#10),#17);",
+    "#23=IFCQUANTITYLENGTH('Len',$,$,7.,$);",
+    "#24=IFCELEMENTQUANTITY('<GUID>',$,'Qto_O''BrienQ',$,$,(#23));",
+    "#25=IFCRELDEFINESBYPROPERTIES('<GUID>',$,$,$,(#10),#24);",
     "ENDSEC;",
     "END-ISO-10303-21;"
    ]

@@ -10,6 +10,7 @@ import type { LoadedModel, ToolContext } from '../context.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import { rm, stat, writeFile } from 'node:fs/promises';
 import { resolveSafePath } from '../safe-path.js';
+import { withSourceWriteLock } from '../source-write-lock.js';
 import { modelAllowed, scopeAllows } from '../auth/scope.js';
 import { resolveModel } from './util.js';
 
@@ -28,11 +29,9 @@ export const FILE_WRITE_ANNOTATIONS: ToolAnnotations = {
 export const stringList: JsonSchema = { type: 'array', items: { type: 'string' } };
 
 /**
- * `structuredContent` of a tool that wrote one file: `filePath` and `bytes`
- * plus the tool's own fields on success. An error result carries the shared
- * `{ code, message, details, hint }` payload (`toolError`), so the schema
- * declares those too and requires nothing: a client that validates error
- * results against it still passes. (No top-level `anyOf`: see validate.ts.)
+ * A transform's structured result carries the written path and byte count
+ * on success or the shared toolError payload on failure. The root anyOf
+ * describes output, so input-schema advertising restrictions do not apply.
  */
 export function fileOutputSchema(extra: Record<string, JsonSchema>): JsonSchema {
   return {
@@ -46,6 +45,10 @@ export function fileOutputSchema(extra: Record<string, JsonSchema>): JsonSchema 
       details: { type: 'object', description: 'Error results only.' },
       hint: { type: 'string', description: 'Error results only.' },
     },
+    anyOf: [
+      { required: ['filePath', 'bytes'] },
+      { required: ['code', 'message', 'details'] },
+    ],
     additionalProperties: false,
   };
 }
@@ -152,28 +155,33 @@ export async function writeTransformOutput(
   if (keys.some((key) => activeOutputs.has(key))) throw invalid('Another transform is writing to one of these paths.');
   for (const key of keys) activeOutputs.add(key);
   try {
-    beforeWrite(ctx, ...models);
-    beforePrimary?.();
-    await writeFile(primary, content);
-    if (!sidecar) return;
-    try {
+    await withSourceWriteLock(ctx.registry, async () => {
+      for (const path of paths) {
+        if (await resolveSafePath(path, ctx, 'write') !== path) {
+          throw invalid('The output destination changed during the transform.');
+        }
+      }
       beforeWrite(ctx, ...models);
-      // The owner-only map needs a fresh inode. Setting the mode on an
-      // existing file would preserve its old permissions.
-      if (sidecar.mode !== undefined) {
+      beforePrimary?.();
+      // Invalidate the previous map before replacing the IFC. A revoked
+      // request or failed map write after that point cannot leave a stale map.
+      if (sidecar) {
         await rm(sidecar.path, { force: true });
         beforeWrite(ctx, ...models);
+        beforePrimary?.();
       }
-      await writeFile(sidecar.path, sidecar.data, {
-        encoding: 'utf-8',
-        ...(sidecar.mode !== undefined ? { mode: sidecar.mode, flag: 'wx' } : {}),
-      });
-    } catch (error) {
-      throw new ToolExecutionError({
-        code: error instanceof ToolExecutionError ? error.code : ToolErrorCode.INTERNAL_ERROR,
-        message: `Wrote ${primary}, but writing ${sidecar.path} failed: ${error instanceof Error ? error.message : String(error)}. The two files do not match.`,
-      });
-    }
+      await writeFile(primary, content);
+      if (!sidecar) return;
+      try {
+        beforeWrite(ctx, ...models);
+        await writeFile(sidecar.path, sidecar.data, { encoding: 'utf-8', mode: sidecar.mode, flag: 'wx' });
+      } catch (error) {
+        throw new ToolExecutionError({
+          code: error instanceof ToolExecutionError ? error.code : ToolErrorCode.INTERNAL_ERROR,
+          message: `Wrote ${primary}, but writing ${sidecar.path} failed: ${error instanceof Error ? error.message : String(error)}.`,
+        });
+      }
+    });
   } finally {
     for (const key of keys) activeOutputs.delete(key);
   }

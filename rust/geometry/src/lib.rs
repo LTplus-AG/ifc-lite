@@ -147,6 +147,7 @@ pub mod material_layer_index;
 /// op-order and FMA contract.
 pub mod math;
 pub mod mesh;
+mod styled_parts;
 // Closure / pairing / volume checks over triangle soups; `pub` only for the shared test oracles.
 #[cfg(feature = "test-support")]
 pub mod mesh_check;
@@ -251,6 +252,7 @@ pub use material_layer_index::{
     LayerAxis, LayerBuildup, LayerInfo, MaterialLayerFlat, MaterialLayerIndex,
 };
 pub use mesh::{InstanceMeta, Mesh, SubMesh, SubMeshCollection};
+pub use styled_parts::StyledSubMeshes;
 pub use mesh_orient::{orient_mesh_outward, orient_mesh_outward_verdict, OrientVerdict};
 pub use processors::{
     AdvancedBrepProcessor, BooleanClippingProcessor, ExtrudedAreaSolidProcessor,

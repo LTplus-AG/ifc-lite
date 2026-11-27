@@ -118,7 +118,9 @@ const modelMerge: Tool = {
       mergeStoreys: input.merge_storeys as 'by-name' | 'by-elevation' | 'by-name-then-elevation' | undefined,
       dropEmptyContainers: input.drop_empty_containers === true,
     });
-    await writeTransformOutput(ctx, models, filePath, result.content);
+    await writeTransformOutput(ctx, models, filePath, result.content, undefined, () => {
+      for (const model of models) requireNoPendingEdits(model, 'model_merge');
+    });
     const s = { ...result.stats, warnings: [...conversionWarnings, ...result.stats.warnings] };
     return okResult(
       `Merged ${s.modelCount} models into ${filePath} (${fmtInt(s.totalEntityCount)} entities).` +
@@ -242,8 +244,8 @@ const modelExtract: Tool = {
       (token): token is string => typeof token === 'string' && token.trim().length > 0,
     );
     if (expressIds.length > 0) refuseSourceIdsWhilePending(m, 'express_ids');
-    // A bare number can resolve to a storey id, so it is refused too.
-    if (storeys.some((s) => /^#?\d+$/.test(s.trim()))) refuseSourceIdsWhilePending(m, 'A storey given as a number');
+    const pendingEdits = m.backend.hasPendingChanges();
+    if (storeys.some((s) => /^#\d+$/.test(s.trim()))) refuseSourceIdsWhilePending(m, 'A storey given as a number');
     if (globalIds.length + expressIds.length + types.length + storeys.length === 0) {
       throw invalid('Select something: global_ids, express_ids, types or storeys.');
     }
@@ -254,6 +256,12 @@ const modelExtract: Tool = {
       // latin1 is a lossless byte<->char bijection, so raw high bytes in the
       // source round-trip unchanged (same as the CLI).
       const parsed = parseStep(Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString('latin1'));
+      if (pendingEdits && storeys.some((token) => {
+        const id = token.trim();
+        return /^\d+$/.test(id) && parsed.instances.get(parsed.guidToId.get(id) ?? -1)?.type !== 'IFCBUILDINGSTOREY';
+      })) {
+        throw invalid('A numeric storey selector with unsaved edits must be an exact storey GlobalId.');
+      }
       let seeds: Set<number>;
       // GlobalIds resolve as GlobalIds only, never as a digit string read as an express id.
       const unknown = globalIds.find((g) => !parsed.guidToId.has(g));

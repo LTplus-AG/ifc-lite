@@ -191,6 +191,12 @@
       "value": "\u00a7'"
     },
     {
+      "name": "code_page_survives_an_escaped_backslash",
+      "_comment": "A \\PB\\ code page stays in force past a doubled backslash, so \\S\\! after it is ISO 8859-2 U+0104, not ISO 8859-1 U+00A1 (#11462).",
+      "raw": "Pset_\\PB\\A\\\\\\S\\!",
+      "value": "Pset_A\\\u0104"
+    },
+    {
       "name": "unknown_escape_still_passes_through",
       "raw": "a\\Qb",
       "value": "a\\Qb"

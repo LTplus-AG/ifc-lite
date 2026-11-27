@@ -4,15 +4,16 @@
 //!
 //! Each TypeScript reader is a regular expression over the raw record text,
 //! and each is ported as the match that expression makes, quirks included:
-//! a set name is the RAW text between the quotes (an escaped `''` or `\X2\`
-//! name does not match the decoded name an edit carries), and
+//! a set name is the DECODED text between the quotes (`''`, `\\` and the
+//! `\X2\`/`\X4\`/`\X\`/`\S\` directives resolved, #11462), the form an
+//! edit carries, and
 //! `getRelatedEntities`' pattern starts at the record's FIRST `(`, so the
 //! "related objects" it reports include the owner-history reference. The
 //! writer's parity target is what those readers answer, not what the record
 //! means.
 
 use ifc_lite_core::parser::is_step_space;
-use ifc_lite_core::step_encoding::step_string_literal_end;
+use ifc_lite_core::step_encoding::{decode_step_literal, step_string_literal_end};
 
 use crate::step_record_frame::{record_frame, record_head};
 
@@ -60,8 +61,10 @@ pub(crate) fn hash_ids(text: &str) -> Vec<u32> {
 }
 
 /// `/KEYWORD\s*\([^,]*,[^,]*,'/i` and then the literal opening there, read
-/// whole by the shared rule: the raw third argument of the first occurrence of
-/// `keyword` that completes.
+/// whole by the shared rule: the decoded third argument of the first occurrence
+/// of `keyword` that completes. Decoded, because the edit overlay names a set by
+/// its decoded text and a raw read never equals that for a name holding a quote,
+/// a backslash or a non-ASCII letter (#11462).
 fn quoted_third(text: &str, keyword: &str) -> Option<String> {
     let upper = text.to_ascii_uppercase();
     let b = text.as_bytes();
@@ -82,7 +85,7 @@ fn quoted_third(text: &str, keyword: &str) -> Option<String> {
         // The whole literal, by the shared rule: `''` and a `\S\'` operand
         // stay inside it rather than cutting the name short (#7589).
         let Some(end) = step_string_literal_end(b, c2 + 1) else { continue };
-        return Some(text[c2 + 2..end - 1].to_string());
+        return decode_step_literal(&b[c2 + 1..end]).map(|name| name.into_owned());
     }
     None
 }

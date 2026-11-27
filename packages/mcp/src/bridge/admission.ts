@@ -48,21 +48,22 @@ export class PairingAdmission {
 
   forget(): void { this.resume = null; }
 
-  private authenticate(hello: BridgeHelloMessage, slot: Slot): boolean {
+  private authenticate(hello: BridgeHelloMessage, slot: Slot): 'accepted' | 'invalid' | 'busy' {
     if (!hello.nonce) {
-      if (this.codes.consume(hello.pairingCode) !== 'ok') return false;
+      if (this.codes.consume(hello.pairingCode) !== 'ok') return 'invalid';
       this.forget();
-      return true;
+      return 'accepted';
     }
-    if (hello.resume && this.host.paired?.()) return false;
     const key = hello.resume ? this.resume?.key : normalizePairingCode(this.codes.current());
-    if (!key || (hello.resume && (slot.origin !== this.resume?.origin || hello.permission !== 'read-only'))) return false;
+    if (!key || (hello.resume && (slot.origin !== this.resume?.origin || hello.permission !== 'read-only'))) return 'invalid';
     const mac = (role: string) => createHmac('sha256', key).update('ifc-lite/' + role + '/' + hello.nonce).digest('hex');
-    if (!/^[a-f0-9]{64}$/.test(hello.pairingCode) || !timingSafeEqual(Buffer.from(mac('tab')), Buffer.from(hello.pairingCode))) return false;
+    if (!/^[a-f0-9]{64}$/.test(hello.pairingCode) || !timingSafeEqual(Buffer.from(mac('tab')), Buffer.from(hello.pairingCode))) return 'invalid';
+    // A reload may arrive before the previous socket's close. Only a valid ticket gets a retry.
+    if (hello.resume && this.host.paired?.()) return 'busy';
     this.codes.consume(this.codes.current());
     this.resume = { key: mac('next'), origin: slot.origin };
     slot.proof = mac('bridge');
-    return true;
+    return 'accepted';
   }
 
   readonly codes = new PairingCodes();
@@ -98,7 +99,7 @@ export class PairingAdmission {
         BridgeCloseCode.PROTOCOL_VERSION_MISMATCH,
       );
     }
-    if (!this.codes.live()) {
+    if (!hello.resume && !this.codes.live()) {
       // Nothing to guess while paired, so this neither waits nor feeds the gate.
       this.host.note('pairing attempts while paired', 'refused a pairing attempt: a tab is already paired and no code is live');
       return reject(
@@ -121,7 +122,7 @@ export class PairingAdmission {
   private compare(ws: WebSocket, slot: Slot, hello: BridgeHelloMessage): void {
     // Paired by another tab while this one waited out the backoff: no code is
     // compared, so neither the attempt count nor the gate moves.
-    if (ws.readyState === ws.OPEN && !this.codes.live()) {
+    if (ws.readyState === ws.OPEN && !hello.resume && !this.codes.live()) {
       this.host.release(slot);
       this.host.kill(ws, BridgeErrorCode.PAIRING_FAILED, 'No pairing code is live (a tab is already paired). Ask the agent to call bridge_status with pair_new_tab for a fresh link.', BridgeCloseCode.PAIRING_FAILED);
       return;
@@ -133,7 +134,12 @@ export class PairingAdmission {
       this.host.release(slot);
       return;
     }
-    if (!this.authenticate(hello, slot)) {
+    const outcome = this.authenticate(hello, slot);
+    if (outcome === 'busy') {
+      this.host.kill(ws, BridgeErrorCode.BUSY, 'The paired socket is still connected. Retry after it closes.', BridgeCloseCode.BUSY);
+      return;
+    }
+    if (outcome === 'invalid') {
       this.failed();
       this.host.note('wrong pairing codes', 'refused a wrong pairing code');
       this.host.kill(ws, BridgeErrorCode.PAIRING_FAILED, 'Pairing code not accepted. Use the latest link or code from bridge_status.', BridgeCloseCode.PAIRING_FAILED);

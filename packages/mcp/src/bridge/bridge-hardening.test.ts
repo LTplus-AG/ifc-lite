@@ -382,6 +382,15 @@ describe('verified viewer pairing (#9523)', () => {
       return initial;
     };
     const initial = await pair();
+    // Reload race (#11674): only the authenticated retry is transiently busy.
+    const liveSession = bridge.tab()?.sessionId;
+    expect(liveSession).toBeDefined();
+    const invalid = await hello(randomBytes(32).toString('hex'), true);
+    expect(await invalid.tab.next('error')).toMatchObject({ code: 'PAIRING_FAILED' });
+    const early = await hello(initial.next, true);
+    expect(await early.tab.next('error')).toMatchObject({ code: 'BUSY' });
+    expect(await early.tab.closed()).toBe(BridgeCloseCode.BUSY);
+    expect(bridge.tab()?.sessionId).toBe(liveSession);
     await leave(initial.tab, 'page hidden');
     const resumed = await hello(initial.next, true);
     expect(await resumed.tab.next('welcome')).toMatchObject({ proof: resumed.proof, permission: 'read-only' });

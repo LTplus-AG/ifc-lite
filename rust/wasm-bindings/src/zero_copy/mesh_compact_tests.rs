@@ -130,7 +130,7 @@ fn a_thin_rod_moves_to_a_finer_lattice() {
 fn a_plate_retains_its_thickness_when_its_sides_have_negligible_area() {
     let mut plate = flat_box(1, [0.0; 3], 0.6);
     for p in plate.positions.chunks_exact_mut(3) {
-        if p[2] > 0.0 { p[2] = 0.0001; }
+        p[2] *= 0.0001 / 0.6;
     }
     let mut collection = MeshCollection::new();
     collection.add(plate);

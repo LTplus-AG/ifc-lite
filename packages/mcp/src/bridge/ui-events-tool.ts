@@ -60,9 +60,18 @@ function shownPrompt(event: ReceivedUiEvent): string {
   return event.promptVerified ? event.prompt ?? '' : quoted(event.prompt ?? '');
 }
 
-/** Text for a channel message: `<`, `>` and `&` escaped, so even agent-written text that embeds model data cannot close the `<channel>` tag. */
-function forChannel(text: string): string {
+/** `<`, `>` and `&` as JSON-style escapes: for quoted tab data, which is never shown as prose. */
+function escapeMarkup(text: string): string {
   return text.replace(/[<>&]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`);
+}
+
+/**
+ * Channel message text with any `<channel` / `</channel` opener escaped, so
+ * even agent-written text that embeds model data cannot close or forge the
+ * client's `<channel>` tag. Other text stays as written ("Doors & windows").
+ */
+function forChannel(text: string): string {
+  return text.replace(/<(?=\s*\/?\s*channel\b)/gi, '\\u003c');
 }
 
 /**
@@ -70,7 +79,7 @@ function forChannel(text: string): string {
  * so it cannot close or forge the `<channel>` tag the client wraps around it.
  */
 function quoted(value: unknown): string {
-  return forChannel(JSON.stringify(value));
+  return escapeMarkup(JSON.stringify(value));
 }
 
 /**

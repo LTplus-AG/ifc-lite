@@ -10,6 +10,7 @@ export function finishStepConversion(
   countedRanges: readonly (readonly [start: number, end: number])[],
 ): number {
   const { entities, enums } = pass;
+  enums.forms.durations.finish(entities);
   const next = enums.typedProperties.finish(entities, pass.ifc4Slots, nextExpressId, enums.structural);
   const varyingStart = entities.length;
   pass.newEntityCount += enums.structural.finishEffectiveVarying(entities);

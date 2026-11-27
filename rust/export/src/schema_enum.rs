@@ -300,7 +300,7 @@ impl ConversionChecks {
                 .map(|(text, ids)| { varying_ids.replace(ids); text });
             let added = varying_ids.borrow().len() as isize;
             let source = varying.as_deref().unwrap_or(text);
-            match self.forms.finish_dates(source, &mut self.attribute_values_dropped, |ty| self.plans.forget_verbatim(ty)) {
+            match self.forms.finish_temporal_values(source, &mut self.attribute_values_dropped, |ty| self.plans.forget_verbatim(ty)) {
                 Some((body, delta)) => Some((body, added + delta)),
                 None => varying.map(|body| (body, added)),
             }
@@ -319,19 +319,13 @@ impl ConversionChecks {
         self.typed_properties.finish(text, ids, &mut self.ifc4_slots, &mut self.attribute_values_dropped, &mut self.structural)
     }
 
-    pub(crate) fn finish_dates(&mut self, text: &mut String) -> isize {
-        if let Some((rewritten, delta)) = self.forms.finish_dates(text, &mut self.attribute_values_dropped, |ty| self.plans.forget_verbatim(ty)) {
+    pub(crate) fn finish_temporal_values(&mut self, text: &mut String) -> isize {
+        if let Some((rewritten, delta)) = self.forms.finish_temporal_values(text, &mut self.attribute_values_dropped, |ty| self.plans.forget_verbatim(ty)) {
             *text = rewritten;
             delta
         } else {
             0
         }
-    }
-
-    pub(crate) fn warnings_for_sources<'a>(&self, sources: impl Iterator<Item = &'a [u8]>) -> Vec<String> {
-        let mut warnings = self.warnings();
-        warnings.extend(self.forms.duration_warning(sources));
-        warnings
     }
 
     /// Both checks' warnings, IFC4 slots first.

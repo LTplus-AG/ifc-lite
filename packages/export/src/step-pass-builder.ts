@@ -33,6 +33,7 @@ import { Ifc2x3SlotFill } from './schema-converter-ifc2x3-slots.js';
 import { Ifc4SlotCheck } from './schema-converter-ifc4-slots.js';
 import { EnumReconciliation } from './schema-converter-enums.js';
 import { documentLinksApply } from './schema-converter-document-links.js';
+import { editedTimeScale } from './schema-project-time-unit.js';
 import { SourceRecords } from './schema-converter-structural-source.js';
 import { downgradesMaterial } from './schema-converter-material-referent.js';
 import { effectiveCreatedRecord } from './effective-source-record.js';
@@ -331,10 +332,11 @@ export function buildExportPass(input: PassBuildInput): ExportPass {
     georeferencingWarnings: [],
     slotFill: new Ifc2x3SlotFill(),
     ifc4Slots: new Ifc4SlotCheck(),
-    enums: new EnumReconciliation(true, [dataStore]),
+    enums: new EnumReconciliation(true),
     withheldRefIds: computeWithheldRefIds(dataStore, schema, effective),
     styleFlatten: StyleFlatten.fromStore(dataStore, sourceSchema, schema),
   };
+  pass.enums.forms.durations.upgradeScale = () => editedTimeScale(dataStore, pass.overlayActive ? mutationView : null, effective);
   // Structural and document-link prepasses read source types and references, so only an unedited full export arms them.
   // The schema pair is tested first (the document pairs include the structural ones): no other export reads the options here.
   if (documentLinksApply(sourceSchema, schema) && (!mutationView || !applyMutations) && !options.visibleOnly && !options.deltaOnly

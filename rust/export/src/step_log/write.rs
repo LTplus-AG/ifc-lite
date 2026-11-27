@@ -298,10 +298,10 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
     let mut checks = checks_for(content, &source_label, &target, opts, log, &src, &mut pass); // #10763: its material records too
     checks.typed_properties.enabled = typed_properties;
     let defer_varying = body_has(&pass, content, |bytes| checks.structural.buffers_varying(bytes));
-    let date_buffer = body_has(&pass, content, |bytes| {
-        crate::schema_value_forms::ValueForms::buffer_for_dates(bytes, &source_label, &target)
+    let temporal_buffer = body_has(&pass, content, |bytes| {
+        crate::schema_value_forms::ValueForms::buffers_temporal_values(bytes, &source_label, &target)
     });
-    if target_is_ifc2x3 || date_buffer { checks.forms.enable_dates(); }
+    if target_is_ifc2x3 || temporal_buffer { checks.forms.defer_temporal_values(); }
     let may_prune_upgrade = crate::schema_unrooted_upgrade::Upgrade::between(&source_label, &target).filter(|upgrade|
         !pass.overlay.retype_order.is_empty() || !pass.created_lines.is_empty()
             || upgrade.seeds(content).next().is_some());
@@ -309,7 +309,7 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
     let delay_header = defer_varying || may_prune_upgrade.is_some();
     let header = |mut out: &mut dyn Write, created| write_header(&mut out, opts, content, converting, &target, pass.ledger.modified_count() + created);
     if !delay_header { header(out, new_entities)?; }
-    let mut body = crate::schema_ifc2x3_placements::Body::for_conversion(&mut *out, target_is_ifc2x3, defer_varying || date_buffer || typed_properties, may_prune_upgrade);
+    let mut body = crate::schema_ifc2x3_placements::Body::for_conversion(&mut *out, target_is_ifc2x3, defer_varying || temporal_buffer || typed_properties, may_prune_upgrade);
     let mut flatten = crate::schema_style_flatten::StyleFlatten::for_export(content, &source_label, &target); flatten.note_all(content, pass.mutated_lines.iter().filter_map(|(id, (t, _))| Some((*id, t.as_deref()?)))
         .chain(pass.generated.iter().chain(&pass.rewritten_lines).chain(&pass.georef_lines).chain(&pass.created_lines).map(|(id, l)| (*id, l.as_str()))));
     flatten.retain_grids(|id| !pass.skip.contains(&id) && !pass.is_deleted(id));
@@ -376,7 +376,7 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
 
     let mut warnings = std::mem::take(&mut pass.warnings);
     warnings.extend(slot_fill.warnings());
-    warnings.extend(checks.warnings_for_sources(std::iter::once(content)));
+    warnings.extend(checks.warnings());
     let refused = warnings.iter().filter(|w| w.contains("is not a number and the slot is REAL-typed")).count();
     Ok(LogExportStats {
         written,

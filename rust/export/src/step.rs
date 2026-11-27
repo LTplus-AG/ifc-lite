@@ -248,9 +248,9 @@ fn emit<W: std::io::Write>(
     crate::step_header::write_header(out, opts, source_header.as_ref(), header_schema)?;
     // IFC2X3 places one product per placement (#9209): its records are held to adapt them.
     use std::io::Write as _;
-    let date_buffer = crate::schema_value_forms::ValueForms::buffer_for_dates(content, &source_schema, &schema);
-    let mut body = crate::schema_ifc2x3_placements::Body::for_conversion(&mut *out, targets_ifc2x3, date_buffer || checks.structural.buffers_varying(content) || checks.typed_properties.enabled, upgrading.filter(|_| may_prune_upgrade));
-    if targets_ifc2x3 || date_buffer { checks.forms.enable_dates(); }
+    let temporal_buffer = crate::schema_value_forms::ValueForms::buffers_temporal_values(content, &source_schema, &schema);
+    let mut body = crate::schema_ifc2x3_placements::Body::for_conversion(&mut *out, targets_ifc2x3, temporal_buffer || checks.structural.buffers_varying(content) || checks.typed_properties.enabled, upgrading.filter(|_| may_prune_upgrade));
+    if targets_ifc2x3 || temporal_buffer { checks.forms.defer_temporal_values(); }
 
     let mut written = 0usize;
     for id in order {
@@ -355,6 +355,9 @@ fn emit<W: std::io::Write>(
         written += 2;
     }
 
+    if opts.included.is_some() {
+        checks.forms.durations.finish_model(|| crate::schema_project_time_unit::subset_source_scale(content, &index, &muts_by_id, &repointed, &copies));
+    }
     written = written.checked_add_signed(checks.finish(body, targets_ifc2x3.then_some(&mut slot_fill), ids)?).unwrap_or(written);
     out.write_all(b"ENDSEC;\nEND-ISO-10303-21;\n")?;
 
@@ -372,7 +375,7 @@ fn emit<W: std::io::Write>(
         attribute_values_dropped: checks.attribute_values_dropped,
         property_mutations_refused,
         duplicate_records_dropped: index.duplicates.len(),
-    }, checks.warnings_for_sources(std::iter::once(content))))
+    }, checks.warnings()))
 }
 
 #[cfg(test)]

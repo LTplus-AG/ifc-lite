@@ -573,3 +573,31 @@ fn issue_8045_horizontal_2d_policy_is_not_a_malformed_leaf() {
         }
     }
 }
+
+/// A final circular vertical segment of radius 10 m from a level start,
+/// 5π m of arc: a quarter circle that ends vertical at horizontal station 10.
+/// Its tangent there is the unit vertical, not inf / inf (PR #9969 review).
+#[test]
+fn a_circular_profile_ending_vertical_has_a_unit_vertical_tangent() {
+    let source = "#1=IFCCARTESIANPOINT((0.,0.));\n\
+        #2=IFCDIRECTION((1.,0.));\n\
+        #3=IFCVECTOR(#2,1.);\n\
+        #4=IFCLINE(#1,#3);\n\
+        #5=IFCAXIS2PLACEMENT2D(#1,#2);\n\
+        #6=IFCCURVESEGMENT(.CONTINUOUS.,#5,IFCLENGTHMEASURE(0.),IFCLENGTHMEASURE(10.),#4);\n\
+        #7=IFCCOMPOSITECURVE((#6),.F.);\n\
+        #8=IFCCARTESIANPOINT((0.,100.));\n\
+        #10=IFCAXIS2PLACEMENT2D(#8,#2);\n\
+        #11=IFCCIRCLE(#5,10.);\n\
+        #12=IFCCURVESEGMENT(.CONTINUOUS.,#10,IFCLENGTHMEASURE(0.),IFCLENGTHMEASURE(15.707963267948966),#11);\n\
+        #13=IFCGRADIENTCURVE((#12),.F.,#7,$);";
+    let mut decoder = EntityDecoder::new(source);
+    let curve = decoder.decode_by_id(13).unwrap();
+    let alignment = AlignmentCurve::parse(&curve, &mut decoder).unwrap().unwrap();
+    let end = alignment.evaluate(10.0);
+    assert!((end.origin.z - 110.0).abs() < 1e-9, "{:?}", end.origin);
+    assert!((end.tangent - Vector3::new(0.0, 0.0, 1.0)).norm() < 1e-9, "{:?}", end.tangent);
+    // Short of the end the tangent is the circle's: 45 degrees at 10 sin 45.
+    let mid = alignment.evaluate(10.0 * std::f64::consts::FRAC_1_SQRT_2).tangent;
+    assert!((mid - Vector3::new(1.0, 0.0, 1.0).normalize()).norm() < 1e-9, "{mid:?}");
+}

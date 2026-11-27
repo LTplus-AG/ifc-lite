@@ -17,6 +17,7 @@ import { applyDeletionBindings, deletionBindingRefusals, planDeletionBindings, t
 import { effectiveReferencers } from '@ifc-lite/export';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
+import type { AuthoringGuidOptions } from '../anchor.js';
 import { refId } from '../host-geometry-frame.js';
 import { planStoreyReassignment } from '../storey-reassignment-plan.js';
 import { reassignElementsToStoreyInStore } from '../storey-reassignment.js';
@@ -166,6 +167,7 @@ export function storeyDeletePlanSignature(plan: StoreyDeletePlan): string {
  */
 export function applyStoreyDelete(
   store: IfcDataStore, editor: StoreEditor, storeyId: number, mode: StoreyDeleteMode, expected?: StoreyDeletePlan,
+  options: AuthoringGuidOptions = {},
 ): StoreyDeletePlan {
   return editor.runAtomic((draft) => {
     const plan = planStoreyDelete(readStoreyInventory(store, draft.getMutationView()), storeyId, mode);
@@ -179,7 +181,7 @@ export function applyStoreyDelete(
       const sources = spatialRelationships(before, storeyId);
       const existing = new Set(before.relationships.map((rel) => rel.id));
       for (let start = 0; start < plan.roots.length; start += REASSIGN_BATCH) {
-        reassignElementsToStoreyInStore(store, draft, plan.roots.slice(start, start + REASSIGN_BATCH), storeyId, mode.targetStoreyId);
+        reassignElementsToStoreyInStore(store, draft, plan.roots.slice(start, start + REASSIGN_BATCH), storeyId, mode.targetStoreyId, undefined, options);
       }
       rejoinSplitRelationships(store, draft, sources, existing, mode.targetStoreyId);
     }

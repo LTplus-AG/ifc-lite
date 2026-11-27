@@ -157,7 +157,7 @@ export async function adoptCachedSceneSnapshot(
   const typeToken = {};
   if (!(await installSnapshotTypeIndex(typeToken, host.typeIndex)) || isStale?.() || !instancedShardSupplyCurrent(modelId, supply)) return failClosed(typeToken);
   // Synchronous from here to the shard upload, which targets index 0.
-  if (!adoptsAtModelIndexZero(modelId)) return failClosed(typeToken);
+  if (!canAdoptSingleModelSnapshot(modelId)) return failClosed(typeToken);
   const adoption = trace.span('scene.snapshotAdopt', () => scene.adoptSceneSnapshot(snapshot, device, pipeline), { batches: snapshot.batches.length });
   if (!adoption) return failClosed(typeToken);
   trace.milestone('scene.snapshotAdopted');
@@ -177,10 +177,10 @@ export async function adoptCachedSceneSnapshot(
  * cleared store before the cache lookup, so it holds index 0 (never reassigned). An unregistered
  * model adopts only into an empty scene, where it registers at 0. Anything else streams instead.
  */
-function adoptsAtModelIndexZero(modelId: string): boolean {
+function canAdoptSingleModelSnapshot(modelId: string): boolean {
   const models = useViewerStore.getState().models;
   const index = modelIndices(models).get(modelId);
-  return index === undefined ? models.size === 0 : index === 0;
+  return models.size === 0 || (models.size === 1 && index === 0);
 }
 
 function failClosed(typeToken: object): null {

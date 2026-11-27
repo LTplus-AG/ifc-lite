@@ -153,9 +153,9 @@ describe('scene snapshot type index (#10264)', () => {
   });
 
   for (const [models, adopts] of [
-    [[], true], [['m1'], true], [['other'], false], [['other', 'm1'], false],
+    [[], true], [['m1'], true], [['other'], false], [['other', 'm1'], false], [['m1', 'other'], false],
   ] as const) {
-    it(`adopts only at renderer model index 0 (#11529 blocker): registered [${models.join(', ')}] ${adopts ? 'adopts' : 'streams'}`, async () => {
+    it(`adopts only into an empty scene or for its sole model at index 0 (#11710): registered [${models.join(', ')}] ${adopts ? 'adopts' : 'streams'}`, async () => {
       const snapshot = await capturedEntry(`index-${models.join('-')}`);
       render(<Viewport />);
       useViewerStore.setState({ models: new Map(models.map((id) => [id, { id }])) } as never);
@@ -166,7 +166,7 @@ describe('scene snapshot type index (#10264)', () => {
           assert.ok(adopted, 'its shards land at index 0, where the model is');
           act(() => abandonAdoptedSceneSnapshot(adopted));
         } else {
-          assert.equal(adopted, null, 'its shards would land at index 0, not at the model\'s own slot');
+          assert.equal(adopted, null, 'a whole-scene snapshot cannot replace another model');
           assert.equal(scene.isSceneSnapshotHydrating(), false, 'nothing was adopted');
           assert.equal(paints, 0, 'and nothing was painted');
           assert.deepEqual(viewportHidden, [], 'the stored index was withdrawn');

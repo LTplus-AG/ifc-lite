@@ -68,9 +68,11 @@ export function settlePages(
   /** An edit-time build, for meshes that left their pages: only the pages holding their groups are built again
    *  ('all': every page), and no group moves to its bucket (an edit of one element does not decode its group). */
   retired?: ReadonlySet<MeshData> | 'all',
+  /** A stream end that grew no page: only groups whose bucket the stream wrote f32 meshes into move; their moves rebuild their pages. */
+  judgeOnly = false,
 ): PageLodBuild | null {
   const t0 = performance.now();
-  const groups = collectGroups(store, host, deps, !retired);
+  const groups = collectGroups(store, host, deps, judgeOnly ? 'streamed' : !retired);
   const keys = retired && retired !== 'all' ? new Set([...retired].map((mesh) => bucketKeyOf(host, mesh, true))) : undefined;
   // A retired mesh no build saw (no cached key): every page is built again.
   const only = keys && !keys.has(undefined) ? keys : undefined;
@@ -80,7 +82,7 @@ export function settlePages(
     if (meshes.length > 0) toBuckets(meshes, reason);
   }
   store.stats.settleMs += performance.now() - t0;
-  if (!host.lodBuildsEnabled) return null;
+  if (judgeOnly || !host.lodBuildsEnabled) return null;
   const written: MeshData[] = [];
   return new PageLodBuild(store, buildPageLods(store, groups, device, deps, written, only && affectedPages(store, host, only)), written);
 }

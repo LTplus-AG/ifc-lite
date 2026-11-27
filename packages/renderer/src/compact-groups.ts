@@ -52,8 +52,12 @@ export function bucketKeyOf(host: SceneCompactHost, mesh: MeshData, cachedOnly =
   return key;
 }
 
-/** Every page's meshes, grouped by the bucket the bucket path would file them in, in page order. */
-export function collectGroups(store: CompactGeometryStore, host: SceneCompactHost, deps: CompactPageDeps, judge = true): Map<string, Group> {
+/**
+ * Every page's meshes, grouped by the bucket the bucket path would file them in, in page order. `judge`: true at a stream end that grew pages (every group judged afresh); 'streamed' at one that grew none (only groups whose
+ * bucket this stream wrote f32 meshes into move, as 'shared': earlier verdicts stand, and a bucket an edit wrote decodes nothing);
+ * false for an edit-time build (the stream's verdicts).
+ */
+export function collectGroups(store: CompactGeometryStore, host: SceneCompactHost, deps: CompactPageDeps, judge: boolean | 'streamed' = true): Map<string, Group> {
   const groups = new Map<string, Group>();
   for (const page of store.pageList()) {
     for (const mesh of page.meshes) {
@@ -78,20 +82,22 @@ export function collectGroups(store: CompactGeometryStore, host: SceneCompactHos
   }
   // An edit-time build judges no group again (none moves to its bucket); a group judged at the stream end keeps that verdict
   // for the meshes the bucket path refused, so they get no LOD1 either.
-  let verdicts = streamVerdicts.get(host);
   if (!judge) {
+    const verdicts = streamVerdicts.get(host);
     for (const [key, group] of groups) group.move = verdicts?.get(key) ?? null;
     return groups;
   }
-  streamVerdicts.set(host, (verdicts = new Map()));
+  const verdicts = new Map<string, 'exact' | 'shared'>();
+  if (judge === true) streamVerdicts.set(host, verdicts); // 'streamed' leaves the stream's verdicts as they are
   const { quantStep, maxQuantExtent, maxCollapsedFraction } = deps.bucket;
   // Buckets that hold meshes of their own (f32 meshes no page draws), or will once the queue is flushed: their batch is
   // the union, so the group joins it. (A queued f32 mesh is keyed as the bucket path keys it: at its own first vertex.)
   const shared = new Set<string>();
-  for (const [key, bucket] of host.buckets) if (bucket.meshData.length > 0) shared.add(key.replace(/#\d+$/, ''));
+  for (const [key, bucket] of host.buckets) if (bucket.meshData.length > 0 && (judge === true || host.streamedBucketKeys.has(key))) shared.add(key.replace(/#\d+$/, ''));
   for (const mesh of host.meshQueue) if (!mesh.compact) shared.add(host.compactBucketKey(mesh, mesh));
   for (const [key, group] of groups) {
     if (shared.has(key)) { group.move = 'shared'; continue; }
+    if (judge === 'streamed') continue;
     // quantize.ts: the batch's lower corner floors to the lattice; past `maxQuantExtent` above it the batch stays f32.
     const { min, max } = group.bounds;
     for (let axis = 0; axis < 3; axis++) if (max[axis] - Math.floor(min[axis] / quantStep) * quantStep > maxQuantExtent) group.move = 'exact';

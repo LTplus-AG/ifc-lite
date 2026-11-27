@@ -945,6 +945,71 @@ describe('compact pages take the decisions of the bucket batches they stand in f
     assert.equal(on.getCompactStats()?.decodes.shared, 1);
   });
 
+  it('move a finalized group to its bucket when a later stream brings f32 meshes of that bucket (#11606)', async () => {
+    const on = await lodScene(true), gpu = fakeGpu();
+    upload(on, gpu, compactBatch([{ expressId: 1, at: [2, 0, 0], size: 1, color: GREY }, { expressId: 3, at: [2, 0, 0], size: 1, color: RED }]));
+    settle(on, gpu);
+    assert.deepEqual(entitiesOf(pages(on)), [1, 3], 'both groups paged after the first stream');
+    const flat: MeshData = {
+      expressId: 9, modelIndex: 0, color: GREY,
+      positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]), normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]), indices: new Uint32Array([0, 1, 2]),
+    };
+    upload(on, gpu, [flat]); // a second stream: no page grows
+    settle(on, gpu);
+    assert.deepEqual(entitiesOf(pages(on)), [3], 'the grey group joins the bucket its new f32 mesh opened');
+    assert.deepEqual(entitiesOf(buckets(on)), [1, 9]);
+    assert.equal(buckets(on).length, 1, 'one bucket batch, as the f32 load builds it');
+    assert.equal(on.getCompactStats()?.decodes.shared, 1);
+  });
+
+  it('leave a group paged at a later stream end when only an edit wrote its bucket (#11606)', async () => {
+    const on = await lodScene(true), gpu = fakeGpu();
+    upload(on, gpu, compactBatch([{ expressId: 1, at: [2, 0, 0], size: 1, color: GREY }, { expressId: 2, at: [4, 0, 0], size: 1, color: GREY }, { expressId: 3, at: [2, 0, 0], size: 1, color: RED }]));
+    settle(on, gpu);
+    assert.equal(on.translateMeshesForEntity(1, [0.25, 0, 0]), true); // an edit: entity 1 leaves its page for the bucket
+    flushAll(on, gpu);
+    assert.deepEqual(entitiesOf(pages(on)), [2, 3], 'the edit decodes no other mesh of its group');
+    const flat: MeshData = {
+      expressId: 9, modelIndex: 0, color: RED,
+      positions: new Float32Array([200, 0, 0, 201, 0, 0, 200, 1, 0]), normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]), indices: new Uint32Array([0, 1, 2]),
+    };
+    upload(on, gpu, [flat]); // a later stream, into another bucket
+    settle(on, gpu);
+    assert.deepEqual(entitiesOf(pages(on)), [2, 3], 'its end decodes no group whose bucket it did not write');
+    assert.equal(on.getCompactStats()?.decodes.shared ?? 0, 0);
+  });
+
+  it('leave a group paged at the end of a stream an edit of it ran during (#11606)', async () => {
+    const on = await lodScene(true), gpu = fakeGpu();
+    upload(on, gpu, compactBatch([{ expressId: 1, at: [2, 0, 0], size: 1, color: GREY }, { expressId: 2, at: [4, 0, 0], size: 1, color: GREY }, { expressId: 3, at: [2, 0, 0], size: 1, color: RED }]));
+    settle(on, gpu);
+    const flat: MeshData = {
+      expressId: 9, modelIndex: 0, color: RED,
+      positions: new Float32Array([200, 0, 0, 201, 0, 0, 200, 1, 0]), normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]), indices: new Uint32Array([0, 1, 2]),
+    };
+    upload(on, gpu, [flat]); // a later stream, into another bucket
+    assert.equal(on.translateMeshesForEntity(1, [0.25, 0, 0]), true); // an edit while it streams: entity 1 joins it as a fragment
+    settle(on, gpu);
+    assert.deepEqual(entitiesOf(pages(on)), [2, 3], 'its end decodes no other mesh of the edited group');
+  });
+
+  it('leave the edited group paged when that stream\'s finalize rolls back and runs again (#11606)', async () => {
+    const on = await lodScene(true), gpu = fakeGpu();
+    upload(on, gpu, compactBatch([{ expressId: 1, at: [2, 0, 0], size: 1, color: GREY }, { expressId: 2, at: [4, 0, 0], size: 1, color: GREY }, { expressId: 3, at: [2, 0, 0], size: 1, color: RED }]));
+    settle(on, gpu);
+    const flat: MeshData = {
+      expressId: 9, modelIndex: 0, color: RED,
+      positions: new Float32Array([200, 0, 0, 201, 0, 0, 200, 1, 0]), normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]), indices: new Uint32Array([0, 1, 2]),
+    };
+    upload(on, gpu, [flat]);
+    assert.equal(on.translateMeshesForEntity(1, [0.25, 0, 0]), true);
+    const rebuild = on['rebuildAndPublishBatches'];
+    on['rebuildAndPublishBatches'] = () => { on['rebuildAndPublishBatches'] = rebuild; throw new Error('the rebuild failed'); };
+    assert.throws(() => on.finalizeStreaming(gpu.device, gpu.pipeline), /the rebuild failed/);
+    settle(on, gpu); // the retry: the rollback put the edit's bucket key back
+    assert.deepEqual(entitiesOf(pages(on)), [2, 3], 'the retry decodes no other mesh of the edited group');
+  });
+
   it('keep a bucket paged whose mesh only outgrew its window (level 9)', async () => {
     const on = await lodScene(true), gpu = fakeGpu();
     const meshes = compactBatch([{ expressId: 1, at: [0, 0, 0], size: 1, color: GREY }, { expressId: 2, at: [3, 0, 0], size: 1, color: GREY }]);

@@ -4,7 +4,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { version } from '@playcanvas/splat-transform';
-import * as assets from '../contract/native-adapter-demo-assets.mjs';
+import { tsImport } from 'tsx/esm/api';
+
+const assets = await tsImport('../contract/native-adapter-demo-assets.mjs', import.meta.url);
 
 test('demo status names the loaded capture decoder and reader (#11686)', () => {
   assert.equal(

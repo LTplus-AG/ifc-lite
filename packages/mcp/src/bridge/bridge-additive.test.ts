@@ -11,7 +11,7 @@
 
 import { createServer, type AddressInfo, type Server } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
-import { fullScope } from '../auth/scope.js';
+import { fullScope, readOnlyScope } from '../auth/scope.js';
 import { SERVER_INSTRUCTIONS } from '../server-instructions.js';
 import { InMemoryModelRegistry } from '../context.js';
 import type { CallToolResult, JsonRpcMessage, ToolDefinition } from '../protocol/index.js';
@@ -197,8 +197,8 @@ describe('one server: headless and tab', () => {
 });
 
 describe('--read-only with headless parts', () => {
-  it('refuses a mutating tab tool with READ_ONLY, as the CLI wires it (full scope plus config.readOnly)', async () => {
-    const agent = await start({ readOnly: true });
+  it('refuses a mutating tab tool with READ_ONLY, using the CLI read-only scope (#11660)', async () => {
+    const agent = await start({ readOnly: true, headless: { ...headless(), scope: readOnlyScope() } });
     const { tab } = await pairTab({ port: agent.r.bridge.port, code: agent.r.bridge.pairingCode(), permission: 'read-write', tools: [MUTATING_TOOL] });
     tabs.push(tab);
     expect(await agent.tools()).not.toContain(tabTool(MUTATING_TOOL.name));

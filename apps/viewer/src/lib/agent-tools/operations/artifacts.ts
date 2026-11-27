@@ -3,14 +3,15 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { ToolErrorCode, ToolExecutionError } from '@ifc-lite/mcp/browser';
-import { buildExportFilename, sanitizeFilename, downloadBlob } from '@/lib/export/download';
+import { buildExportFilename, downloadBlob, isCsvMime, prependUtf8Bom, sanitizeFilename } from '@/lib/export/download';
 import type { ToolHost } from '../types';
 import { invalidInput, unavailable } from './refusals';
 
 export interface ArtifactMetadata { artifact_id: string; filename: string; mime_type: string; bytes: number }
 export interface ArtifactInput { filename: string; mimeType: string; data: string | Uint8Array | Blob }
 export interface OperationArtifacts { create(input: ArtifactInput): Promise<ArtifactMetadata> }
-interface Artifact { metadata: ArtifactMetadata; blob: Blob }
+/** Metadata and reads describe the stored bytes. A CSV save may add the three-byte BOM (#11452). */
+interface Artifact { metadata: ArtifactMetadata; blob: Blob; needsCsvBom: boolean }
 const owned = new WeakMap<ToolHost, Map<string, Artifact>>();
 const MAX_BYTES = 128 * 1024 * 1024;
 const MAX_ARTIFACTS = 32;
@@ -35,12 +36,23 @@ export function operationArtifacts(host: ToolHost, commit: <T>(write: () => T) =
     const blob = input.data instanceof Blob ? input.data : new Blob([
       typeof input.data === 'string' ? input.data : new Uint8Array(input.data),
     ], { type: input.mimeType });
-    const entries = artifacts(host);
-    const total = [...entries.values()].reduce((sum, entry) => sum + entry.blob.size, 0);
-    if (entries.size >= MAX_ARTIFACTS || total + blob.size > MAX_BYTES) throw unavailable('Host artifact quota reached. Download or delete artifacts before creating more.');
+    // The agent reads artifact bytes verbatim, so the BOM Excel needs is added
+    // only to the downloaded copy; record here whether it is missing.
+    const needsCsvBom = isCsvMime(input.mimeType) && !(await hasUtf8Bom(blob));
     const metadata: ArtifactMetadata = { artifact_id: crypto.randomUUID(), filename: artifactFilename(input.filename), mime_type: input.mimeType, bytes: blob.size };
-    return commit(() => { entries.set(metadata.artifact_id, { metadata, blob }); return { ...metadata }; });
+    return commit(() => {
+      live(host);
+      const entries = artifacts(host);
+      const total = [...entries.values()].reduce((sum, entry) => sum + entry.blob.size, 0);
+      if (entries.size >= MAX_ARTIFACTS || total + blob.size > MAX_BYTES) throw unavailable('Host artifact quota reached. Download or delete artifacts before creating more.');
+      entries.set(metadata.artifact_id, { metadata, blob, needsCsvBom });
+      return { ...metadata };
+    });
   } };
+}
+async function hasUtf8Bom(blob: Blob): Promise<boolean> {
+  const head = new Uint8Array(await blob.slice(0, 3).arrayBuffer());
+  return head[0] === 0xef && head[1] === 0xbb && head[2] === 0xbf;
 }
 function get(host: ToolHost, id: string): Artifact {
   live(host);
@@ -73,6 +85,7 @@ export function removeArtifact(host: ToolHost, id: string) { get(host, id); arti
 export function downloadArtifact(host: ToolHost, id: string) {
   const entry = get(host, id);
   if (typeof document === 'undefined' || typeof URL.createObjectURL !== 'function') throw unavailable('A mounted browser download host is required.');
-  downloadBlob(entry.blob, entry.metadata.filename);
+  const blob = entry.needsCsvBom ? prependUtf8Bom(entry.blob, entry.blob.type || entry.metadata.mime_type) : entry.blob;
+  downloadBlob(blob, entry.metadata.filename);
   return { artifact_id: id, status: 'dispatched' as const };
 }

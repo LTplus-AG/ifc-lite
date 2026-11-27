@@ -275,7 +275,7 @@ export class RaycastEngine {
 
             magneticResult = withScreenCorner(this.screenCorners,
                 { camera: this.camera, viewKey: () => [this.readbackViewKey(), this.scene.getPickGeometryRevision?.(), this.scene.getInstancedEntityRevision?.()].join('|'),
-                  snapOccurrences: this.scene.snapOccurrences?.bind(this.scene), pieces: this.flatIndex.allPieces(), snapDetector: this.snapDetector },
+                  snapOccurrences: this.scene.snapOccurrences?.bind(this.scene), getPieces: () => this.flatIndex.allPieces(), snapDetector: this.snapDetector },
                 magneticResult, x, y, ray, viewport, options, clip, intersection?.distance ?? null);
 
             const source = querySourceCurves(this.sourceSnapCurves, magneticResult.snapTarget,

@@ -26,7 +26,11 @@ export interface GpuAdapterReport {
 }
 
 function isSoftwareAdapter(adapter: GpuAdapterReport | null): boolean {
-  return !adapter || adapter.fallback || !isHardwareAdapter({ ...adapter, vendor: adapter.vendor.trim() || adapter.description.trim() || adapter.device.trim() }) ||
+  if (!adapter || adapter.fallback) return true;
+  const identity = [adapter.vendor, adapter.description, adapter.architecture, adapter.device]
+    .map(value => value.trim())
+    .find(value => value && !/^(?:0x)?0+$/i.test(value));
+  return !identity || !isHardwareAdapter({ ...adapter, vendor: identity }) ||
     /lavapipe|microsoft basic render/i.test(JSON.stringify(adapter));
 }
 

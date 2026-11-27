@@ -34,6 +34,9 @@ test('#11345 CDP worker refuses software adapters and admits hardware', async (t
     [{ vendor: 'Mesa', architecture: 'lavapipe', isFallbackAdapter: false }, true],
     [{ vendor: 'Microsoft', description: 'Microsoft Basic Render Driver', isFallbackAdapter: false }, true],
     [{ vendor: 'NVIDIA', isFallbackAdapter: true }, true],
+    [{ vendor: '', architecture: 'ampere' }, false],
+    [{ vendor: '', device: '0x0000' }, true],
+    [{ vendor: '', architecture: 'llvmpipe', device: '0x0000' }, true],
     [{ vendor: '', description: 'NVIDIA GeForce RTX 4090' }, false],
     [{ vendor: 'NVIDIA', architecture: 'ampere', isFallbackAdapter: false }, false],
   ]) {

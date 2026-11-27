@@ -11,7 +11,7 @@ import { listItems } from './schema-converter-structural-axes.js';
 import { slotRef } from './schema-converter-structural-source.js';
 
 /** Resolve unit ownership in source id space, independent of STEP record order. */
-export function inheritedUnitLookup(model: IfcDataStore) {
+export function inheritedUnitLookup(model: IfcDataStore, included?: ReadonlySet<number>) {
   const index = getCompleteEntityIndex(model);
   const cache = new Map<number, boolean>();
   function selectionHasExplicitUnit(type: string, selection: string) {
@@ -34,9 +34,10 @@ export function inheritedUnitLookup(model: IfcDataStore) {
     if (type !== 'IFCTIMESERIESVALUE' && type !== 'IFCIRREGULARTIMESERIESVALUE') return undefined;
     if (samples) return samples.get(id);
     samples = new Map();
-    for (const [, owner] of index) {
+    for (const [ownerId, owner] of index) {
       const name = owner.type.toUpperCase();
       if (name !== 'IFCREGULARTIMESERIES' && name !== 'IFCIRREGULARTIMESERIES') continue;
+      if (included && !included.has(ownerId)) continue;
       const text = model.source?.decodeUtf8(owner.byteOffset, owner.byteOffset + owner.byteLength);
       const slots = text && readStepSlots(text)?.slots;
       if (!slots) continue;

@@ -523,7 +523,7 @@ export class MergedExporter {
       const completeIndex = getCompleteEntityIndex(model.dataStore);
       const visibility = this.computeIncludedEntityIds(model, options, completeIndex, source);
 
-      const mode = this.resolveModelMode(model, isFirstModel, setup);
+      const mode = this.resolveModelMode(model, isFirstModel, setup, visibility?.included);
       if (!isFirstModel && !mode.compatible) federatedModelCount++;
       if (mode.normalized) { normalizedModelCount++; this.collectNormalizeCaveats(model, normalizeWarnings, mode.georef); }
       const plan = this.planModel(model, completeIndex, isFirstModel, mode.compatible, mode.lengthFactor, setup, guidToFinalId, schema);
@@ -669,7 +669,7 @@ export class MergedExporter {
       const completeIndex = getCompleteEntityIndex(model.dataStore);
       const visibility = this.computeIncludedEntityIds(model, options, completeIndex, source);
 
-      const mode = this.resolveModelMode(model, isFirstModel, setup);
+      const mode = this.resolveModelMode(model, isFirstModel, setup, visibility?.included);
       if (!isFirstModel && !mode.compatible) federatedModelCount++;
       if (mode.normalized) { normalizedModelCount++; this.collectNormalizeCaveats(model, normalizeWarnings, mode.georef); }
       const plan = this.planModel(model, completeIndex, isFirstModel, mode.compatible, mode.lengthFactor, setup, guidToFinalId, schema);
@@ -890,7 +890,7 @@ export class MergedExporter {
    *
    * Dimensional rescaling runs when the project length units differ.
    */
-  private resolveModelMode(model: MergeModelInput, isFirstModel: boolean, setup: MergeSetup): ModelMode {
+  private resolveModelMode(model: MergeModelInput, isFirstModel: boolean, setup: MergeSetup, included?: ReadonlySet<number>): ModelMode {
     const modelScale = this.resolveUnitScale(model);
     if (isFirstModel || setup.assumeShared || unitScalesEqual(modelScale, setup.primaryScale)) {
       return { compatible: true, lengthFactor: 1, areaFactor: 1, volumeFactor: 1, effectiveScale: modelScale, normalized: false };
@@ -906,7 +906,7 @@ export class MergedExporter {
         lengthFactor: computeNormalizeFactor(modelScale, setup.primaryScale),
         areaFactor: computeNormalizeFactor(modelArea, setup.primaryAreaScale),
         volumeFactor: computeNormalizeFactor(modelVolume, setup.primaryVolumeScale),
-        inheritedUnits: inheritedUnitLookup(model.dataStore),
+        inheritedUnits: inheritedUnitLookup(model.dataStore, included),
         profileFactors: profileMeasureFactors(readProfileProjectUnits(model.dataStore), setup.primaryProfileUnits, modelScale, setup.primaryScale),
         effectiveScale: setup.primaryScale,
         normalized: true,

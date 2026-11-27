@@ -1405,6 +1405,40 @@ describe('MergedExporter', () => {
       await expect(exporter.exportAsync(options)).rejects.toThrow(/shared time series sample #18/);
     });
 
+    it.each(['regular', 'irregular'] as const)('uses only retained owners for a shared %s time series sample (#11333)', async kind => {
+      const regular = kind === 'regular';
+      const seriesType = regular ? 'IFCREGULARTIMESERIES' : 'IFCIRREGULARTIMESERIES';
+      const valueType = regular ? 'IFCTIMESERIESVALUE' : 'IFCIRREGULARTIMESERIESVALUE';
+      const date = "'2020-01-01T12:00:00'";
+      const records: Array<[number, string, string]> = [
+        [18, valueType, `#18=${valueType}(${regular ? '' : date + ','}(IFCLENGTHMEASURE(50.)));`],
+      ];
+      for (const [product, label, unit] of [[20, 'Explicit', '#8'], [30, 'Inheriting', '$']] as const) {
+        const owner = product + 1, prop = product + 2, pset = product + 3, rel = product + 4;
+        records.push(
+          [product, 'IFCSENSOR', `#${product}=IFCSENSOR('${guid(label)}',$,'${label} sensor',$,$,$,$,$,$);`],
+          [owner, seriesType, `#${owner}=${seriesType}('${label} series',$,${date},${date},.DISCRETE.,.MEASURED.,$,${unit},${regular ? '1.,' : ''}(#18));`],
+          [prop, 'IFCPROPERTYREFERENCEVALUE', `#${prop}=IFCPROPERTYREFERENCEVALUE('Series',$,$,#${owner});`],
+          [pset, 'IFCPROPERTYSET', `#${pset}=IFCPROPERTYSET('${guid(label+'ps')}',$,'Readings',$,(#${prop}));`],
+          [rel, 'IFCRELDEFINESBYPROPERTIES', `#${rel}=IFCRELDEFINESBYPROPERTIES('${guid(label+'rel')}',$,$,$,(#${product}),#${pset});`],
+        );
+      }
+      const exporter = new MergedExporter([metreModel(), mmModel(records)]);
+      const options = { schema: 'IFC4', unitReconciliation: 'normalize', visibleOnly: true } as const;
+      for (const [hidden, kept, omitted, value] of [[20, 'Inheriting', 'Explicit', '0.05'], [30, 'Explicit', 'Inheriting', '50.']] as const) {
+        const selection = { ...options, hiddenEntityIdsByModel: new Map([['mm', new Set([hidden])]]) };
+        for (const result of [exporter.export(selection), await exporter.exportAsync(selection)]) {
+          const output = decode(result.content);
+          expect(output).toContain(`'${kept} series'`);
+          expect(output).not.toContain(`'${omitted} series'`);
+          expect(output).toContain(`IFCLENGTHMEASURE(${value})`);
+          expect(findDanglingRefs(output)).toEqual([]);
+        }
+      }
+      expect(() => exporter.export(options)).toThrow(/shared time series sample #18/);
+      await expect(exporter.exportAsync(options)).rejects.toThrow(/shared time series sample #18/);
+    });
+
     it('scales an undeclared mass per length by the mass unit too (#11329)', () => {
       // 50 g/mm is 50 kg/m: the length ratio alone would give 50000.
       const secondary = mmModel([

@@ -254,9 +254,13 @@ describe('ZonesPanel: exporting the table', () => {
 
       assert.equal(downloads.length, 1, 'the CSV button downloaded nothing');
       assert.equal(downloads[0].name, 'Takt areas-zone-quantities.csv');
-      const text = await (pending as Blob | null)?.text();
-      assert.ok(text?.startsWith('GlobalId,ExpressId,Model'), `unexpected header: ${text?.slice(0, 60)}`);
-      assert.match(text ?? '', /0Wall00000000000000042/);
+      const content = await (pending as Blob | null)?.arrayBuffer();
+      assert.ok(content, 'the CSV blob has content');
+      const bytes = new Uint8Array(content);
+      assert.deepEqual([...bytes.subarray(0, 3)], [0xef, 0xbb, 0xbf], 'the downloaded CSV begins with a UTF-8 BOM');
+      const text = new TextDecoder('utf-8', { ignoreBOM: true }).decode(bytes.subarray(3));
+      assert.ok(text.startsWith('GlobalId,ExpressId,Model'), `unexpected header: ${text.slice(0, 60)}`);
+      assert.match(text, /0Wall00000000000000042/);
     } finally {
       (URL as { createObjectURL: (b: Blob) => string }).createObjectURL = originalCreate;
       HTMLAnchorElement.prototype.click = originalClick;

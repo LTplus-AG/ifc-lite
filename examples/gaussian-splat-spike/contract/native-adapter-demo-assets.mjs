@@ -7,7 +7,11 @@
 // published @ifc-lite/wasm runtime exactly as the spike decodes them; captures
 // are parsed by SplatTransform, never by code in this repository.
 import { materializeGaussianLayers } from '../../../apps/viewer/src/hooks/ingest/gaussianMaterialize.ts';
-import { MemoryReadFileSystem, readFile, createChunkDataPool } from '@playcanvas/splat-transform';
+import { MemoryReadFileSystem, readFile, createChunkDataPool, version } from '@playcanvas/splat-transform';
+
+export function captureDecodeStatus({ id, format }) {
+  return `Decoding ${id} with @playcanvas/splat-transform ${version} (${format} reader)…`;
+}
 
 async function fetchBytes(path) {
   const response = await fetch(path);

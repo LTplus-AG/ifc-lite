@@ -226,7 +226,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
     let mut slot_fill = Ifc2x3SlotFill::new(None);
     let mut checks = ConversionChecks::new(crate::schema_material_referent::MaterialReferents::for_target(crate::schema_convert::canon(&schema)));
     checks.merged = true;
-    checks.forms.enable_dates();
+    checks.forms.defer_temporal_values();
     checks.typed_properties.enabled = true;
     let mut parents = single_parents::ParentClaims::for_schema(&schema); // one rel per single-valued inverse (#5727, #5802, #5774, #5923)
 
@@ -385,13 +385,13 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
             out.push('\n');
             stats.written += 1;
         }
-
         if i + 1 < models.len() { warnings::forget_omitted_guids(&out[model_start..], &schema, &upgrade_seeds, &mut upgrade_omissions, &mut guid_to_final, &mut emitted_guids, &mut parents); }
+        checks.forms.durations.finish_merged_model(model.content, plan.written_projects(&index.projects, &included, offset));
         offset = next;
     }
 
     warnings::push_merge_warnings(&mut stats, refused_refs_total, unrepresented_types_kept, &schema);
-    warnings::finish_output(&mut out, &mut stats, &schema, &slot_fill, &mut checks, parents, &upgrade_seeds, offset, models);
+    warnings::finish_output(&mut out, &mut stats, &schema, &slot_fill, &mut checks, parents, &upgrade_seeds, offset);
     (out, stats)
 }
 

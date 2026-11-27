@@ -14,7 +14,7 @@ source snapshot rather than pending mutation overlays.
 
 ### stdio (local agents)
 
-The default transport is stdio, the mode Claude Desktop and Cursor expect. Pass one or more IFC files as positional arguments and they are preloaded into the model registry:
+The default transport is stdio, the mode Claude Desktop and Cursor expect. Pass one or more IFC files as positional arguments and they are preloaded into the model registry. Each gets a `model_id` derived from the file name: the `.ifc`/`.ifcxml`/`.ifczip` extension dropped and runs of characters outside `a-z A-Z 0-9 _ -` replaced by `_`, lowercased (`Tower A.ifc` becomes `tower_a`; `model_list` shows the ids); a second file with the same name gets `_2` (`model`, `model_2`), and a file passed twice loads once:
 
 ```bash
 # Single model over stdio
@@ -37,24 +37,21 @@ You can also invoke the package directly with `npx @ifc-lite/mcp ./model.ifc`. B
 The Streamable HTTP transport serves remote agents:
 
 ```bash
-ifc-lite mcp ./model.ifc --transport http --port 8765 --token $API_TOKEN
+ifc-lite mcp --transport http --port 8765 --token $API_TOKEN --allow ./models
 ```
 
-!!! warning "HTTP sessions start with an empty registry"
-    In `--transport http` mode the positional files are **not** preloaded. Every
-    HTTP session gets its own fresh, empty model registry. The agent loads a
-    model into its session with the `model_load` tool, which needs `mutate`
-    scope, so it is hidden under `--read-only`. Only the default `stdio`
-    transport preloads the files you pass on the command line. This isolation is
-    deliberate: two sessions that load different files which derive the same
-    internal id never alias each other's state.
+!!! note "HTTP sessions start empty"
+    In `--transport http` mode every session gets its own fresh, empty model
+    registry, so sessions never share edits. The agent loads a model with
+    `model_load`, which needs only `read` scope, so it also works under
+    `--read-only` and with a read-only token. `--allow` bounds which files it
+    can open. File arguments load nothing over HTTP (the server warns and
+    starts): preloading would cost one parse and one resident copy per session.
+    Without `--allow`, `model_load` reads, and tools that write files write,
+    under the working directory, the system temp directory and the
+    directories of loaded models.
 
-    A corollary: `--read-only` combined with `--transport http` produces
-    sessions that have no way to load a model at all (the registry starts
-    empty and `model_load` is hidden). For read-only serving of preloaded
-    files, use the `stdio` transport.
-
-By default the server binds `127.0.0.1`. Binding a non-loopback host requires either a `--token` (which becomes the bearer token for full scope) or the `--insecure` flag for development only. The token travels as a plaintext `Authorization` header: the CLI itself serves plain HTTP, so any non-loopback deployment must sit behind a TLS-terminating reverse proxy (nginx, Caddy, a cloud load balancer), or the bearer token is readable by anyone on the network path.
+By default the server binds `127.0.0.1`. Binding a non-loopback host requires either a token (`--token` gets full scope, or the `--read-only` preset under `--read-only`; `--read-only-token` always gets the `--read-only` preset, see the option table) or the `--insecure` flag for development only. The token travels as a plaintext `Authorization` header: the CLI itself serves plain HTTP, so any non-loopback deployment must sit behind a TLS-terminating reverse proxy (nginx, Caddy, a cloud load balancer), or the bearer token is readable by anyone on the network path.
 
 ### Flags
 
@@ -62,12 +59,13 @@ By default the server binds `127.0.0.1`. Binding a non-loopback host requires ei
 |------|-------------|
 | `--transport <t>` | `stdio` (default) or `http` |
 | `--port <N>` | HTTP port (default 8765) |
-| `--host <h>` | HTTP host (default 127.0.0.1; non-loopback requires `--token` or `--insecure`) |
-| `--token <bearer>` | HTTP bearer token that maps to full scope |
+| `--host <h>` | HTTP host (default 127.0.0.1; non-loopback requires `--token`, `--read-only-token` or `--insecure`) |
+| `--token <bearer>` | HTTP bearer token (repeatable). Full scope, or the `--read-only` preset under `--read-only` |
+| `--read-only-token <bearer>` | HTTP bearer token with the `--read-only` preset (repeatable) |
 | `--insecure` | Allow a non-loopback bind without a token (development only). With `--bridge`: accept a plain-`http` origin on a non-loopback host, with a warning |
-| `--read-only` | Hide mutation tools |
+| `--read-only` | Hide mutation tools. Loading and unloading models still works, and export and flow-checkpoint tools still write files under the allowed roots (`--allow`, or the working, temp and model directories without it) |
 | `--bsdd <url>` | Override the bSDD endpoint |
-| `--allow <path>` | Restrict file-system access (repeatable) |
+| `--allow <path>` | Restrict file-system access, over stdio and HTTP (repeatable) |
 | `--viewer` | Auto-open the 3D viewer |
 | `--viewer-port <N>` | Preferred viewer port (0 = auto) |
 | `--open` | Auto-open the viewer **and** open its URL in the browser |
@@ -76,21 +74,23 @@ By default the server binds `127.0.0.1`. Binding a non-loopback host requires ei
 | `--bridge-viewer-url <url>` | Base of the pairing link (default `https://ifclite.com`). Its origin replaces the default in the allowlist |
 | `--allow-origin <origin>` | HTTP: let a browser origin read responses. Bridge: an extra origin that may connect (repeatable) |
 
+An unknown flag prints a warning on stderr and is otherwise ignored, so a config written for another version still starts, unless that flag took a value: the value is then read as a file. `--flag=value` works for every value flag. A value flag with no value (`--token --read-only`) is a usage error: the server exits with code 2 rather than guess. `--federate` is accepted for the same reason and does nothing: every file passed already loads into one session.
+
 ## Scopes and permissions
 
 Every tool declares the scope a caller needs. At `tools/list` time the server filters the advertised set by the session's scope, so an agent never even sees a tool it is not allowed to call, which keeps it from attempting a forbidden operation.
 
 | Scope | Grants |
 |-------|--------|
-| `read` | Discovery, query, geometry metrics, viewer reads |
+| `read` | Discovery (including loading and unloading models), query, geometry metrics, viewer reads |
 | `validate` | IDS validation, model audit |
 | `export` | Data and geometry export |
-| `mutate` | Property/attribute edits, entity create/delete, model load/save |
+| `mutate` | Property/attribute edits, entity create/delete, model save |
 | `admin` | All of the above |
 
 Two presets ship out of the box:
 
-- **Full access** (`read`, `validate`, `mutate`, `export`, `admin`) is the default.
+- **Full access** (`read`, `validate`, `mutate`, `export`, `admin`) is the default over stdio and for a `--token`. An HTTP caller without a token gets everything except `admin`.
 - **Read-only** (`read`, `validate`, `export`) is what `--read-only` selects; it omits `mutate`.
 
 A scope can also carry an optional `modelIds` allowlist to restrict a session to specific models.
@@ -119,6 +119,7 @@ Tools are grouped by capability. Everything below is registered in the default t
 | bSDD | `bsdd_search`, `bsdd_class`, `bsdd_property_sets`, `bsdd_match` |
 | Diff | `model_diff`, `quantity_diff` |
 | Export | `export_ifc`, `export_csv`, `export_json`, `export_glb`, `export_obj`, `export_ifcx`, `export_usd`, `export_3dm` |
+| Model transforms | `model_merge`, `model_convert`, `model_extract`, `model_anonymize`, `model_simplify`, `model_lod`: write to `file_path` and leave the loaded model alone. An existing file there is replaced (a loaded model's source never is). `model_merge` and `model_anonymize` refuse a model with unsaved edits |
 | Flow | `describe_flow`, `run_flow`, `propose_flow`, `resume_flow` |
 | Viewer | `viewer_ask`, `viewer_open`, `viewer_close`, `viewer_status`, `viewer_colorize`, `viewer_isolate`, `viewer_hide`, `viewer_show`, `viewer_reset`, `viewer_fly_to`, `viewer_set_section`, `viewer_clear_section`, `viewer_color_by_storey`, `viewer_color_by_property`, `viewer_get_selection`, `viewer_wait_for_selection`, `viewer_describe_selection` |
 | Draft layers & review | `create_draft_layer`, `draft_apply_ops`, `publish_layer`, `diff_layer`, `dry_run_merge`, `list_conflicts`, `request_review`, `add_review_feedback`, `get_review_feedback`, `add_review_topic`, `respond_to_review` |
@@ -542,6 +543,41 @@ A failed native library save carries the library's reason in `details.save`. Sto
 
 ## Wiring it into a client
 
+`install` writes the config for you. It merges into an existing file, keeps
+every other server, and backs the file up first. `--dry-run` prints the JSON
+or command and changes nothing.
+
+```bash
+ifc-lite mcp install --client claude-desktop ./model.ifc
+npx -y @ifc-lite/mcp install --client cursor -- --bridge
+```
+
+Clients: `claude-code` (uses `claude mcp add` for ordinary installs), `claude-desktop`, `cursor`,
+`vscode` (user scope runs `code --add-mcp`). `--scope project` writes the
+current directory's `.mcp.json`, `.cursor/mcp.json` or `.vscode/mcp.json`.
+Flags after `--` go to the server. Model paths become absolute. Use
+`--force` to replace an existing IFClite entry, including an older npm pin.
+For Claude Code, `--force` backs up and updates `.mcp.json` at project scope
+or `~/.claude.json` at user scope (under `CLAUDE_CONFIG_DIR` when set).
+It preserves custom server settings such as `env`.
+VS Code user-scope installs also require `--force` because its CLI replaces
+same-name entries. On Windows, use project scope or open the VS Code user
+configuration and paste the entry printed by install.
+
+For file-based updates, concurrent IFClite installers targeting the same
+resolved file coordinate through a lock. The installer backs up an existing
+file under that lock, checks that the target and contents still match the
+merge input, then publishes the complete replacement with a single rename.
+A detected change aborts the update. A completed backup can remain if the
+replacement fails. Other editors and client processes do not share the lock.
+An external write between the final check and rename can still be overwritten,
+so avoid editing or saving that config while running the installer.
+
+On macOS, Claude Desktop launched from the Dock may have a different PATH
+from your terminal. If it cannot find `npx`, use a Claude Desktop bundle when
+available, or configure absolute paths for your Node installation and ensure
+the server's PATH includes that installation's bin directory.
+
 === "Claude Code"
 
     The repository is a plugin marketplace. The `ifc-lite` plugin bundles the
@@ -586,7 +622,7 @@ A failed native library save carries the library's reason in `details.save`. Sto
 
 === "Claude Desktop"
 
-    Add the server to `claude_desktop_config.json`:
+    Add the server to `claude_desktop_config.json` (`~/Library/Application Support/Claude/` on macOS, `%APPDATA%\Claude\` on Windows):
 
     ```json
     {
@@ -607,7 +643,7 @@ A failed native library save carries the library's reason in `details.save`. Sto
     at it with the bearer token:
 
     ```bash
-    ifc-lite mcp ./model.ifc --transport http --port 8765 --token my-secret
+    ifc-lite mcp --transport http --port 8765 --token my-secret --allow ./models
     ```
 
     ```
@@ -615,9 +651,25 @@ A failed native library save carries the library's reason in `details.save`. Sto
     Header:     Authorization: Bearer my-secret
     ```
 
-    Remember to call `model_load` first: an HTTP session starts empty.
+    Each session starts empty: call `model_load` first.
 
 Cursor, Windsurf, Goose, and Zed all accept the same `npx @ifc-lite/mcp <file>` stdio command.
+
+### Claude Desktop bundle
+
+If you have an `ifc-lite-<version>.mcpb` bundle, open it in Claude Desktop
+and follow the extension installation prompt. You can select multiple IFC
+files to load on startup. The server can also open files from the selected
+models' folders. If a selected file moves, update the extension configuration
+before restarting it. The bundle includes the server, its dependencies and
+WASM runtimes, and uses Claude Desktop's Node runtime.
+
+### MCP Registry
+
+The Registry identifier is `io.github.LTplus-AG/ifc-lite`. Once a version is
+listed, registry-aware clients can use the entry to configure the matching
+`@ifc-lite/mcp` npm version over stdio. You can supply IFC paths as optional
+positional arguments to load models on startup.
 
 ## Errors that keep the agent in the loop
 

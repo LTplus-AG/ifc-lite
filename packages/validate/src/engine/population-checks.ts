@@ -9,7 +9,7 @@ import { EntityInstance } from '../runtime/instance.js';
 import { violated } from '../runtime/logic.js';
 import type { Model } from '../runtime/model.js';
 import type { TypeRef } from '../runtime/schema-meta.js';
-import { BinaryValue, EnumValue, prim, Typed, type Value } from '../runtime/values.js';
+import { BinaryValue, EnumValue, prim, Typed, UNKNOWN, type Value } from '../runtime/values.js';
 import type { ValidationFinding } from './findings.js';
 import { guard } from './guard.js';
 
@@ -58,6 +58,7 @@ function uniqueKey(m: Model, v: Value, type?: TypeRef): string | undefined {
   const p = prim(v);
   if (p instanceof BinaryValue) return `binary:${p.hex.toUpperCase()}`;
 
+  if (p === UNKNOWN) return 'logical:UNKNOWN';
   if (p === undefined) return undefined;
   if (typeof p === 'string' || typeof p === 'number' || typeof p === 'boolean') return `${typeof p}:${String(p)}`;
   if (p instanceof EnumValue) return `enum:${p.name}`;

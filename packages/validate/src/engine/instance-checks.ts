@@ -56,11 +56,11 @@ function checkTypeRules(m: Model, id: number, entity: ResolvedEntity, attribute:
       out.push({ category: 'simpletype_rule', rule: ruleId, instance: id, entity: entity.name, attribute, message: `${rule.source} is FALSE for ${describe(v)}` });
     }
   }
-  if (decl.kind === 'select' && v instanceof Typed) {
+  const underlying = m.schema.underlyingType(type);
+  if (underlying?.k === 'named' && m.schema.type(underlying.name)?.kind === 'select' && v instanceof Typed) {
     checkTypeRules(m, id, entity, attribute, v.value, { k: 'named', name: v.type }, out, counters);
-  } else {
-    const aggregate = m.schema.aggregateType(type);
-    if (aggregate) checkTypeRules(m, id, entity, attribute, v, aggregate, out, counters);
+  } else if (underlying?.k === 'aggregate') {
+    checkTypeRules(m, id, entity, attribute, v, underlying, out, counters);
   }
 }
 

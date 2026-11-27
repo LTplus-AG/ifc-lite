@@ -270,3 +270,19 @@ ENTITY C SUBTYPE OF (A,B); END_ENTITY; END_SCHEMA;`);
     expect(report.findings.map(f => [f.rule, f.instance])).toEqual(expected.map(id => ['A.UA', id]));
   }
 });
+
+it('validates members and their rules through a defined SELECT alias (#11647)', async () => {
+  const { schema } = generated(`SCHEMA S; TYPE A = INTEGER; WHERE Positive : SELF > 0; END_TYPE;
+TYPE B = INTEGER; END_TYPE; ENTITY Node; END_ENTITY; ENTITY Other; END_ENTITY;
+TYPE Choice = SELECT (A, Node); END_TYPE; TYPE FirstChoice = Choice; END_TYPE;
+TYPE Alias2 = FirstChoice; END_TYPE; ENTITY E; V : Alias2; END_ENTITY; END_SCHEMA;`);
+  const report = await validateStepText('DATA;#1=NODE();#2=OTHER();#3=E(A(1));#4=E(#1);#5=E(B(1));#6=E(1);#7=E(#2);#8=E(A(-1));#9=E(A(.T.));ENDSEC;', { schema, categories: ['schema', 'simpletype_rule'] });
+  expect(report.findings.map(f => [f.instance, f.rule])).toEqual([[5, 'invalid-type'], [6, 'invalid-type'], [7, 'invalid-type'], [8, 'A.Positive'], [9, 'invalid-type']]);
+  expect(report.stats.typeRuleEvaluations).toBe(2);
+});
+
+it('counts LOGICAL UNKNOWN in UNIQUE while omitting unset optional values (#11647)', async () => {
+  const { schema } = generated('SCHEMA S; ENTITY E; X : OPTIONAL LOGICAL; UNIQUE U : X; END_ENTITY; END_SCHEMA;');
+  const report = await validateStepText('DATA;#1=E(.U.);#2=E(.T.);#3=E(.F.);#4=E($);#5=E($);#6=E(.U.);ENDSEC;', { schema, categories: ['schema', 'unique_rule'] });
+  expect(report.findings.map(f => [f.instance, f.rule])).toEqual([[6, 'E.U']]);
+});

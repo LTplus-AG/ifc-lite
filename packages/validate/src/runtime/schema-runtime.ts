@@ -113,16 +113,22 @@ export class SchemaRuntime {
     return this.types.get(name.toUpperCase());
   }
 
-  aggregateType(type: TypeRef | undefined): Extract<TypeRef, { k: 'aggregate' }> | undefined {
+  underlyingType(type: TypeRef | undefined): TypeRef | undefined {
     const seen = new Set<string>();
     while (type?.k === 'named') {
       const name = type.name.toUpperCase();
       if (seen.has(name)) return undefined;
       seen.add(name);
       const decl = this.type(name);
-      type = decl?.kind === 'defined' ? decl.underlying : undefined;
+      if (decl?.kind !== 'defined') break;
+      type = decl.underlying;
     }
-    return type?.k === 'aggregate' ? type : undefined;
+    return type;
+  }
+
+  aggregateType(type: TypeRef | undefined): Extract<TypeRef, { k: 'aggregate' }> | undefined {
+    const underlying = this.underlyingType(type);
+    return underlying?.k === 'aggregate' ? underlying : undefined;
   }
 
   /** Canonical spelling of an entity or type name, as declared. */

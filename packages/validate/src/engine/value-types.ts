@@ -60,8 +60,10 @@ function conformsToNamed(m: Model, v: Value, name: string): boolean {
   switch (t.kind) {
     case 'enum':
       return v instanceof EnumValue && t.items.includes(v.name);
-    case 'defined':
-      return !(v instanceof Typed) && !(v instanceof Ref) && conforms(m, v, t.underlying);
+    case 'defined': {
+      const underlying = schema.underlyingType(t.underlying);
+      return underlying !== undefined && conforms(m, v, underlying);
+    }
     case 'select': {
       const members = schema.selectMembers(t.name);
       if (v instanceof Ref) {

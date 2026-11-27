@@ -67,6 +67,17 @@ pnpm --filter @ifc-lite/validate generate
 
 `src/generated` is committed; a test fails when it drifts from the generator.
 
+## Parity with ifcopenshell.validate
+
+The package test checks the committed report against cached IfcOpenShell findings. Local runs skip missing third-party models and report the skip. Run `pnpm fixtures` to fetch them. CI sets `IFC_LITE_REQUIRE_FIXTURES=1` so a missing model fails the check. To refresh the oracle, install `ifcopenshell==0.9.0.post1` and `pytest` in the Python environment used below. IfcOpenShell uses pytest to evaluate EXPRESS rules.
+
+The crafted corpus contains 58 IFC4 mutations covering 50 distinct targets, including EXPRESS rules, schema checks and a header check. IFC4X3 has 57 mutations, of which 54 name a target applicable to that release. The authoring compilation counts measure how many rules the generator compiled. For IFC4 these are 95 entity WHERE rules, 13 type WHERE rules and 2 global rules. See `parity/REPORT.md` for results by file and for each applicable target, and `parity/explanations.json` for known disagreements with IfcOpenShell.
+
+```bash
+pnpm --filter @ifc-lite/validate parity            # oracle findings from parity/oracle-cache.json
+IFCOPENSHELL_PYTHON=/path/to/python pnpm --filter @ifc-lite/validate parity --oracle
+```
+
 ## License
 
 MPL-2.0

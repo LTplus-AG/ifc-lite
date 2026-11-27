@@ -289,19 +289,28 @@ export function createIo({ repo, cwd = process.cwd(), cache = null, now = () => 
    * renamed file's old path too. Counted as one call per page.
    *
    * `pulls/<n>/files` lists the PR as it is NOW, not a pinned revision, so
-   * the list is bound to the head and base branch it describes: after the
-   * pages, the PR is read once more and the list is refused when its head
-   * or base branch is no longer the one asked for (a push or a retarget
-   * during the read). Cached per PR, head and base branch: with those
-   * fixed, the diff against the merge base does not change (main moving on
-   * does not move the merge base), and a retarget is a new key.
+   * the list is bound to the head, base branch and base commit it describes.
+   * A base that lands an ancestor of an unchanged head can move the merge base.
+   * Use the sweep's base snapshot when known, and check it after paging.
    */
-  function prFiles(number, headSha = null, baseRef = null) {
-    // Keyed by PR and head: two PRs can share a head against different bases.
-    const key = headSha ? `${headSha}#${number}${baseRef ? `@${baseRef}` : ''}` : null;
-    if (key && store.prFiles[key]) {
+  function prFiles(number, headSha = null, baseRef = null, baseSha = null) {
+    const readRevision = () => {
+      const current = pull(number);
+      if (current.head?.sha !== headSha) throw new Error(`PR #${number} moved to ${String(current.head?.sha).slice(0, 9)} while its files were read`);
+      if (baseRef && current.base?.ref !== baseRef) throw new Error(`PR #${number} was retargeted to ${current.base?.ref} while its files were read`);
+      if (!current.base?.ref || !current.base.sha) throw new Error(`PR #${number} has no base revision for its file list`);
+      return current.base;
+    };
+    if (headSha && (!baseRef || !baseSha)) {
+      const base = readRevision();
+      baseRef ??= base.ref;
+      baseSha ??= base.sha;
+    }
+    const key = headSha ? `${headSha}#${number}@${baseRef}` : null;
+    const cached = key && store.prFiles[key];
+    if (cached?.baseSha === baseSha && Array.isArray(cached.files)) {
       stats.cacheHits += 1;
-      return store.prFiles[key];
+      return cached.files;
     }
     const files = [];
     for (let page = 1; ; page += 1) {
@@ -312,12 +321,10 @@ export function createIo({ repo, cwd = process.cwd(), cache = null, now = () => 
       // and a prefix read as the whole list could call a Rust PR not relevant.
       if (page >= 30) throw new Error(`PR #${number} changes 3,000+ files; GitHub does not list them all`);
     }
-    if (headSha) {
-      const current = pull(number);
-      if (current.head?.sha !== headSha) throw new Error(`PR #${number} moved to ${String(current.head?.sha).slice(0, 9)} while its files were read`);
-      if (baseRef && current.base?.ref !== baseRef) throw new Error(`PR #${number} was retargeted to ${current.base?.ref} while its files were read`);
+    if (key) {
+      if (readRevision().sha !== baseSha) throw new Error(`PR #${number} base advanced while its files were read`);
+      store.prFiles[key] = { baseSha, files };
     }
-    if (key) store.prFiles[key] = files;
     return files;
   }
 

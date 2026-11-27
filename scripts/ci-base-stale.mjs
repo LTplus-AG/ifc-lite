@@ -157,10 +157,10 @@ export function readFilterGlobs(workflowText) {
  * Judge one PR. Never throws: a fault while gathering inputs is an `unknown`
  * verdict naming it, so one unreadable PR neither passes nor stops the sweep.
  */
-export function evaluatePr(io, { pr, headSha, mainTip, ceilings, globs, measured = null, prRun = null, baseRef = null }) {
+export function evaluatePr(io, { pr, headSha, mainTip, ceilings, globs, measured = null, prRun = null, baseRef = null, baseSha = null }) {
   const record = { pr, head: headSha, mainTip, testedBase: null, prRun: null };
   try {
-    const files = io.prFiles(pr, headSha, baseRef);
+    const files = io.prFiles(pr, headSha, baseRef, baseSha);
     const rel = prRelevance(files, globs);
     let prMeasured = null;
     if (measured) {
@@ -387,7 +387,8 @@ export function run(opts, env = process.env, makeIo = createIo) {
       fork = pull.head.repo?.full_name !== repo;
       baseRef = pull.base?.ref ?? null;
     }
-    const rec = { ...evaluatePr(io, { pr: t.pr, headSha, mainTip, ceilings, globs, measured: t.measured ?? null, prRun: opts.prRun ?? null, baseRef }), trigger: opts.trigger ?? opts.mode, gateMode, evaluatedAt };
+    const baseSha = baseRef === 'main' && !opts.mainSha ? mainTip : null;
+    const rec = { ...evaluatePr(io, { pr: t.pr, headSha, mainTip, ceilings, globs, measured: t.measured ?? null, prRun: opts.prRun ?? null, baseRef, baseSha }), trigger: opts.trigger ?? opts.mode, gateMode, evaluatedAt };
     // A verdict the budget cut short is no answer: post nothing, keep the
     // head's old status, and stop the sweep before it spends more.
     const budgetCut = rec.budget === true;

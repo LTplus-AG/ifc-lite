@@ -556,13 +556,49 @@ ct('io: an in-run marker list that cannot be read whole throws (the caller then 
 
 ct('io: a PR file list is refused when the head moves or the PR is retargeted during the read', () => {
   const files = [{ filename: 'rust/core/src/a.rs' }];
-  const at = (sha, ref) => ioOverGh([['repos/o/r/pulls/5/files', files], ['repos/o/r/pulls/5', { head: { sha }, base: { ref } }]]).io;
-  assert.deepEqual(at('h1', 'main').prFiles(5, 'h1', 'main'), ['rust/core/src/a.rs']);
-  assert.throws(() => at('h2', 'main').prFiles(5, 'h1', 'main'), /PR #5 moved to h2/);
-  assert.throws(() => at('h1', 'release').prFiles(5, 'h1', 'main'), /PR #5 was retargeted to release/);
+  const at = (sha, ref, base = 'b1') => ioOverGh([['repos/o/r/pulls/5/files', files], ['repos/o/r/pulls/5', { head: { sha }, base: { ref, sha: base } }]]).io;
+  assert.throws(() => at('h2', 'main').prFiles(5, 'h1', 'main', 'b1'), /PR #5 moved to h2/);
+  assert.throws(() => at('h1', 'release').prFiles(5, 'h1', 'main', 'b1'), /PR #5 was retargeted to release/);
+  const changed = at('h1', 'main', 'b2');
+  assert.throws(() => changed.prFiles(5, 'h1', 'main', 'b1'), /base advanced/);
+  assert.deepEqual(changed.store.prFiles, {}, 'a racing read is never cached');
   const io = at('h1', 'main');
-  io.prFiles(5, 'h1', 'main');
-  assert.deepEqual(Object.keys(io.store.prFiles), ['h1#5@main'], 'cached per PR, head and base branch');
+  assert.deepEqual(io.prFiles(5, 'h1', 'main'), ['rust/core/src/a.rs']);
+  assert.deepEqual(io.store.prFiles, { 'h1#5@main': { baseSha: 'b1', files: ['rust/core/src/a.rs'] } });
+});
+
+ct('io: an unchanged PR head can change relevance when the base lands its ancestor (#11350)', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'base-stale-stack-'));
+  const git = (...args) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { cwd: dir, encoding: 'utf8' }).trim();
+  git('init', '-q');
+  mkdirSync(join(dir, 'rust/core'), { recursive: true });
+  const rust = join(dir, 'rust/core/a.rs');
+  writeFileSync(rust, 'fn old() {}\n');
+  git('add', '-A');
+  git('commit', '-qm', 'base');
+  let base = git('rev-parse', 'HEAD');
+  writeFileSync(rust, 'fn new() {}\n');
+  git('commit', '-qam', 'lower stack changes Rust');
+  const ancestor = git('rev-parse', 'HEAD');
+  writeFileSync(rust, 'fn old() {}\n');
+  writeFileSync(join(dir, 'README.md'), 'upper stack edits docs\n');
+  git('add', '-A');
+  git('commit', '-qm', 'upper stack reverts Rust and edits docs');
+  const head = git('rev-parse', 'HEAD');
+  const { io, paths } = ioOverGh([
+    ['repos/o/r/pulls/5/files', () => git('diff', '--name-only', `${base}...${head}`).split('\n').map(filename => ({ filename }))],
+    ['repos/o/r/pulls/5', () => ({ head: { sha: head }, base: { ref: 'main', sha: base } })],
+  ]);
+  io.store.prFiles[`${head}#5@main`] = ['README.md']; // old cache format has no revision
+  const relevance = () => {
+    const { rust, perf } = prRelevance(io.prFiles(5, head, 'main', base), globs);
+    return [rust, perf];
+  };
+  assert.deepEqual(relevance(), [false, false]);
+  base = ancestor;
+  assert.deepEqual(relevance(), [true, true]);
+  assert.deepEqual(relevance(), [true, true]);
+  assert.equal(paths.filter(path => path.includes('/files?')).length, 2, 'a stable base snapshot still hits the cache');
 });
 
 ct('run, rollback: a rollback cut short resumes past the heads it already released', () => {

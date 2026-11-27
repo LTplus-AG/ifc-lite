@@ -5,7 +5,6 @@
 import { editOwnershipRefusal, expandAffectedSet } from '@ifc-lite/export';
 import { toNativeLength } from './anchor.js';
 import { emitOrdinaryElement, type OrdinaryInStoreElement } from './ordinary-element.js';
-import { resolveSpatialAnchor } from './resolve-anchor.js';
 import { computeWallSplitGeometry, type WallEditChain } from './edit/wall-edit.js';
 import { computeLinearElementSplitGeometry, type LinearElementEditChain } from './edit/linear-element-edit.js';
 import { keepsFirstPiece } from './edit/split-guid.js';
@@ -14,7 +13,7 @@ import { reassignWallOpenings } from './edit/wall-opening-reassign.js';
 import { readWallJoinTarget, readWallJoinRels } from './wall-join-read.js';
 import { splitJoinedWallDraft } from './element-split-joined.js';
 import type { ElementSplitResult, SplitEnvironment } from './element-split.js';
-import { readSplitPlacement, preserveSplitPlacement } from './element-split-placement.js';
+import { readSplitPlacement, preserveSplitPlacement, splitAnchor } from './element-split-placement.js';
 
 type Vec3 = [number, number, number];
 const native = (v: number, k: number) => toNativeLength({ lengthUnitScale: k }, v);
@@ -41,7 +40,7 @@ export function splitWallDraft(env: SplitEnvironment, id: number, chain: WallEdi
     const kept = keepLeft ? geo.geometry.left : geo.geometry.right;
     const cut = keepLeft ? geo.geometry.right : geo.geometry.left;
     element = { kind: 'wall', params: { ...cut, Name: env.name, GlobalId: env.newGlobalId } };
-    addedId = emitOrdinaryElement(editor, resolveSpatialAnchor(dataStore, env.storeyExpressId, view), element);
+    addedId = emitOrdinaryElement(editor, splitAnchor(env), element);
     const k = chain.lengthUnitScale;
     const length = Math.hypot(kept.End[0] - kept.Start[0], kept.End[1] - kept.Start[1]);
     if (!keepLeft) editor.setPositionalAttribute(chain.startPointId, 0, scaled(kept.Start, k));
@@ -74,7 +73,7 @@ export function splitLinearDraft(env: SplitEnvironment, id: number, chain: Linea
     : { kind: chain.elementType === 'IfcBeam' ? 'beam' : 'member',
       params: { ...common, Start: newStart, End: along(newStart, chain.axisDirection, newLength), ...section } };
   const { editor, dataStore, view } = env;
-  const addedId = emitOrdinaryElement(editor, resolveSpatialAnchor(dataStore, env.storeyExpressId, view), element);
+  const addedId = emitOrdinaryElement(editor, splitAnchor(env), element);
   preserveSplitPlacement(env, addedId, placement);
   editor.setPositionalAttribute(chain.extrudedSolidId, 3, native(keptLength, chain.lengthUnitScale));
   if (!keepFirst) editor.setPositionalAttribute(chain.startPointId, 0, scaled(keptStart, chain.lengthUnitScale));

@@ -10,6 +10,8 @@ import { getModelLengthUnitScale } from './edit/length-unit-scale.js';
 import { effectiveStoreyId } from './edit/effective-storey.js';
 import { readAttributes } from './edit/placement-core.js';
 import { deriveSplitGlobalId, globalIdTakenIn, type GlobalIdScope } from './edit/split-guid.js';
+import type { RandomSource } from '@ifc-lite/encoding';
+import type { AuthoringGuidOptions } from './anchor.js';
 import { splitWallDraft, splitLinearDraft } from './element-split-axis.js';
 import { splitSlabDraft } from './element-split-slab.js';
 
@@ -24,6 +26,7 @@ export interface SplitEnvironment {
   lengthUnitScale: number;
   newGlobalId: string;
   name: string | undefined;
+  guidRandom?: RandomSource;
 }
 export interface ElementSplitResult {
   readonly sourceId: number;
@@ -35,7 +38,7 @@ export interface ElementSplitResult {
   readonly openings: { toLeft: number; toRight: number; skipped: number };
 }
 export interface ElementSplitRequest { readonly expressId: number; readonly cut: ElementSplitCut }
-export interface ElementSplitOptions {
+export interface ElementSplitOptions extends AuthoringGuidOptions {
   /** Include peer source and live overlay views to avoid federation GUID collisions. */
   readonly globalIdScopes?: readonly GlobalIdScope[];
 }
@@ -71,6 +74,7 @@ export function splitElementsInStore(
       newGlobalId: deriveSplitGlobalId(typeof attrs?.[0] === 'string' ? attrs[0] : String(expressId),
         globalIdTakenIn([{ dataStore: store, view }, ...(options.globalIdScopes ?? [])])),
       name: typeof attrs?.[2] === 'string' ? attrs[2] : undefined,
+      guidRandom: options.guidRandom,
     };
     return splitDraft(env, expressId, target, cut);
   }));

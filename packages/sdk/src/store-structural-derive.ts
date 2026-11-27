@@ -45,7 +45,7 @@ export function createStructuralDerivationStoreBackend(
     deriveStructuralAnalysisModel(modelId, options) {
       const { model, plan: derived } = plan(modelId, options);
       // Apply checks the whole plan first and writes in one atomic edit.
-      const { analysisModelId } = applyStructuralDerivation(model.editor, model.store, derived);
+      const { analysisModelId } = applyStructuralDerivation(model.editor, model.store, derived, model.guidRandom);
       return { analysisModel: { modelId: model.modelId, expressId: analysisModelId }, report: derived.report };
     },
   };

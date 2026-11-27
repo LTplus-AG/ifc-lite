@@ -13,7 +13,7 @@ export function createPhysicalStoreBackend(resolve: ModellingStoreModelResolver)
   return {
     transformElements(modelId, selected, op) {
       const model = resolve(modelId);
-      const result = model.editor.runAtomic(editor => transformElementsInStore({ dataStore: model.store, view: editor.getMutationView(), editor, selected, op }));
+      const result = model.editor.runAtomic(editor => transformElementsInStore({ dataStore: model.store, view: editor.getMutationView(), editor, guidRandom: model.guidRandom, selected, op }));
       return refs(model.modelId, result.remesh);
     },
     setElementSize(ref, patch) {
@@ -22,7 +22,7 @@ export function createPhysicalStoreBackend(resolve: ModellingStoreModelResolver)
         const corePatch = patch.kind === 'wall' ? { kind: 'wall' as const, thickness: patch.Thickness, height: patch.Height }
           : patch.kind === 'slab' ? { kind: 'slab' as const, thickness: patch.Thickness }
           : { kind: 'linear' as const, length: patch.Depth, width: patch.XDim, cross: patch.YDim, fixed: patch.fixed };
-        const changed = setElementSizeInStore({ dataStore: model.store, view: editor.getMutationView(), editor }, ref.expressId, corePatch);
+        const changed = setElementSizeInStore({ dataStore: model.store, view: editor.getMutationView(), editor, guidRandom: model.guidRandom }, ref.expressId, corePatch);
         if (!changed.ok) throw new Error(changed.reason);
         return changed;
       });
@@ -31,7 +31,7 @@ export function createPhysicalStoreBackend(resolve: ModellingStoreModelResolver)
     resizeWall(ref, start, end, options = {}) {
       const model = resolve(ref.modelId);
       const result = model.editor.runAtomic(editor => {
-        const changed = resizeWallInStore({ dataStore: model.store, view: editor.getMutationView(), editor }, ref.expressId, start, end, { moveJoinedEnds: options.moveJoinedEnds ?? true });
+        const changed = resizeWallInStore({ dataStore: model.store, view: editor.getMutationView(), editor, guidRandom: model.guidRandom }, ref.expressId, start, end, { moveJoinedEnds: options.moveJoinedEnds ?? true });
         if (!changed.ok) throw new Error(changed.reason);
         return changed;
       });
@@ -39,14 +39,14 @@ export function createPhysicalStoreBackend(resolve: ModellingStoreModelResolver)
     },
     splitElements(modelId, requests) {
       const model = resolve(modelId);
-      return splitElementsInStore(model.store, model.editor, requests, { globalIdScopes: model.globalIdScopes }).map(result => {
+      return splitElementsInStore(model.store, model.editor, requests, { globalIdScopes: model.globalIdScopes, guidRandom: model.guidRandom }).map(result => {
         const ref = (expressId: number): EntityRef => ({ modelId: model.modelId, expressId });
         return { source: ref(result.sourceId), added: ref(result.addedId), left: ref(result.leftId), right: ref(result.rightId) };
       });
     },
     trimExtendElement(ref, params) {
       const model = resolve(ref.modelId);
-      const result = trimExtendElementInStore(model.store, model.editor, ref.expressId, params);
+      const result = trimExtendElementInStore(model.store, model.editor, ref.expressId, params, { guidRandom: model.guidRandom });
       return refs(model.modelId, [result.expressId, ...result.walls]);
     },
   };

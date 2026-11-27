@@ -6,6 +6,7 @@ import type { StoreEditor } from '@ifc-lite/mutations';
 import { expandAffectedSet, editOwnershipRefusal, effectiveReferencers } from '@ifc-lite/export';
 import { retireProductShape } from './product-shape-retire.js';
 import { copyBatchInStore } from './copy-batch.js';
+import type { AuthoringGuidOptions } from './anchor.js';
 import { AnchorEntityReader } from './resolve-anchor.js';
 import { planElementTransform } from './element-transform-plan.js';
 import { readWallJoinRels } from './wall-join-read.js';
@@ -26,7 +27,7 @@ export interface MirrorElementsParams {
  * placement retains +Z; the local mapped representation carries the negative
  * determinant. Hosted cuts and fillings retain their original relationships.
  * Grids are refused atomically because their axes need a separate reflection. */
-export function mirrorElementsInStore(store: IfcDataStore, editor: StoreEditor, ids: readonly number[], params: MirrorElementsParams): number[] {
+export function mirrorElementsInStore(store: IfcDataStore, editor: StoreEditor, ids: readonly number[], params: MirrorElementsParams, options: AuthoringGuidOptions = {}): number[] {
   const [a, b] = params.axis;
   const length = Math.hypot(b[0] - a[0], b[1] - a[1]);
   if (![...a, ...b].every(Number.isFinite) || !(length > 1e-9)) throw new Error('Mirror requires two finite distinct axis points');
@@ -40,7 +41,7 @@ export function mirrorElementsInStore(store: IfcDataStore, editor: StoreEditor, 
     if (ids.some(id => liveEntityConforms(store, id, 'IfcGrid', draft.getMutationView()))) {
       throw new Error('Mirror does not support grids');
     }
-    const selected = params.copy ? copyBatchInStore(store, draft, ids, [{}]).map(r => r.copyId) : [...new Set(ids)];
+    const selected = params.copy ? copyBatchInStore(store, draft, ids, [{}], { guidRandom: options.guidRandom }).map(r => r.copyId) : [...new Set(ids)];
     const view = draft.getMutationView(), reader = new AnchorEntityReader(store, view);
     const plan = planElementTransform({ dataStore: store, view, selected, storeyOf: id => effectiveStoreyId(store, view, id) ?? null });
     if (plan.refused.length) throw new Error('Mirror requires local placements under a storey');
@@ -125,7 +126,7 @@ export function mirrorElementsInStore(store: IfcDataStore, editor: StoreEditor, 
         if (shapeId !== null) retireProductShape(store, draft, shapeId);
       }
     }
-    mirrorDoorHandedness(store, draft, products, references);
+    mirrorDoorHandedness(store, draft, products, references, options);
     return selected;
   });
 }

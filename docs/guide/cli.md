@@ -534,6 +534,11 @@ ifc-lite extract-entities model.ifc --product '2O2Fr$t4X7Zf8NOew3FLKr' --out sub
 # By type or storey
 ifc-lite extract-entities model.ifc --type IfcWall --out walls.ifc
 ifc-lite extract-entities model.ifc --storey "Level 2" --out level2.ifc
+# --storey takes a GlobalId, #id, or the storey's exact Name (else its LongName).
+# Quote names with leading or trailing spaces to preserve them. A name shaped
+# like #42 still resolves as an ID. Use the intended storey's #id or GlobalId.
+# Repeat --storey or use a comma-separated list such as "L01, L02".
+# A bare number is a Name when no storey has that id; when it is both, use #id.
 
 # Auto-triage: extract the N most unusual meshes
 ifc-lite extract-entities model.ifc --detect --top 10 --out suspects.ifc
@@ -553,7 +558,7 @@ Selectors are unioned. The output carries each selected product's full forward r
 |------|-------------|
 | `--product <id\|GUID>` | Select specific products (repeatable or comma-separated) |
 | `--type <T>` | Select every product of a type |
-| `--storey <GUID\|name\|id>` | Select every product placed under a storey |
+| `--storey <GUID\|name\|id>` | Select the storey and its elements: contained in it or in a space it aggregates (openings and parts follow their host); the placement chain decides only for elements no storey owns |
 | `--detect` | Select the meshes a geometry-triage pass ranks most unusual |
 | `--top <N>` | How many triage hits to keep (default 20, with `--detect`) |
 | `--report` | Print the triage report without extracting (with `--detect`) |
@@ -1488,15 +1493,17 @@ Start a Model Context Protocol server bound to one or more IFC files, so MCP-cap
 ifc-lite mcp model.ifc
 ifc-lite mcp model.ifc --read-only
 ifc-lite mcp arch.ifc struct.ifc
-ifc-lite mcp model.ifc --transport http --port 8765 --token abc
+ifc-lite mcp --transport http --port 8765 --token abc
 ifc-lite mcp model.ifc --viewer          # also start the 3D viewer
+ifc-lite mcp install --client claude-desktop ./model.ifc   # add it to a client's config
 ```
 
 !!! note "HTTP transport starts with an empty session"
-    In `--transport http` mode the positional files are **not** preloaded: every
-    HTTP session gets its own empty model registry. Load a model into the session
-    with the `model_load` tool (which needs `mutate` scope, so it is hidden under
-    `--read-only`). The default `stdio` transport does preload the files you pass.
+    In `--transport http` mode every HTTP session gets its own empty model
+    registry, and file arguments load nothing (the server warns and starts). Load a model into
+    the session with the `model_load` tool, which needs only `read` scope, so
+    it works under `--read-only` too. The default `stdio` transport preloads
+    the files you pass.
 
 **Flags:**
 
@@ -1504,15 +1511,20 @@ ifc-lite mcp model.ifc --viewer          # also start the 3D viewer
 |------|-------------|
 | `--transport <t>` | `stdio` (default) or `http` |
 | `--port <N>` | HTTP port (default 8765) |
-| `--host <h>` | HTTP host (default 127.0.0.1; non-loopback requires `--token` or `--insecure`) |
-| `--token <bearer>` | HTTP bearer token for full scope |
+| `--host <h>` | HTTP host (default 127.0.0.1; non-loopback requires `--token`, `--read-only-token` or `--insecure`) |
+| `--token <bearer>` | HTTP bearer token (repeatable). Full scope, or the `--read-only` preset under `--read-only` |
+| `--read-only-token <bearer>` | HTTP bearer token with the `--read-only` preset (repeatable) |
 | `--insecure` | Allow non-loopback bind without a token (development only) |
-| `--read-only` | Hide mutation tools |
+| `--read-only` | Hide mutation tools. Loading and unloading models still works, and export and flow-checkpoint tools still write files under the allowed roots (`--allow`, or the working, temp and model directories without it) |
 | `--bsdd <url>` | Override the bSDD endpoint |
 | `--allow <path>` | Restrict file-system access (repeatable) |
 | `--viewer` | Auto-open the 3D viewer |
 | `--viewer-port <N>` | Preferred viewer port (0 = auto) |
 | `--open` | Auto-open the viewer and open the URL in the browser |
+| `--allow-origin <origin>` | Let a browser origin read HTTP responses (repeatable) |
+| `--bridge`, `--bridge-port`, `--bridge-viewer-url`, `--channel` | Serve the model open in a browser tab; see the [MCP guide](mcp.md#bridge-to-a-browser-tab) |
+
+`ifc-lite mcp` and the standalone `ifc-lite-mcp` binary run the same code and take the same flags. Run `ifc-lite mcp --help` for the full list.
 
 ### `simplify` - Demesher
 
@@ -1914,7 +1926,7 @@ Use `ifc-lite` CLI for BIM/IFC file operations:
 - `ifc-lite eval <file> "<expr>"` - evaluate SDK expressions
 - `ifc-lite ask <file> "<question>"` - natural language queries
 - `ifc-lite schema` - discover all SDK methods
-- `ifc-lite mcp <file>` - start an MCP server on the model
+- `ifc-lite mcp [files…]` - start an MCP server (files load over stdio; HTTP sessions start empty)
 
 Always use `--json` for machine-readable output.
 Run `ifc-lite schema` to see the full API before writing eval expressions.
@@ -1972,7 +1984,7 @@ The `semantic` command reads JSON/SPARQL providers, generates shared profile art
 | `analyze` | Query + visualize analysis results |
 | `lod` | Generate lightweight LOD artifacts |
 | `simplify` | Demesher: simplify meshes, write lighter IFC |
-| `mcp` | Start an MCP server bound to one or more IFC files |
+| `mcp` | Start an MCP server (files load over stdio) |
 | `ext` | Manage IFClite extensions (Phase 0 — validate, init) |
 | `layer` | Layered change tracking over a local store (.ifc-lite/) |
 | `ref` | Manage named refs in the layer store |

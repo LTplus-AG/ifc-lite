@@ -206,6 +206,14 @@ describe('dimension PDF export', () => {
     assert.match(pdf, /\(4000\) Tj/);
     assert.doesNotMatch(pdf, /\/Subtype \/Image/);
   });
+
+  it('prints a readable label containing non-WinAnsi text (#11449)', () => {
+    const doc = new jsPDF({ unit: 'mm', format: [100, 100] });
+    const [dimension] = graphics([horizontal], 100);
+    const annotated = { ...dimension, text: { ...dimension.text, value: 'Lățime 4000' } };
+    drawDimensionsPdf(doc, [annotated], (x, y) => ({ x: x * 10, y: y * 10 }));
+    assert.match(doc.output(), /\(Latime 4000\) Tj/);
+  });
 });
 
 describe('placeDimensionText', () => {

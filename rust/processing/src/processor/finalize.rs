@@ -7,14 +7,16 @@
 //! georeferencing and assemble the [`ProcessingResult`].
 
 use super::diagnostics;
-use super::pass::{cancelled, emit_finishes, PassContext, Passed};
+use super::pass::{cancelled, PassContext, Passed};
 use super::phase_marks::{mark, Clock, Mark};
+use super::resolve::Times;
 use super::{csg_summary, instancing, ProcessingRequest, ProcessingResult, ProcessingSink};
 use crate::style::ModelFinishes;
-use crate::types::mesh::{InstanceRecord, MeshData};
+use crate::types::mesh::MeshData;
 use crate::types::response::{CoordinateInfo, ModelMetadata, ProcessingStats};
 use rustc_hash::FxHashMap;
 use std::collections::HashMap;
+use std::time::Duration;
 
 /// The per-reason CSG warning: how many cuts failed, how many were accepted
 /// open-topology results rather than dropped cuts.
@@ -84,11 +86,11 @@ impl CsgFailures {
 fn emit_final_batches(
     req: &ProcessingRequest,
     sink: &mut dyn ProcessingSink,
-    mut finishes: Option<ModelFinishes<'_>>,
+    finishes: Option<ModelFinishes<'_>>,
     recovered: &[MeshData],
-    instances: &[InstanceRecord],
-    processed_jobs: usize,
-    total_jobs: usize,
+    recovered_styles: &[crate::element::StyleSource],
+    instance_styles: &[crate::element::StyleSource],
+    progress: (usize, usize),
 ) -> (usize, usize, usize) {
     let mut counts = (0, 0, 0);
     if !recovered.is_empty() {
@@ -96,14 +98,14 @@ fn emit_final_batches(
         counts.1 = recovered.iter().map(|mesh| mesh.vertex_count()).sum::<usize>();
         counts.2 = recovered.iter().map(|mesh| mesh.triangle_count()).sum::<usize>();
         if !cancelled(req) {
-            emit_finishes(sink, finishes.as_mut(), recovered);
-            sink.on_batch(recovered, processed_jobs, total_jobs);
+            super::pass_finishes::emit_finishes(sink, finishes.as_ref(), recovered_styles);
+            sink.on_batch(recovered, progress.0, progress.1);
         }
     }
-    if let Some(finishes) = finishes.as_mut().filter(|_| !instances.is_empty() && !cancelled(req)) {
-        let values: Vec<_> = instances
+    if let Some(finishes) = finishes.as_ref().filter(|_| !instance_styles.is_empty() && !cancelled(req)) {
+        let values: Vec<_> = instance_styles
             .iter()
-            .map(|record| finishes.finish_for_instance(record))
+            .map(|&style| finishes.finish_for_source(style))
             .collect();
         sink.on_instance_finishes(&values);
     }
@@ -116,13 +118,29 @@ fn record_geometry_span(
     total_triangles: usize,
     backstop_dropped: u64,
     total_csg_failures: usize,
-    geometry_time: std::time::Duration,
+    geometry_time: Duration,
 ) {
     geometry_span.record("mesh_count", total_meshes as u64);
     geometry_span.record("triangle_count", total_triangles as u64);
     geometry_span.record("backstop_count", backstop_dropped);
     geometry_span.record("total_csg_failures", total_csg_failures as u64);
     geometry_span.record("phase_ms", geometry_time.as_millis() as u64);
+}
+
+
+fn record_pipeline_timing(
+    total_start: Clock,
+    pipeline_span: &tracing::Span,
+    total_jobs: usize,
+    _times: &Times,
+    _geometry_time: Duration,
+) -> Duration {
+    let total_time = mark(Mark::TotalEnd, total_start.elapsed());
+    #[cfg(feature = "probe-phase-timings")]
+    super::probe_phase_timings::record(_times, _geometry_time, total_time);
+    pipeline_span.record("element_count", total_jobs as u64);
+    pipeline_span.record("total_ms", total_time.as_millis() as u64);
+    total_time
 }
 
 pub(super) fn finish(
@@ -194,7 +212,7 @@ pub(super) fn finish(
     // path (no armed plan => no occurrences collected). `meshes` is only appended to
     // (orphan recovery), so the flat output stays byte-identical.
     let first_recovered = meshes.len();
-    let instances = instancing::finalize_instances(
+    let (instances, instance_styles, recovered_styles) = instancing::finalize_instances(
         raw_instance_collector
             .into_inner()
             .unwrap_or_else(|poisoned| poisoned.into_inner()),
@@ -203,16 +221,14 @@ pub(super) fn finish(
         [rtc_offset.0, rtc_offset.1, rtc_offset.2],
     );
     let (mesh_count, vertex_count, triangle_count) =
-        emit_final_batches(req, sink, finishes, &meshes[first_recovered..], &instances, processed_jobs, total_jobs);
+        emit_final_batches(req, sink, finishes, &meshes[first_recovered..], &recovered_styles, &instance_styles, (processed_jobs, total_jobs));
     total_meshes += mesh_count;
     total_vertices += vertex_count;
     total_triangles += triangle_count;
 
     record_geometry_span(&geometry_span, total_meshes, total_triangles, backstop_dropped, total_csg_failures, geometry_time);
 
-    let total_time = mark(Mark::TotalEnd, total_start.elapsed());
-    pipeline_span.record("element_count", total_jobs as u64);
-    pipeline_span.record("total_ms", total_time.as_millis() as u64);
+    let total_time = record_pipeline_timing(total_start, pipeline_span, total_jobs, &facts.times, geometry_time);
     tracing::info!(target: "ifc_lite_processing::processor",
         meshes = meshes.len(),
         instances = instances.len(),

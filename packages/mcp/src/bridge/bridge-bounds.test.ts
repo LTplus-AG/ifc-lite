@@ -80,6 +80,33 @@ describe('schema keywords the bridge cannot enforce (CodeRabbit json-bounds.ts:8
   it('refuses a schema-valued additionalProperties, which would be published but not enforced', async () => {
     expect(await refusal({ type: 'object', additionalProperties: { type: 'integer' } })).toMatch(/additionalProperties must be true or false/);
   });
+
+  // validateInput would throw on every call for these, as a JSON-RPC InternalError
+  // instead of a refusal at hello (code review of the 2020-12 validator). The viewer's
+  // own tab schemas use valid `pattern`s, so a compiling one is accepted and enforced.
+  it('refuses $ref, an invalid pattern and a non-array or empty oneOf', async () => {
+    expect(await refusal({ type: 'object', properties: { a: { $ref: '#/$defs/A' } } })).toMatch(/\$ref is not supported/);
+    expect(await refusal({ type: 'object', properties: { a: { oneOf: { type: 'string' } } } })).toMatch(/oneOf must be a non-empty array/);
+    expect(await refusal({ type: 'object', properties: { a: { oneOf: [] } } })).toMatch(/oneOf must be a non-empty array/);
+    expect(await refusal({ type: 'object', properties: { a: { type: 'array', uniqueItems: 'true' } } })).toMatch(/uniqueItems must be true or false/);
+    expect(await refusal({ type: 'object', properties: { a: { oneOf: [{ type: 'strng' }] } } })).toMatch(/oneOf\[0\]\.type must be one of/);
+    expect(await refusal({ type: 'object', properties: { a: { type: 'string', pattern: '[' } } })).toMatch(/pattern must be a valid regular expression/);
+  });
+});
+
+describe('tab patterns are published, not run server-side (code review: a tab regex could stall the server)', () => {
+  // A cheap pattern, so a regression fails the test instead of hanging the worker (CodeRabbit on #11550).
+  it('forwards a call that breaks a tab pattern to the tab instead of refusing it', async () => {
+    const agent = await start();
+    const inputSchema = { type: 'object', properties: { type: { type: 'string', pattern: '^x$' } } };
+    const p = await pairTab({ port: agent.bridge.port, code: agent.bridge.pairingCode(), tools: [{ ...READ_TOOL, inputSchema }] });
+    tabs.push(p.tab);
+    const pending = agent.call(READ_TOOL.name, { type: 'y' });
+    const c = await p.tab.next('call');
+    expect(c.arguments).toEqual({ type: 'y' });
+    p.tab.reply(p.welcome.sessionId, c.id, textResult('ok'));
+    expect((await pending).isError).toBeUndefined();
+  });
 });
 
 describe('outbound bounds (CodeRabbit session.ts:124)', () => {

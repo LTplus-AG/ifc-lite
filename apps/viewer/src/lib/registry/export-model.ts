@@ -8,6 +8,7 @@ import { exportChangedModelToStep } from '@/lib/export/changed-model-export';
 import { collectChangedModels } from '@/lib/export/model-changes';
 import { mapStepSchema } from '@/lib/export/artifact-naming';
 import { sanitizeFilename } from '@/lib/export/download';
+import { sha256 } from './artifacts';
 import { RegistryError } from './protocol';
 
 /** The model a registry save exports: the active one, else the only one loaded. */
@@ -33,12 +34,20 @@ export async function exportRegistryModel(): Promise<{ bytes: Uint8Array<ArrayBu
     scheduleState: schedule,
     description: 'Model release published from IFClite',
   });
+  if (result.ext !== 'ifc' || result.skippedCount) throw new RegistryError('This demo publishes plain IFC files. This model needs a different export format.');
+  const safe = sanitizeFilename(model.name, { fallback: 'model.ifc', maxLength: Infinity });
+  const complete = /\.ifc$/i.test(safe) ? safe : `${safe}.ifc`;
+  let filename = complete;
+  const escapedDevice = safe.startsWith('_') && safe !== sanitizeFilename(model.name, { fallback: 'model.ifc', maxLength: Infinity, reservedStem: false });
+  if (escapedDevice || complete.length > 60) {
+    // Disambiguate a device-name escape from a literal underscore, as well as truncated names.
+    const digest = await sha256(new TextEncoder().encode(model.name));
+    const suffix = `-${digest.slice(-16)}${complete.slice(-4)}`;
+    filename = sanitizeFilename(complete.slice(0, -4), { maxLength: 60 - suffix.length }) + suffix;
+  }
   const current = useViewerStore.getState();
   if (current.mutationVersion !== state.mutationVersion || current.models.get(id) !== model) {
     throw new RegistryError('The model changed while exporting. Please publish again.');
   }
-  if (result.ext !== 'ifc' || result.skippedCount) throw new RegistryError('This demo publishes plain IFC files. This model needs a different export format.');
-  let filename = sanitizeFilename(model.name, { fallback: 'model.ifc' });
-  if (!filename.toLowerCase().endsWith('.ifc')) filename += '.ifc';
   return { bytes: typeof result.content === 'string' ? new TextEncoder().encode(result.content) : new Uint8Array(result.content), filename };
 }

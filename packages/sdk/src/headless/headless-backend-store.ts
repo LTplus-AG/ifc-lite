@@ -23,7 +23,7 @@ export function createHeadlessStoreAdapter(
   const resolveModel = (requestedModelId?: string) => {
     if (requestedModelId !== undefined) assertKnownModelId(requestedModelId);
     const editor = get();
-    return { modelId, store: dataStore, editor, mutationView: editor.getMutationView(), ownerHistoryId: null, globalIdScopes: getPeerScopes() };
+    return { modelId, store: dataStore, editor, mutationView: editor.getMutationView(), ownerHistoryId: null, globalIdScopes: getPeerScopes(), guidRandom: options.guidRandom };
   };
   const geometry = resolvedGeometryOptions(options);
   return {

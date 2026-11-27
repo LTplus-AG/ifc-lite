@@ -9,6 +9,7 @@
 import { BVH, type MeshWithBounds } from './bvh.js';
 import type { AABB } from './aabb.js';
 import type { MeshData } from '@ifc-lite/geometry';
+import { compactMeshBounds } from '@ifc-lite/geometry/compact';
 
 function yieldToEventLoop(): Promise<void> {
   // A timer task gives input, timers and the browser's paint step a chance to
@@ -90,9 +91,14 @@ export async function buildSpatialIndexAsync(
 }
 
 /**
- * Compute AABB bounds for a mesh from its positions
+ * Compute AABB bounds for a mesh from its positions. A compact mesh
+ * (`MeshData.compact`) reads its row's box instead (moved with its origin): the
+ * f64 `origin + position` box of its source vertices, the one a scan gives, where reading `positions`
+ * would decode it and keep the decode alive for the life of the mesh.
  */
 function computeMeshBounds(mesh: MeshData): AABB {
+  const b = compactMeshBounds(mesh);
+  if (b) return { min: [b[0], b[1], b[2]], max: [b[3], b[4], b[5]] };
   const positions = mesh.positions;
 
   // Positions are in the element's local frame (world = origin + position). The

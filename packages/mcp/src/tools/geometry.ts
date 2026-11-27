@@ -18,6 +18,7 @@ import { extractProjectUnits, type IfcDataStore } from '@ifc-lite/parser';
 import type { Tool } from './types.js';
 import { okResult, resolveModel, resolveGlobalIds } from './util.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
+import { READ_ONLY } from './annotations.js';
 
 /**
  * Resolve the file-declared display symbol for a unit-type (e.g. VOLUMEUNIT),
@@ -69,7 +70,7 @@ function resolveExpressIds(m: ReturnType<typeof resolveModel>, input: Record<str
 }
 
 const geometryGet: Tool = {
-  name: 'geometry_get',
+  name: 'geometry_get', title: 'Get mesh geometry', annotations: READ_ONLY,
   description: 'Mesh data (positions, indices, normals) for an entity selection. Requires the WASM geometry pipeline; returns UNSUPPORTED_OPERATION when the server runs without it.',
   scope: 'read',
   inputSchema: {
@@ -97,7 +98,7 @@ const geometryGet: Tool = {
 };
 
 const geometryBbox: Tool = {
-  name: 'geometry_bbox',
+  name: 'geometry_bbox', title: 'Bounding box', annotations: READ_ONLY,
   description: 'Axis-aligned bounding box for one or many entities, computed from IfcElementQuantity values when available.',
   scope: 'read',
   inputSchema: {
@@ -145,7 +146,7 @@ const geometryBbox: Tool = {
 };
 
 const geometryVolume: Tool = {
-  name: 'geometry_volume',
+  name: 'geometry_volume', title: 'Element volume', annotations: READ_ONLY,
   description: 'Element volume (in the file volume unit, typically m³) read from IfcElementQuantity. Returns null per entity when no quantity is present; the response `unit` field reports the resolved symbol.',
   scope: 'read',
   inputSchema: {
@@ -186,7 +187,7 @@ const geometryVolume: Tool = {
 };
 
 const geometryArea: Tool = {
-  name: 'geometry_area',
+  name: 'geometry_area', title: 'Element area', annotations: READ_ONLY,
   description: 'Element surface area (in the file area unit, typically m²) read from IfcElementQuantity. The response `unit` field reports the resolved symbol.',
   scope: 'read',
   inputSchema: {
@@ -227,7 +228,7 @@ const geometryArea: Tool = {
 };
 
 const raycast: Tool = {
-  name: 'raycast',
+  name: 'raycast', title: 'Raycast', annotations: READ_ONLY,
   description: 'Cast a world-space ray against the model. Requires the WASM geometry pipeline.',
   scope: 'read',
   inputSchema: {

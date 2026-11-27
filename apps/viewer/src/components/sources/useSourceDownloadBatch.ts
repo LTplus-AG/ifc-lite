@@ -7,7 +7,7 @@ import type { FileSourceProvider, SourceFile } from '@ifc-lite/plugin-api';
 import { dispatchSourceDownload, type SourceHost } from '@/services/sources/source-host';
 import { toast } from '@/components/ui/toast';
 import { useTranslation } from '@/i18n';
-import { sanitizeFilename } from '@/lib/export/download';
+import { sanitizeModelFilename } from '@/lib/export/download';
 import { loadResolvedSourcePrefs } from '@/lib/sources/preferences';
 import type { SourceDownloadState } from '@/lib/sources/downloadProgress';
 import { beginActivity, finishActivity, updateActivity } from '@/lib/activity/activity-journal';
@@ -113,7 +113,7 @@ export function useSourceDownloadBatch({
                 // `addModel`, so it is untrusted input to a filename position.
                 // Sanitize at the boundary rather than trusting every provider
                 // to have done it — the same contract the export paths use.
-                name: sanitizeFilename(f.artifactName ?? f.name, { fallback: 'model.ifc' }),
+                name: sanitizeModelFilename(f.artifactName ?? f.name),
                 buffer,
                 sourceFile: f,
                 tag: sourceHost.createSourceTag(providerId, projectId, f.containerId, f.id, f.currentRevisionId),

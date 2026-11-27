@@ -33,7 +33,7 @@ twox-hash = { version = "2.1", default-features = false, features = ["xxhash64"]
 thiserror.workspace = true
 # `ifc-build-cache` maps its input rather than copying it onto the heap; the
 # version already in the lock (through another member's dependency graph).
-memmap2 = "0.5"
+memmap2 = "0.9"
 
 [dev-dependencies]
 ifc-lite-testkit = { path = "../testkit" }

@@ -34,12 +34,12 @@ import { assertWallOpeningsFit } from './wall-opening-fit.js';
 import { wallAxisIntersection, wallAtIntersection } from './wall-join-intersection.js';
 
 /** What a join write needs from the model: the authoring anchor plus the context an `Axis` representation lives in. */
-export function resolveWallJoinAnchor(store: IfcDataStore, view?: Parameters<typeof resolveAuthoringAnchor>[1]): JoinAnchor {
+export function resolveWallJoinAnchor(store: IfcDataStore, view?: Parameters<typeof resolveAuthoringAnchor>[1], guidRandom?: JoinAnchor['guidRandom']): JoinAnchor {
   const base = resolveAuthoringAnchor(store, view);
   const reader = new AnchorEntityReader(store, view);
   const axisContextId = reader.contextId('axis', reader.rootContextId());
   if (axisContextId === null) throw new Error('resolveWallJoinAnchor: no IfcGeometricRepresentationContext (or Axis subcontext) found in store');
-  return { ownerHistoryId: base.ownerHistoryId, schema: base.schema, lengthUnitScale: base.lengthUnitScale, axisContextId };
+  return { ownerHistoryId: base.ownerHistoryId, schema: base.schema, lengthUnitScale: base.lengthUnitScale, axisContextId, guidRandom };
 }
 
 function mustRead(store: IfcDataStore, editor: StoreEditor, wallId: number, scale: number, op: string): WallJoinRead {

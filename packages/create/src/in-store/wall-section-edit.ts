@@ -54,7 +54,7 @@ export function setWallSectionInStore(target: EditTarget, expressId: number, sec
     if (wall.chain && plain) {
       updates.push({ entityId: wall.chain.profileId, index: PROFILE_YDIM, value: thickness });
     } else {
-      const reshaped = reshapeWallsInStore(target.editor, target.dataStore, resolveWallJoinAnchor(target.dataStore, target.view), [{ wallId: expressId, thickness: section.thickness }], {});
+      const reshaped = reshapeWallsInStore(target.editor, target.dataStore, resolveWallJoinAnchor(target.dataStore, target.view, target.guidRandom), [{ wallId: expressId, thickness: section.thickness }], {});
       remesh.push(...reshaped.walls);
     }
     if (hosts) {

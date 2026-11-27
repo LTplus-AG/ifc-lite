@@ -144,7 +144,7 @@ function repointUsages(target: EditTarget, followers: readonly number[], oldSetI
     }
     // Shared with an element that keeps the old set: the inheriting ones move to a usage of their own.
     const moving = placed.filter(id => inheriting.has(id));
-    const anchor = resolveAuthoringAnchor(target.dataStore, target.view);
+    const anchor = { ...resolveAuthoringAnchor(target.dataStore, target.view), guidRandom: target.guidRandom };
     const token = (value: unknown) => String(value).replace(/\./g, '');
     const direction = token(attributes?.[1]), sense = token(attributes?.[2]);
     const split = addMaterialLayerSetUsageToStore(target.editor, anchor, {

@@ -2,10 +2,16 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { AnchorEntityReader } from './resolve-anchor.js';
+import { AnchorEntityReader, resolveSpatialAnchor } from './resolve-anchor.js';
+import type { SpatialAnchor } from './anchor.js';
 import { axis3d, refId, type Frame3 } from './host-geometry-frame.js';
 import { readAttributes, resolvePlacementChain } from './edit/placement-core.js';
 import type { SplitEnvironment } from './element-split.js';
+
+/** The split storey's anchor, carrying the operation's GlobalId source. */
+export function splitAnchor(env: SplitEnvironment): SpatialAnchor {
+  return { ...resolveSpatialAnchor(env.dataStore, env.storeyExpressId, env.view), guidRandom: env.guidRandom };
+}
 
 interface SplitPlacement {
   readonly parent: number | null;

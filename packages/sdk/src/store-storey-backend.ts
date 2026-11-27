@@ -27,7 +27,7 @@ export function createStoreyStoreBackend(resolve: ModellingStoreModelResolver): 
     },
     addStorey(modelId, params) {
       const model = resolve(modelId);
-      return { modelId: model.modelId, expressId: addStoreyInStore(model.store, model.editor, params).storeyId };
+      return { modelId: model.modelId, expressId: addStoreyInStore(model.store, model.editor, params, { guidRandom: model.guidRandom }).storeyId };
     },
     planAddStorey(modelId, params) {
       return planStoreyAdd(inventory(modelId).inventory, params);
@@ -54,7 +54,7 @@ export function createStoreyStoreBackend(resolve: ModellingStoreModelResolver): 
     },
     deleteStorey(ref, mode, expected) {
       const model = resolve(ref.modelId);
-      const plan = applyStoreyDelete(model.store, model.editor, ref.expressId, mode, expected);
+      const plan = applyStoreyDelete(model.store, model.editor, ref.expressId, mode, expected, { guidRandom: model.guidRandom });
       return refs(model.modelId, [ref.expressId, ...(mode.kind === 'deleteContents' ? plan.contents : [])]);
     },
   };

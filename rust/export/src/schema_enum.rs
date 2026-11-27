@@ -33,6 +33,8 @@ enum Loss {
 }
 
 impl Loss {
+    const ALL: [Self; 4] = [Self::LabelOccupied, Self::NotDefined, Self::Omit, Self::Refuse];
+
     fn text(self) -> &'static str {
         match self {
             Loss::LabelOccupied => "written as .USERDEFINED. but the label slot already held a value, so the member name was not kept",
@@ -46,7 +48,7 @@ impl Loss {
 /// Enum reconciliation for one export: rewrites, and counts what it lost.
 #[derive(Default)]
 pub(crate) struct EnumReconciliation {
-    losses: BTreeMap<Loss, BTreeMap<String, usize>>,
+    losses: [BTreeMap<String, usize>; Loss::ALL.len()],
     /// Records written `.USERDEFINED.` with the label their rule needs unset, per type (#10780).
     unlabelled: BTreeMap<String, usize>,
 }
@@ -96,8 +98,8 @@ impl EnumReconciliation {
                 names.join(", ")
             )
         });
-        self.losses
-            .iter()
+        Loss::ALL.into_iter().zip(&self.losses)
+            .filter(|(_, sites)| !sites.is_empty())
             .map(|(loss, where_)| {
                 // Every site is named: distinct sites are bounded by the ledger.
                 let total: usize = where_.values().sum();
@@ -113,11 +115,11 @@ impl EnumReconciliation {
     }
 
     fn count(&self, loss: Loss) -> usize {
-        self.losses.get(&loss).map_or(0, |m| m.values().sum())
+        self.losses[loss as usize].values().sum()
     }
 
     fn record(&mut self, loss: Loss, where_: String) {
-        *self.losses.entry(loss).or_default().entry(where_).or_insert(0) += 1;
+        *self.losses[loss as usize].entry(where_).or_default() += 1;
     }
 
     /// `None` when the line is left exactly as it is.

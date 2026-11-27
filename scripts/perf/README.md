@@ -8156,3 +8156,11 @@ the embedded texture output byte-identical. The stricter size setting slowed
 the larger texture decode beyond the accepted limit. Use an identical-engine
 control before comparing cold texture loads. Batching independent fresh loads
 made the short decode cases repeatable without warming the decoder.
+
+## Shared STEP attribute masks (#11664)
+
+The mutation-log writer uses enum, string and schema-specific REAL masks to
+serialize named edits. Most entity types share a mask layout. Referencing a
+static layout per type reduced the engine WASM below its existing allowance
+with the same release profile. Interleaved FZK-Haus IFC4 STEP exports retained
+baseline throughput and produced byte-identical output.

@@ -39,7 +39,7 @@ export async function loadSchema(release: SchemaRelease): Promise<SchemaRuntime>
 }
 
 export function fileSchemaIdentifier(stepText: string): string | undefined {
-  const names = headerRecords(stepText).get('FILE_SCHEMA')?.[0];
+  const names = headerRecords(stepText).get('FILE_SCHEMA')?.filter(record => record !== undefined).at(-1)?.[0];
   return Array.isArray(names) && typeof names[0] === 'string' ? names[0] : undefined;
 }
 

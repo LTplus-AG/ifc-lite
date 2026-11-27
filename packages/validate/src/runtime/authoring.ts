@@ -50,7 +50,7 @@ export function fromAuthoring(schema: Pick<SchemaRuntime, 'canonicalName' | 'typ
     return undefined;
   }
   if (typeof v === 'string' && resolvesTo(schema, type, 'BINARY')) return new BinaryValue(v);
-  if (v === 'UNKNOWN' && type?.k === 'simple' && type.name === 'LOGICAL') return UNKNOWN;
+  if (v === 'UNKNOWN' && resolvesTo(schema, type, 'LOGICAL')) return UNKNOWN;
   if (typeof v === 'string' && type?.k === 'named' && schema.type(type.name)?.kind === 'enum') return new EnumValue(v.toUpperCase());
   if (typeof v === 'number' && Number.isInteger(v)) {
     if (resolvesTo(schema, type, 'INTEGER')) return new StepInteger(v);
@@ -61,9 +61,11 @@ export function fromAuthoring(schema: Pick<SchemaRuntime, 'canonicalName' | 'typ
 }
 
 function resolvesTo(schema: Pick<SchemaRuntime, 'type'>, type: TypeRef | undefined, simple: string): boolean {
-  for (let t = type, guard = 0; t && guard < 16; guard++) {
+  const seen = new Set<string>();
+  for (let t = type; t;) {
     if (t.k === 'simple') return t.name === simple;
-    if (t.k !== 'named') return false;
+    if (t.k !== 'named' || seen.has(t.name)) return false;
+    seen.add(t.name);
     const decl = schema.type(t.name);
     t = decl?.kind === 'defined' ? decl.underlying : undefined;
   }

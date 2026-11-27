@@ -90,3 +90,19 @@ it('rejects nondecimal instance ids without indexing a numeric prefix (#11647)',
     expect(report.stats.instances).toBe(1);
   }
 });
+
+it('validates every FILE_NAME and reports duplicate header records (#11647)', async () => {
+  const valid = "FILE_NAME('a','b',('c'),('d'),'e','f','g');";
+  const invalid = valid.replace("'a'", '$');
+  const malformed = valid.replace(');', ') junk;');
+  for (const [records, rules] of [
+    [[valid], []],
+    [[valid, valid], ['duplicate-header-record']],
+    [[invalid, valid], ['duplicate-header-record', 'FILE_NAME.name']],
+    [[valid, invalid], ['duplicate-header-record', 'FILE_NAME.name']],
+    [[malformed, valid], ['duplicate-header-record', 'FILE_NAME']],
+  ] as const) {
+    const report = await validateStepText(file('').replace(valid, () => records.join('\n')), { categories: ['header'] });
+    expect(report.findings.map(f => f.rule)).toEqual(rules);
+  }
+});

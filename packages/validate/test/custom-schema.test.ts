@@ -309,3 +309,13 @@ WHERE Repeated : SIZEOF([9, 1:N]) = Expected;
   ]);
   expect(report.stats.entityRuleEvaluations).toBe(10);
 });
+
+it('preserves UNKNOWN in defined LOGICAL authoring types and ordinary strings (#11647)', () => {
+  const { schemas } = generated(`SCHEMA S; TYPE Flag = LOGICAL; END_TYPE;
+TYPE OnlyUnknown = Flag; WHERE W : SELF = UNKNOWN; END_TYPE;
+TYPE Label = STRING; WHERE W : SELF = 'UNKNOWN'; END_TYPE; END_SCHEMA;`);
+  expect(schemas.OnlyUnknown.safeParse('UNKNOWN').success).toBe(true);
+  for (const value of [true, false]) expect(schemas.OnlyUnknown.safeParse(value).success).toBe(false);
+  expect(schemas.Label.safeParse('UNKNOWN').success).toBe(true);
+  expect(schemas.Label.safeParse('other').success).toBe(false);
+});

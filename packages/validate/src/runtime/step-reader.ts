@@ -228,16 +228,21 @@ export function* sectionRecords(text: string, section: 'HEADER' | 'DATA'): Gener
   }
 }
 
-export function headerRecords(text: string): Map<string, Value[]> {
-  const records = new Map<string, Value[]>();
+export function headerRecords(text: string): Map<string, Array<Value[] | undefined>> {
+  const records = new Map<string, Array<Value[] | undefined>>();
   for (const statement of sectionRecords(text, 'HEADER')) {
+    const type = /^\w+/.exec(statement)?.[0].toUpperCase();
+    if (!type) continue;
+    let attributes: Value[] | undefined;
     try {
-      const record = readStepRecord(`#0=${statement}`);
-      records.set(record.type, record.attributes);
+      attributes = readStepRecord(`#0=${statement}`).attributes;
     } catch (error) {
       if (!(error instanceof StepRecordError)) throw error;
-      // The header validator reports absent or unreadable attributes.
+      // Keep the occurrence so a later, readable record cannot hide it.
     }
+    const occurrences = records.get(type);
+    if (occurrences) occurrences.push(attributes);
+    else records.set(type, [attributes]);
   }
   return records;
 }

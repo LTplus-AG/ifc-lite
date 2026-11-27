@@ -80,3 +80,14 @@ describe('crafted parity corpus', () => {
     expect(compareFile(file, 'crafted', report.schema, report.findings, reference ?? [], 0).fn).toEqual([]);
   });
 });
+
+it('counts both rectangle dimension violations and detects one missing occurrence (#11648)', async () => {
+  const report = await validateStepText("HEADER;FILE_SCHEMA(('IFC4'));ENDSEC;DATA;#1=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,0.,0.);ENDSEC;");
+  const findings = report.findings.filter(f => f.rule.toLowerCase() === 'ifcpositivelengthmeasure.wr1');
+  expect(findings).toHaveLength(2);
+  const ref = { type: 'simpletype_rule', instance: 1, attribute: findings[0].rule, message: '' };
+  const compare = (count: number, refs: number) => compareFile('rectangle', 'crafted', report.schema, findings.slice(0, count), Array<OracleFinding>(refs).fill(ref), 0);
+  expect(compare(2, 2).tp).toHaveLength(2);
+  expect(compare(1, 2).fn).toHaveLength(1);
+  expect(compare(2, 1).fp).toHaveLength(1);
+});

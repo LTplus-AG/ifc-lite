@@ -41,13 +41,23 @@ export function compareFile(
   targets?: string,
   oracleError?: string,
 ): FileComparison {
-  const a = new Set(ours.map((f) => keyString(ourKey(f))));
-  const b = new Set(oracle.map(f => keyString(oracleKey(f))));
+  const counts = new Map<string, number>();
+  for (const f of oracle) {
+    const key = keyString(oracleKey(f));
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  const tp: string[] = [], fp: string[] = [], fn: string[] = [];
+  for (const f of ours) {
+    const key = keyString(ourKey(f));
+    const left = counts.get(key) ?? 0;
+    if (left > 0) {
+      tp.push(key);
+      counts.set(key, left - 1);
+    } else fp.push(key);
+  }
+  for (const [key, left] of counts) for (let i = 0; i < left; i++) fn.push(key);
   return {
-    path, kind, schema, ours: a.size, oracle: b.size, milliseconds,
-    tp: [...a].filter((k) => b.has(k)),
-    fp: [...a].filter((k) => !b.has(k)),
-    fn: [...b].filter((k) => !a.has(k)),
+    path, kind, schema, ours: ours.length, oracle: oracle.length, milliseconds, tp, fp, fn,
     ...(targets ? { targets } : {}),
     ...(oracleError ? { oracleError } : {}),
   };

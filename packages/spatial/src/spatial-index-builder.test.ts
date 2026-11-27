@@ -66,6 +66,28 @@ describe('buildSpatialIndex', () => {
     expect(bvh.queryAABB(box(-1, 49, -26, 1, 51, -24))).toEqual([]);
   });
 
+  it('reads a compact mesh\'s row box instead of decoding it', async () => {
+    // A compact mesh's `positions` decode its GPU records on first read, and the decode stays for the
+    // life of the mesh: indexing every one after a load decoded all of them (lane L9: +56 to +127 MiB
+    // JS heap flag-on). The row carries the f64 `origin + position` box of the source vertices.
+    const bounds = new Float64Array([0, 0, 0, 0, 0, 0, 99, -1, -1, 101, 1, 1]);
+    const compact = { payload: { records: new Uint8Array(0), indices: new Uint16Array(0), table: new Uint32Array(14),
+      windows: new Float64Array(6), bounds, cells: new Int32Array(6) }, row: 1, origin: [100, 0, 0] as const };
+    const shell = { expressId: 42, color: [1, 1, 1, 1], origin: [100, 0, 0] } as unknown as MeshData;
+    for (const key of ['positions', 'normals', 'indices']) {
+      Object.defineProperty(shell, key, { enumerable: true, get: () => { throw new Error(`${key} decoded`); } });
+    }
+    Object.defineProperty(shell, 'compact', { value: compact, enumerable: false });
+    for (const bvh of [buildSpatialIndex([shell]), await buildSpatialIndexAsync([shell])]) {
+      expect(bvh.queryAABB(box(99.5, -0.5, -0.5, 100.5, 0.5, 0.5))).toEqual([42]);
+      expect(bvh.queryAABB(box(-1, -1, -1, 1, 1, 1))).toEqual([]);
+    }
+    // Moved by rewriting its origin after adoption (an RTC re-anchor): its positions, and so its box, follow.
+    shell.origin = [100, 50, 0];
+    expect(buildSpatialIndex([shell]).queryAABB(box(99.5, 49.5, -0.5, 100.5, 50.5, 0.5))).toEqual([42]);
+    expect(buildSpatialIndex([shell]).queryAABB(box(99.5, -0.5, -0.5, 100.5, 0.5, 0.5))).toEqual([]);
+  });
+
   it('treats an absent origin as no offset', () => {
     const bvh = buildSpatialIndex([mesh(3, [5, 5, 5], 2)]);
     expect(bvh.queryAABB(box(4, 4, 4, 6, 6, 6))).toEqual([3]);

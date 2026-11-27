@@ -39,7 +39,7 @@ describe('CPU geometry held (#10264)', () => {
   it('counts every array of a compact payload once for the meshes that share it, decoding none', async () => {
     const { measureCpuGeometryHeld } = await load();
     const payload = {
-      records: new Uint8Array(96), indices: new Uint16Array(36), table: new Uint32Array(12),
+      records: new Uint8Array(96), indices: new Uint16Array(36), table: new Uint32Array(14),
       windows: new Float64Array(6), bounds: new Float64Array(12), cells: new Int32Array(6),
     };
     const shells = [0, 1].map((row) => {
@@ -50,7 +50,7 @@ describe('CPU geometry held (#10264)', () => {
       return shell as unknown as MeshData;
     });
     const held = measureCpuGeometryHeld({ models: [{ geometryResult: { meshes: shells } }], renderer: { visitCpuGeometry: () => {} } });
-    assert.equal(held.totalBytes, 96 + 72 + 48 + 48 + 96 + 24);
+    assert.equal(held.totalBytes, 96 + 72 + 56 + 48 + 96 + 24);
     assert.equal(held.byKind.indices, 72);
   });
 

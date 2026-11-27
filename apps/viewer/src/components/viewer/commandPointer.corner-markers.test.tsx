@@ -138,3 +138,25 @@ it('#11746 reopening a Reposition pick at a fixed camera starts without old glyp
   assert.equal(renderer.cornerMarkers.get(), null);
   setPicking(false);
 });
+
+for (const next of ['wall.place', 'column.place'] as const) {
+  it(`#11746 replacing column.place with ${next} clears the stationary glyph until hover`, async t => {
+    const { ui, renderer, move } = await scene(t, 0);
+    const active = () => ui.querySelector('[data-snap-corner-marker="active"]')?.getAttribute('transform');
+    const glyph = active();
+    assert.ok(glyph);
+    const previous = getCommandRuntime().ctx;
+    const camera = renderer.readbackRaycastViewKey();
+    act(() => { useViewerStore.getState().startCommand(next); });
+    assert.equal(useViewerStore.getState().activeTool, 'command');
+    assert.equal(getCommandRuntime().command?.id, next);
+    assert.notEqual(getCommandRuntime().ctx, previous);
+    assert.equal(renderer.readbackRaycastViewKey(), camera);
+    assert.ok(!ui.querySelector('[data-snap-corner-marker]'));
+    assert.equal(renderer.cornerMarkers.get(), null);
+    await move();
+    assert.equal(active(), glyph);
+    await move();
+    assert.equal(active(), glyph);
+  });
+}

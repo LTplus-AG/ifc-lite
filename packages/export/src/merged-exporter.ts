@@ -10,7 +10,7 @@
  * structure unification, and infrastructure deduplication.
  */
 
-import type { IfcDataStore, IfcSourceBytes } from '@ifc-lite/parser';
+import type { IfcDataStore, IfcSourceBytes, ProjectUnits } from '@ifc-lite/parser';
 import { asSourceBytes } from '@ifc-lite/parser';
 import { decodeIfcString, stepStringLiteralEnd } from '@ifc-lite/encoding';
 import { buildMergedHeader, finishMergedConversion } from './merged-header.js';
@@ -32,6 +32,8 @@ import { getCompleteEntityIndex, getMaxExpressId, type CompleteEntityIndex, type
 import { bakeMutatedModels, mergeWarningLabel, needsBake } from './merged-bake.js';
 import type { StepGeoreferencingOptions } from './step-coordinate-options.js';
 import { rescaleEntityLengths, computeNormalizeFactor } from './unit-normalize.js';
+import { enumerationUnitLookup } from './merged-enumeration-unit.js';
+import { profileMeasureFactors, readProfileProjectUnits } from './merged-profile-units.js';
 import { planInfrastructureUnify, resolvePrimaryContextState, unitScalesEqual, type PrimaryContextState } from './merged-context.js';
 import { MintedRecords, georefNormalizeCaveat, normalizeGeorefRecord, planGeorefNormalize, type GeorefNormalizePlan } from './merged-georef-normalize.js';
 import { listKeptContexts } from './merged-project-contexts.js';
@@ -127,6 +129,7 @@ interface MergeSetup {
   primaryAreaScale: number;
   /** Volume unit scale (m³ per unit) of the primary model — target for volume values. */
   primaryVolumeScale: number;
+  primaryProfileUnits?: ProjectUnits;
   /** When true, every model is treated as sharing the primary unit. */
   assumeShared: boolean;
   /**
@@ -152,17 +155,14 @@ interface MergeSetup {
  * squared.
  */
 interface ModelMode {
-  /**
-   * True when the model is unified into the primary project (its project, units,
-   * contexts and matching spatial structure are deduplicated). False federates it.
-   */
+  /** True when the project and shared infrastructure are unified with the primary model. */
   compatible: boolean;
-  /** Factor applied to every length-valued datum before emit (`1` = no rescale). */
+  /** Multipliers for project-unit values before emission. */
   lengthFactor: number;
-  /** Factor applied to every area-valued datum before emit (`1` = no rescale). */
   areaFactor: number;
-  /** Factor applied to every volume-valued datum before emit (`1` = no rescale). */
   volumeFactor: number;
+  selectionHasExplicitUnit?: ReturnType<typeof enumerationUnitLookup>;
+  profileFactors?: ReadonlyMap<string, number>;
   /**
    * Unit space the model's emitted entities end up in — the primary scale when
    * normalized/compatible, else the model's own scale. Recorded with each emitted
@@ -867,6 +867,7 @@ export class MergedExporter {
       primaryScale,
       primaryAreaScale: this.resolveDerivedUnitScale(firstModel.dataStore, 'AREAUNIT', primaryScale, 2),
       primaryVolumeScale: this.resolveDerivedUnitScale(firstModel.dataStore, 'VOLUMEUNIT', primaryScale, 3),
+      primaryProfileUnits: options.unitReconciliation === 'normalize' ? readProfileProjectUnits(firstModel.dataStore) : undefined,
       assumeShared: options.unitReconciliation === 'assume-shared',
       normalize: options.unitReconciliation === 'normalize',
       mergeSites: options.mergeSites,
@@ -887,10 +888,7 @@ export class MergedExporter {
    * - Otherwise (`auto`) a differing-unit model is federated (kept as its own
    *   project + units), leaving its raw coordinates untouched.
    *
-   * Area/volume reconciliation is gated on the length unit differing: a model that
-   * shares the primary's length unit is treated as fully compatible (factors 1).
-   * A model that pairs a matching length unit with a *divergent* area/volume unit
-   * (a non-conformant combination no mainstream exporter emits) is not rescaled.
+   * Dimensional rescaling runs when the project length units differ.
    */
   private resolveModelMode(model: MergeModelInput, isFirstModel: boolean, setup: MergeSetup): ModelMode {
     const modelScale = this.resolveUnitScale(model);
@@ -908,6 +906,8 @@ export class MergedExporter {
         lengthFactor: computeNormalizeFactor(modelScale, setup.primaryScale),
         areaFactor: computeNormalizeFactor(modelArea, setup.primaryAreaScale),
         volumeFactor: computeNormalizeFactor(modelVolume, setup.primaryVolumeScale),
+        selectionHasExplicitUnit: enumerationUnitLookup(model.dataStore),
+        profileFactors: profileMeasureFactors(readProfileProjectUnits(model.dataStore), setup.primaryProfileUnits, modelScale, setup.primaryScale),
         effectiveScale: setup.primaryScale,
         normalized: true,
         georef: planGeorefNormalize(model.dataStore, setup.minted, modelScale, setup.primaryScale),
@@ -1201,10 +1201,10 @@ export class MergedExporter {
     // Only numeric literals and the georeference (#10886) change here.
     const georef = normalizeGeorefRecord(finalText, localId, mode.georef);
     if (georef !== undefined) finalText = georef;
-    else if (mode.lengthFactor !== 1 || mode.areaFactor !== 1 || mode.volumeFactor !== 1) {
+    else if (mode.normalized && !mode.selectionHasExplicitUnit?.(entityRef.type, entityText)) {
       const type = entityRef.type.toUpperCase();
       const legacySchema = isTypedPropertyUpgrade(type, sourceSchema, targetSchema) ? 'IFC2X3' : undefined;
-      finalText = rescaleEntityLengths(finalText, type, mode.lengthFactor, mode.areaFactor, mode.volumeFactor, legacySchema);
+      finalText = rescaleEntityLengths(finalText, type, mode.lengthFactor, mode.areaFactor, mode.volumeFactor, mode.profileFactors, legacySchema);
     }
 
     if (converting) {

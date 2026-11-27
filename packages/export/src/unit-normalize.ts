@@ -38,8 +38,9 @@
  *   `IfcQuantityVolume.VolumeValue` (× volume).
  * - **Typed measures in property values** — `IFCLENGTHMEASURE(x)` /
  *   `IFCPOSITIVELENGTHMEASURE(x)` / `IFCNONNEGATIVELENGTHMEASURE(x)` (× length),
- *   `IFCAREAMEASURE(x)` (× area), `IFCVOLUMEMEASURE(x)` (× volume), wherever they
- *   appear outside a quoted string.
+ *   `IFCAREAMEASURE(x)` (× area) and `IFCVOLUMEMEASURE(x)` (× volume).
+ * - **Derived profile measures** — typed values and IFC2X3 profile attributes
+ *   use the ratio of declared units when available and powers of length otherwise.
  *
  * ## What is NOT rescaled
  * - Unit-definition entities (`IfcSIUnit`, `IfcConversionBasedUnit`,
@@ -48,9 +49,8 @@
  * - Georeferencing (`IfcMapConversion`): its offsets are in the map/CRS unit,
  *   independent of the project length unit. The merged exporter keeps every
  *   coordinate operation away from this rescale (`merged-georef-normalize.ts`).
- * - A quantity or property that carries its own explicit unit reference (`Unit`,
- *   or `DefiningUnit`/`DefinedUnit` on `IfcPropertyTableValue`): its value is
- *   already in that unit, not the global one.
+ * - Values with an explicit unit (`Unit` for a quantity or property,
+ *   `DefiningUnit` or `DefinedUnit` for its respective table column).
  * - Angles, direction ratios, plain `IfcReal` ratios and counts — never typed as a
  *   length/area/volume measure, so they are excluded automatically.
  */
@@ -58,14 +58,21 @@
 import { getAllAttributesForEntity, getCanonicalEntityName, getSchemaRegistryForVersion, STEP_TRIVIA } from '@ifc-lite/parser';
 import { formatStepReal } from '@ifc-lite/data';
 import { splitTopLevelStepArguments } from './step-argument-parser.js';
+import { holdsValue } from './step-comment-skip.js';
 import { findOuterArgs, mapOutsideStepStrings } from './step-outer-args.js';
-import { parseStepNumber } from './step-slot-grammar.js';
 
 /** IFC defined types whose values are lengths (STEP writes them as bare reals). */
 const LENGTH_MEASURE_TYPES = new Set([
   'IfcLengthMeasure',
   'IfcPositiveLengthMeasure',
   'IfcNonNegativeLengthMeasure',
+]);
+
+export const PROFILE_MEASURE_POWERS: ReadonlyMap<string, number> = new Map([
+  ['IFCMASSPERLENGTHMEASURE', -1],
+  ['IFCMOMENTOFINERTIAMEASURE', 4],
+  ['IFCSECTIONMODULUSMEASURE', 3],
+  ['IFCWARPINGCONSTANTMEASURE', 6],
 ]);
 
 /**
@@ -84,7 +91,7 @@ function isRescaleExcluded(typeUpper: string): boolean {
 }
 
 /**
- * Per-entity plan: which STEP attribute indices carry a length / area / volume,
+ * Per-entity plan: which STEP attribute indices carry dimensional values,
  * and where a self-describing unit override lives. Indices are 0-based STEP order.
  */
 export interface EntityLengthPlan {
@@ -96,11 +103,12 @@ export interface EntityLengthPlan {
   areaIdx: number[];
   /** Scalar volume attributes → scale by the volume factor. */
   volumeIdx: number[];
+  /** Scalar profile measures and their STEP type names. */
+  profileMeasures: { index: number; measure: string }[];
   /**
    * Indices of unit-override attributes (`Unit` / `DefiningUnit` / `DefinedUnit`,
-   * typed IfcNamedUnit or the IfcUnit SELECT). When ANY of them is a live
-   * reference (not `$`), the entity's value(s) carry their own unit and must NOT
-   * be rescaled to the global unit.
+   * typed IfcNamedUnit or the IfcUnit SELECT). An explicit unit protects its
+   * value or table column from rescaling.
    */
   unitGuardIdx: number[];
   /** True when there is neither a value to scale nor a unit override to consider. */
@@ -108,7 +116,7 @@ export interface EntityLengthPlan {
 }
 
 const EMPTY_PLAN: EntityLengthPlan = {
-  listIdx: [], scalarIdx: [], areaIdx: [], volumeIdx: [], unitGuardIdx: [], empty: true,
+  listIdx: [], scalarIdx: [], areaIdx: [], volumeIdx: [], profileMeasures: [], unitGuardIdx: [], empty: true,
 };
 
 /** Attribute names that hold a self-describing unit override for a value. */
@@ -132,7 +140,7 @@ function attrBaseType(type: string, flags: { isList: boolean; isArray: boolean; 
 }
 
 /**
- * Derive (and cache) the length/area/volume attribute plan for an uppercase STEP
+ * Derive (and cache) the dimensional attribute plan for an uppercase STEP
  * type name from the generated schema registry. Excluded types (unit definitions,
  * georeferencing) and unknown/abstract types return the empty plan.
  */
@@ -155,17 +163,23 @@ function sourceAttributes(typeUpper: string, legacySchema?: 'IFC2X3') {
 function buildEntityLengthPlan(typeUpper: string, legacySchema?: 'IFC2X3'): EntityLengthPlan {
   if (isRescaleExcluded(typeUpper)) return EMPTY_PLAN;
 
-  const attrs = sourceAttributes(typeUpper, legacySchema);
-  if (!attrs || attrs.length === 0) return EMPTY_PLAN;
+  let fields = sourceAttributes(typeUpper, legacySchema);
+  if (!legacySchema && !fields?.length && typeUpper.endsWith('PROFILEPROPERTIES')) {
+    fields = sourceAttributes(typeUpper, 'IFC2X3');
+  }
+  if (!fields?.length) return EMPTY_PLAN;
 
   const listIdx: number[] = [];
   const scalarIdx: number[] = [];
   const areaIdx: number[] = [];
   const volumeIdx: number[] = [];
+  const profileMeasures: EntityLengthPlan['profileMeasures'] = [];
   const unitGuardIdx: number[] = [];
 
-  attrs.forEach((a, i) => {
+  fields.forEach((a, i) => {
     const { base, isList } = attrBaseType(a.type, a);
+    const measure = base.toUpperCase();
+    if (PROFILE_MEASURE_POWERS.has(measure) && !isList) profileMeasures.push({ index: i, measure });
     if (LENGTH_MEASURE_TYPES.has(base)) {
       if (isList) listIdx.push(i);
       else scalarIdx.push(i);
@@ -175,16 +189,15 @@ function buildEntityLengthPlan(typeUpper: string, legacySchema?: 'IFC2X3'): Enti
       volumeIdx.push(i);
     }
     // A quantity's Unit is typed IfcNamedUnit; a property's Unit is the IfcUnit
-    // SELECT; an IfcPropertyTableValue uses DefiningUnit/DefinedUnit. Any of them,
-    // when set, means the value carries its own unit.
+    // SELECT; an IfcPropertyTableValue uses DefiningUnit/DefinedUnit.
     if (UNIT_GUARD_NAMES.has(a.name) && (base === 'IfcNamedUnit' || base === 'IfcUnit')) {
       unitGuardIdx.push(i);
     }
   });
 
   const empty = listIdx.length === 0 && scalarIdx.length === 0
-    && areaIdx.length === 0 && volumeIdx.length === 0 && unitGuardIdx.length === 0;
-  return empty ? EMPTY_PLAN : { listIdx, scalarIdx, areaIdx, volumeIdx, unitGuardIdx, empty };
+    && areaIdx.length === 0 && volumeIdx.length === 0 && profileMeasures.length === 0 && unitGuardIdx.length === 0;
+  return empty ? EMPTY_PLAN : { listIdx, scalarIdx, areaIdx, volumeIdx, profileMeasures, unitGuardIdx, empty };
 }
 
 /**
@@ -204,89 +217,70 @@ export function toStepRealScaled(v: number): string {
   return formatStepReal(parseFloat(v.toPrecision(12)));
 }
 
-/**
- * Single token matcher used by {@link scaleNumberLiterals} over text OUTSIDE
- * string literals ({@link mapOutsideStepStrings}): a `#`-reference (kept
- * verbatim) or a REAL/INTEGER literal (rescaled). Refs are matched first so
- * their digits are never treated as numbers. The number alternative consumes an
- * optional exponent as one token, so `1.E-5` / `-2.5E2` scale the mantissa
- * without touching the exponent digits.
- */
-const NUMBER_TOKEN_RE = /#\d+|[+-]?(?:\d+\.\d*|\.\d+|\d+)(?:[eE][+-]?\d+)?/g;
+const NUMBER_SOURCE = /[+-]?(?:\d+\.\d*|\.\d+|\d+)(?:[eE][+-]?\d+)?/.source;
+const COMMENT_SOURCE = /\/\*[\s\S]*?(?:\*\/|$)/.source;
+const NUMBER_TOKEN_RE = new RegExp(String.raw`${COMMENT_SOURCE}|#\d+|${NUMBER_SOURCE}`, 'g');
 
-/**
- * Multiply every bare numeric literal in `text` by `factor`, leaving quoted
- * strings and `#`-references untouched. O(n) single pass — safe for the large
- * coordinate lists of tessellated geometry.
- */
+/** Scale coordinate literals and leave references, strings and comments intact. */
 export function scaleNumberLiterals(text: string, factor: number): string {
   return mapOutsideStepStrings(text, (code) => code.replace(NUMBER_TOKEN_RE, (tok) =>
-    tok.charCodeAt(0) === 0x23 /* # */ ? tok : toStepRealScaled(parseFloat(tok) * factor)));
+    tok.startsWith('#') || tok.startsWith('/') ? tok : toStepRealScaled(parseFloat(tok) * factor)));
 }
 
-/**
- * Scale the typed measures embedded in property/quantity values. Matches
- * `IFC[POSITIVE|NONNEGATIVE]LENGTHMEASURE(x)` (× lengthFactor), `IFCAREAMEASURE(x)`
- * (× areaFactor) and `IFCVOLUMEMEASURE(x)` (× volumeFactor), but never inside a
- * quoted string ({@link mapOutsideStepStrings} hands it only the text between them).
- *
- * A single non-word delimiter (`(`, `,`, whitespace, or start-of-input) is
- * captured before the keyword and restored, so a keyword can never be matched as
- * the suffix of a longer identifier — without a lookbehind, which some engines
- * (older Safari) reject at construction time and would break importing this module.
- *
- * Trivia (whitespace and/or a `/* ... *​/` comment) between the keyword and
- * `(` mirrors the entity/typed-value adjacency fix (packages/parser's
- * entity-extractor, #3205's Rust counterpart, #3789 for the comment case): a
- * STEP writer's line wrap or an inline comment can land there, and without
- * tolerating it the wrapped literal was skipped by this rewriter, leaving
- * the normalized file's other measures scaled but this one still in the
- * source unit.
- */
+const NUMERIC_SLOT = `(${STEP_TRIVIA})(${NUMBER_SOURCE})(${STEP_TRIVIA})`;
+const BARE_MEASURE_RE = new RegExp(`^${NUMERIC_SLOT}$`);
+// Consume other identifiers and comments whole so neither can contain a measure match.
 const TYPED_MEASURE_RE = new RegExp(
-  `(^|[^A-Za-z0-9_])(IFC(?:POSITIVE|NONNEGATIVE)?LENGTHMEASURE|IFCAREAMEASURE|IFCVOLUMEMEASURE)${STEP_TRIVIA}\\(([^)]*)\\)`,
+  String.raw`(IFC(?:POSITIVE|NONNEGATIVE)?LENGTHMEASURE|IFCAREAMEASURE|IFCVOLUMEMEASURE|${[...PROFILE_MEASURE_POWERS.keys()].join('|')})(${STEP_TRIVIA})\(${NUMERIC_SLOT}\)|${COMMENT_SOURCE}|[A-Za-z0-9_]+`,
   'gi',
 );
+
+/** A profile measure's factor. NaN (`profileMeasureFactors`) is a declared unit whose scale cannot be resolved. */
+function profileFactor(measure: string, profileFactors: ReadonlyMap<string, number> | undefined, lengthFactor: number): number {
+  const factor = profileFactors?.get(measure) ?? lengthFactor ** (PROFILE_MEASURE_POWERS.get(measure) ?? 1);
+  if (Number.isNaN(factor)) throw new Error(`Cannot normalize ${measure}: its declared unit scale cannot be resolved`);
+  return factor;
+}
 
 export function scaleTypedMeasures(
   text: string,
   lengthFactor: number,
   areaFactor: number,
   volumeFactor: number,
+  profileFactors?: ReadonlyMap<string, number>,
+  preserveTrivia = false,
 ): string {
   return mapOutsideStepStrings(text, (code) => code.replace(
     TYPED_MEASURE_RE,
-    (_full, delim, keyword, num) => {
+    (full, keyword, separator, before, num, after) => {
+      if (keyword === undefined) return full;
       const kw = keyword.toUpperCase();
       const factor = kw === 'IFCAREAMEASURE' ? areaFactor
         : kw === 'IFCVOLUMEMEASURE' ? volumeFactor
-        : lengthFactor; // any *LENGTHMEASURE
-      return `${delim}${keyword}(${scaleMeasureNumber(num, factor)})`;
+        : profileFactor(kw, profileFactors, lengthFactor);
+      if (preserveTrivia && factor === 1) return full;
+      const scaled = scaleMeasureNumber(before, num, after, factor, preserveTrivia);
+      return scaled === undefined ? full : `${keyword}${preserveTrivia || separator.includes('/*') ? separator : ''}(${scaled})`;
     },
   ));
 }
 
-/** Scale the numeric content of one typed-measure token, preserving non-numeric ($) content. */
-function scaleMeasureNumber(num: string, factor: number): string {
-  const trimmed = num.trim();
-  const n = Number(trimmed);
-  if (trimmed === '' || !Number.isFinite(n)) return num;
-  return toStepRealScaled(n * factor);
+/** Preserve surrounding comments, and whitespace when requested. */
+function scaleMeasureNumber(before: string, num: string, after: string, factor: number, preserveTrivia = false): string | undefined {
+  const n = Number(num);
+  if (!Number.isFinite(n)) return undefined;
+  const scaled = toStepRealScaled(n * factor);
+  if (preserveTrivia) return `${before}${scaled}${after}`;
+  return `${before.includes('/*') ? before : ''}${scaled}${after.includes('/*') ? after : ''}`;
 }
 
-/** Scale a single scalar attribute token by `factor` (skips `$`/`*`/non-bare-number). */
 function scaleScalarArg(arg: string, factor: number): string {
-  const trimmed = arg.trim();
-  if (trimmed === '' || trimmed === '$' || trimmed === '*') return arg;
-  const n = trimmed.includes('/*') ? parseStepNumber(trimmed) : Number(trimmed);
-  // Only a bare real is a directly-typed length; a typed token (IFC…MEASURE(…))
-  // is left to the measure pass, so it is never scaled twice.
-  if (!Number.isFinite(n)) return arg;
-  return toStepRealScaled(n * factor);
+  const match = BARE_MEASURE_RE.exec(arg);
+  return match ? scaleMeasureNumber(match[1], match[2], match[3], factor) ?? arg : arg;
 }
 
 /**
- * Rescale every length/area/volume-valued datum of one STEP entity line.
+ * Rescale the dimensional data of one STEP entity line.
  *
  * `typeUpper` is the entity's uppercase STEP type (used for the schema-derived
  * plan). The line is expected to be a single `#id=TYPE(...);` statement. Returns
@@ -299,18 +293,19 @@ export function rescaleEntityLengths(
   lengthFactor: number,
   areaFactor: number,
   volumeFactor: number,
+  profileFactors?: ReadonlyMap<string, number>,
   legacySchema?: 'IFC2X3',
 ): string {
-  if (lengthFactor === 1 && areaFactor === 1 && volumeFactor === 1) return line;
+  if (lengthFactor === 1 && areaFactor === 1 && volumeFactor === 1 && !profileFactors?.size) return line;
   if (!Number.isFinite(lengthFactor) || !Number.isFinite(areaFactor) || !Number.isFinite(volumeFactor)) return line;
   if (isRescaleExcluded(typeUpper)) return line;
 
   const plan = getEntityLengthPlan(typeUpper, legacySchema);
   const hasStructural = plan.listIdx.length > 0 || plan.scalarIdx.length > 0
-    || plan.areaIdx.length > 0 || plan.volumeIdx.length > 0;
+    || plan.areaIdx.length > 0 || plan.volumeIdx.length > 0 || plan.profileMeasures.length > 0;
 
-  // A unit override only matters when there is a length, area or volume to scale.
-  if (!hasStructural && !line.includes('MEASURE')) return line;
+  // A unit override only matters when there is a dimensional value to scale.
+  if (!hasStructural && !/measure/i.test(line)) return line;
 
   const bounds = findOuterArgs(line);
   if (!bounds) return line;
@@ -329,15 +324,22 @@ export function rescaleEntityLengths(
     if (args === null) {
       throw new Error(
         `rescaleEntityLengths: cannot split "${typeUpper}"'s slots to rescale — refusing `
-        + `to silently leave its length/area/volume data in the wrong unit: ${line}`,
+        + `to silently leave its dimensional data in the wrong unit: ${line}`,
       );
     }
 
     // A live unit-override reference means the value is already in its own unit.
-    skipValues = plan.unitGuardIdx.some((idx) => {
-      const u = args[idx]?.trim();
-      return u !== undefined && u !== '' && u !== '$' && u !== '*';
-    });
+    const hasExplicitUnit = (idx: number) => holdsValue(args[idx] ?? '');
+    if (typeUpper === 'IFCPROPERTYTABLEVALUE') {
+      // DefiningValues / DefiningUnit and DefinedValues / DefinedUnit.
+      for (const [values, unit] of [[2, 5], [3, 6]] as const) {
+        if (args[values] !== undefined && !hasExplicitUnit(unit)) {
+          args[values] = scaleTypedMeasures(args[values], lengthFactor, areaFactor, volumeFactor, profileFactors, true);
+        }
+      }
+      return line.slice(0, bounds.open + 1) + args.join(',') + line.slice(bounds.close);
+    }
+    skipValues = plan.unitGuardIdx.some(hasExplicitUnit);
 
     if (!skipValues && hasStructural) {
       for (const idx of plan.listIdx) {
@@ -352,14 +354,17 @@ export function rescaleEntityLengths(
       for (const idx of plan.volumeIdx) {
         if (args[idx] !== undefined) args[idx] = scaleScalarArg(args[idx], volumeFactor);
       }
+      for (const { index, measure } of plan.profileMeasures) {
+        if (args[index] !== undefined && BARE_MEASURE_RE.test(args[index])) args[index] = scaleScalarArg(args[index], profileFactor(measure, profileFactors, lengthFactor));
+      }
       inner = args.join(',');
     }
   }
 
   // Typed measures live in property/quantity value slots (an IfcValue SELECT is
   // written with its explicit type). Skipped when the entity declares its own unit.
-  if (!skipValues && inner.includes('MEASURE')) {
-    inner = scaleTypedMeasures(inner, lengthFactor, areaFactor, volumeFactor);
+  if (!skipValues && /measure/i.test(inner)) {
+    inner = scaleTypedMeasures(inner, lengthFactor, areaFactor, volumeFactor, profileFactors);
   }
 
   return line.slice(0, bounds.open + 1) + inner + line.slice(bounds.close);

@@ -275,16 +275,15 @@ async function postCancellation(env) {
   // The status writers share a concurrency group through this check and POST.
   const runs = await listTestRuns(env, path, sha);
   const sameRepo = runs.filter((candidate) => candidate.head_repository?.full_name === repo);
-  const started = (run) => Date.parse(run.run_started_at ?? run.created_at) || 0;
-  const latest = sameRepo.reduce((newest, run) => {
-    if (!newest) return run;
-    const order = started(run) - started(newest);
-    return order > 0 || (order === 0 && BigInt(run.id) > BigInt(newest.id)) ? run : newest;
-  }, null);
-  if (!latest || String(latest.id) !== id || String(latest.run_attempt) !== attempt) return 0;
-  // A higher-ID owner may be absent from a stale listing. Preserve that
-  // status unless the listing accounts for the exact attempt as older.
-  if (owner && BigInt(owner[1]) > BigInt(id) && !sameRepo.some(
+  const cancelled = sameRepo.find((run) => String(run.id) === id && String(run.run_attempt) === attempt);
+  if (!cancelled) return 0;
+  const started = (run) => Date.parse(run.run_started_at);
+  const cancelledStart = started(cancelled);
+  // Creation times and run IDs cannot establish when an attempt started.
+  if (!Number.isFinite(cancelledStart) ||
+      !sameRepo.every((run) => run === cancelled || started(run) < cancelledStart)) return 0;
+  // A stale listing can miss the status owner's attempt, even at a lower ID.
+  if (owner && owner[1] !== id && !sameRepo.some(
     (run) => String(run.id) === owner[1] && String(run.run_attempt) === ownerAttempt,
   )) return 0;
 

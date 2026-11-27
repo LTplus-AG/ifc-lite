@@ -130,7 +130,7 @@ const SHA = 'a'.repeat(40);
 const STATUS_PATH = `/repos/${REPO}/commits/${SHA}/status?per_page=100`;
 const RUNS_PATH = `/repos/${REPO}/actions/workflows/test.yml/runs?event=pull_request&head_sha=${SHA}&per_page=100`;
 const CANCELLED_ENV = { CANCELLED_RUN_ID: '42', CANCELLED_RUN_ATTEMPT: '1' };
-const CANCELLED_RUN = { id: 42, event: 'pull_request', head_sha: SHA, head_repository: { full_name: REPO }, run_attempt: 1, conclusion: 'cancelled' };
+const CANCELLED_RUN = { id: 42, event: 'pull_request', head_sha: SHA, head_repository: { full_name: REPO }, run_attempt: 1, conclusion: 'cancelled', run_started_at: '2026-11-26T05:00:00Z' };
 const CANCELLED_RUN_URL = `https://github.com/${REPO}/actions/runs/42`;
 const CANCELLED_RUN_PATH = `/repos/${REPO}/actions/runs/42`;
 const env = (api, extra = {}) => ({
@@ -175,7 +175,7 @@ test('cancelled Test completion requires the newest attempt and preserves its co
     { run: { ...cancelled, run_attempt: 2 }, attempt: '2', statuses: [{ ...pending, state: 'success' }], expected: true },
     { run: { ...cancelled, run_attempt: 2 }, statuses: [pending], expected: false },
     { run: cancelled, latest: [{ ...cancelled, run_attempt: 2 }], statuses: [pending], expected: false },
-    { run: cancelled, latest: [{ ...cancelled, id: 43, conclusion: null }, cancelled], statuses: [pending], expected: false },
+    { run: cancelled, latest: [{ ...cancelled, id: 43, conclusion: null, run_started_at: '2026-11-26T05:01:00Z' }, cancelled], statuses: [pending], expected: false },
     { run: cancelled, latest: [], statuses: [pending], expected: false },
     { run: cancelled, latest: [{ ...cancelled, id: 43, head_repository: { full_name: 'fork/ifc-lite' } }, cancelled], statuses: [pending], expected: true },
     { run: { ...cancelled, conclusion: null }, statuses: [pending], expected: false },
@@ -260,6 +260,42 @@ test('PR #11355: a rerun can be the newest attempt even with an older run ID', a
   }
 });
 
+test('PR #11355: a same-second cancellation cannot overwrite the later rerun’s status', async () => {
+  const run43 = { ...CANCELLED_RUN, id: 43 };
+  for (const state of ['pending', 'success']) {
+    const rerun = { ...CANCELLED_RUN, run_attempt: 2, conclusion: state === 'success' ? 'success' : 'cancelled' };
+    for (const listing of [
+      [run43, rerun],
+      [run43, { ...rerun, run_started_at: null, created_at: '2026-11-26T04:59:00Z' }],
+      [run43, { ...CANCELLED_RUN, run_started_at: '2026-11-26T04:59:00Z' }],
+    ]) {
+      await withApi(201, async (api, posts) => {
+        assert.equal(await main(['--cancelled'], env(api, { ...CANCELLED_ENV, CANCELLED_RUN_ID: '43' })), 0);
+        assert.deepEqual(posts, []);
+      }, {
+        [`/repos/${REPO}/actions/runs/43`]: run43,
+        [STATUS_PATH]: { statuses: [{ context: STATUS_CONTEXT, state, target_url: `${CANCELLED_RUN_URL}?attempt=2` }] },
+        [RUNS_PATH]: { workflow_runs: listing },
+      });
+    }
+  }
+});
+
+test('PR #11355: creation time alone cannot establish that a first attempt is older', async () => {
+  const run43 = { ...CANCELLED_RUN, id: 43 };
+  const previous = { ...CANCELLED_RUN, created_at: '2026-11-26T04:59:00Z', run_started_at: undefined };
+  for (const state of ['pending', 'success']) {
+    await withApi(201, async (api, posts) => {
+      assert.equal(await main(['--cancelled'], env(api, { ...CANCELLED_ENV, CANCELLED_RUN_ID: '43' })), 0);
+      assert.deepEqual(posts, []);
+    }, {
+      [`/repos/${REPO}/actions/runs/43`]: run43,
+      [STATUS_PATH]: { statuses: [{ context: STATUS_CONTEXT, state, target_url: `${CANCELLED_RUN_URL}?attempt=1` }] },
+      [RUNS_PATH]: { workflow_runs: [run43, previous] },
+    });
+  }
+});
+
 test('PR #11355: a second-page rerun takes precedence over first-page runs', async () => {
   const firstPage = Array.from({ length: 100 }, (_, i) => ({
     ...CANCELLED_RUN, id: 142 - i, run_started_at: '2026-11-26T05:01:00Z',
@@ -304,7 +340,7 @@ test('PR #11355: an incomplete or shifting run listing cannot post a verdict', a
 
 for (const timing of ['before', 'during', 'after']) {
   test(`PR #11355: newest success wins when it lands ${timing} cancellation reporting`, async () => {
-    const newer = { ...CANCELLED_RUN, id: 43, conclusion: 'success' };
+    const newer = { ...CANCELLED_RUN, id: 43, conclusion: 'success', run_started_at: '2026-11-26T05:01:00Z' };
     let postNewerVerdict;
     let latest = [CANCELLED_RUN];
     let current = { context: STATUS_CONTEXT, state: 'pending', target_url: CANCELLED_RUN_URL };
@@ -334,7 +370,7 @@ for (const timing of ['before', 'during', 'after']) {
 }
 
 test('PR #11355: the replacement cancelled before entry leaves a failure in either reporter order', async () => {
-  const older = { ...CANCELLED_RUN, id: 41 };
+  const older = { ...CANCELLED_RUN, id: 41, run_started_at: '2026-11-26T04:59:00Z' };
   for (const previous of ['pending', 'success', null]) {
     for (const ids of [[older.id, CANCELLED_RUN.id], [CANCELLED_RUN.id, older.id]]) {
       const initial = previous && {

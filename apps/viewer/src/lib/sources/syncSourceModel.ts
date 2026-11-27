@@ -11,7 +11,7 @@ import { recordDownloadedSourceFile } from './persistence';
 import { enqueueSourceLoad } from './loadQueue';
 import { setSourceSyncProgress } from './downloadProgress';
 import { loadResolvedSourcePrefs } from './preferences';
-import { sanitizeFilename } from '@/lib/export/download';
+import { sanitizeModelFilename } from '@/lib/export/download';
 import { captureModelTags, restoreModelTags } from '../model-tags/carry-over.js';
 
 const IFC_NAME_PATTERNS = ['*.ifc', '*.ifcx', '*.ifc5'];
@@ -156,7 +156,7 @@ async function doSyncSourceModel({
     throw new Error(`Sync cancelled: ${model.name} was removed while its update was downloading.`);
   }
 
-  const safeFileName = sanitizeFilename(latestFile.artifactName ?? latestFile.name, { fallback: 'model' });
+  const safeFileName = sanitizeModelFilename(latestFile.artifactName ?? latestFile.name, 'model');
   const replacement = new File([buffer], safeFileName);
 
   const preState = useViewerStore.getState();

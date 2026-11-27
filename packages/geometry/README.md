@@ -188,9 +188,13 @@ once a batch leaves it over budget (`?perf.oocBudgetMb`, 192 MiB by default), wh
 size; one batch whose own closure is larger than the budget still grows it past that. Meshes and instancing shards are byte-identical to the default
 path.
 
-It needs `SharedArrayBuffer` (a cross-origin isolated page), as the worker pool does. With it on,
-the pre-pass runs on one worker instead of sharded across the pool, so the first geometry of a
-mid-size file arrives later. A load stays on the default path when the arena could not give the
+It needs `SharedArrayBuffer` (a cross-origin isolated page), as the worker pool does. The pre-pass
+stays sharded across the pool: each worker scans its byte range from a window of the shared buffer
+(its range plus a margin of at most 64 MiB, which on a file of a few tens of MiB can reach the end of the
+file), and the pre-pass worker resolves the styles and ships the sparse
+facts and its sorted index. Files in the small-file tier (under 10 MiB) never take out-of-core ingest: they load on the default path
+(which may itself shard the pre-pass from 8 MiB, copying the whole file into each scanning worker), where
+those copies are small. A load also stays on the default path when the arena could not give the
 same output: with `mergeLayers`, with the global instance plan, and for a file that contains
 annotation fill areas or reuses an entity id. A batch whose records cannot all be found after four retries is
 refused, and the pool's usual recovery splits it. The main thread, the parser and the pre-pass

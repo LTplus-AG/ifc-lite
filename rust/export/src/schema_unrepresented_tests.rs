@@ -170,10 +170,10 @@ fn clears_an_optional_representation_on_a_varying_action_written_constant_10970(
 }
 
 #[test]
-#[ignore = "#11698 tracks merged varying-action conversion"]
 fn merged_incomplete_varying_action_writes_ifc4_constant() {
     let source = include_bytes!("../tests/fixtures/schema_unrooted_legacy_optional.ifc");
-    let merged = crate::export_merged(&[source], &crate::MergedOptions { schema: Some("IFC4".into()), ..Default::default() });
+    let (merged, stats) = crate::export_merged_with_stats(&[source], &crate::MergedOptions { schema: Some("IFC4".into()), ..Default::default() });
+    assert!(!stats.warnings.iter().any(|w| w.contains("record remains unconverted")));
     let action = merged.lines().find(|line| line.starts_with("#30=")).expect("retained action");
     assert!(action.starts_with("#30=IFCSTRUCTURALCURVEACTION(") && action.ends_with(",.CONST.);"), "{action}");
 }

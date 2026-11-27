@@ -179,7 +179,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
     // for why this is a diagnostic about the source file, not a completeness
     // gap in the merge (#3752).
     let mut refused_refs_total = 0usize;
-    let mut upgrade_seeds = HashSet::new();
+    let mut upgrade = warnings::MergedUpgrade::default();
     // #5116: a non-rooted type with no representation in the target schema
     // (e.g. `IfcCartesianPointList3D` downgraded to IFC2X3) cannot become an
     // `IFCPROXY` either, so `convert_step_line` errs instead of guessing.
@@ -224,6 +224,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
     let mut offset: u32 = 0;
     let mut slot_fill = Ifc2x3SlotFill::new(None);
     let mut checks = ConversionChecks::new(crate::schema_material_referent::MaterialReferents::for_target(crate::schema_convert::canon(&schema)));
+    checks.structural.defer_varying = crate::schema_convert::canon(&schema) == "IFC4";
     checks.merged = true;
     checks.forms.enable_dates();
     checks.typed_properties.enabled = true;
@@ -380,9 +381,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
                 emitted_guids.insert(emitted);
             }
 
-            if upgrading.is_some_and(|upgrade| upgrade.seeds(final_text.as_bytes()).next().is_some()) {
-                upgrade_seeds.insert(id.saturating_add(offset));
-            }
+            upgrade.note(upgrading, &schema, ty, id.saturating_add(offset), &final_text);
             out.push_str(&final_text);
             out.push('\n');
             stats.written += 1;
@@ -390,9 +389,10 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
 
         offset = next;
     }
-
     warnings::push_merge_warnings(&mut stats, refused_refs_total, unrepresented_types_kept, &schema);
-    warnings::finish_output(&mut out, &mut stats, &schema, &slot_fill, &mut checks, parents, &upgrade_seeds, offset, models);
+    if let Err(error) = warnings::finish_output(&mut out, &mut stats, &schema, &slot_fill, &mut checks, parents, &upgrade, offset, models) {
+        return stats.refused(error);
+    }
     (out, stats)
 }
 

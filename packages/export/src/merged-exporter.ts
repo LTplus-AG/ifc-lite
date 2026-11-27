@@ -13,12 +13,12 @@
 import type { IfcDataStore, IfcSourceBytes } from '@ifc-lite/parser';
 import { asSourceBytes } from '@ifc-lite/parser';
 import { decodeIfcString, stepStringLiteralEnd } from '@ifc-lite/encoding';
-import { buildMergedHeader, finishMergedConversion } from './merged-header.js';
+import { buildMergedHeader, finishMergedConversion, finishMergedUpgrade } from './merged-header.js';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { collectReferencedEntityIds, getVisibleEntityIds, filterHiddenRefsFromRelationshipLine } from './reference-collector.js';
 import { collectStyleEntities, STYLE_RESCUE_TYPES } from './style-closure.js';
 import { collectGeoreferencingEntities } from './georef-closure.js';
-import { noteUpgradeSeed, pruneUpgrade } from './schema-converter-unrooted-upgrade.js';
+import { noteUpgradeSeed } from './schema-converter-unrooted-upgrade.js';
 import { convertStepLine, needsConversion, type IfcSchemaVersion } from './schema-converter.js';
 import { classifyEntityTypeConversion } from './schema-conversion-loss-report.js';
 import { StyleFlatten } from './schema-style-flatten.js';
@@ -503,7 +503,7 @@ export class MergedExporter {
     const setup = this.buildMergeSetup(options, models);
     const containerDrops = this.planContainerDrops(options, models, setup);
 
-    const allEntityLines: string[] = [], upgradeSeeds = new Set<number>();
+    const allEntityLines: string[] = [], upgradeSeeds = new Set<number>(), varying = new Set<number>();
     // Tracks every GlobalId already emitted → its final express id + unit scale,
     // so later models can unify against (shared unit) or stay unique from
     // (federated / different unit) it.
@@ -513,7 +513,7 @@ export class MergedExporter {
     let normalizedModelCount = 0;
     const normalizeWarnings = new Set<string>();
     const [slotFill, ifc4Slots, enums] = [new Ifc2x3SlotFill(), new Ifc4SlotCheck(), new EnumReconciliation(true, models.map((m) => m.dataStore))]; // #4714, #5202, #5365
-
+    if (schema === 'IFC4') enums.structural.deferredVarying = { includeRelationships: true };
     for (const model of models) {
       const offset = setup.modelOffsets.get(model.id)!;
       const source = model.dataStore.source;
@@ -542,7 +542,7 @@ export class MergedExporter {
           expressId, entityRef, source, offset, plan, sourceSchema, schema, guidToFinalId, mode,
           visibility?.hiddenProductIds ?? null, completeIndex, visibility?.included ?? null, slotFill, ifc4Slots, enums, styleFlatten,
         );
-        if (line !== null) { allEntityLines.push(line); noteUpgradeSeed(line, upgradeSeeds, sourceSchema, schema); }
+        if (line !== null) { allEntityLines.push(line); noteUpgradeSeed(line, upgradeSeeds, sourceSchema, schema, varying); }
       }
 
       isFirstModel = false;
@@ -551,7 +551,7 @@ export class MergedExporter {
     setup.minted.appendTo(allEntityLines);
     enums.typedProperties.finish(allEntityLines, ifc4Slots, setup.nextAvailableId, enums.structural, Number.MAX_SAFE_INTEGER);
     for (const warning of finishMergedConversion(allEntityLines, slotFill, ifc4Slots, enums, setup.parentClaims)) normalizeWarnings.add(warning);
-    for (const warning of pruneUpgrade(allEntityLines, upgradeSeeds, schema)) normalizeWarnings.add(warning);
+    for (const warning of finishMergedUpgrade(allEntityLines, upgradeSeeds, schema, varying)) normalizeWarnings.add(warning);
 
     if (onProgress) onProgress({ phase: 'assembling', percent: 0.9, entitiesProcessed: allEntityLines.length, entitiesTotal: allEntityLines.length });
     const content = assembleStepBytes(header, placeObjectsForSchema(schema, allEntityLines)); // #9209
@@ -633,7 +633,7 @@ export class MergedExporter {
     const setup = this.buildMergeSetup(options, models);
     const containerDrops = this.planContainerDrops(options, models, setup);
 
-    const allEntityLines: string[] = [], upgradeSeeds = new Set<number>();
+    const allEntityLines: string[] = [], upgradeSeeds = new Set<number>(), varying = new Set<number>();
     const guidToFinalId = new Map<string, GuidRecord>();
 
     let totalEntities = 0;
@@ -648,7 +648,7 @@ export class MergedExporter {
     const normalizeWarnings = new Set<string>(baked.warnings);
     const YIELD_INTERVAL = 2000;
     const [slotFill, ifc4Slots, enums] = [new Ifc2x3SlotFill(), new Ifc4SlotCheck(), new EnumReconciliation(true, models.map((m) => m.dataStore))]; // #4714, #5202, #5365
-
+    if (schema === 'IFC4') enums.structural.deferredVarying = { includeRelationships: true };
     if (onProgress) onProgress({ phase: 'preparing', percent: 0, entitiesProcessed: 0, entitiesTotal: totalEntities });
 
     for (const model of models) {
@@ -691,7 +691,7 @@ export class MergedExporter {
           expressId, entityRef, source, offset, plan, sourceSchema, schema, guidToFinalId, mode,
           visibility?.hiddenProductIds ?? null, completeIndex, visibility?.included ?? null, slotFill, ifc4Slots, enums, styleFlatten,
         );
-        if (line !== null) { allEntityLines.push(line); noteUpgradeSeed(line, upgradeSeeds, sourceSchema, schema); }
+        if (line !== null) { allEntityLines.push(line); noteUpgradeSeed(line, upgradeSeeds, sourceSchema, schema, varying); }
 
         entityCount++;
         entitiesProcessed++;
@@ -717,7 +717,7 @@ export class MergedExporter {
     setup.minted.appendTo(allEntityLines);
     enums.typedProperties.finish(allEntityLines, ifc4Slots, setup.nextAvailableId, enums.structural, Number.MAX_SAFE_INTEGER);
     for (const warning of finishMergedConversion(allEntityLines, slotFill, ifc4Slots, enums, setup.parentClaims)) normalizeWarnings.add(warning);
-    for (const warning of pruneUpgrade(allEntityLines, upgradeSeeds, schema)) normalizeWarnings.add(warning);
+    for (const warning of finishMergedUpgrade(allEntityLines, upgradeSeeds, schema, varying)) normalizeWarnings.add(warning);
 
     if (onProgress) {
       onProgress({ phase: 'assembling', percent: 0.9, entitiesProcessed: totalEntities, entitiesTotal: totalEntities });

@@ -9,7 +9,7 @@ import { readStepSlots } from './step-argument-parser.js';
 import { stepRecordHead } from './step-record-frame.js';
 import { skipStepTrivia } from './step-slot-grammar.js';
 
-export function finishEffectiveVarying(lines: string[], includeRelationships: boolean, noteLoss: (message: string) => void): number {
+export function finishEffectiveVarying(lines: string[], includeRelationships: boolean, noteLoss: (message: string) => void, eligible?: ReadonlySet<number>): number {
   // Most edited exports have no varying actions.
   if (!lines.some((line) => /IFCSTRUCTURAL(?:LINEAR|PLANAR)ACTIONVARYING/i.test(line))) return 0;
   const types = new Map<number, string>();
@@ -30,7 +30,7 @@ export function finishEffectiveVarying(lines: string[], includeRelationships: bo
       if (ids) ids.push(id);
       else byType.set(type, [id]);
     }
-    if (varyingTarget(type)) candidates.set(id, index);
+    if (varyingTarget(type) && (!eligible || eligible.has(id))) candidates.set(id, index);
   });
   const source = {
     ids: (type: string) => byType.get(type) ?? [],

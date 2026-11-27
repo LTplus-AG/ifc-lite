@@ -9,6 +9,8 @@ import { applyInverseFolds, type InverseClaims } from './merged-inverse-claims.j
 import type { EnumReconciliation } from './schema-converter-enums.js';
 import type { Ifc2x3SlotFill } from './schema-converter-ifc2x3-slots.js';
 import type { Ifc4SlotCheck } from './schema-converter-ifc4-slots.js';
+import { pruneUpgrade } from './schema-converter-unrooted-upgrade.js';
+import { finishEffectiveVarying } from './schema-structural-varying-effective.js';
 import type { IfcSchemaVersion } from './schema-converter.js';
 
 /**
@@ -39,4 +41,10 @@ export function finishMergedConversion(
 ): string[] {
   enums.forms.dates.finish(lines, Number.MAX_SAFE_INTEGER);
   return [...slots.warnings(), ...required.warnings(), ...enums.warnings(), ...applyInverseFolds(lines, claims)];
+}
+
+export function finishMergedUpgrade(lines: string[], seeds: Set<number>, schema: IfcSchemaVersion, varying: Set<number>): string[] {
+  const warnings = pruneUpgrade(lines, seeds, schema);
+  if (varying.size) finishEffectiveVarying(lines, true, warning => warnings.push(warning), varying);
+  return warnings;
 }

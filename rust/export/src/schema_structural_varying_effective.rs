@@ -32,8 +32,9 @@ struct Record<'a> {
     end: usize,
 }
 
-pub(super) fn finish(text: &str) -> std::io::Result<Option<EffectiveResult>> {
+pub(super) fn finish(text: &str, eligible: Option<&HashSet<u32>>) -> std::io::Result<Option<EffectiveResult>> {
     let (records, mut actions) = index(text);
+    if let Some(ids) = eligible { actions.retain(|id| ids.contains(id)); }
     if actions.is_empty() {
         return Ok(None);
     }

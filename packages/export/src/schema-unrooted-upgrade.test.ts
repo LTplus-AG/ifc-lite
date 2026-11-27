@@ -85,12 +85,12 @@ it('clears the pruned Representation and retains the initial AppliedLoad (#10970
   expect(report.describe().some(line => line.includes('IFCSTRUCTURALLINEARACTIONVARYING (#30) will be omitted'))).toBe(false);
 });
 
-// #11354 covers single-model conversion. Make a future merged fix turn these witnesses red.
 for (const method of ['export', 'exportAsync'] as const) {
-  it.fails(`merged ${method} writes the incomplete action as an IFC4 constant (#11698 deferred)`, async () => {
+  it(`merged ${method} writes the incomplete action as an IFC4 constant (#11698)`, async () => {
     const store = await optionalRepresentationStore();
     const merged = new MergedExporter([{ id: 'source', name: 'source', dataStore: store }]);
     const result = await merged[method]({ schema: 'IFC4' });
+    expect(result.stats.warnings.join('\n')).not.toContain('record remains unconverted');
     expect(new TextDecoder().decode(result.content)).toMatch(/^#30=IFCSTRUCTURALCURVEACTION\(.*?,\.CONST\.\);$/m);
   });
 }

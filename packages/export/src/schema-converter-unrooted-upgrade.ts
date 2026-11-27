@@ -58,11 +58,12 @@ function record(line: string): OutputRecord | undefined {
 }
 
 /** Collect direct omissions only from the source model that is being upgraded. */
-export function noteUpgradeSeed(line: string, seeds: Set<number>, from: IfcSchemaVersion, to: IfcSchemaVersion): void {
+export function noteUpgradeSeed(line: string, seeds: Set<number>, from: IfcSchemaVersion, to: IfcSchemaVersion, varying?: Set<number>): void {
   if (!removesObsoleteResources(from, to)) return;
   const head = stepRecordHead(line);
   if (!head) return;
   const type = line.slice(head.typeStart, head.typeEnd).toUpperCase();
+  if (varying && from === 'IFC2X3' && to === 'IFC4' && varyingTarget(type)) varying.add(outputRecordId(line));
   if (from === 'IFC5' || to === 'IFC5') return;
   const route = missingTypeRoute(type, from, to, attributes(type, from) !== undefined, attributes(type, to) !== undefined);
   if (route !== 'omitted') return;

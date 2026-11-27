@@ -11,7 +11,7 @@
  */
 
 import { withoutComments } from './step-comment-skip.js';
-import { needsIfc4x3SlotMap, remapIfc4x3Slots, upgradeIfc4x3Type } from './schema-converter-ifc4x3-upgrade.js';
+import { needsUpgradeSlotMap, remapUpgradeSlots, upgradeIfc4x3Type, upgradeStyleType } from './schema-converter-ifc4x3-upgrade.js';
 import { structuralAttributes } from './schema-converter-structural.js';
 import { generateIfcGuid, type RandomSource } from '@ifc-lite/encoding';
 import { deterministicGlobalId, getSchemaRegistryForVersion } from '@ifc-lite/parser';
@@ -163,6 +163,10 @@ export function convertEntityType(
   const upper = entityType.toUpperCase();
   if (toSchema === 'IFC4X3' && (fromSchema === 'IFC2X3' || fromSchema === 'IFC4')) {
     const upgrade = upgradeIfc4x3Type(upper);
+    if (upgrade) return upgrade;
+  }
+  if (fromSchema === 'IFC2X3' && toSchema === 'IFC4') {
+    const upgrade = upgradeStyleType(upper);
     if (upgrade) return upgrade;
   }
   const target = (toSchema === 'IFC2X3' ? MEP_IFC2X3_TYPES.get(upper) : undefined) ?? upgradeRename(upper, fromSchema, toSchema);
@@ -408,7 +412,7 @@ function convertRecord(
     const mapped = args.length > 0 ? attrMapFor(entityType, newType, fromSchema, toSchema) : undefined; // #10763
     const replaced = mapped ? undefined : replacedSlot(entityType, srcAttrs, tgtAttrs); // #10758: no value carries there
     if (replaced !== undefined && replaced < args.length && withoutComments(args[replaced]) !== '$') { args[replaced] = '$'; finalAttrs = args.join(','); }
-    if (toSchema === 'IFC4X3' && entityType !== newType && needsIfc4x3SlotMap(entityType)) finalAttrs = remapIfc4x3Slots(entityType, srcAttrs, tgtAttrs, args);
+    if (entityType !== newType && needsUpgradeSlotMap(entityType, fromSchema, toSchema)) finalAttrs = remapUpgradeSlots(entityType, srcAttrs, tgtAttrs, args);
     else if (mapped) finalAttrs = remapByAttrMap(mapped.map, mapped.up, args, srcAttrs, tgtAttrs);
     else if (isStrictAttrPrefix(tgtAttrs, srcAttrs, entityType)) {
       finalAttrs = trimAttributes(attrsRaw, args, tgtAttrs.length);

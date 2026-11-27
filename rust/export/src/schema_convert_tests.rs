@@ -251,7 +251,10 @@ fn ifc2x3_door_style_upgrades_to_an_assignable_type_11454() {
     let record = "#1=IFCDOORSTYLE('1mW6gHB0W7lxCAqIKVEzia',#2,'Door Style',$,$,(#3),(#4),'tag',.SINGLE_SWING_LEFT.,.WOOD.,.T.,.F.);";
     let expected = "#1=IFCDOORTYPE('1mW6gHB0W7lxCAqIKVEzia',#2,'Door Style',$,$,(#3),(#4),'tag',$,.NOTDEFINED.,.SINGLE_SWING_LEFT.,.T.,$);";
     for target in ["IFC4", "IFC4X3"] {
-        assert_eq!(convert_step_line(record, "IFC2X3", target, 1, &mut none(), None).unwrap(), expected, "{target}");
+        let mut checks = crate::schema_enum::ConversionChecks::default();
+        let converted = convert_step_line(record, "IFC2X3", target, 1, &mut none(), Some(&mut checks)).unwrap();
+        assert_eq!(converted, expected, "{target}");
+        assert_eq!(checks.attribute_values_dropped, 2, "{target}");
     }
 }
 
@@ -260,7 +263,10 @@ fn ifc2x3_window_style_upgrades_to_an_assignable_type_11454() {
     let record = "#5=IFCWINDOWSTYLE('3Vnz8SzMO$_GklsTTZo$zj',#2,'Window Style',$,$,(#3),(#4),'tag',.STEEL.,.SINGLE_PANEL.,.F.,.T.);";
     let expected = "#5=IFCWINDOWTYPE('3Vnz8SzMO$_GklsTTZo$zj',#2,'Window Style',$,$,(#3),(#4),'tag',$,.NOTDEFINED.,.SINGLE_PANEL.,.F.,$);";
     for target in ["IFC4", "IFC4X3"] {
-        assert_eq!(convert_step_line(record, "IFC2X3", target, 5, &mut none(), None).unwrap(), expected, "{target}");
+        let mut checks = crate::schema_enum::ConversionChecks::default();
+        let converted = convert_step_line(record, "IFC2X3", target, 5, &mut none(), Some(&mut checks)).unwrap();
+        assert_eq!(converted, expected, "{target}");
+        assert_eq!(checks.attribute_values_dropped, 2, "{target}");
     }
 }
 

@@ -23,6 +23,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { convertStepLine } from './schema-converter.js';
+import { classifyEntityTypeConversion } from './schema-conversion-loss-report.js';
 
 describe('convertStepLine maps IfcDoorType/IfcWindowType to their IFC2X3 IfcDoorStyle/IfcWindowStyle target', () => {
   it('IFCDOORTYPE keeps its GlobalId, Name and psets instead of becoming an IFCPROXY', () => {
@@ -85,6 +86,12 @@ describe('convertStepLine maps IfcDoorType/IfcWindowType to their IFC2X3 IfcDoor
     const door = "#1=IFCDOORSTYLE('1mW6gHB0W7lxCAqIKVEzia',#2,'Door Style',$,$,(#3),(#4),'tag',.SINGLE_SWING_LEFT.,.WOOD.,.T.,.F.);";
     const window = "#5=IFCWINDOWSTYLE('3Vnz8SzMO$_GklsTTZo$zj',#2,'Window Style',$,$,(#3),(#4),'tag',.STEEL.,.SINGLE_PANEL.,.F.,.T.);";
 
+    expect(classifyEntityTypeConversion('IFCDOORSTYLE', 'IFC2X3', target)).toEqual({
+      targetType: 'IFCDOORTYPE', kind: 'lossy', droppedAttributes: ['ConstructionType', 'Sizeable'],
+    });
+    expect(classifyEntityTypeConversion('IFCWINDOWSTYLE', 'IFC2X3', target)).toEqual({
+      targetType: 'IFCWINDOWTYPE', kind: 'lossy', droppedAttributes: ['ConstructionType', 'Sizeable'],
+    });
     expect(convertStepLine(door, 'IFC2X3', target)).toBe(
       "#1=IFCDOORTYPE('1mW6gHB0W7lxCAqIKVEzia',#2,'Door Style',$,$,(#3),(#4),'tag',$,.NOTDEFINED.,.SINGLE_SWING_LEFT.,.T.,$);",
     );

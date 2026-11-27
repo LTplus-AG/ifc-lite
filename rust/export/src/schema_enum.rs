@@ -54,7 +54,11 @@ pub(crate) struct EnumReconciliation {
 impl EnumReconciliation {
     /// Reconcile `line`, already converted to the canonical schema `to`.
     pub(crate) fn apply(&mut self, line: String, to: &str) -> String {
-        let line = self.reconcile(&line, to).unwrap_or(line);
+        self.apply_with_source(line, to, None)
+    }
+
+    pub(crate) fn apply_with_source(&mut self, line: String, to: &str, source: Option<(&str, &str)>) -> String {
+        let line = self.reconcile(&line, to, source).unwrap_or(line);
         self.check_user_defined(&line, to);
         line
     }
@@ -117,7 +121,7 @@ impl EnumReconciliation {
     }
 
     /// `None` when the line is left exactly as it is.
-    fn reconcile(&mut self, line: &str, to: &str) -> Option<String> {
+    fn reconcile(&mut self, line: &str, to: &str, source: Option<(&str, &str)>) -> Option<String> {
         let table: &[EnumEntityRow] = match to {
             "IFC2X3" => IFC2X3_ENUM_SLOTS,
             "IFC4" => IFC4_ENUM_SLOTS,
@@ -137,11 +141,23 @@ impl EnumReconciliation {
         let mut changed = false;
         for &(index, attribute, members, outcome) in slots {
             let index = usize::from(index);
-            let Some(member) = enum_member(&values[index]) else { continue };
+            let proxy_composition = to == "IFC2X3" && entity_type == "IFCBUILDINGELEMENTPROXY" && index == 8;
+            let token = &values[index];
+            let member = if proxy_composition && token.contains("/*") {
+                enum_member(&crate::step_slot::without_comments(token))
+            } else {
+                enum_member(token)
+            };
+            let Some(member) = member else { continue };
             if members.iter().any(|m| m.eq_ignore_ascii_case(&member)) {
                 continue;
             }
-            let where_ = format!("{entity_type}.{attribute} .{member}.");
+            let mut where_ = format!("{entity_type}.{attribute} .{member}.");
+            if proxy_composition {
+                if let Some(original) = proxy_classification_source(source) {
+                    where_.push_str(&format!(" (source {original}.PredefinedType)"));
+                }
+            }
             match outcome {
                 EnumOutcome::UserDefined(label) => {
                     values[index] = ".USERDEFINED.".to_string();
@@ -168,6 +184,14 @@ impl EnumReconciliation {
         }
         changed.then(|| format!("{}{}{}", &line[..=open], values.join(","), &line[close..]))
     }
+}
+
+fn proxy_classification_source(source: Option<(&str, &str)>) -> Option<String> {
+    let (line, from) = source?;
+    let original = crate::step_record_frame::record_head(line)?.type_name(line).to_ascii_uppercase();
+    if original == "IFCBUILDINGELEMENTPROXY" { return None; }
+    let attrs = crate::schema_convert::schema_attribute_names(from, &original)?;
+    (attrs.len() == 9 && attrs[8] == "PredefinedType").then_some(original)
 }
 
 /// The member of an enum token `.X.`, uppercased; `None` for anything else.

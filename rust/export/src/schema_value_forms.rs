@@ -241,6 +241,10 @@ impl ValueForms {
             .then(|| durations::TIME_UNIT_WARNING.to_owned())
     }
 
+    pub(crate) fn omit_facility_usage(&mut self) {
+        *self.dropped.entry("IFCFACILITYPART.UsageType".into()).or_default() += 1;
+    }
+
     /// One warning per kind, naming every slot a value was dropped from (#10847).
     pub(crate) fn warnings(&self) -> Vec<String> {
         let line = |where_: &BTreeMap<String, usize>, what: &str| {

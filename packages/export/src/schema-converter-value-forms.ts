@@ -217,6 +217,10 @@ export class ValueForms {
     return changed ? `${record.prefix}${slots.join(',')}${record.suffix}` : line;
   }
 
+  omitFacilityUsage(): void {
+    this.count(this.dropped, 'IFCFACILITYPART.UsageType', 1);
+  }
+
   private count(into: Map<string, number>, where: string, n: number): void {
     into.set(where, (into.get(where) ?? 0) + n);
   }

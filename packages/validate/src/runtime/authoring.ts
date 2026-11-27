@@ -72,13 +72,25 @@ function resolvesTo(schema: Pick<SchemaRuntime, 'type'>, type: TypeRef | undefin
   return false;
 }
 
+function refineRule(ctx: RefinementContext, input: unknown, id: string, source: string, check: () => Value): void {
+  let result: Value;
+  try {
+    result = check();
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    ctx.addIssue({ code: 'custom', message: `${id}: evaluation_error: ${reason}`, input });
+    return;
+  }
+  if (violated(result)) ctx.addIssue({ code: 'custom', message: `${id}: ${source}`, input });
+}
+
 /** zod `superRefine` callback running a defined type's WHERE rules (and those of the types it is based on). */
 export function typeRuleRefinement(schema: SchemaRuntime, typeName: string): (value: unknown, ctx: RefinementContext) => void {
   return (value, ctx) => {
     const v = fromAuthoring(schema, { k: 'named', name: typeName }, value);
     const m = detachedModel(schema);
     for (const { declaredBy, rule } of schema.typeRules.get(typeName.toUpperCase()) ?? []) {
-      if (violated(rule.check(v, m))) ctx.addIssue({ code: 'custom', message: `${declaredBy}.${rule.label}: ${rule.source}`, input: value });
+      refineRule(ctx, value, `${declaredBy}.${rule.label}`, rule.source, () => rule.check(v, m));
     }
   };
 }
@@ -94,7 +106,7 @@ export function localRuleRefinement(schema: SchemaRuntime, entityName: string, l
     const inst = new EntityInstance(m, -1, entity, values, true);
     for (const { declaredBy, rule } of entity.rules) {
       const id = `${declaredBy}.${rule.label}`;
-      if (wanted.has(id) && violated(rule.check(inst, m))) ctx.addIssue({ code: 'custom', message: `${id}: ${rule.source}`, input: value });
+      if (wanted.has(id)) refineRule(ctx, value, id, rule.source, () => rule.check(inst, m));
     }
   };
 }

@@ -319,3 +319,25 @@ TYPE Label = STRING; WHERE W : SELF = 'UNKNOWN'; END_TYPE; END_SCHEMA;`);
   expect(schemas.Label.safeParse('UNKNOWN').success).toBe(true);
   expect(schemas.Label.safeParse('other').success).toBe(false);
 });
+
+it('returns rule evaluation errors from generated defined-type safeParse (#11647)', () => {
+  const { schemas } = generated(`SCHEMA S; FUNCTION Probe(N : INTEGER) : BOOLEAN;
+LOCAL Missing : INTEGER; END_LOCAL;
+IF N = 1 THEN CASE Missing OF 1 : RETURN(TRUE); END_CASE; END_IF;
+RETURN(N = 0); END_FUNCTION;
+TYPE Num = INTEGER; WHERE Allowed : Probe(SELF); END_TYPE; END_SCHEMA;`);
+  expect(schemas.Num.safeParse(0).success).toBe(true);
+  expect(schemas.Num.safeParse(2).error?.issues).toMatchObject([{ code: 'custom', message: expect.stringContaining('Num.Allowed: Probe') }]);
+  expect(schemas.Num.safeParse(1).error?.issues).toMatchObject([{ code: 'custom', message: expect.stringContaining('Num.Allowed: evaluation_error: CASE selector is indeterminate') }]);
+});
+
+it('returns local entity evaluation errors alongside ordinary violations (#11647)', () => {
+  const { schemas } = generated(`SCHEMA S; ENTITY E; N : OPTIONAL INTEGER; Flag : BOOLEAN;
+WHERE One : SIZEOF([1:N]) = 1; Enabled : Flag; END_ENTITY; END_SCHEMA;`);
+  expect(schemas.E.safeParse({ N: 1, Flag: true }).success).toBe(true);
+  expect(schemas.E.safeParse({ N: 0, Flag: true }).error?.issues).toMatchObject([{ code: 'custom', message: expect.stringContaining('E.One: SIZEOF') }]);
+  expect(schemas.E.safeParse({ Flag: false }).error?.issues).toMatchObject([
+    { code: 'custom', message: expect.stringContaining('E.One: evaluation_error: aggregate repetition count') },
+    { code: 'custom', message: expect.stringContaining('E.Enabled: Flag') },
+  ]);
+});

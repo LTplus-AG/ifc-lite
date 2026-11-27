@@ -29,24 +29,31 @@ export class SchemaIndex {
       for (const a of [...e.explicit, ...e.derived, ...e.inverse]) this.attributeNames.add(a.name.toUpperCase());
     }
     for (const t of schema.types) this.types.set(t.name.toUpperCase(), t);
-    // All consumers (including qualified enum lookup and Zod) need the effective member list.
+    const domains = new Map<string, string[]>();
     for (const t of schema.types) {
       const spec = t.spec;
-      if ((spec.k === 'enumeration' || spec.k === 'select') && spec.basedOn) {
-        const parts = [spec.items];
-        const seen = new Set([t.name.toUpperCase()]);
-        let base = spec.basedOn;
-        while (base) {
-          const parent = this.type(base);
-          if (!parent || parent.spec.k !== spec.k || seen.has(base.toUpperCase())) {
-            throw new Error(`Invalid ${spec.k} BASED_ON chain for ${t.name} at ${base}`);
-          }
-          seen.add(base.toUpperCase());
-          parts.push(parent.spec.items);
-          base = parent.spec.basedOn ?? '';
+      if (spec.k !== 'enumeration' && spec.k !== 'select') continue;
+      const parts = [spec.items];
+      const seen = new Set([t.name.toUpperCase()]);
+      let base = spec.basedOn;
+      while (base) {
+        const parent = this.type(base);
+        if (!parent || parent.spec.k !== spec.k || seen.has(base.toUpperCase())) {
+          throw new Error(`Invalid ${spec.k} BASED_ON chain for ${t.name} at ${base}`);
         }
-        spec.items = [...new Set(parts.reverse().flat())];
+        seen.add(base.toUpperCase());
+        parts.unshift(parent.spec.items);
+        if (parent.spec.extensible) {
+          const members = domains.get(parent.name) ?? [];
+          members.push(...spec.items);
+          domains.set(parent.name, members);
+        }
+        base = parent.spec.basedOn;
       }
+      domains.set(t.name, [...parts.flat(), ...(domains.get(t.name) ?? [])]);
+    }
+    for (const t of schema.types) {
+      if (t.spec.k === 'enumeration' || t.spec.k === 'select') t.spec.items = [...new Set(domains.get(t.name))];
       if (t.spec.k === 'enumeration') {
         for (const item of t.spec.items) {
           const list = this.enumItems.get(item.toUpperCase()) ?? [];
@@ -98,7 +105,10 @@ export class SchemaIndex {
     map = new Map();
     for (const level of this.chain(entity)) {
       for (const a of level.explicit) map.set(a.name.toUpperCase(), 'explicit');
-      for (const a of level.derived) map.set(a.name.toUpperCase(), 'derived');
+      for (const a of level.derived) {
+        map.set(a.name.toUpperCase(), 'derived');
+        if (a.redeclares) map.set(a.redeclares.attribute.toUpperCase(), 'derived');
+      }
       for (const a of level.inverse) map.set(a.name.toUpperCase(), 'inverse');
     }
     this.attributeCache.set(entity.name, map);

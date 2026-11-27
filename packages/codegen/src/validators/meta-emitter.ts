@@ -16,7 +16,7 @@ export type MetaTypeRef =
 /** An integer literal bound or width (`2`, `-1`); undefined for `?` or an expression. */
 export function literalInt(e: Expr | undefined): number | undefined {
   if (!e) return undefined;
-  if (e.k === 'num' && e.int) return e.value;
+  if (e.k === 'num' && e.int && Number.isSafeInteger(e.value)) return e.value;
   if (e.k === 'indeterminate') return undefined;
   if (e.k === 'unary' && (e.op === '-' || e.op === '+')) {
     const n = literalInt(e.operand);
@@ -74,7 +74,7 @@ function entityMeta(e: EntityDecl, index: SchemaIndex): Record<string, unknown> 
   if (e.supertypes.length > 1) meta.supertypes = e.supertypes.map(name => index.canonical(name) ?? name);
   else if (e.supertypes[0]) meta.supertype = index.canonical(e.supertypes[0]) ?? e.supertypes[0];
   if (retyped.length) {
-    meta.retyped = Object.fromEntries(retyped.map((a) => [a.redeclares!.attribute, { name: a.redeclares!.attribute, type: toTypeRef(a.type, index, `${e.name}.${a.name}`), optional: a.optional }]));
+    meta.retyped = Object.fromEntries(retyped.map((a) => [a.redeclares!.attribute, { name: a.name, type: toTypeRef(a.type, index, `${e.name}.${a.name}`), optional: a.optional }]));
   }
   if (derivedRedeclarations.length) meta.derivedRedeclarations = derivedRedeclarations.map((d) => d.redeclares!.attribute);
   if (derived.length) meta.derived = derived.map((d) => d.name);

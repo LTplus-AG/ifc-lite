@@ -11,7 +11,7 @@
 import type { EntityDecl, Expr } from '../express/ast.js';
 import type { SchemaIndex } from './schema-index.js';
 
-const PURE_BUILTINS = new Set(['SIZEOF', 'EXISTS', 'NVL', 'ABS', 'SQRT', 'LENGTH', 'HIINDEX', 'LOINDEX', 'ODD', 'BLENGTH']);
+import { BUILTINS } from './expr-translator.js';
 
 export function isLocalRule(expr: Expr, entity: EntityDecl, index: SchemaIndex): boolean {
   const attributes = index.attributesOf(entity);
@@ -34,7 +34,7 @@ export function isLocalRule(expr: Expr, entity: EntityDecl, index: SchemaIndex):
       case 'index':
         return visit(e.base, vars) && visit(e.index, vars) && (!e.upper || visit(e.upper, vars));
       case 'call':
-        return PURE_BUILTINS.has(e.name.toUpperCase()) && e.args.every((a) => visit(a, vars));
+        return Object.hasOwn(BUILTINS, e.name.toUpperCase()) && !BUILTINS[e.name.toUpperCase()].model && e.args.every((a) => visit(a, vars));
       case 'unary':
         return visit(e.operand, vars);
       case 'binary':

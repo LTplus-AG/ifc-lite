@@ -8,10 +8,10 @@
  * indeterminate values and three-valued logic follow ISO 10303-11.
  */
 
-import type { BinaryOp, Expr } from '../express/ast.js';
+import type { BinaryOp, Expr, TypeSpec } from '../express/ast.js';
 import { functionIdentifier, Scope, TranslateContext, UnsupportedConstruct } from './translate-context.js';
 
-const BUILTINS: Record<string, { fn: string; arity: number; model?: boolean }> = {
+export const BUILTINS: Record<string, { fn: string; arity: number; model?: boolean }> = {
   SIZEOF: { fn: 'sizeof', arity: 1 },
   HIINDEX: { fn: 'hiindex', arity: 1 },
   LOINDEX: { fn: 'loindex', arity: 1 },
@@ -92,12 +92,36 @@ export class ExpressionTranslator {
       case 'query': {
         const inner = scope.child();
         const js = this.ctx.fresh('q');
-        inner.define(e.variable, js);
+        inner.define(e.variable, js, this.queryElement(e.source, scope));
         return `r.query(${this.translate(e.source, scope)}, (${js}: r.Value) => ${this.translate(e.predicate, inner)})`;
       }
       case 'interval':
         return `r.interval(${this.translate(e.low, scope)}, '${e.op1}', ${this.translate(e.item, scope)}, '${e.op2}', ${this.translate(e.high, scope)})`;
     }
+  }
+
+  private queryElement(source: Expr, scope: Scope): TypeSpec | undefined {
+    const name = source.k === 'id' || (source.k === 'attr' && source.base.k === 'self') ? source.name : undefined;
+    if (!name) return undefined;
+    const variable = source.k === 'id' ? scope.lookup(name) : undefined;
+    let type = variable?.type;
+    if (!variable && scope.entity) {
+      for (const level of this.index.chain(scope.entity).reverse()) {
+        const attr = [...level.explicit, ...level.derived, ...level.inverse].find(a => a.name.toUpperCase() === name.toUpperCase());
+        if (!attr) continue;
+        if ('type' in attr) type = attr.type;
+        else if (attr.aggregate) return { k: 'named', name: attr.entity };
+        break;
+      }
+    }
+    const seen = new Set<string>();
+    while (type?.k === 'named') {
+      const alias = type.name.toUpperCase();
+      if (seen.has(alias)) return undefined;
+      seen.add(alias);
+      type = this.index.type(alias)?.spec;
+    }
+    return type?.k === 'aggregate' ? type.of : undefined;
   }
 
   private identifier(name: string, scope: Scope): string {
@@ -128,6 +152,17 @@ export class ExpressionTranslator {
     let owner = scope.entity;
     if (e.base.k === 'group') owner = this.index.entity(e.base.entity);
     else if (e.base.k !== 'self') owner = variableType?.k === 'named' ? this.index.entity(variableType.name) : undefined;
+    if (e.base.k === 'group' && e.base.base.k === 'self' && scope.entity) {
+      const group = e.base.entity.toUpperCase();
+      for (const level of this.index.chain(scope.entity).reverse()) {
+        const override = [...level.explicit, ...level.derived].find(a =>
+          a.redeclares?.entity.toUpperCase() === group && a.redeclares.attribute.toUpperCase() === upper);
+        if (override) {
+          this.ctx.checkDerived(override.name.toUpperCase(), level);
+          break;
+        }
+      }
+    }
     this.ctx.checkDerived(upper, owner);
     const group = e.base.k === 'group' ? `, ${JSON.stringify(e.base.entity.toUpperCase())}` : '';
     return `r.attr(${this.translate(e.base, scope)}, ${JSON.stringify(upper)}${group})`;

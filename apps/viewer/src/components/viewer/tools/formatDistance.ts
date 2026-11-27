@@ -5,6 +5,7 @@
 import { QuantityType } from '@ifc-lite/data';
 import { ProjectUnits } from '@ifc-lite/parser';
 import { resolveQuantityDisplay, formatConverted } from '@/lib/units/display';
+import { signedByPrintedValue } from './signedByPrintedValue';
 
 // Constructed once rather than per call: every measure-tool distance readout
 // (including the live-drag SVG labels, which reformat on every pointer-move
@@ -102,12 +103,8 @@ export function formatSignedTriple(
   p: { x: number; y: number; z: number },
   overrides: Record<string, string> = {},
 ): string {
-  const axis = (n: number) => {
-    const magnitude = formatDistanceMagnitude(n, overrides);
-    // A negative value already carries its own '-' from the formatter, so only
-    // the positive direction needs one added.
-    return n > 0 ? `+${magnitude}` : magnitude;
-  };
+  const format = (meters: number) => formatDistanceMagnitude(meters, overrides);
+  const axis = (n: number) => signedByPrintedValue(n, format, true);
   return `ΔX ${axis(p.x)}  ΔY ${axis(p.y)}  ΔZ ${axis(p.z)}`;
 }
 

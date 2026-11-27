@@ -70,8 +70,11 @@ export class BridgeSession {
     this.sendText(JSON.stringify(msg));
   }
 
-  /** Send a `call` and wait for its `result`, a timeout, a cancel or the session's end. */
-  /** `onSend` runs once the frame passed every check and is about to go out. */
+  /**
+   * Send a `call` and wait for its `result`, a timeout, a cancel or the
+   * session's end. `onSend` runs once the frame passed every check, just
+   * before it goes out; it must not throw.
+   */
   call(name: string, args: Record<string, unknown>, timeoutMs: number, signal?: AbortSignal, onSend?: () => void): Promise<BridgeCallResult> {
     const fail = (reason: BridgeCallFailure, message: string) => Promise.reject(new BridgeCallError(reason, message));
     if (signal?.aborted) return fail('cancelled', `Call to '${name}' was cancelled.`);

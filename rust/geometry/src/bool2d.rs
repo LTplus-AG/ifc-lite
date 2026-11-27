@@ -12,8 +12,11 @@ use crate::error::{Error, Result};
 use crate::math::v2::{point_in_ring_by, signed_area_by};
 use crate::profile::Profile2D;
 use i_overlay::core::fill_rule::FillRule;
+use i_overlay::core::overlay::ShapeType;
 use i_overlay::core::overlay_rule::OverlayRule;
+use i_overlay::float::overlay::FloatOverlay;
 use i_overlay::float::single::SingleFloatOverlay;
+use i_overlay::i_float::adapter::FloatPointAdapter;
 use nalgebra::Point2;
 
 /// Epsilon for floating point comparisons in 2D operations
@@ -132,15 +135,29 @@ pub(crate) fn subtract_staged_2d_counted(
     if clip.is_empty() {
         return Ok((profile.clone(), 1, Vec::new()));
     }
-    let result = profile_to_paths(profile).overlay(&clip, OverlayRule::Difference, FillRule::EvenOdd);
+    let subject = profile_to_paths(profile);
+    // Use the same grid for the precursor and its intersection with the
+    // original cutters. Recomputing the origin from the snapped precursor can
+    // move shared boundaries by a grid step and create false correction
+    // slivers (#10834). The precursor stays within the original integer grid.
+    let adapter = FloatPointAdapter::<[f64; 2], i32>::with_iter_conservative(
+        subject.iter().chain(&clip).flatten(),
+    );
+    let overlay = |subject: &[Vec<[f64; 2]>], clip: &[Vec<[f64; 2]>], rule, fill| {
+        let capacity = subject.iter().chain(clip).map(Vec::len).sum();
+        FloatOverlay::with_adapter(adapter.clone(), capacity)
+            .unsafe_add_source(subject, ShapeType::Subject)
+            .unsafe_add_source(clip, ShapeType::Clip)
+            .overlay(rule, fill)
+    };
+    let result = overlay(&subject, &clip, OverlayRule::Difference, FillRule::EvenOdd);
     let shapes = result
         .iter()
         .filter(|s| s.first().is_some_and(|outer| outer.len() >= 3))
         .count();
     let precursor = shapes_to_profile(&result)?;
     let union = ccw_paths(void_contours.iter().map(Vec::as_slice));
-    let correction = profile_to_paths(&precursor)
-        .overlay(&union, OverlayRule::Intersect, FillRule::NonZero);
+    let correction = overlay(&profile_to_paths(&precursor), &union, OverlayRule::Intersect, FillRule::NonZero);
     let correction = correction
         .iter()
         .map(|s| shapes_to_profile(std::slice::from_ref(s)))

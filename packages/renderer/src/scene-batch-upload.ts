@@ -83,8 +83,8 @@ export function createSceneBatch(
   try {
     let quantized: { min: [number, number, number]; step: number } | undefined;
     let vertexBuffer: GPUBuffer;
-    // `auto` also stays f32 when the ~1 mm lattice would collapse an entity's
-    // shape (#9068); `required` keeps its source batch's decision (#4832).
+    // `auto` also stays f32 when the ~1 mm lattice would collapse or crumple an
+    // entity's shape (#9068, #11444); `required` keeps its source batch's decision (#4832).
     const quantizedData = options.quantized === 'required' || (options.quantized === 'auto'
       && !latticeCollapsesGeometry(merged.vertexData, BATCH_CONSTANTS.BYTES_PER_VERTEX / 4, merged.indices))
       ? quantizeInterleaved(

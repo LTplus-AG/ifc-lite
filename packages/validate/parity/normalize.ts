@@ -30,14 +30,14 @@ export function oracleKey(f: OracleFinding): Keyed {
   switch (f.type) {
     case 'entity_rule':
     case 'simpletype_rule':
+    case 'global_rule':
       // IfcOpenShell labels execution exceptions as rule findings too. Match only
       // the concrete exception diagnostics emitted by the pinned engine.
-      if (/\nViolated by:\n\s+(?:Attribute not set|'indeterminate_type' object is not callable|unhashable type: 'indeterminate_type')\s*\n/.test(msg)) {
+      if (/\nViolated by:\n\s+(?:Attribute not set|'indeterminate_type' object is not callable|unhashable type: 'indeterminate_type')[ \t]*(?:\r?\n|$)/.test(msg)) {
         return { rule: `evaluation-error:${(f.attribute ?? '?').toLowerCase()}`, instance };
       }
+      if (f.type === 'global_rule') return { rule: `global:${(f.attribute ?? '?').toLowerCase()}` };
       return { rule: (f.attribute ?? '?').toLowerCase(), instance, valueAttribute: f.type === 'simpletype_rule' ? f.valueAttribute?.toLowerCase() : undefined };
-    case 'global_rule':
-      return { rule: `global:${(f.attribute ?? '?').toLowerCase()}` };
   }
   if (msg.startsWith('Attribute not optional')) return { rule: `not-optional:${last(f.attribute)}`, instance };
   if (msg.startsWith('Attribute is derived in subtype')) return { rule: `derived-in-subtype:${last(f.attribute)}`, instance };

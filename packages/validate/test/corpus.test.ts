@@ -95,3 +95,16 @@ it('counts both rectangle dimension violations and detects one missing occurrenc
   expect([duplicate.tp.length, duplicate.fp.length, duplicate.fn.length]).toEqual([1,1,1]);
   expect(duplicate.fp[0]).not.toEqual(duplicate.fn[0]);
 });
+
+it('keeps an oracle global-rule execution error separate from a decided violation (#11648)', () => {
+  const name = 'IfcRepresentationContextSameWCS';
+  const globalKey = 'global:ifcrepresentationcontextsamewcs|';
+  const errorKey = 'evaluation-error:ifcrepresentationcontextsamewcs|';
+  const finding = { category: 'global_rule' as const, rule: name + '.WR1', message: 'Rule is false' };
+  const oracleError = { type: 'global_rule', attribute: name, instance: null, message: 'rule expression\n\nViolated by:\n    Attribute not set' };
+  const compare = (ours: Parameters<typeof compareFile>[3], message: string) =>
+    compareFile('probe.ifc', 'crafted', 'IFC4', ours, [{ ...oracleError, message }], 0);
+  expect(compare([finding], oracleError.message)).toMatchObject({ tp: [], fp: [globalKey], fn: [errorKey] });
+  expect(compare([{ ...finding, category: 'evaluation_error', rule: name }], oracleError.message)).toMatchObject({ tp: [errorKey], fp: [], fn: [] });
+  expect(compare([finding], 'rule expression\n\nViolated by:\n    (2 <= 1)')).toMatchObject({ tp: [globalKey], fp: [], fn: [] });
+});

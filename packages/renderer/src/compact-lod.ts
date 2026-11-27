@@ -78,7 +78,9 @@ export function settlePages(
   const only = keys && !keys.has(undefined) ? keys : undefined;
   if (!retired) for (const reason of ['exact', 'shared'] as const) {
     const meshes: MeshData[] = [];
-    for (const group of groups.values()) if (group.move === reason) meshes.push(...group.members);
+    for (const group of groups.values()) {
+      if (group.move === reason) for (const mesh of group.members) meshes.push(mesh);
+    }
     if (meshes.length > 0) toBuckets(meshes, reason);
   }
   store.stats.settleMs += performance.now() - t0;

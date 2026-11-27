@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-
 import type { MeshData } from '@ifc-lite/geometry';
 import { COMPACT_RECORD_BYTES, compactRow, compactStep } from '@ifc-lite/geometry/compact';
 import type { CompactPageDeps } from './compact-page-deps.js';

@@ -6,8 +6,7 @@
  * The Scene's compact geometry: which queued meshes may draw from compact
  * pages (`compact-store.ts`), their upload, and the way back.
  *
- * A compact mesh draws from its records only where that is exactly what the
- * bucket path would have drawn:
+ * A compact mesh draws from its records when they match the bucket path:
  *
  * - its records carry the id and colour salt the scene draws it with (a host
  *   that re-homes ids or recolours a mesh after the worker encoded it gets the
@@ -219,6 +218,8 @@ export class SceneCompact {
     const build = settlePages(this.store, this.scene, device, this.deps, (meshes, reason) => {
       const paged = this.members.size; // counted by what left the pages (a refused mesh stays); a failed build loses none either
       try { this.demoteChosen(meshes.map((source) => [source, this.members.get(source)!]), false); } catch (error) { console.warn(`[compactGeom] moving ${reason} groups to buckets`, error); }
+      // A stream with only f32 arrivals can change an existing group's verdict even if every move was refused.
+      if (judgeOnly && this.scene.lodBuildsEnabled && meshes.some(mesh => this.members.has(mesh))) this.retired = 'all';
       if (paged > this.members.size) this.decodes[reason] = (this.decodes[reason] ?? 0) + paged - this.members.size;
     }, retired, judgeOnly);
     if (!judgeOnly) { this.lod = build; this.retired = null; } // this build covers them (and the meshes its own moves retired)

@@ -980,6 +980,21 @@ describe('compact pages take the decisions of the bucket batches they stand in f
     assert.equal(on.getCompactStats()?.decodes.shared, 1);
   });
 
+  it('keeps a refused shared group at LOD0 after an edit rebuilds its page (#11606)', async () => {
+    const on = await lodScene(true), gpu = fakeGpu();
+    const boxes = lodBoxes(1000, 0, 28);
+    upload(on, gpu, compactBatch(boxes));
+    settle(on, gpu);
+    assert.equal(pages(on)[0].lodParts?.[0].lod1, true);
+    on.refusesBucketPath = mesh => mesh.expressId >= 1000;
+    upload(on, gpu, [boxSoup({ ...boxes[0], expressId: 9 })]);
+    settle(on, gpu);
+    assert.equal(pages(on)[0].lodParts?.[0].lod1, false);
+    on.removeMeshesForEntity(1000);
+    flushAll(on, gpu);
+    assert.equal(pages(on)[0].lodParts?.[0].lod1, false);
+  });
+
   it('leave a group paged at a later stream end when only an edit wrote its bucket (#11606)', async () => {
     const on = await lodScene(true), gpu = fakeGpu();
     upload(on, gpu, compactBatch([{ expressId: 1, at: [2, 0, 0], size: 1, color: GREY }, { expressId: 2, at: [4, 0, 0], size: 1, color: GREY }, { expressId: 3, at: [2, 0, 0], size: 1, color: RED }]));

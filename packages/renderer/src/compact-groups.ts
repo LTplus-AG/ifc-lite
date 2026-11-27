@@ -87,8 +87,9 @@ export function collectGroups(store: CompactGeometryStore, host: SceneCompactHos
     for (const [key, group] of groups) group.move = verdicts?.get(key) ?? null;
     return groups;
   }
-  const verdicts = new Map<string, 'exact' | 'shared'>();
-  if (judge === true) streamVerdicts.set(host, verdicts); // 'streamed' leaves the stream's verdicts as they are
+  const previous = judge === 'streamed' ? streamVerdicts.get(host) : undefined;
+  const verdicts = previous ?? new Map<string, 'exact' | 'shared'>();
+  streamVerdicts.set(host, verdicts);
   const { quantStep, maxQuantExtent, collapses } = deps.bucket;
   // Buckets that hold meshes of their own (f32 meshes no page draws), or will once the queue is flushed: their batch is
   // the union, so the group joins it. (A queued f32 mesh is keyed as the bucket path keys it: at its own first vertex.)
@@ -96,7 +97,11 @@ export function collectGroups(store: CompactGeometryStore, host: SceneCompactHos
   for (const [key, bucket] of host.buckets) if (bucket.meshData.length > 0 && (judge === true || host.streamedBucketKeys.has(key))) shared.add(key.replace(/#\d+$/, ''));
   for (const mesh of host.meshQueue) if (!mesh.compact) shared.add(host.bucketBaseKey(mesh, undefined, mesh));
   for (const [key, group] of groups) {
-    if (shared.has(key)) { group.move = 'shared'; continue; }
+    if (shared.has(key)) {
+      group.move = 'shared';
+      verdicts.set(key, group.move);
+      continue;
+    }
     if (judge === 'streamed') continue;
     // quantize.ts: the batch's lower corner floors to the lattice; past `maxQuantExtent` above it the batch stays f32.
     const { min, max } = group.bounds;

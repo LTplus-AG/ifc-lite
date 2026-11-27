@@ -70,7 +70,7 @@ function forChannel(text: string): string {
  * so it cannot close or forge the `<channel>` tag the client wraps around it.
  */
 function quoted(value: unknown): string {
-  return JSON.stringify(value).replace(/[<>&]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`);
+  return forChannel(JSON.stringify(value));
 }
 
 /**

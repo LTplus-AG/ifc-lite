@@ -4,6 +4,7 @@
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import { generateIfcGuid } from '@ifc-lite/encoding';
+import type { AuthoringGuidOptions } from './anchor.js';
 import { AnchorEntityReader } from './resolve-anchor.js';
 import { resolveAuthoringAnchor } from './resolve-relations.js';
 import { schemaAttributes, schemaRegistry } from './schema-attributes.js';
@@ -24,7 +25,7 @@ export interface ClassificationInStoreParams {
 
 /** Reuse a live system and reference, then optionally associate occurrences.
  * Multiple classifications per object are valid: assigning one never removes another. */
-export function addClassificationInStore(store: IfcDataStore, editor: StoreEditor, params: ClassificationInStoreParams): number {
+export function addClassificationInStore(store: IfcDataStore, editor: StoreEditor, params: ClassificationInStoreParams, options: AuthoringGuidOptions = {}): number {
   if (!params.System.trim() || !params.Identification.trim()) throw new Error('Classification System and Identification must not be empty');
   return editor.runAtomic(draft => {
     const view = draft.getMutationView(), reader = new AnchorEntityReader(store, view);
@@ -46,12 +47,12 @@ export function addClassificationInStore(store: IfcDataStore, editor: StoreEdito
       Location: params.Location, [registry.name.toUpperCase() === 'IFC2X3' ? 'ItemReference' : 'Identification']: params.Identification,
       Name: params.Name, ReferencedSource: `#${system}`,
     });
-    if (params.objects?.length) assignClassificationInStore(store, draft, reference, params.objects);
+    if (params.objects?.length) assignClassificationInStore(store, draft, reference, params.objects, options);
     return reference;
   });
 }
 
-export function assignClassificationInStore(store: IfcDataStore, editor: StoreEditor, classificationId: number, objects: readonly number[]): number {
+export function assignClassificationInStore(store: IfcDataStore, editor: StoreEditor, classificationId: number, objects: readonly number[], options: AuthoringGuidOptions = {}): number {
   return editor.runAtomic(draft => {
     const view = draft.getMutationView(), reader = new AnchorEntityReader(store, view);
     if (!liveEntityConforms(store, classificationId, 'IfcClassificationReference', view)
@@ -67,7 +68,7 @@ export function assignClassificationInStore(store: IfcDataStore, editor: StoreEd
     }
     const anchor = resolveAuthoringAnchor(store, view), registry = schemaRegistry(anchor.schema, 'assignClassification');
     return draft.addEntity('IfcRelAssociatesClassification', schemaAttributes(registry, 'IfcRelAssociatesClassification', {
-      GlobalId: generateIfcGuid(anchor.guidRandom), OwnerHistory: ownerHistoryRef(anchor.ownerHistoryId),
+      GlobalId: generateIfcGuid(options.guidRandom), OwnerHistory: ownerHistoryRef(anchor.ownerHistoryId),
       RelatedObjects: ids.map(id => `#${id}`), RelatingClassification: `#${classificationId}`,
     }, 'assignClassification') as Parameters<StoreEditor['addEntity']>[1]).expressId;
   });

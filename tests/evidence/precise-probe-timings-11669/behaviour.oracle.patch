@@ -1,19 +1,17 @@
-diff --git a/rust/processing/src/processor/probe_phase_timings.rs b/rust/processing/src/processor/probe_phase_timings.rs
-index 8ea301b730..f548715fc2 100644
---- a/rust/processing/src/processor/probe_phase_timings.rs
-+++ b/rust/processing/src/processor/probe_phase_timings.rs
-@@ -6,13 +6,5 @@ use super::resolve::Times;
- use std::time::Duration;
- 
+diff --git b/rust/processing/src/processor/probe_phase_timings.rs a/rust/processing/src/processor/probe_phase_timings.rs
+index f548715fc2..8ea301b730 100644
+--- b/rust/processing/src/processor/probe_phase_timings.rs
++++ a/rust/processing/src/processor/probe_phase_timings.rs
+@@ -8,3 +8,11 @@ use std::time::Duration;
  pub(super) fn record(times: &Times, geometry_time: Duration, total_time: Duration) {
--    tracing::trace!(
--        target: "ifc_lite_processing::probe_phase_timings",
--        parse_ns = times.parse.as_nanos() as u64,
--        scan_ns = times.entity_scan.as_nanos() as u64,
--        lookup_ns = times.lookup.as_nanos() as u64,
--        preprocess_ns = times.preprocess.as_nanos() as u64,
--        geometry_ns = geometry_time.as_nanos() as u64,
--        total_ns = total_time.as_nanos() as u64,
--    );
-+    let _ = (times, geometry_time, total_time);
+-    let _ = (times, geometry_time, total_time);
++    tracing::trace!(
++        target: "ifc_lite_processing::probe_phase_timings",
++        parse_ns = times.parse.as_nanos() as u64,
++        scan_ns = times.entity_scan.as_nanos() as u64,
++        lookup_ns = times.lookup.as_nanos() as u64,
++        preprocess_ns = times.preprocess.as_nanos() as u64,
++        geometry_ns = geometry_time.as_nanos() as u64,
++        total_ns = total_time.as_nanos() as u64,
++    );
  }

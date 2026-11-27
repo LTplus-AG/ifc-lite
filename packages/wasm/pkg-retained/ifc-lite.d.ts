@@ -493,6 +493,10 @@ export class CompactBatch {
      */
     readonly indices: Uint16Array;
     /**
+     * Lexicographically first referenced authored corner normal per welded vertex.
+     */
+    readonly lodNormals: Float32Array;
+    /**
      * Number of encoded meshes (table rows).
      */
     readonly meshCount: number;
@@ -3032,6 +3036,7 @@ export interface InitOutput {
     readonly compactbatch_bounds: (a: number) => number;
     readonly compactbatch_cells: (a: number) => number;
     readonly compactbatch_indices: (a: number) => number;
+    readonly compactbatch_lodNormals: (a: number) => number;
     readonly compactbatch_meshCount: (a: number) => number;
     readonly compactbatch_records: (a: number) => number;
     readonly compactbatch_refusals: (a: number) => number;

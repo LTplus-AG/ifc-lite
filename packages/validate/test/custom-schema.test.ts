@@ -341,3 +341,18 @@ WHERE One : SIZEOF([1:N]) = 1; Enabled : Flag; END_ENTITY; END_SCHEMA;`);
     { code: 'custom', message: expect.stringContaining('E.Enabled: Flag') },
   ]);
 });
+
+it('combines parent constructors into their declared subtype slots (#11647)', async () => {
+  const { schema } = generated(`SCHEMA S;
+ENTITY A; X : INTEGER; END_ENTITY;
+ENTITY B; Y : INTEGER; END_ENTITY;
+ENTITY C SUBTYPE OF (A,B); Z : INTEGER; END_ENTITY;
+FUNCTION MakeC(I, J : INTEGER) : C; RETURN(C(30) || A(I) || B(J)); END_FUNCTION;
+ENTITY Probe; First : INTEGER; Second : INTEGER;
+WHERE FromA : NVL(MakeC(1,2).X, -1) = First;
+ FromB : NVL(MakeC(1,2).Y, -1) = Second;
+ FromC : MakeC(1,2).Z = 30; END_ENTITY; END_SCHEMA;`);
+  const report = await validateStepText('DATA;#1=PROBE(1,2);#2=PROBE(2,1);ENDSEC;', { schema, categories: ['entity_rule'] });
+  expect(report.stats.entityRuleEvaluations).toBe(6);
+  expect(report.findings.map(f => [f.instance, f.rule])).toEqual([[2, 'Probe.FromA'], [2, 'Probe.FromB']]);
+});

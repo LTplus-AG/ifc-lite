@@ -154,8 +154,11 @@ export function complex(m: Model, parts: Value[]): Value {
   const values = [...leaf.attributes];
   for (const part of instances) {
     if (part === leaf) continue;
+    // Each declaration contributes a contiguous block in declaration order.
+    // Its offset in a multiple-parent leaf can differ from its offset in the part.
+    let target = leaf.entity.attributes.findIndex(a => a.declaredBy === part.entity.name);
     part.entity.attributes.forEach((a, i) => {
-      if (a.declaredBy === part.entity.name) values[i] = part.attributes[i];
+      if (a.declaredBy === part.entity.name) values[target++] = part.attributes[i];
     });
   }
   return new EntityInstance(m, -1, leaf.entity, values, true);

@@ -5,8 +5,9 @@
 /**
  * The streamed generator (#10264). `drawing-stream.golden.json` was recorded
  * by the PRE-streaming array generator (base 173774d1a2) over the same scenes:
- * the array API must still produce exactly that, and a streamed source in any
- * batching must produce the same drawing while holding one batch at a time
+ * #9705 updates four digests for the refined hidden-line transition points.
+ * The array API and the push session must match those drawings. A streamed
+ * source in any batching must draw the same while holding one batch at a time
  * and keeping none of it.
  */
 
@@ -63,7 +64,7 @@ const goldenDigests = golden as Record<string, string>;
 
 describe('Drawing2DGenerator.generateFromSource', () => {
   for (const { name, config } of streamConfigs()) {
-    it(`${name}: the array API still draws what the pre-streaming generator drew`, async () => {
+    it(`${name}: the array API draws the golden drawing`, async () => {
       const drawing = await new Drawing2DGenerator().generate(streamScene(), config, STREAM_OPTIONS);
       expect(drawing.lines.length, 'the scene must draw something').toBeGreaterThan(0);
       expect(drawingDigest(drawing)).toBe(goldenDigests[name]);

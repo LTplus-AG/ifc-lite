@@ -289,3 +289,43 @@ describe('DxfWriter non-finite coordinate handling (PR #1871 review)', () => {
     }
   });
 });
+
+describe('DxfWriter layer names are case-insensitive (#11460)', () => {
+  const layerRecords = (dxf: string): string[] => {
+    const lines = dxf.split('\n');
+    const out: string[] = [];
+    for (let i = 0; i < lines.length - 3; i++) {
+      if (lines[i] === '0' && lines[i + 1] === 'LAYER') out.push(lines[i + 3]);
+    }
+    return out;
+  };
+
+  it('never writes two LAYER records whose names differ only by case', () => {
+    const w = new DxfWriter();
+    const a = w.layer('Walls', '#ff0000');
+    const b = w.layer('walls', '#00ff00', 'DASHED');
+    const c = w.layer('WALLS', '#0000ff');
+    for (const layer of [a, b, c]) w.addLine({ x: 0, y: 0 }, { x: 1, y: 0 }, layer);
+    const dxf = w.toString();
+    const names = layerRecords(dxf);
+    expect(new Set(names.map(n => n.toUpperCase())).size).toBe(names.length);
+    const doc = parseDxf(dxf);
+    expect(doc.entities.map((entity) => entity.layer)).toEqual(['Walls', 'walls_2', 'WALLS_3']);
+    expect(doc.layers.get('Walls')).toMatchObject({ colorNumber: 1, linetype: 'CONTINUOUS' });
+    expect(doc.layers.get('walls_2')).toMatchObject({ colorNumber: 3, linetype: 'DASHED' });
+    expect(doc.layers.get('WALLS_3')).toMatchObject({ colorNumber: 5, linetype: 'CONTINUOUS' });
+  });
+
+  it('does not let a user layer take the reserved Defpoints name or duplicate layer 0', () => {
+    const w = new DxfWriter();
+    const d = w.layer('defpoints', '#000000');
+    const z = w.layer('0', '#000000');
+    w.addLine({ x: 0, y: 0 }, { x: 1, y: 0 }, d);
+    const dxf = w.toString();
+    const names = layerRecords(dxf);
+    expect(names).toContain('defpoints_2');
+    expect(parseDxf(dxf).entities[0].layer).toBe('defpoints_2');
+    expect(names.filter(n => n.toUpperCase() === '0')).toHaveLength(1);
+    expect(z).toBe('0');
+  });
+});

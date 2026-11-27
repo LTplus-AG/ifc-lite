@@ -12,20 +12,35 @@ Model Context Protocol (MCP) server for **ifc-lite** — agent-native BIM via JS
 # Run against a local IFC file over stdio (the default for Claude Desktop / Cursor)
 npx @ifc-lite/mcp ./model.ifc
 
-# Federate multiple files
-npx @ifc-lite/mcp ./arch.ifc ./struct.ifc ./mep.ifc --federate
+# Several files in one session
+npx @ifc-lite/mcp ./arch.ifc ./struct.ifc ./mep.ifc
 
 # Read-only (no mutation tools advertised)
 npx @ifc-lite/mcp ./model.ifc --read-only
 
 # HTTP / Streamable HTTP for remote agents
-npx @ifc-lite/mcp ./model.ifc --transport http --port 8765 --token $API_TOKEN
+npx @ifc-lite/mcp --transport http --port 8765 --token $API_TOKEN --allow ./models
 
 # Auto-open the WebGL viewer at startup. Add --open to also pop the URL in
 # the system browser.
 npx @ifc-lite/mcp ./model.ifc --viewer
 npx @ifc-lite/mcp ./model.ifc --open
 ```
+
+## Building client distribution artifacts
+
+From the repository root:
+
+```bash
+pnpm --filter @ifc-lite/mcp release:manifests
+```
+
+With the project's WASM build toolchain installed, this builds a Claude
+Desktop `.mcpb`, a dependency inventory and the MCP Registry `server.json`
+for the package version under the gitignored `packages/mcp/release-out/`
+directory. Use `--no-bundle` to generate only `server.json`.
+The Registry entry identifies the matching npm release. Registry publication
+requires that npm version to exist with the same `mcpName`.
 
 ## Embedded loaded-model authoring
 
@@ -112,7 +127,7 @@ ifc-lite mcp ./model.ifc --read-only
 
 ### Claude Desktop
 
-Drop this into `claude_desktop_config.json`:
+Drop this into `claude_desktop_config.json` (`~/Library/Application Support/Claude/` on macOS, `%APPDATA%\Claude\` on Windows):
 
 ```json
 {

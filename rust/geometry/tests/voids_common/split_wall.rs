@@ -37,6 +37,87 @@ pub(crate) fn wall_with_finish(
     wall_with_bodies(site, wall_turn_deg, wall_y, recess, bodies)
 }
 
+/// #11318: the #11313 two-body wall with its recess authored as a closed,
+/// chamfered `IfcTriangulatedFaceSet` in wall coordinates. The opening carries
+/// no extrusion direction. It fills y in [0.2, 0.212] over x, z in [1, 2],
+/// beyond the finish, so it touches the core and encloses only air.
+#[allow(dead_code)]
+pub(crate) fn wall_with_tessellated_recess(wall_y: f64) -> String {
+    wall_with_tessellated_cut(wall_y, CORE)
+}
+
+/// The chamfered x-z profile of [`wall_with_tessellated_recess`].
+const TESSELLATED_PROFILE: [(f64, f64); 5] = [(1.0, 1.0), (2.0, 1.0), (2.0, 1.9), (1.9, 2.0), (1.0, 2.0)];
+
+/// The tessellated opening of [`wall_with_tessellated_recess`], started at
+/// `y0` inside the core instead of at its face. It removes
+/// [`tessellated_cut_volume`] of core material, so the fallback must cut it.
+#[allow(dead_code)]
+pub(crate) fn wall_with_tessellated_cut(wall_y: f64, y0: f64) -> String {
+    let swept = wall_with_finish([0.0; 2], 0.0, wall_y, Recess::FromInterface, 0.5);
+    tessellate_recess(&swept, y0, &TESSELLATED_PROFILE)
+}
+
+/// Core material inside [`wall_with_tessellated_cut`]: the profile's area,
+/// a unit square less a 0.1 m chamfer, over y in [`y0`, CORE].
+#[allow(dead_code)]
+pub(crate) fn tessellated_cut_volume(y0: f64) -> f64 {
+    (1.0 - 0.5 * 0.1 * 0.1) * (CORE - y0)
+}
+
+/// A stub wall shorter than it is thick, so its thinnest axis is its length
+/// (x), not its thickness (y): core over x in [0, 0.15], finish over
+/// [0, 0.05]. The tessellated recess fills y in [0.2, 0.212] over x in
+/// [0.07, 0.13], z in [1, 2], beyond the finish, so it encloses only air.
+#[allow(dead_code)]
+pub(crate) fn stub_wall_with_tessellated_recess(wall_y: f64) -> String {
+    let bodies = format!(
+        "{}{}#50=IFCSHAPEREPRESENTATION(#13,'Body','SweptSolid',(#63,#67));",
+        extrusion(60, 0.0, STUB_LENGTH, 0.0, CORE),
+        extrusion(64, 0.0, 0.05, CORE, CORE + FINISH),
+    );
+    let swept = wall_with_bodies([0.0; 2], 0.0, wall_y, Recess::FromInterface, bodies);
+    tessellate_recess(&swept, CORE, &[(0.07, 1.0), (0.13, 1.0), (0.13, 1.97), (0.1, 2.0), (0.07, 2.0)])
+}
+
+/// The stub wall's length.
+#[allow(dead_code)]
+pub(crate) const STUB_LENGTH: f64 = 0.15;
+
+/// Material volume of [`stub_wall_with_tessellated_recess`]: the air recess
+/// removes nothing.
+#[allow(dead_code)]
+pub(crate) fn stub_wall_volume() -> f64 {
+    STUB_LENGTH * CORE * WALL_HEIGHT + 0.05 * FINISH * WALL_HEIGHT
+}
+
+/// Replace the swept recess of `swept` with a closed triangulated prism of
+/// the x-z `profile` spanning y in [`y0`, CORE + FINISH], in wall coordinates.
+fn tessellate_recess(swept: &str, y0: f64, profile: &[(f64, f64); 5]) -> String {
+    let start = swept.find("#110=").expect("the recess placement");
+    let end = swept.find("#200=").expect("the opening element");
+    let points = [y0, CORE + FINISH]
+        .iter()
+        .flat_map(|y| profile.iter().map(move |(x, z)| format!("({x:?},{y:?},{z:?})")))
+        .collect::<Vec<_>>()
+        .join(",");
+    // Caps: outward -y at the interface, +y at the finish face.
+    let mut faces = vec![(1, 2, 3), (1, 3, 4), (1, 4, 5), (6, 8, 7), (6, 9, 8), (6, 10, 9)];
+    for i in 1..=5 {
+        let j = i % 5 + 1;
+        faces.extend([(i, j + 5, j), (i, i + 5, j + 5)]);
+    }
+    let faces = faces.iter().map(|(a, b, c)| format!("({a},{b},{c})")).collect::<Vec<_>>().join(",");
+    let recess = format!(
+        "#112=IFCLOCALPLACEMENT(#33,#11);\n\
+         #120=IFCCARTESIANPOINTLIST3D(({points}),$);\n\
+         #121=IFCTRIANGULATEDFACESET(#120,$,.T.,({faces}),$);\n\
+         #124=IFCSHAPEREPRESENTATION(#13,'Body','Tessellation',(#121));\n\
+         #125=IFCPRODUCTDEFINITIONSHAPE($,$,(#124));\n"
+    );
+    format!("{}{recess}{}", &swept[..start], &swept[end..])
+}
+
 /// The core and the middle body both occupy the authored cutter.
 #[allow(dead_code)]
 pub(crate) fn wall_with_overlapping_bodies() -> String {

@@ -9,9 +9,9 @@
  * the manifest's ETag is its sha256 (`vite-plugins/retained-engine.ts`).
  */
 
-import { useState } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useTranslation } from '@/i18n';
+import { useAsyncRun } from '@/hooks/useAsyncRun';
 
 const ENGINE = '/retained-engine/';
 const LICENCES = [
@@ -20,11 +20,11 @@ const LICENCES = [
   ['LICENSES/ifc-lite/LICENSE', 'retainedGeometry.panel.licence.ifcLite'],
 ] as const;
 
-type EngineInfo = { state: 'loading' } | { state: 'ready'; revision: string; digest: string } | { state: 'error'; reason: string };
+type EngineInfo = { state: 'ready'; revision: string; digest: string } | { state: 'error'; reason: string };
 
-async function readManifest(fetcher: typeof fetch): Promise<EngineInfo> {
+async function readManifest(fetcher: typeof fetch, signal: AbortSignal): Promise<EngineInfo> {
   try {
-    const response = await fetcher(`${ENGINE}engine-manifest.json`, { cache: 'no-cache' });
+    const response = await fetcher(`${ENGINE}engine-manifest.json`, { cache: 'no-cache', signal });
     if (!response.ok) return { state: 'error', reason: `HTTP ${response.status}` };
     const manifest = await response.json() as { sdk?: { revision?: unknown } };
     return {
@@ -39,23 +39,28 @@ async function readManifest(fetcher: typeof fetch): Promise<EngineInfo> {
 
 export function RetainedEngineDetails({ fetcher = fetch }: { fetcher?: typeof fetch }) {
   const { t } = useTranslation();
-  const [info, setInfo] = useState<EngineInfo | null>(null);
+  // Closing resets the run and reopening restarts it, so only the latest open's answer can land (#11447).
+  const manifest = useAsyncRun<EngineInfo>({ label: 'retained engine manifest' });
+  const open = manifest.state.kind !== 'idle';
+  const { state } = manifest;
+  const info: EngineInfo | null = state.kind === 'succeeded' ? state.result
+    : state.kind === 'failed' ? { state: 'error', reason: state.error instanceof Error ? state.error.message : String(state.error) }
+    : null;
   const toggle = () => {
-    if (info) { setInfo(null); return; }
-    setInfo({ state: 'loading' });
-    void readManifest(fetcher).then(setInfo);
+    if (open) manifest.reset();
+    else void manifest.restart(({ signal }) => readManifest(fetcher, signal));
   };
   return (
     <div className="min-w-0 text-xs">
-      <button type="button" className="inline-flex items-center gap-1 text-sm hover:underline" aria-expanded={info !== null} onClick={toggle}>
-        {info ? <ChevronDown aria-hidden className="h-3.5 w-3.5" /> : <ChevronRight aria-hidden className="h-3.5 w-3.5" />}
+      <button type="button" className="inline-flex items-center gap-1 text-sm hover:underline" aria-expanded={open} onClick={toggle}>
+        {open ? <ChevronDown aria-hidden className="h-3.5 w-3.5" /> : <ChevronRight aria-hidden className="h-3.5 w-3.5" />}
         {t('retainedGeometry.panel.engine')}
       </button>
-      {info && (
+      {open && (
         <div className="mt-1 space-y-0.5 pl-5 text-muted-foreground">
-          {info.state === 'loading' && <p>{t('retainedGeometry.panel.engineLoading')}</p>}
-          {info.state === 'error' && <p>{t('retainedGeometry.panel.engineUnavailable', { reason: info.reason })}</p>}
-          {info.state === 'ready' && (
+          {manifest.busy && <p>{t('retainedGeometry.panel.engineLoading')}</p>}
+          {info?.state === 'error' && <p>{t('retainedGeometry.panel.engineUnavailable', { reason: info.reason })}</p>}
+          {info?.state === 'ready' && (
             <>
               <p className="font-mono">{t('retainedGeometry.panel.sdkRevision', { revision: info.revision })}</p>
               <p className="break-all font-mono">{t('retainedGeometry.panel.manifestDigest', { digest: info.digest })}</p>

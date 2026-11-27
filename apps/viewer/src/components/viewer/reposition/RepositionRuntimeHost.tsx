@@ -22,6 +22,7 @@ import { modelCenter } from '@/lib/model-placement/scene';
 import { publishRepositionRuntime } from '@/lib/model-placement/reposition-runtime';
 import { useRepositionPicking, type PickRole } from './useRepositionPicking';
 import { PlacementGizmo } from './PlacementGizmo';
+import { useTwoPointAlign } from './useTwoPointAlign';
 
 export function RepositionRuntimeHost() {
   // Surface the docked `placement` panel's Local tab (#5505) whenever a
@@ -42,8 +43,13 @@ export function RepositionRuntimeHost() {
   const [error, setError] = useState('');
   const [distance, setDistance] = useState('');
   const [role, setRole] = useState<PickRole>(null);
-  const hover = useRepositionPicking(role, setRole, setError, reference);
+  const align = useTwoPointAlign({ selected, reference, setRole, setError });
+  const { active: alignActive, apply: applyAlignment } = align;
+  const hover = useRepositionPicking(role, setRole, setError, reference, align.active ? align.capture : undefined);
+  // Choosing the ordinary source/target pick leaves the two-point align.
+  const pickRole = useCallback((next: PickRole) => { if (next !== null && align.active) align.cancel(); setRole(next); }, [align]);
   const preview = placement.preview;
+  const canApply = alignActive ? align.result?.ok === true : preview !== null;
   const delta = preview?.delta ?? [0, 0, 0];
   const run = useCallback((action: () => void) => {
     try { action(); setError(''); } catch (err) { setError(err instanceof Error ? err.message : String(err)); }
@@ -51,12 +57,16 @@ export function RepositionRuntimeHost() {
   const ensurePreview = useCallback(() => {
     if (!useViewerStore.getState().modelPlacement.preview) useViewerStore.getState().openReposition(selected);
   }, [selected]);
-  const apply = useCallback(() => run(() => {
-    const state = useViewerStore.getState();
-    state.applyModelTranslation();
-    state.openReposition(selected);
-    setRole(null);
-  }), [run, selected]);
+  const apply = useCallback(() => {
+    if (!canApply) return;
+    if (alignActive) { applyAlignment(); return; }
+    run(() => {
+      const state = useViewerStore.getState();
+      state.applyModelTranslation();
+      state.openReposition(selected);
+      setRole(null);
+    });
+  }, [alignActive, applyAlignment, canApply, run, selected]);
 
   useEffect(() => {
     const value = mode === 'absolute' && preview?.source ? addTranslation(preview.source.point, delta) : delta;
@@ -140,11 +150,11 @@ export function RepositionRuntimeHost() {
   useEffect(() => {
     publishRepositionRuntime({
       selected, reference, fields, mode, nudgeField, error, distance, role, hover,
-      setError, setReference, setFieldAt, setMode, setNudgeField, setDistance, setRole,
-      chooseModels, previewFields, previewDistance, nearReference, applyNudge, apply,
+      align, setError, setReference, setFieldAt, setMode, setNudgeField, setDistance, setRole: pickRole,
+      chooseModels, previewFields, previewDistance, nearReference, applyNudge, canApply, apply,
     });
-  }, [selected, reference, fields, mode, nudgeField, error, distance, role, hover,
-    chooseModels, previewFields, previewDistance, nearReference, applyNudge, apply, setFieldAt]);
+  }, [selected, reference, fields, mode, nudgeField, error, distance, role, hover, align, pickRole,
+    chooseModels, previewFields, previewDistance, nearReference, applyNudge, canApply, apply, setFieldAt]);
   useEffect(() => () => publishRepositionRuntime(null), []);
 
   const projected = hover && project ? (() => {

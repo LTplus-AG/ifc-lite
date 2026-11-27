@@ -670,3 +670,18 @@ fn issue_7633_split_bucket_keeps_its_source_boundary_frame() {
     assert_eq!(before.normals, after.normals);
     assert_eq!(before.indices, after.indices);
 }
+
+/// iOverlay 9's conservative grid treats the first two operands as touching.
+#[test]
+fn issue_10834_split_proof_uses_the_union_grid() {
+    let quad = |left, right| vec![[left, 0.], [right, 0.], [right, 1.], [left, 1.]];
+    let subject = vec![quad(-1.5, 0.)];
+    let clip = vec![quad(1.4e-9, 1.), quad(1.4, 1.5)];
+    let union = subject.overlay(&clip, OverlayRule::Union, FillRule::NonZero);
+    assert_eq!(union.len(), 2, "the overlay joins the close pair");
+    assert_eq!(
+        super::disjoint::separated_groups(&subject, &clip),
+        Some(vec![vec![0, 1], vec![2]]),
+        "the split proof must leave the touching pair together"
+    );
+}

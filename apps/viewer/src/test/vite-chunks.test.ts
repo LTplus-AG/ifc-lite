@@ -124,6 +124,8 @@ test('#11247 claims STEP writers and conversion tables ahead of recursive export
     'step-exporter.ts',
     'schema-converter.ts',
     'schema-converter-ifc2x3-slots.ts',
+    'schema-project-time-unit.ts',
+    'schema-work-control-durations.ts',
     'schema-calendar-date-values.ts',
     'schema-calendar-dates.ts',
     'schema-ifc2x3-placements.ts',

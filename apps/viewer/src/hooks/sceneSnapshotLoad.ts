@@ -180,6 +180,7 @@ export async function adoptCachedSceneSnapshot(
 function canAdoptSingleModelSnapshot(modelId: string): boolean {
   const models = useViewerStore.getState().models;
   const index = modelIndices(models).get(modelId);
+  if (modelIndices.hasReservations()) return false; // An in-flight upload can own a slot before it publishes a model.
   return models.size === 0 || (models.size === 1 && index === 0);
 }
 

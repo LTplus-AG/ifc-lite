@@ -18,6 +18,7 @@ import type { MeshData } from '@ifc-lite/geometry';
 import { encodeSceneSnapshot } from '@ifc-lite/renderer';
 import { Scene } from '../../../../packages/renderer/src/scene.js';
 import { useViewerStore } from '../store/index.js';
+import { modelIndices } from '../lib/model-placement/model-indices.js';
 import { clearCache } from '../services/ifc-cache.js';
 import { noteFinalFitBounds, sceneSnapshotKey, takeSceneSnapshotGeometry } from '../components/viewer/sceneSnapshotOwnership.js';
 import { useFilteredGeometry } from '../components/viewer/useFilteredGeometry.js';
@@ -178,6 +179,24 @@ describe('scene snapshot type index (#10264)', () => {
       }
     });
   }
+
+  it('streams while another upload owns index zero before registration (#11710)', async () => {
+    const snapshot = await capturedEntry('reserved-index');
+    render(<Viewport />);
+    const models = useViewerStore.getState().models;
+    assert.equal(models.size, 0);
+    const reservation = modelIndices.reserve('incoming', models);
+    try {
+      assert.equal(reservation.index, 0);
+      let paints = 0;
+      const { scene, adopted } = await reopen(snapshot, () => { paints++; });
+      assert.equal(adopted, null);
+      assert.equal(scene.isSceneSnapshotHydrating(), false);
+      assert.equal(paints, 0);
+    } finally {
+      reservation.release();
+    }
+  });
 
   it('does not adopt when no viewport commits the stored index', async () => {
     const snapshot = await capturedEntry('headless');

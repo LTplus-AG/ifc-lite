@@ -83,18 +83,31 @@ function onPlane(ctx: MouseHandlerContext, plane: Workplane, x: number, y: numbe
   return ray ? plane.intersectRay(ray)?.local ?? null : null;
 }
 
+// The idle corner grid keys visibility by set identity. Reuse the combined mask
+// while the host visibility and the command's few extra exclusions are unchanged.
+const commandMasks = new WeakMap<MouseHandlerContext, {
+  base: Set<number>; size: number; extra: number[]; hidden: Set<number>;
+}>();
+
 /** Pick options that never hit the command's own ghost preview. */
 function pickOptions(ctx: MouseHandlerContext, command: ModelingCommand) {
   const options = ctx.getPickOptions();
   const excluded = command.pickExclusions?.(getCommandRuntime().gesture) ?? [];
   if (!command.ghost && !excluded.length) return options;
-  const hiddenIds = new Set(options.hiddenIds);
   const state = useViewerStore.getState();
-  for (const ref of excluded) hiddenIds.add(toGlobalIdFromModels(state.models, ref.modelId, ref.expressId));
+  const extra = excluded.map(ref => toGlobalIdFromModels(state.models, ref.modelId, ref.expressId));
   if (command.ghost) {
     const first = commandGhostId(state);
-    for (let i = 0; i < GHOST_PICK_GUARD; i++) hiddenIds.add(first + i);
+    for (let i = 0; i < GHOST_PICK_GUARD; i++) extra.push(first + i);
   }
+  const cached = commandMasks.get(ctx);
+  if (cached?.base === options.hiddenIds && cached.size === options.hiddenIds.size
+    && cached.extra.length === extra.length && extra.every((id, i) => id === cached.extra[i])) {
+    return { ...options, hiddenIds: cached.hidden };
+  }
+  const hiddenIds = new Set(options.hiddenIds);
+  for (const id of extra) hiddenIds.add(id);
+  commandMasks.set(ctx, { base: options.hiddenIds, size: options.hiddenIds.size, extra, hidden: hiddenIds });
   return { ...options, hiddenIds };
 }
 
@@ -103,7 +116,7 @@ function magneticPick(ctx: MouseHandlerContext, command: ModelingCommand, x: num
   const lock = ctx.edgeLockStateRef.current;
   const options = pickOptions(ctx, command);
   const construction = command.id.endsWith('.place') && command.aimsAtElement?.(getCommandRuntime().gesture) !== true;
-  const hiddenIds = new Set(options.hiddenIds);
+  let hiddenIds = options.hiddenIds;
   // Spatial volumes may extend through the next floor. They are not physical
   // construction references. Bound retries even if a renderer ignores exclusions.
   for (let attempt = 0; attempt < 16; attempt++) {
@@ -119,6 +132,7 @@ function magneticPick(ctx: MouseHandlerContext, command: ModelingCommand, x: num
       ?? s.models.get(ref.modelId)?.ifcDataStore?.entities.getTypeName(ref.expressId));
     if (type?.toUpperCase() !== 'IFCSPACE') return pick;
     if (id === undefined || hiddenIds.has(id)) break;
+    if (hiddenIds === options.hiddenIds) hiddenIds = new Set(hiddenIds);
     hiddenIds.add(id);
   }
   return { snapTarget: null, intersection: null, edgeLock: { shouldLock: false, shouldRelease: true, edge: null, meshExpressId: null, edgeT: 0, isCorner: false, cornerValence: 0 } };
@@ -135,13 +149,14 @@ function resolveCommandSnap(
   if (!command || !commandCtx) return null;
   const plane = commandCtx.workplane;
   if (!plane) {
+    ctx.renderer.cornerMarkers?.set(null);
     const hit = ctx.renderer.raycastScene(x, y, pickOptions(ctx, command))?.intersection;
     if (!hit) return null;
     return { local: [hit.point.x, -hit.point.z], render: [hit.point.x, hit.point.y, hit.point.z], winner: null, guides: [], locked: false };
   }
   const aim = pointerAim(command, runtime.gesture, plane, ctx.snapEnabledRef.current, mods.altKey);
   const pick = aim === 'snap' ? magneticPick(ctx, command, x, y) : null;
-  if (!pick) ctx.setSnapTarget(null);
+  if (!pick) ctx.renderer.cornerMarkers?.set(null);
   const section = plane.spec.kind === 'section';
   const hit = pick ? pick.intersection : aim === 'surface' && !section ? ctx.renderer.raycastScene(x, y, pickOptions(ctx, command))?.intersection : null;
   const toLocal = (p: { x: number; y: number; z: number }) => {
@@ -149,7 +164,11 @@ function resolveCommandSnap(
     return { local: [l[0], l[1]] as Vec2, elevation: l[2] };
   };
   const cursor = section || !hit ? onPlane(ctx, plane, x, y) : toLocal(hit.point).local;
-  if (!cursor) return null;
+  if (!cursor) {
+    ctx.renderer.cornerMarkers?.set(null);
+    ctx.setSnapTarget(null);
+    return null;
+  }
   const beside = onPlane(ctx, plane, x + 1, y);
   const here = onPlane(ctx, plane, x, y);
   const metresPerPixel = here && beside ? Math.hypot(beside[0] - here[0], beside[1] - here[1]) : 0;
@@ -164,7 +183,18 @@ function resolveCommandSnap(
   ] : [];
   if (aim === 'snap' && plane.spec.kind !== 'section') sources.push(...modelSnapSources(commandCtx.modelId));
   ctx.setSnapTarget(pick?.snapTarget ?? null);
-  return solveCommandSnap(runtime, plane, { cursor, metresPerPixel, sources, mods, aim });
+  const solved = solveCommandSnap(runtime, plane, { cursor, metresPerPixel, sources, mods, aim });
+  const channel = ctx.renderer.cornerMarkers;
+  const markers = channel?.get();
+  if (markers && markers.activeIndex >= 0) {
+    const p = markers.candidates[markers.activeIndex].position;
+    const placed = solved?.render;
+    // Projection onto the workplane or an axis lock can move the command point.
+    if (!placed || Math.hypot(p.x - placed[0], p.y - placed[1], p.z - placed[2]) > 1e-6) {
+      channel.set({ ...markers, activeIndex: -1 });
+    }
+  }
+  return solved;
 }
 
 /** A press or a release lands where it is: a preview still queued for this frame is dropped first. */

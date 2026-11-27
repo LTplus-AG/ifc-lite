@@ -71,9 +71,9 @@ function printHelp(): void {
                             pairs over ws://127.0.0.1. Files and every other
                             tool still work. The agent pairs with the
                             bridge_status tool, which returns the link.
-    --bridge-port <n>       Bridge port (default ${DEFAULT_BRIDGE_PORT}, falling back to a
-                            free port if taken; an explicit port does not
-                            fall back; 0 = any free port).
+    --bridge-port <n>       Bridge port (default ${DEFAULT_BRIDGE_PORT}; if taken, the next nine
+                            ports, then any free one; an explicit port does
+                            not fall back; 0 = any free port).
     --bridge-viewer-url <u> Base of the pairing link (default
                             ${DEFAULT_BRIDGE_VIEWER_URL}). Its origin replaces the
                             default in the allowed origins; add

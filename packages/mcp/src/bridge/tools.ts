@@ -183,10 +183,8 @@ function statusTool(bridge: TabBridge): Tool {
         return toolError({
           code: ToolErrorCode.INTERNAL_ERROR,
           message: `The bridge could not listen on 127.0.0.1: ${describeThrown(err)}`,
-          ...(!unavailable ? {}
-            : bridge.fallsBack
-            ? { hint: 'No loopback port could be bound: the preferred port, its neighbours and any free port were all refused. Something on this machine blocks local listening (a sandbox or policy).' }
-            : { hint: 'Another program holds the port, or the system reserves it. Restart the MCP server with another --bridge-port.' }),
+          // Only the lazy default port binds here, after trying its neighbours and any free port.
+          ...(unavailable ? { hint: 'No loopback port could be bound: the preferred port, its neighbours and any free port were all refused. Something on this machine blocks local listening (a sandbox or policy).' } : {}),
         });
       }
       return statusResult(bridge, input.pair_new_tab === true);
@@ -303,7 +301,7 @@ export class BridgeToolRegistry extends ToolRegistry {
     if (name === TAB_SHOW_UI_TOOL) return this.surface;
     // With no tab and nothing left to read, fail at once like the other tab_ stand-ins;
     // events queued before the tab went away stay readable.
-    if (name === BRIDGE_UI_EVENTS_TOOL) return this.bridge.tab() || this.bridge.uiEvents.hasNews ? this.events : notConnectedTool(this.bridge, name);
+    if (name === BRIDGE_UI_EVENTS_TOOL) return this.bridge.tab()?.a2uiSurface || this.bridge.uiEvents.hasNews ? this.events : notConnectedTool(this.bridge, name);
     if (!name.startsWith(TAB_TOOL_PREFIX)) return super.get(name);
     const tab = this.bridge.tab();
     if (!tab) return notConnectedTool(this.bridge, name);

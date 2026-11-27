@@ -104,8 +104,6 @@ export class TabBridge {
   /** The preferred port the bridge could not take (another program holds it), or null. */
   get fellBackFrom(): number | null { return this.boundPort !== 0 && this.opts.port !== 0 && this.boundPort !== this.opts.port ? this.opts.port : null; }
 
-  /** True when a taken preferred port falls back to others (`portFallback`). */
-  get fallsBack(): boolean { return this.opts.portFallback === true && this.opts.port !== 0; }
 
   get readOnlyCeiling(): boolean {
     return this.opts.readOnlyCeiling;
@@ -241,7 +239,10 @@ export class TabBridge {
       this.log(`error while closing: ${describeThrown(err)}`);
     } finally {
       // A lazy bind still in flight frees its own port once it sees `closing`: wait for it.
-      await this.listening?.then(() => undefined, () => undefined);
+      await this.listening?.then(() => undefined, (err: unknown) => {
+        // Shutting down during the bind is expected; anything else is worth a line.
+        if (!(err instanceof Error && err.message === 'The bridge is shut down.')) this.log(`bind failed during shutdown: ${describeThrown(err)}`);
+      });
       // Whatever failed above, the listener must close so the port is freed.
       const http = this.http;
       this.http = null;

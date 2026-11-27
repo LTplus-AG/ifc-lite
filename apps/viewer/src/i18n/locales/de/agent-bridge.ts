@@ -14,7 +14,7 @@ export const agentBridgeDe = {
   "agentBridge.dialog.readOnly": "Zunächst nur lesend. Nach dem Verbinden können Sie dem Agenten Befehle der Befehlspalette sowie Änderungen an Eigenschaften und Attributen erlauben.",
   "agentBridge.dialog.localOnly": "Der Viewer verbindet sich nur mit diesem Computer, doch der Agent kann das Gelesene an seinen KI-Anbieter senden, und das Programm kann es beliebig weitergeben. Die bSDD-Werkzeuge senden außerdem IFC-Klassennamen an bSDD.",
   "agentBridge.dialog.browserPrompt": "Ihr Browser fragt eventuell, ob diese Website auf andere Apps und Dienste auf diesem Gerät zugreifen darf (in Chrome und Firefox). Erlauben Sie es, damit der Viewer die Brücke erreicht.",
-  "agentBridge.dialog.start": "Fügen Sie die Brücke einmal Ihrem Agenten hinzu (gezeigt für Claude Code; andere Clients nutzen denselben npx-Befehl; haben Sie schon einen ifc-lite-Server, ergänzen Sie dort --bridge) und bitten Sie ihn dann, sich zu verbinden: Er gibt Ihnen einen Link und meist einen Code.",
+  "agentBridge.dialog.start": "Fügen Sie die Brücke einmal Ihrem Agenten hinzu (gezeigt für Claude Code; andere Clients nutzen denselben npx-Befehl; haben Sie schon einen ifc-lite-Server, ergänzen Sie dort {args}) und bitten Sie ihn dann, sich zu verbinden: Er gibt Ihnen einen Link und meist einen Code.",
   "agentBridge.dialog.code": "Kopplungscode",
   "agentBridge.dialog.codeHint": "Bitten Sie Ihren Agenten, sich zu verbinden: sein Werkzeug bridge_status liefert den Code und einen Link. Ein Code gilt nur einmal.",
   "agentBridge.dialog.port": "Port",

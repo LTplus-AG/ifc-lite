@@ -45,7 +45,9 @@ export class TabBridge {
   private readonly closeGraceMs: number;
   private readonly origins = new Set<string>();
   /** User events from the paired tab's agent surfaces, unread by the agent. */
-  readonly uiEvents = new UiEventInbox();
+  readonly uiEvents = new UiEventInbox(Date.now, () => {
+    if (!this.active?.a2uiSurface) this.changed.fire();
+  });
   /** What the agent showed the paired tab; a ui-event must match it. */
   private readonly surfaces = new DeliveredSurfaces();
   private readonly admission: PairingAdmission;
@@ -134,7 +136,6 @@ export class TabBridge {
     return this.boundPort;
   }
 
-  /** Called on pair, unpair, replacement, and permission or tool-list changes. */
   onChange(listener: () => void): () => void {
     return this.changed.subscribe(listener);
   }

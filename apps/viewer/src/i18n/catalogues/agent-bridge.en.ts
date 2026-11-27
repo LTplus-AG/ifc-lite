@@ -18,7 +18,7 @@ export const agentBridgeEn = {
   'agentBridge.dialog.readOnly': "Read-only at first. After connecting, you can allow the agent to run command-palette actions and edit properties and attributes.",
   'agentBridge.dialog.localOnly': 'The viewer connects only to this computer, but the agent may send what it reads to its AI provider, and the program can pass it on anywhere. The bSDD tools also send IFC class names to bSDD.',
   'agentBridge.dialog.browserPrompt': 'Your browser may ask whether this site may access other apps and services on this device (Chrome: "Access other apps and services on this device"; Firefox: "… wants to access other apps and services on this device"). Allow it so the viewer can reach the bridge.',
-  'agentBridge.dialog.start': 'Add the bridge to your agent once (shown for Claude Code; other clients run the same npx command; already have an ifc-lite server? add --bridge to its arguments), then ask the agent to connect: it gives you a link, and usually a code.',
+  'agentBridge.dialog.start': 'Add the bridge to your agent once (shown for Claude Code; other clients run the same npx command; already have an ifc-lite server? add {args} to its arguments), then ask the agent to connect: it gives you a link, and usually a code.',
   'agentBridge.dialog.code': 'Pairing code',
   'agentBridge.dialog.codeHint': 'Ask your agent to connect: its bridge_status tool returns the code and a link. A code works once.',
   'agentBridge.dialog.port': 'Port',

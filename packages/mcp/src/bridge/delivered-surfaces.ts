@@ -40,9 +40,6 @@ export const MAX_DELIVERED_SURFACES = 256;
 /** Follow-up texts and event names remembered per surface, each; the oldest go first. */
 export const MAX_SURFACE_ENTRIES = 1024;
 
-/** A data model (an update, or createSurface's inline one) carries values, not follow-ups. */
-const DATA_MODEL_KEYS: ReadonlySet<string> = new Set(['updateDataModel', 'dataModel']);
-
 function emptySurface(): Surface {
   return { prompts: new Set(), events: new Set() };
 }
@@ -74,29 +71,27 @@ function addString(set: Set<string>, value: unknown): void {
  * a follow-up's `prompt` (`{ label, prompt }`), and an event action's
  * `userMessage` and `context.prompt`.
  */
-function collect(value: unknown, into: Surface): void {
-  if (Array.isArray(value)) {
-    for (const item of value) collect(item, into);
-    return;
-  }
-  if (!isRecord(value)) return;
-  // A follow-up has a label (literal or bound) and a literal prompt.
-  if ('label' in value && typeof value.prompt === 'string') addString(into.prompts, value.prompt);
-  const action = value.action;
-  if (isRecord(action)) {
-    const event = action.event;
-    if (isRecord(event)) {
+function collect(messages: readonly unknown[], into: Surface): void {
+  for (const message of messages) {
+    if (!isRecord(message)) continue;
+    const body = message.createSurface ?? message.updateComponents;
+    if (!isRecord(body)) continue;
+    const components = body.components;
+    if (!Array.isArray(components)) continue;
+    for (const component of components) {
+      if (!isRecord(component)) continue;
+      if (component.component === 'ActionBar' && Array.isArray(component.followUps)) {
+        for (const entry of component.followUps) {
+          if (isRecord(entry) && 'label' in entry) addString(into.prompts, entry.prompt);
+        }
+      }
+      if (component.component !== 'Button' || !isRecord(component.action)) continue;
+      const event = component.action.event;
+      if (!isRecord(event) || typeof event.name !== 'string') continue;
       addString(into.events, event.name);
-      // A2UI v1.0 keeps the button's user message inside the event.
       addString(into.prompts, event.userMessage);
-      // The renderer sends context.prompt only for `ask` (eventToFollowUp); for any other event it is data.
       if (event.name === ASK_EVENT && isRecord(event.context)) addString(into.prompts, event.context.prompt);
     }
-  }
-  // An action's event context is data the renderer resolves, not follow-up definitions: its
-  // `userMessage` and `context.prompt` were taken above, and nothing deeper in it is walked.
-  for (const [key, item] of Object.entries(value)) {
-    if (!DATA_MODEL_KEYS.has(key) && key !== 'action') collect(item, into);
   }
 }
 

@@ -133,7 +133,7 @@ export class UiEventInbox {
   private lossTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly refusalListeners = new Set<(pending: number) => void>();
 
-  constructor(private readonly now: () => number = Date.now) {}
+  constructor(private readonly now: () => number = Date.now, private readonly onDrain?: () => void) {}
 
   /** Take a slot in a rolling one-second window of `maxPerSecond`; false when it is full. */
   private admit(window: number[], t: number): boolean {
@@ -200,6 +200,7 @@ export class UiEventInbox {
     this.queue = [];
     this.dropped = 0;
     this.refusedCount = 0;
+    if (events.length || dropped || refused) this.onDrain?.();
     return { events, dropped, refused };
   }
 

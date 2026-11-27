@@ -7,7 +7,7 @@
  * standalone `ifc-lite-mcp` binary (`./cli.ts`) and the `ifc-lite mcp`
  * subcommand in `@ifc-lite/cli`. Each passes its argv and the name it prints
  * in usage and log lines; everything else (flags, transports, the bridge) is
- * the same code, so the two cannot drift apart again.
+ * the same code, including client installation.
  */
 
 import { bridgeConflict, parseArgs, type CliOptions } from './cli-args.js';
@@ -34,6 +34,8 @@ export function mcpHelpText({ command }: McpCliIdentity, platform: NodeJS.Platfo
   ${command} v${VERSION} — Model Context Protocol server for ifc-lite
 
   Usage: ${command} [files…] [options]
+         ${command} install --client <claude-code|claude-desktop|cursor|vscode>
+           Add this server to a client config. See \`${command} install --help\`.
 
   Over stdio the files are loaded at startup. Over HTTP each session starts
   empty and the agent loads models with model_load.
@@ -123,6 +125,11 @@ export interface RunningHttpCli {
  * starting anything. Load failures reject, for the caller's fatal handler.
  */
 export async function runMcpCli(argv: string[], identity: McpCliIdentity): Promise<RunningHttpCli | undefined> {
+  if (argv[0] === 'install') {
+    const { runInstall } = await import('./install/run.js');
+    process.exitCode = runInstall(argv.slice(1), undefined, `${identity.command} install`);
+    return undefined;
+  }
   const opts = parseArgs(argv);
   const tag = `[${identity.command}]`;
   // `process.exitCode` + return, NOT `process.exit(0)`: writes to a pipe are

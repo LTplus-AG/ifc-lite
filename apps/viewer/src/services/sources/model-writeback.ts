@@ -63,7 +63,7 @@ export async function saveSourceModel(
     const store = useViewerStore.getState();
     store.setSourceTag(binding.modelId, nextTag);
     // Following a different file: name the model after it, so the next save names the file it writes to.
-    if (result.file.id !== tag.fileId) store.setModelName(binding.modelId, result.file.name);
+    if (file.containerId !== tag.containerId || file.id !== tag.fileId) store.setModelName(binding.modelId, file.name);
     recordDownloadedSourceFile(nextTag, file);
   }
   return { kind: 'saved', result, linked };

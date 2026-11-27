@@ -147,6 +147,18 @@ it('#9522 a model that follows a newly created file takes that file\'s name; a n
   assert.equal(useViewerStore.getState().models.get('m')?.name,'House-edited.ifc');
 });
 
+it('#11650 renames a model that follows the same file ID in a different container', async () => {
+  const s = await setup(async () => ({
+    ...success,
+    file: { ...success.file, containerId: '', name: 'Moved.ifc' },
+  }));
+  await saveSourceModel(s.host, s.binding, { mode: 'new-location', containerId: 'chosen', fileName: 'Moved.ifc' });
+  const state = useViewerStore.getState();
+  assert.equal(state.sourceTags.get('m')?.containerId, 'chosen');
+  assert.equal(state.sourceTags.get('m')?.fileId, tag.fileId);
+  assert.equal(state.models.get('m')?.name, 'Moved.ifc');
+});
+
 it('#9522 a failed or cancelled upload still drops the cached listing, since the write may have landed',async()=>{
   const s=await setup(async()=>{throw new DOMException('cancelled','AbortError');});
   syncSourceCatalogCacheOwner(tag.provider,'user-a');

@@ -95,6 +95,7 @@ describe('two-point align panel (#11505)', () => {
   });
 
   it('shows the readout, applies rotation about A then the move as one undo step', () => {
+    const before = placementFor(useViewerStore.getState().modelPlacement, 'ifc');
     click(button(ui, 'Two-point align'));
     // The model is turned +90 deg (X -> Y) and moved so that A lands on A'.
     pickAll([100, 100, 0], [30, -20, 1], [160, 100, 0], [30, 40, 1]);
@@ -112,7 +113,7 @@ describe('two-point align panel (#11505)', () => {
     assert.ok(Math.hypot(landed[0] - 30, landed[1] + 20, landed[2] - 1) < 1e-9, `A landed at ${landed}`);
     assert.ok(hasButton(ui, 'Two-point align'), 'the mode ended');
     click(button(ui, 'Undo placement'));
-    assert.deepEqual(placementFor(useViewerStore.getState().modelPlacement, 'ifc').translation, [0, 0, 0]);
+    assert.deepEqual(placementFor(useViewerStore.getState().modelPlacement, 'ifc'), before);
   });
 
   it('uses canvas Enter to apply the displayed alignment instead of the pending move (#11629)', () => {
@@ -196,6 +197,23 @@ describe('two-point align panel (#11505)', () => {
     click(button(ui, 'Pick again'));
     pickAll([0, 0, 0], [0, 0, 0], [10, 0, 0], [10.2, 0, 0]);
     assert.match(readoutText(ui), /Plan length ratio \|AB\| \/ \|A′B′\| = 0\.9804/);
+  });
+
+  it('updates the mounted polite result region on the fourth pick (#11629)', () => {
+    click(button(ui, 'Two-point align'));
+    const panel = button(ui, 'Apply alignment').closest('fieldset')!;
+    const announcements = panel.querySelector('[aria-live="polite"][aria-atomic="true"]');
+    assert.ok(announcements, 'the result live region is mounted before the first pick');
+    pickPoint('source', [0, 0, 0]);
+    pickPoint('target', [0, 0, 0]);
+    pickPoint('source', [10, 0, 0]);
+    assert.equal(announcements.textContent, '');
+
+    pickPoint('target', [10.2, 0, 0]);
+    assert.equal(panel.querySelector('[aria-live="polite"]'), announcements);
+    const result = announcements.querySelector('fieldset[aria-label="Alignment result"]');
+    assert.match(result?.textContent ?? '', /Check: B lands 200 mm from B′ ⚠/);
+    assert.match(result?.textContent ?? '', /Plan length ratio .* = 0\.9804/);
   });
 
   it('reports a degenerate pair instead of a result, and disables Apply', () => {

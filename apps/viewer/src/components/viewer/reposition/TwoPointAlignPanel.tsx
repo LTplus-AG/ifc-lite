@@ -71,10 +71,12 @@ export function TwoPointAlignPanel() {
         label: STEP_LABELS[step], x: point[0].toFixed(3), y: point[1].toFixed(3), z: point[2].toFixed(3) })}</p>;
     })}
     {solved && !solved.ok && <p role="alert" className="text-destructive">{t(ALIGN_REFUSAL_KEYS[solved.reason])}</p>}
-    {readout && <fieldset aria-label={t('repositionPanel.twoPoint.readoutAriaLabel')}
-      className={`font-mono space-y-0.5 ${readout.warn ? 'text-status-warn' : ''}`}>
-      {readout.lines.map((line, index) => <p key={index}>{line}</p>)}
-    </fieldset>}
+    <div aria-live="polite" aria-atomic="true">
+      {readout && <fieldset aria-label={t('repositionPanel.twoPoint.readoutAriaLabel')}
+        className={`font-mono space-y-0.5 ${readout.warn ? 'text-status-warn' : ''}`}>
+        {readout.lines.map((line, index) => <p key={index}>{line}</p>)}
+      </fieldset>}
+    </div>
     <p className="text-muted-foreground">{t('repositionPanel.twoPoint.previewNote')}</p>
     <div className="flex flex-wrap gap-1">
       <Button size="sm" disabled={!runtime.canApply} onClick={runtime.apply}>{t('repositionPanel.twoPoint.applyButton')}</Button>

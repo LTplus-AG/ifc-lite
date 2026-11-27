@@ -91,13 +91,27 @@ describe('two-point align commit (#11505)', () => {
     near(shown(done, 'm', aPrime), aPrime, 'A on A\'', 2e-6);
   });
 
-  it('keeps a small heading when ignoring it would move B by more than the pick-noise allowance', () => {
+  it('keeps a small long-baseline heading through a subsequent short pure move and undo (#11629)', () => {
     const a: Translation = [0, 0, 0];
     const b: Translation = [20_000, 0, 0];
     const heading = 9e-7;
     const bPrime: Translation = [b[0] * Math.cos(heading), b[0] * Math.sin(heading), 0];
     const done = alignPlacements(emptyPlacementState(), ['m'], alignment({ a, b, aPrime: a, bPrime }));
     near(shown(done, 'm', b), bPrime, 'B on B\'');
+    const before = placementFor(done, 'm');
+    assert.ok(Math.abs(before.rotation.angle - heading) < 1e-12);
+
+    const shortA = shown(done, 'm', [2, 3, 0]);
+    const shortB = shown(done, 'm', [12, 3, 0]);
+    const elevated = (point: Translation): Translation => [point[0], point[1], point[2] + 5];
+    const vertical = alignment({ a: shortA, b: shortB, aPrime: elevated(shortA), bPrime: elevated(shortB) });
+    assert.equal(vertical.heading, 0);
+    const moved = alignPlacements(done, ['m'], vertical);
+    const farBefore = shown(done, 'm', b);
+    near(shown(moved, 'm', b), elevated(farBefore), 'the 20 km witness only moves vertically');
+    assert.deepEqual(placementFor(moved, 'm').rotation, before.rotation);
+    assert.equal(moved.undo.length, done.undo.length + 1);
+    assert.deepEqual(placementFor(replayPlacement(moved, 'undo'), 'm'), before);
   });
 
   it('carries a pending move preview instead of dropping it, and keeps A on A\'', () => {

@@ -17,7 +17,8 @@ const NET_HEADING_NOISE_AT_B_M = 1e-3;
  *
  * The alignment is a WORKSPACE transform, `w' = R(heading about A)(w) + (A' - A)`.
  * A placement stores an absolute heading about a pivot in the model's own frame,
- * applied before the translation, so the transform is folded in per model:
+ * applied before the translation. A pure move preserves that heading and pivot.
+ * When alignment rotates the model, the transform is folded in per model:
  *
  * - the pivot becomes A seen in the model's frame (`workspacePointToModelFrame`
  *   against the placement the model has NOW), so A is the one point the heading
@@ -45,6 +46,13 @@ export function alignPlacements(
     if (placement.locked) throw new Error('Unlock the selected models before aligning them.');
     const shown: ModelPlacement = preview?.before.has(id)
       ? { ...placement, translation: addTranslation(placement.translation, preview.delta) } : placement;
+    before.set(id, placement);
+    if (alignment.heading === 0) {
+      const translation = addTranslation(shown.translation, alignment.delta);
+      assertRenderableTranslation(translation);
+      after.set(id, { ...shown, translation });
+      continue;
+    }
     const pivot = workspacePointToModelFrame(alignment.pivot, shown);
     const summed = normalizeAngle(shown.rotation.angle + alignment.heading);
     const angle = Math.abs(summed) < noiseAngle ? 0 : summed;
@@ -52,7 +60,6 @@ export function alignPlacements(
     assertRenderableTranslation(translation);
     assertRenderableTranslation(pivot);
     const rotation: ModelRotation = angle === 0 ? ZERO_ROTATION : { angle, pivot };
-    before.set(id, placement);
     after.set(id, { ...placement, translation, rotation });
   }
   return commitPlacements(cancelPlacement(state), before, after);

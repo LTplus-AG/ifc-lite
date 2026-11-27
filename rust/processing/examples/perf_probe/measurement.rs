@@ -9,7 +9,13 @@ use std::time::Instant;
 use ifc_lite_core::build_entity_index;
 use ifc_lite_geometry::csg::reset_csg_census;
 use ifc_lite_processing::{process_geometry, ProcessingStats};
-use super::{fingerprint, result_cache, summarize_census, CensusSummary, Probe};
+use super::{fingerprint, phase_timings, result_cache, summarize_census, CensusSummary, Probe};
+
+#[derive(Clone, Copy)]
+pub(super) struct TimingMode {
+    pub(super) cold: bool,
+    pub(super) precise_phases: bool,
+}
 
 pub(super) struct ColdTiming {
     pub(super) file_read_ms: f64,
@@ -30,9 +36,10 @@ pub(super) fn run(
     want_census: bool,
     want_fingerprint: bool,
     want_result_fingerprint: bool,
-    cold: bool,
+    mode: TimingMode,
     cache: Option<&result_cache::CacheArgs>,
 ) -> Option<Probe> {
+    let TimingMode { cold, precise_phases } = mode;
     let read_started = Instant::now();
     let content = match std::fs::read(path) {
         Ok(c) => c,
@@ -56,10 +63,12 @@ pub(super) fn run(
         index_build_ms = index_build_ms.min(ms);
     }
 
-    // Full pipeline, best-of-N by total_time_ms. Census (if requested) is
+    // Full pipeline, best-of-N by measured total time. Census (if requested) is
     // drained from the run that was kept, so the op counts match the timing.
     let mut best: Option<ProcessingStats> = None;
-    let mut best_total = u64::MAX;
+    let mut best_total = f64::INFINITY;
+    let mut best_phase_timings = None;
+    let recorder = precise_phases.then(phase_timings::Recorder::new);
     let mut best_census: Option<CensusSummary> = None;
     let mut all_totals_ms = Vec::with_capacity(iters);
     let mut all_wall_ms = Vec::with_capacity(iters);
@@ -71,15 +80,27 @@ pub(super) fn run(
             reset_csg_census();
         }
         let started = Instant::now();
+        let mut phase_timings = None;
         let result = match cache {
             Some(args) => {
                 let (result, report) = result_cache::process(&content, args);
                 cache_report = Some(report);
                 result
             }
-            None => process_geometry(&content),
+            None => match &recorder {
+                Some(recorder) => {
+                    let (result, timings) = recorder.measure(|| process_geometry(&content));
+                    phase_timings = timings;
+                    result
+                }
+                None => process_geometry(&content),
+            },
         };
         all_wall_ms.push(started.elapsed().as_secs_f64() * 1e3);
+        if precise_phases && phase_timings.is_none() {
+            eprintln!("precise phase timings missing for {path}");
+            std::process::exit(1);
+        }
         if want_result_fingerprint {
             result_fingerprint = Some(ifc_lite_processing::result_fingerprint(&result, true));
         }
@@ -92,9 +113,11 @@ pub(super) fn run(
         } else {
             None
         };
-        all_totals_ms.push(result.stats.total_time_ms);
-        if result.stats.total_time_ms <= best_total {
-            best_total = result.stats.total_time_ms;
+        let total_ms = phase_timings.map_or(result.stats.total_time_ms as f64, |t| phase_timings::ms(t.total_ns));
+        all_totals_ms.push(total_ms);
+        if total_ms <= best_total {
+            best_total = total_ms;
+            best_phase_timings = phase_timings;
             best = Some(result.stats);
             best_census = census;
         }
@@ -109,6 +132,7 @@ pub(super) fn run(
             file_read_ms, full_load_wall_ms: file_read_ms + all_wall_ms[0],
         }),
         stats: best?,
+        phase_timings: best_phase_timings,
         all_totals_ms,
         all_wall_ms,
         fingerprints,

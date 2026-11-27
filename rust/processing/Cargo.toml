@@ -44,6 +44,8 @@ observability = ["ifc-lite-geometry/observability"]
 # edge, so `scripts/perf/instructions.sh` can split callgrind instruction
 # counts by phase (#6958). Default OFF compiles the markers to nothing.
 phase-markers = []
+# Off-by-default native probe timing events.
+probe-phase-timings = []
 
 [[example]]
 name = "perf_probe"
@@ -78,6 +80,7 @@ libc = { version = "0.2", optional = true }
 sha2.workspace = true
 
 [dev-dependencies]
+tracing-subscriber = { version = "0.3", default-features = false, features = ["registry"] }
 # Test-only (publish = false). Path-only: cargo strips it when packaging.
 ifc-lite-testkit = { path = "../testkit" }
 # `test_support::recv_or_diagnose` only - the shared worker watchdog, so the

@@ -211,6 +211,16 @@ pub(super) fn finish(
     record_geometry_span(&geometry_span, total_meshes, total_triangles, backstop_dropped, total_csg_failures, geometry_time);
 
     let total_time = mark(Mark::TotalEnd, total_start.elapsed());
+    #[cfg(feature = "probe-phase-timings")]
+    tracing::trace!(
+        target: "ifc_lite_processing::probe_phase_timings",
+        parse_ns = facts.times.parse.as_nanos() as u64,
+        scan_ns = facts.times.entity_scan.as_nanos() as u64,
+        lookup_ns = facts.times.lookup.as_nanos() as u64,
+        preprocess_ns = facts.times.preprocess.as_nanos() as u64,
+        geometry_ns = geometry_time.as_nanos() as u64,
+        total_ns = total_time.as_nanos() as u64,
+    );
     pipeline_span.record("element_count", total_jobs as u64);
     pipeline_span.record("total_ms", total_time.as_millis() as u64);
     tracing::info!(target: "ifc_lite_processing::processor",

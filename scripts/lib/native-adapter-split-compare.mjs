@@ -86,12 +86,10 @@ export const stripVolatile = (v) => (Array.isArray(v) ? v.map(stripVolatile) : t
  *   - the multiset of vertex positions and the triangle count;
  *   - per face (revisionLocalFaces) AND source surface (surfaceIndices), so a
  *     triangle cannot move to another surface unseen: the triangle count, the
- *     set of (position, corner normal) pairs (a vertex keeps its normal under any
- *     diagonal, so swapped normals differ), the set of vertex POSITIONS its
+ *     set of (position, corner normal) pairs, the set of vertex POSITIONS its
  *     triangles use, and its BOUNDARY: the edges (position pairs) exactly one of
  *     its triangles uses. Another diagonal keeps a face's outline, so this does not
- *     depend on triangulation; [0,1,2],[0,1,3] in a square (one half covered twice,
- *     the other empty, same area) changes it (#10858 review);
+ *     depend on triangulation;
  *   - ORIENTATION, per face as well: the boundary edges are DIRECTED (the sense
  *     its triangles walk them), and the number of triangles whose winding normal
  *     points against their summed corner normals. Reversing a triangle ([0,1,2] ->
@@ -99,15 +97,15 @@ export const stripVolatile = (v) => (Array.isArray(v) ? v.map(stripVolatile) : t
  *     these a flipped front face compared equal (#10858 review). Both survive
  *     reordering and the other diagonal: a consistently wound quad walks its
  *     outline the same way under either split, and every triangle keeps its side;
- * as a coverage check, each face's total triangle area within 1e-9 relative;
+ *   - corner normals on each directed boundary edge and each side of an interior
+ *     normal seam. An interior edge whose endpoint normals agree on both sides
+ *     can move with a retriangulation. At a seam the direction records which
+ *     triangle side owns each normal (#10858 review).
+ * As a coverage check, each face's total triangle area within 1e-9 relative;
  * and, in each copy on its own, no face may hold two triangles with the same
  * three positions, no edge may be shared by more than two of a face's
- * triangles, and no triangle may have zero area. Without those two, a face
- * [0,1,2],[0,2,3] rewritten as [0,1,2],[0,1,2] kept every invariant above (#10858
- * review): half the face went missing and still compared equal. Any such defect
- * fails the comparison. None of this depends on triangle order or diagonals.
- * The producer is unchanged here. Keep this until #10916 (canonical meshes)
- * proves byte determinism; then compare m11-n by its bytes again.
+ * triangles, and no triangle may have zero area. Any such defect fails the
+ * comparison. Keep these invariants until byte determinism is proven.
  */
 export const M11N_AREA_RELATIVE = 1e-9;
 
@@ -129,32 +127,31 @@ export function m11nInvariants(reference) {
       const id = revisionLocalFaces?.[t] ?? null;
       const surface = surfaceIndices?.[t] ?? null;
       const group = JSON.stringify([id, surface]);
-      const face = faces.get(group) ?? { id, surface, triangles: 0, corners: new Set(), area: 0, used: new Set(), edges: new Map(), directed: new Map(), against: 0 };
+      const face = faces.get(group) ?? { id, surface, triangles: 0, corners: new Set(), area: 0, used: new Set(), directed: new Map(), against: 0 };
       face.triangles += 1;
       const [a, b, c] = [0, 1, 2].map((k) => xyz(positions, indices[t * 3 + k]));
       const u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], w = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
       const cross = [u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]];
       const area = Math.hypot(...cross) / 2;
       face.area += area;
-      // Winding against the corner normals: a reversed triangle turns its front face away.
+      const cornerNormals = [0, 1, 2].map((k) => Array.isArray(normals) ? xyz(normals, t * 3 + k) : null);
       if (Array.isArray(normals)) {
-        const n = [0, 1, 2].map((k) => xyz(normals, t * 3 + k)).reduce((s, q) => [s[0] + q[0], s[1] + q[1], s[2] + q[2]], [0, 0, 0]);
+        const n = cornerNormals.reduce((s, q) => [s[0] + q[0], s[1] + q[1], s[2] + q[2]], [0, 0, 0]);
         if (cross[0] * n[0] + cross[1] * n[1] + cross[2] * n[2] < 0) face.against += 1;
       }
       const corners = [a, b, c].map((q) => JSON.stringify(q));
-      // A corner normal belongs to its position (any diagonal keeps it): pairs, not a bare normal set.
-      for (let k = 0; k < 3; k += 1) face.corners.add(JSON.stringify([[a, b, c][k], Array.isArray(normals) ? xyz(normals, t * 3 + k) : null]));
+      for (let k = 0; k < 3; k += 1) face.corners.add(JSON.stringify([[a, b, c][k], cornerNormals[k]]));
       for (const q of corners) face.used.add(q);
       const whole = faceEdges.get(id) ?? new Map();
       faceEdges.set(id, whole);
       for (const [i, j] of [[0, 1], [1, 2], [2, 0]]) {
         const edge = [corners[i], corners[j]].sort().join('|');
-        face.edges.set(edge, (face.edges.get(edge) ?? 0) + 1);
         const walks = whole.get(edge) ?? [];
         walks.push(`${corners[i]}>${corners[j]}`);
         whole.set(edge, walks);
         const directed = `${corners[i]}>${corners[j]}`;
-        face.directed.set(directed, (face.directed.get(directed) ?? 0) + 1);
+        const endpointOrder = corners[i] < corners[j] ? [i, j] : [j, i];
+        face.directed.set(directed, JSON.stringify(endpointOrder.map((k) => cornerNormals[k])));
       }
       const key = [...corners].sort().join('|');
       const faceSeen = seen.get(id) ?? new Set();
@@ -173,11 +170,14 @@ export function m11nInvariants(reference) {
         else if (walks.length === 2 && walks[0] === walks[1]) defects.push(`face ${id}: edge ${edge} walked the same way by both of its triangles`);
       }
     }
-    // Directed: the boundary is walked in the winding's sense, so a reversed triangle on it reverses an edge.
-    const boundary = (face) => [...face.directed.keys()].filter((d) => face.edges.get(d.split('>').sort().join('|')) === 1).sort();
+    const reverse = (d) => d.split('>').reverse().join('>');
+    const boundary = (face) => [...face.directed.keys()].filter((d) => !face.directed.has(reverse(d))).sort();
+    const edgeNormals = (face) => [...face.directed]
+      .filter(([d, normals]) => face.directed.get(reverse(d)) !== normals)
+      .sort(([a], [b]) => a.localeCompare(b));
     return {
       ...rest, vertices: vertices.sort(), triangleCount: indices.length / 3,
-      faces: groups.map((g) => { const f = faces.get(g); return [f.id, f.surface, f.triangles, [...f.corners].sort(), [...f.used].sort(), boundary(f), f.against]; }),
+      faces: groups.map((g) => { const f = faces.get(g); return [f.id, f.surface, f.triangles, [...f.corners].sort(), [...f.used].sort(), boundary(f), f.against, edgeNormals(f)]; }),
     };
   };
   const exact = reference.map((model) => ({ ...model, rows: model.rows?.map((row) => (Array.isArray(row.parts) ? { ...row, parts: row.parts.map(part) } : row)) }));

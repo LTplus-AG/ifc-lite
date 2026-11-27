@@ -4,6 +4,7 @@
 
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -481,16 +482,59 @@ test('green lanes under a red or absent judge job are no green split', async (co
   }
 });
 
+function runCompare({ mono, split, needs }) {
+  return spawnSync(process.execPath, [
+    'scripts/native-adapter-split.mjs', 'compare', '--mono', mono, '--split', split, '--report', join(dirname(mono), 'report.md'),
+  ], { cwd: REPO, env: { ...process.env, NEEDS_JSON: JSON.stringify(needs), GH_TOKEN: '', GITHUB_STEP_SUMMARY: '' }, encoding: 'utf8' });
+}
+
+test('#10858 compare catches swapped normals at a position shared by two triangles', (context) => {
+  const withSeam = ({ order, vertexOrder, rotate = false, swap = false } = {}) => m11n({
+    order, vertexOrder, edit: (p) => {
+      const first = order?.findIndex((triangle) => triangle === 0) ?? 0;
+      const second = order?.findIndex((triangle) => triangle === 1) ?? 1;
+      p.normals.splice(first * 9, 3, ...(swap ? [1, 0, 1] : [0, 1, 1]));
+      p.normals.splice(second * 9, 3, ...(swap ? [0, 1, 1] : [1, 0, 1]));
+      if (rotate) {
+        const i = first * 3;
+        p.indices.splice(i, 3, p.indices[i + 1], p.indices[i + 2], p.indices[i]);
+        const n = first * 9;
+        p.normals.splice(n, 9, ...p.normals.slice(n + 3, n + 9), ...p.normals.slice(n, n + 3));
+      }
+    },
+  });
+  const rel = 'temp/m11-n-native.json';
+  for (const [singleMesh, splitMesh, expectedExit] of [
+    [withSeam(), withSeam({ order: [2, 1, 0], vertexOrder: [6, 5, 4, 3, 2, 1, 0], rotate: true }), 0],
+    [m11n(), m11n({ diagonal: 1, order: [2, 0, 1] }), 0],
+    [withSeam(), withSeam({ swap: true }), 1],
+  ]) {
+    const input = layouts(scratch(context));
+    for (const [dir, mesh] of [
+      [input.mono, singleMesh],
+      ...['na-native', 'na-browser', 'na-cli-parity'].map((job) => [join(input.split, `na-split-evidence-${job}`), splitMesh]),
+    ]) {
+      const manifestPath = join(dir, 'refs/manifest.json');
+      const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+      manifest.files[rel] = createHash('sha256').update(mesh).digest('hex');
+      put(join(dir, 'refs', rel), mesh);
+      put(manifestPath, JSON.stringify(manifest));
+    }
+    const run = runCompare(input);
+    assert.equal(run.status, expectedExit, run.stderr || run.stdout);
+    // @source-text-assertion-ok stdout from running the compare CLI on temporary evidence
+    if (expectedExit === 1) assert.match(run.stdout, /^- reference temp\/m11-n-native\.json differs$/m);
+  }
+});
+
 test('#10858 compare rejects a masked judge upload failure or missing job status', (context) => {
   const base = scratch(context);
-  const { mono, split, needs } = layouts(base);
-  const report = join(base, 'report.md');
+  const input = layouts(base);
+  const { needs } = input;
   assert.equal(judge(needs).ok, true);
   for (const [status, expectedExit] of [['success', 0], ['failure', 1], ['', 1]]) {
     needs[SPLIT_JUDGE].outputs.status = status;
-    const run = spawnSync(process.execPath, [
-      'scripts/native-adapter-split.mjs', 'compare', '--mono', mono, '--split', split, '--report', report,
-    ], { cwd: REPO, env: { ...process.env, NEEDS_JSON: JSON.stringify(needs), GH_TOKEN: '', GITHUB_STEP_SUMMARY: '' }, encoding: 'utf8' });
+    const run = runCompare(input);
     assert.equal(run.status, expectedExit, run.stderr || run.stdout);
     // @source-text-assertion-ok stdout from running the compare CLI on temporary evidence
     if (expectedExit === 0) assert.match(run.stdout, /\*\*MATCH\*\*/);

@@ -273,6 +273,7 @@ export class RaycastEngine {
                 );
             }
 
+            const ordinaryTarget = magneticResult.snapTarget;
             magneticResult = withScreenCorner(this.screenCorners,
                 { camera: this.camera, viewKey: () => [this.readbackViewKey(), this.scene.getPickGeometryRevision?.(), this.scene.getInstancedEntityRevision?.()].join('|'),
                   snapOccurrences: this.scene.snapOccurrences?.bind(this.scene), getPieces: () => this.flatIndex.allPieces(), snapDetector: this.snapDetector },
@@ -283,6 +284,7 @@ export class RaycastEngine {
             if (source) magneticResult = { snapTarget: source, edgeLock: releasedEdgeLock() };
 
             magneticResult = withPointCloudSnap(this.pointCloudProvider, magneticResult, {
+                useTargetDepth: magneticResult.snapTarget !== ordinaryTarget || !!source,
                 ray, intersection, options, clip, cameraFov, viewportHeight: viewport.height,
                 orthoHalfHeight: this.camera.getProjectionMode() === 'orthographic' ? this.camera.getOrthoSize() : null,
             });

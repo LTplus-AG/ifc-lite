@@ -104,6 +104,7 @@ export class ScreenCornerIndex {
     /** The view's stamp now, for the idle build to notice the camera moving between picks. Default: `viewKey`. */
     liveViewKey?: () => string;
     viewport: { width: number; height: number };
+    snapOccurrences?: import('./snap-corner-instances.js').SnapOccurrences;
     pieces: readonly MeshData[];
     geometryFor: (mesh: MeshData) => MeshGeometryCache;
     /** Optional: the same cache built in bounded steps. The idle build prefers it, so one huge piece spans several slices. */
@@ -129,7 +130,7 @@ export class ScreenCornerIndex {
     const viewKey = gridKey(args.viewKey, args.clip, viewport.width, viewport.height, args.hiddenIds, args.isolatedIds, cell, eligible);
     const liveViewKey = args.liveViewKey;
     pipeline.observe({
-      pieces: args.pieces, geometryFor: args.geometryFor, startGeometry: args.startGeometry, camera: args.camera, viewport,
+      snapOccurrences: args.snapOccurrences, pieces: args.pieces, geometryFor: args.geometryFor, startGeometry: args.startGeometry, camera: args.camera, viewport,
       liveViewKey: liveViewKey ? () => liveViewKey() : () => args.viewKey,
       hiddenIds: args.hiddenIds, isolatedIds: args.isolatedIds, eligible, clip: args.clip, cell,
       settleMs: options.settleMs ?? DEFAULT_SETTLE_MS, maxSliceMs: options.maxSliceMs ?? DEFAULT_MAX_SLICE_MS,

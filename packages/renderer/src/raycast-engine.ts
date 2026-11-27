@@ -34,6 +34,7 @@ export class RaycastEngine {
     private raycaster: Raycaster;
     private snapDetector: SnapDetector;
     private flatIndex: RaycastFlatIndex;
+    private readonly unsubscribeEviction: (() => void) | void;
     private screenCorners = new ScreenCornerIndex();
     private pointCloudProvider: PointCloudRayProvider | null = null;
     private sourceSnapCurves: readonly SourceSnapCurve[] = [];
@@ -51,6 +52,7 @@ export class RaycastEngine {
         this.raycaster = new Raycaster();
         this.snapDetector = new SnapDetector();
         this.flatIndex = new RaycastFlatIndex(scene, BVH_THRESHOLD);
+        this.unsubscribeEviction = scene.onHostEviction?.(() => this.invalidateBVHCache());
     }
 
     /** Slab ray-AABB test, used to cull instanced occurrences before materializing
@@ -272,7 +274,8 @@ export class RaycastEngine {
             }
 
             magneticResult = withScreenCorner(this.screenCorners,
-                { camera: this.camera, viewKey: () => this.readbackViewKey(), pieces: this.flatIndex.allPieces(), snapDetector: this.snapDetector },
+                { camera: this.camera, viewKey: () => [this.readbackViewKey(), this.scene.getPickGeometryRevision?.(), this.scene.getInstancedEntityRevision?.()].join('|'),
+                  snapOccurrences: this.scene.snapOccurrences?.bind(this.scene), pieces: this.flatIndex.allPieces(), snapDetector: this.snapDetector },
                 magneticResult, x, y, ray, viewport, options, clip, intersection?.distance ?? null);
 
             const source = querySourceCurves(this.sourceSnapCurves, magneticResult.snapTarget,
@@ -318,7 +321,8 @@ export class RaycastEngine {
 
     /** Release this engine before discarding it; create a new engine to resume picking. */
     dispose(): void {
-        this.flatIndex.dispose();
+        this.unsubscribeEviction?.();
+        this.flatIndex.invalidate();
         this.snapDetector.clearCache();
         this.screenCorners.clear();
         this.pointCloudProvider = null;

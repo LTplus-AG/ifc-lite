@@ -3114,6 +3114,16 @@ export class Scene {
    *  (template geometry × each occurrence's matrix). NOT retained — built on demand
    *  for CPU consumers that need triangles (exact raycast / measure / section-face /
    *  export). Returns undefined if the id is not instanced. */
+  *snapOccurrences() {
+    for (const [expressId, occurrences] of this.instancedEntityMap) {
+      for (const location of occurrences) {
+        const template = this.instancedTemplateCpu[location.templateIndex];
+        yield template && !this.instanceSuppression.has(expressId)
+          ? { expressId, template, location } : null;
+      }
+    }
+  }
+
   getInstancedMeshDataPieces(expressId: number): MeshData[] | undefined {
     const occ = this.instancedEntityMap.get(expressId);
     if (!occ || occ.length === 0 || this.instanceSuppression.has(expressId)) return undefined;

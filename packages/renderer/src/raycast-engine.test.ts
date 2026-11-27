@@ -23,6 +23,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert';
 
 import { RaycastEngine } from './raycast-engine.js';
+import { ManualIdleHost } from './snap-idle-test-host.js';
 import { BVH } from './bvh.js';
 import { Camera } from './camera.js';
 import { Scene, type TexturedMesh } from './scene.js';
@@ -392,6 +393,40 @@ describe('RaycastEngine.raycastScene', () => {
     assert.deepEqual({ expressId: hit.expressId, modelIndex: hit.modelIndex,
       geometryItemId: hit.geometryItemId, sourceTriangleIndex: hit.sourceTriangleIndex },
     { expressId: 1_025, modelIndex: 7, geometryItemId: 1_011, sourceTriangleIndex: 0 });
+  });
+
+  it('#11753 finds an off-ray transformed corner of a GPU-only occurrence during idle slices', () => {
+    const scene = new Scene();
+    const shard = instancedTriangle(1025);
+    // Rotate about IFC Z, scale uniformly, then translate. The apex lands at viewer (3,12,0).
+    shard.instances[0].transform.set([0, 2, 0, 0, -2, 0, 0, 0, 0, 0, 2, 0]);
+    shard.instances[0].transform[3] = 3;
+    shard.instances[0].transform[11] = 2;
+    scene.addInstancedShard(instancedDevice(), shard, 7);
+    assert.equal(scene.getMeshDataPieces(1025), undefined);
+    const camera = orthoCameraLookingDownZ([0,0,0], 50);
+    const at = camera.projectToScreen({ x: 3, y: 12, z: 0 }, 800, 600)!;
+    const engine = engineFor(scene, camera), idle = new ManualIdleHost();
+    const run = (filter: PickOptions = {}, eligibleModelIndices?: Set<number>) => engine.raycastSceneMagnetic(
+      at.x, at.y - 5, { edge: null, meshExpressId: null, lockStrength: 0 },
+      { ...filter, snapOptions: { snapToVertices: true, screenCornerSnap: { idleHost: idle, settleMs: 0, eligibleModelIndices } } });
+    const settle = (filter: PickOptions = {}, eligible?: Set<number>) => {
+      run(filter, eligible); idle.drain(); return run(filter, eligible);
+    };
+    const first = run();
+    assert.equal(first.intersection, null);
+    assert.equal(first.snapTarget, null, 'no occurrence build on the pointer path');
+    assert.ok(idle.tick(0));
+    assert.equal(run().snapTarget, null, 'one exhausted idle slice does not finish the occurrence');
+    assert.equal(idle.pending, 1);
+    const target = settle().snapTarget;
+    assert.equal(target?.expressId, 1025);
+    assert.equal(target?.type, 'vertex');
+    assert.deepEqual(target?.position, { x: 3, y: 12, z: 0 });
+    assert.equal(settle({ hiddenIds: new Set([1025]) }).snapTarget, null);
+    assert.equal(settle({ isolatedIds: new Set([99]) }).snapTarget, null);
+    assert.equal(settle({}, new Set([8])).snapTarget, null);
+    assert.equal(settle({ isolatedIds: new Set([1025]) }, new Set([7])).snapTarget?.expressId, 1025);
   });
 
   it('does not expose a canonical face ordinal when an instance has no representation item (#4555)', () => {
@@ -923,6 +958,18 @@ describe('RaycastEngine flat index (#9504)', () => {
     const engine = engineFor(scene, orthoCameraLookingDownZ([0, 0, 0], 50));
     assert.equal(engine.raycastScene(400, 300)?.intersection.expressId, 7);
     assert.equal(engine.isCacheWarm(), true);
+    const idle = new ManualIdleHost();
+    const cornerIndex = engine['screenCorners'];
+    const cornerPick = (hiddenIds?: Set<number>) => engine.raycastSceneMagnetic(478, 222, {
+      edge: null, meshExpressId: null, lockStrength: 0,
+    }, { hiddenIds, snapOptions: { snapToVertices: true, screenCornerSnap: { settleMs: 0, idleHost: idle } } });
+    cornerPick();
+    idle.drain();
+    assert.equal(cornerPick().snapTarget?.expressId, 7, 'the warm grid picks the corner over background');
+    assert.ok(cornerIndex.stats()?.complete);
+    // Start another grid over the same resident MeshData. Evict before its first idle callback.
+    cornerPick(new Set([100]));
+    assert.ok(idle.pending > 0);
     const revision = scene.getPickGeometryRevision();
 
     scene.setColdGeometryProvider({ loadMeshesInBounds: async () => [quad] });
@@ -932,9 +979,18 @@ describe('RaycastEngine flat index (#9504)', () => {
     assert.equal(scene.getMeshDataPieces(7), undefined, 'setup: the bucket went cold');
     assert.equal(scene.getPickGeometryRevision(), revision, 'setup: eviction keeps the pick revision');
 
+    // #11753: no pointer input or idle tick between eviction and these assertions.
+    assert.deepEqual({ retainedGrid: cornerIndex.stats() !== null, pendingWork: idle.pending },
+      { retainedGrid: false, pendingWork: 0 });
+    assert.equal(idle.drain(), 0);
     assertReleased(engine);
     assert.equal(engine.isCacheWarm(), false, 'the index still holds the evicted pieces');
     assert.equal(engine.raycastScene(400, 300), null, 'evicted geometry is not pickable, as before #9504');
+    addRegularQuad(scene, makeQuad({ expressId: 8 }));
+    assert.equal(engine.raycastScene(400, 300)?.intersection.expressId, 8);
+    cornerPick();
+    idle.drain();
+    assert.equal(cornerPick().snapTarget?.expressId, 8, 'new resident geometry builds a fresh corner grid');
   });
 });
 

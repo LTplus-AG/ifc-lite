@@ -17,6 +17,7 @@ export interface ScreenCornerContext {
     camera: Camera;
     /** The current view stamp; read again by the idle build to notice the camera moving between picks. */
     viewKey: () => string;
+    snapOccurrences?: import('./snap-corner-instances.js').SnapOccurrences;
     pieces: readonly MeshData[];
     snapDetector: SnapDetector;
 }
@@ -38,7 +39,7 @@ export function withScreenCorner(
     if (!config || (snap.snapToVertices === false && snap.snapToEdges === false)) return current;
     const hit = index.query({
         x, y, ray, camera: ctx.camera, viewKey: ctx.viewKey(), liveViewKey: ctx.viewKey, viewport,
-        pieces: ctx.pieces, geometryFor: mesh => ctx.snapDetector.getGeometryCache(mesh),
+        snapOccurrences: ctx.snapOccurrences, pieces: ctx.pieces, geometryFor: mesh => ctx.snapDetector.getGeometryCache(mesh),
         startGeometry: mesh => ctx.snapDetector.startGeometryCache(mesh),
         options: config, hiddenIds: options?.hiddenIds, isolatedIds: options?.isolatedIds, clip, hitDistance,
         // Only the enabled kinds are searched: a disabled kind must not win the grid and then be dropped below.

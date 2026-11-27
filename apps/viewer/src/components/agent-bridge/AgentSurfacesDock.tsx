@@ -3,9 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Surfaces an external agent pushed with `viewer_show_ui`, stacked newest
+ * Surfaces an external agent pushed with `tab_show_ui`, stacked newest
  * first over the viewport. Loaded only once a surface arrives. Follow-up
- * buttons go back to that agent as UI events (`viewer_ui_events`, or a Claude
+ * buttons go back to that agent as UI events (`tab_ui_events`, or a Claude
  * Code channel message); with a bridge that predates them they continue in
  * the in-app chat.
  */
@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { useTranslation } from '@/i18n';
 import { ASK_EVENT } from '@ifc-lite/a2ui';
+import { a2uiSurfaceId } from '@ifc-lite/mcp/bridge-protocol';
 import { followUpToChat, type FollowUpHandler } from '@/lib/a2ui/actions';
 import { A2uiMessagesView, type AgentToRendererMessage } from '@/lib/a2ui/surface-host';
 import { agentSurfaces, type AgentSurface } from '@/lib/agent-bridge/agent-surfaces';
@@ -32,9 +33,10 @@ function keyOf(surface: object): number {
 }
 
 function surfaceIdOf(surface: AgentSurface): string {
+  // Read as the bridge reads it, so a click names the surface the bridge recorded.
   for (const message of surface.messages) {
-    const id = (message as { createSurface?: { surfaceId?: unknown } }).createSurface?.surfaceId;
-    if (typeof id === 'string' && id) return id;
+    const id = a2uiSurfaceId(message);
+    if (id) return id;
   }
   return 'agent-surface';
 }

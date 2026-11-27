@@ -31,15 +31,64 @@ export async function listenLoopback(
   const wss = new WebSocketServer({ noServer: true, maxPayload });
   http.on('upgrade', (req, socket, head) => onUpgrade(wss, req, socket, head));
   await new Promise<void>((resolve, reject) => {
-    http.once('error', reject);
+    const onError = (err: Error): void => {
+      // Not bound: nothing to keep.
+      wss.close();
+      reject(err);
+    };
+    http.once('error', onError);
     // 127.0.0.1 only, never a public interface.
     http.listen(port, '127.0.0.1', () => {
-      http.off('error', reject);
+      http.off('error', onError);
       resolve();
     });
   });
   http.on('error', (err) => log(`server error: ${err.message}`));
   return { http, wss, port: (http.address() as AddressInfo).port };
+}
+
+/** The listen error that means another program holds the port. */
+export function isAddrInUse(err: unknown): boolean {
+  return (err as NodeJS.ErrnoException | null)?.code === 'EADDRINUSE';
+}
+
+/** A port this process cannot take: held by another program, or (Windows) in a reserved range (EACCES). */
+export function isPortUnavailable(err: unknown): boolean {
+  return isAddrInUse(err) || (err as NodeJS.ErrnoException | null)?.code === 'EACCES';
+}
+
+/** How many ports after the preferred one are tried before any free port. */
+export const PORT_FALLBACK_SPAN = 9;
+
+/**
+ * Ports to try in order: `preferred`, the next {@link PORT_FALLBACK_SPAN},
+ * then 0 (any free port). Neighbours first, so a user typing a port by hand
+ * in the viewer's dialog has a short list to guess from.
+ */
+export function fallbackPorts(preferred: number): number[] {
+  if (preferred === 0) return [0];
+  const out: number[] = [];
+  for (let p = preferred; p <= Math.min(65535, preferred + PORT_FALLBACK_SPAN); p++) out.push(p);
+  return [...out, 0];
+}
+
+/** `listenLoopback` on the first of `ports` that is free; any error but an unavailable port stops at once. */
+export async function listenLoopbackFirstFree(
+  ports: readonly number[],
+  maxPayload: number,
+  onUpgrade: (wss: WebSocketServer, req: IncomingMessage, socket: Duplex, head: Buffer) => void,
+  log: (line: string) => void,
+): Promise<LoopbackServer> {
+  let last: unknown = new Error('no port to listen on');
+  for (const port of ports) {
+    try {
+      return await listenLoopback(port, maxPayload, onUpgrade, log);
+    } catch (err) {
+      if (!isPortUnavailable(err)) throw err;
+      last = err;
+    }
+  }
+  throw last;
 }
 
 /** Answer an upgrade request with a bare HTTP status and drop the socket. */

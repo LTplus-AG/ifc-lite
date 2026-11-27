@@ -135,7 +135,7 @@ fn a_plate_retains_its_thickness_when_its_sides_have_negligible_area() {
     let mut collection = MeshCollection::new();
     let mut wall = flat_box(1, [0.0; 3], 3.0);
     for p in wall.positions.chunks_exact_mut(3) {
-        p[0] += 4.0;
+        p[0] += 1.0; // Disjoint, but both solids fit in the finer window.
         p[1] *= 0.2 / 3.0;
     }
     let base = (plate.positions.len() / 3) as u32;

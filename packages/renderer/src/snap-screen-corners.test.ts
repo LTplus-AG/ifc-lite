@@ -15,6 +15,7 @@ import assert from 'node:assert';
 import { PointCloudSpatialIndex } from './pointcloud/point-cloud-spatial-index.js';
 import { PriorityOrder } from './snap-corner-priority.js';
 import { ManualIdleHost } from './snap-idle-test-host.js';
+import { RaycastFlatIndex } from './raycast-flat-index.js';
 import { RaycastEngine } from './raycast-engine.js';
 import { Camera } from './camera.js';
 import { Scene } from './scene.js';
@@ -294,6 +295,32 @@ describe('screen-space corner snapping (#11504)', () => {
     // Over the element the ray-based result is untouched when the option is absent.
     const inside = pick(sceneWith(makeBox(1, [-4, -2, 0], [4, 2, 2])), 400, 300, { snapOptions: base });
     assert.equal(inside.snapTarget?.type, 'face');
+  });
+
+  it('#11753 enumerates flat pieces only for an enabled screen-corner pick', t => {
+    const enumerate = t.mock.method(RaycastFlatIndex.prototype, 'allPieces');
+    const engine = new RaycastEngine(cameraDownZ(), sceneWith(boxA()), canvas);
+    const ordinary = engine.raycastSceneMagnetic(370, 300, lock, { snapOptions: base });
+    assert.equal(ordinary.intersection?.expressId, 1);
+    assert.equal(ordinary.snapTarget?.type, 'face');
+    assert.equal(enumerate.mock.callCount(), 0);
+
+    const host = new ManualIdleHost();
+    const options = { ...base, screenCornerSnap: { settleMs: 0, idleHost: host } };
+    const disabled = engine.raycastSceneMagnetic(405, 265, lock, {
+      snapOptions: { ...options, snapToVertices: false, snapToEdges: false },
+    });
+    assert.equal(disabled.snapTarget, null);
+    assert.equal(enumerate.mock.callCount(), 0);
+
+    const pickCorner = () => engine.raycastSceneMagnetic(405, 265, lock, { snapOptions: options });
+    pickCorner();
+    host.drain();
+    const settled = pickCorner();
+    assert.equal(enumerate.mock.callCount(), 2);
+    assert.equal(settled.intersection, null);
+    assert.equal(settled.snapTarget?.expressId, 1);
+    assert.deepEqual(settled.snapTarget?.position, { x: 0, y: 2, z: 2 });
   });
 
   it('skips a corner hidden behind a box unless occlusion is ignored', () => {

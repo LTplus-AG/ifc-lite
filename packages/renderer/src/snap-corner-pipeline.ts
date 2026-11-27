@@ -26,7 +26,7 @@ import { finishedBuild, type StepBuild } from './snap-geometry-build.js';
 import { CandidateBuild, type PieceCandidates } from './snap-corner-candidates.js';
 import { CornerGrid, type ScreenSnapCamera } from './snap-corner-grid.js';
 import { eligibleModelsKey, gridKey, idsOf } from './snap-corner-key.js';
-import { buildInstanceCorners } from './snap-corner-instances.js';
+import { InstanceInventory } from './snap-corner-instances.js';
 import { PriorityOrder } from './snap-corner-priority.js';
 import { browserIdleHost, type IdleHost, type IdleSlice } from './snap-idle-host.js';
 
@@ -81,7 +81,8 @@ interface Run {
   order: MeshData[] | null;
   cursor: number;
   active: MeshData[];
-  instances: Generator<void> | null;
+  inventory: InstanceInventory;
+  discovery: Generator<void> | null;
 }
 
 export class CornerBuildPipeline {
@@ -169,7 +170,7 @@ export class CornerBuildPipeline {
 
   private isComplete(ctx: BuildContext, key: string): boolean {
     const r = this.run;
-    return !!r && r.key === key && r.pieces === ctx.pieces && r.order !== null && r.cursor >= r.order.length && !r.instances;
+    return !!r && r.key === key && r.pieces === ctx.pieces && r.order !== null && r.cursor >= r.order.length;
   }
 
   private schedule(afterMs = 0): void {
@@ -197,11 +198,16 @@ export class CornerBuildPipeline {
     if (!run || run.key !== key || run.pieces !== ctx.pieces) {
       const grid = this.startGrid(ctx, key);
       const active = this.activeOf(ctx);
+      const inventory = new InstanceInventory();
       run = this.run = { key, pieces: ctx.pieces, grid, ordering: null, order: null, cursor: 0, active,
-        instances: ctx.snapOccurrences ? buildInstanceCorners(ctx.snapOccurrences(), ctx, grid, this.templateCandidates) : null };
+        inventory, discovery: ctx.snapOccurrences ? inventory.discover(ctx.snapOccurrences(), ctx, grid, this.templateCandidates) : null };
+    }
+    while (run.discovery) {
+      if (run.discovery.next().done) run.discovery = null;
+      if (over()) { this.schedule(); return; }
     }
     if (run.order === null) {
-      run.ordering ??= new PriorityOrder(run.active, ctx.camera, ctx.viewport);
+      run.ordering ??= new PriorityOrder(run.active, ctx.camera, ctx.viewport, run.inventory.pieces, run.inventory.bounds);
       run.ordering.step(over);
       if (!run.ordering.done) { this.schedule(); return; }
       run.order = run.ordering.result();
@@ -212,6 +218,15 @@ export class CornerBuildPipeline {
     // A piece is built in chunks: the clock is read between chunks, so one huge piece spans several slices.
     while (run.cursor < order.length) {
       const piece = order[run.cursor];
+      const instance = run.inventory.builds.get(piece);
+      if (instance) {
+        while (!instance.next().done) if (over()) break;
+        if (!run.grid.has(piece)) break;
+        run.inventory.builds.delete(piece);
+        run.cursor++;
+        if (over()) break;
+        continue;
+      }
       let cand = this.candidates.get(piece);
       if (!cand) {
         let build = this.building.get(piece);
@@ -244,11 +259,7 @@ export class CornerBuildPipeline {
       run.cursor++;
       if (over()) break;
     }
-    while (run.cursor === order.length && run.instances) {
-      if (run.instances.next().done) run.instances = null;
-      if (over()) break;
-    }
-    if (run.cursor < order.length || run.instances) this.schedule();
+    if (run.cursor < order.length) this.schedule();
   }
 
   private startGrid(ctx: BuildContext, key: string): CornerGrid {

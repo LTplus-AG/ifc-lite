@@ -8,12 +8,12 @@ import { EDGE_LOCK_DEFAULTS } from '@/store/constants';
 import { useEffect, useRef, useState } from 'react';
 import { getGlobalRenderer } from '@/hooks/useBCF';
 import { resolveEntityRef, useViewerStore } from '@/store';
-import { fromRenderTranslation, orthogonalAxis, constrainTranslation, subtractTranslation } from '@/lib/model-placement/translation';
+import { addTranslation, toRenderTranslation, fromRenderTranslation, orthogonalAxis, constrainTranslation, subtractTranslation } from '@/lib/model-placement/translation';
 import type { PlacementAnchor } from '@/lib/model-placement/state';
 import { explainRaycastFilter, modelEntityIds, hitModelId, isEligiblePickModel, pickableFilter, pickContext, rejectedPickMessage } from '@/lib/model-placement/pick-eligibility';
 import { resolve } from '@/i18n/registry';
 import { repositionInstanceIds } from '@/lib/model-placement/pick-instance-ids';
-import { screenCornerSnapConfig } from '@/lib/snap/corner-assist';
+import { alignCornerHighlight, screenCornerSnapConfig } from '@/lib/snap/corner-assist';
 import { createIsolationFor } from './repositionIsolation';
 import { useInstancedMembershipRevision } from '@/hooks/useSceneTriangleCounts';
 
@@ -121,6 +121,13 @@ export function useRepositionPicking(role: PickRole, finish: (role: PickRole) =>
         ortho = orthogonalAxis(direction, active.constraint, ortho);
         current.previewModelTranslation(constrainTranslation(direction, ortho));
       } else ortho = undefined;
+      if (role === 'target') {
+        const placed = useViewerStore.getState().modelPlacement.preview;
+        if (placed?.source) {
+          const endpoint = addTranslation(placed.source.point, placed.delta);
+          alignCornerHighlight(renderer, toRenderTranslation(endpoint));
+        }
+      }
     };
     const move = (event: PointerEvent) => {
       if (event.buttons !== 0) return;

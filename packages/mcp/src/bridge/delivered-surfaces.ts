@@ -14,8 +14,7 @@
  *
  * An admitted event's prompt is VERIFIED only when it is follow-up text the
  * agent wrote in that surface: a follow-up's `prompt`, an event action's
- * `userMessage`, an `ask` action's `context.prompt`, or the renderer's generic
- * `Action: <name>` line: the texts the renderer sends as a prompt. Labels
+ * `userMessage`, or an `ask` action's `context.prompt`. Labels
  * never verify (the renderer never sends one, and agents put entity names in
  * them), nor do data values (entity names, property values, legend rows,
  * `updateDataModel`), which may come from the model. Any other prompt, typed
@@ -29,7 +28,7 @@
  * and what is recorded is only text the agent wrote.
  */
 
-import { ASK_EVENT, eventToFollowUp } from '@ifc-lite/a2ui';
+import { ASK_EVENT } from '@ifc-lite/a2ui';
 import { isRecord } from './json-bounds.js';
 import { AGENT_SURFACE_PANELS, a2uiSurfaceId, type BridgeUiEvent } from './ui-events.js';
 
@@ -40,11 +39,6 @@ import { AGENT_SURFACE_PANELS, a2uiSurfaceId, type BridgeUiEvent } from './ui-ev
 export const MAX_DELIVERED_SURFACES = 256;
 /** Follow-up texts and event names remembered per surface, each; the oldest go first. */
 export const MAX_SURFACE_ENTRIES = 1024;
-
-/** The renderer's prompt for an event action without a user message. */
-function genericPrompt(name: string): string {
-  return eventToFollowUp(name, undefined).userText;
-}
 
 /** A data model (an update, or createSurface's inline one) carries values, not follow-ups. */
 const DATA_MODEL_KEYS: ReadonlySet<string> = new Set(['updateDataModel', 'dataModel']);
@@ -165,7 +159,7 @@ export class DeliveredSurfaces {
     const prompt = raw?.trim();
     // A blank prompt is no prompt: nothing to pass on as the user's words.
     if (!prompt) return { promptVerified: true, event: { ...rest, name } };
-    const promptVerified = surface.prompts.has(prompt) || prompt === genericPrompt(name);
+    const promptVerified = surface.prompts.has(prompt);
     return { promptVerified, event: { ...rest, name, prompt: promptVerified ? prompt : raw } };
   }
 

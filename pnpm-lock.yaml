@@ -228,8 +228,8 @@ importers:
         specifier: 0.15.0
         version: 0.15.0(patch_hash=83b1103e23a0cbf66dc58d99008f032abc466b7dd415f19b82adc377d033a125)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(zod@4.6.7)
       '@a2ui/web_core':
-        specifier: 0.16.1
-        version: 0.16.1
+        specifier: 0.15.0
+        version: 0.15.0(patch_hash=4cd64b3659b2322468db9a10794fe9bd6eeac0430b2ac21cdbfa621831ae96c3)
       '@anthropic-ai/sdk':
         specifier: ^1.8.0
         version: 1.13.0(zod@4.6.7)
@@ -1025,8 +1025,8 @@ importers:
         specifier: 0.1.0
         version: 0.1.0(patch_hash=bd6b6288fc34d3316476b90f1d913a17233648b125f38495225fcf47de20b8ac)
       '@a2ui/web_core':
-        specifier: 0.16.1
-        version: 0.16.1
+        specifier: 0.15.0
+        version: 0.15.0(patch_hash=4cd64b3659b2322468db9a10794fe9bd6eeac0430b2ac21cdbfa621831ae96c3)
       zod:
         specifier: ^4.6.7
         version: 4.6.7
@@ -2203,8 +2203,8 @@ importers:
         version: 13.6.33
     devDependencies:
       '@a2ui/web_core':
-        specifier: 0.16.1
-        version: 0.16.1
+        specifier: 0.15.0
+        version: 0.15.0(patch_hash=4cd64b3659b2322468db9a10794fe9bd6eeac0430b2ac21cdbfa621831ae96c3)
       '@mergifyio/vitest':
         specifier: ^2026.11.8
         version: 2026.11.18(vitest@5.1.1(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.10.0)(@types/node@26.6.6)(happy-dom@21.0.4)(vite@8.3.8(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
@@ -2681,8 +2681,8 @@ importers:
         specifier: ^2.13.12
         version: 2.13.12
       rdf-validate-shacl:
-        specifier: ^0.7.0
-        version: 0.7.0(@tpluscode/rdf-ns-builders@5.1.0)
+        specifier: ^0.6.5
+        version: 0.6.5
     devDependencies:
       '@mergifyio/vitest':
         specifier: ^2026.11.8
@@ -3037,9 +3037,6 @@ packages:
 
   '@a2ui/web_core@0.15.0':
     resolution: {integrity: sha512-S3k9rAJ9O55z5TlDeWy22ly3yQnDLO+XBWihlL5JQSuyxaCUmd7jgFnxO4eq/Bn6dSgdBF0WG8cve/euMoz8SA==}
-
-  '@a2ui/web_core@0.16.1':
-    resolution: {integrity: sha512-sdQ8q4RNAaKla18AAXIGdAvfbzpE8+qay2vXMSPmgnBVUMZmi7ZwguzVsoCeRQSzvyAgNMjde/CcclARv7SzQw==}
 
   '@adobe/spz@0.3.1':
     resolution: {integrity: sha512-3HVGFYny7rGrpPFvAApDLM9U0owm0wO1+ipcEC52JIy+Vj0p/Mmuuq95utVmdZ7FLAfWb4mvme+H0JBvpc3HFw==}
@@ -5567,8 +5564,8 @@ packages:
   '@vitest/spy@5.1.2':
     resolution: {integrity: sha512-PQl0/3+p9GaY71+MHywN6oyHfLhVDD5kcbm7oNRldA2F0ExMU3S8RQdnpteJ9gFAdK5P6KCgE6LqCpUgy57KzA==}
 
-  '@vocabulary/sh@2.1.0':
-    resolution: {integrity: sha512-mqnNjt+d93E84+zhMbytY/6Kji8sUxTEx6FXt/fqvLNg4efsYsLQMI6uUFjB6SIj50M431dN1srKvUg4bMNcaA==}
+  '@vocabulary/sh@1.1.6':
+    resolution: {integrity: sha512-8IfAQoKh57THz8LA2+n1jaY/VC2XaqMNSsJgzBKSSrj20y5PSMAawb6dMsxoLxqDIPBDs1TFRl/9CijUnwbBUA==}
     peerDependencies:
       '@rdfjs/types': ^2.0.0
 
@@ -7183,16 +7180,14 @@ packages:
     resolution: {integrity: sha512-CH85RfRKN9aSlbju8T7aM8hgCSWMBsh2eh/tGxUUtWMN+waxi6iFDt8/r4PAEmKaEA82guimZJ4ISbmJ2rvWQg==}
     deprecated: rdf-dataset-ext is deprecated. Switching to rdf-ext is recommended.
 
-  rdf-literal@2.1.0:
-    resolution: {integrity: sha512-44EIZ0BCxl/1pHIdtUHu9I+Zj7O3G9p7fRAu+WMBlO5zmG1UmaNdy/4h7kHFceJ5E4T5JYYZG7IRKwQScKPwrw==}
+  rdf-literal@2.0.0:
+    resolution: {integrity: sha512-jlQ+h7EvnXmncmk8OzOYR8T3gNfd4g0LQXbflHkEkancic8dh0Tdt5RiRq8vUFndjIeNHt1RWeA5TAj6rgrtng==}
 
-  rdf-validate-datatype@0.3.0:
-    resolution: {integrity: sha512-bERCDdF4brFmNHbyfOOnI1kwmGJKrxn4jG6ls6axgfp+22UkiNHDA6rilHD/yJxZAZPiS4OSGDiUY6TKk5oh0A==}
-    peerDependencies:
-      '@tpluscode/rdf-ns-builders': '>=3'
+  rdf-validate-datatype@0.2.2:
+    resolution: {integrity: sha512-mH9qL8i0WBbZ6HJCA26BB6V+WV2MraKvitez3SV0QegBWVQ4wYO49CgfFBzoAYg6tlnhFXl9MkrOAQ07X2N1FA==}
 
-  rdf-validate-shacl@0.7.0:
-    resolution: {integrity: sha512-PaQ05kpGEIP96H513Y0ZcVplrI/BqYsvzUHgQT/BPmCLy/rfTaHvCGfvY2etEDGEIuEo4baDXtBw8czKjBbEDA==}
+  rdf-validate-shacl@0.6.5:
+    resolution: {integrity: sha512-rwIibopSixDE8ecA9x0c7oTVxdMWxGiJh7h3uJ+WS2h4lq2nx3DZVO7rJvwa5kZpDq9QEFPoyZINAUyfaaoN4Q==}
 
   react-dom@19.3.1:
     resolution: {integrity: sha512-Y0bARz53lhEC1NMCASs0/j+faB/zqt3R8hpvg1e8+61ZVJ4UL0UdC4cBbXfZMcIuhrfgeILTLe+ZeBCavQPtKQ==}
@@ -8071,15 +8066,6 @@ snapshots:
       '@preact/signals-core': 1.14.5
       lit: 3.3.3
       redos-detector: 6.1.4
-      validate-color: 2.2.4
-      zod: 4.6.7
-      zod-to-json-schema: 3.25.2(zod@4.6.7)
-
-  '@a2ui/web_core@0.16.1':
-    dependencies:
-      '@lit/context': 1.1.6
-      '@preact/signals-core': 1.14.5
-      lit: 3.3.3
       validate-color: 2.2.4
       zod: 4.6.7
       zod-to-json-schema: 3.25.2(zod@4.6.7)
@@ -10510,7 +10496,7 @@ snapshots:
 
   '@vitest/spy@5.1.2': {}
 
-  '@vocabulary/sh@2.1.0(@rdfjs/types@2.0.1)':
+  '@vocabulary/sh@1.1.6(@rdfjs/types@2.0.1)':
     dependencies:
       '@rdfjs/types': 2.0.1
 
@@ -12393,32 +12379,30 @@ snapshots:
       rdf-canonize: 3.4.0
       readable-stream: 4.8.0
 
-  rdf-literal@2.1.0:
+  rdf-literal@2.0.0:
     dependencies:
       rdf-data-factory: 2.1.0
 
-  rdf-validate-datatype@0.3.0(@tpluscode/rdf-ns-builders@5.1.0):
+  rdf-validate-datatype@0.2.2:
     dependencies:
       '@rdfjs/term-map': 2.0.2
       '@tpluscode/rdf-ns-builders': 5.1.0
 
-  rdf-validate-shacl@0.7.0(@tpluscode/rdf-ns-builders@5.1.0):
+  rdf-validate-shacl@0.6.5:
     dependencies:
       '@rdfjs/data-model': 2.1.2
       '@rdfjs/dataset': 2.0.3
       '@rdfjs/environment': 1.0.0
       '@rdfjs/namespace': 2.0.1
-      '@rdfjs/term-map': 2.0.2
       '@rdfjs/term-set': 2.0.3
       '@rdfjs/types': 2.0.1
-      '@vocabulary/sh': 2.1.0(@rdfjs/types@2.0.1)
+      '@vocabulary/sh': 1.1.6(@rdfjs/types@2.0.1)
       clownface: 2.0.3
       debug: 4.4.3
       rdf-dataset-ext: 1.1.0
-      rdf-literal: 2.1.0
-      rdf-validate-datatype: 0.3.0(@tpluscode/rdf-ns-builders@5.1.0)
+      rdf-literal: 2.0.0
+      rdf-validate-datatype: 0.2.2
     transitivePeerDependencies:
-      - '@tpluscode/rdf-ns-builders'
       - supports-color
 
   react-dom@19.3.1(react@19.3.1):

@@ -78,7 +78,7 @@
     "yjs": "^13.6.33"
   },
   "devDependencies": {
-    "@a2ui/web_core": "0.16.1",
+    "@a2ui/web_core": "0.15.0",
     "@mergifyio/vitest": "^2026.11.8",
     "@types/node": "^26.6.6",
     "@types/ws": "^8.18.2",

@@ -160,27 +160,27 @@ describe('viewer tab <-> real MCP bridge, end to end (#9523)', () => {
 
     const listed = (await mcp.request('tools/list')).tools as { name: string; annotations?: { readOnlyHint?: boolean } }[];
     assert.equal(listed[0].name, 'bridge_status');
-    assert.deepEqual(listed.slice(1).map((tool) => tool.name).sort(), ['viewer_show_ui', 'viewer_ui_events', ...MAIN_VIEWER_TOOL_ALLOWLIST, ...Object.entries(VIEWER_COMMAND_SPECS).filter(([, spec]) => spec.readOnly).map(([name]) => name)].sort());
+    assert.deepEqual(listed.slice(1).map((tool) => tool.name).sort(), ['tab_show_ui', 'tab_ui_events', ...[...MAIN_VIEWER_TOOL_ALLOWLIST, ...Object.entries(VIEWER_COMMAND_SPECS).filter(([, spec]) => spec.readOnly).map(([name]) => name)].map((name) => `tab_${name}`)].sort());
     assert.ok(listed.slice(1).every((tool) => tool.annotations?.readOnlyHint === true));
 
     // An unsaved edit in the viewer is what the agent reads.
     useViewerStore.getState().setAttribute('hello', WALL_ID, 'Name', 'Edited over the bridge');
-    const entity = await mcp.request('tools/call', { name: 'get_entity', arguments: { global_id: WALL_GID } });
+    const entity = await mcp.request('tools/call', { name: 'tab_get_entity', arguments: { global_id: WALL_GID } });
     assert.equal(entity.isError, undefined, JSON.stringify(entity));
     assert.equal((entity.structuredContent as { name: string }).name, 'Edited over the bridge');
 
-    const count = await mcp.request('tools/call', { name: 'count_entities', arguments: { type: 'IfcWall' } });
+    const count = await mcp.request('tools/call', { name: 'tab_count_entities', arguments: { type: 'IfcWall' } });
     assert.equal(count.isError, undefined, JSON.stringify(count));
     assert.match(String((count.content as { text: string }[])[0].text), /IfcWall/);
 
     // A tool failure arrives in the stdio server's error envelope.
-    const missing = await mcp.request('tools/call', { name: 'get_entity', arguments: { global_id: '0000000000000000000000' } });
+    const missing = await mcp.request('tools/call', { name: 'tab_get_entity', arguments: { global_id: '0000000000000000000000' } });
     assert.equal(missing.isError, true);
     assert.equal((missing.structuredContent as { code: string }).code, 'ENTITY_NOT_FOUND');
     assert.equal((missing.structuredContent as { message: string }).message, (missing.content as { text: string }[])[0].text);
 
     // While the tab grants read-only, the bridge refuses an edit tool itself: it is never forwarded.
-    const mutate = await mcp.request('tools/call', { name: 'entity_set_attribute', arguments: { global_id: WALL_GID, attribute: 'Name', value: 'x' } });
+    const mutate = await mcp.request('tools/call', { name: 'tab_entity_set_attribute', arguments: { global_id: WALL_GID, attribute: 'Name', value: 'x' } });
     assert.equal(mutate.isError, true);
     assert.equal((mutate.structuredContent as { code: string }).code, 'READ_ONLY');
 
@@ -203,12 +203,12 @@ describe('viewer tab <-> real MCP bridge, end to end (#9523)', () => {
     await until(() => listChanged() > seen, 'tools/list_changed after the grant');
     const listed = (await mcp.request('tools/list')).tools as { name: string; annotations?: { readOnlyHint?: boolean } }[];
     for (const name of MAIN_VIEWER_EDIT_TOOLS) {
-      assert.equal(listed.find((tool) => tool.name === name)?.annotations?.readOnlyHint, false, `${name} is listed as changing the model`);
+      assert.equal(listed.find((tool) => tool.name === `tab_${name}`)?.annotations?.readOnlyHint, false, `${name} is listed as changing the model`);
     }
 
     const undoBefore = useViewerStore.getState().undoStacks.get('hello')?.length ?? 0;
     const result = await mcp.request('tools/call', {
-      name: 'entity_set_attribute', arguments: { global_id: WALL_GID, attribute: 'Name', value: 'Named by the agent' },
+      name: 'tab_entity_set_attribute', arguments: { global_id: WALL_GID, attribute: 'Name', value: 'Named by the agent' },
     });
     assert.equal(result.isError, undefined, JSON.stringify(result));
     assert.deepEqual((result.structuredContent as { edit: { before: unknown; after: unknown } }).edit, {
@@ -238,11 +238,11 @@ describe('viewer tab <-> real MCP bridge, end to end (#9523)', () => {
     assert.equal(status.kind === 'connected' && status.permission, 'read-only');
     await until(() => listChanged() > seen, 'tools/list_changed after the revoke');
     const names = await listedNames();
-    for (const name of MAIN_VIEWER_EDIT_TOOLS) assert.ok(!names.includes(name), `${name} is hidden again`);
+    for (const name of MAIN_VIEWER_EDIT_TOOLS) assert.ok(!names.includes(`tab_${name}`), `${name} is hidden again`);
 
     const undoBefore = useViewerStore.getState().undoStacks.get('hello')?.length ?? 0;
     const refused = await mcp.request('tools/call', {
-      name: 'entity_set_property', arguments: { global_id: WALL_GID, pset: 'Pset_WallCommon', name: 'FireRating', value: 'EI90' },
+      name: 'tab_entity_set_property', arguments: { global_id: WALL_GID, pset: 'Pset_WallCommon', name: 'FireRating', value: 'EI90' },
     });
     assert.equal(refused.isError, true);
     assert.equal((refused.structuredContent as { code: string }).code, 'READ_ONLY');
@@ -252,15 +252,15 @@ describe('viewer tab <-> real MCP bridge, end to end (#9523)', () => {
   it('real MCP command dispatch is gated by grant and revoke, and shares native palette actions', async () => {
     const release = registerAgentCommandHost(() => paletteSurfaceCommands({ canEditInSession: true }, () => {}));
     const projection = useViewerStore.getState().projectionMode;
-    const invoke = () => mcp.request('tools/call', { name: 'viewer_command_run', arguments: { command_id: 'view:projection' } });
+    const invoke = () => mcp.request('tools/call', { name: 'tab_viewer_command_run', arguments: { command_id: 'view:projection' } });
     try {
-      const discovered = await mcp.request('tools/call', { name: 'viewer_commands', arguments: { command_id: 'view:projection' } });
+      const discovered = await mcp.request('tools/call', { name: 'tab_viewer_commands', arguments: { command_id: 'view:projection' } });
       assert.equal(discovered.isError, undefined, JSON.stringify(discovered));
       assert.equal((await invoke()).isError, true, 'read-only bridge refuses execution');
       let seen = listChanged();
       setAgentBridgePermission('read-write');
       await until(() => listChanged() > seen, 'command tools listed after grant');
-      const selected = await mcp.request('tools/call', { name: 'viewer_select', arguments: { model_id: 'hello', express_ids: [WALL_ID] } });
+      const selected = await mcp.request('tools/call', { name: 'tab_viewer_select', arguments: { model_id: 'hello', express_ids: [WALL_ID] } });
       assert.equal(selected.isError, undefined, JSON.stringify(selected));
       assert.ok(useViewerStore.getState().selectedEntityIds.has(WALL_ID));
       const applied = await invoke();
@@ -277,9 +277,9 @@ describe('viewer tab <-> real MCP bridge, end to end (#9523)', () => {
 
   it('executes model-free numerical operations over real MCP transport with live grants (#10525 follow-up)', async () => {
     useViewerStore.setState({ models: new Map(), ifcDataStore: null });
-    const discovered = await mcp.request('tools/call', { name: 'viewer_operations', arguments: { operation_id: 'measurements.distance' } });
+    const discovered = await mcp.request('tools/call', { name: 'tab_viewer_operations', arguments: { operation_id: 'measurements.distance' } });
     assert.equal(discovered.isError, undefined, JSON.stringify(discovered));
-    const invoke = () => mcp.request('tools/call', { name: 'viewer_operation_execute', arguments: {
+    const invoke = () => mcp.request('tools/call', { name: 'tab_viewer_operation_execute', arguments: {
       operation_id: 'measurements.distance', input: { start: [0, 0, 0], end: [3, 4, 0] },
       idempotency_key: 'wire-distance',
     } });
@@ -297,15 +297,18 @@ describe('viewer tab <-> real MCP bridge, end to end (#9523)', () => {
     setAgentBridgePermission('read-only');
     await until(() => listChanged() > seen, 'operation execution removed after revoke');
     assert.equal((await invoke()).isError, true, 'revoked grant refuses even a cached write outcome');
-    const read = await mcp.request('tools/call', { name: 'viewer_operation_inspect', arguments: {
+    const read = await mcp.request('tools/call', { name: 'tab_viewer_operation_inspect', arguments: {
       operation_id: 'measurements.read',
     } });
     assert.equal(read.isError, undefined, JSON.stringify(read));
   });
 
   it('delivers a validated surface into the paired read-only tab over MCP and WebSocket', async () => {
-    const result = await mcp.request('tools/call', { name: 'viewer_show_ui', arguments: {
-      title: 'Inspection', spec: { surfaceId: 'inspection', sections: [{ kind: 'text', text: 'Model results' }] },
+    const result = await mcp.request('tools/call', { name: 'tab_show_ui', arguments: {
+      title: 'Inspection', spec: { surfaceId: 'inspection', sections: [
+        { kind: 'text', text: 'Model results' },
+        { kind: 'actions', actions: ['isolate'], followUps: [{ label: 'External walls', prompt: 'Which walls are external?' }] },
+      ] },
     } });
     assert.equal(result.isError, undefined, JSON.stringify(result));
     const { agentSurfaces } = await import('./agent-surfaces');
@@ -317,7 +320,7 @@ describe('viewer tab <-> real MCP bridge, end to end (#9523)', () => {
   });
 
   it('hands a follow-up click on an agent surface back to the agent', async () => {
-    const waiting = mcp.request('tools/call', { name: 'viewer_ui_events', arguments: { wait_seconds: 5 } });
+    const waiting = mcp.request('tools/call', { name: 'tab_ui_events', arguments: { wait_seconds: 5 } });
     assert.equal(sendAgentUiEvent({ surfaceId: 'inspection', name: 'ask', prompt: 'Which walls are external?', context: { refs: ['m:7'] } }), true);
     const result = await waiting;
     assert.equal(result.isError, undefined, JSON.stringify(result));

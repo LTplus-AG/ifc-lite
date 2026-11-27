@@ -6,15 +6,25 @@ import { IfcParser } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { StepExporter } from './step-exporter.js';
 
-async function exportRetyped(bytes: ArrayBuffer, retypes: Array<{ entityId: number; entityType: string }>) {
+async function exportRetyped(
+  bytes: ArrayBuffer,
+  retypes: Array<{ entityId: number; entityType: string }>,
+  edit?: (view: MutablePropertyView) => void,
+) {
   const store = await new IfcParser().parseColumnar(bytes, { disableWorkerScan: true });
   const view = new MutablePropertyView(null, 'model');
   view.importMutations(JSON.stringify({ mutations: retypes.map(retype => ({ type: 'UPDATE_ENTITY_TYPE', ...retype })) }));
+  edit?.(view);
   const result = new StepExporter(store, view).export({ schema: 'IFC4' });
   return { lines: new TextDecoder().decode(result.content).split('\n'), warnings: result.stats.warnings };
 }
 
-async function exportRetype(members: string, entityType: string) {
+async function exportRetype(
+  members: string | null,
+  entityType: string,
+  edit?: (view: MutablePropertyView) => void,
+) {
+  const guid = '2VQ9wAx1j4Bh3OB5NYQuhQ';
   const source = `ISO-10303-21;
 HEADER;
 FILE_SCHEMA(('IFC4'));
@@ -23,11 +33,11 @@ DATA;
 #1=IFCWALL('3nZ2y9nY9FExK3Wg9nLvXz',$,'Wall A',$,$,$,$,$,.STANDARD.);
 #2=IFCWALL('0uK8j9R5T5E8Gf7Ybq5ZpA',$,'Wall B',$,$,$,$,$,.STANDARD.);
 #3=IFCWALLTYPE('0YvctVUKr0kugbFTf53O9L',$,'Wall Type',$,$,$,$,$,$,.STANDARD.);
-#4=IFCRELDEFINESBYTYPE('2VQ9wAx1j4Bh3OB5NYQuhQ',$,$,$,(${members}),#3);
+${members === null ? '' : `#4=IFCRELDEFINESBYTYPE('${guid}',$,$,$,(${members}),#3);`}
 ENDSEC;
 END-ISO-10303-21;
 `;
-  const { lines, warnings } = await exportRetyped(new TextEncoder().encode(source).buffer, [{ entityId: 1, entityType }]);
+  const { lines, warnings } = await exportRetyped(new TextEncoder().encode(source).buffer, [{ entityId: 1, entityType }], edit);
   return { lines, relation: lines.find(line => line.startsWith('#4=')), warnings };
 }
 
@@ -52,6 +62,27 @@ describe('STEP type-assignment retyping #11500', () => {
     expect(relation).toMatch(/\(#1\),#3\);$/);
     expect(warnings.join('\n')).not.toContain('lost its type assignment');
   });
+
+  it('filters an edited relationship after applying the edited member list', async () => {
+    const { relation, warnings } = await exportRetype('#1,#2', 'IfcSlab', view => {
+      view.setPositionalAttribute(4, 4, ['#1']);
+    });
+    expect(relation).toBeUndefined();
+    expect(warnings.join('\n')).toContain('The empty relationship was withheld.');
+  });
+
+  it('keeps the valid member in a newly created relationship', async () => {
+    const { relation, warnings } = await exportRetype(null, 'IfcSlab', view => {
+      view.restoreNewEntity({
+        expressId: 4,
+        type: 'IfcRelDefinesByType',
+        attributes: ['2VQ9wAx1j4Bh3OB5NYQuhQ', null, null, null, ['#1', '#2'], '#3'],
+      });
+    });
+    expect(relation).toMatch(/\(#2\),#3\);$/);
+    expect(warnings.join('\n')).toContain('lost its type assignment to #3 for #1');
+  });
+
   it('detaches the wall and door types in the authored door fixture', async (context) => {
     const fixture = new URL('../../../tests/models/various/issue-604-door.ifc', import.meta.url);
     if (!existsSync(fixture)) {

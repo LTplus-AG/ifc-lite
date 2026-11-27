@@ -248,7 +248,13 @@ export function latticeCollapsesGeometry(
     const qux = nodes[nb] - nodes[na], quy = nodes[nb + 1] - nodes[na + 1], quz = nodes[nb + 2] - nodes[na + 2];
     const qvx = nodes[nc] - nodes[na], qvy = nodes[nc + 1] - nodes[na + 1], qvz = nodes[nc + 2] - nodes[na + 2];
     // Integer lattice offsets: every product is exact, so zero means collapsed.
-    if (quy * qvz - quz * qvy === 0 && quz * qvx - qux * qvz === 0 && qux * qvy - quy * qvx === 0) runCollapsed += area;
+    if (quy * qvz - quz * qvy === 0 && quz * qvx - qux * qvz === 0 && qux * qvy - quy * qvx === 0) {
+      // A plate's rim can become a line between distinct nodes even when its
+      // wall neighbour dominates the area. A speck snapping to one node still
+      // uses the area allowance. This works across split face vertices.
+      if (qux !== 0 || quy !== 0 || quz !== 0 || qvx !== 0 || qvy !== 0 || qvz !== 0) return true;
+      runCollapsed += area;
+    }
   }
   flush();
   for (const { area, collapsed } of totals.values()) {

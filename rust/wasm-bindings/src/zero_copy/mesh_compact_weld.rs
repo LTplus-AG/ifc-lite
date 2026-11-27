@@ -262,6 +262,12 @@ fn triangles(mesh: &MeshDataJs, s: &mut Scratch) -> Result<(), Refusal> {
         if tri_area > 0.0 {
             area += tri_area;
             if lattice_collapses(&s.nodes, ra, rb, rc) {
+                // Match the renderer: a positive-area side flattened to a line
+                // can be the rim of a thin solid inside a much larger mesh.
+                let node = s.nodes[ra as usize];
+                if node != s.nodes[rb as usize] || node != s.nodes[rc as usize] {
+                    return Err(Refusal::Collapse);
+                }
                 collapsed += tri_area;
             }
         }

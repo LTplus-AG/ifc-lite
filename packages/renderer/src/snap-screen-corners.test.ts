@@ -288,6 +288,24 @@ describe('screen corner idle build (#11504)', () => {
     assert.equal(t.query(c.x + 5, c.y - 5, { kinds: { corners: false } }), null, 'edge-only: a corner alone is no hit');
   });
 
+  it('#11753 an invalid idle duration respects exhausted slices and eventually finishes', () => {
+    const t = harness(boxRow(40), { settleMs: 0, maxSliceMs: NaN });
+    t.query(400, 300);
+    assert.equal(t.state.built.length, 0);
+    assert.ok(t.host.tick(0));
+    assert.equal(t.index.stats()?.complete, false);
+    assert.ok(t.host.pending > 0);
+    let slices = 1;
+    while (t.host.pending && slices < 2000) {
+      const before = t.state.built.length;
+      t.host.tick(0);
+      assert.ok(t.state.built.length - before <= 1, 'an exhausted slice starts at most one piece');
+      slices++;
+    }
+    assert.equal(t.index.stats()?.complete, true);
+    assert.equal(t.state.built.length, 40);
+  });
+
   it('a pick never runs a candidate-build chunk or a grid rebuild; only idle slices do', () => {
     const t = harness(boxRow(100));
     const first = t.at(0, 0);

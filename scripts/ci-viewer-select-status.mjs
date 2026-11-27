@@ -276,12 +276,17 @@ async function postCancellation(env) {
   const runs = await listTestRuns(env, path, sha);
   const sameRepo = runs.filter((candidate) => candidate.head_repository?.full_name === repo);
   const cancelled = sameRepo.find((run) => String(run.id) === id && String(run.run_attempt) === attempt);
-  if (!cancelled) return 0;
+  if (cancelled?.conclusion !== 'cancelled') return 0;
   const started = (run) => Date.parse(run.run_started_at);
   const cancelledStart = started(cancelled);
   // Creation times and run IDs cannot establish when an attempt started.
-  if (!Number.isFinite(cancelledStart) ||
-      !sameRepo.every((run) => run === cancelled || started(run) < cancelledStart)) return 0;
+  // An absent status passes Mergify's viewer condition. With no status to
+  // protect, ties are safe only when all tied attempts are cancelled.
+  if (!Number.isFinite(cancelledStart) || !sameRepo.every((run) => {
+    if (run === cancelled) return true;
+    const start = started(run);
+    return start < cancelledStart || (!current && start === cancelledStart && run.conclusion === 'cancelled');
+  })) return 0;
   // A stale listing can miss the status owner's attempt, even at a lower ID.
   if (owner && owner[1] !== id && !sameRepo.some(
     (run) => String(run.id) === owner[1] && String(run.run_attempt) === ownerAttempt,

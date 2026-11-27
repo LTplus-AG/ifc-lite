@@ -296,6 +296,43 @@ test('PR #11355: creation time alone cannot establish that a first attempt is ol
   }
 });
 
+test('PR #11355: tied cancellations without a status write one failure in either reporter order', async () => {
+  const run43 = { ...CANCELLED_RUN, id: 43 };
+  for (const order of [['42', '43'], ['43', '42']]) {
+    let current;
+    await withApi(201, async (api, posts) => {
+      for (const id of order) {
+        assert.equal(await main(['--cancelled'], env(api, { ...CANCELLED_ENV, CANCELLED_RUN_ID: id })), 0);
+        current = posts.at(-1)?.body ?? current;
+      }
+      assert.deepEqual(posts.map(({ body }) => [body.state, body.target_url]), [
+        ['failure', `https://github.com/${REPO}/actions/runs/${order[0]}?attempt=1`],
+      ]);
+    }, {
+      [CANCELLED_RUN_PATH]: CANCELLED_RUN,
+      [`/repos/${REPO}/actions/runs/43`]: run43,
+      [STATUS_PATH]: () => ({ statuses: current ? [current] : [] }),
+      [RUNS_PATH]: { workflow_runs: [run43, CANCELLED_RUN] },
+    });
+  }
+});
+
+test('PR #11355: tied or newer live and successful attempts prevent a cancellation status', async () => {
+  for (const conclusion of [null, 'success', 'failure']) {
+    for (const run_started_at of [CANCELLED_RUN.run_started_at, '2026-11-26T05:01:00Z']) {
+      const other = { ...CANCELLED_RUN, id: 43, conclusion, run_started_at };
+      await withApi(201, async (api, posts) => {
+        assert.equal(await main(['--cancelled'], env(api, CANCELLED_ENV)), 0);
+        assert.deepEqual(posts, []);
+      }, {
+        [CANCELLED_RUN_PATH]: CANCELLED_RUN,
+        [STATUS_PATH]: { statuses: [] },
+        [RUNS_PATH]: { workflow_runs: [other, CANCELLED_RUN] },
+      });
+    }
+  }
+});
+
 test('PR #11355: a second-page rerun takes precedence over first-page runs', async () => {
   const firstPage = Array.from({ length: 100 }, (_, i) => ({
     ...CANCELLED_RUN, id: 142 - i, run_started_at: '2026-11-26T05:01:00Z',

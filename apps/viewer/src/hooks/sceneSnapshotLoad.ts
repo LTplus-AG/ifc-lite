@@ -23,6 +23,7 @@ import { tapSceneSnapshot } from '../lib/perf/sceneIdentityTap.js';
 import { recordFirstVisible } from '../lib/perf/loadTrace.js';
 import { clearSceneSnapshot, type CacheResult } from '../services/cacheService.js';
 import { isQuantizedEnabled } from '../utils/quantizedConfig.js';
+import { modelIndices } from '../lib/model-placement/model-indices.js';
 import { getGlobalRenderer } from './useBCF.js';
 import { clearSnapshotTypeIndex, installSnapshotTypeIndex } from '../components/viewer/snapshot-type-index.js';
 import type { DecodedCacheMetadata } from './ifcCacheDecode.js';
@@ -155,6 +156,8 @@ export async function adoptCachedSceneSnapshot(
   // The viewport hides the stored type index's ids under the current toggles before the first frame.
   const typeToken = {};
   if (!(await installSnapshotTypeIndex(typeToken, host.typeIndex)) || isStale?.() || !instancedShardSupplyCurrent(modelId, supply)) return failClosed(typeToken);
+  // Synchronous from here to the shard upload, which targets index 0.
+  if (!adoptsAtModelIndexZero(modelId)) return failClosed(typeToken);
   const adoption = trace.span('scene.snapshotAdopt', () => scene.adoptSceneSnapshot(snapshot, device, pipeline), { batches: snapshot.batches.length });
   if (!adoption) return failClosed(typeToken);
   trace.milestone('scene.snapshotAdopted');
@@ -166,6 +169,18 @@ export async function adoptCachedSceneSnapshot(
   renderer.clearCaches();
   renderer.requestRender();
   return { adoption, shards, supply, shardsUploaded, fit: host, typeToken, firstVisible: recordFirstVisible(trace, trace.milestone('geometry.firstAppend')) };
+}
+
+/**
+ * A snapshot is the whole scene of one model at renderer index 0: adoption uploads its shards there
+ * and a refused hydration removes templates there. A primary load registers its placeholder in a
+ * cleared store before the cache lookup, so it holds index 0 (never reassigned). An unregistered
+ * model adopts only into an empty scene, where it registers at 0. Anything else streams instead.
+ */
+function adoptsAtModelIndexZero(modelId: string): boolean {
+  const models = useViewerStore.getState().models;
+  const index = modelIndices(models).get(modelId);
+  return index === undefined ? models.size === 0 : index === 0;
 }
 
 function failClosed(typeToken: object): null {

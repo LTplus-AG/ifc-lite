@@ -246,18 +246,24 @@ async function recoverRendererDeviceOnce(
     }
     if (host.recovery.quantizedBatchesRequested && host.pipeline) {
       const pipeline = host.pipeline;
-      const quantized = await pipeline.ensureQuantizedPipelines();
-      // #7655: init/destroy can supersede this recovery while validation yields.
-      // Recheck before admitting a layout OR allocating restored scene buffers.
-      if (generation !== host.initGeneration || host.destroyed || host.pipeline !== pipeline) {
-        if (ownsLifecycle(host, generation)) host.teardown(true);
-        return invalidatedRecovery(host);
+      // Requeued compact pages wait for the outcome instead of decoding to buckets (scene-compact.ts).
+      const settle = host.scene.beginQuantizedProbe();
+      try {
+        const quantized = await pipeline.ensureQuantizedPipelines();
+        // #7655: init/destroy can supersede this recovery while validation yields.
+        // Recheck before admitting a layout OR allocating restored scene buffers.
+        if (generation !== host.initGeneration || host.destroyed || host.pipeline !== pipeline) {
+          if (ownsLifecycle(host, generation)) host.teardown(true);
+          return invalidatedRecovery(host);
+        }
+        if (host.deviceLossSequence !== lossSequence) {
+          throw replacementLostError(host, 'quantized pipeline validation');
+        }
+        if (!sourceValid()) return sourceRefused();
+        host.scene.setQuantizedBatches(quantized);
+      } finally {
+        settle();
       }
-      if (host.deviceLossSequence !== lossSequence) {
-        throw replacementLostError(host, 'quantized pipeline validation');
-      }
-      if (!sourceValid()) return sourceRefused();
-      host.scene.setQuantizedBatches(quantized);
     }
     phase = 'scene';
     if (!host.pipeline) throw new Error('Replacement render pipeline was not initialized');

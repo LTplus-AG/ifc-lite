@@ -16,7 +16,7 @@ import { materializeInstances } from './scene-instance-materialization.js';
 import { InstanceSuppression } from './scene-instance-suppression.js';
 import { createSceneBatch } from './scene-batch-upload.js';
 import { SceneSnapshotLifecycle, type SceneSnapshotHost } from './scene-snapshot-lifecycle.js';
-import type { SceneCompact, SceneCompactHost } from './scene-compact.js';
+import type { CompactSceneStats, SceneCompact, SceneCompactHost } from './scene-compact.js';
 import { createCompactPages } from './compact-page-deps.js';
 import { materializeCompactMeshes } from '@ifc-lite/geometry/compact';
 import type { SceneCaptureCallback, SceneCaptureDrop, SceneSnapshot } from './scene-snapshot.js';
@@ -326,6 +326,7 @@ export class Scene {
   // 12-byte quantized batch vertices (issue #1682 phase 6): off unless the
   // renderer probed its quantized pipelines and enabled it.
   private quantizedBatchesEnabled = false;
+  private quantizedProbes = 0;
   // True while a (possibly time-sliced) finalize rebuild is running. The
   // preamble clears streamingFragments synchronously, so hasStreamingFragments
   // alone under-reports "still settling" — settle-sensitive consumers
@@ -419,6 +420,10 @@ export class Scene {
 
   /** Draw every compact mesh from buckets again (scene-compact.ts). Returns whether any moved. */
   demoteCompact(): boolean { return this.compact?.demote() ?? false; }
+  /** Compact meshes drawn from pages, and those a load decoded to buckets by reason (scene-compact.ts); null before the page code loaded. */
+  getCompactStats(): CompactSceneStats | null {
+    return this.compact && { paged: this.compact.meshCount, decodes: { ...this.compact.decodes } };
+  }
 
   /** Every batch the frame draws: the buckets' and streaming fragments', then the compact pages. */
   getBatchedMeshes(): BatchedMesh[] {
@@ -584,6 +589,15 @@ export class Scene {
   setQuantizedBatches(enabled: boolean): void {
     this.quantizedBatchesEnabled = enabled;
     if (!enabled) this.compact?.demotePages(); // pages are 12-byte records: only the quantized pipelines draw them; the queue waits for the next drain
+  }
+
+  get quantizedBatchesPending(): boolean { return this.quantizedProbes > 0; }
+
+  /** Hold queued compact meshes until this probe settles. Releasing a hold twice is safe. */
+  beginQuantizedProbe(): () => void {
+    this.quantizedProbes++;
+    let settled = false;
+    return () => { if (!settled) { settled = true; this.quantizedProbes--; } };
   }
 
   /** The draw origin of the textured drawable rendering `meshData`, or null

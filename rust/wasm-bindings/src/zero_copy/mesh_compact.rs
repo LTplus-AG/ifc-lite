@@ -24,7 +24,8 @@
 //! - indices are mesh-local u16, with triangles that collapse to a repeated
 //!   node dropped;
 //! - each mesh's f64 AABB in that frame rides along, so no consumer scans
-//!   positions.
+//!   positions, and so does its source vertex count (what a scan of the f32
+//!   mesh counts: the camera fit weighs meshes by it).
 //!
 //! Precision: a stored position is at most half a step from its source on each
 //! axis: 0.49 mm at level 10, 0.98 mm at level 9 (meshes too wide for a level
@@ -71,7 +72,7 @@ const MAX_CELL_METRES: f64 = 32.0;
 /// Bytes per vertex record.
 const RECORD_BYTES: usize = 12;
 /// u32 columns per table row.
-const TABLE_STRIDE: usize = 6;
+const TABLE_STRIDE: usize = 7;
 
 /// Why a mesh stayed on the f32 path. The discriminant indexes
 /// `CompactBatch::refusals`; the TypeScript side names the columns in this
@@ -134,8 +135,9 @@ impl CompactBatch {
     pub fn indices(&self) -> js_sys::Uint16Array {
         js_sys::Uint16Array::from(&self.indices[..])
     }
-    /// Six u32 per encoded mesh: mesh index in the collection, vertex start,
-    /// vertex count, index start, index count, lattice level (step = 2^-level m).
+    /// Seven u32 per encoded mesh: mesh index in the collection, vertex start,
+    /// vertex count, index start, index count, lattice level (step = 2^-level m),
+    /// source vertex count (before welding).
     #[wasm_bindgen(getter)]
     pub fn table(&self) -> js_sys::Uint32Array {
         js_sys::Uint32Array::from(&self.table[..])
@@ -308,11 +310,12 @@ impl CompactBatch {
             self.records.extend_from_slice(&lane.to_le_bytes());
         }
         self.indices.extend_from_slice(&s.tris);
-        self.table.extend_from_slice(&[index as u32, vertex_start, s.nodes.len() as u32, index_start, s.tris.len() as u32, fit.level]);
+        let source_vertices = (mesh.positions.len() / 3) as u32;
+        self.table.extend_from_slice(&[index as u32, vertex_start, s.nodes.len() as u32, index_start, s.tris.len() as u32, fit.level, source_vertices]);
         self.windows.extend(fit.window.iter().map(|&w| w as f64));
         self.bounds.extend_from_slice(&bounds);
         self.cells.extend_from_slice(&fit.cell);
-        self.totals[0] += (mesh.positions.len() / 3) as f64;
+        self.totals[0] += source_vertices as f64;
         self.totals[1] += (mesh.indices.len() / 3) as f64;
         self.totals[2] += s.nodes.len() as f64;
         self.totals[3] += (s.tris.len() / 3) as f64;

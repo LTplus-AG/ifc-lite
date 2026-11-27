@@ -355,9 +355,7 @@ fn emit<W: std::io::Write>(
         written += 2;
     }
 
-    if opts.included.is_some() {
-        checks.forms.durations.finish_model(|| crate::schema_project_time_unit::subset_source_scale(content, &index, &muts_by_id, &repointed, &copies));
-    }
+    checks.forms.durations.finish_model(|| crate::schema_project_time_unit::effective_source_scale(content, &index, &muts_by_id, &repointed, &copies));
     written = written.checked_add_signed(checks.finish(body, targets_ifc2x3.then_some(&mut slot_fill), ids)?).unwrap_or(written);
     out.write_all(b"ENDSEC;\nEND-ISO-10303-21;\n")?;
 

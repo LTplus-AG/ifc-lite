@@ -30,6 +30,13 @@ function secondsPerUnit(records: Records, id: number | null): number | undefined
       return Number.isFinite(factor) && factor > 0 ? factor : undefined;
     }
     if (type !== 'IFCCONVERSIONBASEDUNIT') return undefined;
+    const dimensions = slotRef(slots[0]);
+    if (records.type(dimensions) !== 'IFCDIMENSIONALEXPONENTS') return undefined;
+    const exponents = records.slots(dimensions);
+    if (exponents?.length !== 7 || !exponents.every((slot, i) => {
+      const value = token(slot);
+      return /^[+-]?\d+$/.test(value) && Number(value) === (i === 2 ? 1 : 0);
+    })) return undefined;
     const measure = slotRef(slots[3]);
     if (records.type(measure) !== 'IFCMEASUREWITHUNIT') return undefined;
     const component = records.slots(measure);
@@ -55,6 +62,7 @@ function resolve(projects: readonly number[], records: Records): number | undefi
       const id = slotRef(ref);
       if (!records.type(id)) return undefined;
       if (token(records.slots(id)?.[1]) !== '.TIMEUNIT.') continue;
+      if (found) return undefined;
       const factor = secondsPerUnit(records, id);
       if (factor === undefined || (scale !== undefined && scale !== factor)) return undefined;
       scale = factor;
@@ -95,7 +103,7 @@ export function writtenTimeScale(lines: readonly string[], bound: number): (owne
     const head = stepRecordHead(line);
     if (!head) continue;
     const type = line.slice(head.typeStart, head.typeEnd).toUpperCase();
-    if (type !== 'IFCPROJECT' && !type.endsWith('UNIT') && type !== 'IFCCONVERSIONBASEDUNITWITHOFFSET' && type !== 'IFCUNITASSIGNMENT') continue;
+    if (type !== 'IFCPROJECT' && !type.endsWith('UNIT') && type !== 'IFCCONVERSIONBASEDUNITWITHOFFSET' && type !== 'IFCUNITASSIGNMENT' && type !== 'IFCDIMENSIONALEXPONENTS') continue;
     const record = readStepSlots(line, bound), id = slotRef(line.slice(0, head.eq));
     if (!record || id === null) continue;
     units.set(id, record);

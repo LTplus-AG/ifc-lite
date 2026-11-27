@@ -198,16 +198,15 @@ fn federated_downgrade_uses_each_retained_project_time_unit_11192() {
         .replace("1Yvct", "2Yvct").replace("IFCWORKPLAN(", "IFCWORKSCHEDULE(");
     for schema in ["IFC4", "IFC4X3"] {
         let a = export_step(minutes.as_bytes(), &options(schema)).unwrap();
-        let b = export_step(seconds.as_bytes(), &options(schema)).unwrap();
+        let b = export_step(seconds.as_bytes(), &options(schema)).unwrap().replace(".TIMEUNIT.,$,.SECOND.", ".TIMEUNIT.,.MILLI.,.SECOND.");
         let (out, stats) = export_merged_models(
             &[MergedModel::new(a.as_bytes()), MergedModel::new(b.as_bytes())],
             &MergedOptions { schema: Some("IFC2X3".into()), ..Default::default() },
         );
         assert_eq!(stats.federated_model_count, 1);
         assert_eq!(out.matches("=IFCPROJECT(").count(), 2);
-        for ty in ["IFCWORKPLAN(", "IFCWORKSCHEDULE("] {
-            assert!(out.lines().any(|line| line.contains(ty) && line.contains(",10.,-2.,")), "{out}");
-        }
+        assert!(out.lines().any(|line| line.contains("IFCWORKPLAN(") && line.contains(",10.,-2.,")), "{out}");
+        assert!(out.lines().any(|line| line.contains("IFCWORKSCHEDULE(") && line.contains(",10000.,-2000.,")), "{out}");
         assert!(!stats.warnings.iter().any(|w| w.contains("assumed seconds")), "{:?}", stats.warnings);
         let conflict = b.replace("((#3,#8))", "((#3,#6,#8))");
         let (out, stats) = export_merged_models(
@@ -217,5 +216,78 @@ fn federated_downgrade_uses_each_retained_project_time_unit_11192() {
         assert!(out.lines().any(|line| line.contains("IFCWORKPLAN(") && line.contains(",10.,-2.,")), "{out}");
         assert!(out.lines().any(|line| line.contains("IFCWORKSCHEDULE(") && line.contains(",10.,-2.,")), "{out}");
         assert_eq!(stats.warnings.iter().filter(|w| w.contains("assumed seconds")).count(), 1);
+    }
+}
+
+#[test]
+fn source_factor_dimensions_and_assignment_cardinality_11192() {
+    for (source, seconds, fallback) in [
+        (LEGACY.replace("IFCRATIOMEASURE(60.)", "IFCCOUNTMEASURE(0.5)"), "PT5S", false),
+        (LEGACY.replace("IFCRATIOMEASURE(60.)", "IFCCOUNTMEASURE(60.5)"), "PT605S", false),
+        (LEGACY.replace("(0,0,1,0,0,0,0)", "(1,0,0,0,0,0,0)"), "PT10S", true),
+        (LEGACY.replace("((#6))", "((#6,#8))").replace("#7=", "#8=IFCCONVERSIONBASEDUNIT(#5,.TIMEUNIT.,'MINUTE2',#4);\n#7="), "PT10S", true),
+    ] {
+        for schema in ["IFC4", "IFC4X3"] {
+            let opts = options(schema);
+            let (direct, _, warnings) = export_step_with_diagnostics(source.as_bytes(), &opts).unwrap();
+            let (logged, stats) = export_step_with_log(source.as_bytes(), &opts, &Default::default()).unwrap();
+            let (merged, merged_stats) = export_merged_models(&[MergedModel::new(source.as_bytes())],
+                &MergedOptions { schema: Some(schema.into()), ..Default::default() });
+            let subset = StepOptions { included: Some(vec![7]), ..options(schema) };
+            let (partial, _, partial_warnings) = export_step_with_diagnostics(source.as_bytes(), &subset).unwrap();
+            for (out, warnings) in [(direct, warnings), (logged, stats.warnings), (merged, merged_stats.warnings), (partial, partial_warnings)] {
+                assert!(out.contains(&format!("'{seconds}'")), "{schema}: {out}");
+                assert_eq!(warnings.iter().filter(|w| w.contains("assumed seconds")).count(), usize::from(fallback));
+            }
+        }
+    }
+}
+
+#[test]
+fn effective_source_graph_uses_factor_and_dimension_edits_before_conversion_11192() {
+    let source = LEGACY.replace("#7=", "#8=IFCMEASUREWITHUNIT(IFCCOUNTMEASURE(0.5),#3);\n#7=");
+    for (id, index, value, log_value, expected, fallback) in [
+        (6, 3, "#8", serde_json::json!("#8"), "'PT5S'", false),
+        (5, 0, "1", serde_json::json!(1), "'PT10S'", true),
+    ] {
+        let log = serde_json::from_value(serde_json::json!({"mutations":[
+            {"type":"UPDATE_POSITIONAL_ATTRIBUTE","entityId":id,"attributeName":format!("@{index}"),"newValue":log_value}
+        ]})).unwrap();
+        for target in ["IFC4", "IFC4X3"] {
+            let opts = StepOptions {
+                attribute_mutations: vec![AttrMutation { express_id: id, index, value: value.into() }],
+                ..options(target)
+            };
+            let (direct, _, warnings) = export_step_with_diagnostics(source.as_bytes(), &opts).unwrap();
+            let (logged, stats) = export_step_with_log(source.as_bytes(), &options(target), &log).unwrap();
+            let mut model = MergedModel::new(source.as_bytes());
+            model.included = Some(vec![7]);
+            let (merged, merged_stats) = export_merged_models_with_logs(&[model], &[Some(&log)],
+                &MergedOptions { schema: Some(target.into()), ..Default::default() }).unwrap();
+            for (out, warnings) in [(direct, warnings), (logged, stats.warnings), (merged, merged_stats.warnings)] {
+                assert!(out.contains(expected), "{out}");
+                assert_eq!(warnings.iter().filter(|w| w.contains("assumed seconds")).count(), usize::from(fallback));
+            }
+        }
+    }
+}
+
+#[test]
+fn downgrade_rejects_invalid_written_units_but_allows_distinct_agreeing_projects_11192() {
+    for schema in ["IFC4", "IFC4X3"] {
+        let modern = export_step(LEGACY.as_bytes(), &options(schema)).unwrap();
+        let project = modern.lines().find(|line| line.starts_with("#1=")).unwrap();
+        for (input, expected, fallback) in [
+            (modern.replace("(0,0,1,0,0,0,0)", "(1,0,0,0,0,0,0)"), ",600.,", true),
+            (modern.replace("((#6))", "((#6,#8))").replace("#7=", "#8=IFCCONVERSIONBASEDUNIT(#5,.TIMEUNIT.,'MINUTE2',#4);\n#7="), ",600.,", true),
+            (modern.replace(project, &format!("{project}\n{}", project.replacen("#1=", "#9=", 1).replace("0Yvct", "2Yvct"))), ",10.,", false),
+        ] {
+            let (direct, _, warnings) = export_step_with_diagnostics(input.as_bytes(), &options("IFC2X3")).unwrap();
+            let (logged, stats) = export_step_with_log(input.as_bytes(), &options("IFC2X3"), &Default::default()).unwrap();
+            for (out, warnings) in [(direct, warnings), (logged, stats.warnings)] {
+                assert!(out.lines().any(|line| line.contains("IFCWORKPLAN(") && line.contains(expected)), "{out}");
+                assert_eq!(warnings.iter().filter(|w| w.contains("assumed seconds")).count(), usize::from(fallback));
+            }
+        }
     }
 }

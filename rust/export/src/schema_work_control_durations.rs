@@ -20,6 +20,8 @@ struct Control {
 
 #[derive(Default)]
 pub(crate) struct WorkControlDurations {
+    /// Effective mutation-log records, in source layout before value-form conversion.
+    pub(crate) log_unit_graph: Option<String>,
     controls: Vec<Control>,
     by_id: HashMap<u32, usize>,
     models: Vec<ProjectUnits>,
@@ -29,6 +31,15 @@ pub(crate) struct WorkControlDurations {
 }
 
 impl WorkControlDurations {
+    pub(crate) fn note_log_source(&mut self, line: &str) {
+        if let Some(graph) = &mut self.log_unit_graph {
+            if crate::step_record_frame::record_head(line).is_some_and(|head| crate::schema_project_time_unit::graph_type(head.type_name(line))) {
+                graph.push_str(line);
+                graph.push('\n');
+            }
+        }
+    }
+
     pub(super) fn capture(&mut self, id: u32, index: u8, up: bool) {
         let control = *self.by_id.entry(id).or_insert_with(|| {
             self.controls.push(Control { slots: Vec::new(), up, model: self.models.len() });
@@ -69,7 +80,7 @@ impl WorkControlDurations {
             });
         }
         if scales.is_empty() {
-            scales.push(project_time_scale(text.as_bytes()));
+            scales.push(project_time_scale(self.log_unit_graph.as_deref().unwrap_or(text).as_bytes()));
         }
         let mut scanner = EntityScanner::new(text);
         let mut output = String::new();

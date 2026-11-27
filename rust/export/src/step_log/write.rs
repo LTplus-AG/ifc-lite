@@ -145,6 +145,7 @@ fn write_line<W: Write>(
     if converting {
         let Some(flat) = flatten.line(from, text.to_string()) else { return Ok(false) };
         let text = flat.as_str();
+        checks.forms.durations.note_log_source(text);
         let converted = crate::schema_convert::convert_step_line(text, from, to, id, slot_fill, Some(checks))?;
         // A record the conversion does not write (#10763).
         if converted.is_empty() { return Ok(false); }
@@ -301,6 +302,7 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
     let temporal_buffer = body_has(&pass, content, |bytes| {
         crate::schema_value_forms::ValueForms::buffers_temporal_values(bytes, &source_label, &target)
     });
+    checks.forms.durations.log_unit_graph = temporal_buffer.then(String::new);
     if target_is_ifc2x3 || temporal_buffer { checks.forms.defer_temporal_values(); }
     let may_prune_upgrade = crate::schema_unrooted_upgrade::Upgrade::between(&source_label, &target).filter(|upgrade|
         !pass.overlay.retype_order.is_empty() || !pass.created_lines.is_empty()

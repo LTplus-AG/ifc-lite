@@ -26,6 +26,12 @@ fn seconds_per_unit(decoder: &mut EntityDecoder, mut id: u32) -> Option<f64> {
                 return (factor > 0.0 && factor.is_finite()).then_some(factor);
             }
             IfcType::IfcConversionBasedUnit => {
+                let dimensions = decoder.decode_by_id(unit.ref_at(slot::IfcConversionBasedUnit::DIMENSIONS)?).ok()?;
+                use AttributeValue::Integer;
+                if dimensions.ifc_type != IfcType::IfcDimensionalExponents
+                    || !matches!(dimensions.attributes.as_slice(), [Integer(0), Integer(0), Integer(1), Integer(0), Integer(0), Integer(0), Integer(0)]) {
+                    return None;
+                }
                 let measure = decoder
                     .decode_by_id(unit.ref_at(slot::IfcConversionBasedUnit::CONVERSION_FACTOR)?)
                     .ok()?;
@@ -89,6 +95,7 @@ pub(crate) fn scale_for_projects(decoder: &mut EntityDecoder, projects: &[u32]) 
             {
                 continue;
             }
+            if found { return None; }
             let factor = seconds_per_unit(decoder, unit_id)?;
             if scale.is_some_and(|previous| previous != factor) {
                 return None;
@@ -103,9 +110,16 @@ pub(crate) fn scale_for_projects(decoder: &mut EntityDecoder, projects: &[u32]) 
     scale
 }
 
+/// Source records needed to resolve and validate a project TIMEUNIT.
+pub(crate) fn graph_type(ty: &str) -> bool {
+    ty.get(ty.len().saturating_sub(4)..).is_some_and(|suffix| suffix.eq_ignore_ascii_case("UNIT"))
+        || ["IFCPROJECT", "IFCUNITASSIGNMENT", "IFCDIMENSIONALEXPONENTS", "IFCCONVERSIONBASEDUNITWITHOFFSET"]
+            .iter().any(|name| ty.eq_ignore_ascii_case(name))
+}
+
 /// A subset can omit the source project. Rebuild just its unit graph with the same
 /// accepted edits and copy-on-write repointing used to serialize the records.
-pub(crate) fn subset_source_scale(
+pub(crate) fn effective_source_scale(
     content: &[u8],
     index: &crate::step_index::RecordIndex,
     edits: &std::collections::HashMap<u32, std::collections::BTreeMap<usize, String>>,
@@ -119,13 +133,7 @@ pub(crate) fn subset_source_scale(
     let mut graph = String::new();
     let mut scanner = EntityScanner::new(content);
     while let Some((id, ty, start, end)) = scanner.next_entity() {
-        let ty = ty.to_ascii_uppercase();
-        if !(ty == "IFCPROJECT"
-            || ty.ends_with("UNIT")
-            || ty == "IFCCONVERSIONBASEDUNITWITHOFFSET"
-            || ty == "IFCUNITASSIGNMENT")
-            || !index.is_kept(id, start)
-        {
+        if !graph_type(ty) || !index.is_kept(id, start) {
             continue;
         }
         let line = String::from_utf8_lossy(&content[start..end]);

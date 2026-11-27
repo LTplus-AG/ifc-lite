@@ -8149,3 +8149,10 @@ topology before refreshing export goldens. The precise probe and matching
 physical CPU affinity made the short phases measurable. An isolated FZK-Haus
 timing spike still invalidated the first comparison. Retain that run and
 qualify a separate quiet window against the same thresholds.
+
+The upgrade exceeded the main WASM engine's size ceiling. Compiling only the
+embedded JPEG decoder for size in that bundle cleared the ceiling and kept
+the embedded texture output byte-identical. The stricter size setting slowed
+the larger texture decode beyond the accepted limit. Use an identical-engine
+control before comparing cold texture loads. Batching independent fresh loads
+made the short decode cases repeatable without warming the decoder.

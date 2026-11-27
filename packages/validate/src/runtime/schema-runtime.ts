@@ -46,7 +46,14 @@ export class ResolvedEntity {
   }
 
   slot(name: string, group?: string): AttributeSlot | undefined {
-    return (group && this.slots.get(`${group}.${name}`)) || this.slots.get(name);
+    if (group) {
+      const qualified = this.slots.get(`${group}.${name}`);
+      if (qualified) return qualified;
+      const parent = this.chain.find(level => level.upper === group);
+      const inherited = parent?.slots.get(name);
+      if (inherited?.k === 'inverse') return inherited;
+    }
+    return this.slots.get(name);
   }
 
   isA(upperName: string): boolean {

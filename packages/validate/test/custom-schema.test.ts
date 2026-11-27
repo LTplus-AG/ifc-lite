@@ -410,3 +410,17 @@ ENTITY RA; Target : A; END_ENTITY; ENTITY RB; Target : B; END_ENTITY; END_SCHEMA
     [1, 'C.BHas'], [2, 'C.AHas'], [4, 'C.AHas'], [4, 'C.BHas'],
   ]);
 });
+
+it('resolves an intermediate parent’s inherited inverse in its own group (#11647)', async () => {
+  const { schema } = generated(`SCHEMA S; ENTITY A; INVERSE Links : SET [1:?] OF RA FOR Target; END_ENTITY;
+ENTITY Mid SUBTYPE OF (A); END_ENTITY;
+ENTITY B; INVERSE Links : SET [1:?] OF RB FOR Target; END_ENTITY;
+ENTITY C SUBTYPE OF (Mid,B); WHERE MidHas : SIZEOF(SELF\\Mid.Links) > 0; BHas : SIZEOF(SELF\\B.Links) > 0; END_ENTITY;
+ENTITY RA; Target : A; END_ENTITY; ENTITY RB; Target : B; END_ENTITY; END_SCHEMA;`);
+  const report = await validateStepText('DATA;#1=C();#2=C();#3=C();#4=RA(#1);#5=RB(#2);#6=RA(#3);#7=RB(#3);ENDSEC;', { schema, categories: ['entity_rule', 'schema'] });
+  expect(report.stats.entityRuleEvaluations).toBe(6);
+  expect(report.findings.filter(f => f.category === 'entity_rule').map(f => [f.instance, f.rule])).toEqual([[1, 'C.BHas'], [2, 'C.MidHas']]);
+  expect(report.findings.filter(f => f.rule === 'inverse-cardinality').map(f => [f.instance, f.message.split(' OF ')[1]])).toEqual([
+    [1, 'RB FOR Target has 0'], [2, 'RA FOR Target has 0'],
+  ]);
+});

@@ -6,6 +6,7 @@ const NPM_MANIFEST_RE = /^(?:package\.json|(?:packages|apps|examples)\/[^/]+\/pa
 const CARGO_MANIFESTS = new Set([
   'Cargo.toml',
   'rust/core/Cargo.toml',
+  'rust/cache/Cargo.toml',
   'rust/geometry/Cargo.toml',
   'rust/processing/Cargo.toml',
   'rust/clash/Cargo.toml',

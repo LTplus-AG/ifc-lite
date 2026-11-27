@@ -27,7 +27,7 @@ import { isStrictAttrPrefix, replacedSlot } from './schema-converter-renames.js'
 import { previewTypedPropertyNames } from './schema-converter-typed-properties.js';
 import { getCompleteEntityIndex } from './entity-iteration.js';
 import { attrMapFor, attrsDroppedByMap, dropsSetMembers } from './schema-converter-attr-maps.js';
-import { droppedIfc4x3SlotNames, needsIfc4x3SlotMap } from './schema-converter-ifc4x3-upgrade.js';
+import { droppedUpgradeSlotNames, needsUpgradeSlotMap } from './schema-converter-ifc4x3-upgrade.js';
 import { previewUpgradeDependents } from './schema-converter-unrooted-upgrade.js';
 import { holdsValue } from './step-comment-skip.js';
 import { isRootedEntityType, missingTypeRoute } from './schema-untranslatable.js';
@@ -128,8 +128,8 @@ export function classifyEntityTypeConversion(
     return { targetType: newType, kind: upper === newType ? 'identity' : 'renamed', droppedAttributes: [] };
   }
 
-  if (toSchema === 'IFC4X3' && upper !== newType && needsIfc4x3SlotMap(upper)) {
-    return { targetType: newType, kind: 'lossy', droppedAttributes: droppedIfc4x3SlotNames(upper, srcAttrs, tgtAttrs) };
+  if (upper !== newType && needsUpgradeSlotMap(upper, fromSchema, toSchema)) {
+    return { targetType: newType, kind: 'lossy', droppedAttributes: droppedUpgradeSlotNames(upper, srcAttrs, tgtAttrs) };
   }
 
   if (srcAttrs.length === tgtAttrs.length && srcAttrs.every((name, i) => name === tgtAttrs[i])) {

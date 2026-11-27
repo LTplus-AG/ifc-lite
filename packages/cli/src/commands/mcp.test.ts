@@ -30,8 +30,17 @@ describe('ifc-lite mcp (#11534)', () => {
     const out = captureStdout();
     await mcpCommand(['--help']);
     expect(out()).toContain('Usage: ifc-lite mcp [files…]');
+    expect(out()).toContain('ifc-lite mcp install --client');
     expect(out()).toContain('--bridge');
     expect(out()).toContain('--read-only-token');
+  });
+
+  it('routes install help through the shared runtime (#11580)', async () => {
+    const out = captureStdout();
+    await mcpCommand(['install', '--help']);
+    expect(process.exitCode).toBe(0);
+    expect(out()).toContain('Usage: ifc-lite mcp install --client');
+    expect(out()).toContain('--dry-run');
   });
 
   it('prints the MCP server version', async () => {

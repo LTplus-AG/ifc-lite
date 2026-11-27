@@ -167,6 +167,8 @@ export interface ToolDefinition {
   title?: string;
   description: string;
   inputSchema: JsonSchema;
+  /** JSON Schema of `structuredContent` on success (MCP 2025-06-18). */
+  outputSchema?: JsonSchema;
   annotations?: ToolAnnotations;
   _meta?: ToolMeta;
 }

@@ -1,0 +1,613 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * `ifc-lite-mcp install`: the config each client gets, and that an existing
+ * config keeps every other server. Most cases run against an in-memory file
+ * system on a chosen OS; the last one writes real files in a temp dir.
+ */
+
+import { describe, it, expect, afterEach } from 'vitest';
+import { mkdtempSync, readdirSync, rmSync, writeFileSync, mkdirSync, symlinkSync, lstatSync, statSync, chmodSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { runInstall } from './run.js';
+import { nodeInstallIo, type InstallIo } from './io.js';
+import { InstallError, type HostEnv } from './clients.js';
+
+const VERSION = '0.32.0';
+const PKG = `@ifc-lite/mcp@^${VERSION}`;
+
+interface Fake extends InstallIo {
+  files: Map<string, string>;
+  runs: Array<{ command: string; args: string[] }>;
+  stdout: string;
+  stderr: string;
+}
+
+function fakeIo(host: Partial<HostEnv> = {}, opts: { missing?: boolean } = {}): Fake {
+  const io: Fake = {
+    host: { platform: 'darwin', home: '/Users/u', cwd: '/work/proj', env: {}, listDir: () => [], isFile: () => true, warn: () => {}, ...host },
+    files: new Map(),
+    runs: [],
+    stdout: '',
+    stderr: '',
+    readConfig: (p) => io.files.get(p),
+    writeFile: (p, t, expected, backupTo) => {
+      if (backupTo !== undefined && expected !== undefined) io.files.set(backupTo, expected);
+      io.files.set(p, t);
+    },
+    run(command, args) {
+      io.runs.push({ command, args });
+      return opts.missing ? { status: 127, missing: true } : { status: 0 };
+    },
+    out: (t) => void (io.stdout += t),
+    err: (t) => void (io.stderr += t),
+    now: () => new Date('2026-11-26T10:20:30Z'),
+  };
+  return io;
+}
+
+const install = (argv: string[], io: InstallIo) => runInstall(argv, io, 'ifc-lite-mcp install', VERSION);
+
+/** A config file on disk, read through the same io seam install writes it with. */
+const configAt = (path: string) => JSON.parse(nodeInstallIo().readConfig(path) ?? 'null');
+
+describe('ifc-lite-mcp install: where each client is configured', () => {
+  it.each([
+    ['darwin', {}, '/Users/u/Library/Application Support/Claude/claude_desktop_config.json'],
+    ['win32', { APPDATA: 'C:\\Users\\u\\AppData\\Roaming' }, 'C:\\Users\\u\\AppData\\Roaming\\Claude\\claude_desktop_config.json'],
+    ['linux', {}, '/Users/u/.config/Claude/claude_desktop_config.json'],
+  ] as const)('Claude Desktop on %s', (platform, env, path) => {
+    const io = fakeIo({ platform, env, home: platform === 'win32' ? 'C:\\Users\\u' : '/Users/u' });
+    expect(install(['--client', 'claude-desktop'], io)).toBe(0);
+    expect(JSON.parse(io.files.get(path) ?? 'null')).toEqual({
+      mcpServers: { 'ifc-lite': { command: 'npx', args: ['-y', PKG] } },
+    });
+  });
+
+  it('Claude Desktop from the Microsoft Store reads its virtualized AppData', () => {
+    const io = fakeIo({
+      platform: 'win32',
+      home: 'C:\\Users\\u',
+      env: { LOCALAPPDATA: 'C:\\Users\\u\\AppData\\Local' },
+      listDir: (p) => ({
+        'C:\\Users\\u\\AppData\\Local\\Packages': ['Claude_stale', 'Microsoft.Foo_1', 'Claude_pzs8sxrjxfjjc'],
+        'C:\\Users\\u\\AppData\\Local\\Packages\\Claude_pzs8sxrjxfjjc\\LocalCache\\Roaming\\Claude': ['claude_desktop_config.json'],
+        'C:\\Users\\u\\AppData\\Local\\Packages\\Claude_stale\\LocalCache\\Roaming\\Claude': ['logs'],
+      })[p] ?? [],
+    });
+    install(['--client', 'claude-desktop'], io);
+    expect([...io.files.keys()]).toEqual([
+      'C:\\Users\\u\\AppData\\Local\\Packages\\Claude_pzs8sxrjxfjjc\\LocalCache\\Roaming\\Claude\\claude_desktop_config.json',
+    ]);
+  });
+
+  it('an empty XDG_CONFIG_HOME counts as unset', () => {
+    const io = fakeIo({ platform: 'linux', env: { XDG_CONFIG_HOME: '' } });
+    install(['--client', 'claude-desktop'], io);
+    expect([...io.files.keys()]).toEqual(['/Users/u/.config/Claude/claude_desktop_config.json']);
+  });
+
+  it('a Store folder without a config file leaves %APPDATA% in charge', () => {
+    const io = fakeIo({
+      platform: 'win32',
+      home: 'C:\\Users\\u',
+      env: { APPDATA: 'C:\\A', LOCALAPPDATA: 'C:\\L' },
+      listDir: (p) => (p === 'C:\\L\\Packages' ? ['Claude_x'] : ['logs']),
+    });
+    install(['--client', 'claude-desktop'], io);
+    expect([...io.files.keys()]).toEqual(['C:\\A\\Claude\\claude_desktop_config.json']);
+  });
+
+  it('an unreadable Store folder falls back to %APPDATA%', () => {
+    const io = fakeIo({
+      platform: 'win32',
+      home: 'C:\\Users\\u',
+      env: { APPDATA: 'C:\\A', LOCALAPPDATA: 'C:\\L' },
+      listDir: (p) => {
+        if (p === 'C:\\L\\Packages') return ['Claude_x'];
+        throw new InstallError(`EACCES: permission denied, scandir '${p}'`);
+      },
+    });
+    expect(install(['--client', 'claude-desktop'], io)).toBe(0);
+    expect([...io.files.keys()]).toEqual(['C:\\A\\Claude\\claude_desktop_config.json']);
+  });
+
+  it('--allow is refused on Windows, where the server cannot match it yet', () => {
+    const io = fakeIo({ platform: 'win32', home: 'C:\\Users\\u', cwd: 'C:\\w' });
+    expect(install(['--client', 'cursor', '--', '--allow', 'C:\\models'], io)).toBe(1);
+    expect(io.stderr).toContain('drop --allow');
+  });
+
+  it('a Windows root-relative path gets the drive of the current directory', () => {
+    const io = fakeIo({ platform: 'win32', home: 'C:\\Users\\u', cwd: 'D:\\work' });
+    install(['--client', 'cursor', '\\proj\\m.ifc'], io);
+    expect(JSON.parse(io.files.get('C:\\Users\\u\\.cursor\\mcp.json') ?? 'null').mcpServers['ifc-lite'].args[2]).toBe('D:\\proj\\m.ifc');
+  });
+
+  it('Cursor user and project scope', () => {
+    const io = fakeIo();
+    install(['--client', 'cursor'], io);
+    install(['--client', 'cursor', '--scope', 'project'], io);
+    expect([...io.files.keys()]).toEqual(['/Users/u/.cursor/mcp.json', '/work/proj/.cursor/mcp.json']);
+  });
+
+  it('VS Code workspace file uses "servers" and type stdio', () => {
+    const io = fakeIo();
+    install(['--client', 'vscode', '--scope', 'project'], io);
+    expect(JSON.parse(io.files.get('/work/proj/.vscode/mcp.json') ?? 'null')).toEqual({
+      servers: { 'ifc-lite': { type: 'stdio', command: 'npx', args: ['-y', PKG] } },
+    });
+  });
+
+  it('VS Code user scope goes through `code --add-mcp`, only with --force', () => {
+    const refused = fakeIo();
+    // CodeRabbit on #11580: --add-mcp replaces a same-name entry install cannot see.
+    expect(install(['--client', 'vscode', '--', '--bridge'], refused)).toBe(1);
+    expect(refused.runs).toEqual([]);
+    const io = fakeIo();
+    expect(install(['--client', 'vscode', '--force', '--', '--bridge'], io)).toBe(0);
+    expect(io.runs).toEqual([{
+      command: 'code',
+      args: ['--add-mcp', JSON.stringify({ name: 'ifc-lite', type: 'stdio', command: 'npx', args: ['-y', PKG, '--bridge'] })],
+    }]);
+  });
+
+  it('Claude Code goes through `claude mcp add` with the server after --', () => {
+    const io = fakeIo();
+    expect(install(['--client', 'claude-code', 'models/a.ifc', '--', '--read-only', '--allow', 'models'], io)).toBe(0);
+    expect(io.runs).toEqual([{
+      command: 'claude',
+      args: ['mcp', 'add', '--scope', 'user', 'ifc-lite', '--', 'npx', '-y', PKG,
+        '/work/proj/models/a.ifc', '--read-only', '--allow', '/work/proj/models'],
+    }]);
+  });
+
+  it('server flags with values pass through untouched', () => {
+    const io = fakeIo();
+    expect(install(['--client', 'cursor', '--', '--bsdd', 'https://x', '--read-only'], io)).toBe(0);
+    expect(JSON.parse(io.files.get('/Users/u/.cursor/mcp.json') ?? 'null').mcpServers['ifc-lite'].args)
+      .toEqual(['-y', PKG, '--bsdd', 'https://x', '--read-only']);
+  });
+
+  it('--force over an old HTTP entry drops its url and headers', () => {
+    const io = fakeIo();
+    const p = '/Users/u/.cursor/mcp.json';
+    io.files.set(p, JSON.stringify({ mcpServers: { 'ifc-lite': { url: 'http://x/mcp', headers: { A: 'b' }, env: { T: '1' } } } }));
+    expect(install(['--client', 'cursor', '--force'], io)).toBe(0);
+    expect(JSON.parse(io.files.get(p) ?? 'null').mcpServers['ifc-lite']).toEqual({ env: { T: '1' }, command: 'npx', args: ['-y', PKG] });
+  });
+
+  it('accepts --transport stdio, which is what clients use anyway', () => {
+    const io = fakeIo();
+    expect(install(['--client', 'cursor', '--', '--transport', 'stdio'], io)).toBe(0);
+  });
+
+  it('Claude Code --force preserves the prior config when the write fails (#11580)', () => {
+    const io = fakeIo();
+    const path = '/Users/u/.claude.json';
+    const before = '{"mcpServers":{"ifc-lite":{"command":"old","env":{"TOKEN":"private"}}}}';
+    io.files.set(path, before);
+    io.writeFile = () => { throw new InstallError('EACCES: permission denied'); };
+    expect(install(['--client', 'claude-code', '--force'], io)).toBe(1);
+    expect(io.files.get(path)).toBe(before);
+    expect([...io.files.keys()]).toEqual([path]);
+    expect(io.stderr).toContain('EACCES');
+    expect(io.runs).toEqual([]);
+  });
+
+  it('Claude Code on Windows wraps npx in cmd /c with a pin cmd cannot mangle', () => {
+    const io = fakeIo({ platform: 'win32', home: 'C:\\Users\\u', cwd: 'C:\\w' });
+    expect(install(['--client', 'claude-code'], io)).toBe(0);
+    expect(io.runs[0].args).toEqual(['mcp', 'add', '--scope', 'user', 'ifc-lite', '--', 'cmd', '/c', 'npx', '-y', PKG.replace('^', '~')]);
+  });
+
+  it('Claude Code --force keeps the Windows launcher and pin (#11580)', () => {
+    const io = fakeIo({ platform: 'win32', home: 'C:\\Users\\u', cwd: 'C:\\work' });
+    expect(install(['--client', 'claude-code', '--force'], io)).toBe(0);
+    expect(JSON.parse(io.files.get('C:\\Users\\u\\.claude.json') ?? 'null')).toEqual({
+      mcpServers: { 'ifc-lite': { type: 'stdio', command: 'cmd', args: ['/c', 'npx', '-y', PKG.replace('^', '~')] } },
+    });
+  });
+
+  it('Claude Code on Windows refuses a model path cmd /c would interpret', () => {
+    const io = fakeIo({ platform: 'win32', home: 'C:\\Users\\u', cwd: 'C:\\A&B' });
+    expect(install(['--client', 'claude-code', 'm.ifc'], io)).toBe(1);
+    expect(io.stderr).toContain('cmd /c would interpret');
+    expect(io.runs).toEqual([]);
+  });
+
+  it('VS Code user scope on Windows is refused with the JSON to add by hand', () => {
+    const io = fakeIo({ platform: 'win32', home: 'C:\\Users\\u', cwd: 'C:\\w' });
+    expect(install(['--client', 'vscode'], io)).toBe(1);
+    expect(io.stderr).toContain('MCP: Open User Configuration');
+    expect(io.runs).toEqual([]);
+  });
+
+  it('warns when the client\'s config folder does not exist yet', () => {
+    let warned = '';
+    const io = fakeIo({ warn: (t) => void (warned += t) });
+    install(['--client', 'claude-desktop'], io);
+    expect(warned).toContain('is Claude Desktop installed?');
+  });
+
+  it.each([
+    ['project', '/work/proj/.mcp.json'],
+    ['user', '/work/claude-config/.claude.json'],
+  ])('Claude Code --force merges only the %s entry (#11580)', (scope, path) => {
+    const io = fakeIo({ env: { CLAUDE_CONFIG_DIR: '../claude-config' } });
+    const other = { command: 'other', args: [] };
+    const custom = { env: { TOKEN: 'private' }, cwd: '/models' };
+    io.files.set(path, JSON.stringify({
+      theme: 'dark',
+      mcpServers: { other, 'ifc-lite': { type: 'sse', url: 'https://example.com/mcp', ...custom } },
+    }));
+    expect(install(['--client', 'claude-code', '--force', '--scope', scope], io)).toBe(0);
+    expect(io.runs).toEqual([]);
+    expect(JSON.parse(io.files.get(path) ?? 'null')).toEqual({
+      theme: 'dark',
+      mcpServers: { other, 'ifc-lite': { type: 'stdio', command: 'npx', args: ['-y', PKG], ...custom } },
+    });
+  });
+});
+
+describe('ifc-lite-mcp install: existing configs', () => {
+  const path = '/Users/u/.cursor/mcp.json';
+  const other = { mcpServers: { github: { command: 'gh-mcp', args: ['--x'] } }, theme: 'dark' };
+
+  it('keeps other servers and keys, and backs the file up', () => {
+    const io = fakeIo();
+    const before = JSON.stringify(other);
+    io.files.set(path, before);
+    expect(install(['--client', 'cursor'], io)).toBe(0);
+    const after = JSON.parse(io.files.get(path) ?? 'null');
+    expect(after.theme).toBe('dark');
+    expect(after.mcpServers.github).toEqual(other.mcpServers.github);
+    expect(after.mcpServers['ifc-lite'].args).toEqual(['-y', PKG]);
+    expect(io.files.get(`${path}.bak-20261126-102030000`)).toBe(before);
+  });
+
+  it('--force keeps keys the user added to the entry, such as env', () => {
+    const io = fakeIo();
+    io.files.set(path, JSON.stringify({ mcpServers: { 'ifc-lite': { command: 'npx', args: ['old'], env: { T: '1' } } } }));
+    expect(install(['--client', 'cursor', '--force'], io)).toBe(0);
+    expect(JSON.parse(io.files.get(path) ?? 'null').mcpServers['ifc-lite']).toEqual({ command: 'npx', args: ['-y', PKG], env: { T: '1' } });
+    expect(install(['--client', 'cursor'], io)).toBe(0);
+    expect(io.stderr).toContain('already has');
+  });
+
+  it('a model outside every --allow root is refused, as the loader would', () => {
+    const io = fakeIo();
+    expect(install(['--client', 'cursor', 'a/m.ifc', '--', '--allow', 'b'], io)).toBe(1);
+    expect(io.stderr).toContain('outside every --allow root');
+    expect(install(['--client', 'cursor', 'b/m.ifc', '--', '--allow', 'b'], io)).toBe(0);
+  });
+
+  it('an HTTP entry in a conflict shows its origin, never its headers', () => {
+    const io = fakeIo();
+    io.files.set(path, JSON.stringify({ mcpServers: { 'ifc-lite': { url: 'https://h.example/mcp?key=sk', headers: { Authorization: 'Bearer sk' } } } }));
+    install(['--client', 'cursor'], io);
+    expect(io.stderr).toContain('url: https://h.example');
+    expect(io.stderr).not.toContain('sk');
+  });
+
+  it('a missing model file is refused, not written', () => {
+    const io = fakeIo({ isFile: () => false });
+    expect(install(['--client', 'cursor', 'modle.ifc'], io)).toBe(1);
+    expect(io.stderr).toContain('No model file at /work/proj/modle.ifc');
+    expect(io.files.size).toBe(0);
+  });
+
+  it('the conflict message names env keys but never prints their values', () => {
+    const io = fakeIo();
+    io.files.set(path, JSON.stringify({ mcpServers: { 'ifc-lite': { command: 'node', env: { TOKEN: 'sk-secret' } } } }));
+    expect(install(['--client', 'cursor'], io)).toBe(1);
+    expect(io.stderr).toContain('also: env');
+    expect(io.stderr).not.toContain('sk-secret');
+  });
+
+  it('an entry with an older pin is a conflict: install cannot tell it wrote it (CodeRabbit on #11580)', () => {
+    const io = fakeIo();
+    io.files.set(path, JSON.stringify({ mcpServers: { 'ifc-lite': { command: 'npx', args: ['-y', '@ifc-lite/mcp@^0.20.0'], env: { T: '1' } } } }));
+    expect(install(['--client', 'cursor'], io)).toBe(1);
+    expect(install(['--client', 'cursor', '--force'], io)).toBe(0);
+    expect(JSON.parse(io.files.get(path) ?? 'null').mcpServers['ifc-lite']).toEqual({ command: 'npx', args: ['-y', PKG], env: { T: '1' } });
+  });
+
+  it('an older release does not downgrade a newer entry without --force', () => {
+    const io = fakeIo();
+    io.files.set(path, JSON.stringify({ mcpServers: { 'ifc-lite': { command: 'npx', args: ['-y', '@ifc-lite/mcp@^9.0.0'] } } }));
+    expect(install(['--client', 'cursor'], io)).toBe(1);
+  });
+
+  it('--force over a VS Code workspace entry keeps its type', () => {
+    const io = fakeIo();
+    const vs = '/work/proj/.vscode/mcp.json';
+    io.files.set(vs, JSON.stringify({ servers: { 'ifc-lite': { type: 'stdio', command: 'npx', args: ['-y', '@ifc-lite/mcp@^0.20.0-next.1'] } } }));
+    expect(install(['--client', 'vscode', '--scope', 'project', '--force'], io)).toBe(0);
+    expect(JSON.parse(io.files.get(vs) ?? 'null').servers['ifc-lite']).toEqual({ type: 'stdio', command: 'npx', args: ['-y', PKG] });
+  });
+
+  it('a bare @ifc-lite/mcp entry is not pinned without --force', () => {
+    const io = fakeIo();
+    io.files.set(path, JSON.stringify({ mcpServers: { 'ifc-lite': { command: 'npx', args: ['-y', '@ifc-lite/mcp'] } } }));
+    expect(install(['--client', 'cursor'], io)).toBe(1);
+  });
+
+  it('a hand-picked exact pin is not moved without --force', () => {
+    const io = fakeIo();
+    io.files.set(path, JSON.stringify({ mcpServers: { 'ifc-lite': { command: 'npx', args: ['-y', '@ifc-lite/mcp@0.20.1'] } } }));
+    expect(install(['--client', 'cursor'], io)).toBe(1);
+  });
+
+  it('an older entry with other flags still needs --force', () => {
+    const io = fakeIo();
+    io.files.set(path, JSON.stringify({ mcpServers: { 'ifc-lite': { command: 'npx', args: ['-y', '@ifc-lite/mcp@^0.20.0', '--read-only'] } } }));
+    expect(install(['--client', 'cursor'], io)).toBe(1);
+    expect(io.stderr).toContain('--force');
+  });
+
+  it('--open is written with a warning that it opens a tab at every start', () => {
+    let warned = '';
+    const io = fakeIo({ warn: (t) => void (warned += t) });
+    expect(install(['--client', 'cursor', 'm.ifc', '--', '--open'], io)).toBe(0);
+    expect(warned).toContain('every time');
+  });
+
+  it('refuses a different entry with the same name unless --force', () => {
+    const io = fakeIo();
+    const mine = JSON.stringify({ mcpServers: { 'ifc-lite': { command: 'node', args: ['mine.js'] } } });
+    io.files.set(path, mine);
+    expect(install(['--client', 'cursor'], io)).toBe(1);
+    expect(io.files.get(path)).toBe(mine);
+    expect(io.stderr).toContain('--force');
+    expect(install(['--client', 'cursor', '--force'], io)).toBe(0);
+    expect(JSON.parse(io.files.get(path) ?? 'null').mcpServers['ifc-lite'].command).toBe('npx');
+  });
+
+  it('an entry with the same content in another key order is unchanged', () => {
+    const io = fakeIo();
+    io.files.set(path, JSON.stringify({ mcpServers: { 'ifc-lite': { args: ['-y', PKG], command: 'npx' } } }));
+    expect(install(['--client', 'cursor'], io)).toBe(0);
+    expect(io.stderr).toContain('already has');
+  });
+
+  it('a name shared with an Object.prototype member is just a name', () => {
+    const io = fakeIo();
+    expect(install(['--client', 'cursor', '--name', 'constructor'], io)).toBe(0);
+    expect(Object.keys(JSON.parse(io.files.get(path) ?? 'null').mcpServers)).toEqual(['constructor']);
+  });
+
+  it('a second run with the same entry changes nothing', () => {
+    const io = fakeIo();
+    install(['--client', 'cursor'], io);
+    const files = io.files.size;
+    expect(install(['--client', 'cursor'], io)).toBe(0);
+    expect(io.files.size).toBe(files);
+    expect(io.stderr).toContain('already has');
+  });
+
+  it('reads a file saved with a byte-order mark', () => {
+    const io = fakeIo();
+    io.files.set(path, `\uFEFF${JSON.stringify(other)}`);
+    expect(install(['--client', 'cursor'], io)).toBe(0);
+    expect(JSON.parse(io.files.get(path) ?? 'null').mcpServers.github).toEqual(other.mcpServers.github);
+  });
+
+  it('refuses a file with comments and prints the entry to add by hand', () => {
+    const io = fakeIo();
+    const jsonc = '{\n  // mine\n  "mcpServers": {}\n}\n';
+    io.files.set(path, jsonc);
+    expect(install(['--client', 'cursor'], io)).toBe(1);
+    expect(io.files.get(path)).toBe(jsonc);
+    expect(io.stderr).toContain('"ifc-lite"');
+  });
+});
+
+describe('ifc-lite-mcp install: dry run and usage errors', () => {
+  it('--dry-run prints only the new entry, never other servers, and writes nothing', () => {
+    const io = fakeIo();
+    const path = '/Users/u/Library/Application Support/Claude/claude_desktop_config.json';
+    io.files.set(path, JSON.stringify({ mcpServers: { gh: { command: 'gh', env: { GITHUB_TOKEN: 'secret' } } } }));
+    expect(install(['--client', 'claude-desktop', '--dry-run'], io)).toBe(0);
+    expect(io.files.size).toBe(1);
+    expect(io.stdout).not.toContain('secret');
+    expect(JSON.parse(io.stdout)).toEqual({ mcpServers: { 'ifc-lite': { command: 'npx', args: ['-y', PKG] } } });
+  });
+
+  it('--scope project warns about model paths given after --', () => {
+    const io = fakeIo();
+    install(['--client', 'cursor', '--scope', 'project', '--', '--read-only', 'model.ifc'], io);
+    expect(io.stderr).toContain('only work on this machine');
+  });
+
+  it('--dry-run for a CLI client prints the command, quoted', () => {
+    const io = fakeIo({ cwd: '/My Models' });
+    expect(install(['--client', 'claude-code', '--dry-run', 'a.ifc'], io)).toBe(0);
+    expect(io.runs).toEqual([]);
+    expect(io.stdout).toBe(`claude mcp add --scope user ifc-lite -- npx -y '${PKG}' '/My Models/a.ifc'\n`);
+  });
+
+  it('Claude Code --dry-run --force previews the merge without exposing existing settings (#11580)', () => {
+    const io = fakeIo();
+    const path = '/Users/u/.claude.json';
+    const before = '{"mcpServers":{"ifc-lite":{"command":"old","env":{"TOKEN":"private"}}}}';
+    io.files.set(path, before);
+    expect(install(['--client', 'claude-code', '--dry-run', '--force'], io)).toBe(0);
+    expect(io.runs).toEqual([]);
+    expect([...io.files]).toEqual([[path, before]]);
+    expect(JSON.parse(io.stdout)).toEqual({ mcpServers: { 'ifc-lite': { type: 'stdio', command: 'npx', args: ['-y', PKG] } } });
+    expect(io.stdout + io.stderr).not.toContain('private');
+  });
+
+  it('quotes the printed command for cmd.exe on Windows', () => {
+    const io = fakeIo({ platform: 'win32', home: 'C:\\Users\\u', cwd: 'C:\\My Models' });
+    install(['--client', 'claude-code', '--dry-run', 'a.ifc'], io);
+    expect(io.stdout).toBe(
+      `claude mcp add --scope user ifc-lite -- cmd /c npx -y ${PKG.replace('^', '~')} "C:\\My Models\\a.ifc"\n`,
+    );
+  });
+
+  it('a bridge viewer URL the bridge would refuse is refused at install', () => {
+    const io = fakeIo();
+    expect(install(['--client', 'cursor', '--', '--bridge', '--bridge-viewer-url', 'http://viewer.example'], io)).toBe(1);
+    expect(io.stderr).toContain('plain http on a non-loopback host');
+    expect(install(['--client', 'cursor', '--', '--bridge', '--bridge-viewer-url', 'http://localhost:3000'], io)).toBe(0);
+  });
+
+  it('prints the command when the client CLI is not on PATH', () => {
+    const io = fakeIo({}, { missing: true });
+    expect(install(['--client', 'claude-code'], io)).toBe(1);
+    expect(io.stderr).toContain(`claude mcp add --scope user ifc-lite -- npx -y '${PKG}'`);
+  });
+
+  it.each([
+    [[], '--client is required'],
+    [['--client', 'zed'], 'Unknown client'],
+    [['--client', 'cursor', '--read-only'], 'put it after --'],
+    [['--client', 'cursor', '--dry-run=true'], 'Unknown option --dry-run=true.'],
+    [['--client', 'cursor', '--', '--transport', 'http'], 'drop --transport'],
+    [['--client', 'cursor', '--', '--transport'], '--transport needs a value'],
+    [['--client', 'cursor', '--', '--version'], 'print and exit'],
+    [['--client', 'cursor', 'model.ifc', '--', '--bridge'], 'loads no files'],
+    [['--client', 'cursor', '-v'], 'not an install option'],
+    [['--client', 'cursor', '--', '--readonly'], 'no --readonly flag'],
+    [['--client', 'cursor', '--', '--bridge', '--bridge-port', 'abc'], '--bridge-port must be an integer'],
+    [['--client', 'cursor', '--', '--bridge', '--bridge-port', '65536'], '--bridge-port must be an integer'],
+    [['--client', 'cursor', '--', '--bridge-port', '9000'], 'nothing without --bridge'],
+    [['--client', 'cursor', '--', '--viewer-port', '9000'], 'nothing without --viewer'],
+    [['--client', 'cursor', '--', '--viewer', '--viewer-port', 'abc'], 'integer from 0 to 65535'],
+    [['--client', 'cursor', ''], 'empty argument'],
+    [['--client', 'cursor', '--', '--allow', ''], '--allow needs a value'],
+    [['--client', 'cursor', '--', '--token', 'abc'], 'for --transport http'],
+    [['--client', 'cursor', '--', '--read-only-token', 'abc'], 'for --transport http'],
+    [['--client', 'cursor', '--', '--transport', 'invalid'], '--transport must be stdio or http'],
+    [['--client', 'cursor', '--', '--insecure'], 'only act with'],
+    [['--client', 'cursor', '--', '--read-only=true'], 'with a space'],
+    [['--client', 'cursor', '--', '--allow', '--read-only'], '--allow needs a value'],
+    [['--client', 'cursor', '--', '--allow'], '--allow needs a value'],
+    [['--client', 'cursor', '--', '--transport=http'], 'with a space'],
+    [['--client', 'cursor', '--', '--allow=./models'], 'with a space'],
+    [['--client=cursor'], 'Write --client <value>'],
+    [['--client', 'cursor', '--', '--transport', 'stdio', '--transport', 'http'], 'drop --transport'],
+    [['--client', 'claude-desktop', '--scope', 'project'], 'no project config'],
+    [['--client', 'cursor', '--name', 'a b'], '--name'],
+  ])('%j is refused', (argv, message) => {
+    const io = fakeIo();
+    expect(install(argv, io)).toBe(1);
+    expect(io.stderr).toContain(message);
+    expect(io.files.size).toBe(0);
+  });
+});
+
+describe('ifc-lite-mcp install: real files', () => {
+  let dir = '';
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  it('refuses a locked replacement without touching the config or creating a backup (#11580)', () => {
+    dir = mkdtempSync(join(tmpdir(), 'ifc-lite-install-'));
+    const path = join(dir, 'mcp.json');
+    const lock = `${path}.ifc-lite-install.lock`;
+    const backup = `${path}.bak`;
+    const io = nodeInstallIo();
+    writeFileSync(path, 'initial');
+    writeFileSync(lock, '');
+    expect(() => io.writeFile(path, 'replacement', 'initial', backup)).toThrow('delete it only once no install is running');
+    expect(io.readConfig(path)).toBe('initial');
+    expect(io.readConfig(backup)).toBeUndefined();
+    rmSync(lock);
+    io.writeFile(path, 'replacement', 'initial', backup);
+    expect(io.readConfig(path)).toBe('replacement');
+    expect(io.readConfig(backup)).toBe('initial');
+  });
+
+  it('refuses to overwrite a backup and leaves the config intact (#11580)', () => {
+    dir = mkdtempSync(join(tmpdir(), 'ifc-lite-install-'));
+    const path = join(dir, 'mcp.json');
+    const backup = `${path}.bak`;
+    const io = nodeInstallIo();
+    writeFileSync(path, 'initial');
+    writeFileSync(backup, 'existing backup');
+    expect(() => io.writeFile(path, 'replacement', 'initial', backup)).toThrow('EEXIST');
+    expect(io.readConfig(path)).toBe('initial');
+    expect(io.readConfig(backup)).toBe('existing backup');
+    expect(readdirSync(dir).sort()).toEqual(['mcp.json', 'mcp.json.bak']);
+  });
+
+  it('rejects a stale config write and preserves the intervening update (#11580)', () => {
+    dir = mkdtempSync(join(tmpdir(), 'ifc-lite-install-'));
+    const path = join(dir, 'mcp.json');
+    const io = nodeInstallIo();
+    io.writeFile(path, 'initial', undefined);
+    const before = io.readConfig(path);
+    io.writeFile(path, 'intervening update', before);
+    expect(() => io.writeFile(path, 'stale merge', before, `${path}.bak`)).toThrow('changed during install');
+    expect(io.readConfig(path)).toBe('intervening update');
+    expect(readdirSync(dir)).toEqual(['mcp.json']);
+  });
+
+  it('merges into an existing file on disk and leaves a backup beside it', () => {
+    dir = mkdtempSync(join(tmpdir(), 'ifc-lite-install-'));
+    mkdirSync(join(dir, '.cursor'));
+    const path = join(dir, '.cursor', 'mcp.json');
+    writeFileSync(path, JSON.stringify({ mcpServers: { other: { command: 'x' } } }));
+    const io: InstallIo = { ...nodeInstallIo(), host: { platform: process.platform, home: dir, cwd: dir, env: {}, listDir: () => [], isFile: () => true, warn: () => {} }, err: () => {} };
+    expect(install(['--client', 'cursor'], io)).toBe(0);
+    expect(Object.keys(configAt(path).mcpServers)).toEqual(['other', 'ifc-lite']);
+    expect(readdirSync(join(dir, '.cursor')).sort()).toEqual([
+      'mcp.json',
+      expect.stringMatching(/^mcp\.json\.bak-\d{8}-\d{9}$/),
+    ]);
+  });
+
+  it('a real permission error is reported, not thrown', () => {
+    dir = mkdtempSync(join(tmpdir(), 'ifc-lite-install-'));
+    // A directory where the config file should be: reading it fails with EISDIR.
+    mkdirSync(join(dir, '.cursor', 'mcp.json'), { recursive: true });
+    let stderr = '';
+    const io: InstallIo = { ...nodeInstallIo(), host: { platform: process.platform, home: dir, cwd: dir, env: {}, listDir: () => [], isFile: () => true, warn: () => {} }, err: (t) => void (stderr += t) };
+    expect(install(['--client', 'cursor'], io)).toBe(1);
+    expect(stderr).toContain('EISDIR');
+  });
+
+  it.skipIf(process.platform === 'win32')('writes through a dangling dotfiles symlink', () => {
+    dir = mkdtempSync(join(tmpdir(), 'ifc-lite-install-'));
+    mkdirSync(join(dir, '.cursor'));
+    const real = join(dir, 'dotfiles', 'cursor', 'mcp.json');
+    symlinkSync(real, join(dir, '.cursor', 'mcp.json'));
+    const io: InstallIo = { ...nodeInstallIo(), host: { platform: process.platform, home: dir, cwd: dir, env: {}, listDir: () => [], isFile: () => true, warn: () => {} }, err: () => {} };
+    expect(install(['--client', 'cursor'], io)).toBe(0);
+    expect(lstatSync(join(dir, '.cursor', 'mcp.json')).isSymbolicLink()).toBe(true);
+    expect(configAt(real).mcpServers['ifc-lite'].command).toBe('npx');
+  });
+
+  it.skipIf(process.platform === 'win32')('follows a chain of dangling links to its missing end', () => {
+    dir = mkdtempSync(join(tmpdir(), 'ifc-lite-install-'));
+    mkdirSync(join(dir, '.cursor'));
+    mkdirSync(join(dir, 'dotfiles'));
+    const real = join(dir, 'repo', 'mcp.json');
+    symlinkSync(real, join(dir, 'dotfiles', 'cursor.json'));
+    symlinkSync(join(dir, 'dotfiles', 'cursor.json'), join(dir, '.cursor', 'mcp.json'));
+    const io: InstallIo = { ...nodeInstallIo(), host: { platform: process.platform, home: dir, cwd: dir, env: {}, listDir: () => [], isFile: () => true, warn: () => {} }, err: () => {} };
+    expect(install(['--client', 'cursor'], io)).toBe(0);
+    expect(lstatSync(join(dir, 'dotfiles', 'cursor.json')).isSymbolicLink()).toBe(true);
+    expect(configAt(real).mcpServers['ifc-lite'].command).toBe('npx');
+  });
+
+  it.skipIf(process.platform === 'win32')('writes through a symlinked config and keeps its mode', () => {
+    dir = mkdtempSync(join(tmpdir(), 'ifc-lite-install-'));
+    mkdirSync(join(dir, 'dotfiles'));
+    mkdirSync(join(dir, '.cursor'));
+    const real = join(dir, 'dotfiles', 'mcp.json');
+    writeFileSync(real, '{}');
+    chmodSync(real, 0o600);
+    symlinkSync(real, join(dir, '.cursor', 'mcp.json'));
+    const io: InstallIo = { ...nodeInstallIo(), host: { platform: process.platform, home: dir, cwd: dir, env: {}, listDir: () => [], isFile: () => true, warn: () => {} }, err: () => {} };
+    expect(install(['--client', 'cursor'], io)).toBe(0);
+    expect(lstatSync(join(dir, '.cursor', 'mcp.json')).isSymbolicLink()).toBe(true);
+    expect(configAt(real).mcpServers['ifc-lite'].command).toBe('npx');
+    expect(statSync(real).mode & 0o777).toBe(0o600);
+  });
+});

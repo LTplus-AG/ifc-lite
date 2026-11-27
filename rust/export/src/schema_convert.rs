@@ -181,7 +181,9 @@ pub(crate) fn rename_type(u: &str, from: &str, to: &str) -> Option<&'static str>
         }
     }
     match (from, to) {
-        ("IFC2X3", "IFC4") => map_2x3_to_4(u).or_else(|| crate::schema_attr_maps::upgrade_type(u)),
+        ("IFC2X3", "IFC4") => crate::schema_ifc4x3_upgrade::style_target(u)
+            .or_else(|| map_2x3_to_4(u))
+            .or_else(|| crate::schema_attr_maps::upgrade_type(u)),
         ("IFC2X3", "IFC4X3") => crate::schema_ifc4x3_upgrade::rename(u)
             .or_else(|| rename_type(u, "IFC2X3", "IFC4")),
         ("IFC4", "IFC4X3") => crate::schema_ifc4x3_upgrade::rename(u),
@@ -361,7 +363,7 @@ fn convert_record(
                     lost += values_without_a_name(&args, src, tgt, cause_carried);
                     Cow::Owned(remap_attrs_by_name(&args, src, tgt))
                 }
-                Adjust::UpgradeIfc4x3(src, tgt) => Cow::Owned(crate::schema_ifc4x3_upgrade::remap(&entity_type, src, tgt, &args, &mut lost)),
+                Adjust::UpgradeSlots(src, tgt) => Cow::Owned(crate::schema_ifc4x3_upgrade::remap(&entity_type, src, tgt, &args, &mut lost)),
                 Adjust::Mapped(map, up, src, tgt) if !args.is_empty() => Cow::Owned(crate::schema_attr_maps::remap(map, up, &args, src, tgt, &mut lost)),
                 Adjust::Trim(_) | Adjust::Pad(_) | Adjust::Mapped(..) | Adjust::Keep => Cow::Borrowed(attrs),
             };

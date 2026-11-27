@@ -21,13 +21,14 @@
  * was actually selected, and needs no type list at all.
  */
 import { IfcTypeEnumFromString, isSpatialStructureType } from '@ifc-lite/data';
+import { slotRef } from './schema-converter-structural-source.js';
+import { withoutComments } from './step-comment-skip.js';
 import {
-  SINGLE_REF_RE,
   splitTopLevelArgs,
   STRUCTURE_RELATIONS,
   STRUCTURE_RELATION_ATTRS,
   type StepRecord,
-} from './subset-relations.js';
+} from './step-subset-relations.js';
 
 /**
  * Related-child id → its relating-parent id(s), across the three structure
@@ -37,39 +38,41 @@ import {
  * `IfcElementAssembly` and its parts), which reuses this same relation type
  * and six-attribute shape but is not a spatial ancestor: keeping the whole
  * assembly because one of its parts was independently selected is a different
- * bug, not this one (`extract-entities.test.ts` pins the opposite behaviour).
+ * bug, not this one (`step-subset.test.ts` pins the opposite behaviour).
  * A row is only added for this table when the relating object's OWN type is a
  * spatial-structure type, so a decomposition parent can never enter it.
  *
  * Silently skips a record `splitTopLevelArgs` cannot read cleanly, or that
  * does not split into the six attributes every one of these types has: this
  * map only ever ADDS candidate ancestors for `buildSubset` to keep, so
- * skipping is the fail-closed direction, unlike `subset-relations.ts`'s own
+ * skipping is the fail-closed direction, unlike `step-subset-relations.ts`'s own
  * keep-whole-or-drop-whole fallback for the same shape.
  */
-export function structureParents(instances: ReadonlyMap<number, StepRecord>): Map<number, number[]> {
+export function structureParents(
+  instances: ReadonlyMap<number, StepRecord>,
+  relations: ReadonlySet<string> = new Set(Object.keys(STRUCTURE_RELATIONS)),
+): Map<number, number[]> {
   const parents = new Map<number, number[]>();
   for (const inst of instances.values()) {
     const slots = STRUCTURE_RELATIONS[inst.type];
-    if (slots === undefined) continue;
+    if (slots === undefined || !relations.has(inst.type)) continue;
     const [relatingIdx, relatedIdx] = slots;
     const args = splitTopLevelArgs(inst.body);
     if (args === null || args.length !== STRUCTURE_RELATION_ATTRS) continue;
-    const relating = SINGLE_REF_RE.exec(args[relatingIdx]);
-    if (relating === null) continue;
-    const parentId = Number(relating[1]);
+    // Comments around a reference are trivia (slotRef / withoutComments).
+    const parentId = slotRef(args[relatingIdx]);
+    if (parentId === null) continue;
     if (inst.type === 'IFCRELAGGREGATES') {
       const parentType = IfcTypeEnumFromString(instances.get(parentId)?.type ?? '');
       if (!isSpatialStructureType(parentType)) continue;
     }
-    const setText = args[relatedIdx];
+    const setText = withoutComments(args[relatedIdx]);
     if (!setText.startsWith('(') || !setText.endsWith(')')) continue;
     const members = splitTopLevelArgs(setText.slice(1, -1));
     if (members === null) continue;
     for (const member of members) {
-      const ref = SINGLE_REF_RE.exec(member);
-      if (ref === null) continue;
-      const childId = Number(ref[1]);
+      const childId = slotRef(member);
+      if (childId === null) continue;
       const existing = parents.get(childId);
       if (existing) existing.push(parentId);
       else parents.set(childId, [parentId]);

@@ -220,6 +220,7 @@ export const sourcesIt = {
   "sources.writeBack.loading": "Caricamento…",
   "sources.writeBack.saved": "Salvato nell’origine. Le modifiche locali sono state mantenute.",
   "sources.writeBack.savedUnlinked": "Il file è stato salvato, ma il modello caricato è cambiato durante il caricamento. Il suo collegamento all’origine non è stato modificato. Non ripetere il caricamento per ripristinare il collegamento.",
+  "sources.writeBack.savedRevisionUnknown": "Il file è stato salvato, ma non è stato possibile verificare la revisione. Ricarica il file salvato dall’origine prima di un nuovo caricamento.",
   "sources.writeBack.history": "Cronologia delle revisioni del file salvato",
   "sources.writeBack.moreHistory": "Carica altre revisioni",
   "sources.writeBack.historyError": "Il caricamento è riuscito, ma non è stato possibile caricare la cronologia delle revisioni: {reason}",

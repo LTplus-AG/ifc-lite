@@ -57,7 +57,12 @@ export type UploadConflict =
     };
 
 export type UploadResult =
-  | { readonly ok: true; readonly file: SourceFile; readonly revision: SourceRevision }
+  | {
+      readonly ok: true;
+      readonly file: SourceFile;
+      /** Null when the write committed but the provider could not identify the uploaded revision. */
+      readonly revision: SourceRevision | null;
+    }
   | { readonly ok: false; readonly conflict: UploadConflict };
 
 export interface DownloadOptions {

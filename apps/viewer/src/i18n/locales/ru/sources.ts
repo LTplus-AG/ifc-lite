@@ -216,6 +216,7 @@ export const sourcesRu = {
   "sources.writeBack.loading": "Загрузка…",
   "sources.writeBack.saved": "Сохранено в источник. Ваши локальные изменения сохранены.",
   "sources.writeBack.savedUnlinked": "Файл сохранён, но загруженная модель изменилась во время загрузки. Её связь с источником не изменена. Не повторяйте загрузку, чтобы восстановить связь.",
+  "sources.writeBack.savedRevisionUnknown": "Файл сохранён, но не удалось проверить его версию. Перед повторной загрузкой откройте сохранённый файл из источника.",
   "sources.writeBack.history": "История ревизий сохранённого файла",
   "sources.writeBack.moreHistory": "Загрузить ещё ревизии",
   "sources.writeBack.historyError": "Загрузка прошла успешно, но историю ревизий загрузить не удалось: {reason}",

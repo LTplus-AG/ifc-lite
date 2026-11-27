@@ -140,3 +140,21 @@ it('#9522 a destination the provider refuses says nothing was uploaded, not that
   assert.doesNotMatch(document.body.textContent??'',/does not always mean no file was created/);
   assert.equal(useViewerStore.getState().sourceTags.get('m')?.revisionId,'v1');
 });
+
+it('#11651 shows a committed save without a verified revision and leaves the model linked to its loaded revision', async () => {
+  let writes = 0;
+  const source = await setup(async () => {
+    writes++;
+    return { ...result, revision: null };
+  });
+  render(<SourceHostProvider additionalProviders={[() => source]}><SourceWriteBackDialog modelId="m" onClose={() => {}} /></SourceHostProvider>);
+  const before = useViewerStore.getState().sourceTags.get('m');
+  confirm();
+  click(button('Confirm and save'));
+  await flush();
+  assert.equal(writes, 1);
+  assert.match(document.body.textContent ?? '', /Saved to source/);
+  assert.match(document.querySelector('[role=alert]')?.textContent ?? '', /revision could not be verified.*Reload the saved file/);
+  assert.ok(![...document.querySelectorAll('button')].some(item => item.textContent === 'Confirm and save'));
+  assert.deepEqual(useViewerStore.getState().sourceTags.get('m'), before);
+});

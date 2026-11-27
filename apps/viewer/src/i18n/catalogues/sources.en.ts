@@ -224,6 +224,7 @@ export const sourcesEn = {
   'sources.writeBack.cancelled': 'the upload was cancelled',
   'sources.writeBack.loading': 'Loading…',
   'sources.writeBack.saved': 'Saved to source. Your local edits have been kept.',
+  'sources.writeBack.savedRevisionUnknown': 'The file was saved, but its revision could not be verified. Reload the saved file from the source before uploading again.',
   'sources.writeBack.savedUnlinked': 'The file was saved, but the loaded model changed during the upload. Its source link was left unchanged. Do not repeat the upload to recover the link.',
   'sources.writeBack.history': 'Saved file revision history',
   'sources.writeBack.moreHistory': 'Load more revisions',

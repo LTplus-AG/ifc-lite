@@ -94,7 +94,8 @@ const textOf = async (provider: DaluxBuildProvider, ctx: ReturnType<typeof setup
 
 function ok(result: UploadResult) {
   if (!result.ok) throw new Error(`expected success, got conflict ${JSON.stringify(result.conflict)}`);
-  return result;
+  if (!result.revision) throw new Error('expected an identified uploaded revision');
+  return { ...result, revision: result.revision };
 }
 
 const FILE_A: SourceFileRef = {
@@ -265,6 +266,35 @@ describe('Dalux write-back', () => {
     expect(result.revision.id).not.toBe(LATEST_REVISION);
     expect(result.revision.id).not.toBe('rev-1');
     expect(result.file.currentRevisionId).toBe(result.revision.id);
+  });
+
+  it.each(['timeout', 'missing identity'])('keeps a committed upload successful after read-back with %s (#11651)', async (failure) => {
+    const { ctx, provider, posts } = setup();
+    let finalized = false;
+    const readBackSignals: (AbortSignal | null | undefined)[] = [];
+    const fetch: typeof ctx.fetch = async (input, init) => {
+      const path = String(input);
+      const isFinalize = path.endsWith('/finalize');
+      const isReadBack = finalized && path.endsWith('/files/file-a');
+      if (isReadBack) {
+        readBackSignals.push(init?.signal);
+        if (failure === 'timeout') throw new DOMException('Read-back timed out', 'TimeoutError');
+      }
+      const response = await ctx.fetch(input, init);
+      if (!isFinalize && !isReadBack) return response;
+      if (isFinalize) finalized = true;
+      const payload = await response.json() as { data: Record<string, unknown> };
+      delete payload.data.fileRevisionId;
+      delete payload.data.contentHash;
+      return new Response(JSON.stringify(payload), { status: response.status, headers: response.headers });
+    };
+
+    const result = await provider.uploadFile({ ...ctx, fetch }, { mode: 'new-version', ref: FILE_A }, bytesOf('A-TWO'));
+    expect(result).toMatchObject({ ok: true, file: { id: FILE_A.fileId }, revision: null });
+    expect(readBackSignals).toHaveLength(1);
+    expect(readBackSignals[0]).toBeInstanceOf(AbortSignal);
+    expect(posts()).toHaveLength(3);
+    expect(await textOf(provider, ctx, FILE_A)).toBe('A-TWO');
   });
 
   it('keeps the requested folder when the finalize response omits folderId (#9522)', async () => {

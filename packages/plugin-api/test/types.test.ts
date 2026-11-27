@@ -97,7 +97,7 @@ describe('plugin-api types', () => {
   });
 
   it('UploadResult narrows on ok', () => {
-    const narrow = (r: UploadResult) => (r.ok ? r.revision.id : r.conflict.kind);
-    expectTypeOf(narrow).returns.toEqualTypeOf<string>();
+    const narrow = (r: UploadResult) => (r.ok ? r.revision?.id : r.conflict.kind);
+    expectTypeOf(narrow).returns.toEqualTypeOf<string | undefined>();
   });
 });

@@ -47,6 +47,7 @@ describe('new-version', () => {
     const result = await provider.uploadFile!(ctx, { mode: 'new-version', ref, baseRevisionId: 'rev2' }, bytes('EDITED'));
     expect(result.ok).toBe(true);
     if (!result.ok) return;
+    if (!result.revision) throw new Error('expected the fixture revision');
     expect(result.file.currentRevisionId).toBe(result.revision.id);
     expect(result.revision.id).toBe('rev3');
 
@@ -158,6 +159,7 @@ describe('write-back review regressions (#9526)', () => {
     const result = await provider.uploadFile!(ctx, { mode: 'new-version', ref, baseRevisionId: 'rev3' }, bytes('NEW'));
     expect(result.ok).toBe(true);
     if (!result.ok) return;
+    if (!result.revision) throw new Error('expected the fixture revision');
     expect(result.revision.id).not.toBe('rev3');
     expect(new TextDecoder().decode(await provider.download(ctx, { ...ref, revisionId: 'rev3' }))).toBe('OLD-THREE');
     const watch = await provider.watchRevisions!(ctx, [{ ...ref, revisionId: 'rev3' }]);

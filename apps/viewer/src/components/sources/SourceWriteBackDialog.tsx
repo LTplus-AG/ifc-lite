@@ -72,8 +72,10 @@ function BoundWriteBackDialog({ binding, provider, onClose }: { binding: WriteBa
       </DialogHeader>
       {saved ? <>
         <output className="block">{t('sources.writeBack.saved')}</output>
-        {!saved.linked && <p role="alert">{t('sources.writeBack.savedUnlinked')}</p>}
-        <SourceWriteBackHistory provider={provider} ctx={ctx} projectId={binding.tag.projectId} file={saved.result.file} created={saved.result.revision} />
+        {saved.result.revision ? <>
+          {!saved.linked && <p role="alert">{t('sources.writeBack.savedUnlinked')}</p>}
+          <SourceWriteBackHistory provider={provider} ctx={ctx} projectId={binding.tag.projectId} file={saved.result.file} created={saved.result.revision} />
+        </> : <p role="alert">{t('sources.writeBack.savedRevisionUnknown')}</p>}
       </> : <form onSubmit={event => { event.preventDefault(); void submit(); }} className="space-y-3">
         <fieldset disabled={busy} className="space-y-3">
           <SegmentedControl label={t('sources.writeBack.mode')} value={mode}

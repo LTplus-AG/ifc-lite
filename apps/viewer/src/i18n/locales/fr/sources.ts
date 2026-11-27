@@ -168,6 +168,7 @@ export const sourcesFr = {
   "sources.writeBack.loading": "Chargement…",
   "sources.writeBack.saved": "Enregistré dans la source. Vos modifications locales sont conservées.",
   "sources.writeBack.savedUnlinked": "Le fichier a été enregistré, mais le modèle chargé a changé pendant l’envoi. Son lien vers la source n’a pas été modifié. Ne relancez pas l’envoi pour rétablir le lien.",
+  "sources.writeBack.savedRevisionUnknown": "Le fichier a été enregistré, mais sa révision n’a pas pu être vérifiée. Rechargez le fichier enregistré depuis la source avant un nouvel envoi.",
   "sources.writeBack.history": "Historique des révisions du fichier enregistré",
   "sources.writeBack.moreHistory": "Charger plus de révisions",
   "sources.writeBack.historyError": "L’envoi a réussi, mais l’historique des révisions n’a pas pu être chargé : {reason}",

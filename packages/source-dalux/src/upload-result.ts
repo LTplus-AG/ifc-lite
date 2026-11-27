@@ -14,8 +14,9 @@ import { currentRevisionId, enc, LATEST_REVISION, nonEmptyString, toSourceFile }
 /** A read-back the user can no longer cancel still must not hang the save. */
 const READ_BACK_TIMEOUT_MS = 15_000;
 
-function toSourceRevision(file: DaluxFile, sizeBytes: number): SourceRevision {
+function toSourceRevision(file: DaluxFile, sizeBytes: number): SourceRevision | null {
   const id = currentRevisionId(file);
+  if (id === LATEST_REVISION) return null;
   return {
     id,
     label: file.version ?? id,
@@ -32,12 +33,12 @@ export async function uploadedFile(
   where: { projectId: string; fileAreaId: string; destinationFolderId: string | undefined },
   finalized: DaluxFile,
   sizeBytes: number,
-): Promise<{ file: SourceFile; revision: SourceRevision }> {
+): Promise<{ file: SourceFile; revision: SourceRevision | null }> {
   let created = finalized;
   // A response without a revision identity would bind the model to the
   // no-revision sentinel, which a later new version cannot verify. Read the
   // file once more. The write has landed, so a cancel no longer applies and a
-  // failure here is only logged.
+  // failure here leaves the committed upload without a verified revision.
   if (currentRevisionId(created) === LATEST_REVISION) {
     try {
       const fresh = decodeFileResponse(await client.get(

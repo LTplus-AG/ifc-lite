@@ -207,6 +207,7 @@ export const sourcesDe = {
   "sources.writeBack.loading": "Wird geladen…",
   "sources.writeBack.saved": "In Quelle gespeichert. Ihre lokalen Änderungen bleiben erhalten.",
   "sources.writeBack.savedUnlinked": "Die Datei wurde gespeichert, aber das geladene Modell hat sich während des Hochladens geändert. Seine Quellverknüpfung wurde nicht geändert. Wiederholen Sie das Hochladen nicht, um die Verknüpfung wiederherzustellen.",
+  "sources.writeBack.savedRevisionUnknown": "Die Datei wurde gespeichert, aber ihre Revision konnte nicht überprüft werden. Laden Sie die gespeicherte Datei vor dem nächsten Upload erneut aus der Quelle.",
   "sources.writeBack.history": "Revisionsverlauf der gespeicherten Datei",
   "sources.writeBack.moreHistory": "Weitere Revisionen laden",
   "sources.writeBack.historyError": "Das Hochladen war erfolgreich, aber der Revisionsverlauf konnte nicht geladen werden: {reason}",

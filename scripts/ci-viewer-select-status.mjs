@@ -229,6 +229,25 @@ async function cancelledHead(env) {
   return run.head_sha;
 }
 
+async function listTestRuns(env, path, sha) {
+  const perPage = 100;
+  const query = `${path}/actions/workflows/test.yml/runs?event=pull_request&head_sha=${sha}&per_page=${perPage}`;
+  const first = await api(env, 'GET', query);
+  const { total_count: count, workflow_runs: runs } = first;
+  // GitHub caps filtered workflow-run listings at 1,000. A capped or
+  // inconsistent listing cannot establish which attempt started last.
+  if (!Number.isSafeInteger(count) || count < 0 || count >= 1_000 || !Array.isArray(runs) ||
+      runs.length !== Math.min(count, perPage)) throw new Error('Incomplete Test run listing');
+  for (let page = 2; runs.length < count; page += 1) {
+    const next = await api(env, 'GET', `${query}&page=${page}`);
+    if (next.total_count !== count || !Array.isArray(next.workflow_runs) ||
+        next.workflow_runs.length !== Math.min(count - runs.length, perPage)) throw new Error('Incomplete Test run listing');
+    runs.push(...next.workflow_runs);
+  }
+  if (new Set(runs.map(({ id }) => id)).size !== count) throw new Error('Duplicate Test runs in paginated listing');
+  return runs;
+}
+
 async function postCancellation(env) {
   const sha = await cancelledHead(env);
   if (!sha || sha !== env.HEAD_SHA) return 0;
@@ -254,8 +273,7 @@ async function postCancellation(env) {
 
   // The API lists by run creation. A rerun can start after a higher run ID.
   // The status writers share a concurrency group through this check and POST.
-  const { workflow_runs: runs } = await api(env, 'GET',
-    `${path}/actions/workflows/test.yml/runs?event=pull_request&head_sha=${sha}&per_page=100`);
+  const runs = await listTestRuns(env, path, sha);
   const sameRepo = runs.filter((candidate) => candidate.head_repository?.full_name === repo);
   const started = (run) => Date.parse(run.run_started_at ?? run.created_at) || 0;
   const latest = sameRepo.reduce((newest, run) => {

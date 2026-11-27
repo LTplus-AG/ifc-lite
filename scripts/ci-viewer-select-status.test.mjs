@@ -108,7 +108,9 @@ async function withApi(code, fn, reads = {}) {
         const read = reads[req.url];
         const data = typeof read === 'function' ? await read() : read;
         res.writeHead(200, { 'content-type': 'application/json' });
-        res.end(JSON.stringify(data ?? { jobs: [{ name: 'Viewer tests, advisory (selected for this PR)', html_url: 'https://github.com/x/job/9' }] }));
+        const defaultData = { jobs: [{ name: 'Viewer tests, advisory (selected for this PR)', html_url: 'https://github.com/x/job/9' }] };
+        const response = data?.workflow_runs ? { total_count: data.workflow_runs.length, ...data } : data;
+        res.end(JSON.stringify(response ?? defaultData));
         return;
       }
       posts.push({ url: req.url, auth: req.headers.authorization, body: JSON.parse(body) });
@@ -254,6 +256,48 @@ test('PR #11355: a rerun can be the newest attempt even with an older run ID', a
       [`/repos/${REPO}/actions/runs/43`]: newerRun,
       [STATUS_PATH]: { statuses: [current] },
       [RUNS_PATH]: { workflow_runs: [newerRun, attempt] },
+    });
+  }
+});
+
+test('PR #11355: a second-page rerun takes precedence over first-page runs', async () => {
+  const firstPage = Array.from({ length: 100 }, (_, i) => ({
+    ...CANCELLED_RUN, id: 142 - i, run_started_at: '2026-11-26T05:01:00Z',
+  }));
+  const rerun = { ...CANCELLED_RUN, run_attempt: 2, run_started_at: '2026-11-26T05:02:00Z' };
+  const newerId = String(firstPage[0].id);
+  const pending = (id, attempt) => ({
+    context: STATUS_CONTEXT, state: 'pending', target_url: `https://github.com/${REPO}/actions/runs/${id}?attempt=${attempt}`,
+  });
+  let current = pending(newerId, 1);
+  await withApi(201, async (api, posts) => {
+    await main(['--cancelled'], env(api, { ...CANCELLED_ENV, CANCELLED_RUN_ID: newerId }));
+    assert.deepEqual(posts, [], 'the first-page run cannot replace the newer attempt');
+    current = pending(rerun.id, 2);
+    await main(['--cancelled'], env(api, { ...CANCELLED_ENV, CANCELLED_RUN_ATTEMPT: '2' }));
+    assert.deepEqual(posts.map(({ body }) => [body.state, body.target_url]), [['failure', current.target_url]]);
+  }, {
+    [CANCELLED_RUN_PATH]: rerun,
+    [`/repos/${REPO}/actions/runs/${newerId}`]: firstPage[0],
+    [STATUS_PATH]: () => ({ statuses: [current] }),
+    [RUNS_PATH]: { total_count: 101, workflow_runs: firstPage },
+    [`${RUNS_PATH}&page=2`]: { total_count: 101, workflow_runs: [rerun] },
+  });
+});
+
+test('PR #11355: an incomplete or shifting run listing cannot post a verdict', async () => {
+  const firstPage = Array.from({ length: 100 }, (_, i) => ({ ...CANCELLED_RUN, id: 42 + i }));
+  for (const [total, next] of [[101, []], [101, [CANCELLED_RUN]], [1_000, []]]) {
+    await withApi(201, async (api, posts) => {
+      await assert.rejects(main(['--cancelled'], env(api, CANCELLED_ENV)), {
+        message: next.length ? 'Duplicate Test runs in paginated listing' : 'Incomplete Test run listing',
+      });
+      assert.deepEqual(posts, []);
+    }, {
+      [CANCELLED_RUN_PATH]: CANCELLED_RUN,
+      [STATUS_PATH]: { statuses: [] },
+      [RUNS_PATH]: { total_count: total, workflow_runs: firstPage },
+      [`${RUNS_PATH}&page=2`]: { total_count: total, workflow_runs: next },
     });
   }
 });

@@ -1,0 +1,22 @@
+diff --git b/packages/mcp/src/release/manifests.ts a/packages/mcp/src/release/manifests.ts
+index e3c22860de..f86713ca8c 100644
+--- b/packages/mcp/src/release/manifests.ts
++++ a/packages/mcp/src/release/manifests.ts
+@@ -43,7 +43,7 @@ function repoUrl(pkg: McpPackage): string {
+ export function serverJson(pkg: McpPackage): Record<string, unknown> {
+   return {
+     $schema: SERVER_SCHEMA,
+-    name: pkg.name,
++    name: pkg.mcpName,
+     title: TITLE,
+     description: SUMMARY,
+     repository: { url: repoUrl(pkg), source: 'github', subfolder: pkg.repository.directory },
+@@ -78,7 +78,7 @@ export const BUNDLE_SERVER_DIR = 'server';
+  * dependencies under `server/`; Claude Desktop runs it with its own Node.
+  */
+ export function mcpbManifest(pkg: McpPackage): Record<string, unknown> {
+-  const entry = `${BUNDLE_SERVER_DIR}/dist/index.js`;
++  const entry = `${BUNDLE_SERVER_DIR}/dist/cli.js`;
+   return {
+     manifest_version: '0.3',
+     name: 'ifc-lite',

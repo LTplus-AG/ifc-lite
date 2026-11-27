@@ -96,6 +96,10 @@ and the TypeScript tokenizer fallback, then builds an `IfcDataStore` for
 on-demand extraction. `parse()` remains as a compatibility adapter for callers
 that still need the older eager `ParseResult` shape.
 
+For schema detection without building the entity store, pass the STEP bytes and
+their parsed header to `detectSchemaVersion(bytes, parseSourceHeader(bytes))`.
+Both functions are exported by `@ifc-lite/parser`.
+
 ### Columnar Parsing (Recommended)
 
 The columnar parser returns an `IfcDataStore` with memory-efficient data structures:

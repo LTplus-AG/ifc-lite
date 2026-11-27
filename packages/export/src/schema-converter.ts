@@ -11,7 +11,7 @@
  */
 
 import { withoutComments } from './step-comment-skip.js';
-import { needsIfc4x3SlotMap, remapIfc4x3Slots, upgradeIfc4x3Type } from './schema-converter-ifc4x3-upgrade.js';
+import { needsUpgradeSlotMap, remapUpgradeSlots, upgradeNamedType } from './schema-converter-ifc4x3-upgrade.js';
 import { structuralAttributes } from './schema-converter-structural.js';
 import { generateIfcGuid, type RandomSource } from '@ifc-lite/encoding';
 import { deterministicGlobalId, getSchemaRegistryForVersion } from '@ifc-lite/parser';
@@ -161,10 +161,8 @@ export function convertEntityType(
   if (fromSchema === toSchema) return entityType;
 
   const upper = entityType.toUpperCase();
-  if (toSchema === 'IFC4X3' && (fromSchema === 'IFC2X3' || fromSchema === 'IFC4')) {
-    const upgrade = upgradeIfc4x3Type(upper);
-    if (upgrade) return upgrade;
-  }
+  const upgraded = upgradeNamedType(upper, fromSchema, toSchema);
+  if (upgraded) return upgraded;
   const target = (toSchema === 'IFC2X3' ? MEP_IFC2X3_TYPES.get(upper) : undefined) ?? upgradeRename(upper, fromSchema, toSchema);
   if (target) return target;
 
@@ -404,11 +402,8 @@ function convertRecord(
   if (srcAttrs && tgtAttrs) {
     const mapped = args.length > 0 ? attrMapFor(entityType, newType, fromSchema, toSchema) : undefined; // #10763
     const replaced = mapped ? undefined : replacedSlot(entityType, srcAttrs, tgtAttrs); // #10758: no value carries there
-    if (replaced !== undefined && replaced < args.length && withoutComments(args[replaced]) !== '$') {
-      args[replaced] = '$';
-      finalAttrs = args.join(',');
-    }
-    if (toSchema === 'IFC4X3' && entityType !== newType && needsIfc4x3SlotMap(entityType)) finalAttrs = remapIfc4x3Slots(entityType, srcAttrs, tgtAttrs, args);
+    if (replaced !== undefined && replaced < args.length && withoutComments(args[replaced]) !== '$') { args[replaced] = '$'; finalAttrs = args.join(','); }
+    if (entityType !== newType && needsUpgradeSlotMap(entityType, fromSchema, toSchema)) finalAttrs = remapUpgradeSlots(entityType, srcAttrs, tgtAttrs, args);
     else if (mapped) finalAttrs = remapByAttrMap(mapped.map, mapped.up, args, srcAttrs, tgtAttrs);
     else if (isStrictAttrPrefix(tgtAttrs, srcAttrs, entityType)) {
       finalAttrs = trimAttributes(attrsRaw, args, tgtAttrs.length);

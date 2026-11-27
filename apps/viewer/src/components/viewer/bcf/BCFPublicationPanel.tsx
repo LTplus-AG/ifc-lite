@@ -179,9 +179,9 @@ export function BCFPublicationPanel({ batch, onUsers, onRecordId }: BCFPublicati
   const titleOf = (guid: string) => batch.topics.find(topic => topic.guid === guid)?.title ?? t('bcfDrafts.publish.removedTopic');
   return (
     <section className="flex flex-col gap-2 rounded-md border border-border p-2 text-xs" aria-label={t('bcfDrafts.publish.region')}>
-      <label className="flex items-center gap-2">
+      <label className="flex flex-wrap items-center gap-2">
         {t('bcfDrafts.publish.project')}
-        <select className="h-7 min-w-0 flex-1 rounded border border-border bg-background" value={projectId}
+        <select className="h-7 min-w-32 flex-1 rounded border border-border bg-background" value={projectId}
           disabled={!projects?.length || busy} onChange={event => { noteBcfPublicationUserChoice(); setProjectId(event.target.value); setPreflight(null); setReport(null); }}>
           {(projects ?? []).map(project => <option key={project.project_id} value={project.project_id}>{project.name ?? project.project_id}</option>)}
         </select>
@@ -207,7 +207,7 @@ export function BCFPublicationPanel({ batch, onUsers, onRecordId }: BCFPublicati
       {typeChoices.map(({ type, allowed }) => (
         <label key={type} className="flex flex-wrap items-center gap-2 rounded bg-warn-surface px-2 py-1">
           {t('bcfDrafts.publish.topicType', { type })}
-          <select className="h-7 min-w-0 flex-1 rounded border border-border bg-background" value={topicTypes[type] ?? ''} disabled={busy}
+          <select className="h-7 min-w-32 flex-1 rounded border border-border bg-background" value={topicTypes[type] ?? ''} disabled={busy}
             onChange={event => { noteBcfPublicationUserChoice(); setTopicTypes(current => ({ ...current, [type]: event.target.value })); }}>
             {allowed.map(option => <option key={option} value={option}>{option}</option>)}
           </select>

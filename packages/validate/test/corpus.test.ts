@@ -82,12 +82,16 @@ describe('crafted parity corpus', () => {
 });
 
 it('counts both rectangle dimension violations and detects one missing occurrence (#11648)', async () => {
-  const report = await validateStepText("HEADER;FILE_SCHEMA(('IFC4'));ENDSEC;DATA;#1=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,0.,0.);ENDSEC;");
-  const findings = report.findings.filter(f => f.rule.toLowerCase() === 'ifcpositivelengthmeasure.wr1');
-  expect(findings).toHaveLength(2);
-  const ref = { type: 'simpletype_rule', instance: 1, attribute: findings[0].rule, message: '' };
-  const compare = (count: number, refs: number) => compareFile('rectangle', 'crafted', report.schema, findings.slice(0, count), Array<OracleFinding>(refs).fill(ref), 0);
-  expect(compare(2, 2).tp).toHaveLength(2);
-  expect(compare(1, 2).fn).toHaveLength(1);
-  expect(compare(2, 1).fp).toHaveLength(1);
+  const file = 'broken/rectangle-zero-dimensions.ifc';
+  const report = await validateStepText(read(file));
+  const findings = report.findings.filter(f => f.rule === 'IfcPositiveLengthMeasure.WR1');
+  const reference = oracleFor(file)!;
+  expect(reference.map(f => f.valueAttribute).sort()).toEqual(['XDim', 'YDim']);
+  const compare = (ours: typeof findings, refs = reference) => compareFile(file, 'crafted', report.schema, ours, refs, 0);
+  expect(compare(findings).tp).toHaveLength(2);
+  expect(compare(findings.slice(0, 1)).fn).toHaveLength(1);
+  expect(compare(findings, reference.slice(0, 1)).fp).toHaveLength(1);
+  const duplicate = compare([findings[0], findings[0]]);
+  expect([duplicate.tp.length, duplicate.fp.length, duplicate.fn.length]).toEqual([1,1,1]);
+  expect(duplicate.fp[0]).not.toEqual(duplicate.fn[0]);
 });

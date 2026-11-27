@@ -35,7 +35,22 @@ def run(path: str) -> dict:
 
     with open(path, "rb") as fh:
         digest = hashlib.sha256(fh.read()).hexdigest()
-    logger = ifcopenshell.validate.json_logger()
+    class AttributeLogger(ifcopenshell.validate.json_logger):
+        def log(self, level, message, *args):
+            super().log(level, message, *args)
+            if level != "error" or self.state.get("type") != "simpletype_rule":
+                return
+            # The pinned engine logs the rule name but drops its attribute.
+            # Capture the actual enclosing attribute iteration while it is live.
+            from ifcopenshell.express import rule_executor
+            frame = sys._getframe(1)
+            while frame is not None and frame.f_code is not rule_executor.run.__code__:
+                frame = frame.f_back
+            if frame is None or "attr" not in frame.f_locals:
+                raise RuntimeError("Oracle did not expose the failing type-rule attribute")
+            self.statements[-1]["valueAttribute"] = frame.f_locals["attr"].name()
+
+    logger = AttributeLogger()
     try:
         ifcopenshell.validate.validate(path, logger, express_rules=True)
     except Exception as exc:  # the oracle failing is a result, never a silent pass
@@ -63,6 +78,7 @@ def run(path: str) -> dict:
             "instance": instance_id(s.get("instance")),
             "instanceText": str(s.get("instance"))[:200] if s.get("instance") is not None else None,
             "attribute": attribute,
+            **({"valueAttribute": s["valueAttribute"]} if "valueAttribute" in s else {}),
             "message": message,
         })
     return {"path": path, "sha256": digest, "findings": findings}

@@ -9,6 +9,7 @@ import type { ValidationFinding } from '../src/index.js';
 export interface OracleFinding {
   type: string | null;
   instance: number | null;
+  valueAttribute?: string;
   instanceText?: string | null;
   attribute: string | null;
   message: string;
@@ -17,6 +18,7 @@ export interface OracleFinding {
 export interface Keyed {
   rule: string;
   instance?: number;
+  valueAttribute?: string;
   otherInstance?: number;
 }
 
@@ -33,7 +35,7 @@ export function oracleKey(f: OracleFinding): Keyed {
       if (/\nViolated by:\n\s+(?:Attribute not set|'indeterminate_type' object is not callable|unhashable type: 'indeterminate_type')\s*\n/.test(msg)) {
         return { rule: `evaluation-error:${(f.attribute ?? '?').toLowerCase()}`, instance };
       }
-      return { rule: (f.attribute ?? '?').toLowerCase(), instance };
+      return { rule: (f.attribute ?? '?').toLowerCase(), instance, valueAttribute: f.type === 'simpletype_rule' ? f.valueAttribute?.toLowerCase() : undefined };
     case 'global_rule':
       return { rule: `global:${(f.attribute ?? '?').toLowerCase()}` };
   }
@@ -66,7 +68,7 @@ export function ourKey(f: ValidationFinding): Keyed {
   switch (f.category) {
     case 'entity_rule':
     case 'simpletype_rule':
-      return { rule: f.rule.toLowerCase(), instance };
+      return { rule: f.rule.toLowerCase(), instance, valueAttribute: f.category === 'simpletype_rule' ? last(f.attribute) : undefined };
     case 'global_rule':
       return { rule: `global:${f.rule.split('.')[0].toLowerCase()}` };
     case 'unique_rule':
@@ -92,7 +94,7 @@ export const keyString = (k: Keyed) => {
   const ids = k.instance !== undefined && k.otherInstance !== undefined
     ? [k.instance, k.otherInstance].sort((a, b) => a - b).join(',')
     : k.instance ?? '';
-  return `${k.rule}|${ids}`;
+  return `${k.rule}|${ids}${k.valueAttribute ? `|${k.valueAttribute}` : ''}`;
 };
 
 /** Does a finding key (`rule|instance`) hit a corpus target such as `IfcWall.CorrectPredefinedType` or `not-optional`? */

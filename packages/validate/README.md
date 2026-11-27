@@ -69,7 +69,7 @@ pnpm --filter @ifc-lite/validate generate
 
 ## Parity with ifcopenshell.validate
 
-The package test checks the committed report against cached IfcOpenShell findings. Run `pnpm fixtures` for the third-party models. To refresh the oracle, install `ifcopenshell==0.9.0.post1` and `pytest` in the Python environment used below. IfcOpenShell uses pytest to evaluate EXPRESS rules.
+The package test checks the committed report against cached IfcOpenShell findings. Local runs skip missing third-party models and report the skip. Run `pnpm fixtures` to fetch them. CI sets `IFC_LITE_REQUIRE_FIXTURES=1` so a missing model fails the check. To refresh the oracle, install `ifcopenshell==0.9.0.post1` and `pytest` in the Python environment used below. IfcOpenShell uses pytest to evaluate EXPRESS rules.
 
 `parity/` measures the validators against `ifcopenshell.validate` (LGPL, used only as a test oracle): a crafted IFC4 building with one defect per rule of the authoring subset, plus third-party models from `pnpm fixtures`. `parity/REPORT.md` has the per-rule agreement, and `parity/explanations.json` the reason for each known disagreement.
 

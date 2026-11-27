@@ -95,6 +95,12 @@
     "targets": "IfcExtrudedAreaSolid.ValidExtrusionDirection"
   },
   {
+    "file": "broken/rectangle-zero-dimensions.ifc",
+    "schema": "IFC4",
+    "targets": "IfcPositiveLengthMeasure.WR1"
+  },
+
+  {
     "file": "broken/rectangle-zero-width.ifc",
     "schema": "IFC4",
     "targets": "IfcPositiveLengthMeasure.WR1"

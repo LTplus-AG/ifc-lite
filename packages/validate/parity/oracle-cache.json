@@ -266,6 +266,7 @@
      "instance": 34,
      "instanceText": "#34=IfcRectangleProfileDef(.AREA.,$,#33,5.,0.)",
      "attribute": "IfcPositiveLengthMeasure.WR1",
+     "valueAttribute": "YDim",
      "message": "(SELF > 0.0)\n\nViolated by:\n    (0.0 > 0.0)\n\nOn instance:\n    #34=IfcRectangleProfileDef(.AREA.,$,#33,5.,0.)\n"
     }
    ]
@@ -772,6 +773,7 @@
      "instance": 59313,
      "instanceText": "#59313=IfcPropertySingleValue('EmbodiedEnergy',$,IfcPositiveRatioMeasure(0.),$)",
      "attribute": "IfcPositiveRatioMeasure.WR1",
+     "valueAttribute": "NominalValue",
      "message": "(SELF > 0.0)\n\nViolated by:\n    (0.0 > 0.0)\n\nOn instance:\n    #59313=IfcPropertySingleValue('EmbodiedEnergy',$,IfcPositiveRatioMeasure(0.),$)\n"
     },
     {
@@ -779,6 +781,7 @@
      "instance": 34525,
      "instanceText": "#34525=IfcPropertySingleValue('EmbodiedCarbon',$,IfcPositiveRatioMeasure(0.),$)",
      "attribute": "IfcPositiveRatioMeasure.WR1",
+     "valueAttribute": "NominalValue",
      "message": "(SELF > 0.0)\n\nViolated by:\n    (0.0 > 0.0)\n\nOn instance:\n    #34525=IfcPropertySingleValue('EmbodiedCarbon',$,IfcPositiveRatioMeasure(0.),$)\n"
     },
     {
@@ -786,6 +789,7 @@
      "instance": 20398,
      "instanceText": "#20398=IfcPropertySingleValue('EmbodiedCarbon',$,IfcPositiveRatioMeasure(0.),$)",
      "attribute": "IfcPositiveRatioMeasure.WR1",
+     "valueAttribute": "NominalValue",
      "message": "(SELF > 0.0)\n\nViolated by:\n    (0.0 > 0.0)\n\nOn instance:\n    #20398=IfcPropertySingleValue('EmbodiedCarbon',$,IfcPositiveRatioMeasure(0.),$)\n"
     },
     {
@@ -793,6 +797,7 @@
      "instance": 15065,
      "instanceText": "#15065=IfcPropertySingleValue('EmbodiedEnergy',$,IfcPositiveRatioMeasure(0.),$)",
      "attribute": "IfcPositiveRatioMeasure.WR1",
+     "valueAttribute": "NominalValue",
      "message": "(SELF > 0.0)\n\nViolated by:\n    (0.0 > 0.0)\n\nOn instance:\n    #15065=IfcPropertySingleValue('EmbodiedEnergy',$,IfcPositiveRatioMeasure(0.),$)\n"
     },
     {
@@ -800,6 +805,7 @@
      "instance": 59314,
      "instanceText": "#59314=IfcPropertySingleValue('EmbodiedCarbon',$,IfcPositiveRatioMeasure(0.),$)",
      "attribute": "IfcPositiveRatioMeasure.WR1",
+     "valueAttribute": "NominalValue",
      "message": "(SELF > 0.0)\n\nViolated by:\n    (0.0 > 0.0)\n\nOn instance:\n    #59314=IfcPropertySingleValue('EmbodiedCarbon',$,IfcPositiveRatioMeasure(0.),$)\n"
     },
     {
@@ -807,6 +813,7 @@
      "instance": 20397,
      "instanceText": "#20397=IfcPropertySingleValue('EmbodiedEnergy',$,IfcPositiveRatioMeasure(0.),$)",
      "attribute": "IfcPositiveRatioMeasure.WR1",
+     "valueAttribute": "NominalValue",
      "message": "(SELF > 0.0)\n\nViolated by:\n    (0.0 > 0.0)\n\nOn instance:\n    #20397=IfcPropertySingleValue('EmbodiedEnergy',$,IfcPositiveRatioMeasure(0.),$)\n"
     },
     {
@@ -814,6 +821,7 @@
      "instance": 34524,
      "instanceText": "#34524=IfcPropertySingleValue('EmbodiedEnergy',$,IfcPositiveRatioMeasure(0.),$)",
      "attribute": "IfcPositiveRatioMeasure.WR1",
+     "valueAttribute": "NominalValue",
      "message": "(SELF > 0.0)\n\nViolated by:\n    (0.0 > 0.0)\n\nOn instance:\n    #34524=IfcPropertySingleValue('EmbodiedEnergy',$,IfcPositiveRatioMeasure(0.),$)\n"
     },
     {
@@ -821,6 +829,7 @@
      "instance": 15066,
      "instanceText": "#15066=IfcPropertySingleValue('EmbodiedCarbon',$,IfcPositiveRatioMeasure(0.),$)",
      "attribute": "IfcPositiveRatioMeasure.WR1",
+     "valueAttribute": "NominalValue",
      "message": "(SELF > 0.0)\n\nViolated by:\n    (0.0 > 0.0)\n\nOn instance:\n    #15066=IfcPropertySingleValue('EmbodiedCarbon',$,IfcPositiveRatioMeasure(0.),$)\n"
     },
     {
@@ -828,7 +837,7 @@
      "instance": 12,
      "instanceText": "#12=IfcOwnerHistory(#7,#11,$,.ADDED.,$,$,$,1482339244)",
      "attribute": "IfcOwnerHistory.CorrectChangeAction",
-     "message": "(exists(lastmodifieddate) or (not exists(lastmodifieddate) and (not exists(changeaction))) or (not exists(lastmodifieddate) and exists(changeaction) and (changeaction == IfcChangeActionEnum.NOTDEFINED or changeaction == IfcChangeActionEnum.NOCHANGE)))\n\nViolated by:\n    ((False or (not False and not True) or (not False and True and ('ADDED' == 'NOTDEFINED' or 'ADDED' == 'NOCHANGE'))))\n     +  where False = exists(<indeterminate_type object at 0x10b89edb0>)\n     +  and   False = exists(<indeterminate_type object at 0x10b89edb0>)\n     +  and   True = exists('ADDED')\n     +  and   False = exists(<indeterminate_type object at 0x10b89edb0>)\n     +  and   True = exists('ADDED')\n     +  and   'NOTDEFINED' = IfcChangeActionEnum.NOTDEFINED\n     +  and   'NOCHANGE' = IfcChangeActionEnum.NOCHANGE\n\nOn instance:\n    #12=IfcOwnerHistory(#7,#11,$,.ADDED.,$,$,$,1482339244)\n"
+     "message": "(exists(lastmodifieddate) or (not exists(lastmodifieddate) and (not exists(changeaction))) or (not exists(lastmodifieddate) and exists(changeaction) and (changeaction == IfcChangeActionEnum.NOTDEFINED or changeaction == IfcChangeActionEnum.NOCHANGE)))\n\nViolated by:\n    ((False or (not False and not True) or (not False and True and ('ADDED' == 'NOTDEFINED' or 'ADDED' == 'NOCHANGE'))))\n     +  where False = exists(<indeterminate_type object at 0x113ef8440>)\n     +  and   False = exists(<indeterminate_type object at 0x113ef8440>)\n     +  and   True = exists('ADDED')\n     +  and   False = exists(<indeterminate_type object at 0x113ef8440>)\n     +  and   True = exists('ADDED')\n     +  and   'NOTDEFINED' = IfcChangeActionEnum.NOTDEFINED\n     +  and   'NOCHANGE' = IfcChangeActionEnum.NOCHANGE\n\nOn instance:\n    #12=IfcOwnerHistory(#7,#11,$,.ADDED.,$,$,$,1482339244)\n"
     },
     {
      "type": "entity_rule",
@@ -898,35 +907,35 @@
      "instance": 77426,
      "instanceText": "#77426=IfcRelSpaceBoundary('2IcFpKExJ7L0xqSikQ$RMc',#12,'2ndLevel','2a',#33774,$,#77425,.VIRTUAL.,.EXTERNAL.)",
      "attribute": "IfcRelSpaceBoundary.CorrectPhysOrVirt",
-     "message": "(physicalorvirtualboundary == IfcPhysicalOrVirtualEnum.Physical and (not 'ifc4.ifcvirtualelement' in typeof(relatedbuildingelement)) or (physicalorvirtualboundary == IfcPhysicalOrVirtualEnum.Virtual and ('ifc4.ifcvirtualelement' in typeof(relatedbuildingelement) or 'ifc4.ifcopeningelement' in typeof(relatedbuildingelement))) or physicalorvirtualboundary == IfcPhysicalOrVirtualEnum.NotDefined)\n\nViolated by:\n    ((('VIRTUAL' == 'PHYSICAL') or ('VIRTUAL' == 'VIRTUAL' and ('ifc4.ifcvirtualelement' in set() or 'ifc4.ifcopeningelement' in set())) or 'VIRTUAL' == 'NOTDEFINED'))\n     +  where 'PHYSICAL' = IfcPhysicalOrVirtualEnum.Physical\n     +  and   'VIRTUAL' = IfcPhysicalOrVirtualEnum.Virtual\n     +  and   set() = typeof(<indeterminate_type object at 0x10b89edb0>)\n     +  and   set() = typeof(<indeterminate_type object at 0x10b89edb0>)\n     +  and   'NOTDEFINED' = IfcPhysicalOrVirtualEnum.NotDefined\n\nOn instance:\n    #77426=IfcRelSpaceBoundary('2IcFpKExJ7L0xqSikQ$RMc',#12,'2ndLevel','2a',#33774,$,#77425,.VIRTUAL.,.EXTERNAL.)\n"
+     "message": "(physicalorvirtualboundary == IfcPhysicalOrVirtualEnum.Physical and (not 'ifc4.ifcvirtualelement' in typeof(relatedbuildingelement)) or (physicalorvirtualboundary == IfcPhysicalOrVirtualEnum.Virtual and ('ifc4.ifcvirtualelement' in typeof(relatedbuildingelement) or 'ifc4.ifcopeningelement' in typeof(relatedbuildingelement))) or physicalorvirtualboundary == IfcPhysicalOrVirtualEnum.NotDefined)\n\nViolated by:\n    ((('VIRTUAL' == 'PHYSICAL') or ('VIRTUAL' == 'VIRTUAL' and ('ifc4.ifcvirtualelement' in set() or 'ifc4.ifcopeningelement' in set())) or 'VIRTUAL' == 'NOTDEFINED'))\n     +  where 'PHYSICAL' = IfcPhysicalOrVirtualEnum.Physical\n     +  and   'VIRTUAL' = IfcPhysicalOrVirtualEnum.Virtual\n     +  and   set() = typeof(<indeterminate_type object at 0x113ef8440>)\n     +  and   set() = typeof(<indeterminate_type object at 0x113ef8440>)\n     +  and   'NOTDEFINED' = IfcPhysicalOrVirtualEnum.NotDefined\n\nOn instance:\n    #77426=IfcRelSpaceBoundary('2IcFpKExJ7L0xqSikQ$RMc',#12,'2ndLevel','2a',#33774,$,#77425,.VIRTUAL.,.EXTERNAL.)\n"
     },
     {
      "type": "entity_rule",
      "instance": 77953,
      "instanceText": "#77953=IfcRelSpaceBoundary('3ajGAdZJqM2TVCk7YhD3JS',#12,'2ndLevel','2a',#34191,$,#77952,.VIRTUAL.,.EXTERNAL.)",
      "attribute": "IfcRelSpaceBoundary.CorrectPhysOrVirt",
-     "message": "(physicalorvirtualboundary == IfcPhysicalOrVirtualEnum.Physical and (not 'ifc4.ifcvirtualelement' in typeof(relatedbuildingelement)) or (physicalorvirtualboundary == IfcPhysicalOrVirtualEnum.Virtual and ('ifc4.ifcvirtualelement' in typeof(relatedbuildingelement) or 'ifc4.ifcopeningelement' in typeof(relatedbuildingelement))) or physicalorvirtualboundary == IfcPhysicalOrVirtualEnum.NotDefined)\n\nViolated by:\n    ((('VIRTUAL' == 'PHYSICAL') or ('VIRTUAL' == 'VIRTUAL' and ('ifc4.ifcvirtualelement' in set() or 'ifc4.ifcopeningelement' in set())) or 'VIRTUAL' == 'NOTDEFINED'))\n     +  where 'PHYSICAL' = IfcPhysicalOrVirtualEnum.Physical\n     +  and   'VIRTUAL' = IfcPhysicalOrVirtualEnum.Virtual\n     +  and   set() = typeof(<indeterminate_type object at 0x10b89edb0>)\n     +  and   set() = typeof(<indeterminate_type object at 0x10b89edb0>)\n     +  and   'NOTDEFINED' = IfcPhysicalOrVirtualEnum.NotDefined\n\nOn instance:\n    #77953=IfcRelSpaceBoundary('3ajGAdZJqM2TVCk7YhD3JS',#12,'2ndLevel','2a',#34191,$,#77952,.VIRTUAL.,.EXTERNAL.)\n"
+     "message": "(physicalorvirtualboundary == IfcPhysicalOrVirtualEnum.Physical and (not 'ifc4.ifcvirtualelement' in typeof(relatedbuildingelement)) or (physicalorvirtualboundary == IfcPhysicalOrVirtualEnum.Virtual and ('ifc4.ifcvirtualelement' in typeof(relatedbuildingelement) or 'ifc4.ifcopeningelement' in typeof(relatedbuildingelement))) or physicalorvirtualboundary == IfcPhysicalOrVirtualEnum.NotDefined)\n\nViolated by:\n    ((('VIRTUAL' == 'PHYSICAL') or ('VIRTUAL' == 'VIRTUAL' and ('ifc4.ifcvirtualelement' in set() or 'ifc4.ifcopeningelement' in set())) or 'VIRTUAL' == 'NOTDEFINED'))\n     +  where 'PHYSICAL' = IfcPhysicalOrVirtualEnum.Physical\n     +  and   'VIRTUAL' = IfcPhysicalOrVirtualEnum.Virtual\n     +  and   set() = typeof(<indeterminate_type object at 0x113ef8440>)\n     +  and   set() = typeof(<indeterminate_type object at 0x113ef8440>)\n     +  and   'NOTDEFINED' = IfcPhysicalOrVirtualEnum.NotDefined\n\nOn instance:\n    #77953=IfcRelSpaceBoundary('3ajGAdZJqM2TVCk7YhD3JS',#12,'2ndLevel','2a',#34191,$,#77952,.VIRTUAL.,.EXTERNAL.)\n"
     },
     {
      "type": "entity_rule",
      "instance": 77981,
      "instanceText": "#77981=IfcRelSpaceBoundary('2vfaTwq4m5$ujNRFPaGpdU',#12,'2ndLevel','2a',#34191,$,#77980,.VIRTUAL.,.EXTERNAL.)",
      "attribute": "IfcRelSpaceBoundary.CorrectPhysOrVirt",
-     "message": "(physicalorvirtualboundary == IfcPhysicalOrVirtualEnum.Physical and (not 'ifc4.ifcvirtualelement' in typeof(relatedbuildingelement)) or (physicalorvirtualboundary == IfcPhysicalOrVirtualEnum.Virtual and ('ifc4.ifcvirtualelement' in typeof(relatedbuildingelement) or 'ifc4.ifcopeningelement' in typeof(relatedbuildingelement))) or physicalorvirtualboundary == IfcPhysicalOrVirtualEnum.NotDefined)\n\nViolated by:\n    ((('VIRTUAL' == 'PHYSICAL') or ('VIRTUAL' == 'VIRTUAL' and ('ifc4.ifcvirtualelement' in set() or 'ifc4.ifcopeningelement' in set())) or 'VIRTUAL' == 'NOTDEFINED'))\n     +  where 'PHYSICAL' = IfcPhysicalOrVirtualEnum.Physical\n     +  and   'VIRTUAL' = IfcPhysicalOrVirtualEnum.Virtual\n     +  and   set() = typeof(<indeterminate_type object at 0x10b89edb0>)\n     +  and   set() = typeof(<indeterminate_type object at 0x10b89edb0>)\n     +  and   'NOTDEFINED' = IfcPhysicalOrVirtualEnum.NotDefined\n\nOn instance:\n    #77981=IfcRelSpaceBoundary('2vfaTwq4m5$ujNRFPaGpdU',#12,'2ndLevel','2a',#34191,$,#77980,.VIRTUAL.,.EXTERNAL.)\n"
+     "message": "(physicalorvirtualboundary == IfcPhysicalOrVirtualEnum.Physical and (not 'ifc4.ifcvirtualelement' in typeof(relatedbuildingelement)) or (physicalorvirtualboundary == IfcPhysicalOrVirtualEnum.Virtual and ('ifc4.ifcvirtualelement' in typeof(relatedbuildingelement) or 'ifc4.ifcopeningelement' in typeof(relatedbuildingelement))) or physicalorvirtualboundary == IfcPhysicalOrVirtualEnum.NotDefined)\n\nViolated by:\n    ((('VIRTUAL' == 'PHYSICAL') or ('VIRTUAL' == 'VIRTUAL' and ('ifc4.ifcvirtualelement' in set() or 'ifc4.ifcopeningelement' in set())) or 'VIRTUAL' == 'NOTDEFINED'))\n     +  where 'PHYSICAL' = IfcPhysicalOrVirtualEnum.Physical\n     +  and   'VIRTUAL' = IfcPhysicalOrVirtualEnum.Virtual\n     +  and   set() = typeof(<indeterminate_type object at 0x113ef8440>)\n     +  and   set() = typeof(<indeterminate_type object at 0x113ef8440>)\n     +  and   'NOTDEFINED' = IfcPhysicalOrVirtualEnum.NotDefined\n\nOn instance:\n    #77981=IfcRelSpaceBoundary('2vfaTwq4m5$ujNRFPaGpdU',#12,'2ndLevel','2a',#34191,$,#77980,.VIRTUAL.,.EXTERNAL.)\n"
     },
     {
      "type": "entity_rule",
      "instance": 78009,
      "instanceText": "#78009=IfcRelSpaceBoundary('1$5LZayB5FfW_ApqaofJ6x',#12,'2ndLevel','2a',#34191,$,#78008,.VIRTUAL.,.EXTERNAL.)",
      "attribute": "IfcRelSpaceBoundary.CorrectPhysOrVirt",
-     "message": "(physicalorvirtualboundary == IfcPhysicalOrVirtualEnum.Physical and (not 'ifc4.ifcvirtualelement' in typeof(relatedbuildingelement)) or (physicalorvirtualboundary == IfcPhysicalOrVirtualEnum.Virtual and ('ifc4.ifcvirtualelement' in typeof(relatedbuildingelement) or 'ifc4.ifcopeningelement' in typeof(relatedbuildingelement))) or physicalorvirtualboundary == IfcPhysicalOrVirtualEnum.NotDefined)\n\nViolated by:\n    ((('VIRTUAL' == 'PHYSICAL') or ('VIRTUAL' == 'VIRTUAL' and ('ifc4.ifcvirtualelement' in set() or 'ifc4.ifcopeningelement' in set())) or 'VIRTUAL' == 'NOTDEFINED'))\n     +  where 'PHYSICAL' = IfcPhysicalOrVirtualEnum.Physical\n     +  and   'VIRTUAL' = IfcPhysicalOrVirtualEnum.Virtual\n     +  and   set() = typeof(<indeterminate_type object at 0x10b89edb0>)\n     +  and   set() = typeof(<indeterminate_type object at 0x10b89edb0>)\n     +  and   'NOTDEFINED' = IfcPhysicalOrVirtualEnum.NotDefined\n\nOn instance:\n    #78009=IfcRelSpaceBoundary('1$5LZayB5FfW_ApqaofJ6x',#12,'2ndLevel','2a',#34191,$,#78008,.VIRTUAL.,.EXTERNAL.)\n"
+     "message": "(physicalorvirtualboundary == IfcPhysicalOrVirtualEnum.Physical and (not 'ifc4.ifcvirtualelement' in typeof(relatedbuildingelement)) or (physicalorvirtualboundary == IfcPhysicalOrVirtualEnum.Virtual and ('ifc4.ifcvirtualelement' in typeof(relatedbuildingelement) or 'ifc4.ifcopeningelement' in typeof(relatedbuildingelement))) or physicalorvirtualboundary == IfcPhysicalOrVirtualEnum.NotDefined)\n\nViolated by:\n    ((('VIRTUAL' == 'PHYSICAL') or ('VIRTUAL' == 'VIRTUAL' and ('ifc4.ifcvirtualelement' in set() or 'ifc4.ifcopeningelement' in set())) or 'VIRTUAL' == 'NOTDEFINED'))\n     +  where 'PHYSICAL' = IfcPhysicalOrVirtualEnum.Physical\n     +  and   'VIRTUAL' = IfcPhysicalOrVirtualEnum.Virtual\n     +  and   set() = typeof(<indeterminate_type object at 0x113ef8440>)\n     +  and   set() = typeof(<indeterminate_type object at 0x113ef8440>)\n     +  and   'NOTDEFINED' = IfcPhysicalOrVirtualEnum.NotDefined\n\nOn instance:\n    #78009=IfcRelSpaceBoundary('1$5LZayB5FfW_ApqaofJ6x',#12,'2ndLevel','2a',#34191,$,#78008,.VIRTUAL.,.EXTERNAL.)\n"
     },
     {
      "type": "entity_rule",
      "instance": 78592,
      "instanceText": "#78592=IfcRelSpaceBoundary('2GnYVfNeYR6NOPkw4t5oDJ',#12,'2ndLevel','2a',#76214,$,#78591,.VIRTUAL.,.EXTERNAL.)",
      "attribute": "IfcRelSpaceBoundary.CorrectPhysOrVirt",
-     "message": "(physicalorvirtualboundary == IfcPhysicalOrVirtualEnum.Physical and (not 'ifc4.ifcvirtualelement' in typeof(relatedbuildingelement)) or (physicalorvirtualboundary == IfcPhysicalOrVirtualEnum.Virtual and ('ifc4.ifcvirtualelement' in typeof(relatedbuildingelement) or 'ifc4.ifcopeningelement' in typeof(relatedbuildingelement))) or physicalorvirtualboundary == IfcPhysicalOrVirtualEnum.NotDefined)\n\nViolated by:\n    ((('VIRTUAL' == 'PHYSICAL') or ('VIRTUAL' == 'VIRTUAL' and ('ifc4.ifcvirtualelement' in set() or 'ifc4.ifcopeningelement' in set())) or 'VIRTUAL' == 'NOTDEFINED'))\n     +  where 'PHYSICAL' = IfcPhysicalOrVirtualEnum.Physical\n     +  and   'VIRTUAL' = IfcPhysicalOrVirtualEnum.Virtual\n     +  and   set() = typeof(<indeterminate_type object at 0x10b89edb0>)\n     +  and   set() = typeof(<indeterminate_type object at 0x10b89edb0>)\n     +  and   'NOTDEFINED' = IfcPhysicalOrVirtualEnum.NotDefined\n\nOn instance:\n    #78592=IfcRelSpaceBoundary('2GnYVfNeYR6NOPkw4t5oDJ',#12,'2ndLevel','2a',#76214,$,#78591,.VIRTUAL.,.EXTERNAL.)\n"
+     "message": "(physicalorvirtualboundary == IfcPhysicalOrVirtualEnum.Physical and (not 'ifc4.ifcvirtualelement' in typeof(relatedbuildingelement)) or (physicalorvirtualboundary == IfcPhysicalOrVirtualEnum.Virtual and ('ifc4.ifcvirtualelement' in typeof(relatedbuildingelement) or 'ifc4.ifcopeningelement' in typeof(relatedbuildingelement))) or physicalorvirtualboundary == IfcPhysicalOrVirtualEnum.NotDefined)\n\nViolated by:\n    ((('VIRTUAL' == 'PHYSICAL') or ('VIRTUAL' == 'VIRTUAL' and ('ifc4.ifcvirtualelement' in set() or 'ifc4.ifcopeningelement' in set())) or 'VIRTUAL' == 'NOTDEFINED'))\n     +  where 'PHYSICAL' = IfcPhysicalOrVirtualEnum.Physical\n     +  and   'VIRTUAL' = IfcPhysicalOrVirtualEnum.Virtual\n     +  and   set() = typeof(<indeterminate_type object at 0x113ef8440>)\n     +  and   set() = typeof(<indeterminate_type object at 0x113ef8440>)\n     +  and   'NOTDEFINED' = IfcPhysicalOrVirtualEnum.NotDefined\n\nOn instance:\n    #78592=IfcRelSpaceBoundary('2GnYVfNeYR6NOPkw4t5oDJ',#12,'2ndLevel','2a',#76214,$,#78591,.VIRTUAL.,.EXTERNAL.)\n"
     },
     {
      "type": "entity_rule",
@@ -1913,14 +1922,14 @@
      "instance": 37671,
      "instanceText": "#37671=IfcBeamType('3sgJ7WltQ0Z2M$pcct8y0M',#12,$,$,$,$,(#37563,#37679,#40512,#40635),'F6A931E0-BF76-808C-25BF-CE69B723C016',$,.NOTDEFINED.)",
      "attribute": "IfcTypeObject.NameRequired",
-     "message": "exists(SELF.Name)\n\nViolated by:\n    False\n     +  where False = exists(<indeterminate_type object at 0x10b89edb0>)\n     +    where <indeterminate_type object at 0x10b89edb0> = #37671=IfcBeamType('3sgJ7WltQ0Z2M$pcct8y0M',#12,$,$,$,$,(#37563,#37679,#40512,#40635),'F6A931E0-BF76-808C-25BF-CE69B723C016',$,.NOTDEFINED.).Name\n\nOn instance:\n    #37671=IfcBeamType('3sgJ7WltQ0Z2M$pcct8y0M',#12,$,$,$,$,(#37563,#37679,#40512,#40635),'F6A931E0-BF76-808C-25BF-CE69B723C016',$,.NOTDEFINED.)\n"
+     "message": "exists(SELF.Name)\n\nViolated by:\n    False\n     +  where False = exists(<indeterminate_type object at 0x113ef8440>)\n     +    where <indeterminate_type object at 0x113ef8440> = #37671=IfcBeamType('3sgJ7WltQ0Z2M$pcct8y0M',#12,$,$,$,$,(#37563,#37679,#40512,#40635),'F6A931E0-BF76-808C-25BF-CE69B723C016',$,.NOTDEFINED.).Name\n\nOn instance:\n    #37671=IfcBeamType('3sgJ7WltQ0Z2M$pcct8y0M',#12,$,$,$,$,(#37563,#37679,#40512,#40635),'F6A931E0-BF76-808C-25BF-CE69B723C016',$,.NOTDEFINED.)\n"
     },
     {
      "type": "entity_rule",
      "instance": 35265,
      "instanceText": "#35265=IfcMemberType('3dWcOYsfulUBQwunDLiZK6',#12,$,$,$,$,(#35148,#35273,#35400,#35523,#35646,#35769,#35892,#36015,#36138,#36261,#36384,#36507,#36630,#36753,#36876,#36999,#37122,#37245,#37368,#37491,#",
      "attribute": "IfcTypeObject.NameRequired",
-     "message": "exists(SELF.Name)\n\nViolated by:\n    False\n     +  where False = exists(<indeterminate_type object at 0x10b89edb0>)\n     +    where <indeterminate_type object at 0x10b89edb0> = #35265=IfcMemberType('3dWcOYsfulUBQwunDLiZK6',#12,$,$,$,$,(#35148,#35273,#35400,#35523,#35646,#35769,#35892,#36015,#36...,#39528,#39651,#39774,#39897,#40020,#40143,#40266,#40389,#40758),'E7826622-DA9E-2F78-B6BA-E31355B23506',$,.NOTDEFINED.).Name\n\nOn instance:\n    #35265=IfcMemberType('3dWcOYsfulUBQwunDLiZK6',#12,$,$,$,$,(#35148,#35273,#35400,#35523,#35646,#35769,#35892,#36015,#36138,#36261,#36384,#36507,#36630,#36753,#36876,#36999,#37122,#37245,#37368,#37491,#37806,#37929,#38052,#38175,#38298,#38421,#38544,#38667,#38790,#38913,#39036,#39159,#39282,#39405,#39528,#39651,#39774,#39897,#40020,#40143,#40266,#40389,#40758),'E7826622-DA9E-2F78-B6BA-E31355B23506',$,.NOTDEFINED.)\n"
+     "message": "exists(SELF.Name)\n\nViolated by:\n    False\n     +  where False = exists(<indeterminate_type object at 0x113ef8440>)\n     +    where <indeterminate_type object at 0x113ef8440> = #35265=IfcMemberType('3dWcOYsfulUBQwunDLiZK6',#12,$,$,$,$,(#35148,#35273,#35400,#35523,#35646,#35769,#35892,#36015,#36...,#39528,#39651,#39774,#39897,#40020,#40143,#40266,#40389,#40758),'E7826622-DA9E-2F78-B6BA-E31355B23506',$,.NOTDEFINED.).Name\n\nOn instance:\n    #35265=IfcMemberType('3dWcOYsfulUBQwunDLiZK6',#12,$,$,$,$,(#35148,#35273,#35400,#35523,#35646,#35769,#35892,#36015,#36138,#36261,#36384,#36507,#36630,#36753,#36876,#36999,#37122,#37245,#37368,#37491,#37806,#37929,#38052,#38175,#38298,#38421,#38544,#38667,#38790,#38913,#39036,#39159,#39282,#39405,#39528,#39651,#39774,#39897,#40020,#40143,#40266,#40389,#40758),'E7826622-DA9E-2F78-B6BA-E31355B23506',$,.NOTDEFINED.)\n"
     }
    ]
   },
@@ -2357,6 +2366,7 @@
      "instance": 34,
      "instanceText": "#34=IfcRectangleProfileDef(.AREA.,$,#33,5.,0.)",
      "attribute": "IfcPositiveLengthMeasure.WR1",
+     "valueAttribute": "YDim",
      "message": "(SELF > 0.0)\n\nViolated by:\n    (0.0 > 0.0)\n\nOn instance:\n    #34=IfcRectangleProfileDef(.AREA.,$,#33,5.,0.)\n"
     }
    ]
@@ -2829,6 +2839,27 @@
      "instanceText": null,
      "attribute": null,
      "message": "For instance:\n    FILE_NAME('corpus.ifc','2026-11-19T00:00:00','Jane Doe',('Example Org'),'ifc-lite','ifc-lite corpus','')\n                                                 ^^^^^^^^^^                                                 \nAttribute 'author' has invalid type:\n    Expected: LIST [ 1 : ? ] OF STRING (256)\n    Current value type: str\n"
+    }
+   ]
+  },
+  "packages/validate/parity/corpus/broken/rectangle-zero-dimensions.ifc": {
+   "sha256": "f6e94a9a84339bd03d141e574d9a0cbadc9fbb2e7991829e22d65a3764895417",
+   "findings": [
+    {
+     "type": "simpletype_rule",
+     "instance": 34,
+     "instanceText": "#34=IfcRectangleProfileDef(.AREA.,$,#33,0.,0.)",
+     "attribute": "IfcPositiveLengthMeasure.WR1",
+     "valueAttribute": "XDim",
+     "message": "(SELF > 0.0)\n\nViolated by:\n    (0.0 > 0.0)\n\nOn instance:\n    #34=IfcRectangleProfileDef(.AREA.,$,#33,0.,0.)\n"
+    },
+    {
+     "type": "simpletype_rule",
+     "instance": 34,
+     "instanceText": "#34=IfcRectangleProfileDef(.AREA.,$,#33,0.,0.)",
+     "attribute": "IfcPositiveLengthMeasure.WR1",
+     "valueAttribute": "YDim",
+     "message": "(SELF > 0.0)\n\nViolated by:\n    (0.0 > 0.0)\n\nOn instance:\n    #34=IfcRectangleProfileDef(.AREA.,$,#33,0.,0.)\n"
     }
    ]
   }

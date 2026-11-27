@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-11-26",
+ "generatedAt": "2026-11-27",
  "oracle": {
   "engine": "ifcopenshell.validate (express_rules=True)",
   "version": "0.9.0.post1"
@@ -97,8 +97,8 @@
   }
  ],
  "totals": {
-  "files": 131,
-  "tp": 313,
+  "files": 132,
+  "tp": 315,
   "fp": 3,
   "fn": 0,
   "craftedFn": 0
@@ -318,7 +318,7 @@
    },
    {
     "rule": "ifcpositivelengthmeasure.wr1",
-    "tp": 2,
+    "tp": 4,
     "fp": 0,
     "fn": 0,
     "tnFiles": null
@@ -742,7 +742,7 @@
    },
    {
     "rule": "ifcpositivelengthmeasure.wr1",
-    "tp": 2,
+    "tp": 4,
     "fp": 0,
     "fn": 0,
     "tnFiles": null
@@ -1057,6 +1057,12 @@
   {
    "file": "broken/extrusion-in-profile-plane.ifc",
    "targets": "IfcExtrudedAreaSolid.ValidExtrusionDirection",
+   "ours": true,
+   "oracle": true
+  },
+  {
+   "file": "broken/rectangle-zero-dimensions.ifc",
+   "targets": "IfcPositiveLengthMeasure.WR1",
    "ours": true,
    "oracle": true
   },
@@ -1620,7 +1626,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 0,
    "oracle": 0,
-   "milliseconds": 41,
+   "milliseconds": 39,
    "tp": [],
    "fp": [],
    "fn": []
@@ -1631,7 +1637,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 0,
    "oracle": 0,
-   "milliseconds": 27,
+   "milliseconds": 36,
    "tp": [],
    "fp": [],
    "fn": []
@@ -1656,7 +1662,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 1,
+   "milliseconds": 2,
    "tp": [
     "ifcdoor.correctstyleassigned|62"
    ],
@@ -1698,7 +1704,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 1,
+   "milliseconds": 2,
    "tp": [
     "ifcspace.correctpredefinedtype|101"
    ],
@@ -1755,7 +1761,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 3,
    "oracle": 3,
-   "milliseconds": 1,
+   "milliseconds": 2,
    "tp": [
     "inverse-cardinality:decomposes|26",
     "ifcspatialstructureelement.wr41|26",
@@ -1785,7 +1791,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 2,
+   "milliseconds": 1,
    "tp": [
     "ifcproject.hasname|20"
    ],
@@ -1799,7 +1805,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 0,
+   "milliseconds": 2,
    "tp": [
     "ifcproject.correctcontext|20"
    ],
@@ -1827,7 +1833,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 1,
+   "milliseconds": 2,
    "tp": [
     "ifcaxis2placement3d.axisandrefdirprovision|14"
    ],
@@ -1872,7 +1878,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [
     "ifcdirection.magnitudegreaterzero|32"
    ],
@@ -1910,14 +1916,29 @@
    "targets": "IfcExtrudedAreaSolid.ValidExtrusionDirection"
   },
   {
+   "path": "packages/validate/parity/corpus/broken/rectangle-zero-dimensions.ifc",
+   "kind": "crafted",
+   "schema": "IFC4_ADD2_TC1",
+   "ours": 2,
+   "oracle": 2,
+   "milliseconds": 1,
+   "tp": [
+    "ifcpositivelengthmeasure.wr1|34|xdim",
+    "ifcpositivelengthmeasure.wr1|34|ydim"
+   ],
+   "fp": [],
+   "fn": [],
+   "targets": "IfcPositiveLengthMeasure.WR1"
+  },
+  {
    "path": "packages/validate/parity/corpus/broken/rectangle-zero-width.ifc",
    "kind": "crafted",
    "schema": "IFC4_ADD2_TC1",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [
-    "ifcpositivelengthmeasure.wr1|34"
+    "ifcpositivelengthmeasure.wr1|34|ydim"
    ],
    "fp": [],
    "fn": [],
@@ -2002,7 +2023,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [
     "ifcgeometricrepresentationsubcontext.usertargetprovided|16"
    ],
@@ -2030,7 +2051,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 2,
    "oracle": 2,
-   "milliseconds": 1,
+   "milliseconds": 0,
    "tp": [
     "evaluation-error:ifcobject.uniquepropertysetnames|42",
     "ifcpropertyset.existsname|132"
@@ -2045,7 +2066,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [
     "ifcpropertyset.uniquepropertynames|132"
    ],
@@ -2129,7 +2150,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 1,
+   "milliseconds": 0,
    "tp": [
     "ifcperson.identifiableperson|1"
    ],
@@ -2157,7 +2178,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [
     "ifcgridaxis.wr1|113"
    ],
@@ -2185,7 +2206,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [
     "ifcarbitraryclosedprofiledef.wr1|83"
    ],
@@ -2242,7 +2263,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [
     "inverse-cardinality:fillsvoids|62"
    ],
@@ -2256,7 +2277,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 2,
+   "milliseconds": 1,
    "tp": [
     "inverse-cardinality:containedinstructure|42"
    ],
@@ -2270,7 +2291,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 0,
+   "milliseconds": 2,
    "tp": [
     "ifcreldefinesbyproperties.norelatedtypeobject|133"
    ],
@@ -2326,7 +2347,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 1,
+   "milliseconds": 0,
    "tp": [
     "invalid-type:name|42"
    ],
@@ -2354,7 +2375,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [
     "invalid-type:coordinates|52"
    ],
@@ -2382,7 +2403,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 1,
+   "milliseconds": 0,
    "tp": [
     "attribute-count|42"
    ],
@@ -2438,7 +2459,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [
     "header:file_name.author|"
    ],
@@ -2520,7 +2541,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 2,
    "oracle": 2,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [
     "ifcwall.correcttypeassigned|42",
     "ifcwall.correcttypeassigned|60"
@@ -2549,7 +2570,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 1,
+   "milliseconds": 0,
    "tp": [
     "ifcspatialstructureelement.wr41|26"
    ],
@@ -2593,7 +2614,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [
     "ifcproject.hasname|20"
    ],
@@ -2635,7 +2656,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 1,
+   "milliseconds": 0,
    "tp": [
     "ifcaxis2placement3d.axisandrefdirprovision|14"
    ],
@@ -2709,7 +2730,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [
     "ifcextrudedareasolid.validextrusiondirection|35"
    ],
@@ -2725,7 +2746,7 @@
    "oracle": 1,
    "milliseconds": 1,
    "tp": [
-    "ifcpositivelengthmeasure.wr1|34"
+    "ifcpositivelengthmeasure.wr1|34|ydim"
    ],
    "fp": [],
    "fn": [],
@@ -2766,7 +2787,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 2,
    "oracle": 2,
-   "milliseconds": 1,
+   "milliseconds": 0,
    "tp": [
     "abstract|138",
     "ifcshaperepresentation.correctcontext|85"
@@ -2838,7 +2859,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 2,
    "oracle": 2,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [
     "evaluation-error:ifcobject.uniquepropertysetnames|42",
     "ifcpropertyset.existsname|132"
@@ -2853,7 +2874,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 1,
+   "milliseconds": 0,
    "tp": [
     "ifcpropertyset.uniquepropertynames|132"
    ],
@@ -2881,7 +2902,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [
     "ifcquantitylength.wr22|134"
    ],
@@ -2923,7 +2944,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 1,
+   "milliseconds": 0,
    "tp": [
     "ifcownerhistory.correctchangeaction|5"
    ],
@@ -2964,7 +2985,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 3,
+   "milliseconds": 1,
    "tp": [
     "ifcgridaxis.wr1|113"
    ],
@@ -2978,7 +2999,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [
     "ifcpolyline.samedim|39"
    ],
@@ -3035,7 +3056,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [
     "inverse-cardinality:voidselements|70"
    ],
@@ -3049,7 +3070,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [
     "inverse-cardinality:fillsvoids|62"
    ],
@@ -3063,7 +3084,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 1,
+   "milliseconds": 0,
    "tp": [
     "inverse-cardinality:containedinstructure|42"
    ],
@@ -3077,7 +3098,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [
     "ifcreldefinesbyproperties.norelatedtypeobject|133"
    ],
@@ -3105,7 +3126,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [
     "guid-format|42"
    ],
@@ -3119,7 +3140,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 1,
+   "milliseconds": 0,
    "tp": [
     "not-optional:globalid|42"
    ],
@@ -3133,7 +3154,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [
     "invalid-type:name|42"
    ],
@@ -3189,7 +3210,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [
     "attribute-count|42"
    ],
@@ -3231,7 +3252,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [
     "invalid-type:name|42"
    ],
@@ -3245,7 +3266,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 1,
    "oracle": 1,
-   "milliseconds": 1,
+   "milliseconds": 0,
    "tp": [
     "header:file_name.author|"
    ],
@@ -3259,16 +3280,16 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 170,
    "oracle": 170,
-   "milliseconds": 200,
+   "milliseconds": 239,
    "tp": [
-    "ifcpositiveratiomeasure.wr1|15065",
-    "ifcpositiveratiomeasure.wr1|15066",
-    "ifcpositiveratiomeasure.wr1|20397",
-    "ifcpositiveratiomeasure.wr1|20398",
-    "ifcpositiveratiomeasure.wr1|34524",
-    "ifcpositiveratiomeasure.wr1|34525",
-    "ifcpositiveratiomeasure.wr1|59313",
-    "ifcpositiveratiomeasure.wr1|59314",
+    "ifcpositiveratiomeasure.wr1|15065|nominalvalue",
+    "ifcpositiveratiomeasure.wr1|15066|nominalvalue",
+    "ifcpositiveratiomeasure.wr1|20397|nominalvalue",
+    "ifcpositiveratiomeasure.wr1|20398|nominalvalue",
+    "ifcpositiveratiomeasure.wr1|34524|nominalvalue",
+    "ifcpositiveratiomeasure.wr1|34525|nominalvalue",
+    "ifcpositiveratiomeasure.wr1|59313|nominalvalue",
+    "ifcpositiveratiomeasure.wr1|59314|nominalvalue",
     "not-optional:relatedbuildingelement|77426",
     "not-optional:relatedbuildingelement|77953",
     "not-optional:relatedbuildingelement|77981",
@@ -3441,7 +3462,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 0,
    "oracle": 0,
-   "milliseconds": 7,
+   "milliseconds": 11,
    "tp": [],
    "fp": [],
    "fn": []
@@ -3452,7 +3473,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 0,
    "oracle": 0,
-   "milliseconds": 9,
+   "milliseconds": 11,
    "tp": [],
    "fp": [],
    "fn": []
@@ -3463,7 +3484,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 0,
    "oracle": 0,
-   "milliseconds": 10,
+   "milliseconds": 13,
    "tp": [],
    "fp": [],
    "fn": []
@@ -3474,7 +3495,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 0,
    "oracle": 0,
-   "milliseconds": 2,
+   "milliseconds": 1,
    "tp": [],
    "fp": [],
    "fn": []
@@ -3485,7 +3506,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 0,
    "oracle": 0,
-   "milliseconds": 18,
+   "milliseconds": 27,
    "tp": [],
    "fp": [],
    "fn": []
@@ -3496,7 +3517,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 0,
    "oracle": 0,
-   "milliseconds": 60,
+   "milliseconds": 69,
    "tp": [],
    "fp": [],
    "fn": []
@@ -3518,7 +3539,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 4,
    "oracle": 4,
-   "milliseconds": 9,
+   "milliseconds": 11,
    "tp": [
     "ifcarbitraryopenprofiledef.wr12|190",
     "ifcarbitraryopenprofiledef.wr12|203",
@@ -3534,7 +3555,7 @@
    "schema": "IFC2X3",
    "ours": 0,
    "oracle": 0,
-   "milliseconds": 164,
+   "milliseconds": 199,
    "tp": [],
    "fp": [],
    "fn": []
@@ -3556,7 +3577,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 0,
    "oracle": 0,
-   "milliseconds": 0,
+   "milliseconds": 1,
    "tp": [],
    "fp": [],
    "fn": []
@@ -3567,7 +3588,7 @@
    "schema": "IFC4X3_DEV_923b0514",
    "ours": 0,
    "oracle": 0,
-   "milliseconds": 1,
+   "milliseconds": 2,
    "tp": [],
    "fp": [],
    "fn": []
@@ -3592,7 +3613,7 @@
    "schema": "IFC4_ADD2_TC1",
    "ours": 2,
    "oracle": 1,
-   "milliseconds": 9,
+   "milliseconds": 11,
    "tp": [
     "inverse-cardinality:shapeofproduct|192"
    ],
@@ -3625,6 +3646,7 @@
   "packages/validate/parity/corpus/broken/direction-zero.ifc": "IFC4",
   "packages/validate/parity/corpus/broken/point-one-coordinate.ifc": "IFC4",
   "packages/validate/parity/corpus/broken/extrusion-in-profile-plane.ifc": "IFC4",
+  "packages/validate/parity/corpus/broken/rectangle-zero-dimensions.ifc": "IFC4",
   "packages/validate/parity/corpus/broken/rectangle-zero-width.ifc": "IFC4",
   "packages/validate/parity/corpus/broken/shape-without-type.ifc": "IFC4",
   "packages/validate/parity/corpus/broken/shape-wrong-type.ifc": "IFC4",

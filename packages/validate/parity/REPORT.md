@@ -1,6 +1,6 @@
 # @ifc-lite/validate parity report
 
-Generated 2026-11-26 by `parity/run-parity.ts`. Oracle: ifcopenshell.validate (express_rules=True) 0.9.0.post1.
+Generated 2026-11-27 by `parity/run-parity.ts`. Oracle: ifcopenshell.validate (express_rules=True) 0.9.0.post1.
 Findings are compared per rule and instance. TP: both report it; FP: only we do; FN: only the oracle does.
 
 ## Rule compilation
@@ -17,7 +17,7 @@ Every WHERE rule, DERIVE expression, FUNCTION and global RULE compiled; nothing 
 
 ## Totals
 
-131 files: TP 313, FP 3, FN 0. FN on the crafted corpus: 0.
+132 files: TP 315, FP 3, FN 0. FN on the crafted corpus: 0.
 
 ## Targeted defects (crafted corpus)
 
@@ -42,6 +42,7 @@ Every WHERE rule, DERIVE expression, FUNCTION and global RULE compiled; nothing 
 | broken/direction-zero.ifc | `IfcDirection.MagnitudeGreaterZero` | yes | yes |
 | broken/point-one-coordinate.ifc | `IfcCartesianPoint.CP2Dor3D` | yes | yes |
 | broken/extrusion-in-profile-plane.ifc | `IfcExtrudedAreaSolid.ValidExtrusionDirection` | yes | yes |
+| broken/rectangle-zero-dimensions.ifc | `IfcPositiveLengthMeasure.WR1` | yes | yes |
 | broken/rectangle-zero-width.ifc | `IfcPositiveLengthMeasure.WR1` | yes | yes |
 | broken/shape-without-type.ifc | `IfcShapeRepresentation.HasRepresentationType` | yes | yes |
 | broken/shape-wrong-type.ifc | `IfcShapeRepresentation.CorrectItemsForType` | yes | yes |
@@ -171,7 +172,7 @@ True-negative counts are unavailable because the oracle records findings without
 | `ifcperson.identifiableperson` | 2 | 0 | 0 | Unavailable |  |
 | `ifcpolyline.samedim` | 2 | 0 | 0 | Unavailable |  |
 | `ifcpositioningelement.hasplacement` | 1 | 0 | 0 | Unavailable |  |
-| `ifcpositivelengthmeasure.wr1` | 2 | 0 | 0 | Unavailable |  |
+| `ifcpositivelengthmeasure.wr1` | 4 | 0 | 0 | Unavailable |  |
 | `ifcproject.correctcontext` | 2 | 0 | 0 | Unavailable |  |
 | `ifcproject.hasname` | 2 | 0 | 0 | Unavailable |  |
 | `ifcpropertyset.existsname` | 2 | 0 | 0 | Unavailable |  |
@@ -236,7 +237,7 @@ True-negative counts are unavailable because the oracle records findings without
 | `ifcperson.identifiableperson` | 2 | 0 | 0 | Unavailable |  |
 | `ifcpolyline.samedim` | 2 | 0 | 0 | Unavailable |  |
 | `ifcpositioningelement.hasplacement` | 1 | 0 | 0 | Unavailable |  |
-| `ifcpositivelengthmeasure.wr1` | 2 | 0 | 0 | Unavailable |  |
+| `ifcpositivelengthmeasure.wr1` | 4 | 0 | 0 | Unavailable |  |
 | `ifcpositiveratiomeasure.wr1` | 8 | 0 | 0 | Unavailable |  |
 | `ifcproject.correctcontext` | 2 | 0 | 0 | Unavailable |  |
 | `ifcproject.hasname` | 2 | 0 | 0 | Unavailable |  |
@@ -270,135 +271,136 @@ True-negative counts are unavailable because the oracle records findings without
 
 | File | Schema | Ours | Oracle | TP | FP | FN | ms |
 |---|---|---:|---:|---:|---:|---:|---:|
-| packages/validate/parity/corpus/base-ifc4.ifc | IFC4_ADD2_TC1 | 0 | 0 | 0 | 0 | 0 | 41 |
-| packages/validate/parity/corpus/ifc4x3/base.ifc | IFC4X3_DEV_923b0514 | 0 | 0 | 0 | 0 | 0 | 27 |
+| packages/validate/parity/corpus/base-ifc4.ifc | IFC4_ADD2_TC1 | 0 | 0 | 0 | 0 | 0 | 39 |
+| packages/validate/parity/corpus/ifc4x3/base.ifc | IFC4X3_DEV_923b0514 | 0 | 0 | 0 | 0 | 0 | 36 |
 | packages/validate/parity/corpus/broken/wall-userdefined-without-objecttype.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 2 |
-| packages/validate/parity/corpus/broken/door-typed-by-wall-type.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 1 |
+| packages/validate/parity/corpus/broken/door-typed-by-wall-type.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 2 |
 | packages/validate/parity/corpus/broken/window-typed-by-wall-type.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 1 |
 | packages/validate/parity/corpus/broken/slab-userdefined-without-objecttype.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 1 |
-| packages/validate/parity/corpus/broken/space-userdefined-without-objecttype.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 1 |
+| packages/validate/parity/corpus/broken/space-userdefined-without-objecttype.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 2 |
 | packages/validate/parity/corpus/broken/wall-typed-by-slab-type.ifc | IFC4_ADD2_TC1 | 2 | 2 | 2 | 0 | 0 | 1 |
 | packages/validate/parity/corpus/broken/walltype-without-name.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 1 |
 | packages/validate/parity/corpus/broken/storey-not-aggregated.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 1 |
-| packages/validate/parity/corpus/broken/aggregates-self-reference.ifc | IFC4_ADD2_TC1 | 3 | 3 | 3 | 0 | 0 | 1 |
+| packages/validate/parity/corpus/broken/aggregates-self-reference.ifc | IFC4_ADD2_TC1 | 3 | 3 | 3 | 0 | 0 | 2 |
 | packages/validate/parity/corpus/broken/storey-contained-in-storey.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 1 |
-| packages/validate/parity/corpus/broken/project-without-name.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 2 |
-| packages/validate/parity/corpus/broken/project-subcontext.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 0 |
+| packages/validate/parity/corpus/broken/project-without-name.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 1 |
+| packages/validate/parity/corpus/broken/project-subcontext.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 2 |
 | packages/validate/parity/corpus/broken/two-projects.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 1 |
-| packages/validate/parity/corpus/broken/axis-without-refdirection.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 1 |
+| packages/validate/parity/corpus/broken/axis-without-refdirection.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 2 |
 | packages/validate/parity/corpus/broken/placement-location-2d.ifc | IFC4_ADD2_TC1 | 2 | 2 | 2 | 0 | 0 | 1 |
 | packages/validate/parity/corpus/broken/placement-parallel-axes.ifc | IFC4_ADD2_TC1 | 3 | 3 | 3 | 0 | 0 | 1 |
-| packages/validate/parity/corpus/broken/direction-zero.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 0 |
+| packages/validate/parity/corpus/broken/direction-zero.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 1 |
 | packages/validate/parity/corpus/broken/point-one-coordinate.ifc | IFC4_ADD2_TC1 | 2 | 2 | 2 | 0 | 0 | 1 |
 | packages/validate/parity/corpus/broken/extrusion-in-profile-plane.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 1 |
-| packages/validate/parity/corpus/broken/rectangle-zero-width.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 0 |
+| packages/validate/parity/corpus/broken/rectangle-zero-dimensions.ifc | IFC4_ADD2_TC1 | 2 | 2 | 2 | 0 | 0 | 1 |
+| packages/validate/parity/corpus/broken/rectangle-zero-width.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 1 |
 | packages/validate/parity/corpus/broken/shape-without-type.ifc | IFC4_ADD2_TC1 | 2 | 2 | 2 | 0 | 0 | 1 |
 | packages/validate/parity/corpus/broken/shape-wrong-type.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 1 |
 | packages/validate/parity/corpus/broken/shape-in-non-geometric-context.ifc | IFC4_ADD2_TC1 | 2 | 2 | 2 | 0 | 0 | 1 |
 | packages/validate/parity/corpus/broken/shape-shared-by-two-products.ifc | IFC4_ADD2_TC1 | 2 | 2 | 2 | 0 | 0 | 1 |
 | packages/validate/parity/corpus/broken/local-placement-3d-under-2d.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 1 |
-| packages/validate/parity/corpus/broken/subcontext-userdefined-view.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 0 |
+| packages/validate/parity/corpus/broken/subcontext-userdefined-view.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 1 |
 | packages/validate/parity/corpus/broken/subcontext-explicit-derived.ifc | IFC4_ADD2_TC1 | 1 | 0 | 0 | 1 | 0 | 1 |
-| packages/validate/parity/corpus/broken/pset-without-name.ifc | IFC4_ADD2_TC1 | 2 | 2 | 2 | 0 | 0 | 1 |
-| packages/validate/parity/corpus/broken/pset-duplicate-property-names.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 0 |
+| packages/validate/parity/corpus/broken/pset-without-name.ifc | IFC4_ADD2_TC1 | 2 | 2 | 2 | 0 | 0 | 0 |
+| packages/validate/parity/corpus/broken/pset-duplicate-property-names.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 1 |
 | packages/validate/parity/corpus/broken/two-psets-same-name.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 1 |
 | packages/validate/parity/corpus/broken/quantity-negative-length.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 1 |
 | packages/validate/parity/corpus/broken/unit-wrong-dimensions.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 0 |
 | packages/validate/parity/corpus/broken/unit-assignment-duplicate-type.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 2 |
 | packages/validate/parity/corpus/broken/ownerhistory-added-without-date.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 0 |
-| packages/validate/parity/corpus/broken/person-without-name.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 1 |
+| packages/validate/parity/corpus/broken/person-without-name.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 0 |
 | packages/validate/parity/corpus/broken/grid-without-placement.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 1 |
-| packages/validate/parity/corpus/broken/grid-axis-3d-curve.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 0 |
+| packages/validate/parity/corpus/broken/grid-axis-3d-curve.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 1 |
 | packages/validate/parity/corpus/broken/polyline-mixed-dimensions.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 1 |
-| packages/validate/parity/corpus/broken/profile-outer-curve-3d.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 0 |
+| packages/validate/parity/corpus/broken/profile-outer-curve-3d.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 1 |
 | packages/validate/parity/corpus/broken/material-priority-out-of-range.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 1 |
 | packages/validate/parity/corpus/broken/wallstandardcase-without-layer-usage.ifc | IFC4_ADD2_TC1 | 2 | 2 | 2 | 0 | 0 | 1 |
 | packages/validate/parity/corpus/broken/opening-voids-nothing.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 1 |
-| packages/validate/parity/corpus/broken/door-fills-two-openings.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 0 |
-| packages/validate/parity/corpus/broken/wall-contained-twice.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 2 |
-| packages/validate/parity/corpus/broken/defines-by-properties-on-type.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 0 |
+| packages/validate/parity/corpus/broken/door-fills-two-openings.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 1 |
+| packages/validate/parity/corpus/broken/wall-contained-twice.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 1 |
+| packages/validate/parity/corpus/broken/defines-by-properties-on-type.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 2 |
 | packages/validate/parity/corpus/broken/duplicate-globalid.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 1 |
 | packages/validate/parity/corpus/broken/globalid-invalid-characters.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 1 |
 | packages/validate/parity/corpus/broken/wall-missing-globalid.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 0 |
-| packages/validate/parity/corpus/broken/wall-name-integer.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 1 |
+| packages/validate/parity/corpus/broken/wall-name-integer.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 0 |
 | packages/validate/parity/corpus/broken/wall-placement-wrong-entity.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 1 |
-| packages/validate/parity/corpus/broken/point-integer-coordinates.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 0 |
+| packages/validate/parity/corpus/broken/point-integer-coordinates.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 1 |
 | packages/validate/parity/corpus/broken/wall-enum-unknown-item.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 1 |
-| packages/validate/parity/corpus/broken/wall-attribute-count.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 1 |
+| packages/validate/parity/corpus/broken/wall-attribute-count.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 0 |
 | packages/validate/parity/corpus/broken/abstract-entity-instance.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 1 |
 | packages/validate/parity/corpus/broken/select-untyped-value.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 1 |
 | packages/validate/parity/corpus/broken/typed-value-in-plain-slot.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 1 |
-| packages/validate/parity/corpus/broken/header-author-not-list.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 0 |
+| packages/validate/parity/corpus/broken/header-author-not-list.ifc | IFC4_ADD2_TC1 | 1 | 1 | 1 | 0 | 0 | 1 |
 | packages/validate/parity/corpus/ifc4x3/broken/wall-userdefined-without-objecttype.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 1 |
 | packages/validate/parity/corpus/ifc4x3/broken/door-typed-by-wall-type.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 1 |
 | packages/validate/parity/corpus/ifc4x3/broken/window-typed-by-wall-type.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 1 |
 | packages/validate/parity/corpus/ifc4x3/broken/slab-userdefined-without-objecttype.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 1 |
 | packages/validate/parity/corpus/ifc4x3/broken/space-userdefined-without-objecttype.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 0 |
-| packages/validate/parity/corpus/ifc4x3/broken/wall-typed-by-slab-type.ifc | IFC4X3_DEV_923b0514 | 2 | 2 | 2 | 0 | 0 | 0 |
+| packages/validate/parity/corpus/ifc4x3/broken/wall-typed-by-slab-type.ifc | IFC4X3_DEV_923b0514 | 2 | 2 | 2 | 0 | 0 | 1 |
 | packages/validate/parity/corpus/ifc4x3/broken/walltype-without-name.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 1 |
-| packages/validate/parity/corpus/ifc4x3/broken/storey-not-aggregated.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 1 |
+| packages/validate/parity/corpus/ifc4x3/broken/storey-not-aggregated.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 0 |
 | packages/validate/parity/corpus/ifc4x3/broken/aggregates-self-reference.ifc | IFC4X3_DEV_923b0514 | 3 | 3 | 3 | 0 | 0 | 1 |
 | packages/validate/parity/corpus/ifc4x3/broken/storey-contained-in-storey.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 1 |
-| packages/validate/parity/corpus/ifc4x3/broken/project-without-name.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 0 |
+| packages/validate/parity/corpus/ifc4x3/broken/project-without-name.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 1 |
 | packages/validate/parity/corpus/ifc4x3/broken/project-subcontext.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 1 |
 | packages/validate/parity/corpus/ifc4x3/broken/two-projects.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 1 |
-| packages/validate/parity/corpus/ifc4x3/broken/axis-without-refdirection.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 1 |
+| packages/validate/parity/corpus/ifc4x3/broken/axis-without-refdirection.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 0 |
 | packages/validate/parity/corpus/ifc4x3/broken/placement-location-2d.ifc | IFC4X3_DEV_923b0514 | 2 | 2 | 2 | 0 | 0 | 1 |
 | packages/validate/parity/corpus/ifc4x3/broken/placement-parallel-axes.ifc | IFC4X3_DEV_923b0514 | 3 | 3 | 3 | 0 | 0 | 0 |
 | packages/validate/parity/corpus/ifc4x3/broken/direction-zero.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 1 |
 | packages/validate/parity/corpus/ifc4x3/broken/point-one-coordinate.ifc | IFC4X3_DEV_923b0514 | 2 | 2 | 2 | 0 | 0 | 1 |
-| packages/validate/parity/corpus/ifc4x3/broken/extrusion-in-profile-plane.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 0 |
+| packages/validate/parity/corpus/ifc4x3/broken/extrusion-in-profile-plane.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 1 |
 | packages/validate/parity/corpus/ifc4x3/broken/rectangle-zero-width.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 1 |
 | packages/validate/parity/corpus/ifc4x3/broken/shape-without-type.ifc | IFC4X3_DEV_923b0514 | 2 | 2 | 2 | 0 | 0 | 1 |
 | packages/validate/parity/corpus/ifc4x3/broken/shape-wrong-type.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 1 |
-| packages/validate/parity/corpus/ifc4x3/broken/shape-in-non-geometric-context.ifc | IFC4X3_DEV_923b0514 | 2 | 2 | 2 | 0 | 0 | 1 |
+| packages/validate/parity/corpus/ifc4x3/broken/shape-in-non-geometric-context.ifc | IFC4X3_DEV_923b0514 | 2 | 2 | 2 | 0 | 0 | 0 |
 | packages/validate/parity/corpus/ifc4x3/broken/shape-shared-by-two-products.ifc | IFC4X3_DEV_923b0514 | 2 | 2 | 2 | 0 | 0 | 1 |
 | packages/validate/parity/corpus/ifc4x3/broken/local-placement-3d-under-2d.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 0 |
 | packages/validate/parity/corpus/ifc4x3/broken/subcontext-userdefined-view.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 1 |
 | packages/validate/parity/corpus/ifc4x3/broken/subcontext-explicit-derived.ifc | IFC4X3_DEV_923b0514 | 1 | 0 | 0 | 1 | 0 | 1 |
-| packages/validate/parity/corpus/ifc4x3/broken/pset-without-name.ifc | IFC4X3_DEV_923b0514 | 2 | 2 | 2 | 0 | 0 | 0 |
-| packages/validate/parity/corpus/ifc4x3/broken/pset-duplicate-property-names.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 1 |
+| packages/validate/parity/corpus/ifc4x3/broken/pset-without-name.ifc | IFC4X3_DEV_923b0514 | 2 | 2 | 2 | 0 | 0 | 1 |
+| packages/validate/parity/corpus/ifc4x3/broken/pset-duplicate-property-names.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 0 |
 | packages/validate/parity/corpus/ifc4x3/broken/two-psets-same-name.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 1 |
-| packages/validate/parity/corpus/ifc4x3/broken/quantity-negative-length.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 0 |
+| packages/validate/parity/corpus/ifc4x3/broken/quantity-negative-length.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 1 |
 | packages/validate/parity/corpus/ifc4x3/broken/unit-wrong-dimensions.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 1 |
 | packages/validate/parity/corpus/ifc4x3/broken/unit-assignment-duplicate-type.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 1 |
-| packages/validate/parity/corpus/ifc4x3/broken/ownerhistory-added-without-date.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 1 |
+| packages/validate/parity/corpus/ifc4x3/broken/ownerhistory-added-without-date.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 0 |
 | packages/validate/parity/corpus/ifc4x3/broken/person-without-name.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 1 |
 | packages/validate/parity/corpus/ifc4x3/broken/grid-without-placement.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 1 |
-| packages/validate/parity/corpus/ifc4x3/broken/grid-axis-3d-curve.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 3 |
-| packages/validate/parity/corpus/ifc4x3/broken/polyline-mixed-dimensions.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 0 |
+| packages/validate/parity/corpus/ifc4x3/broken/grid-axis-3d-curve.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 1 |
+| packages/validate/parity/corpus/ifc4x3/broken/polyline-mixed-dimensions.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 1 |
 | packages/validate/parity/corpus/ifc4x3/broken/profile-outer-curve-3d.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 1 |
 | packages/validate/parity/corpus/ifc4x3/broken/material-priority-out-of-range.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 0 |
 | packages/validate/parity/corpus/ifc4x3/broken/wallstandardcase-without-layer-usage.ifc | IFC4X3_DEV_923b0514 | 2 | 2 | 2 | 0 | 0 | 1 |
-| packages/validate/parity/corpus/ifc4x3/broken/opening-voids-nothing.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 0 |
-| packages/validate/parity/corpus/ifc4x3/broken/door-fills-two-openings.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 0 |
-| packages/validate/parity/corpus/ifc4x3/broken/wall-contained-twice.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 1 |
-| packages/validate/parity/corpus/ifc4x3/broken/defines-by-properties-on-type.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 0 |
+| packages/validate/parity/corpus/ifc4x3/broken/opening-voids-nothing.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 1 |
+| packages/validate/parity/corpus/ifc4x3/broken/door-fills-two-openings.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 1 |
+| packages/validate/parity/corpus/ifc4x3/broken/wall-contained-twice.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 0 |
+| packages/validate/parity/corpus/ifc4x3/broken/defines-by-properties-on-type.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 1 |
 | packages/validate/parity/corpus/ifc4x3/broken/duplicate-globalid.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 1 |
-| packages/validate/parity/corpus/ifc4x3/broken/globalid-invalid-characters.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 0 |
-| packages/validate/parity/corpus/ifc4x3/broken/wall-missing-globalid.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 1 |
-| packages/validate/parity/corpus/ifc4x3/broken/wall-name-integer.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 0 |
+| packages/validate/parity/corpus/ifc4x3/broken/globalid-invalid-characters.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 1 |
+| packages/validate/parity/corpus/ifc4x3/broken/wall-missing-globalid.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 0 |
+| packages/validate/parity/corpus/ifc4x3/broken/wall-name-integer.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 1 |
 | packages/validate/parity/corpus/ifc4x3/broken/wall-placement-wrong-entity.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 1 |
 | packages/validate/parity/corpus/ifc4x3/broken/point-integer-coordinates.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 0 |
 | packages/validate/parity/corpus/ifc4x3/broken/wall-enum-unknown-item.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 1 |
-| packages/validate/parity/corpus/ifc4x3/broken/wall-attribute-count.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 0 |
+| packages/validate/parity/corpus/ifc4x3/broken/wall-attribute-count.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 1 |
 | packages/validate/parity/corpus/ifc4x3/broken/abstract-entity-instance.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 0 |
 | packages/validate/parity/corpus/ifc4x3/broken/select-untyped-value.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 1 |
-| packages/validate/parity/corpus/ifc4x3/broken/typed-value-in-plain-slot.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 0 |
-| packages/validate/parity/corpus/ifc4x3/broken/header-author-not-list.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 1 |
-| tests/models/ara3d/AC20-FZK-Haus.ifc | IFC4_ADD2_TC1 | 170 | 170 | 170 | 0 | 0 | 200 |
-| tests/models/ara3d/IfcOpenHouse_IFC4.ifc | IFC4_ADD2_TC1 | 0 | 0 | 0 | 0 | 0 | 7 |
-| tests/models/buildingsmart/Building-Architecture.ifc | IFC4_ADD2_TC1 | 0 | 0 | 0 | 0 | 0 | 9 |
-| tests/models/buildingsmart/Building-Structural.ifc | IFC4_ADD2_TC1 | 0 | 0 | 0 | 0 | 0 | 10 |
-| tests/models/buildingsmart/wall-with-opening-and-window.ifc | IFC4_ADD2_TC1 | 0 | 0 | 0 | 0 | 0 | 2 |
-| tests/models/buildingsmart/Infra-Road.ifc | IFC4_ADD2_TC1 | 0 | 0 | 0 | 0 | 0 | 18 |
-| tests/models/buildingsmart/Infra-Bridge.ifc | IFC4_ADD2_TC1 | 0 | 0 | 0 | 0 | 0 | 60 |
+| packages/validate/parity/corpus/ifc4x3/broken/typed-value-in-plain-slot.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 1 |
+| packages/validate/parity/corpus/ifc4x3/broken/header-author-not-list.ifc | IFC4X3_DEV_923b0514 | 1 | 1 | 1 | 0 | 0 | 0 |
+| tests/models/ara3d/AC20-FZK-Haus.ifc | IFC4_ADD2_TC1 | 170 | 170 | 170 | 0 | 0 | 239 |
+| tests/models/ara3d/IfcOpenHouse_IFC4.ifc | IFC4_ADD2_TC1 | 0 | 0 | 0 | 0 | 0 | 11 |
+| tests/models/buildingsmart/Building-Architecture.ifc | IFC4_ADD2_TC1 | 0 | 0 | 0 | 0 | 0 | 11 |
+| tests/models/buildingsmart/Building-Structural.ifc | IFC4_ADD2_TC1 | 0 | 0 | 0 | 0 | 0 | 13 |
+| tests/models/buildingsmart/wall-with-opening-and-window.ifc | IFC4_ADD2_TC1 | 0 | 0 | 0 | 0 | 0 | 1 |
+| tests/models/buildingsmart/Infra-Road.ifc | IFC4_ADD2_TC1 | 0 | 0 | 0 | 0 | 0 | 27 |
+| tests/models/buildingsmart/Infra-Bridge.ifc | IFC4_ADD2_TC1 | 0 | 0 | 0 | 0 | 0 | 69 |
 | tests/models/modelling/saved-building.ifc | IFC4_ADD2_TC1 | 0 | 0 | 0 | 0 | 0 | 2 |
-| tests/models/various/issue-604-door.ifc | IFC4_ADD2_TC1 | 4 | 4 | 4 | 0 | 0 | 9 |
-| tests/models/ara3d/duplex.ifc | IFC2X3 | 0 | 0 | 0 | 0 | 0 | 164 |
+| tests/models/various/issue-604-door.ifc | IFC4_ADD2_TC1 | 4 | 4 | 4 | 0 | 0 | 11 |
+| tests/models/ara3d/duplex.ifc | IFC2X3 | 0 | 0 | 0 | 0 | 0 | 199 |
 | tests/models/buildingsmart/annex_e/basic-geometric-shape/extruded-solid.ifc | IFC4X3_DEV_923b0514 | 0 | 0 | 0 | 0 | 0 | 1 |
-| tests/models/buildingsmart/annex_e/tessellated-shape/polygonal-face-tessellation.ifc | IFC4X3_DEV_923b0514 | 0 | 0 | 0 | 0 | 0 | 0 |
-| tests/models/ifcopenshell/generated_structural_coverage_ifc4x3.ifc | IFC4X3_DEV_923b0514 | 0 | 0 | 0 | 0 | 0 | 1 |
+| tests/models/buildingsmart/annex_e/tessellated-shape/polygonal-face-tessellation.ifc | IFC4X3_DEV_923b0514 | 0 | 0 | 0 | 0 | 0 | 1 |
+| tests/models/ifcopenshell/generated_structural_coverage_ifc4x3.ifc | IFC4X3_DEV_923b0514 | 0 | 0 | 0 | 0 | 0 | 2 |
 | apps/viewer/public/samples/hello-wall.ifc | IFC4_ADD2_TC1 | 2 | 2 | 2 | 0 | 0 | 5 |
-| apps/viewer/public/samples/building-architecture-rev-b.ifc | IFC4_ADD2_TC1 | 2 | 1 | 1 | 1 | 0 | 9 |
+| apps/viewer/public/samples/building-architecture-rev-b.ifc | IFC4_ADD2_TC1 | 2 | 1 | 1 | 1 | 0 | 11 |
 

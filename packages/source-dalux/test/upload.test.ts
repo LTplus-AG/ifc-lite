@@ -268,22 +268,33 @@ describe('Dalux write-back', () => {
     expect(result.file.currentRevisionId).toBe(result.revision.id);
   });
 
-  it.each(['timeout', 'missing identity'])('keeps a committed upload successful after read-back with %s (#11651)', async (failure) => {
+  it.each(['timeout', 'missing identity', 'previous revision', 'previous content hash'])('keeps a committed upload successful after read-back with %s (#11651)', async (failure) => {
     const { ctx, provider, posts } = setup();
     let finalized = false;
+    let previous: Response | undefined;
     const readBackSignals: (AbortSignal | null | undefined)[] = [];
     const fetch: typeof ctx.fetch = async (input, init) => {
       const path = String(input);
       const isFinalize = path.endsWith('/finalize');
-      const isReadBack = finalized && path.endsWith('/files/file-a');
+      const isFile = path.endsWith('/files/file-a');
+      const isReadBack = finalized && isFile;
       if (isReadBack) {
         readBackSignals.push(init?.signal);
         if (failure === 'timeout') throw new DOMException('Read-back timed out', 'TimeoutError');
+        if ((failure === 'previous revision' || failure === 'previous content hash') && previous) return previous;
       }
       const response = await ctx.fetch(input, init);
-      if (!isFinalize && !isReadBack) return response;
+      if (!isFinalize && !isFile) return response;
       if (isFinalize) finalized = true;
       const payload = await response.json() as { data: Record<string, unknown> };
+      if (isFile && !isReadBack) {
+        if (failure === 'previous content hash') {
+          delete payload.data.fileRevisionId;
+          payload.data.contentHash = 'previous-hash';
+        }
+        previous = new Response(JSON.stringify(payload), { status: response.status, headers: response.headers });
+        return previous.clone();
+      }
       delete payload.data.fileRevisionId;
       delete payload.data.contentHash;
       return new Response(JSON.stringify(payload), { status: response.status, headers: response.headers });

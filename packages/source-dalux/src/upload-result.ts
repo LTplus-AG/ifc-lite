@@ -14,6 +14,17 @@ import { currentRevisionId, enc, LATEST_REVISION, nonEmptyString, toSourceFile }
 /** A read-back the user can no longer cancel still must not hang the save. */
 const READ_BACK_TIMEOUT_MS = 15_000;
 
+type RevisionIdentity = Pick<DaluxFile, 'fileRevisionId' | 'contentHash'>;
+
+function hasChangedRevision(previous: RevisionIdentity, fresh: RevisionIdentity): boolean {
+  const previousId = nonEmptyString(previous.fileRevisionId);
+  const freshId = nonEmptyString(fresh.fileRevisionId);
+  if (previousId && freshId) return previousId !== freshId;
+  const previousHash = nonEmptyString(previous.contentHash);
+  const freshHash = nonEmptyString(fresh.contentHash);
+  return !!previousHash && !!freshHash && previousHash !== freshHash;
+}
+
 function toSourceRevision(file: DaluxFile, sizeBytes: number): SourceRevision | null {
   const id = currentRevisionId(file);
   if (id === LATEST_REVISION) return null;
@@ -33,6 +44,7 @@ export async function uploadedFile(
   where: { projectId: string; fileAreaId: string; destinationFolderId: string | undefined },
   finalized: DaluxFile,
   sizeBytes: number,
+  previousRevision?: RevisionIdentity,
 ): Promise<{ file: SourceFile; revision: SourceRevision | null }> {
   let created = finalized;
   // A response without a revision identity would bind the model to the
@@ -44,7 +56,11 @@ export async function uploadedFile(
       const fresh = decodeFileResponse(await client.get(
         `/5.0/projects/${enc(where.projectId)}/file_areas/${enc(where.fileAreaId)}/files/${enc(created.fileId)}`, {}, AbortSignal.timeout(READ_BACK_TIMEOUT_MS),
       )).data;
-      created = { ...created, fileRevisionId: fresh.fileRevisionId, contentHash: fresh.contentHash };
+      // A new-version lookup can still serve the preceding revision. Compare
+      // identities of the same kind before adopting the read-back metadata.
+      if (!previousRevision || hasChangedRevision(previousRevision, fresh)) {
+        created = { ...created, fileRevisionId: fresh.fileRevisionId, contentHash: fresh.contentHash };
+      }
     } catch (err) {
       ctx.log.warn('Dalux: could not read the uploaded file\'s revision', { error: err instanceof Error ? err.message : String(err) });
     }

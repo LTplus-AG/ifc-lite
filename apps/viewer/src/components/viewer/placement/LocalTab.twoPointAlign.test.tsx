@@ -1,0 +1,391 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+/** Two-point align UI state machine (#11505), driven without WebGPU: the
+ * pick events the renderer would deliver are fed through the same `capture`
+ * entry point `useRepositionPicking` calls on a click. */
+import '@/test/setup-dom.js';
+import '@/test/section-tool-ready.js';
+import { afterEach, beforeEach, describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { act } from 'react';
+import type { GeometryResult } from '@ifc-lite/geometry';
+import { Renderer } from '@ifc-lite/renderer';
+import { convergeFederationRtcFrame } from '@/hooks/ingest/federationRtcRebase';
+import { setGlobalRendererRef } from '@/lib/renderer-ref';
+import { render, cleanup, click, press, type } from '@/test/render';
+import { fixtureModel, fixtureModels } from '@/test/store-fixture';
+import { useViewerStore } from '@/store';
+import { emptyPlacementState, placementFor } from '@/lib/model-placement/state';
+import { modelPointToWorkspacePoint } from '@/lib/model-placement/rotation';
+import { useRepositionRuntime, type RepositionRuntime } from '@/lib/model-placement/reposition-runtime';
+import type { Translation } from '@/lib/model-placement/translation';
+import { ToolOverlays } from '../ToolOverlays';
+import { SceneOverlayRoot } from '@/components/viewport-ui/scene';
+import { LocalTab } from './LocalTab';
+
+let runtime: RepositionRuntime | null = null;
+function Probe() { runtime = useRepositionRuntime(); return null; }
+
+function button(ui: HTMLElement, label: string): HTMLButtonElement {
+  const el = [...ui.querySelectorAll('button')].find((item) => item.textContent === label);
+  assert.ok(el, `button ${label}`); return el;
+}
+const hasButton = (ui: HTMLElement, label: string) => [...ui.querySelectorAll('button')].some((item) => item.textContent === label);
+// The Local tab's move section has its own fieldset and prompt above; ask the align section for its.
+const promptText = (ui: HTMLElement) => [...ui.querySelectorAll('fieldset')]
+  .find((set) => set.querySelector('legend')?.textContent === 'Two-point align')?.querySelector('output')?.textContent ?? '';
+const readoutText = (ui: HTMLElement) => ui.querySelector('fieldset[aria-label="Alignment result"]')?.textContent ?? '';
+/** What a user's click on the canvas does in align mode: `useRepositionPicking` calls `capture` and
+ * hands the role it returns to its own `finish`. That finish is not `runtime.setRole` (which is the
+ * ordinary pick path and leaves align), so the returned next role is reported, not applied. */
+function pickPoint(role: 'source' | 'target', point: Translation, modelId = role === 'source' ? 'ifc' : 'scan') {
+  assert.ok(runtime, 'runtime is published');
+  const current = runtime;
+  let next: 'source' | 'target' | null = null;
+  act(() => { next = current.align.capture(role, { modelId, point, kind: 'vertex' }); });
+  return next;
+}
+function pickAll(a: Translation, aPrime: Translation, b: Translation, bPrime: Translation) {
+  pickPoint('source', a); pickPoint('target', aPrime); pickPoint('source', b); pickPoint('target', bPrime);
+}
+
+describe('two-point align panel (#11505)', () => {
+  let ui: HTMLElement;
+  beforeEach(() => {
+    runtime = null;
+    useViewerStore.setState({ ...fixtureModels(fixtureModel('ifc'), { ...fixtureModel('scan'), ifcDataStore: null }),
+      editEnabled: true, modelPlacement: emptyPlacementState(), repositionOpen: false, repositionNudge: 0.001, activeTool: 'select' });
+    act(() => useViewerStore.getState().openReposition(['ifc']));
+    ui = render(<><Probe /><SceneOverlayRoot><ToolOverlays /></SceneOverlayRoot><LocalTab /></>);
+  });
+  afterEach(() => { cleanup(); setGlobalRendererRef({ current: null }); });
+
+  function pressCanvasEnter() {
+    const canvas = ui.querySelector('canvas') ?? ui.appendChild(document.createElement('canvas'));
+    canvas.tabIndex = -1;
+    canvas.focus();
+    assert.equal(document.activeElement, canvas);
+    press(canvas, 'Enter');
+  }
+
+  function previewFiveMetres() {
+    const deltaX = ui.querySelector<HTMLInputElement>('input[aria-label="Delta X"]');
+    assert.ok(deltaX);
+    type(deltaX, '5');
+    click(button(ui, 'Preview values'));
+    assert.deepEqual(useViewerStore.getState().modelPlacement.preview?.delta, [5, 0, 0]);
+  }
+
+  it('walks the four prompts in order and enables Apply only once the result exists', () => {
+    click(button(ui, 'Two-point align'));
+    assert.equal(promptText(ui), 'Pick A on the moving models.');
+    assert.equal(runtime!.role, 'source');
+    assert.equal(button(ui, 'Apply alignment').disabled, true);
+    assert.equal(pickPoint('source', [0, 0, 0]), 'target', 'the next pick is on the reference');
+    assert.equal(promptText(ui), 'Pick A′ on the reference model.');
+    assert.equal(pickPoint('target', [10, 0, 0]), 'source');
+    assert.equal(promptText(ui), 'Pick B on the moving models, far from A.');
+    pickPoint('source', [5, 0, 0]);
+    assert.equal(promptText(ui), 'Pick B′ on the reference model.');
+    assert.equal(button(ui, 'Apply alignment').disabled, true, 'three picks are not a result');
+    assert.equal(pickPoint('target', [10, 5, 0]), null, 'no further pick once all four are in');
+    assert.match(promptText(ui), /All four points are picked/);
+    assert.equal(button(ui, 'Apply alignment').disabled, false);
+  });
+
+  it('shows the readout, applies rotation about A then the move as one undo step', () => {
+    const before = placementFor(useViewerStore.getState().modelPlacement, 'ifc');
+    click(button(ui, 'Two-point align'));
+    // The model is turned +90 deg (X -> Y) and moved so that A lands on A'.
+    pickAll([100, 100, 0], [30, -20, 1], [160, 100, 0], [30, 40, 1]);
+    assert.match(readoutText(ui), /Rotation \+90\.00° \(about A\)/);
+    assert.match(readoutText(ui), /Move ΔX -70\.000 · ΔY -120\.000 · ΔZ 1\.000 m/);
+    assert.match(readoutText(ui), /Check: B lands 0 mm from B′ ✓/);
+    assert.equal(useViewerStore.getState().modelPlacement.undo.length, 0, 'nothing is applied before Apply');
+    click(button(ui, 'Apply alignment'));
+    const state = useViewerStore.getState().modelPlacement;
+    assert.equal(state.undo.length, 1, 'one undoable step');
+    const placed = placementFor(state, 'ifc');
+    assert.ok(Math.abs(placed.rotation.angle - Math.PI / 2) < 1e-12);
+    // A (a point of the model, at its own frame) now sits on A'.
+    const landed = modelPointToWorkspacePoint([100, 100, 0], placed);
+    assert.ok(Math.hypot(landed[0] - 30, landed[1] + 20, landed[2] - 1) < 1e-9, `A landed at ${landed}`);
+    assert.ok(hasButton(ui, 'Two-point align'), 'the mode ended');
+    click(button(ui, 'Undo placement'));
+    assert.deepEqual(placementFor(useViewerStore.getState().modelPlacement, 'ifc'), before);
+  });
+
+  it('uses canvas Enter to apply the displayed alignment instead of the pending move (#11629)', () => {
+    act(() => useViewerStore.getState().previewModelTranslation([5, 0, 0]));
+    click(button(ui, 'Two-point align'));
+    pickAll([5, 0, 0], [20, 0, 0], [15, 0, 0], [20, 10, 0]);
+    assert.match(readoutText(ui), /Rotation \+90\.00°/);
+
+    pressCanvasEnter();
+    const state = useViewerStore.getState().modelPlacement;
+    const placed = placementFor(state, 'ifc');
+    assert.equal(state.undo.length, 1);
+    assert.equal(placed.rotation.angle, Math.PI / 2);
+    assert.deepEqual(placed.translation, [20, 0, 0]);
+  });
+
+  it('leaves the pending move uncommitted when canvas Enter has no valid alignment (#11629)', () => {
+    act(() => useViewerStore.getState().previewModelTranslation([5, 0, 0]));
+    click(button(ui, 'Two-point align'));
+    pressCanvasEnter();
+    assert.equal(useViewerStore.getState().modelPlacement.undo.length, 0);
+    pickAll([5, 0, 0], [20, 0, 0], [5, 0, 0], [20, 10, 0]);
+    pressCanvasEnter();
+    const state = useViewerStore.getState().modelPlacement;
+    assert.equal(state.undo.length, 0);
+    assert.deepEqual(state.preview?.delta, [5, 0, 0]);
+
+    click(button(ui, 'Cancel align'));
+    pressCanvasEnter();
+    const applied = useViewerStore.getState().modelPlacement;
+    assert.equal(applied.undo.length, 1);
+    assert.deepEqual(placementFor(applied, 'ifc').translation, [5, 0, 0]);
+  });
+
+  it('applies and undoes the displayed alignment from the main Apply button (#11629)', () => {
+    previewFiveMetres();
+    click(button(ui, 'Two-point align'));
+    pickAll([5, 0, 0], [20, 0, 0], [15, 0, 0], [20, 10, 0]);
+    assert.match(readoutText(ui), /Rotation \+90\.00°/);
+
+    click(button(ui, 'Apply'));
+    const placed = useViewerStore.getState().modelPlacement;
+    assert.equal(placed.undo.length, 1);
+    assert.equal(placementFor(placed, 'ifc').rotation.angle, Math.PI / 2);
+    assert.deepEqual(placementFor(placed, 'ifc').translation, [20, 0, 0]);
+
+    click(button(ui, 'Undo placement'));
+    const restored = placementFor(useViewerStore.getState().modelPlacement, 'ifc');
+    assert.equal(restored.rotation.angle, 0);
+    assert.deepEqual(restored.translation, [0, 0, 0]);
+  });
+
+  it('disables main Apply for incomplete or invalid alignment and restores the ordinary move control on cancel (#11629)', () => {
+    previewFiveMetres();
+    click(button(ui, 'Two-point align'));
+    pickPoint('source', [5, 0, 0]);
+    const apply = button(ui, 'Apply');
+    click(apply);
+    assert.equal(useViewerStore.getState().modelPlacement.undo.length, 0);
+    assert.equal(apply.disabled, true);
+
+    pickPoint('target', [20, 0, 0]);
+    pickPoint('source', [5, 0, 0]);
+    pickPoint('target', [20, 10, 0]);
+    assert.equal(button(ui, 'Apply').disabled, true);
+    assert.deepEqual(useViewerStore.getState().modelPlacement.preview?.delta, [5, 0, 0]);
+
+    click(button(ui, 'Cancel align'));
+    assert.equal(button(ui, 'Apply').disabled, false);
+    click(button(ui, 'Apply'));
+    const applied = useViewerStore.getState().modelPlacement;
+    assert.equal(applied.undo.length, 1);
+    assert.deepEqual(placementFor(applied, 'ifc').translation, [5, 0, 0]);
+  });
+
+  it('warns when B lands over 10 mm off B-prime and lists the ratio when lengths differ by over 0.1%', () => {
+    click(button(ui, 'Two-point align'));
+    pickAll([0, 0, 0], [0, 0, 0], [10, 0, 0], [10.05, 0, 0]);
+    assert.match(readoutText(ui), /Check: B lands 50 mm from B′ ⚠/);
+    assert.ok(ui.querySelector('[aria-label="Alignment result"]')!.classList.contains('text-status-warn'), 'warn styling');
+    click(button(ui, 'Pick again'));
+    pickAll([0, 0, 0], [0, 0, 0], [10, 0, 0], [10.2, 0, 0]);
+    assert.match(readoutText(ui), /Plan length ratio \|AB\| \/ \|A′B′\| = 0\.9804/);
+  });
+
+  it('updates the mounted polite result region on the fourth pick (#11629)', () => {
+    click(button(ui, 'Two-point align'));
+    const panel = button(ui, 'Apply alignment').closest('fieldset')!;
+    const announcements = panel.querySelector('[aria-live="polite"][aria-atomic="true"]');
+    assert.ok(announcements, 'the result live region is mounted before the first pick');
+    pickPoint('source', [0, 0, 0]);
+    pickPoint('target', [0, 0, 0]);
+    pickPoint('source', [10, 0, 0]);
+    assert.equal(announcements.textContent, '');
+
+    pickPoint('target', [10.2, 0, 0]);
+    assert.equal(panel.querySelector('[aria-live="polite"]'), announcements);
+    const result = announcements.querySelector('fieldset[aria-label="Alignment result"]');
+    assert.match(result?.textContent ?? '', /Check: B lands 200 mm from B′ ⚠/);
+    assert.match(result?.textContent ?? '', /Plan length ratio .* = 0\.9804/);
+  });
+
+  it('reports a degenerate pair instead of a result, and disables Apply', () => {
+    click(button(ui, 'Two-point align'));
+    pickAll([5, 5, 0], [0, 0, 0], [5, 5, 9], [10, 0, 0]);
+    assert.equal(readoutText(ui), '');
+    assert.match(ui.querySelector('fieldset [role="alert"]')?.textContent ?? '', /A and B are at the same plan position/);
+    assert.equal(button(ui, 'Apply alignment').disabled, true);
+  });
+
+  it('copies the displayed readout and clears its status when the points change (#11629)', async ({ mock }) => {
+    const written: string[] = [];
+    mock.method(navigator.clipboard, 'writeText', async (text: string) => { written.push(text); });
+    click(button(ui, 'Two-point align'));
+    pickAll([0, 0, 0], [3, 4, 5], [10, 0, 0], [13, 4, 5]);
+    await act(async () => { click(button(ui, 'Copy transformation')); });
+    assert.deepEqual(written, [[...ui.querySelectorAll('[aria-label="Alignment result"] p')].map((p) => p.textContent).join('\n')]);
+    assert.match(written[0], /^Rotation 0\.00° \(about A\)\nMove ΔX 3\.000 · ΔY 4\.000 · ΔZ 5\.000 m\nCheck: B lands 0 mm from B′ ✓$/);
+    assert.match(ui.textContent ?? '', /Transformation copied/);
+
+    click(button(ui, 'Pick again'));
+    pickAll([0, 0, 0], [7, 0, 0], [10, 0, 0], [17, 0, 0]);
+    assert.match(readoutText(ui), /ΔX 7\.000/);
+    assert.doesNotMatch(ui.textContent ?? '', /Transformation copied/);
+    assert.equal(written.length, 1);
+    await act(async () => { click(button(ui, 'Copy transformation')); });
+    assert.match(written[1], /ΔX 7\.000/);
+    assert.match(ui.textContent ?? '', /Transformation copied/);
+  });
+
+  it('keeps newer copy feedback when an earlier clipboard write settles after repicking (#11629)', async ({ mock }) => {
+    let finishFirst!: () => void;
+    const firstWrite = new Promise<void>((resolve) => { finishFirst = resolve; });
+    mock.method(navigator.clipboard, 'writeText', (text: string) =>
+      text.includes('ΔX 3.000') ? firstWrite : Promise.resolve());
+
+    click(button(ui, 'Two-point align'));
+    pickAll([0, 0, 0], [3, 0, 0], [10, 0, 0], [13, 0, 0]);
+    click(button(ui, 'Copy transformation'));
+    click(button(ui, 'Pick again'));
+    pickAll([0, 0, 0], [7, 0, 0], [10, 0, 0], [17, 0, 0]);
+    await act(async () => { click(button(ui, 'Copy transformation')); });
+    assert.match(ui.textContent ?? '', /Transformation copied/);
+
+    await act(async () => { finishFirst(); });
+    assert.match(ui.textContent ?? '', /Transformation copied/);
+  });
+
+  it('clears picks when the models move under them, and Cancel leaves the placement alone', () => {
+    click(button(ui, 'Two-point align'));
+    pickPoint('source', [0, 0, 0]);
+    act(() => useViewerStore.getState().previewModelTranslation([1, 0, 0]));
+    assert.equal(promptText(ui), 'Pick A on the moving models.');
+    assert.match(ui.textContent ?? '', /picks were cleared/);
+    click(button(ui, 'Cancel align'));
+    assert.ok(hasButton(ui, 'Two-point align'));
+    assert.equal(runtime!.role, null);
+    assert.equal(useViewerStore.getState().modelPlacement.undo.length, 0);
+  });
+
+  it('discards a pressed point if placement changes before the click completes', () => {
+    const canvas = document.createElement('canvas');
+    setGlobalRendererRef({ current: {
+      cornerMarkers: new Renderer(canvas).cornerMarkers,
+      getCanvas: () => canvas,
+      getScene: () => ({ getInstancedEntityIds: () => [] }),
+      getModelPlacementBounds: () => null,
+      raycastSceneMagnetic: () => ({
+        snapTarget: { expressId: 1, type: 'vertex', position: { x: 0, y: 0, z: 0 } },
+        edgeLock: { shouldRelease: false, shouldLock: false },
+      }),
+    } as unknown as Renderer });
+    click(button(ui, 'Two-point align'));
+
+    const press = () => act(() => { canvas.dispatchEvent(new PointerEvent('pointerdown')); });
+    const release = () => act(() => {
+      canvas.dispatchEvent(new PointerEvent('pointerup'));
+      canvas.dispatchEvent(new MouseEvent('click'));
+    });
+    press();
+    act(() => useViewerStore.getState().previewModelTranslation([1, 0, 0]));
+    release();
+    assert.equal(runtime!.role, 'source');
+    assert.equal(promptText(ui), 'Pick A on the moving models.');
+
+    press();
+    release();
+    assert.equal(runtime!.role, 'target');
+    assert.equal(promptText(ui), 'Pick A′ on the reference model.');
+  });
+
+  it('can pick again after a typed rotation commits the move preview', () => {
+    click(button(ui, 'Two-point align'));
+    const rotate = (angle: number) => act(() => useViewerStore.getState().setModelRotation(['ifc'], { angle, pivot: [0, 0, 0] }));
+    rotate(Math.PI / 4);
+    assert.deepEqual(useViewerStore.getState().modelPlacement.preview?.modelIds, ['ifc']);
+    pickPoint('source', [1, 0, 0]);
+
+    rotate(Math.PI / 2);
+    assert.deepEqual(useViewerStore.getState().modelPlacement.preview?.modelIds, ['ifc']);
+    assert.equal(promptText(ui), 'Pick A on the moving models.');
+    pickAll([0, 0, 0], [3, 4, 5], [10, 0, 0], [13, 4, 5]);
+    click(button(ui, 'Apply alignment'));
+    assert.deepEqual(placementFor(useViewerStore.getState().modelPlacement, 'ifc').translation, [3, 4, 5]);
+  });
+
+  it('refuses a pick for the wrong role instead of filing it under the wrong point', () => {
+    click(button(ui, 'Two-point align'));
+    assert.equal(runtime!.align.capture('target', { modelId: 'scan', point: [1, 1, 1], kind: 'point' }), 'target');
+    assert.deepEqual(runtime!.align.points, {});
+  });
+
+  it('discards a completed alignment when the reference changes', () => {
+    act(() => useViewerStore.setState({ models: new Map(useViewerStore.getState().models)
+      .set('other-reference', fixtureModel('other-reference')) }));
+    click(button(ui, 'Two-point align'));
+    pickAll([0, 0, 0], [3, 4, 5], [10, 0, 0], [13, 4, 5]);
+    assert.equal(button(ui, 'Apply alignment').disabled, false);
+
+    act(() => runtime!.setReference('other-reference'));
+    assert.equal(runtime!.reference, 'other-reference');
+    assert.equal(runtime!.align.active, false);
+    assert.equal(readoutText(ui), '');
+    assert.equal(useViewerStore.getState().modelPlacement.undo.length, 0);
+  });
+
+  it('blocks stale Apply and repicks after an unrotated reference moves onto the shared RTC anchor (#11629)', () => {
+    const anchor = { x: 1000, y: 0, z: 0 };
+    const box = { min: { x: 0, y: 0, z: 0 }, max: { x: 10, y: 1, z: 0 } };
+    const geometry = (x: number, wasmRtcOffset?: typeof anchor): GeometryResult => ({
+      meshes: [{ expressId: 1, origin: [x, 0, 0], positions: new Float32Array([0, 0, 0, 10, 0, 0, 0, 1, 0]),
+        normals: new Float32Array(9), indices: new Uint32Array([0, 1, 2]), color: [1, 1, 1, 1] }],
+      totalVertices: 3, totalTriangles: 1,
+      coordinateInfo: { originShift: { x: 0, y: 0, z: 0 }, originalBounds: box, shiftedBounds: box,
+        hasLargeCoordinates: !!wasmRtcOffset, wasmRtcOffset },
+    });
+    const referenceGeometry = geometry(1020);
+    act(() => {
+      const store = useViewerStore.getState();
+      store.updateModel('ifc', { geometryResult: geometry(0, anchor), loadState: 'complete', loadedAt: 1 });
+      store.updateModel('scan', { geometryResult: referenceGeometry, loadState: 'complete', loadedAt: 2 });
+    });
+    click(button(ui, 'Two-point align'));
+    pickAll([0, 0, 0], [1020, 0, 0], [10, 0, 0], [1030, 0, 0]);
+    assert.equal(button(ui, 'Apply alignment').disabled, false);
+    const applyBeforeRebase = runtime!.align.apply;
+    assert.equal(useViewerStore.getState().modelPlacement.placements.has('scan'), false);
+
+    act(() => {
+      convergeFederationRtcFrame();
+      applyBeforeRebase();
+    });
+    assert.deepEqual(referenceGeometry.meshes[0].origin, [20, 0, 0]);
+    assert.equal(useViewerStore.getState().modelPlacement.undo.length, 0, 'Apply cannot commit before the UI catches up');
+    assert.equal(readoutText(ui), '');
+    assert.equal(button(ui, 'Apply alignment').disabled, true);
+    assert.equal(promptText(ui), 'Pick A on the moving models.');
+
+    pickAll([0, 0, 0], [20, 0, 0], [10, 0, 0], [30, 0, 0]);
+    act(() => convergeFederationRtcFrame());
+    assert.equal(button(ui, 'Apply alignment').disabled, false, 'an already converged frame keeps fresh picks');
+    click(button(ui, 'Apply alignment'));
+    const placed = useViewerStore.getState().modelPlacement;
+    assert.equal(placed.undo.length, 1);
+    assert.deepEqual(placementFor(placed, 'ifc').translation, [20, 0, 0]);
+  });
+
+  it('is a distinct mode: choosing the ordinary source pick leaves it', () => {
+    click(button(ui, 'Two-point align'));
+    pickPoint('source', [0, 0, 0]);
+    act(() => runtime!.setRole('source'));
+    assert.equal(runtime!.align.active, false);
+    assert.deepEqual(runtime!.align.points, {});
+  });
+});

@@ -54,13 +54,21 @@ const MIN_SNAP_TOLERANCE = 1 / 65536;
  * by segment length, so any fixed angle is simultaneously too tight for short
  * segments far from the origin and too loose for long ones near it.
  */
-export function snapToleranceFor(positions: ArrayLike<number>): number {
+export function* scanSnapTolerance(positions: ArrayLike<number>): Generator<void, number> {
   let maxAbs = 0;
   for (let i = 0; i < positions.length; i++) {
     const a = Math.abs(positions[i]);
     if (isFinite(a) && a > maxAbs) maxAbs = a;
+    if ((i + 1) % 8192 === 0) yield;
   }
   return Math.max(MIN_SNAP_TOLERANCE, maxAbs * F32_ULP_SCALE);
+}
+
+export function snapToleranceFor(positions: ArrayLike<number>): number {
+  const scan = scanSnapTolerance(positions);
+  let step = scan.next();
+  while (!step.done) step = scan.next();
+  return step.value;
 }
 
 export interface WeldedVertices {

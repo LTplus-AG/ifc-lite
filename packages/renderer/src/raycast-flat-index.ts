@@ -10,6 +10,7 @@ import type { SceneContents } from './scene-contents.js';
 
 /** Raycast-only capabilities; optional for existing custom SceneContents adapters. */
 export type RaycastScene = SceneContents & {
+  snapOccurrences?: import('./snap-corner-instances.js').SnapOccurrences;
   getTexturedMeshes?(): readonly Pick<MeshData, 'expressId' | 'modelIndex'>[];
   getPickGeometryRevision?(): number;
   /** CPU geometry discarded by host eviction or explicit release. */
@@ -43,13 +44,7 @@ export class RaycastFlatIndex {
   private readonly bvh = new BVH();
   private flat: FlatPieces | null = null;
   private bvhPieces: MeshData[] | null = null;
-  private readonly unsubscribe: (() => void) | void;
-
-  constructor(private readonly scene: RaycastScene, private readonly bvhThreshold: number) {
-    // Cold eviction exists to free those typed arrays, so let go of them now
-    // rather than at the next ray.
-    this.unsubscribe = scene.onHostEviction?.(() => this.invalidate());
-  }
+  constructor(private readonly scene: RaycastScene, private readonly bvhThreshold: number) {}
 
   /** Identity and revision checks only. An adapter without a revision is never known fresh. */
   private isFresh(): boolean {
@@ -144,11 +139,5 @@ export class RaycastFlatIndex {
     const pieces = new Set([...(this.flat?.pieces ?? []), ...(this.bvhPieces ?? [])]);
     for (const piece of pieces) visitMeshArrays('pick.raycastIndex', piece, visit);
     this.bvh.visitArrays((array) => visit('pick.bvh', array, 'other'));
-  }
-
-  /** Discarded engines must stop retaining a scene listener (#9512). */
-  dispose(): void {
-    if (typeof this.unsubscribe === 'function') this.unsubscribe();
-    this.invalidate();
   }
 }

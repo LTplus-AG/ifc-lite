@@ -18,6 +18,7 @@ import { runEmptyExportContracts } from './wasm-empty-export-contracts.mjs';
 import { runPlacementRefusalContracts } from './wasm-placement-refusal-contracts.mjs';
 import { runCompactEncodeContracts } from './wasm-compact-contracts.mjs';
 import { runCompactSceneContracts } from './wasm-compact-scene-contracts.mjs';
+import { runOutOfCoreContracts } from './wasm-out-of-core-contracts.mjs';
 
 /** These suites have their own inputs and run even when the column fixture is absent. */
 export function runEarlyContracts({ IfcAPI, api, test, skip, root }) {
@@ -39,4 +40,5 @@ export function runEarlyContracts({ IfcAPI, api, test, skip, root }) {
   runPlacementRefusalContracts(IfcAPI, test); // #7877/#7779
   runCompactEncodeContracts(IfcAPI, test, skip, root);
   runCompactSceneContracts(IfcAPI, test, skip, root);
+  runOutOfCoreContracts(IfcAPI, test, skip, root);
 }

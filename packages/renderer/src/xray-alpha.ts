@@ -31,12 +31,13 @@
 
 import type { RenderOptions } from './types.js';
 import { DEFAULT_GHOST_ALPHA } from './overlay-routing.js';
-import { batchEntities } from './batch-entities.js';
+import { batchEntities, batchEntryStamp } from './batch-entities.js';
 
 /** The part of a batch (or sub-batch) alpha resolution reads. */
 export interface AlphaBatchLike {
   expressIds: readonly number[];
   laneIds?: readonly number[];
+  entryRevision?: number;
   color: readonly [number, number, number, number];
 }
 
@@ -149,7 +150,7 @@ export class XRayAlpha {
   isGhostBatch(batch: AlphaBatchLike): boolean {
     if (this.ghostExcept == null) return false;
     const cached = this.ghostCache.get(batch);
-    if (cached !== undefined && cached.count === batch.expressIds.length) return cached.ghost;
+    if (cached !== undefined && cached.count === batchEntryStamp(batch)) return cached.ghost;
     let ghost = batch.expressIds.length > 0;
     {
       for (const eid of batchEntities(batch)) {
@@ -159,7 +160,7 @@ export class XRayAlpha {
         }
       }
     }
-    this.ghostCache.set(batch, { ghost, count: batch.expressIds.length });
+    this.ghostCache.set(batch, { ghost, count: batchEntryStamp(batch) });
     return ghost;
   }
 
@@ -186,7 +187,7 @@ export class XRayAlpha {
 
   private resolve(batch: AlphaBatchLike, fallback: number): { alpha: number; groups: AlphaGroup[] | null } {
     const cached = this.batchCache.get(batch);
-    if (cached !== undefined && cached.count === batch.expressIds.length) return cached;
+    if (cached !== undefined && cached.count === batchEntryStamp(batch)) return cached;
     // ONE walk for both answers, and no allocation at all for the common case
     // (a batch that resolves to a single alpha — e.g. every fully-ghosted batch
     // on the model, every frame X-Ray is on). The group Sets are built by a
@@ -228,7 +229,7 @@ export class XRayAlpha {
     const resolved = {
       alpha: min === Infinity ? fallback : min,
       groups: mixed ? partitionByAlpha(batch.expressIds, (id) => this.forEntity(id, fallback)) : null,
-      count: batch.expressIds.length,
+      count: batchEntryStamp(batch),
     };
     this.batchCache.set(batch, resolved);
     return resolved;

@@ -26,6 +26,7 @@ import { finishedBuild, type StepBuild } from './snap-geometry-build.js';
 import { CandidateBuild, type PieceCandidates } from './snap-corner-candidates.js';
 import { CornerGrid, type ScreenSnapCamera } from './snap-corner-grid.js';
 import { gridKey, idsOf } from './snap-corner-key.js';
+import { buildInstanceCorners } from './snap-corner-instances.js';
 import { PriorityOrder } from './snap-corner-priority.js';
 import { browserIdleHost, type IdleHost, type IdleSlice } from './snap-idle-host.js';
 
@@ -35,6 +36,7 @@ export const DEFAULT_MAX_SLICE_MS = 6;
 
 /** What the build needs of the latest pick; replaced on every query. */
 export interface BuildContext {
+  snapOccurrences?: import('./snap-corner-instances.js').SnapOccurrences;
   pieces: readonly MeshData[];
   geometryFor: (mesh: MeshData) => MeshGeometryCache;
   /** The same cache built in bounded steps; preferred over `geometryFor`, which builds a piece in one call. */
@@ -79,9 +81,11 @@ interface Run {
   order: MeshData[] | null;
   cursor: number;
   active: MeshData[];
+  instances: Generator<void> | null;
 }
 
 export class CornerBuildPipeline {
+  private templateCandidates = new WeakMap<object, PieceCandidates>();
   private candidates = new WeakMap<MeshData, PieceCandidates>();
   /** Candidate builds a slice stopped inside; the next slice resumes them. */
   private building = new WeakMap<MeshData, CandidateBuild>();
@@ -129,6 +133,7 @@ export class CornerBuildPipeline {
   clear(): void {
     if (this.handle !== null) this.host.cancel(this.handle);
     this.handle = null;
+    this.templateCandidates = new WeakMap();
     this.candidates = new WeakMap();
     this.building = new WeakMap();
     this.geometry = new WeakMap();
@@ -155,7 +160,7 @@ export class CornerBuildPipeline {
 
   private isComplete(ctx: BuildContext, key: string): boolean {
     const r = this.run;
-    return !!r && r.key === key && r.pieces === ctx.pieces && r.order !== null && r.cursor >= r.order.length;
+    return !!r && r.key === key && r.pieces === ctx.pieces && r.order !== null && r.cursor >= r.order.length && !r.instances;
   }
 
   private schedule(afterMs = 0): void {
@@ -182,9 +187,10 @@ export class CornerBuildPipeline {
     let run = this.run;
     if (!run || run.key !== key || run.pieces !== ctx.pieces) {
       // Same view, more pieces (geometry still arriving): keep filling the grid we have.
-      const grid = run && run.key === key ? run.grid : this.startGrid(ctx, key);
+      const grid = run && run.key === key && !ctx.snapOccurrences ? run.grid : this.startGrid(ctx, key);
       const active = this.activeOf(ctx);
-      run = this.run = { key, pieces: ctx.pieces, grid, ordering: null, order: null, cursor: 0, active };
+      run = this.run = { key, pieces: ctx.pieces, grid, ordering: null, order: null, cursor: 0, active,
+        instances: ctx.snapOccurrences ? buildInstanceCorners(ctx.snapOccurrences(), ctx, grid, this.templateCandidates) : null };
     }
     if (run.order === null) {
       run.ordering ??= new PriorityOrder(run.active.filter((q) => !run!.grid.has(q)), ctx.camera, ctx.viewport);
@@ -230,7 +236,11 @@ export class CornerBuildPipeline {
       run.cursor++;
       if (over()) break;
     }
-    if (run.cursor < order.length) this.schedule();
+    while (run.cursor === order.length && run.instances) {
+      if (run.instances.next().done) run.instances = null;
+      if (over()) break;
+    }
+    if (run.cursor < order.length || run.instances) this.schedule();
   }
 
   private startGrid(ctx: BuildContext, key: string): CornerGrid {

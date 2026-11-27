@@ -7,6 +7,8 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { Renderer } from '@ifc-lite/renderer';
 import { MODEL_ID, seedModelingSession } from '@/test/modeling-session-fixture';
+import { hideFromContextMenuFromStore } from '@/store/hideSelection';
+import { recoveryAllocationDevice } from '@/test/recovery-allocation-device';
 import { cleanup, render } from '@/test/render';
 import { useViewerStore } from '@/store';
 import { setGlobalRendererRef } from '@/lib/renderer-ref';
@@ -160,3 +162,50 @@ for (const next of ['wall.place', 'column.place'] as const) {
     assert.equal(active(), glyph);
   });
 }
+
+it('#11746 hiding a GPU occurrence clears the channel and mounted glyph at a stationary pointer', async t => {
+  const { devices, canvas } = recoveryAllocationDevice();
+  t.mock.method(canvas, 'getBoundingClientRect', () => ({ width: 800, height: 600 }));
+  canvas.width = 800; canvas.height = 600;
+  const renderer = new Renderer(canvas), camera = renderer.getCamera(), scene = renderer.getScene();
+  scene.addInstancedShard(devices[0], {
+    templates: [{ positions: Float32Array.of(-5,0,-5, 5,0,-5, 0,0,5), normals: Float32Array.of(0,-1,0, 0,-1,0, 0,-1,0),
+      indices: Uint32Array.of(0,1,2), origin: [0,0,0] }],
+    instances: [{ entityId: 1025, templateIndex: 0, color: [1,1,1,1],
+      transform: Float32Array.of(1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1) }], carriesItemIds: false,
+  }, 0);
+  assert.equal(scene.getMeshDataPieces(1025), undefined);
+  camera.setAspect(800 / 600); camera.setProjectionMode('orthographic'); camera.setOrthoSize(12);
+  camera.setPosition(0, 0, 50); camera.setTarget(0, 0, 0);
+  const at = camera.projectToScreen({ x: 0, y: 5, z: 0 }, 800, 600)!;
+  const before = useViewerStore.getState();
+  useViewerStore.setState({ activeTool: 'measure', snapEnabled: true, hiddenEntities: new Set() });
+  setGlobalRendererRef({ current: renderer });
+  const ui = render(<SnapCornerMarkers />);
+  t.after(() => { cleanup(); setGlobalRendererRef(null); useViewerStore.setState(before); });
+  const pick = () => renderer.raycastSceneMagnetic(at.x, at.y - 5,
+    { edge: null, meshExpressId: null, lockStrength: 0 },
+    { hiddenIds: useViewerStore.getState().hiddenEntities,
+      snapOptions: { snapToVertices: true, screenCornerSnap: { markers: true, settleMs: 0 } } });
+  const active = () => ui.querySelector('[data-snap-corner-marker="active"]');
+  async function hover() {
+    for (let i = 0; i < 60 && !active(); i++) {
+      act(() => { pick(); });
+      if (!active()) await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    const markers = renderer.cornerMarkers.get();
+    assert.equal(markers?.candidates[markers.activeIndex]?.expressId, 1025);
+    assert.ok(active());
+  }
+  await hover();
+  const stamp = renderer.readbackRaycastViewKey();
+  act(() => { hideFromContextMenuFromStore(1025); });
+  assert.ok(useViewerStore.getState().hiddenEntities.has(1025));
+  // Inspect immediately after the action, before another pointer event or idle callback.
+  assert.deepEqual({ channelPopulated: renderer.cornerMarkers.get() !== null, glyphMounted: active() !== null },
+    { channelPopulated: false, glyphMounted: false });
+  assert.equal(renderer.readbackRaycastViewKey(), stamp);
+  act(() => { useViewerStore.getState().showEntity(1025); });
+  assert.equal(active(), null);
+  await hover();
+});

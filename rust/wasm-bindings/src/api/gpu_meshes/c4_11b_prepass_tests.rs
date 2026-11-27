@@ -53,6 +53,7 @@ fn c4_11b_mid_scan_meta_leases_a_partial_index_and_tail_meta_a_complete_one() {
         let scan = super::super::prepass_scan::scan_serial(
             bytes,
             &Default::default(),
+            false,
             |discovery, decoder, mode| {
                 calls += 1;
                 if jobs > 50 {

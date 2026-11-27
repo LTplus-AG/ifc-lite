@@ -122,9 +122,9 @@ export function BCFDraftsDialog({ open, onOpenChange }: { open: boolean; onOpenC
         <DialogHeader><DialogTitle>{t('bcfDrafts.dialog.title')}</DialogTitle></DialogHeader>
         <div className="flex min-w-0 flex-col gap-2">
           <div className="flex flex-wrap items-center gap-1 text-xs">
-            <label className="flex min-w-0 flex-1 items-center gap-2">
+            <label className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
               {t('bcfDrafts.dialog.batch')}
-              <select className="h-7 min-w-0 flex-1 rounded border border-border bg-background" value={batch?.id ?? ''}
+              <select className="h-7 min-w-32 flex-1 rounded border border-border bg-background" value={batch?.id ?? ''}
                 disabled={!library.entries.length} onChange={event => { useBcfDraftLibrary.setState({ activeId: event.target.value }); setMergeSet(new Set()); }}>
                 {!library.entries.length && <option value="">{t('bcfDrafts.dialog.noBatches')}</option>}
                 {library.entries.map(entry => <option key={entry.id} value={entry.id}>{entry.name} · {entry.topics.length}</option>)}

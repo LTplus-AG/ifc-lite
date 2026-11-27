@@ -81,6 +81,38 @@ it.skipIf(!available)('native split/merge rewrites real IFC rooms with stable la
   } finally { plate.free(); }
 });
 
+it.skipIf(!available)('a split room takes every GlobalId it authors, its aggregation included, from the supplied source', async () => {
+  /** The first string attribute (the GlobalId, for rooted records) of every record a seeded split authors, by entity type. */
+  const splitOnce = async (seed: number) => {
+    const { store, editor } = await session();
+    const plate = fromRects(flattenRoomRects(rects), .05, Number.MIN_VALUE);
+    try {
+      const source = (start: number) => {
+        let state = start >>> 0;
+        return () => ((state = (Math.imul(state, 1664525) + 1013904223) >>> 0) / 4294967296);
+      };
+      const [face] = candidates(store, editor, plate);
+      // The split room's GlobalId derives from this room's, so this room gets one fixed seed for every run.
+      createRoomsInStore(store, editor, 42, [{ outline: face.inner, height: 3, z: 0, Name: 'Room', grossArea: face.grossArea, netArea: face.netArea, derived: true }], { guidRandom: source(1) });
+      const guidRandom = source(seed);
+      const before = candidates(store, editor, plate);
+      expect(applyLayoutOp(plate, { kind: 'split', a: [21, 20], b: [21, 23] }, .01)).toBe(true);
+      const existing = new Set(editor.getNewEntities().map((e) => e.expressId));
+      const sync = syncRoomLayoutInStore(store, editor, before, readFaces(plate), [], undefined, { guidRandom });
+      expect(sync.created).toHaveLength(1);
+      return editor.getNewEntities()
+        .filter((e) => !existing.has(e.expressId) && typeof e.attributes[0] === 'string' && !e.attributes[0].startsWith('#'))
+        .map((e) => `${e.type.toUpperCase()} ${String(e.attributes[0])}`)
+        .sort();
+    } finally { plate.free(); }
+  };
+  const aggregation = (ids: string[]) => ids.filter((id) => id.startsWith('IFCRELAGGREGATES '));
+  const first = await splitOnce(42);
+  expect(aggregation(first)).toHaveLength(1);
+  expect(await splitOnce(42)).toEqual(first);
+  expect(aggregation(await splitOnce(7))).not.toEqual(aggregation(first));
+});
+
 it.skipIf(!available)('update/no-room refusal preserves graph and creation late refusal preserves allocator', async () => {
   const { store, view, editor } = await session();
   const plate = fromRects(flattenRoomRects(rects), .05, Number.MIN_VALUE);

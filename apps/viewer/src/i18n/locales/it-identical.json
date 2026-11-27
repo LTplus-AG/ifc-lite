@@ -1243,6 +1243,10 @@
     "value": "{action} {name}",
     "reason": "repositionPanel.toggleLockAriaLabel: Joins the independently resolved action and target name; no English verb is hardcoded here."
   },
+  "repositionPanel.twoPoint.pickedRow": {
+    "value": "{label}: {x}, {y}, {z}",
+    "reason": "Runtime placeholders with mathematical notation, axis letters, version prefix or unit symbols; no English prose."
+  },
   "retainedGeometry.faces.column.area": {
     "value": "Area (m²)",
     "reason": "retainedGeometry.faces.column.area: Area is Italian; m² is the square-metre unit symbol."

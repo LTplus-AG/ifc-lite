@@ -19,6 +19,7 @@
 
 import { writeFile } from 'node:fs/promises';
 import { IfcCreator } from '@ifc-lite/create';
+import { viewerUrl } from '@ifc-lite/viewer-core/url';
 import type {
   WallParams, SlabParams, ColumnParams, BeamParams, StairParams, RoofParams, GableRoofParams,
   DoorParams, WindowParams, WallDoorParams, WallWindowParams, RampParams, RailingParams,
@@ -106,13 +107,10 @@ export async function createCommand(args: string[]): Promise<void> {
   let viewerOk = false;
   if (viewerPort) {
     try {
-      const resp = await fetch(`http://localhost:${viewerPort}/api/command`, {
+      const resp = await fetch(viewerUrl(viewerPort, '/api/command'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'addGeometry',
-          ifcContent: result.content,
-        }),
+        body: JSON.stringify({ action: 'addGeometry', ifcContent: result.content }),
       });
       if (!resp.ok) {
         process.stderr.write(`Viewer HTTP ${resp.status}: ${resp.statusText}\n`);

@@ -155,7 +155,25 @@ impl IfcAPI {
     }
 
     fn batch_decoder<'a>(&self, content: &'a [u8], unit_scale: f64, plane_angle_to_radians: Option<f64>) -> EntityDecoder<'a> {
-        let entity_index_arc: std::sync::Arc<ifc_lite_core::ColumnarEntityIndex> = {
+        let mut decoder = match self.active_sparse_index() {
+            // Out-of-core batch: `content` is the sparse arena.
+            Some(sparse) => EntityDecoder::with_sparse_index(content, sparse),
+            None => EntityDecoder::with_arc_columnar_index(content, self.batch_entity_index(content)),
+        }
+        .with_strict_reals(); // #7678
+        // Seed the unit-scale caches so curve/arc tessellation never re-pays the
+        // O(file) IFCPROJECT scan: this decoder is fresh on every batch call,
+        // and `plane_angle_to_radians()` would otherwise walk the whole DATA
+        // section per batch on files whose IFCPROJECT sits near the end
+        // (IfcOpenShell exports) — the geometry-stream stall on large models.
+        let plane_angle_to_radians = plane_angle_to_radians
+            .unwrap_or_else(|| self.get_or_resolve_plane_angle(&mut decoder));
+        decoder.seed_unit_scales(unit_scale, plane_angle_to_radians);
+
+        decoder
+    }
+
+    fn batch_entity_index(&self, content: &[u8]) -> std::sync::Arc<ifc_lite_core::ColumnarEntityIndex> {
             // Mutex briefly held: peek at cache, build-if-empty, clone Arc.
             // The clone is what gets handed to rayon — no lock contention
             // on the per-job hot path that follows. Poison panics here
@@ -172,18 +190,6 @@ impl IfcAPI {
                 *slot = Some(std::sync::Arc::clone(&built));
                 built
             }
-        };
-        let mut decoder = EntityDecoder::with_arc_columnar_index(content, entity_index_arc).with_strict_reals(); // #7678
-        // Seed the unit-scale caches so curve/arc tessellation never re-pays the
-        // O(file) IFCPROJECT scan: this decoder is fresh on every batch call,
-        // and `plane_angle_to_radians()` would otherwise walk the whole DATA
-        // section per batch on files whose IFCPROJECT sits near the end
-        // (IfcOpenShell exports) — the geometry-stream stall on large models.
-        let plane_angle_to_radians = plane_angle_to_radians
-            .unwrap_or_else(|| self.get_or_resolve_plane_angle(&mut decoder));
-        decoder.seed_unit_scales(unit_scale, plane_angle_to_radians);
-
-        decoder
     }
 
     fn batch_styles(&self, style_ids: &[u32], style_colors: &[u8]) -> StyleMaps {

@@ -1,5 +1,57 @@
 # @ifc-lite/export
 
+## 6.0.0
+
+### Major Changes
+
+- [#10911](https://github.com/LTplus-AG/ifc-lite/pull/10911) [`fc89b27`](https://github.com/LTplus-AG/ifc-lite/commit/fc89b27342853551e36dbd4577c7374ff1d251c6) Thanks [@louistrue](https://github.com/louistrue)! - **Breaking:** `convertStepLine` now returns `null` for an IFC4/IFC4X3 `IfcMaterialProperties` converted to IFC2X3 when it is called without the export's checks (the `enums` argument). It used to return the record unmapped. Without the export's records, its `Material` cannot be checked to be an `IfcMaterial`, so the record is left out. A caller that never handled `null` for this type must now.
+  
+  On a downgrade to IFC2X3, IFC4/IFC4X3 `IfcMaterialProperties` is written as `IfcExtendedMaterialProperties`, because its IFC2X3 namesake is abstract ([#10763](https://github.com/LTplus-AG/ifc-lite/issues/10763)). IFC2X3 takes only an `IfcMaterial` in `Material`, so the referent is resolved against the records the export writes, with edits, created records, retypes and deletions applied. An `IfcMaterial` is kept. A layer, set or member that names exactly one `IfcMaterial` points at that material. Any other record is left out and named in the export warnings and the loss report. This applies to single, subset, log and merged exports in both writers.
+
+### Minor Changes
+
+- [#11264](https://github.com/LTplus-AG/ifc-lite/pull/11264) [`a38f750`](https://github.com/LTplus-AG/ifc-lite/commit/a38f7508502f6437d0abe76f0ea49f5858e7525a) Thanks [@louistrue](https://github.com/louistrue)! - Reject unplanned STEP georeferencing edits that request an IfcMapConversion without an existing or requested IfcProjectedCRS. Both STEP writers return a missing TargetCRS error so the viewer can report the failed export ([#11259](https://github.com/LTplus-AG/ifc-lite/issues/11259)).
+  
+  Callers that previously handled this diagnostic as a warning must now handle the export error.
+
+### Patch Changes
+
+- [#11218](https://github.com/LTplus-AG/ifc-lite/pull/11218) [`0a5bc3b`](https://github.com/LTplus-AG/ifc-lite/commit/0a5bc3b1b60697c789ed9e248bccba5f44cce80c) Thanks [@louistrue](https://github.com/louistrue)! - Reject IFC2X3 conversion of an IfcPropertyBoundedValue when neither bound can be carried, and identify the affected record and WR22 rule in the error. Keep a supported bound if its counterpart is dropped ([#11117](https://github.com/LTplus-AG/ifc-lite/issues/11117)).
+  
+  Rust callers can use `ifc_lite_export::try_export_merged` to receive the refusal as an error while retaining the existing string-returning merge API.
+
+- [#11224](https://github.com/LTplus-AG/ifc-lite/pull/11224) [`0842da2`](https://github.com/LTplus-AG/ifc-lite/commit/0842da279c4dc942d167647bf6c427a2eb34edaa) Thanks [@louistrue](https://github.com/louistrue)! - Treat STEP comments beside unset slots as trivia during schema conversion, grid placement rewriting, map-unit normalization, anonymization and export planning ([#11149](https://github.com/LTplus-AG/ifc-lite/issues/11149)).
+
+- [#10988](https://github.com/LTplus-AG/ifc-lite/pull/10988) [`7c5a170`](https://github.com/LTplus-AG/ifc-lite/commit/7c5a170d0fbd392c34726445c306a7f36f96b50e) Thanks [@louistrue](https://github.com/louistrue)! - An IFC2X3 -> IFC4 or IFC4X3 upgrade no longer writes the IFC2X3 subtypes IFC4 deleted under their IFC2X3 names, which IFC4 readers drop:
+  
+  - `IfcMove` and `IfcOrderAction` are written as `IfcTask`, `TaskId` as `Identification`. `MoveFrom`, `MoveTo`, `PunchList` and `ActionID` have no slot there and are reported lost.
+  - `IfcRelOccupiesSpaces`, `IfcRelAssignsTasks`, `IfcRelAssignsToProjectOrder` and `IfcRelSchedulesCostItems` are written as their IFC4 supertype. `TimeForTask` is reported lost. `IfcRelOverridesProperties` is not: as `IfcRelDefinesByProperties` it would attach the values it overrides.
+  
+  An IFC2X3 -> IFC4 upgrade also stops writing the other IFC2X3-only rooted types (`IfcServiceLife`, `IfcElectricalElement`, ...) under their IFC2X3 names. They become `IFCPROXY`, as on a downgrade. The remaining types on the verbatim list, including dates and annotation occurrences, keep their source records and are named in conversion diagnostics ([#10970](https://github.com/LTplus-AG/ifc-lite/issues/10970), [#10879](https://github.com/LTplus-AG/ifc-lite/issues/10879)). The attribute maps from [#10802](https://github.com/LTplus-AG/ifc-lite/issues/10802) upgrade the deleted material and profile property subtypes to `IfcMaterialProperties` and `IfcProfileProperties`, respectively.
+  
+  The loss report names each one. It now also lists as lossy, on any pair, a type written under a name the target does not declare (on IFC4X3 targets, [#10971](https://github.com/LTplus-AG/ifc-lite/issues/10971)). The Rust writer's warnings name proxied and verbatim records by type, downgrades included. A registry check fails when a source-only type has no route.
+
+- [#11422](https://github.com/LTplus-AG/ifc-lite/pull/11422) [`4d5c3c6`](https://github.com/LTplus-AG/ifc-lite/commit/4d5c3c652634dfb32ec4bd32bcf878a26fa6b119) Thanks [@petruconduraru](https://github.com/petruconduraru)! - The conversion loss report no longer names `MoveFrom`, `MoveTo`, `PunchList` or `ActionID` as lost when an IFC2X3 `IfcMove` or `IfcOrderAction` upgraded to `IfcTask` leaves that slot unset. A slot the record populated is still reported.
+
+- [#10802](https://github.com/LTplus-AG/ifc-lite/pull/10802) [`6330892`](https://github.com/LTplus-AG/ifc-lite/commit/6330892f5e5a1e3e92e1868c2951c19ce63b240b) Thanks [@louistrue](https://github.com/louistrue)! - An IFC2X3 -> IFC4/IFC4X3 conversion writes the property subtypes IFC4 deleted as their IFC4 supertype ([#10777](https://github.com/LTplus-AG/ifc-lite/issues/10777)): `IfcExtendedMaterialProperties` and the typed material properties (mechanical, thermal, hygroscopic, general, optical, water, fuel, products of combustion) as `IfcMaterialProperties`, and `IfcGeneralProfileProperties`, `IfcStructuralProfileProperties`, `IfcStructuralSteelProfileProperties` and `IfcRibPlateProfileProperties` as `IfcProfileProperties`. Before, they kept their IFC2X3 names, which IFC4 readers cannot read. The typed subtypes keep only `Material` or `ProfileDefinition`; every measure is reported dropped by name, and the required `Properties` left `$` is counted.
+
+- [#11128](https://github.com/LTplus-AG/ifc-lite/pull/11128) [`f21465f`](https://github.com/LTplus-AG/ifc-lite/commit/f21465fa926def147ec1019be816d4620c9028bc) Thanks [@louistrue](https://github.com/louistrue)! - Convert varying structural actions from the records retained in subset and edited IFC4 exports. Preserve complete load configurations and report any varying data that could not be carried across.
+
+- [#11126](https://github.com/LTplus-AG/ifc-lite/pull/11126) [`7e86803`](https://github.com/LTplus-AG/ifc-lite/commit/7e86803e82b335f308e101e8d14151de3139fc57) Thanks [@louistrue](https://github.com/louistrue)! - Preserve calendar dates, fixed-length durations and typed strings across IFC2X3 schema conversions. When exporting IFC2X3, wrap direct presentation styles in the required style assignments.
+
+- [#11121](https://github.com/LTplus-AG/ifc-lite/pull/11121) [`36885cd`](https://github.com/LTplus-AG/ifc-lite/commit/36885cd9d173483553b88a1c5588b165eedc37f9) Thanks [@louistrue](https://github.com/louistrue)! - Convert retired IFC4 case entities, door and window styles, and IfcProxy to declared IFC4X3 types. Omit obsolete records without a mapping and clear references that the IFC4X3 output can no longer resolve.
+
+- [#11325](https://github.com/LTplus-AG/ifc-lite/pull/11325) [`3b7eea5`](https://github.com/LTplus-AG/ifc-lite/commit/3b7eea519cf52430a7ee3b0127297866fbe4ca11) Thanks [@louistrue](https://github.com/louistrue)! - Preserve GlobalId and Name when schema conversion writes an unrepresented entity as an IfcProxy. The TypeScript and Rust writers now use the same deterministic fallback when the source GlobalId is missing or invalid.
+  
+  Merged exports keep conversion-created proxies distinct when a GUID is shared. If a model repeats a GUID, its first emitted record retains that GUID.
+
+- [#11119](https://github.com/LTplus-AG/ifc-lite/pull/11119) [`5b6ff10`](https://github.com/LTplus-AG/ifc-lite/commit/5b6ff10e17a202e3212a511f6a1285d010ab3b81) Thanks [@louistrue](https://github.com/louistrue)! - Omit unsupported non-property IFC2X3 resource records during IFC4 export and clear references to them according to IFC4 attribute cardinalities. Report omitted records and any dependent records that lose a required reference.
+
+- [#11125](https://github.com/LTplus-AG/ifc-lite/pull/11125) [`356ece7`](https://github.com/LTplus-AG/ifc-lite/commit/356ece76880b114fa7bc3a8f85779c927bea1885) Thanks [@louistrue](https://github.com/louistrue)! - Preserve scalar values from typed IFC2X3 material and profile properties as property single values when exporting IFC4 or IFC4X3.
+- Updated dependencies [[`2ae4a57`](https://github.com/LTplus-AG/ifc-lite/commit/2ae4a57762b360271a295b6be4bd6ecbfbf59104), [`c1eeb86`](https://github.com/LTplus-AG/ifc-lite/commit/c1eeb86bbda4adbd17ffb6de6758ef5e90085af9), [`690dc7d`](https://github.com/LTplus-AG/ifc-lite/commit/690dc7d0b19bac9104d11402a5ca95f6e2462011), [`f871ca3`](https://github.com/LTplus-AG/ifc-lite/commit/f871ca39f33775921e90647a6fad49f2e8b4f1a6), [`21fc7f9`](https://github.com/LTplus-AG/ifc-lite/commit/21fc7f9f521356b7e5ec4fc02aed75a1f4af1ec6), [`0a30e5f`](https://github.com/LTplus-AG/ifc-lite/commit/0a30e5f97446b06068b9f80fbff7bc4484e0d708)]:
+  - @ifc-lite/geometry@8.4.0
+  - @ifc-lite/parser@11.0.1
+
 ## 5.0.0
 
 ### Major Changes

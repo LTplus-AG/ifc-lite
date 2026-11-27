@@ -7,6 +7,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import type { MeshData } from '@ifc-lite/geometry';
+import { candidatesFromCache } from './snap-corner-candidates.js';
 import { ChunkedSort } from './snap-chunked-sort.js';
 import { GeometryCacheBuild } from './snap-geometry-build.js';
 import { buildGeometryCache } from './snap-geometry-cache.js';
@@ -36,6 +37,18 @@ function boxes(n: number, jitter = 0): MeshData {
 }
 
 const json = (v: unknown) => JSON.parse(JSON.stringify(v));
+
+it('#11753 emits each welded box corner once across incident feature edges and split face vertices', () => {
+  for (const jitter of [0, 1e-6]) {
+    const mesh = boxes(1, jitter);
+    const cache = buildGeometryCache(mesh);
+    assert.equal(cache.vertices.length, 8);
+    const { corners } = candidatesFromCache(mesh.expressId, cache);
+    assert.equal(corners.length, 8 * 3);
+    const actual = Array.from({ length: 8 }, (_, i) => Array.from(corners.subarray(i * 3, i * 3 + 3)).join(','));
+    assert.deepEqual(new Set(actual), new Set(cache.vertices.map(p => [p.x, p.y, p.z].join(','))));
+  }
+});
 
 describe('ChunkedSort', () => {
   for (const n of [0, 1, 2, 2047, 2048, 2049, 5000, 20001]) {

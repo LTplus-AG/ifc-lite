@@ -92,7 +92,7 @@ fn typed_property_finish_runs_on_a_raw_latin1_held_body_10797() {
         &mut crate::schema_ifc2x3_slots::Ifc2x3SlotFill::new(None), Some(&mut checks),
     ).unwrap();
     let mut output = Vec::new();
-    let mut body = Body::for_conversion(&mut output, false, true, false);
+    let mut body = Body::for_conversion(&mut output, false, true, None);
     body.write_all(b"#1=IFCMATERIAL('B\xe9ton',$,$);\n").unwrap();
     writeln!(body, "{converted}").unwrap();
     let added = checks.finish(body, None, crate::step_ids::IdAllocator::after(2)).unwrap();

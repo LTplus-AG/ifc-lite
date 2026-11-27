@@ -37,14 +37,15 @@ export function carryUserDefinedLabel(source: string, converted: string | null, 
   // The head names the type; most records stop here.
   const head = stepRecordHead(converted);
   const type = head ? converted.slice(head.typeStart, head.typeEnd).toUpperCase() : '';
-  const carry = LABEL_CARRIES.find((c) => type === (up ? c[1] : c[0]));
+  const layoutType = up && toSchema === 'IFC4X3' && type === 'IFCDISTRIBUTIONBOARD' ? 'IFCELECTRICDISTRIBUTIONBOARD' : type;
+  const carry = LABEL_CARRIES.find((c) => layoutType === (up ? c[1] : c[0]));
   const record = carry ? readStepSlots(converted, maxReferenceId) : null;
   if (!carry || !record) return converted;
-  const [ifc2x3, ifc4, kind, label] = carry;
+  const [ifc2x3, , kind, label] = carry;
   const at = (schema: IfcSchemaVersion, t: string, name: string) => attrNameTable(schema)?.get(t)?.indexOf(name) ?? -1;
   const out = [...record.slots];
   if (up) {
-    const ot = at(toSchema, ifc4, 'ObjectType');
+    const ot = at(toSchema, type, 'ObjectType');
     // `convertRecord` also accepts a record without its ';'.
     const src = (readStepSlots(source, maxReferenceId) ?? readStepSlots(`${source};`, maxReferenceId))?.slots;
     const value = src?.[at(fromSchema, ifc2x3, label)];

@@ -310,7 +310,7 @@ describe('createStreamingViewerAdapter (stubbed fetch)', () => {
     const adapter = createStreamingViewerAdapter(4321);
     adapter.colorize([ref(1), ref(2)], [1, 0, 0, 1]);
     assert.equal(calls.length, 1);
-    assert.equal(calls[0].url, 'http://localhost:4321/api/command');
+    assert.equal(calls[0].url, 'http://127.0.0.1:4321/api/command');
     assert.deepEqual(calls[0].body, { action: 'colorizeEntities', ids: [1, 2], color: [1, 0, 0, 1] });
   });
 

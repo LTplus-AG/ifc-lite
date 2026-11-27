@@ -13,7 +13,7 @@ use super::product::{ProductControl, ProductOutput, ProductReply};
 use super::voids::{VoidControl, VoidReply};
 use crate::processors::texture::ResolvedTextureMap;
 use crate::router::processing::SourceHygiene;
-use crate::{Error, GeometryRouter, Result, SubMeshCollection};
+use crate::{Error, GeometryRouter, Result, styled_parts::StyledParts};
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
 use rustc_hash::FxHashMap;
 
@@ -32,7 +32,7 @@ enum Phase<'a> {
     Layers(LayerControl<'a>, Next<'a>),
     Walk(ProductControl<'a>),
     Voids(VoidControl<'a>),
-    Complete(Result<SubMeshCollection>),
+    Complete(Result<StyledParts>),
     Taken,
 }
 
@@ -150,7 +150,7 @@ impl<'a> StyledControl<'a> {
         }
     }
 
-    pub(super) fn take_result(&mut self) -> Option<Result<SubMeshCollection>> {
+    pub(super) fn take_result(&mut self) -> Option<Result<StyledParts>> {
         match std::mem::replace(&mut self.phase, Phase::Taken) {
             Phase::Complete(result) => Some(result),
             other => {
@@ -160,10 +160,11 @@ impl<'a> StyledControl<'a> {
         }
     }
 
-    /// A layer attempt completed: its slices, or what follows a decline.
-    fn declined(&self, result: Result<Option<SubMeshCollection>>, next: Next<'a>) -> Phase<'a> {
+    /// A layer attempt completed: its slices, or what follows a decline. The
+    /// slices join the styled walk with empty occurrence chains.
+    fn declined(&self, result: Result<Option<crate::SubMeshCollection>>, next: Next<'a>) -> Phase<'a> {
         let (element, ids) = (self.element, self.ids);
-        match (result, next) {
+        match (result.map(|layered| layered.map(StyledParts::from)), next) {
             (Err(error), _) => Phase::Complete(Err(error)),
             // The cut host already carries its openings.
             (Ok(Some(layered)), Next::Walk { .. } | Next::Uncut) => Phase::Complete(Ok(layered)),
@@ -172,14 +173,14 @@ impl<'a> StyledControl<'a> {
             (Ok(None), Next::Walk { allow_instancing, textures, hygiene }) => {
                 Phase::Walk(ProductControl::styled(element, allow_instancing, textures, hygiene))
             }
-            (Ok(None), Next::Uncut) if ids.is_empty() => Phase::Complete(Ok(SubMeshCollection::new())),
+            (Ok(None), Next::Uncut) if ids.is_empty() => Phase::Complete(Ok(StyledParts::new())),
             (Ok(None), Next::Uncut) => Phase::Layers(LayerControl::index(element, &[]), Next::Cut),
             (Ok(None), Next::Cut) => Phase::Voids(VoidControl::styled(element, ids, None)),
         }
     }
 }
 
-fn styled(result: Result<ProductOutput>) -> Result<SubMeshCollection> {
+fn styled(result: Result<ProductOutput>) -> Result<StyledParts> {
     match result? {
         ProductOutput::Styled(meshes) => Ok(meshes),
         ProductOutput::Parts(_) => Err(Error::geometry("styled entry completed as frame parts")),

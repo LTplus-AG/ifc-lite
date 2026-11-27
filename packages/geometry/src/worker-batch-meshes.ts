@@ -31,3 +31,45 @@ export function unpackBatchMeshes(msg: BatchMeshFields): MeshData[] {
   adoptCompactMeshes(meshes, msg.compactBatches);
   return meshes;
 }
+
+/** The message fields that carry a batch's GPU-instanced occurrences. */
+interface BatchInstancingFields {
+  instancedShards?: ArrayBuffer[];
+  instancedOccurrences?: number;
+  instancedGeometryHashIds?: Uint32Array;
+  instancedGeometryHashValues?: BigUint64Array;
+  instancedGeometryAabbValues?: Float64Array;
+  instancedGeometryVolumeValues?: Float64Array;
+}
+
+/**
+ * The batch's instanced half as the pool forwards it. Opaque repeated
+ * occurrences render only through per-batch IFNS shards, so `occurrences`
+ * counts them toward the running total although they are not flat meshes.
+ *
+ * `fields` is what the batch event carries: the shards when there are any, and
+ * the geometry-diff hashes of instanced-only entities (#924) with their world
+ * boxes (#1891, six values per id) and proved volumes (#1993, one per id).
+ * Boxes and volumes travel with the ids or not at all: an array without its id
+ * array indexes nothing.
+ */
+export function unpackBatchInstancing(msg: BatchInstancingFields): { present: boolean; occurrences: number; fields: BatchInstancingFields } {
+  const { instancedShards, instancedGeometryHashIds, instancedGeometryHashValues, instancedGeometryAabbValues, instancedGeometryVolumeValues } = msg;
+  const shards = instancedShards !== undefined && instancedShards.length > 0;
+  const hashes = instancedGeometryHashIds !== undefined && instancedGeometryHashIds.length > 0;
+  return {
+    present: shards || hashes,
+    occurrences: msg.instancedOccurrences ?? 0,
+    fields: {
+      ...(shards ? { instancedShards } : {}),
+      ...(hashes
+        ? {
+            instancedGeometryHashIds,
+            instancedGeometryHashValues,
+            ...(instancedGeometryAabbValues ? { instancedGeometryAabbValues } : {}),
+            ...(instancedGeometryVolumeValues ? { instancedGeometryVolumeValues } : {}),
+          }
+        : {}),
+    },
+  };
+}

@@ -27,6 +27,7 @@ import type { Tool } from './types.js';
 import { findByGlobalId, okResult, resolveModel } from './util.js';
 import { stepText } from '@ifc-lite/sdk/headless';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
+import { EDIT } from './annotations.js';
 
 function invalid(message: string, details: Record<string, unknown>): ToolExecutionError {
   return new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message, details });
@@ -68,7 +69,7 @@ function withGlobalId(
 }
 
 export const entityCreate: Tool = {
-  name: 'entity_create',
+  name: 'entity_create', title: 'Create entity', annotations: EDIT,
   description:
     'Create a new IFC entity with raw positional attributes. Returns the new expressId. ' +
     'Optional `global_id` sets the GlobalId of an IfcRoot subtype (attribute 0); it must be a valid ' +

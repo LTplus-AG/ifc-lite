@@ -5,44 +5,89 @@ import { refuseCaptureHeldPick } from '@/lib/viewport-capture';
 import { isGeometryHeld, isGeometryRestoreHeld } from '@/lib/pick-gating';
 import type { EdgeLockInput } from '@ifc-lite/renderer';
 import { EDGE_LOCK_DEFAULTS } from '@/store/constants';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { getGlobalRenderer } from '@/hooks/useBCF';
 import { resolveEntityRef, useViewerStore } from '@/store';
 import { fromRenderTranslation, orthogonalAxis, constrainTranslation, subtractTranslation } from '@/lib/model-placement/translation';
 import type { PlacementAnchor } from '@/lib/model-placement/state';
-import { createIsolationFor } from './repositionIsolation';
+import { explainRaycastFilter, modelEntityIds, hitModelId, isEligiblePickModel, pickableFilter, pickContext, rejectedPickMessage } from '@/lib/model-placement/pick-eligibility';
+import { resolve } from '@/i18n/registry';
+import { repositionInstanceIds } from '@/lib/model-placement/pick-instance-ids';
 import { screenCornerSnapConfig } from '@/lib/snap/corner-assist';
+import { createIsolationFor } from './repositionIsolation';
+import { useInstancedMembershipRevision } from '@/hooks/useSceneTriangleCounts';
 
 export type PickRole = 'source' | 'target' | null;
 
+/** Two-point align (#11505) takes the picks over: a stable callback that files the
+ * anchor itself, in place of the move preview's source/target anchors, and
+ * returns the role to pick next (null when finished). */
+export type PickCapture = (role: 'source' | 'target', anchor: PlacementAnchor) => PickRole;
+
 /** Uses the measurement tool's real mesh/scan snap path. Navigation remains
  * available on the other mouse buttons while left-click selects an anchor. */
-export function useRepositionPicking(role: PickRole, finish: (role: PickRole) => void, onError: (message: string) => void, reference = '') {
+export function useRepositionPicking(role: PickRole, finish: (role: PickRole) => void, onError: (message: string) => void, reference = '', capture?: PickCapture) {
   const [hover, setHover] = useState<PlacementAnchor | null>(null);
   const models = useViewerStore((state) => state.models);
+  const previewModelIds = useViewerStore((state) => state.modelPlacement.preview?.modelIds);
+  const instanceRevision = useInstancedMembershipRevision(role !== null);
+  const instances = useRef<ReturnType<typeof repositionInstanceIds>>(new Map());
+  // Refresh the inventory without replacing gesture listeners mid-click.
+  useEffect(() => {
+    instances.current = role ? repositionInstanceIds() : new Map();
+  }, [role, models, instanceRevision]);
   useEffect(() => {
     const renderer = getGlobalRenderer(), canvas = renderer?.getCanvas();
     if (!role || !renderer || !canvas) { setHover(null); return; }
     const state = useViewerStore.getState(), preview = state.modelPlacement.preview;
     if (!preview) return;
     state.setRepositionPicking(true);
-    const allowed = new Set<number>();
-    const accepts = (id: string) => (role === 'source') === preview.before.has(id) && state.models.get(id)?.visible &&
-      (role === 'source' || !reference || id === reference);
+    const baked = new Set<number>();
+    const ctx = pickContext(new Set(preview.before.keys()), reference, state.models);
+    const accepts = (id: string) => isEligiblePickModel(role, id, ctx);
     for (const [id, model] of state.models) {
       if (!accepts(id)) continue;
-      for (const mesh of model.geometryResult?.meshes ?? []) {
-        if (mesh.entityIds) for (const entityId of mesh.entityIds) allowed.add(entityId);
-        else allowed.add(mesh.expressId);
-      }
-      for (const cloud of model.geometryResult?.pointClouds ?? []) allowed.add(cloud.expressId);
+      for (const entityId of modelEntityIds(model)) baked.add(entityId);
     }
-    for (const id of renderer.getScene().getInstancedEntityIds()) if (accepts(resolveEntityRef(id).modelId)) allowed.add(id);
-    const isolationFor = createIsolationFor(allowed);
+    let currentInstances: typeof instances.current | undefined;
+    let isolationFor = createIsolationFor(baked);
+    const pickIsolation = (isolated: Set<number> | null) => {
+      if (currentInstances !== instances.current) {
+        currentInstances = instances.current;
+        const allowed = new Set(baked);
+        for (const [modelId, ids] of currentInstances) {
+          if (accepts(modelId)) for (const id of ids) allowed.add(id);
+        }
+        isolationFor = createIsolationFor(allowed);
+      }
+      return isolationFor(isolated);
+    };
     let edgeLock: EdgeLockInput = { edge: null, meshExpressId: null, lockStrength: 0 };
     let lastRevision = state.modelPlacement.revision;
     const previousCursor = canvas.style.cursor;
     canvas.style.cursor = 'crosshair';
+    const cast = (event: PointerEvent, current: ReturnType<typeof useViewerStore.getState>,
+      filter: { hiddenIds: Set<number>; isolatedIds: Set<number> | undefined }, lock: EdgeLockInput, searchCorners = false) => {
+      const rect = canvas.getBoundingClientRect();
+      return renderer.raycastSceneMagnetic(event.clientX - rect.left, event.clientY - rect.top,
+        lock, {
+          hiddenIds: filter.hiddenIds, isolatedIds: filter.isolatedIds,
+          snapOptions: { snapToVertices: current.snapEnabled, snapToEdges: current.snapEnabled,
+            snapToFaces: current.snapEnabled, snapToPointClouds: true, screenSnapRadius: 12,
+            ...(searchCorners ? { screenCornerSnap: screenCornerSnapConfig(current.snapXray) } : {}) },
+        });
+    };
+    /** Click-only: what an unrestricted raycast (same hidden/isolation) hit, to explain a refusal. */
+    const explainMiss = (event: PointerEvent): string => {
+      const current = useViewerStore.getState();
+      // Unlocked: the live edge lock may sit on an eligible edge and snap this cast back onto it.
+      const result = cast(event, current, explainRaycastFilter(current), { edge: null, meshExpressId: null, lockStrength: 0 });
+      const hitModel = hitModelId(result, (id) => resolveEntityRef(id).modelId);
+      const message = rejectedPickMessage(role, hitModel, pickContext(ctx.moving, reference, current.models),
+        current.models.keys(), (modelId) => current.models.get(modelId)?.name ?? modelId,
+        pickableFilter(current.models, current.hiddenEntities, current.isolatedEntities, instances.current));
+      return resolve(message.key, message.params);
+    };
     const pick = (event: PointerEvent): PlacementAnchor | null => {
       const current = useViewerStore.getState();
       if (!current.modelPlacement.preview) return null;
@@ -50,14 +95,8 @@ export function useRepositionPicking(role: PickRole, finish: (role: PickRole) =>
         edgeLock = { edge: null, meshExpressId: null, lockStrength: 0 };
       }
       lastRevision = current.modelPlacement.revision;
-      const rect = canvas.getBoundingClientRect();
-      const isolatedIds = isolationFor(current.isolatedEntities);
-      const result = renderer.raycastSceneMagnetic(event.clientX - rect.left, event.clientY - rect.top,
-        edgeLock, {
-          hiddenIds: current.hiddenEntities, isolatedIds,
-          snapOptions: { snapToVertices: current.snapEnabled, snapToEdges: current.snapEnabled,
-            snapToFaces: current.snapEnabled, snapToPointClouds: true, screenSnapRadius: 12, screenCornerSnap: screenCornerSnapConfig(current.snapXray) },
-        });
+      const isolatedIds = pickIsolation(current.isolatedEntities);
+      const result = cast(event, current, { hiddenIds: current.hiddenEntities, isolatedIds }, edgeLock, true);
       if (result.edgeLock.shouldRelease) edgeLock = { edge: null, meshExpressId: null, lockStrength: 0 };
       else if (result.edgeLock.shouldLock && result.edgeLock.edge) edgeLock = {
         edge: result.edgeLock.edge, meshExpressId: result.edgeLock.meshExpressId, lockStrength: EDGE_LOCK_DEFAULTS.INITIAL_STRENGTH,
@@ -89,24 +128,29 @@ export function useRepositionPicking(role: PickRole, finish: (role: PickRole) =>
       if (refuseCaptureHeldPick(renderer)) return;
       const hit = pick(event);
       setHover(hit);
-      if (hit && role === 'target') {
+      if (hit && role === 'target' && !capture) {
         try { updateAnchor(event, hit); }
         catch (error) { onError(error instanceof Error ? error.message : String(error)); }
       }
     };
     let nextRole: PickRole | undefined;
+    let pendingCapture: { hit: PlacementAnchor; revision: number } | undefined;
     const down = (event: PointerEvent) => {
       if (event.button !== 0) return;
-      event.preventDefault(); event.stopImmediatePropagation(); nextRole = undefined;
+      event.preventDefault(); event.stopImmediatePropagation(); nextRole = undefined; pendingCapture = undefined;
       if (isGeometryRestoreHeld(useViewerStore.getState())) {
         return;
       }
       if (refuseCaptureHeldPick(renderer)) return;
       const hit = pick(event);
-      if (!hit) { onError('No eligible point found. Zoom closer, choose another point, or enter coordinates.'); return; }
+      if (!hit) {
+        // A preview that ended mid-pick leaves nothing to explain.
+        if (useViewerStore.getState().modelPlacement.preview) onError(explainMiss(event));
+        return;
+      }
       try {
-        updateAnchor(event, hit);
-        nextRole = role === 'source' ? 'target' : null;
+        if (capture) pendingCapture = { hit, revision: useViewerStore.getState().modelPlacement.revision };
+        else { updateAnchor(event, hit); nextRole = role === 'source' ? 'target' : null; }
       } catch (error) { onError(error instanceof Error ? error.message : String(error)); }
     };
     // Finish on click, after consuming the whole gesture. Changing the role on
@@ -115,11 +159,16 @@ export function useRepositionPicking(role: PickRole, finish: (role: PickRole) =>
     const release = (event: MouseEvent) => {
       if (event.button !== 0) return;
       event.preventDefault(); event.stopImmediatePropagation();
-      if (event.type === 'click' && nextRole !== undefined) {
-        // A click during a reopen's restore hold is ignored, even for a press picked just before it began.
-        if (isGeometryRestoreHeld(useViewerStore.getState())) { nextRole = undefined; return; }
-        finish(nextRole);
-      }
+      if (event.type !== 'click') return;
+      const captured = pendingCapture;
+      const next = nextRole;
+      pendingCapture = undefined;
+      nextRole = undefined;
+      const state = useViewerStore.getState();
+      // A click during a reopen's restore hold is ignored, even for a press picked just before it began.
+      if (isGeometryRestoreHeld(state)) return;
+      if (capture && captured?.revision === state.modelPlacement.revision) finish(capture(role, captured.hit));
+      else if (next !== undefined) finish(next);
     };
     canvas.addEventListener('pointerup', release, true);
     canvas.addEventListener('click', release, true);
@@ -134,6 +183,6 @@ export function useRepositionPicking(role: PickRole, finish: (role: PickRole) =>
       renderer.cornerMarkers?.set(null);
       useViewerStore.getState().setRepositionPicking(false);
     };
-  }, [role, finish, onError, models, reference]);
+  }, [role, finish, onError, models, previewModelIds, reference, capture]);
   return hover;
 }

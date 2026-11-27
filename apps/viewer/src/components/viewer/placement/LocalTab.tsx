@@ -13,7 +13,7 @@
  * `snapEnabled`).
  */
 import { PositionedDownload } from '../PositionedDownload';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import type { TranslationKey } from '@/i18n';
@@ -24,10 +24,14 @@ import { shortcutLabel } from '@/lib/commands/shortcut-label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { displayedTranslation, placementFor } from '@/lib/model-placement/state';
 import type { MoveConstraint } from '@/lib/model-placement/translation';
+import { eligiblePickModelIds, modelLabels, pickableFilter, pickContext, pickPromptKey } from '@/lib/model-placement/pick-eligibility';
+import { repositionInstanceIds } from '@/lib/model-placement/pick-instance-ids';
+import { useInstancedMembershipRevision } from '@/hooks/useSceneTriangleCounts';
 import { frameModels } from '@/lib/model-placement/scene';
 import { useRepositionRuntime, type RepositionRuntime } from '@/lib/model-placement/reposition-runtime';
 import { openRepositionModels } from '@/lib/model-placement/commands';
 import { RotationControls } from '../reposition/RotationControls';
+import { TwoPointAlignPanel } from '../reposition/TwoPointAlignPanel';
 import { PlacementFiles } from '../reposition/PlacementFiles';
 
 const PICK_ROLE_KEYS: Record<'source' | 'target', TranslationKey> = {
@@ -52,15 +56,40 @@ function frame(runtime: RepositionRuntime, ids: readonly string[]) {
   catch (err) { runtime.setError(err instanceof Error ? err.message : String(err)); }
 }
 
+function pickPrompt(
+  t: ReturnType<typeof useTranslation>['t'], role: 'source' | 'target',
+  before: ReadonlyMap<string, unknown> | undefined, reference: string, models: ReturnType<typeof useViewerStore.getState>['models'],
+  hidden: ReadonlySet<number>, isolated: ReadonlySet<number> | null,
+): string {
+  const eligible = eligiblePickModelIds(role, models.keys(), pickContext(new Set(before?.keys()), reference, models));
+  // Name only models with something left to pick: not fully hidden or outside the isolation set.
+  const ids = pickableFilter(models, hidden, isolated, repositionInstanceIds())(eligible);
+  const labels = modelLabels(models.keys(), (id) => models.get(id)?.name ?? id);
+  const key = pickPromptKey(role, ids.length, reference !== '');
+  return key === 'repositionPanel.pickPrompt'
+    ? t(key, { role: t(PICK_ROLE_KEYS[role]) })
+    : t(key, { models: ids.map((id) => labels.get(id) ?? id).join(', ') });
+}
+
 export function LocalTab() {
-  const { t } = useTranslation();
+  const { t, revision } = useTranslation();
   const models = useViewerStore((s) => s.models);
   const placement = useViewerStore((s) => s.modelPlacement);
   const snapEnabled = useViewerStore((s) => s.snapEnabled);
   const snapXray = useViewerStore((s) => s.snapXray);
+  const hidden = useViewerStore((s) => s.hiddenEntities);
+  const isolated = useViewerStore((s) => s.isolatedEntities);
   const repositionOpen = useViewerStore((s) => s.repositionOpen);
   const runtime = useRepositionRuntime();
   const [pending, setPending] = useState<readonly string[]>([]);
+  // Memoised so hover re-renders do not rescan every model's entity ids; `t`
+  // keeps its identity across locale switches, so `revision` keys the locale.
+  const role = runtime?.role ?? null, reference = runtime?.reference ?? '', before = placement.preview?.before;
+  const instanceRevision = useInstancedMembershipRevision(role !== null);
+  const prompt = useMemo(
+    () => (role ? pickPrompt(t, role, before, reference, models, hidden, isolated) : t('repositionPanel.previewPrompt')),
+    [t, revision, role, before, reference, models, hidden, isolated, instanceRevision],
+  );
 
   if (!repositionOpen || !runtime) {
     return (
@@ -157,7 +186,7 @@ export function LocalTab() {
         </label>
       </div>
       <output className="block">
-        {runtime.role ? t('repositionPanel.pickPrompt', { role: t(PICK_ROLE_KEYS[runtime.role]) }) : t('repositionPanel.previewPrompt')}
+        {prompt}
         {runtime.hover ? ` ${t('repositionPanel.hoverDetail', { kind: t(HOVER_KIND_KEYS[runtime.hover.kind]), name: models.get(runtime.hover.modelId)?.name ?? '' })}` : ''}
       </output>
 
@@ -223,10 +252,11 @@ export function LocalTab() {
       ))}
 
       <RotationControls selected={runtime.selected} onError={runtime.setError} />
+      <TwoPointAlignPanel />
       {runtime.error && <p role="alert" className="text-destructive">{runtime.error}</p>}
 
       <div className="flex flex-wrap gap-1">
-        <Button size="sm" disabled={!preview} onClick={runtime.apply}>{t('repositionPanel.applyButton')}</Button>
+        <Button size="sm" disabled={!runtime.canApply} onClick={runtime.apply}>{t('repositionPanel.applyButton')}</Button>
         <Button size="sm" variant="outline" disabled={!placement.undo.length} onClick={() => useViewerStore.getState().undoModelTranslation()}>{t('repositionPanel.undoButton')}</Button>
         <Button size="sm" variant="outline" disabled={!placement.redo.length} onClick={() => useViewerStore.getState().redoModelTranslation()}>{t('repositionPanel.redoButton')}</Button>
         <Button size="sm" variant="outline" disabled={!runtime.selected.length || runtime.selected.some((id) => placementFor(placement, id).locked)}

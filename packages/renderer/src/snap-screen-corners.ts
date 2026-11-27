@@ -89,6 +89,12 @@ export interface ScreenCornerCandidate {
   /** Screen distance from the cursor, in CSS px. */
   distancePx: number;
 }
+
+function screenRadius(value: number | undefined, fallback: number): number {
+  const radius = value ?? fallback;
+  return Number.isFinite(radius) && radius > 0 ? radius : 0;
+}
+
 export class ScreenCornerIndex {
   private live: { grid: CornerGrid; ray: Ray; maxDepth: number } | null = null;
   dropLive(): void { this.live = null; }
@@ -124,6 +130,7 @@ export class ScreenCornerIndex {
     /** The view's stamp now, for the idle build to notice the camera moving between picks. Default: `viewKey`. */
     liveViewKey?: () => string;
     viewport: { width: number; height: number };
+    snapOccurrences?: import('./snap-corner-instances.js').SnapOccurrences;
     pieces: readonly MeshData[];
     geometryFor: (mesh: MeshData) => MeshGeometryCache;
     /** Optional: the same cache built in bounded steps. The idle build prefers it, so one huge piece spans several slices. */
@@ -139,8 +146,8 @@ export class ScreenCornerIndex {
   }): ScreenCornerHit | null {
     this.dropLive();
     const { x, y, viewport, options } = args;
-    const cornerR = options.cornerRadiusPx ?? DEFAULT_CORNER_RADIUS_PX;
-    const edgeR = options.edgeRadiusPx ?? DEFAULT_EDGE_RADIUS_PX;
+    const cornerR = screenRadius(options.cornerRadiusPx, DEFAULT_CORNER_RADIUS_PX);
+    const edgeR = screenRadius(options.edgeRadiusPx, DEFAULT_EDGE_RADIUS_PX);
     if (!(cornerR > 0) && !(edgeR > 0)) return null;
     const cell = Math.max(cornerR, edgeR);
     const eligible = options.eligibleModelIndices;
@@ -150,7 +157,7 @@ export class ScreenCornerIndex {
     const viewKey = gridKey(args.viewKey, args.clip, viewport.width, viewport.height, args.hiddenIds, args.isolatedIds, cell, eligible);
     const liveViewKey = args.liveViewKey;
     pipeline.observe({
-      pieces: args.pieces, geometryFor: args.geometryFor, startGeometry: args.startGeometry, camera: args.camera, viewport,
+      snapOccurrences: args.snapOccurrences, pieces: args.pieces, geometryFor: args.geometryFor, startGeometry: args.startGeometry, camera: args.camera, viewport,
       liveViewKey: liveViewKey ? () => liveViewKey() : () => args.viewKey,
       hiddenIds: args.hiddenIds, isolatedIds: args.isolatedIds, eligible, clip: args.clip, cell,
       settleMs: options.settleMs ?? DEFAULT_SETTLE_MS, maxSliceMs: options.maxSliceMs ?? DEFAULT_MAX_SLICE_MS,

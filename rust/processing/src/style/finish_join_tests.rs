@@ -100,3 +100,16 @@ fn a_file_without_finishes_joins_nothing() {
     // finish; nothing else authors one.
     assert_eq!(finishes.finish_for_mesh(&mesh(10, Some(30), [0.5, 0.4, 0.3, 1.0])), None);
 }
+
+/// #10698: the exact join takes the finish of the source the colour came from,
+/// with no colour compared: a fill-only style authors none, and a colour from
+/// no style, or of unknown provenance, has none.
+#[test]
+fn the_exact_join_reads_the_source_not_the_colour() {
+    let finishes = ModelFinishes::from_content(MAPPED.as_bytes());
+    let glossy = finishes.finish_for_source(StyleSource::Style(30)).expect("#30 authors a finish");
+    assert!((glossy.roughness.unwrap() - 0.25).abs() < 1e-6);
+    assert_eq!(finishes.finish_for_source(StyleSource::Style(70)), None, "a shading-only style");
+    assert_eq!(finishes.finish_for_source(StyleSource::Unstyled), None);
+    assert_eq!(finishes.finish_for_source(StyleSource::Unavailable), None);
+}

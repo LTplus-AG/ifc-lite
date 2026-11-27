@@ -15,7 +15,7 @@
  */
 import { trackExportCompleted } from '@/lib/analytics';
 import { useEffect, useState } from 'react';
-import { downloadBlob } from '../../lib/export/download';
+import { downloadBlob, prependUtf8Bom } from '../../lib/export/download';
 
 export interface PlaygroundFile {
   /** Stable id used by tools to refer back to a written artifact. */
@@ -28,6 +28,8 @@ export interface PlaygroundFile {
   size: number;
   /** The data. */
   blob: Blob;
+  /** Add the UTF-8 BOM to the downloaded copy of this CSV (#11452). */
+  needsCsvBom?: boolean;
   /** ms since epoch. */
   createdAt: number;
   /** Tool that produced it (`bcf_export`, `model_save`, …). */
@@ -104,7 +106,7 @@ class FileStore {
     const file = this.files.find((f) => f.id === id);
     if (!file) return;
     // file.filename is already coerced (extension-forced, OS-safe) at creation.
-    downloadBlob(file.blob, file.filename);
+    downloadBlob(file.needsCsvBom ? prependUtf8Bom(file.blob) : file.blob, file.filename);
     trackExportCompleted({ format: 'other', surface: 'mcp_playground' });
   }
 

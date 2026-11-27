@@ -279,12 +279,12 @@ fn merged_dates_follow_the_written_classification_ids_10879() {
 }
 
 #[test]
-fn durations_warn_about_non_second_project_time_units_10879() {
+fn durations_scale_by_project_time_unit_11192() {
     let input = include_bytes!("../tests/fixtures/schema_duration_timeunit.ifc");
     let upgrade = crate::StepOptions { schema: Some("IFC4".to_owned()), ..Default::default() };
     let modern = crate::export_step(input, &upgrade).unwrap();
     for (source, schema, expected) in [
-        (input.as_slice(), "IFC4", ",'id',$,$,$,'PT10S',"),
+        (input.as_slice(), "IFC4", ",'id',$,$,$,'PT600S',"),
         (modern.as_bytes(), "IFC2X3", ",'id',$,$,$,10.,"),
     ] {
         let options = crate::StepOptions { schema: Some(schema.to_owned()), ..Default::default() };
@@ -293,7 +293,7 @@ fn durations_warn_about_non_second_project_time_units_10879() {
         let (merged, merge) = crate::export_merged_models(&[crate::MergedModel::new(source)], &crate::MergedOptions { schema: options.schema, ..Default::default() });
         for (output, warnings) in [(direct, direct_warnings), (logged, log.warnings), (merged, merge.warnings)] {
             assert!(output.contains(expected), "{output}");
-            assert!(warnings.iter().any(|warning| warning.contains("assumed seconds")), "{warnings:?}");
+            assert!(!warnings.iter().any(|warning| warning.contains("assumed seconds")), "{warnings:?}");
         }
     }
     let seconds = std::str::from_utf8(input).unwrap().replace("IFCUNITASSIGNMENT((#6))", "IFCUNITASSIGNMENT((#3))");

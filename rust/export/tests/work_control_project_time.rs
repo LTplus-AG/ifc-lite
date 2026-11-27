@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 use ifc_lite_export::{
-    export_merged_models, export_step, export_step_with_diagnostics, export_step_with_log,
+    export_merged_models, export_merged_models_with_logs, export_step, export_step_with_diagnostics, export_step_with_log,
     AttrMutation, MergedModel, MergedOptions, StepOptions,
 };
 
@@ -150,5 +150,41 @@ fn merged_downgrade_uses_the_retained_project_and_reports_unresolved_units_11192
                 .count(),
             1
         );
+    }
+}
+
+#[test]
+fn subset_upgrade_reads_edits_to_units_outside_the_subset_11192() {
+    for schema in ["IFC4", "IFC4X3"] {
+        let subset = StepOptions { included: Some(vec![7]), ..options(schema) };
+        let error = export_step_with_log(LEGACY.as_bytes(), &subset, &Default::default()).unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
+        assert!(error.to_string().contains("`included` is not supported with a mutation log"));
+
+        let edited = StepOptions {
+            attribute_mutations: vec![AttrMutation {
+                express_id: 4, index: 0, value: "IFCRATIOMEASURE(120.)".into(),
+            }],
+            ..subset
+        };
+        let (out, _, warnings) = export_step_with_diagnostics(LEGACY.as_bytes(), &edited).unwrap();
+        assert!(!out.contains("=IFCPROJECT("), "{out}");
+        assert!(out.contains("'PT1200S'"), "{out}");
+        assert!(!warnings.iter().any(|w| w.contains("assumed seconds")), "{warnings:?}");
+
+        let log = serde_json::from_value(serde_json::json!({"mutations":[
+            {"type":"UPDATE_POSITIONAL_ATTRIBUTE","entityId":3,"attributeName":"@2","newValue":".MILLI."}
+        ]})).unwrap();
+        let mut model = MergedModel::new(LEGACY.as_bytes());
+        model.included = Some(vec![7]);
+        for (edits, expected) in [(None, "'PT600S'"), (Some(&log), "'PT0.6S'")] {
+            let (out, stats) = export_merged_models_with_logs(
+                std::slice::from_ref(&model), &[edits],
+                &MergedOptions { schema: Some(schema.into()), ..Default::default() },
+            ).unwrap();
+            assert!(!out.contains("=IFCPROJECT("), "{out}");
+            assert!(out.contains(expected), "{out}");
+            assert!(!stats.warnings.iter().any(|w| w.contains("assumed seconds")), "{:?}", stats.warnings);
+        }
     }
 }

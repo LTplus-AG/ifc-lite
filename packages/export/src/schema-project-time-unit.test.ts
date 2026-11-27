@@ -50,3 +50,15 @@ it('warns once on conflicting time units or a cyclic conversion factor (#11192)'
     expect(result.stats.warnings.filter(w => w.includes('assumed seconds'))).toHaveLength(1);
   }
 });
+
+it('uses an edited factor outside the exported subset for both upgrade targets (#11192)', async () => {
+  const store = await parse(minutes);
+  const view = new MutablePropertyView(store.properties, 'time edits');
+  view.setPositionalAttribute(3, 2, '.MILLI.');
+  for (const schema of ['IFC4', 'IFC4X3'] as const) {
+    const result = new StepExporter(store, view).export({schema, subsetEntityIds: new Set([7])});
+    expect(decode(result)).not.toContain('=IFCPROJECT(');
+    expect(decode(result)).toContain("'PT0.6S','-PT0.12S'");
+    expect(result.stats.warnings.join(' ')).not.toContain('assumed seconds');
+  }
+});

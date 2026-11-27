@@ -1204,7 +1204,7 @@ export class MergedExporter {
       const type = entityRef.type.toUpperCase();
       const legacySchema = isTypedPropertyUpgrade(type, sourceSchema, targetSchema) ? 'IFC2X3' : undefined;
       const sampleUnit = mode.inheritedUnits?.sampleUnit(type, localId);
-      const scaled = sampleUnit === 'explicit' ? finalText : rescaleEntityLengths(finalText, type, mode.lengthFactor, mode.areaFactor, mode.volumeFactor, mode.profileFactors, legacySchema, mode.inheritedUnits?.tableRowExplicitColumns(type, localId));
+      const scaled = sampleUnit === 'explicit' ? finalText : rescaleEntityLengths(finalText, type, mode.lengthFactor, mode.areaFactor, mode.volumeFactor, mode.profileFactors, legacySchema, mode.inheritedUnits?.tableCellNormalizer(type, localId));
       if (sampleUnit === 'mixed' && scaled !== finalText) throw new Error(`Cannot normalize shared time series sample #${localId} with both project and explicit units`);
       finalText = scaled;
     }

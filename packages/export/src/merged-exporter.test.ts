@@ -1352,6 +1352,61 @@ describe('MergedExporter', () => {
       }
     });
 
+    it.each([
+      ['IFC4', 'explicit first'], ['IFC4', 'inheriting first'],
+      ['IFC4X3', 'explicit first'], ['IFC4X3', 'inheriting first'],
+    ] as const)('resolves units for a shared table row in %s with %s (#11333)', async (schema, order) => {
+      const records: Array<[number, string, string]> = [
+        [18, 'IFCTABLEROW', '#18=IFCTABLEROW((IFCMASSPERLENGTHMEASURE(50.)),.F.);'],
+        [19, 'IFCSIUNIT', '#19=IFCSIUNIT(*,.MASSUNIT.,$,.GRAM.);'],
+        [20, 'IFCSIUNIT', '#20=IFCSIUNIT(*,.LENGTHUNIT.,.CENTI.,.METRE.);'],
+        [21, 'IFCDERIVEDUNITELEMENT', '#21=IFCDERIVEDUNITELEMENT(#19,1);'],
+        [22, 'IFCDERIVEDUNITELEMENT', '#22=IFCDERIVEDUNITELEMENT(#20,-1);'],
+        [23, 'IFCDERIVEDUNIT', '#23=IFCDERIVEDUNIT((#21,#22),.MASSPERLENGTHUNIT.,$);'],
+      ];
+      for (const [i, explicit] of (order === 'explicit first' ? [true, false] : [false, true]).entries()) {
+        const sensor = 30 + i * 10, table = sensor + 1, column = sensor + 2, prop = sensor + 3, pset = sensor + 4;
+        const label = explicit ? 'Explicit' : 'Inheriting';
+        records.push(
+          [sensor, 'IFCSENSOR', `#${sensor}=IFCSENSOR('${guid(label)}',$,'${label} sensor',$,$,$,$,$,$);`],
+          [table, 'IFCTABLE', `#${table}=IFCTABLE('${label} table',(#18),(#${column}));`],
+          [column, 'IFCTABLECOLUMN', `#${column}=IFCTABLECOLUMN($,$,$,${explicit ? '#23' : '$'},$);`],
+          [prop, 'IFCPROPERTYREFERENCEVALUE', `#${prop}=IFCPROPERTYREFERENCEVALUE('Readings',$,$,#${table});`],
+          [pset, 'IFCPROPERTYSET', `#${pset}=IFCPROPERTYSET('${guid(label+'ps')}',$,'Readings',$,(#${prop}));`],
+          [sensor+5, 'IFCRELDEFINESBYPROPERTIES', `#${sensor+5}=IFCRELDEFINESBYPROPERTIES('${guid(label+'rel')}',$,$,$,(#${sensor}),#${pset});`],
+        );
+      }
+      const makeExporter = () => {
+        const models = [metreModel(), mmModel(records)];
+        for (const model of models) (model.dataStore as { schemaVersion: string }).schemaVersion = schema;
+        return new MergedExporter(models);
+      };
+      const exporter = makeExporter();
+      const options = { schema, unitReconciliation: 'normalize' } as const;
+      const explicitSensor = order === 'explicit first' ? 30 : 40;
+      for (const hidden of [30, 40]) {
+        const selection = { ...options, visibleOnly: true, hiddenEntityIdsByModel: new Map([['mm', new Set([hidden])]]) };
+        for (const result of [exporter.export(selection), await exporter.exportAsync(selection)]) {
+          const output = decode(result.content);
+          const explicit = hidden !== explicitSensor;
+          expect(output).toContain(`'${explicit ? 'Explicit' : 'Inheriting'} table'`);
+          expect(output).not.toContain(`'${explicit ? 'Inheriting' : 'Explicit'} table'`);
+          expect(output).toContain(`IFCTABLEROW((IFCMASSPERLENGTHMEASURE(${explicit ? '50.' : '50000.'})),.F.)`);
+          expect(findDanglingRefs(output)).toEqual([]);
+        }
+      }
+      for (const visibleOnly of [false, true]) {
+        expect(() => exporter.export({ ...options, visibleOnly })).toThrow(/shared table row #18.*column 1/);
+        await expect(exporter.exportAsync({ ...options, visibleOnly })).rejects.toThrow(/shared table row #18.*column 1/);
+      }
+      // A conflicting unit policy is harmless if the shared cell needs no numeric change.
+      records[0] = [18, 'IFCTABLEROW', '#18=IFCTABLEROW((IFCMASSPERLENGTHMEASURE(0.)),.F.);'];
+      const zero = makeExporter();
+      for (const result of [zero.export(options), await zero.exportAsync(options)]) {
+        expect(decode(result.content)).toContain('IFCTABLEROW((IFCMASSPERLENGTHMEASURE(0.)),.F.)');
+      }
+    });
+
     it.each(['IFC4', 'IFC4X3', 'IFC2X3'] as const)('normalizes regular and irregular samples by their owning %s time series (#11333)', async schema => {
       const date = schema === 'IFC2X3' ? '#40' : "'2020-01-01T12:00:00'";
       const values = (n: number) => `(IFCMASSPERLENGTHMEASURE(${n}.))`;

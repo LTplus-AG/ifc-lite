@@ -52,13 +52,11 @@ export function inheritedUnitLookup(model: IfcDataStore, included?: ReadonlySet<
     }
     return samples.get(id);
   }
-  let rows: Map<number, Set<number>> | undefined;
-  function tableRowExplicitColumns(type: string, id: number) {
-    if (type !== 'IFCTABLEROW' || model.schemaVersion === 'IFC2X3') return undefined;
-    if (rows) return rows.get(id);
-    rows = new Map();
-    for (const [, table] of index) {
-      if (table.type.toUpperCase() !== 'IFCTABLE') continue;
+  let rows: Map<number, Set<number>[]> | undefined;
+  function indexTableOwners() {
+    const owners = new Map<number, Set<number>[]>();
+    for (const [tableId, table] of index) {
+      if (table.type.toUpperCase() !== 'IFCTABLE' || (included && !included.has(tableId))) continue;
       const text = model.source?.decodeUtf8(table.byteOffset, table.byteOffset + table.byteLength);
       const slots = text && readStepSlots(text)?.slots;
       if (!slots) continue;
@@ -70,13 +68,34 @@ export function inheritedUnitLookup(model: IfcDataStore, included?: ReadonlySet<
         const record = model.source?.decodeUtf8(column.byteOffset, column.byteOffset + column.byteLength);
         if (record && slotRef(readStepSlots(record)?.slots[3]) !== null) columns.add(position);
       });
-      if (columns.size === 0) continue;
       for (const token of listItems(slots[1]) ?? []) {
         const row = slotRef(token);
-        if (row !== null) rows.set(row, columns);
+        if (row === null) continue;
+        const previous = owners.get(row);
+        if (previous) previous.push(columns);
+        else owners.set(row, [columns]);
       }
     }
-    return rows.get(id);
+    return owners;
   }
-  return { selectionHasExplicitUnit, tableRowExplicitColumns, sampleUnit };
+  function tableCellNormalizer(type: string, id: number) {
+    if (type !== 'IFCTABLEROW' || model.schemaVersion === 'IFC2X3') return undefined;
+    rows ??= indexTableOwners();
+    const owners = rows.get(id);
+    if (!owners?.some(columns => columns.size)) return undefined;
+    const counts = new Map<number, number>();
+    for (const columns of owners) {
+      for (const col of columns) counts.set(col, (counts.get(col) ?? 0) + 1);
+    }
+    return (cell: string, col: number, scale: (value: string) => string) => {
+      const explicit = counts.get(col);
+      if (explicit === owners.length) return cell;
+      const scaled = scale(cell);
+      if (explicit && scaled !== cell) {
+        throw new Error(`Cannot normalize shared table row #${id} at column ${col + 1} with both project and explicit units`);
+      }
+      return scaled;
+    };
+  }
+  return { selectionHasExplicitUnit, tableCellNormalizer, sampleUnit };
 }

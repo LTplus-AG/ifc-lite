@@ -295,7 +295,7 @@ export function rescaleEntityLengths(
   volumeFactor: number,
   profileFactors?: ReadonlyMap<string, number>,
   legacySchema?: 'IFC2X3',
-  explicitColumns?: ReadonlySet<number>,
+  normalizeCell?: (cell: string, column: number, scale: (value: string) => string) => string,
 ): string {
   if (lengthFactor === 1 && areaFactor === 1 && volumeFactor === 1 && !profileFactors?.size) return line;
   if (!Number.isFinite(lengthFactor) || !Number.isFinite(areaFactor) || !Number.isFinite(volumeFactor)) return line;
@@ -366,14 +366,14 @@ export function rescaleEntityLengths(
   // written with its explicit type). Skipped when the entity declares its own unit.
   if (!skipValues && /measure/i.test(inner)) {
     const scale = (text: string) => scaleTypedMeasures(text, lengthFactor, areaFactor, volumeFactor, profileFactors, true);
-    if (explicitColumns?.size) {
+    if (normalizeCell) {
       const args = splitTopLevelStepArguments(inner);
       // Frame RowCells as a record to preserve aggregate and cell trivia verbatim.
       const prefix = '#0=IFCTABLEROW';
       const cells = args && readStepSlots(prefix + args[0] + ';');
       if (args && cells) {
         args[0] = cells.prefix.slice(prefix.length)
-          + cells.slots.map((cell, i) => explicitColumns.has(i) ? cell : scale(cell)).join(',')
+          + cells.slots.map((cell, i) => normalizeCell(cell, i, scale)).join(',')
           + cells.suffix.slice(0, -1);
         inner = args.join(',');
       }

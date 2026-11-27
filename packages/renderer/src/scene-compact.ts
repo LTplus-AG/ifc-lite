@@ -37,6 +37,7 @@ import type { CompactPageDeps } from './compact-page-deps.js';
 import type { BatchedMesh } from './types.js';
 import { chosenMembers, forgetRegistrations, normalize, pageMode, pageRefusal, type CompactDecodeReason, type CompactSelection, type PageMode, type SceneCompactHost, type Selection } from './scene-compact-host.js';
 import { settlePages, type PageLodBuild } from './compact-lod.js';
+import { forgetGroups } from './compact-groups.js';
 
 export type { CompactDecodeReason, CompactSceneStats, CompactSelection, SceneCompactHost } from './scene-compact-host.js';
 
@@ -388,13 +389,11 @@ export class SceneCompact {
   /** Drop everything without rebuilding (the Scene is clearing its flat geometry). */
   clear(): void {
     this.store.destroy();
-    this.queue = [];
-    this.members.clear();
-    this.byId.clear();
+    this.queue = []; this.members.clear(); this.byId.clear();
     this.combined = this.lod = this.retired = null;
     this.demotionPages.clear();
     this.refused = new WeakSet();
-    this.trimAfterDrain = false;
-    this.decodes = {};
+    this.trimAfterDrain = false; this.decodes = {};
+    forgetGroups(this.scene); // its chunking may change before the same meshes come back
   }
 }

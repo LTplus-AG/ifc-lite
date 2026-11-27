@@ -34,6 +34,12 @@ export interface Group {
 /** Each Scene's bucket key of each paged mesh (the key depends on its chunking). Cached: a mesh whose colour, id or model changes leaves its page first. */
 const bucketKeys = new WeakMap<SceneCompactHost, WeakMap<MeshData, string>>();
 
+/** Forget a Scene's cached bucket keys and stream verdicts (it cleared: its chunking may change, the same meshes may come back). */
+export function forgetGroups(host: SceneCompactHost): void {
+  bucketKeys.delete(host);
+  streamVerdicts.delete(host);
+}
+
 export function bucketKeyOf(host: SceneCompactHost, mesh: MeshData, cachedOnly = false): string | undefined {
   let keys = bucketKeys.get(host);
   if (!keys) bucketKeys.set(host, (keys = new WeakMap()));

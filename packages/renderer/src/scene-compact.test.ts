@@ -1136,6 +1136,20 @@ describe('compact pages take the decisions of the bucket batches they stand in f
     assert.equal(pages(narrow)[0].lodParts?.length, 2, '32 m chunks: two buckets, not the first scene\'s cached one');
   });
 
+  it('group by the new chunking when a cleared scene pages the same meshes again (#11606)', async () => {
+    const meshes = compactBatch([...lodBoxes(1000, 20, 4), ...lodBoxes(2000, 36, 4)], 1); // compact cell 1: [16, 48) m
+    const on = await lodScene(true), gpu = fakeGpu();
+    on.setSpatialChunking({ cellSize: 64 });
+    upload(on, gpu, meshes);
+    settle(on, gpu);
+    assert.equal(pages(on)[0].lodParts?.length, 1, '64 m chunks: one bucket');
+    on.clear();
+    on.setSpatialChunking({ cellSize: 32 });
+    upload(on, gpu, meshes);
+    settle(on, gpu);
+    assert.equal(pages(on)[0].lodParts?.length, 2, '32 m chunks: two buckets, not the cached keys from before the clear');
+  });
+
   it('move a group to its bucket when an f32 mesh of that bucket is still queued at the end of the stream (#11606)', async () => {
     const on = await lodScene(true), gpu = fakeGpu();
     upload(on, gpu, compactBatch([{ expressId: 1, at: [2, 0, 0], size: 1, color: GREY }]));

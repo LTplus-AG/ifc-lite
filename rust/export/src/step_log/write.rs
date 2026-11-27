@@ -19,7 +19,7 @@ use super::collect::{collect, retain_shared_atoms};
 use super::generate::generate;
 use super::created::write_created;
 use super::ledger::Kind;
-use super::refilter::{filter_source_line, Filtered};
+use super::refilter::filter_log_line;
 use super::replay::replay;
 use super::pass::Pass;
 use super::source::Source;
@@ -162,8 +162,8 @@ fn write_line<W: Write>(
 fn checks_for(content: &[u8], source_label: &str, target: &str, opts: &StepOptions, log: &MutationLog, src: &Source<'_>, pass: &mut super::pass::Pass<'_, '_>) -> crate::schema_enum::ConversionChecks {
     let unchanged = log.mutations.is_empty() && log.new_entities.is_empty() && log.georef_mutations.is_none();
     let mut checks = crate::schema_enum::ConversionChecks::for_source(content, source_label, target, opts, unchanged, &|id, start| src.span(id).is_some_and(|(kept, _)| kept == start), &mut || pass.allocate().ok());
-    let written = pass.mutated_lines.iter().filter_map(|(id, (line, _))| Some((*id, line.as_deref()?))).chain(pass.created_lines.iter().map(|(id, l)| (*id, l.as_str())));
-    let retained = |id| pass.will_be_emitted(id) && !matches!(pass.mutated_lines.get(&id), Some((None, _)));
+    let written = pass.mutated_lines.iter().filter_map(|(id, (line, _))| Some((*id, line.as_deref().ok()?))).chain(pass.created_lines.iter().map(|(id, l)| (*id, l.as_str())));
+    let retained = |id| pass.will_be_emitted(id) && !matches!(pass.mutated_lines.get(&id), Some((Err(_), _)));
     checks.materials.with_effective(crate::schema_convert::canon(source_label), &retained, written);
     checks
 }
@@ -204,7 +204,7 @@ fn check_created_ids(src: &Source<'_>, log: &MutationLog) -> io::Result<()> {
 fn body_has(pass: &Pass<'_, '_>, content: &[u8], contains: impl Fn(&[u8]) -> bool) -> bool {
     contains(content)
         || pass.created_lines.iter().any(|(_, text)| contains(text.as_bytes()))
-        || pass.mutated_lines.values().filter_map(|(text, _)| text.as_deref()).any(|text| contains(text.as_bytes()))
+        || pass.mutated_lines.values().filter_map(|(text, _)| text.as_deref().ok()).any(|text| contains(text.as_bytes()))
 }
 
 fn validate_log_options(opts: &StepOptions) -> io::Result<()> {
@@ -269,16 +269,8 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
             continue;
         };
         let upper = pass.type_of(id).unwrap_or_default();
-        let filtered = {
-            let excluded = |r: u32| pass.is_omitted(r);
-            filter_source_line(&text, id, &upper, pass.schema, &excluded, !pass.overlay.tombstones.is_empty())
-        };
-        let text = match filtered {
-            Filtered::Keep => Some(text),
-            Filtered::Rewrite(t) => Some(t),
-            Filtered::Withhold(_) => None,
-        };
-        if text.is_some() {
+        let text = filter_log_line(&mut pass, text, id, &upper);
+        if text.is_ok() {
             if delivery.retyped {
                 pass.ledger.nominate(id, Kind::Retype);
             }
@@ -307,10 +299,11 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
             || upgrade.seeds(content).next().is_some());
     let mut new_entities = pass.new_entity_count;
     let delay_header = defer_varying || may_prune_upgrade.is_some();
-    let header = |mut out: &mut dyn Write, created| write_header(&mut out, opts, content, converting, &target, pass.ledger.modified_count() + created);
+    let modified_count = pass.ledger.modified_count();
+    let header = |mut out: &mut dyn Write, created| write_header(&mut out, opts, content, converting, &target, modified_count + created);
     if !delay_header { header(out, new_entities)?; }
     let mut body = crate::schema_ifc2x3_placements::Body::for_conversion(&mut *out, target_is_ifc2x3, defer_varying || date_buffer || typed_properties, may_prune_upgrade);
-    let mut flatten = crate::schema_style_flatten::StyleFlatten::for_export(content, &source_label, &target); flatten.note_all(content, pass.mutated_lines.iter().filter_map(|(id, (t, _))| Some((*id, t.as_deref()?)))
+    let mut flatten = crate::schema_style_flatten::StyleFlatten::for_export(content, &source_label, &target); flatten.note_all(content, pass.mutated_lines.iter().filter_map(|(id, (t, _))| Some((*id, t.as_deref().ok()?)))
         .chain(pass.generated.iter().chain(&pass.rewritten_lines).chain(&pass.georef_lines).chain(&pass.created_lines).map(|(id, l)| (*id, l.as_str()))));
     flatten.retain_grids(|id| !pass.skip.contains(&id) && !pass.is_deleted(id));
     let mut written = 0usize;
@@ -320,10 +313,9 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
         }
         let owned;
         let text: &str = match pass.mutated_lines.get(&id) {
-            Some((Some(text), _)) => text,
-            Some((None, _)) => {
-                let upper = pass.type_of(id).unwrap_or_default();
-                pass.warnings.push(format!("Relationship #{id} ({upper}) was withheld from the export: it names at least one entity that has no line in this export, in a slot with no spelling for an omitted reference (a single-valued attribute, or a set whose every member is omitted). Anything else that relationship associated is no longer associated in the output."));
+            Some((Ok(text), _)) => text,
+            Some((Err(warning), _)) => {
+                pass.warnings.push(warning.clone());
                 continue;
             }
             None => {
@@ -333,15 +325,10 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
                     None => continue,
                 };
                 let upper = pass.type_of(id).unwrap_or_default();
-                let filtered = {
-                    let excluded = |r: u32| pass.is_omitted(r);
-                    filter_source_line(&raw, id, &upper, pass.schema, &excluded, !pass.overlay.tombstones.is_empty())
-                };
-                owned = match filtered {
-                    Filtered::Keep => raw,
-                    Filtered::Rewrite(t) => t,
-                    Filtered::Withhold(w) => {
-                        pass.warnings.push(w);
+                owned = match filter_log_line(&mut pass, raw, id, &upper) {
+                    Ok(text) => text,
+                    Err(warning) => {
+                        pass.warnings.push(warning);
                         continue;
                     }
                 };

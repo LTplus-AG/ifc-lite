@@ -561,6 +561,33 @@ describe('screen corner idle build (#11504)', () => {
     assert.equal(t.host.pending, 0, 'and a pick on the same view does not restart it');
   });
 
+  for (const mode of ['orthographic', 'perspective'] as const) {
+    it(`#11753 prioritizes a visible corner inside spanning bounds in ${mode} projection`, t => {
+      const visible = { ...boxA(), expressId: 7, positions: Float32Array.of(
+        0, 1, 0, -1000, -1000, 0, 1000, -1000, 0), indices: Uint32Array.of(0, 1, 2) };
+      const offscreen = Array.from({ length: 12 }, (_, i) =>
+        makeBox(100 + i, [100 + i, 0, 0], [101 + i, 1, 1]));
+      const h = harness([...offscreen, visible], { settleMs: 0 });
+      h.camera.setProjectionMode(mode);
+      const at = h.at(0, 1, 0);
+      const query = () => h.query(at.x, at.y - 5);
+      assert.equal(query(), null);
+      let slices = 0;
+      let hit = query();
+      while (!hit && slices < 200 && h.host.tick(0)) {
+        slices++;
+        hit = query();
+      }
+      assert.equal(hit?.expressId, 7);
+      assert.deepEqual(hit?.position, { x: 0, y: 1, z: 0 });
+      t.diagnostic(`visible snap after ${slices} exhausted slices and ${h.state.built.length - 1} offscreen builds`);
+      assert.deepEqual(h.state.built, [7]);
+      assert.ok(slices > 1);
+      h.host.drain();
+      assert.equal(h.state.built.length, 13);
+    });
+  }
+
   it('builds the pieces that reach the viewport first, nearest the camera first', () => {
     // Off-screen boxes come first in scene order; on-screen ones are at |x| = 0.5 .. 4.5 from the camera axis.
     const pieces: MeshData[] = [];

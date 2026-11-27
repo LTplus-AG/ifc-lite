@@ -140,7 +140,7 @@
     "@changesets/parse": "1.0.0",
     "@mergifyio/playwright": "^2026.11.8",
     "@playwright/test": "^1.65.1",
-    "@posthog/cli": "0.20.0",
+    "@posthog/cli": "0.20.1",
     "@types/node": "^26.6.6",
     "@vercel/functions": "3.11.3",
     "gltf-validator": "2.0.0-dev.3.10",

@@ -17,12 +17,13 @@ import { epsgName, GeoreferencingError, type GeorefSiteInput, type Georeferencin
 import type { Tool } from './types.js';
 import { okResult, resolveModel } from './util.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
+import { DESTRUCTIVE, READ_ONLY } from './annotations.js';
 
 const CRS_PROPS = ['Name', 'Description', 'GeodeticDatum', 'VerticalDatum', 'MapProjection', 'MapZone', 'MapUnit'];
 const MC_PROPS = ['Eastings', 'Northings', 'OrthogonalHeight', 'XAxisAbscissa', 'XAxisOrdinate', 'Scale', 'FactorX', 'FactorY', 'FactorZ'];
 
 export const georeferencingReadTool: Tool = {
-  name: 'georeferencing',
+  name: 'georeferencing', title: 'Read georeferencing', annotations: READ_ONLY,
   description: 'Georeferencing of a model: IfcProjectedCRS + IfcMapConversion (IFC4X3: IfcMapConversionScaled, IfcRigidOperation; IFC2X3: ePSet_MapConversion/ePSet_ProjectedCRS; IfcSite lat/long fallback), rotation in degrees, and whether this session holds an unsaved georeferencing_write. `georef` uses the attribute names georeferencing_write takes (ProjectedCRS and MapConversion members); its read-only members (type, expressId, mapUnitResolved, source, storage, pending, untrusted, rotationDegrees, RigidOperation, site) are not inputs, so pass only the attribute fields back, never the whole object. `georeferencing` is the parser\'s source-only reading, kept for existing callers.',
   scope: 'read',
   inputSchema: { type: 'object', properties: { model_id: { type: 'string' } }, additionalProperties: false },
@@ -51,7 +52,7 @@ function numberProps(names: string[]): Record<string, { type: 'number' }> {
 }
 
 export const georeferencingWriteTool: Tool = {
-  name: 'georeferencing_write',
+  name: 'georeferencing_write', title: 'Write georeferencing', annotations: DESTRUCTIVE,
   description: [
     'Set, update or remove a model\'s georeferencing, or write its IfcSite position. IFC4/IFC4X3 write IfcProjectedCRS + IfcMapConversion (IFC4X3 with FactorX/Y/Z: IfcMapConversionScaled); IFC2X3 writes the ePSet_MapConversion/ePSet_ProjectedCRS property sets on IfcSite (updates preserve an existing host).',
     'action "site" writes Site.RefLatitude/RefLongitude (decimal degrees, WGS84) and RefElevation (project length units) on the IfcSite (Site.siteId when there are several).',

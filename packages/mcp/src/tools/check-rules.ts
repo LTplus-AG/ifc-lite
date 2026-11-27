@@ -18,6 +18,7 @@ import { resolveSafePath } from '../safe-path.js';
 import { modelAllowed } from '../auth/scope.js';
 import type { ToolContext } from '../context.js';
 import { nativeReviewModel, reviewCaptures, reviewAccess } from './review-captures.js';
+import { READ_ONLY } from './annotations.js';
 
 async function loadRulesJson(input: Record<string, unknown>, ctx: ToolContext): Promise<unknown> {
   let raw: string;
@@ -37,7 +38,7 @@ async function loadRulesJson(input: Record<string, unknown>, ctx: ToolContext): 
 }
 
 const checkRules: Tool = {
-  name: 'check_rules',
+  name: 'check_rules', title: 'Check information rules', annotations: READ_ONLY,
   description: 'Run a .rules.json information-validation rule set against every model in scope. Either pass `rules_json` inline or `rules_path` to read from disk.',
   scope: 'validate',
   inputSchema: {

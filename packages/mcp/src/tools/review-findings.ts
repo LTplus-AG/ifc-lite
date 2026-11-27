@@ -8,6 +8,7 @@ import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import { reviewCaptures, reviewAccess } from './review-captures.js';
 import type { Tool } from './types.js';
 import { okResult } from './util.js';
+import { READ_ONLY } from './annotations.js';
 
 function strings(value: unknown, maximum: number): string[] | undefined {
   if (value === undefined) return undefined;
@@ -19,7 +20,7 @@ function strings(value: unknown, maximum: number): string[] | undefined {
 
 /** No mutation, analysis rerun, export, filesystem write or decision update. */
 export const reviewFindingsTools: Tool[] = [{
-  name: 'review_findings', scope: 'read',
+  name: 'review_findings', scope: 'read', title: 'Review findings', annotations: READ_ONLY,
   description: 'Read captured IDS/information Review facts, or supplied SavedAnalysisRun and SavedValidationReport historical evidence. Supplied imports never attest native execution. Source/identity binding and scope filtering cover complete target sets; unsupported inputs remain explicit.',
   inputSchema: { type: 'object', additionalProperties: false, properties: {
     sources: { type: 'array', items: { type: 'string', enum: [...FINDING_SOURCE_KINDS] }, maxItems: 5 },

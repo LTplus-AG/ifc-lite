@@ -274,6 +274,17 @@ Missing : Bad().Flag; END_ENTITY; END_SCHEMA;`);
     expect(rules.map(rule => rule.check({}, {}))).toEqual([true, false]);
   });
 
+  it('tracks concrete receivers across fields, indices and function results (#11646)', () => {
+    const { coverage } = generateValidators(`SCHEMA S;
+ENTITY Bad; DERIVE Area : REAL := Mystery(1); END_ENTITY;
+ENTITY Good; Area : REAL; END_ENTITY;
+ENTITY Holder; Part : Good; Parts : LIST OF Good; Wrong : Bad;
+WHERE W : Part.Area > 0; WS : SELF.Part.Area > 0; WI : Parts[1].Area > 0;
+WF : Fetch(SELF).Area > 0; WB : Wrong.Area > 0; END_ENTITY;
+FUNCTION Fetch(H : Holder) : Good; RETURN(H.Part); END_FUNCTION; END_SCHEMA;`);
+    expect(coverage.unsupported.map(u => [u.owner,u.label])).toEqual([['Bad','Area'],['Holder','WB']]);
+  });
+
   it('uses an entity parameter type to resolve failed DERIVE dependencies (#11646)', () => {
     const { coverage, files } = generateValidators(`SCHEMA S;
 ENTITY A; DERIVE Flag : LOGICAL := Mystery(1); WHERE W : ReadA(SELF); END_ENTITY;

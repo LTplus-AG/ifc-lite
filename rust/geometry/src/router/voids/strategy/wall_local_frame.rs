@@ -46,8 +46,11 @@ impl Execution {
         element_id: u32,
         host_world_bounds: ((f32, f32, f32), (f32, f32, f32)),
     ) -> Option<Mesh> {
-        let axes = self.wall_frame_axes(mesh, ctx)?;
-        let (mn, mx) = mesh.bounds();
+        // Most hosts never need a wall frame. Scan the stored positions on the
+        // first use, then share those bounds with the frame and closure checks.
+        let stored_bounds = std::cell::LazyCell::new(|| mesh.bounds());
+        let axes = self.wall_frame_axes(mesh, ctx, || *stored_bounds)?;
+        let (mn, mx) = *stored_bounds;
         let center = Vector3::new(
             ((mn.x + mx.x) * 0.5) as f64,
             ((mn.y + mx.y) * 0.5) as f64,
@@ -73,9 +76,7 @@ impl Execution {
         // (the wasm default): `apply_void_context` then cleared that origin, so
         // the world bounds it passed differ from the stored ones. A world-frame
         // host has identical bounds and keeps its established closure test.
-        let (smn, smx) = mesh.bounds();
-        let frame_relative =
-            host_world_bounds != ((smn.x, smn.y, smn.z), (smx.x, smx.y, smx.z));
+        let frame_relative = host_world_bounds != ((mn.x, mn.y, mn.z), (mx.x, mx.y, mx.z));
         let frame = Matrix3::from_columns(&axes);
         let center_point = Point3::from(center);
         let result_local = self
@@ -165,7 +166,12 @@ impl Execution {
     /// whose openings can all be expressed in it, else `None` (the host keeps
     /// the world path). Translation-invariant, so it gives the same answer for a
     /// world-stored host and a local-frame one (#5739).
-    fn wall_frame_axes(&self, mesh: &Mesh, ctx: &VoidContext) -> Option<[Vector3<f64>; 3]> {
+    fn wall_frame_axes(
+        &self,
+        mesh: &Mesh,
+        ctx: &VoidContext,
+        stored_bounds: impl Fn() -> (Point3<f32>, Point3<f32>),
+    ) -> Option<[Vector3<f64>; 3]> {
         if ctx.merged_openings.is_empty() {
             return None;
         }
@@ -189,7 +195,7 @@ impl Execution {
             match (normal, depth.try_normalize(NORMALIZE_EPSILON)) {
                 (Some(normal), Some(depth)) => {
                     let turn = normal.cross(&depth).norm();
-                    turn < off_axis(normal) && host_lines_up(mesh, &depth, turn)
+                    turn < off_axis(normal) && host_lines_up(stored_bounds(), &depth, turn)
                 }
                 _ => false,
             }
@@ -225,8 +231,7 @@ impl Execution {
 /// Whether a host turned `turn` (a sine) off the unit `depth` stays within
 /// the recess face tolerance, as the flush extension reads it, over its run:
 /// the horizontal diagonal of its bounds, which no run along the wall exceeds.
-fn host_lines_up(mesh: &Mesh, depth: &Vector3<f64>, turn: f64) -> bool {
-    let (min, max) = mesh.bounds();
+fn host_lines_up((min, max): (Point3<f32>, Point3<f32>), depth: &Vector3<f64>, turn: f64) -> bool {
     let bounds = [min.cast::<f64>(), max.cast::<f64>()];
     let size = bounds[1] - bounds[0];
     let extent = size.abs().dot(&depth.abs());

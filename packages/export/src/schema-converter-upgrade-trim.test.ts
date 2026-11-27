@@ -24,7 +24,6 @@ import { describe, it, expect } from 'vitest';
 import { getSchemaRegistryForVersion, type SchemaVersionWithRegistry } from '@ifc-lite/parser';
 import { convertStepLine, type IfcSchemaVersion } from './schema-converter.js';
 import { downgradesMaterial } from './schema-converter-material-referent.js';
-import { requiresBoundaryElement } from './schema-converter-space-boundary.js';
 import { isStrictAttrPrefix } from './schema-converter-renames.js';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -73,9 +72,11 @@ function argCount(line: string): number {
   return body.trim() === '' ? 0 : body.split(',').length;
 }
 
-/** A synthetic source line with `n` distinct `$` placeholders. */
+/** Keep the boundary eligible for export so it participates in the arity check (#11457). */
 function makeLine(type: string, n: number): string {
-  return `#1=${type}(${Array.from({ length: n }, () => '$').join(',')});`;
+  const slots = Array<string>(n).fill('$');
+  if (type === 'IFCRELSPACEBOUNDARY' && n > 5) slots[5] = '#2'; // RelatedBuildingElement
+  return `#1=${type}(${slots.join(',')});`;
 }
 
 /**
@@ -196,10 +197,7 @@ describe.each([
       const srcAttrs = src.get(type);
       if (!srcAttrs || srcAttrs.length === 0 || srcAttrs.length !== tgtAttrs.length) continue;
       if (isDivertedByConversion(type, from, to)) continue;
-      const out = convertStepLine(makeLine(type, srcAttrs.length), from, to);
-      // An all-`$` boundary has no RelatedBuildingElement, which an upgrade does not write.
-      if (out === null && type === 'IFCRELSPACEBOUNDARY' && requiresBoundaryElement(from, to)) continue;
-      const got = argCount(out!);
+      const got = argCount(convertStepLine(makeLine(type, srcAttrs.length), from, to)!);
       if (got !== srcAttrs.length) wrong.push(`${type}: expected ${srcAttrs.length} args, got ${got}`);
     }
     expect(wrong).toEqual([]);

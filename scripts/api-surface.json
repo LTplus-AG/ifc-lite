@@ -4711,6 +4711,7 @@
     "ArbitraryProfile: interface",
     "AttachedHeightChange: interface",
     "AuthoringAnchor: type",
+    "AuthoringGuidOptions: interface",
     "AutoSpaceDetectOptions: interface",
     "AutoSpaceSegment: interface",
     "AutoSpaceVec2: type",
@@ -5921,6 +5922,8 @@
     "encodeDxfCp1252: function",
     "ensureCCW: function",
     "ensureCW: function",
+    "entityIdAttr: function",
+    "escapeXml: function",
     "exportToDXF: function",
     "exportToSVG: function",
     "fitRasterPixels: function",
@@ -6000,6 +6003,7 @@
     "splitLineAtParams: function",
     "storeyCutElevation: function",
     "storeyFloorsFromMeshes: function",
+    "svgNum: function",
     "updateTitleBlockField: function",
     "vec3: function",
     "vec3Add: function",
@@ -8203,11 +8207,15 @@
   "@ifc-lite/mcp/cli-args": [
     "CliOptions: interface",
     "MCP_BOOLEAN_FLAGS: const",
-    "MCP_SUBCOMMAND_UNSUPPORTED_FLAGS: const",
     "MCP_VALUE_FLAGS: const",
     "bridgeConflict: function",
-    "isMcpValueFlag: function",
     "parseArgs: function"
+  ],
+  "@ifc-lite/mcp/cli-main": [
+    "McpCliIdentity: interface",
+    "RunningHttpCli: interface",
+    "mcpHelpText: function",
+    "runMcpCli: function"
   ],
   "@ifc-lite/mcp/protocol": [
     "CallToolParams: interface",

@@ -5,6 +5,7 @@
 import { generateIfcGuid } from '@ifc-lite/encoding';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
+import type { AuthoringGuidOptions } from './anchor.js';
 import { AnchorEntityReader } from './resolve-anchor.js';
 import { planStoreyReassignment, type StoreyReassignmentPlan } from './storey-reassignment-plan.js';
 
@@ -14,6 +15,7 @@ import { planStoreyReassignment, type StoreyReassignmentPlan } from './storey-re
 export function reassignElementsToStoreyInStore(
   store: IfcDataStore, editor: StoreEditor, selectedIds: readonly number[], sourceStoreyId: number, destinationStoreyId: number,
   expected?: StoreyReassignmentPlan,
+  options: AuthoringGuidOptions = {},
 ): StoreyReassignmentPlan {
   return editor.runAtomic(draft => {
     const view = draft.getMutationView();
@@ -44,7 +46,7 @@ export function reassignElementsToStoreyInStore(
       }
       draft.setPositionalAttribute(membership.id, membership.listIndex, remaining.map(ref));
       const attributes = [...membership.attributes] as Parameters<StoreEditor['addEntity']>[1];
-      attributes[0] = generateIfcGuid();
+      attributes[0] = generateIfcGuid(options.guidRandom);
       if (store.schemaVersion === 'IFC2X3' && attributes[1] == null) attributes[1] = ref(ownerHistory!);
       attributes[membership.parentIndex] = ref(destinationStoreyId);
       attributes[membership.listIndex] = membership.children.filter(id => moved.has(id)).map(ref);

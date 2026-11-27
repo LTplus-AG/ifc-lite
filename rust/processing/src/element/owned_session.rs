@@ -41,7 +41,7 @@ impl<'j> OwnedProductExecution<'j> {
     fn finish_live(
         self,
         router: &GeometryRouter,
-        output: &mut Option<ProducedElementMeshes>,
+        output: &mut Option<StyledProduction>,
     ) -> Result<Option<ProgramStop>, WorkError> {
         self.validate()?;
         let context = self.context;
@@ -66,26 +66,58 @@ pub fn produce_element_meshes_owned(
     decoder: &mut EntityDecoder,
     router: &GeometryRouter,
 ) -> Result<ProducedElementMeshes, ProductionContextError> {
+    produce_owned(job, StyleSource::Unavailable, context, opts, decoder, router).map(StyledProduction::into_produced)
+}
+
+/// [`produce_element_meshes_owned`] with the [`StyleSource`] of every mesh
+/// and instance occurrence (#10698): the same output, plus where each colour
+/// came from, decided together with the colour.
+///
+/// `element_style` is the source of `job.element_color`, which the caller
+/// resolved: pass it from the same decision that chose the colour, or
+/// [`StyleSource::Unavailable`] when only the RGBA is known. It is ignored
+/// when `job.element_color` is `None` (the type default comes from no style).
+pub fn produce_element_meshes_owned_styled(
+    job: &ElementMeshJob<'_>,
+    element_style: StyleSource,
+    context: &OwnedMeshProductionContext,
+    opts: &MeshProductionOptions,
+    decoder: &mut EntityDecoder,
+    router: &GeometryRouter,
+) -> Result<StyledElementMeshes, ProductionContextError> {
+    produce_owned(job, element_style, context, opts, decoder, router).map(StyledElementMeshes::new)
+}
+
+fn produce_owned(
+    job: &ElementMeshJob<'_>,
+    element_style: StyleSource,
+    context: &OwnedMeshProductionContext,
+    opts: &MeshProductionOptions,
+    decoder: &mut EntityDecoder,
+    router: &GeometryRouter,
+) -> Result<StyledProduction, ProductionContextError> {
     session_canonical::with_source_resources(decoder, |decoder| {
         context.validate_source()?;
         if ifc_lite_geometry::resource::check_current().is_err() {
-            return Ok(session_canonical::stopped_output());
+            return Ok(StyledProduction::unstyled(session_canonical::stopped_output()));
         }
-        drive(job, context, opts, decoder, router).map_err(public_error)
+        drive(job, element_style, context, opts, decoder, router).map_err(public_error)
     })
 }
 
 /// Plan, advance every ticket and publish, inside one owner epoch.
 fn drive(
     job: &ElementMeshJob<'_>,
+    element_style: StyleSource,
     context: &OwnedMeshProductionContext,
     opts: &MeshProductionOptions,
     decoder: &mut EntityDecoder,
     router: &GeometryRouter,
-) -> Result<ProducedElementMeshes, WorkError> {
+) -> Result<StyledProduction, WorkError> {
     let mut publication = session_run::Publication::new(router);
     session_run::run_epoch(decoder, router, Some(context.id()), |decoder, router, live| {
         let mut execution = OwnedProductExecution::plan_live(job, context, opts, decoder, router, live)?;
+        execution.state.set_element_style(element_style);
         while execution.step_live(decoder, router)? {}
         execution.finish_live(router, &mut publication.output)
     })?;

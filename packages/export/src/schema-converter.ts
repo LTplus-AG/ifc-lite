@@ -30,7 +30,7 @@ import { productProxy } from './schema-converter-product-proxy.js';
 import { MEP_IFC2X3_TYPES } from './schema-converter-mep.js';
 import { isStrictAttrPrefix, replacedSlot } from './schema-converter-renames.js';
 import { carryUserDefinedLabel } from './schema-converter-userdefined-label.js';
-import { attrMapFor, DELETED_SUBTYPES, remapByAttrMap, upgradeCountsIfc4Slots, upgradeRename } from './schema-converter-attr-maps.js';
+import { attrMapFor, DELETED_SUBTYPES, remapByAttrMap, upgradeCountsSlots, upgradeRename } from './schema-converter-attr-maps.js';
 import { retypeInPlace } from './schema-converter-retyped.js';
 export { computeWithheldRefIds } from './schema-untranslatable.js';
 export type IfcSchemaVersion = 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
@@ -267,17 +267,15 @@ function requireTopLevelAttributes(attrsRaw: string, maxReferenceId?: number): s
  *   placeholder minted here; pass one when output must be byte-reproducible.
  * @param slots - Reuses OwnerHistory (#4686) and counts unsettled slots.
  *   Without a collector, required-slot filling uses the generated defaults.
- * @param ifc4Slots - Counts IFC4-required slots left `$` (IFC4X3/IFC5 → IFC4, #5202; mapped or structural IFC2X3 → IFC4, #10763).
+ * @param ifc4Slots - Counts required slots left `$` against the target (IFC4X3/IFC5 → IFC4, #5202; mapped or structural IFC2X3 → IFC4, #10763, or → IFC4X3, #11135).
  * @param enums - Resolves enum members the target lacks and reports losses (#5365).
  * @param withheldRefIds - Express ids this export is OMITTING outright
  *   ({@link computeWithheldRefIds}, #4206) — a record whose attributes name
  *   one is redirected to the same "no representation" resolution as its own
  *   unmapped type would get, so it cannot ship a now-dangling `#N`.
  * @param maxReferenceId - Bound for remapped STEP ids; source conversion uses the parser's u32 bound.
- * @returns Converted line (no valid target representation: an IFCPROXY placeholder),
- *   or `null` for a record the export OMITS: one `resolveUnrepresentedEntity` can omit, an
- *   IfcMaterialProperties naming no single IfcMaterial (#10763), or an IFC2X3 IfcRelSpaceBoundary with no
- *   RelatedBuildingElement on an upgrade; a `null` is never written.
+ * @returns A converted STEP line (possibly an IFCPROXY), or null for an omitted record, including unbound
+ * space boundaries on upgrade and IfcMaterialProperties without a single material (#10763).
  */
 export function convertStepLine(
   line: string,
@@ -299,7 +297,9 @@ export function convertStepLine(
   if (enums && toSchema !== 'IFC5') converted = enums.structural.after(enums.documents.apply(enums.apply(enums.forms.apply(converted, fromSchema, toSchema, maxReferenceId), toSchema, maxReferenceId), maxReferenceId), withheldRefIds);
   if (toSchema === 'IFC2X3') return (slots ?? new Ifc2x3SlotFill()).apply(converted, maxReferenceId);
   if (enums?.typedProperties.capture(line, converted, fromSchema, toSchema, maxReferenceId)) return converted;
-  if (ifc4Slots && toSchema === 'IFC4' && (fromSchema !== 'IFC2X3' || upgradeCountsIfc4Slots(converted))) ifc4Slots.apply(converted);
+  // Every record to IFC4; an IFC2X3 upgrade's mapped records to IFC4 or IFC4X3, each against its own target (#11135).
+  const target = toSchema === 'IFC4' || toSchema === 'IFC4X3' ? toSchema : undefined;
+  if (ifc4Slots && target && (fromSchema === 'IFC2X3' ? upgradeCountsSlots(converted, target) : target === 'IFC4')) ifc4Slots.apply(converted, target);
   return converted;
 }
 

@@ -22,7 +22,7 @@
 //! [`MaterialReferents::with_effective`]). Twin of
 //! `packages/export/src/schema-converter-material-referent.ts`.
 use std::borrow::Cow;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use crate::schema_structural_axes::list_items;
 use crate::schema_structural_links::{slot_ref, slot_unset};
 use crate::step_record_frame::record_frame;
@@ -48,6 +48,7 @@ pub(crate) struct MaterialReferents {
     gone: HashSet<u32>,
     /// Record id -> the type its `Material` names, for records not written.
     dropped: BTreeMap<u32, String>,
+    ifc5_omitted: BTreeSet<u32>,
 }
 
 /// Whether `line` is a material record (IFCMATERIAL*), read from its head alone.
@@ -104,7 +105,7 @@ impl MaterialReferents {
 
     /// For an export to `to` (canonical), with no records yet.
     pub(crate) fn for_target(to: &str) -> Self {
-        Self { armed: to == "IFC2X3", records: HashMap::new(), gone: Default::default(), dropped: BTreeMap::new() }
+        Self { armed: to == "IFC2X3", records: HashMap::new(), gone: Default::default(), dropped: BTreeMap::new(), ifc5_omitted: BTreeSet::new() }
     }
 
     /// One source converted from `from` to `to`, with its `kept` material records.
@@ -213,11 +214,17 @@ impl MaterialReferents {
     /// `Material` resolves to; `None` when it names none, adding its values to `dropped`.
     #[inline(never)]
     pub(crate) fn apply<'l>(&mut self, id: u32, line: &'l str, from: &str, dropped: &mut usize) -> Option<Cow<'l, str>> {
-        let Some(schema) = self.schema_for(from) else { return Some(line.into()) };
+        let schema = self.schema_for(from);
+        let omit_ifc5 = self.armed && from == "IFC5";
+        if schema.is_none() && !omit_ifc5 { return Some(line.into()); }
         // The head names the type; most records stop before their slots are split.
         let Some(head) = crate::step_record_frame::record_head(line) else { return Some(line.into()) };
         if !head.type_name(line).eq_ignore_ascii_case(PROPERTIES) { return Some(line.into()); }
-        let Some(at) = crate::schema_convert::schema_attribute_names(schema, PROPERTIES).and_then(|n| n.iter().position(|a| *a == "Material")) else { return Some(line.into()) };
+        let layout = schema.and_then(|schema| {
+            let names = crate::schema_convert::schema_attribute_names(schema, PROPERTIES)?;
+            names.iter().position(|name| *name == "Material").map(|at| (schema, at))
+        });
+        if layout.is_none() && !omit_ifc5 { return Some(line.into()); }
         // The line converter also accepts a record without its terminating semicolon.
         let padded;
         let (text, frame) = if let Some(frame) = record_frame(line) {
@@ -227,6 +234,12 @@ impl MaterialReferents {
             (padded.as_str(), record_frame(&padded))
         };
         let parsed = frame.and_then(|frame| slots_of(frame.args(text)).map(|slots| (frame, slots)));
+        let populated = || parsed.as_ref().map_or(1, |(_, slots)| slots.iter().filter(|s| !slot_unset(s)).count());
+        let Some((schema, at)) = layout else {
+            *dropped += populated();
+            self.ifc5_omitted.insert(id);
+            return None;
+        };
         let named = parsed.as_ref().and_then(|(_, slots)| slots.get(at)).and_then(|s| slot_ref(s));
         if let Some((reference, material)) = named.and_then(|r| resolve(&self.records, &self.gone, schema, r).map(|m| (r, m))) {
             if material == reference { return Some(line.into()); }
@@ -237,7 +250,7 @@ impl MaterialReferents {
             if text.len() != line.len() { out.pop(); }
             return Some(out.into());
         }
-        *dropped += parsed.as_ref().map_or(1, |(_, slots)| slots.iter().filter(|s| !slot_unset(s)).count());
+        *dropped += populated();
         let why = match (&parsed, named) {
             (None, _) => "unreadable".to_owned(),
             (_, None) => "no Material".to_owned(),
@@ -250,13 +263,22 @@ impl MaterialReferents {
 
     #[inline(never)]
     pub(crate) fn warnings(&self) -> Vec<String> {
-        if self.dropped.is_empty() { return Vec::new(); }
-        let sites: Vec<String> = self.dropped.iter().map(|(id, ty)| format!("#{id} ({ty})")).collect();
-        vec![format!(
-            "{} IfcMaterialProperties record(s) were not written: IFC2X3 IfcExtendedMaterialProperties.Material must name one IfcMaterial, and theirs does not: {} (#10763).",
-            self.dropped.len(),
-            sites.join(", ")
-        )]
+        let mut warnings = Vec::new();
+        if !self.dropped.is_empty() {
+            let sites: Vec<String> = self.dropped.iter().map(|(id, ty)| format!("#{id} ({ty})")).collect();
+            warnings.push(format!(
+                "{} IfcMaterialProperties record(s) were not written: IFC2X3 IfcExtendedMaterialProperties.Material must name one IfcMaterial, and theirs does not: {} (#10763).",
+                self.dropped.len(), sites.join(", ")
+            ));
+        }
+        if !self.ifc5_omitted.is_empty() {
+            let sites: Vec<String> = self.ifc5_omitted.iter().map(|id| format!("#{id}")).collect();
+            warnings.push(format!(
+                "{} IfcMaterialProperties record(s) were not written because IFC5 has no EXPRESS attribute registry: {} (#11132).",
+                self.ifc5_omitted.len(), sites.join(", ")
+            ));
+        }
+        warnings
     }
 }
 

@@ -6,6 +6,7 @@ import type { DXFUnderlayOptions, Drawing2D } from '@ifc-lite/drawing-2d';
 import type { jsPDF } from 'jspdf';
 import type { Point2D, TextAnnotation2D } from '@/store/slices/drawing2DSlice';
 import { resolvedElementTags } from './element-tags';
+import { toStandardFontText } from '@/lib/document/standard-font-text';
 
 export const escapeTagXml = (value: string) => value.replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' })[char]!);
 
@@ -22,7 +23,8 @@ export function drawElementTagsPdf(doc: jsPDF, tags: readonly TextAnnotation2D[]
   doc.setTextColor(0, 0, 0);
   for (const tag of tags) {
     const point = map(tag.position.x, tag.position.y);
-    // Built-in PDF fonts support Latin-1 (including m²) but do not have ≈.
-    doc.text(tag.text.replace(/≈/g, '~'), point.x, point.y);
+    // Built-in PDF fonts encode WinAnsi only: ≈ becomes ~, ș/ț/ă/č/ł keep their base letter.
+    // One code point above U+00FF would otherwise make jsPDF write the WHOLE string as two-byte garbage.
+    doc.text(toStandardFontText(tag.text).text, point.x, point.y);
   }
 }

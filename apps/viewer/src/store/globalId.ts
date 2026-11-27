@@ -62,12 +62,14 @@ export function fromGlobalIdFromModels(
     }
   }
 
-  // Single-model graceful fallback: if exactly one model and the offset
-  // range check missed (e.g. overlay-allocated id above maxExpressId),
-  // still return that model with the offset-corrected id rather than undefined.
+  // Single-model graceful fallback: an overlay-allocated id lands ABOVE
+  // maxExpressId, so with exactly one model the offset-corrected id is still
+  // that model's. An id below its offset is not (#11527: it came out as a
+  // negative local id that the next toGlobalId refused).
   if (models.size === 1) {
     const [modelId, model] = models.entries().next().value!;
-    return { modelId, expressId: globalId - model.idOffset };
+    const localId = globalId - model.idOffset;
+    if (localId > model.maxExpressId) return { modelId, expressId: localId };
   }
 
   return undefined;

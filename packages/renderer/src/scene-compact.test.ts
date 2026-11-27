@@ -9,6 +9,7 @@ import { adoptCompactMeshes, compactHydrationStats, loadCompactGeometry, type Co
 import { createCompactPages, loadCompactPages } from './compact-page-deps.js';
 import type { SceneCompactHost } from './scene-compact.js';
 import { batchEntityIdAnchor } from './entity-color-table.js';
+import { BatchVisibilityCache } from './batch-visibility.js';
 import { Scene } from './scene.js';
 import type { RenderPipeline } from './pipeline.js';
 import { colorSaltByte, packEntityLane } from './scene-geometry.js';
@@ -215,7 +216,7 @@ describe('compact meshes in the scene', () => {
     }
   });
 
-  it('move to buckets before an edit pages cannot follow, each mesh registered once', async () => {
+  it('take a removed entity off its page and leave every other mesh paged and undecoded', async () => {
     const gpu = fakeGpu(), scene = await newScene();
     upload(scene, gpu, compactBatch([
       { expressId: 21, at: [0, 0, 0], size: 1, color: GREY },
@@ -223,21 +224,103 @@ describe('compact meshes in the scene', () => {
       { expressId: 23, at: [4, 0, 0], size: 1, color: RED },
     ]));
     scene.finalizeStreaming(gpu.device, gpu.pipeline);
-    const before = pages(scene).map((page) => page.vertexBuffer);
-    assert.equal(before.length, 2);
+    const grey = pages(scene).find((page) => page.color === GREY)!;
+    const red = pages(scene).find((page) => page.color === RED)!;
 
     assert.equal(scene.removeMeshesForEntity(22), true);
     scene.rebuildPendingBatches(gpu.device, gpu.pipeline);
 
-    assert.equal(pages(scene).length, 0);
-    assert.ok(before.every(isDestroyed), 'the pages gave their buffers back');
-    assert.deepEqual(entitiesOf(buckets(scene)), [21, 23]);
-    assert.equal(buckets(scene).reduce((n, batch) => n + batch.indexCount, 0), 72);
+    assert.equal(buckets(scene).length, 0, 'a removal moves nothing to buckets');
+    assert.deepEqual(entitiesOf(pages(scene)), [21, 23]);
+    assert.deepEqual(grey.expressIds, [21]);
+    // 22's triangles repeat one vertex: empty triangles that draw (and pick) nothing. 21's are untouched.
+    const indices = new Uint16Array(bytesOf(grey.indexBuffer).buffer, 0, 72);
+    assert.deepEqual(new Set(indices.subarray(36)), new Set([8]));
+    assert.ok(new Set(indices.subarray(0, 36)).size > 1);
     assert.equal(scene.getMeshDataPieces(21)?.length, 1);
     assert.equal(scene.getMeshDataPieces(22), undefined);
-    assert.equal(scene.getMeshDataPieces(21)![0].compact, undefined);
     assert.deepEqual([...scene.getTriangleCounts()!], [[21, 12], [23, 12]]);
     assert.deepEqual(scene.getBounds(), { min: { x: 0, y: 0, z: 0 }, max: { x: 5, y: 1, z: 1 } });
+    assert.equal(decoded(), 0);
+
+    // The last mesh of a page takes the page with it.
+    assert.equal(scene.removeMeshesForEntity(23), true);
+    assert.equal(pages(scene).length === 1 && pages(scene)[0] === grey, true);
+    assert.equal(isDestroyed(red.vertexBuffer) && isDestroyed(red.indexBuffer), true, 'the empty page gave its buffers back');
+    assert.equal(decoded(), 0);
+  });
+
+  it('discard a removed entity\'s still-queued compact meshes, so it does not come back (#11525)', async () => {
+    const gpu = fakeGpu(), scene = await newScene();
+    scene.queueMeshes(compactBatch([
+      { expressId: 41, at: [0, 0, 0], size: 1, color: GREY },
+      { expressId: 42, at: [2, 0, 0], size: 1, color: GREY },
+    ]));
+    scene.removeMeshesForEntity(41); // before the first drain, with no stream running
+    flushAll(scene, gpu);
+    assert.deepEqual(entitiesOf(scene.getBatchedMeshes()), [42]);
+    assert.equal(scene.getMeshDataPieces(41), undefined);
+  });
+
+  it('move only the edited entity to buckets, each mesh registered once', async () => {
+    const gpu = fakeGpu(), scene = await newScene();
+    upload(scene, gpu, compactBatch([
+      { expressId: 24, at: [0, 0, 0], size: 1, color: GREY },
+      { expressId: 25, at: [2, 0, 0], size: 1, color: GREY },
+      { expressId: 26, at: [4, 0, 0], size: 1, color: RED },
+    ]));
+    scene.finalizeStreaming(gpu.device, gpu.pipeline);
+
+    assert.equal(scene.translateMeshesForEntity(25, [0, 3, 0]), true);
+    scene.rebuildPendingBatches(gpu.device, gpu.pipeline);
+    assert.deepEqual(entitiesOf(pages(scene)), [24, 26]);
+    assert.deepEqual(entitiesOf(buckets(scene)), [25]);
+    assert.equal(buckets(scene).reduce((n, batch) => n + batch.indexCount, 0), 36);
+    assert.equal(scene.getMeshDataPieces(25)?.length, 1);
+    assert.equal(scene.getMeshDataPieces(25)![0].compact, undefined);
+    assert.equal(scene.getMeshDataPieces(24)![0].compact !== undefined, true, 'the others are still drawn from their records');
+    assert.deepEqual(scene.getEntityBoundingBox(25), { min: { x: 2, y: 3, z: 0 }, max: { x: 3, y: 4, z: 1 } });
+    assert.equal(decoded(), 1, 'only the edited mesh was decoded');
+
+    // A recolour moves only what it recolours.
+    scene.updateMeshColors(new Map([[26, [0, 0, 1, 1]]]), gpu.device, gpu.pipeline);
+    assert.deepEqual(entitiesOf(pages(scene)), [24]);
+    assert.deepEqual(entitiesOf(buckets(scene)), [25, 26]);
+    assert.deepEqual([...scene.getTriangleCounts()!].sort((a, b) => a[0] - b[0]), [[24, 12], [25, 12], [26, 12]]);
+    assert.equal(decoded(), 2);
+  });
+
+  it('keep a mesh the bucket path refuses on its page, and every other edit working', async () => {
+    const gpu = fakeGpu(), scene = await newScene();
+    upload(scene, gpu, compactBatch([
+      { expressId: 27, at: [0, 0, 0], size: 1, color: GREY },
+      { expressId: 28, at: [2, 0, 0], size: 1, color: GREY },
+      { expressId: 29, at: [4, 0, 0], size: 1, color: GREY },
+    ]));
+    scene.finalizeStreaming(gpu.device, gpu.pipeline);
+    // 27 has no topology-safe f32 frame (what a mesh far outside its model's frame would hit).
+    const host = scene as unknown as { refusesBucketPath: (mesh: MeshData) => boolean };
+    const refuses = host.refusesBucketPath.bind(scene);
+    host.refusesBucketPath = (mesh) => mesh.expressId === 27 || refuses(mesh);
+
+    assert.throws(() => scene.translateMeshesForEntity(27, [0, 1, 0]), /no topology-safe f32 frame/);
+    assert.deepEqual(entitiesOf(pages(scene)), [27, 28, 29], 'still drawn from its page');
+    assert.equal(scene.getMeshDataPieces(27)?.length, 1);
+    // Edits of the other meshes are not held hostage by the refused one (each used to throw the same error).
+    for (let attempt = 0; attempt < 2; attempt++) {
+      assert.equal(scene.translateMeshesForEntity(28, [0, 1, 0]), true);
+    }
+    scene.updateMeshColors(new Map([[29, RED]]), gpu.device, gpu.pipeline);
+    scene.rebuildPendingBatches(gpu.device, gpu.pipeline);
+    assert.deepEqual(entitiesOf(pages(scene)), [27]);
+    assert.deepEqual(entitiesOf(buckets(scene)), [28, 29]);
+    assert.deepEqual(scene.getEntityBoundingBox(28), { min: { x: 2, y: 2, z: 0 }, max: { x: 3, y: 3, z: 1 } });
+    // A whole-scene demotion moves what it can and still reports the one it cannot.
+    assert.throws(() => scene.demoteCompact(), /entity #27/);
+    // The refused mesh can still be removed: it leaves its page without moving anywhere.
+    assert.equal(scene.removeMeshesForEntity(27), true);
+    assert.equal(pages(scene).length, 0);
+    assert.equal(scene.getMeshDataPieces(27), undefined);
   });
 
   it('move to buckets when a model is placed after upload, drawn at the new place', async () => {
@@ -250,20 +333,82 @@ describe('compact meshes in the scene', () => {
     assert.deepEqual(scene.getBounds(), { min: { x: 10, y: 0, z: 0 }, max: { x: 11, y: 1, z: 1 } });
   });
 
+  it('judge a page again when one mesh leaves it and another joins it in the same flush', async () => {
+    const gpu = fakeGpu(), scene = await newScene();
+    upload(scene, gpu, compactBatch([
+      { expressId: 31, at: [0, 0, 0], size: 1, color: GREY },
+      { expressId: 32, at: [2, 0, 0], size: 1, color: GREY },
+    ]));
+    const [page] = pages(scene);
+    const visibility = new BatchVisibilityCache(), hidden = new Set([33]);
+    assert.equal(visibility.classify(page, 1, hidden, null), 'all');
+    // Mid-stream: 31 is deleted and a hidden mesh joins the same page, so the page keeps two entries.
+    scene.removeMeshesForEntity(31);
+    upload(scene, gpu, compactBatch([{ expressId: 33, at: [4, 0, 0], size: 1, color: GREY }]));
+    assert.deepEqual(page.expressIds, [32, 33]);
+    assert.notEqual(visibility.classify(page, 1, hidden, null), 'all', 'the hidden newcomer is not drawn on a stale verdict');
+  });
+
+  it('upload queued meshes in the drain that runs a page demotion, so finalize settles', async () => {
+    const gpu = fakeGpu(), scene = await newScene();
+    upload(scene, gpu, compactBatch([{ expressId: 34, at: [0, 0, 0], size: 1, color: GREY }]));
+    assert.equal(scene.canPartitionBatch(pages(scene)[0]), false); // a split request for the next drain
+    scene.queueMeshes(compactBatch([{ expressId: 35, at: [2, 0, 0], size: 1, color: RED }]));
+    scene.finalizeStreaming(gpu.device, gpu.pipeline);
+    assert.deepEqual(entitiesOf(buckets(scene)), [34]);
+    assert.deepEqual(entitiesOf(pages(scene)), [35], 'the tail mesh was uploaded and its page trimmed at finalize');
+    assert.equal(scene.hasStreamingFragments(), false);
+  });
+
+  it('leave an empty store as it starts: no origin carried over, nothing left to settle', async () => {
+    const gpu = fakeGpu(), scene = await newScene();
+    upload(scene, gpu, compactBatch([{ expressId: 36, at: [0, 0, 0], size: 1, color: GREY }]));
+    assert.equal(scene.hasStreamingFragments(), true, 'the page still has growth slack');
+    scene.removeMeshesForEntity(36);
+    assert.equal(pages(scene).length, 0);
+    assert.equal(scene.hasStreamingFragments(), false);
+    // The store-wide origin goes with the last page, so the next model's first window picks its own.
+    const store = (scene as unknown as { compact: { store: { origin: unknown } } }).compact.store;
+    assert.equal(store.origin, null);
+  });
+
+  it('ask a refused mesh once: a page that keeps it draws whole without failing every frame', async () => {
+    const gpu = fakeGpu(), scene = await newScene();
+    upload(scene, gpu, compactBatch([
+      { expressId: 38, at: [0, 0, 0], size: 1, color: GREY },
+      { expressId: 39, at: [2, 0, 0], size: 1, color: GREY },
+    ]));
+    scene.finalizeStreaming(gpu.device, gpu.pipeline);
+    const host = scene as unknown as { refusesBucketPath: (mesh: MeshData) => boolean };
+    const refuses = host.refusesBucketPath.bind(scene);
+    host.refusesBucketPath = (mesh) => mesh.expressId === 38 || refuses(mesh);
+    for (let frame = 0; frame < 3; frame++) {
+      const [page] = pages(scene);
+      scene.canPartitionBatch(page);
+      scene.flushPending(gpu.device, gpu.pipeline, 0); // never throws
+    }
+    assert.deepEqual(entitiesOf(pages(scene)), [38]);
+    assert.deepEqual(entitiesOf(buckets(scene)), [39]);
+    // The page left holds only the refused mesh: a frame's split request no longer keeps the scene unsettled.
+    assert.equal(scene.canPartitionBatch(pages(scene)[0]), false);
+    assert.equal(scene.hasQueuedMeshes(), false);
+  });
+
   it('move to buckets on the next flush when a page would have to be split into sub-batches', async () => {
     const gpu = fakeGpu(), scene = await newScene();
     upload(scene, gpu, compactBatch([
       { expressId: 61, at: [0, 0, 0], size: 1, color: GREY },
       { expressId: 62, at: [2, 0, 0], size: 1, color: GREY },
+      { expressId: 63, at: [4, 0, 0], size: 1, color: RED },
     ]));
     scene.finalizeStreaming(gpu.device, gpu.pipeline);
-    const [page] = pages(scene);
+    const page = pages(scene).find((batch) => batch.color === GREY)!;
     // Mid-frame the page cannot be partitioned and the batch list does not change under the draw loop.
     assert.equal(scene.canPartitionBatch(page), false);
-    assert.equal(pages(scene).length, 1);
+    assert.equal(pages(scene).length, 2);
     assert.equal(scene.hasQueuedMeshes(), true, 'the frame loop is asked to flush');
     assert.equal(scene.flushPending(gpu.device, gpu.pipeline, 0), true);
-    assert.equal(pages(scene).length, 0);
+    assert.deepEqual(entitiesOf(pages(scene)), [63], 'only that page\'s meshes moved');
     const [bucket] = buckets(scene);
     assert.deepEqual(entitiesOf([bucket]), [61, 62]);
     assert.equal(scene.canPartitionBatch(bucket), true);
@@ -322,6 +467,42 @@ describe('compact meshes in the scene', () => {
     assert.equal(scene.getMeshDataPieces(81)?.length, 1);
     assert.deepEqual([...scene.getTriangleCounts()!], [[81, 12], [82, 12]]);
     assert.equal(decoded(), 0);
+  });
+
+  it('come back as pages through the renderer\'s whole recovery sequence, and the scene settles (#11525)', async () => {
+    // device-recovery.ts: prepare (pages queued again), discard, teardown and init turn the quantized pipelines
+    // off, prepare again, pipelines back on, restore, prepare once more. Sent to the bucket queue while the
+    // pipelines were off, the queued meshes became streaming fragments no stream finalized: the scene never
+    // settled after a device loss once a page outlived the load (lane L5 GPU qualification).
+    const lost = fakeGpu(), scene = await newScene();
+    upload(scene, lost, compactBatch(Array.from({ length: 6 }, (_, i) => ({ expressId: 320 + i, at: [i * 2, 0, 0] as [number, number, number], size: 1, color: i % 2 ? GREY : RED }))));
+    scene.finalizeStreaming(lost.device, lost.pipeline);
+    assert.equal(scene.prepareDeviceRecovery().ok, true);
+    scene.discardGpuResourcesForRecovery();
+    scene.setQuantizedBatches(false);
+    scene.setQuantizedBatches(false);
+    assert.equal(scene.prepareDeviceRecovery().ok, true);
+    scene.setQuantizedBatches(true);
+    const next = fakeGpu();
+    scene.restoreGpuResourcesAfterRecovery(next.device, next.pipeline);
+    assert.equal(scene.prepareDeviceRecovery().ok, true);
+    flushAll(scene, next);
+    assert.deepEqual(entitiesOf(pages(scene)), [320, 321, 322, 323, 324, 325]);
+    assert.equal(buckets(scene).length, 0);
+    assert.equal(scene.hasStreamingFragments(), false, 'nothing is left for a finalize that never comes');
+    assert.equal(decoded(), 0);
+  });
+
+  it('decode queued meshes at the next drain, into buckets, when the quantized pipelines stay off (#11525)', async () => {
+    const gpu = fakeGpu(), scene = await newScene();
+    scene.queueMeshes(compactBatch([{ expressId: 330, at: [0, 0, 0], size: 1, color: GREY }]));
+    scene.setQuantizedBatches(false);
+    assert.equal(scene.hasQueuedMeshes(), true, 'still queued, still compact');
+    flushAll(scene, gpu);
+    assert.equal(pages(scene).length, 0);
+    assert.deepEqual(entitiesOf(buckets(scene)), [330]);
+    assert.equal(scene.getMeshDataPieces(330)?.[0].compact, undefined);
+    assert.equal(scene.hasStreamingFragments(), false, 'appended outside a stream: no fragment waits for a finalize');
   });
 
   it('recover as pages after a device loss even when a demotion was pending', async () => {

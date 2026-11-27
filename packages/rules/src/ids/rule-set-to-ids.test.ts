@@ -56,6 +56,15 @@ function onlyReasons(r: InformationRule): string[] {
 }
 
 describe('ruleSetToIds — exportable rules (#5225)', () => {
+  it('exports a classification presence check when a system is given (#11461)', () => {
+    const result = ruleSetToIds(file(rule([Rule.classification('Uniclass', 'isSet', '')])));
+    assert.deepEqual(result.refused, []);
+    assert.ok(result.xml);
+    assert.deepEqual(clean(parseIDS(result.xml).specifications[0].requirements[0].facet), {
+      type: 'classification', system: { type: 'simpleValue', value: 'Uniclass' },
+    });
+  });
+
   it('exports a property/attribute/material rule set that IDS tooling parses and audits clean', async () => {
     const result = ruleSetToIds(file(
       rule([Rule.property('Pset_WallCommon', 'FireRating', 'eq', '2HR')]),
@@ -172,6 +181,8 @@ describe('ruleSetToIds — refuses each unmappable kind with its own reason (#52
     ['parent', rule([Rule.parent('eq', 'Level 1')]), /ancestor matched by name/],
     ['group', rule([{ kind: 'group', groupClass: 'IfcSystem', op: 'isSet', value: '' }]), /group membership .* has no IDS facet/],
     ['classification value', rule([Rule.classification('Uniclass', 'eq', 'Ss_25')]), /code OR a name/],
+    ['classification with no system (#11461)', rule([Rule.classification('', 'isSet', '')]), /no system .* has no IDS facet/],
+    ['classification with a blank system (#11461)', rule([Rule.classification('  ', 'isSet', '')]), /no system .* has no IDS facet/],
     ['JS-only regex', rule([Rule.name('matches', '(?<=a)b', 'regex')]), /groups starting "\(\?"/],
     ['case-insensitive regex flag', rule([Rule.name('matches', '/wall/i')]), /"i" flag/],
     ['class requirement', rule([Rule.ifcType(['IfcWall'])]), /IFC class requirement has no exact-class form/],

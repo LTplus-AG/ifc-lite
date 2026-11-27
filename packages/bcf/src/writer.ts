@@ -40,8 +40,9 @@ import {
   xsdRequiredString,
 } from './xsd-required-string.js';
 import { generateUuid } from '@ifc-lite/encoding';
+import { assertNoCaseOnlyGuidClashes, bcfGuid } from './xsd-guid.js';
 import { viewpointFileName, type ViewpointFileName } from './writer-viewpoint-filename.js';
-import { BcfArchive } from './writer-archive.js';
+import { BcfArchive, sanitizeZipComponent } from './writer-archive.js';
 
 /**
  * Write a BCFProject to a .bcfzip file
@@ -62,6 +63,7 @@ export async function writeBCF(project: BCFProject): Promise<Blob> {
 
   // Write topics
   const usedFolderNames = new Set<string>();
+  assertNoCaseOnlyGuidClashes(project.topics.values(), project.version);
   for (const topic of project.topics.values()) {
     await writeTopicFolder(zip, topic, project.version, usedFolderNames);
   }
@@ -135,51 +137,6 @@ function writeProjectFile(zip: BcfArchive, project: BCFProject, version: '2.1' |
   zip.file('project.bcfp', content);
 }
 
-/** FNV-1a 32-bit hash, hex-encoded; disambiguates sanitized folder names. */
-function shortGuidHash(guid: string): string {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < guid.length; i++) {
-    h ^= guid.charCodeAt(i);
-    h = Math.imul(h, 0x01000193) >>> 0;
-  }
-  return h.toString(16).padStart(8, '0');
-}
-
-/**
- * Sanitize an arbitrary GUID for use as a zip path component (zip-slip guard).
- *
- * Shared by both the topic-folder name and the viewpoint file base name: a
- * viewpoint GUID is parsed just as unvalidated from untrusted markup XML on
- * read (reader.ts `parseViewpointContent`) as a topic GUID is, so it carries
- * the same path-traversal hazard (`../../evil` as a topic GUID would write
- * outside the archive root). Restrict the name to safe filename characters and
- * collapse any dot-run so it can never traverse. `fallback` is used when
- * sanitization strips the name to nothing. The real GUID is still written
- * verbatim as the markup `<Topic Guid>`/`<Viewpoint Guid>` attribute, which is
- * what readers key off.
- *
- * Sanitization is lossy, so two distinct GUIDs can map to one name, which
- * would silently overwrite an entry. Any name that sanitization changed gets
- * a hash of the original GUID appended, and `usedNames` catches the
- * remaining collisions with a counter suffix. Callers MUST sanitize each
- * GUID exactly once and reuse the result everywhere that GUID's entry is
- * named (markup references and the zip entry itself) -- calling this twice
- * for the same GUID against a `usedNames` set that already contains the
- * first result produces a second, different name.
- */
-function sanitizeZipComponent(raw: string, usedNames: Set<string>, fallback: string): string {
-  const cleaned = raw.replace(/[^A-Za-z0-9._-]/g, '_').replace(/\.\.+/g, '_');
-  const base = cleaned === raw && cleaned.length > 0
-    ? cleaned
-    : `${cleaned.length > 0 ? cleaned : fallback}-${shortGuidHash(raw)}`;
-  let candidate = base;
-  for (let n = 2; usedNames.has(candidate); n++) {
-    candidate = `${base}-${n}`;
-  }
-  usedNames.add(candidate);
-  return candidate;
-}
-
 /** Write a topic folder with all its contents. */
 async function writeTopicFolder(
   zip: BcfArchive,
@@ -187,7 +144,7 @@ async function writeTopicFolder(
   version: '2.1' | '3.0',
   usedFolderNames: Set<string>,
 ): Promise<void> {
-  const folderName = sanitizeZipComponent(topic.guid, usedFolderNames, 'topic');
+  const folderName = sanitizeZipComponent(bcfGuid(topic.guid, version), usedFolderNames, 'topic');
 
   // Sanitize each viewpoint GUID once, up front, so the markup <Viewpoint>
   // reference (written below) and the zip entry (written in
@@ -196,7 +153,7 @@ async function writeTopicFolder(
   // the same way topic folders are disambiguated above.
   const usedViewpointNames = new Set<string>();
   const viewpointBaseNames = topic.viewpoints.map((vp) =>
-    sanitizeZipComponent(vp.guid, usedViewpointNames, 'viewpoint'),
+    sanitizeZipComponent(bcfGuid(vp.guid, version), usedViewpointNames, 'viewpoint'),
   );
 
   // Derive the actual archive file names ONCE, so viewpointXml (markup) and
@@ -311,7 +268,7 @@ function writeMarkupFile(
   }
 
   content += `
-  <Topic Guid="${escapeXml(topic.guid)}"${topic.topicType ? ` TopicType="${escapeXml(topic.topicType)}"` : ''}${topic.topicStatus ? ` TopicStatus="${escapeXml(topic.topicStatus)}"` : ''}>
+  <Topic Guid="${escapeXml(bcfGuid(topic.guid, version))}"${topic.topicType ? ` TopicType="${escapeXml(topic.topicType)}"` : ''}${topic.topicStatus ? ` TopicStatus="${escapeXml(topic.topicStatus)}"` : ''}>
     <Title>${escapeXml(topic.title)}</Title>`;
 
   // Order below (Title, Priority, Index, Labels, CreationDate,
@@ -413,7 +370,7 @@ function writeMarkupFile(
     // under <Topic>.
     if (version === '3.0') content += `\n    <RelatedTopics>`;
     for (const relatedGuid of topic.relatedTopics) {
-      content += `\n    <RelatedTopic Guid="${escapeXml(relatedGuid)}"/>`;
+      content += `\n    <RelatedTopic Guid="${escapeXml(bcfGuid(relatedGuid, version))}"/>`;
     }
     if (version === '3.0') content += `\n    </RelatedTopics>`;
   }
@@ -424,7 +381,7 @@ function writeMarkupFile(
   const commentXml = (indent: string) =>
     topic.comments
       .map((comment) => {
-        let c = `\n${indent}<Comment Guid="${escapeXml(comment.guid)}">`;
+        let c = `\n${indent}<Comment Guid="${escapeXml(bcfGuid(comment.guid, version))}">`;
         c += `\n${indent}  <Date>${xsdDateTime(comment.date, 'Comment/Date', `comment "${comment.guid}"`)}</Date>`;
         c += `\n${indent}  <Author>${xsdRequiredString(comment.author, 'Comment/Author', `comment "${comment.guid}"`, version)}</Author>`;
         // 3.0 allows the text element to be absent. 2.1 requires it.
@@ -433,7 +390,7 @@ function writeMarkupFile(
           c += `\n${indent}  <Comment>${text}</Comment>`;
         }
         if (comment.viewpointGuid) {
-          c += `\n${indent}  <Viewpoint Guid="${escapeXml(comment.viewpointGuid)}"/>`;
+          c += `\n${indent}  <Viewpoint Guid="${escapeXml(bcfGuid(comment.viewpointGuid, version))}"/>`;
         }
         const commentModifiedDate = xsdOptionalDateTime(comment.modifiedDate);
         if (commentModifiedDate) {
@@ -464,7 +421,7 @@ function writeMarkupFile(
         const filename = viewpointFileNames[i].viewpointFile;
         const snapshotName = `${viewpointFileNames[i].snapshotBase}.${snapshotExt(viewpoint)}`;
 
-        let v = `\n${indent}<${viewpointEntryTag} Guid="${escapeXml(viewpoint.guid)}">`;
+        let v = `\n${indent}<${viewpointEntryTag} Guid="${escapeXml(bcfGuid(viewpoint.guid, version))}">`;
         v += `\n${indent}  <Viewpoint>${filename}</Viewpoint>`;
         // Driven off the ALREADY-resolved snapshot bytes (see
         // writeTopicFolder), not off `viewpoint.snapshot`/`snapshotData`'s
@@ -523,7 +480,7 @@ async function writeViewpointFiles(
 
   // Write viewpoint XML - use buildingSMART standard format
   let content = `<?xml version="1.0" encoding="UTF-8"?>
-<VisualizationInfo xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" Guid="${escapeXml(viewpoint.guid)}">`;
+<VisualizationInfo xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" Guid="${escapeXml(bcfGuid(viewpoint.guid, version))}">`;
 
   // Write components
   if (viewpoint.components) {

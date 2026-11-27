@@ -157,6 +157,7 @@ function forwardedTool(bridge: TabBridge, d: BridgeToolDescriptor, tools: readon
     name: mcpName(d.name),
     description: renamer(tools)(d.description),
     inputSchema: renameInSchema(d.inputSchema, renamer(tools)) as JsonSchema,
+    schemaFromTab: true,
     scope: d.readOnly ? 'read' : 'mutate',
     ...(d.title !== undefined ? { title: d.title } : {}),
     annotations: d.readOnly ? { readOnlyHint: true } : { readOnlyHint: false, destructiveHint: true },

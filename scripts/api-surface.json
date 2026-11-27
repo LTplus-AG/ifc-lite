@@ -8050,6 +8050,7 @@
     "HttpAuthenticator: interface",
     "HttpTransport: class",
     "HttpTransportOptions: interface",
+    "Icon: interface",
     "ImageContent: interface",
     "InMemoryModelRegistry: class",
     "InProcessTransport: class",
@@ -8216,7 +8217,8 @@
     "firstNonBlank: function",
     "isBlank: function",
     "isProductType: const",
-    "toolError: function"
+    "toolError: function",
+    "validateInput: function"
   ],
   "@ifc-lite/mcp/cli-args": [
     "CliOptions: interface",
@@ -8239,6 +8241,7 @@
     "EmbeddedResource: interface",
     "GetPromptParams: interface",
     "GetPromptResult: interface",
+    "Icon: interface",
     "ImageContent: interface",
     "InitializeParams: interface",
     "InitializeResult: interface",

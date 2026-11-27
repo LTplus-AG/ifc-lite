@@ -166,7 +166,7 @@ for (const upper of [...universe.keys()].sort()) {
   const reals = ['IFC2X3', 'IFC4', 'IFC4X3'].map((v) => mask(getRealTypedSlots(type, v), type));
   if (names.every((n) => n === null) && registryNames.every((n) => n === null) && enums === 0n && strings === 0n && reals.every((r) => r === 0n)) continue;
   rows.push(
-    `    (${JSON.stringify(upper)}, [${[...names, ...registryNames].map(listIndex).join(', ')}], ${enums}, ${strings}, [${reals.join(', ')}]),`,
+    `    (${JSON.stringify(upper)}, [${[...names, ...registryNames].map(listIndex).join(', ')}], &SlotMasks { enums: ${enums}, strings: ${strings}, reals: [${reals.join(', ')}] }),`,
   );
 }
 
@@ -269,11 +269,16 @@ ${listRows.join('\n')}
 /// Index into [\`NAME_LISTS\`], or none.
 pub const NONE: u16 = u16::MAX;
 
-/// \`(UPPERCASE type, name lists [attrIndex for IFC2X3, IFC4, IFC4X3, no
-/// schema; getAttributeNamesForSchema for IFC2X3, IFC4, IFC4X3], enum-slot
-/// mask, string-slot mask, REAL-slot masks for [IFC2X3, IFC4, IFC4X3])\`,
-/// sorted by type for binary search.
-pub type SlotRow = (&'static str, [u16; 7], u64, u64, [u64; 3]);
+/// Shared masks for serializing named edits. Identical masks have one static representation.
+pub struct SlotMasks {
+    pub enums: u64,
+    pub strings: u64,
+    /// REAL slots in IFC2X3, IFC4 and IFC4X3.
+    pub reals: [u64; 3],
+}
+
+/// Uppercase type, name lists (four attrIndex and three registry columns), and slot types.
+pub type SlotRow = (&'static str, [u16; 7], &'static SlotMasks);
 
 pub static SLOT_ROWS: &[SlotRow] = &[
 ${rows.join('\n')}

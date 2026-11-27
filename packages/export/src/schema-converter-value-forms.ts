@@ -21,8 +21,9 @@ import { getAttrMaps } from './schema-converter-attr-maps.js';
 import { holdsValue, withoutComments } from './step-comment-skip.js';
 import { listItems } from './schema-converter-structural-axes.js';
 import { readStepSlots } from './step-argument-parser.js';
-import { DURATION_TIME_UNIT_WARNING, durationFromSeconds, durationToSeconds, hasNonSecondProjectTimeUnit } from './schema-converter-durations.js';
-import type { SourceStore } from './schema-converter-structural-source.js';
+import { durationFromSeconds, durationToSeconds } from './schema-converter-durations.js';
+import { slotRef } from './schema-converter-structural-source.js';
+import { WorkControlDurations } from './schema-work-control-durations.js';
 import { stepRecordHead } from './step-record-frame.js';
 import { isStepValue, parseStepNumber, skipStepTrivia } from './step-slot-grammar.js';
 
@@ -163,10 +164,8 @@ export class ValueForms {
   private readonly emptied = new Map<string, number>();
   private readonly narrowedDates = new Map<string, number>();
   readonly dates: CalendarDates;
-  private durationConverted = false;
-  private readonly markDuration = () => { this.durationConverted = true; };
-
-  constructor(deferDates = false, private readonly timeUnitSources: readonly SourceStore[] = []) { this.dates = new CalendarDates(deferDates); }
+  readonly durations = new WorkControlDurations();
+  constructor(private readonly deferred = false) { this.dates = new CalendarDates(deferred); }
 
   /** `line`, already converted from `from` to `to`, with every slot in a form the target accepts. */
   apply(line: string, from: string, to: string, maxReferenceId?: number): string {
@@ -186,7 +185,10 @@ export class ValueForms {
       const calendar = form === null ? null : rule.forms.get(form);
       if (calendar?.startsWith('C') && this.dates.defer(line, rule.index, calendar,
         (narrowed) => this.count(narrowed ? this.narrowedDates : rule.required ? this.emptied : this.dropped, rule.where, 1))) continue;
-      const fixed = fix(slots[rule.index], '', rule, this.markDuration, maxReferenceId);
+      const fixed = fix(slots[rule.index], '', rule, () => {
+        const id = this.deferred ? slotRef(line.slice(0, head.eq)) : null;
+        if (id !== null) this.durations.capture(id, rule.index, from === 'IFC2X3');
+      }, maxReferenceId);
       if (fixed.lost && rule.whole.length) {
         // Positional members: every slot of the group goes whole, each named for what it held.
         for (const i of rule.whole) {
@@ -234,7 +236,7 @@ export class ValueForms {
       ...(this.narrowedDates.size ? [
         `${[...this.narrowedDates.values()].reduce((sum, count) => sum + count, 0)} date value(s) kept the calendar date and dropped the time and any timezone: ${[...this.narrowedDates.keys()].sort().join(', ')} (#10879).`,
       ] : []),
-      ...(this.durationConverted && this.timeUnitSources.some(hasNonSecondProjectTimeUnit) ? [DURATION_TIME_UNIT_WARNING] : []),
+      ...this.durations.warnings(),
     ];
   }
 }

@@ -37,6 +37,7 @@ export function toToolDefinition(tool: Tool): ToolDefinition {
     description: tool.description,
     inputSchema: advertisedInputSchema(tool.inputSchema),
     ...(tool.outputSchema !== undefined ? { outputSchema: tool.outputSchema } : {}),
+    ...(tool.icons !== undefined ? { icons: tool.icons } : {}),
     ...(tool.annotations !== undefined ? { annotations: tool.annotations } : {}),
     ...(meta !== undefined ? { _meta: meta } : {}),
   };

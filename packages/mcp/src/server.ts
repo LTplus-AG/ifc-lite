@@ -388,7 +388,7 @@ export class MCPServer {
       });
     }
 
-    const validation = validateInput(tool.inputSchema, params.arguments ?? {});
+    const validation = validateInput(tool.inputSchema, params.arguments ?? {}, { fromTab: tool.schemaFromTab === true });
     if (!validation.valid) {
       return toolError({
         code: ToolErrorCode.INVALID_INPUT,

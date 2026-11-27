@@ -1,0 +1,8 @@
+--- a/packages/export/src/step-subset-storey.ts
++++ b/packages/export/src/step-subset-storey.ts
+@@ -222,5 +222,4 @@
+   storeyId: number, placementId: number | undefined, parsed: ParsedStep, schemaVersion?: string,
+ ): number[] {
+-  if (placementId === undefined) return [];
+   const parents = structureParents(parsed.instances, OWNERSHIP);
+   const hosts = hostOf(parsed);

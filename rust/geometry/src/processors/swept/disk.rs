@@ -139,6 +139,34 @@ pub(crate) fn build_tube_rmf(
     (tangents, perp1s, perp2s)
 }
 
+/// Section frames along a curve's own evaluated unit tangents (an
+/// alignment): Axis1 is the normal to the left of the tangent across `up`,
+/// the directrix's own vertical carried into the frame of `tangents` (the
+/// solid's Position applied to +Z), and Axis2 = tangent x Axis1. A station's
+/// frame is then the directrix-local one moved by the placement, so a
+/// placement that tips the curve through vertical does not flip it. A
+/// tangent along `up` keeps the previous station's Axis1; in the directrix's
+/// own frame that happens only at the vertical end of a circular segment.
+/// Everywhere else the frame depends on the station alone, so sweeps trimmed
+/// at one station keep sharing their ring, vertex for vertex.
+pub(crate) fn curve_frames(
+    tangents: &[Vector3<f64>],
+    up: &Vector3<f64>,
+) -> (Vec<Vector3<f64>>, Vec<Vector3<f64>>) {
+    let left = |t: &Vector3<f64>| up.cross(t).try_normalize(1e-9);
+    let any_level = || up.cross(&Vector3::x()).try_normalize(1e-9).unwrap_or_else(Vector3::y);
+    let mut last = tangents.iter().find_map(left).unwrap_or_else(any_level);
+    let mut perp1s = Vec::with_capacity(tangents.len());
+    let mut perp2s = Vec::with_capacity(tangents.len());
+    for t in tangents {
+        last = left(t).unwrap_or(last);
+        let axis1 = (last - t * t.dot(&last)).normalize();
+        perp1s.push(axis1);
+        perp2s.push(t.cross(&axis1).normalize());
+    }
+    (perp1s, perp2s)
+}
+
 /// Mesh a circular (optionally annular) cross-section swept along
 /// `curve_points`: one ring of `segments` vertices per sample on the outer
 /// wall, a second ring per sample on the bore when `inner_radius` is set, and
@@ -151,9 +179,22 @@ pub(crate) fn build_tube_rmf(
 /// right-handed (`perp2 = t x perp1`), so a ring vertex at angle `theta` sits
 /// at `p + r(cos theta perp1 + sin theta perp2)` and CCW order in the
 /// `(perp1, perp2)` plane faces `+t`. `swept_disk_side_walls_face_outward` in
-/// `tests/swept_disk_winding_and_bore.rs` pins the sign.
+/// `tests/swept_disk_winding_and_bore.rs` pins the sign. Production goes
+/// through [`build_tube_along`]; this chord-frame form remains for tests.
+#[cfg(test)]
 fn build_tube(
     curve_points: &[Point3<f64>],
+    radius: f64,
+    inner_radius: Option<f64>,
+    segments: usize,
+) -> (Vec<f32>, Vec<u32>) {
+    build_tube_along(curve_points, None, radius, inner_radius, segments)
+}
+
+/// [`build_tube`] with the directrix's own unit tangents when it has them.
+fn build_tube_along(
+    curve_points: &[Point3<f64>],
+    tangents: Option<&[Vector3<f64>]>,
     radius: f64,
     inner_radius: Option<f64>,
     segments: usize,
@@ -166,7 +207,14 @@ fn build_tube(
 
     // Build a rotation-minimising frame across all sample points up-front.
     // (Per-iteration `up` selection caused frame flips at sharp bends.)
-    let (_, perp1s, perp2s) = build_tube_rmf(curve_points);
+    // The curve's own tangents when it has them (see `curve_frames`).
+    let (perp1s, perp2s) = match tangents {
+        Some(tangents) if tangents.len() == n => curve_frames(tangents, &Vector3::z()),
+        _ => {
+            let (_, perp1s, perp2s) = build_tube_rmf(curve_points);
+            (perp1s, perp2s)
+        }
+    };
     let unit_circle: Vec<(f64, f64)> = (0..segments)
         .map(|j| {
             let angle = 2.0 * std::f64::consts::PI * j as f64 / segments as f64;
@@ -291,20 +339,22 @@ impl SweptDiskSolidProcessor {
         let (start_param, end_param) = crate::swept_disk_range::effective_range(
             directrix.ifc_type.clone(), start_param, end_param, decoder,
         );
-        let curve_points = self.profile_processor.get_directrix_points(
+        // Swept-disk bounds are an IfcParameterValue, never a length.
+        let samples = self.profile_processor.get_directrix_samples(
             &directrix,
             decoder,
-            start_param,
-            end_param,
+            start_param.map(crate::profiles::directrix::CurveMeasure::Parameter),
+            end_param.map(crate::profiles::directrix::CurveMeasure::Parameter),
             quality,
         )?;
+        let (curve_points, tangents) = (samples.points, samples.tangents);
 
         if !directrix_is_sweepable(&curve_points)? {
             return Ok(None);
         }
 
         let segments = quality.swept_disk_segments(radius * decoder.length_unit_scale());
-        Ok(Some(SweptDiskPlan { curve_points, radius, inner_radius, segments }))
+        Ok(Some(SweptDiskPlan { curve_points, radius, inner_radius, segments, tangents }))
     }
 }
 

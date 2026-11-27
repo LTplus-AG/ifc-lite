@@ -58,6 +58,13 @@ const WORLD: DaluxMockWorld = {
           folders: [{ folderId: 'fld-pub', folderName: 'Pub' }],
           files: [{ fileId: 'file-pub', fileName: 'p.ifc', fileRevisionId: 'rev-p', fileType: 'model', content: 'P' }],
         },
+        {
+          fileAreaId: 'fa-shared',
+          fileAreaName: 'Shared',
+          fileAreaType: 'shared',
+          folders: [{ folderId: 'fld-shared', folderName: 'Shared IFC' }],
+          files: [{ fileId: 'file-shared', fileName: 's.ifc', fileRevisionId: 'rev-s', fileType: 'model', content: 'S' }],
+        },
       ],
     },
   ],
@@ -96,6 +103,13 @@ function ok(result: UploadResult) {
   if (!result.ok) throw new Error(`expected success, got conflict ${JSON.stringify(result.conflict)}`);
   if (!result.revision) throw new Error('expected an identified uploaded revision');
   return { ...result, revision: result.revision };
+}
+
+async function expectDestinationRefused(result: Promise<UploadResult>, reason: RegExp) {
+  await expect(result).resolves.toEqual({
+    ok: false,
+    conflict: { kind: 'destination-refused', reason: expect.stringMatching(reason) },
+  });
 }
 
 const FILE_A: SourceFileRef = {
@@ -184,15 +198,15 @@ describe('Dalux write-back', () => {
     expect(posts()).toHaveLength(0);
   });
 
-  it('new-version: a deleted file is refused with guidance, not a conflict', async () => {
-    const { ctx, provider } = setup();
-    await expect(
-      provider.uploadFile(
-        ctx,
-        { mode: 'new-version', ref: { ...FILE_A, fileId: 'file-gone' } },
-        bytesOf('X'),
-      ),
-    ).rejects.toThrow(/deleted/);
+  it('new-version refuses a deleted file before posting (#11632)', async () => {
+    const { ctx, provider, posts } = setup();
+    const result = provider.uploadFile(
+      ctx,
+      { mode: 'new-version', ref: { ...FILE_A, fileId: 'file-gone' } },
+      bytesOf('X'),
+    );
+    await expectDestinationRefused(result, /deleted; save it as a new file/);
+    expect(posts()).toHaveLength(0);
   });
 
   it('new-file: creates the file in the folder via folderId, with fileType from the extension', async () => {
@@ -223,15 +237,12 @@ describe('Dalux write-back', () => {
   it('refuses a file area root as a destination until it is verified live, before posting (#9522)', async () => {
     const { ctx, provider, posts } = setup();
     for (const mode of ['new-file', 'new-location'] as const) {
-      const result = await provider.uploadFile(
+      const result = provider.uploadFile(
         ctx,
         { mode, projectId: 'p1', containerId: fileAreaContainerId('fa-files'), fileName: 'moved.ifc' },
         bytesOf('M'),
       );
-      expect(result).toEqual({
-        ok: false,
-        conflict: { kind: 'destination-refused', reason: expect.stringMatching(/file area's root is not supported yet/) },
-      });
+      await expectDestinationRefused(result, /file area's root is not supported yet/);
     }
     expect(posts()).toHaveLength(0);
   });
@@ -321,7 +332,7 @@ describe('Dalux write-back', () => {
   it('marks file areas, and only file areas, as not accepting uploads (#9522)', async () => {
     const { ctx, provider } = setup();
     const areas = await provider.listContainers(ctx, 'p1');
-    expect(areas.items.map((area) => area.acceptsUploads)).toEqual([false, false]);
+    expect(areas.items.map((area) => area.acceptsUploads)).toEqual([false, false, false]);
     const folders = await provider.listContainers(ctx, 'p1', fileAreaContainerId('fa-files'));
     expect(folders.items.length).toBeGreaterThan(0);
     expect(folders.items.every((folder) => folder.acceptsUploads === undefined)).toBe(true);
@@ -366,42 +377,41 @@ describe('Dalux write-back', () => {
     );
   });
 
-  it('refuses published and shared file areas with a clear error, before posting', async () => {
+  it.each([
+    ['published', 'pub'],
+    ['shared', 'shared'],
+  ])('refuses new files and revisions in a %s file area before posting (#11632)', async (areaType, suffix) => {
     const { ctx, provider, posts } = setup();
-    await expect(
-      provider.uploadFile(
-        ctx,
-        { mode: 'new-file', projectId: 'p1', containerId: fileAreaContainerId('fa-pub'), fileName: 'x.ifc' },
-        bytesOf('X'),
-      ),
-    ).rejects.toThrow(/published file area/);
-    await expect(
-      provider.uploadFile(
-        ctx,
-        {
-          mode: 'new-version',
-          ref: { projectId: 'p1', containerId: fileAreaContainerId('fa-pub'), fileId: 'file-pub' },
-        },
-        bytesOf('X'),
-      ),
-    ).rejects.toThrow(/published file area/);
+    const containerId = folderContainerId(`fa-${suffix}`, `fld-${suffix}`);
+    const reason = new RegExp(`${areaType} file area`);
+    const created = provider.uploadFile(
+      ctx,
+      { mode: 'new-file', projectId: 'p1', containerId, fileName: 'x.ifc' },
+      bytesOf('X'),
+    );
+    await expectDestinationRefused(created, reason);
+    const revised = provider.uploadFile(
+      ctx,
+      { mode: 'new-version', ref: { projectId: 'p1', containerId, fileId: `file-${suffix}` } },
+      bytesOf('X'),
+    );
+    await expectDestinationRefused(revised, reason);
     expect(posts()).toHaveLength(0);
   });
 
-  it('refuses a folder with required properties instead of failing at finalize', async () => {
+  it('refuses a folder with required properties before posting (#11632)', async () => {
     const { ctx, provider, posts } = setup();
-    await expect(
-      provider.uploadFile(
-        ctx,
-        {
-          mode: 'new-file',
-          projectId: 'p1',
-          containerId: folderContainerId('fa-files', 'fld-strict'),
-          fileName: 'x.ifc',
-        },
-        bytesOf('X'),
-      ),
-    ).rejects.toThrow(/requires file properties \(Discipline\)/);
+    const result = provider.uploadFile(
+      ctx,
+      {
+        mode: 'new-location',
+        projectId: 'p1',
+        containerId: folderContainerId('fa-files', 'fld-strict'),
+        fileName: 'x.ifc',
+      },
+      bytesOf('X'),
+    );
+    await expectDestinationRefused(result, /requires file properties \(Discipline\)/);
     expect(posts()).toHaveLength(0);
   });
 
@@ -426,7 +436,7 @@ describe('Dalux write-back', () => {
     );
   });
 
-  it('rejects a mode the manifest does not declare, an empty file and bad names', async () => {
+  it('rejects a mode the manifest does not declare and an empty file', async () => {
     const { ctx, provider } = setup();
     const container = folderContainerId('fa-files', 'fld-ifc');
     await expect(
@@ -435,11 +445,24 @@ describe('Dalux write-back', () => {
     await expect(
       provider.uploadFile(ctx, { mode: 'new-file', projectId: 'p1', containerId: container, fileName: 'x.ifc' }, new ArrayBuffer(0)),
     ).rejects.toThrow(DaluxUploadError);
-    for (const fileName of ['', '   ', 'a/b.ifc', 'a\\b.ifc', 'a\nb.ifc', 'x'.repeat(256)]) {
-      await expect(
-        provider.uploadFile(ctx, { mode: 'new-file', projectId: 'p1', containerId: container, fileName }, bytesOf('X')),
-      ).rejects.toThrow(DaluxUploadError);
-    }
+  });
+
+  it.each([
+    ['', /file name is required/],
+    ['   ', /file name is required/],
+    ['a/b.ifc', /slashes or control characters/],
+    ['a\\b.ifc', /slashes or control characters/],
+    ['a\nb.ifc', /slashes or control characters/],
+    ['x'.repeat(256), /longer than 255 characters/],
+  ])('refuses an invalid name %j before posting (#11632)', async (fileName, reason) => {
+    const { ctx, provider, posts } = setup();
+    const result = provider.uploadFile(
+      ctx,
+      { mode: 'new-file', projectId: 'p1', containerId: FILE_A.containerId, fileName },
+      bytesOf('X'),
+    );
+    await expectDestinationRefused(result, reason);
+    expect(posts()).toHaveLength(0);
   });
 
   describe('chunking', () => {
@@ -579,6 +602,16 @@ describe('Dalux write-back', () => {
     });
   });
 
+  it.each(['GET', 'POST'])('propagates a network failure during %s (#11632)', async (method) => {
+    const { ctx, provider } = setup();
+    const failure = new TypeError('Failed to fetch');
+    const fetch: typeof ctx.fetch = (input, init) =>
+      (init?.method ?? 'GET') === method ? Promise.reject(failure) : ctx.fetch(input, init);
+    await expect(
+      provider.uploadFile({ ...ctx, fetch }, { mode: 'new-version', ref: FILE_A }, bytesOf('X')),
+    ).rejects.toBe(failure);
+  });
+
   it('surfaces a Dalux rejection at finalize with its status', async () => {
     const { ctx, provider } = setup();
     const real = ctx.fetch;
@@ -661,9 +694,15 @@ describe('base identity verification (#9526)', () => {
     expect(result.ok).toBe(true);
   });
 
-  it.each([{}, { fileRevisionId: '' }, { fileRevisionId: 'ifc-lite:dalux:no-revision-id' }])('refuses an unverifiable base without POST or progress: %j', async identity => {
+  it.each([{}, { fileRevisionId: '' }, { fileRevisionId: 'ifc-lite:dalux:no-revision-id' }])('refuses an unverifiable base without POST or progress (#11632): %j', async identity => {
     const { ctx, posts } = withIdentity(identity), progress: number[] = [];
-    await expect(new DaluxBuildProvider().uploadFile(ctx, { mode: 'new-version', ref: FILE_A, baseRevisionId: 'ifc-lite:dalux:no-revision-id' }, bytesOf('EDITED'), { onProgress: sent => progress.push(sent) })).rejects.toThrow(/Cannot verify/);
+    const result = new DaluxBuildProvider().uploadFile(
+      ctx,
+      { mode: 'new-version', ref: FILE_A, baseRevisionId: 'ifc-lite:dalux:no-revision-id' },
+      bytesOf('EDITED'),
+      { onProgress: sent => progress.push(sent) },
+    );
+    await expectDestinationRefused(result, /Cannot verify the base revision/);
     expect(posts()).toBe(0);
     expect(progress).toEqual([]);
   });
@@ -682,6 +721,7 @@ it('refuses a concrete base when fresh Dalux metadata has no comparable identity
     }
     return response;
   });
-  await expect(new DaluxBuildProvider().uploadFile(ctx, { mode: 'new-version', ref: FILE_A, baseRevisionId: 'rev-1' }, bytesOf('EDITED'))).rejects.toThrow(/Cannot verify/);
+  const result = new DaluxBuildProvider().uploadFile(ctx, { mode: 'new-version', ref: FILE_A, baseRevisionId: 'rev-1' }, bytesOf('EDITED'));
+  await expectDestinationRefused(result, /Cannot verify the base revision/);
   expect(posts).toBe(0);
 });

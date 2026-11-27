@@ -96,14 +96,14 @@ Dalux itself accepts parts up to 100 MiB (`DALUX_MAX_PART_BYTES`).
 | `new-file` | `folderId` | In the container the caller chooses. |
 | `new-location` | `folderId` | Same call; a separate mode because `shared` and `published` file areas refuse uploads. |
 
-Refusals are decided before any byte is sent: `stale-base` (the file's current
-revision is not the `baseRevisionId`), `name-exists` (case-insensitive, same
-folder; this sweeps the file area like `listFiles` does), a `shared` or
-`published` file area, and a folder whose file properties are required (ifc-lite
-cannot fill them in yet). A file area's root is refused as a `new-file` or
-`new-location` destination (a `destination-refused` conflict), and file areas
-are listed with `acceptsUploads: false`, until the root mapping is verified
-live (#11609). Check-then-write is not atomic: Dalux has no
+The provider checks for conflicts before the first upload POST. `stale-base`
+reports a revision mismatch, and `name-exists` reports a case-insensitive name
+match in the same folder. `destination-refused` covers shared or published file
+areas, folders with required properties for new files, deleted files,
+unverifiable base revisions and invalid file names. It also covers saving a
+new file into a file area's root. File areas are listed with
+`acceptsUploads: false` until the root mapping is verified live (#11609).
+Check-then-write is not atomic: Dalux has no
 conditional write, so a concurrent writer can still win the gap.
 
 The revision identity comes from the finalize response. If that response omits

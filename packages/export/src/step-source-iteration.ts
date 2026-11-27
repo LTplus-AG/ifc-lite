@@ -311,6 +311,12 @@ export function writeSourceEntityLines(
         );
       }
 
+      if (pass.filterRetypedAssignment && effectiveRelType === 'IFCRELDEFINESBYTYPE') {
+        const filtered = pass.filterRetypedAssignment(nextEntityText, expressId, pass.warnings);
+        if (filtered === null) continue;
+        nextEntityText = filtered;
+      }
+
       // Past every branch that can withhold this line, so the pipeline's own
       // reports are now true statements about a record this pass is writing.
       pass.warnings.push(...mutationWarnings);

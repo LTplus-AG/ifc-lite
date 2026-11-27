@@ -41,6 +41,8 @@ import { applySourceLineMutations } from './step-attribute-mutations.js';
 import { computeWithheldRefIds } from './schema-untranslatable.js';
 import { StyleFlatten } from './schema-style-flatten.js';
 
+import { createRetypedAssignmentFilter } from './step-retype-type-link.js';
+
 /**
  * Everything the pass literal reads that is not its own field.
  *
@@ -88,6 +90,9 @@ export function buildExportPass(input: PassBuildInput): ExportPass {
     converting,
     sourceHeader,
     schemaToken,
+    filterRetypedAssignment: applyMutations && mutationView?.getTypeMutations?.().size
+      ? createRetypedAssignmentFilter(sourceSchema, effective)
+      : undefined,
     overlayActive: !!mutationView && applyMutations,
 
     // Built once entity counts are known, so the provenance item can report the

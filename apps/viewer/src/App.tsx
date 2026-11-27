@@ -22,6 +22,7 @@ import { Toaster } from './components/ui/toast';
 import { ChunkErrorBoundary } from './components/ChunkErrorBoundary';
 import { StaleDeploymentNotice } from './components/StaleDeploymentNotice';
 import { LensRuntimeHost } from './components/viewer/LensRuntimeHost';
+import { SourceWriteBackHost } from './components/sources/SourceWriteBackHost';
 import { Suspense, useEffect, useState } from 'react';
 import { lazyChunk } from '@/lib/lazy-chunk';
 import { HostingAnalytics } from './components/HostingAnalytics';
@@ -127,6 +128,7 @@ export function App({ sourceProviders }: AppProps = {}) {
       <ExtensionHostProvider>
         <SourceHostProvider additionalProviders={sourceProviders}>
           <LensRuntimeHost />
+          <SourceWriteBackHost />
           {/* Toasts mount inside `ViewportContainer` itself (#5504, charter
               #5478 item 22), anchored to the viewport's bottom-right above
               the status bar, rather than the whole window's here. */}

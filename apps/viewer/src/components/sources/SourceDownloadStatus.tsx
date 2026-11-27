@@ -52,7 +52,7 @@ export function useSourceSyncProgress(): ReadonlyMap<string, SourceDownloadState
 }
 
 /** One model's sync-download state; re-renders only when that model's changes. */
-export function useModelSyncProgress(modelId: string | undefined): SourceDownloadState | undefined {
+function useModelSyncProgress(modelId: string | undefined): SourceDownloadState | undefined {
   const read = () => (modelId === undefined ? undefined : getSourceSyncProgress().get(modelId));
   return useSyncExternalStore(subscribeSourceSyncProgress, read, read);
 }
@@ -80,4 +80,11 @@ export function SourceSyncIcon({
     return <ProgressRing value={percent} label={t('sources.downloadStatus.syncingAria', { name })} />;
   }
   return <RefreshCw aria-hidden className={cn('h-3.5 w-3.5', syncing && 'animate-spin', className)} />;
+}
+
+/** The hierarchy subscribes only while rendering the source-backed model's sync control. */
+export function ModelSourceSyncIcon({
+  modelId, ...props
+}: Omit<Parameters<typeof SourceSyncIcon>[0], 'state'> & { modelId: string | undefined }) {
+  return <SourceSyncIcon {...props} state={useModelSyncProgress(modelId)} />;
 }

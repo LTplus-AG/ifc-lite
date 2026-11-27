@@ -71,7 +71,8 @@ import { SourceFolderTree } from './SourceFolderTree.js';
 import { SourceProjectsStep } from './SourceProjectsStep.js';
 import { SourceProviderRow } from './SourceProviderRow.js';
 import { SourceSettingsDialog } from './SourceSettingsDialog.js';
-import { RegistrationFailureMessage, SourcesPanel } from './SourcesPanel.js';
+import { SourcesPanel } from './SourcesPanel.js';
+import { RegistrationFailureMessage } from './SourceRegistrationFailureMessage.js';
 import { saveFavourites, type SourceFavourite } from '@/lib/sources/favourites';
 import { syncSourceCatalogCacheOwner } from '@/lib/sources/persistence';
 

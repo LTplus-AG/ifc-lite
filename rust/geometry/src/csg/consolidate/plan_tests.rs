@@ -505,7 +505,7 @@ fn issue_7633_overlay_grid_contact_with_remote_island_preserves_prior_union() {
         2,
         "actual overlay merges the tiny-gap pair and retains the remote island"
     );
-    let adapter = i_overlay::i_float::adapter::FloatPointAdapter::<[f64; 2], i32>::with_iter(
+    let adapter = i_overlay::i_float::adapter::FloatPointAdapter::<[f64; 2], i32>::with_iter_conservative(
         paths.iter().flatten(),
     );
     let left = project_to_2d_with_basis(

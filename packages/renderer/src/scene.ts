@@ -922,10 +922,6 @@ export class Scene {
     return removed;
   }
 
-  /** `bucketBaseKey` of a paged mesh, its chunk cell taken at `anchor` (its first vertex from its records: reading positions decodes it). */
-  compactBucketKey(mesh: MeshData, anchor: ChunkAnchorSource): string {
-    return (mesh.modelIndex ? `model${mesh.modelIndex}~` : '') + entityIdPageKey(mesh.expressId, bucketBaseKeyFor(anchor, this.colorKey(mesh.color, mesh.material), this.spatialChunking));
-  }
   /**
    * Bucket BASE key for a mesh: colour key, prefixed with the mesh's grid
    * cell when spatial chunking is on. EVERY bucket-key derivation
@@ -938,12 +934,12 @@ export class Scene {
    * spans 2^24 ids, which the entity colour table needs to rebuild a full id
    * from the 24-bit vertex lane (`entityIdAnchor`, entity-color-table.ts).
    */
-  private bucketBaseKey(meshData: MeshData, color?: [number, number, number, number]): string {
+  bucketBaseKey(meshData: MeshData, color?: [number, number, number, number], anchor?: ChunkAnchorSource): string {
     const source = this.modelTranslations.sourceMesh(meshData);
     // #5582: material is the mesh's OWN authored finish regardless of a
     // colour override — a recolour changes what a piece looks like, not
     // what it is physically made of.
-    const key = entityIdPageKey(source.expressId, bucketBaseKeyFor(source, this.colorKey(color ?? meshData.color, meshData.material), this.spatialChunking));
+    const key = entityIdPageKey(source.expressId, bucketBaseKeyFor(anchor ?? source, this.colorKey(color ?? meshData.color, meshData.material), this.spatialChunking));
     return source.modelIndex ? `model${source.modelIndex}~${key}` : key;
   }
 

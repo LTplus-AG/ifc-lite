@@ -46,7 +46,7 @@ export interface SceneCompactHost {
   /** The Scene's buckets (key, possibly with a `#N` overflow suffix): their f32 meshes. */
   buckets: ReadonlyMap<string, { meshData: readonly MeshData[] }>;
   /** The bucket base key the bucket path would file `mesh` under, its chunk cell taken at `anchor`. */
-  compactBucketKey(mesh: MeshData, anchor: ChunkAnchorSource): string;
+  bucketBaseKey(mesh: MeshData, color: undefined, anchor: ChunkAnchorSource): string;
 }
 
 /** A selection with its ids read once (an iterator can be walked only once). */

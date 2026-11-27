@@ -46,7 +46,7 @@ export function bucketKeyOf(host: SceneCompactHost, mesh: MeshData, cachedOnly =
   let key = keys.get(mesh);
   if (key === undefined && !cachedOnly) {
     // The chunk cell is taken at the first source vertex, which the encoder writes first (welding keeps first occurrences).
-    key = host.compactBucketKey(mesh, { origin: firstVertex(mesh.compact!), positions: ZERO_POSITION });
+    key = host.bucketBaseKey(mesh, undefined, { origin: firstVertex(mesh.compact!), positions: ZERO_POSITION });
     keys.set(mesh, key);
   }
   return key;
@@ -94,7 +94,7 @@ export function collectGroups(store: CompactGeometryStore, host: SceneCompactHos
   // the union, so the group joins it. (A queued f32 mesh is keyed as the bucket path keys it: at its own first vertex.)
   const shared = new Set<string>();
   for (const [key, bucket] of host.buckets) if (bucket.meshData.length > 0 && (judge === true || host.streamedBucketKeys.has(key))) shared.add(key.replace(/#\d+$/, ''));
-  for (const mesh of host.meshQueue) if (!mesh.compact) shared.add(host.compactBucketKey(mesh, mesh));
+  for (const mesh of host.meshQueue) if (!mesh.compact) shared.add(host.bucketBaseKey(mesh, undefined, mesh));
   for (const [key, group] of groups) {
     if (shared.has(key)) { group.move = 'shared'; continue; }
     if (judge === 'streamed') continue;

@@ -6,7 +6,7 @@ import '@/test/setup-dom.js';
 import { afterEach, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act, createRef, useImperativeHandle, useState } from 'react';
-import { ReactFlowProvider, useReactFlowStoreApi } from '@xyflow/react';
+import { getViewportForBounds, ReactFlowProvider, useReactFlowStoreApi } from '@xyflow/react';
 import { createStandardRegistry } from '@ifc-lite/flow-nodes';
 import { addNode, connect } from '@/lib/flow/editor-ops';
 import { newFlowDocument } from '@/lib/flow/persistence';
@@ -16,7 +16,7 @@ import { FlowCanvas } from './FlowCanvas.js';
 
 afterEach(cleanup);
 
-it('commits React Flow 13 node and edge changes to the controlled Flow document (#10840)', () => {
+it('keeps the Flow fit margin and commits React Flow 13 changes to the document (#10840)', () => {
   const registry = createStandardRegistry();
   const source = addNode(newFlowDocument('Changes'), 'model.byType', [0, 0]);
   const target = addNode(source.doc, 'model.property', [200, 0]);
@@ -42,9 +42,20 @@ it('commits React Flow 13 node and edge changes to the controlled Flow document 
     />;
   }
 
-  render(<ReactFlowProvider><Editor /></ReactFlowProvider>);
+  const container = render(<ReactFlowProvider><Editor /></ReactFlowProvider>);
   const api = store.current;
   assert.ok(api);
+  const fit = container.querySelector('.react-flow__controls-fitview');
+  assert.ok(fit);
+  act(() => {
+    fit.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+    const padding = api.optionsStore.getState().fitViewOptions?.padding ?? '5%';
+    const bounds = { x: 0, y: 0, width: 880, height: 220 };
+    const viewport = getViewportForBounds(bounds, 1280, 800, 0.2, 2, padding);
+    const legacySideMargin = Math.floor((1280 - 1280 / 1.1) / 2);
+    assert.equal(viewport.zoom, (1280 - 2 * legacySideMargin) / bounds.width);
+  });
+
   assert.equal(api.edgesStore.getState().edges.length, 1);
   const [edge] = api.edgesStore.getState().edges;
 

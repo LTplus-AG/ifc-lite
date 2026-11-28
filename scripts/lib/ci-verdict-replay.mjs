@@ -58,6 +58,15 @@
 
 export const AGGREGATE_CHECK_NAME = 'Build + WASM + Rust + Node';
 
+// REST jobs give us display names from the recorded run, not the YAML keys or
+// continue-on-error flag. These jobs are outside the aggregate's verdict.
+const ADVISORY_CHECK_NAMES = new Set([
+  'Viewer shards status (full lane)',
+  'Viewer tests, advisory (selected for this PR)',
+  'Viewer E2E shadow (selected for this PR)',
+  'Node package tests, advisory (selected for this PR)',
+]);
+
 /** Step names in test.yml's aggregate job; the wiring test pins them to the YAML. */
 export const REPLAY_STEP_NAME = 'Replay the verdict this head already has';
 export const JUDGE_STEP_NAME = 'Judge the fresh silent-revert result';
@@ -137,7 +146,7 @@ export function selectReplayVerdict(checkRuns, { sha, checkName = AGGREGATE_CHEC
  * @param {Array<object>} jobs the recorded run's jobs (`name`, `conclusion`, `steps`)
  * @param {{lane: string, aggregate?: string}} opts
  *
- * A FULL run: the lane's job failed and every other job succeeded or skipped.
+ * A FULL run: the lane's job failed and every other non-advisory job succeeded or skipped.
  * A NO-OP run (its aggregate ran the replay step): it failed on its fresh
  * judgement, i.e. the replay step succeeded and the judge step failed. Its
  * other lanes are all skipped, so job conclusions say nothing there; asking
@@ -154,5 +163,6 @@ export function onlyFailedLane(jobs, { lane, aggregate = AGGREGATE_CHECK_NAME })
   }
   const guard = jobs.find((j) => j?.name === lane);
   if (guard?.conclusion !== 'failure') return false;
-  return jobs.every((j) => j === agg || j === guard || j?.conclusion === 'success' || j?.conclusion === 'skipped');
+  return jobs.every((j) => j === agg || j === guard || ADVISORY_CHECK_NAMES.has(j?.name)
+    || j?.conclusion === 'success' || j?.conclusion === 'skipped');
 }

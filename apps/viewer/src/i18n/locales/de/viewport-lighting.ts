@@ -57,7 +57,7 @@ export const viewportLightingDe = {
   "viewportLighting.container.loadErrorCard.wasmSimdUnsupported": "Dieser Browser kann die WebAssembly-SIMD-Befehle, die die Geometrie-Engine benötigt, nicht ausführen. Aktualisieren Sie ihn oder verwenden Sie eine aktuelle Version von Chrome, Edge, Firefox oder Safari. Manche Sicherheitseinstellungen und ältere Prozessoren schalten SIMD ebenfalls ab.",
   "viewportLighting.container.modelUrlAutoload.malformedUrl": "Die verknüpfte Modelladresse ist keine gültige URL.",
   "viewportLighting.container.processedModelAutoload.malformedLink": "Der Modell-Link ist unvollständig oder beschädigt.",
-  "viewportLighting.container.processedModel.notPrimary": "Ein verarbeitetes Modell kann nur als erstes Modell geöffnet werden.",
+  "viewportLighting.container.processedModel.noProperties": "Der Server hat die Geometrie dieses Modells gesendet, seine Eigenschaften aber noch nicht; deshalb kann es der Föderation nicht beitreten. Versuchen Sie es gleich noch einmal.",
   "viewportLighting.container.processedModel.noServer": "Für diesen Viewer ist kein Verarbeitungsserver eingerichtet, daher können verarbeitete Modelle nicht geöffnet werden.",
   "viewportLighting.container.processedModel.unreachable": "Der eingerichtete Verarbeitungsserver ist von dieser Seite aus nicht erreichbar.",
   "viewportLighting.container.processedModel.unsupported": "Der Parquet-Decoder für dieses verarbeitete Modell konnte nicht initialisiert werden.",

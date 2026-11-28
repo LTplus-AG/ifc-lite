@@ -224,55 +224,6 @@ for (const bytes of [0, undefined, Number.NaN, '12'] as const) it(`a model of un
   assert.equal(model()?.fileSize, 0, 'unknown, shown as N/A rather than as a size');
 });
 
-it('refuses a federated target, whose geometry the server replay cannot address', async () => {
-  await act(async () => { root.render(<Probe />); });
-  await act(async () => { await loadStored({ ...processedModel, name: 'stored.ifc' }, { kind: 'federated', modelId: 'second' }); });
-  assert.deepEqual(asked, []);
-  assert.match(useViewerStore.getState().error ?? '', /only be opened as the first model/);
-  assert.equal(useViewerStore.getState().lastLoadRetry, null);
-  assert.equal(useViewerStore.getState().models.size, 0);
-});
-
-it('federated processed refusal leaves an in-flight primary load in control (#10469)', async () => {
-  const release = deferred<ParquetParseResponse>();
-  const started = deferred();
-  mock.method(IfcServerClient.prototype, 'parseParquet', async () => {
-    started.resolve();
-    return release.promise;
-  });
-  await act(async () => { root.render(<Probe />); });
-  const initialLoad = loadStored({ ...processedModel, name: 'in-flight.ifc' });
-  await started.promise;
-  const initial = useViewerStore.getState();
-  const refusals: string[] = [];
-  const ownershipChanges: string[] = [];
-  const stop = useViewerStore.subscribe((state, prior) => {
-    if (state.activeLoadCanceller !== prior.activeLoadCanceller) ownershipChanges.push('canceller');
-    if (state.loadingFileName !== prior.loadingFileName) ownershipChanges.push('filename');
-    if (state.progress !== prior.progress) ownershipChanges.push('progress');
-  });
-  try {
-    await act(async () => {
-      await loadStored({ ...processedModel, name: 'stored.ifc' }, { kind: 'federated', modelId: 'refused' }, {
-        onLoadError: message => { refusals.push(message); },
-      });
-    });
-    const current = useViewerStore.getState();
-    assert.equal(refusals.length, 1);
-    assert.match(refusals[0], /only be opened as the first model/);
-    assert.equal(current.models.has('refused'), false);
-    assert.equal(current.loading, true);
-    assert.equal(current.activeLoadCanceller, initial.activeLoadCanceller);
-    assert.deepEqual(ownershipChanges, []);
-  } finally {
-    stop();
-    release.resolve(stored());
-    await act(async () => { await initialLoad; });
-  }
-  assert.equal(model()?.loadState, 'complete');
-  assert.equal(model()?.name, 'in-flight.ifc');
-});
-
 function stubWebGpu(): void {
   const original = Object.getOwnPropertyDescriptor(navigator, 'gpu');
   Object.defineProperty(navigator, 'gpu', { configurable: true, value: { requestAdapter: async () => ({ features: new Set(), limits: {} }) } });

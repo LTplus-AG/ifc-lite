@@ -17,7 +17,7 @@ import type { TranslationKey } from '@/i18n';
 import { isNetworkUnavailableError } from '@/lib/cancelled-and-network-errors';
 import { formatLoadError } from '@/lib/load-error-message';
 import { messageOf } from '@/lib/load-errors';
-import { reportLoadFailure } from './loadFailureReport.js';
+import type { FederatedModel } from '@/store';
 
 export type ModelLoadSource =
   | { file: File; name?: never; processedModel?: never }
@@ -30,7 +30,7 @@ export function normalizedProcessedModel(ref: ProcessedModelSource): ProcessedMo
 
 /** A cause found in the viewer, before or instead of a server answer. */
 export class ProcessedModelUnavailable extends Error {
-  constructor(readonly reason: 'no-server' | 'unreachable' | 'parquet-init') {
+  constructor(readonly reason: 'no-server' | 'unreachable' | 'parquet-init' | 'no-properties') {
     super(`Processed model unavailable: ${reason}`);
     this.name = 'ProcessedModelUnavailable';
   }
@@ -51,12 +51,24 @@ const VIEWER_CAUSES: Record<ProcessedModelUnavailable['reason'], () => Processed
   'no-server': () => failure('viewportLighting.container.processedModel.noServer', 'no_server', false),
   unreachable: () => failure('viewportLighting.container.processedModel.unreachable', 'server_unreachable', false),
   'parquet-init': () => failure('viewportLighting.container.processedModel.unsupported', 'unsupported', true),
+  // A federated model needs its store for its ID range; the server may still be writing it.
+  'no-properties': () => failure('viewportLighting.container.processedModel.noProperties', 'no_properties', true),
 };
 
-/** Report an unsupported target without entering the model-load lifecycle. */
-export function refuseFederatedProcessedModel(onLoadError?: (message: string) => void): void {
-  const message = translate('viewportLighting.container.processedModel.notPrimary');
-  reportLoadFailure(message, 'processed_model_not_primary', null, onLoadError);
+/**
+ * The record a federated processed model leaves when it cannot be opened: listed
+ * beside the loaded models with its reason, like a failed primary, owning no IDs.
+ */
+export function failedFederatedProcessedModel(slot: {
+  id: string; name: string; processedModel: ProcessedModelRecord; message: string; visible?: boolean; loadedAt?: number;
+}): FederatedModel {
+  return {
+    id: slot.id, name: slot.name, ifcDataStore: null, geometryResult: null,
+    visible: slot.visible ?? true, collapsed: true, schemaVersion: 'IFC4',
+    loadedAt: slot.loadedAt ?? Date.now(), fileSize: slot.processedModel.bytes, processedModel: slot.processedModel,
+    idOffset: 0, maxExpressId: 0, loadState: 'error', geometryLoadState: 'error', metadataLoadState: 'idle',
+    interactiveReady: false, cacheState: 'none', loadError: slot.message,
+  };
 }
 
 /** `error` is what the load threw; `null` when it ended without saying why. */

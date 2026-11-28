@@ -14,6 +14,7 @@
 
 import { normalizeProcessedModelHash } from '@ifc-lite/server-client/processed-model';
 import { isLoopbackHostname } from '../loopback.js';
+import { placementFromMatrix } from '../model-placement/matrix-placement.js';
 import type { FeatureSelection } from './index';
 
 export interface ViewerRuntimeConfig {
@@ -24,9 +25,37 @@ export interface ViewerRuntimeConfig {
   locale?: string;
   /** The processing server for server-processed models: a path on this origin or an http(s) URL. Replaces `VITE_IFC_SERVER_URL`. */
   server?: { url: string };
-  /** A model the processing server already processed, opened at start without the IFC reaching the browser. */
-  open?: { processedModel: { sha256: string; bytes: number; name: string } };
+  /**
+   * What to open at start, without the IFC reaching the browser. `federation`, when present,
+   * wins: `processedModel` is then only for viewers that predate federations.
+   */
+  open?: { processedModel: ProcessedModelStart; federation?: never } | { processedModel?: never; federation: ProcessedFederationStart };
 }
+
+/** A model the processing server already processed. */
+export interface ProcessedModelStart { sha256: string; bytes: number; name: string }
+
+/** One model of a federation: a stored result, its place in the federation, and whether it starts visible. */
+export interface ProcessedFederationSlot extends ProcessedModelStart {
+  /** The host's stable id for this slot; the loaded model keeps it as its id. */
+  slot: string;
+  /** What the model list shows. */
+  label: string;
+  visible: boolean;
+  /** Column-major 4x4, metres, engineering Z-up: a heading about the vertical axis, then a translation. */
+  transform?: number[];
+}
+
+/** Several processed models opened together; the first slot is the primary model. */
+export interface ProcessedFederationStart {
+  id: string;
+  slots: ProcessedFederationSlot[];
+}
+
+/** The most slots one federation may name. */
+export const MAX_FEDERATION_SLOTS = 64;
+/** The longest federation or slot id; ids are identities, not text. */
+const MAX_ID_LENGTH = 128;
 
 /** Why a configuration could not be used. `code` is stable; `message` is for the console. */
 export type ViewerConfigErrorCode = 'cross-origin' | 'unreachable' | 'status' | 'not-json' | 'invalid';
@@ -61,6 +90,7 @@ const SAME_ORIGIN = 'https://viewer.invalid';
 // The member's name only, to keep the eager bundle small; the rules are in docs/guide/viewer-deployment-config.md.
 const BAD_SERVER = 'server.url';
 const BAD_OPEN = 'open.processedModel';
+const BAD_FEDERATION = 'open.federation';
 
 /**
  * A same-origin path (`/…`, not `//…`) or an absolute `https:` URL; `http:` only
@@ -91,14 +121,46 @@ function parseServer(value: unknown, pageUrl: string | undefined): { url: string
   return { url: url.href };
 }
 
-/** The start model, its hash lowercased by the server client's rule. */
+/** A stored result, its hash lowercased by the server client's rule. */
+function parseProcessedModel(value: unknown, where: string): ProcessedModelStart {
+  if (!isRecord(value)) invalid(where);
+  const { sha256, bytes, name } = value;
+  const hash = normalizeProcessedModelHash(sha256) ?? invalid(where);
+  if (typeof bytes !== 'number' || !Number.isSafeInteger(bytes) || bytes < 0) invalid(where);
+  if (typeof name !== 'string' || name.trim() === '') invalid(where);
+  return { sha256: hash, bytes, name };
+}
+
+function isId(value: unknown): value is string {
+  // No control characters: an id lands in logs and in model maps, never as markup.
+  return typeof value === 'string' && value.trim() !== '' && value.length <= MAX_ID_LENGTH && !/[\u0000-\u001f\u007f]/.test(value);
+}
+
+function parseFederation(value: unknown): ProcessedFederationStart {
+  if (!isRecord(value) || !isId(value.id) || !Array.isArray(value.slots)) invalid(BAD_FEDERATION);
+  if (value.slots.length === 0 || value.slots.length > MAX_FEDERATION_SLOTS) invalid(`${BAD_FEDERATION}.slots`);
+  const seen = new Set<string>();
+  const slots = value.slots.map((entry: unknown, index): ProcessedFederationSlot => {
+    const where = `${BAD_FEDERATION}.slots[${index}]`;
+    if (!isRecord(entry) || !isId(entry.slot) || seen.has(entry.slot)) invalid(where);
+    if (typeof entry.label !== 'string' || entry.label.trim() === '' || typeof entry.visible !== 'boolean') invalid(where);
+    seen.add(entry.slot);
+    const slot: ProcessedFederationSlot = { slot: entry.slot, label: entry.label, ...parseProcessedModel(entry, where), visible: entry.visible };
+    if (entry.transform !== undefined) {
+      if (!placementFromMatrix(entry.transform)) invalid(`${where}.transform`);
+      slot.transform = [...(entry.transform as number[])];
+    }
+    return slot;
+  });
+  return { id: value.id, slots };
+}
+
+/** The start model or federation. A present member is checked even when another wins: a malformed one is a host bug either way. */
 function parseOpen(value: unknown): NonNullable<ViewerRuntimeConfig['open']> {
-  if (!isRecord(value) || !isRecord(value.processedModel)) invalid(BAD_OPEN);
-  const { sha256, bytes, name } = value.processedModel;
-  const hash = normalizeProcessedModelHash(sha256) ?? invalid(BAD_OPEN);
-  if (typeof bytes !== 'number' || !Number.isSafeInteger(bytes) || bytes < 0) invalid(BAD_OPEN);
-  if (typeof name !== 'string' || name.trim() === '') invalid(BAD_OPEN);
-  return { processedModel: { sha256: hash, bytes, name } };
+  if (!isRecord(value) || (value.processedModel === undefined && value.federation === undefined)) invalid(BAD_OPEN);
+  const processedModel = value.processedModel === undefined ? undefined : parseProcessedModel(value.processedModel, BAD_OPEN);
+  if (value.federation !== undefined) return { federation: parseFederation(value.federation) };
+  return { processedModel: processedModel ?? invalid(BAD_OPEN) };
 }
 
 function parseFeatures(value: unknown): FeatureSelection {

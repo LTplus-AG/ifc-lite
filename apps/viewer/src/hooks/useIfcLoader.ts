@@ -74,7 +74,8 @@ import { useIfcCache, getCached, deleteCached } from './useIfcCache.js';
 // Server hook
 import { useIfcServer } from './useIfcServer.js';
 import { handleServerLoadAttempt } from './ingest/serverLoadAttempt.js';
-import { describeProcessedModelFailure, normalizedProcessedModel, refuseFederatedProcessedModel, type ModelLoadSource } from './ingest/processedModel.js';
+import { normalizedProcessedModel, type ModelLoadSource } from './ingest/processedModel.js';
+import { runProcessedModelLoad, servedModelParts, type ServedModelSink } from './ingest/processedModelLoad.js';
 
 import { prepareGlbViewerModel } from './ingest/glbTextureValidation.js';
 import { getMaxExpressId, getViewerSchemaVersion, parseIfcxViewerModel } from './ingest/viewerModelIngest.js';
@@ -255,7 +256,6 @@ export function useIfcLoader() {
     options?: ModelLoadOptions,
   ): Promise<void> => {
     assertWorkflowOwner(options?.workflowOwner);
-    if (source.processedModel && target.kind !== 'primary') return refuseFederatedProcessedModel(options?.onLoadError);
     const { file } = source;
     const fileName = source.file !== undefined ? source.file.name : source.name;
     const draping = file && drapeIfGeoRaster(file); if (draping) return draping; // #5942: imagery, never a model
@@ -313,7 +313,7 @@ export function useIfcLoader() {
     if (joiningPrimary && (!await waitForPrimaryInitialization(joiningPrimary.ready, metadataAbort.signal) || isStale())) { activity.cancelled = true; settleLoadUi(); return; }
 
     {
-      const scene = target.kind === 'federated' && !processedModel ? getGlobalRenderer()?.getScene() : undefined;
+      const scene = target.kind === 'federated' ? getGlobalRenderer()?.getScene() : undefined;
       if (scene) {
         if (target.kind === 'federated') {
           await scene.drainColdTier().catch((err) =>
@@ -596,7 +596,7 @@ export function useIfcLoader() {
             schemaVersion,
             loadedAt: target.loadedAt ?? Date.now(),
             fileSize: loadedBufferByteLength,
-            sourceFile: file,
+            ...(processedModel ? { processedModel } : { sourceFile: file }),
             sourceHandle: options?.sourceHandle,
             idOffset,
             maxExpressId,
@@ -659,8 +659,8 @@ export function useIfcLoader() {
         modelCompletion?.settleModel();
       };
       const isResourceRetryLoad = options?.isResourceRetry === true;
-      // Ends every server load, upload or processed model: the geometry is already in the active slot.
-      const completeServerLoad = async () => {
+      // Ends every server load, upload or processed model: the geometry is in the active slot, or a federated slot's `served`.
+      const completeServerLoad = async (served?: ServedModelSink) => {
         if (file && !modelSourceIdentity) {
           const fingerprint = await computeSourceFingerprintFromBlob(file);
           if (isStale()) return;
@@ -669,7 +669,9 @@ export function useIfcLoader() {
           placementIdentity = startLoadSourceIdentity(modelId, file, () => isStale());
         }
         const state = useViewerStore.getState();
-        await finalizeModel(state.ifcDataStore, state.geometryResult, getViewerSchemaVersion(state.ifcDataStore), { loadPath: 'server' });
+        const parts = served ? await servedModelParts(served, metadataAbort.signal, isStale) : state;
+        if (!parts) return;
+        await finalizeModel(parts.ifcDataStore, parts.geometryResult, getViewerSchemaVersion(parts.ifcDataStore), { loadPath: 'server' });
         if (isStale()) return;
         const serverTotalMs = trace.finish({ loadPath: 'server' });
         console.log(`[useIfc] TOTAL LOAD TIME (server): ${serverTotalMs.toFixed(0)}ms`);
@@ -678,17 +680,15 @@ export function useIfcLoader() {
         // flag tells that row apart. `tessellation_tier` / `skip_small_cuts` describe LOCAL-WASM
         // tessellation, which the server never applies (it caches canonical full-fidelity geometry
         // under its own key): reporting them would fabricate exactly the attribution #2388 prevents.
-        captureModelLoaded({ format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'server', total_elapsed_ms: Math.round(performance.now() - totalStartTime), was_hidden: wasHidden(), is_resource_retry: isResourceRetryLoad, processed_model: processedModel !== undefined }, snapshotFromGeometry(fileSizeMB, state.geometryResult), trace);
+        captureModelLoaded({ format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'server', total_elapsed_ms: Math.round(performance.now() - totalStartTime), was_hidden: wasHidden(), is_resource_retry: isResourceRetryLoad, processed_model: processedModel !== undefined }, snapshotFromGeometry(fileSizeMB, parts.geometryResult), trace);
         settleLoadUi(LOAD_COMPLETE);
       };
       if (processedModel) { // no source bytes here: nothing below (sniffing, local cache, WASM fallback) applies
-        initializeModel();
-        loadStage = 'server-fetch';
-        let failure: unknown = null;
-        if (await handleServerLoadAttempt(() => loadFromServer(processedModel, new ArrayBuffer(0), () => isStale(), metadataAbort.signal, modelId).catch((error: unknown) => { failure = error; return false; }), isStale, completeServerLoad)) return;
-        const { message, code, retryable } = describeProcessedModelFailure(failure);
-        updateModel(modelId, { loadState: 'error', loadError: message }); showLoadError(message, code, retryable ? undefined : null); settleLoadUi();
-        return;
+        initializeModel(); loadStage = 'server-fetch';
+        await runProcessedModelLoad({ federated: target.kind === 'federated' && { name: target.name ?? fileName, visible: target.visible, loadedAt: target.loadedAt },
+          modelId, processedModel, isStale, load: sink => loadFromServer(processedModel, new ArrayBuffer(0), () => isStale(), metadataAbort.signal, modelId, undefined, sink),
+          complete: completeServerLoad, showLoadError, settleLoadUi: () => settleLoadUi(), upsertModel, updateModel });
+        return; // awaited above: the finally must not release this load while it runs
       }
       if (!file || !localAdmission) throw new Error('Local model loading requires a source file');
       let serverAttempted = false;
@@ -2156,7 +2156,7 @@ export function useIfcLoader() {
   const loadProcessedModel = useCallback((
     { name, ...processedModel }: FiledProcessedModelRequest,
     target?: LoadTarget,
-    options?: Pick<ModelLoadOptions, 'onLoadError'>,
+    options?: ModelLoadOptions,
   ) => loadModel({ name, processedModel }, target, options), [loadModel]);
 
   // Cache revalidation always uses the current file loader.

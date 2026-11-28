@@ -81,7 +81,11 @@ impl StructuralDiagnostics {
         if !self.defer_varying {
             return Ok(None);
         }
-        let Some(output) = varying_effective::finish(text)? else { return Ok(None) };
+        self.finish_varying(text, dropped, None)
+    }
+
+    pub(crate) fn finish_varying(&mut self, text: &str, dropped: &mut usize, eligible: Option<&std::collections::HashSet<u32>>) -> std::io::Result<Option<(String, Vec<u32>)>> {
+        let Some(output) = varying_effective::finish(text, eligible)? else { return Ok(None) };
         *dropped += output.dropped;
         output.warnings.into_iter().for_each(|warning| self.record(warning));
         Ok(Some((output.body, output.added)))

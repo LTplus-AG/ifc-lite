@@ -25,7 +25,7 @@ impl MergedStats {
         }
     }
 
-    pub(super) fn refused(self, error: crate::schema_unrepresented::UnrepresentedEntityError) -> (String, Self) {
+    pub(super) fn refused(self, error: impl std::fmt::Display) -> (String, Self) {
         let mut stats = Self::new(self.models);
         stats.warnings.push(error.to_string());
         (String::new(), stats)
@@ -109,6 +109,23 @@ pub(super) fn push_merge_warnings(
 }
 
 
+#[derive(Default)]
+pub(super) struct MergedUpgrade {
+    pub(super) omitted: std::collections::HashSet<u32>,
+    varying: std::collections::HashSet<u32>,
+}
+
+impl MergedUpgrade {
+    pub(super) fn note(&mut self, upgrade: Option<crate::schema_unrooted_upgrade::Upgrade>, target: &str, ty: &str, id: u32, text: &str) {
+        let Some(upgrade) = upgrade else { return };
+        if upgrade.seeds(text.as_bytes()).next().is_some() {
+            self.omitted.insert(id);
+        } else if crate::schema_convert::canon(target) == "IFC4" && crate::schema_structural_varying::StructuralVarying::is_varying(ty) {
+            self.varying.insert(id);
+        }
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(super) fn finish_output(
     out: &mut String,
@@ -117,9 +134,9 @@ pub(super) fn finish_output(
     slot_fill: &crate::schema_ifc2x3_slots::Ifc2x3SlotFill,
     checks: &mut crate::schema_enum::ConversionChecks,
     parents: super::single_parents::ParentClaims,
-    upgrade_seeds: &std::collections::HashSet<u32>,
+    upgrade: &MergedUpgrade,
     offset: u32,
-) {
+) -> std::io::Result<()> {
     if let Some((text, added)) = checks.finish_typed_properties(out.as_bytes(), || {
         // Earlier conversion output may have used IDs beyond the model offset.
         let mut max_id = offset;
@@ -134,15 +151,21 @@ pub(super) fn finish_output(
     }
     stats.warnings.extend(slot_fill.warnings());
     stats.written = stats.written.saturating_add_signed(checks.finish_temporal_values(out));
-    stats.warnings.extend(checks.warnings());
     stats.warnings.extend(parents.apply_folds(out)); // #5774 folds, after every model is written
     // One product per placement in IFC2X3 (#9209); the header holds no record to change.
     stats.written = stats.written.saturating_add_signed(crate::schema_ifc2x3_placements::place_text_for_schema(schema, out));
-    // A left-out IfcRelSpaceBoundary (#11457) is scrubbed from its referrers by the same cardinality-aware pass.
-    if let Some((pruned, _, losses)) = crate::schema_unrooted_upgrade::prune(out, upgrade_seeds, schema) {
+    if let Some((pruned, _, losses)) = crate::schema_unrooted_upgrade::prune(out, &upgrade.omitted, schema) {
         *out = pruned;
         stats.written -= losses.len();
         stats.warnings.extend(losses);
     }
+    if !upgrade.varying.is_empty() {
+        if let Some((converted, added)) = checks.structural.finish_varying(out, &mut checks.attribute_values_dropped, Some(&upgrade.varying))? {
+            *out = converted;
+            stats.written += added.len();
+        }
+    }
+    stats.warnings.extend(checks.warnings());
     out.push_str("ENDSEC;\nEND-ISO-10303-21;\n");
+    Ok(())
 }

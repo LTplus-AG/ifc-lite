@@ -13,7 +13,7 @@
 import type { IfcDataStore, IfcSourceBytes, ProjectUnits } from '@ifc-lite/parser';
 import { asSourceBytes } from '@ifc-lite/parser';
 import { decodeIfcString, stepStringLiteralEnd } from '@ifc-lite/encoding';
-import { buildMergedHeader, finishMergedConversion } from './merged-header.js';
+import { buildMergedHeader, finishMergedConversion, mergedEnums } from './merged-header.js';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { collectReferencedEntityIds, getVisibleEntityIds, filterHiddenRefsFromRelationshipLine } from './reference-collector.js';
 import { collectStyleEntities, STYLE_RESCUE_TYPES } from './style-closure.js';
@@ -24,7 +24,7 @@ import { classifyEntityTypeConversion } from './schema-conversion-loss-report.js
 import { StyleFlatten } from './schema-style-flatten.js';
 import { firstWrittenOwnerHistoryRef, Ifc2x3SlotFill } from './schema-converter-ifc2x3-slots.js';
 import { Ifc4SlotCheck } from './schema-converter-ifc4-slots.js';
-import { EnumReconciliation } from './schema-converter-enums.js';
+import type { EnumReconciliation } from './schema-converter-enums.js';
 import { assembleStepBytes, assembleStepBlob } from './step-file-assembly.js';
 import { decodeTypedPropertyRecord, isTypedPropertyUpgrade } from './schema-converter-typed-properties.js';
 import { placeObjectsForSchema } from './schema-ifc2x3-placements.js';
@@ -507,7 +507,7 @@ export class MergedExporter {
     let federatedModelCount = 0;
     let normalizedModelCount = 0;
     const normalizeWarnings = new Set<string>();
-    const [slotFill, ifc4Slots, enums] = [new Ifc2x3SlotFill(), new Ifc4SlotCheck(), new EnumReconciliation(true)]; // #4714, #5202, #5365
+    const [slotFill, ifc4Slots, enums] = [new Ifc2x3SlotFill(), new Ifc4SlotCheck(), mergedEnums(schema)]; // #4714, #5202, #5365
 
     for (const model of models) {
       const offset = setup.modelOffsets.get(model.id)!;
@@ -644,7 +644,7 @@ export class MergedExporter {
     let normalizedModelCount = 0;
     const normalizeWarnings = new Set<string>(baked.warnings);
     const YIELD_INTERVAL = 2000;
-    const [slotFill, ifc4Slots, enums] = [new Ifc2x3SlotFill(), new Ifc4SlotCheck(), new EnumReconciliation(true)]; // #4714, #5202, #5365
+    const [slotFill, ifc4Slots, enums] = [new Ifc2x3SlotFill(), new Ifc4SlotCheck(), mergedEnums(schema)]; // #4714, #5202, #5365
 
     if (onProgress) onProgress({ phase: 'preparing', percent: 0, entitiesProcessed: 0, entitiesTotal: totalEntities });
 

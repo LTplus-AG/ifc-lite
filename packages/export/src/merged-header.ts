@@ -6,7 +6,7 @@ import { fileSchemaIdentifier } from '@ifc-lite/data';
 import { generateHeader } from '@ifc-lite/parser';
 import type { MergeExportOptions } from './merged-exporter.js';
 import { applyInverseFolds, type InverseClaims } from './merged-inverse-claims.js';
-import type { EnumReconciliation } from './schema-converter-enums.js';
+import { EnumReconciliation } from './schema-converter-enums.js';
 import type { Ifc2x3SlotFill } from './schema-converter-ifc2x3-slots.js';
 import type { Ifc4SlotCheck } from './schema-converter-ifc4-slots.js';
 import type { IfcSchemaVersion } from './schema-converter.js';
@@ -40,4 +40,10 @@ export function finishMergedConversion(
   enums.forms.durations.finish(lines, Number.MAX_SAFE_INTEGER);
   enums.forms.dates.finish(lines, Number.MAX_SAFE_INTEGER);
   return [...slots.warnings(), ...required.warnings(), ...enums.warnings(), ...applyInverseFolds(lines, claims)];
+}
+
+export function mergedEnums(schema: IfcSchemaVersion): EnumReconciliation {
+  const enums = new EnumReconciliation(true);
+  if (schema === 'IFC4') enums.structural.deferredVarying = { includeRelationships: true };
+  return enums;
 }

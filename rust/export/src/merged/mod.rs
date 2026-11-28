@@ -179,7 +179,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
     // for why this is a diagnostic about the source file, not a completeness
     // gap in the merge (#3752).
     let mut refused_refs_total = 0usize;
-    let mut upgrade_seeds = HashSet::new();
+    let mut upgrade = warnings::MergedUpgrade::default();
     let mut upgrade_omissions = HashSet::new();
     // #5116: a non-rooted type with no representation in the target schema
     // (e.g. `IfcCartesianPointList3D` downgraded to IFC2X3) cannot become an
@@ -225,6 +225,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
     let mut offset: u32 = 0;
     let mut slot_fill = Ifc2x3SlotFill::new(None);
     let mut checks = ConversionChecks::new(crate::schema_material_referent::MaterialReferents::for_target(crate::schema_convert::canon(&schema)));
+    checks.structural.defer_varying = crate::schema_convert::canon(&schema) == "IFC4";
     checks.merged = true;
     checks.forms.defer_temporal_values();
     checks.typed_properties.enabled = true;
@@ -356,7 +357,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
                 remapped
             };
 
-            if final_text.is_empty() && checks.boundaries.left_out(id.saturating_add(offset)) { upgrade_seeds.insert(id.saturating_add(offset)); }
+            if final_text.is_empty() && checks.boundaries.left_out(id.saturating_add(offset)) { upgrade.omitted.insert(id.saturating_add(offset)); }
             let ty = index.type_of.get(&id).map_or("", String::as_str);
             let Some(mut final_text) = (!final_text.is_empty()).then_some(final_text).and_then(|t| parents.claim(ty, t, !is_first && compatible)) else { continue }; // empty: not written (#10763)
 
@@ -379,20 +380,19 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
                 emitted_guids.insert(emitted);
             }
 
-            if upgrading.is_some_and(|upgrade| upgrade.seeds(final_text.as_bytes()).next().is_some()) {
-                upgrade_seeds.insert(id.saturating_add(offset));
-            }
+            upgrade.note(upgrading, &schema, ty, id.saturating_add(offset), &final_text);
             out.push_str(&final_text);
             out.push('\n');
             stats.written += 1;
         }
-        if i + 1 < models.len() { warnings::forget_omitted_guids(&out[model_start..], &schema, &upgrade_seeds, &mut upgrade_omissions, &mut guid_to_final, &mut emitted_guids, &mut parents); }
+        if i + 1 < models.len() { warnings::forget_omitted_guids(&out[model_start..], &schema, &upgrade.omitted, &mut upgrade_omissions, &mut guid_to_final, &mut emitted_guids, &mut parents); }
         checks.forms.durations.finish_merged_model(model.content, plan.written_projects(&index.projects, &included, offset));
         offset = next;
     }
-
     warnings::push_merge_warnings(&mut stats, refused_refs_total, unrepresented_types_kept, &schema);
-    warnings::finish_output(&mut out, &mut stats, &schema, &slot_fill, &mut checks, parents, &upgrade_seeds, offset);
+    if let Err(error) = warnings::finish_output(&mut out, &mut stats, &schema, &slot_fill, &mut checks, parents, &upgrade, offset) {
+        return stats.refused(error);
+    }
     (out, stats)
 }
 

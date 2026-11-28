@@ -7,6 +7,7 @@ import { splitTopLevelStepArguments } from './step-argument-parser.js';
 import { frameArgs, stepRecordHead, stepRecordFrame, withFrameArgs, type StepRecordFrame } from './step-record-frame.js';
 import { forEachExpressRef, referencesAnyExpressId } from './step-ref-scan.js';
 import { isRootedEntityType, missingTypeRoute, VERBATIM_UPGRADE } from './schema-untranslatable.js';
+import { finishEffectiveVarying } from './schema-structural-varying-effective.js';
 import { varyingTarget } from './schema-converter-structural-varying.js';
 import { convertEntityType, convertStepLine, type IfcSchemaVersion } from './schema-converter.js';
 import { EnumReconciliation } from './schema-converter-enums.js';
@@ -58,11 +59,12 @@ function record(line: string): OutputRecord | undefined {
 }
 
 /** Collect direct omissions only from the source model that is being upgraded. */
-function noteUpgradeSeed(line: string, seeds: Set<number>, from: IfcSchemaVersion, to: IfcSchemaVersion): void {
+function noteUpgradeSeed(line: string, seeds: Set<number>, from: IfcSchemaVersion, to: IfcSchemaVersion, varying?: Set<number>): void {
   if (!removesObsoleteResources(from, to)) return;
   const head = stepRecordHead(line);
   if (!head) return;
   const type = line.slice(head.typeStart, head.typeEnd).toUpperCase();
+  if (varying && from === 'IFC2X3' && to === 'IFC4' && varyingTarget(type)) varying.add(outputRecordId(line));
   if (from === 'IFC5' || to === 'IFC5') return;
   const route = missingTypeRoute(type, from, to, attributes(type, from) !== undefined, attributes(type, to) !== undefined);
   if (route !== 'omitted') return;
@@ -218,6 +220,7 @@ function pruneUpgrade(lines: string[], seeds: ReadonlySet<number>, to: IfcSchema
 
 /** Keep records that will be omitted out of the next model's GlobalId reconciliation. */
 export class MergedUpgradePruning {
+  private readonly varying = new Set<number>();
   private readonly seeds = new Set<number>();
   private omitted = new Set<number>();
 
@@ -226,7 +229,7 @@ export class MergedUpgradePruning {
   noteOmitted(id: number): void { this.seeds.add(id); }
 
   note(line: string, from: IfcSchemaVersion): void {
-    noteUpgradeSeed(line, this.seeds, from, this.target);
+    noteUpgradeSeed(line, this.seeds, from, this.target, this.varying);
   }
 
   /**
@@ -248,7 +251,9 @@ export class MergedUpgradePruning {
   }
 
   finish(lines: string[]): string[] {
-    return this.target === 'IFC5' ? [] : pruneUpgrade(lines, this.seeds, this.target);
+    const warnings = this.target === 'IFC5' ? [] : pruneUpgrade(lines, this.seeds, this.target);
+    if (this.varying.size) finishEffectiveVarying(lines, true, warning => warnings.push(warning), this.varying);
+    return warnings;
   }
 }
 

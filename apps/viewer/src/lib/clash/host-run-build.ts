@@ -18,7 +18,7 @@ import {
 } from '@ifc-lite/clash';
 import { referencedModelTagIds } from './model-tag-inputs';
 import type { ClashExclusionRule } from './exclusions';
-import type { ClashRunHostContext } from './host-run-document';
+import type { ClashRunHostContext } from './host-run-publish';
 
 const buildInfo = () => ({
   version: typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : null,

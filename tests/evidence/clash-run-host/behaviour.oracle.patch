@@ -1,8 +1,8 @@
-diff --git a/apps/viewer/src/lib/clash/host-run-document.ts b/apps/viewer/src/lib/clash/host-run-document.ts
-index 68f43e300d..a970882db6 100644
---- a/apps/viewer/src/lib/clash/host-run-document.ts
-+++ b/apps/viewer/src/lib/clash/host-run-document.ts
-@@ -47,7 +47,7 @@ export interface ClashRunHostContext {
+diff --git a/apps/viewer/src/lib/clash/host-run-publish.ts b/apps/viewer/src/lib/clash/host-run-publish.ts
+index 5ef9c357fd..380e5e73a9 100644
+--- a/apps/viewer/src/lib/clash/host-run-publish.ts
++++ b/apps/viewer/src/lib/clash/host-run-publish.ts
+@@ -49,7 +49,7 @@ export interface ClashRunHostContext {
  export function slotBindings(result: ClashResult, models: ReadonlyMap<string, ModelLike>, options: ClashRunListenerOptions): ClashRunSlotBinding[] {
    // The gathered models, not just the ones that produced a finding: a clean run must
    // still say which slots it examined, or the next comparison sees them as missing.

@@ -24,7 +24,7 @@ import { definedModelTagIdsOf, evaluatorModelsFromState } from '@/lib/model-tags
 import { captureModelTagInputs, rememberModelTagInputs, type ClashModelTagInputs } from '@/lib/clash/model-tag-inputs';
 import { allElementsRule, rememberRunRequest, type ClashRunRequest } from '@/lib/clash/run-request';
 import { posthog } from '@/lib/analytics';
-import { notifyClashRunComplete, type ClashRunHostContext } from '@/lib/clash/host-run-document';
+import { notifyClashRunComplete, type ClashRunHostContext } from '@/lib/clash/host-run-publish';
 import { errorCaptureProps } from '@/lib/load-errors';
 import { nextFrameOrTimeout } from '@/utils/frameWait';
 

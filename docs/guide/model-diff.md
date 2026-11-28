@@ -762,12 +762,14 @@ Five things to know about this path:
 
 The comparison covers every `IfcObjectDefinition` in the model, read through the inheritance chain of whichever bundled schema declares the class (IFC2X3, IFC4 or IFC4X3) rather than through the columnar parser's entity table — the same rule the CLI's `diff` uses, so non-product objects like `IfcTask` and `IfcActor` participate, IFC2X3-only and IFC4X3-only classes like `IfcMove` and `IfcRoad` are classified as what they are, and name-keyed resource entities like `IfcMaterial` stay out. See [what gets compared](cli.md#what-gets-compared) for the full rule.
 
-!!! note "`model_diff` is the only overlay-aware read tool"
-    The rest of the MCP read surface (`entity_get`, `entity_query`, …) answers
-    from the model as parsed, and pending edits materialise on `export_ifc` /
-    `model_save`. `model_diff` folds them in because "what is different" is its
-    whole question and a pre-edit answer to it is not recoverable; use
-    `mutation_diff` to see the queued edits themselves.
+!!! note "Pending edits and the other read tools"
+    `model_diff` is not alone in reading a session's unsaved edits: the
+    headless backend folds them into its query adapter, so read tools such as
+    `get_entity`, `query_entities`, `count_entities`, `spatial_hierarchy` and
+    `georeferencing_check` answer from the edited session too, and report a
+    `pendingMutations` count when edits are queued. The edits reach a file only
+    on `export_ifc` / `model_save`. Use `mutation_diff` to see the queued edits
+    themselves.
 
 ## Viewer Compare mode
 

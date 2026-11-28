@@ -73,7 +73,7 @@ By default the server binds `127.0.0.1`. Binding a non-loopback host requires ei
 | `--bridge-port <N>` | Bridge WebSocket port on 127.0.0.1 (default 21517; when taken, the next nine ports and then any free one; an explicit port does not fall back; 0 = auto) |
 | `--bridge-viewer-url <url>` | Base of the pairing link (default `https://ifclite.com`). Its origin replaces the default in the allowlist |
 | `--allow-origin <origin>` | HTTP: let a browser origin read responses. Bridge: an extra origin that may connect (repeatable) |
-| `--channel` | With `--bridge`: also push clicks on agent surfaces into a Claude Code session as channel messages (research preview; see [Interactive result surfaces](#interactive-result-surfaces)) |
+| `--channel` | With `--bridge` (stdio only; `--channel` without `--bridge` is a usage error): also push clicks on agent surfaces into a Claude Code session as channel messages. Claude Code must also be started with a channel flag naming this server (research preview; see [Interactive result surfaces](#interactive-result-surfaces) and the Claude Code setup below) |
 | `--version`, `-v` / `--help`, `-h` | Print the version / the usage text and exit |
 
 An unknown flag prints a warning on stderr and is otherwise ignored, so a config written for another version still starts, unless that flag took a value: the value is then read as a file. `--flag=value` works for every value flag. A value flag with no value (`--token --read-only`) is a usage error: the server exits with code 2 rather than guess. `--federate` is accepted for the same reason and does nothing: every file passed already loads into one session.
@@ -443,7 +443,9 @@ For the paired main viewer, use `tab_show_ui` in bridge mode to deliver a
 validated surface. When the user clicks a follow-up on it, the click comes back
 to the agent: `tab_ui_events` returns the queued events (pass `wait_seconds`
 to wait for the next one), and with `--channel` each click is also pushed into a
-Claude Code session as a channel message. See the
+Claude Code session as a channel message, provided Claude Code was started with
+a channel flag naming this server (for the plugin,
+`claude --dangerously-load-development-channels plugin:ifc-lite@ifc-lite`). See the
 [A2UI architecture guide](../architecture/a2ui.md#mcp-result-surfaces).
 
 ### Resources

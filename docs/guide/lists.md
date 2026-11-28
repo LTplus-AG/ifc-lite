@@ -43,7 +43,7 @@ Each `ColumnDefinition` has a `source` that says where the value comes from:
 | `spatial` | Containing spatial element name; `propertyName` picks the level (`Storey` (default), `Container` (the immediate container at any level), `Building`, `Site`, `Project`; matched case-insensitively) | `Level 2` |
 | `model` | Source file name | `office.ifc` |
 | `zone` | Location-zone assignment and per-zone volume (user-defined 3D zone boxes, viewer-computed); `psetName` holds the zone-set id, `propertyName` picks the mode — see [Zone columns](#zone-columns) | `Section A` |
-| `geometry` | Triangle count; `propertyName` is `TriangleCount` — see [Triangle counts](#triangle-counts) | `1284` |
+| `geometry` | Triangle count when `propertyName` is `TriangleCount` (see [Triangle counts](#triangle-counts)); otherwise the world position axis `X`, `Y` or `Z` (blank means `X`, any other name gives a blank cell) | `1284` |
 | `customGrouping` | The element's group in a custom grouping (in the viewer, a rule-based Lens): the first enabled rule it matches, as the `customGrouping` filter rule applies it. `propertyName` holds the grouping name, `psetName` its id hint; the provider answers through `getCustomGroup` | `Structure` |
 
 A column looks like:

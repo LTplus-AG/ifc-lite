@@ -143,15 +143,22 @@ assumptions are switched on.
 
 ## Imagery on terrain
 
-LandXML has no raster element, so imagery always comes from a separate georeferenced file. Drop
-the image together with its sidecars onto the viewer while a LandXML terrain is loaded: it is
-draped onto the loaded terrain and creates no model.
+LandXML has no raster element, so imagery always comes from a separate georeferenced file or a
+map service. To drape a file, drop the image together with its sidecars onto the viewer while a
+LandXML terrain is loaded: it is draped onto the loaded terrain and creates no model.
 
 | Source | Placement and CRS | Exported to IFC |
 |---|---|---|
-| GeoTIFF | its geotransform and EPSG geokey | yes, as a lossless PNG |
-| PNG or JPEG | a world file beside it (`.pgw`, `.pngw`, `.jgw`, `.jpgw`, `.wld`) and a `.prj` or `.aux.xml` naming an EPSG code | yes, as the original bytes |
-| XYZ tiles or WMS | the tile grid, or a WMS 1.1.1 `GetMap` in the terrain's CRS | never: the viewer drape only |
+| GeoTIFF | its geotransform tags, else a world file beside it (`.tfw`, `.tifw`, `.tiffw`, `.wld`); its EPSG geokey, else a `.aux.xml` or `.prj` naming an EPSG code | can be, as a lossless PNG |
+| PNG or JPEG | a world file beside it (`.pgw`, `.pngw`, `.jgw`, `.jpgw`, `.jpegw`, `.wld`) and a `.aux.xml` or `.prj` naming an EPSG code | can be, as the original bytes |
+| XYZ tiles or WMS | the EPSG:3857 tile grid, or a WMS 1.1.1 `GetMap` in the terrain's CRS over the terrain's extent | never: the viewer drape only |
+
+Map tiles are draped from the **Terrain Imagery** card in the terrain's model information panel
+(select the model in the hierarchy); the card offers the service form once the terrain declares a
+CRS. Pick **XYZ tiles** and give an http(s) URL template containing `{z}`, `{x}` and `{y}` and a
+zoom from 0 to 24, or pick **WMS** and give the endpoint, at least one layer and a ground distance
+per pixel, then choose **Drape tiles**. A mosaic wider than 16 tiles per side, or a WMS image
+above 4096 pixels per side, is refused rather than truncated.
 
 The drape is refused, never guessed, when the terrain declares no EPSG code, the image has no
 placement or no EPSG CRS, the image CRS cannot be reprojected exactly onto the terrain's, the
@@ -183,6 +190,11 @@ What v1.4 writes:
 | A written alignment's station equations (`StaEquation`) | `IfcReferent` / `.STATION.` with `Pset_Stationing` |
 | A declared `CoordinateSystem` | `IfcProjectedCRS` + `IfcMapConversion` |
 | Imagery draped from a file (see [Imagery on terrain](#imagery-on-terrain)) | `IfcImageTexture` on the TIN, packaged as `.ifcZIP` |
+
+Draped file imagery is written only when the terrain surface it covers is itself written and the
+appearance planner can texture every written surface without rewriting other entities. When it
+cannot, the terrain is exported untextured as plain `.ifc` and the imagery is reported as refused
+with the reason.
 
 An alignment is written only when **every** segment is a line, circular arc or clothoid, each
 segment reproduces its authored end point, and consecutive segments meet. Anything else (an

@@ -31,9 +31,13 @@ CORS requirement. Tokens do not enter viewer exports, URLs or persisted state.
 
 The viewer's agent operations expose the same panel. `influx.read` returns the
 saved connection selection and the model's IfcSpace and IfcSensor targets, never
-a token. `influx.query` runs the saved selection with a token supplied for that
-call only, under the same 60-minute and 10,000-sample bounds, and returns the
-readings with their model matches.
+a token. `influx.configure` saves a selection (`url`, `org`, `bucket`,
+`measurement`, `field`, `guidTag`, `unit`) through the same validator as
+Connect; it also takes the token for that call and `expected_config_json`, the
+`configuration` `influx.read` returned as a JSON string, and refuses when the saved selection has
+changed since. `influx.query` runs the saved selection with the token passed in
+its `value` field for that call only, under the same 60-minute and
+10,000-sample bounds, and returns the readings with their model matches.
 
 This MVP supports InfluxDB 2 / generated Flux and IFC GlobalId tags only. It
 adds no scene coloring, manual mappings or property/BMS-ID matching. Follow-ups

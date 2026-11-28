@@ -420,12 +420,15 @@ and the nested attribute facet is a condition on that storey:
 </partOf>
 ```
 
-Where upstream is undecided the preview takes the most conservative reading:
-for example the extra `partOf` relation of #247 (`IfcRelSpaceBoundary`) and
-the inverse partOf of #200 are not modelled, and translations of names and
-descriptions (#154) have no XML form until upstream gives them one. Each
-conservative reading is described in the source comments of
-`packages/ids/src/preview/` (`partof-nested.ts`, `tolerance.ts`).
+Only the candidates in the table are modelled (`IDS11_PREVIEW_FEATURES`
+lists them with their upstream sources); any other 1.1 proposal, for example
+another `partOf` relation or an inverse `partOf`, is not modelled as a
+preview feature. Where upstream is still undecided on a modelled candidate, the
+preview takes the most conservative reading, described in the source
+comments: `packages/ids/src/preview/partof-nested.ts` for nested `partOf`
+facets (presence plus value, no cardinality) and
+`packages/ids/src/preview/tolerance.ts` for the #418 tolerance (fixed, not
+configurable, equality only).
 
 ## Viewer Integration
 

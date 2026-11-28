@@ -204,7 +204,7 @@ npx @ifc-lite/server-bin
 | `PORT` | 8080 | Server port |
 | `RUST_LOG` | info | Log level (error, warn, info, debug) |
 | `MAX_FILE_SIZE_MB` | 500 | Maximum upload size |
-| `WORKER_THREADS` | CPU cores | Parallel processing threads |
+| `WORKER_THREADS` | CPU cores (4 in the Docker image) | Parallel processing threads |
 | `CACHE_DIR` | `./.cache` (`/app/cache` in Docker) | Cache directory |
 | `REQUEST_TIMEOUT_SECS` | 300 | Request timeout |
 | `INITIAL_BATCH_SIZE` | 100 | Streaming initial batch |

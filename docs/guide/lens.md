@@ -10,7 +10,7 @@ A **lens** is a named set of rules. Each **rule** has:
 - **Action** - `colorize`, `hide`, or `transparent`
 - **Color** - A hex color used by `colorize` and `transparent`
 
-`evaluateLens` checks every entity against the enabled rules' matched IDs in order; the first matching rule wins. Entities that match no rule are **ghosted** (a faint neutral color) so the matches stand out.
+`evaluateLens` checks each entity in the lens's population (every entity, or only the members of a captured scope, see below) against the enabled rules' matched IDs in order; the first matching rule wins. Entities in the population that match no rule are **ghosted** (a faint neutral color) so the matches stand out. A lens with no enabled rules returns empty maps: nothing is colored, hidden or ghosted.
 
 Alternatively, a lens can use **auto-color**: instead of hand-written rules, it groups entities by the distinct values of one data source (IFC class, a property, a material, ...) and assigns each group a color automatically, producing a legend.
 

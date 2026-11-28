@@ -27,6 +27,12 @@ async fn retained_browser_m1_native_wasm_receipt_parity_scaffold() {
     let value = match native_reference().await {
         Ok(value) if !value.is_null() => value,
         Ok(value) => {
+            // Read at compile time: wasm-pack test builds with the lane's environment.
+            // The split native-adapter browser lane sets it, because its native job
+            // produces the reference; a SKIP there is a missing reference, not a pass.
+            if option_env!("IFCLITE_REQUIRE_M1_REFERENCE").is_some() {
+                panic!("M1 native/wasm parity: IFCLITE_REQUIRE_M1_REFERENCE is set but the SMLib wasm engine or /smlib/m1-native-unit-rectangle.json is absent ({value:?})");
+            }
             web_sys::console::log_1(&JsValue::from_str(&format!(
                 "SKIP M1 native/wasm parity: real SMLib wasm engine or D native reference absent ({value:?}); SKIP is not parity evidence"
             )));
@@ -43,6 +49,7 @@ async fn retained_browser_m1_native_wasm_receipt_parity_scaffold() {
         .await
         .unwrap();
     assert!((volume(&result) - native.volume).abs() / native.volume <= 1e-9);
+    web_sys::console::log_1(&"sdk witness executed: m1_browser_parity".into());
     // This scaffold does not claim the whole-model refusal-code parity that
     // requires D's whole-model driver and E2's binding.
 }

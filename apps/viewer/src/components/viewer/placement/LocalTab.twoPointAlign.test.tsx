@@ -54,7 +54,7 @@ describe('two-point align panel (#11505)', () => {
   let ui: HTMLElement;
   beforeEach(() => {
     runtime = null;
-    useViewerStore.setState({ ...fixtureModels(fixtureModel('ifc'), { ...fixtureModel('scan'), ifcDataStore: null }),
+    useViewerStore.setState({ ...fixtureModels(fixtureModel('ifc', { entities: [{ expressId: 1, type: 'IfcWall' }] }), { ...fixtureModel('scan'), ifcDataStore: null }),
       editEnabled: true, modelPlacement: emptyPlacementState(), repositionOpen: false, repositionNudge: 0.001, activeTool: 'select' });
     act(() => useViewerStore.getState().openReposition(['ifc']));
     ui = render(<><Probe /><SceneOverlayRoot><ToolOverlays /></SceneOverlayRoot><LocalTab /></>);

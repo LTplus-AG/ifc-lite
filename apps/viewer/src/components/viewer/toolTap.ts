@@ -70,7 +70,8 @@ function dropAnnotationPin(ctx: MouseHandlerContext, x: number, y: number): void
   // Federated models: resolve which model the hit globalId belongs to, so the
   // annotation carries enough context to render its popover header. With no
   // models loaded the lookup is the legacy sentinel ('legacy', globalId).
-  const modelLookup = fromGlobalIdFromModels(store.models, intersection.expressId);
+  const modelLookup = store.resolveGlobalIdFromModels(intersection.expressId)
+    ?? fromGlobalIdFromModels(store.models, intersection.expressId);
   store.beginDraft(
     { x: intersection.point.x, y: intersection.point.y, z: intersection.point.z },
     // No lookup means no loaded model owns the hit: anchor no entity (#11527).

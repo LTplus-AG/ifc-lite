@@ -15,7 +15,8 @@ import type { PickClipState } from './pick-types.js';
 import { clipIsActive } from './scene-raycaster.js';
 import { entityClip } from './section-exclusions.js';
 import type { MeshGeometryCache } from './snap-geometry-cache.js';
-import { MIN_CORNER_VALENCE, mergeCollinearRuns, type SnapEdge, type WeldedSegment } from './snap-edge-runs.js';
+import { MIN_CORNER_VALENCE, type SnapEdge, type WeldedSegment } from './snap-edge-runs.js';
+import { mergeCollinearRuns } from './snap-edge-merge.js';
 import { snapToleranceFor, weldVertices } from './snap-weld.js';
 
 /** One plane's cross-section of a mesh. */

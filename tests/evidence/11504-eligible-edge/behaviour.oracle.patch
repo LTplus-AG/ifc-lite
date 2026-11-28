@@ -1,0 +1,9 @@
+--- a/packages/renderer/src/raycast-screen-corner.ts
++++ b/packages/renderer/src/raycast-screen-corner.ts
+@@ -43,5 +43,5 @@
+         options: config, hiddenIds: options?.hiddenIds, isolatedIds: options?.isolatedIds, clip, hitDistance,
+         // Only the enabled kinds are searched: a disabled kind must not win the grid and then be dropped below.
+-        kinds: { corners: true, edges: snap.snapToEdges !== false },
++        kinds: { corners: snap.snapToVertices !== false, edges: snap.snapToEdges !== false },
+     });
+     if (!hit) return current;

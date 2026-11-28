@@ -11,6 +11,11 @@
 import type { MeshData } from '@ifc-lite/geometry';
 import type { MeshData as ServerMeshData } from '@ifc-lite/server-client';
 
+/** `values` itself when it already is the wanted typed array; a copy of a plain array (the JSON transport). */
+function asTyped<T extends Float32Array | Uint32Array>(values: ArrayLike<number> | T, Typed: { new (values: ArrayLike<number>): T }): T {
+  return values instanceof Typed ? values as T : new Typed(values);
+}
+
 /**
  * Convert one server mesh (snake_case wire shape) to the viewer's canonical
  * camelCase `MeshData`.
@@ -24,9 +29,12 @@ import type { MeshData as ServerMeshData } from '@ifc-lite/server-client';
 export function convertServerMesh(m: ServerMeshData): MeshData {
   return {
     expressId: m.express_id,
-    positions: new Float32Array(m.positions),
-    indices: new Uint32Array(m.indices),
-    normals: m.normals ? new Float32Array(m.normals) : new Float32Array(0),
+    // The Parquet decoders already hand out fresh typed arrays (views into the batch's slabs): take them
+    // as they are. Copying gave every mesh three more buffers, and a federation slot spent most of its
+    // load in the garbage collections those allocations started (see `typed-array-slab.ts` in server-client).
+    positions: asTyped(m.positions, Float32Array),
+    indices: asTyped(m.indices, Uint32Array),
+    normals: m.normals ? asTyped(m.normals, Float32Array) : new Float32Array(0),
     color: m.color,
     ifcType: m.ifc_type,
     // Omit a zero origin rather than stamping `[0,0,0]`: the parquet decoder and

@@ -15,6 +15,23 @@ export interface ParseRequestOptions {
   signal?: AbortSignal;
 
   /**
+   * Decode a batch's flat meshes into a few shared buffers (at most 64 MiB each) instead of three
+   * buffers per mesh. Omitted = `false`: every mesh owns its `positions`, `normals` and `indices`
+   * buffers, as before.
+   *
+   * With `true`, each mesh array is a view (`subarray`) into its batch's buffers. That turns
+   * ~825k ArrayBuffers for a 275k-mesh model into a handful, which keeps the browser from running a
+   * full garbage collection for every few dozen MiB decoded (a federation slot loaded beside
+   * other models spent most of its time in those collections). In return:
+   * - never transfer one mesh's buffer (`postMessage(m, [m.positions.buffer])`): that detaches the
+   *   arrays of every other mesh in its batch; copy the array first (`m.positions.slice()`);
+   * - `m.positions.buffer` is the batch's buffer, so read it with `byteOffset`/`byteLength`;
+   * - one retained mesh keeps its whole batch buffer (up to 64 MiB per array kind) alive.
+   * Affects the flat layouts only (`parseParquet`, `parseParquetStream`); the optimized layout is unchanged.
+   */
+  sharedBuffers?: boolean;
+
+  /**
    * Tessellation detail level (#976). Omitted = `'medium'`, which is
    * byte-identical to the historical output — and to what the wasm path
    * produces without `setTessellationQuality`, so client-side and

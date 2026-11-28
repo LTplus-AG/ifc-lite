@@ -23,6 +23,7 @@
  * opt-in and decodes on its own, as every batch did before.
  */
 
+import type { MeshBufferOptions } from './typed-array-slab.js';
 import type { MeshData } from './types.js';
 import { numericColumn } from './parquet-columns.js';
 import { readFlatTables } from './parquet-decoder.js';
@@ -145,9 +146,10 @@ export async function decodeCrossBatch(
   store: StreamShapeStore,
   vertexBase: number,
   indexBase: number,
-  batchNumber: number
+  batchNumber: number,
+  options?: MeshBufferOptions,
 ): Promise<MeshData[]> {
   const { meshArrow, vertexArrow, indexArrow } = await readFlatTables(data);
   store.append(vertexArrow, indexArrow, vertexBase, indexBase, batchNumber);
-  return buildMeshesFromTables(meshArrow, store.vertexTable(), store.indexTable());
+  return buildMeshesFromTables(meshArrow, store.vertexTable(), store.indexTable(), options);
 }

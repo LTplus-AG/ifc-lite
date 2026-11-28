@@ -94,3 +94,21 @@ test('#5984: forwards the IFC-authored finish into MeshData.material, keeping an
 test('#5984: no finish on the wire means no material key (the renderer keeps its default)', () => {
   assert.equal('material' in convertServerMesh(base), false);
 });
+
+test('takes the decoder\'s typed arrays as they are: no per-mesh copy', () => {
+  // A copy gave every mesh three more ArrayBuffers; in a federation the garbage
+  // collections they started walked every loaded model (typed-array-slab.ts).
+  const out = convertServerMesh(base);
+  assert.equal(out.positions, base.positions);
+  assert.equal(out.normals, base.normals);
+  assert.equal(out.indices, base.indices);
+});
+
+test('still converts the JSON transport\'s plain arrays to typed arrays', () => {
+  const plain = { ...base, positions: [0, 0, 0, 1, 0, 0, 1, 1, 0], normals: [0, 1, 0, 0, 1, 0, 0, 1, 0], indices: [0, 1, 2] } as unknown as ServerMeshData;
+  const out = convertServerMesh(plain);
+  assert.ok(out.positions instanceof Float32Array);
+  assert.ok(out.normals instanceof Float32Array);
+  assert.ok(out.indices instanceof Uint32Array);
+  assert.deepEqual(Array.from(out.indices), [0, 1, 2]);
+});

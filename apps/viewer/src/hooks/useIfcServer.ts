@@ -223,7 +223,9 @@ export function useIfcServer() {
               coordinateInfo,
             });
           }
-        }, { signal });
+        // Shared batch buffers: the viewer never transfers a mesh's buffer, and per-mesh buffers made
+        // a federation slot spend most of its load in garbage collection (`sharedBuffers`).
+        }, { signal, sharedBuffers: true });
 
         // Re-check after the stream's single big await resolves: supersession
         // can land at any point during it, including after the LAST batch's
@@ -280,7 +282,7 @@ export function useIfcServer() {
       } else if (parquetSupported) {
         // NON-STREAMING PATH - for smaller files, use batch request (with cache check)
         // Use Parquet endpoint - much smaller payload (~15x compression)
-        const parquetResult = await client.parseParquet(file, { signal });
+        const parquetResult = await client.parseParquet(file, { signal, sharedBuffers: true });
         // Re-check right after this await, before the first write below —
         // same reason as the streaming re-check above: a non-streaming parse
         // is still one awaited network round trip a newer load can outrun.

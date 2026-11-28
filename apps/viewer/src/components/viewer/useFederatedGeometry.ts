@@ -4,11 +4,8 @@
 
 import { useMemo, useRef } from 'react';
 import type { MeshData, CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
-import { copyMeshShell } from '@ifc-lite/geometry/compact';
 import type { FederatedModel } from '@/store';
-import { perfTally } from '@ifc-lite/load-trace';
-import { geometryWithModelIndex } from '@/lib/model-placement/model-indices';
-import { carryReleasedMesh } from '@/lib/released-mesh-provenance';
+import { geometryWithModelIndex, stampModelIndex } from '@/lib/model-placement/model-indices';
 
 const ZERO_VEC3 = { x: 0, y: 0, z: 0 };
 const DEFAULT_COORDINATE_INFO: CoordinateInfo = {
@@ -38,22 +35,18 @@ function unionBounds(acc: Vec3Bounds | undefined, b: Vec3Bounds | undefined): Ve
   };
 }
 
-/**
- * A merged wrapper of `mesh` stamped with its renderer model index. A compact
- * shell (`?compactGeom`) stays a shell: a spread would read its arrays and so
- * decode the whole model on the main thread the moment a second model joins.
- */
-function wrapperFor(mesh: MeshData, modelIndex: number): MeshData {
-  const copy = copyMeshShell(mesh);
-  copy.modelIndex = modelIndex;
-  return carryReleasedMesh(mesh, copy);
-}
-
 /** Cache only same-array streaming appends; immutable replacement may alter any owner (#4451).
  * A single model renders its own mesh array, stamped in place, so the array
  * keeps its identity across appends and nothing downstream rescans it (#7021).
- * Several models still merge into wrapper copies; `viewer.modelIndexRespread`
- * counts those copies. */
+ * Several models merge their own meshes the same way: each model's array is
+ * stamped in place and its meshes join the merged array as they are.
+ *
+ * They used to join as wrapper copies, each registered with the CPU-release
+ * alias and provenance records (WeakMaps, WeakRefs, a finalization registry).
+ * Once a second model joined, every loaded mesh carried those records, and
+ * every garbage collection had to walk them: a federation's later slots then
+ * loaded several times slower than its first, and the cost grew with each
+ * model already loaded. `viewer.modelIndexStamp` counts the meshes stamped. */
 export function useFederatedGeometry(storeModels: ReadonlyMap<string, FederatedModel>,
   geometryResult: GeometryResult | null, modelIdToIndex: ReadonlyMap<string, number>, geometryContentVersion: number) {
   const mergedContentVersionRef = useRef(geometryContentVersion);
@@ -94,9 +87,9 @@ export function useFederatedGeometry(storeModels: ReadonlyMap<string, FederatedM
       let anyLargeCoords = false;
       let shouldRebuild = false;
 
-      // A removed model leaves its copies in the merged array. An ADDED model
-      // only appends below: re-spreading every earlier model's meshes on each
-      // add made a federation of N files O(N^2) in copies and alias records.
+      // A removed model leaves its meshes in the merged array. An ADDED model
+      // only appends below: re-merging every earlier model's meshes on each
+      // add made a federation of N files O(N^2).
       for (const modelId of mergedLengthsRef.current.keys()) {
         if (!storeModels.has(modelId)) shouldRebuild = true;
       }
@@ -151,10 +144,7 @@ export function useFederatedGeometry(storeModels: ReadonlyMap<string, FederatedM
             mergedLengthsRef.current.set(modelId, 0);
             continue;
           }
-          for (const mesh of modelGeometry.meshes) {
-            rebuilt.push(wrapperFor(mesh, modelIndex));
-          }
-          perfTally('viewer.modelIndexRespread', modelGeometry.meshes.length, 'meshes');
+          for (const mesh of stampModelIndex(modelGeometry.meshes, modelIndex)) rebuilt.push(mesh);
           mergedLengthsRef.current.set(modelId, modelGeometry.meshes.length);
         }
         mergedCacheRef.current = rebuilt;
@@ -163,14 +153,8 @@ export function useFederatedGeometry(storeModels: ReadonlyMap<string, FederatedM
           const modelGeometry = model.geometryResult;
           const modelIndex = modelIdToIndex.get(modelId) ?? 0;
           const previousLength = mergedLengthsRef.current.get(modelId) ?? 0;
-          const nextMeshes = model.visible ? (modelGeometry?.meshes ?? []) : [];
-          for (let i = previousLength; i < nextMeshes.length; i++) {
-            const mesh = nextMeshes[i];
-            mergedCacheRef.current.push(wrapperFor(mesh, modelIndex));
-          }
-          if (nextMeshes.length > previousLength) {
-            perfTally('viewer.modelIndexRespread', nextMeshes.length - previousLength, 'meshes');
-          }
+          const nextMeshes = model.visible ? stampModelIndex(modelGeometry?.meshes ?? [], modelIndex) : [];
+          for (let i = previousLength; i < nextMeshes.length; i++) mergedCacheRef.current.push(nextMeshes[i]);
           mergedLengthsRef.current.set(modelId, nextMeshes.length);
           mergedVisibilityRef.current.set(modelId, model.visible);
           mergedSourcesRef.current.set(modelId, modelGeometry?.meshes);

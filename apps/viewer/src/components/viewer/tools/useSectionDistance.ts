@@ -93,7 +93,7 @@ export function useSectionDistance(): SectionDistance {
           resolvers.set(storey.modelId, resolve);
         }
         const relative = data?.spatialHierarchy?.storeyElevations.get(storey.expressId) ?? 0;
-        return { ...storey, displayElevation: resolve(storey.expressId, relative) };
+        return { ...storey, displayElevation: resolve(storey.expressId, relative + (storey.sharedPlacementRise ?? 0)) };
       });
     },
     [models, ifcDataStore, geometryResult, placement, georefMutations],

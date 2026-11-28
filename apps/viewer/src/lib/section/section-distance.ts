@@ -22,6 +22,7 @@
  * convention the floor plan applies.
  */
 
+import { IFC_BUILDING_STOREY_ELEVATION_INDEX, IFC_BUILDING_STOREY_PLACEMENT_INDEX } from '@ifc-lite/data';
 import type { CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
 import { totalYupOffset } from '@ifc-lite/geometry/world-frame';
 import type { IfcDataStore } from '@ifc-lite/parser';
@@ -51,6 +52,8 @@ export interface SectionStorey {
   name: string;
   /** Floor elevation in the placed scene, in metres along viewer Y. */
   elevation: number;
+  /** Height above the lowest authored level sharing this placement. */
+  sharedPlacementRise?: number;
 }
 
 /** Height of a plan cut above its storey's floor (the architectural convention). */
@@ -159,14 +162,29 @@ export function collectStoreys(
     if (!ds?.spatialHierarchy) return;
     const { byStorey, storeyElevations } = ds.spatialHierarchy;
     const sceneOffset = (placement ? displayedTranslation(placement, modelId)[2] : 0) - totalYupOffset(frame).y;
-    for (const storeyId of byStorey.keys()) {
-      // Elevation can be building-relative, absolute, or absent. The same
-      // placement chain used by the geometry gives the floor in IFC world Z.
+    const lowestByPlacement = new Map<number, number>();
+    const levels = [...byStorey.keys()].map((storeyId) => {
+      const attrs = ds.getEntity?.(storeyId)?.attributes;
+      const placementId = attrs?.[IFC_BUILDING_STOREY_PLACEMENT_INDEX];
+      const relative = storeyElevations.get(storeyId);
+      const explicit = attrs?.[IFC_BUILDING_STOREY_ELEVATION_INDEX] != null && relative !== undefined && Number.isFinite(relative);
+      if (explicit && typeof placementId === 'number') {
+        lowestByPlacement.set(placementId, Math.min(relative, lowestByPlacement.get(placementId) ?? Infinity));
+      }
+      return { storeyId, placementId, relative, explicit };
+    });
+    for (const { storeyId, placementId, relative, explicit } of levels) {
+      // The composed origin anchors the lowest level when an exporter reuses
+      // the same placement for several levels. Their authored differences are
+      // usable whether Elevation was written in relative or absolute metres.
       const origin = typeof ds.getEntity === 'function' ? resolveProductOriginMeters(ds, storeyId) : null;
-      const worldZ = origin && Number.isFinite(origin.z) ? origin.z : (storeyElevations.get(storeyId) ?? 0);
-      const elevation = worldZ + sceneOffset;
+      const placedZ = origin && Number.isFinite(origin.z) ? origin.z : undefined;
+      const lowest = typeof placementId === 'number' ? lowestByPlacement.get(placementId) : undefined;
+      const rise = placedZ !== undefined && explicit && relative !== undefined && lowest !== undefined
+        ? relative - lowest : 0;
+      const elevation = (placedZ ?? relative ?? 0) + rise + sceneOffset;
       const name = ds.entities.getName(storeyId) || `Storey #${storeyId}`;
-      storeys.push({ expressId: storeyId, modelId, name, elevation });
+      storeys.push({ expressId: storeyId, modelId, name, elevation, ...(rise ? { sharedPlacementRise: rise } : {}) });
     }
   };
   if (models.size > 0) {

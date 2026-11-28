@@ -41,16 +41,18 @@ xray IfcWall 0.15           # Make walls transparent
 highlight 42 43             # Highlight entities by express ID
 flyto IfcDoor               # Fly camera to doors
 view front                  # Switch to front view
-storey                      # Color by building storey
+storey                      # Color by height bands (approximate storeys)
 section y center            # Add horizontal section plane
 clearSection                # Remove section plane
 clear                       # Remove live-created geometry
 showall                     # Show all entities
 reset                       # Reset colors and visibility
-quit                        # Stop the viewer
+quit                        # Stop the viewer (also exit, q)
 ```
 
-Named colors: `red`, `green`, `blue`, `yellow`, `orange`, `purple`, `cyan`, `white`, `pink`.
+`flyto` also takes an express ID (`flyto 42`). Any other line is parsed as a JSON command and sent as-is.
+
+Console named colors: `red`, `green`, `blue`, `yellow`, `orange`, `purple`, `cyan`, `white`, `pink`. An unknown name falls back to red.
 
 ### Send Commands from Another Terminal
 
@@ -84,15 +86,15 @@ These operate on all entities of a given IFC type:
 
 | Action | Payload | Description |
 |--------|---------|-------------|
-| `colorize` | `{type, color}` | Color all entities of a type |
-| `isolate` | `{types: [...]}` | Show only listed types |
+| `colorize` | `{type, color}` | Color all entities of a type. `color` is `[r,g,b,a]` (0-1) or a named color (`red`, `green`, `blue`, `yellow`, `orange`, `purple`, `cyan`, `white`, `pink`, `gray`) |
+| `isolate` | `{types: [...]}` | Ghost every entity not of a listed type |
 | `xray` | `{type, opacity?}` | Make a type semi-transparent |
-| `flyto` | `{type}` | Fly camera to a type |
+| `flyto` | `{type}` or `{ids}` | Fly camera to a type or to express IDs |
 | `highlight` | `{ids: [...]}` | Highlight express IDs |
-| `colorByStorey` | `{}` | Auto-color by building storey |
+| `colorByStorey` | `{}` | Color by height bands (3 to 10 bands over the model's vertical extent); it does not read `IfcBuildingStorey` |
 | `setView` | `{view}` | Set camera: `front`, `back`, `left`, `right`, `top`, `bottom`, `iso` |
-| `showall` | `{}` | Reset visibility |
-| `reset` | `{}` | Reset all colors and visibility |
+| `showall` | `{}` | Clear all color, hide and ghost overrides |
+| `reset` | `{}` | Like `showall`, and also clears the section plane and refits the camera |
 
 #### Entity-Level Actions
 
@@ -101,9 +103,9 @@ These operate on specific express IDs:
 | Action | Payload | Description |
 |--------|---------|-------------|
 | `colorizeEntities` | `{ids, color}` | Color specific entities |
-| `isolateEntities` | `{ids}` | Show only specific entities |
+| `isolateEntities` | `{ids}` | Ghost every entity not listed |
 | `hideEntities` | `{ids}` | Hide specific entities |
-| `showEntities` | `{ids}` | Show previously hidden entities |
+| `showEntities` | `{ids}` | Show previously hidden entities (also clears their color override) |
 | `resetColorEntities` | `{ids}` | Reset colors on specific entities |
 | `selectEntities` | `{ids}` | Show the pick info of the first listed entity the viewer holds |
 
@@ -142,7 +144,7 @@ curl -X POST http://127.0.0.1:3456/api/create \
   ]'
 ```
 
-Returns entity list and IFC size:
+Each element may also carry `storey` and `project` names; the first element's values name the storey (default `Created`) and project (default `Live Edit`) for the whole call. Returns entity list and IFC size:
 
 ```json
 {"ok":true,"count":3,"entities":[...],"ifcSize":3646}
@@ -156,7 +158,7 @@ All 29 element types from the [`create` command](cli.md#create-create-ifc-files)
 curl -X POST http://127.0.0.1:3456/api/clear-created
 ```
 
-Removes all geometry added via `/api/create` from the viewer and server state.
+Hides all geometry added via `/api/create` in the viewer, clears it from server state, and returns `{"ok":true,"cleared":N}`.
 
 ### `GET /api/export` — Download Created Geometry
 
@@ -164,7 +166,7 @@ Removes all geometry added via `/api/create` from the viewer and server state.
 curl http://127.0.0.1:3456/api/export > created.ifc
 ```
 
-Downloads all live-created geometry as a valid IFC STEP file.
+Downloads the geometry from every `/api/create` call. Each call is its own complete IFC STEP file, and the export joins them with newlines, so after more than one call the download holds several STEP files back to back. With nothing created it returns `{"ok":false,"error":"No geometry has been created yet"}`. Geometry sent with `ifc-lite create --viewer` goes straight to the browser and is not included.
 
 ### `GET /api/status` — Server Status
 
@@ -210,11 +212,11 @@ ifc-lite analyze model.ifc --viewer 3456 \
 | `--viewer <port>` | Port of the running viewer (**required**) |
 | `--type <T>` | IFC type to analyze (e.g. `IfcWall`) |
 | `--missing <Pset.Prop>` | Find entities missing a property |
-| `--where <expr>` | Property filter: `Pset.Prop>100`, `Pset.Prop=true` |
-| `--color <name>` | Color matched entities (named or `r,g,b,a`) |
+| `--where <expr>` | Property or quantity filter with `>`, `<`, `>=`, `<=`, `=`, `!=`: `Pset.Prop>100`, `Pset.Prop=true`, or a bare quantity name (`GrossArea>100`). Replaces `--missing` when both are given |
+| `--color <name>` | Color matched entities (named, including `gray`, or `r,g,b,a`; default red) |
 | `--heatmap <Pset.Prop>` | Color by numeric value (gradient) |
-| `--palette <name>` | Heatmap palette: `blue-red`, `green-red`, `rainbow` |
-| `--isolate` | Hide non-matching entities |
+| `--palette <name>` | Heatmap palette: `blue-red` (default), `green-red`, `rainbow` |
+| `--isolate` | Ghost non-matching entities |
 | `--flyto` | Fly camera to matched entities |
 | `--name <text>` | Name of the single rule built from the flags |
 | `--rules <file.json>` | Run multiple rules from a JSON file |
@@ -251,6 +253,15 @@ Run multiple analysis rules in one pass using a JSON file:
 
 ```bash
 ifc-lite analyze model.ifc --viewer 3456 --rules rules.json --json
+```
+
+### Stream `eval`, `run` and `create` to the Viewer
+
+`eval`, `run` and `create` also take `--viewer <port>`. With it, `bim.viewer.*` and `bim.visibility.*` calls in `eval` and `run` update the running viewer, and `create` sends the new element to it (with `--viewer` and no `--out`, `create` fails if the viewer cannot be reached).
+
+```bash
+ifc-lite run color-walls.js model.ifc --viewer 3456
+ifc-lite create wall --start 0,0,0 --end 5,0,0 --height 3 --thickness 0.2 --viewer 3456
 ```
 
 ---
@@ -305,6 +316,8 @@ console.log(`${viewer.clientCount()} browsers connected`);
 viewer.close();
 ```
 
+`/api/create` answers 501 unless you pass a `createHandler` in the options. `onError` receives server errors such as `EADDRINUSE`. The returned server also exposes `createdSegments`, the IFC text of each `/api/create` call.
+
 **Exports:**
 
 | Export | Description |
@@ -312,7 +325,7 @@ viewer.close();
 | `startViewerServer(opts)` | Start the HTTP + SSE server |
 | `VALID_ACTIONS` | `Set<string>` of accepted command actions |
 | `getViewerHtml(modelName)` | Get the self-contained viewer HTML |
-| `viewerUrl(port, path?)` | The server's own URL, `http://127.0.0.1:<port><path>` |
+| `viewerUrl(port, path?)` | The server's own URL, `http://127.0.0.1:<port><path>`. Also available from `@ifc-lite/viewer-core/url`, which loads no server code |
 | `createStreamingViewerAdapter(port)` | SDK adapter for `bim.viewer.*` calls |
 | `createStreamingVisibilityAdapter(port)` | SDK adapter for visibility calls |
 | `ViewerServer` | Server instance type |

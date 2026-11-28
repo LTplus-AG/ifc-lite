@@ -48,7 +48,8 @@ grounding gate that the IDS editor and the MCP `ids_apply_ops` tool use (see
 [Writing IDS documents](ids.md#writing-ids-documents)). A batch that names an entity, property
 set or property the IFC schema does not have is refused as a whole. The
 result lists each problem with ranked candidates. Accepted batches can be
-undone.
+undone with `doc.undo()` and reapplied with `doc.redo()`. `bim.ids.authoring.create(title)`
+starts an empty document.
 
 ```ts
 declare const xml: string;
@@ -145,7 +146,7 @@ ifc-lite eval model.ifc "bim.storeys().map(s => s.name)"
 ifc-lite eval model.ifc "bim.quantity(ref, 'GrossSideArea')" --type IfcWall --limit 3
 ```
 
-With `--type`, the expression runs once per matching entity with `ref` (the entity reference) and `entity` in scope; without it, the expression runs once with `bim`. Add `--json` for machine-readable output.
+With `--type`, the expression runs once per matching entity with `ref` (the entity reference) and `entity` in scope; without it, the expression runs once with `bim`. `--type` takes a comma-separated list, and `--limit` caps the matches it evaluates. Statements separated by `;` also work; `eval` returns the value of the last one. Add `--json` for machine-readable output. Like `run`, `eval` accepts `--viewer <port>` to stream `bim.viewer.*` calls to a running viewer.
 
 ### `run` — script files
 
@@ -220,7 +221,7 @@ const sandbox = new Sandbox(bim, {
   limits: { memoryBytes: 64 * 1024 * 1024, timeoutMs: 30_000 },
 });
 await sandbox.init();
-const result = await sandbox.eval(`bim.query.create().byType('IfcWall').count()`);
+const result = await sandbox.eval(`bim.query.byType('IfcWall').length`);
 console.log(result.value, result.logs, result.durationMs);
 ```
 
@@ -320,7 +321,7 @@ Writes fail closed and throw a `GeoreferencingError` whose `code` says why and w
 - `set` on a georeferenced model is refused unless `replace: true`, which removes the existing map conversions, CRSs and their `IfcWellKnownText` and writes one map conversion (for the 3D `Model` context); `result.notes` names any other context that loses its conversion.
 - Contradictions are refused: an angle and an `XAxisAbscissa`/`XAxisOrdinate` vector that disagree, half a vector, factors outside FILE_SCHEMA `IFC4X3` / `IFC4X3_ADD2`, unknown keys, factors on a plain `IfcMapConversion` (use `set` with `replace`), or an `update` that renames the CRS while keeping the old datum or unit.
 
-`get()` reports EXPRESS attribute names plus `rotationDegrees`, `source`, `storage` and `pending`. `readGeoreferencing(store)` gives the same shape for a parsed store without a session. `set`/`update` leave IfcSite `RefLatitude`/`RefLongitude` untouched and say so in `notes`; `setSite({ RefLatitude, RefLongitude, RefElevation })` writes them (decimal degrees, written as `IfcCompoundPlaneAngleMeasure`; RefElevation in project length units), as one undo step.
+`get()` reports EXPRESS attribute names plus `rotationDegrees`, `source`, `storage` and `pending`. `readGeoreferencing(store)` gives the same shape for a parsed store without a session. `set`/`update` leave IfcSite `RefLatitude`/`RefLongitude` untouched and say so in `notes`; `setSite({ RefLatitude, RefLongitude, RefElevation })` writes them (decimal degrees, written as `IfcCompoundPlaneAngleMeasure`; RefElevation in project length units), as one undo step. `remove()` deletes the georeferencing: map conversions, CRSs and, for IFC2X3, the ePSets.
 
 `check()`, `planFixes()` and `fix()` are the georeferencing doctor: what is wrong, which fixes the write API can apply, and applying them. See [Georeferencing](georeferencing.md).
 

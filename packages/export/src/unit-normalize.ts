@@ -269,7 +269,8 @@ export function scaleTypedMeasures(
 function scaleMeasureNumber(before: string, num: string, after: string, factor: number, preserveTrivia = false): string | undefined {
   const n = Number(num);
   if (!Number.isFinite(n)) return undefined;
-  const scaled = toStepRealScaled(n * factor);
+  const value = n * factor;
+  const scaled = preserveTrivia && value === n ? num : toStepRealScaled(value);
   if (preserveTrivia) return `${before}${scaled}${after}`;
   return `${before.includes('/*') ? before : ''}${scaled}${after.includes('/*') ? after : ''}`;
 }

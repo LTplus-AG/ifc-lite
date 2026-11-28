@@ -1400,10 +1400,10 @@ describe('MergedExporter', () => {
         await expect(exporter.exportAsync({ ...options, visibleOnly })).rejects.toThrow(/shared table row #18.*column 1/);
       }
       // A conflicting unit policy is harmless if the shared cell needs no numeric change.
-      records[0] = [18, 'IFCTABLEROW', '#18=IFCTABLEROW((IFCMASSPERLENGTHMEASURE(0.)),.F.);'];
+      records[0] = [18, 'IFCTABLEROW', '#18=IFCTABLEROW((IFCMASSPERLENGTHMEASURE(0.00)),.F.);'];
       const zero = makeExporter();
       for (const result of [zero.export(options), await zero.exportAsync(options)]) {
-        expect(decode(result.content)).toContain('IFCTABLEROW((IFCMASSPERLENGTHMEASURE(0.)),.F.)');
+        expect(decode(result.content)).toContain('IFCTABLEROW((IFCMASSPERLENGTHMEASURE(0.00)),.F.)');
       }
     });
 

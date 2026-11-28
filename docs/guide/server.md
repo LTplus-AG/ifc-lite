@@ -501,8 +501,8 @@ the server's resident memory and finishes materially sooner than the default
 variant; the table it produces is the same one either way, byte for byte. The
 harness and the measured deltas are in `scripts/perf/README.md` under #9582.
 
-The two variants are separate cache entries (`-datamodel-v8` and
-`-datamodel-rooted-v8`), and each is served only to a request that names it, so
+The two variants are separate cache entries (`-datamodel-v9` and
+`-datamodel-rooted-v9`), and each is served only to a request that names it, so
 send the SAME value to the parse route, to `/cache/check`, and to
 `GET /api/v1/parse/data-model/{key}`. A rooted parse writes only the rooted
 table; fetching without the parameter afterwards asks for the full one and
@@ -813,15 +813,15 @@ Cache keys are derived from file content:
 {SHA256}-{filter}-parquet-v8          # Geometry (default layout)
 {SHA256}-{filter}-parquet-v9          # Geometry (parquet_layout=shared-shapes)
 {SHA256}-{filter}-parquet-metadata-v6 # Metadata header
-{SHA256}-{filter}-datamodel-v8        # Properties & hierarchy
-{SHA256}-{filter}-datamodel-rooted-v8 # Same, rooted-only entities table (data_model_entities=rooted)
+{SHA256}-{filter}-datamodel-v9        # Properties & hierarchy
+{SHA256}-{filter}-datamodel-rooted-v9 # Same, rooted-only entities table (data_model_entities=rooted)
 {SHA256}-{filter}-symbolic-v3         # 2D symbol stream
 
 # POST /parse/parquet/optimized has its own pair (issue #3889): the optimized
 # payload is quantized and deduplicated, so a hit on one route must never
 # satisfy the other. Both pairs are built from the same geometry pipeline, so
 # a bump of -parquet-v8 almost always needs a bump of -parquet-optimized-v3.
-# It shares the flat route's -datamodel-v8 above rather than having a data
+# It shares the flat route's -datamodel-v9 above rather than having a data
 # model of its own: since #5129 this route writes one too, gated on
 # has_current_data_model before a replay (the same #3869 rule the flat route
 # already applied, now also checked by the ?sha256= probe below) so a hit

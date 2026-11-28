@@ -22,6 +22,7 @@ The `bim` object (a `BimContext`) groups its capabilities into namespaces, plus 
 | `bim.structural` | Read-only access to IFC structural analysis data (analysis models, members, connections, activities, load/result groups) |
 | `bim.ids` | IDS validation; `bim.ids.authoring` opens, edits (through grounded operations), lints and writes IDS documents |
 | `bim.bcf` | BCF topics, comments, viewpoints |
+| `bim.style` | Persistent colour: writes `IfcSurfaceStyle` / `IfcStyledItem` into the model so the exported file opens coloured. Headless contexts (CLI, MCP) only; a backend without store access, including the browser viewer's, throws |
 | `bim.files`, `bim.schedule`, `bim.spatial`, `bim.spaces`, `bim.drawing`, `bim.list`, `bim.bsdd`, `bim.events`, `bim.sandbox` | Supporting namespaces (file access, scheduling, spatial ops, space program, 2D drawings, entity tables, bSDD lookups, events, sandboxed sub-scripts) |
 
 On top of the namespaces, `BimContext` exposes direct helpers for the hot paths, so you rarely reach into internals: `bim.query()`, `bim.entity(ref)`, `bim.properties(ref)`, `bim.quantities(ref)`, `bim.materials(ref)`, `bim.classifications(ref)`, `bim.storeys()`, `bim.contains(ref)`, `bim.containedIn(ref)`, `bim.storey(ref)`, `bim.path(ref)`, and more.
@@ -185,7 +186,7 @@ ifc-lite schema              # full schema with params and return types
 ifc-lite schema --compact    # names and descriptions only
 ```
 
-`ifc-lite schema` documents the `bim` object `eval`/`run` actually hand your script — a root `bim` namespace of top-level methods, plus the scriptable namespaces `model`, `query`, `viewer`, `mutate`, `store`, `lens`, `create`, `files`, `schedule`, `cost`, `clash`, and `export` — and includes each method's parameter names, return type, and LLM semantic hints (`useWhen`, task tags). There `query` is the chain reached via `bim.query()` (`.byType(...).toArray()`), not a namespace of standalone lookups. That differs from the sandbox's own bridge schema shown below, where `bim.query.byType(...)` runs and returns data in one call — the sandbox and `eval`/`run` hand scripts different `bim` shapes, so pick the one matching where the script will run. Running `ifc-lite schema` first is the recommended way to author correct `eval`/`run` code. See [Using with LLM Terminals](cli.md#using-with-llm-terminals) for the wider agent workflow.
+`ifc-lite schema` documents the `bim` object `eval`/`run` actually hand your script — a root `bim` namespace of top-level methods, plus the scriptable namespaces `model`, `query`, `viewer`, `mutate`, `store`, `lens`, `create`, `files`, `schedule`, `structural`, `cost`, `clash`, and `export` — and includes each method's parameter names, return type, and LLM semantic hints (`useWhen`, task tags). There `query` is the chain reached via `bim.query()` (`.byType(...).toArray()`), not a namespace of standalone lookups. That differs from the sandbox's own bridge schema shown below, where `bim.query.byType(...)` runs and returns data in one call — the sandbox and `eval`/`run` hand scripts different `bim` shapes, so pick the one matching where the script will run. Running `ifc-lite schema` first is the recommended way to author correct `eval`/`run` code. See [Using with LLM Terminals](cli.md#using-with-llm-terminals) for the wider agent workflow.
 
 ### IFC 5D cost data
 
@@ -247,7 +248,7 @@ async function ensureLiveSandbox(sandbox: Sandbox, config: SandboxConfig): Promi
 
 Check it while the sandbox is live: `dispose()` releases the module reference, after which `moduleRetired` reads `false`. The process-wide `isSandboxRuntimeAborted()` is a diagnostic — latched for the process lifetime — not a health check; a `true` does not mean scripting is dead.
 
-**Permissions** gate which namespaces the script can touch (`model`, `query`, `viewer`, `mutate`, `store`, `lens`, `export`, `files`). The defaults are read-only: `mutate` and `store` are off, everything else on. **Limits** cap resources, defaulting to 64 MB heap, a 30-second timeout, and a 512 KB stack. A namespace whose permission is disabled is simply not built on the sandboxed `bim` handle, so a script cannot call what it was not granted.
+**Permissions** gate which namespaces the script can touch (`model`, `query`, `viewer`, `mutate`, `store`, `lens`, `export`, `files`, `ui`, `network`). The defaults are read-only and offline: `mutate`, `store` and `network` are off, everything else on. `network` gates `bim.network.*`; a host enables it only for a graph that holds a `network.fetch:*` grant, and each call is still checked against that grant's host list. **Limits** cap resources, defaulting to 64 MB heap, a 30-second timeout, and a 512 KB stack. A namespace whose permission is disabled is simply not built on the sandboxed `bim` handle, so a script cannot call what it was not granted.
 
 ### Sandboxed vs. direct
 

@@ -42,7 +42,7 @@ ifc-lite structural model.ifc --json > structural.json
 
 The default output counts collections. JSON contains `analysisModels`,
 `members`, `connections`, `loads` (actions with resolved `appliedLoad` values),
-`loadGroups` (including cases), `reactions`, `resultGroups` and `links`.
+`loadGroups` (including cases), `reactions`, `resultGroups`, `reinforcementAreas` and `links`.
 Each link has a model-local `structuralItemId` and `physicalElementId`.
 Records retain the parser read model's field names. Absent values stay absent;
 the command adds no parsing or engineering inference. `hasStructural` reports

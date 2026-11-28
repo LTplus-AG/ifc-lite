@@ -267,11 +267,32 @@ ct('run #11350: all entry points judge main and exclude release and stacked base
     const inRun = runFake({ opts: { mode: 'in-run', pr: 5, headSha: 'head5', measuredDir: '/does-not-exist/base-stale' }, ioOver, baseRef });
     assert.equal(judged, main ? 3 : 0, baseRef);
     for (const result of [sweep, dispatch, inRun]) {
-      assert.equal(result.rows[0].verdict, main ? 'stale' : 'not-relevant', baseRef);
+      assert.equal(result.rows[0].verdict, main ? 'stale' : baseRef ? 'not-relevant' : 'unknown', baseRef);
     }
     assert.deepEqual(dispatch.posts.map((post) => post.state), ['success'], 'targeted dispatch still releases legacy holds');
     assert.deepEqual([inRun.reads, inRun.posts], [[], []]);
   }
+});
+
+ct('run #11350: the documented in-run CLI resolves an absent base against the supplied head', (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'base-stale-in-run-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  writeFileSync(join(dir, 'bundle.json'), JSON.stringify(fam(400, 'cafe0000001')));
+  const opts = parseArgs(['--in-run', '--pr', '5', '--head-sha', 'head5', '--merge-sha', 'cafe0000001', '--measured-dir', dir]);
+  const runAt = (ref, sha = 'head5') => runFake({ baseRef: '', opts, ioOver: {
+    pull: () => ({ head: { sha, repo: { full_name: 'o/r' } }, base: { ref } }),
+    prMeasurement: () => { assert.fail('the local measurement should be used'); },
+  } });
+  const main = runAt('main');
+  assert.equal(main.rows[0].verdict, 'fresh');
+  assert.equal(main.rows[0].testedBase, 'base0000001');
+  assert.deepEqual([main.reads, main.posts], [[], []]);
+  assert.equal(runAt('release').rows[0].verdict, 'not-relevant');
+  assert.equal(runAt('main', 'new-head').rows[0].verdict, 'unknown');
+  assert.equal(runAt(null).rows[0].verdict, 'unknown');
+  const unreadable = runFake({ baseRef: '', opts, ioOver: { pull: () => { throw new Error('HTTP 503'); } } });
+  assert.equal(unreadable.rows[0].verdict, 'unknown');
+  assert.deepEqual(unreadable.rows[0].reasons, ["the PR's base branch could not be read (HTTP 503)"]);
 });
 
 ct('run: same-head PRs keep separate evidence with the legacy switch set (#11350)', () => {

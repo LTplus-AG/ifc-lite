@@ -259,16 +259,12 @@ export function run(opts, env = process.env, makeIo = createIo) {
     }
   }
 
+  const inRun = opts.mode === 'in-run';
   let targets;
   if (sweep) {
     targets = candidates.prs.map((p) => ({ pr: p.number, headSha: p.headRefOid, fork: p.isCrossRepository, baseRef: p.baseRefName }));
-  } else if (opts.mode === 'in-run') {
-    // No download (the measurement step failed): fall back to the PR's newest
-    // earlier measurement, which the decision then dates honestly.
-    const measured = env.GITHUB_BASE_REF === 'main' && existsSync(opts.measuredDir)
-      ? { families: readdirSync(opts.measuredDir).filter((n) => n.endsWith('.json')).sort().map((f) => loadMeasuredFile(join(opts.measuredDir, f))), mergeSha: opts.mergeSha }
-      : null;
-    targets = [{ pr: opts.pr, headSha: opts.headSha, fork: Boolean(env.HEAD_REPO) && env.HEAD_REPO !== repo, measured, baseRef: env.GITHUB_BASE_REF || null }];
+  } else if (inRun) {
+    targets = [{ pr: opts.pr, headSha: opts.headSha, fork: Boolean(env.HEAD_REPO) && env.HEAD_REPO !== repo, baseRef: env.GITHUB_BASE_REF || null }];
   } else {
     targets = [{ pr: opts.pr, headSha: null, fork: false }];
   }
@@ -290,35 +286,50 @@ export function run(opts, env = process.env, makeIo = createIo) {
     }
     let headSha = t.headSha;
     let fork = t.fork;
-    let baseRef = t.baseRef ?? null;
-    if (!headSha) {
-      let pull;
+    let baseRef = t.baseRef || null;
+    let baseFault = null;
+    let budgetCut = false;
+    // The CLI also runs outside Actions. Resolve its base only for the same head.
+    if (!headSha || (inRun && !baseRef)) {
       try {
-        pull = io.pull(t.pr);
+        const pull = io.pull(t.pr);
+        if (headSha && pull.head?.sha !== headSha) {
+          baseFault = "the PR's current head differs from the supplied head";
+        } else {
+          headSha = pull.head?.sha ?? null;
+          fork = pull.head?.repo?.full_name !== repo;
+          baseRef = pull.base?.ref || null;
+        }
       } catch (err) {
-        if (!(err instanceof BudgetError)) throw err;
-        stopped = 'API budget for this run spent';
-        records.push({ pr: t.pr, head: null, mainTip, verdict: 'unknown', reasons: [`not judged: ${stopped}`], trigger: opts.trigger ?? opts.mode, gateMode, evaluatedAt, fork, posted: null });
-        continue;
+        budgetCut = err instanceof BudgetError;
+        baseFault = `the PR's base branch could not be read (${err.message.split('\n')[0]})`;
       }
-      headSha = pull.head.sha;
-      fork = pull.head.repo?.full_name !== repo;
-      baseRef = pull.base?.ref ?? null;
     }
     const baseSha = baseRef === 'main' && !opts.mainSha ? mainTip : null;
-    const verdict = baseRef === 'main'
-      ? evaluatePr(io, { pr: t.pr, headSha, mainTip, ceilings, globs, measured: t.measured ?? null, prRun: opts.prRun ?? null, baseRef, baseSha })
-      : { pr: t.pr, head: headSha, mainTip, testedBase: null, prRun: null, verdict: 'not-relevant', reasons: [baseRef ? `PR targets ${baseRef}; advisory judging applies to main` : "the PR's base branch could not be verified"] };
+    let verdict;
+    if (baseRef === 'main' && headSha) {
+      // If the measurement directory is absent, use the newest earlier run.
+      const measured = inRun && existsSync(opts.measuredDir)
+        ? { families: readdirSync(opts.measuredDir).filter((n) => n.endsWith('.json')).sort().map((f) => loadMeasuredFile(join(opts.measuredDir, f))), mergeSha: opts.mergeSha }
+        : null;
+      verdict = evaluatePr(io, { pr: t.pr, headSha, mainTip, ceilings, globs, measured, prRun: opts.prRun ?? null, baseRef, baseSha });
+    } else {
+      const outsideMain = Boolean(baseRef && baseRef !== 'main');
+      const reason = outsideMain ? `PR targets ${baseRef}; advisory judging applies to main`
+        : baseFault ?? "the PR's base branch and head could not be verified";
+      verdict = { pr: t.pr, head: headSha, mainTip, testedBase: null, prRun: null, verdict: outsideMain ? 'not-relevant' : 'unknown', reasons: [reason] };
+    }
     const rec = { ...verdict, trigger: opts.trigger ?? opts.mode, gateMode, evaluatedAt };
+    if (!headSha) complete = false;
     // A verdict the budget cut short is no answer: post nothing, keep the
     // head's old status, and stop the sweep before it spends more.
-    const budgetCut = rec.budget === true;
+    budgetCut ||= rec.budget === true;
     if (budgetCut) stopped = 'API budget for this run spent';
     let status = null;
     // A replay (--pr-run / --main-sha) judges other evidence than the head's
     // current state: it is logged, never posted.
     const replay = Boolean(opts.prRun || opts.mainSha);
-    if (opts.mode !== 'in-run' && !fork && !opts.dryRun && !budgetCut && !replay) {
+    if (!inRun && headSha && !fork && !opts.dryRun && !budgetCut && !replay) {
       try {
         // Shadow reads the existing status only where `on` may have left a
         // non-success: always for a single PR; in a sweep, for every head on

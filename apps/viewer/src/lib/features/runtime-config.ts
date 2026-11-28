@@ -14,7 +14,7 @@
 
 import { normalizeProcessedModelHash } from '@ifc-lite/server-client/processed-model';
 import { isLoopbackHostname } from '../loopback.js';
-import { placementFromMatrix } from '../model-placement/matrix-placement.js';
+import { yawTransform } from '../model-placement/matrix-placement.js';
 import type { FeatureSelection } from './index';
 
 export interface ViewerRuntimeConfig {
@@ -29,7 +29,7 @@ export interface ViewerRuntimeConfig {
    * What to open at start, without the IFC reaching the browser. `federation`, when present,
    * wins: `processedModel` is then only for viewers that predate federations.
    */
-  open?: { processedModel: ProcessedModelStart; federation?: never } | { processedModel?: never; federation: ProcessedFederationStart };
+  open?: { processedModel?: ProcessedModelStart; federation?: ProcessedFederationStart };
 }
 
 /** A model the processing server already processed. */
@@ -39,10 +39,14 @@ export interface ProcessedModelStart { sha256: string; bytes: number; name: stri
 export interface ProcessedFederationSlot extends ProcessedModelStart {
   /** The host's stable id for this slot; the loaded model keeps it as its id. */
   slot: string;
-  /** What the model list shows. */
+  /** What the model list shows; at most 120 characters. */
   label: string;
   visible: boolean;
-  /** Column-major 4x4, metres, engineering Z-up: a heading about the vertical axis, then a translation. */
+  /**
+   * Column-major 4x4 in the slot model's own IFC world frame: project coordinates in metres, Z up.
+   * A heading about the vertical axis through that frame's origin, then a translation; nothing else.
+   * Independent of the viewer's render origin (RTC shift), which the viewer accounts for itself.
+   */
   transform?: number[];
 }
 
@@ -56,6 +60,8 @@ export interface ProcessedFederationStart {
 export const MAX_FEDERATION_SLOTS = 64;
 /** The longest federation or slot id; ids are identities, not text. */
 const MAX_ID_LENGTH = 128;
+/** The longest slot label: a model-list row, not a document. */
+const MAX_LABEL_LENGTH = 120;
 
 /** Why a configuration could not be used. `code` is stable; `message` is for the console. */
 export type ViewerConfigErrorCode = 'cross-origin' | 'unreachable' | 'status' | 'not-json' | 'invalid';
@@ -143,11 +149,11 @@ function parseFederation(value: unknown): ProcessedFederationStart {
   const slots = value.slots.map((entry: unknown, index): ProcessedFederationSlot => {
     const where = `${BAD_FEDERATION}.slots[${index}]`;
     if (!isRecord(entry) || !isId(entry.slot) || seen.has(entry.slot)) invalid(where);
-    if (typeof entry.label !== 'string' || entry.label.trim() === '' || typeof entry.visible !== 'boolean') invalid(where);
+    if (typeof entry.label !== 'string' || entry.label.trim() === '' || entry.label.length > MAX_LABEL_LENGTH || typeof entry.visible !== 'boolean') invalid(where);
     seen.add(entry.slot);
     const slot: ProcessedFederationSlot = { slot: entry.slot, label: entry.label, ...parseProcessedModel(entry, where), visible: entry.visible };
     if (entry.transform !== undefined) {
-      if (!placementFromMatrix(entry.transform)) invalid(`${where}.transform`);
+      if (!yawTransform(entry.transform)) invalid(`${where}.transform`);
       slot.transform = [...(entry.transform as number[])];
     }
     return slot;

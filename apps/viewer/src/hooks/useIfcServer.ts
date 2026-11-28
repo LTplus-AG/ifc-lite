@@ -84,7 +84,9 @@ export function useIfcServer() {
     const cancelled = () => signal?.aborted || isStale?.();
     if (cancelled()) return false;
     if (!beforePublish && !sink) cancelProperties(modelId);
-    const { setProgress, setGeometryResult } = useViewerStore.getState();
+    const { setProgress: storeProgress, setGeometryResult } = useViewerStore.getState();
+    // Concurrent federation slots would overwrite one bar; their run reports the federation's progress.
+    const setProgress: typeof storeProgress = sink ? () => {} : storeProgress;
     // A processed model has no fallback, so its failures reach the caller to be worded; an
     // upload's stay silent here and fall back to local processing.
     const processed = isProcessedModelRef(file);

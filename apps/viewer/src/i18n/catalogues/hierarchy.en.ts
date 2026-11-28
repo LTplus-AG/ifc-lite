@@ -38,6 +38,7 @@ export const hierarchyEn = {
   'hierarchy.node.syncing': 'Syncing model…',
   'hierarchy.node.syncFromSource': 'Sync from source',
   'hierarchy.node.removeModelAriaLabel': 'Remove model {name}',
+  'hierarchy.node.retryModelAriaLabel': 'Retry loading {name}',
   'hierarchy.node.removeModel': 'Remove model',
   'hierarchy.removeModelConfirm.title': 'Remove model with unexported changes?',
   'hierarchy.removeModelConfirm.description': {

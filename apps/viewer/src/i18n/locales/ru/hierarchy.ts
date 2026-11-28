@@ -23,6 +23,7 @@ export const hierarchyRu = {
   "hierarchy.node.syncing": "Синхронизация модели…",
   "hierarchy.node.syncFromSource": "Синхронизировать с источником",
   "hierarchy.node.removeModelAriaLabel": "Удалить модель {name}",
+  "hierarchy.node.retryModelAriaLabel": "Повторить загрузку {name}",
   "hierarchy.node.removeModel": "Удалить модель",
   "hierarchy.removeModelConfirm.title": "Удалить модель с неэкспортированными изменениями?",
   "hierarchy.removeModelConfirm.description": {

@@ -1,0 +1,28 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * Retry on a failed federation slot's own model row (`lib/federation-slot-status.ts`).
+ * Shown only while that slot is failed; its tooltip is the reason.
+ */
+
+import { RefreshCw } from 'lucide-react';
+import { useTranslation } from '@/i18n';
+import { useFederationSlotFailure } from '@/lib/federation-slot-status';
+
+export function FederationSlotRetry({ modelId, name }: { modelId: string; name: string }) {
+  const { t } = useTranslation();
+  const failure = useFederationSlotFailure(modelId);
+  if (!failure) return null;
+  return (
+    <button
+      className="p-[5px] text-red-600 dark:text-red-400 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+      aria-label={t('hierarchy.node.retryModelAriaLabel', { name })}
+      title={failure.reason}
+      onClick={(event) => { event.stopPropagation(); failure.retry(); }}
+    >
+      <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+    </button>
+  );
+}

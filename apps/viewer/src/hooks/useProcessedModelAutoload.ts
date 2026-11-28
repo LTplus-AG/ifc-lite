@@ -21,7 +21,6 @@
 import { useEffect, useRef } from 'react';
 import { useIfcLoader } from './useIfcLoader.js';
 import { useIfcFederation } from './useIfcFederation.js';
-import { loadProcessedFederation } from './ingest/processedFederationLoad.js';
 import { useWebGpuOpenGuard } from './useWebGpuOpenGuard';
 import { showLoadError } from '@/lib/analytics';
 import { useViewerStore } from '@/store';
@@ -67,10 +66,11 @@ export function useProcessedModelAutoload(): void {
         // Replay-safe (a request, no user gesture): Retry on the unsupported card may re-run it.
         if (!guardWebGpu(attempt, { replay: 'free' })) return;
         if (!isFederationRequest(request)) { void loadProcessedModel(request); return; }
-        void loadProcessedFederation(request, {
-          openPrimary: (model, modelId) => loadProcessedModel(model, { kind: 'primary', modelId }),
+        // Its own chunk: only a host that configures a federation needs it.
+        void import('./ingest/processedFederationLoad.js').then(({ loadProcessedFederation }) => loadProcessedFederation(request, {
+          openPrimary: (model, modelId, options) => loadProcessedModel(model, { kind: 'primary', modelId }, options),
           addSlot: addProcessedModel,
-        }).then(outcome => {
+        })).then(outcome => {
           if (outcome.failed.length || outcome.skipped.length) console.info(`[viewer config] Federation ${request.id}: ${outcome.loaded.length} loaded, ${outcome.failed.length} failed, ${outcome.skipped.length} not started`);
         }, (error: unknown) => console.error(`[viewer config] Federation ${request.id} could not be opened`, error));
       };

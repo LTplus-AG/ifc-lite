@@ -459,6 +459,21 @@ jobs:
           # See the comment on the "Stamp crates.io token mint time" step.
           CRATES_TOKEN_MINTED_AT_MS: ${{ steps.crates-auth-time.outputs.minted_at_ms }}
 
+      - name: Identify private version bumps in the release PR
+        if: steps.changesets.outputs.pr-number != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ steps.changesets.outputs.pr-number }}
+          REPO: ${{ github.repository }}
+        run: |
+          scratch=$(mktemp -d)
+          trap 'rm -rf -- "$scratch"' EXIT
+          gh api "repos/$REPO/pulls/$PR" --jq '.body' > "$scratch/generated.md"
+          node scripts/format-release-pr-body.mjs < "$scratch/generated.md" > "$scratch/annotated.md"
+          if ! cmp -s "$scratch/generated.md" "$scratch/annotated.md"; then
+            gh pr edit "$PR" --repo "$REPO" --body-file "$scratch/annotated.md"
+          fi
+
       # THE RELEASE PR LEAN LANE needs the PR queueable (scripts/ci-release-lane.mjs):
       # the `release` queue's entry rule requires `mergify-trial`. Applied only
       # while CI_RELEASE_LANE is `on` (any case, as Actions compares), because

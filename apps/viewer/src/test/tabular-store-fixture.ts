@@ -15,7 +15,7 @@ import {
 } from '@ifc-lite/data';
 import type { IfcDataStore } from '@ifc-lite/parser';
 
-import { buildTabularDataStore, type TabularStoreMeta, type TabularStoreTables } from '@/hooks/ingest/tabularDataStore.js';
+import { buildTabularDataStore, type TabularStoreMeta, type TabularStoreTables } from '@ifc-lite/parser';
 
 export const PROXY_A = 1;
 export const PROXY_B = 2;

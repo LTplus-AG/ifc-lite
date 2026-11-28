@@ -24,7 +24,8 @@ import { foldedEntityCount, foldedTypeCounts, pendingMutationsField, pendingOver
 import type { Tool } from './types.js';
 import { fmtInt, resolveModel, okResult } from './util.js';
 import { basename } from 'node:path';
-import { deriveModelId, loadIfcModel } from '../loader.js';
+import { openOciModel, parseModelReference } from '@ifc-lite/oci/node-model';
+import { deriveModelId, loadIfcModel, loadIfcModelFromBytes } from '../loader.js';
 import { resolveSafePath } from '../safe-path.js';
 import { modelAllowed, scopeAllows, type AuthScope } from '../auth/scope.js';
 import type { ToolContext } from '../context.js';
@@ -120,40 +121,46 @@ export const modelList: Tool = {
 
 export const modelLoad: Tool = {
   name: 'model_load', title: 'Load IFC model', annotations: DESTRUCTIVE,
-  description: 'Load an IFC file from disk into the session. The path must be inside the configured allowedPaths roots (when set).',
-  // `read`, not `mutate`: loading adds a model to this session and changes no
-  // model, so a --read-only server or a read-only token can still open files.
-  // The safe-path check below bounds which files, and `assertMayLoadAs`
-  // keeps it inside the token's model allowlist.
+  description: 'Load IFC STEP, IFCZIP or IFCX from an allowed local path. Loading from an allowed OCI registry also requires mutate scope.',
+  // Local loading needs read scope. The model allowlist also governs replacements.
   scope: 'read',
   inputSchema: {
     type: 'object',
     properties: {
-      file_path: { type: 'string', description: 'Absolute path to the .ifc file.' },
+      file_path: { type: 'string', description: 'Absolute local model path or an oci:// reference.' },
       model_id: { type: 'string', description: 'Optional explicit ID. Defaults to a slug of the file name.' },
     },
     required: ['file_path'],
     additionalProperties: false,
   },
   async handler(input, ctx) {
-    // Resolve the LLM-supplied path through the safe-path policy first.
-    // The resulting absolute path is symlink-canonicalised and bounds-checked
-    // before we touch the filesystem in `loadIfcModel`.
-    const filePath = await resolveSafePath(input.file_path, ctx, 'read');
-    // The id the loader would pick, so a refusal costs no parse.
-    const id = (input.model_id as string | undefined) ?? deriveModelId(basename(filePath));
+    const source = input.file_path;
+    const modelId = input.model_id as string | undefined;
+    const oci = typeof source === 'string' && source.startsWith('oci://');
+    let label = String(source);
     try {
       const loaded = await withSourceWriteLock(ctx.registry, async () => {
-        assertModelLoadAccess(id, ctx);
-        const model = await loadIfcModel(filePath, {
-          modelId: id,
-          // The checked path is the only root: the loader refuses it if the file
-          // was swapped for a symlink since the check (see loadIfcModel for limits).
-          allowedPaths: [filePath],
-        });
+        assertModelLoadAccess(modelId, ctx, oci);
+        let model;
+        if (oci) {
+          const { registry } = parseModelReference(source);
+          const allowed = ctx.config.ociHosts ?? process.env.IFC_LITE_MCP_OCI_HOSTS?.split(',') ?? [];
+          if (!allowed.some((host) => host.trim().toLowerCase() === registry)) {
+            throw new ToolExecutionError({ code: ToolErrorCode.PERMISSION_DENIED, message: `OCI registry '${registry}' is outside the configured OCI hosts.` });
+          }
+          const { bytes, name } = await openOciModel(source);
+          const id = modelId ?? deriveModelId(name);
+          assertModelLoadAccess(id, ctx, oci);
+          model = await loadIfcModelFromBytes(bytes, name, id, source);
+        } else {
+          label = await resolveSafePath(source, ctx, 'read');
+          const id = modelId ?? deriveModelId(basename(label));
+          assertModelLoadAccess(id, ctx, oci);
+          model = await loadIfcModel(label, { modelId: id, allowedPaths: [label] });
+        }
         // The scope, pending edits or cancellation can change during the parse.
         try {
-          assertModelLoadAccess(id, ctx);
+          assertModelLoadAccess(model.id, ctx, oci);
         } catch (refused) {
           try {
             model.backend.dispose();
@@ -165,7 +172,7 @@ export const modelLoad: Tool = {
         ctx.registry.add(model);
         return model;
       });
-      ctx.log.log('info', 'model_load', { id: loaded.id, file: filePath, entities: loaded.store.entityCount });
+      ctx.log.log('info', 'model_load', { id: loaded.id, file: label, entities: loaded.store.entityCount });
       // A model the scan read short is reported as such, in the text the
       // agent reads and in the structured result (#7610).
       const warnings = loaded.scanWarnings ?? [];
@@ -181,13 +188,13 @@ export const modelLoad: Tool = {
       if (err instanceof ToolExecutionError) throw err;
       throw new ToolExecutionError({
         code: ToolErrorCode.PARSE_FAILED,
-        message: `Failed to load '${filePath}': ${(err as Error).message}`,
+        message: `Failed to load '${label}': ${err instanceof Error ? err.message : String(err)}`,
       });
     }
   },
 };
 
-function assertModelLoadAccess(id: string, ctx: ToolContext): void {
+function assertModelLoadAccess(id: string | undefined, ctx: ToolContext, oci: boolean): void {
   if (ctx.signal.aborted) {
     throw new ToolExecutionError({ code: ToolErrorCode.CANCELLED, message: 'model_load was cancelled.' });
   }
@@ -195,17 +202,17 @@ function assertModelLoadAccess(id: string, ctx: ToolContext): void {
   if (!scopeAllows(live, 'read')) {
     throw new ToolExecutionError({ code: ToolErrorCode.PERMISSION_DENIED, message: 'This token no longer has read scope.' });
   }
-  assertMayLoadAs(id, ctx, live);
-  assertMayDiscard(id, ctx, live);
+  if (oci && !scopeAllows(live, 'mutate')) {
+    throw new ToolExecutionError({ code: ToolErrorCode.PERMISSION_DENIED, message: 'Loading an OCI model requires mutate scope.' });
+  }
+  if (id !== undefined) {
+    assertMayLoadAs(id, ctx, live);
+    assertMayDiscard(id, ctx, live);
+  }
 }
 
-/**
- * `model_load` needs only `read` scope (#11534), so it must not become a way
- * around the token's model allowlist: the registry disposes a model it
- * replaces, so loading under an id the token may not access is refused.
- * Replacing or dropping a model with unsaved edits needs `mutate` (see
- * assertMayDiscard): a session narrowed after editing must not lose the edits.
- */
+// A model allowlist also governs registration, since replacing an existing
+// entry disposes it. assertMayDiscard separately protects pending edits.
 function assertMayLoadAs(id: string, ctx: ToolContext, scope = ctx.scope): void {
   if (!modelAllowed(scope, id)) {
     throw new ToolExecutionError({

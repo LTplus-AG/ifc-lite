@@ -14,7 +14,7 @@
 import { constants } from 'node:fs';
 import { open, realpath, stat } from 'node:fs/promises';
 import { basename, dirname, join, parse, resolve, sep } from 'node:path';
-import { IfcParser, validateStepInput, type IfcDataStore } from '@ifc-lite/parser';
+import { buildIfcxDataStore, IfcParser, validateStepInput, type IfcDataStore } from '@ifc-lite/parser';
 import { sourceModelIdentity } from '@ifc-lite/cache';
 import { createBimContext, type BimContext } from '@ifc-lite/sdk';
 import type { LoadedModel, ModelRegistry } from './context.js';
@@ -72,7 +72,9 @@ export async function loadIfcModel(filePath: string, opts: LoadIfcOptions = {}):
 export async function loadIfcModelFromBytes(bytes: Uint8Array, name: string, modelId?: string, label = name): Promise<LoadedModel> {
   // Preserve this existing loader's recovery behavior; new parseModel sessions
   // validate complete envelopes. A partial scan still carries scanWarnings.
-  const buffer = Buffer.from(await validateStepInput(bytes, label, { envelope: 'signature' }));
+  const isIfcx = /\.ifcx(?:\.json)?$/i.test(name);
+  const content = isIfcx ? bytes : await validateStepInput(bytes, label, { envelope: 'signature' });
+  const buffer = Buffer.from(content);
 
   const parser = new IfcParser();
   // The parser writes progress to console.* — silence it during MCP loads
@@ -91,9 +93,14 @@ export async function loadIfcModelFromBytes(bytes: Uint8Array, name: string, mod
       buffer.byteOffset,
       buffer.byteOffset + buffer.byteLength,
     ) as ArrayBuffer;
-    store = await parser.parseColumnar(arrayBuffer, {
-      onDiagnostic: (m) => { if (m.startsWith('scan: ')) scanWarnings.push(m); },
-    });
+    if (isIfcx) {
+      const { parseIfcx } = await import('@ifc-lite/ifcx');
+      store = buildIfcxDataStore(await parseIfcx(arrayBuffer), arrayBuffer);
+    } else {
+      store = await parser.parseColumnar(arrayBuffer, {
+        onDiagnostic: (m) => { if (m.startsWith('scan: ')) scanWarnings.push(m); },
+      });
+    }
     store.fileSize = buffer.byteLength;
   } finally {
     // Restore only what is still ours: a stdio transport that connected
@@ -160,7 +167,7 @@ export function deriveModelId(name: string): string {
   // ID URL-safe so it round-trips through `Mcp-Session-Id` headers and
   // resource URIs.
   return name
-    .replace(/\.(ifc|ifcxml|ifczip)$/i, '')
+    .replace(/\.(ifc|ifcxml|ifczip|ifcx(?:\.json)?)$/i, '')
     .replace(/[^a-zA-Z0-9_-]+/g, '_')
     .toLowerCase() || 'model';
 }

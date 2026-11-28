@@ -21,6 +21,9 @@ export async function withIfcBytes<T>(
   m: ReturnType<typeof resolveModel>,
   fn: (bytes: Uint8Array) => Promise<T>,
 ): Promise<T> {
+  if (m.store.schemaVersion === 'IFC5') {
+    throw new ToolExecutionError({ code: ToolErrorCode.UNSUPPORTED_OPERATION, message: 'This export needs an IFC STEP model. The loaded model is IFCX.' });
+  }
   if (m.backend.hasPendingChanges()) {
     const content = m.bim.export.ifc(undefined, { includeMutations: true });
     return fn(typeof content === 'string' ? new TextEncoder().encode(content) : content);

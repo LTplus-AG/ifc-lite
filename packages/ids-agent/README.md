@@ -124,8 +124,11 @@ feed ordinary answers to the error handler.
 
 A run stops when the model ends its turn, the root budget is spent, the same
 failure signature comes back twice in a row, the caller cancels, a request
-times out, the wall-clock cap passes, the model refuses, a reply is cut off
-at its output-token cap, or the transport fails. `run.status` names which
+times out, the wall-clock cap passes, the model refuses, a reply with no
+tool calls is cut off at its output-token cap, or the transport fails. A
+cut-off reply that does contain tool calls does not stop the run: those calls
+are not executed, each comes back to the model as an error result, and the
+next turn starts. `run.status` names which
 (`completed`, `budget-exhausted`, `no-progress`, `cancelled`, `timeout`,
 `wall-clock`, `refused`, `truncated`, `error`). It always returns the proposal
 built so far.

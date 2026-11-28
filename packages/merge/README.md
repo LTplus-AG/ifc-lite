@@ -67,9 +67,14 @@ Also included:
 - `diffLayerStacks` / `diffStackStates` — added, removed and modified
   entities between two layer stacks or two composed states
 - `mergeIntoRef` — the store-agnostic layer-PR merge flow over a
-  host-supplied `LayerRefStore`: fast-forward when the candidate was authored
-  against the ref's current stack, otherwise a three-way plan with explicit
-  conflicts. It returns an outcome instead of exiting. `resolveAncestor` maps
+  host-supplied `LayerRefStore`. A candidate already on the ref is a no-op
+  fast-forward. A candidate authored against the ref's current stack
+  fast-forwards once the ref policy passes (a policy failure stops the merge),
+  unless it consumes a waiver: then it goes through the three-way path so a
+  merge layer records the waiver. Otherwise it is a three-way plan with
+  explicit conflicts; a candidate whose declared base matches nothing on the
+  ref is refused as `unrelated-base` unless `allowUnrelated` is set. It
+  returns an outcome instead of exiting. `resolveAncestor` maps
   a candidate's `manifest.base` to a prefix of the ref; `checkRefPolicy`
   enforces the ref's policy (required checks, human approval)
 

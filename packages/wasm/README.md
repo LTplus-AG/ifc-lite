@@ -37,8 +37,11 @@ const buffer = await fetch('model.ifc').then(r => r.arrayBuffer());
 const content = new TextDecoder().decode(buffer);
 
 // Fast entity scan — returns an array of entity references
-const refs = api.scanEntitiesFast(content);
+const refs = api.scanEntitiesFast(content); // or scanEntitiesFastBytes(new Uint8Array(buffer))
 console.log(`Entities: ${refs.length}`);
+// The array also says what the scan skipped: records whose express id does
+// not fit u32, and (0 or 1) a final record dropped for having no closing `;`.
+console.log(refs.oversizedIdCount, refs.malformedRecordCount);
 
 api.free();                           // free the API instance
 ```

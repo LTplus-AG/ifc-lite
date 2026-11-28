@@ -206,6 +206,8 @@ To persist a session and get it back exactly, including created entities and
 edits written with `skipHistory`, snapshot the whole overlay instead of the
 journal. Both calls take a digest of every source byte, computed by the
 caller. A restore onto a different source throws `OverlaySourceMismatchError`.
+The destination overlay must be empty (no edits and no history); otherwise
+`restoreOverlay` throws unless you pass `replace: true`, which discards them.
 
 ```typescript
 import { restoreOverlay, snapshotOverlay } from '@ifc-lite/mutations';

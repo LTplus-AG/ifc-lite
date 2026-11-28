@@ -112,9 +112,14 @@ Notes:
 - LAZ decoding (`format: 'laz'`) loads `laz-perf`'s wasm through the
   Vite-only `laz-perf/lib/web/laz-perf.wasm?url` asset import. The inlined
   `Blob`-URL worker leaves that import external, so LAZ there fails with a
-  runtime error. If you need LAZ from the published package, pass a
-  custom `spawn` callback that yields a worker capable of fetching the
-  wasm (see `DecodeWorkerOptions.spawn`).
+  runtime error. COPC node decoding uses the same loader in the same
+  worker, so a COPC file can open (header and hierarchy) and then fail on
+  its first `readNode`. If you need LAZ or COPC from the published package,
+  pass a custom `spawn` callback that yields a worker capable of fetching
+  the wasm (see `DecodeWorkerOptions.spawn`). All streaming and COPC
+  sources share one decode worker per page, and the first source opened
+  picks it: pass your `spawn` to that first opener, because a `spawn` given
+  later is ignored while the shared worker is alive.
 - Strict CSPs need `script-src 'self' blob:` to allow the `Blob`-URL
   worker.
 

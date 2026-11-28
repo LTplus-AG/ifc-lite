@@ -12,7 +12,9 @@ npm install parquet-wasm apache-arrow
 
 `parquet-wasm` and `apache-arrow` are optional peer dependencies, loaded with a
 dynamic import the first time a Parquet response is decoded.
-`client.isParquetSupported()` reports whether they load. `parse` (JSON) and
+`client.isParquetSupported()` only checks that `parquet-wasm` loads and
+initialises; `apache-arrow` is imported later, when the first decoded table is
+converted, so install both. `parse` (JSON) and
 `parseStream` (SSE) work without them.
 
 ## Parse with caching (one-shot)

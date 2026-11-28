@@ -15,7 +15,8 @@ npx @ifc-lite/mcp ./model.ifc
 # Several files in one session
 npx @ifc-lite/mcp ./arch.ifc ./struct.ifc ./mep.ifc
 
-# Read-only (no mutation tools advertised)
+# Read-only (no mutation tools advertised; export and flow-checkpoint tools
+# can still write files under the allowed roots)
 npx @ifc-lite/mcp ./model.ifc --read-only
 
 # HTTP / Streamable HTTP for remote agents

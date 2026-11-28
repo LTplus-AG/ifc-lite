@@ -152,9 +152,9 @@ IFC2X3 evaluation is intentionally unsupported.
 ## Performance
 
 Storage is TypedArray-backed and columnar, and properties are extracted on
-demand. Measured load times and the bundle size live in the
-[Performance guide](https://ifclite.dev/docs/guide/performance/), stamped from
-the committed benchmark baseline.
+demand. Measured load times (stamped from the committed benchmark baseline)
+and the separately measured WASM bundle size live in the
+[Performance guide](https://ifclite.dev/docs/guide/performance/).
 
 ## API
 

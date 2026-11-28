@@ -115,7 +115,7 @@ const xml = writeIdsXml(idsSpec, { indent: 2, canonical: true });
 | `SimpleValue` | Exact match |
 | `Pattern` | Regex match |
 | `Enumeration` | One-of-list |
-| `Bounds` | Numeric range (min/max, inclusive/exclusive), string length (`length`, `minLength`, `maxLength`) and digit counts (`totalDigits`, `fractionDigits`) |
+| `Bounds` | Numeric range (min/max, inclusive/exclusive), date and time ranges for `xs:date`, `xs:dateTime`, `xs:time` and `xs:duration` (compared in their own order), string length (`length`, `minLength`, `maxLength`) and digit counts (`totalDigits`, `fractionDigits`) |
 
 ## IDS 1.1 preview (unstable)
 

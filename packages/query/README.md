@@ -79,7 +79,8 @@ console.log(wall.storey()?.name);    // 'Ground Floor'
 console.log(wall.building()?.name);  // 'Office Tower'
 
 // Containment + composition
-const openings = wall.contains(); // openings hosted by the wall
+const openings = wall.voids();      // openings cut into the wall (IfcRelVoidsElement)
+const contents = wall.storey()?.contains() ?? []; // elements in the wall's storey (IfcRelContainedInSpatialStructure)
 const aggregates = wall.decomposes();
 ```
 
@@ -120,6 +121,8 @@ console.table(result.rows);
 ```
 
 Tables exposed: `entities`, `properties`, `quantities`, `relationships`, plus the views `walls`, `doors`, `windows`, `slabs`, `columns`, `beams`, `spaces`, `entity_properties` and `entity_quantities`. Useful when you'd rather write SQL than chain method calls.
+
+The `properties` and `quantities` tables are copied from the store's property and quantity tables. A STEP store from `parseColumnar()` leaves those empty and extracts property sets on demand, so on such a store the two tables (and any join on them, like the example above) return no rows; the fluent `whereProperty` and `properties` API is the way to read them. IFCX stores fill both tables.
 
 DuckDB is loaded lazily on the first `sql()` call and is not bundled; its WASM bundle is fetched from jsDelivr (`getJsDelivrBundles`) at that point. To use the SQL API, install it alongside:
 

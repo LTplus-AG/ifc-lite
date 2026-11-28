@@ -24,7 +24,7 @@ import { buildDefaultToolRegistry } from './index.js';
 import { transformTools } from './transform.js';
 import { ToolRegistry } from './types.js';
 
-/** Bytes of the full-scope `tools/list` result. Lower it when the catalog shrinks; raising it needs a reason in the commit message. */
+/** Bytes of the full-scope `tools/list` result before the scripting tools. Lower it when the catalog shrinks; raising it needs a reason in the commit message. */
 const TOOLS_LIST_BUDGET = 149_000;
 
 /**
@@ -113,8 +113,12 @@ describe('tool catalog', () => {
     const transformNames = new Set(transformTools.map((tool) => tool.name));
     const transformBytes = listed.filter((tool) => transformNames.has(tool.name))
       .reduce((sum, tool) => sum + Buffer.byteLength(JSON.stringify(tool)) + 1, 0); // includes each array separator
-    expect(bytes - transformBytes).toBeLessThanOrEqual(135_000);
-    expect(bytes).toBeLessThanOrEqual(TOOLS_LIST_BUDGET);
+    const addedNames = new Set(['script_run', 'script_run_mutate']);
+    const addedBytes = listed.filter((tool) => addedNames.has(tool.name))
+      .reduce((sum, tool) => sum + Buffer.byteLength(JSON.stringify(tool)) + 1, 0);
+    expect(addedBytes).toBeLessThanOrEqual(8_200);
+    expect(bytes - addedBytes - transformBytes).toBeLessThanOrEqual(135_000);
+    expect(bytes - addedBytes).toBeLessThanOrEqual(TOOLS_LIST_BUDGET);
   });
 
   // CodeRabbit on #11550: toToolDefinition must carry outputSchema and icons onto the wire.

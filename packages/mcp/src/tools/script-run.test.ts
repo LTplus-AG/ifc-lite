@@ -628,13 +628,12 @@ it('keeps structured errors for a transform tool whose output schema accepts the
 
 describe('script_run under --read-only', () => {
   it.each([
-    { scope: readOnlyScope(), code: 'PERMISSION_DENIED' },
-    { scope: fullScope(), code: 'READ_ONLY' },
-  ])('hides and refuses script_run_mutate under read-only config ($code)', async ({ scope, code }) => {
+    { scope: readOnlyScope(), readOnly: false, code: 'PERMISSION_DENIED' },
+    { scope: fullScope(), readOnly: true, code: 'READ_ONLY' },
+  ])('hides and refuses script_run_mutate when writes are restricted ($code)', async ({ scope, readOnly, code }) => {
     const server = new MCPServer({
-      // The pairing the CLI builds for --read-only (cli.ts).
       version: '0.0.0-test', registry: ctx.registry, scope,
-      config: { ...DEFAULT_CONFIG, readOnly: true }, tools: buildDefaultToolRegistry(),
+      config: { ...DEFAULT_CONFIG, readOnly }, tools: buildDefaultToolRegistry(),
       resources: new ResourceRegistry(), prompts: new PromptRegistry(),
     });
     const transport = new InProcessTransport();

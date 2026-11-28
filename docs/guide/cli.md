@@ -1336,7 +1336,7 @@ ifc-lite ext verify my-tool.iflx --key ~/.config/ifclite/key.public.iflk --json
 | `test <dir>` | Run `manifest.tests` against an in-process sandbox. Exits non-zero on any failure. |
 | `keygen` | Generate an Ed25519 keypair and write `<prefix>.public.iflk` + `<prefix>.private.iflk` (private file is `0600`). |
 | `sign <bundle>` | Sign a directory or unsigned `.iflx`. |
-| `verify <bundle>` | Inspect a `.iflx`: prints `id@version` and whether it is signed (with the signature's fingerprint and signing time). With `--key`, also check that the signature matches the expected public key fingerprint. |
+| `verify <bundle>` | Inspect a `.iflx` and verify its embedded signature if signed. Successful text output shows `id@version`, signing status and, for a signed bundle, its fingerprint and signing time. With `--key`, require a signed bundle and the expected public key fingerprint. |
 | `capabilities` | List every capability in the catalogue with its risk tier and description. |
 
 **Common flags:**
@@ -1346,7 +1346,7 @@ ifc-lite ext verify my-tool.iflx --key ~/.config/ifclite/key.public.iflk --json
 | `--json` | Machine-readable output (validate / test / verify / capabilities) |
 | `--bail` | Stop on first test failure (`ext test`) |
 | `--out <file>` | Output path (pack / sign); key-file prefix for keygen |
-| `--key <file>` | Key file path (sign / verify, and pack with `--sign`) |
+| `--key <file>` | Private key for `sign` or `pack`; passing it to `pack` enables signing. Public key for `verify`. |
 | `--id <id>` | Override the manifest id during `ext init` |
 | `--name <name>` | Override the manifest name during `ext init` |
 | `--label <name>` | Label stored in the keypair (`ext keygen`) |

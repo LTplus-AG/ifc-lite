@@ -120,8 +120,9 @@ metadata. The Georeferencing section shows the model's alignment status:
 **Aligned (identity)**, **Alignment failed** or **Not aligned**. By default the
 anchor is the earliest-loaded model with a usable map conversion and CRS.
 **Make anchor** pins another model as the anchor, and **Unpin** returns to the
-default. Pinning moves nothing by itself: choose **Re-align** to re-bake every
-model's geometry against the current anchor.
+default. Pinning moves nothing by itself: choose **Re-align**. This restores the
+anchor's original frame and realigns the other models that have geometry and
+usable georeferencing.
 
 ### Global vs Local IDs
 
@@ -224,7 +225,7 @@ The viewer provides controls for each loaded model in the hierarchy's
 | **Sync from source** | Reload a model opened from a [cloud source](cloud-sources.md) |
 | **Remove** | Unload a model. Its ID range is retired, not reused, so stale selections and undo entries cannot point at a later model |
 
-The display name is the file name. Selecting rows that all belong to one model
+The display name defaults to the file name. Selecting rows that all belong to one model
 makes it the active model, which single-model tools use as their default target.
 
 ## Repositioning models and pointclouds
@@ -542,9 +543,10 @@ const result = await parseFederatedIfcx([
 ```
 
 `addIfcxOverlay` adds a further layer to an existing result. In the viewer,
-drop several `.ifcx` files at once, or use **Open .ifcx files** in the
-**Layer stack** panel, which lists the layers strongest on top. An IFCX overlay
-cannot be added to an IFC4 model.
+open a stack by dropping several `.ifcx` files together or by choosing
+**Open .ifcx files** in the empty **Layer stack** panel. Use **Add model** to
+append overlays to a loaded IFCX stack. The panel lists the strongest layer
+first. A loaded non-IFCX model cannot accept IFCX overlays.
 
 See the [IFC5 Parsing Guide](parsing.md) for more details on IFCX format support.
 

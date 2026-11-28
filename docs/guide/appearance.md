@@ -181,7 +181,7 @@ images, clipping, transparency, patterns and other unsupported content are
 listed, never silently dropped. To proceed anyway, accept the partial
 conversion; the omissions are recorded in the annotation's
 `IfcLite_PdfVectorConversion` property set. A page with no vector content stays
-a raster reference. User-cropped pages are not yet supported. **Cancel creation**
+a raster reference. A user crop clips the vector conversion to the registered area. **Cancel creation**
 cancels preparation before publication. Use normal Undo/Redo and IFC + images
 export for the created object.
 

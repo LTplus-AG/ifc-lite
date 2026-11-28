@@ -105,9 +105,10 @@ separate `@ifc-lite/flow-nodes/ai` entry (see below).
   ports shown as results. `ifc-lite flow describe` prints both.
 - `lacing`, `tracking` and `trackingKey` are per node. Positions (`pos`) live in the file;
   tracked element sets do not.
-- The current `flowVersion` is 2. Version-1 documents, like this one, migrate when
-  parsed. Input `kind` is one of `scalar`, `enum`, `entitySet`, `storey`, `file`,
-  `files` or `table`.
+- The current `flowVersion` is 2. The parser migrates version-1 documents before
+  validating them. This abbreviated excerpt omits nodes required by its input and
+  output declarations. Input `kind` is one of `scalar`, `enum`, `entitySet`,
+  `storey`, `file`, `files` or `table`.
 
 The full document is `apps/viewer/src/lib/flow/examples/05-fire-rating-audit.flow.json` — the panel’s example 5, which the CLI test runs end to end.
 
@@ -738,9 +739,10 @@ jobs:
 (`${{ secrets.API_TOKEN }}`, GitHub's own access control) and the graph's
 own `secret.read:API_TOKEN` capability (`ifc-lite`'s — a graph that does
 not declare it cannot read the env var even though the workflow set it).
-`flow run --json` redacts the value before it is written to
-`run-summary.json`, and redacts the job log the same way, so the PR comment
-and the log only ever show `<secret:API_TOKEN>` if the value surfaced at all.
+`flow run --json` redacts literal occurrences of resolved secrets in the run
+summary, which this workflow writes to `run-summary.json` and uses for the PR
+comment. The CLI also redacts run diagnostics. Other workflow output and
+transformed secret values are outside this redaction.
 The `--out` IFC file is not scanned: a graph that writes a secret into a model
 property puts it in the uploaded model. Do not write secrets into the model.
 

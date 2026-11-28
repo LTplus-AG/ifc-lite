@@ -15,7 +15,7 @@ A `.ply` file is told apart by its content, not its name: an ordinary point-clou
 
 ## Opening a capture
 
-Captures are enabled by default. A self-hosted build can switch them off with `VITE_GAUSSIAN_SPLATS=disabled` at build time: every entry point below then refuses a capture before decoding it, and the file picker stops listing `.splat`. Any value other than `enabled` (or the presenter build's `internal-unqualified`) also disables them, so a mistyped value fails closed.
+Captures are enabled by default. A self-hosted build can switch them off with `VITE_GAUSSIAN_SPLATS=disabled` at build time: every entry point below then refuses a capture before decoding it, and the file picker stops listing `.splat`. Any other nonempty value (besides `enabled` and the presenter build's `internal-unqualified`) also disables them, so a mistyped value fails closed. An empty or unset value uses the committed default.
 
 Use any of the usual entry points: **Open**, drag and drop onto the window, **Add model** in the model list, a `?model=` link, or a saved federation setup. All of them go through the same loader and the same checks. The capture is decoded in a background worker and appears in the model list with its splat count.
 

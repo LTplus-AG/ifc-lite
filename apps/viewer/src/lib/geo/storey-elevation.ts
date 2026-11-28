@@ -38,6 +38,7 @@ export function displayStoreyElevationMeters(
   georef: EffectiveGeoreference | null | undefined,
   store?: IfcDataStore | null,
   storeyId?: number,
+  engineeringRiseMeters = 0,
 ): number {
   // The hierarchy value is intentionally relative, and its placement fallback
   // contains only the storey's own Z. For display, resolve the complete
@@ -46,18 +47,17 @@ export function displayStoreyElevationMeters(
     ? resolveProductOriginMeters(store, storeyId)
     : null;
 
+  const relativeWithRise = relativeElevationMeters + engineeringRiseMeters;
   if (!hasUsableMapGeoref(georef)) {
-    return storeyOrigin && Number.isFinite(storeyOrigin.z) ? storeyOrigin.z : relativeElevationMeters;
+    return storeyOrigin && Number.isFinite(storeyOrigin.z) ? storeyOrigin.z + engineeringRiseMeters : relativeWithRise;
   }
 
   const mapUnitScale = getMapUnitScale(georef.projectedCRS, georef.lengthUnitScale);
-  // Keeping the engineering point and origin in the same zero-based frame
-  // makes RTC/origin shifts cancel while the canonical projection path
-  // supplies MapConversion, unit, Scale, and FactorZ handling. The chain Z is
-  // the only engineering height fed in, so OrthogonalHeight is added once.
+  // Put the rise in the engineering point so MapConversion scales it with
+  // the placement Z. The zero-based frame keeps RTC/origin shifts out.
   const viewerPoint = storeyOrigin
-    ? ifcToViewerAxes(storeyOrigin)
-    : { x: 0, y: relativeElevationMeters, z: 0 };
+    ? ifcToViewerAxes({ ...storeyOrigin, z: storeyOrigin.z + engineeringRiseMeters })
+    : { x: 0, y: relativeWithRise, z: 0 };
   const projected = viewerPointToProjected(
     viewerPoint,
     georef,
@@ -65,7 +65,7 @@ export function displayStoreyElevationMeters(
   );
   const absoluteElevation = projected.height * mapUnitScale;
 
-  return Number.isFinite(absoluteElevation) ? absoluteElevation : relativeElevationMeters;
+  return Number.isFinite(absoluteElevation) ? absoluteElevation : relativeWithRise;
 }
 
 /**
@@ -76,25 +76,26 @@ export function displayStoreyElevationMeters(
  * The absolute value reads the PARSED placement chain. A storey re-levelled
  * this session (#9013) passes its live relative elevation, which then differs
  * from the parsed one: the badge keeps the file's absolute offsets (site,
- * building, georeference) and adds the live change on top.
+ * building, georeference) and adds the live change on top. An engineering rise
+ * supplied separately is part of the IFC point and goes through projection.
  */
 export function createStoreyDisplayElevationResolver(
   store: IfcDataStore | null | undefined,
   coordinateInfo: CoordinateInfo | undefined,
   mutations: GeorefMutationDataLike | undefined,
-): (storeyId: number, relativeElevationMeters: number) => number {
+): (storeyId: number, relativeElevationMeters: number, engineeringRiseMeters?: number) => number {
   let georef: EffectiveGeoreference | null | undefined;
   let georefResolved = false;
-  return (storeyId, relativeElevationMeters) => {
-    if (!store) return relativeElevationMeters;
+  return (storeyId, relativeElevationMeters, engineeringRiseMeters = 0) => {
+    if (!store) return relativeElevationMeters + engineeringRiseMeters;
     if (!georefResolved) {
       georef = getEffectiveGeoreference(store, coordinateInfo, mutations);
       georefResolved = true;
     }
     const parsed = store.spatialHierarchy?.storeyElevations?.get(storeyId);
     if (parsed === undefined || Math.abs(relativeElevationMeters - parsed) < 1e-9) {
-      return displayStoreyElevationMeters(relativeElevationMeters, georef, store, storeyId);
+      return displayStoreyElevationMeters(relativeElevationMeters, georef, store, storeyId, engineeringRiseMeters);
     }
-    return displayStoreyElevationMeters(parsed, georef, store, storeyId) + (relativeElevationMeters - parsed);
+    return displayStoreyElevationMeters(parsed, georef, store, storeyId, engineeringRiseMeters) + (relativeElevationMeters - parsed);
   };
 }

@@ -189,21 +189,38 @@ function cutFromPlan(ui: HTMLElement, modelId: string, expressId: number): void 
   click(button);
 }
 
-it('#11459 keeps two authored elevations selectable when storeys share one placement', async () => {
-  const step = groundStorey.replace('(#5));', '(#5,#8));')
-    .replace('#11=IFCLOCALPLACEMENT', "#8=IFCBUILDINGSTOREY('0Story0000000000000002',$,'Level 2',$,$,#14,$,$,.ELEMENT.,3000.);\n#11=IFCLOCALPLACEMENT");
-  load({ ...bounded('a', 8), ifcDataStore: await parseStoreys(step) });
-  const ui = render(<><HudPopover><SectionActivePlaneRow /></HudPopover><StoreyFloorplanButton /></>);
-  openStoreyMenu(ui);
-  assert.match(storeyRows('Level 1')[0]?.textContent ?? '', /0\.00/);
-  assert.match(storeyRows('Level 2')[0]?.textContent ?? '', /3\.00/);
-  for (const [name, id, cut] of [['Level 1', 5, 1.2], ['Level 2', 8, 4.2]] as const) {
-    click(storeyRows(name)[0]);
-    assert.ok(Math.abs(cutY(8) - cut) < 1e-9);
-    cutFromPlan(ui, 'a', id);
-    assert.ok(Math.abs(cutY(8) - cut) < 1e-9);
-  }
-});
+const sharedPlacementStoreys = groundStorey.replace('(#5));', '(#5,#8));')
+  .replace('#11=IFCLOCALPLACEMENT', "#8=IFCBUILDINGSTOREY('0Story0000000000000002',$,'Level 2',$,$,#14,$,$,.ELEMENT.,3000.);\n#11=IFCLOCALPLACEMENT");
+
+const scaledSharedPlacementStoreys = sharedPlacementStoreys
+  .replace("'IFC4'", "'IFC4X3_ADD2'")
+  .replace('.MILLI.,.METRE.', '$,.METRE.')
+  .replace('.ELEMENT.,3000.);', '.ELEMENT.,3.);')
+  .replace("$,$,$,$,#3);", "$,$,$,(#20),#3);")
+  .replace('ENDSEC;\nEND-ISO', `#20=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#12,$);
+#21=IFCPROJECTEDCRS('EPSG:2056',$,$,$,$,$,#2);
+#22=IFCMAPCONVERSIONSCALED(#20,#21,2600000.,1200000.,400.,1.,0.,1.,1.,1.,2.);
+ENDSEC;
+END-ISO`);
+
+for (const [kind, step, lowerHeight, upperHeight] of [
+  ['engineering', sharedPlacementStoreys, '0.00 m', '3.00 m'],
+  ['projected with FactorZ=2', scaledSharedPlacementStoreys, '400.00 m', '406.00 m'],
+] as const) {
+  it(`#11459 shared placement keeps both ${kind} labels and physical cuts`, async () => {
+    load({ ...bounded('a', 8), ifcDataStore: await parseStoreys(step) });
+    const ui = render(<><HudPopover><SectionActivePlaneRow /></HudPopover><StoreyFloorplanButton /></>);
+    openStoreyMenu(ui);
+    assert.equal(storeyRows('Level 1')[0]?.lastElementChild?.textContent, lowerHeight);
+    assert.equal(storeyRows('Level 2')[0]?.lastElementChild?.textContent, upperHeight);
+    for (const [name, id, cut] of [['Level 1', 5, 1.2], ['Level 2', 8, 4.2]] as const) {
+      click(storeyRows(name)[0]);
+      assert.ok(Math.abs(cutY(8) - cut) < 1e-9);
+      cutFromPlan(ui, 'a', id);
+      assert.ok(Math.abs(cutY(8) - cut) < 1e-9);
+    }
+  });
+}
 
 it('#11459 both storey controls use the placed federation bounds before and after renderer sync', async () => {
   const data = await parseStoreys(groundStorey);

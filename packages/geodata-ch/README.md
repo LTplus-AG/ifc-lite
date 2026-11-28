@@ -22,6 +22,14 @@ the data owner requires. Browser and Node, no rendering, no IFC writing.
 - Descriptors for imagery, basemap and hazard layers (WMTS/WMS), with no
   fetching.
 
+## Install
+
+```bash
+npm install @ifc-lite/geodata-ch
+```
+
+## Usage
+
 ```ts
 import { createSwissGeodata, VECTOR_LAYERS } from '@ifc-lite/geodata-ch';
 
@@ -65,7 +73,11 @@ terrain) implements the same interfaces. Only Switzerland is implemented here.
 - **A parcel without a usable extract is not "no record".**
   `oerebExtractsAtPoint(x, y)` returns `{ extracts, unavailable }`: a parcel
   the register lists without an extract URL is in `unavailable`, and only both
-  lists empty means the register has nothing there. `geocode`'s `limit` must be
+  lists empty means the register has nothing there. `oerebExtract(egrid)`
+  throws an `OerebExtractUnavailableError` (with `egrid`, `status` and
+  `canton`) when the register lists the parcel without a usable extract URL;
+  it returns `null` only when neither the register nor the canton table has an
+  entry. `geocode`'s `limit` must be
   a whole number from 1 to 50, otherwise it throws a `RangeError`.
 - **Request counts say what they count.** `FeatureQueryResult.requests` is the
   number of cell queries (what `maxRequests` budgets); `networkRequests` is

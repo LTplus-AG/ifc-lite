@@ -149,17 +149,24 @@ withhold the total instead of returning a partial result. IFC2X3 cost metadata a
 relationships remain inspectable, with an explicit partial-read diagnostic;
 IFC2X3 evaluation is intentionally unsupported.
 
+## Subpath exports
+
+- `@ifc-lite/parser/browser` exports `WorkerParser`, which runs `parseColumnar()`
+  in a Web Worker on a `SharedArrayBuffer` of the IFC bytes, plus the spare-worker
+  helpers `prepareSpareParser`, `hasSpareParserWorker`, `isSpareParserWorkerWarming`
+  and `releaseSpareParserWorker`. It uses bundler worker imports, so it is browser-only.
+- `@ifc-lite/parser/structural-glyphs` exports `structuralGlyphs(store, extraction)`,
+  which turns the supports and loads of an `extractStructuralOnDemand()` result into a
+  plain-data glyph list. Every glyph carries a kind, position and source entity.
+  Supports, forces and moments carry a direction, displacements may carry one,
+  and forces and moments also carry a magnitude.
+
 ## Performance
 
-| Model size | Parse time |
-|---:|---:|
-| 10 MB | ~100–200 ms |
-| 50 MB | ~600–700 ms |
-| 200 MB | ~2.5–3 s |
-
-- Tokenization: high single-pass throughput on M1/M2 laptops
-- Bundle: ~200 KB gzipped (schema registry included)
-- Memory: TypedArray columnar storage
+Storage is TypedArray-backed and columnar, and properties are extracted on
+demand. Measured load times (stamped from the committed benchmark baseline)
+and the separately measured WASM bundle size live in the
+[Performance guide](https://ifclite.dev/docs/guide/performance/).
 
 ## API
 

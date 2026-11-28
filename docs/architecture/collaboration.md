@@ -2,8 +2,9 @@
 
 IFC-Lite collaboration is built around `@ifc-lite/collab`, with the sync and
 persistence service provided by `@ifc-lite/collab-server`. The browser viewer,
-CLI, MCP server, and third-party clients consume these shared packages rather
-than implementing independent collaboration protocols.
+the MCP server (its layer tools), and third-party clients consume these shared
+packages rather than implementing independent collaboration protocols. The CLI
+does not depend on `@ifc-lite/collab`.
 
 ## Model
 

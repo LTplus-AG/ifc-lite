@@ -27,7 +27,7 @@
     "ajv": "^8.17.1",
     "jsonld": "^9.0.0",
     "n3": "^2.13.12",
-    "rdf-validate-shacl": "^0.6.5"
+    "rdf-validate-shacl": "^0.7.0"
   },
   "devDependencies": {
     "@mergifyio/vitest": "^2026.11.8",

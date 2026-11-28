@@ -61,16 +61,20 @@ it('reports populated task losses alongside cascaded omissions (#11326, #10970)'
   expect(output).toMatch(/^#6=IFCTASK\(/m);
 });
 
-it('clears an optional Representation on an unconverted varying action (#10970)', async () => {
+it('clears an optional Representation on a varying action written constant (#10970, #11354)', async () => {
   const raw = readFileSync(new URL('../../../rust/export/tests/fixtures/schema_unrooted_legacy_optional.ifc', import.meta.url));
   const store = await new IfcParser().parseColumnar(Uint8Array.from(raw).buffer);
   const merged = new MergedExporter([{ id: 'source', name: 'source', dataStore: store }]);
   const options = { schema: 'IFC4' } as const;
-  for (const result of [new StepExporter(store).export(options), merged.export(options), await merged.exportAsync(options)]) {
+  // No load configuration holds the action: StepExporter writes it constant (#11354), the merged writer still keeps
+  // the IFC2X3 keyword. Either way its Representation is cleared.
+  const constant = "#30=IFCSTRUCTURALCURVEACTION('3sXjCM_kPHN8ZCpuBhV_98',$,'A',$,$,$,$,#11,.GLOBAL_COORDS.,.F.,.TRUE_LENGTH.,.CONST.);";
+  const kept = "#30=IFCSTRUCTURALLINEARACTIONVARYING('3sXjCM_kPHN8ZCpuBhV_98',$,'A',$,$,$,$,#11,.GLOBAL_COORDS.,.F.,$,.TRUE_LENGTH.,$,$);";
+  for (const [result, expected] of [[new StepExporter(store).export(options), constant], [merged.export(options), kept], [await merged.exportAsync(options), kept]] as const) {
     const output = new TextDecoder().decode(result.content);
-    expect(output).toContain("#30=IFCSTRUCTURALLINEARACTIONVARYING('3sXjCM_kPHN8ZCpuBhV_98',$,'A',$,$,$,$,#11,.GLOBAL_COORDS.,.F.,$,.TRUE_LENGTH.,$,$);");
+    expect(output).toContain(expected);
     expect(output).not.toMatch(/^#(?:41|42|43)=/m);
-    expect(result.stats.warnings.some(warning => warning.includes('#30 (IFCSTRUCTURALLINEARACTIONVARYING) was omitted'))).toBe(false);
+    expect(result.stats.warnings.some(warning => /#30 \(IFCSTRUCTURAL\w+\) was omitted/.test(warning))).toBe(false);
   }
   const report = analyzeConversionLoss(store, 'IFC2X3', 'IFC4');
   expect(report.entries.find(entry => entry.sourceType === 'IFCPRODUCTDEFINITIONSHAPE')?.expressIds).toEqual([43]);

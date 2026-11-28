@@ -2,10 +2,10 @@
 /** Matches rust/export/src/schema_structural_varying.rs (#9668). */
 import { destabilizingUnknown } from './schema-converter-structural.js';
 import { listItems } from './schema-converter-structural-axes.js';
-import { refId } from './schema-ifc2x3-records.js';
 import { holdsValue, withoutComments } from './step-comment-skip.js';
 import { referencesAnyExpressId } from './step-ref-scan.js';
-import type { SourceRecords, StructuralRewrite } from './schema-converter-structural-source.js';
+import { slotRef, type SourceRecords, type StructuralRewrite } from './schema-converter-structural-source.js';
+import { constantAction } from './schema-structural-varying-constant.js';
 
 /**
  * IFC2X3's varying actions and the IFC4 actions they become. IFC4 dropped
@@ -65,7 +65,7 @@ export class StructuralVarying {
     if (!work) return;
     this.readAspects(source.ids('IFCSHAPEASPECT'), (id) => source.slots(id));
     for (const id of mode === 'downgrade' ? source.ids('IFCSTRUCTURALLOADCONFIGURATION') : []) {
-      const values = listItems(source.slots(id)?.[1] ?? '')?.map(refId);
+      const values = listItems(source.slots(id)?.[1] ?? '')?.map(slotRef);
       if (values?.length && values.every((v) => v !== null)) this.configs.set(id, values as number[]);
     }
     this.mode = mode;
@@ -83,7 +83,7 @@ export class StructuralVarying {
   private readAspects(ids: readonly number[], slots: (id: number) => readonly string[] | undefined): void {
     for (const id of ids) {
       const args = slots(id);
-      const shape = refId(args?.[4]);
+      const shape = slotRef(args?.[4]);
       if (shape === null) continue;
       const list = this.aspects.get(shape) ?? [];
       list.push({ id, representations: listItems(args?.[0] ?? '')?.length ?? -1 });
@@ -104,7 +104,7 @@ export class StructuralVarying {
         if (!args || args.some((a, i) => i !== 7 && referencesAnyExpressId(a, configs))) continue;
         if (this.toIfc2x3(id, ifc4, args)) {
           candidates.add(id);
-          consumed.add(refId(args[7])!);
+          consumed.add(slotRef(args[7])!);
         }
       }
     }
@@ -131,7 +131,7 @@ export class StructuralVarying {
    * enough loads, all of one type that the IFC2X3 WR61 admits.
    */
   private convertible(kind: Kind, representation: string, loads: readonly (number | null)[], location?: number | null): number | undefined {
-    const found = this.aspects.get(refId(representation) ?? -1);
+    const found = this.aspects.get(slotRef(representation) ?? -1);
     if (found?.length !== 1 || (location !== undefined && found[0].id !== location) || loads.length < kind.min || found[0].representations !== loads.length) return undefined;
     const type = this.typeOf(loads[0]);
     const first: readonly string[] = kind.first;
@@ -140,10 +140,25 @@ export class StructuralVarying {
 
   /**
    * IFC2X3 -> IFC4, when this prepass is armed: whether this IFC2X3 varying
-   * action stays unconverted (no IFC4 entity holds it then). False when unarmed.
+   * action stays unconverted (no IFC4 entity holds it then). Every record of the
+   * 14 attributes IFC2X3 gives it is written, as a configuration or as a constant
+   * action (`constant`), so only a malformed one stays. False when unarmed.
    */
   staysUnconverted(entity: string, args: readonly string[]): boolean {
-    return this.upgrading && KINDS.some((k) => k.ifc2x3 === entity) && !this.upgradeLoads(entity, args);
+    return this.upgrading && KINDS.some((k) => k.ifc2x3 === entity) && args.length !== 14;
+  }
+
+  /**
+   * The constant IFC4 action for a varying action no configuration holds (#11037,
+   * #11354): its initial load and PredefinedType CONST. Undefined unless the
+   * record is an IFC2X3 varying action of 14 attributes.
+   */
+  constant(entity: string, args: readonly string[], carried: ReadonlySet<string>): StructuralRewrite | undefined {
+    const kind = KINDS.find((k) => k.ifc2x3 === entity);
+    if (!kind || args.length !== 14) return undefined;
+    const allowed: readonly string[] = kind.first;
+    const load = allowed.includes(this.typeOf(slotRef(args[7])));
+    return constantAction(kind.ifc4, entity, args, load, carried.has('CausedBy'));
   }
 
   /** Armed for IFC2X3 -> IFC4, with the exporter's id allocator. */
@@ -153,13 +168,14 @@ export class StructuralVarying {
   private upgradeLoads(entity: string, args: readonly string[]): { kind: Kind; loads: (number | null)[] } | undefined {
     const kind = KINDS.find((k) => k.ifc2x3 === entity);
     if (!this.upgrading || !kind || args.length !== 14) return undefined;
-    const loads = [args[7], ...(listItems(args[13]) ?? [])].map(refId);
-    return this.convertible(kind, args[6], loads, refId(args[12])) === undefined ? undefined : { kind, loads };
+    // Comment-aware, as the constant fallback reads AppliedLoad: a commented reference must not fall back (#11354).
+    const loads = [args[7], ...(listItems(args[13]) ?? [])].map(slotRef);
+    return this.convertible(kind, args[6], loads, slotRef(args[12])) === undefined ? undefined : { kind, loads };
   }
 
   private toIfc4(entity: string, args: readonly string[], carried: ReadonlySet<string>): StructuralRewrite | undefined {
     const found = this.upgradeLoads(entity, args);
-    if (!found) return undefined;
+    if (!found) return this.upgrading ? this.constant(entity, args, carried) : undefined;
     const { kind, loads } = found;
     const id = this.ids!();
     this.pending.push(`#${id}=IFCSTRUCTURALLOADCONFIGURATION($,(${loads.map((l) => `#${l}`).join(',')}),$);`);
@@ -174,7 +190,7 @@ export class StructuralVarying {
     if (!kind || args.length !== 12) return undefined;
     const predefined = args[11].trim().toUpperCase();
     if (!(kind.spread as readonly string[]).includes(predefined)) return undefined;
-    const config = refId(args[7]) ?? -1;
+    const config = slotRef(args[7]) ?? -1;
     const values = this.configs.get(config);
     if (!values) return undefined;
     const aspect = this.convertible(kind, args[6], values);

@@ -53,6 +53,23 @@ fn subset_and_edited_exports_convert_varying_actions_11037() {
 }
 
 #[test]
+fn edited_export_keeps_a_commented_applied_load_in_the_constant_action_11354() {
+    let plain = varying_fixture();
+    assert!(plain.contains(",#11,.GLOBAL_COORDS."), "fixture shape");
+    for slot in ["#11", "#11 /* initial load */", "/* x */#11"] {
+        let text = plain.replace(",#11,.GLOBAL_COORDS.", &format!(",{slot},.GLOBAL_COORDS."));
+        let options = ifc_lite_export::StepOptions {
+            schema: Some("IFC4".into()),
+            attribute_mutations: vec![ifc_lite_export::AttrMutation { express_id: 30, index: 12, value: "#9999".into() }],
+            ..Default::default()
+        };
+        let (output, _, warnings) = ifc_lite_export::export_step_with_diagnostics(text.as_bytes(), &options).unwrap();
+        assert!(output.lines().any(|line| line.starts_with("#30=") && line.contains(&format!(",{slot},.GLOBAL_COORDS.,.F.,.TRUE_LENGTH.,.CONST.);"))), "{slot}: {output}");
+        assert!(!warnings.iter().any(|w| w.contains("no usable AppliedLoad")), "{slot}: {warnings:?}");
+    }
+}
+
+#[test]
 fn edited_export_counts_each_varying_action_that_loses_its_configuration_11037() {
     let text = varying_fixture();
     let second = text.lines().find(|line| line.starts_with("#30=")).unwrap()
@@ -91,4 +108,29 @@ fn logged_export_counts_typed_properties_and_deferred_varying_records_once_10797
         .map(|line| line.split_once('=').unwrap().0).collect();
     assert_eq!(stats.written, ids.len());
     assert_eq!(ids.iter().collect::<std::collections::HashSet<_>>().len(), ids.len(), "{output}");
+}
+
+#[test]
+fn effective_exports_refuse_an_action_without_a_usable_initial_load_11354() {
+    use ifc_lite_export::{export_step_with_diagnostics, export_step_with_log, AttrMutation, StepOptions};
+
+    let source = varying_fixture();
+    let options = StepOptions { schema: Some("IFC4".into()), ..StepOptions::default() };
+    let edited = StepOptions {
+        attribute_mutations: vec![AttrMutation { express_id: 30, index: 7, value: "$".into() }],
+        schema: options.schema.clone(),
+        ..StepOptions::default()
+    };
+    let log = serde_json::from_value(serde_json::json!({"mutations": [
+        {"type": "UPDATE_POSITIONAL_ATTRIBUTE", "entityId": 30, "attributeName": "@7", "newValue": "#9"}
+    ]})).unwrap();
+    let Err(edited_error) = export_step_with_diagnostics(source.as_bytes(), &edited) else {
+        panic!("edited IFC4 export accepted an unset AppliedLoad");
+    };
+    let logged_error = export_step_with_log(source.as_bytes(), &options, &log).unwrap_err();
+    for error in [edited_error, logged_error] {
+        let diagnostic = error.to_string();
+        assert!(diagnostic.contains("#30 (IFCSTRUCTURALLINEARACTIONVARYING)"), "{diagnostic}");
+        assert!(diagnostic.contains("no usable AppliedLoad"), "{diagnostic}");
+    }
 }

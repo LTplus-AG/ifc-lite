@@ -68,6 +68,17 @@ describe('validateClashRunDocument: consistency of an untrusted document', () =>
     expect(carried.carried.map((c) => c.to)).toEqual([decisionKey]);
   });
 
+  it('checks the legacy key of an ambiguous finding by structure, since its ref is not stored', () => {
+    const repeated = result([clash('D1', 'W1'), { ...clash('D1', 'W1'), id: 'r:D1:W1:dup', a: { ...clash('D1', 'W1').a, ref: 99, keyAmbiguous: true } }],
+      ['D1'], ['W1']);
+    const doc = roundTrip(build({ result: repeated }));
+    expect(doc.findings.every((f) => f.key === null)).toBe(true);
+    expect(validateClashRunDocument(doc).ok).toBe(true);
+    doc.findings[1].legacyKey = 'r D9 W9';
+    const res = validateClashRunDocument(doc);
+    expect(res.ok ? [] : res.errors).toEqual(["$.findings[1].legacyKey: does not follow from the finding's elements and rule"]);
+  });
+
   it('refuses unknown properties, a forged legacy key, a coverage rule and a rule-set revision that do not match', () => {
     const doc = roundTrip(build({ result: result([clash('D1', 'W1')], ['D1'], ['W1']) }));
     expect(validateClashRunDocument(doc).ok).toBe(true);

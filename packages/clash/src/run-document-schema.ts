@@ -17,7 +17,7 @@
  */
 
 import { clashElementIdentity, clashPairId } from './object-identity.js';
-import { slotPairKey } from './review.js';
+import { parseClashReviewKey, slotPairKey } from './review.js';
 import {
   clashRuleSetRevision,
   CLASH_RUN_DOCUMENT_SCHEMA_ID,
@@ -186,6 +186,27 @@ const documentCheck = obj({
   }, { review: obj({ status: oneOf('open', 'resolved', 'accepted') }, { comment: str, updatedAt: num }) })),
 });
 
+/** An element's legacy identity: its key, or for a repeated key `@[key, ref]` with an integer ref. */
+function identityNames(identity: string, end: ClashRunDocument['findings'][number]['a']): boolean {
+  if (identity === clashElementIdentity({ key: end.key, ref: 0 })) return true;
+  if (end.ambiguous !== true || !identity.startsWith('@')) return false;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(identity.slice(1));
+  } catch {
+    return false; // not an encoded identity: the caller reports the legacy key as not following
+  }
+  return Array.isArray(parsed) && parsed.length === 2 && parsed[0] === end.key && Number.isInteger(parsed[1]);
+}
+
+/** Whether a finding's legacy key is this rule over exactly its two elements (either order). */
+function legacyKeyNames(finding: ClashRunDocument['findings'][number]): boolean {
+  const parsed = parseClashReviewKey(finding.legacyKey);
+  if (parsed?.format !== 'legacy' || parsed.rule !== finding.rule) return false;
+  return (identityNames(parsed.a, finding.a) && identityNames(parsed.b, finding.b))
+    || (identityNames(parsed.a, finding.b) && identityNames(parsed.b, finding.a));
+}
+
 /**
  * What the schema cannot express: every finding must follow from its own
  * elements and rule, and agree with the manifest. Without these a stored
@@ -230,6 +251,9 @@ function consistencyErrors(doc: ClashRunDocument): string[] {
     const keyless = finding.a.ambiguous === true || finding.b.ambiguous === true;
     if (keyless) {
       if (finding.key !== null) errors.push(`${at}.key: must be null when an element's key is ambiguous`);
+      // The legacy key of an ambiguous endpoint embeds a per-load ref the document does not store,
+      // so check its structure instead: this rule, and identities naming exactly these two elements.
+      if (!legacyKeyNames(finding)) errors.push(`${at}.legacyKey: does not follow from the finding's elements and rule`);
       return;
     }
     const expected = slotPairKey(finding.rule, finding.ruleRevision, [finding.a.slot, finding.a.key], [finding.b.slot, finding.b.key]);

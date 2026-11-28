@@ -19,7 +19,6 @@ import {
 import { referencedModelTagIds } from './model-tag-inputs';
 import type { ClashExclusionRule } from './exclusions';
 import type { ClashRunHostContext } from './host-run-document';
-import type { ClashRunListenerOptions } from './host-run-listeners';
 
 const buildInfo = () => ({
   version: typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : null,
@@ -83,18 +82,20 @@ function deepFreeze<T>(value: T): T {
   return value;
 }
 
-/** Build one frozen run document under one registration's options, from the slots resolved at publish. */
-export function buildRunDocument(
-  result: ClashResult,
-  context: ClashRunHostContext,
-  options: ClashRunListenerOptions,
-  slots: readonly ClashRunSlotBinding[],
-): ClashRunDocument {
+/** What a registration's options resolved to when the run published: slots and pinned revisions. */
+export interface ClashRunPinnedInputs {
+  slots: ClashRunSlotBinding[];
+  ruleRevisions: Readonly<Record<string, string>> | undefined;
+}
+
+/** Build one frozen run document from inputs pinned at publish, so a host's later edits cannot leak in. */
+export function buildRunDocument(result: ClashResult, context: ClashRunHostContext, pinned: ClashRunPinnedInputs): ClashRunDocument {
+  const { slots } = pinned;
   return deepFreeze(buildClashRunDocument({
     result,
     slots,
     engine: buildInfo(),
-    ruleRevisions: options.ruleRevisions,
+    ruleRevisions: pinned.ruleRevisions,
     ruleMemberships: ruleMemberships(result, context, slots),
     exclusions: context.exclusions,
     exclusionRules: documentExclusionRules(context.exclusionRules),

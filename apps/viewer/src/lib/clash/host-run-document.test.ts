@@ -84,6 +84,16 @@ describe('clash run host hook', () => {
     assert.deepEqual(documentOf(events[0]).manifest.slots.map((s) => s.slot), ['round-1:m-arch', 'round-1:m-struct']);
   });
 
+  it('pins ruleRevisions at publish, so a later edit by the host does not relabel the run', async () => {
+    const revisions: Record<string, string> = { r1: 'round-1-rules' };
+    const events = await collect(async () => {
+      const pending = notifyClashRunComplete(result, context);
+      revisions.r1 = 'round-2-rules';
+      await pending;
+    }, { ruleRevisions: revisions });
+    assert.equal(documentOf(events[0]).manifest.rules.items[0].revision, 'round-1-rules');
+  });
+
   it('builds once per run and hands every listener with the same options the same object', async () => {
     const seen: ClashRunCompleteEvent[] = [];
     const offA = onClashRunComplete((event) => { seen.push(event); });

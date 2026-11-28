@@ -24,6 +24,7 @@ import type { ClashExclusionRule } from './exclusions';
 import type { ClashModelTagInputs } from './model-tag-inputs';
 import type { ClashSetFilters } from './set-filter';
 import { clashRunRegistrations, type ClashRunCompleteEvent, type ClashRunListenerOptions } from './host-run-listeners';
+import type { ClashRunPinnedInputs } from './host-run-build';
 
 export interface ModelLike { id: string; name: string }
 
@@ -86,11 +87,13 @@ export function notifyClashRunComplete(result: ClashResult, context: ClashRunHos
   if (registrations.length === 0) return Promise.resolve();
   const captured: ClashRunHostContext = { ...context, presets: [...context.presets], exclusionRules: [...context.exclusionRules] };
   // Per distinct options object: the slots now (or the resolver's failure), the document later.
-  const resolved = new Map<ClashRunListenerOptions, { slots: ClashRunSlotBinding[] } | { error: Error }>();
+  const resolved = new Map<ClashRunListenerOptions, ClashRunPinnedInputs | { error: Error }>();
   for (const { options } of registrations) {
     if (resolved.has(options)) continue;
     try {
-      resolved.set(options, { slots: slotBindings(result, captured.models, options) });
+      // Copied now: a host that edits the record behind `ruleRevisions` meanwhile must not relabel this run.
+      const ruleRevisions = options.ruleRevisions ? Object.fromEntries(Object.entries(options.ruleRevisions)) : undefined;
+      resolved.set(options, { slots: slotBindings(result, captured.models, options), ruleRevisions });
     } catch (err) {
       console.error('[clash] host slot resolver failed', err);
       resolved.set(options, { error: asError(err) });
@@ -102,11 +105,11 @@ export function notifyClashRunComplete(result: ClashResult, context: ClashRunHos
       for (const { listener, options } of registrations) {
         let event = built.get(options);
         if (!event) {
-          const slots = resolved.get(options)!;
-          if ('error' in slots) event = { ok: false, error: slots.error };
+          const pinned = resolved.get(options)!;
+          if ('error' in pinned) event = { ok: false, error: pinned.error };
           else {
             try {
-              event = { ok: true, document: buildRunDocument(result, captured, options, slots.slots) satisfies ClashRunDocument };
+              event = { ok: true, document: buildRunDocument(result, captured, pinned) satisfies ClashRunDocument };
             } catch (err) {
               console.error('[clash] host run document could not be built', err);
               event = { ok: false, error: asError(err) };

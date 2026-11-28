@@ -122,17 +122,21 @@ describe('buildMeshesFromTables allocation by default', () => {
 });
 
 describe('buildMeshesFromTables malformed counts', () => {
-  const withMeshColumn = (name: string, values: ArrayLike<number>) => {
+  const withMeshColumn = (name: string, values: ArrayLike<number>, options?: { sharedBuffers?: boolean }) => {
     const [meshes, vertices, indices] = batch(4);
     const patched: ArrowTableLike = { getChild: (n) => (n === name ? { toArray: () => values, get: (i) => values[i] } : meshes.getChild(n)) };
-    return () => buildMeshesFromTables(patched, vertices, indices);
+    return () => buildMeshesFromTables(patched, vertices, indices, options);
   };
-  it('rejects a count column shorter than the mesh rows', () => {
-    expect(withMeshColumn('vertex_count', new Uint32Array([3, 3]))).toThrow(/inconsistent mesh column lengths/);
-    expect(withMeshColumn('index_start', new Uint32Array([0]))).toThrow(/inconsistent mesh column lengths/);
+  it('with sharedBuffers, rejects a start or count column shorter than the mesh rows', () => {
+    expect(withMeshColumn('vertex_count', new Uint32Array([3, 3]), shared)).toThrow(/inconsistent mesh column lengths/);
+    expect(withMeshColumn('index_start', new Uint32Array([0]), shared)).toThrow(/inconsistent mesh column lengths/);
   });
-  it('rejects a negative count', () => {
-    expect(withMeshColumn('vertex_count', new Int32Array([3, -3, 3, 3]))).toThrow(/invalid vertex or index count/);
+  it('with sharedBuffers, rejects a negative count or start', () => {
+    expect(withMeshColumn('vertex_count', new Int32Array([3, -3, 3, 3]), shared)).toThrow(/invalid start or count/);
+    expect(withMeshColumn('vertex_start', new Int32Array([0, -3, 6, 9]), shared)).toThrow(/invalid start or count/);
+  });
+  it('without it, keeps the published behaviour: a short count column is not rejected up front', () => {
+    expect(withMeshColumn('vertex_count', new Uint32Array([3, 3, 3]))).not.toThrow(/inconsistent mesh column lengths/);
   });
 });
 

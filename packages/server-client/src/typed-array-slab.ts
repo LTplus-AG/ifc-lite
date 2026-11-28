@@ -60,9 +60,10 @@ export class TypedArraySlab<T extends SlabArray> {
 export interface MeshBufferOptions { sharedBuffers?: boolean }
 
 /**
- * The three slabs of one flat batch, after checking the per-mesh columns they are sized from: every
- * column must have a row per mesh and every count must be a non-negative integer. A malformed payload
- * fails loudly here instead of decoding into empty or overlapping meshes.
+ * The three slabs of one flat batch. With `sharedBuffers`, the per-mesh columns the slabs are sized from are
+ * checked first: every start and count column must have a row per mesh, and every start and count must be a
+ * non-negative integer, so a malformed payload fails loudly instead of decoding into empty or overlapping
+ * views. Without it (owned buffers) nothing is sized up front and the decoder behaves exactly as before.
  */
 export function meshSlabs(
   meshCount: number,
@@ -70,16 +71,19 @@ export function meshSlabs(
   indexStarts: ArrayLike<number>, indexCounts: ArrayLike<number>,
   { sharedBuffers = false }: MeshBufferOptions = {},
 ) {
-  if ([vertexStarts, vertexCounts, indexStarts, indexCounts].some((column) => column.length !== meshCount)) {
-    throw new Error('Malformed Parquet geometry: inconsistent mesh column lengths');
-  }
   let vertices = 0, indices = 0;
-  for (let i = 0; i < meshCount; i++) {
-    const v = vertexCounts[i], n = indexCounts[i];
-    if (!Number.isInteger(v) || v < 0 || !Number.isInteger(n) || n < 0) {
-      throw new Error(`Malformed Parquet geometry: mesh ${i} has an invalid vertex or index count (${v}, ${n})`);
+  // Owned buffers (the default) keep the published behaviour exactly, malformed input included: nothing to size.
+  if (sharedBuffers) {
+    if ([vertexStarts, vertexCounts, indexStarts, indexCounts].some((column) => column.length !== meshCount)) {
+      throw new Error('Malformed Parquet geometry: inconsistent mesh column lengths');
     }
-    vertices += v; indices += n;
+    for (let i = 0; i < meshCount; i++) {
+      const v = vertexCounts[i], n = indexCounts[i], vs = vertexStarts[i], is = indexStarts[i];
+      if (![v, n, vs, is].every((value) => Number.isInteger(value) && value >= 0)) {
+        throw new Error(`Malformed Parquet geometry: mesh ${i} has an invalid start or count (${vs}+${v}, ${is}+${n})`);
+      }
+      vertices += v; indices += n;
+    }
   }
   // A zero-capacity slab gives every array its own buffer of exactly its size: the default, owned buffers.
   const capacity = sharedBuffers ? DEFAULT_SLAB_ELEMENTS : 0;

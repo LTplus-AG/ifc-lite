@@ -81,20 +81,19 @@ it('adding a second model decodes none of the primary model\'s compact meshes', 
 
   assert.equal(merged.length, primary.length + 1);
   assert.equal(compactHydrationStats().meshes, decodedBefore, 'no compact mesh was decoded by the add');
-  merged.slice(0, primary.length).forEach((wrapper, i) => {
-    assert.notEqual(wrapper, primary[i], 'a wrapper, not the store mesh');
-    assert.equal(wrapper.compact, primary[i].compact, 'the wrapper is still drawn from the same records');
-    assert.equal(wrapper.modelIndex, 0);
-    assert.equal(wrapper.expressId, primary[i].expressId);
+  merged.slice(0, primary.length).forEach((mesh, i) => {
+    assert.equal(mesh, primary[i], 'the store mesh itself, stamped in place: no wrapper copy');
+    assert.ok(mesh.compact, 'still a compact shell');
+    assert.equal(mesh.modelIndex, 0);
   });
   assert.equal(merged[primary.length].modelIndex, 1);
-  // The scene filter compares the merged wrappers with the uploads it holds (the store meshes): same records, same upload.
-  assert.ok(merged.slice(0, primary.length).every((wrapper, i) => sameMeshUpload(primary[i], wrapper)));
+  // The scene filter compares the merged meshes with the uploads it holds (the store meshes): same records, same upload.
+  assert.ok(merged.slice(0, primary.length).every((mesh, i) => sameMeshUpload(primary[i], mesh)));
   assert.equal(compactHydrationStats().meshes, decodedBefore, 'nor by the upload identity check');
 
-  // A consumer that does read a wrapper's arrays still gets the geometry, decoded once for the mesh and its wrapper.
+  // A consumer that does read a merged mesh's arrays still gets the geometry, decoded once.
   assert.deepEqual([...merged[0].positions], [0, 0, 0, 1, 0, 0, 0, 1, 0]);
-  assert.equal(merged[0].positions, primary[0].positions, 'wrapper and store mesh share one decode');
+  assert.equal(merged[0].positions, primary[0].positions);
   assert.equal(compactHydrationStats().meshes, decodedBefore + 1);
 });
 

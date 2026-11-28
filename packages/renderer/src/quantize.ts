@@ -209,7 +209,8 @@ export function latticeCollapsesGeometry(
   vertexData: Float32Array,
   strideFloats: number,
   indices: Uint32Array,
-  pieces: readonly { positions: Float32Array }[],
+  // Compact rows already carry their welded vertex count.
+  pieces: readonly ({ positions: Float32Array } | number)[],
 ): boolean {
   const vertexCount = (vertexData.length / strideFloats) | 0;
   const ids = new Uint32Array(vertexData.buffer, vertexData.byteOffset, vertexData.length);
@@ -219,7 +220,7 @@ export function latticeCollapsesGeometry(
   }
   let start = 0;
   for (const piece of pieces) {
-    const end = start + piece.positions.length / 3;
+    const end = start + (typeof piece === 'number' ? piece : piece.positions.length / 3);
     if (end > start && latticeFlattensPiece(vertexData, strideFloats, nodes, start, end)) return true;
     start = end;
   }

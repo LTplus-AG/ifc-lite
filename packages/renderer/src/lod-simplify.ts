@@ -32,6 +32,9 @@
 /** Below this many source triangles a batch keeps LOD0 only. */
 export const LOD_MIN_TRIANGLES = 500;
 
+/** A LOD1 range keeping this share of its source indices or more does not pay for its buffer. */
+export const LOD_MAX_KEPT_FRACTION = 0.75;
+
 /** Grid cell edge as a fraction of the batch AABB diagonal (error budget). */
 export const LOD_CELL_FRACTION = 0.02;
 
@@ -43,6 +46,12 @@ export interface LodClusterLayout {
   normalOffset?: number;
   /** World position of the records' frame origin; cells are anchored at the world origin. */
   frameOrigin?: readonly [number, number, number];
+  /**
+   * Return the clustered indices whatever their size (possibly empty): no minimum triangle count and
+   * no "does not pay" test. For a caller that clusters a set of index runs and judges them together
+   * (compact pages, `compact-lod.ts`); a cell-map overflow still returns null.
+   */
+  unconditional?: boolean;
 }
 
 /**
@@ -69,10 +78,10 @@ export function simplifyIndicesByClustering(
   layout: LodClusterLayout | number = {},
 ): Uint32Array | null {
   // The older numeric form named the lane only: it gets no normal tie-break, as before.
-  const { idLaneOffset = 6, frameOrigin = [0, 0, 0] }: LodClusterLayout = typeof layout === 'number' ? { idLaneOffset: layout } : layout;
+  const { idLaneOffset = 6, frameOrigin = [0, 0, 0], unconditional = false }: LodClusterLayout = typeof layout === 'number' ? { idLaneOffset: layout } : layout;
   const normalOffset = typeof layout === 'number' ? undefined : layout.normalOffset ?? (strideFloats >= 7 ? 3 : undefined);
   const triangleCount = (indices.length / 3) | 0;
-  if (triangleCount < LOD_MIN_TRIANGLES) return null;
+  if (triangleCount < LOD_MIN_TRIANGLES && !unconditional) return null;
   if (!(cellSize > 0) || !Number.isFinite(cellSize)) return null;
 
   // Cell per referenced vertex, memoized (vertices are referenced ~1-3x).
@@ -203,8 +212,9 @@ export function simplifyIndicesByClustering(
     w += 3;
   }
 
+  if (unconditional) return out.slice(0, w);
   // Not worth a second index buffer unless it drops a decent fraction.
-  if (w >= indices.length * 0.75) return null;
+  if (w >= indices.length * LOD_MAX_KEPT_FRACTION) return null;
   if (w === 0) return null;
   return out.slice(0, w);
 }

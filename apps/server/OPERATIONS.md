@@ -121,9 +121,11 @@ without checking existence first. Use it to bound cache size from an
 external job, or to invalidate the geometry for a model an application has
 deleted.
 
-Like every other route, `DELETE` is UNAUTHENTICATED when
-`IFC_SERVER_API_TOKEN` is unset -- anyone who can reach the port can empty
-the cache file by file. Set the token on any deployment whose port is not
+Like every other route, `DELETE` is UNAUTHENTICATED when no token is
+configured -- anyone who can reach the port can empty the cache file by file.
+The server reads `IFC_SERVER_API_TOKEN` first and uses `API_TOKEN` only when the
+primary variable is absent. A blank or whitespace-only selected value disables
+authentication. Set a nonblank token on any deployment whose port is not
 already private.
 
 The path segment must be a request `cache_key`; anything else is a `400` and

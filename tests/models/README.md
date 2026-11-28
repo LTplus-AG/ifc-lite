@@ -292,3 +292,10 @@ terms are verified. They are not vendored or uploaded to the fixture release:
 
 Do not treat a public mirror as a redistribution grant. Archive and review an
 original notice before adding any schema bytes to this repository or release.
+
+The 1.2 schema has since been committed, unmodified as published by
+LandXML.org, as a test fixture for the viewer's LandXML terrain export:
+`apps/viewer/src/lib/export/__fixtures__/landxml-1.2/` (SHA-256
+`f4f732341970a923943f94592a3fde0838534515d564a699761e85420fad4d77`, CRLF line
+endings). Its README records the source and terms. It is not uploaded to the
+fixture release.

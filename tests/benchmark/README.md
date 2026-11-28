@@ -7,7 +7,8 @@ This directory contains performance benchmarks for IFC-Lite geometry processing 
 Set `VIEWER_BENCHMARK_GPU_UPLOADS=1` before running the viewer benchmark to
 use per-mesh streaming fragments instead of time-dependent grouping. Each
 flush is bounded by mesh count and index volume. The harness pins four
-geometry workers and, unless explicitly overridden, fixed-size geometry jobs.
+geometry workers (`VIEWER_BENCHMARK_GEOM_WORKERS`, 1-16 or `auto`) and, unless
+`VIEWER_BENCHMARK_BATCH_SIZING` is set, fixed-size geometry jobs.
 Run both FZK and Snowdon twice with the same build and settings and compare
 the GPU allocation and `gpu.staticUpload` count/byte counters. The aggregate
 `gpu.writeBytes` also includes mutable table updates and remains scheduling
@@ -70,7 +71,7 @@ The benchmark suite includes 4 models covering different scenarios:
 | **FZK-Haus** | 2.4MB | Cutout/boolean testing | Window/door openings must be visible |
 | **Snowdon Towers** | 8.3MB | Structural elements | Fast loading baseline |
 | **BWK-BIM** | 326.8MB | Large architectural | Optional stress test for streaming |
-| **Holter Tower** | 169.2MB | Complex geometry | Optional stress test for crash prevention (MAX_OPENINGS safeguard) |
+| **Holter Tower** | 169.2MB | Complex geometry | Optional stress test for crash prevention |
 
 For day-to-day work, prefer `FZK-Haus` or `Snowdon Towers`. Reserve `BWK-BIM` and `Holter Tower` for intentional stress testing.
 
@@ -89,8 +90,8 @@ different speed class — **never commit locally recorded numbers**.
 3. Commit the refreshed `tests/benchmark/baseline.json` via a normal PR.
 
 Only the two CI fixtures (FZK-Haus + Snowdon) are refreshed this way; the
-BWK-BIM / Holter Tower entries only serve local stress runs and keep the
-machine noted in their `environment` field.
+BWK-BIM / Holter Tower entries only serve local stress runs. They were
+recorded locally on 2026-02-21 and carry no `environment` field.
 
 ### Local scratch baselines
 
@@ -173,20 +174,13 @@ Playwright headless shell and no viewer build or IFC fixture. See the initial
 The benchmark suite includes mesh count validation to detect geometry regressions:
 
 - **Expected mesh counts** are defined in `viewer-benchmark.spec.ts`
-- **Tolerance**: 5% variance allowed
-- **Warning**: Logs warning if mesh count differs significantly (may indicate missing cutouts)
+- **Tolerance**: a count more than 5% below the expected value is flagged
+- **Warning only**: the check logs a warning (may indicate missing cutouts); it does not fail the run, and a higher count is not flagged
 
 ## Performance Targets
 
-Reference numbers from a local (Apple Silicon) run on 2026-02-21 — these are a
-speed-class illustration, not the committed CI baseline:
-
-| Model | First Geometry (`firstBatchWaitMs`) | Total Time (`totalWallClockMs`) | WASM Wait (`wasmWaitMs`) | Meshes |
-|-------|--------------------------------------|----------------------------------|---------------------------|--------|
-| FZK-Haus | ~202ms | ~0.25s | ~14ms | 244 |
-| Snowdon | ~217ms | ~0.59s | ~292ms | 1,556 |
-| BWK-BIM | ~5.43s | ~11.89s | ~2.98s | 39,146 |
-| Holter | ~3.05s | ~11.04s | ~5.60s | 108,551 |
+This guide fixes no targets. The committed CI numbers are in `baseline.json`.
+For current figures, see the [performance guide](../../docs/guide/performance.md).
 
 ## CI Integration
 
@@ -219,5 +213,4 @@ This runs headless Chrome with software rendering (`--use-angle=swiftshader`) an
 
 **Geometry correctness warnings**:
 - Verify cutouts are visible in FZK-Haus model
-- Check if MAX_OPENINGS safeguard is skipping too much
 - Ensure CSG operations complete successfully

@@ -56,7 +56,7 @@
 - **Validate models** against IDS (Information Delivery Specification) rules
 - **Generate 2D drawings** like floor plans, sections, and elevations from 3D models
 - **Collaborate** with BCF support for topics, viewpoints, and comments
-- **Export** to glTF, IFC, CSV, or Parquet
+- **Export** to IFC (STEP and IFCX), glTF/GLB, OBJ, CSV, JSON, JSON-LD, Parquet, Rhino 3DM, USD, CityJSON, and HBJSON/DFJSON
 - **Work with multiple models** at once with federated selection and visibility
 - **Automate from the terminal** with the [ifc-lite CLI](guide/cli.md), including an MCP server for AI assistants
 
@@ -156,17 +156,27 @@ flowchart TD
     ```
 
     ```typescript
-    import { IfcServerClient } from '@ifc-lite/server-client';
+    import { IfcServerClient, type MeshData as ServerMeshData } from '@ifc-lite/server-client';
 
     const client = new IfcServerClient({ baseUrl: 'https://your-server.com' });
 
     // Caches automatically, skips upload if the file was processed before
     const result = await client.parseParquet(file);
 
+    // Server meshes use snake_case fields; map them to the renderer's MeshData
+    const toRendererMesh = (m: ServerMeshData) => ({
+      expressId: m.express_id,
+      ifcType: m.ifc_type,
+      positions: m.positions,
+      normals: m.normals,
+      indices: m.indices,
+      color: m.color,
+    });
+
     // Or stream geometry for large files
     for await (const event of client.parseStream(file)) {
       if (event.type === 'batch') {
-        renderer.addMeshes(event.meshes);
+        renderer.addMeshes(event.meshes.map(toRendererMesh));
       }
     }
     ```

@@ -29,7 +29,7 @@ IFC data and geometry tools for developers.
 
 Parse, view, query, edit, validate, and export IFC files, entirely client-side. A Rust core compiled to WASM does the parsing and geometry, a WebGPU renderer puts it on screen, and modular npm packages let you pick the pieces you need. Geometry runs on an exact-arithmetic CSG kernel, verified element-by-element against IfcOpenShell across the public benchmark corpus.
 
-Works with **IFC2X3**, **IFC4 / IFC4X3** and **IFC5 (IFCX)**. Beside IFC, the web viewer opens glTF/GLB, LandXML, point clouds (LAS/LAZ, E57, PLY, PCD, PTS, XYZ) and [Gaussian splat captures](https://ifclite.dev/docs/guide/gaussian-captures/) (Gaussian PLY, `.splat`). Live demo at [ifclite.com](https://www.ifclite.com/) and more info at [ifclite.dev](https://www.ifclite.dev/).
+Works with **IFC2X3**, **IFC4 / IFC4X3** and **IFC5 (IFCX)**. Beside IFC (including zipped `.ifczip`), the web viewer opens glTF/GLB, Rhino `.3dm`, LandXML, point clouds (LAS/LAZ, E57, PLY, PCD, PTS, XYZ), DXF reference underlays and [Gaussian splat captures](https://ifclite.dev/docs/guide/gaussian-captures/) (Gaussian PLY, `.splat`). Live demo at [ifclite.com](https://www.ifclite.com/) and more info at [ifclite.dev](https://www.ifclite.dev/).
 
 ## Get Started
 
@@ -292,6 +292,7 @@ See [benchmarks](https://ifclite.dev/docs/guide/performance/) for full numbers a
 
 Ready-to-run projects in [`examples/`](examples/):
 
+- [**Headless workflows**](examples/headless-workflows/) - Node entry points for data extraction, IDS validation, editing, geometry export and a local service
 - [**Three.js Viewer**](examples/threejs-viewer/) - IFC viewer using Three.js (WebGL)
 - [**Babylon.js Viewer**](examples/babylonjs-viewer/) - IFC viewer using Babylon.js (WebGL)
 - [**Collab Demo**](examples/collab-demo/) - real-time collaborative editing over websockets
@@ -311,10 +312,13 @@ Ready-to-run projects in [`examples/`](examples/):
 
 ## Contributing
 
-The WASM bundle is built from `rust/` on every fresh build, so a Rust
-toolchain is required. `rust-toolchain.toml` pins the nightly channel
-and the `wasm32-unknown-unknown` target. `rustup show` (or the
-contributing setup guide) installs everything needed.
+You need Node.js 22.13+ or 24.x and pnpm 10 (`corepack enable` provides the
+pinned pnpm). The WASM bundle is built from `rust/`, which needs the nightly
+toolchain and `wasm32-unknown-unknown` target pinned in `rust-toolchain.toml`
+plus `wasm-pack`. Run `rustup toolchain install` in the clone to install the
+pinned toolchain (the first `cargo` command there also installs it). Without
+Rust, `pnpm build:wasm:fetch` downloads the prebuilt WASM runtime from npm
+instead; see the [setup guide](https://ifclite.dev/docs/contributing/setup/).
 
 ```bash
 # 1. Rust toolchain (one-time)
@@ -324,7 +328,8 @@ cargo install wasm-pack   # or: curl https://rustwasm.github.io/wasm-pack/instal
 # 2. Clone and build
 git clone https://github.com/LTplus-AG/ifc-lite.git
 cd ifc-lite
-pnpm install && pnpm build && pnpm dev   # opens viewer at localhost:3000
+corepack enable
+pnpm install && pnpm dev   # builds every package, then serves the viewer at localhost:3000
 ```
 
 If you need IFC fixtures for tests, benchmarks, or stress tests, fetch them with:

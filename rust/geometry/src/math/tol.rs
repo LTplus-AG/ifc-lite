@@ -112,6 +112,15 @@ pub const PLACEMENT_2D_EPS: f64 = 1e-10;
 /// `geom2d::line_intersection`, whose determinant is compared directly.
 pub const PARALLEL_EPS: f64 = 1e-9;
 
+/// Maximum component error when comparing two composed wall and opening
+/// frames to a signed axis permutation. Unit: dimensionless.
+pub(crate) const WALL_OPENING_AXIS_EPS: f64 = 1.0e-10;
+
+/// Largest placement roundoff for deciding that an aligned recess misses a
+/// wall body's interior. Above this uncertainty the ordinary cut decides.
+/// Unit: metres, after unit scaling.
+pub(crate) const WALL_OPENING_MAX_ROUNDOFF_M: f64 = 1e-9;
+
 /// Two unit axes are treated as orthogonal when `|dot|` is at most this, and
 /// as the same axis when `dot > 1 - this`. Unit: dimensionless (a cosine,
 /// 1e-4 is about 0.6 degrees).

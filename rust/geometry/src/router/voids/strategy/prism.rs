@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Prism (stage A, third): each opening whose cutter is a genuine
+//! Prism (stage A, after Bool2d): each opening whose cutter is a genuine
 //! stepped-extrusion prism is subtracted from the host MESH analytically.
 
 use super::super::{prism_cut, world_host_bounds};
@@ -41,5 +41,5 @@ pub(super) fn try_cut(execution: &Execution, host: &Mesh, ctx: &VoidContext, ele
             prism_bounds,
         );
     }
-    Some(Cut { mesh, residual })
+    Some(Cut::Whole { mesh, residual })
 }

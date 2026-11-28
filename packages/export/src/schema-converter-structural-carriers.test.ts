@@ -397,12 +397,21 @@ describe('CausedBy of an unconverted varying action #9668', () => {
 ${geometry.replace('(#16),', aspect)}
 #30=IFCSTRUCTURALLINEARACTIONVARYING('3sXjCM_kPHN8ZCpuBhV_98',#5,'V',$,$,#9,#15,#11,.GLOBAL_COORDS.,.F.,#20,.TRUE_LENGTH.,#17,(#11,#11));`);
 
-  it('writes no Causes relationship and reports CausedBy omitted', async () => {
+  it('writes the constant action and its Causes relationship for the incomplete configuration (#11354)', async () => {
     const up = await convert(varying('(#16),'), 'IFC4');
-    expect(line(up.step, 30)).toMatch(/^#30=IFCSTRUCTURALLINEARACTIONVARYING\(/);
-    expect(records(up.step, 'IFCRELASSIGNSTOPRODUCT')).toEqual([]);
-    expect(up.warnings).toContain("CausedBy of a varying action that stays unconverted is kept only in that IFC2X3 record");
-    expect(up.warnings).not.toContain('CausedBy is written as');
+    expect(line(up.step, 30)).toMatch(/^#30=IFCSTRUCTURALCURVEACTION\(.*\.CONST\.\);$/);
+    expect(records(up.step, 'IFCRELASSIGNSTOPRODUCT')).toEqual([expect.stringMatching(/'Causes',\$,\(#20\),\$,#30\);$/)]);
+    expect(up.warnings).not.toContain('CausedBy of a varying action that stays unconverted');
+    expect(up.warnings).toContain('CausedBy is written as');
+  });
+
+  it('converts a complete action whose load references carry comments, instead of falling back (#11354)', async () => {
+    const text = varying('(#14,#16,#16),').replace(',#15,#11,.GLOBAL_COORDS.', ',/* rep */#15,/* initial */#11,.GLOBAL_COORDS.').replace(',#17,(#11,#11));', ',/* at */#17,(#11,/* next */#11));')
+      .replace(",'Coverage aspect',$,.T.,#15);", ",'Coverage aspect',$,.T.,/* shape */#15);");
+    expect(line(text, 17)).toContain(",'Coverage aspect',$,.T.,/* shape */#15);");
+    const up = await convert(text, 'IFC4');
+    expect(line(up.step, 30)).toMatch(/^#30=IFCSTRUCTURALCURVEACTION\(.*\.NOTDEFINED\.\);$/);
+    expect(records(up.step, 'IFCSTRUCTURALLOADCONFIGURATION')).toHaveLength(1);
   });
 
   it('still writes it for a varying action that converts', async () => {
@@ -413,13 +422,102 @@ ${geometry.replace('(#16),', aspect)}
     expect(up.warnings).not.toContain('stays unconverted');
   });
 
+  // #11354: the full, unedited export falls back to the constant action, as the subset export does (#11128).
+  describe('constant fallback for an incomplete varying action in a full export #11354', () => {
+    const PLANAR_LOADS = `#18=IFCSTRUCTURALLOADPLANARFORCE('p',0.,0.,-1.);\n`;
+    const planar = (text: string): string => text
+      .replace('\n#30=IFCSTRUCTURALLINEARACTIONVARYING(', `\n${PLANAR_LOADS}#30=IFCSTRUCTURALPLANARACTIONVARYING(`)
+      .replace(',#9,#15,#11,', ',#9,#15,#18,').replace('#17,(#11,#11));', '#17,(#18,#18));');
+    const attributeCount = async (entity: string): Promise<number> => {
+      const { getSchemaRegistryForVersion, getCanonicalEntityName } = await import('@ifc-lite/parser');
+      const registry = getSchemaRegistryForVersion('IFC4');
+      const meta = registry.entities[getCanonicalEntityName(registry, entity) ?? ''];
+      return (meta.allAttributes ?? meta.attributes).length;
+    };
+    /** The record is a known IFC4 entity written with exactly its attribute count. */
+    const expectIfc4Shape = async (step: string, id: number): Promise<void> => {
+      const record = /^#\d+=([A-Z0-9_]+)\((.*)\);$/.exec(line(step, id) ?? '');
+      expect(record, `#${id}`).not.toBeNull();
+      expect(record![2].split(',').length, record![1]).toBe(await attributeCount(record![1]));
+    };
+
+    it('writes a linear action as IfcStructuralCurveAction .CONST., keeps its load, and links the reaction', async () => {
+      const up = await convert(varying('(#16),'), 'IFC4');
+      expect(line(up.step, 30)).toBe("#30=IFCSTRUCTURALCURVEACTION('3sXjCM_kPHN8ZCpuBhV_98',#5,'V',$,$,#9,#15,#11,.GLOBAL_COORDS.,.F.,.TRUE_LENGTH.,.CONST.);");
+      expect(up.step).not.toContain('IFCSTRUCTURALLINEARACTIONVARYING');
+      expect(up.step).not.toContain('IFCSTRUCTURALLOADCONFIGURATION');
+      expect(records(up.step, 'IFCRELASSIGNSTOPRODUCT')).toEqual([expect.stringMatching(/'Causes',\$,\(#20\),\$,#30\);$/)]);
+      expect(up.warnings).toContain('no complete load configuration');
+      expect(up.warnings).toContain('CausedBy is written as');
+      expect(up.warnings).not.toContain('stays unconverted');
+      expect(up.warnings).not.toContain('CausedBy has no slot');
+      await expectIfc4Shape(up.step, 30);
+    });
+
+    it('writes a planar action as IfcStructuralSurfaceAction .CONST., keeps its load, and links the reaction', async () => {
+      const up = await convert(planar(varying('(#16),')), 'IFC4');
+      expect(line(up.step, 30)).toBe("#30=IFCSTRUCTURALSURFACEACTION('3sXjCM_kPHN8ZCpuBhV_98',#5,'V',$,$,#9,#15,#18,.GLOBAL_COORDS.,.F.,.TRUE_LENGTH.,.CONST.);");
+      expect(up.step).not.toContain('IFCSTRUCTURALPLANARACTIONVARYING');
+      expect(up.step).not.toContain('IFCSTRUCTURALLOADCONFIGURATION');
+      expect(records(up.step, 'IFCRELASSIGNSTOPRODUCT')).toEqual([expect.stringMatching(/'Causes',\$,\(#20\),\$,#30\);$/)]);
+      expect(up.warnings).toContain('no complete load configuration');
+      expect(up.warnings).toContain('CausedBy is written as');
+      await expectIfc4Shape(up.step, 30);
+    });
+
+    it('reports an omitted CausedBy that names no reaction', async () => {
+      const noReaction = await convert(varying('(#16),').replace(',.F.,#20,.TRUE_LENGTH.', ',.F.,#9,.TRUE_LENGTH.'), 'IFC4');
+      expect(line(noReaction.step, 30)).toMatch(/^#30=IFCSTRUCTURALCURVEACTION\(.*\.CONST\.\);$/);
+      expect(records(noReaction.step, 'IFCRELASSIGNSTOPRODUCT')).toEqual([]);
+      expect(noReaction.warnings).toContain('IFCSTRUCTURALLINEARACTIONVARYING.CausedBy has no slot in IFC4; its value is omitted');
+    });
+
+    it('keeps an AppliedLoad that carries a STEP comment, before or after the reference (#11354)', async () => {
+      for (const slot of ['#11', '#11 /* initial load */', '/* x */#11', '/* x */ #11 /* y */']) {
+        const up = await convert(varying('(#16),').replace(',#9,#15,#11,', `,#9,#15,${slot},`), 'IFC4');
+        expect(line(up.step, 30), slot).toBe(`#30=IFCSTRUCTURALCURVEACTION('3sXjCM_kPHN8ZCpuBhV_98',#5,'V',$,$,#9,#15,${slot},.GLOBAL_COORDS.,.F.,.TRUE_LENGTH.,.CONST.);`);
+        expect(up.warnings, slot).not.toContain('no usable AppliedLoad');
+      }
+    });
+
+    it('reports only the attributes that held a value when the load configuration is missing (#11354)', async () => {
+      const both = (slots: string) => convert(varying('(#16),').replace(',#17,(#11,#11));', `,${slots});`), 'IFC4');
+      const none = await both('$,$');
+      expect(line(none.step, 30)).toMatch(/\.CONST\.\);$/);
+      expect(none.warnings).not.toMatch(/varying locations|subsequent loads|no complete load configuration/);
+      const location = (await both('#17,$')).warnings;
+      expect(location).toContain('no complete load configuration; its varying locations were omitted');
+      expect(location).not.toContain('subsequent loads');
+      const subsequent = (await both('$,(#11,#11)')).warnings;
+      expect(subsequent).toContain('no complete load configuration; its subsequent loads were omitted');
+      expect(subsequent).not.toContain('varying locations');
+      expect((await both('#17,(#11,#11)')).warnings).toContain('its varying locations and subsequent loads were omitted');
+    });
+
+    it('refuses a constant action with an absent or ineligible AppliedLoad (#11354)', async () => {
+      const text = varying('(#16),').replace(',#9,#15,#11,', ',#9,#15,#40,').replace('ENDSEC;\nEND', '#40=IFCSTRUCTURALLOADCONFIGURATION($,(#11),$);\nENDSEC;\nEND');
+      for (const source of [text, text.replace(',#15,#40,', ',#15,$,'), text.replace(',#15,#40,', ',#15,#9,')]) {
+        await expect(convert(source, 'IFC4')).rejects.toThrow(/#30 .*no usable AppliedLoad/);
+        const exporter = new StepExporter(await parse(source));
+        expect(() => exporter.export({ schema: 'IFC4', subsetEntityIds: new Set([30]) })).toThrow(/#30 .*no usable AppliedLoad/);
+      }
+    });
+
+    it('leaves the complete configuration conversion alone', async () => {
+      const up = await convert(planar(varying('(#14,#16,#16),')), 'IFC4');
+      expect(line(up.step, 30)).toMatch(/^#30=IFCSTRUCTURALSURFACEACTION\(.*\.NOTDEFINED\.\);$/);
+      expect(up.step).toMatch(/IFCSTRUCTURALLOADCONFIGURATION\(\$,\(#18,#18,#18\),\$\);/);
+      expect(up.warnings).not.toContain('no complete load configuration');
+    });
+  });
+
   // #10597: the type classifier calls an IFC2X3 varying action identity, so the preview asks the carriers per record.
   it('names CausedBy lost in the loss preview exactly when the export reports it', async () => {
     const cases = [
-      { text: varying('(#16),'), why: 'unconverted, naming a reaction', target: 'IFCSTRUCTURALLINEARACTIONVARYING' },
+      { text: varying('(#16),'), why: 'incomplete configuration, held by Causes', target: null },
       { text: varying('(#14,#16,#16),'), why: 'converted, held by Causes', target: null },
       { text: varying('(#14,#16,#16),').replace(',.F.,#20,', ',.F.,#12,'), why: 'converted, naming no reaction', target: 'IFCSTRUCTURALCURVEACTION' },
-      { text: varying('(#16),').replace(',.F.,#20,', ',.F.,#12,'), why: 'unconverted, kept in its own record', target: null },
+      { text: varying('(#16),').replace(',.F.,#20,', ',.F.,#12,'), why: 'incomplete configuration, naming no reaction', target: 'IFCSTRUCTURALCURVEACTION' },
       // A source 'Causes' naming another reaction: IFC4 holds both, so the downgrade cannot restore CausedBy.
       { text: varying('(#14,#16,#16),').replace('ENDSEC;\nEND', `#23=IFCSTRUCTURALPOINTREACTION('1KQ0efL39PrP5DeqBwaUNp',#5,'R2',$,$,#9,$,#12,.GLOBAL_COORDS.);
 #31=IFCRELASSIGNSTOPRODUCT('1aaaaaaaaaaaaaaaaaaaaa',#5,'Causes',$,(#23),$,#30);
@@ -436,11 +534,49 @@ ENDSEC;\nEND`), why: 'converted, among several causes', target: 'IFCSTRUCTURALCU
     }
   });
 
+  // #11354: the full export writes an incomplete varying action constant, which drops what the configuration would have held.
+  it('IFC2X3 -> IFC4: names the varying locations and subsequent loads an incomplete varying action loses (#11354)', async () => {
+    const key = 'IFCSTRUCTURALLINEARACTIONVARYING';
+    const incomplete = varying('(#16),');
+    expect(await lossIds(incomplete, 'IFC2X3', 'IFC4')).toMatchObject({ [`${key}.VaryingAppliedLoadLocation`]: [30], [`${key}.SubsequentAppliedLoads`]: [30] });
+    // Only a populated slot is lost, as the export's own warning says.
+    const locationOnly = await lossIds(incomplete.replace(',#17,(#11,#11));', ',#17,$);'), 'IFC2X3', 'IFC4');
+    expect(locationOnly).toMatchObject({ [`${key}.VaryingAppliedLoadLocation`]: [30] });
+    expect(Object.keys(locationOnly)).not.toContain(`${key}.SubsequentAppliedLoads`);
+    expect(Object.keys(await lossIds(incomplete.replace(',#17,(#11,#11));', ',$,$);'), 'IFC2X3', 'IFC4'))).not.toContain(`${key}.VaryingAppliedLoadLocation`);
+    // A configuration holds a complete action's values: nothing to report.
+    const complete = await lossIds(varying('(#14,#16,#16),'), 'IFC2X3', 'IFC4');
+    expect(Object.keys(complete).filter((k) => k.startsWith(`${key}.`) && !k.endsWith('.CausedBy'))).toEqual([]);
+  });
+
+  it('reports an unusable required load even alongside omitted resources (#11354)', async () => {
+    const source = varying('(#16),').replace(',#9,#15,#11,', ',#9,#15,$,')
+      .replace('ENDSEC;\nEND', '#99=IFCRELAXATION(0.1,0.2);\nENDSEC;\nEND');
+    const report = analyzeConversionLoss(await parse(source), 'IFC2X3', 'IFC4');
+    expect(report.hasBlocking).toBe(true);
+    expect(report.describe().join('\n')).toContain('(#30) cannot convert to a constant action without a usable AppliedLoad');
+    expect(report.entries).toContainEqual(expect.objectContaining({
+      sourceType: 'IFCSTRUCTURALLINEARACTIONVARYING', kind: 'blocked', expressIds: [30],
+    }));
+  });
+
+  it('names the written type for record groups that drop different attributes but are written as one type (#11354)', async () => {
+    const incomplete = varying('(#16),');
+    const first = incomplete.split('\n').find((l) => l.startsWith('#30='))!;
+    const second = first.replace('#30=', '#31=').replace("'3sXjCM_kPHN8ZCpuBhV_98'", "'4sXjCM_kPHN8ZCpuBhV_98'").replace(',#17,(#11,#11));', ',#17,$);');
+    const text = incomplete.replace('ENDSEC;\nEND', `${second}\nENDSEC;\nEND`);
+    const step = (await convert(text, 'IFC4')).step;
+    expect([line(step, 30), line(step, 31)]).toEqual([expect.stringMatching(/^#30=IFCSTRUCTURALCURVEACTION\(/), expect.stringMatching(/^#31=IFCSTRUCTURALCURVEACTION\(/)]);
+    const entry = analyzeConversionLoss(await parse(text), 'IFC2X3', 'IFC4').entries.find((e) => e.sourceType === 'IFCSTRUCTURALLINEARACTIONVARYING');
+    expect(entry?.recordGroups).toHaveLength(2);
+    expect(entry?.targetType).toBe('IFCSTRUCTURALCURVEACTION');
+  });
+
   it('keeps one entry for the type, naming each record group under the type the export writes it as', async () => {
-    // #30 converts and names no reaction; #31 stays unconverted (one aspect representation for two loads) and names one.
+    // #30 converts and names no reaction; #31 is malformed (13 of the 14 attributes), so it stays unconverted, and names a reaction.
     const text = varying('(#14,#16,#16),').replace(',.F.,#20,', ',.F.,#12,') .replace('ENDSEC;\nEND', `#18=IFCPRODUCTDEFINITIONSHAPE($,$,(#14));
 #19=IFCSHAPEASPECT((#16),'Coverage aspect',$,.T.,#18);
-#31=IFCSTRUCTURALLINEARACTIONVARYING('4sXjCM_kPHN8ZCpuBhV_98',#5,'W',$,$,#9,#18,#11,.GLOBAL_COORDS.,.F.,#20,.TRUE_LENGTH.,#19,(#11,#11));
+#31=IFCSTRUCTURALLINEARACTIONVARYING('4sXjCM_kPHN8ZCpuBhV_98',#5,'W',$,$,#9,#18,#11,.GLOBAL_COORDS.,.F.,#20,.TRUE_LENGTH.,#19);
 ENDSEC;\nEND`);
     const step = (await convert(text, 'IFC4')).step;
     expect(line(step, 30)).toMatch(/^#30=IFCSTRUCTURALCURVEACTION\(/);
@@ -457,8 +593,8 @@ ENDSEC;\nEND`);
     ]);
   });
 
-  it('reports no CausedBy message for a CausedBy that names no point reaction', async () => {
-    const up = await convert(varying('(#16),').replace(',.F.,#20,.TRUE_LENGTH.', ',.F.,#9,.TRUE_LENGTH.'), 'IFC4');
+  it('reports no CausedBy-kept message for a malformed varying action whose CausedBy names no point reaction', async () => {
+    const up = await convert(varying('(#16),').replace(',.F.,#20,.TRUE_LENGTH.', ',.F.,#9,.TRUE_LENGTH.').replace(',#17,(#11,#11));', ',#17);'), 'IFC4');
     expect(records(up.step, 'IFCRELASSIGNSTOPRODUCT')).toEqual([]);
     // No CausedBy message of any kind (every Causes message names CausedBy too).
     expect(up.warnings).not.toContain('CausedBy');

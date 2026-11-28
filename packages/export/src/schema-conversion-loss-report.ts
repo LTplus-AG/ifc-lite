@@ -29,6 +29,7 @@ import { attrMapFor, attrsDroppedByMap, dropsSetMembers } from './schema-convert
 import { droppedUpgradeSlotNames, needsUpgradeSlotMap } from './schema-converter-ifc4x3-upgrade.js';
 import { previewUpgradeDependents } from './schema-converter-unrooted-upgrade.js';
 import { holdsValue } from './step-comment-skip.js';
+import { ORPHAN_DATE, orphanDateRecords } from './schema-calendar-dates.js';
 import { isRootedEntityType, missingTypeRoute } from './schema-untranslatable.js';
 
 /** How one entity TYPE's data survives a schema conversion. */
@@ -265,9 +266,9 @@ export function analyzeConversionLoss(
 ): ConversionLossReport {
   const entries: ConversionLossEntry[] = [];
   const { entityIndex, deferredEntityIndex, source } = store;
-  const dependent = source?.byteLength
-    ? previewUpgradeDependents({ entityIndex, deferredEntityIndex, source }, fromSchema, toSchema)
-    : undefined;
+  const bytes = source?.byteLength ? { entityIndex, deferredEntityIndex, source } : undefined;
+  const orphans = bytes && orphanDateRecords(bytes, fromSchema, toSchema); // #11199: omitted for their own reason
+  const dependent = bytes && new Set([...previewUpgradeDependents(bytes, fromSchema, toSchema), ...orphans ?? []]);
   if (fromSchema !== toSchema) {
     const index = new SourceRecords({ entityIndex, deferredEntityIndex, source: source ?? EMPTY_SOURCE_BYTES });
     let inventory = index.hasIndexedRecords() ? index : undefined;
@@ -380,20 +381,19 @@ export function analyzeConversionLoss(
     entries.sort((a, b) => a.sourceType.localeCompare(b.sourceType));
   }
   const describe = (entry: ConversionLossEntry) => {
-    if (dependent?.has(entry.expressIds[0])) return describeEntry(entry, `a required ${toSchema} attribute lost a reference`);
+    if (dependent?.has(entry.expressIds[0])) return describeEntry(entry, orphans?.has(entry.expressIds[0]) ? ORPHAN_DATE : `a required ${toSchema} attribute lost a reference`);
     if (omitsIfc5MaterialProperties(entry.sourceType, fromSchema, toSchema)) return describeEntry(entry, IFC5_MATERIAL_LAYOUT_MISSING);
     const sourceKnown = attrNameTable(fromSchema)?.has(entry.sourceType) ?? false;
     const target = attrNameTable(toSchema);
     const route = missingTypeRoute(entry.sourceType, fromSchema, toSchema, sourceKnown, !target || target.has(entry.targetType));
     return describeEntry(entry, route === 'omitted' ? `${toSchema} does not declare its type` : undefined);
   };
-  const hasBlocking = entries.some((e) => e.kind === 'blocked');
   return {
     fromSchema,
     toSchema,
     entries,
     hasLoss: entries.length > 0,
-    hasBlocking,
+    hasBlocking: entries.some((e) => e.kind === 'blocked'),
     describe: () => entries.flatMap((entry) => entry.recordGroups
       ?.map((group) => describe({ ...entry, ...group })) ?? [describe(entry)]),
   };

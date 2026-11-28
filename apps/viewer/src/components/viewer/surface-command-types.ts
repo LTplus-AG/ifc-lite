@@ -36,8 +36,8 @@ export interface SurfaceCommandContext {
   contextAction?: () => void;
   /** Explicit focus return target for the selected-entity destination. */
   entityActionsLauncher?: () => HTMLElement | null;
-  addSectionPlane?: (kind: import('./tools/SectionAddMenu').AddKind) => boolean;
-  sectionAddUnavailable?: (kind: import('./tools/SectionAddMenu').AddKind) => TranslationKey | undefined;
+  addSectionPlane?: (kind: import('./tools/sectionAddActions').AddKind) => boolean;
+  sectionAddUnavailable?: (kind: import('./tools/sectionAddActions').AddKind) => TranslationKey | undefined;
   toolHostIsCurrent?: () => boolean;
   openBulkProperties?: (launcher?: HTMLElement | null) => void;
   openImportData?: (launcher?: HTMLElement | null) => void;

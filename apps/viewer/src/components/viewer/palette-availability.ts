@@ -13,7 +13,7 @@ import { blankModelUnavailable } from '@/hooks/startBlankModel';
 import { getPlacementGeorefContext } from '@/lib/geo/placement-georef-runtime';
 import { hasRetainedReportHost } from './retained-report-destination';
 import { canOpenModelPlan } from './model/open-model-plan';
-import type { AddKind } from './tools/SectionAddMenu';
+import type { AddKind } from './tools/sectionAddActions';
 import { selectedEntityActionTarget } from './selected-entity-actions';
 import { paletteModelBlock } from './palette-model-availability';
 import { hasWorkspaceHistory } from '@/lib/model-placement/history';

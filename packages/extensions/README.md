@@ -17,7 +17,7 @@ npm install @ifc-lite/extensions
 ## What's here
 
 - **Manifest** — typed schema + hand-rolled validator producing
-  structured `{ path, code, hint }` errors.
+  structured `{ path, code, message, hint? }` errors.
 - **Capability grammar** — parser + matcher + risk-badge computation
   + set-diff helpers. The OCAP capability vocabulary that gates every
   bridge call.
@@ -42,6 +42,17 @@ npm install @ifc-lite/extensions
 - **Flavor** - Flavor data model, export/import, three-way merge.
 - **Log, miner, inference** - Action log, pattern miner, prompt overlay,
   SDK-update repair.
+- **Signing** - `signBundle` / `verifyBundle` over a canonical content
+  hash (`canonicalContentHash`), plus key export helpers.
+- **Authority** - layer charters (`parseCharter`, `findGoverningRule`)
+  that decide which rule governs an attribute edit.
+- **Dry run** - a tightened sandbox profile for running a candidate bundle
+  against its declared tests during authoring.
+
+Narrower entry points: `@ifc-lite/extensions/node` (Node-only bundle
+loading from a directory or `.iflx`), `@ifc-lite/extensions/capability`,
+`@ifc-lite/extensions/authority`, `@ifc-lite/extensions/when` and
+`@ifc-lite/extensions/bundle`.
 
 ## Usage
 

@@ -38,6 +38,7 @@ export const viewerShellIt = {
   "viewerShell.chunkLabel.mcpPage": "Pagina MCP",
   "viewerShell.chunkLabel.mcpPlayground": "Playground MCP",
   "viewerShell.chunkLabel.rteGpuWitness": "Testimone GPU RTE",
+  "viewerShell.chunkLabel.registryModel": "Modello del registro",
   "viewerShell.dialog.close": "Chiudi",
   "viewerShell.dialog.confirmTitle": "Conferma l'azione",
   "viewerShell.dialog.promptTitle": "Inserisci un valore",

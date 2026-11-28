@@ -61,8 +61,12 @@ export function oauthCallbackRoutes(): Plugin {
       }
     },
     configureServer(server) {
-      server.middlewares.use((req, _res, next) => {
+      server.middlewares.use((req, res, next) => {
         const [path, query] = (req.url ?? '').split('?');
+        if (path === '/open-artifact' || path === '/open-artifact/callback') {
+          res.setHeader('Cache-Control', 'no-store');
+          res.setHeader('Referrer-Policy', 'no-referrer');
+        }
         const page = pages[path];
         // Rewrite rather than serve: Vite's own static handling then serves
         // the file from `public/`, which keeps the dev server's COOP/COEP

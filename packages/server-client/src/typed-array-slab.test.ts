@@ -30,6 +30,7 @@ function batch(count: number) {
   const v = count * 3;
   const x = new Float32Array(v), y = new Float32Array(v), z = new Float32Array(v);
   for (let i = 0; i < count; i++) { x.fill(i, 3 * i, 3 * i + 3); y[3 * i + 1] = 1; y[3 * i + 2] = 1; z[3 * i + 2] = 1; }
+  const nx = Float32Array.from({ length: v }, (_, k) => Math.floor(k / 3)); // mesh i's normals are all (i, 1, 0)
   const i0 = new Uint32Array(count), i1 = new Uint32Array(count).fill(1), i2 = new Uint32Array(count).fill(2);
   return [
     table({
@@ -42,7 +43,7 @@ function batch(count: number) {
       color_r: new Float32Array(count).fill(0.5), color_g: new Float32Array(count).fill(0.5),
       color_b: new Float32Array(count).fill(0.5), color_a: new Float32Array(count).fill(1),
     }),
-    table({ x, y, z, nx: new Float32Array(v), ny: new Float32Array(v).fill(1), nz: new Float32Array(v) }),
+    table({ x, y, z, nx, ny: new Float32Array(v).fill(1), nz: new Float32Array(v) }),
     table({ i0, i1, i2 }),
   ] as const;
 }
@@ -64,13 +65,18 @@ describe('buildMeshesFromTables allocation', () => {
     const meshes = buildMeshesFromTables(...batch(50));
     meshes.forEach((m, i) => {
       expect(Array.from(m.positions)).toEqual([i, 0, 0, i, 1, 0, i, 1, 1]);
-      expect(Array.from(m.normals)).toEqual([0, 1, 0, 0, 1, 0, 0, 1, 0]);
+      expect(Array.from(m.normals)).toEqual([i, 1, 0, i, 1, 0, i, 1, 0]);
       expect(Array.from(m.indices)).toEqual([0, 1, 2]);
       expect(m.express_id).toBe(100 + i);
     });
     meshes[7].positions.fill(-1);
     meshes[7].indices.fill(9);
+    meshes[7].normals.fill(-1);
     expect(Array.from(meshes[6].positions)).toEqual([6, 0, 0, 6, 1, 0, 6, 1, 1]);
+    expect(Array.from(meshes[8].positions)).toEqual([8, 0, 0, 8, 1, 0, 8, 1, 1]);
+    expect(Array.from(meshes[6].normals)).toEqual([6, 1, 0, 6, 1, 0, 6, 1, 0]);
+    expect(Array.from(meshes[8].normals)).toEqual([8, 1, 0, 8, 1, 0, 8, 1, 0]);
+    expect(Array.from(meshes[6].indices)).toEqual([0, 1, 2]);
     expect(Array.from(meshes[8].indices)).toEqual([0, 1, 2]);
   });
 
@@ -78,6 +84,21 @@ describe('buildMeshesFromTables allocation', () => {
     const meshes = buildMeshesFromTables(...batch(40));
     expect(meshes[0].positions.buffer.byteLength).toBe(40 * 9 * 4);
     expect(meshes[0].indices.buffer.byteLength).toBe(40 * 3 * 4);
+  });
+});
+
+describe('buildMeshesFromTables malformed counts', () => {
+  const withMeshColumn = (name: string, values: ArrayLike<number>) => {
+    const [meshes, vertices, indices] = batch(4);
+    const patched: ArrowTableLike = { getChild: (n) => (n === name ? { toArray: () => values, get: (i) => values[i] } : meshes.getChild(n)) };
+    return () => buildMeshesFromTables(patched, vertices, indices);
+  };
+  it('rejects a count column shorter than the mesh rows', () => {
+    expect(withMeshColumn('vertex_count', new Uint32Array([3, 3]))).toThrow(/inconsistent mesh column lengths/);
+    expect(withMeshColumn('index_start', new Uint32Array([0]))).toThrow(/inconsistent mesh column lengths/);
+  });
+  it('rejects a negative count', () => {
+    expect(withMeshColumn('vertex_count', new Int32Array([3, -3, 3, 3]))).toThrow(/invalid vertex or index count/);
   });
 });
 

@@ -17,7 +17,7 @@
 import type { MeshData } from './types.js';
 import { meshColumns, numericColumn, transformFields } from './parquet-columns.js';
 import { applyInstanceRotation, readRotationColumns } from './parquet-rotation.js';
-import { TypedArraySlab } from './typed-array-slab.js';
+import { meshSlabs } from './typed-array-slab.js';
 
 /**
  * Structural view of the bits of `apache-arrow`'s `Table` this module uses.
@@ -114,13 +114,7 @@ export function buildMeshesFromTables(
   // to tell a truncated v6 from a genuine v5, so absence reads as the identity
   // it is on a v5 blob (see `readRotationColumns`).
   const rotationCols = readRotationColumns(meshArrow, meshCount, 'identity');
-  const meshes: MeshData[] = new Array(meshCount);
-  // Every mesh's arrays are views into a few batch-sized buffers, not buffers of their own (see `typed-array-slab.ts`).
-  let vertexTotal = 0, indexTotal = 0;
-  for (let i = 0; i < meshCount; i++) { vertexTotal += vertexCounts[i]; indexTotal += indexCounts[i]; }
-  const positionSlab = new TypedArraySlab((n) => new Float32Array(n), vertexTotal * 3);
-  const normalSlab = new TypedArraySlab((n) => new Float32Array(n), vertexTotal * 3);
-  const indexSlab = new TypedArraySlab((n) => new Uint32Array(n), indexTotal);
+  const meshes: MeshData[] = new Array(meshCount), { positionSlab, normalSlab, indexSlab } = meshSlabs(meshCount, vertexStarts, vertexCounts, indexStarts, indexCounts);
 
   // Only consume the additive origin/geometry_class columns when all three
   // origin components are present AND parallel to the mesh rows — a short or
@@ -159,7 +153,6 @@ export function buildMeshesFromTables(
       positions[v * 3 + 2] = posZ[srcIdx];
     }
 
-    // Reconstruct interleaved normals (also pre-transformed server-side).
     const normals = normalSlab.take(vertexCount * 3);
     for (let v = 0; v < vertexCount; v++) {
       const srcIdx = vertexStart + v;

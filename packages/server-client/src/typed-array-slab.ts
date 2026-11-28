@@ -18,7 +18,7 @@
  * meshes that share a buffer.
  */
 
-/** At most 64 MiB of f32/u32 per slab: few buffers per batch, far below any single-allocation limit. */
+/** At most 64 MiB of f32/u32 per shared slab: few buffers per batch. An array larger than that gets a buffer of its own size. */
 export const DEFAULT_SLAB_ELEMENTS = 16 * 1024 * 1024;
 
 type SlabArray = Float32Array<ArrayBuffer> | Uint32Array<ArrayBuffer>;
@@ -41,7 +41,7 @@ export class TypedArraySlab<T extends SlabArray> {
     this.remaining = Math.max(0, totalElements);
   }
 
-  /** A zero-filled array of `length` elements, viewing the current slab (a new one when it is full). */
+  /** A zero-filled array of `length` elements, viewing the current slab (a new one when it is full; its own buffer when larger than a slab). */
   take(length: number): T {
     if (!this.slab || this.used + length > this.slab.length) {
       this.slab = this.create(Math.max(length, Math.min(this.slabElements, this.remaining)));
@@ -52,4 +52,32 @@ export class TypedArraySlab<T extends SlabArray> {
     this.remaining -= length;
     return view;
   }
+}
+
+/**
+ * The three slabs of one flat batch, after checking the per-mesh columns they are sized from: every
+ * column must have a row per mesh and every count must be a non-negative integer. A malformed payload
+ * fails loudly here instead of decoding into empty or overlapping meshes.
+ */
+export function meshSlabs(
+  meshCount: number,
+  vertexStarts: ArrayLike<number>, vertexCounts: ArrayLike<number>,
+  indexStarts: ArrayLike<number>, indexCounts: ArrayLike<number>,
+) {
+  if ([vertexStarts, vertexCounts, indexStarts, indexCounts].some((column) => column.length !== meshCount)) {
+    throw new Error('Malformed Parquet geometry: inconsistent mesh column lengths');
+  }
+  let vertices = 0, indices = 0;
+  for (let i = 0; i < meshCount; i++) {
+    const v = vertexCounts[i], n = indexCounts[i];
+    if (!Number.isInteger(v) || v < 0 || !Number.isInteger(n) || n < 0) {
+      throw new Error(`Malformed Parquet geometry: mesh ${i} has an invalid vertex or index count (${v}, ${n})`);
+    }
+    vertices += v; indices += n;
+  }
+  return {
+    positionSlab: new TypedArraySlab((length) => new Float32Array(length), vertices * 3),
+    normalSlab: new TypedArraySlab((length) => new Float32Array(length), vertices * 3),
+    indexSlab: new TypedArraySlab((length) => new Uint32Array(length), indices),
+  };
 }

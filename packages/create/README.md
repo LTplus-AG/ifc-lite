@@ -1,6 +1,6 @@
 # @ifc-lite/create
 
-Create valid IFC4 STEP files from scratch, programmatically. `IfcCreator` builds a complete spatial structure (project, site, building, storeys) and adds building elements with real geometry, property sets, quantities, and materials. Inputs are in metres. Element coordinates are relative to the storey you add the element to: the storey placement carries `Elevation` and every element chains to it, so an element standing on a storey at `Elevation: 3` is created with `Z = 0`.
+Create IFC STEP files from scratch, programmatically. `IfcCreator` writes IFC4 by default; pass `Schema: 'IFC2X3' | 'IFC4' | 'IFC4X3'` in the project parameters to pick another release. It builds a complete spatial structure (project, site, building, storeys) and adds building elements with real geometry, property sets, quantities, and materials. Inputs are in metres unless the project's `LengthUnit` (`'MILLIMETRE'`, `'FOOT'`) overrides it. Element coordinates are relative to the storey you add the element to: the storey placement carries `Elevation` and every element chains to it, so an element standing on a storey at `Elevation: 3` is created with `Z = 0`.
 
 ## Install
 
@@ -37,6 +37,9 @@ const { content } = creator.toIfc(); // IFC STEP text
   both joined end faces; unreadable cuts refuse the join.
 - Property sets, element quantities, materials, and colors
 - 4D scheduling entities: IfcWorkSchedule, IfcTask, IfcRelSequence
+- Cost entities on the creator: `addIfcCostSchedule`, `addIfcCostItem`, `addIfcCostValue`
+- Terrain, survey, alignment and georeferencing (IFC4X3 only): `creator.terrain()` returns `addSurface` (TIN terrain), `addSurveyPoint`, `addAlignment`, `addPropertySet` and `setGeoreferencing` (IfcProjectedCRS plus IfcMapConversion, at most once per file)
+- `landXmlToIfc(source, options)` maps parsed LandXML surfaces, alignments and profiles to IFC4X3 (contract in `docs/architecture/landxml-to-ifc-mapping.md`)
 - In-store builders (`addWallToStore`, `addSlabToStore`, ...) that emit elements into an existing parsed model
 - `addStructuralPointConnectionToStore` accepts boolean fixed/free or numeric spring stiffness in `BoundaryCondition`
 - `addOrdinaryElementInStore(editor, anchor, element)` commits the eight ordinary

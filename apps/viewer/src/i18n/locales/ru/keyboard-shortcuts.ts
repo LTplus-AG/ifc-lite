@@ -17,7 +17,7 @@ export const keyboardShortcutsRu = {
   "keyboardShortcuts.privacy.banner": "Просмотр локальной модели осуществляется на вашем устройстве.",
   "keyboardShortcuts.privacy.intro": "Просмотр локальной модели использует",
   "keyboardShortcuts.privacy.wasmLink": "WebAssembly (WASM)",
-  "keyboardShortcuts.privacy.outro": "в вашем браузере. При импорте из облака используются серверные загрузки и, для Forma и Data Exchange, преобразование на стороне сервера.",
+  "keyboardShortcuts.privacy.outro": "в вашем браузере. При импорте из облачного хранилища используются серверные загрузки и, для Forma и Data Exchange, преобразование на стороне сервера.",
   "keyboardShortcuts.privacy.verifyIntro": "Проверить: нажмите",
   "keyboardShortcuts.privacy.verifyKey": "F12",
   "keyboardShortcuts.privacy.verifyOutro": "→ Вкладка Сеть → Проверить запросы от включённых функций.",

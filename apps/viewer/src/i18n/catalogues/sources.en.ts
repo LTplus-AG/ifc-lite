@@ -5,7 +5,7 @@
 import type { TranslationValue } from '../types';
 
 /**
- * The Cloud Sources panel (`SourcesPanel.tsx` and its `sources/` component
+ * The Cloud storage panel (`SourcesPanel.tsx` and its `sources/` component
  * tree, #4918 sweep): every heading, button label, tooltip, aria-label, and
  * empty/error/status message that is literally written in these components.
  *
@@ -48,14 +48,14 @@ export const sourcesEn = {
   'sources.workspace.pinRestoreFailed': 'Your pinned sources could not be restored. You can still open a source below. Reset saved pins to start again.',
   'sources.workspace.resetPins': 'Reset saved source pins',
   'sources.workspace.pinFailed': 'Could not save your pinned sources. Browser storage may be unavailable.',
-  'sources.workspace.searchSection': 'Find cloud models',
+  'sources.workspace.searchSection': 'Find models in cloud storage',
   'sources.workspace.searchAria': 'Search files in {title}',
   'sources.workspace.searchPlaceholder': 'Find a model across folders…',
   'sources.workspace.search': 'Search',
   'sources.workspace.searchListed': 'Find file names across accessible folders in {title}. More folders are searched as you continue.',
   'sources.workspace.searchScope': 'Search accessible projects in {title}, including their subfolders.',
   'sources.workspace.clearResults': 'Back to browsing',
-  'sources.workspace.searching': 'Searching cloud files…',
+  'sources.workspace.searching': 'Searching cloud storage…',
   'sources.workspace.searchContinue': 'No matches in the projects searched so far. Continue searching below.',
   'sources.workspace.moreSearch': 'Continue searching',
   'sources.workspace.openFile': 'Open {name}',
@@ -176,7 +176,7 @@ export const sourcesEn = {
   'sources.sourceSettingsDialog.selectPlaceholder': 'Select…',
 
   // ── SourcesPanel ──
-  'sources.sourcesPanel.title': 'Cloud Sources',
+  'sources.sourcesPanel.title': 'Cloud storage',
   'sources.sourcesPanel.closeAria': 'Close',
   'sources.sourcesPanel.noProviders': 'No source providers configured',
   'sources.sourcesPanel.unavailableProviders': 'Unavailable providers',

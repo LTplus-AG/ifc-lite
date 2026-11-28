@@ -16,7 +16,7 @@ export const assistantSourcesDe = {
   "assistantSources.boundaryModel": "Modellierungswerkzeuge. Besprechen Sie Bearbeitungen über „Änderungen“ oder „Änderungssätze“.",
   "assistantSources.boundaryExtensions": "Installierte Erweiterungen und deren Berechtigungen. Besprechen Sie die Ausgabe einer Erweiterung in dem Panel, in dem sie angezeigt wird.",
   "assistantSources.boundaryCollab": "Live-Sitzungsliste und Berechtigungen; es liegt kein Analyseergebnis vor.",
-  "assistantSources.boundarySources": "Cloud-Verbindungen und Datenabruf. Zugangsdaten und Endpunktfreigaben werden niemals als Belege angehängt.",
+  "assistantSources.boundarySources": "Cloud-Speicher-Verbindungen und Datenabruf. Zugangsdaten und Endpunktfreigaben werden niemals als Belege angehängt.",
   "assistantSources.boundaryPresentation": "Gespeicherte Kameraansichten für die Präsentation; es liegt kein Analyseergebnis vor.",
   "assistantSources.boundaryAssistant": "Der Assistent selbst. Gespeicherte Gespräche werden wieder geöffnet und nicht als Belege angehängt.",
   "assistantSources.boundaryEnvironment": "Anzeigeeinstellungen für Himmel, Beleuchtung und Sonnenzeit. Es wird keine Sonnenanalyse aufgezeichnet und die Anzeigeeinstellungen beziehen sich nicht auf die Tageslichtleistung.",

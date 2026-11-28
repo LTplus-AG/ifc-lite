@@ -38,7 +38,7 @@ export const viewportLightingDe = {
   "viewportLighting.container.emptyState.formats.underlays": "Unterlagen",
   "viewportLighting.container.emptyState.formats.splats": "Splats",
   "viewportLighting.container.emptyState.startBlank": "Beginnen Sie leer",
-  "viewportLighting.container.emptyState.openFromCloud": "Aus der Cloud öffnen",
+  "viewportLighting.container.emptyState.openFromCloud": "Aus dem Cloud-Speicher öffnen",
   "viewportLighting.container.emptyState.driveWithLlm": "Mit beliebigem LLM steuern",
   "viewportLighting.container.emptyState.recentFiles.heading": "Zuletzt geöffnet",
   "viewportLighting.container.emptyState.privacyDetailsHint": "So bleiben Ihre Daten auf Ihrem Gerät",

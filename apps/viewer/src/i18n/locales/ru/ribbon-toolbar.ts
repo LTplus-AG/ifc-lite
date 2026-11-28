@@ -41,7 +41,7 @@ export const ribbonToolbarRu = {
   "ribbon.file.modelGroup": "Модель",
   "ribbon.file.open": "Открыть",
   "ribbon.file.openTooltip": "Открыть модель с диска",
-  "ribbon.file.cloudSourcesTooltip": "Облачные источники (подключённые CDE)",
+  "ribbon.file.cloudSourcesTooltip": "Облачное хранилище (Dropbox, OneDrive) и подключённые CDE",
   "ribbon.file.addModel": "Добавить модель",
   "ribbon.file.addModelTooltip": "Добавить модель в сцену (поддерживается множественный выбор)",
   "ribbon.file.refresh": "Обновить",

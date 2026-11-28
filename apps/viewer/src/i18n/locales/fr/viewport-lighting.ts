@@ -38,7 +38,7 @@ export const viewportLightingFr = {
   "viewportLighting.container.emptyState.formats.underlays": "Fonds de plan",
   "viewportLighting.container.emptyState.formats.splats": "Splats",
   "viewportLighting.container.emptyState.startBlank": "Partir de zéro",
-  "viewportLighting.container.emptyState.openFromCloud": "Ouvrir depuis le cloud",
+  "viewportLighting.container.emptyState.openFromCloud": "Ouvrir depuis le stockage cloud",
   "viewportLighting.container.emptyState.driveWithLlm": "Piloter avec n'importe quel LLM",
   "viewportLighting.container.emptyState.recentFiles.heading": "Récents",
   "viewportLighting.container.emptyState.privacyDetailsHint": "Comment vos données restent sur votre appareil",

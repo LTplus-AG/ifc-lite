@@ -20,7 +20,7 @@ Both modes use one connection, verified account identity, PKCE, cryptographic st
 
 ## Browse and load
 
-Open **Cloud sources → Autodesk Forma / Data Exchange → Sign in**. Browse projects by account, then choose Files or Data Exchanges. Folders page incrementally; unsupported authoring files show the reason they cannot load. IFC, IFCX/IFC5 and GLB file artifacts use the normal viewer loader. Every download pins a version and verifies version ownership before resolving its storage. Source updates also pin their listing version.
+Open **Cloud storage → Autodesk Forma / Data Exchange → Sign in**. Browse projects by account, then choose Files or Data Exchanges. Folders page incrementally; unsupported authoring files show the reason they cannot load. IFC, IFCX/IFC5 and GLB file artifacts use the normal viewer loader. Every download pins a version and verifies version ownership before resolving its storage. Source updates also pin their listing version.
 
 For Site Design, paste a documented Forma link containing `siteId` or `/sites/<id>` into the project entry. The `.com` / `.eu` host selects US / EMEA. Linked sites are remembered per signed-in account. Site discovery is link-driven; this does not claim to enumerate every accessible site. Documented ACC Docs project/folder links resolve through the account’s accessible projects. Proposal resource names remain distinct from generated `.ifcx` filenames.
 

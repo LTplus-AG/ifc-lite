@@ -82,7 +82,7 @@ async function doSyncSourceModel({
   // undefined throws a TypeError and the user sees a crash instead of the
   // message below telling them how to fix it.
   if (!tag.projectId?.trim()) {
-    throw new Error('This source model predates project tracking. Reload it from Cloud Sources once to enable sync.');
+    throw new Error('This source model predates project tracking. Reload it from Cloud storage once to enable sync.');
   }
 
   const provider = sourceHost.get(tag.provider);

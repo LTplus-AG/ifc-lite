@@ -309,7 +309,7 @@ root, and `ui/` (a companion slice covers `extensions/**`):
   covered. The dispatcher is a narrow exception: its viewer-owned WebGL
   refusal result carries live `textKey` / `hintKey` metadata so that specific
   host-generated status remains localized when the locale changes.
-- `sources.en.ts` covers the Cloud Sources panel across all ten
+- `sources.en.ts` covers the Cloud storage panel across all ten
   `sources/` components. Real file/folder/project names from a connected
   source stay as interpolation params, never literal text. Its
   `sources.downloadStatus.*` keys (#6375) cover `SourceDownloadStatus.tsx`:

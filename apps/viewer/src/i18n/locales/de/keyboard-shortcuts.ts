@@ -17,7 +17,7 @@ export const keyboardShortcutsDe = {
   "keyboardShortcuts.privacy.banner": "Die lokale Modellanzeige läuft auf Ihrem Gerät.",
   "keyboardShortcuts.privacy.intro": "Die lokale Modellanzeige verwendet",
   "keyboardShortcuts.privacy.wasmLink": "WebAssembly (WASM)",
-  "keyboardShortcuts.privacy.outro": "in Ihrem Browser. Cloud-Importe nutzen gehostete Downloads und für Forma und Data Exchange eine serverseitige Konvertierung.",
+  "keyboardShortcuts.privacy.outro": "in Ihrem Browser. Importe aus dem Cloud-Speicher nutzen gehostete Downloads und für Forma und Data Exchange eine serverseitige Konvertierung.",
   "keyboardShortcuts.privacy.verifyIntro": "Überprüfen: drücken",
   "keyboardShortcuts.privacy.verifyKey": "F12",
   "keyboardShortcuts.privacy.verifyOutro": "→ Registerkarte „Netzwerk“ → Anfragen von aktivierten Funktionen prüfen.",

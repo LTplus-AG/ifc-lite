@@ -121,7 +121,7 @@ describe('a detached panel reads as open on the toolbars', () => {
     assert.equal(
       useViewerStore.getState().sourcesPanelVisible,
       true,
-      'Cloud sources should be docked after the toggle, not closed back to Information',
+      'Cloud storage should be docked after the toggle, not closed back to Information',
     );
   });
 
@@ -129,10 +129,10 @@ describe('a detached panel reads as open on the toolbars', () => {
     const hook = mountHook();
 
     act(() => { hook.current.handleToggleRightPanel('sources'); });
-    assert.equal(useViewerStore.getState().sourcesPanelVisible, true, 'first toggle did not open Cloud sources');
+    assert.equal(useViewerStore.getState().sourcesPanelVisible, true, 'first toggle did not open Cloud storage');
 
     act(() => { hook.current.handleToggleRightPanel('sources'); });
-    assert.equal(useViewerStore.getState().sourcesPanelVisible, false, 'second toggle did not close Cloud sources');
+    assert.equal(useViewerStore.getState().sourcesPanelVisible, false, 'second toggle did not close Cloud storage');
   });
 
   it('brings a floating Lists panel home instead of orphaning it', () => {

@@ -7,7 +7,7 @@
  *
  * The mobile bottom sheet used to hand-write an if-chain over the panels it
  * knew — seven of them — and fall through to `<PropertiesPanel />` for the
- * rest. Compare, Clash, Cloud sources, the Layer stack, Location zones and the
+ * rest. Compare, Clash, Cloud storage, the Layer stack, Location zones and the
  * collab Room all opened on a phone as the Properties panel, titled
  * "Properties": the wrong panel, not merely a wrong label. Nothing failed,
  * because a fall-through branch is indistinguishable from an intended one.

@@ -1,6 +1,6 @@
-# Cloud sources
+# Cloud storage
 
-Open **Open from cloud** in the viewer to choose a source. On a hosted deployment with vendor sign-in enabled, select **Sign in** beside Autodesk, Dropbox or OneDrive. Complete the vendor's account selection and consent screen, then return to IFClite to browse and load files. End users do not enter access tokens, client IDs or app secrets.
+Cloud storage covers Dropbox, OneDrive and the other connected file sources. Open **Open from cloud storage** in the viewer to choose one. On a hosted deployment with vendor sign-in enabled, select **Sign in** beside Autodesk, Dropbox or OneDrive. Complete the vendor's account selection and consent screen, then return to IFClite to browse and load files. End users do not enter access tokens, client IDs or app secrets.
 
 Click a connected source's name to expand its browser. Star a provider to pin it above other sources; the first connected pinned provider opens automatically when the panel returns. Provider pins stay in this browser. Favorite folders and files remain scoped to the signed-in account and appear above the sources, with favorite folders also available at the top of their file area.
 

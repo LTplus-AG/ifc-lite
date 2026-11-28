@@ -36,7 +36,7 @@ export const keyboardShortcutsEn = {
   'keyboardShortcuts.privacy.banner': 'Local model viewing runs on your device.',
   'keyboardShortcuts.privacy.intro': 'Local model viewing uses',
   'keyboardShortcuts.privacy.wasmLink': 'WebAssembly (WASM)',
-  'keyboardShortcuts.privacy.outro': 'in your browser. Cloud imports use hosted downloads and, for Forma and Data Exchange, server-side conversion.',
+  'keyboardShortcuts.privacy.outro': 'in your browser. Cloud storage imports use hosted downloads and, for Forma and Data Exchange, server-side conversion.',
   'keyboardShortcuts.privacy.verifyIntro': 'Verify: press',
   'keyboardShortcuts.privacy.verifyKey': 'F12',
   'keyboardShortcuts.privacy.verifyOutro': '→ Network tab → inspect requests from enabled features.',

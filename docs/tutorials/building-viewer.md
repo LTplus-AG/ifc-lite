@@ -37,6 +37,10 @@ flowchart LR
 
 ### 1. Create Project
 
+To skip the manual setup, `npx create-ifc-lite my-ifc-viewer --template react`
+scaffolds a React + Vite WebGPU viewer. This tutorial builds the same pieces by
+hand on a plain Vite project:
+
 ```bash
 # Create new project
 mkdir my-ifc-viewer
@@ -177,7 +181,7 @@ Create the main viewer class:
 // src/viewer.ts
 import { IfcParser, type IfcDataStore, extractPropertiesOnDemand } from '@ifc-lite/parser';
 import { GeometryProcessor } from '@ifc-lite/geometry';
-import { Renderer } from '@ifc-lite/renderer';
+import { Renderer, type RenderOptions } from '@ifc-lite/renderer';
 
 export class IfcViewer {
   private parser: IfcParser;
@@ -186,6 +190,9 @@ export class IfcViewer {
   private dataStore: IfcDataStore | null = null;
   private buffer: Uint8Array | null = null;
   private animationId: number | null = null;
+  // Visibility and selection state. RenderOptions apply to one render() call,
+  // so the loop passes them on every frame.
+  renderOptions: RenderOptions = {};
 
   constructor(private canvas: HTMLCanvasElement) {
     this.parser = new IfcParser();
@@ -230,13 +237,36 @@ export class IfcViewer {
 
   private startRenderLoop(): void {
     const animate = () => {
-      this.renderer.render();
+      this.renderer.render(this.renderOptions);
       this.animationId = requestAnimationFrame(animate);
     };
     animate();
   }
 
   private setupControls(): void {
+    // The renderer adds no input listeners of its own: wire navigation to the camera.
+    const camera = this.renderer.getCamera();
+    let drag: { x: number; y: number; button: number } | null = null;
+    this.canvas.addEventListener('pointerdown', (e) => {
+      drag = { x: e.clientX, y: e.clientY, button: e.button };
+    });
+    window.addEventListener('pointerup', () => { drag = null; });
+    this.canvas.addEventListener('pointermove', (e) => {
+      if (!drag) return;
+      const dx = e.clientX - drag.x;
+      const dy = e.clientY - drag.y;
+      drag.x = e.clientX;
+      drag.y = e.clientY;
+      if (drag.button === 0) camera.orbit(dx, dy); // left drag orbits
+      else camera.pan(dx, dy);                       // other buttons pan
+    });
+    this.canvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const rect = this.canvas.getBoundingClientRect();
+      camera.zoom(e.deltaY, false, e.clientX - rect.left, e.clientY - rect.top, rect.width, rect.height);
+    }, { passive: false });
+    this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
     // Click to select
     this.canvas.addEventListener('click', async (e) => {
       const rect = this.canvas.getBoundingClientRect();
@@ -518,12 +548,13 @@ private setupKeyboardShortcuts(): void {
   });
 }
 
+// The render loop from Step 1 reads renderOptions on every frame.
 private render(): void {
-  this.renderer.render({
+  this.renderOptions = {
     hiddenIds: this.hiddenIds,
     isolatedIds: this.isolatedIds,
     selectedIds: this.selectedIds
-  });
+  };
 }
 ```
 
@@ -566,7 +597,7 @@ if (dataStore) {
     .execute();
 
   const isolatedIds = new Set(externalWalls.map(w => w.expressId));
-  viewer.getRenderer().render({ isolatedIds });
+  viewer.renderOptions = { isolatedIds }; // the render loop applies it every frame
 }
 ```
 

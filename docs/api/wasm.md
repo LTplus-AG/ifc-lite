@@ -75,8 +75,12 @@ import init, { IfcAPI } from '@ifc-lite/wasm';
 // Initialize WASM
 await init();
 
-// Or with custom URL
-await init('/path/to/ifc-lite_bg.wasm');
+// Or with a custom URL (pass an object; a bare string still works but
+// wasm-bindgen logs a deprecation warning)
+await init({ module_or_path: '/path/to/ifc-lite_bg.wasm' });
+
+// Or synchronously, from bytes or a compiled module you already hold
+// initSync({ module: wasmBytes });
 
 // Create API instance
 const api = new IfcAPI();
@@ -240,7 +244,7 @@ exportGlbFromMeshes(/* flattened MeshData buffers */, worldMatrix?: Float64Array
 exportObj(content, includeNormals, hidden, isolated): Uint8Array;
 exportKmzFromMeshes(
   positions, normals, indices, vertexCounts, indexCounts, colors, origins,
-  latitude, longitude, altitude, xAxisAbscissa?, xAxisOrdinate?, name?, altitudeMode?
+  latitude, longitude, altitude, xAxisAbscissa, xAxisOrdinate, name, altitudeMode?  // x-axis args accept undefined; name is required
 ): Uint8Array;
 exportCsv(content, mode, delimiter, includeProperties): Uint8Array;
 exportJson(content, pretty, includeProperties, includeQuantities): Uint8Array;
@@ -254,7 +258,8 @@ exportDfjson(content, name): string;  // Dragonfly DFJSON text, not bytes
 
 **Example:**
 ```typescript
-const obj = api.exportObj(ifcContent, true, new Uint32Array(), new Uint32Array());
+// isolated = undefined: no isolation filter. An empty Uint32Array exports nothing.
+const obj = api.exportObj(ifcContent, true, new Uint32Array(), undefined);
 const hbjson = api.exportHbjson(ifcContent, 'my_model');
 const dfjson = api.exportDfjson(ifcContent, 'my_model');
 ```
@@ -425,6 +430,18 @@ before either, the getter is `undefined`. Prepass/index installation and `setSou
 `clearPrePassCache` preserves it. See [refusal diagnostics](../guide/geometry.md#pipeline-refusal-diagnostics)
 and `rust/wasm-bindings/src/api/pipeline_diagnostics.rs`.
 
+#### Further methods
+
+The `.d.ts` carries more entry points than the sections above describe. Their
+signatures are in `packages/wasm/pkg/ifc-lite.d.ts`:
+
+- Sharded pre-pass over passed bytes: `scanEntityIndexShard`, `resolveStyledItemsShard`, `finalizePrepassStyles` (the byte-taking twins of the `*FromSource` methods above).
+- Sparse source loading: `sparseBegin`, `sparseInstall`, `sparseExpand`, `sparseMarkAbsent`, `sparseSetInverseEdges`, `sparseTakeMisses`, `sparseStats`, `sparseInvalidateDerived`, `sparseReset`, `sparseEnd`, with `processGeometryBatchSparse`, `processGeometryBatchPartitionedSparse` and `setEmitSparseFacts`.
+- Geometry analysis and editing: `extractSweptDiskDescriptions`, `extrusionDefinitions`, `simplifyMeshes` (returns `SimplifiedMeshes`), `setSkipVoids`.
+- Planning: `planMapConversionNormalization(content)` and `planSectionExport(content, planesJson, trim)`, each returning JSON text.
+- Export: `exportHbjsonWithStats(content, name)` and `exportLandXmlTerrain(content, productIds, options)`.
+- LandXML: `parseLandXmlSourceBytes`, `parseLandXmlSourceBytesWithOptions`, `parseLandXmlTinBytes`, `createLandXmlTinStreamSession` (returns a `LandXmlTinStreamSession`), `inspectLandXmlAlignmentAtDistance`, `probeLandXmlAlignmentAtDistance` and `probeLandXmlAlignmentAtStation`.
+
 #### Getters
 
 ```typescript
@@ -434,7 +451,9 @@ readonly is_ready: boolean; // true once the API is initialized
 
 ### Other Exported Classes
 
-Beyond `IfcAPI` and the mesh types below, the module exports `ClashSession` / `ClashRunResult` (native clash detection over ingested mesh buffers), `GridAxisCollection` / `GridAxisJs` (parsed grid axes), `ProfileCollection` / `ProfileEntryJs`, `PartitionedBatch`, `MeshOutlineJs`, `SpacePlateHandle` (interactive room-layout topology), `Contours2D` and `ScanOutlineJs` (see below), and the `Symbolic*` classes (`SymbolicRepresentationCollection`, `SymbolicPolyline`, `SymbolicCircle`, `SymbolicText`, `SymbolicFillArea`). See `packages/wasm/pkg/ifc-lite.d.ts` for their full definitions.
+Beyond `IfcAPI` and the mesh types below, the module exports `ClashSession` / `ClashRunResult` (native clash detection over ingested mesh buffers), `GridAxisCollection` / `GridAxisJs` (parsed grid axes), `ProfileCollection` / `ProfileEntryJs`, `PartitionedBatch`, `MeshOutlineJs`, `SpacePlateHandle` (interactive room-layout topology), `Contours2D` and `ScanOutlineJs` (see below), `CompactBatch` (from `MeshCollection.encodeCompact`), `SimplifiedMeshes`, `LandXmlTinStreamSession` and `AlignmentAxisJs`, and the `Symbolic*` classes (`SymbolicRepresentationCollection`, `SymbolicPolyline`, `SymbolicCircle`, `SymbolicText`, `SymbolicFillArea`). See `packages/wasm/pkg/ifc-lite.d.ts` for their full definitions.
+
+Free functions beside the 2D operations below: `clashIntersectionSolid(positionsA, indicesA, positionsB, indicesB)` (returns `ClashIntersectionSolidJs`), `splitMeshByZones(positions, indices, zones, footprints?, footprintCounts?)` (returns `ZoneSplitJs` with `ZonePieceJs` parts, or `undefined`), `setGeometryProgressCallback(callback?)`, and `get_memory()`.
 
 `SymbolicFillArea.geometryItemId` optionally identifies an unambiguous direct
 fill item in a single flat representation. Match it together with the owning
@@ -541,6 +560,7 @@ class MeshCollection {
   readonly length: number;
   get(index: number): MeshDataJs | undefined;      // clones (non-destructive)
   takeMesh(index: number): MeshDataJs | undefined; // moves out (read-once, faster)
+  encodeCompact(cellSize: number): CompactBatch;   // encodes eligible meshes and empties their vertex arrays; cellSize outside [2^-9, 32] m encodes nothing
   hasRtcOffset(): boolean;
   readonly rtcOffsetX: number;
   readonly rtcOffsetY: number;
@@ -655,6 +675,10 @@ class MeshDataJs {
   readonly vertexCount: number;
   readonly triangleCount: number;
   readonly geometryClass: number;     // 0 = occurrence, 1 = orphan type, 2 = instanced type
+  readonly geometryItemId: number | undefined; // source IfcRepresentationItem; never set with materialId
+  readonly materialId: number | undefined;     // IfcMaterial layer sliced
+  readonly metallic: number | undefined;       // authored metallic, when present
+  readonly roughness: number | undefined;      // authored roughness, when present
 
   // Optional capture of the local frame (undefined when not captured)
   readonly localBounds: Float32Array | undefined;   // object-space AABB [minX..maxZ]
@@ -667,7 +691,9 @@ class MeshDataJs {
   readonly textureHeight: number;
   readonly textureRepeatS: boolean;
   readonly textureRepeatT: boolean;
-  readonly shadingColor: Float32Array | undefined;  // authored SurfaceColour, when distinct
+  readonly textureId: number;         // IfcSurfaceTexture express id; 0 when untextured
+  readonly textureUrl: string | undefined; // IfcImageTexture.URLReference for the host to resolve
+  readonly shadingColor: Float32Array | undefined;  // authored DiffuseColour RGB, only when it differs from SurfaceColour
 }
 ```
 
@@ -688,10 +714,11 @@ type PrePassEvent =
   | { type: 'entity-index'; ids: Uint32Array; starts: Uint32Array; lengths: Uint32Array }
   | { type: 'styles'; styleIds: Uint32Array; styleColors: Uint8Array; voidKeys: Uint32Array; voidCounts: Uint32Array; voidValues: Uint32Array }
   | { type: 'prepass-columns'; referencedRepmaps: Uint32Array; instantiatedTypeIds: Uint32Array; mappedInstancePlan: Uint32Array; mappedInstanceCounts: Uint32Array; mliElementIds: Uint32Array }
-  | { type: 'global-key-plan'; keys: number; plannedJobs: number };   // only under setGlobalKeyPlanning(true)
+  | { type: 'global-key-plan'; keys: number; plannedJobs: number }    // only under setGlobalKeyPlanning(true)
+  | { type: 'sparse-facts'; preamble: Uint8Array; inverseTargets: Uint32Array; inverseReferrers: Uint32Array; unsupported?: string };   // after entity-index, only under setEmitSparseFacts(true); `unsupported` names why the file needs the whole-file path
 ```
 
-The auxiliary events (`entity-index`, `styles`, `prepass-columns`, and `global-key-plan` when key planning is on) carry the scanned entity index, style colours, and pre-pass column data. Type the callback against the full union above so exhaustive handling does not silently miss them.
+The auxiliary events (`entity-index`, `styles`, `prepass-columns`, `global-key-plan` when key planning is on, and `sparse-facts` when `setEmitSparseFacts(true)` is set) carry the scanned entity index, style colours, and pre-pass column data. Type the callback against the full union above so exhaustive handling does not silently miss them.
 
 ## Error Handling
 
@@ -699,7 +726,7 @@ WASM functions surface failures as standard JavaScript `Error` objects (a Rust `
 
 ```typescript
 try {
-  const glb = api.exportGlb(content, true, new Uint32Array(), new Uint32Array(), '');
+  const glb = api.exportGlb(content, true, new Uint32Array(), undefined, '');
 } catch (error) {
   if (error instanceof Error) {
     console.error('Export error:', error.message);
@@ -776,14 +803,25 @@ bash scripts/build-wasm.sh
 # packages/wasm/pkg/ifc-lite.d.ts
 ```
 
-### Build Targets
+### Bundles
 
-| Target | Output | Use Case |
-|--------|--------|----------|
-| `web` | ES modules | Modern browsers |
-| `bundler` | CommonJS | Webpack/Rollup |
-| `nodejs` | Node.js | Server-side |
-| `no-modules` | Global | Script tag |
+Every bundle is built with `wasm-pack --target web` (ES modules). The script
+does not build the `bundler`, `nodejs` or `no-modules` targets.
+
+| Bundle | Output directory | When it is built |
+|--------|------------------|------------------|
+| Default engine | `packages/wasm/pkg/` | Always |
+| Geometry core (`@ifc-lite/wasm/core`) | `packages/wasm/pkg-core/` | `BUILD_CORE=1` (set by the release workflow) |
+| Threaded (atomics + shared memory) | `packages/wasm/pkg-threaded/` | `BUILD_THREADED=1` |
+| Retained browser executor (`@ifc-lite/wasm/retained`) | `packages/wasm/pkg-retained/` | `BUILD_RETAINED=1` |
+| Diff (`@ifc-lite/wasm/diff`) | `packages/wasm/pkg-diff/` | Always (separate crate `rust/diff-wasm`) |
+| Rhino scene (`@ifc-lite/wasm/rhino`) | `packages/wasm/pkg-rhino/` | Always (separate crate `rust/rhino-wasm`) |
+
+The published `@ifc-lite/wasm/retained` subpath ships only the loader
+(`retained.js`) and its types, not the engine. Build `pkg-retained` with
+`BUILD_RETAINED=1 scripts/build-wasm.sh`, deploy its `ifc-lite.js` and
+`ifc-lite_bg.wasm` with your app, and pass that URL to
+`loadRetainedEngine({ moduleUrl })`.
 
 
 ### Streaming prepass source fingerprints

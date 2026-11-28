@@ -11,7 +11,7 @@ rather than assembling translated fragments, lowercasing labels, or appending
 suffixes. Missing keys fall back to English; an explicit empty string remains
 empty.
 
-The Section-tool catalogue contains 72 strings covering the mounted 3D
+The Section-tool catalogue (`section-tool.en.ts`) covers the mounted 3D
 Section subtree: plane controls and state messages, cap styling, visualization
 badges and the drag-gizmo tooltip, plus the two entry labels that open a 2D
 drawing. It deliberately does not cover the drawing panel, toolbar, tours,
@@ -105,7 +105,7 @@ which trips the gate despite the symbol allowlist (a single ASCII letter with
 no modifier glyph isn't a recognized cluster) and was keyed as
 `measure.geo.unitMeters` by the #4918 grab-bag slice, filling in a key this
 slice had reserved with a comment but left unadded. The wall-split tool catalogue (`split-tool.en.ts`) covers
-`SplitNumericInput.tsx` and `SplitOverlay.tsx`. `SectionPanel.tsx`'s one
+`SplitCursorInput.tsx` and `SplitOverlay.tsx`. `SectionPanel.tsx`'s one
 remaining literal was added to the existing `section-tool.en.ts` catalogue
 rather than a new file.
 
@@ -535,11 +535,12 @@ reasoning the BCF-panel and clash-panel catalogues already document for
 text that doubles as exported content.
 
 The model-reposition catalogue (#4918 slice, `reposition-panel.en.ts`,
-prefix `repositionPanel.*`) covers the `reposition/` directory:
-`RepositionPanel.tsx` (the floating panel's header, moving/reference model
+prefix `repositionPanel.*`) covers the docked Placement panel's
+`placement/LocalTab.tsx` (which replaced the floating `RepositionPanel` in
+#5505: moving/reference model
 pickers, framing shortcuts, point-picking prompts, constraint/input-mode
 controls, the move-dimensions readout, and the apply/undo/redo/reset
-actions), `RotationControls.tsx` (the heading and pivot fields, their
+actions) and the `reposition/` directory: `RotationControls.tsx` (the heading and pivot fields, their
 guidance text, and the per-model rotation summary), `PlacementGizmo.tsx`
 (the drag-handle SVG's aria-labels and its live delta readout),
 `PlacementFiles.tsx` (the save/restore-placements disclosure and its
@@ -733,10 +734,11 @@ stay out of the catalogue; the `mm` unit suffix is routed through `t()`
 without translation, same reasoning as the `F12` key name above.
 
 The Cesium / geo-basemap catalogue (#4918 slice: cesiumgeo, `cesium-geo.en.ts`)
-covers the geospatial-basemap feature area's five files:
-`CesiumPlacementEditor.tsx` (the drag-to-move georeference gizmo and its
-floating panel — header, delta readouts, the map-absolute guard warning,
-the nudge/height/rotate control clusters, and the apply/reset actions),
+covers the geospatial-basemap feature area: the docked Placement panel's
+`placement/CesiumPlacementGizmo.tsx` (the drag-to-move georeference gizmo)
+and `placement/GeoreferenceTab.tsx` (delta readouts, the map-absolute guard
+warning, the nudge/height/rotate control clusters, and the apply/reset
+actions), which replaced the floating `CesiumPlacementEditor` in #5505,
 `CustomBasemapEditor.tsx` and `CustomTilesetEditor.tsx` (the custom XYZ-tile
 and 3D-Tiles input surfaces under the Sun & Sky panel's Base map selector,
 including their third-party-privacy disclosures), `CesiumOverlay.tsx` (the
@@ -791,9 +793,11 @@ the catalogue.
 The grab-bag catalogue (#4918 slice: standalone panels, part 1,
 `misc-panels-a.en.ts`) bundles five otherwise-unrelated one-off dialogs/panels
 under their own key prefixes purely for PR-count efficiency:
-`BasketPresentationDock.tsx` (`basketPresentationDock.*`, the pinboard
-"Presentation" dock's header, source/visibility/save/play-all controls, the
-saved-view strip, and the resize handle), `DeviationPanel.tsx`
+`presentation/PresentationPanel.tsx` (`presentationPanel.*`; the bottom
+panel that replaced the floating `BasketPresentationDock` in #5508:
+basket/visibility/save/play-all controls, the saved-view strip with its
+scroll buttons, and per-view rename/delete/transition controls, together with
+`PresentationViewCard.tsx`), `DeviationPanel.tsx`
 (`deviationPanel.*`, the BIM/scan deviation heatmap's compute button, stats
 line, range slider, and legend, plus its `setError` messages), the pre-export
 `ExportChangesReviewDialog.tsx` (`exportChangesReviewDialog.*`, the summary

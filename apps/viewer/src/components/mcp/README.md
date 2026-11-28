@@ -15,11 +15,22 @@ HeroScene.tsx           - React half of the hero: HERO_STEPS data + the mount
 hero-scene.ts           - hero scene factory: renderer, lights, animation loop
 hero-scene-building.ts  - hero building geometry, section prop, BCF pin sprite
 hero-scene-steps.ts     - the twelve-step story arc (update(step))
+hero-pin-frame.ts       - projects the hero's BCF pin into host pixel space
 McpPlayground.tsx       - the /mcp/playground route (in-browser IFC + BYOK chat)
 playground-dispatcher.ts- browser tool dispatcher backing the playground
 playground-files.ts     - playground sample/file plumbing
 playground-uploads.ts   - playground upload handling
 PlaygroundChat.tsx      - BYOK Anthropic chat UI for the playground
+playground-chat-header.tsx - chat header: key entry + model picker
+playground-conversation.ts - chat message model, system prompt, runConversation
+playground-markdown.tsx - markdown rendering inside the chat
+playground-inline-download.tsx - in-chat download pill for tool-produced files
+playground-model-summary.tsx - loaded-model summary card
+playground-model-swap.ts - what happens to the transcript when the model changes
+playground-tool-definitions.ts - playground-specific tool description overrides
+playground-tool-host.ts - the playground page as an agent tool host
+playground-cost.ts      - cost tools routed to the selected model
+playground-geometry-source.ts - one STEP snapshot for tessellation and clash
 PlaygroundViewer.tsx    - React half of the playground viewer + geometry loading
 playground-viewer-types.ts - ViewerController / SceneHandle interfaces
 playground-scene.ts     - playground scene factory: renderer, picking, handle
@@ -27,7 +38,9 @@ playground-scene-registry.ts - one mesh + lookup maps per IFC entity
 playground-scene-ops.ts - colorize / isolate / hide / show / reset
 playground-scene-view.ts- camera framing + section planes
 useThreeScene.ts        - the guarded mount both three.js surfaces use (#2401)
-three-webgl-support.ts  - WebGL probe + session latch behind useThreeScene
+three-webgl-support.ts  - three.js side of the shared WebGL gate (lib/webgl-capability.ts)
+release-renderer.ts     - hands a renderer's WebGL context back on unmount
+material-transparency.ts - transparent-flag flip that reaches the shader
 ```
 
 Both `createScene` factories are unreachable from the test suites: happy-dom

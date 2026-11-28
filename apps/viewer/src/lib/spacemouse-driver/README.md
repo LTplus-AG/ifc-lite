@@ -121,7 +121,7 @@ library's 16-element column-major camera-to-world matrix. Value formats follow t
 
 ## Tested
 
-- **Unit tests** (31 tests, `node:test`, run with the viewer's tests): the pose/matrix maths, every navigation-model callback against a mock
+- **Unit tests** (`node:test`, in `math.test.ts`, `model.test.ts` and `driver.test.ts`, run with the viewer's tests): the pose/matrix maths, every navigation-model callback against a mock
   camera, and the whole connect / timeout / late-connect / refusal / disconnect / lazy-load flow against a fake SDK. No hardware needed.
 - **Real device:** macOS, Chrome, one SpaceMouse Compact, with the 3DxWare driver running. Not tested on Windows, Linux,
   other browsers or other 3Dconnexion devices.

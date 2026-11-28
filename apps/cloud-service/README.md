@@ -9,6 +9,11 @@ Run `pnpm typecheck` and
 `pnpm test --filter=@ifc-lite/cloud-service` from the repository root through Turbo.
 Build with `pnpm build --filter=@ifc-lite/cloud-service`; start with
 `node apps/cloud-service/dist/bin.js` after workspace dependencies are built.
+It listens on `PORT` (default 3004) and binds `CLOUD_SERVICE_HOST` (default
+`127.0.0.1`). For a local `http://localhost` viewer origin, also set
+`CLOUD_INSECURE_LOCALHOST=true`. Build the viewer with `VITE_CLOUD_HOSTED=true`
+so its Dropbox and OneDrive sources use this gateway instead of the browser-only
+providers.
 
 Configuration and deployment: [Railway runbook](../../deploy/cloud/railway.md).
 

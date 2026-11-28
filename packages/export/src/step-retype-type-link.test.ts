@@ -83,6 +83,23 @@ describe('STEP type-assignment retyping #11500', () => {
     expect(warnings.some(w => w.includes('Relationship #9'))).toBe(true);
   });
 
+  it.each([
+    ['#1', 'IfcSlab', null],
+    ['#1,/* keep #1,) */ #2', 'IfcSlab', '/* keep #1,) */ #2'],
+    ['#1,#2', 'IfcWallStandardCase', '#1,#2'],
+  ] as const)('handles a commented RelatedObjects slot (%s, %s) #11500', async (members, target, kept) => {
+    const relation = (items: string) => `#4=IFCRELDEFINESBYTYPE('r',$,$,$,/* before */(${items})/* after, ) */,/* type */#3);`;
+    const bytes = new TextEncoder().encode([
+      'ISO-10303-21;', 'HEADER;', "FILE_SCHEMA(('IFC4'));", 'ENDSEC;', 'DATA;',
+      "#1=IFCWALL('w',$,$,$,$,$,$,$,.STANDARD.);", "#2=IFCWALL('x',$,$,$,$,$,$,$,.STANDARD.);",
+      "#3=IFCWALLTYPE('t',$,$,$,$,$,$,$,$,.STANDARD.);", relation(members), 'ENDSEC;', 'END-ISO-10303-21;',
+    ].join('\n')).buffer;
+    const { lines, warnings } = await exportRetyped(bytes, [{ entityId: 1, entityType: target }]);
+    expect(lines.some(line => line.startsWith(`#1=${target.toUpperCase()}(`))).toBe(true);
+    expect(lines.find(line => line.startsWith('#4='))).toBe(kept === null ? undefined : relation(kept));
+    expect(warnings.filter(w => w.includes('lost its type assignment'))).toHaveLength(target === 'IfcSlab' ? 1 : 0);
+  });
+
   it('keeps the other typed wall in a mixed relationship', async () => {
     const { lines, relation, warnings } = await exportRetype('#1,#2', 'IfcSlab');
     expect(lines.some(line => line.startsWith('#1=IFCSLAB('))).toBe(true);

@@ -3,7 +3,7 @@
 
 use ifc_lite_core::{slot::IfcRelDefinesByType, SchemaVersion};
 
-use super::{bare_ref, framed, is_list, list_items, read_slots, rebuild};
+use super::{bare_ref, read_slots, rebuild};
 use crate::step_log::pass::Pass;
 
 /// Compatibility as defined by the nearest applicable type-designating class.
@@ -44,16 +44,22 @@ pub(super) fn after_retypes(pass: &mut Pass<'_, '_>, line: &str, id: u32) -> Opt
     let (_, mut args) = read_slots(line)?;
     let assigned = bare_ref(args.get(IfcRelDefinesByType::RELATING_TYPE.index())?)?;
     let related_objects = IfcRelDefinesByType::RELATED_OBJECTS.index();
-    let (lead, objects, trail) = framed(args.get(related_objects)?);
-    if !is_list(objects) {
+    let raw = args.get(related_objects)?;
+    let open = ifc_lite_core::parser::skip_step_trivia(raw.as_bytes(), 0)?;
+    if raw.as_bytes().get(open) != Some(&b'(') {
         return None;
     }
+    // Frame the aggregate as a record so punctuation in comments stays trivia.
+    const MARKER: &str = "#0=IFCLIST";
+    let envelope = format!("{MARKER}{raw};");
+    let frame = crate::step_record_frame::record_frame(&envelope)?;
+    let close = frame.close - MARKER.len();
     let original_type = pass.record_type(assigned)?;
     let effective_type = emitted_type(pass, assigned, &original_type)?;
     let mut removed = Vec::new();
     let mut retained = Vec::new();
-    for item in list_items(&objects[1..objects.len() - 1]) {
-        let invalidated = bare_ref(&item).filter(|member|
+    for item in crate::step_slot::slots_of(&raw[open + 1..close])? {
+        let invalidated = bare_ref(item).filter(|member|
             pass.overlay.retypes.contains_key(member) || original_type != effective_type
         ).filter(|&member| {
             let Some(original) = pass.record_type(member) else { return false };
@@ -77,6 +83,6 @@ pub(super) fn after_retypes(pass: &mut Pass<'_, '_>, line: &str, id: u32) -> Opt
         pass.omitted_type_assignments.insert(id);
         return Some((None, format!("{summary} The empty relationship was withheld.")));
     }
-    args[related_objects] = format!("{lead}({}){trail}", retained.join(","));
+    args[related_objects] = format!("{}{}{}", &raw[..=open], retained.join(","), &raw[close..]);
     Some((Some(rebuild(line, &args)), summary))
 }

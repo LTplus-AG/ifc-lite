@@ -2,9 +2,10 @@
 
 import { createSchemaEntityNameSnapshot, getSchemaRegistryForVersion, type IfcSourceBytes } from '@ifc-lite/parser';
 import type { EffectiveEntityIndex } from './effective-index.js';
-import { BARE_REF_RE } from './reference-collector.js';
+import { slotRef } from './schema-converter-structural-source.js';
+import { skipStepTrivia } from './step-slot-grammar.js';
 import type { IfcSchemaVersion } from './schema-converter.js';
-import { readStepSlots, splitTopLevelListItems } from './step-argument-parser.js';
+import { readStepSlots } from './step-argument-parser.js';
 import { retypeStepLine } from './retype.js';
 
 export type RetypedAssignmentFilter = (line: string, id: number, warnings: string[]) => string | null;
@@ -57,22 +58,23 @@ export function createRetypedAssignmentFilter(
 
   return (line, id, warnings) => {
     const record = readStepSlots(line);
-    const typeRef = record?.slots[5]?.match(BARE_REF_RE);
+    const typeId = slotRef(record?.slots[5]);
     const rawMembers = record?.slots[4];
-    const members = rawMembers?.trim();
-    if (!record || !typeRef || rawMembers === undefined || !members?.startsWith('(') || !members.endsWith(')')) return line;
-
-    const typeId = Number(typeRef[1]);
+    if (!record || typeId === null || !rawMembers || rawMembers[skipStepTrivia(rawMembers, 0)] !== '(') return line;
+    // Frame the aggregate as a record so punctuation in comments stays trivia.
+    const marker = '#0=IFCLIST';
+    const members = readStepSlots(`${marker}${rawMembers};`);
+    if (!members) return line;
     const originalType = effective.get(typeId)?.type;
     if (!originalType) return line;
     const currentType = emittedType(typeId, originalType);
     const typeChanged = originalType.toUpperCase() !== currentType;
     const removed: string[] = [];
-    const retained = splitTopLevelListItems(members.slice(1, -1)).filter(member => {
-      const ref = member.match(BARE_REF_RE);
-      const memberId = ref ? Number(ref[1]) : undefined;
-      const original = memberId === undefined ? undefined : effective.get(memberId)?.type;
-      if (memberId === undefined || !original) return true;
+    const retained = members.slots.filter(member => {
+      const memberId = slotRef(member);
+      if (memberId === null) return true;
+      const original = effective.get(memberId)?.type;
+      if (!original) return true;
       const current = emittedType(memberId, original);
       if (!typeChanged && original.toUpperCase() === current) return true;
       if (compatible(original, originalType) !== true || compatible(current, currentType) !== false) return true;
@@ -87,9 +89,8 @@ export function createRetypedAssignmentFilter(
       return null;
     }
     warnings.push(summary);
-    const start = rawMembers.indexOf(members);
     const slots = [...record.slots];
-    slots[4] = `${rawMembers.slice(0, start)}(${retained.join(',')})${rawMembers.slice(start + members.length)}`;
+    slots[4] = `${members.prefix.slice(marker.length)}${retained.join(',')}${members.suffix.slice(0, -1)}`;
     return `${record.prefix}${slots.join(',')}${record.suffix}`;
   };
 }

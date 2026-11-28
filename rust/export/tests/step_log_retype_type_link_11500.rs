@@ -19,6 +19,23 @@ fn export(members: &str, to: &str) -> (String, Vec<String>) {
 }
 
 #[test]
+fn commented_related_objects_respect_the_emitted_retype_11500() {
+    for (members, target, kept) in [
+        ("#1", "IfcSlab", None),
+        ("#1,/* keep #1,) */ #2", "IfcSlab", Some("/* keep #1,) */ #2")),
+        ("#1,#2", "IfcWallStandardCase", Some("#1,#2")),
+    ] {
+        let relation = |items: &str| format!("#4=IFCRELDEFINESBYTYPE('r',$,$,$,/* before */({items})/* after, ) */,/* type */#3);");
+        let source = format!("{SOURCE}{}\nENDSEC;\nEND-ISO-10303-21;", relation(members));
+        let log = MutationLog::from_json(&format!(r#"{{"mutations":[{{"type":"UPDATE_ENTITY_TYPE","entityId":1,"entityType":"{target}"}}]}}"#)).unwrap();
+        let (out, stats) = export_step_with_log(source.as_bytes(), &StepOptions::default(), &log).unwrap();
+        assert!(out.contains(&format!("#1={}(", target.to_uppercase())));
+        assert_eq!(out.lines().find(|l| l.starts_with("#4=")), kept.map(relation).as_deref());
+        assert_eq!(stats.warnings.iter().filter(|w| w.contains("lost its type assignment")).count(), usize::from(target == "IfcSlab"));
+    }
+}
+
+#[test]
 fn forward_references_to_an_emptied_source_or_created_assignment_11500() {
     for (schema, created) in ["IFC2X3", "IFC4", "IFC4X3"].into_iter().flat_map(|s| [(s, false), (s, true)]) {
         let assignment = if created { "" } else { "#9=IFCRELDEFINESBYTYPE('assignment',$,$,$,(#1),#3);" };

@@ -122,7 +122,7 @@ external job, or to invalidate the geometry for a model an application has
 deleted.
 
 Like every other route, `DELETE` is UNAUTHENTICATED when
-`IFC_SERVER_API_TOKEN` is unset -- anyone who can reach the port can empty
+`IFC_SERVER_API_TOKEN` (or its fallback `API_TOKEN`) is unset -- anyone who can reach the port can empty
 the cache file by file. Set the token on any deployment whose port is not
 already private.
 

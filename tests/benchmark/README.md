@@ -173,8 +173,8 @@ Playwright headless shell and no viewer build or IFC fixture. See the initial
 The benchmark suite includes mesh count validation to detect geometry regressions:
 
 - **Expected mesh counts** are defined in `viewer-benchmark.spec.ts`
-- **Tolerance**: 5% variance allowed
-- **Warning**: Logs warning if mesh count differs significantly (may indicate missing cutouts)
+- **Tolerance**: a count more than 5% below the expected value is flagged
+- **Warning only**: the check logs a warning (may indicate missing cutouts); it does not fail the run, and a higher count is not flagged
 
 ## Performance Targets
 

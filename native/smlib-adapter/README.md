@@ -59,8 +59,10 @@ cmake --build build/smlib --parallel 4
 ctest --test-dir build/smlib --output-on-failure
 ```
 
-A native build registers six CTest tests (`smlib_worker_framing` only when
-Python 3 is found):
+A native build registers six CTest tests (five without Python 3, which
+`smlib_worker_framing` needs). The Emscripten browser build registers
+`smlib_browser_protocol` in place of `smlib_worker_framing` and runs the other
+five under Node:
 
 | Test | Executable | Purpose |
 | --- | --- | --- |

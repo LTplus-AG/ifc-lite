@@ -232,9 +232,9 @@ controls), `IDSAuditSummary.tsx` (the auditing/clean-document states, the
 counts-strip severity words moved to a `labelKey`/`pluralLabelKey` pair on
 `SEVERITY_TOKENS` the same way `sectionConstants.ts`'s `AXIS_INFO` does, the
 filter tabs, and the issue-row "path"/"facet" field labels), and
-`IDSReportExportButton.tsx` (the format dropdown's own labels, moved to a
-`FORMAT_LABEL_KEYS` map with the same pattern, its aria-label, and the
-export-format tooltip). IDS document titles/descriptions, specification
+`IDSReportExportButton.tsx` (the HTML/JSON/BCF format and menu labels,
+translated inline with `t()` and passed to the shared `AnalysisExportMenu`,
+and the export-format tooltip). IDS document titles/descriptions, specification
 names, entity names/types/GlobalIds, requirement descriptions, and failure
 details remain model/document content supplied by the IDS engine.
 The clash-detection catalogue (#4918 viewer-panels slice) covers

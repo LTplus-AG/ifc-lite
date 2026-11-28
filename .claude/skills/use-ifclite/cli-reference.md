@@ -1,6 +1,7 @@
 # ifc-lite CLI — full command reference
 
-Headless BIM toolkit. Every command supports `--json` (machine-readable).
+Headless BIM toolkit. Data commands take `--json` (machine-readable); `view`,
+`mcp` and `gym` are long-running servers/loops without a JSON mode.
 **stdout = data, stderr = status, exit 0 = success / 1 = failure.** Run
 `ifc-lite <command> --help` for the live signature, and `ifc-lite schema` for
 the full SDK API used by `eval`/`run`.
@@ -89,11 +90,33 @@ ifc-lite export model.ifc --format ifc --schema IFC4 --out filtered.ifc
 Flags: `--format csv|json|ifc|obj|gltf|glb|jsonld|step|ifcx|usd|3dm|hbjson|dfjson|cityjson|cityjsonseq` ·
 `--type <T>` · `--where <Pset.Prop=Value>` · `--storey <S>` · `--columns <a,b,Pset.Prop>` ·
 `--separator <sep>` · `--schema IFC2X3|IFC4|IFC4X3` · `--limit <N>` · `--name <Model>` ·
-`--name-by-global-id` (glb) · `--out <file>`. 3DM adds `--units`, `--coordinates`,
+`--name-by-global-id` (glb/gltf) · `--out <file>`. 3DM adds `--units`, `--coordinates`,
 `--layers`, `--properties`, `--3dm-version 7|8`, `--no-instancing`, `--no-spaces`,
-`--no-normals`, `--layer-slicing`.
+`--no-normals`, `--layer-slicing`. CityJSON adds `--scale STEP` (vertex grid,
+default 0.001) and `--blocks-only`. Experimental: `--kernel exact|retained`,
+`--retained-engine DIR`, `--retained-report FILE` (retained needs `--format obj`).
+
+`ifcx`, `usd`, `hbjson`, `dfjson`, `cityjson` and `cityjsonseq` always export
+the whole model: they ignore `--type`, `--where`, `--storey` and `--limit`.
+`glb` and `gltf` both write binary GLB and require `--out`.
 
 (For Parquet export use the SDK `@ifc-lite/export` package or `eval`.)
+
+## schedule
+
+```bash
+ifc-lite schedule model.ifc --preset door --format md
+ifc-lite schedule model.ifc --type IfcDoor --columns "Name=Name, Fire=Pset_DoorCommon.FireRating, Area=Qto_DoorBaseQuantities.Area" \
+  --group-by Fire --sort "Area:desc" --subtotals "count, sum:Area"
+ifc-lite schedule model.ifc --preset door --save door-schedule.json
+ifc-lite schedule model.ifc --spec door-schedule.json --format json
+```
+
+Flags: `--type <T>` · `--columns "Header=path,..."` (path = attribute, `Pset.Prop`
+or `Qto.Qty`) · `--preset door|window|space|wall|material-takeoff` ·
+`--where <Pset.Prop=Value>` · `--format csv|json|md|html` · `--sort "Header[:asc|desc],..."` ·
+`--group-by "Header,..."` · `--subtotals "count|sum:H|avg:H|min:H|max:H,..."` ·
+`--spec <file>` / `--save <file>` (an explicit flag beats `--spec`, which beats `--preset`).
 
 ## lod
 
@@ -135,7 +158,8 @@ ifc-lite bcf add-comment --file topics.bcf --text "Fixed in rev 3" --out updated
 ## create
 
 29 element types, with `--pset` / `--qset` / `--material` / `--color`, or
-`--from-json` (reads stdin). `--out <file>` is required.
+`--from-json` (reads stdin). Pass `--out <file>`, `--viewer <port>` (stream into
+a running `ifc-lite view`), or both; viewer-only fails if the stream fails.
 
 | Category | Types |
 |----------|-------|
@@ -159,7 +183,7 @@ echo '{"Start":[0,0,0],"End":[10,0,0],"Height":3,"Thickness":0.2}' | ifc-lite cr
 
 Common flags: `--start/--end/--position <x,y,z>` · `--height/--width/--depth/--thickness <N>` ·
 `--name` · `--project` · `--storey` · `--elevation` · `--pset/--qset/--material <json>` ·
-`--color <r,g,b>` · `--from-json` · `--out <file>` · `--json`. Coordinates are IFC **Z-up**.
+`--color <r,g,b>` · `--from-json` · `--out <file>` · `--viewer <port>` · `--json`. Coordinates are IFC **Z-up**.
 
 ## merge / convert / diff / validate
 
@@ -222,6 +246,21 @@ ifc-lite analyze model.ifc --viewer 3456 --type IfcWall --missing "Pset_WallComm
 `analyze` supports `--where`, `--missing`, `--heatmap <Pset.Prop>`,
 `--palette blue-red|green-red|rainbow`, `--rules <file>`. See the viewer-api
 guide for the full REST surface.
+
+## flow
+
+```bash
+ifc-lite flow describe graph.flow.json      # inputs (nodeId.param keys) and outputs
+ifc-lite flow validate graph.flow.json
+ifc-lite flow run graph.flow.json model.ifc --input filter.threshold=3 --out result.json --checkpoint review.json
+ifc-lite flow review review.json --approve <proposal digest>   # or --reject
+ifc-lite flow resume graph.flow.json model.ifc --checkpoint review.json --out result.json
+```
+
+`run` needs `--checkpoint` when the graph pauses for review; `resume` needs it
+always, plus `--next-checkpoint` if the graph pauses again. `flow bcf
+list|check|reconcile|confirm-absent` inspects durable BCF writes. See
+`ifc-lite flow --help`.
 
 ## Pipe patterns
 

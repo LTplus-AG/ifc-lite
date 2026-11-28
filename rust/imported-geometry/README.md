@@ -23,7 +23,8 @@ Use the repository's pinned Rust nightly and `wasm32-unknown-unknown` target.
 Binaryen must match the recorded binary exactly. On Linux x86_64 the generator
 downloads the pinned emsdk **4.0.15** release archive on first use, extracts only
 `wasm2js`, verifies its SHA-256 and caches it under
-`$XDG_CACHE_HOME/ifc-lite/tools` (see `scripts/README-imported-geometry.md`).
+`$XDG_CACHE_HOME/ifc-lite/tools`, or `~/.cache/ifc-lite/tools` when that is
+unset (see `scripts/README-imported-geometry.md`).
 Offline, or on another host, point `IFC_IMPORTED_WASM2JS` at an executable with
 exactly those bytes, for example from emsdk repository revision
 `3b3963d86a5c97adaf6eaa845cdfe0b811c2f960`:

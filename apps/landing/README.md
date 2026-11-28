@@ -11,8 +11,9 @@ build step. The deployed site also carries the MkDocs documentation under
 - `app.jsx` — React widgets (code tabs, package picker, bench explorer, stack
   builder), compiled in the browser by Babel standalone
 - `assets/logo.png` — IFClite mark
-- `bench-data.json` — source of truth for the benchmark rows in `app.jsx` and
-  `index.html`; regenerate those rows with `pnpm docs:generate`, never by hand
+- `bench-data.json` — source of truth for the benchmark rows. `pnpm docs:generate`
+  rewrites only the `landing-bench` region in `app.jsx`; the Holter figures in
+  `index.html` are kept in sync by hand (see the `keep in sync` comments there)
 - `samples/` — the hello-wall sample files the `app.jsx` widgets load and link
 - `build-docs.sh` — the Vercel build (see Deploy)
 - `vercel.json` — Vercel project settings and response headers

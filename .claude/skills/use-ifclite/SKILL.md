@@ -13,7 +13,7 @@ description: >-
 # Using ifc-lite
 
 `ifc-lite` is a headless BIM toolkit for IFC files. It was built for LLM
-terminals: every command takes `--json`, **stdout is data, stderr is status**,
+terminals: data commands take `--json`, **stdout is data, stderr is status**,
 and exit `0`/`1` means pass/fail. Prefer it over hand-parsing IFC text.
 
 ## Start here (every session)
@@ -78,9 +78,10 @@ ifc-lite run analysis.js model.ifc           # a .js file with `bim` available g
 `ifc-lite ask model.ifc "how many walls?"` maps plain-English questions to common
 recipes — handy for quick one-offs, but `eval` is more precise.
 
-For the **complete command + flag reference** (every command, all flags, the 29
-`create` element types, `bsdd`, `clash`, `lod`, `view`/`analyze`), read
-[`cli-reference.md`](./cli-reference.md).
+For the **command overview and the flags of the main commands** (the 29
+`create` element types, `export`, `schedule`, `ids`, `bsdd`, `lod`, `flow`,
+`view`/`analyze`), read [`cli-reference.md`](./cli-reference.md). For any other
+command, run `ifc-lite <command> --help`.
 
 ## Rules that keep IFC output correct
 

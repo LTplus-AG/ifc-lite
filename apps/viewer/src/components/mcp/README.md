@@ -83,7 +83,7 @@ minimal pipeline rather than the full viewer stack.
 | Code | **JetBrains Mono** |
 | Accent | Hi-vis chartreuse `#d6ff3f` (construction safety hint) |
 | Layout | Full-bleed sections, generous whitespace, oversized cards, horizontal recipe carousel |
-| Distinctive moves | Hero contains a **live Three.js IFC building** (`HeroScene.tsx`) that progressively colorises through the `HERO_STEPS` transcript (`viewer_color_by_storey` -> `viewer_isolate(IfcWall)` -> `viewer_colorize(...)`) so the visitor sees the agent driving the model - install grid as oversized cards - recipes as a horizontally scrollable transcript carousel with family-coloured headers - big italic numerals as section markers |
+| Distinctive moves | Hero contains a **Three.js building** (`HeroScene.tsx`; authored meshes in `hero-scene-building.ts`, no IFC file) that a scripted twelve-step `HERO_STEPS` transcript animates (`viewer_color_by_storey` -> `viewer_isolate(IfcWall)` -> `viewer_colorize(...)`) so the visitor sees what an agent session looks like - install grid as oversized cards - recipes as a horizontally scrollable transcript carousel with family-coloured headers - big italic numerals as section markers |
 
 The page forces dark on its own subtree without flipping the global `.dark`
 class, so the rest of the SPA is not affected when the user navigates away.

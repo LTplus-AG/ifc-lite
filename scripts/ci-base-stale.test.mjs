@@ -210,7 +210,7 @@ function runFake({ gate, cacheData = null, prs = [STALE_PR], existing = 'failure
   const posts = [];
   const reads = [];
   const makeIo = ({ cache }) => {
-    const store = { mainMeasurements: {}, prMeasurements: {}, prFiles: {}, posted: {}, ...(cache ?? {}) };
+    const store = { mainMeasurements: {}, prMeasurements: {}, prFiles: {}, posted: {}, ...cache };
     return {
       ...fakeIo(),
       store,
@@ -511,7 +511,9 @@ ct('workflow #11350: a late targeted run cannot replace a newer sweep cache', (t
   const temp = mkdtempSync(join(tmpdir(), 'base-stale-overlap-'));
   t.after(() => rmSync(temp, { recursive: true, force: true }));
   const entries = new Map();
-  const key = (pattern, id) => pattern.replace('${{ github.run_id }}', String(id)).replace('${{ github.run_attempt }}', '1');
+  const key = (pattern, id) => pattern
+    .replace(/\$\{\{ github\.run_id \}\}/, String(id))
+    .replace(/\$\{\{ github\.run_attempt \}\}/, '1');
   const begin = (id, PR) => {
     const runnerTemp = mkdtempSync(join(temp, 'runner-'));
     const args = execFileSync('bash', ['-c', `node() { printf '%s\\n' "$@"; }\n${judge.run}`], {
@@ -619,7 +621,7 @@ ct('run: two PRs sharing a head keep their own file lists in the cache', () => {
   const cachePath = join(dir, 'cache.json');
   const lists = { 5: ['docs/a.md'], 6: ['rust/core/src/a.rs'] };
   const makeIo = ({ cache }) => {
-    const store = { mainMeasurements: {}, prMeasurements: {}, prFiles: {}, posted: {}, ...(cache ?? {}) };
+    const store = { mainMeasurements: {}, prMeasurements: {}, prFiles: {}, posted: {}, ...cache };
     return {
       ...fakeIo(),
       store,

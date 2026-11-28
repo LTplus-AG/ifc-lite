@@ -33,11 +33,14 @@ type StarterDeps = {
 const added = analytics as typeof analytics & {
   createAnalyticsStarter?: (deps: StarterDeps) => Starter;
   analyticsInitConfig?: (apiHost: string) => Record<string, unknown>;
-  createHeldAnalytics?: (cap: number, holdFromStart: boolean, prepareError: (error: unknown) => unknown) => Held;
+  createHeldAnalytics?: (cap: number, holdFromStart: boolean, prepareError: (error: unknown) => unknown, sendUncaught?: SendUncaught) => Held;
+  listenForUncaught?: (target: EventTarget, hold: (error: unknown) => void, isOptedOut: () => boolean) => () => void;
 };
+type SendUncaught = (target: Held['client'], error: unknown, properties: Record<string, unknown>) => void;
 type Recorded = { kind: 'capture' | 'exception'; name?: string; error?: unknown; properties?: Record<string, unknown>; timestamp?: Date };
 type Held = {
   client: { capture: (event: string, properties?: Record<string, unknown>, options?: { timestamp?: Date }) => unknown; captureException: (error: unknown, properties?: Record<string, unknown>) => unknown };
+  holdUncaught: (error: unknown) => void;
   flush: (target: Held['client']) => void;
   clear: () => void;
   stop: () => void;
@@ -288,6 +291,9 @@ describe('events before the notice are held in memory, never stored or sent earl
     assert.ok(sent.events[1]!.timestamp instanceof Date, 'an event without a time keeps the time it happened');
     assert.equal(sent.events[2]!.error, crash);
     assert.equal(sent.events[2]!.properties?.held_before_notice, true);
+    const heldAt = sent.events[2]!.properties?.held_at;
+    assert.equal(typeof heldAt, 'string', 'error events carry their original time as held_at');
+    assert.ok(Math.abs(Date.parse(heldAt as string) - Date.now()) < 60_000, 'held_at is the time of the failure');
     assert.equal(held.size(), 0, 'sent once');
   });
 
@@ -326,5 +332,50 @@ describe('events before the notice are held in memory, never stored or sent earl
       await sdk.shutdown();
       sdk.sessionManager?.destroy();
     }
+  });
+
+  it('copies properties when holding, so later changes by the caller are not sent', () => {
+    assert.ok(added.createHeldAnalytics);
+    const held = added.createHeldAnalytics(10, true, (error) => error);
+    const properties: Record<string, unknown> = { schema: 'IFC4' };
+    held.client.capture('ifc_model_loaded', properties);
+    properties.schema = 'changed later';
+    const sent = recorder();
+    held.flush(sent.target as never);
+    assert.equal(sent.events[0]!.properties?.schema, 'IFC4');
+  });
+
+  it('holds uncaught errors and unhandled rejections until PostHog takes over, then sends them as unhandled', () => {
+    assert.ok(added.createHeldAnalytics && added.listenForUncaught, 'listenForUncaught is exported');
+    const sentAsUnhandled: Array<{ error: unknown; properties: Record<string, unknown> }> = [];
+    const held = added.createHeldAnalytics(2, true, (error) => error, (_target, error, properties) => { sentAsUnhandled.push({ error, properties }); });
+    const page = new EventTarget();
+    let optedOut = false;
+    const stop = added.listenForUncaught(page, held.holdUncaught, () => optedOut);
+    const crash = new Error('boot crash');
+    page.dispatchEvent(Object.assign(new Event('error'), { error: crash, message: crash.message }));
+    page.dispatchEvent(Object.assign(new Event('unhandledrejection'), { reason: 'rejected at start-up' }));
+    page.dispatchEvent(Object.assign(new Event('error'), { error: new Error('over the cap') }));
+    assert.equal(held.size(), 2, 'capped');
+    held.flush(recorder().target as never);
+    assert.deepEqual(sentAsUnhandled.map((item) => item.error), [crash, 'rejected at start-up']);
+    assert.equal(sentAsUnhandled[0]!.properties.held_before_notice, true);
+    assert.equal(typeof sentAsUnhandled[0]!.properties.held_at, 'string');
+    optedOut = true;
+    page.dispatchEvent(Object.assign(new Event('error'), { error: new Error('opted out') }));
+    assert.equal(held.size(), 0, 'nothing held for an opted-out visitor');
+    optedOut = false;
+    stop();
+    page.dispatchEvent(Object.assign(new Event('error'), { error: new Error('after PostHog took over') }));
+    assert.equal(held.size(), 0, 'no longer listening once PostHog runs, so nothing is captured twice');
+  });
+
+  it('an opt-out in another tab applies here: held events dropped and PostHog entries deleted', () => {
+    localStorage.setItem(`ph_${TOKEN}_posthog`, '{"distinct_id":"x"}');
+    sessionStorage.setItem(`ph_${TOKEN}_window_id`, 'w');
+    localStorage.setItem('ifc-lite:analytics-opt-out', 'true');
+    window.dispatchEvent(Object.assign(new Event('storage'), { key: 'ifc-lite:analytics-opt-out' }));
+    assert.equal(consent.isAnalyticsOptedOut(), true, 'the other tab\'s opt-out is read');
+    assert.deepEqual(postHogEntries(), [], 'and what PostHog stored is deleted here too');
   });
 });

@@ -57,7 +57,7 @@ export const settingsDe = {
   "settings.privacy.analyticsDisclosure": "Der gehostete Viewer sendet anonyme Nutzungs- und Fehlerereignisse an PostHog, etwa verwendeter Befehl, Modellschema, Anzahlen und Build-Version, und zählt Seitenaufrufe mit Vercel Web Analytics. Beides startet erst nach dem Hinweis beim ersten Besuch. Sitzungen werden nie aufgezeichnet.",
   "settings.privacy.analyticsExclusions": "Modellinhalte, Dateinamen, GlobalIds, Eigenschaftswerte, Chattexte und API-Schlüssel werden niemals eingeschlossen.",
   "settings.privacy.analyticsOptOut": "Produktanalyse deaktivieren",
-  "settings.privacy.analyticsOptOutHint": "Stoppt Nutzungs- und Fehlerereignisse sowie die Zählung von Seitenaufrufen aus diesem Browser. Die Analyse-Skripte werden dann nicht geladen.",
+  "settings.privacy.analyticsOptOutHint": "Stoppt Nutzungs- und Fehlerereignisse sowie die Zählung von Seitenaufrufen aus diesem Browser sofort. Ab dem nächsten Laden der Seite werden die Analyse-Skripte gar nicht mehr geladen.",
   "settings.privacy.learnMore": "Datenschutzleitfaden lesen",
   "settings.privacy.toastDisclosure": "IFClite speichert ein Aktionsprotokoll auf Ihrem Gerät. Der gehostete Viewer sendet außerdem anonyme Produktanalysen, sofern Sie diese nicht in den Datenschutzeinstellungen deaktivieren.",
   "settings.privacy.toastAction": "Datenschutzeinstellungen",

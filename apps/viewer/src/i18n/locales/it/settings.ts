@@ -55,7 +55,7 @@ export const settingsIt = {
   "settings.privacy.analyticsDisclosure": "Il visualizzatore ospitato invia a PostHog eventi anonimi di utilizzo e di errore, come il comando usato, lo schema del modello, i conteggi e la versione della build, e conta le visualizzazioni di pagina con Vercel Web Analytics. Nulla parte prima dell'avviso della prima visita. Le sessioni non vengono mai registrate.",
   "settings.privacy.analyticsExclusions": "Contenuto del modello, nomi dei file, GlobalId, valori delle proprietà, testo della chat e chiavi API non vengono mai inclusi.",
   "settings.privacy.analyticsOptOut": "Disattiva le statistiche di utilizzo del prodotto",
-  "settings.privacy.analyticsOptOutHint": "Interrompe l'invio di eventi di utilizzo e di errore e il conteggio delle visualizzazioni di pagina da questo browser. Gli script di analisi non vengono quindi caricati.",
+  "settings.privacy.analyticsOptOutHint": "Interrompe subito l'invio di eventi di utilizzo e di errore e il conteggio delle visualizzazioni di pagina da questo browser. Dal prossimo caricamento della pagina, gli script di analisi non vengono più caricati.",
   "settings.privacy.learnMore": "Leggi la guida sulla privacy",
   "settings.privacy.toastDisclosure": "IFClite conserva un registro delle azioni sul tuo dispositivo. Il visualizzatore ospitato invia anche statistiche anonime di utilizzo del prodotto, a meno che tu non le disattivi nelle impostazioni Privacy.",
   "settings.privacy.toastAction": "Impostazioni Privacy",

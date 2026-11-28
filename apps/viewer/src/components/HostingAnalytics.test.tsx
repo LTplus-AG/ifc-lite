@@ -60,6 +60,9 @@ describe('hosting page-view analytics honour the opt-out', () => {
     render(<hosting.HostingAnalytics />);
     assert.equal(scripts(), before, 'no script before the notice');
     assert.equal(added.hostingAnalyticsAllowed(), false);
+    // Unmounted first, so marking the notice cannot re-render it into a real
+    // script injection outside the test's control; the decision is read directly.
+    cleanup();
     consentAdded.markPrivacyNoticeShown();
     assert.equal(added.hostingAnalyticsAllowed(), true);
     consent.persistAnalyticsOptOut(true);

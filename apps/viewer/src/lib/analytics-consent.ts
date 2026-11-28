@@ -22,6 +22,18 @@ function readStoredOptOut(): boolean {
 }
 
 let optedOut = readStoredOptOut();
+
+// An opt-out (or opt-in) in another tab of this browser applies here too. A
+// notice shown in another tab is read when this tab next checks it.
+if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+  window.addEventListener('storage', (event) => {
+    if (event.key !== OPT_OUT_KEY && event.key !== null) return;
+    const next = readStoredOptOut();
+    if (next === optedOut) return;
+    optedOut = next;
+    emit();
+  });
+}
 // Covers a browser whose storage refuses the write: the notice was still shown in this tab.
 let noticeShownInTab = false;
 const listeners = new Set<() => void>();

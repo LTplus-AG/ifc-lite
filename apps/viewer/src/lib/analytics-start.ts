@@ -90,17 +90,24 @@ export function createAnalyticsStarter(deps: {
 }
 
 type AnalyticsClient = Pick<PostHog, 'capture' | 'captureException'>;
+/** How the viewer sends a held uncaught error once PostHog runs: as unhandled, like PostHog's own autocapture. */
+export type SendUncaught = (target: AnalyticsClient, error: unknown, properties: Record<string, unknown>) => void;
 
 /**
  * Events captured before PostHog may start (the first-visit notice has not
  * been shown yet). They are held here in memory only: nothing is stored, sent
- * or given an identifier. `flush` sends them once PostHog has started, with
- * their original time; `clear` drops them on an opt-out, and `stop` when this
- * host sends no analytics at all. The first `cap` are kept, so startup crashes
- * and a fast deep-link load survive while a runaway loop cannot grow memory.
+ * or given an identifier. `flush` sends them once PostHog has started. Usage
+ * events keep their original time; PostHog has no time option for error
+ * events, so those carry it as `held_at` and are marked `held_before_notice`.
+ * `holdUncaught` queues an uncaught error or unhandled rejection, which
+ * `listenForUncaught` feeds until PostHog takes over. `clear` drops everything
+ * on an opt-out, and `stop` when this host sends no analytics at all. The
+ * first `cap` are kept, so startup crashes and a fast deep-link load survive
+ * while a runaway loop cannot grow memory.
  */
-export function createHeldAnalytics(cap: number, holdFromStart: boolean, prepareError: (error: unknown) => unknown): {
+export function createHeldAnalytics(cap: number, holdFromStart: boolean, prepareError: (error: unknown) => unknown, sendUncaught?: SendUncaught): {
   client: AnalyticsClient;
+  holdUncaught: (error: unknown) => void;
   flush: (target: AnalyticsClient) => void;
   clear: () => void;
   stop: () => void;
@@ -111,23 +118,69 @@ export function createHeldAnalytics(cap: number, holdFromStart: boolean, prepare
   const hold = (send: (target: AnalyticsClient) => void): void => {
     if (holding && items.length < cap) items.push(send);
   };
+  const heldMarks = () => ({ held_before_notice: true, held_at: new Date().toISOString() });
   return {
     client: {
       capture: (event, properties, options) => {
         const timestamp = options?.timestamp ?? new Date();
-        hold((target) => { target.capture(event, properties, { ...options, timestamp }); });
+        // Copied now: a caller may change its object before the notice.
+        const copy = properties ? { ...properties } : properties;
+        hold((target) => { target.capture(event, copy, { ...options, timestamp }); });
         return undefined;
       },
       captureException: (error, additionalProperties) => {
         // The stack is taken now, at the failure, not when the event is sent.
         const capturable = prepareError(error);
-        hold((target) => { target.captureException(capturable, { ...additionalProperties, held_before_notice: true }); });
+        const properties = { ...additionalProperties, ...heldMarks() };
+        hold((target) => { target.captureException(capturable, properties); });
         return undefined;
       },
+    },
+    holdUncaught: (error) => {
+      const properties = heldMarks();
+      hold((target) => {
+        if (sendUncaught) sendUncaught(target, error, properties);
+        else target.captureException(error, properties);
+      });
     },
     flush: (target) => { const out = items; items = []; for (const send of out) send(target); },
     clear: () => { items = []; },
     stop: () => { holding = false; items = []; },
     size: () => items.length,
+  };
+}
+
+/**
+ * Held uncaught errors go out as unhandled, like PostHog's own autocapture, so
+ * the scrubber's uncaught-only noise gates apply to them too.
+ */
+export function sendAsUnhandled(sdk: Pick<PostHog, 'exceptions'>): SendUncaught {
+  return (target, error, properties) => {
+    const exceptions = sdk.exceptions;
+    if (!exceptions) return void target.captureException(error, properties);
+    exceptions.sendExceptionEvent({ ...exceptions.buildProperties(error, { handled: false }), ...properties });
+  };
+}
+
+/**
+ * Until PostHog runs (and its own exception autocapture with it), uncaught
+ * errors and unhandled rejections go to `hold`. `isOptedOut` is checked per
+ * error. Returns the function that removes both listeners, which the viewer
+ * calls just before PostHog starts, so nothing is captured twice.
+ */
+export function listenForUncaught(target: Pick<Window, 'addEventListener' | 'removeEventListener'>, hold: (error: unknown) => void, isOptedOut: () => boolean): () => void {
+  const onError = (event: ErrorEvent): void => {
+    if (isOptedOut()) return;
+    hold(event.error ?? event.message);
+  };
+  const onRejection = (event: PromiseRejectionEvent): void => {
+    if (isOptedOut()) return;
+    hold(event.reason);
+  };
+  target.addEventListener('error', onError as EventListener);
+  target.addEventListener('unhandledrejection', onRejection as EventListener);
+  return () => {
+    target.removeEventListener('error', onError as EventListener);
+    target.removeEventListener('unhandledrejection', onRejection as EventListener);
   };
 }

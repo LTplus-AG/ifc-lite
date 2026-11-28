@@ -13,7 +13,7 @@ import {
   subscribeAnalyticsConsent,
 } from './analytics-consent.js';
 import { scrubEvent } from './analytics-scrub.js';
-import { createAnalyticsStarter, createHeldAnalytics, posthogInitConfig } from './analytics-start.js';
+import { createAnalyticsStarter, createHeldAnalytics, listenForUncaught, posthogInitConfig, sendAsUnhandled } from './analytics-start.js';
 import { scrubUiEvent, type UiEventName, type UiEventProperties } from './analytics-ui-events.js';
 import { scrubExportEvent, type ExportCompletedProperties } from './analytics-export-events.js';
 import { CAPTURE_DEVICE_EVENT, CAPTURE_LOAD_EVENT, scrubCaptureEvent, type CaptureDeviceProperties, type CaptureLoadProperties } from './analytics-capture-events.js';
@@ -182,11 +182,13 @@ const recordViewerSessionStart = createViewerSessionStartRecorder(
 export function analyticsInitConfig(apiHost: string): Partial<PostHogConfig> {
   return posthogInitConfig(apiHost, beforeSend);
 }
-export { createAnalyticsStarter, createHeldAnalytics };
+export { createAnalyticsStarter, createHeldAnalytics, listenForUncaught };
 
 let client: AnalyticsClient | null = null;
 
 function initPostHog(): void {
+  // PostHog's own exception autocapture takes over from here.
+  stopUncaught();
   try {
     posthogClient.init(key as string, analyticsInitConfig(host as string));
     // The viewer's own setting decides; an older build may have left
@@ -241,6 +243,7 @@ export function startAnalytics(): void {
   if (!isFeatureEnabled('privacy.analytics')) {
     // This host sends nothing, so nothing is held for later either.
     held.stop();
+    stopUncaught();
     return;
   }
   started = true;
@@ -250,7 +253,22 @@ export function startAnalytics(): void {
 }
 
 /** Events before PostHog may start; see createHeldAnalytics. A build without a key holds nothing. */
-const held = createHeldAnalytics(100, enabled, ensureCapturableStack);
+const held = createHeldAnalytics(100, enabled, ensureCapturableStack, sendAsUnhandled(posthogClient));
+const stopUncaught = enabled && typeof window !== 'undefined'
+  ? listenForUncaught(window, held.holdUncaught, isAnalyticsOptedOut)
+  : () => undefined;
+
+/** An opt-out here or in another tab: stop PostHog, drop held events, delete what PostHog stored. */
+subscribeAnalyticsConsent(() => {
+  if (!isAnalyticsOptedOut()) return;
+  held.clear();
+  try {
+    if (enabled && client && !posthogClient.has_opted_out_capturing()) posthogClient.opt_out_capturing();
+  } catch (error) {
+    console.warn('[analytics] could not update PostHog consent', error);
+  }
+  clearStoredAnalyticsIdentity();
+});
 
 /** All explicit capture sites use this facade, so the setting takes effect immediately. */
 export function consentAwareAnalyticsClient(target: AnalyticsClient): AnalyticsClient {
@@ -289,21 +307,9 @@ export function readAnalyticsFeatureFlag(key: string): boolean | string | undefi
  * started at all. Opting back in starts PostHog now, if the notice was shown.
  */
 export function setAnalyticsOptOut(value: boolean): void {
-  // Notifies the starter, which initialises PostHog on an opt-in when it can.
+  // Notifies the starter (starts PostHog on an opt-in) and the opt-out handler above.
   persistAnalyticsOptOut(value);
-  if (value) {
-    // Events held for after the notice are dropped, never sent later.
-    held.clear();
-    try {
-      if (enabled && client) posthogClient.opt_out_capturing();
-    } catch (error) {
-      console.warn('[analytics] could not update PostHog consent', error);
-    }
-    // Also the session-storage keys PostHog's own opt-out leaves behind.
-    clearStoredAnalyticsIdentity();
-    return;
-  }
-  if (!enabled) return;
+  if (value || !enabled) return;
   try {
     if (client && posthogClient.has_opted_out_capturing()) {
       posthogClient.opt_in_capturing({ captureEventName: false });

@@ -32,10 +32,8 @@ export { changedPaths, compareMoved } from './base-stale-diffs.mjs';
 
 export const MEASURED_ARTIFACTS = ['perf-ratchet-measured', 'perf-ratchet-measured-native'];
 /**
- * test.yml's marker for an in-run step about to judge with
- * CI_BASE_STALE_GATE=on. It is uploaded BEFORE the step can post, and the
- * step runs in `on` only when the upload succeeded, so a post the shadow
- * rollback must find never depends on a best-effort upload after it.
+ * Legacy marker emitted by enforcement builds before posting an in-run
+ * status. Shadow rollback still reads existing artifacts with this name.
  */
 export const IN_RUN_ON_ARTIFACT = 'base-stale-in-run-on';
 /** `gh pr list --limit` for the sweep's candidates; a full page is reported as capped. */

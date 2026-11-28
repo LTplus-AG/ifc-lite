@@ -214,31 +214,36 @@ function runFake({ gate, cacheData = null, prs = [STALE_PR], existing = 'failure
   return { posts, reads, saved: loadCache(cachePath), rows };
 }
 
-ct('run, on: a stale labelled PR gets a failure status; a fork gets nothing', () => {
-  const { posts } = runFake({ gate: 'on', prs: [STALE_PR, FORK_PR] });
-  assert.equal(posts.length, 1);
-  assert.equal(posts[0].sha, 'head5');
-  assert.equal(posts[0].context, 'PR base staleness');
-  assert.equal(posts[0].state, 'failure');
+ct('run: the legacy on value cannot enable status enforcement (#11350)', () => {
+  const { posts, rows } = runFake({ gate: 'on', prs: [STALE_PR, FORK_PR], existing: null });
+  assert.deepEqual(posts, []);
+  assert.deepEqual(rows.map(row => [row.gateMode, row.verdict]), [['shadow', 'stale'], ['shadow', 'stale']]);
 });
 
-ct('run: same-head PRs keep separate evidence and a fresh row cannot clear a hold in one sweep (#11350)', () => {
+ct('run: in-run evidence does not read or release statuses (#11350)', () => {
+  const { posts, reads, rows } = runFake({
+    gate: 'on',
+    opts: { mode: 'in-run', pr: 5, headSha: 'head5', measuredDir: '/does-not-exist/base-stale' },
+  });
+  assert.deepEqual([reads, posts], [[], []]);
+  assert.deepEqual(rows.map(row => [row.gateMode, row.verdict]), [['shadow', 'stale']]);
+});
+
+ct('run: same-head PRs keep separate evidence with the legacy switch set (#11350)', () => {
   const fresh = { ...STALE_PR, number: 6 };
   for (const prs of [[STALE_PR, fresh], [fresh, STALE_PR]]) {
     const ioOver = { prMeasurement: (_head, _run, pr) => ({
       runId: pr, testedBase: 'base0000001', families: [fam(pr === fresh.number ? 400 : 990)],
     }) };
-    const shadow = runFake({ gate: 'shadow', prs, existing: null, ioOver });
+    const shadow = runFake({ gate: 'on', prs, existing: null, ioOver });
     assert.deepEqual(shadow.posts, []);
     assert.deepEqual(shadow.rows.map(r => [r.pr, r.verdict]), prs.map(p => [p.number, p === fresh ? 'fresh' : 'stale']));
-    const on = runFake({ gate: 'on', prs, ioOver });
-    assert.equal(on.posts.at(-1).state, 'failure');
   }
 });
 
 ct('run, shadow: delayed verdicts against two main revisions remain evidence only (#11350)', () => {
   const judge = (mainTip) => runFake({
-    gate: 'shadow',
+    gate: 'on',
     existing: null,
     ioOver: { mainTip: () => mainTip },
   });
@@ -287,7 +292,7 @@ ct('run, rollback: the first shadow sweep after `on` releases a failure the gate
   assert.deepEqual(reads, ['head5']);
   assert.equal(posts.length, 1);
   assert.equal(posts[0].state, 'success');
-  assert.equal(posts[0].description, 'Gate in shadow (CI_BASE_STALE_GATE not on): not enforced');
+  assert.equal(posts[0].description, 'Advisory base-stale signal: legacy hold released');
 });
 
 ct('run, shadow: a head the gate already left green is not posted again', () => {
@@ -655,20 +660,4 @@ ct('run, rollback: a released head judged with the gate on since is read again',
     ioOver: { inRunOnHeads: () => new Set(['head5']) },
   });
   assert.deepEqual(reads, ['head5']);
-});
-
-ct('run, on: a sweep with the gate on clears the rollback progress', () => {
-  const { saved } = runFake({ gate: 'on', cacheData: { version: 1, lastMode: 'shadow', released: { head5: true } } });
-  assert.deepEqual(saved.released, {});
-});
-
-ct('run, on: a failure on a head two PRs share is not replaced by the other PR success in the same run', () => {
-  const freshTwin = { ...STALE_PR, number: 8 };
-  const { posts, rows } = runFake({
-    gate: 'on',
-    prs: [STALE_PR, freshTwin],
-    ioOver: { prFiles: (n) => (n === 8 ? ['docs/a.md'] : ['apps/viewer/src/a.ts']) },
-  });
-  assert.deepEqual(posts.map((p) => [p.sha, p.state]), [['head5', 'failure']]);
-  assert.equal(rows[1].posted.state, 'kept');
 });

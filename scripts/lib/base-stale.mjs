@@ -47,22 +47,11 @@ export const NOT_RELEVANT = 'not-relevant';
 /** Worst first: the combined verdict is the first of these any part reports. */
 const SEVERITY = [STALE, UNKNOWN, FRESH, NOT_RELEVANT];
 
-/** The commit status context the `on` mode posts on the PR head. */
+/** The legacy commit status context used for rollback. */
 export const STATUS_CONTEXT = 'PR base staleness';
 
 /** The label Mergify queues on; the sweep evaluates PRs that carry it. */
 export const QUEUE_LABEL = 'mergify-trial';
-
-/** GitHub caps a commit status description at 140 characters. */
-const DESCRIPTION_MAX = 140;
-
-/**
- * `CI_BASE_STALE_GATE`: exactly `on` enforces (posts the status). Anything
- * else, unset and typos included, is `shadow`, the advisory direction.
- */
-export function parseGateMode(raw) {
-  return String(raw ?? '').trim() === 'on' ? 'on' : 'shadow';
-}
 
 /**
  * Which of the two gates the PR's diff can move, from the PR's file list and
@@ -296,43 +285,11 @@ export function combine(perf, rust) {
   return { verdict, reasons };
 }
 
-function clip(text) {
-  return text.length <= DESCRIPTION_MAX ? text : `${text.slice(0, DESCRIPTION_MAX - 1)}…`;
-}
-
-/**
- * What to post on the PR head.
- *
- * `on`: `stale` is a `failure` (Mergify's `-check-failure=` reads it); every
- * other verdict is `success`, its description saying which one. `unknown` is
- * advisory by design: it does not hold a PR, and it says "not judged" rather
- * than "fresh".
- *
- * `shadow` posts nothing, with one exception that makes the rollback a single
- * variable deletion: a non-success status of this context that an earlier `on`
- * run left on the head is overwritten with a success that says the gate is in
- * shadow. `existingState` is that status, or null when absent.
- *
- * @returns {{ state: 'success'|'failure', description: string } | null}
- */
-export function statusFor({ verdict, reasons }, mode, existingState = null) {
-  const first = reasons[0] ?? '';
-  if (mode !== 'on') {
-    if (existingState && existingState !== 'success') {
-      return { state: 'success', description: clip('Gate in shadow (CI_BASE_STALE_GATE not on): not enforced') };
-    }
-    return null;
-  }
-  switch (verdict) {
-    case STALE:
-      return { state: 'failure', description: clip(`Would fail on current main: ${first.replace(/^(perf|rust): /, '')}`) };
-    case UNKNOWN:
-      return { state: 'success', description: clip(`Not judged (advisory): ${first.replace(/^(perf|rust): /, '')}`) };
-    case FRESH:
-      return { state: 'success', description: clip('Still holds on current main') };
-    default:
-      return { state: 'success', description: clip('No perf-ratchet or Rust input changed') };
-  }
+/** Release a legacy hold while the signal is advisory. */
+export function rollbackStatus(existingState) {
+  return existingState && existingState !== 'success'
+    ? { state: 'success', description: 'Advisory base-stale signal: legacy hold released' }
+    : null;
 }
 
 /** One Markdown line for the step summary, honest about when it was judged. */

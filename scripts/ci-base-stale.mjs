@@ -16,30 +16,10 @@
  * 45039295698, 50-360 B over `bundle/viewer-eager-js-bytes`). Rust PRs show
  * the same pattern. A red queue run costs the queue slot and the PR behind it.
  *
- * THE SWITCH is the repo variable `CI_BASE_STALE_GATE`:
- *   unset / `shadow` / anything else   advisory: the verdict goes to the log
- *       and the step summary ("would block: <reason>"). Nothing is posted,
- *       failed or held, except that a non-success `PR base staleness` status
- *       an earlier `on` run left is overwritten with a success (so deleting the
- *       variable releases every held PR on its next evaluation).
- *   `on`   the verdict is also a commit status, `PR base staleness`, on the PR
- *       head: `failure` when stale, `success` otherwise (an `unknown` verdict
- *       says "Not judged" and does not hold). Mergify reads it once
- *       `.mergify.yml`'s `auto_merge_conditions` carries
- *       `-check-failure=PR base staleness` (not added here; see the PR).
- *
- * BEFORE `on` (open by design while the gate is shadow, where no run posts
- * anything but a release `success`). The PR that enables the gate owns:
- *   - the job permission (`statuses: write` on test.yml's perf-ratchet), the
- *     Mergify condition and ci-viewer-select-status.test.mjs's writer list;
- *   - ordering between writers: a sweep, a label run and an in-run step can
- *     judge one head against different mains at once, and the last write
- *     wins. A re-read of main before posting narrows that, it does not close
- *     it; the mechanism (one writer, or a compare-and-set on the main a
- *     status names) is that PR's to choose;
- *   - a head shared by two PRs judged in DIFFERENT runs: the status is per
- *     commit, so one PR's `success` can replace the other's `failure`. Within
- *     one run a failure on a shared head is kept (see run()).
+ * Shadow only: verdicts go to the log and step summary. Standalone runs
+ * can release a non-success status left by an older enforcement build.
+ * Enforcement requires ordering across main revisions and reconciling all
+ * PR verdicts on a shared head before any commit status can enforce them.
  *
  * WHEN A VERDICT IS (RE)EVALUATED. An open PR's CI does not re-run when main
  * moves, so a verdict is only as fresh as its last evaluation:
@@ -60,7 +40,7 @@
  *   node scripts/ci-base-stale.mjs --in-run --pr <n> --head-sha <sha> --merge-sha <sha> --measured-dir <dir>
  *   common: [--main-sha <sha>] [--pr-run <run id>] (replay a past decision; never posts) [--dry-run] (never post)
  *
- * Env: GH_TOKEN, GITHUB_REPOSITORY, CI_BASE_STALE_GATE, GITHUB_STEP_SUMMARY,
+ * Env: GH_TOKEN, GITHUB_REPOSITORY, GITHUB_STEP_SUMMARY,
  * GITHUB_SERVER_URL/GITHUB_RUN_ID (status target link), HEAD_REPO (in-run fork check).
  * Exit 0 with verdicts (a per-PR fault is an `unknown` verdict); exit 2 on a
  * harness fault (bad arguments, main unreadable). It never exits 1.
@@ -69,7 +49,7 @@
 import { appendFileSync, existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { gatingFilters, parseFilterBlock, splitJobs } from './lib/ci-path-coverage.mjs';
-import { parseGateMode, QUEUE_LABEL, STATUS_CONTEXT, statusFor, summaryLine } from './lib/base-stale.mjs';
+import { QUEUE_LABEL, STATUS_CONTEXT, rollbackStatus, summaryLine } from './lib/base-stale.mjs';
 import { evaluatePr } from './lib/base-stale-evaluate.mjs';
 import { BudgetError, createIo } from './lib/base-stale-io.mjs';
 import { isMainEntry } from './lib/is-main-entry.mjs';
@@ -226,7 +206,7 @@ function finish(opts, records, extra) {
 export function run(opts, env = process.env, makeIo = createIo) {
   const repo = env.GITHUB_REPOSITORY;
   if (!repo) throw new Error('GITHUB_REPOSITORY is not set');
-  const gateMode = parseGateMode(env.CI_BASE_STALE_GATE);
+  const gateMode = 'shadow';
   const cache = loadCache(opts.cache);
   const io = makeIo({ repo, cache });
   const evaluatedAt = new Date().toISOString();
@@ -259,13 +239,13 @@ export function run(opts, env = process.env, makeIo = createIo) {
 
   // A rollback in progress (see saveCache): heads already read since `on`.
   const leftOn = cache?.lastMode !== 'shadow';
-  const released = sweep && gateMode !== 'on' && leftOn ? { ...(cache?.released ?? {}) } : {};
+  const released = sweep && leftOn ? { ...(cache?.released ?? {}) } : {};
   // Shadow sweep: the heads an in-run step judged with the gate on. A failed
   // lookup reads every head instead (null), the safe direction. Needed for a
   // settled shadow, and to re-read a released head that has been judged
   // with the gate on since.
   let onHeads = new Set();
-  if (sweep && gateMode !== 'on' && !opts.dryRun && (!leftOn || Object.keys(released).length > 0)) {
+  if (sweep && !opts.dryRun && (!leftOn || Object.keys(released).length > 0)) {
     try {
       onHeads = io.inRunOnHeads();
     } catch (err) {
@@ -291,9 +271,6 @@ export function run(opts, env = process.env, makeIo = createIo) {
   const records = [];
   // Whether every head this sweep had to read was read; see saveCache.
   let complete = !candidates?.capped;
-  // Two PRs can share a head: a failure this run posted on it is not
-  // replaced by the other PR's success (the status is per commit).
-  const heldThisRun = new Map();
   let stopped = null;
   for (const t of targets) {
     if (!stopped && sweep && records.length > 0) {
@@ -333,7 +310,7 @@ export function run(opts, env = process.env, makeIo = createIo) {
     // A replay (--pr-run / --main-sha) judges other evidence than the head's
     // current state: it is logged, never posted.
     const replay = Boolean(opts.prRun || opts.mainSha);
-    if (!fork && !opts.dryRun && !budgetCut && !replay) {
+    if (opts.mode !== 'in-run' && !fork && !opts.dryRun && !budgetCut && !replay) {
       try {
         // Shadow reads the existing status only where `on` may have left a
         // non-success: always for a single PR; in a sweep, for every head on
@@ -347,15 +324,10 @@ export function run(opts, env = process.env, makeIo = createIo) {
         // non-success this workflow posted).
         const mayHold = opts.mode !== 'sweep' || (leftOn && !released[headSha]) || onHeads === null || onHeads.has(headSha) ||
           (io.store.posted[headSha] && io.store.posted[headSha] !== 'success');
-        const existing = gateMode === 'on' || !mayHold ? null : io.existingStatus(headSha, STATUS_CONTEXT);
-        status = statusFor(rec, gateMode, existing);
-        if (status && status.state === 'success' && heldThisRun.has(headSha)) {
-          status = { state: 'kept', description: `kept the failure #${heldThisRun.get(headSha)} got on this shared head` };
-        } else if (status) {
-          io.postStatus(headSha, STATUS_CONTEXT, status, targetUrl);
-          if (status.state !== 'success') heldThisRun.set(headSha, t.pr);
-        }
-        if (sweep && gateMode !== 'on' && leftOn) released[headSha] = true;
+        const existing = mayHold ? io.existingStatus(headSha, STATUS_CONTEXT) : null;
+        status = rollbackStatus(existing);
+        if (status) io.postStatus(headSha, STATUS_CONTEXT, status, targetUrl);
+        if (sweep && leftOn) released[headSha] = true;
       } catch (err) {
         console.log(`::warning title=base-stale::could not read or post the ${STATUS_CONTEXT} status on #${t.pr}: ${err.message.split('\n')[0]}`);
         status = { state: 'not-posted', description: err.message.split('\n')[0] };
@@ -368,7 +340,7 @@ export function run(opts, env = process.env, makeIo = createIo) {
   if (stopped) console.log(`::notice title=base-stale::stopped early: ${stopped}; the rest are logged as not judged`);
   const lastMode = sweep && complete && !opts.dryRun ? gateMode : (cache?.lastMode ?? null);
   // Single-PR runs carry the rollback's progress through untouched.
-  const progress = !sweep ? (cache?.released ?? {}) : gateMode === 'on' || lastMode === 'shadow' ? {} : released;
+  const progress = !sweep ? (cache?.released ?? {}) : lastMode === 'shadow' ? {} : released;
   saveCache(opts.cache, io.store, sweep ? new Set(records.map((r) => r.head).filter(Boolean)) : null, lastMode, progress);
   finish(opts, records, { gateMode, mainTip, evaluatedAt, stats: io.stats, allowance });
   return 0;

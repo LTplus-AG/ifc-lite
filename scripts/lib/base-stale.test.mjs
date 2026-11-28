@@ -14,7 +14,7 @@ import test from 'node:test';
 // dying at import with no assertion evaluated.
 const url = new URL('./base-stale.mjs', import.meta.url);
 const mod = existsSync(url) ? await import(url.href) : null;
-const { combine, evaluatePerf, evaluateRust, FRESH, NOT_RELEVANT, parseGateMode, prRelevance, rustScope, STALE, statusFor, UNKNOWN } = mod ?? {};
+const { combine, evaluatePerf, evaluateRust, FRESH, NOT_RELEVANT, prRelevance, rollbackStatus, rustScope, STALE, UNKNOWN } = mod ?? {};
 function bt(name, body) {
   test(name, () => {
     assert.ok(mod, 'scripts/lib/base-stale.mjs is absent');
@@ -193,29 +193,12 @@ bt('combine: the worst part wins and keeps only its reasons', () => {
   assert.deepEqual(combine(n, n).verdict, NOT_RELEVANT);
 });
 
-bt('gate mode: only the exact string `on` enforces', () => {
-  assert.equal(parseGateMode('on'), 'on');
-  assert.equal(parseGateMode(' on\n'), 'on');
-  for (const v of [undefined, '', 'shadow', 'ON', 'true', 'off']) assert.equal(parseGateMode(v), 'shadow');
-});
-
-bt('on: stale fails, unknown says not judged, fresh succeeds; descriptions fit 140 chars', () => {
-  const long = 'x'.repeat(300);
-  const stale = statusFor({ verdict: STALE, reasons: [`perf: ${long}`] }, 'on');
-  assert.equal(stale.state, 'failure');
-  assert.ok(stale.description.length <= 140);
-  assert.match(statusFor({ verdict: UNKNOWN, reasons: ['perf: no artifact'] }, 'on').description, /^Not judged \(advisory\): no artifact/);
-  assert.equal(statusFor({ verdict: UNKNOWN, reasons: [] }, 'on').state, 'success');
-  assert.equal(statusFor({ verdict: FRESH, reasons: [] }, 'on').state, 'success');
-  assert.equal(statusFor({ verdict: NOT_RELEVANT, reasons: [] }, 'on').state, 'success');
-});
-
-bt('shadow posts nothing, except to release a failure an earlier `on` left', () => {
-  assert.equal(statusFor({ verdict: STALE, reasons: ['x'] }, 'shadow', null), null);
-  assert.equal(statusFor({ verdict: STALE, reasons: ['x'] }, 'shadow', 'success'), null);
-  const released = statusFor({ verdict: STALE, reasons: ['x'] }, 'shadow', 'failure');
-  assert.equal(released.state, 'success');
-  assert.match(released.description, /shadow/);
+bt('only an existing non-success status can get an advisory release', () => {
+  assert.equal(rollbackStatus(null), null);
+  assert.equal(rollbackStatus('success'), null);
+  assert.deepEqual(rollbackStatus('failure'), {
+    state: 'success', description: 'Advisory base-stale signal: legacy hold released',
+  });
 });
 
 bt('a family main measures now but not at the PR base is unknown, not fresh', () => {

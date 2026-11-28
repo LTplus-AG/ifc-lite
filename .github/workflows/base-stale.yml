@@ -5,9 +5,7 @@
 name: Base-stale signal
 
 # Would a queued PR's last perf-ratchet / Rust result still hold on CURRENT
-# main? scripts/ci-base-stale.mjs carries the why, the decision and the
-# CI_BASE_STALE_GATE switch (unset = shadow: log and step summary only; `on` =
-# the `PR base staleness` commit status). This is an EARLIER signal, never a
+# main? scripts/ci-base-stale.mjs logs the advisory verdict. It is never a
 # gate in place of the merge queue, which still runs the full suite on the
 # exact merged tree.
 #
@@ -54,8 +52,7 @@ permissions:
   # Artifacts of earlier Test runs: the PR's and main's measurements.
   actions: read
   pull-requests: read
-  # Only written with CI_BASE_STALE_GATE=on, or to release a status an
-  # earlier `on` left once the gate is back in shadow.
+  # Release legacy holds from earlier enforcement builds.
   statuses: write
 
 concurrency:
@@ -103,7 +100,6 @@ jobs:
         id: judge
         env:
           GH_TOKEN: ${{ github.token }}
-          CI_BASE_STALE_GATE: ${{ vars.CI_BASE_STALE_GATE }}
           PR: ${{ github.event.pull_request.number || inputs.pr }}
           TRIGGER: ${{ github.event_name == 'push' && 'main-push' || github.event_name == 'pull_request_target' && 'labeled' || 'dispatch' }}
         run: |

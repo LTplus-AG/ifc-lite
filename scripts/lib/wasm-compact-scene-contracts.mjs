@@ -102,12 +102,14 @@ function newScene() {
 // fetched here, while this module loads. The reference scenes get f32 meshes and never use it.
 if (BUILT) await loadCompactPages();
 
-function sceneOf(meshes) {
+function sceneOf(meshes, beforeFinalize) {
   const gpu = fakeGpu();
   const scene = newScene();
   scene.queueMeshes(meshes);
   while (scene.hasQueuedMeshes()) scene.flushPending(gpu.device, gpu.pipeline, 0);
+  beforeFinalize?.(scene);
   scene.finalizeStreaming(gpu.device, gpu.pipeline);
+  while (scene.hasQueuedMeshes()) scene.flushPending(gpu.device, gpu.pipeline, 0);
   return { scene, gpu };
 }
 
@@ -131,11 +133,16 @@ function checkFixture(IfcAPI, bytes, label) {
     const decoded = () => compactHydrationStats().meshes - before;
     const { meshes, encoded } = meshFixture(api, bytes, true);
     assert.ok(encoded > 0, `${label}: the encoder takes meshes`);
-    const { scene, gpu } = sceneOf(meshes);
+    const { scene, gpu } = sceneOf(meshes, streaming => {
+      assert.equal(streaming.getCompactStats().paged, encoded, `${label}: every encoded mesh uploads to a page`);
+      assert.equal(decoded(), 0, `${label}: upload keeps all compact records`);
+    });
 
-    const paged = pagesOf(scene).reduce((count, page) => count + page.expressIds.length, 0);
-    assert.equal(paged, encoded, `${label}: every encoded mesh draws from a page (id and colour salt match the Scene's)`);
-    assert.equal(decoded(), 0, `${label}: nothing decoded by the upload`);
+    const { paged, decodes } = scene.getCompactStats();
+    const moved = (decodes.shared ?? 0) + (decodes.exact ?? 0);
+    assert.ok(paged > 0, `${label}: the settled scene still draws compact pages`);
+    assert.equal(paged + moved, encoded, `${label}: only shared or exact buckets take encoded meshes at settle`);
+    assert.equal(decoded(), moved, `${label}: settling decodes only the meshes moved into buckets`);
     assertSameBox(scene.getBounds(), reference.getBounds(), `${label} pages`);
     assert.deepEqual(entities(scene.getBatchedMeshes()), entities(reference.getBatchedMeshes()), `${label}: the same entities are drawn`);
 
@@ -145,7 +152,7 @@ function checkFixture(IfcAPI, bytes, label) {
     assert.equal(decoded(), encoded, `${label}: each mesh decoded once on the way back`);
     assertSameBox(scene.getBounds(), reference.getBounds(), `${label} buckets`);
     assert.deepEqual(entities(scene.getBatchedMeshes()), entities(reference.getBatchedMeshes()));
-    return { encoded, pages: paged };
+    return { encoded, paged, moved };
   } finally {
     api.free();
   }
@@ -166,7 +173,7 @@ export function runCompactSceneContracts(IfcAPI, test, skip, rootDir) {
     }
     test(name, () => {
       const result = checkFixture(IfcAPI, readFileSync(path), fixture.path);
-      console.log(`     ${result.encoded} encoded, all drawn from pages`);
+      console.log(`     ${result.encoded} encoded, ${result.paged} paged, ${result.moved} moved to buckets at settle`);
     });
   }
 }

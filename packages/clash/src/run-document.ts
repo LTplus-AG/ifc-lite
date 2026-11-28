@@ -19,14 +19,15 @@
  * store the document as-is. `validateClashRunDocument` checks one read back.
  */
 
-import { uuidFromSeed } from './deterministic-uuid.js';
 import { bareIfcGuid } from './export/table.js';
 import { clashElementIdentity } from './object-identity.js';
 import { clashReviewKey, clashSlotReviewKey } from './review.js';
 import { exclusionRuleCovers, recordExclusions, type ClashRunExclusionRule } from './run-exclusions.js';
+import { clashRuleRevision, clashRuleSetRevision, ruleSemantics } from './run-rules.js';
 import type { Clash, ClashDistanceKind, ExclusionSet, ClashResult, ClashReview, ClashRule, ClashSeverity, ClashStatus, Vec3 } from './types.js';
 
 export { matchesExclusionRule, slotExclusionId, type ClashRunExclusionRule } from './run-exclusions.js';
+export { clashRuleRevision, clashRuleSetRevision } from './run-rules.js';
 
 /** `$id` of the run-document schema; also the document's `schema` field. */
 export const CLASH_RUN_DOCUMENT_SCHEMA_ID = 'https://ifclite.dev/schemas/clash-run/v1.json';
@@ -179,45 +180,6 @@ export interface BuildClashRunDocumentInput {
   ruleMemberships?: Readonly<Record<string, string>>;
   /** Review state to record, by slot-qualified key. */
   reviews?: Readonly<Record<string, ClashReview>>;
-}
-
-/** The semantic fields of a rule as it ran: what decides which pairs it reports. */
-function ruleSemantics(rule: ClashRule, settings: ClashResult['settings']) {
-  return {
-    a: rule.a,
-    b: rule.b ?? null,
-    mode: rule.mode,
-    tolerance: rule.tolerance ?? settings.tolerance,
-    clearance: rule.mode === 'clearance' ? rule.clearance ?? null : null,
-    reportTouch: rule.reportTouch === true,
-    explicitMembers: { a: rule.membersA !== undefined, b: rule.membersB !== undefined },
-    excludeVoidsAndHosts: settings.excludeVoidsAndHosts,
-  };
-}
-
-/**
- * The semantic revision of a rule: changes when anything that decides which
- * pairs it reports changes (selectors, mode, tolerance, clearance, touch
- * reporting, void/host exclusion, explicit membership), and not for its name
- * or severity.
- *
- * Explicit member lists (`membersA`/`membersB`) are per-load refs, so a rule
- * that uses them should pass `membership`, a durable description of how its
- * members were chosen (the saved filter definition). Without it the lists
- * themselves are hashed: any membership change, and any reload, yields a new
- * revision, which fails closed (not comparable) instead of carrying a decision
- * across a membership change.
- */
-export function clashRuleRevision(rule: ClashRule, settings: ClashResult['settings'], membership?: string): string {
-  const explicit = rule.membersA !== undefined || rule.membersB !== undefined;
-  const members = !explicit ? null : membership !== undefined ? { membership }
-    : { a: rule.membersA ? [...rule.membersA].sort() : null, b: rule.membersB ? [...rule.membersB].sort() : null };
-  return uuidFromSeed(`clash-rule/1 ${JSON.stringify({ ...ruleSemantics(rule, settings), members })}`);
-}
-
-/** The revision of a whole rule set: changes when any rule is added, removed or changes revision. */
-export function clashRuleSetRevision(rules: ReadonlyArray<Pick<ClashRunRule, 'id' | 'revision'>>): string {
-  return uuidFromSeed(`clash-rule-set/1 ${JSON.stringify(rules.map((r) => [r.id, r.revision]).sort())}`);
 }
 
 /** An OWN entry of a host-supplied record: a rule id like `__proto__` must not read the prototype. */

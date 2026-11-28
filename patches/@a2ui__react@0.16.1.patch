@@ -1,0 +1,22 @@
+diff --git a/index.d.cts b/index.d.cts
+index 18e456b..c0e87de 100644
+--- a/index.d.cts
++++ b/index.d.cts
+@@ -1,5 +1,5 @@
+ import * as react from 'react';
+ import react__default, { ComponentType } from 'react';
+ import { ComponentApi, ComponentContext, A2uiMetadata, ComponentNode, SurfaceModel, NodeProps, Signal, ResolveA2uiProps, InferredComponentApiSchemaType, MarkdownRenderer } from '@a2ui/web_core';
+-import { ZodTypeAny } from 'zod';
++import { ZodTypeAny } from 'zod/v3';
+ import { WebComponentImplementation } from '@a2ui/web_core/universal';
+diff --git a/index.d.ts b/index.d.ts
+index 18e456b..c0e87de 100644
+--- a/index.d.ts
++++ b/index.d.ts
+@@ -1,5 +1,5 @@
+ import * as react from 'react';
+ import react__default, { ComponentType } from 'react';
+ import { ComponentApi, ComponentContext, A2uiMetadata, ComponentNode, SurfaceModel, NodeProps, Signal, ResolveA2uiProps, InferredComponentApiSchemaType, MarkdownRenderer } from '@a2ui/web_core';
+-import { ZodTypeAny } from 'zod';
++import { ZodTypeAny } from 'zod/v3';
+ import { WebComponentImplementation } from '@a2ui/web_core/universal';

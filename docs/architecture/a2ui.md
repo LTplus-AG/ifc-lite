@@ -1,8 +1,7 @@
 # A2UI in ifc-lite: generative IFC result surfaces
 
-Status: shipped (#11344): `@ifc-lite/a2ui`, the viewer renderer, sandbox `bim.ui.*` and the MCP tools.
-Pinned to A2UI protocol **v1.0**
-via `@a2ui/web_core@0.15.0`, `@a2ui/react@0.15.0`, `@a2ui/agent@0.1.0`.
+The integration shipped in #11344. It uses A2UI protocol **v1.0** across
+`@ifc-lite/a2ui`, the viewer renderer, the sandbox `bim.ui.*` API and the MCP tools.
 
 ## Why
 
@@ -54,6 +53,13 @@ the A2UI-backed `catalog` and `agent` subpaths load lazily in browsers. Everythi
 `apps/viewer/src/lib/a2ui/`.
 
 ## The IFC catalog (`https://ifclite.dev/a2ui/catalogs/ifc/v1/catalog.json`)
+
+The viewer, Express agent, and MCP catalog use A2UI web core 0.16.1.
+The workspace resolves Zod 4 and the A2UI dependency patches route schema
+imports through `zod/v3`. The v1.0 catalog requires `TextField.value` in
+addition to its label. The eight IFC component schemas omit
+`unevaluatedProperties: false` at the component level, so that keyword
+no longer rejects extra properties in the published JSON schema.
 
 Layout and text: `Column`, `Row`, `Card`, `Tabs`, `Divider`, `Text`, `Callout`, `Button`,
 `ChoicePicker`, `TextField`, `Slider`, `CheckBox`, `List` (`BASIC_COMPONENT_NAMES`).

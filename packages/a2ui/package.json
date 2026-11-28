@@ -29,8 +29,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@a2ui/agent": "0.1.0",
-    "@a2ui/web_core": "0.15.0",
+    "@a2ui/agent": "0.2.1",
+    "@a2ui/web_core": "0.16.1",
     "zod": "^4.6.7"
   },
   "devDependencies": {

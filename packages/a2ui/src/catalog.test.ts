@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import { MessageProcessor } from '@a2ui/web_core/v1_0';
 import { createIfcAgent, validateIfcMessages } from './agent.js';
-import { createIfcCatalog, ifcCatalogDocument, IFC_CATALOG_COMPONENT_APIS, IFC_EXPRESS_EXAMPLES } from './catalog/index.js';
+import { createIfcCatalog, ifcCatalogDocument, IFC_CATALOG_COMPONENT_APIS, IFC_COMPONENT_APIS, IFC_EXPRESS_EXAMPLES } from './catalog/index.js';
 import { IFC_CATALOG_ID, IFC_FUNCTION_POLICY } from './policy.js';
 
 describe('IFC catalog document', () => {
@@ -23,6 +23,16 @@ describe('IFC catalog document', () => {
     expect(Object.keys(table.properties ?? {})).toEqual(expect.arrayContaining(['columns', 'query', 'rows', 'title', 'groupBy']));
     const query = (table.properties as Record<string, { properties?: Record<string, unknown> }>).query;
     expect(Object.keys(query.properties ?? {})).toEqual(expect.arrayContaining(['types', 'where', 'storey', 'limit']));
+  });
+
+  it('publishes the A2UI 0.16 component validation rules (#11689)', () => {
+    const doc = ifcCatalogDocument() as {
+      components: Record<string, { allOf?: { required?: string[] }[]; unevaluatedProperties?: boolean }>
+    };
+    expect(doc.components.TextField.allOf?.flatMap((schema) => schema.required ?? [])).toContain('value');
+    for (const { name } of IFC_COMPONENT_APIS) {
+      expect(doc.components[name]).not.toHaveProperty('unevaluatedProperties');
+    }
   });
 
   it('derives allowedCallers and user activation from the policy table', () => {
@@ -60,6 +70,7 @@ describe('IFC agent', () => {
       expect(agent.promptSnippet).toContain(`${name}(`);
     }
     expect(agent.promptSnippet).toContain('Never type counts');
+    expect(agent.promptSnippet).toContain('Supply a value for TextField');
   });
 
   it.each(IFC_EXPRESS_EXAMPLES.map((e) => [e.title, e.source]))('parses the prompt example "%s"', (_title, source) => {
@@ -70,7 +81,7 @@ describe('IFC agent', () => {
   it('streams a block split across arbitrary chunks into a renderer', () => {
     const renderer = new MessageProcessor([createIfcCatalog()]);
     const stream = createIfcAgent().openStream({ renderer });
-    const reply = `Here you go.\n<a2ui>\n${IFC_EXPRESS_EXAMPLES[1].source}\n</a2ui>\nDone.`;
+    const reply = `Here you go.\n<a2ui>\n${IFC_EXPRESS_EXAMPLES[2].source}\n</a2ui>\nDone.`;
     const parts = [];
     for (let i = 0; i < reply.length; i += 5) parts.push(...stream.feed(reply.slice(i, i + 5)));
     parts.push(...stream.close());
@@ -84,6 +95,17 @@ describe('IFC agent', () => {
     const parts = [...stream.feed('Before.\n<a2ui>\nroot = Spreadsheet("x")\n</a2ui>\nAfter.'), ...stream.close()];
     expect(parts.map((p) => p.type)).toEqual(expect.arrayContaining(['text', 'error']));
     expect(parts.filter((p) => p.type === 'text').map((p) => (p as { text: string }).text).join('')).toContain('After.');
+  });
+
+  it('rejects an omitted TextField value in Express and accepts an empty string (#11689)', () => {
+    const agent = createIfcAgent();
+    const stream = agent.openStream();
+    const parts = [...stream.feed('<a2ui>\nroot = TextField("Storey")\n</a2ui>'), ...stream.close()];
+    expect(parts).toContainEqual(expect.objectContaining({
+      type: 'error',
+      error: expect.objectContaining({ message: expect.stringContaining("missing required property 'value'") }),
+    }));
+    expect(agent.parse('<a2ui>\nroot = TextField("Storey", "")\n</a2ui>').map((part) => part.type)).toEqual(['a2ui']);
   });
 
   it('rejects an EntityTable column with an empty path', () => {

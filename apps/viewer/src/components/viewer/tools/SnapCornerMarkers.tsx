@@ -32,14 +32,24 @@ export function SnapCornerMarkers(): ReactNode {
     const renderer = picking ? getGlobalRenderer() : null;
     if (!renderer) { setMarkers(null); return; }
     const channel = renderer.cornerMarkers;
-    setMarkers(channel.get());
     const scene = renderer.getScene();
-    const unsubscribe = channel.subscribe(() => setMarkers(channel.get()));
-    // Types view hides the instanced pass without changing the store's entity sets.
-    const unsubscribeGeometry = scene.onGeometryChange?.(() => {
+    let pickRevision: number | undefined;
+    let occurrenceRevision: number | undefined;
+    const syncMarkers = () => {
       const markers = channel.get();
-      if (markers?.candidates.some(c => scene.isInstancedEntity(c.expressId))
-        && scene.getInstancedEntityIds(true).next().done) channel.set(null);
+      if (markers) {
+        pickRevision = renderer.getPickGeometryRevision();
+        occurrenceRevision = scene.getInstancedEntityRevision?.();
+      }
+      setMarkers(markers);
+    };
+    syncMarkers();
+    const unsubscribe = channel.subscribe(syncMarkers);
+    // Geometry notifications are coalesced. A pick may already have published
+    // markers for the new scene before its notification reaches the overlay.
+    const unsubscribeGeometry = scene.onGeometryChange?.(() => {
+      if (channel.get() && (renderer.getPickGeometryRevision() !== pickRevision
+        || scene.getInstancedEntityRevision?.() !== occurrenceRevision)) channel.set(null);
     });
     // A stationary pointer produces no new pick when Hide or Isolate changes its inputs.
     const unsubscribeVisibility = useViewerStore.subscribe((state, previous) => {

@@ -168,12 +168,14 @@ it('#11746 hiding a GPU occurrence clears the channel and mounted glyph at a sta
   t.mock.method(canvas, 'getBoundingClientRect', () => ({ width: 800, height: 600 }));
   canvas.width = 800; canvas.height = 600;
   const renderer = new Renderer(canvas), camera = renderer.getCamera(), scene = renderer.getScene();
-  scene.addInstancedShard(devices[0], {
+  const addShard = (entityId: number, modelIndex: number, offsetX: number) => scene.addInstancedShard(devices[0], {
     templates: [{ positions: Float32Array.of(-5,0,-5, 5,0,-5, 0,0,5), normals: Float32Array.of(0,-1,0, 0,-1,0, 0,-1,0),
       indices: Uint32Array.of(0,1,2), origin: [0,0,0] }],
-    instances: [{ entityId: 1025, templateIndex: 0, color: [1,1,1,1],
-      transform: Float32Array.of(1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1) }], carriesItemIds: false,
-  }, 0);
+    instances: [{ entityId, templateIndex: 0, color: [1,1,1,1],
+      transform: Float32Array.of(1,0,0,0, 0,1,0,0, 0,0,1,0, offsetX,0,0,1) }], carriesItemIds: false,
+  }, modelIndex);
+  addShard(1025, 0, 0);
+  addShard(2049, 1, 3);
   assert.equal(scene.getMeshDataPieces(1025), undefined);
   camera.setAspect(800 / 600); camera.setProjectionMode('orthographic'); camera.setOrthoSize(12);
   camera.setPosition(0, 0, 50); camera.setTarget(0, 0, 0);
@@ -214,6 +216,14 @@ it('#11746 hiding a GPU occurrence clears the channel and mounted glyph at a sta
   assert.equal(active(), null);
   assert.equal(renderer.readbackRaycastViewKey(), stamp);
   await act(async () => { scene.setInstancedVisible(true); });
+  assert.equal(active(), null);
+  await hover();
+  await act(async () => { assert.equal(scene.removeInstancedTemplatesForModel(0), 1); });
+  assert.deepEqual([...scene.getInstancedEntityIds(true)], [2049]);
+  assert.equal(renderer.readbackRaycastViewKey(), stamp);
+  assert.equal(renderer.cornerMarkers.get(), null, 'removing the marked shard clears the channel before another pick');
+  assert.equal(ui.querySelector('[data-snap-corner-marker]'), null);
+  await act(async () => { addShard(1025, 0, 0); });
   assert.equal(active(), null);
   await hover();
 });

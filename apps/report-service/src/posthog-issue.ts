@@ -22,13 +22,13 @@ export async function resolvePosthogIssue(config: NonNullable<Config['posthog']>
   // UUID syntax is validated at the boundary; no user-controlled SQL strings.
   if (!isUuid(correlation.eventId)) return undefined;
   const result = await request('query/', { query: { kind: 'HogQLQuery',
-    query: `SELECT uuid, event, properties.$session_id, properties.app_build_sha, issue_id FROM events WHERE uuid = toUUID('${correlation.eventId}') AND timestamp > now() - INTERVAL 7 DAY LIMIT 2`,
+    query: `SELECT uuid, event, properties.app_build_sha, issue_id FROM events WHERE uuid = toUUID('${correlation.eventId}') AND timestamp > now() - INTERVAL 7 DAY LIMIT 2`,
   } });
   if (!isRecord(result) || !Array.isArray(result.results) || result.results.length !== 1) return undefined;
   const row: unknown = result.results[0];
-  if (!Array.isArray(row) || row[0] !== correlation.eventId || row[1] !== '$exception' || row[2] !== correlation.sessionId || row[3] !== correlation.buildSha || !isUuid(row[4])) return undefined;
-  const issue = await request(`error_tracking/issues/${row[4]}/`);
-  if (!isRecord(issue) || issue.id !== row[4] || !Array.isArray(issue.external_issues)) return undefined;
+  if (!Array.isArray(row) || row[0] !== correlation.eventId || row[1] !== '$exception' || row[2] !== correlation.buildSha || !isUuid(row[3])) return undefined;
+  const issue = await request(`error_tracking/issues/${row[3]}/`);
+  if (!isRecord(issue) || issue.id !== row[3] || !Array.isArray(issue.external_issues)) return undefined;
   const targets = new Set<string>();
   for (const reference of issue.external_issues) {
     if (!isRecord(reference) || !isRecord(reference.integration) || reference.integration.kind !== 'github' || typeof reference.external_url !== 'string') continue;
@@ -36,5 +36,5 @@ export async function resolvePosthogIssue(config: NonNullable<Config['posthog']>
     if (reference.external_url.startsWith(prefix) && /^[1-9]\d*$/.test(reference.external_url.slice(prefix.length))) targets.add(reference.external_url);
   }
   if (targets.size !== 1) return undefined;
-  return { issueId: row[4], issueUrl: [...targets][0]! };
+  return { issueId: row[3], issueUrl: [...targets][0]! };
 }

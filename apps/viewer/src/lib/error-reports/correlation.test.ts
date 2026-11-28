@@ -14,7 +14,8 @@ test('#7495 exact captured federation error cannot bind another source or replac
   const event = capture();
   offerErrorReport({ errorCode: 'correlation-fixture', sourceFile: a }, true);
   feature?.attachCapturedLoad(b, event); assert.equal(getReportPrompt()?.context.correlation, undefined);
-  feature?.attachCapturedLoad(a, event); assert.deepEqual(getReportPrompt()?.context.correlation, { eventId: event.uuid, sessionId: event.properties.$session_id, buildSha: 'build-a' });
+  feature?.attachCapturedLoad(a, event); assert.deepEqual(getReportPrompt()?.context.correlation, { eventId: event.uuid, buildSha: 'build-a' });
+  assert.equal(JSON.stringify(getReportPrompt()?.context).includes(event.properties.$session_id), false, 'no analytics session ID in the report');
   openErrorReport(); feature?.attachCapturedLoad(a, capture());
   assert.equal(getReportPrompt()?.context.correlation?.eventId, event.uuid);
 });

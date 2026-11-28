@@ -78,6 +78,9 @@ export async function migrate(db: Db): Promise<void> {
     ALTER TABLE report_uploads ADD COLUMN IF NOT EXISTS deletion_after timestamptz DEFAULT now();
 
     ALTER TABLE model_reports ADD COLUMN IF NOT EXISTS issue_binding jsonb;
+    -- Bindings made before correlation dropped the analytics session ID.
+    UPDATE model_reports SET issue_binding = issue_binding #- '{correlation,sessionId}'
+      WHERE issue_binding #> '{correlation,sessionId}' IS NOT NULL;
     ALTER TABLE report_admission ADD COLUMN IF NOT EXISTS issue_lookups integer NOT NULL DEFAULT 0;
     CREATE TABLE IF NOT EXISTS report_outbox (
       report_id uuid PRIMARY KEY REFERENCES model_reports(id), attempts integer NOT NULL DEFAULT 0,

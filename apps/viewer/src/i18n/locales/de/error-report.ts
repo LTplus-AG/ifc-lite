@@ -7,7 +7,7 @@ import type { Catalogue } from '../../registry';
 export const errorReportDe = {
   "errorReport.destination": "Wohin soll dieser Bericht gehen?",
   "errorReport.noCorrelation": "Für diesen Fehler kann kein bestehendes Problem verifiziert werden. Sie können einen neuen Bericht erstellen.",
-  "errorReport.correlationPrivate": "Überprüfen Sie den genauen erfassten Fehler auf ein bestehendes GitHub-Problem. Die Telemetriereferenz bleibt privat.",
+  "errorReport.correlationPrivate": "Prüfen Sie, ob es für diesen Fehler bereits ein GitHub-Issue gibt. Dabei wird die ID des erfassten Fehlerereignisses an den Meldedienst gesendet, nicht die Ihrer Analysesitzung. Die ID wird nie veröffentlicht.",
   "errorReport.checkIssue": "Suchen Sie nach einem bestehenden Problem",
   "errorReport.checkingIssue": "Überprüfen…",
   "errorReport.issueUnmatched": "Für genau diesen Fehler wurde kein einziges offenes GitHub-Problem verifiziert.",

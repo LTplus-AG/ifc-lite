@@ -14,7 +14,8 @@ const bindingFeature = await loadFeature('../src/issue-binding.js', () => import
 const commentFeature = await loadFeature('../src/github-comments.js', () => import('../src/github-comments.js'));
 import { GithubIssues, publicIssueBody } from '../src/github.js';
 
-const correlation = { eventId: randomUUID(), sessionId: randomUUID(), buildSha: 'build-a' };
+const correlation = { eventId: randomUUID(), buildSha: 'build-a' };
+const analyticsSessionId = randomUUID();
 const issueId = randomUUID();
 const issueUrl = 'https://github.com/LTplus-AG/ifc-lite/issues/7493';
 const config = { submissionsEnabled: true, admissionSecret: 'a'.repeat(40), githubAppId: '123', githubRepository: 'LTplus-AG/ifc-lite' } as Config;
@@ -69,12 +70,12 @@ describe('#7495 exact-event verification over real HTTP boundaries', () => {
   const posthog = () => ({ host: base, projectId: '42', apiKey: 'test-only' });
   const transport: typeof fetch = (url, init) => fetch(`${base}${new URL(String(url)).pathname}${new URL(String(url)).search}`, init);
   function exact() {
-    row = [correlation.eventId, '$exception', correlation.sessionId, correlation.buildSha, issueId];
+    row = [correlation.eventId, '$exception', correlation.buildSha, issueId];
     refs = [{ integration: { kind: 'github' }, external_url: issueUrl }];
   }
-  it('links only the exact event/session/build and the configured GitHub repository', async () => {
+  it('links only the exact event/build and the configured GitHub repository', async () => {
     exact(); expect(await resolver?.resolvePosthogIssue(posthog(), correlation, config.githubRepository)).toEqual({ issueId, issueUrl });
-    for (const [index, value] of [[0, randomUUID()], [1, 'error_shown'], [2, randomUUID()], [3, 'another-build']] as const) {
+    for (const [index, value] of [[0, randomUUID()], [1, 'error_shown'], [2, 'another-build']] as const) {
       exact(); row[index] = value;
       expect(await resolver?.resolvePosthogIssue(posthog(), correlation, config.githubRepository)).toBeUndefined();
     }
@@ -116,11 +117,11 @@ describe('#7495 exact-event verification over real HTTP boundaries', () => {
   it('never publishes telemetry references, target tokens or private model details', () => {
     const sensitive = { ...report, issue_binding: binding, draft: { ...report.draft,
       issueTarget: bindingFeature?.signIssueBinding(config, owner, binding),
-      diagnostics: { ...report.draft.diagnostics, eventId: correlation.eventId, sessionId: correlation.sessionId },
+      diagnostics: { ...report.draft.diagnostics, eventId: correlation.eventId, sessionId: analyticsSessionId },
     } };
     const body = publicIssueBody(sensitive);
     expect(body).toContain('I selected a wall.');
-    expect(body).not.toContain(correlation.eventId); expect(body).not.toContain(correlation.sessionId);
+    expect(body).not.toContain(correlation.eventId); expect(body).not.toContain(analyticsSessionId);
     expect(body).not.toContain('verificationToken');
   });
 });

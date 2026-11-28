@@ -6,7 +6,7 @@ import type { TranslationValue } from '../types';
 export const errorReportEn = {
   'errorReport.destination': 'Where should this report go?',
   'errorReport.noCorrelation': 'An existing issue cannot be verified for this error. You can create a new report.',
-  'errorReport.correlationPrivate': 'Check the exact captured error for an existing GitHub issue. Its telemetry reference stays private.',
+  'errorReport.correlationPrivate': 'Check whether this error already has a GitHub issue. This sends the ID of the captured error event, not of your analytics session, to the report service. The ID is never published.',
   'errorReport.checkIssue': 'Check for an existing issue',
   'errorReport.checkingIssue': 'Checking…',
   'errorReport.issueUnmatched': 'No single open GitHub issue was verified for this exact error.',

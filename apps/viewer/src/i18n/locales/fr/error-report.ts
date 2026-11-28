@@ -7,7 +7,7 @@ import type { Catalogue } from '../../registry';
 export const errorReportFr = {
   "errorReport.destination": "Où ce rapport doit-il être envoyé ?",
   "errorReport.noCorrelation": "Aucun ticket existant ne peut être vérifié pour cette erreur. Vous pouvez créer un nouveau rapport.",
-  "errorReport.correlationPrivate": "Recherchez un ticket GitHub existant pour l'erreur exacte capturée. Sa référence de télémétrie reste privée.",
+  "errorReport.correlationPrivate": "Vérifiez si cette erreur a déjà un ticket GitHub. Cela envoie au service de signalement l'ID de l'événement d'erreur capturé, et non celui de votre session d'analyse. L'ID n'est jamais publié.",
   "errorReport.checkIssue": "Rechercher un ticket existant",
   "errorReport.checkingIssue": "Vérification…",
   "errorReport.issueUnmatched": "Aucun ticket GitHub ouvert unique n'a été vérifié pour cette erreur exacte.",

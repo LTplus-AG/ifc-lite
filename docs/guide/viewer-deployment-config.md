@@ -98,7 +98,7 @@ The embed viewer (`apps/viewer-embed`) does not take a configuration yet: it sta
 
 ## Notes on individual features
 
-- `privacy.analytics` off means the analytics client is never initialised, so no request reaches the analytics host, and the opt-out setting is not shown. `privacy.vercel-analytics` off means the hosting platform's page-view script is never injected.
+- `privacy.analytics` off means the analytics client is never initialised, so no request reaches the analytics host, and the opt-out setting is not shown. `privacy.vercel-analytics` off means the hosting platform's page-view script is never injected. With both on, they start only after the first-visit notice has been shown and never for a visitor who opted out; `privacy.notice` off removes that wait, so a host that turns the notice off must inform its visitors itself.
 - `edit.model` off refuses every change to a model, including changes made by a script, because the refusal sits where edit mode is entered and where a change is committed.
 - `automate.extensions` off does not start installed extensions.
 - `ai.assistant` off hides every AI surface, and Flow runs get no model, so AI nodes are refused.

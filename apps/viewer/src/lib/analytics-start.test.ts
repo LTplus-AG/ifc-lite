@@ -282,7 +282,7 @@ describe('events before the notice are held in memory, never stored or sent earl
     held.client.captureException(crash, { surface: 'boot' });
     assert.equal(held.size(), 3);
     const sent = recorder();
-    held.flush(sent.target);
+    held.flush(sent.target as never);
     assert.equal(sent.events.length, 3);
     assert.deepEqual([sent.events[0]!.name, sent.events[0]!.timestamp], ['ifc_model_loaded', at]);
     assert.ok(sent.events[1]!.timestamp instanceof Date, 'an event without a time keeps the time it happened');
@@ -297,7 +297,7 @@ describe('events before the notice are held in memory, never stored or sent earl
     held.client.capture('a');
     held.clear();
     const sent = recorder();
-    held.flush(sent.target);
+    held.flush(sent.target as never);
     assert.equal(sent.events.length, 0, 'dropped on opt-out');
     for (let i = 0; i < 10; i++) held.client.capture(`e${i}`);
     assert.equal(held.size(), 3, 'only the first 3 are kept');

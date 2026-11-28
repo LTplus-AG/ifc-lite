@@ -241,6 +241,7 @@ describe('whole-model renderer placement (#4226)', () => {
       assert.deepEqual(min, [3, 0, 0]); assert.deepEqual(max, [4, 1, 0]);
       return [source];
     } });
+    await scene.drainColdTier(); // The cold tier is loaded on demand.
     scene.setGpuResidencyBudget(1); scene.setHostResidencyBudget(1);
     for (let i = 0; i < 1000; i++) scene.beginResidencyFrame();
     for (let i = 0; i < 240; i++) scene.enforceGpuBudget();

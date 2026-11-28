@@ -1111,7 +1111,7 @@ describe('RaycastEngine flat index (#9504)', () => {
   // lists, so nothing the index checks moves; it must still let go of the
   // evicted typed arrays, which is the whole point of the host budget.
   for (const release of ['host budget eviction', 'ephemeral streaming completion']) {
-    it(`#11753 releases pieces and cancels corner work on ${release}`, () => {
+    it(`#11753 releases pieces and cancels corner work on ${release}`, async () => {
       const scene = new Scene();
       const device = {
         limits: { maxBufferSize: 1 << 28, maxStorageBufferBindingSize: 1 << 28 },
@@ -1127,6 +1127,9 @@ describe('RaycastEngine flat index (#9504)', () => {
       if (ephemeral) {
         scene.setEphemeralStreamingMode(true);
         scene.appendToBatches([makeQuad({ expressId: 300, translate: [3000, 0, 0] })], device, pipeline, true);
+      } else {
+        scene.setColdGeometryProvider({ loadMeshesInBounds: async () => [quad] });
+        await scene.drainColdTier(); // Prepare the cold tier before warming the pick cache.
       }
       const engine = engineFor(scene, orthoCameraLookingDownZ([0, 0, 0], 50));
       assert.equal(engine.raycastScene(400, 300)?.intersection.expressId, 7);
@@ -1151,7 +1154,6 @@ describe('RaycastEngine flat index (#9504)', () => {
         scene.finishEphemeralStreaming();
         assert.equal(scene.isGeometryDataReleased(), true);
       } else {
-        scene.setColdGeometryProvider({ loadMeshesInBounds: async () => [quad] });
         scene.setGpuResidencyBudget(1); scene.setHostResidencyBudget(1);
         for (let i = 0; i < 1000; i++) scene.beginResidencyFrame();
         for (let i = 0; i < 240; i++) scene.enforceGpuBudget();

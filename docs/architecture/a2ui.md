@@ -1,6 +1,7 @@
 # A2UI in ifc-lite: generative IFC result surfaces
 
-Status: in implementation on `research/google-a2ui`. Pinned to A2UI protocol **v1.0**
+Status: shipped (#11344): `@ifc-lite/a2ui`, the viewer renderer, sandbox `bim.ui.*` and the MCP tools.
+Pinned to A2UI protocol **v1.0**
 via `@a2ui/web_core@0.15.0`, `@a2ui/react@0.15.0`, `@a2ui/agent@0.1.0`.
 
 ## Why
@@ -27,13 +28,16 @@ buttons that isolate, colour or fly to a result set.
 
 ```
 @ifc-lite/a2ui  (packages/a2ui, framework-agnostic, Node + browser)
-  catalog/       IFC catalog v1.0 JSON document + component/function names (single source)
-  agent.ts       createIfcAgent(): @a2ui/agent generator over the IFC catalog, prompt snippet,
-                 StreamedAnswer factory, validatePayload
+  catalog/       IFC catalog v1.0 document + component/function APIs (single source);
+                 subpath export `@ifc-lite/a2ui/catalog`
+  agent.ts       createIfcAgent(): @a2ui/agent generator over the IFC catalog: promptSnippet,
+                 parse(), openStream(); validateIfcMessages(). Subpath `@ifc-lite/a2ui/agent`
   refs.ts        EntityRef <-> "modelId:expressId" wire encoding
   query.ts       IfcQuerySpec: declarative, serialisable entity query (types, where, groupBy, limit)
   policy.ts      action/function policy: which run locally, which need confirmation, which go back to the agent
-  builders.ts    deterministic surface builders (table, kpis, chart, legend) used by scripts and MCP
+  builders.ts    deterministic surface builders (buildSurface over text, callout, stats, table,
+                 list, chart, legend, actions, entity sections) used by scripts and MCP
+  charts.ts      chart grouping and colour rules shared by every renderer
         |
         +-- apps/viewer/src/lib/a2ui/          (lazy) renderer runtime: MessageProcessor, function
         |                                       implementations bound to BimHost, action router
@@ -45,13 +49,14 @@ buttons that isolate, colour or fly to a result set.
 ```
 
 The one seam callers learn is `@ifc-lite/a2ui`: catalog id, `IfcQuerySpec`, entity ref
-encoding and the builders. Everything A2UI-version-specific sits behind it and behind
+encoding and the builders. The root entry has no A2UI runtime and is safe to import eagerly;
+the A2UI-backed `catalog` and `agent` subpaths load lazily in browsers. Everything A2UI-version-specific sits behind it and behind
 `apps/viewer/src/lib/a2ui/`.
 
 ## The IFC catalog (`https://ifclite.dev/a2ui/catalogs/ifc/v1/catalog.json`)
 
 Layout and text: `Column`, `Row`, `Card`, `Tabs`, `Divider`, `Text`, `Callout`, `Button`,
-`ChoicePicker`, `TextField`, `Slider`, `CheckBox`.
+`ChoicePicker`, `TextField`, `Slider`, `CheckBox`, `List` (`BASIC_COMPONENT_NAMES`).
 
 IFC components (facts are bound, not literal):
 
@@ -65,14 +70,18 @@ IFC components (facts are bound, not literal):
 - `ActionBar`: viewer actions over a ref set (select, isolate, hide, show, colorize, fly to,
   section, export CSV) and follow-up prompts back to the agent.
 
-Renderer functions (A2UI v1.0 functions, `allowedCallers` per `policy.ts`): `select`, `isolate`,
-`hide`, `showAll`, `colorize`, `resetColors`, `flyTo`, `getSelection`, `countQuery`,
-`exportCsv` (needs user activation), `ask` (posts a follow-up turn to the chat agent).
+Renderer functions (A2UI v1.0 functions, `allowedCallers` per `IFC_FUNCTION_POLICY` in
+`policy.ts`): `select`, `isolate`, `hide`, `show`, `colorize`, `flyTo`, `resetView`,
+`getSelection`, `countEntities`, `sumQuantity`, and `exportCsv` (renderer-only, needs user
+activation). The basic `formatString`, `formatNumber`, `pluralize`, `required`, `and`, `or` and
+`not` are kept. A follow-up to the chat agent is not a function: it is the `ask` event
+(`ASK_EVENT`), turned into a chat turn by `eventToFollowUp`.
 
 ## Producers
 
 1. **Chat (Express)**: the system prompt carries the pruned catalog snippet. The model writes
-   prose plus `<a2ui>` blocks; `StreamedAnswer` validates and renders while streaming. Invalid
+   prose plus `<a2ui>` blocks; the agent's `openStream()` validates each block against the
+   renderer's processor while streaming. Invalid
    blocks render an error part and feed the existing repair loop.
 2. **Scripts**: `bim.ui.table/stats/chart/legend/actions/callout/entity/list/show` build surfaces
    from script results. The sandbox validates the section specs and builds the A2UI messages on

@@ -2,7 +2,7 @@
 
 This page lists the environment variables that IFClite code reads and that no feature guide describes. Variables that a guide already covers are listed at the end, with a link to that guide.
 
-`VITE_*` variables are read when the viewer is built. Vite compiles their values into the browser bundle, so never put a secret in one. All other variables are read at run time by a server, a CLI or a Rust process.
+`VITE_*` variables are read when the viewer is built. Vite compiles their values into the browser bundle, so never put a secret in one. The Vercel build script also reads a few non-`VITE_*` variables, such as `POSTHOG_CLI_API_KEY` and `VERCEL_SOURCEMAPS`; set those in the build environment (see [Vercel build script](#vercel-build-script)). All other variables are read at run time by a server, a CLI or a Rust process.
 
 ## Viewer build (`VITE_*`)
 

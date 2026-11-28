@@ -83,6 +83,26 @@ const openings = wall.contains(); // openings hosted by the wall
 const aggregates = wall.decomposes();
 ```
 
+## Selector syntax
+
+`parseSelector(text)` parses the IfcOpenShell selector syntax into an AST
+(`{ ok: true, query }` or `{ ok: false, error }`).
+`selectorToQueryDescriptor(text)` turns one selector group into
+`{ types, filters }`. It throws `SelectorUnsupportedError`, naming each
+construct, when part of the selector has no lossless translation (a `+`
+union, `!` negation, `parent=…`, a regex set name), instead of running a
+partial or empty filter.
+
+```typescript
+import { selectorToQueryDescriptor } from '@ifc-lite/query';
+
+const { types, filters } = selectorToQueryDescriptor(
+  'IfcWall, IfcSlab, Pset_WallCommon.FireRating=2HR, Qto_WallBaseQuantities.NetVolume>1',
+);
+// types   → ['IfcWall', 'IfcSlab']
+// filters → [{ psetName: 'Pset_WallCommon', propName: 'FireRating', operator: '=', value: '2HR' }, …]
+```
+
 ## SQL via DuckDB-WASM
 
 ```typescript
@@ -99,9 +119,9 @@ const result = await query.sql(`
 console.table(result.rows);
 ```
 
-Tables exposed: `entities`, `properties`, `quantities`, `relationships`. Useful when you'd rather write SQL than chain method calls.
+Tables exposed: `entities`, `properties`, `quantities`, `relationships`, plus the views `walls`, `doors`, `windows`, `slabs`, `columns`, `beams`, `spaces`, `entity_properties` and `entity_quantities`. Useful when you'd rather write SQL than chain method calls.
 
-DuckDB is loaded lazily on the first `sql()` call and is not bundled (it would add ~4 MB). To use the SQL API, install it alongside:
+DuckDB is loaded lazily on the first `sql()` call and is not bundled; its WASM bundle is fetched from jsDelivr (`getJsDelivrBundles`) at that point. To use the SQL API, install it alongside:
 
 ```bash
 npm install @duckdb/duckdb-wasm

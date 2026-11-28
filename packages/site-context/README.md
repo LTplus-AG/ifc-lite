@@ -7,6 +7,10 @@ The site around a georeferenced Swiss building, as data: real terrain
 self-describing GLB. Headless (browser and Node). The viewer, the CLI and
 the MCP server build on the same core.
 
+```bash
+npm install @ifc-lite/site-context @ifc-lite/geodata-ch
+```
+
 ```ts
 import { createSwissGeodata } from '@ifc-lite/geodata-ch';
 import { buildSiteContext, encodeSiteContextGlb, decodeSiteContextGlb } from '@ifc-lite/site-context';

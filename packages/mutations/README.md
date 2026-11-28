@@ -200,6 +200,22 @@ Mutations recorded against a pre-existing (source-buffer) entity always
 round-trip — this caveat is scoped to entities created via `createEntity` /
 `StoreEditor.addEntity`.
 
+### Whole-overlay snapshots: `snapshotOverlay` / `restoreOverlay`
+
+To persist a session and get it back exactly, including created entities and
+edits written with `skipHistory`, snapshot the whole overlay instead of the
+journal. Both calls take a digest of every source byte, computed by the
+caller. A restore onto a different source throws `OverlaySourceMismatchError`.
+
+```typescript
+import { restoreOverlay, snapshotOverlay } from '@ifc-lite/mutations';
+
+declare const sourceContentHash: string; // e.g. a SHA-256 hex digest of the whole file
+
+const snapshot = snapshotOverlay(view, { sourceContentHash });
+restoreOverlay(mutationView, snapshot, { sourceContentHash }); // input capped at 64 MiB by default (`maxBytes`)
+```
+
 ## Bulk updates
 
 Use `@ifc-lite/rules` to evaluate property filter groups and pass the resulting Express IDs in `select.expressIds`.

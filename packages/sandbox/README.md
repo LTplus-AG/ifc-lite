@@ -1,6 +1,6 @@
 # @ifc-lite/sandbox
 
-QuickJS-in-WASM sandboxed script execution for ifc-lite. Runs user or LLM-generated scripts in a secure, isolated interpreter with only the `bim.*` API exposed: no DOM, no fetch, no network access. Permissions and resource limits (timeout, memory) are configurable per sandbox, and TypeScript input is transpiled on the fly.
+QuickJS-in-WASM sandboxed script execution for ifc-lite. Runs user or LLM-generated scripts in a secure, isolated interpreter with only the `bim.*` API exposed: no DOM and no global `fetch`. Outbound HTTPS is available only through `bim.network`, which is off by default (`permissions.network`) and checks each call against the host's `network.fetch` grants. Permissions and resource limits (timeout, memory) are configurable per sandbox, and TypeScript input is transpiled on the fly.
 
 ## Install
 

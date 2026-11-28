@@ -28,7 +28,7 @@ const csv = listResultToCSV(result);
 ## Features
 
 - `ListDefinition`: entity types, Rules `FilterGroup[]`, columns, grouping, or an explicit express-ID scope per model
-- Column sources: entity attributes, property sets, quantity sets, materials, classifications, spatial containers (storey, building, site, project), and source model
+- Column sources (`ColumnDefinition.source`): entity attributes, property sets, quantity sets, materials, classifications, spatial containers (immediate container, storey, building, site, project), source model, location zones (`zone`), world coordinates (`geometry`, World X/Y/Z), and the element's custom grouping (`customGrouping`)
 - Viewer filtering uses `@ifc-lite/rules` for `groups`. The provider-only `executeList` projects an already-filtered source set and rejects nonempty Rules filters, so callers cannot silently skip them.
 - `migrateLegacyListDefinition` converts v1 JSON and earlier provider-only rows to `groups`: a property comparison becomes a `property` rule and every other Lists predicate a `listCondition` rule the Lists engine answers (`listConditionMatcher(provider)`). Only unreadable data stays in `unreadableConditions`. `legacyConditions` is for provider-only `executeList` callers (the SDK's flat conditions).
 - Grouping with per-group summaries (`summariseListRows`)

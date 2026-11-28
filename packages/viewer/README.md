@@ -32,6 +32,20 @@ curl -X POST http://127.0.0.1:3456/api/command \
   -d '{"action":"colorize","type":"IfcWall","color":[1,0,0,1]}'
 ```
 
+Routes while the server runs (bound to `127.0.0.1`):
+
+| Route | Purpose |
+|---|---|
+| `GET /events` | SSE stream of commands for the browser page |
+| `POST /api/command` | Send one command (`action` must be in `VALID_ACTIONS`) |
+| `POST /api/create` | Live element creation, when `createHandler` is passed |
+| `POST /api/clear-created` | Drop the created IFC segments |
+| `GET /api/export` | Download the created IFC segments |
+| `GET /api/status` | Server status as JSON |
+
+`@ifc-lite/viewer-core/url` exports `VIEWER_HOST` and `viewerUrl(port, path?)`
+without loading the server, so clients can build the address cheaply.
+
 ## Features
 
 - WebGL 2 renderer with selection, isolation, x-ray, section planes, camera presets, and per-entity colorization

@@ -6,6 +6,12 @@ Read and write Rhino `.3dm` through the pinned `rhino3dm` runtime, loaded lazily
 - `writeRhino3dm` turns an encoded IFC-lite RhinoScene v1 (JSON manifest plus a
   little-endian binary blob) into `.3dm` bytes. It performs no IFC interpretation.
 
+## Installation
+
+```bash
+npm install @ifc-lite/rhino3dm
+```
+
 ## Reading
 
 ```ts

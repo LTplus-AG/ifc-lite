@@ -92,8 +92,8 @@ and ellipsoidal height to chain from).
 ## Draco decoder
 
 Draco decoding uses Google's [`draco3d`](https://www.npmjs.com/package/draco3d)
-1.5.7, under the Apache-2.0 licence. Only its decoder module is imported
-(about 59 KB of JavaScript plus a 286 KB wasm), never the encoder. It is
+1.5.9 (pinned), under the Apache-2.0 licence. Only its decoder module (a
+JavaScript loader plus `draco_decoder.wasm`) is imported, never the encoder. It is
 loaded lazily, the first time a Draco primitive is met, and one instance is
 shared by every query in the process. In Node it finds its wasm by itself.
 

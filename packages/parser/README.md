@@ -151,15 +151,10 @@ IFC2X3 evaluation is intentionally unsupported.
 
 ## Performance
 
-| Model size | Parse time |
-|---:|---:|
-| 10 MB | ~100–200 ms |
-| 50 MB | ~600–700 ms |
-| 200 MB | ~2.5–3 s |
-
-- Tokenization: high single-pass throughput on M1/M2 laptops
-- Bundle: ~200 KB gzipped (schema registry included)
-- Memory: TypedArray columnar storage
+Storage is TypedArray-backed and columnar, and properties are extracted on
+demand. Measured load times and the bundle size live in the
+[Performance guide](https://ifclite.dev/docs/guide/performance/), stamped from
+the committed benchmark baseline.
 
 ## API
 

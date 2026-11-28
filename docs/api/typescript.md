@@ -514,7 +514,7 @@ class Renderer {
 
   // Rendering
   render(options?: RenderOptions): void;
-  requestRender(): void;  // schedule a frame for the host's render loop
+  requestRender(): void;  // only sets a dirty flag; the host's animation loop checks consumeRenderRequest()
 
   // Camera controls
   fitToView(): void;

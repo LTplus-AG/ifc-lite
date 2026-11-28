@@ -258,7 +258,8 @@ exportDfjson(content, name): string;  // Dragonfly DFJSON text, not bytes
 
 **Example:**
 ```typescript
-const obj = api.exportObj(ifcContent, true, new Uint32Array(), new Uint32Array());
+// isolated = undefined: no isolation filter. An empty Uint32Array exports nothing.
+const obj = api.exportObj(ifcContent, true, new Uint32Array(), undefined);
 const hbjson = api.exportHbjson(ifcContent, 'my_model');
 const dfjson = api.exportDfjson(ifcContent, 'my_model');
 ```
@@ -559,7 +560,7 @@ class MeshCollection {
   readonly length: number;
   get(index: number): MeshDataJs | undefined;      // clones (non-destructive)
   takeMesh(index: number): MeshDataJs | undefined; // moves out (read-once, faster)
-  encodeCompact(cellSize: number): CompactBatch;   // compact encoding; empties the vertex arrays
+  encodeCompact(cellSize: number): CompactBatch;   // encodes eligible meshes and empties their vertex arrays; cellSize outside [2^-9, 32] m encodes nothing
   hasRtcOffset(): boolean;
   readonly rtcOffsetX: number;
   readonly rtcOffsetY: number;
@@ -692,7 +693,7 @@ class MeshDataJs {
   readonly textureRepeatT: boolean;
   readonly textureId: number;         // IfcSurfaceTexture express id; 0 when untextured
   readonly textureUrl: string | undefined; // IfcImageTexture.URLReference for the host to resolve
-  readonly shadingColor: Float32Array | undefined;  // authored SurfaceColour, when distinct
+  readonly shadingColor: Float32Array | undefined;  // authored DiffuseColour RGB, only when it differs from SurfaceColour
 }
 ```
 
@@ -724,7 +725,7 @@ WASM functions surface failures as standard JavaScript `Error` objects (a Rust `
 
 ```typescript
 try {
-  const glb = api.exportGlb(content, true, new Uint32Array(), new Uint32Array(), '');
+  const glb = api.exportGlb(content, true, new Uint32Array(), undefined, '');
 } catch (error) {
   if (error instanceof Error) {
     console.error('Export error:', error.message);
@@ -814,6 +815,12 @@ does not build the `bundler`, `nodejs` or `no-modules` targets.
 | Retained browser executor (`@ifc-lite/wasm/retained`) | `packages/wasm/pkg-retained/` | `BUILD_RETAINED=1` |
 | Diff (`@ifc-lite/wasm/diff`) | `packages/wasm/pkg-diff/` | Always (separate crate `rust/diff-wasm`) |
 | Rhino scene (`@ifc-lite/wasm/rhino`) | `packages/wasm/pkg-rhino/` | Always (separate crate `rust/rhino-wasm`) |
+
+The published `@ifc-lite/wasm/retained` subpath ships only the loader
+(`retained.js`) and its types, not the engine. Build `pkg-retained` with
+`BUILD_RETAINED=1 scripts/build-wasm.sh`, deploy its `ifc-lite.js` and
+`ifc-lite_bg.wasm` with your app, and pass that URL to
+`loadRetainedEngine({ moduleUrl })`.
 
 
 ### Streaming prepass source fingerprints

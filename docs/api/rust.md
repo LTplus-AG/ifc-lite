@@ -562,6 +562,10 @@ impl AttributeValue {
     pub fn as_float(&self) -> Option<f64>;
     pub fn as_int(&self) -> Option<i64>;
     pub fn as_list(&self) -> Option<&[AttributeValue]>;
+    // Typed parameters (rust/core/src/typed_value.rs)
+    pub fn as_typed(&self) -> Option<(&str, &AttributeValue)>;
+    pub fn unwrap_typed(&self) -> &AttributeValue;
+    pub fn typed_value(&self, name: &str) -> Option<&AttributeValue>;
 }
 ```
 

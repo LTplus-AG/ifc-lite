@@ -6,8 +6,8 @@ The same layer model is available on the command line as `ifc-lite layer` (see [
 
 ## Loading a stack
 
-- **Open .ifcx files** loads several IFCX files at once as one stack. Dropping several `.ifcx` files anywhere in the viewer does the same. [Federation](./federation.md#ifc5-federated-layers) describes the composition rules.
-- **Load demo stack** loads the buildingSMART hello-wall sample with two extra layers: an agent's fire-safety pass with check evidence, and a human review that overrides it. It is offered only when the `files.samples` feature is on.
+- With no stack loaded, **Open .ifcx files** (when the `files.local` feature is on) loads several IFCX files at once as one stack. Dropping several `.ifcx` files anywhere in the viewer does the same. [Federation](./federation.md#ifc5-federated-layers) describes the composition rules.
+- With no stack loaded, **Load demo stack** (only when the `files.samples` feature is on) loads the buildingSMART hello-wall sample with two extra layers: an agent's fire-safety pass with check evidence, and a human review that overrides it.
 
 ## Reading the stack
 

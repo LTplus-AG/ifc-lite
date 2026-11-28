@@ -9,10 +9,10 @@ A zone is planning data, not part of the model. It has no link to the spatial st
 Zones live in named **zone sets**, for example "Sections" and "Takt areas". The sets are independent, so one element can be in a zone of each set.
 
 - Type a name and press **Set** to create an empty set, then **Add zone**.
-- **Generate from storeys** creates a set with one zone per building storey. Each zone spans the horizontal bounds of the loaded models. Storeys of federated models at the same elevation (within 0.5 m) become one zone.
+- **Generate from storeys** creates a set with one zone per building storey. Each zone spans the horizontal bounds of the loaded models. Storeys of federated models whose elevations round to the same 0.5 m step become one zone.
 - Each set can be shown or hidden in the 3D view, renamed and deleted.
 
-A zone is an oriented box: a centre, a width, height and depth, and a rotation about the vertical axis. Edit the numbers in the zone row, or press **Edit in 3D** to move, resize and rotate it with handles.
+A zone is an oriented box: a centre, a width, height and depth, and a rotation about the vertical axis. Edit the numbers in the zone row, or use the pencil button (**Edit in 3D**) to move, resize and rotate it with handles.
 
 A zone can also be a vertical prism over a convex footprint polygon. Prisms come only from an imported JSON file; the 3D handles do not edit them. [Zone shapes](./mutations.md#zone-shapes) describes the format.
 
@@ -20,8 +20,8 @@ A zone can also be a vertical prism over a convex footprint polygon. Prisms come
 
 The viewer compares each element's bounding box with the zones of every set:
 
-- An element's **zone** is the zone that contains the centre of its bounding box. An element whose centre is in no zone has none.
-- An element **straddles** when its bounding box reaches into more than one zone of the set. Touching a shared boundary does not count.
+- An element's **zone** is the zone that contains the centre of its bounding box. An element whose centre is in no zone has none. If zones in a set overlap, the first one in the set's order wins.
+- An element **straddles** when its bounding box reaches into more than one zone of the set, or reaches into a zone while its centre lies outside every zone. Reaching in means overlapping by more than 1 mm, so touching a shared boundary does not count.
 
 **Select elements in this zone** selects every element whose zone this is or that reaches into it.
 
@@ -29,7 +29,7 @@ The viewer compares each element's bounding box with the zones of every set:
 
 - **Split volumes** on a set divides the volume of each boundary-crossing element between the zones it reaches. It works only for elements whose mesh is a proven closed solid; the others are skipped with the reason.
 - The [Properties](./web-viewer-controls.md) panel shows the split of the selected element with **Split volume by zone**. When the zones of a set overlap, it warns that the shares double-count.
-- **Export geometry** on a zone writes a GLB file with the zone's elements. Elements that cross the boundary are cut at it. Elements that cannot be cut safely are left out and counted in the message.
+- The export button on a zone row (**Export <zone name> geometry**) writes a GLB file with the zone's elements. Elements that cross the boundary are cut at it. Elements that cannot be cut safely are left out and counted in the message.
 
 ## Writing zones into the model
 

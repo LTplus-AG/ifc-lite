@@ -68,6 +68,35 @@ describe('withInstancedMeshes', () => {
     assert.deepEqual(out.meshes.map((m) => m.expressId), [1, 107]);
   });
 
+  // A model-scoped call materializes only its own entities: the placement index calls this once
+  // per model, and building every model's occurrences each time made an N-model federation
+  // build N copies of all of them (4-5 model local federations sat in back-to-back major GCs).
+  it('materializes only the entities inside the model range when the scene can enumerate them', () => {
+    const geom = baseGeometry();
+    const materialized: number[] = [];
+    const scene = {
+      getAllInstancedMeshData: () => { throw new Error('a scoped call must not materialize every model'); },
+      getInstancedEntityIds: () => [2, 101, 107, 150, 151, 9000][Symbol.iterator](),
+      getInstancedMeshDataPieces: (id: number) => { materialized.push(id); return [mesh(id, 3, 1), mesh(id, 3, 1)]; },
+    };
+    setGlobalRendererRef({ current: { getScene: () => scene } as unknown as Renderer } as RefObject<Renderer | null>);
+    const out = withInstancedMeshes(geom, { idOffset: 100, maxExpressId: 50 });
+    assert.deepEqual(materialized, [101, 107, 150], 'only ids idOffset+1 .. idOffset+maxExpressId are built');
+    assert.deepEqual(out.meshes.map((m) => m.expressId), [1, 101, 101, 107, 107, 150, 150]);
+    assert.equal(out.totalTriangles, 1 + 6, 'totals count every appended piece');
+  });
+
+  it('still materializes every model when no model range is given', () => {
+    const geom = baseGeometry();
+    const scene = {
+      getAllInstancedMeshData: () => [mesh(2, 3, 1), mesh(9000, 3, 1)],
+      getInstancedEntityIds: () => { throw new Error('an unscoped call reads the whole scene'); },
+      getInstancedMeshDataPieces: () => { throw new Error('an unscoped call reads the whole scene'); },
+    };
+    setGlobalRendererRef({ current: { getScene: () => scene } as unknown as Renderer } as RefObject<Renderer | null>);
+    assert.deepEqual(withInstancedMeshes(geom, null).meshes.map((m) => m.expressId), [1, 2, 9000]);
+  });
+
   it('returns the geometryResult unchanged when the scene has no instanced meshes', () => {
     const geom = baseGeometry();
     setRenderer([]);

@@ -332,7 +332,7 @@ flowchart LR
     end
 
     subgraph Result["Result"]
-        Array["Entity[]"]
+        Array["QueryResultEntity[]"]
     end
 
     Build --> Execute --> Result

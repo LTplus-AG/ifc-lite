@@ -295,6 +295,9 @@ sectionPlane.max = storeyElevation + storeyHeight;
 // Cut-surface rendering (both default true)
 sectionPlane.showCap = true;       // filled cap surfaces with screen-space hatch
 sectionPlane.showOutlines = true;  // polygon outlines on the cut surfaces
+// Cap look: fill/stroke RGBA, pattern ('solid', 'diagonal', 'crossHatch', 'horizontal',
+// 'vertical', 'concrete', 'brick', 'insulation'), spacingPx, angleRad, widthPx, secondaryAngleRad
+sectionPlane.capStyle = { pattern: 'concrete', spacingPx: 8 };
 
 // Arbitrary slice plane: providing a world-space unit normal + distance
 // bypasses axis/position/min/max entirely (face-pick section planes)
@@ -335,6 +338,18 @@ renderer.render({
 ```
 
 Omit the set or pass an empty set to restore clipping. In-place set edits take effect on the next render; picking uses a snapshot of that frame. Already-uploaded cap polygons and their outlines are filtered by `expressId`, including extra-plane caps. Standalone cap lines need `ownerId` to identify the excluded entity; unowned lines remain visible. Pass the same set in `SectionPlaneConfig.sectionExcludedIds` when generating drawings with `SectionCutter`, `cutMeshesStreaming` or `GPUSectionCutter`, so excluded entities generate no cut segments or polygons in the first place. Recompute standalone drawings after changing the set.
+
+### Section box
+
+`clipBox` crops the model to an axis-aligned world-space box from all six sides. It is independent of `sectionPlane` and combines with it. A box with `enabled: false` has no effect. GPU picking uses the clip box of the last render, so cropped-away geometry cannot be picked.
+
+```typescript
+renderer.render({
+  clipBox: { min: [0, 0, 0], max: [20, 6, 12], enabled: true, showCap: true },
+});
+```
+
+`showCap`, `showOutlines` and `capStyle` work as on a section plane, but a face's cap is drawn only where you uploaded its cut polygons under `sectionBoxCapKey(face)` (`face` is one of `SECTION_BOX_CAP_FACES`: `minX`, `maxX`, `minY`, `maxY`, `minZ`, `maxZ`). Each face's cap is clipped by the four faces around it.
 
 ### Section Plane Visualization
 
@@ -645,13 +660,15 @@ interface SnapTarget {
     vertices?: Vec3[];     // For edges/faces
     edgeIndex?: number;
     faceIndex?: number;
+    // Source-curve snaps only: the source identity plus these fields
+    sourceCurve?: { kind: 'line' | 'arc'; length: number; t: number };
   };
 }
 ```
 
 ## GPU Picking
 
-Depth-aware object selection supporting 100K+ meshes.
+Depth-aware object selection that resolves each click to the nearest visible entity.
 
 ### Basic Picking
 
@@ -918,24 +935,27 @@ subsets hold only visible entities.
 
 ### Basket Isolation (Viewer App)
 
-The viewer app provides a **basket** — an incremental isolation set that lets you build up a working set of entities interactively. Unlike simple isolation which replaces the set each time, the basket supports add/remove operations:
+The viewer app provides a **collection** (the "basket" in code) — an incremental isolation set that lets you build up a working set of entities interactively. Unlike simple isolation which replaces the set each time, the collection supports add/remove operations. Set, Add, Remove, Save view and Show All are also in the command palette:
 
-| Operation | Keyboard | Toolbar | Context Menu | Description |
-|-----------|----------|---------|--------------|-------------|
-| **Isolate** | `I` | Isolate button | Isolate selection | Replace basket with current selection and isolate it |
-| **Set** | — | Set button | Set as Basket | Replace basket with current selection |
-| **Add** | `=` or `+` | `+` button | Add to Basket | Add current selection to basket |
-| **Remove** | `-` | `-` button | Remove from Basket (-) | Remove current selection from basket |
-| **Show All** | `A` | Eye icon | Show All | Clear every filter; see below |
+| Operation | Keyboard | Ribbon | Context Menu | Description |
+|-----------|----------|--------|--------------|-------------|
+| **Isolate** | `I` | Isolate | — | Replace the collection with the current selection and isolate it |
+| **Set** | — | — | Set Collection | Replace the collection with the current selection |
+| **Add** | `=` or `+` | — | Add to Collection | Add the current selection to the collection |
+| **Remove** | `-` | — | Remove from Collection | Remove the current selection from the collection |
+| **Save view** | `B` | — | Save Collection View | Save the collection as a presentation view |
+| **Show All** | `A` | Show all (eye icon) | Show all | Clear every filter; see below |
+
+`D` toggles the presentation dock, which lists the saved collection views.
 
 **Workflow example:**
 
-1. Click a wall, press `I` — basket now contains just that wall (everything else hidden)
-2. Cmd+Click two doors to multi-select them, press `=` or `+` — doors are added to the basket
+1. Click a wall, press `I` — the collection now contains just that wall (everything else hidden)
+2. Cmd+Click two doors to multi-select them, press `=` or `+` — doors are added to the collection
 3. Click a window, press `=` or `+` — window added too
-4. Click the wall, press `-` — wall removed from basket, only doors and window remain
+4. Click the wall, press `-` — wall removed from the collection, only doors and window remain
 
-The toolbar Set button shows a badge with the current basket count when active. Multi-select (Cmd/Ctrl+Click) works with all basket operations — select multiple entities first, then press `=` / `+` or `-` to add/remove them all at once.
+The ribbon's presentation button tooltip shows the number of saved views and collected entities. Multi-select (Cmd/Ctrl+Click) works with all collection operations — select multiple entities first, then press `=` / `+` or `-` to add/remove them all at once.
 
 **Additional visibility shortcuts:**
 
@@ -1013,6 +1033,8 @@ renderer.render({
 });
 ```
 
+The interface above is an excerpt. `RenderOptions` in `packages/renderer/src/types.ts` also carries, among others, `environment`, `extraSectionPlanes`, `clipBox`, `selectedItemId`, `hoverOutline`, `transparencyOverrides`, `ghostExceptIds`, `isInteracting`, `visualEnhancement`, `lod` and `sunShadows`.
+
 ## Materials and Colors
 
 IFClite uses colors from the IFC file. Mesh colors are determined during geometry processing based on IFC styles and material definitions.
@@ -1066,19 +1088,26 @@ Builds a BVH (Bounding Volume Hierarchy) spatial index from geometry meshes for 
 import type { SpatialIndex } from '@ifc-lite/spatial';
 import type { MeshData } from '@ifc-lite/geometry';
 
+import type { BVH } from '@ifc-lite/spatial';
+
 /**
  * Builds a spatial index from an array of mesh data
  * @param meshes - Array of MeshData objects from GeometryProcessor
  * @returns BVH spatial index that implements SpatialIndex interface
  */
-declare function buildSpatialIndex(meshes: MeshData[]): SpatialIndex;
+declare function buildSpatialIndex(meshes: MeshData[]): BVH;
+
+/** Time-sliced variant: computes bounds in chunks of at most `budgetMs` (default 4) and yields between them. */
+declare function buildSpatialIndexAsync(meshes: MeshData[], budgetMs?: number): Promise<BVH>;
+
+const index: SpatialIndex = buildSpatialIndex([]);
 ```
 
 **Parameters:**
 - `meshes: MeshData[]` - Array of mesh data objects, typically from `GeometryProcessor.process()` result
 
 **Returns:**
-- `SpatialIndex` - A BVH spatial index with methods for AABB queries, raycasting, and frustum queries
+- `BVH` - A BVH spatial index (it satisfies `SpatialIndex`) with methods for AABB queries, raycasting, and frustum queries
 
 **Usage Example:**
 
@@ -1164,7 +1193,7 @@ The renderer uses a Bounding Volume Hierarchy for fast raycasting:
 
 ```typescript
 // BVH is built automatically for CPU raycasting
-// For large models (100K+ meshes), ray intersection is O(log n)
+// Ray intersection is O(log n) in the number of meshes
 
 // Clear BVH cache when geometry changes significantly
 renderer.invalidateBVHCache();
@@ -1293,6 +1322,15 @@ selected element's analytic directrix, and clearing it with
 The centreline drawing remains visible as x-ray context through section and
 crop cuts. Magnetic snapping to its exact source curve still follows the active
 pick clipping, so a clipped-out part of that drawing is not a snap target.
+Of the six channels, `annotation`, `alignment` and `terrain` grow the bounds;
+`grid`, `dxf` and `centreline` do not.
+
+Overlays are drawn through the section plane, the extra cutting planes and the
+clip box unless you opt in to clipping. Set `sectionClipped: true` on a
+`SymbolicFillInput` to discard what the cut removes, on a `SymbolicTextInput` to
+hide the label while its anchor is cut away, or pass `{ sectionClipped: true }`
+as the third argument of `setLineOverlay`. The flag belongs to that upload: a
+later upload without it draws unclipped again.
 
 ## Complete Example
 
@@ -1441,7 +1479,7 @@ so whole-model movement remains available in GPU-resident mode.
 `Renderer.setModelRotation(modelIndex, angle, [px, py, pz])` turns a model's
 GPU-instanced occurrences about the vertical (+Y) axis through the render-frame
 pivot `(px, pz)` (`py` is unused — the axis is always vertical); `angle === 0`
-clears it. It is the instanced-geometry counterpart to `setModelTranslation`
+clears it. It returns `false` when nothing changed. It is the instanced-geometry counterpart to `setModelTranslation`
 and composes with it (rotate about the pivot, then translate). It does not
 touch flat, authored, batched or point-cloud geometry — an instanced-only
 model's flat pieces, if any, must be rotated separately (e.g. by the caller's
@@ -1452,8 +1490,10 @@ For a separately streamed scan, call
 composes after the matrix passed to `setPointCloudTransform`, which accepts
 `Float64Array` as well as `Float32Array`. Pass coarse alignment matrices in
 float64 so cancellation with a manual correction happens before GPU rounding.
-`getPointCloudTransform(handle)` returns the final draw matrix for CPU spatial
-consumers. `getModelPlacementBounds(modelIndex, handle?)` returns placed bounds
+`getPointCloudTransform(handle)` returns the final draw matrix (`Float32Array`) for CPU spatial
+consumers; `getPointCloudPlacement(handle)` returns an exact `Float64Array` copy, because the
+float32 matrix rounds map-grid origins. `setPointCloudVisibility(handle, visible)` shows or hides
+one streamed scan without releasing its GPU buffers. `getModelPlacementBounds(modelIndex, handle?)` returns placed bounds
 for framing a model and its streamed scan.
 
 These APIs move workspace geometry; they do not rewrite source IFC placements

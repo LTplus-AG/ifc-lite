@@ -6,7 +6,7 @@ The viewer's **Section** tool cuts the model with up to eight planes at once. Wh
 
 Open **Section** from the ribbon. The bar has two rows:
 
-- **Row 1 says which planes exist.** One chip per plane (the filled one is active; a filled dot means the plane is cutting, a hollow one that it is only a preview), a **⋯** menu for the selected plane (Rename, Cut, Show plane, Duplicate, Remove, Clear all), **Add plane**, **Views** and Close. **Add plane** offers Down, Front, Side, Face, **Box** and, for infrastructure models, **Alignment…**. With no plane yet the bar offers the common ways to start: Down, Front, Side, a picked Face or a Box (Alignment is only in the Add menu).
+- **Row 1 says which planes exist.** One chip per plane (the filled one is active; a filled dot means the plane is cutting, a hollow one that it is only a preview), a **⋯** menu for the selected plane (Rename, Cut, Show plane, Duplicate, Remove, Clear all), **Add plane**, **Views** and Close. **Add plane** offers Down, Front, Side, Face, **Box** and **Alignment…** (for infrastructure models). With no plane yet the bar offers the common ways to start: Down, Front, Side, a picked Face or a Box (Alignment is only in the Add menu).
 - **Row 2 edits the active plane** and never needs to say which plane it means.
 
 Remove and Clear all offer **Undo** for a few seconds: it gives back the planes that were removed and keeps whatever you did since. Planes are listed in the order you made them. Add is disabled at eight planes, with the reason in its tooltip.
@@ -26,7 +26,7 @@ Planes tell themselves apart by state, never by colour: the active plane's tag i
 
 ## Cut surface
 
-**Fill** switches the hatch on the cut surface on and off (turning it on again brings back the last hatch). **Cap** sets the colour and pattern; the look is one preference shared by every plane, and each plane that is cutting draws its own cap, so the cut surface is closed wherever a plane meets the model.
+**Fill** paints the cut surface a solid colour; turning it off brings back the hatch you had (diagonal if you never chose one). **Cap** sets the colour and pattern; the look is one preference shared by every plane, and each plane that is cutting draws its own cap, so the cut surface is closed wherever a plane meets the model.
 
 ## Zoom
 

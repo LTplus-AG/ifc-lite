@@ -110,6 +110,11 @@ function fakeDevice(): GPUDevice {
 }
 const fakePipeline = { getUniformBufferSize: () => 256, getBindGroupLayout: () => ({}) } as unknown as Parameters<Scene['appendToBatches']>[2];
 
+function ageAndEnforceResidency(scene: Scene): void {
+  for (let i = 0; i < 1000; i++) scene.beginResidencyFrame();
+  for (let i = 0; i < 240; i++) scene.enforceGpuBudget();
+}
+
 /** Each batch of a quantized scene holding `meshes`: its entities and whether it quantized. */
 function sceneBatches(meshes: MeshData[], recolour?: Map<number, [number, number, number, number]>): { ids: number[]; quantized: boolean; triangles: number }[] {
   const scene = new Scene();
@@ -182,6 +187,49 @@ describe('lattice turn guard (#11444)', () => {
     ]);
   });
 
+  it('keeps colour-merged meshes warm during cold eviction and restore (#11602)', async () => {
+    const scene = new Scene(), device = fakeDevice();
+    const bar = sweptBar(1, metres, 0.006, 24, [0.00031, 0.00047, 0.00013]);
+    const mergedWall = wall(3);
+    const merged = colourMerged(bar, mergedWall);
+    const ordinary = wall(2);
+    const pieces = [merged, ordinary];
+    let reads = 0;
+    scene.setQuantizedBatches(true);
+    scene.setColdGeometryProvider({
+      loadMeshesInBounds: async () => {
+        reads++;
+        return pieces.map(piece => ({ ...piece }));
+      },
+    });
+    scene.setGpuResidencyBudget(1);
+    scene.setHostResidencyBudget(1);
+    scene.appendToBatches(pieces, device, fakePipeline);
+    const checkLanes = () => {
+      for (const original of [bar, mergedWall]) {
+        const registered = scene.getMeshDataPieces(original.expressId);
+        assert.equal(registered?.length, 1);
+        assert.equal(registered?.[0].indices.length, original.indices.length);
+      }
+    };
+    ageAndEnforceResidency(scene);
+
+    assert.equal(scene.getBatchedMeshes().find(batch => batch.expressIds.includes(1))?.gpuResident, false);
+    assert.equal(scene.getMeshDataPieces(2), undefined, 'the ordinary wall went cold');
+    checkLanes();
+    await scene.drainColdTier();
+    assert.equal(reads, 1, 'only the ordinary wall needed a provider read');
+    assert.equal(scene.restoreAllEvicted(device, fakePipeline), 2);
+    checkLanes();
+    assert.equal(scene.getMeshDataPieces(2)?.length, 1);
+    assert.deepEqual(scene.getBatchedMeshes().map(batch => [
+      batch.expressIds[0], batch.quantized !== undefined, batch.indexCount / 3,
+    ]).sort(([a], [b]) => Number(a) - Number(b)), [
+      [1, false, merged.indices.length / 3],
+      [2, true, ordinary.indices.length / 3],
+    ]);
+  });
+
   for (const order of ['after both arrivals', 'bar first', 'wall first']) {
     it(`restores original same-id pieces (${order}, #11602)`, async () => {
       const scene = new Scene(), device = fakeDevice();
@@ -193,18 +241,14 @@ describe('lattice turn guard (#11444)', () => {
       scene.setColdGeometryProvider({ loadMeshesInBounds: async () => pieces.map(piece => ({ ...piece })).reverse() });
       scene.setGpuResidencyBudget(1);
       scene.setHostResidencyBudget(1);
-      function evict() {
-        for (let i = 0; i < 1000; i++) scene.beginResidencyFrame();
-        for (let i = 0; i < 240; i++) scene.enforceGpuBudget();
-      }
       const [first, second] = order === 'wall first' ? [pieces[1], bar] : [bar, pieces[1]];
       scene.appendToBatches([first], device, fakePipeline);
       if (order !== 'after both arrivals') {
-        evict();
+        ageAndEnforceResidency(scene);
         assert.equal(scene.getMeshDataPieces(1), undefined, 'first piece is cold before its sibling arrives');
       }
       scene.appendToBatches([second, other], device, fakePipeline);
-      evict();
+      ageAndEnforceResidency(scene);
       assert.equal(scene.getMeshDataPieces(1), undefined, 'both same-id pieces reached cold storage');
       assert.equal(scene.getMeshDataPieces(2), undefined, 'independent wall reached cold storage');
       await scene.drainColdTier();

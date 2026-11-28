@@ -59,7 +59,10 @@ node scripts/perf/flag-qualify.mjs report --flags drawStream --out $Q   # Q/<lab
 `unit` and `e2e` run the flags-off suite only when the flags-on run fails, and
 list the failures the flags-off run does not have. `e2e` serves each arm with
 `vite preview --outDir` on a free port (Playwright reuses a server already on
-`PLAYWRIGHT_PORT`) and sets `E2E_GPU_STRICT=0` as CI does.
+`PLAYWRIGHT_PORT`) and sets `E2E_GPU_STRICT=0` as CI does. `e2e --grep RE`
+passes a test filter to Playwright. `gpu --timeout-min N` (default 8) bounds
+one arm's load. `dist --flags SPEC --dist DIR --out FLAGGED_DIST` only writes
+the flagged view of a build, for manual use.
 
 `gpu` models: `samples` (hello-wall, building-architecture, infra-bridge, FZK
 and `federation` = building-architecture + its rev-b, all committed),

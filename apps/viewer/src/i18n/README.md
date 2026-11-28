@@ -11,7 +11,7 @@ rather than assembling translated fragments, lowercasing labels, or appending
 suffixes. Missing keys fall back to English; an explicit empty string remains
 empty.
 
-The Section-tool catalogue contains 72 strings covering the mounted 3D
+The Section-tool catalogue (`section-tool.en.ts`) covers the mounted 3D
 Section subtree: plane controls and state messages, cap styling, visualization
 badges and the drag-gizmo tooltip, plus the two entry labels that open a 2D
 drawing. It deliberately does not cover the drawing panel, toolbar, tours,
@@ -105,9 +105,11 @@ which trips the gate despite the symbol allowlist (a single ASCII letter with
 no modifier glyph isn't a recognized cluster) and was keyed as
 `measure.geo.unitMeters` by the #4918 grab-bag slice, filling in a key this
 slice had reserved with a comment but left unadded. The wall-split tool catalogue (`split-tool.en.ts`) covers
-`SplitNumericInput.tsx` and `SplitOverlay.tsx`. `SectionPanel.tsx`'s one
-remaining literal was added to the existing `section-tool.en.ts` catalogue
-rather than a new file.
+`SplitCursorInput.tsx` and the Split command's bar label and hint
+(`lib/commands/modeling/commands/element-split.ts`). `SplitOverlay.tsx` shows
+the split distance and total length with a shared unit and honours the length
+display override. The Section tool's hint line (`SectionHint.tsx`) uses the
+existing `section-tool.en.ts` and `section-planes.en.ts` catalogues.
 
 The saved-list builder catalogue (#4918 slice 6, lists) covers
 `ListBuilder.tsx`, `ListLibrary.tsx`, `ListGroupingBar.tsx`,
@@ -183,42 +185,6 @@ reassignment, its pending badge, and undo/redo chrome
 names remain exact schema data; common material category display labels are
 translated without changing their stored values.
 
-The hierarchy catalogue (#4918 slice 4) covers the spatial tree's own
-chrome: `HierarchyNode`'s row controls (visibility, expand/collapse,
-elevation and count badges) and its split-out `ModelHeaderRow`, the Models
-section header and its by-tag filter chips (`ModelsSectionHeader`), the
-per-row tag strip and its tag editor dialog (`ModelRowTags`,
-`ModelTagEditor`, `ModelTagChip`, `ModelTagGroupRow`), the sort control
-(`HierarchySortControl`, whose `SORT_OPTIONS` table carries `labelKey`s the
-same way `camera-commands.ts` does), and the Building Storeys display
-controls (`StoreyDisplayControls`). Row NAMES, TYPE NAMES and TAG NAMES are
-model content, not literals, and stay out of the catalogue. The same
-catalogue's `hierarchy.panel.*` keys (#4918 slice: panel outer chrome) cover
-`HierarchyPanel.tsx`'s own shell around that tree: the loading/no-model
-empty states, the search field, the grouping-mode tab strip and Groups
-sub-filter chips, the section header per grouping mode, the storey/class-
-filter/type-isolation footer chips and their clear controls, and the
-resize-divider hint.
-
-The properties catalogue (#4918 slice 4) covers the Properties panel's own
-chrome: the entity header actions, the assembly/spatial-location badges,
-the small info cards (property sets, quantity sets, materials,
-classification, documents, relationships, schedule, structural, raw STEP,
-bSDD, model metadata, unit display), the georeferencing panel and its
-EPSG lookup / federation-alignment / precision-grid / location-map
-surfaces, and the Gantt task edit card. IFC EXPRESS attribute names
-(`GeodeticDatum`, `MapProjection`, `MapZone`, `MapUnit`, `Name`,
-`Description`, …) rendered as `GeorefRow`/`MaterialRow` labels keep the
-house rule's exact schema spelling and stay out of the catalogue, same as
-property/pset/material/classification/schedule NAMES and VALUES, which are
-model content. The same catalogue's `properties.panel.*` keys (#4918 slice:
-panel outer chrome) cover `PropertiesPanel.tsx`'s own chrome that is not one
-of those extracted cards: the empty state, the entity header's merge-layers
-badge and world-coordinates disclosure, the IFC Attributes / Structure /
-Zones collapsible sections and their inline attribute editor, the
-Properties/Quantities/bSDD/Raw STEP tabs and each tab's empty state, the
-occurrence/type/material property section labels, and the unified-storey
-multi-entity view.
 The IDS-panel catalogue (#4918 viewer-panels slice) covers `IDSPanel.tsx` and
 the extracted validation progress, result-summary, filtering, isolation,
 focus, specification, requirement, and entity chrome (`ids-panel.en.ts`). A
@@ -232,9 +198,9 @@ controls), `IDSAuditSummary.tsx` (the auditing/clean-document states, the
 counts-strip severity words moved to a `labelKey`/`pluralLabelKey` pair on
 `SEVERITY_TOKENS` the same way `sectionConstants.ts`'s `AXIS_INFO` does, the
 filter tabs, and the issue-row "path"/"facet" field labels), and
-`IDSReportExportButton.tsx` (the format dropdown's own labels, moved to a
-`FORMAT_LABEL_KEYS` map with the same pattern, its aria-label, and the
-export-format tooltip). IDS document titles/descriptions, specification
+`IDSReportExportButton.tsx` (the HTML/JSON/BCF format and menu labels,
+translated inline with `t()` and passed to the shared `AnalysisExportMenu`,
+and the export-format tooltip). IDS document titles/descriptions, specification
 names, entity names/types/GlobalIds, requirement descriptions, and failure
 details remain model/document content supplied by the IDS engine.
 The clash-detection catalogue (#4918 viewer-panels slice) covers
@@ -502,7 +468,7 @@ progress/limit badges, error box and result table (`SearchModal.filter.tsx`),
 the chip-editing builder and preset menu (`SearchModal.filter.builder.tsx`),
 every per-kind rule chip editor (`SearchModal.filter.editors.tsx` and its
 split-out `.elevation.tsx` / `.identity.tsx` siblings), the selector text
-field (`SearchModal.filter.selector.tsx`), and `SearchInline.tsx`'s field,
+field (`SearchModal.filter.selector.tsx`, which renders `SelectorTextEditor.tsx`), and `SearchInline.tsx`'s field,
 vim-cycle hint, recents popover and results popover (`search-modal.en.ts`
 covers the shell/text/filter-run/inline sub-areas; `search-filters.en.ts`
 covers the filter-builder/filter-editors/filter-selector sub-areas — split
@@ -535,11 +501,12 @@ reasoning the BCF-panel and clash-panel catalogues already document for
 text that doubles as exported content.
 
 The model-reposition catalogue (#4918 slice, `reposition-panel.en.ts`,
-prefix `repositionPanel.*`) covers the `reposition/` directory:
-`RepositionPanel.tsx` (the floating panel's header, moving/reference model
+prefix `repositionPanel.*`) covers the docked Placement panel's
+`placement/LocalTab.tsx` (which replaced the floating `RepositionPanel` in
+#5505: moving/reference model
 pickers, framing shortcuts, point-picking prompts, constraint/input-mode
 controls, the move-dimensions readout, and the apply/undo/redo/reset
-actions), `RotationControls.tsx` (the heading and pivot fields, their
+actions) and the `reposition/` directory: `RotationControls.tsx` (the heading and pivot fields, their
 guidance text, and the per-model rotation summary), `PlacementGizmo.tsx`
 (the drag-handle SVG's aria-labels and its live delta readout),
 `PlacementFiles.tsx` (the save/restore-placements disclosure and its
@@ -678,10 +645,10 @@ and every derived caption/notice the dialog renders); `LoadReportPanel.tsx`
 table and per-entity summary line); `GeometryModeBanner.tsx` (the
 reload-to-apply Fast/Exact geometry banner); `FilterRuleControls.tsx` (the
 shared AND/OR combinator toggle and "Add rule" menu); `GeometryAxisRow.tsx`
-(the Geometry edit card's X/Y/Z nudge row); `VisibilityChips.tsx` (the
-viewport visibility reasons); `TextAnnotationEditor.tsx` (the 2D-drawing
+(the Geometry edit card's X/Y/Z nudge row); `TextAnnotationEditor.tsx` (the 2D-drawing
 text annotation inline editor); `presence/PeerPresenceLayer.tsx` (the live
-collaborator-cursor DOM overlay); `BottomStrip.tsx`'s detach grip;
+collaborator-cursor DOM overlay); the bottom strip's tab row, detach grip,
+maximize/restore and Close (`BottomStripHeader.tsx`);
 `SaveMarkupToModelButton.tsx` and `ExportChangesButton.tsx` (the two
 dedicated export-adjacent toolbar buttons); and `SearchableSelect.tsx` (the
 searchable dropdown `LensPanel`'s editors use). `EntityContextMenu.tsx`
@@ -697,6 +664,8 @@ earlier slices already document for copy that is not on-screen chrome.
 Point-cloud ASPRS CLASS names (`lasClassificationName()`) are model content
 loaded from the scan and stay out of the catalogue, same house rule as an
 IFC class/property/tag NAME anywhere else in this sweep.
+The viewport visibility-reason chips (`VisibilityChips.tsx`) use their own
+`visibility-reasons.en.ts` catalogue (`visibilityChips.*`).
 
 The Info dialog catalogue (#4918 slice: keyboard shortcuts,
 `keyboard-shortcuts.en.ts`) covers `KeyboardShortcutsDialog.tsx` in full —
@@ -733,10 +702,11 @@ stay out of the catalogue; the `mm` unit suffix is routed through `t()`
 without translation, same reasoning as the `F12` key name above.
 
 The Cesium / geo-basemap catalogue (#4918 slice: cesiumgeo, `cesium-geo.en.ts`)
-covers the geospatial-basemap feature area's five files:
-`CesiumPlacementEditor.tsx` (the drag-to-move georeference gizmo and its
-floating panel — header, delta readouts, the map-absolute guard warning,
-the nudge/height/rotate control clusters, and the apply/reset actions),
+covers the geospatial-basemap feature area: the docked Placement panel's
+`placement/CesiumPlacementGizmo.tsx` (the drag-to-move georeference gizmo)
+and `placement/GeoreferenceTab.tsx` (delta readouts, the map-absolute guard
+warning, the nudge/height/rotate control clusters, and the apply/reset
+actions), which replaced the floating `CesiumPlacementEditor` in #5505,
 `CustomBasemapEditor.tsx` and `CustomTilesetEditor.tsx` (the custom XYZ-tile
 and 3D-Tiles input surfaces under the Sun & Sky panel's Base map selector,
 including their third-party-privacy disclosures), `CesiumOverlay.tsx` (the
@@ -791,9 +761,11 @@ the catalogue.
 The grab-bag catalogue (#4918 slice: standalone panels, part 1,
 `misc-panels-a.en.ts`) bundles five otherwise-unrelated one-off dialogs/panels
 under their own key prefixes purely for PR-count efficiency:
-`BasketPresentationDock.tsx` (`basketPresentationDock.*`, the pinboard
-"Presentation" dock's header, source/visibility/save/play-all controls, the
-saved-view strip, and the resize handle), `DeviationPanel.tsx`
+`presentation/PresentationPanel.tsx` (`presentationPanel.*`; the bottom
+panel that replaced the floating `BasketPresentationDock` in #5508:
+basket/visibility/save/play-all controls, the saved-view strip with its
+scroll buttons, and per-view rename/delete/transition controls, together with
+`PresentationViewCard.tsx`), `DeviationPanel.tsx`
 (`deviationPanel.*`, the BIM/scan deviation heatmap's compute button, stats
 line, range slider, and legend, plus its `setError` messages), the pre-export
 `ExportChangesReviewDialog.tsx` (`exportChangesReviewDialog.*`, the summary
@@ -814,8 +786,8 @@ bare unit suffix; `spaceMousePanel.layoutLine` and
 `exportChangesReviewDialog.changesSummaryOneFile` instead nest a second `t()` call
 for a sub-label (the layout source, the model count) inside their own
 template, the same shape `RoomPanel.tsx`'s `statusRoom` already uses.
-`spaceMousePanel.headerLabel` / `deviceNameFallback` / `connectButton` keep
-the literal English word `SpaceMouse` as their catalogue value — a device
+`spaceMousePanel.deviceNameFallback` / `connectButton` keep
+the literal English word `SpaceMouse` in their catalogue value — a device
 name, not translated prose, per the house rule — routed through `t()` only so
 the ending gate does not see it as an unconverted JSX literal, the same
 reasoning the geometry-export and webgpu-troubleshooting catalogues document

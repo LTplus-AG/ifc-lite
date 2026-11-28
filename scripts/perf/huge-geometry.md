@@ -10,8 +10,9 @@ records how it failed. A recorder turns the same climb into a captioned video,
 so spike branches can produce comparable before/after clips.
 
 Manual tooling, not wired into CI (the `scripts/perf/` carve-out); its pure
-parts are unit-tested by `huge-geometry-gen.test.mjs` and
-`huge-geometry-report.test.mjs`, which CI runs with the other `scripts/perf` tests.
+parts are unit-tested by `huge-geometry-gen.test.mjs`,
+`huge-geometry-report.test.mjs`, `huge-geometry-showcase.test.mjs` and
+`huge-geometry-cinema.test.mjs`, which CI runs with the other `scripts/perf` tests.
 
 | file | role |
 |---|---|
@@ -26,8 +27,10 @@ parts are unit-tested by `huge-geometry-gen.test.mjs` and
 | `huge-geometry-compare.mjs` | compare two `summary.json` files |
 | `huge-geometry-record.mjs`, `huge-geometry-video.mjs` | progress video with HUD |
 | `huge-geometry-showcase.mjs` | SHOWCASE look: a city for footage (not a measurement family) |
+| `huge-geometry-showcase-city.mjs` | SHOWCASE city layout: block spiral and per-block plan |
 | `huge-geometry-cinema.mjs`, `-cinema-path.mjs`, `-cinema-page.mjs` | cinematic clip per tier: full-frame canvas, camera path, feature beats |
 | `huge-geometry-compose.mjs` | side-by-side before/after video (or a reel) from cinematic clips |
+| `huge-geometry-unpack.mjs` | rebuild files a remote GPU job printed with `--emit-stdout` |
 
 ## Models
 
@@ -227,7 +230,7 @@ job (a 1M clip is about 110 MB of webm, about 145 MB as base64), or leave
 `--emit-stdout` off and fetch `OUT` with a second small job. Headless Windows
 Chrome paces rAF at 30 Hz (33 ms floor) and its process memory is not visible
 from WSL (the HUD says so and shows the JS heap). Before any Pop GPU slice, gate
-on a short known-good load and stop if it fails (CAMPAIGN.md update (c)).
+on a short known-good load and stop if it fails.
 
 Side by side (no GPU needed; Playwright's ffmpeg has no stacking filters, so
 composing seeks both clips in a headless page and screenshots it):

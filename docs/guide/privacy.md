@@ -1,6 +1,6 @@
 # Privacy
 
-Everything the customisation system stores stays on your device: the action log, audit log, flavor library, and prompt overlay never leave your browser. The default local-file loader runs parsing and geometry in your browser. Hosted cloud imports also send source data through IFClite services for downloading or native conversion. This page covers what's stored, where, and how to inspect or clear it, plus what the hosted viewer sends over the network.
+Everything the customisation system stores stays on your device: the action log, audit log and profile (flavor) library never leave your browser. The prompt overlay is stored there too; the Chat panel includes the active profile's non-empty prompt overlay in the system prompt when it can read it. The default local-file loader runs parsing and geometry in your browser. Hosted cloud imports also send source data through IFClite services for downloading or native conversion. This page covers what's stored, where, and how to inspect or clear it, plus what the hosted viewer sends over the network.
 
 ## TL;DR
 
@@ -9,7 +9,7 @@ Everything the customisation system stores stays on your device: the action log,
 - **Flavor library** — your extensions, lenses, queries, layout, settings, prompt overlay.
 - **Prompt overlay** — durable notes the AI assistant sees in every chat (per flavor).
 
-All four live in your browser's IndexedDB. None of it is sent off-device unless you explicitly export. Separately, the hosted viewer can emit anonymous, scrubbed product analytics — see [What flows over the network](#what-flows-over-the-network).
+All four live in your browser's IndexedDB. None of it is sent off-device unless you explicitly export, except the prompt overlay: the Chat panel sends the active profile's overlay to your AI provider when the overlay is non-empty and available. Separately, the hosted viewer can emit anonymous, scrubbed product analytics — see [What flows over the network](#what-flows-over-the-network).
 
 ## Where data is stored
 
@@ -18,8 +18,10 @@ All four live in your browser's IndexedDB. None of it is sent off-device unless 
 | `ifc-lite-user-content` | IndexedDB | Saved validation/comparison reports, document templates, migration originals | Until explicit deletion or browser/site-data clearing; originals have a recovery download |
 | `ifc-lite-extensions` | IndexedDB | Installed `.iflx` bundles + their records | Forever (or until uninstall) |
 | `ifc-lite-flavors` | IndexedDB | Flavor library + snapshots | Forever (snapshots cap at 10 per flavor) |
-| Action log | IndexedDB (ring buffer) | Pattern miner input | 50,000 events / 8 MiB rolling |
-| Audit log | IndexedDB (ring buffer) | Lifecycle events | 10,000 entries / 10 MiB rolling |
+| `ifc-lite-extension-logs` (`action-events`) | IndexedDB (ring buffer) | Action log: pattern miner input | 50,000 events / 8 MiB rolling |
+| `ifc-lite-extension-logs` (`audit-events`) | IndexedDB (ring buffer) | Audit log: lifecycle events | 10,000 entries / 10 MiB rolling |
+| `ifc-lite-file-cache` | IndexedDB (plus names, sizes and times in localStorage) | The model files you opened recently, so the recent files list can reopen them without the file picker | Up to five recent files, each at most 150 MiB |
+| `ifc-lite-cache` | IndexedDB | Parsed data and geometry for eligible local IFC loads of 10 MiB or more, keyed by a source fingerprint, for faster reopening | Oldest entries are evicted when space is needed |
 
 The action and audit logs are held in an in-memory ring buffer and mirrored to IndexedDB, so they survive a reload (both are hydrated from IDB on startup). Clearing a log wipes both the in-memory copy and its persisted copy.
 
@@ -61,7 +63,7 @@ The action log uses a content-free vocabulary defined in `packages/extensions/sr
 | `model.load` | `schema`, `entityCount`, `sizeBytes` | Schema string, integer counts |
 | `model.unload` | — | No params |
 | `query.run` | `type`, `resultCount` | IFC type name, integer count |
-| `lens.apply` | `id` | **Hashed** lens id (djb2 → 8-char hex) — user-named lenses don't leak |
+| `lens.apply` | `id` | **Hashed** lens id (djb2 → `lens-` plus 8 hex chars) — user-named lenses don't leak |
 | `lens.clear` | — | No params |
 | `export.run` | `format`, `entityCount` | Format label, integer count |
 | `script.execute` | `templateId`, `durationMs` | Optional template id, ms duration |
@@ -91,27 +93,31 @@ The extractor is **privacy-first by design**:
 - **Rule-based, not LLM-driven.** No round trip to a model. The extractor runs entirely on your device.
 - **Always reviewable.** Every proposal lists its confidence + lets you discard before saving.
 
-A caveat banner sits above the proposal list: "Rule-based scan — review each line before saving." Heuristics are heuristics; the user is the final filter.
+A caveat banner sits above the proposal list: "Rule-based scan — review each line before saving. The extractor uses a heuristic blocklist; it is not a guarantee that no content slips through." Only your own messages are scanned, and at most 6 proposals are shown. The user is the final filter.
 
 ## What flows over the network
 
 The customisation system itself does not make network calls. The default local-file loader parses and renders files in your browser without uploading them. Opening a hosted cloud source downloads source data through IFClite services, and native Autodesk conversion runs on a server. Attaching model content to an AI chat message sends that content to your chosen provider. The following surfaces send data over the network.
 
-1. **Hosted viewer product analytics.** The hosted viewer at ifclite.com emits anonymous, coarse product-usage events via PostHog. This is the only telemetry in the project, and it lives only in the viewer app (`apps/viewer`). The published npm packages (`@ifc-lite/*`) contain no analytics code at all, and a viewer you build yourself with no PostHog key configured (`VITE_POSTHOG_KEY` / `VITE_POSTHOG_HOST`) sends nothing.
+1. **Hosted viewer product analytics.** The hosted viewer at ifclite.com emits anonymous, coarse product-usage events via PostHog. The viewer's PostHog client runs only when `VITE_POSTHOG_KEY` is configured; a build without it sends no PostHog events. The hosting analytics script below has its own feature flag. The published npm packages (`@ifc-lite/*`) contain no analytics code.
 
-   What it records: coarse product events such as `viewer_session_started`, `ifc_model_loaded` (schema string and integer counts/sizes), `export_completed`, `ids_validation_completed`, `clash_detection_run`, `lens_applied`, tour progress, AI chat turns (`ai_chat_message_sent` and `ai_chat_response_completed`: built-in or own-key provider, the model family from the viewer's fixed model list, the turn kind, message and attachment counts, the outcome (success, error or aborted), a coarse error class, latency and time to first token; never the prompt, the response, an attachment or the provider's error text), `stale_reload_resumed` (after the viewer reloads onto a new version: how many open models were reopened automatically and how many the user was asked to open again, counts only; the file names stay in the tab's own session storage), UI interaction events (`command_executed`, `panel_opened`, `panel_replaced`, `tool_activated`, `tool_exited`, `view_reset`, `error_shown`, `file_open_rejected`, `onboarding_surface`: which command, panel, tool or surface was used, as fixed ids only; opens the app makes by itself are not counted), and crash/error reports tagged with the build version for regression triage. `viewer_session_started` marks consenting viewer sessions, including those that load no model. Events are anonymous by default (PostHog `person_profiles: 'identified_only'`, no autocapture, no page-view capture).
+   What it records: coarse product events such as `viewer_session_started`, `ifc_model_loaded` (schema string and integer counts/sizes), `export_completed`, `ids_validation_completed`, `clash_detection_run`, `lens_applied`, tour progress, AI chat turns (`ai_chat_message_sent` and `ai_chat_response_completed`: built-in or own-key provider, the model family from the viewer's fixed model list, the turn kind, message and attachment counts, the outcome (success, error or aborted), a coarse error class, latency and time to first token; never the prompt, the response, an attachment or the provider's error text), `stale_reload_resumed` (after the viewer reloads onto a new version: how many open models were reopened automatically and how many the user was asked to open again, counts only; the file names stay in the tab's own session storage), UI interaction events (`command_executed`, `panel_opened`, `panel_replaced`, `tool_activated`, `tool_exited`, `view_reset`, `error_shown`, `file_open_rejected`, `onboarding_surface`: which command, panel, tool or surface was used, as fixed ids only; opens the app makes by itself are not counted), further feature events of the same coarse kind (for example `export_failed`, `bcf_topic_created`, `bcf_exported`, `model_compare_run`, `drawing_exported`, `georeference_set`, `script_run`, `solar_analysis_run` and the other tour steps), load and render performance figures (`viewer_boot`, `ifc_inspect` and `ifc_navigate` timings, and `viewer_render_stats`: file size in MB, draw-call, batch and GPU-memory counts), Gaussian-splat capture diagnostics from closed vocabularies and size buckets (`gaussian_capture_load`, `gaussian_capture_device`), and crash/error reports tagged with the build version for regression triage. `viewer_session_started` marks consenting viewer sessions, including those that load no model. Events are anonymous by default (PostHog `person_profiles: 'identified_only'`, no autocapture, no page-view capture; PostHog's page-leave event `$pageleave` is captured). The client also passes a session-replay configuration: if replay is switched on in the PostHog project, request and response bodies and headers are not recorded, and report-upload requests and signed storage URLs are dropped from the replay's network log. Whether replay runs at all is set in the PostHog project, not in this repository (`apps/viewer/src/lib/analytics.ts`, `apps/viewer/src/lib/analytics-report-privacy.ts`).
+
+   Separately, the viewer mounts the hosting platform's page-view script (Vercel Analytics, `apps/viewer/src/components/HostingAnalytics.tsx`). It is not part of the PostHog configuration and the PostHog opt-out does not stop it; a deployment removes it with the `privacy.vercel-analytics` feature (see [Configuring the Viewer for a Deployment](viewer-deployment-config.md)).
 
    What it never records: every event passes through a `before_send` scrubber (`apps/viewer/src/lib/analytics-scrub.ts`) that strips any property whose key looks like a file name, model name, title, path, comment, query, or property/pset name; redacts string values that look like a file path or a model file name; and removes the query string and hash from URLs (keeping only the route). The UI interaction events are held to a stricter allowlist (`apps/viewer/src/lib/analytics-ui-events.ts`): any property not declared for the event, and any value that is not a plain id, is dropped. Model content, GlobalIds, property values, and file names never leave the browser through analytics.
 
    To measure the first-run charter (#5614), use a PostHog SQL insight grouped by `$session_id`: count distinct sessions with `viewer_session_started` as the denominator and those with `ifc_model_loaded` as the numerator. Measure over a 30-day window: keep only sessions whose first `viewer_session_started` has `timestamp >= now() - INTERVAL 30 DAY`, and count their `ifc_model_loaded` and tour events from the same sessions; without that filter the query counts all time. Several tabs or reloads can send start events for one session, so count distinct IDs rather than raw events. For tour noncompletion, group `tour_started` and `tour_completed` by `$session_id` and `tour_id`, and count starts without a completion after at least 30 minutes without captured activity. Filter cohorts by the start event's `app_build_sha`; later events can come from a newer deploy. Sessions opted out before capture are absent; opting out later stops future events but does not erase earlier events. Do not use PostHog's page-view-based web analytics session count for this viewer, because page-view capture is disabled.
 
-2. **Chat with the AI assistant.** When you send a chat message, your prompt + the (cached) system prompt + any attachments + recent conversation goes to your chosen provider (Anthropic / OpenAI), either through the BYOK direct flow or the proxy. Attachments can include model content (GlobalIds, property values, selected entities), so attaching model context to a chat message deliberately sends that content off-device to the provider. The chat panel's existing privacy notes apply.
+2. **Chat with the AI assistant.** When you send a message in the Chat panel, your prompt + the (cached) system prompt (which includes the active profile's prompt overlay when it is non-empty and available) + any attachments + recent conversation goes to your chosen provider (Anthropic / OpenAI), either through the BYOK direct flow or the proxy. Attachments can include model content (GlobalIds, property values, selected entities), so attaching model context to a chat message deliberately sends that content off-device to the provider. The chat panel's existing privacy notes apply.
 
 3. **Extension code with `network.fetch:<host>` capability.** An extension can ONLY make fetches you explicitly grant during install. The capability is host-scoped — `network.fetch:api.example.com` cannot reach any other host. Network egress is red-tier in the Capability Review screen; you have to type `approve` to grant it.
 
 4. **Hosted cloud sources.** Signing into Autodesk, Dropbox or OneDrive authorizes the configured IFClite gateway to read data from your vendor account. The gateway handles account identity, project/file references and downloaded model bytes. Native Forma resources are converted on the Autodesk gateway; Data Exchange conversion also sends the initiating user's delegated token and source reference to the authenticated Windows worker. The resulting IFC or IFCX then loads through the viewer's browser loader.
 
    Vendor passwords are entered on the vendor's sign-in page. IFClite keeps delegated access and refresh tokens in backend memory; the browser receives a secure HttpOnly session cookie. Gateways use temporary artifact files while preparing and delivering imports, with deletion on completed, cancelled or expired jobs. Unclaimed prepared results expire after two minutes and active jobs are bounded to fifteen minutes. Sign-out or gateway restart ends the IFClite session. See [Cloud sources](cloud-sources.md) for consent, source access and deployment details.
+
+5. **Third-party map and geodata services.** Some viewer features ask services outside the deployment directly from the browser: the hosted icon font, map tiles for georeferenced models, the 3D world context, projection and terrain lookups (epsg.io, cdn.proj.org, Open-Meteo), and the Swiss [Site context](site-context.md) and Surface runoff sections. bSDD lookups go through the deployment's `/api/bsdd` proxy. Site context and Surface runoff send map coordinates derived from the model (the site centre and chosen radius, or the bounding box of the area the flood check reads) to the federal geodata services (geo.admin.ch), and only when you click their load, drape or run controls; no model file, property value or GlobalId is sent. A deployment turns all of these off with the `privacy.third-party` feature.
 
 ## What you can do
 
@@ -120,11 +126,11 @@ The customisation system itself does not make network calls. The default local-f
 | Audit what's stored | Settings → Privacy → **Export JSON** on the action log; Extensions → Audit → **Export** on the audit log |
 | Wipe pattern suggestions | Settings → Privacy → **Clear** the action log |
 | Stop the assistant from "remembering" preferences | Settings → Privacy → clear the textarea + Save overlay |
-| Stop product analytics | Settings → Privacy → **Opt out of product analytics** |
-| Stop the miner entirely | Disable every action log emit by clearing the log; the miner has no input to act on |
+| Stop product analytics (PostHog) | Settings → Privacy → **Opt out of product analytics**. Vercel page-view analytics keep running; a deployment turns them off with `privacy.vercel-analytics` (see above) |
+| Stop the miner entirely | There is no switch for this. **Clear** removes the log's history, but new actions are logged again from then on |
 | Forget an extension | Extensions tab → trash icon — removes bundle bytes, install record, granted capabilities |
-| Forget a flavor | Flavors dialog → delete on the row (active flavor can't be deleted; switch first) |
-| Reset everything | Flavors dialog → **Reset** restores the baseline empty flavor and deactivates extensions |
+| Forget a profile (flavor) | **Profiles** dialog → delete on the row (the active profile can't be deleted; switch first) |
+| Reset to the baseline | **Profiles** dialog → **Reset** makes the empty baseline profile active, with no extensions. Other profiles are kept |
 | Start clean for one session | Append `?safe=1` to the URL (see [Safe mode](extensions.md#safe-mode)) |
 
 ## First-launch disclosure

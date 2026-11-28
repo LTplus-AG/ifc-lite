@@ -48,6 +48,9 @@ versions rather than the local sources.
 | `src/main.ts` | Three.js scene setup, streaming loader, picking, panel wiring |
 | `src/ifc-to-threejs.ts` | MeshData → Three.js conversion + triangle-map for picking |
 | `src/ifc-data.ts` | `@ifc-lite/parser` wrapper — data store + entity attribute/pset queries |
+| `compare.html`, `src/compare.ts` | Second page (`/compare.html`): loads two versions of a model and colours added, changed and deleted elements |
+| `src/data-fingerprint.ts` | Local copy of the `@ifc-lite/diff` data fingerprint used by the compare page |
+| `src/federation-registry.ts` | Local copy of `@ifc-lite/renderer`'s multi-model ID offsets used by the compare page |
 
 ## Integration patterns
 

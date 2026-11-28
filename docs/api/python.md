@@ -65,7 +65,7 @@ print(first["ifc_type"], first["vertices"][0])  # [x, y, z] in metres
 
 ## API
 
-### `geometry_data_buffers(ifc_bytes: bytes, quality: str | None = None, ids: set[int] | None = None, *, include_directrices: bool = False) -> dict`
+### `geometry_data_buffers(ifc_bytes: bytes, quality: str | None = None, ids: set[int] | None = None, *, include_directrices: bool = False, layer_slicing: bool = False) -> dict`
 
 The fast path. Vertices and faces come back as raw little-endian byte buffers so
 you can hand them straight to `numpy.frombuffer` with zero parsing.
@@ -108,7 +108,7 @@ omitted when `color` represents all surviving faces; `color` remains the first
 submesh's RGBA for existing consumers.
 Palette order follows first occurrence and supports more than 65,536 colors.
 
-### `geometry_data_json(ifc_bytes: bytes, quality: str | None = None, ids: set[int] | None = None, *, include_directrices: bool = False) -> str`
+### `geometry_data_json(ifc_bytes: bytes, quality: str | None = None, ids: set[int] | None = None, *, include_directrices: bool = False, layer_slicing: bool = False) -> str`
 
 The same geometry as a readable `ifc-lite-geometry-data` JSON document (a
 string; call `json.loads` on it). Vertices are `[x, y, z]` arrays and faces are
@@ -340,6 +340,8 @@ length remains available. Joined diagnostics have one bounded output budget.
 
 `rebar_schedule(ifc_bytes, ids=None)` returns one row per selected
 `IfcReinforcingBar`, including bars with no supported swept-disk geometry.
+It also takes the keyword-only `zero_length_tolerance_m`, `gap_tolerance_m` and
+`tangent_tolerance_rad` options of `check_swept_disks`, with the same defaults.
 Each row exposes the occurrence's `GlobalId` and `Name` under their exact
 EXPRESS names.
 Authored attributes use exact EXPRESS names and record whether they came from
@@ -368,7 +370,8 @@ for step_id, row in schedule["rows"].items():
 
 For project-specific comparisons, call
 `rebar_schedule_with_preflight(ifc_bytes, min_inside_bend_radius_m,
-min_straight_segment_length_m, max_developed_centreline_length_m=None)`.
+min_straight_segment_length_m, ids=None, *, max_developed_centreline_length_m=None,
+zero_length_tolerance_m=1e-9, gap_tolerance_m=1e-6, tangent_tolerance_rad=1e-6)`.
 The measured comparisons identify their source segments; equality passes.
 Inside bend radius is arc centreline radius minus swept outer radius. Modified
 or unsupported sources and rows without sweeps carry explicit skip reasons.
@@ -650,7 +653,7 @@ MPL-2.0. Part of the [ifc-lite](https://github.com/LTplus-AG/ifc-lite) project.
 
 ### Alignment axes
 
-`alignment_axes(ifc_bytes, spacing_m=1.0, max_samples_per_axis=5001,
+`alignment_axes(ifc_bytes, *, spacing_m=1.0, max_samples_per_axis=5001,
 max_total_samples=100000)` returns `axes` keyed by integer STEP ExpressId and
 `diagnostics` (at most 1,000 entries, with `diagnostics_omitted` reporting
 suppressed entries). Each axis carries `GlobalId`, `Name`, geometric horizontal length

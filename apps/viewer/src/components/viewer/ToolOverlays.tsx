@@ -26,7 +26,7 @@
  */
 
 import { Suspense, useEffect, type ReactNode } from 'react';
-import { RepositionRuntimeHost } from './reposition/RepositionRuntimeHost';
+import { lazyToolComponent } from '@/lib/viewport-ui/lazy-tool-component';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import type { TranslationKey } from '@/i18n';
@@ -37,6 +37,12 @@ import { WorkplaneScene } from './model/WorkplaneScene';
 import { ModelOnboardingHint } from './model/ModelOnboardingHint';
 import { SnapCornerMarkers } from './tools/SnapCornerMarkers';
 
+const { Component: RepositionRuntimeHost, ready: loadRepositionTool } = lazyToolComponent(
+  () => import('./reposition/RepositionRuntimeHost').then(m => m.RepositionRuntimeHost),
+);
+
+export { loadRepositionTool };
+
 export function ToolOverlays(): ReactNode {
   const activeTool = useViewerStore((s) => s.activeTool);
   const repositionOpen = useViewerStore((s) => s.repositionOpen);
@@ -46,7 +52,12 @@ export function ToolOverlays(): ReactNode {
   }, [repositionOpen, activeTool]);
   // The Section tool's code is not in the entry chunk (#7616): fetch it once the browser is idle, so the first open is instant.
   useEffect(() => whenIdle(preloadSectionTool), []);
-  if (repositionOpen && activeTool === 'select') return <><RepositionRuntimeHost /><SnapCornerMarkers /></>;
+  if (repositionOpen && activeTool === 'select') return (
+    <>
+      <Suspense fallback={null}><RepositionRuntimeHost /></Suspense>
+      <SnapCornerMarkers />
+    </>
+  );
 
   const entry = isToolId(activeTool) ? TOOL_HUD[activeTool] : undefined;
   return (

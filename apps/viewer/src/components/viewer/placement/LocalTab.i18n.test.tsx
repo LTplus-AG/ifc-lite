@@ -37,6 +37,9 @@ import { ToolOverlays } from '../ToolOverlays';
 import { SceneOverlayRoot } from '@/components/viewport-ui/scene';
 import { LocalTab } from './LocalTab';
 
+// These interactions start with the Reposition runtime already available.
+await import('../ToolOverlays').then(m => m.loadRepositionTool?.());
+
 const CATALOGUE: Catalogue = Object.fromEntries(
   Object.entries(en).filter(([key]) => key.startsWith('repositionPanel.')),
 );

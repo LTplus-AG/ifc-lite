@@ -24,6 +24,9 @@ import { ToolOverlays } from '../ToolOverlays';
 import { SceneOverlayRoot } from '@/components/viewport-ui/scene';
 import { LocalTab } from './LocalTab';
 
+// These interactions start with the Reposition runtime already available.
+await import('../ToolOverlays').then(m => m.loadRepositionTool?.());
+
 let runtime: RepositionRuntime | null = null;
 function Probe() { runtime = useRepositionRuntime(); return null; }
 

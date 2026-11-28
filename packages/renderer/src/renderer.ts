@@ -1091,8 +1091,8 @@ export class Renderer {
         this.requestRender();
     }
 
-    getModelPlacementBounds(modelIndex: number, pointCloudHandle?: { id: number }) {
-        return modelPlacementBounds(this.scene, this.pointCloudRenderer, modelIndex, pointCloudHandle);
+    getModelPlacementBounds(modelIndex: number, pointCloudHandle?: { id: number }, translation?: readonly [number, number, number]) {
+        return modelPlacementBounds(this.scene, this.pointCloudRenderer, modelIndex, pointCloudHandle, translation);
     }
 
     /** Absolute workspace translation in renderer Y-up metres (#4226). */

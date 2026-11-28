@@ -10,6 +10,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { fixtureDataStore } from '@/test/store-fixture.js';
 import {
   collectStoreys,
   mergedSectionBounds,
@@ -71,12 +72,12 @@ describe('percent <-> world along an axis', () => {
 
 describe('collectStoreys', () => {
   const ds = (storeys: Array<[number, string, number]>) => ({
+    ...fixtureDataStore(storeys.map(([expressId, name]) => ({ expressId, name, type: 'IfcBuildingStorey' }))),
     spatialHierarchy: {
       byStorey: new Map(storeys.map(([id]) => [id, []])),
       storeyElevations: new Map(storeys.map(([id, , elev]) => [id, elev])),
     },
-    entities: { getName: (id: number) => storeys.find(([sid]) => sid === id)?.[1] ?? null },
-  });
+  }) as unknown as NonNullable<Parameters<typeof collectStoreys>[1]>;
 
   it('lists storeys top-down, deduplicating levels shared across federated models at 0.5 m', () => {
     const models = new Map([

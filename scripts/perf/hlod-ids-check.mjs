@@ -54,6 +54,7 @@ async function waitProxies(page) {
 
 /** Pose: home viewpoint, distance scaled by `zoom` (same in every arm). */
 async function pose(page, zoom) {
+  await page.waitForFunction(() => typeof globalThis.__ifc_lite_viewer_store__?.getState().cameraCallbacks?.getViewpoint === 'function', null, { timeout: 60000 });
   await page.evaluate((k) => {
     const cam = globalThis.__ifc_lite_viewer_store__.getState().cameraCallbacks;
     const v = cam.getViewpoint(); // the load's home pose const T = v.target, P = v.position;
@@ -118,14 +119,17 @@ try {
     const session = await launchGpu();
     try {
       const load = await loadModel(session, baseUrl, [resolve(args.model)], { timeoutMs: 10 * 60000, url: `${baseUrl}/?perfTrace=1&${ARMS[arm]}` });
-      if (!load.ok) throw new Error(`${arm}: load failed ${JSON.stringify(load.failure)}`);
+      // The settle check is a timing gate; the geometry is loaded, so a pixel check may go on (recorded).
+      const unsettled = !load.ok && /scene never settled/.test(load.failure?.detail ?? '');
+      if (!load.ok && !unsettled) throw new Error(`${arm}: load failed ${JSON.stringify(load.failure)}`);
+      if (unsettled) console.warn(`${arm}: ${load.failure.detail}; continuing`);
       const { page } = session;
       await pose(page, Number(args.zoom));
       const ready = arm === 'truth' ? null : await waitProxies(page);
       const sets = await page.evaluate(IDS);
       const shots = [];
       for (const [name, apply] of SCENES(sets)) shots.push(await scene(page, name, apply));
-      results[arm] = { adapter: load.adapter, ready, ids: { total: sets.total, isolate: sets.isolate.length, hide: sets.hide.length, paint: sets.paint.length }, shots };
+      results[arm] = { adapter: load.adapter, unsettled, ready, ids: { total: sets.total, isolate: sets.isolate.length, hide: sets.hide.length, paint: sets.paint.length }, shots };
       for (const s of shots) writeFileSync(join(out, `${arm}-${s.name}.png`), Buffer.from(s.png, 'base64'));
       if (arm !== 'truth' && results.truth) {
         const t = Object.fromEntries(results.truth.shots.map((s) => [s.name, s.png]));

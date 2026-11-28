@@ -239,3 +239,4 @@ rust/wasm-bindings/retained-test/
 
 # MCP Registry server.json and .mcpb bundle built by packages/mcp/release/build.mjs
 packages/mcp/release-out/
+.hlod-ids/

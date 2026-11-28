@@ -313,7 +313,7 @@ export class Scene {
   private coldBuckets: Set<string> = new Set();                // CPU dropped, provider-restorable
   private dirtyBuckets: Set<string> = new Set();               // diverged from disk (recolour/move/remove)
   private coldRestoresInFlight: Map<string, Promise<void>> = new Map();
-  private hostOverBudgetWarned = false;
+  private readonly hostBudgetWarning = { emitted: false };
   private hostEnforceCountdown = 0;
   private readonly hostEvictionListeners = new Set<() => void>();
   // LOD1 builds (issue #1682 phase 5): off unless the app enables them.
@@ -644,7 +644,7 @@ export class Scene {
       return;
     }
     this.hostBudgetBytes = bytes;
-    this.hostOverBudgetWarned = false;
+    this.hostBudgetWarning.emitted = false;
   }
 
   /** Notify caches when CPU geometry is discarded; return an unsubscribe handle. */
@@ -678,7 +678,7 @@ export class Scene {
     if (this.geometryReleased || this.ephemeralStreamingMode) return;
     if (this.streamingFragments.length > 0 || this.finalizeInProgress) return; // see enforceGpuBudget
 
-    coldResidency?.evictColdBuckets(this as unknown as ColdResidencyHost, budget, coldResidencyDeps);
+    coldResidency?.evictColdBuckets(this as unknown as ColdResidencyHost, budget, this.hostBudgetWarning, coldResidencyDeps);
   }
 
   /**

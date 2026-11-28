@@ -26,7 +26,6 @@ export interface ColdResidencyHost extends SceneRecoveryHost {
   coldBuckets: Set<string>;
   modelTranslations: SceneRecoveryHost['modelTranslations'] & Pick<ModelTranslations, 'placeMesh' | 'sourceMesh'>;
   residencyFrame: number;
-  hostOverBudgetWarned: boolean;
   hostEvictionListeners: Set<() => void>;
   lastDrawnFrame: SceneRecoveryHost['lastDrawnFrame'] & { getAnyUse(id: number): number | undefined };
   fragmentPieces: { forBatch(batch: BatchedMesh): unknown };
@@ -61,7 +60,9 @@ export class ColdPieceMembership {
   }
 }
 
-export function evictColdBuckets(host: ColdResidencyHost, budget: number, deps: ColdResidencyDeps): void {
+export function evictColdBuckets(
+  host: ColdResidencyHost, budget: number, warning: { emitted: boolean }, deps: ColdResidencyDeps,
+): void {
   const residentBytes = host.getResidentCpuBytes();
   if (residentBytes <= budget) return;
 
@@ -113,8 +114,8 @@ export function evictColdBuckets(host: ColdResidencyHost, budget: number, deps: 
     evicted = true;
   }
   if (evicted) for (const listener of host.hostEvictionListeners) listener();
-  if (residentBytes - evictedBytes > budget && !host.hostOverBudgetWarned) {
-    host.hostOverBudgetWarned = true;
+  if (residentBytes - evictedBytes > budget && !warning.emitted) {
+    warning.emitted = true;
     console.warn(
       `[Scene] host residency budget ${(budget / 1048576).toFixed(0)}MB exceeded ` +
       `(${((residentBytes - evictedBytes) / 1048576).toFixed(0)}MB CPU resident) — ` +

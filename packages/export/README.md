@@ -44,6 +44,8 @@ const hbjson = gp.exportHbjson(bytes, 'model');
 // Each returns Uint8Array | null (null until the processor is initialized)
 ```
 
+`GeometryProcessor` also exposes `exportObj`, `exportUsd`, `exportIfcx`, `exportDfjson`, `exportJson`, `exportStep`, `exportMerged`, `exportKmzFromMeshes` and `exportLandXmlTerrain` (see the [`@ifc-lite/geometry` README](../geometry/README.md)).
+
 ## IFC STEP — with mutations
 
 ```typescript
@@ -168,7 +170,10 @@ const lod1 = await generateLod1(bytes);
 
 ## Also exported
 
-- `MergedExporter` - merge several parsed models into one STEP export
+- `MergedExporter` - merge several parsed models into one STEP export (also on its own entry, `@ifc-lite/export/merged-exporter`)
+- `exportSectionedStep` - crop a STEP export at half-spaces (see below)
+- `exportEnergyArtifact` - a complete STEP model as a Ladybug Tools document
+- `tableToCsv` / `escapeCsvCell` / `guardSpreadsheetFormula` - CSV writing with spreadsheet-formula guarding
 - `collectRelatedEntities` / `exportAnonymizedSubset` - anonymized isolated export (see above)
 - `convertEntityType` / `convertStepLine` / `needsConversion` - IFC2X3 / IFC4 / IFC4X3 schema conversion helpers
 - `parseGLB` / `parseGLBToMeshData` / `extractGlbMapping` - GLB round-trip readers

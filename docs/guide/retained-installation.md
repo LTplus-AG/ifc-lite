@@ -152,7 +152,7 @@ Vercel cannot build SMLib (it needs the pinned usd-brep SDK and emsdk), so:
    `apps/viewer/retained-engine.lock.json`. It names the release asset URL, the
    archive's byte count and SHA-256, the engine manifest's SHA-256, the SDK
    revision and the source commit.
-3. **Deploy.** On the production branch, `scripts/vercel-build.sh` finds the
+3. **Deploy.** On every Vercel build of the viewer, `scripts/vercel-build.sh` finds the
    lock and runs `scripts/fetch-retained-engine.mjs`: download, byte count and
    SHA-256, regular files only, full engine inventory, manifest hash and SDK
    revision, every notice, and the exact tag in each IFC-Lite notice. It then
@@ -189,13 +189,14 @@ In a browser without `credentialless`, the page is not isolated
 A model the viewer holds from the retained kernel (`?kernel=retained`) exports the geometry on screen or refuses.
 
 - **GLB** takes the meshes the viewer holds, GPU-instanced occurrences included; it never re-meshes the file with the
-  exact engine, so products the retained kernel refused are absent from the GLB exactly as they are absent from the
-  viewport. (The GLB writer gives every material the same default metallic/roughness, on both kernels.)
-- **USD, Cesium ion and the energy models (HBJSON, DFJSON)** rebuild their geometry from the file with the exact
-  engine (Cesium ion uploads the model's STEP for Cesium to re-mesh). While any loaded model is retained their commands
-  are disabled with a reason; reload the model with the exact kernel to use them.
-- **KMZ and the IFC5 output** are built from the held meshes and are refused while the retained model is incomplete
-  or shape-only. IFC4 STEP export and IFC5 changes-only and geometry-disabled exports remain available.
+  exact engine. It is refused while the retained model is incomplete (any product refused or cancelled) or
+  shape-only, so a GLB export of a retained model holds every product. (The GLB writer gives every material the same
+  default metallic/roughness, on both kernels.)
+- **USD, Rhino (3DM), Cesium ion and the energy models (HBJSON, DFJSON)** rebuild their geometry from the file with
+  the exact engine (Cesium ion uploads the model's STEP for Cesium to re-mesh). While any loaded model is retained
+  their commands are disabled with a reason; reload the model with the exact kernel to use them.
+- **KMZ and the IFC5 output** are built from the held meshes and, like GLB, are refused while the retained model is
+  incomplete or shape-only. IFC4 STEP export and IFC5 changes-only and geometry-disabled exports remain available.
 - **Unsectioned IFC (STEP), CSV and JSON** need no geometry kernel and work unchanged. Sectioned STEP export
   rebuilds exact tessellation, including its outside test, and is refused when an exported model is retained.
   The IFC ribbon still opens the dialog with section planes visible: keep **Export Visible Only** off for

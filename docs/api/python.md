@@ -340,6 +340,8 @@ length remains available. Joined diagnostics have one bounded output budget.
 
 `rebar_schedule(ifc_bytes, ids=None)` returns one row per selected
 `IfcReinforcingBar`, including bars with no supported swept-disk geometry.
+It also takes the keyword-only `zero_length_tolerance_m`, `gap_tolerance_m` and
+`tangent_tolerance_rad` options of `check_swept_disks`, with the same defaults.
 Each row exposes the occurrence's `GlobalId` and `Name` under their exact
 EXPRESS names.
 Authored attributes use exact EXPRESS names and record whether they came from
@@ -368,7 +370,7 @@ for step_id, row in schedule["rows"].items():
 
 For project-specific comparisons, call
 `rebar_schedule_with_preflight(ifc_bytes, min_inside_bend_radius_m,
-min_straight_segment_length_m, max_developed_centreline_length_m=None)`.
+min_straight_segment_length_m, ids=None, *, max_developed_centreline_length_m=None)`.
 The measured comparisons identify their source segments; equality passes.
 Inside bend radius is arc centreline radius minus swept outer radius. Modified
 or unsupported sources and rows without sweeps carry explicit skip reasons.
@@ -650,7 +652,7 @@ MPL-2.0. Part of the [ifc-lite](https://github.com/LTplus-AG/ifc-lite) project.
 
 ### Alignment axes
 
-`alignment_axes(ifc_bytes, spacing_m=1.0, max_samples_per_axis=5001,
+`alignment_axes(ifc_bytes, *, spacing_m=1.0, max_samples_per_axis=5001,
 max_total_samples=100000)` returns `axes` keyed by integer STEP ExpressId and
 `diagnostics` (at most 1,000 entries, with `diagnostics_omitted` reporting
 suppressed entries). Each axis carries `GlobalId`, `Name`, geometric horizontal length

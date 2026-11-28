@@ -339,5 +339,6 @@ OS job/cgroup limits to the worker process.
 
 ## Not included
 
-Affine rational copies, finite plane clipping and face lineage are separate,
-later slices and are not part of this directory yet.
+Finite plane clipping and face lineage are separate, later slices and are not
+part of this directory yet. Affine rational copies are included (opcode 18,
+`src/affine.cpp`).

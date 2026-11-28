@@ -105,6 +105,7 @@ These operate on specific express IDs:
 | `hideEntities` | `{ids}` | Hide specific entities |
 | `showEntities` | `{ids}` | Show previously hidden entities |
 | `resetColorEntities` | `{ids}` | Reset colors on specific entities |
+| `selectEntities` | `{ids}` | Show the pick info of the first listed entity the viewer holds |
 
 #### Section Planes
 
@@ -112,6 +113,14 @@ These operate on specific express IDs:
 |--------|---------|-------------|
 | `section` | `{axis, position}` | Add section plane. Axis: `x`, `y`, or `z`. Position: number, `"center"`, or `"50%"` |
 | `clearSection` | `{}` | Remove section plane |
+
+#### Camera
+
+| Action | Payload | Description |
+|--------|---------|-------------|
+| `camera` | `{state: {position?, target?}}` | Move the camera to a position and target (sent by the SDK's `bim.viewer.setCamera`) |
+
+Three more actions are accepted for the viewer's own use: `addGeometry` (sent by `/api/create`), `removeCreated` (sent by `/api/clear-created`) and `picked` (the browser reports a click back).
 
 ### `POST /api/create` — Live Element Creation
 
@@ -207,8 +216,10 @@ ifc-lite analyze model.ifc --viewer 3456 \
 | `--palette <name>` | Heatmap palette: `blue-red`, `green-red`, `rainbow` |
 | `--isolate` | Hide non-matching entities |
 | `--flyto` | Fly camera to matched entities |
+| `--name <text>` | Name of the single rule built from the flags |
 | `--rules <file.json>` | Run multiple rules from a JSON file |
 | `--json` | Machine-readable output |
+| `--out <file>` | Write the results as JSON to a file |
 
 ### Rules File
 
@@ -301,7 +312,9 @@ viewer.close();
 | `startViewerServer(opts)` | Start the HTTP + SSE server |
 | `VALID_ACTIONS` | `Set<string>` of accepted command actions |
 | `getViewerHtml(modelName)` | Get the self-contained viewer HTML |
+| `viewerUrl(port, path?)` | The server's own URL, `http://127.0.0.1:<port><path>` |
 | `createStreamingViewerAdapter(port)` | SDK adapter for `bim.viewer.*` calls |
 | `createStreamingVisibilityAdapter(port)` | SDK adapter for visibility calls |
 | `ViewerServer` | Server instance type |
 | `CreateHandler` | Handler type for `/api/create` |
+| `CreateResult`, `ViewerServerOptions` | Result and options types |

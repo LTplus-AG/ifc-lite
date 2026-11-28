@@ -106,7 +106,7 @@ Key types: `SunPosition`, `SunTimes`, `Enu`, `SunSample`, `DayPathOptions`, `Ana
 
 The IFClite viewer builds a full solar study on top of this package:
 
-- **Sun & Sky panel** - Pick a date and time; the viewer computes the sun with `sunPosition` and `sunTimes` for the model's georeferenced site
+- **Sun study** (in the **Environment** panel) - Pick a date and time; the viewer computes the sun with `sunPosition` and `sunTimes` for the model's georeferenced site
 - **Sun-path dome** - A "Dome" toggle overlays the day arc, hourly analemmas, graticule, compass cardinals, and a live sun marker on the model (in the Cesium map view the ENU vectors are pinned to the site through an east-north-up frame at the model origin)
 - **Shadow study** - The computed sun direction drives scene lighting and shadows for a studied instant
 

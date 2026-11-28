@@ -138,6 +138,7 @@ can hide or reorder rail icons; Browse panels still lists every available panel.
 | Quantify | Measurements, lists, charts, costs, and schedules |
 | Automate | Scripts, flows, and extensions |
 | Site | Point clouds, appearance, environment, drawings, and presentations |
+| Author | The Model inspector and change sets of the Model workspace |
 
 The Point Clouds panel remains available before a scan loads; it explains what
 to load. The Session panel appears only when collaboration is enabled.

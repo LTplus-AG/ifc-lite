@@ -12,6 +12,23 @@ map for the parcel, with its ÖREB extract link, through
 This is the headless core. Showing the context in the viewer and writing it
 into IFC build on the same document and GLB format.
 
+## In the viewer
+
+The **Site context** section of a model's Georeference panel (in the
+Information panel) loads the same layers around a georeferenced model. The
+**Site context** ribbon button and the **Load site context** palette command
+open that section; neither fetches anything. Pick a radius (100, 200, 300 or
+500 m), the layers to include (**Terrain**, **Parcel**, **Buildings**) and
+whether to **Drape aerial imagery**, then choose **Load site context**.
+Requests go from the browser straight to geo.admin.ch, only on that click.
+Each layer arrives as its own federated model that the hierarchy can hide like
+any other. A scene holds one site context: loading it around another model
+replaces it. When the model cannot host site context yet (no georeferencing, a
+CRS that does not resolve to LV95, another height datum, a site outside
+Switzerland), the section says why and what to fix. A deployment that turns
+off the `privacy.third-party` feature hides the section (see
+[Configuring the Viewer for a Deployment](viewer-deployment-config.md)).
+
 ## Attribution is required
 
 Every layer carries the attribution its data owners require, in the JSON

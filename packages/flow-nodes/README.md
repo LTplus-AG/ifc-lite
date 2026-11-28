@@ -4,18 +4,29 @@ The standard node library for [`@ifc-lite/flow`](https://www.npmjs.com/package/@
 built on the ifc-lite SDK (`BimContext`). Portable nodes run in the viewer and in the headless CLI. Nodes requiring
 viewer session services report unavailable on hosts that do not supply them.
 
+## Install
+
+```bash
+npm install @ifc-lite/flow-nodes @ifc-lite/flow
+```
+
 ## Node families
 
 | Family | Nodes | Notes |
 |---|---|---|
-| `core.*` | number, string, boolean, list, math, compare, concat, count, sum, filter, wrap, flatten, groupBy, keys, lookup | The complete restructuring set for one keyed level |
+| `core.*` | number, string, boolean, list, item, first, math, compare, concat, count, sum, filter, wrap, flatten, groupBy, keys, lookup | The complete restructuring set for one keyed level |
 | `model.*` | select (IfcOpenShell selector), byType, attribute, property, quantity, related, storey, contains, groupByStorey, groupByType | Reads are memoised against the model revision |
-| `table.*` | fromEntities, longFormat, column, groupRows, pivot, rowCount | Typed columns with IFC value types and pset/prop bindings |
+| `table.*` | fromEntities, longFormat, column, groupRows, pivot, rowCount, joinByKey, readCsv, writeCsv, readXlsx, writeXlsx | Typed columns with IFC value types and pset/prop bindings; `joinByKey` reports ambiguous rows and entities instead of taking the first match |
 | `viewer.*` | colorize, isolate, select, selection, flyTo | `noop` on a headless host; entities pass through |
 | `model.set*` | setProperty, setAttribute | Capability-checked against the actual pset (`model.mutate:<Pset>`) |
+| `model.addElement`, `model.delete`, `model.applyTable`, `element.*`, `geometry.point` | element.wall, slab, column, beam, stair, railing | Tracked element authoring (see below); `model.applyTable` writes typed table columns as property mutations, one entity per row keyed by GlobalId |
+| `model.openFromSource` | one node | Opens a downloaded IFC file (for example from `documents.download`) as a model on the host |
+| `ids.*` | load, lint, validate | IDS loading, linting and model validation |
+| `bcf.*`, `documents.*`, `aps.*` | bcf.listTopics, createTopic, addComment; documents.download, queryVersions; aps.token, modelProperties | BCF API, OpenCDE Documents API and Autodesk Platform Services connectors, behind `network.fetch:<host>` grants |
 | `http.request`, `speckle.receive` | network | Every request goes through the gated `coreNetworkRequest` (`network.fetch:<host>` grants, https only); `speckle.receive` writes a Speckle model's walls, floors, roofs, columns and beams, and reports what it cannot map |
-| `session.*`, `validation.runChecks`, `comparison.runChecks`, `report.*` | local loading, filename tags, checks, historical reports, documents and PDF artifacts | Require explicit `SessionAutomationHost` services; unavailable on the standard CLI/MCP host |
-| `script.run` | one node | JavaScript in the QuickJS sandbox with the sandbox `bim` API |
+| `session.*`, `validation.runChecks`, `comparison.runChecks`, `report.*` (buildDocument, exportPdf, importComparisons), `review.snapshot` | local loading, filename tags, checks, historical reports, documents and PDF artifacts | Require explicit `SessionAutomationHost` services; unavailable on the standard CLI/MCP host |
+| `script.run`, `script.list` | two nodes | JavaScript in the QuickJS sandbox with the sandbox `bim` API, per item or over a whole list |
+| `ai.*` (separate `@ifc-lite/flow-nodes/ai` entry) | classify, extract, summarize, propose | Not in `createStandardRegistry`; see below |
 
 ## Usage
 
@@ -76,7 +87,7 @@ not rerun a comparison against the loaded models.
 
 MPL-2.0
 
-The separate `@ifc-lite/flow-nodes/ai` entry includes `ai.propose`: a bounded,
+The separate `@ifc-lite/flow-nodes/ai` entry exports `aiNodes` (`ai.classify`, `ai.extract`, `ai.summarize`, `ai.propose`). `ai.propose` is a bounded,
 review-required draft over selected finding columns and explicit native
 field/value constraints. Its portable `model.changes` output cites captured
 rows and expected values, and performs no writes. Current-state validation and

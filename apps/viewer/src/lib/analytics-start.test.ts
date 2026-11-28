@@ -43,6 +43,18 @@ const consentAdded = consent as typeof consent & {
 };
 
 const TOKEN = 'privacy-test-only';
+type SdkConfig = Parameters<PostHog['init']>[1];
+/** Test-only: no remote config, flags or extension scripts, so a wrong start fails instead of hanging. */
+const OFFLINE = { advanced_disable_flags: true, disable_external_dependency_loading: true, opt_out_useragent_filter: true };
+
+// Every starter a test subscribes is unsubscribed before cleanup changes the
+// opt-out: a leftover listener would start a real SDK after the test ended and
+// keep the runner alive.
+const unsubscribers: Array<() => void> = [];
+const subscribe = (listener: () => void): void => {
+  const unsubscribe = consentAdded.subscribeAnalyticsConsent?.(listener);
+  if (unsubscribe) unsubscribers.push(unsubscribe);
+};
 const IDENTITY_KEY = `ph_${TOKEN}_posthog`;
 
 /** Every way the SDK could reach the network from a browser. */
@@ -84,6 +96,7 @@ beforeEach(() => {
   consentAdded.resetPrivacyNoticeForTest?.();
 });
 afterEach(() => {
+  for (const unsubscribe of unsubscribers.splice(0)) unsubscribe();
   consent.persistAnalyticsOptOut(false);
   localStorage.clear();
   consentAdded.resetPrivacyNoticeForTest?.();
@@ -99,10 +112,10 @@ describe('PostHog is not initialised before it may run', () => {
       consent.persistAnalyticsOptOut(true);
       const starter = added.createAnalyticsStarter({
         configured: true,
-        init: () => { inits++; sdk.init(TOKEN, { ...added.analyticsInitConfig?.('https://posthog.invalid'), opt_out_useragent_filter: true }); },
+        init: () => { inits++; sdk.init(TOKEN, { ...added.analyticsInitConfig?.('https://posthog.invalid'), ...OFFLINE } as SdkConfig); },
         isOptedOut: consent.isAnalyticsOptedOut,
         isNoticeShown: () => true,
-        subscribe: (listener) => { consentAdded.subscribeAnalyticsConsent?.(listener); },
+        subscribe,
       });
       starter.start();
       starter.attempt();
@@ -115,7 +128,7 @@ describe('PostHog is not initialised before it may run', () => {
       assert.equal(document.cookie.includes(IDENTITY_KEY), false, 'no identifier cookie');
     } finally {
       network.restore();
-      if (sdk.__loaded) await sdk.shutdown();
+      if (sdk.__loaded) { await sdk.shutdown(); sdk.sessionManager?.destroy(); }
     }
   });
 
@@ -128,7 +141,7 @@ describe('PostHog is not initialised before it may run', () => {
       init: () => { inits++; },
       isOptedOut: consent.isAnalyticsOptedOut,
       isNoticeShown: consentAdded.isPrivacyNoticeShown,
-      subscribe: (listener) => { consentAdded.subscribeAnalyticsConsent!(listener); },
+      subscribe,
     });
     starter.start();
     assert.equal(inits, 0, 'not before the notice');
@@ -149,7 +162,7 @@ describe('PostHog is not initialised before it may run', () => {
       init: count,
       isOptedOut: consent.isAnalyticsOptedOut,
       isNoticeShown: () => true,
-      subscribe: (listener) => { consentAdded.subscribeAnalyticsConsent!(listener); },
+      subscribe,
     });
     make(true, () => { inits++; }).start();
     make(false, () => { unconfiguredInits++; }).start();
@@ -202,10 +215,8 @@ describe('what PostHog may record (installed SDK)', () => {
     try {
       sdk.init(TOKEN, {
         ...added.analyticsInitConfig('https://posthog.invalid'),
-        // Test-only: keep the remote-config and extension fetches out of the unit test.
-        advanced_disable_flags: true, disable_external_dependency_loading: true,
-        opt_out_useragent_filter: true, request_batching: false,
-      });
+        ...OFFLINE, request_batching: false,
+      } as SdkConfig);
       assert.equal(sdk.config.disable_session_recording, true);
       assert.equal(sdk.sessionRecording?.started ?? false, false, 'replay never starts');
       const enrolled = (sdk as unknown as { _extensions: unknown[] })._extensions;

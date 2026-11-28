@@ -6,7 +6,14 @@ TypeScript SDK for the IFClite server. Handles content-addressable caching (skip
 
 ```bash
 npm install @ifc-lite/server-client
+# Parquet/Arrow decoding (parseParquet, parseParquetStream, decodeParquetGeometry)
+npm install parquet-wasm apache-arrow
 ```
+
+`parquet-wasm` and `apache-arrow` are optional peer dependencies, loaded with a
+dynamic import the first time a Parquet response is decoded.
+`client.isParquetSupported()` reports whether they load. `parse` (JSON) and
+`parseStream` (SSE) work without them.
 
 ## Parse with caching (one-shot)
 
@@ -57,7 +64,7 @@ for await (const event of client.parseStream(file)) {
     case 'batch':
       renderer.addMeshes(
         event.meshes.map(convertServerMesh),
-        true, // streaming: throttle batch rebuilds — first triangles ~300ms in
+        true, // streaming: throttle batch rebuilds
       );
       break;
     case 'complete':

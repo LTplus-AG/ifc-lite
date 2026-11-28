@@ -5,7 +5,7 @@ Pre-built native binary for the IFClite server. No Docker, no Rust toolchain —
 ## Quick Start
 
 ```bash
-# Run the server (downloads binary on first run, ~20 MB)
+# Run the server (downloads the binary on first run)
 npx @ifc-lite/server-bin
 
 # Or install once, run anywhere
@@ -43,7 +43,7 @@ npx @ifc-lite/server-bin
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PORT` | `8080` | Server port |
-| `RUST_LOG` | `info` | Log level — `error` / `warn` / `info` / `debug` |
+| `RUST_LOG` | `info,tower_http=debug,ifc_lite_server=debug` | Log filter — e.g. `error` / `warn` / `info` / `debug` |
 | `MAX_FILE_SIZE_MB` | `500` | Max upload size |
 | `WORKER_THREADS` | CPU cores | Parallel parse threads |
 | `CACHE_DIR` | `./.cache` | Where to persist parsed-file cache |
@@ -51,6 +51,15 @@ npx @ifc-lite/server-bin
 | `INITIAL_BATCH_SIZE` | `100` | First streaming batch size (snappy first paint) |
 | `MAX_BATCH_SIZE` | `1000` | Steady-state streaming batch size (throughput) |
 | `CACHE_MAX_AGE_DAYS` | `7` | Cache retention before eviction |
+| `CORS_ORIGINS` | `http://localhost:3000`, `:5173` and the `127.0.0.1` equivalents | Comma-separated allowed origins (`*` for all, development only) |
+| `IFC_SERVER_API_TOKEN` (or `API_TOKEN`) | unset | Bearer token required on the parse and cache routes; unset leaves them open and logs a warning. Health stays open |
+| `IFC_STREAM_IDLE_TIMEOUT_SECS` | `600` | Close a connection whose socket write makes no progress this long (`0` disables) |
+| `IFC_MAX_CONCURRENT_PARSES` | `WORKER_THREADS` | Parse jobs allowed to run at once |
+| `IFC_MEM_BUDGET_MB` | 70% of the cgroup memory limit, else `0` (off) | Total upload MB admitted at once |
+| `IFC_ADMISSION_QUEUE_DEPTH` | `2 × WORKER_THREADS` | Requests that may wait for an admission slot before rejection |
+| `IFC_ADMISSION_QUEUE_TIMEOUT_SECS` | `5` | Longest a queued request waits for a slot |
+| `IFC_MEM_SHED_PCT` | `85` | Shed new parse jobs above this RSS share of the memory budget |
+| `IFC_METRICS_ENABLED` | `false` | Expose `GET /api/v1/metrics` (behind the bearer token when one is set) |
 
 ## Programmatic usage
 
@@ -67,8 +76,9 @@ console.log(`Binary at ${path}`);
 const info = getBinaryInfo();
 console.log(`Platform: ${info.platform.targetTriple}, cached: ${info.isCached}`);
 
-// Run the server with custom args; resolves with the exit code
-const exitCode = await runBinary(['--config', './ifc-lite.toml']);
+// Run the server (configured through the environment variables above);
+// resolves with the exit code
+const exitCode = await runBinary();
 ```
 
 ## Supported platforms

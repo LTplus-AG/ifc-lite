@@ -72,8 +72,9 @@ Pure membership tests cover colliding IDs, ordered exceptions, inconsistent
 revisions and reload differences. Mounted list tests exercise reordering,
 exclusion and removal and lock editing during publication. Real two-model mapped
 browser, coordinated failure/Undo and portable export/share evidence are recorded
-in the integrated acceptance linked above. Rooms currently share each active
-model separately, not the complete coordinated federation.
+in the integrated acceptance linked above. Share can cover the active model or
+all loaded models (`ShareScope` in `apps/viewer/src/lib/collab/share-scope.ts`);
+each seedable model takes its own room slot.
 
 
 ## Coordinated publication and history

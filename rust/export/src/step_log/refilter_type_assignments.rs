@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Remove type links invalidated by a retype, leaving source mismatches alone.
 
-use ifc_lite_core::SchemaVersion;
+use ifc_lite_core::{slot::IfcRelDefinesByType, SchemaVersion};
 
 use super::{bare_ref, framed, is_list, list_items, read_slots, rebuild};
 use crate::step_log::pass::Pass;
@@ -28,8 +28,9 @@ fn compatible(schema: SchemaVersion, occurrence: &str, assigned: &str) -> Option
 pub(super) fn after_retypes(pass: &Pass<'_, '_>, line: &str, id: u32) -> Option<(Option<String>, String)> {
     let schema = SchemaVersion::from_file_schema(pass.schema)?;
     let (_, mut args) = read_slots(line)?;
-    let assigned = bare_ref(args.get(5)?)?;
-    let (lead, objects, trail) = framed(args.get(4)?);
+    let assigned = bare_ref(args.get(IfcRelDefinesByType::RELATING_TYPE.index())?)?;
+    let related_objects = IfcRelDefinesByType::RELATED_OBJECTS.index();
+    let (lead, objects, trail) = framed(args.get(related_objects)?);
     if !is_list(objects) {
         return None;
     }
@@ -61,6 +62,6 @@ pub(super) fn after_retypes(pass: &Pass<'_, '_>, line: &str, id: u32) -> Option<
     if retained.is_empty() {
         return Some((None, format!("{summary} The empty relationship was withheld.")));
     }
-    args[4] = format!("{lead}({}){trail}", retained.join(","));
+    args[related_objects] = format!("{lead}({}){trail}", retained.join(","));
     Some((Some(rebuild(line, &args)), summary))
 }

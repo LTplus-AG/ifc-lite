@@ -113,15 +113,8 @@ fn a_retyped_relating_type_removes_the_previously_valid_assignment_11500() {
 
 #[test]
 fn wall_and_door_retypes_detach_old_types_in_the_authored_fixture_11500() {
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/models/various/issue-604-door.ifc");
-    let source = match std::fs::read(path) {
-        Ok(source) => source,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            eprintln!("skipped: run pnpm fixtures to fetch various/issue-604-door.ifc");
-            return;
-        }
-        Err(error) => panic!("could not read authored fixture: {error}"),
+    let Some(source) = ifc_lite_testkit::fixture_bytes("various/issue-604-door.ifc") else {
+        return;
     };
     let log = MutationLog::from_json(r#"{"mutations":[
         {"type":"UPDATE_ENTITY_TYPE","entityId":55,"entityType":"IfcSlab"},

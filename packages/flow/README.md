@@ -85,9 +85,18 @@ console.log(result.ok, result.reports);
 
 Node libraries over the ifc-lite SDK live in `@ifc-lite/flow-nodes`.
 
+## Review checkpoints
+
+`@ifc-lite/flow/checkpoint` is a separate entry for runs that paused at a node
+declaring `review: 'required'`: `createCheckpoint`, `claimCheckpoint`,
+`approveCheckpoint` / `rejectCheckpoint`, `resumeOutputs` and the rest of the
+checkpoint lifecycle. A host that only runs graphs does not load it.
+
 ## License
 
 MPL-2.0
+
+## File checkpoint store
 
 The Node-only `@ifc-lite/flow/checkpoint-file` entry exports `FileCheckpointStore`
 and `sourceDigestOf`, shared by CLI and MCP review continuations. Disk updates

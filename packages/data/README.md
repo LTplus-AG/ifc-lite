@@ -1,6 +1,6 @@
 # @ifc-lite/data
 
-Columnar data structures for IFClite. TypedArray-backed storage for entities, properties, quantities, and relationships — the layout that lets `@ifc-lite/parser` hold a 200 MB IFC file in ~30 MB of RAM and lets `@ifc-lite/query` filter it in milliseconds.
+Columnar data structures for IFClite. TypedArray-backed storage for entities, properties, quantities, and relationships — the compact layout `@ifc-lite/parser` stores a model in and `@ifc-lite/query` filters by scanning typed columns. See the [performance guide](https://ifclite.dev/docs/guide/performance/) for measured numbers.
 
 ## Installation
 
@@ -95,7 +95,7 @@ catalog.resolveName('CH1903+ / LV95'); // 2056
 
 #### Dataset versions
 
-The sidecar was generated from EPSG dataset **13.106** (`loadEpsgExtentsDatasetVersion()`, constant `EPSG_EXTENTS_DATASET_VERSION`); the main index above is dataset **12.054** (`loadEpsgIndexDatasetVersion()`). Only the list of codes is taken from the index. The two can disagree: a 300-code sample showed extents redefined (20001) and names changed (10986, 10164, 9508, 20001) between the versions. Bringing the main index up to 13.106 is a separate change.
+The sidecar was generated from EPSG dataset **13.106** (read it with `loadEpsgExtentsDatasetVersion()`; `loadEpsgExtentsFetchedDate()` gives the fetch date); the main index above is dataset **12.054** (`loadEpsgIndexDatasetVersion()`). Only the list of codes is taken from the index. The two can disagree: a 300-code sample showed extents redefined (20001) and names changed (10986, 10164, 9508, 20001) between the versions. Bringing the main index up to 13.106 is a separate change.
 
 #### EPSG licence and what this file changes
 
@@ -119,6 +119,13 @@ The extents data is provided "AS IS" under those terms, without warranty of any 
 6. Rows are stored as JSON arrays in shared tables (units, boxes).
 
 The generator exits non-zero and writes nothing if any code of the index has no registry row, unless the code is listed with a reason in `scripts/epsg-extents-allowlist.json`.
+
+## Also included
+
+- IFC schema tables generated from buildingSMART's IDS-Audit-tool data (`getEntities`, `getPropertySets`, `getAttributes`, `getDataTypes`, `getPartOfRelations`, `findEntity`, `isEntitySubtypeOf`, `ENTITIES_IFC2X3` / `ENTITIES_IFC4` / `ENTITIES_IFC4X3`); refresh them with `pnpm --filter @ifc-lite/data run generate:ifc-schema` (see `scripts/upstream/README.md`)
+- STEP writing helpers shared by the TypeScript serializers (the Rust STEP exporter behind `GeometryProcessor.exportStep` has its own writer) (`generateHeader`, `generateStepFileWithRegistry`, `toStepLineWithRegistry`, `escapeStepString`, `formatStepReal`)
+- Spatial-structure and placement helpers (`isStoreyLikeSpatialType`, `findStoreyByElevation`, `walkPlacementChain`, `collectSpatialAncestors`)
+- `@ifc-lite/data/node`: Node-only `readPackageVersion`, kept out of the root entry so browser bundles never pull in `node:fs`
 
 ## API
 

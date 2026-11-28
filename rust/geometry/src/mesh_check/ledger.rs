@@ -135,7 +135,8 @@ impl EdgeLedger {
                 continue;
             }
             for (x, y) in [(ka, kb), (kb, kc), (kc, ka)] {
-                if x == y {
+                // The other policies already checked all three pairs above.
+                if degenerate == Degenerate::SkipEdge && x == y {
                     continue;
                 }
                 ledger.record_edge(x, y);
@@ -145,7 +146,7 @@ impl EdgeLedger {
     }
 
     #[inline]
-    fn record_edge(&mut self, from: Key3, to: Key3) -> (u32, u32) {
+    fn record_edge(&mut self, from: Key3, to: Key3) -> &(u32, u32) {
         let (lo, hi, forward) = if from < to { (from, to, true) } else { (to, from, false) };
         let slot = self.uses.entry((lo, hi)).or_insert((0, 0));
         if forward {
@@ -153,12 +154,11 @@ impl EdgeLedger {
         } else {
             slot.1 += 1;
         }
-        *slot
+        slot
     }
 
     /// Recover consecutive, strictly paired shells from a merged triangle stream.
     /// A face order without complete closed runs is ineligible for this recovery.
-    #[cfg(feature = "csg_manifold_gate")]
     pub(crate) fn closed_shell_ranges(mesh: &Mesh) -> Option<Vec<std::ops::Range<usize>>> {
         if !mesh.indices.len().is_multiple_of(3) {
             return None;
@@ -194,7 +194,7 @@ impl EdgeLedger {
                 ledger.uses.clear();
             }
         }
-        (start == mesh.indices.len() && ranges.len() > 1).then_some(ranges)
+        (start == mesh.indices.len() && !ranges.is_empty()).then_some(ranges)
     }
 
     /// No edge was recorded (no triangle survived the degenerate rule).

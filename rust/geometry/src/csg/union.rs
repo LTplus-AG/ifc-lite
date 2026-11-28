@@ -45,7 +45,7 @@ impl ClippingProcessor {
     /// census the flip decision is read off — on top of the
     /// `KernelOutputInvalid` the same incident already recorded.
     pub fn union_mesh(&self, mesh_a: &Mesh, mesh_b: &Mesh) -> Result<Mesh> {
-        match self.union_pair(mesh_a, mesh_b)? {
+        match self.union_pair(mesh_a, mesh_b, Self::consolidate)? {
             UnionOutcome::PassThrough(mesh) => Ok(mesh),
             UnionOutcome::Kernel(mesh) => Ok(self.audit_and_gate_union(mesh, || {
                 let mut merged = mesh_a.clone();
@@ -63,7 +63,9 @@ impl ClippingProcessor {
     /// caller cannot re-derive it: "was an operand empty" misses the
     /// kernel-failure merge, and inspecting the returned mesh cannot tell a
     /// merge from a kernel result at all.
-    fn union_pair(&self, mesh_a: &Mesh, mesh_b: &Mesh) -> Result<UnionOutcome> {
+    fn union_pair(
+        &self, mesh_a: &Mesh, mesh_b: &Mesh, consolidate: fn(&Self, Mesh) -> Mesh,
+    ) -> Result<UnionOutcome> {
         record_csg_op(1, mesh_a.triangle_count(), mesh_b.triangle_count());
         if mesh_a.is_empty() {
             return Ok(UnionOutcome::PassThrough(mesh_b.clone()));
@@ -76,7 +78,7 @@ impl ClippingProcessor {
         // fall back to a plain merge (overlap not removed) + record the failure,
         // preserving the legacy never-Err contract.
         let raw_u = crate::kernel::mesh_bridge::union(mesh_a, mesh_b);
-        let result = self.consolidate(raw_u);
+        let result = consolidate(self, raw_u);
         if result.is_empty() || !self.validate_mesh(&result) {
             self.record_failure(BoolOp::Union, BoolFailureReason::KernelOutputInvalid);
             let mut merged = mesh_a.clone();
@@ -93,6 +95,28 @@ impl ClippingProcessor {
     /// audit runs ONCE, on the mesh handed back — driving `union_mesh` here
     /// would record a tear per intermediate the caller never sees.
     pub fn union_meshes(&self, meshes: &[Mesh]) -> Result<Mesh> {
+        self.fold_union(meshes, Self::consolidate)
+    }
+
+    #[cfg(feature = "csg_manifold_gate")]
+    pub(crate) fn closed_shell_union(&self, shells: &[Mesh]) -> Option<Mesh> {
+        use crate::exact_topology::strict_closed_mesh;
+        let ordinary = self.union_meshes(shells).ok()?;
+        if self.failure_count() != 0 {
+            return None;
+        }
+        if strict_closed_mesh(&ordinary) {
+            return Some(ordinary);
+        }
+        // The projected faces can store the same union corner one f32 ULP
+        // apart. Retry the original shells only when the ordinary gates
+        // accepted their union but its exact edges failed to pair (#11423).
+        crate::resource::check_current().ok()?;
+        let retry = self.fold_union(shells, Self::consolidate_shell_union).ok()?;
+        (self.failure_count() == 0 && strict_closed_mesh(&retry)).then_some(retry)
+    }
+
+    fn fold_union(&self, meshes: &[Mesh], consolidate: fn(&Self, Mesh) -> Mesh) -> Result<Mesh> {
         if meshes.is_empty() {
             return Ok(Mesh::new());
         }
@@ -117,7 +141,7 @@ impl ClippingProcessor {
                 found_first = true;
                 continue;
             }
-            match self.union_pair(&result, mesh)? {
+            match self.union_pair(&result, mesh, consolidate)? {
                 UnionOutcome::Kernel(m) => {
                     result = m;
                     returned_by_kernel = true;

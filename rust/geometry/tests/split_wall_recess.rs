@@ -169,3 +169,141 @@ fn recess_at_the_finish_interface_has_no_membrane() {
         }
     }
 }
+
+/// Expected volume of `wall_with_finish`: 2.4 m³ of core, a 12 mm finish
+/// over `length` m, less the finish inside the recess at x in [1, 2].
+fn finish_wall_volume(length: f64) -> f64 {
+    4.0 * 3.0 * 0.2 + length * 3.0 * 0.012 - (length - 1.0).clamp(0.0, 1.0) * 0.012
+}
+
+/// Plan turns within `cos(1°)` of the axes, about both axes and in both senses.
+const NEAR_AXIS_TURNS: [f64; 5] = [0.0, 0.5, 1.0, -0.5, 89.5];
+
+fn rotated_flush_recess_failures(forced_exact: bool) -> Vec<String> {
+    let mut limits = std::collections::BTreeMap::new();
+    let offset = 1 + 2 * usize::from(forced_exact) + 4 * usize::from(cfg!(feature = "csg_manifold_gate"));
+    for row in include_str!("split_wall_recess/flush_overuse.tsv").lines().filter(|r| !r.starts_with('#')) {
+        let fields: Vec<_> = row.split_whitespace().collect();
+        assert_eq!(fields.len(), 9);
+        let pair: [usize; 2] = std::array::from_fn(|i| fields[offset + i].parse().unwrap());
+        assert!(limits.insert(fields[0], pair).is_none());
+    }
+    let mut failures = Vec::new();
+    for turn in NEAR_AXIS_TURNS {
+        for length in [0.5, 1.0, 1.25, 1.5, 2.0, 3.0, 4.0] {
+            for recess in [Recess::FromInterface, Recess::ToInterfaceAtTop] {
+                let content = split_wall::wall_with_finish([0.0; 2], turn, 2.274, recess, length);
+                let (mesh, _) = fixture_host(&content, false);
+                let delta = (mesh_volume(&mesh) - finish_wall_volume(length)) * 1000.0;
+                let id = format!("{turn}/{length}/{recess:?}");
+                let limit = limits.remove(id.as_str()).expect("missing flush baseline");
+                let [exact, mm] = [VertexKey::BitsZeroFolded, VertexKey::GridMul(1.0e3)].map(|key| {
+                    let ledger = EdgeLedger::build(&mesh, key, Degenerate::SkipTriangle);
+                    (ledger.unbalanced().count(), ledger.multiplicity_defects().over_used)
+                });
+                if !delta.is_finite() || delta.abs() > 0.6 || exact.0 != 0 || mm.0 != 0 || exact.1 > limit[0] || mm.1 > limit[1] {
+                    failures.push(format!("{id}: {delta:+.6} L, unmatched {}/{}, overused {}/{} (base {}/{})",
+                        exact.0, mm.0, exact.1, mm.1, limit[0], limit[1]));
+                }
+            }
+        }
+    }
+    assert!(limits.is_empty(), "unexercised flush cases");
+    failures
+}
+
+/// #11321: a wall turned under 1° kept its flush recess as world bounds,
+/// which gain `size · sin θ` (4.4 L of core at 0.5°). It must match the
+/// axis-aligned wall on the default route.
+#[test]
+fn slightly_rotated_flush_recess_keeps_the_core() {
+    let failures = rotated_flush_recess_failures(false);
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+/// #11321: on the exact route the widened bounds no longer started on the
+/// finish face, so the recess was extended through the core (about 200 L).
+#[test]
+fn slightly_rotated_flush_recess_keeps_the_core_on_the_exact_route() {
+    use std::process::Command;
+    const PROBE: &str = "IFCLITE_PROBE_ROTATED_FLUSH_RECESS";
+    if std::env::var_os(PROBE).is_none() {
+        let child = Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "slightly_rotated_flush_recess_keeps_the_core_on_the_exact_route", "--nocapture"])
+            .env("IFC_LITE_PRISM_CUT", "0")
+            .env("IFC_LITE_VOID_2D", "0")
+            .env("IFC_LITE_RECT_FAST", "0")
+            .env(PROBE, "1")
+            .output()
+            .unwrap();
+        let stdout = String::from_utf8_lossy(&child.stdout);
+        assert!(child.status.success(), "{stdout}\n{}", String::from_utf8_lossy(&child.stderr));
+        assert!(stdout.contains("1 passed; 0 failed"), "{stdout}");
+        return;
+    }
+    let failures = rotated_flush_recess_failures(true);
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+/// #11321: the same widening on a vertically extruded slot through the wall
+/// cut up to 1.4 L too much at 1°. Only the volume is pinned here: the
+/// oblique slot leaves open edges on some turns with or without the fix.
+#[test]
+fn slightly_rotated_vertical_slot_cuts_only_the_slot() {
+    for turn in NEAR_AXIS_TURNS.into_iter().chain([0.9]) {
+        for length in [0.5, 1.5, 4.0] {
+            // The slot spans x in [1, 2] and z in [1, 2] and pokes out of
+            // both faces of the wall.
+            let content = split_wall::wall_with_finish([0.0; 2], turn, 2.274, Recess::FromInterface, length)
+                .replace("#110=IFCCARTESIANPOINT((1.,0.2,2.));", "#110=IFCCARTESIANPOINT((1.,-0.1,1.));")
+                .replace("#111=IFCAXIS2PLACEMENT3D(#110,#15,#17);", "#111=IFCAXIS2PLACEMENT3D(#110,#14,#17);")
+                .replace("#120=IFCCARTESIANPOINT((0.5,0.5));", "#120=IFCCARTESIANPOINT((0.5,0.206));")
+                .replace("#121,1.0,1.0);", "#121,1.0,0.412);")
+                .replace("#123=IFCEXTRUDEDAREASOLID(#122,#11,#14,0.012);", "#123=IFCEXTRUDEDAREASOLID(#122,#11,#14,1.0);");
+            assert_eq!(content.matches("0.412").count() + content.matches("(#122,#11,#14,1.0)").count(), 2);
+            let (mesh, _) = fixture_host(&content, false);
+            let delta = (mesh_volume(&mesh) - (finish_wall_volume(length) - 0.2)) * 1000.0;
+            assert!(delta.abs() < 0.2, "{turn}° finish {length} m: {delta:+.3} L");
+        }
+    }
+}
+
+/// #11423: a straight-side subdivision preserves the authored opening frame,
+/// its classification on a turned wall, and the material removed from that wall.
+#[test]
+fn axis_aligned_recess_with_a_collinear_profile_point_stays_rectangular() {
+    use ifc_lite_geometry::OpeningKindDiag;
+    for (turn, expected_kind) in [
+        (0.0, OpeningKindDiag::Rectangular),
+        (0.5, OpeningKindDiag::Diagonal),
+        (90.0, OpeningKindDiag::Rectangular),
+    ] {
+        for length in [1.0, 4.0] {
+            let base = split_wall::wall_with_finish([0.0; 2], turn, 2.274, Recess::FromInterface, length);
+            let four_corners = split_wall::polyline_recess(&base, false);
+            let with_midpoint = split_wall::polyline_recess(&base, true);
+            let measure = |content: &str| {
+                let (mesh, router) = fixture_host(content, false);
+                let openings = router.take_host_opening_diagnostics().remove(&100).unwrap().openings;
+                assert_eq!(openings.len(), 1);
+                assert_eq!(openings[0].kind, expected_kind, "{turn}° finish {length} m");
+                let mut decoder = EntityDecoder::new(content);
+                let entity = decoder.decode_by_id(200).unwrap();
+                let cut_frame = router.parametric_rect_probe(&entity, &mut decoder)
+                    .map(|frame| (frame.r, frame.center, frame.half));
+                (mesh_volume(&mesh), cut_frame)
+            };
+            let (volume, frame) = measure(&four_corners);
+            let (split_volume, split_frame) = measure(&with_midpoint);
+            assert!(frame.is_some());
+            assert_eq!(frame, measure(&base).1, "{turn}° four-corner frame");
+            // The analytical subtraction probe keeps its four-corner contract.
+            assert!(split_frame.is_none(), "{turn}° subdivision admitted for analytical subtraction");
+            assert!((volume - finish_wall_volume(length)).abs() < 0.0006, "{turn}° finish {length} m: {volume}");
+            assert!((split_volume - volume).abs() < 1e-8, "{turn}° finish {length} m: {split_volume} vs {volume}");
+        }
+    }
+}
+
+#[path = "split_wall_recess/tilted.rs"]
+mod tilted;

@@ -62,11 +62,6 @@ function add(set: Set<string>, value: string): void {
   if (trimmed) keep(set, trimmed);
 }
 
-/** `from` is already trimmed; only the cap applies. */
-function merge(into: Set<string>, from: Set<string>): void {
-  for (const value of from) keep(into, value);
-}
-
 function addString(set: Set<string>, value: unknown): void {
   if (typeof value === 'string') add(set, value);
 }
@@ -76,27 +71,25 @@ function addString(set: Set<string>, value: unknown): void {
  * a follow-up's `prompt` (`{ label, prompt }`), and an event action's
  * `userMessage` and `context.prompt`.
  */
-function collect(messages: readonly unknown[], into: Surface): void {
-  for (const message of messages) {
-    if (!isRecord(message)) continue;
-    const body = message.createSurface ?? message.updateComponents;
-    if (!isRecord(body)) continue;
-    const components = body.components;
-    if (!Array.isArray(components)) continue;
-    for (const component of components) {
-      if (!isRecord(component)) continue;
-      if (component.component === 'ActionBar' && Array.isArray(component.followUps)) {
-        for (const entry of component.followUps) {
-          if (isRecord(entry) && 'label' in entry) addString(into.prompts, entry.prompt);
-        }
+function collect(message: unknown, into: Surface): void {
+  if (!isRecord(message)) return;
+  const body = message.createSurface ?? message.updateComponents;
+  if (!isRecord(body)) return;
+  const components = body.components;
+  if (!Array.isArray(components)) return;
+  for (const component of components) {
+    if (!isRecord(component)) continue;
+    if (component.component === 'ActionBar' && Array.isArray(component.followUps)) {
+      for (const entry of component.followUps) {
+        if (isRecord(entry) && 'label' in entry) addString(into.prompts, entry.prompt);
       }
-      if (component.component !== 'Button' || !isRecord(component.action)) continue;
-      const event = component.action.event;
-      if (!isRecord(event) || typeof event.name !== 'string') continue;
-      addString(into.events, event.name);
-      addString(into.prompts, event.userMessage);
-      if (event.name === ASK_EVENT && isRecord(event.context)) addString(into.prompts, event.context.prompt);
     }
+    if (component.component !== 'Button' || !isRecord(component.action)) continue;
+    const event = component.action.event;
+    if (!isRecord(event) || typeof event.name !== 'string') continue;
+    addString(into.events, event.name);
+    addString(into.prompts, event.userMessage);
+    if (event.name === ASK_EVENT && isRecord(event.context)) addString(into.prompts, event.context.prompt);
   }
 }
 
@@ -109,35 +102,32 @@ type SurfaceCheck = { refused: string } | { promptVerified: boolean; event: Brid
 export class DeliveredSurfaces {
   /** Surface id -> what the agent sent for it. Insertion order is age. */
   private readonly surfaces = new Map<string, Surface>();
-  /** The first surface id of each of the last {@link AGENT_SURFACE_PANELS} calls: the id the tab names that panel's clicks by. */
-  private readonly panels: string[] = [];
+  /** Surface ids in each panel the tab may still display. */
+  private readonly panels: string[][] = [];
 
   /**
    * Remember the messages of one `tab_show_ui` call. The tab shows a call as
-   * one panel and names its clicks by the panel's first surface id, so every
-   * id in the call gets the whole call. Ids are unioned across calls and
+   * one panel, but each click belongs to its rendering surface. Ids are unioned across calls and
    * never forgotten on `deleteSurface`: the tab keeps an older panel on
    * screen, and its buttons stay clickable.
    */
   record(messages: readonly unknown[]): void {
     const ids = new Set(messages.map(a2uiSurfaceId).filter((id): id is string => id !== null));
     if (ids.size === 0) return;
-    const [first] = ids;
-    this.panels.push(first);
+    this.panels.push([...ids]);
     if (this.panels.length > AGENT_SURFACE_PANELS) this.panels.shift();
-    const call = emptySurface();
-    collect(messages, call);
-    for (const id of ids) {
+    for (const message of messages) {
+      const id = a2uiSurfaceId(message);
+      if (!id) continue;
       const surface = this.surfaces.get(id) ?? emptySurface();
-      merge(surface.prompts, call.prompts);
-      merge(surface.events, call.events);
+      collect(message, surface);
       // Re-inserted, so a surface the agent keeps updating is the newest.
       this.surfaces.delete(id);
       this.surfaces.set(id, surface);
     }
     // Forget the oldest ids, never one this call named or one that names a panel the tab may still show.
     if (this.surfaces.size <= MAX_DELIVERED_SURFACES) return;
-    const kept = new Set([...ids, ...this.panels]);
+    const kept = new Set(this.panels.flat());
     for (const id of this.surfaces.keys()) {
       if (this.surfaces.size <= MAX_DELIVERED_SURFACES) break;
       if (!kept.has(id)) this.surfaces.delete(id);

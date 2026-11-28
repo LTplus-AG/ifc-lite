@@ -2,17 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/**
- * The loopback WebSocket end of `--bridge` (#9523): one paired tab, tool calls
- * forwarded to it. Owns: loopback bind and upgrade guards (Host, Origin, slot
- * cap, pre-pairing byte cap); the hello within the handshake timeout and the
- * rate-limited code comparison (`PairingGate`); dead sockets (ignored, slot
- * freed, terminated after a grace); one tab at a time (a new pairing REPLACES
- * the old tab and fails its calls); refusing tools the tab labels mutating
- * while read-only (the tab enforces too); coalesced logs and throttled change
- * events. Listeners never throw: `guard` fails the socket instead. Reply
- * matching lives in `session.ts`, paired frames in `session-frames.ts`.
- */
+/** Loopback WebSocket listener, single paired session, and tool dispatch. */
 
 import { randomUUID } from 'node:crypto';
 import type { IncomingMessage, Server } from 'node:http';
@@ -87,6 +77,7 @@ export class TabBridge {
       note: (kind, line) => this.noisy.note(kind, line),
       kill: (ws, code, message, closeCode) => this.kill(ws, code, message, closeCode),
       guard: (ws, what, fn) => this.guard(ws, what, fn),
+      paired: () => !!this.active,
       release: (slot) => { this.slots.delete(slot); },
       admit: (ws, slot, hello) => this.admit(ws, slot, hello),
     }, opts.pairingBackoffBaseMs, opts.pairingBackoffMaxMs);
@@ -161,6 +152,7 @@ export class TabBridge {
   }
 
   rotatePairingCode(): string {
+    this.admission.forget();
     return this.admission.codes.rotate();
   }
 
@@ -270,7 +262,7 @@ export class TabBridge {
         this.noisy.note('connections refused while pairing is blocked', BLOCKED_LINE);
         return refuseUpgrade(socket, 429, 'Too Many Requests');
       }
-      const slot: Slot = { socket, ws: null, paired: false, held: false, bytes: head.length };
+      const slot: Slot = { socket, origin: req.headers.origin, ws: null, paired: false, held: false, bytes: head.length };
       this.slots.add(slot);
       capUnpairedBytes(socket, slot, BRIDGE_LIMITS.maxUnpairedBytes, () => {
         this.noisy.note('oversized unpaired connections', `dropped an unpaired connection after ${BRIDGE_LIMITS.maxUnpairedBytes} bytes`);
@@ -303,10 +295,13 @@ export class TabBridge {
     handshakeTimer.unref?.();
 
     ws.on('error', (err) => this.noisy.note('socket errors', `socket error: ${clip(err.message)}`));
-    ws.on('close', () => this.guard(ws, 'close', () => {
+    ws.on('close', (code, reason) => this.guard(ws, 'close', () => {
       clearTimeout(handshakeTimer);
       const session = this.active;
-      if (session?.ws === ws) this.unpair(session);
+      if (session?.ws === ws) {
+        this.admission.disconnected(code, reason.toString());
+        this.unpair(session);
+      }
     }));
     ws.on('message', (data: RawData, isBinary: boolean) => this.guard(ws, 'frame', () => {
       // `ws` keeps delivering frames while CLOSING; a dead socket gets no say.
@@ -342,6 +337,7 @@ export class TabBridge {
     }
     session.send({
       type: 'welcome',
+      ...(slot.proof ? { proof: slot.proof } : {}),
       protocol: BRIDGE_PROTOCOL_VERSION,
       sessionId: session.id,
       permission: this.effectivePermission(session),
@@ -367,8 +363,9 @@ export class TabBridge {
         if ('refused' in checked) {
           this.uiEvents.refused();
           this.noisy.note('ui events not matching a shown surface', `dropped a ui-event that ${checked.refused}`);
-        }
-        else if (!this.uiEvents.push(checked.event, checked.promptVerified)) this.noisy.note('ui events over the rate limit', 'dropped a ui-event over the rate limit');
+        } else if (this.uiEvents.push(checked.event, checked.promptVerified)) return;
+        else this.noisy.note('ui events over the rate limit', 'dropped a ui-event over the rate limit');
+        s.send({ type: 'error', code: BridgeErrorCode.UI_EVENT_REFUSED, message: 'Surface action refused.' });
       },
     });
   }

@@ -133,7 +133,8 @@ flowchart LR
 ### Buffer Layout
 
 ```typescript
-// Vertex buffer layout (packages/renderer/src/pipeline.ts)
+// Flat mesh vertex layout: MESH_VERTEX_BUFFERS in
+// packages/renderer/src/instanced-vertex-layout.ts, used by pipeline.ts
 const vertexBufferLayout: GPUVertexBufferLayout = {
   arrayStride: 28, // 7 * 4 bytes
   attributes: [
@@ -146,6 +147,13 @@ const vertexBufferLayout: GPUVertexBufferLayout = {
 // Interleaved vertex data
 // [px, py, pz, nx, ny, nz, entityId, ...]
 ```
+
+The same file defines the 12-byte lattice-quantized batch layout
+(`QUANTIZED_VERTEX_BUFFERS`: `uint16x4` position plus packed octahedral normal,
+then the `uint32` entity lane) and `TEXTURED_HIGHLIGHT_VERTEX_BUFFERS`, which
+reads only the flat attributes over a textured piece's 36-byte buffer. The
+textured pipeline itself declares its 36-byte layout inline in `pipeline.ts`:
+the flat attributes plus a `float32x2` UV at offset 28 (`shaderLocation: 12`).
 
 The per-vertex `entityId` is the federated global ID (`expressId + model idOffset`). It drives picking, the selection/ghost highlight, and the anti-z-fighting depth nudge; the low 24 bits are the picking ID and the high 8 bits carry a color salt used by multi-layer walls so coincident layer caps of the SAME parent entity still get distinct nudges.
 
@@ -174,14 +182,19 @@ fn vs_main(input: VertexInput) -> VertexOutput {
     var output: VertexOutput;
 
     let worldPos = uniforms.model * vec4(input.position, 1.0);
-    output.position = uniforms.viewProjection * worldPos;
+    // Relative-to-eye drawables use the translation-free matrix on the
+    // camera-relative position (see renderer-relative-to-eye.md).
+    let eyePos = rtePosition(input.position).xyz;
+    let rte = (uniforms.flags.x & RTE_DRAWABLE_FLAG) != 0u;
+    output.position = select(uniforms.viewProj * worldPos,
+                             uniforms.rteViewProj * vec4(eyePos, 1.0), rte);
 
-    // Anti z-fighting: deterministic per-entity depth nudge.
-    // Knuth multiplicative hash spreads IDs across 0-255; low 24 bits
-    // are the picking id, high 8 bits a colour salt for layered walls.
-    let colorSalt = (input.entityId >> 24u) * 2654435761u;
-    let zHash = (((input.entityId & 0x00FFFFFFu) ^ colorSalt) * 2654435761u) & 255u;
-    // ... zHash scales a tiny clip-space depth offset ...
+    // Anti z-fighting: deterministic per-entity depth nudge
+    // (flatNudgeHash, shaders/entity-color-table.wgsl.ts). Knuth
+    // multiplicative hash spreads IDs across 0-255; low 24 bits are the
+    // picking id, high 8 bits a colour salt for layered walls.
+    let zHash = flatNudgeHash(input.entityId);
+    output.position.z = nudgedClipZ(output.position, zHash, uniforms.viewProj);
 
     output.worldPos = worldPos.xyz;
     output.normal = uniforms.normalMatrix * input.normal;
@@ -227,19 +240,6 @@ finishes. Failed variants reach renderer diagnostics, never an unconstrained
 colour-pipeline fallback.
 
 ### Fragment Shader
-
-```wgsl
-struct Material {
-    color: vec4<f32>,
-    metallic: f32,
-    roughness: f32,
-}
-
-struct Light {
-    position: vec3<f32>,
-    color: vec3<f32>,
-    intensity: f32,
-}
 
 The fragment shader (simplified) shades double-sided, applies the section plane / clip box discards, and writes a SECOND render target carrying the entity ID for picking:
 
@@ -457,8 +457,8 @@ flowchart LR
     end
 
     subgraph Test["Distance Test"]
-        Dot["dot(normal, position)"]
-        Compare["distance < 0?"]
+        Dot["dot(normal, position) - w"]
+        Compare["distance × side > 0?"]
     end
 
     subgraph Output["Output"]
@@ -473,23 +473,21 @@ flowchart LR
 
 ### Section Shader
 
-The section plane rides in the shared frame uniforms (a `vec4`: xyz = normal, w = distance) with an enable bit in the flags word; a separate axis-aligned **clip box** (crop box) discards fragments outside an AABB. Both cuts apply to every model in the federated scene, and the pick pass applies the same discards.
+The section plane rides in the shared frame uniforms (a `vec4`: xyz = normal, w = distance) with enable and flip bits in the flags word; additional cutting planes in `extraClip` (#7545) cut the same way; a separate axis-aligned **clip box** (crop box) discards fragments outside an AABB. Both cuts apply to every model in the federated scene, and the pick pass applies the same discards.
 
 ```wgsl
-// In Uniforms:
-//   sectionPlane: vec4<f32>,  // xyz = plane normal, w = plane distance
-//   flags: vec4<u32>,         // y = section/clip enable bits
-
-let sectionEnabled = (uniforms.flags.y & 1u) == 1u;
-if (sectionEnabled) {
-    let d = dot(uniforms.sectionPlane.xyz, input.worldPos) - uniforms.sectionPlane.w;
-    if (d < 0.0) {
-        discard;
-    }
+// Simplified from sectionClipped() in shaders/mesh-uniforms.wgsl.ts.
+// flags.y: bit 0 = section enabled, bit 1 = flipped, bit 2 = clip box.
+// p is camera-relative for RTE drawables, world space otherwise.
+if (!excluded && (uniforms.flags.y & 1u) == 1u) {
+    let side = select(1.0, -1.0, (uniforms.flags.y & 2u) == 2u);
+    // Cut away ABOVE the plane (or below, when flipped).
+    if ((dot(p, uniforms.sectionPlane.xyz) - uniforms.sectionPlane.w) * side > 0.0) { discard; }
 }
-
-// Clip box (crop box): discard fragments OUTSIDE the AABB
+// Extra planes (extraClip), then the clip box: discard OUTSIDE the AABB.
 ```
+
+Entities listed in the section exclusions (`excluded`) skip the plane cuts but not the clip box.
 
 Section caps and the 2D section overlay are drawn by dedicated passes (`section-cap-style.ts`, `section-2d-overlay.ts`).
 
@@ -571,7 +569,9 @@ Selection and hover highlight from the batches (#10264 S3). A colour batch holdi
 Repeated mapped geometry (`IfcMappedItem`) arrives from the geometry pipeline as instanced shards: one template mesh plus per-occurrence data. Occurrence state (hide/select) is updated by rewriting the flags lane; if the backend rejects the instanced pipeline, the same occurrences fall back to CPU-expanded flat meshes with identical visuals (CPU parity).
 
 ```typescript
-// Instance buffer layout (packages/renderer/src/pipeline.ts)
+// Instance buffer layout: second entry of INSTANCED_VERTEX_BUFFERS
+// (packages/renderer/src/instanced-vertex-layout.ts); stride is
+// INSTANCE_STRIDE_BYTES in instanced-render.ts
 const instanceBufferLayout: GPUVertexBufferLayout = {
   arrayStride: 88, // mat4 (64) + entityId (4) + rgba (16) + flags (4)
   stepMode: 'instance',
@@ -589,6 +589,10 @@ const instanceBufferLayout: GPUVertexBufferLayout = {
 // Draw instanced
 renderPass.drawIndexed(indexCount, instanceCount);
 ```
+
+A third per-instance stream (locations 10 and 11) carries each occurrence's
+relative-to-eye `(drawable - camera)` delta as high/low `float32x4` lanes,
+packed by `instanced-rte.ts` once per template per camera change.
 
 ## Frame Statistics
 

@@ -356,6 +356,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
                 remapped
             };
 
+            if final_text.is_empty() && checks.boundaries.left_out(id.saturating_add(offset)) { upgrade_seeds.insert(id.saturating_add(offset)); }
             let ty = index.type_of.get(&id).map_or("", String::as_str);
             let Some(mut final_text) = (!final_text.is_empty()).then_some(final_text).and_then(|t| parents.claim(ty, t, !is_first && compatible)) else { continue }; // empty: not written (#10763)
 

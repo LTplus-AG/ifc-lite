@@ -1,6 +1,6 @@
 # @ifc-lite/renderer
 
-WebGPU-based 3D renderer for IFClite. Zero-copy from WASM linear memory to GPU buffers, hardware frustum culling, GPU-accelerated picking, section planes, multi-model federation.
+WebGPU-based 3D renderer for IFClite. Mesh data from the WASM geometry pipeline is uploaded to GPU buffers with `queue.writeBuffer` (a copy, not a zero-copy mapping), hardware frustum culling, GPU-accelerated picking, section planes, multi-model federation.
 
 ## Installation
 
@@ -164,8 +164,11 @@ federationRegistry.registerModel('arch', maxArchExpressId);
 federationRegistry.registerModel('struct', maxStructExpressId);
 
 // Now picks return globalIds; resolve back to (modelId, expressId)
-const hit = await renderer.pick(x, y);
-const { modelId, expressId } = federationRegistry.fromGlobalId(hit.expressId);
+const hit = await renderer.pick(x, y); // null on a miss or a lost device
+const owner = hit ? federationRegistry.fromGlobalId(hit.expressId) : null; // null when no model owns the id
+if (owner) {
+  const { modelId, expressId } = owner;
+}
 ```
 
 ## API

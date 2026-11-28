@@ -41,6 +41,28 @@ reserved so ids the mutation overlay allocates into a loaded model after load
 (added walls, spaces, …) cannot collide with the next model's real entities while
 the overlay stays within that 1,000,000-ID reservation.
 
+The range can be larger than that and can grow after registration
+(`packages/renderer/src/federation-registry.ts`,
+`packages/renderer/src/retained-creation-range.ts`):
+
+- Internally the next offset is `offset + overlayMaxExpressId + 1`. A retained
+  `nextRetainedExpressId` can extend the reservation beyond `maxExpressId + H`
+  when no first retained creation is present and the watermark fits.
+  `firstRetainedExpressId` can reserve the gap before a retained creation
+  within capacity.
+- `extendModel` grows a fully published, overlay-free model's source ownership
+  in place. Only the newest model also moves the next offset; an older model is
+  clamped to its existing reservation.
+- Progressive loaders call `reserveModel` first and publish contiguous local
+  ranges with `publishRange`; overlay IDs publish from the headroom with
+  `publishOverlayRange`, and `OverlayIdSpaceExhaustedError` is thrown when it
+  runs out. For a registered model, `toGlobalId` throws when the local id has
+  not been published; for an unregistered model it returns the input id.
+  `fromGlobalId` returns `null` when the global id has no published range.
+- The registry allows global ids through `MAX_SAFE_OFFSET` (2,000,000,000),
+  within WebGPU's `r32uint` picking range. Registration throws if the source
+  range would exceed this limit.
+
 ```typescript
 // Registration (maxExpressId = highest expressId in the model)
 const offset = federationRegistry.registerModel('arch', maxExpressId);

@@ -100,6 +100,13 @@ independent.
   Select at runtime via `wasm-feature-detect` (threads support) **and**
   `self.crossOriginIsolated`.
 
+  The threaded build exists in-tree but is opt-in: `BUILD_THREADED=1
+  ./scripts/build-wasm.sh` builds `rust/wasm-bindings` with `--features threads`
+  (which re-exports `initThreadPool` from `wasm-bindgen-rayon`) into
+  `packages/wasm/pkg-threaded`, applies the `workerHelpers.js` patch below and
+  checks that the module imports shared memory. No viewer or package code loads
+  `pkg-threaded` yet.
+
 ### Required patch (raw-serve / wasm-bindgen-rayon)
 `wasm-bindgen-rayon`'s `workerHelpers.js` does `import('../../..')` — a package
 **directory**, which only resolves under a bundler. On a raw static server the

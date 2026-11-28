@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { stepStringLiteralEnd } from '@ifc-lite/encoding';
+import { skipStepComment } from './step-comment-skip.js';
 
 /**
  * Locate the outer STEP argument list of one entity line: the first `(` (nothing
@@ -57,7 +58,7 @@ export function findOuterArgs(line: string): { open: number; close: number } | n
 
 /**
  * Apply `edit` to every run of `text` OUTSIDE a STEP string literal, copying
- * each literal verbatim — for the regex rewriters in `unit-normalize.ts`, so a
+ * each literal verbatim. Comments stay in the code runs as whole tokens — for the regex rewriters in `unit-normalize.ts`, so a
  * number or typed measure inside a string is never rescaled. Where a literal
  * ends is the shared rule (#7589): a `'(?:[^']|'')*'` regex alternative ended
  * `'Para \S\' 5'` at the PAGE operand and handed ` 5'…` to the rewrite as code.
@@ -67,11 +68,17 @@ export function findOuterArgs(line: string): { open: number; close: number } | n
 export function mapOutsideStepStrings(text: string, edit: (code: string) => string): string {
   let out = '';
   let from = 0;
-  for (let q = text.indexOf("'"); q !== -1; q = text.indexOf("'", from)) {
+  const markers = /'|\/\*/g;
+  for (let marker = markers.exec(text); marker; marker = markers.exec(text)) {
+    const q = marker.index;
+    if (marker[0] === '/*') {
+      markers.lastIndex = skipStepComment(text, q);
+      continue;
+    }
     const end = stepStringLiteralEnd(text, q);
     if (end === -1) break;
     out += edit(text.slice(from, q)) + text.slice(q, end);
-    from = end;
+    from = markers.lastIndex = end;
   }
   return out + edit(text.slice(from));
 }

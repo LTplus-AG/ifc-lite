@@ -124,6 +124,19 @@ impl WeldTable {
 }
 
 impl Scratch {
+    pub(super) fn append_lod_normals(&self, mesh: &MeshDataJs, output: &mut Vec<f32>) {
+        let start = output.len();
+        output.resize(start + 3 * self.nodes.len(), f32::INFINITY);
+        for &index in mesh.indices.chunks_exact(3).flatten() {
+            let vertex = index as usize;
+            let at = start + 3 * usize::from(self.remap[vertex]);
+            let authored = &mesh.normals[3 * vertex..3 * vertex + 3];
+            if authored < &output[at..at + 3] {
+                output[at..at + 3].copy_from_slice(authored);
+            }
+        }
+    }
+
     /// Slots the weld table currently holds.
     #[cfg(test)]
     pub(super) fn weld_slots(&self) -> usize {

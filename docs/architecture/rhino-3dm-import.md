@@ -142,7 +142,7 @@ Reuse the IFCX shape: a populated store plus `MeshData[]` through
 | LandXML-style side document with its own pick channel and inspector | A second selection channel and a second properties UI. Search, IDS, lists and BCF would all miss Rhino objects. |
 | Convert `.3dm` to IFC in wasm, then load the IFC | Needs openNURBS in Rust, which the export spec already rejected (it does not build for `wasm32-unknown-unknown`). |
 
-`buildIfcxDataStore` (`apps/viewer/src/hooks/ingest/viewerModelIngest.ts:143`)
+`buildIfcxDataStore` (`apps/viewer/src/hooks/ingest/viewerModelIngest.ts:129`)
 already does the hard part: populated tables, `getEntity` and
 `getEntitiesByType` served from the entity table. PR 2 lifts its
 format-agnostic body into `buildTabularDataStore(tables, meta)`. IFCX keeps its
@@ -185,7 +185,7 @@ this PR, because the honest label makes each reachable:
 
 One site widens without reaching an export and is left as it is: the
 schema-registry readers (`charts/element-field-reader.ts`,
-`query/entity-node.ts`, `collab/schema-attribute-names.ts`) now get an IFC4
+`packages/query/src/entity-node.ts`, `collab/schema-attribute-names.ts`) now get an IFC4
 registry instead of none, which is what the entity table's classes are.
 
 ### Where parsing runs
@@ -364,15 +364,15 @@ type RhinoImportResponse =
 
 ### Format detection and entry
 
-- `detectFormat` (`packages/ifcx/src/detect-format.ts:12`) gains `'3dm'`: the
-  first 24 bytes are `3D Geometry File Format ` [ran]. Today a `.3dm` falls
-  through to `unknown` and on into the IFC wasm path.
-- `.3dm` joins `MODEL_FILE_EXTENSIONS` and `MOBILE_MODEL_FILE_EXTENSIONS`
-  (`apps/viewer/src/services/supported-model-files.ts:22-50`), and the drop
-  filter reads those lists.
-- `loadFile` branches on `'3dm'` beside IFCX and GLB
-  (`useIfcLoader.ts:982-1071`), then goes through `finalizeModel` like every
-  format [src]. `loadPath: '3dm'` goes in the load report.
+- `detectFormat` (`packages/ifcx/src/detect-format.ts`) returns `'3dm'` when
+  the first 24 bytes are `3D Geometry File Format ` [ran].
+- `.3dm` is a group in `MODEL_FORMAT_GROUPS`
+  (`apps/viewer/src/services/supported-model-files.ts`), so it is in
+  `MODEL_FILE_EXTENSIONS`, the picker list and the drop filter.
+- `loadFile` (`useIfcLoader.ts`) branches on `'3dm'` beside IFCX and GLB and
+  calls `loadRhino3dmModel` (`apps/viewer/src/hooks/ingest/rhinoLoad.ts`),
+  which goes through `finalizeModel` like every format [src].
+  `loadPath: '3dm'` goes in the load report.
 
 ### Units and frame
 

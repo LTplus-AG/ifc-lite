@@ -46,6 +46,9 @@ import/export and exact-image relinking. Invalid files produce inline errors;
 imports are canceled on unmount and refuse to overwrite registrations changed
 while the file was being read. Editing a registered reference restores its frozen image and calibration into
 the shared editor; replacing a catalog source does not edit placed references.
+The 2D drawing Underlays panel (`DrawingUnderlaysPanel`) mounts the same library
+for the active section plane and flags references that are edge-on to that cut;
+editing from there reopens the Appearance workspace for that reference.
 History restores the exact saved engineering frame, even when that frame is currently unresolved. Rendering remains guarded by frame compatibility; Undo never silently converts coordinates or blocks access to older commands. Value-equivalent imports and updates preserve all workspace redo branches.
 
 Normal desktop Select and touch tap share a reference-aware route. An unlocked

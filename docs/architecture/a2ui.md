@@ -1,6 +1,7 @@
 # A2UI in ifc-lite: generative IFC result surfaces
 
-The integration uses A2UI protocol **v1.0**.
+The integration shipped in #11344. It uses A2UI protocol **v1.0** across
+`@ifc-lite/a2ui`, the viewer renderer, the sandbox `bim.ui.*` API and the MCP tools.
 
 ## Why
 
@@ -17,7 +18,7 @@ buttons that isolate, colour or fly to a result set.
 | "A2UI 1.0 stable with an official React renderer" | The protocol is 1.0. The packages are pre-1.0 (`0.15.0`), with breaking changes in each of the last five releases (Sep to Nov 2026). `@a2ui/react` documents itself as v0.9-native; v1.0 runs through the version-agnostic root plus `@a2ui/web_core/v1_0`. | Pin exact versions. Wrap all A2UI imports behind one module so an upgrade touches one place. |
 | Upstream README examples work | `createProcessor({v1_0: ...})` from the `@a2ui/agent` README throws; the key is `'1.0'`. Reproduced. | Do not trust upstream docs; cover every entry point we use with a test. |
 | Drops into the current model flow | The chat has no tool calling and the hosted proxy forwards text only (`lib/ids-agent/transport.ts:8-10`). | Use the text-embedded **Express** format (`<a2ui>…</a2ui>`), which needs no tools and works on the free tier. |
-| Cheap to add | `@a2ui/agent` imports `fs`/`path` at module top (`skill/skill.js`, `processor/catalog-providers.js`): a browser bundle fails until both are aliased. Agent + renderer is ~185 KB gzip. Basic-catalog prompt snippet is ~22 k chars. | Lazy chunk only (eager ratchet stays flat), Vite alias to a stub, prune the catalog in the prompt. |
+| Cheap to add | `@a2ui/agent` imports `fs`/`path` at module top (`skill/skill.js`, `processor/catalog-providers.js`): a browser bundle fails until both are aliased. Agent + renderer add a sizeable chunk (no tracked figure; the [performance guide](../guide/performance.md) holds the tracked sizes). The basic-catalog prompt snippet is large enough to need pruning. | Lazy chunk only (eager ratchet stays flat), Vite alias to a stub, prune the catalog in the prompt. |
 | "App builds the card from a typed query result" | Right instinct, but it left LLM-authored surfaces able to state facts (counts, rows) the model invented. | Facts are **bound**, never typed by the model: query-bound components and script-produced surfaces. |
 | Nothing similar exists | The extensions **widget DSL** (`packages/extensions/src/widget/schema.ts`) is already a validated JSON component tree with a host renderer. | Reuse its shadcn node renderers for the catalog look; plan a widget DSL → A2UI bridge rather than a second UI language. |
 | Basic catalog renders fine | The v0.9/v1.0 basic catalog renders as Lit custom elements with its own styling. | Implement ifc-lite's catalog as React components on our shadcn primitives and theme tokens. |
@@ -26,13 +27,16 @@ buttons that isolate, colour or fly to a result set.
 
 ```
 @ifc-lite/a2ui  (packages/a2ui, framework-agnostic, Node + browser)
-  catalog/       IFC catalog v1.0 JSON document + component/function names (single source)
-  agent.ts       createIfcAgent(): @a2ui/agent generator over the IFC catalog, prompt snippet,
-                 StreamedAnswer factory, validatePayload
+  catalog/       IFC catalog v1.0 document + component/function APIs (single source);
+                 subpath export `@ifc-lite/a2ui/catalog`
+  agent.ts       createIfcAgent(): @a2ui/agent generator over the IFC catalog: promptSnippet,
+                 parse(), openStream(); validateIfcMessages(). Subpath `@ifc-lite/a2ui/agent`
   refs.ts        EntityRef <-> "modelId:expressId" wire encoding
   query.ts       IfcQuerySpec: declarative, serialisable entity query (types, where, groupBy, limit)
   policy.ts      action/function policy: which run locally, which need confirmation, which go back to the agent
-  builders.ts    deterministic surface builders (table, kpis, chart, legend) used by scripts and MCP
+  builders.ts    deterministic surface builders (buildSurface over text, callout, stats, table,
+                 list, chart, legend, actions, entity sections) used by scripts and MCP
+  charts.ts      chart grouping and colour rules shared by every renderer
         |
         +-- apps/viewer/src/lib/a2ui/          (lazy) renderer runtime: MessageProcessor, function
         |                                       implementations bound to BimHost, action router
@@ -44,7 +48,8 @@ buttons that isolate, colour or fly to a result set.
 ```
 
 The one seam callers learn is `@ifc-lite/a2ui`: catalog id, `IfcQuerySpec`, entity ref
-encoding and the builders. Everything A2UI-version-specific sits behind it and behind
+encoding and the builders. The root entry has no A2UI runtime and is safe to import eagerly;
+the A2UI-backed `catalog` and `agent` subpaths load lazily in browsers. Everything A2UI-version-specific sits behind it and behind
 `apps/viewer/src/lib/a2ui/`.
 
 ## The IFC catalog (`https://ifclite.dev/a2ui/catalogs/ifc/v1/catalog.json`)
@@ -57,7 +62,7 @@ addition to its label. The eight IFC component schemas omit
 no longer rejects extra properties in the published JSON schema.
 
 Layout and text: `Column`, `Row`, `Card`, `Tabs`, `Divider`, `Text`, `Callout`, `Button`,
-`ChoicePicker`, `TextField`, `Slider`, `CheckBox`.
+`ChoicePicker`, `TextField`, `Slider`, `CheckBox`, `List` (`BASIC_COMPONENT_NAMES`).
 
 IFC components (facts are bound, not literal):
 
@@ -68,17 +73,22 @@ IFC components (facts are bound, not literal):
 - `StatGroup`: KPI tiles; each value is a query count / sum or a data path.
 - `GroupChart`: bar / pie / line over a query grouped by type, storey, material or a property.
 - `ColorLegend`: colour-by-property legend that applies colours on mount and on toggle.
-- `ActionBar`: viewer actions over a ref set (select, isolate, hide, show, colorize, fly to,
-  section, export CSV) and follow-up prompts back to the agent.
+- `ActionBar`: ref-targeted viewer actions (`select`, `isolate`, `hide`, `show`, `colorize`,
+  `flyTo`, `exportCsv`), plus `resetView` (needs no refs; no section action) and follow-up
+  prompts back to the agent.
 
-Renderer functions (A2UI v1.0 functions, `allowedCallers` per `policy.ts`): `select`, `isolate`,
-`hide`, `showAll`, `colorize`, `resetColors`, `flyTo`, `getSelection`, `countQuery`,
-`exportCsv` (needs user activation), `ask` (posts a follow-up turn to the chat agent).
+Renderer functions (A2UI v1.0 functions, `allowedCallers` per `IFC_FUNCTION_POLICY` in
+`policy.ts`): `select`, `isolate`, `hide`, `show`, `colorize`, `flyTo`, `resetView`,
+`getSelection`, `countEntities`, `sumQuantity`, and `exportCsv` (renderer-only, needs user
+activation). The basic `formatString`, `formatNumber`, `pluralize`, `required`, `and`, `or` and
+`not` are kept. A follow-up to the chat agent is not a function: it is the `ask` event
+(`ASK_EVENT`), turned into a chat turn by `eventToFollowUp`.
 
 ## Producers
 
 1. **Chat (Express)**: the system prompt carries the pruned catalog snippet. The model writes
-   prose plus `<a2ui>` blocks; `StreamedAnswer` validates and renders while streaming. Invalid
+   prose plus `<a2ui>` blocks; the agent's `openStream()` validates each block against the
+   renderer's processor while streaming. Invalid
    blocks render an error part and feed the existing repair loop.
 2. **Scripts**: `bim.ui.table/stats/chart/legend/actions/callout/entity/list/show` build surfaces
    from script results. The sandbox validates the section specs and builds the A2UI messages on

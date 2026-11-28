@@ -46,6 +46,13 @@ IFCLITE_CENSUS_BLESS=1 cargo test -p ifc-lite-geometry --release \
   watertightness_census_and_triangulator_invariance -- --nocapture
 ```
 
+**Update (2026-11-28):** the recipe above is the record as written. The
+`census_rtc/` directory is no longer on `main`: #4643 removed it when it moved
+the RTC frame choice into one shared home,
+`rust/geometry/tests/corpus/rtc_frame.rs`, which `triangulation_invariance.rs`
+now loads under the `census_rtc` module name. Take the directory from the PR's
+own commits.
+
 Use a separate Cargo target directory, or clean the workspace crates when
 switching worktrees: a stale shared-target binary invalidates this comparison.
 The generated reference differs on 272 rows across five models. Compare the

@@ -43,6 +43,8 @@ const token = await requestPasswordToken({
 });
 ```
 
+`FoundationApiClient` takes `baseUrl` (up to but excluding the version segment), `version` (default `'1.1'`), `getAccessToken` (Bearer token per request; omit for anonymous servers) and `fetchFn`. Besides `getAuthInfo()` it has `getVersions()` (this API's own `{baseUrl}/versions`) and `getCurrentUser()`. Run user-typed addresses through `normalizeApiBaseUrl` first; it tolerates trailing slashes and a pasted version suffix.
+
 Other flows: `exchangeAuthorizationCode` (with PKCE), `requestClientCredentialsToken`, `refreshAccessToken`, and `registerClient` for servers that advertise `oauth2_dynamic_client_reg_url` (dynamic client registration). Errors are `FoundationApiError` (`status`, `url`, `isAuthError`) and `FoundationAuthenticationError` (adds the RFC 6749 `errorCode`).
 
 ## Building a client on top

@@ -6,7 +6,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { sourceCurveSnapCandidate, sourceCurveMayReachRay, sourceWinsOverMeshSnap, type SourceSnapCurve } from './source-curve-snap.js';
 import { SnapType } from './snap-detector.js';
-import { pointCloudWinsOverSourceSnap } from './raycast-point-cloud-query.js';
+import { pointCloudWinsOverMeshSnap } from './raycast-point-cloud-query.js';
 import { Camera } from './camera.js';
 import { querySourceCurves } from './raycast-source-curve-query.js';
 
@@ -72,8 +72,8 @@ describe('authored source snapping (#5780)', () => {
     const camera = { fov: Math.PI / 3, canvasHeightPx: 800, orthoHalfHeight: 1 };
     const coincident = { position: { x: 0, y: 0, z: 0.001 }, expressId: 5, distance: 9.999 };
     const foreground = { ...coincident, position: { x: 0, y: 0, z: 2 }, distance: 8 };
-    assert.equal(pointCloudWinsOverSourceSnap(coincident, source.target, ray, camera), false);
-    assert.equal(pointCloudWinsOverSourceSnap(foreground, source.target, ray, camera), true);
+    assert.equal(pointCloudWinsOverMeshSnap(coincident, source.target, ray, camera), false);
+    assert.equal(pointCloudWinsOverMeshSnap(foreground, source.target, ray, camera), true);
   });
 
   it('finds a clipped line interior and a sub-sample-width visible arc (#5780)', () => {

@@ -401,6 +401,16 @@ Advanced "magnetic" edge snapping for precision measurement and interaction.
 | `face_center` | Snap to face centroids | Medium |
 | `point_cloud` | Snap to a point-cloud scan point | See below |
 
+### Screen-space corner and edge snapping
+
+To pick a feature just outside its silhouette, pass `screenCornerSnap: {}` in the `snapOptions` argument to `Renderer.raycastSceneMagnetic`. This opt-in search covers flat geometry and GPU-instanced occurrences. It looks for a feature corner within 10 CSS pixels first, then a feature edge within 6 CSS pixels. An existing ray-based vertex or edge takes priority over a screen-space edge. Set `cornerRadiusPx` and `edgeRadiusPx` independently. A nonpositive or nonfinite radius disables that part of the screen search. The corresponding `snapToVertices` and `snapToEdges` switches also apply.
+
+Hidden entities, entities outside the current isolation, and clipped geometry are excluded. To restrict the search to particular models, pass their numeric renderer indices in `eligibleModelIndices`. Omitting the set includes all models. A piece without a model index belongs to index 0. By default, when the ray hits a surface, the search excludes candidates farther along the ray than that hit plus `occlusionTolerance` (default 0.05 world units plus 1% of the hit distance). Negative or nonfinite tolerance values use that default. Set `ignoreOcclusion: true` to search behind the hit surface as well.
+
+The search builds its screen grid during idle time after the view settles (`settleMs`, default 120 ms), in slices with a default budget of 6 ms (`maxSliceMs`). Picks keep the ordinary ray-based result until a matching screen candidate is available. As pieces enter the grid, their corners and edges become pickable without waiting for the entire scene.
+
+### Point-cloud snapping
+
 Point-cloud snapping is produced by `raycastSceneMagnetic` (not
 `SnapDetector` itself) whenever point-cloud assets are loaded: the nearest
 scan point within a small screen-space tolerance of the cursor ray is
@@ -1208,7 +1218,9 @@ primary-model only: disable it (`enableInstancing: false` on the
 Consumers that cache the IDs from `SceneContents.getInstancedEntityIds()` can
 read `getInstancedEntityRevision?.()` when `onGeometryChange` fires. Model
 translation and rotation leave the membership revision stable. Uploads,
-removals, and occurrence suppression can change it.
+removals, and occurrence suppression can change it. Pass `true` to
+`getInstancedEntityIds` to enumerate only while the instanced pass is drawn.
+Switching to Types view hides those occurrences from ray picks and screen snaps.
 
 ## Annotation Overlays
 

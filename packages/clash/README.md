@@ -3,7 +3,7 @@
 Clash detection for IFC-Lite. A **representation-agnostic** core engine plus thin,
 version-specific **source adapters**.
 
-- The core (`@ifc-lite/clash`) operates on `ClashElement[]` — `{ key, ref, tag, bounds, positions, indices }` —
+- The core (`@ifc-lite/clash`) operates on `ClashElement[]` — `{ key, ref, model, tag, bounds, positions, indices }` —
   and never imports `@ifc-lite/parser`/`@ifc-lite/query`. STEP/IFC4 and IFC5/USD are
   just adapters that produce those elements.
 - Broad phase: BVH (`@ifc-lite/spatial`). Narrow phase: exact triangle–triangle
@@ -63,6 +63,14 @@ round-trips through BCF, and a *sensible* BCF bridge (grouped
 topics, deterministic GUIDs, optional snapshots). Surfaced through the viewer's
 clash panel, the `ifc-lite clash` CLI, the MCP `clash_check` / `clash_matrix` tools,
 and the SDK `clash` namespace.
+
+## Entry points
+
+- `@ifc-lite/clash`: the engine, rules and presets (`CLASH_RULE_PRESETS`, `disciplineMatrixRules`), grouping, sorting and table rows, duplicate detection (`findDuplicates`), review status, run comparison (`compareClashRuns`, `compareClashRevisions`) and LLM triage prompts (`buildTriageSystemPrompt`, `buildTriageUserMessage`, `parseTriageResponse`).
+- `@ifc-lite/clash/step` and `@ifc-lite/clash/ifcx`: the STEP and IFC5/USD source adapters (`elementsFromStep`, `elementsFromIfcx`).
+- `@ifc-lite/clash/bcf`: the BCF bridge (`createBCFFromClashResult`, `mapBcfToClashes`).
+- `@ifc-lite/clash/contact`: the real contact patch (shared face, intersection line or point) for one focused pair of meshes, plus mesh BVH and minimum-distance helpers.
+- `@ifc-lite/clash/wasm`: the opt-in Rust→WASM engine (`initClashWasm`, `WasmClashEngine`).
 
 ## Docs
 

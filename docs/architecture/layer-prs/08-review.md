@@ -1,5 +1,7 @@
 # 08: Review Workflow and UI
 
+As shipped, the layer review UI is the viewer's **Layers** workspace panel, not `packages/viewer` (which is `@ifc-lite/viewer-core`): `apps/viewer/src/components/viewer/layers/` holds the stack panel (`LayersPanel.tsx`), a layer's diff (`LayerDiffView.tsx`), provenance (`LayerProvenanceDetail.tsx`), check evidence with entity deep links (`LayerCheckEvidence.tsx`), and merge plus registry-backed review (`LayerMergeSection.tsx`, `LayerReviewSection.tsx`). The sections below are the design.
+
 ## 8.1 The PR object
 
 A review = (candidate layer or layer group, target ref, MergePlan, check results, BCF topic set, decision log). Lives on the registry; local-only mode degrades to CLI review (09).

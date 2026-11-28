@@ -83,6 +83,8 @@ if (uploadResult.status === 'ready') {
 }
 ```
 
+Both callback parsers return `{ status: 'cancelled' }` when the user cancelled on the CDE. `getDocumentVersions(url)` and `getDocumentVersion(url)` follow a document's version links. `buildUploadPartBody` and the standalone `uploadFilePart` build and send one multipart part without a client.
+
 Errors are `DocumentsApiError` (`status`, `url`, `isAuthError`) — `@ifc-lite/opencde-foundation`'s `FoundationApiError` under this package's name.
 
 ## License

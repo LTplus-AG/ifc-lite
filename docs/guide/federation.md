@@ -6,10 +6,14 @@ IFClite supports loading multiple IFC files simultaneously with unified selectio
 
 Each loaded model is assigned a unique **ID offset** so that entity IDs never collide across models. The `FederationRegistry` manages these offsets automatically.
 
+Each model's range also reserves 1,000,000 IDs of overlay headroom for
+entities created by edits after load. The next model starts after that
+headroom:
+
 ```
-Model A: expressIds 1-5000    -> globalIds 1-5000       (offset: 0)
-Model B: expressIds 1-3000    -> globalIds 5001-8000    (offset: 5000)
-Model C: expressIds 1-2000    -> globalIds 8001-10000   (offset: 8000)
+Model A: expressIds 1-5000    -> globalIds 1-5000                  (offset: 0)
+Model B: expressIds 1-3000    -> globalIds 1,005,002-1,008,001     (offset: 1,005,001)
+Model C: expressIds 1-2000    -> globalIds 2,008,003-2,010,002     (offset: 2,008,002)
 ```
 
 ### Server properties and authored IDs
@@ -89,7 +93,7 @@ are preserved.
 If you know the models and anchor use the same height system, open **Settings →
 General → IFC federation** and enable **Assume IFC models share a height system**
 before loading the second model. For an already loaded federation, use
-**Re-align federation** after changing the setting. This saved browser preference
+**Re-align** after changing the setting (see below). This saved browser preference
 applies to IFC placements only; LandXML keeps its separate choices and scan
 placement is unchanged. Turning the setting off restores refusal on the next
 load or re-alignment; it does not move an existing placement immediately.
@@ -107,6 +111,18 @@ Equal unresolved names still need your explicit choice, and the notice says an
 authored datum could not be resolved rather than claiming it is missing.
 A wrong assumption can place a model too high or too low by the difference
 between the height systems; verify survey control before enabling it.
+
+### Choosing the georeference anchor
+
+With two or more models loaded, click a model row in the hierarchy to open its
+metadata. The Georeferencing section shows the model's alignment status:
+**Federation anchor**, **Aligned (same CRS)**, **Reprojected to anchor CRS**,
+**Aligned (identity)**, **Alignment failed** or **Not aligned**. By default the
+anchor is the earliest-loaded model with a usable map conversion and CRS.
+**Make anchor** pins another model as the anchor, and **Unpin** returns to the
+default. Pinning moves nothing by itself: choose **Re-align**. This restores the
+anchor's original frame and realigns the other models that have geometry and
+usable georeferencing.
 
 ### Global vs Local IDs
 
@@ -143,10 +159,9 @@ small number, so it lands inside the *primary* model's range: it does not miss
 and it does not throw, it resolves to a real entity in the wrong model. Absence
 stays absence, though: a mesh with no item id still has none after the shift.
 
-`MeshData.materialId` is **not** re-homed and stays in its model's local space
-(tracked in #3525). Do not assume the ids on a mesh are uniformly global; today
-`expressId`, `textureRef.textureId` and `geometryItemId` are, and `materialId` is
-not.
+`MeshData.materialId` is re-homed by the same offset (#3525), so `expressId`,
+`textureRef.textureId`, `geometryItemId` and `materialId` on a loaded flat mesh
+are all global ids. An absent `materialId` stays absent.
 
 ## Loading Multiple Models
 
@@ -161,19 +176,20 @@ fewer source entities.
 
 ```typescript
 import { IfcParser } from '@ifc-lite/parser';
+import { highestExistingExpressId } from '@ifc-lite/mutations';
 import { federationRegistry } from '@ifc-lite/renderer';
 
 const parser = new IfcParser();
 
 // Load first model
 const archStore = await parser.parseColumnar(archBuffer);
-// Compute maxExpressId from entity index
-const archMaxId = Math.max(...archStore.entityIndex.byId.keys());
+// Highest source ID, including property atoms deferred out of the main index
+const archMaxId = highestExistingExpressId(archStore);
 const archOffset = federationRegistry.registerModel('arch', archMaxId);
 
-// Load second model - IDs start after the first model's range
+// Load second model - IDs start after the first model's range and headroom
 const structStore = await parser.parseColumnar(structBuffer);
-const structMaxId = Math.max(...structStore.entityIndex.byId.keys());
+const structMaxId = highestExistingExpressId(structStore);
 const structOffset = federationRegistry.registerModel('struct', structMaxId);
 
 // Convert IDs
@@ -197,22 +213,28 @@ When multiple models are loaded:
 
 ## Model Management
 
-The viewer provides controls for each loaded model:
+The viewer provides controls for each loaded model in the hierarchy's
+**Models** section:
 
 | Action | Description |
 |--------|-------------|
-| **Visibility toggle** | Show/hide an entire model |
-| **Collapse/Expand** | Collapse a model's hierarchy tree |
-| **Rename** | Give a model a descriptive name |
-| **Remove** | Unload a model and free its ID range |
-| **Set Active** | Focus the properties panel on a specific model |
+| **Hide model / Show model** | Show/hide an entire model |
+| **Click the model row** | Expand or collapse the model's tree and show its metadata (statistics, georeferencing, federation anchor) in the properties panel |
+| **Reposition model** | Open the Placement panel for this model (see below) |
+| **Edit model tags** | Assign organisation-only tags. **By tag** groups the rows; a tag chip filters the list, and **Isolate matching models** hides every other model |
+| **Sync from source** | Reload a model opened from a [cloud source](cloud-sources.md) |
+| **Remove** | Unload a model. Its ID range is retired, not reused, so stale selections and undo entries cannot point at a later model |
+
+The display name defaults to the file name. Selecting rows that all belong to one model
+makes it the active model, which single-model tools use as their default target.
 
 ## Repositioning models and pointclouds
 
 ![Reposition panel aligning an orange diagnostic pointcloud with an Archicad IFC model](../assets/model-reposition.png)
 
 Open **Home → Reposition**, the model's hierarchy action, or the command
-palette's Reposition command. IFC models, embedded pointclouds and streamed
+palette's **Reposition models** command. They open the **Local** tab of the
+**Placement** panel. IFC models, embedded pointclouds and streamed
 scans use the same workspace translation. Either upload order is supported.
 Select one or several moving models and choose a fixed reference model.
 
@@ -264,7 +286,8 @@ plumb is not offered.
   instances, such as doors, windows or columns) rotate too: the instanced
   occurrences turn about the same axis as the model's flat geometry, from the
   renderer's own instance data. Pointclouds cannot be rotated — they are
-  renderer handles that carry a translation but no heading. Models still in
+  renderer handles that carry a translation but no heading. Gaussian captures
+cannot be rotated either. Models still in
   `pending` or `streaming-geometry` whose kind is not known yet (no geometry,
   no instanced shard, no pointcloud handle) are refused too, until it is. In
   both cases the panel says why, a selection containing one is refused as a
@@ -275,6 +298,18 @@ Unlike a move, a rotation has no drag preview: it rewrites the model's geometry,
 which is what keeps rendering, picking, bounds, spatial queries and graphical
 exports reading one set of coordinates rather than each applying the angle for
 itself. Large models therefore take a moment to turn.
+
+### Two-point align
+
+**Two-point align** sets a heading and a move in one step, like CAD ALIGN.
+Choose a reference model first. Pick A on the moving models, then its match
+A′ on the reference; repeat for B and B′. The rotation is about the vertical
+axis through A, and A lands on A′. The readout shows the rotation, the move
+and how far B lands from B′. It warns when the plan lengths |AB| and |A′B′|
+differ, which can mean different units or scale. Nothing moves until
+**Apply alignment**, which is one undo step for every moving model. **Copy
+transformation** copies the result. A and B (or A′ and B′) at the same plan
+position are refused.
 
 Manual placement composes with automatic georeference alignment. It does not
 edit `IfcLocalPlacement`, map conversion, source geometry or scan files.
@@ -308,7 +343,8 @@ than registration offsets. STEP IFC exports retain authored coordinates;
 graphical GLB and IFC5 geometry
 exports include workspace placement. Export the placement manifest alongside
 source IFC or scan files when sharing this arrangement. Transformed LAS/E57
-writing is not provided.
+writing is not provided; **Download positioned file…** writes a placed scan as
+PLY instead (see [Download positioned scans](appearance.md#download-positioned-scans)).
 
 After a completed deviation run, the Deviation panel reads every computed
 point's signed distance back once and shows summary statistics: points
@@ -464,26 +500,31 @@ containers.
 
 ## FederatedModel Type
 
-Each loaded model is tracked as a `FederatedModel`:
+Each loaded model is tracked as a `FederatedModel` in the viewer store. This
+excerpt shows the federation fields; the full type in
+`apps/viewer/src/store/types.ts` also carries the data store, geometry, load
+state and placement fields:
 
 ```typescript
 interface FederatedModel {
-  id: string;            // Unique model identifier
-  name: string;          // Display name
+  id: string;            // UUID generated on load
+  name: string;          // Display name (file name by default)
   idOffset: number;      // Global ID offset
-  maxExpressId: number;  // Highest expressId in this model
+  maxExpressId: number;  // Highest local expressId this model owns
   visible: boolean;      // Visibility state
   collapsed: boolean;    // Hierarchy tree state
+  hasOverlayCapacity?: boolean; // false when the overlay ID range is exhausted
+  loadState?: 'pending' | 'streaming-geometry' | 'hydrating-metadata' | 'complete' | 'error';
 }
 ```
 
 ## Performance Considerations
 
-- Each model adds its entities to the shared spatial index and renderer
-- Memory usage scales linearly with total entity count across all models
+- Memory use grows with the total entity and geometry count across all models
 - The FederationRegistry resolves IDs in O(1) local->global, O(log N) global->local
-- Visibility toggling per-model is O(1) (GPU-level filtering)
-- Loading 5+ large models (100MB+ each) may require the server paradigm for best performance
+- Hiding or showing a model rebuilds the merged mesh list from the visible models
+- Several very large models can exceed what one browser tab handles well; see
+  the [Performance Guide](performance.md) and the [server](server.md) option
 
 ## IFC5 Federated Layers
 
@@ -500,6 +541,12 @@ const result = await parseFederatedIfcx([
 // Properties from the overlay take precedence
 // Wall now has FireRating property from the overlay file
 ```
+
+`addIfcxOverlay` adds a further layer to an existing result. In the viewer,
+open a stack by dropping several `.ifcx` files together or by choosing
+**Open .ifcx files** in the empty **Layer stack** panel. Use **Add model** to
+append overlays to a loaded IFCX stack. The panel lists the strongest layer
+first. A loaded non-IFCX model cannot accept IFCX overlays.
 
 See the [IFC5 Parsing Guide](parsing.md) for more details on IFCX format support.
 

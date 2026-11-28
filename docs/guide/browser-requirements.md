@@ -61,7 +61,7 @@ async function checkWebGPU(): Promise<boolean> {
 ```mermaid
 flowchart TD
     Start([Start]) --> CheckAPI{navigator.gpu<br/>exists?}
-    CheckAPI -->|No| Fallback[Use WebGL fallback<br/>or show error]
+    CheckAPI -->|No| Fallback[Viewer: show the WebGPU error banner<br/>Your app: load a WebGL template]
     CheckAPI -->|Yes| RequestAdapter[Request Adapter]
     RequestAdapter --> AdapterFound{Adapter<br/>found?}
     AdapterFound -->|No| Fallback
@@ -84,7 +84,7 @@ The parser uses WASM for high-performance parsing.
 |---------|---------|---------|
 | WebAssembly | Core WASM runtime | All modern browsers |
 | WASM SIMD | Vectorized operations | Chrome 91+, Firefox 89+, Safari 16.4+ |
-| Streaming Compilation | Fast module loading | All modern browsers |
+| Streaming Compilation (optional) | Faster module loading; without it the bytes are fetched and compiled with `WebAssembly.compile` | All modern browsers |
 
 ### Checking WASM Support
 
@@ -116,7 +116,7 @@ IFClite requires ES2022+ features:
 
 ## SharedArrayBuffer (Optional)
 
-For multi-threaded parsing with Web Workers:
+`@ifc-lite/geometry` runs its parallel geometry worker pool only when `SharedArrayBuffer` and Web Workers are available and the device has more than one core:
 
 ```typescript
 // Check if SharedArrayBuffer is available
@@ -126,11 +126,14 @@ if (typeof SharedArrayBuffer === 'undefined') {
 ```
 
 !!! note "Cross-Origin Isolation"
-    SharedArrayBuffer requires cross-origin isolation headers:
+    SharedArrayBuffer requires cross-origin isolation headers. The hosted
+    viewer and its dev server send:
     ```
     Cross-Origin-Opener-Policy: same-origin
-    Cross-Origin-Embedder-Policy: require-corp
+    Cross-Origin-Embedder-Policy: credentialless
     ```
+    `Cross-Origin-Embedder-Policy: require-corp` also isolates the page, but
+    then every cross-origin resource must opt in with CORS or CORP headers.
 
 ## Feature Detection Example
 

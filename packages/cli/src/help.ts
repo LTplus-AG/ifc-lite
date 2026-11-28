@@ -93,7 +93,7 @@ export function buildHelp(version: string): string {
     simplify  <file.ifc> --out F [--level 1..5] [--ids 1,2,...] [--json]  Demesher: simplify meshes, write lighter IFC
     mcp       [files…] [--transport stdio|http] Start an MCP server (files load over stdio)
               install --client <claude-code|claude-desktop|cursor|vscode> [--dry-run]  Add the MCP server to a client's config
-    ext       validate <path>|init <dir>          Manage IFClite extensions (Phase 0 — validate, init)
+    ext       <subcommand> [args]                Manage IFClite extensions: validate, init, keygen, pack, sign, verify, test, capabilities ("ext --help")
     layer     <publish|diff|merge|log|bake|...>    Layered change tracking over a local store (.ifc-lite/)
     ref       <list|create|move|protect>           Manage named refs in the layer store
     oci       push <oci://host/repo:tag> <model.ifc>  Publish an IFC file to an OCI registry (any model argument may also be oci://...)

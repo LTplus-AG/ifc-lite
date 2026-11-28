@@ -59,12 +59,16 @@ cmake --build build/smlib --parallel 4
 ctest --test-dir build/smlib --output-on-failure
 ```
 
-CTest runs three tests:
+A native build registers six CTest tests (`smlib_worker_framing` only when
+Python 3 is found):
 
 | Test | Executable | Purpose |
 | --- | --- | --- |
 | `smlib_owned_boundary` | `ifclite_smlib_tests` | C ABI: analytic volumes/manifold status, 60 repeated copy/operate/release transactions, operand preservation on success and failure, slot reuse, stale/cross-session rejection, session teardown, invalid dimensions/origins, bounded error text, strict tessellation with independent mesh checks, and raw shared-context metadata preservation across checked copies. A pure C translation unit verifies the public header and ABI sizes. |
 | `smlib_copy_failure_boundary` | `ifclite_smlib_copy_failure_tests` | Deterministic virtual trim-copy failure on a real box: checked `MergeBrep` failure is terminal, never a partial success. Runs alone because it taints its process. |
+| `smlib_affine_failure_boundary` | `ifclite_smlib_copy_failure_tests affine` | A failed affine copy taints its own process, separately from the copy lane. |
+| `smlib_retained_sweeps` | `ifclite_smlib_sweep_tests` | Staged authored recipes against the actual SDK: regions, full circles, trims and disks. |
+| `smlib_retained_polyhedra` | `ifclite_smlib_polyhedron_tests` | Staged format-3 polyhedron recipes (closed solids from authored triangles). |
 | `smlib_worker_framing` | `ifclite_smlib_worker` | Subprocess framing against real box geometry, plus malformed/truncated/oversized frames. |
 
 These checks exercise the boundary; they do not qualify real IFC coverage or every
@@ -244,12 +248,18 @@ handles.
 | 15 | Sweep commit | u64 session, u64 upload | handle |
 | 16 | Sweep abort | u64 session, u64 upload | empty |
 | 17 | Rigid copy | u64 session, handle, 16 f64 column-major matrix | handle |
+| 18 | Affine copy | u64 session, handle, 16 f64 column-major matrix | handle, u32 certificate version, u32 representation, 12 u32 source-class counts |
+| 19 | Is empty | u64 session, handle | u32 boolean (0/1) |
 
 Capability bit 0 (value 1) reports staged recipe format 1, bit 1 (value 2)
 format 2, and bit 3 (value 8) opcode 17: copy a retained solid, then transform
-the copy by a validated proper rigid frame. Capability reports implementation,
-never qualification. Opcode numbers 18+ are reserved for later extensions and
-are rejected as unknown in this version.
+the copy by a validated proper rigid frame. Bit 4 (value 16) reports opcode 18,
+a bounded general affine copy into a rational BRep with a source-class
+certificate; bit 5 (value 32) reports opcode 19, the semantic empty query; bit 6
+(value 64) reports staged recipe format 3 (a closed polyhedron). The limits and
+refusal statuses are specified in `include/ifclite_smlib.h`. Capability reports
+implementation, never qualification. Higher opcode numbers are rejected as
+unknown in this version.
 
 ## Staged authored recipes
 
@@ -270,6 +280,9 @@ interprets IFC. The byte formats are specified in `include/ifclite_smlib.h`.
   with its original control points, weights, knots and parameter trim. Hollow
   disks and closed paths are refused as unsupported. The solid publishes only
   when it is manifold with positive volume.
+- **Format 3**: one closed polyhedral solid from authored triangles, one planar
+  face per triangle, stitched (`src/polyhedron.cpp`). Open or non-manifold
+  shells are refused.
 
 One upload is active per session, bounded to 1 MiB, 8192 curves and 128 loops.
 Chunks are sequential; an invalid chunk discards the upload. Every commit with

@@ -15,6 +15,12 @@ Format v25 keeps each mesh's optional `shadingColor`, pre-placement
 fields stay absent; a pre-v25 entry reads them as unknown and is rebuilt once
 through the versioned cache key.
 
+Format v26 and v28 invalidate older relationship graphs through the versioned
+cache key (v26 changes no bytes; v28 adds the parser relationship-coverage
+trailer to the entity-index section). Format v27 adds the optional IfcSite
+world origin (`CoordinateInfo.siteOrigin`). The current version is the exported
+`FORMAT_VERSION`; [`SPEC.md`](./SPEC.md) lists every version.
+
 ## Installation
 
 ```bash
@@ -111,6 +117,10 @@ Version 19 preserves explicitly supplied canonical `MeshData.appearanceSource` p
 Version 20 appends the optional exact WASM RTC producer frame to `CoordinateInfo`, including an authoritative `needsShift: false` and a meaningful `true` frame at the zero origin. Direct reads of v13–v19 geometry remain supported with this provenance absent; it is never inferred from the older applied-only `wasmRtcOffset` field. Frame-present records strictly validate finite coordinates, the boolean decision, and offset consistency. Frame-absent records preserve legacy numeric offset values (including old non-finite values) for compatibility, without treating them as exact provenance.
 
 The viewer includes `FORMAT_VERSION` in its cache key, so older entries reparse once and receive real provenance from the canonical geometry pipeline. Direct readers can still decode v13–v19 records for viewing, with metadata introduced by newer versions absent. When reading an older geometry header directly, pass its version as the second argument to `readGeometryHeadV13(reader, version)`; it defaults to the current format. Keep the returned chunk metadata when calling `decodeGeometryChunk`, since it carries the shared source-index pool. This does not add UV/image caching: texture-carrying viewer models retain their existing cache bypass.
+
+## Inflating chunks off the main thread
+
+`@ifc-lite/cache/chunk-inflate-pool` is a separate entry, so a browser host can load it lazily. `ChunkInflatePool` inflates a cache hit's compressed geometry chunks on a few workers; pass `pool.inflate` to `openGeometryChunksV13`. Output is byte-identical to `inflateRaw`. A worker failure falls back to inflating on the calling thread; a chunk that does not inflate there either rejects with `CorruptChunkError`, so the caller can delete the entry and parse fresh.
 
 ## Source-hash contract (and `omitSourceHash`)
 

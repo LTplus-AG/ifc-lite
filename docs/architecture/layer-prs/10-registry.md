@@ -21,7 +21,7 @@ Multi-model sessions (04 §4.2) render as one logical PR. Cross-org federation (
 
 Per ref: required checks (IDS specs by digest), minimum reviewers, signature requirements, author-kind rules (e.g. agent-authored layers always need one human approval), risk-tier rules (red-tier ops never auto-merge), and **auto-merge**: conflict-free + all-green + in-policy layers merge unattended. Auto-merge is what makes the nightly model-gardener agent (06 §6.5) safe to ship.
 
-As shipped, `RefPolicy` (`packages/merge/src/ref-flow.ts`) has `requireHumanApproval`, `requiredChecks` and `autoMerge` only. Minimum reviewer counts, signature requirements, author-kind rules and risk-tier rules are still design.
+As shipped, `RefPolicy` (`packages/merge/src/ref-flow.ts`) has `requireHumanApproval`, `requiredChecks` and `autoMerge` only. `requireHumanApproval` is the one author-kind rule: the local flow applies it to agent-authored candidates, and the registry applies it to every candidate on the ref, from a principal other than the author, since `author.kind` is self-asserted (`packages/collab-server/src/layer-registry-route.ts`). Minimum reviewer counts, signature requirements, other author-kind rules and risk-tier rules are still design.
 
 ## 10.5 Visibility
 

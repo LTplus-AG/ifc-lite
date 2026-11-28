@@ -20,10 +20,12 @@ export function placementCoordinateInfo(source: CoordinateInfo | undefined,
       if (!model.visible) continue;
       const handle = model.pointCloudHandleId === undefined ? undefined : { id: model.pointCloudHandleId };
       const modelIndex = indices.get(id);
-      const live = modelIndex === undefined ? undefined : renderer?.getModelPlacementBounds(modelIndex, handle);
+      const translation = toRenderTranslation(displayedTranslation(placement, id));
+      const live = modelIndex === undefined ? undefined
+        : renderer?.getModelPlacementBounds(modelIndex, handle, handle ? undefined : translation);
       const bounds = live ?? model.geometryResult?.coordinateInfo?.shiftedBounds;
       if (!bounds) continue;
-      const delta = live ? [0, 0, 0] : toRenderTranslation(displayedTranslation(placement, id));
+      const delta = live ? [0, 0, 0] : translation;
       for (const [axis, index] of [['x', 0], ['y', 1], ['z', 2]] as const) {
         if (!Number.isFinite(bounds.min[axis]) || !Number.isFinite(bounds.max[axis])) continue;
         min[axis] = Math.min(min[axis], bounds.min[axis] + delta[index]);

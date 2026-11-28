@@ -1,5 +1,34 @@
 # @ifc-lite/parser
 
+## 11.1.0
+
+### Minor Changes
+
+- [#11583](https://github.com/LTplus-AG/ifc-lite/pull/11583) [`9b9980f`](https://github.com/LTplus-AG/ifc-lite/commit/9b9980f0718a68e95a7a435b8d82355cbd92892f) Thanks [@louistrue](https://github.com/louistrue)! - MCP: add `model_merge`, `model_convert`, `model_extract`, `model_anonymize`, `model_simplify` and `model_lod`, the CLI's model transforms. Each writes to `file_path` (replacing a file already there, never a loaded model's source) and declares a title, annotations and an `outputSchema`; tools can now declare `outputSchema` in `tools/list`.
+  
+  `@ifc-lite/export` now holds the raw STEP subset engine behind `ifc-lite extract-entities` (`parseStep`, `selectSubsetSeeds`, `buildSubset`, `serializeSubset`, and `SubsetSelectionError` for selectors that match nothing), so the CLI and MCP share one implementation.
+  
+  `ifc-lite extract-entities --storey` now matches the storey's decoded Name exactly, then its LongName (doubled quotes, `\X2\` escapes and raw UTF-8 included), instead of any quoted text in the record, refuses a name two storeys share, reads a bare number that is no storey id as a name, and selects the storey plus its elements by spatial ownership: contained in it or in a space it aggregates (openings and assembly parts follow their host), with the placement chain deciding only for elements no storey owns. Elements assigned to one storey stay with that storey even if another storey shares its placement. Unassigned elements can match both.
+  
+  The subset parser treats `/* */` comments as trivia (between records, inside records and around references), finds `DATA;` outside header strings, and reads a record that follows `DATA;` on the same line. Void, fill and projection relations are kept with their host.
+  
+  The parser exports `detectSchemaVersion` for header-based schema resolution without a full parse. CLI extraction uses this resolver for subtype and placement selection.
+
+### Patch Changes
+
+- [#11691](https://github.com/LTplus-AG/ifc-lite/pull/11691) [`73932d9`](https://github.com/LTplus-AG/ifc-lite/commit/73932d9ef6e2798f35fdbe9234f1d4303eb5d9be) Thanks [@louistrue](https://github.com/louistrue)! - `quantitySiScale` now scales an `IfcQuantityWeight` or `IfcQuantityTime` without its own `Unit` by the project's `MASSUNIT`/`TIMEUNIT`. It returned `1` for both, so a value in a tonne or minute project was read as kilograms or seconds when converted to SI, compared across files, or re-expressed in project units for lists ([#11469](https://github.com/LTplus-AG/ifc-lite/issues/11469)).
+
+- [#11593](https://github.com/LTplus-AG/ifc-lite/pull/11593) [`1933a79`](https://github.com/LTplus-AG/ifc-lite/commit/1933a79c74a9bc218d39241fdfe8eb719fb9d0d7) Thanks [@louistrue](https://github.com/louistrue)! - Allow strict project unit reads from saved IFC data when no mutation view is active.
+
+- [#11490](https://github.com/LTplus-AG/ifc-lite/pull/11490) [`7f1c9e9`](https://github.com/LTplus-AG/ifc-lite/commit/7f1c9e9e528a6eeab0c17014253a1eaea9697b16) Thanks [@petruconduraru](https://github.com/petruconduraru)! - `spatialHierarchy.elementToStorey` now names the storey of an element contained in an `IfcSpace` (or `IfcSpatialZone`) that the storey aggregates, and of that element's aggregated parts. Before, only elements the storey contained directly were mapped, so the same element had a storey after an edit and none on the parsed model.
+  
+  The server's Rust data model (`element_to_storey` in `ifc-lite-processing`) applies the same rule, so server-parsed models answer the same: direct storey containment still wins, and a space reached through another space counts. An element reached through spaces on more than one storey (a malformed file) goes to the lowest storey express id on both paths, and the server now also maps the aggregated parts of a directly contained element to its storey, as the parser already did. In `@ifc-lite/rules`, the `storey in` prefilter used by AND queries now holds every element `elementToStorey` puts on the storey, so AND and OR return the same elements.
+
+- [#11633](https://github.com/LTplus-AG/ifc-lite/pull/11633) [`fd6e711`](https://github.com/LTplus-AG/ifc-lite/commit/fd6e711848eb8a1bb73ecacbab23ab796c0cdb90) Thanks [@louistrue](https://github.com/louistrue)! - Loading a saved IFC file with `IfcProject.UnitsInContext` set to `$` now uses SI defaults in both source and view-backed reads. Explicitly clearing the assignment during editing keeps the unit context unavailable until the saved file is reopened or units are reassigned.
+- Updated dependencies [[`cfbec1d`](https://github.com/LTplus-AG/ifc-lite/commit/cfbec1d35a0e4b8d732b4250e6f75bfe4a5117a7), [`8b794d8`](https://github.com/LTplus-AG/ifc-lite/commit/8b794d852d7dafe16eacbd5509c38c145582140d), [`8b794d8`](https://github.com/LTplus-AG/ifc-lite/commit/8b794d852d7dafe16eacbd5509c38c145582140d), [`001b137`](https://github.com/LTplus-AG/ifc-lite/commit/001b137c5ebcef02d7653d3a97df718e392716a9), [`74b0c13`](https://github.com/LTplus-AG/ifc-lite/commit/74b0c13f5ee7c94c991b14c3f649c0a76d28f7a6), [`5b10823`](https://github.com/LTplus-AG/ifc-lite/commit/5b108238fd16733b401dc080b744fc51e522ca6a), [`8d1fbf1`](https://github.com/LTplus-AG/ifc-lite/commit/8d1fbf13e6a7b5182113139b401f4df8c937bae0), [`7f1c9e9`](https://github.com/LTplus-AG/ifc-lite/commit/7f1c9e9e528a6eeab0c17014253a1eaea9697b16)]:
+  - @ifc-lite/wasm@14.0.0
+  - @ifc-lite/data@7.1.0
+
 ## 11.0.1
 
 ### Patch Changes

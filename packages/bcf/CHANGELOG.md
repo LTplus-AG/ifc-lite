@@ -1,5 +1,15 @@
 # @ifc-lite/bcf
 
+## 6.0.0
+
+### Major Changes
+
+- [#11483](https://github.com/LTplus-AG/ifc-lite/pull/11483) [`6e8b8a0`](https://github.com/LTplus-AG/ifc-lite/commit/6e8b8a0bc0213c76bbc0641862a80413f641039e) Thanks [@petruconduraru](https://github.com/petruconduraru)! - Write BCF 3.0 `Guid` attributes (Topic, Comment, Viewpoint, RelatedTopic, DocumentReference, viewpoint file) and `<DocumentGuid>` in lowercase hex. BCF 3.0 `shared-types.xsd` accepts only lowercase, so a project read from a 2.1 archive with uppercase GUIDs wrote a 3.0 archive that failed schema validation. The 3.0 writer now throws when two topic guids, or two comment, viewpoint or document-reference guids within one topic, differ only by case, since lowercasing would merge them. BCF 2.1 output is unchanged.
+
+### Patch Changes
+
+- [#11552](https://github.com/LTplus-AG/ifc-lite/pull/11552) [`f9ad478`](https://github.com/LTplus-AG/ifc-lite/commit/f9ad4788b243aec5025e77288592692026261d5c) Thanks [@louistrue](https://github.com/louistrue)! - BCF 3.0 writer no longer emits an empty `<Comment>` text or empty `<Label>`, which the official markup.xsd rejects (both are non-empty strings but optional elements). A viewpoint-only comment is written without a text element and keeps its viewpoint reference; blank labels are dropped. BCF 2.1 output is unchanged.
+
 ## 5.2.3
 
 ### Patch Changes

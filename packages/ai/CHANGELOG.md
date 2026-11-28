@@ -1,5 +1,12 @@
 # @ifc-lite/ai
 
+## 0.2.4
+
+### Patch Changes
+
+- Updated dependencies [[`85303b7`](https://github.com/LTplus-AG/ifc-lite/commit/85303b7953440b66b43aaa5653aa8dcb0181121a), [`7899ace`](https://github.com/LTplus-AG/ifc-lite/commit/7899ace0390b09956df2c52086d71793d24b1bbe), [`52b0440`](https://github.com/LTplus-AG/ifc-lite/commit/52b0440a96cb8af6b0430456e4770d45e4737c8c), [`99ef479`](https://github.com/LTplus-AG/ifc-lite/commit/99ef479bfd922dd2257357a1b59def1c42c5057c), [`b0e48c5`](https://github.com/LTplus-AG/ifc-lite/commit/b0e48c55aecb80f7680ce78064cb4f01c77635e1), [`88a28fe`](https://github.com/LTplus-AG/ifc-lite/commit/88a28fee98fa5b78f127834e8eda952f70b841a3), [`8465f08`](https://github.com/LTplus-AG/ifc-lite/commit/8465f086e3510e903440dbbf6e17acacbfbacd60), [`96e3cbb`](https://github.com/LTplus-AG/ifc-lite/commit/96e3cbbdc96250426966346a278f75596fcce309), [`9b9980f`](https://github.com/LTplus-AG/ifc-lite/commit/9b9980f0718a68e95a7a435b8d82355cbd92892f), [`0f03408`](https://github.com/LTplus-AG/ifc-lite/commit/0f0340808f474c498d462889a4d5b8874622638b), [`2d8aea8`](https://github.com/LTplus-AG/ifc-lite/commit/2d8aea843a38cc7c9f6e3aeab7926c3e9f92725d), [`44a4c34`](https://github.com/LTplus-AG/ifc-lite/commit/44a4c34bb16d90c54cfa4d2fb445e3e02abe9d24), [`19390b0`](https://github.com/LTplus-AG/ifc-lite/commit/19390b0bc5754707cf303bfbfbfe467c6933bcb6), [`650d7ab`](https://github.com/LTplus-AG/ifc-lite/commit/650d7abe64d9726670ecbf882332b69f7a02a01f), [`d5f0c37`](https://github.com/LTplus-AG/ifc-lite/commit/d5f0c3780bf12d2f85b6b8c561bd6d35cb73bd0c), [`907fdea`](https://github.com/LTplus-AG/ifc-lite/commit/907fdea1aac6bef209635d7dee2ba0cb8c283dad), [`b87ec15`](https://github.com/LTplus-AG/ifc-lite/commit/b87ec15fc30de65d3802e2f02ef94a4d21f75839), [`b36e49c`](https://github.com/LTplus-AG/ifc-lite/commit/b36e49c3ec69dc6d5fda3be3624fc6e456eb0909), [`a3c9e30`](https://github.com/LTplus-AG/ifc-lite/commit/a3c9e30b544db1fb3958615077b3da550d56a9ce)]:
+  - @ifc-lite/export@7.0.0
+
 ## 0.2.3
 
 ### Patch Changes

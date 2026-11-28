@@ -1,5 +1,17 @@
 # @ifc-lite/mutations
 
+## 4.2.0
+
+### Minor Changes
+
+- [#11640](https://github.com/LTplus-AG/ifc-lite/pull/11640) [`a141685`](https://github.com/LTplus-AG/ifc-lite/commit/a141685c39b2a21131d0fcb6a118dede637b64d5) Thanks [@louistrue](https://github.com/louistrue)! - Expose whether a mutation view has a source for property reads, so drawing consumers can supply the parsed base while applying edits and deletions.
+
+### Patch Changes
+
+- [#11627](https://github.com/LTplus-AG/ifc-lite/pull/11627) [`8d1fbf1`](https://github.com/LTplus-AG/ifc-lite/commit/8d1fbf13e6a7b5182113139b401f4df8c937bae0) Thanks [@louistrue](https://github.com/louistrue)! - An edited quantity keeps its own `Unit`: `MutablePropertyView.getQuantitiesForEntity` now carries the base quantity's `explicitUnit`, `explicitUnitSiScale` and `explicitUnitUnresolved` through a value edit, so displays keep labelling it in that unit. They are dropped when the edit removes the unit, names its own unit or changes the quantity type.
+- Updated dependencies [[`8d1fbf1`](https://github.com/LTplus-AG/ifc-lite/commit/8d1fbf13e6a7b5182113139b401f4df8c937bae0), [`7f1c9e9`](https://github.com/LTplus-AG/ifc-lite/commit/7f1c9e9e528a6eeab0c17014253a1eaea9697b16)]:
+  - @ifc-lite/data@7.1.0
+
 ## 4.1.0
 
 ### Minor Changes

@@ -1,5 +1,14 @@
 # @ifc-lite/ids-authoring
 
+## 0.3.8
+
+### Patch Changes
+
+- [#11812](https://github.com/LTplus-AG/ifc-lite/pull/11812) [`b8a0d0f`](https://github.com/LTplus-AG/ifc-lite/commit/b8a0d0f47c152ed38d057d304afef94ddd43c24f) Thanks [@louistrue](https://github.com/louistrue)! - The IDSL-SPEC-006 lint rule's rationale no longer refers to an `IDSL-SPEC-004` rule that does not exist. It now says that no lint rule checks partially overlapping specifications.
+- Updated dependencies [[`740054e`](https://github.com/LTplus-AG/ifc-lite/commit/740054e2e8c4a4671cbe341e881c8db2205270f9), [`8d1fbf1`](https://github.com/LTplus-AG/ifc-lite/commit/8d1fbf13e6a7b5182113139b401f4df8c937bae0), [`7f1c9e9`](https://github.com/LTplus-AG/ifc-lite/commit/7f1c9e9e528a6eeab0c17014253a1eaea9697b16)]:
+  - @ifc-lite/ids@4.0.0
+  - @ifc-lite/data@7.1.0
+
 ## 0.3.7
 
 ### Patch Changes

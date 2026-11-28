@@ -1,8 +1,11 @@
 # Plato code generation for shared Rust/TypeScript math
 
-Status: shipped as a contained pilot on the clash math kernel (this branch).
-The exploratory spike artifacts (bounds parity demo, standalone validation
-harnesses) live on branch `spike/plato-investigation` under `tools/plato-spike/`.
+Status: shipped on `main` as a contained pilot on the clash math kernel
+(`tools/plato/`, generated outputs under `rust/clash/src/generated/` and
+`packages/clash/src/math/generated/`). The exploratory spike artifacts (bounds
+parity demo, standalone validation harnesses) were never merged: they lived on
+branch `spike/plato-investigation` under `tools/plato-spike/`, which is not
+published on `origin`. Paths below under `tools/plato-spike/` refer to that branch.
 Dates: spike 2026-07-09, production integration 2026-07-10.
 
 ## What Plato is
@@ -164,7 +167,7 @@ Rust (generated code behind `[f64;3]` adapters, harness in
 Both harnesses re-verified in place on the spike branch (cargo test: 13/13;
 fuzz verdict PASS).
 
-## Production integration (this branch)
+## Production integration (on main)
 
 - Single source: `tools/plato/clash_math.plato` (+ `scaffold.plato`).
 - Committed generated outputs: `rust/clash/src/generated/plato.rs` and

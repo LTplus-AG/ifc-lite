@@ -42,9 +42,11 @@ In all three runs, every held byte was reachable from both `store.models` and th
 The viewer has two scene-side release entry points and a separate store-side release:
 
 - **Ephemeral path** (the one the viewer wires): `Scene.setEphemeralStreamingMode(true)` before streaming, `finishEphemeralStreaming()` at stream end, then `onGeometryReleased` calls the store's `releaseGeometryMemory`, which calls `releaseCpuMeshBuffers` (`apps/viewer/src/lib/geometry-cpu-release.ts`).
-- **Explicit path**: `Scene.releaseGeometryData()` after a normal finalize. Only tests call it.
+- **Explicit path**: `Scene.releaseGeometryData()` after a normal finalize. When this audit was written only tests called it; since #11512 the opt-in GPU-only residency below calls it.
 
-**Nothing can turn either on today.** `setBoundedGeometryMode` has one caller, with `false` (`useIfcLoader.ts`). `ViewportContainer.tsx` passes `releaseGeometryAfterStream={false}` as a literal, and the embed viewer omits it (default `false`), so `useGeometryStreaming` always calls `setEphemeralStreamingMode(false)` and the branch that calls `finishEphemeralStreaming` and `onGeometryReleased` is unreachable. There is no URL flag, environment variable, setting or size condition. The enabling calls were removed on 2026-06-07 with the desktop app (#992) and the single load path (#975).
+**Nothing turned either on when this audit was written.** `setBoundedGeometryMode` has one caller, with `false` (`useIfcLoader.ts`). `ViewportContainer.tsx` passes `releaseGeometryAfterStream={false}` as a literal, and the embed viewer omits it (default `false`), so `useGeometryStreaming` always calls `setEphemeralStreamingMode(false)` and the branch that calls `finishEphemeralStreaming` and `onGeometryReleased` is unreachable. There is no URL flag, environment variable, setting or size condition. The enabling calls were removed on 2026-06-07 with the desktop app (#992) and the single load path (#975).
+
+**Since #11512: opt-in GPU-only residency.** `?perf.gpuOnly=on|auto` (off by default; `auto` arms it for sources of at least `GPU_ONLY_AUTO_BYTES`, 64 MiB) arms a single primary load: the controller calls `setBoundedGeometryMode(true)`, mirrors the stream into a live-geometry backing, and once the load has settled and the backing verifies, `releaseVerifiedGeometry` (`apps/viewer/src/lib/geometry-backing/active-backing.ts`) releases the store's arrays (`releaseCpuMeshBuffers`) and the scene's (`releaseGeometryData`). Consumers then read geometry back on demand. A load whose backing fails, or that a second model joins before release, keeps its CPU geometry (`apps/viewer/src/lib/geometry-backing/gpu-only-residency.ts`). The Viewport prop path above is still wired off.
 
 ### What it would free
 

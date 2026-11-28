@@ -29,6 +29,9 @@ export function evaluatePr(io, { pr, headSha, mainTip, ceilings, globs, measured
     let prMeasured = replay?.families ?? null;
     measured ??= prRun ? null : readMeasured?.();
     if (!prRun && measured) {
+      if (measured.families.filter((family) => family.family === 'bundle').length !== 1) {
+        throw new Error('the in-run measurement directory must contain exactly one valid bundle measurement');
+      }
       prMeasured = measured.families.map(slim);
       record.testedBase = io.mergeParents(measured.mergeSha, headSha);
     } else if (!prRun && (rel.perf || rel.rust)) {

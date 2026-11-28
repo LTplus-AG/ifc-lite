@@ -300,6 +300,29 @@ ct('run #11350: the documented in-run CLI resolves an absent base against the su
   assert.equal(malformed.rows[0].reasons[0].split(':')[0], 'harness');
 });
 
+ct('run #11350: in-run native measurements require a valid bundle', (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'base-stale-native-only-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const native = { ...fam(10), family: 'native-instructions' };
+  const nativeCeiling = { family: native.family, entries: ceilings.get('bundle').entries };
+  writeFileSync(join(dir, 'native-instructions.json'), JSON.stringify(native));
+  const evaluate = () => runFake({
+    opts: { mode: 'in-run', pr: 5, headSha: 'head5', mergeSha: 'cafe0000001', measuredDir: dir },
+    ioOver: {
+      prFiles: () => ['rust/core/src/a.rs'],
+      mainTip: () => 'base0000001',
+      ceilingsAt: () => new Map([...ceilings, [native.family, nativeCeiling]]),
+    },
+  }).rows[0];
+  const incomplete = evaluate();
+  assert.equal(incomplete.verdict, 'unknown');
+  assert.deepEqual(incomplete.reasons, ['harness: the in-run measurement directory must contain exactly one valid bundle measurement']);
+  writeFileSync(join(dir, 'bundle.json'), JSON.stringify(fam(400)));
+  assert.equal(evaluate().verdict, 'fresh');
+  writeFileSync(join(dir, 'bundle.json'), '{');
+  assert.equal(evaluate().verdict, 'unknown');
+});
+
 ct('run: same-head PRs keep separate evidence with the legacy switch set (#11350)', () => {
   const fresh = { ...STALE_PR, number: 6 };
   for (const prs of [[STALE_PR, fresh], [fresh, STALE_PR]]) {
@@ -482,8 +505,8 @@ ct('run #11350: budget-limited sweeps resume from the first unjudged PR', () => 
 ct('workflow #11350: a late targeted run cannot replace a newer sweep cache', (t) => {
   const workflow = parse(readFileSync(new URL('../.github/workflows/base-stale.yml', import.meta.url), 'utf8'));
   const job = workflow.jobs.judge;
-  const restore = job.steps.find((step) => step.uses?.startsWith('actions/cache/restore@'));
-  const save = job.steps.find((step) => step.uses?.startsWith('actions/cache/save@'));
+  const restore = job.steps.find((step) => step.uses?.split('@')[0] === 'actions/cache/restore');
+  const save = job.steps.find((step) => step.uses?.split('@')[0] === 'actions/cache/save');
   const judge = job.steps.find((step) => step.id === 'judge');
   const temp = mkdtempSync(join(tmpdir(), 'base-stale-overlap-'));
   t.after(() => rmSync(temp, { recursive: true, force: true }));
@@ -495,6 +518,7 @@ ct('workflow #11350: a late targeted run cannot replace a newer sweep cache', (t
       env: { ...process.env, PR, RUNNER_TEMP: runnerTemp, TRIGGER: 'test' }, encoding: 'utf8',
     }).trim().split('\n');
     const exact = key(restore.with.key, id);
+    // @source-text-assertion-ok Models GitHub's prefix matching against generated cache keys.
     const newest = [...entries].reverse().find(([candidate]) => candidate.startsWith(restore.with['restore-keys']));
     return { id, PR, opts: parseArgs(args.slice(1)), cache: entries.get(exact) ?? newest?.[1] ?? null };
   };
@@ -800,6 +824,7 @@ ct('io #11350: main measurements require a bundle and a measured tree matching t
     name, id: i + 2, created_at: '2026-11-28T00:25:00Z',
   }));
   const setup = (measuredTree, { emptyBundle = false, badIds = [], older = false } = {}) => {
+    const invalidArtifacts = new Set(badIds);
     const newer = { ...marker, id: 2, workflow_run: { ...marker.workflow_run, id: 43 } };
     const { io } = ioOverGh([
       [`repos/o/r/git/commits/${requested}`, { tree: { sha: tree } }],
@@ -816,7 +841,7 @@ ct('io #11350: main measurements require a bundle and a measured tree matching t
         const id = Number(args[1].split('/').at(-2));
         const bundle = id !== 3;
         const file = bundle && emptyBundle ? 'README.txt' : 'measurement.json';
-        writeFileSync(join(dir, file), file === 'README.txt' ? '' : badIds.includes(id) ? '{}' : JSON.stringify({
+        writeFileSync(join(dir, file), file === 'README.txt' ? '' : invalidArtifacts.has(id) ? '{}' : JSON.stringify({
           family: bundle ? 'bundle' : 'native-instructions', commit: measured,
           measuredAt: run.run_started_at, metrics: [{ id: 'eager', value: 10 }],
         }));

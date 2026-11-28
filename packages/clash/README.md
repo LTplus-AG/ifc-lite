@@ -61,25 +61,41 @@ A host that federates models as slots (one discipline model per stable slot id,
 pinned to an exact sha256 per round) can store each run and compare rounds:
 
 ```ts
-import { buildClashRunDocument, compareClashRunDocuments, carryForwardReviews, validateClashRunDocument } from '@ifc-lite/clash';
+import {
+  buildClashRunDocument,
+  carryForwardReviews,
+  compareClashRunDocuments,
+  type ClashResult,
+  type ClashReview,
+  type ClashRunDocument,
+  type ExclusionSet,
+} from '@ifc-lite/clash';
+
+declare const result: ClashResult;            // a finished run
+declare const exclusions: ExclusionSet;       // the exclusions it ran with
+declare const archModelId: string, mepModelId: string, archSha: string, mepSha: string;
+declare const previousRun: ClashRunDocument;  // the previous round, read back from storage
+declare const previousDecisions: Record<string, ClashReview>;
 
 const run = buildClashRunDocument({
-  result,                                    // a ClashResult
+  result,
+  exclusions,
   slots: [{ slot: 'arch', model: archModelId, sha256: archSha }, { slot: 'mep', model: mepModelId, sha256: mepSha }],
   labels: ['browser-submitted'],
 });
-// later, with the previous round's stored document:
-const diff = compareClashRunDocuments(previousRun, run);   // added / persistent / noLongerDetected / notComparable
+const diff = compareClashRunDocuments(previousRun, run); // added / persistent / noLongerDetected / notComparable
 const { reviews, notCarried } = carryForwardReviews(previousRun, run, previousDecisions);
+console.log(diff.summary, Object.keys(reviews).length, notCarried.length);
 ```
 
-Findings are keyed by `clashReviewKey(clash, { slotOf, ruleRevision })`: each
+Findings are keyed by `clashSlotReviewKey(clash, { slotOf, ruleRevision })`: each
 element is qualified by its slot, and the key changes when a rule keeps its id
 but changes its meaning (`clashRuleRevision`). A GlobalId repeated within one
 slot gets no key, so no decision is carried to it. A finding the next run did
 not report is "no longer detected" only when that run verifiably re-examined
-both elements under the same rule; otherwise it is "not comparable", with the
-reason. Detection change is separate from review status (open / resolved /
+both elements under the same rule and did not exclude the pair; otherwise it
+is "not comparable", with the reason. Pass `exclusions`, or every finding that
+disappears is "not comparable" (`exclusions-not-recorded`). Detection change is separate from review status (open / resolved /
 accepted). `CLASH_RUN_DOCUMENT_JSON_SCHEMA` is the document's JSON Schema; the
 viewer hands a registered host each finished run through
 `ViewerHandle.onClashRunComplete`.

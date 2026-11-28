@@ -4,10 +4,12 @@
 
 import { describe, it, expect } from 'vitest';
 import type { Clash, ClashElementRef, ClashResult, ClashRule } from './types.js';
-import { clashReviewKey, parseClashReviewKey } from './review.js';
+import { clashReviewKey, clashSlotReviewKey, parseClashReviewKey } from './review.js';
+import { makeExclusionSet, qualifiedKey } from './exclude.js';
 import {
-  buildClashRunDocument,
+  buildClashRunDocument as buildWithoutDefaults,
   clashRuleRevision,
+  type BuildClashRunDocumentInput,
   CLASH_RUN_BROWSER_SUBMITTED,
   type ClashRunSlotBinding,
 } from './run-document.js';
@@ -51,6 +53,9 @@ const slots = (archSha: string | null, structSha: string | null, archModel = 'lo
   { slot: 'struct', model: structModel, sha256: structSha },
 ];
 
+/** The fixtures here apply no exclusions, and say so. */
+const buildClashRunDocument = (input: BuildClashRunDocumentInput) => buildWithoutDefaults({ exclusions: new Set(), ...input });
+
 const slotMap = (table: Record<string, string>) => (model: string): string | undefined => table[model];
 
 describe('slot-qualified clashReviewKey', () => {
@@ -58,8 +63,22 @@ describe('slot-qualified clashReviewKey', () => {
 
   it('keeps the legacy key unchanged without options', () => {
     const c = clash(ref('m1', GUID_DUCT, 1, 'IfcDuctSegment'), ref('m1', GUID_WALL, 2));
-    expect(clashReviewKey(c)).toBe(`mep-str ${GUID_DUCT} ${GUID_WALL}`);
-    expect(parseClashReviewKey(clashReviewKey(c))).toEqual({ format: 'legacy', rule: 'mep-str', a: GUID_DUCT, b: GUID_WALL });
+    // Sorted: the wall's GlobalId orders first.
+    expect(clashReviewKey(c)).toBe(`mep-str ${GUID_WALL} ${GUID_DUCT}`);
+    expect(parseClashReviewKey(clashReviewKey(c))).toEqual({ format: 'legacy', rule: 'mep-str', a: GUID_WALL, b: GUID_DUCT });
+    // Callers hand it straight to Array.prototype.map, which passes the index as a second argument.
+    const other = clash(ref('m1', GUID_BEAM, 3), ref('m1', GUID_WALL, 2));
+    expect([c, other].map(clashReviewKey)).toEqual([clashReviewKey(c), clashReviewKey(other)]);
+  });
+
+  it('hashes explicit membership unless a durable description is given', () => {
+    const members: ClashRule = { ...RULE, membersA: ['m:1'] };
+    const wider: ClashRule = { ...RULE, membersA: ['m:1', 'm:2'] };
+    expect(clashRuleRevision(members, SETTINGS)).not.toBe(clashRuleRevision(wider, SETTINGS));
+    expect(clashRuleRevision(members, SETTINGS)).not.toBe(revision);
+    // A durable filter description replaces the per-load lists.
+    expect(clashRuleRevision(members, SETTINGS, 'filter:walls')).toBe(clashRuleRevision(wider, SETTINGS, 'filter:walls'));
+    expect(clashRuleRevision(members, SETTINGS, 'filter:walls')).not.toBe(clashRuleRevision(members, SETTINGS, 'filter:slabs'));
   });
 
   it('separates the same model opened in two slots', () => {
@@ -69,8 +88,8 @@ describe('slot-qualified clashReviewKey', () => {
     const inFirst = clash(ref('mep', GUID_DUCT, 1), ref('first', GUID_WALL, 10));
     const inSecond = clash(ref('mep', GUID_DUCT, 1), ref('second', GUID_WALL, 20));
     expect(clashReviewKey(inFirst)).toBe(clashReviewKey(inSecond));
-    const k1 = clashReviewKey(inFirst, { slotOf, ruleRevision: revision });
-    const k2 = clashReviewKey(inSecond, { slotOf, ruleRevision: revision });
+    const k1 = clashSlotReviewKey(inFirst, { slotOf, ruleRevision: revision });
+    const k2 = clashSlotReviewKey(inSecond, { slotOf, ruleRevision: revision });
     expect(k1).not.toBeNull();
     expect(k1).not.toBe(k2);
     expect(parseClashReviewKey(k1!)).toMatchObject({ format: 'slot', rule: 'mep-str', ruleRevision: revision });
@@ -79,8 +98,8 @@ describe('slot-qualified clashReviewKey', () => {
   it('is order-independent and survives a new per-load model id in the same slot', () => {
     const before = clash(ref('load-1', GUID_DUCT, 1), ref('load-2', GUID_WALL, 2));
     const after = clash(ref('load-9', GUID_WALL, 7), ref('load-8', GUID_DUCT, 5));
-    const k1 = clashReviewKey(before, { slotOf: slotMap({ 'load-1': 'mep', 'load-2': 'arch' }), ruleRevision: revision });
-    const k2 = clashReviewKey(after, { slotOf: slotMap({ 'load-8': 'mep', 'load-9': 'arch' }), ruleRevision: revision });
+    const k1 = clashSlotReviewKey(before, { slotOf: slotMap({ 'load-1': 'mep', 'load-2': 'arch' }), ruleRevision: revision });
+    const k2 = clashSlotReviewKey(after, { slotOf: slotMap({ 'load-8': 'mep', 'load-9': 'arch' }), ruleRevision: revision });
     expect(k1).toBe(k2);
   });
 
@@ -91,14 +110,14 @@ describe('slot-qualified clashReviewKey', () => {
     expect(clashRuleRevision(RULE, { ...SETTINGS, tolerance: 0.01 })).not.toBe(revision);
     const c = clash(ref('a', GUID_DUCT, 1), ref('b', GUID_WALL, 2));
     const slotOf = (m: string) => m;
-    expect(clashReviewKey(c, { slotOf, ruleRevision: revision }))
-      .not.toBe(clashReviewKey(c, { slotOf, ruleRevision: clashRuleRevision(changed, SETTINGS) }));
+    expect(clashSlotReviewKey(c, { slotOf, ruleRevision: revision }))
+      .not.toBe(clashSlotReviewKey(c, { slotOf, ruleRevision: clashRuleRevision(changed, SETTINGS) }));
   });
 
   it('gives a GlobalId duplicated within a slot no key', () => {
     const c = clash(ref('a', GUID_DUCT, 1), ref('b', GUID_WALL, 2, 'IfcWall', { keyAmbiguous: true }));
-    expect(clashReviewKey(c, { slotOf: (m) => m, ruleRevision: revision })).toBeNull();
-    expect(clashReviewKey(c, { slotOf: () => undefined, ruleRevision: revision })).toBeNull();
+    expect(clashSlotReviewKey(c, { slotOf: (m) => m, ruleRevision: revision })).toBeNull();
+    expect(clashSlotReviewKey(c, { slotOf: () => undefined, ruleRevision: revision })).toBeNull();
   });
 
   it('rejects unreadable keys', () => {
@@ -239,6 +258,19 @@ describe('compareClashRunDocuments', () => {
     expect(cmp2.notComparable[0].reasons).toEqual(['slot-not-in-other-run']);
   });
 
+  it('does not call an excluded pair fixed, and fails closed without an exclusion record', () => {
+    const previous = buildClashRunDocument({ result: result([wallBeam()], [RULE], matchedAll()), slots: slots(SHA_A1, SHA_S1) });
+    const excluded = buildClashRunDocument({
+      result: result([], [RULE], matchedAll()), slots: slots(SHA_A1, SHA_S1),
+      exclusions: makeExclusionSet([[qualifiedKey('load-1', GUID_WALL), qualifiedKey('load-2', GUID_BEAM)]]),
+    });
+    expect(excluded.manifest.exclusions).toEqual([JSON.stringify([['arch', GUID_WALL], ['struct', GUID_BEAM]])]);
+    expect(compareClashRunDocuments(previous, excluded).notComparable.map((e) => e.reasons)).toEqual([['excluded-in-other-run']]);
+    const unknown = buildWithoutDefaults({ result: result([], [RULE], matchedAll()), slots: slots(SHA_A1, SHA_S1) });
+    expect(unknown.manifest.exclusions).toBeNull();
+    expect(compareClashRunDocuments(previous, unknown).notComparable.map((e) => e.reasons)).toEqual([['exclusions-not-recorded']]);
+  });
+
   it('keeps ambiguous findings out of every detection bucket', () => {
     const dup = result([wallBeam(), clash(ref('load-1', GUID_WALL, 99), ref('load-2', GUID_BEAM, 3))]);
     const previous = buildClashRunDocument({ result: dup, slots: slots(SHA_A1, SHA_S1) });
@@ -294,6 +326,16 @@ describe('carryForwardReviews', () => {
     expect(carried.carried).toEqual([{ from: legacy, to: next.findings[0].key, review: { status: 'resolved' }, via: 'legacy-key' }]);
     expect(carried.resolvedButStillDetected).toEqual([next.findings[0].key]);
     expect(carried.notCarried).toEqual([{ key: 'mep-str X Y', review: { status: 'open' }, reason: 'legacy-key-unmatched' }]);
+
+    // The same GlobalIds clashing in another slot are a different pair: a legacy key must not jump there.
+    const moved = buildClashRunDocument({
+      result: result([clash(ref('load-1', GUID_WALL, 2), ref('load-3', GUID_BEAM, 30))], [RULE],
+        [...matched, { model: 'load-3', key: GUID_BEAM, ref: 30 }]),
+      slots: [...slots(SHA_A1, SHA_S1), { slot: 'struct-ref', model: 'load-3', sha256: SHA_A2 }],
+    });
+    const jumped = carryForwardReviews(previous, moved, { [legacy]: { status: 'accepted' } });
+    expect(jumped.reviews).toEqual({});
+    expect(jumped.notCarried.map((n) => n.reason)).toEqual(['not-comparable']);
 
     const both = carryForwardReviews(previous, next, { [legacy]: { status: 'resolved' }, [next.findings[0].key!]: { status: 'accepted' } });
     expect(both.reviews).toEqual({ [next.findings[0].key!]: { status: 'accepted' } });

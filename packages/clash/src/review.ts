@@ -28,14 +28,21 @@ import { clashElementIdentity, clashPairId } from './object-identity.js';
  * instead, so a decision never leaks to another source object. Renumbering those
  * refs requires fresh review rather than guessing which repeated key was meant.
  */
-export function clashReviewKey(clash: Pick<Clash, 'rule' | 'a' | 'b'>): string;
+export function clashReviewKey(clash: Pick<Clash, 'rule' | 'a' | 'b'>): string {
+  return clashPairId(clash.rule, clashElementIdentity(clash.a), clashElementIdentity(clash.b));
+}
+
 /**
- * The slot-qualified form, for a host that federates models as stable SLOTS
- * (one discipline model per slot, pinned per coordination round). Each element
- * is keyed by `(slot, key)`, so the same file opened in two slots never shares
- * a decision, and the key carries the rule's semantic revision, so editing a
- * rule's selectors or tolerance under the same rule id never re-attaches a
- * decision taken under the old meaning.
+ * The slot-qualified review key, for a host that federates models as stable
+ * SLOTS (one discipline model per slot, pinned per coordination round). Each
+ * element is keyed by `(slot, key)`, so the same file opened in two slots never
+ * shares a decision, and the key carries the rule's semantic revision, so
+ * editing a rule's selectors or tolerance under the same rule id never
+ * re-attaches a decision taken under the old meaning.
+ *
+ * A separate function rather than a second parameter of `clashReviewKey`,
+ * because callers pass that one straight to `Array.prototype.map`, which would
+ * hand it the element index as a second argument.
  *
  * Returns `null` when either element's key is repeated within its model
  * (`keyAmbiguous`): such a pair has no identity that survives a re-run, so it
@@ -44,9 +51,7 @@ export function clashReviewKey(clash: Pick<Clash, 'rule' | 'a' | 'b'>): string;
  *
  * Old (unqualified) keys stay readable: see {@link parseClashReviewKey}.
  */
-export function clashReviewKey(clash: Pick<Clash, 'rule' | 'a' | 'b'>, options: ClashSlotKeyOptions): string | null;
-export function clashReviewKey(clash: Pick<Clash, 'rule' | 'a' | 'b'>, options?: ClashSlotKeyOptions): string | null {
-  if (!options) return clashPairId(clash.rule, clashElementIdentity(clash.a), clashElementIdentity(clash.b));
+export function clashSlotReviewKey(clash: Pick<Clash, 'rule' | 'a' | 'b'>, options: ClashSlotKeyOptions): string | null {
   if (clash.a.keyAmbiguous || clash.b.keyAmbiguous) return null;
   const slotA = options.slotOf(clash.a.model);
   const slotB = options.slotOf(clash.b.model);

@@ -12,7 +12,7 @@
  * own, what it examined: which model version sat in each slot, which rules ran
  * under which semantics, with which engine and settings, and which elements
  * each rule actually matched. That is the manifest. The findings carry
- * slot-qualified review keys (`clashReviewKey` with slot options), so a
+ * slot-qualified review keys (`clashSlotReviewKey`), so a
  * decision follows the element in its slot, never an ephemeral per-load id.
  *
  * Plain JSON only: no Maps, typed arrays or class instances, so a host can
@@ -21,8 +21,9 @@
 
 import { uuidFromSeed } from './deterministic-uuid.js';
 import { bareIfcGuid } from './export/table.js';
-import { clashReviewKey } from './review.js';
-import type { Clash, ClashDistanceKind, ClashResult, ClashReview, ClashRule, ClashSeverity, ClashStatus, Vec3 } from './types.js';
+import { decodeQualifiedPair } from './exclude.js';
+import { clashReviewKey, clashSlotReviewKey } from './review.js';
+import type { Clash, ClashDistanceKind, ExclusionSet, ClashResult, ClashReview, ClashRule, ClashSeverity, ClashStatus, Vec3 } from './types.js';
 
 /** `$id` of the run-document schema; also the document's `schema` field. */
 export const CLASH_RUN_DOCUMENT_SCHEMA_ID = 'https://ifclite.dev/schemas/clash-run/v1.json';
@@ -72,6 +73,12 @@ export interface ClashRunManifest {
   coverage: ClashRunCoverage[];
   /** Keys repeated by distinct objects within one slot: no stable identity, so no carried decision. */
   ambiguousKeys: Record<string, string[]>;
+  /**
+   * Element pairs the run was told to skip (voids/hosts, user exclusions), as
+   * `slotExclusionId`s, sorted. `null`: not recorded, so the absence of a
+   * finding cannot be told apart from an exclusion.
+   */
+  exclusions: string[] | null;
   truncated: { reason: string; droppedPairs: number } | null;
 }
 
@@ -139,12 +146,28 @@ export interface BuildClashRunDocumentInput {
   createdAt?: string;
   /** Measured intersection volumes by `Clash.id`. */
   volumes?: ReadonlyMap<string, number>;
+  /** The exclusion set the engine ran with (`ClashSettings.exclusions`). Omitted: recorded as unknown. */
+  exclusions?: ExclusionSet;
+  /**
+   * A durable description of each explicit-member rule's membership (e.g. the
+   * saved filter definition), by rule id. Without one, the member lists
+   * themselves are hashed, which are per-load refs: such a rule then compares
+   * as changed on every reload, never as unchanged by mistake.
+   */
+  ruleMemberships?: Readonly<Record<string, string>>;
   /** Review state to record, by slot-qualified key. */
   reviews?: Readonly<Record<string, ClashReview>>;
 }
 
 /** Revision of a clash whose rule is missing from `rulesRun`: compares as a changed rule. */
 const UNLISTED_RULE_REVISION = 'unlisted';
+
+/** Slot-qualified, order-independent id of an excluded element pair. */
+export function slotExclusionId(a: readonly [string, string], b: readonly [string, string]): string {
+  const ea = JSON.stringify(a);
+  const eb = JSON.stringify(b);
+  return JSON.stringify(ea < eb ? [a, b] : [b, a]);
+}
 
 /** The semantic fields of a rule as it ran: what decides which pairs it reports. */
 function ruleSemantics(rule: ClashRule, settings: ClashResult['settings']) {
@@ -163,12 +186,21 @@ function ruleSemantics(rule: ClashRule, settings: ClashResult['settings']) {
 /**
  * The semantic revision of a rule: changes when anything that decides which
  * pairs it reports changes (selectors, mode, tolerance, clearance, touch
- * reporting, void/host exclusion), and not for its name or severity. Explicit
- * member LISTS are per-load refs, so only whether a side uses them counts; a
- * host whose filters live elsewhere should pin `ruleRevisions` instead.
+ * reporting, void/host exclusion, explicit membership), and not for its name
+ * or severity.
+ *
+ * Explicit member lists (`membersA`/`membersB`) are per-load refs, so a rule
+ * that uses them should pass `membership`, a durable description of how its
+ * members were chosen (the saved filter definition). Without it the lists
+ * themselves are hashed: any membership change, and any reload, yields a new
+ * revision, which fails closed (not comparable) instead of carrying a decision
+ * across a membership change.
  */
-export function clashRuleRevision(rule: ClashRule, settings: ClashResult['settings']): string {
-  return uuidFromSeed(`clash-rule/1 ${JSON.stringify(ruleSemantics(rule, settings))}`);
+export function clashRuleRevision(rule: ClashRule, settings: ClashResult['settings'], membership?: string): string {
+  const explicit = rule.membersA !== undefined || rule.membersB !== undefined;
+  const members = !explicit ? null : membership !== undefined ? { membership }
+    : { a: rule.membersA ? [...rule.membersA].sort() : null, b: rule.membersB ? [...rule.membersB].sort() : null };
+  return uuidFromSeed(`clash-rule/1 ${JSON.stringify({ ...ruleSemantics(rule, settings), members })}`);
 }
 
 function sortedRecord(map: Map<string, Set<string>>): Record<string, string[]> {
@@ -227,7 +259,7 @@ export function buildClashRunDocument(input: BuildClashRunDocumentInput): ClashR
 
   const revisions = new Map<string, string>();
   const rules: ClashRunRule[] = result.rulesRun.map((rule) => {
-    const revision = input.ruleRevisions?.[rule.id] ?? clashRuleRevision(rule, result.settings);
+    const revision = input.ruleRevisions?.[rule.id] ?? clashRuleRevision(rule, result.settings, input.ruleMemberships?.[rule.id]);
     revisions.set(rule.id, revision);
     const { a, b, mode, tolerance, clearance, reportTouch, explicitMembers } = ruleSemantics(rule, result.settings);
     return { id: rule.id, name: rule.name, revision, a, b, mode, tolerance, clearance, reportTouch, explicitMembers };
@@ -267,7 +299,7 @@ export function buildClashRunDocument(input: BuildClashRunDocumentInput): ClashR
     const ruleRevision = revisions.get(clash.rule) ?? UNLISTED_RULE_REVISION;
     const a = endpoint(clash.a);
     const b = endpoint(clash.b);
-    const key = a.ambiguous || b.ambiguous ? null : clashReviewKey(clash, { slotOf, ruleRevision });
+    const key = a.ambiguous || b.ambiguous ? null : clashSlotReviewKey(clash, { slotOf, ruleRevision });
     const review = key !== null ? input.reviews?.[key] : undefined;
     return {
       id: clash.id,
@@ -306,8 +338,28 @@ export function buildClashRunDocument(input: BuildClashRunDocumentInput): ClashR
       settings: { tolerance: result.settings.tolerance, excludeVoidsAndHosts: result.settings.excludeVoidsAndHosts },
       coverage,
       ambiguousKeys: sortedRecord(ambiguous),
+      exclusions: input.exclusions ? recordExclusions(input.exclusions, slotByModel) : null,
       truncated: result.truncated ? { ...result.truncated } : null,
     },
     findings,
   };
+}
+
+/**
+ * Translate an engine exclusion set to slot-qualified pair ids. A pair on a
+ * model bound to no slot concerns no recorded finding and is dropped; a pair
+ * that does not decode (built with another encoding) makes the record unknown,
+ * since it could hide any pair.
+ */
+function recordExclusions(exclusions: ExclusionSet, slotByModel: ReadonlyMap<string, string>): string[] | null {
+  const ids = new Set<string>();
+  for (const pair of exclusions) {
+    const decoded = decodeQualifiedPair(pair);
+    if (!decoded) return null;
+    const [a, b] = decoded;
+    const slotA = slotByModel.get(a.model);
+    const slotB = slotByModel.get(b.model);
+    if (slotA !== undefined && slotB !== undefined) ids.add(slotExclusionId([slotA, a.key], [slotB, b.key]));
+  }
+  return [...ids].sort();
 }

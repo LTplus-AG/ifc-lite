@@ -15,6 +15,7 @@ import {
   type ClashElement,
   type ClashResult,
   type ClashRule,
+  type ExclusionSet,
 } from '@ifc-lite/clash';
 import { gatherClashElements } from '@/lib/clash/gather-elements';
 import { ClashSetFilterRefusal, withResolvedClashSetFilters } from '@/lib/clash/set-filter-resolve';
@@ -50,6 +51,7 @@ export function createClashDetection({ runEpochRef, runAbortRef, discardSolidPre
     owns: () => boolean,
     stamp: AnalysisStamp,
     request: ClashRunRequest | null,
+    hostInputs: { exclusions: ExclusionSet; tagInputs: ClashModelTagInputs | null },
   ): boolean => {
     if (!owns()) return false;
     const state = useViewerStore.getState();
@@ -64,7 +66,10 @@ export function createClashDetection({ runEpochRef, runAbortRef, discardSolidPre
     };
     const published = publish ? publish(write) : write();
     // A host that stores runs (ViewerHandle.onClashRunComplete) gets the run document; no-op otherwise.
-    if (published) notifyClashRunComplete(res, useViewerStore.getState().models);
+    if (published) {
+      const current = useViewerStore.getState();
+      notifyClashRunComplete(res, { models: current.models, presets: current.clashPresets, ...hostInputs });
+    }
     return published;
   };
   const run = async (
@@ -104,7 +109,7 @@ export function createClashDetection({ runEpochRef, runAbortRef, discardSolidPre
           if (owns()) useViewerStore.getState().setClashProgress(p);
         },
       });
-      if (!publishClashResult(federationIdentity, res, owns, stamp, request)) return;
+      if (!publishClashResult(federationIdentity, res, owns, stamp, request, { exclusions, tagInputs })) return;
       rememberModelTagInputs(res, tagInputs);
       state.setClashSelectedId(null);
       posthog.capture('clash_detection_run', {
@@ -197,7 +202,7 @@ export function createClashDetection({ runEpochRef, runAbortRef, discardSolidPre
         exclusions,
         positionTolerance: state.clashDuplicateTolerance,
       });
-      if (!publishClashResult(federationIdentity, res, owns, stamp, { kind: 'duplicates' })) return;
+      if (!publishClashResult(federationIdentity, res, owns, stamp, { kind: 'duplicates' }, { exclusions, tagInputs: null })) return;
       const sets = groupDuplicateSets(res);
       state.setClashGroups(sets);
       state.setClashSelectedId(null);

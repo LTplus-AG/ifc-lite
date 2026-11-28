@@ -43,3 +43,33 @@ export function makeExclusionSet(pairs: Iterable<[string, string]> = []): Exclus
 export function isExcluded(set: ExclusionSet, a: string, b: string): boolean {
   return set.has(pairKey(a, b));
 }
+
+/** Read one length-prefixed field at `at`; `null` when malformed. */
+function decodeField(value: string, at: number): { field: string; next: number } | null {
+  const colon = value.indexOf(':', at);
+  if (colon <= at) return null;
+  const digits = value.slice(at, colon);
+  if (!/^\d+$/.test(digits)) return null;
+  const length = Number(digits);
+  const end = colon + 1 + length;
+  return end > value.length ? null : { field: value.slice(colon + 1, end), next: end };
+}
+
+function decodeTwo(value: string): [string, string] | null {
+  const first = decodeField(value, 0);
+  const second = first && decodeField(value, first.next);
+  return first && second && second.next === value.length ? [first.field, second.field] : null;
+}
+
+/**
+ * Read a `pairKey` of two `qualifiedKey`s back into its two `{ model, key }`
+ * elements, or `null` when it is not one (an exclusion built from some other
+ * encoding). Lets a run record WHICH pairs it excluded, not just how many.
+ */
+export function decodeQualifiedPair(pair: string): [{ model: string; key: string }, { model: string; key: string }] | null {
+  const outer = decodeTwo(pair);
+  if (!outer) return null;
+  const lo = decodeTwo(outer[0]);
+  const hi = decodeTwo(outer[1]);
+  return lo && hi ? [{ model: lo[0], key: lo[1] }, { model: hi[0], key: hi[1] }] : null;
+}

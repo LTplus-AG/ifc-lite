@@ -22,7 +22,7 @@
  */
 
 import { parseClashReviewKey } from './review.js';
-import type { ClashRunDocument, ClashRunFinding } from './run-document.js';
+import { slotExclusionId, type ClashRunDocument, type ClashRunFinding } from './run-document.js';
 import type { ClashReview } from './types.js';
 
 /** Why a finding cannot be placed in added / persistent / no longer detected. */
@@ -39,6 +39,10 @@ export type ClashRunNotComparableReason =
   | 'element-not-examined'
   /** The next run's coverage does not list the elements it examined, and a slot model changed. */
   | 'coverage-not-recorded'
+  /** The other run was told to skip this element pair (void/host or user exclusion). */
+  | 'excluded-in-other-run'
+  /** The next run did not record its exclusions, so the pair may have been skipped rather than cleared. */
+  | 'exclusions-not-recorded'
   /** The other run hit its candidate cap, so absence there proves nothing. */
   | 'run-truncated';
 
@@ -125,6 +129,9 @@ export function compareClashRunDocuments(previous: ClashRunDocument, next: Clash
     if (!otherRule) reasons.push('rule-not-in-other-run');
     else if (otherRule.revision !== finding.ruleRevision) reasons.push('rule-revision-changed');
     if (other.manifest.truncated) reasons.push('run-truncated');
+    const exclusionId = slotExclusionId([finding.a.slot, finding.a.key], [finding.b.slot, finding.b.key]);
+    if (other.manifest.exclusions?.includes(exclusionId)) reasons.push('excluded-in-other-run');
+    else if (side === 'previous' && other.manifest.exclusions === null) reasons.push('exclusions-not-recorded');
     // A key the other run saw repeated in its slot has no identity there either.
     for (const end of [finding.a, finding.b]) {
       if (other.manifest.ambiguousKeys[end.slot]?.includes(end.key) && !reasons.includes('ambiguous-identity')) reasons.push('ambiguous-identity');
@@ -210,8 +217,9 @@ export interface ClashReviewCarryForward {
  * Apply review decisions taken on `previous` to `next`, by key. `decisions`
  * defaults to the reviews recorded on `previous`'s findings. Slot-qualified
  * keys carry only to a `persistent` match; a legacy key (from a store that
- * predates slots) carries only when exactly one comparable next finding has
- * it as its `legacyKey`. Everything else is reported in `notCarried`.
+ * predates slots) carries only onto a persistent pair: exactly one next
+ * finding has it as its `legacyKey`, and every previous finding with that
+ * legacy key is the same slot-qualified pair. Everything else is reported in `notCarried`.
  */
 export function carryForwardReviews(
   previous: ClashRunDocument,
@@ -248,7 +256,13 @@ export function carryForwardReviews(
     result.carried.push({ from, to, review: { ...review }, via });
     if (review.status === 'resolved') result.resolvedButStillDetected.push(to);
   };
-  const comparableNext = new Set([...persistentByPrevKey.values()].flat().map((f) => f.id).concat(comparison.added.map((f) => f.id)));
+  const persistentNextIds = new Set(comparison.persistent.map(({ next: n }) => n.id));
+  const previousByLegacy = new Map<string, ClashRunFinding[]>();
+  for (const f of previous.findings) {
+    const list = previousByLegacy.get(f.legacyKey) ?? [];
+    list.push(f);
+    previousByLegacy.set(f.legacyKey, list);
+  }
 
   const keys = Object.keys(source).sort();
   const legacy: string[] = [];
@@ -267,7 +281,11 @@ export function carryForwardReviews(
   for (const key of legacy) {
     const review = source[key];
     const all = nextByLegacy.get(key) ?? [];
-    const target = all.length === 1 && all[0].key !== null && comparableNext.has(all[0].id) ? all[0].key : null;
+    // Only onto a pair the previous run also had, in the same slots: a legacy key names no slot,
+    // so the same GlobalIds in another slot must not inherit it (unique in `next` is not enough).
+    const before = previousByLegacy.get(key) ?? [];
+    const target = all.length === 1 && all[0].key !== null && persistentNextIds.has(all[0].id)
+      && before.length > 0 && before.every((f) => f.key === all[0].key) ? all[0].key : null;
     if (target !== null && Object.hasOwn(result.reviews, target)) result.notCarried.push({ key, review, reason: 'superseded' });
     else if (target !== null) carry(key, target, review, 'legacy-key');
     else if (notComparableByKey.has(key)) result.notCarried.push({ key, review, reason: 'not-comparable', reasons: notComparableByKey.get(key) });

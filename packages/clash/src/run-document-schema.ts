@@ -39,7 +39,7 @@ export const CLASH_RUN_DOCUMENT_JSON_SCHEMA = {
     labels: stringList,
     manifest: {
       type: 'object',
-      required: ['slots', 'rules', 'engine', 'settings', 'coverage', 'ambiguousKeys', 'truncated'],
+      required: ['slots', 'rules', 'engine', 'settings', 'coverage', 'ambiguousKeys', 'exclusions', 'truncated'],
       properties: {
         slots: { type: 'array', items: { type: 'object', required: ['slot', 'sha256'],
           properties: { slot: { type: 'string' }, sha256: { type: ['string', 'null'], pattern: '^[0-9a-f]{64}$' },
@@ -63,6 +63,7 @@ export const CLASH_RUN_DOCUMENT_JSON_SCHEMA = {
           properties: { rule: { type: 'string' }, matchedA: { type: 'integer' }, matchedB: { type: ['integer', 'null'] },
             candidatesExamined: { type: ['integer', 'null'] }, examined: { anyOf: [slotKeyLists, { type: 'null' }] } } } },
         ambiguousKeys: slotKeyLists,
+        exclusions: { anyOf: [stringList, { type: 'null' }] },
         truncated: { anyOf: [{ type: 'null' }, { type: 'object', required: ['reason', 'droppedPairs'],
           properties: { reason: { type: 'string' }, droppedPairs: { type: 'integer' } } }] },
       },
@@ -144,6 +145,7 @@ const documentCheck = obj({
     settings: obj({ tolerance: num, excludeVoidsAndHosts: bool }),
     coverage: list(obj({ rule: str, matchedA: int, matchedB: nint, candidatesExamined: nint, examined: nullable(keyLists) })),
     ambiguousKeys: keyLists,
+    exclusions: nullable(list(str)),
     truncated: nullable(obj({ reason: str, droppedPairs: int })),
   }),
   findings: list(obj({

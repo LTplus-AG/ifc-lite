@@ -40,6 +40,7 @@ export { groupClashes, isClusterGroupingIneffective, type GroupOptions } from '.
 export { groupDuplicateSets } from './duplicate-sets.js';
 export {
   clashReviewKey,
+  clashSlotReviewKey,
   parseClashReviewKey,
   slotPairKey,
   aggregateReviewStatus,
@@ -50,6 +51,7 @@ export {
 export {
   buildClashRunDocument,
   clashRuleRevision,
+  slotExclusionId,
   CLASH_RUN_BROWSER_SUBMITTED,
   CLASH_RUN_DOCUMENT_SCHEMA_ID,
   CLASH_RUN_DOCUMENT_VERSION,

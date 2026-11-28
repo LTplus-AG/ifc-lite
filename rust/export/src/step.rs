@@ -227,15 +227,15 @@ fn emit<W: std::io::Write>(
     let targets_ifc2x3 = crate::schema_convert::targets_ifc2x3(&schema);
 
     let (muts_by_id, mut attribute_edits_refused) = prepared_attribute_edits(opts);
+    let mut boundaries_left_out = if converting { crate::schema_space_boundary::plain_left_out(opts, content, &index, &included, &muts_by_id, &source_schema, &schema) } else { HashSet::new() };
+    let mut withheld_warnings: Vec<String> = Vec::new();
 
-    // Copy-on-write, resolved before the emit loop so the copies and the
-    // repointed referrers both go through it. Its own module: the pass has four
-    // rules now and every one of them is a file that came out wrong without it.
-    // One allocator for the copies and the property sets after them
-    // (#7682, EXPORT-STEP-9), the one `checks` drew from above.
+    // Emit copies and repointed referrers together. Share the allocator with property sets (#7682).
     let resolved = crate::step_cow::resolve(&opts.copy_on_write, content, line_of, &included, &muts_by_id, &mut ids);
     let copies_refused = resolved.refused;
     let copies = resolved.copies; flatten.note_edits(content, &copies, &muts_by_id); flatten.retain_grids(|id| included.contains(&id));
+    boundaries_left_out.extend(crate::schema_space_boundary::copied_left_out(&copies, content, &index, &muts_by_id, &source_schema, &schema));
+    checks.boundaries.restrict(&boundaries_left_out);
     let repointed = resolved.repointed;
     // #10763: the material records as this export writes them.
     checks.materials.note_step(crate::schema_convert::canon(&source_schema), content, line_of, &included, &muts_by_id, &repointed, &copies);
@@ -249,7 +249,8 @@ fn emit<W: std::io::Write>(
     // IFC2X3 places one product per placement (#9209): its records are held to adapt them.
     use std::io::Write as _;
     let temporal_buffer = crate::schema_value_forms::ValueForms::buffers_temporal_values(content, &source_schema, &schema);
-    let mut body = crate::schema_ifc2x3_placements::Body::for_conversion(&mut *out, targets_ifc2x3, temporal_buffer || checks.structural.buffers_varying(content) || checks.typed_properties.enabled, upgrading.filter(|_| may_prune_upgrade));
+    let mut body = crate::schema_ifc2x3_placements::Body::for_conversion(&mut *out, targets_ifc2x3, temporal_buffer || checks.structural.buffers_varying(content) || checks.typed_properties.enabled, upgrading.filter(|_| may_prune_upgrade || !boundaries_left_out.is_empty()));
+    for &id in &boundaries_left_out { body.note_omitted(id); }
     if targets_ifc2x3 || temporal_buffer { checks.forms.defer_temporal_values(); }
 
     let mut written = 0usize;
@@ -265,6 +266,7 @@ fn emit<W: std::io::Write>(
                     None => raw.into_owned(),
                 };
                 let Some(edited) = flatten.line(&source_schema, edited) else { continue };
+                let Some(edited) = crate::step_log::scrub_boundaries(edited, *id, &source_schema, &boundaries_left_out, &mut withheld_warnings) else { body.note_omitted(*id); continue };
                 if converting {
                     let converted = crate::schema_convert::convert_step_line(
                         &edited,
@@ -297,6 +299,7 @@ fn emit<W: std::io::Write>(
             // why they are resolved into their own map.
             let edited = crate::step_cow::apply_copy_edits(&raw, muts_by_id.get(source_id), edits, &mut attribute_edits_refused);
             let Some(renumbered) = flatten.line(&source_schema, renumber(&edited, *copy_id)) else { continue };
+            let Some(renumbered) = crate::step_log::scrub_boundaries(renumbered, *copy_id, &source_schema, &boundaries_left_out, &mut withheld_warnings) else { body.note_omitted(*copy_id); continue };
             if converting {
                 let converted = crate::schema_convert::convert_step_line(
                     &renumbered,
@@ -373,7 +376,7 @@ fn emit<W: std::io::Write>(
         attribute_values_dropped: checks.attribute_values_dropped,
         property_mutations_refused,
         duplicate_records_dropped: index.duplicates.len(),
-    }, checks.warnings()))
+    }, { let mut warnings = checks.warnings(); warnings.extend(withheld_warnings); warnings }))
 }
 
 #[cfg(test)]

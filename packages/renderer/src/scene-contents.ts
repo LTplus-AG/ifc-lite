@@ -177,8 +177,8 @@ export interface SceneContents {
   isInstancedEntity(expressId: number): boolean;
   getInstancedEntityBounds(expressId: number): BoundingBox | null;
   getInstancedEntityCount(): number;
-  getInstancedEntityIds(): IterableIterator<number>;
-  /** Changes when the IDs returned by getInstancedEntityIds can change. */
+  getInstancedEntityIds(drawnPassOnly?: boolean): IterableIterator<number>;
+  /** Tracks occurrence membership independently of draw-pass visibility. */
   getInstancedEntityRevision?(): number;
   /** Whether a model in the scene received keyed shards: the global instance plan applied to it. Optional so other
    *  `SceneContents` implementers keep compiling; absent reads as no. */

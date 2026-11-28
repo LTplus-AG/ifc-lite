@@ -72,9 +72,11 @@ function argCount(line: string): number {
   return body.trim() === '' ? 0 : body.split(',').length;
 }
 
-/** A synthetic source line with `n` distinct `$` placeholders. */
+/** Keep the boundary eligible for export so it participates in the arity check (#11457). */
 function makeLine(type: string, n: number): string {
-  return `#1=${type}(${Array.from({ length: n }, () => '$').join(',')});`;
+  const slots = Array<string>(n).fill('$');
+  if (type === 'IFCRELSPACEBOUNDARY' && n > 5) slots[5] = '#2'; // RelatedBuildingElement
+  return `#1=${type}(${slots.join(',')});`;
 }
 
 /**

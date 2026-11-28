@@ -26,6 +26,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { useViewerStore } from '@/store';
+import { titleBlockWithEffectiveScale } from '@/hooks/titleBlockScaleField';
 import { useTranslation } from '@/i18n';
 import type { TitleBlockField } from '@ifc-lite/drawing-2d';
 
@@ -86,18 +87,17 @@ export function TitleBlockEditor({ open, onOpenChange }: TitleBlockEditorProps):
   // Group fields by category
   const fieldGroups = useMemo(() => {
     if (!activeSheet) return { standard: [], custom: [] };
-
     const standard: TitleBlockField[] = [];
     const custom: TitleBlockField[] = [];
-
-    for (const field of activeSheet.titleBlock.fields) {
+    const placed = titleBlockWithEffectiveScale(activeSheet.titleBlock, activeSheet.scale.factor).fields;
+    for (const [i, stored] of activeSheet.titleBlock.fields.entries()) {
+      const field = stored.editable ? stored : placed[i]; // a read-only Scale shows the sheet's own scale (#11581)
       if (STANDARD_FIELD_IDS.includes(field.id)) {
         standard.push(field);
       } else {
         custom.push(field);
       }
     }
-
     return { standard, custom };
   }, [activeSheet]);
 

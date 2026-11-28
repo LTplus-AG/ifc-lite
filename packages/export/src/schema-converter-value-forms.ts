@@ -49,7 +49,7 @@ interface Rules { readonly arity: number; readonly rules: readonly Rule[] }
 const RULES = new Map<string, Map<string, Rules>>();
 const NONE: Rules = { arity: 0, rules: [] };
 
-function rulesFor(from: string, to: string, type: string): Rules {
+export function rulesFor(from: string, to: string, type: string): Rules {
   const key = `${from}>${to}`;
   let byType = RULES.get(key);
   if (!byType) RULES.set(key, (byType = new Map()));
@@ -163,6 +163,8 @@ export class ValueForms {
   private readonly dropped = new Map<string, number>();
   private readonly emptied = new Map<string, number>();
   private readonly narrowedDates = new Map<string, number>();
+  /** Times written with a minute or second the IFC2X3 source left unset (#11199). */
+  private readonly filledDates = new Map<string, number>();
   readonly dates: CalendarDates;
   readonly durations = new WorkControlDurations();
   constructor(private readonly deferred = false) { this.dates = new CalendarDates(deferred); }
@@ -173,7 +175,9 @@ export class ValueForms {
     // The head names the type; most records stop before their slots are split.
     const head = stepRecordHead(line);
     if (!head) return line;
-    const { arity, rules } = rulesFor(from, to, line.slice(head.typeStart, head.typeEnd).toUpperCase());
+    const type = line.slice(head.typeStart, head.typeEnd).toUpperCase();
+    if (from === 'IFC2X3' && (to === 'IFC4' || to === 'IFC4X3')) this.dates.noteUpgraded(type, to); // #11199
+    const { arity, rules } = rulesFor(from, to, type);
     const record = rules.length ? readStepSlots(line, maxReferenceId) : null;
     // A record whose arity is not the target's is left alone: slot i need not be attribute i.
     if (!record || record.slots.length !== arity) return line;
@@ -183,8 +187,8 @@ export class ValueForms {
       if (rule.index >= slots.length) continue;
       const form = rule.hasCalendar ? valueForm(withoutComments(slots[rule.index])) : null;
       const calendar = form === null ? null : rule.forms.get(form);
-      if (calendar?.startsWith('C') && this.dates.defer(line, rule.index, calendar,
-        (narrowed) => this.count(narrowed ? this.narrowedDates : rule.required ? this.emptied : this.dropped, rule.where, 1))) continue;
+      if (calendar?.startsWith('C') && this.dates.defer(line, rule.index, calendar, (loss) => this.count(
+        loss === 'narrowed' ? this.narrowedDates : loss === 'filled' ? this.filledDates : rule.required ? this.emptied : this.dropped, rule.where, 1))) continue;
       const fixed = fix(slots[rule.index], '', rule, () => {
         const id = this.deferred ? slotRef(line.slice(0, head.eq)) : null;
         if (id !== null) this.durations.capture(id, rule.index, from === 'IFC2X3');
@@ -231,17 +235,16 @@ export class ValueForms {
 
   /** One warning per kind, naming every slot a value was dropped from (#10847). */
   warnings(): string[] {
-    const line = (where: Map<string, number>, what: string) => {
-      const total = [...where.values()].reduce((a, b) => a + b, 0);
-      return where.size ? [`${total} value(s) of a type the target slot does not accept ${what}: ${[...where.keys()].sort().join(', ')} (#10847).`] : [];
-    };
+    const sites = (where: Map<string, number>, what: (total: number, sites: string) => string) =>
+      where.size ? [what([...where.values()].reduce((a, b) => a + b, 0), [...where.keys()].sort().join(', '))] : [];
+    const line = (where: Map<string, number>, what: string) =>
+      sites(where, (total, list) => `${total} value(s) of a type the target slot does not accept ${what}: ${list} (#10847).`);
     return [
       ...line(this.dropped, 'were dropped'),
       ...line(this.emptied, 'left a slot the target requires as $, so the file is not valid against its header'),
       ...this.dates.warnings(),
-      ...(this.narrowedDates.size ? [
-        `${[...this.narrowedDates.values()].reduce((sum, count) => sum + count, 0)} date value(s) kept the calendar date and dropped the time and any timezone: ${[...this.narrowedDates.keys()].sort().join(', ')} (#10879).`,
-      ] : []),
+      ...sites(this.narrowedDates, (total, list) => `${total} date value(s) kept the calendar date and dropped the time and any timezone: ${list} (#10879).`),
+      ...sites(this.filledDates, (total, list) => `${total} time value(s) wrote an unset minute or second as 00, a precision the IFC2X3 source does not state: ${list} (#11199).`),
       ...this.durations.warnings(),
     ];
   }

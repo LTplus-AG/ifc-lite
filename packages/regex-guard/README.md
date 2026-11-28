@@ -3,6 +3,12 @@
 Dependency-free validation for regular-expression patterns supplied by users or
 model files. Shared by IFC pattern-validation and editing tools.
 
+## Installation
+
+```bash
+npm install @ifc-lite/regex-guard
+```
+
 ## Usage
 
 ```typescript

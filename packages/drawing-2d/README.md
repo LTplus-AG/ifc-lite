@@ -35,6 +35,7 @@ const cut: StoreyCut = {
   frame: { ...geometryResult.coordinateInfo, buildingOrigin: { z: buildingZ } },
 };
 const drawing = await generateFloorPlan(geometryResult.meshes, cut, {
+  openingSymbols: true,
   includeHiddenLines: true,
   includeProjection: true,
 });
@@ -82,7 +83,7 @@ const drawing = await generator.generate(meshes, config, {
 // Hatching is a separate pass, for callers rendering the drawing themselves:
 // it returns the cut polygons' hatch as DrawingLine[]. `exportToSVG`'s
 // `showHatching` does NOT consume these — it derives its own hatching layer
-// from `drawing.cutPolygons` (svg-exporter.ts:151), so passing both just
+// from `drawing.cutPolygons` (svg-exporter.ts:136), so passing both just
 // draws the same hatch twice.
 const hatchLines = generator.generateHatching(drawing);
 console.log(`${hatchLines.length} hatch lines`);
@@ -231,6 +232,26 @@ const svg = exportToSVG(drawing, {
 ```
 
 Unsupported entity types are counted in `underlay.skipped` rather than failing the import; parse problems (missing blocks, spline approximations, unknown units) surface in `underlay.warnings`.
+
+## DXF export
+
+`exportToDXF(drawing, options?)` writes a `Drawing2D` as an ASCII DXF string (the `DXFExporter` class underneath), for handing a generated plan or section to CAD.
+
+## GPU section cutting
+
+`isGPUComputeAvailable()` reports whether WebGPU compute shaders are available; `GPUSectionCutter` runs the section cut on the GPU there. `SectionCutter` is the CPU path.
+
+## To-scale PDF and view export helpers
+
+The package does not write PDF itself. It ships the arithmetic and geometry a caller needs to print a drawing at an exact scale:
+
+- `computePdfScaleLayout(bounds, scaleFactor, marginMm?)` returns the page size and world-to-millimetre transform. Pass the transform to `worldPointToPdfMm` or `worldLengthToPdfMm`, and pass the scale factor to `formatSheetScaleLabel`.
+- `buildCameraSectionPlane` turns the current camera into a section plane, `clipMeshesToHalfSpace` clips meshes to its kept side on the CPU, and `projectWorldLineSeeds` turns world segments into drawing lines (`GeneratorOptions.extraLines`).
+- `buildColorRaster` rasterizes flat-shaded surfaces as an RGBA underlay for the vector line work.
+
+## Object styles
+
+`DEFAULT_OBJECT_STYLES` holds the per-IFC-type cut and projection pens and cut-face hatch (Revit-like "Object Styles"). `resolveObjectStyle(ifcType, overrides?)` merges user overrides on top; `isIfcTypeVisible` and `getHiddenIfcTypes` answer which types the drawing should include, so callers can filter meshes first.
 
 ## API
 

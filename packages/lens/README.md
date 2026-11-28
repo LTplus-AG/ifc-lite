@@ -33,7 +33,7 @@ those ID sets by rule ID as the required third argument to `evaluateLens`.
 Missing selections match nothing. The standalone v1 matcher has been removed.
 
 - `evaluateLens` / `evaluateAutoColorLens`: turn a `Lens` definition into color and visibility maps
-- Auto-color mode: assign distinct colors per IFC class, property value, or material automatically, with a generated legend
+- Auto-color mode: assign distinct colors per IFC class, attribute, property or quantity value, classification, material, source model, or group, with a generated legend (`AUTO_COLOR_SOURCES`)
 - `BUILTIN_LENSES` presets (for example "By IFC Class")
 - `discoverClasses` / `discoverDataSources` to populate lens editors from model data
 - Color helpers: `hexToRgba`, `rgbaToHex`, `uniqueColor`, `GHOST_COLOR`, `LENS_PALETTE`

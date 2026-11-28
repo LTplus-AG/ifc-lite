@@ -2,6 +2,24 @@
 
 `@ifc-lite/source-autodesk` integrates Autodesk Forma Data Management (Docs/ACC), Data Exchange resources and Forma Site Design proposal catalogs with IFClite's native source loader.
 
+```bash
+npm install @ifc-lite/source-autodesk
+```
+
+The package exports `AutodeskProvider` (a `FileSourceProvider` from
+`@ifc-lite/plugin-api`) and `createAutodeskService` (the client for the hosted
+service under `/api/autodesk/*`). The viewer registers it like this:
+
+```ts
+import { AutodeskProvider, createAutodeskService } from '@ifc-lite/source-autodesk';
+
+declare const hosted: boolean;
+const provider = new AutodeskProvider({
+  clientId: 'your-aps-public-client-id', // static mode
+  service: hosted ? createAutodeskService() : undefined, // hosted mode
+});
+```
+
 ## Configure the viewer
 
 For static hosting, register an APS **public application with PKCE**, enable the required products, and register exactly:

@@ -62,6 +62,14 @@ Two optional hooks let a host observe requests without wrapping the core:
 
 A transport must not retry on its own: a retry is a new request that spends the root budget again, and only the caller decides that.
 
+## Tool-calling turns
+
+`runToolTurn(request, { onReceipt })` is the same request core for a model that calls tools. It takes a provider-neutral message and content-block contract (`ToolTurnRequest`, `ToolSpec`, `ToolTurnTransport`) and returns a typed `ToolTurnOutcome` with the same deadline, cancellation, root-budget reservation and usage receipt. A turn refused by the budget resolves as `{ kind: 'refused', reason: 'budget-exhausted' }`. The core never runs a tool or validates its input; the caller's tool registry does both.
+
+## Provider usage helpers
+
+`chatCompletionsUsage(chunk)`, `responsesUsage(event)` and `anthropicUsage(usage)` read the provider-reported token counts from an OpenAI Chat Completions (or OpenRouter) chunk, an OpenAI Responses event and an Anthropic Messages `usage` object. Each returns a `TokenUsage`, or `null` when the provider reported none; call `onTokenUsage` only with a non-null result. A tool-turn transport returns the usage on its `ToolTurn` instead.
+
 ## License
 
 MPL-2.0

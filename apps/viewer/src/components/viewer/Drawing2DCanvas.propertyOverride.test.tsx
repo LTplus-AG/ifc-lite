@@ -40,6 +40,10 @@ import {
   type Drawing2D,
   type GraphicOverrideRule,
 } from '@ifc-lite/drawing-2d';
+import { PropertyValueType } from '@ifc-lite/data';
+import { MutablePropertyView } from '@ifc-lite/mutations';
+import { fixtureModel } from '@/test/store-fixture';
+import { makePropertiesGetter } from '@/hooks/drawingElementProperties';
 import { useViewerStore } from '@/store';
 import { Drawing2DCanvas } from './Drawing2DCanvas.js';
 
@@ -188,14 +192,14 @@ function installCanvasStub(): { fillStyleCalls: string[]; restore: () => void } 
 
 const mounted: Array<{ root: Root; container: HTMLElement }> = [];
 
-function renderCanvas(overrideEngine: GraphicOverrideEngine): void {
+function renderCanvas(overrideEngine: GraphicOverrideEngine, drawing = EMPTY_DRAWING): void {
   const container = document.createElement('div');
   document.body.appendChild(container);
   const root = createRoot(container);
   act(() => {
     root.render(
       <Drawing2DCanvas
-        drawing={EMPTY_DRAWING}
+        drawing={drawing}
         transform={{ x: 0, y: 0, scale: 1 }}
         showHiddenLines={false}
         overrideEngine={overrideEngine}
@@ -235,6 +239,63 @@ describe('Drawing2DCanvas live-canvas property overrides (#3523 gap: the export 
         `the base rule's fill colour "#AAAAAA" should have lost to the higher-priority FireRating rule; got ${JSON.stringify(stub.fillStyleCalls)}`,
       );
     } finally {
+      stub.restore();
+    }
+  });
+
+  it('draws the parsed, edited, and deleted FireRating with an attached view (#11640)', () => {
+    const previous = useViewerStore.getState();
+    const store = previous.ifcDataStore!;
+    const view = new MutablePropertyView(null, 'wall');
+    const model = { ...fixtureModel('wall'), maxExpressId: 85, ifcDataStore: store };
+    const stub = installCanvasStub();
+    const editedRule = { ...FIRE_RULE, id: 'edited', priority: 300,
+      criteria: propertyCriterion('FireRating', 'equals', 60), style: { fillColor: '#0066FF' } };
+    const draw = () => renderCanvas(new GraphicOverrideEngine([BASE_RULE, FIRE_RULE, editedRule]));
+    try {
+      useViewerStore.setState({ models: new Map([[model.id, model]]), mutationViews: new Map([[model.id, view]]) });
+      draw();
+      assert.ok(stub.fillStyleCalls.includes('#FF0000'), 'untouched source FireRating 120');
+      stub.fillStyleCalls.length = 0;
+      view.setProperty(WALL_EXPRESS_ID, 'Pset_WallCommon', 'FireRating', 60, PropertyValueType.Integer);
+      draw();
+      assert.ok(stub.fillStyleCalls.includes('#0066FF'), `edited FireRating 60: ${stub.fillStyleCalls.join(',')}`);
+      stub.fillStyleCalls.length = 0;
+      assert.ok(view.deleteProperty(WALL_EXPRESS_ID, 'Pset_WallCommon', 'FireRating'));
+      draw();
+      assert.ok(stub.fillStyleCalls.includes('#AAAAAA'), 'explicit deletion restores the base style');
+      assert.ok(!stub.fillStyleCalls.includes('#FF0000'));
+    } finally {
+      act(() => useViewerStore.setState({ models: previous.models, mutationViews: previous.mutationViews, mutationVersion: previous.mutationVersion }));
+      stub.restore();
+    }
+  });
+
+  it('styles an unpublished overlay and drops its properties after the view is removed (#11640)', () => {
+    const model = fixtureModel('wall', { entities: [{ expressId: 1, type: 'IfcWall' }] });
+    const view = new MutablePropertyView(null, model.id);
+    view.setExpressIdWatermark(100);
+    const { expressId } = view.createEntity('IfcWall', []);
+    assert.equal(expressId, 101);
+    view.setProperty(expressId, 'Pset_WallCommon', 'FireRating', 120);
+    const models = new Map([[model.id, model]]), mutationViews = new Map([[model.id, view]]);
+    const previous = useViewerStore.getState();
+    const stub = installCanvasStub();
+    try {
+      useViewerStore.setState({ models, mutationViews });
+      const lookup = makePropertiesGetter(models, null, mutationViews);
+      assert.equal(lookup(101)?.Pset_WallCommon.FireRating, 120);
+      assert.equal(lookup(102), undefined);
+      renderCanvas(new GraphicOverrideEngine([BASE_RULE, FIRE_RULE]), {
+        ...EMPTY_DRAWING, cutPolygons: [{ ...EMPTY_DRAWING.cutPolygons[0], entityId: expressId }],
+      });
+      assert.ok(stub.fillStyleCalls.includes('#FF0000'));
+      stub.fillStyleCalls.length = 0;
+      act(() => useViewerStore.setState({ mutationViews: new Map() }));
+      assert.ok(stub.fillStyleCalls.includes('#AAAAAA'));
+      assert.ok(!stub.fillStyleCalls.includes('#FF0000'));
+    } finally {
+      act(() => useViewerStore.setState({ models: previous.models, mutationViews: previous.mutationViews }));
       stub.restore();
     }
   });

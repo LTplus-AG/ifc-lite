@@ -1,6 +1,6 @@
 # @ifc-lite/cli
 
-BIM toolkit for the terminal. The `ifc-lite` command reads, queries, validates, exports, creates, merges, converts, and diffs IFC files, and can script them with the `bim.*` SDK. Output is pipe-friendly and every command supports `--json` for machine-readable results, which makes it a good fit for both humans and LLM terminals.
+BIM toolkit for the terminal. The `ifc-lite` command reads, queries, validates, exports, creates, merges, converts, and diffs IFC files, and can script them with the `bim.*` SDK. Output is pipe-friendly and most commands support `--json` for machine-readable results, which makes it a good fit for both humans and LLM terminals.
 
 ## Install
 
@@ -24,14 +24,14 @@ ifc-lite view model.ifc
 The cost command above uses the canonical fixture at the shown path (fetch it
 with `pnpm fixtures`); express ID 42 is its `External wall total` cost item.
 
-`bim.cost` reads the loaded IFC source snapshot and returns decimal strings;
-pending generic mutation overlays are not included until reload.
+`bim.cost` reads the loaded IFC source and returns decimal strings. Pending
+edits in the session's mutation overlay are applied by default; pass
+`{ includeMutations: false }` to read the values as the file on disk states them.
 
 ## Opening models from OCI registries
 
-Commands that read an IFC model (all but `view` and the IFCX `layer`/`ref`
-store) also accept an `oci://` reference to an artifact in an OCI registry
-(GHCR, ECR Public, Harbor, `distribution`, ...):
+Commands such as `info`, `diff` and `query` accept an `oci://` reference to a model
+artifact in an OCI registry (GHCR, ECR Public, Harbor, `distribution`, ...):
 
 ```bash
 ifc-lite info oci://ghcr.io/acme/tower-model:rev-b
@@ -122,31 +122,40 @@ Reports the CLI runtime, resolved versions of its declared first-party dependenc
 - `doctor` - runtime, package versions and WASM binary checks
 
 - `info` - model summary: schema, entities, storeys
+- `structural` - read structural analysis models, members, connections, loads, reactions and physical links (`--json` for the full model)
 - `query` - query entities by type, properties, quantities; supports `--sum`, `--group-by`, `--spatial`
 - `props` - all properties for a single entity (`--id N`)
-- `export` - export to `csv`, `json`, `ifc`, `obj`, `gltf`, `glb`, `jsonld`, `ifcx`, `usd`, `3dm`, `step`, `hbjson`, or `dfjson`
-- `ids` - validate against buildingSMART IDS rules
+- `export` - export to `csv`, `json`, `ifc`, `obj`, `gltf`, `glb`, `jsonld`, `ifcx`, `usd`, `3dm`, `step`, `hbjson`, `dfjson`, `cityjson`, or `cityjsonseq`
+- `ids` - validate a model against buildingSMART IDS rules; `ids audit|lint|fmt|diff|explain` check, format, compare and explain IDS files
 - `validate` - structural validation checks
+- `check` - run a `.rules.json` information-validation rule set (same engine as the viewer)
 - `stats` - auto-calculated model KPIs and health check
 - `clash` - geometric clash detection, `--matrix`, `--bcf` output
 - `bcf` - create and inspect BCF collaboration files
 - `create` - create IFC elements from scratch (walls, slabs, stairs, 29 types)
 - `mutate` - modify properties or attributes and save
+- `storey` - list, add, rename, edit, constrain, copy and delete storeys; geometry follows
+- `georef` - show, set, update, remove, check and fix georeferencing
+- `site-context` - Swiss terrain, parcel and neighbouring buildings around a georeferenced model as one GLB
+- `derive-structural` - derive a linked structural analysis model from beams, columns, slabs and walls
 - `merge` - merge multiple IFC files into one federated file
 - `convert` - convert between IFC schema versions (`--schema IFC4`)
-- `diff` - compare two IFC files
+- `diff` - compare two IFC files; `--by-content` matches re-GUIDed elements, `--geometry` adds a mesh pass with `--split-merge`/`--successors` claims, `--lineage-out` writes lineage for `rekey`
 - `rekey` - carry a table keyed on old element keys across a revision
 - `eval` / `run` - run SDK expressions or scripts against a model
 - `ask` - natural language BIM queries
 - `view` - interactive 3D viewer in the browser, controllable via REST (`/api/command`)
 - `analyze` - query plus colorize/isolate/heatmap results in the running viewer
 - `simplify` - demesher: simplify meshes, write a lighter IFC
-- `mcp` - start an MCP server bound to one or more IFC files (stdio or http)
+- `mcp` - start an MCP server; over stdio it preloads the given IFC files, over `--transport http` each session starts empty and loads models with `model_load`; `mcp install --client <claude-code|claude-desktop|cursor|vscode>` adds it to a client's config
 - `layer` - layered change tracking over a local store (`.ifc-lite/`)
 - `ref` - manage named refs in the layer store
+- `oci push` - publish an IFC file to an OCI registry (see above)
 - `anonymize` - export selected objects + context as an anonymized IFC
 - `schedule` - tabular schedule of one class (csv/json/md/html)
-- `delivery` - repeatable delivery check (structural + IDS) from a saved recipe
+- `delivery` - repeatable delivery check (structural + IDS + rule sets) from a saved recipe
+- `semantic` - shared semantic profiles, SHACL validation, JSON/SPARQL queries and an HTTPS relay (`ifc-lite semantic <validate|query|assets|serve>`; see `ifc-lite --help`)
+- `flow` - run, resume, review, describe and validate Flow node graphs headlessly; `flow bcf` inspects and reconciles durable BCF writes (see below)
 - `gym` - reset/step/reward environment loop over the existing schema/clash/ids checks (see below)
 - `schema`, `bsdd`, `diagnose-geometry`, `extract-entities`, `generate-spaces`, `lod`, `ext` - see `ifc-lite --help`
 
@@ -174,7 +183,7 @@ The protocol is newline-delimited JSON: one JSON object per line, in both direct
 
 Episode factory: `--seed <n>` generates a deterministic World Gym benchmark model in-process instead of loading a file. `--family frame|office|auto` pins the family; corruption follows the benchmark's deterministic draw at the spec's corrupt rate unless `--corrupt`/`--no-corrupt` forces it or `--corrupt-rate <p>` overrides the rate (forcing and a rate are mutually exclusive). The generator is dynamically imported from a repo checkout (`tools/world-gym/`); the published npm package prints a clear error for `--seed` while `--model` keeps working.
 
-Reward shaping: every channel's `score` is in `[0, 1]` and higher is better. The clash channel scores `1` for a clash-free model and strictly decreases as the clash count grows (the raw count is reported separately as `totalClashes`), so an agent maximizing any channel is never rewarded for making the model worse.
+Reward shaping: numeric channel scores range from 0 to 1, with higher scores preferred. The IDS channel reports `score: null` and an `error` when `--ids` is missing. The clash channel reports `score: null` and an `error` when source bytes are unavailable. Otherwise its score is `1 / (1 + totalClashes)`, rounded to six decimal places. Use `totalClashes` to distinguish counts that round to the same score.
 
 v0 ops mirror `bim.mutate`'s method names exactly: `setProperty`, `setAttribute`, `deleteProperty` (all keyed by `expressId`). Geometry-creating ops (new walls, slabs, etc.) are out of scope for v0.
 

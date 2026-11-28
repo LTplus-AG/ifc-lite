@@ -1,6 +1,6 @@
 # @ifc-lite/sandbox
 
-QuickJS-in-WASM sandboxed script execution for ifc-lite. Runs user or LLM-generated scripts in a secure, isolated interpreter with only the `bim.*` API exposed: no DOM, no fetch, no network access. Permissions and resource limits (timeout, memory) are configurable per sandbox, and TypeScript input is transpiled on the fly.
+QuickJS-in-WASM sandboxed script execution for ifc-lite. Runs user or LLM-generated scripts in a secure, isolated interpreter with only the `bim.*` API exposed: no DOM and no global `fetch`. Outbound HTTPS is available only through `bim.network`, which is off by default (`permissions.network`) and checks each call against the host's `network.fetch` grants. Permissions and resource limits (timeout, memory) are configurable per sandbox, and TypeScript input is transpiled on the fly.
 
 ## Install
 
@@ -59,7 +59,7 @@ try {
 }
 ```
 
-**A long-lived sandbox must be discarded once `moduleRetired` is true.** The abort poisons the whole WASM module, so this package retires it and builds the next sandbox on a fresh one — 1-5 ms, no page reload, and nothing for a caller to do. But a host that *keeps* one sandbox across many runs (an extension runtime, a REPL) can be holding one whose module was retired by some other sandbox's abort. That sandbox still executes scripts, yet emscripten's `ABORT` latch is per module and has already fired on it: its own teardown can no longer report a failure, and it will silently leak whatever `JS_FreeRuntime` does not reach. Check before running, and replace rather than reuse:
+**A long-lived sandbox must be discarded once `moduleRetired` is true.** The abort poisons the whole WASM module, so this package retires it and builds the next sandbox on a fresh one — no page reload, and nothing for a caller to do. But a host that *keeps* one sandbox across many runs (an extension runtime, a REPL) can be holding one whose module was retired by some other sandbox's abort. That sandbox still executes scripts, yet emscripten's `ABORT` latch is per module and has already fired on it: its own teardown can no longer report a failure, and it will silently leak whatever `JS_FreeRuntime` does not reach. Check before running, and replace rather than reuse:
 
 ```ts
 import { createSandbox, type Sandbox, type SandboxConfig } from '@ifc-lite/sandbox';

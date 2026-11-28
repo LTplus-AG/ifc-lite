@@ -20,7 +20,8 @@ schema tables of `@ifc-lite/data`.
   interface.
 - **Sidecar**: `studio.json` and `.idsz` bundles.
 - **Re-identification** of externally edited IDS files.
-- **Plain-language rendering** of facets in English, German and French.
+- **Plain-language rendering** of facets in English, German, French, Italian
+  and Russian.
 
 ## Quick example
 
@@ -316,7 +317,7 @@ const ops = diffToOps(before, diff); // primitive ops that turn `before` into `a
 - A reorder is reported only for nodes off the longest run that kept its
   order: moving one specification to the top is one move.
 - `changelogMarkdown(diff)` groups the sentences by specification (for
-  `ids diff --md`). Sentences exist in English, German, French and Italian; facet
+  `ids diff --md`). Sentences exist in English, German, French, Italian and Russian; facet
   and value wording comes from `@ifc-lite/ids`.
 
 ## Three-way merge

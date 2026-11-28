@@ -12,6 +12,8 @@ import type { MeshData } from '@ifc-lite/geometry';
 import { compactRow, COMPACT_RECORD_BYTES, type CompactRef } from '@ifc-lite/geometry/compact';
 import type { RenderPipeline } from './pipeline.js';
 import type { BatchedMesh } from './types.js';
+import type { ChunkAnchorSource } from './chunk-grid.js';
+import type { CompactStoreStats } from './compact-store.js';
 
 /** Which paged meshes an operation needs on the bucket path: every one (`undefined`), some entities', or one model's. */
 export type CompactSelection = { ids: Iterable<number> } | { modelIndex: number } | undefined;
@@ -39,10 +41,37 @@ export interface SceneCompactHost {
   /** `appendToBatches`' own per-mesh validation: whether it would refuse `mesh` (no topology-safe f32 frame). */
   refusesBucketPath(mesh: MeshData): boolean;
   bumpPickGeometryRevision(): void;
+  /** Bucket batches build LOD1 ranges (`Scene.setLodBuildsEnabled`): pages then build theirs (compact-lod.ts). */
+  lodBuildsEnabled: boolean;
+  /** The Scene's buckets (key, possibly with a `#N` overflow suffix): their f32 meshes. */
+  buckets: ReadonlyMap<string, { meshData: readonly MeshData[] }>;
+  /** The bucket base key the bucket path would file `mesh` under, its chunk cell taken at `anchor`. */
+  bucketBaseKey(mesh: MeshData, color: undefined, anchor: ChunkAnchorSource): string;
 }
 
 /** A selection with its ids read once (an iterator can be walked only once). */
 export type Selection = { ids: ReadonlySet<number> } | { modelIndex: number } | undefined;
+
+/** The paged members (source -> kept) `selection` names, as [source, kept] pairs; `byId` lists each entity's sources. */
+export function chosenMembers(members: ReadonlyMap<MeshData, MeshData>, byId: ReadonlyMap<number, readonly MeshData[]>, selection: Selection): Array<[MeshData, MeshData]> {
+  if (selection === undefined) return [...members];
+  if ('modelIndex' in selection) return [...members].filter(([source]) => (source.modelIndex ?? 0) === selection.modelIndex);
+  const chosen: Array<[MeshData, MeshData]> = [];
+  for (const id of selection.ids) for (const source of byId.get(id) ?? []) chosen.push([source, members.get(source)!]);
+  return chosen;
+}
+
+/** Take the page-time registrations of `kept` members out of the Scene's mesh map (they are registered again later). */
+export function forgetRegistrations(meshDataMap: Map<number, MeshData[]>, kept: ReadonlySet<MeshData>): void {
+  const ids = new Set([...kept].map((mesh) => mesh.expressId));
+  for (const id of ids) {
+    const pieces = meshDataMap.get(id);
+    if (!pieces) continue;
+    const rest = pieces.filter((piece) => !kept.has(piece));
+    if (rest.length === 0) meshDataMap.delete(id);
+    else if (rest.length !== pieces.length) meshDataMap.set(id, rest);
+  }
+}
 
 export function normalize(selection: CompactSelection): Selection {
   return selection === undefined || 'modelIndex' in selection ? selection : { ids: new Set(selection.ids) };
@@ -63,12 +92,14 @@ export function recordedLane(ref: CompactRef): number {
 /**
  * Why a queued compact mesh went to the bucket path decoded: the scene had no quantized pipelines
  * (`pipelines`) or keeps no CPU geometry (`no-cpu-geometry`), or the mesh no longer matches its
- * records (`written`: its geometry was replaced) or needs what a page cannot draw.
+ * records (`written`: its geometry was replaced) or needs what a page cannot draw, or its bucket would
+ * stay exact f32 (`exact`: an entity the 1 mm lattice collapses, #9068, or wider than its range), or its bucket
+ * holds f32 meshes too (`shared`: the bucket batch is their union).
  */
-export type CompactDecodeReason = 'pipelines' | 'no-cpu-geometry' | 'written' | 'id' | 'texture' | 'placed' | 'moved' | 'lane';
+export type CompactDecodeReason = 'pipelines' | 'no-cpu-geometry' | 'written' | 'id' | 'texture' | 'placed' | 'moved' | 'lane' | 'exact' | 'shared';
 
 /** What `Scene.getCompactStats` reports: meshes drawn from pages, and those a load decoded to buckets by reason. */
-export interface CompactSceneStats { paged: number; decodes: Readonly<Partial<Record<CompactDecodeReason, number>>> }
+export interface CompactSceneStats { paged: number; decodes: Readonly<Partial<Record<CompactDecodeReason, number>>>; pages: Readonly<CompactStoreStats> }
 
 /** Pages now, wait for the probe in flight, or the scene-wide reason every compact mesh decodes. */
 export type PageMode = 'pages' | 'wait' | Extract<CompactDecodeReason, 'pipelines' | 'no-cpu-geometry'>;

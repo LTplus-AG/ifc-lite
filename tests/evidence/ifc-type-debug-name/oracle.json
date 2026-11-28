@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "why": "A whole revert restores equivalent derived traits. Substitute the uppercase STEP keyword for the EXPRESS variant name in Debug and exercise the public Rust type.",
+  "key": "packages/codegen/src/rust-type-traits.ts",
+  "mutation": "tests/evidence/ifc-type-debug-name/behaviour.oracle.patch",
+  "test": "rust/core/src/schema_helpers_tests.rs"
+}

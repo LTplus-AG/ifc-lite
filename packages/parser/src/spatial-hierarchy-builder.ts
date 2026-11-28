@@ -28,6 +28,7 @@ import type { EntityRef } from './types.js';
 import { EntityExtractor } from './entity-extractor.js';
 import type { IfcSourceBytes } from './source-bytes.js';
 import { computeCanonicalParent, computeReachableSpatialNodes } from './spatial-hierarchy-canonical-parent.js';
+import { claimThroughSpaces, type SpaceClaim } from './spatial-space-claims.js';
 import {
   type AttributeSource,
   extractLongName,
@@ -50,6 +51,9 @@ interface BuildContext {
    *  SpatialHierarchy field docs); covers aggregated descendants too, unlike `elementToStorey`. */
   elementToContainer: Map<number, number>;
   visited: Set<number>;
+  /** Storeys with the spatial children they aggregate; the claim-through-spaces
+   *  pass runs over these once every direct containment is in. */
+  spaceClaims: SpaceClaim[];
   canonicalParent: Map<number, number>; // childId -> its one allowed builder (#4095)
   /** Spatial-structure nodes buildNode will actually visit from IfcProject
    *  (see computeReachableSpatialNodes) - set once IfcProject is known, #4310. */
@@ -107,6 +111,7 @@ export class SpatialHierarchyBuilder {
       elementToStorey: new Map(),
       elementToContainer: new Map(),
       visited: new Set(),
+      spaceClaims: [],
       canonicalParent: computeCanonicalParent(entities, relationships),
       reachableSpatialNodes: new Set(), // filled in below once IfcProject is known
       attrSource,
@@ -129,6 +134,7 @@ export class SpatialHierarchyBuilder {
     ctx.reachableSpatialNodes = computeReachableSpatialNodes(projectIds[0], ctx.canonicalParent);
 
     const projectNode = this.buildNode(projectIds[0], ctx);
+    claimThroughSpaces(ctx.spaceClaims, ctx.relationships, ctx.elementToStorey);
 
     if (ctx.byStorey.size === 0) {
       console.warn('[SpatialHierarchyBuilder] No storeys found in spatial hierarchy');
@@ -321,6 +327,9 @@ export class SpatialHierarchyBuilder {
           ctx.elementToStorey.set(childId, expressId);
         }
       }
+      // An element contained in one of those spaces is on this storey as well;
+      // that claim runs after the whole traversal (see claimThroughSpaces).
+      ctx.spaceClaims.push({ storeyId: expressId, childNodes });
     }
 
     // Attribute every directly-contained element AND its aggregated descendants

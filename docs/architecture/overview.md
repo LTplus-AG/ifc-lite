@@ -76,7 +76,7 @@ flowchart LR
 | **Processing** | Web Worker pool (one WASM instance per worker) | Multi-threaded (Rayon) |
 | **Memory** | Up to 4 GiB per wasm32 memory instance per worker (browser/runtime ceiling may be lower) | System RAM |
 | **Caching** | Browser storage | Content-addressable disk |
-| **Format** | Raw geometry | Parquet (15-50x smaller) |
+| **Format** | Raw geometry | Parquet (compressed columnar) |
 | **Best For** | Privacy, offline | Teams, large files |
 
 ## Design Principles
@@ -122,7 +122,7 @@ sequenceDiagram
     File->>Parser: Chunk 1
     Parser->>Processor: Entities 1-100
     Processor->>Renderer: Meshes 1-50
-    Renderer->>User: First render (300ms)
+    Renderer->>User: First render
 
     File->>Parser: Chunk 2
     Parser->>Processor: Entities 101-200
@@ -193,7 +193,7 @@ Combine the best of different data structures:
 
 ## Package Architecture
 
-The monorepo contains over 30 TypeScript packages and 8 Rust workspace crates, plus multiple application targets. The diagram below highlights a selected subset.
+The monorepo contains over 70 TypeScript packages under `packages/` and 19 Rust workspace members (18 crates under `rust/` plus `apps/server`; `rust/python` and `rust/csg-thread-bench` sit outside the workspace), plus multiple application targets. The diagram below highlights a selected subset.
 
 ```mermaid
 graph TB
@@ -216,7 +216,7 @@ graph TB
         Cache["@ifc-lite/cache"]
         Query["@ifc-lite/query"]
         Data["@ifc-lite/data"]
-        Export["@ifc-lite/export"]
+        ExportTS["@ifc-lite/export"]
         BCF["@ifc-lite/bcf"]
         IDS["@ifc-lite/ids"]
         Drawing2D["@ifc-lite/drawing-2d"]
@@ -244,12 +244,11 @@ graph TB
     Renderer --> Geometry
     ServerClient --> Server
     Query --> Data
-    Export --> Data
-    BCF --> Data
+    ExportTS --> Data
     IDS --> Data
     Drawing2D --> Geometry
     Mutations --> Data
-    Spatial --> Data
+    Spatial --> Geometry
     Viewer --> Parser
     Viewer --> Renderer
     Viewer --> ServerClient
@@ -486,12 +485,12 @@ graph TB
 
 | Component | Memory Strategy |
 |-----------|-----------------|
-| Strings | Deduplicated string table (30% reduction) |
+| Strings | Deduplicated string table |
 | Entity IDs | Uint32Array (fixed-size) |
 | Types | Uint16Array enum (2 bytes vs ~20 for string) |
 | Properties | On-demand parsing (not pre-loaded) |
-| Geometry | Streaming + dispose after upload |
-| Server | Parquet (15-50x smaller transfer) |
+| Geometry | Streamed to the GPU; the CPU copy is kept by default, released only under opt-in GPU-only residency (`?perf.gpuOnly=on` or `?perf.gpuOnly=auto`; see [Viewer CPU geometry](viewer-cpu-geometry.md)) |
+| Server | Parquet (compressed columnar transfer) |
 
 ## Threading Model
 

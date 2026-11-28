@@ -144,8 +144,8 @@ function cascadeOmissions(records: Iterable<OutputRecord | undefined>, seeds: Re
 }
 
 /** Preview required-reference losses on the target layouts of an unedited source. */
-export function previewUpgradeDependents(store: SourceStore, from: IfcSchemaVersion, to: IfcSchemaVersion): Set<number> {
-  const seeds = new Set<number>();
+export function previewUpgradeDependents(store: SourceStore, from: IfcSchemaVersion, to: IfcSchemaVersion, boundaryIds: readonly number[]): Set<number> {
+  const seeds = new Set(boundaryIds);
   if (!removesObsoleteResources(from, to) || from === 'IFC5' || (to !== 'IFC4' && to !== 'IFC4X3')) return seeds;
   const routeOf = (type: string) => missingTypeRoute(type, from, to, attributes(type, from) !== undefined,
     attributes(convertEntityType(type, from, to), to) !== undefined);
@@ -220,6 +220,8 @@ export class MergedUpgradePruning {
 
   constructor(private readonly target: IfcSchemaVersion) {}
 
+  noteOmitted(id: number): void { this.seeds.add(id); }
+
   note(line: string, from: IfcSchemaVersion): void {
     noteUpgradeSeed(line, this.seeds, from, this.target);
   }
@@ -248,9 +250,9 @@ export class MergedUpgradePruning {
 }
 
 /** Single-model output contains only converted records, including pending edits. */
-export function pruneUpgradeFromSource(lines: string[], from: IfcSchemaVersion, to: IfcSchemaVersion, onOmitted: (id: number) => void): string[] {
+export function pruneUpgradeFromSource(lines: string[], from: IfcSchemaVersion, to: IfcSchemaVersion, omitted: Iterable<number>, onOmitted: (id: number) => void): string[] {
   if (!removesObsoleteResources(from, to)) return [];
-  const seeds = new Set<number>();
+  const seeds = new Set(omitted);
   for (const line of lines) noteUpgradeSeed(line, seeds, from, to);
   return pruneUpgrade(lines, seeds, to, onOmitted);
 }

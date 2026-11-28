@@ -223,13 +223,13 @@ pub fn convert_step_line(
     to: &str,
     express_id: u32,
     slots: &mut Ifc2x3SlotFill,
-    checks: Option<&mut ConversionChecks>,
+    mut checks: Option<&mut ConversionChecks>,
 ) -> Result<String, UnrepresentedEntityError> {
     let (cfrom, cto) = (canon(from), canon(to));
     if cfrom == cto {
         return Ok(line.to_string());
     }
-    let mut checks = checks;
+    if !(match checks.as_deref_mut() { Some(c) => c.boundaries.apply(express_id, line, cfrom, cto, &mut c.attribute_values_dropped), None => crate::schema_space_boundary::SpaceBoundaryElements::default().apply(express_id, line, cfrom, cto, &mut 0) }) { return Ok(String::new()); }
     let Some(line) = (match checks.as_deref_mut() { Some(c) => c.materials.apply(express_id, line, cfrom, &mut c.attribute_values_dropped), None => crate::schema_material_referent::MaterialReferents::for_target(cto).apply(express_id, line, cfrom, &mut 0) }) else { return Ok(String::new()) };
     let mut converted = convert_record(&line, cfrom, cto, express_id, checks.as_deref_mut())?;
     converted = crate::schema_retyped::apply(converted, cfrom, cto, checks.as_deref_mut().map(|c| &mut c.attribute_values_dropped)); // #10778

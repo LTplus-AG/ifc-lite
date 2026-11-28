@@ -23,11 +23,9 @@
 
 import { useCallback, useMemo } from 'react';
 import { useViewerStore } from '@/store';
-import { usePlacementCoordinateInfo } from '@/hooks/usePlacementCoordinateInfo';
+import { usePlacedSectionStoreys } from '@/hooks/usePlacementCoordinateInfo';
 import { setAlignmentDistance } from '@/lib/section/alignment-controller';
 import {
-  collectStoreys,
-  mergedSectionCoordinateInfo,
   percentToWorld,
   clampSectionPercent,
   sectionAxisRange,
@@ -63,24 +61,15 @@ export interface SectionDistance {
 }
 
 export function useSectionDistance(): SectionDistance {
-  const models = useViewerStore((s) => s.models);
-  const geometryResult = useViewerStore((s) => s.geometryResult);
-  const ifcDataStore = useViewerStore((s) => s.ifcDataStore);
+  const { placed, storeys } = usePlacedSectionStoreys();
   const sectionPlane = useViewerStore((s) => s.sectionPlane);
   const setSectionPlaneAxis = useViewerStore((s) => s.setSectionPlaneAxis);
   const setSectionPlanePosition = useViewerStore((s) => s.setSectionPlanePosition);
   const setSectionCustomDistance = useViewerStore((s) => s.setSectionCustomDistance);
 
-  const placement = useViewerStore((s) => s.modelPlacement);
-  const source = useMemo(() => mergedSectionCoordinateInfo(models, geometryResult), [models, geometryResult]);
-  const placed = usePlacementCoordinateInfo(source);
   const range = useMemo(
     () => sectionAxisRange(placed?.shiftedBounds ?? null, sectionPlane.axis),
     [placed, sectionPlane.axis],
-  );
-  const storeys = useMemo(
-    () => collectStoreys(models, ifcDataStore, geometryResult, placement),
-    [models, ifcDataStore, geometryResult, placement],
   );
 
   const cutAtStorey = useCallback((storey: SectionStorey) => {

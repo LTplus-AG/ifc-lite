@@ -13,34 +13,21 @@
  * a user who was mid-orbit.
  */
 
-import { useCallback, useMemo } from 'react';
+import { useCallback } from 'react';
 import { useViewerStore } from '@/store';
-import { useIfc } from './useIfc';
-import { usePlacementCoordinateInfo } from './usePlacementCoordinateInfo';
+import { usePlacedSectionStoreys } from './usePlacementCoordinateInfo';
 import {
-  collectStoreys,
-  mergedSectionCoordinateInfo,
   sectionAxisRange,
   storeyCutPosition,
   type SectionStorey,
 } from '@/lib/section/section-distance';
 
 export function useFloorplanView() {
-  const { models, ifcDataStore, geometryResult } = useIfc();
-  const placement = useViewerStore((s) => s.modelPlacement);
-  const source = useMemo(() => mergedSectionCoordinateInfo(models, geometryResult), [models, geometryResult]);
-  const placed = usePlacementCoordinateInfo(source);
+  const { placed, storeys: availableStoreys } = usePlacedSectionStoreys();
   const setSectionPlaneAxis = useViewerStore((s) => s.setSectionPlaneAxis);
   const setSectionPlanePosition = useViewerStore((s) => s.setSectionPlanePosition);
   const setActiveTool = useViewerStore((s) => s.setActiveTool);
   const openPanelInHome = useViewerStore((s) => s.openPanelInHome);
-
-  // Every storey, deduplicated and sorted top-down — the same list the
-  // Section bar's storey menu offers (#5499), from the one collector.
-  const availableStoreys = useMemo(
-    (): SectionStorey[] => collectStoreys(models, ifcDataStore, geometryResult, placement),
-    [models, ifcDataStore, geometryResult, placement],
-  );
 
   // Activate a floorplan view at the given storey elevation
   const activateFloorplan = useCallback((storey: SectionStorey) => {

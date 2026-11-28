@@ -239,6 +239,8 @@ if envelope.signature:
    crypto.subtle.verify(signature.signature, contentHash)
    if fail → SignatureMismatchError
    if fingerprint(publicKey) ∈ revocation list → SignatureRevokedError
+      (planned: no revocation list or SignatureRevokedError exists yet;
+       verifyBundle computes the fingerprint up front for it)
    produce SignatureInfo for the loader / UI
 otherwise:
    no SignatureInfo; bundle is "unsigned"
@@ -391,8 +393,10 @@ Reports go to a small triage queue. Confirmed abuse:
 To ground the design, this RFC also ships the cryptographic kernel as
 code. What's in:
 
-- **`@ifc-lite/extensions/signing`** — `generateKeyPair`,
-  `exportPrivateKey`, `exportPublicKey`, `importKey`,
+- **Signing API** (`packages/extensions/src/signing/`, exported from the
+  `@ifc-lite/extensions` root; there is no `/signing` subpath) —
+  `generateKeyPair`, `exportPrivateKey`, `exportPublicKey`, `importKey`,
+  `importPublicKey`, `importPrivateKey`,
   `fingerprintFromBytes`, `compactFingerprint`, `signBundle`,
   `verifyBundle`, `canonicalContentHash`, plus `SignatureMismatchError`,
   `SignatureFormatError`, `KeyFormatError`.
@@ -461,5 +465,5 @@ the wild.
 - `05-flavors-and-sharing.md §7` — registry sketch for flavors (this
   RFC covers extensions; flavors compose extensions and inherit the
   same signing surface for any bundles they embed).
-- `09-implementation-plan.md` — Phase 5 task block (will be expanded
-  with the now-prototyped pieces).
+- The implementation plan (`09-implementation-plan.md`) was retired from
+  the repository in #3935; the Phase 5 task block lives in git history.

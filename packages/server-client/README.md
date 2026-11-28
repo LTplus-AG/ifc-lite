@@ -6,7 +6,16 @@ TypeScript SDK for the IFClite server. Handles content-addressable caching (skip
 
 ```bash
 npm install @ifc-lite/server-client
+# Parquet/Arrow decoding (parseParquet, parseParquetStream, decodeParquetGeometry)
+npm install parquet-wasm apache-arrow
 ```
+
+`parquet-wasm` and `apache-arrow` are optional peer dependencies, loaded with a
+dynamic import the first time a Parquet response is decoded.
+`client.isParquetSupported()` only checks that `parquet-wasm` loads and
+initialises; `apache-arrow` is imported later, when the first decoded table is
+converted, so install both. `parse` (JSON) and
+`parseStream` (SSE) work without them.
 
 ## Parse with caching (one-shot)
 
@@ -21,6 +30,11 @@ const result = await client.parseParquet(file);
 // has it cached, the upload is skipped entirely — second loads are instant.
 console.log(`${result.metadata.entity_count} entities, ${result.meshes.length} meshes`);
 ```
+
+`ServerConfig` also takes `timeout` (milliseconds, default 300000) and
+`token`. A configured `token` is sent as `Authorization: Bearer <token>` on parse
+and cache requests; `health()` sends no token. Pass it when the server sets `IFC_SERVER_API_TOKEN`, which makes its
+parse and cache routes reject unauthenticated calls.
 
 ## Stream a large file
 
@@ -57,7 +71,7 @@ for await (const event of client.parseStream(file)) {
     case 'batch':
       renderer.addMeshes(
         event.meshes.map(convertServerMesh),
-        true, // streaming: throttle batch rebuilds — first triangles ~300ms in
+        true, // streaming: throttle batch rebuilds
       );
       break;
     case 'complete':
@@ -82,6 +96,11 @@ const result = await client.parseParquet(stored); // or parseParquetStream(store
 
 Nothing is hashed or uploaded. A miss rejects with `IfcServerError` (`404`,
 `NOT_FOUND`); there is no upload to fall back to.
+
+The reference helpers (`isProcessedModelRef`, `normalizeProcessedModelHash`,
+`assertProcessedModelHash`, `processedModelSize`, `ProcessedModelRef`) are
+exported from the root and from the `@ifc-lite/server-client/processed-model`
+subpath, which imports none of the client or Parquet code.
 
 ## Health check + server info
 

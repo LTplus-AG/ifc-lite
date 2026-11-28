@@ -15,6 +15,15 @@ export interface ParseRequestOptions {
   signal?: AbortSignal;
 
   /**
+   * Decode-side only, never sent: keep vertex blocks that several mesh rows of
+   * the Parquet result name as `shared_shapes` (one block, its occurrences)
+   * instead of copying the block into every row's mesh. `meshes` then holds
+   * only the rows that were not shared. Off by default, so a consumer reading
+   * `meshes` alone still sees every occurrence. See `parquet-shared-shapes.ts`.
+   */
+  sharedShapes?: boolean;
+
+  /**
    * Tessellation detail level (#976). Omitted = `'medium'`, which is
    * byte-identical to the historical output — and to what the wasm path
    * produces without `setTessellationQuality`, so client-side and

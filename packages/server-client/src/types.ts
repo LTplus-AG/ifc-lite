@@ -5,6 +5,7 @@
 import type { Georeferencing } from './georeferencing.js';
 export type { Georeferencing } from './georeferencing.js';
 import type { MeshCoordinateSpace } from './mesh-coordinate-space.js';
+import type { SharedShape } from './parquet-shared-shapes.js';
 export { MESH_COORDINATE_SPACES, asMeshCoordinateSpace, withNarrowedCoordinateSpace, type MeshCoordinateSpace } from './mesh-coordinate-space.js';
 
 /**
@@ -386,8 +387,10 @@ export interface ParquetMetadataHeader {
 export interface ParquetParseResponse {
   /** Cache key for this result (SHA256 of file content) */
   cache_key: string;
-  /** All meshes extracted from the IFC file */
+  /** All meshes extracted from the IFC file; without the shared ones when `sharedShapes` was asked for. */
   meshes: MeshData[];
+  /** Shapes several rows share, with their occurrences; present only when `sharedShapes` was asked for. */
+  shared_shapes?: SharedShape[];
   /** Declares the coordinate space used by serialized mesh vertices; absent
    *  when the server did not say, or said something outside the three tiers. */
   mesh_coordinate_space?: MeshCoordinateSpace;
@@ -566,8 +569,16 @@ export interface ParquetStreamErrorEvent {
  * Decoded geometry batch from streaming.
  */
 export interface ParquetBatch {
-  /** Meshes in this batch */
+  /** Meshes in this batch; without the shared ones when `sharedShapes` was asked for. */
   meshes: MeshData[];
+  /**
+   * Shapes this batch's rows share (with each other or with an earlier batch),
+   * with their occurrences in this batch; present only when `sharedShapes` was
+   * asked for. A shape whose block an earlier batch carried appears again here
+   * with this batch's occurrences, under the same `vertex_start` / `index_start`
+   * when `stream_wide`.
+   */
+  shared_shapes?: SharedShape[];
   /** Batch sequence number */
   batch_number: number;
   /** Decode time in ms */

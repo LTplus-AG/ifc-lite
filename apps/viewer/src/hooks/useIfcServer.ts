@@ -31,6 +31,7 @@ import type { ProcessedModelSource } from '../lib/processed-model.js';
 import { getProcessingServerUrl, hasRuntimeProcessingServer } from '../lib/processing-server.js';
 import { isServerAvailable, isServerReachable } from './ingest/serverAvailability.js';
 import { ProcessedModelUnavailable } from './ingest/processedModel.js';
+import { ServedInstancing } from './ingest/servedInstancing.js';
 import {
   createEmptyBounds,
   updateBoundsFromPositions,
@@ -43,6 +44,7 @@ import {
 import { convertServerDataModel, type ServerParseResult } from '../utils/serverDataModel.js';
 import { convertServerMesh } from '../utils/serverMesh.js';
 import { serverOriginShift } from '../utils/serverOriginShift.js';
+import { mergeBounds } from '../utils/serverInstancing.js';
 
 /** Server parse result type - union of streaming and non-streaming responses */
 type ServerParseResultType = ParquetParseResponse | ParquetStreamResult | ParseResponse;
@@ -86,6 +88,8 @@ export function useIfcServer() {
     // upload's stay silent here and fall back to local processing.
     const processed = isProcessedModelRef(file);
     let published = false;
+    // Shapes the server sent once stay GPU-instanced, as a local parse's do; queued once this load owns the slot.
+    const instancing = new ServedInstancing(modelId);
     const publishGeometry: typeof setGeometryResult = result => {
       if (beforePublish) {
         const progress = useViewerStore.getState().progress;
@@ -95,6 +99,7 @@ export function useIfcServer() {
       if (!published) cancelProperties(modelId);
       published = true;
       setGeometryResult(result);
+      instancing.begin();
     };
     try {
       setProgress({ phase: 'Connecting to server', percent: 5 });
@@ -132,6 +137,7 @@ export function useIfcServer() {
 
       let allMeshes: MeshData[];
       let result: ServerParseResultType;
+      const sharedBounds = createEmptyBounds(); // the instanced occurrences' extent, non-streaming paths
 
       // Use streaming for large files (>150MB) for progressive rendering
       // Smaller files use non-streaming path (faster - avoids ~1.1s background re-processing overhead)
@@ -173,7 +179,8 @@ export function useIfcServer() {
           batchCount++;
 
           // Convert batch meshes to viewer format (snake_case to camelCase, number[] to TypedArray)
-          const batchMeshes: MeshData[] = batch.meshes.map(convertServerMesh);
+          // Shared shapes the instancing does not take come back flat, like every other mesh.
+          const batchMeshes: MeshData[] = [...batch.meshes, ...instancing.add(batch.shared_shapes, bounds)].map(convertServerMesh);
 
           // Update bounds incrementally
           for (const mesh of batchMeshes) {
@@ -223,7 +230,7 @@ export function useIfcServer() {
               coordinateInfo,
             });
           }
-        }, { signal });
+        }, { signal, sharedShapes: true });
 
         // Re-check after the stream's single big await resolves: supersession
         // can land at any point during it, including after the LAST batch's
@@ -270,17 +277,19 @@ export function useIfcServer() {
           hasLargeCoordinates: streamMetadata?.coordinate_info?.is_geo_referenced ?? false,
         };
 
+        const instancedGeometryAabbs = instancing.aabbs(new Set(allMeshes.map(m => m.expressId)), originShift);
         publishGeometry({
           meshes: allMeshes,
           totalVertices,
           totalTriangles,
           coordinateInfo: finalCoordinateInfo,
+          ...(instancedGeometryAabbs ? { instancedGeometryAabbs } : {}),
         });
 
       } else if (parquetSupported) {
         // NON-STREAMING PATH - for smaller files, use batch request (with cache check)
         // Use Parquet endpoint - much smaller payload (~15x compression)
-        const parquetResult = await client.parseParquet(file, { signal });
+        const parquetResult = await client.parseParquet(file, { signal, sharedShapes: true });
         // Re-check right after this await, before the first write below —
         // same reason as the streaming re-check above: a non-streaming parse
         // is still one awaited network round trip a newer load can outrun.
@@ -290,7 +299,7 @@ export function useIfcServer() {
         setProgress({ phase: 'Converting meshes', percent: 70 });
 
         // Convert server mesh format to viewer format (TypedArrays)
-        allMeshes = parquetResult.meshes.map(convertServerMesh);
+        allMeshes = [...parquetResult.meshes, ...instancing.add(parquetResult.shared_shapes, sharedBounds)].map(convertServerMesh);
       } else {
         // Fallback to JSON endpoint
         if (processed) throw new ProcessedModelUnavailable('parquet-init');
@@ -312,6 +321,7 @@ export function useIfcServer() {
         // from mesh positions are ALREADY in shifted coordinates (small values near origin).
         // We must NOT subtract originShift again - that would give huge negative bounds!
         const { bounds } = calculateMeshBounds(allMeshes);
+        mergeBounds(bounds, sharedBounds);
 
         // Build CoordinateInfo correctly for server-shifted meshes:
         // - shiftedBounds = bounds (already shifted by server)
@@ -346,17 +356,23 @@ export function useIfcServer() {
           hasLargeCoordinates: serverCoordInfo?.is_geo_referenced ?? false,
         };
 
-        // Set all geometry at once
+        // Set all geometry at once. Like a local parse's, the totals count flat meshes only.
         setProgress({ phase: 'Rendering geometry', percent: 80 });
+        const instancedGeometryAabbs = instancing.aabbs(new Set(allMeshes.map(m => m.expressId)), originShift);
         publishGeometry({
           meshes: allMeshes,
-          totalVertices: result.stats.total_vertices,
-          totalTriangles: result.stats.total_triangles,
+          totalVertices: result.stats.total_vertices - instancing.vertices,
+          totalTriangles: result.stats.total_triangles - instancing.triangles,
           coordinateInfo,
+          ...(instancedGeometryAabbs ? { instancedGeometryAabbs } : {}),
         });
       }
 
       if (cancelled()) return false;
+      instancing.complete();
+      if (instancing.occurrences > 0) {
+        console.log(`[useIfc] Server geometry: ${allMeshes.length} flat meshes, ${instancing.occurrences} instanced occurrences in ${instancing.shards.length} shards`);
+      }
       // Model-owned hydration outlives this load's finally and metadata signal.
       hydrateProperties(modelId, isStale, async propertySignal => {
         const included = 'data_model' in result ? result.data_model : null;

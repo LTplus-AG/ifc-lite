@@ -394,6 +394,11 @@ describe('RaycastEngine.raycastScene', () => {
     assert.deepEqual({ expressId: hit.expressId, modelIndex: hit.modelIndex,
       geometryItemId: hit.geometryItemId, sourceTriangleIndex: hit.sourceTriangleIndex },
     { expressId: 1_025, modelIndex: 7, geometryItemId: 1_011, sourceTriangleIndex: 0 });
+    scene.setInstancedVisible(false);
+    assert.equal(engine.raycastScene(400, 300), null, 'Types view excludes the instance from direct ray picks');
+    assert.deepEqual([...scene.getInstancedEntityIds()], [1_025], 'the occurrence is still owned');
+    scene.setInstancedVisible(true);
+    assert.equal(engine.raycastScene(400, 300)?.intersection.expressId, 1_025);
   });
 
   it('#11753 selects each of two welded feature corners 40 micrometres apart at zoom', () => {
@@ -462,8 +467,17 @@ describe('RaycastEngine.raycastScene', () => {
     assert.equal(idle.pending, 1);
     const target = settle().snapTarget;
     assert.equal(target?.expressId, 1025);
-    assert.equal(target?.type, 'vertex');
-    assert.deepEqual(target?.position, { x: 3, y: 12, z: 0 });
+    assert.ok(target);
+    assert.equal(target.type, 'vertex');
+    assert.deepEqual(target.position, { x: 3, y: 12, z: 0 });
+    scene.setInstancedVisible(true);
+    assert.equal(run().snapTarget?.expressId, 1025, 'an unchanged pass keeps the warm index');
+    scene.setInstancedVisible(false);
+    assert.equal(scene.getInstancedTemplates().length, 0, 'Types view hides the draw pass');
+    assert.equal(run().snapTarget, null, 'the first hidden pick discards the visible index');
+    assert.equal(settle().snapTarget, null, 'a settled Types view excludes the occurrence');
+    scene.setInstancedVisible(true);
+    assert.deepEqual(settle().snapTarget?.position, target.position, 'Model view restores the transformed corner');
     assert.equal(settle({ hiddenIds: new Set([1025]) }).snapTarget, null);
     assert.equal(settle({ isolatedIds: new Set([99]) }).snapTarget, null);
     assert.equal(settle({}, new Set([8])).snapTarget, null);

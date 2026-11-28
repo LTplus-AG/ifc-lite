@@ -140,7 +140,7 @@ export class RaycastEngine {
         // their per-occurrence triangles ON DEMAND so measure-snap / section-face-pick
         // work over them — but only for occurrences whose world AABB the ray actually
         // hits, so we never expand the whole instanced population per ray.
-        for (const eid of this.scene.getInstancedEntityIds()) {
+        for (const eid of this.scene.getInstancedEntityIds(true)) {
             if (!isEntityVisible(eid, options?.hiddenIds, options?.isolatedIds)) continue;
             const bounds = this.scene.getInstancedEntityBounds(eid);
             if (!bounds || !this.rayHitsBounds(ray, bounds)) continue;

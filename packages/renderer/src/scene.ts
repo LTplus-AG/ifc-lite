@@ -2846,7 +2846,9 @@ export class Scene {
   }
 
   setInstancedVisible(visible: boolean): void {
+    if (this.instancedVisible === visible) return;
     this.instancedVisible = visible;
+    this.bumpPickGeometryRevision();
   }
 
   /** GPU-instancing templates for the renderer's instanced draw pass. Empty when
@@ -3079,7 +3081,8 @@ export class Scene {
 
   /** All instanced occurrence express_ids (for CPU consumers that enumerate geometry,
    *  e.g. the raycast-engine and exporters). */
-  *getInstancedEntityIds(): IterableIterator<number> {
+  *getInstancedEntityIds(drawnPassOnly = false): IterableIterator<number> {
+    if (drawnPassOnly && !this.instancedVisible) return;
     for (const id of this.instancedEntityMap.keys()) if (!this.instanceSuppression.has(id)) yield id;
   }
 
@@ -3112,11 +3115,8 @@ export class Scene {
     return this.boundingBoxes.get(expressId) ?? null;
   }
 
-  /** Lazily materialize per-occurrence world-space MeshData for an instanced entity
-   *  (template geometry × each occurrence's matrix). NOT retained — built on demand
-   *  for CPU consumers that need triangles (exact raycast / measure / section-face /
-   *  export). Returns undefined if the id is not instanced. */
   *snapOccurrences() {
+    if (!this.instancedVisible) return;
     for (const [expressId, occurrences] of this.instancedEntityMap) {
       for (const location of occurrences) {
         const template = this.instancedTemplateCpu[location.templateIndex];
@@ -3126,6 +3126,10 @@ export class Scene {
     }
   }
 
+  /** Lazily materialize per-occurrence world-space MeshData for an instanced entity
+   *  (template geometry × each occurrence's matrix). NOT retained — built on demand
+   *  for CPU consumers that need triangles (exact raycast / measure / section-face /
+   *  export). Returns undefined if the id is not instanced. */
   getInstancedMeshDataPieces(expressId: number): MeshData[] | undefined {
     const occ = this.instancedEntityMap.get(expressId);
     if (!occ || occ.length === 0 || this.instanceSuppression.has(expressId)) return undefined;

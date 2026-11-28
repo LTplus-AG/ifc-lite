@@ -8,6 +8,7 @@
  */
 
 import { RefreshCw } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { useTranslation } from '@/i18n';
 import { useFederationSlotFailure } from '@/lib/federation-slot-status';
 
@@ -16,13 +17,16 @@ export function FederationSlotRetry({ modelId, name }: { modelId: string; name: 
   const failure = useFederationSlotFailure(modelId);
   if (!failure) return null;
   return (
-    <button
-      className="p-[5px] text-red-600 dark:text-red-400 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+    // 24 px square: the WCAG 2.2 2.5.8 minimum, sized like the row's other controls.
+    <Button
+      variant="ghost"
+      size="icon-xs"
+      className="h-6 w-6 shrink-0 text-destructive"
       aria-label={t('hierarchy.node.retryModelAriaLabel', { name })}
       title={failure.reason}
       onClick={(event) => { event.stopPropagation(); failure.retry(); }}
     >
       <RefreshCw className="h-3.5 w-3.5" aria-hidden />
-    </button>
+    </Button>
   );
 }

@@ -91,7 +91,7 @@ BCF identifies elements by IFC GlobalId (22-char base64). The package ships util
 import { ifcGuidToUuid, uuidToIfcGuid } from '@ifc-lite/bcf';
 
 const uuid = ifcGuidToUuid('1abc2def3GhI4jKlM5nOpQ');
-// → 'bd6f5b13-4c9d-4...'
+// → '649660a7-a290-d0ad-212d-52f585c58cda'
 
 const back = uuidToIfcGuid(uuid);
 // → '1abc2def3GhI4jKlM5nOpQ'
@@ -102,6 +102,12 @@ const back = uuidToIfcGuid(uuid);
 - `createBCFFromIDSReport` - turn an IDS validation report into a BCF file, one topic per failing spec
 - `computeMarkerPositions` - viewer-agnostic 3D topic marker positions for any renderer to draw
 - Camera round-trip helpers (`cameraToPerspective`, `orthogonalToCamera`, ...) and section-plane conversion
+- Comments and status: `createBCFComment`, `addCommentToTopic`, `updateTopicStatus`
+- `extractViewpointState` - read camera, selection, visibility and section planes back out of a viewpoint
+- `translateViewpoint` / `viewpointFromWorld` - move a viewpoint between world coordinates and a shifted render frame
+- `fillMissingSnapshots` / `placeholderSnapshotPng` - give snapshot-less viewpoints a placeholder image for tools that require one
+- `toARGBColor` / `parseARGBColor` - BCF `ARGB` hex colours
+- `generateIfcGuid`, `generateUuid`, `isValidIfcGuid`, `isValidUuid`
 
 ## API
 

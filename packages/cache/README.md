@@ -54,13 +54,13 @@ async function loadWithCache(file: File) {
   // Try cache first
   const cached = await myStorage.get(cacheKey);
   if (cached) {
-    try {
-      const reader = new BinaryCacheReader();
-      const { geometry } = await reader.read(cached);
-      renderer.loadGeometry(geometry?.meshes ?? []);
+    const hit = await new BinaryCacheReader().read(cached).catch(error => {
+      console.warn('Could not read the IFC cache; rebuilding it.', error);
+      return null;
+    });
+    if (hit) {
+      renderer.loadGeometry(hit.geometry?.meshes ?? []);
       return; // no parse, no tessellation
-    } catch {
-      // Unreadable or damaged entry: treat it as a miss and rebuild below.
     }
   }
 
@@ -110,7 +110,7 @@ The cache keys models by the xxHash64 of the source IFC, and `reader.validate(ca
 
 ## Source fingerprints
 
-`computeSourceFingerprint(bytes)` returns a `SourceFingerprint` (`{ hex, hash }`) from a fixed spread of the source: head, tail, eight interior windows and the byte length. It reads the same amount of data whatever the file size, so it is a cheap lookup key, not a content check: an edit that keeps the length and falls between the sampled windows gives the same fingerprint. `computeSourceFingerprintFromBlob(file)` gives the same result from a `Blob`/`File` through bounded slice reads. `sourceModelIdentity(name, bytes)` returns `` `${name}:${hex}` ``, the model identity the viewer, the CLI and the MCP server match rule-set `targets.modelFingerprints` against.
+`computeSourceFingerprint(bytes)` returns a `SourceFingerprint` (`{ hex, hash }`) using the byte length, a head window, a tail window when the file extends beyond the head, and eight interior windows. The amount read is bounded, so it is a cheap lookup key, not a content check: an edit that keeps the length and falls between the sampled windows gives the same fingerprint. `computeSourceFingerprintFromBlob(file)` gives the same result from a `Blob`/`File` through bounded slice reads. `sourceModelIdentity(name, bytes)` returns `` `${name}:${hex}` ``, the model identity the viewer, the CLI and the MCP server match rule-set `targets.modelFingerprints` against.
 
 ```typescript
 import { computeSourceFingerprint, computeSourceFingerprintFromBlob, sourceModelIdentity } from '@ifc-lite/cache';
@@ -128,7 +128,7 @@ const identity = sourceModelIdentity('office.ifc', buffer);
 
 The byte-level layout, the reader's compatibility rules and the conformance criterion for another writer are specified in [`SPEC.md`](./SPEC.md).
 
-The binary layout is versioned via the exported `FORMAT_VERSION` constant. Readers accept entries written by the current or an older format version (with backward-compatible decoding, e.g. the per-mesh source ids added in v14) and reject entries written by a newer one, so mixed-version deployments fail safely toward a cold parse. One exception: `read()` throws on geometry written before v13 (`skipGeometry: true` still reads the rest), so discard such an entry and rebuild it. Quantity and property tables written at v16 or earlier are misread when non-empty; `SPEC.md` §11 lists every version gate.
+The binary layout is versioned via the exported `FORMAT_VERSION` constant. Readers accept entries written by the current or an older format version (with backward-compatible decoding, e.g. the per-mesh source ids added in v14) and reject entries written by a newer one, so mixed-version deployments fail safely toward a cold parse. One exception: `read()` throws on geometry written before v13 (`skipGeometry: true` still reads the rest), so discard such an entry and rebuild it. Nonempty quantity tables written through v16, and nonempty property tables written before the `psetGlobalId` column was added during v16, are decoded with the current layout and can be misread; rebuild such entries. `skipGeometry: true` bypasses only the geometry check. `SPEC.md` §11 lists every version gate.
 
 Version 19 preserves explicitly supplied canonical `MeshData.appearanceSource` provenance. Fresh canonical meshes store an identity marker; fragmented or expanded meshes reference a geometry-header source-index pool, shared across spatial chunks, plus their corner mapping. Restored metadata points to the restored mesh indices, preserving the topology identity fence required by appearance preview. Invalid identities, source lengths, pool references and corner ranges fail cache reading/writing instead of enabling an unsafe preview. Unmarked meshes remain unmarked; old records never acquire inferred canonical identity.
 

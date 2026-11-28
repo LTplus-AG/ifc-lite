@@ -22,8 +22,8 @@ await gp.init();
 const glb = gp.exportGlbFromMeshes(result.meshes, /* includeMetadata */ true);
 // … or straight from IFC bytes (meshes internally):
 //   gp.exportGlb(bytes, true)
-// Leave `isolated` undefined for no isolation filter: an empty Uint32Array
-// there is an active allowlist that exports nothing.
+// Omit `isolated` to disable isolation. An empty Uint32Array excludes all
+// meshes and causes exportGlb to throw NO_RENDER_GEOMETRY.
 
 // Download
 const url = URL.createObjectURL(new Blob([new Uint8Array(glb)], { type: 'model/gltf-binary' }));
@@ -135,7 +135,9 @@ const exporter = new ParquetExporter(store, geometryResult, mutationView);
 
 Edits to parsed attribute values (`Name`, `Description`, `ObjectType`; a retype
 is applied) and to geometry aren't reflected yet: those columns still copy the
-parsed store. `StepExporter`/`Ifc5Exporter` cover the full edit surface today.
+parsed store. For STEP round-trips of attribute edits, use `StepExporter` with a
+`MutablePropertyView`. `Ifc5Exporter` applies retypes and edits to `GlobalId`, `Name`
+and `Description` in its entity rows.
 
 ## IFC5 IFCX — JSON + USD geometry
 
@@ -173,8 +175,9 @@ const lod0 = await generateLod0(bytes);
 const lod1 = await generateLod1(bytes);
 //   { glb: Uint8Array, meta: { status, failedElements, mapping, ... } }
 
-// Elements that produce no mesh are listed in meta.failedElements (status 'degraded').
-// If meshing fails entirely, the GLB holds the LOD0 boxes (meta.fallback 'boxes_from_lod0').
+// LOD0 element IDs missing from the GLB mapping are listed in meta.failedElements.
+// A meshing or GLB assembly error triggers a fallback attempt using LOD0 boxes.
+// A successful fallback sets meta.fallback to 'boxes_from_lod0'.
 ```
 
 ## Also exported

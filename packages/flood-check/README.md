@@ -191,9 +191,9 @@ it does where no runoff is mapped. So:
   confirmation alive; a building raster that shows classes is served from it
   with its first retrieval time, as before. `timeoutMs`, `maxPixels` and
   `cellSize` must be finite and positive (`RangeError` otherwise).
-- A failed request (network error, timeout, HTTP error status) throws
-  `HazardRequestError`; an answer that is not a PNG or not of the requested
-  size throws `HazardResponseError`.
+- A building-raster network error, timeout or HTTP error throws
+  `HazardRequestError`. An invalid PNG or a raster of the wrong dimensions throws
+  `HazardResponseError`. The reference probe reports either error as `confirmed: false`.
 
 ## Model facts
 

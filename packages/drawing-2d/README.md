@@ -245,7 +245,7 @@ Unsupported entity types are counted in `underlay.skipped` rather than failing t
 
 The package does not write PDF itself. It ships the arithmetic and geometry a caller needs to print a drawing at an exact scale:
 
-- `computePdfScaleLayout(bounds, scaleFactor, marginMm?)` sizes the page to the drawing at that scale and returns the world-to-millimetre transform (`worldPointToPdfMm`, `worldLengthToPdfMm`, `formatSheetScaleLabel`).
+- `computePdfScaleLayout(bounds, scaleFactor, marginMm?)` returns the page size and world-to-millimetre transform. Pass the transform to `worldPointToPdfMm` or `worldLengthToPdfMm`, and pass the scale factor to `formatSheetScaleLabel`.
 - `buildCameraSectionPlane` turns the current camera into a section plane, `clipMeshesToHalfSpace` clips meshes to its kept side on the CPU, and `projectWorldLineSeeds` turns world segments into drawing lines (`GeneratorOptions.extraLines`).
 - `buildColorRaster` rasterizes flat-shaded surfaces as an RGBA underlay for the vector line work.
 

@@ -52,15 +52,6 @@ export interface OverlayEntityLookup {
 }
 
 /**
- * Attributes the parser's `extractAllEntityAttributes` omits
- * (`SKIP_DISPLAY_ATTRS`). A created entity reports the same attribute names a
- * parsed one does. Its GlobalId is still answered through `globalIdOf`.
- */
-const SKIPPED_ATTRIBUTES = new Set([
-  'GlobalId', 'OwnerHistory', 'ObjectPlacement', 'Representation', 'HasPropertySets', 'RepresentationMaps',
-]);
-
-/**
  * Index the overlay's created and retyped entities once per accessor. The
  * validator's `getEntityType` is hot (once per candidate), and
  * `getNewEntities()` copies on every call.
@@ -98,8 +89,10 @@ export function overlayEntityLookup(view: EntityVisibilityView): OverlayEntityLo
       if (retype) return retype.newType;
       return created.get(expressId)?.type;
     },
+    // Every scalar attribute the entity sets, GlobalId included: a created
+    // entity reports the same attribute names a parsed one does (#10543).
     createdAttributes(expressId) {
-      return namedAttributes(expressId)?.filter((a) => !SKIPPED_ATTRIBUTES.has(a.name));
+      return namedAttributes(expressId);
     },
     globalIdOf(expressId) {
       const value = namedAttributes(expressId)?.find((a) => a.name === 'GlobalId')?.value;
@@ -112,8 +105,9 @@ export function overlayEntityLookup(view: EntityVisibilityView): OverlayEntityLo
  * The scalar an authored attribute holds, normalised the way
  * `extractAllEntityAttributes` normalises a parsed one: `.ENUM.` markers
  * stripped, `.T.`/`.F.` as booleans, logical-unknown and unset as absent,
- * typed wrappers unwrapped. References and aggregates are not attribute
- * values the IDS attribute facet compares, so they are absent.
+ * typed wrappers unwrapped. A reference (`'#5'`, which the STEP writer emits
+ * as `#5`) reads as the referenced entity's STEP id, the number 5, as the
+ * parser reports a parsed one (#10543). Aggregates are absent.
  */
 function scalarAttributeValue(raw: unknown): AttributeValue | undefined {
   if (typeof raw === 'number' || typeof raw === 'boolean') return raw;
@@ -121,7 +115,7 @@ function scalarAttributeValue(raw: unknown): AttributeValue | undefined {
     if (raw === '.U.' || raw === '.X.') return undefined;
     if (raw === '.T.') return true;
     if (raw === '.F.') return false;
-    if (/^#\d+$/.test(raw)) return undefined;
+    if (/^#\d+$/.test(raw)) return Number(raw.slice(1));
     return raw.length > 1 && raw.startsWith('.') && raw.endsWith('.') ? raw.slice(1, -1) : raw;
   }
   if (raw && typeof raw === 'object' && !Array.isArray(raw)) {

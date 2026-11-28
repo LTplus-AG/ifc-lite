@@ -7,6 +7,7 @@ import {
   extractAllEntityAttributes,
   extractAllMaterialsOnDemand,
   getAttributeTypeForSchema,
+  isKnownType,
 } from '@ifc-lite/parser';
 import {
   RelationshipType,
@@ -91,6 +92,9 @@ export function createDataAccessor(
   // validator hits Name/GlobalId/Description/getAttribute(Names) for the same
   // entity many times per specification. Caching collapses those repeated
   // full re-parses to a single extraction per entity for this accessor's store.
+  // The extraction keeps the attributes a display leaves out (GlobalId,
+  // ObjectPlacement, ...): an attribute facet must find every attribute an
+  // entity sets, by name, pattern or enumeration (#10543).
   const attrCache = new Map<
     number,
     Array<{ name: string; value: string | number | boolean }>
@@ -100,7 +104,9 @@ export function createDataAccessor(
   ): Array<{ name: string; value: string | number | boolean }> {
     let all = attrCache.get(expressId);
     if (!all) {
-      all = overlay?.createdAttributes(expressId) ?? extractAllEntityAttributes(store, expressId);
+      all =
+        overlay?.createdAttributes(expressId) ??
+        extractAllEntityAttributes(store, expressId, { includeDisplaySkipped: true });
       attrCache.set(expressId, all);
     }
     return all;
@@ -207,6 +213,13 @@ export function createDataAccessor(
 
     getAttributeNames(expressId: number): string[] {
       return getEntityAttributes(expressId).map((a) => a.name);
+    },
+
+    isEntityReferenceAttribute(expressId, attrName) {
+      const entityType = accessor.getEntityType(expressId);
+      const name = findAttribute(expressId, attrName)?.name ?? attrName;
+      const type = entityType && getAttributeTypeForSchema(entityType, name, store.schemaVersion);
+      return !!type && isKnownType(type);
     },
 
     getAttributeXsdTypes(

@@ -122,6 +122,11 @@ IDS supports six facet types for defining applicability and requirements:
 | **Material** | Match by material name | `Concrete C30/37` |
 | **PartOf** | Match by spatial containment | `IfcBuildingStorey "Level 1"` |
 
+An attribute facet can check whether an entity reference such as
+`ObjectPlacement` is present. A value restriction on that reference fails.
+The accessors supplied by IFC Lite distinguish entity references using the
+attribute's declared IFC type.
+
 Material lists whose `IfcMaterial.Name` is explicitly unset (`$` in STEP) retain the known material as `Material #<expressId>`. This is distinct from an unreadable or invalid referenced material: IDS keeps those results uncertain instead of treating them as a definite name mismatch.
 
 ## Constraint Types

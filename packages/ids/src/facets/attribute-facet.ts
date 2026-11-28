@@ -165,11 +165,14 @@ function checkSingleAttribute(
     }
   }
 
-  // Check value constraint
-  if (!matchConstraint(facet.value, attrValue)) {
+  // A reference can satisfy an existence check, but its STEP id is just
+  // an address in the file and cannot satisfy an IDS value restriction.
+  const isReference = accessor.isEntityReferenceAttribute?.(expressId, attrName);
+  if (isReference || !matchConstraint(facet.value, attrValue)) {
+    const actual = isReference && typeof attrValue === 'number' ? `#${attrValue}` : String(attrValue);
     return {
       passed: false,
-      actualValue: String(attrValue),
+      actualValue: actual,
       expectedValue: formatConstraint(facet.value),
       failure: {
         type:
@@ -177,7 +180,7 @@ function checkSingleAttribute(
             ? 'ATTRIBUTE_PATTERN_MISMATCH'
             : 'ATTRIBUTE_VALUE_MISMATCH',
         field: attrName,
-        actual: String(attrValue),
+        actual,
         expected: formatConstraint(facet.value),
       },
     };

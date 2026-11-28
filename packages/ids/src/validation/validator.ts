@@ -108,17 +108,17 @@ export function createCachedAccessor(accessor: IFCDataAccessor): IFCDataAccessor
   // Optional methods: only surface them when the underlying accessor
   // does — facet checkers feature-detect these.
   if (accessor.getPredefinedTypeRaw) {
-    cached.getPredefinedTypeRaw = memoById((id) =>
-      accessor.getPredefinedTypeRaw!(id)
-    );
+    cached.getPredefinedTypeRaw = memoById(accessor.getPredefinedTypeRaw.bind(accessor));
   }
   if (accessor.getAttributeNames) {
     cached.getAttributeNames = memoById((id) => accessor.getAttributeNames!(id));
   }
+  if (accessor.isEntityReferenceAttribute) {
+    const isReference = accessor.isEntityReferenceAttribute.bind(accessor);
+    cached.isEntityReferenceAttribute = memoByIdAndKey(isReference);
+  }
   if (accessor.getAttributeXsdTypes) {
-    cached.getAttributeXsdTypes = memoByIdAndKey((id, attr) =>
-      accessor.getAttributeXsdTypes!(id, attr)
-    ) as IFCDataAccessor['getAttributeXsdTypes'];
+    cached.getAttributeXsdTypes = memoByIdAndKey(accessor.getAttributeXsdTypes.bind(accessor));
   }
   if (accessor.getAncestors) {
     cached.getAncestors = memoByIdAndKey((id, rel) =>

@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { parse } from 'yaml';
 
 // Guarded imports (the scripts/perf-ratchet pattern, #6516): with the
 // production modules reverted, every test fails on the presence assertion
@@ -476,6 +477,53 @@ ct('run #11350: budget-limited sweeps resume from the first unjudged PR', () => 
     [[8, 'stale'], [5, 'unknown'], [7, 'unknown']],
   ]);
   assert.deepEqual(third.saved.released, { head5: true, head7: true, head8: true });
+});
+
+ct('workflow #11350: a late targeted run cannot replace a newer sweep cache', (t) => {
+  const workflow = parse(readFileSync(new URL('../.github/workflows/base-stale.yml', import.meta.url), 'utf8'));
+  const job = workflow.jobs.judge;
+  const restore = job.steps.find((step) => step.uses?.startsWith('actions/cache/restore@'));
+  const save = job.steps.find((step) => step.uses?.startsWith('actions/cache/save@'));
+  const judge = job.steps.find((step) => step.id === 'judge');
+  const temp = mkdtempSync(join(tmpdir(), 'base-stale-overlap-'));
+  t.after(() => rmSync(temp, { recursive: true, force: true }));
+  const entries = new Map();
+  const key = (pattern, id) => pattern.replace('${{ github.run_id }}', String(id)).replace('${{ github.run_attempt }}', '1');
+  const begin = (id, PR) => {
+    const runnerTemp = mkdtempSync(join(temp, 'runner-'));
+    const args = execFileSync('bash', ['-c', `node() { printf '%s\\n' "$@"; }\n${judge.run}`], {
+      env: { ...process.env, PR, RUNNER_TEMP: runnerTemp, TRIGGER: 'test' }, encoding: 'utf8',
+    }).trim().split('\n');
+    const exact = key(restore.with.key, id);
+    const newest = [...entries].reverse().find(([candidate]) => candidate.startsWith(restore.with['restore-keys']));
+    return { id, PR, opts: parseArgs(args.slice(1)), cache: entries.get(exact) ?? newest?.[1] ?? null };
+  };
+  const finishRun = (run, cache) => {
+    // Evaluate the save step's equality guard against the job environment.
+    const [variable, expected] = save.if.split(' == ');
+    const saveAllowed = save.if === 'always()' || (variable === 'env.PR' && JSON.stringify(run.PR) === expected?.replaceAll("'", '"'));
+    if (saveAllowed) entries.set(key(save.with.key, run.id), cache);
+  };
+  const second = { ...STALE_PR, number: 7, headRefOid: 'head7' };
+  const sweep = (cacheData) => {
+    const left = [1000, RATE_FLOOR - 1];
+    return runFake({ prs: [STALE_PR, second], cacheData, remaining: () => left.shift() ?? 0 });
+  };
+  const initial = begin(1, '');
+  finishRun(initial, sweep(initial.cache).saved);
+  const targeted = begin(2, '5');
+  assert.equal(targeted.opts.mode, 'pr');
+  assert.equal(targeted.cache.nextSweepPr, 7);
+  const advancing = begin(3, '');
+  assert.equal(advancing.opts.mode, 'sweep');
+  finishRun(advancing, sweep(advancing.cache).saved);
+  const targetedResult = runFake({ cacheData: targeted.cache, opts: { mode: targeted.opts.mode, pr: targeted.opts.pr }, ioOver: {
+    pull: () => ({ head: { sha: 'head5', repo: { full_name: 'o/r' } }, base: { ref: 'main' } }),
+  } });
+  finishRun(targeted, targetedResult.saved);
+  const next = begin(4, '');
+  assert.equal(next.cache.nextSweepPr, 5);
+  assert.equal(sweep(next.cache).rows[0].pr, 5);
 });
 
 ct('run: under the floor at start nothing is read; the evidence file holds one skip row', () => {

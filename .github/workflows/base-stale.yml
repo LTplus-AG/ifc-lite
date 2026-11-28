@@ -72,6 +72,8 @@ jobs:
   judge:
     name: Base-stale signal
     if: github.event_name != 'pull_request_target' || github.event.label.name == 'mergify-trial'
+    env:
+      PR: ${{ github.event.pull_request.number || inputs.pr }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -94,14 +96,13 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/base-stale-cache
-          key: base-stale-v1-${{ github.run_id }}
-          restore-keys: base-stale-v1-
+          key: base-stale-sweep-v1-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: base-stale-sweep-v1-
 
       - name: Judge
         id: judge
         env:
           GH_TOKEN: ${{ github.token }}
-          PR: ${{ github.event.pull_request.number || inputs.pr }}
           TRIGGER: ${{ github.event_name == 'push' && 'main-push' || github.event_name == 'pull_request_target' && 'labeled' || 'dispatch' }}
         run: |
           set -euo pipefail
@@ -111,12 +112,14 @@ jobs:
             --cache "$RUNNER_TEMP/base-stale-cache/cache.json" \
             --json-out "$RUNNER_TEMP/base-stale/verdicts.jsonl"
 
-      - name: Save the cache
-        if: always()
+      # Targeted runs can restore answers, but only serialized sweeps publish
+      # their cursor and rollback progress. The prefix excludes older mixed caches.
+      - name: Save the sweep cache
+        if: env.PR == ''
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/base-stale-cache
-          key: base-stale-v1-${{ github.run_id }}-${{ github.run_attempt }}
+          key: base-stale-sweep-v1-${{ github.run_id }}-${{ github.run_attempt }}
 
       # The evidence the shadow period is counted from. Written by every run
       # that judged (an empty file when there was nothing to judge or the

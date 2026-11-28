@@ -3,7 +3,7 @@ name: use-ifclite
 description: >-
   Work with IFC / BIM files (.ifc, .ifcx, IFC2X3 / IFC4 / IFC4X3 / IFC5) from the
   terminal using the ifc-lite CLI — inspect, query, validate (IDS), export
-  (CSV/JSON/IFC/glTF; Parquet via the SDK), create elements, merge, convert schema versions,
+  (CSV/JSON/IFC/glTF; Parquet via `@ifc-lite/export`), create elements, merge, convert schema versions,
   diff, clash-check, run BCF collaboration, and script the SDK. Use whenever a
   task involves reading, analysing, generating, or editing IFC building models,
   or when the user mentions IFC, BIM, BCF, IDS, or buildingSMART. Also covers
@@ -13,8 +13,9 @@ description: >-
 # Using ifc-lite
 
 `ifc-lite` is a headless BIM toolkit for IFC files. It was built for LLM
-terminals: data commands take `--json`, **stdout is data, stderr is status**,
-and exit `0`/`1` means pass/fail. Prefer it over hand-parsing IFC text.
+terminals: many commands accept `--json` (use `--format json` for tabular JSON from
+`export` or `schedule`), and **stdout is data, stderr is status**. Check each
+command's help for its output and exit codes. Prefer it over hand-parsing IFC text.
 
 ## Start here (every session)
 

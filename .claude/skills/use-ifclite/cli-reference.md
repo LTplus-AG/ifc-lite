@@ -1,8 +1,9 @@
 # ifc-lite CLI — full command reference
 
-Headless BIM toolkit. Data commands take `--json` (machine-readable); `view`,
-`mcp` and `gym` are long-running servers/loops without a JSON mode.
-**stdout = data, stderr = status, exit 0 = success / 1 = failure.** Run
+Headless BIM toolkit. Many commands offer machine-readable output through `--json`.
+For tabular JSON from `export` or `schedule`, use `--format json`. `gym` speaks a
+newline-delimited JSON protocol. **stdout = data, stderr = status.** Most commands
+exit 0 on success and 1 on failure; some (for example `flow`) have more codes. Run
 `ifc-lite <command> --help` for the live signature, and `ifc-lite schema` for
 the full SDK API used by `eval`/`run`.
 
@@ -93,8 +94,9 @@ Flags: `--format csv|json|ifc|obj|gltf|glb|jsonld|step|ifcx|usd|3dm|hbjson|dfjso
 `--name-by-global-id` (glb/gltf) · `--out <file>`. 3DM adds `--units`, `--coordinates`,
 `--layers`, `--properties`, `--3dm-version 7|8`, `--no-instancing`, `--no-spaces`,
 `--no-normals`, `--layer-slicing`. CityJSON adds `--scale STEP` (vertex grid,
-default 0.001) and `--blocks-only`. Experimental: `--kernel exact|retained`,
-`--retained-engine DIR`, `--retained-report FILE` (retained needs `--format obj`).
+default 0.001) and `--blocks-only`. Experimental `--kernel exact|retained` defaults to `exact`.
+Retained export requires `--format obj` and an engine directory from `--retained-engine DIR`
+or `IFCLITE_RETAINED_ENGINE`; `--retained-report FILE` writes an optional report.
 
 `ifcx`, `usd`, `hbjson`, `dfjson`, `cityjson` and `cityjsonseq` always export
 the whole model: they ignore `--type`, `--where`, `--storey` and `--limit`.
@@ -252,14 +254,16 @@ guide for the full REST surface.
 ```bash
 ifc-lite flow describe graph.flow.json      # inputs (nodeId.param keys) and outputs
 ifc-lite flow validate graph.flow.json
-ifc-lite flow run graph.flow.json model.ifc --input filter.threshold=3 --out result.json --checkpoint review.json
-ifc-lite flow review review.json --approve <proposal digest>   # or --reject
-ifc-lite flow resume graph.flow.json model.ifc --checkpoint review.json --out result.json
+ifc-lite flow run graph.flow.json model.ifc --input filter.threshold=3 --out paused.ifc --checkpoint review.json
+# Copy the proposal digest printed by the paused run into PROPOSAL_DIGEST.
+ifc-lite flow review review.json --approve "${PROPOSAL_DIGEST:?Set PROPOSAL_DIGEST to the printed proposal digest}"   # or --reject
+ifc-lite flow resume graph.flow.json paused.ifc --input filter.threshold=3 --checkpoint review.json --out result.ifc
 ```
 
-`run` needs `--checkpoint` when the graph pauses for review; `resume` needs it
-always, plus `--next-checkpoint` if the graph pauses again. `flow bcf
-list|check|reconcile|confirm-absent` inspects durable BCF writes. See
+Pass `--checkpoint` before running a graph with a review node. Resume requires that
+checkpoint, the paused IFC and the same input overrides, plus `--next-checkpoint` if
+another review node remains. `flow bcf list` and `check` inspect durable BCF publication
+entries; `reconcile` and `confirm-absent` update their local records. See
 `ifc-lite flow --help`.
 
 ## Pipe patterns

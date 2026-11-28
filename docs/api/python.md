@@ -370,7 +370,8 @@ for step_id, row in schedule["rows"].items():
 
 For project-specific comparisons, call
 `rebar_schedule_with_preflight(ifc_bytes, min_inside_bend_radius_m,
-min_straight_segment_length_m, ids=None, *, max_developed_centreline_length_m=None)`.
+min_straight_segment_length_m, ids=None, *, max_developed_centreline_length_m=None,
+zero_length_tolerance_m=1e-9, gap_tolerance_m=1e-6, tangent_tolerance_rad=1e-6)`.
 The measured comparisons identify their source segments; equality passes.
 Inside bend radius is arc centreline radius minus swept outer radius. Modified
 or unsupported sources and rows without sweeps carry explicit skip reasons.

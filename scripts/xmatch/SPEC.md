@@ -741,9 +741,10 @@ Also absent, and worth stating:
   `swapped` each pair one geometry edit with a rename, which is the minimum a
   successor needs to exist at all, and `splitLength` renames both halves;
 * `swapped` cannot be constructed on a model whose only donor maps are
-  copies or mirrors of the element's own (AC20). `merge` claims come only from
-  the synthetic `merged` role, which only rvt01 populates (duplex and AC20
-  zero it in `run.mjs`).
+  copies or mirrors of the element's own (AC20). Only rvt01 has
+  ground-truth merges, from the synthetic `merged` role (duplex and AC20 zero
+  it in `run.mjs`). The scorer counts every merge claim, including false
+  positives.
 
 ## Cost and scheduling
 

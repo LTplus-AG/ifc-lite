@@ -106,8 +106,9 @@ no modifier glyph isn't a recognized cluster) and was keyed as
 `measure.geo.unitMeters` by the #4918 grab-bag slice, filling in a key this
 slice had reserved with a comment but left unadded. The wall-split tool catalogue (`split-tool.en.ts`) covers
 `SplitCursorInput.tsx` and the Split command's bar label and hint
-(`lib/commands/modeling/commands/element-split.ts`). `SplitOverlay.tsx` draws
-only numeric labels. The Section tool's hint line (`SectionHint.tsx`) uses the
+(`lib/commands/modeling/commands/element-split.ts`). `SplitOverlay.tsx` shows
+the split distance and total length with a shared unit and honours the length
+display override. The Section tool's hint line (`SectionHint.tsx`) uses the
 existing `section-tool.en.ts` and `section-planes.en.ts` catalogues.
 
 The saved-list builder catalogue (#4918 slice 6, lists) covers

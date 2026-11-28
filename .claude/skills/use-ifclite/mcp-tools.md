@@ -118,7 +118,7 @@ publication: `bcf_publications_list`, `bcf_publication_check`,
 
 **Flow** — `describe_flow`, `run_flow`, `propose_flow`, `resume_flow`.
 
-**Viewer** (interactive 3D; `viewer_open` starts it, `--viewer` opens it at startup) — `viewer_open`,
+**Viewer** (interactive 3D. `viewer_open` serves a loaded model and returns its URL. In stdio mode, `--viewer` starts the viewer when a model is preloaded; `--open` also launches a browser.) — `viewer_open`,
 `viewer_close`, `viewer_status`, `viewer_colorize`, `viewer_color_by_property`,
 `viewer_color_by_storey`, `viewer_isolate`, `viewer_hide`, `viewer_show`,
 `viewer_fly_to`, `viewer_set_section`, `viewer_clear_section`, `viewer_reset`,

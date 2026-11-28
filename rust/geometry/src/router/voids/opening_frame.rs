@@ -158,11 +158,19 @@ pub(crate) fn bounds_are_the_box(mesh: &Mesh) -> bool {
     // direction that rounds either way. Anything wider admits a turn whose
     // bounds gain, carried along the host, exceeds the recess tolerance.
     let tolerance = f32::EPSILON * magnitude;
-    (0..8).all(|corner: usize| {
-        let target = [0, 1, 2].map(|axis| if corner >> axis & 1 == 0 { min[axis] } else { max[axis] });
-        mesh.positions.chunks_exact(3).any(|vertex| {
-            (0..3).all(|axis| (vertex[axis] - target[axis]).abs() <= tolerance)
-        })
+    // Each bit represents a corner (x, y, z are its three binary digits).
+    // A thin axis can match both extrema, so keep both sets of corners.
+    let axis_corners = |value: f32, low: f32, high: f32, low_corners: u8| {
+        let low_matches = if (value - low).abs() <= tolerance { low_corners } else { 0 };
+        let high_matches = if (value - high).abs() <= tolerance { !low_corners } else { 0 };
+        low_matches | high_matches
+    };
+    let mut corners = 0u8;
+    mesh.positions.chunks_exact(3).any(|p| {
+        corners |= axis_corners(p[0], min.x, max.x, 0x55)
+            & axis_corners(p[1], min.y, max.y, 0x33)
+            & axis_corners(p[2], min.z, max.z, 0x0f);
+        corners == u8::MAX
     })
 }
 

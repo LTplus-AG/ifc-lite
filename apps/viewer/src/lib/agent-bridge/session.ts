@@ -25,6 +25,7 @@ import {
   AGENT_BRIDGE_ACTIVITY_LIMIT, getAgentBridgeState, registerAgentBridgeControls, updateAgentBridgeState,
   foldActivity, type AgentBridgeActivity, type AgentBridgePermission, type AgentBridgeStatus,
 } from './state';
+import { savedTicket, saveTicket } from './resume';
 import { isFramed } from './pairing-fragment';
 import { agentSurfaces } from './agent-surfaces';
 import { ENDED_KEYS } from './outcome-keys';
@@ -91,6 +92,8 @@ export async function queryLocalNetworkPermission(pageHost: string | undefined =
 export interface ConnectAgentBridgeOptions {
   port: number;
   code: string;
+  resume?: boolean;
+  onResumeBusy?: (key: string) => void;
   bim: BimContext;
   /** Test seam; the browser's `WebSocket` otherwise. */
   WebSocket?: BridgeClientOptions['WebSocket'];
@@ -122,22 +125,35 @@ function announceEnded(status: AgentBridgeStatus): void {
 }
 
 /** Pair this tab with the bridge on `port`. Replaces any connection this tab had. Refused when framed. */
-export function connectAgentBridge({ port, code, bim, WebSocket }: ConnectAgentBridgeOptions): void {
+export function connectAgentBridge({ port, code, bim, WebSocket, resume = false, onResumeBusy }: ConnectAgentBridgeOptions): void {
   if (isFramed()) {
     updateAgentBridgeState({ status: { kind: 'error', code: 'framed', port } });
     return;
   }
   active?.disconnect();
+  if (!resume) saveTicket();
   // Surfaces belong to the agent that pushed them: a click must never reach a different agent.
   agentSurfaces.clear();
   const lifetime = new AbortController();
   const host = createMainViewerToolHost(useViewerStore, bim, { editor: createMainViewerEditor(useViewerStore), lifetimeSignal: lifetime.signal });
   resetActivity();
   updateAgentBridgeState({ activity: [] });
+  const prior = resume ? savedTicket() : undefined;
+  const pendingNonce = prior?.key === code && prior.port === port ? prior.pendingNonce : undefined;
+  let recoveryKey: string | undefined;
   let wasConnected = false;
   const client: BridgeClient = new BridgeClient({
     port,
+    onRefusedEvent: () => toast.error(resolve('agentBridge.surfaces.unsent')),
     pairingCode: code,
+    authenticate: {
+      resume, pendingNonce,
+      prepared: (rotationNonce, next) => {
+        saveTicket({ port, key: code, pendingNonce: rotationNonce });
+        if (pendingNonce) recoveryKey = next;
+      },
+      accepted: (key) => { recoveryKey = undefined; saveTicket({ port, key }); },
+    },
     tools: mainViewerBridgeTools(),
     // The grant is read from the client at dispatch and again at the write: a revoke refuses what is not yet written.
     dispatch: (name, args, signal, onDelivery) => dispatchMainViewerTool(host, name, args, { signal, onDelivery, canEdit: () => client.canEditNow() }),
@@ -150,7 +166,19 @@ export function connectAgentBridge({ port, code, bim, WebSocket }: ConnectAgentB
       if (status.kind !== 'connected' && status.kind !== 'connecting') lifetime.abort();
       if (active !== client) return;
       if (status.kind !== 'connected' && status.kind !== 'connecting') flushActivity();
+      if (status.kind === 'disconnected' && status.reason !== 'connection-lost' && status.reason !== 'page-hidden') saveTicket();
       updateAgentBridgeState({ status });
+      if (resume && status.kind === 'error' && status.code === 'busy') onResumeBusy?.(code);
+      if (resume && status.kind === 'error' && status.code === 'pairing-failed') {
+        if (recoveryKey) {
+          // The bridge may have rotated before its welcome reached us. Try the staged successor once.
+          saveTicket({ port, key: recoveryKey });
+          connectAgentBridge({ port, code: recoveryKey, resume: true, bim, WebSocket, onResumeBusy });
+          return;
+        }
+        saveTicket();
+        toast.error(resolve('agentBridge.failure.pairingFailed'), 'agent-bridge-resume');
+      }
       if (wasConnected) announceEnded(status);
       wasConnected = status.kind === 'connected';
     },
@@ -171,6 +199,7 @@ export function sendAgentUiEvent(event: BridgeUiEvent): boolean {
 
 /** Close the connection at the user's request. */
 export function disconnectAgentBridge(): void {
+  saveTicket();
   const client = active;
   if (!client) {
     updateAgentBridgeState({ status: { kind: 'idle' } });

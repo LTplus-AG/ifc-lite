@@ -326,9 +326,11 @@ Tests run:
   `ExtensionHostService.runTests(id)`.
 - On demand from the CLI: `ifc-lite ext test <bundle-dir> [--bail] [--json]`
   (a bundle directory, not an installed id).
-- On an SDK version change: the Repair Queue panel's "Run check" button
-  calls `revalidateForSdk(version)`, which tests every affected installed
-  extension. It does not run on mount.
+- On demand in the Repair Queue: "Run check" or "Re-run" calls
+  `revalidateForSdk(version)` with the current SDK version. It runs declared
+  tests for outdated or permissive extensions whose bundles are available.
+  Affected extensions whose bundles or tests are unavailable enter the repair
+  queue as skipped. It does not run on mount.
 
 Install and upgrade do not run tests: the installer loads the bundle,
 records the audit event and fires `onStartup`. If tests fail on an SDK

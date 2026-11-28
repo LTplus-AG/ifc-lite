@@ -78,9 +78,9 @@ LAS/LAZ behaviour, because COPC is LAZ.
 Each resident node is its own snap source. `queryRay` culls a source by a
 ray/bounds test first, and `queryPointClouds` rewrites the ray into an
 asset's frame once per placement matrix, not once per node. A one-off scratch
-benchmark on a synthetic terrain octree found per-node indexes about as fast per
-ray query as one index over the same points, with a small overhead only past the
-1,024-node selection cap. That measurement is not a tracked baseline; tracked
+benchmark on a synthetic terrain octree found similar query times for per-node
+and combined indexes at the smaller tested node count. The larger tested count
+exceeded the default cap's upper bound of 1,024 nodes and showed some overhead. That measurement is not a tracked baseline; tracked
 numbers live in the [performance guide](../guide/performance.md).
 
 ## Known limits

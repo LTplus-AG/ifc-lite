@@ -243,7 +243,7 @@ if envelope.signature:
    import public key from signature.publicKey
    message = buildSigningMessage(contentHash, signature.signedAt)
      ("iflx-sig" 0x1f "v1" 0x1f contentHash 0x1f signedAt)
-   crypto.subtle.verify(signature.signature, message)
+   crypto.subtle.verify(ED25519_PARAMS, publicKey, signatureBytes, messageBytes)
    if fail → SignatureMismatchError
    if fingerprint(publicKey) ∈ revocation list → SignatureRevokedError
       (planned: no revocation list or SignatureRevokedError exists yet;
@@ -305,9 +305,10 @@ can review the history in a future "Signers" tab (post-Phase-5 UI).
 
 ### 6.3 Updates and version downgrade
 
-Planned (not built): the viewer installer (`host-installer.ts`) records
-the signer fingerprint in the audit event but does not compare versions
-or signers between the installed and the new bundle today.
+Planned: signer comparison and version-order checks. The viewer installer
+(`host-installer.ts`) records the signer fingerprint in the audit event and
+uses version inequality to decide whether to tear down the previous
+activation.
 
 When a user updates an extension:
 

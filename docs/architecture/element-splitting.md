@@ -213,8 +213,9 @@ element-specific snaps:
   - Midpoint
   - Thirds, quarters (configurable in tool-settings dropdown)
   - Intersection point with any other wall on the same storey
-    (planned; no wall-intersection helper exists yet — the planar-graph
-    helpers in `@ifc-lite/create`'s auto-space code are the candidate)
+    (planned for split snapping; `wallAxisIntersection` in
+    `packages/create/src/in-store/wall-join-intersection.ts` computes
+    intersections for wall joins)
   - Hosted-element edges (door / window frames) — snap to the frame
     boundary so users can split "right next to" an opening
   - Snap to current grid step
@@ -490,8 +491,8 @@ to see immediately — same problem as the move gizmo. We solve it
 once, both features benefit:
 
 - **Path A (shipped, through the shared re-mesh seam):** the
-  `element.split` command returns `remesh: [source, created]`
-  (`element-split.ts`), and the modeling transaction hands those ids to
+  `element.split` command includes the source and created ids in `remesh`
+  and, for wall splits, also the recut joined wall partners (`element-split.ts`), and the modeling transaction hands those ids to
   `remeshAfterCommit` (`apps/viewer/src/lib/remesh/remesh-registry.ts`),
   which runs `requestRemesh` (`remesh-service.ts`) now and again on undo /
   redo of the batch. It
@@ -563,9 +564,9 @@ Pure helpers (tests in `apps/viewer/src/lib/`):
 - `slab-edit.test.ts`, `slab-edit-refusal.test.ts`,
   `linear-element-edit.test.ts`, `linear-element-edit-range.test.ts`,
   `split-guid.test.ts`, `split-effective-type.test.ts`
-- `metadata-clone.test.ts` (plus
-  `packages/create/src/in-store/edit/metadata-clone-structural.test.ts`) —
-  Pset / Qto / classification / material / type rel duplication
+- `metadata-clone.test.ts` covers adding split targets to existing metadata
+  relationships. `packages/create/src/in-store/edit/metadata-clone-structural.test.ts`
+  checks that cloning effective property edits excludes unrelated entities.
 - `hosted-opening-refit.test.ts` — hosted openings after a cut
   (`hosted-opening-refit.ts` in `packages/create/src/in-store/edit/`)
 - Command level: `apps/viewer/src/lib/commands/modeling/commands/element-split.test.ts`,

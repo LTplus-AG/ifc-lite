@@ -67,8 +67,9 @@ IFC components (facts are bound, not literal):
 - `StatGroup`: KPI tiles; each value is a query count / sum or a data path.
 - `GroupChart`: bar / pie / line over a query grouped by type, storey, material or a property.
 - `ColorLegend`: colour-by-property legend that applies colours on mount and on toggle.
-- `ActionBar`: viewer actions over a ref set (`VIEWER_ACTIONS`: select, isolate, hide, show,
-  colorize, flyTo, resetView, exportCsv; no section action) and follow-up prompts back to the agent.
+- `ActionBar`: ref-targeted viewer actions (`select`, `isolate`, `hide`, `show`, `colorize`,
+  `flyTo`, `exportCsv`), plus `resetView` (needs no refs; no section action) and follow-up
+  prompts back to the agent.
 
 Renderer functions (A2UI v1.0 functions, `allowedCallers` per `IFC_FUNCTION_POLICY` in
 `policy.ts`): `select`, `isolate`, `hide`, `show`, `colorize`, `flyTo`, `resetView`,

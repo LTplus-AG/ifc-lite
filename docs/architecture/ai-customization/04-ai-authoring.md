@@ -246,8 +246,9 @@ Tunables (defaults):
 - `maxAttempts`: 4
 - `attemptBudgetMs`: 90 seconds per attempt (each attempt gets the full
   timeout).
-- `totalBudgetMs`: 6 minutes. It is checked only before an attempt starts,
-  so a run can end up to one attempt budget past it.
+- `totalBudgetMs`: 6 minutes, checked before each attempt starts. The last
+  attempt can run past this budget. The per-turn timer applies to waiting for
+  the authoring response; response validation follows outside that timer.
 - Token budget per attempt (6000 output, 32000 input) is planned, not
   enforced. An `AuthoringTurn` may carry a `tokens` estimate, but the loop
   neither reads nor returns it.

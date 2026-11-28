@@ -144,17 +144,20 @@ interface ClashSettings {
   tolerance?: number;              // default touching band (DEFAULT_CLASH_SETTINGS: 0.002 m)
   excludeVoidsAndHosts?: boolean;  // apply `exclusions`; default true
   exclusions?: ExclusionSet;       // pair-exclusion set from an adapter (§5)
-  maxCandidatePairs?: number;      // TS-backend cap, one budget for the whole run (each rule gets
-                                   // what is left) — NEVER silent; reported in result.truncated
+  maxCandidatePairs?: number;      // TS narrow-phase checks across the whole run;
+                                   // dropped pairs are reported in result.truncated
   signal?: AbortSignal;
   onProgress?: (p: { phase: 'broad'|'narrow'; rule: string; done: number; total: number }) => void;
 }
 
 interface Clash {
   id: string;                 // stable: clashPairId(ruleId, side A, side B), sides ordered;
-                              // a side is `${model} ${key}`, or an escaped JSON tuple that adds
-                              // the runtime ref when the key repeats or a field holds `@`/space
-                              // (object-identity.ts)
+                              // a side is `${model} ${key}` or `@` followed by a JSON tuple
+                              // `[model, key, refOrNull]`. Encode a side if its key is ambiguous
+                              // within the model, or if its model or key starts with `@` or
+                              // contains whitespace. Only ambiguous keys include the runtime ref.
+                              // `clashPairId` encodes the outer tuple for encoded sides or a rule
+                              // ID that starts with `@` or contains whitespace (object-identity.ts)
   a: ClashElementRef;         // { key, ref, model, tag, name?, keyAmbiguous? }
   b: ClashElementRef;
   rule: string;
@@ -216,7 +219,7 @@ The TS reference uses `@ifc-lite/spatial`'s `BVH` (`build` + `queryAABB`); `rust
 - Pure function of (elements, rules, settings). No `Math.random` in the core, and no clock in any verdict. The TS kernel reads `performance.now()` (falling back to `Date.now()`) only to pace its cooperative yields.
 - Stable ordering: clashes are sorted before return, so re-runs and TS-vs-WASM agree.
 - `AbortSignal` + `onProgress` for large runs. The TS backend checks the signal every 256 candidate pairs and yields about every 50 ms; the WASM backend runs a whole rule in one Rust call, so an abort takes effect between rules.
-- All caps are explicit and reported in `result.truncated` — no silent truncation (project rule). `maxCandidatePairs` is one budget for the whole run, shared across rules, and applies to the TS backend only; the WASM kernel runs every pair.
+- All caps are explicit and reported in `result.truncated` — no silent truncation (project rule). `maxCandidatePairs` caps TS narrow-phase checks across all rules. The broad phase still builds each rule's candidate list. The result reports dropped checks in `result.truncated`. The WASM backend does not apply this budget.
 
 ---
 

@@ -45,7 +45,7 @@ interface CustomDoorData {
   width: number;
   height: number;
   isExternal: boolean;
-  fireRating: number;
+  fireRating: string; // IfcLabel, e.g. 'EI30' or 'REI 60'
 }
 
 // Create custom decoder
@@ -79,7 +79,7 @@ class DoorDecoder {
       width: Number(findQuantity('Width')) || 0,
       height: Number(findQuantity('Height')) || 0,
       isExternal: Boolean(findProp('Pset_DoorCommon', 'IsExternal')),
-      fireRating: Number(findProp('Pset_DoorCommon', 'FireRating')) || 0
+      fireRating: String(findProp('Pset_DoorCommon', 'FireRating') ?? '')
     };
   }
 
@@ -142,7 +142,7 @@ decoder.register('IFCDOOR', (expressId, store) => {
     ?.properties.find(prop => prop.name === 'FireRating')?.value;
   return {
     expressId,
-    fireRating: Number(fireRating) || 0,
+    fireRating: String(fireRating ?? ''),
     // ... decode door
   };
 });
@@ -238,7 +238,7 @@ function extractCustom(store: IfcDataStore, expressId: number): Record<string, u
 
   return {
     isExternal: Boolean(findProp('Pset_WallCommon', 'IsExternal')),
-    fireRating: Number(findProp('Pset_WallCommon', 'FireRating')) || 0,
+    fireRating: String(findProp('Pset_WallCommon', 'FireRating') ?? ''), // IfcLabel text
   };
 }
 ```
@@ -327,6 +327,14 @@ class HighlightManager {
 ```
 
 ## Plugin System
+
+!!! note "Illustrative pattern"
+    `IfcLitePlugin` and `PluginManager` below are not ifc-lite APIs; they show
+    one way to structure your own code. The extension points that ship are
+    `@ifc-lite/extensions` (manifests, capabilities, UI slots) and
+    `@ifc-lite/plugin-api` (file-source plugins); see
+    [Extensions](../guide/extensions.md) and
+    [Authoring Extensions](../guide/extension-authoring.md).
 
 ### Creating a Plugin
 

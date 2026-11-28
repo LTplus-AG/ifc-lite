@@ -24,13 +24,9 @@ import {
 
 export function useFloorplanView() {
   const { placed, storeys: availableStoreys } = usePlacedSectionStoreys();
-  const setSectionPlaneAxis = useViewerStore((s) => s.setSectionPlaneAxis);
-  const setSectionPlanePosition = useViewerStore((s) => s.setSectionPlanePosition);
-  const setActiveTool = useViewerStore((s) => s.setActiveTool);
-  const openPanelInHome = useViewerStore((s) => s.openPanelInHome);
-
   // Activate a floorplan view at the given storey elevation
   const activateFloorplan = useCallback((storey: SectionStorey) => {
+    const { setSectionPlaneAxis, setSectionPlanePosition, setActiveTool, openPanelInHome } = useViewerStore.getState();
     // The plan cut sits 1.2 m above the floor (standard architectural
     // practice), expressed as a percentage of the merged Y bounds — the
     // same helper the Section bar's storey menu uses. Above the model top
@@ -47,7 +43,7 @@ export function useFloorplanView() {
     // 3. Show the cut: dock the Drawing panel (no forced 3D camera change —
     // "Match 3D" in its header does that on request, #5497).
     openPanelInHome('drawing', 'programmatic');
-  }, [placed, setSectionPlaneAxis, setSectionPlanePosition, setActiveTool, openPanelInHome]);
+  }, [placed]);
 
   return { availableStoreys, activateFloorplan };
 }

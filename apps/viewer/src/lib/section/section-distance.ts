@@ -173,9 +173,9 @@ export function collectStoreys(
       if (placementId !== undefined) {
         lowestByPlacement.set(placementId, Math.min(relative ?? 0, lowestByPlacement.get(placementId) ?? Infinity));
       }
-      return { storeyId, placementId, relative: relative ?? 0 };
+      return [storeyId, placementId, relative ?? 0] as const;
     });
-    for (const { storeyId, placementId, relative } of levels) {
+    for (const [storeyId, placementId, relative] of levels) {
       // The composed origin anchors the lowest level when an exporter reuses
       // the same placement for several levels. Their authored differences are
       // usable whether Elevation was written in relative or absolute metres.
@@ -193,9 +193,9 @@ export function collectStoreys(
   } else {
     collect('legacy', legacy, legacyGeometry?.coordinateInfo);
   }
-  const seen = new Map<string, SectionStorey>();
+  const seen = new Map<number, SectionStorey>();
   for (const s of storeys) {
-    const key = (Math.round(s.elevation * 2) / 2).toFixed(2);
+    const key = Math.round(s.elevation * 2);
     const prior = seen.get(key);
     if (!prior || s.name.length < prior.name.length) seen.set(key, s);
   }

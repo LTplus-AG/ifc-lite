@@ -21,7 +21,9 @@ await gp.init();
 // From already-produced meshes (no re-mesh) …
 const glb = gp.exportGlbFromMeshes(result.meshes, /* includeMetadata */ true);
 // … or straight from IFC bytes (meshes internally):
-//   gp.exportGlb(bytes, true, new Uint32Array(), new Uint32Array(), '')
+//   gp.exportGlb(bytes, true)
+// Omit `isolated` to disable isolation. An empty Uint32Array excludes all
+// meshes and causes exportGlb to throw NO_RENDER_GEOMETRY.
 
 // Download
 const url = URL.createObjectURL(new Blob([new Uint8Array(glb)], { type: 'model/gltf-binary' }));
@@ -44,22 +46,30 @@ const hbjson = gp.exportHbjson(bytes, 'model');
 // Each returns Uint8Array | null (null until the processor is initialized)
 ```
 
+`GeometryProcessor` also exposes `exportObj`, `exportUsd`, `exportIfcx`, `exportDfjson`, `exportJson`, `exportStep`, `exportMerged`, `exportKmzFromMeshes` and `exportLandXmlTerrain` (see the [`@ifc-lite/geometry` README](../geometry/README.md)).
+
 ## IFC STEP — with mutations
 
 ```typescript
-import { exportToStep } from '@ifc-lite/export';
+import { exportToStep, StepExporter } from '@ifc-lite/export';
 
+// The parsed model as it is (schema defaults to the source schema):
 const stepText = exportToStep(store, {
   schema: 'IFC4',           // 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5'
-  applyMutations: true,     // include edits from MutablePropertyView
   visibleOnly: false,       // export only entities visible in the renderer
 });
 
+// With edits: give StepExporter the MutablePropertyView
+const result = new StepExporter(store, mutationView).export({
+  schema: 'IFC4',
+  applyMutations: true,     // default true when a view is supplied
+});
+
 // Save as .ifc
-const blob = new Blob([stepText], { type: 'application/x-step' });
+const blob = new Blob([new Uint8Array(result.content)], { type: 'application/x-step' });
 ```
 
-`exportToStep` is the round-trip path for property edits. Edit via `@ifc-lite/mutations`, export with `applyMutations: true`, ship the resulting `.ifc` to whatever consumes IFC.
+`StepExporter` with a `MutablePropertyView` is the round-trip path for property edits. Edit via `@ifc-lite/mutations`, export as above, ship the resulting `.ifc` to whatever consumes IFC. `exportToStep(store, options)` takes no view, so it writes the parsed model without overlay edits.
 
 ## Anonymized isolated export — for bug reports
 
@@ -86,9 +96,9 @@ are pseudonymized right along with everything else under the default
 blanked under the default `scrubOwnerHistory`. What stays in the file by
 decision: geometry and local placement rotations/non-orthogonal cuts (only
 the root placement's translation is zeroed), structural entity types,
-material *assignments* (which material, just not its original name), and
-the header's `preprocessor_version` (from `IfcApplication`, defaults to
-`'ifc-lite'`) — that is what makes the file useful for a bug repro. See the
+material *assignments* (which material, just not its original name). The
+header's `preprocessor_version` is the writer's own, `'ifc-lite'`, not the
+source file's. That is what makes the file useful for a bug repro. See the
 [Exporting
 Guide](https://ifclite.dev/docs/guide/exporting/#anonymized-isolated-export)
 for the full option list, including how to opt back into authored names via
@@ -108,13 +118,14 @@ const bos = await exporter.exportBOS();
 //   tableName ∈ entities|properties|quantities|relationships|strings|vertices|indices|meshes
 const entities = await exporter.exportTable('entities');
 
-// Each Parquet table is ~15–50× smaller than equivalent JSON
+// Parquet is columnar and compressed, so tables are much smaller than JSON
 // Loadable directly from DuckDB, Polars, pandas, BigQuery, …
 ```
 
 Editing via `@ifc-lite/mutations`? Pass the `MutablePropertyView` as the third constructor
 argument to drop overlay-deleted entities (and every row that references one) from
-the Parquet tables and include overlay-created entities in `Entities.parquet`:
+the Parquet tables, include overlay-created entities in `Entities.parquet`, and
+write the overlay's relationship, property and quantity edits:
 
 ```typescript
 import { ParquetExporter } from '@ifc-lite/export';
@@ -122,10 +133,11 @@ import { ParquetExporter } from '@ifc-lite/export';
 const exporter = new ParquetExporter(store, geometryResult, mutationView);
 ```
 
-Created relationship/property/quantity/geometry rows and edits to parsed
-property/quantity/attribute values aren't reflected yet. Those table writers
-still column-copy the parsed store. `StepExporter`/`Ifc5Exporter` cover the full
-edit surface today.
+Edits to parsed attribute values (`Name`, `Description`, `ObjectType`; a retype
+is applied) and to geometry aren't reflected yet: those columns still copy the
+parsed store. For STEP round-trips of attribute edits, use `StepExporter` with a
+`MutablePropertyView`. `Ifc5Exporter` applies retypes and edits to `GlobalId`, `Name`
+and `Description` in its entity rows.
 
 ## IFC5 IFCX — JSON + USD geometry
 
@@ -149,26 +161,36 @@ Cross-schema conversion happens automatically — feed an IFC2X3 store, get IFC5
 
 ## LOD0 / LOD1 — lightweight previews
 
-Generate cheap geometric envelopes for use in dashboards, list views, or first-paint hints. Environment-agnostic (Node, browser, server) — accepts raw IFC bytes:
+Generate geometric previews for use in dashboards, list views, or first-paint hints. Environment-agnostic (Node, browser, server) — accepts raw IFC bytes:
 
 ```typescript
 import { generateLod0, generateLod1 } from '@ifc-lite/export';
 
 const bytes = new Uint8Array(await file.arrayBuffer());
 
-// LOD0 — bounding boxes + transforms per element, JSON
+// LOD0 — world bounding box, centroid and transform per element, JSON (no meshing)
 const lod0 = await generateLod0(bytes);
 
-// LOD1 — meshes simplified to bounding boxes / convex hulls, returned as GLB
+// LOD1 — the model's meshes from GeometryProcessor, returned as GLB
 const lod1 = await generateLod1(bytes);
-//   { glb: Uint8Array, meta: { failedElements, mapping, ... } }
+//   { glb: Uint8Array, meta: { status, failedElements, mapping, ... } }
 
-// Falls back gracefully to box geometry if a complex element fails to mesh
+// LOD0 element IDs missing from the GLB mapping are listed in meta.failedElements.
+// A meshing or GLB assembly error triggers a fallback attempt using LOD0 boxes.
+// A successful fallback sets meta.fallback to 'boxes_from_lod0'.
 ```
 
 ## Also exported
 
-- `MergedExporter` - merge several parsed models into one STEP export
+- `StepExporter` - the class behind `exportToStep`; takes an optional `MutablePropertyView`, and `exportAsync` for map-geometry normalization
+- `parseStep` / `buildSubset` / `serializeSubset` / `selectSubsetSeeds` - raw STEP subset extraction: copy a few products and their reference closure into a small standalone file
+- `DemeshSession` / `applySimplifiedGeometry` - selective mesh simplification with a deferred IFC export
+- `analyzeConversionLoss` / `describeConversion` - report what a schema conversion drops or changes
+- `columnsToParquet` - write plain columns as one Parquet table
+- `MergedExporter` - merge several parsed models into one STEP export (also on its own entry, `@ifc-lite/export/merged-exporter`)
+- `exportSectionedStep` - crop a STEP export at half-spaces (see below)
+- `exportEnergyArtifact` - a complete STEP model as a Ladybug Tools document
+- `tableToCsv` / `escapeCsvCell` / `guardSpreadsheetFormula` - CSV writing with spreadsheet-formula guarding
 - `collectRelatedEntities` / `exportAnonymizedSubset` - anonymized isolated export (see above)
 - `convertEntityType` / `convertStepLine` / `needsConversion` - IFC2X3 / IFC4 / IFC4X3 schema conversion helpers
 - `parseGLB` / `parseGLBToMeshData` / `extractGlbMapping` - GLB round-trip readers

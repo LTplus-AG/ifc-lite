@@ -19,6 +19,8 @@ model.delete : @ IfcAnnotation            [red tier: registry policy may forbid 
 3. **Merge time**: target ref policy evaluates (author kind, risk tier of touched capabilities, required checks, signature requirements). Red-tier ops from agent principals can be policy-blocked outright
 4. **Audit time**: `extensions/audit/` records every grant, every flag, every waiver, queryable by principal
 
+As shipped: write time is enforced for `draft_apply_ops` only (`packages/mcp/src/tools/layer-ops.ts`; other MCP write tools are not draft-bound, 06 §6.4). Publish time verifies ops against `scope_claim` and reports a mismatch (`scope_verified: false` plus the violations); `ifc-lite layer publish --strict-scope` refuses with exit 4. Nothing yet flags the layer or forces mandatory review. Merge time evaluates only `RefPolicy`'s `requireHumanApproval`, `requiredChecks` and `autoMerge` (10 §10.4). `requireHumanApproval` gates agent-authored and manifest-less candidates in the local flow. On a registry ref with that policy, all candidates require a recorded approval from a principal other than the candidate's author, because `author.kind` is self-asserted; risk-tier and signature rules are not implemented. The layer tools do not write to `extensions/audit/`.
+
 ## 7.3 Threat model (selected)
 
 | Threat | Mitigation |

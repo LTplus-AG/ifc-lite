@@ -86,7 +86,8 @@ Each contribution may declare a `when` clause (see [§01.5.1]). Slots
 re-evaluate `when` clauses on state change and hide / show
 contributions accordingly. Extensions never see the underlying state;
 they only know whether their contribution is currently visible if they
-subscribe to `ctx.slots.onVisibilityChange(slotId)`.
+subscribe to `ctx.slots.onVisibilityChange(slotId)` (planned; v1 `ctx`
+carries only `bim`, see [01 §9](./01-extension-model.md#9-the-ctx-object)).
 
 ## 3. The widget DSL
 
@@ -100,7 +101,7 @@ typed node; child nodes nest. The DSL is intentionally small.
 | `Stack` | Vertical or horizontal layout. |
 | `Group` | Bordered group with optional title. |
 | `Text` | Static text with style variant (`heading`, `body`, `caption`). |
-| `Field` | Labeled form input. Variants: `text`, `number`, `boolean`, `select`, `multiSelect`, `entityPicker`, `colorPicker`, `file`. |
+| `Field` | Labeled value bound to widget state. Variants: `text`, `number`, `boolean`, `select`, `multiSelect`, `entityPicker`, `colorPicker`, `file`. The v1 viewer renders `boolean` as a disabled switch and every other variant as a read-only text input. Command handlers can update state on re-run. |
 | `Button` | Primary action; binds to a command id with optional arg literal. |
 | `Table` | Tabular data with sortable columns. |
 | `Chart` | Bar / line / pie with declarative data binding. |
@@ -173,8 +174,8 @@ manifest.
 ### 3.4 Reactive updates
 
 The handler can return an updated widget state; the host diffs and
-re-renders. The handler is also allowed to push partial updates via
-`ctx.widget(<id>).update(partial)` — the host merges and re-renders.
+re-renders. A planned `ctx.widget(<id>).update(partial)` would let the
+handler push partial updates for the host to merge (not in v1 `ctx`).
 
 State is owned by the host. The extension's view of state is whatever
 the handler last returned. There is no shared mutable object across
@@ -210,8 +211,8 @@ biggest wins of the declarative DSL over JSX.
 ## 5. Localisation
 
 Strings in the manifest (`name`, `description`, command titles, widget
-text) flow through `ctx.t(key)`. The manifest's `l10n` block provides
-translations:
+text) flow through `ctx.t(key)` (planned; not in v1 `ctx`). The manifest's
+`l10n` block provides translations:
 
 ```json
 "l10n": {

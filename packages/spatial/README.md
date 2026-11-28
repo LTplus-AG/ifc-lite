@@ -27,8 +27,13 @@ checkpoints, not a hard maximum frame time. The caller supplies an async
 `yieldToEventLoop` callback that actually schedules a timer task (for example
 `new Promise(resolve => setTimeout(resolve, 0))`); an already-resolved promise
 does not give the browser a chance to paint. If the callback rejects,
-the build rejects and does not return a partial index. `buildSpatialIndexAsync`
-supplies its own browser scheduler and defaults to a 4 ms budget.
+the build rejects and does not return a partial index. `buildSpatialIndexAsync(meshes, budgetMs?)`
+supplies its own browser scheduler and defaults to a 4 ms budget; a negative or
+non-finite `budgetMs` throws a `RangeError`.
+
+Mesh bounds are in world space: each mesh's `origin` is added to its local
+positions. `AABBUtils` and `FrustumUtils` expose the box and frustum helpers
+the index uses.
 
 ## Raycast (entity picking)
 

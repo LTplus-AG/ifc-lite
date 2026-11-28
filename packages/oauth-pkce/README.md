@@ -5,6 +5,56 @@ client — no client secret, ever. This package is the shared auth primitive
 for ifc-lite file-source providers whose CDE uses OAuth (Google Drive,
 Dropbox, SharePoint/OneDrive, ...); it does not implement any provider.
 
+## Installation
+
+```bash
+npm install @ifc-lite/oauth-pkce
+```
+
+## Usage
+
+```typescript
+import {
+  TokenManager,
+  createAuthorizationRequest,
+  exchangeAuthorizationCode,
+  parseAuthorizationCallback,
+  waitForOAuthCallback,
+  type TokenStorage,
+} from '@ifc-lite/oauth-pkce';
+
+declare const storage: TokenStorage; // see "Token storage" below
+const clientId = 'your-client-id';
+const redirectUri = `${location.origin}/oauth-callback.html`; // a static page, see below
+const tokenEndpoint = 'https://auth.example.com/token';
+
+const request = await createAuthorizationRequest({
+  authorizationEndpoint: 'https://auth.example.com/authorize',
+  clientId,
+  redirectUri,
+  scope: 'files.read',
+});
+window.open(request.url, 'oauth'); // from a user gesture
+// Subscribe right after opening the popup: BroadcastChannel does not buffer.
+const callbackUrl = await waitForOAuthCallback({
+  expectedState: request.state,
+  timeoutMs: 5 * 60_000,
+  timeoutMessage: 'Sign-in timed out',
+});
+
+const { code } = parseAuthorizationCallback(callbackUrl, {
+  expectedRedirectOrigin: location.origin,
+  expectedState: request.state,
+});
+const tokens = await exchangeAuthorizationCode({
+  tokenEndpoint, clientId, redirectUri, code, codeVerifier: request.codeVerifier, fetch,
+});
+
+const manager = new TokenManager({ storageKey: 'example:default', storage, tokenEndpoint, clientId, fetch });
+await manager.setTokens(tokens);
+const accessToken = await manager.getValidAccessToken(); // refreshes when needed
+```
+
 ## Scope
 
 Provided:

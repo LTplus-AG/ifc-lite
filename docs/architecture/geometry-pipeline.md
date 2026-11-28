@@ -125,14 +125,15 @@ classDiagram
 ### Coverage by Type
 
 The router's processor registry (`rust/geometry/src/router/processor_registry.rs`)
-currently covers 23 distinct `IfcType` representation items across 18
-processor structs — including `IfcExtrudedAreaSolid`, `IfcFacetedBrep`,
+currently covers 30 distinct `IfcType` representation items across 21
+processor families, one processor struct each — including `IfcExtrudedAreaSolid`, `IfcFacetedBrep`,
 `IfcBooleanClippingResult`/`IfcBooleanResult`, `IfcTriangulatedFaceSet`,
 `IfcShellBasedSurfaceModel`, `IfcFaceBasedSurfaceModel` (the two concrete
 `IfcSurfaceModel` subtypes), `IfcAlignment` and more — not the six this
 section used to list by hand, which had drifted from source. `IfcMappedItem`
-is handled separately, via GPU instancing (`rust/geometry/src/router/instancing.rs`),
-not through this processor table, so it is out of scope for the per-entity
+is handled separately, by the mapping controller (`rust/geometry/src/router/mapped_item.rs`,
+`rust/geometry/src/program/mapping.rs`) and GPU instancing
+(`rust/geometry/src/router/instancing.rs`), not through this processor table, so it is out of scope for the per-entity
 ledger below.
 
 The full, generated, per-entity table (which processor is registered for
@@ -294,6 +295,13 @@ flowchart TB
 ```
 
 ### Face Triangulation
+
+`FacetedBrepProcessor::triangulate_face` (`rust/geometry/src/processors/brep/faceted.rs`)
+fans only on its fast path: a hole-free triangle, or a hole-free convex face of
+up to 8 corners. A quad takes its interior diagonal (`quad_split_3d`), so a
+concave quad is not split outside its ring. Every other face, and every face
+with holes, goes through `triangulate_planar_face`; a failed triangulation of a
+holed face refuses the face instead of filling its openings.
 
 ```mermaid
 graph LR
@@ -585,16 +593,18 @@ placement subtract RTC once; `M(p - rtc)` is not `M(p) - rtc` under rotation.
 Raw product items instead choose an element-frame offset through the inverse
 placement linear transform. See [Coordinate Handling](coordinate-handling.md#geometryrouter).
 
-For the primary model the engine collates
-congruent occurrences into **GPU instances**: the wasm
-`processGeometryBatchInstanced` entry point (backed by
-`rust/geometry/src/instancing` and `processors/mapped.rs`) partitions opaque
-ordinary occurrences into per-template instanced shards, and the renderer
+The browser geometry workers collate
+congruent occurrences into **GPU instances** using the partitioned WASM batch
+APIs (`processGeometryBatchPartitioned` and its `FromSource` variant, called from
+`packages/geometry/src/geometry.worker.ts`; backed by
+`rust/geometry/src/instancing/` and the mapped-item sources in
+`rust/geometry/src/router/mapped_item.rs`). These return an instanced shard
+alongside ordinary meshes, covering opaque ordinary occurrences grouped per template. The renderer
 uploads each template once as `instancedTemplates` via `addInstancedShard` (see
 the rendering guide), then draws every occurrence of a template in a single
-instanced draw call. Instancing is enabled by default for the primary model
-(`enableInstancing: target.kind === 'primary'` in the viewer loader); federated
-loads keep geometry flat. Occurrences that are not eligible for instancing
+instanced draw call. Instancing is enabled for every viewer load, primary and federated
+(`enableInstancing: true` in `apps/viewer/src/hooks/useIfcLoader.ts`); a
+federated model's shards are added with that model's `modelIndex`. Occurrences that are not eligible for instancing
 (transparent glass, or non-ordinary geometry classes) fall back to being
 tessellated per placement and grouped by colour into batched draw calls.
 
@@ -606,7 +616,7 @@ flowchart TB
     end
 
     subgraph Output["Output"]
-        Instanced["Per-template GPU instanced shard (primary model)"]
+        Instanced["Per-template GPU instanced shard"]
         Fallback["Fallback: tessellated per placement, batched by colour"]
     end
 
@@ -614,7 +624,7 @@ flowchart TB
     Definition --> Fallback
 ```
 
-### IFNS shard wire format: v2 carries the source item id
+### IFNS shard wire format: item id (v2) and finish (v3) trailing fields
 
 Each occurrence in a shard names the `IfcRepresentationItem` it was tessellated
 from, so an instanced piece drills back to source exactly like a flat mesh does
@@ -622,7 +632,11 @@ from, so an instanced piece drills back to source exactly like a flat mesh does
 Header word 7, a literal `0` nobody read in v1, now holds the **instance record
 stride in bytes**. Per-instance fields are append-only in a fixed order: the
 88-byte base record (template index, entity id, colour, transform), then the
-`itemId` u32 at offset 88 for a stride of 92.
+`itemId` u32 at offset 88 for a stride of 92, then (v3, #5984) the finish,
+`[metallic, roughness]` as two f32 at offset 92 (NaN = unauthored), for a
+stride of 100. Fields are append-only, so a v3 record also carries `itemId`.
+The layout and constants are in `rust/geometry/src/instancing/wire.rs`, mirrored
+by `packages/geometry/src/packed-instanced-decoder.ts`.
 
 The stride, not a flag word, is what buys forward compatibility. A decoder must
 reject a flag bit it does not know, because an unknown bit changes the stride
@@ -634,12 +648,12 @@ word 7 == 0) reads at the 88-byte base, and a stride below the base, off a
 4-byte multiple, or one whose instance table cannot fit the buffer, is refused —
 by both decoders, so the two statements of the format refuse the same shards.
 
-The encoder derives the stride from the data, declaring 92 only when some
-occurrence actually names an item. A model with none pays no per-occurrence
-zeros (roughly 800 KB on a 200k-occurrence model, written and cached), and a
-shard that declares the field is never all-zero, which is what lets the decoder
-expose `DecodedInstancedShard.carriesItemIds` as a real answer rather than a
-guess. The predicate is read off the occurrences the encoder actually writes,
+The encoder derives the stride from the data: 100 when some written
+occurrence authors a finish, else 92 when some occurrence names an item, else
+the 88-byte base. A model with neither pays no per-occurrence zeros. A shard
+that widens only for item ids always carries at least one nonzero id, so
+`DecodedInstancedShard.carriesItemIds` is a real answer there; a v3 shard
+widens for its finishes, so its `itemId` slots can all be the `0` sentinel. The predicate is read off the occurrences the encoder actually writes,
 not off its input slice, because `collate_refs` drops members and a dropped
 id-bearing mesh would otherwise widen the record and fill it with zeros.
 
@@ -649,8 +663,8 @@ shard and an older build can still read it. Only a widened record claims v2.
 Because the cache stores shard bytes verbatim, a v2 shard under a shared cache
 key would be handed to a pre-#2985 decoder (deploy skew, a rollback) that
 refuses every version but 1, and the streaming loader swallows that throw — all
-instanced geometry gone, silently. So cache `FORMAT_VERSION` moves 15 → 16 with
-this change: an old bundle looks for v15 and misses rather than matching, and
+instanced geometry gone, silently. So cache `FORMAT_VERSION` moved 15 → 16 with
+#2985 (it has moved on since; see `packages/cache/src/types.ts`): an old bundle looks for v15 and misses rather than matching, and
 existing v1 shards keep loading, without ids, until the model is re-parsed.
 
 ## Streaming Pipeline (Browser Worker Pool)
@@ -682,7 +696,7 @@ sequenceDiagram
     Host->>W: stream-end
 ```
 
-In one measured 1 GB file this dropped time-to-first-batch from roughly 17 s (full pre-pass, then meshing) to 3-5 s. Treat these as observed benchmark figures for that model and machine, not a guarantee for all files or hardware.
+The pre-pass streams `jobs` chunks to the host. The host queues them until the workers have started and received the resolved styles, voids and entity index, then dispatches the queued work. Measured load numbers live in [Performance](../guide/performance.md).
 
 ## CSG Kernel
 
@@ -723,21 +737,11 @@ C++ cross-toolchain (cmake, LLVM-20/libc++, emsdk on Vercel) and the
 builds with `default = []` everywhere. There is no kernel selection —
 build-time or runtime.
 
-## Performance Metrics
+## Performance
 
-| Operation | Time (typical) | Notes |
-|-----------|---------------|-------|
-| Profile extraction | 0.1 ms | Per entity |
-| Earcut triangulation | 0.5 ms | Simple profile |
-| Extrusion | 0.2 ms | Per entity |
-| Boolean operation | 5-50 ms | Complex |
-| Transform application | 0.01 ms | Per vertex |
-
-### Throughput
-
-- **Simple extrusions**: ~2000 entities/sec
-- **Complex Breps**: ~200 entities/sec
-- **Boolean operations**: ~20 entities/sec
+Measured load and size numbers live only in the generated `perf-numbers`
+region of [Performance](../guide/performance.md), stamped from
+`tests/benchmark/baseline.json`.
 
 ## Next Steps
 

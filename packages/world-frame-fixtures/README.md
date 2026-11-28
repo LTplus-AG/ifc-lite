@@ -26,19 +26,20 @@ Carriers (do not force one type to serve both axes of the corpus):
 
 - `MeshData` (`asMeshData`, `translateWorld`) carries BOTH axes: RTC origin
   cases and large-coordinate cases. The viewer compare instance (#2529) is
-  deliberately NOT wired here yet: PR #2659 fixes it and ships its own
-  origin-folding tests with hand-built meshes in
+  NOT wired here: PR #2659 (merged) fixed it with its own origin-folding
+  tests on hand-built meshes in
   `apps/viewer/src/lib/compare/geometrySummary.test.ts`. Migrating those
-  onto this corpus once both branches land is the named follow-up.
+  onto this corpus is still an open follow-up.
 - World-only mesh types (clash contact `Mesh`, via `bakedWorldPositions`)
   carry ONLY the large-coordinate axis — they have no origin field by
   contract. Wired into `packages/clash/src/contact/world-frame.test.ts`
-  (#2600, fix PR #2661).
+  (#2600, fix PR #2661); `packages/clash/src/engine-ts/world-frame.test.ts`
+  and `packages/clash/src/math/triangle.test.ts` use its offset and `ulp32`.
 - The Rust kernel mirror lives in
   `rust/geometry/src/world_frame_fixture.rs` (baked cases only, same
   reasoning), wired into `csg/world_frame_tests.rs` and
   `clash_solid_world_frame_tests.rs`.
 
 Cases that pin a live defect assert the CORRECT behaviour inside a
-known-failing wrapper (`it.fails`, `assertKnownDefect`, `#[should_panic]`)
+known-failing wrapper (`it.fails`, `#[should_panic]`)
 that itself fails the moment the fix lands, forcing the unmark.

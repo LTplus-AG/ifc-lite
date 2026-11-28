@@ -1,5 +1,7 @@
 # 03: Provenance Manifest
 
+Status: the manifest schema in 3.1 ships as `ProvenanceManifest` in `packages/ifcx/src/provenance.ts`. Scope claims are verified against actual ops at publish (MCP `publish_layer`, `ifc-lite layer publish`) and on rebase (`packages/cli/src/commands/layer-history.ts`), not yet at merge. The `signatures` field exists but nothing creates or verifies signatures, so only trust level 1 (3.2) is implemented; registry-attested receipts, end-to-end signing and the `--anonymize` export flag (3.3) are not. (`ifc-lite anonymize` is a separate command that anonymizes IFC models, not manifests.)
+
 ## 3.1 Schema (extension namespace `ifclite::provenance`, manifest SemVer v1)
 
 ```json

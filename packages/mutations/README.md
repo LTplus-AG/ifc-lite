@@ -59,8 +59,9 @@ editor.removeEntity(unwantedExpressId);
 ```
 
 Edits accumulate in the same overlay used by `setProperty` / `setAttribute`
-and materialise the next time you call
-`StepExporter.export({ applyMutations: true })`.
+and materialise when you export through an exporter that holds the view:
+`new StepExporter(dataStore, view).export({ schema: 'IFC4', applyMutations: true })`
+(`StepExporter` is in `@ifc-lite/export`).
 
 For a query that needs to revisit source entities whose attributes changed,
 `view.getAttributeOverrideEntityIds()` returns a snapshot of the current named,
@@ -200,6 +201,24 @@ Mutations recorded against a pre-existing (source-buffer) entity always
 round-trip — this caveat is scoped to entities created via `createEntity` /
 `StoreEditor.addEntity`.
 
+### Whole-overlay snapshots: `snapshotOverlay` / `restoreOverlay`
+
+To persist a session and get it back exactly, including created entities and
+edits written with `skipHistory`, snapshot the whole overlay instead of the
+journal. Both calls take a digest of every source byte, computed by the
+caller. A restore onto a different source throws `OverlaySourceMismatchError`.
+The destination overlay must be empty (no edits and no history); otherwise
+`restoreOverlay` throws unless you pass `replace: true`, which discards them.
+
+```typescript
+import { restoreOverlay, snapshotOverlay } from '@ifc-lite/mutations';
+
+declare const sourceContentHash: string; // e.g. a SHA-256 hex digest of the whole file
+
+const snapshot = snapshotOverlay(view, { sourceContentHash });
+restoreOverlay(mutationView, snapshot, { sourceContentHash }); // input capped at 64 MiB by default (`maxBytes`)
+```
+
 ## Bulk updates
 
 Use `@ifc-lite/rules` to evaluate property filter groups and pass the resulting Express IDs in `select.expressIds`.
@@ -298,7 +317,7 @@ const json = manager.exportChangeSet(changeSet.id);
 const restored = manager.importChangeSet(json);
 ```
 
-Pair this with `exportToStep(store, { applyMutations: true })` from `@ifc-lite/export` to write a real `.ifc` file with the changes baked in.
+To write a real `.ifc` file with the changes baked in, pass the view to `StepExporter` from `@ifc-lite/export`: `new StepExporter(store, view).export({ schema: 'IFC4', applyMutations: true })`. The `exportToStep(store, options)` shortcut takes no mutation view, so it writes the source data without these edits.
 
 ## Features
 

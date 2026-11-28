@@ -346,7 +346,8 @@ describe('events before the notice are held in memory, never stored or sent earl
   });
 
   it('holds uncaught errors and unhandled rejections until PostHog takes over, then sends them as unhandled', () => {
-    assert.ok(added.createHeldAnalytics && added.listenForUncaught, 'listenForUncaught is exported');
+    assert.ok(added.createHeldAnalytics, 'createHeldAnalytics is exported');
+    assert.ok(added.listenForUncaught, 'listenForUncaught is exported');
     const sentAsUnhandled: Array<{ error: unknown; properties: Record<string, unknown> }> = [];
     const held = added.createHeldAnalytics(2, true, (error) => error, (_target, error, properties) => { sentAsUnhandled.push({ error, properties }); });
     const page = new EventTarget();

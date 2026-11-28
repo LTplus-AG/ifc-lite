@@ -66,7 +66,7 @@ export const viewportLightingEn = {
   'viewportLighting.container.emptyState.formats.underlays': 'Underlays',
   'viewportLighting.container.emptyState.formats.splats': 'Splats',
   'viewportLighting.container.emptyState.startBlank': 'Start blank',
-  'viewportLighting.container.emptyState.openFromCloud': 'Open from cloud',
+  'viewportLighting.container.emptyState.openFromCloud': 'Open from cloud storage',
   'viewportLighting.container.emptyState.driveWithLlm': 'Drive with any LLM',
   'viewportLighting.container.emptyState.recentFiles.heading': 'Recent',
   // Privacy footnote (#5119): the visible line itself is the shared

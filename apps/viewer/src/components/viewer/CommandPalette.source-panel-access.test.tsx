@@ -19,7 +19,7 @@ function daluxRow() {
 }
 
 test('#8947 palette Sources mounts lazy provider body and Configure cancels/reopens without saving or connecting', async () => {
-  mountReviewAccess(); await launchDestination('panel:sources', 'cloud sources');
+  mountReviewAccess(); await launchDestination('panel:sources', 'cloud storage');
   await waitFor(() => [...document.querySelectorAll('li')].some(node => node.textContent?.includes('Dalux Box')), 'actual lazy SourcesPanel body');
   const row = daluxRow();
   assert.equal(namedButton('Browse Dalux Box', row).disabled, true, 'missing API key blocks browsing');

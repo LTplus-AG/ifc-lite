@@ -38,7 +38,7 @@ export const viewportLightingRu = {
   "viewportLighting.container.emptyState.formats.underlays": "Подложки",
   "viewportLighting.container.emptyState.formats.splats": "Сплаты",
   "viewportLighting.container.emptyState.startBlank": "Начать с пустого",
-  "viewportLighting.container.emptyState.openFromCloud": "Открыть из облака",
+  "viewportLighting.container.emptyState.openFromCloud": "Открыть из облачного хранилища",
   "viewportLighting.container.emptyState.driveWithLlm": "Управлять с помощью любой языковой модели",
   "viewportLighting.container.emptyState.recentFiles.heading": "Недавние",
   "viewportLighting.container.emptyState.privacyDetailsHint": "Как ваши данные хранятся на вашем устройстве",

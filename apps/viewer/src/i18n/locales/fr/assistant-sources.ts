@@ -16,7 +16,7 @@ export const assistantSourcesFr = {
   "assistantSources.boundaryModel": "Outils de création. Discutez des modifications via Modifications ou Jeux de modifications.",
   "assistantSources.boundaryExtensions": "Extensions installées et autorisations associées. Discutez du résultat d’une extension dans le panneau qui l’affiche.",
   "assistantSources.boundaryCollab": "Participants et autorisations de la session en direct ; aucun résultat d’analyse.",
-  "assistantSources.boundarySources": "Connexions au cloud et récupération des données. Les identifiants et les autorisations d’accès aux points de terminaison ne font jamais partie du contexte fourni.",
+  "assistantSources.boundarySources": "Connexions au stockage cloud et récupération des données. Les identifiants et les autorisations d’accès aux points de terminaison ne font jamais partie du contexte fourni.",
   "assistantSources.boundaryPresentation": "Vues de caméra enregistrées pour les présentations ; aucun résultat d’analyse.",
   "assistantSources.boundaryAssistant": "L’Assistant lui-même. Les conversations enregistrées sont rouvertes, jamais jointes comme contexte.",
   "assistantSources.boundaryEnvironment": "Paramètres d’affichage du ciel, de l’éclairage et de l’heure solaire. Aucune analyse solaire n’est enregistrée ; ces paramètres ne mesurent pas les performances en lumière naturelle.",

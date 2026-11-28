@@ -41,7 +41,7 @@ export const ribbonToolbarFr = {
   'ribbon.file.modelGroup': 'Modèle',
   'ribbon.file.open': 'Ouvrir',
   'ribbon.file.openTooltip': 'Ouvrir un modèle depuis le disque',
-  'ribbon.file.cloudSourcesTooltip': 'Sources cloud (CDE connectés)',
+  'ribbon.file.cloudSourcesTooltip': 'Stockage cloud (Dropbox, OneDrive) et CDE connectés',
   'ribbon.file.addModel': 'Ajouter un modèle',
   'ribbon.file.addModelTooltip': 'Ajouter un modèle à la scène (sélection multiple possible)',
   'ribbon.file.refresh': 'Actualiser',

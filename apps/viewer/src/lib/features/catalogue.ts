@@ -60,8 +60,8 @@ export const FEATURE_CATALOGUE = [
     description: 'Opening and adding models from the device: the Open and Add model commands, drag and drop onto the viewer, refresh from disk and the recent files list.' },
   { id: 'files.federation-setup', group: 'files', label: 'Federation setup files',
     description: 'Saving the current set of models and their alignment as a setup file, and opening one.' },
-  { id: 'files.sources', group: 'files', label: 'Cloud sources',
-    description: 'The Cloud sources panel, which connects to common data environments and file services to open models from them.' },
+  { id: 'files.sources', group: 'files', label: 'Cloud storage',
+    description: 'The Cloud storage panel, which connects to common data environments and file services to open models from them.' },
   { id: 'files.samples', group: 'files', label: 'Sample models',
     description: 'The sample project and the layers demo on the start screen and in empty panels. Guided tours that load the sample project go too.' },
 

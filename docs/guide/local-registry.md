@@ -1,8 +1,8 @@
 # Local model registry demo
 
-Use **File → Cloud Sources → Model registry** to connect to a local registry,
+Use **File → Cloud storage → Model registry** to connect to a local registry,
 browse models and versions, open an IFC, edit it, and publish the saved model.
-The connection remains signed in while Cloud Sources is closed for editing.
+The connection remains signed in while Cloud storage is closed for editing.
 Model names, version names, publisher and publication time are the normal view;
 complete content fingerprints and declared package metadata are under
 **Technical details**.
@@ -59,19 +59,19 @@ Open the local URL printed by Vite, normally `http://localhost:3000`.
 Register that exact viewer origin and callback path with the registry. If Vite
 uses another port, restart the registry with its matching `--oauth-redirect-uri`.
 
-1. Open **File → Cloud Sources**, expand **Model registry**, and paste
+1. Open **File → Cloud storage**, expand **Model registry**, and paste
    `http://localhost:5000` into **Registry address**. Click **Sign in to registry**.
    A popup opens on the registry's own address. Sign in there as the writer and
    approve access; the viewer never asks for or receives the password. Allow
    popups for the viewer if your browser blocks this window.
 2. Choose the model and version from the lists. Publication details identify
    the authenticated publisher and time when the registry recorded them.
-   Click **Open model** and close Cloud Sources. If models are already loaded,
+   Click **Open model** and close Cloud storage. If models are already loaded,
    confirm **Replace session**; this replaces every current model and discards
    unpublished edits. Cancel to keep the current session.
 3. Select a wall, open **Author → Model**, and edit **Name** in the Model
    inspector. Press Tab to apply the edit.
-4. Reopen **Cloud Sources → Model registry**. The connection remains signed in.
+4. Reopen **Cloud storage → Model registry**. The connection remains signed in.
    Enter a fresh version name and click **Publish edited model**.
 5. Click **Open saved version**. Inspect the edited property and geometry to
    confirm the saved IFC was received again. The fetch uses the exact manifest
@@ -130,14 +130,14 @@ redeems the returned one-time code with the matching verifier. The callback
 validates its exact origin/path, state and unambiguous parameters. A static
 callback page returns the result through the existing origin-scoped
 BroadcastChannel, which works with the viewer's cross-origin isolation.
-Sign-in times out after five minutes; closing Cloud Sources cancels an active
+Sign-in times out after five minutes; closing Cloud storage cancels an active
 attempt. Sign-out revokes the server session and prevents late token responses
 from restoring access. Remembered sign-out also clears the connected state in
 the viewer's other tabs; independent tab-only sessions stay separate.
 
 Access tokens last at most 15 minutes and are renewed automatically when used.
 The default session keeps its rotating refresh token in tab memory and lasts
-up to eight hours. Closing/reopening Cloud Sources preserves that session;
+up to eight hours. Closing/reopening Cloud storage preserves that session;
 reloading the viewer requires sign-in again unless you chose **Remember me for
 30 days** on the registry page.
 
@@ -233,7 +233,7 @@ texture archives and incomplete exports are refused. Export coverage depends
 on the model and the pinned IFClite exporter.
 
 If server sign-out fails, access is cleared from the tab and **Retry sign out**
-remains available, including after closing and reopening Cloud Sources. New
+remains available, including after closing and reopening Cloud storage. New
 sign-in is blocked until server revocation succeeds.
 
 ## Focused checks
@@ -266,7 +266,7 @@ serialization, sign-out races, credential boundaries, authenticated
 model discovery, publisher/time metadata, actual edited IFC export, integrity,
 reader denials, existing-version refusal, panel-close session survival and
 independent ORAS retrieval. Generic file-source providers retain their existing
-download API; publishing is a registry-specific action within Cloud Sources.
+download API; publishing is a registry-specific action within Cloud storage.
 
 The [recorded browser walkthrough](https://github.com/zahmadsaleem/ifc-lite/blob/897e9c9f730849aa090a2117ce03423bde09ddfc/docs/architecture/evidence/registry-pkce-login/README.md)
 shows the password-free viewer, successful registry login, publication and reopen,

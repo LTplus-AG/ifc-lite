@@ -67,7 +67,7 @@ describe('activity rail active state (#8802 R1)', () => {
     const root = render(<ActivityBar />);
     const s = states(root);
     assert.equal(s.Lens, undefined, 'a panel that needs a model waits in More, off the rail');
-    assert.equal(s['Cloud Sources'], 'rest', 'a way in stays on the rail at full ink');
+    assert.equal(s['Cloud storage'], 'rest', 'a way in stays on the rail at full ink');
     const more = root.querySelector<HTMLButtonElement>('[data-rail-overflow]');
     assert.ok(more, 'the waiting panels stay reachable through More');
     act(() => {

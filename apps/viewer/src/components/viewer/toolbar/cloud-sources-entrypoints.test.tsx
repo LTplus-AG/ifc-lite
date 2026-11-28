@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Cloud sources is reachable from the ribbon and command palette.
+ * Cloud storage is reachable from the ribbon and command palette.
  *
  * The `sources` panel (CDE integrations) shipped with the ActivityBar rail as
  * its only entry point — the same gap Location zones had before #2508. The
@@ -53,7 +53,7 @@ function byAccessibleName(name: string | RegExp): HTMLElement {
   return match;
 }
 
-describe('Cloud sources is reachable from desktop command surfaces', () => {
+describe('Cloud storage is reachable from desktop command surfaces', () => {
   beforeEach(() => {
     useViewerStore.setState({ sourcesPanelVisible: false });
   });
@@ -83,7 +83,7 @@ describe('Cloud sources is reachable from desktop command surfaces', () => {
 
     const row = [...container.ownerDocument.body.querySelectorAll<HTMLElement>('[role="option"], button')]
       .find((el) => el.textContent?.includes(resolve(panelTitleKey('sources'))));
-    assert.ok(row, 'the palette lists no Cloud Sources command');
+    assert.ok(row, 'the palette lists no Cloud storage command');
     click(row);
     // `runCommand` defers to `requestAnimationFrame` (a file-dialog quirk), so
     // the action has NOT run when click() returns. Let the frame land.

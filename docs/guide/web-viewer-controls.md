@@ -300,7 +300,7 @@ measurements report Partial. Finite zero-valued measurements remain results.
 
 ## Autodesk cloud sources
 
-Open **Cloud sources** from Coordinate mode and select **Autodesk Forma / Data Exchange**. The viewer administrator configures either a public APS application ID for static sign-in or a same-origin hosted session service. Hosted mode keeps Autodesk tokens on the server. Static mode keeps tokens in memory and requires sign-in after a reload. A cancelled sign-in cannot complete the pending transaction.
+Open **Cloud storage** from Coordinate mode and select **Autodesk Forma / Data Exchange**. The viewer administrator configures either a public APS application ID for static sign-in or a same-origin hosted session service. Hosted mode keeps Autodesk tokens on the server. Static mode keeps tokens in memory and requires sign-in after a reload. A cancelled sign-in cannot complete the pending transaction.
 
 Browse account projects and choose **Forma Data Management files** or **Data Exchanges**. For Forma Site Design, paste a Forma site link in the project entry. IFC, IFCX/IFC5 and GLB files download through the normal loader, pinned to the listed revision. Unsupported resources show an explanation. **Cancel download** stops the active batch; completed models remain loaded.
 

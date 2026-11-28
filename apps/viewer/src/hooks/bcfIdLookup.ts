@@ -11,7 +11,7 @@
 
 import type { EntityRef, FederatedModel } from '@/store/types';
 import type { IfcDataStore } from '@ifc-lite/parser';
-import { fromGlobalIdFromModels, toGlobalIdFromModels } from '@/store/globalId';
+import { toGlobalIdFromModels } from '@/store/globalId';
 
 export interface IdLookupResult {
   expressId: number;
@@ -94,30 +94,6 @@ export function globalIdToExpressId(
     if (localExpressId !== undefined && localExpressId > 0) {
       return { expressId: localExpressId, modelId: 'legacy' };
     }
-  }
-  return null;
-}
-
-/**
- * Convert expressId to IFC GlobalId string (reversing federation offset).
- * Searches federated models first, then falls back to the legacy single-model store.
- */
-export function expressIdToGlobalId(
-  expressId: number,
-  models: Map<string, FederatedModel>,
-  ifcDataStore: IfcDataStore | null | undefined,
-): string | null {
-  // Multi-model path: resolve through the centralized reverse conversion helper
-  const resolved = fromGlobalIdFromModels(models, expressId);
-  if (resolved && resolved.modelId !== 'legacy') {
-    const model = models.get(resolved.modelId);
-    const globalIdString = model?.ifcDataStore?.entities?.getGlobalId(resolved.expressId);
-    if (globalIdString) return globalIdString;
-  }
-  // Single-model fallback: use legacy ifcDataStore directly
-  if (models.size === 0 && ifcDataStore?.entities) {
-    const globalIdString = ifcDataStore.entities.getGlobalId(expressId);
-    if (globalIdString) return globalIdString;
   }
   return null;
 }

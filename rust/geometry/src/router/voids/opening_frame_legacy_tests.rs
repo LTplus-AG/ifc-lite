@@ -169,6 +169,7 @@ pub(super) fn infer_opening_frame(
         cross_a,
         cross_b,
         depth_is_authored: extrusion_dir.is_some(),
+        ..OpeningFrame::from_depth(depth)?
     })
 }
 

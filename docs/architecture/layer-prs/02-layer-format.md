@@ -28,7 +28,7 @@ Serialization note: ops are not a new wire format. They serialize as ordinary IF
 
 ## 2.3 Tombstones (deletion overlays)
 
-`minimal-layer.ts` is additive-only today by documented design ("deletion overlays are spec'd for a future version"). This spec is that future version.
+When this spec was written, `minimal-layer.ts` was additive-only by documented design ("deletion overlays are spec'd for a future version"). This spec is that future version, and it has shipped: `packages/ifcx/src/tombstones.ts` applies the rule below, and `minimal-layer.ts` emits tombstones (an option keeps the legacy additive-only shape).
 
 A tombstone is an opinion at the entity (or component/relation) path:
 
@@ -38,7 +38,7 @@ A tombstone is an opinion at the entity (or component/relation) path:
 
 Composition rule (extends `ifcx/composition.ts`): a tombstone at strength *s* shadows **all** opinions at strengths weaker than *s* for that path, including child paths for entity tombstones. A stronger layer may resurrect by setting `ifclite::deleted: false` (this is how a revert layer undoes a deletion).
 
-Conformance note: tools unaware of `ifclite::deleted` will compose the entity as present. Until deletion overlays are standardized upstream (11 §11.2), exporters offer `--bake` to materialize a stack into a tombstone-free document for foreign tools.
+Conformance note: tools unaware of `ifclite::deleted` will compose the entity as present. Until deletion overlays are standardized upstream (11 §11.2), the CLI offers `ifc-lite layer bake <ref> -o <out.ifcx>` to materialize a stack into a tombstone-free document for foreign tools (`packages/cli/src/commands/layer-history.ts`).
 
 ## 2.4 Canonical serialization and content addressing
 
@@ -49,7 +49,7 @@ Conformance note: tools unaware of `ifclite::deleted` will compose the entity as
 3. Normalize numbers (shortest round-trip representation), strings (NFC), no insignificant whitespace
 4. The manifest is included **except** the `signatures` field (signatures sign the id, so they cannot be inside it)
 
-Same canonicalization discipline as `diff/fingerprint.ts` (order-independent, byte-identical across adapters), promoted to whole-document scope. Implementation lives in TS first; a `rust/core` blake3+canonicalization path is added only if profiling on 500MB-class models demands it (Tauri desktop track).
+Same canonicalization discipline as `diff/fingerprint.ts` (order-independent, byte-identical across adapters), promoted to whole-document scope. Implementation lives in TS first; a `rust/core` blake3+canonicalization path is added only if profiling on 500MB-class models demands it. (The Tauri desktop app this once targeted has been removed.)
 
 A **stack hash** is blake3 over the ordered list of layer ids: the identity of a composed state. Refs (`main`, `design-option-B`) are named mutable pointers to stack hashes, stored by the registry (10) or a local ref file.
 

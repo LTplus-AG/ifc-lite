@@ -18,6 +18,7 @@ use super::jsval::JsVal;
 /// Record types the port reads by type. Kept to exactly what a phase asks for,
 /// so the index does not grow a per-record type column.
 const TRACKED: &[&str] = &[
+    "IFCRELDEFINESBYTYPE",
     "IFCRELDEFINESBYPROPERTIES",
     "IFCPROPERTYSET",
     "IFCELEMENTQUANTITY",

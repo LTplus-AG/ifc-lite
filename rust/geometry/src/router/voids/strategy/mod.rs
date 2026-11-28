@@ -7,7 +7,7 @@
 //! driver (`inner.rs`, `Execution::cut_in_frame`) with stage B's
 //! WallLocalFrame and RectFast, and the exact tail (`exact`).
 //!
-//! A strategy either accepts the host (a [`Cut`]) or returns `None`, leaving
+//! A strategy accepts the host (a [`Cut`]) or returns `None`, leaving
 //! the host untouched for the next one. Each owns its flag gate and the
 //! diagnostics it records on acceptance; nothing is recorded on a miss.
 //!
@@ -25,6 +25,7 @@ mod bool2d;
 mod exact;
 mod inner;
 mod param_rect;
+mod partition;
 mod prism;
 mod rect_fast;
 mod wall_local_frame;
@@ -33,28 +34,61 @@ mod wall_local_frame;
 /// [`Execution::apply_void_context`], before any frame change.
 #[derive(Clone, Copy)]
 pub(super) enum HostStage {
+    Partition,
     ParamRect,
     Bool2d,
     Prism,
 }
 
-/// THE order of stage A, and the only place it is written down. The first
-/// stage that accepts the host ends the stage; a later one never sees it.
+/// The order of stage A. Partition may forward one body to the remaining
+/// strategies. The first completed cut ends stage A.
 /// Reordering this list changes which cut a host gets, and so its geometry
 /// and diagnostics: it is a determinism-contract change, not a refactor
 /// (`docs/architecture/mesh-determinism.md`).
-pub(super) const HOST_STAGES: [HostStage; 3] = [HostStage::ParamRect, HostStage::Bool2d, HostStage::Prism];
+pub(super) const HOST_STAGES: [HostStage; 4] = [
+    HostStage::Partition,
+    HostStage::ParamRect,
+    HostStage::Bool2d,
+    HostStage::Prism,
+];
 
-/// An accepted whole-host cut. `residual` holds the openings the strategy
-/// left for the exact chain, recursed only after the strategy accepted.
-pub(super) struct Cut {
-    pub(super) mesh: Mesh,
-    pub(super) residual: Option<VoidContext>,
+/// A completed cut, or one shell to pass to the remaining stages of this cut.
+enum Cut {
+    Whole { mesh: Mesh, residual: Option<VoidContext> },
+    OneBody { mesh: Mesh, sibling: partition::PreservedBody },
+}
+
+impl Execution {
+    /// Apply the classified openings before changing the host's coordinate frame.
+    pub(crate) fn apply_void_context(&self, mut mesh: Mesh, ctx: &VoidContext, element_id: u32) -> Mesh {
+        let mut preserved = None;
+        let result = 'cut: {
+            for stage in HOST_STAGES {
+                match stage.try_cut(self, &mesh, ctx, element_id) {
+                    Some(Cut::OneBody { mesh: active, sibling }) => {
+                        mesh = active;
+                        preserved = Some(sibling);
+                    }
+                    Some(Cut::Whole { mesh, residual }) => break 'cut match residual {
+                        Some(rest) => self.apply_void_context(mesh, &rest, element_id),
+                        None => mesh,
+                    },
+                    None => {}
+                }
+            }
+            self.cut_in_host_frame(mesh, ctx, element_id)
+        };
+        match preserved {
+            Some(sibling) => sibling.rejoin(result, self, ctx, element_id),
+            None => result,
+        }
+    }
 }
 
 impl HostStage {
-    pub(super) fn try_cut(self, execution: &Execution, host: &Mesh, ctx: &VoidContext, element_id: u32) -> Option<Cut> {
+    fn try_cut(self, execution: &Execution, host: &Mesh, ctx: &VoidContext, element_id: u32) -> Option<Cut> {
         match self {
+            Self::Partition => partition::try_cut(execution, host, ctx, element_id),
             Self::ParamRect => param_rect::try_cut(execution, host, ctx),
             Self::Bool2d => bool2d::try_cut(execution, host, ctx, element_id),
             Self::Prism => prism::try_cut(execution, host, ctx, element_id),

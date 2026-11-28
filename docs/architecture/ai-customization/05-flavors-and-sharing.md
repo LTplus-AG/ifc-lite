@@ -50,7 +50,7 @@ interface FlavorExtension {
   /** Hash of the bundle for integrity. */
   bundleHash: string;             // sha256 hex
   /** Capabilities the user granted on install. */
-  grantedCapabilities: Capability[];
+  grantedCapabilities: string[];  // raw capability strings
   /** User-level config (forms etc.) the extension persisted. */
   config?: Record<string, JsonValue>;
   /** Whether this extension is currently enabled. */
@@ -63,9 +63,11 @@ have the same configuration even if one is offline.
 
 ## 2. Storage
 
-Flavors live in IndexedDB under the `flavors` object store, keyed by
-`id`. Extension bundles live in a separate `extension-bundles` store
-keyed by `(id, version)`. A flavor references bundles by id+version+hash.
+Flavors live in IndexedDB (database `ifc-lite-flavors`) under the
+`flavors` object store, keyed by `id`, with `flavor-active` and
+`flavor-snaps` beside it (`apps/viewer/src/services/extensions/idb-flavor-storage.ts`).
+Extension bundles live in a separate `extension-bundles` store
+(`idb-storage.ts`) keyed by `(id, version)`. A flavor references bundles by id+version+hash.
 
 The user has one **active flavor** at a time. The active flavor's
 contributions are loaded on app start. Switching flavors:
@@ -81,17 +83,23 @@ active.
 
 ## 3. Export
 
-A flavor exports to a single JSON document. By default, exports include:
+A flavor exports to a single gzipped JSON envelope (`packFlavor` in
+`packages/extensions/src/flavor/packer.ts`) with the extension `.iflv`
+(IFC-Lite flavor; mirrors `.iflx` for individual extensions):
 
-- The full `Flavor` object.
-- Each `FlavorExtension`'s bundle (manifest + code + widgets + tests),
-  inlined as a base64 payload.
-- A file signature header (magic bytes + format version).
+- `format: "iflv"` and `version: 1` identify the file.
+- `flavor`: the full `Flavor` object.
+- `extensionBundles`: caller-supplied `.iflx` bundle bytes keyed by
+  `<id>@<version>`, base64-encoded. The viewer's `exportFlavor` passes
+  none, so viewer exports carry an empty map today.
+- `summary`: an optional caller-supplied human-readable string. The
+  viewer's export passes none; the import preview shows a supplied summary
+  verbatim, it does not regenerate one.
 
-The file is gzipped and the resulting bytes get the extension `.iflv`
-(IFC-Lite flavor; mirrors `.iflx` for individual extensions).
+Unpacking caps the uncompressed size at 64 MiB.
 
-Optional export flags:
+Optional export flags (planned; no CLI or UI flag exists yet — a minimal
+export is `packFlavor` with an empty `extensionBundles` map):
 
 - `--minimal` — references registry extensions by id+version+hash
   instead of inlining their bundles. Smaller files; recipient must
@@ -100,7 +108,7 @@ Optional export flags:
 - `--strip-config` — omits per-extension config and personal prompt
   overlay. Useful for "share the structure, not my data."
 
-The exporter produces a **summary file** alongside the bundle:
+The planned exporter summary (not generated today; `packFlavor` only embeds a string the caller passes) looks like:
 
 ```
 Flavor: "Residential Architect"
@@ -267,8 +275,8 @@ A flavor is the user's environment. Breakage is severe. Safeguards:
 
 ## 10. Interaction with desktop / server
 
-No first-party desktop app ships today (it was decommissioned; see 09
-P3.T16/T17). Any future or third-party desktop build would load flavors
+No first-party desktop app ships today (it was decommissioned; tasks
+P3.T16/T17 of the retired implementation plan). Any future or third-party desktop build would load flavors
 the same way as the browser. Flavors that declare `desktop`-specific
 features (e.g. file system access through a future `system.fs:<path>`
 capability) are flagged accordingly.
@@ -279,10 +287,10 @@ contributions are no-ops on the server. The same manifest works
 everywhere; capabilities the server cannot grant fail the activation
 visibly.
 
-The MCP server (`packages/mcp`) exposes flavor management as MCP tools:
-`flavor_export`, `flavor_import`, `flavor_list`, `flavor_activate`.
-External agents can therefore curate flavors against a running
-IFClite instance.
+Planned, not implemented: MCP tools for flavor management
+(`flavor_export`, `flavor_import`, `flavor_list`, `flavor_activate`) so
+external agents can curate flavors against a running IFClite instance.
+`packages/mcp` has no flavor tools today.
 
 ## 11. Diff and audit UI
 

@@ -32,8 +32,21 @@ const { sunrise, sunset, solarNoon } = sunTimes(new Date(), 51.4769, -0.0005);
 // Geometry for a 3D dome.
 const arc        = dayPath(new Date(), 51.4769, -0.0005);   // today's path
 const analemmas  = analemmaPaths(2024, 51.4769, -0.0005);   // hourly figure-eights
-const graticule  = domeGraticule();                          // rings + spokes + N/E/S/W
+const graticule  = domeGraticule();                          // rings + spokes + 8 compass labels
 ```
+
+- `sunTimes` returns `sunrise` / `sunset` as `null` on days the sun never
+  rises or never sets, with `alwaysUp` / `alwaysDown` flags.
+- `dayPath` samples the UTC calendar day of `date` every `stepMinutes`
+  (default 10); `analemmaPaths` walks the year every `dayStep` days
+  (default 5). By default `dayPath` drops below-horizon samples and
+  `analemmaPaths` drops hours that never rise above the horizon; pass
+  `aboveHorizonOnly: false` to keep them. Each sample carries `time`, an ENU
+  `dir` and `aboveHorizon`.
+- `domeGraticule({ altitudeStep, azimuthStep, resolution })` defaults to
+  rings every 15°, spokes every 30° and 5° arc resolution, plus the horizon ring.
+- `azimuthAltitudeToEnu`, `solarGeometry`, `sunPositionFromGeometry` and
+  `toJulianDay` expose the building blocks.
 
 ## Accuracy
 

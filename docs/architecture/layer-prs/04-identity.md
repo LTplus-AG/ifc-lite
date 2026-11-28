@@ -2,6 +2,8 @@
 
 The persistent-naming problem is the graveyard of model-diff projects. This spec survives it by refusing to be clever in v1.
 
+Status: the expressId bridge in §4.3 and the GlobalId and content-derived identity sources in §4.1 ship in `packages/mutations/src/change-set-to-ops.ts`. The bridge records fallback entries with `reason: "derived"` and reports unresolved entities, never guessing. It does not consult an explicit `identity_map`. The layer merge path uses no matcher. Separately, `@ifc-lite/diff` has an opt-in content-keyed matching pass (`DiffOptions.matchUnpairedByContent`, #1891) that pairs unmatched entities as `renamed`/`moved`/`reshaped`/`respecified`. The viewer's compare panel uses it, and accepted pairs export as an identity-map sidecar whose entries carry `content-match:*`, `successor:*` or `accepted:ambiguous` reasons (`packages/diff/src/identity-map.ts`). That is the §4.5 suggestion provider, in compare rather than in layer review.
+
 ## 4.1 Identity sources, in priority order
 
 1. **IFC GlobalId** (the `key` already used by `@ifc-lite/diff`): primary identity wherever present and stable

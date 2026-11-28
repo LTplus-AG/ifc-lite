@@ -41,10 +41,11 @@ interface ExtensionManifest {
   engines: { ifcLiteSdk: string };   // e.g. ">=2.4.0 <3.0.0"
 
   /**
-   * Capabilities this extension requires.
+   * Capabilities this extension requires, as raw strings
+   * (parsed into `Capability` records by `parseCapabilities`).
    * See 02-security.md for the full grammar. Order is not significant.
    */
-  capabilities: Capability[];
+  capabilities: string[];
 
   /**
    * Activation events. The host loads + initializes the extension
@@ -63,6 +64,7 @@ interface ExtensionManifest {
     exporters?: ExporterContribution[];
     idsValidators?: IdsValidatorContribution[];
     statusBar?: StatusBarContribution[];
+    flows?: FlowGraphContribution[];   // { id, name, description?, path }
   };
 
   /**
@@ -85,7 +87,7 @@ interface ExtensionManifest {
    * for local-only extensions. Each test runs the named handler against
    * a named fixture and asserts the result shape.
    */
-  tests?: ExtensionTest[];
+  tests?: ManifestTest[];
 
   /**
    * Localization. If present, all user-facing strings (name, description,
@@ -120,9 +122,11 @@ Failures produce structured errors (`{ path, code, message, hint? }`) used by:
 
 ### 1.3 Versioning and migration
 
-`manifestVersion: 1` is the current revision. A future v2 ships with a
-migration function in `@ifc-lite/extensions/migrations/v1-to-v2.ts`. The
-loader will read any older version it has a migration for. Manifests
+`manifestVersion: 1` is the current revision (`CURRENT_MANIFEST_VERSION`).
+Migrations live in `packages/extensions/src/migrations/`: `index.ts` holds the
+`MigrationEntry` chain (empty today) and `v1.ts` a no-op `migrateV1` that proves
+the wiring. A future v2 adds a chain entry. The loader will read any older
+version it has a migration for. Manifests
 newer than the loader fail closed with a clear "update IFClite to use
 this extension" error.
 
@@ -150,8 +154,10 @@ my-extension/
 ```
 
 The bundle is the unit of import / export / publish. Compressed it is a
-single `.iflx` file (gzipped tar; the extension is `.iflx` because
-`.ifcx` is taken by IFC5).
+single `.iflx` file (the extension is `.iflx` because `.ifcx` is taken by
+IFC5). v1 implements it as a gzipped JSON envelope
+`{ format: "iflx", version: 1, files: { "<path>": "<base64>" } }`, not a tar
+(`packages/extensions/src/bundle/iflx.ts`).
 
 ## 3. Activation events
 
@@ -271,8 +277,9 @@ interface IdsValidatorContribution {
 ### 5.1 The `when` clause
 
 Borrowed from VS Code. A small expression language over a fixed set of
-context keys: `model.loaded`, `model.schema`, `selection.count`,
-`selection.type`, `viewer.open`, `desktop`, `embed`. Example:
+context keys (`WHEN_CONTEXT_KEYS`): `model.loaded`, `model.schema`,
+`model.count`, `selection.count`, `selection.type`, `viewer.open`,
+`desktop`, `embed`. Example:
 
 ```
 "when": "model.loaded && selection.count > 0 && selection.type == 'IfcWall'"
@@ -302,23 +309,34 @@ test. The test spec is declarative:
 }
 ```
 
-The test runner lives in `@ifc-lite/extensions/test-runner.ts`:
+The test runner is `runBundleTests` in
+`packages/extensions/src/testing/runner.ts`:
 
-- Loads the named fixture (from `tests/models/manifest.json`).
-- Spins up a QuickJS sandbox with the extension's capabilities.
-- Runs the command / contribution.
+- Resolves the named fixture through a host-supplied loader. The package
+  ships synthetic fixtures (`CANONICAL_FIXTURES`, `syntheticFixtureLoader`);
+  without a loader the handler gets a minimal stub.
+- Runs the command in the sandbox of the `ExtensionRuntime` it is given,
+  with the extension's grants. `ifc-lite ext test` uses the in-process
+  `createMemorySandboxFactory`.
 - Validates output shape against `expect`.
 
 Tests run:
 
-- On extension install (one-time gate).
-- On SDK upgrade (CI for the host; also runs locally on user devices
-  when the SDK version moves).
-- On extension upgrade.
-- On demand via `ifc-lite ext test <id>`.
+- On demand in the viewer: the Extensions panel's test action calls
+  `ExtensionHostService.runTests(id)`.
+- On demand from the CLI: `ifc-lite ext test <bundle-dir> [--bail] [--json]`
+  (a bundle directory, not an installed id).
+- On demand in the Repair Queue: "Run check" or "Re-run" calls
+  `revalidateForSdk(version)` with the current SDK version. It runs declared
+  tests for outdated or permissive extensions whose bundles are available.
+  Affected extensions whose bundles or tests are unavailable enter the repair
+  queue as skipped. It does not run on mount.
 
-If tests fail on an SDK upgrade, the repair loop is invoked
-automatically ([§04-ai-authoring.md](./04-ai-authoring.md)).
+Install and upgrade do not run tests: the installer loads the bundle,
+records the audit event and fires `onStartup`. If tests fail on an SDK
+change, the extension lands in the repair queue, and the user authorises
+the AI repair ([§04-ai-authoring.md](./04-ai-authoring.md)); it is not
+started automatically.
 
 ## 7. Package layout
 
@@ -331,18 +349,22 @@ The host-side runtime. Exports:
 - `ExtensionManifest` validator (`validateManifest`) and TypeScript types.
 - `ExtensionLoader` — loads bundles from IndexedDB or disk, validates,
   registers contributions.
-- `ExtensionHost` — coordinates lifecycle, dispatches activation events,
-  enforces capability grants.
+- `ExtensionRuntime` and `ActivationDispatcher` — activate and deactivate
+  extensions in a sandbox, dispatch activation events, apply capability
+  grants. The viewer wraps them in `ExtensionHostService`
+  (`apps/viewer/src/services/extensions/host.ts`).
 - `SlotRegistry` — the host's catalogue of contribution points; UI
   components subscribe by slot id.
 - Test runner.
 - Manifest migration helpers.
 
-Dependencies: `acorn`, `acorn-walk`, `fflate`. No new heavy deps.
+Dependencies: `acorn`, `acorn-walk`, `fflate`, and the workspace
+`@ifc-lite/regex-guard`. No new heavy deps. Subpath exports: `./node`,
+`./capability`, `./authority`, `./when`, `./bundle`.
 
 ### CLI helpers in `@ifc-lite/cli`
 
-CLI helpers (`ifc-lite ext init|validate|pack|sign|verify|test`) ship as
+CLI helpers (`ifc-lite ext init|validate|keygen|pack|sign|verify|test|capabilities`) ship as
 the `ext` subcommand of the existing `@ifc-lite/cli`, not a separate
 package, so the unified CLI surface remains.
 
@@ -375,7 +397,7 @@ feature added to the viewer, not a new product.
 │  wait for activation events                                     │
 │      │                                                          │
 │      ▼  (activation event fires)                                │
-│  ExtensionHost.activate(id)                                     │
+│  ExtensionRuntime.activate(id, grants, bundle?)                 │
 │      ├─ create QuickJS context with scoped bridge                │
 │      ├─ call entry.activate(ctx)                                 │
 │      └─ retain ctx until deactivate or uninstall                 │
@@ -389,7 +411,12 @@ everything including capability grants.
 ## 9. The `ctx` object
 
 Every entry function receives a `ctx`. This is the only authority the
-extension holds. There is no `globalThis.fetch`, no `window`, no
+extension holds.
+
+**Status:** v1 plumbs only `bim` (`ExtensionContextV1` in
+`packages/extensions/src/host/runtime.ts`). The other fields below (`log`,
+`storage`, `fetch`, `notify`, `onDispose`, `t`, `meta`) are planned and not
+implemented. There is no `globalThis.fetch`, no `window`, no
 `require('fs')`. The `ctx` is the OCAP capability bundle.
 
 ```ts

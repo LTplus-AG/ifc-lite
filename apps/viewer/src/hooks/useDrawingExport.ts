@@ -178,13 +178,16 @@ export function createDrawingExport({
   const { models: storeModels, anchorModelIdOverride, georefMutations } = useViewerStore.getState();
 
   // One properties cache per export, shared by every cut polygon it styles.
-  const cutPolygonStyleContext = (): CutPolygonStyleContext => ({
-    useIfcMaterials: activePresetId === 'preset-3d-colors',
-    entityColorMap,
-    overridesEnabled,
-    overrideEngine,
-    getElementProperties: makePropertiesGetter(storeModels, ifcDataStore),
-  });
+  const cutPolygonStyleContext = (): CutPolygonStyleContext => {
+    const { models, mutationViews } = useViewerStore.getState();
+    return {
+      useIfcMaterials: activePresetId === 'preset-3d-colors',
+      entityColorMap,
+      overridesEnabled,
+      overrideEngine,
+      getElementProperties: makePropertiesGetter(models, ifcDataStore, mutationViews),
+    };
+  };
 
   // A nonempty outer ring produces no path when a mapped vertex is non-finite.
   const cutPolygonWarnings = (styled: ReadonlyArray<{ polygon: { polygon: { outer: readonly unknown[] } }; geometry: string }>): string[] => {

@@ -1,6 +1,6 @@
 # Georeferencing
 
-A georeferenced IFC model says where on Earth it is. In IFC4 and IFC4X3 that is an `IfcMapConversion` (where the project origin lies on the map, how the model is turned and scaled) onto an `IfcProjectedCRS` (which map: an EPSG code and its unit). IFC2X3 has neither entity; the buildingSMART convention puts the same values in two property sets, `ePSet_MapConversion` and `ePSet_ProjectedCRS`, on the IfcProject. Every model also has an approximate site point, IfcSite `RefLatitude` / `RefLongitude` / `RefElevation`.
+A georeferenced IFC model says where on Earth it is. In IFC4 and IFC4X3 that is an `IfcMapConversion` (where the project origin lies on the map, how the model is turned and scaled) onto an `IfcProjectedCRS` (which map: an EPSG code and its unit). IFC2X3 has neither entity; the buildingSMART convention puts the same values in two property sets, `ePSet_MapConversion` and `ePSet_ProjectedCRS`. ifc-lite reads those sets on the IfcSite, IfcProject or IfcBuilding and writes new ones on the IfcSite. A model can also carry an approximate site point, IfcSite `RefLatitude` / `RefLongitude` / `RefElevation`; it may be missing, as may the IfcSite itself.
 
 ifc-lite reads, writes, checks and fixes all of these, from the CLI, the MCP server and the SDK.
 
@@ -68,7 +68,7 @@ IfcSite `RefLatitude` / `RefLongitude` are written as `IfcCompoundPlaneAngleMeas
 
 ### MCP and SDK
 
-`georeferencing_check` returns the report and the plan as JSON; `georeferencing_fix` takes the same `apply`, `values` and `accept_approximate_datum` inputs, applies the ready fixes in the session (saved by `export_ifc` / `model_save`) and returns the check after them. In a script:
+`georeferencing_check` returns the report and the plan as JSON; it takes `model_id` (which loaded model; optional), `apply`, `values`, `accept_approximate_datum` and `allow_network` (the MCP counterpart of `--allow-network`). It reads the session's unsaved edits as they would be saved. `georeferencing_fix` takes the same inputs, applies the ready fixes in the session (saved by `export_ifc` / `model_save`) and returns the check after them. When no fix is ready it changes nothing and returns the report and plan with `after: null`. In a script:
 
 ```typescript
 import { readFile, writeFile } from 'node:fs/promises';

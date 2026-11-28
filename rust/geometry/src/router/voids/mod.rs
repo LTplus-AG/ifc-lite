@@ -6,7 +6,7 @@
 //! ([`VoidContext`]), as an ordered chain of statically dispatched stages:
 //!
 //! - A, whole-host strategies on the host as it arrived, first acceptance
-//!   wins: ParamRect, Bool2d, Prism (`strategy::HOST_STAGES`). A residual a
+//!   wins: Partition, ParamRect, Bool2d, Prism (`strategy::HOST_STAGES`). A residual a
 //!   strategy leaves is cut by recursion on its result.
 //! - The origin/frame step: the host's world bounds are captured and host and
 //!   cutters are moved into one origin-0 frame.
@@ -40,6 +40,7 @@ use rustc_hash::FxHashMap;
 
 mod aabb_clip;
 mod admission;
+pub(crate) mod aligned_bodies;
 mod context;
 pub use context::RectParam;
 pub(crate) use context::{ParamRectCut, VoidContext};
@@ -142,23 +143,7 @@ impl GeometryRouter {
 }
 
 impl Execution {
-    /// Apply a pre-built `VoidContext` to a single mesh.
-    ///
-    /// This is the cheap per-mesh half of void subtraction: it re-reads the
-    /// mesh bounds (which differ per sub-mesh), extends rectangular openings
-    /// along their extrusion axis so they fully penetrate the mesh, then
-    /// subtracts every opening through the unified exact-kernel path (with the
-    /// per-opening #635 AABB fallback). All the classification work has
-    /// already been done by the owned host-opening control.
-    ///
-    /// `element_id` is the IFC product express ID of the host element. Any
-    /// `BoolFailure` recorded by the inner CSG kernel is attributed to that
-    /// product and stored on the router (drainable via
-    /// [`GeometryRouter::take_csg_failures`]). The router's failure log is
-    /// the only path failures reach the caller; `apply_void_context` itself
-    /// always returns the (possibly un-cut) mesh.
-    /// Apply a pre-built `VoidContext`, honouring the host's per-element local
-    /// frame.
+    /// Run the frame-local stages after the whole-host stages have declined.
     ///
     /// When local-frame precision is on, the host mesh arrives stored relative
     /// to `mesh.origin` (small, f32-exact). The CSG must run with host AND
@@ -169,25 +154,7 @@ impl Execution {
     /// frame with no origin-aware-merge surprises), relativizes the cutters by
     /// the same origin, runs the CSG, then re-stamps the origin on the result so
     /// `world = origin + position` holds for the renderer.
-    pub(crate) fn apply_void_context(
-        &self,
-        mut mesh: Mesh,
-        ctx: &VoidContext,
-        element_id: u32,
-    ) -> Mesh {
-        // Stage A: the whole-host strategies, in the frozen order of
-        // `strategy::HOST_STAGES`. The first to accept ends the cut; a residual
-        // it leaves is cut by recursion on the accepted result, and that
-        // recursive exact pass records the final cut-effect snapshot.
-        for stage in strategy::HOST_STAGES {
-            if let Some(cut) = stage.try_cut(self, &mesh, ctx, element_id) {
-                return match cut.residual {
-                    None => cut.mesh,
-                    Some(residual) => self.apply_void_context(cut.mesh, &residual, element_id),
-                };
-            }
-        }
-
+    fn cut_in_host_frame(&self, mut mesh: Mesh, ctx: &VoidContext, element_id: u32) -> Mesh {
         // WORLD-space host AABB for the per-host diagnostic (`bbox`), captured
         // HERE — before the local-frame branch below zeroes `mesh.origin` and
         // before the wall-frame stage rotates the mesh into its own frame.

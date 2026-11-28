@@ -642,7 +642,7 @@ test('the shipped config only excludes the aggregate and the advisory shadow job
   // The last NON-aggregate lane appeared at 161..845 s over the same runs: 0 of
   // 68 past the budget. Full numbers in scripts/lib/pr-review-signal.test.mjs.
   const cfg = JSON.parse(readFileSync(CONFIG, 'utf8'));
-  assert.deepEqual(cfg.excludeJobKeys, ['test', 'node-tests-selected']);
+  assert.deepEqual(cfg.excludeJobKeys, ['test', 'node-tests-selected', 'viewer-e2e-selected']);
 });
 
 test('the shipped exclusions preserve every other required lane', () => {
@@ -653,7 +653,11 @@ test('the shipped exclusions preserve every other required lane', () => {
   const shipped = expandJobNames(yml, { exclude: cfg.excludeJobKeys });
   assert.deepEqual(
     all.filter((n) => !shipped.includes(n)),
-    ['Build + WASM + Rust + Node', 'Node package tests, advisory (selected for this PR)'],
+    [
+      'Build + WASM + Rust + Node',
+      'Node package tests, advisory (selected for this PR)',
+      'Viewer E2E shadow (selected for this PR)',
+    ],
   );
   for (const n of ['Node tests (shard 1/4)', 'Node tests (shard 4/4)', 'Rust tests', 'Lint', 'Typecheck', 'Build packages + WASM']) {
     assert.ok(shipped.includes(n), `${n} must still be required`);

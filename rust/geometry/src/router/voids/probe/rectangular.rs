@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Rectangular profile admission and its exact oriented box.
-use super::{unwrap_solid, GeometryRouter, RectParam, UnwrapPolicy};
+use super::{unwrap_solid, GeometryRouter, RectParam, RectProbe, UnwrapPolicy};
 use crate::placement::Axis2Placement;
 use crate::{Point3, Vector3};
 use ifc_lite_core::{slot, DecodedEntity, EntityDecoder, IfcType};
@@ -44,23 +44,32 @@ fn rect_profile_position(profile: &DecodedEntity, decoder: &mut EntityDecoder) -
     Some((frame.location[0], frame.location[1], cos_t, sin_t))
 }
 
+#[derive(Debug)]
+struct RectProfile {
+    dimensions: [f64; 2],
+    center: [f64; 2],
+    direction: [f64; 2],
+    rectangular: bool,
+}
+
 impl GeometryRouter {
     /// Read a rectangular swept area as `(x_dim, y_dim, off_x, off_y, cos, sin)` in the
     /// profile plane. Handles `IfcRectangleProfileDef` (XDim/YDim + 2D Position rotation)
-    /// AND an `IfcArbitraryClosedProfileDef` whose outer curve is an axis-aligned 4-point
-    /// rectangle polyline (the common Tekla/structural authoring of a rectangular wall).
+    /// AND an `IfcArbitraryClosedProfileDef` whose outer curve is a rectangle polyline
+    /// with or without straight-side subdivisions.
     /// `None` for any non-rectangular profile → the caller defers to the exact kernel.
-    fn read_rect_profile_2d(
+    fn read_rect_profile_for(
         &self,
         profile: &DecodedEntity,
         decoder: &mut EntityDecoder,
-    ) -> Option<(f64, f64, f64, f64, f64, f64)> {
+        purpose: RectProbe,
+    ) -> Option<RectProfile> {
         match profile.ifc_type {
             IfcType::IfcRectangleProfileDef => {
                 let x_dim = profile.get_float(3)?;
                 let y_dim = profile.get_float(4)?;
                 let (off_x, off_y, cos_t, sin_t) = rect_profile_position(profile, decoder)?;
-                Some((x_dim, y_dim, off_x, off_y, cos_t, sin_t))
+                Some(RectProfile { dimensions: [x_dim, y_dim], center: [off_x, off_y], direction: [cos_t, sin_t], rectangular: true })
             }
             IfcType::IfcArbitraryClosedProfileDef => {
                 // OuterCurve (attr 2) must be an axis-aligned rectangle polyline.
@@ -80,6 +89,29 @@ impl GeometryRouter {
                     if (f.0 - l.0).abs() < 1e-9 && (f.1 - l.1).abs() < 1e-9 {
                         coords.pop();
                     }
+                }
+                if coords.len() > 4 && matches!(purpose, RectProbe::Alignment) {
+                    // IFC polylines may subdivide a straight side. Keep cyclic corner
+                    // order so the first corner and first edge still define the frame.
+                    let mut corners = Vec::with_capacity(4);
+                    for i in 0..coords.len() {
+                        let a = coords[(i + coords.len() - 1) % coords.len()];
+                        let b = coords[i];
+                        let c = coords[(i + 1) % coords.len()];
+                        if geometry_predicates::orient2d(a.into(), b.into(), c.into()) == 0.0 {
+                            // Duplicate vertices and double-backs do not subdivide a side.
+                            if !(a.0.min(c.0) < b.0 && b.0 < a.0.max(c.0)
+                                || a.1.min(c.1) < b.1 && b.1 < a.1.max(c.1)) {
+                                return None;
+                            }
+                        } else {
+                            if corners.len() == 4 {
+                                return None;
+                            }
+                            corners.push(b);
+                        }
+                    }
+                    coords = corners;
                 }
                 if coords.len() != 4 {
                     return None;
@@ -104,11 +136,18 @@ impl GeometryRouter {
                 if dot.abs() > 0.01 || (len(e2) - xd).abs() > xd * 0.01 + 1e-6 {
                     return None;
                 }
+                // The historical frame accepts slightly skewed quads. Only a
+                // parallelogram with perpendicular sides certifies no overlap.
+                let e3 = edge(3);
+                let tol = 16.0 * f64::EPSILON;
+                let rectangular = dot.abs() <= tol
+                    && len((e0.0 + e2.0, e0.1 + e2.1)) <= tol * xd
+                    && len((e1.0 + e3.0, e1.1 + e3.1)) <= tol * yd;
                 // Local X' = first-edge direction; centre = polygon centroid.
                 let (cos_t, sin_t) = (e0.0 / xd, e0.1 / xd);
                 let cx = (p[0].0 + p[1].0 + p[2].0 + p[3].0) * 0.25;
                 let cy = (p[0].1 + p[1].1 + p[2].1 + p[3].1) * 0.25;
-                Some((xd, yd, cx, cy, cos_t, sin_t))
+                Some(RectProfile { dimensions: [xd, yd], center: [cx, cy], direction: [cos_t, sin_t], rectangular })
             }
             _ => None,
         }
@@ -123,11 +162,20 @@ impl GeometryRouter {
         placement: &Matrix4<f64>,
         decoder: &mut EntityDecoder,
     ) -> Option<RectParam> {
+        self.probe_rect_item(item, placement, decoder, RectProbe::Cut).map(|(frame, _)| frame)
+    }
+
+    pub(super) fn probe_rect_item(
+        &self, item: DecodedEntity, placement: &Matrix4<f64>, decoder: &mut EntityDecoder,
+        purpose: RectProbe,
+    ) -> Option<(RectParam, bool)> {
+        let direct = item.ifc_type == IfcType::IfcExtrudedAreaSolid;
         let (solid, chain) = unwrap_solid(item, Some(Matrix4::identity()), UnwrapPolicy::FIRST, decoder).ok()??;
         let chain = chain?;
 
         let profile = decoder.resolve_ref(solid.get(0)?).ok()??;
-        let (x_dim, y_dim, off_x, off_y, cos_t, sin_t) = self.read_rect_profile_2d(&profile, decoder)?;
+        let RectProfile { dimensions: [x_dim, y_dim], center: [off_x, off_y], direction: [cos_t, sin_t], rectangular } =
+            self.read_rect_profile_for(&profile, decoder, purpose)?;
         let depth = solid.get_float(3)?;
         if !(x_dim.is_finite() && y_dim.is_finite() && depth.is_finite() && x_dim > 0.0 && y_dim > 0.0 && depth > 0.0) {
             return None;
@@ -169,11 +217,13 @@ impl GeometryRouter {
         if uu.dot(&vv).abs() > 1e-6 || uu.dot(&ww).abs() > 1e-6 || vv.dot(&ww).abs() > 1e-6 {
             return None;
         }
+        let tol = 16.0 * f64::EPSILON;
+        let whole_box = direct && rectangular && uu.dot(&vv).abs() <= tol && uu.dot(&ww).abs() <= tol && vv.dot(&ww).abs() <= tol;
         let center_local = Point3::new(off_x, off_y, 0.0) + w * (depth * 0.5);
         let center_native = m.transform_point(&center_local);
         let s = self.unit_scale();
         let (rx, ry, rz) = self.rtc_offset();
-        Some(RectParam {
+        let frame = RectParam {
             r: Matrix3::from_columns(&[uu, vv, ww]),
             center: Point3::new(
                 center_native.x * s - rx,
@@ -181,7 +231,8 @@ impl GeometryRouter {
                 center_native.z * s - rz,
             ),
             half: [x_dim * 0.5 * su * s, y_dim * 0.5 * sv * s, depth * 0.5 * sw * s],
-        })
+        };
+        Some((frame, whole_box))
     }
 }
 
@@ -192,3 +243,18 @@ mod tests;
 #[cfg(test)]
 #[path = "placement_tests.rs"]
 mod placement_tests;
+
+// The frame regression fixtures compare these six measurements against
+// the legacy reader, including under the CI revert oracle.
+#[cfg(test)]
+impl GeometryRouter {
+    fn read_rect_profile_2d(
+        &self, profile: &DecodedEntity, decoder: &mut EntityDecoder,
+    ) -> Option<(f64, f64, f64, f64, f64, f64)> {
+        let profile = self.read_rect_profile_for(profile, decoder, RectProbe::Alignment)?;
+        let [x, y] = profile.dimensions;
+        let [cx, cy] = profile.center;
+        let [cos, sin] = profile.direction;
+        Some((x, y, cx, cy, cos, sin))
+    }
+}

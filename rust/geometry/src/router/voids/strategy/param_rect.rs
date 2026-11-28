@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! ParamRect (stage A, first): the analytic box-minus-boxes cut in the host's
+//! ParamRect (stage A, after partitioning): the analytic box-minus-boxes cut in the host's
 //! own placement frame, when the parametrics were captured and reconcile.
 
 use super::super::geom::{
@@ -23,7 +23,7 @@ pub(super) fn try_cut(execution: &Execution, host: &Mesh, ctx: &VoidContext) -> 
         return None;
     }
     let mesh = execution.try_param_rect_cut(host, ctx)?;
-    Some(Cut { mesh, residual: None })
+    Some(Cut::Whole { mesh, residual: None })
 }
 
 impl Execution {

@@ -55,6 +55,8 @@ classDiagram
         String(bytes)
         Integer(i64)
         Float(f64)
+        UnrepresentableReal(bytes)
+        Binary(bytes)
         Enum(bytes)
         List(Vec~Token~)
         TypedValue(bytes, Vec~Token~)
@@ -63,6 +65,8 @@ classDiagram
     }
 ```
 
+`UnrepresentableReal` carries a complete STEP `REAL` that `f64` cannot hold
+(`1.E400`) as raw text; `Binary` is the undecoded content of a `"0FF"` literal.
 `String` and `Enum` tokens borrow their original bytes; STEP escape decoding (`\X2\`, `\S\`, ...) happens only when a value crosses a user-facing boundary.
 
 ### Lexer Architecture
@@ -104,7 +108,7 @@ String literals use memchr to find the closing quote (with `''` escape handling)
 | Optimization | Technique | Benefit |
 |--------------|-----------|---------|
 | Zero-copy | Store byte slices | No allocation |
-| SIMD search | memchr crate | 10x faster search |
+| SIMD search | memchr crate | Vectorized byte search |
 | Fast numbers | fast-float2 behind one literal grammar | Single pass |
 | Branch prediction | Ordered alternatives | Better CPU prediction |
 
@@ -203,14 +207,16 @@ classDiagram
         String(String)
         Integer(i64)
         Float(f64)
+        Binary(String)
         Enum(String)
         List(Vec~AttributeValue~)
+        Typed(name, value)
         Null
         Derived
     }
 ```
 
-Booleans arrive as `Enum` values (`.T.` / `.F.`); typed values such as `IFCBOOLEAN(.T.)` are unwrapped during decoding. Tessellation-heavy payloads (coordinate and index lists) can bypass the token pipeline entirely via the zero-allocation fast path in `rust/core/src/fast_parse.rs`.
+Booleans arrive as `Enum` values (`.T.` / `.F.`). A typed value such as `IFCBOOLEAN(.T.)` is kept as `Typed { name, value }` (`rust/core/src/schema_gen.rs`); `as_float`, `as_int`, `as_string` and `as_enum` see through it, and `as_typed` / `unwrap_typed` / `typed_value` read it explicitly. Tessellation-heavy payloads (coordinate and index lists) can bypass the token pipeline entirely via the zero-allocation fast path in `rust/core/src/fast_parse.rs`.
 
 ## Data Building
 
@@ -311,60 +317,43 @@ After the scan, the columnar parser (`columnar-parser.ts`) does a single pass ov
 
 ### Error Types
 
-```mermaid
-classDiagram
-    class ParseError {
-        <<abstract>>
-        +string message
-        +number? line
-        +number? column
-    }
+`ifc_lite_core::Error` (`rust/core/src/error.rs`) is one enum, not a class
+hierarchy:
 
-    class TokenError {
-        +string expected
-        +string found
-    }
-
-    class SchemaError {
-        +string entityType
-        +string reason
-    }
-
-    class ValidationError {
-        +number entityId
-        +string violation
-    }
-
-    ParseError <|-- TokenError
-    ParseError <|-- SchemaError
-    ParseError <|-- ValidationError
-```
+| Variant | Meaning |
+|---|---|
+| `ParseError { position, message }` | Generic parse failure at a byte position |
+| `InvalidEntityRef(u32)` | A reference that does not resolve |
+| `InvalidIfcType(String)` | An unknown type name |
+| `UnexpectedToken { position, expected, got }` | Tokenizer mismatch |
+| `Io`, `Utf8` | Wrapped I/O and UTF-8 errors |
+| `UnrepresentableReal(u32)` | A `REAL` outside the double range, refused as geometry input |
+| `MalformedRecord(u32)` | A point/direction or reference slot that is not valid geometry input |
+| `UnusableUnitFactor { factor, overflowed }` | A length unit factor that is not a positive finite number |
 
 ### Error Recovery
 
-```mermaid
-flowchart TD
-    Error["Parse Error"]
-    Check{"Recoverable?"}
-    Skip["Skip to next entity"]
-    Log["Log warning"]
-    Continue["Continue parsing"]
-    Throw["Throw error"]
+The scanner drops a record it cannot terminate and carries on (`rust/core/src/parser/scanner.rs`):
 
-    Error --> Check
-    Check -->|Yes| Skip
-    Skip --> Log
-    Log --> Continue
-    Check -->|No| Throw
-```
+- a record with no `;` resumes at the `)` that balances its parameter list;
+- a record with an unescaped `'` resumes at the next anchored `#id=` declaration;
+- a record with no balancing `)` but readable bytes after it resumes the search
+  just past its own `#`, so the next declaration is still found.
+
+It stops the whole scan only when nothing after the record is readable, such as
+a `/* ... */` comment that never closes. A dropped
+record is reported through the host-installed report sink
+(`rust/core/src/parser/malformed_records.rs`), so a short model is not silent.
+Records refused as geometry input (`UnrepresentableReal`, `MalformedRecord`)
+are counted in `EntityDecoder::refused_records`.
 
 ## Performance Characteristics
 
-Indicative orders of magnitude (hardware and model dependent):
-
-- **Entity scanning** is memchr-bound and runs at hundreds of MB/s; on native it additionally parallelizes across cores.
+- **Entity scanning** is memchr-bound; on native it also parallelizes across cores.
 - **Decoding** dominates when many entities are actually materialized, which is why decoding is lazy and properties are parsed on access.
-- **Full parse** (scan + columnar build) is typically tens of MB/s in the browser; STEP parse can be 25-80% of total load time on entity-heavy files, which is what motivated the fast scanner and the on-demand property model.
+- **Full parse** (scan + columnar build) can be a large share of total load time on entity-heavy files, which is what motivated the fast scanner and the on-demand property model.
+
+Measured numbers live in [Performance](../guide/performance.md).
 
 ## Next Steps
 

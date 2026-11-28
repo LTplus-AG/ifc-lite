@@ -244,7 +244,7 @@ exportGlbFromMeshes(/* flattened MeshData buffers */, worldMatrix?: Float64Array
 exportObj(content, includeNormals, hidden, isolated): Uint8Array;
 exportKmzFromMeshes(
   positions, normals, indices, vertexCounts, indexCounts, colors, origins,
-  latitude, longitude, altitude, xAxisAbscissa?, xAxisOrdinate?, name?, altitudeMode?
+  latitude, longitude, altitude, xAxisAbscissa, xAxisOrdinate, name, altitudeMode?  // x-axis args accept undefined; name is required
 ): Uint8Array;
 exportCsv(content, mode, delimiter, includeProperties): Uint8Array;
 exportJson(content, pretty, includeProperties, includeQuantities): Uint8Array;
@@ -714,10 +714,11 @@ type PrePassEvent =
   | { type: 'entity-index'; ids: Uint32Array; starts: Uint32Array; lengths: Uint32Array }
   | { type: 'styles'; styleIds: Uint32Array; styleColors: Uint8Array; voidKeys: Uint32Array; voidCounts: Uint32Array; voidValues: Uint32Array }
   | { type: 'prepass-columns'; referencedRepmaps: Uint32Array; instantiatedTypeIds: Uint32Array; mappedInstancePlan: Uint32Array; mappedInstanceCounts: Uint32Array; mliElementIds: Uint32Array }
-  | { type: 'global-key-plan'; keys: number; plannedJobs: number };   // only under setGlobalKeyPlanning(true)
+  | { type: 'global-key-plan'; keys: number; plannedJobs: number }    // only under setGlobalKeyPlanning(true)
+  | { type: 'sparse-facts'; preamble: Uint8Array; inverseTargets: Uint32Array; inverseReferrers: Uint32Array; unsupported?: string };   // after entity-index, only under setEmitSparseFacts(true); `unsupported` names why the file needs the whole-file path
 ```
 
-The auxiliary events (`entity-index`, `styles`, `prepass-columns`, and `global-key-plan` when key planning is on) carry the scanned entity index, style colours, and pre-pass column data. Type the callback against the full union above so exhaustive handling does not silently miss them.
+The auxiliary events (`entity-index`, `styles`, `prepass-columns`, `global-key-plan` when key planning is on, and `sparse-facts` when `setEmitSparseFacts(true)` is set) carry the scanned entity index, style colours, and pre-pass column data. Type the callback against the full union above so exhaustive handling does not silently miss them.
 
 ## Error Handling
 

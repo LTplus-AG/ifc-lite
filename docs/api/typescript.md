@@ -105,6 +105,8 @@ class IfcParser {
 interface ParseOptions {
   onProgress?: (progress: { phase: string; percent: number }) => void;
   onDiagnostic?: (message: string) => void;
+  // Receives the entity-scan report (EntityScanReport) once scanning finishes
+  onScanReport?: (report: EntityScanReport) => void;
   // Optional IfcAPI instance for WASM-accelerated entity scanning
   wasmApi?: WasmScanApi;
   // Yield budget for large incremental parses
@@ -142,7 +144,7 @@ Result of `parseColumnar()`. Key fields (see `src/columnar-parser.ts` for the fu
 
 ```typescript
 interface IfcDataStore extends IfcStoreBase {
-  source: Uint8Array;
+  source: IfcSourceBytes;  // byte accessor (slice, decodeUtf8, withMaterialized, toTransferable), not a resident Uint8Array
   entityIndex: { byId: EntityByIdIndex; byType: Map<string, number[]> };
 
   strings: StringTable;
@@ -161,7 +163,7 @@ interface IfcDataStore extends IfcStoreBase {
   onDemandPropertyMap?: Map<number, number[]>;
   onDemandQuantityMap?: Map<number, number[]>;
   onDemandClassificationMap?: Map<number, number[]>;
-  onDemandMaterialMap?: Map<number, number>;
+  onDemandMaterialMap?: Map<number, number[]>;  // every associated material, not just the first
   onDemandDocumentMap?: Map<number, number[]>;
 }
 ```
@@ -185,7 +187,7 @@ const qsets = extractQuantitiesOnDemand(store, expressId);
 
 // Root attributes for one entity
 const attrs = extractEntityAttributesOnDemand(store, expressId);
-// { globalId, name, description, objectType, tag }
+// { globalId, name, description, objectType, tag, longName }
 ```
 
 Many more on-demand extractors are exported (classifications, materials, documents, relationships, group members, georeferencing, type properties, schedules); see `packages/parser/src/index.ts`.
@@ -663,16 +665,17 @@ Low-level closure walking for valid STEP export:
 // Forward closure walk from root entities
 function collectReferencedEntityIds(
   rootIds: Set<number>,
-  source: Uint8Array,
+  source: Uint8Array | IfcSourceBytes,
   entityIndex: { get(id: number): { byteOffset: number; byteLength: number } | undefined; has(id: number): boolean },
   excludeIds?: Set<number>,
+  isRefExcluded?: (id: number) => boolean,
 ): Set<number>;
 
 // Resolve viewer visibility into export roots
 function getVisibleEntityIds(dataStore, hiddenIds, isolatedIds): { roots: Set<number>; hiddenProductIds: Set<number> };
 
 // Reverse pass adding IfcStyledItem entities into the closure (mutates `closure`)
-function collectStyleEntities(closure: Set<number>, source: Uint8Array, entityIndex): void;
+function collectStyleEntities(closure: Set<number>, source: Uint8Array | IfcSourceBytes, entityIndex, excludeIds?: ReadonlySet<number>): void;
 ```
 
 ### Other exports
@@ -692,7 +695,7 @@ The standalone `GltfExporter` and `CsvExporter` classes were removed. glTF/GLB a
 
 Property editing with bidirectional change tracking. Nothing mutates the parsed buffer; edits accumulate in an overlay and materialise during `StepExporter.export({ applyMutations: true })`.
 
-`iterateEffectiveEntityIds(dataStore, view, types?)` enumerates the live entity
+`iterateEffectiveEntityIds(dataStore, view, types?, sourceIds?)` enumerates the live entity
 set for a model: parsed entities minus tombstones, plus overlay creations, with
 queued class changes applied. `types` is an optional list of schema-expanded
 UPPERCASE IFC names. Results carry `expressId`, effective `type`, and
@@ -711,7 +714,7 @@ class MutablePropertyView {
   getPropertyValue(entityId: number, psetName: string, propName: string): PropertyValue | null;
 
   // Property edits (each returns/records a Mutation)
-  setProperty(entityId, psetName, propName, value, valueType?, unit?): Mutation;
+  setProperty(entityId, psetName, propName, value, valueType?, unit?, skipHistory?, dataType?): Mutation;
   deleteProperty(entityId, psetName, propName): Mutation | null;
   createPropertySet(entityId, psetName, properties): Mutation;
   deletePropertySet(entityId, psetName): Mutation;
@@ -730,7 +733,7 @@ class MutablePropertyView {
   restoreFromTombstone(expressId: number): boolean;
 
   // Bookkeeping
-  getMutations(): Mutation[];
+  getMutations(since?: number): Mutation[];
   hasChanges(entityId?: number): boolean;
   applyMutations(mutations: Mutation[]): void;
   exportMutations(): string;
@@ -922,7 +925,7 @@ For editing an **already-parsed** `IfcDataStore`, the package exposes anchored b
 
 Hosted builders take a `HostAnchor` from `resolveHostAnchor(dataStore, hostExpressId, mutationView)` instead: `addOpeningToStore` (IfcOpeningElement + IfcRelVoidsElement in an IfcWall or IfcSlab), `addHostedDoorToStore` and `addHostedWindowToStore` (the opening plus an IfcDoor / IfcWindow filling it through IfcRelFillsElement).
 
-`addHostedElementInStore(dataStore, editor, hostExpressId, spec)` is the atomic hosted command operation used by the viewer, SDK and MCP. A spec chooses `kind: 'opening' | 'door' | 'window'` and the corresponding builder `params`. It resolves the live anchor and refuses wall cuts outside the host, overlapping existing openings, or having unreadable geometry. `readHostOpeningExtents(dataStore, hostExpressId, mutationView)` returns host-frame native-unit bounds and reports unreadable openings.
+`addHostedElementInStore(dataStore, editor, hostExpressId, spec, options?)` is the atomic hosted command operation used by the viewer, SDK and MCP. A spec chooses `kind: 'opening' | 'door' | 'window'` and the corresponding builder `params`. It resolves the live anchor and refuses wall cuts outside the host, overlapping existing openings, or having unreadable geometry. `readHostOpeningExtents(dataStore, hostExpressId, mutationView)` returns host-frame native-unit bounds and reports unreadable openings.
 
 `bim.store.joinWalls(modelId, aExpressId, bExpressId, options?)` exposes the existing `joinWallsInStore` core through SDK, sandbox and MCP. It returns the new `IfcRelConnectsPathElements` reference. The core now atomically protects hosted cuts against both joined end faces and refuses unreadable cut geometry. `recordCompoundMutation` and `undoRecordedMutationOperations` in `@ifc-lite/mutations` record and restore complete compound overlay graphs, including forgotten earlier entities, as one operation.
 
@@ -1008,13 +1011,13 @@ function updateTopicStatus(topic: BCFTopic, status: string, modifiedAuthor: stri
 function createViewpoint(options): BCFViewpoint;
 
 // Extract viewer state from a BCF viewpoint
-function extractViewpointState(viewpoint: BCFViewpoint): {
+function extractViewpointState(viewpoint: BCFViewpoint, bounds?: ViewerBounds, targetDistance?: number): {
   camera?: ViewerCameraState;
   sectionPlane?: ViewerSectionPlane;     // the first clipping plane
   sectionPlanes?: ViewerSectionPlane[];  // every clipping plane, in order
   selectedGuids: string[];
   hiddenGuids: string[];
-  visibleGuids: string[];
+  visibleGuids: string[] | null;  // null: no isolation; []: isolation matching nothing
   coloredGuids: { color: string; guids: string[] }[];
 };
 ```
@@ -1033,13 +1036,13 @@ IDS (Information Delivery Specification) validation. Implements IDS 1.0 with all
 
 ```typescript
 // Parse an IDS XML file (accepts string or ArrayBuffer)
-function parseIDS(xmlContent: string | ArrayBuffer): IDSDocument;
+function parseIDS(xmlContent: string | ArrayBuffer, options?: ParseIDSOptions): IDSDocument;
 
 // Run validation against IFC data
 function validateIDS(
   document: IDSDocument,
   accessor: IFCDataAccessor,
-  modelInfo: IDSModelInfo,
+  modelInfo: ValidationModelInfo,  // IDSModelInfo is a deprecated alias
   options?: ValidatorOptions
 ): Promise<IDSValidationReport>;
 ```
@@ -1062,13 +1065,13 @@ function checkPartOfFacet(facet, expressId, accessor): FacetCheckResult;
 ### Constraints, audit, translation
 
 ```typescript
-function matchConstraint(constraint: IDSConstraint, value: unknown): boolean;
+function matchConstraint(constraint: IDSConstraint, actualValue: string | number | boolean | null | undefined, options?: MatchOptions): boolean;
 function formatConstraint(constraint: IDSConstraint): string;
 function getConstraintMismatchReason(constraint: IDSConstraint, value: unknown): string;
 
 // IDS document correctness audit
-function auditIDSDocument(/* ... */): IDSAuditReport;
-function auditIDSStructure(/* ... */): IDSAuditReport;
+function auditIDSDocument(xml: string | ArrayBuffer, options?: IDSAuditOptions): Promise<IDSAuditReport>;
+function auditIDSStructure(doc: IDSDocument, options?: IDSAuditOptions): Promise<IDSAuditReport>;
 
 // Report localisation
 function createTranslationService(locale?: 'en' | 'de' | 'fr' | 'it' | 'ru'): TranslationService; // default 'en'

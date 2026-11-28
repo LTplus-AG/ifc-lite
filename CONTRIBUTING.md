@@ -29,10 +29,14 @@ changes.
 ## Setup
 
 ```bash
+corepack enable      # pnpm pinned by packageManager
 pnpm install
 pnpm fixtures        # fetch test models (tests skip cleanly when absent)
-pnpm dev             # run the viewer
+pnpm dev             # build the packages, then run the viewer
 ```
+
+Prerequisites (Node.js, pnpm, Rust, `wasm-pack`) and troubleshooting are in
+[docs/contributing/setup.md](./docs/contributing/setup.md).
 
 Rust lives under `rust/` and `apps/server`; the TS packages under `packages/`
 and `apps/`. The WASM bundle is rebuilt with `pnpm build:wasm` (wraps
@@ -123,8 +127,11 @@ merges land clean.
 ## Pull requests
 
 - Branch from `main`; one focused change per PR.
-- Fill in the PR template. Green CI plus one approval plus resolved
-  conversations are required to merge (squash only).
+- Fill in the PR template. Green required checks and resolved conversations
+  are required to merge (squash only). The `main` ruleset asks for no
+  approving review count. PRs merge through the Mergify merge queue
+  (`.mergify.yml`), which a PR enters once it carries the `mergify-trial`
+  label.
 - Keep client and project identifiers out of code, tests, commit messages, and
   PR text.
 

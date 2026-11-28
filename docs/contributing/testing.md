@@ -145,10 +145,13 @@ same contract for specific inputs in normal CI.
 
 ### TypeScript Tests (Vitest)
 
+Tests sit next to the code they cover (`src/<name>.test.ts`) or in the
+package's `test/` directory.
+
 ```typescript
-// src/__tests__/parser.test.ts
+// packages/parser/src/ifc-parser.test.ts
 import { describe, it, expect, beforeEach } from 'vitest';
-import { IfcParser } from '../parser';
+import { IfcParser } from './ifc-parser.js';
 
 describe('IfcParser', () => {
   let parser: IfcParser;
@@ -215,72 +218,56 @@ describe('IfcParser', () => {
 
 ### Rust Tests
 
+A module whose bulk is tests keeps them in a sibling `<name>_tests.rs`,
+included with `#[cfg(test)] #[path = "<name>_tests.rs"] mod tests;`, so the
+`use super::*;` below reaches the module's private parsers (see
+`rust/core/src/parser/tokenizer_tests.rs`).
+
 ```rust
-// src/parser/tests.rs
+// rust/core/src/parser/tokenizer_tests.rs
 use super::*;
+use crate::{EntityDecoder, EntityScanner, IfcType};
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+#[test]
+fn test_parse_entity_ref() {
+    assert_eq!(entity_ref(b"#123"), Ok((&b""[..], Token::EntityRef(123))));
+}
 
-    #[test]
-    fn test_parse_entity_ref() {
-        let input = b"#123=";
-        let (_, token) = entity_ref(input).unwrap();
+#[test]
+fn test_parse_string_literal() {
+    assert_eq!(
+        string_literal(b"'Hello World'"),
+        Ok((&b""[..], Token::String(b"Hello World")))
+    );
+}
 
-        assert_eq!(token, Token::EntityRef(123));
-    }
+#[test]
+fn test_parse_entity() {
+    let (id, ifc_type, attrs) = parse_entity("#1=IFCWALL('guid',$,$,$,$,$,$,$);").unwrap();
 
-    #[test]
-    fn test_parse_string_literal() {
-        let input = b"'Hello World'";
-        let (_, token) = string_literal(input).unwrap();
+    assert_eq!(id, 1);
+    assert_eq!(ifc_type, IfcType::IfcWall);
+    assert_eq!(attrs.len(), 8);
+}
 
-        assert_eq!(token, Token::String(b"Hello World"));
-    }
+#[test]
+fn test_entity_scanner() {
+    let input = "DATA;\n#1=IFCPROJECT($,$,$,$,$,$,$,$,$);\n#2=IFCSITE($,$,$,$,$,$,$,$,$,$,$,$,$,$);\nENDSEC;";
+    let mut scanner = EntityScanner::new(input);
 
-    #[test]
-    fn test_parse_entity() {
-        let input = b"#1=IFCWALL('guid',$,$,$,$,$,$,$);";
-        let (id, type_name, attrs) = parse_entity(input).unwrap();
+    assert_eq!(scanner.next_entity().map(|(id, name, _, _)| (id, name)), Some((1, "IFCPROJECT")));
+    assert_eq!(scanner.next_entity().map(|(id, name, _, _)| (id, name)), Some((2, "IFCSITE")));
+    assert!(scanner.next_entity().is_none());
+}
 
-        assert_eq!(id, 1);
-        assert_eq!(type_name, b"IFCWALL");
-        assert_eq!(attrs.len(), 8);
-    }
+#[test]
+fn test_decode_entity() {
+    let input = "DATA;\n#1=IFCPROJECT('guid',$,$,$,$,$,$,$,$);\nENDSEC;";
+    let mut decoder = EntityDecoder::new(input); // index built lazily
 
-    #[test]
-    fn test_entity_scanner() {
-        let input = b"DATA;\n#1=IFCPROJECT();\n#2=IFCSITE();\nENDSEC;";
-        let mut scanner = EntityScanner::new();
-        let index = scanner.scan(input).unwrap();
-
-        assert_eq!(index.len(), 2);
-        assert!(index.get(1).is_some());
-        assert!(index.get(2).is_some());
-    }
-
-    #[test]
-    fn test_decode_entity() {
-        let input = include_bytes!("../../test-data/simple.ifc");
-        let scanner = EntityScanner::new();
-        let index = scanner.scan(input).unwrap();
-        let decoder = EntityDecoder::new(input, &index);
-
-        let entity = decoder.decode(1).unwrap();
-        assert_eq!(entity.ifc_type, IfcType::IfcProject);
-    }
-
-    #[test]
-    #[should_panic(expected = "EntityNotFound")]
-    fn test_decode_missing_entity() {
-        let input = b"DATA;\n#1=IFCPROJECT();\nENDSEC;";
-        let scanner = EntityScanner::new();
-        let index = scanner.scan(input).unwrap();
-        let decoder = EntityDecoder::new(input, &index);
-
-        decoder.decode(999).unwrap(); // Should panic
-    }
+    let entity = decoder.decode_by_id(1).unwrap();
+    assert_eq!(entity.ifc_type, IfcType::IfcProject);
+    assert!(decoder.decode_by_id(999).is_err()); // missing id is an Err, not a panic
 }
 ```
 
@@ -305,7 +292,7 @@ describe('Full Parse Integration', () => {
 
     // Parse metadata
     const parser = new IfcParser();
-    const store = await parser.parseColumnar(bytes);
+    const store = await parser.parseColumnar(bytes.buffer); // parseColumnar takes an ArrayBuffer
 
     // Extract geometry separately
     const geometry = new GeometryProcessor();
@@ -328,16 +315,16 @@ describe('Full Parse Integration', () => {
 
   it('should handle large files with streaming', async () => {
     const filePath = join(__dirname, '../fixtures/large-model.ifc');
-    const buffer = readFileSync(filePath);
+    const bytes = new Uint8Array(readFileSync(filePath)); // standalone copy, see above
 
     const parser = new IfcParser();
-    const store = await parser.parseColumnar(buffer.buffer);
+    const store = await parser.parseColumnar(bytes.buffer);
 
     const geometry = new GeometryProcessor();
     await geometry.init();
 
     let totalMeshes = 0;
-    for await (const event of geometry.processStreaming(new Uint8Array(buffer))) {
+    for await (const event of geometry.processStreaming(bytes)) {
       if (event.type === 'batch') {
         totalMeshes += event.meshes.length;
       }
@@ -498,6 +485,7 @@ inspection.
 // tests/performance/parse.bench.ts
 import { bench, describe } from 'vitest';
 import { IfcParser } from '@ifc-lite/parser';
+import { GeometryProcessor } from '@ifc-lite/geometry';
 import { readFileSync } from 'fs';
 
 describe('Parser Performance', () => {
@@ -540,13 +528,17 @@ pnpm test:benchmark:viewer
 ### GitHub Actions
 
 The PR gate lives in `.github/workflows/test.yml`. It runs on Node 22 with
-the Rust toolchain pinned by `rust-toolchain.toml`, and covers:
+the Rust toolchain pinned by `rust-toolchain.toml`. Read the workflow for the
+current list; at the time of writing it covers:
 
 - WASM build (or a prebuilt-bundle fast path when no Rust code changed)
-- `pnpm typecheck` and `pnpm lint`
-- `pnpm test`, then `pnpm test:integration` and `pnpm test:wasm-contract`
+- `pnpm typecheck:ci` and `pnpm lint`
+- `turbo test` in shards, `pnpm test:integration`, `pnpm test:api`,
+  `pnpm test:wasm-contract` and `pnpm test:packed`
 - Playwright e2e via `pnpm test:e2e:ci`
-- `cargo test` for the Rust workspace
+- `cargo nextest run --workspace` plus `cargo test --workspace --doc` (nextest
+  does not run doctests)
+- `cargo clippy --workspace --all-targets -- -D warnings`: a warning fails CI
 
 Fixtures in CI use the same flow as local development: `pnpm fixtures` to
 fetch, `pnpm fixtures:check` to verify hashes. Heavier suites (benchmarks,

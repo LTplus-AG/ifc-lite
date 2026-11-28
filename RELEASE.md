@@ -48,23 +48,25 @@ Add support for IFC4X3 entities
 
 2. **When "Version Packages" PR is merged**:
    - All packages are automatically built
-   - npm packages are published to npm registry (45 `@ifc-lite/*` packages + `create-ifc-lite`)
-   - Rust crates are published to crates.io (`ifc-lite-core`, `ifc-lite-clash`, `ifc-lite-geometry`, `ifc-lite-processing`, `ifc-lite-landxml`, `ifc-lite-export`, `ifc-lite-ffi`, `ifc-lite-wasm`)
+   - npm packages are published to npm registry (every non-private `@ifc-lite/*` package + `create-ifc-lite`)
+   - Rust crates are published to crates.io, in this order (`scripts/lib/crates-io.mjs`): `ifc-lite-core`, `ifc-lite-clash`, `ifc-lite-geometry`, `ifc-lite-processing`, `ifc-lite-landxml`, `ifc-lite-export`, `ifc-lite-ffi`, `ifc-lite-wasm`, `ifc-lite-geometry-runtime`. The crates half runs only if `pnpm check:rust-semver` passes; npm publishes either way
    - GitHub Release is created with version tag
    - Server binaries are cross-compiled for 6 platforms (Linux x64/ARM64/musl, macOS x64/ARM64, Windows x64) and attached to the release
+
+The Python wheel `ifclite-geom` is not part of this flow. It publishes to PyPI from `.github/workflows/python-wheels.yml` when an `ifclite-geom-v*` tag is pushed.
 
 ### A Version Packages PR must be fresh when it lands
 
 changesets/action publishes only from a tree with **no** pending `.changeset/*.md`, and the Release workflow runs once per push to `main`, on its tip. So a push that carries a Version Packages commit *and* a pending changeset opens a new version PR and publishes nothing (#5647). That happens in two ways:
 
 - The Version Packages PR is stale. It is refreshed by the Release run for each push, which lags `main`, and the merge queue squashes it onto whatever landed ahead of it. A changeset that landed after the last refresh is still in the tree.
-- A PR with a changeset is queued behind the Version Packages PR and lands in the same push (the queue merges up to five entries at once).
+- A PR with a changeset lands in the same push as the Version Packages commit. The Mergify queue (`.mergify.yml`) merges one PR per push (`batch_size: 1`) and gives the Version Packages PR its own queue, first in priority, tested on `main` itself, so this needs a merge outside the queue.
 
 Three checks stop that from passing silently. All run `scripts/check-release-late-changesets.mjs`, which compares the tree with the start of the push: it fails when versions of existing workspace packages moved in that range *and* changesets are pending at the tip.
 
-- **Merge queue (fail closed).** The check is the first step of the `changes` job in `.github/workflows/test.yml`. That job feeds the required `Build + WASM + Rust + Node` check. On `merge_group` it compares the queued commit with the current `main` tip, and a failing entry is removed from the queue. If it is the Version Packages PR, wait for the Release run for the latest `main` push to refresh it, then queue it again. If it is an ordinary PR queued behind the Version Packages PR, queue it again once that PR has landed. On a pull request the check fails the same required check, so a stale Version Packages PR cannot be queued. On a push to `main` the commit has already landed, so it only annotates: failing `changes` there would skip every other lane of that push.
-- **Version Packages PR freshness (a draft blocks even an admin merge).** Merges on this repo normally bypass the merge queue (the `main` ruleset's admin bypass), so the `merge_group` check above rarely runs, and the Version Packages PR's own `pull_request` verdict is not recomputed when `main` moves (#5951). `.github/workflows/release-pr-freshness.yml` runs on every push to `main` and to `changeset-release/main`: it squashes the open Version Packages PR onto the current `main` tip and runs the same script. A stale PR (or one that no longer merges) is converted to a **draft** and labelled `version-pr-stale`: GitHub refuses to merge a draft even with a bypass. A failing `Version Packages freshness` status says why. The Release run for the latest `main` push refreshes the PR, and that push re-runs the workflow, which removes the label and marks it ready again. So a Version Packages PR with that label is waiting for its refresh; do not un-draft it by hand. This narrows the window rather than closing it: for the minute or two between a push to `main` and the workflow acting, the stale PR can still be merged, and the backstop below covers that.
-- **Release backstop (fail loudly).** If such a push reaches `main` anyway (a bypass), its Release run still refreshes the Version Packages PR, then ends **red** with a "Release commit still carries changesets" error. The publish verifiers fail too, because the new versions are not on the registries. To recover, merge the refreshed Version Packages PR on its own: `changeset publish` ships every workspace version that is not on npm yet, including the ones the earlier commit bumped.
+- **Merge queue (fail closed).** The check is the first step of the `changes` job in `.github/workflows/test.yml`. That job feeds the required `Build + WASM + Rust + Node` check, which every Mergify queue also requires. On a pull request, including Mergify's temporary queue PR, it compares the merge commit with its parent; on `merge_group` it compares the queued commit with the current `main` tip. A failing entry is removed from the queue. If it is the Version Packages PR, wait for the Release run for the latest `main` push to refresh it, then queue it again. If it is an ordinary PR queued behind the Version Packages PR, queue it again once that PR has landed. On a pull request the check fails the same required check, so a stale Version Packages PR cannot be queued. On a push to `main` the commit has already landed, so it only annotates: failing `changes` there would skip every other lane of that push.
+- **Version Packages PR freshness (a draft cannot be queued or merged).** The Version Packages PR's own `pull_request` verdict is not recomputed when `main` moves (#5951). `.github/workflows/release-pr-freshness.yml` runs on every push to `main` and to `changeset-release/main`: it squashes the open Version Packages PR onto the current `main` tip and runs the same script. A stale PR (or one that no longer merges) is converted to a **draft** and labelled `version-pr-stale`: GitHub refuses to merge a draft, and every Mergify queue requires `-draft`. A failing `Version Packages freshness` status says why. The Release run for the latest `main` push refreshes the PR, and that push re-runs the workflow, which removes the label and marks it ready again. So a Version Packages PR with that label is waiting for its refresh; do not un-draft it by hand. This narrows the window rather than closing it: for the minute or two between a push to `main` and the workflow acting, the stale PR can still be merged, and the backstop below covers that.
+- **Release backstop (fail loudly).** If such a push reaches `main` anyway, its Release run still refreshes the Version Packages PR, then ends **red** with a "Release commit still carries changesets" error. The publish verifiers fail too, because the new versions are not on the registries. To recover, merge the refreshed Version Packages PR on its own: `changeset publish` ships every workspace version that is not on npm yet, including the ones the earlier commit bumped.
 
 ## Release Workflow Diagram
 
@@ -73,7 +75,7 @@ PR with changeset → Merge to main → "Version Packages" PR created
                                             ↓
                                     Review & Merge
                                             ↓
-                    Build → Publish npm (46 packages) → Publish Rust (8 crates)
+                    Build → Publish npm → Publish Rust (9 crates)
                                             ↓
                     Create GitHub Release → Build server binaries (6 platforms)
 ```
@@ -153,7 +155,7 @@ The Release job's `Check the release credential's API quota` step (`scripts/chec
 **A:** Yes. Packages version independently, although Changesets will still bump dependents when internal package ranges need to stay aligned.
 
 ### Q: What if publishing fails?
-**A:** The workflow has built-in retry logic. Rust crates publish with 30s delays between each. If a version is already published, it's skipped safely.
+**A:** The workflow has built-in retry logic. `scripts/release-crates.mjs` publishes the crates in dependency order and waits for each one to appear in the crates.io index before publishing the next. If a version is already published, it's skipped safely.
 
 ## Best Practices
 

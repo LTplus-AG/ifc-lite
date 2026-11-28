@@ -18,11 +18,13 @@ This prompts you to select packages, choose a bump type (`patch`/`minor`/`major`
 
 On each release, the following are published automatically:
 
-**npm (46 packages):** All `@ifc-lite/*` packages + `create-ifc-lite`
+**npm:** every non-private `@ifc-lite/*` package + `create-ifc-lite`
 
-**crates.io (7 crates):** `ifc-lite-core`, `ifc-lite-clash`, `ifc-lite-geometry`, `ifc-lite-processing`, `ifc-lite-export`, `ifc-lite-ffi`, `ifc-lite-wasm`
+**crates.io (9 crates, `scripts/lib/crates-io.mjs`):** `ifc-lite-core`, `ifc-lite-clash`, `ifc-lite-geometry`, `ifc-lite-processing`, `ifc-lite-landxml`, `ifc-lite-export`, `ifc-lite-ffi`, `ifc-lite-wasm`, `ifc-lite-geometry-runtime`
 
 **GitHub Release:** Version tag + server binaries for 6 platforms
+
+**PyPI:** the `ifclite-geom` wheel is not part of this release. It publishes from `.github/workflows/python-wheels.yml` on an `ifclite-geom-v*` tag.
 
 ### How Publishing Authenticates
 
@@ -45,7 +47,7 @@ The root `package.json` wires the flow together:
 |---------|--------------|
 | `pnpm changeset` | Create a changeset for your PR |
 | `pnpm version` | `changeset version` + `scripts/sync-versions.js` |
-| `pnpm release` | Build, verify ESM entry points, then publish npm (`changeset publish`) and crates (`scripts/release-crates.mjs`) |
+| `pnpm release` | Build, verify ESM entry points, then `scripts/release-all.mjs`: publish npm (`changeset publish`), then crates (`scripts/release-crates.mjs`) only if `pnpm check:rust-semver` passes |
 
 ### Version Synchronization
 

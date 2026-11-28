@@ -144,7 +144,9 @@ ifc-lite/
 │   ├── clash/             # ifc-lite-clash
 │   ├── export/            # ifc-lite-export
 │   ├── ffi/               # ifc-lite-ffi (native bindings)
-│   └── wasm-bindings/     # ifc-lite-wasm (WASM crate)
+│   ├── wasm-bindings/     # ifc-lite-wasm (WASM crate)
+│   ├── python/            # ifclite-geom PyO3 wheel (excluded from the workspace)
+│   └── ...                # landxml, geometry-runtime, diff, cache, git, testkit, and more
 ├── packages/              # TypeScript packages (@ifc-lite/*)
 │   ├── parser/            # @ifc-lite/parser
 │   ├── geometry/          # @ifc-lite/geometry
@@ -158,7 +160,9 @@ ifc-lite/
 │   ├── viewer/            # Viewer app
 │   ├── viewer-embed/      # Embeddable viewer
 │   ├── server/            # HTTP server (Rust)
-│   └── landing/           # Landing page
+│   ├── landing/           # Landing page
+│   └── ...                # cloud-service, report-service, autodesk-service, ...
+├── examples/              # Example projects (also pnpm workspace members)
 └── docs/                  # Documentation (MkDocs)
 ```
 
@@ -224,7 +228,7 @@ cargo doc -p ifc-lite-core --open
 
 # Generate without opening
 cargo doc --no-deps
-# Output: target/doc/index.html
+# Output: target/doc/<crate_name>/index.html (e.g. target/doc/ifc_lite_core/)
 ```
 
 **MkDocs (Project Documentation):**
@@ -302,9 +306,12 @@ cd packages/new-package
 
 # Initialize
 pnpm init
-
-# Add to workspace (update root package.json if needed)
 ```
+
+`pnpm-workspace.yaml` already includes `packages/*`, so the new directory is a
+workspace member with no further registration. A published package also needs
+a `README.md` (`pnpm docs:check-readmes`), a changeset (`pnpm changeset`), and
+an API-surface snapshot entry (`pnpm api-surface:update`).
 
 ### Updating Dependencies
 

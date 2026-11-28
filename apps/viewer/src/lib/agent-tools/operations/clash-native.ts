@@ -153,7 +153,7 @@ export const nativeClashOperations = [
       additionalProperties: false,
     },
     async (i, c) => {
-      const { clashReviewKey } = await import('@ifc-lite/clash');
+      const { clashReviewKey } = await import('@/lib/clash/clash-api-lazy');
       assertToolActive(c);
       const s = useViewerStore.getState();
       if (s.clashRunSeq !== i.run_seq) throw stale('Clash results changed.');

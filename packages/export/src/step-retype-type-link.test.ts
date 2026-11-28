@@ -59,9 +59,10 @@ describe('STEP type-assignment retyping #11500', () => {
 
   it.each([
     ['IFC2X3', false], ['IFC2X3', true], ['IFC4', false], ['IFC4', true], ['IFC4X3', false], ['IFC4X3', true],
+    ['IFC5', false], ['IFC5', true],
   ] as const)('removes forward references to an emptied %s assignment (created: %s) #11500', async (schema, created) => {
     const source = [
-      'ISO-10303-21;', 'HEADER;', `FILE_SCHEMA(('${schema}'));`, 'ENDSEC;', 'DATA;',
+      'ISO-10303-21;', 'HEADER;', `FILE_SCHEMA(('${schema === 'IFC5' ? 'IFC4' : schema}'));`, 'ENDSEC;', 'DATA;',
       "#1=IFCWALL('w',$,$,$,$,$,$,$,.STANDARD.);",
       "#2=IFCWALLTYPE('t',$,$,$,$,$,$,$,$,.STANDARD.);",
       "#3=IFCDOCUMENTREFERENCE($,$,$,$,$);",
@@ -76,6 +77,8 @@ describe('STEP type-assignment retyping #11500', () => {
         if (created) view.restoreNewEntity({ expressId: 9, type: 'IfcRelDefinesByType',
           attributes: ['assignment', null, null, null, ['#1'], '#2'] });
       }, schema);
+    expect(lines).toContain('ISO-10303-21;');
+    expect(lines.some(line => line.includes(`FILE_SCHEMA(('${schema}'))`))).toBe(true);
     expect(lines.some(line => line.startsWith('#1=IFCSLAB('))).toBe(true);
     expect(lines.some(line => line.startsWith('#9='))).toBe(false);
     expect(lines).toContain("#4=IFCRELASSOCIATESDOCUMENT('mixed',$,$,$,(#1),#3);");

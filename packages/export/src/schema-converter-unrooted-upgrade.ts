@@ -194,9 +194,12 @@ function rewrite(rec: OutputRecord, dropped: ReadonlySet<number>, to: RegistrySc
 
 /** Run after conversion so every reference is in the final id space and slot. */
 function pruneUpgrade(lines: string[], seeds: ReadonlySet<number>, to: IfcSchemaVersion, onOmitted?: (id: number) => void, issue = to === 'IFC4' ? 10970 : 10971): string[] {
-  if (seeds.size === 0 || to === 'IFC5') return [];
+  if (seeds.size === 0) return [];
+  // IFC5-labelled STEP uses IFC4X3 mappings. Only the assignment pass has
+  // concrete omitted IDs for this target; there is no IFC5 EXPRESS registry.
+  const layout = to === 'IFC5' ? 'IFC4X3' : to;
   const records = lines.map(record);
-  const dropped = cascadeOmissions(records, seeds, to);
+  const dropped = cascadeOmissions(records, seeds, layout);
   const warnings: string[] = [];
   let next = 0;
   for (const [index, rec] of records.entries()) {
@@ -205,7 +208,7 @@ function pruneUpgrade(lines: string[], seeds: ReadonlySet<number>, to: IfcSchema
       const reason = seeds.has(rec.id) ? `the ${to} schema does not declare its type` : `a required ${to} attribute lost a reference`;
       warnings.push(`#${rec.id} (${rec.type}) was omitted because ${reason} (#${issue}).`);
     } else {
-      lines[next++] = rec ? rewrite(rec, dropped, to) : lines[index];
+      lines[next++] = rec ? rewrite(rec, dropped, layout) : lines[index];
     }
   }
   lines.length = next;
@@ -244,7 +247,7 @@ export class MergedUpgradePruning {
   }
 
   finish(lines: string[]): string[] {
-    return pruneUpgrade(lines, this.seeds, this.target);
+    return this.target === 'IFC5' ? [] : pruneUpgrade(lines, this.seeds, this.target);
   }
 }
 

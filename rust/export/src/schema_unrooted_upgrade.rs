@@ -228,13 +228,16 @@ fn rewrite(schema: SchemaVersion, line: &str, ty: &str, frame: RecordFrame, drop
 
 /// Return the rewritten text, omitted IDs and warnings for the records removed.
 pub(crate) fn prune(text: &str, seeds: &HashSet<u32>, to: &str) -> Option<(String, HashSet<u32>, Vec<String>)> {
+    if canon(to) == "IFC5" { return None; }
     prune_with_issue(text, seeds, to, if canon(to) == "IFC4" { 10970 } else { 10971 })
 }
 
 pub(crate) fn prune_with_issue(text: &str, seeds: &HashSet<u32>, to: &str, issue: u32) -> Option<(String, HashSet<u32>, Vec<String>)> {
     if seeds.is_empty() { return None; }
     let to = canon(to);
-    let schema = SchemaVersion::from_file_schema(to)?;
+    // IFC5-labelled STEP uses IFC4X3 mappings for emitted assignments.
+    let layout = if to == "IFC5" { "IFC4X3" } else { to };
+    let schema = SchemaVersion::from_file_schema(layout)?;
     let (records, dropped) = index(text, seeds, schema, EntityScanner::new(text));
     let mut out = String::with_capacity(text.len());
     let mut warnings = Vec::new();

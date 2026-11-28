@@ -33,6 +33,7 @@ import {
   transformPoint,
   type Transform2D,
 } from './svg-transform.js';
+import { createPlanSymbolLayer } from './svg-plan-symbols.js';
 import { applyDxfPlacement } from './dxf/convert.js';
 import { dxfTextLineOffset } from './dxf/text-layout.js';
 import { DEFAULT_DXF_PLACEMENT, type DxfPlacement, type DxfUnderlay } from './dxf/types.js';
@@ -167,6 +168,7 @@ export class SVGExporter {
     if (cutLines.length > 0) {
       svg += this.createLineLayer('cut-lines', cutLines, transform, 'Cut Lines');
     }
+    svg += createPlanSymbolLayer(drawing.planSymbols ?? [], transform);
 
     // Title block
     if (showTitleBlock) {

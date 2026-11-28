@@ -50,7 +50,7 @@ export const CLASH_RUN_DOCUMENT_JSON_SCHEMA = {
     runId: nullableString,
     createdAt: { type: 'string', format: 'date-time' },
     labels: stringList,
-    manifest: closed(['slots', 'rules', 'engine', 'settings', 'coverage', 'ambiguousKeys', 'exclusions', 'exclusionRules', 'truncated'], {
+    manifest: closed(['slots', 'rules', 'engine', 'settings', 'coverage', 'ambiguousKeys', 'exclusions', 'exclusionRules', 'exclusionTypes', 'truncated'], {
       slots: { type: 'array', items: closed(['slot', 'sha256'], {
         slot: { type: 'string' }, sha256: { type: ['string', 'null'], pattern: '^[0-9a-f]{64}$' },
         label: { type: 'string' }, name: { type: 'string' } }) },
@@ -79,6 +79,7 @@ export const CLASH_RUN_DOCUMENT_JSON_SCHEMA = {
         closed(['kind', 'a', 'b'], { kind: { const: 'typePair' }, a: { type: 'string' }, b: { type: 'string' } }),
         closed(['kind', 'a', 'b'], { kind: { const: 'elementKeyPair' }, a: { type: 'string' }, b: { type: 'string' } }),
       ] } },
+      exclusionTypes: { anyOf: [{ type: 'null' }, { type: 'object', additionalProperties: { type: 'object', additionalProperties: { type: 'string' } } }] },
       truncated: { anyOf: [{ type: 'null' }, closed(['reason', 'droppedPairs'], { reason: { type: 'string' }, droppedPairs: { type: 'integer' } })] },
     }),
     findings: { type: 'array', items: closed(
@@ -177,6 +178,13 @@ const documentCheck = obj({
       else if (kind === 'typePair' || kind === 'elementKeyPair') obj({ kind: str, a: str, b: str })(v, p, e);
       else fail(e, p, 'an exclusion rule of kind "type", "typePair" or "elementKeyPair"');
     }),
+    exclusionTypes: nullable((v, p, e) => {
+      if (!isRecord(v)) return fail(e, p, 'an object of slot records');
+      for (const [slot, keys] of Object.entries(v)) {
+        if (!isRecord(keys)) { fail(e, `${p}.${JSON.stringify(slot)}`, 'an object of key -> type'); continue; }
+        for (const [key, type] of Object.entries(keys)) str(type, `${p}.${JSON.stringify(slot)}.${JSON.stringify(key)}`, e);
+      }
+    }),
     truncated: nullable(obj({ reason: str, droppedPairs: int })),
   }),
   findings: list(obj({
@@ -229,8 +237,13 @@ function consistencyErrors(doc: ClashRunDocument): string[] {
   if (manifest.rules.revision !== clashRuleSetRevision(manifest.rules.items)) {
     errors.push('$.manifest.rules.revision: does not match the listed rules and revisions');
   }
+  const twoSided = new Set(manifest.rules.items.filter((rule) => rule.b !== null || rule.explicitMembers.b).map((rule) => rule.id));
   manifest.coverage.forEach((entry, i) => {
     if (!revisions.has(entry.rule)) errors.push(`$.manifest.coverage[${i}].rule: not in manifest.rules`);
+    // A two-sided rule with no side-B record would read as a self-clash and clear pairs never tested.
+    else if (entry.examined !== null && entry.examined.b === null && twoSided.has(entry.rule)) {
+      errors.push(`$.manifest.coverage[${i}].examined.b: must be recorded for a two-sided rule`);
+    }
   });
   const ambiguous = new Map(Object.entries(manifest.ambiguousKeys).map(([slot, keys]) => [slot, new Set(keys)]));
   const ids = new Set<string>();

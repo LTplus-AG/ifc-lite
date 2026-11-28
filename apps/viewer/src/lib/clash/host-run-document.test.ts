@@ -25,7 +25,7 @@ const result: ClashResult = {
   settings: { tolerance: 0.002, excludeVoidsAndHosts: true },
 };
 const models = new Map([['m-arch', { id: 'm-arch', name: 'arch.ifc' }], ['m-struct', { id: 'm-struct', name: 'struct.ifc' }]]);
-const context: ClashRunHostContext = { models, presets: [], exclusions: new Set(), exclusionRules: [], tagInputs: null };
+const context: ClashRunHostContext = { models, presets: [], exclusions: new Set(), exclusionRules: [], tagInputs: null, rules: [], elementTypes: [] };
 
 /** The document of a successful event; fails the test on an error event. */
 function documentOf(event: ClashRunCompleteEvent | undefined): ClashRunDocument {
@@ -158,6 +158,36 @@ describe('clash run host hook', () => {
     const revisions = events.map((event) => documentOf(event).manifest.rules.items[0].revision);
     assert.equal(revisions[0], revisions[1], 'a reload with new refs keeps the revision');
     assert.notEqual(revisions[1], revisions[2], 'an edited filter changes it');
+  });
+
+  it('takes explicit membership from the rules as given, since the engine strips it from rulesRun', async () => {
+    const given = { ...result.rulesRun[0], membersA: ['m-arch:10'] };
+    const preset = { id: 'r1', filterA: [{ combinator: 'AND' as const, rules: [Rule.modelTag('hasAny', ['tag-arch'])] }] };
+    const edited = { id: 'r1', filterA: [{ combinator: 'AND' as const, rules: [Rule.modelTag('hasAny', ['tag-mep'])] }] };
+    // `result.rulesRun` is what the engine returns: no membersA.
+    const events = await collect(async () => {
+      await notifyClashRunComplete(result, { ...context, rules: [given], presets: [preset] });
+      await notifyClashRunComplete(result, { ...context, rules: [given], presets: [edited] });
+    });
+    const [first, second] = events.map((event) => documentOf(event).manifest.rules.items[0]);
+    assert.equal(first.explicitMembers.a, true, 'recorded as an explicit-member rule');
+    assert.notEqual(first.revision, second.revision, 'a different saved filter is a different revision');
+  });
+
+  it("freezes the shared event, so one listener cannot swap the document another receives", async () => {
+    const seen: unknown[] = [];
+    const originalError = console.error;
+    console.error = () => {};
+    const offA = onClashRunComplete((event) => { (event as { document: unknown }).document = 'swapped'; });
+    const offB = onClashRunComplete((event) => { seen.push(event.ok ? event.document : null); });
+    try {
+      await notifyClashRunComplete(result, context);
+    } finally {
+      offA();
+      offB();
+      console.error = originalError;
+    }
+    assert.equal(typeof seen[0], 'object', 'the second listener still receives the document');
   });
 
   it("ignores tag assignments that only another rule's filter names", async () => {

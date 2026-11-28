@@ -11,7 +11,7 @@
 import { decodeQualifiedPair, pairKey } from './exclude.js';
 import { clashElementIdentity } from './object-identity.js';
 import type { ClashRunEndpoint, ClashRunFinding } from './run-document.js';
-import type { ExclusionSet } from './types.js';
+import type { Clash, ExclusionSet } from './types.js';
 
 /** Slot-qualified, order-independent id of an excluded element pair. */
 export function slotExclusionId(a: readonly [string, string], b: readonly [string, string]): string {
@@ -38,10 +38,31 @@ export function exclusionRuleCovers(rule: ClashRunExclusionRule, a: { type: stri
   return pairKey(a.identity, b.identity) === pairKey(rule.a, rule.b);
 }
 
-/** Whether any of `rules` covers a finding (whose endpoints have stable keys). */
-export function matchesExclusionRule(rules: readonly ClashRunExclusionRule[], finding: Pick<ClashRunFinding, 'a' | 'b'>): boolean {
+/** Element types a run recorded for its type rules: slot -> key -> type. See `ClashRunManifest.exclusionTypes`. */
+export type ClashRunExclusionTypes = Record<string, Record<string, string>>;
+
+/** Whether a rule needs element types to be judged. */
+export const isTypeRule = (rule: ClashRunExclusionRule): boolean => rule.kind !== 'elementKeyPair';
+
+/**
+ * Whether any of `rules` covers a finding (whose endpoints have stable keys).
+ * Pass `types` to judge another run's rules: an element's type can change
+ * between model versions, so a run's type rules are evaluated against the
+ * types THAT run recorded, never the finding's own. A key missing from
+ * `types` had no type any rule names.
+ */
+export function matchesExclusionRule(
+  rules: readonly ClashRunExclusionRule[],
+  finding: Pick<ClashRunFinding, 'a' | 'b'>,
+  types?: ClashRunExclusionTypes,
+): boolean {
   if (rules.length === 0) return false;
-  const side = (end: ClashRunEndpoint) => ({ type: end.type, identity: clashElementIdentity({ key: end.key, ref: 0 }) });
+  const typeOf = (end: ClashRunEndpoint): string => {
+    if (!types) return end.type;
+    const bySlot = Object.hasOwn(types, end.slot) ? types[end.slot] : undefined;
+    return bySlot && Object.hasOwn(bySlot, end.key) ? bySlot[end.key] : '';
+  };
+  const side = (end: ClashRunEndpoint) => ({ type: typeOf(end), identity: clashElementIdentity({ key: end.key, ref: 0 }) });
   const a = side(finding.a);
   const b = side(finding.b);
   return rules.some((rule) => exclusionRuleCovers(rule, a, b));
@@ -64,4 +85,28 @@ export function recordExclusions(exclusions: ExclusionSet, slotByModel: Readonly
     if (slotA !== undefined && slotB !== undefined) ids.add(slotExclusionId([slotA, a.key], [slotB, b.key]));
   }
   return [...ids].sort();
+}
+
+/** The run's types for the elements its type rules name (see `ClashRunManifest.exclusionTypes`). */
+export function recordExclusionTypes(
+  rules: readonly ClashRunExclusionRule[],
+  elements: Iterable<{ model: string; key: string; tag: string }> | undefined,
+  clashes: readonly Clash[],
+  slotByModel: ReadonlyMap<string, string>,
+): ClashRunExclusionTypes | null {
+  const named = new Set(rules.filter(isTypeRule).flatMap((rule) => (rule.kind === 'type' ? [rule.type] : rule.kind === 'typePair' ? [rule.a, rule.b] : [])));
+  if (named.size === 0) return {};
+  if (!elements) return null;
+  const bySlot = new Map<string, Map<string, string>>();
+  const add = (model: string, key: string, tag: string) => {
+    const slot = slotByModel.get(model);
+    if (slot === undefined || !named.has(tag)) return;
+    const keys = bySlot.get(slot) ?? new Map<string, string>();
+    keys.set(key, tag);
+    bySlot.set(slot, keys);
+  };
+  for (const element of elements) add(element.model, element.key, element.tag);
+  for (const clash of clashes) { add(clash.a.model, clash.a.key, clash.a.tag); add(clash.b.model, clash.b.key, clash.b.tag); }
+  return Object.fromEntries([...bySlot.keys()].sort().map((slot) =>
+    [slot, Object.fromEntries([...bySlot.get(slot)!].sort(([x], [y]) => (x < y ? -1 : 1)))]));
 }

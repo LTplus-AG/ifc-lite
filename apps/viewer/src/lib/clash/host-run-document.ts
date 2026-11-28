@@ -18,7 +18,7 @@
  * Only types are imported from `@ifc-lite/clash` here.
  */
 
-import type { ClashResult, ClashRunDocument, ClashRunSlotBinding, ExclusionSet } from '@ifc-lite/clash';
+import type { ClashResult, ClashRule, ClashRunDocument, ClashRunSlotBinding, ExclusionSet } from '@ifc-lite/clash';
 import { gatheredModelIds } from './federation-identity';
 import type { ClashExclusionRule } from './exclusions';
 import type { ClashModelTagInputs } from './model-tag-inputs';
@@ -38,6 +38,10 @@ export interface ClashRunHostContext {
   /** The user's exclusion rules; enabled ones are recorded and their findings left out. */
   exclusionRules: readonly ClashExclusionRule[];
   tagInputs: ClashModelTagInputs | null;
+  /** The rules exactly as handed to the engine (its `rulesRun` drops explicit membership). */
+  rules: readonly ClashRule[];
+  /** The elements the run was given, so a document can record the types its type exclusions judge. */
+  elementTypes: ReadonlyArray<{ model: string; key: string; tag: string }>;
 }
 
 /**
@@ -115,14 +119,15 @@ export function notifyClashRunComplete(result: ClashResult, context: ClashRunHos
               event = { ok: false, error: asError(err) };
             }
           }
-          built.set(options, event);
+          built.set(options, Object.freeze(event)); // shared: no listener may swap the document for another
+          event = built.get(options)!;
         }
         deliver(listener, event);
       }
     },
     (err: unknown) => {
       console.error('[clash] host run document builder failed to load', err);
-      const event: ClashRunCompleteEvent = { ok: false, error: asError(err) };
+      const event: ClashRunCompleteEvent = Object.freeze({ ok: false, error: asError(err) });
       for (const { listener } of registrations) deliver(listener, event);
     },
   );

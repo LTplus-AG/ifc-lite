@@ -170,6 +170,34 @@ describe('host-supplied input', () => {
   });
 });
 
+describe('type exclusions and rule forms across runs', () => {
+  it("judges each run's type rules by the types that run recorded, not the finding's", () => {
+    const previous = build({ result: result([clash('D1', 'W1')], ['D1'], ['W1']) });
+    // Next version: W1 keeps its GlobalId but is now an IfcBeam, and the user excludes beams.
+    const asBeam = (c: Clash): Clash => ({ ...c, b: { ...c.b, tag: 'IfcBeam' } });
+    const nextResult = result([asBeam(clash('D1', 'W1'))], ['D1'], ['W1']);
+    const elementTypes = [{ model: 'm-mep', key: 'D1', tag: 'IfcDuctSegment' }, { model: 'm-str', key: 'W1', tag: 'IfcBeam' }];
+    const next = build({ result: nextResult, exclusionRules: [{ kind: 'type', type: 'IfcBeam' }], elementTypes });
+    expect(next.findings).toEqual([]);
+    expect(next.manifest.exclusionTypes).toEqual({ str: { W1: 'IfcBeam' } });
+    expect(compareClashRunDocuments(previous, next).notComparable.map((e) => e.reasons)).toEqual([['excluded-in-other-run']]);
+    // And without the element types, nothing can be cleared against a type rule.
+    const blind = build({ result: nextResult, exclusionRules: [{ kind: 'type', type: 'IfcBeam' }] });
+    expect(blind.manifest.exclusionTypes).toBeNull();
+    expect(compareClashRunDocuments(previous, blind).notComparable.map((e) => e.reasons)).toEqual([['exclusions-not-recorded']]);
+  });
+
+  it('records explicit membership from the rules as given, and refuses one-sided coverage for a two-sided rule', () => {
+    const given: ClashRule = { ...RULE, membersA: ['m-mep:2'] };
+    const doc = build({ result: result([], ['D1'], ['W1']), rules: [given], ruleMemberships: { r: 'filter: ducts' } });
+    expect(doc.manifest.rules.items[0].explicitMembers).toEqual({ a: true, b: false });
+    const bad = roundTrip(build({ result: result([clash('D1', 'W1')], ['D1'], ['W1']) }));
+    bad.manifest.coverage[0].examined!.b = null;
+    const res = validateClashRunDocument(bad);
+    expect(res.ok ? [] : res.errors).toEqual(['$.manifest.coverage[0].examined.b: must be recorded for a two-sided rule']);
+  });
+});
+
 describe('exclusions in run documents', () => {
   it('leaves out findings a user rule covers, and never reports them as added or persistent', () => {
     const both = result([clash('D1', 'W1'), clash('D2', 'W2')], ['D1', 'D2'], ['W1', 'W2']);

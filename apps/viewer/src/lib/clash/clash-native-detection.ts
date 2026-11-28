@@ -15,7 +15,6 @@ import {
   type ClashElement,
   type ClashResult,
   type ClashRule,
-  type ExclusionSet,
 } from '@ifc-lite/clash';
 import { gatherClashElements } from '@/lib/clash/gather-elements';
 import { ClashSetFilterRefusal, withResolvedClashSetFilters } from '@/lib/clash/set-filter-resolve';
@@ -25,7 +24,7 @@ import { definedModelTagIdsOf, evaluatorModelsFromState } from '@/lib/model-tags
 import { captureModelTagInputs, rememberModelTagInputs, type ClashModelTagInputs } from '@/lib/clash/model-tag-inputs';
 import { allElementsRule, rememberRunRequest, type ClashRunRequest } from '@/lib/clash/run-request';
 import { posthog } from '@/lib/analytics';
-import { notifyClashRunComplete } from '@/lib/clash/host-run-document';
+import { notifyClashRunComplete, type ClashRunHostContext } from '@/lib/clash/host-run-document';
 import { errorCaptureProps } from '@/lib/load-errors';
 import { nextFrameOrTimeout } from '@/utils/frameWait';
 
@@ -51,7 +50,7 @@ export function createClashDetection({ runEpochRef, runAbortRef, discardSolidPre
     owns: () => boolean,
     stamp: AnalysisStamp,
     request: ClashRunRequest | null,
-    hostInputs: { exclusions: ExclusionSet; tagInputs: ClashModelTagInputs | null; presets: readonly ClashPreset[] },
+    hostInputs: Pick<ClashRunHostContext, 'exclusions' | 'tagInputs' | 'presets' | 'rules' | 'elementTypes'>,
   ): boolean => {
     if (!owns()) return false;
     const state = useViewerStore.getState();
@@ -112,7 +111,7 @@ export function createClashDetection({ runEpochRef, runAbortRef, discardSolidPre
           if (owns()) useViewerStore.getState().setClashProgress(p);
         },
       });
-      if (!publishClashResult(federationIdentity, res, owns, stamp, request, { exclusions, tagInputs, presets })) return;
+      if (!publishClashResult(federationIdentity, res, owns, stamp, request, { exclusions, tagInputs, presets, rules, elementTypes: elements })) return;
       rememberModelTagInputs(res, tagInputs);
       state.setClashSelectedId(null);
       posthog.capture('clash_detection_run', {
@@ -207,7 +206,7 @@ export function createClashDetection({ runEpochRef, runAbortRef, discardSolidPre
         exclusions,
         positionTolerance: state.clashDuplicateTolerance,
       });
-      if (!publishClashResult(federationIdentity, res, owns, stamp, { kind: 'duplicates' }, { exclusions, tagInputs: null, presets: [] })) return;
+      if (!publishClashResult(federationIdentity, res, owns, stamp, { kind: 'duplicates' }, { exclusions, tagInputs: null, presets: [], rules: [], elementTypes: elements })) return;
       const sets = groupDuplicateSets(res);
       state.setClashGroups(sets);
       state.setClashSelectedId(null);

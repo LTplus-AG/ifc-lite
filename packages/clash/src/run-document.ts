@@ -22,11 +22,17 @@
 import { bareIfcGuid } from './export/table.js';
 import { clashElementIdentity } from './object-identity.js';
 import { clashReviewKey, clashSlotReviewKey } from './review.js';
-import { exclusionRuleCovers, recordExclusions, type ClashRunExclusionRule } from './run-exclusions.js';
+import {
+  exclusionRuleCovers,
+  recordExclusions,
+  recordExclusionTypes,
+  type ClashRunExclusionRule,
+  type ClashRunExclusionTypes,
+} from './run-exclusions.js';
 import { clashRuleRevision, clashRuleSetRevision, ruleSemantics } from './run-rules.js';
 import type { Clash, ClashDistanceKind, ExclusionSet, ClashResult, ClashReview, ClashRule, ClashSeverity, ClashStatus, Vec3 } from './types.js';
 
-export { matchesExclusionRule, slotExclusionId, type ClashRunExclusionRule } from './run-exclusions.js';
+export { matchesExclusionRule, slotExclusionId, type ClashRunExclusionRule, type ClashRunExclusionTypes } from './run-exclusions.js';
 export { clashRuleRevision, clashRuleSetRevision } from './run-rules.js';
 
 /** `$id` of the run-document schema; also the document's `schema` field. */
@@ -100,6 +106,14 @@ export interface ClashRunManifest {
    * or no longer detected.
    */
   exclusionRules: ClashRunExclusionRule[];
+  /**
+   * For type and type-pair rules: the type of every element in this run whose
+   * type one of them names, by slot and key. Types can change between model
+   * versions, so a comparison judges this run's type rules by these. `{}`
+   * when no rule is type-based; `null` when there are type rules but the
+   * element types were not supplied, so no absence can be cleared against them.
+   */
+  exclusionTypes: ClashRunExclusionTypes | null;
   truncated: { reason: string; droppedPairs: number } | null;
 }
 
@@ -171,6 +185,14 @@ export interface BuildClashRunDocumentInput {
   exclusions?: ExclusionSet;
   /** The user's enabled exclusion rules; findings they cover are left out of the document. */
   exclusionRules?: readonly ClashRunExclusionRule[];
+  /** Every element the run was given (`ClashElement` has these fields), for `exclusionTypes`. */
+  elementTypes?: Iterable<{ model: string; key: string; tag: string }>;
+  /**
+   * The rules exactly as handed to the engine. `result.rulesRun` drops
+   * `membersA`/`membersB`, so without these an explicit-member rule's
+   * revision and `explicitMembers` cannot see its membership.
+   */
+  rules?: readonly ClashRule[];
   /**
    * A durable description of each explicit-member rule's membership (e.g. the
    * saved filter definition), by rule id. Without one, the member lists
@@ -248,7 +270,9 @@ export function buildClashRunDocument(input: BuildClashRunDocumentInput): ClashR
   const isAmbiguous = (slot: string, key: string) => ambiguous.get(slot)?.has(key) === true;
 
   const revisions = new Map<string, string>();
-  const rules: ClashRunRule[] = result.rulesRun.map((rule) => {
+  const given = new Map((input.rules ?? []).map((rule) => [rule.id, rule]));
+  const rules: ClashRunRule[] = result.rulesRun.map((ran) => {
+    const rule = given.get(ran.id) ?? ran;
     const revision = own(input.ruleRevisions, rule.id) ?? clashRuleRevision(rule, result.settings, own(input.ruleMemberships, rule.id));
     revisions.set(rule.id, revision);
     const { a, b, mode, tolerance, clearance, reportTouch, explicitMembers } = ruleSemantics(rule, result.settings);
@@ -361,6 +385,7 @@ export function buildClashRunDocument(input: BuildClashRunDocumentInput): ClashR
       // The engine applies `exclusions` only with `excludeVoidsAndHosts` on (orchestrator), so off means none.
       exclusions: !result.settings.excludeVoidsAndHosts ? [] : input.exclusions ? recordExclusions(input.exclusions, slotByModel) : null,
       exclusionRules,
+      exclusionTypes: recordExclusionTypes(exclusionRules, input.elementTypes, result.clashes, slotByModel),
       truncated: result.truncated ? { ...result.truncated } : null,
     },
     findings,

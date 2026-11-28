@@ -48,7 +48,8 @@ export function ruleMemberships(result: ClashResult, context: ClashRunHostContex
   const slotOf = new Map(slots.map((binding) => [binding.model, binding.slot]));
   // Entries, not assignment: a rule id such as `__proto__` must become an own property.
   const out: Array<[string, string]> = [];
-  for (const rule of result.rulesRun) {
+  // The rules as given: `result.rulesRun` has lost `membersA`/`membersB`, so it would skip every member rule.
+  for (const rule of context.rules.length > 0 ? context.rules : result.rulesRun) {
     if (rule.membersA === undefined && rule.membersB === undefined) continue;
     const preset = context.presets.find((p) => p.id === rule.id);
     // No saved definition to describe it: leave it out, and the package hashes the lists (fails closed).
@@ -99,6 +100,8 @@ export function buildRunDocument(result: ClashResult, context: ClashRunHostConte
     ruleMemberships: ruleMemberships(result, context, slots),
     exclusions: context.exclusions,
     exclusionRules: documentExclusionRules(context.exclusionRules),
+    elementTypes: context.elementTypes,
+    rules: context.rules,
     labels: [CLASH_RUN_BROWSER_SUBMITTED],
   }));
 }

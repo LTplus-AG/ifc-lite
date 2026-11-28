@@ -78,7 +78,7 @@ export class EnumReconciliation {
   readonly typedProperties: TypedPropertyUpgrade;
 
   /** Reuses this per-export collector so both STEP writers forward structural losses. */
-  readonly structural = new StructuralDiagnostics();
+  readonly structural: StructuralDiagnostics;
   /** The IfcDocumentInformation <-> IfcDocumentReference link (#10846). */
   readonly documents = new DocumentLinks();
   /** Values a target slot's type cannot hold (#10847). */
@@ -88,7 +88,8 @@ export class EnumReconciliation {
   /** The IfcRelSpaceBoundary records an IFC2X3 upgrade leaves out for want of their element. */
   readonly boundaries = new SpaceBoundaryElements();
 
-  constructor(deferConversions = false) {
+  constructor(deferConversions = false, structural = new StructuralDiagnostics()) {
+    this.structural = structural;
     this.forms = new ValueForms(deferConversions);
     this.typedProperties = new TypedPropertyUpgrade(deferConversions);
     this.materials = new MaterialReferents();

@@ -40,9 +40,10 @@ Each `ColumnDefinition` has a `source` that says where the value comes from:
 | `quantity` | Quantity from a qset | `Qto_WallBaseQuantities.NetSideArea` |
 | `material` | Associated material names (joined with `", "`) | `Concrete, Insulation` |
 | `classification` | Classification references (joined with `", "`) | `Uniclass Ss_25_10` |
-| `spatial` | Containing spatial element name; `propertyName` picks the level (`Storey` (default), `Building`, `Site`, `Project`) | `Level 2` |
+| `spatial` | Containing spatial element name; `propertyName` picks the level (`Storey` (default), `Container` (the immediate container at any level), `Building`, `Site`, `Project`; matched case-insensitively) | `Level 2` |
 | `model` | Source file name | `office.ifc` |
 | `zone` | Location-zone assignment and per-zone volume (user-defined 3D zone boxes, viewer-computed); `psetName` holds the zone-set id, `propertyName` picks the mode — see [Zone columns](#zone-columns) | `Section A` |
+| `geometry` | Triangle count; `propertyName` is `TriangleCount` — see [Triangle counts](#triangle-counts) | `1284` |
 | `customGrouping` | The element's group in a custom grouping (in the viewer, a rule-based Lens): the first enabled rule it matches, as the `customGrouping` filter rule applies it. `propertyName` holds the grouping name, `psetName` its id hint; the provider answers through `getCustomGroup` | `Structure` |
 
 A column looks like:
@@ -304,11 +305,14 @@ Resolve the complete scope with Rules `resolveCapturedEntityScope` before evalua
 | `listResultToCSV(result, delimiter?)` | CSV export with formula-injection guard |
 | `summariseListRows` | Aggregate rows into group summaries (`ListGroup[]` + whole-result `ListSummary`) |
 | `groupingColumnIds(grouping)` | Resolve a grouping config's ordered group-by column ids |
+| `groupPathKey(path)` | A collision-free key for a group's path of group-by values |
 | `toScheduleRows(groups, levelCount)` | Project grouped `ListGroup[]` to a schedule/pivot `ListScheduleRow[]` — one row per group-value tuple |
 | `discoverColumns(providers, entityTypes)` | Sample available attributes/properties/quantities |
 | `compileNameMatcher(pattern)` / `isNamePattern(pattern)` | Exact-or-regex name matching |
 | `migrateLegacyListConditions(conditions)` | Decode saved v1 conditions into one AND `FilterGroup` and explicit unreadable rows |
 | `migrateLegacyListDefinition(definition)` | Normalize a saved v1 definition to the public `groups` shape |
+| `isSavedListShape(value)` | Whether a parsed value has the saved list-definition shape |
+| `ZONE_MODE_VOLUME` / `ZONE_MODE_BREAKDOWN` / `isZoneVolumeMode(mode)` | Zone volume column modes |
 | `listConditionMatcher(provider)` | The reader Rules' `listCondition` rules need on each evaluated model |
 | `listConditionValueKind(source, propertyName)` | The kind of value the engine compares for a condition (number, boolean, text, several texts, or any), for offering matching operators |
 | `LIST_PRESETS` | Built-in schedule definitions |

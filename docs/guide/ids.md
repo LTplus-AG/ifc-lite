@@ -80,7 +80,7 @@ console.log(`${report.summary.totalEntitiesFailed} failed`);
 
 The bridge mirrors IfcOpenShell `ifctester` semantics (classification sub-reference walking, length unit conversion, predefined property-set unwrapping, schema-driven attribute types). It also exports `narrowSchemaVersion` for mapping a parsed schema string to an IDS `IFCVersion`.
 
-Other options in `ValidatorOptions`: `translator` (see below), `includePassingEntities` (default `true`), and `yieldEveryMs` to keep the thread responsive on large models.
+Other options in `ValidatorOptions`: `translator` (see below), `includePassingEntities` (default `true`), `maxEntities` to validate only a sample, `yieldEveryMs` (default 40) to keep the thread responsive on large models, and `preview` for the [IDS 1.1 preview](#ids-11-preview-unstable).
 
 ### Reusing viewer checks
 
@@ -107,7 +107,7 @@ Both percentages use IFC Lite's shared rounding policy: partial results stay bet
 
 ### Custom Data Sources
 
-If your IFC data does not come from `@ifc-lite/parser`, implement the `IFCDataAccessor` interface yourself. It requires `getAllEntityIds`, `getEntitiesByType`, `getEntityType`, `getEntityName`, `getGlobalId`, `getDescription`, `getObjectType`, `getPropertyValue`, `getPropertySets`, `getClassifications`, `getMaterials`, `getParent`, and `getAttribute`, plus optional methods (`getAncestors`, `getAttributeNames`, `getAttributeXsdTypes`, `getPredefinedTypeRaw`) that improve spec fidelity when provided.
+If your IFC data does not come from `@ifc-lite/parser`, implement the `IFCDataAccessor` interface yourself. It requires `getAllEntityIds`, `getEntitiesByType`, `getEntityType`, `getEntityName`, `getGlobalId`, `getDescription`, `getObjectType`, `getPropertyValue`, `getPropertySets`, `getClassifications`, `getMaterials`, `getParent`, and `getAttribute`, plus optional methods (`getAncestors`, `getAttributeNames`, `getAttributeXsdTypes`, `getPredefinedTypeRaw`, `getSchemaVersion`, `getTypeEntityType`) that improve spec fidelity when provided.
 
 ## Facet Types
 
@@ -143,7 +143,7 @@ Validation reports can be generated in multiple languages:
 import { createTranslationService } from '@ifc-lite/ids';
 
 const t = createTranslationService('de'); // German
-// Or: 'en' (English, default), 'fr' (French), 'it' (Italian)
+// Or: 'en' (English, default), 'fr' (French), 'it' (Italian), 'ru' (Russian)
 
 // Pass it to validateIDS to translate the report:
 const report = await validateIDS(idsDocument, accessor, modelInfo, { translator: t });
@@ -423,8 +423,9 @@ and the nested attribute facet is a condition on that storey:
 Where upstream is undecided the preview takes the most conservative reading:
 for example the extra `partOf` relation of #247 (`IfcRelSpaceBoundary`) and
 the inverse partOf of #200 are not modelled, and translations of names and
-descriptions (#154) have no XML form until upstream gives them one. The
-decisions are recorded in the IDS Studio P-12 work log.
+descriptions (#154) have no XML form until upstream gives them one. Each
+conservative reading is described in the source comments of
+`packages/ids/src/preview/` (`partof-nested.ts`, `tolerance.ts`).
 
 ## Viewer Integration
 
@@ -462,7 +463,7 @@ Validation runs in a Web Worker so the UI stays responsive during large runs, wi
 | Highlight failed | On | Red highlight on failed entities in 3D |
 | Highlight passed | Off | Green highlight on passed entities in 3D |
 | Filter mode | All | Show all, failed only, or passed only |
-| Locale | Auto | Language for validation messages (EN/DE/FR) |
+| Locale | Viewer language | Language for validation messages: follows the viewer language for EN, DE, FR, IT and RU; any other language uses EN |
 
 ## Key Types
 

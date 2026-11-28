@@ -29,6 +29,10 @@ installed outside this repository joins through a command adapter:
 node scripts/ids-conformance/run.mjs --engine-config my-engine.json
 ```
 
+`--engine-config` can be repeated to add several engines. `--out <dir>`
+writes the JSON somewhere else, `--limit <n>` runs only the first `n` cases,
+and `--no-doc` leaves this page unchanged.
+
 ## Adding an engine
 
 An adapter answers one or both corpus questions for one IDS+IFC pair:
@@ -59,8 +63,12 @@ Engines in other runtimes plug in without code through a JSON
 }
 ```
 
-The command prints one JSON line, for example `{"verdict": "fail"}`, or
+Both commands are argv arrays run without a shell; `{ids}`, `{ifc}` and
+`{id}` (the case id) are replaced per case, and either command may be left
+out. The command prints one JSON line, for example `{"verdict": "fail"}`, or
 `{"verdict": "unsupported", "reason": "..."}` for a case it cannot answer.
+A non-zero exit, a run longer than 120 seconds or output that is not such a
+line is recorded as an `error`.
 
 Typical integrations, all through a command adapter:
 

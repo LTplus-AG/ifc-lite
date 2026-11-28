@@ -45,7 +45,7 @@ for (const spec of report.specificationResults) {
 
 ## Multi-language reports
 
-Reports translate automatically. Supported languages: English (`en`), German (`de`), French (`fr`), Italian (`it`).
+Reports translate automatically. Supported languages: English (`en`), German (`de`), French (`fr`), Italian (`it`), Russian (`ru`).
 
 ```typescript
 import { parseIDS, validateIDS, createTranslationService } from '@ifc-lite/ids';
@@ -83,12 +83,26 @@ for (const spec of idsSpec.specifications) {
 }
 ```
 
+## Write IDS XML
+
+`writeIdsXml` turns a parsed (or hand-built) `IDSDocument` back into IDS 1.0 XML.
+The second argument sets the layout: `indent` (spaces or `'\t'`, default `2`),
+`newline` (default `'\n'`) and `canonical` (default `false`; `true` sorts
+applicability facets so equal documents write equal bytes).
+
+```typescript
+import { parseIDS, writeIdsXml } from '@ifc-lite/ids';
+
+const idsSpec = parseIDS(idsXml);
+const xml = writeIdsXml(idsSpec, { indent: 2, canonical: true });
+```
+
 ## Supported facets
 
 | Facet | Matches |
 |---|---|
 | `Entity` | IFC entity type (`IfcWall`, `IfcDoor`, …) |
-| `Attribute` | IfcRoot attributes (`Name`, `Description`, `Tag`, …) |
+| `Attribute` | Entity attributes (`Name`, `Description`, `Tag`, …) |
 | `Property` | Property set + property name + value |
 | `Classification` | Classification system + reference code |
 | `Material` | Material assignment |
@@ -101,7 +115,7 @@ for (const spec of idsSpec.specifications) {
 | `SimpleValue` | Exact match |
 | `Pattern` | Regex match |
 | `Enumeration` | One-of-list |
-| `Bounds` | Numeric range (min/max, inclusive/exclusive) |
+| `Bounds` | Numeric range (min/max, inclusive/exclusive), string length (`length`, `minLength`, `maxLength`) and digit counts (`totalDigits`, `fractionDigits`) |
 
 ## IDS 1.1 preview (unstable)
 

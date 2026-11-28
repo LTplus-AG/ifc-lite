@@ -124,8 +124,11 @@ feed ordinary answers to the error handler.
 
 A run stops when the model ends its turn, the root budget is spent, the same
 failure signature comes back twice in a row, the caller cancels, a request
-times out, the wall-clock cap passes, or the model refuses. It always returns
-the proposal built so far.
+times out, the wall-clock cap passes, the model refuses, a reply is cut off
+at its output-token cap, or the transport fails. `run.status` names which
+(`completed`, `budget-exhausted`, `no-progress`, `cancelled`, `timeout`,
+`wall-clock`, `refused`, `truncated`, `error`). It always returns the proposal
+built so far.
 
 `run.proposal.receipt` lists every request's usage receipt, every tool call,
 token totals, an optional cost (from host-supplied pricing) and a SHA-256

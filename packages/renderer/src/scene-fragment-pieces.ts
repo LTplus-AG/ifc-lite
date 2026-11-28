@@ -144,7 +144,18 @@ export class StreamingFragmentPieces {
    */
   record(fragment: BatchedMesh, pieces: readonly MeshData[], sourceOf: ReadonlyMap<MeshData, MeshData>): void {
     this.byBatchId.set(fragment.id, new FragmentPieces(fragment, pieces, sourceOf));
+    for (const piece of pieces) this.fragmentByMesh.set(sourceOf.get(piece) ?? piece, fragment);
   }
+
+  /**
+   * The streaming fragment that draws registered mesh `mesh` while one does (its record is current), so a
+   * highlight copy of the mesh takes that fragment's encoding. A mesh split over several fragments names the last.
+   */
+  fragmentOf(mesh: MeshData): BatchedMesh | undefined {
+    const fragment = this.fragmentByMesh.get(mesh);
+    return fragment && this.forBatch(fragment) ? fragment : undefined;
+  }
+  private readonly fragmentByMesh = new WeakMap<MeshData, BatchedMesh>();
 
   /**
    * Call before a mesh the bucket's built batch does not hold joins the bucket,

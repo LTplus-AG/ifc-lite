@@ -4,15 +4,30 @@
 
 /** Per-frame node culling, HLOD proxy selection and the optional draw budget of the draw stream. */
 import type { HlodNode, HlodTree } from './draw-stream-hlod.js';
-import type { HlodLinks } from './draw-stream-nodes.js';
+import { markHlodBounds, type HlodLinks } from './draw-stream-nodes.js';
 import type { BatchedMesh } from './types.js';
 import { aabbDist2, pxPerMetre, type StreamFrameInputs, type StreamFrameStats, type StreamItem, type StreamNode, MemberPick } from './draw-stream-types.js';
 import { memberPicks } from './draw-stream-picks.js';
 
+/** Per full-detail set: the HLOD node keys over its batches (null: too wide to mark, so no proxy draws), for the tree it was marked on. */
+const pinsBySet = new WeakMap<ReadonlySet<BatchedMesh>, { h: HlodTree; keys: Set<string> | null }>();
+
+/** HLOD nodes over a full-detail batch (full-detail-batches.ts) refine instead of drawing their proxy: it holds clustered, not LOD0, triangles. */
+function pinnedNodes(h: HlodTree, set: ReadonlySet<BatchedMesh> | undefined): Set<string> | null | undefined {
+  if (!set?.size) return undefined;
+  let pins = pinsBySet.get(set);
+  if (pins?.h !== h) {
+    let keys: Set<string> | null = new Set();
+    for (const b of set) if (b.bounds && !markHlodBounds(h, keys, b.bounds.min, b.bounds.max, h.leafCell)) { keys = null; break; }
+    pinsBySet.set(set, pins = { h, keys });
+  }
+  return pins.keys;
+}
+
 /**
  * The nodes to draw this frame: frustum- and contribution-culled leaves, and
  * where a clean HLOD node's error projects below `hlodPx`, its proxy instead
- * of the subtree.
+ * of the subtree (never over a `fullDetail` batch).
  */
 export function collectStreamItems(f: StreamFrameInputs, nodes: readonly StreamNode[], h: HlodTree | null, links: HlodLinks, hlodPx: number,
   members: readonly BatchedMesh[]): StreamItem[] {
@@ -30,10 +45,11 @@ export function collectStreamItems(f: StreamFrameInputs, nodes: readonly StreamN
     for (const leaf of nodes) visitLeaf(leaf);
     return items;
   }
+  const pins = pinnedNodes(h, f.fullDetail);
   const visit = (n: HlodNode): void => {
     if (n.state === 'empty' && n.children.length === 0 && !links.leavesByParent.has(n.key)) return;
     if (!f.visible(n.min, n.max)) return;
-    if (n.state === 'ready' && !links.allDirty && !links.dirty.has(n.key) && !h.outsideNodes.has(n.key)) {
+    if (n.state === 'ready' && !links.allDirty && pins !== null && !pins?.has(n.key) && !links.dirty.has(n.key) && !h.outsideNodes.has(n.key)) {
       const d = Math.sqrt(aabbDist2(n.min, n.max, f.eye));
       if (d > 0 && n.error * pxPerMetre(f.projection, d) < hlodPx) { items.push({ proxy: n, d: d * d, px: f.projectedPx(n.min, n.max) }); return; }
     }

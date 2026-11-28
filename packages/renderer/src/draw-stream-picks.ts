@@ -32,7 +32,8 @@ export function memberPicks(f: StreamFrameInputs, node: StreamNode, members: rea
     const b = members[node.members[k]!]!, px = b.bounds ? f.projectedPx(b.bounds.min, b.bounds.max) : Infinity;
     if (f.contribPx > 0 && px < f.contribPx) return MemberPick.Cull;
     if (!(b.lod1IndexBuffer && b.lod1IndexCount)) return MemberPick.AnyLod;
-    return f.lodPx > 0 && px < f.lodPx ? MemberPick.Lod1 : MemberPick.Lod0;
+    // A highlighted entity's batch: the highlight redraws its LOD0 triangles and must tie with them.
+    return f.lodPx > 0 && px < f.lodPx && !f.fullDetail?.has(b) ? MemberPick.Lod1 : MemberPick.Lod0;
   };
   let common = -1, mixed = false, drawsAny = false;
   if (scratch.length < node.members.length) scratch = new Uint8Array(node.members.length * 2);

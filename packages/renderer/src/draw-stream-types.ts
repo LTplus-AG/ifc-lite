@@ -6,6 +6,7 @@
 import type { OpaqueDrawMode } from './opaque-draw-variants.js';
 import type { OpaqueVisibilityPass } from './opaque-visibility-pass.js';
 import type { HlodNode } from './draw-stream-hlod.js';
+import type { BatchedMesh } from './types.js';
 
 export type Vec3 = [number, number, number];
 
@@ -82,6 +83,8 @@ export interface StreamFrameInputs {
   projection: StreamProjection;
   /** Camera moving: the frame budget may cut the smallest nodes. */
   interacting: boolean;
+  /** Batches that draw LOD0 and never under an HLOD proxy this frame: they hold a highlighted entity (full-detail-batches.ts). */
+  fullDetail?: ReadonlySet<BatchedMesh>;
 }
 
 /** Screen CSS px per world metre at distance `d`. */

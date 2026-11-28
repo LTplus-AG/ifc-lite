@@ -129,10 +129,27 @@ export function createIo({ repo, cwd = process.cwd(), cache = null, now = () => 
   const git = (args) => execFileSync('git', args, { cwd, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }).trim();
   const haveCommit = (sha) => spawnSync('git', ['cat-file', '-e', `${sha}^{commit}`], { cwd, stdio: 'ignore' }).status === 0;
 
-  /** Measured files in a run's perf-ratchet artifacts, or null without the bundle one. */
-  function runMeasurement(runId) {
+  /** Measured files attributable to the completed attempt, or null without its bundle. */
+  function runMeasurement(runId, run = api(`repos/${repo}/actions/runs/${runId}`, `run ${runId}`)) {
+    const attempt = run.run_attempt;
+    if (run.status !== 'completed' || !Number.isSafeInteger(attempt) || attempt < 1) return null;
+    // The artifact API scopes by run ID only. Use the attempt endpoint for
+    // reruns, then exclude timestamps at either second-resolution boundary.
+    const window = attempt === 1 ? run : api(`repos/${repo}/actions/runs/${runId}/attempts/${attempt}`, `attempt ${attempt} of run ${runId}`);
+    const start = Date.parse(window.run_started_at);
+    const end = Date.parse(window.updated_at);
+    if (window.run_attempt !== attempt || window.status !== 'completed' || !(start < end)) return null;
     const list = api(`repos/${repo}/actions/runs/${runId}/artifacts?per_page=100`, `artifacts of run ${runId}`);
-    const byName = new Map((list.artifacts ?? []).filter((a) => !a.expired).map((a) => [a.name, a]));
+    const artifacts = list.artifacts ?? [];
+    if ((list.total_count ?? Infinity) > artifacts.length) return null;
+    const byName = new Map();
+    for (const name of MEASURED_ARTIFACTS) {
+      const matches = artifacts.filter((a) => a.name === name && !a.expired)
+        .map((artifact) => ({ artifact, created: Date.parse(artifact.created_at) }))
+        .filter(({ created }) => !(created < start || created > end));
+      const [match] = matches;
+      if (matches.length === 1 && match.created > start && match.created < end) byName.set(name, match.artifact);
+    }
     if (!byName.has(MEASURED_ARTIFACTS[0])) return null;
     const dir = mkdtempSync(join(tmpdir(), 'base-stale-'));
     try {
@@ -150,7 +167,7 @@ export function createIo({ repo, cwd = process.cwd(), cache = null, now = () => 
         execFileSync('unzip', ['-q', '-o', join(dir, `${name}.zip`), '-d', out]);
         for (const f of measuredJsonFiles(out)) families.push(slim(loadMeasuredFile(f)));
       }
-      return families;
+      return families.length ? families : null;
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -167,7 +184,7 @@ export function createIo({ repo, cwd = process.cwd(), cache = null, now = () => 
     const hit = store.mainMeasurements[tree];
     // A miss, or a measurement without every family (the native job uploads
     // after the bundle one), is re-checked after the TTL; a full one is final.
-    if (hit && ((hit.families && !hit.checkedAt) || now() - hit.checkedAt < NEGATIVE_TTL_MS)) {
+    if (hit?.attemptScoped && ((hit.families && !hit.checkedAt) || now() - hit.checkedAt < NEGATIVE_TTL_MS)) {
       stats.cacheHits += 1;
       return hit.families ? { sha, families: hit.families, runId: hit.runId } : null;
     }
@@ -178,10 +195,10 @@ export function createIo({ repo, cwd = process.cwd(), cache = null, now = () => 
       .slice(0, TREE_RUN_CAP);
     const picked = pickTreeMeasurement(candidates.map((a) => a.workflow_run.id), runMeasurement, MEASURED_ARTIFACTS.length);
     if (!picked) {
-      store.mainMeasurements[tree] = { families: null, checkedAt: now() };
+      store.mainMeasurements[tree] = { attemptScoped: true, families: null, checkedAt: now() };
       return null;
     }
-    store.mainMeasurements[tree] = { families: picked.families, runId: picked.runId, ...(picked.full ? {} : { checkedAt: now() }) };
+    store.mainMeasurements[tree] = { attemptScoped: true, families: picked.families, runId: picked.runId, ...(picked.full ? {} : { checkedAt: now() }) };
     return { sha, families: picked.families, runId: picked.runId };
   }
 
@@ -242,8 +259,11 @@ export function createIo({ repo, cwd = process.cwd(), cache = null, now = () => 
         stats.cacheHits += 1;
         return cached;
       }
-      const families = runMeasurement(run.id);
-      if (!families) continue;
+      const families = runMeasurement(run.id, run);
+      if (!families) {
+        if (runAttempt !== 1) return null;
+        continue;
+      }
       const mergeSha = families[0].commit;
       const testedBase = mergeParents(mergeSha, headSha);
       const entry = { runId: run.id, runAttempt, mergeSha, testedBase, families };

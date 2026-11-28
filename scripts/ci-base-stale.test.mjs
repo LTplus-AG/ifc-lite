@@ -574,12 +574,19 @@ ct('io #11350: PR measurement cache follows completed attempts of the same run',
   const head = 'a'.repeat(40);
   const merges = ['b'.repeat(40), 'c'.repeat(40)];
   const bases = ['d'.repeat(40), 'e'.repeat(40)];
-  const run = { id: 42, status: 'completed', run_attempt: 1 };
+  const timestamp = (minute) => `2026-11-28T00:${minute}:00Z`;
+  const run = { id: 42, status: 'completed', run_attempt: 1, run_started_at: timestamp('00'), updated_at: timestamp('10') };
+  const attempt2 = { ...run, run_attempt: 2, run_started_at: timestamp('20'), updated_at: timestamp('30') };
+  const bundle = (id, minute) => ({ name: 'perf-ratchet-measured', id, created_at: timestamp(minute) });
+  const firstBundle = bundle(1, '05');
+  const secondBundle = bundle(2, '25');
+  let artifacts = [firstBundle];
   const dir = mkdtempSync(join(tmpdir(), 'base-stale-attempt-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const { io } = ioOverGh([
     ['repos/o/r/actions/workflows/test.yml/runs?', () => ({ workflow_runs: [run] })],
-    ['repos/o/r/actions/runs/42/artifacts?', () => ({ artifacts: [{ name: 'perf-ratchet-measured', id: run.run_attempt }] })],
+    ['repos/o/r/actions/runs/42/artifacts?', () => ({ artifacts, total_count: artifacts.length })],
+    ['repos/o/r/actions/runs/42/attempts/2', attempt2],
     ...merges.map((merge, i) => [`repos/o/r/commits/${merge}`, { parents: [{ sha: bases[i] }, { sha: head }] }]),
   ], {
     spawn: (file, args) => {
@@ -604,13 +611,25 @@ ct('io #11350: PR measurement cache follows completed attempts of the same run',
   run.status = 'in_progress';
   assert.equal(measure(), null);
   run.status = 'completed';
+  const oldNative = { name: 'perf-ratchet-measured-native', id: 3, created_at: timestamp('06') };
+  artifacts = [oldNative, firstBundle];
+  assert.equal(measure(), null, 'a partial rerun with only prior-attempt artifacts has no measurement');
+  artifacts = [bundle(4, '26'), secondBundle, firstBundle];
+  assert.equal(measure(), null, 'two bundles in the same attempt are ambiguous');
+  artifacts = [bundle(4, '20'), firstBundle];
+  assert.equal(measure(), null, 'an upload at the attempt boundary is ambiguous');
+  artifacts = [secondBundle, oldNative, firstBundle];
   const second = measure();
   assert.equal(second.testedBase, bases[1]);
   assert.equal(second.runAttempt, 2);
   assert.equal(second.families[0].metrics[0].value, 11);
+  assert.equal(second.families.length, 1, 'a prior-attempt native upload cannot supplement a fresh bundle');
   assert.equal(measure(), second);
   assert.equal(io.stats.downloads, 2);
   assert.equal(io.stats.cacheHits, 2);
+  delete io.store.prMeasurements[key];
+  artifacts.reverse();
+  assert.deepEqual(measure(), second, 'listing order does not determine the selected artifact');
 });
 
 ct('io: the in-run markers are paged past the first 100', () => {

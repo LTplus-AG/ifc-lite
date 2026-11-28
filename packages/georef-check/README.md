@@ -11,6 +11,14 @@ Most real-world georeferencing problems leave the model in the wrong place: thou
 
 The governing rule is precision over recall: a false alarm on a correct model is worse than a missed defect. Every detector fires only on a signature a correct model cannot show, and every threshold below is named in the code and pinned by a test on both sides.
 
+## Install
+
+```bash
+npm install @ifc-lite/georef-check @ifc-lite/parser
+```
+
+## Usage
+
 ```ts
 import { readFileSync } from 'node:fs';
 import { IfcParser } from '@ifc-lite/parser';
@@ -97,7 +105,7 @@ Each fix also carries `apply`, a machine-readable statement of how it can be app
 
 ## Levels of Georeferencing
 
-`report.levels` follows the published definition (Clemen & Görne 2019; the [IFCGeoRefChecker documentation](https://github.com/dd-bim/City2BIM/wiki/IFCGeoRefChecker); restated in Jaud & Clemen, ISPRS Annals X-4/W5-2024). The levels are independent; a file can show several.
+`report.levels` (also available on its own as `georeferencingLevels(facts)`) follows the published definition (Clemen & Görne 2019; the [IFCGeoRefChecker documentation](https://github.com/dd-bim/City2BIM/wiki/IFCGeoRefChecker); restated in Jaud & Clemen, ISPRS Annals X-4/W5-2024). The levels are independent; a file can show several.
 
 | Level | Present when |
 |---|---|

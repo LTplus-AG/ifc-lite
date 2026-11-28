@@ -22,13 +22,13 @@
  */
 
 import { useCallback, useMemo } from 'react';
-import type { CoordinateInfo } from '@ifc-lite/geometry';
 import { useViewerStore } from '@/store';
 import { usePlacementCoordinateInfo } from '@/hooks/usePlacementCoordinateInfo';
+import { createStoreyDisplayElevationResolver } from '@/lib/geo/storey-elevation';
 import { setAlignmentDistance } from '@/lib/section/alignment-controller';
 import {
   collectStoreys,
-  mergedSectionBounds,
+  mergedSectionCoordinateInfo,
   percentToWorld,
   clampSectionPercent,
   sectionAxisRange,
@@ -54,7 +54,7 @@ export interface SectionDistance {
   /** Storey cut elevations a scrub snaps to (a `down` cut with a known range only). */
   snaps: readonly number[];
   /** Every storey, top-down; the storey menu lists these. */
-  storeys: readonly SectionStorey[];
+  storeys: readonly (SectionStorey & { displayElevation: number })[];
   /** The cardinal range in world units, when known. */
   range: AxisRange | null;
   /** The placed model bounds the cut resolves against, when known — the section box's "fit to model" (#5513). */
@@ -72,25 +72,32 @@ export function useSectionDistance(): SectionDistance {
   const setSectionPlanePosition = useViewerStore((s) => s.setSectionPlanePosition);
   const setSectionCustomDistance = useViewerStore((s) => s.setSectionCustomDistance);
 
-  // The merged box as a CoordinateInfo, so the placement hook can shift it
-  // the way it shifts the viewport's; frame metadata comes from whichever
-  // model contributed first (federated models share one frame).
-  const source = useMemo((): CoordinateInfo | undefined => {
-    const bounds = mergedSectionBounds(models, geometryResult);
-    if (!bounds) return undefined;
-    let base: CoordinateInfo | undefined;
-    for (const model of models.values()) {
-      if (model.visible && model.geometryResult?.coordinateInfo) { base = model.geometryResult.coordinateInfo; break; }
-    }
-    base ??= geometryResult?.coordinateInfo;
-    return base ? { ...base, shiftedBounds: bounds } : undefined;
-  }, [models, geometryResult]);
+  const placement = useViewerStore((s) => s.modelPlacement);
+  const source = useMemo(() => mergedSectionCoordinateInfo(models, geometryResult), [models, geometryResult]);
   const placed = usePlacementCoordinateInfo(source);
   const range = useMemo(
     () => sectionAxisRange(placed?.shiftedBounds ?? null, sectionPlane.axis),
     [placed, sectionPlane.axis],
   );
-  const storeys = useMemo(() => collectStoreys(models, ifcDataStore), [models, ifcDataStore]);
+  const georefMutations = useViewerStore((s) => s.georefMutations);
+  const storeys = useMemo(
+    () => {
+      const resolvers = new Map<string, ReturnType<typeof createStoreyDisplayElevationResolver>>();
+      return collectStoreys(models, ifcDataStore, geometryResult, placement).map((storey) => {
+        const model = models.get(storey.modelId);
+        const data = model ? model.ifcDataStore : ifcDataStore;
+        let resolve = resolvers.get(storey.modelId);
+        if (!resolve) {
+          resolve = createStoreyDisplayElevationResolver(data, (model ? model.geometryResult : geometryResult)?.coordinateInfo,
+            georefMutations.get(model ? storey.modelId : '__legacy__'));
+          resolvers.set(storey.modelId, resolve);
+        }
+        const relative = data?.spatialHierarchy?.storeyElevations.get(storey.expressId) ?? 0;
+        return { ...storey, displayElevation: resolve(storey.expressId, relative, storey.sharedPlacementRise) };
+      });
+    },
+    [models, ifcDataStore, geometryResult, placement, georefMutations],
+  );
 
   const cutAtStorey = useCallback((storey: SectionStorey) => {
     const state = useViewerStore.getState();

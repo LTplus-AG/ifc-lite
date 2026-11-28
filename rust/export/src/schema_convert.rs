@@ -293,8 +293,9 @@ fn convert_record(
     };
 
     if let Some(c) = checks.as_deref_mut() {
-        if let Some((body, cause_dropped)) = c.structural.rewrite(express_id, &entity_type, &args) {
-            c.attribute_values_dropped += usize::from(cause_dropped);
+        c.structural.varying.require_constant_load(express_id, &entity_type, &args)?;
+        if let Some((body, dropped)) = c.structural.rewrite(express_id, &entity_type, &args) {
+            c.attribute_values_dropped += dropped;
             return Ok(format!("{prefix}{body};"));
         }
     }

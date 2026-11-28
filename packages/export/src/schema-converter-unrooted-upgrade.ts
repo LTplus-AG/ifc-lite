@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
+import { StructuralDiagnostics } from './schema-converter-structural-diagnostics.js';
 import type { InverseClaims } from './merged-inverse-claims.js';
 import { getSchemaRegistryForVersion } from '@ifc-lite/parser';
 import { splitTopLevelStepArguments } from './step-argument-parser.js';
@@ -157,7 +158,7 @@ export function previewUpgradeDependents(store: SourceStore, from: IfcSchemaVers
   if (seeds.size === 0) return seeds;
 
   const styles = StyleFlatten.fromStore(store, from, to);
-  const enums = new EnumReconciliation(true);
+  const enums = new EnumReconciliation(true, new StructuralDiagnostics(true));
   enums.structural.fromStore(store, from, to, source);
   let nextId = getMaxExpressId(getCompleteEntityIndex(store)) + 1;
   enums.structural.ids = () => nextId++;

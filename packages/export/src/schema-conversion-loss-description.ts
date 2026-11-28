@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { varyingTarget } from './schema-converter-structural-varying.js';
 import type { ConversionLossEntry } from './schema-conversion-loss-report.js';
 
 const MAX_IDS_NAMED = 8;
@@ -13,6 +14,8 @@ export function describeEntry(entry: ConversionLossEntry, omissionReason?: strin
   const attrs = entry.droppedAttributes.length > 0 ? ` — loses ${entry.droppedAttributes.join(', ')}` : '';
   switch (entry.kind) {
     case 'blocked':
+      if (varyingTarget(entry.sourceType) === entry.targetType)
+        return `${entry.count} × ${entry.sourceType} (${ids}${more}) cannot convert to a constant action without a usable AppliedLoad.`;
       return (
         `${entry.count} × ${entry.sourceType} (${ids}${more}) has no representation in this schema and is ` +
         `not an IfcRoot subtype: conversion cannot write these records at all${attrs}.`

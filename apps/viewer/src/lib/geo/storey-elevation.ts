@@ -28,8 +28,8 @@ import type { IfcDataStore } from '@ifc-lite/parser';
  *   resolved.
  *
  * `spatialHierarchy.storeyElevations` deliberately stays model-relative: it
- * drives level matching, grouping, sorting, isolation, editing, and
- * render-frame placement. Only display surfaces use this value. RTC/origin
+ * drives level matching, grouping, sorting, isolation, and editing. This
+ * display lookup returns height before render offsets are applied. RTC/origin
  * shifts are render precision details and must not be added here; the chain
  * is read from the file's placements, before those shifts are applied.
  */

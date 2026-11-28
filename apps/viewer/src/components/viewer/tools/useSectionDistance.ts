@@ -22,13 +22,12 @@
  */
 
 import { useCallback, useMemo } from 'react';
-import type { CoordinateInfo } from '@ifc-lite/geometry';
 import { useViewerStore } from '@/store';
 import { usePlacementCoordinateInfo } from '@/hooks/usePlacementCoordinateInfo';
 import { setAlignmentDistance } from '@/lib/section/alignment-controller';
 import {
   collectStoreys,
-  mergedSectionBounds,
+  mergedSectionCoordinateInfo,
   percentToWorld,
   clampSectionPercent,
   sectionAxisRange,
@@ -72,25 +71,17 @@ export function useSectionDistance(): SectionDistance {
   const setSectionPlanePosition = useViewerStore((s) => s.setSectionPlanePosition);
   const setSectionCustomDistance = useViewerStore((s) => s.setSectionCustomDistance);
 
-  // The merged box as a CoordinateInfo, so the placement hook can shift it
-  // the way it shifts the viewport's; frame metadata comes from whichever
-  // model contributed first (federated models share one frame).
-  const source = useMemo((): CoordinateInfo | undefined => {
-    const bounds = mergedSectionBounds(models, geometryResult);
-    if (!bounds) return undefined;
-    let base: CoordinateInfo | undefined;
-    for (const model of models.values()) {
-      if (model.visible && model.geometryResult?.coordinateInfo) { base = model.geometryResult.coordinateInfo; break; }
-    }
-    base ??= geometryResult?.coordinateInfo;
-    return base ? { ...base, shiftedBounds: bounds } : undefined;
-  }, [models, geometryResult]);
+  const placement = useViewerStore((s) => s.modelPlacement);
+  const source = useMemo(() => mergedSectionCoordinateInfo(models, geometryResult), [models, geometryResult]);
   const placed = usePlacementCoordinateInfo(source);
   const range = useMemo(
     () => sectionAxisRange(placed?.shiftedBounds ?? null, sectionPlane.axis),
     [placed, sectionPlane.axis],
   );
-  const storeys = useMemo(() => collectStoreys(models, ifcDataStore), [models, ifcDataStore]);
+  const storeys = useMemo(
+    () => collectStoreys(models, ifcDataStore, geometryResult, placement),
+    [models, ifcDataStore, geometryResult, placement],
+  );
 
   const cutAtStorey = useCallback((storey: SectionStorey) => {
     const state = useViewerStore.getState();

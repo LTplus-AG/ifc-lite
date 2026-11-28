@@ -16,9 +16,10 @@
 import { useCallback, useMemo } from 'react';
 import { useViewerStore } from '@/store';
 import { useIfc } from './useIfc';
+import { usePlacementCoordinateInfo } from './usePlacementCoordinateInfo';
 import {
   collectStoreys,
-  mergedSectionBounds,
+  mergedSectionCoordinateInfo,
   sectionAxisRange,
   storeyCutPosition,
   type SectionStorey,
@@ -26,6 +27,9 @@ import {
 
 export function useFloorplanView() {
   const { models, ifcDataStore, geometryResult } = useIfc();
+  const placement = useViewerStore((s) => s.modelPlacement);
+  const source = useMemo(() => mergedSectionCoordinateInfo(models, geometryResult), [models, geometryResult]);
+  const placed = usePlacementCoordinateInfo(source);
   const setSectionPlaneAxis = useViewerStore((s) => s.setSectionPlaneAxis);
   const setSectionPlanePosition = useViewerStore((s) => s.setSectionPlanePosition);
   const setActiveTool = useViewerStore((s) => s.setActiveTool);
@@ -34,8 +38,8 @@ export function useFloorplanView() {
   // Every storey, deduplicated and sorted top-down — the same list the
   // Section bar's storey menu offers (#5499), from the one collector.
   const availableStoreys = useMemo(
-    (): SectionStorey[] => collectStoreys(models, ifcDataStore),
-    [models, ifcDataStore],
+    (): SectionStorey[] => collectStoreys(models, ifcDataStore, geometryResult, placement),
+    [models, ifcDataStore, geometryResult, placement],
   );
 
   // Activate a floorplan view at the given storey elevation
@@ -44,7 +48,7 @@ export function useFloorplanView() {
     // practice), expressed as a percentage of the merged Y bounds — the
     // same helper the Section bar's storey menu uses. Above the model top
     // it stays at floor + 1.2 m (past 100 %) when the floor is in range (#8162).
-    const range = sectionAxisRange(mergedSectionBounds(models, geometryResult), 'down');
+    const range = sectionAxisRange(placed?.shiftedBounds ?? null, 'down');
     // Fallback bounds if no coordinate info available
     const percentage = range ? storeyCutPosition(storey, range) : 50;
 
@@ -56,7 +60,7 @@ export function useFloorplanView() {
     // 3. Show the cut: dock the Drawing panel (no forced 3D camera change —
     // "Match 3D" in its header does that on request, #5497).
     openPanelInHome('drawing', 'programmatic');
-  }, [models, geometryResult, setSectionPlaneAxis, setSectionPlanePosition, setActiveTool, openPanelInHome]);
+  }, [placed, setSectionPlaneAxis, setSectionPlanePosition, setActiveTool, openPanelInHome]);
 
   return { availableStoreys, activateFloorplan };
 }

@@ -22,7 +22,11 @@
  * convention the floor plan applies.
  */
 
-import type { GeometryResult } from '@ifc-lite/geometry';
+import type { CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
+import { totalYupOffset } from '@ifc-lite/geometry/world-frame';
+import type { IfcDataStore } from '@ifc-lite/parser';
+import { resolveProductOriginMeters } from '@/lib/geo/product-origin';
+import { displayedTranslation, type PlacementState } from '@/lib/model-placement/state';
 import type { SectionPlaneAxis } from '@/store/types';
 
 interface Vec3Like { x: number; y: number; z: number }
@@ -37,20 +41,15 @@ interface BoundedModel {
 
 /** A model entry's slice that storey collection reads. */
 interface StoreyModel {
-  ifcDataStore: {
-    spatialHierarchy?: {
-      byStorey: ReadonlyMap<number, unknown>;
-      storeyElevations: ReadonlyMap<number, number>;
-    } | null;
-    entities: { getName(id: number): string | null };
-  } | null;
+  ifcDataStore: IfcDataStore | null;
+  geometryResult?: Pick<GeometryResult, 'coordinateInfo'> | null;
 }
 
 export interface SectionStorey {
   expressId: number;
   modelId: string;
   name: string;
-  /** Floor elevation, metres, in the model's (Z-up) frame. */
+  /** Floor elevation in the placed scene, in metres along viewer Y. */
   elevation: number;
 }
 
@@ -93,6 +92,18 @@ export function mergedSectionBounds(
     fold(legacy?.coordinateInfo?.shiftedBounds);
   }
   return acc;
+}
+
+/** Shared section bounds with the frame metadata needed by the placement hook. */
+export function mergedSectionCoordinateInfo(
+  models: ReadonlyMap<string, BoundedModel>,
+  legacy: Pick<GeometryResult, 'coordinateInfo'> | null,
+): CoordinateInfo | undefined {
+  const bounds = mergedSectionBounds(models, legacy);
+  if (!bounds) return undefined;
+  const base = [...models.values()].find((model) => model.visible && model.geometryResult?.coordinateInfo)
+    ?.geometryResult?.coordinateInfo ?? legacy?.coordinateInfo;
+  return base ? { ...base, shiftedBounds: bounds } : undefined;
 }
 
 /** The world-unit span of `bounds` along a cut axis, or `null` when degenerate. */
@@ -140,21 +151,28 @@ export function worldToPercent(world: number, range: AxisRange): number {
 export function collectStoreys(
   models: ReadonlyMap<string, StoreyModel>,
   legacy: StoreyModel['ifcDataStore'],
+  legacyGeometry: StoreyModel['geometryResult'] = null,
+  placement?: PlacementState,
 ): SectionStorey[] {
   const storeys: SectionStorey[] = [];
-  const collect = (modelId: string, ds: StoreyModel['ifcDataStore']) => {
+  const collect = (modelId: string, ds: StoreyModel['ifcDataStore'], frame?: CoordinateInfo) => {
     if (!ds?.spatialHierarchy) return;
     const { byStorey, storeyElevations } = ds.spatialHierarchy;
+    const sceneOffset = (placement ? displayedTranslation(placement, modelId)[2] : 0) - totalYupOffset(frame).y;
     for (const storeyId of byStorey.keys()) {
-      const elevation = storeyElevations.get(storeyId) ?? 0;
+      // Elevation can be building-relative, absolute, or absent. The same
+      // placement chain used by the geometry gives the floor in IFC world Z.
+      const origin = typeof ds.getEntity === 'function' ? resolveProductOriginMeters(ds, storeyId) : null;
+      const worldZ = origin && Number.isFinite(origin.z) ? origin.z : (storeyElevations.get(storeyId) ?? 0);
+      const elevation = worldZ + sceneOffset;
       const name = ds.entities.getName(storeyId) || `Storey #${storeyId}`;
       storeys.push({ expressId: storeyId, modelId, name, elevation });
     }
   };
   if (models.size > 0) {
-    for (const [modelId, model] of models) collect(modelId, model.ifcDataStore);
+    for (const [modelId, model] of models) collect(modelId, model.ifcDataStore, model.geometryResult?.coordinateInfo);
   } else {
-    collect('legacy', legacy);
+    collect('legacy', legacy, legacyGeometry?.coordinateInfo);
   }
   const seen = new Map<string, SectionStorey>();
   for (const s of storeys) {
@@ -175,9 +193,8 @@ export function storeyCutElevation(storey: Pick<SectionStorey, 'elevation'>): nu
  * count as inside it. Storey elevations are nominal authored values, while
  * the range comes from f32 mesh positions, so a floor that coincides with the
  * model's lowest or highest face can read a fraction of a millimetre outside.
- * 1 mm covers that rounding and no more, so a frame mismatch between raw
- * elevations and shifted / placed bounds that puts the floor outside the
- * range still takes the clamped fallback.
+ * 1 mm covers that rounding. A floor farther outside the bounds takes the
+ * clamped fallback.
  */
 export const STOREY_IN_RANGE_TOLERANCE_M = 1e-3;
 

@@ -2,7 +2,7 @@
 
 A **flavor** bundles your customisations into a single switchable, exportable, importable profile. One flavor for cost estimating with the quantity-takeoff extension, your fire-rating lens, and CSV-with-semicolons defaults. Another for design review with markup tools and a different lens library. Switch between them with one click.
 
-This guide covers managing flavors through the status-bar chip. For the technical model (three-way merge semantics, snapshot retention, the `.iflv` envelope) see [the RFC](../architecture/ai-customization/05-flavors-and-sharing.md).
+The viewer labels flavors **profiles**. This guide covers managing them through the status-bar chip. For the technical model (three-way merge semantics, snapshot retention, the `.iflv` envelope) see [the RFC](../architecture/ai-customization/05-flavors-and-sharing.md).
 
 ## What's in a flavor?
 
@@ -13,7 +13,7 @@ A flavor stores:
 - **Saved queries** — named filter expressions
 - **Keybindings** — keyboard shortcut overrides
 - **Layout state** — panel sizes, dock arrangement
-- **Settings** — viewer preferences (units, separators, default colors)
+- **Settings** — viewer preferences (units, separators, default colors), including the clash rules and detection settings captured from the Clash panel
 - **Prompt overlay** — durable notes the AI assistant sees in every chat (see [Privacy](privacy.md#prompt-overlay))
 
 Switching a flavor:
@@ -43,13 +43,15 @@ Every flavor appears with:
 - Name + active badge (when it's the current flavor)
 - Stable id (used for `.iflv` round-trips)
 - Description if set
-- Counts: extensions / lenses / queries / last-updated date
-- Per-row controls: **Activate**, **Export**, **Delete** (active flavor can't be deleted)
+- Counts: extensions / lenses / queries / clash rules / last-updated date, and a badge when the viewer holds lenses not yet captured into the active flavor
+- Per-row controls: **Activate**, capture current viewer state into the flavor, **Rename** (click the name; the id stays), **Duplicate** (new `<id>.copy.<timestamp>` id), **Export**, **Delete** (active flavor can't be deleted)
 
 Header actions:
 
 | Button | What it does |
 |--------|-------------|
+| **Save current as profile** | Create a flavor from the current viewer state (lenses, clash rules) and activate it |
+| **New profile** | Create an empty flavor and activate it |
 | **Import** | Load a `.iflv` file → preview screen |
 | **Reset** | Create / restore the baseline flavor with no extensions or overrides |
 

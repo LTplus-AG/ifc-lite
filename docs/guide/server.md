@@ -999,14 +999,9 @@ has no Fly.io or Kubernetes manifests; write those for your own platform.
 
 ## Streaming
 
-### Dynamic Batch Sizing
+### Streaming batch sizes
 
-The streaming routes deliver geometry in two batch sizes:
-
-- **First batch**: `INITIAL_BATCH_SIZE` geometry jobs (default 100), for a fast first frame
-- **Every later batch**: `MAX_BATCH_SIZE` geometry jobs (default 1000)
-
-The size does not adapt to processing speed.
+The streaming routes target `INITIAL_BATCH_SIZE` geometry jobs in the first batch (default 100, at least 1). Later batches target `MAX_BATCH_SIZE` jobs (default 1000), with the first batch size as a minimum. The final batch can be shorter. The size does not adapt to processing speed.
 
 ### Streaming Flow
 
@@ -1026,7 +1021,7 @@ sequenceDiagram
             Server->>Client: SSE: batch {data, mesh_count}
             Client->>Client: Decode & render
         end
-        Server->>Cache: Store accumulated meshes
+        Server->>Server: Start background task to finish and cache the Parquet row groups
         Server->>Client: SSE: complete {stats, metadata}
     and Data-model fill
         Server->>Server: Extract data model

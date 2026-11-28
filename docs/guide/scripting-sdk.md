@@ -146,7 +146,7 @@ ifc-lite eval model.ifc "bim.storeys().map(s => s.name)"
 ifc-lite eval model.ifc "bim.quantity(ref, 'GrossSideArea')" --type IfcWall --limit 3
 ```
 
-With `--type`, the expression runs once per matching entity with `ref` (the entity reference) and `entity` in scope; without it, the expression runs once with `bim`. `--type` takes a comma-separated list, and `--limit` caps the matches it evaluates. Statements separated by `;` also work; `eval` returns the value of the last one. Add `--json` for machine-readable output. Like `run`, `eval` accepts `--viewer <port>` to stream `bim.viewer.*` calls to a running viewer.
+With `--type`, the expression runs once per matching entity with `ref` (the entity reference) and `entity` in scope; without it, the expression runs once with `bim`. `--type` takes a comma-separated list, and `--limit` caps the matches it evaluates. Simple statements separated by `;` also work: end with an expression to return its value, or use an explicit `return`. Add `--json` for machine-readable output. Like `run`, `eval` accepts `--viewer <port>` to stream `bim.viewer.*` calls to a running viewer.
 
 ### `run` — script files
 

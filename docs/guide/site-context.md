@@ -133,8 +133,8 @@ large, and the cache keeps them, so a re-run of the same site from the cache is
 much faster than the first run. `--subject-egid 2242547` marks the Parliament
 Building as the subject at that centre. For a 1 km urban site, raise
 `--tile-requests`: when the budget stops the read, the layer is marked
-incomplete and says how many tiles were left. For measured figures, see
-[Performance](performance.md).
+incomplete and says how many tiles were left. Run times and download sizes
+depend on the live services, the tileset release and your connection.
 
 The JSON summary has the document origin and CRS, per layer the feature,
 triangle and vertex counts, completeness, attribution and issues, plus the

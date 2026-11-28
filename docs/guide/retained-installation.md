@@ -190,7 +190,7 @@ A model the viewer holds from the retained kernel (`?kernel=retained`) exports t
 
 - **GLB** takes the meshes the viewer holds, GPU-instanced occurrences included; it never re-meshes the file with the
   exact engine. It is refused while the retained model is incomplete (any product refused or cancelled) or
-  shape-only, so a GLB export of a retained model holds every product. (The GLB writer gives every material the same
+  shape-only. A visible-only GLB can still omit products hidden by the viewer's visibility filters. (The GLB writer gives every material the same
   default metallic/roughness, on both kernels.)
 - **USD, Rhino (3DM), Cesium ion and the energy models (HBJSON, DFJSON)** rebuild their geometry from the file with
   the exact engine (Cesium ion uploads the model's STEP for Cesium to re-mesh). While any loaded model is retained

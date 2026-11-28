@@ -661,7 +661,7 @@ interface SnapTarget {
     edgeIndex?: number;
     faceIndex?: number;
     // Source-curve snaps only: the source identity plus these fields
-    sourceCurve?: { kind: 'line' | 'arc'; length: number; t: number };
+    sourceCurve?: import('@ifc-lite/renderer').SourceCurveIdentity & { kind: 'line' | 'arc'; length: number; t: number };
   };
 }
 ```
@@ -1097,7 +1097,7 @@ import type { BVH } from '@ifc-lite/spatial';
  */
 declare function buildSpatialIndex(meshes: MeshData[]): BVH;
 
-/** Time-sliced variant: computes bounds in chunks of at most `budgetMs` (default 4) and yields between them. */
+/** Time-sliced variant: yields while computing bounds and building the BVH, using `budgetMs` as a time target (default 4 ms). */
 declare function buildSpatialIndexAsync(meshes: MeshData[], budgetMs?: number): Promise<BVH>;
 
 const index: SpatialIndex = buildSpatialIndex([]);
@@ -1193,7 +1193,7 @@ The renderer uses a Bounding Volume Hierarchy for fast raycasting:
 
 ```typescript
 // BVH is built automatically for CPU raycasting
-// Ray intersection is O(log n) in the number of meshes
+// The BVH skips branches whose bounds miss the ray. A ray can still visit every leaf.
 
 // Clear BVH cache when geometry changes significantly
 renderer.invalidateBVHCache();

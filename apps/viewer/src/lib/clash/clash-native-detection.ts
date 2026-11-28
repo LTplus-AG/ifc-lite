@@ -24,6 +24,7 @@ import { definedModelTagIdsOf, evaluatorModelsFromState } from '@/lib/model-tags
 import { captureModelTagInputs, rememberModelTagInputs, type ClashModelTagInputs } from '@/lib/clash/model-tag-inputs';
 import { allElementsRule, rememberRunRequest, type ClashRunRequest } from '@/lib/clash/run-request';
 import { posthog } from '@/lib/analytics';
+import { notifyClashRunComplete } from '@/lib/clash/host-run-document';
 import { errorCaptureProps } from '@/lib/load-errors';
 import { nextFrameOrTimeout } from '@/utils/frameWait';
 
@@ -61,7 +62,10 @@ export function createClashDetection({ runEpochRef, runAbortRef, discardSolidPre
       state.bumpClashRunSeq();
       return true;
     };
-    return publish ? publish(write) : write();
+    const published = publish ? publish(write) : write();
+    // A host that stores runs (ViewerHandle.onClashRunComplete) gets the run document; no-op otherwise.
+    if (published) notifyClashRunComplete(res, useViewerStore.getState().models);
+    return published;
   };
   const run = async (
     rules: ClashRule[],

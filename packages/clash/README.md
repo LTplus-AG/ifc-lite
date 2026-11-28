@@ -55,6 +55,35 @@ alone, and an unqualified fallback would let a review or an exclusion set on one
 model apply to another model's element. That fallback is stable only for as long
 as the host's `modelId` is (in the viewer it is a per-load uuid).
 
+### Runs per coordination round
+
+A host that federates models as slots (one discipline model per stable slot id,
+pinned to an exact sha256 per round) can store each run and compare rounds:
+
+```ts
+import { buildClashRunDocument, compareClashRunDocuments, carryForwardReviews, validateClashRunDocument } from '@ifc-lite/clash';
+
+const run = buildClashRunDocument({
+  result,                                    // a ClashResult
+  slots: [{ slot: 'arch', model: archModelId, sha256: archSha }, { slot: 'mep', model: mepModelId, sha256: mepSha }],
+  labels: ['browser-submitted'],
+});
+// later, with the previous round's stored document:
+const diff = compareClashRunDocuments(previousRun, run);   // added / persistent / noLongerDetected / notComparable
+const { reviews, notCarried } = carryForwardReviews(previousRun, run, previousDecisions);
+```
+
+Findings are keyed by `clashReviewKey(clash, { slotOf, ruleRevision })`: each
+element is qualified by its slot, and the key changes when a rule keeps its id
+but changes its meaning (`clashRuleRevision`). A GlobalId repeated within one
+slot gets no key, so no decision is carried to it. A finding the next run did
+not report is "no longer detected" only when that run verifiably re-examined
+both elements under the same rule; otherwise it is "not comparable", with the
+reason. Detection change is separate from review status (open / resolved /
+accepted). `CLASH_RUN_DOCUMENT_JSON_SCHEMA` is the document's JSON Schema; the
+viewer hands a registered host each finished run through
+`ViewerHandle.onClashRunComplete`.
+
 Includes the TypeScript reference engine, a Rust→WASM kernel kept in lockstep by a
 differential test (opt-in via `@ifc-lite/clash/wasm`; `backend: 'auto'` currently
 resolves to the TS engine), STEP and IFC5/USD source adapters, spatial grouping,

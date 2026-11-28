@@ -1,7 +1,9 @@
 # Complete viewer automation through shared operations
 
-Status: proposed follow-up plan. PR #10525 exposes existing palette entry points;
-it does not implement the panel operations described here.
+Status: plan, partly implemented. PR #10525 exposed existing palette entry
+points; the operation gateway and coverage audit have since shipped (see
+[Implementation status](#implementation-status) and
+[viewer operations](../guide/viewer-operations.md)).
 
 ## Outcome and boundary
 
@@ -76,7 +78,11 @@ still require a current mounted host and fail explicitly when it is absent.
 
 Use a small fixed MCP surface: search/list, describe, inspect, preview, execute,
 job status/cancel, and subscribe to state/job events where the transport supports
-subscriptions. These are proposed interfaces, not shipped tool names. Return
+subscriptions. The shipped tools are `viewer_operations` (search/describe),
+`viewer_operation_inspect`, `viewer_operation_execute`, `viewer_operation_job`,
+`viewer_operation_cancel` and `viewer_operation_coverage`
+(`apps/viewer/src/lib/agent-tools/operation-tools.ts`); event subscription is
+not shipped. Return
 only relevant schemas on discovery; use bounded pages and payloads rather than
 advertising hundreds of full tool definitions on every handshake.
 

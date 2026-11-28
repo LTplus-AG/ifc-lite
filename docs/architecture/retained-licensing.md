@@ -24,7 +24,8 @@ the `wasm_sync` Apache-2.0 election below also closes its missing-text gap.
 
 This is a **conservative source/build inventory**, not proof of the exact code
 remaining after link-time dead stripping. The roots are `ifc-lite-wasm` (default
-and retained WASM) and `ifc-lite-diff-wasm` (`pkg-diff`, also shipped by npm).
+and retained WASM), `ifc-lite-diff-wasm` (`pkg-diff`) and `ifc-lite-rhino-wasm`
+(`pkg-rhino`); npm ships `pkg-diff` and `pkg-rhino` too (`scripts/retained-notices.mjs`).
 The lockfile walk excludes workspace dev-only edges using the parsed manifests;
 optional and target-specific production dependencies and build tools are included
 conservatively. Each component records its root scope. Cargo metadata supplies
@@ -120,7 +121,8 @@ These are review prompts grounded in the preserved texts, not compatibility ruli
   explicit source-only `include` list. Even ffi's `cdylib` declaration does not
   put a compiled library in a source archive.
 * **npm:** `packages/wasm/package.json#files` includes the retained loader/types,
-  default `pkg` and `pkg-diff` JS/WASM, and `THIRD_PARTY_NOTICES.txt`, but excludes
+  default `pkg`, the geometry-core `pkg-core`, `pkg-diff` and `pkg-rhino` JS/WASM,
+  and `THIRD_PARTY_NOTICES.txt`, but excludes
   retained implementation JS/WASM and SMLib. CLI's `files` selects `dist`, README
   and the notice; its generated JS/declarations consume the WASM package rather
   than bundle SMLib. These are loader/client packages, not SDK delivery.

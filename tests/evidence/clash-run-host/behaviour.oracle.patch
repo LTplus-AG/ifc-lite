@@ -1,8 +1,8 @@
-diff --git a/apps/viewer/src/lib/clash/host-run-build.ts b/apps/viewer/src/lib/clash/host-run-build.ts
-index 71e8875867..7c15ef038c 100644
---- a/apps/viewer/src/lib/clash/host-run-build.ts
-+++ b/apps/viewer/src/lib/clash/host-run-build.ts
-@@ -45,7 +45,7 @@ function stableJson(value: unknown): string {
+diff --git a/apps/viewer/src/lib/clash/host-run-document.ts b/apps/viewer/src/lib/clash/host-run-document.ts
+index 68f43e300d..a970882db6 100644
+--- a/apps/viewer/src/lib/clash/host-run-document.ts
++++ b/apps/viewer/src/lib/clash/host-run-document.ts
+@@ -47,7 +47,7 @@ export interface ClashRunHostContext {
  export function slotBindings(result: ClashResult, models: ReadonlyMap<string, ModelLike>, options: ClashRunListenerOptions): ClashRunSlotBinding[] {
    // The gathered models, not just the ones that produced a finding: a clean run must
    // still say which slots it examined, or the next comparison sees them as missing.

@@ -45,7 +45,7 @@ export type ClashRunNotComparableReason =
   | 'element-not-examined'
   /** Both elements were matched, but not on opposite sides of the rule, so the pair was never tested. */
   | 'pair-not-examined'
-  /** The next run's coverage does not record which elements each rule side matched. */
+  /** The other run's coverage does not record which elements each rule side matched. */
   | 'coverage-not-recorded'
   /** The other run skipped this element pair: an engine exclusion (void/host/aggregate) or a user exclusion rule. */
   | 'excluded-in-other-run'
@@ -145,7 +145,12 @@ export function compareClashRunDocuments(previous: ClashRunDocument, next: Clash
     if (other.ambiguous.get(finding.a.slot)?.has(finding.a.key) || other.ambiguous.get(finding.b.slot)?.has(finding.b.key)) {
       reasons.push('ambiguous-identity');
     }
-    if (side === 'previous' && reasons.length === 0) reasons.push(...examinedReasons(finding, other));
+    if (reasons.length === 0) {
+      // Gone: the next run must show it tested the pair. New: the previous run must at least have
+      // recorded what it examined, or "not reported before" is no evidence the pair was looked at.
+      if (side === 'previous') reasons.push(...examinedReasons(finding, other));
+      else if (!other.coverage.get(finding.rule)) reasons.push('coverage-not-recorded');
+    }
     return reasons;
   };
   const notComparable = (side: 'previous' | 'next', finding: ClashRunFinding, reasons: ClashRunNotComparableReason[]) =>

@@ -16,10 +16,9 @@ import {
   type ClashRunExclusionRule,
   type ClashRunSlotBinding,
 } from '@ifc-lite/clash';
-import { gatheredModelIds } from './federation-identity';
 import { referencedModelTagIds } from './model-tag-inputs';
 import type { ClashExclusionRule } from './exclusions';
-import type { ClashRunHostContext, ModelLike } from './host-run-document';
+import type { ClashRunHostContext } from './host-run-document';
 import type { ClashRunListenerOptions } from './host-run-listeners';
 
 const buildInfo = () => ({
@@ -39,22 +38,6 @@ function stableJson(value: unknown): string {
     return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${stableJson(v)}`).join(',')}}`;
   }
   return JSON.stringify(value) ?? 'null';
-}
-
-/** Slot bindings for every model the run took elements from or a finding names. */
-export function slotBindings(result: ClashResult, models: ReadonlyMap<string, ModelLike>, options: ClashRunListenerOptions): ClashRunSlotBinding[] {
-  // The gathered models, not just the ones that produced a finding: a clean run must
-  // still say which slots it examined, or the next comparison sees them as missing.
-  const ids = new Set<string>(gatheredModelIds(result) ?? []);
-  for (const clash of result.clashes) { ids.add(clash.a.model); ids.add(clash.b.model); }
-  for (const coverage of result.ruleCoverage ?? []) for (const element of coverage.matchedElements ?? []) ids.add(element.model);
-  return [...ids].sort().map((id) => {
-    const name = models.get(id)?.name ?? id;
-    const pinned = options.resolveSlot?.({ id, name }) ?? null;
-    return pinned
-      ? { model: id, slot: pinned.slot, sha256: pinned.sha256, name, ...(pinned.label !== undefined ? { label: pinned.label } : {}) }
-      : { model: id, slot: id, sha256: null, name };
-  });
 }
 
 /**
@@ -100,9 +83,13 @@ function deepFreeze<T>(value: T): T {
   return value;
 }
 
-/** Build one frozen run document for a published result, under one registration's options. */
-export function buildRunDocument(result: ClashResult, context: ClashRunHostContext, options: ClashRunListenerOptions): ClashRunDocument {
-  const slots = slotBindings(result, context.models, options);
+/** Build one frozen run document under one registration's options, from the slots resolved at publish. */
+export function buildRunDocument(
+  result: ClashResult,
+  context: ClashRunHostContext,
+  options: ClashRunListenerOptions,
+  slots: readonly ClashRunSlotBinding[],
+): ClashRunDocument {
   return deepFreeze(buildClashRunDocument({
     result,
     slots,

@@ -18,7 +18,8 @@
  * Only types are imported from `@ifc-lite/clash` here.
  */
 
-import type { ClashResult, ClashRunDocument, ExclusionSet } from '@ifc-lite/clash';
+import type { ClashResult, ClashRunDocument, ClashRunSlotBinding, ExclusionSet } from '@ifc-lite/clash';
+import { gatheredModelIds } from './federation-identity';
 import type { ClashExclusionRule } from './exclusions';
 import type { ClashModelTagInputs } from './model-tag-inputs';
 import type { ClashSetFilters } from './set-filter';
@@ -36,6 +37,26 @@ export interface ClashRunHostContext {
   /** The user's exclusion rules; enabled ones are recorded and their findings left out. */
   exclusionRules: readonly ClashExclusionRule[];
   tagInputs: ClashModelTagInputs | null;
+}
+
+/**
+ * Slot bindings for every model the run took elements from or a finding names.
+ * Resolved when the run PUBLISHES, not when the builder chunk has loaded: a
+ * host's resolver may read its active round, which can move on meanwhile.
+ */
+export function slotBindings(result: ClashResult, models: ReadonlyMap<string, ModelLike>, options: ClashRunListenerOptions): ClashRunSlotBinding[] {
+  // The gathered models, not just the ones that produced a finding: a clean run must
+  // still say which slots it examined, or the next comparison sees them as missing.
+  const ids = new Set<string>(gatheredModelIds(result) ?? []);
+  for (const clash of result.clashes) { ids.add(clash.a.model); ids.add(clash.b.model); }
+  for (const coverage of result.ruleCoverage ?? []) for (const element of coverage.matchedElements ?? []) ids.add(element.model);
+  return [...ids].sort().map((id) => {
+    const name = models.get(id)?.name ?? id;
+    const pinned = options.resolveSlot?.({ id, name }) ?? null;
+    return pinned
+      ? { model: id, slot: pinned.slot, sha256: pinned.sha256, name, ...(pinned.label !== undefined ? { label: pinned.label } : {}) }
+      : { model: id, slot: id, sha256: null, name };
+  });
 }
 
 const isThenable = (value: unknown): value is PromiseLike<unknown> =>
@@ -64,17 +85,32 @@ export function notifyClashRunComplete(result: ClashResult, context: ClashRunHos
   const registrations = clashRunRegistrations();
   if (registrations.length === 0) return Promise.resolve();
   const captured: ClashRunHostContext = { ...context, presets: [...context.presets], exclusionRules: [...context.exclusionRules] };
+  // Per distinct options object: the slots now (or the resolver's failure), the document later.
+  const resolved = new Map<ClashRunListenerOptions, { slots: ClashRunSlotBinding[] } | { error: Error }>();
+  for (const { options } of registrations) {
+    if (resolved.has(options)) continue;
+    try {
+      resolved.set(options, { slots: slotBindings(result, captured.models, options) });
+    } catch (err) {
+      console.error('[clash] host slot resolver failed', err);
+      resolved.set(options, { error: asError(err) });
+    }
+  }
   return import('./host-run-build').then(
     ({ buildRunDocument }) => {
       const built = new Map<ClashRunListenerOptions, ClashRunCompleteEvent>();
       for (const { listener, options } of registrations) {
         let event = built.get(options);
         if (!event) {
-          try {
-            event = { ok: true, document: buildRunDocument(result, captured, options) satisfies ClashRunDocument };
-          } catch (err) {
-            console.error('[clash] host run document could not be built', err);
-            event = { ok: false, error: asError(err) };
+          const slots = resolved.get(options)!;
+          if ('error' in slots) event = { ok: false, error: slots.error };
+          else {
+            try {
+              event = { ok: true, document: buildRunDocument(result, captured, options, slots.slots) satisfies ClashRunDocument };
+            } catch (err) {
+              console.error('[clash] host run document could not be built', err);
+              event = { ok: false, error: asError(err) };
+            }
           }
           built.set(options, event);
         }

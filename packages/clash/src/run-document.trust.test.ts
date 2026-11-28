@@ -108,6 +108,16 @@ describe('validator and coverage edge cases', () => {
     expect(broken.ok ? [] : broken.errors).toContain('$.findings: expected an array');
   });
 
+  it('does not call a pair added when the previous run recorded no coverage', () => {
+    const blind = result([], ['D1'], ['W1']);
+    delete blind.ruleCoverage;
+    const previous = build({ result: blind });
+    const next = build({ result: result([clash('D1', 'W1')], ['D1'], ['W1']) });
+    const cmp = compareClashRunDocuments(previous, next);
+    expect(cmp.added).toEqual([]);
+    expect(cmp.notComparable.map((e) => [e.side, e.reasons])).toEqual([['next', ['coverage-not-recorded']]]);
+  });
+
   it('treats a two-sided rule without side-B keys as unrecorded coverage, not a self-clash', () => {
     const previous = build({ result: result([clash('D1', 'W1')], ['D1', 'W1'], ['W1']) });
     const partial = result([], ['D1', 'W1'], ['W1']);

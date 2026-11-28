@@ -74,6 +74,16 @@ describe('clash run host hook', () => {
     assert.equal(validateClashRunDocument(JSON.parse(JSON.stringify(document))).ok, true, 'document validates');
   });
 
+  it('resolves slots when the run publishes, not after the builder has loaded', async () => {
+    let round = 'round-1';
+    const events = await collect(async () => {
+      const pending = notifyClashRunComplete(result, context);
+      round = 'round-2'; // the host moves on while the builder chunk is still loading
+      await pending;
+    }, { resolveSlot: (model) => ({ slot: `${round}:${model.id}`, sha256: null }) });
+    assert.deepEqual(documentOf(events[0]).manifest.slots.map((s) => s.slot), ['round-1:m-arch', 'round-1:m-struct']);
+  });
+
   it('builds once per run and hands every listener with the same options the same object', async () => {
     const seen: ClashRunCompleteEvent[] = [];
     const offA = onClashRunComplete((event) => { seen.push(event); });

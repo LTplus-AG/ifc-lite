@@ -33,6 +33,13 @@ strict all-target Clippy. `npm` builds through root `pnpm build` then invokes
 later evidence, and any failure makes the qualification command fail. JSON
 summaries are local scratch; retain immutable logs and source identities with the release evidence.
 
+Two more modes cover review and documentation evidence. `review` runs
+`node scripts/retained-notices.mjs --check`, the notice, CLI-engine stager and
+browser-asset stager tests, and the mkdocs-nav, CI path-coverage, Rust semver
+and API-surface checks. `docs` installs `requirements-docs.txt` into a
+throwaway Python virtual environment, runs `pnpm docs:api` and then
+`mkdocs build --strict`, matching `docs.yml`.
+
 A dry-run is **not** a publication, Trusted Publisher test, wheel installation,
 or final linked-SDK audit. A missing registry dependency is a real blocker;
 never hide it with `--no-verify`, a path patch or by removing an optional edge.
@@ -199,8 +206,12 @@ installs only from the public registries and changes no registry state.
 ```sh
 node scripts/smoke-released-retained.mjs \
   --wasm 12.1.0 --cli 0.44.0 --crate 27.1.0 [--wheel latest|X.Y.Z|skip] \
-  [--toolchain NAME] [--retained-engine /abs/staged/engine] [--strict] [--out summary.json] [--keep]
+  [--toolchain NAME] [--retained-engine /abs/staged/engine] [--strict] [--out summary.json] [--keep] \
+  [--fixture model.ifc] [--expect-engine-manifest-sha256 HEX] [--expect-sdk-revision SHA] [--dry-run]
 ```
+
+`--fixture` replaces the default `tests/fixtures/cli-retained/layered-wall.ifc`.
+`--dry-run` prints the effective settings as JSON and exits without installing anything.
 
 `--wasm`, `--cli` and `--crate` are required explicit versions (the npm ones also
 accept `latest`, recorded as resolved). The scratch project is created under the

@@ -282,7 +282,7 @@ export class IfcServerClient {
       const start = performance.now();
       const response = await this.postParse(this.streamUrl(options, assertProcessedModelHash(file.sha256)), options?.signal);
       if (!response.ok) throw await this.handleError(response);
-      return consumeParquetStream(response, onBatch, start);
+      return consumeParquetStream(response, onBatch, start, options);
     }
 
     const fileSize = file instanceof File ? file.size : file.byteLength;
@@ -323,7 +323,7 @@ export class IfcServerClient {
         console.log(`[client] Stream: cache HIT by hash (${(performance.now() - probeStart).toFixed(0)}ms) - replaying without upload`);
         timer = setTimeout(() => controller.abort(), this.timeout);
         try {
-          return await consumeParquetStream(probe, onBatch, probeStart);
+          return await consumeParquetStream(probe, onBatch, probeStart, options);
         } finally {
           clearTimeout(timer);
         }
@@ -351,7 +351,7 @@ export class IfcServerClient {
       throw await this.handleError(response);
     }
 
-    return consumeParquetStream(response, onBatch, uploadStart);
+    return consumeParquetStream(response, onBatch, uploadStart, options);
   }
 
   /**
@@ -390,7 +390,7 @@ export class IfcServerClient {
     const payloadSize = payloadBuffer.byteLength;
 
     // Parse response (same format as upload path)
-    return this.parseParquetResponse(payloadBuffer, metadata, payloadSize);
+    return this.parseParquetResponse(payloadBuffer, metadata, payloadSize, options);
   }
 
   /**
@@ -448,7 +448,7 @@ export class IfcServerClient {
     const payloadSize = payloadBuffer.byteLength;
 
     // Parse response (same format as cached path)
-    return this.parseParquetResponse(payloadBuffer, metadata, payloadSize);
+    return this.parseParquetResponse(payloadBuffer, metadata, payloadSize, options);
   }
 
   /**
@@ -458,7 +458,8 @@ export class IfcServerClient {
   private async parseParquetResponse(
     payloadBuffer: ArrayBuffer,
     metadata: ParquetMetadataHeader,
-    payloadSize: number
+    payloadSize: number,
+    options?: ParseRequestOptions,
   ): Promise<ParquetParseResponse> {
     // Extract geometry and data model from combined Parquet format
     // Format: [geometry_len][geometry_data][data_model_len][data_model_data]
@@ -504,7 +505,7 @@ export class IfcServerClient {
 
     // Decode Parquet geometry
     const decodeStart = performance.now();
-    const meshes = await decodeParquetGeometry(geometryData);
+    const meshes = await decodeParquetGeometry(geometryData, options);
     const decodeTime = performance.now() - decodeStart;
 
     return {

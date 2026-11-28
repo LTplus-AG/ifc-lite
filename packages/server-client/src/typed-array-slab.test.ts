@@ -3,12 +3,13 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 /**
- * A decoded batch must not own one ArrayBuffer per mesh array. Each buffer adds
- * to the external memory that starts the browser's full garbage collections,
- * and each collection walks every model already loaded: a federation's later
- * slots then loaded several times slower than its first (see
- * `typed-array-slab.ts`). These pin the buffer count to the batch size, not to
- * its mesh count, so per-mesh allocation cannot come back unnoticed.
+ * With `sharedBuffers` (the viewer's choice), a decoded batch must not own one
+ * ArrayBuffer per mesh array. Each buffer adds to the external memory that
+ * starts the browser's full garbage collections, and each collection walks
+ * every model already loaded: a federation's later slots then loaded several
+ * times slower than its first (see `typed-array-slab.ts`). These pin the buffer
+ * count to the batch size, not to its mesh count. Without the option, the
+ * published behaviour stands: every mesh owns its buffers.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -49,11 +50,12 @@ function batch(count: number) {
 }
 
 const buffersOf = (views: ArrayBufferView[]) => new Set(views.map((view) => view.buffer)).size;
+const shared = { sharedBuffers: true };
 
-describe('buildMeshesFromTables allocation', () => {
+describe('buildMeshesFromTables allocation with sharedBuffers', () => {
   it('gives a batch of many meshes one buffer per array kind, not one per mesh', () => {
     for (const count of [1, 10, 2000]) {
-      const meshes = buildMeshesFromTables(...batch(count));
+      const meshes = buildMeshesFromTables(...batch(count), shared);
       expect(meshes).toHaveLength(count);
       expect(buffersOf(meshes.map((m) => m.positions))).toBe(1);
       expect(buffersOf(meshes.map((m) => m.normals))).toBe(1);
@@ -62,7 +64,7 @@ describe('buildMeshesFromTables allocation', () => {
   });
 
   it('keeps each mesh on its own, disjoint range with its own values', () => {
-    const meshes = buildMeshesFromTables(...batch(50));
+    const meshes = buildMeshesFromTables(...batch(50), shared);
     meshes.forEach((m, i) => {
       expect(Array.from(m.positions)).toEqual([i, 0, 0, i, 1, 0, i, 1, 1]);
       expect(Array.from(m.normals)).toEqual([i, 1, 0, i, 1, 0, i, 1, 0]);
@@ -81,9 +83,41 @@ describe('buildMeshesFromTables allocation', () => {
   });
 
   it('allocates exactly what the batch needs', () => {
-    const meshes = buildMeshesFromTables(...batch(40));
+    const meshes = buildMeshesFromTables(...batch(40), shared);
     expect(meshes[0].positions.buffer.byteLength).toBe(40 * 9 * 4);
     expect(meshes[0].indices.buffer.byteLength).toBe(40 * 3 * 4);
+  });
+});
+
+describe('buildMeshesFromTables allocation by default', () => {
+  it('gives every mesh array a buffer of its own, exactly its size', () => {
+    for (const options of [undefined, {}, { sharedBuffers: false }]) {
+      const meshes = buildMeshesFromTables(...batch(25), options);
+      for (const kind of ['positions', 'normals', 'indices'] as const) {
+        expect(buffersOf(meshes.map((m) => m[kind]))).toBe(25);
+        for (const m of meshes) {
+          expect(m[kind].byteOffset).toBe(0);
+          expect(m[kind].buffer.byteLength).toBe(m[kind].byteLength);
+        }
+      }
+    }
+  });
+
+  it('decodes the same values as the shared mode', () => {
+    const owned = buildMeshesFromTables(...batch(30)), viewed = buildMeshesFromTables(...batch(30), shared);
+    owned.forEach((m, i) => {
+      expect(Array.from(m.positions)).toEqual(Array.from(viewed[i].positions));
+      expect(Array.from(m.normals)).toEqual(Array.from(viewed[i].normals));
+      expect(Array.from(m.indices)).toEqual(Array.from(viewed[i].indices));
+    });
+  });
+
+  it('lets a caller transfer one mesh\'s buffer without touching the others', () => {
+    const meshes = buildMeshesFromTables(...batch(3));
+    structuredClone(meshes[1].positions.buffer, { transfer: [meshes[1].positions.buffer] });
+    expect(meshes[1].positions.length).toBe(0);
+    expect(Array.from(meshes[0].positions)).toEqual([0, 0, 0, 0, 1, 0, 0, 1, 1]);
+    expect(Array.from(meshes[2].positions)).toEqual([2, 0, 0, 2, 1, 0, 2, 1, 1]);
   });
 });
 

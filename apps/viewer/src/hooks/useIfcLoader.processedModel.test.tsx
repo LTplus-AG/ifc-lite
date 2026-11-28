@@ -54,6 +54,7 @@ const stored = (): ParquetParseResponse => ({
 let api: ReturnType<typeof useIfcLoader> | undefined;
 let root: Root, container: HTMLDivElement;
 let asked: unknown[], engineInits: number, uploads: number, servers: string[];
+let requestOptions: unknown[] = [];
 let restoreGpu: (() => void) | undefined;
 function Probe({ fromUrl = false }: { fromUrl?: boolean }) {
   api = useIfcLoader();
@@ -70,15 +71,15 @@ function loadStored(...[request, target, options]: Parameters<NonNullable<typeof
 }
 
 beforeEach(async () => {
-  asked = []; engineInits = 0; uploads = 0; servers = []; clearLoadReport();
+  asked = []; requestOptions = []; engineInits = 0; uploads = 0; servers = []; clearLoadReport();
   useViewerStore.getState().resetViewerState(); useViewerStore.getState().clearAllModels();
   useViewerStore.setState({ error: null, lastLoadRetry: null });
   mock.method(IfcServerClient.prototype, 'health', async () => ({ status: 'ok' }) as HealthResponse);
   mock.method(IfcServerClient.prototype, 'isParquetSupported', async () => true);
   // Records which server each request went to: the runtime URL must reach the client.
-  mock.method(IfcServerClient.prototype, 'parseParquet', async function (this: IfcServerClient, source: unknown) {
+  mock.method(IfcServerClient.prototype, 'parseParquet', async function (this: IfcServerClient, source: unknown, options?: unknown) {
     servers.push((this as unknown as { baseUrl: string }).baseUrl);
-    asked.push(source);
+    asked.push(source); requestOptions.push(options);
     return stored();
   });
   for (const upload of ['parse', 'parseParquetStream'] as const) {
@@ -202,10 +203,17 @@ it('retries decoder initialization and opens the same processed model (#10469)',
   assert.equal(engineInits, 0);
 });
 
+it('asks the one-shot route for shared batch buffers', async () => {
+  await act(async () => { root.render(<Probe />); });
+  await act(async () => { await loadStored({ ...processedModel, name: 'stored.ifc' }); });
+  assert.equal(model()?.loadState, 'complete');
+  assert.equal((requestOptions[0] as { sharedBuffers?: boolean } | undefined)?.sharedBuffers, true);
+});
+
 for (const bytes of [0, undefined, Number.NaN, '12'] as const) it(`a model of unknown size (${String(bytes)}) streams, since the streamed route works at any size`, async () => {
-  let streamed: unknown;
-  mock.method(IfcServerClient.prototype, 'parseParquetStream', async (source: unknown, onBatch: (batch: { meshes: ParquetParseResponse['meshes'] }) => void) => {
-    streamed = source;
+  let streamed: unknown, streamedOptions: { sharedBuffers?: boolean } | undefined;
+  mock.method(IfcServerClient.prototype, 'parseParquetStream', async (source: unknown, onBatch: (batch: { meshes: ParquetParseResponse['meshes'] }) => void, options?: { sharedBuffers?: boolean }) => {
+    streamed = source; streamedOptions = options;
     onBatch({ meshes: stored().meshes });
     const { meshes: _meshes, parquet_stats: _stats, data_model: _dataModel, ...rest } = stored();
     return rest;
@@ -213,6 +221,7 @@ for (const bytes of [0, undefined, Number.NaN, '12'] as const) it(`a model of un
   await act(async () => { root.render(<Probe />); });
   await act(async () => { await loadStored({ ...({ sha256, bytes } as ProcessedModelRef), name: 'stored.ifc' }); }); // '12' and NaN as a host calling from JS might
   assert.deepEqual(streamed, { sha256, bytes: 0 });
+  assert.equal(streamedOptions?.sharedBuffers, true, 'the viewer opts into shared batch buffers (server-client keeps owned buffers by default)');
   assert.deepEqual(asked, [], 'the one-shot route is not taken for an unknown size');
   assert.equal(model()?.loadState, 'complete');
   assert.equal(model()?.geometryResult?.meshes.length, 1);

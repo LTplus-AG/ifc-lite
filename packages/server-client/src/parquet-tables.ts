@@ -17,7 +17,7 @@
 import type { MeshData } from './types.js';
 import { meshColumns, numericColumn, transformFields } from './parquet-columns.js';
 import { applyInstanceRotation, readRotationColumns } from './parquet-rotation.js';
-import { meshSlabs } from './typed-array-slab.js';
+import { meshSlabs, type MeshBufferOptions } from './typed-array-slab.js';
 
 /**
  * Structural view of the bits of `apache-arrow`'s `Table` this module uses.
@@ -52,7 +52,7 @@ export interface ArrowTableLike {
 export function buildMeshesFromTables(
   meshArrow: ArrowTableLike,
   vertexArrow: ArrowTableLike,
-  indexArrow: ArrowTableLike
+  indexArrow: ArrowTableLike, options?: MeshBufferOptions, // `sharedBuffers`: see ParseRequestOptions
 ): MeshData[] {
   // Extract columns from mesh table
   const expressIds = numericColumn(meshArrow, 'express_id');
@@ -114,7 +114,7 @@ export function buildMeshesFromTables(
   // to tell a truncated v6 from a genuine v5, so absence reads as the identity
   // it is on a v5 blob (see `readRotationColumns`).
   const rotationCols = readRotationColumns(meshArrow, meshCount, 'identity');
-  const meshes: MeshData[] = new Array(meshCount), { positionSlab, normalSlab, indexSlab } = meshSlabs(meshCount, vertexStarts, vertexCounts, indexStarts, indexCounts);
+  const meshes: MeshData[] = new Array(meshCount), { positionSlab, normalSlab, indexSlab } = meshSlabs(meshCount, vertexStarts, vertexCounts, indexStarts, indexCounts, options);
 
   // Only consume the additive origin/geometry_class columns when all three
   // origin components are present AND parallel to the mesh rows — a short or

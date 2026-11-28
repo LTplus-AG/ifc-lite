@@ -9,6 +9,7 @@
  * Uses parquet-wasm for efficient Parquet parsing in the browser.
  */
 
+import type { MeshBufferOptions } from './typed-array-slab.js';
 import type { MeshData } from './types.js';
 import {
   buildMeshesFromTables,
@@ -97,14 +98,15 @@ interface MeshMetadata {
  * - [index_parquet_len:u32][index_parquet_data]
  *
  * @param data - Binary Parquet response from server
+ * @param options - `sharedBuffers`: see `ParseRequestOptions.sharedBuffers` (default: every mesh owns its buffers)
  * @returns Decoded MeshData array
  */
-export async function decodeParquetGeometry(data: ArrayBuffer): Promise<MeshData[]> {
+export async function decodeParquetGeometry(data: ArrayBuffer, options?: MeshBufferOptions): Promise<MeshData[]> {
   const { meshArrow, vertexArrow, indexArrow } = await readFlatTables(data);
   // Column semantics (including the additive origin / geometry_class columns of
   // issue #1841) live in `parquet-tables.ts` so they are unit-testable without
   // booting parquet-wasm. Everything above is wire framing.
-  return buildMeshesFromTables(meshArrow, vertexArrow, indexArrow);
+  return buildMeshesFromTables(meshArrow, vertexArrow, indexArrow, options);
 }
 
 /** The three tables of one flat geometry blob, as Arrow tables. */

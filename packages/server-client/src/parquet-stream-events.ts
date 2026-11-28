@@ -13,6 +13,7 @@
  * guarantee stops being observable on the client.
  */
 
+import type { MeshBufferOptions } from './typed-array-slab.js';
 import { decodeParquetGeometry } from './parquet-decoder.js';
 import { decodeCrossBatch, StreamShapeStore } from './parquet-stream-shapes.js';
 import type {
@@ -45,11 +46,13 @@ export const STREAM_ENDED_WITHOUT_TERMINAL_EVENT =
  * @param response - An OK response whose body is the SSE stream.
  * @param onBatch - Called once per decoded batch, for immediate rendering.
  * @param startedAt - `performance.now()` at request time, for the timing log.
+ * @param options - `sharedBuffers`: see `ParseRequestOptions.sharedBuffers`.
  */
 export async function consumeParquetStream(
   response: Response,
   onBatch: (batch: ParquetBatch) => void,
   startedAt: number,
+  options?: MeshBufferOptions,
 ): Promise<ParquetStreamResult> {
   if (!response.body) {
     throw new Error('No response body for streaming');
@@ -117,8 +120,8 @@ export async function consumeParquetStream(
               }
               const meshes =
                 vertex_base !== undefined && index_base !== undefined
-                  ? await decodeCrossBatch(bytes.buffer, shapes, vertex_base, index_base, event.batch_number)
-                  : await decodeParquetGeometry(bytes.buffer);
+                  ? await decodeCrossBatch(bytes.buffer, shapes, vertex_base, index_base, event.batch_number, options)
+                  : await decodeParquetGeometry(bytes.buffer, options);
               const decodeTime = performance.now() - decodeStart;
 
               total_meshes += meshes.length;

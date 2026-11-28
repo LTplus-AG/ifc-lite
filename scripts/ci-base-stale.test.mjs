@@ -293,6 +293,10 @@ ct('run #11350: the documented in-run CLI resolves an absent base against the su
   const unreadable = runFake({ baseRef: '', opts, ioOver: { pull: () => { throw new Error('HTTP 503'); } } });
   assert.equal(unreadable.rows[0].verdict, 'unknown');
   assert.deepEqual(unreadable.rows[0].reasons, ["the PR's base branch could not be read (HTTP 503)"]);
+  writeFileSync(join(dir, 'bundle.json'), '{');
+  const malformed = runAt('main');
+  assert.equal(malformed.rows[0].verdict, 'unknown');
+  assert.equal(malformed.rows[0].reasons[0].split(':')[0], 'harness');
 });
 
 ct('run: same-head PRs keep separate evidence with the legacy switch set (#11350)', () => {
@@ -457,6 +461,23 @@ ct('run, budget: the rate floor is re-read between PRs and stops the sweep', () 
   assert.equal(saved.lastMode, 'shadow');
 });
 
+ct('run #11350: budget-limited sweeps resume from the first unjudged PR', () => {
+  const prs = [STALE_PR, { ...STALE_PR, number: 7, headRefOid: 'head7' }, { ...STALE_PR, number: 8, headRefOid: 'head8' }];
+  const pass = (cacheData) => {
+    const left = [1000, RATE_FLOOR - 1];
+    return runFake({ prs, cacheData, remaining: () => left.shift() ?? 0 });
+  };
+  const first = pass({ version: 1, lastMode: 'on' });
+  const second = pass(first.saved);
+  const third = pass(second.saved);
+  assert.deepEqual([first, second, third].map(({ rows }) => rows.map((row) => [row.pr, row.verdict])), [
+    [[5, 'stale'], [7, 'unknown'], [8, 'unknown']],
+    [[7, 'stale'], [8, 'unknown'], [5, 'unknown']],
+    [[8, 'stale'], [5, 'unknown'], [7, 'unknown']],
+  ]);
+  assert.deepEqual(third.saved.released, { head5: true, head7: true, head8: true });
+});
+
 ct('run: under the floor at start nothing is read; the evidence file holds one skip row', () => {
   const { rows, reads, posts } = runFake({ gate: 'on', remaining: () => RATE_FLOOR });
   assert.deepEqual([reads, posts], [[], []]);
@@ -571,10 +592,30 @@ ct('evaluatePr: an unreadable main diff makes the Rust half unknown but keeps a 
 });
 
 ct('run: a replay (--pr-run / --main-sha) is logged, never posted, even with the gate on', () => {
-  for (const over of [{ prRun: 4503929569 }, { mainSha: 'tip00000001' }]) {
-    const { posts, reads } = runFake({ gate: 'on', opts: over });
-    assert.deepEqual([posts, reads], [[], []], JSON.stringify(over));
+  for (const [flag, value] of [['--pr-run', '4503929569'], ['--main-sha', 'tip00000001']]) {
+    assert.throws(() => parseArgs(['--sweep', flag, value]), /--sweep cannot replay/);
+    const opts = parseArgs(['--pr', '5', flag, value]);
+    const { posts, reads, rows } = runFake({ gate: 'on', opts, ioOver: {
+      pull: () => ({ head: { sha: 'head5', repo: { full_name: 'o/r' } }, base: { ref: 'main' } }),
+      prMeasurement: () => ({ runId: 4503929569, testedBase: 'base0000001', mergeSha: 'merge', families: [fam(900)] }),
+      movedSince: () => ({ files: ['apps/viewer/src/a.ts'], capped: false }),
+    } });
+    assert.deepEqual([posts, reads], [[], []], flag);
+    assert.equal(rows[0].verdict, 'fresh');
   }
+});
+
+ct('evaluatePr #11350: a replay classifies the tested merge diff before the live file list', () => {
+  const judge = (capped) => evaluatePr(fakeIo({
+    prFiles: () => ['docs/guide/a.md'],
+    prMeasurement: () => ({ runId: 42, testedBase: 'old-base', mergeSha: 'old-merge', families: [fam(900)] }),
+    movedSince: (base, tip) => {
+      assert.equal(base, 'old-base');
+      return { capped, files: tip === 'old-merge' ? ['rust/core/src/a.rs'] : ['rust/core/src/b.rs'] };
+    },
+  }), { pr: 5, prRun: 42, headSha: 'now', mainTip: 'tip', ceilings, globs });
+  assert.equal(judge(false).rust.verdict, 'stale');
+  assert.equal(judge(true).verdict, 'unknown');
 });
 
 // Review round 6 (PR #11350).
@@ -630,6 +671,7 @@ function ioOverGh(routes, options = {}) {
   const fakeGh = (args) => {
     const path = args[0] === 'api' ? args[1] : args.join(' ');
     paths.push(path);
+    // @source-text-assertion-ok Dispatches fake GitHub CLI requests by API route.
     for (const [prefix, answer] of routes) if (path.startsWith(prefix)) return typeof answer === 'function' ? answer(path) : answer;
     throw new Error(`unexpected gh call ${path}`);
   };
@@ -709,32 +751,56 @@ ct('io #11350: main measurements require a bundle and a measured tree matching t
   const artifacts = ['perf-ratchet-measured', 'perf-ratchet-measured-native'].map((name, i) => ({
     name, id: i + 2, created_at: '2026-11-28T00:25:00Z',
   }));
-  const check = (measuredTree, emptyBundle = false) => {
+  const setup = (measuredTree, { emptyBundle = false, badIds = [], older = false } = {}) => {
+    const newer = { ...marker, id: 2, workflow_run: { ...marker.workflow_run, id: 43 } };
     const { io } = ioOverGh([
       [`repos/o/r/git/commits/${requested}`, { tree: { sha: tree } }],
       [`repos/o/r/git/commits/${measured}`, { tree: { sha: measuredTree } }],
-      [`repos/o/r/actions/artifacts?name=tested-tree-${tree}`, { artifacts: [marker] }],
+      [`repos/o/r/actions/artifacts?name=tested-tree-${tree}`, { artifacts: older ? [newer, marker] : [marker] }],
       ['repos/o/r/actions/runs/42/artifacts?', { artifacts, total_count: artifacts.length }],
+      ['repos/o/r/actions/runs/43/artifacts?', { artifacts: [{ ...artifacts[0], id: 4 }], total_count: 1 }],
+      ['repos/o/r/actions/workflows/test.yml/runs?', { workflow_runs: [{ ...run, id: 42 }] }],
+      [`repos/o/r/commits/${measured}`, { parents: [{ sha: 'base0000001' }, { sha: 'head5' }] }],
       ['repos/o/r/actions/runs/42', run],
+      ['repos/o/r/actions/runs/43', run],
     ], {
       spawn: (_file, args) => {
-        const bundle = args[1].endsWith('/2/zip');
+        const id = Number(args[1].split('/').at(-2));
+        const bundle = id !== 3;
         const file = bundle && emptyBundle ? 'README.txt' : 'measurement.json';
-        writeFileSync(join(dir, file), file === 'README.txt' ? '' : JSON.stringify({
+        writeFileSync(join(dir, file), file === 'README.txt' ? '' : badIds.includes(id) ? '{}' : JSON.stringify({
           family: bundle ? 'bundle' : 'native-instructions', commit: measured,
-          measuredAt: run.run_started_at, metrics: [{ id: 'count', value: 10 }],
+          measuredAt: run.run_started_at, metrics: [{ id: 'eager', value: 10 }],
         }));
         return { status: 0, stdout: execFileSync('zip', ['-q', '-', file], { cwd: dir }) };
       },
     });
+    return io;
+  };
+  const check = (measuredTree, options) => {
+    const io = setup(measuredTree, options);
     return { result: io.mainMeasurementAt(requested), downloads: io.stats.downloads };
   };
   assert.deepEqual(check('d'.repeat(40)), { result: null, downloads: 2 });
-  assert.deepEqual(check(tree, true), { result: null, downloads: 1 });
+  assert.deepEqual(check(tree, { emptyBundle: true }), { result: null, downloads: 1 });
   const { result, downloads } = check(tree);
   assert.equal(downloads, 2);
   assert.equal(result.sha, requested);
   assert.deepEqual(result.families.map((m) => m.family), ['bundle', 'native-instructions']);
+  assert.equal(check(tree, { older: true, badIds: [4] }).result.runId, 42, 'an invalid newest bundle does not hide an older valid run');
+  assert.throws(() => check(tree, { badIds: [2] }), /invalid measured file/);
+  const limited = setup(tree, { older: true, badIds: [4] });
+  limited.setBudget(5);
+  assert.throws(() => limited.mainMeasurementAt(requested), BudgetError);
+
+  const brokenNative = setup(tree, { badIds: [3] });
+  const evidence = evaluatePr({
+    ...fakeIo({ prFiles: () => ['rust/core/src/a.rs'], movedSince: () => ({ files: ['rust/core/src/b.rs'], commits: 1, capped: false }) }),
+    prMeasurement: brokenNative.prMeasurement,
+  }, { pr: 5, headSha: 'head5', mainTip: 'tip00000001', ceilings, globs });
+  assert.equal(evidence.perf.verdict, 'unknown');
+  assert.equal(evidence.rust.verdict, 'stale', 'the valid bundle still establishes the tested base');
+  assert.deepEqual(evidence.rust.overlap, ['rust/core']);
 });
 
 ct('io: the in-run markers are paged past the first 100', () => {
@@ -789,7 +855,7 @@ ct('io: an unchanged PR head can change relevance when the base lands its ancest
   git('add', '-A');
   git('commit', '-qm', 'upper stack reverts Rust and edits docs');
   const head = git('rev-parse', 'HEAD');
-  const { io, paths } = ioOverGh([
+  const { io } = ioOverGh([
     ['repos/o/r/pulls/5/files', () => git('diff', '--name-only', `${base}...${head}`).split('\n').map(filename => ({ filename }))],
     ['repos/o/r/pulls/5', () => ({ head: { sha: head }, base: { ref: 'main', sha: base } })],
   ]);
@@ -802,7 +868,7 @@ ct('io: an unchanged PR head can change relevance when the base lands its ancest
   base = ancestor;
   assert.deepEqual(relevance(), [true, true]);
   assert.deepEqual(relevance(), [true, true]);
-  assert.equal(paths.filter(path => path.includes('/files?')).length, 2, 'a stable base snapshot still hits the cache');
+  assert.equal(io.stats.cacheHits, 1, 'a stable base snapshot still hits the cache');
 });
 
 ct('run, rollback: a rollback cut short resumes past the heads it already released', () => {

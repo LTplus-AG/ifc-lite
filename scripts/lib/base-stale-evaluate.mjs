@@ -10,18 +10,29 @@ import { matchesAny } from './ci-path-coverage.mjs';
  * Judge one PR. Never throws: a fault while gathering inputs is an `unknown`
  * verdict naming it, so one unreadable PR neither passes nor stops the sweep.
  */
-export function evaluatePr(io, { pr, headSha, mainTip, ceilings, globs, measured = null, prRun = null, baseRef = null, baseSha = null }) {
+export function evaluatePr(io, { pr, headSha, mainTip, ceilings, globs, measured = null, readMeasured = null, prRun = null, baseRef = null, baseSha = null }) {
   const record = { pr, head: headSha, mainTip, testedBase: null, prRun: null };
   try {
-    const files = io.prFiles(pr, headSha, baseRef, baseSha);
+    const replay = prRun ? io.prMeasurement(headSha, prRun, pr) : null;
+    let files;
+    if (prRun) {
+      record.prRun = prRun;
+      record.testedBase = replay?.testedBase ?? null;
+      const diff = replay?.testedBase && io.movedSince(replay.testedBase, replay.mergeSha);
+      if (!diff || diff.capped) throw new Error('the replayed run has no complete tested PR diff');
+      files = diff.files;
+    } else {
+      files = io.prFiles(pr, headSha, baseRef, baseSha);
+    }
     const rel = prRelevance(files, globs);
     const nativeRequired = files.some((file) => matchesAny(file, globs.nativeGlobs));
-    let prMeasured = null;
-    if (measured) {
+    let prMeasured = replay?.families ?? null;
+    measured ??= prRun ? null : readMeasured?.();
+    if (!prRun && measured) {
       prMeasured = measured.families.map(slim);
       record.testedBase = io.mergeParents(measured.mergeSha, headSha);
-    } else if (rel.perf || rel.rust) {
-      const m = io.prMeasurement(headSha, prRun, pr);
+    } else if (!prRun && (rel.perf || rel.rust)) {
+      const m = io.prMeasurement(headSha, null, pr);
       if (m) {
         prMeasured = m.families;
         record.testedBase = m.testedBase;

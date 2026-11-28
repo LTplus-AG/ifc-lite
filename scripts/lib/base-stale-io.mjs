@@ -21,13 +21,15 @@
  */
 
 import { execFileSync, spawnSync } from 'node:child_process';
-import { lstatSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { validateCeilingFile } from '../perf-ratchet/ceilings.mjs';
 import { join } from 'node:path';
-import { loadMeasuredFile, validateCeilingFile } from '../perf-ratchet/ceilings.mjs';
+import { readArtifactFamily } from './base-stale-artifacts.mjs';
 import { createDiffReaders } from './base-stale-diffs.mjs';
 import { gh } from './gh.mjs';
 
+export { MEASURED_FILE_MAX_BYTES, measuredJsonFiles } from './base-stale-artifacts.mjs';
 export { changedPaths, compareMoved } from './base-stale-diffs.mjs';
 
 export const MEASURED_ARTIFACTS = ['perf-ratchet-measured', 'perf-ratchet-measured-native'];
@@ -45,27 +47,6 @@ const NEGATIVE_TTL_MS = 2 * 60 * 60 * 1000;
 const TREE_RUN_CAP = 5;
 
 /** A read refused because this run has spent its API allowance. */
-/** Largest measured file read from an artifact; real ones are a few KB. */
-export const MEASURED_FILE_MAX_BYTES = 1024 * 1024;
-
-/**
- * The `.json` files an unzipped artifact holds, each a regular file under the
- * size cap. A PR run (a fork's included) uploads these artifacts itself, so a
- * symlink (to /dev/zero, or to a file on the runner) or a huge file is refused
- * instead of followed: the throw makes that PR's verdict `unknown`.
- */
-export function measuredJsonFiles(dir) {
-  const files = [];
-  for (const name of readdirSync(dir).filter((n) => n.endsWith('.json')).sort()) {
-    const path = join(dir, name);
-    const st = lstatSync(path);
-    if (!st.isFile()) throw new Error(`artifact file ${name} is not a regular file`);
-    if (st.size > MEASURED_FILE_MAX_BYTES) throw new Error(`artifact file ${name} is ${st.size} bytes, over the ${MEASURED_FILE_MAX_BYTES} cap`);
-    files.push(path);
-  }
-  return files;
-}
-
 export class BudgetError extends Error {
   constructor(what) {
     super(`API budget for this run spent before ${what}`);
@@ -159,14 +140,15 @@ export function createIo({ repo, cwd = process.cwd(), cache = null, now = () => 
         if (!art) continue;
         spend(`artifact ${name} of run ${runId}`);
         stats.downloads += 1;
-        const zip = spawn('gh', ['api', `repos/${repo}/actions/artifacts/${art.id}/zip`], { maxBuffer: 64 * 1024 * 1024 });
-        if (zip.status !== 0) throw new Error(`downloading artifact ${name} of run ${runId} failed: ${String(zip.stderr).trim()}`);
-        const out = join(dir, name);
-        mkdirSync(out);
-        writeFileSync(join(dir, `${name}.zip`), zip.stdout);
-        execFileSync('unzip', ['-q', '-o', join(dir, `${name}.zip`), '-d', out]);
         const family = name === MEASURED_ARTIFACTS[0] ? 'bundle' : 'native-instructions';
-        const matches = measuredJsonFiles(out).map(loadMeasuredFile).filter((m) => m.family === family);
+        let matches;
+        try {
+          matches = readArtifactFamily({ spawn, repo, art, name, runId, dir, family });
+        } catch (err) {
+          if (family === 'bundle' || err instanceof BudgetError) throw err;
+          console.log(`base-stale: run ${runId}: native measurement could not be read (${err.message.split('\n')[0]})`);
+          continue;
+        }
         if (matches.length !== 1 && family === 'bundle') return null;
         if (matches.length === 1 && (!families.length || matches[0].commit === families[0].commit)) families.push(slim(matches[0]));
       }
@@ -194,12 +176,20 @@ export function createIo({ repo, cwd = process.cwd(), cache = null, now = () => 
       .filter((a) => !a.expired && isOwnRun(a.workflow_run))
       .sort((a, b) => b.id - a.id)
       .slice(0, TREE_RUN_CAP);
+    let candidateFault;
     const measureTree = (id) => {
-      const families = runMeasurement(id);
-      return families && treeOf(families[0].commit) === tree ? families : null;
+      try {
+        const families = runMeasurement(id);
+        return families && treeOf(families[0].commit) === tree ? families : null;
+      } catch (err) {
+        if (err instanceof BudgetError) throw err;
+        candidateFault ??= err;
+        return null;
+      }
     };
     const picked = pickTreeMeasurement(candidates.map((a) => a.workflow_run.id), measureTree, MEASURED_ARTIFACTS.length);
     if (!picked) {
+      if (candidateFault) throw candidateFault;
       store.mainMeasurements[tree] = { attemptScoped: true, families: null, checkedAt: now() };
       return null;
     }
@@ -239,10 +229,13 @@ export function createIo({ repo, cwd = process.cwd(), cache = null, now = () => 
    */
   function prMeasurement(headSha, onlyRun = null, number = null) {
     if (onlyRun) {
-      const families = runMeasurement(onlyRun);
+      const run = api(`repos/${repo}/actions/runs/${onlyRun}`, `run ${onlyRun}`);
+      if (run.event !== 'pull_request' || run.path?.split('@')[0] !== '.github/workflows/test.yml'
+          || (number !== null && run.pull_requests?.length && !run.pull_requests.some((pr) => pr.number === number && pr.base?.ref === 'main'))) return null;
+      const families = runMeasurement(onlyRun, run);
       if (!families) return null;
       // A replay names a past run, whose head is not the PR's current one.
-      return { runId: onlyRun, mergeSha: families[0].commit, testedBase: mergeParents(families[0].commit, null), families };
+      return { runId: onlyRun, mergeSha: families[0].commit, testedBase: mergeParents(families[0].commit, run.head_sha), families };
     }
     const runs = api(
       `repos/${repo}/actions/workflows/test.yml/runs?head_sha=${headSha}&event=pull_request&per_page=20`,

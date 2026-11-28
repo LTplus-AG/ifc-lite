@@ -38,7 +38,8 @@
  *   node scripts/ci-base-stale.mjs --sweep [--cache <file>] [--json-out <file>]
  *   node scripts/ci-base-stale.mjs --pr <n> [--json-out <file>]
  *   node scripts/ci-base-stale.mjs --in-run --pr <n> --head-sha <sha> --merge-sha <sha> --measured-dir <dir>
- *   common: [--main-sha <sha>] [--pr-run <run id>] (replay a past decision; never posts) [--dry-run] (never post)
+ *   single PR: [--main-sha <sha>] [--pr-run <run id>] (replay a past decision; never posts)
+ *   common: [--dry-run] (never post)
  *
  * Env: GH_TOKEN, GITHUB_REPOSITORY, GITHUB_STEP_SUMMARY,
  * GITHUB_SERVER_URL/GITHUB_RUN_ID (status target link), HEAD_REPO (in-run fork check).
@@ -116,7 +117,12 @@ export function parseArgs(argv) {
   if (opts.mode === 'in-run' && !(opts.headSha && opts.mergeSha && opts.measuredDir)) {
     throw new Error('--in-run needs --head-sha, --merge-sha and --measured-dir');
   }
+  rejectSweepReplay(opts);
   return opts;
+}
+
+function rejectSweepReplay({ mode, mainSha, prRun }) {
+  if (mode === 'sweep' && (mainSha || prRun)) throw new Error('--sweep cannot replay with --main-sha or --pr-run');
 }
 
 /** Measurement job gating filters and the `rust` filter, read from test.yml. */
@@ -173,7 +179,7 @@ export function loadCache(path) {
  * It is emptied by any sweep with the gate `on` (which may hold again) and
  * once a complete shadow sweep settles `lastMode`.
  */
-function saveCache(path, store, liveHeads, lastMode, released) {
+function saveCache(path, store, liveHeads, lastMode, released, nextSweepPr) {
   if (!path) return;
   // Keys are a head SHA, or `<head>#<pr>` for the per-PR file lists.
   const live = (map) => Object.fromEntries(Object.entries(map ?? {}).filter(([key]) => !liveHeads || liveHeads.has(key.split('#')[0])));
@@ -187,6 +193,7 @@ function saveCache(path, store, liveHeads, lastMode, released) {
     posted: live(store.posted),
     released: live(released),
     lastMode,
+    nextSweepPr,
   }));
 }
 
@@ -209,6 +216,7 @@ function finish(opts, records, extra) {
 }
 
 export function run(opts, env = process.env, makeIo = createIo) {
+  rejectSweepReplay(opts);
   const repo = env.GITHUB_REPOSITORY;
   if (!repo) throw new Error('GITHUB_REPOSITORY is not set');
   const gateMode = 'shadow';
@@ -260,9 +268,13 @@ export function run(opts, env = process.env, makeIo = createIo) {
   }
 
   const inRun = opts.mode === 'in-run';
+  let nextSweepPr = cache?.nextSweepPr ?? null;
   let targets;
   if (sweep) {
     targets = candidates.prs.map((p) => ({ pr: p.number, headSha: p.headRefOid, fork: p.isCrossRepository, baseRef: p.baseRefName }));
+    const start = targets.findIndex((t) => t.pr === nextSweepPr);
+    if (start > 0) targets = [...targets.slice(start), ...targets.slice(0, start)];
+    if (!opts.dryRun) nextSweepPr = null;
   } else if (inRun) {
     targets = [{ pr: opts.pr, headSha: opts.headSha, fork: Boolean(env.HEAD_REPO) && env.HEAD_REPO !== repo, baseRef: env.GITHUB_BASE_REF || null }];
   } else {
@@ -280,6 +292,7 @@ export function run(opts, env = process.env, makeIo = createIo) {
       if (left !== null && left < RATE_FLOOR) stopped = `${left} core API requests left (floor ${RATE_FLOOR})`;
     }
     if (stopped) {
+      if (!opts.dryRun) nextSweepPr ??= t.pr;
       complete = false;
       records.push({ pr: t.pr, head: t.headSha, mainTip, verdict: 'unknown', reasons: [`not judged: ${stopped}`], trigger: opts.trigger ?? opts.mode, gateMode, evaluatedAt, fork: t.fork, posted: null });
       continue;
@@ -309,10 +322,10 @@ export function run(opts, env = process.env, makeIo = createIo) {
     let verdict;
     if (baseRef === 'main' && headSha) {
       // If the measurement directory is absent, use the newest earlier run.
-      const measured = inRun && existsSync(opts.measuredDir)
+      const readMeasured = () => inRun && existsSync(opts.measuredDir)
         ? { families: readdirSync(opts.measuredDir).filter((n) => n.endsWith('.json')).sort().map((f) => loadMeasuredFile(join(opts.measuredDir, f))), mergeSha: opts.mergeSha }
         : null;
-      verdict = evaluatePr(io, { pr: t.pr, headSha, mainTip, ceilings, globs, measured, prRun: opts.prRun ?? null, baseRef, baseSha });
+      verdict = evaluatePr(io, { pr: t.pr, headSha, mainTip, ceilings, globs, readMeasured, prRun: opts.prRun ?? null, baseRef, baseSha });
     } else {
       const outsideMain = Boolean(baseRef && baseRef !== 'main');
       const reason = outsideMain ? `PR targets ${baseRef}; advisory judging applies to main`
@@ -324,7 +337,10 @@ export function run(opts, env = process.env, makeIo = createIo) {
     // A verdict the budget cut short is no answer: post nothing, keep the
     // head's old status, and stop the sweep before it spends more.
     budgetCut ||= rec.budget === true;
-    if (budgetCut) stopped = 'API budget for this run spent';
+    if (budgetCut) {
+      stopped = 'API budget for this run spent';
+      if (sweep && !opts.dryRun) nextSweepPr = records.length ? t.pr : (targets[1]?.pr ?? t.pr);
+    }
     let status = null;
     // A replay (--pr-run / --main-sha) judges other evidence than the head's
     // current state: it is logged, never posted.
@@ -360,7 +376,7 @@ export function run(opts, env = process.env, makeIo = createIo) {
   const lastMode = sweep && complete && !opts.dryRun ? gateMode : (cache?.lastMode ?? null);
   // Single-PR runs carry the rollback's progress through untouched.
   const progress = !sweep ? (cache?.released ?? {}) : lastMode === 'shadow' ? {} : released;
-  saveCache(opts.cache, io.store, sweep ? new Set(records.map((r) => r.head).filter(Boolean)) : null, lastMode, progress);
+  saveCache(opts.cache, io.store, sweep ? new Set(records.map((r) => r.head).filter(Boolean)) : null, lastMode, progress, nextSweepPr);
   finish(opts, records, { gateMode, mainTip, evaluatedAt, stats: io.stats, allowance });
   return 0;
 }

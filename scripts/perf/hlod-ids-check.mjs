@@ -27,7 +27,7 @@ import { startViewerServer } from './viewer-load-probe.mjs';
 
 const { values: args } = parseArgs({ options: {
   model: { type: 'string' }, out: { type: 'string' }, 'hlod-px': { type: 'string', default: '2' }, zoom: { type: 'string', default: '1' },
-  arms: { type: 'string', default: 'truth,legacy,ids' },
+  arms: { type: 'string', default: 'truth,legacy,ids' }, width: { type: 'string', default: '1600' }, dist: { type: 'string' }, height: { type: 'string', default: '900' },
 } });
 if (!args.model || !args.out) { console.error('usage: --model FILE.ifc --out DIR [--hlod-px N] [--zoom K]'); process.exit(2); }
 const out = resolve(args.out); mkdirSync(out, { recursive: true });
@@ -57,7 +57,7 @@ async function pose(page, zoom) {
   await page.waitForFunction(() => typeof globalThis.__ifc_lite_viewer_store__?.getState().cameraCallbacks?.getViewpoint === 'function', null, { timeout: 60000 });
   await page.evaluate((k) => {
     const cam = globalThis.__ifc_lite_viewer_store__.getState().cameraCallbacks;
-    const v = cam.getViewpoint(); // the load's home pose const T = v.target, P = v.position;
+    const v = cam.getViewpoint(); /* the load's home pose */ const T = v.target, P = v.position;
     cam.applyViewpoint({ ...v, position: { x: T.x + (P.x - T.x) * k, y: T.y + (P.y - T.y) * k, z: T.z + (P.z - T.z) * k } }, false);
   }, zoom);
 }
@@ -112,11 +112,11 @@ const SCORE = async ({ a, t, bg, paint }) => {
   return { pixels: n, coverA: ca, coverTruth: ct, iou: uni ? inter / uni : 1, ghostPx: ghost, holePx: holes, diffFrac: diff / n, paintA: pa, paintTruth: pt };
 };
 
-const { server, baseUrl } = await startViewerServer(() => join(ROOT, 'apps/viewer/dist'));
+const { server, baseUrl } = await startViewerServer(() => resolve(args.dist ?? join(ROOT, 'apps/viewer/dist')));
 const results = {};
 try {
   for (const arm of args.arms.split(',')) {
-    const session = await launchGpu();
+    const session = await launchGpu({ viewport: { width: Number(args.width), height: Number(args.height) } });
     try {
       const load = await loadModel(session, baseUrl, [resolve(args.model)], { timeoutMs: 10 * 60000, url: `${baseUrl}/?perfTrace=1&${ARMS[arm]}` });
       // The settle check is a timing gate; the geometry is loaded, so a pixel check may go on (recorded).
@@ -135,6 +135,10 @@ try {
         const t = Object.fromEntries(results.truth.shots.map((s) => [s.name, s.png]));
         for (const s of shots) s.score = await page.evaluate(SCORE, { a: s.png, t: t[s.name], bg: t['isolate-none'], paint: PAINT });
       }
+    } catch (err) {
+      const keys = await session.page.evaluate(() => Object.keys(globalThis.__ifc_lite_viewer_store__?.getState().cameraCallbacks ?? {})).catch(() => null);
+      console.error(`${arm}: ${err.message}\ncameraCallbacks: ${JSON.stringify(keys)}\nconsole tail:\n${session.events.console.slice(-25).join('\n')}\npage errors: ${session.events.pageErrors.slice(-5).join('\n')}`);
+      throw err;
     } finally { await session.close(); }
   }
 } finally { server.close(); }

@@ -14,10 +14,12 @@ case "${1:-}" in
     node scripts/perf/huge-geometry-gen.mjs --scenario mixed-campus --elements 20000 --out "$W/models"
     ls -la apps/viewer/dist/index.html "$W/models" ;;
   check)
-    for m in "$W/models/mixed-campus-20k.ifc" apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc apps/viewer/public/samples/infra-bridge.ifc; do
+    # FROM=<checkout of a commit with the same viewer source>: reuse its dist and model (only scripts changed)
+    SRC=${FROM:-.}
+    for m in "$SRC/$W/models/mixed-campus-20k.ifc" apps/viewer/public/_fixtures/AC20-FZK-Haus.ifc apps/viewer/public/samples/infra-bridge.ifc; do
       name=$(basename "$m" .ifc)
       echo "=== $name"
-      node scripts/perf/hlod-ids-check.mjs --model "$m" --out "$W/out/$name" ${HLOD_PX:+--hlod-px "$HLOD_PX"} ${ZOOM:+--zoom "$ZOOM"} || echo "=== $name FAILED $?"
+      node scripts/perf/hlod-ids-check.mjs --model "$m" --out "$W/out/$name" --dist "$SRC/apps/viewer/dist" ${HLOD_PX:+--hlod-px "$HLOD_PX"} ${ZOOM:+--zoom "$ZOOM"} || echo "=== $name FAILED $?"
     done ;;
   *) echo "usage: $0 build|check" >&2; exit 2 ;;
 esac

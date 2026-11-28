@@ -54,7 +54,8 @@ describe('hosting page-view analytics honour the opt-out', () => {
   });
 
   it('is not injected before the first-visit notice, and is allowed once it was shown', () => {
-    assert.ok(added.hostingAnalyticsAllowed && consentAdded.markPrivacyNoticeShown);
+    assert.ok(added.hostingAnalyticsAllowed, 'hostingAnalyticsAllowed is exported');
+    assert.ok(consentAdded.markPrivacyNoticeShown, 'markPrivacyNoticeShown is exported');
     const before = scripts();
     render(<hosting.HostingAnalytics />);
     assert.equal(scripts(), before, 'no script before the notice');

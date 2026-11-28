@@ -134,7 +134,9 @@ describe('PostHog is not initialised before it may run', () => {
 
   it('before the first-visit notice: nothing; once it is shown: PostHog starts', () => {
     assert.ok(added.createAnalyticsStarter);
-    assert.ok(consentAdded.markPrivacyNoticeShown && consentAdded.isPrivacyNoticeShown && consentAdded.subscribeAnalyticsConsent);
+    assert.ok(consentAdded.markPrivacyNoticeShown, 'markPrivacyNoticeShown is exported');
+    assert.ok(consentAdded.isPrivacyNoticeShown, 'isPrivacyNoticeShown is exported');
+    assert.ok(consentAdded.subscribeAnalyticsConsent, 'subscribeAnalyticsConsent is exported');
     let inits = 0;
     const starter = added.createAnalyticsStarter({
       configured: true,
@@ -153,7 +155,8 @@ describe('PostHog is not initialised before it may run', () => {
   });
 
   it('opting back in starts PostHog without a reload; a build without a key never does', () => {
-    assert.ok(added.createAnalyticsStarter && consentAdded.subscribeAnalyticsConsent);
+    assert.ok(added.createAnalyticsStarter, 'createAnalyticsStarter is exported');
+    assert.ok(consentAdded.subscribeAnalyticsConsent, 'subscribeAnalyticsConsent is exported');
     let inits = 0;
     let unconfiguredInits = 0;
     consent.persistAnalyticsOptOut(true);

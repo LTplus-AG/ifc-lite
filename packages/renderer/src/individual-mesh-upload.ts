@@ -124,6 +124,16 @@ function writePieceVertices(interleaved: Float32Array, lanes: Uint32Array, first
 
 }
 
+/**
+ * What a copy's vertices were written from: every piece (weakly) and whether each was lattice-snapped. Its frame
+ * origin is the mesh's `rteOrigin`. `checked` is the pick-geometry revision it was last found current at.
+ */
+export interface CopyBuild { pieces: WeakRef<MeshData>[]; quantized: boolean[]; checked: number }
+const builds = new WeakMap<GPUBuffer, CopyBuild>();
+
+/** The build of the copy drawing `vertexBuffer`; undefined for any other buffer. */
+export function copyBuild(vertexBuffer: GPUBuffer): CopyBuild | undefined { return builds.get(vertexBuffer); }
+
 /** Upload finished geometry, retaining the frame origin separately from the f32 vertices. */
 function uploadGeometry(
   device: GPUDevice,
@@ -131,6 +141,8 @@ function uploadGeometry(
   indices: Uint32Array,
   first: MeshData,
   frame: IndividualMeshFrame,
+  pieces: readonly MeshData[] = [first],
+  frames: readonly IndividualMeshFrame[] = [frame],
 ): IndividualMeshGpu {
   const so = frame.sharedOrigin;
   const o = first.origin;
@@ -156,6 +168,7 @@ function uploadGeometry(
     throw error;
   }
 
+  builds.set(vertexBuffer, { pieces: pieces.map((piece) => new WeakRef(piece)), quantized: frames.map((f) => f.quantized), checked: -1 });
   const transform = MathUtils.identity();
   transform.m[12] = origin[0];
   transform.m[13] = origin[1];
@@ -270,7 +283,7 @@ export function uploadMergedMeshes(
         firstVertex += piece.positions.length / 3;
       }
       const representative = group.anchor;
-      uploaded.push({ ...uploadGeometry(device, interleaved, indices, representative, group.frame), representative, firstPiece: group.pieces[0], lastPiece: group.pieces[group.pieces.length - 1], pieces: group.pieces.length });
+      uploaded.push({ ...uploadGeometry(device, interleaved, indices, representative, group.frame, group.pieces, group.frames), representative, firstPiece: group.pieces[0], lastPiece: group.pieces[group.pieces.length - 1], pieces: group.pieces.length });
     }
   } catch (error) {
     for (const mesh of uploaded) {

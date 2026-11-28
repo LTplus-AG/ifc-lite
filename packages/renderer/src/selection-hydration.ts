@@ -35,6 +35,7 @@ import { MERGE_PIECES_ABOVE, uploadMergedMeshes, type IndividualMeshFrame } from
 import { pickPieceKey } from './pick-mesh-budget.js';
 import type { Scene } from './scene.js';
 import { recordSelectionSource, selectionHydrationOrder } from './selection-hydration-order.js';
+import { retireCopiesInStaleFrames } from './selection-copy-frames.js';
 import type { Mesh } from './types.js';
 
 /**
@@ -60,7 +61,8 @@ export interface MergedSelectionCoverage {
   ids?: ReadonlySet<number>;
 }
 
-type HydrationScene = Pick<Scene, 'getMeshes' | 'getMeshDataPieces' | 'getMeshDataPieceList' | 'getPickGeometryRevision' | 'removeMeshesWhere'>;
+type HydrationScene = Pick<Scene, 'getMeshes' | 'getMeshDataPieces' | 'getMeshDataPieceList' | 'getPickGeometryRevision' | 'removeMeshesWhere'>
+  & Partial<Pick<Scene, 'getIndividualMeshFrame'>>;
 
 interface MergedHighlights {
   /** Meshes of single-entity merges, per entity. */
@@ -203,6 +205,7 @@ export function retireStaleSelectionHydration(
 ): void {
   selectionHydrationOrder(scene).retain(scene, selected, modelIndex, itemFilterExpressId, itemFilterItemId);
   if (selected.size === 0) return;
+  retireCopiesInStaleFrames(scene, selected);
   const { byEntity: mergedByEntity, pools } = mergedHighlights(scene);
   // Only an entity that is or was merged needs the authored counts, so an
   // ordinary selection skips this walk (independent review of #9238).

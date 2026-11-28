@@ -26,6 +26,7 @@
  * rebuild destroys or replaces the buffers they borrow.
  */
 
+import type { BatchesHolding } from './full-detail-batches.js';
 import { batchEntityIdAnchor } from './entity-color-table.js';
 import { batchEntities } from './batch-entities.js';
 import { MathUtils } from './math.js';
@@ -202,6 +203,11 @@ function indexedCandidates(scene: BatchHighlightScene, list: readonly BatchedMes
     indexByScene.set(scene, index);
   }
   return index.candidates(ids);
+}
+
+/** `full-detail-batches.ts`'s lookup over this scene's entity -> batch index: the one the highlight's resync keeps. */
+export function indexedBatchesHolding(scene: BatchHighlightScene): BatchesHolding {
+  return (list, ids) => indexedCandidates(scene, list, ids).map((index) => [list[index]!, index] as const);
 }
 
 /** Whether the quantized highlight pipeline a batch waited for exists now (only quantized pipelines are built late). */

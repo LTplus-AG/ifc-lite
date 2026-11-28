@@ -181,7 +181,7 @@ import { RenderDegradationMonitor, type RenderDegradationInfo } from './render-d
 import { PostPassChain } from './post-pass-chain.js';
 import { buildSelectionOutlineFrame, hoverSources } from './selection-outline-frame.js';
 import { HoverMeshCache } from './hover-mesh-cache.js';
-import { HoverBatches } from './batch-highlight.js';
+import { HoverBatches, indexedBatchesHolding } from './batch-highlight.js';
 import { drawSelectionHighlights } from './selection-highlight-draw.js';
 import { addMergedSelectionMeshes } from './selection-hydration.js';
 import { recordSelectionSource } from './selection-hydration-order.js';
@@ -193,6 +193,7 @@ import { isEntityVisible } from './entity-visibility.js';
 import { ModelBoundsTracker, type ModelBoundsBox } from './model-bounds-tracker.js';
 import { resolveContributionThresholdPx, projectedAabbRadiusPx, projectedInstancedRadiusPx, type CullCameraState } from './contribution-cull.js';
 import { drawBatchIndices, partDraw, PartDraw, type LodPart } from './lod-parts.js';
+import { FullDetailBatches, fullDetailParts } from './full-detail-batches.js';
 import type { FrameStats } from './render-stats.js';
 import { SkyPass } from './sky-pass.js';
 import { skyShaderSource } from './shaders/sky.wgsl.js';
@@ -277,6 +278,7 @@ export class Renderer {
     /** GPU copies of the hovered entity for the hover outline (#5390); see hover-mesh-cache.ts. */
     private readonly hoverMeshes = new HoverMeshCache();
     private readonly hoverBatches = new HoverBatches();
+    private readonly fullDetail = new FullDetailBatches(); // highlighted entities' batches: never LOD1 or HLOD, so the highlight ties with them
     private readonly warnedHighlightUploads = new Set<string>();
     /** Device px per CSS px in the drawing buffer; CSS-px sizes scale by it (#5383). */
     private pixelRatio = 1;
@@ -1611,7 +1613,7 @@ export class Renderer {
         let frameBatchesFrustumCulled = 0;
         let frameBatchesContributionCulled = 0;
         let frameBatchesNotResident = 0;
-        let frameBatchesAtLod1 = 0;
+        let frameBatchesAtLod1 = 0, frameBatchesFullDetail = 0;
         let frameInstancedDrawn = 0;
         let frameInstancedFrustumCulled = 0;
         let frameInstancedContributionCulled = 0;
@@ -2239,11 +2241,8 @@ export class Renderer {
                     options.contributionCull,
                     interacting,
                 );
-                // LOD1 selection (issue #1682 phase 5): batches projecting below
-                // this draw their simplified index range. Shares the projection
-                // camera with contribution culling. Precedence is intentional:
-                // a batch below the CULL threshold is skipped entirely, so a
-                // lod threshold at or below the cull threshold never fires.
+                // LOD1 (issue #1682 phase 5): batches projecting below this draw their simplified indices, except a highlighted entity's (full-detail-batches.ts).
+                // Shares the cull camera; a batch below the CULL threshold is skipped, so a lod threshold at or below it never fires.
                 const lodScreenPx = options.lod && options.lod.screenPx > 0 ? options.lod.screenPx : 0;
                 const lodBatches = new Set<number>();
                 let cullCam: CullCameraState | null = null;
@@ -2299,6 +2298,7 @@ export class Renderer {
                         alpha: (b) => alphaForBatch(b, b.color[3]), colorOverrides, colorOverrideGen, emphasize: options.emphasizeOverrides === true, xrayActive: xray.active,
                         forEachPiece: (visit) => this.scene.forEachFlatMeshData(visit), requestRender: () => this.requestRender(),
                     }, flatMode);
+                const fullDetail = lodScreenPx > 0 || this.drawStream.engaged ? this.fullDetail.resolve(allBatchedMeshes, this.scene.getPickGeometryRevision(), selectedExpressIds, options.hoverOutline?.id ?? null, this.drawStream.highlightIndex ? indexedBatchesHolding(this.scene) : undefined) : undefined; frameBatchesFullDetail = fullDetail?.size ?? 0;
                 for (let batch of loopBatches) {
                     // Frustum culling: skip batches entirely outside the camera view
                     if (batch.bounds) {
@@ -2318,7 +2318,7 @@ export class Renderer {
                             }
                             // LOD1: small-but-visible batches draw the simplified
                             // index range over the same vertices.
-                            if (lodScreenPx > 0 && px < lodScreenPx && batch.lod1IndexBuffer) {
+                            if (lodScreenPx > 0 && px < lodScreenPx && batch.lod1IndexBuffer && !fullDetail?.has(batch)) {
                                 lodBatches.add(batch.id);
                             }
                         }
@@ -2444,7 +2444,7 @@ export class Renderer {
                     const useLod1 = batch.lod1IndexBuffer && batch.lod1IndexCount && lodBatches.has(batch.id);
                     pass.setBindGroup(0, batch.bindGroup);
                     pass.setVertexBuffer(0, batch.vertexBuffer);
-                    const drawn = drawBatchIndices(pass, batch, !!useLod1, choosePart); // draw calls * 2 + LOD1 bit (lod-parts.ts)
+                    const drawn = drawBatchIndices(pass, batch, !!useLod1, fullDetail?.has(batch) ? fullDetailParts(choosePart) : choosePart); // draw calls * 2 + LOD1 bit (lod-parts.ts)
                     if (drawn & 1) frameBatchesAtLod1++;
                     frameDrawCalls += drawn >> 1;
                     if (drawn > 0) frameBatchesDrawn++; else if (batch.lodParts) frameBatchesContributionCulled++; // 0: every part culled (1: only an empty LOD1 range)
@@ -2478,7 +2478,7 @@ export class Renderer {
                         pass, mode: flatMode, allowBundles: !ortho, ortho: ortho && this.pipeline.visibility.getBinding() ? this.pipeline.visibility : undefined,
                         visible: (min, max) => isRteAabbVisible(frustum, { min, max }, rteCullCamera),
                         projectedPx: (min, max) => (cullCam ? projectedAabbRadiusPx(min, max, cullCam) : Infinity),
-                        contribPx: contribThresholdPx, lodPx: lodScreenPx, eye: this.camera.getPosition(), interacting,
+                        contribPx: contribThresholdPx, lodPx: lodScreenPx, eye: this.camera.getPosition(), interacting, fullDetail,
                         projection: { ortho, orthoHalfHeight: this.camera.getOrthoSize(), fovYRadians: this.camera.getFOV(), viewportHeightPx: this.canvas.height / this.pixelRatio },
                     }, (b) => this.scene.recordBatchDrawn(b));
                     frameDrawCalls += frameStream.draws; frameBatchesDrawn += frameStream.draws;
@@ -2926,7 +2926,7 @@ export class Renderer {
                 batchesFrustumCulled: frameBatchesFrustumCulled,
                 batchesContributionCulled: frameBatchesContributionCulled,
                 batchesNotResident: frameBatchesNotResident,
-                batchesAtLod1: frameBatchesAtLod1,
+                batchesAtLod1: frameBatchesAtLod1, batchesFullDetail: frameBatchesFullDetail,
                 instancedDrawn: frameInstancedDrawn,
                 instancedFrustumCulled: frameInstancedFrustumCulled,
                 instancedContributionCulled: frameInstancedContributionCulled,

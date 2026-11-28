@@ -54,6 +54,21 @@ function spannedCells(min: readonly number[], max: readonly number[], cell: numb
   return out;
 }
 
+/** Add the key of every HLOD node above level-1 cell `c`. */
+function markCell(h: HlodTree, into: Set<string>, c: Vec3): void {
+  for (let level = 1; level < h.levels.length; level++) {
+    const s = level - 1;
+    into.add(nodeKey(level, [c[0] >> s, c[1] >> s, c[2] >> s]));
+  }
+}
+
+/** Add the key of every HLOD node over any level-1 cell the AABB touches; false (nothing added) past `MAX_SPAN_CELLS`. */
+export function markHlodBounds(h: HlodTree, into: Set<string>, min: readonly number[], max: readonly number[], cell: number): boolean {
+  const cells = spannedCells(min, max, cell);
+  if (cells) for (const c of cells) markCell(h, into, c);
+  return cells !== null;
+}
+
 /**
  * Link every leaf to each level-1 HLOD node its bounds touch (growing node
  * bounds to cover it), and mark dirty every node touched by a legacy-path or
@@ -67,16 +82,8 @@ export function linkHlodLeaves(h: HlodTree | null, nodes: StreamNode[], legacy: 
   states: readonly StreamBatchState[], cell: number): HlodLinks {
   const links: HlodLinks = { leavesByParent: new Map(), uncovered: [], dirty: new Set(), allDirty: false };
   if (!h) { links.uncovered = nodes; return links; }
-  const mark = (c: Vec3): void => {
-    for (let level = 1; level < h.levels.length; level++) {
-      const s = level - 1;
-      links.dirty.add(nodeKey(level, [c[0] >> s, c[1] >> s, c[2] >> s]));
-    }
-  };
-  const markBounds = (min: readonly number[], max: readonly number[]): void => {
-    const cells = spannedCells(min, max, cell);
-    if (cells) for (const c of cells) mark(c); else links.allDirty = true;
-  };
+  const mark = (c: Vec3): void => markCell(h, links.dirty, c);
+  const markBounds = (min: readonly number[], max: readonly number[]): void => { if (!markHlodBounds(h, links.dirty, min, max, cell)) links.allDirty = true; };
   for (const b of legacy) if (b.bounds) markBounds(b.bounds.min, b.bounds.max);
   for (let i = 0; i < members.length; i++) if (states[i]!.overrideBits !== 0) { const bb = members[i]!.bounds!; markBounds(bb.min, bb.max); }
   for (const leaf of nodes) {

@@ -628,12 +628,12 @@ export class Scene {
     return { sharedOrigin: this.getSharedFrameOrigin(meshData.modelIndex, meshData), quantized: this.isMeshQuantized(meshData) };
   }
 
-  /** Whether THIS mesh's source batch renders quantized — drives the hydrated-mesh
-   *  lattice snap in createMeshFromData (an f32 batch must NOT snap). Same rule
-   *  as overlay/partial batches; global flag while unbucketed. */
+  /** Whether the batch drawing THIS mesh renders quantized — drives the hydrated-mesh lattice snap in createMeshFromData (an f32 batch must NOT
+   *  snap): its streaming fragment while one draws it (a fragment past the lattice range or #9068's collapse stays f32), else its bucket's batch.
+   *  Same rule as overlay/partial batches; global flag while neither exists. */
   isMeshQuantized(meshData: MeshData): boolean {
     const source = this.derivedMeshProvenance.placedSourceFor(meshData, this.modelTranslations);
-    return inheritedQuantization(this.quantizedBatchesEnabled, this.meshDataBucket.get(source)?.batchedMesh) !== 'off';
+    return inheritedQuantization(this.quantizedBatchesEnabled, this.fragmentPieces.fragmentOf(source) ?? this.meshDataBucket.get(source)?.batchedMesh) !== 'off';
   }
 
   /** Set (or clear) the HOST budget in bytes for bucket CPU geometry. */

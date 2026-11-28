@@ -4,15 +4,32 @@
 
 /** Per-frame node culling, HLOD proxy selection and the optional draw budget of the draw stream. */
 import type { HlodNode, HlodTree } from './draw-stream-hlod.js';
-import type { HlodLinks } from './draw-stream-nodes.js';
+import { markHlodBounds, type HlodLinks } from './draw-stream-nodes.js';
 import type { BatchedMesh } from './types.js';
-import { aabbDist2, pxPerMetre, type StreamFrameInputs, type StreamFrameStats, type StreamItem, type StreamNode, MemberPick } from './draw-stream-types.js';
+import { aabbDist2, pxPerMetre, type FullDetailParts, type StreamFrameInputs, type StreamFrameStats, type StreamItem, type StreamNode, MemberPick } from './draw-stream-types.js';
 import { memberPicks } from './draw-stream-picks.js';
+
+/** Per full-detail part: the HLOD node keys over its batches (null: too wide to mark, so no proxy draws), for the tree it was marked on. */
+const pinsByPart = new WeakMap<FullDetailParts, { h: HlodTree; keys: Set<string> | null }>();
+
+/**
+ * HLOD nodes over a full-detail batch (full-detail-batches.ts) refine instead of drawing their proxy: it holds clustered, not LOD0,
+ * triangles. Marked once per part and tree: a hover change marks the hover's batches, never the selection's again.
+ */
+export function pinnedNodes(h: HlodTree, part: FullDetailParts): ReadonlySet<string> | null {
+  let pins = pinsByPart.get(part);
+  if (pins?.h !== h) {
+    let keys: Set<string> | null = new Set();
+    for (const b of part) if (b.bounds && !markHlodBounds(h, keys, b.bounds.min, b.bounds.max, h.leafCell)) { keys = null; break; }
+    pinsByPart.set(part, pins = { h, keys });
+  }
+  return pins.keys ?? null;
+}
 
 /**
  * The nodes to draw this frame: frustum- and contribution-culled leaves, and
  * where a clean HLOD node's error projects below `hlodPx`, its proxy instead
- * of the subtree.
+ * of the subtree (never over a `fullDetail` batch).
  */
 export function collectStreamItems(f: StreamFrameInputs, nodes: readonly StreamNode[], h: HlodTree | null, links: HlodLinks, hlodPx: number,
   members: readonly BatchedMesh[]): StreamItem[] {
@@ -30,10 +47,12 @@ export function collectStreamItems(f: StreamFrameInputs, nodes: readonly StreamN
     for (const leaf of nodes) visitLeaf(leaf);
     return items;
   }
+  const pins = (f.fullDetail?.parts ?? []).map((part) => pinnedNodes(h, part) ?? null);
+  const pinned = (key: string): boolean => pins.some((keys) => keys === null || keys.has(key));
   const visit = (n: HlodNode): void => {
     if (n.state === 'empty' && n.children.length === 0 && !links.leavesByParent.has(n.key)) return;
     if (!f.visible(n.min, n.max)) return;
-    if (n.state === 'ready' && !links.allDirty && !links.dirty.has(n.key) && !h.outsideNodes.has(n.key)) {
+    if (n.state === 'ready' && !links.allDirty && !pinned(n.key) && !links.dirty.has(n.key) && !h.outsideNodes.has(n.key)) {
       const d = Math.sqrt(aabbDist2(n.min, n.max, f.eye));
       if (d > 0 && n.error * pxPerMetre(f.projection, d) < hlodPx) { items.push({ proxy: n, d: d * d, px: f.projectedPx(n.min, n.max) }); return; }
     }

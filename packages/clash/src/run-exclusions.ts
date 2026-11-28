@@ -31,11 +31,28 @@ export type ClashRunExclusionRule =
   | { kind: 'typePair'; a: string; b: string }
   | { kind: 'elementKeyPair'; a: string; b: string };
 
-/** Whether `rule` covers a clash between elements with these types and identities. */
-export function exclusionRuleCovers(rule: ClashRunExclusionRule, a: { type: string; identity: string }, b: { type: string; identity: string }): boolean {
-  if (rule.kind === 'type') return a.type === rule.type || b.type === rule.type;
-  if (rule.kind === 'typePair') return pairKey(a.type, b.type) === pairKey(rule.a, rule.b);
-  return pairKey(a.identity, b.identity) === pairKey(rule.a, rule.b);
+/** A run's user exclusion rules as lookup sets, built once: each covered-check is O(1), not O(rules). */
+export interface ClashRunExclusionIndex {
+  types: Set<string>;
+  typePairs: Set<string>;
+  elementPairs: Set<string>;
+}
+
+/** Index user exclusion rules by kind (type, order-independent type pair, element pair). */
+export function indexExclusionRules(rules: readonly ClashRunExclusionRule[]): ClashRunExclusionIndex {
+  const index: ClashRunExclusionIndex = { types: new Set(), typePairs: new Set(), elementPairs: new Set() };
+  for (const rule of rules) {
+    if (rule.kind === 'type') index.types.add(rule.type);
+    else (rule.kind === 'typePair' ? index.typePairs : index.elementPairs).add(pairKey(rule.a, rule.b));
+  }
+  return index;
+}
+
+/** Whether an indexed rule covers a clash between elements with these types and identities. */
+export function exclusionIndexCovers(index: ClashRunExclusionIndex, a: { type: string; identity: string }, b: { type: string; identity: string }): boolean {
+  return index.types.has(a.type) || index.types.has(b.type)
+    || (index.typePairs.size > 0 && index.typePairs.has(pairKey(a.type, b.type)))
+    || (index.elementPairs.size > 0 && index.elementPairs.has(pairKey(a.identity, b.identity)));
 }
 
 /** Element types a run recorded for its type rules: slot -> key -> type. See `ClashRunManifest.exclusionTypes`. */
@@ -52,11 +69,12 @@ export const isTypeRule = (rule: ClashRunExclusionRule): boolean => rule.kind !=
  * `types` had no type any rule names.
  */
 export function matchesExclusionRule(
-  rules: readonly ClashRunExclusionRule[],
+  rules: readonly ClashRunExclusionRule[] | ClashRunExclusionIndex,
   finding: Pick<ClashRunFinding, 'a' | 'b'>,
   types?: ClashRunExclusionTypes,
 ): boolean {
-  if (rules.length === 0) return false;
+  const index = Array.isArray(rules) ? indexExclusionRules(rules) : (rules as ClashRunExclusionIndex);
+  if (index.types.size === 0 && index.typePairs.size === 0 && index.elementPairs.size === 0) return false;
   const typeOf = (end: ClashRunEndpoint): string => {
     if (!types) return end.type;
     const bySlot = Object.hasOwn(types, end.slot) ? types[end.slot] : undefined;
@@ -65,7 +83,7 @@ export function matchesExclusionRule(
   const side = (end: ClashRunEndpoint) => ({ type: typeOf(end), identity: clashElementIdentity({ key: end.key, ref: 0 }) });
   const a = side(finding.a);
   const b = side(finding.b);
-  return rules.some((rule) => exclusionRuleCovers(rule, a, b));
+  return exclusionIndexCovers(index, a, b);
 }
 
 /**

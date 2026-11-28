@@ -52,6 +52,11 @@ interface Registration {
   options: ClashRunListenerOptions;
 }
 
+/**
+ * Module-global, not per `mountViewer` handle: the viewer is one app per page
+ * (one store, one clash engine), so every handle on the page sees the same
+ * runs. A host that mounts twice registers once.
+ */
 const registrations = new Set<Registration>();
 /** Shared by listeners registered without options, so they also share one document. */
 const NO_OPTIONS: ClashRunListenerOptions = Object.freeze({});

@@ -67,19 +67,23 @@ import {
   compareClashRunDocuments,
   type ClashResult,
   type ClashReview,
+  type ClashRule,
   type ClashRunDocument,
   type ExclusionSet,
 } from '@ifc-lite/clash';
 
 declare const result: ClashResult;            // a finished run
 declare const exclusions: ExclusionSet;       // the exclusions it ran with
+declare const rules: ClashRule[];             // the rules it ran
 declare const archModelId: string, mepModelId: string, archSha: string, mepSha: string;
 declare const previousRun: ClashRunDocument;  // the previous round, read back from storage
 declare const previousDecisions: Record<string, ClashReview>;
 
 const run = buildClashRunDocument({
   result,
+  rules,                                      // the rules as given to the engine (rulesRun drops explicit members)
   exclusions,
+  exclusionRules: [],                         // the user's exclusion rules; [] when there are none (omitted = unknown)
   slots: [{ slot: 'arch', model: archModelId, sha256: archSha }, { slot: 'mep', model: mepModelId, sha256: mepSha }],
   labels: ['browser-submitted'],
 });
@@ -96,8 +100,10 @@ not report is "no longer detected" only when that run's coverage shows both
 elements on opposite sides of the same rule and it did not exclude the pair; otherwise it
 is "not comparable", with the reason. Pass `exclusions`, or every finding that
 disappears is "not comparable" (`exclusions-not-recorded`). Pass the user's
-`exclusionRules` too: findings they cover are left out of the document, and a
-pair one run excluded is never reported as added or fixed. Detection change is
+`exclusionRules` too, `[]` when there are none: findings they cover are left
+out of the document, and a pair one run excluded is never reported as added or
+fixed. Omitted, they are recorded as unknown and every vanished finding is "not
+comparable". Detection change is
 separate from review status (open / resolved / accepted).
 
 `CLASH_RUN_DOCUMENT_JSON_SCHEMA` is the document's JSON Schema (version 1 is

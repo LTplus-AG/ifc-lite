@@ -11,7 +11,7 @@
 import { describe, it, expect } from 'vitest';
 import type { Clash, ClashElementRef, ClashResult, ClashRule } from './types.js';
 import { slotPairKey } from './review.js';
-import { buildClashRunDocument, type BuildClashRunDocumentInput, type ClashRunSlotBinding } from './run-document.js';
+import { buildClashRunDocument, type BuildClashRunDocumentInput, type ClashRunExclusionRule, type ClashRunSlotBinding } from './run-document.js';
 import { validateClashRunDocument } from './run-document-schema.js';
 import { carryForwardReviews, compareClashRunDocuments } from './run-compare.js';
 
@@ -197,6 +197,26 @@ describe('type exclusions and rule forms across runs', () => {
     expect(res.ok ? [] : res.errors).toEqual(['$.manifest.coverage[1].rule: duplicate coverage entry for "r"']);
   });
 
+  it('without the rules as given, describes an explicit-member side by the keys its coverage matched', () => {
+    // The engine's rulesRun has no membersA; coverage says side A came from explicit members.
+    const withMembers = (keys: string[]): ClashResult => {
+      const r = result([clash('D1', 'W1')], ['D1'], ['W1']);
+      r.ruleCoverage = [{ ...r.ruleCoverage![0], fromMembersA: true, matchedKeysA: keys }];
+      return r;
+    };
+    const narrow = build({ result: withMembers(['D1']) });
+    const wider = build({ result: withMembers(['D1', 'D2']) });
+    expect(narrow.manifest.rules.items[0].explicitMembers.a).toBe(true);
+    expect(narrow.manifest.rules.items[0].revision).not.toBe(wider.manifest.rules.items[0].revision);
+    const carried = carryForwardReviews(narrow, wider, { [narrow.findings[0].key!]: { status: 'accepted' } });
+    expect(carried.reviews).toEqual({});
+    expect(carried.notCarried[0]).toMatchObject({ reason: 'not-comparable', reasons: ['rule-revision-changed'] });
+    // Members used but no keys recorded either: refused rather than revisioned by its selectors.
+    const unknown = withMembers([]);
+    delete unknown.ruleCoverage![0].matchedKeysA;
+    expect(() => build({ result: unknown })).toThrow(/used explicit members/);
+  });
+
   it('records explicit membership from the rules as given, and refuses one-sided coverage for a two-sided rule', () => {
     const given: ClashRule = { ...RULE, membersA: ['m-mep:2'] };
     const doc = build({ result: result([], ['D1'], ['W1']), rules: [given], ruleMemberships: { r: 'filter: ducts' } });
@@ -249,20 +269,58 @@ describe('exclusions in run documents', () => {
 });
 
 describe('compareClashRunDocuments at scale', () => {
-  it('compares 100k findings in linear time', () => {
-    const n = 100_000;
+  const pairsOf = (n: number) => {
     const ducts = Array.from({ length: n }, (_, i) => `D${i}`);
     const walls = Array.from({ length: n }, (_, i) => `W${i}`);
     const pairs = (from: number, to: number) => ducts.slice(from, to).map((d, i) => clash(d, walls[from + i]));
-    const exclusions = new Set<string>();
-    const previous = build({ result: result(pairs(0, n), ducts, walls), exclusions });
-    // Half are gone (each needs the coverage check), half persist.
-    const next = build({ result: result(pairs(n / 2, n), ducts, walls), exclusions });
-    const started = performance.now();
-    const cmp = compareClashRunDocuments(previous, next);
-    const elapsed = performance.now() - started;
-    expect(cmp.summary).toEqual({ added: 0, persistent: n / 2, noLongerDetected: n / 2, notComparable: 0 });
-    // The quadratic version took ~56 s here; linear is well under a second. Generous for slow CI.
-    expect(elapsed).toBeLessThan(10_000);
+    return { ducts, walls, pairs };
+  };
+  /** Half gone (each through the coverage check), half persistent; `rules` user exclusions in the next run. */
+  const scenario = (n: number, rules: ClashRunExclusionRule[] = []) => {
+    const { ducts, walls, pairs } = pairsOf(n);
+    const previous = build({ result: result(pairs(0, n), ducts, walls) });
+    // Element types supplied (none of them is a type the rules name), so type rules can be judged.
+    const next = build({ result: result(pairs(n / 2, n), ducts, walls), exclusionRules: rules, elementTypes: [] });
+    return { previous, next };
+  };
+  const timed = (run: () => void) => {
+    let best = Infinity;
+    for (let i = 0; i < 3; i += 1) {
+      const started = performance.now();
+      run();
+      best = Math.min(best, performance.now() - started);
+    }
+    return best;
+  };
+
+  it('compares 100k findings in time linear in their number', () => {
+    const small = scenario(10_000);
+    const large = scenario(100_000);
+    const cmp = compareClashRunDocuments(large.previous, large.next);
+    expect(cmp.summary).toEqual({ added: 0, persistent: 50_000, noLongerDetected: 50_000, notComparable: 0 });
+    const tSmall = timed(() => compareClashRunDocuments(small.previous, small.next));
+    const tLarge = timed(() => compareClashRunDocuments(large.previous, large.next));
+    // 10x the findings: linear is ~10x; the quadratic version was ~100x (56 s at 100k).
+    expect(tLarge).toBeLessThan(tSmall * 40 + 200);
+  }, 120_000);
+
+  it('keeps thousands of user exclusion rules O(1) per finding, in the builder and the comparison', () => {
+    const n = 20_000;
+    // 5k element-pair rules (and some type rules) that match no finding, so every finding is checked against all.
+    const rules: ClashRunExclusionRule[] = [
+      ...Array.from({ length: 5_000 }, (_, i) => ({ kind: 'elementKeyPair' as const, a: `X${i}`, b: `Y${i}` })),
+      ...Array.from({ length: 500 }, (_, i) => ({ kind: 'typePair' as const, a: `IfcA${i}`, b: `IfcB${i}` })),
+    ];
+    const plain = scenario(n);
+    const ruled = scenario(n, rules);
+    expect(compareClashRunDocuments(ruled.previous, ruled.next).summary.noLongerDetected).toBe(n / 2);
+    const { ducts, walls, pairs } = pairsOf(n);
+    const tBuildPlain = timed(() => build({ result: result(pairs(0, n), ducts, walls) }));
+    const tBuildRuled = timed(() => build({ result: result(pairs(0, n), ducts, walls), exclusionRules: rules, elementTypes: [] }));
+    const tPlain = timed(() => compareClashRunDocuments(plain.previous, plain.next));
+    const tRuled = timed(() => compareClashRunDocuments(ruled.previous, ruled.next));
+    // Per-finding scans of 5.5k rules were ~100x slower (5.4 s at 20k findings); indexed, the rules barely register.
+    expect(tRuled).toBeLessThan(tPlain * 5 + 200);
+    expect(tBuildRuled).toBeLessThan(tBuildPlain * 5 + 200);
   }, 120_000);
 });

@@ -248,6 +248,14 @@ function consistencyErrors(doc: ClashRunDocument): string[] {
       errors.push(`$.manifest.coverage[${i}].examined.b: must be recorded for a two-sided rule`);
     }
   });
+  // Every per-slot record must name a slot the manifest lists.
+  const slotRecords: Array<[string, Record<string, unknown> | null]> = [['$.manifest.ambiguousKeys', manifest.ambiguousKeys],
+    ['$.manifest.exclusionTypes', manifest.exclusionTypes]];
+  manifest.coverage.forEach((entry, i) => slotRecords.push([`$.manifest.coverage[${i}].examined.a`, entry.examined?.a ?? null],
+    [`$.manifest.coverage[${i}].examined.b`, entry.examined?.b ?? null]));
+  for (const [path, record] of slotRecords) {
+    for (const slot of Object.keys(record ?? {})) if (!slots.has(slot)) errors.push(`${path}.${JSON.stringify(slot)}: not in manifest.slots`);
+  }
   const ambiguous = new Map(Object.entries(manifest.ambiguousKeys).map(([slot, keys]) => [slot, new Set(keys)]));
   const ids = new Set<string>();
   doc.findings.forEach((finding, i) => {

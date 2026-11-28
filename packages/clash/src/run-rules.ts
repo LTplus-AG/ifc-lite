@@ -9,7 +9,7 @@
 
 import { uuidFromSeed } from './deterministic-uuid.js';
 import type { ClashRunRule } from './run-document.js';
-import type { ClashResult, ClashRule } from './types.js';
+import type { ClashResult, ClashRule, ClashRuleCoverage } from './types.js';
 
 /** The semantic fields of a rule as it ran: what decides which pairs it reports. */
 export function ruleSemantics(rule: ClashRule, settings: ClashResult['settings']) {
@@ -50,3 +50,20 @@ export function clashRuleSetRevision(rules: ReadonlyArray<Pick<ClashRunRule, 'id
   return uuidFromSeed(`clash-rule-set/1 ${JSON.stringify(rules.map((r) => [r.id, r.revision]).sort())}`);
 }
 
+/**
+ * The rule as it ran, membership included. The engine's `rulesRun` drops
+ * `membersA`/`membersB`; without the rules as given, a side its coverage says
+ * came from explicit members (`fromMembersA`/`fromMembersB`) is described by
+ * the durable keys that side matched, so a membership change still changes
+ * the revision (as does a model change in what the members match: fail closed).
+ */
+export function effectiveRule(ran: ClashRule, given: ClashRule | undefined, coverage: ClashRuleCoverage | undefined): ClashRule {
+  if (given) return given;
+  if (!coverage?.fromMembersA && !coverage?.fromMembersB) return ran;
+  const keysA = coverage.fromMembersA ? coverage.matchedKeysA : undefined;
+  const keysB = coverage.fromMembersB ? coverage.matchedKeysB ?? undefined : undefined;
+  if ((coverage.fromMembersA && !keysA) || (coverage.fromMembersB && !keysB)) {
+    throw new Error(`rule ${ran.id} used explicit members, which neither the given rules nor its coverage record`);
+  }
+  return { ...ran, ...(keysA ? { membersA: [...keysA] } : {}), ...(keysB ? { membersB: [...keysB] } : {}) };
+}

@@ -22,14 +22,9 @@
 import { bareIfcGuid } from './export/table.js';
 import { clashElementIdentity } from './object-identity.js';
 import { clashReviewKey, clashSlotReviewKey } from './review.js';
-import {
-  exclusionRuleCovers,
-  recordExclusions,
-  recordExclusionTypes,
-  type ClashRunExclusionRule,
-  type ClashRunExclusionTypes,
-} from './run-exclusions.js';
-import { clashRuleRevision, clashRuleSetRevision, ruleSemantics } from './run-rules.js';
+import { exclusionIndexCovers, indexExclusionRules, recordExclusions, recordExclusionTypes } from './run-exclusions.js';
+import type { ClashRunExclusionRule, ClashRunExclusionTypes } from './run-exclusions.js';
+import { clashRuleRevision, clashRuleSetRevision, effectiveRule, ruleSemantics } from './run-rules.js';
 import type { Clash, ClashDistanceKind, ExclusionSet, ClashResult, ClashReview, ClashRule, ClashSeverity, ClashStatus, Vec3 } from './types.js';
 
 export { matchesExclusionRule, slotExclusionId, type ClashRunExclusionRule, type ClashRunExclusionTypes } from './run-exclusions.js';
@@ -272,7 +267,7 @@ export function buildClashRunDocument(input: BuildClashRunDocumentInput): ClashR
   const revisions = new Map<string, string>();
   const given = new Map((input.rules ?? []).map((rule) => [rule.id, rule]));
   const rules: ClashRunRule[] = result.rulesRun.map((ran) => {
-    const rule = given.get(ran.id) ?? ran;
+    const rule = effectiveRule(ran, given.get(ran.id), result.ruleCoverage?.find((c) => c.rule === ran.id));
     const revision = own(input.ruleRevisions, rule.id) ?? clashRuleRevision(rule, result.settings, own(input.ruleMemberships, rule.id));
     revisions.set(rule.id, revision);
     const { a, b, mode, tolerance, clearance, reportTouch, explicitMembers } = ruleSemantics(rule, result.settings);
@@ -335,8 +330,9 @@ export function buildClashRunDocument(input: BuildClashRunDocumentInput): ClashR
   };
 
   const exclusionRules = input.exclusionRules ? input.exclusionRules.map((rule) => ({ ...rule })) : null;
-  const userExcluded = (clash: Clash) => (exclusionRules ?? []).some((rule) => exclusionRuleCovers(rule,
-    { type: clash.a.tag, identity: clashElementIdentity(clash.a) }, { type: clash.b.tag, identity: clashElementIdentity(clash.b) }));
+  const excludedBy = indexExclusionRules(exclusionRules ?? []);
+  const userExcluded = (clash: Clash) => exclusionIndexCovers(excludedBy,
+    { type: clash.a.tag, identity: clashElementIdentity(clash.a) }, { type: clash.b.tag, identity: clashElementIdentity(clash.b) });
   // Refuse unslotted models and unlisted rules on EVERY clash, before user rules filter any out:
   // what the run produced is the input, not what happens to survive the filter.
   for (const clash of result.clashes) {

@@ -22,12 +22,36 @@ open that section; neither fetches anything. Pick a radius (100, 200, 300 or
 whether to **Drape aerial imagery**, then choose **Load site context**.
 Requests go from the browser straight to geo.admin.ch, only on that click.
 Each layer arrives as its own federated model that the hierarchy can hide like
-any other. A scene holds one site context: loading it around another model
-replaces it. When the model cannot host site context yet (no georeferencing, a
+any other. A scene holds one model per layer: a layer that loads replaces the
+earlier model of the same layer, after the new one is in. A layer you did not
+request, or one that fails to load, keeps its earlier model, which may still sit
+around a different building; the section names that building when it does. When the model cannot host site context yet (no georeferencing, a
 CRS that does not resolve to LV95, another height datum, a site outside
 Switzerland), the section says why and what to fix. A deployment that turns
 off the `privacy.third-party` feature hides the section (see
 [Configuring the Viewer for a Deployment](viewer-deployment-config.md)).
+
+### Surface runoff
+
+Below Site context, the same panel shows a **Surface runoff** section for an
+IFC model placed in Switzerland. The **Runoff** ribbon button and the
+**Surface runoff check** palette command open it. It offers two things, each
+only on a click:
+
+- **Drape the overland flow map on the terrain**: the federal overland flow
+  map (BAFU) drawn on the loaded site-context terrain, with its legend. It
+  needs the **Terrain** layer loaded first.
+- **Run flood check**: the `@ifc-lite/flood-check` screening of doors,
+  windows, openings and equipment near the ground against the depth class the
+  map shows next to them. Pick the **Ground storey**, or leave it on "Not
+  stated" and the check guesses (a guess allows no favourable outcome). The
+  verdicts colour the checked elements and show in the property panel for this
+  session; they are not written to the model.
+
+It is a screening against a published hazard map, not a flood simulation, and
+the map is not legally binding. The section is hidden with the
+`privacy.third-party` feature off, like Site context, because both fetch from
+geo.admin.ch.
 
 ## Attribution is required
 

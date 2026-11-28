@@ -6,14 +6,15 @@ The viewer's **Section** tool cuts the model with up to eight planes at once. Wh
 
 Open **Section** from the ribbon. The bar has two rows:
 
-- **Row 1 says which planes exist.** One chip per plane (the filled one is active; a filled dot means the plane is cutting, a hollow one that it is only a preview), a **⋯** menu for the selected plane (Rename, Cut, Show plane, Duplicate, Remove, Clear all), **Add plane**, **Views** and Close. With no plane yet the bar offers the four ways to start: Down, Front, Side or a picked Face.
+- **Row 1 says which planes exist.** One chip per plane (the filled one is active; a filled dot means the plane is cutting, a hollow one that it is only a preview), a **⋯** menu for the selected plane (Rename, Cut, Show plane, Duplicate, Remove, Clear all), **Add plane**, **Views** and Close. **Add plane** offers Down, Front, Side, Face, **Box** and, for infrastructure models, **Alignment…**. With no plane yet the bar offers the common ways to start: Down, Front, Side, a picked Face or a Box (Alignment is only in the Add menu).
 - **Row 2 edits the active plane** and never needs to say which plane it means.
 
 Remove and Clear all offer **Undo** for a few seconds: it gives back the planes that were removed and keeps whatever you did since. Planes are listed in the order you made them. Add is disabled at eight planes, with the reason in its tooltip.
 
 ## Placing a plane
 
-- **Offset** is the distance of the plane, in the project's own length unit, to the millimetre. A face-picked plane reads from its face (a fresh pick is `0.000`; negative goes into the solid), a level plane reads its elevation. Type a value, drag it, use `−` / `+`, the arrow keys, or the **mouse wheel** over the field: one notch is one step.
+- **Offset** is the distance of the plane, in the project's own length unit, to the millimetre. A face-picked plane reads from its face (a fresh pick is `0.000`; negative goes into the solid), a level plane reads its elevation, and an alignment plane reads its station in metres. Type a value, drag it, use `−` / `+`, the arrow keys, or the **mouse wheel** over the field: one notch is one step.
+- **Alignment…** cuts across an `IfcAlignment` of an infrastructure model. Choose the **Alignment model** and the alignment; the plane then follows the evaluated tangent at the station you set. The station is the geometric horizontal distance in metres from the alignment's physical start, not the authored chainage. Dragging the plane in the scene detaches it from the alignment; choose the alignment again to resume.
 - **Cut at a storey** (the `▾` beside the offset of a Down plane) cuts 1.2 m above the chosen storey's floor, as the storey floorplan button in the model tree does. When that is above the top of the model but the storey's floor is within it, the plane stays there and the top storey shows below it (when the floor itself lies outside the model's height, the cut is kept within the model); stepping, dragging or typing brings the plane back within the model.
 - **Step** (the `10 cm ▾` control) is how far one notch, key or click moves the plane: 1 cm to 1 m, or a value in millimetres. It is remembered between sessions.
 - **Direction** (in the plane's `⋯` menu) changes what the selected plane is, keeping its name and place: Down, Front, Side, or **Face…** to pick a face again.

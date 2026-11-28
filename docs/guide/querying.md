@@ -276,8 +276,13 @@ is not installed):
 !!! note "The `properties` and `quantities` tables need a materialised store"
     `sql()` copies the store's columnar tables into DuckDB. A STEP parse leaves the
     property and quantity tables empty (see [Direct Data Access](#direct-data-access)),
-    so on a `.ifc` model the `properties` and `quantities` tables have no rows and
-    the joins below return nothing. `entities` and `relationships` are always filled.
+    so on a `.ifc` model the `properties` and `quantities` tables have no rows: joins
+    against them return nothing, and a `NOT EXISTS` check against them matches every
+    entity. `entities` is copied from the entity table; `relationships` is copied
+    from the store's relationship graph, so it is empty when the model has none.
+    A STEP parse also leaves the entity table's `description` and `object_type`
+    empty and its `contained_in_storey` and `defined_by_type` columns `NULL`; use
+    the `relationships` table (as in the storey example below) for containment.
 
 ```typescript
 import { IfcQuery } from '@ifc-lite/query';
@@ -285,27 +290,25 @@ import { IfcQuery } from '@ifc-lite/query';
 const query = new IfcQuery(store); // store from parseColumnar()
 
 // sql() lazily initializes DuckDB-WASM on first call
+// This query reads only the entities table, so it returns rows for a STEP parse
 const result = await query.sql(`
   SELECT
     e.type,
     COUNT(*) as count,
-    AVG(p.value_int) as avg_fire_rating
+    COUNT(*) FILTER (WHERE e.has_geometry) as with_geometry
   FROM entities e
-  JOIN properties p ON e.express_id = p.entity_id
   WHERE e.type LIKE 'IfcWall%'
-    AND p.pset_name = 'Pset_WallCommon'
-    AND p.prop_name = 'FireRating'
   GROUP BY e.type
   ORDER BY count DESC
 `);
 
 console.table(result);
-// ┌──────────────────────┬───────┬─────────────────┐
-// │ type                 │ count │ avg_fire_rating │
-// ├──────────────────────┼───────┼─────────────────┤
-// │ IfcWallStandardCase  │ 42    │ 45              │
-// │ IfcWall              │ 18    │ 30              │
-// └──────────────────────┴───────┴─────────────────┘
+// ┌──────────────────────┬───────┬───────────────┐
+// │ type                 │ count │ with_geometry │
+// ├──────────────────────┼───────┼───────────────┤
+// │ IfcWallStandardCase  │ 42    │ 42            │
+// │ IfcWall              │ 18    │ 18            │
+// └──────────────────────┴───────┴───────────────┘
 ```
 
 ### SQL Table Schema

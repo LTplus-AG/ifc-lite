@@ -170,7 +170,7 @@ JSON/SSE endpoints it's on `metadata`; for the Parquet endpoints it's in the
 | `/` | GET | API information |
 | `/api/v1/health` | GET | Health check (liveness; always open) |
 | `/api/v1/ready` | GET | Readiness probe (503 while the memory breaker is shedding load) |
-| `/api/v1/metrics` | GET | Prometheus text metrics (`404` unless `IFC_METRICS_ENABLED` is `1` or `true`) |
+| `/api/v1/metrics` | GET | Prometheus text metrics (`404` unless `IFC_METRICS_ENABLED` is `1` or `true`); behind the bearer token when one is set, so a request without it gets `401` first |
 
 !!! note "One key for `GET` and `DELETE /api/v1/cache/{key}`"
     Both methods take the same `{key}`: the request `cache_key` a parse
@@ -444,7 +444,8 @@ Properties and spatial hierarchy are computed in parallel and cached. Both
 `/parse/parquet` and `/parse/parquet/optimized` write the data model
 synchronously, BEFORE their response goes out, so a fetch right after either
 one returns is already a hit; only the streaming route (`/parse/parquet-stream`)
-fills it in the background after its `complete` event, which is the one case
+fills it in the background. That fill starts when the stream starts and runs
+beside it, so it may finish before or after the `complete` event. It is the one case
 `GET /api/v1/parse/data-model/{key}` answers `202` for (a fill genuinely
 running for that key — keep polling). A fill that refused the model (a table
 over its size budget) leaves a `400` with the reason, and `fetchDataModel`
@@ -554,7 +555,7 @@ if (symbols) {
 const health = await client.health();
 
 // parse() gzip-compresses every upload. parseParquet() compresses too,
-// except for files over 50 MB or a localhost/127.0.0.1 base URL;
+// except for files over 50 MiB or a base URL containing localhost/127.0.0.1;
 // parseParquetStream() uploads uncompressed.
 
 // Check Parquet decoder availability
@@ -1004,18 +1005,21 @@ sequenceDiagram
     participant Cache
 
     Client->>Server: POST /parse/parquet-stream
+    Server->>Server: Spawn data-model fill (background task)
     Server->>Client: SSE: start {total_estimate, cache_key}
 
-    loop For each batch
-        Server->>Server: Process geometry batch
-        Server->>Client: SSE: batch {data, mesh_count}
-        Client->>Client: Decode & render
+    par Geometry stream
+        loop For each batch
+            Server->>Server: Process geometry batch
+            Server->>Client: SSE: batch {data, mesh_count}
+            Client->>Client: Decode & render
+        end
+        Server->>Cache: Store accumulated meshes
+        Server->>Client: SSE: complete {stats, metadata}
+    and Data-model fill
+        Server->>Server: Extract data model
+        Server->>Cache: Store data model
     end
-
-    Server->>Cache: Store accumulated meshes
-    Server->>Client: SSE: complete {stats, metadata}
-    Server->>Server: Extract data model (background)
-    Server->>Cache: Store data model
 ```
 
 ### Skipping the upload on a cache hit
@@ -1195,7 +1199,7 @@ for await (const event of client.parseStream(file)) {
 
 ### Network
 
-1. **Gzip Compression** - Applied on upload by `parse()`, and by `parseParquet()` below 50 MB to a non-localhost server
+1. **Gzip Compression** - Applied on upload by `parse()`, and by `parseParquet()` for files up to 50 MiB (50 × 1024 × 1024 bytes) sent to a base URL that contains neither `localhost` nor `127.0.0.1`
 2. **Parquet Format** - roughly 15-50x smaller than JSON
 3. **SSE Streaming** - No polling overhead
 

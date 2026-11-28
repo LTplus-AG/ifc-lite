@@ -693,10 +693,15 @@ drill from one pane of a curtain wall down to its own entity in the IFC source i
 stopping at the wall. It is the same value under the same name as `MeshData.geometryItemId`
 from `@ifc-lite/geometry`, and it is reported on every pick route: the GPU pick pass over
 hydrated per-piece meshes (small models), the GPU pick pass over whole colour batches
-that models past the pick-mesh budget take, and the CPU raycast fallback. The one gap is
-a GPU-instanced occurrence hit by the per-piece GPU pass: that shader has no
-per-occurrence item channel, so the hit carries no `geometryItemId` (the CPU raycast and
-the colour-batch route do report it).
+that models past the pick-mesh budget take, and the CPU raycast fallback. The key is
+absent (never `0`) where there is no single item to report:
+
+- the single merged-mesh fallback and a cached `IfcMappedItem` have no item identity;
+- a piece that carries several entities (per-vertex `entityIds`) withholds its item id,
+  because it belongs to none of them individually;
+- a GPU-instanced occurrence hit by the per-piece GPU pass: that shader has no
+  per-occurrence item channel (the CPU raycast and the colour-batch route do report it);
+- rectangle (marquee) picks return bare express ids, not `PickResult`s.
 
 On the batch route the GPU reads only the entity from the vertex lane, so the renderer
 raycasts that one entity's retained CPU pieces along the same texel-centre ray to name

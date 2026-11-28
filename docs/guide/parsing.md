@@ -362,8 +362,9 @@ const ifcBuffer = await unwrapIfcZip(zipBuffer);
 ```
 
 `unwrapIfcZip` returns only model bytes. `unwrapIfcZipView(view)` does the same
-for a `Uint8Array` or Node `Buffer` view, without copying a non-zip input's
-backing buffer. For textured archives, call
+for a `Uint8Array` or Node `Buffer` view. A non-zip view that spans its whole
+backing buffer is returned without a copy; a non-zip sub-range view is copied
+into a buffer of exactly its length. For textured archives, call
 `unwrapIfcZipWithResources`: its `resources` map resolves PNG/JPEG images by
 lowercased basename (first entry wins), while `originalResources` preserves
 each archive path using the same byte arrays. `modelPath` identifies the IFC
@@ -770,11 +771,18 @@ groups.forEach((elementIds, code) => {
 ### Other on-demand readers
 
 `@ifc-lite/parser` exports more store readers than this page walks through.
-Each reads one entity from an `IfcDataStore`:
+Most read one entity from an `IfcDataStore`. The table lists the common ones;
+`packages/parser/src/index.ts` has the full export list:
 
 | Function | Returns |
 |---|---|
 | `extractMaterialsOnDemand(store, entityId, view?)` | The entity's first resolved material (`MaterialInfo`), or `null` |
+| `extractAllMaterialsOnDemand(store, entityId, view?)` | Every material associated with the entity (`MaterialInfo[]`) |
+| `extractMaterialPropertiesOnDemand(store, entityId, view?)` | Property sets of the entity's materials, one group per material (`MaterialPsetGroup[]`) |
+| `buildMaterialUsageIndex(store)` | For each base `IfcMaterial`, the elements that use it (`Map<number, MaterialUsage>`) |
+| `extractExactRelatedIds(store, entityId, relationshipType, direction)` | The ids related through one relationship type, in either direction (`number[]`) |
+| `extractGroupAssignmentFactorOnDemand(store, groupId, memberId)` | The `Factor` of an `IfcRelAssignsToGroupByFactor` assignment, or `undefined` |
+| `extractGeoreferencingOnDemand(store)` | The model's georeferencing (`GeoreferenceInfo`), or `null` |
 | `extractRelationshipsOnDemand(store, entityId)` | The entity's relationships (`EntityRelationships`) |
 | `extractDocumentsOnDemand(store, entityId, view?)` | Associated documents (`DocumentInfo[]`) |
 | `extractGroupMembersOnDemand(store, groupId)` | The members of a group (`GroupMember[]`) |
@@ -795,8 +803,10 @@ try {
 } catch (error) {
   // parseColumnar is tolerant: a file whose schema does not resolve is read as
   // IFC4, and malformed records are dropped and reported through onDiagnostic /
-  // onScanReport rather than thrown. Use parseModel() when malformed input must
-  // be refused; it throws IfcInputError.
+  // onScanReport rather than thrown. parseModel() adds an input check first: it
+  // throws IfcInputError for empty input, a bad IFCZIP archive, a file with no
+  // STEP header, a truncated file (no END-ISO-10303-21;) or no DATA section. Records inside a valid envelope are still
+  // parsed tolerantly; read the returned scan report to judge coverage.
   if (error instanceof Error) {
     console.error(`Parse failed: ${error.message}`);
   } else {

@@ -105,4 +105,4 @@ let stats = build_cache_to_path(&source, "model.ifclite".as_ref(), CacheOptions:
 println!("{} meshes in {} chunks", stats.mesh_count, stats.chunk_count);
 ```
 
-`build_cache(&source, options)` builds the same bytes in memory and returns them with the stats, as `(Vec<u8>, CacheStats)`, when you need the cache in memory rather than on disk.
+`build_cache(&source, options)` builds the same bytes in memory and returns `Result<(Vec<u8>, CacheStats), CacheError>`: handle the error, then destructure the bytes and stats. Use it when you need the cache in memory rather than on disk.

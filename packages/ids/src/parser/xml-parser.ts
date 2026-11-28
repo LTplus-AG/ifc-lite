@@ -35,6 +35,7 @@ import {
   uriOf,
 } from './dom.js';
 import { parseRestriction } from './parse-restriction.js';
+import { markNameAuthored, markTitleAuthored } from './authored-values.js';
 import { applyIds11Preview } from '../preview/parse-ids11.js';
 import type { IDSPreviewFlags } from '../preview/types.js';
 
@@ -175,8 +176,9 @@ function parseInfo(root: Element): IDSInfo {
     return { title: 'Untitled IDS' };
   }
 
-  return {
-    title: getChildText(info, 'title') || 'Untitled IDS',
+  const title = getChildText(info, 'title');
+  const parsed: IDSInfo = {
+    title: title || 'Untitled IDS',
     copyright: getChildText(info, 'copyright'),
     version: getChildText(info, 'version'),
     author: getChildText(info, 'author'),
@@ -185,6 +187,9 @@ function parseInfo(root: Element): IDSInfo {
     milestone: getChildText(info, 'milestone'),
     description: getChildText(info, 'description'),
   };
+  // An authored "Untitled IDS" is a title, not the fill-in (#10542).
+  if (title) markTitleAuthored(parsed);
+  return parsed;
 }
 
 /** Parse the <specifications> section */
@@ -202,7 +207,8 @@ function parseSpecifications(root: Element): IDSSpecification[] {
  * Parse a single <specification>
  */
 function parseSpecification(el: Element, index: number): IDSSpecification {
-  const name = el.getAttribute('name') || `Specification ${index + 1}`;
+  const nameAttr = el.getAttribute('name');
+  const name = nameAttr || `Specification ${index + 1}`;
   const ifcVersionAttr = el.getAttribute('ifcVersion') || 'IFC4';
 
   // Parse IFC versions (can be space-separated)
@@ -266,7 +272,7 @@ function parseSpecification(el: Element, index: number): IDSSpecification {
     ? parseRequirements(requirementsEl)
     : [];
 
-  return {
+  const spec: IDSSpecification = {
     id: el.getAttribute('identifier') || `spec-${index}`,
     name,
     description: el.getAttribute('description') || undefined,
@@ -279,6 +285,9 @@ function parseSpecification(el: Element, index: number): IDSSpecification {
     minOccurs,
     maxOccurs,
   };
+  // An authored "Specification <n>" is a name, not the fill-in (#10542).
+  if (nameAttr) markNameAuthored(spec);
+  return spec;
 }
 
 /**

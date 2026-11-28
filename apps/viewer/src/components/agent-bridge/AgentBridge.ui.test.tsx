@@ -443,8 +443,7 @@ describe('a live connection is visible with Disconnect in every layout (#9523 re
       const occupied = LiveSocket.last!;
       occupied.onclose?.({ code: 4429, reason: 'previous socket still connected' });
       assert.equal(storage.getItem(storageKey), ticket);
-      window.dispatchEvent(new window.Event('online'));
-      await waitFor(() => LiveSocket.last !== occupied, 'online retried after the previous socket closed');
+      await waitFor(() => LiveSocket.last !== occupied, 'busy resume retried without an online or visibility event');
       const second = LiveSocket.last!;
       second.readyState = 1;
       second.onopen?.({});

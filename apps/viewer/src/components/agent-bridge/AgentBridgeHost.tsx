@@ -67,7 +67,8 @@ export function AgentBridgeHost() {
   useEffect(() => {
     if (!enabled || !bim || isFramed()) return;
     let cancelled = false;
-    const resume = () => {
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    const attempt = (retry: number) => {
       const { status } = getAgentBridgeState();
       if (status.kind === 'connected' || status.kind === 'connecting') return;
       const ticket = savedTicket();
@@ -76,9 +77,22 @@ export function AgentBridgeHost() {
         const current = getAgentBridgeState();
         if (!cancelled && !current.dialog && current.status.kind !== 'connecting'
             && current.status.kind !== 'connected' && savedTicket()?.key === ticket.key) {
-          connectAgentBridge({ port: ticket.port, code: ticket.key, resume: true, bim });
+          connectAgentBridge({
+            port: ticket.port, code: ticket.key, resume: true, bim,
+            onResumeBusy: (key) => {
+              if (cancelled || retry >= 5) return;
+              retryTimer = setTimeout(() => {
+                const { status } = getAgentBridgeState();
+                if (status.kind === 'error' && status.code === 'busy' && savedTicket()?.key === key) attempt(retry + 1);
+              }, 250 * 2 ** retry);
+            },
+          });
         }
       });
+    };
+    const resume = () => {
+      clearTimeout(retryTimer);
+      attempt(0);
     };
     const navigation = performance.getEntriesByType?.('navigation')[0] as PerformanceNavigationTiming | undefined;
     if (navigation?.type === 'reload') resume();
@@ -93,6 +107,7 @@ export function AgentBridgeHost() {
     window.addEventListener('online', resume);
     return () => {
       cancelled = true;
+      clearTimeout(retryTimer);
       document.removeEventListener('visibilitychange', wake);
       window.removeEventListener('pageshow', restore);
       window.removeEventListener('online', resume);

@@ -93,6 +93,7 @@ export interface ConnectAgentBridgeOptions {
   port: number;
   code: string;
   resume?: boolean;
+  onResumeBusy?: (key: string) => void;
   bim: BimContext;
   /** Test seam; the browser's `WebSocket` otherwise. */
   WebSocket?: BridgeClientOptions['WebSocket'];
@@ -124,7 +125,7 @@ function announceEnded(status: AgentBridgeStatus): void {
 }
 
 /** Pair this tab with the bridge on `port`. Replaces any connection this tab had. Refused when framed. */
-export function connectAgentBridge({ port, code, bim, WebSocket, resume = false }: ConnectAgentBridgeOptions): void {
+export function connectAgentBridge({ port, code, bim, WebSocket, resume = false, onResumeBusy }: ConnectAgentBridgeOptions): void {
   if (isFramed()) {
     updateAgentBridgeState({ status: { kind: 'error', code: 'framed', port } });
     return;
@@ -167,11 +168,12 @@ export function connectAgentBridge({ port, code, bim, WebSocket, resume = false 
       if (status.kind !== 'connected' && status.kind !== 'connecting') flushActivity();
       if (status.kind === 'disconnected' && status.reason !== 'connection-lost' && status.reason !== 'page-hidden') saveTicket();
       updateAgentBridgeState({ status });
+      if (resume && status.kind === 'error' && status.code === 'busy') onResumeBusy?.(code);
       if (resume && status.kind === 'error' && status.code === 'pairing-failed') {
         if (recoveryKey) {
           // The bridge may have rotated before its welcome reached us. Try the staged successor once.
           saveTicket({ port, key: recoveryKey });
-          connectAgentBridge({ port, code: recoveryKey, resume: true, bim, WebSocket });
+          connectAgentBridge({ port, code: recoveryKey, resume: true, bim, WebSocket, onResumeBusy });
           return;
         }
         saveTicket();

@@ -46,7 +46,8 @@ const compactSvg = renderChartSvg({ aggregation: agg, width: 640, height: 400, p
 - `elementsDataset(models, fields?)`: the elements source without a query engine — one typed-array pass over the entity table and spatial hierarchy, optionally materializing requested IFC fields and live storey labels through host readers
 - `elementFieldColumnId` / `elementFieldLabel` / `normalizeElementFieldValue`: collision-free persisted field identities and scalar normalization for IFC attributes, properties, quantities, material, classification, defining type and spatial container (`ElementFieldBinding`)
 - `buildEChartsOption` / `renderChartSvg`: ECharts options with persistent multi-select and emphasis blur, and SSR SVG output
-- `validateDashboardSpec` / `isDashboardSpec` / `isReportSpec`: structural validation of saved dashboards and report templates (`DashboardSpec`, `ReportSpec`)
+- `idsForItems` / `itemsForIds`: the stacked-chart versions of `idsForCategories` / `categoriesForIds`, so a stacked segment selects only its own series' share
+- `validateDashboardSpec` / `isDashboardSpec` / `isReportSpec`: structural validation of saved dashboards and report templates (`DashboardSpec`, `ReportSpec`); `validateChartSpec` checks one copied or imported chart, and `migrateDashboardSpec` promotes a version-1 dashboard read from storage to version 2
 
 Both rendering functions accept an optional `fontSize` (6–24, default 12).
 It scales axes, legends, data labels, titles and the count display, including

@@ -116,7 +116,7 @@ IFClite requires ES2022+ features:
 
 ## SharedArrayBuffer (Optional)
 
-For multi-threaded parsing with Web Workers:
+`@ifc-lite/geometry` runs its parallel geometry worker pool only when `SharedArrayBuffer` and Web Workers are available and the device has more than one core:
 
 ```typescript
 // Check if SharedArrayBuffer is available
@@ -126,11 +126,14 @@ if (typeof SharedArrayBuffer === 'undefined') {
 ```
 
 !!! note "Cross-Origin Isolation"
-    SharedArrayBuffer requires cross-origin isolation headers:
+    SharedArrayBuffer requires cross-origin isolation headers. The hosted
+    viewer and its dev server send:
     ```
     Cross-Origin-Opener-Policy: same-origin
-    Cross-Origin-Embedder-Policy: require-corp
+    Cross-Origin-Embedder-Policy: credentialless
     ```
+    `Cross-Origin-Embedder-Policy: require-corp` also isolates the page, but
+    then every cross-origin resource must opt in with CORS or CORP headers.
 
 ## Feature Detection Example
 

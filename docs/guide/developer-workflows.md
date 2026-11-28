@@ -88,6 +88,8 @@ The [complete recipe files](https://github.com/LTplus-AG/ifc-lite/tree/main/exam
 | Extract geometry | `node examples/headless-workflows/dist/geometry.mjs tests/models/ara3d/AC20-FZK-Haus.ifc /tmp/model.glb` | A GLB assembled from the processor's meshes |
 | Run a service | `node examples/headless-workflows/dist/server.mjs` | `POST /doors`, bounded workers and request cancellation |
 
+The same folder also holds an experimental InfluxDB 2 telemetry mapping recipe (`dist/influx.mjs`, with a `--demo` mode that needs no database); see its [README](https://github.com/LTplus-AG/ifc-lite/tree/main/examples/headless-workflows#influxdb-2--ifc-mapping-spike-8090).
+
 The IDS recipe exits 1 for a failed specification and 2 when no entities were evaluated. It retains the native report rather than turning an empty evaluation into a success summary. Use your own IDS document to test different requirements.
 
 Geometry needs the runtime artifact. In a source checkout without Rust, run `pnpm build:wasm:fetch`; a published consumer gets the WASM package through npm. The processor recipe uses the canonical export path and always disposes the processor. To feed meshes directly into another engine, preserve per-mesh origins and the returned coordinate frame; follow the [geometry guide](geometry.md) and the [Three.js integration](../tutorials/threejs-integration.md).

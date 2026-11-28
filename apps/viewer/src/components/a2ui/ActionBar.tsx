@@ -10,7 +10,7 @@
 
 import type { ReactNode } from 'react';
 import { Crosshair, Download, Eye, EyeOff, Focus, MessageSquare, MousePointerClick, Palette, RotateCcw } from 'lucide-react';
-import { createComponentImplementation } from '@a2ui/react';
+import { createComponentImplementation, useA2uiSurface } from '@a2ui/react';
 import { encodeRef, VIEWER_ACTIONS, type ViewerAction } from '@ifc-lite/a2ui';
 import { ActionBarApi } from '@ifc-lite/a2ui/catalog';
 import { Button } from '@/components/ui/button';
@@ -44,6 +44,7 @@ const ACTION_ICON: Record<ViewerAction, ReactNode> = {
 
 export const ActionBarImpl = createComponentImplementation(ActionBarApi, ({ props }) => {
   const { t } = useTranslation();
+  const surfaceId = useA2uiSurface()?.id;
   const { onFollowUp } = useA2uiRuntime();
   const run = useRunFunction();
   const target = useTarget({ refs: props.refs, query: props.query });
@@ -80,7 +81,7 @@ export const ActionBarImpl = createComponentImplementation(ActionBarApi, ({ prop
         <fieldset className="m-0 flex flex-wrap gap-1.5 border-0 p-0">
           <legend className="sr-only">{t('a2ui.followUps')}</legend>
           {followUps.map((f, i) => (
-            <Button key={i} size="sm" variant="secondary" className="h-auto gap-1 whitespace-normal py-1 text-left" onClick={() => onFollowUp(f.prompt, { prompt: f.prompt })}>
+            <Button key={i} size="sm" variant="secondary" className="h-auto gap-1 whitespace-normal py-1 text-left" onClick={() => onFollowUp(f.prompt, { prompt: f.prompt }, undefined, surfaceId)}>
               <MessageSquare className="h-3.5 w-3.5 shrink-0" aria-hidden />
               {f.label}
             </Button>

@@ -22,7 +22,7 @@ On each release, the following are published automatically:
 
 **crates.io (9 crates, `scripts/lib/crates-io.mjs`):** `ifc-lite-core`, `ifc-lite-clash`, `ifc-lite-geometry`, `ifc-lite-processing`, `ifc-lite-landxml`, `ifc-lite-export`, `ifc-lite-ffi`, `ifc-lite-wasm`, `ifc-lite-geometry-runtime`
 
-**GitHub Release:** Version tag + server binaries for 6 platforms
+**GitHub Releases:** the root `v<version>` release, and a separate `server-v<server-bin version>` release for `@ifc-lite/server-bin` that carries the server binaries for 6 platforms (`.github/workflows/server-binaries.yml` builds them only for `server-v*` releases)
 
 **PyPI:** the `ifclite-geom` wheel is not part of this release. It publishes from `.github/workflows/python-wheels.yml` on an `ifclite-geom-v*` tag.
 

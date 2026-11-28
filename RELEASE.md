@@ -50,8 +50,8 @@ Add support for IFC4X3 entities
    - All packages are automatically built
    - npm packages are published to npm registry (every non-private `@ifc-lite/*` package + `create-ifc-lite`)
    - Rust crates are published to crates.io, in this order (`scripts/lib/crates-io.mjs`): `ifc-lite-core`, `ifc-lite-clash`, `ifc-lite-geometry`, `ifc-lite-processing`, `ifc-lite-landxml`, `ifc-lite-export`, `ifc-lite-ffi`, `ifc-lite-wasm`, `ifc-lite-geometry-runtime`. The crates half runs only if `pnpm check:rust-semver` passes; npm publishes either way
-   - GitHub Release is created with version tag
-   - Server binaries are cross-compiled for 6 platforms (Linux x64/ARM64/musl, macOS x64/ARM64, Windows x64) and attached to the release
+   - GitHub Release is created with the root `v<version>` tag
+   - When `@ifc-lite/server-bin` was published, a separate `server-v<server-bin version>` release is created; `.github/workflows/server-binaries.yml` cross-compiles the server for 6 platforms (Linux x64/ARM64/musl, macOS x64/ARM64, Windows x64) and attaches the archives to that release, not to the root `v*` one
 
 The Python wheel `ifclite-geom` is not part of this flow. It publishes to PyPI from `.github/workflows/python-wheels.yml` when an `ifclite-geom-v*` tag is pushed.
 
@@ -77,7 +77,8 @@ PR with changeset → Merge to main → "Version Packages" PR created
                                             ↓
                     Build → Publish npm → Publish Rust (9 crates)
                                             ↓
-                    Create GitHub Release → Build server binaries (6 platforms)
+                    Create GitHub Release v<version>
+                    + server-v<server-bin version> → Build server binaries (6 platforms)
 ```
 
 > **Workflow file**: [`.github/workflows/release.yml`](.github/workflows/release.yml)

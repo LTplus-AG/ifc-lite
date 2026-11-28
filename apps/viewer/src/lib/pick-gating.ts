@@ -10,8 +10,7 @@ export interface PickGatingState {
   loading: boolean;
   /** Loader progress. Its `percent` is a DISPLAY value, not a load-state flag. */
   progress: { phase: string; percent: number; indeterminate?: boolean } | null;
-  /** Per-model geometry restore holds (lib/geometry-restore-gate.ts); optional for callers without models. */
-  models?: ReadonlyMap<string, { geometryRestorePending?: boolean }>;
+  models?: ReadonlyMap<string, { geometryRestorePending?: boolean; loadState?: string }>;
 }
 
 /**
@@ -44,7 +43,11 @@ export const isGeometryRestoreHeld = isGeometryHeld;
 export function isGeometryLoadStreaming(state: PickGatingState): boolean {
   if (state.geometryStreamingActive) return true;
   if (state.models) for (const model of state.models.values()) if (model.geometryRestorePending) return true;
-  return state.loading && state.progress !== null && state.progress.percent < 100;
+  if (!state.loading) return false;
+  // The primary publishes its ID range after the last batch. Picking spans
+  // the whole scene, including when a completed peer is selected (#11607).
+  if (state.models) for (const model of state.models.values()) if (model.loadState === 'streaming-geometry') return true;
+  return state.progress !== null && state.progress.percent < 100;
 }
 
 

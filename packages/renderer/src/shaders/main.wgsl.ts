@@ -92,7 +92,15 @@ export const mainShaderSource = `
         }
 
         struct VertexOutput {
-          @builtin(position) position: vec4<f32>,
+          // Invariant: every module derived from this source (the draw stream, the
+          // discard-free twin, ghosts, textured, the orthographic prepass and guard)
+          // and every pipeline that reuses vs_main (the selection highlight, its
+          // masks) must compute bit-identical positions for the same vertex, since
+          // the highlight redraws with 'greater-equal' and no bias. Without it a
+          // backend may compile one module's position math differently from
+          // another's: Metal did for the draw stream, and the highlight lost the
+          // depth tie in blocky patches.
+          @invariant @builtin(position) position: vec4<f32>,
           @location(0) worldPos: vec3<f32>,
           @location(1) normal: vec3<f32>,
           @location(2) @interpolate(flat) entityId: u32,

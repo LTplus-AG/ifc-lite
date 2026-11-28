@@ -24,6 +24,7 @@
 import { useCallback, useMemo } from 'react';
 import { useViewerStore } from '@/store';
 import { usePlacementCoordinateInfo } from '@/hooks/usePlacementCoordinateInfo';
+import { createStoreyDisplayElevationResolver } from '@/lib/geo/storey-elevation';
 import { setAlignmentDistance } from '@/lib/section/alignment-controller';
 import {
   collectStoreys,
@@ -53,7 +54,7 @@ export interface SectionDistance {
   /** Storey cut elevations a scrub snaps to (a `down` cut with a known range only). */
   snaps: readonly number[];
   /** Every storey, top-down; the storey menu lists these. */
-  storeys: readonly SectionStorey[];
+  storeys: readonly (SectionStorey & { displayElevation: number })[];
   /** The cardinal range in world units, when known. */
   range: AxisRange | null;
   /** The placed model bounds the cut resolves against, when known — the section box's "fit to model" (#5513). */
@@ -78,9 +79,24 @@ export function useSectionDistance(): SectionDistance {
     () => sectionAxisRange(placed?.shiftedBounds ?? null, sectionPlane.axis),
     [placed, sectionPlane.axis],
   );
+  const georefMutations = useViewerStore((s) => s.georefMutations);
   const storeys = useMemo(
-    () => collectStoreys(models, ifcDataStore, geometryResult, placement),
-    [models, ifcDataStore, geometryResult, placement],
+    () => {
+      const resolvers = new Map<string, ReturnType<typeof createStoreyDisplayElevationResolver>>();
+      return collectStoreys(models, ifcDataStore, geometryResult, placement).map((storey) => {
+        const model = models.get(storey.modelId);
+        const data = model ? model.ifcDataStore : ifcDataStore;
+        let resolve = resolvers.get(storey.modelId);
+        if (!resolve) {
+          resolve = createStoreyDisplayElevationResolver(data, (model ? model.geometryResult : geometryResult)?.coordinateInfo,
+            georefMutations.get(model ? storey.modelId : '__legacy__'));
+          resolvers.set(storey.modelId, resolve);
+        }
+        const relative = data?.spatialHierarchy?.storeyElevations.get(storey.expressId) ?? 0;
+        return { ...storey, displayElevation: resolve(storey.expressId, relative) };
+      });
+    },
+    [models, ifcDataStore, geometryResult, placement, georefMutations],
   );
 
   const cutAtStorey = useCallback((storey: SectionStorey) => {

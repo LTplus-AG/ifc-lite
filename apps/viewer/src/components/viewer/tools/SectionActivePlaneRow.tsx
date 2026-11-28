@@ -200,7 +200,7 @@ export function SectionActivePlaneRow({ compact = false }: { compact?: boolean }
                         {storey.name}
                       </span>
                       <span className="tabular-nums text-muted-foreground">
-                        {t('sectionTool.storeys.elevation', { elevation: storey.elevation.toFixed(2) })}
+                        {t('sectionTool.storeys.elevation', { elevation: storey.displayElevation.toFixed(2) })}
                       </span>
                     </button>
                   </li>

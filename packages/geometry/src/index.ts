@@ -91,6 +91,11 @@ export {
   type DecodedInstancedTemplate,
   type DecodedInstance,
 } from './packed-instanced-decoder.js';
+export {
+  encodeInstancedShard,
+  type InstancedShardTemplateInput,
+  type InstancedShardInstanceInput,
+} from './packed-instanced-encoder.js';
 
 export * from './types.js';
 export * from './spatial-reference.js';

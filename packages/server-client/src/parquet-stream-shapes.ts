@@ -27,6 +27,7 @@ import type { MeshData } from './types.js';
 import { numericColumn } from './parquet-columns.js';
 import { readFlatTables } from './parquet-decoder.js';
 import { buildMeshesFromTables, type ArrowTableLike } from './parquet-tables.js';
+import { buildSharedShapesFromTables, type SharedShapeGeometry, type SharedShapeTracker } from './parquet-shared-shapes.js';
 
 const VERTEX_COLUMNS = ['x', 'y', 'z', 'nx', 'ny', 'nz'] as const;
 const INDEX_COLUMNS = ['i0', 'i1', 'i2'] as const;
@@ -150,4 +151,22 @@ export async function decodeCrossBatch(
   const { meshArrow, vertexArrow, indexArrow } = await readFlatTables(data);
   store.append(vertexArrow, indexArrow, vertexBase, indexBase, batchNumber);
   return buildMeshesFromTables(meshArrow, store.vertexTable(), store.indexTable());
+}
+
+/**
+ * {@link decodeCrossBatch}, keeping shared blocks shared: a row naming a block
+ * that another row of this batch or any earlier batch named becomes an
+ * occurrence of one shape instead of a copy (`parquet-shared-shapes.ts`).
+ */
+export async function decodeCrossBatchShapes(
+  data: ArrayBuffer,
+  store: StreamShapeStore,
+  tracker: SharedShapeTracker,
+  vertexBase: number,
+  indexBase: number,
+  batchNumber: number
+): Promise<SharedShapeGeometry> {
+  const { meshArrow, vertexArrow, indexArrow } = await readFlatTables(data);
+  store.append(vertexArrow, indexArrow, vertexBase, indexBase, batchNumber);
+  return buildSharedShapesFromTables(meshArrow, store.vertexTable(), store.indexTable(), tracker);
 }

@@ -15,6 +15,7 @@ import {
   buildMeshesFromOptimizedTables,
   type ArrowTableLike,
 } from './parquet-tables.js';
+import { buildSharedShapesFromTables, type SharedShapeGeometry } from './parquet-shared-shapes.js';
 
 // Ambient types in vendor-types.d.ts cover the apache-arrow APIs used here.
 // parquet-wasm ships its own types, one set per build.
@@ -108,6 +109,17 @@ export async function decodeParquetGeometry(data: ArrayBuffer): Promise<MeshData
 }
 
 /** The three tables of one flat geometry blob, as Arrow tables. */
+/**
+ * {@link decodeParquetGeometry}, keeping blocks that several mesh rows name as
+ * one shape with its occurrences (`parquet-shared-shapes.ts`). `streamWide`:
+ * the blob is the whole model (a cached or uploaded result), not one stream
+ * batch decoded on its own.
+ */
+export async function decodeParquetGeometryShapes(data: ArrayBuffer, streamWide = true): Promise<SharedShapeGeometry> {
+  const { meshArrow, vertexArrow, indexArrow } = await readFlatTables(data);
+  return buildSharedShapesFromTables(meshArrow, vertexArrow, indexArrow, undefined, streamWide);
+}
+
 export interface FlatTables {
   meshArrow: ArrowTableLike;
   vertexArrow: ArrowTableLike;

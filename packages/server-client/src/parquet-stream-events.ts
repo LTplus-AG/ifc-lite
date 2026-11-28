@@ -13,8 +13,9 @@
  * guarantee stops being observable on the client.
  */
 
-import { decodeParquetGeometry } from './parquet-decoder.js';
-import { decodeCrossBatch, StreamShapeStore } from './parquet-stream-shapes.js';
+import { decodeParquetGeometry, decodeParquetGeometryShapes } from './parquet-decoder.js';
+import { decodeCrossBatch, decodeCrossBatchShapes, StreamShapeStore } from './parquet-stream-shapes.js';
+import { SharedShapeTracker, type SharedShapeGeometry } from './parquet-shared-shapes.js';
 import type {
   ModelMetadata,
   ParquetBatch,
@@ -45,11 +46,14 @@ export const STREAM_ENDED_WITHOUT_TERMINAL_EVENT =
  * @param response - An OK response whose body is the SSE stream.
  * @param onBatch - Called once per decoded batch, for immediate rendering.
  * @param startedAt - `performance.now()` at request time, for the timing log.
+ * @param sharedShapes - Keep blocks several rows name as `batch.shared_shapes`
+ *   instead of copying them into `batch.meshes` (`parquet-shared-shapes.ts`).
  */
 export async function consumeParquetStream(
   response: Response,
   onBatch: (batch: ParquetBatch) => void,
   startedAt: number,
+  sharedShapes = false,
 ): Promise<ParquetStreamResult> {
   if (!response.body) {
     throw new Error('No response body for streaming');
@@ -66,6 +70,8 @@ export async function consumeParquetStream(
   // Shapes earlier batches carried, for a server that shares across batches
   // (#5407). Only ever filled by batches that state their bases.
   const shapes = new StreamShapeStore();
+  // The blocks earlier batches named, so a later lone row naming one is kept as an occurrence too.
+  const tracker = new SharedShapeTracker();
 
   // A thrown 'error' event (or any other exception mid-loop) must not
   // leave the reader locked on `response.body` — mirrors the try/finally
@@ -115,18 +121,32 @@ export async function consumeParquetStream(
               if ((vertex_base === undefined) !== (index_base === undefined)) {
                 throw new Error('Malformed Parquet stream: a batch stated only one of vertex_base / index_base');
               }
-              const meshes =
-                vertex_base !== undefined && index_base !== undefined
-                  ? await decodeCrossBatch(bytes.buffer, shapes, vertex_base, index_base, event.batch_number)
-                  : await decodeParquetGeometry(bytes.buffer);
+              const crossBatch = vertex_base !== undefined && index_base !== undefined;
+              let decoded: SharedShapeGeometry;
+              if (!sharedShapes) {
+                decoded = {
+                  meshes: crossBatch
+                    ? await decodeCrossBatch(bytes.buffer, shapes, vertex_base, index_base, event.batch_number)
+                    : await decodeParquetGeometry(bytes.buffer),
+                  shapes: [],
+                };
+              } else {
+                // A batch without bases has batch-local offsets: its shapes join within it only.
+                decoded = crossBatch
+                  ? await decodeCrossBatchShapes(bytes.buffer, shapes, tracker, vertex_base, index_base, event.batch_number)
+                  : await decodeParquetGeometryShapes(bytes.buffer, false);
+              }
+              const { meshes, shapes: shared } = decoded;
               const decodeTime = performance.now() - decodeStart;
 
-              total_meshes += meshes.length;
-              console.log(`[client] Batch #${event.batch_number}: ${meshes.length} meshes, decode: ${decodeTime.toFixed(0)}ms`);
+              const occurrences = shared.reduce((n, shape) => n + shape.occurrences.length, 0);
+              total_meshes += meshes.length + occurrences;
+              console.log(`[client] Batch #${event.batch_number}: ${meshes.length} meshes, ${occurrences} shared-shape occurrences, decode: ${decodeTime.toFixed(0)}ms`);
 
               // Call the batch callback for immediate rendering
               onBatch({
                 meshes,
+                ...(sharedShapes ? { shared_shapes: shared } : {}),
                 batch_number: event.batch_number,
                 decode_time_ms: decodeTime,
               });

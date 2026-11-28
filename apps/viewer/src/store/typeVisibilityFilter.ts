@@ -79,6 +79,11 @@ export function isTypeVisible(
   return typeVisibility[key];
 }
 
+/** Whether a whole-class toggle gates `ifcType`: such meshes must stay flat, since an instance record carries no class (#5409). */
+export function isClassToggledType(ifcType: string): boolean {
+  return IFC_TYPE_TO_VISIBILITY_KEY[ifcType] !== undefined;
+}
+
 const VISIBILITY_KEYS = [...new Set(Object.values(IFC_TYPE_TO_VISIBILITY_KEY))];
 
 /** Whether `isTypeVisible` can drop anything: a structural mode or any class toggle off. */

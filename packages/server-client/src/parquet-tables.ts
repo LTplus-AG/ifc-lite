@@ -17,6 +17,7 @@
 import type { MeshData } from './types.js';
 import { meshColumns, numericColumn, transformFields } from './parquet-columns.js';
 import { applyInstanceRotation, readRotationColumns } from './parquet-rotation.js';
+import { buildFlatMesh, readFlatColumns } from './parquet-flat-rows.js';
 
 /**
  * Structural view of the bits of `apache-arrow`'s `Table` this module uses.
@@ -53,141 +54,9 @@ export function buildMeshesFromTables(
   vertexArrow: ArrowTableLike,
   indexArrow: ArrowTableLike
 ): MeshData[] {
-  // Extract columns from mesh table
-  const expressIds = numericColumn(meshArrow, 'express_id');
-  const ifcTypes = meshArrow.getChild('ifc_type');
-  const vertexStarts = numericColumn(meshArrow, 'vertex_start');
-  const vertexCounts = numericColumn(meshArrow, 'vertex_count');
-  const indexStarts = numericColumn(meshArrow, 'index_start');
-  const indexCounts = numericColumn(meshArrow, 'index_count');
-  const colorR = numericColumn(meshArrow, 'color_r');
-  const colorG = numericColumn(meshArrow, 'color_g');
-  const colorB = numericColumn(meshArrow, 'color_b');
-  const colorA = numericColumn(meshArrow, 'color_a');
-  if (!expressIds || !vertexStarts || !vertexCounts || !indexStarts || !indexCounts) {
-    throw new Error('Malformed Parquet geometry: missing required mesh column');
-  }
-  if (!colorR || !colorG || !colorB || !colorA) {
-    throw new Error('Malformed Parquet geometry: missing required color column');
-  }
-
-  // Extract columns from vertex table
-  const posX = numericColumn(vertexArrow, 'x');
-  const posY = numericColumn(vertexArrow, 'y');
-  const posZ = numericColumn(vertexArrow, 'z');
-  const normX = numericColumn(vertexArrow, 'nx');
-  const normY = numericColumn(vertexArrow, 'ny');
-  const normZ = numericColumn(vertexArrow, 'nz');
-
-  // Extract columns from index table
-  const idx0 = numericColumn(indexArrow, 'i0');
-  const idx1 = numericColumn(indexArrow, 'i1');
-  const idx2 = numericColumn(indexArrow, 'i2');
-
-  // The per-mesh bounds check below only validates posX/normX/idx0, but the
-  // loop also reads the sibling columns (posY/posZ, normY/normZ, idx1/idx2).
-  // A malformed payload with a missing or short sibling would read `undefined`
-  // → NaN positions / bad indices, so verify presence + matching lengths once
-  // up front; the per-mesh check then transitively covers every sibling.
-  if (!posX || !posY || !posZ || !normX || !normY || !normZ || !idx0 || !idx1 || !idx2) {
-    throw new Error('Malformed Parquet geometry: missing required vertex/index column');
-  }
-  if (
-    posX.length !== posY.length ||
-    posX.length !== posZ.length ||
-    normX.length !== normY.length ||
-    normX.length !== normZ.length ||
-    idx0.length !== idx1.length ||
-    idx0.length !== idx2.length
-  ) {
-    throw new Error('Malformed Parquet geometry: inconsistent parallel column lengths');
-  }
-
-  // Reconstruct MeshData array
-  const meshCount = expressIds.length;
-  // Additive per-mesh columns (#1841, #3215) — absent on payloads and caches
-  // from servers predating them, where origin defaults to [0,0,0] and the
-  // source ids simply do not appear.
-  const cols = meshColumns(meshArrow, meshCount);
-  // Absent on every pre-#3888 payload. The flat transport has no version byte
-  // to tell a truncated v6 from a genuine v5, so absence reads as the identity
-  // it is on a v5 blob (see `readRotationColumns`).
-  const rotationCols = readRotationColumns(meshArrow, meshCount, 'identity');
-  const meshes: MeshData[] = new Array(meshCount);
-
-  // Only consume the additive origin/geometry_class columns when all three
-  // origin components are present AND parallel to the mesh rows — a short or
-  // partial set (malformed/truncated payload) must not read `undefined` → NaN.
-
-  for (let i = 0; i < meshCount; i++) {
-    const vertexStart = vertexStarts[i];
-    const vertexCount = vertexCounts[i];
-    const indexStart = indexStarts[i];
-    const indexCount = indexCounts[i];
-
-    // Validate per-mesh ranges against the actual (untrusted) column lengths
-    // before indexing, so an overrun fails loudly instead of silently
-    // writing NaN positions / 0 indices into the geometry.
-    if (
-      vertexStart + vertexCount > posX.length ||
-      vertexStart + vertexCount > normX.length ||
-      indexStart % 3 !== 0 ||
-      indexCount % 3 !== 0 ||
-      (indexStart + indexCount) / 3 > idx0.length
-    ) {
-      throw new Error(
-        `Malformed Parquet geometry: mesh ${i} range out of bounds ` +
-          `(vertexStart=${vertexStart}, vertexCount=${vertexCount}, vertices=${posX.length}; ` +
-          `indexStart=${indexStart}, indexCount=${indexCount}, triangles=${idx0.length})`
-      );
-    }
-
-    // Reconstruct interleaved positions from columnar format. The server
-    // already applies the Z-up -> Y-up swap, so this just copies through.
-    const positions = new Float32Array(vertexCount * 3);
-    for (let v = 0; v < vertexCount; v++) {
-      const srcIdx = vertexStart + v;
-      positions[v * 3] = posX[srcIdx];
-      positions[v * 3 + 1] = posY[srcIdx];
-      positions[v * 3 + 2] = posZ[srcIdx];
-    }
-
-    // Reconstruct interleaved normals (also pre-transformed server-side).
-    const normals = new Float32Array(vertexCount * 3);
-    for (let v = 0; v < vertexCount; v++) {
-      const srcIdx = vertexStart + v;
-      normals[v * 3] = normX[srcIdx];
-      normals[v * 3 + 1] = normY[srcIdx];
-      normals[v * 3 + 2] = normZ[srcIdx];
-    }
-
-    // Rotate the shared block onto THIS occurrence before `origin` translates
-    // it (`world = origin + R * p`). A no-op on an identity row, which is every
-    // row of a v5 payload and every unshared row of a v6 one.
-    if (rotationCols) applyInstanceRotation(positions, normals, rotationCols, i);
-
-    // Reconstruct triangle indices from columnar format.
-    const triangleCount = indexCount / 3, triangleStart = indexStart / 3;
-    const indices = new Uint32Array(indexCount);
-    for (let t = 0; t < triangleCount; t++) {
-      const srcIdx = triangleStart + t;
-      indices[t * 3] = idx0[srcIdx];
-      indices[t * 3 + 1] = idx1[srcIdx];
-      indices[t * 3 + 2] = idx2[srcIdx];
-    }
-
-    meshes[i] = {
-      express_id: expressIds[i],
-      ifc_type: (ifcTypes?.get(i) as string) ?? 'Unknown',
-      positions,
-      normals,
-      indices,
-      color: [colorR[i], colorG[i], colorB[i], colorA[i]],
-      // world vertex = origin + position (both Y-up metres).
-      ...transformFields(i, cols),
-    };
-  }
-
+  const cols = readFlatColumns(meshArrow, vertexArrow, indexArrow);
+  const meshes: MeshData[] = new Array(cols.meshCount);
+  for (let i = 0; i < cols.meshCount; i++) meshes[i] = buildFlatMesh(cols, i);
   return meshes;
 }
 

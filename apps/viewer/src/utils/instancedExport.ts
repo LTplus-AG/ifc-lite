@@ -88,6 +88,32 @@ export interface ReleasedExportContext {
   readonly scope?: readonly string[];
 }
 
+type InstancedScene = {
+  getAllInstancedMeshData(): MeshData[];
+  getInstancedEntityIds?(): Iterable<number>;
+  getInstancedMeshDataPieces?(expressId: number): MeshData[] | undefined;
+};
+
+/**
+ * The scene's instanced occurrences a caller may keep. With a model range, only the
+ * entities inside that range are materialized: `getAllInstancedMeshData()` builds every
+ * loaded model's occurrences, and the placement index calls this once per model, so a
+ * federation of N models built N copies of all of them (the 4- and 5-model local
+ * federations then spent minutes in back-to-back major GCs after the load). The id
+ * filter below is unchanged; this only skips building what it would drop.
+ */
+function liveInstancedMeshes(scene: InstancedScene, modelRange: InstancedModelRange | null): MeshData[] {
+  if (!modelRange || !scene.getInstancedEntityIds || !scene.getInstancedMeshDataPieces) return scene.getAllInstancedMeshData();
+  const lo = modelRange.idOffset, hi = modelRange.idOffset + modelRange.maxExpressId;
+  const out: MeshData[] = [];
+  for (const id of scene.getInstancedEntityIds()) {
+    if (id <= lo || id > hi) continue;
+    const pieces = scene.getInstancedMeshDataPieces(id);
+    if (pieces) for (const piece of pieces) out.push(piece);
+  }
+  return out;
+}
+
 export function withInstancedMeshes(
   geometryResult: GeometryResult,
   modelRange: InstancedModelRange | null,
@@ -110,7 +136,7 @@ export function withInstancedMeshes(
   }
   geometryResult = placedViewGeometry(geometryResult, undefined, modelRange?.modelId);
   const scene = getGlobalRenderer()?.getScene();
-  const live = scene?.getAllInstancedMeshData() ?? [];
+  const live = scene ? liveInstancedMeshes(scene, modelRange) : [];
   // An occurrence without a modelIndex belongs to the sole model (canonical index 0); in a
   // federation it is ambiguous, and an owner-scoped export must not guess.
   const singleModel = getViewerState().models.size <= 1;

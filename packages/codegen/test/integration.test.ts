@@ -10,7 +10,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 import { join } from 'node:path';
-import { parseExpressSchema } from '../src/express-parser.js';
+import { parseExpressSchema } from '../src/index.js';
 import { generateTypeScript } from '../src/typescript-generator.js';
 
 describe('Integration Tests', () => {

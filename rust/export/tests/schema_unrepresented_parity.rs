@@ -24,6 +24,8 @@ struct Case {
     refuses: bool,
     #[serde(default)]
     merge: bool,
+    #[serde(default, rename = "fullExportOmitsOrphan")]
+    full_export_omits_orphan: bool,
 }
 
 fn cases() -> Vec<Case> {
@@ -42,12 +44,12 @@ fn source(schema: &str, line: &str) -> String {
 }
 
 /// Run one entity line through the real exporter, as `ifc-lite export` does.
-fn convert(c: &Case) -> Result<String, String> {
+fn convert(c: &Case) -> Result<Option<String>, String> {
     let src = source(&c.from, &c.line);
     let out = export_step_json(src.as_bytes(), Some(c.to.clone()), None, "").map_err(|e| e.to_string())?;
-    let line = out.lines().find(|l| l.starts_with('#')).unwrap_or_else(|| panic!("no entity line:\n{out}"));
+    let line = out.lines().find(|l| l.starts_with('#'));
     // Rust keeps a spaced source's `#5 =` prefix, TS writes `#5=`: cosmetic.
-    Ok(line.replacen("#5 =", "#5=", 1))
+    Ok(line.map(|s| s.replacen("#5 =", "#5=", 1)))
 }
 
 #[test]
@@ -183,7 +185,9 @@ fn every_case_agrees_with_the_shared_fixture_7742() {
         let got = convert(c);
         let ok = match (&got, c.refuses) {
             (Err(_), true) => true,
-            (Ok(line), false) => Some(line) == c.expect.as_ref(),
+            // The line converter leaves date carriers for the full writer to resolve (#11199).
+            (Ok(None), false) => c.full_export_omits_orphan,
+            (Ok(Some(line)), false) => !c.full_export_omits_orphan && Some(line) == c.expect.as_ref(),
             _ => false,
         };
         if !ok {

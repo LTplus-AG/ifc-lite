@@ -148,7 +148,7 @@ it('reports the typed value whose allocation would exceed the STEP id limit (#10
   }));
 });
 
-it('normalizes converted typed property lengths and areas in sync and async merges (#10797)', async () => {
+it('normalizes typed property lengths, areas and declared profile units in sync and async merges (#10797, #11329)', async () => {
   const parser = new IfcParser();
   const read = (source: string) => parser.parseColumnar(new TextEncoder().encode(source).buffer);
   const unitAssignment = (prefix: string, guid: string) =>
@@ -159,8 +159,12 @@ it('normalizes converted typed property lengths and areas in sync and async merg
   const primary = await read("ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n"
     + unitAssignment('$', '0123456789012345678901') + 'ENDSEC;\nEND-ISO-10303-21;\n');
   const fixture = readFileSync(new URL('../../../rust/export/tests/fixtures/schema_typed_properties_upgrade.ifc', import.meta.url), 'utf8');
+  const sourceUnits = unitAssignment('.MILLI.', '1123456789012345678901').replace('(#12,#13)', '(#12,#13,#18)')
+    + '#14=IFCSIUNIT(*,.MASSUNIT.,$,.GRAM.);\n#15=IFCSIUNIT(*,.LENGTHUNIT.,.CENTI.,.METRE.);\n'
+    + '#16=IFCDERIVEDUNITELEMENT(#14,1);\n#17=IFCDERIVEDUNITELEMENT(#15,-1);\n'
+    + '#18=IFCDERIVEDUNIT((#16,#17),.MASSPERLENGTHUNIT.,$);\n';
   const secondary = await read(fixture.replace("0.02,'plastic'", "/* mm */20.,'plastic'").replace('4.5,$,$,$,0.06', '4.5,$,$,$,60000.')
-    .replace('DATA;\n', 'DATA;\n' + unitAssignment('.MILLI.', '1123456789012345678901')));
+    .replace('DATA;\n', 'DATA;\n' + sourceUnits));
   const exporter = new MergedExporter([
     { id: 'm', name: 'metres', dataStore: primary, lengthUnitScale: 1 },
     { id: 'mm', name: 'millimetres', dataStore: secondary, lengthUnitScale: 0.001 },
@@ -169,7 +173,8 @@ it('normalizes converted typed property lengths and areas in sync and async merg
   for (const result of [exporter.export(options), await exporter.exportAsync(options)]) {
     expect(result.stats.normalizedModelCount).toBe(1);
     const output = new TextDecoder().decode(result.content);
-    expect(output).toContain("IFCPROPERTYSINGLEVALUE('MaxAggregateSize',$,IFCPOSITIVELENGTHMEASURE(0.02),$);");
+    expect(output).toContain("IFCPROPERTYSINGLEVALUE('MaxAggregateSize',$,IFCPOSITIVELENGTHMEASURE(/* mm */0.02),$);");
     expect(output).toContain("IFCPROPERTYSINGLEVALUE('CrossSectionArea',$,IFCAREAMEASURE(0.06),$);");
+    expect(output).toContain("IFCPROPERTYSINGLEVALUE('MassPerLength',$,IFCMASSPERLENGTHMEASURE(0.45),$);");
   }
 });

@@ -7,7 +7,7 @@
  * The steps of .github/workflows/viewer-concurrency-probe.yml (why it exists
  * and when it runs is in that file's header). ADVISORY: both modes exit 0.
  * `--report` puts a test failure at concurrency 2, or fewer files REPORTING a
- * result than the 16-shard gate selects, in the summary and a warning
+ * result than the full viewer gate selects, in the summary and a warning
  * annotation; a red check here would read as a red main.
  *
  *   node scripts/viewer-concurrency-probe.mjs --shard
@@ -176,7 +176,7 @@ function shard(env) {
 /**
  * The probe's verdict on its own completeness.
  *
- * `allFiles` is what the gate runs: its 16 shards partition the full
+ * `allFiles` is what the gate runs: its shards partition the full
  * selection exactly, each file once (scripts/viewer-test-shards.test.mjs),
  * so the gate's file count is `allFiles.length`.
  *
@@ -212,15 +212,15 @@ export function report(records, allFiles, expectedShards) {
     `| Slowest test step | ${records.length ? (Math.max(...records.map((r) => r.testStepSeconds)) / 60).toFixed(1) : '?'} min |`,
     `| Test-step minutes, summed (independent of shard balance) | ${testStepMinutes.toFixed(1)} |`,
     `| Test files that reported a result | ${ranSet.size} |`,
-    `| Test files the 16-shard gate executes | ${allFiles.length} |`,
+    `| Test files the full viewer gate executes | ${allFiles.length} |`,
     `| Tests passed / failed / cancelled | ${sum(records, 'pass')} / ${sum(records, 'fail')} / ${sum(records, 'cancelled')} |`,
     '',
     complete
       ? `File coverage matches the gate exactly (${ran.length} files, each once).`
       : `⚠️ File coverage does NOT match the gate: ${missingShards.length} shard record(s) missing (${missingShards.join(', ') || 'none'}), ${notRun.length} file(s) reported no result${notRun.length ? ` (first: ${notRun.slice(0, 5).map((f) => `\`${f}\``).join(', ')})` : ''}, ${duplicates} reported twice, ${extra.length} reported that the gate does not run.`,
     '',
-    // The duration manifest is packed for 16 shards, so 8 shards take the
-    // path-hash split, measured at 336-900 s per shard where LPT gives ~654 s.
+    // The probe uses eight shards, so it takes the path-hash split when the
+    // manifest is packed for a different shard count.
     `Shard balance: ${expectedShards} shards use the path-hash split, not the gate's duration packing, so wall time and the slowest step include shard imbalance and this runner type. Compare the summed test-step minutes with the gate's.`,
   ];
   if (failed.length > 0) {

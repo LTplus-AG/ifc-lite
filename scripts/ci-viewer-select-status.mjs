@@ -41,22 +41,30 @@
  *               failure when one failed, or the job produced no verdict (a
  *               step broke, the build artifacts expired: they are kept one
  *               day, so a re-run of this job alone after that cannot work).
- *               A CANCELLED job posts nothing: its pending stays (fail
- *               closed), and a cancelling newer run on the same sha posts its
- *               own status, which a late "cancelled" post must not overwrite.
+ *               A cancelled job leaves its status to --cancelled.
  *               Exits 1 when the post fails, which shows on the advisory
  *               job; the pending status then still holds the gate.
  *   --shards    the full-lane verdict, from `viewer-shards-status` (needs
  *               changes + viewer-tests): success when every viewer shard
  *               passed, failure when one failed, nothing when they were
- *               cancelled or skipped (pending stays, as for --final).
+ *               cancelled or skipped.
+ *   --cancelled-head resolves the cancelled attempt's historical PR head.
+ *   --cancelled the trusted completion workflow reports failure with a
+ *               rerun remedy if the cancelled attempt is still newest and
+ *               its status is pending, missing, or a superseded success.
+ *               An existing failure or the latest attempt's success stands.
+ *               A recorded no-op edit keeps the earlier verdict. Mergify
+ *               queue drafts can receive failure on their own SHA, which
+ *               the queue's merge conditions do not consult.
  *
  * Every pending says "if stuck: re-run all jobs": a pending is stuck only
  * when its run was cancelled, timed out or broke before its verdict.
  *
  * ORDERING on one sha (the status is last-write-wins): within a run, entry
  * precedes the verdict (the tests job and viewer-shards-status need
- * `changes`). Across runs, test.yml's concurrency group cancels an older
+ * `changes`). The status-writing jobs and the cancellation reporter share
+ * a per-sha concurrency group, so the reporter's reads and POST cannot
+ * straddle another writer's POST. test.yml's workflow group cancels an older
  * non-`edited` run when a newer one starts, and a cancelled run posts nothing,
  * so its verdict cannot land after the newer run's entry. An `edited` run is
  * not cancelling: it queues behind the running one, so it starts after that
@@ -74,10 +82,11 @@
  * for --entry and --shards also EVENT, LANE, BATCH, NOOP, FRONTEND, RUST, and
  * SHARDS_RESULT for --shards; for --final JOB_STATUS, SELECT_OUTCOME,
  * SELECT_RUN, DOWNLOAD_OUTCOME, RUN_OUTCOME. JOB_NAME (any phase) links that
- * job's page instead of the run's.
+ * job's page instead of the run's. Cancellation uses CANCELLED_RUN_ID and
+ * CANCELLED_RUN_ATTEMPT. --cancelled-head writes the sha to GITHUB_OUTPUT.
  */
 
-import { readFileSync } from 'node:fs';
+import { appendFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { isMainEntry } from './lib/is-main-entry.mjs';
@@ -198,9 +207,112 @@ async function targetUrl(env) {
   }
 }
 
+function attemptUrl(url, attempt) {
+  const target = new URL(url);
+  target.searchParams.set('attempt', attempt);
+  return target.href;
+}
+
+// The Actions run record pins the historical PR head. The associated PR
+// record can advance after the cancelled run, so don't use its current head.
+async function cancelledHead(env) {
+  const { GITHUB_REPOSITORY: repo, HEAD_REPO: headRepo,
+    CANCELLED_RUN_ID: id, CANCELLED_RUN_ATTEMPT: attempt } = env;
+  if (!repo || repo !== headRepo) return '';
+  if (!/^\d+$/.test(id ?? '') || !/^\d+$/.test(attempt ?? '')) {
+    throw new Error('Invalid cancelled Test run identity');
+  }
+  const run = await api(env, 'GET', `repos/${repo}/actions/runs/${id}`);
+  if (String(run.run_attempt) !== attempt || run.conclusion !== 'cancelled' ||
+      run.event !== 'pull_request' || run.head_repository?.full_name !== repo) return '';
+  if (!/^[0-9a-f]{40}$/.test(run.head_sha ?? '')) throw new Error('Invalid cancelled Test head SHA');
+  return run.head_sha;
+}
+
+async function listTestRuns(env, path, sha) {
+  const perPage = 100;
+  const query = `${path}/actions/workflows/test.yml/runs?event=pull_request&head_sha=${sha}&per_page=${perPage}`;
+  const first = await api(env, 'GET', query);
+  const { total_count: count, workflow_runs: runs } = first;
+  // GitHub caps filtered workflow-run listings at 1,000. A capped or
+  // inconsistent listing cannot establish which attempt started last.
+  if (!Number.isSafeInteger(count) || count < 0 || count >= 1_000 || !Array.isArray(runs) ||
+      runs.length !== Math.min(count, perPage)) throw new Error('Incomplete Test run listing');
+  for (let page = 2; runs.length < count; page += 1) {
+    const next = await api(env, 'GET', `${query}&page=${page}`);
+    if (next.total_count !== count || !Array.isArray(next.workflow_runs) ||
+        next.workflow_runs.length !== Math.min(count - runs.length, perPage)) throw new Error('Incomplete Test run listing');
+    runs.push(...next.workflow_runs);
+  }
+  if (new Set(runs.map(({ id }) => id)).size !== count) throw new Error('Duplicate Test runs in paginated listing');
+  return runs;
+}
+
+async function postCancellation(env) {
+  const sha = await cancelledHead(env);
+  if (!sha || sha !== env.HEAD_SHA) return 0;
+  const { GITHUB_REPOSITORY: repo, CANCELLED_RUN_ID: id, CANCELLED_RUN_ATTEMPT: attempt } = env;
+  const path = `repos/${repo}`;
+  const runPrefix = `${env.GITHUB_SERVER_URL || 'https://github.com'}/${repo}/actions/runs/`;
+
+  const { statuses } = await api(env, 'GET', `${path}/commits/${sha}/status?per_page=100`);
+  const current = statuses.find(({ context }) => context === STATUS_CONTEXT);
+  if (current?.state === 'failure' || current?.state === 'error') return 0;
+  // Legacy first-attempt posts had bare run or job links.
+  const owner = current?.target_url?.startsWith(runPrefix)
+    ? current.target_url.slice(runPrefix.length).match(/^(\d+)(?:\/job\/\d+)?(?:\?attempt=(\d+))?$/)
+    : null;
+  const ownerAttempt = owner?.[2] ?? '1';
+  if (owner?.[1] === id && (BigInt(ownerAttempt) > BigInt(attempt) ||
+      (current?.state === 'success' && ownerAttempt === attempt))) return 0;
+
+  const { jobs } = await api(env, 'GET', `${path}/actions/runs/${id}/attempts/${attempt}/jobs?per_page=100`);
+  if (jobs.find(({ name }) => name === 'Detect changes')?.steps?.some(
+    ({ name, conclusion }) => name === 'Record no-op edit decision' && conclusion === 'success',
+  )) return 0;
+
+  // The API lists by run creation. A rerun can start after a higher run ID.
+  // The status writers share a concurrency group through this check and POST.
+  const runs = await listTestRuns(env, path, sha);
+  const sameRepo = runs.filter((candidate) => candidate.head_repository?.full_name === repo);
+  const cancelled = sameRepo.find((run) => String(run.id) === id && String(run.run_attempt) === attempt);
+  if (cancelled?.conclusion !== 'cancelled') return 0;
+  const started = (run) => Date.parse(run.run_started_at);
+  const cancelledStart = started(cancelled);
+  const ownerRun = owner && sameRepo.find(
+    (run) => String(run.id) === owner[1] && String(run.run_attempt) === ownerAttempt,
+  );
+  // A stale listing can miss the status owner's attempt, even at a lower ID.
+  if (owner && owner[1] !== id && !ownerRun) return 0;
+  const canSettleTie = !current || (current.state === 'pending' &&
+    ownerRun?.conclusion === 'cancelled' && started(ownerRun) === cancelledStart);
+  // Creation times and run IDs cannot establish when an attempt started.
+  // An absent status or a pending status owned by the tied attempts can
+  // be settled once every attempt at that start time is confirmed cancelled.
+  if (!Number.isFinite(cancelledStart) || !sameRepo.every((run) => {
+    if (run === cancelled) return true;
+    const start = started(run);
+    return start < cancelledStart || (canSettleTie && start === cancelledStart && run.conclusion === 'cancelled');
+  })) return 0;
+
+  await api(env, 'POST', `${path}/statuses/${sha}`, {
+    state: 'failure',
+    context: STATUS_CONTEXT,
+    description: 'Test was cancelled before the viewer verdict; re-run all jobs or push',
+    target_url: attemptUrl(`${runPrefix}${id}`, attempt),
+  });
+  return 0;
+}
+
 export async function main(argv, env = process.env) {
   const [cmd, dir] = argv;
-  if (cmd !== '--entry' && cmd !== '--shards' && !(cmd === '--final' && dir)) throw new Error('usage: --entry | --shards | --final <dir>');
+  if (cmd === '--cancelled-head') {
+    const sha = await cancelledHead(env);
+    if (sha) appendFileSync(env.GITHUB_OUTPUT, `sha=${sha}\n`);
+    return 0;
+  }
+  if (cmd === '--cancelled') return postCancellation(env);
+  if (cmd !== '--entry' && cmd !== '--shards' && !(cmd === '--final' && dir)) throw new Error('usage: --entry | --shards | --final <dir> | --cancelled-head | --cancelled');
   const phase = cmd.slice(2);
   const decision = decideStatus({
     phase,
@@ -226,7 +338,8 @@ export async function main(argv, env = process.env) {
     return 0;
   }
   if (!/^[0-9a-f]{40}$/.test(env.HEAD_SHA ?? '')) throw new Error(`HEAD_SHA is not a commit sha: ${JSON.stringify(env.HEAD_SHA)}`);
-  const body = { state: decision.state, context: STATUS_CONTEXT, description: decision.description, target_url: await targetUrl(env) };
+  const body = { state: decision.state, context: STATUS_CONTEXT, description: decision.description,
+    target_url: attemptUrl(await targetUrl(env), env.GITHUB_RUN_ATTEMPT || '1') };
   try {
     await api(env, 'POST', `repos/${env.GITHUB_REPOSITORY}/statuses/${env.HEAD_SHA}`, body);
   } catch (err) {

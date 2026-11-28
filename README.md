@@ -316,7 +316,7 @@ You need Node.js 22 (22.13 or later) or 24, not 23, and pnpm 10 (`corepack enabl
 pinned pnpm). The WASM bundle is built from `rust/`, which needs the nightly
 toolchain and `wasm32-unknown-unknown` target pinned in `rust-toolchain.toml`
 plus `wasm-pack`. Run `rustup toolchain install` in the clone to install the
-pinned toolchain (the first `cargo` command there also installs it). Without
+pinned toolchain; current rustup releases do not install it on first use. Without
 Rust, `pnpm build:wasm:fetch` downloads the prebuilt WASM runtime from npm
 instead; see the [setup guide](https://ifclite.dev/docs/contributing/setup/).
 
@@ -328,6 +328,7 @@ cargo install wasm-pack   # or: curl https://rustwasm.github.io/wasm-pack/instal
 # 2. Clone and build
 git clone https://github.com/LTplus-AG/ifc-lite.git
 cd ifc-lite
+rustup toolchain install   # installs the nightly and target pinned in rust-toolchain.toml
 corepack enable
 pnpm install && pnpm dev   # builds every package, then serves the viewer at localhost:3000
 ```

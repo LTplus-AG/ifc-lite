@@ -73,6 +73,8 @@ By default the server binds `127.0.0.1`. Binding a non-loopback host requires ei
 | `--bridge-port <N>` | Bridge WebSocket port on 127.0.0.1 (default 21517; when taken, the next nine ports and then any free one; an explicit port does not fall back; 0 = auto) |
 | `--bridge-viewer-url <url>` | Base of the pairing link (default `https://ifclite.com`). Its origin replaces the default in the allowlist |
 | `--allow-origin <origin>` | HTTP: let a browser origin read responses. Bridge: an extra origin that may connect (repeatable) |
+| `--channel` | With `--bridge`: also push clicks on agent surfaces into a Claude Code session as channel messages (research preview; see [Interactive result surfaces](#interactive-result-surfaces)) |
+| `--version`, `-v` / `--help`, `-h` | Print the version / the usage text and exit |
 
 An unknown flag prints a warning on stderr and is otherwise ignored, so a config written for another version still starts, unless that flag took a value: the value is then read as a file. `--flag=value` works for every value flag. A value flag with no value (`--token --read-only`) is a usage error: the server exits with code 2 rather than guess. `--federate` is accepted for the same reason and does nothing: every file passed already loads into one session.
 
@@ -102,26 +104,27 @@ Tools are grouped by capability. Everything below is registered in the default t
 | Category | Tools |
 |----------|-------|
 | Discovery | `model_info`, `model_list`, `model_load`, `model_unload`, `schema_describe` |
-| Query | `query_entities`, `count_entities`, `get_entity`, `get_entities_bulk`, `spatial_hierarchy`, `containment_chain`, `relationships`, `properties_unique`, `materials_list`, `classifications_list`, `georeferencing`, `georeferencing_check`, `units`, `cost_data`, `cost_evaluate` |
+| Query | `query_entities`, `count_entities`, `get_entity`, `get_entities_bulk`, `spatial_hierarchy`, `containment_chain`, `relationships`, `properties_unique`, `materials_list`, `classifications_list`, `georeferencing`, `georeferencing_check`, `units`, `cost_data`, `cost_evaluate`, `structural_data` |
 | Geometry | `geometry_bbox`, `geometry_volume`, `geometry_area`, `geometry_get` *(planned)*, `raycast` *(planned)* |
 | Clash | `clash_check`, `clash_matrix` |
-| Validation | `ids_validate`, `ids_explain`, `model_audit` |
+| Validation | `ids_validate`, `ids_explain`, `model_audit`, `check_rules`, `review_findings` |
 | IDS authoring | `ids_audit`, `ids_lint`, `ids_read`, `ids_apply_ops`, `ids_write`, `ids_schema_search`, `ids_schema_entity`, `ids_schema_pset`, `ids_diff`, `ids_preview` *(planned)*, `ids_infer` *(planned)*, `ids_coverage` *(planned)*, `ids_test` *(planned)* |
 | Mutation | `entity_set_property`, `entity_delete_property`, `entity_set_attribute`, `entity_create`, `entity_delete`, `georeferencing_write`, `georeferencing_fix`, `mutation_batch`, `mutation_undo`, `mutation_diff`, `model_save` |
 | Hosted modelling | `place_opening`, `place_door`, `place_window` |
-
-| Physical edits | `edit_hosted_element`, `edit_element_geometry`, `copy_elements`, `duplicate_element`, `array_elements` |
+| Physical edits | `edit_hosted_element`, `edit_element_geometry`, `copy_elements`, `duplicate_element`, `array_elements`, `mirror_elements` |
+| Classification | `add_classification`, `assign_classification` |
 | Native Room | `query_rooms`, `room_command` |
 | Design modelling | `place_curtain_wall`, `place_grid`, `place_grid_column` |
 | Storeys | `storey_list`, `storey_plan_add`, `storey_add`, `storey_rename`, `storey_plan_edit`, `storey_edit`, `storey_delete`, `set_top_constraint`, `copy_to_storeys` |
 | Wall joins | `join_walls` |
-| BCF | `bcf_topic_list`, `bcf_topic_create`, `bcf_topic_update`, `bcf_topic_close`, `bcf_viewpoint_create`, `bcf_export` |
+| BCF | `bcf_topic_list`, `bcf_topic_create`, `bcf_topic_update`, `bcf_topic_close`, `bcf_viewpoint_create`, `bcf_export`, `bcf_publications_list`, `bcf_publication_check`, `bcf_publication_reconcile`, `bcf_publication_confirm_absent` |
 | bSDD | `bsdd_search`, `bsdd_class`, `bsdd_property_sets`, `bsdd_match` |
 | Diff | `model_diff`, `quantity_diff` |
 | Export | `export_ifc`, `export_csv`, `export_json`, `export_glb`, `export_obj`, `export_ifcx`, `export_usd`, `export_3dm`, `export_gltf`, `export_jsonld`, `export_cityjson`, `export_cityjsonseq`, `export_hbjson`, `export_dfjson` |
 | Model transforms | `model_merge`, `model_convert`, `model_extract`, `model_anonymize`, `model_simplify`, `model_lod`: write to `file_path` and leave the loaded model alone. An existing file there is replaced (a loaded model's source never is). `model_merge` and `model_anonymize` refuse a model with unsaved edits |
 | Flow | `describe_flow`, `run_flow`, `propose_flow`, `resume_flow` |
-| Viewer | `viewer_ask`, `viewer_open`, `viewer_close`, `viewer_status`, `viewer_colorize`, `viewer_isolate`, `viewer_hide`, `viewer_show`, `viewer_reset`, `viewer_fly_to`, `viewer_set_section`, `viewer_clear_section`, `viewer_color_by_storey`, `viewer_color_by_property`, `viewer_get_selection`, `viewer_wait_for_selection`, `viewer_describe_selection` |
+| Viewer | `viewer_ask`, `viewer_open`, `viewer_close`, `viewer_status`, `viewer_colorize`, `viewer_isolate`, `viewer_hide`, `viewer_show`, `viewer_reset`, `viewer_fly_to`, `viewer_set_section`, `viewer_clear_section`, `viewer_color_by_storey`, `viewer_color_by_property`, `viewer_get_selection`, `viewer_wait_for_selection`, `viewer_describe_selection`, `viewer_select` |
+| Result surfaces | `present_query`, `present_ids_results`, `present_clash_results`; `a2ui_viewer_action` is called by the surface itself, not by the agent |
 | Draft layers & review | `create_draft_layer`, `draft_apply_ops`, `publish_layer`, `diff_layer`, `dry_run_merge`, `list_conflicts`, `request_review`, `add_review_feedback`, `get_review_feedback`, `add_review_topic`, `respond_to_review` |
 
 File-writing tools refuse to overwrite models loaded in the caller's session,
@@ -456,7 +459,12 @@ ifc-lite://model/{model_id}/materials
 ifc-lite://model/{model_id}/property-sets
 ifc-lite://viewer/status            (open/closed, port, client count)
 ifc-lite://viewer/selection         (live; supports resources/subscribe for push updates)
+ifc-lite://schemas/ids-ops-v1.json  (payload shapes of the IDS ops vocabulary)
 ```
+
+Two more resources back the [interactive result surfaces](#interactive-result-surfaces):
+the MCP Apps surface `ui://ifc-lite/a2ui-surface`, and its A2UI component catalog,
+read as a resource under the id `https://ifclite.dev/a2ui/catalogs/ifc/v1/catalog.json`.
 
 ### Prompts
 
@@ -579,7 +587,8 @@ npx -y @ifc-lite/mcp install --client cursor -- --bridge
 Clients: `claude-code` (uses `claude mcp add` for ordinary installs), `claude-desktop`, `cursor`,
 `vscode` (user scope runs `code --add-mcp`). `--scope project` writes the
 current directory's `.mcp.json`, `.cursor/mcp.json` or `.vscode/mcp.json`.
-Flags after `--` go to the server. Model paths become absolute. Use
+Flags after `--` go to the server. Model paths become absolute. `--name`
+sets the server name in the client (default `ifc-lite`). Use
 `--force` to replace an existing IFClite entry, including an older npm pin.
 For Claude Code, `--force` backs up and updates `.mcp.json` at project scope
 or `~/.claude.json` at user scope (under `CLAUDE_CONFIG_DIR` when set).

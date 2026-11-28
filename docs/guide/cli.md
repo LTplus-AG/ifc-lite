@@ -909,7 +909,7 @@ echo '{"Start":[0,0,0],"End":[10,0,0],"Height":3,"Thickness":0.2}' \
 | `--material <json>` | Add material (JSON) |
 | `--color <r,g,b>` | Set color (0-1 per channel) |
 | `--from-json` | Read parameters from stdin JSON |
-| `--wall-id <expressId>` | Host wall for `wall-door` / `wall-window` (required for those two) |
+| `--wall-id <expressId>` | Host wall for `wall-door` / `wall-window` (required for those two). Each `create` call builds a new model with one element, so no wall with that ID exists yet and these two types currently fail with `Unknown wallId`. Use the SDK (`addIfcWall`, then `addIfcWallDoor` / `addIfcWallWindow` on the same `IfcCreator`) for hosted doors and windows. |
 | `--is-rectangular` | Rectangular instead of circular section (`pile`) |
 | `--out <file>` | Output IFC file (required unless `--viewer` is given) |
 | `--viewer <port>` | Stream the created geometry to a running viewer (`ifc-lite view`) |
@@ -1373,7 +1373,7 @@ ifc-lite layer log main --json
 | `status` | Show the draft and whether its base ref moved |
 | `diff <side>` | Diff composed states; a side is a ref, layer id, or `.ifcx` file. `--against <side>`, `--components`, `--json` |
 | `merge <layer-id>` | Merge a candidate into a ref (fast-forward or three-way plan). `--into <ref>`, `--preview`, `--resolve ours\|theirs`, `--waive <spec> --reason "<text>"`, `--approved-by <principal>`, `--allow-unrelated`, `--json` |
-| `push <ref\|layer-id>` | Upload a ref's stack (or one layer) plus its check evidence to a layer registry. `--registry <url>`, `--token <bearer>`, `--set-ref`, `--json` |
+| `push <ref\|layer-id>` | Upload a ref's stack (or one layer) plus its check evidence to a layer registry. `--registry <url>`, `--token <bearer>` (falls back to `IFC_LITE_REGISTRY_TOKEN`), `--set-ref`, `--json`. A refused ref policy exits 3 |
 | `log <ref>` | Provenance log, newest first. `--json` |
 | `bake <ref> -o <out>` | Materialize a tombstone-free flat document |
 | `revert <layer-id>` | Publish an inverse layer and append it to a ref. `--in <ref>`, `--resolve ours\|theirs`, `--json` |
@@ -2013,7 +2013,7 @@ The `semantic` command reads JSON/SPARQL providers, generates shared profile art
 | `lod` | Generate lightweight LOD artifacts |
 | `simplify` | Demesher: simplify meshes, write lighter IFC |
 | `mcp` | Start an MCP server (files load over stdio) |
-| `ext` | Manage IFClite extensions (Phase 0 — validate, init) |
+| `ext` | Manage IFClite extensions: validate, init, keygen, pack, sign, verify, test, capabilities ("ext --help") |
 | `layer` | Layered change tracking over a local store (.ifc-lite/) |
 | `ref` | Manage named refs in the layer store |
 | `oci` | Publish an IFC file to an OCI registry (any model argument may also be oci://...) |

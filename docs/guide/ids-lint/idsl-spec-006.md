@@ -6,7 +6,7 @@
 |---|---|---|---|
 | warning | static | document | no |
 
-Two specifications select exactly the same elements (identical applicability and IFC versions) but require values with nothing in common for the same attribute or property. No element can pass both. This rule only compares identical applicabilities; partially overlapping ones need a model to decide (SPEC-004, model-aware).
+Two specifications select exactly the same elements (identical applicability and IFC versions) but require values with nothing in common for the same attribute or property. No element can pass both. This rule only compares identical applicabilities; partially overlapping ones need a model to decide, and no lint rule checks them.
 
 ## Example
 

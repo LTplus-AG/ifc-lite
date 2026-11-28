@@ -17,6 +17,7 @@
  */
 
 import type { Vec3 } from './raycaster.js';
+import { ChunkedSort } from './snap-chunked-sort.js';
 
 /**
  * Relative quantum of an f32 coordinate (2^-22).
@@ -53,13 +54,21 @@ const MIN_SNAP_TOLERANCE = 1 / 65536;
  * by segment length, so any fixed angle is simultaneously too tight for short
  * segments far from the origin and too loose for long ones near it.
  */
-export function snapToleranceFor(positions: ArrayLike<number>): number {
+export function* scanSnapTolerance(positions: ArrayLike<number>): Generator<void, number> {
   let maxAbs = 0;
   for (let i = 0; i < positions.length; i++) {
     const a = Math.abs(positions[i]);
     if (isFinite(a) && a > maxAbs) maxAbs = a;
+    if ((i + 1) % 8192 === 0) yield;
   }
   return Math.max(MIN_SNAP_TOLERANCE, maxAbs * F32_ULP_SCALE);
+}
+
+export function snapToleranceFor(positions: ArrayLike<number>): number {
+  const scan = scanSnapTolerance(positions);
+  let step = scan.next();
+  while (!step.done) step = scan.next();
+  return step.value;
 }
 
 export interface WeldedVertices {
@@ -105,80 +114,153 @@ export function weldVertices(
   oz: number,
   tol: number
 ): WeldedVertices {
-  const count = Math.floor(positions.length / 3);
-  const ids = new Int32Array(count).fill(-1);
-  const points: Vec3[] = [];
+  const build = new WeldBuild(positions, ox, oy, oz, tol);
+  while (!build.step()) { /* one call to completion */ }
+  return build.result();
+}
+
+/** Vertices one `WeldBuild.step` lifts to world space, and clusters: the clustering probes up to eight hash cells per vertex. */
+const COORD_CHUNK = 8192;
+const CLUSTER_CHUNK = 256;
+
+/**
+ * `weldVertices` as a resumable build (#11504): each `step` lifts a block of
+ * vertices, sorts or merges a block of the canonical order, or clusters a block
+ * of vertices, so one very large piece does not hold an idle slice for
+ * hundreds of milliseconds. The result is the same function of the position
+ * multiset; `weldVertices` is this class run to completion.
+ */
+export class WeldBuild {
+  private readonly count: number;
+  private readonly ids: Int32Array;
+  private readonly points: Vec3[] = [];
+  private readonly xs: Float64Array;
+  private readonly ys: Float64Array;
+  private readonly zs: Float64Array;
+  private readonly valid: Int32Array;
+  private validCount = 0;
+  private phase: 'coords' | 'sort' | 'cluster' | 'done' = 'coords';
+  private next = 0;
+  private sort: ChunkedSort | null = null;
+  private order: Int32Array | null = null;
+  private readonly cell: number;
+  private readonly tolSq: number;
+  private readonly buckets = new Map<string, number[]>();
+
+  constructor(
+    private readonly positions: ArrayLike<number>,
+    private readonly ox: number,
+    private readonly oy: number,
+    private readonly oz: number,
+    private readonly tol: number
+  ) {
+    const count = this.count = Math.floor(positions.length / 3);
+    this.ids = new Int32Array(count);
+    this.valid = new Int32Array(count);
+    this.xs = new Float64Array(count);
+    this.ys = new Float64Array(count);
+    this.zs = new Float64Array(count);
+    this.cell = 2 * tol;
+    this.tolSq = tol * tol;
+  }
+
+  get done(): boolean { return this.phase === 'done'; }
+
+  /** Do one bounded piece of work; true once the weld is complete. */
+  step(): boolean {
+    if (this.phase === 'coords') this.liftCoords();
+    else if (this.phase === 'sort') this.sortOrder();
+    else if (this.phase === 'cluster') this.cluster();
+    return this.phase === 'done';
+  }
+
+  result(): WeldedVertices { return { ids: this.ids, points: this.points }; }
 
   // World coordinates once, then the canonical processing order. `sort` is a
   // total order on VALUE (exact duplicates are interchangeable), so every
   // later step is a function of the position multiset alone.
-  const xs = new Float64Array(count);
-  const ys = new Float64Array(count);
-  const zs = new Float64Array(count);
-  const order: number[] = [];
-  for (let i = 0; i < count; i++) {
-    const x = positions[i * 3] + ox;
-    const y = positions[i * 3 + 1] + oy;
-    const z = positions[i * 3 + 2] + oz;
-    if (!isFinite(x) || !isFinite(y) || !isFinite(z)) continue;
-    xs[i] = x;
-    ys[i] = y;
-    zs[i] = z;
-    order.push(i);
+  private liftCoords(): void {
+    const { positions: p, xs, ys, zs } = this;
+    const end = Math.min(this.count, this.next + COORD_CHUNK);
+    for (let i = this.next; i < end; i++) {
+      this.ids[i] = -1;
+      const x = p[i * 3] + this.ox;
+      const y = p[i * 3 + 1] + this.oy;
+      const z = p[i * 3 + 2] + this.oz;
+      if (!isFinite(x) || !isFinite(y) || !isFinite(z)) continue;
+      xs[i] = x;
+      ys[i] = y;
+      zs[i] = z;
+      this.valid[this.validCount++] = i;
+    }
+    this.next = end;
+    if (end < this.count) return;
+    this.sort = new ChunkedSort(this.valid.subarray(0, this.validCount),
+      (i, j) => (xs[i] - xs[j]) || (ys[i] - ys[j]) || (zs[i] - zs[j]));
+    this.phase = 'sort';
   }
-  order.sort((i, j) => (xs[i] - xs[j]) || (ys[i] - ys[j]) || (zs[i] - zs[j]));
 
-  const cell = 2 * tol;
-  const tolSq = tol * tol;
-  const buckets = new Map<string, number[]>();
+  private sortOrder(): void {
+    if (!this.sort!.step()) return;
+    this.order = this.sort!.result();
+    this.sort = null;
+    this.next = 0;
+    this.phase = 'cluster';
+  }
 
-  for (const i of order) {
-    const x = xs[i], y = ys[i], z = zs[i];
+  private cluster(): void {
+    const { xs, ys, zs, ids, points, buckets, tol, tolSq, cell } = this;
+    const order = this.order!;
+    const end = Math.min(order.length, this.next + CLUSTER_CHUNK);
+    for (let o = this.next; o < end; o++) {
+      const i = order[o];
+      const x = xs[i], y = ys[i], z = zs[i];
 
-    const xLo = Math.floor((x - tol) / cell);
-    const xHi = Math.floor((x + tol) / cell);
-    const yLo = Math.floor((y - tol) / cell);
-    const yHi = Math.floor((y + tol) / cell);
-    const zLo = Math.floor((z - tol) / cell);
-    const zHi = Math.floor((z + tol) / cell);
+      const xLo = Math.floor((x - tol) / cell);
+      const xHi = Math.floor((x + tol) / cell);
+      const yLo = Math.floor((y - tol) / cell);
+      const yHi = Math.floor((y + tol) / cell);
+      const zLo = Math.floor((z - tol) / cell);
+      const zHi = Math.floor((z + tol) / cell);
 
-    // Nearest representative within tol; ties break to the SMALLER id, which
-    // (ids are assigned in value order) is the lexicographically earlier
-    // representative - a value tiebreak, not a positional one.
-    let best = -1;
-    let bestSq = Infinity;
-    for (let cx = xLo; cx <= xHi; cx++) {
-      for (let cy = yLo; cy <= yHi; cy++) {
-        for (let cz = zLo; cz <= zHi; cz++) {
-          const bucket = buckets.get(`${cx}_${cy}_${cz}`);
-          if (!bucket) continue;
-          for (const id of bucket) {
-            const p = points[id];
-            const dx = p.x - x, dy = p.y - y, dz = p.z - z;
-            const dSq = dx * dx + dy * dy + dz * dz;
-            if (dSq > tolSq) continue;
-            if (dSq < bestSq || (dSq === bestSq && id < best)) {
-              best = id;
-              bestSq = dSq;
+      // Nearest representative within tol; ties break to the SMALLER id, which
+      // (ids are assigned in value order) is the lexicographically earlier
+      // representative - a value tiebreak, not a positional one.
+      let best = -1;
+      let bestSq = Infinity;
+      for (let cx = xLo; cx <= xHi; cx++) {
+        for (let cy = yLo; cy <= yHi; cy++) {
+          for (let cz = zLo; cz <= zHi; cz++) {
+            const bucket = buckets.get(`${cx}_${cy}_${cz}`);
+            if (!bucket) continue;
+            for (const id of bucket) {
+              const q = points[id];
+              const dx = q.x - x, dy = q.y - y, dz = q.z - z;
+              const dSq = dx * dx + dy * dy + dz * dz;
+              if (dSq > tolSq) continue;
+              if (dSq < bestSq || (dSq === bestSq && id < best)) {
+                best = id;
+                bestSq = dSq;
+              }
             }
           }
         }
       }
-    }
 
-    if (best >= 0) {
-      ids[i] = best;
-      continue;
-    }
+      if (best >= 0) {
+        ids[i] = best;
+        continue;
+      }
 
-    const id = points.length;
-    points.push({ x, y, z });
-    ids[i] = id;
-    const key = `${Math.floor(x / cell)}_${Math.floor(y / cell)}_${Math.floor(z / cell)}`;
-    const bucket = buckets.get(key);
-    if (bucket) bucket.push(id);
-    else buckets.set(key, [id]);
+      const id = points.length;
+      points.push({ x, y, z });
+      ids[i] = id;
+      const key = `${Math.floor(x / cell)}_${Math.floor(y / cell)}_${Math.floor(z / cell)}`;
+      const bucket = buckets.get(key);
+      if (bucket) bucket.push(id);
+      else buckets.set(key, [id]);
+    }
+    this.next = end;
+    if (end >= order.length) this.phase = 'done';
   }
-
-  return { ids, points };
 }

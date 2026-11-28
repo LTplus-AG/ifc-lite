@@ -273,6 +273,12 @@ For complex analytics, use SQL via DuckDB. SQL support is optional: install the
 call, so it adds nothing to your bundle until used; `sql()` throws if the package
 is not installed):
 
+!!! note "The `properties` and `quantities` tables need a materialised store"
+    `sql()` copies the store's columnar tables into DuckDB. A STEP parse leaves the
+    property and quantity tables empty (see [Direct Data Access](#direct-data-access)),
+    so on a `.ifc` model the `properties` and `quantities` tables have no rows and
+    the joins below return nothing. `entities` and `relationships` are always filled.
+
 ```typescript
 import { IfcQuery } from '@ifc-lite/query';
 

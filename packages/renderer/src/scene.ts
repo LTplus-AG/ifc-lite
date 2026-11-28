@@ -51,7 +51,8 @@ import { splitMeshDataForBufferLimit, cachedWorldAabb, worldAabbFromPieces, worl
 import { TopologyMemo } from './scene-precision.js';
 import { StreamAssembly } from './scene-stream-assembly.js';
 import { mergeSameColorPieces } from './scene-mesh-pieces.js';
-import { resolvePrecisionBucket } from './scene-bucket-routing.js';
+import { ColdPieceMembership } from './scene-cold-membership.js';
+import { LATTICE_KEY_SUFFIX, markOffLattice, resolvePrecisionBucket, type PrecisionBucket } from './scene-bucket-routing.js';
 import { residentBatchBytes, sumResidentGpuBytes, type ResidentGpuBytes } from './render-stats.js';
 import { composeInstancedOverrideColor, originalColorWithAlpha } from './instanced-override-color.js';
 import { writeInstanceLane } from './instance-lane-write.js';
@@ -94,29 +95,6 @@ import { translateInstanceRecord } from './scene-instance-translation.js';
 import { tombstoneInstanceRecords } from './instanced-tombstones.js';
 import { discardSceneGpuResourcesForRecovery, prepareSceneDeviceRecovery, repartitionHydratedRecoveryBucket, restoreSceneGpuResourcesAfterRecovery, type SceneDeviceRecoveryPreparation, type SceneRecoveryHost } from './scene-device-recovery.js';
 
-/** Consolidated per-bucket state — replaces six separate tracking maps. */
-interface BatchBucket {
-  key: string;                      // bucket key (color hash or "hash#N")
-  meshData: MeshData[];             // accumulated source mesh data
-  batchedMesh: BatchedMesh | null;  // built GPU batch (null during streaming)
-  vertexBytes: number;              // accumulated vertex buffer bytes
-  /** Fixed local frame. New pieces that cannot retain topology in this frame
-   * are routed to a precision overflow bucket before any f32 upload. */
-  frameOrigin?: [number, number, number];
-}
-
-/**
- * Release the GPU resources owned by a batch / mesh. Every
- * BatchedMesh and Mesh shares the same {vertex, index, optional
- * uniform} buffer layout, and forgetting any one of the three is a
- * GPU memory leak that won't surface until the user spends ten
- * minutes inside the viewer. Centralised here so callers don't
- * have to remember the cleanup sequence.
- *
- * Accepts the structural shape so it works for both BatchedMesh and
- * Mesh — they each carry the same buffer trio.
- */
-
 /**
  * One GPU-uploaded instanced template: unique geometry (slot-0 vertex + index
  * buffers, 28-byte pos+norm+entityId vertex matching the flat layout) drawn once
@@ -143,8 +121,8 @@ function yieldTask(task: () => void): void {
 export class Scene {
   private meshes: Mesh[] = [];
   private batchedMeshes: BatchedMesh[] = [];                        // flat render array (rebuilt from buckets)
-  private buckets: Map<string, BatchBucket> = new Map();            // bucketKey -> consolidated bucket state
-  private meshDataBucket: Map<MeshData, BatchBucket> = new Map();   // reverse lookup: MeshData -> owning bucket
+  private buckets: Map<string, PrecisionBucket> = new Map();            // bucketKey -> consolidated bucket state
+  private meshDataBucket: Map<MeshData, PrecisionBucket> = new Map();   // reverse lookup: MeshData -> owning bucket
   private derivedMeshProvenance = new DerivedMeshProvenance();
   private modelTranslations = new ModelTranslations();
   private meshDataMap: Map<number, MeshData[]> = new Map();         // Map expressId -> MeshData[] (for lazy buffer creation, accumulates multiple pieces)
@@ -341,6 +319,8 @@ export class Scene {
   // Per-model shared origins keep all colours and highlights bit-coincident
   // without narrowing the distance between federated models into f32 vertices.
   private sharedFrameOrigins = new Map<number, [number, number, number]>();
+  /** Meshes whose bucket key ends in `LATTICE_KEY_SUFFIX`: the lattice would crumple their entity (#11444). */
+  private readonly offLattice = new WeakSet<MeshData>();
   private cachedMaxBufferSize: number = 0; // device.limits.maxBufferSize * safety factor (set on first use)
   private static readonly STREAMING_FRAGMENT_MAX_INDICES = 180_000;
   private static readonly STREAMING_FRAGMENT_MAX_VERTEX_BYTES = 8 * 1024 * 1024;
@@ -709,6 +689,7 @@ export class Scene {
     for (const key of evictKeys) {
       const bucket = this.buckets.get(key);
       if (!bucket || bucket.meshData.length === 0) continue;
+      bucket.coldMembers = new ColdPieceMembership(bucket.meshData.map(m => this.modelTranslations.sourceMesh(m)));
       for (const md of bucket.meshData) {
         evictedBytes += md.positions.byteLength + md.normals.byteLength + md.indices.byteLength;
         this.meshDataBucket.delete(md);
@@ -770,25 +751,25 @@ export class Scene {
         const current = this.buckets.get(key);
         if (!current || current !== bucket || !this.coldBuckets.has(key)) return;
         const baseKey = this.baseColorKey(key);
-        const idSet = new Set(shell.expressIds);
-        const members = meshes.filter(
-          (m) => idSet.has(m.expressId) && this.bucketBaseKey(m) === baseKey
-        );
+        const lattice = baseKey.endsWith(LATTICE_KEY_SUFFIX);
+        const members = bucket.coldMembers?.restore(meshes) ?? [];
         for (const source of members) {
           const m = this.modelTranslations.placeMesh(source);
+          if (lattice) this.offLattice.add(m);
           bucket.meshData.push(m);
           bucket.vertexBytes += (m.positions.length / 3) * BATCH_CONSTANTS.BYTES_PER_VERTEX;
           this.meshDataBucket.set(m, bucket);
           this.addMeshData(m);
         }
         if (members.length > 0) {
+          delete bucket.coldMembers;
           this.coldBuckets.delete(key);
           const restoredKeys = repartitionHydratedRecoveryBucket(this as unknown as SceneRecoveryHost, key, bucket, shell);
           if (bucket.batchedMesh !== shell) this.dropPartialCacheForBatch(shell); // repartitioned: shell id retired
           this.subsetResidency.requeueColdRestore(key, restoredKeys);
         } else {
           this.subsetResidency.warmOnly.delete(key);
-          console.warn(`[Scene] cold restore for ${key} found no members — bucket stays a shell`);
+          console.warn(`[Scene] cold restore for ${key} could not match every original piece — bucket stays a shell`);
         }
       })
       .catch((err) => {
@@ -940,7 +921,8 @@ export class Scene {
     // #5582: material is the mesh's OWN authored finish regardless of a
     // colour override — a recolour changes what a piece looks like, not
     // what it is physically made of.
-    const key = entityIdPageKey(source.expressId, bucketBaseKeyFor(anchor ?? source, this.colorKey(color ?? meshData.color, meshData.material), this.spatialChunking));
+    const key = entityIdPageKey(source.expressId, bucketBaseKeyFor(anchor ?? source, this.colorKey(color ?? meshData.color, meshData.material), this.spatialChunking))
+      + (this.offLattice.has(meshData) ? LATTICE_KEY_SUFFIX : '');
     return source.modelIndex ? `model${source.modelIndex}~${key}` : key;
   }
 
@@ -1154,9 +1136,14 @@ export class Scene {
 
   /** Whether `appendToBatches` refuses `meshData`: no topology-safe f32 frame holds it. */
   refusesBucketPath(meshData: MeshData, topology: TopologyMemo = new TopologyMemo()): boolean {
+    return !this.bucketFrame(meshData, topology);
+  }
+
+  /** The f32 frame a new bucket would give `meshData`, or undefined when none holds it. */
+  private bucketFrame(meshData: MeshData, topology: TopologyMemo): [number, number, number] | undefined {
     const modelIndex = meshData.modelIndex ?? 0;
     const shared = this.modelTranslations.frameOrigin(this.sharedFrameOrigins.get(modelIndex) ?? null, modelIndex);
-    return !topologySafeBatchOrigin([meshData], undefined, shared, undefined, topology);
+    return topologySafeBatchOrigin([meshData], undefined, shared, undefined, topology);
   }
 
   /**
@@ -1203,6 +1190,11 @@ export class Scene {
       }
     }
 
+    if (this.quantizedBatchesEnabled) markOffLattice(renderable, (mesh) => {
+      const base = this.bucketBaseKey(mesh), joining = this.buckets.get(this.activeBucketKey.get(base) ?? base);
+      const frame = joining?.frameOrigin ?? joining?.batchedMesh?.origin ?? this.bucketFrame(mesh, topology);
+      return frame && { base, frame };
+    }, this.offLattice);
     // Route each mesh into a size-aware bucket for its color (and, with
     // spatial chunking on, its grid cell)
     for (const meshData of renderable) {
@@ -1980,7 +1972,7 @@ export class Scene {
   }
 
   private regroupStreamed(): FinalizeRegroup {
-    return regroupStreamedBuckets<BatchBucket>({
+    return regroupStreamedBuckets<PrecisionBucket>({
       buckets: this.buckets,
       meshDataBucket: this.meshDataBucket,
       activeBucketKey: this.activeBucketKey,
@@ -2115,7 +2107,7 @@ export class Scene {
       // null for a freshly built bucket and, for a surviving bucket the
       // re-group added meshes to, the batch still drawn from the old array —
       // put back on failure, retired on success.
-      type Owned = { bucket: BatchBucket; previous: BatchedMesh | null; previousFrameOrigin?: [number, number, number]; batch: BatchedMesh | null };
+      type Owned = { bucket: PrecisionBucket; previous: BatchedMesh | null; previousFrameOrigin?: [number, number, number]; batch: BatchedMesh | null };
       const createdOwned: Owned[] = [];
       // Pending keys whose bucket ended up empty: deleted (and their batch
       // retired) at the swap, exactly as rebuildPendingBatches would.

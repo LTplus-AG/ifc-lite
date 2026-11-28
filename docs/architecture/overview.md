@@ -76,7 +76,7 @@ flowchart LR
 | **Processing** | Web Worker pool (one WASM instance per worker) | Multi-threaded (Rayon) |
 | **Memory** | Up to 4 GiB per wasm32 memory instance per worker (browser/runtime ceiling may be lower) | System RAM |
 | **Caching** | Browser storage | Content-addressable disk |
-| **Format** | Raw geometry | Parquet (15-50x smaller) |
+| **Format** | Raw geometry | Parquet (compressed columnar) |
 | **Best For** | Privacy, offline | Teams, large files |
 
 ## Design Principles
@@ -122,7 +122,7 @@ sequenceDiagram
     File->>Parser: Chunk 1
     Parser->>Processor: Entities 1-100
     Processor->>Renderer: Meshes 1-50
-    Renderer->>User: First render (300ms)
+    Renderer->>User: First render
 
     File->>Parser: Chunk 2
     Parser->>Processor: Entities 101-200
@@ -485,12 +485,12 @@ graph TB
 
 | Component | Memory Strategy |
 |-----------|-----------------|
-| Strings | Deduplicated string table (30% reduction) |
+| Strings | Deduplicated string table |
 | Entity IDs | Uint32Array (fixed-size) |
 | Types | Uint16Array enum (2 bytes vs ~20 for string) |
 | Properties | On-demand parsing (not pre-loaded) |
 | Geometry | Streaming + dispose after upload |
-| Server | Parquet (15-50x smaller transfer) |
+| Server | Parquet (compressed columnar transfer) |
 
 ## Threading Model
 

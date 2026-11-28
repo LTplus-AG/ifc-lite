@@ -566,7 +566,7 @@ and sets object ids. This is also the route for models too big for wasm.
 |---|---|
 | Rust | `ifc_lite_export::rhino::{build_rhino_scene, RhinoSceneOptions, RhinoScene}`; shared `scene_input` lifted from `usd/` |
 | Wasm | `exportRhinoScene` in the separate `@ifc-lite/wasm/rhino` payload (`rust/rhino-wasm`) |
-| CLI | `ifc-lite export model.ifc --format 3dm --out model.3dm [flags above]` in `packages/cli/src/commands/export-3dm.ts` (dispatched from `export.ts`), count check via read-back object count |
+| CLI | `ifc-lite export model.ifc --format 3dm --out model.3dm [flags above]` in `packages/cli/src/commands/export-3dm.ts` (dispatched from `export.ts`), refuses a zero-object archive using the object count `writeRhino3dm` returns (the manifest count, not a re-read) |
 | MCP | `export_3dm` tool, same options |
 | Viewer | Export menu and command palette `export:3dm`; dialog with units, layer scheme, instancing, properties, visible-only; source resolution reuses `step-export-source.ts` (`isStepSourceModel`, `resolveStepExportBytes`) so pending edits are exported; the write runs in a Web Worker |
 | Docs | this page, a guide section, CLI help |

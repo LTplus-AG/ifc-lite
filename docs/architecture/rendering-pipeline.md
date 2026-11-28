@@ -150,8 +150,10 @@ const vertexBufferLayout: GPUVertexBufferLayout = {
 
 The same file defines the 12-byte lattice-quantized batch layout
 (`QUANTIZED_VERTEX_BUFFERS`: `uint16x4` position plus packed octahedral normal,
-then the `uint32` entity lane) and the 36-byte textured layout (the flat
-layout plus a `float32x2` UV at offset 28).
+then the `uint32` entity lane) and `TEXTURED_HIGHLIGHT_VERTEX_BUFFERS`, which
+reads only the flat attributes over a textured piece's 36-byte buffer. The
+textured pipeline itself declares its 36-byte layout inline in `pipeline.ts`:
+the flat attributes plus a `float32x2` UV at offset 28 (`shaderLocation: 12`).
 
 The per-vertex `entityId` is the federated global ID (`expressId + model idOffset`). It drives picking, the selection/ghost highlight, and the anti-z-fighting depth nudge; the low 24 bits are the picking ID and the high 8 bits carry a color salt used by multi-layer walls so coincident layer caps of the SAME parent entity still get distinct nudges.
 

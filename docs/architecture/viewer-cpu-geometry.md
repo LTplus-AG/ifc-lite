@@ -65,6 +65,8 @@ These are not freed:
 
 ### What breaks when it runs
 
+This table is the audit as written, before #11512. Rows marked *(since #11512)* note the consumers that now read geometry back from the verified backing instead.
+
 | Area | Behaviour after release |
 |---|---|
 | **Hide / isolate / storey isolation** | **Visible elements disappear.** A partly visible batch always gets a sub-batch request. Only the X-Ray and promotion splits check `canPartitionBatch`. The parent batch is then skipped (`renderer.ts`, after `pushVisible`). After release, `getOrCreatePartialBatch` returns `undefined` and `if (subBatch)` draws nothing. So every visible element that shares a batch with a hidden or non-isolated element vanishes, and its shadow goes too (`shadow-occluder-batches.ts`). Flat geometry has no per-entity visibility in the shader; only instanced geometry has a flag discard (`shaders/main.wgsl.ts`). The design note's guess that hidden elements would show was wrong. |
@@ -75,11 +77,11 @@ These are not freed:
 | Device loss | Recovery refuses with `cpu-geometry-released`; the model has to be reloaded. |
 | GPU / host residency, cold restore | Return early. |
 | Instanced appearance edits | Throw. |
-| Measure, snap | No target, null hit. |
-| Section caps, 2D drawings, export, clash | Read the store's empty arrays: empty or zero-triangle output, a silent wrong answer (inferred, not traced line by line). |
+| Measure, snap | No target, null hit. *(since #11512)* Measure routes through `measureReadbackGate` on a released scene (`components/viewer/measureReadback.ts`). |
+| Section caps, 2D drawings, export, clash | Read the store's empty arrays: empty or zero-triangle output, a silent wrong answer (inferred, not traced line by line). *(since #11512)* 2D drawings (`lib/drawing/drawing-geometry-context.ts`) and instanced export (`utils/instancedExport.ts`) detect a released scene and read back from the backing. |
 | Collab seed, symbolic fills, entity world position | Explicit guards: skip and report, or null. |
 
-No viewer code checks `isGeometryDataReleased()`; only renderer-internal guards react to a release.
+When this audit was written no viewer code checked `isGeometryDataReleased()`. Since #11512 the readback consumers above do, through `lib/geometry-backing/scene-released.ts` and `geometry-owner-residency.ts`.
 
 ## Who reads the store's mesh list
 

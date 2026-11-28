@@ -187,12 +187,13 @@ fuzz verdict PASS).
   inlines the pure method bodies into flat tuple-native kernels (beta
   reduction, scalar replacement of the Vec3/Box3 records, hash-consed
   common-subexpression hoisting), eliminating all per-call object allocation.
-  The flattened SAT alone microbenches 4-5x faster than the old kernel (no
-  per-call axis arrays); end to end, the default TS clash engine runs a dense
-  2,744-element scene about 20 percent faster than main (406ms vs ~528ms,
-  identical clash sets). The Rust engine is at parity (~1.0x).
-- Generation is offline and reproducible: `node scripts/generate-plato-clash.mjs`
-  clones plato, parakeet and ara3d-sdk at pinned SHAs, builds Plato.CLI with a
+  When this pilot landed (2026-07-10) the flattened kernels measured faster
+  than the old hand-written TS kernel with identical clash sets, and the Rust
+  engine at parity. Those were one-off measurements, not a tracked benchmark.
+- Generation runs out of band (not in the build) and is reproducible:
+  `node scripts/generate-plato-clash.mjs` clones plato, parakeet and ara3d-sdk
+  at pinned SHAs (or reuses a checkout already at the pin, so a fresh run
+  needs network access), builds Plato.CLI with a
   .NET 9 SDK, verifies output non-trivially exists (the CLI exits 0 even on
   failure), strips the nondeterministic timestamp header, runs the codemod, and
   writes the committed files. Two back-to-back runs produce byte-identical

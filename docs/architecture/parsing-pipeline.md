@@ -108,7 +108,7 @@ String literals use memchr to find the closing quote (with `''` escape handling)
 | Optimization | Technique | Benefit |
 |--------------|-----------|---------|
 | Zero-copy | Store byte slices | No allocation |
-| SIMD search | memchr crate | 10x faster search |
+| SIMD search | memchr crate | Vectorized byte search |
 | Fast numbers | fast-float2 behind one literal grammar | Single pass |
 | Branch prediction | Ordered alternatives | Better CPU prediction |
 
@@ -333,9 +333,15 @@ hierarchy:
 
 ### Error Recovery
 
-The scanner drops a record it cannot terminate and carries on at the `)` that
-closes its parameter list. It stops the whole scan only when nothing can be
-resumed from: a `'` string or `/* ... */` comment that never closes. A dropped
+The scanner drops a record it cannot terminate and carries on (`rust/core/src/parser/scanner.rs`):
+
+- a record with no `;` resumes at the `)` that balances its parameter list;
+- a record with an unescaped `'` resumes at the next anchored `#id=` declaration;
+- a record with no balancing `)` but readable bytes after it resumes the search
+  just past its own `#`, so the next declaration is still found.
+
+It stops the whole scan only when nothing after the record is readable, such as
+a `/* ... */` comment that never closes. A dropped
 record is reported through the host-installed report sink
 (`rust/core/src/parser/malformed_records.rs`), so a short model is not silent.
 Records refused as geometry input (`UnrepresentableReal`, `MalformedRecord`)
@@ -343,11 +349,11 @@ are counted in `EntityDecoder::refused_records`.
 
 ## Performance Characteristics
 
-Indicative orders of magnitude (hardware and model dependent):
-
-- **Entity scanning** is memchr-bound and runs at hundreds of MB/s; on native it additionally parallelizes across cores.
+- **Entity scanning** is memchr-bound; on native it also parallelizes across cores.
 - **Decoding** dominates when many entities are actually materialized, which is why decoding is lazy and properties are parsed on access.
-- **Full parse** (scan + columnar build) is typically tens of MB/s in the browser; STEP parse can be 25-80% of total load time on entity-heavy files, which is what motivated the fast scanner and the on-demand property model.
+- **Full parse** (scan + columnar build) can be a large share of total load time on entity-heavy files, which is what motivated the fast scanner and the on-demand property model.
+
+Measured numbers live in [Performance](../guide/performance.md).
 
 ## Next Steps
 

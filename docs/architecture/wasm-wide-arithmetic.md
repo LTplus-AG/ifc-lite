@@ -316,7 +316,10 @@ browser supports the proposal, so it is not worth building ahead of that. The
 alternative is to wait for a wasm-bindgen / `walrus` release that enables
 wide-arith parsing.
 
-## Delivery plan (wire once unblocked)
+## Historical: Delivery plan (wire once unblocked)
+
+> Historical (retired 2026-11-14): nothing in this section is wired on `main`. `.github/workflows/wide-arithmetic.yml` and `scripts/lib/build-wasm-wide.sh` can be recovered from `f64111d981`; the `pkg-wide` bundle and any feature-detection module it names never landed.
+
 
 This reuses the exact pattern already in place for the threaded second bundle
 (`packages/wasm/pkg-threaded`, built off-by-default in `scripts/build-wasm.sh`).
@@ -387,7 +390,10 @@ wasm-tools print target-wide/wasm32-unknown-unknown/release/*.wasm | grep -c 'mu
 wasmtime run -W wide-arithmetic=y --invoke <fn> target-wide/.../*.wasm <args>
 ```
 
-## CI tripwire (`.github/workflows/wide-arithmetic.yml`)
+## Historical: CI tripwire (`.github/workflows/wide-arithmetic.yml`)
+
+> Historical (retired 2026-11-14): nothing in this section is wired on `main`. `.github/workflows/wide-arithmetic.yml` and `scripts/lib/build-wasm-wide.sh` can be recovered from `f64111d981`; the `pkg-wide` bundle and any feature-detection module it names never landed.
+
 
 Both blockers above are external (an upstream crate version, engine support for
 the opcodes) — the kind of thing that silently goes stale if the only record of

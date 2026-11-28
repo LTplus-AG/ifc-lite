@@ -25,7 +25,21 @@ fn compatible(schema: SchemaVersion, occurrence: &str, assigned: &str) -> Option
     }
 }
 
-pub(super) fn after_retypes(pass: &Pass<'_, '_>, line: &str, id: u32) -> Option<(Option<String>, String)> {
+/// A relationship may precede either endpoint. Use the writer's retype result
+/// and cache it for other assignments that share the same endpoint.
+fn emitted_type(pass: &mut Pass<'_, '_>, id: u32, original: &str) -> Option<String> {
+    let requested = pass.type_of(id)?;
+    if requested == original || pass.is_overlay_created(id) {
+        return Some(requested);
+    }
+    let delivered = *pass.assignment_retype_delivered.entry(id).or_insert_with(|| {
+        pass.src.line(id).is_some_and(|line|
+            super::super::retype::retype_line(&line, original, &requested, None, pass.schema) != line)
+    });
+    Some(if delivered { requested } else { original.to_owned() })
+}
+
+pub(super) fn after_retypes(pass: &mut Pass<'_, '_>, line: &str, id: u32) -> Option<(Option<String>, String)> {
     let schema = SchemaVersion::from_file_schema(pass.schema)?;
     let (_, mut args) = read_slots(line)?;
     let assigned = bare_ref(args.get(IfcRelDefinesByType::RELATING_TYPE.index())?)?;
@@ -35,7 +49,7 @@ pub(super) fn after_retypes(pass: &Pass<'_, '_>, line: &str, id: u32) -> Option<
         return None;
     }
     let original_type = pass.record_type(assigned)?;
-    let effective_type = pass.type_of(assigned)?;
+    let effective_type = emitted_type(pass, assigned, &original_type)?;
     let mut removed = Vec::new();
     let mut retained = Vec::new();
     for item in list_items(&objects[1..objects.len() - 1]) {
@@ -43,7 +57,7 @@ pub(super) fn after_retypes(pass: &Pass<'_, '_>, line: &str, id: u32) -> Option<
             pass.overlay.retypes.contains_key(member) || original_type != effective_type
         ).filter(|&member| {
             let Some(original) = pass.record_type(member) else { return false };
-            let Some(effective) = pass.type_of(member) else { return false };
+            let Some(effective) = emitted_type(pass, member, &original) else { return false };
             compatible(schema, &original, &original_type) == Some(true)
                 && compatible(schema, &effective, &effective_type) == Some(false)
         });

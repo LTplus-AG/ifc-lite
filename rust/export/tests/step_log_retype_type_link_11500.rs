@@ -19,6 +19,24 @@ fn export(members: &str, to: &str) -> (String, Vec<String>) {
 }
 
 #[test]
+fn refused_retypes_preserve_the_source_keyword_and_assignment_11500() {
+    let bad = "NOT_A_STEP_VALUE,$,$";
+    for assigned in [false, true] {
+        let wall = format!("#11=IFCWALL('g',$,{},$,$,$,.STANDARD.);", if assigned { "'wall',$,$" } else { bad });
+        let ty = format!("#13=IFCWALLTYPE('t',$,{},$,$,$,$,.STANDARD.);", if assigned { bad } else { "'type',$,$" });
+        let rel = "#4=IFCRELDEFINESBYTYPE('r',$,$,$,(#11),#13);";
+        let source = format!("ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n{rel}\n{wall}\n{ty}\nENDSEC;\nEND-ISO-10303-21;");
+        let (id, target) = if assigned { (13, "IfcDoorType") } else { (11, "IfcDoor") };
+        let log = MutationLog::from_json(&format!(r#"{{"mutations":[{{"type":"UPDATE_ENTITY_TYPE","entityId":{id},"entityType":"{target}"}}]}}"#)).unwrap();
+        let (output, stats) = export_step_with_log(source.as_bytes(), &StepOptions::default(), &log).unwrap();
+        assert!(output.contains(if assigned { &ty } else { &wall }), "{output}");
+        assert!(stats.warnings.iter().any(|w| w.contains("argument list")), "{:?}", stats.warnings);
+        assert!(output.contains(rel), "{output}");
+        assert!(!stats.warnings.iter().any(|w| w.contains("lost its type assignment")));
+    }
+}
+
+#[test]
 fn retype_removes_only_the_incompatible_member_11500() {
     let (output, warnings) = export("#1,#2", "IfcSlab");
     assert!(output.contains("#1=IFCSLAB("), "{output}");

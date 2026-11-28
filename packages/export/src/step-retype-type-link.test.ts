@@ -42,6 +42,20 @@ END-ISO-10303-21;
 }
 
 describe('STEP type-assignment retyping #11500', () => {
+  it.each([false, true])('preserves a refused occurrence or type retype (assigned type: %s) #11500', async assigned => {
+    const bad = "NOT_A_STEP_VALUE,$,$";
+    const wall = `#11=IFCWALL('g',$,${assigned ? "'wall',$,$" : bad},$,$,$,.STANDARD.);`;
+    const type = `#13=IFCWALLTYPE('t',$,${assigned ? bad : "'type',$,$"},$,$,$,$,.STANDARD.);`;
+    const rel = "#4=IFCRELDEFINESBYTYPE('r',$,$,$,(#11),#13);";
+    const source = ["ISO-10303-21;", "HEADER;", "FILE_SCHEMA(('IFC4'));", "ENDSEC;", "DATA;", rel, wall, type, "ENDSEC;", "END-ISO-10303-21;"].join('\n');
+    const { lines, warnings } = await exportRetyped(new TextEncoder().encode(source).buffer,
+      [{ entityId: assigned ? 13 : 11, entityType: assigned ? 'IfcDoorType' : 'IfcDoor' }]);
+    expect(lines).toContain(assigned ? type : wall);
+    expect(warnings.join('\n')).toContain('argument list');
+    expect(lines).toContain(rel);
+    expect(warnings.join('\n')).not.toContain('lost its type assignment');
+  });
+
   it('keeps the other typed wall in a mixed relationship', async () => {
     const { lines, relation, warnings } = await exportRetype('#1,#2', 'IfcSlab');
     expect(lines.some(line => line.startsWith('#1=IFCSLAB('))).toBe(true);

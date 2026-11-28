@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: MPL-2.0
 
-import { createSchemaEntityNameSnapshot, getSchemaRegistryForVersion } from '@ifc-lite/parser';
+import { createSchemaEntityNameSnapshot, getSchemaRegistryForVersion, type IfcSourceBytes } from '@ifc-lite/parser';
 import type { EffectiveEntityIndex } from './effective-index.js';
 import { BARE_REF_RE } from './reference-collector.js';
 import type { IfcSchemaVersion } from './schema-converter.js';
 import { readStepSlots, splitTopLevelListItems } from './step-argument-parser.js';
+import { retypeStepLine } from './retype.js';
 
 export type RetypedAssignmentFilter = (line: string, id: number, warnings: string[]) => string | null;
 
@@ -12,10 +13,27 @@ export type RetypedAssignmentFilter = (line: string, id: number, warnings: strin
 export function createRetypedAssignmentFilter(
   schema: IfcSchemaVersion,
   effective: EffectiveEntityIndex,
+  source: IfcSourceBytes | null | undefined,
 ): RetypedAssignmentFilter | undefined {
   if (schema === 'IFC5') return undefined;
   const registry = getSchemaRegistryForVersion(schema);
   const { resolve } = createSchemaEntityNameSnapshot(registry);
+
+  // A relationship may precede its members. Resolve each changed source keyword
+  // once through the writer, even when its line has not yet been emitted.
+  const delivered = new Map<number, string>();
+  function emittedType(id: number, original: string): string {
+    const requested = effective.effectiveType(id, original);
+    const before = original.toUpperCase();
+    if (requested === before || effective.isOverlayCreated(id)) return requested;
+    const cached = delivered.get(id);
+    if (cached !== undefined) return cached;
+    const ref = effective.get(id);
+    const text = ref && source?.decodeUtf8(ref.byteOffset, ref.byteOffset + ref.byteLength);
+    const current = text && retypeStepLine(text, before, requested, null, schema) !== text ? requested : before;
+    delivered.set(id, current);
+    return current;
+  }
 
   function compatible(occurrence: string, assigned: string): boolean | undefined {
     const occurrenceName = resolve(occurrence);
@@ -47,7 +65,7 @@ export function createRetypedAssignmentFilter(
     const typeId = Number(typeRef[1]);
     const originalType = effective.get(typeId)?.type;
     if (!originalType) return line;
-    const currentType = effective.effectiveType(typeId, originalType);
+    const currentType = emittedType(typeId, originalType);
     const typeChanged = originalType.toUpperCase() !== currentType;
     const removed: string[] = [];
     const retained = splitTopLevelListItems(members.slice(1, -1)).filter(member => {
@@ -55,7 +73,7 @@ export function createRetypedAssignmentFilter(
       const memberId = ref ? Number(ref[1]) : undefined;
       const original = memberId === undefined ? undefined : effective.get(memberId)?.type;
       if (memberId === undefined || !original) return true;
-      const current = effective.effectiveType(memberId, original);
+      const current = emittedType(memberId, original);
       if (!typeChanged && original.toUpperCase() === current) return true;
       if (compatible(original, originalType) !== true || compatible(current, currentType) !== false) return true;
       removed.push(`#${memberId}`);

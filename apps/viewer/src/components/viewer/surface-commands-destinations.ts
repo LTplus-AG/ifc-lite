@@ -13,7 +13,7 @@ import { useViewerStore } from '@/store';
 import { openSettings, SETTINGS_SECTIONS } from '@/lib/settings/open-settings';
 import { openMeasurementDestination } from '@/lib/panels/measurement-destination';
 import { MEASURE_MODE_LABELS } from './tools/measure-modes/readouts';
-import { SECTION_ADD_ENTRIES } from './tools/SectionAddMenu';
+import { SECTION_ADD_ENTRIES } from './tools/sectionAddActions';
 import type { SurfaceCommandDefinition } from './surface-command-types';
 
 registerEnglish(retainedGeometryEn);

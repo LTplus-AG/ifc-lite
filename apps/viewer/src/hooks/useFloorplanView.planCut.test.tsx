@@ -15,15 +15,26 @@ import '@/test/setup-dom.js';
 import { afterEach, beforeEach, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
+import { IfcParser } from '@ifc-lite/parser';
 import type { GeometryResult } from '@ifc-lite/geometry';
-import { render, cleanup } from '@/test/render.js';
+import { render, click, cleanup } from '@/test/render.js';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { fixtureModel } from '@/test/store-fixture.js';
 import type { SectionStorey } from '@/lib/section/section-distance';
+import { emptyPlacementState } from '@/lib/model-placement/state';
+import { Renderer, PointCloudRenderer } from '@ifc-lite/renderer';
+import { appearanceInstanceScene } from '@/test/appearance-instance-scene';
+import { getGlobalRenderer, setGlobalRendererRef } from './useBCF.js';
+import { modelIndices } from '@/lib/model-placement/model-indices';
+import { publishPlacementBounds } from '@/lib/model-placement/bounds-revision';
+import { SectionActivePlaneRow } from '@/components/viewer/tools/SectionActivePlaneRow';
+import { HudPopover } from '@/components/viewport-ui/hud';
+
+import { StoreyFloorplanButton } from '@/components/viewer/hierarchy/StoreyDisplayControls';
 import { useFloorplanView } from './useFloorplanView.js';
 
-function bounded(id: string, maxY: number): FederatedModel {
-  const box = { min: { x: 0, y: 0, z: 0 }, max: { x: 10, y: maxY, z: 8 } };
+function bounded(id: string, maxY: number, minY = 0): FederatedModel {
+  const box = { min: { x: 0, y: minY, z: 0 }, max: { x: 10, y: maxY, z: 8 } };
   const geometryResult: GeometryResult = {
     meshes: [], totalVertices: 0, totalTriangles: 0,
     coordinateInfo: { originShift: { x: 0, y: 0, z: 0 }, originalBounds: box, shiftedBounds: box, hasLargeCoordinates: false },
@@ -31,9 +42,12 @@ function bounded(id: string, maxY: number): FederatedModel {
   return { ...fixtureModel(id), geometryResult };
 }
 
+let storeys: SectionStorey[] = [];
 let activate: ((storey: SectionStorey) => void) | null = null;
 function Probe(): null {
-  activate = useFloorplanView().activateFloorplan;
+  const floorplan = useFloorplanView();
+  activate = floorplan.activateFloorplan;
+  storeys = floorplan.availableStoreys;
   return null;
 }
 
@@ -48,7 +62,7 @@ function load(...models: FederatedModel[]): void {
 
 beforeEach(() => {
   useViewerStore.setState({
-    activeTool: 'select', drawing2DPanelVisible: false,
+    activeTool: 'select', activeStorey: null, drawing2DPanelVisible: false, modelPlacement: emptyPlacementState(),
     sectionPlane: { ...s().sectionPlane, axis: 'front', position: 10, enabled: false, parked: false, custom: undefined },
   });
   load(bounded('a', 3));
@@ -88,4 +102,241 @@ it('a federated bounds change keeps the percentage, and re-activating recomputes
   load(bounded('a', 3), { ...bounded('b', 6), visible: false });
   act(() => activate!(top));
   assert.ok(Math.abs(cutY(3) - 3.7) < 1e-9, `got ${cutY(3)}`);
+});
+
+
+// IFC millimetres: the building is at 100 m and the floor is 3 m above it.
+// The authored Elevation variants all describe the same placement.
+const placedStorey = (elevation: string, placement = '#14') => `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('','',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('0Proj00000000000000001',$,'Project',$,$,$,$,$,#3);
+#2=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);
+#3=IFCUNITASSIGNMENT((#2));
+#4=IFCBUILDING('0Bldg00000000000000001',$,'Building',$,$,#11,$,$,.ELEMENT.,$,$,$);
+#5=IFCBUILDINGSTOREY('0Story0000000000000001',$,'Level 1',$,$,${placement},$,$,.ELEMENT.,${elevation});
+#6=IFCRELAGGREGATES('0Rels00000000000000001',$,$,$,#1,(#4));
+#7=IFCRELAGGREGATES('0Rels00000000000000002',$,$,$,#4,(#5));
+#11=IFCLOCALPLACEMENT($,#12);
+#12=IFCAXIS2PLACEMENT3D(#13,$,$);
+#13=IFCCARTESIANPOINT((0.,0.,100000.));
+#14=IFCLOCALPLACEMENT(#11,#15);
+#15=IFCAXIS2PLACEMENT3D(#16,$,$);
+#16=IFCCARTESIANPOINT((0.,0.,3000.));
+ENDSEC;
+END-ISO-10303-21;`;
+
+for (const [kind, elevation, placement] of [
+  ['relative', '3000.', '#14'],
+  ['absolute', '103000.', '#14'],
+  ['omitted', '$', '#14'],
+  ['absolute without a usable placement', '103000.', '$'],
+  ['relative without a usable placement', '3000.', '$'],
+]) {
+  it(`#11459 synthetic IFC: ${kind} Elevation cuts 1.2 m above the floor in the placed render frame`, async () => {
+    const bytes = new TextEncoder().encode(placedStorey(elevation, placement));
+    const ifcDataStore = await new IfcParser().parseColumnar(bytes.buffer as ArrayBuffer, { disableWorkerScan: true });
+    const model = bounded('a', 8);
+    const geometryResult = model.geometryResult!;
+    // 103 m world floor minus 90 m RTC and 10 m origin shift => 3 m
+    // before the workspace moves the model up another 2 m.
+    geometryResult.coordinateInfo.wasmRtcOffset = { x: 0, y: 0, z: 90 };
+    geometryResult.coordinateInfo.originShift = { x: 0, y: 10, z: 0 };
+    load({ ...model, ifcDataStore });
+    const state = emptyPlacementState();
+    act(() => useViewerStore.setState({
+      modelPlacement: {
+        ...state,
+        placements: new Map([['a', { translation: [0, 0, 2], rotation: { angle: 0, pivot: [0, 0, 0] }, locked: false }]]),
+      },
+    }));
+    const storey = storeys.find((entry) => entry.expressId === 5);
+    assert.ok(storey);
+    const ui = render(<HudPopover><SectionActivePlaneRow /></HudPopover>);
+    openStoreyMenu(ui);
+    assert.equal(storeyRows('Level 1')[0]?.lastElementChild?.textContent,
+      kind === 'relative without a usable placement' ? '3.00 m' : '103.00 m');
+    click(storeyRows('Level 1')[0]);
+    assert.ok(Math.abs(s().sectionPlane.position - 52.5) < 1e-9, 'toolbar cut is at 6.2 m');
+    act(() => activate!(storey));
+    // The moved range is [2, 10], so the 6.2 m cut is at 52.5%.
+    assert.ok(Math.abs(s().sectionPlane.position - 52.5) < 1e-9, `cut at ${s().sectionPlane.position}%`);
+  });
+}
+
+const parseStoreys = (step: string) => new IfcParser().parseColumnar(
+  new TextEncoder().encode(step).buffer as ArrayBuffer, { disableWorkerScan: true },
+);
+const groundStorey = placedStorey('0.').replace('100000.', '0.').replace('((0.,0.,3000.))', '((0.,0.,0.))');
+
+function openStoreyMenu(ui: HTMLElement): void {
+  act(() => s().setSectionPlaneAxis('down'));
+
+  click(ui.querySelector('button[aria-label="Cut at a storey"]')!);
+}
+
+function storeyRows(name: string): HTMLButtonElement[] {
+  return [...document.querySelectorAll<HTMLButtonElement>('button')].filter(
+    button => button.textContent?.trim().startsWith(name),
+  );
+}
+
+function cutFromPlan(ui: HTMLElement, modelId: string, expressId: number): void {
+  act(() => useViewerStore.setState({ activeStorey: { modelId, expressId } }));
+  const button = ui.querySelector<HTMLButtonElement>('button[aria-label="Floorplan the active storey"]');
+  assert.ok(button && !button.disabled, 'floor plan is available for the active storey');
+  click(button);
+}
+
+it('#11817 uses the in-bounds declared elevation for a sole storey at zero', async () => {
+  const step = groundStorey.replace('.ELEMENT.,0.);', '.ELEMENT.,3000.);');
+  load({ ...bounded('a', 8), ifcDataStore: await parseStoreys(step) });
+  const ui = render(<><HudPopover><SectionActivePlaneRow /></HudPopover><StoreyFloorplanButton /></>);
+  openStoreyMenu(ui);
+  const row = storeyRows('Level 1')[0];
+  const label = row.lastElementChild?.textContent;
+  click(row);
+  const toolbar = cutY(8).toFixed(1);
+  cutFromPlan(ui, 'a', 5);
+  assert.deepEqual({ label, toolbar, plan: cutY(8).toFixed(1) },
+    { label: '3.00 m', toolbar: '4.2', plan: '4.2' });
+});
+
+const sharedPlacementStoreys = groundStorey.replace('(#5));', '(#5,#8));')
+  .replace('#11=IFCLOCALPLACEMENT', "#8=IFCBUILDINGSTOREY('0Story0000000000000002',$,'Level 2',$,$,#14,$,$,.ELEMENT.,3000.);\n#11=IFCLOCALPLACEMENT");
+
+const scaledSharedPlacementStoreys = sharedPlacementStoreys
+  .replace("'IFC4'", "'IFC4X3_ADD2'")
+  .replace('.MILLI.,.METRE.', '$,.METRE.')
+  .replace('.ELEMENT.,3000.);', '.ELEMENT.,3.);')
+  .replace("$,$,$,$,#3);", "$,$,$,(#20),#3);")
+  .replace('ENDSEC;\nEND-ISO', `#20=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#12,$);
+#21=IFCPROJECTEDCRS('EPSG:2056',$,$,$,$,$,#2);
+#22=IFCMAPCONVERSIONSCALED(#20,#21,2600000.,1200000.,400.,1.,0.,1.,1.,1.,2.);
+ENDSEC;
+END-ISO`);
+
+for (const [kind, step, lowerHeight, upperHeight] of [
+  ['engineering', sharedPlacementStoreys, '0.00 m', '3.00 m'],
+  ['distinct coincident placements', sharedPlacementStoreys
+    .replace("'Level 2',$,$,#14", "'Level 2',$,$,#17")
+    .replace('ENDSEC;\nEND-ISO', '#17=IFCLOCALPLACEMENT(#11,#15);\nENDSEC;\nEND-ISO'), '0.00 m', '3.00 m'],
+  ['projected with FactorZ=2', scaledSharedPlacementStoreys, '400.00 m', '406.00 m'],
+] as const) {
+  it(`#11459 shared placement keeps both ${kind} labels and physical cuts`, async () => {
+    load({ ...bounded('a', 8), ifcDataStore: await parseStoreys(step) });
+    const ui = render(<><HudPopover><SectionActivePlaneRow /></HudPopover><StoreyFloorplanButton /></>);
+    openStoreyMenu(ui);
+    assert.equal(storeyRows('Level 1')[0]?.lastElementChild?.textContent, lowerHeight);
+    assert.equal(storeyRows('Level 2')[0]?.lastElementChild?.textContent, upperHeight);
+    for (const [name, id, cut] of [['Level 1', 5, 1.2], ['Level 2', 8, 4.2]] as const) {
+      click(storeyRows(name)[0]);
+      assert.ok(Math.abs(cutY(8) - cut) < 1e-9);
+      cutFromPlan(ui, 'a', id);
+      assert.ok(Math.abs(cutY(8) - cut) < 1e-9);
+    }
+  });
+}
+
+for (const [kind, step] of [
+  ['omitted lower Elevation at shared Z=500', sharedPlacementStoreys
+    .replace('.ELEMENT.,0.);', '.ELEMENT.,$);')
+    .replace('#13=IFCCARTESIANPOINT((0.,0.,0.));', '#13=IFCCARTESIANPOINT((0.,0.,500000.));')],
+  ['absolute Elevations at shared Z=0', sharedPlacementStoreys
+    .replace('.ELEMENT.,0.);', '.ELEMENT.,500000.);')
+    .replace('.ELEMENT.,3000.);', '.ELEMENT.,503000.);')],
+] as const) {
+  it(`#11817 keeps both floors and cuts for ${kind}`, async () => {
+    load({ ...bounded('a', 510, 500), ifcDataStore: await parseStoreys(step) });
+    const ui = render(<><HudPopover><SectionActivePlaneRow /></HudPopover><StoreyFloorplanButton /></>);
+    openStoreyMenu(ui);
+    const names = ['Level 1', 'Level 2'];
+    assert.deepEqual({
+      plan: storeys.map(({ expressId }) => expressId),
+      toolbar: names.filter(name => storeyRows(name).length > 0),
+    }, { plan: [8, 5], toolbar: names });
+    const observed = [];
+    for (const [name, id] of [['Level 1', 5], ['Level 2', 8]] as const) {
+      const row = storeyRows(name)[0];
+      const label = row.lastElementChild?.textContent;
+      click(row);
+      const toolbar = (500 + cutY(10)).toFixed(1);
+      cutFromPlan(ui, 'a', id);
+      observed.push({ toolbar, plan: (500 + cutY(10)).toFixed(1), label });
+    }
+    assert.deepEqual(observed, [
+      { toolbar: '501.2', plan: '501.2', label: '500.00 m' },
+      { toolbar: '504.2', plan: '504.2', label: '503.00 m' },
+    ]);
+  });
+}
+
+for (const mixed of [false, true]) it(`#11459 both storey controls use the placed ${mixed ? 'scan and mesh' : 'mesh'} bounds before and after renderer sync`, async () => {
+  const data = await parseStoreys(groundStorey);
+  load({ ...bounded('a', 8), ifcDataStore: data }, { ...bounded('b', 8), ifcDataStore: data });
+  act(() => useViewerStore.setState({
+    modelPlacement: {
+      ...emptyPlacementState(),
+      placements: new Map([['b', { translation: [0, 0, 20], rotation: { angle: 0, pivot: [0, 0, 0] }, locked: false }]]),
+    },
+  }));
+  const ui = render(<><HudPopover><SectionActivePlaneRow /></HudPopover><StoreyFloorplanButton /></>);
+  const checkCuts = (max = 28) => {
+    if (!storeyRows('Level 1').length) openStoreyMenu(ui);
+    const rows = storeyRows('Level 1');
+    assert.equal(rows.length, 2);
+    click(rows[0]);
+    const toolbar = cutY(max).toFixed(3);
+    cutFromPlan(ui, 'b', 5);
+    assert.deepEqual({ toolbar, floorPlan: cutY(max).toFixed(3) }, { toolbar: '21.200', floorPlan: '21.200' });
+  };
+  // Producer bounds suffice before any upload. Then upload both meshes in their
+  // source frame to exercise the interval before workspace placement sync.
+  checkCuts();
+  const previous = getGlobalRenderer();
+  const renderer = new Renderer(document.createElement('canvas'));
+  const { device, pipeline } = appearanceInstanceScene([]);
+  const indices = modelIndices(s().models);
+  const mesh = (modelId: string, expressId: number) => ({
+    expressId, modelIndex: indices.get(modelId), positions: new Float32Array([0, 0, 0, 10, 0, 0, 0, 8, 8]),
+    normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]), indices: new Uint32Array([0, 1, 2]),
+    color: [1, 1, 1, 1] as [number, number, number, number],
+  });
+  renderer.getScene().appendToBatches([mesh('a', 11), mesh('b', 12)], device, pipeline, false);
+  assert.deepEqual(renderer.getModelPlacementBounds(indices.get('a')!, undefined, [0, 0, 0]), {
+    min: { x: 0, y: 0, z: 0 }, max: { x: 10, y: 8, z: 8 },
+  }, '#11817 mesh bounds before any setModelTranslation call');
+  let scan: PointCloudRenderer | undefined;
+  let handle: { id: number } | undefined;
+  if (mixed) {
+    Object.assign(globalThis, { GPUShaderStage: { VERTEX: 1, FRAGMENT: 2 } });
+    Object.assign(device, { createBindGroupLayout: () => ({}), createPipelineLayout: () => ({}),
+      createShaderModule: () => ({}), createRenderPipeline: () => ({}) });
+    scan = new PointCloudRenderer(device, 'rgba8unorm', 'depth32float', 1);
+    (renderer as unknown as { pointCloudRenderer: PointCloudRenderer }).pointCloudRenderer = scan;
+    handle = scan.addAsset({ expressId: 31, modelIndex: indices.get('b'), chunk: {
+      pointCount: 1, positions: new Float32Array([0, 10, 0]), bbox: { min: [0, 10, 0], max: [0, 10, 0] },
+    } });
+    const model = s().models.get('b')!;
+    act(() => useViewerStore.setState({ models: new Map(s().models).set('b', { ...model, pointCloudHandleId: handle!.id }) }));
+  }
+  assert.equal(renderer.getModelPlacementBounds(999, undefined, [0, 5, 0]), null);
+  const expectedMax = mixed ? 30 : 28;
+  try {
+    act(() => { setGlobalRendererRef({ current: renderer }); publishPlacementBounds(); });
+    checkCuts(expectedMax);
+    act(() => {
+      renderer.setModelTranslation(indices.get('b')!, [0, 20, 0]);
+      if (handle) renderer.setPointCloudTranslation(handle, [0, 20, 0]);
+      publishPlacementBounds();
+    });
+    checkCuts(expectedMax);
+  } finally {
+    setGlobalRendererRef({ current: previous });
+    scan?.clear();
+  }
 });

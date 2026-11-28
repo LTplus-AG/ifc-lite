@@ -22,7 +22,12 @@
  * convention the floor plan applies.
  */
 
-import type { GeometryResult } from '@ifc-lite/geometry';
+import { IFC_BUILDING_STOREY_ELEVATION_INDEX } from '@ifc-lite/data';
+import type { CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
+import { totalYupOffset } from '@ifc-lite/geometry/world-frame';
+import type { IfcDataStore } from '@ifc-lite/parser';
+import { resolveProductOriginMeters } from '@/lib/geo/product-origin';
+import { displayedTranslation, type PlacementState } from '@/lib/model-placement/state';
 import type { SectionPlaneAxis } from '@/store/types';
 
 interface Vec3Like { x: number; y: number; z: number }
@@ -37,21 +42,18 @@ interface BoundedModel {
 
 /** A model entry's slice that storey collection reads. */
 interface StoreyModel {
-  ifcDataStore: {
-    spatialHierarchy?: {
-      byStorey: ReadonlyMap<number, unknown>;
-      storeyElevations: ReadonlyMap<number, number>;
-    } | null;
-    entities: { getName(id: number): string | null };
-  } | null;
+  ifcDataStore: IfcDataStore | null;
+  geometryResult?: Pick<GeometryResult, 'coordinateInfo'> | null;
 }
 
 export interface SectionStorey {
   expressId: number;
   modelId: string;
   name: string;
-  /** Floor elevation, metres, in the model's (Z-up) frame. */
+  /** Floor elevation in the placed scene, in metres along viewer Y. */
   elevation: number;
+  /** Engineering adjustment to the composed origin used by the section menu label. */
+  sharedPlacementRise?: number;
 }
 
 /** Height of a plan cut above its storey's floor (the architectural convention). */
@@ -75,24 +77,37 @@ export function mergedSectionBounds(
   models: ReadonlyMap<string, BoundedModel>,
   legacy: Pick<GeometryResult, 'coordinateInfo'> | null,
 ): AxisBounds | null {
-  let acc: AxisBounds | null = null;
-  const fold = (b: AxisBounds | undefined) => {
-    if (!isUsable(b)) return;
-    acc = acc
-      ? {
-          min: { x: Math.min(acc.min.x, b.min.x), y: Math.min(acc.min.y, b.min.y), z: Math.min(acc.min.z, b.min.z) },
-          max: { x: Math.max(acc.max.x, b.max.x), y: Math.max(acc.max.y, b.max.y), z: Math.max(acc.max.z, b.max.z) },
-        }
-      : { min: { ...b.min }, max: { ...b.max } };
-  };
-  if (models.size > 0) {
-    for (const model of models.values()) {
-      if (model.visible) fold(model.geometryResult?.coordinateInfo?.shiftedBounds);
-    }
-  } else {
-    fold(legacy?.coordinateInfo?.shiftedBounds);
+  return mergedSectionCoordinateInfo(models, legacy)?.shiftedBounds ?? null;
+}
+
+/** Shared section bounds with the frame metadata needed by the placement hook. */
+export function mergedSectionCoordinateInfo(
+  models: ReadonlyMap<string, BoundedModel>,
+  legacy: Pick<GeometryResult, 'coordinateInfo'> | null,
+): CoordinateInfo | undefined {
+  if (!models.size) {
+    const info = legacy?.coordinateInfo;
+    return isUsable(info?.shiftedBounds) ? info : undefined;
   }
-  return acc;
+  let merged: CoordinateInfo | undefined;
+  for (const model of models.values()) {
+    const info = model.geometryResult?.coordinateInfo;
+    if (!model.visible || !info || !isUsable(info.shiftedBounds)) continue;
+    if (!merged) {
+      merged = info;
+      continue;
+    }
+    const { min, max } = merged.shiftedBounds;
+    const box = info.shiftedBounds;
+    merged = {
+      ...merged,
+      shiftedBounds: {
+        min: { x: Math.min(min.x, box.min.x), y: Math.min(min.y, box.min.y), z: Math.min(min.z, box.min.z) },
+        max: { x: Math.max(max.x, box.max.x), y: Math.max(max.y, box.max.y), z: Math.max(max.z, box.max.z) },
+      },
+    };
+  }
+  return merged;
 }
 
 /** The world-unit span of `bounds` along a cut axis, or `null` when degenerate. */
@@ -140,25 +155,60 @@ export function worldToPercent(world: number, range: AxisRange): number {
 export function collectStoreys(
   models: ReadonlyMap<string, StoreyModel>,
   legacy: StoreyModel['ifcDataStore'],
+  legacyGeometry: StoreyModel['geometryResult'] = null,
+  placement?: PlacementState,
 ): SectionStorey[] {
   const storeys: SectionStorey[] = [];
-  const collect = (modelId: string, ds: StoreyModel['ifcDataStore']) => {
+  const collect = (modelId: string, ds: StoreyModel['ifcDataStore'], frame?: CoordinateInfo) => {
     if (!ds?.spatialHierarchy) return;
     const { byStorey, storeyElevations } = ds.spatialHierarchy;
-    for (const storeyId of byStorey.keys()) {
-      const elevation = storeyElevations.get(storeyId) ?? 0;
+    const translation = placement ? displayedTranslation(placement, modelId)[2] : 0;
+    const offset = totalYupOffset(frame).y;
+    const bounds = frame?.shiftedBounds;
+    const anchors = new Map<string, number>();
+    const levels = [...byStorey.keys()].map((id) => {
+      const storey = ds.getEntity?.(id);
+      const origin = storey && resolveProductOriginMeters(ds, id);
+      const z = origin && Number.isFinite(origin.z) ? origin.z : undefined;
+      const relative = storeyElevations.get(id);
+      const declared = storey?.attributes?.[IFC_BUILDING_STOREY_ELEVATION_INDEX] != null;
+      // The hierarchy also provides the local placement Z when Elevation is omitted.
+      let key: string | undefined;
+      if (origin && z !== undefined && relative !== undefined && Number.isFinite(relative)) {
+        key = `${origin.x},${origin.y},${origin.z}`;
+        anchors.set(key, Math.min(relative, anchors.get(key) ?? relative));
+      }
+      return [id, z, key, relative ?? 0, declared] as const;
+    });
+    for (const [storeyId, z, key, relative, declared] of levels) {
+      let rise = declared && key !== undefined ? relative - anchors.get(key)! : 0;
+      const authored = relative - offset;
+      let elevation = (z ?? relative) - offset + rise;
+      // A sole storey can use the model origin as a placeholder for its declared floor.
+      const loneZeroPlacement = z === 0 && levels.length === 1;
+      if (bounds && (loneZeroPlacement || !storeyInRange(elevation, bounds.min.y, bounds.max.y))) {
+        // An in-bounds authored elevation can supply the physical floor in either case.
+        if (z !== undefined && declared && storeyInRange(authored, bounds.min.y, bounds.max.y)) {
+          elevation = authored;
+          rise = relative - z;
+        } else if (z === undefined && storeyInRange(relative, bounds.min.y, bounds.max.y)) {
+          // Without placement, Elevation may already be relative to the model frame.
+          elevation = relative;
+        }
+      }
+      elevation += translation;
       const name = ds.entities.getName(storeyId) || `Storey #${storeyId}`;
-      storeys.push({ expressId: storeyId, modelId, name, elevation });
+      storeys.push({ expressId: storeyId, modelId, name, elevation, ...(rise ? { sharedPlacementRise: rise } : {}) });
     }
   };
   if (models.size > 0) {
-    for (const [modelId, model] of models) collect(modelId, model.ifcDataStore);
+    for (const [modelId, model] of models) collect(modelId, model.ifcDataStore, model.geometryResult?.coordinateInfo);
   } else {
-    collect('legacy', legacy);
+    collect('legacy', legacy, legacyGeometry?.coordinateInfo);
   }
-  const seen = new Map<string, SectionStorey>();
+  const seen = new Map<number, SectionStorey>();
   for (const s of storeys) {
-    const key = (Math.round(s.elevation * 2) / 2).toFixed(2);
+    const key = Math.round(s.elevation * 2);
     const prior = seen.get(key);
     if (!prior || s.name.length < prior.name.length) seen.set(key, s);
   }
@@ -175,11 +225,14 @@ export function storeyCutElevation(storey: Pick<SectionStorey, 'elevation'>): nu
  * count as inside it. Storey elevations are nominal authored values, while
  * the range comes from f32 mesh positions, so a floor that coincides with the
  * model's lowest or highest face can read a fraction of a millimetre outside.
- * 1 mm covers that rounding and no more, so a frame mismatch between raw
- * elevations and shifted / placed bounds that puts the floor outside the
- * range still takes the clamped fallback.
+ * 1 mm covers that rounding. A floor farther outside the bounds takes the
+ * clamped fallback.
  */
 export const STOREY_IN_RANGE_TOLERANCE_M = 1e-3;
+
+function storeyInRange(floor: number, min: number, max: number): boolean {
+  return floor >= min - STOREY_IN_RANGE_TOLERANCE_M && floor <= max + STOREY_IN_RANGE_TOLERANCE_M;
+}
 
 /**
  * The store `position` of a plan cut through `storey` (#8162): its floor plus
@@ -197,7 +250,7 @@ export const STOREY_IN_RANGE_TOLERANCE_M = 1e-3;
 export function storeyCutPosition(storey: Pick<SectionStorey, 'elevation'>, range: AxisRange): number {
   const floor = storey.elevation;
   const cut = storeyCutElevation(storey);
-  const inRange = floor >= range.min - STOREY_IN_RANGE_TOLERANCE_M && floor <= range.max + STOREY_IN_RANGE_TOLERANCE_M;
+  const inRange = storeyInRange(floor, range.min, range.max);
   return inRange ? worldToPosition(cut, range) : worldToPercent(cut, range);
 }
 

@@ -22,13 +22,10 @@
  */
 
 import { useCallback, useMemo } from 'react';
-import type { CoordinateInfo } from '@ifc-lite/geometry';
 import { useViewerStore } from '@/store';
-import { usePlacementCoordinateInfo } from '@/hooks/usePlacementCoordinateInfo';
+import { usePlacedSectionStoreys } from '@/hooks/usePlacementCoordinateInfo';
 import { setAlignmentDistance } from '@/lib/section/alignment-controller';
 import {
-  collectStoreys,
-  mergedSectionBounds,
   percentToWorld,
   clampSectionPercent,
   sectionAxisRange,
@@ -64,60 +61,42 @@ export interface SectionDistance {
 }
 
 export function useSectionDistance(): SectionDistance {
-  const models = useViewerStore((s) => s.models);
-  const geometryResult = useViewerStore((s) => s.geometryResult);
-  const ifcDataStore = useViewerStore((s) => s.ifcDataStore);
+  const { placed, storeys } = usePlacedSectionStoreys();
   const sectionPlane = useViewerStore((s) => s.sectionPlane);
-  const setSectionPlaneAxis = useViewerStore((s) => s.setSectionPlaneAxis);
-  const setSectionPlanePosition = useViewerStore((s) => s.setSectionPlanePosition);
   const setSectionCustomDistance = useViewerStore((s) => s.setSectionCustomDistance);
 
-  // The merged box as a CoordinateInfo, so the placement hook can shift it
-  // the way it shifts the viewport's; frame metadata comes from whichever
-  // model contributed first (federated models share one frame).
-  const source = useMemo((): CoordinateInfo | undefined => {
-    const bounds = mergedSectionBounds(models, geometryResult);
-    if (!bounds) return undefined;
-    let base: CoordinateInfo | undefined;
-    for (const model of models.values()) {
-      if (model.visible && model.geometryResult?.coordinateInfo) { base = model.geometryResult.coordinateInfo; break; }
-    }
-    base ??= geometryResult?.coordinateInfo;
-    return base ? { ...base, shiftedBounds: bounds } : undefined;
-  }, [models, geometryResult]);
-  const placed = usePlacementCoordinateInfo(source);
   const range = useMemo(
     () => sectionAxisRange(placed?.shiftedBounds ?? null, sectionPlane.axis),
     [placed, sectionPlane.axis],
   );
-  const storeys = useMemo(() => collectStoreys(models, ifcDataStore), [models, ifcDataStore]);
 
   const cutAtStorey = useCallback((storey: SectionStorey) => {
     const state = useViewerStore.getState();
-    if (state.sectionPlane.custom || state.sectionPlane.axis !== 'down') setSectionPlaneAxis('down');
+    if (state.sectionPlane.custom || state.sectionPlane.axis !== 'down') state.setSectionPlaneAxis('down');
     const r = sectionAxisRange(placed?.shiftedBounds ?? null, 'down');
-    if (r) setSectionPlanePosition(storeyCutPosition(storey, r));
-  }, [placed, setSectionPlaneAxis, setSectionPlanePosition]);
+    if (r) state.setSectionPlanePosition(storeyCutPosition(storey, r));
+  }, [placed]);
 
   const bounds = placed?.shiftedBounds ?? null;
   const custom = sectionPlane.custom;
   const onChangeWorld = useCallback((next: number) => {
-    if (range) setSectionPlanePosition(worldToPercent(next, range));
-  }, [range, setSectionPlanePosition]);
+    if (range) useViewerStore.getState().setSectionPlanePosition(worldToPercent(next, range));
+  }, [range]);
   const onChangePercent = useCallback((next: number) => {
-    setSectionPlanePosition(clampSectionPercent(next));
-  }, [setSectionPlanePosition]);
+    useViewerStore.getState().setSectionPlanePosition(clampSectionPercent(next));
+  }, []);
 
+  const inputs = { storeys, range, bounds, cutAtStorey };
   if (custom) {
     if (custom.alignment) return {
       kind: 'alignment', value: custom.alignment.geometricHorizontalDistanceMeters,
       onChange: next => { void setAlignmentDistance(next); },
       step: 0.1, min: 0, max: custom.alignment.geometricHorizontalLengthMeters,
-      snaps: [], storeys, range, bounds, cutAtStorey,
+      snaps: [], ...inputs,
     };
     return {
       kind: 'custom', value: custom.distance, onChange: setSectionCustomDistance,
-      step: 0.05, min: -Infinity, max: Infinity, snaps: [], storeys, range, bounds, cutAtStorey,
+      step: 0.05, min: -Infinity, max: Infinity, snaps: [], ...inputs,
     };
   }
   if (range) {
@@ -125,11 +104,11 @@ export function useSectionDistance(): SectionDistance {
       kind: 'world', value: percentToWorld(sectionPlane.position, range), onChange: onChangeWorld,
       step: 0.1, min: range.min, max: range.max,
       snaps: sectionPlane.axis === 'down' ? storeys.map(storeyCutElevation) : [],
-      storeys, range, bounds, cutAtStorey,
+      ...inputs,
     };
   }
   return {
     kind: 'percent', value: sectionPlane.position, onChange: onChangePercent,
-    step: 1, min: 0, max: 100, snaps: [], storeys, range, bounds, cutAtStorey,
+    step: 1, min: 0, max: 100, snaps: [], ...inputs,
   };
 }

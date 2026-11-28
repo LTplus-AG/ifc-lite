@@ -317,6 +317,7 @@ export class PointCloudRenderer {
     }
   }
 
+  getAssetTranslation(handle: PointCloudAssetHandle) { return this.placements.translation(this.nodes.get(handle.id)) ?? [0, 0, 0] as const; }
   getAssetTransform(handle: PointCloudAssetHandle): Float32Array | undefined { const matrix = this.nodes.get(handle.id)?.model; return matrix ? new Float32Array(matrix) : undefined; }
   getAssetPlacement(handle: PointCloudAssetHandle): Float64Array | undefined { return exactPlacement(this.nodes.get(handle.id)); }
 

@@ -4,6 +4,7 @@
 import { useMemo, useSyncExternalStore } from 'react';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import { useViewerStore } from '@/store';
+import { collectStoreys, mergedSectionCoordinateInfo } from '@/lib/section/section-distance';
 import { placementCoordinateInfo } from '@/lib/section/placement-coordinate-info';
 import { getPlacementBoundsRevision, subscribePlacementBounds } from '@/lib/model-placement/bounds-revision';
 
@@ -19,4 +20,20 @@ export function usePlacementCoordinateInfo(source: CoordinateInfo | undefined): 
   return useMemo(() => {
     return placementCoordinateInfo(source, models, placement);
   }, [source, models, placement, mutationVersion, alignmentEnabled, boundsRevision]);
+}
+
+
+/** The floor-plan button and Section toolbar use the same placed scene. */
+export function usePlacedSectionStoreys() {
+  const models = useViewerStore((state) => state.models);
+  const geometry = useViewerStore((state) => state.geometryResult);
+  const data = useViewerStore((state) => state.ifcDataStore);
+  const placement = useViewerStore((state) => state.modelPlacement);
+  const source = useMemo(() => mergedSectionCoordinateInfo(models, geometry), [models, geometry]);
+  const placed = usePlacementCoordinateInfo(source);
+  const storeys = useMemo(
+    () => collectStoreys(models, data, geometry, placement),
+    [models, data, geometry, placement],
+  );
+  return { placed, storeys };
 }

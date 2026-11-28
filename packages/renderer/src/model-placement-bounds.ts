@@ -4,12 +4,19 @@
 import type { Scene } from './scene.js';
 import type { PointCloudRenderer } from './pointcloud/point-cloud-renderer.js';
 
-export function modelPlacementBounds(scene: Scene, points: PointCloudRenderer | null, modelIndex: number, handle?: { id: number }) {
+export function modelPlacementBounds(
+  scene: Scene, points: PointCloudRenderer | null, modelIndex: number, handle?: { id: number },
+  translation?: readonly [number, number, number],
+) {
+  const applied = scene.getModelTranslation(modelIndex);
   const min = { x: Infinity, y: Infinity, z: Infinity }, max = { x: -Infinity, y: -Infinity, z: -Infinity };
-  const include = (bounds: { min: readonly number[]; max: readonly number[] } | null | undefined) => {
+  const include = (bounds: { min: readonly number[]; max: readonly number[] } | null | undefined, from = applied) => {
     if (!bounds || !bounds.min.every(Number.isFinite) || !bounds.max.every(Number.isFinite)) return;
-    min.x = Math.min(min.x, bounds.min[0]); min.y = Math.min(min.y, bounds.min[1]); min.z = Math.min(min.z, bounds.min[2]);
-    max.x = Math.max(max.x, bounds.max[0]); max.y = Math.max(max.y, bounds.max[1]); max.z = Math.max(max.z, bounds.max[2]);
+    for (const [i, axis] of (['x', 'y', 'z'] as const).entries()) {
+      const delta = translation ? translation[i] - from[i] : 0;
+      min[axis] = Math.min(min[axis], bounds.min[i] + delta);
+      max[axis] = Math.max(max[axis], bounds.max[i] + delta);
+    }
   };
   for (const batch of scene.getBatchedMeshes()) if ((batch.modelIndices?.[0] ?? 0) === modelIndex) include(batch.bounds);
   for (const mesh of scene.getMeshes()) if (!mesh.hydrated && (mesh.modelIndex ?? 0) === modelIndex) include(mesh.bounds);
@@ -18,7 +25,8 @@ export function modelPlacementBounds(scene: Scene, points: PointCloudRenderer | 
     if ((mesh.modelIndex ?? 0) !== modelIndex) continue;
     include(mesh.bounds);
   }
-  include(points?.getPlacementBounds(modelIndex, handle));
+  // Streamed scans and scene meshes are placed by separate renderer calls.
+  include(points?.getPlacementBounds(modelIndex, handle), handle && points?.getAssetTranslation(handle));
   return Number.isFinite(min.x) ? { min, max } : null;
 }
 

@@ -12,7 +12,7 @@
  * plane it means.
  */
 
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import { ChevronDown, Eye, EyeOff, FlipHorizontal2, Focus, Layers, Minus, PaintBucket, PencilRuler, Plus, Slice } from 'lucide-react';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
@@ -32,7 +32,8 @@ import { SectionStepMenu } from './SectionStepMenu';
 import { SectionSetViewButton } from './SectionSetViewButton';
 import { SectionZoomMenu } from './SectionZoomMenu';
 import { useLiveTestId } from './SectionBarMeasure';
-import { storeyCutElevation } from '@/lib/section/section-distance';
+import { createStoreyDisplayElevationResolver } from '@/lib/geo/storey-elevation';
+import { storeyCutElevation, type SectionStorey } from '@/lib/section/section-distance';
 import { sectionBoxFromBounds, sectionBoxSize } from '@/lib/section/section-box';
 import { AlignmentSectionControls } from './AlignmentSectionControls';
 import { useAlignmentToolState } from '@/lib/section/alignment-controller';
@@ -168,48 +169,7 @@ export function SectionActivePlaneRow({ compact = false }: { compact?: boolean }
       </button>
       {offset.datum !== 'percent' && <span className="whitespace-nowrap text-2xs text-muted-foreground" data-testid={datumTestId}>{t(`sectionPlanes.offset.datum.${offset.datum}`)}</span>}
       <SectionStepMenu />
-      {showStoreys && (
-        <HudPopover>
-          <HudPopoverTrigger asChild>
-            <button
-              type="button"
-              title={t('sectionTool.storeys.title')}
-              aria-label={t('sectionTool.storeys.title')}
-              className="rounded-sm p-0.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-            >
-              <ChevronDown aria-hidden className="h-3.5 w-3.5" />
-            </button>
-          </HudPopoverTrigger>
-          <HudPopoverContent align="start" className="p-1" data-testid="section-storeys" aria-label={t('sectionTool.storeys.title')}>
-            <ul aria-label={t('sectionTool.storeys.aria')} className="max-h-64 overflow-y-auto">
-              {distance.storeys.map((storey) => {
-                const active = Math.abs(distance.value - storeyCutElevation(storey)) <= STOREY_SNAP_TOLERANCE_M;
-                return (
-                  <li key={`${storey.modelId}:${storey.expressId}`}>
-                    <button
-                      type="button"
-                      aria-current={active ? 'true' : undefined}
-                      onClick={() => distance.cutAtStorey(storey)}
-                      className={cn(
-                        'flex w-full items-center justify-between gap-4 rounded-sm px-2 py-1 text-left text-xs',
-                        active ? 'bg-overlay-accent-soft text-overlay-accent' : 'hover:bg-accent hover:text-accent-foreground',
-                      )}
-                    >
-                      <span className="flex items-center gap-1.5 truncate">
-                        <Layers aria-hidden className="h-3 w-3 shrink-0 text-muted-foreground" />
-                        {storey.name}
-                      </span>
-                      <span className="tabular-nums text-muted-foreground">
-                        {t('sectionTool.storeys.elevation', { elevation: storey.elevation.toFixed(2) })}
-                      </span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          </HudPopoverContent>
-        </HudPopover>
-      )}
+      {showStoreys && <SectionStoreyMenu targets={distance.storeys} cut={distance.value} onSelect={distance.cutAtStorey} />}
       </span>
       <span className={GROUP}>
       <HudDivider />
@@ -279,5 +239,80 @@ export function SectionActivePlaneRow({ compact = false }: { compact?: boolean }
       </HudToggle>
       </span>
     </>
+  );
+}
+
+
+// Keep projected labels with the Section toolbar, which loads on first use.
+// The eager distance hook supplies physical cut positions to other consumers.
+function SectionStoreyMenu({ targets, cut, onSelect }: {
+  targets: readonly SectionStorey[];
+  cut: number;
+  onSelect: (storey: SectionStorey) => void;
+}) {
+  const { t } = useTranslation();
+  const models = useViewerStore((state) => state.models);
+  const ifcDataStore = useViewerStore((state) => state.ifcDataStore);
+  const geometryResult = useViewerStore((state) => state.geometryResult);
+  const georefMutations = useViewerStore((s) => s.georefMutations);
+  const storeys = useMemo(
+    () => {
+      const resolvers = new Map<string, ReturnType<typeof createStoreyDisplayElevationResolver>>();
+      return targets.map((storey) => {
+        const model = models.get(storey.modelId);
+        const data = model ? model.ifcDataStore : ifcDataStore;
+        let resolve = resolvers.get(storey.modelId);
+        if (!resolve) {
+          resolve = createStoreyDisplayElevationResolver(data, (model ? model.geometryResult : geometryResult)?.coordinateInfo,
+            georefMutations.get(model ? storey.modelId : '__legacy__'));
+          resolvers.set(storey.modelId, resolve);
+        }
+        const relative = data?.spatialHierarchy?.storeyElevations.get(storey.expressId) ?? 0;
+        return { ...storey, displayElevation: resolve(storey.expressId, relative, storey.sharedPlacementRise) };
+      });
+    },
+    [targets, models, ifcDataStore, geometryResult, georefMutations],
+  );
+  return (
+    <HudPopover>
+      <HudPopoverTrigger asChild>
+        <button
+          type="button"
+          title={t('sectionTool.storeys.title')}
+          aria-label={t('sectionTool.storeys.title')}
+          className="rounded-sm p-0.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+        >
+          <ChevronDown aria-hidden className="h-3.5 w-3.5" />
+        </button>
+      </HudPopoverTrigger>
+      <HudPopoverContent align="start" className="p-1" data-testid="section-storeys" aria-label={t('sectionTool.storeys.title')}>
+        <ul aria-label={t('sectionTool.storeys.aria')} className="max-h-64 overflow-y-auto">
+          {storeys.map((storey) => {
+            const active = Math.abs(cut - storeyCutElevation(storey)) <= STOREY_SNAP_TOLERANCE_M;
+            return (
+              <li key={`${storey.modelId}:${storey.expressId}`}>
+                <button
+                  type="button"
+                  aria-current={active ? 'true' : undefined}
+                  onClick={() => onSelect(storey)}
+                  className={cn(
+                    'flex w-full items-center justify-between gap-4 rounded-sm px-2 py-1 text-left text-xs',
+                    active ? 'bg-overlay-accent-soft text-overlay-accent' : 'hover:bg-accent hover:text-accent-foreground',
+                  )}
+                >
+                  <span className="flex items-center gap-1.5 truncate">
+                    <Layers aria-hidden className="h-3 w-3 shrink-0 text-muted-foreground" />
+                    {storey.name}
+                  </span>
+                  <span className="tabular-nums text-muted-foreground">
+                    {t('sectionTool.storeys.elevation', { elevation: storey.displayElevation.toFixed(2) })}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </HudPopoverContent>
+    </HudPopover>
   );
 }

@@ -7,7 +7,7 @@ import type { TranslationKey } from '@/i18n';
 import { useViewerStore } from '@/store';
 import { MAX_SECTION_PLANES } from '@/lib/section/section-plane-set';
 import { sectionBoxFromBounds } from '@/lib/section/section-box';
-import { useAddSectionPlane, type AddKind } from './tools/SectionAddMenu';
+import { useAddSectionPlane, type AddKind } from './tools/sectionAddActions';
 import { useSectionDistance } from './tools/useSectionDistance';
 
 /** Mounted adapter only: fitting, face picking and alignment stay in the real hook. */

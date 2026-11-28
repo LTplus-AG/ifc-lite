@@ -68,7 +68,7 @@ export type { OverlayTheme, Rgba as OverlayThemeRgba } from './overlay-theme.js'
 export { DEFAULT_OVERLAY_THEME } from './overlay-theme.js';
 import { DEFAULT_OVERLAY_THEME, type OverlayTheme } from './overlay-theme.js';
 export type { Ray, Vec3, Intersection } from './raycaster.js';
-export type { SnapTarget, SnapOptions, EdgeLockInput, MagneticSnapResult } from './snap-detector.js';
+export type { SnapTarget, SnapOptions, EdgeLockInput, MagneticSnapResult, ScreenCornerSnapOptions } from './snap-detector.js';
 export type { SourceCurveIdentity, SourceSnapCurve } from './source-curve-snap.js';
 
 // Extracted manager classes. `PickingManager` is NOT exported: its constructor

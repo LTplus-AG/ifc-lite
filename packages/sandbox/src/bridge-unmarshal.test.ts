@@ -88,6 +88,23 @@ describe('bounded sandbox decoding (#11600)', () => {
     }
   });
 
+  it('decodes boxed booleans and proxy records without inspecting prototypes (#11600)', async () => {
+    const { sdk } = stubSdk();
+    const sandbox = await createSandbox(sdk);
+    try {
+      const result = await sandbox.eval(`
+        let reads = 0;
+        const record = new Proxy({ x: 1 }, {
+          getPrototypeOf() { reads++; return Object.prototype; },
+        });
+        ({ record, active: Object.setPrototypeOf(new Boolean(false), null), get reads() { return reads; } });
+      `, { typescript: false });
+      expect(result.value).toEqual({ record: { x: 1 }, active: false, reads: 0 });
+    } finally {
+      sandbox.dispose();
+    }
+  });
+
   it('keeps the shallow cyclic console fallback and continues the script', async () => {
     const { sdk } = stubSdk();
     const sandbox = await createSandbox(sdk, { limits: { maxDumpDepth: 1 } });

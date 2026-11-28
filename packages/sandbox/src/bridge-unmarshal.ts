@@ -27,8 +27,6 @@ const DECODER_SOURCE = `(() => {
   const keys = Object.keys;
   const emptyRecord = Object.create;
   const setPrototype = Object.setPrototypeOf;
-  const getPrototype = Object.getPrototypeOf;
-  const objectPrototype = Object.prototype;
   const unboxers = [
     Number.prototype.valueOf, String.prototype.valueOf,
     Boolean.prototype.valueOf, BigInt.prototype.valueOf,
@@ -55,14 +53,6 @@ const DECODER_SOURCE = `(() => {
     let count = 0;
 
     function unbox(value) {
-      // Plain records dominate bridge traffic; avoid probing their brands.
-      try {
-        const prototype = getPrototype(value);
-        if (prototype === null || prototype === objectPrototype) return value;
-      } catch (error) {
-        // A proxy can reject prototype inspection and still serialize as a record.
-        return value;
-      }
       for (let i = 0; i < unboxers.length; i++) {
         let primitive;
         try {

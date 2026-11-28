@@ -78,6 +78,7 @@ describe('open.federation', () => {
     ['two slots with one id', { id: 'w', slots: [slot(), slot({ sha256: OTHER })] }],
     ['a slot without an id', { id: 'w', slots: [slot({ slot: undefined })] }],
     ['a slot without a label', { id: 'w', slots: [slot({ label: '' })] }],
+    ['a label over 120 characters', { id: 'w', slots: [slot({ label: 'x'.repeat(121) })] }],
     ['a slot whose hash is not a SHA-256', { id: 'w', slots: [slot({ sha256: '../../etc' })] }],
     ['a slot with a fractional size', { id: 'w', slots: [slot({ bytes: 1.5 })] }],
     ['a slot with a negative size', { id: 'w', slots: [slot({ bytes: -1 })] }],

@@ -206,8 +206,17 @@ import { parseExpressSchema, generateTypeScript } from '@ifc-lite/codegen';
 const schema = parseExpressSchema(expressSource);
 const generated = generateTypeScript(schema);
 // generated.entities / .types / .enums / .selects / .schemaRegistry are TS source.
-// Write them into packages/parser/src/generated, then rebuild the parser.
 ```
+
+The committed generated code lives in several places that must stay in step:
+`packages/codegen/generated/{ifc4,ifc4x3,ifc2x3}`, the parser copy in
+`packages/parser/src/generated` (IFC4 in full, plus only `schema-registry.ts`
+under `ifc4x3/` and `ifc2x3/`), and the Rust registries in
+`rust/core/src/generated/`. Regenerate with the codegen CLI (`pnpm --filter
+@ifc-lite/codegen generate:ifc4`, `generate:ifc4x3`, `generate:ifc2x3`; see
+`packages/codegen/INTEGRATION.md` for copying into the parser), then run
+`pnpm check:codegen-sync`, which regenerates every target into a temp
+directory and fails on any committed file that differs.
 
 For one-off vendor extensions whose schema you do not control, do not extend the
 schema. Read the raw attributes of unknown entities on demand instead (see the
@@ -275,7 +284,7 @@ const customFragmentShader = `
     colours are: pass an expressId-to-RGBA map to
     `renderer.getScene().setColorOverrides(overrides, device, pipeline)`
     (device and pipeline from `renderer.getGPUDevice()` and
-    `renderer.getPipeline()`).
+    `renderer.getPipeline()`; both can return `null`, so check them first).
 
 ### Visibility-Based Highlighting
 

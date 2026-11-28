@@ -280,11 +280,11 @@ Full list: [API Reference](https://ifclite.dev/docs/api/typescript/) (npm packag
 ## Performance
 
 - **Streaming first render:** geometry is processed in batches, so the first triangles are on screen while the rest of the file is still parsing.
-- **Geometry correctness:** exact-arithmetic boolean kernel — every opening is cut exactly, and the output is verified element-by-element against IfcOpenShell (99.9%+ agreement on the public benchmark corpus). Engines with approximate booleans are faster on boolean-heavy models; that trade is deliberate.
+- **Geometry correctness:** exact-arithmetic boolean kernel — every opening is cut exactly, and the output is verified element-by-element against IfcOpenShell on the public benchmark corpus. Engines with approximate booleans are faster on boolean-heavy models; that trade is deliberate.
 - **Geometry speed:** native (server/CLI, multi-threaded) beats `web-ifc` on most of the benchmark corpus; in the browser the viewer streams geometry across workers so the first triangles render long before the file finishes processing.
-- **Parse speed:** STEP tokenization runs at roughly 1.2 GB/s; a full parse lands around 50 MB/s.
+- **Parse speed:** a fast STEP tokenizer feeds a columnar parse; see the [performance guide](https://ifclite.dev/docs/guide/performance/) for measured throughput.
 - **Schema coverage:** 100% of IFC4 (776 entities) and IFC4X3 (876 entities).
-- **Footprint:** one lazily fetched WASM module (~2.6 MB gzipped) plus small per-package JS wrappers.
+- **Footprint:** one lazily fetched WASM module plus small per-package JS wrappers; the performance guide records its size.
 
 See [benchmarks](https://ifclite.dev/docs/guide/performance/) for full numbers across model sizes and hardware.
 

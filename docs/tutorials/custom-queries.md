@@ -287,7 +287,9 @@ const floorAreaByStorey = await query.sql(`
     RGBA tuple in 0-1 and pass the map to
     `renderer.getScene().setColorOverrides(overrides, device, pipeline)`, with
     `device` from `renderer.getGPUDevice()` and `pipeline` from
-    `renderer.getPipeline()`; `clearColorOverrides()` removes them.
+    `renderer.getPipeline()`. Both getters return `null` before the renderer
+    is initialised (or after its device is lost), so check both before the
+    call. `clearColorOverrides()` removes the overrides.
 
 ```typescript
 import { IfcParser, extractPropertiesOnDemand } from '@ifc-lite/parser';

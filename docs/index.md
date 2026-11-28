@@ -163,7 +163,8 @@ flowchart TD
     // Caches automatically, skips upload if the file was processed before
     const result = await client.parseParquet(file);
 
-    // Server meshes use snake_case fields; map them to the renderer's MeshData
+    // Server meshes use snake_case fields; map them to the renderer's MeshData.
+    // Keep `origin`: positions are relative to it (world = origin + position).
     const toRendererMesh = (m: ServerMeshData) => ({
       expressId: m.express_id,
       ifcType: m.ifc_type,
@@ -171,12 +172,19 @@ flowchart TD
       normals: m.normals,
       indices: m.indices,
       color: m.color,
+      origin: m.origin,
+      geometryClass: m.geometry_class,
+      geometryItemId: m.geometry_item_id,
+      materialId: m.material_id,
+      material: { metallic: m.metallic, roughness: m.roughness },
     });
 
     // Or stream geometry for large files
     for await (const event of client.parseStream(file)) {
       if (event.type === 'batch') {
-        renderer.addMeshes(event.meshes.map(toRendererMesh));
+        // Class 2 is an instanced type template, not drawn in the model view
+        const meshes = event.meshes.filter((m) => (m.geometry_class ?? 0) !== 2);
+        renderer.addMeshes(meshes.map(toRendererMesh));
       }
     }
     ```

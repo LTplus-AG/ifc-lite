@@ -127,8 +127,16 @@ const sha: Check = (v, p, e) => {
 };
 /** RFC 3339 date-time, as the schema's `format: 'date-time'` requires: date, time and offset. */
 const DATE_TIME = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])T([01]\d|2[0-3]):[0-5]\d:([0-5]\d|60)(\.\d+)?(Z|[+-]([01]\d|2[0-3]):[0-5]\d)$/i;
+/** A real calendar date: `Date.parse` rolls 2026-02-31 over to March instead of refusing it. */
+function realCalendarDate(value: string): boolean {
+  const [year, month, day] = value.slice(0, 10).split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+}
 const date: Check = (v, p, e) => {
-  if (typeof v !== 'string' || !DATE_TIME.test(v) || Number.isNaN(Date.parse(v))) fail(e, p, 'an RFC 3339 date-time string');
+  if (typeof v !== 'string' || !DATE_TIME.test(v) || !realCalendarDate(v) || Number.isNaN(Date.parse(v))) {
+    fail(e, p, 'an RFC 3339 date-time string');
+  }
 };
 
 const endpointCheck = obj({ slot: str, key: str, globalId: nstr, type: str }, { name: str, ambiguous: oneOf(true) });

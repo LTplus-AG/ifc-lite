@@ -200,7 +200,7 @@ describe('buildClashRunDocument', () => {
   });
 
   it('accepts only RFC 3339 date-times, as the schema does', () => {
-    for (const createdAt of ['2026-11-28', '1', '2026-11-28T10:00:00']) {
+    for (const createdAt of ['2026-11-28', '1', '2026-11-28T10:00:00', '2026-02-31T10:00:00Z']) {
       const doc = { ...JSON.parse(JSON.stringify(run())), createdAt };
       expect(validateClashRunDocument(doc).ok, createdAt).toBe(false);
     }

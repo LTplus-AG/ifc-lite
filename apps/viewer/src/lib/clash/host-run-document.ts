@@ -17,7 +17,8 @@ import {
   type ExclusionSet,
 } from '@ifc-lite/clash';
 import { gatheredModelIds } from './federation-identity';
-import type { ClashModelTagInputs } from './model-tag-inputs';
+import { referencedModelTagIds, type ClashModelTagInputs } from './model-tag-inputs';
+import type { ClashSetFilters } from './set-filter';
 import { clashRunRegistrations, type ClashRunListenerOptions } from './host-run-listeners';
 
 interface ModelLike { id: string; name: string }
@@ -26,7 +27,7 @@ interface ModelLike { id: string; name: string }
 export interface ClashRunHostContext {
   models: ReadonlyMap<string, ModelLike>;
   /** The saved rules (presets) by id; explicit-member rules take their revision from these. */
-  presets: ReadonlyArray<{ id: string }>;
+  presets: ReadonlyArray<ClashSetFilters & { id: string }>;
   exclusions: ExclusionSet;
   tagInputs: ClashModelTagInputs | null;
 }
@@ -73,9 +74,6 @@ export function slotBindings(result: ClashResult, models: ReadonlyMap<string, Mo
  */
 export function ruleMemberships(result: ClashResult, context: ClashRunHostContext, slots: readonly ClashRunSlotBinding[]): Record<string, string> {
   const slotOf = new Map(slots.map((binding) => [binding.model, binding.slot]));
-  const tags = context.tagInputs
-    ? Object.fromEntries([...context.tagInputs].map(([tag, models]) => [tag, [...models].map((m) => slotOf.get(m) ?? m).sort()]))
-    : null;
   const out: Record<string, string> = {};
   for (const rule of result.rulesRun) {
     if (rule.membersA === undefined && rule.membersB === undefined) continue;
@@ -83,6 +81,12 @@ export function ruleMemberships(result: ClashResult, context: ClashRunHostContex
     // No saved definition to describe it: leave it out, and the package hashes the lists (fails closed).
     if (!preset) continue;
     const filters = Object.fromEntries(Object.entries(preset).filter(([field]) => !NON_MEMBERSHIP_FIELDS.has(field)));
+    // Only the tags THIS preset's filters name: another rule's tag assignments do not change its membership.
+    const own = referencedModelTagIds([preset]);
+    const tags = context.tagInputs
+      ? Object.fromEntries([...context.tagInputs].filter(([tag]) => own.has(tag))
+        .map(([tag, models]) => [tag, [...models].map((m) => slotOf.get(m) ?? m).sort()]))
+      : null;
     out[rule.id] = stableJson({ filters, tags });
   }
   return out;

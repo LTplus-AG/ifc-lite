@@ -5,6 +5,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { makeExclusionSet, qualifiedKey, validateClashRunDocument, type Clash, type ClashResult } from '@ifc-lite/clash';
+import { Rule } from '@ifc-lite/rules';
 import { onClashRunComplete, type ClashRunCompleteEvent } from './host-run-listeners.js';
 import { notifyClashRunComplete, type ClashRunHostContext } from './host-run-document.js';
 import { rememberFederationIdentity } from './federation-identity.js';
@@ -70,8 +71,9 @@ describe('clash run host hook', () => {
   it('pins an explicit-member rule to its saved filter, not its per-load members', () => {
     const memberRule = { ...result.rulesRun[0], membersA: ['m-arch:10'] };
     const reload = { ...memberRule, membersA: ['m-arch:99'] };
-    const preset = { id: 'r1', name: 'Walls vs beams', enabled: true, filterA: { storey: 'L1' } };
-    const edited = { ...preset, filterA: { storey: 'L2' } };
+    const preset = { id: 'r1', name: 'Walls vs beams', enabled: true,
+      filterA: [{ combinator: 'AND' as const, rules: [Rule.modelTag('hasAny', ['tag-arch'])] }] };
+    const edited = { ...preset, filterA: [{ combinator: 'AND' as const, rules: [Rule.modelTag('hasAny', ['tag-mep'])] }] };
     const revisions: string[] = [];
     const off = onClashRunComplete((event) => revisions.push(event.document.manifest.rules.items[0].revision));
     try {
@@ -83,6 +85,24 @@ describe('clash run host hook', () => {
     }
     assert.equal(revisions[0], revisions[1], 'a reload with new refs keeps the revision');
     assert.notEqual(revisions[1], revisions[2], 'an edited filter changes it');
+  });
+
+  it("ignores tag assignments that only another rule's filter names", () => {
+    const memberRule = { ...result.rulesRun[0], membersA: ['m-arch:10'] };
+    const preset = { id: 'r1', filterA: [{ combinator: 'AND' as const, rules: [Rule.modelTag('hasAny', ['tag-arch'])] }] };
+    const revisions: string[] = [];
+    const off = onClashRunComplete((event) => { revisions.push(event.document.manifest.rules.items[0].revision); });
+    const tags = (other: string[]) => new Map([['tag-arch', new Set(['m-arch'])], ['tag-other', new Set(other)]]);
+    try {
+      notifyClashRunComplete({ ...result, rulesRun: [memberRule] }, { ...context, presets: [preset], tagInputs: tags(['m-arch']) });
+      notifyClashRunComplete({ ...result, rulesRun: [memberRule] }, { ...context, presets: [preset], tagInputs: tags(['m-struct']) });
+      notifyClashRunComplete({ ...result, rulesRun: [memberRule] }, { ...context, presets: [preset],
+        tagInputs: new Map([['tag-arch', new Set(['m-struct'])]]) });
+    } finally {
+      off();
+    }
+    assert.equal(revisions[0], revisions[1], "another rule's tag does not move this revision");
+    assert.notEqual(revisions[1], revisions[2], 'its own tag does');
   });
 
   it('logs an async listener rejection instead of leaving it unhandled', async () => {

@@ -6,11 +6,13 @@ capture, collects independent model reviews, and tallies them into numbers.
 
 | file | role |
 |---|---|
-| `scenes.mjs` | the fixed scene set (17 states, captured in light and dark) |
+| `scenes.mjs` | the fixed scene set (`SCENES`, each captured in light and dark) |
 | `capture.mjs` | serves a built `dist/`, drives Windows Chrome on the real GPU, writes PNGs and `manifest.json` with layout metrics |
 | `pair.mjs` | builds a blind packet: per-item random X/Y labels, identical-image controls, and a key kept outside the packet |
 | `COUNCIL.md` | the reviewer brief, rubric, output schema and hard constraints |
 | `tally.mjs` | turns verdicts and the key into win rates, scores, vetoes and a ranked defect list |
+| `capture-preview.mjs` | starts the owned `vite preview` of the requested build that captures are taken from (#8947) |
+| `command-palette/`, `command-palette-access/` | palette-specific capture scenes for the command-palette hillclimbs; see [`command-palette-access/README.md`](./command-palette-access/README.md) |
 
 ## One round
 

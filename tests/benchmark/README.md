@@ -70,7 +70,7 @@ The benchmark suite includes 4 models covering different scenarios:
 | **FZK-Haus** | 2.4MB | Cutout/boolean testing | Window/door openings must be visible |
 | **Snowdon Towers** | 8.3MB | Structural elements | Fast loading baseline |
 | **BWK-BIM** | 326.8MB | Large architectural | Optional stress test for streaming |
-| **Holter Tower** | 169.2MB | Complex geometry | Optional stress test for crash prevention (MAX_OPENINGS safeguard) |
+| **Holter Tower** | 169.2MB | Complex geometry | Optional stress test for crash prevention |
 
 For day-to-day work, prefer `FZK-Haus` or `Snowdon Towers`. Reserve `BWK-BIM` and `Holter Tower` for intentional stress testing.
 
@@ -219,5 +219,4 @@ This runs headless Chrome with software rendering (`--use-angle=swiftshader`) an
 
 **Geometry correctness warnings**:
 - Verify cutouts are visible in FZK-Haus model
-- Check if MAX_OPENINGS safeguard is skipping too much
 - Ensure CSG operations complete successfully

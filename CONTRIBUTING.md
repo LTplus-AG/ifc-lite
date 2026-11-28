@@ -102,8 +102,8 @@ maintainer and means: in scope, wanted now, scoped. That label is how project di
 gets set, and it is the one thing not delegated. `scripts/check-issue-queue.mjs` checks it on every PR, and **prints which mode
 it is in**. Read that line rather than this one: the mode lives in
 `scripts/issue-queue.config.json` and this paragraph cannot be kept in sync with
-it. While the check reports ADVISORY it prints its verdict and does not fail the
-job, so a green tick does not mean the rule was met. A genuine drive-by fix can be waved through with the
+it. It has been enforcing since 2026-09-02 (`"mode": "enforcing"`): a PR with
+neither a linked `ready` issue nor the `unqueued` label fails it. A genuine drive-by fix can be waved through with the
 `unqueued` label, applied by the maintainer.
 
 **Filing issues is unrestricted and welcome.** An audit that produces twenty good

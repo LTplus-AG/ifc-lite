@@ -8,9 +8,8 @@ The change and the problem it solves.
 Closes #<issue>   <- required unless this PR carries the `unqueued` label.
                      The issue needs the `ready` label; a maintainer applies both.
                      See CONTRIBUTING.md "Picking what to work on".
-                     The `Issue queue` check prints its own mode. While it says
-                     ADVISORY, a green tick does not mean the rule was met, so
-                     read the verdict rather than the tick.
+                     The `Issue queue` check enforces this: without a linked
+                     `ready` issue or the `unqueued` label it fails.
 -->
 
 ## How it was verified

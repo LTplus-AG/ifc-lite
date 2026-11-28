@@ -13,7 +13,7 @@ import { isFeatureEnabled } from '@/lib/features';
 import { Suspense, useEffect, useSyncExternalStore } from 'react';
 import { lazyChunk } from '@/lib/lazy-chunk';
 import { consumePendingPairingFragment, onPairingFragment } from '@/lib/agent-bridge/pairing-fragment';
-import { closeAgentBridgeDialog, getAgentBridgeState, requestAgentBridgeDialog, useAgentBridgeState } from '@/lib/agent-bridge/state';
+import { closeAgentBridgeDialog, getAgentBridgeState, requestAgentBridgeDialog, updateAgentBridgeState, useAgentBridgeState } from '@/lib/agent-bridge/state';
 import { useViewerStore } from '@/store';
 import { agentSurfaces } from '@/lib/agent-bridge/agent-surfaces';
 
@@ -35,7 +35,9 @@ const AgentBridgeMobileIndicator = lazyChunk(() => import('./AgentBridgeMobileIn
  * opened with. Mounted in every layout, so on the phone layout (no status bar)
  * it also shows the persistent connection indicator.
  */
-export function AgentBridgeHost() {
+const loadSession = () => import('@/lib/agent-bridge/session');
+
+export function AgentBridgeHost({ load = loadSession }: { load?: typeof loadSession } = {}) {
   const { dialog, status } = useAgentBridgeState();
   const bim = useContext(BimReactContext);
   const isMobile = useViewerStore((s) => s.isMobile);
@@ -56,16 +58,21 @@ export function AgentBridgeHost() {
   useEffect(() => {
     if (!enabled || !bim || isFramed()) return;
     let cancelled = false;
+    let generation = 0;
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
     const attempt = (retry: number) => {
       const { status } = getAgentBridgeState();
       if (status.kind === 'connected' || status.kind === 'connecting') return;
       const ticket = savedTicket();
       if (!ticket) return;
-      void import('@/lib/agent-bridge/session').then(({ connectAgentBridge }) => {
+      const owner = ++generation;
+      const ownsAttempt = () => {
         const current = getAgentBridgeState();
-        if (!cancelled && !current.dialog && current.status.kind !== 'connecting'
-            && current.status.kind !== 'connected' && savedTicket()?.key === ticket.key) {
+        return !cancelled && owner === generation && !current.dialog && current.status.kind !== 'connecting'
+            && current.status.kind !== 'connected' && savedTicket()?.key === ticket.key;
+      };
+      void load().then(({ connectAgentBridge }) => {
+        if (ownsAttempt()) {
           connectAgentBridge({
             port: ticket.port, code: ticket.key, resume: true, bim,
             onResumeBusy: (key) => {
@@ -77,6 +84,8 @@ export function AgentBridgeHost() {
             },
           });
         }
+      }, () => {
+        if (ownsAttempt()) updateAgentBridgeState({ status: { kind: 'error', code: 'unreachable', port: ticket.port } });
       });
     };
     const resume = () => {
@@ -101,7 +110,7 @@ export function AgentBridgeHost() {
       window.removeEventListener('pageshow', restore);
       window.removeEventListener('online', resume);
     };
-  }, [enabled, bim]);
+  }, [enabled, bim, load]);
   if (!enabled) return null;
   return (
     <>

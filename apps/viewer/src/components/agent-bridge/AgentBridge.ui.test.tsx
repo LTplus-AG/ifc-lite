@@ -450,11 +450,22 @@ describe('a live connection is visible with Disconnect in every layout (#9523 re
     const key = 'ab'.repeat(32);
     const ticket = JSON.stringify({ port: 21517, key });
     globalThis.WebSocket = LiveSocket as unknown as typeof WebSocket;
-    render(withBim(<AgentBridgeHost />));
+    let firstLoad = true;
+    render(withBim(<AgentBridgeHost load={async () => {
+      if (firstLoad) {
+        firstLoad = false;
+        throw new Error('session chunk unavailable');
+      }
+      return session;
+    }} />));
     storage.setItem(storageKey, ticket);
     try {
       const previous = LiveSocket.last;
       window.dispatchEvent(new window.Event('online'));
+      await waitFor(() => getAgentBridgeState().status.kind === 'error', 'session load failure is recoverable');
+      assert.equal(storage.getItem(storageKey), ticket);
+      assert.equal(LiveSocket.last, previous);
+      document.dispatchEvent(new window.Event('visibilitychange'));
       await waitFor(() => LiveSocket.last !== previous, 'first reconnect opened a socket');
       const first = LiveSocket.last!;
       first.onclose?.({ code: 1006, reason: '' });

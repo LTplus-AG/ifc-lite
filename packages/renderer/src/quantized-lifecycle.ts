@@ -13,13 +13,19 @@ export async function enableRendererQuantizedBatches(host: RendererRecoveryHost)
   const generation = host.initGeneration;
   const lossSequence = host.deviceLossSequence;
   if (!pipeline || host.destroyed || host.deviceLost) return false;
-  const ok = await pipeline.ensureQuantizedPipelines();
-  if (host.pipeline !== pipeline || host.initGeneration !== generation
-    || host.deviceLossSequence !== lossSequence || host.destroyed || host.deviceLost) return false;
-  if (ok) {
-    host.scene.setQuantizedBatches(true);
-    requantizeEarlyBatches(host.scene, () => host.device.getDevice(), pipeline,
-      () => host.pipeline === pipeline && host.initGeneration === generation && !host.destroyed && !host.deviceLost);
+  // Compact meshes wait for the outcome, applied before the hold is released (scene-compact.ts).
+  const settle = host.scene.beginQuantizedProbe();
+  try {
+    const ok = await pipeline.ensureQuantizedPipelines();
+    if (host.pipeline !== pipeline || host.initGeneration !== generation
+      || host.deviceLossSequence !== lossSequence || host.destroyed || host.deviceLost) return false;
+    if (ok) {
+      host.scene.setQuantizedBatches(true);
+      requantizeEarlyBatches(host.scene, () => host.device.getDevice(), pipeline,
+        () => host.pipeline === pipeline && host.initGeneration === generation && !host.destroyed && !host.deviceLost);
+    }
+    return ok;
+  } finally {
+    settle();
   }
-  return ok;
 }

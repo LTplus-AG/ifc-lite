@@ -175,6 +175,26 @@ export function quantizeInterleaved(
 /** Share of one entity's surface that may collapse on the lattice before its batch stays f32 (#9068). */
 export const MAX_COLLAPSED_AREA_FRACTION = 0.01;
 
+/** A thin solid can lose an entire dimension while losing very little triangle area.
+ * Check each source piece against the nodes used for upload.
+ * Once two distinct nodes occur on an axis, that axis cannot have collapsed. */
+function latticeFlattensPiece(data: Float32Array, stride: number, nodes: Int32Array, start: number, end: number): boolean {
+  for (let axis = 0; axis < 3; axis++) {
+    const first = data[start * stride + axis];
+    const node = nodes[start * 3 + axis];
+    let hasExtent = false;
+    for (let v = start + 1; v < end; v++) {
+      if (nodes[v * 3 + axis] !== node) {
+        hasExtent = false;
+        break;
+      }
+      if (data[v * stride + axis] !== first) hasExtent = true;
+    }
+    if (hasExtent) return true;
+  }
+  return false;
+}
+
 /**
  * True when snapping a batch onto the lattice would visibly destroy shape:
  * some entity loses more than `MAX_COLLAPSED_AREA_FRACTION` of its triangle
@@ -189,6 +209,8 @@ export function latticeCollapsesGeometry(
   vertexData: Float32Array,
   strideFloats: number,
   indices: Uint32Array,
+  // Compact rows already carry their welded vertex count.
+  pieces: readonly ({ positions: Float32Array } | number)[],
 ): boolean {
   const vertexCount = (vertexData.length / strideFloats) | 0;
   const ids = new Uint32Array(vertexData.buffer, vertexData.byteOffset, vertexData.length);
@@ -196,10 +218,18 @@ export function latticeCollapsesGeometry(
   for (let v = 0; v < vertexCount; v++) {
     for (let axis = 0; axis < 3; axis++) nodes[v * 3 + axis] = Math.round(vertexData[v * strideFloats + axis] / QUANT_STEP);
   }
+  let start = 0;
+  for (const piece of pieces) {
+    const end = start + (typeof piece === 'number' ? piece : piece.positions.length / 3);
+    if (end > start && latticeFlattensPiece(vertexData, strideFloats, nodes, start, end)) return true;
+    start = end;
+  }
   // Merged batches keep each entity's triangles contiguous: accumulate a run,
   // judge it when the entity changes (an entity split across runs is summed).
   const totals = new Map<number, { area: number; collapsed: number }>();
   let runId = -1, runArea = 0, runCollapsed = 0;
+  // Only allocated for a rim candidate. At the cap, keep the source precision.
+  let rimSegments: Set<string> | undefined;
   const flush = (): void => {
     if (runId < 0) return;
     const entry = totals.get(runId) ?? { area: 0, collapsed: 0 };
@@ -215,13 +245,28 @@ export function latticeCollapsesGeometry(
     const area = Math.sqrt(nx * nx + ny * ny + nz * nz);
     if (!(area > 0)) continue;
     const id = ids[pa + 6];
-    if (id !== runId) { flush(); runId = id; runArea = 0; runCollapsed = 0; }
+    if (id !== runId) { rimSegments?.clear(); flush(); runId = id; runArea = 0; runCollapsed = 0; }
     runArea += area;
     const na = a * 3, nb = b * 3, nc = c * 3;
     const qux = nodes[nb] - nodes[na], quy = nodes[nb + 1] - nodes[na + 1], quz = nodes[nb + 2] - nodes[na + 2];
     const qvx = nodes[nc] - nodes[na], qvy = nodes[nc + 1] - nodes[na + 1], qvz = nodes[nc + 2] - nodes[na + 2];
     // Integer lattice offsets: every product is exact, so zero means collapsed.
-    if (quy * qvz - quz * qvy === 0 && quz * qvx - qux * qvz === 0 && qux * qvy - quy * qvx === 0) runCollapsed += area;
+    if (quy * qvz - quz * qvy === 0 && quz * qvx - qux * qvz === 0 && qux * qvy - quy * qvx === 0) {
+      // Both triangles of a flattened rim quad span the same two lattice
+      // nodes. Match coordinates so disconnected face indices still agree.
+      const ab = !qux && !quy && !quz, ac = !qvx && !qvy && !qvz;
+      const bc = qux === qvx && quy === qvy && quz === qvz;
+      if (!(ab && ac) && (ab || ac || bc)) {
+        const other = ab ? nc : nb;
+        const aKey = `${nodes[na]},${nodes[na + 1]},${nodes[na + 2]}`;
+        const bKey = `${nodes[other]},${nodes[other + 1]},${nodes[other + 2]}`;
+        const key = aKey < bKey ? aKey + '/' + bKey : bKey + '/' + aKey;
+        rimSegments ??= new Set();
+        if (rimSegments.has(key) || rimSegments.size >= 64) return true;
+        rimSegments.add(key);
+      }
+      runCollapsed += area;
+    }
   }
   flush();
   for (const { area, collapsed } of totals.values()) {

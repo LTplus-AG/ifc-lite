@@ -215,6 +215,7 @@ export function writeOverlayCreatedEntities(
     if (mayNameOmittedRefs && upperType.startsWith('IFCREL')) {
       line = filterHiddenRefsFromRelationshipLine(line, isOmittedFromOutput);
       if (line === null) {
+        pass.enums.boundaries.noteWithheldReferrer(entity.expressId);
         pass.warnings.push(ctx.relationshipWithheldWarning(entity.expressId, upperType));
         continue;
       }
@@ -225,6 +226,7 @@ export function writeOverlayCreatedEntities(
       // source one is, instead of shipping a dangling `#N` (#5941 review).
       line = filterHiddenRefsFromRelationshipLine(line, isOmittedFromOutput, pass.sourceSchema);
       if (line === null) {
+        pass.enums.boundaries.noteWithheldReferrer(entity.expressId);
         pass.warnings.push(styleEntityWithheldWarning(entity.expressId, upperType));
         continue;
       }

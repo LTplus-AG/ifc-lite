@@ -81,7 +81,7 @@ fn plan_and_route(entity_type: &str, cfrom: &'static str, cto: &'static str) -> 
         (Some(src), Some(tgt), _) if is_strict_attr_prefix(entity_type, tgt, src) => Adjust::Trim(tgt.len()),
         (Some(src), Some(tgt), _) if is_strict_attr_prefix(entity_type, src, tgt) => Adjust::Pad(tgt.len()),
         (Some(src), Some(tgt), _) if new_type != entity_type
-            && (BY_NAME_ATTR_REMAP_TYPES.contains(&entity_type) || (cto == "IFC2X3" && crate::schema_mep::ifc2x3_type(entity_type).is_some())) => {
+            && (new_type == "IFCBUILDINGSTOREY" || BY_NAME_ATTR_REMAP_TYPES.contains(&entity_type) || (cto == "IFC2X3" && crate::schema_mep::ifc2x3_type(entity_type).is_some())) => {
             Adjust::ByName(src, tgt)
         }
         // The name stays, but IFC4X3 puts the inherited `PlacementRelTo` first,

@@ -92,11 +92,11 @@ Nested Rust standard-library components are enumerated in its preserved COPYRIGH
 | hashbrown | 0.15.5 | MIT OR Apache-2.0 (elected MIT) | [1](texts/a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.txt), [2](texts/ff8f68cb076caf8cefe7a6430d4ac086ce6af2ca8ce2c4e5a2004d4552ef52a2.txt) |
 | hashbrown | 0.17.1 | MIT OR Apache-2.0 (elected MIT) | [1](texts/a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.txt), [2](texts/ff8f68cb076caf8cefe7a6430d4ac086ce6af2ca8ce2c4e5a2004d4552ef52a2.txt) |
 | heck | 0.5.0 | MIT OR Apache-2.0 (elected MIT) | [1](texts/a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.txt), [2](texts/7b63ecd5f1902af1b63729947373683c32745c16a10e8e6292e2e2dcd7e90ae0.txt) |
-| i_float | 4.1.0 | MIT | [1](texts/260cc580f53a756821a0f35475e2cd6da790f8fed0efc058252fe1bed8f2689e.txt) |
-| i_key_sort | 0.11.0 | MIT | [1](texts/47e00f18b265d350a2860d3899f17dd1c7689b966545e929df8ffa7033f5acdc.txt) |
-| i_overlay | 8.1.2 | MIT OR Apache-2.0 (elected MIT) | [1](texts/59899c6091b540582ed617e8eeaac4919dc985ccfc35459ee9752b699be5205b.txt), [2](texts/260cc580f53a756821a0f35475e2cd6da790f8fed0efc058252fe1bed8f2689e.txt) |
-| i_shape | 4.0.0 | MIT | [1](texts/260cc580f53a756821a0f35475e2cd6da790f8fed0efc058252fe1bed8f2689e.txt) |
-| i_tree | 0.19.0 | MIT | [1](texts/47e00f18b265d350a2860d3899f17dd1c7689b966545e929df8ffa7033f5acdc.txt) |
+| i_float | 5.0.0 | MIT | [1](texts/260cc580f53a756821a0f35475e2cd6da790f8fed0efc058252fe1bed8f2689e.txt) |
+| i_key_sort | 0.12.0 | MIT | [1](texts/47e00f18b265d350a2860d3899f17dd1c7689b966545e929df8ffa7033f5acdc.txt) |
+| i_overlay | 9.2.0 | MIT OR Apache-2.0 (elected MIT) | [1](texts/59899c6091b540582ed617e8eeaac4919dc985ccfc35459ee9752b699be5205b.txt), [2](texts/260cc580f53a756821a0f35475e2cd6da790f8fed0efc058252fe1bed8f2689e.txt) |
+| i_shape | 5.0.0 | MIT | [1](texts/260cc580f53a756821a0f35475e2cd6da790f8fed0efc058252fe1bed8f2689e.txt) |
+| i_tree | 0.20.0 | MIT | [1](texts/47e00f18b265d350a2860d3899f17dd1c7689b966545e929df8ffa7033f5acdc.txt) |
 | iana-time-zone-haiku | 0.1.2 | MIT OR Apache-2.0 (elected MIT) | [1](texts/696759d65dfe558ff7d9f031c76db19ec5c0767470fb67c4e8d990820d1e99c9.txt), [2](texts/da28ccc6b158fc2d8cccc74e99794b1cff1d29bd7bbeb019442fcf0c04c6cad9.txt) |
 | iana-time-zone | 0.1.65 | MIT OR Apache-2.0 (elected MIT) | [1](texts/696759d65dfe558ff7d9f031c76db19ec5c0767470fb67c4e8d990820d1e99c9.txt), [2](texts/da28ccc6b158fc2d8cccc74e99794b1cff1d29bd7bbeb019442fcf0c04c6cad9.txt) |
 | id-arena | 2.3.0 | MIT/Apache-2.0 | [1](texts/a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2.txt), [2](texts/378f5840b258e2779c39418f3f2d7b2ba96f1c7917dd6be0713f88305dbda397.txt) |

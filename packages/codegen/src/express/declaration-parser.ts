@@ -4,9 +4,7 @@
 
 /**
  * Schema-level EXPRESS declarations with their constraint clauses: TYPE with
- * WHERE, ENTITY with DERIVE/INVERSE/UNIQUE/WHERE, FUNCTION and RULE. The
- * regex-based `express-parser.ts` stays the source of the type surface; this
- * parser is what the validator generator compiles from.
+ * WHERE, ENTITY with DERIVE/INVERSE/UNIQUE/WHERE, FUNCTION and RULE.
  */
 
 import type {
@@ -77,22 +75,25 @@ function parseAttributeName(s: TokenStream): { name: string; redeclares?: Redecl
   return { name, redeclares: { entity, attribute } };
 }
 
-function skipBalanced(s: TokenStream): void {
+function supertypeMembers(s: TokenStream): string[] {
+  const names: string[] = [];
   s.expectOp('(');
   let depth = 1;
   while (depth > 0) {
     const t = s.next();
     if (t.kind === 'eof') s.fail('unbalanced parentheses');
+    if (t.kind === 'id' && !['ONEOF', 'AND', 'ANDOR'].includes(t.upper)) names.push(t.text);
     if (t.kind === 'op' && t.text === '(') depth++;
     if (t.kind === 'op' && t.text === ')') depth--;
   }
+  return names;
 }
 
 function parseEntityHeader(s: TokenStream, entity: EntityDecl): void {
   for (;;) {
     if (s.acceptKeyword('ABSTRACT')) { entity.abstract = true; continue; }
     if (s.acceptKeyword('SUPERTYPE')) {
-      if (s.acceptKeyword('OF')) skipBalanced(s);
+      if (s.acceptKeyword('OF')) entity.subtypeNames = supertypeMembers(s);
       continue;
     }
     if (s.acceptKeyword('SUBTYPE')) {
@@ -198,12 +199,14 @@ function parseEntity(s: TokenStream): EntityDecl {
 function parseType(s: TokenStream): TypeDecl {
   const name = s.expectIdentifier();
   s.expectOp('=');
+  const start = s.peek().start;
   const spec = parseTypeSpec(s);
+  const source = s.sliceFrom(start, true);
   s.expectOp(';');
   const where = parseWhereClause(s, 'END_TYPE');
   s.expectKeyword('END_TYPE');
   s.expectOp(';');
-  return { name, spec, where };
+  return { name, spec, source, where };
 }
 
 function parseFunction(s: TokenStream): FunctionDecl {
@@ -245,6 +248,20 @@ function parseRule(s: TokenStream): RuleDecl {
   return { name, appliesTo, locals, body, where };
 }
 
+function parseInterfaceClause(s: TokenStream): string {
+  s.expectKeyword('FROM');
+  const schema = s.expectIdentifier();
+  if (s.acceptOp('(')) {
+    do {
+      s.expectIdentifier();
+      if (s.acceptKeyword('AS')) s.expectIdentifier();
+    } while (s.acceptOp(','));
+    s.expectOp(')');
+  }
+  s.expectOp(';');
+  return schema;
+}
+
 function skipDeclaration(s: TokenStream, end: string): void {
   while (!s.isKeyword(end)) {
     if (s.peek().kind === 'eof') s.fail(`expected ${end}`);
@@ -263,6 +280,9 @@ export function parseExpressRules(source: string): ExpressRuleSchema {
     if (s.peek().kind === 'eof') s.fail('expected END_SCHEMA');
     const t = s.next();
     switch (t.upper) {
+      case 'USE': case 'REFERENCE':
+        schema.skipped.push({ kind: t.upper, name: parseInterfaceClause(s) });
+        break;
       case 'TYPE': schema.types.push(parseType(s)); break;
       case 'ENTITY': schema.entities.push(parseEntity(s)); break;
       case 'FUNCTION': schema.functions.push(parseFunction(s)); break;

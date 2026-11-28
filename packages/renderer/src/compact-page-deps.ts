@@ -16,6 +16,8 @@ import type { MeshData } from '@ifc-lite/geometry';
 import { pinBatchEntityIdAnchor } from './entity-color-table.js';
 import type { RenderPipeline } from './pipeline.js';
 import { createBatchUniform } from './scene-batch-upload.js';
+import { LOD_MAX_KEPT_FRACTION, LOD_MIN_TRIANGLES, lodCellSizeForBounds, simplifyIndicesByClustering } from './lod-simplify.js';
+import { latticeCollapsesGeometry, MAX_QUANT_EXTENT, octEncode, QUANT_STEP } from './quantize.js';
 import { destroyGpuResources, entityLaneOf, packEntityLane } from './scene-geometry.js';
 import type { SceneCompact, SceneCompactHost } from './scene-compact.js';
 import type { BatchedMesh } from './types.js';
@@ -27,6 +29,19 @@ export interface CompactPageDeps {
   pinBatchEntityIdAnchor(batch: BatchedMesh, anchor: number): void;
   /** The entity lane the bucket path stamps on `mesh`'s vertices: its id and colour salt. */
   laneOf(mesh: MeshData): number;
+  /** What a bucket batch's build decides with (compact-lod.ts takes the same decisions for pages): its LOD1
+   *  clustering and thresholds (lod-simplify.ts), and the lattice and extent of a quantized batch (quantize.ts). */
+  bucket: {
+    simplify: typeof simplifyIndicesByClustering;
+    lodCellSize: typeof lodCellSizeForBounds;
+    lodMinTriangles: number;
+    lodMaxKeptFraction: number;
+    quantStep: number;
+    maxQuantExtent: number;
+    collapses: typeof latticeCollapsesGeometry;
+    /** The normal encoding of a quantized record (quantize.ts). */
+    octEncode: (x: number, y: number, z: number) => [number, number];
+  };
 }
 
 export const COMPACT_PAGE_DEPS: CompactPageDeps = {
@@ -36,6 +51,16 @@ export const COMPACT_PAGE_DEPS: CompactPageDeps = {
   laneOf(mesh) {
     const { entityId, saltByte } = entityLaneOf(mesh);
     return packEntityLane(entityId, saltByte);
+  },
+  bucket: {
+    simplify: simplifyIndicesByClustering,
+    lodCellSize: lodCellSizeForBounds,
+    lodMinTriangles: LOD_MIN_TRIANGLES,
+    lodMaxKeptFraction: LOD_MAX_KEPT_FRACTION,
+    quantStep: QUANT_STEP,
+    maxQuantExtent: MAX_QUANT_EXTENT,
+    collapses: latticeCollapsesGeometry,
+    octEncode,
   },
 };
 

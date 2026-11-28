@@ -1531,6 +1531,32 @@ fn issue_129_mixed_bool2d_residual_preserves_established_topology() {
     }
 }
 
+/// #10834: quantizing the mixed subtraction and overlap correction on
+/// separate grids produced fourteen one-step slivers on slab #333923.
+/// The prism guard correctly refused them, discarding the staged result.
+#[cfg(not(any(feature = "csg_topology_gate", feature = "csg_manifold_gate")))]
+#[test]
+fn issue_10834_shared_grid_preserves_the_mixed_slab() {
+    if std::env::var("IFC_LITE_PRISM_CUT").as_deref() == Ok("0") {
+        return; // This witness uses the default prism route.
+    }
+    let _serial = CENSUS_SWEEP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _reset = AltTriangulatorReset;
+    set_alt(false);
+    let path = "ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc";
+    let Some(content) = ifc_lite_testkit::fixture_text(path) else {
+        eprintln!("Skipping #10834 mixed-slab oracle: run pnpm fixtures");
+        return;
+    };
+    let frame = ModelFrame::new(&content);
+    let mesh = process(&frame, 333923, &void_index(&content)).expect("slab #333923 must mesh");
+    assert_eq!(mesh.triangle_count(), 1720, "retain the established mixed cut");
+    let edges = edge_stats(&mesh);
+    assert_eq!((edges.open, edges.strict), (0, 0));
+    let volume = volume_cm3(&mesh);
+    assert!((volume - 171_654_111).abs() <= 1000, "slab volume: {volume} cm³");
+}
+
 #[cfg(not(any(feature = "csg_topology_gate", feature = "csg_manifold_gate")))]
 #[test]
 fn issue_4627_dental_result_remains_closed() {

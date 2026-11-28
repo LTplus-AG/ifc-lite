@@ -8,7 +8,7 @@
 
 import { describe, it, expect } from 'vitest';
 import ts from 'typescript';
-import { parseExpressSchema } from '../src/express-parser.js';
+import { parseExpressSchema } from '../src/index.js';
 import { generateTypeScript } from '../src/typescript-generator.js';
 import type { RegistryData, RegistryEntity, RegistryAttribute } from '../src/schema-registry-codec.js';
 

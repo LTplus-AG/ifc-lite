@@ -16,7 +16,7 @@ import { materializeInstances } from './scene-instance-materialization.js';
 import { InstanceSuppression } from './scene-instance-suppression.js';
 import { createSceneBatch } from './scene-batch-upload.js';
 import { SceneSnapshotLifecycle, type SceneSnapshotHost } from './scene-snapshot-lifecycle.js';
-import type { SceneCompact, SceneCompactHost } from './scene-compact.js';
+import type { CompactSceneStats, SceneCompact, SceneCompactHost } from './scene-compact.js';
 import { createCompactPages } from './compact-page-deps.js';
 import { materializeCompactMeshes } from '@ifc-lite/geometry/compact';
 import type { SceneCaptureCallback, SceneCaptureDrop, SceneSnapshot } from './scene-snapshot.js';
@@ -57,10 +57,11 @@ import { composeInstancedOverrideColor, originalColorWithAlpha } from './instanc
 import { writeInstanceLane } from './instance-lane-write.js';
 import type { GpuInstancePool } from './gpu-instance-pool.js';
 import { SceneInstancePool } from './scene-gpu-instancing.js';
-import { bucketBaseKeyFor, colorKey, type MaterialKeySource, type SpatialChunkingConfig } from './chunk-grid.js';
+import { bucketBaseKeyFor, colorKey, type ChunkAnchorSource, type MaterialKeySource, type SpatialChunkingConfig } from './chunk-grid.js';
 import { cloneOverrides, inheritedQuantization, type BatchQuantization } from './scene-derived-batches.js';
 import { EntityColorTable, entityIdPageKey } from './entity-color-table.js';
 import { VisibilityEpochTracker } from './visibility-epoch.js';
+import { entityIdSetsEqual } from './visibility-epoch.js';
 import { isEntityVisible } from './entity-visibility.js';
 import { planInstancedGhosting } from './instanced-ghost-plan.js';
 import { BatchUseFrames, residentCpuBytes, selectEvictions, type ResidencyShell, type ColdGeometryProvider } from './residency.js';
@@ -326,6 +327,7 @@ export class Scene {
   // 12-byte quantized batch vertices (issue #1682 phase 6): off unless the
   // renderer probed its quantized pipelines and enabled it.
   private quantizedBatchesEnabled = false;
+  private quantizedProbes = 0;
   // True while a (possibly time-sliced) finalize rebuild is running. The
   // preamble clears streamingFragments synchronously, so hasStreamingFragments
   // alone under-reports "still settling" — settle-sensitive consumers
@@ -419,6 +421,10 @@ export class Scene {
 
   /** Draw every compact mesh from buckets again (scene-compact.ts). Returns whether any moved. */
   demoteCompact(): boolean { return this.compact?.demote() ?? false; }
+  /** Compact meshes drawn from pages, those a load decoded to buckets by reason, and the pages' counters (scene-compact.ts); null before the page code loaded. */
+  getCompactStats(): CompactSceneStats | null {
+    return this.compact && { paged: this.compact.meshCount, decodes: { ...this.compact.decodes }, pages: { ...this.compact.stats } };
+  }
 
   /** Every batch the frame draws: the buckets' and streaming fragments', then the compact pages. */
   getBatchedMeshes(): BatchedMesh[] {
@@ -584,6 +590,15 @@ export class Scene {
   setQuantizedBatches(enabled: boolean): void {
     this.quantizedBatchesEnabled = enabled;
     if (!enabled) this.compact?.demotePages(); // pages are 12-byte records: only the quantized pipelines draw them; the queue waits for the next drain
+  }
+
+  get quantizedBatchesPending(): boolean { return this.quantizedProbes > 0; }
+
+  /** Hold queued compact meshes until this probe settles. Releasing a hold twice is safe. */
+  beginQuantizedProbe(): () => void {
+    this.quantizedProbes++;
+    let settled = false;
+    return () => { if (!settled) { settled = true; this.quantizedProbes--; } };
   }
 
   /** The draw origin of the textured drawable rendering `meshData`, or null
@@ -920,12 +935,12 @@ export class Scene {
    * spans 2^24 ids, which the entity colour table needs to rebuild a full id
    * from the 24-bit vertex lane (`entityIdAnchor`, entity-color-table.ts).
    */
-  private bucketBaseKey(meshData: MeshData, color?: [number, number, number, number]): string {
+  bucketBaseKey(meshData: MeshData, color?: [number, number, number, number], anchor?: ChunkAnchorSource): string {
     const source = this.modelTranslations.sourceMesh(meshData);
     // #5582: material is the mesh's OWN authored finish regardless of a
     // colour override — a recolour changes what a piece looks like, not
     // what it is physically made of.
-    const key = entityIdPageKey(source.expressId, bucketBaseKeyFor(source, this.colorKey(color ?? meshData.color, meshData.material), this.spatialChunking));
+    const key = entityIdPageKey(source.expressId, bucketBaseKeyFor(anchor ?? source, this.colorKey(color ?? meshData.color, meshData.material), this.spatialChunking));
     return source.modelIndex ? `model${source.modelIndex}~${key}` : key;
   }
 
@@ -1145,9 +1160,6 @@ export class Scene {
   }
 
   /**
-   * Append meshes to color batches incrementally
-   * Merges new meshes into existing color groups or creates new ones
-   *
    * STREAMING OPTIMIZATION: During streaming, creates lightweight "fragment"
    * batches from ONLY the new meshes instead of re-merging all accumulated
    * data. This reduces streaming from O(N²) to O(N). Call finalizeStreaming()
@@ -1217,7 +1229,10 @@ export class Scene {
         this.addMeshData(meshData);
 
         // Non-streaming rebuilds now; streamed buckets wait for finalize.
-        if (isStreaming) this.streamedBucketKeys.add(bucketKey);
+        if (isStreaming) {
+          this.compact?.noteBucketWrite(meshData, baseKey);
+          this.streamedBucketKeys.add(bucketKey);
+        }
         else this.pendingBatchKeys.add(bucketKey);
       }
     }
@@ -1893,7 +1908,7 @@ export class Scene {
    * @returns true if any meshes were processed (caller should render)
    */
   flushPending(device: GPUDevice, pipeline: RenderPipeline, budgetMs = 12, trace?: LoadTrace, deterministicUploads = false): boolean {
-    const compacted = this.compact?.drain(device, pipeline) ?? false;
+    const compacted = this.compact?.drain(device, pipeline, budgetMs) ?? false;
     const result = flushQueuedMeshes(this.meshQueue, this.meshQueueReadIndex, (chunk, nextReadIndex) => {
       this.meshQueueReadIndex = nextReadIndex;
       this.appendToBatches(chunk, device, pipeline, true, true);
@@ -2249,6 +2264,7 @@ export class Scene {
     this.dropAllPartialCaches();
     this.geometryReleased = true;
     this.ephemeralStreamingMode = false;
+    for (const listener of this.hostEvictionListeners) listener();
   }
 
   /**
@@ -2844,7 +2860,9 @@ export class Scene {
   }
 
   setInstancedVisible(visible: boolean): void {
+    if (this.instancedVisible === visible) return;
     this.instancedVisible = visible;
+    this.bumpPickGeometryRevision();
   }
 
   /** GPU-instancing templates for the renderer's instanced draw pass. Empty when
@@ -3077,7 +3095,8 @@ export class Scene {
 
   /** All instanced occurrence express_ids (for CPU consumers that enumerate geometry,
    *  e.g. the raycast-engine and exporters). */
-  *getInstancedEntityIds(): IterableIterator<number> {
+  *getInstancedEntityIds(drawnPassOnly = false): IterableIterator<number> {
+    if (drawnPassOnly && !this.instancedVisible) return;
     for (const id of this.instancedEntityMap.keys()) if (!this.instanceSuppression.has(id)) yield id;
   }
 
@@ -3110,6 +3129,17 @@ export class Scene {
     return this.boundingBoxes.get(expressId) ?? null;
   }
 
+  *snapOccurrences() {
+    if (!this.instancedVisible) return;
+    for (const [expressId, occurrences] of this.instancedEntityMap) {
+      for (const location of occurrences) {
+        const template = this.instancedTemplateCpu[location.templateIndex];
+        yield template && !this.instanceSuppression.has(expressId)
+          ? { expressId, template, location } : null;
+      }
+    }
+  }
+
   /** Lazily materialize per-occurrence world-space MeshData for an instanced entity
    *  (template geometry × each occurrence's matrix). NOT retained — built on demand
    *  for CPU consumers that need triangles (exact raycast / measure / section-face /
@@ -3134,17 +3164,8 @@ export class Scene {
     // (the common orbit case, especially the empty set) so we skip both the per-frame
     // writeBuffer loops AND the `new Set(...)` allocation — equal sizes + full
     // containment ⇒ set equality. The item filter is cheap to compare directly.
-    let changed = expressIds.size !== this.instancedSelected.size;
-    if (!changed) {
-      for (const eid of expressIds) {
-        if (!this.instancedSelected.has(eid)) {
-          changed = true;
-          break;
-        }
-      }
-    }
     const itemFilterChanged = itemFilterExpressId !== this.instancedSelectedItemExpressId || itemFilterItemId !== this.instancedSelectedItemId;
-    if (!changed && !itemFilterChanged) return;
+    if (!itemFilterChanged && entityIdSetsEqual(expressIds, this.instancedSelected)) return;
     // Re-derive the combined flag lane (selected | hidden) for every occurrence whose
     // selected-membership flips, so we never clobber the hidden bit.
     const prev = this.instancedSelected;
@@ -3224,16 +3245,7 @@ export class Scene {
       if (!isEntityVisible(eid, hiddenIds, isolatedIds)) next.add(eid);
     }
     // Fast-path: unchanged hidden set → nothing to write.
-    let changed = next.size !== this.instancedHidden.size;
-    if (!changed) {
-      for (const eid of next) {
-        if (!this.instancedHidden.has(eid)) {
-          changed = true;
-          break;
-        }
-      }
-    }
-    if (!changed) return;
+    if (entityIdSetsEqual(next, this.instancedHidden)) return;
     const prev = this.instancedHidden;
     this.instancedHidden = next;
     for (const eid of prev) {

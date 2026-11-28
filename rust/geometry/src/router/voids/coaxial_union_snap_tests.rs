@@ -115,22 +115,33 @@ fn slab_12381_rect_and_pentagon() -> Vec<Vec<Point2<f64>>> {
     .collect()
 }
 
-#[test]
-fn issue_8190_snapping_alone_leaves_the_12381_pair_as_two_shapes() {
-    // `P` snaps onto the rectangle's edge, but `R4` is a corner of the EARLIER
-    // contour and the pentagon's far corner is out of reach, so the pentagon's
-    // edge stays 0.8 um off `R4`: two prisms, and a strip of host between them.
-    let mut contours = slab_12381_rect_and_pentagon();
-    let tau = noise_radius(&contours);
-    assert!(snap_onto_earlier(&mut contours, tau) > 0, "P moves");
-    assert_eq!(union_contours_to_shapes(&contours).len(), 2);
+fn has_edge(contours: &[Vec<Point2<f64>>], a: Point2<f64>, b: Point2<f64>) -> bool {
+    contours.iter().any(|contour| {
+        contour.iter().zip(contour.iter().cycle().skip(1)).any(|(left, right)| {
+            (*left == a && *right == b) || (*left == b && *right == a)
+        })
+    })
 }
 
 #[test]
 fn issue_8190_closed_t_junctions_fuse_the_12381_pair() {
     let mut contours = slab_12381_rect_and_pentagon();
     let area_in: f64 = contours.iter().map(|c| crate::bool2d::compute_signed_area(c).abs()).sum::<f64>() / 2.0;
+    let mut snapped = contours.clone();
+    let tau = noise_radius(&snapped);
+    assert!(snap_onto_earlier(&mut snapped, tau) > 0, "P moves");
+    let r4 = Point2::new(-12.763653755187988, -12.579201698303223);
+    let authored_p = Point2::new(-13.977116584777832, -12.063344955444336);
+    let p = *snapped[4..].iter().flatten()
+        .find(|point| (**point - authored_p).norm() <= tau)
+        .expect("the snapped pentagon corner is still within one cell of P");
+
+    // Snapping cannot insert the earlier rectangle corner into the later
+    // edge. Qualify the shared seam before the union's grid rounds it.
+    assert!(!has_edge(&snapped[4..], r4, p), "snapping alone leaves the T-junction");
     reconcile(&mut contours);
+    assert!(has_edge(&contours[..4], r4, p), "the rectangle carries the seam");
+    assert!(has_edge(&contours[4..], r4, p), "the pentagon carries the same seam");
     let shapes = union_contours_to_shapes(&contours);
     assert_eq!(shapes.len(), 1, "one opening footprint, no strip");
     assert!(shapes[0].holes.is_empty());

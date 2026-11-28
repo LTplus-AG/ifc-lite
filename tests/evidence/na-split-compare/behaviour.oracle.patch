@@ -1,0 +1,20 @@
+diff --git a/scripts/lib/native-adapter-split-compare.mjs b/scripts/lib/native-adapter-split-compare.mjs
+--- a/scripts/lib/native-adapter-split-compare.mjs
++++ b/scripts/lib/native-adapter-split-compare.mjs
+@@ -192,6 +192,7 @@
+   const invariants = BY_INVARIANTS[rel.split('/').at(-1)];
+   if (!invariants) return timingFreeHash(rel, aBytes) === timingFreeHash(rel, bBytes);
+   const [a, b] = [aBytes, bBytes].map((x) => invariants(JSON.parse(x.toString('utf8'))));
++  if (a.defects.length || b.defects.length) return false;
+   if (JSON.stringify(stripVolatile(a.exact)) !== JSON.stringify(stripVolatile(b.exact)) || a.areas.length !== b.areas.length) return false;
+   return a.areas.every((x, i) => Math.abs(x - b.areas[i]) <= M11N_AREA_RELATIVE * Math.max(Math.abs(x), Math.abs(b.areas[i])));
+ }
+@@ -299,7 +300,7 @@
+   lines.push(`Verdict: single job **${needs?.['native-adapter']?.result ?? 'absent'}**, split judge **${splitGreen ? 'success' : 'failure'}**`);
+   if (judgeResult !== 'success') problems.push(`${SPLIT_JUDGE} result ${judgeResult}: the split has no verdict of its own`);
+   else if (judgeStatus !== 'success') problems.push(`${SPLIT_JUDGE} job status ${judgeStatus}: the split has no successful judge job`);
+-  if (false) problems.push(`verdicts differ: single ${monoGreen ? 'green' : 'red'}, split ${splitGreen ? 'green' : 'red'}${j.problems.length ? ` (${j.problems.join('; ')})` : ''}`);
++  if (monoGreen !== splitGreen) problems.push(`verdicts differ: single ${monoGreen ? 'green' : 'red'}, split ${splitGreen ? 'green' : 'red'}${j.problems.length ? ` (${j.problems.join('; ')})` : ''}`);
+   for (const id of new Set(SPLIT_LANE_JOBS.map((job) => split[job].meta.head).filter(Boolean))) if (mono.meta.head && id !== mono.meta.head) problems.push(`split job commit ${id} is not the single job's ${mono.meta.head}`);
+ 
+   lines.push('', '| lane | single job | split |', '|---|---|---|');

@@ -20,6 +20,7 @@ import type { BimContext } from '@ifc-lite/sdk';
 import type { Capability } from '@ifc-lite/extensions';
 import type { SandboxPermissions, LogEntry } from './types.js';
 import { DEFAULT_PERMISSIONS, SANDBOX_CONSOLE_LEVELS } from './types.js';
+import type { DecodeValue } from './bridge-unmarshal.js';
 import { HostWorkQueue } from './bridge-async.js';
 import { buildSchemaNamespaces, disposeSchemaNamespaceSession, type BridgeCallContext } from './bridge-schema.js';
 import { createScriptSurfaceCapture } from './script-surfaces.js';
@@ -39,28 +40,30 @@ export function buildBridge(
   context: BridgeCallContext,
   networkGrants: readonly Capability[] = [],
   networkTransport?: FetchTransport,
-): { logs: LogEntry[]; resetLogs: () => void; hostWork: HostWorkQueue; takeSurfaces: ReturnType<typeof createScriptSurfaceCapture>['take']; dispose: () => void } {
+  maxDumpDepth?: number,
+): { logs: LogEntry[]; resetLogs: () => void; hostWork: HostWorkQueue; decoder: ReturnType<HostWorkQueue['getValueDecoder']>; takeSurfaces: ReturnType<typeof createScriptSurfaceCapture>['take']; dispose: () => void } {
   const perms = { ...DEFAULT_PERMISSIONS, ...permissions } as Required<SandboxPermissions>;
   const logs: LogEntry[] = [];
 
-  // ── console.log / warn / error / info ──────────────────────
-  const resetLogs = buildConsole(vm, logs);
+  const hostWork = new HostWorkQueue();
   const surfaces = createScriptSurfaceCapture();
   const bridgeContext = { ...context, appendUiSurface: surfaces.append };
-
-  // ── bim global ─────────────────────────────────────────────
-  // The handle is freed in a `finally`: if namespace construction throws,
-  // an orphaned handle would keep a JSObject alive past context teardown and
-  // make the runtime's own dispose() abort the WASM module (#1905).
-  const hostWork = new HostWorkQueue();
-  const bimHandle = vm.newObject();
+  let decoder: ReturnType<HostWorkQueue['getValueDecoder']>;
+  let resetLogs: () => void;
   try {
-    // All namespaces are schema-driven (model, query, viewer, mutate, lens, export, network)
-    buildSchemaNamespaces(vm, bimHandle, sdk, perms, bridgeContext, hostWork, networkGrants, networkTransport);
+    decoder = hostWork.getValueDecoder(vm, maxDumpDepth);
+    resetLogs = buildConsole(vm, logs, decoder.decodeConsole);
 
-    vm.setProp(vm.global, 'bim', bimHandle);
-  } finally {
-    bimHandle.dispose();
+    const bimHandle = vm.newObject();
+    try {
+      buildSchemaNamespaces(vm, bimHandle, sdk, perms, bridgeContext, hostWork, networkGrants, networkTransport);
+      vm.setProp(vm.global, 'bim', bimHandle);
+    } finally {
+      bimHandle.dispose();
+    }
+  } catch (error) {
+    hostWork.dispose();
+    throw error;
   }
 
   return {
@@ -71,6 +74,7 @@ export function buildBridge(
     },
     takeSurfaces: surfaces.take,
     hostWork,
+    decoder,
     dispose: () => {
       // Before the vm/runtime frees: an unsettled deferred's resolver handles
       // are unmanaged lifetimes, and an orphan there aborts the module (#1905).
@@ -83,10 +87,10 @@ export function buildBridge(
 
 // ── Console ──────────────────────────────────────────────────
 
-function buildConsole(vm: QuickJSContext, logs: LogEntry[]): () => void {
+function buildConsole(vm: QuickJSContext, logs: LogEntry[], decode: DecodeValue): () => void {
   const consoleHandle = vm.newObject();
 
-  // vm.dump copies sandbox strings onto the host JS heap, which is NOT bound by
+  // Decoding copies sandbox strings onto the host JS heap, which is NOT bound by
   // the QuickJS memoryBytes limit. Cap both entry count and cumulative
   // serialized size so an untrusted script (e.g. `for(;;) console.log('x'.repeat(1e6))`)
   // cannot exhaust host memory before the eval timeout fires.
@@ -142,7 +146,7 @@ function buildConsole(vm: QuickJSContext, logs: LogEntry[]): () => void {
           logs.push({ level: 'warn', args: ['[log output truncated: limit reached]'], timestamp: Date.now() });
           return;
         }
-        const nativeArgs = args.map(a => vm.dump(a));
+        const nativeArgs = args.map(a => decode(a));
         // Approximate host cost of retaining this entry.
         let entryArgs: unknown[] = nativeArgs;
         let entryBytes = 0;
@@ -208,10 +212,7 @@ const MAX_RETAINED_BIGINT = 10n ** 64n;
 /**
  * Bounded stand-in for a console argument the host cannot size.
  *
- * `vm.dump` flattens any sandbox value its own serializer rejects to the
- * string "[object Object]" (a cyclic object arrives as that string, already
- * stripped of its payload), so the value that actually reaches the host
- * unserializable is a top-level BigInt — and a BigInt is unbounded in size.
+ * A top-level BigInt can be too large to retain or format in full.
  * Every branch here returns at most ~70 characters.
  */
 function describeUnsizeableArg(arg: unknown): string {

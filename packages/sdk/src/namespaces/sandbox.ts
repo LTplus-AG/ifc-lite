@@ -50,6 +50,8 @@ export interface SandboxLimits {
   memoryBytes?: number;
   /** Maximum stack size in bytes (default: 512KB) */
   maxStackBytes?: number;
+  /** Maximum decoded nesting depth for bridge arguments, logs and results (0–64, default 64). */
+  maxDumpDepth?: number;
 }
 
 export interface SandboxConfig {

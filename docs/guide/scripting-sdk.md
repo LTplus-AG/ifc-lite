@@ -225,6 +225,8 @@ console.log(result.value, result.logs, result.durationMs);
 
 Or reach it through the SDK as `bim.sandbox.eval(script, config)`, which returns the same `ScriptResult` (`value`, captured `logs`, `durationMs`).
 
+The `limits.maxDumpDepth` setting controls nesting in bridge arguments, captured console arguments, and returned values. The root is depth zero. The default and maximum are 64. A limit of zero permits scalars and empty containers. A settled promise uses one level for its fulfillment value or rejection reason. Values over the limit raise a script error. If upgrading a script that transfers deeper values, flatten them or split them into smaller bridge calls, log entries, or results.
+
 **When `eval()` throws.** It rejects with a `ScriptError` (carrying `message`, `logs` and `durationMs`) for a throw in the script's main body, for a CPU timeout, and — since the fix in #2078 — for a script whose entry point is `async` and whose returned promise **rejects** after its first `await`. That last case previously *resolved*: the main body had succeeded, so the rejection came back as ordinary data in `result.value` (`{ type: 'rejected', error: … }`) and a failed script looked like a clean pass. If you upgrade across that change and were relying on `eval()` resolving, you will start seeing the error propagate.
 
 One case is still **not** reported: a rejection in a promise the script never hands back — `run(); 'started'` rather than `return run()`. There is no handle to inspect, and quickjs-emscripten exposes no host rejection tracker, so nothing observes it.

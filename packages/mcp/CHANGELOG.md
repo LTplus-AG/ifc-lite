@@ -1,5 +1,103 @@
 # @ifc-lite/mcp
 
+## 0.33.0
+
+### Minor Changes
+
+- [#11660](https://github.com/LTplus-AG/ifc-lite/pull/11660) [`f69ce23`](https://github.com/LTplus-AG/ifc-lite/commit/f69ce2390b55e107811f51591b7a54fa2639f763) Thanks [@louistrue](https://github.com/louistrue)! - `--bridge` now adds the paired browser tab to the normal stdio server instead of replacing it. Headless tools, resources, prompts and file arguments stay; the tab's tools are added as `tab_<name>` when it pairs and removed when it disconnects (`model_audit` runs on a model loaded here, `tab_model_audit` in the tab). Breaking for `--bridge` clients that call tools by fixed name: the tab's tools moved under the prefix, and the surface tools are now `tab_show_ui` and `tab_ui_events` (the 0.32 names `viewer_show_ui` and `viewer_ui_events` still work, unlisted, until 0.34). With the default port nothing is bound until the agent first calls `bridge_status`, and when 21517 is taken (a second session) the bridge uses the next free port and puts it in the pairing link; an explicit `--bridge-port` does not fall back. A tab's UI event is accepted only for a surface the agent showed it; a prompt the agent did not write there is marked `promptVerified: false` and quoted as data on the channel.
+
+- [#11547](https://github.com/LTplus-AG/ifc-lite/pull/11547) [`c5bd682`](https://github.com/LTplus-AG/ifc-lite/commit/c5bd682380931030daabefc9dd4e9fa27bd2d3e8) Thanks [@louistrue](https://github.com/louistrue)! - Fix the MCP server's command line and read-only mode ([#11534](https://github.com/LTplus-AG/ifc-lite/issues/11534)).
+  
+  - `model_load` and `model_unload` need `read` scope instead of `mutate`, so `--read-only` servers and read-only tokens can open models. `--allow` still bounds which files. `model_load` refuses an id outside the token's model allowlist.
+  - `ifc-lite-mcp --transport http` honours `--allow`. File arguments over HTTP still load nothing (each HTTP session starts empty and loads models with `model_load`), but both entry points now say so on stderr instead of ignoring them silently.
+  - `--token` is repeatable as documented, and the new repeatable `--read-only-token` registers tokens with the `--read-only` preset: no model edits, while export and flow-checkpoint tools still write files under the allowed roots. A token cannot use another token's session. A value flag never takes a following argument that starts with `--` (`--token --read-only`, or a misspelled `--read-onli`): that is a usage error. Pass such a value as `--token=--…`.
+  - An HTTP server with no token no longer gives every caller `admin` scope. Anonymous callers get `read`, `validate`, `mutate` and `export` (the `--read-only` preset under `--read-only`); `admin` needs a `--token`. stdio is unchanged.
+  - Unknown flags print a warning on stderr. `--federate`, which never did anything, now warns too.
+  - `ifc-lite mcp` runs the same code as `ifc-lite-mcp` through the new `@ifc-lite/mcp/cli-main` subpath (`runMcpCli`, `mcpHelpText`), so it gains the bridge flags, `--allow-origin` and the new token flags. With no files it starts an empty stdio session when stdin is not a terminal (an MCP client), and still prints help when run bare in a terminal.
+  - `--help` prints the Claude Desktop config path for the current OS.
+  - `model_unload` is marked `destructiveHint`, and checks the model allowlist before saying whether a model is loaded.
+  - `CliOptions` replaces `token` with `tokens` and `readOnlyTokens`, drops `federate` and `bridgeMissingOperand` (a missing bridge value is now in `errors`), and adds `warnings` and `errors`; `bridge` is now required. `MCP_SUBCOMMAND_UNSUPPORTED_FLAGS` and `isMcpValueFlag` are removed. `--port` and `--viewer-port` must be integers from 0 to 65535.
+  - The Claude Code plugin runs `@ifc-lite/mcp@0` instead of whatever npm has, so a 1.0 cannot change it underneath. Releases before 0.32.0 ignore `--channel`.
+  - `--flag=value` works for every value flag. An unknown `--flag=value` is reported by its name only, and a value on a boolean flag (`--read-only=true`) is a usage error.
+  - Files with the same name passed together (`arch/model.ifc struct/model.ifc`) load as `model` and `model_2`; before, the second replaced the first.
+  - With `--allow`, files passed on the command line go through the same path policy as `model_load`: real paths, either spelling of a root, and protected home entries. A symlink inside an allowed directory that points outside it is refused. A preload that fails names the argument by position and a reason, such as an errno code (`ENOENT`, `EACCES`...), `outside --allow`, `protected home path` or `not a readable IFC file`, never the path.
+  - `model_unload`, and a `model_load` that would replace a model, refuse when that model has unsaved edits and the caller lacks `mutate` (a session narrowed after editing cannot discard the edits). The loader opens files without blocking and refuses anything that is not a regular file, so a FIFO cannot hang a load.
+
+- [#11623](https://github.com/LTplus-AG/ifc-lite/pull/11623) [`96e3cbb`](https://github.com/LTplus-AG/ifc-lite/commit/96e3cbbdc96250426966346a278f75596fcce309) Thanks [@louistrue](https://github.com/louistrue)! - Expose CityJSON, CityJSONSeq, Honeybee, Dragonfly, JSON-LD and binary glTF exports in MCP. Apply storey, property and limit filters on isolating exports. Share Rust export calls between the CLI and MCP.
+
+- [#11580](https://github.com/LTplus-AG/ifc-lite/pull/11580) [`bb2d002`](https://github.com/LTplus-AG/ifc-lite/commit/bb2d002b48831d07e9a98201af5de09a960a1eda) Thanks [@louistrue](https://github.com/louistrue)! - New `ifc-lite-mcp install --client <claude-code|claude-desktop|cursor|vscode>` (also `ifc-lite mcp install`). It adds the server to the client's config, merging into an existing file with a backup, or runs `claude mcp add` / `code --add-mcp`. `--dry-run` prints the JSON or command, `--scope project` targets the current directory. Both commands dispatch through the shared MCP CLI runtime.
+  
+  Claude Code `--force` backs up and atomically updates the selected config file while preserving custom server settings such as `env`.
+  
+  File-based updates create backups under the installer lock and recheck the config before replacement. The lock coordinates IFClite installers, and concurrent external edits can still race the final rename.
+
+- [#11583](https://github.com/LTplus-AG/ifc-lite/pull/11583) [`9b9980f`](https://github.com/LTplus-AG/ifc-lite/commit/9b9980f0718a68e95a7a435b8d82355cbd92892f) Thanks [@louistrue](https://github.com/louistrue)! - MCP: add `model_merge`, `model_convert`, `model_extract`, `model_anonymize`, `model_simplify` and `model_lod`, the CLI's model transforms. Each writes to `file_path` (replacing a file already there, never a loaded model's source) and declares a title, annotations and an `outputSchema`; tools can now declare `outputSchema` in `tools/list`.
+  
+  `@ifc-lite/export` now holds the raw STEP subset engine behind `ifc-lite extract-entities` (`parseStep`, `selectSubsetSeeds`, `buildSubset`, `serializeSubset`, and `SubsetSelectionError` for selectors that match nothing), so the CLI and MCP share one implementation.
+  
+  `ifc-lite extract-entities --storey` now matches the storey's decoded Name exactly, then its LongName (doubled quotes, `\X2\` escapes and raw UTF-8 included), instead of any quoted text in the record, refuses a name two storeys share, reads a bare number that is no storey id as a name, and selects the storey plus its elements by spatial ownership: contained in it or in a space it aggregates (openings and assembly parts follow their host), with the placement chain deciding only for elements no storey owns. Elements assigned to one storey stay with that storey even if another storey shares its placement. Unassigned elements can match both.
+  
+  The subset parser treats `/* */` comments as trivia (between records, inside records and around references), finds `DATA;` outside header strings, and reads a record that follows `DATA;` on the same line. Void, fill and projection relations are kept with their host.
+  
+  The parser exports `detectSchemaVersion` for header-based schema resolution without a full parse. CLI extraction uses this resolver for subtype and placement selection.
+
+- [#11542](https://github.com/LTplus-AG/ifc-lite/pull/11542) [`c7f4de5`](https://github.com/LTplus-AG/ifc-lite/commit/c7f4de53eb26e495ee0c74b299aa9c5ed2651844) Thanks [@louistrue](https://github.com/louistrue)! - The MCP wire protocol now matches what the server does ([#11535](https://github.com/LTplus-AG/ifc-lite/issues/11535)).
+  
+  - `PROTOCOL_VERSION` is `2025-11-25`. `2025-11-05` was never an MCP revision and is no longer negotiated; such clients get `2025-11-25`.
+  - Prompt messages use only `user` and `assistant` roles.
+  - `logging/setLevel` works: server log lines at or above the level go to the client as `notifications/message`. Nothing is sent before a level is set.
+  - `notifications/resources/list_changed` is sent when the loaded models change (new optional `ModelRegistry.onChange`; registries without it are checked after each tool call), and `notifications/tools/list_changed` when `setScope` changes the visible tools.
+  - New `resources/templates/list`; the entity URI is listed there instead of as a resource with literal braces.
+  - `ResourceLink` is the spec `resource_link` content type. `EmbeddedResource` is unchanged.
+  - A resource that is not found answers `-32002` and an unknown prompt name `-32602`, as the MCP spec lists them, instead of `-32603`. `logging/setLevel` answers `-32601` when the server does not advertise logging.
+  - Tool definitions carry scope at `_meta["ifc-lite/scope"]` instead of a top-level `scope` field. `ToolDefinition.scope` is gone.
+  - `export_pdf_report` and `gherkin_check` are removed. Both always failed.
+  - `MCPServer.notify()` drops notifications until the client has initialized, and a sink that throws or rejects is logged instead of failing the caller.
+  - Tool error text now includes the hint, for clients that ignore `structuredContent`.
+  - `initialize` instructions describe the real workflows, and `ifc-lite://server/manifest` lists the tools this session may call.
+
+- [#11550](https://github.com/LTplus-AG/ifc-lite/pull/11550) [`33c3ffa`](https://github.com/LTplus-AG/ifc-lite/commit/33c3ffaa92a2f4895e204174f791c6e1ddfa6b71) Thanks [@louistrue](https://github.com/louistrue)! - Every tool in the default registry now has a `title` and all four MCP annotation hints (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`), so clients can auto-approve reads and warn before deletes, overwrites or file writes. Following the spec (`destructiveHint: false` means additive only), setters that replace a value are marked destructive. Tool definitions accept `outputSchema` and `icons` and pass them through `tools/list`; the protocol types export `Icon`.
+  
+  Browser integrations can import `validateInput` from `@ifc-lite/mcp/browser`. Input validation now enforces `oneOf`, `$ref`/`$defs`, `const`, `pattern`, `uniqueItems` and schema-valued `additionalProperties`. A test fails if any tool schema uses a keyword the validator does not enforce, and every schema must compile under ajv 2020-12 strict mode.
+  
+  `ids_apply_ops` advertises a compact op list (`kind` enum, `opId`, `payload`) with a generated per-kind field summary. The full op schema moved to the resource `ifc-lite://schemas/ids-ops-v1.json`; the handler still checks every op against it. The full `tools/list` response, including the six model-transform tools, fits within 149,000 bytes. The catalog test also checks the original 135,000-byte budget for the other tools.
+  
+  Descriptions of `storey_plan_add`, `bcf_publication_check` and `ids_write` now say what they really do (read-only dry run, local record with a read-only server call, XML returned with no file written).
+  
+  Bridge tab schemas: `$ref`, a non-array `anyOf`/`oneOf`, a non-boolean `uniqueItems` and a `pattern` that does not compile are refused at hello/update (the server would otherwise throw on every call), and so is an empty `oneOf` (it matches nothing). For tab schemas `pattern` and `oneOf` are published but checked by the tab; `const`, `uniqueItems` and the other enforced keywords now apply to them too (a duplicate id under `uniqueItems: true` is refused before it reaches the tab). A defect in a schema (bad `$ref`, uncompilable `pattern`) now comes back as `INVALID_INPUT` naming the schema problem, not a JSON-RPC internal error. A root `oneOf` is stripped from advertised schemas like a root `anyOf`.
+  
+  `room_command` now enforces the `uniqueItems` it always declared on `command.expressIds`: a call with duplicate ids fails with `INVALID_INPUT`.
+
+- [#11674](https://github.com/LTplus-AG/ifc-lite/pull/11674) [`1895d1f`](https://github.com/LTplus-AG/ifc-lite/commit/1895d1f6e95295ff9d04562ecf196153d1bae5be) Thanks [@louistrue](https://github.com/louistrue)! - Support verified viewer pairing and read-only resumption after reloading a paired tab. Report refused surface actions to the viewer.
+
+- [#11532](https://github.com/LTplus-AG/ifc-lite/pull/11532) [`7917990`](https://github.com/LTplus-AG/ifc-lite/commit/79179903377a4fbd30d21ed867660c444f8c4d22) Thanks [@louistrue](https://github.com/louistrue)! - The local viewer server (`ifc-lite view`, the MCP `--viewer`) listens on 127.0.0.1 only. It refuses requests whose Host is not `localhost`, `127.0.0.1` or `[::1]`, which blocks DNS rebinding, and refuses requests sent from pages on other sites. Opening the viewer page itself from a link or an IDE preview still works, and a `frame-ancestors` policy keeps other sites from framing it (only pages opened as `localhost` or `127.0.0.1`, and desktop VS Code-family preview panes, may embed it; see https://ifclite.dev/docs/guide/viewer-api/). For requests, pages served from any local port count as local, and browsers without Fetch Metadata (Safari before 16.4) can still embed its read routes. Before, it listened on every interface and ran `/api/command`, `/api/create` and `/api/clear-created` for any page that posted to it. The CLI and the MCP server now dial `127.0.0.1` instead of `localhost`, so they still connect where `localhost` resolves to `::1` first.
+  
+  To open the viewer from another machine, start `ifc-lite view model.ifc --port 3456 --no-open` on the host. From your machine, run `ssh -L 3456:127.0.0.1:3456 host` and open `http://127.0.0.1:3456` locally. A published container port (`docker run -p 3456:3456`) no longer reaches a viewer inside the container, because it listens on the container's own loopback; use host networking (`--network host` on Linux) or forward the port inside the container. A hosted forward such as GitHub Codespaces is refused too, because it sends its own Host name. There is no opt-out yet.
+
+### Patch Changes
+
+- [#11619](https://github.com/LTplus-AG/ifc-lite/pull/11619) [`04845b6`](https://github.com/LTplus-AG/ifc-lite/commit/04845b6a6cd04c5bd5ddebf5535647944837defa) Thanks [@louistrue](https://github.com/louistrue)! - `package.json` declares `mcpName: io.github.LTplus-AG/ifc-lite` so the MCP Registry can verify the npm package. `pnpm --filter @ifc-lite/mcp release:manifests` builds the registry `server.json` (schema 2025-12-11) and a Claude Desktop bundle `ifc-lite-<version>.mcpb` from the current version.
+- Updated dependencies [[`6e8b8a0`](https://github.com/LTplus-AG/ifc-lite/commit/6e8b8a0bc0213c76bbc0641862a80413f641039e), [`f9ad478`](https://github.com/LTplus-AG/ifc-lite/commit/f9ad4788b243aec5025e77288592692026261d5c), [`cfbec1d`](https://github.com/LTplus-AG/ifc-lite/commit/cfbec1d35a0e4b8d732b4250e6f75bfe4a5117a7), [`8b794d8`](https://github.com/LTplus-AG/ifc-lite/commit/8b794d852d7dafe16eacbd5509c38c145582140d), [`8b794d8`](https://github.com/LTplus-AG/ifc-lite/commit/8b794d852d7dafe16eacbd5509c38c145582140d), [`001b137`](https://github.com/LTplus-AG/ifc-lite/commit/001b137c5ebcef02d7653d3a97df718e392716a9), [`2e18fe1`](https://github.com/LTplus-AG/ifc-lite/commit/2e18fe1a48ee4b8833aee757736f5f32f402314d), [`342ea0f`](https://github.com/LTplus-AG/ifc-lite/commit/342ea0f7314e6c193a34220e3b31f33fc2943224), [`b8a0d0f`](https://github.com/LTplus-AG/ifc-lite/commit/b8a0d0f47c152ed38d057d304afef94ddd43c24f), [`a141685`](https://github.com/LTplus-AG/ifc-lite/commit/a141685c39b2a21131d0fcb6a118dede637b64d5), [`8d1fbf1`](https://github.com/LTplus-AG/ifc-lite/commit/8d1fbf13e6a7b5182113139b401f4df8c937bae0), [`85303b7`](https://github.com/LTplus-AG/ifc-lite/commit/85303b7953440b66b43aaa5653aa8dcb0181121a), [`7899ace`](https://github.com/LTplus-AG/ifc-lite/commit/7899ace0390b09956df2c52086d71793d24b1bbe), [`067f438`](https://github.com/LTplus-AG/ifc-lite/commit/067f43899c99d80373a11d5b61ebfa74cba43595), [`74b0c13`](https://github.com/LTplus-AG/ifc-lite/commit/74b0c13f5ee7c94c991b14c3f649c0a76d28f7a6), [`740054e`](https://github.com/LTplus-AG/ifc-lite/commit/740054e2e8c4a4671cbe341e881c8db2205270f9), [`52b0440`](https://github.com/LTplus-AG/ifc-lite/commit/52b0440a96cb8af6b0430456e4770d45e4737c8c), [`99ef479`](https://github.com/LTplus-AG/ifc-lite/commit/99ef479bfd922dd2257357a1b59def1c42c5057c), [`b0e48c5`](https://github.com/LTplus-AG/ifc-lite/commit/b0e48c55aecb80f7680ce78064cb4f01c77635e1), [`88a28fe`](https://github.com/LTplus-AG/ifc-lite/commit/88a28fee98fa5b78f127834e8eda952f70b841a3), [`8465f08`](https://github.com/LTplus-AG/ifc-lite/commit/8465f086e3510e903440dbbf6e17acacbfbacd60), [`96e3cbb`](https://github.com/LTplus-AG/ifc-lite/commit/96e3cbbdc96250426966346a278f75596fcce309), [`9b9980f`](https://github.com/LTplus-AG/ifc-lite/commit/9b9980f0718a68e95a7a435b8d82355cbd92892f), [`0f03408`](https://github.com/LTplus-AG/ifc-lite/commit/0f0340808f474c498d462889a4d5b8874622638b), [`2d8aea8`](https://github.com/LTplus-AG/ifc-lite/commit/2d8aea843a38cc7c9f6e3aeab7926c3e9f92725d), [`4a3cc54`](https://github.com/LTplus-AG/ifc-lite/commit/4a3cc54080f81d1ddd6e291661d4ae503e013f4d), [`5b10823`](https://github.com/LTplus-AG/ifc-lite/commit/5b108238fd16733b401dc080b744fc51e522ca6a), [`44a4c34`](https://github.com/LTplus-AG/ifc-lite/commit/44a4c34bb16d90c54cfa4d2fb445e3e02abe9d24), [`8d1fbf1`](https://github.com/LTplus-AG/ifc-lite/commit/8d1fbf13e6a7b5182113139b401f4df8c937bae0), [`73932d9`](https://github.com/LTplus-AG/ifc-lite/commit/73932d9ef6e2798f35fdbe9234f1d4303eb5d9be), [`19390b0`](https://github.com/LTplus-AG/ifc-lite/commit/19390b0bc5754707cf303bfbfbfe467c6933bcb6), [`1933a79`](https://github.com/LTplus-AG/ifc-lite/commit/1933a79c74a9bc218d39241fdfe8eb719fb9d0d7), [`650d7ab`](https://github.com/LTplus-AG/ifc-lite/commit/650d7abe64d9726670ecbf882332b69f7a02a01f), [`d5f0c37`](https://github.com/LTplus-AG/ifc-lite/commit/d5f0c3780bf12d2f85b6b8c561bd6d35cb73bd0c), [`740054e`](https://github.com/LTplus-AG/ifc-lite/commit/740054e2e8c4a4671cbe341e881c8db2205270f9), [`484fcab`](https://github.com/LTplus-AG/ifc-lite/commit/484fcab6ce70466ba0d1a5ddca38fb8485187785), [`907fdea`](https://github.com/LTplus-AG/ifc-lite/commit/907fdea1aac6bef209635d7dee2ba0cb8c283dad), [`7f1c9e9`](https://github.com/LTplus-AG/ifc-lite/commit/7f1c9e9e528a6eeab0c17014253a1eaea9697b16), [`b87ec15`](https://github.com/LTplus-AG/ifc-lite/commit/b87ec15fc30de65d3802e2f02ef94a4d21f75839), [`fd6e711`](https://github.com/LTplus-AG/ifc-lite/commit/fd6e711848eb8a1bb73ecacbab23ab796c0cdb90), [`7917990`](https://github.com/LTplus-AG/ifc-lite/commit/79179903377a4fbd30d21ed867660c444f8c4d22), [`b36e49c`](https://github.com/LTplus-AG/ifc-lite/commit/b36e49c3ec69dc6d5fda3be3624fc6e456eb0909), [`a3c9e30`](https://github.com/LTplus-AG/ifc-lite/commit/a3c9e30b544db1fb3958615077b3da550d56a9ce)]:
+  - @ifc-lite/bcf@6.0.0
+  - @ifc-lite/wasm@14.0.0
+  - @ifc-lite/geometry@9.0.0
+  - @ifc-lite/create@6.2.0
+  - @ifc-lite/ids-authoring@0.3.8
+  - @ifc-lite/mutations@4.2.0
+  - @ifc-lite/export@7.0.0
+  - @ifc-lite/ids@4.0.0
+  - @ifc-lite/parser@11.1.0
+  - @ifc-lite/data@7.1.0
+  - @ifc-lite/rules@0.8.4
+  - @ifc-lite/sdk@10.3.0
+  - @ifc-lite/viewer-core@0.3.0
+  - @ifc-lite/flow-nodes@0.12.6
+  - @ifc-lite/clash@3.0.2
+  - @ifc-lite/diff@0.13.5
+  - @ifc-lite/cache@3.8.2
+  - @ifc-lite/query@2.5.7
+  - @ifc-lite/ai@0.2.4
+
 ## 0.32.0
 
 ### Minor Changes

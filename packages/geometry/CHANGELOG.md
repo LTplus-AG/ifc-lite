@@ -1,5 +1,39 @@
 # @ifc-lite/geometry
 
+## 9.0.0
+
+### Major Changes
+
+- [#11579](https://github.com/LTplus-AG/ifc-lite/pull/11579) [`001b137`](https://github.com/LTplus-AG/ifc-lite/commit/001b137c5ebcef02d7653d3a97df718e392716a9) Thanks [@louistrue](https://github.com/louistrue)! - `?compactGeom` (off by default) comes much closer to what the f32 load draws, and keeps its memory win. It still differs where buckets draw LOD1 (compact pages have none yet) and where the f32 path keeps a whole batch exact ([#9068](https://github.com/LTplus-AG/ifc-lite/issues/9068)):
+  
+  - Quantized bucket batches now place their frame origin on the 2^-9 m lattice, so a vertex lands on the same 2^-10 m node whether it is drawn from a bucket or from a compact page. Before, the bucket lattice was offset by an arbitrary sub-step, which moved edges and flipped near-coplanar faces between the two paths.
+  - A thin solid whose entire thickness would round to one lattice node stays f32 in ordinary buckets. Compact pages try a finer lattice for the same solid.
+  - Compact meshes that arrive while the renderer is still probing its quantized pipelines wait, still compact, instead of being decoded to the bucket path for good. Paging no longer depends on how fast that probe finishes.
+  - The spatial index and the symbolic-annotation fill lookup read a compact mesh's row (its box, its counts) instead of its arrays, which decoded every compact mesh of a load and kept the decode.
+    The new `compactMeshBounds` export from `@ifc-lite/geometry/compact` reads the bounds without materializing the mesh.
+    Callers that construct `CompactPayload.table` directly must append the source vertex count as the seventh value of every row. Regenerate stored six-column payloads before passing them to `compactRow`.
+  - The wasm compact encoder writes each mesh's source vertex count, so the camera fit weighs a compact mesh as the f32 load weighs it, and the outlier trim drops the same far meshes.
+    The WASM compact table grows from six to seven columns. Upgrade the geometry worker alongside WASM. Earlier workers assume a six-column stride and misread multi-mesh batches with the new encoder.
+
+### Minor Changes
+
+- [#11529](https://github.com/LTplus-AG/ifc-lite/pull/11529) [`067f438`](https://github.com/LTplus-AG/ifc-lite/commit/067f43899c99d80373a11d5b61ebfa74cba43595) Thanks [@louistrue](https://github.com/louistrue)! - The global instance plan (`perf.globalInstancing`, off by default) can be ramped. A host can set `GeometryProcessor.globalInstancing` to its own decision for the plan (for example a staged rollout) and hear each worker-pool load's decision through `onGlobalInstancingDecision`; `globalInstancingApplies` is exported. The worker pool decides the plan once per load, so a flag that changes mid-load cannot split the pre-pass request from its columns. The viewer resolves the flag for its own load processor (global, URL param, then the `perf-global-instancing` PostHog flag), reports the pool's decision as the telemetry arm, and still joins the keyed records of a snapshot cached under the plan for a user outside the ramp.
+
+### Patch Changes
+
+- [#11606](https://github.com/LTplus-AG/ifc-lite/pull/11606) [`8b794d8`](https://github.com/LTplus-AG/ifc-lite/commit/8b794d852d7dafe16eacbd5509c38c145582140d) Thanks [@louistrue](https://github.com/louistrue)! - Compact geometry (`compactGeom`, off by default): each encoded row carries its first source vertex (`anchors`), where the f32 load takes a mesh's spatial chunk, so pages group meshes by the same buckets even within half a lattice step of a chunk plane. Payloads from an older wasm build, without anchors, keep working (the first record decides, as before).
+
+- [#11606](https://github.com/LTplus-AG/ifc-lite/pull/11606) [`8b794d8`](https://github.com/LTplus-AG/ifc-lite/commit/8b794d852d7dafe16eacbd5509c38c145582140d) Thanks [@louistrue](https://github.com/louistrue)! - Compact geometry (`compactGeom`, off by default): pages take the decisions of the bucket batches they stand in for. At the end of a stream each page is rewritten bucket by bucket and gets a LOD1 range per bucket, clustered from its own records with the bucket's cell size. The draw loop culls each part and picks its LOD on the bucket's box. Meshes whose bucket would stay exact f32 ([#9068](https://github.com/LTplus-AG/ifc-lite/issues/9068), or wider than the lattice range) move to buckets. Nothing changes with compact geometry off.
+  
+  Compact LOD1 uses the authored corner normals retained by the encoder. Older payloads keep full detail. A stream reconciles each bucket that receives f32 meshes, including when an edit moves another mesh during the same stream.
+
+- [#11541](https://github.com/LTplus-AG/ifc-lite/pull/11541) [`4a3cc54`](https://github.com/LTplus-AG/ifc-lite/commit/4a3cc54080f81d1ddd6e291661d4ae503e013f4d) Thanks [@louistrue](https://github.com/louistrue)! - Out-of-core geometry ingest can be ramped through PostHog (`perf-ooc`) and stays off by default. `GeometryProcessor` and `processParallel` take the host's decision for one load (`outOfCore`; unset, the explicit `?perf.ooc` / `__IFC_LITE_OOC`) and report whether that load's pool meshed out of core (`onOutOfCoreDecision`). The viewer hands the ramp to the first attempt of its own primary load only (a federated add and a resource retry follow the explicit flag alone), and the `perf_flags` telemetry arm reports what the current primary load's pool ran: a small file, a cache or server load, or a file the arena cannot serve reports off.
+
+- [#11596](https://github.com/LTplus-AG/ifc-lite/pull/11596) [`5b10823`](https://github.com/LTplus-AG/ifc-lite/commit/5b108238fd16733b401dc080b744fc51e522ca6a) Thanks [@louistrue](https://github.com/louistrue)! - Out-of-core geometry ingest (`?perf.ooc`, off by default) keeps the parallel sharded pre-pass instead of falling back to the single-worker scan, so its first frame is no longer later than the whole-file path's. Each shard scan copies only its own byte range plus a margin of at most 64 MiB into the worker, instead of the whole file into every worker (on a file of a few tens of MiB that window can reach the end of the file for one worker), the sharded pre-pass emits the sparse facts, its sorted entity index and the styles itself, and out-of-core ingest now applies only past the small-file tier (10 MiB), where the workers' file copies it removes are worth it.
+- Updated dependencies [[`cfbec1d`](https://github.com/LTplus-AG/ifc-lite/commit/cfbec1d35a0e4b8d732b4250e6f75bfe4a5117a7), [`8b794d8`](https://github.com/LTplus-AG/ifc-lite/commit/8b794d852d7dafe16eacbd5509c38c145582140d), [`8b794d8`](https://github.com/LTplus-AG/ifc-lite/commit/8b794d852d7dafe16eacbd5509c38c145582140d), [`001b137`](https://github.com/LTplus-AG/ifc-lite/commit/001b137c5ebcef02d7653d3a97df718e392716a9), [`74b0c13`](https://github.com/LTplus-AG/ifc-lite/commit/74b0c13f5ee7c94c991b14c3f649c0a76d28f7a6), [`5b10823`](https://github.com/LTplus-AG/ifc-lite/commit/5b108238fd16733b401dc080b744fc51e522ca6a), [`8d1fbf1`](https://github.com/LTplus-AG/ifc-lite/commit/8d1fbf13e6a7b5182113139b401f4df8c937bae0), [`7f1c9e9`](https://github.com/LTplus-AG/ifc-lite/commit/7f1c9e9e528a6eeab0c17014253a1eaea9697b16)]:
+  - @ifc-lite/wasm@14.0.0
+  - @ifc-lite/data@7.1.0
+
 ## 8.4.0
 
 ### Minor Changes

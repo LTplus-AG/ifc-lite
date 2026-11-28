@@ -1,5 +1,20 @@
 # @ifc-lite/viewer-core
 
+## 0.3.0
+
+### Minor Changes
+
+- [#11532](https://github.com/LTplus-AG/ifc-lite/pull/11532) [`7917990`](https://github.com/LTplus-AG/ifc-lite/commit/79179903377a4fbd30d21ed867660c444f8c4d22) Thanks [@louistrue](https://github.com/louistrue)! - The local viewer server (`ifc-lite view`, the MCP `--viewer`) listens on 127.0.0.1 only. It refuses requests whose Host is not `localhost`, `127.0.0.1` or `[::1]`, which blocks DNS rebinding, and refuses requests sent from pages on other sites. Opening the viewer page itself from a link or an IDE preview still works, and a `frame-ancestors` policy keeps other sites from framing it (only pages opened as `localhost` or `127.0.0.1`, and desktop VS Code-family preview panes, may embed it; see https://ifclite.dev/docs/guide/viewer-api/). For requests, pages served from any local port count as local, and browsers without Fetch Metadata (Safari before 16.4) can still embed its read routes. Before, it listened on every interface and ran `/api/command`, `/api/create` and `/api/clear-created` for any page that posted to it. The CLI and the MCP server now dial `127.0.0.1` instead of `localhost`, so they still connect where `localhost` resolves to `::1` first.
+  
+  To open the viewer from another machine, start `ifc-lite view model.ifc --port 3456 --no-open` on the host. From your machine, run `ssh -L 3456:127.0.0.1:3456 host` and open `http://127.0.0.1:3456` locally. A published container port (`docker run -p 3456:3456`) no longer reaches a viewer inside the container, because it listens on the container's own loopback; use host networking (`--network host` on Linux) or forward the port inside the container. A hosted forward such as GitHub Codespaces is refused too, because it sends its own Host name. There is no opt-out yet.
+
+### Patch Changes
+
+- Updated dependencies [[`cfbec1d`](https://github.com/LTplus-AG/ifc-lite/commit/cfbec1d35a0e4b8d732b4250e6f75bfe4a5117a7), [`8b794d8`](https://github.com/LTplus-AG/ifc-lite/commit/8b794d852d7dafe16eacbd5509c38c145582140d), [`8b794d8`](https://github.com/LTplus-AG/ifc-lite/commit/8b794d852d7dafe16eacbd5509c38c145582140d), [`001b137`](https://github.com/LTplus-AG/ifc-lite/commit/001b137c5ebcef02d7653d3a97df718e392716a9), [`2e18fe1`](https://github.com/LTplus-AG/ifc-lite/commit/2e18fe1a48ee4b8833aee757736f5f32f402314d), [`342ea0f`](https://github.com/LTplus-AG/ifc-lite/commit/342ea0f7314e6c193a34220e3b31f33fc2943224), [`74b0c13`](https://github.com/LTplus-AG/ifc-lite/commit/74b0c13f5ee7c94c991b14c3f649c0a76d28f7a6), [`5b10823`](https://github.com/LTplus-AG/ifc-lite/commit/5b108238fd16733b401dc080b744fc51e522ca6a), [`484fcab`](https://github.com/LTplus-AG/ifc-lite/commit/484fcab6ce70466ba0d1a5ddca38fb8485187785)]:
+  - @ifc-lite/wasm@14.0.0
+  - @ifc-lite/create@6.2.0
+  - @ifc-lite/sdk@10.3.0
+
 ## 0.2.31
 
 ### Patch Changes

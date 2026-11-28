@@ -1,5 +1,16 @@
 # @ifc-lite/sandbox
 
+## 3.2.0
+
+### Minor Changes
+
+- [#11617](https://github.com/LTplus-AG/ifc-lite/pull/11617) [`2e18fe1`](https://github.com/LTplus-AG/ifc-lite/commit/2e18fe1a48ee4b8833aee757736f5f32f402314d) Thanks [@louistrue](https://github.com/louistrue)! - `IfcCreator.addElement` and `addAxisElement` now write each product with its schema's full attribute list. A generic `IfcSpace` gets `LongName`, `CompositionType`, `PredefinedType` and `ElevationWithFlooring` instead of a 7-attribute record. The STEP keyword is always written upper case. Types the generic writers cannot place in a storey correctly are refused with an error instead of producing invalid relationships. That covers groups (`IfcZone`, `IfcSystem`, `IfcGroup`), which are not products, and spatial elements other than `IfcSpace` (`IfcSite`, `IfcBuilding`, `IfcBuildingStorey`, `IfcFacilityPart`, …). Abstract entities, feature elements (`IfcOpeningElement`), types the target schema does not define and `USERDEFINED` without an `ObjectType` are refused too, and every refusal throws before any record is written. The sandbox `bim.create.addElement`/`addAxisElement` pass these refusals through to scripts, and their descriptions say which types the writers accept.
+
+### Patch Changes
+
+- Updated dependencies [[`484fcab`](https://github.com/LTplus-AG/ifc-lite/commit/484fcab6ce70466ba0d1a5ddca38fb8485187785)]:
+  - @ifc-lite/sdk@10.3.0
+
 ## 3.1.0
 
 ### Minor Changes

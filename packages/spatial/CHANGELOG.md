@@ -1,5 +1,22 @@
 # @ifc-lite/spatial
 
+## 1.15.2
+
+### Patch Changes
+
+- [#11579](https://github.com/LTplus-AG/ifc-lite/pull/11579) [`001b137`](https://github.com/LTplus-AG/ifc-lite/commit/001b137c5ebcef02d7653d3a97df718e392716a9) Thanks [@louistrue](https://github.com/louistrue)! - `?compactGeom` (off by default) comes much closer to what the f32 load draws, and keeps its memory win. It still differs where buckets draw LOD1 (compact pages have none yet) and where the f32 path keeps a whole batch exact ([#9068](https://github.com/LTplus-AG/ifc-lite/issues/9068)):
+  
+  - Quantized bucket batches now place their frame origin on the 2^-9 m lattice, so a vertex lands on the same 2^-10 m node whether it is drawn from a bucket or from a compact page. Before, the bucket lattice was offset by an arbitrary sub-step, which moved edges and flipped near-coplanar faces between the two paths.
+  - A thin solid whose entire thickness would round to one lattice node stays f32 in ordinary buckets. Compact pages try a finer lattice for the same solid.
+  - Compact meshes that arrive while the renderer is still probing its quantized pipelines wait, still compact, instead of being decoded to the bucket path for good. Paging no longer depends on how fast that probe finishes.
+  - The spatial index and the symbolic-annotation fill lookup read a compact mesh's row (its box, its counts) instead of its arrays, which decoded every compact mesh of a load and kept the decode.
+    The new `compactMeshBounds` export from `@ifc-lite/geometry/compact` reads the bounds without materializing the mesh.
+    Callers that construct `CompactPayload.table` directly must append the source vertex count as the seventh value of every row. Regenerate stored six-column payloads before passing them to `compactRow`.
+  - The wasm compact encoder writes each mesh's source vertex count, so the camera fit weighs a compact mesh as the f32 load weighs it, and the outlier trim drops the same far meshes.
+    The WASM compact table grows from six to seven columns. Upgrade the geometry worker alongside WASM. Earlier workers assume a six-column stride and misread multi-mesh batches with the new encoder.
+- Updated dependencies [[`8b794d8`](https://github.com/LTplus-AG/ifc-lite/commit/8b794d852d7dafe16eacbd5509c38c145582140d), [`8b794d8`](https://github.com/LTplus-AG/ifc-lite/commit/8b794d852d7dafe16eacbd5509c38c145582140d), [`001b137`](https://github.com/LTplus-AG/ifc-lite/commit/001b137c5ebcef02d7653d3a97df718e392716a9), [`067f438`](https://github.com/LTplus-AG/ifc-lite/commit/067f43899c99d80373a11d5b61ebfa74cba43595), [`4a3cc54`](https://github.com/LTplus-AG/ifc-lite/commit/4a3cc54080f81d1ddd6e291661d4ae503e013f4d), [`5b10823`](https://github.com/LTplus-AG/ifc-lite/commit/5b108238fd16733b401dc080b744fc51e522ca6a)]:
+  - @ifc-lite/geometry@9.0.0
+
 ## 1.15.1
 
 ### Patch Changes

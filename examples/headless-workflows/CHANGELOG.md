@@ -1,5 +1,15 @@
 # ifc-lite-headless-workflows
 
+## 0.1.5
+
+### Patch Changes
+
+- Updated dependencies [[`8b794d8`](https://github.com/LTplus-AG/ifc-lite/commit/8b794d852d7dafe16eacbd5509c38c145582140d), [`8b794d8`](https://github.com/LTplus-AG/ifc-lite/commit/8b794d852d7dafe16eacbd5509c38c145582140d), [`001b137`](https://github.com/LTplus-AG/ifc-lite/commit/001b137c5ebcef02d7653d3a97df718e392716a9), [`067f438`](https://github.com/LTplus-AG/ifc-lite/commit/067f43899c99d80373a11d5b61ebfa74cba43595), [`740054e`](https://github.com/LTplus-AG/ifc-lite/commit/740054e2e8c4a4671cbe341e881c8db2205270f9), [`4a3cc54`](https://github.com/LTplus-AG/ifc-lite/commit/4a3cc54080f81d1ddd6e291661d4ae503e013f4d), [`5b10823`](https://github.com/LTplus-AG/ifc-lite/commit/5b108238fd16733b401dc080b744fc51e522ca6a), [`484fcab`](https://github.com/LTplus-AG/ifc-lite/commit/484fcab6ce70466ba0d1a5ddca38fb8485187785), [`a3c9e30`](https://github.com/LTplus-AG/ifc-lite/commit/a3c9e30b544db1fb3958615077b3da550d56a9ce)]:
+  - @ifc-lite/geometry@9.0.0
+  - @ifc-lite/ids@4.0.0
+  - @ifc-lite/sdk@10.3.0
+  - @ifc-lite/flow-nodes@0.12.6
+
 ## 0.1.4
 
 ### Patch Changes

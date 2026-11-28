@@ -1,5 +1,41 @@
 # @ifc-lite/renderer
 
+## 7.5.0
+
+### Minor Changes
+
+- [#11753](https://github.com/LTplus-AG/ifc-lite/pull/11753) [`b10442c`](https://github.com/LTplus-AG/ifc-lite/commit/b10442c2a093cbfd4b147fe988d7e11ce3163dbd) Thanks [@louistrue](https://github.com/louistrue)! - Magnetic picking can snap CAD-style to the nearest feature corner on screen. With `snapOptions.screenCornerSnap` set (`{}` for the defaults), `raycastSceneMagnetic` snaps to the nearest corner of an eligible, visible, unclipped mesh whose projection is within `cornerRadiusPx` (10) of the cursor, even when the ray hits another element or nothing, and falls back to the nearest edge within `edgeRadiusPx` (6). Corners outrank edges. `eligibleModelIndices` restricts the search to the models allowed for the pick. Candidates hidden behind the ray-hit surface are skipped unless `ignoreOcclusion` is set, and the per-piece candidates and the screen grid are built in idle time (`requestIdleCallback`, on-screen pieces first) once the view has been still for `settleMs` (120), never inside a pick, so a pick only reads the grid and orbiting never stalls on it. Until the grid of the current view holds pieces the ray-based result stands. Without the option nothing changes.
+
+- [#11420](https://github.com/LTplus-AG/ifc-lite/pull/11420) [`9162048`](https://github.com/LTplus-AG/ifc-lite/commit/9162048a21ea28cef23f25b55b2a030bb7f3e80a) Thanks [@petruconduraru](https://github.com/petruconduraru)! - Expose an optional scene revision for consumers that track pickable instance IDs. Model translations and rotations leave this revision unchanged.
+
+### Patch Changes
+
+- [#11606](https://github.com/LTplus-AG/ifc-lite/pull/11606) [`8b794d8`](https://github.com/LTplus-AG/ifc-lite/commit/8b794d852d7dafe16eacbd5509c38c145582140d) Thanks [@louistrue](https://github.com/louistrue)! - Compact geometry (`compactGeom`, off by default): each encoded row carries its first source vertex (`anchors`), where the f32 load takes a mesh's spatial chunk, so pages group meshes by the same buckets even within half a lattice step of a chunk plane. Payloads from an older wasm build, without anchors, keep working (the first record decides, as before).
+
+- [#11606](https://github.com/LTplus-AG/ifc-lite/pull/11606) [`8b794d8`](https://github.com/LTplus-AG/ifc-lite/commit/8b794d852d7dafe16eacbd5509c38c145582140d) Thanks [@louistrue](https://github.com/louistrue)! - Compact geometry (`compactGeom`, off by default): pages take the decisions of the bucket batches they stand in for. At the end of a stream each page is rewritten bucket by bucket and gets a LOD1 range per bucket, clustered from its own records with the bucket's cell size. The draw loop culls each part and picks its LOD on the bucket's box. Meshes whose bucket would stay exact f32 ([#9068](https://github.com/LTplus-AG/ifc-lite/issues/9068), or wider than the lattice range) move to buckets. Nothing changes with compact geometry off.
+  
+  Compact LOD1 uses the authored corner normals retained by the encoder. Older payloads keep full detail. A stream reconciles each bucket that receives f32 meshes, including when an edit moves another mesh during the same stream.
+
+- [#11525](https://github.com/LTplus-AG/ifc-lite/pull/11525) [`1d1cb55`](https://github.com/LTplus-AG/ifc-lite/commit/1d1cb554291b729a50ca0418ceb285bd3c6bb0ec) Thanks [@louistrue](https://github.com/louistrue)! - Compact pages (`?compactGeom`) give up only the meshes an edit is about. Removing an entity takes its triangles off its page without decoding anything; moving, rotating or recolouring entities moves only those entities to the bucket path; a model move moves only that model's meshes; and a page a frame cannot split moves only its own meshes. A mesh the bucket path refuses stays on its page: an edit call that includes it fails (its other meshes have already moved), while edits of every other mesh keep working instead of throwing the same error, and a frame stops asking for it.
+
+- [#11579](https://github.com/LTplus-AG/ifc-lite/pull/11579) [`001b137`](https://github.com/LTplus-AG/ifc-lite/commit/001b137c5ebcef02d7653d3a97df718e392716a9) Thanks [@louistrue](https://github.com/louistrue)! - `?compactGeom` (off by default) comes much closer to what the f32 load draws, and keeps its memory win. It still differs where buckets draw LOD1 (compact pages have none yet) and where the f32 path keeps a whole batch exact ([#9068](https://github.com/LTplus-AG/ifc-lite/issues/9068)):
+  
+  - Quantized bucket batches now place their frame origin on the 2^-9 m lattice, so a vertex lands on the same 2^-10 m node whether it is drawn from a bucket or from a compact page. Before, the bucket lattice was offset by an arbitrary sub-step, which moved edges and flipped near-coplanar faces between the two paths.
+  - A thin solid whose entire thickness would round to one lattice node stays f32 in ordinary buckets. Compact pages try a finer lattice for the same solid.
+  - Compact meshes that arrive while the renderer is still probing its quantized pipelines wait, still compact, instead of being decoded to the bucket path for good. Paging no longer depends on how fast that probe finishes.
+  - The spatial index and the symbolic-annotation fill lookup read a compact mesh's row (its box, its counts) instead of its arrays, which decoded every compact mesh of a load and kept the decode.
+    The new `compactMeshBounds` export from `@ifc-lite/geometry/compact` reads the bounds without materializing the mesh.
+    Callers that construct `CompactPayload.table` directly must append the source vertex count as the seventh value of every row. Regenerate stored six-column payloads before passing them to `compactRow`.
+  - The wasm compact encoder writes each mesh's source vertex count, so the camera fit weighs a compact mesh as the f32 load weighs it, and the outlier trim drops the same far meshes.
+    The WASM compact table grows from six to seven columns. Upgrade the geometry worker alongside WASM. Earlier workers assume a six-column stride and misread multi-mesh batches with the new encoder.
+
+- [#11831](https://github.com/LTplus-AG/ifc-lite/pull/11831) [`d7990dc`](https://github.com/LTplus-AG/ifc-lite/commit/d7990dcef82c11bbe52d30fcf0d73f30876cd5c4) Thanks [@louistrue](https://github.com/louistrue)! - The mesh vertex stages now declare their clip position `@invariant`. The selection highlight and its masks redraw a surface over depth written by another shader module (the draw stream, the discard-free opaque twin, the orthographic prepass), with `greater-equal` and no bias. That needs bit-identical positions, which WGSL guarantees across modules only for an invariant position. On Apple GPUs with the draw stream on, the highlight of a selected element showed its base colour through in blocky patches that moved with the camera.
+
+- [#11631](https://github.com/LTplus-AG/ifc-lite/pull/11631) [`e61ca15`](https://github.com/LTplus-AG/ifc-lite/commit/e61ca15a0d66caaf36df373a17db713871c56b84) Thanks [@louistrue](https://github.com/louistrue)! - Bucket batches built before the quantized pipeline probe resolved (a small model that finishes loading first) are rebuilt quantized once the pipelines exist and no stream is running, as a load after the probe draws them. Previously they stayed f32 for the rest of the session, so a small model drew differently from the same model loaded a moment later.
+- Updated dependencies [[`8b794d8`](https://github.com/LTplus-AG/ifc-lite/commit/8b794d852d7dafe16eacbd5509c38c145582140d), [`8b794d8`](https://github.com/LTplus-AG/ifc-lite/commit/8b794d852d7dafe16eacbd5509c38c145582140d), [`001b137`](https://github.com/LTplus-AG/ifc-lite/commit/001b137c5ebcef02d7653d3a97df718e392716a9), [`067f438`](https://github.com/LTplus-AG/ifc-lite/commit/067f43899c99d80373a11d5b61ebfa74cba43595), [`4a3cc54`](https://github.com/LTplus-AG/ifc-lite/commit/4a3cc54080f81d1ddd6e291661d4ae503e013f4d), [`5b10823`](https://github.com/LTplus-AG/ifc-lite/commit/5b108238fd16733b401dc080b744fc51e522ca6a)]:
+  - @ifc-lite/geometry@9.0.0
+  - @ifc-lite/spatial@1.15.2
+
 ## 7.4.0
 
 ### Minor Changes

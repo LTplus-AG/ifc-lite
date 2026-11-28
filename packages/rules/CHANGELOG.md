@@ -1,5 +1,20 @@
 # @ifc-lite/rules
 
+## 0.8.4
+
+### Patch Changes
+
+- [#11553](https://github.com/LTplus-AG/ifc-lite/pull/11553) [`740054e`](https://github.com/LTplus-AG/ifc-lite/commit/740054e2e8c4a4671cbe341e881c8db2205270f9) Thanks [@louistrue](https://github.com/louistrue)! - `ruleSetToIds` reports classification rules without a system in `refused`. IDS 1.0 requires a system on classification facets.
+
+- [#11490](https://github.com/LTplus-AG/ifc-lite/pull/11490) [`7f1c9e9`](https://github.com/LTplus-AG/ifc-lite/commit/7f1c9e9e528a6eeab0c17014253a1eaea9697b16) Thanks [@petruconduraru](https://github.com/petruconduraru)! - `spatialHierarchy.elementToStorey` now names the storey of an element contained in an `IfcSpace` (or `IfcSpatialZone`) that the storey aggregates, and of that element's aggregated parts. Before, only elements the storey contained directly were mapped, so the same element had a storey after an edit and none on the parsed model.
+  
+  The server's Rust data model (`element_to_storey` in `ifc-lite-processing`) applies the same rule, so server-parsed models answer the same: direct storey containment still wins, and a space reached through another space counts. An element reached through spaces on more than one storey (a malformed file) goes to the lowest storey express id on both paths, and the server now also maps the aggregated parts of a directly contained element to its storey, as the parser already did. In `@ifc-lite/rules`, the `storey in` prefilter used by AND queries now holds every element `elementToStorey` puts on the storey, so AND and OR return the same elements.
+- Updated dependencies [[`a141685`](https://github.com/LTplus-AG/ifc-lite/commit/a141685c39b2a21131d0fcb6a118dede637b64d5), [`8d1fbf1`](https://github.com/LTplus-AG/ifc-lite/commit/8d1fbf13e6a7b5182113139b401f4df8c937bae0), [`740054e`](https://github.com/LTplus-AG/ifc-lite/commit/740054e2e8c4a4671cbe341e881c8db2205270f9), [`9b9980f`](https://github.com/LTplus-AG/ifc-lite/commit/9b9980f0718a68e95a7a435b8d82355cbd92892f), [`8d1fbf1`](https://github.com/LTplus-AG/ifc-lite/commit/8d1fbf13e6a7b5182113139b401f4df8c937bae0), [`73932d9`](https://github.com/LTplus-AG/ifc-lite/commit/73932d9ef6e2798f35fdbe9234f1d4303eb5d9be), [`1933a79`](https://github.com/LTplus-AG/ifc-lite/commit/1933a79c74a9bc218d39241fdfe8eb719fb9d0d7), [`7f1c9e9`](https://github.com/LTplus-AG/ifc-lite/commit/7f1c9e9e528a6eeab0c17014253a1eaea9697b16), [`fd6e711`](https://github.com/LTplus-AG/ifc-lite/commit/fd6e711848eb8a1bb73ecacbab23ab796c0cdb90)]:
+  - @ifc-lite/mutations@4.2.0
+  - @ifc-lite/ids@4.0.0
+  - @ifc-lite/parser@11.1.0
+  - @ifc-lite/data@7.1.0
+
 ## 0.8.3
 
 ### Patch Changes

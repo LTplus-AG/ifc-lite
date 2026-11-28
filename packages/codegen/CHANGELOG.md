@@ -1,5 +1,15 @@
 # @ifc-lite/codegen
 
+## 1.20.1
+
+### Patch Changes
+
+- [#11758](https://github.com/LTplus-AG/ifc-lite/pull/11758) [`2ee738e`](https://github.com/LTplus-AG/ifc-lite/commit/2ee738e50b0d37eed044b680811520349b110cc6) Thanks [@louistrue](https://github.com/louistrue)! - Generate smaller Rust implementations of `Clone` and `Debug` for the public IFC entity type while preserving entity names and owned unknown keywords.
+
+- [#11658](https://github.com/LTplus-AG/ifc-lite/pull/11658) [`1e418d8`](https://github.com/LTplus-AG/ifc-lite/commit/1e418d89a56aec65a0b771266de9c30133fbebeb) Thanks [@louistrue](https://github.com/louistrue)! - Generate the IFC type surface from tokenised EXPRESS declarations and retain both IFC2X3 IfcSweptSurface WHERE rules.
+- Updated dependencies [[`8d1fbf1`](https://github.com/LTplus-AG/ifc-lite/commit/8d1fbf13e6a7b5182113139b401f4df8c937bae0), [`7f1c9e9`](https://github.com/LTplus-AG/ifc-lite/commit/7f1c9e9e528a6eeab0c17014253a1eaea9697b16)]:
+  - @ifc-lite/data@7.1.0
+
 ## 1.20.0
 
 ### Minor Changes

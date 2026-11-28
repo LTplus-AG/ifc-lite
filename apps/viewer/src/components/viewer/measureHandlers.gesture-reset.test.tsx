@@ -1197,6 +1197,24 @@ describe('the Distance end over background (#9049)', () => {
     return { at, hover, active, glyph, overlay, renderer };
   }
 
+  it('#11746 Escape clears the mounted Measure corner markers until the next hover', async t => {
+    const { canvas, ctx } = mount();
+    click(canvas, 0, 300);
+    assert.equal(xy(s().activeMeasurement?.start), '0,0');
+    const { renderer, hover, active, glyph, overlay } = await cornerScene(t, canvas, ctx);
+    assert.equal(xy(s().snapTarget?.position), '2,1');
+    await pressEscape();
+    assert.equal(s().activeTool, 'measure');
+    assert.equal(s().snapTarget, null);
+    assert.equal(s().snapVisualization, null);
+    assert.equal(overlay.querySelectorAll('[data-snap-corner-marker]').length, 0);
+    assert.equal(renderer.cornerMarkers.get(), null);
+    await new Promise(resolve => setTimeout(resolve, ctx.HOVER_SNAP_THROTTLE_MS + 1));
+    hover(false);
+    assert.equal(xy(s().snapTarget?.position), '2,1');
+    assert.equal(active()?.getAttribute('transform'), glyph);
+  });
+
   for (const [authored, distance, candidate, snapped] of [
     [false, 9.9, true, true], [false, 11, true, false], [false, 45, true, false],
     [true, 45, true, true], [true, 47.9, true, true], [true, 49, false, true],

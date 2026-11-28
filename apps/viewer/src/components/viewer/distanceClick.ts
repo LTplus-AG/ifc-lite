@@ -76,7 +76,10 @@ export function pressOutlivedReset(press: object): boolean {
  * with the command tool's preview, so only a Measure frame is dropped.
  */
 export function resetMeasurePress(ctx: MouseHandlerContext): void {
-  if (ctx.activeToolRef.current === 'measure') cancelQueuedHover(ctx);
+  if (ctx.activeToolRef.current === 'measure') {
+    cancelQueuedHover(ctx);
+    ctx.renderer.cornerMarkers?.set(null);
+  }
   startingPresses.delete(ctx.mouseState);
   deferredStarts.delete(ctx.mouseState);
   queuedReleases.delete(ctx.mouseState); // dropped with the gesture, so none will run

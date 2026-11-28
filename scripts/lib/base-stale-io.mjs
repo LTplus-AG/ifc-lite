@@ -112,7 +112,7 @@ export function slim(measured) {
   return { family: measured.family, commit: measured.commit, metrics: measured.metrics.map((m) => ({ id: m.id, value: m.value })) };
 }
 
-export function createIo({ repo, cwd = process.cwd(), cache = null, now = () => Date.now(), gh: ghCall = gh }) {
+export function createIo({ repo, cwd = process.cwd(), cache = null, now = () => Date.now(), gh: ghCall = gh, spawn = spawnSync }) {
   const stats = { calls: 0, downloads: 0, cacheHits: 0 };
   const store = { mainMeasurements: {}, prMeasurements: {}, prFiles: {}, posted: {}, released: {}, ...(cache ?? {}) };
   let budget = Infinity;
@@ -142,7 +142,7 @@ export function createIo({ repo, cwd = process.cwd(), cache = null, now = () => 
         if (!art) continue;
         spend(`artifact ${name} of run ${runId}`);
         stats.downloads += 1;
-        const zip = spawnSync('gh', ['api', `repos/${repo}/actions/artifacts/${art.id}/zip`], { maxBuffer: 64 * 1024 * 1024 });
+        const zip = spawn('gh', ['api', `repos/${repo}/actions/artifacts/${art.id}/zip`], { maxBuffer: 64 * 1024 * 1024 });
         if (zip.status !== 0) throw new Error(`downloading artifact ${name} of run ${runId} failed: ${String(zip.stderr).trim()}`);
         const out = join(dir, name);
         mkdirSync(out);
@@ -234,17 +234,20 @@ export function createIo({ repo, cwd = process.cwd(), cache = null, now = () => 
     const key = number === null ? headSha : `${headSha}#${number}`;
     const cached = store.prMeasurements[key];
     for (const run of own) {
-      if (cached && cached.runId === run.id) {
+      if (run.status !== 'completed') continue;
+      // GitHub reuses the run ID on reruns. Legacy entries have no attempt.
+      const runAttempt = run.run_attempt;
+      const knownAttempt = Number.isSafeInteger(runAttempt) && runAttempt > 0;
+      if (knownAttempt && cached?.runId === run.id && cached.runAttempt === runAttempt) {
         stats.cacheHits += 1;
         return cached;
       }
-      if (run.status !== 'completed') continue;
       const families = runMeasurement(run.id);
       if (!families) continue;
       const mergeSha = families[0].commit;
       const testedBase = mergeParents(mergeSha, headSha);
-      const entry = { runId: run.id, mergeSha, testedBase, families };
-      store.prMeasurements[key] = entry;
+      const entry = { runId: run.id, runAttempt, mergeSha, testedBase, families };
+      if (knownAttempt) store.prMeasurements[key] = entry;
       return entry;
     }
     return null;

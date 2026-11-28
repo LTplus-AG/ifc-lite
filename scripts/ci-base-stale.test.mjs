@@ -6,7 +6,7 @@
 // from the real test.yml, and the per-PR evaluation over a fake I/O layer.
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -24,11 +24,11 @@ const { callAllowance, CALL_CAP, evaluatePr, MIN_ALLOWANCE, loadCache, loadFilte
 const { prRelevance } = core ?? {};
 const { BudgetError, CANDIDATE_LIMIT, candidateList, changedPaths, compareMoved, createIo, IN_RUN_ON_ARTIFACT, isOwnRun, MEASURED_FILE_MAX_BYTES, measuredJsonFiles, pickTreeMeasurement } = ioMod ?? {};
 function ct(name, body) {
-  test(name, () => {
+  test(name, (t) => {
     assert.ok(cli && core && ioMod, 'scripts/ci-base-stale.mjs, scripts/lib/base-stale.mjs or scripts/lib/base-stale-io.mjs is absent');
     assert.equal(typeof callAllowance, 'function', 'callAllowance is not exported');
     assert.equal(typeof isOwnRun, 'function', 'isOwnRun is not exported');
-    return body();
+    return body(t);
   });
 }
 
@@ -559,7 +559,7 @@ ct('run, rollback: a capped candidate list does not mark the rollback done', () 
 });
 
 /** A createIo over a fake `gh`: `routes` maps an API path prefix to its JSON. */
-function ioOverGh(routes) {
+function ioOverGh(routes, options = {}) {
   const paths = [];
   const fakeGh = (args) => {
     const path = args[0] === 'api' ? args[1] : args.join(' ');
@@ -567,8 +567,51 @@ function ioOverGh(routes) {
     for (const [prefix, answer] of routes) if (path.startsWith(prefix)) return typeof answer === 'function' ? answer(path) : answer;
     throw new Error(`unexpected gh call ${path}`);
   };
-  return { io: createIo({ repo: 'o/r', gh: fakeGh, cwd: tmpdir() }), paths };
+  return { io: createIo({ repo: 'o/r', gh: fakeGh, cwd: tmpdir(), ...options }), paths };
 }
+
+ct('io #11350: PR measurement cache follows completed attempts of the same run', (t) => {
+  const head = 'a'.repeat(40);
+  const merges = ['b'.repeat(40), 'c'.repeat(40)];
+  const bases = ['d'.repeat(40), 'e'.repeat(40)];
+  const run = { id: 42, status: 'completed', run_attempt: 1 };
+  const dir = mkdtempSync(join(tmpdir(), 'base-stale-attempt-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const { io } = ioOverGh([
+    ['repos/o/r/actions/workflows/test.yml/runs?', () => ({ workflow_runs: [run] })],
+    ['repos/o/r/actions/runs/42/artifacts?', () => ({ artifacts: [{ name: 'perf-ratchet-measured', id: run.run_attempt }] })],
+    ...merges.map((merge, i) => [`repos/o/r/commits/${merge}`, { parents: [{ sha: bases[i] }, { sha: head }] }]),
+  ], {
+    spawn: (file, args) => {
+      assert.equal(file, 'gh');
+      assert.equal(args[1], `repos/o/r/actions/artifacts/${run.run_attempt}/zip`);
+      const i = run.run_attempt - 1;
+      writeFileSync(join(dir, 'measured.json'), JSON.stringify({
+        family: 'bundle', commit: merges[i], measuredAt: '2026-11-28T00:00:00Z',
+        metrics: [{ id: 'bytes', value: i + 10 }],
+      }));
+      return { status: 0, stdout: execFileSync('zip', ['-q', '-', 'measured.json'], { cwd: dir }) };
+    },
+  });
+  const key = `${head}#5`;
+  io.store.prMeasurements[key] = { runId: 42, testedBase: 'legacy' };
+  const measure = () => io.prMeasurement(head, null, 5);
+  const first = measure();
+  assert.equal(first.testedBase, bases[0]);
+  assert.equal(first.runAttempt, 1);
+  assert.equal(measure(), first);
+  run.run_attempt = 2;
+  run.status = 'in_progress';
+  assert.equal(measure(), null);
+  run.status = 'completed';
+  const second = measure();
+  assert.equal(second.testedBase, bases[1]);
+  assert.equal(second.runAttempt, 2);
+  assert.equal(second.families[0].metrics[0].value, 11);
+  assert.equal(measure(), second);
+  assert.equal(io.stats.downloads, 2);
+  assert.equal(io.stats.cacheHits, 2);
+});
 
 ct('io: the in-run markers are paged past the first 100', () => {
   const own = (sha) => ({ workflow_run: { id: 1, repository_id: 9, head_repository_id: 9, head_sha: sha } });

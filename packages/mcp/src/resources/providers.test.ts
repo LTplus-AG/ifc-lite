@@ -25,6 +25,10 @@ import { fullScope } from '../auth/scope.js';
 import { loadIfcModel } from '../loader.js';
 import { buildDefaultResourceRegistry } from './index.js';
 import { Ajv2020 } from 'ajv/dist/2020.js';
+import { Catalog, MessageProcessor } from '@a2ui/web_core/v1_0';
+import { IFC_CATALOG_ID } from '@ifc-lite/a2ui';
+import { createIfcAgent } from '@ifc-lite/a2ui/agent';
+import { IFC_EXPRESS_EXAMPLES } from '@ifc-lite/a2ui/catalog';
 import { OP_KINDS } from '@ifc-lite/ids-authoring';
 import { IDS_OPS_SCHEMA_URI } from '../tools/ids-ops-schema.js';
 
@@ -149,4 +153,33 @@ describe('ifc-lite://schemas/ids-ops-v1.json', () => {
       expect(accepts({ kind, opId, payload: invalid })).toBe(false);
     }
   });
+});
+
+it('reads the generated MCP catalog and processes the shared Express fixture (#11689)', async () => {
+  const provider = buildDefaultResourceRegistry().matchProvider(IFC_CATALOG_ID);
+  if (!provider) throw new Error('A2UI catalog resource not registered');
+  const [resource] = await provider.read(IFC_CATALOG_ID, ctx);
+  if (!resource || !('text' in resource) || typeof resource.text !== 'string') {
+    throw new Error('A2UI catalog resource missing JSON');
+  }
+  expect(resource.mimeType).toBe('application/json');
+  const document = JSON.parse(resource.text);
+  expect(document.components.TextField.allOf).toContainEqual(expect.objectContaining({
+    required: expect.arrayContaining(['value']),
+  }));
+  expect(document.components.EntityTable).not.toHaveProperty('unevaluatedProperties');
+
+  const processor = new MessageProcessor([Catalog.fromJson(document)]);
+  try {
+    const fixture = IFC_EXPRESS_EXAMPLES[2];
+    const parts = createIfcAgent().parse(`<a2ui>
+${fixture.source}
+</a2ui>`);
+    const part = parts.find((entry) => entry.type === 'a2ui');
+    if (!part) throw new Error('Express fixture did not compile');
+    expect(processor.processMessagesWithErrors(part.a2ui)).toEqual([]);
+    expect(processor.model.surfacesMap.size).toBe(1);
+  } finally {
+    processor.dispose();
+  }
 });

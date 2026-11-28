@@ -25,11 +25,13 @@ legend = ColorLegend("type", {types: ["IfcWall", "IfcSlab", "IfcColumn", "IfcBea
   },
   {
     title: 'Ask the user to narrow a question',
-    source: `root = Column([question, picker, go])
+    source: `root = Column([question, picker, storey, go])
 question = Text("Which element types should I check?")
 picker = ChoicePicker("Types", "multipleSelection", [{label: "Walls", value: "IfcWall"}, {label: "Doors", value: "IfcDoor"}, {label: "Windows", value: "IfcWindow"}], $/pick)
-go = Button(Text("Check"), "primary", Event("ask", {prompt: "Check the selected element types", types: $/pick}))
-$/pick = ["IfcDoor"]`,
+storey = TextField("Storey", $/storey)
+go = Button(Text("Check"), "primary", Event("ask", {prompt: "Check the selected element types", types: $/pick, storey: $/storey}))
+$/pick = ["IfcDoor"]
+$/storey = ""`,
   },
 ];
 
@@ -42,7 +44,8 @@ export const IFC_CATALOG_INSTRUCTIONS = `This catalog renders inside an IFC/BIM 
 3. Entity references are "modelId:expressId" strings. Use EntityCard("selection") for whatever the user has selected.
 4. Offer an ActionBar under results so the user can isolate, colour or frame them in 3D. exportCsv only runs when the user clicks it.
 5. Use Event("ask", {prompt: "..."}) on buttons that should continue the conversation. Other event names are reported to you as the user's action.
-6. Keep surfaces small: one summary row, one table or chart, one action bar. Write the explanation as normal text outside the block.
+6. Supply a value for TextField. Use TextField("Storey", $/storey) with $/storey = "" for an initially empty field.
+7. Keep surfaces small: one summary row, one table or chart, one action bar. Write the explanation as normal text outside the block.
 
 ## Examples
 

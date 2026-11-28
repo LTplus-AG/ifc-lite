@@ -50,6 +50,13 @@ encoding and the builders. Everything A2UI-version-specific sits behind it and b
 
 ## The IFC catalog (`https://ifclite.dev/a2ui/catalogs/ifc/v1/catalog.json`)
 
+The viewer, Express agent, and MCP catalog use A2UI web core 0.16.1.
+The workspace resolves Zod 4 and the A2UI dependency patches route schema
+imports through `zod/v3`. The v1.0 catalog requires `TextField.value` in
+addition to its label. The eight IFC component schemas omit
+`unevaluatedProperties: false` at the component level, so that keyword
+no longer rejects extra properties in the published JSON schema.
+
 Layout and text: `Column`, `Row`, `Card`, `Tabs`, `Divider`, `Text`, `Callout`, `Button`,
 `ChoicePicker`, `TextField`, `Slider`, `CheckBox`.
 

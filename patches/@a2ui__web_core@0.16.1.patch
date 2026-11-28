@@ -1,5 +1,41 @@
+diff --git a/src/catalog/agent_function.d.ts b/src/catalog/agent_function.d.ts
+index 08109da..79aae66 100644
+--- a/src/catalog/agent_function.d.ts
++++ b/src/catalog/agent_function.d.ts
+@@ -1,4 +1,4 @@
+-import { z } from 'zod';
++import { z } from 'zod/v3';
+ import { AGENT_FUNCTION_BRAND, isAgentFunction } from './agent_function_brand.js';
+ import type { A2uiReturnType, FunctionApi, InferA2uiReturnType, ResolvedFunctionArgs } from './types.js';
+ export { isAgentFunction };
+diff --git a/src/catalog/agent_function.js b/src/catalog/agent_function.js
+index d2e641a..0a6e4da 100644
+--- a/src/catalog/agent_function.js
++++ b/src/catalog/agent_function.js
+@@ -14,7 +14,7 @@
+  * limitations under the License.
+  */
+ var _a;
+-import { z } from 'zod';
++import { z } from 'zod/v3';
+ import { A2uiCatalogError } from '../errors.js';
+ import { AGENT_FUNCTION_BRAND, isAgentFunction } from './agent_function_brand.js';
+ import { copyLoadedDefinition } from './json_entries.js';
+diff --git a/src/catalog/component_envelope.d.ts b/src/catalog/component_envelope.d.ts
+index 8557f7e..b14a938 100644
+--- a/src/catalog/component_envelope.d.ts
++++ b/src/catalog/component_envelope.d.ts
+@@ -13,7 +13,7 @@
+  * TODO(#4082): remove the legacy bare v1.0 mixin fallback. It only exists so
+  * agents written before the `@` keys keep working during the transition.
+  */
+-import { z } from 'zod';
++import { z } from 'zod/v3';
+ /** The bare names of the component envelope mixins. */
+ export declare const COMPONENT_MIXIN_KEYS: readonly ["metadata", "catalogId", "accessibility", "checks"];
+ /** The bare name of a component envelope mixin. */
 diff --git a/src/catalog/exclusive_union.d.ts b/src/catalog/exclusive_union.d.ts
-index 0790fcd823327afb0e5fe2ed7a934befde6e58e2..8e23572483e818d6fc3ed5931a501afc117ca6a8 100644
+index 0790fcd..8e23572 100644
 --- a/src/catalog/exclusive_union.d.ts
 +++ b/src/catalog/exclusive_union.d.ts
 @@ -1,4 +1,4 @@
@@ -9,7 +45,7 @@ index 0790fcd823327afb0e5fe2ed7a934befde6e58e2..8e23572483e818d6fc3ed5931a501afc
  /**
   * Returns a schema that accepts a value only when exactly one of `branches`
 diff --git a/src/catalog/exclusive_union.js b/src/catalog/exclusive_union.js
-index a86e0db26bedc5d8bfacad0f9cfa249a7b8f0999..26dd4f6586b4b13aca58d99ccf1320bfa3feca0c 100644
+index a86e0db..26dd4f6 100644
 --- a/src/catalog/exclusive_union.js
 +++ b/src/catalog/exclusive_union.js
 @@ -14,7 +14,7 @@
@@ -22,7 +58,7 @@ index a86e0db26bedc5d8bfacad0f9cfa249a7b8f0999..26dd4f6586b4b13aca58d99ccf1320bf
  /**
   * The definitions of the guards that make a union exclusive. A JSON Schema
 diff --git a/src/catalog/json_entries.d.ts b/src/catalog/json_entries.d.ts
-index d88ba709ae5e41c1da45f74ffd84790304859308..b6d2cdc7d7f9b208fefd320f20d2ab97c8d13d14 100644
+index d64183b..91dd94a 100644
 --- a/src/catalog/json_entries.d.ts
 +++ b/src/catalog/json_entries.d.ts
 @@ -1,4 +1,4 @@
@@ -32,7 +68,7 @@ index d88ba709ae5e41c1da45f74ffd84790304859308..b6d2cdc7d7f9b208fefd320f20d2ab97
  import type { JsonSchemaObject } from './spec_annotations.js';
  /**
 diff --git a/src/catalog/schema_loader.d.ts b/src/catalog/schema_loader.d.ts
-index a2c80f0175bf78230920081b729259be3f945d21..f97881e9e972e97966313aaaf5e946976bec7553 100644
+index 905823f..0f3f6bb 100644
 --- a/src/catalog/schema_loader.d.ts
 +++ b/src/catalog/schema_loader.d.ts
 @@ -1,4 +1,4 @@
@@ -42,7 +78,7 @@ index a2c80f0175bf78230920081b729259be3f945d21..f97881e9e972e97966313aaaf5e94697
  /**
   * The fields of a parsed catalog document: its ID, version and entries, and
 diff --git a/src/catalog/schema_loader.js b/src/catalog/schema_loader.js
-index 11830813ac5cf3b441ceb9e9e4e6c89164926104..8255e80f616ffa6f1e53b28907cf58c5ef7d88c9 100644
+index 08f639c..b5469ca 100644
 --- a/src/catalog/schema_loader.js
 +++ b/src/catalog/schema_loader.js
 @@ -13,7 +13,7 @@
@@ -54,8 +90,44 @@ index 11830813ac5cf3b441ceb9e9e4e6c89164926104..8255e80f616ffa6f1e53b28907cf58c5
  import { validateMetadata } from '../common/metadata.js';
  import { isAtLeastVersion } from '../common/semver.js';
  import { assertUax31Identifier } from '../common/uax31.js';
+@@ -270,7 +270,7 @@ function convertAllOfPropertyToZod(propSchema, rootDoc, visitedPointers, defCach
+             }
+             const shape = {};
+             for (const s of subSchemas) {
+-                if (s.kind === 'zod') {
++                if (s.kind === 'zod/v3') {
+                     Object.assign(shape, s.properties);
+                     continue;
+                 }
+@@ -662,7 +662,7 @@ function collectComponentSubSchemas(schema, rootDoc, visitedPointers = new Set()
+                     // Protocol common properties: accessibility attributes, and from
+                     // v1.0 also the component's metadata, under their bare or
+                     // `@`-prefixed names. `catalogId` is an envelope field, like `id`.
+-                    mixins.push({ kind: 'zod', properties: componentCommonMixinProperties(isAtLeastV10) });
++                    mixins.push({ kind: 'zod/v3', properties: componentCommonMixinProperties(isAtLeastV10) });
+                 }
+                 else if (ref.startsWith('#/')) {
+                     if (!visitedPointers.has(ref)) {
+@@ -686,7 +686,7 @@ function collectComponentSubSchemas(schema, rootDoc, visitedPointers = new Set()
+                                 continue;
+                             properties[key] = markStandardMixinSchema(prop);
+                         }
+-                        mixins.push({ kind: 'zod', properties });
++                        mixins.push({ kind: 'zod/v3', properties });
+                     }
+                 }
+             }
+@@ -727,7 +727,7 @@ function convertComponentJsonSchemaToZod(rawSchema, rootDoc, omitEnvelopeFields
+         }
+     }
+     for (const s of schemasToMerge) {
+-        if (s.kind === 'zod') {
++        if (s.kind === 'zod/v3') {
+             for (const [propName, propSchema] of Object.entries(s.properties)) {
+                 if (omitEnvelopeFields && isEnvelopeField(propName)) {
+                     continue;
 diff --git a/src/catalog/schema_serializer.d.ts b/src/catalog/schema_serializer.d.ts
-index 541d7788b6c2d1cf73e0b6bbbb9cc47388eb54bb..966d118d2edad1ba3dc4df82bf62267dcf49e82d 100644
+index 541d778..966d118 100644
 --- a/src/catalog/schema_serializer.d.ts
 +++ b/src/catalog/schema_serializer.d.ts
 @@ -1,4 +1,4 @@
@@ -65,7 +137,7 @@ index 541d7788b6c2d1cf73e0b6bbbb9cc47388eb54bb..966d118d2edad1ba3dc4df82bf62267d
  import type { CatalogUnions, ComponentApi, FunctionApi } from './types.js';
  /** Names of the union definitions a catalog computes from its entries. */
 diff --git a/src/catalog/spec_annotations.d.ts b/src/catalog/spec_annotations.d.ts
-index 57862d4934e4aa32b427f4298e90354fb05e9570..ea4d939002f0549b6a54b5c5f887f2134f495235 100644
+index 57862d4..ea4d939 100644
 --- a/src/catalog/spec_annotations.d.ts
 +++ b/src/catalog/spec_annotations.d.ts
 @@ -1,4 +1,4 @@
@@ -75,7 +147,7 @@ index 57862d4934e4aa32b427f4298e90354fb05e9570..ea4d939002f0549b6a54b5c5f887f213
   * A JSON Schema object, as written in a catalog document.
   */
 diff --git a/src/catalog/spec_annotations.js b/src/catalog/spec_annotations.js
-index 294e216a0276cc4281ea59a23e417b409b96e1a9..ae54e039531d584ed1658b3c48ffcdb3cd7b0fcc 100644
+index 32f1e41..acb1109 100644
 --- a/src/catalog/spec_annotations.js
 +++ b/src/catalog/spec_annotations.js
 @@ -13,7 +13,7 @@
@@ -85,10 +157,10 @@ index 294e216a0276cc4281ea59a23e417b409b96e1a9..ae54e039531d584ed1658b3c48ffcdb3
 -import { z } from 'zod';
 +import { z } from 'zod/v3';
  const annotations = new WeakMap();
- function cloneWithDefAnnotation(schema, nextAnnotation, description = schema.description) {
-     const copy = z.ZodType.prototype.describe.call(schema, description);
+ const rawDescribeMethods = new WeakMap();
+ function cloneSchema(schema, description = schema.description) {
 diff --git a/src/catalog/spec_shape.d.ts b/src/catalog/spec_shape.d.ts
-index 3cdb17e89f5e3ec01107f84b5820837cc0df37af..61da034a089f669c089e9225c282e4072a1b01cd 100644
+index 3cdb17e..61da034 100644
 --- a/src/catalog/spec_shape.d.ts
 +++ b/src/catalog/spec_shape.d.ts
 @@ -11,7 +11,7 @@
@@ -101,7 +173,7 @@ index 3cdb17e89f5e3ec01107f84b5820837cc0df37af..61da034a089f669c089e9225c282e407
  /** The reference a common types document is written as when a catalog names none. */
  export declare const DEFAULT_COMMON_TYPES_URI = "common_types.json";
 diff --git a/src/catalog/types.d.ts b/src/catalog/types.d.ts
-index c897b51fe41a562dadbb7e2d9f3d6bc323c508a9..d2e9081adfde5e37f461392ac117c6b09f5f5345 100644
+index d8f45f8..55d000f 100644
 --- a/src/catalog/types.d.ts
 +++ b/src/catalog/types.d.ts
 @@ -1,4 +1,4 @@
@@ -111,7 +183,7 @@ index c897b51fe41a562dadbb7e2d9f3d6bc323c508a9..d2e9081adfde5e37f461392ac117c6b0
  import { DataContext } from '../resolution/data-context.js';
  import { Signal } from '../reactivity/signals.js';
 diff --git a/src/catalog/types.js b/src/catalog/types.js
-index d1c8b8e6030711efa25a811671f028fcd4beebd7..ab410b162962dc474cf02594f1000851c95506d0 100644
+index 5365bd2..4290f2f 100644
 --- a/src/catalog/types.js
 +++ b/src/catalog/types.js
 @@ -13,7 +13,7 @@
@@ -120,11 +192,11 @@ index d1c8b8e6030711efa25a811671f028fcd4beebd7..ab410b162962dc474cf02594f1000851
   */
 -import { z } from 'zod';
 +import { z } from 'zod/v3';
+ import { DataContext } from '../resolution/data-context.js';
+ import { allowsAgentRouting, withActiveCallCatalogId } from '../resolution/data-context-internal.js';
  import { A2uiCatalogError, A2uiExpressionError } from '../errors.js';
- import { isAtLeastVersion } from '../common/semver.js';
- import { isThenable, settleDeep } from '../common/settle_deep.js';
 diff --git a/src/catalog/validation_result_coercion.d.ts b/src/catalog/validation_result_coercion.d.ts
-index a40f75359301432bedba21393344e94f8019bf96..0a572e3483b22c2b29ca90c58f2ecb9bd62c92d9 100644
+index 7485ce7..00468d0 100644
 --- a/src/catalog/validation_result_coercion.d.ts
 +++ b/src/catalog/validation_result_coercion.d.ts
 @@ -1,4 +1,4 @@
@@ -134,7 +206,7 @@ index a40f75359301432bedba21393344e94f8019bf96..0a572e3483b22c2b29ca90c58f2ecb9b
   * The validity a v1.0 `ValidationResult` object carries, or `undefined` when
   * `value` is not one: an object whose `valid` member is a boolean.
 diff --git a/src/catalogs/basic/v1/catalog.d.ts b/src/catalogs/basic/v1/catalog.d.ts
-index 6fcfdb8b39be2549f2d4d089d48855cb3ccb6a77..47955a4b2a028a08f91434862916000e9fb33cc7 100644
+index 6fcfdb8..47955a4 100644
 --- a/src/catalogs/basic/v1/catalog.d.ts
 +++ b/src/catalogs/basic/v1/catalog.d.ts
 @@ -10,5 +10,5 @@ import type { WebComponentImplementation } from '../../../universal/index.js';
@@ -146,7 +218,7 @@ index 6fcfdb8b39be2549f2d4d089d48855cb3ccb6a77..47955a4b2a028a08f91434862916000e
  //# sourceMappingURL=catalog.d.ts.map
 \ No newline at end of file
 diff --git a/src/catalogs/basic/v1/components/basic_components.d.ts b/src/catalogs/basic/v1/components/basic_components.d.ts
-index ff410027cc78babe61bcabb5e1effaf85b111e6a..bf77c1d4df4968dbeccc4bc56a0f8bc4bf696fb4 100644
+index 14997e3..317adf4 100644
 --- a/src/catalogs/basic/v1/components/basic_components.d.ts
 +++ b/src/catalogs/basic/v1/components/basic_components.d.ts
 @@ -1,4 +1,4 @@
@@ -156,7 +228,7 @@ index ff410027cc78babe61bcabb5e1effaf85b111e6a..bf77c1d4df4968dbeccc4bc56a0f8bc4
  export declare const WeightSchema: z.ZodNumber;
  export declare const TextApi: {
 diff --git a/src/catalogs/basic/v1/components/basic_components.js b/src/catalogs/basic/v1/components/basic_components.js
-index 1d4f71a74d24c7cb757bedfa5776bf0dea24b128..e0303ace8d1bf523d9e4917102a6927f5a782561 100644
+index 51c229d..b4be8d2 100644
 --- a/src/catalogs/basic/v1/components/basic_components.js
 +++ b/src/catalogs/basic/v1/components/basic_components.js
 @@ -15,7 +15,7 @@
@@ -169,7 +241,7 @@ index 1d4f71a74d24c7cb757bedfa5776bf0dea24b128..e0303ace8d1bf523d9e4917102a6927f
  import { ActionSchema, CheckRuleSchema, ChildListSchema, ChildSchema, DataBindingSchema, DynamicBooleanSchema, DynamicNumberSchema, DynamicStringListSchema, DynamicStringSchema, } from '../../../../v1_0/schema/common-types.js';
  export const WeightSchema = specDef('Weight', z
 diff --git a/src/catalogs/basic/v1/components/index.d.ts b/src/catalogs/basic/v1/components/index.d.ts
-index f1370b033936a1ea6816baf06564776a910bbf66..26e5a4e9e0e241db900dae2adb83558ca74fa742 100644
+index a29c38f..e3bde78 100644
 --- a/src/catalogs/basic/v1/components/index.d.ts
 +++ b/src/catalogs/basic/v1/components/index.d.ts
 @@ -1,8 +1,8 @@
@@ -255,13 +327,13 @@ index f1370b033936a1ea6816baf06564776a910bbf66..26e5a4e9e0e241db900dae2adb83558c
      url?: any;
  }>>;
 -export declare const A2uiButton: import("../../../../universal/web_component_implementation.js").WebComponentImplementation<import("zod").ZodObject<{
--    checks: import("zod").ZodOptional<import("zod").ZodArray<import("zod").ZodObject<{
+-    '@checks': import("zod").ZodOptional<import("zod").ZodArray<import("zod").ZodObject<{
 -        condition: import("zod").ZodUnion<[import("zod").ZodEffects<import("zod").ZodObject<{
 -            '@path': import("zod").ZodOptional<import("zod").ZodString>;
 -            path: import("zod").ZodOptional<import("zod").ZodString>;
 -        }, "strip", import("zod").ZodTypeAny, {
 +export declare const A2uiButton: import("../../../../universal/web_component_implementation.js").WebComponentImplementation<import("zod/v3").ZodObject<{
-+    checks: import("zod/v3").ZodOptional<import("zod/v3").ZodArray<import("zod/v3").ZodObject<{
++    '@checks': import("zod/v3").ZodOptional<import("zod/v3").ZodArray<import("zod/v3").ZodObject<{
 +        condition: import("zod/v3").ZodUnion<[import("zod/v3").ZodEffects<import("zod/v3").ZodObject<{
 +            '@path': import("zod/v3").ZodOptional<import("zod/v3").ZodString>;
 +            path: import("zod/v3").ZodOptional<import("zod/v3").ZodString>;
@@ -451,13 +523,13 @@ index f1370b033936a1ea6816baf06564776a910bbf66..26e5a4e9e0e241db900dae2adb83558c
      weight?: number | undefined;
  }>>;
 -export declare const A2uiCheckBox: import("../../../../universal/web_component_implementation.js").WebComponentImplementation<import("zod").ZodObject<{
--    checks: import("zod").ZodOptional<import("zod").ZodArray<import("zod").ZodObject<{
+-    '@checks': import("zod").ZodOptional<import("zod").ZodArray<import("zod").ZodObject<{
 -        condition: import("zod").ZodUnion<[import("zod").ZodEffects<import("zod").ZodObject<{
 -            '@path': import("zod").ZodOptional<import("zod").ZodString>;
 -            path: import("zod").ZodOptional<import("zod").ZodString>;
 -        }, "strip", import("zod").ZodTypeAny, {
 +export declare const A2uiCheckBox: import("../../../../universal/web_component_implementation.js").WebComponentImplementation<import("zod/v3").ZodObject<{
-+    checks: import("zod/v3").ZodOptional<import("zod/v3").ZodArray<import("zod/v3").ZodObject<{
++    '@checks': import("zod/v3").ZodOptional<import("zod/v3").ZodArray<import("zod/v3").ZodObject<{
 +        condition: import("zod/v3").ZodUnion<[import("zod/v3").ZodEffects<import("zod/v3").ZodObject<{
 +            '@path': import("zod/v3").ZodOptional<import("zod/v3").ZodString>;
 +            path: import("zod/v3").ZodOptional<import("zod/v3").ZodString>;
@@ -572,19 +644,19 @@ index f1370b033936a1ea6816baf06564776a910bbf66..26e5a4e9e0e241db900dae2adb83558c
 +}, "strict", import("zod/v3").ZodTypeAny, {
      value?: any;
      label?: any;
-     checks?: {
+     '@checks'?: {
 @@ -434,12 +434,12 @@ export declare const A2uiCheckBox: import("../../../../universal/web_component_i
      }[] | undefined;
      weight?: number | undefined;
  }>>;
 -export declare const A2uiChoicePicker: import("../../../../universal/web_component_implementation.js").WebComponentImplementation<import("zod").ZodObject<{
--    checks: import("zod").ZodOptional<import("zod").ZodArray<import("zod").ZodObject<{
+-    '@checks': import("zod").ZodOptional<import("zod").ZodArray<import("zod").ZodObject<{
 -        condition: import("zod").ZodUnion<[import("zod").ZodEffects<import("zod").ZodObject<{
 -            '@path': import("zod").ZodOptional<import("zod").ZodString>;
 -            path: import("zod").ZodOptional<import("zod").ZodString>;
 -        }, "strip", import("zod").ZodTypeAny, {
 +export declare const A2uiChoicePicker: import("../../../../universal/web_component_implementation.js").WebComponentImplementation<import("zod/v3").ZodObject<{
-+    checks: import("zod/v3").ZodOptional<import("zod/v3").ZodArray<import("zod/v3").ZodObject<{
++    '@checks': import("zod/v3").ZodOptional<import("zod/v3").ZodArray<import("zod/v3").ZodObject<{
 +        condition: import("zod/v3").ZodUnion<[import("zod/v3").ZodEffects<import("zod/v3").ZodObject<{
 +            '@path': import("zod/v3").ZodOptional<import("zod/v3").ZodString>;
 +            path: import("zod/v3").ZodOptional<import("zod/v3").ZodString>;
@@ -788,13 +860,13 @@ index f1370b033936a1ea6816baf06564776a910bbf66..26e5a4e9e0e241db900dae2adb83558c
      align?: "start" | "center" | "end" | "stretch" | undefined;
  }>>;
 -export declare const A2uiDateTimeInput: import("../../../../universal/web_component_implementation.js").WebComponentImplementation<import("zod").ZodObject<{
--    checks: import("zod").ZodOptional<import("zod").ZodArray<import("zod").ZodObject<{
+-    '@checks': import("zod").ZodOptional<import("zod").ZodArray<import("zod").ZodObject<{
 -        condition: import("zod").ZodUnion<[import("zod").ZodEffects<import("zod").ZodObject<{
 -            '@path': import("zod").ZodOptional<import("zod").ZodString>;
 -            path: import("zod").ZodOptional<import("zod").ZodString>;
 -        }, "strip", import("zod").ZodTypeAny, {
 +export declare const A2uiDateTimeInput: import("../../../../universal/web_component_implementation.js").WebComponentImplementation<import("zod/v3").ZodObject<{
-+    checks: import("zod/v3").ZodOptional<import("zod/v3").ZodArray<import("zod/v3").ZodObject<{
++    '@checks': import("zod/v3").ZodOptional<import("zod/v3").ZodArray<import("zod/v3").ZodObject<{
 +        condition: import("zod/v3").ZodUnion<[import("zod/v3").ZodEffects<import("zod/v3").ZodObject<{
 +            '@path': import("zod/v3").ZodOptional<import("zod/v3").ZodString>;
 +            path: import("zod/v3").ZodOptional<import("zod/v3").ZodString>;
@@ -981,7 +1053,7 @@ index f1370b033936a1ea6816baf06564776a910bbf66..26e5a4e9e0e241db900dae2adb83558c
 +}, "strict", import("zod/v3").ZodTypeAny, {
      value?: any;
      label?: any;
-     checks?: {
+     '@checks'?: {
 @@ -881,22 +881,22 @@ export declare const A2uiDateTimeInput: import("../../../../universal/web_compon
      enableDate?: boolean | undefined;
      enableTime?: boolean | undefined;
@@ -1062,7 +1134,7 @@ index f1370b033936a1ea6816baf06564776a910bbf66..26e5a4e9e0e241db900dae2adb83558c
 -}, "strict", import("zod").ZodTypeAny, {
 +    weight: import("zod/v3").ZodOptional<import("zod/v3").ZodNumber>;
 +}, "strict", import("zod/v3").ZodTypeAny, {
-     name: "call" | "event" | "error" | "add" | "accountCircle" | "arrowBack" | "arrowForward" | "attachFile" | "calendarToday" | "camera" | "check" | "close" | "delete" | "download" | "edit" | "favorite" | "favoriteOff" | "folder" | "help" | "home" | "info" | "locationOn" | "lock" | "lockOpen" | "mail" | "menu" | "moreVert" | "moreHoriz" | "notificationsOff" | "notifications" | "payment" | "person" | "phone" | "photo" | "print" | "refresh" | "search" | "send" | "settings" | "share" | "shoppingCart" | "star" | "starHalf" | "starOff" | "upload" | "visibility" | "visibilityOff" | "warning" | {
+     name: "call" | "event" | "error" | "accountCircle" | "add" | "arrowBack" | "arrowForward" | "attachFile" | "calendarToday" | "camera" | "check" | "close" | "delete" | "download" | "edit" | "favorite" | "favoriteOff" | "folder" | "help" | "home" | "info" | "locationOn" | "lock" | "lockOpen" | "mail" | "menu" | "moreVert" | "moreHoriz" | "notificationsOff" | "notifications" | "payment" | "person" | "phone" | "photo" | "print" | "refresh" | "search" | "send" | "settings" | "share" | "shoppingCart" | "star" | "starHalf" | "starOff" | "upload" | "visibility" | "visibilityOff" | "warning" | {
          path?: string | undefined;
          '@path'?: string | undefined;
 @@ -967,11 +967,11 @@ export declare const A2uiIcon: import("../../../../universal/web_component_imple
@@ -1195,11 +1267,11 @@ index f1370b033936a1ea6816baf06564776a910bbf66..26e5a4e9e0e241db900dae2adb83558c
 +    content: import("zod/v3").ZodString;
 +    weight: import("zod/v3").ZodOptional<import("zod/v3").ZodNumber>;
 +}, "strict", import("zod/v3").ZodTypeAny, {
-     content: string;
      trigger: string;
+     content: string;
      weight?: number | undefined;
 @@ -1100,21 +1100,21 @@ export declare const A2uiModal: import("../../../../universal/web_component_impl
-     trigger: string;
+     content: string;
      weight?: number | undefined;
  }>>;
 -export declare const A2uiRow: import("../../../../universal/web_component_implementation.js").WebComponentImplementation<import("zod").ZodObject<{
@@ -1234,13 +1306,13 @@ index f1370b033936a1ea6816baf06564776a910bbf66..26e5a4e9e0e241db900dae2adb83558c
      align?: "start" | "center" | "end" | "stretch" | undefined;
  }>>;
 -export declare const A2uiSlider: import("../../../../universal/web_component_implementation.js").WebComponentImplementation<import("zod").ZodObject<{
--    checks: import("zod").ZodOptional<import("zod").ZodArray<import("zod").ZodObject<{
+-    '@checks': import("zod").ZodOptional<import("zod").ZodArray<import("zod").ZodObject<{
 -        condition: import("zod").ZodUnion<[import("zod").ZodEffects<import("zod").ZodObject<{
 -            '@path': import("zod").ZodOptional<import("zod").ZodString>;
 -            path: import("zod").ZodOptional<import("zod").ZodString>;
 -        }, "strip", import("zod").ZodTypeAny, {
 +export declare const A2uiSlider: import("../../../../universal/web_component_implementation.js").WebComponentImplementation<import("zod/v3").ZodObject<{
-+    checks: import("zod/v3").ZodOptional<import("zod/v3").ZodArray<import("zod/v3").ZodObject<{
++    '@checks': import("zod/v3").ZodOptional<import("zod/v3").ZodArray<import("zod/v3").ZodObject<{
 +        condition: import("zod/v3").ZodUnion<[import("zod/v3").ZodEffects<import("zod/v3").ZodObject<{
 +            '@path': import("zod/v3").ZodOptional<import("zod/v3").ZodString>;
 +            path: import("zod/v3").ZodOptional<import("zod/v3").ZodString>;
@@ -1475,13 +1547,13 @@ index f1370b033936a1ea6816baf06564776a910bbf66..26e5a4e9e0e241db900dae2adb83558c
      variant?: "caption" | "body" | undefined;
  }>>;
 -export declare const A2uiTextField: import("../../../../universal/web_component_implementation.js").WebComponentImplementation<import("zod").ZodObject<{
--    checks: import("zod").ZodOptional<import("zod").ZodArray<import("zod").ZodObject<{
+-    '@checks': import("zod").ZodOptional<import("zod").ZodArray<import("zod").ZodObject<{
 -        condition: import("zod").ZodUnion<[import("zod").ZodEffects<import("zod").ZodObject<{
 -            '@path': import("zod").ZodOptional<import("zod").ZodString>;
 -            path: import("zod").ZodOptional<import("zod").ZodString>;
 -        }, "strip", import("zod").ZodTypeAny, {
 +export declare const A2uiTextField: import("../../../../universal/web_component_implementation.js").WebComponentImplementation<import("zod/v3").ZodObject<{
-+    checks: import("zod/v3").ZodOptional<import("zod/v3").ZodArray<import("zod/v3").ZodObject<{
++    '@checks': import("zod/v3").ZodOptional<import("zod/v3").ZodArray<import("zod/v3").ZodObject<{
 +        condition: import("zod/v3").ZodUnion<[import("zod/v3").ZodEffects<import("zod/v3").ZodObject<{
 +            '@path': import("zod/v3").ZodOptional<import("zod/v3").ZodString>;
 +            path: import("zod/v3").ZodOptional<import("zod/v3").ZodString>;
@@ -1555,12 +1627,12 @@ index f1370b033936a1ea6816baf06564776a910bbf66..26e5a4e9e0e241db900dae2adb83558c
          '@call'?: string | undefined;
          catalogId?: string | undefined;
 -    }>, import("zod").ZodAny>>]>;
--    value: import("zod").ZodOptional<import("zod").ZodUnion<[import("zod").ZodString, import("zod").ZodEffects<import("zod").ZodObject<{
+-    value: import("zod").ZodUnion<[import("zod").ZodString, import("zod").ZodEffects<import("zod").ZodObject<{
 -        '@path': import("zod").ZodOptional<import("zod").ZodString>;
 -        path: import("zod").ZodOptional<import("zod").ZodString>;
 -    }, "strip", import("zod").ZodTypeAny, {
 +    }>, import("zod/v3").ZodAny>>]>;
-+    value: import("zod/v3").ZodOptional<import("zod/v3").ZodUnion<[import("zod/v3").ZodString, import("zod/v3").ZodEffects<import("zod/v3").ZodObject<{
++    value: import("zod/v3").ZodUnion<[import("zod/v3").ZodString, import("zod/v3").ZodEffects<import("zod/v3").ZodObject<{
 +        '@path': import("zod/v3").ZodOptional<import("zod/v3").ZodString>;
 +        path: import("zod/v3").ZodOptional<import("zod/v3").ZodString>;
 +    }, "strip", import("zod/v3").ZodTypeAny, {
@@ -1588,12 +1660,12 @@ index f1370b033936a1ea6816baf06564776a910bbf66..26e5a4e9e0e241db900dae2adb83558c
          call?: string | undefined;
          '@call'?: string | undefined;
          catalogId?: string | undefined;
--    }>, import("zod").ZodAny>>]>>;
+-    }>, import("zod").ZodAny>>]>;
 -    placeholder: import("zod").ZodOptional<import("zod").ZodUnion<[import("zod").ZodString, import("zod").ZodEffects<import("zod").ZodObject<{
 -        '@path': import("zod").ZodOptional<import("zod").ZodString>;
 -        path: import("zod").ZodOptional<import("zod").ZodString>;
 -    }, "strip", import("zod").ZodTypeAny, {
-+    }>, import("zod/v3").ZodAny>>]>>;
++    }>, import("zod/v3").ZodAny>>]>;
 +    placeholder: import("zod/v3").ZodOptional<import("zod/v3").ZodUnion<[import("zod/v3").ZodString, import("zod/v3").ZodEffects<import("zod/v3").ZodObject<{
 +        '@path': import("zod/v3").ZodOptional<import("zod/v3").ZodString>;
 +        path: import("zod/v3").ZodOptional<import("zod/v3").ZodString>;
@@ -1632,7 +1704,7 @@ index f1370b033936a1ea6816baf06564776a910bbf66..26e5a4e9e0e241db900dae2adb83558c
 +}, "strict", import("zod/v3").ZodTypeAny, {
      value?: any;
      label?: any;
-     checks?: {
+     '@checks'?: {
 @@ -1561,11 +1561,11 @@ export declare const A2uiTextField: import("../../../../universal/web_component_
      variant?: "number" | "shortText" | "longText" | "obscured" | undefined;
      placeholder?: any;
@@ -1715,7 +1787,7 @@ index f1370b033936a1ea6816baf06564776a910bbf66..26e5a4e9e0e241db900dae2adb83558c
      url?: any;
      posterUrl?: any;
 diff --git a/src/catalogs/basic/v1/functions/basic_functions_api.d.ts b/src/catalogs/basic/v1/functions/basic_functions_api.d.ts
-index b8374b5554917787fe31cdbb2d026a0a66aea853..e5e9fcb482fc27993b1d2380fc98f6d9b9ed55ce 100644
+index d3cc506..5bb285f 100644
 --- a/src/catalogs/basic/v1/functions/basic_functions_api.d.ts
 +++ b/src/catalogs/basic/v1/functions/basic_functions_api.d.ts
 @@ -1,4 +1,4 @@
@@ -1725,7 +1797,7 @@ index b8374b5554917787fe31cdbb2d026a0a66aea853..e5e9fcb482fc27993b1d2380fc98f6d9
   * Checks that the value is not null, undefined, or empty.
   */
 diff --git a/src/catalogs/basic/v1/functions/basic_functions_api.js b/src/catalogs/basic/v1/functions/basic_functions_api.js
-index 36b918f6ceb8e595ccd708ab9640d18f32da6472..037d9e2f15e318f12153c77fb08f6346b421458e 100644
+index 2411514..f3e06c2 100644
 --- a/src/catalogs/basic/v1/functions/basic_functions_api.js
 +++ b/src/catalogs/basic/v1/functions/basic_functions_api.js
 @@ -15,7 +15,7 @@
@@ -1738,7 +1810,7 @@ index 36b918f6ceb8e595ccd708ab9640d18f32da6472..037d9e2f15e318f12153c77fb08f6346
  import { DataBindingSchema, DynamicBooleanSchema, DynamicNumberSchema, DynamicStringSchema, DynamicValueSchema, FunctionCallSchema, } from '../../../../v1_0/schema/common-types.js';
  /**
 diff --git a/src/processing/adapters/base.d.ts b/src/processing/adapters/base.d.ts
-index 593847b206a17d52449136ccb5f3a6d6a87820c9..abe45a8b0bbf0babaea38377bfd26f0d0fc0fd1b 100644
+index 982662d..88e1c95 100644
 --- a/src/processing/adapters/base.d.ts
 +++ b/src/processing/adapters/base.d.ts
 @@ -1,4 +1,4 @@
@@ -1747,8 +1819,21 @@ index 593847b206a17d52449136ccb5f3a6d6a87820c9..abe45a8b0bbf0babaea38377bfd26f0d
  import { InternalOperation } from '../operations.js';
  import { SemVer } from '../../common/semver.js';
  /**
+diff --git a/src/processing/adapters/base.js b/src/processing/adapters/base.js
+index f55a8a2..1ec5f8a 100644
+--- a/src/processing/adapters/base.js
++++ b/src/processing/adapters/base.js
+@@ -13,7 +13,7 @@
+  * See the License for the specific language governing permissions and
+  * limitations under the License.
+  */
+-import { z } from 'zod';
++import { z } from 'zod/v3';
+ import { A2uiValidationError } from '../../errors.js';
+ import { formatZodIssue } from '../format-zod-issue.js';
+ import { extractEnvelopeErrorContext, mapErrorToRendererMessage } from '../message-error-mapper.js';
 diff --git a/src/processing/adapters/v0_8.d.ts b/src/processing/adapters/v0_8.d.ts
-index 219f16510dc5104a6a60c6e357d8738d9b4426f1..397c73d771786917669d2a805659a3441cf456df 100644
+index 219f165..397c73d 100644
 --- a/src/processing/adapters/v0_8.d.ts
 +++ b/src/processing/adapters/v0_8.d.ts
 @@ -5,22 +5,22 @@ import { InternalOperation } from '../operations.js';
@@ -1851,7 +1936,7 @@ index 219f16510dc5104a6a60c6e357d8738d9b4426f1..397c73d771786917669d2a805659a344
              surfaceId: string;
          } | undefined;
 diff --git a/src/processing/adapters/v0_9.d.ts b/src/processing/adapters/v0_9.d.ts
-index 512ca43f11d9ba3b935b9251a8889482a5a6982e..bee6861808b64d61aa621de7b3a3223b8f633dab 100644
+index 512ca43..bee6861 100644
 --- a/src/processing/adapters/v0_9.d.ts
 +++ b/src/processing/adapters/v0_9.d.ts
 @@ -5,14 +5,14 @@ import { InternalOperation } from '../operations.js';
@@ -1967,7 +2052,7 @@ index 512ca43f11d9ba3b935b9251a8889482a5a6982e..bee6861808b64d61aa621de7b3a3223b
              surfaceId: string;
          };
 diff --git a/src/processing/adapters/v1_0.d.ts b/src/processing/adapters/v1_0.d.ts
-index 5040d4e4299a58b25a7d2617b97f1ac6181d3a6f..b85280b2cb6f43ea404fd2d2c8e92b7749480ed7 100644
+index 4cca79f..3f900fb 100644
 --- a/src/processing/adapters/v1_0.d.ts
 +++ b/src/processing/adapters/v1_0.d.ts
 @@ -5,22 +5,22 @@ import { InternalOperation } from '../operations.js';
@@ -2004,9 +2089,9 @@ index 5040d4e4299a58b25a7d2617b97f1ac6181d3a6f..b85280b2cb6f43ea404fd2d2c8e92b77
 +        }, "strict", import("zod/v3").ZodTypeAny, {
              surfaceId: string;
              catalogId?: string | undefined;
-             metadata?: {
-@@ -39,7 +39,7 @@ export declare class V1Point0Adapter extends BaseVersionAdapter {
              components?: any[] | undefined;
+@@ -39,7 +39,7 @@ export declare class V1Point0Adapter extends BaseVersionAdapter {
+             dataModel?: Record<string, any> | undefined;
              sendDataModel?: boolean | undefined;
          }>;
 -    }, "strict", import("zod").ZodTypeAny, {
@@ -2196,7 +2281,7 @@ index 5040d4e4299a58b25a7d2617b97f1ac6181d3a6f..b85280b2cb6f43ea404fd2d2c8e92b77
              functionCallId: string;
              value?: any;
 diff --git a/src/processing/format-zod-issue.d.ts b/src/processing/format-zod-issue.d.ts
-index 5bd0006274ef7e28ae1a2526c5dfbe075de868b2..9de70ad5855a15d1576331686a75d9245e9dd687 100644
+index 5bd0006..9de70ad 100644
 --- a/src/processing/format-zod-issue.d.ts
 +++ b/src/processing/format-zod-issue.d.ts
 @@ -1,4 +1,4 @@
@@ -2206,7 +2291,7 @@ index 5bd0006274ef7e28ae1a2526c5dfbe075de868b2..9de70ad5855a15d1576331686a75d924
   * Formats a single Zod issue into a human-readable diagnostic message.
   *
 diff --git a/src/processing/format-zod-issue.js b/src/processing/format-zod-issue.js
-index 72e8fb0aa534cc1f7cc9546727fd36e1d8c35954..baf47fc89eb9f51300414e4e6334551fe504b99f 100644
+index 72e8fb0..baf47fc 100644
 --- a/src/processing/format-zod-issue.js
 +++ b/src/processing/format-zod-issue.js
 @@ -13,7 +13,7 @@
@@ -2219,7 +2304,7 @@ index 72e8fb0aa534cc1f7cc9546727fd36e1d8c35954..baf47fc89eb9f51300414e4e6334551f
   * Formats a single Zod issue into a human-readable diagnostic message.
   *
 diff --git a/src/processing/message-error-mapper.js b/src/processing/message-error-mapper.js
-index 14830a8638cccff4aa338c266a7bc9f57a70caed..946177e235e36d90b792be188c32cb9057e5e370 100644
+index 14830a8..946177e 100644
 --- a/src/processing/message-error-mapper.js
 +++ b/src/processing/message-error-mapper.js
 @@ -13,7 +13,7 @@
@@ -2232,7 +2317,7 @@ index 14830a8638cccff4aa338c266a7bc9f57a70caed..946177e235e36d90b792be188c32cb90
  import { A2uiCatalogError, A2uiDataError, A2uiError, A2uiExpressionError, A2uiIntegrityError, A2uiRecursionError, A2uiRpcError, A2uiStateError, A2uiValidationError, } from '../errors.js';
  /** Known top-level action envelope keys across A2UI protocol versions. */
 diff --git a/src/resolution/data-context.d.ts b/src/resolution/data-context.d.ts
-index f396bb3942b95ba80cbda603bb08ae75394ceae9..299e46a0044855eb96fc4f5481a691b8a71b49b0 100644
+index b0ced56..1a84f0b 100644
 --- a/src/resolution/data-context.d.ts
 +++ b/src/resolution/data-context.d.ts
 @@ -1,5 +1,5 @@
@@ -2243,7 +2328,7 @@ index f396bb3942b95ba80cbda603bb08ae75394ceae9..299e46a0044855eb96fc4f5481a691b8
  import { type Action } from '../types/common-types.js';
  import { FunctionInvoker } from '../catalog/function_invoker.js';
 diff --git a/src/resolution/data-context.js b/src/resolution/data-context.js
-index 12ef7db1fce37d8dbf2b882a537557555d36771b..cbc23af6272ad9c1c7286c3663b1a0ba72f33a48 100644
+index 3bac407..9394e76 100644
 --- a/src/resolution/data-context.js
 +++ b/src/resolution/data-context.js
 @@ -14,7 +14,7 @@
@@ -2254,29 +2339,29 @@ index 12ef7db1fce37d8dbf2b882a537557555d36771b..cbc23af6272ad9c1c7286c3663b1a0ba
 +import { z } from 'zod/v3';
  import { DataModel } from '../state/data-model.js';
  import { MAX_FUNCTION_CALL_ARGS } from '../types/helpers.js';
- import { A2uiCatalogError, A2uiExpressionError, A2uiValidationError } from '../errors.js';
+ import { A2uiCatalogError, A2uiExpressionError, A2uiRpcError, A2uiValidationError, RpcErrorCode, } from '../errors.js';
 diff --git a/src/resolution/generic-binder.d.ts b/src/resolution/generic-binder.d.ts
-index 9a57f4241c7efea140d6ab2eb91386e8b23335fb..fc8782a2cadd9d80b2e2fb37de6404ff591f4000 100644
+index 68ecffa..f96e133 100644
 --- a/src/resolution/generic-binder.d.ts
 +++ b/src/resolution/generic-binder.d.ts
 @@ -1,4 +1,4 @@
 -import { z } from 'zod';
 +import { z } from 'zod/v3';
- import { ComponentContext } from './component-context.js';
+ import { ActionDispatchOptions } from '../common/metadata.js';
  import { Action, CheckRule, ChildList, DataBinding, FunctionCall } from '../types/common-types.js';
  import type { Action as V1Action, CheckRule as V1CheckRule } from '../v1_0/schema/common-types.js';
 diff --git a/src/resolution/ref-fields.d.ts b/src/resolution/ref-fields.d.ts
-index 45e4789549bf50299f80e9cb8028685a08ced596..feade7cf3f800a8a0ec929ae12a849b2e3d8eb4b 100644
+index ec64b4e..21ccea3 100644
 --- a/src/resolution/ref-fields.d.ts
 +++ b/src/resolution/ref-fields.d.ts
 @@ -1,4 +1,4 @@
 -import { z } from 'zod';
 +import { z } from 'zod/v3';
+ import { type ChildRefKind } from '../types/child-ref-helpers.js';
  /**
-  * Describes how a component schema property references child components.
-  */
+  * Options for configuring child reference analysis.
 diff --git a/src/types/child-ref-helpers.d.ts b/src/types/child-ref-helpers.d.ts
-index de4d0616880b353bb6973b1ea1f4eca47486b828..4f95c1ff16820c998392a2d5d38e3915284f1f10 100644
+index de4d061..4f95c1f 100644
 --- a/src/types/child-ref-helpers.d.ts
 +++ b/src/types/child-ref-helpers.d.ts
 @@ -1,4 +1,4 @@
@@ -2286,7 +2371,7 @@ index de4d0616880b353bb6973b1ea1f4eca47486b828..4f95c1ff16820c998392a2d5d38e3915
   * Classification kind for a schema marked as a child reference.
   */
 diff --git a/src/types/common-types.d.ts b/src/types/common-types.d.ts
-index b7a21de0b4c694e6c1b2f24be27e5cb82fd12d08..af25c9a49afc0ab0a709b728cf72287f7cc8c1f4 100644
+index e3543dd..edc8e02 100644
 --- a/src/types/common-types.d.ts
 +++ b/src/types/common-types.d.ts
 @@ -11,7 +11,7 @@
@@ -2299,7 +2384,7 @@ index b7a21de0b4c694e6c1b2f24be27e5cb82fd12d08..af25c9a49afc0ab0a709b728cf72287f
  /** REF:common_types.json#/$defs/ComponentId|The unique identifier for a component, used for both definitions and references within the same surface. */
  export type ComponentId = z.infer<typeof ComponentIdSchema>;
 diff --git a/src/types/common-types.js b/src/types/common-types.js
-index 506cd17e7589eece411569e47e85733603e9cfdf..be1cb24668257789be11913b03f678743a9d1a9e 100644
+index 740f7e6..9c79850 100644
 --- a/src/types/common-types.js
 +++ b/src/types/common-types.js
 @@ -28,7 +28,7 @@
@@ -2312,7 +2397,7 @@ index 506cd17e7589eece411569e47e85733603e9cfdf..be1cb24668257789be11913b03f67874
  import { markChildRef } from './child-ref-helpers.js';
  export const ComponentIdSchema = markChildRef(z
 diff --git a/src/types/helpers.d.ts b/src/types/helpers.d.ts
-index 4d53bd40ab1227773e04357a57a1b66af3ffedb0..3077d4503863372781a6a073c9881f26bc179468 100644
+index 4d53bd4..3077d45 100644
 --- a/src/types/helpers.d.ts
 +++ b/src/types/helpers.d.ts
 @@ -1,4 +1,4 @@
@@ -2322,7 +2407,7 @@ index 4d53bd40ab1227773e04357a57a1b66af3ffedb0..3077d4503863372781a6a073c9881f26
  import { ChildListSchema, ComponentIdSchema } from './common-types.js';
  export { type ChildRefKind, type RefSchemaOptions, markChildRef, childRefKindOf };
 diff --git a/src/types/helpers.js b/src/types/helpers.js
-index 56e080e067da3a707aa585db2a7bcbbc84b70d01..a0ac455cdc0f88724f77f9f3c60d512f3252f2c7 100644
+index 56e080e..a0ac455 100644
 --- a/src/types/helpers.js
 +++ b/src/types/helpers.js
 @@ -13,7 +13,7 @@
@@ -2335,7 +2420,7 @@ index 56e080e067da3a707aa585db2a7bcbbc84b70d01..a0ac455cdc0f88724f77f9f3c60d512f
  import { ChildListSchema, ComponentIdSchema } from './common-types.js';
  export { markChildRef, childRefKindOf };
 diff --git a/src/universal/basic_catalog/theme.d.ts b/src/universal/basic_catalog/theme.d.ts
-index e3a43b730312e4a0d10864a0b28ea52974adc00c..1edc4ea659499e3ee00b31f022758817a3feb506 100644
+index 57ff99b..335eb85 100644
 --- a/src/universal/basic_catalog/theme.d.ts
 +++ b/src/universal/basic_catalog/theme.d.ts
 @@ -1,4 +1,4 @@
@@ -2345,7 +2430,7 @@ index e3a43b730312e4a0d10864a0b28ea52974adc00c..1edc4ea659499e3ee00b31f022758817
  export declare function isValidCssColor(color: unknown): boolean;
  /**
 diff --git a/src/universal/basic_catalog/theme.js b/src/universal/basic_catalog/theme.js
-index d908af92c1a12ced1922fedd2cec6b1f2586bd0a..564ee4d97a5e23a09005500928d6e927e19d1488 100644
+index 9562ca6..0beaf3a 100644
 --- a/src/universal/basic_catalog/theme.js
 +++ b/src/universal/basic_catalog/theme.js
 @@ -13,7 +13,7 @@
@@ -2357,8 +2442,21 @@ index d908af92c1a12ced1922fedd2cec6b1f2586bd0a..564ee4d97a5e23a09005500928d6e927
  import validateColor from 'validate-color';
  export const HEX_COLOR_REGEX = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
  /**
+diff --git a/src/universal/host_accessibility.d.ts b/src/universal/host_accessibility.d.ts
+index 066beec..04a193c 100644
+--- a/src/universal/host_accessibility.d.ts
++++ b/src/universal/host_accessibility.d.ts
+@@ -10,7 +10,7 @@
+  * `aria-describedby` pointing at the element the component marks as showing
+  * them.
+  */
+-import type { z } from 'zod';
++import type { z } from 'zod/v3';
+ import { type Signal } from '../reactivity/signals.js';
+ import type { ComponentNode } from '../resolution/component-node.js';
+ import type { ResolveA2uiProp } from '../resolution/generic-binder.js';
 diff --git a/src/universal/web_component_implementation.d.ts b/src/universal/web_component_implementation.d.ts
-index f4ad52c13335eb73d956a2b3f875aad9c6f0c4be..3bd81987e8cd71d0931aaf834b2f46f8e84c529f 100644
+index f4ad52c..3bd8198 100644
 --- a/src/universal/web_component_implementation.d.ts
 +++ b/src/universal/web_component_implementation.d.ts
 @@ -1,4 +1,4 @@
@@ -2368,7 +2466,7 @@ index f4ad52c13335eb73d956a2b3f875aad9c6f0c4be..3bd81987e8cd71d0931aaf834b2f46f8
  /**
   * An implementation of a UI component using Web Components (Custom Elements).
 diff --git a/src/v0_8/basic_catalog/catalog.d.ts b/src/v0_8/basic_catalog/catalog.d.ts
-index 7d3415b180056f40e695548ceeaa550f4ae438cb..e82822aff066b95efab3968e31721b2d3aad14fe 100644
+index 7d3415b..e82822a 100644
 --- a/src/v0_8/basic_catalog/catalog.d.ts
 +++ b/src/v0_8/basic_catalog/catalog.d.ts
 @@ -14,5 +14,5 @@ export declare const BASIC_CATALOG_ID = "https://a2ui.org/specification/v0_8/sta
@@ -2380,7 +2478,7 @@ index 7d3415b180056f40e695548ceeaa550f4ae438cb..e82822aff066b95efab3968e31721b2d
  //# sourceMappingURL=catalog.d.ts.map
 \ No newline at end of file
 diff --git a/src/v0_8/basic_catalog/components/basic_components.d.ts b/src/v0_8/basic_catalog/components/basic_components.d.ts
-index f3e331cff4f84864d1a614de0874f7aa02b59add..54f377fb0f39f222e211eebc07b96844a54850f1 100644
+index 23538c4..c13aae1 100644
 --- a/src/v0_8/basic_catalog/components/basic_components.d.ts
 +++ b/src/v0_8/basic_catalog/components/basic_components.d.ts
 @@ -1,4 +1,4 @@
@@ -2390,7 +2488,7 @@ index f3e331cff4f84864d1a614de0874f7aa02b59add..54f377fb0f39f222e211eebc07b96844
  export declare const TextApi: {
      name: string;
 diff --git a/src/v0_8/basic_catalog/components/basic_components.js b/src/v0_8/basic_catalog/components/basic_components.js
-index 97875e52eb8e5858321fc5810ba28b7b3e6bef42..4a7d57f1cfa13a0e766ef1beb5e56d33e55d9e0a 100644
+index 97875e5..4a7d57f 100644
 --- a/src/v0_8/basic_catalog/components/basic_components.js
 +++ b/src/v0_8/basic_catalog/components/basic_components.js
 @@ -16,7 +16,7 @@
@@ -2403,7 +2501,7 @@ index 97875e52eb8e5858321fc5810ba28b7b3e6bef42..4a7d57f1cfa13a0e766ef1beb5e56d33
  export const TextApi = {
      name: 'Text',
 diff --git a/src/v0_8/schema/common-types.d.ts b/src/v0_8/schema/common-types.d.ts
-index d560a30064779c259df5ead3ac41e236041a3045..72a47f8a6c3b20055714bea9b8b7d71934b95425 100644
+index d560a30..72a47f8 100644
 --- a/src/v0_8/schema/common-types.d.ts
 +++ b/src/v0_8/schema/common-types.d.ts
 @@ -1,4 +1,4 @@
@@ -2413,7 +2511,7 @@ index d560a30064779c259df5ead3ac41e236041a3045..72a47f8a6c3b20055714bea9b8b7d719
      path: z.ZodOptional<z.ZodString>;
      literalString: z.ZodOptional<z.ZodString>;
 diff --git a/src/v0_8/schema/common-types.js b/src/v0_8/schema/common-types.js
-index a155b3ceaf2cd0a3397a3d8529fae84642c84686..8f7eeff7c19c01c9f6d6b999af8cf79121f2057a 100644
+index a155b3c..8f7eeff 100644
 --- a/src/v0_8/schema/common-types.js
 +++ b/src/v0_8/schema/common-types.js
 @@ -13,7 +13,7 @@
@@ -2426,7 +2524,7 @@ index a155b3ceaf2cd0a3397a3d8529fae84642c84686..8f7eeff7c19c01c9f6d6b999af8cf791
   * Base primitives
   */
 diff --git a/src/v0_8/schema/server-to-client.d.ts b/src/v0_8/schema/server-to-client.d.ts
-index fc846538c7d4aa789a0f59b57eb77c60b48f58bf..3831891f1ff9715ec771adfbb2baf6ccb863cfeb 100644
+index fc84653..3831891 100644
 --- a/src/v0_8/schema/server-to-client.d.ts
 +++ b/src/v0_8/schema/server-to-client.d.ts
 @@ -1,4 +1,4 @@
@@ -2436,7 +2534,7 @@ index fc846538c7d4aa789a0f59b57eb77c60b48f58bf..3831891f1ff9715ec771adfbb2baf6cc
  export declare const ComponentPropertiesSchema: z.ZodEffects<z.ZodRecord<z.ZodString, z.ZodAny>, Record<string, any>, Record<string, any>>;
  export declare const AnyComponentSchema: z.ZodEffects<z.ZodRecord<z.ZodString, z.ZodAny>, Record<string, any>, Record<string, any>>;
 diff --git a/src/v0_8/schema/server-to-client.js b/src/v0_8/schema/server-to-client.js
-index 46192fdfe44b2781ce463619043380285c556da3..f8600ec7f5ae31bf51c6c54dc203ff8d565cd29f 100644
+index 6c242fa..b03bea3 100644
 --- a/src/v0_8/schema/server-to-client.js
 +++ b/src/v0_8/schema/server-to-client.js
 @@ -13,7 +13,7 @@
@@ -2449,7 +2547,7 @@ index 46192fdfe44b2781ce463619043380285c556da3..f8600ec7f5ae31bf51c6c54dc203ff8d
  const _validateValueProperty = (val, ctx) => {
      let count = 0;
 diff --git a/src/v0_8/types/components.d.ts b/src/v0_8/types/components.d.ts
-index dc74449e85ea133938ad9c1d2aa33bb6727215f6..9aa8b94f550076a60abefe298491fe850def3fb0 100644
+index dc74449..9aa8b94 100644
 --- a/src/v0_8/types/components.d.ts
 +++ b/src/v0_8/types/components.d.ts
 @@ -1,4 +1,4 @@
@@ -2459,7 +2557,7 @@ index dc74449e85ea133938ad9c1d2aa33bb6727215f6..9aa8b94f550076a60abefe298491fe85
  export declare interface Action extends z.infer<typeof ActionSchema> {
  }
 diff --git a/src/v0_8/types/primitives.d.ts b/src/v0_8/types/primitives.d.ts
-index 63d88cbd1335c2eb12e1847c0e07a4457d338f17..a189cd8d6f6ffe166fa304e9c5640f8bad5047fc 100644
+index 63d88cb..a189cd8 100644
 --- a/src/v0_8/types/primitives.d.ts
 +++ b/src/v0_8/types/primitives.d.ts
 @@ -1,4 +1,4 @@
@@ -2469,7 +2567,7 @@ index 63d88cbd1335c2eb12e1847c0e07a4457d338f17..a189cd8d6f6ffe166fa304e9c5640f8b
  export declare interface StringValue extends z.infer<typeof StringValueSchema> {
  }
 diff --git a/src/v0_8/types/types.d.ts b/src/v0_8/types/types.d.ts
-index 6bfac5d1b12fd7609a1e2ace8bed9c39f53c9b28..4b5fe36d33455255b1f10a2626cf1f8f2a6e86b7 100644
+index 6bfac5d..4b5fe36 100644
 --- a/src/v0_8/types/types.d.ts
 +++ b/src/v0_8/types/types.d.ts
 @@ -1,7 +1,7 @@
@@ -2482,7 +2580,7 @@ index 6bfac5d1b12fd7609a1e2ace8bed9c39f53c9b28..4b5fe36d33455255b1f10a2626cf1f8f
  import type { ComponentArrayReferenceSchema, ComponentArrayTemplateSchema } from '../schema/common-types.js';
  import { StringValue, NumberValue, BooleanValue } from './primitives';
 diff --git a/src/v0_9/basic_catalog/catalog.d.ts b/src/v0_9/basic_catalog/catalog.d.ts
-index b96a6af9a2e21d0ad8c298c7e1da4836b25e9357..8b92c96e795bcfc8fb49bfbf93ac0f876a0dc3e3 100644
+index b96a6af..8b92c96 100644
 --- a/src/v0_9/basic_catalog/catalog.d.ts
 +++ b/src/v0_9/basic_catalog/catalog.d.ts
 @@ -9,5 +9,5 @@ import type { WebComponentImplementation } from '../../universal/index.js';
@@ -2494,7 +2592,7 @@ index b96a6af9a2e21d0ad8c298c7e1da4836b25e9357..8b92c96e795bcfc8fb49bfbf93ac0f87
  //# sourceMappingURL=catalog.d.ts.map
 \ No newline at end of file
 diff --git a/src/v0_9/basic_catalog/components/basic_components.d.ts b/src/v0_9/basic_catalog/components/basic_components.d.ts
-index 92479f1bb186a79f413d3e9ff28c6b9db9de1d41..4b00e86f04209ae577b4c018405af57bda323a2f 100644
+index 10cbd1f..6c5e762 100644
 --- a/src/v0_9/basic_catalog/components/basic_components.d.ts
 +++ b/src/v0_9/basic_catalog/components/basic_components.d.ts
 @@ -1,4 +1,4 @@
@@ -2504,7 +2602,7 @@ index 92479f1bb186a79f413d3e9ff28c6b9db9de1d41..4b00e86f04209ae577b4c018405af57b
  export declare const CatalogComponentCommonSchema: z.ZodObject<{
      weight: z.ZodOptional<z.ZodNumber>;
 diff --git a/src/v0_9/basic_catalog/components/basic_components.js b/src/v0_9/basic_catalog/components/basic_components.js
-index 99fc7d32d60b32ede63d56be31cb17fc35520b69..7dd006bd9869b5ffd46c676ef9be91832cc4b2b3 100644
+index 912ca9d..e70da19 100644
 --- a/src/v0_9/basic_catalog/components/basic_components.js
 +++ b/src/v0_9/basic_catalog/components/basic_components.js
 @@ -15,7 +15,7 @@
@@ -2517,7 +2615,7 @@ index 99fc7d32d60b32ede63d56be31cb17fc35520b69..7dd006bd9869b5ffd46c676ef9be9183
  import { AccessibilityAttributesSchema, ActionSchema, CheckRuleSchema, ChildListSchema, ComponentIdSchema, DataBindingSchema, DynamicBooleanSchema, DynamicNumberSchema, DynamicStringListSchema, DynamicStringSchema, } from '../../schema/common-types.js';
  export const CatalogComponentCommonSchema = specDef('CatalogComponentCommon', z.object({
 diff --git a/src/v0_9/basic_catalog/components/index.d.ts b/src/v0_9/basic_catalog/components/index.d.ts
-index b224f893f3e554931db5d3e0a1dc4b6231da6af1..f9d19333a20398bf456ae1d2b8c021bd46d32bc1 100644
+index 487b964..a3fa889 100644
 --- a/src/v0_9/basic_catalog/components/index.d.ts
 +++ b/src/v0_9/basic_catalog/components/index.d.ts
 @@ -1,20 +1,20 @@
@@ -3248,9 +3346,9 @@ index b224f893f3e554931db5d3e0a1dc4b6231da6af1..f9d19333a20398bf456ae1d2b8c021bd
 -}, "strict", import("zod").ZodTypeAny, {
 +    weight: import("zod/v3").ZodOptional<import("zod/v3").ZodNumber>;
 +}, "strict", import("zod/v3").ZodTypeAny, {
-     name: "call" | "event" | "error" | "add" | "accountCircle" | "arrowBack" | "arrowForward" | "attachFile" | "calendarToday" | "camera" | "check" | "close" | "delete" | "download" | "edit" | "favorite" | "favoriteOff" | "folder" | "help" | "home" | "info" | "locationOn" | "lock" | "lockOpen" | "mail" | "menu" | "moreVert" | "moreHoriz" | "notificationsOff" | "notifications" | "payment" | "person" | "phone" | "photo" | "print" | "refresh" | "search" | "send" | "settings" | "share" | "shoppingCart" | "star" | "starHalf" | "starOff" | "upload" | "visibility" | "visibilityOff" | "warning" | "fastForward" | "pause" | "play" | "rewind" | "skipNext" | "skipPrevious" | "stop" | "volumeDown" | "volumeMute" | "volumeOff" | "volumeUp" | {
+     name: "call" | "event" | "error" | "accountCircle" | "add" | "arrowBack" | "arrowForward" | "attachFile" | "calendarToday" | "camera" | "check" | "close" | "delete" | "download" | "edit" | "favorite" | "favoriteOff" | "folder" | "help" | "home" | "info" | "locationOn" | "lock" | "lockOpen" | "mail" | "menu" | "moreVert" | "moreHoriz" | "notificationsOff" | "notifications" | "payment" | "person" | "phone" | "photo" | "print" | "refresh" | "search" | "send" | "settings" | "share" | "shoppingCart" | "star" | "starHalf" | "starOff" | "upload" | "visibility" | "visibilityOff" | "warning" | {
          path: string;
-     } | {
+     } | "stop" | "fastForward" | "pause" | "play" | "rewind" | "skipNext" | "skipPrevious" | "volumeDown" | "volumeMute" | "volumeOff" | "volumeUp" | {
 @@ -883,23 +883,23 @@ export declare const A2uiIcon: import("../../universal/index.js").WebComponentIm
      } | undefined;
      weight?: number | undefined;
@@ -3358,7 +3456,7 @@ index b224f893f3e554931db5d3e0a1dc4b6231da6af1..f9d19333a20398bf456ae1d2b8c021bd
          label?: string | {
              path: string;
          } | import("../../index.js").FunctionCall | undefined;
-@@ -999,20 +999,20 @@ export declare const A2uiList: import("../../universal/index.js").WebComponentIm
+@@ -999,21 +999,21 @@ export declare const A2uiList: import("../../universal/index.js").WebComponentIm
              path: string;
          } | import("../../index.js").FunctionCall | undefined;
      }>>;
@@ -3378,18 +3476,20 @@ index b224f893f3e554931db5d3e0a1dc4b6231da6af1..f9d19333a20398bf456ae1d2b8c021bd
      }>]>;
 -    direction: import("zod").ZodOptional<import("zod").ZodDefault<import("zod").ZodEnum<["vertical", "horizontal"]>>>;
 -    align: import("zod").ZodOptional<import("zod").ZodDefault<import("zod").ZodEnum<["start", "center", "end", "stretch"]>>>;
+-    listStyle: import("zod").ZodOptional<import("zod").ZodEnum<["ordered", "unordered", "none"]>>;
 -    weight: import("zod").ZodOptional<import("zod").ZodNumber>;
 -}, "strict", import("zod").ZodTypeAny, {
 +    direction: import("zod/v3").ZodOptional<import("zod/v3").ZodDefault<import("zod/v3").ZodEnum<["vertical", "horizontal"]>>>;
 +    align: import("zod/v3").ZodOptional<import("zod/v3").ZodDefault<import("zod/v3").ZodEnum<["start", "center", "end", "stretch"]>>>;
++    listStyle: import("zod/v3").ZodOptional<import("zod/v3").ZodEnum<["ordered", "unordered", "none"]>>;
 +    weight: import("zod/v3").ZodOptional<import("zod/v3").ZodNumber>;
 +}, "strict", import("zod/v3").ZodTypeAny, {
      children: string[] | {
          path: string;
          componentId: string;
-@@ -1045,23 +1045,23 @@ export declare const A2uiList: import("../../universal/index.js").WebComponentIm
-     direction?: "horizontal" | "vertical" | undefined;
+@@ -1048,23 +1048,23 @@ export declare const A2uiList: import("../../universal/index.js").WebComponentIm
      align?: "start" | "center" | "end" | "stretch" | undefined;
+     listStyle?: "none" | "ordered" | "unordered" | undefined;
  }>>;
 -export declare const A2uiModal: import("../../universal/index.js").WebComponentImplementation<import("zod").ZodObject<{
 -    accessibility: import("zod").ZodOptional<import("zod").ZodObject<{
@@ -3422,7 +3522,7 @@ index b224f893f3e554931db5d3e0a1dc4b6231da6af1..f9d19333a20398bf456ae1d2b8c021bd
          label?: string | {
              path: string;
          } | import("../../index.js").FunctionCall | undefined;
-@@ -1076,10 +1076,10 @@ export declare const A2uiModal: import("../../universal/index.js").WebComponentI
+@@ -1079,10 +1079,10 @@ export declare const A2uiModal: import("../../universal/index.js").WebComponentI
              path: string;
          } | import("../../index.js").FunctionCall | undefined;
      }>>;
@@ -3434,10 +3534,10 @@ index b224f893f3e554931db5d3e0a1dc4b6231da6af1..f9d19333a20398bf456ae1d2b8c021bd
 +    content: import("zod/v3").ZodString;
 +    weight: import("zod/v3").ZodOptional<import("zod/v3").ZodNumber>;
 +}, "strict", import("zod/v3").ZodTypeAny, {
-     content: string;
      trigger: string;
+     content: string;
      accessibility?: {
-@@ -1104,23 +1104,23 @@ export declare const A2uiModal: import("../../universal/index.js").WebComponentI
+@@ -1107,23 +1107,23 @@ export declare const A2uiModal: import("../../universal/index.js").WebComponentI
      } | undefined;
      weight?: number | undefined;
  }>>;
@@ -3472,7 +3572,7 @@ index b224f893f3e554931db5d3e0a1dc4b6231da6af1..f9d19333a20398bf456ae1d2b8c021bd
          label?: string | {
              path: string;
          } | import("../../index.js").FunctionCall | undefined;
-@@ -1135,20 +1135,20 @@ export declare const A2uiRow: import("../../universal/index.js").WebComponentImp
+@@ -1138,20 +1138,20 @@ export declare const A2uiRow: import("../../universal/index.js").WebComponentImp
              path: string;
          } | import("../../index.js").FunctionCall | undefined;
      }>>;
@@ -3501,7 +3601,7 @@ index b224f893f3e554931db5d3e0a1dc4b6231da6af1..f9d19333a20398bf456ae1d2b8c021bd
      children: string[] | {
          path: string;
          componentId: string;
-@@ -1181,23 +1181,23 @@ export declare const A2uiRow: import("../../universal/index.js").WebComponentImp
+@@ -1184,23 +1184,23 @@ export declare const A2uiRow: import("../../universal/index.js").WebComponentImp
      justify?: "start" | "center" | "end" | "spaceBetween" | "spaceAround" | "spaceEvenly" | "stretch" | undefined;
      align?: "start" | "center" | "end" | "stretch" | undefined;
  }>>;
@@ -3536,7 +3636,7 @@ index b224f893f3e554931db5d3e0a1dc4b6231da6af1..f9d19333a20398bf456ae1d2b8c021bd
          label?: string | {
              path: string;
          } | import("../../index.js").FunctionCall | undefined;
-@@ -1212,16 +1212,16 @@ export declare const A2uiSlider: import("../../universal/index.js").WebComponent
+@@ -1215,16 +1215,16 @@ export declare const A2uiSlider: import("../../universal/index.js").WebComponent
              path: string;
          } | import("../../index.js").FunctionCall | undefined;
      }>>;
@@ -3560,7 +3660,7 @@ index b224f893f3e554931db5d3e0a1dc4b6231da6af1..f9d19333a20398bf456ae1d2b8c021bd
          message: string;
          condition: boolean | {
              path: string;
-@@ -1232,24 +1232,24 @@ export declare const A2uiSlider: import("../../universal/index.js").WebComponent
+@@ -1235,24 +1235,24 @@ export declare const A2uiSlider: import("../../universal/index.js").WebComponent
              path: string;
          } | import("../../index.js").FunctionCall;
      }>, "many">>;
@@ -3597,7 +3697,7 @@ index b224f893f3e554931db5d3e0a1dc4b6231da6af1..f9d19333a20398bf456ae1d2b8c021bd
      value: number | {
          path: string;
      } | import("../../index.js").FunctionCall;
-@@ -1298,23 +1298,23 @@ export declare const A2uiSlider: import("../../universal/index.js").WebComponent
+@@ -1301,23 +1301,23 @@ export declare const A2uiSlider: import("../../universal/index.js").WebComponent
      weight?: number | undefined;
      min?: number | undefined;
  }>>;
@@ -3632,7 +3732,7 @@ index b224f893f3e554931db5d3e0a1dc4b6231da6af1..f9d19333a20398bf456ae1d2b8c021bd
          label?: string | {
              path: string;
          } | import("../../index.js").FunctionCall | undefined;
-@@ -1329,16 +1329,16 @@ export declare const A2uiTabs: import("../../universal/index.js").WebComponentIm
+@@ -1332,16 +1332,16 @@ export declare const A2uiTabs: import("../../universal/index.js").WebComponentIm
              path: string;
          } | import("../../index.js").FunctionCall | undefined;
      }>>;
@@ -3656,7 +3756,7 @@ index b224f893f3e554931db5d3e0a1dc4b6231da6af1..f9d19333a20398bf456ae1d2b8c021bd
          child: string;
          title: string | {
              path: string;
-@@ -1349,8 +1349,8 @@ export declare const A2uiTabs: import("../../universal/index.js").WebComponentIm
+@@ -1352,8 +1352,8 @@ export declare const A2uiTabs: import("../../universal/index.js").WebComponentIm
              path: string;
          } | import("../../index.js").FunctionCall;
      }>, "many">;
@@ -3667,7 +3767,7 @@ index b224f893f3e554931db5d3e0a1dc4b6231da6af1..f9d19333a20398bf456ae1d2b8c021bd
      tabs: {
          child: string;
          title: string | {
-@@ -1383,23 +1383,23 @@ export declare const A2uiTabs: import("../../universal/index.js").WebComponentIm
+@@ -1386,23 +1386,23 @@ export declare const A2uiTabs: import("../../universal/index.js").WebComponentIm
      } | undefined;
      weight?: number | undefined;
  }>>;
@@ -3702,7 +3802,7 @@ index b224f893f3e554931db5d3e0a1dc4b6231da6af1..f9d19333a20398bf456ae1d2b8c021bd
          label?: string | {
              path: string;
          } | import("../../index.js").FunctionCall | undefined;
-@@ -1414,16 +1414,16 @@ export declare const A2uiText: import("../../universal/index.js").WebComponentIm
+@@ -1417,16 +1417,16 @@ export declare const A2uiText: import("../../universal/index.js").WebComponentIm
              path: string;
          } | import("../../index.js").FunctionCall | undefined;
      }>>;
@@ -3726,7 +3826,7 @@ index b224f893f3e554931db5d3e0a1dc4b6231da6af1..f9d19333a20398bf456ae1d2b8c021bd
      text: string | {
          path: string;
      } | import("../../index.js").FunctionCall;
-@@ -1452,23 +1452,23 @@ export declare const A2uiText: import("../../universal/index.js").WebComponentIm
+@@ -1455,23 +1455,23 @@ export declare const A2uiText: import("../../universal/index.js").WebComponentIm
      weight?: number | undefined;
      variant?: "h1" | "h2" | "h3" | "h4" | "h5" | "caption" | "body" | undefined;
  }>>;
@@ -3761,7 +3861,7 @@ index b224f893f3e554931db5d3e0a1dc4b6231da6af1..f9d19333a20398bf456ae1d2b8c021bd
          label?: string | {
              path: string;
          } | import("../../index.js").FunctionCall | undefined;
-@@ -1483,16 +1483,16 @@ export declare const A2uiTextField: import("../../universal/index.js").WebCompon
+@@ -1486,16 +1486,16 @@ export declare const A2uiTextField: import("../../universal/index.js").WebCompon
              path: string;
          } | import("../../index.js").FunctionCall | undefined;
      }>>;
@@ -3785,7 +3885,7 @@ index b224f893f3e554931db5d3e0a1dc4b6231da6af1..f9d19333a20398bf456ae1d2b8c021bd
          message: string;
          condition: boolean | {
              path: string;
-@@ -1503,24 +1503,24 @@ export declare const A2uiTextField: import("../../universal/index.js").WebCompon
+@@ -1506,24 +1506,24 @@ export declare const A2uiTextField: import("../../universal/index.js").WebCompon
              path: string;
          } | import("../../index.js").FunctionCall;
      }>, "many">>;
@@ -3822,7 +3922,7 @@ index b224f893f3e554931db5d3e0a1dc4b6231da6af1..f9d19333a20398bf456ae1d2b8c021bd
      label: string | {
          path: string;
      } | import("../../index.js").FunctionCall;
-@@ -1569,23 +1569,23 @@ export declare const A2uiTextField: import("../../universal/index.js").WebCompon
+@@ -1572,23 +1572,23 @@ export declare const A2uiTextField: import("../../universal/index.js").WebCompon
      validationRegexp?: string | undefined;
      variant?: "number" | "shortText" | "longText" | "obscured" | undefined;
  }>>;
@@ -3857,7 +3957,7 @@ index b224f893f3e554931db5d3e0a1dc4b6231da6af1..f9d19333a20398bf456ae1d2b8c021bd
          label?: string | {
              path: string;
          } | import("../../index.js").FunctionCall | undefined;
-@@ -1600,15 +1600,15 @@ export declare const A2uiVideo: import("../../universal/index.js").WebComponentI
+@@ -1603,15 +1603,15 @@ export declare const A2uiVideo: import("../../universal/index.js").WebComponentI
              path: string;
          } | import("../../index.js").FunctionCall | undefined;
      }>>;
@@ -3880,7 +3980,7 @@ index b224f893f3e554931db5d3e0a1dc4b6231da6af1..f9d19333a20398bf456ae1d2b8c021bd
          path: string;
      } | import("../../index.js").FunctionCall;
 diff --git a/src/v0_9/basic_catalog/functions/basic_functions_api.d.ts b/src/v0_9/basic_catalog/functions/basic_functions_api.d.ts
-index 1e93644832a047877974427ac6419bc13740f46b..17d07aa7e4a29402d42708b6d6d61f9fc4555e91 100644
+index 8301472..c6519d8 100644
 --- a/src/v0_9/basic_catalog/functions/basic_functions_api.d.ts
 +++ b/src/v0_9/basic_catalog/functions/basic_functions_api.d.ts
 @@ -1,4 +1,4 @@
@@ -3890,7 +3990,7 @@ index 1e93644832a047877974427ac6419bc13740f46b..17d07aa7e4a29402d42708b6d6d61f9f
   * Checks that the value is not null, undefined, or empty.
   */
 diff --git a/src/v0_9/basic_catalog/functions/basic_functions_api.js b/src/v0_9/basic_catalog/functions/basic_functions_api.js
-index 936df7d0bc73056a9cbe56bc3905dbc1347c0e15..476927ece5c306224f805635208833904c76cd79 100644
+index 3334e63..813cbcc 100644
 --- a/src/v0_9/basic_catalog/functions/basic_functions_api.js
 +++ b/src/v0_9/basic_catalog/functions/basic_functions_api.js
 @@ -15,7 +15,7 @@
@@ -3903,7 +4003,7 @@ index 936df7d0bc73056a9cbe56bc3905dbc1347c0e15..476927ece5c306224f80563520883390
  import { DynamicBooleanSchema, DynamicNumberSchema, DynamicStringSchema, DynamicValueSchema, } from '../../schema/common-types.js';
  /**
 diff --git a/src/v0_9/basic_catalog/functions/legacy_functions_api.d.ts b/src/v0_9/basic_catalog/functions/legacy_functions_api.d.ts
-index 42f59e6921efbebc65b2ae1ba776dc335787a1af..4ad4d1b92b446993754a2f71077836d43a871f0a 100644
+index a8f1b8a..261bec8 100644
 --- a/src/v0_9/basic_catalog/functions/legacy_functions_api.d.ts
 +++ b/src/v0_9/basic_catalog/functions/legacy_functions_api.d.ts
 @@ -10,7 +10,7 @@
@@ -3916,7 +4016,7 @@ index 42f59e6921efbebc65b2ae1ba776dc335787a1af..4ad4d1b92b446993754a2f71077836d4
   * API of the legacy `add` function.
   *
 diff --git a/src/v0_9/basic_catalog/functions/legacy_functions_api.js b/src/v0_9/basic_catalog/functions/legacy_functions_api.js
-index 67b68bf640b97ec134d65d130c95cc4c9ef178ee..2c5719a9923393edbeac3e5509b83f1bf02989ac 100644
+index c22b0e5..defb772 100644
 --- a/src/v0_9/basic_catalog/functions/legacy_functions_api.js
 +++ b/src/v0_9/basic_catalog/functions/legacy_functions_api.js
 @@ -25,7 +25,7 @@
@@ -3929,7 +4029,7 @@ index 67b68bf640b97ec134d65d130c95cc4c9ef178ee..2c5719a9923393edbeac3e5509b83f1b
  const stringArg = () => z.preprocess(v => (v === undefined || v === null ? undefined : String(v)), z.string());
  const anyRequired = () => z.any().refine(v => v !== undefined, 'Required');
 diff --git a/src/v0_9/schema/client-capabilities.d.ts b/src/v0_9/schema/client-capabilities.d.ts
-index e7fdbd8437edc9291174d6c8ac27f71f2d002dd8..79115cd51a8db6255a8be833e7c28a7deadf27f4 100644
+index 2c8522c..ce47afb 100644
 --- a/src/v0_9/schema/client-capabilities.d.ts
 +++ b/src/v0_9/schema/client-capabilities.d.ts
 @@ -1,4 +1,4 @@
@@ -3939,7 +4039,7 @@ index e7fdbd8437edc9291174d6c8ac27f71f2d002dd8..79115cd51a8db6255a8be833e7c28a7d
  export declare const FunctionDefinitionSchema: z.ZodObject<{
      name: z.ZodString;
 diff --git a/src/v0_9/schema/client-capabilities.js b/src/v0_9/schema/client-capabilities.js
-index 4559a9b4d33adf37956fc62f109b0cfe66b58f26..4620bb5d9f2ebfc37dfa7662b60fc8e7ba3e58c9 100644
+index 4559a9b..4620bb5 100644
 --- a/src/v0_9/schema/client-capabilities.js
 +++ b/src/v0_9/schema/client-capabilities.js
 @@ -15,7 +15,7 @@
@@ -3952,7 +4052,7 @@ index 4559a9b4d33adf37956fc62f109b0cfe66b58f26..4620bb5d9f2ebfc37dfa7662b60fc8e7
      .object({
      'name': z.string().describe('The unique name of the function.'),
 diff --git a/src/v0_9/schema/client-to-server.d.ts b/src/v0_9/schema/client-to-server.d.ts
-index ff8f9848904eba2a678e777c40bd657f4f61bc77..db951285ce70372c053c3b9b199ce30505edea2f 100644
+index ff8f984..db95128 100644
 --- a/src/v0_9/schema/client-to-server.d.ts
 +++ b/src/v0_9/schema/client-to-server.d.ts
 @@ -1,4 +1,4 @@
@@ -3962,7 +4062,7 @@ index ff8f9848904eba2a678e777c40bd657f4f61bc77..db951285ce70372c053c3b9b199ce305
      name: z.ZodString;
      surfaceId: z.ZodString;
 diff --git a/src/v0_9/schema/client-to-server.js b/src/v0_9/schema/client-to-server.js
-index 029a6b50bfd6e37d4e69505f62321c8b063f2fac..7cfa2af5736dd78355f345e996ef4ebb347d634d 100644
+index 029a6b5..7cfa2af 100644
 --- a/src/v0_9/schema/client-to-server.js
 +++ b/src/v0_9/schema/client-to-server.js
 @@ -15,7 +15,7 @@
@@ -3975,7 +4075,7 @@ index 029a6b50bfd6e37d4e69505f62321c8b063f2fac..7cfa2af5736dd78355f345e996ef4ebb
      .object({
      'name': z
 diff --git a/src/v0_9/schema/common-types.d.ts b/src/v0_9/schema/common-types.d.ts
-index e56f013b1bb784e437eadeccbc2de7bfb9b635be..23a36e13a2130716c9378bb119dd6c72d7eaabb6 100644
+index e56f013..23a36e1 100644
 --- a/src/v0_9/schema/common-types.d.ts
 +++ b/src/v0_9/schema/common-types.d.ts
 @@ -1,4 +1,4 @@
@@ -3985,7 +4085,7 @@ index e56f013b1bb784e437eadeccbc2de7bfb9b635be..23a36e13a2130716c9378bb119dd6c72
  export type ComponentId = z.infer<typeof ComponentIdSchema>;
  export declare const DataBindingSchema: z.ZodObject<{
 diff --git a/src/v0_9/schema/common-types.js b/src/v0_9/schema/common-types.js
-index 23a11b1a148bec9bde6794696f2e950208c9625e..661025b10ed3c835b06bebd0b26255d8619ce3f3 100644
+index 23a11b1..661025b 100644
 --- a/src/v0_9/schema/common-types.js
 +++ b/src/v0_9/schema/common-types.js
 @@ -15,7 +15,7 @@
@@ -3998,7 +4098,7 @@ index 23a11b1a148bec9bde6794696f2e950208c9625e..661025b10ed3c835b06bebd0b26255d8
  export const ComponentIdSchema = markChildRef(z
      .string()
 diff --git a/src/v0_9/schema/helpers.d.ts b/src/v0_9/schema/helpers.d.ts
-index b5fd3f99bac68c3e967a5c188dc8948e581a4e33..b42b835570ae826ba7940ffb77f820974d61869f 100644
+index b5fd3f9..b42b835 100644
 --- a/src/v0_9/schema/helpers.d.ts
 +++ b/src/v0_9/schema/helpers.d.ts
 @@ -1,4 +1,4 @@
@@ -4008,7 +4108,7 @@ index b5fd3f99bac68c3e967a5c188dc8948e581a4e33..b42b835570ae826ba7940ffb77f82097
  import { ChildListSchema, ComponentIdSchema } from './common-types.js';
  export { type ChildRefKind, type RefSchemaOptions, markChildRef, childRefKindOf };
 diff --git a/src/v0_9/schema/helpers.js b/src/v0_9/schema/helpers.js
-index e0b5e081ac98850966848a87516db760a7bfb333..3d5e16da9f1532d634ebeb6494445307687955fd 100644
+index e0b5e08..3d5e16d 100644
 --- a/src/v0_9/schema/helpers.js
 +++ b/src/v0_9/schema/helpers.js
 @@ -13,7 +13,7 @@
@@ -4021,7 +4121,7 @@ index e0b5e081ac98850966848a87516db760a7bfb333..3d5e16da9f1532d634ebeb6494445307
  import { ChildListSchema, ComponentIdSchema, DynamicBooleanSchema, DynamicNumberSchema, DynamicStringListSchema, DynamicStringSchema, DynamicValueSchema, } from './common-types.js';
  export { markChildRef, childRefKindOf };
 diff --git a/src/v0_9/schema/server-to-client.d.ts b/src/v0_9/schema/server-to-client.d.ts
-index 02ec5764d9197374f79e6bf8c52cd680b9acbc0a..fa081541abee7678f3caa7f0ce9c5959f0b4a114 100644
+index 02ec576..fa08154 100644
 --- a/src/v0_9/schema/server-to-client.d.ts
 +++ b/src/v0_9/schema/server-to-client.d.ts
 @@ -1,4 +1,4 @@
@@ -4031,7 +4131,7 @@ index 02ec5764d9197374f79e6bf8c52cd680b9acbc0a..fa081541abee7678f3caa7f0ce9c5959
      version: z.ZodEnum<["v0.9", "v0.9.1"]>;
      createSurface: z.ZodObject<{
 diff --git a/src/v0_9/schema/server-to-client.js b/src/v0_9/schema/server-to-client.js
-index d52e9af008321ba5b0bc66a6e61f0c9205586d5d..02e51321aab2d167011b868df2c8e8ad290257d6 100644
+index d52e9af..02e5132 100644
 --- a/src/v0_9/schema/server-to-client.js
 +++ b/src/v0_9/schema/server-to-client.js
 @@ -15,7 +15,7 @@
@@ -4044,7 +4144,7 @@ index d52e9af008321ba5b0bc66a6e61f0c9205586d5d..02e51321aab2d167011b868df2c8e8ad
      .object({
      'version': z.enum(['v0.9', 'v0.9.1']),
 diff --git a/src/v1_0/functions/system_functions.d.ts b/src/v1_0/functions/system_functions.d.ts
-index ee50dee8704fb97348bef456933fb8ba75b7ee34..4966e95ef8d66e256740dc8ccebed8c648ef9696 100644
+index ee50dee..4966e95 100644
 --- a/src/v1_0/functions/system_functions.d.ts
 +++ b/src/v1_0/functions/system_functions.d.ts
 @@ -1,4 +1,4 @@
@@ -4054,7 +4154,7 @@ index ee50dee8704fb97348bef456933fb8ba75b7ee34..4966e95ef8d66e256740dc8ccebed8c6
  /**
   * System function definition for computing iteration indices in array contexts.
 diff --git a/src/v1_0/functions/system_functions.js b/src/v1_0/functions/system_functions.js
-index 177c5b1beb46f2359b1976c7002d8b2d0cee012e..005069bfbe4db11f894d1d85fc3741f8f86dba8d 100644
+index 177c5b1..005069b 100644
 --- a/src/v1_0/functions/system_functions.js
 +++ b/src/v1_0/functions/system_functions.js
 @@ -13,7 +13,7 @@
@@ -4067,7 +4167,7 @@ index 177c5b1beb46f2359b1976c7002d8b2d0cee012e..005069bfbe4db11f894d1d85fc3741f8
  import { A2uiValidationError } from '../../errors.js';
  import { resolveContextIndex } from '../../resolution/data-context.js';
 diff --git a/src/v1_0/functions/validation_functions_api.d.ts b/src/v1_0/functions/validation_functions_api.d.ts
-index ba536db92b2e7d5388ea799661a0d0b105910663..0de0c96b680a117757ce038473ec931f9f071b91 100644
+index 1c0c855..b88fb2e 100644
 --- a/src/v1_0/functions/validation_functions_api.d.ts
 +++ b/src/v1_0/functions/validation_functions_api.d.ts
 @@ -12,9 +12,9 @@ export declare const RequiredV1Point0Api: {
@@ -4076,10 +4176,10 @@ index ba536db92b2e7d5388ea799661a0d0b105910663..0de0c96b680a117757ce038473ec931f
      description: string;
 -    schema: import("zod").ZodObject<{
 -        value: import("zod").ZodEffects<import("zod").ZodAny, any, any>;
--    }, "strip", import("zod").ZodTypeAny, {
+-    }, "strict", import("zod").ZodTypeAny, {
 +    schema: import("zod/v3").ZodObject<{
 +        value: import("zod/v3").ZodEffects<import("zod/v3").ZodAny, any, any>;
-+    }, "strip", import("zod/v3").ZodTypeAny, {
++    }, "strict", import("zod/v3").ZodTypeAny, {
          value?: any;
      }, {
          value?: any;
@@ -4123,10 +4223,10 @@ index ba536db92b2e7d5388ea799661a0d0b105910663..0de0c96b680a117757ce038473ec931f
              catalogId?: string | undefined;
 -        }>, import("zod").ZodAny>>]>;
 -        pattern: import("zod").ZodString;
--    }, "strip", import("zod").ZodTypeAny, {
+-    }, "strict", import("zod").ZodTypeAny, {
 +        }>, import("zod/v3").ZodAny>>]>;
 +        pattern: import("zod/v3").ZodString;
-+    }, "strip", import("zod/v3").ZodTypeAny, {
++    }, "strict", import("zod/v3").ZodTypeAny, {
          pattern: string;
          value?: any;
      }, {
@@ -4134,12 +4234,12 @@ index ba536db92b2e7d5388ea799661a0d0b105910663..0de0c96b680a117757ce038473ec931f
      name: "length";
      returnType: "validationResult";
      description: string;
--    schema: import("zod").ZodObject<{
+-    schema: import("zod").ZodEffects<import("zod").ZodObject<{
 -        value: import("zod").ZodUnion<[import("zod").ZodString, import("zod").ZodEffects<import("zod").ZodObject<{
 -            '@path': import("zod").ZodOptional<import("zod").ZodString>;
 -            path: import("zod").ZodOptional<import("zod").ZodString>;
 -        }, "strip", import("zod").ZodTypeAny, {
-+    schema: import("zod/v3").ZodObject<{
++    schema: import("zod/v3").ZodEffects<import("zod/v3").ZodObject<{
 +        value: import("zod/v3").ZodUnion<[import("zod/v3").ZodString, import("zod/v3").ZodEffects<import("zod/v3").ZodObject<{
 +            '@path': import("zod/v3").ZodOptional<import("zod/v3").ZodString>;
 +            path: import("zod/v3").ZodOptional<import("zod/v3").ZodString>;
@@ -4171,24 +4271,24 @@ index ba536db92b2e7d5388ea799661a0d0b105910663..0de0c96b680a117757ce038473ec931f
 -        }>, import("zod").ZodAny>>]>;
 -        min: import("zod").ZodOptional<import("zod").ZodNumber>;
 -        max: import("zod").ZodOptional<import("zod").ZodNumber>;
--    }, "strip", import("zod").ZodTypeAny, {
+-    }, "strict", import("zod").ZodTypeAny, {
 +        }>, import("zod/v3").ZodAny>>]>;
 +        min: import("zod/v3").ZodOptional<import("zod/v3").ZodNumber>;
 +        max: import("zod/v3").ZodOptional<import("zod/v3").ZodNumber>;
-+    }, "strip", import("zod/v3").ZodTypeAny, {
++    }, "strict", import("zod/v3").ZodTypeAny, {
          value?: any;
          min?: number | undefined;
          max?: number | undefined;
-@@ -139,11 +139,11 @@ export declare const NumericV1Point0Api: {
+@@ -147,11 +147,11 @@ export declare const NumericV1Point0Api: {
      name: "numeric";
      returnType: "validationResult";
      description: string;
--    schema: import("zod").ZodObject<{
+-    schema: import("zod").ZodEffects<import("zod").ZodObject<{
 -        value: import("zod").ZodUnion<[import("zod").ZodNumber, import("zod").ZodEffects<import("zod").ZodObject<{
 -            '@path': import("zod").ZodOptional<import("zod").ZodString>;
 -            path: import("zod").ZodOptional<import("zod").ZodString>;
 -        }, "strip", import("zod").ZodTypeAny, {
-+    schema: import("zod/v3").ZodObject<{
++    schema: import("zod/v3").ZodEffects<import("zod/v3").ZodObject<{
 +        value: import("zod/v3").ZodUnion<[import("zod/v3").ZodNumber, import("zod/v3").ZodEffects<import("zod/v3").ZodObject<{
 +            '@path': import("zod/v3").ZodOptional<import("zod/v3").ZodString>;
 +            path: import("zod/v3").ZodOptional<import("zod/v3").ZodString>;
@@ -4196,7 +4296,7 @@ index ba536db92b2e7d5388ea799661a0d0b105910663..0de0c96b680a117757ce038473ec931f
              path?: string | undefined;
              '@path'?: string | undefined;
          }, {
-@@ -155,11 +155,11 @@ export declare const NumericV1Point0Api: {
+@@ -163,11 +163,11 @@ export declare const NumericV1Point0Api: {
          }, {
              path?: string | undefined;
              '@path'?: string | undefined;
@@ -4213,22 +4313,22 @@ index ba536db92b2e7d5388ea799661a0d0b105910663..0de0c96b680a117757ce038473ec931f
              call?: string | undefined;
              '@call'?: string | undefined;
              catalogId?: string | undefined;
-@@ -175,10 +175,10 @@ export declare const NumericV1Point0Api: {
+@@ -183,10 +183,10 @@ export declare const NumericV1Point0Api: {
              call?: string | undefined;
              '@call'?: string | undefined;
              catalogId?: string | undefined;
 -        }>, import("zod").ZodAny>>]>;
 -        min: import("zod").ZodOptional<import("zod").ZodNumber>;
 -        max: import("zod").ZodOptional<import("zod").ZodNumber>;
--    }, "strip", import("zod").ZodTypeAny, {
+-    }, "strict", import("zod").ZodTypeAny, {
 +        }>, import("zod/v3").ZodAny>>]>;
 +        min: import("zod/v3").ZodOptional<import("zod/v3").ZodNumber>;
 +        max: import("zod/v3").ZodOptional<import("zod/v3").ZodNumber>;
-+    }, "strip", import("zod/v3").ZodTypeAny, {
++    }, "strict", import("zod/v3").ZodTypeAny, {
          value?: any;
          min?: number | undefined;
          max?: number | undefined;
-@@ -196,11 +196,11 @@ export declare const EmailV1Point0Api: {
+@@ -212,11 +212,11 @@ export declare const EmailV1Point0Api: {
      name: "email";
      returnType: "validationResult";
      description: string;
@@ -4245,7 +4345,7 @@ index ba536db92b2e7d5388ea799661a0d0b105910663..0de0c96b680a117757ce038473ec931f
              path?: string | undefined;
              '@path'?: string | undefined;
          }, {
-@@ -212,11 +212,11 @@ export declare const EmailV1Point0Api: {
+@@ -228,11 +228,11 @@ export declare const EmailV1Point0Api: {
          }, {
              path?: string | undefined;
              '@path'?: string | undefined;
@@ -4262,31 +4362,31 @@ index ba536db92b2e7d5388ea799661a0d0b105910663..0de0c96b680a117757ce038473ec931f
              call?: string | undefined;
              '@call'?: string | undefined;
              catalogId?: string | undefined;
-@@ -232,8 +232,8 @@ export declare const EmailV1Point0Api: {
+@@ -248,8 +248,8 @@ export declare const EmailV1Point0Api: {
              call?: string | undefined;
              '@call'?: string | undefined;
              catalogId?: string | undefined;
 -        }>, import("zod").ZodAny>>]>;
--    }, "strip", import("zod").ZodTypeAny, {
+-    }, "strict", import("zod").ZodTypeAny, {
 +        }>, import("zod/v3").ZodAny>>]>;
-+    }, "strip", import("zod/v3").ZodTypeAny, {
++    }, "strict", import("zod/v3").ZodTypeAny, {
          value?: any;
      }, {
          value?: any;
-@@ -246,9 +246,9 @@ export declare const V10_VALIDATION_FUNCTION_APIS: ({
+@@ -262,9 +262,9 @@ export declare const V10_VALIDATION_FUNCTION_APIS: ({
      name: "required";
      returnType: "validationResult";
      description: string;
 -    schema: import("zod").ZodObject<{
 -        value: import("zod").ZodEffects<import("zod").ZodAny, any, any>;
--    }, "strip", import("zod").ZodTypeAny, {
+-    }, "strict", import("zod").ZodTypeAny, {
 +    schema: import("zod/v3").ZodObject<{
 +        value: import("zod/v3").ZodEffects<import("zod/v3").ZodAny, any, any>;
-+    }, "strip", import("zod/v3").ZodTypeAny, {
++    }, "strict", import("zod/v3").ZodTypeAny, {
          value?: any;
      }, {
          value?: any;
-@@ -257,11 +257,11 @@ export declare const V10_VALIDATION_FUNCTION_APIS: ({
+@@ -273,11 +273,11 @@ export declare const V10_VALIDATION_FUNCTION_APIS: ({
      name: "regex";
      returnType: "validationResult";
      description: string;
@@ -4303,7 +4403,7 @@ index ba536db92b2e7d5388ea799661a0d0b105910663..0de0c96b680a117757ce038473ec931f
              path?: string | undefined;
              '@path'?: string | undefined;
          }, {
-@@ -273,11 +273,11 @@ export declare const V10_VALIDATION_FUNCTION_APIS: ({
+@@ -289,11 +289,11 @@ export declare const V10_VALIDATION_FUNCTION_APIS: ({
          }, {
              path?: string | undefined;
              '@path'?: string | undefined;
@@ -4320,29 +4420,29 @@ index ba536db92b2e7d5388ea799661a0d0b105910663..0de0c96b680a117757ce038473ec931f
              call?: string | undefined;
              '@call'?: string | undefined;
              catalogId?: string | undefined;
-@@ -293,9 +293,9 @@ export declare const V10_VALIDATION_FUNCTION_APIS: ({
+@@ -309,9 +309,9 @@ export declare const V10_VALIDATION_FUNCTION_APIS: ({
              call?: string | undefined;
              '@call'?: string | undefined;
              catalogId?: string | undefined;
 -        }>, import("zod").ZodAny>>]>;
 -        pattern: import("zod").ZodString;
--    }, "strip", import("zod").ZodTypeAny, {
+-    }, "strict", import("zod").ZodTypeAny, {
 +        }>, import("zod/v3").ZodAny>>]>;
 +        pattern: import("zod/v3").ZodString;
-+    }, "strip", import("zod/v3").ZodTypeAny, {
++    }, "strict", import("zod/v3").ZodTypeAny, {
          pattern: string;
          value?: any;
      }, {
-@@ -306,11 +306,11 @@ export declare const V10_VALIDATION_FUNCTION_APIS: ({
+@@ -322,11 +322,11 @@ export declare const V10_VALIDATION_FUNCTION_APIS: ({
      name: "length";
      returnType: "validationResult";
      description: string;
--    schema: import("zod").ZodObject<{
+-    schema: import("zod").ZodEffects<import("zod").ZodObject<{
 -        value: import("zod").ZodUnion<[import("zod").ZodString, import("zod").ZodEffects<import("zod").ZodObject<{
 -            '@path': import("zod").ZodOptional<import("zod").ZodString>;
 -            path: import("zod").ZodOptional<import("zod").ZodString>;
 -        }, "strip", import("zod").ZodTypeAny, {
-+    schema: import("zod/v3").ZodObject<{
++    schema: import("zod/v3").ZodEffects<import("zod/v3").ZodObject<{
 +        value: import("zod/v3").ZodUnion<[import("zod/v3").ZodString, import("zod/v3").ZodEffects<import("zod/v3").ZodObject<{
 +            '@path': import("zod/v3").ZodOptional<import("zod/v3").ZodString>;
 +            path: import("zod/v3").ZodOptional<import("zod/v3").ZodString>;
@@ -4350,7 +4450,7 @@ index ba536db92b2e7d5388ea799661a0d0b105910663..0de0c96b680a117757ce038473ec931f
              path?: string | undefined;
              '@path'?: string | undefined;
          }, {
-@@ -322,11 +322,11 @@ export declare const V10_VALIDATION_FUNCTION_APIS: ({
+@@ -338,11 +338,11 @@ export declare const V10_VALIDATION_FUNCTION_APIS: ({
          }, {
              path?: string | undefined;
              '@path'?: string | undefined;
@@ -4367,31 +4467,31 @@ index ba536db92b2e7d5388ea799661a0d0b105910663..0de0c96b680a117757ce038473ec931f
              call?: string | undefined;
              '@call'?: string | undefined;
              catalogId?: string | undefined;
-@@ -342,10 +342,10 @@ export declare const V10_VALIDATION_FUNCTION_APIS: ({
+@@ -358,10 +358,10 @@ export declare const V10_VALIDATION_FUNCTION_APIS: ({
              call?: string | undefined;
              '@call'?: string | undefined;
              catalogId?: string | undefined;
 -        }>, import("zod").ZodAny>>]>;
 -        min: import("zod").ZodOptional<import("zod").ZodNumber>;
 -        max: import("zod").ZodOptional<import("zod").ZodNumber>;
--    }, "strip", import("zod").ZodTypeAny, {
+-    }, "strict", import("zod").ZodTypeAny, {
 +        }>, import("zod/v3").ZodAny>>]>;
 +        min: import("zod/v3").ZodOptional<import("zod/v3").ZodNumber>;
 +        max: import("zod/v3").ZodOptional<import("zod/v3").ZodNumber>;
-+    }, "strip", import("zod/v3").ZodTypeAny, {
++    }, "strict", import("zod/v3").ZodTypeAny, {
          value?: any;
          min?: number | undefined;
          max?: number | undefined;
-@@ -358,11 +358,11 @@ export declare const V10_VALIDATION_FUNCTION_APIS: ({
+@@ -382,11 +382,11 @@ export declare const V10_VALIDATION_FUNCTION_APIS: ({
      name: "numeric";
      returnType: "validationResult";
      description: string;
--    schema: import("zod").ZodObject<{
+-    schema: import("zod").ZodEffects<import("zod").ZodObject<{
 -        value: import("zod").ZodUnion<[import("zod").ZodNumber, import("zod").ZodEffects<import("zod").ZodObject<{
 -            '@path': import("zod").ZodOptional<import("zod").ZodString>;
 -            path: import("zod").ZodOptional<import("zod").ZodString>;
 -        }, "strip", import("zod").ZodTypeAny, {
-+    schema: import("zod/v3").ZodObject<{
++    schema: import("zod/v3").ZodEffects<import("zod/v3").ZodObject<{
 +        value: import("zod/v3").ZodUnion<[import("zod/v3").ZodNumber, import("zod/v3").ZodEffects<import("zod/v3").ZodObject<{
 +            '@path': import("zod/v3").ZodOptional<import("zod/v3").ZodString>;
 +            path: import("zod/v3").ZodOptional<import("zod/v3").ZodString>;
@@ -4399,7 +4499,7 @@ index ba536db92b2e7d5388ea799661a0d0b105910663..0de0c96b680a117757ce038473ec931f
              path?: string | undefined;
              '@path'?: string | undefined;
          }, {
-@@ -374,11 +374,11 @@ export declare const V10_VALIDATION_FUNCTION_APIS: ({
+@@ -398,11 +398,11 @@ export declare const V10_VALIDATION_FUNCTION_APIS: ({
          }, {
              path?: string | undefined;
              '@path'?: string | undefined;
@@ -4416,22 +4516,22 @@ index ba536db92b2e7d5388ea799661a0d0b105910663..0de0c96b680a117757ce038473ec931f
              call?: string | undefined;
              '@call'?: string | undefined;
              catalogId?: string | undefined;
-@@ -394,10 +394,10 @@ export declare const V10_VALIDATION_FUNCTION_APIS: ({
+@@ -418,10 +418,10 @@ export declare const V10_VALIDATION_FUNCTION_APIS: ({
              call?: string | undefined;
              '@call'?: string | undefined;
              catalogId?: string | undefined;
 -        }>, import("zod").ZodAny>>]>;
 -        min: import("zod").ZodOptional<import("zod").ZodNumber>;
 -        max: import("zod").ZodOptional<import("zod").ZodNumber>;
--    }, "strip", import("zod").ZodTypeAny, {
+-    }, "strict", import("zod").ZodTypeAny, {
 +        }>, import("zod/v3").ZodAny>>]>;
 +        min: import("zod/v3").ZodOptional<import("zod/v3").ZodNumber>;
 +        max: import("zod/v3").ZodOptional<import("zod/v3").ZodNumber>;
-+    }, "strip", import("zod/v3").ZodTypeAny, {
++    }, "strict", import("zod/v3").ZodTypeAny, {
          value?: any;
          min?: number | undefined;
          max?: number | undefined;
-@@ -410,11 +410,11 @@ export declare const V10_VALIDATION_FUNCTION_APIS: ({
+@@ -442,11 +442,11 @@ export declare const V10_VALIDATION_FUNCTION_APIS: ({
      name: "email";
      returnType: "validationResult";
      description: string;
@@ -4448,7 +4548,7 @@ index ba536db92b2e7d5388ea799661a0d0b105910663..0de0c96b680a117757ce038473ec931f
              path?: string | undefined;
              '@path'?: string | undefined;
          }, {
-@@ -426,11 +426,11 @@ export declare const V10_VALIDATION_FUNCTION_APIS: ({
+@@ -458,11 +458,11 @@ export declare const V10_VALIDATION_FUNCTION_APIS: ({
          }, {
              path?: string | undefined;
              '@path'?: string | undefined;
@@ -4465,19 +4565,19 @@ index ba536db92b2e7d5388ea799661a0d0b105910663..0de0c96b680a117757ce038473ec931f
              call?: string | undefined;
              '@call'?: string | undefined;
              catalogId?: string | undefined;
-@@ -446,8 +446,8 @@ export declare const V10_VALIDATION_FUNCTION_APIS: ({
+@@ -478,8 +478,8 @@ export declare const V10_VALIDATION_FUNCTION_APIS: ({
              call?: string | undefined;
              '@call'?: string | undefined;
              catalogId?: string | undefined;
 -        }>, import("zod").ZodAny>>]>;
--    }, "strip", import("zod").ZodTypeAny, {
+-    }, "strict", import("zod").ZodTypeAny, {
 +        }>, import("zod/v3").ZodAny>>]>;
-+    }, "strip", import("zod/v3").ZodTypeAny, {
++    }, "strict", import("zod/v3").ZodTypeAny, {
          value?: any;
      }, {
          value?: any;
 diff --git a/src/v1_0/schema/agent-to-renderer.d.ts b/src/v1_0/schema/agent-to-renderer.d.ts
-index 7cffca2a6e2d746aaec5cd63e01c01bc1732ef97..eadf4258d66c9fe10c24f784726745afe7f30e44 100644
+index 57eb862..096c0f7 100644
 --- a/src/v1_0/schema/agent-to-renderer.d.ts
 +++ b/src/v1_0/schema/agent-to-renderer.d.ts
 @@ -1,4 +1,4 @@
@@ -4487,7 +4587,7 @@ index 7cffca2a6e2d746aaec5cd63e01c01bc1732ef97..eadf4258d66c9fe10c24f784726745af
      version: z.ZodLiteral<"1.0">;
      createSurface: z.ZodObject<{
 diff --git a/src/v1_0/schema/agent-to-renderer.js b/src/v1_0/schema/agent-to-renderer.js
-index 0fb942bbaf1a58c36c95431390af5855b36bd979..dc251d6dad26e99e4fad39c7399ac441895fd3c3 100644
+index f863b96..ca4e27f 100644
 --- a/src/v1_0/schema/agent-to-renderer.js
 +++ b/src/v1_0/schema/agent-to-renderer.js
 @@ -15,7 +15,7 @@
@@ -4500,7 +4600,7 @@ index 0fb942bbaf1a58c36c95431390af5855b36bd979..dc251d6dad26e99e4fad39c7399ac441
  import { ComponentsListSchema } from './helpers.js';
  export const CreateSurfaceMessageSchema = z
 diff --git a/src/v1_0/schema/catalog-definition.d.ts b/src/v1_0/schema/catalog-definition.d.ts
-index 4dc73aaab077743f554a67be05eacbe51a6591fa..4bb11f10007e9bc922ff4b5aedc0fb2736baafff 100644
+index 4dc73aa..4bb11f1 100644
 --- a/src/v1_0/schema/catalog-definition.d.ts
 +++ b/src/v1_0/schema/catalog-definition.d.ts
 @@ -1,4 +1,4 @@
@@ -4510,7 +4610,7 @@ index 4dc73aaab077743f554a67be05eacbe51a6591fa..4bb11f10007e9bc922ff4b5aedc0fb27
      type: z.ZodLiteral<"object">;
      description: z.ZodOptional<z.ZodString>;
 diff --git a/src/v1_0/schema/catalog-definition.js b/src/v1_0/schema/catalog-definition.js
-index 4721ddff0086a5bd074d660959e7f59b7a8fb3c9..fed57488a3a7636655cc995b72521b9da99c7834 100644
+index 4721ddf..fed5748 100644
 --- a/src/v1_0/schema/catalog-definition.js
 +++ b/src/v1_0/schema/catalog-definition.js
 @@ -15,7 +15,7 @@
@@ -4523,7 +4623,7 @@ index 4721ddff0086a5bd074d660959e7f59b7a8fb3c9..fed57488a3a7636655cc995b72521b9d
  export const FunctionCallValidationSchemaSchema = z
      .object({
 diff --git a/src/v1_0/schema/common-types.d.ts b/src/v1_0/schema/common-types.d.ts
-index 68f4aa40056932d4ad9008d98bff7068bfb55983..d4b3b3180951e7754f6a2aecded5c63befdd8949 100644
+index d44fac5..37a4927 100644
 --- a/src/v1_0/schema/common-types.d.ts
 +++ b/src/v1_0/schema/common-types.d.ts
 @@ -1,4 +1,4 @@
@@ -4533,7 +4633,7 @@ index 68f4aa40056932d4ad9008d98bff7068bfb55983..d4b3b3180951e7754f6a2aecded5c63b
  export type ComponentId = z.infer<typeof ComponentIdSchema>;
  export declare const CallIdSchema: z.ZodString;
 diff --git a/src/v1_0/schema/common-types.js b/src/v1_0/schema/common-types.js
-index 1e537eea3c1a239c37f7ca46e2693dd962b1a966..5a2c9daadb3dbd594eab0f193ca6fa9df0e012d8 100644
+index c7a2bdb..fe32e6d 100644
 --- a/src/v1_0/schema/common-types.js
 +++ b/src/v1_0/schema/common-types.js
 @@ -15,7 +15,7 @@
@@ -4546,7 +4646,7 @@ index 1e537eea3c1a239c37f7ca46e2693dd962b1a966..5a2c9daadb3dbd594eab0f193ca6fa9d
  import { markChildRef } from '../../types/child-ref-helpers.js';
  export const ComponentIdSchema = markChildRef(z
 diff --git a/src/v1_0/schema/helpers.d.ts b/src/v1_0/schema/helpers.d.ts
-index 2d9a84c17eb14eb819097888d4410b8bc6c00910..46f696574790ee9f4677692cacd0c46c4755e3c2 100644
+index d74e8d3..4b9696e 100644
 --- a/src/v1_0/schema/helpers.d.ts
 +++ b/src/v1_0/schema/helpers.d.ts
 @@ -1,4 +1,4 @@
@@ -4556,7 +4656,7 @@ index 2d9a84c17eb14eb819097888d4410b8bc6c00910..46f696574790ee9f4677692cacd0c46c
  import { ChildListSchema, ComponentIdSchema } from './common-types.js';
  export { type ChildRefKind, type RefSchemaOptions, markChildRef, childRefKindOf };
 diff --git a/src/v1_0/schema/helpers.js b/src/v1_0/schema/helpers.js
-index a1e4391f3823f964c096935110722007d7b4406b..85b656764a9e1022a4246c548bbb4478a8f161a3 100644
+index 7166a4f..8613607 100644
 --- a/src/v1_0/schema/helpers.js
 +++ b/src/v1_0/schema/helpers.js
 @@ -13,7 +13,7 @@
@@ -4569,7 +4669,7 @@ index a1e4391f3823f964c096935110722007d7b4406b..85b656764a9e1022a4246c548bbb4478
  import { ChildListSchema, ComponentCommonSchema, ComponentIdSchema, DynamicBooleanSchema, DynamicNumberSchema, DynamicStringListSchema, DynamicStringSchema, DynamicValueSchema, } from './common-types.js';
  export { markChildRef, childRefKindOf };
 diff --git a/src/v1_0/schema/renderer-capabilities.d.ts b/src/v1_0/schema/renderer-capabilities.d.ts
-index f4677bc057627aa899dfb8fc5c09c84551984f7a..5439e1ee829f286d8774ab896e8e87c76434fc3f 100644
+index f4677bc..5439e1e 100644
 --- a/src/v1_0/schema/renderer-capabilities.d.ts
 +++ b/src/v1_0/schema/renderer-capabilities.d.ts
 @@ -1,4 +1,4 @@
@@ -4579,7 +4679,7 @@ index f4677bc057627aa899dfb8fc5c09c84551984f7a..5439e1ee829f286d8774ab896e8e87c7
  export declare const V10RendererCapabilitiesSchema: z.ZodObject<{
      supportedCatalogIds: z.ZodArray<z.ZodString, "many">;
 diff --git a/src/v1_0/schema/renderer-capabilities.js b/src/v1_0/schema/renderer-capabilities.js
-index 0bc1cba776ba35db1c374d89bf4062258f9d33b6..da476d70b95c4e5ef989276b2261ac452d08ef34 100644
+index 0bc1cba..da476d7 100644
 --- a/src/v1_0/schema/renderer-capabilities.js
 +++ b/src/v1_0/schema/renderer-capabilities.js
 @@ -15,7 +15,7 @@
@@ -4592,7 +4692,7 @@ index 0bc1cba776ba35db1c374d89bf4062258f9d33b6..da476d70b95c4e5ef989276b2261ac45
  export const V10RendererCapabilitiesSchema = z
      .object({
 diff --git a/src/v1_0/schema/renderer-to-agent.d.ts b/src/v1_0/schema/renderer-to-agent.d.ts
-index 1c558a719bdd2139e26237136df0dfb7a114d2bd..dbee7a4d178ed016badcc7f0484e2926f01c63f4 100644
+index cd5d144..ec1ca0a 100644
 --- a/src/v1_0/schema/renderer-to-agent.d.ts
 +++ b/src/v1_0/schema/renderer-to-agent.d.ts
 @@ -1,4 +1,4 @@
@@ -4602,7 +4702,7 @@ index 1c558a719bdd2139e26237136df0dfb7a114d2bd..dbee7a4d178ed016badcc7f0484e2926
      version: z.ZodLiteral<"1.0">;
      action: z.ZodObject<{
 diff --git a/src/v1_0/schema/renderer-to-agent.js b/src/v1_0/schema/renderer-to-agent.js
-index 213c862983f6ff99893fd0ffe4822711a2d9ab89..0f4bd06881497c64f2e5edab900c1822e0722365 100644
+index 213c862..0f4bd06 100644
 --- a/src/v1_0/schema/renderer-to-agent.js
 +++ b/src/v1_0/schema/renderer-to-agent.js
 @@ -15,7 +15,7 @@
@@ -4614,3 +4714,16 @@ index 213c862983f6ff99893fd0ffe4822711a2d9ab89..0f4bd06881497c64f2e5edab900c1822
  import { CallIdSchema, ExtensionsSchema, FunctionCallSchema, FunctionResponseSchema, } from './common-types.js';
  export const ActionMessageSchema = z
      .object({
+diff --git a/src/validation/payload-validator.js b/src/validation/payload-validator.js
+index 85db0ac..277dd86 100644
+--- a/src/validation/payload-validator.js
++++ b/src/validation/payload-validator.js
+@@ -13,7 +13,7 @@
+  * See the License for the specific language governing permissions and
+  * limitations under the License.
+  */
+-import { z } from 'zod';
++import { z } from 'zod/v3';
+ import { isAtLeastVersion } from '../common/semver.js';
+ import { isValidUax31Identifier } from '../common/uax31.js';
+ import { A2uiValidationError } from '../errors.js';

@@ -14,6 +14,7 @@ import '@/test/setup-dom.js';
 import { clearDownloads, downloadedNames } from '@/test/download-capture.js';
 import { describe, it, afterEach, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
+import { IFC_EXPRESS_EXAMPLES } from '@ifc-lite/a2ui/catalog';
 import { cleanup, click, type, waitFor } from '@/test/render.js';
 import { seedA2uiModels } from '@/test/a2ui-fixture';
 import { block, mountReply } from '@/test/a2ui-render';
@@ -37,26 +38,28 @@ describe('basic catalog components', () => {
     assert.ok(container.textContent?.includes('site'), 'link text kept, link dropped');
   });
 
-  it('two-way binds inputs and sends their values with an Event as a follow-up', async () => {
+  it('mounts the shared Express fixture and forwards bound input values in a follow-up (#11689)', async () => {
     const { host } = await seedA2uiModels();
-    const { container, followUps } = await mountReply(host, block(`root = Column([name, pick, go])
-name = TextField("Storey", $/storey)
-pick = ChoicePicker("Types", "multipleSelection", [{label: "Walls", value: "IfcWall"}, {label: "Slabs", value: "IfcSlab"}], $/pick)
-go = Button(Text("Check"), "primary", Event("ask", {prompt: "Check these types", types: $/pick, storey: $/storey}))
-$/pick = ["IfcWall"]
-$/storey = ""`));
+    const { container, followUps } = await mountReply(host, block(IFC_EXPRESS_EXAMPLES[2].source));
     await waitFor(() => !!container.querySelector('input[type="text"]'), 'inputs');
     type(container.querySelector<HTMLInputElement>('input[type="text"]')!, '00 groundfloor');
-    const slabs = [...container.querySelectorAll('label')].find((l) => l.textContent?.includes('Slabs'))?.querySelector('input');
-    assert.ok(slabs);
-    click(slabs);
-    click([...container.querySelectorAll('button')].find((b) => b.textContent?.includes('Check'))!);
-    await waitFor(() => followUps.length === 1, 'follow-up posted');
-    assert.equal(followUps[0].text, 'Check these types');
-    assert.deepEqual(followUps[0].context, { prompt: 'Check these types', types: ['IfcWall', 'IfcSlab'], storey: '00 groundfloor' });
+    const choice = (label: string) => [...container.querySelectorAll('label')]
+      .find((element) => element.textContent?.includes(label))?.querySelector('input');
+    assert.equal(choice('Doors')?.checked, true);
+    const walls = choice('Walls');
+    assert.ok(walls);
+    click(walls);
+    const check = [...container.querySelectorAll('button')].find((button) => button.textContent?.includes('Check'));
+    assert.ok(check);
+    click(check);
+    await waitFor(() => followUps.length === 1, 'follow-up notification received');
+    assert.equal(followUps[0].text, 'Check the selected element types');
+    assert.deepEqual(followUps[0].context, {
+      prompt: 'Check the selected element types', types: ['IfcDoor', 'IfcWall'], storey: '00 groundfloor',
+    });
     assert.equal(
       composeFollowUpPrompt(followUps[0].text, followUps[0].context),
-      'Check these types\n\n(context: {"types":["IfcWall","IfcSlab"],"storey":"00 groundfloor"})',
+      'Check the selected element types\n\n(context: {"types":["IfcDoor","IfcWall"],"storey":"00 groundfloor"})',
     );
   });
 

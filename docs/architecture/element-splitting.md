@@ -79,7 +79,7 @@ knows what's targetable.
    - snap dots appear at: start, midpoint, thirds (every 0.5 m if
      wall is longer than 2 m), and at every intersecting wall
 3. User clicks:
-   - if cursor is within the wall and at least MIN_WALL_SEGMENT_LENGTH
+   - if cursor is within the wall and more than MIN_WALL_SEGMENT_LENGTH
      (0.05 m) from each end → commit split
    - otherwise: red "X" cursor + toast "Split too close to wall end"
 4. Two new walls appear; original is gone; selection moves to the
@@ -213,9 +213,8 @@ element-specific snaps:
   - Midpoint
   - Thirds, quarters (configurable in tool-settings dropdown)
   - Intersection point with any other wall on the same storey
-    (computed by `findWallIntersection` already in `wall-drafting.ts`'s
-    equivalent — we have planar-graph helpers in `@ifc-lite/create`'s
-    auto-space code that can be reused)
+    (planned; no wall-intersection helper exists yet — the planar-graph
+    helpers in `@ifc-lite/create`'s auto-space code are the candidate)
   - Hosted-element edges (door / window frames) — snap to the frame
     boundary so users can split "right next to" an opening
   - Snap to current grid step
@@ -490,12 +489,16 @@ Split produces new walls/slabs whose geometry the renderer needs
 to see immediately — same problem as the move gizmo. We solve it
 once, both features benefit:
 
-- **Path A (chosen for v1):** `appendGeometryBatch(newMeshes)` for
-  the two new halves + a new `removeMeshFromGeometry(globalId)`
-  action that filters the old wall's meshes out of
-  `geometryResult.meshes` and bumps `geometryUpdateTick`. The
-  renderer's `useGeometryStreaming` already watches for additions;
-  we extend it to handle removals.
+- **Path A (shipped, through the shared re-mesh seam):** the
+  `element.split` command returns `remesh: [source, created]`
+  (`element-split.ts`), and the modeling transaction hands those ids to
+  `remeshAfterCommit` (`apps/viewer/src/lib/remesh/remesh-registry.ts`),
+  which runs `requestRemesh` (`remesh-service.ts`) now and again on undo /
+  redo of the batch. It
+  expands them to the affected set, meshes a mini STEP subgraph in the
+  re-mesh worker, and swaps the result in with one `replaceEntityMeshes`
+  store update that `useMeshEditDrain` hands to the renderer. There is no
+  separate `removeMeshFromGeometry` action.
 - **Path B (follow-up):** renderer-side per-entity transform +
   visibility flag, so we can do live preview during drag without
   reuploading meshes. Same path that level-display Exploded mode
@@ -554,17 +557,20 @@ a sheet: "Split this wall at: [slider 0…length] [enter distance]
 
 ## Test surface
 
-Pure helpers (high-priority):
-- `clipPolygonByLine.test.ts` — half-plane clipping with degenerate
+Pure helpers (tests in `apps/viewer/src/lib/`):
+- `polygon-clip.test.ts` — half-plane clipping with degenerate
   cases (line misses polygon, line on edge, line through vertex)
-- `splitWall.test.ts` — overlay-only fixture, verify new walls'
-  XDim, profile origin, RefDirection sharing, Pset duplication
-- `splitSlab.test.ts` — same plus polygon clipping correctness
-- `cloneElementMetadata.test.ts` — Pset / Qto / classification /
-  material / type rel duplication
-- `reassignHostedOpenings.test.ts` — opening on left of cut goes
-  to left half, opening on right goes to right; straddling
-  opening triggers warning callback
+- `slab-edit.test.ts`, `slab-edit-refusal.test.ts`,
+  `linear-element-edit.test.ts`, `linear-element-edit-range.test.ts`,
+  `split-guid.test.ts`, `split-effective-type.test.ts`
+- `metadata-clone.test.ts` (plus
+  `packages/create/src/in-store/edit/metadata-clone-structural.test.ts`) —
+  Pset / Qto / classification / material / type rel duplication
+- `hosted-opening-refit.test.ts` — hosted openings after a cut
+  (`hosted-opening-refit.ts` in `packages/create/src/in-store/edit/`)
+- Command level: `apps/viewer/src/lib/commands/modeling/commands/element-split.test.ts`,
+  `element-split.authored.test.tsx`, `multi-split.test.tsx`, and
+  `apps/viewer/src/lib/actions/model-authoring-split*.test.ts`
 
 Integration (lower priority, after pure helpers):
 - Round-trip: split + export + reparse → two valid walls with

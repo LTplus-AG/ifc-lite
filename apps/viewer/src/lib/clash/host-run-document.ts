@@ -88,6 +88,10 @@ export function ruleMemberships(result: ClashResult, context: ClashRunHostContex
   return out;
 }
 
+const isThenable = (value: unknown): value is PromiseLike<unknown> =>
+  (typeof value === 'object' || typeof value === 'function') && value !== null
+  && typeof (value as { then?: unknown }).then === 'function';
+
 /** Deliver a published result to every registered host listener. */
 export function notifyClashRunComplete(result: ClashResult, context: ClashRunHostContext): void {
   for (const { listener, options } of clashRunRegistrations()) {
@@ -103,7 +107,9 @@ export function notifyClashRunComplete(result: ClashResult, context: ClashRunHos
         labels: [CLASH_RUN_BROWSER_SUBMITTED],
       });
       const delivered = listener({ document });
-      if (delivered instanceof Promise) delivered.catch((err: unknown) => { console.error('[clash] host run listener failed', err); });
+      if (isThenable(delivered)) {
+        Promise.resolve(delivered).catch((err: unknown) => { console.error('[clash] host run listener failed', err); });
+      }
     } catch (err) {
       console.error('[clash] host run listener failed', err);
     }

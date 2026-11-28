@@ -25,5 +25,14 @@
     "later": "#33=IFCSPACEHEATERTYPE('1YvctVUKr0kugbFTf53O9L',$,'Kept',$,$,$,$,$,$,.NOTDEFINED.);",
     "keptType": "IFCSPACEHEATERTYPE",
     "omittedType": "IFCELECTRICHEATERTYPE"
+  },
+  {
+    "name": "malformed property set whose sole member is an omitted space boundary (#11457)",
+    "target": "IFC4",
+    "laterSchema": "IFC4",
+    "first": "#20=IFCRELSPACEBOUNDARY('3XigBlHYfFnxzvgV9_gBmP',$,'1stLevel',$,#10,$,$,.VIRTUAL.,.INTERNAL.);\n#33=IFCPROPERTYSET('1YvctVUKr0kugbFTf53O9L',$,'Dropped',$,(#20));",
+    "later": "#33=IFCGROUP('1YvctVUKr0kugbFTf53O9L',$,'Kept',$,$);",
+    "keptType": "IFCGROUP",
+    "omittedType": "IFCPROPERTYSET"
   }
 ]

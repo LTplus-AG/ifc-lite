@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "why": "Allow a disabled vertex to shadow the eligible edge before snap selection.",
+  "key": "packages/renderer/src/raycast-screen-corner.ts",
+  "mutation": "tests/evidence/11504-eligible-edge/behaviour.oracle.patch",
+  "test": "packages/renderer/src/snap-screen-corners.test.ts"
+}

@@ -7,12 +7,15 @@ import type { Ray, Vec3, Intersection } from './raycaster.js';
 import { Raycaster } from './raycaster.js';
 import { distance, vecEquals, closestPointOnEdgeWithT, screenToWorldRadius } from './snap-geometry-utils.js';
 import { buildGeometryCache, type MeshGeometryCache } from './snap-geometry-cache.js';
+import { GeometryCacheBuild, cachedStepBuild, type StepBuild } from './snap-geometry-build.js';
 import type { SnapEdge } from './snap-edge-runs.js';
 import { bestEdgeCandidate, detectCorner, type EdgeCandidate } from './snap-corner.js';
 import type { PickClipState } from './pick-types.js';
 import { entityClip } from './section-exclusions.js';
 import { ClippedGeometryViews, cutEntryPoint, planesFor, planesKey } from './snap-clip.js';
 import { pointClipped } from './scene-raycaster.js';
+import type { ScreenCornerSnapOptions } from './snap-screen-corners.js';
+export type { ScreenCornerSnapOptions };
 import { releasedEdgeLock } from './raycast-point-cloud-query.js';
 
 export enum SnapType {
@@ -63,6 +66,8 @@ export interface SnapOptions {
    * points too. See `pointCloudSnapEnabled`.
    */
   snapToPointClouds?: boolean;
+  /** CAD-style screen-space corner/edge search (#11504). Consumed by `RaycastEngine`; absent = off. */
+  screenCornerSnap?: ScreenCornerSnapOptions;
 }
 
 // Edge lock state for magnetic snapping (passed from store)
@@ -541,19 +546,20 @@ export class SnapDetector {
     };
   }
 
-  /**
-   * Get or compute geometry cache for a mesh
-   */
-  private getGeometryCache(mesh: MeshData): MeshGeometryCache {
+  /** Get or compute geometry cache for a mesh */
+  getGeometryCache(mesh: MeshData): MeshGeometryCache {
     const key = this.cacheKeyFor(mesh);
     const cached = this.geometryCache.get(key);
-    if (cached) {
-      return cached;
-    }
+    if (cached) return cached;
 
     const cache = buildGeometryCache(mesh);
     this.geometryCache.set(key, cache);
     return cache;
+  }
+
+  /** The same cache as `getGeometryCache`, built in bounded steps for the idle corner pipeline (#11504). */
+  startGeometryCache(mesh: MeshData): StepBuild<MeshGeometryCache> {
+    return cachedStepBuild(this.geometryCache, this.cacheKeyFor(mesh), () => new GeometryCacheBuild(mesh));
   }
 
   /** The mesh's snap geometry under `clip`, and the key naming that clip ('' when nothing clips it). */

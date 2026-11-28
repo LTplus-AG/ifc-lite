@@ -9,12 +9,10 @@ tab-to-tab without one.
 ## Quick start (local)
 
 ```sh
-# 1. Build the server
-pnpm --filter @ifc-lite/collab-server build
-
-# 2. Run it (anonymous mode — open, fine for local dev)
-node packages/collab-server/dist/bin.js
-# → [collab-server] listening at ws://0.0.0.0:1234 (data: ./.collab-data, auth: anonymous)
+# 1. Build the server and its workspace deps, then run it
+#    (anonymous mode — open, fine for local dev)
+pnpm collab:server
+# → [collab-server] listening at ws://0.0.0.0:1234 (data: ./.collab-data, auth: anonymous, registry: off, blob-gc: every 360m)
 
 # 3. Run the viewer pointed at it
 VITE_COLLAB_ENABLED=true VITE_COLLAB_SERVER_URL=ws://localhost:1234 pnpm --filter viewer dev
@@ -29,17 +27,27 @@ There's also a one-command demo that boots the server plus a tiny client:
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `COLLAB_PORT` | `1234` | Listen port. |
+| `COLLAB_PORT` | `PORT`, else `1234` | Listen port. Hosts that inject `PORT` (Railway, Render, Fly) need no setting. |
 | `COLLAB_HOST` | `0.0.0.0` | Bind address. |
 | `COLLAB_DATA_DIR` | `./.collab-data` | Directory for durable Y.Doc persistence (`FilePersistence`). |
 | `COLLAB_MAX_ROOMS` | `1024` | Hard cap on concurrently loaded rooms. |
 | `COLLAB_MAX_CLAIMED_ROOMS` | `100000` | Hard cap on room claims, pending and confirmed together (only with `COLLAB_TOKEN_SECRET`). |
 | `COLLAB_TOKEN_SECRET` | _(unset)_ | **Enables signed-link access control.** Unset = anonymous (open). See [Access control](#access-control). |
+| `COLLAB_TRUST_PROXY` | off | `1`/`true` honours `X-Forwarded-For` for the per-IP mint budget. Set it only behind a trusted reverse proxy. |
+| `COLLAB_IDLE_UNLOAD_MS` | `300000` (5 min) | Unload rooms that have had no peers this long; they reload from disk on the next connect. `0` disables. |
+| `COLLAB_METRICS_TOKEN` | _(unset)_ | Bearer token required for `/metrics`; `/healthz` then omits the room count unless it is presented. |
+| `COLLAB_BLOB_GC` | on | `0`/`false` turns off blob garbage collection. |
+| `COLLAB_BLOB_GC_INTERVAL_MS` | `21600000` (6 h) | How often blob GC runs. |
+| `COLLAB_BLOB_GC_GRACE_MS` | `86400000` (24 h) | Minimum age before an unreferenced blob is deleted (at least 60000). |
+| `COLLAB_LAYER_REGISTRY` | off | `1`/`true` mounts the layer registry (`/api/v1/…`) under `COLLAB_DATA_DIR`. |
+| `COLLAB_REGISTRY_WEBHOOK_URL` | off | POST layer-registry events to this URL. |
+| `COLLAB_REGISTRY_WEBHOOK_SECRET` | _(unset)_ | HMAC-SHA256 signing secret for those webhook payloads. |
 
-!!! warning "Blob storage is in-memory in the CLI"
-    The CLI server keeps geometry blobs **in memory** (lost on restart) and the
-    Y.Doc on disk. For production, run the server [programmatically](#programmatic-embedding)
-    and pass a durable `blobStorage` (S3, GCS, filesystem).
+!!! note "Blob storage"
+    The CLI server stores geometry blobs on disk under `COLLAB_DATA_DIR/blobs`
+    (`FsBlobStorage`), next to the Y.Doc logs. `startCollabServer` without a
+    `blobStorage` option keeps blobs in memory, so pass a durable one (S3, GCS,
+    filesystem) when you [embed it](#programmatic-embedding).
 
 ### Viewer (build environment)
 
@@ -101,13 +109,14 @@ deployments back it with a shared store via the programmatic API.
 | Route | Method | Notes |
 | --- | --- | --- |
 | `/<roomId>` | WS upgrade | y-websocket sync (room id is the path; `?token=` for auth). |
-| `/healthz` | GET | `{ ok, rooms }`. |
-| `/metrics` | GET | Prometheus text (`collab_rooms`, `collab_room_peers`, `collab_updates_total`, …). |
+| `/healthz` | GET | `{ ok, rooms }` (`rooms` only when no metrics token is set or it is presented). |
+| `/metrics` | GET | Prometheus text (`collab_rooms`, `collab_room_peers`, `collab_updates_total`, …). `401` without the bearer when `COLLAB_METRICS_TOKEN` is set. |
 | `/blobs`, `/blobs/<hash>` | GET / PUT / HEAD / DELETE | Content-addressed geometry blobs. |
 | `/collab/token` | POST | Mint a signed token (only when `COLLAB_TOKEN_SECRET` is set). |
 | `/collab/revoke` | POST | Admin: invalidate a link by token. |
 | `/collab/release` | POST | Admin of a never-joined room: hand its claim back (`409` once joined). |
 | `/collab/kick` | POST | Admin: disconnect a peer by client id. |
+| `/api/v1/…` | various | Layer registry, only with `COLLAB_LAYER_REGISTRY` (see the package README). |
 
 All HTTP routes send permissive CORS headers (reflecting the request `Origin`)
 and answer `OPTIONS` preflights, so the viewer can reach them from a different
@@ -219,7 +228,7 @@ with the same env, behind TLS.
       custom `blobStorage` (S3/GCS) via the [programmatic API](#programmatic-embedding)
       if you need object storage instead.
 - [ ] Optionally lock CORS down (`cors: { origin: ['https://ifclite.com'] }`).
-- [ ] Scrape `/metrics`; alert on `collab_rooms` / peer counts.
+- [ ] Set `COLLAB_METRICS_TOKEN`, then scrape `/metrics` with it; alert on `collab_rooms` / peer counts.
 
 ## See also
 

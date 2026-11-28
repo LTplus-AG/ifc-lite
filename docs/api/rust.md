@@ -17,6 +17,10 @@ All crates live in one Cargo workspace (versioned together, MPL-2.0 licensed):
 | `ifc-lite-clash` | `rust/clash` | [docs.rs](https://docs.rs/ifc-lite-clash) | High-performance geometry kernel for IFC clash detection |
 | `ifc-lite-ffi` | `rust/ffi` | [docs.rs](https://docs.rs/ifc-lite-ffi) | C FFI bindings: native cdylib for in-process IFC parsing |
 | `ifc-lite-wasm` | `rust/wasm-bindings` | [docs.rs](https://docs.rs/ifc-lite-wasm) | WebAssembly bindings for IFC-Lite |
+| `ifc-lite-landxml` | `rust/landxml` | [docs.rs](https://docs.rs/ifc-lite-landxml) | Bounded pull-parser ingestion for LandXML terrain sources |
+| `ifc-lite-geometry-runtime` | `rust/geometry-runtime` | [docs.rs](https://docs.rs/ifc-lite-geometry-runtime) | Explicit isolated native geometry worker client (opt-in, source-only) |
+
+The crates above are the ones `pnpm release:crates` publishes (`scripts/lib/crates-io.mjs`). The workspace also holds `apps/server` (`ifc-lite-server`) and crates that are not published to crates.io: `ifc-lite-cache`, `ifc-lite-diff`, `ifc-lite-diff-wasm`, `ifc-lite-rhino-wasm`, `ifc-lite-git`, `ifc-lite-cloud-import`, `ifc-lite-imported-geometry`, `ifc-lite-retained-native` and `ifc-lite-testkit`.
 
 The Python bindings (`rust/python`, PyPI package `ifclite-geom`) are excluded from the workspace and documented on the [Python API page](python.md).
 
@@ -71,7 +75,7 @@ established unresolved-placement behavior.
 The geometry crate's former `parse_axis2_placement_3d`,
 `parse_axis2_placement_3d_from_id`, `parse_cartesian_point`,
 `parse_cartesian_point_from_id`, `parse_direction`, and `parse_direction_from_id`
-exports are removed in the pending Rust major. `rotation_angle_about_z` remains
+exports were removed in a Rust-only major (recorded in `rust-major-offset.json`). `rotation_angle_about_z` remains
 available at the crate root and through `placement`.
 
 ## ifc-lite-core
@@ -88,13 +92,18 @@ pub mod schema_gen;      // Decoded attribute values and entities
 pub mod streaming;       // Streaming parse events
 pub mod fast_parse;      // Fast single-purpose extraction helpers
 pub mod georef;          // Georeferencing extraction
-pub mod legacy_entities; // IFC2X3 legacy entity handling
 pub mod model_bounds;    // Model/placement bounds scanning
 pub mod project_units;   // Project unit resolution
 pub mod step_encoding;   // STEP string encode/decode
 pub mod units;           // Unit conversion helpers
 pub mod error;           // Error types
 ```
+
+The crate also exports `attribute_slot`, `columnar_index`, `compatibility`,
+`dense_index`, `execution_owner`, `express_id`, `fmt_num`, `guid`, `hash`,
+`limits`, `project_locator`, `resource_stop`, `schema_family`, `slot`,
+`source_bundle`, `sparse_source`, `typed_value` and `unit_labels`; see
+`rust/core/src/lib.rs`.
 
 ### Parser Module
 
@@ -154,6 +163,10 @@ pub enum Token<'a> {
     Integer(i64),
     /// Float: 3.14
     Float(f64),
+    /// A STEP REAL literal that f64 cannot hold (1.E400), as raw text
+    UnrepresentableReal(&'a [u8]),
+    /// Binary literal "0FF": the content between the quotes, undecoded
+    Binary(&'a [u8]),
     /// Enum: .TRUE., .FALSE., .UNKNOWN.
     Enum(&'a [u8]),
     /// List: (1, 2, 3)
@@ -211,23 +224,25 @@ pub fn entity_count<T>(content: &T) -> usize;
 #### IfcType
 
 ```rust
-/// IFC entity types: all 876 entity types from the IFC4X3 schema,
-/// plus Unknown(u32) storing a CRC32 hash of unrecognized names.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+/// IFC entity types: all 1021 entity types of the supported schemas
+/// (IFC4X3 plus the IFC4 and IFC2X3 supplements), plus Unknown for
+/// unrecognized names. Clone and Debug are implemented by hand; the type is
+/// not Copy, because Unknown owns its keyword.
+#[derive(PartialEq, Eq, Hash)]
 pub enum IfcType {
     IfcBoxedHalfSpace,
     IfcBridge,
     IfcBuilding,
     IfcBuildingStorey,
-    // ... 876 variants ...
-    /// Unknown/unrecognized IFC type (stores CRC32 hash)
-    Unknown(u32),
+    // ... 1021 variants ...
+    /// Unknown/unrecognized IFC type: normalized keyword plus its CRC32 id
+    Unknown(UnknownIfcType),
 }
 
 /// Every entity type the schema declares, in declaration order, re-exported
 /// from `ifc_lite_core` as `IFC_TYPES`.
 ///
-/// The enum is exhaustive but not enumerable — `Unknown(u32)` makes it open and
+/// The enum is exhaustive but not enumerable — `Unknown` makes it open and
 /// the ids are sparse — so anything reasoning about the WHOLE schema (mapping
 /// every class into another vocabulary, auditing coverage, generating a table)
 /// needs this rather than re-parsing the EXPRESS file.
@@ -237,17 +252,18 @@ impl IfcType {
     /// Parse from an (upper-case) type name
     pub fn from_str(s: &str) -> Self;
 
-    /// Parse from the stable numeric type id
-    pub fn from_id(id: u32) -> Self;
+    /// Parse from the stable numeric type id; None for an id no known type
+    /// has (an unknown keyword cannot be rebuilt from its hash)
+    pub fn from_id(id: u32) -> Option<Self>;
 
     /// Stable numeric type id
     pub fn id(&self) -> u32;
 
     /// Type name (SCREAMING case as written in STEP)
-    pub fn as_str(&self) -> &'static str;
+    pub fn as_str(&self) -> &str;
 
     /// Type name (CamelCase)
-    pub fn name(&self) -> &'static str;
+    pub fn name(&self) -> &str;
 
     /// This entity's attributes, in STEP declaration order — the order
     /// `DecodedEntity::get` indexes. Supertype attributes come first, so
@@ -400,7 +416,7 @@ use `EntityIndex`.
 pub struct ColumnarEntityIndex { /* ids, starts, lengths */ }
 
 impl ColumnarEntityIndex {
-    pub fn from_columns(ids: &[u32], starts: &[u32], lengths: &[u32]) -> Self;
+    pub fn from_columns(ids: &[u32], starts: &[u32], lengths: &[u32]) -> Result<Self, ColumnLengthMismatch>;
     // Each returns Err(SpanBeyondU32) when a record's start or length does not
     // fit u32 (a source of 4 GiB or more keeps the usize-carrying EntityIndex).
     pub fn from_scan<T>(content: &T) -> Result<Self, SpanBeyondU32>;
@@ -469,7 +485,7 @@ hash indexing during the scan, coalescing duplicate IDs as they arrive.
 
 ```rust
 /// Events emitted during streaming parse
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ParseEvent {
     /// Parsing started
     Started { file_size: usize, timestamp: f64 },
@@ -530,8 +546,12 @@ pub enum AttributeValue {
     String(String),
     Integer(i64),
     Float(f64),
+    /// STEP binary literal: raw content between the quotes, undecoded
+    Binary(String),
     Enum(String),
     List(Vec<AttributeValue>),
+    /// Typed parameter such as IFCLABEL('x'): upper-case type name + value
+    Typed { name: Box<str>, value: Box<AttributeValue> },
     Null,
     Derived,
 }
@@ -540,10 +560,15 @@ impl AttributeValue {
     pub fn from_token(token: &Token) -> Self;
     pub fn as_entity_ref(&self) -> Option<u32>;
     pub fn as_string(&self) -> Option<&str>;
+    pub fn as_binary_hex(&self) -> Option<&str>;
     pub fn as_enum(&self) -> Option<&str>;
     pub fn as_float(&self) -> Option<f64>;
     pub fn as_int(&self) -> Option<i64>;
     pub fn as_list(&self) -> Option<&[AttributeValue]>;
+    // Typed parameters (rust/core/src/typed_value.rs)
+    pub fn as_typed(&self) -> Option<(&str, &AttributeValue)>;
+    pub fn unwrap_typed(&self) -> &AttributeValue;
+    pub fn typed_value(&self, name: &str) -> Option<&AttributeValue>;
 }
 ```
 
@@ -551,7 +576,7 @@ impl AttributeValue {
 
 ```rust
 /// Fully decoded entity
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct DecodedEntity {
     pub id: u32,
     pub ifc_type: IfcType,
@@ -582,6 +607,15 @@ pub enum Error {
 
     #[error("UTF-8 error: {0}")]
     Utf8(#[from] std::str::Utf8Error),
+
+    #[error("Entity #{0} holds a REAL outside the double range; refused by input admission")]
+    UnrepresentableReal(u32),
+
+    #[error("Entity #{0} is malformed geometry input; refused")]
+    MalformedRecord(u32),
+
+    #[error("Length unit factor #{factor} is not a positive finite number; geometry refused")]
+    UnusableUnitFactor { factor: u32, overflowed: bool },
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -620,10 +654,17 @@ and later CSG remain distinct steps.
 ### Features
 
 ```toml
-default = []          # no optional features
-debug_geometry = []   # extra geometry debugging output
-csg_capture = []      # measurement-only CSG corpus capture for benches
-observability = []    # route diagnostics through `tracing` instead of eprintln
+default = []               # no optional features
+debug_geometry = []        # extra geometry debugging output
+csg_capture = []           # measurement-only CSG corpus capture for benches
+observability = ["dep:tracing"] # route diagnostics through `tracing` instead of eprintln
+retained-runtime = [...]   # off-by-default retained product controller (#7955)
+wasm_source_capture = []   # authored-source capture; enabled only by retained-runtime
+opening-perf-trace = []    # opt-in route-work diagnostic (#6516)
+triangulation-alt = [...]  # second triangulator for invariance tests; never shipped
+test-support = []          # mesh oracles for ifc-lite-testkit; never shipped
+csg_topology_gate = []     # opt-in CSG topology gate
+csg_manifold_gate = []     # opt-in CSG manifold gate
 ```
 
 ### Key Types (crate-root re-exports)
@@ -773,7 +814,7 @@ and wraps decoder failures in `Error::CoreError`. `WalkVisitor::refused` receive
 future strict visitors can inspect the refused mapped item. For a root budget
 refusal that entity is the holding representation, with `shape_rep` set.
 
-Source breaks, covered by the pending Rust major in `rust-major-offset.json`:
+Source breaks, shipped in a Rust-only major recorded in `rust-major-offset.json`:
 `Expand` gains `max_levels`; `WalkRefusal` replaces/removes variants, changes
 `TooDeep` to a struct variant and adds `Budget`/`Decode`; it no longer implements
 `Clone`, `Copy`, `PartialEq` or `Eq` because the decoder error is owned; and
@@ -1453,12 +1494,13 @@ pub use parquet_bos::{export_bos, ParquetBosOptions};
 ### Features
 
 ```toml
-default = ["gltf-textures"]
-gltf-textures = []    # opt-in textured glTF/GLB export (TEXCOORD_0 + PNG images); without it
+default = ["gltf-textures", "cityjson"]
+gltf-textures = ["dep:png"] # textured glTF/GLB export (TEXCOORD_0 + PNG images); without it
                       # (default-features = false, as the wasm engine does) requesting
                       # textures returns ExportError::UnsupportedOption
-parquet-bos = []      # Parquet/.bos export (arrow + parquet + zip; not wasm32-safe)
-observability = []    # surface faceted-brep phase timing for profiling examples
+cityjson = ["dep:i_overlay"] # CityJSON writer; the engine wasm leaves it out, rust/rhino-wasm enables it
+parquet-bos = [...]   # Parquet/.bos export (arrow + parquet + zip; not wasm32-safe)
+observability = [...] # surface faceted-brep phase timing for profiling examples
 ```
 
 ---
@@ -1469,7 +1511,7 @@ Native clash-detection kernel: a faithful port of the TypeScript reference engin
 
 ```rust
 pub use aabb::Aabb;
-pub use narrow::ClashStatus;
+pub use narrow::{ClashStatus, DistanceKind};
 pub use session::{ClashRecord, ClashSession, RuleResult};
 ```
 
@@ -1483,7 +1525,7 @@ let mut session = ClashSession::new();
 // idx_ranges: [idx_offset, idx_len] per element
 // aabbs: [minx, miny, minz, maxx, maxy, maxz] per element
 session.ingest(&[], &[], &[], &[], &[]);
-let result = session.run_rule(&[], &[], 0, 0.0, 0.0, false);
+let result = session.run_rule(&[], None, 0, 0.0, 0.0, false);
 ```
 
 ---
@@ -1524,12 +1566,14 @@ caller owns the following guarantees:
 
 - **Inputs.** `path_ptr` / `path_len` describe a UTF-8 file path (need not be
   NUL-terminated). `out_ptr` and `out_len` must be non-null and valid for
-  writes. A null pointer or non-UTF-8 path returns `1` and writes nothing.
+  writes. A null pointer or non-UTF-8 path returns `1`; any out-parameter that
+  is non-null is still set to null / `0`.
 - **Success (`0`).** `*out_ptr` receives a heap buffer of `*out_len` serialized
   JSON bytes. The buffer is owned by the caller from that point on.
 - **Failure.** Non-zero return codes zero the out-parameters (no
   buffer is allocated, so there is nothing to free): `1` null pointer, invalid
-  path, or unsupported flag bits; `2` file could not be read, `3` geometry processing panicked, `4` JSON
+  path, or unsupported flag bits; `2` file could not be read, `3` geometry processing panicked
+  (recoverable only in an unwinding build such as `server-release`) or the worker pool could not start, `4` JSON
   serialization failed.
 - **Freeing.** Pass the exact `ptr` and `len` you received from a successful
   parse to `ifc_lite_free` **exactly once**. Do not free on a non-zero return,
@@ -1598,7 +1642,7 @@ impl IfcAPI {
         content: &[u8],
         include_metadata: bool,
         hidden: &[u32],
-        isolated: &[u32],
+        isolated: Option<Vec<u32>>, // None: no filter; Some(empty): exports nothing
         hidden_types_csv: String,
         lit: Option<bool>,
         emissive: Option<bool>,
@@ -1623,11 +1667,22 @@ impl IfcAPI {
 ### Features
 
 ```toml
-default = ["console_error_panic_hook"]
-threads = []          # threaded bundle via wasm-bindgen-rayon (built separately)
-console-tracing = []  # forward structured diagnostics to the DevTools console
-debug_geometry = []   # forwards to ifc-lite-geometry/debug_geometry
+default = ["console_error_panic_hook", "full"]
+full = ["export", "landxml", "clash", "scan", "pdf-vector"]
+export = [...]        # domain-format exporters (export* methods)
+landxml = [...]       # LandXML import/streaming (and terrain export with `export`)
+clash = [...]         # clash detection (triangle and solid)
+scan = []             # point-cloud scan operations
+pdf-vector = []       # PDF vector underlay import
+threads = [...]       # threaded bundle via wasm-bindgen-rayon (built separately)
+console-tracing = [...] # forward structured diagnostics to the DevTools console
+debug_geometry = [...]  # forwards to ifc-lite-geometry/debug_geometry
+retained-browser = [...] # retained browser executor (pkg-retained bundle)
+opening-perf-trace = [...] # opt-in route-work diagnostic
 ```
+
+`--no-default-features` builds the geometry-core bundle (`@ifc-lite/wasm/core`):
+parsing, mesh streaming, styles and 2D helpers without the `full` subsystems.
 
 ---
 

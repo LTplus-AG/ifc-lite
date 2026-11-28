@@ -23,7 +23,8 @@ the preview. Saved assignment recipes retain the filter definition and reviewed
 GlobalIds; restoring them re-evaluates the definition and reports membership
 changes before use.
 
-Queries support at most 32 rules and 10,000 candidate objects. Invalid predicates
+Queries support at most 32 rules, 10,000 candidate objects and an effective IFC
+of 128 MiB. Invalid predicates
 are refused as a whole query. Exact hierarchy storey selections contain session
 IDs and are unavailable here; save a filter using storey names instead. Named
 storey filters retain Search's name-matching semantics, including duplicate names.
@@ -103,8 +104,11 @@ inside an active shared room; leave the room to edit and share the finished
 result. IFCX export from a shared model preserves textured fragments through the
 versioned appearance extension described in the [export guide](exporting.md).
 
-PDF projection changes surface appearance. Vector extraction, text recognition,
-and scan-derived building geometry remain separate operations in the implementation roadmap.
+PDF projection changes surface appearance only. To turn a PDF page's vectors
+into IFC geometry, register it as a drawing and use **Save into model** with
+the **PDF vectors** representation (see below). Text is not recognised. To
+derive elements from a scan, see
+[Scan to BIM](federation.md#scan-to-bim-detect-and-review-elements).
 
 ## Drawing references in 2D and 3D
 
@@ -141,7 +145,8 @@ These workspace underlays do not become vector drawing entities; use
 
 **Export drawing registration** saves positions, image digests, and calibration
 recipes as JSON. Keep the original raster images alongside it: registration JSON
-does not embed images. **Import drawing registration** restores the records;
+does not embed images. **Import drawing registration** restores the records
+from a file of at most 2 MB;
 **Relink original image** verifies the exact image digest for any missing raster.
 Independent references are currently local to the workspace, not room content.
 
@@ -166,7 +171,17 @@ represent, retain their existing placement and report why editing is unavailable
 
 Expand **Save into model** on a registered drawing. Choose an editable model,
 its spatial container, and the annotation’s **Name**, then choose **Create annotation**.
-The new textured `IfcAnnotation` is selected in the viewer. **Cancel creation**
+The new textured `IfcAnnotation` is selected in the viewer.
+
+For a PDF page, set **Representation** to **PDF vectors** instead of **Image**.
+**Prepare vector preview** converts supported fills and straight strokes into
+coloured IFC geometry. Curves are flattened within **Geometry tolerance (m)**,
+measured in model metres after calibration. The page is checked first: text,
+images, clipping, transparency, patterns and other unsupported content are
+listed, never silently dropped. To proceed anyway, accept the partial
+conversion; the omissions are recorded in the annotation's
+`IfcLite_PdfVectorConversion` property set. A page with no vector content stays
+a raster reference. A user crop clips the vector conversion to the registered area. **Cancel creation**
 cancels preparation before publication. Use normal Undo/Redo and IFC + images
 export for the created object.
 
@@ -184,8 +199,9 @@ federation registration is available; the command reports this explicitly.
 
 ## Create an IFC object from a scan surface
 
-Open or add a textured GLB, then open **Author → Appearance → Create from scan**.
-Choose its surface in **Source surface**. The preview uses the original image;
+Open **Author → Appearance → Create from scan**, then open or **Add scan** a
+textured source: a GLB, a glTF bundle (`.gltf` + `.bin` + textures), or an IFC
+with a supported base-colour texture. Choose its surface in **Source surface**. The preview uses the original image;
 drag to orbit and scroll to zoom without moving the main view.
 
 Use **Select region** and drag a rectangle to keep part of the surface. The
@@ -194,8 +210,8 @@ front and back of the surface. It does not cut new edges at the rectangle border
 The preview shows exactly the retained textured region and its triangle count.
 **Entire surface** restores the complete source surface.
 
-Choose an editable IFC4 destination model, spatial container, and Name, then
-click **Create IFC object**. The resulting `IfcBuildingElementProxy` is selected
+Choose an editable IFC4 destination model (or **New IFC4 model**), spatial
+container, and Name, then click **Create IFC object**. The resulting `IfcBuildingElementProxy` is selected
 and participates in Undo/Redo. The original scan remains available. Completed
 workspace repositioning is respected; finish an active repositioning operation
 before creating the region. Semantic classification remains future work.
@@ -303,6 +319,17 @@ must not consist of a reserved mutation wire token (`$`, `*`, `#123`, or
 values before returning a plan because the current STEP mutation protocol has
 no unqualified literal-string marker. Ordinary names, including Unicode and
 punctuation, remain unchanged. Preserved page material names use the same rule.
+
+### Texturing only some faces
+
+Each converted object in the preview has a **Select faces** editor. Turn on
+**Pick faces**, then drag a rectangle to add whole faces by their centres or
+click one face to toggle it; hold Alt to remove. **Pick in model** picks faces
+in the main view instead. **All faces** clears the selection. Selected faces
+receive the image and the rest of the surface keeps its current style. A
+selection is bound to that exact evaluated surface, lasts for the session only,
+and is spent by Apply. Face selections need **Convert supported objects to
+mesh**; see [face masks](../architecture/appearance-evaluated-occurrences.md#face-masks-in-the-viewer).
 
 ### Point-cloud sources
 

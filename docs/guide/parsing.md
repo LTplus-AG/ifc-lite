@@ -348,7 +348,8 @@ const format = detectFormat(buffer);  // 'ifc', 'ifcx', 'glb', '3dm', or 'unknow
 `parseAuto` (and every built-in loader — CLI, MCP, the viewer) transparently
 unwraps the buildingSMART `.ifcZIP` container format: a zip archive wrapping
 a single `.ifc`/`.ifcxml` file. Feed it the zip bytes directly — no manual
-unzip step needed:
+unzip step needed. `parseAuto` itself reads only STEP and IFCX, so an archive
+holding an `.ifcxml` entry unwraps and then throws `Unknown file format`:
 
 ```typescript
 import { parseAuto, unwrapIfcZip } from '@ifc-lite/parser';
@@ -360,7 +361,9 @@ const result = await parseAuto(zipBuffer);
 const ifcBuffer = await unwrapIfcZip(zipBuffer);
 ```
 
-`unwrapIfcZip` returns only model bytes. For textured archives, call
+`unwrapIfcZip` returns only model bytes. `unwrapIfcZipView(view)` does the same
+for a `Uint8Array` or Node `Buffer` view, without copying a non-zip input's
+backing buffer. For textured archives, call
 `unwrapIfcZipWithResources`: its `resources` map resolves PNG/JPEG images by
 lowercased basename (first entry wins), while `originalResources` preserves
 each archive path using the same byte arrays. `modelPath` identifies the IFC
@@ -455,10 +458,12 @@ const path = result.idToPath.get(wallId);
 const id = result.pathToId.get(path);
 ```
 
-`spatialHierarchy.getContainingSpace(elementId)` reads the live canonical
-containment index. It resolves a directly contained element or aggregated
+On a STEP store (`IfcDataStore.spatialHierarchy`, whether built by the parser,
+a worker or the server), `spatialHierarchy.getContainingSpace(elementId)` reads
+the live canonical containment index. It resolves a directly contained element or aggregated
 descendant to its nearest containing space, and reflects authored containment
-changes and Undo without rebuilding the hierarchy.
+changes and Undo without rebuilding the hierarchy. The IFCX hierarchy above
+checks direct space membership only.
 
 ## Server-Side Parsing
 
@@ -490,8 +495,9 @@ For repeated native decoding, caller-owned scratch vectors can be reused with
 `EntityDecoder::get_entity_ref_list_fast_into(entity_id, &mut ids)` and
 `get_polyloop_coords_cached_into(entity_id, &mut coords)`. Each replaces the
 buffer contents and returns `Some(())` on success or `None` with an empty buffer
-on failure. The reference-list helper preserves authored order and duplicates,
-dropping oversized references. The PolyLoop helper preserves coordinate order
+on failure. The reference-list helper preserves authored order and duplicates;
+an item that is not exactly one reference (an ID above `u32::MAX` included)
+refuses the whole list, and an empty list is also `None`. The PolyLoop helper preserves coordinate order
 and rejects the whole loop for missing or oversized point references; points
 already resolved remain in the decoder's existing point cache even on failure.
 Both retain the behavior of their allocating convenience accessors. The caller
@@ -506,6 +512,9 @@ interface ParseOptions {
 
   // Diagnostic message callback
   onDiagnostic?: (message: string) => void;
+
+  // Record-scan coverage report (the same report parseModel returns)
+  onScanReport?: (report: import('@ifc-lite/parser').EntityScanReport) => void;
 
   // Optional IfcAPI instance for WASM-accelerated entity scanning
   wasmApi?: WasmScanApi;
@@ -545,12 +554,12 @@ interface IfcDataStore {
   entityCount: number;
   parseTime: number;
 
-  // Raw source (for on-demand parsing)
-  source: Uint8Array;
+  // Raw source (for on-demand parsing): an accessor over the bytes, not a resident Uint8Array
+  source: import('@ifc-lite/parser').IfcSourceBytes;
 
   // Entity index
   entityIndex: {
-    byId: Map<number, EntityRef>;      // expressId -> EntityRef
+    byId: import('@ifc-lite/parser').EntityByIdIndex; // expressId -> EntityRef (a Map or a CompactEntityIndex)
     byType: Map<string, number[]>;     // type -> [expressId, ...]
   };
 
@@ -577,8 +586,9 @@ Source-empty server stores can provide `resolvedClassifications`, an optional ma
 
 `ColumnarEntityIndex::from_owned_columns(ids, starts, lengths)` consumes three
 `Vec<u32>` columns. Like the borrowed `from_columns` constructor, it sorts when
-needed, keeps the last input occurrence of duplicate IDs, and returns an empty
-index for empty or mismatched columns. Already sorted, unique columns retain
+needed, keeps the last input occurrence of duplicate IDs, returns an empty
+index for empty columns, and returns `Err(ColumnLengthMismatch)` when the three
+columns differ in length. Already sorted, unique columns retain
 their existing allocations. Use `from_columns` when the caller must keep owning
 its input vectors.
 
@@ -745,7 +755,9 @@ const classifications = extractClassifications(parseResult.entities, parseResult
 const codes = getClassificationsForElement(wallId, classifications);
 for (const code of codes) {
   console.log(`${code.identification} - ${code.name}`);
-  // e.g., "Pr_60_10_32 - External walls" (owning system via code.referencedSource)
+  // e.g., "Pr_60_10_32 - External walls". code.referencedSource is the parent
+  // classification or reference; getClassificationPath(code.id, classifications)
+  // walks up to the owning system.
 }
 
 // Group elements by classification
@@ -754,6 +766,22 @@ groups.forEach((elementIds, code) => {
   console.log(`${code}: ${elementIds.length} elements`);
 });
 ```
+
+### Other on-demand readers
+
+`@ifc-lite/parser` exports more store readers than this page walks through.
+Each reads one entity from an `IfcDataStore`:
+
+| Function | Returns |
+|---|---|
+| `extractMaterialsOnDemand(store, entityId, view?)` | The entity's first resolved material (`MaterialInfo`), or `null` |
+| `extractRelationshipsOnDemand(store, entityId)` | The entity's relationships (`EntityRelationships`) |
+| `extractDocumentsOnDemand(store, entityId, view?)` | Associated documents (`DocumentInfo[]`) |
+| `extractGroupMembersOnDemand(store, groupId)` | The members of a group (`GroupMember[]`) |
+| `extractTypeEntityOwnProperties(store, typeEntityId, view?)` | A type's own property sets, the property counterpart of `extractTypeEntityOwnQuantities` |
+| `mergeInheritedQuantitySets(ownSets, inheritedSets)` | Occurrence quantity sets merged over inherited ones, the quantity counterpart of `mergeInheritedPropertySets` |
+| `extractProjectUnits(source, entityIndex, projectId?)` | The project's unit assignment, read from source bytes without a full store |
+| `extractCostOnDemand(store, options?)` | The 5D cost graph (`CostGraphExtraction`) |
 
 ## Error Handling
 
@@ -765,8 +793,10 @@ const parser = new IfcParser();
 try {
   const store = await parser.parseColumnar(buffer);
 } catch (error) {
-  // parseColumnar throws standard Error instances on malformed STEP syntax,
-  // unknown or unsupported schemas, and other parse failures.
+  // parseColumnar is tolerant: a file whose schema does not resolve is read as
+  // IFC4, and malformed records are dropped and reported through onDiagnostic /
+  // onScanReport rather than thrown. Use parseModel() when malformed input must
+  // be refused; it throws IfcInputError.
   if (error instanceof Error) {
     console.error(`Parse failed: ${error.message}`);
   } else {
@@ -790,7 +820,6 @@ try {
 2. **Use on-demand properties** - Don't pre-load all properties
 3. **Use workers** - Import from `@ifc-lite/parser/browser` for non-blocking
 4. **Use server for large files** - Parallel processing and caching
-5. **Filter entity types** - Exclude IFCSPACE, IFCOPENINGELEMENT if not needed
 
 ## Multi-Model Loading
 

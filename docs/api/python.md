@@ -65,7 +65,7 @@ print(first["ifc_type"], first["vertices"][0])  # [x, y, z] in metres
 
 ## API
 
-### `geometry_data_buffers(ifc_bytes: bytes, quality: str | None = None, ids: set[int] | None = None, *, include_directrices: bool = False) -> dict`
+### `geometry_data_buffers(ifc_bytes: bytes, quality: str | None = None, ids: set[int] | None = None, *, include_directrices: bool = False, layer_slicing: bool = False) -> dict`
 
 The fast path. Vertices and faces come back as raw little-endian byte buffers so
 you can hand them straight to `numpy.frombuffer` with zero parsing.
@@ -108,7 +108,7 @@ omitted when `color` represents all surviving faces; `color` remains the first
 submesh's RGBA for existing consumers.
 Palette order follows first occurrence and supports more than 65,536 colors.
 
-### `geometry_data_json(ifc_bytes: bytes, quality: str | None = None, ids: set[int] | None = None, *, include_directrices: bool = False) -> str`
+### `geometry_data_json(ifc_bytes: bytes, quality: str | None = None, ids: set[int] | None = None, *, include_directrices: bool = False, layer_slicing: bool = False) -> str`
 
 The same geometry as a readable `ifc-lite-geometry-data` JSON document (a
 string; call `json.loads` on it). Vertices are `[x, y, z]` arrays and faces are

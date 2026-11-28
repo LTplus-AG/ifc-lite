@@ -75,7 +75,7 @@ established unresolved-placement behavior.
 The geometry crate's former `parse_axis2_placement_3d`,
 `parse_axis2_placement_3d_from_id`, `parse_cartesian_point`,
 `parse_cartesian_point_from_id`, `parse_direction`, and `parse_direction_from_id`
-exports are removed in the pending Rust major. `rotation_angle_about_z` remains
+exports were removed in a Rust-only major (recorded in `rust-major-offset.json`). `rotation_angle_about_z` remains
 available at the crate root and through `placement`.
 
 ## ifc-lite-core
@@ -224,23 +224,25 @@ pub fn entity_count<T>(content: &T) -> usize;
 #### IfcType
 
 ```rust
-/// IFC entity types: all 876 entity types from the IFC4X3 schema,
-/// plus Unknown(u32) storing a CRC32 hash of unrecognized names.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+/// IFC entity types: all 1021 entity types of the supported schemas
+/// (IFC4X3 plus the IFC4 and IFC2X3 supplements), plus Unknown for
+/// unrecognized names. Clone and Debug are implemented by hand; the type is
+/// not Copy, because Unknown owns its keyword.
+#[derive(PartialEq, Eq, Hash)]
 pub enum IfcType {
     IfcBoxedHalfSpace,
     IfcBridge,
     IfcBuilding,
     IfcBuildingStorey,
-    // ... 876 variants ...
-    /// Unknown/unrecognized IFC type (stores CRC32 hash)
-    Unknown(u32),
+    // ... 1021 variants ...
+    /// Unknown/unrecognized IFC type: normalized keyword plus its CRC32 id
+    Unknown(UnknownIfcType),
 }
 
 /// Every entity type the schema declares, in declaration order, re-exported
 /// from `ifc_lite_core` as `IFC_TYPES`.
 ///
-/// The enum is exhaustive but not enumerable — `Unknown(u32)` makes it open and
+/// The enum is exhaustive but not enumerable — `Unknown` makes it open and
 /// the ids are sparse — so anything reasoning about the WHOLE schema (mapping
 /// every class into another vocabulary, auditing coverage, generating a table)
 /// needs this rather than re-parsing the EXPRESS file.
@@ -250,17 +252,18 @@ impl IfcType {
     /// Parse from an (upper-case) type name
     pub fn from_str(s: &str) -> Self;
 
-    /// Parse from the stable numeric type id
-    pub fn from_id(id: u32) -> Self;
+    /// Parse from the stable numeric type id; None for an id no known type
+    /// has (an unknown keyword cannot be rebuilt from its hash)
+    pub fn from_id(id: u32) -> Option<Self>;
 
     /// Stable numeric type id
     pub fn id(&self) -> u32;
 
     /// Type name (SCREAMING case as written in STEP)
-    pub fn as_str(&self) -> &'static str;
+    pub fn as_str(&self) -> &str;
 
     /// Type name (CamelCase)
-    pub fn name(&self) -> &'static str;
+    pub fn name(&self) -> &str;
 
     /// This entity's attributes, in STEP declaration order — the order
     /// `DecodedEntity::get` indexes. Supertype attributes come first, so
@@ -413,7 +416,7 @@ use `EntityIndex`.
 pub struct ColumnarEntityIndex { /* ids, starts, lengths */ }
 
 impl ColumnarEntityIndex {
-    pub fn from_columns(ids: &[u32], starts: &[u32], lengths: &[u32]) -> Self;
+    pub fn from_columns(ids: &[u32], starts: &[u32], lengths: &[u32]) -> Result<Self, ColumnLengthMismatch>;
     // Each returns Err(SpanBeyondU32) when a record's start or length does not
     // fit u32 (a source of 4 GiB or more keeps the usize-carrying EntityIndex).
     pub fn from_scan<T>(content: &T) -> Result<Self, SpanBeyondU32>;
@@ -811,7 +814,7 @@ and wraps decoder failures in `Error::CoreError`. `WalkVisitor::refused` receive
 future strict visitors can inspect the refused mapped item. For a root budget
 refusal that entity is the holding representation, with `shape_rep` set.
 
-Source breaks, covered by the pending Rust major in `rust-major-offset.json`:
+Source breaks, shipped in a Rust-only major recorded in `rust-major-offset.json`:
 `Expand` gains `max_levels`; `WalkRefusal` replaces/removes variants, changes
 `TooDeep` to a struct variant and adds `Budget`/`Decode`; it no longer implements
 `Clone`, `Copy`, `PartialEq` or `Eq` because the decoder error is owned; and
@@ -1522,7 +1525,7 @@ let mut session = ClashSession::new();
 // idx_ranges: [idx_offset, idx_len] per element
 // aabbs: [minx, miny, minz, maxx, maxy, maxz] per element
 session.ingest(&[], &[], &[], &[], &[]);
-let result = session.run_rule(&[], &[], 0, 0.0, 0.0, false);
+let result = session.run_rule(&[], None, 0, 0.0, 0.0, false);
 ```
 
 ---
@@ -1637,7 +1640,7 @@ impl IfcAPI {
         content: &[u8],
         include_metadata: bool,
         hidden: &[u32],
-        isolated: &[u32],
+        isolated: Option<Vec<u32>>, // None: no filter; Some(empty): exports nothing
         hidden_types_csv: String,
         lit: Option<bool>,
         emissive: Option<bool>,

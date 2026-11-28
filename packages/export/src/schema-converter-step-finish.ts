@@ -26,7 +26,7 @@ export function finishStepConversion(
     for (let i = start; i < end; i++) countedIds.add(outputRecordId(entities[i]));
   }
   enums.forms.dates.finish(entities);
-  pass.warnings.push(...pruneUpgradeFromSource(entities, pass.sourceSchema, pass.schema, (id) => {
+  pass.warnings.push(...pruneUpgradeFromSource(entities, pass.sourceSchema, pass.schema, enums.boundaries.pruningSeeds(), (id) => {
     if (countedIds.delete(id)) pass.newEntityCount--;
   }));
   return next;

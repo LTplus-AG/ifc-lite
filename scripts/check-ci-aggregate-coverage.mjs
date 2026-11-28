@@ -131,6 +131,7 @@ export const UNJUDGED_BY_DESIGN = {
   // merge queue still runs every viewer shard.
   'node-tests-selected': 'advisory package selection and timing sample; the full Node shards remain authoritative',
   'viewer-tests-selected': 'sample of the viewer suite; gates queue entry through the PR viewer selection status, not the run',
+  'viewer-e2e-selected': 'advisory fast-PR smoke sample; the full E2E matrix remains in the aggregate',
   // Posts the full-lane verdict of that status from the shards' result. It
   // tests nothing: the shards it reads are already in the aggregate's `needs`.
   'viewer-shards-status': 'posts the full-lane PR viewer selection status from viewer-tests; tests nothing',

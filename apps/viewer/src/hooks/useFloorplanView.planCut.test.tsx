@@ -33,8 +33,8 @@ import { HudPopover } from '@/components/viewport-ui/hud';
 import { StoreyFloorplanButton } from '@/components/viewer/hierarchy/StoreyDisplayControls';
 import { useFloorplanView } from './useFloorplanView.js';
 
-function bounded(id: string, maxY: number): FederatedModel {
-  const box = { min: { x: 0, y: 0, z: 0 }, max: { x: 10, y: maxY, z: 8 } };
+function bounded(id: string, maxY: number, minY = 0): FederatedModel {
+  const box = { min: { x: 0, y: minY, z: 0 }, max: { x: 10, y: maxY, z: 8 } };
   const geometryResult: GeometryResult = {
     meshes: [], totalVertices: 0, totalTriangles: 0,
     coordinateInfo: { originShift: { x: 0, y: 0, z: 0 }, originalBounds: box, shiftedBounds: box, hasLargeCoordinates: false },
@@ -228,6 +228,39 @@ for (const [kind, step, lowerHeight, upperHeight] of [
   });
 }
 
+for (const [kind, step] of [
+  ['omitted lower Elevation at shared Z=500', sharedPlacementStoreys
+    .replace('.ELEMENT.,0.);', '.ELEMENT.,$);')
+    .replace('#13=IFCCARTESIANPOINT((0.,0.,0.));', '#13=IFCCARTESIANPOINT((0.,0.,500000.));')],
+  ['absolute Elevations at shared Z=0', sharedPlacementStoreys
+    .replace('.ELEMENT.,0.);', '.ELEMENT.,500000.);')
+    .replace('.ELEMENT.,3000.);', '.ELEMENT.,503000.);')],
+] as const) {
+  it(`#11817 keeps both floors and cuts for ${kind}`, async () => {
+    load({ ...bounded('a', 510, 500), ifcDataStore: await parseStoreys(step) });
+    const ui = render(<><HudPopover><SectionActivePlaneRow /></HudPopover><StoreyFloorplanButton /></>);
+    openStoreyMenu(ui);
+    const names = ['Level 1', 'Level 2'];
+    assert.deepEqual({
+      plan: storeys.map(({ expressId }) => expressId),
+      toolbar: names.filter(name => storeyRows(name).length > 0),
+    }, { plan: [8, 5], toolbar: names });
+    const observed = [];
+    for (const [name, id] of [['Level 1', 5], ['Level 2', 8]] as const) {
+      const row = storeyRows(name)[0];
+      const label = row.lastElementChild?.textContent;
+      click(row);
+      const toolbar = (500 + cutY(10)).toFixed(1);
+      cutFromPlan(ui, 'a', id);
+      observed.push({ toolbar, plan: (500 + cutY(10)).toFixed(1), label });
+    }
+    assert.deepEqual(observed, [
+      { toolbar: '501.2', plan: '501.2', label: '500.00 m' },
+      { toolbar: '504.2', plan: '504.2', label: '503.00 m' },
+    ]);
+  });
+}
+
 for (const mixed of [false, true]) it(`#11459 both storey controls use the placed ${mixed ? 'scan and mesh' : 'mesh'} bounds before and after renderer sync`, async () => {
   const data = await parseStoreys(groundStorey);
   load({ ...bounded('a', 8), ifcDataStore: data }, { ...bounded('b', 8), ifcDataStore: data });
@@ -260,6 +293,9 @@ for (const mixed of [false, true]) it(`#11459 both storey controls use the place
     color: [1, 1, 1, 1] as [number, number, number, number],
   });
   renderer.getScene().appendToBatches([mesh('a', 11), mesh('b', 12)], device, pipeline, false);
+  assert.deepEqual(renderer.getModelPlacementBounds(indices.get('a')!, undefined, [0, 0, 0]), {
+    min: { x: 0, y: 0, z: 0 }, max: { x: 10, y: 8, z: 8 },
+  }, '#11817 mesh bounds before any setModelTranslation call');
   let scan: PointCloudRenderer | undefined;
   let handle: { id: number } | undefined;
   if (mixed) {

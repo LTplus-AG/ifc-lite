@@ -52,7 +52,7 @@ export interface SectionStorey {
   name: string;
   /** Floor elevation in the placed scene, in metres along viewer Y. */
   elevation: number;
-  /** Height above the lowest authored level at the same placement origin. */
+  /** Engineering adjustment to the composed origin used by the section menu label. */
   sharedPlacementRise?: number;
 }
 
@@ -165,30 +165,36 @@ export function collectStoreys(
     const translation = placement ? displayedTranslation(placement, modelId)[2] : 0;
     const offset = totalYupOffset(frame).y;
     const bounds = frame?.shiftedBounds;
-    const lowest = new Map<string, number>();
+    const anchors = new Map<string, number>();
     const levels = [...byStorey.keys()].map((id) => {
       const storey = ds.getEntity?.(id);
       const origin = storey && resolveProductOriginMeters(ds, id);
       const z = origin && Number.isFinite(origin.z) ? origin.z : undefined;
       const relative = storeyElevations.get(id);
-      // Coincident origins can be authored as separate placements. Anchor the
-      // lowest declared level and retain the differences above that origin.
+      const declared = storey?.attributes?.[IFC_BUILDING_STOREY_ELEVATION_INDEX] != null;
+      // The hierarchy also provides the local placement Z when Elevation is omitted.
       let key: string | undefined;
-      if (origin && z !== undefined && relative !== undefined && Number.isFinite(relative)
-        && storey?.attributes?.[IFC_BUILDING_STOREY_ELEVATION_INDEX] != null) {
+      if (origin && z !== undefined && relative !== undefined && Number.isFinite(relative)) {
         key = `${origin.x},${origin.y},${origin.z}`;
-        lowest.set(key, Math.min(relative, lowest.get(key) ?? relative));
+        anchors.set(key, Math.min(relative, anchors.get(key) ?? relative));
       }
-      return [id, z, key, relative ?? 0] as const;
+      return [id, z, key, relative ?? 0, declared] as const;
     });
-    for (const [storeyId, z, key, relative] of levels) {
-      const rise = key === undefined ? 0 : relative - lowest.get(key)!;
-      let elevation = (z ?? relative) - offset;
-      // With no placement, exporters supply either world or hierarchy-relative
-      // Elevation. Keep the world interpretation when it fits the model's box.
-      if (z === undefined && bounds && (elevation < bounds.min.y || elevation > bounds.max.y)
-        && relative >= bounds.min.y && relative <= bounds.max.y) elevation = relative;
-      elevation += rise + translation;
+    for (const [storeyId, z, key, relative, declared] of levels) {
+      let rise = declared && key !== undefined ? relative - anchors.get(key)! : 0;
+      const authored = relative - offset;
+      let elevation = (z ?? relative) - offset + rise;
+      if (bounds && !storeyInRange(elevation, bounds.min.y, bounds.max.y)) {
+        // Prefer an in-bounds absolute Elevation when the composed floor falls outside the mesh.
+        if (z !== undefined && declared && storeyInRange(authored, bounds.min.y, bounds.max.y)) {
+          elevation = authored;
+          rise = relative - z;
+        } else if (z === undefined && storeyInRange(relative, bounds.min.y, bounds.max.y)) {
+          // Without placement, Elevation may already be relative to the model frame.
+          elevation = relative;
+        }
+      }
+      elevation += translation;
       const name = ds.entities.getName(storeyId) || `Storey #${storeyId}`;
       storeys.push({ expressId: storeyId, modelId, name, elevation, ...(rise ? { sharedPlacementRise: rise } : {}) });
     }
@@ -222,6 +228,10 @@ export function storeyCutElevation(storey: Pick<SectionStorey, 'elevation'>): nu
  */
 export const STOREY_IN_RANGE_TOLERANCE_M = 1e-3;
 
+function storeyInRange(floor: number, min: number, max: number): boolean {
+  return floor >= min - STOREY_IN_RANGE_TOLERANCE_M && floor <= max + STOREY_IN_RANGE_TOLERANCE_M;
+}
+
 /**
  * The store `position` of a plan cut through `storey` (#8162): its floor plus
  * `PLAN_CUT_HEIGHT_M`, resolved against `range`.
@@ -238,7 +248,7 @@ export const STOREY_IN_RANGE_TOLERANCE_M = 1e-3;
 export function storeyCutPosition(storey: Pick<SectionStorey, 'elevation'>, range: AxisRange): number {
   const floor = storey.elevation;
   const cut = storeyCutElevation(storey);
-  const inRange = floor >= range.min - STOREY_IN_RANGE_TOLERANCE_M && floor <= range.max + STOREY_IN_RANGE_TOLERANCE_M;
+  const inRange = storeyInRange(floor, range.min, range.max);
   return inRange ? worldToPosition(cut, range) : worldToPercent(cut, range);
 }
 

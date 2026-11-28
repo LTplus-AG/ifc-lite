@@ -122,7 +122,7 @@ export function createIo({ repo, cwd = process.cwd(), cache = null, now = () => 
     if (window.run_attempt !== attempt || window.status !== 'completed' || !(start < end)) return null;
     const list = api(`repos/${repo}/actions/runs/${runId}/artifacts?per_page=100`, `artifacts of run ${runId}`);
     const artifacts = list.artifacts ?? [];
-    if ((list.total_count ?? Infinity) > artifacts.length) return null;
+    if (list.total_count !== artifacts.length) throw new Error(`incomplete artifact listing for run ${runId}`);
     const byName = new Map();
     for (const name of MEASURED_ARTIFACTS) {
       const matches = artifacts.filter((a) => a.name === name && !a.expired)

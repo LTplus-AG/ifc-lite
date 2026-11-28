@@ -821,6 +821,7 @@ ct('io #11350: PR measurement cache follows completed attempts of the same run',
   const firstBundle = bundle(1, '05');
   const secondBundle = bundle(2, '25');
   let artifacts = [firstBundle];
+  let newerArtifacts = { artifacts: [bundle(45, '15')], total_count: 1 };
   const dir = mkdtempSync(join(tmpdir(), 'base-stale-attempt-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const { io } = ioOverGh([
@@ -829,7 +830,7 @@ ct('io #11350: PR measurement cache follows completed attempts of the same run',
     ['repos/o/r/actions/runs/42/attempts/2', attempt2],
     ['repos/o/r/actions/runs/43/artifacts?', { artifacts: [bundle(43, '05')], total_count: 1 }],
     ['repos/o/r/actions/runs/44/artifacts?', { artifacts: [bundle(44, '05')], total_count: 1 }],
-    ['repos/o/r/actions/runs/45/artifacts?', { artifacts: [bundle(45, '15')], total_count: 1 }],
+    ['repos/o/r/actions/runs/45/artifacts?', () => newerArtifacts],
     ['repos/o/r/actions/runs/42', run],
     ['repos/o/r/actions/runs/43', forkRun],
     ...merges.map((merge, i) => [`repos/o/r/commits/${merge}`, { parents: [{ sha: bases[i] }, { sha: head }] }]),
@@ -902,6 +903,20 @@ ct('io #11350: PR measurement cache follows completed attempts of the same run',
   run.updated_at = attempt2.updated_at;
   omittedRuns = 1;
   assert.equal(measure(), null, 'a later rerun could be missing from a truncated list');
+  omittedRuns = 0;
+  newerId.updated_at = timestamp('40');
+  newerArtifacts = {
+    artifacts: Array.from({ length: 100 }, (_, id) => ({ id, name: 'other-output' })),
+    total_count: 101,
+  };
+  const cacheHits = io.stats.cacheHits;
+  const result = evaluatePr(fakeIo({ prMeasurement: io.prMeasurement }), { pr: 5, headSha: head, mainTip: 'tip', ceilings, globs });
+  assert.equal(result.verdict, 'unknown');
+  assert.equal(io.stats.cacheHits, cacheHits, 'an incomplete newer listing cannot use the older cache');
+  assert.deepEqual(result.reasons, ['harness: incomplete artifact listing for run 45']);
+  newerArtifacts = { artifacts: [], total_count: 0 };
+  assert.deepEqual(measure(), second, 'a complete empty listing permits fallback to the older cached measurement');
+  assert.equal(io.stats.cacheHits, cacheHits + 1);
 });
 
 ct('io #11350: main measurements require a bundle and a measured tree matching the marker', (t) => {

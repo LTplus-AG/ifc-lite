@@ -19,7 +19,7 @@ IFC4X3 adds `IfcRigidOperation`, a pure translation (no rotation or scale) whose
 The anchor frame corrects two properties of the projected CRS at the anchor, both measured through proj4 on the WGS84 ellipsoid (`computeGridPointFactors` in `packages/geo/src/proj4-utils.ts`, checked against PROJ in `packages/geo/src/__fixtures__/proj-oracle.json`, which `scripts/geo/generate-proj-oracle.py` writes):
 
 - **Meridian convergence** rotates grid north onto true north.
-- **The combined scale factor** k_c = k · R/(R+h) relates grid lengths to ground lengths (`apps/viewer/src/lib/geo/ground-scale.ts`). Here k is the projection's point scale and R/(R+h) the height reduction. Map (grid) coordinates are k_c times ground lengths: 0.9996 on a UTM central meridian, which is 40 mm per 100 m.
+- **The combined scale factor** k_c = k · R/(R+h) relates grid lengths to ground lengths (`apps/viewer/src/lib/geo/ground-scale.ts`). Here k is the projection's point scale and R/(R+h) the height reduction. Map (grid) coordinates are k_c times ground lengths. On a UTM central meridian at the ellipsoid (h = 0) k_c equals the point scale 0.9996, which is 40 mm per 100 m; at height h the factor R/(R+h) lowers it further.
 
 Whether to divide by k_c depends on what the model's coordinates are:
 
@@ -210,12 +210,13 @@ same issue, for the reason on `detect_rtc_offset_for_file` above.
 
 `ItemControl` (`rust/geometry/src/program/item.rs`) receives the offset in the
 item's frame. `raw_item_rebase` in `router/processing/raw_rebase.rs` decides
-early f64 rebasing before f32 narrowing, and only with an active model RTC. By
-default a raw-coordinate probe (first vertex, or the referenced-point centre of a
-raw face set) is rebased by the model RTC when the shift makes it smaller, and the
-mesh is marked `rtc_applied`. With the per-mesh local frame on (default in wasm,
-`IFC_LITE_LOCAL_FRAME=1` natively), an item that is still large after the model
-RTC is instead rebased by its own metre-rounded anchor, carried in the mesh's f64
+early f64 rebasing before f32 narrowing, and only with an active model RTC. It
+probes one raw point: the item's first vertex, or, with the per-mesh local frame
+on (default in wasm, `IFC_LITE_LOCAL_FRAME=1` natively), the referenced-point
+centre of a raw face set. The item is rebased by the model RTC when the shift
+makes the probe smaller, and the mesh is marked `rtc_applied`. With the local
+frame on, an item whose probe is large both before and after the model RTC is
+instead rebased by its own metre-rounded anchor, carried in the mesh's f64
 `origin` (#10835).
 `finish_item_mesh` validates indices, scales to metres and publishes
 object-frame `local_bounds`, reconstructed in f64 and rounded outward to f32.
@@ -515,7 +516,13 @@ const result = await client.parse(file);
 const [x, y, z] = result.metadata.coordinate_info.origin_shift;
 const rtcOffset = { x, y, z };
 
-// World position = shifted position + rtcOffset (plus any per-mesh origin).
+// The wire is Y-up: positions, normals and each mesh's f64 `origin` were
+// swapped from IFC Z-up. origin_shift is not swapped; it stays in IFC Z-up.
+// To get an IFC world point: add the mesh origin to the position, swap the sum
+// back to Z-up, then undo the frame named by result.mesh_coordinate_space.
+// model_rtc / raw_ifc: add origin_shift. site_local: the site rotation was
+// removed too, so rotate by result.site_transform's rotation first, then add
+// origin_shift (which is the site translation in that tier).
 ```
 
 ### Pattern 3: Converting Back to World Coordinates

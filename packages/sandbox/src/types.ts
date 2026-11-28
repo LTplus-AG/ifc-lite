@@ -47,6 +47,8 @@ export interface SandboxLimits {
   timeoutMs?: number;
   /** Maximum stack size in bytes (default: 512KB) */
   maxStackBytes?: number;
+  /** Maximum decoded nesting depth for bridge arguments, logs and results (0–64, default 64). */
+  maxDumpDepth?: number;
 }
 
 /** Configuration for creating a sandbox */
@@ -118,9 +120,12 @@ export const DEFAULT_PERMISSIONS: Required<SandboxPermissions> = {
   network: false,   // Off by default — the caller must derive this from real grants
 };
 
+export const MAX_DUMP_DEPTH = 64;
+
 /** Default resource limits */
 export const DEFAULT_LIMITS: Required<SandboxLimits> = {
   memoryBytes: 64 * 1024 * 1024,     // 64 MB
   timeoutMs: 30_000,                   // 30 seconds
   maxStackBytes: 512 * 1024,           // 512 KB
+  maxDumpDepth: MAX_DUMP_DEPTH,
 };

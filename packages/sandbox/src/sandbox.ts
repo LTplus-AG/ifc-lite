@@ -76,27 +76,6 @@ function createSandboxSessionId(): string {
   return `sandbox-${sessionId}`;
 }
 
-/**
- * Render a QuickJS error handle as a ScriptError message.
- *
- * Shared by the main-body error path and the rejected-promise path so both
- * report identically. Never throws: a `dump` that fails (invalid realm)
- * becomes the message instead of masking the error it was reading.
- *
- * Does NOT free `handle` — the caller owns it.
- */
-function describeError(vm: QuickJSContext, handle: QuickJSHandle): string {
-  let errorData: unknown;
-  try {
-    errorData = vm.dump(handle);
-  } catch (dumpErr) {
-    errorData = { message: dumpErr instanceof Error ? dumpErr.message : String(dumpErr) };
-  }
-  return typeof errorData === 'object' && errorData !== null && 'message' in errorData
-    ? String((errorData as { message: unknown }).message)
-    : String(errorData);
-}
-
 export class Sandbox {
   /**
    * The WASM module this sandbox's runtime was created on (#1922).
@@ -251,7 +230,10 @@ export class Sandbox {
       this.vm = this.runtime.newContext();
 
       // Build the bim API inside the sandbox
-      this.bridge = buildBridge(this.vm, this.sdk, this.config.permissions, { sandboxSessionId: this.sessionId }, this.config.network.grants, this.config.network.transport);
+      this.bridge = buildBridge(
+        this.vm, this.sdk, this.config.permissions, { sandboxSessionId: this.sessionId },
+        this.config.network.grants, this.config.network.transport, this.config.limits.maxDumpDepth,
+      );
     } catch (err) {
       // dispose() is idempotent — it clears each field before freeing it, so
       // the bridge, vm and runtime are released in order and never twice.
@@ -377,87 +359,60 @@ export class Sandbox {
         throw new Error(DISPOSED_MESSAGE);
       }
 
+      const decoder = bridge.decoder;
+      const describeError = (handle: QuickJSHandle): string => {
+        try {
+          return decoder.describeError(handle);
+        } catch (error) {
+          return error instanceof Error ? error.message : String(error);
+        }
+      };
+
       const durationMs = Date.now() - this.evalStartTime;
-      // Stand the CPU interrupt down before dumping results — vm.dump can run
-      // VM code (toJSON / getters) and must not be cut short by the timeout.
-      this.evalStartTime = 0;
-
-      if (result.error) {
-        throw new ScriptError(describeError(this.vm, result.error), bridge.logs, durationMs);
-      }
-
-      // The main body finished, but a drained job may have been cut short by
-      // the CPU deadline — executePendingJobs() reports no error for that, so
-      // result.value still holds the (stale) main-body value. Reporting it as
-      // a success hands the caller a silently truncated run, so surface the
-      // same 'interrupted' ScriptError QuickJS raises for a main-body timeout.
       if (this.interrupted) {
         throw new ScriptError('interrupted', bridge.logs, durationMs);
       }
-
-      // The main body finished, but when it hands back a promise — the shape
-      // the extension host's entry wrap produces, `return activate(ctx)` — a
-      // throw after the entry's first `await` settles that promise as
-      // *rejected* without ever touching `result.error`. `vm.dump` then
-      // renders the rejection as ordinary data (`{ type: 'rejected', … }`)
-      // inside a successful ScriptResult, so the run reports a clean pass
-      // carrying a failure. Draining cannot close this: executePendingJobs()
-      // does not return errors thrown inside async functions or rejected
-      // promises (the promise captures them), so the promise's own state is
-      // the only signal. Surface it exactly as a main-body error.
-      //
-      // Checked *after* the interrupt flag on purpose: a job cut short by the
-      // CPU deadline rejects with QuickJS's own `InternalError: interrupted`,
-      // and a timeout must keep reporting as a timeout on the deliberate
-      // channel #2063 added rather than depend on that reason text — which
-      // the fire-and-forget shape (`run(); 'started'`) never exposes anyway.
-      let rejectionMessage: string | null = null;
-      try {
-        const promiseState = this.vm.getPromiseState(result.value);
-        if (promiseState.type === 'rejected') {
-          try {
-            rejectionMessage = describeError(this.vm, promiseState.error);
-          } finally {
-            // Freed on every exit for the same reason as the eval-result
-            // handle: getPromiseState hands back an unmanaged lifetime that
-            // vm.dispose() does NOT reclaim (#1905).
-            safeDispose(promiseState.error);
-          }
-        } else if (promiseState.type === 'fulfilled' && !promiseState.notAPromise) {
-          // A settled promise's value is another fresh handle. The dump below
-          // re-reads it from the promise, so free this one. `notAPromise`
-          // returns `result.value` itself, which the `finally` already frees.
-          safeDispose(promiseState.value);
-        }
-      } catch (stateErr) {
-        throw new ScriptError(
-          `Sandbox realm became invalid during execution: ${stateErr instanceof Error ? stateErr.message : String(stateErr)}`,
-          bridge.logs,
-          durationMs,
-        );
-      }
-      if (rejectionMessage !== null) {
-        throw new ScriptError(rejectionMessage, bridge.logs, durationMs);
+      if (result.error) {
+        const message = describeError(result.error);
+        throw new ScriptError(this.interrupted ? 'interrupted' : message, bridge.logs, durationMs);
       }
 
+      // Job draining cannot surface rejections captured in the returned promise.
+      // Keep the execution deadline armed while error messages, getters and
+      // toJSON hooks run in the decoder.
       let value: unknown;
       try {
-        value = this.vm.dump(result.value);
-      } catch (dumpErr) {
-        throw new ScriptError(
-          `Sandbox realm became invalid during execution: ${dumpErr instanceof Error ? dumpErr.message : String(dumpErr)}`,
-          bridge.logs,
-          durationMs,
-        );
+        const state = this.vm.getPromiseState(result.value);
+        if (state.type === 'rejected') {
+          try {
+            throw new Error(describeError(state.error));
+          } finally {
+            safeDispose(state.error);
+          }
+        }
+        if (state.type === 'pending') {
+          value = { type: 'pending' };
+        } else if (state.notAPromise) {
+          value = decoder.decode(result.value);
+        } else {
+          try {
+            value = { type: 'fulfilled', value: decoder.decode(state.value) };
+          } finally {
+            safeDispose(state.value);
+          }
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        throw new ScriptError(this.interrupted ? 'interrupted' : message, bridge.logs, durationMs);
       }
 
+      if (this.interrupted) {
+        throw new ScriptError('interrupted', bridge.logs, durationMs);
+      }
       const surfaces = bridge.takeSurfaces();
       return { value, logs: [...bridge.logs], durationMs, ...(surfaces && { surfaces }) };
     } finally {
-      // Belt-and-braces: the success path already zeroed this before the dumps,
-      // but an unexpected throw from job draining would otherwise leave the CPU
-      // interrupt armed against a stale start time, so the next VM code to run
-      // in this realm (including teardown) would be cut short as a timeout.
+      // Disarm the deadline before teardown so it cannot affect later runs.
       this.evalStartTime = 0;
       bridge.takeSurfaces();
       // Cleared before the free so a `dispose()` racing this `finally` cannot

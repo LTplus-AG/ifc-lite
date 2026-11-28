@@ -134,6 +134,7 @@ nav:
     - Web Viewer Controls: guide/web-viewer-controls.md
     - Configuring a Deployment: guide/viewer-deployment-config.md
     - Embedding the Viewer: guide/embedding.md
+    - Environment Variables: guide/environment-variables.md
     - SpaceMouse via the 3Dconnexion Driver: guide/spacemouse-driver.md
     - Cloud Sources: guide/cloud-sources.md
     - Model Registry (Experimental): guide/local-registry.md

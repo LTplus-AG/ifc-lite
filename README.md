@@ -312,7 +312,7 @@ Ready-to-run projects in [`examples/`](examples/):
 
 ## Contributing
 
-You need Node.js 22.13+ or 24.x and pnpm 10 (`corepack enable` provides the
+You need Node.js 22 (22.13 or later) or 24, not 23, and pnpm 10 (`corepack enable` provides the
 pinned pnpm). The WASM bundle is built from `rust/`, which needs the nightly
 toolchain and `wasm32-unknown-unknown` target pinned in `rust-toolchain.toml`
 plus `wasm-pack`. Run `rustup toolchain install` in the clone to install the

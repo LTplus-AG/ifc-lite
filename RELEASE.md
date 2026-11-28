@@ -194,7 +194,10 @@ The Release job's `Check the release credential's API quota` step (`scripts/chec
 - The Version Packages PR was stale when it merged or was queued. See [A Version Packages PR must be fresh when it lands](#a-version-packages-pr-must-be-fresh-when-it-lands).
 
 ### Versions out of sync
-- Run `pnpm version` locally to sync
+- Run `node scripts/sync-versions.js` to realign the root `package.json`, the
+  Cargo workspace version and the internal Rust dependency versions with the
+  highest workspace package version. Do not run `pnpm version` for this: it
+  runs `changeset version` first, which consumes every pending changeset.
 - Commit the changes and push
 
 ## Migration Notes

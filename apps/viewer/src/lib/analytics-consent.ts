@@ -111,9 +111,11 @@ export function resetPrivacyNoticeForTest(): void {
  */
 export function clearStoredAnalyticsIdentity(): void {
   const isPostHogKey = (key: string | null): key is string => !!key && key.startsWith('ph_');
-  for (const storage of [globalThis.localStorage, globalThis.sessionStorage]) {
-    if (!storage) continue;
+  for (const name of ['localStorage', 'sessionStorage'] as const) {
     try {
+      // The getter itself can throw (SecurityError); one store failing must not skip the other or the cookies.
+      const storage = globalThis[name];
+      if (!storage) continue;
       const keys: string[] = [];
       for (let i = 0; i < storage.length; i++) {
         const key = storage.key(i);

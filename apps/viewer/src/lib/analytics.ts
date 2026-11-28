@@ -240,6 +240,7 @@ let started = false;
  */
 export function startAnalytics(): void {
   if (started) return;
+  if (isAnalyticsOptedOut()) clearStoredAnalyticsIdentity(); // before any exit: leftovers of older builds go too
   if (!isFeatureEnabled('privacy.analytics')) {
     // This host sends nothing, so nothing is held for later either.
     held.stop();
@@ -248,7 +249,6 @@ export function startAnalytics(): void {
   }
   started = true;
   if (!enabled) return;
-  if (isAnalyticsOptedOut()) clearStoredAnalyticsIdentity();
   starter.start();
 }
 

@@ -153,7 +153,7 @@ On the first launch where the extensions subsystem comes up, a one-time toast su
 
 > IFClite stores an action log on your device. The hosted viewer also sends anonymous product analytics unless you opt out in Privacy settings.
 
-The toast has a **Privacy settings** action that opens the opt-out switch and local-data controls. The acknowledgement is persisted in localStorage so you only see it once per browser. Analytics start only once it has been shown. To re-show it, clear the `ifclite.extensions.privacy-disclosure.v2` key.
+The toast has a **Privacy settings** action that opens the opt-out switch and local-data controls. The acknowledgement is persisted in localStorage so you only see it once per browser. Unless the host has switched the notice off (`privacy.notice`), analytics start only once it has been shown. To re-show it, clear the `ifclite.extensions.privacy-disclosure.v2` key.
 
 ## Source-of-truth references
 

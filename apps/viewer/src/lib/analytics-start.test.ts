@@ -21,6 +21,7 @@ import assert from 'node:assert/strict';
 import { PostHog } from 'posthog-js/lib/src/posthog-core.js';
 import * as analytics from './analytics.js';
 import * as consent from './analytics-consent.js';
+import { resetFeaturesForTest } from './features/index.js';
 
 type Starter = { start: () => void; attempt: () => void; isInitialised: () => boolean };
 type StarterDeps = {
@@ -378,5 +379,36 @@ describe('events before the notice are held in memory, never stored or sent earl
     window.dispatchEvent(Object.assign(new Event('storage'), { key: 'ifc-lite:analytics-opt-out' }));
     assert.equal(consent.isAnalyticsOptedOut(), true, 'the other tab\'s opt-out is read');
     assert.deepEqual(postHogEntries(), [], 'and what PostHog stored is deleted here too');
+  });
+
+  it('a store whose getter throws does not stop the cleanup of the other store and the cookies', () => {
+    assert.ok(consentAdded.clearStoredAnalyticsIdentity);
+    localStorage.setItem(IDENTITY_KEY, '{"distinct_id":"earlier"}');
+    document.cookie = `${IDENTITY_KEY}=earlier; path=/`;
+    const original = Object.getOwnPropertyDescriptor(globalThis, 'sessionStorage');
+    Object.defineProperty(globalThis, 'sessionStorage', { configurable: true, get: () => { throw new DOMException('blocked', 'SecurityError'); } });
+    try {
+      consentAdded.clearStoredAnalyticsIdentity();
+    } finally {
+      if (original) Object.defineProperty(globalThis, 'sessionStorage', original);
+    }
+    assert.equal(storedIdentity(), null, 'local storage is still cleared');
+    assert.equal(document.cookie.includes(IDENTITY_KEY), false, 'and the cookie');
+  });
+
+  it('an opted-out visitor is cleaned up at start even where analytics are off for this host', () => {
+    localStorage.setItem(IDENTITY_KEY, '{"distinct_id":"earlier"}');
+    sessionStorage.setItem(`ph_${TOKEN}_window_id`, 'w');
+    consent.persistAnalyticsOptOut(true);
+    // persistAnalyticsOptOut already cleans up through the opt-out handler; seed again to test the start path alone.
+    localStorage.setItem(IDENTITY_KEY, '{"distinct_id":"earlier"}');
+    sessionStorage.setItem(`ph_${TOKEN}_window_id`, 'w');
+    resetFeaturesForTest({ default: 'all', disable: ['privacy.analytics'] });
+    try {
+      analytics.startAnalytics();
+    } finally {
+      resetFeaturesForTest();
+    }
+    assert.deepEqual(postHogEntries(), [], 'nothing PostHog stored is left, though PostHog never starts here');
   });
 });

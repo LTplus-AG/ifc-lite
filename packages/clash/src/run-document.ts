@@ -220,6 +220,18 @@ export function clashRuleSetRevision(rules: ReadonlyArray<Pick<ClashRunRule, 'id
   return uuidFromSeed(`clash-rule-set/1 ${JSON.stringify(rules.map((r) => [r.id, r.revision]).sort())}`);
 }
 
+/** An OWN entry of a host-supplied record: a rule id like `__proto__` must not read the prototype. */
+const own = <T>(record: Readonly<Record<string, T>> | undefined, key: string): T | undefined =>
+  record !== undefined && Object.hasOwn(record, key) ? record[key] : undefined;
+
+/** A slot's sha256 as the document stores it: lowercase hex, or null. Anything else is refused, not passed on. */
+function pinnedSha256(binding: ClashRunSlotBinding): string | null {
+  if (binding.sha256 === null) return null;
+  const sha = binding.sha256.toLowerCase();
+  if (!/^[0-9a-f]{64}$/.test(sha)) throw new Error(`slot ${binding.slot} has sha256 ${JSON.stringify(binding.sha256)}, which is not a hex SHA-256`);
+  return sha;
+}
+
 /** Own data properties only (`Object.fromEntries`), so a slot id such as `__proto__` survives. */
 function sortedRecord(map: Map<string, Set<string>>): Record<string, string[]> {
   return Object.fromEntries([...map.keys()].sort().map((slot) => [slot, [...map.get(slot)!].sort()]));
@@ -236,7 +248,7 @@ export function buildClashRunDocument(input: BuildClashRunDocumentInput): ClashR
     slotByModel.set(binding.model, binding.slot);
     slots.set(binding.slot, {
       slot: binding.slot,
-      sha256: binding.sha256,
+      sha256: pinnedSha256(binding),
       ...(binding.label !== undefined ? { label: binding.label } : {}),
       ...(binding.name !== undefined ? { name: binding.name } : {}),
     });
@@ -275,7 +287,7 @@ export function buildClashRunDocument(input: BuildClashRunDocumentInput): ClashR
 
   const revisions = new Map<string, string>();
   const rules: ClashRunRule[] = result.rulesRun.map((rule) => {
-    const revision = input.ruleRevisions?.[rule.id] ?? clashRuleRevision(rule, result.settings, input.ruleMemberships?.[rule.id]);
+    const revision = own(input.ruleRevisions, rule.id) ?? clashRuleRevision(rule, result.settings, own(input.ruleMemberships, rule.id));
     revisions.set(rule.id, revision);
     const { a, b, mode, tolerance, clearance, reportTouch, explicitMembers } = ruleSemantics(rule, result.settings);
     return { id: rule.id, name: rule.name, revision, a, b, mode, tolerance, clearance, reportTouch, explicitMembers };
@@ -332,6 +344,13 @@ export function buildClashRunDocument(input: BuildClashRunDocumentInput): ClashR
   const exclusionRules = (input.exclusionRules ?? []).map((rule) => ({ ...rule }));
   const userExcluded = (clash: Clash) => exclusionRules.some((rule) => exclusionRuleCovers(rule,
     { type: clash.a.tag, identity: clashElementIdentity(clash.a) }, { type: clash.b.tag, identity: clashElementIdentity(clash.b) }));
+  // Refuse unslotted models and unlisted rules on EVERY clash, before user rules filter any out:
+  // what the run produced is the input, not what happens to survive the filter.
+  for (const clash of result.clashes) {
+    slotOf(clash.a.model);
+    slotOf(clash.b.model);
+    if (!revisions.has(clash.rule)) throw new Error(`clash run references rule ${clash.rule}, which is not in rulesRun`);
+  }
   const findings = result.clashes.filter((clash) => !userExcluded(clash)).map((clash): ClashRunFinding => {
     // Without the rule in `rulesRun` its semantics are unrecorded, so no key could be trusted to compare.
     const ruleRevision = revisions.get(clash.rule);
@@ -339,7 +358,7 @@ export function buildClashRunDocument(input: BuildClashRunDocumentInput): ClashR
     const a = endpoint(clash.a);
     const b = endpoint(clash.b);
     const key = a.ambiguous || b.ambiguous ? null : clashSlotReviewKey(clash, { slotOf, ruleRevision });
-    const review = key !== null ? input.reviews?.[key] : undefined;
+    const review = key !== null ? own(input.reviews, key) : undefined;
     return {
       id: clash.id,
       key,

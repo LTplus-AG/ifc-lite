@@ -64,7 +64,8 @@ export function slotBindings(result: ClashResult, models: ReadonlyMap<string, Mo
  */
 export function ruleMemberships(result: ClashResult, context: ClashRunHostContext, slots: readonly ClashRunSlotBinding[]): Record<string, string> {
   const slotOf = new Map(slots.map((binding) => [binding.model, binding.slot]));
-  const out: Record<string, string> = {};
+  // Entries, not assignment: a rule id such as `__proto__` must become an own property.
+  const out: Array<[string, string]> = [];
   for (const rule of result.rulesRun) {
     if (rule.membersA === undefined && rule.membersB === undefined) continue;
     const preset = context.presets.find((p) => p.id === rule.id);
@@ -77,9 +78,9 @@ export function ruleMemberships(result: ClashResult, context: ClashRunHostContex
       ? Object.fromEntries([...context.tagInputs].filter(([tag]) => own.has(tag))
         .map(([tag, models]) => [tag, [...models].map((m) => slotOf.get(m) ?? m).sort()]))
       : null;
-    out[rule.id] = stableJson({ filters, tags });
+    out.push([rule.id, stableJson({ filters, tags })]);
   }
-  return out;
+  return Object.fromEntries(out);
 }
 
 /** The viewer's ENABLED exclusion rules in run-document form (a disabled rule suppresses nothing). */

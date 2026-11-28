@@ -118,6 +118,37 @@ describe('validator and coverage edge cases', () => {
   });
 });
 
+describe('host-supplied input', () => {
+  it('reads per-rule records by own property, so a rule id __proto__ keeps its own membership', () => {
+    const protoRule: ClashRule = { ...RULE, id: '__proto__', membersA: ['m-mep:0'] };
+    const r: ClashResult = { ...result([], ['D1'], ['W1']), rulesRun: [protoRule], ruleCoverage: [] };
+    const revision = (membership: string) => build({ result: r,
+      ruleMemberships: Object.fromEntries([['__proto__', membership]]) }).manifest.rules.items[0].revision;
+    expect(revision('filter: walls')).not.toBe(revision('filter: slabs'));
+    // No record at all: hashed from the member lists, not from Object.prototype.
+    expect(build({ result: r }).manifest.rules.items[0].revision).not.toBe(revision('filter: walls'));
+  });
+
+  it('stores a sha256 as lowercase hex and refuses one that is not a SHA-256', () => {
+    const r = result([], ['D1'], ['W1']);
+    const doc = buildClashRunDocument({ result: r, exclusions: new Set(),
+      slots: [{ ...SLOTS[0], sha256: 'A'.repeat(64) }, SLOTS[1]] });
+    expect(doc.manifest.slots[0].sha256).toBe('a'.repeat(64));
+    expect(validateClashRunDocument(roundTrip(doc)).ok).toBe(true);
+    expect(() => buildClashRunDocument({ result: r, slots: [{ ...SLOTS[0], sha256: 'not-a-sha' }, SLOTS[1]] }))
+      .toThrow(/not a hex SHA-256/);
+  });
+
+  it('refuses an unlisted rule or unslotted model even when a user rule would filter that clash out', () => {
+    const stray: Clash = { ...clash('D1', 'W1'), rule: 'not-run' };
+    expect(() => build({ result: result([stray], ['D1'], ['W1']), exclusionRules: [{ kind: 'type', type: 'IfcWall' }] }))
+      .toThrow(/not in rulesRun/);
+    const unslotted: Clash = { ...clash('D1', 'W1'), b: { ...clash('D1', 'W1').b, model: 'm-elsewhere' } };
+    expect(() => build({ result: result([unslotted], ['D1'], ['W1']), exclusionRules: [{ kind: 'type', type: 'IfcWall' }] }))
+      .toThrow(/bound to no slot/);
+  });
+});
+
 describe('exclusions in run documents', () => {
   it('leaves out findings a user rule covers, and never reports them as added or persistent', () => {
     const both = result([clash('D1', 'W1'), clash('D2', 'W2')], ['D1', 'D2'], ['W1', 'W2']);

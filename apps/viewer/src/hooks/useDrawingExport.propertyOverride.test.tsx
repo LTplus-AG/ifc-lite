@@ -353,9 +353,14 @@ describe('useDrawingExport — property criteria reach the real model', () => {
     try {
       useViewerStore.setState({ mutationViews: new Map([[model.id, view]]) });
       assert.equal(fillOf(await exportSvg(store, rules, models), WALL_ID), '#FF0000');
+      const sessionRule = { ...rules[0], criteria: propertyCriterion('SessionOnly', 'equals', 'added') };
+      view.setProperty(WALL_ID, 'Pset_WallCommon', 'SessionOnly', 'added');
+      assert.equal(fillOf(await exportSvg(store, [sessionRule], models), WALL_ID), '#FF0000');
+      assert.ok(view.deleteProperty(WALL_ID, 'Pset_WallCommon', 'SessionOnly'));
+      assert.equal(fillOf(await exportSvg(store, [sessionRule], models), WALL_ID), UNMATCHED_FILL);
+      assert.equal(view.hasChanges(WALL_ID), false);
       view.setProperty(WALL_ID, 'Pset_WallCommon', 'FireRating', 'REI 60');
       assert.equal(fillOf(await exportSvg(store, rules, models), WALL_ID), '#0066FF');
-      view.setOnDemandExtractor(id => store.getProperties(id));
       assert.ok(view.deleteProperty(WALL_ID, 'Pset_WallCommon', 'FireRating'));
       assert.equal(fillOf(await exportSvg(store, rules, models), WALL_ID), UNMATCHED_FILL);
     } finally {

@@ -69,8 +69,12 @@ export function makePropertiesGetter(
     }
     const store = ref.modelId === 'legacy' ? legacyStore : storeModels.get(ref.modelId)?.ifcDataStore;
     const view = views.get(ref.modelId);
-    const sourceBase = view && !view.hasPropertyBase() ? store?.getProperties?.bind(store) : undefined;
-    const psets = view?.getForEntity(ref.expressId, sourceBase) ?? (store ? extractPropertiesOnDemand(store, ref.expressId) : []);
+    // Writes must see the same source as drawing reads so deleting an edited
+    // source property records a deletion even after this drawing pass ends.
+    if (view && !view.hasPropertyBase() && store?.getProperties) {
+      view.setOnDemandExtractor(id => store.getProperties(id));
+    }
+    const psets = view?.getForEntity(ref.expressId) ?? (store ? extractPropertiesOnDemand(store, ref.expressId) : []);
     let result: ElementProperties | undefined;
     if (psets.length > 0) {
       result = Object.create(null) as ElementProperties;

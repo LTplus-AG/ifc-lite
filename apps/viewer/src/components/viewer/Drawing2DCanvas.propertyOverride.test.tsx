@@ -261,7 +261,6 @@ describe('Drawing2DCanvas live-canvas property overrides (#3523 gap: the export 
       draw();
       assert.ok(stub.fillStyleCalls.includes('#0066FF'), `edited FireRating 60: ${stub.fillStyleCalls.join(',')}`);
       stub.fillStyleCalls.length = 0;
-      view.setOnDemandExtractor(id => store.getProperties(id));
       assert.ok(view.deleteProperty(WALL_EXPRESS_ID, 'Pset_WallCommon', 'FireRating'));
       draw();
       assert.ok(stub.fillStyleCalls.includes('#AAAAAA'), 'explicit deletion restores the base style');

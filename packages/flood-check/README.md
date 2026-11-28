@@ -57,7 +57,8 @@ console.log(site.Name, elements.length, BAFU_ATTRIBUTION, BAFU_DISCLAIMER.de);
 ```
 
 `checkFloodExposure(facts, raster, terrainSampler, options)` is the pure core:
-no I/O. `runFloodCheck` refuses a plan extent no building has, fetches one
+no I/O. `terrainSamplerFromGrid(grid, { verticalAccuracy? })` turns a
+`TerrainGrid` into the `TerrainSampler` it takes. `runFloodCheck` refuses a plan extent no building has, fetches one
 raster over the building and the terrain under it, asks the provider to
 confirm the layer renders when no cell of that raster shows a mapped class
 (only transparent or unreadable edge pixels), and calls it
@@ -76,11 +77,10 @@ other buildings' rings in the provider CRS, with provenance and a
   (dataset, dataset date, retrieval time, request URL, attribution, licence,
   return-period wording, limits, disclaimer). It declares its `crs`, `extent`
   and `modelCellSize`, and optionally `covers(point)` (its coverage
-  perimeter: `true`, `false`, or `null` when too close to tell). Every raster
-  carries its own **required** `covers`: a `CoverageTest` or the explicit
-  value `'everywhere'` and
-  `confirmRendering()` (a small request where the map is known to show
-  runoff).
+  perimeter: `true`, `false`, or `null` when too close to tell), and
+  optionally `confirmRendering(signal?)` (a small request where the map is
+  known to show runoff). Every raster carries its own **required** `covers`:
+  a `CoverageTest` or the explicit value `'everywhere'`.
 - **`TerrainSource`** — `heightAt(point)` and/or `grid(bbox, { resolution })`,
   with its `crs`, its `verticalCrs` as an EPSG identifier (for example
   `EPSG:5728` for LN02), an optional display `verticalReference`, and its
@@ -191,6 +191,9 @@ it does where no runoff is mapped. So:
   confirmation alive; a building raster that shows classes is served from it
   with its first retrieval time, as before. `timeoutMs`, `maxPixels` and
   `cellSize` must be finite and positive (`RangeError` otherwise).
+- A failed request (network error, timeout, HTTP error status) throws
+  `HazardRequestError`; an answer that is not a PNG or not of the requested
+  size throws `HazardResponseError`.
 
 ## Model facts
 
@@ -331,10 +334,10 @@ entities, properties and containment from the parsed store. No meshing.
   | `door`, `window` | `IsExternal` on the element or its host (the wall its opening voids, else its decomposition parent; any class, read from its `Pset_<Class>Common`; an external host wins over the element's own `false`); with neither stated, within 1 m of the outline (kept when no outline can be read at all) | the lowest of the placement origin (threshold / sill, by the schema), its own body's bottom and the filled opening's body's bottom, with a note when placement and hole differ by more than 0.3 m (some tools place windows at the head or centre); at the hole's plan centre when readable (a filling may be placed at its wall's origin) |
   | `basement-window` | such a window below the ground storey | as `window` |
   | `wall-opening` | unfilled opening (not RECESS) in an external wall | lowest point of its body, at its plan centre; with no body, its placement as an upper estimate |
-  | `slab-opening` | unfilled opening in a slab at or below the ground storey | the slab's placement |
+  | `slab-opening` | unfilled opening in a slab at or below the ground storey | the lower of the slab's placement and the bottom of its own readable body |
   | `light-well` | proxy / chamber / civil element / assembly / opening named Lichtschacht, Kellerschacht, light well, saut-de-loup, bocca di lupo, … | the lower of the placement origin and its body's bottom, at the body's plan centre; with no body, its placement as an upper estimate (a light well's placement has no defined height) |
   | `stair`, `ramp` | outside the footprint — by placement, by any body corner, or, with no fully readable body, by a placement within 1 m of the outline (even when it states `IsExternal = false`, often an authoring default) — or `IsExternal`; skipped only when a readable body lies wholly at or above the ground storey (1 cm tolerance; it leads up); kept when the body cannot be read, or only partly (an unreadable item, a Boolean UNION), since the placement origin may be at the top | `ground-storey-or-terrain`: the check compares the **lower of the ground storey level and the terrain** at each sample, so any mapped depth class there makes it `exposed`; never favourable |
-  | `equipment` | in the ground storey or below. IFC4 / IFC4X3 occurrences: `IfcElectricDistributionBoard`, `IfcTransformer`, `IfcElectricGenerator`, `IfcElectricFlowStorageDevice` (batteries), `IfcSwitchingDevice`, `IfcProtectiveDevice`, `IfcCommunicationsAppliance`, `IfcBoiler`, `IfcChiller`, `IfcUnitaryEquipment` (heat pumps), `IfcPump`, `IfcTank`, `IfcTransportElement` ELEVATOR / LIFTINGGEAR (or no stated kind). Every schema, and the only way in IFC2X3: `IfcEnergyConversionDevice`, `IfcFlowMovingDevice`, `IfcFlowStorageDevice`, `IfcFlowController` or `IfcFlowTerminal` typed by `IfcTransformerType`, `IfcElectricGeneratorType`, `IfcElectricFlowStorageDeviceType`, `IfcSwitchingDeviceType`, `IfcProtectiveDeviceType`, `IfcBoilerType`, `IfcChillerType`, `IfcUnitaryEquipmentType`, `IfcPumpType`, `IfcTankType` (and, IFC4 on, `IfcCommunicationsApplianceType`, `IfcElectricDistributionBoardType`). IFC2X3 also has `IfcElectricDistributionPoint`; it has no communications-appliance class or type | placement origin (base) |
+  | `equipment` | in the ground storey or below. IFC4 / IFC4X3 occurrences: `IfcElectricDistributionBoard`, `IfcTransformer`, `IfcElectricGenerator`, `IfcElectricFlowStorageDevice` (batteries), `IfcSwitchingDevice`, `IfcProtectiveDevice`, `IfcCommunicationsAppliance`, `IfcBoiler`, `IfcChiller`, `IfcUnitaryEquipment` (heat pumps), `IfcPump`, `IfcTank`, `IfcTransportElement` ELEVATOR / LIFTINGGEAR (or no stated kind). Every schema, and the only way in IFC2X3: `IfcEnergyConversionDevice`, `IfcFlowMovingDevice`, `IfcFlowStorageDevice`, `IfcFlowController` or `IfcFlowTerminal` typed by `IfcTransformerType`, `IfcElectricGeneratorType`, `IfcElectricFlowStorageDeviceType`, `IfcSwitchingDeviceType`, `IfcProtectiveDeviceType`, `IfcBoilerType`, `IfcChillerType`, `IfcUnitaryEquipmentType`, `IfcPumpType`, `IfcTankType` (and, IFC4 on, `IfcCommunicationsApplianceType`, `IfcElectricDistributionBoardType`). IFC2X3 also has `IfcElectricDistributionPoint`; it has no communications-appliance class or type | the lower of the placement origin and its body's bottom |
 
   **Level, position and their quality** come from one function
   (`locate` in `src/model/locate.ts`), which also holds the only reader of

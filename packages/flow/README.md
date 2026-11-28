@@ -96,6 +96,8 @@ checkpoint lifecycle. A host that only runs graphs does not load it.
 
 MPL-2.0
 
+## File checkpoint store
+
 The Node-only `@ifc-lite/flow/checkpoint-file` entry exports `FileCheckpointStore`
 and `sourceDigestOf`, shared by CLI and MCP review continuations. Disk updates
 use an exclusive lock directory, revision CAS and atomic rename. A one-minute

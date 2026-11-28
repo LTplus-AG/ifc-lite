@@ -43,6 +43,17 @@ const result = await runFlow(doc, { host: { bim }, registry, features: BROWSER_F
 `host.grants` (parsed capabilities from `@ifc-lite/extensions`) gates every node;
 omit it only for a trusted caller such as the CLI running a local file.
 
+## Secrets
+
+A string param (or a string inside a `json` param) can reference a host secret
+as `{{secret:NAME}}`. The graph must declare `secret.read:NAME` in its
+`capabilities`. `validateSecretReferences(doc, env)` reports an
+undeclared or unset reference before any node runs; `resolveSecretValues` and
+`interpolateSecrets` substitute the values, and `buildRedactionMap` with
+`redactText` / `redactDeep` removes them from output. Only the CLI and MCP
+hosts read secrets; in the viewer `BROWSER_FEATURES.secrets` is empty, so such
+a graph reports unavailable.
+
 ## Stair and railing authoring
 
 `element.stair` and `element.railing` produce specs for the existing tracked
@@ -87,6 +98,8 @@ not rerun a comparison against the loaded models.
 ## License
 
 MPL-2.0
+
+## AI nodes
 
 The separate `@ifc-lite/flow-nodes/ai` entry exports `aiNodes` (`ai.classify`, `ai.extract`, `ai.summarize`, `ai.propose`). `ai.propose` is a bounded,
 review-required draft over selected finding columns and explicit native
@@ -207,8 +220,8 @@ construction, CSV validation and latest-per-series reduction between the
 headless recipe and viewer. `queryRequest(selection)` generates Flux for one
 numeric field, at most 24 hours and 10,000 samples; it requests one extra sample
 so overflow fails explicitly. HTTPS is required except `http://localhost` for
-development. `parseInfluxCsv(csv, selection)` returns separate history and latest
-tables. Malformed CSV, error tables, nonnumeric readings, conflicting timestamps
+development. `parseInfluxCsv(csv, selection, token)` returns separate history and
+latest tables; a response that contains the token is refused. Malformed CSV, error tables, nonnumeric readings, conflicting timestamps
 and overflow throw. This is the generated plain-CSV contract, not an arbitrary
 annotated Flux parser or an InfluxDB 3 adapter.
 

@@ -124,6 +124,12 @@ function writePieceVertices(interleaved: Float32Array, lanes: Uint32Array, first
 
 }
 
+/** Whether each copy's vertices were snapped, by its vertex buffer (the frame origin is the mesh's `rteOrigin`). */
+const builtQuantized = new WeakMap<GPUBuffer, boolean>();
+
+/** Whether the copy drawing `vertexBuffer` was written lattice-snapped; undefined for any other buffer. */
+export function copyBuiltQuantized(vertexBuffer: GPUBuffer): boolean | undefined { return builtQuantized.get(vertexBuffer); }
+
 /** Upload finished geometry, retaining the frame origin separately from the f32 vertices. */
 function uploadGeometry(
   device: GPUDevice,
@@ -156,6 +162,7 @@ function uploadGeometry(
     throw error;
   }
 
+  builtQuantized.set(vertexBuffer, frame.quantized);
   const transform = MathUtils.identity();
   transform.m[12] = origin[0];
   transform.m[13] = origin[1];

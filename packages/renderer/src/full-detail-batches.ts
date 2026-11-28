@@ -14,65 +14,102 @@
  * (`draw-stream-hlod.ts`), a clustered stand-in for a whole region. Wherever
  * either lies in front of LOD0, the base colour shows through the highlight.
  * These batches therefore never draw LOD1, and an HLOD node over one draws its
- * subtree instead of its proxy. The cost is the full detail of the batches
- * that hold the selection, nothing else.
+ * subtree instead of its proxy.
+ *
+ * The cost is the full detail of the batches that hold the highlight, and it is
+ * not bounded: selecting everything turns LOD1 and HLOD off for every batch
+ * holding a selected entity (`FrameStats.batchesFullDetail` counts them).
+ * Capping it would bring the base colour back through the highlight.
  */
 import { PartDraw, type LodPart } from './lod-parts.js';
 import type { BatchedMesh } from './types.js';
 
-const NONE: ReadonlySet<BatchedMesh> = new Set();
+/** One highlight source's batches (the selection's, or the hover's): a new object whenever they change, so derived data can be cached on it. */
+export class FullDetailPart implements Iterable<BatchedMesh> {
+  /** Weak, like the rest of this module: an unloaded model's batches are never kept alive by a highlight that last saw them. */
+  private readonly members = new WeakSet<BatchedMesh>();
+  private readonly refs: [WeakRef<BatchedMesh>, number][] = [];
 
-/** Where each batch holding one of the ids sits in the list, scanning entries and lane ids. */
-function holding(list: readonly BatchedMesh[], has: (id: number) => boolean): Map<BatchedMesh, number> {
-  const held = new Map<BatchedMesh, number>();
+  constructor(held: Iterable<readonly [BatchedMesh, number]>) {
+    for (const [batch, index] of held) { this.members.add(batch); this.refs.push([new WeakRef(batch), index]); }
+  }
+
+  get size(): number { return this.refs.length; }
+  has(batch: BatchedMesh): boolean { return this.members.has(batch); }
+
+  *[Symbol.iterator](): Iterator<BatchedMesh> {
+    for (const [ref] of this.refs) { const batch = ref.deref(); if (batch) yield batch; }
+  }
+
+  /** Whether every batch still sits where it was found (not swapped in place by a residency restore or recovery). */
+  current(list: readonly BatchedMesh[]): boolean {
+    for (const [ref, index] of this.refs) { const batch = ref.deref(); if (!batch || list[index] !== batch) return false; }
+    return true;
+  }
+}
+
+const NO_PART = new FullDetailPart([]);
+
+/**
+ * The batches (and their list index) holding one of `ids`: from the scene's entity -> batch index when the
+ * caller keeps one (`batch-highlight.ts`), else one scan of the batch entries.
+ */
+export type BatchesHolding = (list: readonly BatchedMesh[], ids: ReadonlySet<number>) => Iterable<readonly [BatchedMesh, number]>;
+
+/** Scan every batch's entries and lane ids: O(entries), the fallback without an index. */
+export function scanBatchesHolding(list: readonly BatchedMesh[], ids: ReadonlySet<number>): Array<[BatchedMesh, number]> {
+  const out: Array<[BatchedMesh, number]> = [];
+  const has = (id: number): boolean => ids.has(id);
   for (let index = 0; index < list.length; index++) {
     const batch = list[index]!;
-    if (batch.expressIds.some(has) || batch.laneIds?.some(has)) held.set(batch, index);
+    if (batch.expressIds.some(has) || batch.laneIds?.some(has)) out.push([batch, index]);
   }
-  return held;
+  return out;
 }
 
-/** One cached choice: rescanned when its ids, the batch list or the pick geometry moved, or a held batch was swapped in place. */
-class Held {
-  private list: readonly BatchedMesh[] | null = null;
+/** One cached source: looked up again when its ids, the batch list or the pick geometry moved, or a held batch was swapped in place. */
+class Source {
+  private list: WeakRef<readonly BatchedMesh[]> | null = null;
   private length = 0;
   private revision = -1;
-  private key: unknown = undefined;
-  batches = new Map<BatchedMesh, number>();
+  private ids: ReadonlySet<number> | null = null;
+  part: FullDetailPart = NO_PART;
 
-  /** Whether the choice changed. */
-  update(list: readonly BatchedMesh[], revision: number, key: unknown, has: ((id: number) => boolean) | null): boolean {
-    if (key === this.key && list === this.list && list.length === this.length && revision === this.revision && this.current(list)) return false;
-    this.key = key; this.list = list; this.length = list.length; this.revision = revision;
-    this.batches = has ? holding(list, has) : new Map();
-    return true;
-  }
-
-  private current(list: readonly BatchedMesh[]): boolean {
-    for (const [batch, index] of this.batches) if (list[index] !== batch) return false;
-    return true;
+  update(list: readonly BatchedMesh[], revision: number, ids: ReadonlySet<number>, lookup: BatchesHolding): void {
+    if (ids === this.ids && list === this.list?.deref() && list.length === this.length && revision === this.revision && this.part.current(list)) return;
+    this.list = new WeakRef(list); this.length = list.length; this.revision = revision; this.ids = ids;
+    this.part = ids.size === 0 ? NO_PART : new FullDetailPart(lookup(list, ids));
   }
 }
 
+const NO_IDS: ReadonlySet<number> = new Set();
+
 export class FullDetailBatches {
-  private readonly selected = new Held();
-  private readonly hovered = new Held();
-  private set: ReadonlySet<BatchedMesh> = NONE;
+  private readonly selection = new Source();
+  private readonly hover = new Source();
+  private hoveredId: number | null = null;
+  private hoveredIds: ReadonlySet<number> = NO_IDS;
 
   /**
-   * The batches holding an id of `selected` or `hovered`, in any model (a wider
-   * set only costs detail). The same set object while nothing changed, so a
-   * consumer may cache what it derives from it. The selection and the hover are
-   * kept apart: moving the pointer never rescans a large selection.
+   * Bring the selection's and the hover's batches up to date (in any model: a wider set only costs detail).
+   * They are kept apart, so moving the pointer never looks up a large selection again, and each part keeps
+   * its identity while unchanged. Returns this, for its `has` and `parts`.
    */
-  resolve(list: readonly BatchedMesh[], revision: number, selected: ReadonlySet<number>, hovered: number | null): ReadonlySet<BatchedMesh> {
-    const a = this.selected.update(list, revision, selected, selected.size > 0 ? (id) => selected.has(id) : null);
-    const b = this.hovered.update(list, revision, hovered, hovered !== null ? (id) => id === hovered : null);
-    if (a || b) {
-      const s = this.selected.batches, h = this.hovered.batches;
-      this.set = s.size + h.size === 0 ? NONE : new Set([...s.keys(), ...h.keys()]);
-    }
-    return this.set;
+  resolve(list: readonly BatchedMesh[], revision: number, selected: ReadonlySet<number>, hovered: number | null, lookup: BatchesHolding = scanBatchesHolding): this {
+    if (hovered !== this.hoveredId) { this.hoveredId = hovered; this.hoveredIds = hovered === null ? NO_IDS : new Set([hovered]); }
+    this.selection.update(list, revision, selected, lookup);
+    this.hover.update(list, revision, this.hoveredIds, lookup);
+    return this;
+  }
+
+  has(batch: BatchedMesh): boolean { return this.selection.part.has(batch) || this.hover.part.has(batch); }
+  /** The selection's part, then the hover's. */
+  get parts(): readonly FullDetailPart[] { return [this.selection.part, this.hover.part]; }
+  /** Batches held at full detail. */
+  get size(): number {
+    let hoverOnly = 0;
+    for (const batch of this.hover.part) if (!this.selection.part.has(batch)) hoverOnly++;
+    return this.selection.part.size + hoverOnly;
   }
 }
 

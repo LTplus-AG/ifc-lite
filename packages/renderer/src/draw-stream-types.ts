@@ -8,6 +8,9 @@ import type { OpaqueVisibilityPass } from './opaque-visibility-pass.js';
 import type { HlodNode } from './draw-stream-hlod.js';
 import type { BatchedMesh } from './types.js';
 
+/** One highlight source's full-detail batches (an object: caches key on it). */
+export type FullDetailParts = Iterable<BatchedMesh> & object;
+
 export type Vec3 = [number, number, number];
 
 /** Per-batch inputs the renderer resolves when the stream (re)builds. */
@@ -83,8 +86,11 @@ export interface StreamFrameInputs {
   projection: StreamProjection;
   /** Camera moving: the frame budget may cut the smallest nodes. */
   interacting: boolean;
-  /** Batches that draw LOD0 and never under an HLOD proxy this frame: they hold a highlighted entity (full-detail-batches.ts). */
-  fullDetail?: ReadonlySet<BatchedMesh>;
+  /**
+   * Batches that draw LOD0 and never under an HLOD proxy this frame: they hold a highlighted entity
+   * (full-detail-batches.ts). `parts` keep their identity while unchanged: HLOD pins are cached per part.
+   */
+  fullDetail?: { has(batch: BatchedMesh): boolean; readonly parts: readonly FullDetailParts[] };
 }
 
 /** Screen CSS px per world metre at distance `d`. */

@@ -15,6 +15,8 @@ export function recordSelectionSource(scene: OrderScene, mesh: Mesh, piece: Mesh
   drawRanks.set(mesh, { first: order.rank(piece), last: order.rank(last) });
   drawSources.set(mesh, new WeakRef(piece));
 }
+/** The (first) piece a highlight copy was built from, while it is alive. */
+export function selectionSourceOf(mesh: Mesh): MeshData | undefined { return drawSources.get(mesh)?.deref(); }
 export function selectionDrawSpan(mesh: Mesh): { first: number; last: number } | undefined { return drawRanks.get(mesh); }
 
 /**

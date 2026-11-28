@@ -181,7 +181,7 @@ import { RenderDegradationMonitor, type RenderDegradationInfo } from './render-d
 import { PostPassChain } from './post-pass-chain.js';
 import { buildSelectionOutlineFrame, hoverSources } from './selection-outline-frame.js';
 import { HoverMeshCache } from './hover-mesh-cache.js';
-import { HoverBatches } from './batch-highlight.js';
+import { HoverBatches, indexedBatchesHolding } from './batch-highlight.js';
 import { drawSelectionHighlights } from './selection-highlight-draw.js';
 import { addMergedSelectionMeshes } from './selection-hydration.js';
 import { recordSelectionSource } from './selection-hydration-order.js';
@@ -1613,7 +1613,7 @@ export class Renderer {
         let frameBatchesFrustumCulled = 0;
         let frameBatchesContributionCulled = 0;
         let frameBatchesNotResident = 0;
-        let frameBatchesAtLod1 = 0;
+        let frameBatchesAtLod1 = 0, frameBatchesFullDetail = 0;
         let frameInstancedDrawn = 0;
         let frameInstancedFrustumCulled = 0;
         let frameInstancedContributionCulled = 0;
@@ -2298,7 +2298,7 @@ export class Renderer {
                         alpha: (b) => alphaForBatch(b, b.color[3]), colorOverrides, colorOverrideGen, emphasize: options.emphasizeOverrides === true, xrayActive: xray.active,
                         forEachPiece: (visit) => this.scene.forEachFlatMeshData(visit), requestRender: () => this.requestRender(),
                     }, flatMode);
-                const fullDetail = lodScreenPx > 0 || this.drawStream.engaged ? this.fullDetail.resolve(allBatchedMeshes, this.scene.getPickGeometryRevision(), selectedExpressIds, options.hoverOutline?.id ?? null) : undefined;
+                const fullDetail = lodScreenPx > 0 || this.drawStream.engaged ? this.fullDetail.resolve(allBatchedMeshes, this.scene.getPickGeometryRevision(), selectedExpressIds, options.hoverOutline?.id ?? null, this.drawStream.highlightIndex ? indexedBatchesHolding(this.scene) : undefined) : undefined; frameBatchesFullDetail = fullDetail?.size ?? 0;
                 for (let batch of loopBatches) {
                     // Frustum culling: skip batches entirely outside the camera view
                     if (batch.bounds) {
@@ -2926,7 +2926,7 @@ export class Renderer {
                 batchesFrustumCulled: frameBatchesFrustumCulled,
                 batchesContributionCulled: frameBatchesContributionCulled,
                 batchesNotResident: frameBatchesNotResident,
-                batchesAtLod1: frameBatchesAtLod1,
+                batchesAtLod1: frameBatchesAtLod1, batchesFullDetail: frameBatchesFullDetail,
                 instancedDrawn: frameInstancedDrawn,
                 instancedFrustumCulled: frameInstancedFrustumCulled,
                 instancedContributionCulled: frameInstancedContributionCulled,

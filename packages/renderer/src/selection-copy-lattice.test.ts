@@ -18,8 +18,15 @@ import { uploadIndividualMesh, type IndividualMeshFrame } from './individual-mes
 import { Scene } from './scene.js';
 import type { RenderPipeline } from './pipeline.js';
 import type { BatchedMesh } from './types.js';
+import { Renderer } from './index.js';
+import { OpaqueVisibilityPass } from './opaque-visibility-pass.js';
+import { MESH_UNIFORM_BYTES } from './mesh-rte-uniforms.js';
 
-Object.assign(globalThis, { GPUBufferUsage: { COPY_SRC: 4, COPY_DST: 8, INDEX: 16, VERTEX: 32, UNIFORM: 64, STORAGE: 128 } });
+Object.assign(globalThis, {
+  GPUBufferUsage: { MAP_READ: 1, MAP_WRITE: 2, COPY_SRC: 4, COPY_DST: 8, INDEX: 16, VERTEX: 32, UNIFORM: 64, STORAGE: 128, INDIRECT: 256, QUERY_RESOLVE: 512 },
+  GPUMapMode: { READ: 1, WRITE: 2 }, GPUShaderStage: { VERTEX: 1, FRAGMENT: 2, COMPUTE: 4 },
+  GPUTextureUsage: { COPY_SRC: 1, COPY_DST: 2, TEXTURE_BINDING: 4, STORAGE_BINDING: 8, RENDER_ATTACHMENT: 16 },
+});
 
 const fr = Math.fround;
 const GREY: [number, number, number, number] = [0.5, 0.5, 0.5, 1];
@@ -118,4 +125,72 @@ describe('a CPU-built highlight copy lands on its base batch\'s vertices', () =>
       }
     });
   }
+});
+
+/** The real render loop over a stub GPU whose buffers keep what is written, with no batch highlight pipeline: copies draw the highlight. */
+function rendererHarness() {
+  const inert = (): unknown => new Proxy({}, { get: (_t, p) => (p === 'beginRenderPass' || p === 'beginComputePass' ? () => inert() : p === 'finish' ? () => ({}) : () => undefined) });
+  const { device: base } = fakeGpu();
+  const device = new Proxy({} as Record<string | symbol, unknown>, { get(_t, p) {
+    switch (p) {
+      case 'lost': return new Promise(() => {});
+      case 'limits': return { maxTextureDimension2D: 8192, maxBufferSize: 1 << 28, maxStorageBufferBindingSize: 1 << 27 };
+      case 'queue': return { ...base.queue, writeTexture() {}, copyExternalImageToTexture() {}, onSubmittedWorkDone: () => Promise.resolve() };
+      case 'createBuffer': return (d: GPUBufferDescriptor) => ({ ...base.createBuffer(d), getMappedRange: () => new ArrayBuffer(d.size), unmap() {}, mapAsync: () => Promise.resolve() });
+      case 'popErrorScope': return () => Promise.resolve(null);
+      case 'createCommandEncoder': return () => inert();
+      case 'createBindGroup': return () => ({});
+      case 'createTexture': return (d: { size: { width: number; height: number } }) => ({ width: d.size.width, height: d.size.height, createView: () => ({}), destroy() {} });
+      case 'createRenderPipelineAsync': return () => Promise.resolve({ getBindGroupLayout: () => ({}) });
+      case 'createComputePipeline': case 'createRenderPipeline': return () => ({ getBindGroupLayout: () => ({}) });
+      default: return () => ({});
+    }
+  } }) as unknown as GPUDevice;
+  const canvas = { width: 64, height: 64, getBoundingClientRect: () => ({ width: 64, height: 64 }) } as unknown as HTMLCanvasElement;
+  const renderer = new Renderer(canvas);
+  Object.assign(renderer['device'] as unknown as Record<string, unknown>, { device, canvas, contextConfigured: true, lastWidth: 64, lastHeight: 64,
+    context: { configure() {}, getCurrentTexture: () => ({ createView: () => ({}) }) } });
+  const visibility = new OpaqueVisibilityPass(device, 1);
+  const pipeline = new Proxy({} as Record<string | symbol, unknown>, { get(_t, p) {
+    switch (p) {
+      case 'visibility': return visibility;
+      case 'needsResize': return () => false;
+      case 'getSampleCount': return () => 1;
+      case 'getMultisampleTextureView': case 'getQuantizedPipelineVariant': case 'getBatchSelectionPipeline': return () => null;
+      case 'getUniformBufferSize': return () => MESH_UNIFORM_BYTES;
+      default: return () => ({ label: String(p), getBindGroupLayout: () => ({}) });
+    }
+  } }) as unknown as RenderPipeline;
+  (renderer as unknown as Record<string, unknown>)['pipeline'] = pipeline;
+  return { renderer, device, pipeline, scene: renderer['scene'] as Scene };
+}
+
+describe('a highlight copy outlives no change of its base\'s frame', () => {
+  it('is built again when a finalize moves its piece from a quantized fragment into an f32 bucket', () => {
+    const h = rendererHarness();
+    h.scene.setQuantizedBatches(true);
+    const tri = (id: number, x: number) => ({
+      expressId: id, modelIndex: 0, color: GREY, origin: [x + 0.0003, 0.0007, 0.0001],
+      positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0.3]), normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]), indices: new Uint32Array([0, 1, 2]),
+    } as unknown as MeshData);
+    // Two small fragments (each quantized), one colour bucket 100 m wide (past the u16 lattice: f32).
+    h.scene.appendToBatches([tri(1, 0)], h.device, h.pipeline, true);
+    h.scene.appendToBatches([tri(2, 100)], h.device, h.pipeline, true);
+    assert.ok(h.scene.getBatchedMeshes().every((b) => b.quantized), 'fixture: quantized fragments');
+    const frame = () => {
+      h.renderer.render({ visualEnhancement: { enabled: false }, selectedId: 1 });
+      return h.scene.getMeshes().find((m) => m.hydrated && m.expressId === 1)!;
+    };
+    assert.ok(frame(), 'the selection is drawn from a copy');
+    h.scene.finalizeStreaming(h.device, h.pipeline);
+    const copy = frame();
+    const bucket = h.scene.getBatchedMeshes().find((b) => b.expressIds.includes(1))!;
+    assert.equal(bucket.quantized, undefined, 'fixture: the finalized bucket is f32');
+    assert.deepEqual(copy.rteOrigin, bucket.origin, 'the copy is in the bucket\'s frame');
+    const vertices = new Float32Array((copy.vertexBuffer as unknown as FakeBuffer).data.buffer, 0, 21);
+    const base = basePositions(bucket);
+    for (let v = 0; v < 3; v++) for (let a = 0; a < 3; a++) {
+      assert.ok(vertices[v * 7 + a] === base[v * 3 + a], `vertex ${v} axis ${a}: copy ${vertices[v * 7 + a]} vs base ${base[v * 3 + a]}`);
+    }
+  });
 });

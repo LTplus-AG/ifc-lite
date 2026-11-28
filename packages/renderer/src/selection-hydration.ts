@@ -31,10 +31,10 @@
  */
 
 import type { MeshData } from '@ifc-lite/geometry';
-import { MERGE_PIECES_ABOVE, uploadMergedMeshes, type IndividualMeshFrame } from './individual-mesh-upload.js';
+import { copyBuiltQuantized, MERGE_PIECES_ABOVE, uploadMergedMeshes, type IndividualMeshFrame } from './individual-mesh-upload.js';
 import { pickPieceKey } from './pick-mesh-budget.js';
 import type { Scene } from './scene.js';
-import { recordSelectionSource, selectionHydrationOrder } from './selection-hydration-order.js';
+import { recordSelectionSource, selectionHydrationOrder, selectionSourceOf } from './selection-hydration-order.js';
 import type { Mesh } from './types.js';
 
 /**
@@ -60,7 +60,8 @@ export interface MergedSelectionCoverage {
   ids?: ReadonlySet<number>;
 }
 
-type HydrationScene = Pick<Scene, 'getMeshes' | 'getMeshDataPieces' | 'getMeshDataPieceList' | 'getPickGeometryRevision' | 'removeMeshesWhere'>;
+type HydrationScene = Pick<Scene, 'getMeshes' | 'getMeshDataPieces' | 'getMeshDataPieceList' | 'getPickGeometryRevision' | 'removeMeshesWhere'>
+  & Partial<Pick<Scene, 'getIndividualMeshFrame'>>;
 
 interface MergedHighlights {
   /** Meshes of single-entity merges, per entity. */
@@ -203,6 +204,7 @@ export function retireStaleSelectionHydration(
 ): void {
   selectionHydrationOrder(scene).retain(scene, selected, modelIndex, itemFilterExpressId, itemFilterItemId);
   if (selected.size === 0) return;
+  retireCopiesInStaleFrames(scene, selected);
   const { byEntity: mergedByEntity, pools } = mergedHighlights(scene);
   // Only an entity that is or was merged needs the authored counts, so an
   // ordinary selection skips this walk (independent review of #9238).
@@ -229,6 +231,29 @@ export function retireStaleSelectionHydration(
     // Its own merge and its individual copies, not a pool it may also be part of.
     if (merged || missing > MERGE_PIECES_ABOVE) scene.removeMeshesWhere((mesh) => mesh.expressId === id && mesh.hydrated === true && !mesh.mergedSelection?.ids);
   }
+}
+
+/**
+ * Free the copies whose piece is now drawn in another frame or encoding: a finalize, requantize or
+ * rebuild swapped the batch under it (a fragment's lattice for an f32 bucket, say), and a copy only
+ * ties with its base in the frame it was built for. They are built again where the base now draws.
+ * A merge is judged by its first piece and goes whole: every merge of its entity, or every pool.
+ */
+function retireCopiesInStaleFrames(scene: HydrationScene, selected: ReadonlySet<number>): void {
+  if (!scene.getIndividualMeshFrame) return;
+  let stale: Set<Mesh> | undefined, entities: Set<number> | undefined, pools = false;
+  for (const mesh of scene.getMeshes()) {
+    if (mesh.hydrated !== true || (!selected.has(mesh.expressId) && !mesh.mergedSelection?.ids)) continue;
+    const quantized = copyBuiltQuantized(mesh.vertexBuffer), piece = selectionSourceOf(mesh);
+    if (quantized === undefined || !piece || !mesh.rteOrigin) continue;
+    const now = scene.getIndividualMeshFrame(piece);
+    const origin = now.sharedOrigin ?? piece.origin ?? [0, 0, 0];
+    if (now.quantized === quantized && origin[0] === mesh.rteOrigin[0] && origin[1] === mesh.rteOrigin[1] && origin[2] === mesh.rteOrigin[2]) continue;
+    (stale ??= new Set()).add(mesh);
+    if (mesh.mergedSelection?.ids) pools = true; else if (mesh.mergedSelection) (entities ??= new Set()).add(mesh.expressId);
+  }
+  if (stale) scene.removeMeshesWhere((mesh) => stale.has(mesh) || (mesh.hydrated === true && mesh.mergedSelection !== undefined
+    && (mesh.mergedSelection.ids ? pools : entities?.has(mesh.expressId) === true)));
 }
 
 /** A selected entity whose pieces are copied one by one, unless the selection pools. */

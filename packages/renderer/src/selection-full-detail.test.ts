@@ -70,6 +70,12 @@ function member(id: number, x: number): BatchedMesh {
   } as BatchedMesh;
 }
 
+/** A frame's full-detail input holding `batches` as its one part (the renderer passes the selection's and the hover's). */
+function held(...batches: BatchedMesh[]): { has(b: BatchedMesh): boolean; parts: Set<BatchedMesh>[] } {
+  const part = new Set(batches);
+  return { has: (b) => part.has(b), parts: [part] };
+}
+
 function frame(over: Partial<StreamFrameInputs> & Record<string, unknown>): StreamFrameInputs {
   return {
     pass: {} as GPURenderPassEncoder, mode: { discardFree: true, objectId: false }, allowBundles: true,
@@ -87,14 +93,14 @@ describe('draw stream: a highlighted entity\'s batch draws full detail', () => {
   it('draws that member at LOD0 while its node\'s other members stay at LOD1', () => {
     const [plain] = collectStreamItems(frame({}), nodes, null, links, 0, members);
     assert.equal(plain!.lod1, true, 'control: small members draw LOD1');
-    const [held] = collectStreamItems(frame({ fullDetail: new Set([members[1]!]) }), nodes, null, links, 0, members);
-    assert.ok(held!.picks, 'the node draws per member');
-    assert.deepEqual([...held!.picks!], [MemberPick.Lod1, MemberPick.Lod0, MemberPick.Lod1]);
+    const [item] = collectStreamItems(frame({ fullDetail: held(members[1]!) }), nodes, null, links, 0, members);
+    assert.ok(item!.picks, 'the node draws per member');
+    assert.deepEqual([...item!.picks!], [MemberPick.Lod1, MemberPick.Lod0, MemberPick.Lod1]);
   });
 
   it('keeps culling a member too small to draw', () => {
-    const [held] = collectStreamItems(frame({ contribPx: 8, fullDetail: new Set([members[1]!]) }), nodes, null, links, 0, members);
-    assert.equal(held, undefined, 'every member is below the contribution threshold: nothing draws, the highlight draws alone');
+    const [item] = collectStreamItems(frame({ contribPx: 8, fullDetail: held(members[1]!) }), nodes, null, links, 0, members);
+    assert.equal(item, undefined, 'every member is below the contribution threshold: nothing draws, the highlight draws alone');
   });
 
   it('refines an HLOD node over that batch instead of drawing its proxy', () => {
@@ -113,10 +119,10 @@ describe('draw stream: a highlighted entity\'s batch draws full detail', () => {
 
     const plain = at({});
     assert.deepEqual(plain.map((it) => it.proxy?.key), [root.key], 'control: the far region draws as one proxy');
-    const held = at({ fullDetail: new Set([far[0]!]) });
-    assert.equal(held.some((it) => it.proxy === root || it.proxy === a), false, 'no proxy over the highlighted batch');
-    assert.ok(held.some((it) => it.leaf?.members.some((i) => far[i] === far[0])), 'its leaf draws');
-    assert.ok(held.some((it) => it.proxy === b), 'the sibling region keeps its proxy');
+    const items = at({ fullDetail: held(far[0]!) });
+    assert.equal(items.some((it) => it.proxy === root || it.proxy === a), false, 'no proxy over the highlighted batch');
+    assert.ok(items.some((it) => it.leaf?.members.some((i) => far[i] === far[0])), 'its leaf draws');
+    assert.ok(items.some((it) => it.proxy === b), 'the sibling region keeps its proxy');
   });
 });
 
@@ -215,7 +221,7 @@ describe('per-batch loop: a highlighted entity\'s batch draws full detail', () =
     assert.ok(selected.length > 0, 'the base draws');
     assert.ok(selected.every((d) => d.indexBuffer === batch!.indexBuffer), 'the selected entity\'s batch draws its LOD0 indices');
     const hovered = base({ hoverOutline: { id: 7 } } as RenderOptions);
-    assert.ok(hovered.every((d) => d.indexBuffer === batch!.indexBuffer), 'so does the hovered entity\'s');
+    assert.ok(hovered.length > 0 && hovered.every((d) => d.indexBuffer === batch!.indexBuffer), 'so does the hovered entity\'s');
 
     // A compact page decides per part (lod-parts.ts): the page holding the entity draws every part at LOD0.
     Object.assign(batch!, { lodParts: [{ bounds: batch!.bounds!, lod0Start: 0, lod0Count: 3, lod1: true, lod1Start: 0, lod1Count: 3 }] });

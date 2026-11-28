@@ -35,6 +35,11 @@ export interface FrameStats {
   batchesNotResident: number;
   /** Batches drawn at their simplified LOD1 index range this frame. */
   batchesAtLod1: number;
+  /**
+   * Batches kept at full detail (never LOD1 or an HLOD proxy) because they hold a selected or hovered
+   * entity, whose highlight must tie with LOD0 (full-detail-batches.ts). A large selection raises it.
+   */
+  batchesFullDetail?: number;
   /** GPU-instanced templates drawn this frame (one draw call each). */
   instancedDrawn: number;
   /** Instanced templates rejected by the frustum test (union world AABB). */

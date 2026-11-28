@@ -72,4 +72,23 @@ describe('mesh vertex stages write an invariant position', () => {
     for (const entry of ['vs_main', 'vs_main_quantized', 'vs_instanced']) assert.ok(entries(mainShaderSource).includes(entry), entry);
     for (const entry of ['vs_stream', 'vs_stream_quantized']) assert.ok(entries(streamShaderSource(mainShaderSource)).includes(entry), entry);
   });
+
+  it('vs_main computes its position with the same statements as shadeFlatVertex (stream and quantized highlight)', () => {
+    // Invariance only promises equal bits for the same expression: non-quantized highlights draw with
+    // vs_main while the stream draws through shadeFlatVertex, so the two position chains must not drift.
+    const code = mainShaderSource.replace(/\/\/[^\n]*/g, '');
+    const body = (header: RegExp) => {
+      const start = code.search(header);
+      assert.ok(start >= 0, `${header} not found`);
+      return code.slice(start, code.indexOf('return output;', start));
+    };
+    const chain = (src: string, local: string) => src.split(';').map((l) => l.replace(/\s+/g, ' ').trim())
+      .filter((l) => /^(let (worldPos|eyePos|rte|zHash) =|output\.(position|geometricDepth)\b)/.test(l))
+      .map((l) => l.split(local).join('LOCAL').replace('LOCAL_ID', 'ENTITY'));
+    const flat = chain(body(/fn\s+shadeFlatVertex\s*\(/).replace(/\bentityId\b/g, 'LOCAL_ID'), 'localPos');
+    const main = chain(body(/fn\s+vs_main\s*\(/).replace(/\binput\.entityId\b/g, 'LOCAL_ID'), 'input.position');
+    assert.equal(flat.length, 7, `shadeFlatVertex position chain: ${flat.join(' | ')}`);
+    assert.deepEqual(main, flat);
+  });
 });
+

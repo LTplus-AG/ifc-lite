@@ -7,29 +7,50 @@ the full SDK API used by `eval`/`run`.
 
 | Command | Purpose |
 |---------|---------|
+| `doctor` | Check CLI runtime, package versions and WASM binary |
 | `info` | Model summary: schema, entity counts, storeys, top types |
 | `query` | Query entities by type/property with optional full data |
+| `structural` | Read analysis models, members, connections, loads, reactions and physical links |
 | `props` | All data for a single entity by id |
-| `stats` | Entity-type statistics |
-| `export` | Export to CSV / JSON / IFC STEP |
-| `lod` | Lightweight LOD0 (JSON) / LOD1 (GLB) preview artifacts |
-| `ids` | Validate against IDS rules |
+| `export` | Export data / geometry / energy / city model (CSV, JSON, IFC, OBJ, glTF/GLB, JSON-LD, IFCX, USD, 3DM, HBJSON, DFJSON, CityJSON) |
+| `schedule` | Tabular schedule of one class (csv/json/md/html), with presets, sorting, grouping and subtotals |
+| `diagnose-geometry` | CSG / opening diagnostics |
+| `extract-entities` | Isolate entities into a small, viewable standalone IFC |
+| `anonymize` | Export selected objects + context as an anonymized IFC |
+| `ids` | Validate against IDS rules; `audit`, `lint`, `fmt`, `diff`, `explain` IDS files |
 | `bcf` | BCF collaboration (create / list / add-comment) |
-| `create` | Create IFC elements (30+ types) |
-| `merge` | Merge multiple IFC files into one federated model |
-| `convert` | Convert between IFC schema versions |
-| `diff` | Compare two IFC files |
-| `validate` | Structural validation |
 | `clash` | Clash detection between element sets |
-| `bsdd` | buildingSMART Data Dictionary lookup |
-| `mutate` | Modify entities / properties |
-| `analyze` | Push color overlays to a running viewer |
-| `view` | Launch the 3D viewer with a REST API |
+| `create` | Create IFC elements (29 types) |
 | `eval` | Evaluate a JS SDK expression |
 | `run` | Run a JS script with `bim` in scope |
-| `ask` | Natural-language recipe engine |
 | `schema` | Dump the SDK API schema as JSON |
+| `merge` | Merge multiple IFC files into one federated model |
+| `convert` | Convert between IFC schema versions |
+| `diff` | Compare two IFC files (by GlobalId, by content, with geometry) |
+| `rekey` | Carry a table keyed on old element keys across a revision |
+| `validate` | Structural validation |
+| `bsdd` | buildingSMART Data Dictionary lookup |
+| `stats` | Auto-calculated model KPIs and health check |
+| `mutate` | Modify properties/attributes and save |
+| `generate-spaces` | Derive IfcSpace from walls |
+| `derive-structural` | Derive a linked structural analysis model |
+| `storey` | Author storeys (list / add / rename / edit / delete / constrain / copy) |
+| `georef` | Read, write, check and fix georeferencing |
+| `site-context` | Swiss terrain, parcel and neighbouring buildings around a georeferenced model as one GLB |
+| `ask` | Natural-language recipe engine |
+| `view` | Launch the 3D viewer with a REST API |
+| `analyze` | Push color overlays to a running viewer |
+| `lod` | Lightweight LOD0 (JSON) / LOD1 (GLB) preview artifacts |
+| `simplify` | Simplify meshes and write a lighter IFC |
+| `mcp` | Start an MCP server; `mcp install` adds it to a client config |
 | `ext` | Author / validate / pack / sign / test IFClite extensions |
+| `layer` / `ref` | Layered change tracking and named refs over a local store (`.ifc-lite/`) |
+| `oci` | Publish an IFC file to an OCI registry (`oci push`) |
+| `gym` | reset/step/reward environment loop (JSONL over stdin/stdout) |
+| `delivery` | Repeatable delivery check from a saved recipe |
+| `check` | Run a `.rules.json` information-validation rule set |
+| `semantic` | Semantic profiles, SHACL validation and SPARQL/JSON providers |
+| `flow` | Evaluate a node graph headlessly; pause and resume reviewed AI proposals |
 
 ## query
 
@@ -41,10 +62,12 @@ ifc-lite query model.ifc --type IfcWall --limit 10 --offset 20
 ifc-lite query model.ifc --spatial            # storeys → elements tree
 ```
 
-Flags: `--type <T>` · `--where <Pset.Prop=Value>` · `--props` · `--quantities` ·
-`--materials` · `--classifications` · `--attributes` · `--relationships` ·
-`--type-props` · `--documents` · `--all` · `--count` · `--spatial` ·
-`--limit <N>` · `--offset <N>` · `--json`
+Flags: `--type <T>` · `--select "<selector>"` · `--where <Pset.Prop=Value>` ·
+`--storey <S>` · `--props` · `--quantities` · `--materials` · `--classifications` ·
+`--attributes` · `--relationships` · `--type-props` · `--documents` · `--all` ·
+`--count` · `--spatial` · `--summary` · `--sum/--avg/--min/--max <Qty>` ·
+`--group-by <key>` · `--sort <key>` · `--desc` · `--unique <path>` ·
+`--property-names` · `--quantity-names` · `--limit <N>` · `--offset <N>` · `--json`
 
 ## props
 
@@ -63,11 +86,14 @@ ifc-lite export model.ifc --format csv --type IfcWall \
 ifc-lite export model.ifc --format ifc --schema IFC4 --out filtered.ifc
 ```
 
-Flags: `--format csv|json|ifc` · `--type <T>` · `--columns <a,b,Pset.Prop>` ·
-`--separator <sep>` · `--schema IFC2X3|IFC4|IFC4X3` · `--limit <N>` · `--out <file>`
+Flags: `--format csv|json|ifc|obj|gltf|glb|jsonld|step|ifcx|usd|3dm|hbjson|dfjson|cityjson|cityjsonseq` ·
+`--type <T>` · `--where <Pset.Prop=Value>` · `--storey <S>` · `--columns <a,b,Pset.Prop>` ·
+`--separator <sep>` · `--schema IFC2X3|IFC4|IFC4X3` · `--limit <N>` · `--name <Model>` ·
+`--name-by-global-id` (glb) · `--out <file>`. 3DM adds `--units`, `--coordinates`,
+`--layers`, `--properties`, `--3dm-version 7|8`, `--no-instancing`, `--no-spaces`,
+`--no-normals`, `--layer-slicing`.
 
-(For glTF / Parquet / IFC5 export use the SDK `@ifc-lite/export` package or
-`eval`.)
+(For Parquet export use the SDK `@ifc-lite/export` package or `eval`.)
 
 ## lod
 
@@ -88,6 +114,16 @@ ifc-lite ids model.ifc requirements.ids --json --locale de
 
 Flags: `--json` · `--locale en|de|fr`. Exit 0 (pass) / 1 (fail).
 
+IDS file tools (exit 2 on a usage error or unreadable input):
+
+```bash
+ifc-lite ids audit rules.ids --json        # IDS 1.0 conformance audit (exit 1 on errors)
+ifc-lite ids lint rules.ids --fail-on warning
+ifc-lite ids fmt rules.ids --check         # exit 1 when the file would change; --write rewrites it
+ifc-lite ids diff before.ids after.ids --md
+ifc-lite ids explain rules.ids --lang de --md
+```
+
 ## bcf
 
 ```bash
@@ -98,7 +134,7 @@ ifc-lite bcf add-comment --file topics.bcf --text "Fixed in rev 3" --out updated
 
 ## create
 
-30+ element types, with `--pset` / `--qset` / `--material` / `--color`, or
+29 element types, with `--pset` / `--qset` / `--material` / `--color`, or
 `--from-json` (reads stdin). `--out <file>` is required.
 
 | Category | Types |
@@ -111,7 +147,7 @@ ifc-lite bcf add-comment --file topics.bcf --text "Fixed in rev 3" --out updated
 | Openings | `door`, `window`, `wall-door`, `wall-window` |
 | Circulation | `stair`, `ramp`, `railing` |
 | Foundation | `footing`, `pile` |
-| Other | `space`, `plate`, `furnishing`, `proxy` |
+| Other | `space`, `plate`, `furnishing`, `proxy`, `storey` |
 
 ```bash
 ifc-lite create wall --start 0,0,0 --end 5,0,0 --height 3 --thickness 0.2 --out wall.ifc

@@ -40,7 +40,11 @@ The read-only discovery tools are always on — call them before anything else:
 2. `schema_describe` — entity metadata, inheritance chains, attribute shapes.
 3. Then query / validate / mutate / export as needed.
 
-## Tool families (~70 tools)
+## Tool families (more than 100 tools)
+
+The authoritative list for a session is `tools/list` (or the tool catalog in the
+`ifc-lite://server/manifest` resource); it shows only what the session's scope
+allows. The main families:
 
 **Models** — `model_info`, `model_list`, `model_load`, `model_unload`,
 `model_save`, `model_audit`, `model_diff`.
@@ -57,7 +61,8 @@ the answer, and `contentDiff.pendingMutations` says how many.
 
 **Discovery & metadata** — `schema_describe`, `units`, `georeferencing`, `georeferencing_check`,
 `classifications_list`, `materials_list`, `spatial_hierarchy`,
-`containment_chain`, `relationships`.
+`containment_chain`, `relationships`, `storey_list`, `query_rooms`,
+`structural_data`, `cost_data`.
 
 **Query** — `query_entities`, `count_entities`, `get_entity`,
 `get_entities_bulk`, `properties_unique`, `quantity_diff`.
@@ -65,7 +70,12 @@ the answer, and `contentDiff.pendingMutations` says how many.
 **Geometry** — `geometry_get`, `geometry_bbox`, `geometry_area`,
 `geometry_volume`, `raycast`.
 
-**Validation** — `ids_validate`, `ids_explain`.
+**Validation** — `ids_validate`, `ids_explain`, `check_rules` (a `.rules.json`
+rule set), `review_findings`, `cost_evaluate`.
+
+**IDS authoring** — `ids_schema_search`, `ids_schema_entity`, `ids_schema_pset`,
+`ids_read`, `ids_apply_ops`, `ids_write`, `ids_lint`, `ids_audit`, `ids_diff`,
+`ids_preview`, `ids_test`, `ids_coverage`, `ids_infer`.
 
 **Clash** — `clash_check`, `clash_matrix`.
 
@@ -77,10 +87,19 @@ the answer, and `contentDiff.pendingMutations` says how many.
 for IfcSite RefLatitude/RefLongitude; refuses rather than guess a CRS, unit or scale),
 `georeferencing_fix` (applies the `ready` fixes of `georeferencing_check`; pass values
 only the user gave in `values`, never invented ones),
-`mutation_batch`, `mutation_diff`, `mutation_undo`.
+`mutation_batch`, `mutation_diff`, `mutation_undo`, plus modelling tools:
+`place_door`, `place_window`, `place_opening`, `place_curtain_wall`, `place_grid`,
+`place_grid_column`, `edit_hosted_element`, `edit_element_geometry`,
+`copy_elements`, `array_elements`, `mirror_elements`, `duplicate_element`,
+`copy_to_storeys`, `join_walls`, `room_command`, `set_top_constraint`,
+`add_classification`, `assign_classification`, and the storey tools `storey_add`,
+`storey_plan_add`, `storey_rename`, `storey_edit`, `storey_plan_edit`,
+`storey_delete`.
 
 **Export** — `export_csv`, `export_json`, `export_ifc`, `export_ifcx`,
-`export_glb`, `export_3dm`.
+`export_glb`, `export_gltf`, `export_obj`, `export_jsonld`, `export_usd`,
+`export_3dm`, `export_cityjson`, `export_cityjsonseq`, `export_hbjson`,
+`export_dfjson`.
 
 **Model transforms** (write to `file_path`, replacing a file already there, never a loaded model's source; the loaded model is untouched):
 `model_merge`, `model_convert` (schema version, with a loss report),
@@ -88,14 +107,23 @@ only the user gave in `values`, never invented ones),
 `model_simplify`, `model_lod`.
 
 **BCF** — `bcf_topic_create`, `bcf_topic_update`, `bcf_topic_close`,
-`bcf_topic_list`, `bcf_viewpoint_create`, `bcf_export`.
+`bcf_topic_list`, `bcf_viewpoint_create`, `bcf_export`; durable server
+publication: `bcf_publications_list`, `bcf_publication_check`,
+`bcf_publication_reconcile`, `bcf_publication_confirm_absent`.
+
+**Draft layers and review** — `create_draft_layer`, `draft_apply_ops`,
+`diff_layer`, `dry_run_merge`, `list_conflicts`, `publish_layer`,
+`request_review`, `respond_to_review`, `add_review_topic`,
+`add_review_feedback`, `get_review_feedback`.
+
+**Flow** — `describe_flow`, `run_flow`, `propose_flow`, `resume_flow`.
 
 **Viewer** (interactive 3D, when launched with `--viewer`) — `viewer_open`,
 `viewer_close`, `viewer_status`, `viewer_colorize`, `viewer_color_by_property`,
 `viewer_color_by_storey`, `viewer_isolate`, `viewer_hide`, `viewer_show`,
 `viewer_fly_to`, `viewer_set_section`, `viewer_clear_section`, `viewer_reset`,
 `viewer_get_selection`, `viewer_wait_for_selection`, `viewer_describe_selection`,
-`viewer_ask`.
+`viewer_select`, `viewer_ask`.
 
 ## Showing results to the user (A2UI)
 

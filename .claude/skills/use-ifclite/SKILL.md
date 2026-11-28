@@ -46,7 +46,7 @@ ifc-lite export model.ifc --format ifc --schema IFC4 --out filtered.ifc
 # Validate against IDS rules (exit 1 on failure)
 ifc-lite ids model.ifc requirements.ids --json
 
-# Create IFC from scratch (30+ element types)
+# Create IFC from scratch (29 element types)
 ifc-lite create wall --start 0,0,0 --end 5,0,0 --height 3 --thickness 0.2 --out wall.ifc
 
 # Combine / convert / compare
@@ -78,7 +78,7 @@ ifc-lite run analysis.js model.ifc           # a .js file with `bim` available g
 `ifc-lite ask model.ifc "how many walls?"` maps plain-English questions to common
 recipes — handy for quick one-offs, but `eval` is more precise.
 
-For the **complete command + flag reference** (every command, all flags, the 30+
+For the **complete command + flag reference** (every command, all flags, the 29
 `create` element types, `bsdd`, `clash`, `lod`, `view`/`analyze`), read
 [`cli-reference.md`](./cli-reference.md).
 
@@ -111,8 +111,8 @@ These are non-negotiable when emitting IFC names or editing models:
 ## Running as an MCP server (tool-calling agents)
 
 For agents that speak the Model Context Protocol, `@ifc-lite/mcp` exposes the
-same capabilities as ~70 typed tools (model/query/IDS/BCF/clash/export/viewer/
-mutation) plus pre-baked prompts.
+same capabilities as more than 100 typed tools (model/query/IDS/BCF/clash/
+export/viewer/mutation/storeys/layers/flow) plus pre-baked prompts.
 
 ```bash
 ifc-lite mcp ./model.ifc                 # stdio transport (default)

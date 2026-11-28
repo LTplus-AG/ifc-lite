@@ -122,6 +122,7 @@ test('#11247 claims STEP writers and conversion tables ahead of recursive export
   assert.equal(group.includeDependenciesRecursively, false);
   for (const file of [
     'step-exporter.ts',
+    'step-retype-type-link.ts',
     'schema-converter.ts',
     'schema-converter-ifc2x3-slots.ts',
     'schema-project-time-unit.ts',

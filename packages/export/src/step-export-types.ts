@@ -19,6 +19,7 @@
  * anything new should be routed through.
  */
 
+import type { RetypedAssignmentFilter } from './step-retype-type-link.js';
 import type { StyleFlatten } from './schema-style-flatten.js';
 import type { IfcAttributeValue, IfcSourceHeader } from '@ifc-lite/parser';
 import type { PropertySet, QuantitySet } from '@ifc-lite/data';
@@ -341,6 +342,7 @@ export interface ExportPass {
   readonly overlayActive: boolean;
 
   // ---- indexes and ledgers ----
+  readonly filterRetypedAssignment?: RetypedAssignmentFilter;
   readonly effective: EffectiveEntityIndex;
   readonly modifications: ModificationLedger;
   /** Widened from the imported `InPlaceNominees` (whose sets are readonly)

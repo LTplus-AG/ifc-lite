@@ -5,14 +5,20 @@
 use super::requests::{OpeningReady, OpeningReply, OpeningSource};
 use super::{protocol, source_option, OpeningOutput, OpeningPoll};
 use crate::program::opening::{OpeningBounds, OpeningChild, OpeningProgram};
+use crate::router::voids::geom::{bounds_are_the_box, signed_permutation_map};
 use crate::router::voids::CutterKind;
 use crate::router::OpeningDiagnostic;
 use crate::{GeometryRouter, Mesh, Result};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
+use nalgebra::Matrix3;
+use crate::router::voids::{aligned_bodies::AlignedOpening, probe::RectProbe, RectParam};
+use std::sync::Arc;
+use std::cell::OnceCell;
 use std::collections::VecDeque;
 
 pub(crate) struct Classifier<'a> {
     host: &'a DecodedEntity,
+    wall_boxes: OnceCell<Option<(Arc<[RectParam]>, bool)>>,
     ids: Ids<'a>,
     /// QUIET mode (`false`) is a full no-op for statistics and diagnostics: a
     /// residual subset of an already classified host must not count twice.
@@ -64,6 +70,7 @@ struct Occurrence {
     parts: VecDeque<Mesh>,
     bounds: OpeningBounds,
     meshes: Vec<Mesh>,
+    aligned_wall_opening: Option<AlignedOpening>,
     triangles: usize,
     vertices: usize,
 }
@@ -82,6 +89,7 @@ impl<'a> Classifier<'a> {
     fn with_ids(host: &'a DecodedEntity, ids: Ids<'a>, count: usize, recording: bool) -> Self {
         Self {
             host,
+            wall_boxes: OnceCell::new(),
             ids,
             recording,
             requested: 0,
@@ -138,8 +146,9 @@ impl<'a> Classifier<'a> {
                         return OpeningPoll::Complete(Err(protocol("classifier occurrence")));
                     };
                     self.decision = (current.requested_id, current.vertices);
-                    let decisions =
-                        super::decision::classify(current.parts, current.bounds, current.meshes);
+                    let decisions = super::decision::classify(
+                        current.parts, current.bounds, current.meshes, current.aligned_wall_opening,
+                    );
                     return OpeningPoll::Ready(OpeningReady::Decision(decisions));
                 }
                 Phase::Finished => {
@@ -166,6 +175,22 @@ impl<'a> Classifier<'a> {
     ) -> OpeningReply {
         match (&self.probe, &self.current, source) {
             (Some(probe), Some(current), _) => probe.source(&current.entity, source, router, decoder),
+            (None, Some(current), OpeningSource::AlignedWallOpening) => {
+                // Compare authored f64 box axes. Even independent turns below the
+                // mesher's near-axis threshold must retain their established cut.
+                let wall = self.wall_boxes.get_or_init(|| {
+                    let (items, whole) = router.probe_rect_items(self.host, decoder, RectProbe::Alignment)?;
+                    let axes = items.first()?.r;
+                    let split = whole && items.len() == 2 && !items[0].intersects_interior(&items[1]);
+                    items.iter().all(|item| shares_axes(&axes, &item.r)).then(|| (Arc::from(items), split))
+                });
+                let aligned = wall.as_ref().and_then(|(hosts, split)| {
+                    let (items, whole) = router.probe_rect_items(&current.entity, decoder, RectProbe::Alignment)?;
+                    (items.len() == current.meshes.len() && items.iter().all(|item| shares_axes(&hosts[0].r, &item.r)))
+                        .then(|| AlignedOpening { hosts: Arc::clone(hosts), openings: items.into_iter(), partition: *split && whole })
+                });
+                OpeningReply::AlignedWallOpening(aligned)
+            }
             (None, _, OpeningSource::Decode) => {
                 OpeningReply::Decoded(decoder.decode_by_id(self.requested).map_err(Into::into))
             }
@@ -210,6 +235,7 @@ impl<'a> Classifier<'a> {
                         parts: VecDeque::new(),
                         bounds: Vec::new(),
                         meshes: Vec::new(),
+                        aligned_wall_opening: None,
                         triangles: 0,
                         vertices: 0,
                     });
@@ -248,6 +274,10 @@ impl<'a> Classifier<'a> {
                 } else {
                     Phase::Classify
                 };
+            }
+            OpeningReply::AlignedWallOpening(aligned) => {
+                self.current()?.aligned_wall_opening = aligned;
+                self.phase = Phase::Classify;
             }
             OpeningReply::Fallback(opening) => {
                 let current = self.current()?;
@@ -332,13 +362,27 @@ impl<'a> Classifier<'a> {
                     None => Vec::new(),
                     Some(_) => return Err(protocol("opening meshes output")),
                 };
-                self.current()?.meshes = meshes;
-                self.phase = Phase::Classify;
+                let wall = self.host.ifc_type.is_subtype_of(IfcType::IfcWall);
+                let current = self.current()?;
+                let check_axes = wall
+                    && meshes.len() == current.bounds.len()
+                    && meshes.iter().any(|m| !bounds_are_the_box(m));
+                current.meshes = meshes;
+                if check_axes {
+                    self.next = Some(OpeningPoll::Source(OpeningSource::AlignedWallOpening));
+                } else {
+                    self.phase = Phase::Classify;
+                }
             }
             _ => return Err(protocol("classifier child continuation")),
         }
         Ok(())
     }
+}
+
+// Authored axes can be composed in a different order in the two placements.
+fn shares_axes(a: &Matrix3<f64>, b: &Matrix3<f64>) -> bool {
+    signed_permutation_map(&(a.transpose() * b), crate::math::tol::WALL_OPENING_AXIS_EPS).is_some()
 }
 
 fn probe_bounds(output: Option<OpeningOutput>) -> Result<OpeningBounds> {

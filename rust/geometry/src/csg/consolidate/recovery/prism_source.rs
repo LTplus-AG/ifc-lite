@@ -37,7 +37,7 @@ pub(super) fn prepare(
     if !protected_faces_preserved(original_buckets, &buckets, supported) { return None; }
     // Preserve the original retention policy, including recursive callers'
     // disabled protections. Never discover extra rescue policy during a retry.
-    let planned = plans::build(&buckets, &merged, supported, length_unit_scale);
+    let planned = plans::build(&buckets, &merged, supported, length_unit_scale, super::super::ConsolidationUse::ClosedOutput);
     Some(Prepared { signature, buckets, planned })
 }
 

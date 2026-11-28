@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Bool2d (stage A, second): subtract the openings' footprints from the host's
+//! Bool2d (stage A, after ParamRect): subtract the openings' footprints from the host's
 //! 2D profile and re-extrude, generalising ParamRect to arbitrary extruded-host
 //! profiles.
 
@@ -18,5 +18,5 @@ use crate::Mesh;
 pub(super) fn try_cut(execution: &Execution, host: &Mesh, ctx: &VoidContext, element_id: u32) -> Option<Cut> {
     let cut = ctx.bool2d.as_ref()?;
     let mesh = execution.try_staged_bool2d(host, cut, element_id)?;
-    Some(Cut { mesh, residual: None })
+    Some(Cut::Whole { mesh, residual: None })
 }

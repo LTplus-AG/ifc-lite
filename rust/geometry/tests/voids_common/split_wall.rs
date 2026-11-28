@@ -118,6 +118,20 @@ fn tessellate_recess(swept: &str, y0: f64, profile: &[(f64, f64); 5]) -> String 
     format!("{}{recess}{}", &swept[..start], &swept[end..])
 }
 
+/// The same square recess authored as an IfcPolyline, with an optional edge midpoint.
+#[allow(dead_code)] // Also included by suites that use only the parameterized profiles.
+pub(crate) fn polyline_recess(wall: &str, midpoint: bool) -> String {
+    let ring = if midpoint { "#126,#127,#128,#129,#130,#126" } else { "#126,#128,#129,#130,#126" };
+    let profile = "#122=IFCRECTANGLEPROFILEDEF(.AREA.,'Recess',#121,1.0,1.0);";
+    assert!(wall.contains(profile));
+    wall.replace(profile, &format!(
+        "#126=IFCCARTESIANPOINT((0.,0.));#127=IFCCARTESIANPOINT((0.5,0.));\
+         #128=IFCCARTESIANPOINT((1.,0.));#129=IFCCARTESIANPOINT((1.,1.));\
+         #130=IFCCARTESIANPOINT((0.,1.));#131=IFCPOLYLINE(({ring}));\
+         #122=IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,'Recess',#131);"
+    ))
+}
+
 /// The core and the middle body both occupy the authored cutter.
 #[allow(dead_code)]
 pub(crate) fn wall_with_overlapping_bodies() -> String {

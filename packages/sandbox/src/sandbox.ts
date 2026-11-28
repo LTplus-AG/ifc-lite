@@ -382,25 +382,7 @@ export class Sandbox {
       // toJSON hooks run in the decoder.
       let value: unknown;
       try {
-        const state = this.vm.getPromiseState(result.value);
-        if (state.type === 'rejected') {
-          try {
-            throw new Error(describeError(state.error));
-          } finally {
-            safeDispose(state.error);
-          }
-        }
-        if (state.type === 'pending') {
-          value = { type: 'pending' };
-        } else if (state.notAPromise) {
-          value = decoder.decode(result.value);
-        } else {
-          try {
-            value = { type: 'fulfilled', value: decoder.decode(state.value) };
-          } finally {
-            safeDispose(state.value);
-          }
-        }
+        value = decoder.decodeResult(result.value);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         throw new ScriptError(this.interrupted ? 'interrupted' : message, bridge.logs, durationMs);

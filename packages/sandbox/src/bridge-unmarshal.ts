@@ -155,7 +155,14 @@ export function createValueDecoder(vm: QuickJSContext, requestedDepth?: number) 
     }
   }
 
-  function decode(handle: QuickJSHandle, depth = maxDepth, allowCyclicConsoleValue = false): unknown {
+  const describeError = (handle: QuickJSHandle): string => read(handle, 0, true) ?? 'undefined';
+
+  function decode(
+    handle: QuickJSHandle,
+    depth = maxDepth,
+    allowCyclicConsoleValue = false,
+    rejectAsError = false,
+  ): unknown {
     const type = vm.typeof(handle);
     switch (type) {
       case 'undefined': return undefined;
@@ -169,9 +176,11 @@ export function createValueDecoder(vm: QuickJSContext, requestedDepth?: number) 
       const state = vm.getPromiseState(handle);
       if (state.type === 'pending') return { type: 'pending' };
       if (state.type === 'rejected' || !state.notAPromise) {
+        // Only settled promises own a fresh handle for their value or reason.
         const settled = state.type === 'rejected' ? state.error : state.value;
         try {
-          if (depth === 0) throw new Error(`Sandbox value exceeds decoding depth (limit ${maxDepth})`);
+          if (depth === 0) throw new Error(`Sandbox value exceeds decoding depth (depth limit ${maxDepth})`);
+          if (state.type === 'rejected' && rejectAsError) throw new Error(describeError(settled));
           const decoded = decode(settled, depth - 1, allowCyclicConsoleValue);
           return state.type === 'rejected'
             ? { type: 'rejected', error: decoded }
@@ -188,8 +197,9 @@ export function createValueDecoder(vm: QuickJSContext, requestedDepth?: number) 
 
   return {
     decode,
+    decodeResult: (handle: QuickJSHandle) => decode(handle, maxDepth, false, true),
     decodeConsole: (handle: QuickJSHandle) => decode(handle, maxDepth, true),
-    describeError: (handle: QuickJSHandle) => read(handle, 0, true) ?? 'undefined',
+    describeError,
     dispose: () => decoder.dispose(),
   };
 }

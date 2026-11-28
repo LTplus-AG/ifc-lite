@@ -183,6 +183,42 @@ describe('bounded sandbox decoding (#11600)', () => {
     }
   });
 
+  it('allows an empty root and a pending promise at depth zero', async () => {
+    const { sdk } = stubSdk();
+    const sandbox = await createSandbox(sdk, { limits: { maxDumpDepth: 0 } });
+    try {
+      expect((await sandbox.eval('({})', { typescript: false })).value).toEqual({});
+      expect((await sandbox.eval('new Promise(() => {})', { typescript: false })).value)
+        .toEqual({ type: 'pending' });
+      await expect(sandbox.eval('Promise.resolve({})', { typescript: false }))
+        .rejects.toThrow(/depth limit 0/);
+      await expect(sandbox.eval('Promise.resolve(1)', { typescript: false }))
+        .rejects.toThrow(/depth limit 0/);
+      await expect(sandbox.eval(`
+        let reads = 0;
+        Promise.reject({ get message() { reads++; return 'example'; } });
+      `, { typescript: false })).rejects.toThrow(/depth limit 0/);
+      expect((await sandbox.eval('reads', { typescript: false })).value).toBe(0);
+    } finally {
+      sandbox.dispose();
+    }
+  });
+
+  it('counts the fulfilled wrapper and keeps the regular result shape', async () => {
+    const { sdk } = stubSdk();
+    const sandbox = await createSandbox(sdk, { limits: { maxDumpDepth: 1 } });
+    try {
+      expect((await sandbox.eval('Promise.resolve({})', { typescript: false })).value)
+        .toEqual({ type: 'fulfilled', value: {} });
+      expect((await sandbox.eval('({ leaf: 1 })', { typescript: false })).value)
+        .toEqual({ leaf: 1 });
+      await expect(sandbox.eval('Promise.resolve({ leaf: 1 })', { typescript: false }))
+        .rejects.toThrow(/depth limit 1/);
+    } finally {
+      sandbox.dispose();
+    }
+  });
+
   it.each(['throw reason', 'Promise.reject(reason)'])('reads a thrown message once via %s', async (expression) => {
     const { sdk } = stubSdk();
     const sandbox = await createSandbox(sdk, { limits: { maxDumpDepth: 1 } });

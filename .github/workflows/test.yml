@@ -121,6 +121,11 @@ jobs:
   # Doc-only and non-test changes skip every expensive job below.
   changes:
     name: Detect changes
+    # Serialize status writers with the cancellation reporter for this head SHA.
+    # Allow multiple waiting writers so a reporter cannot evict a pending verdict.
+    concurrency:
+      group: viewer-selection-status-${{ github.event.pull_request.head.sha || github.run_id }}
+      queue: max
     # Free GitHub-hosted runner. ifc-lite is a PUBLIC repo, so standard
     # `ubuntu-latest` runners are free + unlimited (GitHub only bills public
     # repos for *larger* runners). Light jobs — path filter, lint, the gate —
@@ -268,6 +273,11 @@ jobs:
           # head means the verdict being replayed may have skipped lanes.
           REFUSE_REPLAY_AFTER: ${{ github.head_ref == 'changeset-release/main' && steps.release.outputs.lane != 'lean' && 'Release PR checks' || '' }}
         run: node scripts/ci-verdict-replay.mjs --probe
+      # The cancellation reporter reads this step's conclusion through the
+      # attempt jobs API. GitHub does not expose the probe's outputs there.
+      - name: Record no-op edit decision
+        if: always() && steps.noop.outputs.noop == 'true'
+        run: echo 'This edit replays the existing verdict.'
       # THE PUSH REPLAY, both halves (scripts/ci-push-replay.mjs). A PR run
       # records the exact tree it tests -- GitHub records neither the merge
       # commit nor its tree -- as an artifact NAMED for the tree. A push to
@@ -1617,13 +1627,15 @@ jobs:
   # The full-lane verdict of the `PR viewer selection` status: on a full-lane
   # PR run the `changes` job posted `pending` ("waiting for the viewer
   # shards"), and this posts success only when every shard passed, failure
-  # when one failed, nothing when they were cancelled or skipped (the pending
-  # stays, as for the selected tests). So a full-lane run on a sha an earlier
-  # fast run held never releases it before the shards have actually passed.
-  # !cancelled(), not always(): a cancelled run posts nothing either way, so
-  # it need not start a runner. Advisory to the run like the job below.
+  # when one failed, and nothing when they were cancelled or skipped. A full
+  # lane releases an earlier hold only after its shards pass. The completion
+  # workflow handles cancellation, so this job need not start on a cancelled
+  # run. Advisory to the run like the job below.
   viewer-shards-status:
     name: Viewer shards status (full lane)
+    concurrency:
+      group: viewer-selection-status-${{ github.event.pull_request.head.sha || github.run_id }}
+      queue: max
     needs: [changes, viewer-tests]
     continue-on-error: true
     # Runs exactly when the shards reached a verdict, which is when they ran:
@@ -1686,13 +1698,16 @@ jobs:
   # .mergify.yml's auto_merge_conditions keep a PR whose status is failing or
   # pending out of the queue; absent (fork PR) passes. Per sha, so a push
   # starts clean. A flake: re-run this job within a day (build-output is kept
-  # one day); after that, re-run all jobs or push. A stuck pending (run
-  # cancelled or broken before its verdict) says "if stuck: re-run all jobs".
+  # one day); after that, re-run all jobs or push. The completion workflow
+  # reports failure if the latest Test attempt cancels without a viewer verdict.
   # ROLLBACK: CI_PR_VIEWER_SELECT=off releases every held PR on its next run
   # (push, or close and reopen), which posts "not gated". The queue's full run
   # is still the full gate.
   viewer-tests-selected:
     name: Viewer tests, advisory (selected for this PR)
+    concurrency:
+      group: viewer-selection-status-${{ github.event.pull_request.head.sha || github.run_id }}
+      queue: max
     needs: [changes, build]
     continue-on-error: true
     # Keep in step with gateApplies() in scripts/ci-viewer-select-status.mjs.

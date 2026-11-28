@@ -14,7 +14,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -98,15 +98,19 @@ test('final: failure names the failing files, and every missing verdict is a fai
 });
 
 /** A local stand-in for the API: records the POSTs, answers `code`. */
-async function withApi(code, fn) {
+async function withApi(code, fn, reads = {}) {
   const posts = [];
   const server = createServer((req, res) => {
     let body = '';
     req.on('data', (c) => { body += c; });
-    req.on('end', () => {
+    req.on('end', async () => {
       if (req.method === 'GET') {
+        const read = reads[req.url];
+        const data = typeof read === 'function' ? await read() : read;
         res.writeHead(200, { 'content-type': 'application/json' });
-        res.end(JSON.stringify({ jobs: [{ name: 'Viewer tests, advisory (selected for this PR)', html_url: 'https://github.com/x/job/9' }] }));
+        const defaultData = { jobs: [{ name: 'Viewer tests, advisory (selected for this PR)', html_url: 'https://github.com/x/job/9' }] };
+        const response = data?.workflow_runs ? { total_count: data.workflow_runs.length, ...data } : data;
+        res.end(JSON.stringify(response ?? defaultData));
         return;
       }
       posts.push({ url: req.url, auth: req.headers.authorization, body: JSON.parse(body) });
@@ -123,9 +127,79 @@ async function withApi(code, fn) {
 }
 
 const SHA = 'a'.repeat(40);
+const STATUS_PATH = `/repos/${REPO}/commits/${SHA}/status?per_page=100`;
+const RUNS_PATH = `/repos/${REPO}/actions/workflows/test.yml/runs?event=pull_request&head_sha=${SHA}&per_page=100`;
+const CANCELLED_ENV = { CANCELLED_RUN_ID: '42', CANCELLED_RUN_ATTEMPT: '1' };
+const CANCELLED_RUN = { id: 42, event: 'pull_request', head_sha: SHA, head_repository: { full_name: REPO }, run_attempt: 1, conclusion: 'cancelled', run_started_at: '2026-11-26T05:00:00Z' };
+const CANCELLED_RUN_URL = `https://github.com/${REPO}/actions/runs/42`;
+const CANCELLED_RUN_PATH = `/repos/${REPO}/actions/runs/42`;
 const env = (api, extra = {}) => ({
   GITHUB_API_URL: api, GITHUB_TOKEN: 't0k', GITHUB_REPOSITORY: REPO, GITHUB_RUN_ID: '7', GITHUB_RUN_ATTEMPT: '1',
   HEAD_SHA: SHA, HEAD_REPO: REPO, CI_PR_VIEWER_SELECT: 'on', ...extra,
+});
+
+test('PR #11355: resolve a cancelled Test run to its historical PR head even if the event has a merge SHA', async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'viewer-status-head-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const output = join(dir, 'output');
+  const event = { workflow_run: { ...CANCELLED_RUN, head_sha: 'b'.repeat(40) } };
+  const run = { ...CANCELLED_RUN, pull_requests: [{ head: { sha: 'c'.repeat(40) } }] };
+  await withApi(201, async (api, posts) => {
+    const runEnv = env(api, { ...CANCELLED_ENV, GITHUB_OUTPUT: output, HEAD_SHA: event.workflow_run.head_sha });
+    assert.equal(await main(['--cancelled-head'], runEnv), 0);
+    const [, resolved] = readFileSync(output, 'utf8').trim().split('=');
+    assert.equal(resolved, SHA);
+    await main(['--cancelled'], runEnv);
+    assert.equal(posts.length, 0, 'a wrong reporting SHA never reaches the status API');
+    await main(['--cancelled'], { ...runEnv, HEAD_SHA: resolved });
+    assert.deepEqual(posts.map(({ url, body }) => [url, body.state]), [[`/repos/${REPO}/statuses/${SHA}`, 'failure']]);
+  }, {
+    [CANCELLED_RUN_PATH]: run,
+    [STATUS_PATH]: { statuses: [] },
+    [RUNS_PATH]: { workflow_runs: [run] },
+  });
+});
+
+test('cancelled Test completion requires the newest attempt and preserves its completed verdict', async () => {
+  const runUrl = CANCELLED_RUN_URL;
+  const pending = { context: STATUS_CONTEXT, state: 'pending', target_url: `${runUrl}/job/99` };
+  const cancelled = CANCELLED_RUN;
+  const cases = [
+    { run: cancelled, statuses: [pending], expected: true },
+    { run: cancelled, statuses: [{ ...pending, target_url: runUrl }], expected: true },
+    { run: cancelled, statuses: [{ ...pending, target_url: `${runUrl}0` }], expected: false },
+    { run: cancelled, statuses: [{ ...pending, state: 'success' }], expected: false },
+    { run: cancelled, statuses: [{ ...pending, state: 'success', target_url: `${runUrl}/job/99?attempt=1` }], expected: false },
+    { run: cancelled, statuses: [], expected: true },
+    { run: cancelled, statuses: [{ ...pending, state: 'success', target_url: `${runUrl}0?attempt=1` }], expected: false },
+    { run: { ...cancelled, run_attempt: 2 }, attempt: '2', statuses: [{ ...pending, state: 'success' }], expected: true },
+    { run: { ...cancelled, run_attempt: 2 }, statuses: [pending], expected: false },
+    { run: cancelled, latest: [{ ...cancelled, run_attempt: 2 }], statuses: [pending], expected: false },
+    { run: cancelled, latest: [{ ...cancelled, id: 43, conclusion: null, run_started_at: '2026-11-26T05:01:00Z' }, cancelled], statuses: [pending], expected: false },
+    { run: cancelled, latest: [], statuses: [pending], expected: false },
+    { run: cancelled, latest: [{ ...cancelled, id: 43, head_repository: { full_name: 'fork/ifc-lite' } }, cancelled], statuses: [pending], expected: true },
+    { run: { ...cancelled, conclusion: null }, statuses: [pending], expected: false },
+    { run: cancelled, statuses: [pending], headRepo: 'fork/ifc-lite', expected: false },
+  ];
+  for (const { run, statuses, headRepo, attempt = '1', latest = [run], expected } of cases) {
+    await withApi(201, async (api, posts) => {
+      await main(['--cancelled'], env(api, {
+        HEAD_REPO: headRepo ?? REPO, ...CANCELLED_ENV, CANCELLED_RUN_ATTEMPT: attempt,
+      }));
+      assert.deepEqual(posts, expected ? [{
+        url: `/repos/${REPO}/statuses/${SHA}`,
+        auth: 'Bearer t0k',
+        body: {
+          state: 'failure', context: STATUS_CONTEXT, target_url: `${runUrl}?attempt=${attempt}`,
+          description: 'Test was cancelled before the viewer verdict; re-run all jobs or push',
+        },
+      }] : []);
+    }, {
+      [CANCELLED_RUN_PATH]: run,
+      [STATUS_PATH]: { statuses },
+      [RUNS_PATH]: { workflow_runs: latest },
+    });
+  }
 });
 
 test('main --final posts the verdict on the head sha with the job link', async () => {
@@ -139,11 +213,245 @@ test('main --final posts the verdict on the head sha with the job link', async (
     assert.equal(posts.length, 1);
     assert.equal(posts[0].url, `/repos/${REPO}/statuses/${SHA}`);
     assert.equal(posts[0].auth, 'Bearer t0k');
-    assert.deepEqual(posts[0].body, { state: 'failure', context: STATUS_CONTEXT, description: '1 of 2 selected files failed: src/a.test.ts', target_url: 'https://github.com/x/job/9' });
+    assert.deepEqual(posts[0].body, { state: 'failure', context: STATUS_CONTEXT, description: '1 of 2 selected files failed: src/a.test.ts', target_url: 'https://github.com/x/job/9?attempt=1' });
   });
 });
 
 const entryEnv = { EVENT: 'pull_request', LANE: 'fast', BATCH: 'false', NOOP: 'false', FRONTEND: 'true', RUST: 'false' };
+
+test('PR #11355: cancelling or rerunning a recorded no-op edit preserves the earlier success', async () => {
+  const previous = { context: STATUS_CONTEXT, state: 'success', target_url: `https://github.com/${REPO}/actions/runs/41?attempt=1` };
+  let run = CANCELLED_RUN;
+  const marker = { jobs: [{ name: 'Detect changes', steps: [{ name: 'Record no-op edit decision', conclusion: 'success' }] }] };
+  await withApi(201, async (api, posts) => {
+    await main(['--cancelled'], env(api, CANCELLED_ENV));
+    run = { ...run, run_attempt: 2 };
+    await main(['--entry'], env(api, { ...entryEnv, NOOP: 'true', GITHUB_RUN_ID: '42', GITHUB_RUN_ATTEMPT: '2' }));
+    await main(['--cancelled'], env(api, { ...CANCELLED_ENV, CANCELLED_RUN_ATTEMPT: '2' }));
+    assert.deepEqual(posts, []);
+  }, {
+    [CANCELLED_RUN_PATH]: () => run,
+    [STATUS_PATH]: { statuses: [previous] },
+    [RUNS_PATH]: () => ({ workflow_runs: [run] }),
+    [`${CANCELLED_RUN_PATH}/attempts/1/jobs?per_page=100`]: marker,
+    [`${CANCELLED_RUN_PATH}/attempts/2/jobs?per_page=100`]: marker,
+  });
+});
+
+test('PR #11355: a rerun can be the newest attempt even with an older run ID', async () => {
+  const newerRun = { ...CANCELLED_RUN, id: 43, run_started_at: '2026-11-26T05:01:00Z' };
+  const newestAttempt = { ...CANCELLED_RUN, run_attempt: 2, run_started_at: '2026-11-26T05:02:00Z' };
+  for (const state of ['pending', 'success']) {
+    const attempt = { ...newestAttempt, conclusion: state === 'pending' ? 'cancelled' : 'success' };
+    const current = { context: STATUS_CONTEXT, state, target_url: `${CANCELLED_RUN_URL}?attempt=2` };
+    await withApi(201, async (api, posts) => {
+      await main(['--cancelled'], env(api, { ...CANCELLED_ENV, CANCELLED_RUN_ID: '43' }));
+      assert.deepEqual(posts, [], 'the older attempt cannot replace the rerun’s status');
+      if (state === 'pending') {
+        await main(['--cancelled'], env(api, { ...CANCELLED_ENV, CANCELLED_RUN_ATTEMPT: '2' }));
+        assert.deepEqual(posts.map(({ body }) => [body.state, body.target_url]), [['failure', current.target_url]]);
+      }
+    }, {
+      [CANCELLED_RUN_PATH]: attempt,
+      [`/repos/${REPO}/actions/runs/43`]: newerRun,
+      [STATUS_PATH]: { statuses: [current] },
+      [RUNS_PATH]: { workflow_runs: [newerRun, attempt] },
+    });
+  }
+});
+
+test('PR #11355: a same-second cancellation cannot overwrite the later rerun’s status', async () => {
+  const run43 = { ...CANCELLED_RUN, id: 43 };
+  for (const state of ['pending', 'success']) {
+    const rerun = { ...CANCELLED_RUN, run_attempt: 2, conclusion: state === 'success' ? 'success' : null };
+    for (const listing of [
+      [run43, rerun],
+      [run43, { ...rerun, run_started_at: null, created_at: '2026-11-26T04:59:00Z' }],
+      [run43, { ...CANCELLED_RUN, run_started_at: '2026-11-26T04:59:00Z' }],
+    ]) {
+      await withApi(201, async (api, posts) => {
+        assert.equal(await main(['--cancelled'], env(api, { ...CANCELLED_ENV, CANCELLED_RUN_ID: '43' })), 0);
+        assert.deepEqual(posts, []);
+      }, {
+        [`/repos/${REPO}/actions/runs/43`]: run43,
+        [STATUS_PATH]: { statuses: [{ context: STATUS_CONTEXT, state, target_url: `${CANCELLED_RUN_URL}?attempt=2` }] },
+        [RUNS_PATH]: { workflow_runs: listing },
+      });
+    }
+  }
+});
+
+test('PR #11355: creation time alone cannot establish that a first attempt is older', async () => {
+  const run43 = { ...CANCELLED_RUN, id: 43 };
+  const previous = { ...CANCELLED_RUN, created_at: '2026-11-26T04:59:00Z', run_started_at: undefined };
+  for (const state of ['pending', 'success']) {
+    await withApi(201, async (api, posts) => {
+      assert.equal(await main(['--cancelled'], env(api, { ...CANCELLED_ENV, CANCELLED_RUN_ID: '43' })), 0);
+      assert.deepEqual(posts, []);
+    }, {
+      [`/repos/${REPO}/actions/runs/43`]: run43,
+      [STATUS_PATH]: { statuses: [{ context: STATUS_CONTEXT, state, target_url: `${CANCELLED_RUN_URL}?attempt=1` }] },
+      [RUNS_PATH]: { workflow_runs: [run43, previous] },
+    });
+  }
+});
+
+test('PR #11355: tied cancellation status transitions are safe in either reporter order', async () => {
+  const run43 = { ...CANCELLED_RUN, id: 43, run_attempt: 2 };
+  const runUrl = ({ id, run_attempt }) => `https://github.com/${REPO}/actions/runs/${id}?attempt=${run_attempt}`;
+  const status = (state, target_url) => ({ context: STATUS_CONTEXT, state, target_url });
+  const cases = [
+    { name: 'absent status', writes: true },
+    { name: 'pending on first attempt', current: status('pending', runUrl(CANCELLED_RUN)), writes: true },
+    { name: 'pending on exact rerun', current: status('pending', runUrl(run43)), writes: true },
+    { name: 'pending on stale attempt', current: status('pending', runUrl({ ...run43, run_attempt: 1 })) },
+    { name: 'pending on foreign repo', current: status('pending', runUrl(run43).replace(REPO, 'fork/ifc-lite')) },
+    { name: 'pending with unparseable owner', current: status('pending', 'https://example.com/check') },
+    { name: 'pending on an older attempt', current: status('pending', runUrl({ id: 41, run_attempt: 1 })),
+      extra: { ...CANCELLED_RUN, id: 41, run_started_at: '2026-11-26T04:59:00Z' } },
+    { name: 'pending on an attempt with unknown start', current: status('pending', runUrl({ id: 41, run_attempt: 1 })),
+      extra: { ...CANCELLED_RUN, id: 41, run_started_at: null } },
+    ...['success', 'failure', 'error'].map((state) => ({ name: state, current: status(state, runUrl(run43)) })),
+    ...[null, 'success'].map((conclusion) => ({
+      name: `pending on ${conclusion ?? 'live'} owner`, current: status('pending', runUrl(run43)), conclusion,
+    })),
+  ];
+  for (const { name, current: initial, writes, extra, conclusion = 'cancelled' } of cases) {
+    const second = { ...run43, conclusion };
+    for (const order of [[CANCELLED_RUN, second], [second, CANCELLED_RUN]]) {
+      let current = initial;
+      await withApi(201, async (api, posts) => {
+        for (const { id, run_attempt } of order) {
+          assert.equal(await main(['--cancelled'], env(api, { CANCELLED_RUN_ID: String(id), CANCELLED_RUN_ATTEMPT: String(run_attempt) })), 0);
+          current = posts.at(-1)?.body ?? current;
+        }
+        assert.deepEqual(posts.map(({ body }) => [body.state, body.target_url]), writes ? [
+          ['failure', runUrl(order[0])],
+        ] : [], `${name}, reporter ${order[0].id} first`);
+      }, {
+        [CANCELLED_RUN_PATH]: CANCELLED_RUN,
+        [`/repos/${REPO}/actions/runs/43`]: second,
+        [STATUS_PATH]: () => ({ statuses: current ? [current] : [] }),
+        [RUNS_PATH]: { workflow_runs: [second, CANCELLED_RUN, ...(extra ? [extra] : [])] },
+      });
+    }
+  }
+});
+
+test('PR #11355: tied or newer live and successful attempts prevent a cancellation status', async () => {
+  for (const conclusion of [null, 'success', 'failure']) {
+    for (const run_started_at of [CANCELLED_RUN.run_started_at, '2026-11-26T05:01:00Z']) {
+      const other = { ...CANCELLED_RUN, id: 43, conclusion, run_started_at };
+      await withApi(201, async (api, posts) => {
+        assert.equal(await main(['--cancelled'], env(api, CANCELLED_ENV)), 0);
+        assert.deepEqual(posts, []);
+      }, {
+        [CANCELLED_RUN_PATH]: CANCELLED_RUN,
+        [STATUS_PATH]: { statuses: [] },
+        [RUNS_PATH]: { workflow_runs: [other, CANCELLED_RUN] },
+      });
+    }
+  }
+});
+
+test('PR #11355: a second-page rerun takes precedence over first-page runs', async () => {
+  const firstPage = Array.from({ length: 100 }, (_, i) => ({
+    ...CANCELLED_RUN, id: 142 - i, run_started_at: '2026-11-26T05:01:00Z',
+  }));
+  const rerun = { ...CANCELLED_RUN, run_attempt: 2, run_started_at: '2026-11-26T05:02:00Z' };
+  const newerId = String(firstPage[0].id);
+  const pending = (id, attempt) => ({
+    context: STATUS_CONTEXT, state: 'pending', target_url: `https://github.com/${REPO}/actions/runs/${id}?attempt=${attempt}`,
+  });
+  let current = pending(newerId, 1);
+  await withApi(201, async (api, posts) => {
+    await main(['--cancelled'], env(api, { ...CANCELLED_ENV, CANCELLED_RUN_ID: newerId }));
+    assert.deepEqual(posts, [], 'the first-page run cannot replace the newer attempt');
+    current = pending(rerun.id, 2);
+    await main(['--cancelled'], env(api, { ...CANCELLED_ENV, CANCELLED_RUN_ATTEMPT: '2' }));
+    assert.deepEqual(posts.map(({ body }) => [body.state, body.target_url]), [['failure', current.target_url]]);
+  }, {
+    [CANCELLED_RUN_PATH]: rerun,
+    [`/repos/${REPO}/actions/runs/${newerId}`]: firstPage[0],
+    [STATUS_PATH]: () => ({ statuses: [current] }),
+    [RUNS_PATH]: { total_count: 101, workflow_runs: firstPage },
+    [`${RUNS_PATH}&page=2`]: { total_count: 101, workflow_runs: [rerun] },
+  });
+});
+
+test('PR #11355: an incomplete or shifting run listing cannot post a verdict', async () => {
+  const firstPage = Array.from({ length: 100 }, (_, i) => ({ ...CANCELLED_RUN, id: 42 + i }));
+  for (const [total, next] of [[101, []], [101, [CANCELLED_RUN]], [1_000, []]]) {
+    await withApi(201, async (api, posts) => {
+      await assert.rejects(main(['--cancelled'], env(api, CANCELLED_ENV)), {
+        message: next.length ? 'Duplicate Test runs in paginated listing' : 'Incomplete Test run listing',
+      });
+      assert.deepEqual(posts, []);
+    }, {
+      [CANCELLED_RUN_PATH]: CANCELLED_RUN,
+      [STATUS_PATH]: { statuses: [] },
+      [RUNS_PATH]: { total_count: total, workflow_runs: firstPage },
+      [`${RUNS_PATH}&page=2`]: { total_count: total, workflow_runs: next },
+    });
+  }
+});
+
+for (const timing of ['before', 'during', 'after']) {
+  test(`PR #11355: newest success wins when it lands ${timing} cancellation reporting`, async () => {
+    const newer = { ...CANCELLED_RUN, id: 43, conclusion: 'success', run_started_at: '2026-11-26T05:01:00Z' };
+    let postNewerVerdict;
+    let latest = [CANCELLED_RUN];
+    let current = { context: STATUS_CONTEXT, state: 'pending', target_url: CANCELLED_RUN_URL };
+    await withApi(201, async (api, posts) => {
+      postNewerVerdict = async () => {
+        latest = [newer, CANCELLED_RUN];
+        await main(['--shards'], env(api, {
+          ...entryEnv, GITHUB_RUN_ID: String(newer.id), LANE: 'full', SHARDS_RESULT: 'success',
+        }));
+        current = posts.at(-1).body;
+      };
+      if (timing === 'before') await postNewerVerdict();
+      await main(['--cancelled'], env(api, CANCELLED_ENV));
+      if (timing === 'after') await postNewerVerdict();
+      assert.deepEqual(posts.map(({ body }) => body.state), timing === 'after' ? ['failure', 'success'] : ['success']);
+      assert.equal(posts.at(-1).body.target_url, `https://github.com/${REPO}/actions/runs/${newer.id}?attempt=1`);
+    }, {
+      [CANCELLED_RUN_PATH]: CANCELLED_RUN,
+      [STATUS_PATH]: async () => {
+        const snapshot = current;
+        if (timing === 'during') await postNewerVerdict();
+        return { statuses: [snapshot] };
+      },
+      [RUNS_PATH]: () => ({ workflow_runs: latest }),
+    });
+  });
+}
+
+test('PR #11355: the replacement cancelled before entry leaves a failure in either reporter order', async () => {
+  const older = { ...CANCELLED_RUN, id: 41, run_started_at: '2026-11-26T04:59:00Z' };
+  for (const previous of ['pending', 'success', null]) {
+    for (const ids of [[older.id, CANCELLED_RUN.id], [CANCELLED_RUN.id, older.id]]) {
+      const initial = previous && {
+        context: STATUS_CONTEXT, state: previous, target_url: `https://github.com/${REPO}/actions/runs/${older.id}?attempt=1`,
+      };
+      let current = initial;
+      await withApi(201, async (api, posts) => {
+        for (const id of ids) {
+          await main(['--cancelled'], env(api, { ...CANCELLED_ENV, CANCELLED_RUN_ID: String(id) }));
+          current = posts.at(-1)?.body ?? current;
+        }
+        assert.equal(posts.length, 1);
+        assert.equal(current.state, 'failure');
+        assert.equal(current.target_url, `${CANCELLED_RUN_URL}?attempt=1`);
+      }, {
+        [`/repos/${REPO}/actions/runs/${older.id}`]: older,
+        [CANCELLED_RUN_PATH]: CANCELLED_RUN,
+        [STATUS_PATH]: () => ({ statuses: current ? [current] : [] }),
+        [RUNS_PATH]: { workflow_runs: [CANCELLED_RUN, older] },
+      });
+    }
+  }
+});
 
 test('main: a failed post fails --final (the pending status still holds the gate) but never --entry (fails open)', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'viewer-status-'));
@@ -369,4 +677,25 @@ test('WIRING: .mergify.yml keeps a failing or pending status out, by the name th
   const gate = JSON.stringify(cfg.merge_protections_settings.auto_merge_conditions);
   assert.ok(gate.includes(`-check-failure=${STATUS_CONTEXT}`)); // @source-text-assertion-ok subject is the parsed config
   assert.ok(gate.includes(`-check-pending=${STATUS_CONTEXT}`)); // @source-text-assertion-ok subject is the parsed config
+});
+
+test('WIRING: all status writers queue in the same per-head-SHA concurrency group', () => {
+  const path = join(REPO_ROOT, '.github/workflows/viewer-selection-cancelled.yml');
+  const jobs = existsSync(path) ? parse(readFileSync(path, 'utf8')).jobs : {};
+  const reporter = jobs.report;
+  /* eslint-disable no-template-curly-in-string */
+  assert.deepEqual(reporter?.concurrency, {
+    group: 'viewer-selection-status-${{ needs.resolve.outputs.sha }}', queue: 'max',
+  });
+  assert.equal(reporter.needs, 'resolve');
+  assert.equal(reporter.steps.at(-1).env.HEAD_SHA, '${{ needs.resolve.outputs.sha }}');
+  assert.equal(jobs.resolve.outputs.sha, '${{ steps.head.outputs.sha }}');
+  const noopMarker = CHANGES.steps.find(({ name }) => name === 'Record no-op edit decision');
+  assert.equal(noopMarker?.if, "always() && steps.noop.outputs.noop == 'true'");
+  for (const job of [CHANGES, TESTS, SHARDS_STATUS]) {
+    assert.deepEqual(job.concurrency, {
+      group: 'viewer-selection-status-${{ github.event.pull_request.head.sha || github.run_id }}', queue: 'max',
+    }, job.name);
+  }
+  /* eslint-enable no-template-curly-in-string */
 });

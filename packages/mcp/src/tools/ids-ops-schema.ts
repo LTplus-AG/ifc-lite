@@ -8,7 +8,7 @@
  * The full op schema (`getOpJsonSchema()`, ~41 KB of `oneOf` over `$defs`) was
  * 39% of every schema byte in `tools/list`. It is published once as the
  * resource `IDS_OPS_SCHEMA_URI`; the tool advertises a discriminated list
- * (`kind` enum, `opId`, `payload` object) plus a field summary per kind that is
+ * (`kind` enum, `opId`, `payload` object) plus a sample field summary that is
  * generated from the same `$defs`, so it cannot drift from the real contract.
  * The handler still checks every op against the full schema (`validateOp`
  * inside `applyOpsGated`) before anything is applied.
@@ -88,58 +88,8 @@ function fail(message: string): never {
   throw new Error(`ids ops schema: ${message}`);
 }
 
-/** `$defs` names a schema refers to, through inline properties, items and union branches but not through other `$defs`. */
-function directRefs(schema: JsonSchema): string[] {
-  const ref = refName(schema);
-  if (ref) return [ref];
-  const subs = [...Object.values(schema.properties ?? {}), ...branchesOf(schema)];
-  if (schema.items) subs.push(schema.items);
-  return subs.flatMap(directRefs);
-}
-
-/**
- * Every type a payload field names, and the types those name in turn, so an
- * agent that does not read resources still sees each shape. Uuid is covered
- * by the closing line.
- */
-function legendNames(defs: Defs): string[] {
-  const seen = new Set<string>(['Uuid']);
-  const queue = OP_KINDS.flatMap((kind) => directRefs(payloadOf(kind, defs)));
-  const out: string[] = [];
-  while (queue.length > 0) {
-    const name = queue.shift()!;
-    if (seen.has(name)) continue;
-    seen.add(name);
-    const def = defs[name] ?? fail(`no $def ${name}`);
-    out.push(name);
-    const branches = Array.isArray(def.oneOf) ? (def.oneOf as JsonSchema[]).map((b) => defs[refName(b) ?? ''] ?? b) : [def];
-    queue.push(...branches.flatMap(directRefs));
-  }
-  return out;
-}
-
-function legendLine(name: string, defs: Defs): string {
-  const def = defs[name];
-  if (Array.isArray(def.enum)) return `${name} = ${enumText(def.enum, ' | ')}`;
-  if (Array.isArray(def.oneOf)) {
-    return `${name} = ${(def.oneOf as JsonSchema[]).map((b) => {
-      const target = refName(b);
-      return target ? (defs[target]?.properties ? branchShape(defs[target]) : target) : branchShape(b);
-    }).join(' | ')}`;
-  }
-  if (def.properties) return `${name} = ${branchShape(def)}`;
-  if (def.type === 'array') return `${name} = [${refName(def.items) ?? (def.items ? plainType(def.items) : 'any')}]`;
-  return `${name} = ${plainType(def)}`;
-}
-
 function payloadDescription(defs: Defs): string {
-  return [
-    'Fields by kind (required, then [optional]):',
-    ...OP_KINDS.map((kind) => kindLine(kind, defs)),
-    'Types:',
-    ...legendNames(defs).map((name) => legendLine(name, defs)),
-    `Ids (specId, facetId, opId, ...) are lowercase UUIDs. Full schema: resource ${IDS_OPS_SCHEMA_URI}.`,
-  ].join('\n');
+  return `Example fields by kind: ${kindLine('facet.add', defs)}. Read ${IDS_OPS_SCHEMA_URI} for all payload shapes and required fields.`;
 }
 
 export function idsOpsInputSchema(): JsonSchema {

@@ -12,6 +12,7 @@ import { connect as netConnect } from 'node:net';
 import WebSocket from 'ws';
 import {
   BRIDGE_PROTOCOL_VERSION,
+  TAB_TOOL_PREFIX,
   parseServerMessage,
   type BridgeCallMessage,
   type BridgeCallResult,
@@ -25,6 +26,11 @@ import {
 type ServerFrame = BridgeServerMessage | BridgeResultAckMessage;
 
 export const TEST_ORIGIN = 'https://ifclite.com';
+
+/** The MCP name the agent sees for a tab tool. */
+export function tabTool(name: string): string {
+  return TAB_TOOL_PREFIX + name;
+}
 
 export const READ_TOOL: BridgeToolDescriptor = {
   name: 'query_entities',

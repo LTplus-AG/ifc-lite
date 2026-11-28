@@ -22,7 +22,7 @@
  * convention the floor plan applies.
  */
 
-import { IFC_BUILDING_STOREY_ELEVATION_INDEX, IFC_BUILDING_STOREY_PLACEMENT_INDEX } from '@ifc-lite/data';
+import { IFC_BUILDING_STOREY_ELEVATION_INDEX } from '@ifc-lite/data';
 import type { CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
 import { totalYupOffset } from '@ifc-lite/geometry/world-frame';
 import type { IfcDataStore } from '@ifc-lite/parser';
@@ -52,7 +52,7 @@ export interface SectionStorey {
   name: string;
   /** Floor elevation in the placed scene, in metres along viewer Y. */
   elevation: number;
-  /** Height above the lowest authored level sharing this placement. */
+  /** Height above the lowest authored level at the same placement origin. */
   sharedPlacementRise?: number;
 }
 
@@ -162,28 +162,32 @@ export function collectStoreys(
   const collect = (modelId: string, ds: StoreyModel['ifcDataStore'], frame?: CoordinateInfo) => {
     if (!ds?.spatialHierarchy) return;
     const { byStorey, storeyElevations } = ds.spatialHierarchy;
-    const sceneOffset = (placement ? displayedTranslation(placement, modelId)[2] : 0) - totalYupOffset(frame).y;
-    const lowestByPlacement = new Map<number, number>();
-    const levels = [...byStorey.keys()].map((storeyId) => {
-      const attrs = ds.getEntity?.(storeyId)?.attributes;
-      const placement = attrs?.[IFC_BUILDING_STOREY_PLACEMENT_INDEX];
-      const relative = storeyElevations.get(storeyId);
-      const placementId = typeof placement === 'number' && attrs?.[IFC_BUILDING_STOREY_ELEVATION_INDEX] != null
-        && relative !== undefined && Number.isFinite(relative) ? placement : undefined;
-      if (placementId !== undefined) {
-        lowestByPlacement.set(placementId, Math.min(relative ?? 0, lowestByPlacement.get(placementId) ?? Infinity));
+    const translation = placement ? displayedTranslation(placement, modelId)[2] : 0;
+    const offset = totalYupOffset(frame).y;
+    const bounds = frame?.shiftedBounds;
+    const lowest = new Map<string, number>();
+    const levels = [...byStorey.keys()].map((id) => {
+      const origin = ds.getEntity && resolveProductOriginMeters(ds, id);
+      const z = origin && Number.isFinite(origin.z) ? origin.z : undefined;
+      const relative = storeyElevations.get(id);
+      // Coincident origins can be authored as separate placements. Anchor the
+      // lowest declared level and retain the differences above that origin.
+      let key: string | undefined;
+      if (origin && z !== undefined && relative !== undefined && Number.isFinite(relative)
+        && ds.getEntity(id)?.attributes?.[IFC_BUILDING_STOREY_ELEVATION_INDEX] != null) {
+        key = `${origin.x},${origin.y},${origin.z}`;
+        lowest.set(key, Math.min(relative, lowest.get(key) ?? relative));
       }
-      return [storeyId, placementId, relative ?? 0] as const;
+      return [id, z, key, relative ?? 0] as const;
     });
-    for (const [storeyId, placementId, relative] of levels) {
-      // The composed origin anchors the lowest level when an exporter reuses
-      // the same placement for several levels. Their authored differences are
-      // usable whether Elevation was written in relative or absolute metres.
-      const origin = typeof ds.getEntity === 'function' ? resolveProductOriginMeters(ds, storeyId) : null;
-      const placedZ = origin && Number.isFinite(origin.z) ? origin.z : undefined;
-      const lowest = typeof placementId === 'number' ? lowestByPlacement.get(placementId) : undefined;
-      const rise = placedZ !== undefined && lowest !== undefined ? relative - lowest : 0;
-      const elevation = (placedZ ?? relative) + rise + sceneOffset;
+    for (const [storeyId, z, key, relative] of levels) {
+      const rise = key === undefined ? 0 : relative - lowest.get(key)!;
+      let elevation = (z ?? relative) - offset;
+      // With no placement, exporters supply either world or hierarchy-relative
+      // Elevation. Keep the world interpretation when it fits the model's box.
+      if (z === undefined && bounds && (elevation < bounds.min.y || elevation > bounds.max.y)
+        && relative >= bounds.min.y && relative <= bounds.max.y) elevation = relative;
+      elevation += rise + translation;
       const name = ds.entities.getName(storeyId) || `Storey #${storeyId}`;
       storeys.push({ expressId: storeyId, modelId, name, elevation, ...(rise ? { sharedPlacementRise: rise } : {}) });
     }

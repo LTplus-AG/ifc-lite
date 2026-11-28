@@ -1416,9 +1416,10 @@ composes after the matrix passed to `setPointCloudTransform`, which accepts
 float64 so cancellation with a manual correction happens before GPU rounding.
 `getPointCloudTransform(handle)` returns the final draw matrix for CPU spatial
 consumers. `getModelPlacementBounds(modelIndex, handle?)` returns placed bounds
-for framing a model and its streamed scan. With no streamed scan handle, an
-optional third argument reads the bounds at a requested Y-up workspace
-translation while the renderer is synchronizing placement.
+for framing a model and its streamed scan. An optional third argument reads
+both at a requested Y-up workspace translation while the renderer is
+synchronizing placement. `PointCloudRenderer.getAssetTranslation(handle)`
+returns the scan’s applied workspace translation in Y-up metres.
 
 These APIs move workspace geometry; they do not rewrite source IFC placements
 or point records. The web viewer supplies transactions, undo, persistence and

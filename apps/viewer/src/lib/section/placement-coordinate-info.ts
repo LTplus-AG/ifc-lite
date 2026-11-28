@@ -22,7 +22,7 @@ export function placementCoordinateInfo(source: CoordinateInfo | undefined,
       const modelIndex = indices.get(id);
       const translation = toRenderTranslation(displayedTranslation(placement, id));
       const live = modelIndex === undefined ? undefined
-        : renderer?.getModelPlacementBounds(modelIndex, handle, handle ? undefined : translation);
+        : renderer?.getModelPlacementBounds(modelIndex, handle, translation);
       const bounds = live ?? model.geometryResult?.coordinateInfo?.shiftedBounds;
       if (!bounds) continue;
       const delta = live ? [0, 0, 0] : translation;

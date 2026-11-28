@@ -23,6 +23,8 @@ export class PointCloudPlacements {
     return entry;
   }
 
+  translation(node: PointCloudNode | undefined): Translation | undefined { return node && this.placements.get(node)?.translation; }
+
   align(node: PointCloudNode, matrix: Float32Array | Float64Array | null): void {
     if (matrix && (matrix.length !== 16 || !matrix.every(Number.isFinite))) {
       throw new Error('Pointcloud placement needs a finite 4×4 matrix.');

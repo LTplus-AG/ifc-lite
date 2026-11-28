@@ -9,16 +9,14 @@ export function modelPlacementBounds(
   translation?: readonly [number, number, number],
 ) {
   const applied = scene.getModelTranslation(modelIndex);
-  // Normalize uploaded bounds to the requested workspace translation. The
-  // scene may still reflect the previous placement when consumers read it.
-  const dx = translation ? translation[0] - applied[0] : 0;
-  const dy = translation ? translation[1] - applied[1] : 0;
-  const dz = translation ? translation[2] - applied[2] : 0;
   const min = { x: Infinity, y: Infinity, z: Infinity }, max = { x: -Infinity, y: -Infinity, z: -Infinity };
-  const include = (bounds: { min: readonly number[]; max: readonly number[] } | null | undefined) => {
+  const include = (bounds: { min: readonly number[]; max: readonly number[] } | null | undefined, from = applied) => {
     if (!bounds || !bounds.min.every(Number.isFinite) || !bounds.max.every(Number.isFinite)) return;
-    min.x = Math.min(min.x, bounds.min[0] + dx); min.y = Math.min(min.y, bounds.min[1] + dy); min.z = Math.min(min.z, bounds.min[2] + dz);
-    max.x = Math.max(max.x, bounds.max[0] + dx); max.y = Math.max(max.y, bounds.max[1] + dy); max.z = Math.max(max.z, bounds.max[2] + dz);
+    for (const [i, axis] of (['x', 'y', 'z'] as const).entries()) {
+      const delta = translation ? translation[i] - from[i] : 0;
+      min[axis] = Math.min(min[axis], bounds.min[i] + delta);
+      max[axis] = Math.max(max[axis], bounds.max[i] + delta);
+    }
   };
   for (const batch of scene.getBatchedMeshes()) if ((batch.modelIndices?.[0] ?? 0) === modelIndex) include(batch.bounds);
   for (const mesh of scene.getMeshes()) if (!mesh.hydrated && (mesh.modelIndex ?? 0) === modelIndex) include(mesh.bounds);
@@ -27,7 +25,8 @@ export function modelPlacementBounds(
     if ((mesh.modelIndex ?? 0) !== modelIndex) continue;
     include(mesh.bounds);
   }
-  include(points?.getPlacementBounds(modelIndex, handle));
+  // Streamed scans and scene meshes are placed by separate renderer calls.
+  include(points?.getPlacementBounds(modelIndex, handle), handle && points?.getAssetTranslation(handle));
   return Number.isFinite(min.x) ? { min, max } : null;
 }
 

@@ -22,7 +22,7 @@ import { useViewerStore, type FederatedModel } from '@/store';
 import { fixtureModel } from '@/test/store-fixture.js';
 import type { SectionStorey } from '@/lib/section/section-distance';
 import { emptyPlacementState } from '@/lib/model-placement/state';
-import { Renderer } from '@ifc-lite/renderer';
+import { Renderer, PointCloudRenderer } from '@ifc-lite/renderer';
 import { appearanceInstanceScene } from '@/test/appearance-instance-scene';
 import { getGlobalRenderer, setGlobalRendererRef } from './useBCF.js';
 import { modelIndices } from '@/lib/model-placement/model-indices';
@@ -135,6 +135,7 @@ for (const [kind, elevation, placement] of [
   ['absolute', '103000.', '#14'],
   ['omitted', '$', '#14'],
   ['absolute without a usable placement', '103000.', '$'],
+  ['relative without a usable placement', '3000.', '$'],
 ]) {
   it(`#11459 synthetic IFC: ${kind} Elevation cuts 1.2 m above the floor in the placed render frame`, async () => {
     const bytes = new TextEncoder().encode(placedStorey(elevation, placement));
@@ -157,7 +158,10 @@ for (const [kind, elevation, placement] of [
     assert.ok(storey);
     const ui = render(<HudPopover><SectionActivePlaneRow /></HudPopover>);
     openStoreyMenu(ui);
-    assert.equal(storeyRows('Level 1')[0]?.lastElementChild?.textContent, '103.00 m');
+    assert.equal(storeyRows('Level 1')[0]?.lastElementChild?.textContent,
+      kind === 'relative without a usable placement' ? '3.00 m' : '103.00 m');
+    click(storeyRows('Level 1')[0]);
+    assert.ok(Math.abs(s().sectionPlane.position - 52.5) < 1e-9, 'toolbar cut is at 6.2 m');
     act(() => activate!(storey));
     // The moved range is [2, 10], so the 6.2 m cut is at 52.5%.
     assert.ok(Math.abs(s().sectionPlane.position - 52.5) < 1e-9, `cut at ${s().sectionPlane.position}%`);
@@ -204,6 +208,9 @@ END-ISO`);
 
 for (const [kind, step, lowerHeight, upperHeight] of [
   ['engineering', sharedPlacementStoreys, '0.00 m', '3.00 m'],
+  ['distinct coincident placements', sharedPlacementStoreys
+    .replace("'Level 2',$,$,#14", "'Level 2',$,$,#17")
+    .replace('ENDSEC;\nEND-ISO', '#17=IFCLOCALPLACEMENT(#11,#15);\nENDSEC;\nEND-ISO'), '0.00 m', '3.00 m'],
   ['projected with FactorZ=2', scaledSharedPlacementStoreys, '400.00 m', '406.00 m'],
 ] as const) {
   it(`#11459 shared placement keeps both ${kind} labels and physical cuts`, async () => {
@@ -221,7 +228,7 @@ for (const [kind, step, lowerHeight, upperHeight] of [
   });
 }
 
-it('#11459 both storey controls use the placed federation bounds before and after renderer sync', async () => {
+for (const mixed of [false, true]) it(`#11459 both storey controls use the placed ${mixed ? 'scan and mesh' : 'mesh'} bounds before and after renderer sync`, async () => {
   const data = await parseStoreys(groundStorey);
   load({ ...bounded('a', 8), ifcDataStore: data }, { ...bounded('b', 8), ifcDataStore: data });
   act(() => useViewerStore.setState({
@@ -231,14 +238,14 @@ it('#11459 both storey controls use the placed federation bounds before and afte
     },
   }));
   const ui = render(<><HudPopover><SectionActivePlaneRow /></HudPopover><StoreyFloorplanButton /></>);
-  const checkCuts = () => {
+  const checkCuts = (max = 28) => {
     if (!storeyRows('Level 1').length) openStoreyMenu(ui);
     const rows = storeyRows('Level 1');
     assert.equal(rows.length, 2);
     click(rows[0]);
-    const toolbar = cutY(28).toFixed(3);
+    const toolbar = cutY(max).toFixed(3);
     cutFromPlan(ui, 'b', 5);
-    assert.deepEqual({ toolbar, floorPlan: cutY(28).toFixed(3) }, { toolbar: '21.200', floorPlan: '21.200' });
+    assert.deepEqual({ toolbar, floorPlan: cutY(max).toFixed(3) }, { toolbar: '21.200', floorPlan: '21.200' });
   };
   // Producer bounds suffice before any upload. Then upload both meshes in their
   // source frame to exercise the interval before workspace placement sync.
@@ -253,12 +260,33 @@ it('#11459 both storey controls use the placed federation bounds before and afte
     color: [1, 1, 1, 1] as [number, number, number, number],
   });
   renderer.getScene().appendToBatches([mesh('a', 11), mesh('b', 12)], device, pipeline, false);
+  let scan: PointCloudRenderer | undefined;
+  let handle: { id: number } | undefined;
+  if (mixed) {
+    Object.assign(globalThis, { GPUShaderStage: { VERTEX: 1, FRAGMENT: 2 } });
+    Object.assign(device, { createBindGroupLayout: () => ({}), createPipelineLayout: () => ({}),
+      createShaderModule: () => ({}), createRenderPipeline: () => ({}) });
+    scan = new PointCloudRenderer(device, 'rgba8unorm', 'depth32float', 1);
+    (renderer as unknown as { pointCloudRenderer: PointCloudRenderer }).pointCloudRenderer = scan;
+    handle = scan.addAsset({ expressId: 31, modelIndex: indices.get('b'), chunk: {
+      pointCount: 1, positions: new Float32Array([0, 10, 0]), bbox: { min: [0, 10, 0], max: [0, 10, 0] },
+    } });
+    const model = s().models.get('b')!;
+    act(() => useViewerStore.setState({ models: new Map(s().models).set('b', { ...model, pointCloudHandleId: handle!.id }) }));
+  }
+  assert.equal(renderer.getModelPlacementBounds(999, undefined, [0, 5, 0]), null);
+  const expectedMax = mixed ? 30 : 28;
   try {
     act(() => { setGlobalRendererRef({ current: renderer }); publishPlacementBounds(); });
-    checkCuts();
-    act(() => { renderer.setModelTranslation(indices.get('b')!, [0, 20, 0]); publishPlacementBounds(); });
-    checkCuts();
+    checkCuts(expectedMax);
+    act(() => {
+      renderer.setModelTranslation(indices.get('b')!, [0, 20, 0]);
+      if (handle) renderer.setPointCloudTranslation(handle, [0, 20, 0]);
+      publishPlacementBounds();
+    });
+    checkCuts(expectedMax);
   } finally {
     setGlobalRendererRef({ current: previous });
+    scan?.clear();
   }
 });

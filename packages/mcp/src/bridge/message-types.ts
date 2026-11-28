@@ -12,7 +12,8 @@ export interface BridgeHelloMessage {
   protocol: number;
   /** The one-time code the bridge printed. Case and `-`/space separators are ignored. */
   pairingCode: string;
-  /** With a nonce, pairingCode carries a domain-separated HMAC, never the secret. */
+  /** Hex-encoded 16-byte challenge. A retried resume prefixes the pending rotation nonce
+   * to a fresh challenge. Both proofs cover the whole value; the successor uses the first 16 bytes. */
   nonce?: string;
   resume?: boolean;
   permission: BridgePermission;

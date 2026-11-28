@@ -44,7 +44,7 @@ export class PairingAdmission {
 
   disconnected(code: number, reason: string): void {
     const resumableClose = code === 1000 && (reason === 'page hidden' || reason === 'result acknowledgement timeout');
-    if (code !== 1006 && code !== 1001 && !resumableClose) this.forget();
+    if (code !== 1006 && code !== 1001 && !(code === 4008 && reason === 'no welcome') && !resumableClose) this.forget();
   }
 
   forget(): void { this.resume = null; }
@@ -57,7 +57,9 @@ export class PairingAdmission {
     }
     const key = hello.resume ? this.resume?.key : normalizePairingCode(this.codes.current());
     if (!key || (hello.resume && (slot.origin !== this.resume?.origin || hello.permission !== 'read-only'))) return 'invalid';
-    const mac = (role: string) => createHmac('sha256', key).update('ifc-lite/' + role + '/' + hello.nonce).digest('hex');
+    // Resume retries keep the rotation nonce but authenticate both it and a fresh challenge.
+    const nonce = hello.nonce;
+    const mac = (role: string) => createHmac('sha256', key).update('ifc-lite/' + role + '/' + (role === 'next' ? nonce.slice(0, 32) : nonce)).digest('hex');
     if (!/^[a-f0-9]{64}$/.test(hello.pairingCode) || !timingSafeEqual(Buffer.from(mac('tab')), Buffer.from(hello.pairingCode))) return 'invalid';
     // A reload may arrive before the previous socket's close. Only a valid ticket gets a retry.
     if (hello.resume && this.host.paired?.()) return 'busy';

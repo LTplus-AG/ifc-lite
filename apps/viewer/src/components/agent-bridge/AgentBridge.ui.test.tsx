@@ -450,16 +450,34 @@ describe('a live connection is visible with Disconnect in every layout (#9523 re
       second.onopen?.({});
       await waitFor(() => !!second.nonce, 'retry sent its verified hello');
       const mac = (role: string) => createHmac('sha256', key).update('ifc-lite/' + role + '/' + second.nonce).digest('hex');
-      assert.equal(storage.getItem(storageKey), ticket);
-      second.onmessage?.({ data: JSON.stringify({ type: 'welcome', proof: mac('bridge'), protocol: 1,
+      assert.equal(JSON.parse(storage.getItem(storageKey)!).pendingNonce, second.nonce);
+      const rotated = mac('next');
+      // The bridge admitted the hello, but its welcome was lost. Only the bridge has rotated.
+      second.onclose?.({ code: 1006, reason: '' });
+      window.dispatchEvent(new window.Event('online'));
+      await waitFor(() => LiveSocket.last !== second, 'retry after lost welcome');
+      const retry = LiveSocket.last!;
+      retry.readyState = 1;
+      retry.onopen?.({});
+      await waitFor(() => !!retry.nonce, 'retry hello sent');
+      assert.equal(retry.nonce!.slice(0, 32), second.nonce);
+      assert.notEqual(retry.nonce, second.nonce);
+      retry.onclose?.({ code: 4401, reason: 'ticket rotated' });
+      await waitFor(() => LiveSocket.last !== retry, 'retry with staged successor');
+      const recovered = LiveSocket.last!;
+      recovered.readyState = 1;
+      recovered.onopen?.({});
+      await waitFor(() => !!recovered.nonce, 'successor hello sent');
+      const recoveredMac = (role: string) => createHmac('sha256', rotated).update('ifc-lite/' + role + '/' + recovered.nonce).digest('hex');
+      recovered.onmessage?.({ data: JSON.stringify({ type: 'welcome', proof: recoveredMac('bridge'), protocol: 1,
         sessionId: 'resumed', permission: 'read-only', readOnlyCeiling: false }) });
       assert.equal(getAgentBridgeState().status.kind, 'connected');
-      assert.deepEqual(JSON.parse(storage.getItem(storageKey)!), { port: 21517, key: mac('next') });
+      assert.deepEqual(JSON.parse(storage.getItem(storageKey)!), { port: 21517, key: recoveredMac('next') });
       session.disconnectAgentBridge();
       assert.equal(storage.getItem(storageKey), null);
       storage.setItem(storageKey, ticket);
       window.dispatchEvent(new window.Event('online'));
-      await waitFor(() => LiveSocket.last !== second, 'opened a socket for the rejected ticket');
+      await waitFor(() => LiveSocket.last !== recovered, 'opened a socket for the rejected ticket');
       LiveSocket.last!.onclose?.({ code: 4401, reason: 'pairing failed' });
       assert.equal(storage.getItem(storageKey), null);
     } finally {

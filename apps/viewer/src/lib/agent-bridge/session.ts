@@ -25,7 +25,7 @@ import {
   AGENT_BRIDGE_ACTIVITY_LIMIT, getAgentBridgeState, registerAgentBridgeControls, updateAgentBridgeState,
   foldActivity, type AgentBridgeActivity, type AgentBridgePermission, type AgentBridgeStatus,
 } from './state';
-import { saveTicket } from './resume';
+import { savedTicket, saveTicket } from './resume';
 import { isFramed } from './pairing-fragment';
 import { agentSurfaces } from './agent-surfaces';
 import { ENDED_KEYS } from './outcome-keys';
@@ -137,12 +137,22 @@ export function connectAgentBridge({ port, code, bim, WebSocket, resume = false 
   const host = createMainViewerToolHost(useViewerStore, bim, { editor: createMainViewerEditor(useViewerStore), lifetimeSignal: lifetime.signal });
   resetActivity();
   updateAgentBridgeState({ activity: [] });
+  const prior = resume ? savedTicket() : undefined;
+  const pendingNonce = prior?.key === code && prior.port === port ? prior.pendingNonce : undefined;
+  let recoveryKey: string | undefined;
   let wasConnected = false;
   const client: BridgeClient = new BridgeClient({
     port,
     onRefusedEvent: () => toast.error(resolve('agentBridge.surfaces.unsent')),
     pairingCode: code,
-    authenticate: { resume, accepted: (key) => saveTicket({ port, key }) },
+    authenticate: {
+      resume, pendingNonce,
+      prepared: (rotationNonce, next) => {
+        saveTicket({ port, key: code, pendingNonce: rotationNonce });
+        if (pendingNonce) recoveryKey = next;
+      },
+      accepted: (key) => { recoveryKey = undefined; saveTicket({ port, key }); },
+    },
     tools: mainViewerBridgeTools(),
     // The grant is read from the client at dispatch and again at the write: a revoke refuses what is not yet written.
     dispatch: (name, args, signal, onDelivery) => dispatchMainViewerTool(host, name, args, { signal, onDelivery, canEdit: () => client.canEditNow() }),
@@ -158,6 +168,12 @@ export function connectAgentBridge({ port, code, bim, WebSocket, resume = false 
       if (status.kind === 'disconnected' && status.reason !== 'connection-lost' && status.reason !== 'page-hidden') saveTicket();
       updateAgentBridgeState({ status });
       if (resume && status.kind === 'error' && status.code === 'pairing-failed') {
+        if (recoveryKey) {
+          // The bridge may have rotated before its welcome reached us. Try the staged successor once.
+          saveTicket({ port, key: recoveryKey });
+          connectAgentBridge({ port, code: recoveryKey, resume: true, bim, WebSocket });
+          return;
+        }
         saveTicket();
         toast.error(resolve('agentBridge.failure.pairingFailed'), 'agent-bridge-resume');
       }

@@ -193,9 +193,10 @@ export class BridgeClient {
     };
     if (this.opts.authenticate) {
       const resume = this.opts.authenticate.resume;
-      void handshakeProofs(resume ? this.opts.pairingCode : hello.pairingCode).then((proofs) => {
+      void handshakeProofs(resume ? this.opts.pairingCode : hello.pairingCode, this.opts.authenticate.pendingNonce).then((proofs) => {
         if (ws !== this.ws || this.ended) return;
         this.proofs = proofs;
+        if (resume) this.opts.authenticate?.prepared?.(proofs.nonce.slice(0, 32), proofs.next);
         ws.send(JSON.stringify({ ...hello, pairingCode: proofs.tab, nonce: proofs.nonce, resume }));
       }).catch((err: unknown) => {
         warn('could not prepare a verified handshake', err);

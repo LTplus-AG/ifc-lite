@@ -35,7 +35,7 @@ export interface BridgeClientOptions {
   port: number;
   pairingCode: string;
   onRefusedEvent?(): void;
-  authenticate?: { resume: boolean; accepted(next: string): void };
+  authenticate?: { resume: boolean; pendingNonce?: string; prepared?(rotationNonce: string, next: string): void; accepted(next: string): void };
   /**
    * The tools announced in `hello` and in every `update`. Tools labelled
    * `readOnly: false` are refused by the bridge (and by `dispatch`, which

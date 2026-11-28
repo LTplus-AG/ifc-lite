@@ -315,7 +315,7 @@ export function parseTabMessage(text: string): ParseResult<BridgeTabMessage> {
       if (typeof raw.protocol !== 'number') return { ok: false, error: 'hello.protocol must be a number' };
       if (typeof raw.pairingCode !== 'string') return { ok: false, error: 'hello.pairingCode must be a string' };
       if (!isPermission(raw.permission)) return { ok: false, error: "hello.permission must be 'read-only' or 'read-write'" };
-      if (raw.nonce !== undefined && (typeof raw.nonce !== 'string' || !/^[a-f0-9]{32}$/.test(raw.nonce))) return { ok: false, error: 'invalid hello nonce' };
+      if (raw.nonce !== undefined && (typeof raw.nonce !== 'string' || !(/^[a-f0-9]{32}$/.test(raw.nonce) || (raw.resume === true && /^[a-f0-9]{64}$/.test(raw.nonce))))) return { ok: false, error: 'invalid hello nonce' };
       const tools = validateToolDescriptors(raw.tools);
       if (!tools.ok) return tools;
       let client: BridgeHelloMessage['client'];

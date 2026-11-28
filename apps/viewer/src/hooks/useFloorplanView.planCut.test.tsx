@@ -192,6 +192,20 @@ function cutFromPlan(ui: HTMLElement, modelId: string, expressId: number): void 
   click(button);
 }
 
+it('#11817 uses the in-bounds declared elevation for a sole storey at zero', async () => {
+  const step = groundStorey.replace('.ELEMENT.,0.);', '.ELEMENT.,3000.);');
+  load({ ...bounded('a', 8), ifcDataStore: await parseStoreys(step) });
+  const ui = render(<><HudPopover><SectionActivePlaneRow /></HudPopover><StoreyFloorplanButton /></>);
+  openStoreyMenu(ui);
+  const row = storeyRows('Level 1')[0];
+  const label = row.lastElementChild?.textContent;
+  click(row);
+  const toolbar = cutY(8).toFixed(1);
+  cutFromPlan(ui, 'a', 5);
+  assert.deepEqual({ label, toolbar, plan: cutY(8).toFixed(1) },
+    { label: '3.00 m', toolbar: '4.2', plan: '4.2' });
+});
+
 const sharedPlacementStoreys = groundStorey.replace('(#5));', '(#5,#8));')
   .replace('#11=IFCLOCALPLACEMENT', "#8=IFCBUILDINGSTOREY('0Story0000000000000002',$,'Level 2',$,$,#14,$,$,.ELEMENT.,3000.);\n#11=IFCLOCALPLACEMENT");
 

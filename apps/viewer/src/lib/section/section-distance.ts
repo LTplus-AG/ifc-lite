@@ -184,8 +184,10 @@ export function collectStoreys(
       let rise = declared && key !== undefined ? relative - anchors.get(key)! : 0;
       const authored = relative - offset;
       let elevation = (z ?? relative) - offset + rise;
-      if (bounds && !storeyInRange(elevation, bounds.min.y, bounds.max.y)) {
-        // Prefer an in-bounds absolute Elevation when the composed floor falls outside the mesh.
+      // A sole storey can use the model origin as a placeholder for its declared floor.
+      const loneZeroPlacement = z === 0 && levels.length === 1;
+      if (bounds && (loneZeroPlacement || !storeyInRange(elevation, bounds.min.y, bounds.max.y))) {
+        // An in-bounds authored elevation can supply the physical floor in either case.
         if (z !== undefined && declared && storeyInRange(authored, bounds.min.y, bounds.max.y)) {
           elevation = authored;
           rise = relative - z;

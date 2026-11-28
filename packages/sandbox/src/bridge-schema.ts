@@ -19,7 +19,7 @@ import type { QuickJSContext, QuickJSHandle } from 'quickjs-emscripten';
 import type { BimContext } from '@ifc-lite/sdk';
 import type { Capability } from '@ifc-lite/extensions';
 import type { SandboxPermissions } from './types.js';
-import type { ArgType } from './bridge-unmarshal.js';
+import type { ArgType, DecodeValue } from './bridge-unmarshal.js';
 
 import { HostWorkQueue, isThenable } from './bridge-async.js';
 import { unmarshalArgs } from './bridge-unmarshal.js';
@@ -239,15 +239,14 @@ export function buildSchemaNamespaces(
   networkGrants: readonly Capability[] = [],
   networkTransport?: FetchTransport,
 ): void {
-  // `NAMESPACE_SCHEMAS` carries a placeholder (empty-grant) `network` entry
-  // for typegen; swap in the real, grants-aware one built fresh for this
-  // sandbox — never build both (that would let a script see two `bim.network`
-  // registrations, the second silently winning via `vm.setProp`).
+  // Replace the typegen placeholder with a network namespace scoped to this
+  // sandbox's grants before registering methods.
+  const { decode } = hostWork.getValueDecoder(vm);
   const realNetwork = buildNetworkNamespace(networkGrants, networkTransport);
   const schemas = NAMESPACE_SCHEMAS.map((s) => (s.name === 'network' ? realNetwork : s));
   for (const schema of schemas) {
     if (!permissions[schema.permission]) continue;
-    buildNamespace(vm, bimHandle, sdk, schema, context, hostWork);
+    buildNamespace(vm, bimHandle, sdk, schema, context, hostWork, decode);
   }
 }
 
@@ -258,6 +257,7 @@ function buildNamespace(
   schema: NamespaceSchema,
   context: BridgeCallContext,
   hostWork: HostWorkQueue,
+  decode: DecodeValue,
 ): void {
   // try/finally, not a bare sequence: a throw anywhere in the registration
   // loop would otherwise orphan `nsHandle` (and the in-flight `fn`), and an
@@ -276,7 +276,7 @@ function buildNamespace(
         // here keeps the failure a clean, catchable script exception.
         const label = `bim.${schema.name}.${method.name}`;
         try {
-          const nativeArgs = unmarshalArgs(vm, handles, method.args);
+          const nativeArgs = unmarshalArgs(vm, handles, method.args, decode);
           // `hostWork.signal` is read here, per call, rather than captured when
           // the namespace is built: the queue swaps in a fresh controller after
           // a run gives up waiting, so a cached signal would hand every later

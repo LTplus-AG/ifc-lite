@@ -42,6 +42,7 @@
  */
 
 import type { QuickJSContext, QuickJSDeferredPromise, QuickJSHandle } from 'quickjs-emscripten';
+import { createValueDecoder } from './bridge-unmarshal.js';
 
 /**
  * Convert a resolved host value into a realm handle, applying the calling
@@ -67,6 +68,12 @@ export function isThenable(value: unknown): value is PromiseLike<unknown> {
  * on what is in flight at the moment it is called.
  */
 export class HostWorkQueue {
+  private decoder?: ReturnType<typeof createValueDecoder>;
+
+  getValueDecoder(vm: QuickJSContext, maxDepth?: number): ReturnType<typeof createValueDecoder> {
+    return this.decoder ??= createValueDecoder(vm, maxDepth);
+  }
+
   private readonly inFlight = new Set<Promise<void>>();
   private readonly deferreds = new Set<QuickJSDeferredPromise>();
   /**
@@ -205,6 +212,8 @@ export class HostWorkQueue {
     }
     this.deferreds.clear();
     this.inFlight.clear();
+    this.decoder?.dispose();
+    this.decoder = undefined;
   }
 
   private track(work: Promise<void>): void {

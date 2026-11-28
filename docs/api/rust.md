@@ -1511,7 +1511,7 @@ Native clash-detection kernel: a faithful port of the TypeScript reference engin
 
 ```rust
 pub use aabb::Aabb;
-pub use narrow::ClashStatus;
+pub use narrow::{ClashStatus, DistanceKind};
 pub use session::{ClashRecord, ClashSession, RuleResult};
 ```
 
@@ -1566,12 +1566,14 @@ caller owns the following guarantees:
 
 - **Inputs.** `path_ptr` / `path_len` describe a UTF-8 file path (need not be
   NUL-terminated). `out_ptr` and `out_len` must be non-null and valid for
-  writes. A null pointer or non-UTF-8 path returns `1` and writes nothing.
+  writes. A null pointer or non-UTF-8 path returns `1`; any out-parameter that
+  is non-null is still set to null / `0`.
 - **Success (`0`).** `*out_ptr` receives a heap buffer of `*out_len` serialized
   JSON bytes. The buffer is owned by the caller from that point on.
 - **Failure.** Non-zero return codes zero the out-parameters (no
   buffer is allocated, so there is nothing to free): `1` null pointer, invalid
-  path, or unsupported flag bits; `2` file could not be read, `3` geometry processing panicked, `4` JSON
+  path, or unsupported flag bits; `2` file could not be read, `3` geometry processing panicked
+  (recoverable only in an unwinding build such as `server-release`) or the worker pool could not start, `4` JSON
   serialization failed.
 - **Freeing.** Pass the exact `ptr` and `len` you received from a successful
   parse to `ifc_lite_free` **exactly once**. Do not free on a non-zero return,

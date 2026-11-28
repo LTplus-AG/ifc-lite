@@ -223,6 +223,10 @@ class GeometryProcessor {
   // Stream geometry for large files (async generator of streaming events)
   processStreaming(/* buffer + streaming options; see the .d.ts */): AsyncGenerator<StreamingGeometryEvent>;
 
+  // Pick the path by size: one 'batch' below options.sizeThreshold (default 2 MB),
+  // else streaming, or the parallel worker path when SharedArrayBuffer is available
+  processAdaptive(buffer: Uint8Array, options?: { sizeThreshold?: number; batchSize?: number | DynamicBatchConfig; /* ... */ }): AsyncGenerator<StreamingGeometryEvent>;
+
   // Authored IfcSweptDiskSolid curves and derived centreline measurements
   extractSweptDiskDescriptions(buffer: Uint8Array, ids?: Uint32Array): SweptDiskDescriptions | null;
 
@@ -235,10 +239,10 @@ class GeometryProcessor {
     latitude: number,
     longitude: number,
     altitude: number,
-    xAxisAbscissa?: number,
-    xAxisOrdinate?: number,
-    name?: string,
-    altitudeMode?: 'clampToGround' | 'absolute',
+    xAxisAbscissa: number | undefined,  // pass undefined for no rotation; not omittable
+    xAxisOrdinate: number | undefined,
+    name?: string,                       // default 'IFC Model'
+    altitudeMode?: 'clampToGround' | 'absolute' | 'relativeToGround',
   ): Uint8Array | null;
   exportCsv(/* buffer, mode: 'entities'|'properties'|'quantities'|'spatial', ... */): Uint8Array | null;
   exportJson(/* ... */): Uint8Array | null;
@@ -1171,7 +1175,7 @@ Scripting SDK: the `bim.*` API for BIM automation. `createBimContext` builds a `
 
 QuickJS-in-WASM sandboxed script execution: `createSandbox` / `Sandbox`, `buildBridge` (marshals the `bim.*` API across the sandbox boundary), and `transpileTypeScript`.
 
-`buildBridge` returns `{ logs, resetLogs, dispose }`. `resetLogs` is part of the contract, not an implementation detail: the console capture budget (byte total and entry count) is scoped to **one run**, so a caller driving `buildBridge` directly must invoke `resetLogs()` at the start of every run. Skip it and a script that exhausts the budget silences the logs of every later run on the same bridge. `Sandbox.eval` already does this for you — only direct `buildBridge` callers carry the obligation.
+`buildBridge` returns `{ logs, resetLogs, hostWork, takeSurfaces, dispose }`. `resetLogs` is part of the contract, not an implementation detail: the console capture budget (byte total and entry count) is scoped to **one run**, so a caller driving `buildBridge` directly must invoke `resetLogs()` at the start of every run. Skip it and a script that exhausts the budget silences the logs of every later run on the same bridge. `Sandbox.eval` already does this for you — only direct `buildBridge` callers carry the obligation, and they also settle `hostWork` before reading `logs` or calling `takeSurfaces()`.
 
 ## @ifc-lite/extensions
 

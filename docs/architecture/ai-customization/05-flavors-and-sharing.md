@@ -89,10 +89,12 @@ A flavor exports to a single gzipped JSON envelope (`packFlavor` in
 
 - `format: "iflv"` and `version: 1` identify the file.
 - `flavor`: the full `Flavor` object.
-- `extensionBundles`: each `FlavorExtension`'s `.iflx` bundle keyed by
-  `<id>@<version>`, base64-encoded.
-- `summary`: an optional human-readable summary. Importers regenerate it
-  from the canonical data.
+- `extensionBundles`: caller-supplied `.iflx` bundle bytes keyed by
+  `<id>@<version>`, base64-encoded. The viewer's `exportFlavor` passes
+  none, so viewer exports carry an empty map today.
+- `summary`: an optional caller-supplied human-readable string. The
+  viewer's export passes none; the import preview shows a supplied summary
+  verbatim, it does not regenerate one.
 
 Unpacking caps the uncompressed size at 64 MiB.
 
@@ -106,7 +108,7 @@ export is `packFlavor` with an empty `extensionBundles` map):
 - `--strip-config` — omits per-extension config and personal prompt
   overlay. Useful for "share the structure, not my data."
 
-The exporter embeds a **summary** in the envelope:
+The planned exporter summary (not generated today; `packFlavor` only embeds a string the caller passes) looks like:
 
 ```
 Flavor: "Residential Architect"

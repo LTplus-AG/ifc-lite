@@ -87,7 +87,7 @@ interface ExtensionManifest {
    * for local-only extensions. Each test runs the named handler against
    * a named fixture and asserts the result shape.
    */
-  tests?: ExtensionTest[];
+  tests?: ManifestTest[];
 
   /**
    * Localization. If present, all user-facing strings (name, description,
@@ -122,9 +122,11 @@ Failures produce structured errors (`{ path, code, message, hint? }`) used by:
 
 ### 1.3 Versioning and migration
 
-`manifestVersion: 1` is the current revision. A future v2 ships with a
-migration function in `@ifc-lite/extensions/migrations/v1-to-v2.ts`. The
-loader will read any older version it has a migration for. Manifests
+`manifestVersion: 1` is the current revision (`CURRENT_MANIFEST_VERSION`).
+Migrations live in `packages/extensions/src/migrations/`: `index.ts` holds the
+`MigrationEntry` chain (empty today) and `v1.ts` a no-op `migrateV1` that proves
+the wiring. A future v2 adds a chain entry. The loader will read any older
+version it has a migration for. Manifests
 newer than the loader fail closed with a clear "update IFClite to use
 this extension" error.
 
@@ -320,14 +322,19 @@ The test runner is `runBundleTests` in
 
 Tests run:
 
-- On extension install (one-time gate).
-- On SDK upgrade (CI for the host; also runs locally on user devices
-  when the SDK version moves).
-- On extension upgrade.
-- On demand via `ifc-lite ext test <id>`.
+- On demand in the viewer: the Extensions panel's test action calls
+  `ExtensionHostService.runTests(id)`.
+- On demand from the CLI: `ifc-lite ext test <bundle-dir> [--bail] [--json]`
+  (a bundle directory, not an installed id).
+- On an SDK version change: the Repair Queue panel's "Run check" button
+  calls `revalidateForSdk(version)`, which tests every affected installed
+  extension. It does not run on mount.
 
-If tests fail on an SDK upgrade, the repair loop is invoked
-automatically ([§04-ai-authoring.md](./04-ai-authoring.md)).
+Install and upgrade do not run tests: the installer loads the bundle,
+records the audit event and fires `onStartup`. If tests fail on an SDK
+change, the extension lands in the repair queue, and the user authorises
+the AI repair ([§04-ai-authoring.md](./04-ai-authoring.md)); it is not
+started automatically.
 
 ## 7. Package layout
 
@@ -388,7 +395,7 @@ feature added to the viewer, not a new product.
 │  wait for activation events                                     │
 │      │                                                          │
 │      ▼  (activation event fires)                                │
-│  ExtensionRuntime.activate(id)                                  │
+│  ExtensionRuntime.activate(id, grants, bundle?)                 │
 │      ├─ create QuickJS context with scoped bridge                │
 │      ├─ call entry.activate(ctx)                                 │
 │      └─ retain ctx until deactivate or uninstall                 │

@@ -244,10 +244,13 @@ async function repairExtension(initial: Bundle, ctx: AuthoringCtx) {
 Tunables (defaults):
 
 - `maxAttempts`: 4
-- `attemptBudgetMs`: 90 seconds per attempt.
-- `totalBudgetMs`: 6 minutes for the whole repair.
-- Token budget per attempt (6000 output, 32000 input) is planned; the loop
-  only records token estimates for cost accounting today.
+- `attemptBudgetMs`: 90 seconds per attempt (each attempt gets the full
+  timeout).
+- `totalBudgetMs`: 6 minutes. It is checked only before an attempt starts,
+  so a run can end up to one attempt budget past it.
+- Token budget per attempt (6000 output, 32000 input) is planned, not
+  enforced. An `AuthoringTurn` may carry a `tokens` estimate, but the loop
+  neither reads nor returns it.
 
 Diagnostics are *structured*. The model receives a JSON object with
 the failing manifest path, the validation error code, a hint, and a

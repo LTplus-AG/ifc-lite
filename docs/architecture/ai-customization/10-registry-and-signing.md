@@ -82,8 +82,13 @@ identifiers explicitly.
 
 ### 3.2 What gets signed
 
-The **canonical content hash** of the bundle: a SHA-256 over a
-deterministic serialisation of `{ files: sorted-by-path }`. The
+The Ed25519 signature covers a versioned message built by
+`buildSigningMessage` (`packages/extensions/src/signing/sign.ts`):
+`"iflx-sig" 0x1f "v1" 0x1f <contentHash> 0x1f <signedAt>`. Including
+`signedAt` means neither field can be changed after signing.
+
+`contentHash` is the **canonical content hash** of the bundle: a SHA-256
+over a deterministic serialisation of `{ files: sorted-by-path }`. The
 serialisation:
 
 ```
@@ -236,7 +241,9 @@ if envelope.signature:
    compute canonical content hash
    if hash != signature.contentHash → SignatureMismatchError
    import public key from signature.publicKey
-   crypto.subtle.verify(signature.signature, contentHash)
+   message = buildSigningMessage(contentHash, signature.signedAt)
+     ("iflx-sig" 0x1f "v1" 0x1f contentHash 0x1f signedAt)
+   crypto.subtle.verify(signature.signature, message)
    if fail → SignatureMismatchError
    if fingerprint(publicKey) ∈ revocation list → SignatureRevokedError
       (planned: no revocation list or SignatureRevokedError exists yet;
@@ -297,6 +304,10 @@ get the cheerful row; new fingerprints get the cautious one. The user
 can review the history in a future "Signers" tab (post-Phase-5 UI).
 
 ### 6.3 Updates and version downgrade
+
+Planned (not built): the viewer installer (`host-installer.ts`) records
+the signer fingerprint in the audit event but does not compare versions
+or signers between the installed and the new bundle today.
 
 When a user updates an extension:
 
@@ -412,6 +423,9 @@ What's deferred to the Phase-5 build:
 
 - The hosted registry service.
 - The TOFU history store in the viewer.
+- Update checks (§6.3): same-signer version ordering, the different-signer
+  warning and downgrade refusal.
+- The revoked-fingerprint kill-switch list (D4).
 - The "Signers" UI tab.
 - Multi-signature envelopes (key rotation transition).
 - Registry CI pipeline + lint suite.

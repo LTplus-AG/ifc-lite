@@ -101,7 +101,7 @@ typed node; child nodes nest. The DSL is intentionally small.
 | `Stack` | Vertical or horizontal layout. |
 | `Group` | Bordered group with optional title. |
 | `Text` | Static text with style variant (`heading`, `body`, `caption`). |
-| `Field` | Labeled form input. Variants: `text`, `number`, `boolean`, `select`, `multiSelect`, `entityPicker`, `colorPicker`, `file`. |
+| `Field` | Labeled value bound to widget state. Variants: `text`, `number`, `boolean`, `select`, `multiSelect`, `entityPicker`, `colorPicker`, `file`. The v1 viewer renders it read-only (disabled controls); the handler updates state on re-run. |
 | `Button` | Primary action; binds to a command id with optional arg literal. |
 | `Table` | Tabular data with sortable columns. |
 | `Chart` | Bar / line / pie with declarative data binding. |

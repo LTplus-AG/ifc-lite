@@ -125,8 +125,9 @@ The miner is conservative by default. A pattern needs to recur at
 least 3 times across at least 2 distinct sessions (`minOccurrences`,
 `minSessions` in `miner/sequence.ts`; sessions split after 30 minutes
 idle) before it surfaces. While the log holds fewer than 100 events the
-scheduler relaxes this to 2 occurrences in 1 session, so new users see
-suggestions early (`adaptive`, `miner/scheduler.ts`).
+scheduler relaxes this to 2 occurrences in 1 session with a 10-minute
+session gap, so new users see suggestions early (`adaptive`,
+`miner/scheduler.ts`). Miner options the host sets explicitly still win.
 
 ### 3.4 Why this is not annoying
 

@@ -181,7 +181,8 @@ The screen surfaces:
     catalogue.
   - Yellow: `network.fetch` to one specific host, `model.mutate` with a
     specific pattern, `model.create`, `export.create`, `command.invoke`,
-    and a green capability whose target contains a glob.
+    and a green capability whose target contains a glob inside the
+    pattern (a universal `*` target leaves a green capability green).
   - Green: read-only / viewer-only / storage-only / UI slots.
 
 Risk badges are computed by the host from the capability list. The
@@ -207,9 +208,9 @@ We add:
   consults the active capability set before dispatching. The check is
   centralised; we do not scatter `if (cap)` checks across bridge
   functions.
-- **Time-bounded `fetch`.** Network fetches via `ctx.fetch` have a hard
-  ceiling (default 30 s) and a request-count budget (default 60 per
-  activation). Both are configurable per-extension by the user in
+- **Time-bounded `fetch`** (planned: v1 `ctx` has no `fetch`, see §6.3).
+  Network fetches via `ctx.fetch` will have a hard ceiling (default 30 s)
+  and a request-count budget (default 60 per activation). Both are configurable per-extension by the user in
   settings but never raisable by the extension itself.
 
 ## 6. Network egress

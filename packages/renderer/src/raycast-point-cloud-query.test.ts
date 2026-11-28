@@ -34,6 +34,7 @@ const CAMERA_FOV = 1.0472; // 60 degrees in radians
 const CANVAS_HEIGHT_PX = 800;
 const CAMERA: PointCloudSnapCamera = { fov: CAMERA_FOV, canvasHeightPx: CANVAS_HEIGHT_PX, orthoHalfHeight: null };
 
+const rayAlongZ = { origin: { x: 0, y: 0, z: 0 }, direction: { x: 0, y: 0, z: 1 } };
 const VERTEX_SNAP: SnapTarget = {
   type: SnapType.VERTEX,
   position: { x: 1, y: 2, z: 10 },
@@ -59,44 +60,24 @@ describe('pointCloudWinsOverMeshSnap — coincident-surface guard (#1860 review 
     // Mesh intersection at t=10.00 with a vertex snapTarget; scan point
     // at t=9.995 is within capture-noise distance of the same surface —
     // must NOT steal the vertex snap.
-    const wins = pointCloudWinsOverMeshSnap({
-      pointHit: pointHitAt(9.995),
-      meshSnapTarget: VERTEX_SNAP,
-      meshIntersectionDistance: 10.0,
-      camera: CAMERA,
-    });
+    const wins = pointCloudWinsOverMeshSnap(pointHitAt(9.995), VERTEX_SNAP, rayAlongZ, CAMERA);
     assert.strictEqual(wins, false, 'a scan point coincident with the mesh surface must not steal the vertex snap');
   });
 
   it('point snap WINS when it clearly occludes the mesh surface (t=8 vs mesh at t=10)', () => {
-    const wins = pointCloudWinsOverMeshSnap({
-      pointHit: pointHitAt(8),
-      meshSnapTarget: VERTEX_SNAP,
-      meshIntersectionDistance: 10.0,
-      camera: CAMERA,
-    });
+    const wins = pointCloudWinsOverMeshSnap(pointHitAt(8), VERTEX_SNAP, rayAlongZ, CAMERA);
     assert.strictEqual(wins, true, 'a point genuinely in front of the mesh surface should win');
   });
 
   it('point snap wins when the mesh path found no snap target at all (bare face hit)', () => {
     // No vertex/edge/face snap — just a raw mesh intersection. Existing
     // "point wins when present/nearer" behavior is preserved.
-    const wins = pointCloudWinsOverMeshSnap({
-      pointHit: pointHitAt(9.995),
-      meshSnapTarget: null,
-      meshIntersectionDistance: 10.0,
-      camera: CAMERA,
-    });
+    const wins = pointCloudWinsOverMeshSnap(pointHitAt(9.995), null, rayAlongZ, CAMERA);
     assert.strictEqual(wins, true);
   });
 
   it('point snap wins when there was no mesh hit at all (point-cloud-only scene)', () => {
-    const wins = pointCloudWinsOverMeshSnap({
-      pointHit: pointHitAt(50),
-      meshSnapTarget: null,
-      meshIntersectionDistance: null,
-      camera: CAMERA,
-    });
+    const wins = pointCloudWinsOverMeshSnap(pointHitAt(50), null, rayAlongZ, CAMERA);
     assert.strictEqual(wins, true);
   });
 
@@ -112,32 +93,17 @@ describe('pointCloudWinsOverMeshSnap — coincident-surface guard (#1860 review 
     const c = pointCloudSnapToleranceAt(1, CAMERA); // tolerance per unit distance
     const boundary = meshDistance / (1 + c);
 
-    const atBoundary = pointCloudWinsOverMeshSnap({
-      pointHit: pointHitAt(boundary),
-      meshSnapTarget: VERTEX_SNAP,
-      meshIntersectionDistance: meshDistance,
-      camera: CAMERA,
-    });
+    const atBoundary = pointCloudWinsOverMeshSnap(pointHitAt(boundary), VERTEX_SNAP, rayAlongZ, CAMERA);
     assert.strictEqual(atBoundary, false, 'strict inequality: exactly at the threshold must not win');
 
-    const justInFront = pointCloudWinsOverMeshSnap({
-      pointHit: pointHitAt(boundary - 0.01),
-      meshSnapTarget: VERTEX_SNAP,
-      meshIntersectionDistance: meshDistance,
-      camera: CAMERA,
-    });
+    const justInFront = pointCloudWinsOverMeshSnap(pointHitAt(boundary - 0.01), VERTEX_SNAP, rayAlongZ, CAMERA);
     assert.strictEqual(justInFront, true, 'a point just past the threshold, further in front, must win');
   });
 
   it('a point well beyond the tolerance margin in front of the mesh wins', () => {
     const meshDistance = 10.0;
     const margin = pointCloudSnapToleranceAt(meshDistance, CAMERA);
-    const wins = pointCloudWinsOverMeshSnap({
-      pointHit: pointHitAt(meshDistance - margin - 0.5),
-      meshSnapTarget: VERTEX_SNAP,
-      meshIntersectionDistance: meshDistance,
-      camera: CAMERA,
-    });
+    const wins = pointCloudWinsOverMeshSnap(pointHitAt(meshDistance - margin - 0.5), VERTEX_SNAP, rayAlongZ, CAMERA);
     assert.strictEqual(wins, true);
   });
 });

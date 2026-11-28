@@ -24,7 +24,8 @@ npm install @ifc-lite/flow-nodes @ifc-lite/flow
 | `ids.*` | load, lint, validate | IDS loading, linting and model validation |
 | `bcf.*`, `documents.*`, `aps.*` | bcf.listTopics, createTopic, addComment; documents.download, queryVersions; aps.token, modelProperties | BCF API, OpenCDE Documents API and Autodesk Platform Services connectors, behind `network.fetch:<host>` grants |
 | `http.request`, `speckle.receive` | network | Every request goes through the gated `coreNetworkRequest` (`network.fetch:<host>` grants, https only); `speckle.receive` writes a Speckle model's walls, floors, roofs, columns and beams, and reports what it cannot map |
-| `session.*`, `validation.runChecks`, `comparison.runChecks`, `report.*` (buildDocument, exportPdf, importComparisons), `review.snapshot` | local loading, filename tags, checks, historical reports, documents and PDF artifacts | Require explicit `SessionAutomationHost` services; unavailable on the standard CLI/MCP host |
+| `session.*`, `validation.runChecks`, `comparison.runChecks`, `report.*` (buildDocument, exportPdf, importComparisons) | local loading, filename tags, checks, historical reports, documents and PDF artifacts | Require explicit `SessionAutomationHost` services; unavailable on the standard CLI/MCP host |
+| `review.snapshot` | one node | Reads Review findings through `FlowHost.review`: the MCP host reads native session captures and supplied historical inputs, the CLI host only supplied `savedAnalysisRuns` / `savedValidationReports` |
 | `script.run`, `script.list` | two nodes | JavaScript in the QuickJS sandbox with the sandbox `bim` API, per item or over a whole list |
 | `ai.*` (separate `@ifc-lite/flow-nodes/ai` entry) | classify, extract, summarize, propose | Not in `createStandardRegistry`; see below |
 
@@ -117,8 +118,10 @@ remote response bodies, detail URLs and error causes are discarded. Known local
 preflight diagnostics and gateway refusal/recovery text are retained after
 redacting the actual bearer, without carrying their original error cause.
 
-`review.snapshot` is a volatile `model.read` node over a host-provided native
-Review service. Its optional `after` input sequences the read after an analysis;
+`review.snapshot` is a volatile `model.read` node over a host-provided
+Review service. It reads native captured findings, or historical
+`savedAnalysisRuns` / `savedValidationReports` passed as params (no native capture
+needed). Its optional `after` input sequences the read after an analysis;
 its bounded `snapshot` contains actual facts, coverage and producer provenance.
 Hosts without a native capture service report the missing
 `review` backend capability explicitly. This node does not rerun analysis or

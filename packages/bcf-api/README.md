@@ -91,7 +91,7 @@ await client.createTopic(projectId, { title: 'Clash at grid 3/C' });
 await client.createComment(projectId, topicGuid, { comment: 'Fixed in rev B' });
 ```
 
-To push local work back, `topicToApiWrite(topic)` turns an `@ifc-lite/bcf` `BCFTopic` into the write body for `createTopic` / `updateTopic(projectId, topicGuid, body)` (server-owned fields such as guid, dates and authors are never sent), and `viewpointToApi(viewpoint)` builds the body for `createViewpoint(projectId, topicGuid, body)`. `default_visibility` is always written, because BCF API defaults it to `false` while BCF-XML defaults it to `true`.
+To push local work back, `topicToApiWrite(topic)` turns an `@ifc-lite/bcf` `BCFTopic` into the write body for `createTopic` / `updateTopic(projectId, topicGuid, body)` (server-owned fields such as guid, dates and authors are never sent), and `viewpointToApi(viewpoint)` builds the body for `createViewpoint(projectId, topicGuid, body)`. When the viewpoint has `components`, `visibility.default_visibility` is always written (as `true` if unset), because BCF API defaults it to `false` while BCF-XML defaults it to `true`; a viewpoint without `components` sends none.
 
 Errors are `BcfApiError` (with `status`, `url` and `isAuthError`); token endpoint failures are `BcfAuthenticationError` (with the RFC 6749 `errorCode`). Refresh an expiring session with `refreshAccessToken({ tokenUrl, refreshToken })`.
 

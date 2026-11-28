@@ -68,7 +68,7 @@ A transport must not retry on its own: a retry is a new request that spends the 
 
 ## Provider usage helpers
 
-`chatCompletionsUsage(chunk)`, `responsesUsage(event)` and `anthropicUsage(usage)` read the provider-reported token counts from an OpenAI Chat Completions (or OpenRouter) chunk, an OpenAI Responses event and an Anthropic Messages `usage` object. Each returns a `TokenUsage` or `null` when the provider reported none, so a transport can pass the result straight to `onTokenUsage`.
+`chatCompletionsUsage(chunk)`, `responsesUsage(event)` and `anthropicUsage(usage)` read the provider-reported token counts from an OpenAI Chat Completions (or OpenRouter) chunk, an OpenAI Responses event and an Anthropic Messages `usage` object. Each returns a `TokenUsage`, or `null` when the provider reported none; call `onTokenUsage` only with a non-null result. A tool-turn transport returns the usage on its `ToolTurn` instead.
 
 ## License
 

@@ -122,11 +122,11 @@ Reports the CLI runtime, resolved versions of its declared first-party dependenc
 - `doctor` - runtime, package versions and WASM binary checks
 
 - `info` - model summary: schema, entities, storeys
-- `structural` - read structural analysis models, members, connections, loads, reactions and physical links (see below)
+- `structural` - read structural analysis models, members, connections, loads, reactions and physical links (`--json` for the full model)
 - `query` - query entities by type, properties, quantities; supports `--sum`, `--group-by`, `--spatial`
 - `props` - all properties for a single entity (`--id N`)
 - `export` - export to `csv`, `json`, `ifc`, `obj`, `gltf`, `glb`, `jsonld`, `ifcx`, `usd`, `3dm`, `step`, `hbjson`, `dfjson`, `cityjson`, or `cityjsonseq`
-- `ids` - validate against buildingSMART IDS rules
+- `ids` - validate a model against buildingSMART IDS rules; `ids audit|lint|fmt|diff|explain` check, format, compare and explain IDS files
 - `validate` - structural validation checks
 - `check` - run a `.rules.json` information-validation rule set (same engine as the viewer)
 - `stats` - auto-calculated model KPIs and health check
@@ -140,21 +140,21 @@ Reports the CLI runtime, resolved versions of its declared first-party dependenc
 - `derive-structural` - derive a linked structural analysis model from beams, columns, slabs and walls
 - `merge` - merge multiple IFC files into one federated file
 - `convert` - convert between IFC schema versions (`--schema IFC4`)
-- `diff` - compare two IFC files
+- `diff` - compare two IFC files; `--by-content` matches re-GUIDed elements, `--geometry` adds a mesh pass with `--split-merge`/`--successors` claims, `--lineage-out` writes lineage for `rekey`
 - `rekey` - carry a table keyed on old element keys across a revision
 - `eval` / `run` - run SDK expressions or scripts against a model
 - `ask` - natural language BIM queries
 - `view` - interactive 3D viewer in the browser, controllable via REST (`/api/command`)
 - `analyze` - query plus colorize/isolate/heatmap results in the running viewer
 - `simplify` - demesher: simplify meshes, write a lighter IFC
-- `mcp` - start an MCP server bound to one or more IFC files (stdio or http); `mcp install --client <claude-code|claude-desktop|cursor|vscode>` adds it to a client's config
+- `mcp` - start an MCP server; over stdio it preloads the given IFC files, over `--transport http` each session starts empty and loads models with `model_load`; `mcp install --client <claude-code|claude-desktop|cursor|vscode>` adds it to a client's config
 - `layer` - layered change tracking over a local store (`.ifc-lite/`)
 - `ref` - manage named refs in the layer store
 - `oci push` - publish an IFC file to an OCI registry (see above)
 - `anonymize` - export selected objects + context as an anonymized IFC
 - `schedule` - tabular schedule of one class (csv/json/md/html)
-- `delivery` - repeatable delivery check (structural + IDS) from a saved recipe
-- `semantic` - shared semantic profiles, SHACL validation, JSON/SPARQL queries and an HTTPS relay (see below)
+- `delivery` - repeatable delivery check (structural + IDS + rule sets) from a saved recipe
+- `semantic` - shared semantic profiles, SHACL validation, JSON/SPARQL queries and an HTTPS relay (`ifc-lite semantic <validate|query|assets|serve>`; see `ifc-lite --help`)
 - `flow` - run, resume, review, describe and validate Flow node graphs headlessly; `flow bcf` inspects and reconciles durable BCF writes (see below)
 - `gym` - reset/step/reward environment loop over the existing schema/clash/ids checks (see below)
 - `schema`, `bsdd`, `diagnose-geometry`, `extract-entities`, `generate-spaces`, `lod`, `ext` - see `ifc-lite --help`

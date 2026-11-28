@@ -21,7 +21,9 @@ await gp.init();
 // From already-produced meshes (no re-mesh) …
 const glb = gp.exportGlbFromMeshes(result.meshes, /* includeMetadata */ true);
 // … or straight from IFC bytes (meshes internally):
-//   gp.exportGlb(bytes, true, new Uint32Array(), new Uint32Array(), '')
+//   gp.exportGlb(bytes, true)
+// Leave `isolated` undefined for no isolation filter: an empty Uint32Array
+// there is an active allowlist that exports nothing.
 
 // Download
 const url = URL.createObjectURL(new Blob([new Uint8Array(glb)], { type: 'model/gltf-binary' }));
@@ -110,7 +112,7 @@ const bos = await exporter.exportBOS();
 //   tableName ∈ entities|properties|quantities|relationships|strings|vertices|indices|meshes
 const entities = await exporter.exportTable('entities');
 
-// Each Parquet table is ~15–50× smaller than equivalent JSON
+// Parquet is columnar and compressed, so tables are much smaller than JSON
 // Loadable directly from DuckDB, Polars, pandas, BigQuery, …
 ```
 

@@ -40,7 +40,8 @@ Add `--rust` to also write Rust type tables (see the
 | `packages/parser/src/generated/` | `schemas/IFC4_ADD2_TC1.exp` | `@ifc-lite/parser` (IFC4 registry, types, serializers) |
 | `packages/parser/src/generated/ifc4x3/schema-registry.ts` | `schemas/IFC4X3.exp` | per-version registry in `@ifc-lite/parser` |
 | `packages/parser/src/generated/ifc2x3/schema-registry.ts` | `schemas/IFC2X3_TC1.exp` | per-version registry in `@ifc-lite/parser` |
-| `rust/core/src/generated/{schema,type_ids}.rs` | `schemas/IFC4X3.exp` plus IFC4 and IFC2X3 supplements | `ifc_lite_core` |
+| `rust/core/src/generated/{schema,type_ids,mod,slots,slots_table}.rs` | `schemas/IFC4X3.exp` plus IFC4 and IFC2X3 supplements; slots also from IFC2X3, IFC4, IFC4X1, IFC4X2 and `schemas/attribute-renames.json` | `ifc_lite_core` (public; `slots.rs` is `ifc_lite_core::slot`) |
+| `rust/core/src/generated/{ifc2x3,ifc4,ifc4x1,ifc4x2}/` | the matching `schemas/*.exp`, generated with `--rust-crate-private` | per-version registries inside `ifc_lite_core` |
 
 `@ifc-lite/export` and `@ifc-lite/ids` import the `@ifc-lite/codegen/*`
 bundles at runtime. `@ifc-lite/parser` picks the registry that matches a
@@ -72,13 +73,17 @@ cp packages/codegen/generated/ifc2x3/schema-registry.ts packages/parser/src/gene
 Never hand-edit a generated file; change the generator and regenerate.
 
 ```bash
-pnpm --filter @ifc-lite/codegen build
+# `...` also builds the workspace packages codegen depends on
+pnpm --filter "@ifc-lite/codegen..." build
 pnpm --filter @ifc-lite/codegen generate:ifc4
 pnpm --filter @ifc-lite/codegen generate:ifc4x3
 pnpm --filter @ifc-lite/codegen generate:ifc2x3
 ```
 
-Then copy the parser files as above.
+Then copy the parser files as above. The `generate:*` scripts write only the
+TypeScript bundles; regenerate the Rust files with the `--rust` commands in the
+[README](./README.md#generate-from-the-official-ifc-schema) (the slot command there
+produces `slots.rs` and `slots_table.rs`).
 
 `pnpm check:codegen-sync` (`scripts/check-codegen-sync.mjs`, run in CI by
 `.github/workflows/test.yml`) regenerates every target above into a temporary

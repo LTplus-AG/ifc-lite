@@ -12,6 +12,8 @@ npm install --save-dev @ifc-lite/codegen
 
 ## Generate from the official IFC schema
 
+The package has no `bin`; run its CLI with Node. The paths below are relative to the package directory (`node_modules/@ifc-lite/codegen` after an install, `packages/codegen` in the repository), which also holds the bundled `schemas/`.
+
 ```bash
 # IFC4 (776 entities)
 node dist/cli.js schemas/IFC4_ADD2_TC1.exp --output ./generated/ifc4
@@ -74,7 +76,10 @@ generated/ifc4/
 import { parseExpressSchema, generateTypeScript } from '@ifc-lite/codegen';
 import { readFile, writeFile } from 'node:fs/promises';
 
-const schema = parseExpressSchema(await readFile('./schemas/IFC4_ADD2_TC1.exp', 'utf-8'));
+// The bundled schemas ship in the package: node_modules/@ifc-lite/codegen/schemas/
+const schema = parseExpressSchema(
+  await readFile('./node_modules/@ifc-lite/codegen/schemas/IFC4_ADD2_TC1.exp', 'utf-8'),
+);
 
 console.log(`Parsed ${schema.entities.length} entities, ${schema.types.length} types`);
 

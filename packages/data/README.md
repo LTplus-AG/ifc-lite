@@ -1,6 +1,6 @@
 # @ifc-lite/data
 
-Columnar data structures for IFClite. TypedArray-backed storage for entities, properties, quantities, and relationships — the layout that lets `@ifc-lite/parser` hold a 200 MB IFC file in ~30 MB of RAM and lets `@ifc-lite/query` filter it in milliseconds.
+Columnar data structures for IFClite. TypedArray-backed storage for entities, properties, quantities, and relationships — the compact layout `@ifc-lite/parser` stores a model in and `@ifc-lite/query` filters by scanning typed columns. See the [performance guide](https://ifclite.dev/docs/guide/performance/) for measured numbers.
 
 ## Installation
 
@@ -123,7 +123,7 @@ The generator exits non-zero and writes nothing if any code of the index has no 
 ## Also included
 
 - IFC schema tables generated from buildingSMART's IDS-Audit-tool data (`getEntities`, `getPropertySets`, `getAttributes`, `getDataTypes`, `getPartOfRelations`, `findEntity`, `isEntitySubtypeOf`, `ENTITIES_IFC2X3` / `ENTITIES_IFC4` / `ENTITIES_IFC4X3`); refresh them with `pnpm --filter @ifc-lite/data run generate:ifc-schema` (see `scripts/upstream/README.md`)
-- STEP writing helpers shared by every exporter (`generateHeader`, `generateStepFileWithRegistry`, `toStepLineWithRegistry`, `escapeStepString`, `formatStepReal`)
+- STEP writing helpers shared by the TypeScript serializers (the Rust STEP exporter behind `GeometryProcessor.exportStep` has its own writer) (`generateHeader`, `generateStepFileWithRegistry`, `toStepLineWithRegistry`, `escapeStepString`, `formatStepReal`)
 - Spatial-structure and placement helpers (`isStoreyLikeSpatialType`, `findStoreyByElevation`, `walkPlacementChain`, `collectSpatialAncestors`)
 - `@ifc-lite/data/node`: Node-only `readPackageVersion`, kept out of the root entry so browser bundles never pull in `node:fs`
 

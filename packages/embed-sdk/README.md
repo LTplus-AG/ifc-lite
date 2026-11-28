@@ -30,7 +30,7 @@ viewer.on('entity-selected', (data) => console.log(data));
 - Selection and visibility: `select`, `selectByGuid`, `clearSelection`, `isolate`, `hide`, `show`, `showAll`
 - Appearance: `setColors`, `resetColors`, `setTheme`, `setTypeVisibility` (every flag in `TypeVisibilityFlags`). `hideTypes` wins over these where they overlap. Toggle state persists in `localStorage` on the embed's own origin, and one deployment serves every host, so it carries between embed instances and between unrelated hosts in the same browser profile. Send `setTypeVisibility` on load if you need a deterministic starting state.
 - Camera and sections: `fitToView`, `setCamera`, `setView`, `setSection`
-- Data out: `getProperties(id)`, `getModelInfo()`, `getScreenshot()`
+- Data out: `getProperties(id)`, `getModelInfo()`. `getScreenshot()` exists, but the hosted embed viewer answers it with `NOT_IMPLEMENTED`, so it currently always rejects
 - Events: `ready`, `model-loading`, `model-loaded`, `model-error`, `entity-selected`, `entity-deselected`, `entity-hovered`, `camera-changed`, `section-changed` via `on(event, cb)`, which returns an unsubscribe function
 - Teardown: `destroy()` removes the iframe and listeners and rejects pending requests
 - Strict origin checks on every message; auth tokens are sent via postMessage, not the URL

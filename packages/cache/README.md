@@ -31,6 +31,7 @@ npm install @ifc-lite/cache
 
 ```typescript
 import {
+  FORMAT_VERSION,
   xxhash64Hex,
   BinaryCacheReader,
   BinaryCacheWriter,
@@ -47,15 +48,20 @@ declare const myStorage: {
 
 async function loadWithCache(file: File) {
   const ifcBuffer = await file.arrayBuffer();
-  const cacheKey = xxhash64Hex(ifcBuffer);
+  // Put FORMAT_VERSION in the key so a format bump misses old entries.
+  const cacheKey = `${xxhash64Hex(ifcBuffer)}-v${FORMAT_VERSION}`;
 
   // Try cache first
   const cached = await myStorage.get(cacheKey);
   if (cached) {
-    const reader = new BinaryCacheReader();
-    const { geometry } = await reader.read(cached);
-    renderer.loadGeometry(geometry?.meshes ?? []);
-    return; // first triangles in milliseconds
+    try {
+      const reader = new BinaryCacheReader();
+      const { geometry } = await reader.read(cached);
+      renderer.loadGeometry(geometry?.meshes ?? []);
+      return; // no parse, no tessellation
+    } catch {
+      // Unreadable or damaged entry: treat it as a miss and rebuild below.
+    }
   }
 
   // Cold path — full parse + tessellation, then write the cache.
@@ -96,7 +102,7 @@ Two hash functions are exposed for cache key generation:
 ```typescript
 import { xxhash64, xxhash64Hex } from '@ifc-lite/cache';
 
-const hexKey = xxhash64Hex(buffer);  // ~5 GB/s, 16-char hex string
+const hexKey = xxhash64Hex(buffer);  // 16-char hex string
 const rawKey = xxhash64(buffer);     // same hash as a bigint
 ```
 
@@ -110,7 +116,7 @@ The cache keys models by the xxHash64 of the source IFC, and `reader.validate(ca
 
 The byte-level layout, the reader's compatibility rules and the conformance criterion for another writer are specified in [`SPEC.md`](./SPEC.md).
 
-The binary layout is versioned via the exported `FORMAT_VERSION` constant. Readers accept entries written by the current or an older format version (with backward-compatible decoding, e.g. the per-mesh geometry-class byte added in v5) and reject entries written by a newer one, so mixed-version deployments fail safely toward a cold parse.
+The binary layout is versioned via the exported `FORMAT_VERSION` constant. Readers accept entries written by the current or an older format version (with backward-compatible decoding, e.g. the per-mesh geometry-class byte added in v5) and reject entries written by a newer one, so mixed-version deployments fail safely toward a cold parse. One exception: `read()` throws on geometry written before v13 (`skipGeometry: true` still reads the rest), so discard such an entry and rebuild it. Quantity and property tables written at v16 or earlier are misread when non-empty; `SPEC.md` §11 lists every version gate.
 
 Version 19 preserves explicitly supplied canonical `MeshData.appearanceSource` provenance. Fresh canonical meshes store an identity marker; fragmented or expanded meshes reference a geometry-header source-index pool, shared across spatial chunks, plus their corner mapping. Restored metadata points to the restored mesh indices, preserving the topology identity fence required by appearance preview. Invalid identities, source lengths, pool references and corner ranges fail cache reading/writing instead of enabling an unsafe preview. Unmarked meshes remain unmarked; old records never acquire inferred canonical identity.
 
@@ -120,7 +126,7 @@ The viewer includes `FORMAT_VERSION` in its cache key, so older entries reparse 
 
 ## Inflating chunks off the main thread
 
-`@ifc-lite/cache/chunk-inflate-pool` is a separate entry, so a browser host can load it lazily. `ChunkInflatePool` inflates a cache hit's compressed geometry chunks on a few workers; pass `pool.inflate` to `openGeometryChunksV13`. Output is byte-identical to `inflateRaw`. A worker failure falls back to inflating on the calling thread; a chunk that does not inflate there either rejects with `CorruptChunkError`, so the caller can delete the entry and parse fresh.
+`@ifc-lite/cache/chunk-inflate-pool` is a separate entry, so a browser host can load it lazily. `ChunkInflatePool` inflates a cache hit's compressed geometry chunks on a few workers; pass it in the options argument: `openGeometryChunksV13(buffer, sectionOffset, version, { inflate: pool.inflate })`. Output is byte-identical to `inflateRaw`. A worker failure falls back to inflating on the calling thread; a chunk that does not inflate there either rejects with `CorruptChunkError`, so the caller can delete the entry and parse fresh.
 
 ## Source-hash contract (and `omitSourceHash`)
 

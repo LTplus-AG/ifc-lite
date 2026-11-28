@@ -37,7 +37,7 @@ const { content } = creator.toIfc(); // IFC STEP text
   both joined end faces; unreadable cuts refuse the join.
 - Property sets, element quantities, materials, and colors
 - 4D scheduling entities: IfcWorkSchedule, IfcTask, IfcRelSequence
-- Cost entities on the creator: `addIfcCostSchedule`, `addIfcCostItem`, `addIfcCostValue`
+- Cost entities on the creator (IFC4 / IFC4X3 only; IFC2X3 throws): `addIfcCostSchedule`, `addIfcCostItem`, `addIfcCostValue`
 - Terrain, survey, alignment and georeferencing (IFC4X3 only): `creator.terrain()` returns `addSurface` (TIN terrain), `addSurveyPoint`, `addAlignment`, `addPropertySet` and `setGeoreferencing` (IfcProjectedCRS plus IfcMapConversion, at most once per file)
 - `landXmlToIfc(source, options)` maps parsed LandXML surfaces, alignments and profiles to IFC4X3 (contract in `docs/architecture/landxml-to-ifc-mapping.md`)
 - In-store builders (`addWallToStore`, `addSlabToStore`, ...) that emit elements into an existing parsed model

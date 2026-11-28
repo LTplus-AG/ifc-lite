@@ -271,9 +271,11 @@ const customFragmentShader = `
 ```
 
 !!! note "Custom Rendering"
-    Custom shaders and dynamic per-entity coloring are advanced features
-    not exposed in the current public API. For custom rendering needs,
-    consider extending the Renderer class or contributing to the project.
+    Custom shaders are not exposed in the current public API. Per-entity
+    colours are: pass an expressId-to-RGBA map to
+    `renderer.getScene().setColorOverrides(overrides, device, pipeline)`
+    (device and pipeline from `renderer.getGPUDevice()` and
+    `renderer.getPipeline()`).
 
 ### Visibility-Based Highlighting
 

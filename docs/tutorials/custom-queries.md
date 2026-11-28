@@ -282,9 +282,12 @@ const floorAreaByStorey = await query.sql(`
 
 ### Color by Query
 
-!!! note "Color Support"
-    Dynamic per-entity coloring is not yet supported in the public API.
-    This example shows the concept - actual implementation requires extending the renderer.
+!!! note "Applying the colours"
+    This example builds the colour map. To paint it, convert each entry to an
+    RGBA tuple in 0-1 and pass the map to
+    `renderer.getScene().setColorOverrides(overrides, device, pipeline)`, with
+    `device` from `renderer.getGPUDevice()` and `pipeline` from
+    `renderer.getPipeline()`; `clearColorOverrides()` removes them.
 
 ```typescript
 import { IfcParser, extractPropertiesOnDemand } from '@ifc-lite/parser';

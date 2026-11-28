@@ -43,7 +43,8 @@ export class PairingAdmission {
   private resume: { key: string; origin?: string } | null = null;
 
   disconnected(code: number, reason: string): void {
-    if (code !== 1006 && code !== 1001 && !(code === 1000 && reason === 'page hidden')) this.forget();
+    const resumableClose = code === 1000 && (reason === 'page hidden' || reason === 'result acknowledgement timeout');
+    if (code !== 1006 && code !== 1001 && !resumableClose) this.forget();
   }
 
   forget(): void { this.resume = null; }

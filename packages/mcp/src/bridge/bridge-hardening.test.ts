@@ -398,8 +398,11 @@ describe('verified viewer pairing (#9523)', () => {
     expect(resumedSession).toBeDefined();
     expect(await (await hello(initial.next, true)).tab.next('error')).toMatchObject({ code: 'PAIRING_FAILED' });
     expect(bridge.tab()?.sessionId).toBe(resumedSession);
-    await leave(resumed.tab, 'disconnected by the user');
-    for (const obsolete of [initial.next, resumed.next]) {
+    await leave(resumed.tab, 'result acknowledgement timeout');
+    const recovered = await hello(resumed.next, true);
+    expect(await recovered.tab.next('welcome')).toMatchObject({ proof: recovered.proof, permission: 'read-only' });
+    await leave(recovered.tab, 'disconnected by the user');
+    for (const obsolete of [initial.next, resumed.next, recovered.next]) {
       expect(await (await hello(obsolete, true)).tab.next('error')).toMatchObject({ code: 'PAIRING_FAILED' });
     }
     const replaced = await pair();

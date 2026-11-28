@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "why": "Ignore user isolation when narrowing the eligible model entities.",
+  "key": "apps/viewer/src/components/viewer/reposition/repositionIsolation.ts",
+  "mutation": "tests/evidence/11504-isolation/behaviour.oracle.patch",
+  "test": "apps/viewer/src/components/viewer/reposition/repositionIsolation.test.ts"
+}

@@ -47,7 +47,9 @@ async function waitProxies(page) {
     await page.evaluate(KICK);
     await frames(page, 4);
     const s = await streamStats(page);
-    if (!s || (s.proxyNodes > 0 && s.proxyReady >= s.proxyNodes) || Date.now() > until) return s;
+    // null stats = the stream has not engaged yet: keep waiting; a timeout is recorded, never read as ready
+    if (s && s.proxyNodes > 0 && s.proxyReady >= s.proxyNodes) return { ...s, timedOut: false };
+    if (Date.now() > until) return { ...(s ?? {}), timedOut: true };
     await new Promise((r) => setTimeout(r, 250));
   }
 }

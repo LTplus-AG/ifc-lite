@@ -25,7 +25,7 @@ When this spec set was written, `branch.ts` and `minimal-layer.ts` both carried 
 
 ## Implementation status
 
-Much of this spec has shipped. The table names the code; anything not listed is still a plan.
+Much of this spec has shipped. The table names the main code; the "Not implemented" list below names what is still a plan.
 
 | Spec | Shipped in |
 |---|---|
@@ -36,10 +36,11 @@ Much of this spec has shipped. The table names the code; anything not listed is 
 | 05 three-way merge, merge layers, rebase, revert, ref policy | `@ifc-lite/merge` (`three-way.ts`, `merge-layer.ts`, `rebase.ts`, `inverse.ts`, `ref-flow.ts`) |
 | 06 MCP layer tools | `packages/mcp/src/tools/layer.ts`, `layer-access.ts`, `layer-review.ts` |
 | 09 CLI | `ifc-lite layer` and `ifc-lite ref` (`packages/cli/src/commands/layer*.ts`, `ref.ts`) |
+| 08 review UI | viewer Layers panel: `apps/viewer/src/components/viewer/layers/` (`LayerReviewSection.tsx` for registry-backed review, `LayerDiffView.tsx`, `LayerProvenanceDetail.tsx`) |
 | 10 registry | `packages/collab-server/src/layer-registry*.ts` |
-| 12 delivery steps 1-2 | opinion retention (`retainOpinions` in `packages/ifcx/src/federated-composition.ts`), charters and resolution (`packages/extensions/src/authority/`) |
+| 12 delivery step 1 (composition half), step 2 | opt-in opinion retention (`retainOpinions` in `packages/ifcx/src/federated-composition.ts`, `findDivergentAttributes` in `opinions.ts`), charters and resolution (`packages/extensions/src/authority/`) |
 
-Not implemented: the `layers.enabled` feature flag, the GitHub Action (09 §9.2), the 12 §12.7 `RefPolicy` charter fields and contested-record BCF topics (12 delivery steps 3-4).
+Not implemented: the `layers.enabled` and `layers.authority` feature flags, the GitHub Action (09 §9.2), the viewer entity-panel opinions list (12 delivery step 1), the 12 §12.7 `RefPolicy` charter fields and contested-record BCF topics (12 delivery steps 3-4).
 
 ## Reading map
 

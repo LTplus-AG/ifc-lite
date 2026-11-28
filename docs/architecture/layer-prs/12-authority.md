@@ -1,6 +1,6 @@
 # 12: Authority and Disagreement
 
-**Status: Draft v0.1, for discussion; delivery steps 1-2 (§12.10) have shipped, steps 3-5 have not. Tracking: [#8203](https://github.com/LTplus-AG/ifc-lite/issues/8203#issuecomment-6446094066).** (Number 11 stays reserved for the upstream-standardization doc that 01 and 02 already cite.)
+**Status: Draft v0.1, for discussion. Of the delivery steps (§12.10), step 2 and the composition half of step 1 have shipped (opt-in `retainOpinions` and `findDivergentAttributes` in `@ifc-lite/ifcx`); the viewer entity-panel opinions list, the `layers.authority` flag and steps 3-5 have not. Tracking: [#8203](https://github.com/LTplus-AG/ifc-lite/issues/8203#issuecomment-6446094066).** (Number 11 stays reserved for the upstream-standardization doc that 01 and 02 already cite.)
 
 ## 12.1 The problem
 

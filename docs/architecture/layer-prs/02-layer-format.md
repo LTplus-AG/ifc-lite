@@ -38,7 +38,7 @@ A tombstone is an opinion at the entity (or component/relation) path:
 
 Composition rule (extends `ifcx/composition.ts`): a tombstone at strength *s* shadows **all** opinions at strengths weaker than *s* for that path, including child paths for entity tombstones. A stronger layer may resurrect by setting `ifclite::deleted: false` (this is how a revert layer undoes a deletion).
 
-Conformance note: tools unaware of `ifclite::deleted` will compose the entity as present. Until deletion overlays are standardized upstream (11 §11.2), exporters offer `--bake` to materialize a stack into a tombstone-free document for foreign tools.
+Conformance note: tools unaware of `ifclite::deleted` will compose the entity as present. Until deletion overlays are standardized upstream (11 §11.2), the CLI offers `ifc-lite layer bake <ref> -o <out.ifcx>` to materialize a stack into a tombstone-free document for foreign tools (`packages/cli/src/commands/layer-history.ts`).
 
 ## 2.4 Canonical serialization and content addressing
 

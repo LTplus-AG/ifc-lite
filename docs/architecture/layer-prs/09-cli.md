@@ -9,8 +9,13 @@ is not a separate command — check evidence is attached with `layer publish --c
 The block below is the spec. Not implemented: `publish --sign`, a selector on
 `merge --resolve` (the shipped flag takes only `ours` or `theirs`), and
 `log --graph` / `log --author`. Shipped but not in the block: `publish --principal`,
-`--kind` and `--strict-scope`; `merge --waive <spec> --reason "<text>"` and
-`--approved-by`; `revert --in <ref>` and `--resolve`.
+`--kind` and `--strict-scope`; `merge --waive <spec> --reason "<text>"`,
+`--approved-by` and `--principal`; `revert --in <ref>` and `--resolve`.
+`layer publish` as shipped takes the delta as a required first argument,
+`ifc-lite layer publish <delta.ifcx> --base <ref|-> --intent "..."`, and
+`layer status` prints the draft's base, intent, scope, creation date and
+whether the base ref has moved (no op count or scope usage).
+(`packages/cli/src/commands/layer-publish.ts`, `layer-merge.ts`)
 
 ```shell
 ifc layer create   --base <ref|stack|file.ifcx> --intent "..." [--scope "<capability>"]
@@ -36,8 +41,10 @@ All commands emit `--json` for scripting; the diff/MergePlan JSON is byte-identi
 
 ## 9.2 GitHub Action (free funnel)
 
+Not implemented: there is no layer GitHub Action in this repo yet.
+
 `ltplus-ag/ifc-layer-action`: on push of `.ifc`/`.ifcx` to a repo, parse, publish as layer, diff against the ref, run IDS checks, comment the PR with the structured diff + check table, upload the composed preview to the embed viewer (`@ifc-lite/embed-sdk`). "Models get PRs like code" with zero registry dependency: this is the headless-CI concept absorbed as a byproduct, and the lowest-friction adoption wedge for developer-adjacent AEC teams.
 
 ## 9.3 Exit codes and budgets
 
-Stable exit codes (0 clean, 2 conflicts, 3 required-check failure, 4 scope violation, 5 unrelated base — the candidate declares a base that matches nothing on the target ref; override with `--allow-unrelated`) so CI gates compose. CLI cold-start budget < 300ms (matches existing CLI discipline).
+Stable exit codes (0 clean, 2 conflicts, 3 required-check failure, 4 scope violation, 5 unrelated base — the candidate declares a base that matches nothing on the target ref; override with `--allow-unrelated`) so CI gates compose. CLI cold-start budget < 300ms (a design target; nothing measures it yet).

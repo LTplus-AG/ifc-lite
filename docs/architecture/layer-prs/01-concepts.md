@@ -20,7 +20,7 @@ The single most important architectural decision. Two kinds of concurrency, two 
 
 **Inside a draft: CRDT.** Keystroke-level concurrency between co-editors of the *same intended change* is resolved by Yjs LWW convergence, exactly as `@ifc-lite/collab` does today. The conflict detector stays advisory. Nothing here changes.
 
-**Between layers: review.** Integration of *different intended changes* is never auto-merged by default. CRDTs guarantee convergence, not correctness: two structurally mergeable edits can be semantically incompatible (wall moved vs door re-hosted in that wall). At integration boundaries, conflicts become explicit records resolved by a reviewer or a policy, and checks gate the result. `mergeBranch(strategy: 'ops')` from `collab/src/branch/branch.ts` is demoted to an explicit opt-in fast-forward for trusted same-team flows.
+**Between layers: review.** Integration of *different intended changes* is never auto-merged by default. CRDTs guarantee convergence, not correctness: two structurally mergeable edits can be semantically incompatible (wall moved vs door re-hosted in that wall). At integration boundaries, conflicts become explicit records resolved by a reviewer or a policy, and checks gate the result. `mergeBranch(strategy: 'ops')` from `collab/src/branch/branch.ts` is demoted to an explicit opt-in for trusted same-team flows. (Not done yet: `'ops'` is still `mergeBranch`'s default strategy; it applies the branch's Yjs update to the parent, so concurrent edits merge under Yjs semantics rather than fast-forwarding.)
 
 Analogy: Git does not push on every keystroke. Your editor buffer converges freely; integration is deliberate.
 

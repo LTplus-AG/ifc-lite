@@ -88,7 +88,7 @@ function wallWithSliver(expressId: number): MeshData {
 const STRIDE = 7;
 function collapses(...meshes: MeshData[]): boolean {
   const merged = mergeGeometry(meshes, [0, 0, 0]);
-  return latticeCollapsesGeometry(merged.vertexData, STRIDE, merged.indices);
+  return latticeCollapsesGeometry(merged.vertexData, STRIDE, merged.indices, meshes);
 }
 
 function fakeDevice(): GPUDevice {
@@ -105,12 +105,29 @@ function batch(meshes: MeshData[], quantized: BatchQuantization) {
 }
 
 describe('lattice collapse guard (#9068)', () => {
+  it('keeps the two faces of a 100 µm plate at distinct depths (#11579)', () => {
+    const plate = box(0, 0, 0, 0.6, 0.6, 0.0001);
+    assert.equal(batch([mesh(1, plate.p, plate.i), wallWithSliver(2)], 'auto').quantized, undefined);
+    const flat = box(0, 0, 0, 0.6, 0.6, 0);
+    assert.ok(batch([mesh(1, flat.p, flat.i)], 'auto').quantized);
+  });
+
+  it('preserves a disconnected split-face plate inside the wall mesh (#11579)', () => {
+    const plate = box(7, 0, 0, 7.6, 0.6, 0.0001);
+    // Face exporters may duplicate every corner, including the side-to-cap seams.
+    const split = { p: plate.i.flatMap(i => plate.p.slice(3 * i, 3 * i + 3)), i: plate.i.map((_, i) => i) };
+    const mixed = join([box(0, 0, 0, 5, 0.2, 3), split]);
+    assert.equal(batch([mesh(1, mixed.p, mixed.i)], 'auto').quantized, undefined);
+  });
+
   it('flags the Ø2 mm rods of the reported footing', () => {
     assert.strictEqual(collapses(footing(1)), true);
   });
 
   it('keeps everyday geometry with a sub-millimetre sliver quantized', () => {
     assert.strictEqual(collapses(wallWithSliver(1)), false);
+    const isolated = join([box(0, 0, 0, 5, 0.2, 3), { p: [7, 0, 0, 8, 0, 0, 8, 0, 0.0001], i: [0, 1, 2] }]);
+    assert.ok(batch([mesh(1, isolated.p, isolated.i)], 'auto').quantized);
   });
 
   it('is scale-relative: the same footing at 10x (Ø20 mm rods) survives the lattice', () => {

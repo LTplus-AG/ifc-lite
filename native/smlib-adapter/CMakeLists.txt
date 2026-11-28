@@ -34,12 +34,17 @@ target_include_directories(smlib_api BEFORE PRIVATE "${SMLIB_SOURCE}/source/SM_A
 target_link_libraries(smlib_api PUBLIC smlib_kernel)
 # Upstream C++ types/includes stay private to the adapter.
 add_library(ifclite_smlib STATIC src/adapter.cpp src/copy.cpp src/affine.cpp src/mesh.cpp
-  src/mesh_diagonals.cpp src/sweep.cpp src/disk.cpp src/polyhedron.cpp src/protocol.cpp)
+  src/mesh_diagonals.cpp src/mesh_canonical.cpp src/sweep.cpp src/disk.cpp src/polyhedron.cpp src/protocol.cpp)
 target_include_directories(ifclite_smlib PUBLIC include)
 target_link_libraries(ifclite_smlib PRIVATE smlib_api)
+# mesh_canonical.cpp's exact predicates (Dekker products, Knuth sums) need
+# every a*b rounded on its own: GCC's default -ffp-contract=fast (and Clang's
+# =on, Emscripten included) may fuse it into an FMA, which drops the error
+# term (#10916 review). Off for the whole adapter, native and Emscripten.
+target_compile_options(ifclite_smlib PRIVATE $<$<COMPILE_LANG_AND_ID:CXX,GNU,Clang,AppleClang>:-ffp-contract=off>)
 
 add_executable(ifclite_smlib_tests tests/adapter_tests.cpp tests/mesh_tests.cpp
-  tests/mesh_diagonals_tests.cpp tests/empty_tests.cpp tests/affine_tests.cpp
+  tests/mesh_diagonals_tests.cpp tests/mesh_canonical_tests.cpp tests/empty_tests.cpp tests/affine_tests.cpp
   tests/context_metadata_tests.cpp tests/c_header.c)
 target_compile_features(ifclite_smlib_tests PRIVATE c_std_11 cxx_std_17)
 target_link_libraries(ifclite_smlib_tests PRIVATE ifclite_smlib smlib_api)

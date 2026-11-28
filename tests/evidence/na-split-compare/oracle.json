@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "why": "Keep the split comparison loadable while letting m11-n defects through and dropping the verdict check: the duplicate-triangle, flipped-interior and verdict-mismatch tests must go red.",
+  "key": "scripts/lib/native-adapter-split-compare.mjs",
+  "mutation": "tests/evidence/na-split-compare/behaviour.oracle.patch",
+  "test": "scripts/native-adapter-split.test.mjs"
+}

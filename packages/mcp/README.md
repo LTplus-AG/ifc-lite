@@ -82,7 +82,7 @@ MCP Apps hosts can open interactive IFC result surfaces from the model-serving t
 The tools include a text summary and an A2UI v1.0 payload rendered by
 `ui://ifc-lite/a2ui-surface`. Connect the browser viewer through `viewer_open` to
 use row selection and the other viewer controls. In `--bridge` mode,
-`viewer_show_ui` delivers validated messages or a builder spec to a compatible
+`tab_show_ui` delivers validated messages or a builder spec to a compatible
 paired main viewer tab. See the [A2UI architecture guide](../../docs/architecture/a2ui.md#mcp-result-surfaces)
 for a Claude Desktop walkthrough.
 
@@ -175,7 +175,7 @@ The same `npx` command works as a stdio server in any MCP-aware client.
 | BCF | `bcf_topic_list`, `bcf_topic_create`, `bcf_topic_update`, `bcf_topic_close`, `bcf_viewpoint_create`, `bcf_export` |
 | bSDD | `bsdd_search`, `bsdd_class`, `bsdd_property_sets`, `bsdd_match` |
 | Diff | `model_diff` (`by_content` for content-keyed matching), `quantity_diff` |
-| Export | `export_ifc`, `export_csv`, `export_json`, `export_glb`, `export_obj`, `export_ifcx`, `export_3dm` |
+| Export | `export_ifc`, `export_csv`, `export_json`, `export_glb`, `export_obj`, `export_ifcx`, `export_3dm`, `export_gltf`, `export_jsonld`, `export_cityjson`, `export_cityjsonseq`, `export_hbjson`, `export_dfjson` |
 | Scripting | `script_run` (read-only), `script_run_mutate` (hidden under `--read-only`): JavaScript against the `bim` SDK in the QuickJS sandbox, with time and memory limits. Both tools require `read`. `script_run_mutate` also requires `mutate`, and its `bim.export` and `bim.create` namespaces require `export`. Script code runs on the server's event loop, so other requests wait while it runs |
 | Model transforms | `model_merge`, `model_convert`, `model_extract`, `model_anonymize`, `model_simplify`, `model_lod`: write to `file_path` and leave the loaded model alone. An existing file there is replaced (a loaded model's source never is). `model_merge` and `model_anonymize` refuse a model with unsaved edits |
 | Viewer | `viewer_ask`, `viewer_open`, `viewer_close`, `viewer_status`, `viewer_select`, `viewer_colorize`, `viewer_isolate`, `viewer_hide`, `viewer_show`, `viewer_reset`, `viewer_fly_to`, `viewer_set_section`, `viewer_clear_section`, `viewer_color_by_storey`, `viewer_color_by_property`, `viewer_get_selection`, `viewer_wait_for_selection`, `viewer_describe_selection` |
@@ -319,17 +319,27 @@ error.
 ## Bridge to a browser tab (`--bridge`)
 
 ```bash
-npx @ifc-lite/mcp --bridge              # stdio MCP, forwarded to one paired tab
-npx @ifc-lite/mcp --bridge --read-only  # tools the tab marks as mutating stay off
+npx @ifc-lite/mcp --bridge               # headless tools plus the paired tab's
+npx @ifc-lite/mcp ./model.ifc --bridge   # a local model and the tab, one server
+npx @ifc-lite/mcp --bridge --read-only   # tools the tab marks as mutating stay off
 ```
 
-`--bridge` lets a local agent (Claude Desktop, Claude Code, …) work on the
+`--bridge` lets a local agent (Claude Desktop, Claude Code, …) also work on the
 model open in an ifc-lite browser tab: a model loaded from a cloud source, or
-one with unsaved edits. The bridge speaks MCP over stdio and forwards every tool
-call (other than `bridge_status`) over a WebSocket on `127.0.0.1` to the paired tab, which runs it against
-its model. The bridge loads no model of its own, so it takes no file arguments
-and refuses `--transport http`. It stops, freeing its port, when stdin ends,
-closes or errors, and on SIGINT or SIGTERM.
+one with unsaved edits. It adds to the normal stdio server rather than
+replacing it: every headless tool, resource and prompt stays, on models loaded
+in this process. Once a tab pairs, its tools are added as `tab_<name>` (the
+tab's `model_audit` is `tab_model_audit`, next to this server's own
+`model_audit`) and removed when it disconnects, each time with
+`notifications/tools/list_changed`. `tab_*` calls go over a WebSocket on
+`127.0.0.1` to the paired tab, which runs them against its model. `viewer_*`
+tools drive this process's local viewer page, with two compatibility exceptions:
+the unlisted aliases `viewer_show_ui` and `viewer_ui_events` target the paired tab
+as `tab_show_ui` and `tab_ui_events` until 0.34. `--transport http` is refused. With the default port, nothing is bound
+until the agent first calls `bridge_status`, so a session that never pairs
+holds none; an explicit `--bridge-port` is bound at start. The bridge
+stops, freeing its port, when stdin ends, closes or errors, and on SIGINT or
+SIGTERM.
 
 **Status:** this package ships the local side. The viewer pairs from the
 pairing link, or from *Connect local agent* in its Sources panel and command
@@ -337,7 +347,7 @@ palette. Reads, selection inspection and palette discovery are available initial
 
 | Flag | Meaning |
 |------|---------|
-| `--bridge-port <n>` | Port on 127.0.0.1. Default `21517`; `0` picks a free one. The pairing link carries it. |
+| `--bridge-port <n>` | Port on 127.0.0.1. Default `21517`; if that is taken (a second session), the next nine ports and then any free one are tried. An explicit port does not fall back. `0` picks a free one. The pairing link carries the port. |
 | `--bridge-viewer-url <url>` | Base of the pairing link. Default `https://ifclite.com`. Its origin REPLACES the default in the allowlist; add `--allow-origin https://ifclite.com` to keep both. |
 | `--allow-origin <origin>` | Another browser origin that may connect (repeatable), e.g. a dev server. |
 | `--read-only` | A ceiling: tools the tab labels as mutating stay hidden and refused even if the tab allows changes. The tab must enforce the rest. |
@@ -384,7 +394,8 @@ palette. Reads, selection inspection and palette discovery are available initial
   replaced) is ignored from then on, frees its unpaired slot at once, and is
   terminated 250 ms after its close frame if the peer does not close.
 - **Pairing link.** `bridge_status` (always listed, because Claude Desktop
-  hides a server's stderr) and stderr both give the code and a link such as
+  hides a server's stderr) binds the port on its first call and gives the
+  code and a link such as
   `https://ifclite.com/#mcp-bridge=1&port=21517&code=ABCDE-FGHJK-MNPQR-STVWX`.
   Port and code sit in the URL fragment, which the browser does not send to the
   web server.
@@ -424,13 +435,18 @@ palette. Reads, selection inspection and palette discovery are available initial
   well-formed for the keywords the bridge validates (`properties` of schemas,
   `required` as strings, numeric bounds as numbers, ...), `type` must name a
   type the bridge enforces (`string`, `number`, `integer`, `boolean`, `array`,
-  `object`, `null`), and `additionalProperties` must be `true` or `false` (a
-  schema there would not be enforced). Other JSON Schema keywords (`pattern`,
-  `format`, `oneOf`, `const`, …) are published to the agent but not checked by
-  the bridge; the tab must validate them. Non-finite numbers (`1e999`) are
-  refused anywhere in a frame. An oversized or
-  malformed hello is refused; an update is rejected with a non-fatal `error`;
-  a result fails its call with a message naming the limit. The size and
+  `object`, `null`), `additionalProperties` must be `true` or `false`,
+  `anyOf` must be an array of schemas and `oneOf` a non-empty one, `pattern`
+  must compile, and `$ref` is refused (a tab schema has no `$defs` to resolve
+  against). The bridge enforces `type`, `properties`, `required`, `items`,
+  `enum`, `const`, `uniqueItems`, numeric and length bounds, `anyOf` and
+  `additionalProperties: false`. `pattern` and `oneOf` are published but not
+  enforced on the server (a tab regex on agent input could stall it, and
+  `oneOf` branches may differ only by `pattern`), and neither are other
+  keywords (`format`, `exclusiveMaximum`, `multipleOf`, `allOf`, …); the tab
+  must validate them. Non-finite numbers (`1e999`) are refused anywhere in a
+  frame. An oversized or malformed hello is refused; an update is rejected
+  with a non-fatal `error`; a result fails its call with a message naming the limit. The size and
   depth walk is iterative and counts before it copies, and the schema-shape
   check recurses only after the 32-level bound has passed, so a value nested
   30,000 deep or an 8-million-element array is refused cheaply rather than
@@ -463,8 +479,9 @@ palette. Reads, selection inspection and palette discovery are available initial
   unknown id or an already answered call is ignored. Calls time out after
   120 s (`TIMEOUT`, and the tab gets a `cancel`); closing the socket fails all
   pending calls.
-- **No tab.** Only `bridge_status` is listed, and any other call fails at once
-  with `VIEWER_NOT_CONNECTED`. `notifications/tools/list_changed` is sent when
+- **No tab.** No `tab_*` tool is listed (except `tab_ui_events` while it
+  still holds clicks from a tab that went away), and a call to one fails at
+  once with `VIEWER_NOT_CONNECTED`. `notifications/tools/list_changed` is sent when
   the listed tools can change: on connect, disconnect, replacement, and an
   `update` that actually changes the effective permission or the tool list. At
   most one is sent per 200 ms; no-op updates send none.
@@ -492,6 +509,17 @@ palette. Reads, selection inspection and palette discovery are available initial
   is busy …" (once per 10 s window), and `bridge_status` reports
   `pairingPressure` (`failedAttempts`, `refusedBusy`) and tells the user to
   stop that program or page, or restart the bridge on another `--bridge-port`.
+
+- **UI events match what the agent showed.** A `ui-event` is accepted only
+  for a surface the agent sent to this tab with `tab_show_ui` and an event
+  name that surface raises (or `ask`); anything else is dropped and logged.
+  Its prompt counts as the user's words only when it is follow-up text the
+  agent wrote in that surface (a follow-up's `prompt`, an event's
+  `userMessage`, or an `ask` event's `context.prompt`); labels and data
+  values never count. Any
+  other prompt, typed or computed, still arrives, marked
+  `promptVerified: false`, and with `--channel` it is quoted as data rather
+  than passed on as the user's message.
 
 ### Wire protocol
 

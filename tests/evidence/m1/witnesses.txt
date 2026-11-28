@@ -1,0 +1,2 @@
+# SPDX-License-Identifier: MPL-2.0
+m1_native_unit_rectangle_reference

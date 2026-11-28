@@ -26,6 +26,7 @@
  */
 
 import { Suspense, useEffect, type ReactNode } from 'react';
+import { KEYBOARD_PRIORITY, registerKeyboardCommand } from '@/lib/commands/dispatcher';
 import { lazyToolComponent } from '@/lib/viewport-ui/lazy-tool-component';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
@@ -43,6 +44,13 @@ const { Component: RepositionRuntimeHost, ready: loadRepositionTool } = lazyTool
 
 export { loadRepositionTool };
 
+function RepositionLoading() {
+  useEffect(() => registerKeyboardCommand('reposition.cancel', () => {
+    useViewerStore.getState().closeReposition();
+  }, { allowInTextEntry: true, ignoreModifiers: true, priority: KEYBOARD_PRIORITY.activeOverlay }), []);
+  return null;
+}
+
 export function ToolOverlays(): ReactNode {
   const activeTool = useViewerStore((s) => s.activeTool);
   const repositionOpen = useViewerStore((s) => s.repositionOpen);
@@ -54,7 +62,7 @@ export function ToolOverlays(): ReactNode {
   useEffect(() => whenIdle(preloadSectionTool), []);
   if (repositionOpen && activeTool === 'select') return (
     <>
-      <Suspense fallback={null}><RepositionRuntimeHost /></Suspense>
+      <Suspense fallback={<RepositionLoading />}><RepositionRuntimeHost /></Suspense>
       <SnapCornerMarkers />
     </>
   );

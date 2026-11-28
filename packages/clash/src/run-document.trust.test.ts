@@ -187,6 +187,16 @@ describe('type exclusions and rule forms across runs', () => {
     expect(compareClashRunDocuments(previous, blind).notComparable.map((e) => e.reasons)).toEqual([['exclusions-not-recorded']]);
   });
 
+  it('allows one coverage entry per rule, in the builder and the validator', () => {
+    const twice = result([], ['D1'], ['W1']);
+    twice.ruleCoverage = [...twice.ruleCoverage!, { ...twice.ruleCoverage![0], matchedKeysA: [] }];
+    expect(() => build({ result: twice })).toThrow(/more than one coverage entry/);
+    const doc = roundTrip(build({ result: result([], ['D1'], ['W1']) }));
+    doc.manifest.coverage.push({ ...doc.manifest.coverage[0] });
+    const res = validateClashRunDocument(doc);
+    expect(res.ok ? [] : res.errors).toEqual(['$.manifest.coverage[1].rule: duplicate coverage entry for "r"']);
+  });
+
   it('records explicit membership from the rules as given, and refuses one-sided coverage for a two-sided rule', () => {
     const given: ClashRule = { ...RULE, membersA: ['m-mep:2'] };
     const doc = build({ result: result([], ['D1'], ['W1']), rules: [given], ruleMemberships: { r: 'filter: ducts' } });

@@ -238,7 +238,10 @@ function consistencyErrors(doc: ClashRunDocument): string[] {
     errors.push('$.manifest.rules.revision: does not match the listed rules and revisions');
   }
   const twoSided = new Set(manifest.rules.items.filter((rule) => rule.b !== null || rule.explicitMembers.b).map((rule) => rule.id));
+  const covered = new Set<string>();
   manifest.coverage.forEach((entry, i) => {
+    if (covered.has(entry.rule)) errors.push(`$.manifest.coverage[${i}].rule: duplicate coverage entry for ${JSON.stringify(entry.rule)}`);
+    covered.add(entry.rule);
     if (!revisions.has(entry.rule)) errors.push(`$.manifest.coverage[${i}].rule: not in manifest.rules`);
     // A two-sided rule with no side-B record would read as a self-clash and clear pairs never tested.
     else if (entry.examined !== null && entry.examined.b === null && twoSided.has(entry.rule)) {

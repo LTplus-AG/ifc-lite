@@ -20,11 +20,16 @@ import { referencedModelTagIds } from './model-tag-inputs';
 import type { ClashExclusionRule } from './exclusions';
 import type { ClashRunHostContext } from './host-run-publish';
 
-const buildInfo = () => ({
-  version: typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : null,
-  build: typeof __BUILD_SHA__ === 'string' ? __BUILD_SHA__ : null,
-  backend: 'ts',
-});
+/**
+ * `engine.version` names the `@ifc-lite/clash` release, which the viewer does
+ * not know at runtime, so it stays null. The viewer build that ran it (whose
+ * lockfile pins the bundled engine) goes in `engine.build`.
+ */
+const buildInfo = () => {
+  const app = typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : null;
+  const sha = typeof __BUILD_SHA__ === 'string' ? __BUILD_SHA__ : null;
+  return { version: null, build: app || sha ? `ifc-lite-viewer@${app ?? 'unknown'}+${sha ?? 'unknown'}` : null, backend: 'ts' };
+};
 
 /** Fields of a preset that are presentation or bookkeeping, not membership. */
 const NON_MEMBERSHIP_FIELDS = new Set(['id', 'name', 'description', 'severity', 'enabled', 'builtin', 'selectorA', 'selectorB']);

@@ -280,6 +280,13 @@ export function buildClashRunDocument(input: BuildClashRunDocumentInput): ClashR
   });
   const ruleSetRevision = clashRuleSetRevision(rules);
 
+  // One coverage entry per rule (the engine emits exactly one): a second would leave a comparison
+  // to pick between two different records of what the rule examined.
+  const coveredRules = new Set<string>();
+  for (const entry of result.ruleCoverage ?? []) {
+    if (coveredRules.has(entry.rule)) throw new Error(`clash run has more than one coverage entry for rule ${entry.rule}`);
+    coveredRules.add(entry.rule);
+  }
   const coverage: ClashRunCoverage[] = (result.ruleCoverage ?? []).map((entry) => {
     let examined: ClashRunCoverage['examined'] = null;
     // A two-sided rule (matchedB not null) needs its side-B keys too; without them it is unknown, not a self-clash.

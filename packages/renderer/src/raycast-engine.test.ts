@@ -19,10 +19,12 @@
  * `Raycaster` and `BVH` are exercised unmodified.
  */
 
+import { CornerGrid } from './snap-corner-grid.js';
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 
 import { RaycastEngine } from './raycast-engine.js';
+import { ManualIdleHost } from './snap-idle-test-host.js';
 import { BVH } from './bvh.js';
 import { Camera } from './camera.js';
 import { Scene, type TexturedMesh } from './scene.js';
@@ -392,6 +394,206 @@ describe('RaycastEngine.raycastScene', () => {
     assert.deepEqual({ expressId: hit.expressId, modelIndex: hit.modelIndex,
       geometryItemId: hit.geometryItemId, sourceTriangleIndex: hit.sourceTriangleIndex },
     { expressId: 1_025, modelIndex: 7, geometryItemId: 1_011, sourceTriangleIndex: 0 });
+    scene.setInstancedVisible(false);
+    assert.equal(engine.raycastScene(400, 300), null, 'Types view excludes the instance from direct ray picks');
+    assert.deepEqual([...scene.getInstancedEntityIds()], [1_025], 'the occurrence is still owned');
+    scene.setInstancedVisible(true);
+    assert.equal(engine.raycastScene(400, 300)?.intersection.expressId, 1_025);
+  });
+
+  it('#11753 selects each of two welded feature corners 40 micrometres apart at zoom', () => {
+    const scene = new Scene(), mesh = makeQuad({ expressId: 72 });
+    // One piece with two triangles. Each apex is shared by two feature edges.
+    mesh.positions = Float32Array.of(-0.002,-0.002,0, 0,-0.002,0, 0,0,0,
+      0.00004,0,0, 0.00004,-0.002,0, 0.002,-0.002,0);
+    mesh.indices = Uint32Array.of(0,1,2,3,4,5);
+    addRegularMesh(scene, mesh);
+    const camera = orthoCameraLookingDownZ([0,0,0], 1, 0.01);
+    const engine = engineFor(scene, camera, fakeCanvas(4000, 4000)), idle = new ManualIdleHost();
+    for (const x of [0, mesh.positions[9]]) {
+      const at = camera.projectToScreen({ x, y: 0, z: 0 }, 4000, 4000)!;
+      const pick = () => engine.raycastSceneMagnetic(at.x, at.y - 2, { edge: null, meshExpressId: null, lockStrength: 0 },
+        { snapOptions: { snapToVertices: true, snapToEdges: false,
+          screenCornerSnap: { cornerRadiusPx: 4, settleMs: 0, idleHost: idle } } });
+      pick(); idle.drain();
+      const hit = pick();
+      assert.equal(hit.intersection, null);
+      assert.deepEqual(hit.snapTarget?.position, { x, y: 0, z: 0 });
+    }
+  });
+
+  for (const kind of ['edge', 'vertex'] as const) {
+    it(`#11753 preserves the valid ${kind} radius when the other radius is NaN`, () => {
+      const scene = new Scene();
+      addRegularMesh(scene, makeQuad({ expressId: 73 }));
+      const camera = orthoCameraLookingDownZ([0,0,0], 50);
+      const engine = engineFor(scene, camera), idle = new ManualIdleHost();
+      const at = camera.projectToScreen({ x: kind === 'edge' ? 0 : 5, y: 5, z: 0 }, 800, 600)!;
+      const pick = () => engine.raycastSceneMagnetic(at.x, at.y - 3, { edge: null, meshExpressId: null, lockStrength: 0 },
+        { snapOptions: { snapToVertices: true, snapToEdges: true, screenCornerSnap: {
+          cornerRadiusPx: kind === 'vertex' ? 10 : NaN, edgeRadiusPx: kind === 'edge' ? 6 : NaN,
+          settleMs: 0, idleHost: idle } } });
+      pick(); idle.drain();
+      const hit = pick();
+      assert.equal(hit.intersection, null);
+      assert.equal(hit.snapTarget?.type, kind);
+      assert.equal(hit.snapTarget?.expressId, 73);
+    });
+  }
+
+  it('#11753 finds an off-ray transformed corner of a GPU-only occurrence during idle slices', () => {
+    const scene = new Scene();
+    const shard = instancedTriangle(1025);
+    // Rotate about IFC Z, scale uniformly, then translate. The apex lands at viewer (3,12,0).
+    shard.instances[0].transform.set([0, 2, 0, 0, -2, 0, 0, 0, 0, 0, 2, 0]);
+    shard.instances[0].transform[3] = 3;
+    shard.instances[0].transform[11] = 2;
+    scene.addInstancedShard(instancedDevice(), shard, 7);
+    assert.equal(scene.getMeshDataPieces(1025), undefined);
+    const camera = orthoCameraLookingDownZ([0,0,0], 50);
+    const at = camera.projectToScreen({ x: 3, y: 12, z: 0 }, 800, 600)!;
+    const engine = engineFor(scene, camera), idle = new ManualIdleHost();
+    const run = (filter: PickOptions = {}, eligibleModelIndices?: Set<number>) => engine.raycastSceneMagnetic(
+      at.x, at.y - 5, { edge: null, meshExpressId: null, lockStrength: 0 },
+      { ...filter, snapOptions: { snapToVertices: true, screenCornerSnap: { idleHost: idle, settleMs: 0, eligibleModelIndices } } });
+    const settle = (filter: PickOptions = {}, eligible?: Set<number>) => {
+      run(filter, eligible); idle.drain(); return run(filter, eligible);
+    };
+    const first = run();
+    assert.equal(first.intersection, null);
+    assert.equal(first.snapTarget, null, 'no occurrence build on the pointer path');
+    assert.ok(idle.tick(0));
+    assert.equal(run().snapTarget, null, 'one exhausted idle slice does not finish the occurrence');
+    assert.equal(idle.pending, 1);
+    const target = settle().snapTarget;
+    assert.equal(target?.expressId, 1025);
+    assert.ok(target);
+    assert.equal(target.type, 'vertex');
+    assert.deepEqual(target.position, { x: 3, y: 12, z: 0 });
+    scene.setInstancedVisible(true);
+    assert.equal(run().snapTarget?.expressId, 1025, 'an unchanged pass keeps the warm index');
+    scene.setInstancedVisible(false);
+    assert.equal(scene.getInstancedTemplates().length, 0, 'Types view hides the draw pass');
+    assert.equal(run().snapTarget, null, 'the first hidden pick discards the visible index');
+    assert.equal(settle().snapTarget, null, 'a settled Types view excludes the occurrence');
+    scene.setInstancedVisible(true);
+    assert.deepEqual(settle().snapTarget?.position, target.position, 'Model view restores the transformed corner');
+    assert.equal(settle({ hiddenIds: new Set([1025]) }).snapTarget, null);
+    assert.equal(settle({ isolatedIds: new Set([99]) }).snapTarget, null);
+    assert.equal(settle({}, new Set([8])).snapTarget, null);
+    assert.equal(settle({ isolatedIds: new Set([1025]) }, new Set([7])).snapTarget?.expressId, 1025);
+  });
+
+  for (const field of ['hiddenIds', 'isolatedIds'] as const) {
+    it(`#11753 keeps the run-start ${field} during sliced occurrence discovery`, () => {
+      const scene = new Scene();
+      const shard = instancedTriangle(1025);
+      const other = { ...shard.instances[0], entityId: 1026, transform: shard.instances[0].transform.slice() };
+      other.transform[3] = 15;
+      shard.instances.push(other);
+      scene.addInstancedShard(instancedDevice(), shard, 7);
+      const camera = orthoCameraLookingDownZ([0, 0, 0], 50);
+      const initialMember = field === 'isolatedIds' ? 1025 : 1026;
+      const original = new Set([initialMember]);
+      const current = new Set(original);
+      function picker() {
+        const engine = engineFor(scene, camera), idle = new ManualIdleHost();
+        const pick = (x: number, ids: Set<number>) => {
+          const at = camera.projectToScreen({ x, y: 5, z: 0 }, 800, 600)!;
+          return engine.raycastSceneMagnetic(at.x, at.y - 5,
+            { edge: null, meshExpressId: null, lockStrength: 0 },
+            { [field]: ids, snapOptions: { screenCornerSnap: { idleHost: idle, settleMs: 0 } } }).snapTarget?.expressId;
+        };
+        return { idle, pick };
+      }
+      const fresh = picker();
+      fresh.pick(0, current);
+      fresh.idle.drain();
+      const expected = [fresh.pick(0, current), fresh.pick(15, current)];
+      assert.deepEqual(expected, [1025, undefined]);
+      const sliced = picker();
+      sliced.pick(0, original);
+      assert.ok(sliced.idle.tick(0));
+      sliced.pick(0, current);
+      original.clear();
+      original.add(initialMember === 1025 ? 1026 : 1025);
+      sliced.idle.drain();
+      original.clear();
+      original.add(initialMember);
+      assert.deepEqual([sliced.pick(0, current), sliced.pick(15, current)], expected);
+    });
+  }
+
+  it('#11753 builds an on-screen GPU corner before offscreen flat geometry', t => {
+    const scene = new Scene();
+    for (let i = 0; i < 24; i++) {
+      addRegularMesh(scene, makeQuad({ expressId: i + 1, translate: [200 + i * 20, 0, 0] }));
+    }
+    const shard = instancedTriangle(1025);
+    const offscreen = { ...shard.instances[0], entityId: 1026, transform: shard.instances[0].transform.slice() };
+    offscreen.transform[3] = 500;
+    shard.instances.unshift(offscreen);
+    scene.addInstancedShard(instancedDevice(), shard, 7);
+    assert.equal(scene.getMeshDataPieces(1025), undefined);
+    const camera = orthoCameraLookingDownZ([0, 0, 0], 50);
+    const engine = engineFor(scene, camera), idle = new ManualIdleHost();
+    const project = t.mock.method(CornerGrid.prototype, 'addPieceStep');
+    const builds = t.mock.method(engine.getSnapDetector(), 'startGeometryCache');
+    const at = camera.projectToScreen({ x: 0, y: 5, z: 0 }, 800, 600)!;
+    const pick = () => engine.raycastSceneMagnetic(at.x, at.y - 5,
+      { edge: null, meshExpressId: null, lockStrength: 0 },
+      { snapOptions: { screenCornerSnap: { idleHost: idle, settleMs: 0 } } });
+    let result = pick();
+    assert.equal(result.snapTarget, null);
+    let slices = 0;
+    while (!result.snapTarget && slices < 2000 && idle.tick(0)) {
+      slices++;
+      result = pick();
+    }
+    t.diagnostic(`first GPU corner after ${slices} exhausted slices and ${builds.mock.callCount()} flat builds`);
+    assert.equal(result.intersection, null);
+    assert.equal(result.snapTarget?.expressId, 1025);
+    assert.deepEqual(result.snapTarget?.position, { x: 0, y: 5, z: 0 });
+    assert.equal(builds.mock.callCount(), 0);
+    assert.equal(project.mock.calls[0].arguments[0].expressId, 1025);
+    assert.ok(slices > 1 && slices < 2 * 24 + 32);
+    idle.drain();
+    assert.equal(builds.mock.callCount(), 24);
+  });
+
+  it('#11753 spreads large occurrence tolerance discovery over exhausted idle slices', () => {
+    const scene = new Scene(), shard = instancedTriangle(1025);
+    const positions = new Float32Array(120_000);
+    positions.set(shard.templates[0].positions);
+    shard.templates[0].positions = positions;
+    scene.addInstancedShard(instancedDevice(), shard, 7);
+    const occurrence = scene.snapOccurrences().next().value;
+    assert.ok(occurrence);
+    const template = occurrence.template;
+    let reads = 0;
+    const source = template.positions;
+    template.positions = new Proxy(source, { get(target, property) {
+      if (typeof property === 'string' && /^\d+$/.test(property)) reads++;
+      return Reflect.get(target, property, target);
+    } });
+    const camera = orthoCameraLookingDownZ([0, 0, 0], 50);
+    const engine = engineFor(scene, camera), idle = new ManualIdleHost();
+    const at = camera.projectToScreen({ x: 0, y: 5, z: 0 }, 800, 600)!;
+    const pick = () => engine.raycastSceneMagnetic(at.x, at.y - 5,
+      { edge: null, meshExpressId: null, lockStrength: 0 },
+      { snapOptions: { screenCornerSnap: { idleHost: idle, settleMs: 0 } } });
+    assert.equal(pick().snapTarget, null);
+    assert.equal(reads, 0);
+    let readSlices = 0;
+    while (reads < source.length) {
+      const before = reads;
+      assert.ok(idle.tick(0));
+      if (reads > before) readSlices++;
+      assert.ok(reads - before <= 8192, `one exhausted slice read ${reads - before} coordinates`);
+    }
+    assert.ok(readSlices > 1);
+    idle.drain();
+    assert.deepEqual(pick().snapTarget?.position, { x: 0, y: 5, z: 0 });
   });
 
   it('does not expose a canonical face ordinal when an instance has no representation item (#4555)', () => {
@@ -908,37 +1110,143 @@ describe('RaycastEngine flat index (#9504)', () => {
   // #9512 review: cold eviction keeps the pick revision (#8998) and the draw
   // lists, so nothing the index checks moves; it must still let go of the
   // evicted typed arrays, which is the whole point of the host budget.
-  it('releases pieces the host budget evicts', () => {
-    const scene = new Scene();
-    const device = {
-      limits: { maxBufferSize: 1 << 28, maxStorageBufferBindingSize: 1 << 28 },
-      createBuffer: ({ size }: GPUBufferDescriptor) => ({ size, destroy() {} }),
-      createBindGroup: () => ({}),
-      queue: { writeBuffer() {} },
-    } as unknown as GPUDevice;
-    const pipeline = { getUniformBufferSize: () => 256, getBindGroupLayout: () => ({}) } as unknown as RenderPipeline;
-    const quad = makeQuad({ expressId: 7 });
-    const quads = [quad, ...Array.from({ length: 120 }, (_, i) => makeQuad({ expressId: 100 + i, translate: [1_000 + i * 20, 0, 0] }))];
-    scene.appendToBatches(quads, device, pipeline);
-    const engine = engineFor(scene, orthoCameraLookingDownZ([0, 0, 0], 50));
-    assert.equal(engine.raycastScene(400, 300)?.intersection.expressId, 7);
-    assert.equal(engine.isCacheWarm(), true);
-    const revision = scene.getPickGeometryRevision();
+  for (const release of ['host budget eviction', 'ephemeral streaming completion']) {
+    it(`#11753 releases pieces and cancels corner work on ${release}`, () => {
+      const scene = new Scene();
+      const device = {
+        limits: { maxBufferSize: 1 << 28, maxStorageBufferBindingSize: 1 << 28 },
+        createBuffer: ({ size }: GPUBufferDescriptor) => ({ size, getMappedRange: () => new ArrayBuffer(size), unmap() {}, destroy() {} }),
+        createBindGroup: () => ({}),
+        queue: { writeBuffer() {} },
+      } as unknown as GPUDevice;
+      const pipeline = { getUniformBufferSize: () => 256, getBindGroupLayout: () => ({}) } as unknown as RenderPipeline;
+      const quad = makeQuad({ expressId: 7 });
+      const quads = [quad, ...Array.from({ length: 120 }, (_, i) => makeQuad({ expressId: 100 + i, translate: [1_000 + i * 20, 0, 0] }))];
+      const ephemeral = release === 'ephemeral streaming completion';
+      scene.appendToBatches(quads, device, pipeline);
+      if (ephemeral) {
+        scene.setEphemeralStreamingMode(true);
+        scene.appendToBatches([makeQuad({ expressId: 300, translate: [3000, 0, 0] })], device, pipeline, true);
+      }
+      const engine = engineFor(scene, orthoCameraLookingDownZ([0, 0, 0], 50));
+      assert.equal(engine.raycastScene(400, 300)?.intersection.expressId, 7);
+      assert.equal(engine.isCacheWarm(), true);
+      const idle = new ManualIdleHost();
+      const cornerIndex = engine['screenCorners'];
+      const cornerPick = (hiddenIds?: Set<number>, x = 478, y = 222) => engine.raycastSceneMagnetic(x, y, {
+        edge: null, meshExpressId: null, lockStrength: 0,
+      }, { hiddenIds, snapOptions: { snapToVertices: true, screenCornerSnap: { settleMs: 0, idleHost: idle } } });
+      cornerPick();
+      idle.drain();
+      assert.equal(cornerPick().snapTarget?.expressId, 7, 'the warm grid picks the corner over background');
+      assert.ok(cornerIndex.stats()?.complete);
+      const weldCache = engine.getSnapDetector()['geometryCache'];
+      assert.ok(weldCache.size >= quads.length);
+      // Start another grid over the same resident MeshData. Evict before its first idle callback.
+      cornerPick(new Set([100]));
+      assert.ok(idle.pending > 0);
+      const revision = scene.getPickGeometryRevision();
 
-    scene.setColdGeometryProvider({ loadMeshesInBounds: async () => [quad] });
-    scene.setGpuResidencyBudget(1); scene.setHostResidencyBudget(1);
-    for (let i = 0; i < 1000; i++) scene.beginResidencyFrame();
-    for (let i = 0; i < 240; i++) scene.enforceGpuBudget();
-    assert.equal(scene.getMeshDataPieces(7), undefined, 'setup: the bucket went cold');
-    assert.equal(scene.getPickGeometryRevision(), revision, 'setup: eviction keeps the pick revision');
+      if (ephemeral) {
+        scene.finishEphemeralStreaming();
+        assert.equal(scene.isGeometryDataReleased(), true);
+      } else {
+        scene.setColdGeometryProvider({ loadMeshesInBounds: async () => [quad] });
+        scene.setGpuResidencyBudget(1); scene.setHostResidencyBudget(1);
+        for (let i = 0; i < 1000; i++) scene.beginResidencyFrame();
+        for (let i = 0; i < 240; i++) scene.enforceGpuBudget();
+        assert.equal(scene.getMeshDataPieces(7), undefined, 'setup: the bucket went cold');
+        assert.equal(scene.getPickGeometryRevision(), revision, 'setup: eviction keeps the pick revision');
+      }
 
-    assertReleased(engine);
-    assert.equal(engine.isCacheWarm(), false, 'the index still holds the evicted pieces');
-    assert.equal(engine.raycastScene(400, 300), null, 'evicted geometry is not pickable, as before #9504');
-  });
+      // #11753: no pointer input or idle tick between eviction and these assertions.
+      assert.deepEqual({ retainedGrid: cornerIndex.stats() !== null, pendingWork: idle.pending },
+        { retainedGrid: false, pendingWork: 0 });
+      assert.equal(weldCache.size, 0);
+      assert.equal(idle.drain(), 0);
+      assertReleased(engine);
+      assert.equal(engine.isCacheWarm(), false, 'the index still holds the evicted pieces');
+      assert.equal(engine.raycastScene(400, 300), null, 'evicted geometry is not pickable, as before #9504');
+      if (ephemeral) return; // This scene has finished streaming.
+      const reloaded = makeQuad({ expressId: 7 });
+      reloaded.positions[3] = 6; // Same cache-key samples, different lower-right vertex.
+      addRegularQuad(scene, reloaded);
+      assert.equal(engine.raycastScene(400, 300)?.intersection.expressId, 7);
+      cornerPick(undefined, 523, 378);
+      idle.drain();
+      const snap = cornerPick(undefined, 523, 378).snapTarget;
+      assert.equal(snap?.expressId, 7);
+      assert.deepEqual(snap?.position, { x: 6, y: -5, z: 0 });
+      assert.equal(weldCache.size, 1);
+    });
+  }
 });
 
 describe('RaycastEngine readback meshes (#10264)', () => {
+  it('#11753 snaps the prepared readback corner only within the covered ray and view', () => {
+    const scene = new Scene(), quad = makeQuad({ expressId: 17, modelIndex: 3 });
+    addRegularQuad(scene, quad);
+    const camera = orthoCameraLookingDownZ([0, 0, 0], 50);
+    const engine = engineFor(scene, camera), idle = new ManualIdleHost();
+    scene.releaseGeometryData();
+    const corner = { x: 5, y: 5, z: 0 };
+    const at = camera.projectToScreen(corner, 800, 600)!;
+    // Five pixels inward on each axis: the ray hits the face, about seven pixels from its vertex.
+    const cursor = { x: at.x - 5, y: at.y + 5 };
+    const run = (x = cursor.x, hiddenIds?: Set<number>) => engine.raycastSceneMagnetic(x, cursor.y,
+      { edge: null, meshExpressId: null, lockStrength: 0 }, { hiddenIds, snapOptions: {
+        snapToEdges: false, screenSnapRadius: 1, screenCornerSnap: { settleMs: 0, idleHost: idle },
+      } });
+    const prepared = { ...quad, positions: quad.positions.slice() };
+    engine.setReadbackMeshes([prepared], cursor);
+    assert.equal(run().snapTarget?.type, 'face');
+    idle.drain();
+    assert.deepEqual(run().snapTarget?.position, corner);
+    assert.equal(run().snapTarget?.type, 'vertex');
+    assert.equal(run(cursor.x - 2).snapTarget, null, 'a neighbouring uncovered ray cannot reuse the warm grid');
+    run(); idle.drain();
+    assert.equal(run(cursor.x, new Set([17])).snapTarget, null);
+    camera.setPosition(0, 0, 51);
+    assert.equal(run().snapTarget, null);
+    engine.setReadbackMeshes([{ ...prepared, expressId: 18 }], cursor);
+    run(); idle.drain();
+    assert.equal(run().snapTarget?.expressId, 18);
+    run(cursor.x, new Set([18]));
+    assert.equal(idle.pending, 1);
+    engine.setReadbackMeshes(null);
+    assert.equal(idle.pending, 0, 'clearing a prepared inventory cancels its pending build');
+    assert.equal(run().snapTarget, null);
+  });
+
+  it('#11753 NaN settle time waits through camera motion and builds after 120 quiet milliseconds', t => {
+    const scene = new Scene();
+    addRegularQuad(scene, makeQuad({ expressId: 19 }));
+    const camera = orthoCameraLookingDownZ([0, 0, 0], 50);
+    const engine = engineFor(scene, camera), idle = new ManualIdleHost();
+    let now = 0;
+    t.mock.method(performance, 'now', () => now);
+    const builds = t.mock.method(engine.getSnapDetector(), 'startGeometryCache');
+    const pick = () => {
+      const at = camera.projectToScreen({ x: 5, y: 5, z: 0 }, 800, 600)!;
+      return engine.raycastSceneMagnetic(at.x + 5, at.y, { edge: null, meshExpressId: null, lockStrength: 0 },
+        { snapOptions: { screenCornerSnap: { settleMs: NaN, idleHost: idle } } });
+    };
+    for (let i = 1; i <= 12; i++) {
+      now += 16;
+      camera.setPosition(0, 0, 50 + i);
+      assert.equal(pick().snapTarget, null);
+      assert.ok(idle.tick());
+      assert.equal(builds.mock.callCount(), 0);
+    }
+    now += 119;
+    idle.tick();
+    assert.equal(builds.mock.callCount(), 0);
+    now++;
+    idle.drain();
+    assert.equal(pick().snapTarget?.expressId, 19);
+    assert.deepEqual(pick().snapTarget?.position, { x: 5, y: 5, z: 0 });
+  });
+
   it('raycasts and snaps released geometry read back from storage, under hide/isolate, and clears', () => {
     const scene = new Scene();
     const resident = makeQuad({ expressId: 1, translate: [0, 0, -10] });

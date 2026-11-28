@@ -11,23 +11,18 @@ import { entityClip } from './section-exclusions.js';
 import { Camera } from './camera.js';
 import { isEntityVisible } from './entity-visibility.js';
 import { Raycaster, type Intersection, type Ray } from './raycaster.js';
-import { SnapDetector, SnapType, type SnapTarget, type SnapOptions, type EdgeLockInput, type MagneticSnapResult } from './snap-detector.js';
+import { SnapDetector, type SnapTarget, type SnapOptions, type EdgeLockInput, type MagneticSnapResult } from './snap-detector.js';
 import { RaycastFlatIndex, type RaycastScene } from './raycast-flat-index.js';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { PickClipState, PickOptions } from './types.js';
 import { pointClipped } from './scene-raycaster.js';
+import { ScreenCornerIndex } from './snap-screen-corners.js';
+import { withScreenCorner } from './raycast-screen-corner.js';
 import type { SourceSnapCurve } from './source-curve-snap.js';
 import { querySourceCurves } from './raycast-source-curve-query.js';
 import type { CpuGeometryVisitor } from './cpu-geometry-visit.js';
-import {
-    queryPointClouds,
-    releasedEdgeLock,
-    pointCloudSnapEnabled,
-    pointCloudWinsOverMeshSnap,
-    pointCloudWinsOverSourceSnap,
-    type PointCloudRayProvider,
-    type PointCloudSnapCamera,
-} from './raycast-point-cloud-query.js';
+import { releasedEdgeLock, type PointCloudRayProvider } from './raycast-point-cloud-query.js';
+import { withPointCloudSnap } from './raycast-point-cloud-snap.js';
 export type { PointCloudRaySource, PointCloudRayProvider } from './raycast-point-cloud-query.js';
 /** Below this many flat pieces a BVH costs more than testing them all. */
 const BVH_THRESHOLD = 100;
@@ -39,10 +34,13 @@ export class RaycastEngine {
     private raycaster: Raycaster;
     private snapDetector: SnapDetector;
     private flatIndex: RaycastFlatIndex;
+    private readonly unsubscribeEviction: (() => void) | void;
+    private screenCorners = new ScreenCornerIndex();
     private pointCloudProvider: PointCloudRayProvider | null = null;
     private sourceSnapCurves: readonly SourceSnapCurve[] = [];
     /** Flat pieces read back for released geometry (#10264); empty when unused. */
     private readbackMeshes: readonly MeshData[] = [];
+    private cornerInventory: { resident: readonly MeshData[]; pieces: readonly MeshData[] } | null = null;
     /** The one ray they were prepared for: canvas point and view stamp at set time. */
     private readbackCoverage: { x: number; y: number; view: string } | null = null;
     /** Host state a ray's answer also depends on, folded into the view stamp (the renderer's pick-clip revision). */
@@ -55,6 +53,7 @@ export class RaycastEngine {
         this.raycaster = new Raycaster();
         this.snapDetector = new SnapDetector();
         this.flatIndex = new RaycastFlatIndex(scene, BVH_THRESHOLD);
+        this.unsubscribeEviction = scene.onHostEviction?.(() => this.clearCaches());
     }
 
     /** Slab ray-AABB test, used to cull instanced occurrences before materializing
@@ -90,6 +89,12 @@ export class RaycastEngine {
     /** Released geometry read back for an imminent raycast or snap (#10264), under the same visibility and clip
      *  rules as flat candidates; `null` clears. The host owns their lifetime and frame (`placeAppearanceSource`). */
     setReadbackMeshes(meshes: readonly MeshData[] | null, at?: { x: number; y: number }): void {
+        if (this.cornerInventory && (meshes?.length !== this.readbackMeshes.length ||
+            !meshes.every((piece, i) => piece === this.readbackMeshes[i]))) {
+            // Release the previous readback inventory and any pending idle build before its leases end.
+            this.screenCorners.clear();
+            this.cornerInventory = null;
+        }
         this.readbackMeshes = meshes ?? [];
         this.readbackCoverage = meshes && at ? { x: at.x, y: at.y, view: this.readbackViewKey() } : null;
     }
@@ -108,11 +113,25 @@ export class RaycastEngine {
             Array.from(c.getViewProjMatrix().m).join(','), `${v?.width ?? 0}x${v?.height ?? 0}`, this.viewStampExtra()].join('|');
     }
 
+    private readbackForRay(at?: { x: number; y: number }): readonly MeshData[] {
+        return this.readbackCoverage === null || (at && this.readbackCovers(at.x, at.y)) ? this.readbackMeshes : [];
+    }
+
+    private piecesForCorners(x: number, y: number): readonly MeshData[] {
+        const resident = this.flatIndex.allPieces();
+        const readback = this.readbackForRay({ x, y });
+        if (!readback.length) return resident;
+        if (this.cornerInventory?.resident !== resident) {
+            const pieces = resident.length ? Array.from(new Set([...resident, ...readback])) : readback;
+            this.cornerInventory = { resident, pieces };
+        }
+        return this.cornerInventory.pieces;
+    }
+
     /** Flat candidates near the ray, plus ray-culled instanced occurrences. */
     private meshesForRay(options: PickOptions | undefined, ray: Ray, at?: { x: number; y: number }): MeshData[] {
         const allMeshData = this.flatIndex.query(ray, this.visibilityFilter(options));
-        const covered = this.readbackCoverage === null || (at !== undefined && this.readbackCovers(at.x, at.y));
-        if (covered) for (const piece of this.readbackMeshes) {
+        for (const piece of this.readbackForRay(at)) {
             if (isEntityVisible(piece.expressId, options?.hiddenIds, options?.isolatedIds)) allMeshData.push(piece);
         }
         const seenInstancedKeys = new Set<string>();
@@ -121,7 +140,7 @@ export class RaycastEngine {
         // their per-occurrence triangles ON DEMAND so measure-snap / section-face-pick
         // work over them — but only for occurrences whose world AABB the ray actually
         // hits, so we never expand the whole instanced population per ray.
-        for (const eid of this.scene.getInstancedEntityIds()) {
+        for (const eid of this.scene.getInstancedEntityIds(true)) {
             if (!isEntityVisible(eid, options?.hiddenIds, options?.isolatedIds)) continue;
             const bounds = this.scene.getInstancedEntityBounds(eid);
             if (!bounds || !this.rayHitsBounds(ray, bounds)) continue;
@@ -275,56 +294,21 @@ export class RaycastEngine {
                 );
             }
 
+            const ordinaryTarget = magneticResult.snapTarget;
+            magneticResult = withScreenCorner(this.screenCorners,
+                { camera: this.camera, viewKey: () => [this.readbackViewKey(), this.scene.getPickGeometryRevision?.(), this.scene.getInstancedEntityRevision?.()].join('|'),
+                  snapOccurrences: this.scene.snapOccurrences?.bind(this.scene), getPieces: () => this.piecesForCorners(x, y), snapDetector: this.snapDetector },
+                magneticResult, x, y, ray, viewport, options, clip, intersection?.distance ?? null);
+
             const source = querySourceCurves(this.sourceSnapCurves, magneticResult.snapTarget,
                 this.camera, ray, x, y, viewport, options, clip);
             if (source) magneticResult = { snapTarget: source, edgeLock: releasedEdgeLock() };
 
-            // Point-cloud snapping (#1860): search up to whatever the mesh
-            // path already found (or the whole scene, if there was no mesh
-            // hit at all) — a real mesh surface in front of a scan point
-            // should still win the pick. Gated on the caller's snap config
-            // so the measure tool's snap toggle disables scan-point
-            // magnetism exactly like mesh vertex/edge magnetism.
-            const snapCamera: PointCloudSnapCamera = {
-                fov: cameraFov,
-                canvasHeightPx: viewport.height,
+            magneticResult = withPointCloudSnap(this.pointCloudProvider, magneticResult, {
+                useTargetDepth: magneticResult.snapTarget !== ordinaryTarget || !!source,
+                ray, intersection, options, clip, cameraFov, viewportHeight: viewport.height,
                 orthoHalfHeight: this.camera.getProjectionMode() === 'orthographic' ? this.camera.getOrthoSize() : null,
-            };
-            const maxPointDistance = intersection ? intersection.distance : Infinity;
-            const pointHit = pointCloudSnapEnabled(options?.snapOptions)
-                ? queryPointClouds(this.pointCloudProvider, ray, snapCamera, maxPointDistance, options, clip)
-                : null;
-            if (pointHit) {
-                // A point-cloud hit only OVERRIDES an existing mesh snap
-                // target (vertex/edge/face/...) when it's meaningfully in
-                // front of the mesh surface, not just scan noise a few mm
-                // nearer along the ray — otherwise a scan overlapping its
-                // as-designed model would non-deterministically steal
-                // intended vertex/corner snaps on most measurements over
-                // scanned-over geometry (#1860 review finding 2). When the
-                // mesh path found no snap target at all (bare face hit, or
-                // no mesh hit), the point snap wins as before.
-                const sourceTarget = magneticResult.snapTarget?.metadata?.sourceCurve ? magneticResult.snapTarget : null;
-                const wins = sourceTarget
-                    ? pointCloudWinsOverSourceSnap(pointHit, sourceTarget, ray, snapCamera)
-                    : pointCloudWinsOverMeshSnap({
-                        pointHit,
-                        meshSnapTarget: magneticResult.snapTarget,
-                        meshIntersectionDistance: intersection ? intersection.distance : null,
-                        camera: snapCamera,
-                    });
-                if (wins) {
-                    magneticResult = {
-                        snapTarget: {
-                            type: SnapType.POINT_CLOUD,
-                            position: pointHit.position,
-                            expressId: pointHit.expressId,
-                            confidence: 1,
-                        },
-                        edgeLock: releasedEdgeLock(),
-                    };
-                }
-            }
+            });
 
             return {
                 intersection,
@@ -344,7 +328,9 @@ export class RaycastEngine {
      * Invalidate BVH cache (call when geometry changes)
      */
     invalidateBVHCache(): void {
+        this.cornerInventory = null;
         this.flatIndex.invalidate();
+        this.screenCorners.clear();
     }
 
     /** Diagnostic (#10264): CPU geometry the raycast index and its BVH still reference. */
@@ -359,8 +345,11 @@ export class RaycastEngine {
 
     /** Release this engine before discarding it; create a new engine to resume picking. */
     dispose(): void {
-        this.flatIndex.dispose();
+        this.unsubscribeEviction?.();
+        this.cornerInventory = null;
+        this.flatIndex.invalidate();
         this.snapDetector.clearCache();
+        this.screenCorners.clear();
         this.pointCloudProvider = null;
         this.sourceSnapCurves = [];
     }

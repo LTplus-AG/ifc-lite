@@ -24,6 +24,7 @@ import { perfCounters } from '@ifc-lite/load-trace';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { modelIndices } from '@/lib/model-placement/model-indices.js';
 import { carryReleasedMesh, meshGeometryCounts, hasMeshGeometryProvenance } from '@/lib/released-mesh-provenance.js';
+import { cpuMeshAliases } from '@/lib/geometry-cpu-aliases.js';
 import { fixtureModel } from '@/test/store-fixture.js';
 import { cleanup } from '@/test/render.js';
 import { renderInViewport } from '@/test/viewport-scope';
@@ -166,6 +167,43 @@ it('costs O(appended meshes) per streamed append on a single model (#7021)', () 
     assert.equal(seen!.merged, mergedArray, 'the merged array keeps its identity');
     assert.equal(seen!.indices, indexMap, 'the model-index map keeps its identity');
   }
+});
+
+/**
+ * The regression guard for a federation's later slots: adding the k-th model
+ * must cost work in ITS meshes only, never in the models already loaded.
+ * The merge used to copy each mesh into a wrapper registered with the CPU-release
+ * alias records (WeakMaps, WeakRefs). Every loaded mesh then carried those
+ * records, every garbage collection walked them, and each slot loaded slower
+ * than the one before: a 275k-mesh model took ~30 s as the first slot and
+ * ~170 s as the second.
+ */
+it('adds the k-th model in work proportional to its own meshes, not to the models already loaded', () => {
+  perfCounters.enable();
+  const read = () => perfCounters.read();
+  const delta = (after: Record<string, number>, before: Record<string, number>, key: string) => (after[key] ?? 0) - (before[key] ?? 0);
+  renderInViewport(<Probe />);
+  const sizes = [40, 7, 25, 3, 60];
+  let total = 0;
+  sizes.forEach((size, k) => {
+    const id = `slot${k + 1}`;
+    const before = read();
+    startLoad(id);
+    append(id, Array.from({ length: size }, () => mesh()));
+    const after = read();
+    total += size;
+    assert.equal(seen!.merged.length, total, `slot ${k + 1}: every model's meshes are merged`);
+    assert.equal(delta(after, before, 'viewer.modelIndexStamp.meshes'), size, `slot ${k + 1}: only its own meshes are stamped`);
+    assert.equal(delta(after, before, 'viewer.modelIndexRespread.meshes'), 0, `slot ${k + 1}: no mesh is copied`);
+  });
+  const state = useViewerStore.getState();
+  const stored = [...state.models.values()].flatMap((model) => model.geometryResult!.meshes);
+  assert.equal(seen!.merged.length, stored.length);
+  seen!.merged.forEach((merged, i) => {
+    assert.equal(merged, stored[i], 'the viewport renders the store\'s own mesh, not a copy');
+    assert.deepEqual([...cpuMeshAliases(merged)], [merged], 'no CPU-release alias record per loaded mesh');
+  });
+  assert.deepEqual([...new Set(seen!.merged.map((m) => m.modelIndex))], sizes.map((_, k) => seen!.indices.get(`slot${k + 1}`)));
 });
 
 it('restamps a model that is removed and added back under a new index (#7021 review)', () => {

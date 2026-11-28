@@ -7,6 +7,10 @@ signed-in user's OneDrive, and download IFC files directly into the viewer.
 Authentication is delegated OAuth 2.0 Authorization Code + PKCE, built on
 `@ifc-lite/oauth-pkce` for direct SDK consumers. Hosted authentication is server-side.
 
+```bash
+npm install @ifc-lite/source-msgraph
+```
+
 ## Hosted sign-in
 
 The IFClite viewer uses a server-hosted OAuth application: users click **Sign in**

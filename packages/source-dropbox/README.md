@@ -10,6 +10,10 @@ explicitly recommended flow for a browser app that cannot keep a
 `client_secret` confidential (`developers.dropbox.com/oauth-guide`, "PKCE"
 section, checked 2026-08-15).
 
+```bash
+npm install @ifc-lite/source-dropbox
+```
+
 ## Hosted sign-in
 
 The IFClite viewer uses a server-hosted OAuth application: users click **Sign in**

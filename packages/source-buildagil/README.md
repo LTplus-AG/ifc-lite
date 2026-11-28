@@ -5,6 +5,10 @@ folders and open its IFC, IFCZIP, IFCXML and IFCX documents, including older
 versions. Built on buildagil's openCDE API (`https://openapi.buildagil.com`,
 OpenAPI document "buildagil openCDE API" 1.0 on SwaggerHub).
 
+```bash
+npm install @ifc-lite/source-buildagil
+```
+
 ```ts
 import { BuildagilProvider } from '@ifc-lite/source-buildagil';
 
@@ -72,6 +76,7 @@ the API redirects to Azure blob storage is followed by the relay without the
 bearer.
 
 Errors are `BuildagilHttpError` (`status`, `reauthenticationRequired` on 401).
+The class is not exported; recognise it by `error.name === 'BuildagilHttpError'`.
 buildagil throttles per user; the relay passes `429` with `Retry-After`
 through so the host can back off.
 

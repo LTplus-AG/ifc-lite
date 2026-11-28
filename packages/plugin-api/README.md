@@ -7,6 +7,10 @@ Plugins implement `FileSourceProvider` and declare a `PluginManifest`. The host
 manifest's `preferences` array, and injects a sandboxed `PluginContext` at
 runtime.
 
+```bash
+npm install @ifc-lite/plugin-api
+```
+
 See the [architecture docs](https://ifclite.dev/docs/) for the full design.
 
 ## Registering your own provider in a viewer build

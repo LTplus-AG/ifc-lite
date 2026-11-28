@@ -63,7 +63,8 @@ Everything is configurable at construction:
 - **`capabilities`**: toggle `revisionHistory` / `changeDetection` / `search`
   independently; the matching optional method (`listRevisions` /
   `watchRevisions` / `searchFiles`) is present on the returned object if and
-  only if its flag is `true`.
+  only if its flag is `true`. `writeBack` (a list of `WriteBackMode`s, default
+  none, so read-only) adds `uploadFile`, which refuses any mode not listed.
 - **`failures`**: make any method throw, return a 429-shaped rate-limit
   error, hang until the caller's `AbortSignal` fires, or truncate a page
   below what its own cursor math promises. Adjustable after construction too,

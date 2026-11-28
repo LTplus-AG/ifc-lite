@@ -5,6 +5,10 @@ The host supplies its existing BCF session; this package never starts OAuth or
 stores tokens. A 401 throws `BimcollabHttpError` with
 `reauthenticationRequired: true`; a 403 means no document access in the space.
 
+```bash
+npm install @ifc-lite/source-bimcollab
+```
+
 ```ts
 import {
   BimcollabProvider, RelayBimcollabTransport,
@@ -33,14 +37,20 @@ const provider = new BimcollabProvider({
 Invalid input returns an empty string. The URL helper accepts a single space
 label under HTTPS `bimcollab.com`. The constructor rejects invalid session ids.
 
+`@ifc-lite/source-bimcollab/lite` exports only `BIMCOLLAB_MANIFEST`,
+`spaceIdFromAccessToken`, `spaceLabelFromServerUrl` and `isBimcollabServerUrl`,
+so a host can import them eagerly and load the provider lazily on first use.
+
 The default transport uses `ctx.fetch` and `/api/bimcollab`; a host that validates
 only upstream URLs (including the current viewer SourceHost) must inject a
 host-approved same-origin fetch as shown above. Its upstream rewrite alone
 cannot express the relay's two route families. Register the provider only when
 a BIMcollab BCF session is available; surface login/refresh through that existing
 host flow. Manifest auth is `preferences` with no fields because the host owns
-authentication. No separate interactive auth UI is declared. Viewer registration
-and relay implementation are separate tasks.
+authentication. No separate interactive auth UI is declared. The ifc-lite viewer
+registers it on top of its saved BIMcollab BCF connection
+(`VITE_SOURCE_BIMCOLLAB=false` turns it off), and its relay is `api/bimcollab.ts`
+(handler `server/sources/bimcollab-relay.ts`).
 
 Relay requests carry bearer authorization, omit cookies, reject redirects and
 forward abort signals. `docs/<spaceGuid>/…` serves the public Documents API;

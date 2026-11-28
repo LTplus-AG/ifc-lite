@@ -16,6 +16,16 @@ Targets the Dalux **API Identities** auth model (legacy API keys expired
 2026-02-28). The API base URL is fixed at `https://node1.field.dalux.com/service/api`
 — it's not company-specific, so there's no base URL setting.
 
+```bash
+npm install @ifc-lite/source-dalux
+```
+
+```ts
+import { DaluxBuildProvider } from '@ifc-lite/source-dalux';
+
+const provider = new DaluxBuildProvider(); // the API key is a provider preference
+```
+
 ## Revision history
 
 Dalux has no endpoint that lists a file's revisions directly. `listRevisions`
@@ -107,6 +117,6 @@ Not verified against the live API: that the area root accepts its own file area
 id as `folderId`, which `fileType` Dalux files non-IFC extensions under, and
 which API-identity permissions allow uploads.
 
-**Relay.** In the browser, uploads go through the same-origin relay, which
-needs the upload routes from [#9524](https://github.com/LTplus-AG/ifc-lite/pull/9524).
-Without them the relay answers 405 to every upload step.
+**Relay.** In the browser, uploads go through the same-origin relay
+(`server/sources/dalux-relay-upload.ts`, see CORS above). A relay deployed
+without those upload routes answers 405 to every upload step.

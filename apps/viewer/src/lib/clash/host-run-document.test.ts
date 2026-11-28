@@ -71,12 +71,13 @@ describe('clash run host hook', () => {
     const memberRule = { ...result.rulesRun[0], membersA: ['m-arch:10'] };
     const reload = { ...memberRule, membersA: ['m-arch:99'] };
     const preset = { id: 'r1', name: 'Walls vs beams', enabled: true, filterA: { storey: 'L1' } };
+    const edited = { ...preset, filterA: { storey: 'L2' } };
     const revisions: string[] = [];
     const off = onClashRunComplete((event) => revisions.push(event.document.manifest.rules.items[0].revision));
     try {
       notifyClashRunComplete({ ...result, rulesRun: [memberRule] }, { ...context, presets: [preset] });
       notifyClashRunComplete({ ...result, rulesRun: [reload] }, { ...context, presets: [preset] });
-      notifyClashRunComplete({ ...result, rulesRun: [reload] }, { ...context, presets: [{ ...preset, filterA: { storey: 'L2' } }] });
+      notifyClashRunComplete({ ...result, rulesRun: [reload] }, { ...context, presets: [edited] });
     } finally {
       off();
     }

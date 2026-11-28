@@ -1,0 +1,13 @@
+diff --git a/packages/clash/src/run-compare.ts b/packages/clash/src/run-compare.ts
+index 71ace431e1..081baf4e60 100644
+--- a/packages/clash/src/run-compare.ts
++++ b/packages/clash/src/run-compare.ts
+@@ -183,7 +183,7 @@ export function compareClashRunDocuments(previous: ClashRunDocument, next: Clash
+  * both keys in their slots.
+  */
+ function examinedReasons(finding: ClashRunFinding, next: ClashRunDocument, slots: Record<string, ClashRunSlotChange>): ClashRunNotComparableReason[] {
+-  return [];
++  if (slots[finding.a.slot] === 'unchanged' && slots[finding.b.slot] === 'unchanged') return [];
+   const coverage = next.manifest.coverage.find((c) => c.rule === finding.rule);
+   if (!coverage || coverage.examined === null) return ['coverage-not-recorded'];
+   const examined = coverage.examined;

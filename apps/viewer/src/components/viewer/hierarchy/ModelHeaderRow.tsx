@@ -21,6 +21,7 @@ import { formatLocaleNumber } from '@/i18n/intlFormat';
 import type { TreeNode } from './types';
 import type { HierarchyNodeAriaProps } from './HierarchyNode';
 import { ModelRowTags } from './ModelRowTags';
+import { FederationSlotRetry } from './FederationSlotRetry';
 import { SourceSyncIcon, useModelSyncProgress } from '@/components/sources/SourceDownloadStatus';
 
 export interface ModelHeaderRowProps extends HierarchyNodeAriaProps {
@@ -117,6 +118,7 @@ export function ModelHeaderRow({
             {formatLocaleNumber(locale, node.elementCount)}
           </span>
         )}
+        <FederationSlotRetry modelId={modelId} name={node.name} />
         <PositionedDownload modelId={modelId} />
         <ModelRowTags modelId={modelId} modelName={node.name} />
 

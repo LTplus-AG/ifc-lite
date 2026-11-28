@@ -9,7 +9,7 @@
 
 import { assertProcessedModelHash, normalizeProcessedModelHash, processedModelSize, type ProcessedModelRef } from '@ifc-lite/server-client';
 import { getProcessingServerUrl, normalizeProcessingServerUrl, setProcessingServerUrl } from './processing-server';
-import type { ViewerRuntimeConfig } from './features/runtime-config';
+import type { ProcessedFederationStart, ViewerRuntimeConfig } from './features/runtime-config';
 
 export { getProcessingServerUrl, setProcessingServerUrl, serverUploadsEnabled } from './processing-server';
 
@@ -30,7 +30,12 @@ export type ProcessedModelSource = ProcessedModelRef & { readonly serverUrl?: st
 /** The normalized reference stored on a loaded model. Zero means the source size is unknown. */
 export type ProcessedModelRecord = ProcessedModelSource & { readonly bytes: number };
 export type FiledProcessedModelRequest = ProcessedModelRequest & Pick<ProcessedModelSource, 'serverUrl'>;
-let pending: FiledProcessedModelRequest | null = null;
+/** A federation of stored results to open together; its first slot is the primary model. */
+export interface ProcessedFederationRequest extends ProcessedFederationStart { readonly kind: 'federation' }
+/** What the viewer's loader takes: one model, or a federation. */
+export type FiledProcessedRequest = FiledProcessedModelRequest | ProcessedFederationRequest;
+export const isFederationRequest = (request: FiledProcessedRequest): request is ProcessedFederationRequest => 'kind' in request && request.kind === 'federation';
+let pending: FiledProcessedRequest | null = null;
 const listeners = new Set<() => void>();
 const pendingListeners = new Set<() => void>();
 /** A host asked for a model (`openProcessedModel`, or the configuration's start model); a model named in the page URL then yields. */
@@ -52,6 +57,18 @@ export function openProcessedModel(model: ProcessedModelRequest, options?: OpenP
   // A callback can unsubscribe or register a listener during notification.
   for (const listener of Array.from(hostRequestListeners)) listener();
   fileRequest(request);
+}
+
+/**
+ * Open several stored results as one federation, replacing the model in the
+ * viewer like any primary load. Throws on a slot hash that is not a SHA-256,
+ * before anything is asked of the server.
+ */
+export function openProcessedFederation(federation: ProcessedFederationStart): void {
+  const slots = federation.slots.map(slot => ({ ...slot, ...normalizedRequest(slot) }));
+  hostRequested = true;
+  for (const listener of Array.from(hostRequestListeners)) listener();
+  fileRequest({ kind: 'federation', id: federation.id, slots });
 }
 
 /**
@@ -110,7 +127,7 @@ export function onPendingProcessedModelChange(listener: () => void): () => void 
   return () => { pendingListeners.delete(listener); };
 }
 
-function fileRequest(request: FiledProcessedModelRequest): void {
+function fileRequest(request: FiledProcessedRequest): void {
   pending = request;
   for (const listener of pendingListeners) listener();
   for (const listener of Array.from(listeners)) listener();
@@ -122,6 +139,13 @@ export function applyProcessingConfig(
   initialModel?: FiledProcessedModelRequest,
 ) {
   if (config?.server) setProcessingServerUrl(config.server.url);
+  // An explicit start model wins over the configuration's; a federation over its single-model fallback.
+  const federation = initialModel ? undefined : config?.open?.federation;
+  if (federation) {
+    if (!getProcessingServerUrl()) console.error('[viewer config] open.federation requires server.url or VITE_IFC_SERVER_URL.');
+    openProcessedFederation(federation);
+    return { openProcessedModel, setProcessingServerUrl };
+  }
   const model = initialModel ?? config?.open?.processedModel;
   if (model) {
     if (!(initialModel?.serverUrl ?? getProcessingServerUrl())) {
@@ -133,7 +157,7 @@ export function applyProcessingConfig(
 }
 
 /** The mounted viewer's side: take the waiting request, once. */
-export function takeProcessedModelRequest(): FiledProcessedModelRequest | null {
+export function takeProcessedModelRequest(): FiledProcessedRequest | null {
   const request = pending;
   pending = null;
   if (request) for (const listener of pendingListeners) listener();

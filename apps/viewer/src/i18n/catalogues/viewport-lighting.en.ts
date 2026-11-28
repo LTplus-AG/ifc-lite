@@ -96,7 +96,7 @@ export const viewportLightingEn = {
     "This browser can't run the WebAssembly SIMD instructions the geometry engine needs. Update it, or try a recent Chrome, Edge, Firefox or Safari. Some security settings and older processors also turn SIMD off.",
   'viewportLighting.container.modelUrlAutoload.malformedUrl': 'The linked model address is not a valid URL.',
   'viewportLighting.container.processedModelAutoload.malformedLink': 'The model link is incomplete or damaged.',
-  'viewportLighting.container.processedModel.notPrimary': 'A processed model can only be opened as the first model.',
+  'viewportLighting.container.processedModel.noProperties': 'The server sent this model\'s geometry but not its properties yet, so it cannot join the federation. Try again shortly.',
   'viewportLighting.container.processedModel.noServer': 'No processing server is configured for this viewer, so processed models cannot be opened.',
   'viewportLighting.container.processedModel.unreachable': 'The configured processing server cannot be reached from this page.',
   'viewportLighting.container.processedModel.unsupported': 'Could not initialize the Parquet decoder needed to open this processed model.',

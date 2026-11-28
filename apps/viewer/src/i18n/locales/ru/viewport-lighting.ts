@@ -56,7 +56,7 @@ export const viewportLightingRu = {
   "viewportLighting.container.loadErrorCard.wasmSimdUnsupported": "Этот браузер не может выполнять инструкции WebAssembly SIMD, необходимые геометрическому движку. Обновите его или попробуйте последние версии Chrome, Edge, Firefox или Safari. Некоторые настройки безопасности и старые процессоры также отключают SIMD.",
   "viewportLighting.container.modelUrlAutoload.malformedUrl": "Указанный адрес модели не является допустимым URL-адресом.",
   "viewportLighting.container.processedModelAutoload.malformedLink": "Ссылка на модель неполная или повреждена.",
-  "viewportLighting.container.processedModel.notPrimary": "Обработанную модель можно открыть только как первую модель.",
+  "viewportLighting.container.processedModel.noProperties": "Сервер прислал геометрию этой модели, но ещё не её свойства, поэтому она не может войти в федерацию. Повторите попытку чуть позже.",
   "viewportLighting.container.processedModel.noServer": "Для этого просмотрщика не настроен сервер обработки, поэтому обработанные модели открыть нельзя.",
   "viewportLighting.container.processedModel.unreachable": "Настроенный сервер обработки недоступен с этой страницы.",
   "viewportLighting.container.processedModel.unsupported": "Не удалось инициализировать декодер Parquet, необходимый для открытия этой обработанной модели.",

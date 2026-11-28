@@ -20,13 +20,14 @@
 
 import { useEffect, useRef } from 'react';
 import { useIfcLoader } from './useIfcLoader.js';
+import { useIfcFederation } from './useIfcFederation.js';
 import { useWebGpuOpenGuard } from './useWebGpuOpenGuard';
 import { showLoadError } from '@/lib/analytics';
 import { useViewerStore } from '@/store';
 import { useTranslation } from '@/i18n';
 import { markLoadIntent } from '@/lib/load-intent';
 import { normalizeProcessedModelHash, processedModelSize } from '@ifc-lite/server-client';
-import { onProcessedModelRequest, openProcessedModelFromUrl, takeProcessedModelRequest, type ProcessedModelRequest } from '@/lib/processed-model';
+import { isFederationRequest, onProcessedModelRequest, openProcessedModelFromUrl, takeProcessedModelRequest, type ProcessedModelRequest } from '@/lib/processed-model';
 
 /** The model `?processed=` names, `'malformed'` when the hash is not one, `null` when the parameter is absent. */
 export function processedModelFromQuery(search: string): ProcessedModelRequest | 'malformed' | null {
@@ -39,8 +40,12 @@ export function processedModelFromQuery(search: string): ProcessedModelRequest |
   return { sha256, bytes: processedModelSize(/^\d+$/.test(bytes) ? Number(bytes) : 0), name: params.get('name') ?? '' }; // digits only: no hex, exponent or padding
 }
 
+/** Counts requests taken; a federation whose chunk arrives after a newer request was taken must not start. */
+let requestsTaken = 0;
+
 export function useProcessedModelAutoload(): void {
-  const { loadProcessedModel } = useIfcLoader();
+  const { loadFile, loadProcessedModel } = useIfcLoader();
+  const { addProcessedModel } = useIfcFederation(loadFile, loadProcessedModel);
   const { webgpu, guard: guardWebGpu } = useWebGpuOpenGuard();
   const { t } = useTranslation();
   // Navigation may change the query while the adapter probe is pending. Keep what this mount asked for.
@@ -59,15 +64,24 @@ export function useProcessedModelAutoload(): void {
     const loadWaiting = () => {
       const request = takeProcessedModelRequest();
       if (!request) return;
+      const taken = ++requestsTaken;
       const attempt = () => {
         markLoadIntent();
         // Replay-safe (a request, no user gesture): Retry on the unsupported card may re-run it.
         if (!guardWebGpu(attempt, { replay: 'free' })) return;
-        void loadProcessedModel(request);
+        if (!isFederationRequest(request)) { void loadProcessedModel(request); return; }
+        // Its own chunk: only a host that configures a federation needs it.
+        void import('./ingest/processedFederationLoad.js').then(({ loadProcessedFederation }) => taken !== requestsTaken ? null : loadProcessedFederation(request, {
+          openPrimary: (model, modelId, options) => loadProcessedModel(model, { kind: 'primary', modelId }, options),
+          addSlot: addProcessedModel,
+        })).then(outcome => {
+          if (!outcome) { console.info(`[viewer config] Federation ${request.id} not opened: a newer model request replaced it`); return; }
+          if (outcome.failed.length || outcome.skipped.length) console.info(`[viewer config] Federation ${request.id}: ${outcome.loaded.length} loaded, ${outcome.failed.length} failed, ${outcome.skipped.length} not started`);
+        }, (error: unknown) => console.error(`[viewer config] Federation ${request.id} could not be opened`, error));
       };
       attempt();
     };
     loadWaiting(); // filed before this viewer mounted, or just now from the URL
     return onProcessedModelRequest(loadWaiting);
-  }, [guardWebGpu, loadProcessedModel, t, webgpu.checking]);
+  }, [addProcessedModel, guardWebGpu, loadProcessedModel, t, webgpu.checking]);
 }

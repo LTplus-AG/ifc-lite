@@ -14,6 +14,7 @@ import { useCallback } from 'react';
 import { useServerModelProperties } from './ingest/useServerModelProperties.js';
 import { useViewerStore } from '../store/index.js';
 import type { MeshData, CoordinateInfo } from '@ifc-lite/geometry';
+import type { ServedModelSink } from './ingest/processedModelLoad.js';
 import {
   IfcServerClient,
   decodeDataModel,
@@ -77,16 +78,21 @@ export function useIfcServer() {
     modelId: string,
     /** Replace the prior scene only once server geometry is available. */
     beforePublish?: () => void,
+    /** A federated target: collect the model here, leaving the active slot and model-owned hydration alone. */
+    sink?: ServedModelSink,
   ): Promise<boolean> => {
     const cancelled = () => signal?.aborted || isStale?.();
     if (cancelled()) return false;
-    if (!beforePublish) cancelProperties(modelId);
-    const { setProgress, setGeometryResult } = useViewerStore.getState();
+    if (!beforePublish && !sink) cancelProperties(modelId);
+    const { setProgress: storeProgress, setGeometryResult } = useViewerStore.getState();
+    // Concurrent federation slots would overwrite one bar; their run reports the federation's progress.
+    const setProgress: typeof storeProgress = sink ? () => {} : storeProgress;
     // A processed model has no fallback, so its failures reach the caller to be worded; an
     // upload's stay silent here and fall back to local processing.
     const processed = isProcessedModelRef(file);
     let published = false;
     const publishGeometry: typeof setGeometryResult = result => {
+      if (sink) { sink.geometry = result; return; }
       if (beforePublish) {
         const progress = useViewerStore.getState().progress;
         beforePublish();
@@ -357,14 +363,16 @@ export function useIfcServer() {
       }
 
       if (cancelled()) return false;
-      // Model-owned hydration outlives this load's finally and metadata signal.
-      hydrateProperties(modelId, isStale, async propertySignal => {
+      const properties = async (propertySignal: AbortSignal) => {
         const included = 'data_model' in result ? result.data_model : null;
         const dataModelBuffer = included?.byteLength ? included : await client.fetchDataModel(result.cache_key, { signal: propertySignal });
         if (!dataModelBuffer) return null;
         const dataModel = await decodeDataModel(dataModelBuffer);
         return convertServerDataModel(dataModel, result as ServerParseResult, { size: openedBytes }, allMeshes);
-      });
+      };
+      // Model-owned hydration outlives this load's finally and metadata signal; a sink's owner awaits it instead.
+      if (sink) sink.properties = properties;
+      else hydrateProperties(modelId, isStale, properties);
       setProgress({ phase: 'Complete', percent: 100 });
       return true;
     } catch (err) {

@@ -191,9 +191,39 @@ describe('openProcessedModelFromUrl', () => {
   afterEach(() => resetProcessedModelRequestsForTests());
 
   it('trims the URL request name and falls back to model.ifc for a blank one', () => {
+    const takenName = () => { const taken = takeProcessedModelRequest(); return taken && !('slots' in taken) ? taken.name : undefined; };
     openProcessedModelFromUrl({ sha256: 'a'.repeat(64), bytes: 0, name: '  Haus A.ifc  ' });
-    assert.equal(takeProcessedModelRequest()?.name, 'Haus A.ifc');
+    assert.equal(takenName(), 'Haus A.ifc');
     openProcessedModelFromUrl({ sha256: 'a'.repeat(64), bytes: 0, name: '   ' });
-    assert.equal(takeProcessedModelRequest()?.name, 'model.ifc');
+    assert.equal(takenName(), 'model.ifc');
+  });
+});
+
+describe('a configured federation (open.federation)', () => {
+  afterEach(() => resetProcessedModelRequestsForTests());
+  const federation = { id: 'workspace', slots: [
+    { slot: 'arch', label: 'Architecture', sha256: 'A'.repeat(64), bytes: 5, name: '  arch.ifc ', visible: true },
+    { slot: 'struct', label: 'Structure', sha256: 'b'.repeat(64), bytes: 0, name: '', visible: false, transform: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 2, 3, 1] },
+  ] };
+
+  it('files the whole federation as one request, hashes lowercased, and wins over the single-model fallback', () => {
+    applyProcessingConfig({ server: { url: '/processor' }, open: { federation } });
+    const taken = takeProcessedModelRequest();
+    assert.ok(taken && 'slots' in taken);
+    assert.equal(taken.id, 'workspace');
+    assert.deepEqual(taken.slots.map(slot => [slot.slot, slot.sha256, slot.name, slot.visible]), [
+      ['arch', 'a'.repeat(64), 'arch.ifc', true],
+      ['struct', 'b'.repeat(64), 'model.ifc', false],
+    ]);
+    assert.deepEqual(taken.slots[1].transform, federation.slots[1].transform);
+    assert.equal(takeProcessedModelRequest(), null, 'taken once');
+    assert.equal(pageUrlModelAllowed('processed'), false, 'a host federation, like a host model, outranks the page URL');
+  });
+
+  it('yields to a start model the host entry passed explicitly', () => {
+    applyProcessingConfig({ server: { url: '/processor' }, open: { federation } }, { sha256: 'c'.repeat(64), bytes: 1, name: 'explicit.ifc' });
+    const taken = takeProcessedModelRequest();
+    assert.ok(taken && !('slots' in taken));
+    assert.equal(taken.name, 'explicit.ifc');
   });
 });

@@ -30,6 +30,10 @@ import { createModelLoadActivity, installModelLoadCanceller, LOAD_COMPLETE, sett
 import { realignFederatedPointClouds } from './ingest/pointCloudFederationLifecycle.js';
 import { removeFederatedModel } from './ingest/federationRemove.js';
 import { showLoadError } from '@/lib/analytics';
+import type { FiledProcessedModelRequest } from '@/lib/processed-model';
+import type { ModelLoadSource } from './ingest/processedModel.js';
+
+const refuseProcessedModel = async (): Promise<void> => { throw new Error('This federation was given no processed-model loader'); };
 
 /**
  * Hook providing multi-model federation operations
@@ -44,6 +48,8 @@ export function useIfcFederation(
     target?: import('./useIfcLoader.js').LoadTarget,
     options?: ModelLoadOptions,
   ) => Promise<void>,
+  // The same loader's entry for a model the processing server already holds; only `addProcessedModel` needs it.
+  loadProcessedModel?: (request: FiledProcessedModelRequest, target?: import('./useIfcLoader.js').LoadTarget, options?: ModelLoadOptions) => Promise<void>,
 ) {
   const {
     setLoading,
@@ -88,11 +94,12 @@ export function useIfcFederation(
    * cancelled, or dropped since, e.g. by a primary load clearing the
    * federation). `options.onError` receives this add's own failure reason.
    */
-  const addModel = useCallback(async (
-    file: File,
+  const addSource = useCallback(async (
+    source: ModelLoadSource,
     options?: FederationAddModelOptions
   ): Promise<string | null> => {
     assertWorkflowOwner(options?.workflowOwner);
+    const [sourceName, sourceBytes] = source.file ? [source.file.name, source.file.size] : [source.name, source.processedModel.bytes]; // the stored model's source size
     const modelId = options?.modelId ?? crypto.randomUUID();
     // Request order, not completion order, decides the RTC anchor of overlapping loads (#4897).
     const loadedAt = options?.loadedAt ?? Date.now();
@@ -107,7 +114,7 @@ export function useIfcFederation(
     // flight on this tab and admitting this one would exceed the device
     // memory budget, wait until headroom frees. Single-file loads never
     // wait. See `federationLoadGate.ts` for the budget formula. (#600)
-    const fileSizeForGateMB = (typeof (file as File).size === 'number' ? (file as File).size : 0) / (1024 * 1024);
+    const fileSizeForGateMB = (typeof sourceBytes === 'number' ? sourceBytes : 0) / (1024 * 1024);
     // A primary that starts while this add waits replaces the scene it was
     // asked for: the add leaves the queue and touches nothing (L6).
     const supersession = watchLoadSupersession('primary');
@@ -145,15 +152,10 @@ export function useIfcFederation(
       // target is federated — finalizeModel aligns to the anchor, offsets ids,
       // builds the spatial index, and registers the model via addModel. loadFile
       // awaits that finalize, so on return the model is already in the map.
-      await loadFile(file, {
-        kind: 'federated',
-        modelId,
-        name: options?.name,
-        visible: options?.visible,
-        collapsed: options?.collapsed,
-        loadedAt,
-        sharedRtcOffset,
-      }, { siteContextArrival: options?.siteContextArrival, sourceHandle: options?.sourceHandle, retryOperation: options?.retryOperation, workflowOwner: options?.workflowOwner, gaussianPlacement: options?.gaussianPlacement, gaussianUpAxis: options?.gaussianUpAxis, gaussianAttribution: options?.gaussianAttribution, gaussianReplacingModelId: options?.gaussianReplacingModelId, onGaussianBudgetReserved: options?.onGaussianBudgetReserved, onGaussianLoadSettled: options?.onGaussianLoadSettled, onLoadError: options?.onError, onModelRegistered: () => { thisAdd.registered = true; } });
+      const target = { kind: 'federated', modelId, name: options?.name, visible: options?.visible, collapsed: options?.collapsed, loadedAt, sharedRtcOffset } as const;
+      const loadOptions: ModelLoadOptions = { siteContextArrival: options?.siteContextArrival, sourceHandle: options?.sourceHandle, retryOperation: options?.retryOperation, workflowOwner: options?.workflowOwner, gaussianPlacement: options?.gaussianPlacement, gaussianUpAxis: options?.gaussianUpAxis, gaussianAttribution: options?.gaussianAttribution, gaussianReplacingModelId: options?.gaussianReplacingModelId, onGaussianBudgetReserved: options?.onGaussianBudgetReserved, onGaussianLoadSettled: options?.onGaussianLoadSettled, onLoadError: options?.onError, onModelRegistered: () => { thisAdd.registered = true; } };
+      if (source.file) await loadFile(source.file, target, loadOptions);
+      else await (loadProcessedModel ?? refuseProcessedModel)({ name: source.name, ...source.processedModel }, target, loadOptions);
 
       // Registration is the outcome, also when a newer add overlapped this one:
       // a superseded load still settled a model (#4897, `federationRtcRebase.ts`).
@@ -162,7 +164,7 @@ export function useIfcFederation(
       if (!thisAdd.registered || !useViewerStore.getState().models.has(modelId)) return null;
       convergeFederationRtcFrame();
       if (options?.failIfSuperseded && loadSessionRef.current !== currentSession) return null; // its caller cleans up (#8566)
-      console.log(`[ifc-lite] Added model ${file.name} (${fileSizeForGateMB.toFixed(1)}MB) in ${(performance.now() - addStart).toFixed(0)}ms`);
+      console.log(`[ifc-lite] Added model ${sourceName} (${fileSizeForGateMB.toFixed(1)}MB) in ${(performance.now() - addStart).toFixed(0)}ms`);
       return modelId;
 
     } catch (err) {
@@ -189,14 +191,17 @@ export function useIfcFederation(
       options?.onError?.(message);
       if (isCurrent) {
         reportError(message, 'federated_add_failed',
-          options?.retryOperation ?? (() => { void addModel(file, options); }));
+          options?.retryOperation ?? (() => { void addSource(source, options); }));
         setLoading(false);
       }
       return null;
     } finally {
       releaseFederationLoadSlot(gateSlot);
     }
-  }, [loadFile, setLoading, setError, setProgress]);
+  }, [loadFile, loadProcessedModel, setLoading, setError, setProgress]);
+  const addModel = useCallback((file: File, options?: FederationAddModelOptions) => addSource({ file }, options), [addSource]);
+  /** Add a model the processing server already holds; the same add as {@link addModel}, by hash. */
+  const addProcessedModel = useCallback(({ name, ...processedModel }: FiledProcessedModelRequest, options?: FederationAddModelOptions) => addSource({ name, processedModel }, options), [addSource]);
 
   /**
    * Re-apply federation alignment using the currently selected anchor
@@ -529,7 +534,7 @@ export function useIfcFederation(
   }, [resolveGlobalIdFromModels, fromGlobalId]);
 
   return {
-    addModel,
+    addModel, addProcessedModel,
     removeModel,
     getQueryForModel,
     loadFilesSequentially,

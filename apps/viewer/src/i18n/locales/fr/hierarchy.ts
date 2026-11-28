@@ -23,6 +23,7 @@ export const hierarchyFr = {
   "hierarchy.node.syncing": "Synchronisation du modèle…",
   "hierarchy.node.syncFromSource": "Synchroniser depuis la source",
   "hierarchy.node.removeModelAriaLabel": "Retirer le modèle {name}",
+  "hierarchy.node.retryModelAriaLabel": "Recharger {name}",
   "hierarchy.node.removeModel": "Retirer le modèle",
   "hierarchy.removeModelConfirm.title": "Retirer le modèle avec des modifications non exportées ?",
   "hierarchy.removeModelConfirm.description": {"one":"{name} comporte {count} modification non exportée. Retirer le modèle l’abandonnera.","other":"{name} comporte {count} modifications non exportées. Retirer le modèle les abandonnera.","many":"{name} comporte {count} modifications non exportées. Retirer le modèle les abandonnera."},

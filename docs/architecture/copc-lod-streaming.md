@@ -12,7 +12,7 @@ guarantees.
 | COPC reader | `pointcloud/src/copc/*` | header + `copc`/`info` VLR, hierarchy pages (bounded iterative walk), per-node decode with laz-perf `ChunkDecoder` in the decode worker |
 | LOD selection | `pointcloud/src/lod/*` | pure: frustum cull, priority refinement by projected span, node cap, water-filled budget, pacing |
 | Residency | `apps/viewer/src/hooks/ingest/copc/copcLodController.ts` | which nodes are on the GPU; the budget ceiling; never retiring a view before its replacement is resident |
-| Viewer glue | `copcLodStream.ts`, `copcLodSink.ts`, `copcLodCamera.ts` | detection, camera watching, keyed renderer chunks, scan cache, class histogram, deviation refresh |
+| Viewer glue | `copcLodStream.ts`, `copcLodSink.ts`, `copcLodCamera.ts`, `copcLodWiring.ts` (joins the controller to the sink) | detection, camera watching, keyed renderer chunks, scan cache, class histogram, deviation refresh |
 | Renderer | `packages/renderer/src/pointcloud/point-cloud-keyed-chunks.ts` | removable chunks inside one asset, each with its own snap index |
 
 ## One asset, keyed chunks

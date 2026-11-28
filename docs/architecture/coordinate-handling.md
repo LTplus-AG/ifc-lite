@@ -19,7 +19,7 @@ IFC4X3 adds `IfcRigidOperation`, a pure translation (no rotation or scale) whose
 The anchor frame corrects two properties of the projected CRS at the anchor, both measured through proj4 on the WGS84 ellipsoid (`computeGridPointFactors` in `packages/geo/src/proj4-utils.ts`, checked against PROJ in `packages/geo/src/__fixtures__/proj-oracle.json`, which `scripts/geo/generate-proj-oracle.py` writes):
 
 - **Meridian convergence** rotates grid north onto true north.
-- **The combined scale factor** k_c = k · R/(R+h) relates grid lengths to ground lengths (`ground-scale.ts`). Here k is the projection's point scale and R/(R+h) the height reduction. Map (grid) coordinates are k_c times ground lengths: 0.9996 on a UTM central meridian, which is 40 mm per 100 m.
+- **The combined scale factor** k_c = k · R/(R+h) relates grid lengths to ground lengths (`apps/viewer/src/lib/geo/ground-scale.ts`). Here k is the projection's point scale and R/(R+h) the height reduction. Map (grid) coordinates are k_c times ground lengths: 0.9996 on a UTM central meridian, which is 40 mm per 100 m.
 
 Whether to divide by k_c depends on what the model's coordinates are:
 
@@ -92,8 +92,8 @@ Shifted:   (234.567, -108.766, 0.0)  ← GPU-friendly!
 | Constant | Value | Purpose |
 |----------|-------|---------|
 | `LARGE_COORD_THRESHOLD_METERS` | 1,000m (1km, was 10km before #4934) | Triggers RTC shift detection. Rust-side; ask `coord_is_large` rather than comparing against it, so the comparison (strictly greater, any axis, absolute value) stays in one place. One live exception, `ModelBounds::has_large_coordinates`, compares the six scaled bbox extents directly; it uses the same `>` so it agrees today, and routing it through the predicate is the obvious follow-up |
-| `NORMAL_COORD_THRESHOLD` | 10,000m | Max expected coordinate after RTC |
-| `MAX_REASONABLE_COORD` | 10,000,000m | Reject obviously corrupt values |
+| `NORMAL_COORD_THRESHOLD_M` | 10,000m | Max expected coordinate after RTC (TS, `packages/geometry/src/coordinate-handler.ts`) |
+| `MAX_REASONABLE_COORD` | 10,000,000m | Reject obviously corrupt values (TS, `CoordinateHandler`) |
 
 ## Architecture Overview
 
@@ -209,10 +209,14 @@ same issue, for the reason on `detect_rtc_offset_for_file` above.
 ### Direct, element and mapped-source frames
 
 `ItemControl` (`rust/geometry/src/program/item.rs`) receives the offset in the
-item's frame. `raw_item_rtc_file_units` in `router/processing.rs` enables early
-f64 rebasing only with active model RTC and a raw-coordinate first-vertex probe
-that is beyond the large-coordinate threshold and becomes smaller after the
-shift. The processor receives that offset in file units, before f32 narrowing.
+item's frame. `raw_item_rebase` in `router/processing/raw_rebase.rs` decides
+early f64 rebasing before f32 narrowing, and only with an active model RTC. By
+default a raw-coordinate probe (first vertex, or the referenced-point centre of a
+raw face set) is rebased by the model RTC when the shift makes it smaller, and the
+mesh is marked `rtc_applied`. With the per-mesh local frame on (default in wasm,
+`IFC_LITE_LOCAL_FRAME=1` natively), an item that is still large after the model
+RTC is instead rebased by its own metre-rounded anchor, carried in the mesh's f64
+`origin` (#10835).
 `finish_item_mesh` validates indices, scales to metres and publishes
 object-frame `local_bounds`, reconstructed in f64 and rounded outward to f32.
 The processor's `rtc_applied` flag prevents final placement subtracting twice.
@@ -496,36 +500,22 @@ for await (const event of geometry.processStreaming(buffer)) {
 }
 ```
 
-### Pattern 2: Server Streaming
+### Pattern 2: Server parsing
 
-When using server-side parsing:
+When using server-side parsing through `@ifc-lite/server-client`:
 
 ```typescript
-const response = await fetch('/api/parse', { body: file });
+const client = new IfcServerClient({ baseUrl });
 
-// Server applies RTC and returns shifted meshes + offset
-const { meshes, coordinateInfo } = await response.json();
+// POST /api/v1/parse (multipart upload). The server applies RTC and returns
+// shifted meshes plus the offset in the metadata.
+const result = await client.parse(file);
 
-// coordinateInfo.origin_shift contains RTC offset
-const rtcOffset = {
-    x: coordinateInfo.origin_shift[0],
-    y: coordinateInfo.origin_shift[1],
-    z: coordinateInfo.origin_shift[2]
-};
+// metadata.coordinate_info.origin_shift is the RTC offset (snake_case wire names)
+const [x, y, z] = result.metadata.coordinate_info.origin_shift;
+const rtcOffset = { x, y, z };
 
-// Original bounds = shifted bounds + offset
-const originalBounds = {
-    min: {
-        x: meshes.bounds.min.x + rtcOffset.x,
-        y: meshes.bounds.min.y + rtcOffset.y,
-        z: meshes.bounds.min.z + rtcOffset.z
-    },
-    max: {
-        x: meshes.bounds.max.x + rtcOffset.x,
-        y: meshes.bounds.max.y + rtcOffset.y,
-        z: meshes.bounds.max.z + rtcOffset.z
-    }
-};
+// World position = shifted position + rtcOffset (plus any per-mesh origin).
 ```
 
 ### Pattern 3: Converting Back to World Coordinates
@@ -592,7 +582,7 @@ When adding a new geometry processing path:
 - [ ] Detect large coordinates using `detect_rtc_offset_for_file` - never re-derive the window from your own job list - and read the answer through `RtcVerdict` rather than re-judging the offset's magnitude. A path that starts on a PARTIAL entity index needs `resolve_partial_rtc`'s extra rung instead, or it drops to the bounds scan where a full-index re-detect would have found the offset
 - [ ] Hand the verdict to `MeshFrame::select` rather than choosing a frame yourself; that is the one place the site tier, the anchor and the wire tag are decided together
 - [ ] Apply RTC uniformly to entire mesh (not per-vertex decisions)
-- [ ] Use consistent thresholds (10km normal, 10M max)
+- [ ] Use consistent thresholds (`NORMAL_COORD_THRESHOLD_M` 10 km, `MAX_REASONABLE_COORD` 10,000 km)
 - [ ] Surface RTC offset to callers via callbacks/return values
 - [ ] Include RTC offset in completion stats
 - [ ] Document which layer applies RTC (Rust vs TypeScript)

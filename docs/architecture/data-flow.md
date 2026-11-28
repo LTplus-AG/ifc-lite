@@ -135,9 +135,9 @@ flowchart LR
     end
 
     subgraph Columns["Columnar Storage"]
-        IDs["expressIds: Uint32Array<br/>[1, 2, 3, ...]"]
-        Types["typeEnums: Uint16Array<br/>[5, 12, 8, ...]"]
-        Names["nameIndices: Uint32Array<br/>[42, 0, 15, ...]"]
+        IDs["expressId: Uint32Array<br/>[1, 2, 3, ...]"]
+        Types["typeEnum: Uint16Array<br/>[5, 12, 8, ...]"]
+        Names["name (string index): Uint32Array<br/>[42, 0, 15, ...]"]
         Flags["flags: Uint8Array<br/>[3, 1, 3, ...]"]
     end
 
@@ -321,7 +321,7 @@ flowchart LR
         Start["query"]
         Type[".walls()"]
         Filter[".whereProperty()"]
-        Select[".select()"]
+        Select[".execute()"]
     end
 
     subgraph Execute["Execute"]
@@ -356,6 +356,7 @@ flowchart TB
         Entities["entities table"]
         Properties["properties table"]
         Quantities["quantities table"]
+        Relationships["relationships table"]
     end
 
     subgraph Output["Output"]

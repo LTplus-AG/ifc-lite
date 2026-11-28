@@ -20,7 +20,7 @@ import { gatheredModelIds } from './federation-identity';
 import type { ClashExclusionRule } from './exclusions';
 import type { ClashModelTagInputs } from './model-tag-inputs';
 import type { ClashSetFilters } from './set-filter';
-import { clashRunRegistrations, type ClashRunCompleteEvent, type ClashRunListenerOptions } from './host-run-listeners';
+import { clashRunRegistrations, deliverClashRunEvent, type ClashRunCompleteEvent, type ClashRunListenerOptions } from './host-run-listeners';
 import type { ClashRunPinnedInputs } from './host-run-build';
 
 export interface ModelLike { id: string; name: string }
@@ -92,13 +92,7 @@ export function notifyClashRunComplete(result: ClashResult, context: ClashRunHos
     (err: unknown) => {
       console.error('[clash] host run document builder failed to load', err);
       const event: ClashRunCompleteEvent = Object.freeze({ ok: false, error: asError(err) });
-      for (const { listener } of registrations) {
-        try {
-          listener(event);
-        } catch (listenerErr) {
-          console.error('[clash] host run listener failed', listenerErr);
-        }
-      }
+      for (const { listener } of registrations) deliverClashRunEvent(listener, event);
     },
   );
 }

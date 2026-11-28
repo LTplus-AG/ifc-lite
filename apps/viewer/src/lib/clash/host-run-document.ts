@@ -16,27 +16,12 @@
 
 import type { ClashResult, ClashRunDocument } from '@ifc-lite/clash';
 import { buildRunDocument } from './host-run-build';
-import type { ClashRunCompleteEvent, ClashRunListenerOptions, clashRunRegistrations } from './host-run-listeners';
+import { deliverClashRunEvent as deliver, type ClashRunCompleteEvent, type ClashRunListenerOptions, type clashRunRegistrations } from './host-run-listeners';
 import type { ClashRunHostContext, ClashRunPinned } from './host-run-publish';
 
 export { notifyClashRunComplete, slotBindings, type ClashRunHostContext, type ModelLike } from './host-run-publish';
 
-const isThenable = (value: unknown): value is PromiseLike<unknown> =>
-  (typeof value === 'object' || typeof value === 'function') && value !== null
-  && typeof (value as { then?: unknown }).then === 'function';
-
 const asError = (err: unknown): Error => (err instanceof Error ? err : new Error(String(err)));
-
-function deliver(listener: (event: ClashRunCompleteEvent) => unknown, event: ClashRunCompleteEvent): void {
-  try {
-    const delivered = listener(event);
-    if (isThenable(delivered)) {
-      Promise.resolve(delivered).catch((err: unknown) => { console.error('[clash] host run listener failed', err); });
-    }
-  } catch (err) {
-    console.error('[clash] host run listener failed', err);
-  }
-}
 
 /** Build each pinned registration's document once, freeze it, and deliver it. */
 export function deliverClashRun(

@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { makeExclusionSet, qualifiedKey, validateClashRunDocument, type Clash, type ClashResult, type ClashRunDocument } from '@ifc-lite/clash';
 import type { ClashExclusionRule } from './exclusions.js';
 import { Rule } from '@ifc-lite/rules';
-import { onClashRunComplete, type ClashRunCompleteEvent } from './host-run-listeners.js';
+import { deliverClashRunEvent, onClashRunComplete, type ClashRunCompleteEvent } from './host-run-listeners.js';
 import { notifyClashRunComplete, type ClashRunHostContext } from './host-run-document.js';
 import { rememberFederationIdentity } from './federation-identity.js';
 
@@ -219,6 +219,19 @@ describe('clash run host hook', () => {
     }
     assert.equal(logged.length, 1, 'the rejection is logged once');
     assert.equal((logged[0] as Error).message, 'store failed');
+  });
+
+  it('the shared delivery helper (also used when the builder chunk fails to load) logs a rejection', async () => {
+    const originalError = console.error;
+    const logged: unknown[] = [];
+    console.error = (...args: unknown[]) => { logged.push(args[1]); };
+    try {
+      deliverClashRunEvent(async () => { throw new Error('store failed'); }, Object.freeze({ ok: false, error: new Error('chunk load') }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    } finally {
+      console.error = originalError;
+    }
+    assert.equal((logged[0] as Error | undefined)?.message, 'store failed', 'the rejection is caught and logged');
   });
 
   it('keeps a failing listener from affecting another', async () => {

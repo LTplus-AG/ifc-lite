@@ -67,3 +67,19 @@ export function onClashRunComplete(listener: ClashRunCompleteListener, options: 
 export function clashRunRegistrations(): readonly Registration[] {
   return [...registrations];
 }
+
+const isThenable = (value: unknown): value is PromiseLike<unknown> =>
+  (typeof value === 'object' || typeof value === 'function') && value !== null
+  && typeof (value as { then?: unknown }).then === 'function';
+
+/** Call one listener: a throw, or a returned promise's rejection, is logged and goes no further. */
+export function deliverClashRunEvent(listener: ClashRunCompleteListener, event: ClashRunCompleteEvent): void {
+  try {
+    const delivered = listener(event);
+    if (isThenable(delivered)) {
+      Promise.resolve(delivered).catch((err: unknown) => { console.error('[clash] host run listener failed', err); });
+    }
+  } catch (err) {
+    console.error('[clash] host run listener failed', err);
+  }
+}

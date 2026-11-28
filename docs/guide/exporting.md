@@ -285,7 +285,7 @@ RTC origins ride a glTF node translation so large-coordinate models stay precise
 ### glTF with Metadata
 
 ```typescript
-const glb = gp.exportGlb(bytes, /* includeMetadata */ true, new Uint32Array(), new Uint32Array(), '');
+const glb = gp.exportGlb(bytes, /* includeMetadata */ true, new Uint32Array(), undefined, '');
 
 // With includeMetadata, each mesh node carries identifying extras:
 // {
@@ -1088,7 +1088,7 @@ try {
 
 The writer is not part of the default geometry engine that every viewer load downloads: it ships
 in the separate export payload (`@ifc-lite/wasm/rhino`, shared with the Rhino `.3dm` scene builder),
-which `exportCityJson` fetches the first time it runs. The viewer does not offer CityJSON export yet.
+which `exportCityJson` fetches the first time it runs. In the viewer, the **CityJSON** export command opens a dialog that writes CityJSON or CityJSONSeq for one loaded IFC model, including this session's georeferencing edits; a model without georeferencing is written in its local coordinates, and the dialog says so.
 
 **Size limit.** The whole document is built in memory (every vertex, City Object and the JSON text),
 and CityJSONSeq is assembled the same way before it is returned, not streamed feature by feature. A
@@ -1182,6 +1182,31 @@ Vertices are integers on the `scale` grid (default `0.001`: millimetres) with
 that collapses on the grid are dropped. A model with no `IfcBuilding` in its spatial structure is
 refused (`CITYJSON_REFUSED:`) rather than written as an empty city model. Output validates against
 the official CityJSON 2.0.2 schemas (`packages/cli/src/commands/export-cityjson.test.ts`).
+
+## Rhino (.3dm) Export
+
+A model exports as a Rhino `.3dm` file with IFC layers, blocks for repeated
+geometry, materials and IFC attributes/properties as user text. In the viewer
+use the **Rhino (.3dm)** export command; on the CLI use `--format 3dm` (see the
+[Rhino export options](cli.md#rhino-export-options)). From code, build the
+scene in Rust, then write the file with `@ifc-lite/rhino3dm`:
+
+```typescript
+import { exportRhinoScene } from '@ifc-lite/geometry';
+import { writeRhino3dm } from '@ifc-lite/rhino3dm';
+
+// Options default to RHINO_SCENE_DEFAULTS (source units, local coordinates,
+// spatial-class layers, blocks on, all properties, spaces included).
+const scene = await exportRhinoScene(bytes, { units: 'meters', layerScheme: 'class' });
+const { bytes: file3dm, warnings, objectCount } = await writeRhino3dm(scene, { version: 8 });
+if (objectCount > 0) await saveFile('model.3dm', file3dm);
+console.warn(warnings);
+```
+
+`exportRhinoScene` loads the separate export payload (`@ifc-lite/wasm/rhino`)
+on first use and rejects with `NO_RENDER_GEOMETRY` when there is nothing to
+draw. `writeRhino3dm` writes version 8 by default, or 7. The viewer opens the
+result again as described in [Rhino .3dm](rhino-3dm.md).
 
 ## Other Formats via GeometryProcessor
 
@@ -1374,7 +1399,7 @@ const gp = new GeometryProcessor();
 await gp.init();
 
 // There is no single pipeline class — compose the real exporters you need.
-const glb = gp.exportGlb(bytes, true, new Uint32Array(), new Uint32Array(), '');
+const glb = gp.exportGlb(bytes, true, new Uint32Array(), undefined, '');
 const entitiesParquet = await new ParquetExporter(store).exportTable('entities');
 const csv = gp.exportCsv(bytes, 'entities', ',', /* includeProperties */ true);
 

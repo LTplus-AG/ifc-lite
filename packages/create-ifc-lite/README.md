@@ -5,8 +5,10 @@ Scaffolds an IFClite project with runnable code and a resolved dependency lock.
 ## Usage
 
 ```bash
-npx create-ifc-lite <project-name> [--template <type>]
+npx create-ifc-lite [project-name] [--template <type>]
 ```
+
+The project name defaults to `my-ifc-app`.
 
 The scaffolder picks `basic` by default. It pins inspected IFClite releases, skips releases whose required worker files are missing, and checks their transitive IFClite dependencies. It resolves the complete dependency set with npm, checks peer constraints, and writes `package-lock.json` without running dependency install scripts. Run `npm ci` in the generated project to install that exact set; commit the lockfile so teammates and CI use the same versions.
 
@@ -49,8 +51,9 @@ Each template ships with a `README.md` documenting what it does and how to exten
 
 | Flag | Description |
 |------|-------------|
-| `--template <type>` | One of `basic`, `react`, `threejs`, `babylonjs`, `server`, `server-native` |
-| `--help` | Show help |
+| `-t`, `--template <type>` | One of `basic`, `react`, `threejs`, `babylonjs`, `server`, `server-native` |
+| `-v`, `--version` | Print the create-ifc-lite version |
+| `-h`, `--help` | Show help |
 
 ## Learn more
 

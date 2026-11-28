@@ -1,6 +1,6 @@
 # Coordinated appearance assignments
 
-F7 is being implemented as a stack under [#4420](https://github.com/LTplus-AG/ifc-lite/issues/4420).
+F7 shipped as a stack under [#4420](https://github.com/LTplus-AG/ifc-lite/issues/4420) (closed as completed).
 The existing Appearance workspace now captures several scopes, previews them
 together, and publishes one coordinated Apply/Undo/Redo across their models.
 No new public package API or alternate IFC writer is introduced. See the
@@ -72,8 +72,9 @@ Pure membership tests cover colliding IDs, ordered exceptions, inconsistent
 revisions and reload differences. Mounted list tests exercise reordering,
 exclusion and removal and lock editing during publication. Real two-model mapped
 browser, coordinated failure/Undo and portable export/share evidence are recorded
-in the integrated acceptance linked above. Rooms currently share each active
-model separately, not the complete coordinated federation.
+in the integrated acceptance linked above. Share can cover the active model or
+all loaded models (`ShareScope` in `apps/viewer/src/lib/collab/share-scope.ts`);
+each seedable model takes its own room slot.
 
 
 ## Coordinated publication and history

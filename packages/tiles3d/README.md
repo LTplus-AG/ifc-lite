@@ -87,13 +87,15 @@ and ellipsoidal height to chain from).
 - It throws only for an invalid region or option, an unloadable root tileset (including a root URL the URL policy refuses), or an aborted `signal`.
 - Inject `fetch` (any `(url, { signal, headers }) => Promise<{ ok, status, body?, headers?, url?, arrayBuffer() }>`; the global `fetch` fits) and a `cache` (`get` / `set` by URL, for tileset JSON and content alike).
 - Batch table rows are plain objects whose keys are own data properties: a column named `__proto__`, `constructor` or `prototype` stays data and never changes a prototype.
+- `maxNodes` (default 1,000,000) bounds the tile nodes visited across all tilesets; reaching it truncates with reason `nodes`. `concurrency` (default 4) sets parallel content requests. `headers` are sent with every request.
+- `featureFilter: 'intersects'` (default) keeps features whose vertex lon/lat bounds overlap the region; `'tiles'` keeps every feature of every intersecting tile.
 - `tileCullMarginMetres` grows the region for tile culling only. Use it for tilesets whose bounding volumes do not enclose their content (see below).
 
 ## Draco decoder
 
 Draco decoding uses Google's [`draco3d`](https://www.npmjs.com/package/draco3d)
-1.5.7, under the Apache-2.0 licence. Only its decoder module is imported
-(about 59 KB of JavaScript plus a 286 KB wasm), never the encoder. It is
+1.5.9 (pinned), under the Apache-2.0 licence. Only its decoder module (a
+JavaScript loader plus `draco_decoder.wasm`) is imported, never the encoder. It is
 loaded lazily, the first time a Draco primitive is met, and one instance is
 shared by every query in the process. In Node it finds its wasm by itself.
 

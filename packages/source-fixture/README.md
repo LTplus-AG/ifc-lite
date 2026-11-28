@@ -63,7 +63,13 @@ Everything is configurable at construction:
 - **`capabilities`**: toggle `revisionHistory` / `changeDetection` / `search`
   independently; the matching optional method (`listRevisions` /
   `watchRevisions` / `searchFiles`) is present on the returned object if and
-  only if its flag is `true`.
+  only if its flag is `true`. `writeBack` (a list of `WriteBackMode`s, default
+  none, so read-only) adds `uploadFile`, which refuses any mode not listed.
+  `downloadHistoricalRevisions: false` makes `download()` reject a
+  `revisionId`; `projectsAreDiscoverableOnly` is copied into the manifest.
+- **`eagerFileSweep`**, **`identity`** (what `signIn` returns) and
+  **`manifest`** (`name`, `title`, `apiRange`, `network`, `relay`
+  overrides): passed through to the manifest and auth.
 - **`failures`**: make any method throw, return a 429-shaped rate-limit
   error, hang until the caller's `AbortSignal` fires, or truncate a page
   below what its own cursor math promises. Adjustable after construction too,
@@ -81,9 +87,9 @@ options)`, which registers a full suite of `describe`/`it` blocks (via
 provider — not just this fixture:
 
 - the manifest is well-formed (`api` satisfies `PLUGIN_API_VERSION`,
-  capabilities present, `auth: 'interactive'` implies `provider.auth` exists,
-  a declared `relay` has both fields, network entries are valid host
-  patterns);
+  capabilities present, `provider.auth` exists exactly when `auth` is
+  `'interactive'`, a declared `relay` has both fields, `network` and
+  `publicNetwork` entries are valid host patterns);
 - `listContainers` matches the declared `containerListing` mode (no
   grandchildren leak into a `direct-children` result; a `flat-subtree` result
   forms one connected tree rooted at the queried container);
@@ -91,8 +97,11 @@ provider — not just this fixture:
   file's `containerId` names a container the provider also returns;
 - paging terminates, never repeats an item, and following cursors to
   exhaustion reconstructs the same set as one large page;
-- `download` honors `revisionId` and rejects promptly on an already-aborted
-  signal;
+- `download` reports progress that only increases and ends at the byte
+  length, and rejects promptly on an already-aborted signal. When the fixture
+  supplies a file with revisions and the provider advertises both
+  `revisionHistory` and `downloadHistoricalRevisions`, distinct `revisionId`
+  values must also yield different bytes;
 - optional methods are present if and only if the matching capability is
   `true`;
 - `watchRevisions` returns a well-formed result, and — for a **polling**

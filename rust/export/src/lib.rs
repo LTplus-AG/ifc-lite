@@ -75,6 +75,7 @@ mod schema_document_links;
 mod schema_project_time_unit;
 mod schema_value_forms;
 mod schema_material_referent;
+mod schema_space_boundary;
 mod schema_structural_varying;
 mod schema_mep;
 mod schema_detect;

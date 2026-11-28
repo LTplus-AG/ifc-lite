@@ -6,7 +6,8 @@ Private workspace protocol for the viewer and report service. GitHub report text
 
 ## What it defines
 
-- Report drafts and receipts: `ReportDraftInput` (title, description, public diagnostics, `visibility`, an optional verified issue target) and `ReportReceipt` (status, issue URL, upload, `publicModel` publication state, `issueDestination`).
+- Report drafts and receipts: `ReportDraftInput` (`clientRequestId`, title, description, public diagnostics, `visibility`, an optional verified issue target) and `ReportReceipt` (status, issue URL, upload, `publicModel` publication state, `issueDestination`).
+- Issue matching and errors: `VerifiedIssueTarget`, `IssueResolution` (`matched`, `unmatched` or `unavailable`) and the `ReportApiError` body (`error`, `message`).
 - Sessions and the attachment agreement: `ReportSession`, `ReportAgreement`, `AgreementAcceptanceInput`, `AgreementReceipt`.
 - Multipart model uploads: `UploadInput`, `ModelUpload`, `UploadedPart`, `PartAuthorization`, and the defaults in `REPORT_LIMITS` (2 GiB per file, 16 MiB parts, 2 parallel parts, 30-day retention).
 - Runtime guards for every value that crosses the boundary: `isDraftInput`, `isAgreementAcceptance`, `isUploadInput`, `isReportCorrelation`, `isPublicSharingConsent`, plus the helpers `isRecord`, `boundedText` and `isUuid`.

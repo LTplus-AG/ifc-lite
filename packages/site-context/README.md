@@ -4,8 +4,8 @@ The site around a georeferenced Swiss building, as data: real terrain
 (**swissALTI3D**), the cadastral **parcel** and the neighbouring
 **buildings** (**swissBUILDINGS3D**), in one local frame stated in
 **EPSG:2056 (LV95)** and **EPSG:5728 (LN02 heights)**, written as one
-self-describing GLB. Headless (browser and Node). The viewer, the CLI and
-the MCP server build on the same core.
+self-describing GLB. Headless (browser and Node). The viewer and the CLI build on
+the same core.
 
 ```bash
 npm install @ifc-lite/site-context @ifc-lite/geodata-ch

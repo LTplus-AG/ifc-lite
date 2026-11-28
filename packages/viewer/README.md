@@ -50,7 +50,7 @@ without loading the server, so clients can build the address cheaply.
 
 - WebGL 2 renderer with selection, isolation, x-ray, section planes, camera presets, and per-entity colorization
 - REST `/api/command` endpoint plus SSE push; `VALID_ACTIONS` lists the accepted actions (colorize, isolate, xray, flyto, highlight, section, colorByStorey, addGeometry, setView, camera, and more)
-- `startViewerServer` returns a `ViewerServer` handle: `broadcast`, `clientCount`, and access to created IFC segments
+- `startViewerServer` returns a `ViewerServer` handle: `broadcast`, `clientCount`, `createdSegments` (the created IFC segments) and `close`
 - Optional `createHandler` wires the `/api/create` endpoint for live element creation
 - Streaming adapters (`createStreamingViewerAdapter`, `createStreamingVisibilityAdapter`) and `getViewerHtml` for embedding the page elsewhere
 - WASM-powered parsing and geometry, no browser plugins required

@@ -196,7 +196,8 @@ function encodeBatch(collection: MeshCollection) {
   const batch = collection.encodeCompact(32); // cell size in metres, 2^-9 to 32
   try {
     // Each getter copies its column out of wasm memory.
-    // table: 6 u32 per mesh: mesh index, vertex start, vertex count, index start, index count, level
+    // table: 7 u32 per mesh: mesh index, vertex start, vertex count, index start, index count, level,
+    // source vertex count (before welding)
     const { records, indices, table, windows, bounds, cells } = batch;
     return { records, indices, table, windows, bounds, cells };
   } finally {
@@ -479,6 +480,10 @@ The real IFC parity runner (`node scripts/diff-real-fixture-parity.mjs`) reports
 Build the separate `pkg-retained` bundle with `BUILD_RETAINED=1 bash scripts/build-wasm.sh`
 and stage the SMLib transport at `/smlib/`. Its `IfcAPI.retainedModel(bytes, ids?)`
 returns a `Promise<RetainedModelRun>`. The default `pkg` does not expose this method.
+The published package ships only this bundle's types. `loadRetainedEngine()`
+from `@ifc-lite/wasm/retained` imports and initializes a deployed copy on first
+call (options `moduleUrl`, default the sibling `pkg-retained/ifc-lite.js`, and
+`wasm`); importing that subpath fetches nothing.
 
 The run buffers results until completion. Call `run.next()` until it returns
 `undefined`, then `run.free()`. Results follow the canonical processor's file

@@ -84,6 +84,18 @@ const contents = wall.storey()?.contains() ?? []; // elements in the wall's stor
 const aggregates = wall.decomposes();
 ```
 
+## Spatial queries
+
+`query.onStorey(storeyId)` returns an `EntityQuery` over the elements contained
+in that storey (it throws when the store has no spatial hierarchy).
+`query.inBounds(aabb)` and `query.raycast(origin, direction)` use the store's
+`spatialIndex` and throw `Spatial index not available` until geometry has been
+processed. `query.hierarchy`, `query.project` and `query.storeys` expose the
+spatial structure.
+
+`IfcQuery` reads the parsed store as a snapshot: it does not see live mutation
+edits. Use the SDK query for edited models.
+
 ## Selector syntax
 
 `parseSelector(text)` parses the IfcOpenShell selector syntax into an AST

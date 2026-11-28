@@ -19,7 +19,8 @@ npx @ifc-lite/mcp ./arch.ifc ./struct.ifc ./mep.ifc
 # can still write files under the allowed roots)
 npx @ifc-lite/mcp ./model.ifc --read-only
 
-# HTTP / Streamable HTTP for remote agents
+# HTTP / Streamable HTTP for remote agents. Files are not preloaded over HTTP:
+# each session starts empty and the agent loads models with model_load.
 npx @ifc-lite/mcp --transport http --port 8765 --token $API_TOKEN --allow ./models
 
 # Auto-open the WebGL viewer at startup. Add --open to also pop the URL in
@@ -53,7 +54,7 @@ pnpm --filter @ifc-lite/mcp release:manifests
 With the project's WASM build toolchain installed, this builds a Claude
 Desktop `.mcpb`, a dependency inventory and the MCP Registry `server.json`
 for the package version under the gitignored `packages/mcp/release-out/`
-directory. Use `--no-bundle` to generate only `server.json`.
+directory (`--out <dir>` picks another one). Use `--no-bundle` to generate only `server.json`.
 The Registry entry identifies the matching npm release. Registry publication
 requires that npm version to exist with the same `mcpName`.
 
@@ -207,7 +208,9 @@ hosted creation core. Pass `host_express_id`, optional `model_id` (required
 with several loaded models), and PascalCase `params`: `Offset`, `Width`,
 `Height`, optional `Sill` (required for a window). Lengths are metres in the
 wall's frame. Cuts must fit and avoid existing source/overlay openings;
-unreadable geometry is refused. The void/fill graph is written atomically,
+unreadable geometry is refused. `place_opening` also takes an IfcSlab host
+with `Position` (`[x, y]` in the slab's local frame), `Width` and `Depth`;
+slab footprint fit and overlap are not checked. The void/fill graph is written atomically,
 and one `mutation_undo` removes it. These writes reach IFC export; geometry
 tools continue to read the parsed model.
 
@@ -249,7 +252,7 @@ ePSet_MapConversion/ePSet_ProjectedCRS), or writes the IfcSite
 position (action `site`), and refuses, naming the missing input, rather than
 guess a CRS, unit or scale. `georeferencing_check` diagnoses the georeferencing
 and plans fixes; `georeferencing_fix` applies only the ones that go through the
-write API with every value known and no checker caveat. See the Georeferencing guide.
+write API with every value known and no checker caveat. See the [Georeferencing guide](../../docs/guide/georeferencing.md).
 
 One GlobalId resolves to one entity everywhere: an entity the session created
 wins over a same-GlobalId entity in the file, and a deleted one never resolves.
@@ -365,6 +368,7 @@ palette. Reads, selection inspection and palette discovery are available initial
 | `--allow-origin <origin>` | Another browser origin that may connect (repeatable), e.g. a dev server. |
 | `--read-only` | A ceiling: tools the tab labels as mutating stay hidden and refused even if the tab allows changes. The tab must enforce the rest. |
 | `--insecure` | Accept a plain-`http` origin on a non-loopback host (refused otherwise); prints a warning. |
+| `--channel` | Also push clicks on agent surfaces into a Claude Code session as channel messages (research preview; start Claude Code with a channel flag naming this server). |
 
 ### Security model
 
@@ -545,14 +549,15 @@ protocol version `1`; `--bridge` carries them over a loopback WebSocket at
 
 | Direction | `type` | Fields |
 |-----------|--------|--------|
-| tab → bridge | `hello` (first frame) | `protocol`, `pairingCode`, `permission`, `tools[]` (`name`, `title?`, `description`, `inputSchema`, `readOnly`), `client?`, `resultAck?` |
-| bridge → tab | `welcome` | `protocol`, `sessionId`, `permission` (effective), `readOnlyCeiling`, `bridge`, `features?` ([`image-content`]), `resultAck?` |
+| tab → bridge | `hello` (first frame) | `protocol`, `pairingCode`, `permission`, `tools[]` (`name`, `title?`, `description`, `inputSchema`, `readOnly`), `client?`, `resultAck?`, `a2uiSurface?` |
+| bridge → tab | `welcome` | `protocol`, `sessionId`, `permission` (effective), `readOnlyCeiling`, `bridge`, `features?` ([`image-content`, `ui-events`]), `resultAck?` |
 | bridge → tab | `a2ui-surface` | `sessionId`, `id`, `surface` (messages and optional title), sent when the tab advertises `hello.a2uiSurface` |
 | bridge → tab | `call` | `sessionId`, `id`, `name`, `arguments` |
 | tab → bridge | `result` | `sessionId`, `id`, `result` (an MCP `CallToolResult` with text, and image content when `welcome.features` lists `image-content`, passed through), `resultAck?` |
 | bridge → tab | `result-ack` | `sessionId`, `id`, `accepted` |
 | bridge → tab | `cancel` | `sessionId`, `id`, `reason` (`cancelled` or `timeout`) |
 | tab → bridge | `update` | `sessionId`, `permission?`, `tools?` |
+| tab → bridge | `ui-event` | `sessionId`, `event` (`surfaceId`, `name`, `prompt?`, `context?`): a click on a surface the agent sent with `tab_show_ui` |
 | bridge → tab | `error` | `code`, `message`; fatal codes end the channel; on the WebSocket transport, a close with code (4400 invalid, 4401 pairing failed, 4408 handshake timeout, 4409 replaced, 4426 protocol mismatch, 4503 shutting down) |
 
 Consumers can parse acknowledgements with `parseServerMessage(text, { resultAck: true })`. Both peers opt in to result acknowledgements by sending `resultAck: true` in `hello` and `welcome`. An intact result marked `resultAck: true` receives a `result-ack` after the bridge checks the result against its pending calls. A result that settled the pending call has `accepted: true`. Pending acknowledgements occupy call slots. If confirmation never arrives, the viewer closes the pairing. Older peers continue using protocol version 1 with the original delivery behavior.

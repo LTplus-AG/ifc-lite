@@ -43,6 +43,14 @@ for (const spec of report.specificationResults) {
 }
 ```
 
+Other `validateIDS` options: `maxEntities` (cap for sampling), `onProgress`,
+`includePassingEntities` (default `true`), `yieldEveryMs` (how often the
+validator yields to the event loop, default `40`) and `preview`.
+
+`createDataAccessor(store, propertyOverlay?, entityVisibility?)` also takes an
+optional property overlay and entity-visibility view, so unsaved edits can be
+validated.
+
 ## Multi-language reports
 
 Reports translate automatically. Supported languages: English (`en`), German (`de`), French (`fr`), Italian (`it`), Russian (`ru`).
@@ -53,7 +61,8 @@ import { parseIDS, validateIDS, createTranslationService } from '@ifc-lite/ids';
 const idsSpec = parseIDS(idsXml);
 const de = createTranslationService('de');
 const report = await validateIDS(idsSpec, accessor, modelInfo, { translator: de });
-// Failures now read: "Anforderung 'FireRating' nicht erfüllt..."
+// translator.describeFailure(req) now reads, for example:
+// 'Eigenschaft "FireRating" nicht in "Pset_DoorCommon" gefunden'
 ```
 
 ## Audit an IDS document
@@ -68,6 +77,12 @@ for (const issue of audit.issues) {
   console.log(`${issue.severity}: ${issue.message}`);
 }
 ```
+
+`auditIDSDocument` takes the XML as a `string` or `ArrayBuffer` and returns
+`status` (`valid`, `warning` or `error`), `issues` and, when parsing salvaged
+anything, `parsedDocument`. Options: `xsdValidation`, `ifcSchemaChecks` and
+`coherenceChecks` (each default `true`), `ifcVersion` (override each
+specification's declared version for the IFC schema checks) and `preview`.
 
 ## Inspect an IDS specification
 

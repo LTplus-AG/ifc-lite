@@ -149,6 +149,16 @@ withhold the total instead of returning a partial result. IFC2X3 cost metadata a
 relationships remain inspectable, with an explicit partial-read diagnostic;
 IFC2X3 evaluation is intentionally unsupported.
 
+## Subpath exports
+
+- `@ifc-lite/parser/browser` exports `WorkerParser`, which runs `parseColumnar()`
+  in a Web Worker on a `SharedArrayBuffer` of the IFC bytes, plus the spare-worker
+  helpers `prepareSpareParser`, `hasSpareParserWorker`, `isSpareParserWorkerWarming`
+  and `releaseSpareParserWorker`. It uses bundler worker imports, so it is browser-only.
+- `@ifc-lite/parser/structural-glyphs` exports `structuralGlyphs(store, extraction)`,
+  which turns the supports and loads of an `extractStructuralOnDemand()` result into a
+  plain-data glyph list (position, direction, kind, magnitude, source entity).
+
 ## Performance
 
 Storage is TypedArray-backed and columnar, and properties are extracted on

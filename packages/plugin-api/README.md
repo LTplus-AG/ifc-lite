@@ -13,6 +13,29 @@ npm install @ifc-lite/plugin-api
 
 See the [architecture docs](https://ifclite.dev/docs/) for the full design.
 
+## The provider interface
+
+A `FileSourceProvider` has a `manifest`, an `auth` object when
+`manifest.auth` is `'interactive'`, and these methods:
+
+- Required: `listProjects`, `listContainers`, `listFiles`, `download`.
+- Optional: `uploadFile` (only when `capabilities.writeBack` lists
+  `new-version`, `new-file` or `new-location`; it never overwrites bytes and
+  resolves to `{ ok: false, conflict }` on a refused write), `listRevisions`,
+  `watchRevisions`, `searchFiles`, `testConnection`.
+
+`PluginContext` gives the provider `fetch` (authenticated calls to
+`permissions.network` hosts), `fetchPublic` (pre-signed, credential-free URLs
+on `permissions.publicNetwork` hosts; headers other than `Accept` and `Range`
+are stripped and redirects are followed), `getPreference`, a namespaced
+`storage` and a `log`.
+
+Runtime exports besides the types: `PLUGIN_API_VERSION` (the host contract
+version a manifest's `api` caret range is checked against),
+`satisfiesCaretRange(hostVersion, range)`, `matchesGlob(name, pattern)`
+(case-insensitive `*` and `?`, the shared `FileFilter` name rule) and
+`readWithProgress` (below).
+
 ## Registering your own provider in a viewer build
 
 The viewer registers its built-in providers itself. A host application that

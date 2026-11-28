@@ -87,6 +87,8 @@ and ellipsoidal height to chain from).
 - It throws only for an invalid region or option, an unloadable root tileset (including a root URL the URL policy refuses), or an aborted `signal`.
 - Inject `fetch` (any `(url, { signal, headers }) => Promise<{ ok, status, body?, headers?, url?, arrayBuffer() }>`; the global `fetch` fits) and a `cache` (`get` / `set` by URL, for tileset JSON and content alike).
 - Batch table rows are plain objects whose keys are own data properties: a column named `__proto__`, `constructor` or `prototype` stays data and never changes a prototype.
+- `maxNodes` (default 1,000,000) bounds the tile nodes visited across all tilesets; reaching it truncates with reason `nodes`. `concurrency` (default 4) sets parallel content requests. `headers` are sent with every request.
+- `featureFilter: 'intersects'` (default) keeps features whose vertex lon/lat bounds overlap the region; `'tiles'` keeps every feature of every intersecting tile.
 - `tileCullMarginMetres` grows the region for tile culling only. Use it for tilesets whose bounding volumes do not enclose their content (see below).
 
 ## Draco decoder

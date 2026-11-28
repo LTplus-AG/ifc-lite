@@ -59,8 +59,9 @@ editor.removeEntity(unwantedExpressId);
 ```
 
 Edits accumulate in the same overlay used by `setProperty` / `setAttribute`
-and materialise the next time you call
-`StepExporter.export({ applyMutations: true })`.
+and materialise when you export through an exporter that holds the view:
+`new StepExporter(dataStore, view).export({ schema: 'IFC4', applyMutations: true })`
+(`StepExporter` is in `@ifc-lite/export`).
 
 For a query that needs to revisit source entities whose attributes changed,
 `view.getAttributeOverrideEntityIds()` returns a snapshot of the current named,
@@ -316,7 +317,7 @@ const json = manager.exportChangeSet(changeSet.id);
 const restored = manager.importChangeSet(json);
 ```
 
-Pair this with `exportToStep(store, { applyMutations: true })` from `@ifc-lite/export` to write a real `.ifc` file with the changes baked in.
+To write a real `.ifc` file with the changes baked in, pass the view to `StepExporter` from `@ifc-lite/export`: `new StepExporter(store, view).export({ schema: 'IFC4', applyMutations: true })`. The `exportToStep(store, options)` shortcut takes no mutation view, so it writes the source data without these edits.
 
 ## Features
 

@@ -16,14 +16,19 @@ export function openModelTabPort(): MessagePort | undefined {
   }
 }
 
+export function hasModelForPairing(state: ReturnType<typeof useViewerStore.getState>): boolean {
+  return state.models.size > 0 || Boolean(state.ifcDataStore);
+}
+
 export function listenForModelTabLinks(): () => void {
   const port = openModelTabPort();
   if (!port) return () => {};
   port.onmessage = ({ data }) => {
-    const models = useViewerStore.getState().models;
-    if (!models.size) return;
+    const state = useViewerStore.getState();
+    if (!hasModelForPairing(state)) return;
     if (data.type === 'query') {
-      port.postMessage({ type: 'offer', to: data.from, name: [...models.values()].map((m) => m.name).join(', ').slice(0, 240) });
+      const name = [...state.models.values()].map((m) => m.name).join(', ') || document.title || 'IFC';
+      port.postMessage({ type: 'offer', to: data.from, name: name.slice(0, 240) });
     } else if (data.type === 'prepare') {
       port.postMessage({ type: 'ready', to: data.from, attemptId: data.attemptId });
     } else if (data.type === 'deliver' && typeof data.fragment === 'string') {

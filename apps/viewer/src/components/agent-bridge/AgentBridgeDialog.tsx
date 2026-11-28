@@ -28,6 +28,7 @@ import { Field } from '@/components/ui/field';
 import { Spinner } from '@/components/ui/spinner';
 import { registerEnglish, useTranslation } from '@/i18n';
 import { agentBridgeEn } from '@/i18n/catalogues/agent-bridge.en';
+import { hasModelForPairing } from '@/lib/agent-bridge/model-tabs';
 import { ModelTabPicker } from './ModelTabPicker';
 import { useViewerStore } from '@/store';
 import { useBim } from '@/sdk/BimProvider';
@@ -83,7 +84,7 @@ export interface AgentBridgeDialogProps {
 export function AgentBridgeDialog({ request, onClose, load = loadSession }: AgentBridgeDialogProps) {
   const { t } = useTranslation();
   const bim = useBim();
-  const hasModels = useViewerStore((s) => s.models.size > 0);
+  const hasModels = useViewerStore(hasModelForPairing);
   const initial = useMemo(() => prefill(request), [request]);
   const [port, setPort] = useState(initial.port);
   const [code, setCode] = useState(initial.code);

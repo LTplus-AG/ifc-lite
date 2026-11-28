@@ -149,7 +149,9 @@ export function connectAgentBridge({ port, code, bim, WebSocket, resume = false,
     authenticate: {
       resume, pendingNonce,
       prepared: (rotationNonce, next) => {
-        saveTicket({ port, key: code, pendingNonce: rotationNonce });
+        // Initial pairing consumes the code when the bridge receives hello.
+        // Keep only its derived successor in case welcome never reaches this tab.
+        saveTicket(resume ? { port, key: code, pendingNonce: rotationNonce } : { port, key: next });
         if (pendingNonce) recoveryKey = next;
       },
       accepted: (key) => { recoveryKey = undefined; saveTicket({ port, key }); },
@@ -168,6 +170,7 @@ export function connectAgentBridge({ port, code, bim, WebSocket, resume = false,
       if (status.kind !== 'connected' && status.kind !== 'connecting') flushActivity();
       if (status.kind === 'disconnected' && status.reason !== 'connection-lost' && status.reason !== 'page-hidden') saveTicket();
       updateAgentBridgeState({ status });
+      if (!resume && status.kind === 'error' && status.code !== 'handshake-timeout' && status.code !== 'unreachable') saveTicket();
       if (resume && status.kind === 'error' && status.code === 'busy') onResumeBusy?.(code);
       if (resume && status.kind === 'error' && status.code === 'pairing-failed') {
         if (recoveryKey) {

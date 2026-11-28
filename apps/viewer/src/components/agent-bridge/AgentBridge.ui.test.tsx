@@ -17,6 +17,7 @@ import type { ReactNode } from 'react';
 import { buildPairingUrl } from '@ifc-lite/mcp/bridge-protocol';
 import { createBimContext } from '@ifc-lite/sdk';
 import { advance as advanceMs, cleanup, click, render, type, waitFor } from '@/test/render.js';
+import { fixtureDataStore } from '@/test/store-fixture';
 import { useViewerStore } from '@/store';
 import { resetFeaturesForTest } from '@/lib/features';
 import { LocalBackend } from '@/sdk/local-backend';
@@ -110,6 +111,32 @@ function deferredSession() {
 }
 
 describe('pairing link (#9523)', () => {
+  it('offers a legacy single-model tab and confirms the delivered link locally (#11674)', async () => {
+    const channel = new MessageChannel();
+    const previous = Object.getOwnPropertyDescriptor(globalThis, 'SharedWorker');
+    const previousStore = useViewerStore.getState().ifcDataStore;
+    let offers = 0;
+    channel.port2.onmessage = ({ data }) => { if (data.type === 'offer' && data.name) offers++; };
+    Object.defineProperty(globalThis, 'SharedWorker', { configurable: true, value: class { port = channel.port1; } });
+    try {
+      assert.equal(useViewerStore.getState().models.size, 0);
+      useViewerStore.setState({ ifcDataStore: fixtureDataStore() });
+      render(withBim(<AgentBridgeHost />));
+      channel.port2.postMessage({ type: 'query', from: 'picker' });
+      await waitFor(() => offers === 1, 'legacy model tab offered');
+      const fragment = new URL(buildPairingUrl('https://ifclite.com', 21600, CODE)).hash;
+      channel.port2.postMessage({ type: 'deliver', fragment });
+      await waitFor(() => Boolean(dialog()), 'confirm in the tab with the model');
+      assert.doesNotMatch(dialog()!.textContent ?? '', /Refresh model tabs/);
+    } finally {
+      cleanup();
+      useViewerStore.setState({ ifcDataStore: previousStore });
+      if (previous) Object.defineProperty(globalThis, 'SharedWorker', previous);
+      else Reflect.deleteProperty(globalThis, 'SharedWorker');
+      channel.port2.close();
+    }
+  });
+
   it('refreshes stale model-tab offers and delivers to the reloaded tab (#11674)', async () => {
     const channel = new MessageChannel();
     const previous = Object.getOwnPropertyDescriptor(globalThis, 'SharedWorker');
@@ -441,6 +468,34 @@ describe('a live connection is visible with Disconnect in every layout (#9523 re
     click(ui.querySelector('[data-agent-bridge-disconnect]') as HTMLElement);
     assert.equal(getAgentBridgeState().status.kind, 'idle');
     assert.ok(button(/^Connect local agent$/), 'back to the connect action');
+  });
+
+  it('resumes read-only when the initial welcome is lost after hello (#11674)', async () => {
+    const session = await import('@/lib/agent-bridge/session');
+    globalThis.WebSocket = LiveSocket as unknown as typeof WebSocket;
+    render(withBim(<AgentBridgeHost />));
+    try {
+      session.connectAgentBridge({ port: 21517, code: CODE, bim });
+      const initial = LiveSocket.last!;
+      initial.readyState = 1;
+      initial.onopen?.({});
+      await waitFor(() => !!initial.nonce, 'initial hello sent');
+      const next = createHmac('sha256', CODE.replaceAll('-', '')).update('ifc-lite/next/' + initial.nonce).digest('hex');
+      initial.onclose?.({ code: 1006, reason: '' });
+      window.dispatchEvent(new window.Event('online'));
+      await waitFor(() => LiveSocket.last !== initial, 'reconnect after lost initial welcome');
+      const retry = LiveSocket.last!;
+      retry.readyState = 1;
+      retry.onopen?.({});
+      await waitFor(() => !!retry.nonce, 'resume hello sent');
+      const proof = createHmac('sha256', next).update('ifc-lite/bridge/' + retry.nonce).digest('hex');
+      retry.onmessage?.({ data: JSON.stringify({ type: 'welcome', proof, protocol: 1,
+        sessionId: 'resumed', permission: 'read-only', readOnlyCeiling: false }) });
+      const status = getAgentBridgeState().status;
+      assert.ok(status.kind === 'connected' && status.permission === 'read-only');
+    } finally {
+      session.disconnectAgentBridge();
+    }
   });
 
   it('retries a transiently failed resume on visibility and rotates the ticket only after welcome (#11674)', async () => {

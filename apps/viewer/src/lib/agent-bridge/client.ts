@@ -196,7 +196,7 @@ export class BridgeClient {
       void handshakeProofs(resume ? this.opts.pairingCode : hello.pairingCode, this.opts.authenticate.pendingNonce).then((proofs) => {
         if (ws !== this.ws || this.ended) return;
         this.proofs = proofs;
-        if (resume) this.opts.authenticate?.prepared?.(proofs.nonce.slice(0, 32), proofs.next);
+        this.opts.authenticate?.prepared?.(proofs.nonce.slice(0, 32), proofs.next);
         ws.send(JSON.stringify({ ...hello, pairingCode: proofs.tab, nonce: proofs.nonce, resume }));
       }).catch((err: unknown) => {
         warn('could not prepare a verified handshake', err);

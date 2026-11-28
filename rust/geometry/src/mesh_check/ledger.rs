@@ -158,7 +158,6 @@ impl EdgeLedger {
 
     /// Recover consecutive, strictly paired shells from a merged triangle stream.
     /// A face order without complete closed runs is ineligible for this recovery.
-    #[cfg(feature = "csg_manifold_gate")]
     pub(crate) fn closed_shell_ranges(mesh: &Mesh) -> Option<Vec<std::ops::Range<usize>>> {
         if !mesh.indices.len().is_multiple_of(3) {
             return None;
@@ -194,7 +193,7 @@ impl EdgeLedger {
                 ledger.uses.clear();
             }
         }
-        (start == mesh.indices.len() && ranges.len() > 1).then_some(ranges)
+        (start == mesh.indices.len() && !ranges.is_empty()).then_some(ranges)
     }
 
     /// No edge was recorded (no triangle survived the degenerate rule).

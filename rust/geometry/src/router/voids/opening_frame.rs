@@ -135,6 +135,37 @@ pub(in crate::router::voids) fn cluster_prism_directions(
     Some(clusters.into_iter().map(|(axis, _)| axis.into()).collect())
 }
 
+/// Whether the axis-aligned bounds of a clean box mesh are the box itself:
+/// every corner of the bounds is a vertex of the mesh, up to f32 storage
+/// noise. The caller has already established that the mesh is a box, and a
+/// box whose eight corners are the corners of its bounds is those bounds.
+///
+/// The `Rectangular` kind keeps only those bounds, and every rule after it
+/// (the recess test, the flush extension, the rectangle cut) reads them as
+/// the box. [`OpeningFrame::is_axis_aligned`] cannot vouch for that: it
+/// compares directions against `cos(1°)`, and a box turned by `θ` gains
+/// `size · sin θ` on its bounds, 8.7 mm for a 1 m recess at 0.5°. That moved a
+/// flush recess off the face it starts on and extended it through the core
+/// (#11321). A turned box has no vertex on a corner of its bounds. Testing
+/// corners rather than every vertex keeps a box whose faces carry extra
+/// vertices, such as a profile with a collinear point, on the axes. It reads
+/// positions only, never the winding.
+pub(crate) fn bounds_are_the_box(mesh: &Mesh) -> bool {
+    let (min, max) = mesh.bounds();
+    let magnitude = min.coords.amax().max(max.coords.amax()).max(1.0);
+    // A box authored on the axes lands every vertex of a face on the same
+    // float; one f32 step at the stored magnitude absorbs a near-axis
+    // direction that rounds either way. Anything wider admits a turn whose
+    // bounds gain, carried along the host, exceeds the recess tolerance.
+    let tolerance = f32::EPSILON * magnitude;
+    (0..8).all(|corner: usize| {
+        let target = [0, 1, 2].map(|axis| if corner >> axis & 1 == 0 { min[axis] } else { max[axis] });
+        mesh.positions.chunks_exact(3).any(|vertex| {
+            (0..3).all(|axis| (vertex[axis] - target[axis]).abs() <= tolerance)
+        })
+    })
+}
+
 /// Whether a mesh is a clean axis-aligned (in its own frame) rectangular box —
 /// i.e. exactly 6 planar faces forming a bounding parallelepiped. Curved or
 /// arched openings produce many distinct triangle normals; rectilinear but
@@ -267,6 +298,7 @@ pub(crate) fn infer_opening_frame(
         cross_a,
         cross_b,
         depth_is_authored: extrusion_dir.is_some(),
+        aligned_bodies: None,
     })
 }
 

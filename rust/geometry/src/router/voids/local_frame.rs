@@ -42,7 +42,7 @@ pub(super) fn vertical_depth_wall_frame(
         CutterKind::DiagonalRectangular(_, frame)
             if frame.cross_a.z.abs() <= 0.2 && frame.cross_b.z.abs() <= 0.2 =>
         {
-            Some(*frame)
+            Some(frame)
         }
         _ => None,
     })?;
@@ -53,18 +53,7 @@ pub(super) fn vertical_depth_wall_frame(
     } else {
         frame.cross_b
     };
-    if is_axis_aligned_direction(&normal) {
-        return None;
-    }
-
-    let axes = wall_frame_from_depth(normal)?;
-    let run = extent_along_axis(host, &axes[0])?;
-    let height = extent_along_axis(host, &axes[1])?;
-    let thickness = extent_along_axis(host, &axes[2])?;
-    (thickness > NORMALIZE_EPSILON
-        && run >= thickness * WALL_ASPECT_MIN
-        && height >= thickness * WALL_ASPECT_MIN)
-        .then_some(axes)
+    thin_wall_frame(host, normal)
 }
 
 /// Issue #5410: a plan-rotated wall whose openings author NO penetration axis
@@ -90,9 +79,15 @@ pub(super) fn host_thickness_wall_frame(
         return None;
     }
     let normal = dominant_horizontal_normal(host)?;
+    thin_wall_frame(host, normal)
+}
+
+/// Qualify the candidate normal against the stored host's run, height and thickness.
+fn thin_wall_frame(host: &Mesh, normal: Vector3<f64>) -> Option<[Vector3<f64>; 3]> {
     if is_axis_aligned_direction(&normal) {
         return None;
     }
+
     let axes = wall_frame_from_depth(normal)?;
     let run = extent_along_axis(host, &axes[0])?;
     let height = extent_along_axis(host, &axes[1])?;

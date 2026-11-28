@@ -47,14 +47,13 @@
  * harness fault (bad arguments, main unreadable). It never exits 1.
  */
 
-import { appendFileSync, existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { gatingFilters, parseFilterBlock, splitJobs } from './lib/ci-path-coverage.mjs';
+import { readInRunMeasurement } from './lib/base-stale-artifacts.mjs';
 import { QUEUE_LABEL, STATUS_CONTEXT, rollbackStatus, summaryLine } from './lib/base-stale.mjs';
 import { evaluatePr } from './lib/base-stale-evaluate.mjs';
 import { BudgetError, createIo } from './lib/base-stale-io.mjs';
 import { isMainEntry } from './lib/is-main-entry.mjs';
-import { loadMeasuredFile } from './perf-ratchet/ceilings.mjs';
 
 export { evaluatePr };
 
@@ -253,7 +252,7 @@ export function run(opts, env = process.env, makeIo = createIo) {
 
   // A rollback in progress (see saveCache): heads already read since `on`.
   const leftOn = cache?.lastMode !== 'shadow';
-  const released = sweep && leftOn ? { ...(cache?.released ?? {}) } : {};
+  const released = sweep && leftOn ? { ...cache?.released } : {};
   // Shadow sweep: the heads an in-run step judged with the gate on. A failed
   // lookup reads every head instead (null), the safe direction. Needed for a
   // settled shadow, and to re-read a released head that has been judged
@@ -322,11 +321,7 @@ export function run(opts, env = process.env, makeIo = createIo) {
     const baseSha = baseRef === 'main' && !opts.mainSha ? mainTip : null;
     let verdict;
     if (baseRef === 'main' && headSha) {
-      const readMeasured = inRun ? () => {
-        if (!existsSync(opts.measuredDir)) return null;
-        const files = readdirSync(opts.measuredDir).filter((n) => n.endsWith('.json')).sort();
-        return { families: files.map((f) => loadMeasuredFile(join(opts.measuredDir, f))), mergeSha: opts.mergeSha };
-      } : null;
+      const readMeasured = inRun ? () => readInRunMeasurement(opts.measuredDir, opts.mergeSha, env) : null;
       verdict = evaluatePr(io, { pr: t.pr, headSha, mainTip, ceilings, globs, readMeasured, prRun: opts.prRun ?? null, baseRef, baseSha });
     } else {
       const outsideMain = Boolean(baseRef && baseRef !== 'main');

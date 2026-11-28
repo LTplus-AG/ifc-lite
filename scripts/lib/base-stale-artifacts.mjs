@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { execFileSync } from 'node:child_process';
-import { lstatSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { loadMeasuredFile } from '../perf-ratchet/ceilings.mjs';
 
@@ -36,4 +36,24 @@ export function readArtifactFamily({ spawn, repo, art, name, runId, dir, family 
   writeFileSync(join(dir, `${name}.zip`), zip.stdout);
   execFileSync('unzip', ['-q', '-o', join(dir, `${name}.zip`), '-d', out]);
   return measuredJsonFiles(out).map(loadMeasuredFile).filter((m) => m.family === family);
+}
+
+/** Read local evidence. In Actions the producer sidecar must match this run and attempt. */
+export function readInRunMeasurement(dir, mergeSha, env) {
+  const { GITHUB_RUN_ID: runId, GITHUB_RUN_ATTEMPT: attempt } = env;
+  if (!existsSync(dir)) return null;
+  if (!runId && !attempt && env.GITHUB_ACTIONS !== 'true') {
+    return { families: measuredJsonFiles(dir).map(loadMeasuredFile), mergeSha };
+  }
+  if (!runId || !attempt) return null;
+  const families = [];
+  for (const family of ['bundle', 'native-instructions']) {
+    const marker = join(dir, `${family}.attempt`);
+    const file = join(dir, `${family}.json`);
+    if (!existsSync(marker) || !existsSync(file) || readFileSync(marker, 'utf8').trim() !== `${runId}:${attempt}`) continue;
+    const measured = loadMeasuredFile(file);
+    if (measured.family !== family || measured.commit !== mergeSha) continue;
+    families.push(measured);
+  }
+  return { families, mergeSha };
 }

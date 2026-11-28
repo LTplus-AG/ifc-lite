@@ -95,7 +95,7 @@ export function slim(measured) {
 
 export function createIo({ repo, cwd = process.cwd(), cache = null, now = () => Date.now(), gh: ghCall = gh, spawn = spawnSync }) {
   const stats = { calls: 0, downloads: 0, cacheHits: 0 };
-  const store = { mainMeasurements: {}, prMeasurements: {}, prFiles: {}, posted: {}, released: {}, ...(cache ?? {}) };
+  const store = { mainMeasurements: {}, prMeasurements: {}, prFiles: {}, posted: {}, released: {}, ...cache };
   let budget = Infinity;
 
   /** Count one request against this run's allowance, or refuse it. */

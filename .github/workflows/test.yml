@@ -1041,7 +1041,9 @@ jobs:
       - name: Measure perf-ratchet bundle family
         id: perf-ratchet-measure
         continue-on-error: true
-        run: node scripts/perf-ratchet/measure-bundle.mjs --out "$RUNNER_TEMP/perf-ratchet/bundle.json"
+        run: |
+          node scripts/perf-ratchet/measure-bundle.mjs --out "$RUNNER_TEMP/perf-ratchet/bundle.json"
+          printf '%s:%s\n' "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" > "$RUNNER_TEMP/perf-ratchet/bundle.attempt"
 
       - name: Upload perf-ratchet measurements
         if: steps.perf-ratchet-measure.outcome == 'success'
@@ -4123,7 +4125,9 @@ jobs:
       - name: Fetch the FZK-Haus fixture
         run: node scripts/fixtures/fetch-fixtures.mjs ara3d/AC20-FZK-Haus.ifc
       - name: Measure perf-ratchet native-instructions family
-        run: node scripts/perf-ratchet/measure-native-instructions.mjs --set small --out "$RUNNER_TEMP/perf-ratchet-native/native-instructions.json"
+        run: |
+          node scripts/perf-ratchet/measure-native-instructions.mjs --set small --out "$RUNNER_TEMP/perf-ratchet-native/native-instructions.json"
+          printf '%s:%s\n' "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" > "$RUNNER_TEMP/perf-ratchet-native/native-instructions.attempt"
       - name: Upload native-instructions measurement
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -4228,6 +4232,8 @@ jobs:
       # new verdict here. It never changes this job's result
       # (continue-on-error, and the script never exits 1). Queue drafts
       # already run the full gate on the merged tree.
+      # Fixed-name downloads can come from an earlier attempt on a job rerun.
+      # The advisory reader checks each producer's attempt sidecar before use.
       - name: Base-stale verdict (advisory)
         id: base-stale
         if: ${{ !cancelled() && github.event_name == 'pull_request' && github.base_ref == 'main' && !startsWith(github.head_ref, 'mergify/merge-queue/') }}

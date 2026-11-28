@@ -6,7 +6,7 @@
 // from the real test.yml, and the per-PR evaluation over a fake I/O layer.
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -203,7 +203,7 @@ const STALE_PR = { number: 5, headRefOid: 'head5', baseRefName: 'main', isDraft:
 const FORK_PR = { number: 6, headRefOid: 'head6', baseRefName: 'main', isDraft: false, isCrossRepository: true };
 const realCeilings = () => new Map([['bundle', ceilings.get('bundle')]]);
 
-function runFake({ gate, cacheData = null, prs = [STALE_PR], existing = 'failure', opts = {}, remaining = () => 5000, ioOver = {}, baseRef = 'main' }) {
+function runFake({ gate, cacheData = null, prs = [STALE_PR], existing = 'failure', opts = {}, remaining = () => 5000, ioOver = {}, baseRef = 'main', actionsEnv = {} }) {
   const dir = mkdtempSync(join(tmpdir(), 'base-stale-run-'));
   const cachePath = join(dir, 'cache.json');
   if (cacheData) writeFileSync(cachePath, JSON.stringify(cacheData));
@@ -226,7 +226,7 @@ function runFake({ gate, cacheData = null, prs = [STALE_PR], existing = 'failure
       ...ioOver,
     };
   };
-  const env = { GITHUB_REPOSITORY: 'o/r', CI_BASE_STALE_GATE: gate, GITHUB_BASE_REF: baseRef };
+  const env = { GITHUB_REPOSITORY: 'o/r', CI_BASE_STALE_GATE: gate, GITHUB_BASE_REF: baseRef, ...actionsEnv };
   const log = console.log;
   console.log = () => {};
   const jsonOut = join(dir, 'verdicts.jsonl');
@@ -325,6 +325,53 @@ ct('run #11350: in-run native measurements require a valid bundle', (t) => {
   assert.equal(evaluate().verdict, 'fresh');
   writeFileSync(join(dir, 'bundle.json'), '{');
   assert.equal(evaluate().verdict, 'unknown');
+});
+
+ct('workflow #11350: in-run evidence uses each measurement producer’s current attempt', (t) => {
+  const temp = mkdtempSync(join(tmpdir(), 'base-stale-measurement-attempt-'));
+  t.after(() => rmSync(temp, { recursive: true, force: true }));
+  const { jobs } = parse(readFileSync(WORKFLOW_PATH, 'utf8'));
+  const consumer = jobs['perf-ratchet'].steps;
+  const advisory = consumer.find((step) => step.id === 'base-stale');
+  const mergeSha = 'cafe0000001';
+  const native = { ...fam(10, mergeSha), family: 'native-instructions' };
+  const nativeCeiling = { family: native.family, entries: ceilings.get('bundle').entries };
+  const producerEnv = (attempt) => ({ GITHUB_RUN_ID: '42', GITHUB_RUN_ATTEMPT: String(attempt) });
+  const stage = (job, measurement, name, attempt, destination) => {
+    const uploadIndex = job.steps.findIndex((step) => step.with?.name === name);
+    const upload = job.steps[uploadIndex];
+    const download = consumer.find((step) => step.with?.name === name);
+    const runnerTemp = mkdtempSync(join(temp, 'producer-'));
+    const measurer = 'node() { local out; for out in "$@"; do :; done; mkdir -p "$(dirname "$out")"; printf "%s" "$MEASUREMENT" > "$out"; }';
+    execFileSync('bash', ['-ec', `${measurer}\n${job.steps[uploadIndex - 1].run}`], {
+      env: { ...process.env, ...producerEnv(attempt), RUNNER_TEMP: runnerTemp, MEASUREMENT: JSON.stringify(measurement) },
+    });
+    const resolve = (value, root) => value.replace(/\$\{\{ runner\.temp \}\}/, root);
+    cpSync(resolve(upload.with.path, runnerTemp), resolve(download.with.path, destination), { recursive: true });
+  };
+  const verdict = (bundleAttempt, nativeAttempt) => {
+    const runnerTemp = mkdtempSync(join(temp, 'consumer-'));
+    stage(jobs.build, fam(400, mergeSha), 'perf-ratchet-measured', bundleAttempt, runnerTemp);
+    stage(jobs['native-instructions'], native, 'perf-ratchet-measured-native', nativeAttempt, runnerTemp);
+    const actionsEnv = { ...producerEnv(2), GITHUB_ACTIONS: 'true' };
+    const args = execFileSync('bash', ['-ec', `node() { printf '%s\\n' "$@"; }\n${advisory.run}`], {
+      env: { ...process.env, ...actionsEnv, RUNNER_TEMP: runnerTemp, PR_NUMBER: '5', HEAD_SHA: 'head5', GITHUB_SHA: mergeSha },
+      encoding: 'utf8',
+    }).trim().split('\n');
+    const opts = parseArgs(args.slice(1));
+    delete opts.jsonOut;
+    return runFake({ opts, actionsEnv, ioOver: {
+      prFiles: () => ['rust/core/src/a.rs'],
+      mainTip: () => 'base0000001',
+      ceilingsAt: () => new Map([...ceilings, [native.family, nativeCeiling]]),
+    } }).rows[0];
+  };
+  assert.equal(verdict(1, 1).verdict, 'unknown');
+  assert.equal(verdict(1, 2).verdict, 'unknown');
+  const mixed = verdict(2, 1);
+  assert.equal(mixed.verdict, 'unknown');
+  assert.equal(mixed.perf.rows.find((row) => row.id === 'native-instructions/*').verdict, 'unknown');
+  assert.equal(verdict(2, 2).verdict, 'fresh');
 });
 
 ct('run: same-head PRs keep separate evidence with the legacy switch set (#11350)', () => {

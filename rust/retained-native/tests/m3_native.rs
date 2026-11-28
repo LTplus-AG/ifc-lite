@@ -47,7 +47,11 @@ fn refusal(outcomes: &[ProductOutcome], id: u32) -> (&str, Option<RefusalOrigin>
     }).unwrap_or_else(|| panic!("missing refused #{id}: {outcomes:?}"))
 }
 fn measure(shape: &ShapeOnlyProduct) -> metrics::Metrics {
-    let mut result = metrics::Metrics::default();
+    // Material bands are open and close only as an assembly: measuring each
+    // band from its own first vertex depends on vertex order (m4_native, CLI).
+    let mut result = if shape.parts.iter().any(|part| part.layer.is_some()) {
+        metrics::Metrics::assembly()
+    } else { metrics::Metrics::default() };
     for part in &shape.parts {
         let points: Vec<_> = part.positions.chunks_exact(3).map(|p|
             metrics::transform(&part.world_from_object, [p[0], p[1], p[2]])).collect();
@@ -264,11 +268,14 @@ fn issue_7955_m3_stage_native_browser_reference() {
         let m4straight=run(include_str!("../../../tests/fixtures/cli-retained/layered-wall.ifc"),&[27]).unwrap();
         let m4synthetic=run(include_str!("../../../tests/fixtures/synthetic-retained/f-g-layers.ifc"),&[1027,2027,3055,4055,5027,6027,7027,8027,9027,13055]).unwrap();
         let m4curved=run(include_str!("../../../tests/fixtures/synthetic-retained/f-a-curved.ifc"),&[55]).unwrap();
+        // f-d k-host #248: two material layers cut by an opening. Its per-band
+        // capped volumes are compared native vs Node/wasm at 1e-9.
+        let m4openings=run(FD,&[248]).unwrap();
         let layers=|outcomes:&[ProductOutcome]| outcomes.iter().map(|o|match o {
             ProductOutcome::Published(s)=>serde_json::json!({"id":s.product_id,"code":"published","bands":s.parts.iter().map(|p|serde_json::json!({"index":p.layer.map(|l|l.index),"materialId":p.layer.map(|l|l.material_id),"volume":p.capped_volume_m3,"keys":p.faces.as_ref().map(|f| f.table.iter().map(ToString::to_string).collect::<std::collections::BTreeSet<_>>())})).collect::<Vec<_>>()}),
             ProductOutcome::Refused{product_id,refusal,..}=>serde_json::json!({"id":product_id,"code":refusal.code(),"bands":[]}),
         }).collect::<Vec<_>>();
-        std::fs::write(path, serde_json::to_vec_pretty(&serde_json::json!({"issue2019":rows(&issue),"synthetic":rows(&synthetic),"nonbakeable":rows(&nonbakeable),"m4straight":layers(&m4straight),"m4curved":layers(&m4curved),"m4synthetic":layers(&m4synthetic)})).unwrap()).unwrap();
+        std::fs::write(path, serde_json::to_vec_pretty(&serde_json::json!({"issue2019":rows(&issue),"synthetic":rows(&synthetic),"nonbakeable":rows(&nonbakeable),"m4straight":layers(&m4straight),"m4curved":layers(&m4curved),"m4synthetic":layers(&m4synthetic),"m4openings":layers(&m4openings)})).unwrap()).unwrap();
     }
     println!("sdk witness executed: m3_reference");
 }

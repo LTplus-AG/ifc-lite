@@ -86,6 +86,7 @@
     "@types/cross-spawn": "^6.0.6",
     "@types/node": "^26.6.6",
     "@types/ws": "^8.18.2",
+    "ajv": "^8.17.1",
     "esbuild": "catalog:",
     "happy-dom": "^21.0.4",
     "typescript": "^6.0.3",

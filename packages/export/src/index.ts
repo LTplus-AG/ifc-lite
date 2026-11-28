@@ -127,3 +127,5 @@ export { editOwnershipRefusal, effectiveReferencers } from './edit-ownership.js'
 export { exportSectionedStep, type SectionExportPlane, type SectionExportOptions } from './section-export-entry.js';
 
 export { readGeometryDiagnostics, filterWorstHosts } from './geometry-diagnostics.js';
+export { exportEnergyArtifact } from './energy-artifact.js';
+export { exportRustArtifact } from './rust-artifact.js';

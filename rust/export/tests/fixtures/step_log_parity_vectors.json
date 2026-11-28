@@ -6334,7 +6334,7 @@
     "#15=IFCPROPERTYSINGLEVALUE('Width',$,IFCLENGTHMEASURE(0.24),#7);",
     "#18=IFCPROPERTYSINGLEVALUE('FireRating',$,IFCLABEL('EI30'),$);",
     "#19=IFCPROPERTYSET('0mR6c3V7w9Gx2KpL1Z5b8N',#5,'Pset_DoorCommon',$,(#18));",
-    "#20=IFCDOORSTYLE('2kL3m4N5o6P7q8R9s0T1uV',#5,'Door style',$,$,(#19),$,$,.SINGLE_SWING_LEFT.,.WOOD.,.F.,.F.);",
+    "#20=IFCDOORTYPE('2kL3m4N5o6P7q8R9s0T1uV',#5,'Door style',$,$,(#19),$,$,$,.NOTDEFINED.,.SINGLE_SWING_LEFT.,.F.,$);",
     "#21=IFCRELDEFINESBYTYPE('1Zz2Yy3Xx4Ww5Vv6Uu7Tt8',#5,$,$,(#12),#20);",
     "#22=IFCQUANTITYLENGTH('Length',$,$,5.,$);",
     "#23=IFCELEMENTQUANTITY('2Nn3Mm4Ll5Kk6Jj7Ii8Hh9',#5,'BaseQuantities',$,$,(#22));",

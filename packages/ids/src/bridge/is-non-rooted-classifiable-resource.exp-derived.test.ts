@@ -72,9 +72,7 @@ function splitEntityBlocks(text: string): Map<string, string> {
 
 /**
  * `SUBTYPE OF (<Parent>);` within a single entity's own block — the
- * EXPRESS spelling used throughout both schema files (verified against
- * `packages/codegen/src/express-parser.ts`'s own `SUBTYPE\s+OF\s+\((\w+)\)`
- * extraction). Root entities have no `SUBTYPE OF` clause and so get no
+ * EXPRESS spelling used throughout both schema files. Root entities have no `SUBTYPE OF` clause and so get no
  * parent entry.
  */
 function parseEntityParents(text: string): Map<string, string> {

@@ -94,11 +94,11 @@ fn has(mask: u64, index: usize) -> bool {
 }
 
 pub(crate) fn is_enum_slot(upper: &str, index: usize) -> bool {
-    row(upper).is_some_and(|r| has(r.2, index))
+    row(upper).is_some_and(|r| has(r.2.enums, index))
 }
 
 pub(crate) fn is_string_slot(upper: &str, index: usize) -> bool {
-    row(upper).is_some_and(|r| has(r.3, index))
+    row(upper).is_some_and(|r| has(r.2.strings, index))
 }
 
 /// `getRealTypedSlots(type, version).has(index)`; anything but IFC2X3 and
@@ -109,7 +109,7 @@ pub(crate) fn is_real_slot(upper: &str, index: usize, schema: &str) -> bool {
         "IFC4X3" => 2,
         _ => 1,
     };
-    row(upper).is_some_and(|r| has(r.4[column], index))
+    row(upper).is_some_and(|r| has(r.2.reals[column], index))
 }
 
 /// `serializeStringSlot`.

@@ -16,6 +16,8 @@ use i_overlay::core::overlay_rule::OverlayRule;
 use i_overlay::float::single::SingleFloatOverlay;
 use nalgebra::Point2;
 
+mod staged_grid;
+
 /// Epsilon for floating point comparisons in 2D operations
 #[cfg(test)]
 const EPSILON_2D: f64 = 1e-9;
@@ -132,15 +134,16 @@ pub(crate) fn subtract_staged_2d_counted(
     if clip.is_empty() {
         return Ok((profile.clone(), 1, Vec::new()));
     }
-    let result = profile_to_paths(profile).overlay(&clip, OverlayRule::Difference, FillRule::EvenOdd);
+    let subject = profile_to_paths(profile);
+    let overlay = staged_grid::shared_overlay(&subject, &clip);
+    let result = overlay(&subject, &clip, OverlayRule::Difference, FillRule::EvenOdd);
     let shapes = result
         .iter()
         .filter(|s| s.first().is_some_and(|outer| outer.len() >= 3))
         .count();
     let precursor = shapes_to_profile(&result)?;
     let union = ccw_paths(void_contours.iter().map(Vec::as_slice));
-    let correction = profile_to_paths(&precursor)
-        .overlay(&union, OverlayRule::Intersect, FillRule::NonZero);
+    let correction = overlay(&profile_to_paths(&precursor), &union, OverlayRule::Intersect, FillRule::NonZero);
     let correction = correction
         .iter()
         .map(|s| shapes_to_profile(std::slice::from_ref(s)))

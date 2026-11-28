@@ -15,6 +15,8 @@ pub(crate) struct Body<'w> {
     prune_upgrade: Option<Upgrade>,
 }
 
+type BodyHeader<'a> = dyn FnMut(&mut dyn Write, &HashSet<u32>) -> io::Result<()> + 'a;
+
 impl<'w> Body<'w> {
     pub(crate) fn new(out: &'w mut dyn Write, ifc2x3: bool) -> Self {
         Self::for_conversion(out, ifc2x3, false, None)
@@ -25,7 +27,7 @@ impl<'w> Body<'w> {
     }
 
     pub(crate) fn finish(self) -> io::Result<isize> {
-        self.finish_with_header(|_| None, |_, _| Ok(()), &mut Vec::new())
+        self.finish_with_header(&mut |_| None, &mut |_, _| Ok(()), &mut Vec::new())
     }
 
     /// Apply a byte-preserving pass before adaptations that read the DATA as text.
@@ -39,12 +41,12 @@ impl<'w> Body<'w> {
     /// Adapt a held section, then write its header with the final delta before writing DATA.
     pub(crate) fn finish_with_header(
         self,
-        deferred: impl FnOnce(&str) -> Option<(String, isize)>,
-        header: impl FnOnce(&mut dyn Write, &HashSet<u32>) -> io::Result<()>,
+        deferred: &mut dyn FnMut(&str) -> Option<(String, isize)>,
+        header: &mut BodyHeader<'_>,
         warnings: &mut Vec<String>,
     ) -> io::Result<isize> {
         let Some(held) = self.held else { return Ok(0) };
-        let adapt = |text: &str| {
+        let mut adapt = |text: &str| {
             let rewritten = deferred(text);
             let source = rewritten.as_ref().map_or(text, |(s, _)| s.as_str());
             let added = rewritten.as_ref().map_or(0, |(_, n)| *n);

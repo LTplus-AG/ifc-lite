@@ -15,10 +15,12 @@ import type {
 import type { FacetCheckResult } from './index.js';
 import { matchConstraint, formatConstraint, type MatchOptions } from '../constraints/index.js';
 import { matchPredefinedType } from './predefined-type-match.js';
+import { matchesEntityName } from './entity-name-match.js';
 import { checkPartOfParentFacets } from '../preview/partof-nested.js';
 
-/** IFC entity NAME comparisons are case-insensitive per IDS spec. Predefined
- *  types are NOT — see `predefined-type-match.ts`. */
+/** A simple partOf entity name is compared regardless of case; a pattern or
+ *  an enumeration meets the upper-case class (`entity-name-match.ts`).
+ *  Predefined types are compared case-sensitively (`predefined-type-match.ts`). */
 const IFC_CASE_INSENSITIVE: MatchOptions = { caseInsensitive: true };
 
 /** Human-readable relation names */
@@ -177,8 +179,14 @@ function checkAncestorAgainstFacet(
     };
   }
 
-  // Check parent entity type (case-insensitive for IFC entity names)
-  if (!matchConstraint(facet.entity.name, parent.entityType, IFC_CASE_INSENSITIVE)) {
+  // Check parent entity type. A pattern or enumeration meets the upper-case
+  // class, as in the entity facet (#10544); a simple value is still compared
+  // regardless of case, as before.
+  const entityMatches =
+    facet.entity.name.type === 'simpleValue'
+      ? matchConstraint(facet.entity.name, parent.entityType, IFC_CASE_INSENSITIVE)
+      : matchesEntityName(facet.entity.name, parent.entityType);
+  if (!entityMatches) {
     const relationName = describeRelation(facet);
 
     return {

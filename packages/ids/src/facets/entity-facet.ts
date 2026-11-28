@@ -12,15 +12,12 @@ import type {
   IFCDataAccessor,
 } from '../types.js';
 import type { FacetCheckResult } from './index.js';
-import { matchConstraint, formatConstraint } from '../constraints/index.js';
+import { formatConstraint } from '../constraints/index.js';
+import { matchesEntityName } from './entity-name-match.js';
 import { IFC2X3_MAPPED_ALIASES, rowsForOccurrence } from './ifc2x3-type-mapping.js';
 import { matchPredefinedType } from './predefined-type-match.js';
 import { distinctIds } from './distinct-ids.js';
 import { assertGuardedRegexPattern } from '@ifc-lite/regex-guard';
-
-/** IFC entity NAME comparisons are case-insensitive per IDS spec. Predefined
- *  types are NOT — see `predefined-type-match.ts`. */
-const IFC_CASE_INSENSITIVE = { caseInsensitive: true } as const;
 
 /**
  * Does `facet.name` match this entity through buildingSMART's IFC2X3
@@ -52,7 +49,7 @@ function matchesIfc2x3Mapping(
   const typeEntityUpper = typeEntityType.toUpperCase();
   for (const row of rows) {
     if (row.typeEntity !== typeEntityUpper) continue;
-    if (matchConstraint(facet.name, row.alias, IFC_CASE_INSENSITIVE)) return true;
+    if (matchesEntityName(facet.name, row.alias)) return true;
   }
   return false;
 }
@@ -93,10 +90,8 @@ export function checkEntityFacet(
     };
   }
 
-  // Per IDS 1.0 spec, entity-name simpleValue literals MUST be
-  // uppercase (`IFCWALL`, not `IfcWall`). Reject malformed authoring
-  // outright before attempting the case-insensitive comparison —
-  // otherwise mixed-case literals would silently match.
+  // A simple value that is not upper case is rejected, as buildingSMART's
+  // invalid-entities_must_be_specified_as_uppercase_strings requires.
   if (
     facet.name.type === 'simpleValue' &&
     facet.name.value !== facet.name.value.toUpperCase()
@@ -114,9 +109,9 @@ export function checkEntityFacet(
     };
   }
 
-  // Check entity type (case-insensitive per IDS spec — IFC entity names are case-agnostic)
+  // Check entity type: the IDS name against the upper-case class (#10544)
   if (
-    !matchConstraint(facet.name, entityType, IFC_CASE_INSENSITIVE) &&
+    !matchesEntityName(facet.name, entityType) &&
     !matchesIfc2x3Mapping(facet, entityType, expressId, accessor)
   ) {
     return {
@@ -209,7 +204,7 @@ export function entityFacetPasses(
   }
 
   if (
-    !matchConstraint(facet.name, entityType, IFC_CASE_INSENSITIVE) &&
+    !matchesEntityName(facet.name, entityType) &&
     !matchesIfc2x3Mapping(facet, entityType, expressId, accessor)
   ) {
     return false;
@@ -287,35 +282,10 @@ export function getMatchingEntityTypes(
   constraint: IDSConstraint,
   allTypes: string[]
 ): string[] {
-  switch (constraint.type) {
-    case 'simpleValue':
-      return allTypes.filter(
-        (t) => t.toUpperCase() === constraint.value.toUpperCase()
-      );
-    case 'enumeration':
-      return allTypes.filter((t) =>
-        constraint.values.some(
-          (v) => v.toUpperCase() === t.toUpperCase()
-        )
-      );
-    case 'pattern':
-      // Reject a catastrophic-backtracking or over-long pattern before
-      // compiling — this throws (`UnsafeRegexPatternError`), unlike the
-      // ordinary-malformed-pattern case below, because a rejected
-      // pattern must surface as an error to the caller, not silently
-      // resolve to "matches nothing".
-      assertGuardedRegexPattern(constraint.pattern);
-      try {
-        const regex = new RegExp(`^${constraint.pattern}$`, 'i');
-        return allTypes.filter((t) => regex.test(t));
-      } catch {
-        // Legitimately silent: an uncompilable pattern matches no entity type,
-        // and the IDS audit reports the bad pattern itself under
-        // W_REGEX_UNVERIFIED / the coherence regex check. Warning here would
-        // duplicate that per candidate-type resolution.
-        return [];
-      }
-    default:
-      return allTypes;
+  if (constraint.type === 'pattern') {
+    assertGuardedRegexPattern(constraint.pattern);
+  } else if (constraint.type !== 'enumeration' && constraint.type !== 'simpleValue') {
+    return allTypes;
   }
+  return allTypes.filter((entityType) => matchesEntityName(constraint, entityType));
 }

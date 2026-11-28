@@ -29,7 +29,7 @@ export interface Subject {
 export function subjectOf(facet: IDSFacet): Subject | undefined {
   switch (facet.type) {
     case 'entity':
-      return facet.predefinedType ? undefined : { key: 'entity', constraint: facet.name, opts: { caseInsensitive: true } };
+      return facet.predefinedType ? undefined : { key: 'entity', constraint: facet.name, opts: {} };
     case 'attribute': {
       const name = single(facet.name);
       return name ? { key: `attribute|${name.toLowerCase()}`, constraint: facet.value, opts: {} } : undefined;

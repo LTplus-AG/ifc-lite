@@ -38,7 +38,7 @@ for await (const event of processor.processStreaming(buffer)) {
 }
 ```
 
-The streaming path emits batches every ~100 meshes so the renderer can paint progressively — first triangles typically arrive 300–500ms after `processStreaming()` returns.
+The streaming path meshes the file in batches of geometry jobs (25 jobs by default; pass a number or a `DynamicBatchConfig` as the third argument, and the batch grows so a file takes at most about 30 batches), so the renderer can paint progressively — first triangles typically arrive 300–500ms after `processStreaming()` returns.
 
 ## Tessellation quality
 
@@ -155,7 +155,7 @@ are byte-identical. If you pass `wasmUrls.wasm`, point it at the core binary as 
 
 - **First triangles:** 300–500ms (streaming path)
 - **Correctness:** exact-arithmetic boolean kernel - openings are cut exactly, verified element-by-element against IfcOpenShell on the public benchmark corpus
-- **Worker support:** files > 50 MB process off-main-thread automatically
+- **Worker support:** `processAdaptive` sends a file of `sizeThreshold` (default 2 MB) or more to the worker pool when `SharedArrayBuffer` and more than one core are available, and to `processStreaming` otherwise
 - **Native (Tauri):** `preferNative: true` enables the native Rust pipeline when running under a Tauri host — an extension point for third parties building their own desktop app (`@tauri-apps/api` is an optional dep; web builds never load it). See the [Building for Desktop](https://ifclite.dev/docs/guide/desktop/) guide.
 
 ## Compact GPU records (opt-in)
@@ -205,6 +205,16 @@ A host that rolls the flag out itself (the viewer's `perf-ooc` ramp) sets `Geome
 param. `onOutOfCoreDecision(ran)` then hears once per pool load whether it meshed out of core: `false` at the start
 of a load that does not, or the pre-pass scan's outcome (sparse sources, or the whole-file index for a file the
 arena cannot serve).
+
+## Other entry points
+
+- `@ifc-lite/geometry/world-frame`: render frame to IFC world coordinates and back (`ifcToViewerAxes`, `viewerToIfcAxes`, `renderFrameWorldOffset`)
+- `@ifc-lite/geometry/rtc-rebase`: move already-loaded models onto a federation's shared RTC anchor
+- `@ifc-lite/geometry/geometry-class`: the per-mesh `geometryClass` tags (`GEOM_CLASS_OCCURRENCE`, `GEOM_CLASS_INSTANCED_TYPE`, ..., `geometryClassOf`)
+- `@ifc-lite/geometry/remesh`: `RemeshClient` re-meshes edited elements in a long-lived wasm worker, in the frame and style of the model's load
+- `@ifc-lite/geometry/rhino-export`: option types and value lists for the Rhino `.3dm` scene export
+
+`GeometryProcessor` also carries the Rust exporters: `exportGlb`, `exportGlbFromMeshes`, `exportObj`, `exportUsd`, `exportIfcx`, `exportStep`, `exportMerged`, `exportCsv`, `exportJson`, `exportJsonld`, `exportHbjson`, `exportDfjson`, `exportKmzFromMeshes` and `exportLandXmlTerrain`. Each returns `null` until the processor is initialized. See the [`@ifc-lite/export` README](../export/README.md).
 
 ## API
 

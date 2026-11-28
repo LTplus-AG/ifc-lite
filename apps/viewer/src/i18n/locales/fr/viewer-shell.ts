@@ -38,6 +38,7 @@ export const viewerShellFr = {
   "viewerShell.chunkLabel.mcpPage": "Page MCP",
   "viewerShell.chunkLabel.mcpPlayground": "Bac à sable MCP",
   "viewerShell.chunkLabel.rteGpuWitness": "Témoin GPU RTE",
+  "viewerShell.chunkLabel.registryModel": "Modèle du registre",
   "viewerShell.dialog.close": "Fermer",
   "viewerShell.dialog.confirmTitle": "Confirmer l'action",
   "viewerShell.dialog.promptTitle": "Saisir une valeur",

@@ -11,6 +11,7 @@ on:
     paths:
       - 'apps/viewer/src/lib/registry/**'
       - 'apps/viewer/src/components/sources/Registry*'
+      - 'apps/viewer/src/components/sources/OciPushTo*'
       - 'apps/viewer/src/components/sources/SourcesPanel.tsx'
       - 'apps/viewer/src/i18n/catalogues/registry.en.ts'
       - 'apps/viewer/src/test/registry-*.ts'
@@ -99,3 +100,8 @@ jobs:
           test -x "$OCI_REGISTRY_BINARY"
           test -x "$ORAS_BINARY"
           pnpm test --filter=@ifc-lite/viewer --only
+
+      - name: Test OCI handoff, browsing, and publication
+        env:
+          TEST_PATTERN: 'lib/registry/handoff.*test|components/sources/OciPushTo.*test'
+        run: pnpm test --filter=@ifc-lite/viewer --only

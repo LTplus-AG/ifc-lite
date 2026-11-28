@@ -356,6 +356,9 @@ importers:
       '@ifc-lite/oauth-pkce':
         specifier: workspace:^
         version: link:../../packages/oauth-pkce
+      '@ifc-lite/oci':
+        specifier: workspace:^
+        version: link:../../packages/oci
       '@ifc-lite/parser':
         specifier: workspace:^
         version: link:../../packages/parser
@@ -750,6 +753,9 @@ importers:
       '@ifc-lite/oauth-pkce':
         specifier: workspace:^
         version: link:../../packages/oauth-pkce
+      '@ifc-lite/oci':
+        specifier: workspace:^
+        version: link:../../packages/oci
       '@ifc-lite/parser':
         specifier: workspace:^
         version: link:../../packages/parser

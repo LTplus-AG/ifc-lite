@@ -12,10 +12,12 @@
 import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { createHmac } from 'node:crypto';
 import type { ReactNode } from 'react';
 import { buildPairingUrl } from '@ifc-lite/mcp/bridge-protocol';
 import { createBimContext } from '@ifc-lite/sdk';
 import { advance as advanceMs, cleanup, click, render, type, waitFor } from '@/test/render.js';
+import { fixtureDataStore } from '@/test/store-fixture';
 import { useViewerStore } from '@/store';
 import { resetFeaturesForTest } from '@/lib/features';
 import { LocalBackend } from '@/sdk/local-backend';
@@ -39,6 +41,17 @@ class SpySocket {
   constructor(url: string) { SpySocket.urls.push(url); }
   send(): void {}
   close(): void {}
+}
+
+class LiveSocket {
+  static last: LiveSocket | null = null;
+  readyState = 0;
+  onopen: ((e: unknown) => void) | null = null; onmessage: ((e: { data: unknown }) => void) | null = null;
+  onclose: ((e: { code: number; reason: string }) => void) | null = null; onerror: ((e: unknown) => void) | null = null;
+  constructor() { LiveSocket.last = this; }
+  nonce?: string;
+  send(text: string): void { this.nonce = JSON.parse(text).nonce; }
+  close(): void { this.readyState = 3; }
 }
 
 const realWebSocket = globalThis.WebSocket;
@@ -98,6 +111,84 @@ function deferredSession() {
 }
 
 describe('pairing link (#9523)', () => {
+  it('offers a legacy single-model tab and confirms the delivered link locally (#11674)', async () => {
+    const channel = new MessageChannel();
+    const previous = Object.getOwnPropertyDescriptor(globalThis, 'SharedWorker');
+    const previousStore = useViewerStore.getState().ifcDataStore;
+    let offers = 0;
+    channel.port2.onmessage = ({ data }) => { if (data.type === 'offer' && data.name) offers++; };
+    Object.defineProperty(globalThis, 'SharedWorker', { configurable: true, value: class { port = channel.port1; } });
+    try {
+      assert.equal(useViewerStore.getState().models.size, 0);
+      useViewerStore.setState({ ifcDataStore: fixtureDataStore() });
+      render(withBim(<AgentBridgeHost />));
+      channel.port2.postMessage({ type: 'query', from: 'picker' });
+      await waitFor(() => offers === 1, 'legacy model tab offered');
+      const fragment = new URL(buildPairingUrl('https://ifclite.com', 21600, CODE)).hash;
+      channel.port2.postMessage({ type: 'deliver', fragment });
+      await waitFor(() => Boolean(dialog()), 'confirm in the tab with the model');
+      assert.doesNotMatch(dialog()!.textContent ?? '', /Refresh model tabs/);
+    } finally {
+      cleanup();
+      useViewerStore.setState({ ifcDataStore: previousStore });
+      if (previous) Object.defineProperty(globalThis, 'SharedWorker', previous);
+      else Reflect.deleteProperty(globalThis, 'SharedWorker');
+      channel.port2.close();
+    }
+  });
+
+  it('refreshes stale model-tab offers and delivers to the reloaded tab (#11674)', async () => {
+    const channel = new MessageChannel();
+    const previous = Object.getOwnPropertyDescriptor(globalThis, 'SharedWorker');
+    let discoveries = 0;
+    const preparations: { to: string; attemptId: string; fragment?: string }[] = [];
+    const deliveries: { to: string; fragment: string }[] = [];
+    channel.port2.onmessage = ({ data }) => {
+      if (data.type === 'discover') {
+        discoveries++;
+        channel.port2.postMessage({ type: 'offer', from: String(discoveries), name: 'model.ifc' });
+        if (discoveries > 1) channel.port2.postMessage({ type: 'offer', from: 'other', name: 'other-model.ifc' });
+      } else if (data.type === 'prepare') preparations.push(data);
+      else if (data.type === 'deliver') deliveries.push(data);
+    };
+    Object.defineProperty(globalThis, 'SharedWorker', { configurable: true, value: class { port = channel.port1; } });
+    try {
+      const fragment = new URL(buildPairingUrl('https://ifclite.com', 21600, CODE)).hash;
+      render(withBim(<AgentBridgeDialog request={{ source: 'link', fragment }} onClose={() => {}} />));
+      const offers = () => [...document.body.querySelectorAll('button')].filter((btn) => btn.textContent.includes('model.ifc'));
+      await waitFor(() => offers().length === 1, 'initial model offer');
+      const refresh = [...document.body.querySelectorAll('button')].find((btn) => btn.textContent === 'Refresh model tabs');
+      assert.ok(refresh);
+      click(refresh);
+      assert.equal(offers().length, 0);
+      await waitFor(() => offers().length === 2, 'reloaded and alternate model offers');
+      click(offers()[0]);
+      click(offers()[1]);
+      await waitFor(() => preparations.length > 0, 'first readiness request');
+      assert.deepEqual(preparations.map(({ to }) => to), ['2']);
+      const acknowledge = (from: string, attemptId: string) => channel.port2.postMessage({ type: 'ready', from, attemptId });
+      acknowledge('other', preparations[0].attemptId);
+      await waitFor(() => discoveries === 3 && offers().length === 2, 'unacknowledged destination timed out and discovery restarted');
+      click(offers()[1]);
+      await waitFor(() => preparations.length === 2, 'replacement readiness request');
+      assert.equal(preparations[1].to, 'other');
+      acknowledge('2', preparations[0].attemptId);
+      acknowledge('other', preparations[0].attemptId);
+      await advanceMs(20);
+      assert.equal(offers().length, 2);
+      assert.ok(preparations.every((request) => !('fragment' in request)));
+      assert.equal(deliveries.length, 0);
+      acknowledge('other', preparations[1].attemptId);
+      await waitFor(() => document.body.textContent.includes('Switch to the model tab'), 'selected tab acknowledged the current attempt');
+      await waitFor(() => deliveries.length === 1, 'fragment delivered');
+      assert.deepEqual(deliveries.map(({ to, fragment }) => [to, fragment]), [['other', fragment]]);
+    } finally {
+      channel.port2.close();
+      if (previous) Object.defineProperty(globalThis, 'SharedWorker', previous);
+      else Reflect.deleteProperty(globalThis, 'SharedWorker');
+    }
+  });
+
   it('a link opened in this tab: the code leaves the URL, the dialog states what is true, nothing connects until Connect', async () => {
     render(withBim(<AgentBridgeHost />));
     openLink(21518);
@@ -379,26 +470,120 @@ describe('a live connection is visible with Disconnect in every layout (#9523 re
     assert.ok(button(/^Connect local agent$/), 'back to the connect action');
   });
 
+  it('resumes read-only when the initial welcome is lost after hello (#11674)', async () => {
+    const session = await import('@/lib/agent-bridge/session');
+    globalThis.WebSocket = LiveSocket as unknown as typeof WebSocket;
+    render(withBim(<AgentBridgeHost />));
+    try {
+      session.connectAgentBridge({ port: 21517, code: CODE, bim });
+      const initial = LiveSocket.last!;
+      initial.readyState = 1;
+      initial.onopen?.({});
+      await waitFor(() => !!initial.nonce, 'initial hello sent');
+      const next = createHmac('sha256', CODE.replaceAll('-', '')).update('ifc-lite/next/' + initial.nonce).digest('hex');
+      initial.onclose?.({ code: 1006, reason: '' });
+      window.dispatchEvent(new window.Event('online'));
+      await waitFor(() => LiveSocket.last !== initial, 'reconnect after lost initial welcome');
+      const retry = LiveSocket.last!;
+      retry.readyState = 1;
+      retry.onopen?.({});
+      await waitFor(() => !!retry.nonce, 'resume hello sent');
+      const proof = createHmac('sha256', next).update('ifc-lite/bridge/' + retry.nonce).digest('hex');
+      retry.onmessage?.({ data: JSON.stringify({ type: 'welcome', proof, protocol: 1,
+        sessionId: 'resumed', permission: 'read-only', readOnlyCeiling: false }) });
+      const status = getAgentBridgeState().status;
+      assert.ok(status.kind === 'connected' && status.permission === 'read-only');
+    } finally {
+      session.disconnectAgentBridge();
+    }
+  });
+
+  it('retries a transiently failed resume on visibility and rotates the ticket only after welcome (#11674)', async () => {
+    const session = await import('@/lib/agent-bridge/session');
+    const storage = window.sessionStorage;
+    const storageKey = 'ifc-lite.bridge.resume';
+    const key = 'ab'.repeat(32);
+    const ticket = JSON.stringify({ port: 21517, key });
+    globalThis.WebSocket = LiveSocket as unknown as typeof WebSocket;
+    let firstLoad = true;
+    render(withBim(<AgentBridgeHost load={async () => {
+      if (firstLoad) {
+        firstLoad = false;
+        throw new Error('session chunk unavailable');
+      }
+      return session;
+    }} />));
+    storage.setItem(storageKey, ticket);
+    try {
+      const previous = LiveSocket.last;
+      window.dispatchEvent(new window.Event('online'));
+      await waitFor(() => getAgentBridgeState().status.kind === 'error', 'session load failure is recoverable');
+      assert.equal(storage.getItem(storageKey), ticket);
+      assert.equal(LiveSocket.last, previous);
+      document.dispatchEvent(new window.Event('visibilitychange'));
+      await waitFor(() => LiveSocket.last !== previous, 'first reconnect opened a socket');
+      const first = LiveSocket.last!;
+      first.onclose?.({ code: 1006, reason: '' });
+      assert.equal(storage.getItem(storageKey), ticket);
+      document.dispatchEvent(new window.Event('visibilitychange'));
+      await waitFor(() => LiveSocket.last !== first, 'visibility retried the saved ticket');
+      const occupied = LiveSocket.last!;
+      occupied.onclose?.({ code: 4429, reason: 'previous socket still connected' });
+      assert.equal(storage.getItem(storageKey), ticket);
+      await waitFor(() => LiveSocket.last !== occupied, 'busy resume retried without an online or visibility event');
+      const second = LiveSocket.last!;
+      second.readyState = 1;
+      second.onopen?.({});
+      await waitFor(() => !!second.nonce, 'retry sent its verified hello');
+      const mac = (role: string) => createHmac('sha256', key).update('ifc-lite/' + role + '/' + second.nonce).digest('hex');
+      assert.equal(JSON.parse(storage.getItem(storageKey)!).pendingNonce, second.nonce);
+      const rotated = mac('next');
+      // The bridge admitted the hello, but its welcome was lost. Only the bridge has rotated.
+      second.onclose?.({ code: 1006, reason: '' });
+      window.dispatchEvent(new window.Event('online'));
+      await waitFor(() => LiveSocket.last !== second, 'retry after lost welcome');
+      const retry = LiveSocket.last!;
+      retry.readyState = 1;
+      retry.onopen?.({});
+      await waitFor(() => !!retry.nonce, 'retry hello sent');
+      assert.equal(retry.nonce!.slice(0, 32), second.nonce);
+      assert.notEqual(retry.nonce, second.nonce);
+      retry.onclose?.({ code: 4401, reason: 'ticket rotated' });
+      await waitFor(() => LiveSocket.last !== retry, 'retry with staged successor');
+      const recovered = LiveSocket.last!;
+      recovered.readyState = 1;
+      recovered.onopen?.({});
+      await waitFor(() => !!recovered.nonce, 'successor hello sent');
+      const recoveredMac = (role: string) => createHmac('sha256', rotated).update('ifc-lite/' + role + '/' + recovered.nonce).digest('hex');
+      recovered.onmessage?.({ data: JSON.stringify({ type: 'welcome', proof: recoveredMac('bridge'), protocol: 1,
+        sessionId: 'resumed', permission: 'read-only', readOnlyCeiling: false }) });
+      assert.equal(getAgentBridgeState().status.kind, 'connected');
+      assert.deepEqual(JSON.parse(storage.getItem(storageKey)!), { port: 21517, key: recoveredMac('next') });
+      session.disconnectAgentBridge();
+      assert.equal(storage.getItem(storageKey), null);
+      storage.setItem(storageKey, ticket);
+      window.dispatchEvent(new window.Event('online'));
+      await waitFor(() => LiveSocket.last !== recovered, 'opened a socket for the rejected ticket');
+      LiveSocket.last!.onclose?.({ code: 4401, reason: 'pairing failed' });
+      assert.equal(storage.getItem(storageKey), null);
+    } finally {
+      session.disconnectAgentBridge();
+    }
+  });
+
   it('a drop while no dialog is open is announced with a toast and stays in the Sources row', async () => {
     const { Toaster } = await import('@/components/ui/toast');
     const { latestToast } = await import('@/test/toasts');
     const { LocalAgentSourceRow } = await import('@/components/sources/LocalAgentSourceRow');
     const session = await import('@/lib/agent-bridge/session');
-    class LiveSocket {
-      static last: LiveSocket | null = null;
-      readyState = 0;
-      onopen: ((e: unknown) => void) | null = null; onmessage: ((e: { data: unknown }) => void) | null = null;
-      onclose: ((e: { code: number; reason: string }) => void) | null = null; onerror: ((e: unknown) => void) | null = null;
-      constructor() { LiveSocket.last = this; }
-      send(): void {}
-      close(): void { this.readyState = 3; }
-    }
     render(<><Toaster /><LocalAgentSourceRow /></>);
     session.connectAgentBridge({ port: 21517, code: CODE, bim, WebSocket: LiveSocket as unknown as NonNullable<Parameters<typeof session.connectAgentBridge>[0]['WebSocket']> });
     const socket = LiveSocket.last as LiveSocket;
     socket.readyState = 1;
     socket.onopen?.({});
-    socket.onmessage?.({ data: JSON.stringify({ type: 'welcome', protocol: 1, sessionId: 's', permission: 'read-only', readOnlyCeiling: false, bridge: { name: 'b', version: '1' } }) });
+    await waitFor(() => !!socket.nonce, 'the tab sent a verified hello');
+    const proof = createHmac('sha256', CODE.replaceAll('-', '')).update('ifc-lite/bridge/' + socket.nonce).digest('hex');
+    socket.onmessage?.({ data: JSON.stringify({ type: 'welcome', proof, protocol: 1, sessionId: 's', permission: 'read-only', readOnlyCeiling: false, bridge: { name: 'b', version: '1' } }) });
     assert.equal(getAgentBridgeState().status.kind, 'connected');
     socket.readyState = 3;
     socket.onclose?.({ code: 4400, reason: '' });

@@ -2,18 +2,18 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/**
- * Eager mount points of the local agent bridge (#9523), both tiny: the
- * connect-dialog host in the viewer layout and the status-bar slot. Each
- * renders nothing until there is something to show and then loads its UI with
- * `import()`. Neither imports the bridge client or the tool host.
- */
-
+export { AgentBridgeStatusSlot } from './AgentBridgeStatusSlot';
+import { visible } from './AgentBridgeStatusSlot';
+import { useContext } from 'react';
+import { BimReactContext } from '@/sdk/BimProvider';
+import { savedTicket, saveTicket } from '@/lib/agent-bridge/resume';
+import { isFramed } from '@/lib/agent-bridge/pairing-fragment';
+import { listenForModelTabLinks } from '@/lib/agent-bridge/model-tabs';
 import { isFeatureEnabled } from '@/lib/features';
 import { Suspense, useEffect, useSyncExternalStore } from 'react';
 import { lazyChunk } from '@/lib/lazy-chunk';
 import { consumePendingPairingFragment, onPairingFragment } from '@/lib/agent-bridge/pairing-fragment';
-import { closeAgentBridgeDialog, requestAgentBridgeDialog, useAgentBridgeState, type AgentBridgeStatus } from '@/lib/agent-bridge/state';
+import { closeAgentBridgeDialog, getAgentBridgeState, requestAgentBridgeDialog, updateAgentBridgeState, useAgentBridgeState } from '@/lib/agent-bridge/state';
 import { useViewerStore } from '@/store';
 import { agentSurfaces } from '@/lib/agent-bridge/agent-surfaces';
 
@@ -27,22 +27,19 @@ function requestKey(request: object): number {
   return key;
 }
 
-const AgentBridgeChip = lazyChunk(() => import('./AgentBridgeChip').then((m) => ({ default: m.AgentBridgeChip })));
 const AgentSurfacesDock = lazyChunk(() => import('./AgentSurfacesDock').then((m) => ({ default: m.AgentSurfacesDock })));
 const AgentBridgeMobileIndicator = lazyChunk(() => import('./AgentBridgeMobileIndicator').then((m) => ({ default: m.AgentBridgeMobileIndicator })));
-
-/** A live or just-ended connection is shown; a failed attempt stays in its dialog. */
-function visible(status: AgentBridgeStatus): boolean {
-  return status.kind === 'connecting' || status.kind === 'connected' || status.kind === 'disconnected';
-}
 
 /**
  * Opens the connect dialog when asked to, and for each pairing link the tab is
  * opened with. Mounted in every layout, so on the phone layout (no status bar)
  * it also shows the persistent connection indicator.
  */
-export function AgentBridgeHost() {
+const loadSession = () => import('@/lib/agent-bridge/session');
+
+export function AgentBridgeHost({ load = loadSession }: { load?: typeof loadSession } = {}) {
   const { dialog, status } = useAgentBridgeState();
+  const bim = useContext(BimReactContext);
   const isMobile = useViewerStore((s) => s.isMobile);
   // The bridge pairs a local AI agent, so it goes with the AI feature (`lib/features`).
   const enabled = isFeatureEnabled('ai.assistant');
@@ -54,8 +51,66 @@ export function AgentBridgeHost() {
       if (fragment) requestAgentBridgeDialog({ source: 'link', fragment });
     };
     take();
-    return onPairingFragment(take);
+    const stopTabs = listenForModelTabLinks();
+    const stopLinks = onPairingFragment(take);
+    return () => { stopTabs(); stopLinks(); };
   }, [enabled]);
+  useEffect(() => {
+    if (!enabled || !bim || isFramed()) return;
+    let cancelled = false;
+    let generation = 0;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    const attempt = (retry: number) => {
+      const { status } = getAgentBridgeState();
+      if (status.kind === 'connected' || status.kind === 'connecting') return;
+      const ticket = savedTicket();
+      if (!ticket) return;
+      const owner = ++generation;
+      const ownsAttempt = () => {
+        const current = getAgentBridgeState();
+        return !cancelled && owner === generation && !current.dialog && current.status.kind !== 'connecting'
+            && current.status.kind !== 'connected' && savedTicket()?.key === ticket.key;
+      };
+      void load().then(({ connectAgentBridge }) => {
+        if (ownsAttempt()) {
+          connectAgentBridge({
+            port: ticket.port, code: ticket.key, resume: true, bim,
+            onResumeBusy: (key) => {
+              if (cancelled || retry >= 5) return;
+              retryTimer = setTimeout(() => {
+                const { status } = getAgentBridgeState();
+                if (status.kind === 'error' && status.code === 'busy' && savedTicket()?.key === key) attempt(retry + 1);
+              }, 250 * 2 ** retry);
+            },
+          });
+        }
+      }, () => {
+        if (ownsAttempt()) updateAgentBridgeState({ status: { kind: 'error', code: 'unreachable', port: ticket.port } });
+      });
+    };
+    const resume = () => {
+      clearTimeout(retryTimer);
+      attempt(0);
+    };
+    const navigation = performance.getEntriesByType?.('navigation')[0] as PerformanceNavigationTiming | undefined;
+    if (navigation?.type === 'reload') resume();
+    else if (navigation?.type === 'navigate' && getAgentBridgeState().status.kind === 'idle') saveTicket();
+    const wake = () => {
+      const { kind } = getAgentBridgeState().status;
+      if (!document.hidden && (kind === 'disconnected' || kind === 'error')) resume();
+    };
+    document.addEventListener('visibilitychange', wake);
+    const restore = (event: PageTransitionEvent) => { if (event.persisted) resume(); };
+    window.addEventListener('pageshow', restore);
+    window.addEventListener('online', resume);
+    return () => {
+      cancelled = true;
+      clearTimeout(retryTimer);
+      document.removeEventListener('visibilitychange', wake);
+      window.removeEventListener('pageshow', restore);
+      window.removeEventListener('online', resume);
+    };
+  }, [enabled, bim, load]);
   if (!enabled) return null;
   return (
     <>
@@ -64,11 +119,4 @@ export function AgentBridgeHost() {
       {dialog && <Suspense fallback={null}><AgentBridgeDialog key={requestKey(dialog)} request={dialog} onClose={closeAgentBridgeDialog} /></Suspense>}
     </>
   );
-}
-
-/** The desktop status-bar chip (the status bar exists only in the desktop layout). */
-export function AgentBridgeStatusSlot() {
-  const { status } = useAgentBridgeState();
-  if (!visible(status) || !isFeatureEnabled('ai.assistant')) return null;
-  return <Suspense fallback={null}><AgentBridgeChip /></Suspense>;
 }

@@ -28,6 +28,9 @@ import { Field } from '@/components/ui/field';
 import { Spinner } from '@/components/ui/spinner';
 import { registerEnglish, useTranslation } from '@/i18n';
 import { agentBridgeEn } from '@/i18n/catalogues/agent-bridge.en';
+import { hasModelForPairing } from '@/lib/agent-bridge/model-tabs';
+import { ModelTabPicker } from './ModelTabPicker';
+import { useViewerStore } from '@/store';
 import { useBim } from '@/sdk/BimProvider';
 import { isFramed } from '@/lib/agent-bridge/pairing-fragment';
 import {
@@ -81,6 +84,7 @@ export interface AgentBridgeDialogProps {
 export function AgentBridgeDialog({ request, onClose, load = loadSession }: AgentBridgeDialogProps) {
   const { t } = useTranslation();
   const bim = useBim();
+  const hasModels = useViewerStore(hasModelForPairing);
   const initial = useMemo(() => prefill(request), [request]);
   const [port, setPort] = useState(initial.port);
   const [code, setCode] = useState(initial.code);
@@ -166,6 +170,7 @@ export function AgentBridgeDialog({ request, onClose, load = loadSession }: Agen
             {t('agentBridge.dialog.target', { port: portForCommand })}
           </p>
           {request.source === 'link' && <p>{t('agentBridge.dialog.reads', { port: portForCommand })}</p>}
+          {request.source === 'link' && !hasModels && !busy && <ModelTabPicker fragment={request.fragment} />}
           <p className="font-medium">{t('agentBridge.dialog.unverified')}</p>
           <ul className="list-disc space-y-1 pl-5 text-xs text-muted-foreground">
             <li>{t('agentBridge.dialog.readOnly')}</li>

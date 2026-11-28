@@ -19,7 +19,7 @@ buttons that isolate, colour or fly to a result set.
 | "A2UI 1.0 stable with an official React renderer" | The protocol is 1.0. The packages are pre-1.0 (`0.15.0`), with breaking changes in each of the last five releases (Sep to Nov 2026). `@a2ui/react` documents itself as v0.9-native; v1.0 runs through the version-agnostic root plus `@a2ui/web_core/v1_0`. | Pin exact versions. Wrap all A2UI imports behind one module so an upgrade touches one place. |
 | Upstream README examples work | `createProcessor({v1_0: ...})` from the `@a2ui/agent` README throws; the key is `'1.0'`. Reproduced. | Do not trust upstream docs; cover every entry point we use with a test. |
 | Drops into the current model flow | The chat has no tool calling and the hosted proxy forwards text only (`lib/ids-agent/transport.ts:8-10`). | Use the text-embedded **Express** format (`<a2ui>…</a2ui>`), which needs no tools and works on the free tier. |
-| Cheap to add | `@a2ui/agent` imports `fs`/`path` at module top (`skill/skill.js`, `processor/catalog-providers.js`): a browser bundle fails until both are aliased. Agent + renderer is ~185 KB gzip. Basic-catalog prompt snippet is ~22 k chars. | Lazy chunk only (eager ratchet stays flat), Vite alias to a stub, prune the catalog in the prompt. |
+| Cheap to add | `@a2ui/agent` imports `fs`/`path` at module top (`skill/skill.js`, `processor/catalog-providers.js`): a browser bundle fails until both are aliased. Agent + renderer add a sizeable chunk (no tracked figure; the [performance guide](../guide/performance.md) holds the tracked sizes). The basic-catalog prompt snippet is large enough to need pruning. | Lazy chunk only (eager ratchet stays flat), Vite alias to a stub, prune the catalog in the prompt. |
 | "App builds the card from a typed query result" | Right instinct, but it left LLM-authored surfaces able to state facts (counts, rows) the model invented. | Facts are **bound**, never typed by the model: query-bound components and script-produced surfaces. |
 | Nothing similar exists | The extensions **widget DSL** (`packages/extensions/src/widget/schema.ts`) is already a validated JSON component tree with a host renderer. | Reuse its shadcn node renderers for the catalog look; plan a widget DSL → A2UI bridge rather than a second UI language. |
 | Basic catalog renders fine | The v0.9/v1.0 basic catalog renders as Lit custom elements with its own styling. | Implement ifc-lite's catalog as React components on our shadcn primitives and theme tokens. |
@@ -67,8 +67,8 @@ IFC components (facts are bound, not literal):
 - `StatGroup`: KPI tiles; each value is a query count / sum or a data path.
 - `GroupChart`: bar / pie / line over a query grouped by type, storey, material or a property.
 - `ColorLegend`: colour-by-property legend that applies colours on mount and on toggle.
-- `ActionBar`: viewer actions over a ref set (select, isolate, hide, show, colorize, fly to,
-  section, export CSV) and follow-up prompts back to the agent.
+- `ActionBar`: viewer actions over a ref set (`VIEWER_ACTIONS`: select, isolate, hide, show,
+  colorize, flyTo, resetView, exportCsv; no section action) and follow-up prompts back to the agent.
 
 Renderer functions (A2UI v1.0 functions, `allowedCallers` per `IFC_FUNCTION_POLICY` in
 `policy.ts`): `select`, `isolate`, `hide`, `show`, `colorize`, `flyTo`, `resetView`,

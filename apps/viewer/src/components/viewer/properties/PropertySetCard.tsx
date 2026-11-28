@@ -175,6 +175,7 @@ export function PropertySetCard({ pset, modelId, entityId, enableEditing, isType
                 {/* Search shows the converted display text so a value hit can be highlighted. */}
                 {editing && modelId && entityId ? (
                   <PropertyEditor
+                    key={JSON.stringify([modelId, entityId, typeEditScope?.occurrenceId])}
                     modelId={modelId}
                     entityId={entityId}
                     psetName={pset.name}

@@ -1,0 +1,13 @@
+diff --git a/apps/viewer/src/lib/clash/host-run-publish.ts b/apps/viewer/src/lib/clash/host-run-publish.ts
+index 5ef9c357fd..380e5e73a9 100644
+--- a/apps/viewer/src/lib/clash/host-run-publish.ts
++++ b/apps/viewer/src/lib/clash/host-run-publish.ts
+@@ -49,7 +49,7 @@ export interface ClashRunHostContext {
+ export function slotBindings(result: ClashResult, models: ReadonlyMap<string, ModelLike>, options: ClashRunListenerOptions): ClashRunSlotBinding[] {
+   // The gathered models, not just the ones that produced a finding: a clean run must
+   // still say which slots it examined, or the next comparison sees them as missing.
+-  const ids = new Set<string>();
++  const ids = new Set<string>(gatheredModelIds(result) ?? []);
+   for (const clash of result.clashes) { ids.add(clash.a.model); ids.add(clash.b.model); }
+   for (const coverage of result.ruleCoverage ?? []) for (const element of coverage.matchedElements ?? []) ids.add(element.model);
+   return [...ids].sort().map((id) => {

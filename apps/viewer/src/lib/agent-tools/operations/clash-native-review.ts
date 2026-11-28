@@ -236,7 +236,7 @@ export const clashReviewOperations = [
         { useOriginalClashBaseline },
       ] = await Promise.all([
         import('@/lib/clash/revision-baseline'),
-        import('@ifc-lite/clash'),
+        import('@/lib/clash/clash-api-lazy'),
         import('@/lib/clash/original-baseline'),
       ]);
       assertToolActive(c);

@@ -24,6 +24,7 @@ import { definedModelTagIdsOf, evaluatorModelsFromState } from '@/lib/model-tags
 import { captureModelTagInputs, rememberModelTagInputs, type ClashModelTagInputs } from '@/lib/clash/model-tag-inputs';
 import { allElementsRule, rememberRunRequest, type ClashRunRequest } from '@/lib/clash/run-request';
 import { posthog } from '@/lib/analytics';
+import { notifyClashRunComplete, type ClashRunHostContext } from '@/lib/clash/host-run-publish';
 import { errorCaptureProps } from '@/lib/load-errors';
 import { nextFrameOrTimeout } from '@/utils/frameWait';
 
@@ -49,6 +50,7 @@ export function createClashDetection({ runEpochRef, runAbortRef, discardSolidPre
     owns: () => boolean,
     stamp: AnalysisStamp,
     request: ClashRunRequest | null,
+    hostInputs: Pick<ClashRunHostContext, 'exclusions' | 'tagInputs' | 'presets' | 'rules' | 'elementTypes'>,
   ): boolean => {
     if (!owns()) return false;
     const state = useViewerStore.getState();
@@ -61,13 +63,22 @@ export function createClashDetection({ runEpochRef, runAbortRef, discardSolidPre
       state.bumpClashRunSeq();
       return true;
     };
-    return publish ? publish(write) : write();
+    const published = publish ? publish(write) : write();
+    // A host that stores runs (ViewerHandle.onClashRunComplete) gets the run document; no-op otherwise.
+    if (published) {
+      const current = useViewerStore.getState();
+      // Presets as they were when the run STARTED: an edit during the run must not relabel its findings.
+      // The user's exclusion rules as they apply to this result now. Built off this tick (see the module).
+      void notifyClashRunComplete(res, { models: current.models, exclusionRules: current.clashExclusions, ...hostInputs });
+    }
+    return published;
   };
   const run = async (
     rules: ClashRule[],
     tagInputs: ClashModelTagInputs | null = null,
     request: ClashRunRequest | null = null,
     prepared?: ReturnType<typeof beginAbortableRun>,
+    presets: readonly ClashPreset[] = [],
   ): Promise<void> => {
     const {
       runEpoch: myEpoch,
@@ -100,7 +111,7 @@ export function createClashDetection({ runEpochRef, runAbortRef, discardSolidPre
           if (owns()) useViewerStore.getState().setClashProgress(p);
         },
       });
-      if (!publishClashResult(federationIdentity, res, owns, stamp, request)) return;
+      if (!publishClashResult(federationIdentity, res, owns, stamp, request, { exclusions, tagInputs, presets, rules, elementTypes: elements })) return;
       rememberModelTagInputs(res, tagInputs);
       state.setClashSelectedId(null);
       posthog.capture('clash_detection_run', {
@@ -122,6 +133,8 @@ export function createClashDetection({ runEpochRef, runAbortRef, discardSolidPre
     }
   };
   const runPresets = async (presets: ClashPreset[], request: ClashRunRequest): Promise<void> => {
+    // The definitions this run uses, frozen now: the host's run document must describe these, not later edits.
+    const presetSnapshot = structuredClone(presets);
     const state = useViewerStore.getState();
     const models = evaluatorModelsFromState(state);
     const tagInputs = captureModelTagInputs(presets, state.modelTagAssignments);
@@ -148,7 +161,7 @@ export function createClashDetection({ runEpochRef, runAbortRef, discardSolidPre
       return;
     }
     if (!stillWanted(myEpoch)) return;
-    return run(resolved, tagInputs, request, prepared);
+    return run(resolved, tagInputs, request, prepared, presetSnapshot);
   };
   const runMatrix = (): Promise<void> => {
     const enabled = useViewerStore.getState().clashPresets.filter((p) => p.enabled);
@@ -193,7 +206,7 @@ export function createClashDetection({ runEpochRef, runAbortRef, discardSolidPre
         exclusions,
         positionTolerance: state.clashDuplicateTolerance,
       });
-      if (!publishClashResult(federationIdentity, res, owns, stamp, { kind: 'duplicates' })) return;
+      if (!publishClashResult(federationIdentity, res, owns, stamp, { kind: 'duplicates' }, { exclusions, tagInputs: null, presets: [], rules: [], elementTypes: elements })) return;
       const sets = groupDuplicateSets(res);
       state.setClashGroups(sets);
       state.setClashSelectedId(null);

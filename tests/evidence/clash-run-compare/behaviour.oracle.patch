@@ -1,0 +1,13 @@
+diff --git a/packages/clash/src/run-compare.ts b/packages/clash/src/run-compare.ts
+index 054a0da0f7..b5978bf799 100644
+--- a/packages/clash/src/run-compare.ts
++++ b/packages/clash/src/run-compare.ts
+@@ -234,7 +234,7 @@ function indexRun(doc: ClashRunDocument): RunIndex {
+  */
+ function examinedReasons(finding: ClashRunFinding, next: RunIndex): ClashRunNotComparableReason[] {
+   const coverage = next.coverage.get(finding.rule);
+-  if (!coverage) return [];
++  if (!coverage) return ['coverage-not-recorded'];
+   const { a: sideA, b: sideB } = coverage;
+   const on = (side: SideIndex | null, end: ClashRunFinding['a']) => side?.get(end.slot)?.has(end.key) === true;
+   const seen = (end: ClashRunFinding['a']) => on(sideA, end) || on(sideB, end);

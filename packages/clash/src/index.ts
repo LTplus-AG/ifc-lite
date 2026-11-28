@@ -40,9 +40,46 @@ export { groupClashes, isClusterGroupingIneffective, type GroupOptions } from '.
 export { groupDuplicateSets } from './duplicate-sets.js';
 export {
   clashReviewKey,
+  clashSlotReviewKey,
+  parseClashReviewKey,
+  slotPairKey,
   aggregateReviewStatus,
   reviewStatusToBcfTopicStatus,
+  type ClashSlotKeyOptions,
+  type ParsedClashReviewKey,
 } from './review.js';
+export {
+  buildClashRunDocument,
+  clashRuleRevision,
+  clashRuleSetRevision,
+  matchesExclusionRule,
+  slotExclusionId,
+  CLASH_RUN_BROWSER_SUBMITTED,
+  CLASH_RUN_DOCUMENT_SCHEMA_ID,
+  CLASH_RUN_DOCUMENT_VERSION,
+  type BuildClashRunDocumentInput,
+  type ClashRunCoverage,
+  type ClashRunDocument,
+  type ClashRunEndpoint,
+  type ClashRunExclusionRule,
+  type ClashRunFinding,
+  type ClashRunManifest,
+  type ClashRunRule,
+  type ClashRunSlot,
+  type ClashRunSlotBinding,
+} from './run-document.js';
+export { CLASH_RUN_DOCUMENT_JSON_SCHEMA, validateClashRunDocument, type ClashRunValidation } from './run-document-schema.js';
+export {
+  compareClashRunDocuments,
+  carryForwardReviews,
+  type ClashRunComparison,
+  type ClashRunNotComparable,
+  type ClashRunNotComparableReason,
+  type ClashRunRuleChange,
+  type ClashRunSlotChange,
+  type ClashReviewCarryForward,
+  type ClashReviewNotCarriedReason,
+} from './run-compare.js';
 export { compareClashRuns, type ClashRevisionDiff } from './lifecycle.js';
 export {
   compareClashRevisions,

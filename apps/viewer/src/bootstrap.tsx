@@ -65,10 +65,17 @@ import {
 } from './lib/processed-model';
 import { linkIconFont } from './lib/features/icon-font';
 import type { ViewerRuntimeConfig } from './lib/features/runtime-config';
+import { onClashRunComplete, type ClashRunCompleteListener, type ClashRunListenerOptions } from './lib/clash/host-run-listeners';
 
 export type { FileSourceProviderFactory } from './services/sources/source-host';
 export type { ViewerRuntimeConfig } from './lib/features/runtime-config';
 export type { OpenProcessedModelOptions, ProcessedModelRequest } from './lib/processed-model';
+export type {
+  ClashRunCompleteEvent,
+  ClashRunCompleteListener,
+  ClashRunHostSlot,
+  ClashRunListenerOptions,
+} from './lib/clash/host-run-listeners';
 
 export interface ViewerBootstrapOptions {
   /**
@@ -102,6 +109,12 @@ export interface ViewerHandle {
   openProcessedModel(model: ProcessedModelRequest, options?: OpenProcessedModelOptions): void;
   /** Change the default processing server for subsequent requests, including enabled uploads. */
   setProcessingServerUrl(url: string): void;
+  /**
+   * Receive every completed clash run as a `ClashRunDocument` (labelled
+   * `browser-submitted`), e.g. to store it per coordination round. Off until
+   * called; returns the unsubscribe. The viewer sends nothing anywhere itself.
+   */
+  onClashRunComplete(listener: ClashRunCompleteListener, options?: ClashRunListenerOptions): () => void;
 }
 
 let prepared = false;
@@ -139,7 +152,7 @@ export function mountViewer(container: HTMLElement, options: ViewerBootstrapOpti
   const config = applyRuntimeConfig(options.config);
   void startLocales(config?.locale);
   // The processing server and a start model; the viewer's autoload takes the request once it mounts.
-  const handle = applyProcessingConfig(config, options.processedModel);
+  const handle: ViewerHandle = { ...applyProcessingConfig(config, options.processedModel), onClashRunComplete };
   // Pull the engine binary down before a local pick, once the start model is known.
   scheduleWasmPrewarm();
   // The model tree's icon font, a third-party request; viewer only (the embed has no tree).

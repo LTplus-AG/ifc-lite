@@ -202,7 +202,7 @@ export const clashSettingsOperations = [
       additionalProperties: false,
     },
     async (i, c) => {
-      const [{ clashReviewKey }, { MAX_COMMENT }] = await Promise.all([import('@ifc-lite/clash'), import('@/lib/clash/persistence')]);
+      const [{ clashReviewKey }, { MAX_COMMENT }] = await Promise.all([import('@/lib/clash/clash-api-lazy'), import('@/lib/clash/persistence')]);
       if (i.comment.trim().length > MAX_COMMENT)
         throw invalidInput('limit', `Review comments are limited to ${MAX_COMMENT} characters after trimming.`);
       assertToolActive(c);

@@ -3,6 +3,16 @@
   "version": "3.0.1",
   "description": "Clash detection for IFC-Lite — representation-agnostic core engine + source adapters",
   "type": "module",
+  "sideEffects": [
+    "./src/contact/shared-faces.ts",
+    "./dist/contact/shared-faces.js",
+    "./src/contact/tri-tri.ts",
+    "./dist/contact/tri-tri.js",
+    "./src/engine-wasm/index.ts",
+    "./dist/engine-wasm/index.js",
+    "./src/math/generated/plato.g.ts",
+    "./dist/math/generated/plato.g.js"
+  ],
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {

@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "why": "Keep the host hook loadable but list only the models a finding names, so a clean run reports no slots: the host-run-document test must go red.",
+  "key": "apps/viewer/src/lib/clash/host-run-publish.ts",
+  "mutation": "tests/evidence/clash-run-host/behaviour.oracle.patch",
+  "test": "apps/viewer/src/lib/clash/host-run-document.test.ts"
+}

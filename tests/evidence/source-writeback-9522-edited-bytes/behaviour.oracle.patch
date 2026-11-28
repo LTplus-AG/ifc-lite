@@ -1,0 +1,12 @@
+diff --git a/apps/viewer/src/services/sources/model-writeback.ts b/apps/viewer/src/services/sources/model-writeback.ts
+--- a/apps/viewer/src/services/sources/model-writeback.ts
++++ b/apps/viewer/src/services/sources/model-writeback.ts
+@@ -43,7 +43,7 @@
+   // Snapshot current edits synchronously at confirmation. Later edits stay in the
+   // mutation view; a successful upload must never clear someone else's new work.
+   const state = useViewerStore.getState();
+-  const bytes = binding.store.source.materialize().slice().buffer;
++  const bytes = editedModelBytes(binding.store, state.mutationViews.get(binding.modelId) ?? null).slice().buffer;
+   const ctx = host.createContext(provider.manifest, loadResolvedSourcePrefs(provider.manifest));
+   let result: UploadResult;
+   try {

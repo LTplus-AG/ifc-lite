@@ -12,7 +12,6 @@ import {
   loadDownloadedSourceFileRecords,
   loadRevisionWatchCursor,
   loadSourceCatalogCache,
-  makeDownloadedSourceFileKey,
   recordDownloadedSourceFile,
   saveRevisionWatchCursor,
   saveSourceCatalogCache,
@@ -96,18 +95,41 @@ describe('source persistence', () => {
     assert.deepStrictEqual(loaded, saved);
   });
 
-  it('stores downloaded source-file metadata keyed by provider, project, and file', () => {
+  it('stores downloaded source-file metadata keyed by provider, project, container, and file', () => {
     const record = recordDownloadedSourceFile(tag, sourceFile);
     const records = loadDownloadedSourceFileRecords();
 
     assert.deepStrictEqual(
-      records.get(makeDownloadedSourceFileKey('dalux-build', 'project-1', 'file-1')),
+      getDownloadedSourceFileRecord(records, 'dalux-build', 'project-1', sourceFile),
       record,
     );
-    assert.deepStrictEqual(
-      getDownloadedSourceFileRecord(records, 'dalux-build', 'project-1', 'file-1'),
-      record,
-    );
+  });
+
+  it('#11650 reads legacy entries at their saved container and keeps them when another container is recorded', () => {
+    const key = 'ifc-lite-downloaded-source-files';
+    const legacy = {
+      providerId: tag.provider,
+      projectId: tag.projectId,
+      containerId: sourceFile.containerId,
+      fileId: sourceFile.id,
+      name: sourceFile.name,
+      loadedRevisionId: tag.revisionId,
+      sizeBytes: sourceFile.sizeBytes,
+      loadedAt: tag.loadedAt,
+    };
+    const payload = JSON.stringify([legacy]);
+    localStorage.setItem(key, payload);
+    const other = { ...sourceFile, containerId: 'folder-2', currentRevisionId: 'rev-4' };
+
+    const before = loadDownloadedSourceFileRecords();
+    assert.deepStrictEqual(getDownloadedSourceFileRecord(before, tag.provider, tag.projectId, sourceFile), legacy);
+    assert.strictEqual(getDownloadedSourceFileRecord(before, tag.provider, tag.projectId, other), undefined);
+    assert.strictEqual(localStorage.getItem(key), payload);
+
+    const added = recordDownloadedSourceFile({ ...tag, containerId: other.containerId, revisionId: other.currentRevisionId }, other);
+    const after = loadDownloadedSourceFileRecords();
+    assert.deepStrictEqual(getDownloadedSourceFileRecord(after, tag.provider, tag.projectId, sourceFile), legacy);
+    assert.deepStrictEqual(getDownloadedSourceFileRecord(after, tag.provider, tag.projectId, other), added);
   });
 
   it('flags downloaded files orange when the source exposes a newer revision', () => {
@@ -200,12 +222,12 @@ describe('source persistence', () => {
     assert.deepStrictEqual(loadFavourites('dalux-build'), []);
     const records = loadDownloadedSourceFileRecords();
     assert.strictEqual(
-      getDownloadedSourceFileRecord(records, 'dalux-build', 'project-1', 'file-1'),
+      getDownloadedSourceFileRecord(records, 'dalux-build', 'project-1', sourceFile),
       undefined,
     );
     assert.deepStrictEqual(loadSavedSourcePrefs('other-provider'), { apiKey: 'keep' });
     assert.notStrictEqual(
-      getDownloadedSourceFileRecord(records, 'other-provider', 'project-1', 'file-1'),
+      getDownloadedSourceFileRecord(records, 'other-provider', 'project-1', sourceFile),
       undefined,
     );
   });

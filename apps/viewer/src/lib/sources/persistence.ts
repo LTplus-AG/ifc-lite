@@ -150,12 +150,8 @@ export function saveSourceCatalogCache(
   return entry;
 }
 
-export function makeDownloadedSourceFileKey(
-  providerId: string,
-  projectId: string,
-  fileId: string,
-): string {
-  return `${providerId}:${projectId}:${fileId}`;
+function makeDownloadedSourceFileKey(providerId: string, projectId: string, containerId: string, fileId: string): string {
+  return JSON.stringify([providerId, projectId, containerId, fileId]);
 }
 
 export function loadDownloadedSourceFileRecords(): Map<string, DownloadedSourceFileRecord> {
@@ -178,11 +174,7 @@ export function loadDownloadedSourceFileRecords(): Map<string, DownloadedSourceF
         return [];
       }
       return [[
-        makeDownloadedSourceFileKey(
-          record.providerId,
-          record.projectId,
-          record.fileId,
-        ),
+        makeDownloadedSourceFileKey(record.providerId, record.projectId, record.containerId, record.fileId),
         {
           providerId: record.providerId,
           projectId: record.projectId,
@@ -228,7 +220,7 @@ export function recordDownloadedSourceFile(
     loadedAt: tag.loadedAt,
   };
   records.set(
-    makeDownloadedSourceFileKey(tag.provider, tag.projectId, sourceFile.id),
+    makeDownloadedSourceFileKey(tag.provider, tag.projectId, sourceFile.containerId, sourceFile.id),
     record,
   );
   saveDownloadedSourceFileRecords(records);
@@ -239,9 +231,9 @@ export function getDownloadedSourceFileRecord(
   records: ReadonlyMap<string, DownloadedSourceFileRecord>,
   providerId: string,
   projectId: string,
-  fileId: string,
+  file: Pick<SourceFile, 'containerId' | 'id'>,
 ): DownloadedSourceFileRecord | undefined {
-  return records.get(makeDownloadedSourceFileKey(providerId, projectId, fileId));
+  return records.get(makeDownloadedSourceFileKey(providerId, projectId, file.containerId, file.id));
 }
 
 export function getDownloadedSourceFileStatus(
@@ -291,10 +283,10 @@ export function saveRevisionWatchCursor(
  * project/file-area ids, never the signed-in identity — two identities that
  * happen to receive the same provider-defined ids in one browser profile
  * would otherwise see each other's cached folder/file listing. Call this on
- * every identity change (sign-out, and a failed silent restore) so a cache
- * hit can never outlive the identity that populated it.
+ * every identity change (sign-out, failed restore) so no cache hit outlives its
+ * identity. A write-back passes `keepOwner`: stale listing, same signed-in user.
  */
-export function clearSourceCatalogCache(providerId: string): void {
+export function clearSourceCatalogCache(providerId: string, { keepOwner = false } = {}): void {
   try {
     const doomed: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
@@ -302,7 +294,7 @@ export function clearSourceCatalogCache(providerId: string): void {
       if (key?.startsWith(`${CATALOG_KEY_PREFIX}${providerId}:`)) doomed.push(key);
     }
     for (const key of doomed) localStorage.removeItem(key);
-    localStorage.removeItem(`${CATALOG_OWNER_KEY_PREFIX}${providerId}`);
+    if (!keepOwner) localStorage.removeItem(`${CATALOG_OWNER_KEY_PREFIX}${providerId}`);
   } catch (err) {
     console.warn(`[sources] Failed to clear catalog cache for "${providerId}"`, err);
   }

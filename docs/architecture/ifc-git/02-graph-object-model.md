@@ -284,10 +284,8 @@ Two rules:
   distinct elements to one address, a relationship naming one names both.
 
   What the measurement does establish, in
-  `rust/git/tests/dedup_boundary.rs` at
-  [`bruadam/ifc-lite@65b5982b7`](https://github.com/bruadam/ifc-lite/commit/65b5982b77c0794df588734c59cdd22c8e950c58)
-  — an external branch, not this docs change, so it is not reviewable from this
-  PR:
+  `rust/git/tests/dedup_boundary.rs` (in-tree since #9465; first written at
+  [`bruadam/ifc-lite@65b5982b7`](https://github.com/bruadam/ifc-lite/commit/65b5982b77c0794df588734c59cdd22c8e950c58)):
 
     - Two occurrences differing **only in placement** do not deduplicate, so
       the ordinary case — two openings in one wall — has no ambiguity at all.

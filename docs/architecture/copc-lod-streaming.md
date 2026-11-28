@@ -12,7 +12,7 @@ guarantees.
 | COPC reader | `pointcloud/src/copc/*` | header + `copc`/`info` VLR, hierarchy pages (bounded iterative walk), per-node decode with laz-perf `ChunkDecoder` in the decode worker |
 | LOD selection | `pointcloud/src/lod/*` | pure: frustum cull, priority refinement by projected span, node cap, water-filled budget, pacing |
 | Residency | `apps/viewer/src/hooks/ingest/copc/copcLodController.ts` | which nodes are on the GPU; the budget ceiling; never retiring a view before its replacement is resident |
-| Viewer glue | `copcLodStream.ts`, `copcLodSink.ts`, `copcLodCamera.ts` | detection, camera watching, keyed renderer chunks, scan cache, class histogram, deviation refresh |
+| Viewer glue | `copcLodStream.ts`, `copcLodSink.ts`, `copcLodCamera.ts`, `copcLodWiring.ts` (joins the controller to the sink) | detection, camera watching, keyed renderer chunks, scan cache, class histogram, deviation refresh |
 | Renderer | `packages/renderer/src/pointcloud/point-cloud-keyed-chunks.ts` | removable chunks inside one asset, each with its own snap index |
 
 ## One asset, keyed chunks
@@ -77,10 +77,11 @@ LAS/LAZ behaviour, because COPC is LAZ.
 
 Each resident node is its own snap source. `queryRay` culls a source by a
 ray/bounds test first, and `queryPointClouds` rewrites the ray into an
-asset's frame once per placement matrix, not once per node. Measured on a
-synthetic terrain octree (scratch benchmark, 400 rays, mean per query): 448
-keyed node indexes 2.00 ms vs one index of the same 1.36 M points 1.99 ms;
-1,840 indexes (past the 1,024-node cap) 2.1 ms vs 1.7-1.9 ms.
+asset's frame once per placement matrix, not once per node. A one-off scratch
+benchmark on a synthetic terrain octree found similar query times for per-node
+and combined indexes at the smaller tested node count. The larger tested count
+exceeded the default cap's upper bound of 1,024 nodes and showed some overhead. That measurement is not a tracked baseline; tracked
+numbers live in the [performance guide](../guide/performance.md).
 
 ## Known limits
 

@@ -9,6 +9,7 @@
 
 import { afterEach, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { createHmac } from 'node:crypto';
 import { createBimContext } from '@ifc-lite/sdk';
 import { useViewerStore } from '@/store';
 import { LocalBackend } from '@/sdk/local-backend';
@@ -38,7 +39,11 @@ it('twenty calls in a burst publish the activity log in a few batched updates', 
   const socket = LiveSocket.last as LiveSocket;
   socket.readyState = 1;
   socket.onopen?.({});
-  socket.onmessage?.({ data: JSON.stringify({ type: 'welcome', protocol: 1, sessionId: 's', permission: 'read-only', readOnlyCeiling: false, bridge: { name: 'b', version: '1' } }) });
+  const until = Date.now() + 5000;
+  while (!socket.sent.length && Date.now() < until) await new Promise((resolve) => setTimeout(resolve, 5));
+  const { nonce } = JSON.parse(socket.sent[0]);
+  const proof = createHmac('sha256', 'ABCDE').update('ifc-lite/bridge/' + nonce).digest('hex');
+  socket.onmessage?.({ data: JSON.stringify({ type: 'welcome', proof, protocol: 1, sessionId: 's', permission: 'read-only', readOnlyCeiling: false, bridge: { name: 'b', version: '1' } }) });
   let activityUpdates = 0;
   let last = getAgentBridgeState().activity;
   const stop = subscribeAgentBridge(() => {
@@ -90,7 +95,11 @@ it('the session refuses edits a bridge forwards while read-only, and again after
   const socket = LiveSocket.last as LiveSocket;
   socket.readyState = 1;
   socket.onopen?.({});
-  socket.onmessage?.({ data: JSON.stringify({ type: 'welcome', protocol: 1, sessionId: 's', permission: 'read-only', readOnlyCeiling: false, bridge: { name: 'b', version: '1' } }) });
+  const until = Date.now() + 5000;
+  while (!socket.sent.length && Date.now() < until) await new Promise((resolve) => setTimeout(resolve, 5));
+  const { nonce } = JSON.parse(socket.sent[0]);
+  const proof = createHmac('sha256', 'ABCDE').update('ifc-lite/bridge/' + nonce).digest('hex');
+  socket.onmessage?.({ data: JSON.stringify({ type: 'welcome', proof, protocol: 1, sessionId: 's', permission: 'read-only', readOnlyCeiling: false, bridge: { name: 'b', version: '1' } }) });
   const undoDepth = () => useViewerStore.getState().undoStacks.get('hello')?.length ?? 0;
   const callEdit = async (id: string, value: string) => {
     socket.onmessage?.({ data: JSON.stringify({ type: 'call', sessionId: 's', id, name: 'entity_set_attribute', arguments: { global_id: WALL_GID, attribute: 'Name', value } }) });

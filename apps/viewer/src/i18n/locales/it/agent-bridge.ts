@@ -80,5 +80,9 @@ export const agentBridgeIt = {
   'agentBridge.surfaces.dismiss': "Chiudi {title}",
   'agentBridge.surfaces.clear': "Cancella tutto",
   'agentBridge.surfaces.untitled': "Risultato dell'agente",
+  'agentBridge.dialog.confirmInTab': "Passa alla scheda del modello per confermare la connessione.",
+  'agentBridge.dialog.refreshTabs': 'Aggiorna le schede dei modelli',
+  'agentBridge.dialog.useModelTab': "Connetti nella scheda con {name}",
+  'agentBridge.surfaces.unsent': "Impossibile inviare questa azione al tuo agente.",
   'agentBridge.surfaces.sent': "Inviato al tuo agente",
 } satisfies Catalogue;

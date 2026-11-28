@@ -13,14 +13,14 @@ import { eventToFollowUp } from '@ifc-lite/a2ui';
 import { useViewerStore } from '@/store';
 
 /** `event` is the A2UI event name; absent for a plain follow-up question (`ask`). */
-export type FollowUpHandler = (text: string, context: Record<string, unknown>, event?: string) => void;
+export type FollowUpHandler = (text: string, context: Record<string, unknown>, event?: string, surfaceId?: string) => void;
 
 const MAX_CONTEXT_CHARS = 2000;
 
 export function routeAction(action: ActionPayload, onFollowUp: FollowUpHandler | undefined): void {
   if (!onFollowUp) return;
   const followUp = eventToFollowUp(action.name, action.context, action.userMessage);
-  onFollowUp(followUp.userText, followUp.context, action.name);
+  onFollowUp(followUp.userText, followUp.context, action.name, action.surfaceId);
 }
 
 /**

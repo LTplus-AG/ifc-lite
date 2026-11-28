@@ -16,10 +16,9 @@ import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { useTranslation } from '@/i18n';
 import { ASK_EVENT } from '@ifc-lite/a2ui';
-import { a2uiSurfaceId } from '@ifc-lite/mcp/bridge-protocol';
 import { followUpToChat, type FollowUpHandler } from '@/lib/a2ui/actions';
 import { A2uiMessagesView, type AgentToRendererMessage } from '@/lib/a2ui/surface-host';
-import { agentSurfaces, type AgentSurface } from '@/lib/agent-bridge/agent-surfaces';
+import { agentSurfaces } from '@/lib/agent-bridge/agent-surfaces';
 import { sendAgentUiEvent } from '@/lib/agent-bridge/session';
 import { toast } from '@/components/ui/toast';
 
@@ -32,26 +31,20 @@ function keyOf(surface: object): number {
   return key;
 }
 
-function surfaceIdOf(surface: AgentSurface): string {
-  // Read as the bridge reads it, so a click names the surface the bridge recorded.
-  for (const message of surface.messages) {
-    const id = a2uiSurfaceId(message);
-    if (id) return id;
-  }
-  return 'agent-surface';
-}
-
 export function AgentSurfacesDock() {
   const { t } = useTranslation();
   const surfaces = useSyncExternalStore(agentSurfaces.subscribe, agentSurfaces.getSnapshot);
-  const followUp = (surface: AgentSurface): FollowUpHandler => (text, context, event = ASK_EVENT) => {
-    // Every event goes back under its own name with its payload; the prompt is the question, or the event's label.
-    const sent = sendAgentUiEvent({ surfaceId: surfaceIdOf(surface), name: event, prompt: text, context });
-    if (sent) {
-      toast.success(t('agentBridge.surfaces.sent'));
+  const followUp: FollowUpHandler = (text, context, event = ASK_EVENT, surfaceId) => {
+    if (!surfaceId) {
+      followUpToChat(text, context);
       return;
     }
-    followUpToChat(text, context);
+    // Every event goes back under its own name with its payload; the prompt is the question, or the event's label.
+    const sent = sendAgentUiEvent({ surfaceId, name: event, prompt: text, context });
+    if (sent) {
+      return;
+    }
+    toast.error(t('agentBridge.surfaces.unsent'));
   };
   if (surfaces.length === 0) return null;
   const visible = surfaces.slice(-MAX_VISIBLE).reverse();
@@ -77,7 +70,7 @@ export function AgentSurfacesDock() {
                 <X className="h-3.5 w-3.5" />
               </IconButton>
             </header>
-            <A2uiMessagesView messages={surface.messages as AgentToRendererMessage[]} onFollowUp={followUp(surface)} />
+            <A2uiMessagesView messages={surface.messages as AgentToRendererMessage[]} onFollowUp={followUp} />
           </section>
         );
       })}

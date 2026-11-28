@@ -301,10 +301,11 @@ describe('DeliveredSurfaces', () => {
     expect(ledger.check({ surfaceId: 'a', name: 'ask', prompt: 'New' })).toMatchObject(ok);
   });
 
-  it('gives every surface id in one call the whole call, as the tab names a panel by its first id', () => {
+  it('attributes the click to its own surface in a multi-surface panel', () => {
     const ledger = new DeliveredSurfaces();
     ledger.record([{ version: '1.0', createSurface: { surfaceId: 'a', catalogId: 'c' } }, button('b', 'pick')]);
-    expect(ledger.check({ surfaceId: 'a', name: 'pick', prompt: 'Action: pick' })).toMatchObject({ promptVerified: false });
+    expect(ledger.check({ surfaceId: 'a', name: 'pick', prompt: 'Action: pick' })).toHaveProperty('refused');
+    expect(ledger.check({ surfaceId: 'b', name: 'pick', prompt: 'Action: pick' })).toMatchObject({ promptVerified: false });
   });
 
   it('verifies the literal prompt of a follow-up whose label is bound', () => {
@@ -383,9 +384,9 @@ describe('DeliveredSurfaces', () => {
     ledger.record(Array.from({ length: 128 }, (_, i) => followUp(`a${i}`, 'Go')));
     ledger.record(Array.from({ length: 128 }, (_, i) => followUp(`b${i}`, 'Go')));
     ledger.record(Array.from({ length: 128 }, (_, i) => followUp(`c${i}`, 'Go')));
-    // a0 names the first panel's clicks; a1 is only a second id inside it.
+    // Each rendering surface routes its own clicks (#11674).
     expect(ledger.check({ surfaceId: 'a0', name: 'ask', prompt: 'Go' })).toMatchObject(ok);
-    expect(ledger.check({ surfaceId: 'a1', name: 'ask', prompt: 'Go' })).toMatchObject({ refused: expect.any(String) });
+    expect(ledger.check({ surfaceId: 'a1', name: 'ask', prompt: 'Go' })).toMatchObject(ok);
   });
 
   it('never forgets an id of the call being recorded, however many it names', () => {

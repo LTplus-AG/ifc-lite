@@ -103,9 +103,9 @@ export interface ClashRunManifest {
    * The user's enabled exclusion rules. Findings they cover are left out of
    * `findings`, and a comparison treats a pair they cover as excluded in this
    * run, so a pair the user excluded is never reported as added, persistent
-   * or no longer detected.
+   * or no longer detected. `null`: not supplied, so a filtered-out pair is unverifiable.
    */
-  exclusionRules: ClashRunExclusionRule[];
+  exclusionRules: ClashRunExclusionRule[] | null;
   /**
    * For type and type-pair rules: the type of every element in this run whose
    * type one of them names, by slot and key. Types can change between model
@@ -334,8 +334,8 @@ export function buildClashRunDocument(input: BuildClashRunDocumentInput): ClashR
     };
   };
 
-  const exclusionRules = (input.exclusionRules ?? []).map((rule) => ({ ...rule }));
-  const userExcluded = (clash: Clash) => exclusionRules.some((rule) => exclusionRuleCovers(rule,
+  const exclusionRules = input.exclusionRules ? input.exclusionRules.map((rule) => ({ ...rule })) : null;
+  const userExcluded = (clash: Clash) => (exclusionRules ?? []).some((rule) => exclusionRuleCovers(rule,
     { type: clash.a.tag, identity: clashElementIdentity(clash.a) }, { type: clash.b.tag, identity: clashElementIdentity(clash.b) }));
   // Refuse unslotted models and unlisted rules on EVERY clash, before user rules filter any out:
   // what the run produced is the input, not what happens to survive the filter.
@@ -392,7 +392,7 @@ export function buildClashRunDocument(input: BuildClashRunDocumentInput): ClashR
       // The engine applies `exclusions` only with `excludeVoidsAndHosts` on (orchestrator), so off means none.
       exclusions: !result.settings.excludeVoidsAndHosts ? [] : input.exclusions ? recordExclusions(input.exclusions, slotByModel) : null,
       exclusionRules,
-      exclusionTypes: recordExclusionTypes(exclusionRules, input.elementTypes, result.clashes, slotByModel),
+      exclusionTypes: recordExclusionTypes(exclusionRules ?? [], input.elementTypes, result.clashes, slotByModel),
       truncated: result.truncated ? { ...result.truncated } : null,
     },
     findings,

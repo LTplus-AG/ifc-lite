@@ -58,8 +58,8 @@ const slots = (archSha: string | null, structSha: string | null, archModel = 'lo
   { slot: 'struct', model: structModel, sha256: structSha },
 ];
 
-/** The fixtures here apply no exclusions, and say so. */
-const buildClashRunDocument = (input: BuildClashRunDocumentInput) => buildWithoutDefaults({ exclusions: new Set(), ...input });
+/** The fixtures here apply no exclusions or user rules, and say so. */
+const buildClashRunDocument = (input: BuildClashRunDocumentInput) => buildWithoutDefaults({ exclusions: new Set(), exclusionRules: [], ...input });
 
 const slotMap = (table: Record<string, string>) => (model: string): string | undefined => table[model];
 

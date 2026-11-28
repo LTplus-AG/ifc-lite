@@ -140,9 +140,11 @@ export function compareClashRunDocuments(previous: ClashRunDocument, next: Clash
     if (other.truncated) reasons.push('run-truncated');
     // The other run's type rules are judged by the types it recorded: an element's type can change.
     const excluded = other.exclusions?.has(slotExclusionId([finding.a.slot, finding.a.key], [finding.b.slot, finding.b.key]))
-      || matchesExclusionRule(other.exclusionRules, finding, other.exclusionTypes ?? {});
+      || matchesExclusionRule(other.exclusionRules ?? [], finding, other.exclusionTypes ?? {});
     if (excluded) reasons.push('excluded-in-other-run');
-    else if (other.exclusions === null || (other.exclusionTypes === null && other.exclusionRules.some(isTypeRule))) {
+    // Unknown user rules (a host that filtered the result itself) leave any absence unverified, as unknown exclusions do.
+    else if (other.exclusions === null || other.exclusionRules === null
+      || (other.exclusionTypes === null && other.exclusionRules.some(isTypeRule))) {
       reasons.push('exclusions-not-recorded');
     }
     // A key the other run saw repeated in its slot has no identity there either.
@@ -202,7 +204,7 @@ interface RunIndex {
   rules: Map<string, string>;
   truncated: boolean;
   exclusions: Set<string> | null;
-  exclusionRules: readonly ClashRunExclusionRule[];
+  exclusionRules: readonly ClashRunExclusionRule[] | null;
   exclusionTypes: ClashRunExclusionTypes | null;
   ambiguous: Map<string, Set<string>>;
   coverage: Map<string, { a: SideIndex; b: SideIndex | null } | null>;

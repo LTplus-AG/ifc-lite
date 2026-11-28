@@ -44,7 +44,7 @@ function result(clashes: Clash[], ducts: string[], walls: string[], settings = {
   };
 }
 const build = (input: Omit<BuildClashRunDocumentInput, 'slots'>) =>
-  buildClashRunDocument({ slots: SLOTS, exclusions: new Set(), createdAt: '2026-11-28T10:00:00.000Z', ...input });
+  buildClashRunDocument({ slots: SLOTS, exclusions: new Set(), exclusionRules: [], createdAt: '2026-11-28T10:00:00.000Z', ...input });
 const roundTrip = <T>(value: T): T => JSON.parse(JSON.stringify(value));
 
 describe('validateClashRunDocument: consistency of an untrusted document', () => {
@@ -223,6 +223,15 @@ describe('exclusions in run documents', () => {
     const back = compareClashRunDocuments(next, previous);
     expect(back.added).toEqual([]);
     expect(back.notComparable.map((e) => [e.side, e.finding.a.key, e.reasons])).toEqual([['next', 'D2', ['excluded-in-other-run']]]);
+  });
+
+  it('records omitted user rules as unknown, so a pair the host filtered out is not called fixed', () => {
+    const previous = build({ result: result([clash('D1', 'W1')], ['D1'], ['W1']) });
+    // A host that applied its own user rules to the result and did not pass them.
+    const filtered = buildClashRunDocument({ result: result([], ['D1'], ['W1']), slots: SLOTS, exclusions: new Set() });
+    expect(filtered.manifest.exclusionRules).toBeNull();
+    expect(validateClashRunDocument(roundTrip(filtered)).ok).toBe(true);
+    expect(compareClashRunDocuments(previous, filtered).notComparable.map((e) => e.reasons)).toEqual([['exclusions-not-recorded']]);
   });
 
   it('covers type and type-pair rules', () => {

@@ -74,7 +74,7 @@ export const CLASH_RUN_DOCUMENT_JSON_SCHEMA = {
       }) },
       ambiguousKeys: slotKeyLists,
       exclusions: { anyOf: [stringList, { type: 'null' }] },
-      exclusionRules: { type: 'array', items: { oneOf: [
+      exclusionRules: { type: ['array', 'null'], items: { oneOf: [
         /*#__PURE__*/ closed(['kind', 'type'], { kind: { const: 'type' }, type: { type: 'string' } }),
         /*#__PURE__*/ closed(['kind', 'a', 'b'], { kind: { const: 'typePair' }, a: { type: 'string' }, b: { type: 'string' } }),
         /*#__PURE__*/ closed(['kind', 'a', 'b'], { kind: { const: 'elementKeyPair' }, a: { type: 'string' }, b: { type: 'string' } }),
@@ -172,12 +172,12 @@ const documentCheck = obj({
     coverage: list(obj({ rule: str, matchedA: int, matchedB: nint, candidatesExamined: nint, examined: nullable(obj({ a: keyLists, b: nullable(keyLists) })) })),
     ambiguousKeys: keyLists,
     exclusions: nullable(list(str)),
-    exclusionRules: list((v, p, e) => {
+    exclusionRules: nullable(list((v, p, e) => {
       const kind = isRecord(v) ? v.kind : undefined;
       if (kind === 'type') obj({ kind: str, type: str })(v, p, e);
       else if (kind === 'typePair' || kind === 'elementKeyPair') obj({ kind: str, a: str, b: str })(v, p, e);
       else fail(e, p, 'an exclusion rule of kind "type", "typePair" or "elementKeyPair"');
-    }),
+    })),
     exclusionTypes: nullable((v, p, e) => {
       if (!isRecord(v)) return fail(e, p, 'an object of slot records');
       for (const [slot, keys] of Object.entries(v)) {

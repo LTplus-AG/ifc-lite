@@ -13,6 +13,14 @@ use super::{Refusal, Q_MAX};
 /// a finer level (the renderer's `MAX_COLLAPSED_AREA_FRACTION`, #9068).
 const MAX_COLLAPSED_AREA_FRACTION: f64 = 0.01;
 
+/// Share of a mesh's area whose face may flip or turn past 20° on the lattice (without
+/// collapsing) before it moves to a finer level (the renderer's `MAX_TURNED_AREA_FRACTION`,
+/// #11444). The shader shades a face by its snapped normal: a Ø12 mm rebar collapses nothing on
+/// the 1 mm lattice but turns at least 10% of its area past 20°; chamfered pieces stay under 5%.
+const MAX_TURNED_AREA_FRACTION: f64 = 0.05;
+/// cos² 20°, the turn `MAX_TURNED_AREA_FRACTION` counts (the renderer's `MIN_LATTICE_COS2`).
+const MIN_LATTICE_COS2: f64 = 0.883_022_221_559_489_1;
+
 /// A corner is witnessed by its node's stored normal when the cosine between
 /// them is above this. The fragment shader orients a face's derivative normal
 /// by the sign of its dot product with the vertex normal and ignores a vertex
@@ -257,11 +265,12 @@ fn split_unwitnessed_nodes(mesh: &MeshDataJs, s: &mut Scratch) -> Result<(), Ref
 }
 
 /// Remap the triangles (dropping those with a repeated welded vertex), and
-/// refuse a mesh the lattice collapses (#9068) or leaves without a triangle.
+/// refuse a mesh the lattice collapses or crumples (#9068, #11444) or leaves
+/// without a triangle.
 fn triangles(mesh: &MeshDataJs, s: &mut Scratch) -> Result<(), Refusal> {
     let p = &mesh.positions;
     let mut rim_segments = std::collections::HashSet::new();
-    let (mut area, mut collapsed) = (0.0f64, 0.0f64);
+    let (mut area, mut collapsed, mut turned) = (0.0f64, 0.0f64, 0.0f64);
     for t in mesh.indices.chunks_exact(3) {
         let (a, b, c) = (t[0] as usize, t[1] as usize, t[2] as usize);
         if a >= s.remap.len() || b >= s.remap.len() || c >= s.remap.len() {
@@ -275,18 +284,22 @@ fn triangles(mesh: &MeshDataJs, s: &mut Scratch) -> Result<(), Refusal> {
         let (ra, rb, rc) = (s.remap[a], s.remap[b], s.remap[c]);
         if tri_area > 0.0 {
             area += tri_area;
-            if lattice_collapses(&s.nodes, ra, rb, rc) {
-                // A flattened rim quad contributes two triangles on the same
-                // lattice segment, even when different faces split vertices.
-                let [a, b, c] = [ra, rb, rc].map(|i| s.nodes[i as usize]);
-                if (a != b || a != c) && (a == b || a == c || b == c) {
-                    let other = if a == b { c } else { b };
-                    let segment = (a.min(other), a.max(other));
-                    if rim_segments.len() >= 64 || !rim_segments.insert(segment) {
-                        return Err(Refusal::Collapse);
+            match lattice_turn(&s.nodes, [ra, rb, rc], n, tri_area) {
+                Turn::Collapsed => {
+                    // A flattened rim quad contributes two triangles on the same
+                    // lattice segment, even when different faces split vertices.
+                    let [a, b, c] = [ra, rb, rc].map(|i| s.nodes[i as usize]);
+                    if (a != b || a != c) && (a == b || a == c || b == c) {
+                        let other = if a == b { c } else { b };
+                        let segment = (a.min(other), a.max(other));
+                        if rim_segments.len() >= 64 || !rim_segments.insert(segment) {
+                            return Err(Refusal::Collapse);
+                        }
                     }
+                    collapsed += tri_area;
                 }
-                collapsed += tri_area;
+                Turn::Turned => turned += tri_area,
+                Turn::Kept => {}
             }
         }
         if ra != rb && rb != rc && ra != rc {
@@ -299,14 +312,46 @@ fn triangles(mesh: &MeshDataJs, s: &mut Scratch) -> Result<(), Refusal> {
     if s.tris.is_empty() {
         return Err(Refusal::Empty);
     }
+    // Counted under `Collapse` too: the lattice crumples it, and a finer level is the remedy.
+    if turned > area * MAX_TURNED_AREA_FRACTION {
+        return Err(Refusal::Collapse);
+    }
     Ok(())
 }
 
-/// The triangle's lattice nodes are collinear: their integer cross product is zero.
-fn lattice_collapses(nodes: &[[u16; 3]], a: u16, b: u16, c: u16) -> bool {
+/// What a triangle's lattice nodes do to its face.
+enum Turn {
+    Kept,
+    /// Flipped, or turned past `MIN_LATTICE_COS2` from the source face.
+    Turned,
+    /// Collinear: a zero integer cross product.
+    Collapsed,
+}
+
+/// Triangle `a, b, c` on the lattice, against `source`, the source face's cross product, whose
+/// length is `source_len`.
+fn lattice_turn(nodes: &[[u16; 3]], [a, b, c]: [u16; 3], source: [f64; 3], source_len: f64) -> Turn {
     let (na, nb, nc) = (nodes[a as usize], nodes[b as usize], nodes[c as usize]);
-    let d = |x: [u16; 3], y: [u16; 3], axis: usize| x[axis] as i64 - y[axis] as i64;
+    let d = |x: [u16; 3], y: [u16; 3], axis: usize| (x[axis] as i64 - y[axis] as i64) as f64;
     let u = [d(nb, na, 0), d(nb, na, 1), d(nb, na, 2)];
     let w = [d(nc, na, 0), d(nc, na, 1), d(nc, na, 2)];
-    u[1] * w[2] - u[2] * w[1] == 0 && u[2] * w[0] - u[0] * w[2] == 0 && u[0] * w[1] - u[1] * w[0] == 0
+    // Offsets are at most 65,535 steps, so the cross product is exact in f64 and a collapse is
+    // exactly zero; the turn comparison itself is approximate.
+    let q = [u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]];
+    let q_sq = q[0] * q[0] + q[1] * q[1] + q[2] * q[2];
+    if q_sq == 0.0 {
+        return Turn::Collapsed;
+    }
+    let turn = source[0] * q[0] + source[1] * q[1] + source[2] * q[2];
+    if turn <= 0.0 || turn * turn < MIN_LATTICE_COS2 * source_len * source_len * q_sq {
+        return Turn::Turned;
+    }
+    Turn::Kept
+}
+
+/// The renderer computes `Math.cos((20 * Math.PI) / 180) ** 2` (`quantize.ts`): the two stay bit for bit.
+#[cfg(test)]
+#[test]
+fn min_lattice_cos2_is_the_renderers_20_degrees() {
+    assert_eq!(MIN_LATTICE_COS2, 20f64.to_radians().cos().powi(2));
 }

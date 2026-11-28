@@ -6,11 +6,11 @@ Lenses are rule-based 3D filters: they colorize, hide, or ghost entities based o
 
 A **lens** is a named set of rules. Each **rule** has:
 
-- **Criteria** - A single condition on one axis (IFC class, property, material, attribute, quantity, classification, model, or group)
+- **Groups** - `FilterGroup[]` conditions from `@ifc-lite/rules`, the same selector as Search and Lists. The host evaluates them and passes each rule's matched global IDs to `evaluateLens`
 - **Action** - `colorize`, `hide`, or `transparent`
 - **Color** - A hex color used by `colorize` and `transparent`
 
-`evaluateLens` checks every entity against the enabled rules in order; the first matching rule wins. Entities that match no rule are **ghosted** (a faint neutral color) so the matches stand out.
+`evaluateLens` checks every entity against the enabled rules' matched IDs in order; the first matching rule wins. Entities that match no rule are **ghosted** (a faint neutral color) so the matches stand out.
 
 Alternatively, a lens can use **auto-color**: instead of hand-written rules, it groups entities by the distinct values of one data source (IFC class, a property, a material, ...) and assigns each group a color automatically, producing a legend.
 
@@ -26,9 +26,10 @@ const structural = BUILTIN_LENSES.find((l) => l.id === 'lens-structural')!;
 declare const selectedByRule: ReadonlyMap<string, ReadonlySet<number>>;
 const result = evaluateLens(structural, provider, selectedByRule);
 
-result.colorMap;      // Map<expressId (number), [r, g, b, a]> (0-1 range)
-result.hiddenIds;     // Set<expressId (number)> from 'hide' rules
+result.colorMap;      // Map<globalId (number), [r, g, b, a]> (0-1 range)
+result.hiddenIds;     // Set<globalId (number)> from 'hide' rules
 result.ruleCounts;    // Map<ruleId, matchCount>
+result.ruleEntityIds; // Map<ruleId, globalId[]>, for isolating one rule's matches
 result.executionTime; // ms
 ```
 
@@ -40,7 +41,7 @@ The shared Rules `resolveCapturedEntityScope` validates the full source identity
 
 ## Built-in Lenses
 
-`BUILTIN_LENSES` ships seven presets:
+`BUILTIN_LENSES` ships eight presets:
 
 | Id | Name | What it does |
 |----|------|--------------|
@@ -179,10 +180,11 @@ This is exactly how the viewer wires it: the Lens panel evaluates the active len
 | `evaluateLens(lens, provider, matchedByRule)` | Apply rule actions to shared evaluator global-ID sets; returns `LensEvaluationResult` |
 | `evaluateAutoColorLens(spec, provider, capturedScope?)` | Group-by-value colorization with legend and optional captured membership |
 | `discoverClasses(provider)` / `discoverDataSources(provider, categories)` | Populate editor UIs |
-| `BUILTIN_LENSES` | The seven built-in presets |
+| `BUILTIN_LENSES` | The eight built-in presets |
 | `hexToRgba` / `rgbaToHex` / `uniqueColor` / `isGhostColor` / `GHOST_COLOR` | Color helpers |
+| `AUTO_COLOR_SOURCES` / `COMMON_IFC_CLASSES` / `ENTITY_ATTRIBUTE_NAMES` / `IFC_SUBTYPE_TO_BASE` / `LENS_PALETTE` | Constants for editor UIs |
 
-Key types: `Lens`, `LensRule`, `AutoColorSpec`, `LensEvaluationResult`, `LensDataProvider`, `RGBAColor`.
+Key types: `Lens`, `LensRule`, `AutoColorSpec`, `AutoColorLegendEntry`, `AutoColorEvaluationResult`, `LensEvaluationResult`, `LensDataProvider`, `RGBAColor`, `DiscoveredLensData`.
 
 ## Construction-stage tagging
 

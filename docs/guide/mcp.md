@@ -118,7 +118,7 @@ Tools are grouped by capability. Everything below is registered in the default t
 | BCF | `bcf_topic_list`, `bcf_topic_create`, `bcf_topic_update`, `bcf_topic_close`, `bcf_viewpoint_create`, `bcf_export` |
 | bSDD | `bsdd_search`, `bsdd_class`, `bsdd_property_sets`, `bsdd_match` |
 | Diff | `model_diff`, `quantity_diff` |
-| Export | `export_ifc`, `export_csv`, `export_json`, `export_glb`, `export_obj`, `export_ifcx`, `export_usd`, `export_3dm` |
+| Export | `export_ifc`, `export_csv`, `export_json`, `export_glb`, `export_obj`, `export_ifcx`, `export_usd`, `export_3dm`, `export_gltf`, `export_jsonld`, `export_cityjson`, `export_cityjsonseq`, `export_hbjson`, `export_dfjson` |
 | Model transforms | `model_merge`, `model_convert`, `model_extract`, `model_anonymize`, `model_simplify`, `model_lod`: write to `file_path` and leave the loaded model alone. An existing file there is replaced (a loaded model's source never is). `model_merge` and `model_anonymize` refuse a model with unsaved edits |
 | Flow | `describe_flow`, `run_flow`, `propose_flow`, `resume_flow` |
 | Viewer | `viewer_ask`, `viewer_open`, `viewer_close`, `viewer_status`, `viewer_colorize`, `viewer_isolate`, `viewer_hide`, `viewer_show`, `viewer_reset`, `viewer_fly_to`, `viewer_set_section`, `viewer_clear_section`, `viewer_color_by_storey`, `viewer_color_by_property`, `viewer_get_selection`, `viewer_wait_for_selection`, `viewer_describe_selection` |
@@ -132,6 +132,24 @@ a deleted or replaced source path and a retargeted source symlink.
 IFC, IFCX, USD, GLB, and OBJ exports include pending session creates, edits,
 and deletions. Exporting and reloading an IFC file first is unnecessary.
 
+### Export filters
+
+`export_ifc`, `export_csv`, `export_json`, `export_glb`, `export_gltf`,
+`export_obj` and `export_jsonld` accept `storey`, `where` and `limit` in
+addition to `type`. A storey matches by name or express ID. Membership follows
+spatial ownership through spaces, with placement as the fallback for unassigned
+elements. For GLB, glTF, OBJ and JSON-LD exports with pending edits, select the
+storey by name because serialization can change express IDs. The optional
+`where` object has `set`, `property`, `operator` and `value` fields. For
+example, `{"set":"Pset_WallCommon","property":"FireRating","operator":"=","value":"REI60"}`
+selects entities with that fire rating. `limit` caps the results after the
+other filters run.
+
+`export_gltf` writes binary glTF (.glb), like the CLI's `--format gltf`.
+CityJSON and CityJSONSeq export the whole model and return warnings if the
+coordinates are local. Honeybee and Dragonfly export the whole model and
+accept an optional model `name`.
+
 ### IDS authoring
 
 The IDS authoring tools work on IDS documents and need no model. They are
@@ -141,9 +159,10 @@ specification, facet and constraint. Reading the same XML twice gives the
 same ids.
 
 `ids_apply_ops` is the only tool that changes a document. It takes typed
-operations (IDS ops vocabulary v1). The tool's input schema lists each op
-kind with its payload fields; the full JSON Schema of an op is the resource
-`ifc-lite://schemas/ids-ops-v1.json`. The tool passes the whole batch through the grounding gate first:
+operations (IDS ops vocabulary v1). The tool's input schema lists all operation kinds and shows the payload fields
+for `facet.add` as an example. To construct another operation such as `spec.add`,
+use `resources/read` with `ifc-lite://schemas/ids-ops-v1.json` to look up its
+payload shape and required fields. The tool passes the whole batch through the grounding gate first:
 every op is validated, and every literal name is checked against the IFC
 schema tables (entities, predefined types, attributes, property sets,
 properties, enumeration values, data types). If one name is wrong, nothing

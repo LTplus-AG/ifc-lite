@@ -10,7 +10,7 @@
  * structure unification, and infrastructure deduplication.
  */
 
-import type { IfcDataStore, IfcSourceBytes } from '@ifc-lite/parser';
+import type { IfcDataStore, IfcSourceBytes, ProjectUnits } from '@ifc-lite/parser';
 import { asSourceBytes } from '@ifc-lite/parser';
 import { decodeIfcString, stepStringLiteralEnd } from '@ifc-lite/encoding';
 import { buildMergedHeader, finishMergedConversion } from './merged-header.js';
@@ -32,6 +32,8 @@ import { getCompleteEntityIndex, getMaxExpressId, type CompleteEntityIndex, type
 import { bakeMutatedModels, mergeWarningLabel, needsBake } from './merged-bake.js';
 import type { StepGeoreferencingOptions } from './step-coordinate-options.js';
 import { rescaleEntityLengths, computeNormalizeFactor } from './unit-normalize.js';
+import { inheritedUnitLookup } from './merged-inherited-units.js';
+import { profileMeasureFactors, readProfileProjectUnits } from './merged-profile-units.js';
 import { planInfrastructureUnify, resolvePrimaryContextState, unitScalesEqual, type PrimaryContextState } from './merged-context.js';
 import { MintedRecords, georefNormalizeCaveat, normalizeGeorefRecord, planGeorefNormalize, type GeorefNormalizePlan } from './merged-georef-normalize.js';
 import { listKeptContexts } from './merged-project-contexts.js';
@@ -127,6 +129,7 @@ interface MergeSetup {
   primaryAreaScale: number;
   /** Volume unit scale (m³ per unit) of the primary model — target for volume values. */
   primaryVolumeScale: number;
+  primaryProfileUnits?: ProjectUnits;
   /** When true, every model is treated as sharing the primary unit. */
   assumeShared: boolean;
   /**
@@ -152,17 +155,14 @@ interface MergeSetup {
  * squared.
  */
 interface ModelMode {
-  /**
-   * True when the model is unified into the primary project (its project, units,
-   * contexts and matching spatial structure are deduplicated). False federates it.
-   */
+  /** True when the project and shared infrastructure are unified with the primary model. */
   compatible: boolean;
-  /** Factor applied to every length-valued datum before emit (`1` = no rescale). */
+  /** Multipliers for project-unit values before emission. */
   lengthFactor: number;
-  /** Factor applied to every area-valued datum before emit (`1` = no rescale). */
   areaFactor: number;
-  /** Factor applied to every volume-valued datum before emit (`1` = no rescale). */
   volumeFactor: number;
+  inheritedUnits?: ReturnType<typeof inheritedUnitLookup>;
+  profileFactors?: ReadonlyMap<string, number>;
   /**
    * Unit space the model's emitted entities end up in — the primary scale when
    * normalized/compatible, else the model's own scale. Recorded with each emitted
@@ -518,7 +518,7 @@ export class MergedExporter {
       const completeIndex = getCompleteEntityIndex(model.dataStore);
       const visibility = this.computeIncludedEntityIds(model, options, completeIndex, source);
 
-      const mode = this.resolveModelMode(model, isFirstModel, setup);
+      const mode = this.resolveModelMode(model, isFirstModel, setup, visibility?.included);
       if (!isFirstModel && !mode.compatible) federatedModelCount++;
       if (mode.normalized) { normalizedModelCount++; this.collectNormalizeCaveats(model, normalizeWarnings, mode.georef); }
       const plan = this.planModel(model, completeIndex, isFirstModel, mode.compatible, mode.lengthFactor, setup, guidToFinalId, schema);
@@ -539,6 +539,7 @@ export class MergedExporter {
           visibility?.hiddenProductIds ?? null, completeIndex, visibility?.included ?? null, slotFill, ifc4Slots, enums, styleFlatten,
         );
         if (line !== null) { allEntityLines.push(line); upgradePruning.note(line, sourceSchema); }
+        else if (enums.boundaries.leftOut(expressId + offset)) upgradePruning.noteOmitted(expressId + offset);
       }
       if (model !== models.at(-1)) upgradePruning.forgetOmittedGuids(allEntityLines, modelStart, guidToFinalId, setup.parentClaims);
 
@@ -666,7 +667,7 @@ export class MergedExporter {
       const completeIndex = getCompleteEntityIndex(model.dataStore);
       const visibility = this.computeIncludedEntityIds(model, options, completeIndex, source);
 
-      const mode = this.resolveModelMode(model, isFirstModel, setup);
+      const mode = this.resolveModelMode(model, isFirstModel, setup, visibility?.included);
       if (!isFirstModel && !mode.compatible) federatedModelCount++;
       if (mode.normalized) { normalizedModelCount++; this.collectNormalizeCaveats(model, normalizeWarnings, mode.georef); }
       const plan = this.planModel(model, completeIndex, isFirstModel, mode.compatible, mode.lengthFactor, setup, guidToFinalId, schema);
@@ -690,6 +691,7 @@ export class MergedExporter {
           visibility?.hiddenProductIds ?? null, completeIndex, visibility?.included ?? null, slotFill, ifc4Slots, enums, styleFlatten,
         );
         if (line !== null) { allEntityLines.push(line); upgradePruning.note(line, sourceSchema); }
+        else if (enums.boundaries.leftOut(expressId + offset)) upgradePruning.noteOmitted(expressId + offset);
 
         entityCount++;
         entitiesProcessed++;
@@ -866,6 +868,7 @@ export class MergedExporter {
       primaryScale,
       primaryAreaScale: this.resolveDerivedUnitScale(firstModel.dataStore, 'AREAUNIT', primaryScale, 2),
       primaryVolumeScale: this.resolveDerivedUnitScale(firstModel.dataStore, 'VOLUMEUNIT', primaryScale, 3),
+      primaryProfileUnits: options.unitReconciliation === 'normalize' ? readProfileProjectUnits(firstModel.dataStore) : undefined,
       assumeShared: options.unitReconciliation === 'assume-shared',
       normalize: options.unitReconciliation === 'normalize',
       mergeSites: options.mergeSites,
@@ -886,12 +889,9 @@ export class MergedExporter {
    * - Otherwise (`auto`) a differing-unit model is federated (kept as its own
    *   project + units), leaving its raw coordinates untouched.
    *
-   * Area/volume reconciliation is gated on the length unit differing: a model that
-   * shares the primary's length unit is treated as fully compatible (factors 1).
-   * A model that pairs a matching length unit with a *divergent* area/volume unit
-   * (a non-conformant combination no mainstream exporter emits) is not rescaled.
+   * Dimensional rescaling runs when the project length units differ.
    */
-  private resolveModelMode(model: MergeModelInput, isFirstModel: boolean, setup: MergeSetup): ModelMode {
+  private resolveModelMode(model: MergeModelInput, isFirstModel: boolean, setup: MergeSetup, included?: ReadonlySet<number>): ModelMode {
     const modelScale = this.resolveUnitScale(model);
     if (isFirstModel || setup.assumeShared || unitScalesEqual(modelScale, setup.primaryScale)) {
       return { compatible: true, lengthFactor: 1, areaFactor: 1, volumeFactor: 1, effectiveScale: modelScale, normalized: false };
@@ -907,6 +907,8 @@ export class MergedExporter {
         lengthFactor: computeNormalizeFactor(modelScale, setup.primaryScale),
         areaFactor: computeNormalizeFactor(modelArea, setup.primaryAreaScale),
         volumeFactor: computeNormalizeFactor(modelVolume, setup.primaryVolumeScale),
+        inheritedUnits: inheritedUnitLookup(model.dataStore, included),
+        profileFactors: profileMeasureFactors(readProfileProjectUnits(model.dataStore), setup.primaryProfileUnits, modelScale, setup.primaryScale),
         effectiveScale: setup.primaryScale,
         normalized: true,
         georef: planGeorefNormalize(model.dataStore, setup.minted, modelScale, setup.primaryScale),
@@ -1191,7 +1193,6 @@ export class MergedExporter {
     const stripped = applyRelMemberStrip(entityText, localId, plan.relMemberStrip);
     if (stripped === null) return null;
     entityText = stripped;
-
     const converting = needsConversion(sourceSchema, targetSchema);
     const remapIds = offset !== 0 || plan.sharedRemap.size !== 0;
     let finalText = remapIds ? remapEntityText(entityText, offset, plan.sharedRemap, converting) : entityText;
@@ -1199,12 +1200,14 @@ export class MergedExporter {
     // Only numeric literals and the georeference (#10886) change here.
     const georef = normalizeGeorefRecord(finalText, localId, mode.georef);
     if (georef !== undefined) finalText = georef;
-    else if (mode.lengthFactor !== 1 || mode.areaFactor !== 1 || mode.volumeFactor !== 1) {
+    else if (mode.normalized && !mode.inheritedUnits?.selectionHasExplicitUnit(entityRef.type, entityText)) {
       const type = entityRef.type.toUpperCase();
       const legacySchema = isTypedPropertyUpgrade(type, sourceSchema, targetSchema) ? 'IFC2X3' : undefined;
-      finalText = rescaleEntityLengths(finalText, type, mode.lengthFactor, mode.areaFactor, mode.volumeFactor, legacySchema);
+      const sampleUnit = mode.inheritedUnits?.sampleUnit(type, localId);
+      const scaled = sampleUnit === 'explicit' ? finalText : rescaleEntityLengths(finalText, type, mode.lengthFactor, mode.areaFactor, mode.volumeFactor, mode.profileFactors, legacySchema, mode.inheritedUnits?.tableCellNormalizer(type, localId));
+      if (sampleUnit === 'mixed' && scaled !== finalText) throw new Error(`Cannot normalize shared time series sample #${localId} with both project and explicit units`);
+      finalText = scaled;
     }
-
     if (converting) {
       // No `withheldRefIds` (6th arg), so `resolveUnrepresentedEntity` never omits here (#4206): the federated
       // pipeline has no such set in its offset id space, and keeps "proxy or throw" rather than omit in the
@@ -1213,7 +1216,7 @@ export class MergedExporter {
       const converted = convertStepLine(finalText, sourceSchema, targetSchema, undefined, slotFill, undefined, ifc4Slots, enums,
         remapIds ? Number.MAX_SAFE_INTEGER : undefined);
       if (converted === null) {
-        if (enums.materials.leftOut(localId + offset)) return null; // a material record not written (#10763)
+        if (enums.materials.leftOut(localId + offset) || enums.boundaries.leftOut(localId + offset)) return null; // a material record (#10763) or space boundary not written
         throw new Error(`Internal error: schema conversion of #${localId + offset}=${entityRef.type} returned null with no withheldRefIds supplied.`);
       }
       finalText = converted;

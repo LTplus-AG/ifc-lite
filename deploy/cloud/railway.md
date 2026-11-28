@@ -1,7 +1,8 @@
 # Hosted Dropbox and Microsoft deployment
 
 Use the separate Linux Railway service `cloud` in the existing project. Reverse proxy the exact
-`/api/cloud/*` path from the viewer's origin to this service. Register exact
+`/api/cloud/*` path from the viewer's origin to this service. Build the viewer with
+`VITE_CLOUD_HOSTED=true` so its Dropbox and OneDrive sources use the gateway. Register exact
 callback URLs for each deployed viewer origin; no wildcard callback or credential
 in a frontend environment variable.
 

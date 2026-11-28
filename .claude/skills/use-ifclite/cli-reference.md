@@ -1,35 +1,58 @@
 # ifc-lite CLI — full command reference
 
-Headless BIM toolkit. Every command supports `--json` (machine-readable).
-**stdout = data, stderr = status, exit 0 = success / 1 = failure.** Run
+Headless BIM toolkit. Many commands offer machine-readable output through `--json`.
+For tabular JSON from `export` or `schedule`, use `--format json`. `gym` speaks a
+newline-delimited JSON protocol. **stdout = data, stderr = status.** Most commands
+exit 0 on success and 1 on failure; some (for example `flow`) have more codes. Run
 `ifc-lite <command> --help` for the live signature, and `ifc-lite schema` for
 the full SDK API used by `eval`/`run`.
 
 | Command | Purpose |
 |---------|---------|
+| `doctor` | Check CLI runtime, package versions and WASM binary |
 | `info` | Model summary: schema, entity counts, storeys, top types |
 | `query` | Query entities by type/property with optional full data |
+| `structural` | Read analysis models, members, connections, loads, reactions and physical links |
 | `props` | All data for a single entity by id |
-| `stats` | Entity-type statistics |
-| `export` | Export to CSV / JSON / IFC STEP |
-| `lod` | Lightweight LOD0 (JSON) / LOD1 (GLB) preview artifacts |
-| `ids` | Validate against IDS rules |
+| `export` | Export data / geometry / energy / city model (CSV, JSON, IFC, OBJ, glTF/GLB, JSON-LD, IFCX, USD, 3DM, HBJSON, DFJSON, CityJSON) |
+| `schedule` | Tabular schedule of one class (csv/json/md/html), with presets, sorting, grouping and subtotals |
+| `diagnose-geometry` | CSG / opening diagnostics |
+| `extract-entities` | Isolate entities into a small, viewable standalone IFC |
+| `anonymize` | Export selected objects + context as an anonymized IFC |
+| `ids` | Validate against IDS rules; `audit`, `lint`, `fmt`, `diff`, `explain` IDS files |
 | `bcf` | BCF collaboration (create / list / add-comment) |
-| `create` | Create IFC elements (30+ types) |
-| `merge` | Merge multiple IFC files into one federated model |
-| `convert` | Convert between IFC schema versions |
-| `diff` | Compare two IFC files |
-| `validate` | Structural validation |
 | `clash` | Clash detection between element sets |
-| `bsdd` | buildingSMART Data Dictionary lookup |
-| `mutate` | Modify entities / properties |
-| `analyze` | Push color overlays to a running viewer |
-| `view` | Launch the 3D viewer with a REST API |
+| `create` | Create IFC elements (29 types) |
 | `eval` | Evaluate a JS SDK expression |
 | `run` | Run a JS script with `bim` in scope |
-| `ask` | Natural-language recipe engine |
 | `schema` | Dump the SDK API schema as JSON |
+| `merge` | Merge multiple IFC files into one federated model |
+| `convert` | Convert between IFC schema versions |
+| `diff` | Compare two IFC files (by GlobalId, by content, with geometry) |
+| `rekey` | Carry a table keyed on old element keys across a revision |
+| `validate` | Structural validation |
+| `bsdd` | buildingSMART Data Dictionary lookup |
+| `stats` | Auto-calculated model KPIs and health check |
+| `mutate` | Modify properties/attributes and save |
+| `generate-spaces` | Derive IfcSpace from walls |
+| `derive-structural` | Derive a linked structural analysis model |
+| `storey` | Author storeys (list / add / rename / edit / delete / constrain / copy) |
+| `georef` | Read, write, check and fix georeferencing |
+| `site-context` | Swiss terrain, parcel and neighbouring buildings around a georeferenced model as one GLB |
+| `ask` | Natural-language recipe engine |
+| `view` | Launch the 3D viewer with a REST API |
+| `analyze` | Push color overlays to a running viewer |
+| `lod` | Lightweight LOD0 (JSON) / LOD1 (GLB) preview artifacts |
+| `simplify` | Simplify meshes and write a lighter IFC |
+| `mcp` | Start an MCP server; `mcp install` adds it to a client config |
 | `ext` | Author / validate / pack / sign / test IFClite extensions |
+| `layer` / `ref` | Layered change tracking and named refs over a local store (`.ifc-lite/`) |
+| `oci` | Publish an IFC file to an OCI registry (`oci push`) |
+| `gym` | reset/step/reward environment loop (JSONL over stdin/stdout) |
+| `delivery` | Repeatable delivery check from a saved recipe |
+| `check` | Run a `.rules.json` information-validation rule set |
+| `semantic` | Semantic profiles, SHACL validation and SPARQL/JSON providers |
+| `flow` | Evaluate a node graph headlessly; pause and resume reviewed AI proposals |
 
 ## query
 
@@ -41,10 +64,12 @@ ifc-lite query model.ifc --type IfcWall --limit 10 --offset 20
 ifc-lite query model.ifc --spatial            # storeys → elements tree
 ```
 
-Flags: `--type <T>` · `--where <Pset.Prop=Value>` · `--props` · `--quantities` ·
-`--materials` · `--classifications` · `--attributes` · `--relationships` ·
-`--type-props` · `--documents` · `--all` · `--count` · `--spatial` ·
-`--limit <N>` · `--offset <N>` · `--json`
+Flags: `--type <T>` · `--select "<selector>"` · `--where <Pset.Prop=Value>` ·
+`--storey <S>` · `--props` · `--quantities` · `--materials` · `--classifications` ·
+`--attributes` · `--relationships` · `--type-props` · `--documents` · `--all` ·
+`--count` · `--spatial` · `--summary` · `--sum/--avg/--min/--max <Qty>` ·
+`--group-by <key>` · `--sort <key>` · `--desc` · `--unique <path>` ·
+`--property-names` · `--quantity-names` · `--limit <N>` · `--offset <N>` · `--json`
 
 ## props
 
@@ -63,11 +88,37 @@ ifc-lite export model.ifc --format csv --type IfcWall \
 ifc-lite export model.ifc --format ifc --schema IFC4 --out filtered.ifc
 ```
 
-Flags: `--format csv|json|ifc` · `--type <T>` · `--columns <a,b,Pset.Prop>` ·
-`--separator <sep>` · `--schema IFC2X3|IFC4|IFC4X3` · `--limit <N>` · `--out <file>`
+Flags: `--format csv|json|ifc|obj|gltf|glb|jsonld|step|ifcx|usd|3dm|hbjson|dfjson|cityjson|cityjsonseq` ·
+`--type <T>` · `--where <Pset.Prop=Value>` · `--storey <S>` · `--columns <a,b,Pset.Prop>` ·
+`--separator <sep>` · `--schema IFC2X3|IFC4|IFC4X3` · `--limit <N>` · `--name <Model>` ·
+`--name-by-global-id` (glb/gltf) · `--out <file>`. 3DM adds `--units`, `--coordinates`,
+`--layers`, `--properties`, `--3dm-version 7|8`, `--no-instancing`, `--no-spaces`,
+`--no-normals`, `--layer-slicing`. CityJSON adds `--scale STEP` (vertex grid,
+default 0.001) and `--blocks-only`. Experimental `--kernel exact|retained` defaults to `exact`.
+Retained export requires `--format obj` and an engine directory from `--retained-engine DIR`
+or `IFCLITE_RETAINED_ENGINE`; `--retained-report FILE` writes an optional report.
 
-(For glTF / Parquet / IFC5 export use the SDK `@ifc-lite/export` package or
-`eval`.)
+`ifcx`, `usd`, `hbjson`, `dfjson`, `cityjson` and `cityjsonseq` always export
+the whole model: they ignore `--type`, `--where`, `--storey` and `--limit`.
+`glb` and `gltf` both write binary GLB and require `--out`.
+
+(For Parquet export use the SDK `@ifc-lite/export` package or `eval`.)
+
+## schedule
+
+```bash
+ifc-lite schedule model.ifc --preset door --format md
+ifc-lite schedule model.ifc --type IfcDoor --columns "Name=Name, Fire=Pset_DoorCommon.FireRating, Area=Qto_DoorBaseQuantities.Area" \
+  --group-by Fire --sort "Area:desc" --subtotals "count, sum:Area"
+ifc-lite schedule model.ifc --preset door --save door-schedule.json
+ifc-lite schedule model.ifc --spec door-schedule.json --format json
+```
+
+Flags: `--type <T>` · `--columns "Header=path,..."` (path = attribute, `Pset.Prop`
+or `Qto.Qty`) · `--preset door|window|space|wall|material-takeoff` ·
+`--where <Pset.Prop=Value>` · `--format csv|json|md|html` · `--sort "Header[:asc|desc],..."` ·
+`--group-by "Header,..."` · `--subtotals "count|sum:H|avg:H|min:H|max:H,..."` ·
+`--spec <file>` / `--save <file>` (an explicit flag beats `--spec`, which beats `--preset`).
 
 ## lod
 
@@ -88,6 +139,16 @@ ifc-lite ids model.ifc requirements.ids --json --locale de
 
 Flags: `--json` · `--locale en|de|fr`. Exit 0 (pass) / 1 (fail).
 
+IDS file tools (exit 2 on a usage error or unreadable input):
+
+```bash
+ifc-lite ids audit rules.ids --json        # IDS 1.0 conformance audit (exit 1 on errors)
+ifc-lite ids lint rules.ids --fail-on warning
+ifc-lite ids fmt rules.ids --check         # exit 1 when the file would change; --write rewrites it
+ifc-lite ids diff before.ids after.ids --md
+ifc-lite ids explain rules.ids --lang de --md
+```
+
 ## bcf
 
 ```bash
@@ -98,8 +159,9 @@ ifc-lite bcf add-comment --file topics.bcf --text "Fixed in rev 3" --out updated
 
 ## create
 
-30+ element types, with `--pset` / `--qset` / `--material` / `--color`, or
-`--from-json` (reads stdin). `--out <file>` is required.
+29 element types, with `--pset` / `--qset` / `--material` / `--color`, or
+`--from-json` (reads stdin). Pass `--out <file>`, `--viewer <port>` (stream into
+a running `ifc-lite view`), or both; viewer-only fails if the stream fails.
 
 | Category | Types |
 |----------|-------|
@@ -111,7 +173,7 @@ ifc-lite bcf add-comment --file topics.bcf --text "Fixed in rev 3" --out updated
 | Openings | `door`, `window`, `wall-door`, `wall-window` |
 | Circulation | `stair`, `ramp`, `railing` |
 | Foundation | `footing`, `pile` |
-| Other | `space`, `plate`, `furnishing`, `proxy` |
+| Other | `space`, `plate`, `furnishing`, `proxy`, `storey` |
 
 ```bash
 ifc-lite create wall --start 0,0,0 --end 5,0,0 --height 3 --thickness 0.2 --out wall.ifc
@@ -123,7 +185,7 @@ echo '{"Start":[0,0,0],"End":[10,0,0],"Height":3,"Thickness":0.2}' | ifc-lite cr
 
 Common flags: `--start/--end/--position <x,y,z>` · `--height/--width/--depth/--thickness <N>` ·
 `--name` · `--project` · `--storey` · `--elevation` · `--pset/--qset/--material <json>` ·
-`--color <r,g,b>` · `--from-json` · `--out <file>` · `--json`. Coordinates are IFC **Z-up**.
+`--color <r,g,b>` · `--from-json` · `--out <file>` · `--viewer <port>` · `--json`. Coordinates are IFC **Z-up**.
 
 ## merge / convert / diff / validate
 
@@ -169,7 +231,7 @@ uncertain (`review`) is never applied.
 ```bash
 ifc-lite eval model.ifc "bim.query().byType('IfcDoor').toArray().filter(d => d.name.includes('Fire'))"
 ifc-lite run analysis.js model.ifc          # `bim` is global in the script
-ifc-lite schema            # full API JSON (namespaces: model, query, viewer, mutate, create, export, ids, bcf)
+ifc-lite schema            # full API JSON (namespaces: bim, query, model, viewer, mutate, store, create, export, clash, schedule, ...)
 ifc-lite schema --compact  # names + descriptions only
 ```
 
@@ -187,11 +249,28 @@ ifc-lite analyze model.ifc --viewer 3456 --type IfcWall --missing "Pset_WallComm
 `--palette blue-red|green-red|rainbow`, `--rules <file>`. See the viewer-api
 guide for the full REST surface.
 
+## flow
+
+```bash
+ifc-lite flow describe graph.flow.json      # inputs (nodeId.param keys) and outputs
+ifc-lite flow validate graph.flow.json
+ifc-lite flow run graph.flow.json model.ifc --input filter.threshold=3 --out paused.ifc --checkpoint review.json
+# Copy the proposal digest printed by the paused run into PROPOSAL_DIGEST.
+ifc-lite flow review review.json --approve "${PROPOSAL_DIGEST:?Set PROPOSAL_DIGEST to the printed proposal digest}"   # or --reject
+ifc-lite flow resume graph.flow.json paused.ifc --input filter.threshold=3 --checkpoint review.json --out result.ifc
+```
+
+Pass `--checkpoint` before running a graph with a review node. Resume requires that
+checkpoint, the paused IFC and the same input overrides, plus `--next-checkpoint` if
+another review node remains. `flow bcf list` and `check` inspect durable BCF publication
+entries; `reconcile` and `confirm-absent` update their local records. See
+`ifc-lite flow --help`.
+
 ## Pipe patterns
 
 ```bash
 ifc-lite query model.ifc --type IfcDoor --json | jq -r '.[].name'
 for f in *.ifc; do echo "$f: $(ifc-lite query "$f" --type IfcWall --count) walls"; done
 ifc-lite merge arch.ifc struct.ifc --out fed.ifc && ifc-lite validate fed.ifc
-ifc-lite bsdd psets IfcWall | jq '.["Pset_WallCommon"]'
+ifc-lite bsdd psets IfcWall --json | jq '.["Pset_WallCommon"]'
 ```

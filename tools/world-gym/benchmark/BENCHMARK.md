@@ -434,7 +434,7 @@ benchmark/
   score.mjs           scoring harness CLI (per-task + aggregate + row emission)
   baselines.mjs       the three reference baselines (submission round-trip incl. validator)
   results/            committed anchor rows + split summaries (small JSONs)
-  attacks/            committed adversarial submissions, kept as regressions
+  attacks/            committed adversarial attack script (clean-twin-diff), kept as a regression
 ```
 
 The historical salt measurements are summarized in section 1a. The retained

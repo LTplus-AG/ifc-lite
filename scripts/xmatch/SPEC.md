@@ -19,6 +19,8 @@ node scripts/xmatch/run.mjs --self-test   # mutation-check the harness itself
 
 Exit codes: `0` pass, `1` a threshold or a fixture guard failed, `2` the run
 could not happen at all (missing fixture, missing wasm, unbuilt packages).
+`--write` rewrites the committed `scorecard.json` from the run; `--keep` keeps
+the generated head (and mutated base) IFC files instead of deleting them.
 
 ## What is under test
 
@@ -739,14 +741,19 @@ Also absent, and worth stating:
   `swapped` each pair one geometry edit with a rename, which is the minimum a
   successor needs to exist at all, and `splitLength` renames both halves;
 * `swapped` cannot be constructed on a model whose only donor maps are
-  copies or mirrors of the element's own (AC20), and no mutation exercises a
-  `merge` claim: the corpus has no element that is the union of two others.
+  copies or mirrors of the element's own (AC20). Only rvt01 has
+  ground-truth merges, from the synthetic `merged` role (duplex and AC20 zero
+  it in `run.mjs`). The scorer counts every merge claim, including false
+  positives.
 
 ## Cost and scheduling
 
 `.github/workflows/xmatch-fixture.yml` runs this weekly and on demand, plus on
-pushes and PRs that touch the code it measures (`packages/diff`,
-`rust/geometry`, `packages/wasm`, the CLI diff adapter, and the harness itself).
-A docs-only or viewer-only change never sees the job. The measurable work is a
+pushes to `main` that touch the code it measures (`packages/diff`,
+`packages/parser`, `packages/data`, `packages/encoding`, `rust/geometry`,
+`rust/processing`, `packages/wasm`, the CLI diff adapter, and the harness
+itself). A PR touching those paths runs it only with the `ci:benchmark` label.
+The lane is advisory, not a required check. A docs-only or viewer-only change
+never sees the job. The measurable work is a
 few seconds per model; the wall clock is the wasm build and the fixture
 download, both cached.

@@ -1051,7 +1051,9 @@ jobs:
       - name: Measure perf-ratchet bundle family
         id: perf-ratchet-measure
         continue-on-error: true
-        run: node scripts/perf-ratchet/measure-bundle.mjs --out "$RUNNER_TEMP/perf-ratchet/bundle.json"
+        run: |
+          node scripts/perf-ratchet/measure-bundle.mjs --out "$RUNNER_TEMP/perf-ratchet/bundle.json"
+          printf '%s:%s\n' "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" > "$RUNNER_TEMP/perf-ratchet/bundle.attempt"
 
       - name: Upload perf-ratchet measurements
         if: steps.perf-ratchet-measure.outcome == 'success'
@@ -4191,7 +4193,9 @@ jobs:
       - name: Fetch the FZK-Haus fixture
         run: node scripts/fixtures/fetch-fixtures.mjs ara3d/AC20-FZK-Haus.ifc
       - name: Measure perf-ratchet native-instructions family
-        run: node scripts/perf-ratchet/measure-native-instructions.mjs --set small --out "$RUNNER_TEMP/perf-ratchet-native/native-instructions.json"
+        run: |
+          node scripts/perf-ratchet/measure-native-instructions.mjs --set small --out "$RUNNER_TEMP/perf-ratchet-native/native-instructions.json"
+          printf '%s:%s\n' "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" > "$RUNNER_TEMP/perf-ratchet-native/native-instructions.attempt"
       - name: Upload native-instructions measurement
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -4216,11 +4220,16 @@ jobs:
       && (needs.native-instructions.result == 'success' || needs.native-instructions.result == 'skipped')
       && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.frontend == 'true' || needs.changes.outputs.perf_ratchet == 'true')
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # 5 for the ratchet itself (it takes ~25 s), +3 so the advisory
+    # base-stale step (its own timeout-minutes: 3) can never cancel this
+    # required job.
+    timeout-minutes: 8
     permissions:
       contents: read
       # The sticky report comment (issues/comments endpoint on the PR).
       pull-requests: write
+      # The advisory base-stale step reads main's measurement artifacts.
+      actions: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -4283,6 +4292,42 @@ jobs:
           elif [ "$CHECK_OUTCOME" != "success" ]; then
             gh api --method POST "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" -F body=@"$body_file"
           fi
+      # BASE-STALE SIGNAL (scripts/ci-base-stale.mjs). Would this measurement,
+      # and this run's Rust result, still hold on main as it is NOW? Main can
+      # move during the run, and an open PR is not re-run when it moves later;
+      # base-stale.yml re-judges labelled PRs on every push to main. This step
+      # is the PR-side refresh: a PR whose author merges main or pushes gets a
+      # new verdict here. It never changes this job's result
+      # (continue-on-error, and the script never exits 1). Queue drafts
+      # already run the full gate on the merged tree.
+      # Fixed-name downloads can come from an earlier attempt on a job rerun.
+      # The advisory reader checks each producer's attempt sidecar before use.
+      - name: Base-stale verdict (advisory)
+        id: base-stale
+        if: ${{ !cancelled() && github.event_name == 'pull_request' && github.base_ref == 'main' && !startsWith(github.head_ref, 'mergify/merge-queue/') }}
+        continue-on-error: true
+        timeout-minutes: 3
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: >-
+          node scripts/ci-base-stale.mjs --in-run --trigger pr-run --pr "$PR_NUMBER"
+          --head-sha "$HEAD_SHA" --merge-sha "$GITHUB_SHA" --measured-dir "$RUNNER_TEMP/perf-ratchet"
+          --json-out "$RUNNER_TEMP/base-stale-verdicts.jsonl"
+      # The PR-side half of the shadow evidence (base-stale.yml uploads the
+      # sweep's): one JSONL row per evaluation, the same shape. Every exit-0
+      # path of the script writes the file, so its absence is a harness fault.
+      - name: Upload the base-stale verdict
+        if: ${{ !cancelled() && steps.base-stale.outcome == 'success' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: base-stale-verdicts-pr-run-${{ steps.base-stale.outputs.gate-mode }}
+          path: ${{ runner.temp }}/base-stale-verdicts.jsonl
+          retention-days: 30
+          if-no-files-found: error
 
   # The release PR's own checks, for the lean lane (scripts/ci-release-lane.mjs).
   # Runs ONLY in a lean run, so it is skipped on every other run; its success

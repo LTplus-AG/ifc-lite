@@ -7,7 +7,9 @@
  *
  * Critical: these are surfaced as `structuredContent.code` on tool results
  * with `isError: true` — NEVER as JSON-RPC errors. That lets the LLM read
- * and react to the failure inline rather than aborting the chain.
+ * and react to the failure inline rather than aborting the chain. For a tool
+ * that declares an `outputSchema`, the server moves the envelope into the
+ * text block instead (see `fitOutputSchema` in tool-catalog.ts).
  */
 
 import type { CallToolResult } from './protocol/index.js';
@@ -27,7 +29,7 @@ export const ToolErrorCode = {
   RATE_LIMITED: 'RATE_LIMITED',
   /** `--bridge`: no browser tab is paired, or the paired tab went away mid-call. */
   VIEWER_NOT_CONNECTED: 'VIEWER_NOT_CONNECTED',
-  /** `--bridge`: the paired tab did not answer in time. */
+  /** `--bridge`: the paired tab did not answer in time; or a script_run script exceeded timeout_ms. */
   TIMEOUT: 'TIMEOUT',
   INTERNAL_ERROR: 'INTERNAL_ERROR',
 } as const;

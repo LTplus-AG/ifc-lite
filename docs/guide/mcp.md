@@ -121,6 +121,7 @@ Tools are grouped by capability. Everything below is registered in the default t
 | bSDD | `bsdd_search`, `bsdd_class`, `bsdd_property_sets`, `bsdd_match` |
 | Diff | `model_diff`, `quantity_diff` |
 | Export | `export_ifc`, `export_csv`, `export_json`, `export_glb`, `export_obj`, `export_ifcx`, `export_usd`, `export_3dm`, `export_gltf`, `export_jsonld`, `export_cityjson`, `export_cityjsonseq`, `export_hbjson`, `export_dfjson` |
+| Scripting | `script_run` (read-only), `script_run_mutate` (hidden under `--read-only`): JavaScript against the `bim` SDK in the QuickJS sandbox, with time and memory limits. Both tools require `read`. `script_run_mutate` also requires `mutate`, and its `bim.export` and `bim.create` namespaces require `export`. Script code runs on the server's event loop, so other requests wait while it runs |
 | Model transforms | `model_merge`, `model_convert`, `model_extract`, `model_anonymize`, `model_simplify`, `model_lod`: write to `file_path` and leave the loaded model alone. An existing file there is replaced (a loaded model's source never is). `model_merge` and `model_anonymize` refuse a model with unsaved edits |
 | Flow | `describe_flow`, `run_flow`, `propose_flow`, `resume_flow` |
 | Viewer | `viewer_ask`, `viewer_open`, `viewer_close`, `viewer_status`, `viewer_colorize`, `viewer_isolate`, `viewer_hide`, `viewer_show`, `viewer_reset`, `viewer_fly_to`, `viewer_set_section`, `viewer_clear_section`, `viewer_color_by_storey`, `viewer_color_by_property`, `viewer_get_selection`, `viewer_wait_for_selection`, `viewer_describe_selection`, `viewer_select` |
@@ -708,7 +709,7 @@ positional arguments to load models on startup.
 
 ## Errors that keep the agent in the loop
 
-Domain errors come back inside the tool result with `isError: true` and a stable `structuredContent.code`, rather than aborting the JSON-RPC call. That keeps the model reasoning instead of failing the chain:
+Domain errors come back inside the tool result with `isError: true` and a stable `structuredContent.code`, rather than aborting the JSON-RPC call. That keeps the model reasoning instead of failing the chain. A tool whose `outputSchema` only describes success (`script_run`, `script_run_mutate`) leaves `structuredContent` off its error results, because clients validate it against that schema; the same `{ code, message, details, hint }` envelope is JSON in the last text block instead:
 
 ```jsonc
 {

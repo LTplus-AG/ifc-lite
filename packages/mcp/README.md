@@ -194,6 +194,7 @@ The same `npx` command works as a stdio server in any MCP-aware client.
 | Draft layers and review | `create_draft_layer`, `draft_apply_ops`, `diff_layer`, `dry_run_merge`, `list_conflicts`, `publish_layer`, `request_review`, `respond_to_review`, `add_review_topic`, `add_review_feedback`, `get_review_feedback` |
 | Flow | `describe_flow`, `run_flow`, `propose_flow`, `resume_flow` |
 | Export | `export_ifc`, `export_csv`, `export_json`, `export_glb`, `export_obj`, `export_ifcx`, `export_usd`, `export_3dm`, `export_gltf`, `export_jsonld`, `export_cityjson`, `export_cityjsonseq`, `export_hbjson`, `export_dfjson` |
+| Scripting | `script_run` (read-only), `script_run_mutate` (hidden under `--read-only`): JavaScript against the `bim` SDK in the QuickJS sandbox, with time and memory limits. Both tools require `read`. `script_run_mutate` also requires `mutate`, and its `bim.export` and `bim.create` namespaces require `export`. Script code runs on the server's event loop, so other requests wait while it runs |
 | Model transforms | `model_merge`, `model_convert`, `model_extract`, `model_anonymize`, `model_simplify`, `model_lod`: write to `file_path` and leave the loaded model alone. An existing file there is replaced (a loaded model's source never is). `model_merge` and `model_anonymize` refuse a model with unsaved edits |
 | Viewer | `viewer_ask`, `viewer_open`, `viewer_close`, `viewer_status`, `viewer_select`, `viewer_colorize`, `viewer_isolate`, `viewer_hide`, `viewer_show`, `viewer_reset`, `viewer_fly_to`, `viewer_set_section`, `viewer_clear_section`, `viewer_color_by_storey`, `viewer_color_by_property`, `viewer_get_selection`, `viewer_wait_for_selection`, `viewer_describe_selection` |
 
@@ -315,7 +316,10 @@ const initResp = await transport.send({
 ## Errors
 
 Domain errors come back inside the tool result with `isError: true` and a
-stable `structuredContent.code`:
+stable `structuredContent.code`. Tools whose `outputSchema` only describes success
+(`script_run`, `script_run_mutate`) put that envelope as JSON in the last
+text block instead, since clients validate `structuredContent` against the
+schema:
 
 ```jsonc
 {

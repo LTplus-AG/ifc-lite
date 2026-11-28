@@ -207,6 +207,7 @@ export class Sandbox {
     this.config = {
       permissions: { ...DEFAULT_PERMISSIONS, ...config.permissions },
       limits: { ...DEFAULT_LIMITS, ...config.limits },
+      jsonBridgeArguments: config.jsonBridgeArguments ?? false,
       network: config.network ?? { grants: [] },
     };
   }
@@ -250,8 +251,7 @@ export class Sandbox {
 
       this.vm = this.runtime.newContext();
 
-      // Build the bim API inside the sandbox
-      this.bridge = buildBridge(this.vm, this.sdk, this.config.permissions, { sandboxSessionId: this.sessionId }, this.config.network.grants, this.config.network.transport);
+      this.bridge = buildBridge(this.vm, this.sdk, this.config.permissions, { sandboxSessionId: this.sessionId, jsonBridgeArguments: this.config.jsonBridgeArguments }, this.config.network.grants, this.config.network.transport);
     } catch (err) {
       // dispose() is idempotent — it clears each field before freeing it, so
       // the bridge, vm and runtime are released in order and never twice.

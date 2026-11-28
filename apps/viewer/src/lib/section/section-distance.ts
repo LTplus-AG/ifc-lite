@@ -77,24 +77,7 @@ export function mergedSectionBounds(
   models: ReadonlyMap<string, BoundedModel>,
   legacy: Pick<GeometryResult, 'coordinateInfo'> | null,
 ): AxisBounds | null {
-  let acc: AxisBounds | null = null;
-  const fold = (b: AxisBounds | undefined) => {
-    if (!isUsable(b)) return;
-    acc = acc
-      ? {
-          min: { x: Math.min(acc.min.x, b.min.x), y: Math.min(acc.min.y, b.min.y), z: Math.min(acc.min.z, b.min.z) },
-          max: { x: Math.max(acc.max.x, b.max.x), y: Math.max(acc.max.y, b.max.y), z: Math.max(acc.max.z, b.max.z) },
-        }
-      : { min: { ...b.min }, max: { ...b.max } };
-  };
-  if (models.size > 0) {
-    for (const model of models.values()) {
-      if (model.visible) fold(model.geometryResult?.coordinateInfo?.shiftedBounds);
-    }
-  } else {
-    fold(legacy?.coordinateInfo?.shiftedBounds);
-  }
-  return acc;
+  return mergedSectionCoordinateInfo(models, legacy)?.shiftedBounds ?? null;
 }
 
 /** Shared section bounds with the frame metadata needed by the placement hook. */
@@ -102,11 +85,29 @@ export function mergedSectionCoordinateInfo(
   models: ReadonlyMap<string, BoundedModel>,
   legacy: Pick<GeometryResult, 'coordinateInfo'> | null,
 ): CoordinateInfo | undefined {
-  const bounds = mergedSectionBounds(models, legacy);
-  if (!bounds) return undefined;
-  const base = [...models.values()].find((model) => model.visible && model.geometryResult?.coordinateInfo)
-    ?.geometryResult?.coordinateInfo ?? legacy?.coordinateInfo;
-  return base ? { ...base, shiftedBounds: bounds } : undefined;
+  if (!models.size) {
+    const info = legacy?.coordinateInfo;
+    return isUsable(info?.shiftedBounds) ? info : undefined;
+  }
+  let merged: CoordinateInfo | undefined;
+  for (const model of models.values()) {
+    const info = model.geometryResult?.coordinateInfo;
+    if (!model.visible || !info || !isUsable(info.shiftedBounds)) continue;
+    if (!merged) {
+      merged = info;
+      continue;
+    }
+    const { min, max } = merged.shiftedBounds;
+    const box = info.shiftedBounds;
+    merged = {
+      ...merged,
+      shiftedBounds: {
+        min: { x: Math.min(min.x, box.min.x), y: Math.min(min.y, box.min.y), z: Math.min(min.z, box.min.z) },
+        max: { x: Math.max(max.x, box.max.x), y: Math.max(max.y, box.max.y), z: Math.max(max.z, box.max.z) },
+      },
+    };
+  }
+  return merged;
 }
 
 /** The world-unit span of `bounds` along a cut axis, or `null` when degenerate. */
@@ -165,24 +166,24 @@ export function collectStoreys(
     const lowestByPlacement = new Map<number, number>();
     const levels = [...byStorey.keys()].map((storeyId) => {
       const attrs = ds.getEntity?.(storeyId)?.attributes;
-      const placementId = attrs?.[IFC_BUILDING_STOREY_PLACEMENT_INDEX];
+      const placement = attrs?.[IFC_BUILDING_STOREY_PLACEMENT_INDEX];
       const relative = storeyElevations.get(storeyId);
-      const explicit = attrs?.[IFC_BUILDING_STOREY_ELEVATION_INDEX] != null && relative !== undefined && Number.isFinite(relative);
-      if (explicit && typeof placementId === 'number') {
-        lowestByPlacement.set(placementId, Math.min(relative, lowestByPlacement.get(placementId) ?? Infinity));
+      const placementId = typeof placement === 'number' && attrs?.[IFC_BUILDING_STOREY_ELEVATION_INDEX] != null
+        && relative !== undefined && Number.isFinite(relative) ? placement : undefined;
+      if (placementId !== undefined) {
+        lowestByPlacement.set(placementId, Math.min(relative ?? 0, lowestByPlacement.get(placementId) ?? Infinity));
       }
-      return { storeyId, placementId, relative, explicit };
+      return { storeyId, placementId, relative: relative ?? 0 };
     });
-    for (const { storeyId, placementId, relative, explicit } of levels) {
+    for (const { storeyId, placementId, relative } of levels) {
       // The composed origin anchors the lowest level when an exporter reuses
       // the same placement for several levels. Their authored differences are
       // usable whether Elevation was written in relative or absolute metres.
       const origin = typeof ds.getEntity === 'function' ? resolveProductOriginMeters(ds, storeyId) : null;
       const placedZ = origin && Number.isFinite(origin.z) ? origin.z : undefined;
       const lowest = typeof placementId === 'number' ? lowestByPlacement.get(placementId) : undefined;
-      const rise = placedZ !== undefined && explicit && relative !== undefined && lowest !== undefined
-        ? relative - lowest : 0;
-      const elevation = (placedZ ?? relative ?? 0) + rise + sceneOffset;
+      const rise = placedZ !== undefined && lowest !== undefined ? relative - lowest : 0;
+      const elevation = (placedZ ?? relative) + rise + sceneOffset;
       const name = ds.entities.getName(storeyId) || `Storey #${storeyId}`;
       storeys.push({ expressId: storeyId, modelId, name, elevation, ...(rise ? { sharedPlacementRise: rise } : {}) });
     }

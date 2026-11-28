@@ -22,7 +22,6 @@ import { useViewerStore, type FederatedModel } from '@/store';
 import { fixtureModel } from '@/test/store-fixture.js';
 import type { SectionStorey } from '@/lib/section/section-distance';
 import { emptyPlacementState } from '@/lib/model-placement/state';
-import { useSectionDistance } from '@/components/viewer/tools/useSectionDistance';
 import { Renderer } from '@ifc-lite/renderer';
 import { appearanceInstanceScene } from '@/test/appearance-instance-scene';
 import { getGlobalRenderer, setGlobalRendererRef } from './useBCF.js';
@@ -45,9 +44,7 @@ function bounded(id: string, maxY: number): FederatedModel {
 
 let storeys: SectionStorey[] = [];
 let activate: ((storey: SectionStorey) => void) | null = null;
-let menuElevation: number | undefined;
 function Probe(): null {
-  menuElevation = useSectionDistance().storeys.find((entry) => entry.expressId === 5)?.displayElevation;
   const floorplan = useFloorplanView();
   activate = floorplan.activateFloorplan;
   storeys = floorplan.availableStoreys;
@@ -158,7 +155,9 @@ for (const [kind, elevation, placement] of [
     }));
     const storey = storeys.find((entry) => entry.expressId === 5);
     assert.ok(storey);
-    assert.equal(menuElevation, 103);
+    const ui = render(<HudPopover><SectionActivePlaneRow /></HudPopover>);
+    openStoreyMenu(ui);
+    assert.equal(storeyRows('Level 1')[0]?.lastElementChild?.textContent, '103.00 m');
     act(() => activate!(storey));
     // The moved range is [2, 10], so the 6.2 m cut is at 52.5%.
     assert.ok(Math.abs(s().sectionPlane.position - 52.5) < 1e-9, `cut at ${s().sectionPlane.position}%`);

@@ -1,7 +1,6 @@
 # A2UI in ifc-lite: generative IFC result surfaces
 
-Status: in implementation on `research/google-a2ui`. Pinned to A2UI protocol **v1.0**
-via `@a2ui/web_core@0.15.0`, `@a2ui/react@0.15.0`, `@a2ui/agent@0.1.0`.
+The integration uses A2UI protocol **v1.0**.
 
 ## Why
 

@@ -3,6 +3,7 @@
   "version": "3.0.1",
   "description": "Clash detection for IFC-Lite — representation-agnostic core engine + source adapters",
   "type": "module",
+  "sideEffects": false,
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {

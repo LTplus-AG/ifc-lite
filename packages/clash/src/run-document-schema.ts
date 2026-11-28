@@ -29,10 +29,10 @@ const vec3 = { type: 'array', items: { type: 'number' }, minItems: 3, maxItems: 
 const nullableString = { type: ['string', 'null'] } as const;
 const stringList = { type: 'array', items: { type: 'string' } } as const;
 const slotKeyLists = { type: 'object', additionalProperties: stringList } as const;
-/** A fixed-shape object: listed properties only. */
+/** A fixed-shape object: listed properties only. Calls are marked pure so an unused schema is dropped from bundles. */
 const closed = <const R extends readonly string[], const P extends Record<string, unknown>>(required: R, properties: P) =>
   ({ type: 'object', required, properties, additionalProperties: false }) as const;
-const endpoint = closed(['slot', 'key', 'globalId', 'type'], {
+const endpoint = /*#__PURE__*/ closed(['slot', 'key', 'globalId', 'type'], {
   slot: { type: 'string' }, key: { type: 'string' }, globalId: nullableString, type: { type: 'string' },
   name: { type: 'string' }, ambiguous: { const: true },
 });
@@ -50,47 +50,47 @@ export const CLASH_RUN_DOCUMENT_JSON_SCHEMA = {
     runId: nullableString,
     createdAt: { type: 'string', format: 'date-time' },
     labels: stringList,
-    manifest: closed(['slots', 'rules', 'engine', 'settings', 'coverage', 'ambiguousKeys', 'exclusions', 'exclusionRules', 'exclusionTypes', 'truncated'], {
-      slots: { type: 'array', items: closed(['slot', 'sha256'], {
+    manifest: /*#__PURE__*/ closed(['slots', 'rules', 'engine', 'settings', 'coverage', 'ambiguousKeys', 'exclusions', 'exclusionRules', 'exclusionTypes', 'truncated'], {
+      slots: { type: 'array', items: /*#__PURE__*/ closed(['slot', 'sha256'], {
         slot: { type: 'string' }, sha256: { type: ['string', 'null'], pattern: '^[0-9a-f]{64}$' },
         label: { type: 'string' }, name: { type: 'string' } }) },
-      rules: closed(['revision', 'items'], {
+      rules: /*#__PURE__*/ closed(['revision', 'items'], {
         revision: { type: 'string' },
-        items: { type: 'array', items: closed(
+        items: { type: 'array', items: /*#__PURE__*/ closed(
           ['id', 'name', 'revision', 'a', 'b', 'mode', 'tolerance', 'clearance', 'reportTouch', 'explicitMembers'], {
             id: { type: 'string' }, name: { type: 'string' }, revision: { type: 'string' }, a: { type: 'string' },
             b: nullableString, mode: { enum: ['hard', 'clearance'] }, tolerance: { type: 'number' },
             clearance: { type: ['number', 'null'] }, reportTouch: { type: 'boolean' },
-            explicitMembers: closed(['a', 'b'], { a: { type: 'boolean' }, b: { type: 'boolean' } }),
+            explicitMembers: /*#__PURE__*/ closed(['a', 'b'], { a: { type: 'boolean' }, b: { type: 'boolean' } }),
           }) },
       }),
-      engine: closed(['name', 'version', 'build', 'backend'], {
+      engine: /*#__PURE__*/ closed(['name', 'version', 'build', 'backend'], {
         name: { type: 'string' }, version: nullableString, build: nullableString, backend: nullableString }),
-      settings: closed(['tolerance', 'excludeVoidsAndHosts'], { tolerance: { type: 'number' }, excludeVoidsAndHosts: { type: 'boolean' } }),
-      coverage: { type: 'array', items: closed(['rule', 'matchedA', 'matchedB', 'candidatesExamined', 'examined'], {
+      settings: /*#__PURE__*/ closed(['tolerance', 'excludeVoidsAndHosts'], { tolerance: { type: 'number' }, excludeVoidsAndHosts: { type: 'boolean' } }),
+      coverage: { type: 'array', items: /*#__PURE__*/ closed(['rule', 'matchedA', 'matchedB', 'candidatesExamined', 'examined'], {
         rule: { type: 'string' }, matchedA: { type: 'integer' }, matchedB: { type: ['integer', 'null'] },
         candidatesExamined: { type: ['integer', 'null'] },
-        examined: { anyOf: [{ type: 'null' }, closed(['a', 'b'], { a: slotKeyLists, b: { anyOf: [slotKeyLists, { type: 'null' }] } })] },
+        examined: { anyOf: [{ type: 'null' }, /*#__PURE__*/ closed(['a', 'b'], { a: slotKeyLists, b: { anyOf: [slotKeyLists, { type: 'null' }] } })] },
       }) },
       ambiguousKeys: slotKeyLists,
       exclusions: { anyOf: [stringList, { type: 'null' }] },
       exclusionRules: { type: 'array', items: { oneOf: [
-        closed(['kind', 'type'], { kind: { const: 'type' }, type: { type: 'string' } }),
-        closed(['kind', 'a', 'b'], { kind: { const: 'typePair' }, a: { type: 'string' }, b: { type: 'string' } }),
-        closed(['kind', 'a', 'b'], { kind: { const: 'elementKeyPair' }, a: { type: 'string' }, b: { type: 'string' } }),
+        /*#__PURE__*/ closed(['kind', 'type'], { kind: { const: 'type' }, type: { type: 'string' } }),
+        /*#__PURE__*/ closed(['kind', 'a', 'b'], { kind: { const: 'typePair' }, a: { type: 'string' }, b: { type: 'string' } }),
+        /*#__PURE__*/ closed(['kind', 'a', 'b'], { kind: { const: 'elementKeyPair' }, a: { type: 'string' }, b: { type: 'string' } }),
       ] } },
       exclusionTypes: { anyOf: [{ type: 'null' }, { type: 'object', additionalProperties: { type: 'object', additionalProperties: { type: 'string' } } }] },
-      truncated: { anyOf: [{ type: 'null' }, closed(['reason', 'droppedPairs'], { reason: { type: 'string' }, droppedPairs: { type: 'integer' } })] },
+      truncated: { anyOf: [{ type: 'null' }, /*#__PURE__*/ closed(['reason', 'droppedPairs'], { reason: { type: 'string' }, droppedPairs: { type: 'integer' } })] },
     }),
-    findings: { type: 'array', items: closed(
+    findings: { type: 'array', items: /*#__PURE__*/ closed(
       ['id', 'key', 'legacyKey', 'rule', 'ruleRevision', 'status', 'severity', 'distance', 'distanceKind', 'volume', 'point', 'bbox', 'a', 'b'], {
         id: { type: 'string' }, key: nullableString, legacyKey: { type: 'string' }, rule: { type: 'string' },
         ruleRevision: { type: 'string' }, status: { enum: ['hard', 'clearance', 'touch'] },
         severity: { enum: ['critical', 'major', 'minor', 'info'] }, distance: { type: 'number' },
         distanceKind: { enum: ['mesh', 'estimate', null] }, volume: { type: ['number', 'null'] }, point: vec3,
-        bbox: closed(['min', 'max'], { min: vec3, max: vec3 }),
+        bbox: /*#__PURE__*/ closed(['min', 'max'], { min: vec3, max: vec3 }),
         a: endpoint, b: endpoint,
-        review: closed(['status'], { status: { enum: ['open', 'resolved', 'accepted'] }, comment: { type: 'string' }, updatedAt: { type: 'number' } }),
+        review: /*#__PURE__*/ closed(['status'], { status: { enum: ['open', 'resolved', 'accepted'] }, comment: { type: 'string' }, updatedAt: { type: 'number' } }),
       }) },
   }),
 } as const;

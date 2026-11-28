@@ -489,7 +489,7 @@ graph TB
 | Entity IDs | Uint32Array (fixed-size) |
 | Types | Uint16Array enum (2 bytes vs ~20 for string) |
 | Properties | On-demand parsing (not pre-loaded) |
-| Geometry | Streaming + dispose after upload |
+| Geometry | Streamed to the GPU; the CPU copy is kept by default, released only under opt-in GPU-only residency (`?perf.gpuOnly`, see [Viewer CPU geometry](viewer-cpu-geometry.md)) |
 | Server | Parquet (compressed columnar transfer) |
 
 ## Threading Model

@@ -226,13 +226,16 @@ station equations) and its own review. It is not v1.
 
 ## 7. Provenance
 
-Every produced file records, in the IFC header and in a property set on `IfcProject`:
+Every produced file records, in the IFC header (`FILE_DESCRIPTION`) and in the
+`LandXML_Conversion` property set on `IfcSite` (`writeProvenance` in
+`packages/create/src/landxml/landxml-to-ifc.ts`):
 
 - that it is a derived conversion, the source filename and its hash;
 - this mapping document's version;
 - whether an `assumedLinearUnit` override was in force (§2.1), and its value;
 - whether a coordinate-order override was in force (§2.2);
-- the record families that were refused (§5).
+- the record families that were refused (§5);
+- how many surfaces, survey points, alignments and profiles were exported.
 
 ## 8. Acceptance evidence
 

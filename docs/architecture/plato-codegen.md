@@ -211,5 +211,6 @@ fuzz verdict PASS).
 
 ## Reproducing
 
-Production regeneration: `tools/plato/README.md` (script, pins, traps). Spike
-harnesses: `tools/plato-spike/README.md` on branch `spike/plato-investigation`.
+Production regeneration: `tools/plato/README.md` (script, pins, traps). The spike
+harnesses (`tools/plato-spike/README.md` on branch `spike/plato-investigation`)
+were never published to `origin`, so they cannot be reproduced from this repo.

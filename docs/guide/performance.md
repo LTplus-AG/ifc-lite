@@ -28,7 +28,7 @@ driver allocates, and the canvas swap chain is not included.
 
 ## Bundle Size
 
-The whole client-side engine (parser, exact CSG geometry kernel, and all Rust exporters) ships as a single WASM module, `packages/wasm/pkg/ifc-lite_bg.wasm`. Its raw size is held by the `bundle/engine-wasm-bytes` ceiling in `tests/perf-ratchets/bundle.json` (see [Perf ratchet ceilings](#perf-ratchet-ceilings)), and the ratchet report lists its brotli size beside it. It is loaded once, lazily, and cached by the browser. Optional heavyweight features stay out of the bundle: DuckDB-WASM for SQL queries is only downloaded on the first `sql()` call, and only if you install it.
+The client-side engine (parser, exact CSG geometry kernel and the built-in exporters) ships as one WASM module, `packages/wasm/pkg/ifc-lite_bg.wasm`. The Rhino `.3dm` and CityJSON exporters are the exception: `exportRhinoScene` and `exportCityJson` load a second module, `@ifc-lite/wasm/rhino` (`packages/wasm/pkg-rhino/`), on first use. That module is not covered by the size below. Its raw size is held by the `bundle/engine-wasm-bytes` ceiling in `tests/perf-ratchets/bundle.json` (see [Perf ratchet ceilings](#perf-ratchet-ceilings)), and the ratchet report lists its brotli size beside it. It is loaded once, lazily, and cached by the browser. Optional heavyweight features stay out of the bundle: DuckDB-WASM for SQL queries is only downloaded on the first `sql()` call, and only if you install it.
 
 You can reproduce the measurement with `scripts/measure-bundle-size.sh`.
 

@@ -539,6 +539,7 @@ export class MergedExporter {
           visibility?.hiddenProductIds ?? null, completeIndex, visibility?.included ?? null, slotFill, ifc4Slots, enums, styleFlatten,
         );
         if (line !== null) { allEntityLines.push(line); upgradePruning.note(line, sourceSchema); }
+        else if (enums.boundaries.leftOut(expressId + offset)) upgradePruning.noteOmitted(expressId + offset);
       }
       if (model !== models.at(-1)) upgradePruning.forgetOmittedGuids(allEntityLines, modelStart, guidToFinalId, setup.parentClaims);
 
@@ -690,6 +691,7 @@ export class MergedExporter {
           visibility?.hiddenProductIds ?? null, completeIndex, visibility?.included ?? null, slotFill, ifc4Slots, enums, styleFlatten,
         );
         if (line !== null) { allEntityLines.push(line); upgradePruning.note(line, sourceSchema); }
+        else if (enums.boundaries.leftOut(expressId + offset)) upgradePruning.noteOmitted(expressId + offset);
 
         entityCount++;
         entitiesProcessed++;
@@ -1214,7 +1216,7 @@ export class MergedExporter {
       const converted = convertStepLine(finalText, sourceSchema, targetSchema, undefined, slotFill, undefined, ifc4Slots, enums,
         remapIds ? Number.MAX_SAFE_INTEGER : undefined);
       if (converted === null) {
-        if (enums.materials.leftOut(localId + offset)) return null; // a material record not written (#10763)
+        if (enums.materials.leftOut(localId + offset) || enums.boundaries.leftOut(localId + offset)) return null; // a material record (#10763) or space boundary not written
         throw new Error(`Internal error: schema conversion of #${localId + offset}=${entityRef.type} returned null with no withheldRefIds supplied.`);
       }
       finalText = converted;

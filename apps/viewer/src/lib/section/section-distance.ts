@@ -167,14 +167,15 @@ export function collectStoreys(
     const bounds = frame?.shiftedBounds;
     const lowest = new Map<string, number>();
     const levels = [...byStorey.keys()].map((id) => {
-      const origin = ds.getEntity && resolveProductOriginMeters(ds, id);
+      const storey = ds.getEntity?.(id);
+      const origin = storey && resolveProductOriginMeters(ds, id);
       const z = origin && Number.isFinite(origin.z) ? origin.z : undefined;
       const relative = storeyElevations.get(id);
       // Coincident origins can be authored as separate placements. Anchor the
       // lowest declared level and retain the differences above that origin.
       let key: string | undefined;
       if (origin && z !== undefined && relative !== undefined && Number.isFinite(relative)
-        && ds.getEntity(id)?.attributes?.[IFC_BUILDING_STOREY_ELEVATION_INDEX] != null) {
+        && storey?.attributes?.[IFC_BUILDING_STOREY_ELEVATION_INDEX] != null) {
         key = `${origin.x},${origin.y},${origin.z}`;
         lowest.set(key, Math.min(relative, lowest.get(key) ?? relative));
       }

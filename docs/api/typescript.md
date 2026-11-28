@@ -47,7 +47,7 @@ ifc-lite ships its public npm packages under the `@ifc-lite/*` scope, plus the `
 | [`@ifc-lite/server-client`](#ifc-liteserver-client) | TypeScript client SDK for IFC-Lite Server |
 | [`@ifc-lite/server-bin`](#ifc-liteserver-bin) | Pre-built IFC-Lite server binary - run without Docker or Rust |
 | [`@ifc-lite/wasm`](#ifc-litewasm) | WebAssembly bindings for IFC-Lite |
-| [`@ifc-lite/codegen`](#ifc-litecodegen) | TypeScript code generator from IFC EXPRESS schemas |
+| [`@ifc-lite/codegen`](#ifc-litecodegen) | TypeScript, Rust and validator code generator from IFC EXPRESS schemas |
 | [`create-ifc-lite`](#create-ifc-lite) | Create IFC-Lite projects with one command |
 | [`@ifc-lite/a2ui`](https://www.npmjs.com/package/@ifc-lite/a2ui) | A2UI v1.0 catalog, agent helpers and surface builders for IFC result surfaces |
 | [`@ifc-lite/ai`](https://www.npmjs.com/package/@ifc-lite/ai) | Provider-independent AI request core: transport contract, typed outcomes, root budgets, usage receipts and bounded JSON output parsing |

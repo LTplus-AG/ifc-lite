@@ -1,0 +1,372 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import { schemaSource } from './schema-fixture.js';
+import { runInNewContext } from 'node:vm';
+import { describe, expect, it } from 'vitest';
+import ts from 'typescript';
+import { z } from 'zod';
+import { generateValidators } from '../src/index.js';
+
+const generated = new Map<string, ReturnType<typeof generateValidators>>();
+const generate = (file: string) => {
+  if (!generated.has(file)) generated.set(file, generateValidators(schemaSource(file)));
+  return generated.get(file)!;
+};
+
+const mini = (where: string, extra = '') => `SCHEMA MINI;
+TYPE MiniLabel = STRING; END_TYPE;
+TYPE MiniEnum = ENUMERATION OF (A, USERDEFINED); END_TYPE;
+ENTITY MiniThing;
+  Name : OPTIONAL MiniLabel;
+  Kind : MiniEnum;
+WHERE
+  ${where};
+END_ENTITY;
+${extra}
+END_SCHEMA;`;
+
+function loadRules(source: string, runtime: Record<string, unknown>, entity = 'MiniThing'): { label: string; check: (self: object, model: object) => boolean }[] {
+  const { outputText } = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } });
+  const exports = { RULES: { entity: { [entity]: [] } } };
+  runInNewContext(outputText, { exports, require: () => ({ EnumValue: class {}, ...runtime }) });
+  return exports.RULES.entity[entity];
+}
+
+const setRuntime = {
+  typeOf: (_model: unknown, names: string[]) => names,
+  aggregate: (items: string[][]) => items.flat(),
+  mul: (left: string[], right: string[]) => left.filter(name => right.includes(name)),
+  sizeof: (items: unknown[]) => items.length,
+  eq: (left: number, right: number) => left === right,
+  ge: (left: number, right: number) => left >= right,
+  attr: (entity: Record<string, unknown>, key: string) => entity[key],
+  query: (items: string[][], matches: (names: string[]) => boolean) => items.filter(matches),
+};
+
+describe('generateValidators', () => {
+  it('normalizes named and inline SET parameters and keeps LIST duplicates (#11646)', () => {
+    const { files, coverage } = generateValidators(mini(
+      'Named : CountTags([1,1]) = 1; InlineSet : CountSet([1,1]) = 1; Ordered : CountList([1,1]) = 2',
+      `TYPE Tags = SET [1:?] OF INTEGER; END_TYPE;
+       FUNCTION CountTags(X : Tags) : INTEGER; RETURN(SIZEOF(X)); END_FUNCTION;
+       FUNCTION CountSet(X : SET [1:?] OF INTEGER) : INTEGER; RETURN(SIZEOF(X)); END_FUNCTION;
+       FUNCTION CountList(X : LIST [1:?] OF INTEGER) : INTEGER; RETURN(SIZEOF(X)); END_FUNCTION;`,
+    ));
+    expect(coverage.unsupported).toEqual([]);
+    const rules = loadRules(files['rules.ts'], { ...setRuntime, assignSet: (items: number[]) => [...new Set(items)] });
+    expect(rules.map(rule => rule.check({}, {}))).toEqual([true, true, true]);
+  });
+
+  // Totals cross-checked against IfcOpenShell's compiled rule modules (#11559): every
+  // entity WHERE, type WHERE and global RULE label it runs is one these schemas compile.
+  // DERIVE totals count := declarations in the DERIVE sections of the raw EXPRESS files.
+  it.each([
+    ['IFC2X3_TC1.exp', 'IFC2X3', 339, 24, 2, 38, 55],
+    ['IFC4_ADD2_TC1.exp', 'IFC4', 652, 25, 2, 47, 62],
+    ['IFC4X3.exp', 'IFC4X3_DEV_923B0514', 752, 25, 2, 48, 60],
+  ])('compiles every rule, DERIVE, FUNCTION and global RULE of %s', (file, typePrefix, entity, type, global, fns, derived) => {
+    const { files, coverage } = generate(file);
+    for (const [scope, c] of Object.entries(coverage.counts)) expect(c.compiled, scope).toBe(c.total);
+    expect(coverage.unsupported).toEqual([]);
+    expect([coverage.counts.entity.total, coverage.counts.type.total, coverage.counts.global.total, coverage.counts.function.total, coverage.counts.derived.total])
+      .toEqual([entity, type, global, fns, derived]);
+    // TYPEOF literals use the qualifier the rules spell, not the file's schema name.
+    const exports = { META: { typePrefix: '' } };
+    runInNewContext(ts.transpileModule(files['schema.ts'], { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText, { exports });
+    expect(exports.META.typePrefix).toBe(typePrefix);
+  });
+
+  it('emits modules that parse as TypeScript', () => {
+    const { files } = generate('IFC4X3.exp');
+    for (const [name, text] of Object.entries(files)) {
+      if (!name.endsWith('.ts')) continue;
+      const parsed = ts.transpileModule(text, { reportDiagnostics: true, compilerOptions: { module: ts.ModuleKind.ESNext } });
+      expect(parsed.diagnostics?.map((d) => ts.flattenDiagnosticMessageText(d.messageText, '\n')), name).toEqual([]);
+    }
+  });
+
+  it("compiles 'X' IN TYPEOF(e) to a membership test and AND/OR with a lazy right operand", () => {
+    const { files } = generateValidators(mini("WR1 : FALSE AND EXISTS(Name); WR2 : TRUE OR EXISTS(Name)"));
+    let reads = 0;
+    const rules = loadRules(files['rules.ts'], {
+      and: (left: boolean, right: () => boolean) => left && right(),
+      or: (left: boolean, right: () => boolean) => left || right(),
+      attr: () => { reads++; return 'value'; }, exists: Boolean,
+    });
+    expect(rules.map(rule => rule.check({}, {}))).toEqual([false, true]);
+    expect(reads).toBe(0);
+  });
+
+  it('reports a rule it cannot compile instead of dropping it', () => {
+    const { coverage } = generateValidators(mini('WR1 : NOT EXISTS(Name) OR MysteryCheck(Name)'));
+    expect(coverage.counts.entity).toEqual({ total: 1, compiled: 0 });
+    expect(coverage.unsupported).toEqual([
+      { scope: 'entity', owner: 'MiniThing', label: 'WR1', reason: 'call to unknown function MysteryCheck' },
+    ]);
+  });
+
+  it('propagates an uncompilable FUNCTION to its callers and to the rules using them', () => {
+    const fns = `FUNCTION Inner (X : MiniLabel) : LOGICAL; RETURN (VALUE_IN([X], X)); END_FUNCTION;
+FUNCTION Outer (X : MiniLabel) : LOGICAL; RETURN (Inner(X)); END_FUNCTION;`;
+    const { coverage } = generateValidators(mini('WR1 : Outer(Name)', fns));
+    expect(coverage.unsupported.map((u) => [u.scope, u.owner])).toEqual([
+      ['function', 'Inner'], ['function', 'Outer'], ['entity', 'MiniThing'],
+    ]);
+    expect(coverage.unsupported[1].reason).toBe('calls Inner, which did not compile: built-in VALUE_IN is not implemented');
+  });
+
+  it('marks a rule that reads a DERIVE which did not compile, but not one that only names it in a string', () => {
+    const schema = `SCHEMA MINI;
+ENTITY MiniThing;
+  Width : REAL;
+DERIVE
+  Area : REAL := MysteryArea(Width);
+WHERE
+  WR1 : Area > 0.;
+  WR2 : 'AREA' <> 'x';
+END_ENTITY;
+END_SCHEMA;`;
+    const { coverage } = generateValidators(schema);
+    expect(coverage.unsupported.map((u) => [u.scope, u.label, u.reason])).toEqual([
+      ['derived', 'Area', 'call to unknown function MysteryArea'],
+      ['entity', 'WR1', 'depends on derived attribute MiniThing.Area, which did not compile'],
+    ]);
+  });
+
+  it('marks a FUNCTION that reads a DERIVE which did not compile, and the rules calling it', () => {
+    const schema = `SCHEMA MINI;
+ENTITY MiniThing;
+  Width : REAL;
+DERIVE
+  Area : REAL := MysteryArea(Width);
+WHERE
+  WR1 : AreaOf(SELF) > 0.;
+END_ENTITY;
+FUNCTION AreaOf (T : MiniThing) : REAL; RETURN (T.Area); END_FUNCTION;
+END_SCHEMA;`;
+    const { coverage } = generateValidators(schema);
+    expect(coverage.unsupported.map((u) => [u.scope, u.label])).toEqual([['function', 'AreaOf'], ['derived', 'Area'], ['entity', 'WR1']]);
+    expect(coverage.counts.function).toEqual({ total: 1, compiled: 0 });
+  });
+
+  it.each([
+    ['HIBOUND, which is not HIINDEX', 'RETURN (HIBOUND(X));', 'built-in HIBOUND is not implemented'],
+    ['SKIP outside a REPEAT', 'SKIP; RETURN (N);', 'SKIP outside REPEAT'],
+  ])('refuses %s instead of compiling it wrong', (_what, body, reason) => {
+    const fn = `FUNCTION F (X : LIST [1:?] OF MiniLabel) : INTEGER; LOCAL N : INTEGER := 0; END_LOCAL; ${body} END_FUNCTION;`;
+    expect(generateValidators(mini('WR1 : TRUE', fn)).coverage.unsupported).toEqual([{ scope: 'function', owner: 'F', label: 'F', reason }]);
+  });
+
+  it('preserves ordinary strings and qualifies type and role operands (#11559)', () => {
+    const { files } = generateValidators(mini("WR1 : 'foo.MiniThing' <> 'bar.MiniThing'; WR2 : 'mini.minithing' IN TYPEOF(SELF); WR3 : EXISTS(USEDIN(SELF, 'mini.minithing.name'))"));
+    const rules = loadRules(files['rules.ts'], {
+      typeOf: () => ['MINI.MINITHING'],
+      isIn: (value: string, names: string[]) => names.includes(value),
+      ne: (a: string, b: string) => a !== b,
+      typeIs: (_model: unknown, _entity: unknown, name: string) => name === 'MINITHING',
+      usedIn: (_model: unknown, _entity: unknown, role: string) => role.endsWith('.MINITHING.NAME') ? role : undefined,
+      exists: (value: unknown) => value !== undefined,
+    });
+    expect(rules.map(rule => rule.check({}, {}))).toEqual([true, true, true]);
+  });
+
+  it('matches type-name sets in either intersection order and preserves ordinary set literals (#11559)', () => {
+    const { files } = generateValidators(mini("A : SIZEOF(TYPEOF(SELF) * ['mini.MiniThing']) = 1; B : SIZEOF(['mini.MiniThing'] * TYPEOF(SELF)) = 1; C : SIZEOF(['mini.MiniThing'] * ['MINI.MINITHING']) = 0; D : SIZEOF(['other.MiniThing'] * TYPEOF(SELF)) = 1; E : SIZEOF(TYPEOF(SELF) * ['other.MiniThing']) = 1"));
+    const rules = loadRules(files['rules.ts'], setRuntime);
+    expect(rules.map(rule => rule.check(['MINI.MINITHING'], {}))).toEqual([true, true, true, false, false]);
+    expect(rules.map(rule => rule.check(['MINI.OTHER'], {}))).toEqual([false, false, true, false, false]);
+  });
+
+  it('executes IFC4X3 ApplicableOnlyToItems on matching and nonmatching assigned items', () => {
+    const rules = loadRules(generate('IFC4X3.exp').files['rules.ts'], setRuntime, 'IfcPresentationLayerWithStyle');
+    const rule = rules.find(rule => rule.label === 'ApplicableOnlyToItems')!;
+    const valid = [['IFC4X3_DEV_923B0514.IFCMAPPEDITEM'], ['IFC4X3_DEV_923B0514.IFCGEOMETRICREPRESENTATIONITEM']];
+    expect(rule.check({ ASSIGNEDITEMS: valid }, {})).toBe(true);
+    expect(rule.check({ ASSIGNEDITEMS: [...valid, ['IFC4X3_DEV_923B0514.IFCWALL']] }, {})).toBe(false);
+  });
+
+  it('loads unrelated rules when ESCAPE is illegal and executes legal ESCAPE (#11559)', () => {
+    const schema = mini('WR1 : Bad(Name); WR2 : Good(Name)',
+      'FUNCTION Bad(X : MiniLabel) : LOGICAL; ESCAPE; END_FUNCTION; FUNCTION Good(X : MiniLabel) : LOGICAL; REPEAT WHILE TRUE; ESCAPE; END_REPEAT; RETURN (TRUE); END_FUNCTION;');
+    const { files, coverage } = generateValidators(schema);
+    expect(coverage.unsupported.map(u => u.reason)).toEqual(['ESCAPE outside REPEAT', 'calls Bad, which did not compile: ESCAPE outside REPEAT']);
+    const rules = loadRules(files['rules.ts'], { isTrue: Boolean, attr: () => 'x' });
+    expect(rules.find(rule => rule.label === 'WR2')?.check({}, {})).toBe(true);
+  });
+
+  it('compiles SKIP to a break out of a labelled body, so the UNTIL test still runs', () => {
+    const fn = `FUNCTION F (X : MiniLabel) : INTEGER; LOCAL N : INTEGER := 0; END_LOCAL;
+REPEAT UNTIL N > 1; N := N + 1; IF N = 2 THEN SKIP; END_IF; END_REPEAT; RETURN (N); END_FUNCTION;`;
+    const { files } = generateValidators(mini("WR1 : F('x') = 2", fn));
+    const [rule] = loadRules(files['rules.ts'], {
+      ...setRuntime, assign: (x: number) => x, add: (a: number, b: number) => a + b,
+      gt: (a: number, b: number) => a > b, isTrue: Boolean,
+    });
+    expect(rule.check({}, {})).toBe(true);
+  });
+
+  it("does not treat a three-part 'SCHEMA.ENTITY.ATTR' literal as a type in IN TYPEOF", () => {
+    const { files } = generateValidators(mini("WR1 : 'MINI.MINITHING.NAME' IN TYPEOF(SELF)"));
+    const [rule] = loadRules(files['rules.ts'], { ...setRuntime, isIn: (item: string, names: string[]) => names.includes(item) });
+    expect(rule.check(['MINI.MINITHING.NAME'], {})).toBe(true);
+    expect(rule.check(['MINI.MINITHING'], {})).toBe(false);
+  });
+
+  it('runs a supertype rule as a zod refinement only where the attribute is still explicit', () => {
+    const schema = `SCHEMA MINI;
+ENTITY Base; Size : REAL; WHERE Positive : Size > 0.; END_ENTITY;
+ENTITY Fixed SUBTYPE OF (Base); DERIVE SELF\\Base.Size : REAL := 1.; END_ENTITY;
+ENTITY Free SUBTYPE OF (Base); END_ENTITY;
+ENTITY Opt; Tag : OPTIONAL REAL; END_ENTITY;
+ENTITY Req SUBTYPE OF (Opt); SELF\\Opt.Tag : REAL; END_ENTITY;
+END_SCHEMA;`;
+    const { files } = generateValidators(schema);
+    const rules = loadRules(files['rules.ts'], {
+      attr: (self: { Size: number }, key: string) => key === 'SIZE' ? self.Size : undefined,
+      gt: (left: number, right: number) => left > right,
+    }, 'Base');
+    const qualifiedRules = new Map(rules.map(rule => [`Base.${rule.label}`, rule]));
+    const runtime = {
+      localRuleRefinement: (_schema: unknown, _entity: string, labels: string[]) =>
+        (value: object, ctx: z.RefinementCtx) => {
+          for (const label of labels) {
+            if (!qualifiedRules.get(label)!.check(value, {})) ctx.addIssue({ code: 'custom', message: label });
+          }
+        },
+    };
+    const exports = {} as Record<string, z.ZodType>;
+    const imports = { zod: { z }, '@ifc-lite/validate/runtime': runtime, './index.js': { SCHEMA: {} } };
+    const js = ts.transpileModule(files['zod.ts'], { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText;
+    runInNewContext(js, { exports, require: (name: keyof typeof imports) => imports[name] });
+    expect(exports.Free.safeParse({ Size: 1 }).success).toBe(true);
+    expect(exports.Free.safeParse({ Size: -1 }).error?.issues[0].message).toBe('Base.Positive');
+    expect(exports.Fixed.safeParse({}).success).toBe(true);
+    expect(exports.Req.safeParse({}).success).toBe(false);
+    expect(exports.Req.safeParse({ Tag: 2 }).success).toBe(true);
+  });
+
+  it('keeps supported sibling global labels and reports skipped declarations (#11559)', () => {
+    const { coverage } = generateValidators(`SCHEMA S; TYPE D = LIST [1:Mystery(1)] OF REAL; END_TYPE; ENTITY A; END_ENTITY;
+RULE R FOR (A); WHERE Good : FALSE; Bad : Mystery(1); END_RULE;
+SUBTYPE_CONSTRAINT C FOR A; END_SUBTYPE_CONSTRAINT; END_SCHEMA;`);
+    expect(coverage.counts.global).toEqual({ total: 2, compiled: 1 });
+    expect(coverage.unsupported.map(u => [u.scope, u.label])).toEqual([['schema', 'C'], ['schema', 'D upper bound'], ['global', 'Bad']]);
+  });
+
+  it('resolves QUERY dependencies against the aggregate element type (#11646)', () => {
+    const { coverage, files } = generateValidators(`SCHEMA S;
+ENTITY Bad; DERIVE Value : INTEGER := Mystery(1); END_ENTITY;
+ENTITY Good; Value : INTEGER; END_ENTITY;
+ENTITY Holder; Items : LIST OF Good; Others : LIST OF Bad;
+WHERE Valid : SIZEOF(QUERY(x <* Items | x.Value > 0)) > 0;
+Invalid : SIZEOF(QUERY(x <* Others | x.Value > 0)) > 0; END_ENTITY; END_SCHEMA;`);
+    expect(coverage.unsupported.map(u => [u.owner, u.label])).toEqual([['Bad', 'Value'], ['Holder', 'Invalid']]);
+    const [rule] = loadRules(files['rules.ts'], { ...setRuntime, gt: (a: number, b: number) => a > b }, 'Holder');
+    expect(rule.check({ ITEMS: [{ VALUE: 1 }] }, {})).toBe(true);
+    expect(rule.check({ ITEMS: [{ VALUE: 0 }] }, {})).toBe(false);
+  });
+
+  it('propagates a failed renamed DERIVE through both names only on its subtype (#11646)', () => {
+    const { coverage, files } = generateValidators(`SCHEMA S;
+ENTITY Parent; Value : INTEGER; WHERE Original : Value > 0; END_ENTITY;
+ENTITY Child SUBTYPE OF (Parent);
+DERIVE SELF\\Parent.Value RENAMED Broken : INTEGER := Mystery(1);
+WHERE NewName : Broken > 0; OldGroup : SELF\\Parent.Value > 0; ViaFunction : ReadValue(SELF); END_ENTITY;
+FUNCTION ReadValue(T : Child) : LOGICAL; RETURN(T\\Parent.Value > 0); END_FUNCTION; END_SCHEMA;`);
+    expect(coverage.unsupported.map(u => [u.owner, u.label])).toEqual([
+      ['ReadValue', 'ReadValue'], ['Child', 'Broken'], ['Child', 'NewName'], ['Child', 'OldGroup'], ['Child', 'ViaFunction'],
+    ]);
+    expect(coverage.unsupported.filter(u => u.label !== 'Broken').every(u => u.reason.includes('Child.Broken'))).toBe(true);
+    const [rule] = loadRules(files['rules.ts'], { ...setRuntime, gt: (a: number, b: number) => a > b }, 'Parent');
+    expect(rule.check({ VALUE: 1 }, {})).toBe(true);
+    expect(rule.check({ VALUE: 0 }, {})).toBe(false);
+  });
+
+  it('resolves a constructor receiver before checking DERIVE dependencies (#11646)', () => {
+    const { files, coverage } = generateValidators(`SCHEMA S;
+ENTITY Bad; DERIVE Flag : LOGICAL := Mystery(1); END_ENTITY;
+ENTITY Good; Flag : LOGICAL; END_ENTITY;
+ENTITY Probe; WHERE Positive : Good(TRUE).Flag; Negative : Good(FALSE).Flag;
+Missing : Bad().Flag; END_ENTITY; END_SCHEMA;`);
+    expect(coverage.unsupported.map(u => [u.owner, u.label])).toEqual([['Bad', 'Flag'], ['Probe', 'Missing']]);
+    const rules = loadRules(files['rules.ts'], {
+      construct: (_m: object, _name: string, args: boolean[]) => ({ FLAG: args[0] }),
+      attr: (obj: Record<string, boolean>, name: string) => obj[name],
+    }, 'Probe');
+    expect(rules.map(rule => rule.check({}, {}))).toEqual([true, false]);
+  });
+
+  it('tracks concrete receivers across fields, indices and function results (#11646)', () => {
+    const { coverage } = generateValidators(`SCHEMA S;
+ENTITY Bad; DERIVE Area : REAL := Mystery(1); END_ENTITY;
+ENTITY Good; Area : REAL; END_ENTITY;
+ENTITY Holder; Part : Good; Parts : LIST OF Good; Wrong : Bad;
+WHERE W : Part.Area > 0; WS : SELF.Part.Area > 0; WI : Parts[1].Area > 0;
+WF : Fetch(SELF).Area > 0; WB : Wrong.Area > 0; END_ENTITY;
+FUNCTION Fetch(H : Holder) : Good; RETURN(H.Part); END_FUNCTION; END_SCHEMA;`);
+    expect(coverage.unsupported.map(u => [u.owner,u.label])).toEqual([['Bad','Area'],['Holder','WB']]);
+  });
+
+  it('uses an entity parameter type to resolve failed DERIVE dependencies (#11646)', () => {
+    const { coverage, files } = generateValidators(`SCHEMA S;
+ENTITY A; DERIVE Flag : LOGICAL := Mystery(1); WHERE W : ReadA(SELF); END_ENTITY;
+ENTITY B; Flag : LOGICAL; WHERE W : ReadB(SELF); END_ENTITY;
+FUNCTION ReadA(T : A) : LOGICAL; RETURN(T.Flag); END_FUNCTION;
+FUNCTION ReadB(T : B) : LOGICAL; RETURN(T.Flag); END_FUNCTION; END_SCHEMA;`);
+    expect(coverage.unsupported.map(u => [u.scope, u.owner, u.label])).toEqual([
+      ['function', 'ReadA', 'ReadA'], ['derived', 'A', 'Flag'], ['entity', 'A', 'W'],
+    ]);
+    expect(coverage.unsupported[0].reason).toContain('A.Flag');
+    const [rule] = loadRules(files['rules.ts'], { attr: (value: Record<string, boolean>, key: string) => value[key] }, 'B');
+    expect(rule.check({ FLAG: true }, {})).toBe(true);
+    expect(rule.check({ FLAG: false }, {})).toBe(false);
+  });
+
+  it('keeps independent same-named derived attributes compiled', () => {
+    const { coverage } = generateValidators(`SCHEMA S;
+ENTITY A; DERIVE Flag : LOGICAL := Mystery(1); WHERE W : Flag; END_ENTITY;
+ENTITY B; DERIVE Flag : LOGICAL := TRUE; WHERE W : Flag; END_ENTITY; END_SCHEMA;`);
+    expect(coverage.unsupported.map(u => [u.owner, u.label])).toEqual([['A', 'Flag'], ['A', 'W']]);
+  });
+
+  it('retains aggregate bounds, both parents, and extension members in generated metadata', () => {
+    const { files } = generateValidators(`SCHEMA S; ENTITY A; END_ENTITY; ENTITY B; END_ENTITY;
+ENTITY C SUBTYPE OF (A,B); END_ENTITY;
+TYPE T = LIST [1+1:4] OF INTEGER; END_TYPE;
+TYPE E = EXTENSIBLE ENUMERATION OF (OPEN); END_TYPE;
+TYPE F = ENUMERATION BASED_ON E WITH (CLOSED); END_TYPE;
+TYPE G = ENUMERATION BASED_ON E WITH (OTHER); END_TYPE;
+TYPE Sel = EXTENSIBLE SELECT (A); END_TYPE;
+TYPE More = SELECT BASED_ON Sel WITH (B); END_TYPE; END_SCHEMA;`);
+    const js = ts.transpileModule(files['schema.ts'], { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText;
+    const exports = { META: { entities: [], types: [] } };
+    runInNewContext(js, { exports });
+    expect(exports.META.entities).toContainEqual(expect.objectContaining({ name: 'C', supertypes: ['A', 'B'] }));
+    expect(exports.META.types).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'T', underlying: expect.objectContaining({ low: 2, high: 4 }) }),
+      expect.objectContaining({ name: 'E', items: ['OPEN', 'CLOSED', 'OTHER'] }),
+      expect.objectContaining({ name: 'Sel', items: ['A', 'B'] }),
+      expect.objectContaining({ name: 'F', items: ['OPEN', 'CLOSED'] }),
+      expect.objectContaining({ name: 'More', items: ['A', 'B'] }),
+    ]));
+  });
+
+  it('reports unsafe operands even when their rounded difference fits (#11646)', () => {
+    const { coverage } = generateValidators('SCHEMA S; TYPE T = LIST [0:9007199254740993 - 9007199254740992] OF INTEGER; END_TYPE; END_SCHEMA;');
+    expect(coverage.unsupported.map(u => u.label)).toEqual(['T upper bound']);
+  });
+
+  it('applies declared SET return semantics (#11646)', () => {
+    const { files } = generateValidators(mini('W : SIZEOF(F()) = 1',
+      'FUNCTION F : SET [1:?] OF INTEGER; RETURN([1,1]); END_FUNCTION;'));
+    const [rule] = loadRules(files['rules.ts'], { ...setRuntime, assignSet: (items: number[]) => [...new Set(items)] });
+    expect(rule.check({}, {})).toBe(true);
+  });
+
+  it('rejects a qualified enumeration item the enumeration does not declare', () => {
+    const { coverage } = generateValidators(mini('WR1 : Kind <> MiniEnum.MISSING'));
+    expect(coverage.unsupported[0].reason).toBe('MiniEnum has no item MISSING');
+  });
+});

@@ -10,6 +10,8 @@
  * leaves. What a paired session becomes is the caller's business (`admit`).
  */
 
+import { createHmac, timingSafeEqual } from 'node:crypto';
+import { normalizePairingCode } from './pairing-link.js';
 import type { WebSocket } from 'ws';
 import {
   BRIDGE_PROTOCOL_VERSION,
@@ -32,11 +34,41 @@ export interface AdmissionHost {
   guard(ws: WebSocket, what: string, fn: () => void): void;
   /** The slot no longer counts against the unpaired cap. */
   release(slot: Slot): void;
+  paired?(): boolean;
   /** The hello passed: make it the paired session. */
   admit(ws: WebSocket, slot: Slot, hello: BridgeHelloMessage): void;
 }
 
 export class PairingAdmission {
+  private resume: { key: string; origin?: string } | null = null;
+
+  disconnected(code: number, reason: string): void {
+    const resumableClose = code === 1000 && (reason === 'page hidden' || reason === 'result acknowledgement timeout');
+    if (code !== 1006 && code !== 1001 && !(code === 4008 && reason === 'no welcome') && !resumableClose) this.forget();
+  }
+
+  forget(): void { this.resume = null; }
+
+  private authenticate(hello: BridgeHelloMessage, slot: Slot): 'accepted' | 'invalid' | 'busy' {
+    if (!hello.nonce) {
+      if (this.codes.consume(hello.pairingCode) !== 'ok') return 'invalid';
+      this.forget();
+      return 'accepted';
+    }
+    const key = hello.resume ? this.resume?.key : normalizePairingCode(this.codes.current());
+    if (!key || (hello.resume && (slot.origin !== this.resume?.origin || hello.permission !== 'read-only'))) return 'invalid';
+    // Resume retries keep the rotation nonce but authenticate both it and a fresh challenge.
+    const nonce = hello.nonce;
+    const mac = (role: string) => createHmac('sha256', key).update('ifc-lite/' + role + '/' + (role === 'next' ? nonce.slice(0, 32) : nonce)).digest('hex');
+    if (!/^[a-f0-9]{64}$/.test(hello.pairingCode) || !timingSafeEqual(Buffer.from(mac('tab')), Buffer.from(hello.pairingCode))) return 'invalid';
+    // A reload may arrive before the previous socket's close. Only a valid ticket gets a retry.
+    if (hello.resume && this.host.paired?.()) return 'busy';
+    this.codes.consume(this.codes.current());
+    this.resume = { key: mac('next'), origin: slot.origin };
+    slot.proof = mac('bridge');
+    return 'accepted';
+  }
+
   readonly codes = new PairingCodes();
   private readonly gate: PairingGate;
   /** Code comparisons made, including attempts whose peer left before theirs. */
@@ -70,7 +102,7 @@ export class PairingAdmission {
         BridgeCloseCode.PROTOCOL_VERSION_MISMATCH,
       );
     }
-    if (!this.codes.live()) {
+    if (!hello.resume && !this.codes.live()) {
       // Nothing to guess while paired, so this neither waits nor feeds the gate.
       this.host.note('pairing attempts while paired', 'refused a pairing attempt: a tab is already paired and no code is live');
       return reject(
@@ -93,7 +125,7 @@ export class PairingAdmission {
   private compare(ws: WebSocket, slot: Slot, hello: BridgeHelloMessage): void {
     // Paired by another tab while this one waited out the backoff: no code is
     // compared, so neither the attempt count nor the gate moves.
-    if (ws.readyState === ws.OPEN && !this.codes.live()) {
+    if (ws.readyState === ws.OPEN && !hello.resume && !this.codes.live()) {
       this.host.release(slot);
       this.host.kill(ws, BridgeErrorCode.PAIRING_FAILED, 'No pairing code is live (a tab is already paired). Ask the agent to call bridge_status with pair_new_tab for a fresh link.', BridgeCloseCode.PAIRING_FAILED);
       return;
@@ -105,7 +137,12 @@ export class PairingAdmission {
       this.host.release(slot);
       return;
     }
-    if (this.codes.consume(hello.pairingCode) !== 'ok') {
+    const outcome = this.authenticate(hello, slot);
+    if (outcome === 'busy') {
+      this.host.kill(ws, BridgeErrorCode.BUSY, 'The paired socket is still connected. Retry after it closes.', BridgeCloseCode.BUSY);
+      return;
+    }
+    if (outcome === 'invalid') {
       this.failed();
       this.host.note('wrong pairing codes', 'refused a wrong pairing code');
       this.host.kill(ws, BridgeErrorCode.PAIRING_FAILED, 'Pairing code not accepted. Use the latest link or code from bridge_status.', BridgeCloseCode.PAIRING_FAILED);

@@ -590,7 +590,7 @@ sequenceDiagram
         App->>Geometry: processStreaming(buffer)
         Geometry->>Scene: Stream batch meshes
     and Data Pipeline
-        App->>Parser: StepTokenizer + ColumnarParser
+        App->>Parser: new IfcParser().parseColumnar(buffer)
         Parser->>App: IfcDataStore
         App->>App: Build spatial tree UI
     end

@@ -412,12 +412,12 @@ plugins.onParse(store);
 ```typescript
 // Good: Single responsibility
 class FireRatingExtractor {
-  extract(store: IfcDataStore, expressId: number): number | null { ... }
+  extract(store: IfcDataStore, expressId: number): string | null { ... } // IfcLabel
 }
 
 // Bad: Too many responsibilities
 class EverythingExtractor {
-  extractFireRating(store: IfcDataStore, expressId: number): number { ... }
+  extractFireRating(store: IfcDataStore, expressId: number): string { ... }
   extractMaterials(store: IfcDataStore, expressId: number): Material[] { ... }
   // ...
 }

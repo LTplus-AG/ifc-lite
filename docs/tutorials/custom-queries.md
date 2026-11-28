@@ -240,12 +240,13 @@ const wallCounts = await query.sql(`
   GROUP BY type
 `);
 
-// Join with properties
+// Join with properties. FireRating is an IfcLabel, so its value sits in
+// value_string (value_real holds only numeric property values).
 const wallsWithFireRating = await query.sql(`
   SELECT
     e.express_id,
     e.name,
-    p.value_real as fire_rating
+    p.value_string as fire_rating
   FROM entities e
   JOIN properties p ON e.express_id = p.entity_id
   WHERE e.type LIKE 'IfcWall%'

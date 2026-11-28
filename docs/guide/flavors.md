@@ -43,7 +43,7 @@ Every flavor appears with:
 - Name + active badge (when it's the current flavor)
 - Stable id (used for `.iflv` round-trips)
 - Description if set
-- Counts: extensions / lenses / queries / clash rules / last-updated date, and a badge when the viewer holds lenses not yet captured into the active flavor
+- Counts: extensions / lenses / queries / clash rules / last-updated date, and, on the active flavor, a badge when the viewer holds more lenses than the flavor saved (it compares counts only, so an edited or swapped lens does not show it)
 - Per-row controls: **Activate**, capture current viewer state into the flavor, **Rename** (click the name; the id stays), **Duplicate** (new `<id>.copy.<timestamp>` id), **Export**, **Delete** (active flavor can't be deleted)
 
 Header actions:

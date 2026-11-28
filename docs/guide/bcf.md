@@ -161,7 +161,7 @@ const state = extractViewpointState(viewpoint);
 // state.sectionPlanes - every clipping plane, in order
 // state.selectedGuids - entities to highlight
 // state.hiddenGuids - entities to hide
-// state.visibleGuids - entities for isolation mode (null when the viewpoint isolates nothing)
+// state.visibleGuids - entities for isolation mode (null when isolation is off; [] when isolation is on but matched nothing)
 // state.coloredGuids - entities with color overrides
 ```
 

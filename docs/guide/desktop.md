@@ -28,14 +28,14 @@ const processor = new GeometryProcessor({ preferNative: true });
 ```
 
 - `isTauri()` — detects a Tauri host (`window.__TAURI_INTERNALS__`).
-- `IPlatformBridge` — the generic contract a native bridge implements. **This is the stable extension point**: you can supply your own implementation for a non-Tauri host.
+- `IPlatformBridge` — the generic contract a native bridge implements. A non-Tauri host can implement it and call its own implementation directly, but `GeometryProcessor` has no option to accept one: it only ever uses the bundled `NativeBridge`, and only inside Tauri.
 - `NativeBridge` — the bundled Tauri implementation of `IPlatformBridge`, loaded lazily via `createPlatformBridge()` only when `isTauri()` is true.
 
 `@tauri-apps/api` is an **optional dependency** of `@ifc-lite/geometry`, so web consumers never pull it in. Your desktop shell provides it (and the matching native commands below).
 
 ## Host command contract (Tauri)
 
-If you use the bundled `NativeBridge`, your Tauri shell must register these Rust commands and emit these events. (For a different host, implement `IPlatformBridge` directly and this contract does not apply.)
+If you use the bundled `NativeBridge`, your Tauri shell must register these Rust commands and emit these events. (A different host that implements `IPlatformBridge` itself calls that implementation directly, outside `GeometryProcessor`, and this contract does not apply.)
 
 **Commands (`invoke`):**
 

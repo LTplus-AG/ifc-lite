@@ -770,7 +770,7 @@ When `visibleOnly` is enabled, the exporter:
 4. Collects `IfcStyledItem` entities via reverse reference pass (preserves colors/materials)
 5. Propagates visibility to openings via `IfcRelVoidsElement` (hidden slab = hidden openings)
 
-Supports all 202 `IfcProduct` subtypes from IFC4 and IFC4X3 schemas, including infrastructure types (bridges, roads, railways, marine facilities).
+Supports every `IfcProduct` subtype declared in the IFC2X3, IFC4 and IFC4X3 schema tables, including IFC2X3-only products and infrastructure types (bridges, roads, railways, marine facilities). The set is derived from the schema tables, so it follows schema updates.
 
 ### Multi-Model Merged Export
 
@@ -1088,7 +1088,7 @@ try {
 
 The writer is not part of the default geometry engine that every viewer load downloads: it ships
 in the separate export payload (`@ifc-lite/wasm/rhino`, shared with the Rhino `.3dm` scene builder),
-which `exportCityJson` fetches the first time it runs. In the viewer, the **CityJSON** export command opens a dialog that writes CityJSON or CityJSONSeq for one loaded IFC model, including this session's georeferencing edits; a model without georeferencing is written in its local coordinates, and the dialog says so.
+which `exportCityJson` fetches the first time it runs. In the viewer, the **CityJSON** export command opens a dialog that writes CityJSON or CityJSONSeq for one loaded STEP-based IFC model. This session's georeferencing edits are written in when the model can take them (IFC4 or IFC4X3 with its source bytes still loaded). For an IFC2X3 model, or when the exporter refuses an edit such as a partial position, the export uses the file's own georeferencing and lists a warning. A model without georeferencing is written in its local coordinates, and the dialog says so.
 
 **Size limit.** The whole document is built in memory (every vertex, City Object and the JSON text),
 and CityJSONSeq is assembled the same way before it is returned, not streamed feature by feature. A

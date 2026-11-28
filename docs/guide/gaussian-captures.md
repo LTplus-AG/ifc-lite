@@ -15,6 +15,8 @@ A `.ply` file is told apart by its content, not its name: an ordinary point-clou
 
 ## Opening a capture
 
+Captures are enabled by default. A self-hosted build can switch them off with `VITE_GAUSSIAN_SPLATS=disabled` at build time: every entry point below then refuses a capture before decoding it, and the file picker stops listing `.splat`. Any value other than `enabled` (or the presenter build's `internal-unqualified`) also disables them, so a mistyped value fails closed.
+
 Use any of the usual entry points: **Open**, drag and drop onto the window, **Add model** in the model list, a `?model=` link, or a saved federation setup. All of them go through the same loader and the same checks. The capture is decoded in a background worker and appears in the model list with its splat count.
 
 Select the capture in the model list to see its details in the properties panel: format, file size, splat count, spherical-harmonics degree, placement, calibration, renderer state and the limitations below.
@@ -39,6 +41,7 @@ These limits are checked before a capture is decoded, so an oversized file is re
 | Splats in one scene (all captures together) | 1,000,000 |
 | Spherical-harmonics degree | 3 |
 | Graphics | A WebGPU device, as for the rest of the 3D view ([Browser Requirements](browser-requirements.md)) |
+| Decoded size estimate | 512 MiB: splat count × vertex property columns × 4 bytes (14 columns for `.splat`). A wide PLY can pass the limits above and still be refused here. |
 
 The scene limit bounds **logical scene splats**: one share per capture, loaded or still loading. A reload counts once at the larger of its old and replacement counts until the swap commits or rolls back. Temporary renderer allocations can overlap during reload; this is not a strict bound on simultaneous renderer allocations. If opening a capture would take the scene past 1,000,000 splats, it is refused and the message gives the total it would have reached; remove a capture and try again. Removing a capture frees its share straight away.
 

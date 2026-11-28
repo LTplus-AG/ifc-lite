@@ -204,7 +204,7 @@ The viewer provides controls for each loaded model:
 | **Visibility toggle** | Show/hide an entire model |
 | **Collapse/Expand** | Collapse a model's hierarchy tree |
 | **Rename** | Give a model a descriptive name |
-| **Remove** | Unload a model and free its ID range |
+| **Remove** | Unload a model. Its ID range is retired, not reused, so stale selections and undo entries cannot point at a later model |
 | **Set Active** | Focus the properties panel on a specific model |
 
 ## Repositioning models and pointclouds

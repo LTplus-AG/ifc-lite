@@ -63,7 +63,7 @@ Key points:
 - `createCollabSession` is async and returns a `CollabSession`
 - `session.whenSynced` is a promise property, not a method
 - `session.presence` carries live cursors and selections between peers
-- `token` in the options is forwarded to the server as a bearer token for authentication
+- `token` in the options is sent to the server as the `token` query parameter of the WebSocket URL (not an `Authorization` header); a custom relay must read it from there
 
 ## Running the Sync Server
 

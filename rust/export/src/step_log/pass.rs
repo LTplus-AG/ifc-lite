@@ -28,6 +28,12 @@ pub(crate) struct Pass<'s, 'a> {
     /// (entity, attribute) pairs whose edit is TEXT by the writer's own decision, out of band of the value.
     pub(crate) text_edits: HashSet<(u32, String)>,
     pub(crate) skip: HashSet<u32>,
+    /// Source records the schema upgrade leaves out (an IFC2X3 IfcRelSpaceBoundary naming no element, #11457):
+    /// omitted like a deleted record, so a relationship naming one is scrubbed of it.
+    pub(crate) left_out: HashSet<u32>,
+    pub(super) omitted_type_assignments: HashSet<u32>,
+    pub(crate) withheld_created: Vec<u32>,
+    pub(super) assignment_retype_delivered: HashMap<u32, bool>,
     /// Shared relation -> elements copied on write off its `RelatedObjects`
     /// (`pass.detachedRelatedObjects`, #5794).
     pub(crate) detached: HashMap<u32, HashSet<u32>>,
@@ -48,7 +54,7 @@ pub(crate) struct Pass<'s, 'a> {
     pub(crate) created_lines: Vec<(u32, String)>,
     pub(crate) new_entity_count: usize,
     /// Source lines the log rewrites, with what each carries.
-    pub(crate) mutated_lines: HashMap<u32, (Option<String>, Delivery)>,
+    pub(crate) mutated_lines: HashMap<u32, (Result<String, String>, Delivery)>,
     pub(crate) warnings: Vec<String>,
     pub(super) ids: crate::step_ids::IdAllocator,
     owner_history_of: HashMap<u32, Option<u32>>,
@@ -68,6 +74,10 @@ impl<'s, 'a> Pass<'s, 'a> {
             attribute_slot: HashMap::new(),
             text_edits: HashSet::new(),
             skip: HashSet::new(),
+            left_out: HashSet::new(),
+            omitted_type_assignments: HashSet::new(),
+            withheld_created: Vec::new(),
+            assignment_retype_delivered: HashMap::new(),
             detached: HashMap::new(),
             rewritten: HashSet::new(),
             rewritten_lines: Vec::new(),
@@ -143,7 +153,7 @@ impl<'s, 'a> Pass<'s, 'a> {
     /// `isOmittedFromOutput`: a record the effective index knows (or deleted)
     /// that this export does not write.
     pub(crate) fn is_omitted(&self, id: u32) -> bool {
-        (self.has(id) || self.is_deleted(id)) && !self.will_be_emitted(id)
+        (self.has(id) || self.is_deleted(id)) && (!self.will_be_emitted(id) || self.left_out.contains(&id))
     }
 
     /// `effective.byType.get(type)`: source ids of a tracked type without the

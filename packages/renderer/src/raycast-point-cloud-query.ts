@@ -86,14 +86,16 @@ export function pointCloudSnapToleranceAt(t: number, camera: PointCloudSnapCamer
   return screenToWorldRadius(POINT_CLOUD_SNAP_TOLERANCE_PX, t, camera.fov, camera.canvasHeightPx);
 }
 
-/** A scan point steals an exact source snap only when clearly in front. */
-export function pointCloudWinsOverSourceSnap(
-  pointHit: PointCloudRayResult, source: SnapTarget, ray: Ray, camera: PointCloudSnapCamera,
+/** A scan point overrides a selected snap only when clearly in front along the pick ray. */
+export function pointCloudWinsOverMeshSnap(
+  pointHit: PointCloudRayResult, target: SnapTarget | null, ray: Ray, camera: PointCloudSnapCamera,
+  ordinaryFaceDepth?: number,
 ): boolean {
-  const p = source.position;
-  const sourceDepth = (p.x - ray.origin.x) * ray.direction.x
-    + (p.y - ray.origin.y) * ray.direction.y + (p.z - ray.origin.z) * ray.direction.z;
-  return pointHit.distance + pointCloudSnapToleranceAt(pointHit.distance, camera) < sourceDepth;
+  if (!target) return true;
+  const p = target.position;
+  const targetDepth = ordinaryFaceDepth ?? ((p.x - ray.origin.x) * ray.direction.x
+    + (p.y - ray.origin.y) * ray.direction.y + (p.z - ray.origin.z) * ray.direction.z);
+  return pointHit.distance < targetDepth - pointCloudSnapToleranceAt(pointHit.distance, camera);
 }
 
 /**
@@ -202,48 +204,6 @@ export function queryPointClouds(
     }
   }
   return best;
-}
-
-/** Inputs to the mesh-vs-point-cloud snap override decision. */
-export interface PointCloudOverrideDecision {
-  /** The point-cloud hit under consideration. */
-  pointHit: PointCloudRayResult;
-  /** The mesh path's existing snap target (vertex/edge/face/...), or null
-   *  when the mesh path produced no snap (bare face hit / snapping off). */
-  meshSnapTarget: SnapTarget | null;
-  /** The raw mesh raycast distance, or null when there was no mesh hit
-   *  at all (point-cloud-only scene). */
-  meshIntersectionDistance: number | null;
-  camera: PointCloudSnapCamera;
-}
-
-/**
- * Should a point-cloud hit override the mesh path's result? (#1860 review
- * finding 2.)
- *
- * When the mesh path found NO snap target (a bare face hit, snapping
- * disabled, or no mesh hit at all), a point-cloud hit always wins — this
- * matches the pre-existing "point wins when present" behavior, since
- * there's nothing more specific to preserve.
- *
- * When the mesh path DID find a snap target (vertex/edge/face/face
- * center), a point-cloud hit only wins when it is MEANINGFULLY in front
- * of the mesh surface — `pointHit.distance < meshIntersectionDistance -
- * toleranceAt(pointHit.distance)` — not just a few millimetres nearer.
- * Scan points sit ON scanned surfaces plus/minus centimetres of capture
- * noise, so wherever a scan overlaps its as-designed model (the common
- * case), a coincidence-only "nearer wins" rule would non-deterministically
- * steal an intended vertex/corner snap on essentially every measurement
- * over scanned geometry. Requiring the point to clear the surface by more
- * than its own screen-space tolerance means it must be a real occluder
- * (something genuinely in front, e.g. scanned furniture in front of a
- * modeled wall), not scan noise on the same surface.
- */
-export function pointCloudWinsOverMeshSnap(decision: PointCloudOverrideDecision): boolean {
-  const { pointHit, meshSnapTarget, meshIntersectionDistance, camera } = decision;
-  if (!meshSnapTarget || meshIntersectionDistance === null) return true;
-  const occlusionMargin = pointCloudSnapToleranceAt(pointHit.distance, camera);
-  return pointHit.distance < meshIntersectionDistance - occlusionMargin;
 }
 
 /** A released (non-locked) edge-lock result, used whenever a point-cloud

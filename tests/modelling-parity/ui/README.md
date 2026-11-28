@@ -26,7 +26,7 @@ the plan shapes and the section drawing.
 | `lib/model-ui.mjs` | Model workspace moves: tool shortcuts, typed fields, storey chip and manager, export |
 | `lib/step.mjs` | a small STEP reader for the oracles: counts, storeys, containment, quantities, wall axes, placements |
 | `COUNCIL-MODELLING.md` | the council addendum for modelling frames (extends `tests/ui-scenes/COUNCIL.md`) |
-| `baseline/r0.json` | round 0 results on `main` |
+| `baseline/r0.json`, `baseline/r1.json` | round 0 and round 1 results on `main` |
 
 ## Run
 
@@ -53,6 +53,9 @@ Options:
 - `--out <dir>` sets the output directory.
 - `--baseline <file>` also writes the combined result file to commit.
 - `--round 1` stamps the baseline round (default 0).
+- `--label <name>` names the capture in the frame manifest (default `candidate`).
+- `--dist-commit <sha>` records that commit as the build source instead of
+  reading it from the checkout.
 
 Output goes to `$PARITY_OUT`, or `tests/modelling-parity/.out/ui/` if that is
 unset. Nothing there is committed.

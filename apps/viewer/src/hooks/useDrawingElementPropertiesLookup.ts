@@ -37,23 +37,13 @@
  * whose active rules only match on `ifcType`/`expressId`/`modelId` pay
  * nothing.
  *
- * The export side gets the same data through (unmerged) PR #3523's
- * `makePropertiesGetter` — same `fromGlobalIdFromModels` +
- * `extractPropertiesOnDemand` resolution, same per-entity cache, same
- * same-named-set merge semantics. Its resolution differs in one respect:
- * when `fromGlobalIdFromModels` returns nothing (only reachable with two or
- * more federated models loaded and an id outside every offset range) it falls
- * back to the legacy store and the raw global id, where this hook resolves no
- * properties at all. That helper does not exist on `main` yet; once #3523
- * lands, the two should be unified into one shared resolver rather than kept
- * as two independent copies of the same logic.
+ * The export and live canvas share the same overlay-aware properties getter.
  */
 
 import { useMemo } from 'react';
 import { useViewerStore } from '@/store';
 import { useIfc } from './useIfc';
-import { fromGlobalIdFromModels } from '@/store/globalId';
-import { extractPropertiesOnDemand } from '@ifc-lite/parser';
+import { makePropertiesGetter } from './drawingElementProperties';
 import type { Drawing2D, ElementData, GraphicOverrideEngine, OverrideCriteria, OverrideCriterion } from '@ifc-lite/drawing-2d';
 
 /** A cheap, synchronous `entityId -> properties` lookup, safe to call from
@@ -84,48 +74,16 @@ export function useDrawingElementPropertiesLookup(
   overridesEnabled: boolean,
 ): ElementPropertiesLookup {
   const models = useViewerStore((s) => s.models);
+  const views = useViewerStore(s => s.mutationViews);
+  const revision = useViewerStore(s => s.mutationVersion);
   const { ifcDataStore } = useIfc();
 
   return useMemo(() => {
     if (!overridesEnabled || !drawing || !engineNeedsProperties(overrideEngine)) return NO_PROPERTIES;
 
+    const getProperties = makePropertiesGetter(models, ifcDataStore, views);
     const cache = new Map<number, ElementData['properties']>();
-    for (const polygon of drawing.cutPolygons) {
-      if (cache.has(polygon.entityId)) continue;
-      const ref = fromGlobalIdFromModels(models, polygon.entityId);
-      const store = ref ? (ref.modelId === 'legacy' ? ifcDataStore : (models.get(ref.modelId)?.ifcDataStore ?? null)) : null;
-      if (!ref || !store) {
-        cache.set(polygon.entityId, undefined);
-        continue;
-      }
-      // One entity routinely carries two property sets with the SAME name —
-      // one from the type definition and one from the occurrence, each via
-      // its own `IfcRelDefinesByProperties` — and `extractPropertiesOnDemand`
-      // returns one entry per set without merging them. Keying the record by
-      // set name and assigning outright would let the second set erase the
-      // first and every property in it, which is the #3465/#3468 duplicate-pset
-      // defect in another shape (and `scripts/check-pset-name-find.mjs` does
-      // not catch it — it looks for a two-step `.find`, not for record-keying).
-      // Same-named sets are merged instead, the earlier set's value winning a
-      // key collision: the same semantics `PropertyTable.getProperties`
-      // (`packages/query/src/property-table.ts`, #3463) settled for the other
-      // record-keyed-by-set-name reader, and the order `findPropertyInSets`
-      // (`packages/query/src/pset-lookup.ts`) scans in.
-      // Accumulating in a `Map` rather than assigning into an object literal
-      // keeps a set literally named `__proto__` from aliasing `Object.prototype`.
-      const bySetName = new Map<string, Record<string, unknown>>();
-      for (const pset of extractPropertiesOnDemand(store, ref.expressId)) {
-        let values = bySetName.get(pset.name);
-        if (!values) {
-          values = {};
-          bySetName.set(pset.name, values);
-        }
-        for (const prop of pset.properties) {
-          if (!Object.hasOwn(values, prop.name)) values[prop.name] = prop.value;
-        }
-      }
-      cache.set(polygon.entityId, Object.fromEntries(bySetName));
-    }
+    for (const polygon of drawing.cutPolygons) cache.set(polygon.entityId, getProperties(polygon.entityId));
     return (entityId: number) => cache.get(entityId);
-  }, [drawing, models, ifcDataStore, overrideEngine, overridesEnabled]);
+  }, [drawing, models, views, revision, ifcDataStore, overrideEngine, overridesEnabled]);
 }

@@ -3,7 +3,7 @@ name: use-ifclite
 description: >-
   Work with IFC / BIM files (.ifc, .ifcx, IFC2X3 / IFC4 / IFC4X3 / IFC5) from the
   terminal using the ifc-lite CLI — inspect, query, validate (IDS), export
-  (CSV/JSON/IFC/glTF/Parquet), create elements, merge, convert schema versions,
+  (CSV/JSON/IFC/glTF; Parquet via `@ifc-lite/export`), create elements, merge, convert schema versions,
   diff, clash-check, run BCF collaboration, and script the SDK. Use whenever a
   task involves reading, analysing, generating, or editing IFC building models,
   or when the user mentions IFC, BIM, BCF, IDS, or buildingSMART. Also covers
@@ -13,8 +13,9 @@ description: >-
 # Using ifc-lite
 
 `ifc-lite` is a headless BIM toolkit for IFC files. It was built for LLM
-terminals: every command takes `--json`, **stdout is data, stderr is status**,
-and exit `0`/`1` means pass/fail. Prefer it over hand-parsing IFC text.
+terminals: many commands accept `--json` (use `--format json` for tabular JSON from
+`export` or `schedule`), and **stdout is data, stderr is status**. Check each
+command's help for its output and exit codes. Prefer it over hand-parsing IFC text.
 
 ## Start here (every session)
 
@@ -46,7 +47,7 @@ ifc-lite export model.ifc --format ifc --schema IFC4 --out filtered.ifc
 # Validate against IDS rules (exit 1 on failure)
 ifc-lite ids model.ifc requirements.ids --json
 
-# Create IFC from scratch (30+ element types)
+# Create IFC from scratch (29 element types)
 ifc-lite create wall --start 0,0,0 --end 5,0,0 --height 3 --thickness 0.2 --out wall.ifc
 
 # Combine / convert / compare
@@ -78,9 +79,10 @@ ifc-lite run analysis.js model.ifc           # a .js file with `bim` available g
 `ifc-lite ask model.ifc "how many walls?"` maps plain-English questions to common
 recipes — handy for quick one-offs, but `eval` is more precise.
 
-For the **complete command + flag reference** (every command, all flags, the 30+
-`create` element types, `bsdd`, `clash`, `lod`, `view`/`analyze`), read
-[`cli-reference.md`](./cli-reference.md).
+For the **command overview and the flags of the main commands** (the 29
+`create` element types, `export`, `schedule`, `ids`, `bsdd`, `lod`, `flow`,
+`view`/`analyze`), read [`cli-reference.md`](./cli-reference.md). For any other
+command, run `ifc-lite <command> --help`.
 
 ## Rules that keep IFC output correct
 
@@ -111,13 +113,13 @@ These are non-negotiable when emitting IFC names or editing models:
 ## Running as an MCP server (tool-calling agents)
 
 For agents that speak the Model Context Protocol, `@ifc-lite/mcp` exposes the
-same capabilities as ~70 typed tools (model/query/IDS/BCF/clash/export/viewer/
-mutation) plus pre-baked prompts.
+same capabilities as more than 100 typed tools (model/query/IDS/BCF/clash/
+export/viewer/mutation/storeys/layers/flow) plus pre-baked prompts.
 
 ```bash
 ifc-lite mcp ./model.ifc                 # stdio transport (default)
 ifc-lite mcp ./model.ifc --read-only     # hide all mutation tools
-ifc-lite mcp ./arch.ifc ./struct.ifc --federate
+ifc-lite mcp ./arch.ifc ./struct.ifc     # several files, one session
 ifc-lite mcp --transport http --port 8765 --token <secret>
 # (equivalent standalone binary: ifc-lite-mcp …)
 ```

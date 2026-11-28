@@ -216,7 +216,7 @@ For plain-file workflows, `createIdentityMapSidecar` /
 `serializeIdentityMapSidecar` / `parseIdentityMapSidecar` define a JSON sidecar
 that pins the content digest of **both** revisions the claims were verified
 against, and `identityMapSidecarMismatches` refuses one replayed against a
-different pair. A document claiming two different `base` identities for one
+different pair; `keyAliasesFromSidecar` turns a sidecar into `keyAliases`. A document claiming two different `base` identities for one
 `here` key is refused outright too — it is self-contradictory whatever the two
 files say, and applying either claim would pick an arbitrary winner. See the
 [Model Diff guide](https://ifclite.dev/docs/guide/model-diff/#identity-maps).
@@ -231,7 +231,10 @@ go" under a `copy-to-all` / `largest-share` / `orphan-on-split` policy.
 the head count, contain non-finite or negative values, or tie for the maximum.
 It does not throw for invalid share evidence. Zero is valid and shares need
 not sum to one. The
-`ifc-lite/lineage` sidecar pins both model digests like the identity map does.
+`ifc-lite/lineage` sidecar (`createLineageSidecar`, `serializeLineageSidecar`,
+`parseLineageSidecar`, `lineageSidecarMismatches`) pins both model digests like
+the identity map does, and `keyAliasesFromLineage` derives `keyAliases` from
+lineage entries.
 
 ### Building a data fingerprint
 
@@ -264,6 +267,11 @@ element for no substantive reason. `TypeAssignmentInput.globalId` is still
 accepted and still useful for display; it just does not reach any hash. See
 [the guide](https://ifclite.dev/docs/guide/model-diff/#what-participates-in-the-fingerprint)
 for the discrimination that costs.
+
+`buildComponentFingerprints` builds opt-in per-component sub-hashes
+(`attr:core`, `pset:<Name>`, `qset:<Name>`, `type-assignment`) for
+`EntityFingerprint.components`. When both sides carry them,
+`DiffEntry.changedComponents` reports which components differ.
 
 There is also an optional `tag`, hashed whenever you supply it. Supply it **only
 for an `IfcTypeObject` subtype**, as the adapters in this repo do: a type object

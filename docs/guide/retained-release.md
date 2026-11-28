@@ -28,10 +28,18 @@ versions exist in the registry; it does not use path patches or remove edges.
 See [Cargo package registry semantics](https://doc.rust-lang.org/cargo/commands/cargo-package.html#option-cargo-package---registry).
 That graph check does not replace the single-crate registry-readiness result.
 `build` runs default workspace tests, the excluded Python consumer build and
-strict all-target Clippy. `npm` builds through root `pnpm build` then invokes
-`npm pack --dry-run --json` for WASM and CLI. A failed command does not suppress
+strict all-target Clippy. `npm` runs root `pnpm build` filtered to
+`@ifc-lite/cli...` and `@ifc-lite/wasm`, then invokes `npm pack --dry-run --json`
+for WASM and CLI. A failed command does not suppress
 later evidence, and any failure makes the qualification command fail. JSON
 summaries are local scratch; retain immutable logs and source identities with the release evidence.
+
+Two more modes cover review and documentation evidence. `review` runs
+`node scripts/retained-notices.mjs --check`, the notice, CLI-engine stager and
+browser-asset stager tests, and the mkdocs-nav, CI path-coverage, Rust semver
+and API-surface checks. `docs` installs `requirements-docs.txt` into a
+throwaway Python virtual environment, runs `pnpm docs:api` and then
+`mkdocs build --strict`, matching `docs.yml`.
 
 A dry-run is **not** a publication, Trusted Publisher test, wheel installation,
 or final linked-SDK audit. A missing registry dependency is a real blocker;
@@ -199,8 +207,12 @@ installs only from the public registries and changes no registry state.
 ```sh
 node scripts/smoke-released-retained.mjs \
   --wasm 12.1.0 --cli 0.44.0 --crate 27.1.0 [--wheel latest|X.Y.Z|skip] \
-  [--toolchain NAME] [--retained-engine /abs/staged/engine] [--strict] [--out summary.json] [--keep]
+  [--toolchain NAME] [--retained-engine /abs/staged/engine] [--strict] [--out summary.json] [--keep] \
+  [--fixture model.ifc] [--expect-engine-manifest-sha256 HEX] [--expect-sdk-revision SHA] [--dry-run]
 ```
+
+`--fixture` replaces the default `tests/fixtures/cli-retained/layered-wall.ifc`.
+`--dry-run` prints the effective settings as JSON and exits without installing anything.
 
 `--wasm`, `--cli` and `--crate` are required explicit versions (the npm ones also
 accept `latest`, recorded as resolved). The scratch project is created under the
@@ -298,7 +310,7 @@ The smoke is read-only and takes only a URL:
 | `engine-assets` | every engine-manifest file is served at its contract URL with the manifest's sha256, COOP/COEP/nosniff and its MIME type; missing engine URLs are 404, not `index.html`; `--expect-engine-manifest-sha256` pins the engine |
 | `notices` | SMLib, IFC-Lite, toolchain and combined notices are served as text; every IFC-Lite notice names `https://github.com/LTplus-AG/ifc-lite/tree/<tag>` with the exact tag |
 | `retained-frame` | fresh Chrome is `crossOriginIsolated`; `?kernel=retained` plus the real file input publishes retained products of `tests/fixtures/cli-retained/layered-wall.ifc` (or `--fixture`) and draws the first retained frame (the [qualification runner](https://github.com/LTplus-AG/ifc-lite/blob/main/scripts/perf/retained-qual.md)'s page instrumentation and assertions) |
-| `default-exact` | without the kernel parameter the same model loads exact, with no request to `/smlib/` or `/retained-engine/` |
+| `default-exact` | without the kernel parameter the same model loads exact, with no request to `/smlib/` or `/retained-engine/` and no downloaded JS carrying retained code |
 
 Rehearse locally before anything is published: build with `--rehearsal` instead of
 `--source-tag` (notices keep the placeholder; the output says `publishable: false`

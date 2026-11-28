@@ -30,7 +30,8 @@ impl StructuralDiagnostics {
             self.record("IfcRelConnectsStructuralElement is mapped to IfcRelAssignsToProduct; the relationship kind is not kept in the target file".into());
             return;
         }
-        if !matches!((from, to), ("IFC2X3", "IFC4") | ("IFC4", "IFC2X3"))
+        // IFC4X3 is inspected only for the constant actions its slot map covers (#11571).
+        if !(matches!((from, to), ("IFC2X3", "IFC4") | ("IFC4", "IFC2X3")) || crate::schema_structural::is_constant_action_conversion(entity, from, to))
             || !(entity.starts_with("IFCSTRUCTURAL") || entity.starts_with("IFCRELCONNECTSSTRUCTURAL") || entity == "IFCRELASSOCIATESPROFILEPROPERTIES") { return; }
         let Some(src) = schema_attribute_names(from, entity) else { return };
         let target = rename_type(entity, from, to).unwrap_or(entity);

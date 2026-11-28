@@ -14,8 +14,7 @@ use crate::schema_plan::{plan_for, Adjust, Plan};
 use crate::schema_unrepresented::{product_proxy, resolve_unrepresented_entity, UnrepresentedEntityError};
 use crate::step_slot::{slot_is, split_top_level_args};
 
-/// Canonicalize a FILE_SCHEMA label to one of the four families we convert
-/// between. Re-export's default for a label naming no family is IFC4.
+/// Resolve the FILE_SCHEMA family, defaulting to IFC4 for an unrecognized label.
 pub(crate) fn canon(s: &str) -> &'static str {
     SchemaFamily::from_label(s).unwrap_or(SchemaFamily::Ifc4).as_str()
 }
@@ -181,7 +180,9 @@ pub(crate) fn rename_type(u: &str, from: &str, to: &str) -> Option<&'static str>
         }
     }
     match (from, to) {
-        ("IFC2X3", "IFC4") => map_2x3_to_4(u).or_else(|| crate::schema_attr_maps::upgrade_type(u)),
+        ("IFC2X3", "IFC4") => crate::schema_ifc4x3_upgrade::style_target(u)
+            .or_else(|| map_2x3_to_4(u))
+            .or_else(|| crate::schema_attr_maps::upgrade_type(u)),
         ("IFC2X3", "IFC4X3") => crate::schema_ifc4x3_upgrade::rename(u)
             .or_else(|| rename_type(u, "IFC2X3", "IFC4")),
         ("IFC4", "IFC4X3") => crate::schema_ifc4x3_upgrade::rename(u),
@@ -221,13 +222,13 @@ pub fn convert_step_line(
     to: &str,
     express_id: u32,
     slots: &mut Ifc2x3SlotFill,
-    checks: Option<&mut ConversionChecks>,
+    mut checks: Option<&mut ConversionChecks>,
 ) -> Result<String, UnrepresentedEntityError> {
     let (cfrom, cto) = (canon(from), canon(to));
     if cfrom == cto {
         return Ok(line.to_string());
     }
-    let mut checks = checks;
+    if !(match checks.as_deref_mut() { Some(c) => c.boundaries.apply(express_id, line, cfrom, cto, &mut c.attribute_values_dropped), None => crate::schema_space_boundary::SpaceBoundaryElements::default().apply(express_id, line, cfrom, cto, &mut 0) }) { return Ok(String::new()); }
     let Some(line) = (match checks.as_deref_mut() { Some(c) => c.materials.apply(express_id, line, cfrom, &mut c.attribute_values_dropped), None => crate::schema_material_referent::MaterialReferents::for_target(cto).apply(express_id, line, cfrom, &mut 0) }) else { return Ok(String::new()) };
     let mut converted = convert_record(&line, cfrom, cto, express_id, checks.as_deref_mut())?;
     converted = crate::schema_retyped::apply(converted, cfrom, cto, checks.as_deref_mut().map(|c| &mut c.attribute_values_dropped)); // #10778
@@ -236,11 +237,17 @@ pub fn convert_step_line(
         if let Some(repointed) = checks.structural.values.placement(express_id).and_then(|p| crate::step_log::replace_argument(&converted, 5, &format!("#{p}"))) {
             converted = repointed;
         }
-        converted = checks.enums.apply(checks.forms.apply(converted, cfrom, cto, express_id, &mut checks.attribute_values_dropped)?, cto);
+        let formed = checks.forms.apply(converted, cfrom, cto, express_id, &mut checks.attribute_values_dropped)?;
+        converted = if cto == "IFC2X3" { checks.enums.apply_with_source(formed, cto, Some((&line, cfrom))) }
+            else { checks.enums.apply(formed, cto) };
         converted = checks.documents.apply(express_id, converted, &mut checks.attribute_values_dropped);
         if cto == "IFC2X3" { converted = checks.structural.after(express_id, converted); }
         let deferred = checks.typed_properties.capture(line.as_ref(), cfrom, cto, express_id);
-        (!deferred && cto == "IFC4" && (cfrom != "IFC2X3" || crate::schema_attr_maps::upgrade_counts_ifc4_slots(&converted))).then(|| checks.ifc4_slots.count(&converted));
+        // Every record to IFC4; an IFC2X3 upgrade's mapped records to IFC4 or IFC4X3, each against its own target (#11135).
+        if let Some(target) = crate::schema_ifc4_slots::SlotTarget::of(cto).filter(|_| !deferred) {
+            let counts = if cfrom == "IFC2X3" { crate::schema_attr_maps::upgrade_counts_slots(&converted, target) } else { target == crate::schema_ifc4_slots::SlotTarget::Ifc4 };
+            if counts { checks.ifc4_slots.count(&converted, target); }
+        }
     }
     Ok(if cto == "IFC2X3" { slots.apply(converted) } else { converted })
 }
@@ -304,9 +311,9 @@ fn convert_record(
         return Ok(format!("{prefix}{}({attrs});", rename_type(&entity_type, cfrom, cto).unwrap_or(&entity_type)));
     }
     let merged = checks.as_ref().is_some_and(|c| c.merged);
-    let (plan, dropped) = match checks {
-        Some(c) => (c.plans.get(&entity_type, cfrom, cto), Some(&mut c.attribute_values_dropped)),
-        None => (plan_for(&entity_type, cfrom, cto), None),
+    let plan = match checks.as_deref_mut() {
+        Some(c) => c.plans.get(&entity_type, cfrom, cto),
+        None => plan_for(&entity_type, cfrom, cto),
     };
     let mut lost = 0usize;
     let out = match plan {
@@ -334,7 +341,9 @@ fn convert_record(
             let rebuilt;
             let attrs = match replaced.filter(|&i| args.get(i).is_some_and(|v| !slot_is(v, "$"))) {
                 Some(i) => {
-                    lost += usize::from(holds_value(&args[i]));
+                    if holds_value(&args[i]) {
+                        lost += 1;
+                    }
                     args[i] = "$".to_owned();
                     rebuilt = args.join(",");
                     rebuilt.as_str()
@@ -354,18 +363,21 @@ fn convert_record(
                 // `GridFrames` already wrote this one in the target's layout.
                 Adjust::ByName(_, tgt) if &*entity_type == crate::schema_grid_frames::GRID_PLACEMENT && args.len() == tgt.len() => Cow::Borrowed(attrs),
                 Adjust::ByName(src, tgt) => {
+                    if new_type == "IFCBUILDINGSTOREY" {
+                        if let Some(c) = checks.as_deref_mut() { c.forms.omit_storey_attributes(&entity_type, &args, src, tgt); }
+                    }
                     lost += values_without_a_name(&args, src, tgt, cause_carried);
                     Cow::Owned(remap_attrs_by_name(&args, src, tgt))
                 }
-                Adjust::UpgradeIfc4x3(src, tgt) => Cow::Owned(crate::schema_ifc4x3_upgrade::remap(&entity_type, src, tgt, &args, &mut lost)),
+                Adjust::UpgradeSlots(src, tgt) => Cow::Owned(crate::schema_ifc4x3_upgrade::remap(&entity_type, src, tgt, &args, &mut lost)),
                 Adjust::Mapped(map, up, src, tgt) if !args.is_empty() => Cow::Owned(crate::schema_attr_maps::remap(map, up, &args, src, tgt, &mut lost)),
                 Adjust::Trim(_) | Adjust::Pad(_) | Adjust::Mapped(..) | Adjust::Keep => Cow::Borrowed(attrs),
             };
             format!("{prefix}{new_type}({final_attrs});")
         }
     };
-    if let Some(dropped) = dropped {
-        *dropped += lost;
+    if let Some(c) = checks {
+        c.attribute_values_dropped += lost;
     }
     Ok(out)
 }
@@ -375,7 +387,6 @@ pub(crate) fn targets_ifc2x3(to: &str) -> bool {
     SchemaFamily::from_label(to) == Some(SchemaFamily::Ifc2x3)
 }
 
-/// True when converting between these schemas changes entity types/attributes.
 pub fn needs_conversion(from: &str, to: &str) -> bool {
     canon(from) != canon(to)
 }

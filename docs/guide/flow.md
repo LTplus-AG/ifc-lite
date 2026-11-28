@@ -40,7 +40,8 @@ runtime adapts the incoming structure to it:
 
 - An `item` port receiving a list is **laced**: `shortest` (default),
   `longest` (repeat the last value), or `cross` (every combination, keyed
-  `i|j`; refused above a size guard).
+  `i|j`; refused above a size guard, set per graph with `maxCross`, default
+  100,000 lanes).
 - An `item` or `list` port receiving a group runs **once per branch**.
   Two group inputs match **by key**, never by position; a key present on
   one input and missing on the other is reported and that branch is
@@ -60,6 +61,23 @@ Restructuring is a small, complete set of nodes: `core.groupBy`,
 `core.flatten`, `core.keys`, `core.lookup`, `core.first`, `core.item`,
 `core.wrap`, `core.filter`, and for tables `table.groupRows` and
 `table.pivot`.
+
+## Standard nodes
+
+`createStandardRegistry()` registers these nodes. The AI nodes live in the
+separate `@ifc-lite/flow-nodes/ai` entry (see below).
+
+| Family | Nodes |
+|---|---|
+| Values and lists | `core.number`, `core.string`, `core.boolean`, `core.list`, `core.math`, `core.compare`, `core.concat`, `core.count`, `core.sum`, plus the restructuring nodes above |
+| Model reads | `model.select`, `model.byType`, `model.attribute`, `model.property`, `model.quantity`, `model.related`, `model.storey`, `model.contains`, `model.groupByStorey`, `model.groupByType` |
+| Model writes | `model.setProperty`, `model.setAttribute`, `model.applyTable`, `model.addElement`, `model.delete`, `model.openFromSource` |
+| Element specs | `geometry.point`, `element.wall`, `element.column`, `element.beam`, `element.slab`, `element.stair`, `element.railing` |
+| Tables | `table.fromEntities`, `table.longFormat`, `table.column`, `table.rowCount`, `table.groupRows`, `table.pivot`, `table.joinByKey`, `table.readCsv`, `table.writeCsv`, `table.readXlsx`, `table.writeXlsx` |
+| Viewer | `viewer.colorize`, `viewer.isolate`, `viewer.select`, `viewer.selection`, `viewer.flyTo` |
+| IDS | `ids.load` (IDS XML to a document), `ids.lint` (lint diagnostics as a table; `failOn` can fail the node), `ids.validate` (validates the active model; `failures` rows have `title` and `description`, so they wire into `bcf.createTopic` rows) |
+| Script and network | `script.run`, `script.list`, `http.request`, `bcf.listTopics`, `bcf.createTopic`, `bcf.addComment`, `aps.token`, `aps.modelProperties`, `speckle.receive`, `documents.queryVersions`, `documents.download` |
+| Session automation and Review | `session.loadModels`, `session.assignModelTags`, `validation.runChecks`, `comparison.runChecks`, `report.importComparisons`, `report.buildDocument`, `report.exportPdf`, `review.snapshot` |
 
 ## The document
 
@@ -87,6 +105,10 @@ Restructuring is a small, complete set of nodes: `core.groupBy`,
   ports shown as results. `ifc-lite flow describe` prints both.
 - `lacing`, `tracking` and `trackingKey` are per node. Positions (`pos`) live in the file;
   tracked element sets do not.
+- The current `flowVersion` is 2. The parser migrates version-1 documents before
+  validating them. This abbreviated excerpt omits nodes required by its input and
+  output declarations. Input `kind` is one of `scalar`, `enum`, `entitySet`,
+  `storey`, `file`, `files` or `table`.
 
 The full document is `apps/viewer/src/lib/flow/examples/05-fire-rating-audit.flow.json` — the panel’s example 5, which the CLI test runs end to end.
 
@@ -114,7 +136,7 @@ rewritten or omitted fields leave the check unavailable. Only a complete empty e
 before a deliberate later send. Recovery never automatically sends a create.
 Custom native hosts use the Node-only
 `@ifc-lite/flow-nodes/bcf-publication-node` gateway; its directory must support
-exclusive hard links and fsync. The viewer retains its BCF Drafts & publication
+exclusive hard links and fsync. The viewer retains its **BCF drafts & publication**
 controls in browser storage.
 
 ## Spreadsheet connectors
@@ -123,7 +145,9 @@ controls in browser storage.
 move a `Table` to and from a mapping spreadsheet:
 
 - `table.readCsv` takes CSV text on its `text` input, `columns` (`[{ name, type }]`,
-  defaulting to the header row typed `string`) and `delimiter` params, and returns
+  defaulting to the header row typed `string`; declared columns map to fields by
+  position), `delimiter` and `key` (default `GlobalId` when present, else the first
+  column) params, and returns
   `table` plus `problems` — a malformed row (wrong field count, a cell that will not
   parse as its column's type) is **reported, never dropped**.
 - `table.writeCsv` is the reverse, through `@ifc-lite/export`'s `tableToCsv` — the one
@@ -134,6 +158,8 @@ move a `Table` to and from a mapping spreadsheet:
   text (`data` in/out). The underlying `readXlsxTable`/`writeXlsxTable` functions are
   exported from `@ifc-lite/flow-nodes` as a shared module — both the CLI and the
   viewer read/write `.xlsx` through the same code.
+  The writer uses `@ifc-lite/export`'s `sanitizeSheetName` and `clampXlsxCellText` to
+  fit Excel's worksheet-name and cell limits. Truncated text ends in an ellipsis.
 
 `table.joinByKey` joins spreadsheet rows to model entities by `globalId`, `tag`,
 `name`, or an indexed `property` (`pset`/`prop` params) and produces three outputs:
@@ -422,7 +448,9 @@ for (const o of result.graphOutputs) console.log(o.label, o.data);
 ```
 
 Re-running with the same `cache` recomputes only nodes whose inputs,
-params, or model revision changed. Every write node bumps the cache's write
+params, or model revision changed. The caller supplies model revisions through
+`modelRevisions`. Other `runFlow` options are `inputs` (Player values),
+`tracking` (a `TrackingStore`), `signal` (an `AbortSignal` to cancel) and `resume`. Every write node bumps the cache's write
 generation, so reads never serve a memo taken before a write. Nodes that
 reach the network are never served from the memo: `HttpRequest` always
 sends its request again, and a Script node is recomputed on every run in
@@ -457,8 +485,8 @@ lane. The code is plain **JavaScript**, not TypeScript, and top-level
 
 The `code` parameter is a `code` param kind rather than a plain string, which
 is the editor's cue to give it a multi-line editor: the Flow panel's
-inspector shows a monospace textarea, and the ⤢ button beside it opens the
-full CodeMirror editor (the same `bim.*` completions as the script console).
+inspector shows a monospace textarea, and the **Open in the full editor** button
+beside it opens the full CodeMirror editor (the same `bim.*` completions as the script console).
 
 ## Network requests and secrets
 
@@ -476,8 +504,8 @@ rationale.
 
 In the viewer, `http.request` runs subject to the browser's own CORS
 enforcement: a host that does not send `Access-Control-Allow-Origin` for
-the request fails with an explicit "likely CORS" message, never a silent
-empty result. The CLI and MCP have no such restriction (Node's `fetch` is
+the request fails with an explicit message that names CORS as the usual
+cause, never a silent empty result. The CLI and MCP have no such restriction (Node's `fetch` is
 not CORS-limited).
 
 A node param may reference an environment secret with `{{secret:NAME}}`
@@ -549,7 +577,7 @@ plain failure. In the viewer, `bcf.createTopic` and `bcf.addComment` also go
 through the BCF publication outbox (`FlowHost.bcfWrites`): the intent is
 recorded before the request leaves, and an identical write whose earlier
 attempt has an unknown outcome is refused without sending until it is checked
-under **BCF → Drafts & publication**. The token is never stored there.
+under **BCF drafts & publication**. The token is never stored there.
 
 Custom Node hosts using `createNativeBcfWriteGateway` refuse records observed
 growing during a bounded read and recovery epoch directories whose identity
@@ -638,7 +666,7 @@ A workflow can install the CLI, run a graph with a secret passed through
 `env:`, and publish the result — the graph declares exactly which secret
 it needs (`secret.read:API_TOKEN`) and which host it may reach
 (`network.fetch:api.example.com`); nothing beyond that is available to it,
-and the secret is redacted from anything the job uploads or comments.
+and the secret is redacted from the run's JSON summary, logs and errors.
 
 ```yaml
 # .github/workflows/flow-audit.yml (illustrative — not run in this repo's CI)
@@ -680,9 +708,12 @@ jobs:
           echo "ok=$(jq -r .ok run-summary.json)" >> "$GITHUB_OUTPUT"
           exit $status
 
-      - name: Publish the audited model as a layer
+      - name: Upload the audited model
         if: steps.run.outputs.ok == 'true'
-        run: ifc-lite layer publish audit-result.ifc --layer fire-rating-audit
+        uses: actions/upload-artifact@v4
+        with:
+          name: audit-result
+          path: audit-result.ifc
 
       - name: Comment the run summary on the PR
         # Also after a failed run (the job still fails from the step above).
@@ -691,8 +722,8 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            // run-summary.json was already redacted by `flow run` itself —
-            // secrets never reach an artifact, an env dump, or this comment.
+            // run-summary.json was already redacted by `flow run` itself,
+            // so a secret value does not reach this comment.
             const summary = JSON.parse(fs.readFileSync('run-summary.json', 'utf-8'));
             const body = `Flow audit: ${summary.ok ? 'passed' : 'FAILED'} (` +
               Object.entries(summary.nodes).map(([k, v]) => `${v} ${k}`).join(', ') + ')';
@@ -708,11 +739,12 @@ jobs:
 (`${{ secrets.API_TOKEN }}`, GitHub's own access control) and the graph's
 own `secret.read:API_TOKEN` capability (`ifc-lite`'s — a graph that does
 not declare it cannot read the env var even though the workflow set it).
-Nothing the workflow uploads, comments, or logs can carry the raw value:
-`flow run --json` redacts it before it is ever written to
-`run-summary.json`, so every consumer downstream — the artifact, the PR
-comment, the job log — only ever sees `<secret:API_TOKEN>` if the value
-happened to surface at all.
+`flow run --json` redacts literal occurrences of resolved secrets in the run
+summary, which this workflow writes to `run-summary.json` and uses for the PR
+comment. The CLI also redacts run diagnostics. Other workflow output and
+transformed secret values are outside this redaction.
+The `--out` IFC file is not scanned: a graph that writes a secret into a model
+property puts it in the uploaded model. Do not write secrets into the model.
 
 ### Autodesk Platform Services (APS)
 
@@ -871,11 +903,21 @@ In the viewer's Flow panel:
   Backspace; the same keys delete a selected node and its edges.
 - An input takes **at most one** edge — connecting a second one replaces the
   first — and a connection that would close a cycle is refused.
+- Switch between **Editor** and **Player**. Player shows the graph's declared
+  inputs as a form and its outputs. Mark a parameter as a **Player input** or a
+  port as a **Graph output** in the inspector.
+- **Publish** sends the last run's writes as a layer, with the graph recorded as
+  provenance. It is refused when the run failed, wrote nothing, is awaiting review,
+  or when other edits are pending outside the run.
+- Graphs contributed by extensions are read-only. Use **Duplicate to my graphs**
+  to edit a copy.
 
 ## Examples
 
-The panel ships a ladder of runnable examples, from a two-node count to a
-tracked column grid, under `apps/viewer/src/lib/flow/examples/`. They open
+The panel's **Examples…** menu ships a ladder of runnable examples, from a
+two-node count to a tracked column grid, plus a reviewed AI classification
+(example 10) and the **Coordination session report**, under
+`apps/viewer/src/lib/flow/examples/`. They open
 as an editable copy, and because they are ordinary `*.flow.json` documents
 they also run headlessly:
 
@@ -1029,7 +1071,7 @@ provenance before the native report blocks. A custom template maps existing
 validation report or comparison table block IDs to enabled job IDs. A mapping
 without a result ID expands all results for that job into adjacent blocks, keeping
 the template's presentation. Required and incompatible mappings are rejected
-before model loading. Native document version 13 is the current portable format;
+before model loading. Native document version 14 is the current portable format;
 supported older documents migrate when opened, and newer formats are refused.
 Templates cannot use live validation tables or IDS/comparison charts, whose data
 belongs to the viewer's latest manual result. Use mapped report blocks for the

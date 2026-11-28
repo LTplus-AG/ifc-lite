@@ -18,6 +18,7 @@ import type { MeshData } from '@ifc-lite/geometry';
 import { encodeSceneSnapshot } from '@ifc-lite/renderer';
 import { Scene } from '../../../../packages/renderer/src/scene.js';
 import { useViewerStore } from '../store/index.js';
+import { modelIndices } from '../lib/model-placement/model-indices.js';
 import { clearCache } from '../services/ifc-cache.js';
 import { noteFinalFitBounds, sceneSnapshotKey, takeSceneSnapshotGeometry } from '../components/viewer/sceneSnapshotOwnership.js';
 import { useFilteredGeometry } from '../components/viewer/useFilteredGeometry.js';
@@ -150,6 +151,51 @@ describe('scene snapshot type index (#10264)', () => {
     assert.equal(adopted, null);
     assert.equal(scene.isSceneSnapshotHydrating(), false, 'nothing was adopted');
     assert.equal(paints, 0, 'and nothing was painted');
+  });
+
+  for (const [models, adopts] of [
+    [[], true], [['m1'], true], [['other'], false], [['other', 'm1'], false], [['m1', 'other'], false],
+  ] as const) {
+    it(`adopts only into an empty scene or for its sole model at index 0 (#11710): registered [${models.join(', ')}] ${adopts ? 'adopts' : 'streams'}`, async () => {
+      const snapshot = await capturedEntry(`index-${models.join('-')}`);
+      useViewerStore.setState(({ typeVisibility }) => ({ typeVisibility: { ...typeVisibility, spaces: false, openings: false } }));
+      render(<Viewport />);
+      useViewerStore.setState({ models: new Map(models.map((id) => [id, { id }])) } as never);
+      try {
+        let paints = 0;
+        const { scene, adopted } = await reopen(snapshot, () => { paints++; });
+        if (adopts) {
+          assert.ok(adopted, 'its shards land at index 0, where the model is');
+          assert.deepEqual(viewportHidden, [SPACE, OPENING], 'the installed index hides both classes');
+          act(() => abandonAdoptedSceneSnapshot(adopted));
+        } else {
+          assert.equal(adopted, null, 'a whole-scene snapshot cannot replace another model');
+          assert.equal(scene.isSceneSnapshotHydrating(), false, 'nothing was adopted');
+          assert.equal(paints, 0, 'and nothing was painted');
+          assert.deepEqual(viewportHidden, [], 'the stored index was withdrawn');
+        }
+      } finally {
+        useViewerStore.setState({ models: new Map() } as never);
+      }
+    });
+  }
+
+  it('streams while another upload owns index zero before registration (#11710)', async () => {
+    const snapshot = await capturedEntry('reserved-index');
+    render(<Viewport />);
+    const models = useViewerStore.getState().models;
+    assert.equal(models.size, 0);
+    const reservation = modelIndices.reserve('incoming', models);
+    try {
+      assert.equal(reservation.index, 0);
+      let paints = 0;
+      const { scene, adopted } = await reopen(snapshot, () => { paints++; });
+      assert.equal(adopted, null);
+      assert.equal(scene.isSceneSnapshotHydrating(), false);
+      assert.equal(paints, 0);
+    } finally {
+      reservation.release();
+    }
   });
 
   it('does not adopt when no viewport commits the stored index', async () => {

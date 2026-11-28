@@ -1,13 +1,19 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Retained shape-only display storage. Placement stays f64 until the final cast.
 use ifc_lite_geometry::Mesh;
+use ifc_lite_processing::element::StyleSource;
 use ifc_lite_processing::element::retained_runtime::{ShapeOnlyProduct, ShapePart, NO_PALETTE_ENTRY};
 
+/// Each display mesh with the source of its part's colour (`PartAppearance::style_id`,
+/// #10698): a palette split keeps its part's source, as in exact, and a part without
+/// an appearance takes the class default, which comes from no style.
 // Native witnesses exercise the part converter; products require publication authority.
 #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
-pub(crate) fn view_meshes(product: &ShapeOnlyProduct, frame_rtc: [f64; 3]) -> Vec<ifc_lite_processing::MeshData> {
+pub(crate) fn view_meshes(product: &ShapeOnlyProduct, frame_rtc: [f64; 3]) -> Vec<(ifc_lite_processing::MeshData, StyleSource)> {
     let mut meshes = Vec::with_capacity(product.parts.len());
     for part in &product.parts {
+        let style = part.appearance.as_ref().and_then(|appearance| appearance.style_id)
+            .map_or(StyleSource::Unstyled, StyleSource::Style);
         let base = part.appearance.as_ref().map_or_else(
             || ifc_lite_processing::style::default_color_for_type(product.ifc_type.clone()).to_array(),
             |appearance| appearance.rgba);
@@ -36,7 +42,7 @@ pub(crate) fn view_meshes(product: &ShapeOnlyProduct, frame_rtc: [f64; 3]) -> Ve
                 data.uvs = Some(uvs);
                 data.texture = Some(ifc_lite_processing::MeshTextureData::from_attachment(&texture.attachment));
             }
-            meshes.push(data);
+            meshes.push((data, style));
         }
     }
     meshes

@@ -6,7 +6,7 @@
  * editor and history/remesh policy; the IFC graph and refusal rules live here. */
 import type { StoreEditor, MutablePropertyView } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
-import { toNativeLength, type HostAnchor, type HostBounds } from './anchor.js';
+import { toNativeLength, type AuthoringGuidOptions, type HostAnchor, type HostBounds } from './anchor.js';
 import { assertPositiveFinite } from './_emit-helpers.js';
 import { addOpeningToStore, type OpeningInStoreParams } from './opening.js';
 import {
@@ -125,6 +125,7 @@ export function addHostedElementInStore(
   editor: StoreEditor,
   hostId: number,
   spec: HostedElementInStoreSpec,
+  options: AuthoringGuidOptions = {},
 ): HostedElementInStoreResult {
   const schema = store.schemaVersion ?? 'IFC4';
   if (!['IFC2X3', 'IFC4', 'IFC4X3'].includes(schema)) {
@@ -135,7 +136,7 @@ export function addHostedElementInStore(
     if (spec.params.GlobalId !== undefined) {
       assertHostedGlobalIdAvailable(store, view, spec.params.GlobalId);
     }
-    const host = resolveHostAnchor(store, hostId, view);
+    const host = { ...resolveHostAnchor(store, hostId, view), guidRandom: options.guidRandom };
     validateWallCut(store, view, host, spec);
     if (spec.kind === 'opening') {
       const opening = addOpeningToStore(draft, host, spec.params);

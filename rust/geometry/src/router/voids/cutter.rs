@@ -35,12 +35,13 @@ pub(crate) enum CutterKind {
 }
 
 /// World-space basis for an oriented rectangular opening.
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub(crate) struct OpeningFrame {
     pub(super) depth: Vector3<f64>,
     pub(super) cross_a: Vector3<f64>,
     pub(super) cross_b: Vector3<f64>,
     pub(super) depth_is_authored: bool,
+    pub(crate) aligned_bodies: Option<std::sync::Arc<super::aligned_bodies::AlignedBodies>>,
 }
 
 impl OpeningFrame {
@@ -58,6 +59,7 @@ impl OpeningFrame {
             cross_a,
             cross_b,
             depth_is_authored: true,
+            aligned_bodies: None,
         })
     }
 
@@ -99,7 +101,7 @@ impl CutterKind {
                 CutterKind::Rectangular(sub(min), sub(max), *dir)
             }
             CutterKind::DiagonalRectangular(mesh, frame) => {
-                CutterKind::DiagonalRectangular(translate_cutter_mesh(mesh, origin), *frame)
+                CutterKind::DiagonalRectangular(translate_cutter_mesh(mesh, origin), frame.clone())
             }
             CutterKind::NonRectangular(mesh, min, max, dir) => CutterKind::NonRectangular(
                 translate_cutter_mesh(mesh, origin),

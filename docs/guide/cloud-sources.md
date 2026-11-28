@@ -24,6 +24,11 @@ The cloud session ends when the gateway restarts. Reconnect if IFClite reports t
 
 Self-hosted deployments without `VITE_CLOUD_HOSTED=true` retain the direct SDK sign-in setup described in the [Dropbox package](https://github.com/LTplus-AG/ifc-lite/blob/main/packages/source-dropbox/README.md) and [Microsoft Graph package](https://github.com/LTplus-AG/ifc-lite/blob/main/packages/source-msgraph/README.md). Dalux currently uses the vendor's API credentials; hosted OAuth for Dropbox and Microsoft does not change that source.
 
+Two more sources are built in:
+
+- **BIMcollab Documents** opens models from the BIMcollab space you connected for BCF, with no second sign-in. The saved BCF connection must point at a BIMcollab server and its access token must carry the space ID; any other BCF server or an opaque token leaves the source disconnected. Requests go through the same-origin `/api/bimcollab` relay. Set `VITE_SOURCE_BIMCOLLAB=false` to hide it on a deployment without that relay. See the [BIMcollab package](https://github.com/LTplus-AG/ifc-lite/blob/main/packages/source-bimcollab/README.md).
+- **buildagil** appears only when the build sets `VITE_BUILDAGIL_CLIENT_ID`. Sign-in also needs the `/api/buildagil` relay to hold the matching `BUILDAGIL_CLIENT_ID`. See the [buildagil package](https://github.com/LTplus-AG/ifc-lite/blob/main/packages/source-buildagil/README.md) for the relay variables.
+
 ## Local OCI registry demo
 
 For a local sign-in, pull, edit and publish walkthrough, see the

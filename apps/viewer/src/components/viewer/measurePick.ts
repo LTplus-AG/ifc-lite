@@ -29,8 +29,8 @@ export function measureSnapOptions(
   { axis = false, reduced = false, radius }: { axis?: boolean; reduced?: boolean; radius?: number } = {},
 ): Partial<SnapOptions> {
   if (!ctx.snapEnabledRef.current) return { snapToVertices: false, snapToEdges: false, snapToFaces: false, screenSnapRadius: 0 };
-  if (axis) return { snapToVertices: true, snapToEdges: true, snapToFaces: false, screenSnapRadius: 40 };
-  return { snapToVertices: !reduced, snapToEdges: true, snapToFaces: true, screenSnapRadius: radius ?? (reduced ? 40 : 60) };
+  if (axis) return { snapToVertices: true, snapToEdges: true, snapToFaces: false, screenSnapRadius: 40, screenCornerSnap: {} };
+  return { snapToVertices: !reduced, snapToEdges: true, snapToFaces: true, screenSnapRadius: radius ?? (reduced ? 40 : 60), ...(reduced ? {} : { screenCornerSnap: {} }) };
 }
 
 /**

@@ -34,7 +34,7 @@ export function assertModelAccess(ctx: ToolContext, model: LoadedModel): LoadedM
 }
 
 /** Model IDs the caller's scope permits — never leak identifiers outside scope. */
-function listAllowedModelIds(ctx: ToolContext): string[] {
+export function listAllowedModelIds(ctx: ToolContext): string[] {
   return ctx.registry.list().filter((m) => modelAllowed(ctx.scope, m.id)).map((m) => m.id);
 }
 

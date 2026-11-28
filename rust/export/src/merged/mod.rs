@@ -180,6 +180,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
     // gap in the merge (#3752).
     let mut refused_refs_total = 0usize;
     let mut upgrade = warnings::MergedUpgrade::default();
+    let mut upgrade_omissions = HashSet::new();
     // #5116: a non-rooted type with no representation in the target schema
     // (e.g. `IfcCartesianPointList3D` downgraded to IFC2X3) cannot become an
     // `IFCPROXY` either, so `convert_step_line` errs instead of guessing.
@@ -226,7 +227,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
     let mut checks = ConversionChecks::new(crate::schema_material_referent::MaterialReferents::for_target(crate::schema_convert::canon(&schema)));
     checks.structural.defer_varying = crate::schema_convert::canon(&schema) == "IFC4";
     checks.merged = true;
-    checks.forms.enable_dates();
+    checks.forms.defer_temporal_values();
     checks.typed_properties.enabled = true;
     let mut parents = single_parents::ParentClaims::for_schema(&schema); // one rel per single-valued inverse (#5727, #5802, #5774, #5923)
 
@@ -239,11 +240,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
         // tail is reported for the caller to gate. `plan::next_offset` is the single
         // home for that bound — the drop pre-pass stops at the same model.
         let Some(next) = plan::next_offset(offset, &included) else {
-            stats.unmerged_model_count = models.len() - i;
-            stats.warnings.push(format!(
-                "merged EXPRESS id space would exceed u32::MAX; stopped after {i} model(s), {} model(s) not merged.",
-                models.len() - i
-            ));
+            warnings::unmerged_tail(&mut stats, i, models.len());
             break;
         };
         // A repeated id writes only its last record (EXPORT-MERGE-18, #7683).
@@ -292,6 +289,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
         let converting = index.add_materials(&mut checks.materials, &source_schema, &schema, &included, &plan, offset);
         let upgrading = crate::schema_unrooted_upgrade::Upgrade::between(&source_schema, &schema);
         let preserve_latin1 = crate::schema_typed_properties::applies_to_source(model.content, &source_schema, &schema);
+        let model_start = out.len();
         let mut flatten = crate::schema_style_flatten::StyleFlatten::for_export(model.content, &source_schema, &schema); // D57
         flatten.retain_grids(|id| included.contains(&id) && !plan.skip.contains(&id));
         for &id in &index.order {
@@ -359,6 +357,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
                 remapped
             };
 
+            if final_text.is_empty() && checks.boundaries.left_out(id.saturating_add(offset)) { upgrade.omitted.insert(id.saturating_add(offset)); }
             let ty = index.type_of.get(&id).map_or("", String::as_str);
             let Some(mut final_text) = (!final_text.is_empty()).then_some(final_text).and_then(|t| parents.claim(ty, t, !is_first && compatible)) else { continue }; // empty: not written (#10763)
 
@@ -386,11 +385,12 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
             out.push('\n');
             stats.written += 1;
         }
-
+        if i + 1 < models.len() { warnings::forget_omitted_guids(&out[model_start..], &schema, &upgrade.omitted, &mut upgrade_omissions, &mut guid_to_final, &mut emitted_guids, &mut parents); }
+        checks.forms.durations.finish_merged_model(model.content, plan.written_projects(&index.projects, &included, offset));
         offset = next;
     }
     warnings::push_merge_warnings(&mut stats, refused_refs_total, unrepresented_types_kept, &schema);
-    if let Err(error) = warnings::finish_output(&mut out, &mut stats, &schema, &slot_fill, &mut checks, parents, &upgrade, offset, models) {
+    if let Err(error) = warnings::finish_output(&mut out, &mut stats, &schema, &slot_fill, &mut checks, parents, &upgrade, offset) {
         return stats.refused(error);
     }
     (out, stats)

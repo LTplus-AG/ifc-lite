@@ -15,7 +15,7 @@
  *
  * Membership has two tiers:
  *
- *  1. When `TEST_SHARDS` equals the manifest's `shards` (CI's 16), a path
+ *  1. When `TEST_SHARDS` equals the manifest's `shards` (the CI matrix size), a path
  *     listed in the committed manifest `apps/viewer/test-durations.json`
  *     (`seconds`: path -> measured seconds) is bin-packed by greedy LPT: longest first,
  *     ties broken by path, each onto the currently least-loaded shard, ties
@@ -84,15 +84,19 @@ export function packManifest(durations, shardCount) {
   return out;
 }
 
+/** @typedef {{ shards: number, seconds: Record<string, number>, concurrentSeconds?: Record<string, number> }} DurationManifest */
+
 /**
  * The shard every given path runs in.
  * @param {string[]} paths
- * @param {{ shards: number, seconds: Record<string, number> }} manifest
+ * @param {DurationManifest} manifest
  * @param {number} shardCount
+ * @param {string} [concurrency] raw VIEWER_TEST_CONCURRENCY
  * @returns {Map<string, number>}
  */
-export function assignShards(paths, manifest, shardCount) {
-  const packed = manifest.shards === shardCount ? packManifest(manifest.seconds, shardCount) : new Map();
+export function assignShards(paths, manifest, shardCount, concurrency) {
+  const weights = concurrency === '2' && manifest.concurrentSeconds ? manifest.concurrentSeconds : manifest.seconds;
+  const packed = manifest.shards === shardCount ? packManifest(weights, shardCount) : new Map();
   const out = new Map();
   for (const p of paths) out.set(p, packed.has(p) ? packed.get(p) : pathHash(p) % shardCount);
   return out;
@@ -101,12 +105,13 @@ export function assignShards(paths, manifest, shardCount) {
 /**
  * The paths shard `shard` runs, in input order.
  * @param {string[]} paths
- * @param {{ shards: number, seconds: Record<string, number> }} manifest
+ * @param {DurationManifest} manifest
  * @param {number} shard
  * @param {number} shardCount
+ * @param {string} [concurrency] raw VIEWER_TEST_CONCURRENCY
  */
-export function selectShard(paths, manifest, shard, shardCount) {
-  const assigned = assignShards(paths, manifest, shardCount);
+export function selectShard(paths, manifest, shard, shardCount, concurrency) {
+  const assigned = assignShards(paths, manifest, shardCount, concurrency);
   return paths.filter((p) => assigned.get(p) === shard);
 }
 
@@ -118,7 +123,7 @@ export function parseManifest(text) {
   } catch (err) {
     throw new ShardSelectionError(`manifest is not JSON: ${err.message}`);
   }
-  const { shards, seconds: table } = data ?? {};
+  const { shards, seconds: table, concurrentSeconds } = data ?? {};
   if (!Number.isInteger(shards) || shards < 1 || !table || typeof table !== 'object' || Array.isArray(table)) {
     throw new ShardSelectionError('manifest must be { "shards": <count>, "seconds": { <path>: <seconds> } }');
   }
@@ -127,7 +132,12 @@ export function parseManifest(text) {
       throw new ShardSelectionError(`manifest entry ${JSON.stringify(path)} is not a non-negative number of seconds`);
     }
   }
-  return { shards, seconds: table };
+  if (concurrentSeconds === undefined) return { shards, seconds: table };
+  if (!concurrentSeconds || typeof concurrentSeconds !== 'object' || Array.isArray(concurrentSeconds) ||
+      Object.entries(concurrentSeconds).some(([, seconds]) => typeof seconds !== 'number' || !Number.isFinite(seconds) || seconds <= 0)) {
+    throw new ShardSelectionError('manifest concurrentSeconds must map paths to positive file durations');
+  }
+  return { shards, seconds: table, concurrentSeconds };
 }
 
 /** Parse TEST_SHARDS / TEST_SHARD. Unset TEST_SHARDS means one shard holding everything. */
@@ -148,7 +158,7 @@ function main() {
     const { shard, count } = shardFromEnv(process.env);
     const paths = readStdinUtf8().split('\n').filter((l) => l.length > 0);
     const manifest = count === 1 ? EMPTY_MANIFEST : parseManifest(readFileSync(MANIFEST_PATH, 'utf8'));
-    const selected = selectShard(paths, manifest, shard, count);
+    const selected = selectShard(paths, manifest, shard, count, process.env.VIEWER_TEST_CONCURRENCY);
     if (selected.length === 0) {
       throw new ShardSelectionError(`shard ${shard}/${count} selected no test files from ${paths.length} candidates`);
     }

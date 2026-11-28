@@ -11,7 +11,8 @@ Exit status zero means the result files were emitted; exercise failures remain
 explicit structured statuses so the full ladder can continue.
 
 Each entry point writes contract results to `PARITY_OUT/Fn/results.json` and
-`results.jsonl` (default `tests/modelling-parity/.out/L2`). Raw SDK steps are
+`results.jsonl` (default `tests/modelling-parity/.out/L2`). F5 appends its floor
+count to the directory name, for example `F5-40`. Raw SDK steps are
 checkpointed after every synchronous operation. Generated IFCs, GLBs, bounds,
 validation reports and reopened levels are disposable evidence, not source.
 

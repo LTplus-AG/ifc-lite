@@ -474,6 +474,12 @@ export class CompactBatch {
     free(): void;
     [Symbol.dispose](): void;
     /**
+     * Three f64 per encoded mesh: its first source vertex in the collection's frame (`origin + position`,
+     * computed as the renderer's `chunkCellKey` computes it). Records hold that vertex only to within half
+     * a step, which can put a mesh on the other side of a spatial chunk plane than the f32 load files it.
+     */
+    readonly anchors: Float64Array;
+    /**
      * Six f64 per encoded mesh: its AABB in the collection's frame (Y-up,
      * RTC-relative `origin + position`), min x, y, z then max x, y, z.
      */
@@ -486,6 +492,10 @@ export class CompactBatch {
      * Mesh-local u16 triangle indices.
      */
     readonly indices: Uint16Array;
+    /**
+     * Lexicographically first referenced authored corner normal per welded vertex.
+     */
+    readonly lodNormals: Float32Array;
     /**
      * Number of encoded meshes (table rows).
      */
@@ -500,8 +510,9 @@ export class CompactBatch {
      */
     readonly refusals: Uint32Array;
     /**
-     * Six u32 per encoded mesh: mesh index in the collection, vertex start,
-     * vertex count, index start, index count, lattice level (step = 2^-level m).
+     * Seven u32 per encoded mesh: mesh index in the collection, vertex start,
+     * vertex count, index start, index count, lattice level (step = 2^-level m),
+     * source vertex count (before welding).
      */
     readonly table: Uint32Array;
     /**
@@ -3021,9 +3032,11 @@ export interface InitOutput {
     readonly clashsession_ingest: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number) => void;
     readonly clashsession_new: () => number;
     readonly clashsession_runRule: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => number;
+    readonly compactbatch_anchors: (a: number) => number;
     readonly compactbatch_bounds: (a: number) => number;
     readonly compactbatch_cells: (a: number) => number;
     readonly compactbatch_indices: (a: number) => number;
+    readonly compactbatch_lodNormals: (a: number) => number;
     readonly compactbatch_meshCount: (a: number) => number;
     readonly compactbatch_records: (a: number) => number;
     readonly compactbatch_refusals: (a: number) => number;

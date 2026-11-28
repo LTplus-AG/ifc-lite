@@ -50,8 +50,9 @@ impl Upgrade {
         })
     }
 
-    pub(crate) fn prune(self, text: &str) -> Option<(String, HashSet<u32>, Vec<String>)> {
-        prune(text, &self.seeds(text.as_bytes()).collect(), self.to)
+    pub(crate) fn prune(self, text: &str, mut omitted: HashSet<u32>) -> Option<(String, HashSet<u32>, Vec<String>)> {
+        omitted.extend(self.seeds(text.as_bytes()));
+        prune(text, &omitted, self.to)
     }
 }
 
@@ -62,7 +63,12 @@ fn refs(value: &str) -> impl Iterator<Item = u32> + '_ {
 fn list_minimum(schema: SchemaVersion, ty: &str, attribute: AttrSlot) -> Option<usize> {
     // The pruning bounds below describe IFC4 and IFC4X3. Check legacy aggregates whole.
     // Sectioned-spine sections and positions correspond by index. Withhold on any loss.
-    if schema == SchemaVersion::Ifc2x3 || !attribute.aggregate || ty == "IFCSECTIONEDSPINE" {
+    if schema == SchemaVersion::Ifc2x3 {
+        // IfcRelAssociates.RelatedObjects is SET [1:?] OF IfcRoot in IFC2X3.
+        return (schema.is_subtype_of(ty, "IFCRELASSOCIATES")
+            && schema.attribute(ty, "RelatedObjects").is_some_and(|slot| slot.index == attribute.index)).then_some(1);
+    }
+    if !attribute.aggregate || ty == "IFCSECTIONEDSPINE" {
         return None;
     }
     use crate::generated::ifc4_required_slots::{IFC4_AGGREGATE_PRUNE_EXCEPTIONS, IFC4X3_AGGREGATE_PRUNE_EXCEPTIONS};
@@ -175,8 +181,7 @@ struct Record {
     frame: Option<RecordFrame>,
 }
 
-fn index(text: &str, seeds: &HashSet<u32>, schema: SchemaVersion) -> (Vec<Record>, HashSet<u32>) {
-    let mut scanner = EntityScanner::new(text);
+fn index(text: &str, seeds: &HashSet<u32>, schema: SchemaVersion, mut scanner: EntityScanner<'_>) -> (Vec<Record>, HashSet<u32>) {
     let mut records = Vec::new();
     let mut dependencies = Dependencies::default();
     while let Some((id, name, start, end)) = scanner.next_entity() {
@@ -189,6 +194,12 @@ fn index(text: &str, seeds: &HashSet<u32>, schema: SchemaVersion) -> (Vec<Record
         records.push(Record { id, ty, span: start..end, frame });
     }
     (records, dependencies.cascade(seeds))
+}
+
+/// Find omissions in one emitted model body, including references to earlier omissions.
+pub(crate) fn omitted_in_body(body: &str, known: &HashSet<u32>, to: &str) -> Option<HashSet<u32>> {
+    let schema = SchemaVersion::from_file_schema(canon(to))?;
+    Some(index(body, known, schema, EntityScanner::new_at(body, 0)).1)
 }
 
 fn rewrite(schema: SchemaVersion, line: &str, ty: &str, frame: RecordFrame, dropped: &HashSet<u32>) -> Option<String> {
@@ -217,13 +228,17 @@ fn rewrite(schema: SchemaVersion, line: &str, ty: &str, frame: RecordFrame, drop
 
 /// Return the rewritten text, omitted IDs and warnings for the records removed.
 pub(crate) fn prune(text: &str, seeds: &HashSet<u32>, to: &str) -> Option<(String, HashSet<u32>, Vec<String>)> {
-    if seeds.is_empty() {
-        return None;
-    }
+    if canon(to) == "IFC5" { return None; }
+    prune_with_issue(text, seeds, to, if canon(to) == "IFC4" { 10970 } else { 10971 })
+}
+
+pub(crate) fn prune_with_issue(text: &str, seeds: &HashSet<u32>, to: &str, issue: u32) -> Option<(String, HashSet<u32>, Vec<String>)> {
+    if seeds.is_empty() { return None; }
     let to = canon(to);
-    let schema = SchemaVersion::from_file_schema(to)?;
-    let issue = if schema == SchemaVersion::Ifc4 { 10970 } else { 10971 };
-    let (records, dropped) = index(text, seeds, schema);
+    // IFC5-labelled STEP uses IFC4X3 mappings for emitted assignments.
+    let layout = if to == "IFC5" { "IFC4X3" } else { to };
+    let schema = SchemaVersion::from_file_schema(layout)?;
+    let (records, dropped) = index(text, seeds, schema, EntityScanner::new(text));
     let mut out = String::with_capacity(text.len());
     let mut warnings = Vec::new();
     let mut copied = 0;

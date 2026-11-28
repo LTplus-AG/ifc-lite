@@ -18,6 +18,19 @@ import {
   LOD_MIN_TRIANGLES,
 } from './lod-simplify.js';
 
+/**
+ * Batches built while the scene drew no quantized vertices (`'off'`), e.g. before the quantized
+ * pipeline probe resolved. `requantizeEarlyBatches` (quantized-lifecycle.ts) rebuilds the bucket
+ * batches among them once the pipelines exist.
+ */
+export const builtUnquantized = new WeakSet<BatchedMesh>();
+
+/** Record `batch` in `builtUnquantized` when it was built with quantization off; returns it. */
+export function noteQuantization(quantized: BatchQuantization, batch: BatchedMesh): BatchedMesh {
+  if (quantized === 'off') builtUnquantized.add(batch);
+  return batch;
+}
+
 /** Stage a complete GPU batch. No Scene state changes until this succeeds. */
 export function createSceneBatch(
   meshDataArray: MeshData[],
@@ -86,7 +99,7 @@ export function createSceneBatch(
     // `auto` also stays f32 when the ~1 mm lattice would collapse an entity's
     // shape (#9068); `required` keeps its source batch's decision (#4832).
     const quantizedData = options.quantized === 'required' || (options.quantized === 'auto'
-      && !latticeCollapsesGeometry(merged.vertexData, BATCH_CONSTANTS.BYTES_PER_VERTEX / 4, merged.indices))
+      && !latticeCollapsesGeometry(merged.vertexData, BATCH_CONSTANTS.BYTES_PER_VERTEX / 4, merged.indices, meshDataArray))
       ? quantizeInterleaved(
           merged.vertexData,
           BATCH_CONSTANTS.BYTES_PER_VERTEX / 4,
@@ -152,7 +165,7 @@ export function createSceneBatch(
     }
     options.onMerged?.({ vertexData: quantizedData?.vertexData ?? merged.vertexData, indices: merged.indices, ...(lodIndices ? { lod1Indices: lodIndices } : {}) });
 
-    return {
+    return noteQuantization(options.quantized, {
       id: options.id,
       colorKey: options.colorKey,
       vertexBuffer,
@@ -173,7 +186,7 @@ export function createSceneBatch(
       origin: merged.origin,
       ...(lod1IndexBuffer ? { lod1IndexBuffer, lod1IndexCount } : {}),
       ...(quantized ? { quantized } : {}),
-    };
+    });
   } catch (error) {
     uniformSlot?.release();
     for (const buffer of allocated) {

@@ -257,6 +257,19 @@ test('onlyFailedLane: a FULL run failed by the guard alone is excusable; any oth
   assert.equal(onlyFailedLane(fullRun({ Typecheck: 'success', [LANE]: 'cancelled' }), { lane: LANE }), false, 'only a failure is excused');
 });
 
+test('title-edit replay excuses the guard even when advisory jobs failed', () => {
+  const lanes = {
+    [LANE]: 'failure',
+    'Viewer E2E shadow (selected for this PR)': 'failure',
+    'Viewer tests, advisory (selected for this PR)': 'failure',
+    'Viewer shards status (full lane)': 'timed_out',
+    'Node package tests, advisory (selected for this PR)': 'failure',
+    'Typecheck': 'success',
+  };
+  assert.equal(onlyFailedLane(fullRun(lanes), { lane: LANE }), true);
+  assert.equal(onlyFailedLane(fullRun({ ...lanes, Typecheck: 'failure' }), { lane: LANE }), false);
+});
+
 test('onlyFailedLane: a NO-OP run is excusable only if its replay passed and its fresh judgement failed', () => {
   assert.equal(onlyFailedLane(noopRun({ replay: 'success', judge: 'failure', guard: 'failure' }), { lane: LANE }), true);
   // The chain case: that run replayed a red typecheck. Its lanes are all skipped, so job

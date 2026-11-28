@@ -1,6 +1,6 @@
 # @ifc-lite/geometry
 
-Streaming geometry processor for IFClite. Converts IFC bytes to renderable mesh batches via Rust + WASM (or Tauri native), with first triangles in 300–500ms and progressive streaming for large models.
+Streaming geometry processor for IFClite. Converts IFC bytes to renderable mesh batches via Rust + WASM (or Tauri native), with progressive streaming so the first triangles render before the whole model is meshed. See the [performance guide](https://ifclite.dev/docs/guide/performance/) for measured numbers.
 
 ## Installation
 
@@ -38,7 +38,7 @@ for await (const event of processor.processStreaming(buffer)) {
 }
 ```
 
-The streaming path emits batches every ~100 meshes so the renderer can paint progressively — first triangles typically arrive 300–500ms after `processStreaming()` returns.
+`processStreaming()` returns an async generator; meshing starts when you consume it. In the browser (WASM) it meshes the file in batches of geometry jobs (25 jobs by default; pass a number or a `DynamicBatchConfig` as the third argument, and the batch grows so a file takes at most about 30 batches), so the renderer can paint progressively. Under a Tauri host the native bridge streams its own batches.
 
 ## Tessellation quality
 
@@ -153,9 +153,9 @@ are byte-identical. If you pass `wasmUrls.wasm`, point it at the core binary as 
 
 ## Performance
 
-- **First triangles:** 300–500ms (streaming path)
+- **First triangles:** the streaming path emits batches as they are meshed; see the [performance guide](https://ifclite.dev/docs/guide/performance/) for measured load times
 - **Correctness:** exact-arithmetic boolean kernel - openings are cut exactly, verified element-by-element against IfcOpenShell on the public benchmark corpus
-- **Worker support:** files > 50 MB process off-main-thread automatically
+- **Worker support:** `processAdaptive` meshes a file smaller than `sizeThreshold` (default 2 MB) in one go and emits a single batch. A larger file goes to the worker pool when `SharedArrayBuffer` and `Worker` exist and `navigator.hardwareConcurrency` is more than 1, and to `processStreaming` otherwise
 - **Native (Tauri):** `preferNative: true` enables the native Rust pipeline when running under a Tauri host — an extension point for third parties building their own desktop app (`@tauri-apps/api` is an optional dep; web builds never load it). See the [Building for Desktop](https://ifclite.dev/docs/guide/desktop/) guide.
 
 ## Compact GPU records (opt-in)
@@ -188,13 +188,35 @@ once a batch leaves it over budget (`?perf.oocBudgetMb`, 192 MiB by default), wh
 size; one batch whose own closure is larger than the budget still grows it past that. Meshes and instancing shards are byte-identical to the default
 path.
 
-It needs `SharedArrayBuffer` (a cross-origin isolated page), as the worker pool does. With it on,
-the pre-pass runs on one worker instead of sharded across the pool, so the first geometry of a
-mid-size file arrives later. A load stays on the default path when the arena could not give the
+It needs `SharedArrayBuffer` (a cross-origin isolated page), as the worker pool does. The pre-pass
+stays sharded across the pool: each worker scans its byte range from a window of the shared buffer
+(its range plus a margin of at most 64 MiB, which on a file of a few tens of MiB can reach the end of the
+file), and the pre-pass worker resolves the styles and ships the sparse
+facts and its sorted index. Files in the small-file tier (under 10 MiB) never take out-of-core ingest: they load on the default path
+(which may itself shard the pre-pass from 8 MiB, copying the whole file into each scanning worker), where
+those copies are small. A load also stays on the default path when the arena could not give the
 same output: with `mergeLayers`, with the global instance plan, and for a file that contains
 annotation fill areas or reuses an entity id. A batch whose records cannot all be found after four retries is
 refused, and the pool's usual recovery splits it. The main thread, the parser and the pre-pass
 still hold the file: this lowers the pool's share of a load's memory, not the 2 GiB source limit.
+
+A host that rolls the flag out itself (the viewer's `perf-ooc` ramp) sets `GeometryProcessor.outOfCore = true`
+(`ProcessParallelOptions.outOfCore`) for the loads it chooses; left unset, the pool reads the global and the URL
+param. `onOutOfCoreDecision(ran)` then hears once per pool load whether it meshed out of core: `false` at the start
+of a load that does not, or the pre-pass scan's outcome (sparse sources, or the whole-file index for a file the
+arena cannot serve).
+
+## Other entry points
+
+- `@ifc-lite/geometry/world-frame`: render frame to IFC world coordinates and back (`ifcToViewerAxes`, `viewerToIfcAxes`, `renderFrameWorldOffset`)
+- `@ifc-lite/geometry/rtc-rebase`: move already-loaded models onto a federation's shared RTC anchor
+- `@ifc-lite/geometry/geometry-class`: the per-mesh `geometryClass` tags (`GEOM_CLASS_OCCURRENCE`, `GEOM_CLASS_INSTANCED_TYPE`, ..., `geometryClassOf`)
+- `@ifc-lite/geometry/remesh`: `RemeshClient` re-meshes edited elements in a long-lived wasm worker, in the frame and style of the model's load
+- `@ifc-lite/geometry/rhino-export`: `exportRhinoScene(bytes, options)` builds the encoded Rhino scene (manifest JSON and binary blob) that `@ifc-lite/rhino3dm` writes as `.3dm`, plus its option types and value lists
+- `@ifc-lite/geometry/scan-segmentation`: `segmentScan` detects planes and cylinders in a point cloud (Rust via wasm)
+- `@ifc-lite/geometry/scan-proposals`: `proposeScanElements` turns a segmentation report into wall, slab, column and pipe proposals
+
+`GeometryProcessor` also carries the Rust exporters: `exportGlb`, `exportGlbFromMeshes`, `exportObj`, `exportUsd`, `exportIfcx`, `exportStep`, `exportMerged`, `exportCsv`, `exportJson`, `exportJsonld`, `exportHbjson`, `exportDfjson`, `exportKmzFromMeshes` and `exportLandXmlTerrain`. Each returns `null` until the processor is initialized. See the [`@ifc-lite/export` README](../export/README.md).
 
 ## API
 

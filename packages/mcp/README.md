@@ -12,20 +12,51 @@ Model Context Protocol (MCP) server for **ifc-lite** — agent-native BIM via JS
 # Run against a local IFC file over stdio (the default for Claude Desktop / Cursor)
 npx @ifc-lite/mcp ./model.ifc
 
-# Federate multiple files
-npx @ifc-lite/mcp ./arch.ifc ./struct.ifc ./mep.ifc --federate
+# Several files in one session
+npx @ifc-lite/mcp ./arch.ifc ./struct.ifc ./mep.ifc
 
-# Read-only (no mutation tools advertised)
+# Read-only (no mutation tools advertised; export and flow-checkpoint tools
+# can still write files under the allowed roots)
 npx @ifc-lite/mcp ./model.ifc --read-only
 
-# HTTP / Streamable HTTP for remote agents
-npx @ifc-lite/mcp ./model.ifc --transport http --port 8765 --token $API_TOKEN
+# HTTP / Streamable HTTP for remote agents. Files are not preloaded over HTTP:
+# each session starts empty and the agent loads models with model_load.
+npx @ifc-lite/mcp --transport http --port 8765 --token $API_TOKEN --allow ./models
 
 # Auto-open the WebGL viewer at startup. Add --open to also pop the URL in
 # the system browser.
 npx @ifc-lite/mcp ./model.ifc --viewer
 npx @ifc-lite/mcp ./model.ifc --open
 ```
+
+Other server options (`npx @ifc-lite/mcp --help` lists them all):
+
+| Flag | Meaning |
+| --- | --- |
+| `--port <n>` | HTTP port. Default `8765`. |
+| `--host <h>` | HTTP host. Default `127.0.0.1`. A non-loopback host needs `--token`, `--read-only-token` or `--insecure`. |
+| `--token <t>` | Bearer token for HTTP (repeatable). Full scope, or the `--read-only` preset when `--read-only` is set. |
+| `--read-only-token <t>` | Bearer token with the `--read-only` preset (repeatable). |
+| `--insecure` | Allow a non-loopback bind without a token. Never use it in production. |
+| `--allow <path>` | Restrict file access to this directory or file (repeatable, stdio and HTTP). |
+| `--allow-origin <origin>` | Let a browser origin read HTTP responses (repeatable). Default: none. |
+| `--bsdd <url>` | Override the bSDD endpoint. |
+| `--viewer-port <n>` | Preferred viewer port (`0` = any free port). |
+
+## Building client distribution artifacts
+
+From the repository root:
+
+```bash
+pnpm --filter @ifc-lite/mcp release:manifests
+```
+
+With the project's WASM build toolchain installed, this builds a Claude
+Desktop `.mcpb`, a dependency inventory and the MCP Registry `server.json`
+for the package version under the gitignored `packages/mcp/release-out/`
+directory (`--out <dir>` picks another one). Use `--no-bundle` to generate only `server.json`.
+The Registry entry identifies the matching npm release. Registry publication
+requires that npm version to exist with the same `mcpName`.
 
 ## Embedded loaded-model authoring
 
@@ -67,7 +98,7 @@ MCP Apps hosts can open interactive IFC result surfaces from the model-serving t
 The tools include a text summary and an A2UI v1.0 payload rendered by
 `ui://ifc-lite/a2ui-surface`. Connect the browser viewer through `viewer_open` to
 use row selection and the other viewer controls. In `--bridge` mode,
-`viewer_show_ui` delivers validated messages or a builder spec to a compatible
+`tab_show_ui` delivers validated messages or a builder spec to a compatible
 paired main viewer tab. See the [A2UI architecture guide](../../docs/architecture/a2ui.md#mcp-result-surfaces)
 for a Claude Desktop walkthrough.
 
@@ -110,9 +141,21 @@ ifc-lite mcp ./model.ifc
 ifc-lite mcp ./model.ifc --read-only
 ```
 
+### Add it to a client in one step
+
+```bash
+npx -y @ifc-lite/mcp install --client claude-desktop ./model.ifc
+npx -y @ifc-lite/mcp install --client claude-code -- --bridge
+npx -y @ifc-lite/mcp install --client cursor --dry-run
+```
+
+Clients: `claude-code`, `claude-desktop`, `cursor`, `vscode`. Existing configs
+are merged (other servers kept, a backup written first); `--dry-run` prints
+what would change. `install --help` lists the options.
+
 ### Claude Desktop
 
-Drop this into `claude_desktop_config.json`:
+Drop this into `claude_desktop_config.json` (`~/Library/Application Support/Claude/` on macOS, `%APPDATA%\Claude\` on Windows):
 
 ```json
 {
@@ -134,21 +177,24 @@ The same `npx` command works as a stdio server in any MCP-aware client.
 | Category | Examples |
 | --- | --- |
 | Discovery | `model_info`, `model_list`, `model_load`, `model_unload`, `schema_describe` |
-| Query | `query_entities`, `count_entities`, `get_entity`, `get_entities_bulk`, `spatial_hierarchy`, `containment_chain`, `relationships`, `properties_unique`, `materials_list`, `classifications_list`, `georeferencing`, `georeferencing_check`, `units`, `cost_data`, `cost_evaluate` |
+| Query | `query_entities`, `count_entities`, `get_entity`, `get_entities_bulk`, `spatial_hierarchy`, `containment_chain`, `relationships`, `properties_unique`, `materials_list`, `classifications_list`, `georeferencing`, `georeferencing_check`, `units`, `cost_data`, `cost_evaluate`, `structural_data` |
 | Geometry | `geometry_bbox`, `geometry_volume`, `geometry_area`, `geometry_get`, `raycast`, `clash_check`, `clash_matrix` |
-| Validation | `ids_validate`, `ids_explain`, `model_audit` |
+| Validation | `ids_validate`, `ids_explain`, `model_audit`, `check_rules` (a `.rules.json` rule set), `review_findings` |
 | IDS authoring | `ids_audit`, `ids_lint`, `ids_read`, `ids_apply_ops` (grounding-gated), `ids_write`, `ids_schema_search`, `ids_schema_entity`, `ids_schema_pset`, `ids_diff`, `ids_preview`, `ids_infer`, `ids_coverage`, `ids_test` |
-| Mutation | `entity_set_property`, `entity_delete_property`, `entity_set_attribute`, `entity_create`, `entity_delete`, `georeferencing_write`, `georeferencing_fix`, `mutation_batch`, `mutation_undo`, `mutation_diff`, `model_save` |
+| Mutation | `entity_set_property`, `entity_delete_property`, `entity_set_attribute`, `entity_create`, `entity_delete`, `georeferencing_write`, `georeferencing_fix`, `add_classification`, `assign_classification`, `mutation_batch`, `mutation_undo`, `mutation_diff`, `model_save` |
 | Hosted modelling | `place_opening`, `place_door`, `place_window` |
 | Design modelling | `place_curtain_wall`, `place_grid`, `place_grid_column` |
-| Storeys | `storey_list`, `storey_add`, `storey_rename`, `storey_plan_edit`, `storey_edit`, `storey_delete`: add, re-level (elevation or floor-to-floor) and delete storeys with geometry following them. `storey_plan_edit` dry-runs the edit and reports refusals before anything is written |
-| Physical edits | `edit_hosted_element`, `edit_element_geometry`, `copy_elements`, `duplicate_element`, `array_elements` |
+| Storeys | `storey_list`, `storey_add`, `storey_rename`, `storey_plan_edit`, `storey_edit`, `storey_delete`: add, re-level (elevation or floor-to-floor) and delete storeys with geometry following them. `storey_plan_edit` dry-runs the edit and reports refusals before anything is written; `storey_plan_add` does the same for `storey_add`. `set_top_constraint` binds an element top to a storey, slab or roof; `copy_to_storeys` copies products to other storeys |
+| Physical edits | `edit_hosted_element`, `edit_element_geometry`, `copy_elements`, `duplicate_element`, `array_elements`, `mirror_elements` |
 | Native Room | `query_rooms`, `room_command` |
 | Wall joins | `join_walls` |
 | BCF | `bcf_topic_list`, `bcf_topic_create`, `bcf_topic_update`, `bcf_topic_close`, `bcf_viewpoint_create`, `bcf_export` |
 | bSDD | `bsdd_search`, `bsdd_class`, `bsdd_property_sets`, `bsdd_match` |
 | Diff | `model_diff` (`by_content` for content-keyed matching), `quantity_diff` |
-| Export | `export_ifc`, `export_csv`, `export_json`, `export_glb`, `export_obj`, `export_ifcx`, `export_3dm` |
+| Draft layers and review | `create_draft_layer`, `draft_apply_ops`, `diff_layer`, `dry_run_merge`, `list_conflicts`, `publish_layer`, `request_review`, `respond_to_review`, `add_review_topic`, `add_review_feedback`, `get_review_feedback` |
+| Flow | `describe_flow`, `run_flow`, `propose_flow`, `resume_flow` |
+| Export | `export_ifc`, `export_csv`, `export_json`, `export_glb`, `export_obj`, `export_ifcx`, `export_usd`, `export_3dm`, `export_gltf`, `export_jsonld`, `export_cityjson`, `export_cityjsonseq`, `export_hbjson`, `export_dfjson` |
+| Model transforms | `model_merge`, `model_convert`, `model_extract`, `model_anonymize`, `model_simplify`, `model_lod`: write to `file_path` and leave the loaded model alone. An existing file there is replaced (a loaded model's source never is). `model_merge` and `model_anonymize` refuse a model with unsaved edits |
 | Viewer | `viewer_ask`, `viewer_open`, `viewer_close`, `viewer_status`, `viewer_select`, `viewer_colorize`, `viewer_isolate`, `viewer_hide`, `viewer_show`, `viewer_reset`, `viewer_fly_to`, `viewer_set_section`, `viewer_clear_section`, `viewer_color_by_storey`, `viewer_color_by_property`, `viewer_get_selection`, `viewer_wait_for_selection`, `viewer_describe_selection` |
 
 `join_walls` joins two straight walls in the same placement frame through the
@@ -162,7 +208,9 @@ hosted creation core. Pass `host_express_id`, optional `model_id` (required
 with several loaded models), and PascalCase `params`: `Offset`, `Width`,
 `Height`, optional `Sill` (required for a window). Lengths are metres in the
 wall's frame. Cuts must fit and avoid existing source/overlay openings;
-unreadable geometry is refused. The void/fill graph is written atomically,
+unreadable geometry is refused. `place_opening` also takes an IfcSlab host
+with `Position` (`[x, y]` in the slab's local frame), `Width` and `Depth`;
+slab footprint fit and overlap are not checked. The void/fill graph is written atomically,
 and one `mutation_undo` removes it. These writes reach IFC export; geometry
 tools continue to read the parsed model.
 
@@ -204,7 +252,7 @@ ePSet_MapConversion/ePSet_ProjectedCRS), or writes the IfcSite
 position (action `site`), and refuses, naming the missing input, rather than
 guess a CRS, unit or scale. `georeferencing_check` diagnoses the georeferencing
 and plans fixes; `georeferencing_fix` applies only the ones that go through the
-write API with every value known and no checker caveat. See the Georeferencing guide.
+write API with every value known and no checker caveat. See the [Georeferencing guide](../../docs/guide/georeferencing.md).
 
 One GlobalId resolves to one entity everywhere: an entity the session created
 wins over a same-GlobalId entity in the file, and a deleted one never resolves.
@@ -287,17 +335,27 @@ error.
 ## Bridge to a browser tab (`--bridge`)
 
 ```bash
-npx @ifc-lite/mcp --bridge              # stdio MCP, forwarded to one paired tab
-npx @ifc-lite/mcp --bridge --read-only  # tools the tab marks as mutating stay off
+npx @ifc-lite/mcp --bridge               # headless tools plus the paired tab's
+npx @ifc-lite/mcp ./model.ifc --bridge   # a local model and the tab, one server
+npx @ifc-lite/mcp --bridge --read-only   # tools the tab marks as mutating stay off
 ```
 
-`--bridge` lets a local agent (Claude Desktop, Claude Code, …) work on the
+`--bridge` lets a local agent (Claude Desktop, Claude Code, …) also work on the
 model open in an ifc-lite browser tab: a model loaded from a cloud source, or
-one with unsaved edits. The bridge speaks MCP over stdio and forwards every tool
-call (other than `bridge_status`) over a WebSocket on `127.0.0.1` to the paired tab, which runs it against
-its model. The bridge loads no model of its own, so it takes no file arguments
-and refuses `--transport http`. It stops, freeing its port, when stdin ends,
-closes or errors, and on SIGINT or SIGTERM.
+one with unsaved edits. It adds to the normal stdio server rather than
+replacing it: every headless tool, resource and prompt stays, on models loaded
+in this process. Once a tab pairs, its tools are added as `tab_<name>` (the
+tab's `model_audit` is `tab_model_audit`, next to this server's own
+`model_audit`) and removed when it disconnects, each time with
+`notifications/tools/list_changed`. `tab_*` calls go over a WebSocket on
+`127.0.0.1` to the paired tab, which runs them against its model. `viewer_*`
+tools drive this process's local viewer page, with two compatibility exceptions:
+the unlisted aliases `viewer_show_ui` and `viewer_ui_events` target the paired tab
+as `tab_show_ui` and `tab_ui_events` until 0.34. `--transport http` is refused. With the default port, nothing is bound
+until the agent first calls `bridge_status`, so a session that never pairs
+holds none; an explicit `--bridge-port` is bound at start. The bridge
+stops, freeing its port, when stdin ends, closes or errors, and on SIGINT or
+SIGTERM.
 
 **Status:** this package ships the local side. The viewer pairs from the
 pairing link, or from *Connect local agent* in its Sources panel and command
@@ -305,11 +363,12 @@ palette. Reads, selection inspection and palette discovery are available initial
 
 | Flag | Meaning |
 |------|---------|
-| `--bridge-port <n>` | Port on 127.0.0.1. Default `21517`; `0` picks a free one. The pairing link carries it. |
+| `--bridge-port <n>` | Port on 127.0.0.1. Default `21517`; if that is taken (a second session), the next nine ports and then any free one are tried. An explicit port does not fall back. `0` picks a free one. The pairing link carries the port. |
 | `--bridge-viewer-url <url>` | Base of the pairing link. Default `https://ifclite.com`. Its origin REPLACES the default in the allowlist; add `--allow-origin https://ifclite.com` to keep both. |
 | `--allow-origin <origin>` | Another browser origin that may connect (repeatable), e.g. a dev server. |
 | `--read-only` | A ceiling: tools the tab labels as mutating stay hidden and refused even if the tab allows changes. The tab must enforce the rest. |
 | `--insecure` | Accept a plain-`http` origin on a non-loopback host (refused otherwise); prints a warning. |
+| `--channel` | Also push clicks on agent surfaces into a Claude Code session as channel messages (research preview; start Claude Code with a channel flag naming this server). |
 
 ### Security model
 
@@ -352,7 +411,8 @@ palette. Reads, selection inspection and palette discovery are available initial
   replaced) is ignored from then on, frees its unpaired slot at once, and is
   terminated 250 ms after its close frame if the peer does not close.
 - **Pairing link.** `bridge_status` (always listed, because Claude Desktop
-  hides a server's stderr) and stderr both give the code and a link such as
+  hides a server's stderr) binds the port on its first call and gives the
+  code and a link such as
   `https://ifclite.com/#mcp-bridge=1&port=21517&code=ABCDE-FGHJK-MNPQR-STVWX`.
   Port and code sit in the URL fragment, which the browser does not send to the
   web server.
@@ -392,13 +452,18 @@ palette. Reads, selection inspection and palette discovery are available initial
   well-formed for the keywords the bridge validates (`properties` of schemas,
   `required` as strings, numeric bounds as numbers, ...), `type` must name a
   type the bridge enforces (`string`, `number`, `integer`, `boolean`, `array`,
-  `object`, `null`), and `additionalProperties` must be `true` or `false` (a
-  schema there would not be enforced). Other JSON Schema keywords (`pattern`,
-  `format`, `oneOf`, `const`, …) are published to the agent but not checked by
-  the bridge; the tab must validate them. Non-finite numbers (`1e999`) are
-  refused anywhere in a frame. An oversized or
-  malformed hello is refused; an update is rejected with a non-fatal `error`;
-  a result fails its call with a message naming the limit. The size and
+  `object`, `null`), `additionalProperties` must be `true` or `false`,
+  `anyOf` must be an array of schemas and `oneOf` a non-empty one, `pattern`
+  must compile, and `$ref` is refused (a tab schema has no `$defs` to resolve
+  against). The bridge enforces `type`, `properties`, `required`, `items`,
+  `enum`, `const`, `uniqueItems`, numeric and length bounds, `anyOf` and
+  `additionalProperties: false`. `pattern` and `oneOf` are published but not
+  enforced on the server (a tab regex on agent input could stall it, and
+  `oneOf` branches may differ only by `pattern`), and neither are other
+  keywords (`format`, `exclusiveMaximum`, `multipleOf`, `allOf`, …); the tab
+  must validate them. Non-finite numbers (`1e999`) are refused anywhere in a
+  frame. An oversized or malformed hello is refused; an update is rejected
+  with a non-fatal `error`; a result fails its call with a message naming the limit. The size and
   depth walk is iterative and counts before it copies, and the schema-shape
   check recurses only after the 32-level bound has passed, so a value nested
   30,000 deep or an 8-million-element array is refused cheaply rather than
@@ -431,8 +496,9 @@ palette. Reads, selection inspection and palette discovery are available initial
   unknown id or an already answered call is ignored. Calls time out after
   120 s (`TIMEOUT`, and the tab gets a `cancel`); closing the socket fails all
   pending calls.
-- **No tab.** Only `bridge_status` is listed, and any other call fails at once
-  with `VIEWER_NOT_CONNECTED`. `notifications/tools/list_changed` is sent when
+- **No tab.** No `tab_*` tool is listed (except `tab_ui_events` while it
+  still holds clicks from a tab that went away), and a call to one fails at
+  once with `VIEWER_NOT_CONNECTED`. `notifications/tools/list_changed` is sent when
   the listed tools can change: on connect, disconnect, replacement, and an
   `update` that actually changes the effective permission or the tool list. At
   most one is sent per 200 ms; no-op updates send none.
@@ -461,6 +527,17 @@ palette. Reads, selection inspection and palette discovery are available initial
   `pairingPressure` (`failedAttempts`, `refusedBusy`) and tells the user to
   stop that program or page, or restart the bridge on another `--bridge-port`.
 
+- **UI events match what the agent showed.** A `ui-event` is accepted only
+  for a surface the agent sent to this tab with `tab_show_ui` and an event
+  name that surface raises (or `ask`); anything else is dropped and logged.
+  Its prompt counts as the user's words only when it is follow-up text the
+  agent wrote in that surface (a follow-up's `prompt`, an event's
+  `userMessage`, or an `ask` event's `context.prompt`); labels and data
+  values never count. Any
+  other prompt, typed or computed, still arrives, marked
+  `promptVerified: false`, and with `--channel` it is quoted as data rather
+  than passed on as the user's message.
+
 ### Wire protocol
 
 Exported browser-safe (no Node imports) as `@ifc-lite/mcp/bridge-protocol`,
@@ -472,15 +549,18 @@ protocol version `1`; `--bridge` carries them over a loopback WebSocket at
 
 | Direction | `type` | Fields |
 |-----------|--------|--------|
-| tab → bridge | `hello` (first frame) | `protocol`, `pairingCode`, `permission`, `tools[]` (`name`, `title?`, `description`, `inputSchema`, `readOnly`), `client?`, `resultAck?` |
-| bridge → tab | `welcome` | `protocol`, `sessionId`, `permission` (effective), `readOnlyCeiling`, `bridge`, `features?` ([`image-content`]), `resultAck?` |
+| tab → bridge | `hello` (first frame) | `protocol`, `pairingCode`, `permission`, `tools[]` (`name`, `title?`, `description`, `inputSchema`, `readOnly`), `client?`, `resultAck?`, `a2uiSurface?` |
+| bridge → tab | `welcome` | `protocol`, `sessionId`, `permission` (effective), `readOnlyCeiling`, `bridge`, `features?` ([`image-content`, `ui-events`]), `resultAck?` |
 | bridge → tab | `a2ui-surface` | `sessionId`, `id`, `surface` (messages and optional title), sent when the tab advertises `hello.a2uiSurface` |
 | bridge → tab | `call` | `sessionId`, `id`, `name`, `arguments` |
 | tab → bridge | `result` | `sessionId`, `id`, `result` (an MCP `CallToolResult` with text, and image content when `welcome.features` lists `image-content`, passed through), `resultAck?` |
 | bridge → tab | `result-ack` | `sessionId`, `id`, `accepted` |
 | bridge → tab | `cancel` | `sessionId`, `id`, `reason` (`cancelled` or `timeout`) |
 | tab → bridge | `update` | `sessionId`, `permission?`, `tools?` |
+| tab → bridge | `ui-event` | `sessionId`, `event` (`surfaceId`, `name`, `prompt?`, `context?`): a click on a surface the agent sent with `tab_show_ui` |
 | bridge → tab | `error` | `code`, `message`; fatal codes end the channel; on the WebSocket transport, a close with code (4400 invalid, 4401 pairing failed, 4408 handshake timeout, 4409 replaced, 4426 protocol mismatch, 4503 shutting down) |
+
+The viewer sends a fresh 16-byte hex `nonce` with each verified hello. Its `pairingCode` is the lowercase hex HMAC-SHA256 of `ifc-lite/tab/<nonce>`, keyed by the UTF-8 normalized pairing code, or by the previous resume key when `resume: true`. The bridge returns the HMAC for `ifc-lite/bridge/<nonce>` in `welcome.proof`. The viewer verifies it before serving calls. Both derive the next single-use key from `ifc-lite/next/<nonce>`. Reload uses that key from tab session storage, starts read-only, and requires the same bridge process and allowed origin. Disconnecting, replacing a tab, or rotating its pairing link revokes the key. Earlier protocol clients can still use a one-time code.
 
 Consumers can parse acknowledgements with `parseServerMessage(text, { resultAck: true })`. Both peers opt in to result acknowledgements by sending `resultAck: true` in `hello` and `welcome`. An intact result marked `resultAck: true` receives a `result-ack` after the bridge checks the result against its pending calls. A result that settled the pending call has `accepted: true`. Pending acknowledgements occupy call slots. If confirmation never arrives, the viewer closes the pairing. Older peers continue using protocol version 1 with the original delivery behavior.
 

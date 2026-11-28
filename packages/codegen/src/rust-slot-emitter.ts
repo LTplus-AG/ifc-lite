@@ -29,8 +29,8 @@
  * stays a moving slot and reads as absent in the older schema.
  */
 
-import type { EntityDefinition, ExpressSchema } from './express-parser.js';
-import { getAllAttributes } from './express-parser.js';
+import type { EntityDefinition, ExpressSchema } from './generator-schema.js';
+import { getAllAttributes } from './generator-schema.js';
 import { AttributeKindResolver, KIND } from './rust-attribute-flags.js';
 import type { AttributeRenameRow, RenameTable } from './rust-slot-renames.js';
 

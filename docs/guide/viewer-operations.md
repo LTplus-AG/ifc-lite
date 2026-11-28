@@ -64,6 +64,7 @@ Inspection returns a model revision. Supplying `expected_revision` refuses a
 stale request. Running and completed jobs refuse model replacement, geometry
 replacement and subsequent native edits. Results are limited to 1 MB. The optional
 idempotency key retains an outcome for up to 100 synchronous requests per host;
+once 100 keys are held, a new keyed request is refused until the agent reconnects;
 reusing a key with changed input, model or explicit expected revision is refused.
 A retry retains its outcome after its own successful revision change.
 

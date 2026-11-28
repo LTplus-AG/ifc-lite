@@ -60,30 +60,41 @@ function fakeGpu(): { device: GPUDevice; pipeline: RenderPipeline } {
 
 interface Box { expressId: number; at: [number, number, number]; size: number; color: Rgba }
 
+/** A box's 12 triangles over corners 0-7 (bit `axis` of a corner: at the far side on that axis). */
+const BOX_TRIANGLES = [0, 2, 1, 1, 2, 3, 4, 5, 6, 5, 7, 6, 0, 1, 4, 1, 5, 4, 2, 6, 3, 3, 6, 7, 0, 4, 2, 2, 4, 6, 1, 3, 5, 3, 7, 5];
+/** World coordinate of `corner` of `box` on `axis`. */
+const boxCorner = (box: Box, corner: number, axis: number): number => box.at[axis] + ((corner >> axis) & 1) * box.size;
+
 /**
  * A worker batch of welded boxes in the layout the wasm encoder writes: level 10, every box in the
  * window of cell 0 (16 m below the origin), lanes stamped with the id and colour salt.
  */
-function compactBatch(boxes: readonly Box[]): MeshData[] {
-  const scale = 1024, window = -16 * scale;
+function compactBatch(boxes: readonly Box[], cellX = 0, reverseNormals = false): MeshData[] {
+  const scale = 1024, window = -16 * scale, windowX = (cellX * 32 - 16) * scale;
   const payload: CompactPayload = {
+    lodNormals: new Float32Array(boxes.length * 8 * 3),
     records: new Uint8Array(boxes.length * 8 * 12), indices: new Uint16Array(boxes.length * 36),
-    table: new Uint32Array(boxes.length * 6), windows: new Float64Array(boxes.length * 3).fill(window),
+    table: new Uint32Array(boxes.length * 7), windows: new Float64Array(boxes.length * 3).fill(window),
     bounds: new Float64Array(boxes.length * 6), cells: new Int32Array(boxes.length * 3),
   };
+  // `cellX`: the compact cell on x ([32 * cellX - 16, 32 * cellX + 16) m), whose window the boxes are written in.
+  for (let row = 0; row < boxes.length; row++) { payload.windows[row * 3] = windowX; payload.cells[row * 3] = cellX; }
   const view = new DataView(payload.records.buffer);
-  const triangles = [0, 2, 1, 1, 2, 3, 4, 5, 6, 5, 7, 6, 0, 1, 4, 1, 5, 4, 2, 6, 3, 3, 6, 7, 0, 4, 2, 2, 4, 6, 1, 3, 5, 3, 7, 5];
   boxes.forEach((box, row) => {
-    payload.table.set([row, row * 8, 8, row * 36, 36, 10], row * 6);
+    payload.table.set([row, row * 8, 8, row * 36, 36, 10, 24], row * 7);
     payload.bounds.set([...box.at, box.at[0] + box.size, box.at[1] + box.size, box.at[2] + box.size], row * 6);
-    payload.indices.set(triangles, row * 36);
+    payload.indices.set(BOX_TRIANGLES, row * 36);
     for (let corner = 0; corner < 8; corner++) {
       const at = (row * 8 + corner) * 12;
       for (let axis = 0; axis < 3; axis++) {
-        view.setUint16(at + axis * 2, Math.round((box.at[axis] + ((corner >> axis) & 1) * box.size) * scale) - window, true);
+        view.setUint16(at + axis * 2, Math.round(boxCorner(box, corner, axis) * scale) - (axis === 0 ? windowX : window), true);
       }
       // Outward corner normal, oct-encoded: +-1/3 on each axis folds to bytes 85/170 (or their mirror for -z).
       const sign = [(corner & 1) * 2 - 1, ((corner >> 1) & 1) * 2 - 1, ((corner >> 2) & 1) * 2 - 1];
+      if (reverseNormals) for (let k = 0; k < 3; k++) sign[k] *= -1;
+      const faceNormals = [[sign[0], 0, 0], [0, sign[1], 0], [0, 0, sign[2]]];
+      faceNormals.sort((a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2]);
+      payload.lodNormals!.set(faceNormals[0], (row * 8 + corner) * 3);
       const oct = (v: number) => Math.round((v * 0.5 + 0.5) * 255);
       const ox = sign[2] > 0 ? sign[0] / 3 : sign[0] * (2 / 3), oy = sign[2] > 0 ? sign[1] / 3 : sign[1] * (2 / 3);
       view.setUint16(at + 6, (oct(ox) << 8) | oct(oy), true);
@@ -114,6 +125,8 @@ function upload(scene: Scene, gpu: ReturnType<typeof fakeGpu>, meshes: MeshData[
 
 const pages = (scene: Scene): BatchedMesh[] => scene.getBatchedMeshes().filter((batch) => batch.indexFormat === 'uint16');
 const buckets = (scene: Scene): BatchedMesh[] => scene.getBatchedMeshes().filter((batch) => batch.indexFormat === undefined);
+/** `getCompactStats` without the page counters. */
+const pagedAndDecodes = (scene: Scene) => { const stats = scene.getCompactStats(); return stats && { paged: stats.paged, decodes: stats.decodes }; };
 const entitiesOf = (batches: readonly BatchedMesh[]): number[] => [...new Set(batches.flatMap((batch) => batch.expressIds))].sort((a, b) => a - b);
 
 /** Compact meshes decoded to f32 since the current test began (the counter is process-wide). */
@@ -658,6 +671,106 @@ describe('compact meshes in the scene', () => {
     assert.equal(scene.demoteCompact(), false);
   });
 
+  it('wait queued, still compact, while the quantized pipeline probe is in flight, then draw from pages', async () => {
+    // The viewer probes the quantized pipelines asynchronously when the renderer starts; a load that
+    // raced the probe used to decode whatever arrived first to buckets for good (lane L9: FZK always
+    // ended with 0 pages, advanced_model with 0 or 59-90 between loads of one build).
+    const gpu = fakeGpu(), scene = new Scene();
+    await loadCompactPages();
+    const settle = scene.beginQuantizedProbe();
+    assert.equal(scene.quantizedBatchesPending, true);
+    const meshes = compactBatch([{ expressId: 401, at: [0, 0, 0], size: 1, color: GREY }, { expressId: 402, at: [2, 0, 0], size: 1, color: RED }]);
+    scene.queueMeshes(meshes);
+    for (let i = 0; i < 3; i++) scene.flushPending(gpu.device, gpu.pipeline, 0);
+    scene.finalizeStreaming(gpu.device, gpu.pipeline); // a stream that ends before the probe does
+    assert.equal(scene.getBatchedMeshes().length, 0, 'nothing drawn yet');
+    assert.equal(scene.hasQueuedMeshes(), true);
+    assert.ok(meshes.every((mesh) => mesh.compact), 'still compact');
+    assert.equal(decoded(), 0);
+
+    scene.setQuantizedBatches(true); // the probe's outcome is applied before its hold is released
+    settle();
+    settle(); // a second call is a no-op
+    assert.equal(scene.quantizedBatchesPending, false);
+    flushAll(scene, gpu);
+    assert.deepEqual(entitiesOf(pages(scene)), [401, 402]);
+    assert.equal(buckets(scene).length, 0);
+    assert.equal(pages(scene)[0].vertexBuffer.size, 8 * 12, 'trimmed at the drain that filled it: its stream had ended');
+    assert.equal(scene.hasStreamingFragments(), false);
+    assert.equal(decoded(), 0);
+    assert.deepEqual(pagedAndDecodes(scene), { paged: 2, decodes: {} });
+  });
+
+  it('decode the waiting queue to buckets when the probe finds no quantized pipelines', async () => {
+    const gpu = fakeGpu(), scene = new Scene();
+    await loadCompactPages();
+    const settle = scene.beginQuantizedProbe();
+    scene.queueMeshes(compactBatch([{ expressId: 411, at: [0, 0, 0], size: 1, color: GREY }]));
+    scene.flushPending(gpu.device, gpu.pipeline, 0);
+    scene.finalizeStreaming(gpu.device, gpu.pipeline);
+    assert.equal(scene.getBatchedMeshes().length, 0);
+    settle(); // the probe failed: the pipelines stay off
+    flushAll(scene, gpu);
+    assert.deepEqual(entitiesOf(buckets(scene)), [411]);
+    assert.equal(pages(scene).length, 0);
+    assert.deepEqual(pagedAndDecodes(scene), { paged: 0, decodes: { pipelines: 1 } });
+  });
+
+  it('count why each mesh a load sends to buckets was decoded', async () => {
+    const gpu = fakeGpu(), scene = await newScene();
+    const meshes = compactBatch([
+      { expressId: 421, at: [0, 0, 0], size: 1, color: GREY },
+      { expressId: 422, at: [2, 0, 0], size: 1, color: GREY },
+      { expressId: 423, at: [4, 0, 0], size: 1, color: GREY },
+    ]);
+    meshes[1].color = RED; // recoloured after encoding: its records carry the old colour salt
+    meshes[2].origin = [1, 0, 0]; // moved after encoding
+    upload(scene, gpu, meshes);
+    assert.deepEqual(entitiesOf(pages(scene)), [421]);
+    assert.deepEqual(pagedAndDecodes(scene), { paged: 1, decodes: { lane: 1, moved: 1 } });
+    scene.clear();
+    assert.deepEqual(pagedAndDecodes(scene), { paged: 0, decodes: {} });
+  });
+
+  it('land on the lattice nodes the bucket path draws the same mesh on, whatever the mesh frame', async () => {
+    // The bucket path quantizes onto 2^-10 nodes relative to its batch frame origin; compact records
+    // hold absolute nodes. With the frame at an arbitrary point (the first mesh's box centre) the two
+    // put a vertex up to a step apart, so the flag moved every edge and flipped near-coplanar faces
+    // (lane L9: pixel gate 0.12-7.4% on every model). The frame now snaps to the 2^-9 lattice.
+    const box: Box = { expressId: 431, at: [5.1234, 2.71828, -3.14159], size: 1.0007, color: GREY };
+    const origin: [number, number, number] = [5, 2, -3];
+    const positions = new Float32Array(24), normals = new Float32Array(24);
+    for (let corner = 0; corner < 8; corner++) {
+      for (let axis = 0; axis < 3; axis++) {
+        positions[corner * 3 + axis] = boxCorner(box, corner, axis) - origin[axis];
+        normals[corner * 3 + axis] = ((corner >> axis) & 1) * 2 - 1;
+      }
+    }
+    const flat: MeshData = { expressId: 431, modelIndex: 0, color: GREY, origin, positions, normals, indices: new Uint32Array(BOX_TRIANGLES) };
+    // Each batch's eight vertices as absolute lattice node indices (world * 1024), sorted.
+    const nodes = (batch: BatchedMesh): string[] => {
+      const view = new DataView(bytesOf(batch.vertexBuffer).buffer);
+      const out: string[] = [];
+      for (let v = 0; v < 8; v++) {
+        out.push([0, 1, 2].map((axis) => {
+          const world = batch.origin![axis] + batch.quantized!.min[axis] + view.getUint16(v * 12 + axis * 2, true) * batch.quantized!.step;
+          assert.ok(Number.isInteger(world * 1024), `axis ${axis}: ${world} is a lattice node`);
+          return world * 1024;
+        }).join());
+      }
+      return [...new Set(out)].sort();
+    };
+    const gpuOff = fakeGpu(), off = await newScene();
+    upload(off, gpuOff, [flat]);
+    off.finalizeStreaming(gpuOff.device, gpuOff.pipeline);
+    const [bucket] = buckets(off);
+    assert.ok(bucket.quantized, 'the bucket batch is quantized');
+    const gpuOn = fakeGpu(), on = await newScene();
+    upload(on, gpuOn, compactBatch([box]));
+    const [page] = pages(on);
+    assert.deepEqual(nodes(bucket), nodes(page));
+  });
+
   it('mix with f32 meshes of the same batch', async () => {
     const gpu = fakeGpu(), scene = await newScene();
     const flat: MeshData = {
@@ -668,5 +781,557 @@ describe('compact meshes in the scene', () => {
     assert.deepEqual(entitiesOf(pages(scene)), [51]);
     assert.deepEqual(entitiesOf(buckets(scene)), [52]);
     assert.equal(decoded(), 0);
+  });
+});
+
+/**
+ * 40 small boxes (smaller than a LOD cell: they collapse) and 20 large ones along x. One colour, so the
+ * bucket path files them in one bucket per 32 m chunk cell; a box's id is `firstId + index`.
+ */
+function lodBoxes(firstId: number, x0: number, length: number, color: Rgba = GREY): Box[] {
+  return Array.from({ length: 60 }, (_, i) => ({
+    expressId: firstId + i, at: [x0 + (i * length) / 60, (i % 3) * 0.25, 0] as [number, number, number], size: i % 3 === 0 ? 2 : 0.1, color,
+  }));
+}
+
+/** A scene that builds LOD1 with 32 m chunk cells: pages when `compact`, the bucket path (f32 meshes) otherwise. */
+async function lodScene(compact: boolean): Promise<Scene> {
+  const scene = compact ? await newScene() : new Scene();
+  scene.setQuantizedBatches(true);
+  scene.setSpatialChunking({ cellSize: 32 });
+  scene.setLodBuildsEnabled(true);
+  return scene;
+}
+
+/** The world positions (in lattice steps) of the non-empty triangles of `indices` over a quantized batch's records. */
+function triangles(batch: BatchedMesh, indices: ArrayLike<number>, from = 0, to = indices.length, vertices = batch.vertexBuffer, withNormals = false): string[] {
+  const view = new DataView(bytesOf(vertices).buffer), q = batch.quantized!;
+  const out: string[] = [];
+  for (let t = from; t < to; t += 3) {
+    const corners = [indices[t], indices[t + 1], indices[t + 2]];
+    if (corners[0] === corners[1] || corners[1] === corners[2] || corners[0] === corners[2]) continue;
+    out.push(corners.map((v) => [0, 1, 2].map((axis) => Math.round((batch.origin![axis] + q.min[axis] + view.getUint16(v * 12 + axis * 2, true) * q.step) * 1024)).join(' ')
+      + (withNormals ? ` n${view.getUint16(v * 12 + 6, true)}` : '')).sort().join('|'));
+  }
+  return out;
+}
+
+/** A box as the f32 load gets it: an unwelded soup, every corner with its face's normal, on the lattice nodes the fixture writes. */
+function boxSoup(box: Box): MeshData {
+  const node = (corner: number, axis: number): number => Math.round(boxCorner(box, corner, axis) * 1024) / 1024;
+  const positions: number[] = [], normals: number[] = [];
+  for (let t = 0; t < BOX_TRIANGLES.length; t += 3) {
+    const [a, b, c] = [BOX_TRIANGLES[t], BOX_TRIANGLES[t + 1], BOX_TRIANGLES[t + 2]];
+    const p = [a, b, c].map((corner) => [0, 1, 2].map((axis) => node(corner, axis)));
+    const u = [0, 1, 2].map((k) => p[1][k] - p[0][k]), v = [0, 1, 2].map((k) => p[2][k] - p[0][k]);
+    const n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+    const length = Math.hypot(n[0], n[1], n[2]);
+    for (const corner of p) { positions.push(...corner); normals.push(n[0] / length, n[1] / length, n[2] / length); }
+  }
+  return {
+    expressId: box.expressId, modelIndex: 0, color: box.color,
+    positions: new Float32Array(positions), normals: new Float32Array(normals), indices: Uint32Array.from(positions.slice(0, positions.length / 3), (_, i) => i),
+  };
+}
+
+const u16 = (buffer: GPUBuffer): Uint16Array => new Uint16Array(bytesOf(buffer).buffer);
+
+/** The same box within half a lattice step: rows carry the source box, the decoded f32 meshes of these fixtures its lattice nodes. */
+function assertSameBox(a: BatchedMesh['bounds'], b: BatchedMesh['bounds'], message: string): void {
+  for (const corner of ['min', 'max'] as const) {
+    for (let axis = 0; axis < 3; axis++) assert.ok(Math.abs(a![corner][axis] - b![corner][axis]) <= 2 ** -11, `${message}: ${corner}[${axis}] ${a![corner][axis]} vs ${b![corner][axis]}`);
+  }
+}
+
+/** A page's LOD1 triangles, over its parts. */
+function pageLod1(page: BatchedMesh, withNormals = false): string[] {
+  const lod1 = u16(page.lod1IndexBuffer!);
+  return page.lodParts!.flatMap((part) => triangles(page, lod1, part.lod1Start, part.lod1Start + part.lod1Count, page.lod1VertexBuffer, withNormals));
+}
+
+/** End the stream and run the drains that build the pages' parts (a slice per drain, compact-lod.ts). */
+function settle(scene: Scene, gpu: ReturnType<typeof fakeGpu>): void {
+  scene.finalizeStreaming(gpu.device, gpu.pipeline);
+  flushAll(scene, gpu);
+}
+
+describe('compact pages take the decisions of the bucket batches they stand in for', () => {
+  for (const reverseNormals of [false, true]) it(`matches actual bucket LOD1 triangles and authored normals (reversed=${reverseNormals}, #11606)`, async () => {
+    const boxes = [...lodBoxes(1000, 0, 28), ...lodBoxes(2000, 0, 28, RED)];
+    const off = await lodScene(false), gpuOff = fakeGpu();
+    upload(off, gpuOff, boxes.map(box => {
+      const mesh = boxSoup(box);
+      if (reverseNormals) mesh.normals = mesh.normals.map(n => -n);
+      return mesh;
+    }));
+    settle(off, gpuOff);
+    assert.equal(buckets(off).length, 2);
+
+    const on = await lodScene(true), gpuOn = fakeGpu(), decodedOff = decoded();
+    upload(on, gpuOn, compactBatch(boxes, 0, reverseNormals));
+    settle(on, gpuOn);
+    assert.equal(buckets(on).length, 0);
+    assert.equal(decoded() - decodedOff, 0, 'built from the records: no mesh decoded');
+    for (const color of [GREY, RED]) {
+      const bucket = buckets(off).find((b) => b.color === color)!, page = pages(on).find((p) => p.color === color)!;
+      assert.ok(bucket.lod1IndexBuffer && bucket.lod1IndexCount! < bucket.indexCount, 'the bucket batch has a LOD1 range');
+      assert.equal(page.lodParts?.length, 1);
+      const [part] = page.lodParts!;
+      assertSameBox(part.bounds, bucket.bounds, 'the part decides on the bucket batch\'s box');
+      assert.deepEqual({ start: part.lod0Start, count: part.lod0Count }, { start: 0, count: page.indexCount });
+      const bucketLod1 = triangles(bucket, new Uint32Array(bytesOf(bucket.lod1IndexBuffer).buffer, 0, bucket.lod1IndexCount), 0, undefined, undefined, true).sort();
+      assert.deepEqual(pageLod1(page, true).sort(), bucketLod1, 'the same triangles, each corner with the normal the bucket elects');
+      // Full detail is every triangle of the page, as before.
+      assert.equal(triangles(page, u16(page.indexBuffer)).length, 60 * 12);
+    }
+    assert.equal(on.getCompactStats()?.paged, 120);
+  });
+
+  it('take a bucket\'s decision once over every page that holds part of it, on the bucket\'s box', async () => {
+    // Compact cells 0 ([-16, 16) m) and 1 ([16, 48) m) both hold boxes of chunk cell 0 ([0, 32) m); cell 1 also of chunk cell 1.
+    const near = lodBoxes(1000, 0, 15), far = lodBoxes(2000, 17, 14), beyond = lodBoxes(3000, 33, 12);
+    const on = await lodScene(true), gpu = fakeGpu();
+    upload(on, gpu, [...compactBatch(near), ...compactBatch([...far, ...beyond], 1)]);
+    settle(on, gpu);
+    const [page0, page1] = pages(on);
+    assert.equal(pages(on).length, 2);
+    assert.equal(page0.lodParts?.length, 1);
+    assert.equal(page1.lodParts?.length, 2, 'the second page holds parts of two buckets');
+    assert.equal(page1.lodParts![0].bounds, page0.lodParts![0].bounds, 'one box for chunk cell 0, shared by both pages');
+    assert.deepEqual(page0.lodParts![0].bounds.min, [0, 0, 0]);
+    assert.ok(page0.lodParts![0].bounds.max[0] > 32, 'it reaches the far page\'s boxes of chunk cell 0');
+    assert.deepEqual(page1.lodParts![1].bounds.min, [33, 0, 0]);
+    // Each part's LOD0 range holds exactly its meshes' triangles, and the parts cover the page.
+    assert.equal(page1.lodParts![0].lod0Count + page1.lodParts![1].lod0Count, page1.indexCount);
+    assert.deepEqual(entitiesOf([page1]), entitiesOf([page1]).filter((id) => id >= 2000));
+
+    const off = await lodScene(false), gpuOff = fakeGpu();
+    upload(off, gpuOff, [...near, ...far, ...beyond].map(boxSoup));
+    settle(off, gpuOff);
+    const cell0 = buckets(off).find((b) => b.bounds!.min[0] === 0)!;
+    assertSameBox(cell0.bounds, page0.lodParts![0].bounds, 'chunk cell 0');
+    const bucketLod1 = triangles(cell0, new Uint32Array(bytesOf(cell0.lod1IndexBuffer!).buffer, 0, cell0.lod1IndexCount), 0, undefined, undefined, true).sort();
+    const lod1Of = (page: BatchedMesh, part: number) => triangles(page, u16(page.lod1IndexBuffer!), page.lodParts![part].lod1Start, page.lodParts![part].lod1Start + page.lodParts![part].lod1Count, page.lod1VertexBuffer, true);
+    assert.deepEqual([...lod1Of(page0, 0), ...lod1Of(page1, 0)].sort(), bucketLod1, 'per-page clustering: no entity spans the two pages here');
+  });
+
+  it('move the meshes of a bucket that would stay exact f32 (#9068) to buckets at the end of the stream', async () => {
+    const on = await lodScene(true), gpu = fakeGpu();
+    // Row 1 is a sliver on level 11 (the fixture writes 1024 steps per metre; read on level 11, its 1-step-thick
+    // box is 0.49 mm): level 10 collapses all of it, so its entity, and with it the bucket batch, stays f32.
+    const exact = compactBatch([{ expressId: 1, at: [0, 0, 0], size: 1, color: GREY }, { expressId: 2, at: [3.001, 0.001, 0.001], size: 0.0007, color: GREY }]);
+    // (odd level 11 nodes: each corner pair rounds onto one level 10 node)
+    exact[1].compact!.payload.table[1 * 7 + 5] = 11;
+    const other = compactBatch([{ expressId: 3, at: [0, 0, 0], size: 1, color: RED }]);
+    upload(on, gpu, [...exact, ...other]);
+    assert.deepEqual(entitiesOf(pages(on)), [1, 2, 3], 'paged while the model streams');
+    settle(on, gpu);
+    assert.deepEqual(entitiesOf(pages(on)), [3]);
+    assert.deepEqual(entitiesOf(buckets(on)), [1, 2]);
+    assert.equal(on.getCompactStats()?.decodes.exact, 2);
+  });
+
+  it('moves a mixed wall and thin plate to its exact bucket even when only the rim collapses (#11579, #11606)', async () => {
+    const on = await lodScene(true), gpu = fakeGpu();
+    const [wall] = compactBatch([{ expressId: 1, at: [0, 0, 0], size: 1, color: GREY },
+      { expressId: 1, at: [2, 0, 0], size: 1, color: GREY }]);
+    const { payload } = wall.compact!;
+    // One level-14 row with a thick wall and a disconnected two-step (122 µm) plate.
+    payload.table.set([0, 0, 16, 0, 72, 14, 48]);
+    const records = new DataView(payload.records.buffer);
+    for (let corner = 0; corner < 8; corner++) records.setUint16((8 + corner) * 12 + 4, 16384 + ((corner >> 2) * 2), true);
+    for (let index = 36; index < 72; index++) payload.indices[index] += 8;
+    payload.bounds.set([0, 0, 0, 3 / 16, 1 / 16, 1 / 16]);
+    upload(on, gpu, [wall]);
+    assert.deepEqual(entitiesOf(pages(on)), [1]);
+    settle(on, gpu);
+    assert.deepEqual(entitiesOf(buckets(on)), [1]);
+    assert.equal(buckets(on)[0].quantized, undefined);
+  });
+
+  it('keep a bucket paged whose finer-level entity loses no area on the bucket lattice (judged per entity, #11606)', async () => {
+    const on = await lodScene(true), gpu = fakeGpu();
+    const meshes = compactBatch([{ expressId: 1, at: [0, 0, 0], size: 1, color: GREY }, { expressId: 2, at: [3, 0, 0], size: 1, color: GREY }]);
+    meshes[1].compact!.payload.table[1 * 7 + 5] = 11; // read on level 11: a 0.5 m box, whole on the 1 mm lattice
+    upload(on, gpu, meshes);
+    settle(on, gpu);
+    assert.deepEqual(entitiesOf(pages(on)), [1, 2]);
+    assert.equal(on.getCompactStats()?.decodes.exact, undefined);
+  });
+
+  it('move a group to its bucket when the bucket holds f32 meshes of its own (#11606)', async () => {
+    const on = await lodScene(true), gpu = fakeGpu();
+    const flat: MeshData = {
+      expressId: 9, modelIndex: 0, color: GREY,
+      positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]), normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]), indices: new Uint32Array([0, 1, 2]),
+    };
+    upload(on, gpu, [...compactBatch([{ expressId: 1, at: [2, 0, 0], size: 1, color: GREY }, { expressId: 3, at: [2, 0, 0], size: 1, color: RED }]), flat]);
+    settle(on, gpu);
+    assert.deepEqual(entitiesOf(pages(on)), [3], 'the red group has a bucket of its own: paged');
+    assert.deepEqual(entitiesOf(buckets(on)), [1, 9], 'one bucket batch, as the f32 load builds it');
+    assert.equal(on.getCompactStats()?.decodes.shared, 1);
+  });
+
+  it('move a finalized group to its bucket when a later stream brings f32 meshes of that bucket (#11606)', async () => {
+    const on = await lodScene(true), gpu = fakeGpu();
+    upload(on, gpu, compactBatch([{ expressId: 1, at: [2, 0, 0], size: 1, color: GREY }, { expressId: 3, at: [2, 0, 0], size: 1, color: RED }]));
+    settle(on, gpu);
+    assert.deepEqual(entitiesOf(pages(on)), [1, 3], 'both groups paged after the first stream');
+    const flat: MeshData = {
+      expressId: 9, modelIndex: 0, color: GREY,
+      positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]), normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]), indices: new Uint32Array([0, 1, 2]),
+    };
+    upload(on, gpu, [flat]); // a second stream: no page grows
+    settle(on, gpu);
+    assert.deepEqual(entitiesOf(pages(on)), [3], 'the grey group joins the bucket its new f32 mesh opened');
+    assert.deepEqual(entitiesOf(buckets(on)), [1, 9]);
+    assert.equal(buckets(on).length, 1, 'one bucket batch, as the f32 load builds it');
+    assert.equal(on.getCompactStats()?.decodes.shared, 1);
+  });
+
+  it('keeps a refused shared group at LOD0 after an edit rebuilds its page (#11606)', async () => {
+    const on = await lodScene(true), gpu = fakeGpu();
+    const boxes = lodBoxes(1000, 0, 28);
+    upload(on, gpu, compactBatch(boxes));
+    settle(on, gpu);
+    assert.equal(pages(on)[0].lodParts?.[0].lod1, true);
+    on.refusesBucketPath = mesh => mesh.expressId >= 1000;
+    upload(on, gpu, [boxSoup({ ...boxes[0], expressId: 9 })]);
+    settle(on, gpu);
+    assert.equal(pages(on)[0].lodParts?.[0].lod1, false);
+    on.removeMeshesForEntity(1000);
+    flushAll(on, gpu);
+    assert.equal(pages(on)[0].lodParts?.[0].lod1, false);
+  });
+
+  it('leave a group paged at a later stream end when only an edit wrote its bucket (#11606)', async () => {
+    const on = await lodScene(true), gpu = fakeGpu();
+    upload(on, gpu, compactBatch([{ expressId: 1, at: [2, 0, 0], size: 1, color: GREY }, { expressId: 2, at: [4, 0, 0], size: 1, color: GREY }, { expressId: 3, at: [2, 0, 0], size: 1, color: RED }]));
+    settle(on, gpu);
+    assert.equal(on.translateMeshesForEntity(1, [0.25, 0, 0]), true); // an edit: entity 1 leaves its page for the bucket
+    flushAll(on, gpu);
+    assert.deepEqual(entitiesOf(pages(on)), [2, 3], 'the edit decodes no other mesh of its group');
+    const flat: MeshData = {
+      expressId: 9, modelIndex: 0, color: RED,
+      positions: new Float32Array([200, 0, 0, 201, 0, 0, 200, 1, 0]), normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]), indices: new Uint32Array([0, 1, 2]),
+    };
+    upload(on, gpu, [flat]); // a later stream, into another bucket
+    settle(on, gpu);
+    assert.deepEqual(entitiesOf(pages(on)), [2, 3], 'its end decodes no group whose bucket it did not write');
+    assert.equal(on.getCompactStats()?.decodes.shared ?? 0, 0);
+  });
+
+  it('leave a group paged at the end of a stream an edit of it ran during (#11606)', async () => {
+    const on = await lodScene(true), gpu = fakeGpu();
+    upload(on, gpu, compactBatch([{ expressId: 1, at: [2, 0, 0], size: 1, color: GREY }, { expressId: 2, at: [4, 0, 0], size: 1, color: GREY }, { expressId: 3, at: [2, 0, 0], size: 1, color: RED }]));
+    settle(on, gpu);
+    const flat: MeshData = {
+      expressId: 9, modelIndex: 0, color: RED,
+      positions: new Float32Array([200, 0, 0, 201, 0, 0, 200, 1, 0]), normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]), indices: new Uint32Array([0, 1, 2]),
+    };
+    upload(on, gpu, [flat]); // a later stream, into another bucket
+    assert.equal(on.translateMeshesForEntity(1, [0.25, 0, 0]), true); // an edit while it streams: entity 1 joins it as a fragment
+    settle(on, gpu);
+    assert.deepEqual(entitiesOf(pages(on)), [2, 3], 'its end decodes no other mesh of the edited group');
+  });
+
+  it('leave the edited group paged when that stream\'s finalize rolls back and runs again (#11606)', async () => {
+    const on = await lodScene(true), gpu = fakeGpu();
+    upload(on, gpu, compactBatch([{ expressId: 1, at: [2, 0, 0], size: 1, color: GREY }, { expressId: 2, at: [4, 0, 0], size: 1, color: GREY }, { expressId: 3, at: [2, 0, 0], size: 1, color: RED }]));
+    settle(on, gpu);
+    const flat: MeshData = {
+      expressId: 9, modelIndex: 0, color: RED,
+      positions: new Float32Array([200, 0, 0, 201, 0, 0, 200, 1, 0]), normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]), indices: new Uint32Array([0, 1, 2]),
+    };
+    upload(on, gpu, [flat]);
+    assert.equal(on.translateMeshesForEntity(1, [0.25, 0, 0]), true);
+    const rebuild = on['rebuildAndPublishBatches'];
+    on['rebuildAndPublishBatches'] = () => { on['rebuildAndPublishBatches'] = rebuild; throw new Error('the rebuild failed'); };
+    assert.throws(() => on.finalizeStreaming(gpu.device, gpu.pipeline), /the rebuild failed/);
+    settle(on, gpu); // the retry: the rollback put the edit's bucket key back
+    assert.deepEqual(entitiesOf(pages(on)), [2, 3], 'the retry decodes no other mesh of the edited group');
+  });
+
+  for (const same of [true, false]) it(`reconciles real stream arrivals across edit and finalize retry (same bucket=${same}, #11606)`, async () => {
+    const on = await lodScene(true), gpu = fakeGpu();
+    upload(on, gpu, compactBatch([{ expressId: 1, at: [2, 0, 0], size: 1, color: GREY }, { expressId: 2, at: [4, 0, 0], size: 1, color: GREY }, { expressId: 3, at: [2, 0, 0], size: 1, color: RED }]));
+    settle(on, gpu);
+    const flat: MeshData = {
+      expressId: 9, modelIndex: 0, color: same ? GREY : RED,
+      positions: new Float32Array([2, 0, 0, 3, 0, 0, 2, 1, 0]), normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]), indices: new Uint32Array([0, 1, 2]),
+    };
+    upload(on, gpu, [flat]);
+    assert.equal(on.translateMeshesForEntity(1, [0.25, 0, 0]), true);
+    const rebuild = on['rebuildAndPublishBatches'];
+    on['rebuildAndPublishBatches'] = () => { on['rebuildAndPublishBatches'] = rebuild; throw new Error('the rebuild failed'); };
+    assert.throws(() => on.finalizeStreaming(gpu.device, gpu.pipeline), /the rebuild failed/);
+    settle(on, gpu); // the retry: the rollback put the edit's bucket key back
+    assert.deepEqual(entitiesOf(pages(on)), same ? [3] : [2], 'only the bucket receiving genuine f32 geometry reconciles');
+  });
+
+  it('keep a bucket paged whose mesh only outgrew its window (level 9)', async () => {
+    const on = await lodScene(true), gpu = fakeGpu();
+    const meshes = compactBatch([{ expressId: 1, at: [0, 0, 0], size: 1, color: GREY }, { expressId: 2, at: [3, 0, 0], size: 1, color: GREY }]);
+    meshes[1].compact!.payload.table[1 * 7 + 5] = 9;
+    upload(on, gpu, meshes);
+    settle(on, gpu);
+    assert.deepEqual(entitiesOf(pages(on)), [1, 2]);
+    assert.equal(on.getCompactStats()?.decodes.exact, undefined);
+  });
+
+  it('move the meshes of a bucket wider than the u16 lattice range to buckets', async () => {
+    const on = await lodScene(true), gpu = fakeGpu();
+    // 66 m apart on x, in two compact cells; with chunking off the bucket path files both in one batch.
+    on.setSpatialChunking(null);
+    upload(on, gpu, [...compactBatch([{ expressId: 1, at: [-10, 0, 0], size: 1, color: GREY }]), ...compactBatch([{ expressId: 2, at: [55, 0, 0], size: 1, color: GREY }], 1)]);
+    settle(on, gpu);
+    assert.equal(pages(on).length, 0);
+    assert.equal(on.getCompactStats()?.decodes.exact, 2);
+  });
+
+  it('empty a retired entity\'s LOD1 triangles and keep every other range', async () => {
+    const on = await lodScene(true), gpu = fakeGpu();
+    upload(on, gpu, compactBatch(lodBoxes(1000, 0, 28)));
+    settle(on, gpu);
+    const [page] = pages(on);
+    const before = pageLod1(page).length;
+    // Box 1000 is large (it keeps LOD1 triangles); a removal retires it.
+    assert.equal(on.removeMeshesForEntity(1000), true);
+    assert.ok(page.lodParts, 'the page keeps its parts');
+    assert.equal(pageLod1(page).length, before - 12, 'its 12 triangles are empty now');
+    assert.equal(on.getCompactStats()?.paged, 59);
+  });
+
+  it('drop a page\'s parts when a mesh joins it, and build them again when that stream ends', async () => {
+    const on = await lodScene(true), gpu = fakeGpu();
+    upload(on, gpu, compactBatch(lodBoxes(1000, 0, 28)));
+    settle(on, gpu);
+    const [page] = pages(on);
+    const lod1 = page.lod1IndexBuffer!;
+    upload(on, gpu, compactBatch([{ expressId: 5000, at: [1, 1, 1], size: 3, color: GREY }]));
+    assert.equal(pages(on).length, 1);
+    assert.equal(page.lodParts, undefined, 'the parts no longer cover the page');
+    assert.equal(page.lod1IndexBuffer, undefined);
+    assert.equal(isDestroyed(lod1), true);
+    settle(on, gpu);
+    assert.equal(pages(on)[0].lodParts?.[0].lod0Count, page.indexCount, 'the next settle rebuilds them');
+    assert.equal(triangles(page, u16(page.indexBuffer)).length, 61 * 12);
+  });
+
+  it('build the parts a page per drain, and report queued work until the last one is in', async () => {
+    const on = await lodScene(true), gpu = fakeGpu();
+    upload(on, gpu, [...compactBatch(lodBoxes(1000, 0, 15)), ...compactBatch(lodBoxes(2000, 17, 14), 1)]);
+    on.finalizeStreaming(gpu.device, gpu.pipeline);
+    assert.equal(on.hasQueuedMeshes(), true, 'the build is work the flush loop still has to do');
+    assert.ok(pages(on).every((page) => page.lodParts === undefined), 'a page draws whole until its parts are installed');
+    let drains = 0;
+    for (; on.hasQueuedMeshes(); drains++) on.flushPending(gpu.device, gpu.pipeline, 0);
+    assert.equal(drains, 5, 'two pages clustered, two installed, then the build ends: one step per drain at a zero budget');
+    assert.ok(pages(on).every((page) => page.lodParts !== undefined));
+  });
+
+  it('drop a group\'s LOD1 when a retire takes it below the bucket\'s triangle minimum (#11606)', async () => {
+    // 42 boxes, 504 triangles: one group just over LOD_MIN_TRIANGLES (500).
+    const on = await lodScene(true), gpu = fakeGpu();
+    upload(on, gpu, compactBatch(lodBoxes(1000, 0, 28).slice(0, 42)));
+    settle(on, gpu);
+    assert.deepEqual(pages(on)[0].lodParts?.map((part) => part.lod1), [true]);
+    assert.equal(on.removeMeshesForEntity(1000), true); // 492 triangles left
+    flushAll(on, gpu);
+    assert.deepEqual(pages(on)[0].lodParts?.map((part) => part.lod1), [false], 'as the bucket rebuilt with 492 triangles draws LOD0');
+  });
+
+  it('count a written mesh for its group, and give that group no LOD1 on any page (#11606)', async () => {
+    const on = await lodScene(true), gpu = fakeGpu();
+    const near = compactBatch(lodBoxes(1000, 0, 15));
+    upload(on, gpu, [...near, ...compactBatch(lodBoxes(2000, 17, 13), 1)]);
+    settle(on, gpu);
+    const far = pages(on).find((page) => page.expressIds.includes(2000))!;
+    assert.deepEqual(far.lodParts?.map((part) => part.lod1), [true]);
+    near[0].positions = new Float32Array([-5, 0, 0, -4, 0, 0, -5, 1, 0]); // written: still drawn from its page, no records any more
+    near[0].indices = new Uint32Array([0, 1, 2]);
+    assert.equal(on.removeMeshesForEntity(2001), true); // an edit: the group's pages are built again
+    flushAll(on, gpu);
+    assert.deepEqual(far.lodParts?.map((part) => part.lod1), [false], 'no LOD1 decided on part of the bucket');
+    const nearPage = pages(on).find((page) => page.expressIds.includes(1001))!;
+    assert.equal(nearPage.lodParts, undefined, 'the written mesh\'s page drops its old parts and draws whole');
+    assert.equal(far.lodParts![0].bounds.min[0], -5, 'the written mesh counts for the box');
+  });
+
+  it('build every page again when a mesh retires while the build runs', async () => {
+    const on = await lodScene(true), gpu = fakeGpu();
+    upload(on, gpu, compactBatch(lodBoxes(1000, 0, 28)));
+    on.finalizeStreaming(gpu.device, gpu.pipeline);
+    assert.equal(on.removeMeshesForEntity(1000), true);
+    assert.equal(pages(on)[0].lodParts, undefined, 'the planned build is dropped: the page draws whole');
+    assert.equal(on.hasQueuedMeshes(), true, 'and is planned again');
+    flushAll(on, gpu);
+    assert.ok(pages(on)[0].lodParts, 'built again without the retired mesh');
+  });
+
+  it('shrink a group\'s box on every page when one of its meshes retires (#11606)', async () => {
+    // One group (chunk cell 0) over two pages (compact cells 0 and 1); a third page holds another group only.
+    const on = await lodScene(true), gpu = fakeGpu();
+    upload(on, gpu, [...compactBatch(lodBoxes(1000, 0, 15)), ...compactBatch(lodBoxes(2000, 17, 13), 1), ...compactBatch(lodBoxes(3000, 40, 5, RED), 1)]);
+    settle(on, gpu);
+    const [near, far] = pages(on).filter((page) => page.color === GREY);
+    const red = pages(on).find((page) => page.color === RED)!;
+    const redParts = red.lodParts;
+    assert.equal(far.lodParts![0].bounds.min[0], 0, 'the far page decides on the whole group\'s box');
+    for (let id = 1000; id < 1060; id++) on.removeMeshesForEntity(id); // every mesh of the near page
+    flushAll(on, gpu);
+    assert.ok(far.lodParts![0].bounds.min[0] >= 17, `the far page's box shrank to its own meshes: ${far.lodParts![0].bounds.min[0]}`);
+    assert.equal(pages(on).includes(near), false);
+    assert.equal(red.lodParts, redParts, 'a page of other groups only keeps its parts');
+  });
+
+  it('run the stream end\'s moves even when a mesh retires just before it (#11606)', async () => {
+    const on = await lodScene(true), gpu = fakeGpu();
+    const exact = compactBatch([{ expressId: 1, at: [0, 0, 0], size: 1, color: GREY }, { expressId: 2, at: [3.001, 0.001, 0.001], size: 0.0007, color: GREY }]);
+    exact[1].compact!.payload.table[1 * 7 + 5] = 11;
+    upload(on, gpu, [...exact, ...compactBatch([{ expressId: 3, at: [0, 0, 0], size: 1, color: RED }, { expressId: 4, at: [5, 0, 0], size: 1, color: RED }])]);
+    assert.equal(on.removeMeshesForEntity(4), true);
+    settle(on, gpu);
+    assert.deepEqual(entitiesOf(buckets(on)), [1, 2], 'the edit waits for the stream\'s own build');
+  });
+
+  for (const during of [true, false]) {
+    it(`edit one entity ${during ? 'while the build runs' : 'after the build'}: only it moves, and its group keeps LOD1 (#11606)`, async () => {
+      const on = await lodScene(true), gpu = fakeGpu();
+      upload(on, gpu, compactBatch(lodBoxes(1000, 0, 28)));
+      if (during) on.finalizeStreaming(gpu.device, gpu.pipeline); else settle(on, gpu);
+      on.translateMeshesForEntity(1000, [0, 0, 0]);
+      flushAll(on, gpu);
+      assert.equal(on.getCompactStats()?.paged, 59, 'no group decoded for one edit');
+      assert.deepEqual(entitiesOf(buckets(on)), [1000]);
+      assert.deepEqual(pages(on)[0].lodParts?.map((part) => part.lod1), [true], 'the group still draws LOD1');
+    });
+  }
+
+  it('count only the meshes that left their pages as decoded, not those the bucket path refused (#11606)', async () => {
+    const on = await lodScene(true), gpu = fakeGpu();
+    const exact = compactBatch([{ expressId: 1, at: [0, 0, 0], size: 1, color: GREY }, { expressId: 2, at: [3.001, 0.001, 0.001], size: 0.0007, color: GREY }]);
+    exact[1].compact!.payload.table[1 * 7 + 5] = 11;
+    upload(on, gpu, exact);
+    const refuses = on.refusesBucketPath.bind(on);
+    on.refusesBucketPath = (mesh: MeshData) => mesh.expressId === 1 || refuses(mesh); // mesh 1 has no f32 frame
+    settle(on, gpu);
+    assert.deepEqual(entitiesOf(pages(on)), [1], 'the refused mesh stays paged');
+    assert.deepEqual(entitiesOf(buckets(on)), [2], 'the other reached its bucket');
+    assert.equal(on.getCompactStats()?.decodes.exact, 1, 'one decode, the mesh that moved');
+  });
+
+  it('move a compact group into its bucket with a same-colour f32 mesh 70 m away, which then stays f32 (#11606)', async () => {
+    const on = await lodScene(true), gpu = fakeGpu();
+    on.setSpatialChunking(null);
+    const flat: MeshData = {
+      expressId: 9, modelIndex: 0, color: GREY,
+      positions: new Float32Array([70, 0, 0, 71, 0, 0, 70, 1, 0]), normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]), indices: new Uint32Array([0, 1, 2]),
+    };
+    upload(on, gpu, [...compactBatch([{ expressId: 1, at: [0, 0, 0], size: 1, color: GREY }]), flat]);
+    settle(on, gpu);
+    assert.equal(pages(on).length, 0);
+    const [bucket] = buckets(on);
+    assert.deepEqual(entitiesOf([bucket]), [1, 9]);
+    assert.equal(bucket.quantized, undefined, 'one bucket 71 m wide: f32, as the f32 load draws it');
+  });
+
+  it('drop a page\'s old parts when one of its meshes is written after the retire rebuild planned it (#11606)', async () => {
+    const on = await lodScene(true), gpu = fakeGpu();
+    const near = compactBatch(lodBoxes(1000, 0, 15));
+    upload(on, gpu, [...near, ...compactBatch(lodBoxes(2000, 17, 13), 1)]);
+    settle(on, gpu);
+    const nearPage = pages(on).find((page) => page.expressIds.includes(1001))!, farPage = pages(on).find((page) => page.expressIds.includes(2000))!;
+    const old = nearPage.lodParts;
+    assert.ok(old);
+    assert.deepEqual(farPage.lodParts?.map((part) => part.lod1), [true], 'built');
+    assert.equal(on.removeMeshesForEntity(2001), true); // the group's two pages are built again, a step per drain
+    on.flushPending(gpu.device, gpu.pipeline, 0); // plans the near page
+    on.flushPending(gpu.device, gpu.pipeline, 0); // plans the far page
+    assert.equal(nearPage.lodParts, old, 'not installed yet: the old parts still draw');
+    near[0].positions = new Float32Array([-5, 0, 0, -4, 0, 0, -5, 1, 0]); // written before its install
+    near[0].indices = new Uint32Array([0, 1, 2]);
+    flushAll(on, gpu);
+    assert.equal(nearPage.lodParts, undefined, 'its old parts (stale box and LOD1) no longer draw: the page draws whole');
+    assert.deepEqual(farPage.lodParts?.map((part) => part.lod1), [false], 'built again: no LOD1 on any page of the written mesh\'s group');
+    assert.equal(farPage.lodParts![0].bounds.min[0], -5, 'the written mesh counts for the box');
+  });
+
+  it('leave a page whole when one of its meshes is written while the build runs', async () => {
+    const on = await lodScene(true), gpu = fakeGpu();
+    const meshes = compactBatch(lodBoxes(1000, 0, 28));
+    upload(on, gpu, meshes);
+    on.finalizeStreaming(gpu.device, gpu.pipeline);
+    meshes[5].positions = new Float32Array(meshes[5].positions); // a write: the mesh no longer has records
+    assert.equal(meshes[5].compact, undefined);
+    assert.doesNotThrow(() => flushAll(on, gpu));
+    assert.equal(pages(on)[0].lodParts, undefined, 'its page keeps its own buffer');
+  });
+
+  it('group by each scene\'s own chunking when the same meshes are paged in two scenes (#11606)', async () => {
+    const meshes = compactBatch([...lodBoxes(1000, 20, 4), ...lodBoxes(2000, 36, 4)], 1); // compact cell 1: [16, 48) m
+    const wide = await lodScene(true), gpuWide = fakeGpu();
+    wide.setSpatialChunking({ cellSize: 64 });
+    upload(wide, gpuWide, meshes);
+    settle(wide, gpuWide);
+    assert.equal(pages(wide)[0].lodParts?.length, 1, '64 m chunks: one bucket');
+    const narrow = await lodScene(true), gpuNarrow = fakeGpu();
+    upload(narrow, gpuNarrow, meshes);
+    settle(narrow, gpuNarrow);
+    assert.equal(pages(narrow)[0].lodParts?.length, 2, '32 m chunks: two buckets, not the first scene\'s cached one');
+  });
+
+  it('group by the new chunking when a cleared scene pages the same meshes again (#11606)', async () => {
+    const meshes = compactBatch([...lodBoxes(1000, 20, 4), ...lodBoxes(2000, 36, 4)], 1); // compact cell 1: [16, 48) m
+    const on = await lodScene(true), gpu = fakeGpu();
+    on.setSpatialChunking({ cellSize: 64 });
+    upload(on, gpu, meshes);
+    settle(on, gpu);
+    assert.equal(pages(on)[0].lodParts?.length, 1, '64 m chunks: one bucket');
+    on.clear();
+    on.setSpatialChunking({ cellSize: 32 });
+    upload(on, gpu, meshes);
+    settle(on, gpu);
+    assert.equal(pages(on)[0].lodParts?.length, 2, '32 m chunks: two buckets, not the cached keys from before the clear');
+  });
+
+  it('move a group to its bucket when an f32 mesh of that bucket is still queued at the end of the stream (#11606)', async () => {
+    const on = await lodScene(true), gpu = fakeGpu();
+    upload(on, gpu, compactBatch([{ expressId: 1, at: [2, 0, 0], size: 1, color: GREY }]));
+    on.queueMeshes([{ expressId: 9, modelIndex: 0, color: GREY, positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+      normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]), indices: new Uint32Array([0, 1, 2]) }]);
+    settle(on, gpu);
+    assert.equal(on.getCompactStats()?.decodes.shared, 1, 'judged with the queued mesh in its bucket');
+    assert.deepEqual(entitiesOf(buckets(on)), [1, 9]);
+  });
+
+  it('group a mesh whose first vertex lies just below a chunk plane as the bucket path does, from its source anchor (#11606)', async () => {
+    // Box 1's first corner is 0.2 mm below the 32 m plane: its level 10 record rounds onto the plane (chunk 1), the
+    // f32 load files it in chunk 0 with box 2. The payload's anchors carry the source value.
+    const boxes: Box[] = [{ expressId: 1, at: [31.9998, 0, 0], size: 0.5, color: GREY }, { expressId: 2, at: [20, 0, 0], size: 0.5, color: GREY }];
+    const keys = async (anchored: boolean): Promise<number> => {
+      const on = await lodScene(true), gpu = fakeGpu();
+      const meshes = compactBatch(boxes, 1); // both in compact cell 1 ([16, 48) m): one page
+      if (anchored) meshes[0].compact!.payload.anchors = Float64Array.from(boxes.flatMap((box) => box.at));
+      upload(on, gpu, meshes);
+      settle(on, gpu);
+      return pages(on)[0].lodParts!.length;
+    };
+    assert.equal(await keys(true), 1, 'one group: chunk 0, as the f32 load files both');
+    assert.equal(await keys(false), 2, 'without anchors (an older wasm build) the first record decides: chunk 1');
+    const off = await lodScene(false), gpuOff = fakeGpu();
+    upload(off, gpuOff, boxes.map(boxSoup).map((mesh, i) => i === 0 ? { ...mesh, positions: mesh.positions.map((v, k) => (k % 3 === 0 ? v - Math.round(boxes[0].at[0] * 1024) / 1024 + 31.9998 : v)) } : mesh));
+    settle(off, gpuOff);
+    assert.equal(buckets(off).length, 1, 'the bucket path: one bucket');
+  });
+
+  it('keep pages whole when bucket batches build no LOD1', async () => {
+    const gpu = fakeGpu(), scene = await newScene();
+    scene.setSpatialChunking({ cellSize: 32 });
+    upload(scene, gpu, compactBatch(lodBoxes(1000, 0, 28)));
+    settle(scene, gpu);
+    const [page] = pages(scene);
+    assert.equal(page.lodParts, undefined);
+    assert.equal(page.lod1IndexBuffer, undefined);
   });
 });

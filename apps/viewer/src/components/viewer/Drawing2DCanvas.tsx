@@ -5,6 +5,7 @@
 import { drawDxfUnderlaysScreenSpace } from './drawing-underlays';
 import { drawReferenceImages } from './drawing-reference-images';
 import { useReferenceImagesForDrawing } from '@/hooks/useReferenceImagesForDrawing';
+import { titleBlockWithEffectiveScale } from '@/hooks/titleBlockScaleField';
 import React, { useRef, useState, useEffect } from 'react';
 import {
   GraphicOverrideEngine,
@@ -332,10 +333,45 @@ export function Drawing2DCanvas({
     if (sheetEnabled && activeSheet) {
       const paper = activeSheet.paper;
       const frame = activeSheet.frame;
-      const titleBlock = activeSheet.titleBlock;
       const viewport = activeSheet.viewportBounds;
       const scaleBar = activeSheet.scaleBar;
       const northArrow = activeSheet.northArrow;
+      const drawingBounds = {
+        minX: drawing.bounds.min.x,
+        minY: drawing.bounds.min.y,
+        maxX: drawing.bounds.max.x,
+        maxY: drawing.bounds.max.y,
+      };
+
+      // Flips, cache read and the axis-corrected transform all come from the
+      // ONE resolver the print/export path also calls (`resolveSheetTransform`)
+      // — so preview and print cannot derive any of the three separately.
+      // The cached entry is validated against the CURRENT sheet's own
+      // geometry key AND the current section axis inside the resolver (the
+      // transform carries the axis's flips), not trusted because it's present:
+      // `useViewControls`'s effect that nulls this ref on a geometry change
+      // runs in the SAME commit as this drawing effect, but as the PARENT
+      // hook its effect commits AFTER this (child) effect — so on the very
+      // render the sheet's geometry changes, a stale (still non-null) cached
+      // entry would otherwise be reused for one frame, and nothing forces a
+      // second draw to correct it (PR #2853 review).
+      const resolved = resolveSheetTransform({
+        sheet: activeSheet,
+        drawingBounds,
+        axis: sectionAxis,
+        isPinned: Boolean(isPinned),
+        cached: cachedSheetTransformRef?.current,
+      });
+      const { flipX, flipY } = resolved;
+      const drawingTransform = resolved.transform;
+
+      // The PREVIEW owns the cache: it is the only path that writes. Export reads through
+      // the same resolver but never writes, so printing can never perturb the placement on screen.
+      if (!resolved.fromCache && cachedSheetTransformRef) {
+        cachedSheetTransformRef.current = { ...drawingTransform, key: resolved.key };
+      }
+      // The title block states the placed scale, as the export prints it (#11581).
+      const titleBlock = titleBlockWithEffectiveScale(activeSheet.titleBlock, activeSheet.scale.factor, drawingTransform.scaleFactor);
 
       // Helper: convert sheet mm to screen pixels
       const mmToScreen = (mm: number) => mm * transform.scale;
@@ -579,43 +615,6 @@ export function Drawing2DCanvas({
       sheetViewportClip = sheetViewportScreenRect(viewport, transform);
       ctx.rect(...sheetViewportClip);
       ctx.clip();
-
-      // Calculate drawing transform to fit in viewport
-      const drawingBounds = {
-        minX: drawing.bounds.min.x,
-        minY: drawing.bounds.min.y,
-        maxX: drawing.bounds.max.x,
-        maxY: drawing.bounds.max.y,
-      };
-
-      // Flips, cache read and the axis-corrected transform all come from the
-      // ONE resolver the print/export path also calls (`resolveSheetTransform`)
-      // — so preview and print cannot derive any of the three separately.
-      // The cached entry is validated against the CURRENT sheet's own
-      // geometry key AND the current section axis inside the resolver (the
-      // transform carries the axis's flips), not trusted because it's present:
-      // `useViewControls`'s effect that nulls this ref on a geometry change
-      // runs in the SAME commit as this drawing effect, but as the PARENT
-      // hook its effect commits AFTER this (child) effect — so on the very
-      // render the sheet's geometry changes, a stale (still non-null) cached
-      // entry would otherwise be reused for one frame, and nothing forces a
-      // second draw to correct it (PR #2853 review).
-      const resolved = resolveSheetTransform({
-        sheet: activeSheet,
-        drawingBounds,
-        axis: sectionAxis,
-        isPinned: Boolean(isPinned),
-        cached: cachedSheetTransformRef?.current,
-      });
-      const { flipX, flipY } = resolved;
-      const drawingTransform = resolved.transform;
-
-      // The PREVIEW owns the cache: it is the only path that writes. Export
-      // reads through the same resolver but never writes, so printing can
-      // never perturb the placement on screen.
-      if (!resolved.fromCache && cachedSheetTransformRef) {
-        cachedSheetTransformRef.current = { ...drawingTransform, key: resolved.key };
-      }
 
       // Apply combined transform: sheet mm -> screen, then drawing coords -> sheet mm
       // Drawing coord (meters) * scaleFactor = sheet mm, + translateX/Y

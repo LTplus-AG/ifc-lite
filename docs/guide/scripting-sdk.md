@@ -22,6 +22,7 @@ The `bim` object (a `BimContext`) groups its capabilities into namespaces, plus 
 | `bim.structural` | Read-only access to IFC structural analysis data (analysis models, members, connections, activities, load/result groups) |
 | `bim.ids` | IDS validation; `bim.ids.authoring` opens, edits (through grounded operations), lints and writes IDS documents |
 | `bim.bcf` | BCF topics, comments, viewpoints |
+| `bim.style` | Persistent colour: writes `IfcSurfaceStyle` / `IfcStyledItem` into the model so the exported file opens coloured. Headless contexts (CLI, MCP) only; a backend without store access, including the browser viewer's, throws |
 | `bim.files`, `bim.schedule`, `bim.spatial`, `bim.spaces`, `bim.drawing`, `bim.list`, `bim.bsdd`, `bim.events`, `bim.sandbox` | Supporting namespaces (file access, scheduling, spatial ops, space program, 2D drawings, entity tables, bSDD lookups, events, sandboxed sub-scripts) |
 
 On top of the namespaces, `BimContext` exposes direct helpers for the hot paths, so you rarely reach into internals: `bim.query()`, `bim.entity(ref)`, `bim.properties(ref)`, `bim.quantities(ref)`, `bim.materials(ref)`, `bim.classifications(ref)`, `bim.storeys()`, `bim.contains(ref)`, `bim.containedIn(ref)`, `bim.storey(ref)`, `bim.path(ref)`, and more.
@@ -47,7 +48,8 @@ grounding gate that the IDS editor and the MCP `ids_apply_ops` tool use (see
 [Writing IDS documents](ids.md#writing-ids-documents)). A batch that names an entity, property
 set or property the IFC schema does not have is refused as a whole. The
 result lists each problem with ranked candidates. Accepted batches can be
-undone.
+undone with `doc.undo()` and reapplied with `doc.redo()`. `bim.ids.authoring.create(title)`
+starts an empty document.
 
 ```ts
 declare const xml: string;
@@ -144,7 +146,7 @@ ifc-lite eval model.ifc "bim.storeys().map(s => s.name)"
 ifc-lite eval model.ifc "bim.quantity(ref, 'GrossSideArea')" --type IfcWall --limit 3
 ```
 
-With `--type`, the expression runs once per matching entity with `ref` (the entity reference) and `entity` in scope; without it, the expression runs once with `bim`. Add `--json` for machine-readable output.
+With `--type`, the expression runs once per matching entity with `ref` (the entity reference) and `entity` in scope; without it, the expression runs once with `bim`. `--type` takes a comma-separated list, and `--limit` caps the matches it evaluates. Simple statements separated by `;` also work: end with an expression to return its value, or use an explicit `return`. Add `--json` for machine-readable output. Like `run`, `eval` accepts `--viewer <port>` to stream `bim.viewer.*` calls to a running viewer.
 
 ### `run` — script files
 
@@ -185,7 +187,7 @@ ifc-lite schema              # full schema with params and return types
 ifc-lite schema --compact    # names and descriptions only
 ```
 
-`ifc-lite schema` documents the `bim` object `eval`/`run` actually hand your script — a root `bim` namespace of top-level methods, plus the scriptable namespaces `model`, `query`, `viewer`, `mutate`, `store`, `lens`, `create`, `files`, `schedule`, `cost`, `clash`, and `export` — and includes each method's parameter names, return type, and LLM semantic hints (`useWhen`, task tags). There `query` is the chain reached via `bim.query()` (`.byType(...).toArray()`), not a namespace of standalone lookups. That differs from the sandbox's own bridge schema shown below, where `bim.query.byType(...)` runs and returns data in one call — the sandbox and `eval`/`run` hand scripts different `bim` shapes, so pick the one matching where the script will run. Running `ifc-lite schema` first is the recommended way to author correct `eval`/`run` code. See [Using with LLM Terminals](cli.md#using-with-llm-terminals) for the wider agent workflow.
+`ifc-lite schema` documents the `bim` object `eval`/`run` actually hand your script — a root `bim` namespace of top-level methods, plus the scriptable namespaces `model`, `query`, `viewer`, `mutate`, `store`, `lens`, `create`, `files`, `schedule`, `structural`, `cost`, `clash`, and `export` — and includes each method's parameter names, return type, and LLM semantic hints (`useWhen`, task tags). There `query` is the chain reached via `bim.query()` (`.byType(...).toArray()`), not a namespace of standalone lookups. That differs from the sandbox's own bridge schema shown below, where `bim.query.byType(...)` runs and returns data in one call — the sandbox and `eval`/`run` hand scripts different `bim` shapes, so pick the one matching where the script will run. Running `ifc-lite schema` first is the recommended way to author correct `eval`/`run` code. See [Using with LLM Terminals](cli.md#using-with-llm-terminals) for the wider agent workflow.
 
 ### IFC 5D cost data
 
@@ -219,7 +221,7 @@ const sandbox = new Sandbox(bim, {
   limits: { memoryBytes: 64 * 1024 * 1024, timeoutMs: 30_000 },
 });
 await sandbox.init();
-const result = await sandbox.eval(`bim.query.create().byType('IfcWall').count()`);
+const result = await sandbox.eval(`bim.query.byType('IfcWall').length`);
 console.log(result.value, result.logs, result.durationMs);
 ```
 
@@ -247,7 +249,7 @@ async function ensureLiveSandbox(sandbox: Sandbox, config: SandboxConfig): Promi
 
 Check it while the sandbox is live: `dispose()` releases the module reference, after which `moduleRetired` reads `false`. The process-wide `isSandboxRuntimeAborted()` is a diagnostic — latched for the process lifetime — not a health check; a `true` does not mean scripting is dead.
 
-**Permissions** gate which namespaces the script can touch (`model`, `query`, `viewer`, `mutate`, `store`, `lens`, `export`, `files`). The defaults are read-only: `mutate` and `store` are off, everything else on. **Limits** cap resources, defaulting to 64 MB heap, a 30-second timeout, and a 512 KB stack. A namespace whose permission is disabled is simply not built on the sandboxed `bim` handle, so a script cannot call what it was not granted.
+**Permissions** gate which namespaces the script can touch (`model`, `query`, `viewer`, `mutate`, `store`, `lens`, `export`, `files`, `ui`, `network`). The defaults are read-only and offline: `mutate`, `store` and `network` are off, everything else on. `network` gates `bim.network.*`; a host enables it only for a graph that holds a `network.fetch:*` grant, and each call is still checked against that grant's host list. **Limits** cap resources, defaulting to 64 MB heap, a 30-second timeout, and a 512 KB stack. A namespace whose permission is disabled is simply not built on the sandboxed `bim` handle, so a script cannot call what it was not granted.
 
 ### Sandboxed vs. direct
 
@@ -319,7 +321,7 @@ Writes fail closed and throw a `GeoreferencingError` whose `code` says why and w
 - `set` on a georeferenced model is refused unless `replace: true`, which removes the existing map conversions, CRSs and their `IfcWellKnownText` and writes one map conversion (for the 3D `Model` context); `result.notes` names any other context that loses its conversion.
 - Contradictions are refused: an angle and an `XAxisAbscissa`/`XAxisOrdinate` vector that disagree, half a vector, factors outside FILE_SCHEMA `IFC4X3` / `IFC4X3_ADD2`, unknown keys, factors on a plain `IfcMapConversion` (use `set` with `replace`), or an `update` that renames the CRS while keeping the old datum or unit.
 
-`get()` reports EXPRESS attribute names plus `rotationDegrees`, `source`, `storage` and `pending`. `readGeoreferencing(store)` gives the same shape for a parsed store without a session. `set`/`update` leave IfcSite `RefLatitude`/`RefLongitude` untouched and say so in `notes`; `setSite({ RefLatitude, RefLongitude, RefElevation })` writes them (decimal degrees, written as `IfcCompoundPlaneAngleMeasure`; RefElevation in project length units), as one undo step.
+`get()` reports EXPRESS attribute names plus `rotationDegrees`, `source`, `storage` and `pending`. `readGeoreferencing(store)` gives the same shape for a parsed store without a session. `set`/`update` leave IfcSite `RefLatitude`/`RefLongitude` untouched and say so in `notes`; `setSite({ RefLatitude, RefLongitude, RefElevation })` writes them (decimal degrees, written as `IfcCompoundPlaneAngleMeasure`; RefElevation in project length units), as one undo step. `remove()` deletes the georeferencing: map conversions, CRSs and, for IFC2X3, the ePSets.
 
 `check()`, `planFixes()` and `fix()` are the georeferencing doctor: what is wrong, which fixes the write API can apply, and applying them. See [Georeferencing](georeferencing.md).
 

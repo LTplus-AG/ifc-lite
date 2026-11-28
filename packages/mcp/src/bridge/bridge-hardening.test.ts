@@ -7,6 +7,7 @@
  * block names the review item it pins. Every bridge binds port 0.
  */
 
+import { createHmac, randomBytes } from 'node:crypto';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { CallToolResult, JsonRpcMessage, ToolDefinition } from '../protocol/index.js';
 import { bridgeOrigins, startBridgeServer, type RunningBridge } from './run.js';
@@ -19,8 +20,7 @@ import {
   pairTab,
   rawPeer,
   textResult,
-  type FakeTab,
-} from '../test/bridge-fake-tab.js';
+  type FakeTab, tabTool } from '../test/bridge-fake-tab.js';
 
 const running: RunningBridge[] = [];
 const tabs: FakeTab[] = [];
@@ -90,7 +90,7 @@ describe('item 2: tab-supplied JSON is depth- and size-bounded', () => {
   it('turns a result nested 20,000 deep into an error result at once', async () => {
     const agent = await start();
     const { tab, welcome } = await paired(agent);
-    const pending = agent.call(READ_TOOL.name);
+    const pending = agent.call(tabTool(READ_TOOL.name));
     const c = await tab.next('call');
     tab.sendRaw(withDeep({ type: 'result', sessionId: welcome.sessionId, id: c.id, result: { content: [], structuredContent: '__DEEP__' } }, nestedJson(20_000)));
     const result = await pending;
@@ -228,7 +228,7 @@ describe('item 6: list_changed only on a real change, throttled', () => {
       tab.sendRaw({ type: 'update', sessionId: welcome.sessionId, permission: i % 2 === 0 ? 'read-write' : 'read-only' });
     }
     tab.sendRaw({ type: 'update', sessionId: welcome.sessionId, permission: 'read-write' });
-    await expect.poll(async () => (await agent.list()).map((t) => t.name)).toContain(MUTATING_TOOL.name);
+    await expect.poll(async () => (await agent.list()).map((t) => t.name)).toContain(tabTool(MUTATING_TOOL.name));
     expect(agent.listChanged()).toBe(1);
   });
 
@@ -239,7 +239,7 @@ describe('item 6: list_changed only on a real change, throttled', () => {
     tab.sendRaw({ type: 'update', sessionId: welcome.sessionId, tools: [READ_TOOL, extra] });
     await expect.poll(() => agent.bridge.tab()?.tools.length).toBe(2);
     expect((await agent.list()).map((t) => t.name)).not.toContain('delete_entity');
-    expect((await agent.call('delete_entity', {})).structuredContent?.code).toBe('READ_ONLY');
+    expect((await agent.call('tab_delete_entity', {})).structuredContent?.code).toBe('READ_ONLY');
     expect(tab.calls()).toEqual([]);
   });
 });
@@ -253,8 +253,8 @@ describe('item 7: schema properties are own properties; malformed schemas are re
     };
     const { tab, welcome } = await paired(agent, { tools: [tool] });
     // Omitting toString is fine; omitting the required constructor is not.
-    expect((await agent.call('proto_props', {})).structuredContent?.code).toBe('INVALID_INPUT');
-    const pending = agent.call('proto_props', { constructor: 'x' });
+    expect((await agent.call('tab_proto_props', {})).structuredContent?.code).toBe('INVALID_INPUT');
+    const pending = agent.call('tab_proto_props', { constructor: 'x' });
     const c = await tab.next('call');
     expect(c.arguments).toEqual({ constructor: 'x' });
     tab.reply(welcome.sessionId, c.id, textResult('ok'));
@@ -287,7 +287,7 @@ describe('item 8: aggregate limits, text-only content, provenance', () => {
   it('fails a call whose result exceeds maxResultBytes with a message naming the limit', async () => {
     const agent = await start();
     const { tab, welcome } = await paired(agent);
-    const pending = agent.call(READ_TOOL.name);
+    const pending = agent.call(tabTool(READ_TOOL.name));
     const c = await tab.next('call');
     tab.reply(welcome.sessionId, c.id, textResult('y'.repeat(BRIDGE_LIMITS.maxResultBytes + 1)));
     const result = await pending;
@@ -301,7 +301,7 @@ describe('item 8: aggregate limits, text-only content, provenance', () => {
   ])('refuses %s in result content', async (_label, entry, why) => {
     const agent = await start();
     const { tab, welcome } = await paired(agent);
-    const pending = agent.call(READ_TOOL.name);
+    const pending = agent.call(tabTool(READ_TOOL.name));
     const c = await tab.next('call');
     tab.sendRaw({ type: 'result', sessionId: welcome.sessionId, id: c.id, result: { content: [entry] } });
     const result = await pending;
@@ -313,7 +313,7 @@ describe('item 8: aggregate limits, text-only content, provenance', () => {
     const agent = await start();
     const { tab, welcome } = await paired(agent);
     expect(welcome.features).toEqual(['image-content', 'ui-events']);
-    const pending = agent.call(READ_TOOL.name);
+    const pending = agent.call(tabTool(READ_TOOL.name));
     const c = await tab.next('call');
     const data = btoa(String.fromCharCode(0xff, 0xd8, 0xff, 0xe0, 0, 16, 0x4a, 0x46, 0x49, 0x46, 0, 1));
     tab.sendRaw({ type: 'result', sessionId: welcome.sessionId, id: c.id, result: { content: [{ type: 'text', text: 'shot' }, { type: 'image', data, mimeType: 'image/jpeg' }] } });
@@ -338,7 +338,7 @@ describe('frame limits and binary frames', () => {
   it('closes with 1009 on a frame over maxMessageBytes and fails the pending call', async () => {
     const agent = await start({ tuning: { maxMessageBytes: 2048 } });
     const { tab, welcome } = await paired(agent);
-    const pending = agent.call(READ_TOOL.name);
+    const pending = agent.call(tabTool(READ_TOOL.name));
     const c = await tab.next('call');
     tab.reply(welcome.sessionId, c.id, textResult('z'.repeat(4096)));
     expect(await tab.closed()).toBe(1009);
@@ -350,10 +350,65 @@ describe('frame limits and binary frames', () => {
   it('closes a paired tab that sends a binary frame, failing its pending call', async () => {
     const agent = await start();
     const { tab } = await paired(agent);
-    const pending = agent.call(READ_TOOL.name);
+    const pending = agent.call(tabTool(READ_TOOL.name));
     await tab.next('call');
     tab.ws.send(Buffer.from([1, 2, 3]), { binary: true });
     expect(await tab.closed()).toBe(BridgeCloseCode.INVALID_MESSAGE);
     expect((await pending).structuredContent?.code).toBe('VIEWER_NOT_CONNECTED');
+  });
+});
+
+describe('verified viewer pairing (#9523)', () => {
+  it('rotates the key on read-only resume and retires it on disconnect or a new pairing link', async () => {
+    const { bridge } = await start();
+    const hello = async (key: string, resume: boolean, rotationNonce = '') => {
+      const opened = await openSocket({ port: bridge.port, origin: 'https://ifclite.com' });
+      if (!('tab' in opened)) throw new Error('upgrade refused');
+      const tab = opened.tab;
+      tabs.push(tab);
+      const nonce = rotationNonce + randomBytes(16).toString('hex');
+      const mac = (role: string) => createHmac('sha256', key).update('ifc-lite/' + role + '/' + (role === 'next' ? nonce.slice(0, 32) : nonce)).digest('hex');
+      tab.sendRaw({ type: 'hello', protocol: 1, pairingCode: mac('tab'), nonce, resume, permission: 'read-only', tools: [READ_TOOL] });
+      return { tab, proof: mac('bridge'), next: mac('next') };
+    };
+    const leave = async (tab: FakeTab, reason: string) => {
+      tab.ws.close(1000, reason);
+      await tab.closed();
+      await expect.poll(() => bridge.tab()).toBeNull();
+    };
+    const pair = async () => {
+      const initial = await hello(bridge.pairingCode().replaceAll('-', ''), false);
+      expect(await initial.tab.next('welcome')).toMatchObject({ proof: initial.proof });
+      return initial;
+    };
+    const initial = await pair();
+    // Reload race (#11674): only the authenticated retry is transiently busy.
+    const liveSession = bridge.tab()?.sessionId;
+    expect(liveSession).toBeDefined();
+    const invalid = await hello(randomBytes(32).toString('hex'), true);
+    expect(await invalid.tab.next('error')).toMatchObject({ code: 'PAIRING_FAILED' });
+    const early = await hello(initial.next, true);
+    expect(await early.tab.next('error')).toMatchObject({ code: 'BUSY' });
+    expect(await early.tab.closed()).toBe(BridgeCloseCode.BUSY);
+    expect(bridge.tab()?.sessionId).toBe(liveSession);
+    await leave(initial.tab, 'page hidden');
+    // Retrying a hello that never arrived uses its rotation nonce and a fresh challenge.
+    const resumed = await hello(initial.next, true, randomBytes(16).toString('hex'));
+    expect(await resumed.tab.next('welcome')).toMatchObject({ proof: resumed.proof, permission: 'read-only' });
+    const resumedSession = bridge.tab()?.sessionId;
+    expect(resumedSession).toBeDefined();
+    expect(await (await hello(initial.next, true)).tab.next('error')).toMatchObject({ code: 'PAIRING_FAILED' });
+    expect(bridge.tab()?.sessionId).toBe(resumedSession);
+    await leave(resumed.tab, 'result acknowledgement timeout');
+    const recovered = await hello(resumed.next, true);
+    expect(await recovered.tab.next('welcome')).toMatchObject({ proof: recovered.proof, permission: 'read-only' });
+    await leave(recovered.tab, 'disconnected by the user');
+    for (const obsolete of [initial.next, resumed.next, recovered.next]) {
+      expect(await (await hello(obsolete, true)).tab.next('error')).toMatchObject({ code: 'PAIRING_FAILED' });
+    }
+    const replaced = await pair();
+    await leave(replaced.tab, 'page hidden');
+    bridge.rotatePairingCode();
+    expect(await (await hello(replaced.next, true)).tab.next('error')).toMatchObject({ code: 'PAIRING_FAILED' });
   });
 });

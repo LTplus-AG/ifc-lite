@@ -20,6 +20,7 @@ import { collectEffectiveChanges, type AttributeExtractor } from './effective-ch
 import { applyMutationsBatch } from './apply-mutations.js';
 import { MutableOverlayState, type ForgottenEntityOverlay } from './mutable-overlay-state.js';
 import { deleteQuantityMember, deleteQuantitySetOverlay } from './quantity-member-delete.js';
+import { keptExplicitUnit } from './quantity-explicit-unit.js';
 
 export type { AttributeExtractor } from './effective-changes.js';
 
@@ -160,22 +161,13 @@ export class MutablePropertyView extends MutableOverlayState {
   setQuantityBaseRevisions(provider: ((view: MutablePropertyView) => Iterable<QuantityBaseRevision>) | null): void { this.quantityBaseRevisions = provider; }
   getQuantityBaseRevisions(): Iterable<QuantityBaseRevision> { return this.quantityBaseRevisions?.(this) ?? []; }
 
-  /**
-   * Whether this view has anything UNDER its quantity overlay.
-   *
-   * Properties always do — `getBasePropertiesForEntity` falls back to the
-   * `baseTable` the constructor takes — but quantities have only
-   * `setQuantityExtractor`, which is opt-in and defaults to `null`. A view
-   * without one answers `getQuantitiesForEntity` from the overlay ALONE, so a
-   * session that edits one quantity of a source quantity set sees that one
-   * quantity and none of its siblings.
-   *
-   * Exposed so a consumer holding the base data can tell "this entity has no
-   * quantities" apart from "this view cannot see them" and supply the missing
-   * half rather than write the overlay out as if it were the whole set — which
-   * is how a full STEP export deleted a source `IfcElementQuantity`
-   * (github.com/LTplus-AG/ifc-lite/issues/2487).
-   */
+  /** Whether property reads have a source beneath the edits. Without one, a reader
+   * holding a source store can pass its property provider to getForEntity. */
+  hasPropertyBase(): boolean {
+    return this.onDemandExtractor !== null || this.baseTable !== null;
+  }
+
+  /** Whether quantity reads have a configured source beneath the edits. */
   hasQuantityBase(): boolean {
     return this.quantityExtractor !== null;
   }
@@ -731,6 +723,7 @@ export class MutablePropertyView extends MutableOverlayState {
           type: mutation.quantityType ?? q.type,
           value: mutation.value ?? q.value,
           unit: mutation.unitRemoved ? undefined : mutation.unit ?? q.unit,
+          ...keptExplicitUnit(q, mutation),
         }),
         q => q,
         (name, mutation) => ({

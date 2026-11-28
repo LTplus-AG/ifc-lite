@@ -10,9 +10,12 @@ import { useModelPlacementSync } from '../useModelPlacementSync';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { act } from 'react';
 import { render, cleanup, click, type, press, settle } from '@/test/render';
+import { appearanceInstanceScene } from '@/test/appearance-instance-scene';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useViewerStore } from '@/store';
+import { setGlobalRendererRef } from '@/lib/renderer-ref';
+import type { GeometryResult } from '@ifc-lite/geometry';
 import { noteDeviationWrite } from '@/lib/model-placement/preview-analysis';
 import { emptyPlacementState, displayedTranslation, placementFor } from '@/lib/model-placement/state';
 import { ToolOverlays } from '../ToolOverlays';
@@ -410,6 +413,83 @@ describe('model repositioning user interactions (#4226)', () => {
     click(button(ui, 'Apply rotation'));
     assert.match(ui.querySelector('[role="alert"]')!.textContent!, /pivot/i);
     assert.equal(placementFor(useViewerStore.getState().modelPlacement, 'ifc').rotation.angle, 0);
+  });
+
+  it('offers a moving model with a visible renderer-only instance and hidden baked geometry (#11419)', () => {
+    const renderer = new Renderer(document.createElement('canvas'));
+    const bounds = { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 0 } };
+    const geometryResult: GeometryResult = {
+      meshes: [{
+        expressId: 5, positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+        indices: new Uint32Array([0, 1, 2]), normals: new Float32Array(9), color: [1, 1, 1, 1],
+      }],
+      totalTriangles: 1, totalVertices: 3,
+      coordinateInfo: { originShift: bounds.min, originalBounds: bounds, shiftedBounds: bounds, hasLargeCoordinates: false },
+    };
+    const { scene } = appearanceInstanceScene([{ ...geometryResult.meshes[0], modelIndex: 0, expressId: 7 }]);
+    mock.method(renderer, 'getScene', () => scene);
+    assert.deepEqual([...scene.getInstancedEntityIds()], [7]);
+    const moving = fixtureModel('ifc', { entities: [{ expressId: 5, type: 'IfcWall' }, { expressId: 7, type: 'IfcWall' }] });
+    try {
+      setGlobalRendererRef({ current: renderer });
+      act(() => {
+        useViewerStore.setState({
+          ...fixtureModels({ ...moving, geometryResult }),
+          hiddenEntities: new Set([5]), isolatedEntities: null,
+        });
+        useViewerStore.getState().openReposition(['ifc']);
+      });
+      const ui = render(<><SceneOverlayRoot><ToolOverlays /></SceneOverlayRoot><LocalTab /></>);
+      click(button(ui, 'Pick source point'));
+      assert.match(ui.textContent ?? '', /Pick a source point on a moving model \(ifc\)/);
+      act(() => useViewerStore.setState({ isolatedEntities: new Set([5]) }));
+      assert.doesNotMatch(ui.textContent ?? '', /Pick a source point on a moving model/);
+      assert.match(ui.textContent ?? '', /Pick a source point\. Use the other mouse buttons/);
+    } finally {
+      setGlobalRendererRef(null);
+      useViewerStore.setState({ hiddenEntities: new Set(), isolatedEntities: null });
+    }
+  });
+
+  it('finishes an instanced target pick after a scene revision between press and click (#11419)', async () => {
+    const canvas = document.createElement('canvas');
+    const renderer = new Renderer(canvas);
+    const modelOffset = 1_000_000;
+    const targetId = modelOffset + 7;
+    const target = { ...fixtureModel('scan', {
+      idOffset: modelOffset, entities: [{ expressId: 7, type: 'IfcWall' }],
+    }), maxExpressId: 7 };
+    const inventory = mock.method(renderer.getScene(), 'getInstancedEntityIds', function* () { yield targetId; });
+    mock.method(renderer.getScene(), 'getInstancedEntityCount', () => 1);
+    mock.method(renderer, 'raycastSceneMagnetic', (...[, , , options]: Parameters<Renderer['raycastSceneMagnetic']>): ReturnType<Renderer['raycastSceneMagnetic']> => ({
+      snapTarget: null,
+      intersection: options?.isolatedIds?.has(targetId) ? {
+        expressId: targetId, point: { x: 1, y: 2, z: 3 }, normal: { x: 0, y: 1, z: 0 },
+        distance: 1, meshIndex: 0, triangleIndex: 0, barycentricCoord: { u: 1, v: 0, w: 0 },
+      } : null,
+      edgeLock: { edge: null, meshExpressId: null, edgeT: 0, shouldLock: false, shouldRelease: false, isCorner: false, cornerValence: 0 },
+    }));
+    try {
+      setGlobalRendererRef({ current: renderer });
+      act(() => {
+        useViewerStore.setState({ ...fixtureModels(fixtureModel('ifc'), target), hiddenEntities: new Set(), isolatedEntities: null });
+        useViewerStore.getState().openReposition(['ifc']);
+        useViewerStore.getState().setMoveAnchor('source', { modelId: 'ifc', point: [0, 0, 0], kind: 'point' });
+      });
+      const ui = render(<><SceneOverlayRoot><ToolOverlays /></SceneOverlayRoot><LocalTab /></>);
+      click(button(ui, 'Pick target point'));
+      act(() => { canvas.dispatchEvent(new PointerEvent('pointerdown', { button: 0 })); });
+      assert.equal(useViewerStore.getState().modelPlacement.preview?.target?.modelId, 'scan');
+      const revision = renderer.getPickGeometryRevision();
+      const inventories = inventory.mock.callCount();
+      await act(async () => { renderer.setModelTranslation(0, [1, 0, 0]); });
+      assert.ok(renderer.getPickGeometryRevision() > revision);
+      assert.equal(inventory.mock.callCount(), inventories, 'translation does not rescan the instance inventory');
+      act(() => { canvas.dispatchEvent(new MouseEvent('click', { button: 0 })); });
+      assert.match(ui.textContent ?? '', /Preview the move, then Apply\./);
+    } finally {
+      setGlobalRendererRef(null);
+    }
   });
 
   it('offers the rotation control for a model with GPU-instanced geometry (#4890)', () => {

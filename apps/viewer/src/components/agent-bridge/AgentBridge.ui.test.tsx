@@ -114,13 +114,15 @@ describe('pairing link (#9523)', () => {
     const channel = new MessageChannel();
     const previous = Object.getOwnPropertyDescriptor(globalThis, 'SharedWorker');
     let discoveries = 0;
-    const deliveries: { to: string; attemptId: string }[] = [];
+    const preparations: { to: string; attemptId: string; fragment?: string }[] = [];
+    const deliveries: { to: string; fragment: string }[] = [];
     channel.port2.onmessage = ({ data }) => {
       if (data.type === 'discover') {
         discoveries++;
         channel.port2.postMessage({ type: 'offer', from: String(discoveries), name: 'model.ifc' });
         if (discoveries > 1) channel.port2.postMessage({ type: 'offer', from: 'other', name: 'other-model.ifc' });
-      } else if (data.type === 'deliver') deliveries.push(data);
+      } else if (data.type === 'prepare') preparations.push(data);
+      else if (data.type === 'deliver') deliveries.push(data);
     };
     Object.defineProperty(globalThis, 'SharedWorker', { configurable: true, value: class { port = channel.port1; } });
     try {
@@ -135,20 +137,24 @@ describe('pairing link (#9523)', () => {
       await waitFor(() => offers().length === 2, 'reloaded and alternate model offers');
       click(offers()[0]);
       click(offers()[1]);
-      await waitFor(() => deliveries.length > 0, 'first delivery');
-      assert.deepEqual(deliveries.map(({ to }) => to), ['2']);
-      const acknowledge = (from: string, attemptId: string) => channel.port2.postMessage({ type: 'received', from, attemptId });
-      acknowledge('other', deliveries[0].attemptId);
+      await waitFor(() => preparations.length > 0, 'first readiness request');
+      assert.deepEqual(preparations.map(({ to }) => to), ['2']);
+      const acknowledge = (from: string, attemptId: string) => channel.port2.postMessage({ type: 'ready', from, attemptId });
+      acknowledge('other', preparations[0].attemptId);
       await waitFor(() => discoveries === 3 && offers().length === 2, 'unacknowledged destination timed out and discovery restarted');
       click(offers()[1]);
-      await waitFor(() => deliveries.length === 2, 'retry delivered');
-      assert.equal(deliveries[1].to, 'other');
-      acknowledge('2', deliveries[0].attemptId);
-      acknowledge('other', deliveries[0].attemptId);
+      await waitFor(() => preparations.length === 2, 'replacement readiness request');
+      assert.equal(preparations[1].to, 'other');
+      acknowledge('2', preparations[0].attemptId);
+      acknowledge('other', preparations[0].attemptId);
       await advanceMs(20);
       assert.equal(offers().length, 2);
-      acknowledge('other', deliveries[1].attemptId);
+      assert.ok(preparations.every((request) => !('fragment' in request)));
+      assert.equal(deliveries.length, 0);
+      acknowledge('other', preparations[1].attemptId);
       await waitFor(() => document.body.textContent.includes('Switch to the model tab'), 'selected tab acknowledged the current attempt');
+      await waitFor(() => deliveries.length === 1, 'fragment delivered');
+      assert.deepEqual(deliveries.map(({ to, fragment }) => [to, fragment]), [['other', fragment]]);
     } finally {
       channel.port2.close();
       if (previous) Object.defineProperty(globalThis, 'SharedWorker', previous);

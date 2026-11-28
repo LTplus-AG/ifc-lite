@@ -16,7 +16,7 @@ self.addEventListener('connect', (raw) => {
         if (!target) tabs.delete(peer);
         else if (peer !== id) target.postMessage({ type: 'query', from: id });
       }
-    } else if (['offer', 'deliver', 'received'].includes(data.type)) {
+    } else if (['offer', 'prepare', 'ready', 'deliver'].includes(data.type)) {
       tabs.get(data.to)?.deref()?.postMessage({ ...data, from: id });
     }
   };

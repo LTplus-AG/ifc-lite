@@ -24,20 +24,22 @@ export function ModelTabPicker({ fragment }: { fragment: string }) {
     connection.onmessage = ({ data }) => {
       if (data.type === 'offer') setTabs((prev) => ({ ...prev, [data.from]: data.name }));
       const pending = attempt.current;
-      if (data.type === 'received' && pending && data.from === pending.to && data.attemptId === pending.id) {
+      if (data.type === 'ready' && pending && data.from === pending.to && data.attemptId === pending.id) {
         clearTimeout(timer.current);
+        attempt.current = null;
+        connection.postMessage({ type: 'deliver', to: pending.to, fragment });
         setReceived(true);
       }
     };
     connection.postMessage({ type: 'discover' });
     return () => { clearTimeout(timer.current); connection.postMessage({ type: 'leave' }); connection.close(); };
-  }, []);
+  }, [fragment]);
   function deliver(to: string) {
     if (attempt.current || !port.current) return;
     const id = crypto.randomUUID();
     attempt.current = { to, id };
     setWaiting(true);
-    port.current.postMessage({ type: 'deliver', to, fragment, attemptId: id });
+    port.current.postMessage({ type: 'prepare', to, attemptId: id });
     timer.current = setTimeout(() => {
       attempt.current = null;
       setWaiting(false);

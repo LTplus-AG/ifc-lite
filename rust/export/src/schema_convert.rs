@@ -14,8 +14,7 @@ use crate::schema_plan::{plan_for, Adjust, Plan};
 use crate::schema_unrepresented::{product_proxy, resolve_unrepresented_entity, UnrepresentedEntityError};
 use crate::step_slot::{slot_is, split_top_level_args};
 
-/// Canonicalize a FILE_SCHEMA label to one of the four families we convert
-/// between. Re-export's default for a label naming no family is IFC4.
+/// Resolve the FILE_SCHEMA family, defaulting to IFC4 for an unrecognized label.
 pub(crate) fn canon(s: &str) -> &'static str {
     SchemaFamily::from_label(s).unwrap_or(SchemaFamily::Ifc4).as_str()
 }

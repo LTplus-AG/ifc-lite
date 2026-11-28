@@ -22,8 +22,7 @@ import {
   openSocket,
   pairTab,
   textResult,
-  type FakeTab,
-} from '../test/bridge-fake-tab.js';
+  type FakeTab, tabTool } from '../test/bridge-fake-tab.js';
 
 const running: RunningBridge[] = [];
 const tabs: FakeTab[] = [];
@@ -109,13 +108,13 @@ it('#11029: acknowledges only accepted intact results for the negotiated session
     type: 'result', sessionId: welcome.sessionId, id, resultAck: true, result,
   });
 
-  const received = agent.call(READ_TOOL.name);
+  const received = agent.call(tabTool(READ_TOOL.name));
   const first = await tab.next('call');
   reply(first.id, textResult('retained token'));
   expect((await received).content).toEqual([{ type: 'text', text: 'retained token' }]);
   expect(await tab.next('result-ack')).toMatchObject({ id: first.id, accepted: true });
 
-  const cancelled = agent.call(READ_TOOL.name, {}, 987);
+  const cancelled = agent.call(tabTool(READ_TOOL.name), {}, 987);
   const second = await tab.next('call');
   await agent.cancel(987);
   await tab.next('cancel');
@@ -123,7 +122,7 @@ it('#11029: acknowledges only accepted intact results for the negotiated session
   expect(await tab.next('result-ack')).toMatchObject({ id: second.id, accepted: false });
   expect((await cancelled).isError).toBe(true);
 
-  const malformed = agent.call(READ_TOOL.name);
+  const malformed = agent.call(tabTool(READ_TOOL.name));
   const third = await tab.next('call');
   reply(third.id, { content: 'invalid' });
   expect(await tab.next('result-ack')).toMatchObject({ id: third.id, accepted: false });
@@ -136,14 +135,14 @@ describe('1. read-only pairing', () => {
     const { tab, welcome } = await pair(agent, { permission: 'read-only' });
     expect(welcome.permission).toBe('read-only');
 
-    expect(await agent.listTools()).toEqual([BRIDGE_STATUS_TOOL, READ_TOOL.name]);
+    expect(await agent.listTools()).toEqual([BRIDGE_STATUS_TOOL, tabTool(READ_TOOL.name)]);
 
-    const refused = await agent.call(MUTATING_TOOL.name, { id: 1, value: 'x' });
+    const refused = await agent.call(tabTool(MUTATING_TOOL.name), { id: 1, value: 'x' });
     expect(refused.isError).toBe(true);
     expect(code(refused)).toBe('READ_ONLY');
 
     // The next call the tab sees is the read call: the mutating one never left the bridge.
-    const pending = agent.call(READ_TOOL.name, { type: 'IfcWall' });
+    const pending = agent.call(tabTool(READ_TOOL.name), { type: 'IfcWall' });
     const call = await tab.next('call');
     expect(call.name).toBe(READ_TOOL.name);
     tab.reply(welcome.sessionId, call.id, textResult('3 walls'));
@@ -156,12 +155,12 @@ describe('1. read-only pairing', () => {
     const { tab, welcome } = await pair(agent, { permission: 'read-write' });
     expect(welcome.permission).toBe('read-only');
     expect(welcome.readOnlyCeiling).toBe(true);
-    expect(await agent.listTools()).not.toContain(MUTATING_TOOL.name);
+    expect(await agent.listTools()).not.toContain(tabTool(MUTATING_TOOL.name));
 
     tab.sendRaw({ type: 'update', sessionId: welcome.sessionId, permission: 'read-write' });
     await new Promise((r) => setTimeout(r, 50));
-    expect(await agent.listTools()).not.toContain(MUTATING_TOOL.name);
-    const refused = await agent.call(MUTATING_TOOL.name, { id: 1, value: 'x' });
+    expect(await agent.listTools()).not.toContain(tabTool(MUTATING_TOOL.name));
+    const refused = await agent.call(tabTool(MUTATING_TOOL.name), { id: 1, value: 'x' });
     expect(code(refused)).toBe('READ_ONLY');
     expect(tab.calls()).toEqual([]);
   });
@@ -173,9 +172,9 @@ describe('1. read-only pairing', () => {
     tab.sendRaw({ type: 'update', sessionId: welcome.sessionId, permission: 'read-write' });
     await expect.poll(() => agent.notifications.length).toBeGreaterThan(before);
     expect(agent.notifications.at(-1)).toMatchObject({ method: 'notifications/tools/list_changed' });
-    expect(await agent.listTools()).toContain(MUTATING_TOOL.name);
+    expect(await agent.listTools()).toContain(tabTool(MUTATING_TOOL.name));
 
-    const pending = agent.call(MUTATING_TOOL.name, { id: 7, value: 'EI30' });
+    const pending = agent.call(tabTool(MUTATING_TOOL.name), { id: 7, value: 'EI30' });
     const call = await tab.next('call');
     expect(call).toMatchObject({ name: MUTATING_TOOL.name, arguments: { id: 7, value: 'EI30' } });
     tab.reply(welcome.sessionId, call.id, textResult('ok'));
@@ -191,9 +190,9 @@ describe('MCP tool annotations from the tab\'s readOnly flag', () => {
     const tools = ((res as { result: { tools: ToolDefinition[] } }).result.tools);
     const byName = new Map(tools.map((t) => [t.name, t]));
     expect(byName.get(BRIDGE_STATUS_TOOL)?.annotations).toEqual({ readOnlyHint: true });
-    expect(byName.get(READ_TOOL.name)).toMatchObject({ title: 'Query entities', annotations: { readOnlyHint: true } });
-    expect(byName.get(MUTATING_TOOL.name)?.annotations).toEqual({ readOnlyHint: false, destructiveHint: true });
-    expect(byName.get(MUTATING_TOOL.name)).not.toHaveProperty('title');
+    expect(byName.get(tabTool(READ_TOOL.name))).toMatchObject({ title: 'Query entities', annotations: { readOnlyHint: true } });
+    expect(byName.get(tabTool(MUTATING_TOOL.name))?.annotations).toEqual({ readOnlyHint: false, destructiveHint: true });
+    expect(byName.get(tabTool(MUTATING_TOOL.name))).not.toHaveProperty('title');
   });
 });
 
@@ -203,7 +202,7 @@ describe('2. closing or replacing the tab fails pending calls', () => {
     // timeout through the close path, so no wall-clock bound is needed.
     const agent = await startAgent({ tuning: { callTimeoutMs: 600_000 } });
     const { tab } = await pair(agent);
-    const pending = agent.call(READ_TOOL.name, {});
+    const pending = agent.call(tabTool(READ_TOOL.name), {});
     await tab.next('call');
     tab.close();
     const result = await pending;
@@ -216,7 +215,7 @@ describe('2. closing or replacing the tab fails pending calls', () => {
   it('fails the old tab\'s pending call when a new tab replaces it, and closes the old socket', async () => {
     const agent = await startAgent();
     const { tab: oldTab } = await pair(agent);
-    const pending = agent.call(READ_TOOL.name, {});
+    const pending = agent.call(tabTool(READ_TOOL.name), {});
     await oldTab.next('call');
 
     // A replacement needs a code the user asked for; none is live while paired.
@@ -230,7 +229,7 @@ describe('2. closing or replacing the tab fails pending calls', () => {
     expect(await oldTab.next('error')).toMatchObject({ code: 'REPLACED' });
     expect(await oldTab.closed()).toBe(BridgeCloseCode.REPLACED);
 
-    const next = agent.call(READ_TOOL.name, {});
+    const next = agent.call(tabTool(READ_TOOL.name), {});
     const call = await newTab.next('call');
     newTab.reply(welcome.sessionId, call.id, textResult('from the new tab'));
     expect((await next).content).toEqual([{ type: 'text', text: 'from the new tab' }]);
@@ -239,7 +238,7 @@ describe('2. closing or replacing the tab fails pending calls', () => {
   it('times out a call the tab never answers and tells the tab to stop', async () => {
     const agent = await startAgent({ tuning: { callTimeoutMs: 100 } });
     const { tab } = await pair(agent);
-    const result = await agent.call(READ_TOOL.name, {});
+    const result = await agent.call(tabTool(READ_TOOL.name), {});
     expect(code(result)).toBe('TIMEOUT');
     const call = tab.calls()[0];
     expect(await tab.next('cancel')).toMatchObject({ id: call.id, reason: 'timeout' });
@@ -248,7 +247,7 @@ describe('2. closing or replacing the tab fails pending calls', () => {
   it('forwards an MCP cancellation to the tab', async () => {
     const agent = await startAgent();
     const { tab } = await pair(agent);
-    const pending = agent.call(READ_TOOL.name, {}, 4242);
+    const pending = agent.call(tabTool(READ_TOOL.name), {}, 4242);
     const call = await tab.next('call');
     await agent.cancel(4242);
     expect(code(await pending)).toBe('CANCELLED');
@@ -346,14 +345,14 @@ describe('4. replies from an earlier tab or session cannot answer a new request'
   it('ignores a stale session id, an unknown id, an earlier call id and a duplicate', async () => {
     const agent = await startAgent();
     const { tab: first, welcome: firstWelcome } = await pair(agent);
-    const abandoned = agent.call(READ_TOOL.name, {});
+    const abandoned = agent.call(tabTool(READ_TOOL.name), {});
     const oldCall = await first.next('call');
     const status = await agent.call(BRIDGE_STATUS_TOOL, { pair_new_tab: true });
     const { tab: second, welcome } = await pair(agent, { code: status.structuredContent?.pairingCode as string });
     expect(reason(await abandoned)).toBe('replaced');
     expect(welcome.sessionId).not.toBe(firstWelcome.sessionId);
 
-    const current = agent.call(READ_TOOL.name, {});
+    const current = agent.call(tabTool(READ_TOOL.name), {});
     const call = await second.next('call');
     expect(call.id).not.toBe(oldCall.id);
 
@@ -366,7 +365,7 @@ describe('4. replies from an earlier tab or session cannot answer a new request'
     expect((await current).content).toEqual([{ type: 'text', text: 'the real answer' }]);
 
     // The duplicate must not be waiting to answer the next call either.
-    const following = agent.call(READ_TOOL.name, {});
+    const following = agent.call(tabTool(READ_TOOL.name), {});
     const nextCall = await second.next('call');
     second.reply(welcome.sessionId, nextCall.id, textResult('second answer'));
     expect((await following).content).toEqual([{ type: 'text', text: 'second answer' }]);
@@ -375,7 +374,7 @@ describe('4. replies from an earlier tab or session cannot answer a new request'
   it('fails a call at once when the tab answers it with a malformed result', async () => {
     const agent = await startAgent();
     const { tab, welcome } = await pair(agent);
-    const pending = agent.call(READ_TOOL.name, {});
+    const pending = agent.call(tabTool(READ_TOOL.name), {});
     const call = await tab.next('call');
     tab.sendRaw({ type: 'result', sessionId: welcome.sessionId, id: call.id, result: { content: 'not an array' } });
     const result = await pending;
@@ -426,7 +425,7 @@ describe('6. no connected viewer', () => {
     // With a 10-minute call timeout, only the immediate path can answer in time.
     const agent = await startAgent({ tuning: { callTimeoutMs: 600_000 } });
     expect(await agent.listTools()).toEqual([BRIDGE_STATUS_TOOL]);
-    const result = await agent.call('query_entities', { type: 'IfcWall' });
+    const result = await agent.call('tab_query_entities', { type: 'IfcWall' });
     expect(result.isError).toBe(true);
     expect(code(result)).toBe('VIEWER_NOT_CONNECTED');
     expect(reason(result)).toBe('no-viewer');
@@ -464,14 +463,14 @@ describe('6. no connected viewer', () => {
 it('delivers validated A2UI to a capable paired tab and waits for its result', async () => {
   const agent = await startAgent({ readOnly: true });
   const spec = { surfaceId: 'floor', sections: [{ kind: 'text', text: 'Floor results' }] };
-  expect(code(await agent.call('viewer_show_ui', { spec }))).toBe('VIEWER_NOT_CONNECTED');
+  expect(code(await agent.call('tab_show_ui', { spec }))).toBe('VIEWER_NOT_CONNECTED');
   await pair(agent);
-  expect(await agent.listTools()).not.toContain('viewer_show_ui');
+  expect(await agent.listTools()).not.toContain('tab_show_ui');
   const { tab, welcome } = await pair(agent, { code: agent.bridge.rotatePairingCode(), a2uiSurface: true });
-  expect(await agent.listTools()).toContain('viewer_show_ui');
-  expect(code(await agent.call('viewer_show_ui', { messages: [{ version: '1.0', createSurface: {} }] }))).toBe('INVALID_INPUT');
+  expect(await agent.listTools()).toContain('tab_show_ui');
+  expect(code(await agent.call('tab_show_ui', { messages: [{ version: '1.0', createSurface: {} }] }))).toBe('INVALID_INPUT');
   expect(tab.received.some(frame => frame.type === 'a2ui-surface')).toBe(false);
-  const delivery = agent.call('viewer_show_ui', { title: 'Results', spec });
+  const delivery = agent.call('tab_show_ui', { title: 'Results', spec });
   const frame = await tab.next('a2ui-surface');
   expect(frame).toMatchObject({
     sessionId: welcome.sessionId,
@@ -482,7 +481,7 @@ it('delivers validated A2UI to a capable paired tab and waits for its result', a
   tab.reply(welcome.sessionId, frame.id, textResult('Delivered'));
   await expect(delivery).resolves.toEqual(textResult('Delivered'));
 
-  const rawDelivery = agent.call('viewer_show_ui', { messages: frame.surface.messages });
+  const rawDelivery = agent.call('tab_show_ui', { messages: frame.surface.messages });
   const rawFrame = await tab.next('a2ui-surface');
   expect(rawFrame.surface).toEqual({ messages: frame.surface.messages });
   tab.reply(welcome.sessionId, rawFrame.id, textResult('Delivered'));

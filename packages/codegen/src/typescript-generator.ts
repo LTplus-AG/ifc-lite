@@ -13,9 +13,7 @@ import type {
   EntityDefinition,
   AttributeDefinition,
   EnumDefinition,
-  SelectDefinition,
-  TypeDefinition,
-} from './express-parser.js';
+} from './generator-schema.js';
 import { buildSchemaRegistry, concreteRelationshipTypes, encodeSchemaRegistry, SCHEMA_REGISTRY_DECODER_SOURCE } from './schema-registry-codec.js';
 
 export interface GeneratedCode {
@@ -80,7 +78,7 @@ function generateEntityInterfaces(schema: ExpressSchema): string {
   const sortedEntities = topologicalSort(schema.entities);
 
   for (const entity of sortedEntities) {
-    code += generateEntityInterface(entity, schema);
+    code += generateEntityInterface(entity);
     code += '\n\n';
   }
 
@@ -90,10 +88,7 @@ function generateEntityInterfaces(schema: ExpressSchema): string {
 /**
  * Generate a single entity interface
  */
-function generateEntityInterface(
-  entity: EntityDefinition,
-  schema: ExpressSchema
-): string {
+function generateEntityInterface(entity: EntityDefinition): string {
   let code = '';
 
   // Add JSDoc comment

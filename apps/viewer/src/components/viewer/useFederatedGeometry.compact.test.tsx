@@ -27,13 +27,13 @@ const coordinateInfo = {
 /** `count` one-triangle compact meshes on the 2^-10 lattice: (0,0,0), (1,0,0), (0,1,0) m, normals +z. */
 function compactMeshes(count: number, firstId: number): MeshData[] {
   const payload: CompactPayload = {
-    records: new Uint8Array(count * 3 * 12), indices: new Uint16Array(count * 3), table: new Uint32Array(count * 6),
+    records: new Uint8Array(count * 3 * 12), indices: new Uint16Array(count * 3), table: new Uint32Array(count * 7),
     windows: new Float64Array(count * 3), bounds: new Float64Array(count * 6), cells: new Int32Array(count * 3),
   };
   const view = new DataView(payload.records.buffer);
   const meshes: MeshData[] = [];
   for (let row = 0; row < count; row++) {
-    payload.table.set([row, row * 3, 3, row * 3, 3, 10], row * 6);
+    payload.table.set([row, row * 3, 3, row * 3, 3, 10, 3], row * 7);
     payload.indices.set([0, 1, 2], row * 3);
     payload.bounds.set([0, 0, 0, 1, 1, 0], row * 6);
     [[0, 0], [1024, 0], [0, 1024]].forEach(([x, y], corner) => {

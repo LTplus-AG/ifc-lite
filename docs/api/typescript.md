@@ -1070,7 +1070,7 @@ class Drawing2DGenerator {
 interface DrawingMeshSource { pass(pass: 'geometry' | 'occlusion'): AsyncIterable<readonly MeshData[]>; }
 class StoreyFloorLevels { add(meshes): void; floors(): number[]; } // storeyFloorsFromMeshes, batch by batch
 
-function generateFloorPlan(meshes: MeshData[], elevation: number, options?: Partial<GeneratorOptions>): Promise<Drawing2D>;
+function generateFloorPlan(meshes: MeshData[], elevation: number, options?: Partial<GeneratorOptions> & PlanSymbolOptions): Promise<Drawing2D>;
 function generateSection(meshes: MeshData[], axis: 'x' | 'z', position: number, options?: Partial<GeneratorOptions>): Promise<Drawing2D>;
 function createSectionConfig(axis: 'x' | 'y' | 'z', position: number, options?: Partial<Omit<SectionConfig, 'plane'>>): SectionConfig;
 ```

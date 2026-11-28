@@ -33,7 +33,7 @@ import { isFramed } from '@/lib/agent-bridge/pairing-fragment';
 import {
   updateAgentBridgeState, useAgentBridgeState, type AgentBridgeDialogRequest, type AgentBridgeStatus,
 } from '@/lib/agent-bridge/state';
-import { AgentBridgeOutcome, BridgeStartCommand } from './AgentBridgeOutcome';
+import { AgentBridgeOutcome, AgentSetupCommand, agentBridgeArgs } from './AgentBridgeOutcome';
 
 registerEnglish(agentBridgeEn);
 
@@ -177,8 +177,8 @@ export function AgentBridgeDialog({ request, onClose, load = loadSession }: Agen
           )}
           {request.source === 'manual' && (
             <div className="flex flex-col gap-1 text-xs">
-              <span>{t('agentBridge.dialog.start')}</span>
-              <BridgeStartCommand port={portForCommand} />
+              <span>{t('agentBridge.dialog.start', { args: agentBridgeArgs() })}</span>
+              <AgentSetupCommand />
             </div>
           )}
           <div className="flex gap-2">

@@ -9,12 +9,14 @@
 use super::diagnostics;
 use super::pass::{cancelled, PassContext, Passed};
 use super::phase_marks::{mark, Clock, Mark};
+use super::resolve::Times;
 use super::{csg_summary, instancing, ProcessingRequest, ProcessingResult, ProcessingSink};
 use crate::style::ModelFinishes;
 use crate::types::mesh::MeshData;
 use crate::types::response::{CoordinateInfo, ModelMetadata, ProcessingStats};
 use rustc_hash::FxHashMap;
 use std::collections::HashMap;
+use std::time::Duration;
 
 /// The per-reason CSG warning: how many cuts failed, how many were accepted
 /// open-topology results rather than dropped cuts.
@@ -116,13 +118,29 @@ fn record_geometry_span(
     total_triangles: usize,
     backstop_dropped: u64,
     total_csg_failures: usize,
-    geometry_time: std::time::Duration,
+    geometry_time: Duration,
 ) {
     geometry_span.record("mesh_count", total_meshes as u64);
     geometry_span.record("triangle_count", total_triangles as u64);
     geometry_span.record("backstop_count", backstop_dropped);
     geometry_span.record("total_csg_failures", total_csg_failures as u64);
     geometry_span.record("phase_ms", geometry_time.as_millis() as u64);
+}
+
+
+fn record_pipeline_timing(
+    total_start: Clock,
+    pipeline_span: &tracing::Span,
+    total_jobs: usize,
+    _times: &Times,
+    _geometry_time: Duration,
+) -> Duration {
+    let total_time = mark(Mark::TotalEnd, total_start.elapsed());
+    #[cfg(feature = "probe-phase-timings")]
+    super::probe_phase_timings::record(_times, _geometry_time, total_time);
+    pipeline_span.record("element_count", total_jobs as u64);
+    pipeline_span.record("total_ms", total_time.as_millis() as u64);
+    total_time
 }
 
 pub(super) fn finish(
@@ -210,9 +228,7 @@ pub(super) fn finish(
 
     record_geometry_span(&geometry_span, total_meshes, total_triangles, backstop_dropped, total_csg_failures, geometry_time);
 
-    let total_time = mark(Mark::TotalEnd, total_start.elapsed());
-    pipeline_span.record("element_count", total_jobs as u64);
-    pipeline_span.record("total_ms", total_time.as_millis() as u64);
+    let total_time = record_pipeline_timing(total_start, pipeline_span, total_jobs, &facts.times, geometry_time);
     tracing::info!(target: "ifc_lite_processing::processor",
         meshes = meshes.len(),
         instances = instances.len(),

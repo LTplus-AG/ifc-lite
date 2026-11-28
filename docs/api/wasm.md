@@ -24,6 +24,15 @@ flowchart LR
     Bindings --> Geo
 ```
 
+## Compact LOD normals
+
+When compact geometry is enabled, `MeshCollection.encodeCompact()` returns a
+`CompactBatch`. Its `lodNormals` getter copies three f32 components per welded
+vertex in record order. Each referenced vertex carries the lexicographically
+smallest authored normal among its referenced source corners. LOD1 clustering
+uses this value to break position ties. The 12-byte draw record continues to
+carry the welded normal for full detail.
+
 ## Symbolic extraction errors and raw ABI migration
 
 `IfcAPI.parseSymbolicRepresentations(content)` and

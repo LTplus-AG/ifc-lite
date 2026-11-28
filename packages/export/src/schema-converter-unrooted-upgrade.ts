@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 import { StructuralDiagnostics } from './schema-converter-structural-diagnostics.js';
+import type { InverseClaims } from './merged-inverse-claims.js';
 import { getSchemaRegistryForVersion } from '@ifc-lite/parser';
 import { splitTopLevelStepArguments } from './step-argument-parser.js';
 import { frameArgs, stepRecordHead, stepRecordFrame, withFrameArgs, type StepRecordFrame } from './step-record-frame.js';
@@ -58,7 +59,7 @@ function record(line: string): OutputRecord | undefined {
 }
 
 /** Collect direct omissions only from the source model that is being upgraded. */
-export function noteUpgradeSeed(line: string, seeds: Set<number>, from: IfcSchemaVersion, to: IfcSchemaVersion): void {
+function noteUpgradeSeed(line: string, seeds: Set<number>, from: IfcSchemaVersion, to: IfcSchemaVersion): void {
   if (!removesObsoleteResources(from, to)) return;
   const head = stepRecordHead(line);
   if (!head) return;
@@ -144,8 +145,8 @@ function cascadeOmissions(records: Iterable<OutputRecord | undefined>, seeds: Re
 }
 
 /** Preview required-reference losses on the target layouts of an unedited source. */
-export function previewUpgradeDependents(store: SourceStore, from: IfcSchemaVersion, to: IfcSchemaVersion): Set<number> {
-  const seeds = new Set<number>();
+export function previewUpgradeDependents(store: SourceStore, from: IfcSchemaVersion, to: IfcSchemaVersion, boundaryIds: readonly number[]): Set<number> {
+  const seeds = new Set(boundaryIds);
   if (!removesObsoleteResources(from, to) || from === 'IFC5' || (to !== 'IFC4' && to !== 'IFC4X3')) return seeds;
   const routeOf = (type: string) => missingTypeRoute(type, from, to, attributes(type, from) !== undefined,
     attributes(convertEntityType(type, from, to), to) !== undefined);
@@ -194,7 +195,7 @@ function rewrite(rec: OutputRecord, dropped: ReadonlySet<number>, to: UpgradeSch
 }
 
 /** Run after conversion so every reference is in the final id space and slot. */
-export function pruneUpgrade(lines: string[], seeds: ReadonlySet<number>, to: IfcSchemaVersion, onOmitted?: (id: number) => void): string[] {
+function pruneUpgrade(lines: string[], seeds: ReadonlySet<number>, to: IfcSchemaVersion, onOmitted?: (id: number) => void): string[] {
   if (seeds.size === 0 || (to !== 'IFC4' && to !== 'IFC4X3')) return [];
   const records = lines.map(record);
   const dropped = cascadeOmissions(records, seeds, to);
@@ -213,11 +214,46 @@ export function pruneUpgrade(lines: string[], seeds: ReadonlySet<number>, to: If
   return warnings;
 }
 
+/** Keep records that will be omitted out of the next model's GlobalId reconciliation. */
+export class MergedUpgradePruning {
+  private readonly seeds = new Set<number>();
+  private omitted = new Set<number>();
+
+  constructor(private readonly target: IfcSchemaVersion) {}
+
+  noteOmitted(id: number): void { this.seeds.add(id); }
+
+  note(line: string, from: IfcSchemaVersion): void {
+    noteUpgradeSeed(line, this.seeds, from, this.target);
+  }
+
+  /**
+   * Release the GlobalIds of unifiable records the final prune will omit. A relationship is never unified, and a
+   * later model's fold can still keep one omitted here, so its GlobalId stays reserved: at worst a later relationship
+   * with the same GlobalId is re-stamped.
+   */
+  forgetOmittedGuids<T extends { finalId: number; canUnify: boolean }>(lines: string[], start: number, guids: Map<string, T>, claims: InverseClaims): void {
+    if (!this.seeds.size || (this.target !== 'IFC4' && this.target !== 'IFC4X3')) return;
+    const previousCount = this.omitted.size;
+    for (const id of this.seeds) this.omitted.add(id);
+    // Model offsets keep emitted ids disjoint. Remaps can refer back to an
+    // earlier model, so index this model with the omissions already known.
+    this.omitted = cascadeOmissions(lines.slice(start).map(record), this.omitted, this.target);
+    if (this.omitted.size > previousCount) {
+      claims.releaseOmitted(this.omitted);
+      for (const [guid, prior] of guids) if (prior.canUnify && this.omitted.has(prior.finalId)) guids.delete(guid);
+    }
+  }
+
+  finish(lines: string[]): string[] {
+    return pruneUpgrade(lines, this.seeds, this.target);
+  }
+}
 
 /** Single-model output contains only converted records, including pending edits. */
-export function pruneUpgradeFromSource(lines: string[], from: IfcSchemaVersion, to: IfcSchemaVersion, onOmitted: (id: number) => void): string[] {
+export function pruneUpgradeFromSource(lines: string[], from: IfcSchemaVersion, to: IfcSchemaVersion, omitted: Iterable<number>, onOmitted: (id: number) => void): string[] {
   if (!removesObsoleteResources(from, to)) return [];
-  const seeds = new Set<number>();
+  const seeds = new Set(omitted);
   for (const line of lines) noteUpgradeSeed(line, seeds, from, to);
   return pruneUpgrade(lines, seeds, to, onOmitted);
 }

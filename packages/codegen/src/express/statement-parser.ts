@@ -45,7 +45,7 @@ export function parseTypeSpec(s: TokenStream): TypeSpec {
       const width = parseExpression(s);
       s.expectOp(')');
       const fixed = s.acceptKeyword('FIXED');
-      return { k: 'simple', name: word, width, fixed };
+      return { k: 'simple', name: word, width, fixed, spelling: s.sliceFrom(t.start, true) };
     }
     return { k: 'simple', name: word };
   }
@@ -64,7 +64,8 @@ export function parseTypeSpec(s: TokenStream): TypeSpec {
     s.expectKeyword('OF');
     const optional = s.acceptKeyword('OPTIONAL');
     const unique = s.acceptKeyword('UNIQUE');
-    return { k: 'aggregate', kind: word, low, high, optional, unique, of: parseTypeSpec(s) };
+    const of = parseTypeSpec(s);
+    return { k: 'aggregate', kind: word, low, high, optional, unique, of, spelling: s.sliceFrom(t.start, true) };
   }
   const extensible = s.acceptKeyword('EXTENSIBLE');
   if (extensible) s.acceptKeyword('GENERIC_ENTITY');

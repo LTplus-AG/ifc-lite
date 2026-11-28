@@ -361,3 +361,40 @@ it('a slot transform is in the model IFC frame: a 1 degree heading turns about t
   // About the render origin instead, the same point would land tens of kilometres away from the host's intent.
   assert.ok(Math.hypot(placedIfc[0] - (c * 10 - 0 + shift[0] + 5), placedIfc[1] - (s * 10 + shift[1] + 6)) > 10_000);
 });
+
+it('a single model requested while the federation chunk loads wins: the older federation never starts (#11813 review)', async () => {
+  applyProcessingConfig({ open: { federation: { id: 'older', slots: [slot('arch', 'a'), slot('struct', 'b')] } } });
+  const { openProcessedModel } = await import('@/lib/processed-model');
+  await act(async () => {
+    root.render(<Entry />);
+    // Filed in the same turn: the federation's chunk has not resolved yet.
+    openProcessedModel({ sha256: hash('f'), bytes: 1, name: 'newer.ifc' });
+  });
+  await act(async () => { await waitFor(() => [...models().values()].some(m => m.processedModel?.sha256 === hash('f') && m.loadState === 'complete'), 'the newer model loads'); });
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 100)); });
+  assert.deepEqual(asked, [hash('f')], 'nothing of the older federation was requested');
+  assert.equal(models().size, 1);
+});
+
+it('a newer primary ends a finished federation: its failed slots lose their Retry, and an old Retry adds nothing (#11813 review)', async () => {
+  respond = async sha256 => {
+    if (sha256 === hash('b')) throw new IfcServerError('overloaded', 503, 'OVERLOADED');
+    return stored(sha256);
+  };
+  mock.method(console, 'warn', () => {});
+  await openFederation([slot('arch', 'a'), slot('struct', 'b')]);
+  const { federationSlotFailure } = await import('@/lib/federation-slot-status');
+  const staleRetry = federationSlotFailure('struct')!.retry;
+  const gate = deferred<ParquetParseResponse>();
+  respond = async sha256 => (sha256 === hash('f') ? gate.promise : stored(sha256));
+  const { openProcessedModel } = await import('@/lib/processed-model');
+  await act(async () => { openProcessedModel({ sha256: hash('f'), bytes: 1, name: 'newer.ifc' }); });
+  await act(async () => { await waitFor(() => asked.includes(hash('f')), 'the newer primary started'); });
+  assert.equal(federationSlotFailure('struct'), undefined, 'the replaced federation offers no Retry');
+  const before = asked.length;
+  await act(async () => { staleRetry(); });
+  await act(async () => { gate.resolve(stored(hash('f'))); });
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 100)); });
+  assert.deepEqual(asked.slice(before), [], 'an old Retry asks for nothing');
+  assert.equal(models().has('struct'), false);
+});

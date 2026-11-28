@@ -139,7 +139,9 @@ function parseProcessedModel(value: unknown, where: string): ProcessedModelStart
 
 function isId(value: unknown): value is string {
   // No control characters: an id lands in logs and in model maps, never as markup.
-  return typeof value === 'string' && value.trim() !== '' && value.length <= MAX_ID_LENGTH && !/[\u0000-\u001f\u007f]/.test(value);
+  if (typeof value !== 'string' || value.trim() === '' || value.length > MAX_ID_LENGTH) return false;
+  for (let i = 0; i < value.length; i++) { const code = value.charCodeAt(i); if (code < 32 || code === 127) return false; }
+  return true;
 }
 
 function parseFederation(value: unknown): ProcessedFederationStart {

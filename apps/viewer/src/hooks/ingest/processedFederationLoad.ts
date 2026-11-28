@@ -134,6 +134,9 @@ export async function loadProcessedFederation(
   // after it is ended only by a LATER primary (a newer federation, a file the user opens), never ours.
   const primaryLoad = loaders.openPrimary(requestOf(primary), primary.slot, { retryOperation: again });
   const supersession = watchLoadSupersession('primary');
+  // The watch outlives the run while a slot's Retry may still fire: the next primary or federation ends it.
+  run.signal.addEventListener('abort', () => supersession.stop(), { once: true });
+  supersession.signal.addEventListener('abort', () => { supersession.stop(); if (currentRun === run) clearFederationSlotFailures(); }, { once: true });
   // After our primary: a slot Retry long after this run may only add to the scene this run built.
   const ours = () => useViewerStore.getState().models.get(primary.slot)?.processedModel?.sha256 === primary.sha256;
   const ended = () => run.signal.aborted || supersession.signal.aborted || !ours();
@@ -144,68 +147,63 @@ export async function loadProcessedFederation(
   const progress = () => {
     if (!ended()) useViewerStore.getState().setProgress({ phase: `Opening ${settled} of ${total} models`, percent: Math.round((settled / total) * 100) });
   };
-  try {
-    await primaryLoad;
-    // `ours`: our record, not one a newer load put under the same slot id.
-    if (ended()) { outcome.skipped.push(...request.slots.map(slot => slot.slot)); return outcome; }
-    const { setModelName, setModelVisibility } = useViewerStore.getState();
-    setModelName(primary.slot, primary.label);
-    if (!primary.visible) setModelVisibility(primary.slot, false);
-    await propertiesSettled(primary.slot, endedEarly.signal);
-    if (ended()) { outcome.skipped.push(...request.slots.map(slot => slot.slot)); return outcome; }
-    const record = useViewerStore.getState().models.get(primary.slot);
-    if (record?.loadState === 'complete' && record.ifcDataStore) {
+  await primaryLoad;
+  // `ours`: our record, not one a newer load put under the same slot id.
+  if (ended()) { outcome.skipped.push(...request.slots.map(slot => slot.slot)); return outcome; }
+  const { setModelName, setModelVisibility } = useViewerStore.getState();
+  setModelName(primary.slot, primary.label);
+  if (!primary.visible) setModelVisibility(primary.slot, false);
+  await propertiesSettled(primary.slot, endedEarly.signal);
+  if (ended()) { outcome.skipped.push(...request.slots.map(slot => slot.slot)); return outcome; }
+  const record = useViewerStore.getState().models.get(primary.slot);
+  if (record?.loadState === 'complete' && record.ifcDataStore) {
+    applySlotPlacement(primary.slot, primary.transform);
+    outcome.loaded.push(primary.slot);
+  } else {
+    // No geometry (its card says why), or geometry without properties: its row offers the federation again.
+    const reason = record?.loadState === 'error' ? record.loadError ?? '' : translate('viewportLighting.container.processedModel.noProperties');
+    if (record?.loadState !== 'error') {
+      useViewerStore.getState().updateModel(primary.slot, { loadError: reason });
       applySlotPlacement(primary.slot, primary.transform);
-      outcome.loaded.push(primary.slot);
-    } else {
-      // No geometry (its card says why), or geometry without properties: its row offers the federation again.
-      const reason = record?.loadState === 'error' ? record.loadError ?? '' : translate('viewportLighting.container.processedModel.noProperties');
-      if (record?.loadState !== 'error') {
-        useViewerStore.getState().updateModel(primary.slot, { loadError: reason });
-        applySlotPlacement(primary.slot, primary.transform);
-      }
-      setFederationSlotFailure(primary.slot, { reason, retry: again });
-      outcome.failed.push(primary.slot);
     }
-    settled = 1; progress();
-
-    // Request order decides the RTC anchor, not completion order.
-    const firstRequest = Date.now();
-    const addOne = async (slot: ProcessedFederationSlot, index: number): Promise<boolean> => {
-      if (ended()) return false;
-      setFederationSlotFailure(slot.slot, null);
-      const options: FederationAddModelOptions = {
-        modelId: slot.slot, name: slot.label, visible: slot.visible, loadedAt: firstRequest + index,
-        // The card's Retry and the row's Retry both load this slot again, placement included, and never reject.
-        retryOperation: () => { void addOne(slot, index); },
-      };
-      let modelId: string | null = null;
-      try { modelId = await loaders.addSlot(requestOf(slot), options); }
-      catch (error) { console.warn(`[viewer config] Federation slot ${slot.slot} failed`, error); }
-      if (ended()) return false;
-      if (modelId) { applySlotPlacement(modelId, slot.transform); return true; }
-      const reason = useViewerStore.getState().models.get(slot.slot)?.loadError ?? '';
-      setFederationSlotFailure(slot.slot, { reason, retry: options.retryOperation! });
-      return false;
-    };
-    let next = 0;
-    const worker = async (): Promise<void> => {
-      while (next < rest.length && !ended()) {
-        const index = next++;
-        const slot = rest[index];
-        const ok = await addOne(slot, index + 1);
-        if (ended()) { outcome.skipped.push(slot.slot); continue; }
-        (ok ? outcome.loaded : outcome.failed).push(slot.slot);
-        settled++; progress();
-      }
-    };
-    const wanted = loaders.concurrency ?? DEFAULT_FEDERATION_CONCURRENCY;
-    const cap = Number.isFinite(wanted) && wanted >= 1 ? Math.floor(wanted) : DEFAULT_FEDERATION_CONCURRENCY;
-    await Promise.all(Array.from({ length: Math.min(cap, rest.length) }, worker));
-    outcome.skipped.push(...rest.slice(next).map(slot => slot.slot));
-    return outcome;
-  } finally {
-    // The run stays `currentRun`: a newer federation still ends its slot retries.
-    supersession.stop();
+    setFederationSlotFailure(primary.slot, { reason, retry: again });
+    outcome.failed.push(primary.slot);
   }
+  settled = 1; progress();
+
+  // Request order decides the RTC anchor, not completion order.
+  const firstRequest = Date.now();
+  const addOne = async (slot: ProcessedFederationSlot, index: number): Promise<boolean> => {
+    if (ended()) return false;
+    setFederationSlotFailure(slot.slot, null);
+    const options: FederationAddModelOptions = {
+      modelId: slot.slot, name: slot.label, visible: slot.visible, loadedAt: firstRequest + index,
+      // The card's Retry and the row's Retry both load this slot again, placement included, and never reject.
+      retryOperation: () => { void addOne(slot, index); },
+    };
+    let modelId: string | null = null;
+    try { modelId = await loaders.addSlot(requestOf(slot), options); }
+    catch (error) { console.warn(`[viewer config] Federation slot ${slot.slot} failed`, error); }
+    if (ended()) return false;
+    if (modelId) { applySlotPlacement(modelId, slot.transform); return true; }
+    const reason = useViewerStore.getState().models.get(slot.slot)?.loadError ?? '';
+    setFederationSlotFailure(slot.slot, { reason, retry: options.retryOperation! });
+    return false;
+  };
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    while (next < rest.length && !ended()) {
+      const index = next++;
+      const slot = rest[index];
+      const ok = await addOne(slot, index + 1);
+      if (ended()) { outcome.skipped.push(slot.slot); continue; }
+      (ok ? outcome.loaded : outcome.failed).push(slot.slot);
+      settled++; progress();
+    }
+  };
+  const wanted = loaders.concurrency ?? DEFAULT_FEDERATION_CONCURRENCY;
+  const cap = Number.isFinite(wanted) && wanted >= 1 ? Math.floor(wanted) : DEFAULT_FEDERATION_CONCURRENCY;
+  await Promise.all(Array.from({ length: Math.min(cap, rest.length) }, worker));
+  outcome.skipped.push(...rest.slice(next).map(slot => slot.slot));
+  return outcome;
 }

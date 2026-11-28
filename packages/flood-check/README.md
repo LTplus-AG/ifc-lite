@@ -24,6 +24,12 @@ interfaces the caller injects.
 > next to them, and states in every result and in the site property set the
 > height error it cannot detect (see [Height reference](#height-reference)).
 
+## Install
+
+```bash
+npm install @ifc-lite/flood-check @ifc-lite/parser
+```
+
 ## Usage
 
 ```ts
@@ -125,7 +131,7 @@ console.log(terrain.verticalCrs);
 
 ### The BAFU provider
 
-`createBafuRunoffProvider({ fetch?, timeoutMs?, cache?, cellSize?, baseUrl?, now? })`
+`createBafuRunoffProvider({ fetch?, timeoutMs?, cache?, cellSize?, maxPixels?, baseUrl?, style?, now? })`
 reads WMS GetMap from `wms.geo.admin.ch` (no federal service returns the depth
 class for a point) and decodes colours **exactly**:
 
@@ -142,7 +148,7 @@ The server antialiases polygon edges, so only alpha-255 pixels whose RGB
 equals a legend colour are classified; blends stay unclassified and are never
 rounded to the nearest class. Opaque colours that are neither a legend colour
 nor a blend of two legend colours, in significant numbers, throw
-`HazardStyleChangedError`: the style changed and no class can be trusted.
+`HazardStyleChangedError`: the style changed and no class can be trusted. The `style` option tunes that test: `maxUnexplainedShare` (default 0.005, 0.5 % of pixels) and `maxUnexplainedPixels` (default 20; the larger of the two applies), and `blendTolerance` (default 3 per channel).
 Requests are snapped outward to the cell grid (default 0.5 m) and kept at
 9 px or more per side (the server answers HTTP 500 to 1 × 1). PNG decoding
 uses `fflate` (MIT), which `@ifc-lite/parser` already ships; no new

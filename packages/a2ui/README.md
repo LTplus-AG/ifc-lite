@@ -2,6 +2,10 @@
 
 A2UI v1.0 catalog, entity references and result-surface builders for IFC models.
 
+```bash
+npm install @ifc-lite/a2ui
+```
+
 - `@ifc-lite/a2ui` exposes `buildSurface`, the query format and the model-aware `modelId:expressId` reference helpers.
 - `@ifc-lite/a2ui/catalog` exposes the IFC catalog schema and renderer registration.
 - `@ifc-lite/a2ui/agent` exposes the agent helpers and `validateIfcMessages`.

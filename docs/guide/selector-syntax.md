@@ -67,8 +67,8 @@ exists only as part of `*=`. Use a regular expression for wildcards.
 | `Qto_….Quantity > 10` | ⚠️ | only a `Qto_` set, and only a numeric comparison — see below |
 | `material=` | ✅ | matches a material **Name or Category** |
 | `classification=`, `= NULL`, `!= NULL` | ✅ | matches the code or the name |
-| `location="Level 3"` | ✅ | reaches one level through a containing space — see below |
-| GlobalId terms, `! <GlobalId>` | ✅ | several terms union (add) or subtract, mirroring class terms |
+| `location="Level 3"` | ✅ | `=` and `!=` against a plain storey name only (no regex, no `NULL`); reaches one level through a containing space — see below |
+| GlobalId terms, `! <GlobalId>` | ✅ | several terms union (add) or subtract, mirroring class terms; a class term and a GlobalId term that both add in one group (`IfcWall, <GlobalId>`) are reported, so run them as two filters |
 | `GlobalId=`, `GlobalId!=` | ✅ | reuses the same globalId rule the bare term builds; `*=`, `>`/`>=`/`<`/`<=`, `/regex/`, and `NULL` are reported |
 | `Description=`, `ObjectType=`, `Tag=`, any other schema attribute | ✅ | all eight operators, `= NULL` / `!= NULL` as presence — see below |
 | `type=WT01` | ✅ | matches the relating type's Name; `=`, `!=`, `*=`, `!*=` and `/regex/`, like `Name=` — no `>`, `>=`, `<`, `<=` |
@@ -178,8 +178,9 @@ SDK's `bim.query().select('…')`. The CLI, MCP and SDK route it through the sam
 **lossless subset** of the grammar above — class terms and comma unions, exact-name
 Pset/Qto comparisons with `=` `!=` `>` `>=` `<` `<=` `*=`, a `/regex/` value on `=`,
 and `!= NULL` — and throws `SelectorUnsupportedError` naming the construct for anything
-else (regex pset/property *names*, `!*=`, `!` class negation, `+` group unions,
-`parent=`, `query:`, `material=`, `classification=`, `location=`, attribute terms).
+else (regex pset/property *names*, a regex value on any operator but `=`, `= NULL`,
+`!*=`, `!` class negation, `+` group unions, bare GlobalId terms, `type=`, `parent=`,
+`query:`, `material=`, `classification=`, `location=`, attribute terms such as `Name=`).
 The viewer's Filter tab keeps the full grammar. The structured filters each surface
 already had remain, and this is how the same intent is spelled in them:
 
@@ -189,7 +190,7 @@ already had remain, and this is how the same intent is spelled in them:
 | `Pset_WallCommon.FireRating=2HR` | `--where "Pset_WallCommon.FireRating=2HR"` | `property: { pset, name, op: '=', value }` | `.where('Pset_WallCommon','FireRating','=','2HR')` |
 | `…FireRating*=REI` | `--where "Pset_WallCommon.FireRating~REI"` | `op: 'contains'` | `.where(…, 'contains', 'REI')` |
 | `…FireRating != NULL` | `--where "Pset_WallCommon.FireRating"` | `op: 'exists'` | — |
-| `/Pset_.*Common/.FireRating` | — (`--select` throws `SelectorUnsupportedError`) | — | `bim.query.property(entity, '/Pset_.*Common/', 'FireRating')` |
+| `/Pset_.*Common/.FireRating` | — (`--select` throws `SelectorUnsupportedError`) | — | `bim.property(entity, '/Pset_.*Common/', 'FireRating')` (sandbox: `bim.query.property(…)`) |
 | `IfcWall*` (a wildcard) | `--a "IfcWall*"` (clash selectors only) | — | — |
 
 Note the last row: the clash rule selectors (`ifc-lite clash --a "IfcDuct*|IfcPipe*"`) are

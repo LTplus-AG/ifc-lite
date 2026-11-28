@@ -13,7 +13,8 @@ next measurement.
 ## Read and inspect
 
 Open an IFC in the viewer. Select an analytical member or its linked physical element
-in the model tree or viewport and inspect its Structural properties card.
+in the model tree or viewport and inspect its **Structural Analysis** card in
+the properties panel.
 For a member, related rows list connections, activities and analysis models.
 Counterpart rows let you select the linked physical or analytical object.
 The card is read-only. The ledger's card probes are still unwritten; a readable
@@ -27,7 +28,9 @@ referenced by a load configuration also appears on the owning activity's card;
 it can be inspected directly by its model-local express id.
 
 Supports and loads appear as clickable glyphs when their geometry and values
-can be resolved. Use **Supports & loads** in the command palette to toggle them.
+can be resolved. Use **Supports & loads** in the command palette to toggle them. The palette's
+**Structural view: both models**, **Structural view: analytical model only** and
+**Structural view: physical model only** commands switch which model is shown.
 All load groups are shown together; there is no load-case selector. Reaction
 records can be read but do not have result glyphs. Curve and surface supports
 and some load forms still have gaps, as the render column records. See

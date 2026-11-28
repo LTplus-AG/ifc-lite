@@ -61,9 +61,7 @@ Source: `tests/benchmark/baseline.json`, the committed viewer-benchmark regressi
 The rendering pipeline avoids unnecessary memory copies between WASM and the GPU:
 
 - **Direct WASM-to-WebGPU transfer**: Geometry buffers go straight from WASM linear memory to GPU buffers
-- **60-70% reduction** in peak RAM usage compared to a copy-based approach
-- **74% faster** parse time with the optimized data flow
-- **40-50% faster** geometry-to-GPU pipeline
+- Skipping the intermediate copies lowers peak memory and shortens the geometry-to-GPU path; the measured load times are in the [benchmark table](#viewer-benchmark-reference)
 
 ## On-Demand Property Extraction
 
@@ -71,7 +69,7 @@ When using `@ifc-lite/parser` in the browser, properties are not all parsed upfr
 
 - Properties and quantities are extracted lazily when you access them
 - The initial parse skips expensive property table building
-- Large files (100+ MB) stream geometry while data loads in the background
+- Large files stream geometry while data loads in the background
 - This keeps the UI responsive even for very large models
 
 ## Architecture Choices That Matter
@@ -132,10 +130,10 @@ cannot serve as a timing baseline.
 
 | | Client (WASM) | Server (Rust) |
 |---|---|---|
-| **Threading** | Single-threaded | Multi-threaded (Rayon) |
+| **Threading** | Web Workers (data-model worker, geometry worker pool) | Multi-threaded (Rayon) |
 | **Memory** | WASM 4 GB limit | System RAM |
 | **Caching** | Browser IndexedDB | Content-addressable disk cache |
-| **Format** | Raw geometry | Apache Parquet (15-50x smaller) |
+| **Format** | Raw geometry | Apache Parquet (much smaller than JSON) |
 | **Best for** | Privacy, offline, simple apps | Teams, large files, production |
 
 For large files or team scenarios, the server processes everything in parallel and caches the result. Repeat visits skip parsing entirely.
@@ -164,7 +162,7 @@ Some performance numbers are deterministic enough to block a merge on: byte size
 
 **Reading a ceiling.** Each entry has an `id`, the `metric` it measures, the `ceiling`, a `tolerance`, and `provenance` (the `main` commit and time it was measured at). An `exact` tolerance means any rise fails, which is used for structural counts. A `relative` tolerance of `0.005` allows up to 0.5% above the ceiling; the raw byte metrics use `0.001` (0.1%). That band is total slack, not a per-PR allowance: the ceiling does not move when a PR lands inside it, so several small rises still fail once together they cross it. When the check fails, the job summary (and a sticky PR comment) shows a table of every metric that moved, with ceiling, allowed maximum, measured value and the change.
 
-**Lowering is automatic.** `.github/workflows/perf-ratchet-lower.yml` rebuilds and measures `main` daily. The lowering target is the measurement multiplied by `1 + headroom`, rounded down to whole bytes for `unit: "bytes"`. Set the optional `headroom` field on a ceiling entry to a fraction from 0 up to (but excluding) 1. The default is `0.005` (0.5%) for byte metrics with relative tolerance. Exact-tolerance entries and other units, including instruction counts, default to zero. The job proposes a lower ceiling only if the target is below the current one and, for a relative metric, the drop clears the existing tolerance band. The first lowering from a ceiling set directly to a measurement requires `main` to shrink below that ceiling by about headroom plus tolerance. That is about 0.6% for the bundle metrics with 0.1% tolerance, or roughly 80 KB for `bundle/viewer-eager-js-bytes`. Once a ceiling includes headroom, each further lowering with the same settings requires only a tolerance-sized drop from the previous measurement, subject to rounding. The judge still applies tolerance to the committed ceiling. After lowering with 0.5% headroom and 0.1% tolerance, growth of up to about 0.6% over the measured `main` fits. Larger jumps fail.
+**Lowering is automatic.** `.github/workflows/perf-ratchet-lower.yml` rebuilds and measures `main` daily. The lowering target is the measurement multiplied by `1 + headroom`, rounded down to whole bytes for `unit: "bytes"`. Set the optional `headroom` field on a ceiling entry to a fraction from 0 up to (but excluding) 1. The default is `0.005` (0.5%) for byte metrics with relative tolerance. Exact-tolerance entries and other units, including instruction counts, default to zero. The job proposes a lower ceiling only if the target is below the current one and, for a relative metric, the drop clears the existing tolerance band. The first lowering from a ceiling set directly to a measurement requires `main` to shrink below that ceiling by about headroom plus tolerance. That is about 0.6% for the bundle metrics with 0.1% tolerance and the default headroom, or roughly 80 KB for `bundle/viewer-eager-js-bytes`; `bundle/engine-wasm-bytes` sets `headroom` to `0.01`, so its first lowering needs about 1.1%. Once a ceiling includes headroom, each further lowering with the same settings requires only a tolerance-sized drop from the previous measurement, subject to rounding. The judge still applies tolerance to the committed ceiling. After lowering with 0.5% headroom and 0.1% tolerance, growth of up to about 0.6% over the measured `main` fits. Larger jumps fail.
 
 The job opens or updates one PR listing the old and new ceilings. The PR references no issue because the `PERF_RATCHET_PAT` account is in `exemptLogins` in `scripts/issue-queue.config.json`. A ceiling's history is its `provenance` plus `git log -- tests/perf-ratchets`. If a later run qualifies no ceiling for lowering, it closes the open lowering PR. Since `main` may grow in the meantime, the merge queue tests any PR that edits `tests/perf-ratchets/` alone (the `ceilings` queue in `.mergify.yml`, batch size 1). A batch is tested at its tip, and #8459 landed red because a later PR in its batch shrank the bundle and hid the breach.
 

@@ -182,6 +182,18 @@ the parser uses it only if ready, otherwise it computes the same key itself with
 waiting. Omitting the cell retains ordinary parsing behavior. This optimization
 does not change partial/final source accessor identity or cache keys.
 
+`WorkerParserOptions` also takes `onMemorySnapshot` (the worker's memory
+snapshot when the parse completes), `trace` (a `LoadTrace` that records the
+worker and hydrate spans) and `waitForEntityIndex`. With `waitForEntityIndex`,
+the worker waits for `parser.setEntityIndex(ids, starts, lengths,
+oversizedIdCount?, malformedRecordCount?)` instead of running its own WASM scan;
+pass both counts from the geometry pre-pass so refused records stay reported.
+To use a custom worker script, pass `new WorkerParser({ workerUrl })`.
+`@ifc-lite/parser/browser` also exports `prepareSpareParser`,
+`hasSpareParserWorker`, `isSpareParserWorkerWarming` and
+`releaseSpareParserWorker`. A prepared spare worker is taken by the next
+`WorkerParser.parseColumnar` call that has no custom `workerUrl`.
+
 ### Streaming Geometry
 
 For large files, stream geometry progressively using `GeometryProcessor.processStreaming()`:
@@ -477,7 +489,7 @@ const client = new IfcServerClient({
   baseUrl: 'http://localhost:3001'
 });
 
-// Parquet format (15x smaller than JSON)
+// Parquet format (much smaller than JSON; see the Performance guide)
 const result = await client.parseParquet(file);
 
 // Streaming for large files (onBatch callback fires per geometry batch)
@@ -632,8 +644,9 @@ const storeyId = hierarchy.elementToStorey.get(wallId);
 
 ## Schema Support
 
-IFC2X3, IFC4 and IFC4X3 are parsed with the same pipeline; the runtime schema
-registry itself is generated from IFC4. IFC5 (IFCX) support is a separate,
+IFC2X3, IFC4 and IFC4X3 are parsed with the same pipeline. `SCHEMA_REGISTRY`
+is generated from IFC4; `getSchemaRegistryForVersion('IFC2X3' | 'IFC4' |
+'IFC4X3')` returns the generated runtime registry for each of the three. IFC5 (IFCX) support is a separate,
 beta code path (`@ifc-lite/ifcx`) not covered by the entity tables below.
 
 Per-entity support for IFC2X3/IFC4/IFC4X3 — whether each concrete class is
@@ -725,9 +738,10 @@ import {
 } from '@ifc-lite/parser';
 
 // Pass a ParseResult's entity maps (`parser.parse`), not the columnar store.
+// It always returns an object; hasGeoreference says whether the model has one.
 const georef = extractGeoreferencing(parseResult.entities, parseResult.entityIndex.byType);
 
-if (georef) {
+if (georef.hasGeoreference) {
   console.log(`CRS: ${georef.projectedCRS?.name}`);
   console.log(`Eastings: ${georef.mapConversion?.eastings}`);
   console.log(`Northings: ${georef.mapConversion?.northings}`);
@@ -821,8 +835,10 @@ try {
 |------|----------|--------|-------|
 | `parse()` | Small files, full object access | High | Moderate |
 | `parseColumnar()` | Most use cases | Low | Fast |
-| `GeometryProcessor.processStreaming()` | Large files (>50MB) | Very Low | Progressive |
+| `GeometryProcessor.processStreaming()` | Large files | Very Low | Progressive |
 | Server | Production, caching | Server-side | Fastest (cached) |
+
+For measured numbers, see the [Performance guide](performance.md).
 
 ### Performance Tips
 

@@ -83,15 +83,21 @@ flowchart TB
 === "Native Binary"
 
     ```bash
-    npx @ifc-lite/server-bin
+    PORT=3001 npx @ifc-lite/server-bin
     ```
 
 === "From Source"
 
     ```bash
     cd apps/server
-    cargo run --release
+    PORT=3001 cargo run --profile server-release
     ```
+
+The server listens on port 8080 unless `PORT` is set; the commands above use
+3001 so the client below reaches all three. Build from source with
+`--profile server-release`: the workspace's plain `release` profile aborts on
+panic, so one malformed upload would stop the whole server instead of failing
+one request.
 <!-- markdownlint-enable MD046 -->
 
 ### 2. Connect from Client
@@ -154,7 +160,7 @@ JSON/SSE endpoints it's on `metadata`; for the Parquet endpoints it's in the
 | `/api/v1/cache/geometry/{hash}` | GET | Fetch cached geometry (no upload) |
 | `/api/v1/cache/{key}` | GET | Retrieve the cached `POST /api/v1/parse` result for the `cache_key` that route returned, with `stats.from_cache: true` (404 when that route has not cached one) |
 | `/api/v1/cache/{key}` | DELETE | Evict every cached representation of the source file that `cache_key` names (`200` with `{ key, deleted }`; `deleted: 0` when nothing was cached) |
-| `/api/v1/parse/data-model/{key}` | GET | Fetch cached data model (200 hit; 202 a fill is running right now for this key; 404 nothing cached and nothing filling it); `?data_model_entities=rooted` fetches the rooted-only variant |
+| `/api/v1/parse/data-model/{key}` | GET | Fetch cached data model (200 hit; 202 a fill is running right now for this key; 400 the fill refused the model, with the reason in the body; 404 nothing cached and nothing filling it); `?data_model_entities=rooted` fetches the rooted-only variant |
 | `/api/v1/parse/symbolic/{key}` | GET | Fetch 2D symbol data (`IfcAnnotation` + `IfcGrid`) as JSON (200 hit; 202 a parse that writes it is running right now; 404 nothing cached and nothing writing it) |
 
 ### Utility Endpoints
@@ -164,14 +170,15 @@ JSON/SSE endpoints it's on `metadata`; for the Parquet endpoints it's in the
 | `/` | GET | API information |
 | `/api/v1/health` | GET | Health check (liveness; always open) |
 | `/api/v1/ready` | GET | Readiness probe (503 while the memory breaker is shedding load) |
-| `/api/v1/metrics` | GET | Prometheus text metrics (registered only when `IFC_METRICS_ENABLED=1`) |
+| `/api/v1/metrics` | GET | Prometheus text metrics (`404` unless `IFC_METRICS_ENABLED` is `1` or `true`) |
 
 !!! note "One key for `GET` and `DELETE /api/v1/cache/{key}`"
     Both methods take the same `{key}`: the request `cache_key` a parse
     returned (`result.cache_key` from `POST /api/v1/parse`, or the `cache_key`
     in a Parquet response's `X-IFC-Metadata` header). That is the file's
     SHA-256, then `-{opening_filter}`, then `-q{level}` for a non-default
-    tessellation quality, e.g. `71c9…34c9-default` or `71c9…34c9-ignore_all-qhigh`.
+    tessellation quality, then `-layers` for a parse sent with
+    `layer_slicing=true`, e.g. `71c9…34c9-default` or `71c9…34c9-ignore_all-qhigh`.
     Both resolve it through the same function, so a key one accepts the other
     accepts, and anything else (a bare SHA-256, an internal storage key with a
     `-json-v7` or `-parquet-v8` suffix) is a `400 BAD_REQUEST` from both.
@@ -439,7 +446,9 @@ synchronously, BEFORE their response goes out, so a fetch right after either
 one returns is already a hit; only the streaming route (`/parse/parquet-stream`)
 fills it in the background after its `complete` event, which is the one case
 `GET /api/v1/parse/data-model/{key}` answers `202` for (a fill genuinely
-running for that key — keep polling). Everything else is `404`: no data model
+running for that key — keep polling). A fill that refused the model (a table
+over its size budget) leaves a `400` with the reason, and `fetchDataModel`
+rejects with it. Everything else is `404`: no data model
 was ever written for that key and none is in flight, so a client should stop
 polling rather than retry forever. Both `fetchDataModel` and `fetchSymbolic` return
 `null` for a missing cache entry (404) or when all attempts report pending (202).
@@ -544,8 +553,9 @@ if (symbols) {
 // Health check
 const health = await client.health();
 
-// Uploads are gzip-compressed automatically by parse()/parseParquet(),
-// so no manual compression step is needed.
+// parse() gzip-compresses every upload. parseParquet() compresses too,
+// except for files over 50 MB or a localhost/127.0.0.1 base URL;
+// parseParquetStream() uploads uncompressed.
 
 // Check Parquet decoder availability
 const available = await client.isParquetSupported();
@@ -815,7 +825,7 @@ Cache keys are derived from file content:
 {SHA256}-{filter}-parquet-metadata-v6 # Metadata header
 {SHA256}-{filter}-datamodel-v8        # Properties & hierarchy
 {SHA256}-{filter}-datamodel-rooted-v8 # Same, rooted-only entities table (data_model_entities=rooted)
-{SHA256}-{filter}-symbolic-v3         # 2D symbol stream
+{SHA256}-{filter}-symbolic-v4         # 2D symbol stream
 
 # POST /parse/parquet/optimized has its own pair (issue #3889): the optimized
 # payload is quantized and deduplicated, so a hit on one route must never
@@ -907,13 +917,13 @@ faster than the first load.
 | `PORT` | 8080 | Server port |
 | `RUST_LOG` | info (+ debug for server/http spans) | Log filter (error, warn, info, debug, trace) |
 | `MAX_FILE_SIZE_MB` | 500 | Maximum upload size in MB |
-| `WORKER_THREADS` | CPU cores | Parallel processing threads |
+| `WORKER_THREADS` | CPU cores (`4` in the Docker image) | Parallel processing threads |
 | `CACHE_DIR` | `./.cache` (`/app/cache` in Docker) | Cache directory path |
 | `REQUEST_TIMEOUT_SECS` | 300 | Request timeout in seconds |
 | `IFC_STREAM_IDLE_TIMEOUT_SECS` | 600 | Close a streaming connection after this many seconds with no socket-write progress; `0` disables |
 | `INITIAL_BATCH_SIZE` | 100 | Streaming initial batch size |
 | `MAX_BATCH_SIZE` | 1000 | Streaming maximum batch size |
-| `CACHE_MAX_AGE_DAYS` | 7 | Cache retention in days |
+| `CACHE_MAX_AGE_DAYS` | 7 | Read but not applied: the server does not expire cache entries by age |
 | `CORS_ORIGINS` | localhost dev origins | Allowed CORS origins (comma-separated, `*` for all) |
 | `IFC_SERVER_API_TOKEN` | unset | Optional bearer token for parse/cache routes (falls back to `API_TOKEN`) |
 | `IFC_MAX_CONCURRENT_PARSES` | `WORKER_THREADS` | Parse jobs admitted at once (CPU gate) |
@@ -937,7 +947,6 @@ services:
       - RUST_LOG=info
       - MAX_FILE_SIZE_MB=500
       - WORKER_THREADS=8
-      - CACHE_MAX_AGE_DAYS=30
     volumes:
       - ifc-cache:/app/cache
 
@@ -947,7 +956,9 @@ volumes:
 
 !!! tip "Adding Health Checks"
     For orchestration systems requiring health checks, the server exposes
-    `GET /api/v1/health`. If your runtime image includes `curl` or `wget`:
+    `GET /api/v1/health`. The published image already ships `curl` and
+    declares this check as its `HEALTHCHECK`. For your own image, if it
+    includes `curl` or `wget`:
 
     ```yaml
     healthcheck:
@@ -969,13 +980,10 @@ For production, consider:
 ```bash
 # Railway deployment
 railway up
-
-# Fly.io deployment
-fly deploy
-
-# Kubernetes
-kubectl apply -f k8s/deployment.yaml
 ```
+
+The repository ships a Railway configuration (`apps/server/railway.toml`). It
+has no Fly.io or Kubernetes manifests; write those for your own platform.
 
 ## Streaming
 
@@ -1005,9 +1013,9 @@ sequenceDiagram
     end
 
     Server->>Cache: Store accumulated meshes
+    Server->>Client: SSE: complete {stats, metadata}
     Server->>Server: Extract data model (background)
     Server->>Cache: Store data model
-    Server->>Client: SSE: complete {stats, metadata}
 ```
 
 ### Skipping the upload on a cache hit
@@ -1037,8 +1045,8 @@ Two rules keep the parameter honest:
 - **The hash only selects.** It can not cause anything to be parsed or written;
   a key with nothing behind it is a 404, never a parse.
 
-Send the same `opening_filter`, `tessellation_quality` and `parquet_layout` you
-would send with the file. They are part of the cache identity, so a hash paired
+Send the same `opening_filter`, `tessellation_quality`, `parquet_layout` and
+`layer_slicing` you would send with the file. They are part of the cache identity, so a hash paired
 with a different layout asks about a different entry.
 
 `POST /api/v1/parse/parquet/optimized` accepts the same `?sha256=` parameter,
@@ -1187,7 +1195,7 @@ for await (const event of client.parseStream(file)) {
 
 ### Network
 
-1. **Gzip Compression** - Applied automatically on upload by `parse()`/`parseParquet()`
+1. **Gzip Compression** - Applied on upload by `parse()`, and by `parseParquet()` below 50 MB to a non-localhost server
 2. **Parquet Format** - roughly 15-50x smaller than JSON
 3. **SSE Streaming** - No polling overhead
 
@@ -1292,7 +1300,7 @@ try {
 ```
 
 Checking only for `event.type === 'error'` leaves the second case unhandled: the
-loop ends early and the throw escapes uncaught. `parseStreamToParquet()` raises
+loop ends early and the throw escapes uncaught. `parseParquetStream()` rejects with
 the same error for the same condition.
 
 ### Connection Errors
@@ -1316,8 +1324,8 @@ try {
 - [API Reference](../api/typescript.md) - Complete API documentation
 - [Architecture](../architecture/overview.md) - System design details
 
-Symbolic sidecars use schema-v2 cache entries and full JSON responses use v3
-to refresh direct fill provenance. Existing Parquet geometry keys stay valid;
+Symbolic sidecars are cached under `-symbolic-v4` and full JSON responses under
+`-json-v7`, which carry direct fill provenance. Existing Parquet geometry keys stay valid;
 a replay needs current symbolic metadata, so stale sidecars trigger a reparse.
 Older symbol JSON remains decodable with unknown item provenance.
 

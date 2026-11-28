@@ -221,8 +221,12 @@ Process IFC files on a high-performance Rust server with intelligent caching.
 # Using Docker
 docker run -p 3001:8080 ghcr.io/ltplus-ag/ifc-lite-server
 
-# Or using native binary
-npx @ifc-lite/server-bin
+# Or using the native binary (it listens on 8080 unless PORT is set)
+PORT=3001 npx @ifc-lite/server-bin
+
+# Or scaffold a server project: Docker (server) or native binary (server-native)
+npx create-ifc-lite my-backend --template server
+npx create-ifc-lite my-backend --template server-native
 ```
 
 ### 2. Connect from Client

@@ -233,6 +233,13 @@ export function writeOverlayCreatedEntities(
     } else if (mayNameOmittedRefs && getNonRelRefListTypes().has(upperType)) {
       line = narrowNonRelPositionalRefLists(line, isOmittedFromOutput, upperType, pass.sourceSchema);
     }
+    if (pass.filterRetypedAssignment && upperType === 'IFCRELDEFINESBYTYPE') {
+      line = pass.filterRetypedAssignment(line, entity.expressId, pass.warnings);
+      if (line === null) {
+        pass.omittedTypeAssignments.add(entity.expressId);
+        continue;
+      }
+    }
     // Converted after the loop: a created style assignment may follow the styled item naming it.
     (pass.converting ? toConvert : pass.entities).push(line);
     pass.newEntityCount++;

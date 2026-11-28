@@ -79,8 +79,41 @@ console.log(wall.storey()?.name);    // 'Ground Floor'
 console.log(wall.building()?.name);  // 'Office Tower'
 
 // Containment + composition
-const openings = wall.contains(); // openings hosted by the wall
+const openings = wall.voids();      // openings cut into the wall (IfcRelVoidsElement)
+const contents = wall.storey()?.contains() ?? []; // elements in the wall's storey (IfcRelContainedInSpatialStructure)
 const aggregates = wall.decomposes();
+```
+
+## Spatial queries
+
+`query.onStorey(storeyId)` returns an `EntityQuery` over the elements contained
+in that storey (it throws when the store has no spatial hierarchy).
+`query.inBounds(aabb)` and `query.raycast(origin, direction)` use the store's
+`spatialIndex` and throw `Spatial index not available` until geometry has been
+processed. `query.hierarchy`, `query.project` and `query.storeys` expose the
+spatial structure.
+
+`IfcQuery` reads the parsed store as a snapshot: it does not see live mutation
+edits. Use the SDK query for edited models.
+
+## Selector syntax
+
+`parseSelector(text)` parses the IfcOpenShell selector syntax into an AST
+(`{ ok: true, query }` or `{ ok: false, error }`).
+`selectorToQueryDescriptor(text)` turns one selector group into
+`{ types, filters }`. It throws `SelectorUnsupportedError`, naming each
+construct, when part of the selector has no lossless translation (a `+`
+union, `!` negation, `parent=…`, a regex set name), instead of running a
+partial or empty filter.
+
+```typescript
+import { selectorToQueryDescriptor } from '@ifc-lite/query';
+
+const { types, filters } = selectorToQueryDescriptor(
+  'IfcWall, IfcSlab, Pset_WallCommon.FireRating=2HR, Qto_WallBaseQuantities.NetVolume>1',
+);
+// types   → ['IfcWall', 'IfcSlab']
+// filters → [{ psetName: 'Pset_WallCommon', propName: 'FireRating', operator: '=', value: '2HR' }, …]
 ```
 
 ## SQL via DuckDB-WASM
@@ -99,9 +132,11 @@ const result = await query.sql(`
 console.table(result.rows);
 ```
 
-Tables exposed: `entities`, `properties`, `quantities`, `relationships`. Useful when you'd rather write SQL than chain method calls.
+Tables exposed: `entities`, `properties`, `quantities`, `relationships`, plus the views `walls`, `doors`, `windows`, `slabs`, `columns`, `beams`, `spaces`, `entity_properties` and `entity_quantities`. Useful when you'd rather write SQL than chain method calls.
 
-DuckDB is loaded lazily on the first `sql()` call and is not bundled (it would add ~4 MB). To use the SQL API, install it alongside:
+The `properties` and `quantities` tables are copied from the store's property and quantity tables. A STEP store from `parseColumnar()` leaves those empty and extracts property sets on demand, so on such a store the two tables are empty. An inner join on them, like the example above, returns no rows; a left join from `entities` (as `entity_properties` and `entity_quantities` use) still returns the entities, with `NULL` for the missing values. Use the fluent `whereProperty` filter or an entity's `properties()` and `quantities()` to read the on-demand values. IFCX stores fill both tables.
+
+DuckDB is loaded lazily on the first `sql()` call and is not bundled; its WASM bundle is fetched from jsDelivr (`getJsDelivrBundles`) at that point. To use the SQL API, install it alongside:
 
 ```bash
 npm install @duckdb/duckdb-wasm

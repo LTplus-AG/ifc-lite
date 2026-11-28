@@ -12,6 +12,9 @@ their own initialization function, worker and message protocol.
 callback and returns `Promise<void>`. It runs the callback once and retries
 exactly once for a transient-looking load failure, after a default 300 ms delay.
 Non-transient errors propagate immediately; a failed retry also propagates.
+When the retry's error is a bare transient message that names nothing (such as
+`TypeError: Failed to fetch`), it is re-thrown as an error that names the
+engine binary and `label`, with the original as `cause`.
 The callback's result is not returned.
 
 `InitWasmRetryOptions` supports `retryDelayMs`, an injected `sleep`, an injected
@@ -81,6 +84,11 @@ Pass `worker` to have the RPC post to it, listen to its `message`, `error` and
 `receive(data)`, which returns whether it settled a request. `decode(data)`
 maps an inbound message to `{ id, value }`, `{ id, error }` or `undefined`.
 Ids are 1, 2, 3, … unless `nextId` supplies others (for example UUIDs).
+
+`label` (required) names the endpoint in error messages. `request(build, options?)`
+calls `build(id)` to make the message and resolves with the decoded `value`;
+`notify(message, transfer?)` sends a message that expects no answer.
+Request options also take `transfer`, `timeoutError` and `onId`.
 
 ## License
 

@@ -120,6 +120,13 @@ The extents data is provided "AS IS" under those terms, without warranty of any 
 
 The generator exits non-zero and writes nothing if any code of the index has no registry row, unless the code is listed with a reason in `scripts/epsg-extents-allowlist.json`.
 
+## Also included
+
+- IFC schema tables generated from buildingSMART's IDS-Audit-tool data (`getEntities`, `getPropertySets`, `getAttributes`, `getDataTypes`, `getPartOfRelations`, `findEntity`, `isEntitySubtypeOf`, `ENTITIES_IFC2X3` / `ENTITIES_IFC4` / `ENTITIES_IFC4X3`); refresh them with `pnpm --filter @ifc-lite/data run generate:ifc-schema` (see `scripts/upstream/README.md`)
+- STEP writing helpers shared by every exporter (`generateHeader`, `generateStepFileWithRegistry`, `toStepLineWithRegistry`, `escapeStepString`, `formatStepReal`)
+- Spatial-structure and placement helpers (`isStoreyLikeSpatialType`, `findStoreyByElevation`, `walkPlacementChain`, `collectSpatialAncestors`)
+- `@ifc-lite/data/node`: Node-only `readPackageVersion`, kept out of the root entry so browser bundles never pull in `node:fs`
+
 ## API
 
 See the [API Reference](https://ifclite.dev/docs/api/typescript/#ifc-litedata).

@@ -38,7 +38,9 @@ local oracle is supporting evidence, not a substitute for CI's pinned engine.
 Use a separate worktree at `c5da72799`. Copy only this PR's
 `rust/geometry/tests/triangulation_invariance.rs` and
 `rust/geometry/tests/census_rtc/` into it, and make the manifest fixtures
-available. Leave all production Rust at that reference commit. Run:
+available. Leave all production Rust at that reference commit. (`census_rtc/`
+exists only on the PR's own commits: #4643 later removed it when it moved the
+RTC frame choice into one shared home.) Run:
 
 ```sh
 IFCLITE_CENSUS_BLESS=1 cargo test -p ifc-lite-geometry --release \

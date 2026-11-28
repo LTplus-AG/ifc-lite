@@ -193,7 +193,7 @@ Combine the best of different data structures:
 
 ## Package Architecture
 
-The monorepo contains over 30 TypeScript packages and 8 Rust workspace crates, plus multiple application targets. The diagram below highlights a selected subset.
+The monorepo contains over 70 TypeScript packages under `packages/` and 19 Rust workspace members (18 crates under `rust/` plus `apps/server`; `rust/python` and `rust/csg-thread-bench` sit outside the workspace), plus multiple application targets. The diagram below highlights a selected subset.
 
 ```mermaid
 graph TB
@@ -216,7 +216,7 @@ graph TB
         Cache["@ifc-lite/cache"]
         Query["@ifc-lite/query"]
         Data["@ifc-lite/data"]
-        Export["@ifc-lite/export"]
+        ExportTS["@ifc-lite/export"]
         BCF["@ifc-lite/bcf"]
         IDS["@ifc-lite/ids"]
         Drawing2D["@ifc-lite/drawing-2d"]
@@ -244,12 +244,11 @@ graph TB
     Renderer --> Geometry
     ServerClient --> Server
     Query --> Data
-    Export --> Data
-    BCF --> Data
+    ExportTS --> Data
     IDS --> Data
     Drawing2D --> Geometry
     Mutations --> Data
-    Spatial --> Data
+    Spatial --> Geometry
     Viewer --> Parser
     Viewer --> Renderer
     Viewer --> ServerClient

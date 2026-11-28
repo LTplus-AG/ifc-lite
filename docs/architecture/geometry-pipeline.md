@@ -125,14 +125,15 @@ classDiagram
 ### Coverage by Type
 
 The router's processor registry (`rust/geometry/src/router/processor_registry.rs`)
-currently covers 23 distinct `IfcType` representation items across 18
-processor structs — including `IfcExtrudedAreaSolid`, `IfcFacetedBrep`,
+currently covers 30 distinct `IfcType` representation items across 21
+processor families, one processor struct each — including `IfcExtrudedAreaSolid`, `IfcFacetedBrep`,
 `IfcBooleanClippingResult`/`IfcBooleanResult`, `IfcTriangulatedFaceSet`,
 `IfcShellBasedSurfaceModel`, `IfcFaceBasedSurfaceModel` (the two concrete
 `IfcSurfaceModel` subtypes), `IfcAlignment` and more — not the six this
 section used to list by hand, which had drifted from source. `IfcMappedItem`
-is handled separately, via GPU instancing (`rust/geometry/src/router/instancing.rs`),
-not through this processor table, so it is out of scope for the per-entity
+is handled separately, by the mapping controller (`rust/geometry/src/router/mapped_item.rs`,
+`rust/geometry/src/program/mapping.rs`) and GPU instancing
+(`rust/geometry/src/router/instancing.rs`), not through this processor table, so it is out of scope for the per-entity
 ledger below.
 
 The full, generated, per-entity table (which processor is registered for
@@ -294,6 +295,13 @@ flowchart TB
 ```
 
 ### Face Triangulation
+
+`FacetedBrepProcessor::triangulate_face` (`rust/geometry/src/processors/brep/faceted.rs`)
+fans only on its fast path: a hole-free triangle, or a hole-free convex face of
+up to 8 corners. A quad takes its interior diagonal (`quad_split_3d`), so a
+concave quad is not split outside its ring. Every other face, and every face
+with holes, goes through `triangulate_planar_face`; a failed triangulation of a
+holed face refuses the face instead of filling its openings.
 
 ```mermaid
 graph LR
@@ -588,13 +596,14 @@ placement linear transform. See [Coordinate Handling](coordinate-handling.md#geo
 For the primary model the engine collates
 congruent occurrences into **GPU instances**: the wasm
 `processGeometryBatchInstanced` entry point (backed by
-`rust/geometry/src/instancing` and `processors/mapped.rs`) partitions opaque
+`rust/geometry/src/instancing/` and the mapped-item sources in
+`rust/geometry/src/router/mapped_item.rs`) partitions opaque
 ordinary occurrences into per-template instanced shards, and the renderer
 uploads each template once as `instancedTemplates` via `addInstancedShard` (see
 the rendering guide), then draws every occurrence of a template in a single
-instanced draw call. Instancing is enabled by default for the primary model
-(`enableInstancing: target.kind === 'primary'` in the viewer loader); federated
-loads keep geometry flat. Occurrences that are not eligible for instancing
+instanced draw call. Instancing is enabled for every viewer load, primary and federated
+(`enableInstancing: true` in `apps/viewer/src/hooks/useIfcLoader.ts`); a
+federated model's shards are added with that model's `modelIndex`. Occurrences that are not eligible for instancing
 (transparent glass, or non-ordinary geometry classes) fall back to being
 tessellated per placement and grouped by colour into batched draw calls.
 
@@ -649,8 +658,8 @@ shard and an older build can still read it. Only a widened record claims v2.
 Because the cache stores shard bytes verbatim, a v2 shard under a shared cache
 key would be handed to a pre-#2985 decoder (deploy skew, a rollback) that
 refuses every version but 1, and the streaming loader swallows that throw — all
-instanced geometry gone, silently. So cache `FORMAT_VERSION` moves 15 → 16 with
-this change: an old bundle looks for v15 and misses rather than matching, and
+instanced geometry gone, silently. So cache `FORMAT_VERSION` moved 15 → 16 with
+#2985 (it has moved on since; see `packages/cache/src/types.ts`): an old bundle looks for v15 and misses rather than matching, and
 existing v1 shards keep loading, without ids, until the model is re-parsed.
 
 ## Streaming Pipeline (Browser Worker Pool)
@@ -723,21 +732,11 @@ C++ cross-toolchain (cmake, LLVM-20/libc++, emsdk on Vercel) and the
 builds with `default = []` everywhere. There is no kernel selection —
 build-time or runtime.
 
-## Performance Metrics
+## Performance
 
-| Operation | Time (typical) | Notes |
-|-----------|---------------|-------|
-| Profile extraction | 0.1 ms | Per entity |
-| Earcut triangulation | 0.5 ms | Simple profile |
-| Extrusion | 0.2 ms | Per entity |
-| Boolean operation | 5-50 ms | Complex |
-| Transform application | 0.01 ms | Per vertex |
-
-### Throughput
-
-- **Simple extrusions**: ~2000 entities/sec
-- **Complex Breps**: ~200 entities/sec
-- **Boolean operations**: ~20 entities/sec
+Measured load and size numbers live only in the generated `perf-numbers`
+region of [Performance](../guide/performance.md), stamped from
+`tests/benchmark/baseline.json`.
 
 ## Next Steps
 

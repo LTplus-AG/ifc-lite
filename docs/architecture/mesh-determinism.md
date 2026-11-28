@@ -33,7 +33,7 @@ Running `process_geometry` over the synthetic fixture in
 - The three flat prepass wire arrays, which are an EXPLICIT sorted contract
   since this change (previously an implicit FxHashMap-iteration artifact):
   - `flat_voids` `(keys, counts, values)` sorted by host id, u32 ascending
-    (`rust/processing/src/prepass.rs`);
+    (`rust/processing/src/prepass_wire.rs`, re-exported from `prepass`);
   - `flat_material_colors` `(ids, counts, rgba8)` sorted by element id, u32
     ascending. Per-host opening lists and per-element colour lists keep their
     file order.

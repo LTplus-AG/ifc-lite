@@ -29,7 +29,7 @@ export function measureSnapOptions(
   { axis = false, reduced = false }: { axis?: boolean; reduced?: boolean } = {},
 ): Partial<SnapOptions> {
   if (!ctx.snapEnabledRef.current) return { snapToVertices: false, snapToEdges: false, snapToFaces: false, screenSnapRadius: 0 };
-  const corner = screenCornerSnapConfig();
+  const corner = screenCornerSnapConfig(useViewerStore.getState().snapXray);
   if (axis) return { snapToVertices: true, snapToEdges: true, snapToFaces: false, screenSnapRadius: 40, screenCornerSnap: corner };
   return { snapToVertices: !reduced, snapToEdges: true, snapToFaces: true, screenSnapRadius: reduced ? 40 : 60, ...(reduced ? {} : { screenCornerSnap: corner }) };
 }

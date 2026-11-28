@@ -138,7 +138,7 @@ function magneticPick(ctx: MouseHandlerContext, command: ModelingCommand, x: num
   for (let attempt = 0; attempt < MAX_SPACE_ATTEMPTS; attempt++) {
     const pick = ctx.renderer.raycastSceneMagnetic(x, y, {
       edge: lock.edge, meshExpressId: lock.meshExpressId, lockStrength: lock.lockStrength,
-    }, { ...options, snapOptions: { snapToVertices: true, snapToEdges: true, snapToFaces: true, screenSnapRadius: 40, screenCornerSnap: screenCornerSnapConfig() } }) as MeshPick;
+    }, { ...options, snapOptions: { snapToVertices: true, snapToEdges: true, snapToFaces: true, screenSnapRadius: 40, screenCornerSnap: screenCornerSnapConfig(false) } }) as MeshPick;
     if (!pick || !construction) return pick;
     const id = pick.snapTarget?.expressId ?? pick.intersection?.expressId;
     if (id === undefined || !isConstructionSpace(id)) return pick;

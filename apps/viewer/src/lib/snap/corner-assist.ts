@@ -3,8 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The viewer's side of CAD-style corner snapping (#11504, markers #11517):
- * which picks run the screen-space corner search with markers, and what the
+ * The viewer's side of CAD-style corner snapping (#11504): which picks run the
+ * screen-space corner search with markers, when X-ray applies, and what the
  * marker overlay draws. Pure functions over plain state, so the rules the
  * three pickers (Measure, a modeling command, Reposition) and the viewport
  * share are tested without a renderer.
@@ -17,6 +17,7 @@ export interface SnapPickState {
   activeTool: string;
   repositionPicking: boolean;
   snapEnabled: boolean;
+  snapXray: boolean;
 }
 
 /**
@@ -28,9 +29,33 @@ export function isSnapPicking(s: Pick<SnapPickState, 'activeTool' | 'repositionP
   return s.activeTool === 'measure' || s.activeTool === 'command' || s.repositionPicking;
 }
 
-/** The `screenCornerSnap` option of a pick: the corner search, with markers. */
-export function screenCornerSnapConfig(): ScreenCornerSnapOptions {
-  return { markers: true };
+/**
+ * X-ray applies while Measure or a Reposition pick runs. A modeling command
+ * is not offered the toggle, so a preference set earlier does not reach it.
+ */
+export function isSnapXrayActive(s: Pick<SnapPickState, 'activeTool' | 'repositionPicking' | 'snapXray'>): boolean {
+  return s.snapXray && (s.activeTool === 'measure' || s.repositionPicking);
+}
+
+/**
+ * The `screenCornerSnap` option of a pick: markers on, and with X-ray the
+ * occlusion rule off, so corners behind other geometry can be snapped.
+ */
+export function screenCornerSnapConfig(xray = false): ScreenCornerSnapOptions {
+  return xray ? { markers: true, ignoreOcclusion: true } : { markers: true };
+}
+
+/** One shared empty set: X-ray ghosts every entity by naming none of them as the exception. */
+const GHOST_EVERYTHING: Set<number> = new Set();
+
+/**
+ * The `ghostExceptEntities` the renderer is given. With X-ray active every
+ * entity renders translucent (selected ones stay solid, per the renderer);
+ * otherwise the store's own channel, untouched, so leaving X-ray restores the
+ * appearance exactly, whatever other feature owns the ghosting.
+ */
+export function effectiveGhostExcept(xrayActive: boolean, stored: Set<number> | null): Set<number> | null {
+  return xrayActive ? GHOST_EVERYTHING : stored;
 }
 
 /** A marker as the overlay draws it. */

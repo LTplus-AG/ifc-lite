@@ -48,6 +48,8 @@ export const measureFr = {
   "measure.mode.radius": "Rayon",
   "measure.snapToggle.title": "Activer/désactiver l'accrochage (touche S)",
   "measure.snap.label": "Accrochage",
+  "measure.xray.label": "Rayons X",
+  "measure.xrayToggle.title": "Voir à travers les modèles pour accrocher les coins masqués (touche {keys})",
   "measure.geoToggle.enabledTitle": "Activer/désactiver les coordonnées XYZ réelles (est / nord / hauteur)",
   "measure.geoToggle.disabledTitle": "Nécessite un géoréférencement cartographique (IfcMapConversion) dans le modèle",
   "measure.geo.label": "XYZ géo",

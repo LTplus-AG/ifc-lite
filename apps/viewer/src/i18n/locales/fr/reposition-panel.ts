@@ -25,6 +25,8 @@ export const repositionPanelFr = {
   "repositionPanel.pickSourceButton": "Choisir le point source",
   "repositionPanel.pickTargetButton": "Choisir le point cible",
   "repositionPanel.snapLabel": "Accrochage",
+  "repositionPanel.xrayLabel": "Rayons X",
+  "repositionPanel.xrayTitle": "Voir à travers les modèles pour accrocher les coins masqués (touche {keys})",
   "repositionPanel.pickPrompt": "Choisissez un point {role}. Utilisez les autres boutons de la souris pour naviguer.",
   "repositionPanel.pickPromptSource": "Choisissez un point source sur un modèle déplacé ({models}). Utilisez les autres boutons de la souris pour naviguer.",
   "repositionPanel.pickPromptTarget": "Choisissez un point cible sur un modèle qui n'est pas déplacé ({models}). Utilisez les autres boutons de la souris pour naviguer.",

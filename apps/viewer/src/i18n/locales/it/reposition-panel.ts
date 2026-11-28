@@ -25,6 +25,8 @@ export const repositionPanelIt = {
   "repositionPanel.pickSourceButton": "Scegli punto di origine",
   "repositionPanel.pickTargetButton": "Scegli punto di destinazione",
   "repositionPanel.snapLabel": "Aggancio",
+  "repositionPanel.xrayLabel": "Raggi X",
+  "repositionPanel.xrayTitle": "Vedi attraverso i modelli per agganciare gli angoli nascosti (tasto {keys})",
   "repositionPanel.pickPrompt": "Scegli un punto di {role}. Usa gli altri pulsanti del mouse per navigare.",
   "repositionPanel.pickPromptSource": "Scegli un punto di origine su un modello da spostare ({models}). Usa gli altri pulsanti del mouse per navigare.",
   "repositionPanel.pickPromptTarget": "Scegli un punto di destinazione su un modello che non viene spostato ({models}). Usa gli altri pulsanti del mouse per navigare.",

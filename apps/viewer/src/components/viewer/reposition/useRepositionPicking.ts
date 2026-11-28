@@ -74,7 +74,7 @@ export function useRepositionPicking(role: PickRole, finish: (role: PickRole) =>
           hiddenIds: filter.hiddenIds, isolatedIds: filter.isolatedIds,
           snapOptions: { snapToVertices: current.snapEnabled, snapToEdges: current.snapEnabled,
             snapToFaces: current.snapEnabled, snapToPointClouds: true, screenSnapRadius: 12,
-            ...(searchCorners ? { screenCornerSnap: screenCornerSnapConfig() } : {}) },
+            ...(searchCorners ? { screenCornerSnap: screenCornerSnapConfig(current.snapXray) } : {}) },
         });
     };
     /** Click-only: what an unrestricted raycast (same hidden/isolation) hit, to explain a refusal. */

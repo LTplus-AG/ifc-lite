@@ -25,6 +25,8 @@ export const repositionPanelDe = {
   "repositionPanel.pickSourceButton": "Quellpunkt wählen",
   "repositionPanel.pickTargetButton": "Zielpunkt wählen",
   "repositionPanel.snapLabel": "Fangen",
+  "repositionPanel.xrayLabel": "Röntgen",
+  "repositionPanel.xrayTitle": "Modelle durchsichtig darstellen, um verdeckte Ecken zu fangen (Taste {keys})",
   "repositionPanel.pickPrompt": "Punkt wählen: {role}. Mit den anderen Maustasten navigieren.",
   "repositionPanel.pickPromptSource": "Quellpunkt auf einem bewegten Modell wählen ({models}). Mit den anderen Maustasten navigieren.",
   "repositionPanel.pickPromptTarget": "Zielpunkt auf einem nicht bewegten Modell wählen ({models}). Mit den anderen Maustasten navigieren.",

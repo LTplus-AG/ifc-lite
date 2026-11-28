@@ -48,6 +48,8 @@ export const measureIt = {
   "measure.mode.radius": "Raggio",
   "measure.snapToggle.title": "Attiva/disattiva l'aggancio (tasto S)",
   "measure.snap.label": "Aggancio",
+  "measure.xray.label": "Raggi X",
+  "measure.xrayToggle.title": "Vedi attraverso i modelli per agganciare gli angoli nascosti (tasto {keys})",
   "measure.geoToggle.enabledTitle": "Attiva/disattiva le coordinate XYZ reali (Est / Nord / Quota)",
   "measure.geoToggle.disabledTitle": "Richiede la georeferenziazione cartografica (IfcMapConversion) nel modello",
   "measure.geo.label": "XYZ geo",

@@ -95,7 +95,7 @@ catalog.resolveName('CH1903+ / LV95'); // 2056
 
 #### Dataset versions
 
-The sidecar was generated from EPSG dataset **13.106** (`loadEpsgExtentsDatasetVersion()`, constant `EPSG_EXTENTS_DATASET_VERSION`); the main index above is dataset **12.054** (`loadEpsgIndexDatasetVersion()`). Only the list of codes is taken from the index. The two can disagree: a 300-code sample showed extents redefined (20001) and names changed (10986, 10164, 9508, 20001) between the versions. Bringing the main index up to 13.106 is a separate change.
+The sidecar was generated from EPSG dataset **13.106** (read it with `loadEpsgExtentsDatasetVersion()`; `loadEpsgExtentsFetchedDate()` gives the fetch date); the main index above is dataset **12.054** (`loadEpsgIndexDatasetVersion()`). Only the list of codes is taken from the index. The two can disagree: a 300-code sample showed extents redefined (20001) and names changed (10986, 10164, 9508, 20001) between the versions. Bringing the main index up to 13.106 is a separate change.
 
 #### EPSG licence and what this file changes
 

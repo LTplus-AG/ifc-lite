@@ -30,7 +30,7 @@ parsePropertyValue(['IFCBOOLEAN', '.T.']); // { displayValue: 'True', ifcType: .
 
 ## Exports
 
-- `decodeIfcString` / `encodeIfcString`: STEP `\X2\`, `\X\`, `\S\` escape handling
+- `decodeIfcString` / `encodeIfcString`: STEP escape handling. The decoder reads `\X2\`, `\X4\`, `\X\`, `\S\` and the `\PA\`..`\PI\` code-page directives; the encoder writes `\X\`, `\X2\` and `\X4\`
 - `generateIfcGuid`, `generateUuid`: new identifiers; pass an optional `RandomSource` (a seeded `() => number`) for reproducible output
 - `uuidV5(namespace, name)`: name-based (version 5) UUID; `uuidFromSeed`: deterministic version-4-shaped UUID from a seed. Compose either with `uuidToIfcGuid` for a stable GlobalId
 - `uuidToIfcGuid`, `ifcGuidToUuid`: convert between UUIDs and 22-char IFC GUIDs

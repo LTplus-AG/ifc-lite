@@ -241,6 +241,18 @@ Unsupported entity types are counted in `underlay.skipped` rather than failing t
 
 `isGPUComputeAvailable()` reports whether WebGPU compute shaders are available; `GPUSectionCutter` runs the section cut on the GPU there. `SectionCutter` is the CPU path.
 
+## To-scale PDF and view export helpers
+
+The package does not write PDF itself. It ships the arithmetic and geometry a caller needs to print a drawing at an exact scale:
+
+- `computePdfScaleLayout(bounds, scaleFactor, marginMm?)` sizes the page to the drawing at that scale and returns the world-to-millimetre transform (`worldPointToPdfMm`, `worldLengthToPdfMm`, `formatSheetScaleLabel`).
+- `buildCameraSectionPlane` turns the current camera into a section plane, `clipMeshesToHalfSpace` clips meshes to its kept side on the CPU, and `projectWorldLineSeeds` turns world segments into drawing lines (`GeneratorOptions.extraLines`).
+- `buildColorRaster` rasterizes flat-shaded surfaces as an RGBA underlay for the vector line work.
+
+## Object styles
+
+`DEFAULT_OBJECT_STYLES` holds the per-IFC-type cut and projection pens and cut-face hatch (Revit-like "Object Styles"). `resolveObjectStyle(ifcType, overrides?)` merges user overrides on top; `isIfcTypeVisible` and `getHiddenIfcTypes` answer which types the drawing should include, so callers can filter meshes first.
+
 ## API
 
 See the [2D Drawings Guide](https://ifclite.dev/docs/guide/drawing-2d/) and [API Reference](https://ifclite.dev/docs/api/typescript/#ifc-litedrawing-2d).

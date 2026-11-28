@@ -48,9 +48,16 @@ npm install @ifc-lite/extensions
   that decide which rule governs an attribute edit.
 - **Dry run** - a tightened sandbox profile for running a candidate bundle
   against its declared tests during authoring.
+- **Validation and tests** - `validateCode` walks entry source for forbidden
+  patterns and `crossReferenceBundle` checks a bundle's internal references;
+  `runBundleTests` runs a manifest's declared `tests` in the sandbox;
+  `buildSyntheticBim` builds synthetic fixture models; `runAuthoringBenchmark`
+  is the authoring success-rate harness over curated prompts.
 
-Narrower entry points: `@ifc-lite/extensions/node` (Node-only bundle
-loading from a directory or `.iflx`), `@ifc-lite/extensions/capability`,
+Narrower entry points: `@ifc-lite/extensions/node` (Node-only
+`loadBundleFromDirectory`, which reads a bundle directory; `.iflx` archives
+are read with `unpackBundle` / `unpackBundleWithSignature` from the package
+root, in any environment), `@ifc-lite/extensions/capability`,
 `@ifc-lite/extensions/authority`, `@ifc-lite/extensions/when` and
 `@ifc-lite/extensions/bundle`.
 
@@ -67,7 +74,7 @@ import {
   evaluateWhen,
   SlotRegistry,
 } from '@ifc-lite/extensions';
-// The directory/`.iflx` bundle loader is Node-only:
+// The directory bundle loader is Node-only:
 import { loadBundleFromDirectory } from '@ifc-lite/extensions/node';
 
 // Validate a manifest

@@ -417,10 +417,21 @@ END-ISO-10303-21;`);
     view.setExpressIdWatermark(100);
     const guid = generateIfcGuid();
     assert.equal(view.createEntity('IfcWall', [guid, null, 'Overlay']).expressId, 101);
-    const viewpoint = await api!.createViewpointFromState({
+    const capture = () => api!.createViewpointFromState({
       includeSnapshot: false, includeSelection: true, additionalSelectedRefs: [101, 102],
     });
+    const viewpoint = await capture();
     assert.deepEqual(viewpoint?.components?.selection?.map(component => component.ifcGuid), [guid]);
+
+    const { resolveGlobalIdInModel } = useViewerStore.getState();
+    assert.deepEqual(resolveGlobalIdInModel(SAMPLE_MODEL, 101), { modelId: SAMPLE_MODEL, expressId: 101 });
+    // An unnameable ref also disappears from BCF selection, so check ownership directly.
+    assert.equal(resolveGlobalIdInModel(SAMPLE_MODEL, 102), null, 'stale ID 102 has no model owner');
+
+    const secondGuid = generateIfcGuid();
+    assert.equal(view.createEntity('IfcWall', [secondGuid, null, 'Second overlay']).expressId, 102);
+    const withSecondWall = await capture();
+    assert.deepEqual(withSecondWall?.components?.selection?.map(component => component.ifcGuid), [guid, secondGuid]);
   });
 
   it('includes a StoreEditor-created clash member in selection, coloring, and isolation (#4921)', async () => {

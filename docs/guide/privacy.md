@@ -126,7 +126,7 @@ The customisation system itself does not make network calls. The default local-f
 | Audit what's stored | Settings → Privacy → **Export JSON** on the action log; Extensions → Audit → **Export** on the audit log |
 | Wipe pattern suggestions | Settings → Privacy → **Clear** the action log |
 | Stop the assistant from "remembering" preferences | Settings → Privacy → clear the textarea + Save overlay |
-| Stop product analytics | Settings → Privacy → **Opt out of product analytics** |
+| Stop product analytics (PostHog) | Settings → Privacy → **Opt out of product analytics**. Vercel page-view analytics keep running; a deployment turns them off with `privacy.vercel-analytics` (see above) |
 | Stop the miner entirely | There is no switch for this. **Clear** removes the log's history, but new actions are logged again from then on |
 | Forget an extension | Extensions tab → trash icon — removes bundle bytes, install record, granted capabilities |
 | Forget a profile (flavor) | **Profiles** dialog → delete on the row (the active profile can't be deleted; switch first) |

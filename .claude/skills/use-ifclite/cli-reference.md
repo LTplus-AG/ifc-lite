@@ -175,6 +175,11 @@ a running `ifc-lite view`), or both; viewer-only fails if the stream fails.
 | Foundation | `footing`, `pile` |
 | Other | `space`, `plate`, `furnishing`, `proxy`, `storey` |
 
+`wall-door` and `wall-window` need `--wall-id`, but each `create` call builds a
+new model with one element, so the wall does not exist and both currently fail
+with `Unknown wallId`. For hosted doors and windows use the SDK: `addIfcWall`,
+then `addIfcWallDoor` / `addIfcWallWindow` on the same `IfcCreator`.
+
 ```bash
 ifc-lite create wall --start 0,0,0 --end 5,0,0 --height 3 --thickness 0.2 --out wall.ifc
 ifc-lite create slab --width 10 --depth 8 --thickness 0.3 --out slab.ifc

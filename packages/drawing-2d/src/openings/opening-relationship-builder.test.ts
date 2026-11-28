@@ -145,6 +145,13 @@ describe('OpeningRelationshipBuilder door operation source (#8232)', () => {
       .toBe('SINGLE_SWING_RIGHT');
   });
 
+  it.each(['DOUBLE_DOOR_SINGLE_SWING_OPPOSITE_LEFT', 'DOUBLE_DOOR_SINGLE_SWING_OPPOSITE_RIGHT'])(
+    'preserves the authored %s operation (#10932)', (operation) => {
+      expect(operationOf({ ifcType: 'IfcDoor', properties: { OperationType: `.${operation}.` } })).toBe(operation);
+      expect(operationOf({ ifcType: 'IfcDoor', typeOperationType: operation })).toBe(operation);
+    },
+  );
+
   it('falls back to the type when the occurrence has no properties at all', () => {
     expect(operationOf({ ifcType: 'IfcDoor', typeOperationType: 'SINGLE_SWING_RIGHT' })).toBe('SINGLE_SWING_RIGHT');
   });

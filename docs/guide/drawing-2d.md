@@ -168,6 +168,7 @@ const cut: StoreyCut = {
   frame: { ...geometryResult.coordinateInfo, buildingOrigin: { z: buildingZ } },
 };
 const drawing = await generateFloorPlan(geometryResult.meshes, cut, {
+  openingSymbols: true,
   includeHiddenLines: true,
   includeProjection: true,
 });
@@ -175,6 +176,8 @@ const drawing = await generateFloorPlan(geometryResult.meshes, cut, {
 console.log(`${drawing.stats.cutLineCount} cut lines`);
 console.log(`${drawing.stats.projectionLineCount} projection lines`);
 ```
+
+With `openingSymbols: true`, `drawing.planSymbols` contains a swing when the cut lies within the door element's overall height, including a gap between the leaf and transom. A window frame requires the section cutter to find an intersection with a window mesh. A symbol replaces that element's body linework, and `exportToSVG` and `exportToDXF` draw the symbol. Pass `openings`, keyed by `makeEntityKey(modelIndex, expressId)`, with each element's `operationType`, `partitioningType`, `width` (`OverallWidth`) and host `wallThickness`; without them a door swings `SINGLE_SWING_LEFT` at its mesh width. A door whose operation has no plan symbol keeps its cut body. By default, the floor-plan generator keeps the cut bodies.
 
 ### Generating a Section
 

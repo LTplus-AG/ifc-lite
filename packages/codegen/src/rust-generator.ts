@@ -17,6 +17,7 @@ import { crc32, formatCRC32TableLiteral } from './crc32.js';
 import { getInheritanceChain } from './generator-schema.js';
 import { generateSchemaQueries, mergeTypeUniverse } from './rust-schema-queries.js';
 import { generateCanonicalNameHash, generateTypeNameParser } from './rust-type-name-parser.js';
+import { generateTypeTraits } from './rust-type-traits.js';
 import { generateUnknownIfcType } from './rust-unknown-ifc-type.js';
 import { generateTypeIdConstants } from './rust-type-id-generator.js';
 
@@ -56,7 +57,7 @@ ${generateUnknownIfcType(visibility)}
 /// IFC Entity Types
 ///
 /// All ${typeUniverse.entities.length} entity types from the supported schema universe.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(${cratePrivate ? 'Debug, Clone, ' : ''}PartialEq, Eq, Hash)]
 ${visibility} enum IfcType {
 `;
 
@@ -79,7 +80,7 @@ ${visibility} enum IfcType {
     Unknown(UnknownIfcType),
 }
 
-impl IfcType {
+${cratePrivate ? '' : generateTypeTraits(Object.values(categories).flat().map(entity => entity.name)) + '\n'}impl IfcType {
 ${generateTypeNameParser(typeUniverse)}
     /// Parse a known schema type from a CRC32 type ID.
     ///

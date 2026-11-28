@@ -180,25 +180,26 @@ You will see:
 - The other tab's cursor visibly tracking yours, with a coloured
   arrow + labelled badge — that's `mountPresenceInViewer` and
   `peerVisuals`.
-- A "Selection" pill that updates when either tab clicks a box —
-  `presence.setSelection(...)` flows through awareness.
-- An "Add wall" button that calls `bim.transact()` to push a new
-  entity into the Y.Doc. The other tab sees it instantly.
-- An "Undo" button scoped to local writes only (the other tab's edits
-  are not in your undo stack — that's `Y.UndoManager` with our local
-  origin).
+- Clicking a box, or a row in the sidebar's entities list, selects it —
+  `presence.setSelection(...)` flows through awareness to the other tab.
+- A "+ wall" button that calls `session.transact()` to push a new
+  `IfcWall` entity into the Y.Doc. The other tab sees it instantly.
+- "undo" / "redo" buttons scoped to local writes only (the other tab's
+  edits are not in your undo stack — that's `Y.UndoManager` with our
+  local origin).
 
 Useful things to try:
 
 - **Network blip:** in DevTools → Network, set "Offline" on tab A,
   add a wall, switch back to "Online." Tab B catches up.
-- **Conflict:** rename the same wall in both tabs at the same time.
-  LWW resolves; the conflict bridge fires `open` then `close`. Watch
-  the bottom-right "Conflicts" pill flash.
+- **Conflict:** press "force conflict" in both tabs at nearly the same
+  time; each renames the last entity. LWW resolves; the conflict bridge
+  fires `open` then `close`, and the sidebar's "conflicts" panel lists
+  the conflict for 8 seconds.
 - **Presence stale:** close one tab — the other shows the badge fade
   to 0.4 opacity within ~10s, then drop entirely.
-- **History:** click "Capture snapshot" twice; the history sidecar
-  records IFCX entries you can inspect via the "history" panel.
+- **History:** click "capture snapshot" twice; the history sidecar
+  records IFCX snapshot entries you can inspect in the sidebar's "history" panel.
 
 ### Sharing several models (federation scope)
 
@@ -346,12 +347,16 @@ console.log('delivered', channel.delivered(), 'dropped', channel.dropped());
 import { runDeterminismHarness, DEFAULT_FIXTURES, paramsToMesh } from '@ifc-lite/collab';
 
 const report = runDeterminismHarness(paramsToMesh, DEFAULT_FIXTURES);
-console.log(report.results); // [{ name, hash, ok }, …]
+console.log(report.results); // [{ name, hash, ok, expected }, …]
+
+// Baseline for the next run: a map of fixture name to hash.
+const expected = Object.fromEntries(report.results.map((r) => [r.name, r.hash]));
 ```
 
-Drop the `report.results` JSON into your CI as `expected.json` and use
+Commit `expected` to your CI as `expected.json` and call
 `runDeterminismHarness(kernel, DEFAULT_FIXTURES, expected)` on the next
-run; any platform drift gets flagged.
+run. A hash that drifts, or a fixture missing from `expected`, sets that
+result's `ok` and `report.ok` to `false`.
 
 ---
 
@@ -403,9 +408,13 @@ const handle = await startSecureCollabServer({
 
 ## 8. Inspect the audit log
 
+The stock `dist/bin.js` server configures no audit sink, so it writes no
+audit log. Pass a `JsonlFileAuditSink` as in section 7 and read the file it
+names:
+
 ```sh
 # JSONL format — one entry per line, easy for jq / grep / Loki.
-tail -f .collab-data/audit.log | jq
+tail -f /var/log/collab/audit.log | jq
 # → { "timestamp": "2026-05-...", "userId": "louis", "role": "editor",
 #     "roomId": "project-abc/model.ifcx", "opType": "update",
 #     "opHash": "ab12cd34", "detail": { "bytes": 217 } }

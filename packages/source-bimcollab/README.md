@@ -41,7 +41,8 @@ label under HTTPS `bimcollab.com`. The constructor rejects invalid session ids.
 `spaceIdFromAccessToken`, `spaceLabelFromServerUrl` and `isBimcollabServerUrl`,
 so a host can import them eagerly and load the provider lazily on first use.
 
-The default transport uses `ctx.fetch` and `/api/bimcollab`; a host that validates
+The default transport uses `ctx.fetch` and `/api/bimcollab` (option
+`relayBaseUrl`, a same-origin absolute path); a host that validates
 only upstream URLs (including the current viewer SourceHost) must inject a
 host-approved same-origin fetch as shown above. Its upstream rewrite alone
 cannot express the relay's two route families. Register the provider only when
@@ -81,8 +82,8 @@ document's current version; an older revision downloads only if the public
 endpoint serves it, and is otherwise refused (never substituted). An index the
 user is refused (403) or that does not exist (404) counts as an empty location;
 a 401 surfaces as re-authentication, and any other index failure aborts the
-fallback. Set
-`legacyDownloadFallback: false` once BIMcollab fixes its public endpoint.
+fallback. The fallback is on unless
+`legacyDownloadFallback` is `false`; set that once BIMcollab fixes its public endpoint.
 
 For Node/CLI, inject `new DirectBimcollabTransport(fetchFn)` (optional second
 argument: regional HTTPS origin). This supports public API downloads without a

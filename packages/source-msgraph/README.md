@@ -13,7 +13,7 @@ npm install @ifc-lite/source-msgraph
 
 ## Hosted sign-in
 
-The IFClite viewer uses a server-hosted OAuth application: users click **Sign in**
+A viewer built with `VITE_CLOUD_HOSTED=true` uses a server-hosted OAuth application: users click **Sign in**
 and consent with their vendor account. They do not supply an application ID,
 app secret, or access token. The same-origin gateway holds vendor tokens in a
 server session and streams downloads; browser metadata carries no signed URLs.
@@ -28,7 +28,7 @@ the requested current revision on the server. Shared SharePoint-site discovery
 and historical Microsoft downloads are not supported.
 
 Constructing `new MsGraphProvider()` retains direct PKCE for hosts that operate
-without the gateway. The registration and token-storage notes below describe
+without the gateway; the viewer does this when `VITE_CLOUD_HOSTED` is not `true`. The registration and token-storage notes below describe
 that direct mode.
 
 ## Scope (v1)
@@ -141,8 +141,8 @@ Registering an Azure AD application needs:
   `REDIRECT_PATH` in `src/auth.ts`), registered with type `spa` — the
   `spa` type is what enables CORS on the token endpoint; a `web`-type
   redirect URI will fail with a CORS error on token exchange.
-- **API permissions (delegated)**: `Files.Read`, `User.Read`, `offline_access`. These
-  needs admin consent for a standard tenant. No `Sites.Read.All` — not used
+- **API permissions (delegated)**: `Files.Read`, `User.Read`, `offline_access`. None of
+  these needs admin consent for a standard tenant. No `Sites.Read.All` — not used
   by this provider (see "Scope" above).
 - **Supported account types**: whichever matches the `tenant` preference the
   deployment sets (default `common` — both work/school and personal

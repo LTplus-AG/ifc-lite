@@ -16,7 +16,7 @@ npm install @ifc-lite/source-dropbox
 
 ## Hosted sign-in
 
-The IFClite viewer uses a server-hosted OAuth application: users click **Sign in**
+A viewer built with `VITE_CLOUD_HOSTED=true` uses a server-hosted OAuth application: users click **Sign in**
 and consent with their vendor account. They do not supply an application ID,
 app secret, or access token. The same-origin gateway holds vendor tokens in a
 server session and streams downloads; browser metadata carries no signed URLs.
@@ -30,7 +30,7 @@ Dropbox hosted transports implement `rpc` and `downloadContent`, including
 `rev:<revision>` references for historical downloads.
 
 Constructing `new DropboxProvider()` retains direct PKCE for hosts that operate
-without the gateway. The registration and token-storage notes below describe
+without the gateway; the viewer does this when `VITE_CLOUD_HOSTED` is not `true`. The registration and token-storage notes below describe
 that direct mode.
 
 ## Scope (v1)

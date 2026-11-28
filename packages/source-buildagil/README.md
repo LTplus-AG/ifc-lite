@@ -42,8 +42,9 @@ the API and the token endpoint alike. So the manifest declares a relay:
 `https://openapi.buildagil.com` → `/api/buildagil`. A browser host rewrites
 every request onto that same-origin path. In ifc-lite's viewer the relay is
 `api/buildagil.ts` (handler `server/sources/buildagil-relay.ts`), served by
-the dev server too. It forwards enumerated reads and `POST 1.0/search` with
-the caller's bearer, and forwards `oauth2/token` grants for the deployment's
+the dev server too. It forwards enumerated reads, `POST 1.0/search` and the
+BCF topics client's writes (new topic, topic `PUT`, new comment, new
+viewpoint) with the caller's bearer, and forwards `oauth2/token` grants for the deployment's
 client only: a public client's PKCE grant as is, a confidential client's with
 the secret added. It sends no `Origin` upstream: buildagil's gateway answers a
 token request from an origin it has not allowlisted with an empty `200`.
@@ -77,8 +78,8 @@ bearer.
 
 Errors are `BuildagilHttpError` (`status`, `reauthenticationRequired` on 401).
 The class is not exported; recognise it by `error.name === 'BuildagilHttpError'`.
-buildagil throttles per user; the relay passes `429` with `Retry-After`
-through so the host can back off.
+buildagil throttles per user; the relay passes `Retry-After` through on
+`429` and `503` so the host can back off.
 
 ## License
 

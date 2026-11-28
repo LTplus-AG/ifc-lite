@@ -13,8 +13,13 @@ them, dropping an individually invalid row from a listing instead of failing
 the whole page.
 
 Targets the Dalux **API Identities** auth model (legacy API keys expired
-2026-02-28). The API base URL is fixed at `https://node1.field.dalux.com/service/api`
-— it's not company-specific, so there's no base URL setting.
+2026-02-28). The default API base URL is `https://node1.field.dalux.com/service/api`.
+Dalux assigns each customer a node and shows the base URL next to the API key;
+users on another node paste it into the optional `baseUrl` preference. Only the
+node name (`node2`, ...) is kept, and only for `nodeN.field.dalux.com` hosts;
+any other URL is rejected. Relayed requests carry it as a `daluxNode` query
+parameter, and the relay checks it against its own node pattern before
+choosing the upstream host.
 
 ```bash
 npm install @ifc-lite/source-dalux
@@ -23,7 +28,7 @@ npm install @ifc-lite/source-dalux
 ```ts
 import { DaluxBuildProvider } from '@ifc-lite/source-dalux';
 
-const provider = new DaluxBuildProvider(); // the API key is a provider preference
+const provider = new DaluxBuildProvider(); // apiKey and baseUrl are provider preferences
 ```
 
 ## Revision history
@@ -61,9 +66,11 @@ will fail. The viewer routes Dalux requests through a fixed same-origin path
 production (`api/dalux.ts`) and in Vite dev (`apps/viewer/vite-plugins/dalux-relay.ts`).
 The user's own API key is attached client-side and never leaves the browser
 except as part of the relayed request; there is no shared server-side secret.
+`DALUX_RELAY_ALLOWED_ORIGINS` (comma-separated) sets the relay's origin
+allowlist; it defaults to `APP_URL`.
 
-The relay is read-only (GET/HEAD) on the API versions the provider calls, plus
-the two `1.1` file-property mapping reads. Its only write is the file upload
+The relay is read-only (GET/HEAD) on API versions `2.0`, `5.0`, `5.1` and
+`6.1`, plus the two `1.1` file-property mapping reads. Its only write is the file upload
 (`server/sources/dalux-relay-upload.ts`): POST on exactly the slot, part and
 finalize paths, with the media type, `Content-Range` and `Content-Disposition`
 each step requires. A relayed part is capped at 4 MiB (the function request-body

@@ -236,7 +236,7 @@ export function writeOverlayCreatedEntities(
     if (pass.filterRetypedAssignment && upperType === 'IFCRELDEFINESBYTYPE') {
       line = pass.filterRetypedAssignment(line, entity.expressId, pass.warnings);
       if (line === null) {
-        pass.enums.boundaries.noteWithheldReferrer(entity.expressId);
+        pass.omittedTypeAssignments.add(entity.expressId);
         continue;
       }
     }

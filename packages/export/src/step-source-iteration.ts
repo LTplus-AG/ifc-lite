@@ -316,7 +316,7 @@ export function writeSourceEntityLines(
       if (pass.filterRetypedAssignment && effectiveRelType === 'IFCRELDEFINESBYTYPE') {
         const filtered = pass.filterRetypedAssignment(nextEntityText, expressId, pass.warnings);
         if (filtered === null) {
-          pass.enums.boundaries.noteWithheldReferrer(expressId);
+          pass.omittedTypeAssignments.add(expressId);
           continue;
         }
         nextEntityText = filtered;

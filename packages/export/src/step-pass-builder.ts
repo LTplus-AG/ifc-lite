@@ -91,6 +91,7 @@ export function buildExportPass(input: PassBuildInput): ExportPass {
     converting,
     sourceHeader,
     schemaToken,
+    omittedTypeAssignments: new Set(),
     filterRetypedAssignment: applyMutations && mutationView?.getTypeMutations?.().size
       ? createRetypedAssignmentFilter(sourceSchema, effective, dataStore.source)
       : undefined,

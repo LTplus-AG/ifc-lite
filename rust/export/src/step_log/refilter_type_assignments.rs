@@ -74,6 +74,7 @@ pub(super) fn after_retypes(pass: &mut Pass<'_, '_>, line: &str, id: u32) -> Opt
         removed.join(", ")
     );
     if retained.is_empty() {
+        pass.omitted_type_assignments.insert(id);
         return Some((None, format!("{summary} The empty relationship was withheld.")));
     }
     args[related_objects] = format!("{lead}({}){trail}", retained.join(","));

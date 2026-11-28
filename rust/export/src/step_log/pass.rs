@@ -31,6 +31,7 @@ pub(crate) struct Pass<'s, 'a> {
     /// Source records the schema upgrade leaves out (an IFC2X3 IfcRelSpaceBoundary naming no element, #11457):
     /// omitted like a deleted record, so a relationship naming one is scrubbed of it.
     pub(crate) left_out: HashSet<u32>,
+    pub(super) omitted_type_assignments: HashSet<u32>,
     pub(crate) withheld_created: Vec<u32>,
     pub(super) assignment_retype_delivered: HashMap<u32, bool>,
     /// Shared relation -> elements copied on write off its `RelatedObjects`
@@ -74,6 +75,7 @@ impl<'s, 'a> Pass<'s, 'a> {
             text_edits: HashSet::new(),
             skip: HashSet::new(),
             left_out: HashSet::new(),
+            omitted_type_assignments: HashSet::new(),
             withheld_created: Vec::new(),
             assignment_retype_delivered: HashMap::new(),
             detached: HashMap::new(),

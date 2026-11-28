@@ -19,6 +19,26 @@ fn export(members: &str, to: &str) -> (String, Vec<String>) {
 }
 
 #[test]
+fn forward_references_to_an_emptied_source_or_created_assignment_11500() {
+    for (schema, created) in ["IFC2X3", "IFC4", "IFC4X3"].into_iter().flat_map(|s| [(s, false), (s, true)]) {
+        let assignment = if created { "" } else { "#9=IFCRELDEFINESBYTYPE('assignment',$,$,$,(#1),#3);" };
+        let source = format!("{SOURCE}#6=IFCDOCUMENTREFERENCE($,$,$,$,$);\n#4=IFCRELASSOCIATESDOCUMENT('mixed',$,$,$,(#9,#1),#6);\n#5=IFCRELASSOCIATESDOCUMENT('sole',$,$,$,(#9),#6);\n#7=IFCRELASSOCIATESDOCUMENT('transitive',$,$,$,(#5),#6);\n{assignment}\nENDSEC;\nEND-ISO-10303-21;");
+        let source = source.replace("FILE_SCHEMA(('IFC4'))", &format!("FILE_SCHEMA(('{schema}'))"));
+        let mut changes = serde_json::json!({"mutations":[{"type":"UPDATE_ENTITY_TYPE","entityId":1,"entityType":"IfcSlab"}]});
+        if created {
+            changes["mutations"].as_array_mut().unwrap().push(serde_json::json!({"type":"CREATE_ENTITY","entityId":9,"attributeName":"IfcRelDefinesByType"}));
+            changes["newEntities"] = serde_json::json!([{"expressId":9,"type":"IfcRelDefinesByType","attributes":["assignment",null,null,null,["#1"],"#3"]}]);
+        }
+        let log = MutationLog::from_json(&changes.to_string()).unwrap();
+        let (output, stats) = export_step_with_log(source.as_bytes(), &StepOptions::default(), &log).unwrap();
+        assert!(output.contains("#1=IFCSLAB(") && !output.contains("#9="), "{output}");
+        assert!(output.contains("#4=IFCRELASSOCIATESDOCUMENT('mixed',$,$,$,(#1),#6);"), "{output}");
+        assert!(!output.contains("#5=") && !output.contains("#7="), "{output}");
+        assert!(stats.warnings.iter().any(|w| w.contains("Relationship #9")));
+    }
+}
+
+#[test]
 fn refused_retypes_preserve_the_source_keyword_and_assignment_11500() {
     let bad = "NOT_A_STEP_VALUE,$,$";
     for assigned in [false, true] {

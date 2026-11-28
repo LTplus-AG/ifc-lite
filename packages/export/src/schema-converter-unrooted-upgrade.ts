@@ -21,7 +21,6 @@ type Group = { id: number; remaining: number; minimum: number };
 type Member = { group: Group; lost: boolean };
 
 type RegistrySchema = 'IFC2X3' | 'IFC4' | 'IFC4X3';
-type UpgradeSchema = 'IFC4' | 'IFC4X3';
 
 const layouts = new Map<RegistrySchema, Map<string, readonly Attribute[]>>();
 
@@ -93,7 +92,7 @@ function slot(value: string, attribute?: Attribute, narrowAggregates = true): Sl
   return { value, members, optional: attribute?.optional ?? false, minimum: members ? attribute?.arrayBounds?.[0] ?? 1 : 1 };
 }
 
-function readSlots(rec: OutputRecord, to: UpgradeSchema): Slot[] | undefined {
+function readSlots(rec: OutputRecord, to: RegistrySchema): Slot[] | undefined {
   const values = rec.frame ? splitTopLevelStepArguments(rec.raw, Number.MAX_SAFE_INTEGER) : null;
   const target = attributes(rec.type, to);
   // Verbatim records and varying actions left unconverted in IFC4 keep their
@@ -107,7 +106,7 @@ function readSlots(rec: OutputRecord, to: UpgradeSchema): Slot[] | undefined {
   return values.map((value, index) => slot(value, layout[index], narrow));
 }
 
-function indexRequiredMembers(rec: OutputRecord, users: Map<number, Member[]>, to: UpgradeSchema): void {
+function indexRequiredMembers(rec: OutputRecord, users: Map<number, Member[]>, to: RegistrySchema): void {
   // Without a usable layout a lost reference makes the record unsafe to keep.
   for (const part of readSlots(rec, to) ?? [slot(rec.raw)]) {
     if (part.optional || part.minimum === 0) continue;
@@ -125,7 +124,7 @@ function indexRequiredMembers(rec: OutputRecord, users: Map<number, Member[]>, t
   }
 }
 
-function cascadeOmissions(records: Iterable<OutputRecord | undefined>, seeds: ReadonlySet<number>, to: UpgradeSchema): Set<number> {
+function cascadeOmissions(records: Iterable<OutputRecord | undefined>, seeds: ReadonlySet<number>, to: RegistrySchema): Set<number> {
   const dropped = new Set(seeds);
   const users = new Map<number, Member[]>();
   for (const rec of records) {
@@ -181,7 +180,7 @@ export function previewUpgradeDependents(store: SourceStore, from: IfcSchemaVers
   return dropped;
 }
 
-function rewrite(rec: OutputRecord, dropped: ReadonlySet<number>, to: UpgradeSchema): string {
+function rewrite(rec: OutputRecord, dropped: ReadonlySet<number>, to: RegistrySchema): string {
   if (!rec.frame || !referencesAnyExpressId(rec.raw, dropped)) return rec.line;
   const parts = readSlots(rec, to);
   if (!parts) return rec.line;
@@ -194,8 +193,8 @@ function rewrite(rec: OutputRecord, dropped: ReadonlySet<number>, to: UpgradeSch
 }
 
 /** Run after conversion so every reference is in the final id space and slot. */
-function pruneUpgrade(lines: string[], seeds: ReadonlySet<number>, to: IfcSchemaVersion, onOmitted?: (id: number) => void): string[] {
-  if (seeds.size === 0 || (to !== 'IFC4' && to !== 'IFC4X3')) return [];
+function pruneUpgrade(lines: string[], seeds: ReadonlySet<number>, to: IfcSchemaVersion, onOmitted?: (id: number) => void, issue = to === 'IFC4' ? 10970 : 10971): string[] {
+  if (seeds.size === 0 || to === 'IFC5') return [];
   const records = lines.map(record);
   const dropped = cascadeOmissions(records, seeds, to);
   const warnings: string[] = [];
@@ -204,7 +203,7 @@ function pruneUpgrade(lines: string[], seeds: ReadonlySet<number>, to: IfcSchema
     if (rec && dropped.has(rec.id)) {
       onOmitted?.(rec.id);
       const reason = seeds.has(rec.id) ? `the ${to} schema does not declare its type` : `a required ${to} attribute lost a reference`;
-      warnings.push(`#${rec.id} (${rec.type}) was omitted because ${reason} (#${to === 'IFC4' ? 10970 : 10971}).`);
+      warnings.push(`#${rec.id} (${rec.type}) was omitted because ${reason} (#${issue}).`);
     } else {
       lines[next++] = rec ? rewrite(rec, dropped, to) : lines[index];
     }
@@ -250,9 +249,10 @@ export class MergedUpgradePruning {
 }
 
 /** Single-model output contains only converted records, including pending edits. */
-export function pruneUpgradeFromSource(lines: string[], from: IfcSchemaVersion, to: IfcSchemaVersion, omitted: Iterable<number>, onOmitted: (id: number) => void): string[] {
-  if (!removesObsoleteResources(from, to)) return [];
+export function pruneUpgradeFromSource(lines: string[], from: IfcSchemaVersion, to: IfcSchemaVersion, omitted: Iterable<number>, assignments: ReadonlySet<number>, onOmitted: (id: number) => void): string[] {
+  if (!removesObsoleteResources(from, to)) return pruneUpgrade(lines, assignments, to, onOmitted, 11500);
   const seeds = new Set(omitted);
+  for (const id of assignments) seeds.add(id);
   for (const line of lines) noteUpgradeSeed(line, seeds, from, to);
   return pruneUpgrade(lines, seeds, to, onOmitted);
 }

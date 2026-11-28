@@ -342,6 +342,7 @@ export interface ExportPass {
   readonly overlayActive: boolean;
 
   // ---- indexes and ledgers ----
+  readonly omittedTypeAssignments: Set<number>;
   readonly filterRetypedAssignment?: RetypedAssignmentFilter;
   readonly effective: EffectiveEntityIndex;
   readonly modifications: ModificationLedger;

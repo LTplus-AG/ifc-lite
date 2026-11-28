@@ -299,11 +299,14 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
         !pass.overlay.retype_order.is_empty() || !pass.created_lines.is_empty()
             || !pass.left_out.is_empty() || upgrade.seeds(content).next().is_some());
     let mut new_entities = pass.new_entity_count;
-    let delay_header = defer_varying || may_prune_upgrade.is_some();
+    let may_drop_assignment = !pass.overlay.retypes.is_empty()
+        && (!src.of_type("IFCRELDEFINESBYTYPE").is_empty() || !pass.omitted_type_assignments.is_empty()
+            || pass.overlay.retypes.values().any(|(ty, _)| ty.eq_ignore_ascii_case("IFCRELDEFINESBYTYPE")));
+    let delay_header = defer_varying || may_prune_upgrade.is_some() || may_drop_assignment;
     let modified_count = pass.ledger.modified_count();
     let header = |mut out: &mut dyn Write, created| write_header(&mut out, opts, content, converting, &target, modified_count + created);
     if !delay_header { header(out, new_entities)?; }
-    let mut body = crate::schema_ifc2x3_placements::Body::for_conversion(&mut *out, target_is_ifc2x3, defer_varying || temporal_buffer || typed_properties, may_prune_upgrade);
+    let mut body = crate::schema_ifc2x3_placements::Body::for_conversion(&mut *out, target_is_ifc2x3, defer_varying || temporal_buffer || typed_properties || may_drop_assignment, may_prune_upgrade);
     for &id in pass.left_out.iter().chain(&pass.withheld_created) { body.note_omitted(id); }
     let mut flatten = crate::schema_style_flatten::StyleFlatten::for_export(content, &source_label, &target); flatten.note_all(content, pass.mutated_lines.iter().filter_map(|(id, (t, _))| Some((*id, t.as_deref().ok()?)))
         .chain(pass.generated.iter().chain(&pass.rewritten_lines).chain(&pass.georef_lines).chain(&pass.created_lines).map(|(id, l)| (*id, l.as_str()))));
@@ -351,6 +354,7 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
     for (id, line) in appended.filter(|(id, _)| !flatten.drops(*id)) {
         written += usize::from(write_line(&mut body, line, *id, converting, &source_label, &target, &mut slot_fill, &mut checks, &flatten)?);
     }
+    body.prune_type_assignments(&target, pass.omitted_type_assignments);
     let (delta, deferred_entities) = checks.finish_with_header(body, target_is_ifc2x3.then_some(&mut slot_fill), pass.ids, &mut |out, varying, omitted| {
         if !delay_header { return Ok(()); }
         new_entities -= pass.generated.iter().chain(&pass.georef_lines).chain(&pass.created_lines)

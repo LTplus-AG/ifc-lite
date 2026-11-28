@@ -10,12 +10,13 @@ async function exportRetyped(
   bytes: ArrayBuffer,
   retypes: Array<{ entityId: number; entityType: string }>,
   edit?: (view: MutablePropertyView) => void,
+  schema: 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5' = 'IFC4',
 ) {
   const store = await new IfcParser().parseColumnar(bytes, { disableWorkerScan: true });
   const view = new MutablePropertyView(null, 'model');
   view.importMutations(JSON.stringify({ mutations: retypes.map(retype => ({ type: 'UPDATE_ENTITY_TYPE', ...retype })) }));
   edit?.(view);
-  const result = new StepExporter(store, view).export({ schema: 'IFC4' });
+  const result = new StepExporter(store, view).export({ schema });
   return { lines: new TextDecoder().decode(result.content).split('\n'), warnings: result.stats.warnings };
 }
 
@@ -54,6 +55,32 @@ describe('STEP type-assignment retyping #11500', () => {
     expect(warnings.join('\n')).toContain('argument list');
     expect(lines).toContain(rel);
     expect(warnings.join('\n')).not.toContain('lost its type assignment');
+  });
+
+  it.each([
+    ['IFC2X3', false], ['IFC2X3', true], ['IFC4', false], ['IFC4', true], ['IFC4X3', false], ['IFC4X3', true],
+  ] as const)('removes forward references to an emptied %s assignment (created: %s) #11500', async (schema, created) => {
+    const source = [
+      'ISO-10303-21;', 'HEADER;', `FILE_SCHEMA(('${schema}'));`, 'ENDSEC;', 'DATA;',
+      "#1=IFCWALL('w',$,$,$,$,$,$,$,.STANDARD.);",
+      "#2=IFCWALLTYPE('t',$,$,$,$,$,$,$,$,.STANDARD.);",
+      "#3=IFCDOCUMENTREFERENCE($,$,$,$,$);",
+      "#4=IFCRELASSOCIATESDOCUMENT('mixed',$,$,$,(#9,#1),#3);",
+      "#5=IFCRELASSOCIATESDOCUMENT('sole',$,$,$,(#9),#3);",
+      "#7=IFCRELASSOCIATESDOCUMENT('transitive',$,$,$,(#5),#3);",
+      ...(created ? [] : ["#9=IFCRELDEFINESBYTYPE('assignment',$,$,$,(#1),#2);"]),
+      'ENDSEC;', 'END-ISO-10303-21;',
+    ].join('\n');
+    const { lines, warnings } = await exportRetyped(new TextEncoder().encode(source).buffer,
+      [{ entityId: 1, entityType: 'IfcSlab' }], view => {
+        if (created) view.restoreNewEntity({ expressId: 9, type: 'IfcRelDefinesByType',
+          attributes: ['assignment', null, null, null, ['#1'], '#2'] });
+      }, schema);
+    expect(lines.some(line => line.startsWith('#1=IFCSLAB('))).toBe(true);
+    expect(lines.some(line => line.startsWith('#9='))).toBe(false);
+    expect(lines).toContain("#4=IFCRELASSOCIATESDOCUMENT('mixed',$,$,$,(#1),#3);");
+    expect(lines.some(line => line.startsWith('#5=') || line.startsWith('#7='))).toBe(false);
+    expect(warnings.some(w => w.includes('Relationship #9'))).toBe(true);
   });
 
   it('keeps the other typed wall in a mixed relationship', async () => {

@@ -20,8 +20,12 @@ implementation. A separate generated WASM byte module supports parity checks.
 ## Rebuild
 
 Use the repository's pinned Rust nightly and `wasm32-unknown-unknown` target.
-Binaryen must match the recorded binary exactly. The initial Linux x86_64 tool
-comes from emsdk **4.0.15**, emsdk repository revision
+Binaryen must match the recorded binary exactly. On Linux x86_64 the generator
+downloads the pinned emsdk **4.0.15** release archive on first use, extracts only
+`wasm2js`, verifies its SHA-256 and caches it under
+`$XDG_CACHE_HOME/ifc-lite/tools` (see `scripts/README-imported-geometry.md`).
+Offline, or on another host, point `IFC_IMPORTED_WASM2JS` at an executable with
+exactly those bytes, for example from emsdk repository revision
 `3b3963d86a5c97adaf6eaa845cdfe0b811c2f960`:
 
 ```sh
@@ -35,8 +39,7 @@ Expected version: `wasm2js version 124 (version_124-26-gcf756c929)`.
 Expected executable SHA-256:
 `fb4bc51da37e8ea8917552fdcb6edf8e1b77e9081c220579b78c50c429b29f2a`.
 The generator refuses a different executable; qualifying another platform/tool
-requires an explicit pin update and output comparison. The environment variable
-is required outside the original provisioned host's discovery path.
+requires an explicit pin update and output comparison.
 
 Run `pnpm build:imported-geometry`. The generator
 records Rust compiler, command, lockfile, generator/source digests, translator

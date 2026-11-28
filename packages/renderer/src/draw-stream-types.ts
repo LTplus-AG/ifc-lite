@@ -62,7 +62,7 @@ export interface StreamFrameStats {
   nodes: number; nodesDrawn: number; draws: number; tris: number; bundlesRecorded: number; entries: number;
   /** Diagnostics: membership rebuilds so far, and bundle-cache invalidations so far. */
   syncs: number; invalidations: number;
-  arenaBytes: number; budgetDraws: number; budgetCut: number; proxiesDrawn: number; proxyReady: number; proxyNodes: number; proxyBuildMs: number; proxyBytes: number;
+  arenaBytes: number; budgetDraws: number; budgetCut: number; proxiesDrawn: number; proxyReady: number; proxyNodes: number; proxyBuildMs: number; proxyBytes: number; proxyTris: number;
   /** Nodes drawn directly this frame because the first-sight recording cap was reached. */
   directNodes?: number;
 }

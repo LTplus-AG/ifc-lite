@@ -27,7 +27,7 @@ function batch(id: number, x: number, opts: { quantized?: boolean; lod1?: number
 }
 
 const stats = (): StreamFrameStats => ({ nodes: 0, nodesDrawn: 0, draws: 0, tris: 0, bundlesRecorded: 0, entries: 0, syncs: 0, invalidations: 0,
-  arenaBytes: 0, budgetDraws: 0, budgetCut: 0, proxiesDrawn: 0, proxyReady: 0, proxyNodes: 0, proxyBuildMs: 0, proxyBytes: 0 });
+  arenaBytes: 0, budgetDraws: 0, budgetCut: 0, proxiesDrawn: 0, proxyReady: 0, proxyNodes: 0, proxyBuildMs: 0, proxyBytes: 0, proxyTris: 0 });
 
 function frame(over: Partial<StreamFrameInputs> = {}): StreamFrameInputs {
   return {

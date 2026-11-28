@@ -231,7 +231,7 @@ export class DrawStream {
   encode(f: StreamFrameInputs, drawn: (b: BatchedMesh) => void): StreamFrameStats {
     const h = this.hlod;
     const stats: StreamFrameStats = { nodes: this.nodes.length, nodesDrawn: 0, draws: 0, tris: 0, bundlesRecorded: 0, entries: 0, syncs: this.syncCount, invalidations: this.invalidationCount, arenaBytes: this.arena?.bytes ?? 0, budgetDraws: 0, budgetCut: 0,
-      proxiesDrawn: 0, proxyReady: h?.stats.ready ?? 0, proxyNodes: h?.stats.nodes ?? 0, proxyBuildMs: h?.stats.buildMs ?? 0, proxyBytes: h?.stats.proxyBytes ?? 0 };
+      proxiesDrawn: 0, proxyReady: h?.stats.ready ?? 0, proxyNodes: h?.stats.nodes ?? 0, proxyBuildMs: h?.stats.buildMs ?? 0, proxyBytes: h?.stats.proxyBytes ?? 0, proxyTris: h?.stats.proxyTris ?? 0 };
     if (this.members.length === 0) return stats;
     const bg = this.ensureBindGroup();
     // Bundles are cached per draw mode: the viewer's effects governor toggles edges (object-id

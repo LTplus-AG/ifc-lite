@@ -24,21 +24,29 @@ import { useTranslation } from '@/i18n';
 import { openSettings } from '@/lib/settings/open-settings';
 import { isPrivacyNoticeShown, markPrivacyNoticeShown } from '@/lib/analytics-consent';
 
-export function usePrivacyDisclosure(): void {
+const PRIVACY_GUIDE_URL = 'https://github.com/LTplus-AG/ifc-lite/blob/main/docs/guide/privacy.md';
+
+/**
+ * `standalone`: for pages outside the viewer (`/mcp`, `/mcp/playground`). They
+ * have no extension host and no Settings dialog, so the notice shows without
+ * waiting for the host and its action opens the privacy guide. Analytics on
+ * those pages start after it, as in the viewer.
+ */
+export function usePrivacyDisclosure(options: { standalone?: boolean } = {}): void {
+  const standalone = options.standalone === true;
   const host = useOptionalExtensionHost();
   const { t } = useTranslation();
   useEffect(() => {
-    if (!isFeatureEnabled('privacy.notice') || !host) return;
+    if (!isFeatureEnabled('privacy.notice') || (!host && !standalone)) return;
     if (typeof window === 'undefined') return;
     if (isPrivacyNoticeShown()) return;
     // Defer slightly so the toast doesn't fight with the splash UI.
     const handle = window.setTimeout(() => {
-      toast.info(t('settings.privacy.toastDisclosure'), {
-        label: t('settings.privacy.toastAction'),
-        onClick: () => openSettings('privacy'),
-      });
+      toast.info(t('settings.privacy.toastDisclosure'), standalone
+        ? { label: t('settings.privacy.learnMore'), onClick: () => { window.open(PRIVACY_GUIDE_URL, '_blank', 'noopener,noreferrer'); } }
+        : { label: t('settings.privacy.toastAction'), onClick: () => openSettings('privacy') });
       markPrivacyNoticeShown();
     }, 3500);
     return () => window.clearTimeout(handle);
-  }, [host, t]);
+  }, [host, t, standalone]);
 }

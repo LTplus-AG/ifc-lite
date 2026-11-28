@@ -89,20 +89,23 @@ export function resetPrivacyNoticeForTest(): void {
 }
 
 /**
- * Remove the identifier PostHog stored in an earlier visit. Run when the
- * visitor has opted out, since PostHog is then never started and would not
- * clean up after itself. Only PostHog's own `ph_<token>_posthog` entries and
- * cookie are touched; the opt-out choice itself stays.
+ * Remove everything PostHog stored in this browser: its identifier
+ * (`ph_<token>_posthog`), the window and tab markers it keeps in session
+ * storage (`ph_<token>_window_id`, `ph_<token>_primary_window_exists`) and any
+ * other `ph_` entry or cookie. Run at start for a visitor who has opted out
+ * (PostHog is then never started and would not clean up after itself) and on
+ * every opt-out, since PostHog's own opt-out leaves the session-storage keys.
+ * The opt-out choice itself stays.
  */
 export function clearStoredAnalyticsIdentity(): void {
-  const isIdentityKey = (key: string | null): key is string => !!key && /^ph_.+_posthog$/.test(key);
+  const isPostHogKey = (key: string | null): key is string => !!key && key.startsWith('ph_');
   for (const storage of [globalThis.localStorage, globalThis.sessionStorage]) {
     if (!storage) continue;
     try {
       const keys: string[] = [];
       for (let i = 0; i < storage.length; i++) {
         const key = storage.key(i);
-        if (isIdentityKey(key)) keys.push(key);
+        if (isPostHogKey(key)) keys.push(key);
       }
       for (const key of keys) storage.removeItem(key);
     } catch (error) {
@@ -111,12 +114,15 @@ export function clearStoredAnalyticsIdentity(): void {
   }
   if (typeof document === 'undefined') return;
   try {
-    const names = document.cookie.split(';').map((part) => part.split('=')[0]!.trim()).filter(isIdentityKey);
+    const names = document.cookie.split(';').map((part) => part.split('=')[0]!.trim()).filter(isPostHogKey);
     if (names.length === 0) return;
-    // PostHog sets its cookie on the registrable domain when it can; expire both forms.
-    const hostname = document.location?.hostname ?? '';
-    const labels = hostname.split('.');
-    const domains = ['', ...(labels.length >= 2 ? [`; domain=.${labels.slice(-2).join('.')}`] : [])];
+    // PostHog scopes its cookie to the widest domain the browser accepts, which
+    // is not always the last two labels (`.example.co.uk`). Expire it as a
+    // host-only cookie and on every parent domain; the browser ignores the
+    // ones it would never have accepted.
+    const labels = (document.location?.hostname ?? '').split('.').filter(Boolean);
+    const domains = [''];
+    for (let i = 0; i < labels.length - 1; i++) domains.push(`; domain=.${labels.slice(i).join('.')}`);
     for (const name of names) {
       for (const domain of domains) {
         document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/${domain}`;

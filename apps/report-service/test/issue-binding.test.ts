@@ -105,6 +105,13 @@ describe('#7495 exact-event verification over real HTTP boundaries', () => {
     expect(() => bindingFeature?.verifyIssueBinding(config, owner, target, 'different-build', 2000)).toThrow();
     expect(() => bindingFeature?.verifyIssueBinding(config, owner, target, 'build-a', 3601001)).toThrow();
   });
+  it('accepts a destination signed before the session ID was dropped, and drops it', () => {
+    const legacy = { ...binding, correlation: { ...correlation, sessionId: analyticsSessionId } };
+    const target = bindingFeature?.signIssueBinding(config, owner, legacy as typeof binding, 1000) ?? { issueUrl, title: binding.title, verificationToken: 'feature-unavailable' };
+    const verified = bindingFeature?.verifyIssueBinding(config, owner, target, 'build-a', 2000);
+    expect(verified).toEqual(binding);
+    expect(JSON.stringify(verified)).not.toContain(analyticsSessionId);
+  });
   it('reconciles a lost comment response with trusted app markers and never creates an issue', async () => {
     const body = publicIssueBody(report);
     comments = [{ body, performed_via_github_app: { id: 999 } }, { body: `${body}\nquoted`, performed_via_github_app: { id: 123 } }];

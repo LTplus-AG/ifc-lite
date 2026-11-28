@@ -13,7 +13,7 @@ import {
   subscribeAnalyticsConsent,
 } from './analytics-consent.js';
 import { scrubEvent } from './analytics-scrub.js';
-import { createAnalyticsStarter, posthogInitConfig } from './analytics-start.js';
+import { createAnalyticsStarter, createHeldAnalytics, posthogInitConfig } from './analytics-start.js';
 import { scrubUiEvent, type UiEventName, type UiEventProperties } from './analytics-ui-events.js';
 import { scrubExportEvent, type ExportCompletedProperties } from './analytics-export-events.js';
 import { CAPTURE_DEVICE_EVENT, CAPTURE_LOAD_EVENT, scrubCaptureEvent, type CaptureDeviceProperties, type CaptureLoadProperties } from './analytics-capture-events.js';
@@ -182,7 +182,7 @@ const recordViewerSessionStart = createViewerSessionStartRecorder(
 export function analyticsInitConfig(apiHost: string): Partial<PostHogConfig> {
   return posthogInitConfig(apiHost, beforeSend);
 }
-export { createAnalyticsStarter };
+export { createAnalyticsStarter, createHeldAnalytics };
 
 let client: AnalyticsClient | null = null;
 
@@ -212,9 +212,11 @@ function initPostHog(): void {
     // interaction; the callback catches later idle-tab session rotations.
     recordViewerSessionStart.startNow();
     posthogClient.onSessionId(recordViewerSessionStart.onSessionId);
+    held.flush(client);
   } catch (err) {
     console.warn('[analytics] PostHog init failed; analytics disabled', err);
   }
+  held.clear();
 }
 
 const starter = createAnalyticsStarter({
@@ -235,17 +237,20 @@ let started = false;
  * opted out and has seen the first-visit notice (see createAnalyticsStarter).
  */
 export function startAnalytics(): void {
-  if (started || !isFeatureEnabled('privacy.analytics')) return;
+  if (started) return;
+  if (!isFeatureEnabled('privacy.analytics')) {
+    // This host sends nothing, so nothing is held for later either.
+    held.stop();
+    return;
+  }
   started = true;
   if (!enabled) return;
   if (isAnalyticsOptedOut()) clearStoredAnalyticsIdentity();
   starter.start();
 }
 
-const noopAnalytics: AnalyticsClient = {
-  capture: () => undefined,
-  captureException: () => undefined,
-};
+/** Events before PostHog may start; see createHeldAnalytics. A build without a key holds nothing. */
+const held = createHeldAnalytics(100, enabled, ensureCapturableStack);
 
 /** All explicit capture sites use this facade, so the setting takes effect immediately. */
 export function consentAwareAnalyticsClient(target: AnalyticsClient): AnalyticsClient {
@@ -258,8 +263,8 @@ export function consentAwareAnalyticsClient(target: AnalyticsClient): AnalyticsC
 }
 
 export const posthog: AnalyticsClient = consentAwareAnalyticsClient({
-  capture: (...args) => (client ?? noopAnalytics).capture(...args),
-  captureException: (...args) => (client ?? noopAnalytics).captureException(...args),
+  capture: (...args) => (client ?? held.client).capture(...args),
+  captureException: (...args) => (client ?? held.client).captureException(...args),
 });
 
 /**
@@ -286,10 +291,21 @@ export function readAnalyticsFeatureFlag(key: string): boolean | string | undefi
 export function setAnalyticsOptOut(value: boolean): void {
   // Notifies the starter, which initialises PostHog on an opt-in when it can.
   persistAnalyticsOptOut(value);
-  if (!enabled || !client) return;
+  if (value) {
+    // Events held for after the notice are dropped, never sent later.
+    held.clear();
+    try {
+      if (enabled && client) posthogClient.opt_out_capturing();
+    } catch (error) {
+      console.warn('[analytics] could not update PostHog consent', error);
+    }
+    // Also the session-storage keys PostHog's own opt-out leaves behind.
+    clearStoredAnalyticsIdentity();
+    return;
+  }
+  if (!enabled) return;
   try {
-    if (value) posthogClient.opt_out_capturing();
-    else if (posthogClient.has_opted_out_capturing()) {
+    if (client && posthogClient.has_opted_out_capturing()) {
       posthogClient.opt_in_capturing({ captureEventName: false });
       // The callback may have fired while opted out. Capture now, allowing the
       // SDK to rotate an expired session ID before attaching it to the event.

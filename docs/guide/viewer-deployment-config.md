@@ -94,7 +94,7 @@ mountViewer(document.getElementById('root')!, {
 
 The feature set is fixed for the lifetime of the page.
 
-The embed viewer (`apps/viewer-embed`) does not take a configuration yet: it starts through the same runtime start with none, so every feature is on.
+The embed viewer (`apps/viewer-embed`) does not take a configuration yet: it starts through the same runtime start with every feature on except `privacy.analytics` and `privacy.vercel-analytics`. It runs inside third-party pages, which show no IFClite privacy notice, so by design it sends no product analytics and injects no page-view script.
 
 ## Notes on individual features
 

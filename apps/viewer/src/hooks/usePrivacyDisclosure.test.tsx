@@ -16,6 +16,7 @@ import { registerLocale, setLocale } from '@/i18n';
 import { advance, cleanup, click, render } from '@/test/render.js';
 import { latestToast } from '@/test/toasts.js';
 import { usePrivacyDisclosure } from './usePrivacyDisclosure.js';
+import * as consent from '@/lib/analytics-consent';
 
 function Disclosure() {
   usePrivacyDisclosure();
@@ -24,6 +25,7 @@ function Disclosure() {
 
 afterEach(() => {
   cleanup();
+  (consent as typeof consent & { resetPrivacyNoticeForTest?: () => void }).resetPrivacyNoticeForTest?.();
   setLocale('en');
   localStorage.removeItem('ifclite.extensions.privacy-disclosure.v2');
 });
@@ -59,4 +61,24 @@ it('translates the analytics disclosure and opens Settings → Privacy (#5866)',
   click(action);
   assert.ok(document.querySelector('[data-settings-dialog] #settings-analytics-opt-out'));
   assert.ok(localStorage.getItem('ifclite.extensions.privacy-disclosure.v2'));
+});
+
+function StandaloneDisclosure() {
+  usePrivacyDisclosure({ standalone: true });
+  return null;
+}
+
+it('shows the notice on pages outside the viewer, with no extension host, so analytics can start there', async () => {
+  localStorage.removeItem('ifclite.extensions.privacy-disclosure.v2');
+  render(
+    <>
+      <Toaster />
+      <StandaloneDisclosure />
+    </>,
+  );
+  await advance(3550);
+  assert.match(latestToast(), /anonymous product analytics/, 'the same notice is shown');
+  assert.ok(localStorage.getItem('ifclite.extensions.privacy-disclosure.v2'), 'and recorded as shown');
+  const action = [...document.querySelectorAll('button')].find((button) => button.textContent?.includes('Read the privacy guide'));
+  assert.ok(action, 'its action leads to the privacy guide, since there is no Settings dialog here');
 });

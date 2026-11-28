@@ -7,7 +7,7 @@
  * ./analytics.ts, which wires both to the SDK and the consent state.
  */
 
-import type { PostHogConfig } from 'posthog-js';
+import type { PostHog, PostHogConfig } from 'posthog-js';
 import { reportReplayPrivacy } from './analytics-report-privacy.js';
 
 /**
@@ -86,5 +86,48 @@ export function createAnalyticsStarter(deps: {
     },
     attempt,
     isInitialised: () => initialised,
+  };
+}
+
+type AnalyticsClient = Pick<PostHog, 'capture' | 'captureException'>;
+
+/**
+ * Events captured before PostHog may start (the first-visit notice has not
+ * been shown yet). They are held here in memory only: nothing is stored, sent
+ * or given an identifier. `flush` sends them once PostHog has started, with
+ * their original time; `clear` drops them on an opt-out, and `stop` when this
+ * host sends no analytics at all. The first `cap` are kept, so startup crashes
+ * and a fast deep-link load survive while a runaway loop cannot grow memory.
+ */
+export function createHeldAnalytics(cap: number, holdFromStart: boolean, prepareError: (error: unknown) => unknown): {
+  client: AnalyticsClient;
+  flush: (target: AnalyticsClient) => void;
+  clear: () => void;
+  stop: () => void;
+  size: () => number;
+} {
+  let holding = holdFromStart;
+  let items: Array<(target: AnalyticsClient) => void> = [];
+  const hold = (send: (target: AnalyticsClient) => void): void => {
+    if (holding && items.length < cap) items.push(send);
+  };
+  return {
+    client: {
+      capture: (event, properties, options) => {
+        const timestamp = options?.timestamp ?? new Date();
+        hold((target) => { target.capture(event, properties, { ...options, timestamp }); });
+        return undefined;
+      },
+      captureException: (error, additionalProperties) => {
+        // The stack is taken now, at the failure, not when the event is sent.
+        const capturable = prepareError(error);
+        hold((target) => { target.captureException(capturable, { ...additionalProperties, held_before_notice: true }); });
+        return undefined;
+      },
+    },
+    flush: (target) => { const out = items; items = []; for (const send of out) send(target); },
+    clear: () => { items = []; },
+    stop: () => { holding = false; items = []; },
+    size: () => items.length,
   };
 }

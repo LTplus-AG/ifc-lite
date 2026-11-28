@@ -33,7 +33,35 @@ type StarterDeps = {
 const added = analytics as typeof analytics & {
   createAnalyticsStarter?: (deps: StarterDeps) => Starter;
   analyticsInitConfig?: (apiHost: string) => Record<string, unknown>;
+  createHeldAnalytics?: (cap: number, holdFromStart: boolean, prepareError: (error: unknown) => unknown) => Held;
 };
+type Recorded = { kind: 'capture' | 'exception'; name?: string; error?: unknown; properties?: Record<string, unknown>; timestamp?: Date };
+type Held = {
+  client: { capture: (event: string, properties?: Record<string, unknown>, options?: { timestamp?: Date }) => unknown; captureException: (error: unknown, properties?: Record<string, unknown>) => unknown };
+  flush: (target: Held['client']) => void;
+  clear: () => void;
+  stop: () => void;
+  size: () => number;
+};
+function recorder(): { events: Recorded[]; target: Held['client'] } {
+  const events: Recorded[] = [];
+  return {
+    events,
+    target: {
+      capture: (name, properties, options) => { events.push({ kind: 'capture', name, properties, timestamp: options?.timestamp }); return undefined; },
+      captureException: (error, properties) => { events.push({ kind: 'exception', error, properties }); return undefined; },
+    },
+  };
+}
+/** Every PostHog entry this browser holds, in all three stores. */
+function postHogEntries(): string[] {
+  const keys = (storage: Storage) => Array.from({ length: storage.length }, (_, i) => storage.key(i) ?? '');
+  return [
+    ...keys(localStorage).filter((key) => key.startsWith('ph_')).map((key) => `local:${key}`),
+    ...keys(sessionStorage).filter((key) => key.startsWith('ph_')).map((key) => `session:${key}`),
+    ...document.cookie.split(';').map((part) => part.split('=')[0]!.trim()).filter((key) => key.startsWith('ph_')).map((key) => `cookie:${key}`),
+  ];
+}
 const consentAdded = consent as typeof consent & {
   isPrivacyNoticeShown?: () => boolean;
   markPrivacyNoticeShown?: () => void;
@@ -179,12 +207,13 @@ describe('PostHog is not initialised before it may run', () => {
     assert.ok(consentAdded.clearStoredAnalyticsIdentity);
     localStorage.setItem(IDENTITY_KEY, '{"distinct_id":"earlier"}');
     sessionStorage.setItem(IDENTITY_KEY, '{"$sesid":"earlier"}');
+    sessionStorage.setItem(`ph_${TOKEN}_window_id`, '0190f0a0-0000-7000-8000-000000000000');
+    sessionStorage.setItem(`ph_${TOKEN}_primary_window_exists`, 'true');
     document.cookie = `${IDENTITY_KEY}=earlier; path=/`;
     localStorage.setItem('ifc-lite:unrelated', 'kept');
     consentAdded.clearStoredAnalyticsIdentity();
     assert.equal(storedIdentity(), null);
-    assert.equal(sessionStorage.getItem(IDENTITY_KEY), null);
-    assert.equal(document.cookie.includes(IDENTITY_KEY), false);
+    assert.deepEqual(postHogEntries(), [], 'no PostHog entry is left in local storage, session storage or cookies');
     assert.equal(localStorage.getItem('ifc-lite:unrelated'), 'kept');
   });
 });
@@ -234,6 +263,64 @@ describe('what PostHog may record (installed SDK)', () => {
       const before = network.calls.length;
       sdk.capture('command_executed', { command_id: 'after' });
       assert.equal(network.calls.length, before, 'nothing is sent after the opt-out');
+    } finally {
+      network.restore();
+      await sdk.shutdown();
+      sdk.sessionManager?.destroy();
+    }
+  });
+});
+
+describe('events before the notice are held in memory, never stored or sent early', () => {
+  it('sends held events once PostHog starts, with their original time', () => {
+    assert.ok(added.createHeldAnalytics, 'createHeldAnalytics is exported');
+    const held = added.createHeldAnalytics(100, true, (error) => error);
+    const at = new Date('2026-11-28T08:00:00Z');
+    held.client.capture('ifc_model_loaded', { schema: 'IFC4' }, { timestamp: at });
+    held.client.capture('viewer_route', {});
+    const crash = new Error('start-up crash');
+    held.client.captureException(crash, { surface: 'boot' });
+    assert.equal(held.size(), 3);
+    const sent = recorder();
+    held.flush(sent.target);
+    assert.equal(sent.events.length, 3);
+    assert.deepEqual([sent.events[0]!.name, sent.events[0]!.timestamp], ['ifc_model_loaded', at]);
+    assert.ok(sent.events[1]!.timestamp instanceof Date, 'an event without a time keeps the time it happened');
+    assert.equal(sent.events[2]!.error, crash);
+    assert.equal(sent.events[2]!.properties?.held_before_notice, true);
+    assert.equal(held.size(), 0, 'sent once');
+  });
+
+  it('an opt-out drops them; a host without analytics holds nothing; the buffer is capped', () => {
+    assert.ok(added.createHeldAnalytics);
+    const held = added.createHeldAnalytics(3, true, (error) => error);
+    held.client.capture('a');
+    held.clear();
+    const sent = recorder();
+    held.flush(sent.target);
+    assert.equal(sent.events.length, 0, 'dropped on opt-out');
+    for (let i = 0; i < 10; i++) held.client.capture(`e${i}`);
+    assert.equal(held.size(), 3, 'only the first 3 are kept');
+    held.stop();
+    held.client.capture('after-stop');
+    assert.equal(held.size(), 0, 'stop drops and holds nothing more');
+    const keyless = added.createHeldAnalytics(3, false, (error) => error);
+    keyless.client.capture('x');
+    assert.equal(keyless.size(), 0, 'a build without a key holds nothing');
+  });
+
+  it('an opt-out in an open tab leaves no PostHog entry behind, even the ones PostHog keeps', async () => {
+    assert.ok(added.analyticsInitConfig);
+    const sdk = new PostHog();
+    const network = watchNetwork(sdk);
+    try {
+      sdk.init(TOKEN, { ...added.analyticsInitConfig('https://posthog.invalid'), ...OFFLINE, request_batching: false } as SdkConfig);
+      sdk.capture('command_executed', { command_id: 'test' });
+      assert.ok(postHogEntries().some((entry) => entry.startsWith('session:')), 'the SDK wrote its session-storage keys');
+      sdk.opt_out_capturing();
+      analytics.setAnalyticsOptOut(true);
+      sdk.capture('command_executed', { command_id: 'after' });
+      assert.deepEqual(postHogEntries(), [], 'nothing left in local storage, session storage or cookies');
     } finally {
       network.restore();
       await sdk.shutdown();

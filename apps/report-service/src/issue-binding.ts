@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import { isRecord, isReportCorrelation, type ReportCorrelation, type VerifiedIssueTarget, type IssueResolution } from '@ifc-lite/report-contract';
+import { isRecord, readReportCorrelation, type ReportCorrelation, type VerifiedIssueTarget, type IssueResolution } from '@ifc-lite/report-contract';
 import type { Config } from './config.js';
 import { audit, transaction, type Db } from './database.js';
 import type { Session } from './sessions.js';
@@ -34,10 +34,13 @@ export function verifyIssueBinding(config: Config, owner: Session, target: Verif
   let parsed: unknown;
   try { parsed = JSON.parse(Buffer.from(payload, 'base64url').toString()); }
   catch { throw new Error('issue_binding_invalid_json'); }
+  // A token signed before the correlation dropped the analytics session ID
+  // still verifies; the session ID is discarded, never stored.
+  const correlation = isRecord(parsed) ? readReportCorrelation(parsed.correlation) : undefined;
   requireCondition(isRecord(parsed) && parsed.owner === owner.id && typeof parsed.expiresAt === 'number' && parsed.expiresAt > now &&
-    isReportCorrelation(parsed.correlation) && parsed.correlation.buildSha === buildSha && parsed.issueUrl === target.issueUrl && parsed.title === target.title &&
+    correlation !== undefined && correlation.buildSha === buildSha && parsed.issueUrl === target.issueUrl && parsed.title === target.title &&
     typeof parsed.posthogIssueId === 'string' && typeof parsed.verifiedAt === 'string', 400, 'issue_target_expired', 'The issue destination expired or changed. Check it again.');
-  return { correlation: parsed.correlation, posthogIssueId: parsed.posthogIssueId, issueUrl: target.issueUrl, title: target.title, verifiedAt: parsed.verifiedAt };
+  return { correlation: correlation!, posthogIssueId: parsed.posthogIssueId as string, issueUrl: target.issueUrl, title: target.title, verifiedAt: parsed.verifiedAt as string };
 }
 export async function resolveIssueTarget(db: Db, config: Config, owner: Session, correlation: ReportCorrelation, github = new GithubIssues(config)): Promise<IssueResolution> {
   if (!config.posthog) return { status: 'unavailable' };

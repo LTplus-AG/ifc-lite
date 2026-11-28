@@ -25,6 +25,7 @@ import { LensRuntimeHost } from './components/viewer/LensRuntimeHost';
 import { Suspense, useEffect, useState } from 'react';
 import { lazyChunk } from '@/lib/lazy-chunk';
 import { HostingAnalytics } from './components/HostingAnalytics';
+import { usePrivacyDisclosure } from './hooks/usePrivacyDisclosure';
 
 // The /mcp marketing surface pulls in three.js (HeroScene / PlaygroundViewer)
 // and its own component tree — none of which the main `/` viewer route needs.
@@ -54,6 +55,12 @@ function RouteFallback() {
 export interface AppProps {
   /** Host-supplied file-source providers; see `ViewerBootstrapOptions` in `bootstrap.tsx`. */
   sourceProviders?: readonly FileSourceProviderFactory[];
+}
+
+/** The first-visit notice on the pages outside the viewer; analytics there start after it. */
+function StandalonePrivacyNotice() {
+  usePrivacyDisclosure({ standalone: true });
+  return null;
 }
 
 export function App({ sourceProviders }: AppProps = {}) {
@@ -101,6 +108,7 @@ export function App({ sourceProviders }: AppProps = {}) {
         </ChunkErrorBoundary>
         <Toaster />
         <StaleDeploymentNotice />
+        <StandalonePrivacyNotice />
         <HostingAnalytics />
       </>
     );
@@ -115,6 +123,7 @@ export function App({ sourceProviders }: AppProps = {}) {
         </ChunkErrorBoundary>
         <Toaster />
         <StaleDeploymentNotice />
+        <StandalonePrivacyNotice />
         <HostingAnalytics />
       </>
     );

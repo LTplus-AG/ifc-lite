@@ -2,7 +2,7 @@
 
 TypeScript code generator for IFC EXPRESS schemas. Parses official `.exp` schema files from buildingSMART and emits typed TypeScript: 1000+ entity interfaces with full inheritance, schema metadata for runtime introspection, and exhaustive enum unions.
 
-This is a build-time tool — you don't depend on it at runtime. The generated output ships with `@ifc-lite/parser`.
+The generator itself is a build-time tool. The package also ships pre-generated bundles as subpath exports: `@ifc-lite/codegen/ifc2x3`, `@ifc-lite/codegen/ifc4` and `@ifc-lite/codegen/ifc4x3` (entity interfaces, enums, schema registry, type ids, serializers), plus `@ifc-lite/codegen/schema-hierarchy` (`isSubtypeOf`, `isSubtypeOfAny`, `isProperSubtypeOf`, `isProperSubtypeOfAny`). `@ifc-lite/export` and `@ifc-lite/ids` import these at runtime; `@ifc-lite/parser` ships its own generated copy.
 
 ## Installation
 
@@ -18,14 +18,16 @@ node dist/cli.js schemas/IFC4_ADD2_TC1.exp --output ./generated/ifc4
 
 # IFC4X3 (876 entities, includes infrastructure: roads, bridges, alignments)
 node dist/cli.js schemas/IFC4X3.exp --output ./generated/ifc4x3
+
+# IFC2X3 (653 entities)
+node dist/cli.js schemas/IFC2X3_TC1.exp --output ./generated/ifc2x3
 ```
 
 Pass `--rust` to also emit Rust type tables (consumed by the ifc-lite Rust core).
 Rust output is public by default. Add `--rust-crate-private` when the generated
 registry is an implementation detail of one crate and must use `pub(crate)`
 instead of becoming part of that crate's public API; the flag has no effect
-unless `--rust` is also present.
-Pass `--rust` to also emit Rust type tables (consumed by the ifc-lite Rust core). To generate
+unless `--rust` is also present. To generate
 one exact-name universe across supported releases while keeping the first schema authoritative
 for attributes, pass older schemas with `--rust-supplemental-schema`. Rust generation also
 includes class-shaped rows from `@ifc-lite/data`'s IFC4 family catalog, covering accepted IFC4X1
@@ -62,6 +64,7 @@ generated/ifc4/
 ├── schema-registry.ts   ← runtime metadata (parent, attributes, ...)
 ├── type-ids.ts          ← numeric type-id lookup tables
 ├── serializers.ts       ← STEP serializer bound to the schema registry
+├── test-compile.ts      ← compile smoke test (excluded from the published build)
 └── index.ts             ← barrel export
 ```
 
@@ -71,7 +74,7 @@ generated/ifc4/
 import { parseExpressSchema, generateTypeScript } from '@ifc-lite/codegen';
 import { readFile, writeFile } from 'node:fs/promises';
 
-const schema = parseExpressSchema(await readFile('./schemas/IFC4.exp', 'utf-8'));
+const schema = parseExpressSchema(await readFile('./schemas/IFC4_ADD2_TC1.exp', 'utf-8'));
 
 console.log(`Parsed ${schema.entities.length} entities, ${schema.types.length} types`);
 

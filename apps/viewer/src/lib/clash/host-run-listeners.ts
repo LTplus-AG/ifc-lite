@@ -23,9 +23,15 @@ export interface ClashRunHostSlot {
   label?: string;
 }
 
-export interface ClashRunCompleteEvent {
-  document: ClashRunDocument;
-}
+/**
+ * A finished run, or why its document could not be built (e.g. `resolveSlot`
+ * put two loaded models in one slot). A host storing rounds should record a
+ * failure rather than silently miss the run. The document is deeply frozen
+ * and shared by every listener registered with the same options object.
+ */
+export type ClashRunCompleteEvent =
+  | { ok: true; document: ClashRunDocument }
+  | { ok: false; error: Error };
 
 /** Its return value is ignored, except that a returned promise's rejection is logged, never left unhandled. */
 export type ClashRunCompleteListener = (event: ClashRunCompleteEvent) => unknown;
@@ -47,9 +53,11 @@ interface Registration {
 }
 
 const registrations = new Set<Registration>();
+/** Shared by listeners registered without options, so they also share one document. */
+const NO_OPTIONS: ClashRunListenerOptions = Object.freeze({});
 
 /** Register a listener for completed clash runs. Returns its unsubscribe. */
-export function onClashRunComplete(listener: ClashRunCompleteListener, options: ClashRunListenerOptions = {}): () => void {
+export function onClashRunComplete(listener: ClashRunCompleteListener, options: ClashRunListenerOptions = NO_OPTIONS): () => void {
   const registration: Registration = { listener, options };
   registrations.add(registration);
   return () => { registrations.delete(registration); };

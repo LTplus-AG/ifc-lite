@@ -51,6 +51,8 @@ export {
 export {
   buildClashRunDocument,
   clashRuleRevision,
+  clashRuleSetRevision,
+  matchesExclusionRule,
   slotExclusionId,
   CLASH_RUN_BROWSER_SUBMITTED,
   CLASH_RUN_DOCUMENT_SCHEMA_ID,
@@ -59,6 +61,7 @@ export {
   type ClashRunCoverage,
   type ClashRunDocument,
   type ClashRunEndpoint,
+  type ClashRunExclusionRule,
   type ClashRunFinding,
   type ClashRunManifest,
   type ClashRunRule,

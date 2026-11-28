@@ -69,7 +69,8 @@ export function createClashDetection({ runEpochRef, runAbortRef, discardSolidPre
     if (published) {
       const current = useViewerStore.getState();
       // Presets as they were when the run STARTED: an edit during the run must not relabel its findings.
-      notifyClashRunComplete(res, { models: current.models, ...hostInputs });
+      // The user's exclusion rules as they apply to this result now. Built off this tick (see the module).
+      void notifyClashRunComplete(res, { models: current.models, exclusionRules: current.clashExclusions, ...hostInputs });
     }
     return published;
   };

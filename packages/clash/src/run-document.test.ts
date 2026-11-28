@@ -174,7 +174,10 @@ describe('buildClashRunDocument', () => {
     doc.manifest.slots[0].sha256 = SHA_A1;
     doc.findings[0].bbox = { min: [0, 0, 0], max: [1, 1, 1] };
     const second = validateClashRunDocument(doc);
-    expect(second.ok ? [] : second.errors).toEqual(['$.findings[0].a.slot: not in manifest.slots']);
+    expect(second.ok ? [] : second.errors).toEqual([
+      '$.findings[0].a.slot: not in manifest.slots',
+      "$.findings[0].key: does not follow from the finding's elements and rule",
+    ]);
     expect(validateClashRunDocument({ schema: 'x' }).ok).toBe(false);
   });
 

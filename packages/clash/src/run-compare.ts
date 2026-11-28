@@ -22,7 +22,13 @@
  */
 
 import { parseClashReviewKey } from './review.js';
-import { slotExclusionId, type ClashRunDocument, type ClashRunFinding } from './run-document.js';
+import {
+  matchesExclusionRule,
+  slotExclusionId,
+  type ClashRunDocument,
+  type ClashRunExclusionRule,
+  type ClashRunFinding,
+} from './run-document.js';
 import type { ClashReview } from './types.js';
 
 /** Why a finding cannot be placed in added / persistent / no longer detected. */
@@ -41,7 +47,7 @@ export type ClashRunNotComparableReason =
   | 'pair-not-examined'
   /** The next run's coverage does not record which elements each rule side matched. */
   | 'coverage-not-recorded'
-  /** The other run was told to skip this element pair (void/host or user exclusion). */
+  /** The other run skipped this element pair: an engine exclusion (void/host/aggregate) or a user exclusion rule. */
   | 'excluded-in-other-run'
   /** The other run did not record its exclusions, so the pair may have been skipped there. */
   | 'exclusions-not-recorded'
@@ -120,21 +126,24 @@ export function compareClashRunDocuments(previous: ClashRunDocument, next: Clash
   const out: ClashRunComparison = { added: [], persistent: [], noLongerDetected: [], notComparable: [], slots, rules,
     summary: { added: 0, persistent: 0, noLongerDetected: 0, notComparable: 0 } };
 
-  const otherRunReasons = (finding: ClashRunFinding, other: ClashRunDocument, side: 'previous' | 'next') => {
+  // Every lookup below is against one of these, built once per call: per-finding scans
+  // of the manifest's lists made the comparison quadratic (56 s at 10^5 findings).
+  const index = { previous: indexRun(previous), next: indexRun(next) };
+  const otherRunReasons = (finding: ClashRunFinding, otherSide: 'previous' | 'next', side: 'previous' | 'next') => {
+    const other = index[otherSide];
     const reasons: ClashRunNotComparableReason[] = [];
-    const otherSlots = new Set(other.manifest.slots.map((s) => s.slot));
-    if (!otherSlots.has(finding.a.slot) || !otherSlots.has(finding.b.slot)) reasons.push('slot-not-in-other-run');
-    const otherRule = other.manifest.rules.items.find((r) => r.id === finding.rule);
-    if (!otherRule) reasons.push('rule-not-in-other-run');
-    else if (otherRule.revision !== finding.ruleRevision) reasons.push('rule-revision-changed');
-    if (other.manifest.truncated) reasons.push('run-truncated');
-    const exclusionId = slotExclusionId([finding.a.slot, finding.a.key], [finding.b.slot, finding.b.key]);
-    if (other.manifest.exclusions?.includes(exclusionId)) reasons.push('excluded-in-other-run');
-    else if (other.manifest.exclusions === null) reasons.push('exclusions-not-recorded');
+    if (!other.slots.has(finding.a.slot) || !other.slots.has(finding.b.slot)) reasons.push('slot-not-in-other-run');
+    const otherRevision = other.rules.get(finding.rule);
+    if (otherRevision === undefined) reasons.push('rule-not-in-other-run');
+    else if (otherRevision !== finding.ruleRevision) reasons.push('rule-revision-changed');
+    if (other.truncated) reasons.push('run-truncated');
+    const excluded = other.exclusions?.has(slotExclusionId([finding.a.slot, finding.a.key], [finding.b.slot, finding.b.key]))
+      || matchesExclusionRule(other.exclusionRules, finding);
+    if (excluded) reasons.push('excluded-in-other-run');
+    else if (other.exclusions === null) reasons.push('exclusions-not-recorded');
     // A key the other run saw repeated in its slot has no identity there either.
-    for (const end of [finding.a, finding.b]) {
-      const repeated = Object.hasOwn(other.manifest.ambiguousKeys, end.slot) && other.manifest.ambiguousKeys[end.slot].includes(end.key);
-      if (repeated && !reasons.includes('ambiguous-identity')) reasons.push('ambiguous-identity');
+    if (other.ambiguous.get(finding.a.slot)?.has(finding.a.key) || other.ambiguous.get(finding.b.slot)?.has(finding.b.key)) {
+      reasons.push('ambiguous-identity');
     }
     if (side === 'previous' && reasons.length === 0) reasons.push(...examinedReasons(finding, other));
     return reasons;
@@ -143,7 +152,7 @@ export function compareClashRunDocuments(previous: ClashRunDocument, next: Clash
     out.notComparable.push({ side, finding, reasons });
 
   const classifyGone = (finding: ClashRunFinding) => {
-    const reasons = otherRunReasons(finding, next, 'previous');
+    const reasons = otherRunReasons(finding, 'next', 'previous');
     if (reasons.length === 0) out.noLongerDetected.push(finding);
     else notComparable('previous', finding, reasons);
   };
@@ -158,7 +167,7 @@ export function compareClashRunDocuments(previous: ClashRunDocument, next: Clash
     const paired = Math.min(prevGroup.length, nextGroup.length);
     for (let i = 0; i < paired; i += 1) out.persistent.push({ previous: prevGroup[i], next: nextGroup[i] });
     for (const finding of nextGroup.slice(paired)) {
-      const reasons = otherRunReasons(finding, previous, 'next');
+      const reasons = otherRunReasons(finding, 'previous', 'next');
       if (reasons.length === 0) out.added.push(finding);
       else notComparable('next', finding, reasons);
     }
@@ -176,6 +185,41 @@ export function compareClashRunDocuments(previous: ClashRunDocument, next: Clash
   return out;
 }
 
+type SideIndex = Map<string, Set<string>>;
+
+/** One run's manifest as lookup structures, so each finding costs O(1) to classify. */
+interface RunIndex {
+  slots: Set<string>;
+  rules: Map<string, string>;
+  truncated: boolean;
+  exclusions: Set<string> | null;
+  exclusionRules: readonly ClashRunExclusionRule[];
+  ambiguous: Map<string, Set<string>>;
+  coverage: Map<string, { a: SideIndex; b: SideIndex | null } | null>;
+}
+
+const sideIndex = (side: Record<string, string[]>): SideIndex =>
+  new Map(Object.entries(side).map(([slot, keys]) => [slot, new Set(keys)]));
+
+function indexRun(doc: ClashRunDocument): RunIndex {
+  const { manifest } = doc;
+  const coverage = new Map<string, { a: SideIndex; b: SideIndex | null } | null>();
+  for (const entry of manifest.coverage) {
+    if (coverage.has(entry.rule)) continue;
+    coverage.set(entry.rule, entry.examined === null ? null
+      : { a: sideIndex(entry.examined.a), b: entry.examined.b === null ? null : sideIndex(entry.examined.b) });
+  }
+  return {
+    slots: new Set(manifest.slots.map((s) => s.slot)),
+    rules: new Map(manifest.rules.items.map((r) => [r.id, r.revision])),
+    truncated: manifest.truncated !== null,
+    exclusions: manifest.exclusions === null ? null : new Set(manifest.exclusions),
+    exclusionRules: manifest.exclusionRules,
+    ambiguous: new Map(Object.entries(manifest.ambiguousKeys).map(([slot, keys]) => [slot, new Set(keys)])),
+    coverage,
+  };
+}
+
 /**
  * For a previous-run finding the next run did not report: did the next run
  * test this pair? Its coverage must show the two elements on opposite sides
@@ -183,12 +227,11 @@ export function compareClashRunDocuments(previous: ClashRunDocument, next: Clash
  * not taken as proof: a host-pinned revision can stay put while membership
  * moves, so only the recorded sides count.
  */
-function examinedReasons(finding: ClashRunFinding, next: ClashRunDocument): ClashRunNotComparableReason[] {
-  const coverage = next.manifest.coverage.find((c) => c.rule === finding.rule);
-  if (!coverage || coverage.examined === null) return ['coverage-not-recorded'];
-  const { a: sideA, b: sideB } = coverage.examined;
-  const on = (side: Record<string, string[]> | null, end: ClashRunFinding['a']) =>
-    side !== null && Object.hasOwn(side, end.slot) && side[end.slot].includes(end.key);
+function examinedReasons(finding: ClashRunFinding, next: RunIndex): ClashRunNotComparableReason[] {
+  const coverage = next.coverage.get(finding.rule);
+  if (!coverage) return ['coverage-not-recorded'];
+  const { a: sideA, b: sideB } = coverage;
+  const on = (side: SideIndex | null, end: ClashRunFinding['a']) => side?.get(end.slot)?.has(end.key) === true;
   const seen = (end: ClashRunFinding['a']) => on(sideA, end) || on(sideB, end);
   if (!seen(finding.a) || !seen(finding.b)) return ['element-not-examined'];
   const tested = sideB === null

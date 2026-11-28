@@ -4,7 +4,8 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { makeExclusionSet, qualifiedKey, validateClashRunDocument, type Clash, type ClashResult } from '@ifc-lite/clash';
+import { makeExclusionSet, qualifiedKey, validateClashRunDocument, type Clash, type ClashResult, type ClashRunDocument } from '@ifc-lite/clash';
+import type { ClashExclusionRule } from './exclusions.js';
 import { Rule } from '@ifc-lite/rules';
 import { onClashRunComplete, type ClashRunCompleteEvent } from './host-run-listeners.js';
 import { notifyClashRunComplete, type ClashRunHostContext } from './host-run-document.js';
@@ -24,83 +25,132 @@ const result: ClashResult = {
   settings: { tolerance: 0.002, excludeVoidsAndHosts: true },
 };
 const models = new Map([['m-arch', { id: 'm-arch', name: 'arch.ifc' }], ['m-struct', { id: 'm-struct', name: 'struct.ifc' }]]);
-const context: ClashRunHostContext = { models, presets: [], exclusions: new Set(), tagInputs: null };
+const context: ClashRunHostContext = { models, presets: [], exclusions: new Set(), exclusionRules: [], tagInputs: null };
+
+/** The document of a successful event; fails the test on an error event. */
+function documentOf(event: ClashRunCompleteEvent | undefined): ClashRunDocument {
+  assert.ok(event, 'an event was delivered');
+  if (!event.ok) throw event.error;
+  return event.document;
+}
+
+/** Collect the events of one registration while `run` publishes. */
+async function collect(run: () => Promise<unknown>, options?: Parameters<typeof onClashRunComplete>[1]): Promise<ClashRunCompleteEvent[]> {
+  const events: ClashRunCompleteEvent[] = [];
+  const off = onClashRunComplete((event) => { events.push(event); }, options);
+  try {
+    await run();
+  } finally {
+    off();
+  }
+  return events;
+}
 
 describe('clash run host hook', () => {
-  it('delivers nothing when no host registered', () => {
-    // No listener: notify must be a no-op (and must not throw).
-    notifyClashRunComplete(result, context);
+  it('delivers nothing when no host registered', async () => {
+    // No listener: nothing is loaded or built, and nothing throws.
+    await notifyClashRunComplete(result, context);
   });
 
-  it('delivers a valid browser-submitted run document with the host slots', () => {
+  it('builds off the publishing tick and delivers a valid, frozen browser-submitted document', async () => {
     const events: ClashRunCompleteEvent[] = [];
     const sha = 'd'.repeat(64);
-    const off = onClashRunComplete((event) => events.push(event), {
+    const off = onClashRunComplete((event) => { events.push(event); }, {
       resolveSlot: (model) => (model.id === 'm-arch' ? { slot: 'architecture', sha256: sha, label: 'ARC' } : null),
     });
-    notifyClashRunComplete(result, context);
+    const first = notifyClashRunComplete(result, context);
+    assert.equal(events.length, 0, 'nothing is built or delivered synchronously');
     off();
-    notifyClashRunComplete(result, context);
+    await Promise.all([first, notifyClashRunComplete(result, context)]);
     assert.equal(events.length, 1, 'one run delivered, none after unsubscribe');
-    const { document } = events[0];
+    const document = documentOf(events[0]);
     assert.deepEqual(document.labels, ['browser-submitted']);
     assert.deepEqual(document.manifest.slots, [
       { slot: 'architecture', sha256: sha, name: 'arch.ifc', label: 'ARC' },
       { slot: 'm-struct', sha256: null, name: 'struct.ifc' },
     ]);
     assert.equal(document.findings[0].a.slot, 'architecture');
+    assert.equal(Object.isFrozen(document) && Object.isFrozen(document.findings[0].a), true, 'deeply frozen');
     assert.equal(validateClashRunDocument(JSON.parse(JSON.stringify(document))).ok, true, 'document validates');
   });
 
-  it('lists every gathered slot on a clean run and records the exclusions', () => {
+  it('builds once per run and hands every listener with the same options the same object', async () => {
+    const seen: ClashRunCompleteEvent[] = [];
+    const offA = onClashRunComplete((event) => { seen.push(event); });
+    const offB = onClashRunComplete((event) => { seen.push(event); });
+    try {
+      await notifyClashRunComplete(result, context);
+    } finally {
+      offA();
+      offB();
+    }
+    assert.equal(seen.length, 2);
+    assert.equal(documentOf(seen[0]) === documentOf(seen[1]), true, 'one shared document');
+  });
+
+  it('reports a document that cannot be built to the listener as an error result', async () => {
+    const originalError = console.error;
+    console.error = () => {};
+    try {
+      // Two loaded models put in one slot: the builder refuses.
+      const events = await collect(() => notifyClashRunComplete(result, context), { resolveSlot: () => ({ slot: 'same', sha256: null }) });
+      assert.equal(events.length, 1);
+      const [event] = events;
+      assert.equal(event.ok, false, 'an explicit failure, not silence');
+      if (!event.ok) assert.match(event.error.message, /more than one model/);
+    } finally {
+      console.error = originalError;
+    }
+  });
+
+  it('lists every gathered slot on a clean run and records the exclusions', async () => {
     const clean: ClashResult = { ...result, clashes: [] };
     rememberFederationIdentity(clean, new Map([['m-arch', 1], ['m-struct', 2]]));
-    const events: ClashRunCompleteEvent[] = [];
-    const off = onClashRunComplete((event) => events.push(event));
-    try {
-      notifyClashRunComplete(clean, { ...context,
-        exclusions: makeExclusionSet([[qualifiedKey('m-arch', 'W'), qualifiedKey('m-struct', 'B')]]) });
-    } finally {
-      off();
-    }
-    const { manifest } = events[0].document;
+    const [event] = await collect(() => notifyClashRunComplete(clean, { ...context,
+      exclusions: makeExclusionSet([[qualifiedKey('m-arch', 'W'), qualifiedKey('m-struct', 'B')]]) }));
+    const { manifest } = documentOf(event);
     assert.deepEqual(manifest.slots.map((s) => s.slot), ['m-arch', 'm-struct'], 'clean run still names its slots');
     assert.deepEqual(manifest.exclusions, [JSON.stringify([['m-arch', 'W'], ['m-struct', 'B']])]);
   });
 
-  it('pins an explicit-member rule to its saved filter, not its per-load members', () => {
+  it("records the user's enabled exclusion rules and leaves their findings out", async () => {
+    const rule = (enabled: boolean): ClashExclusionRule => ({ id: 'x', kind: 'typePair', a: 'IfcBeam', b: 'IfcWall',
+      label: 'beams vs walls', enabled, createdAt: 0 });
+    const [on] = await collect(() => notifyClashRunComplete(result, { ...context, exclusionRules: [rule(true)] }));
+    assert.deepEqual(documentOf(on).findings, [], 'the excluded clash is not in the document');
+    assert.deepEqual(documentOf(on).manifest.exclusionRules, [{ kind: 'typePair', a: 'IfcBeam', b: 'IfcWall' }]);
+    const [off] = await collect(() => notifyClashRunComplete(result, { ...context, exclusionRules: [rule(false)] }));
+    assert.equal(documentOf(off).findings.length, 1, 'a disabled rule suppresses nothing');
+    assert.deepEqual(documentOf(off).manifest.exclusionRules, []);
+  });
+
+  it('pins an explicit-member rule to its saved filter, not its per-load members', async () => {
     const memberRule = { ...result.rulesRun[0], membersA: ['m-arch:10'] };
     const reload = { ...memberRule, membersA: ['m-arch:99'] };
     const preset = { id: 'r1', name: 'Walls vs beams', enabled: true,
       filterA: [{ combinator: 'AND' as const, rules: [Rule.modelTag('hasAny', ['tag-arch'])] }] };
     const edited = { ...preset, filterA: [{ combinator: 'AND' as const, rules: [Rule.modelTag('hasAny', ['tag-mep'])] }] };
-    const revisions: string[] = [];
-    const off = onClashRunComplete((event) => revisions.push(event.document.manifest.rules.items[0].revision));
-    try {
-      notifyClashRunComplete({ ...result, rulesRun: [memberRule] }, { ...context, presets: [preset] });
-      notifyClashRunComplete({ ...result, rulesRun: [reload] }, { ...context, presets: [preset] });
-      notifyClashRunComplete({ ...result, rulesRun: [reload] }, { ...context, presets: [edited] });
-    } finally {
-      off();
-    }
+    const events = await collect(async () => {
+      await notifyClashRunComplete({ ...result, rulesRun: [memberRule] }, { ...context, presets: [preset] });
+      await notifyClashRunComplete({ ...result, rulesRun: [reload] }, { ...context, presets: [preset] });
+      await notifyClashRunComplete({ ...result, rulesRun: [reload] }, { ...context, presets: [edited] });
+    });
+    const revisions = events.map((event) => documentOf(event).manifest.rules.items[0].revision);
     assert.equal(revisions[0], revisions[1], 'a reload with new refs keeps the revision');
     assert.notEqual(revisions[1], revisions[2], 'an edited filter changes it');
   });
 
-  it("ignores tag assignments that only another rule's filter names", () => {
+  it("ignores tag assignments that only another rule's filter names", async () => {
     const memberRule = { ...result.rulesRun[0], membersA: ['m-arch:10'] };
     const preset = { id: 'r1', filterA: [{ combinator: 'AND' as const, rules: [Rule.modelTag('hasAny', ['tag-arch'])] }] };
-    const revisions: string[] = [];
-    const off = onClashRunComplete((event) => { revisions.push(event.document.manifest.rules.items[0].revision); });
     const tags = (other: string[]) => new Map([['tag-arch', new Set(['m-arch'])], ['tag-other', new Set(other)]]);
-    try {
-      notifyClashRunComplete({ ...result, rulesRun: [memberRule] }, { ...context, presets: [preset], tagInputs: tags(['m-arch']) });
-      notifyClashRunComplete({ ...result, rulesRun: [memberRule] }, { ...context, presets: [preset], tagInputs: tags(['m-struct']) });
-      notifyClashRunComplete({ ...result, rulesRun: [memberRule] }, { ...context, presets: [preset],
+    const events = await collect(async () => {
+      await notifyClashRunComplete({ ...result, rulesRun: [memberRule] }, { ...context, presets: [preset], tagInputs: tags(['m-arch']) });
+      await notifyClashRunComplete({ ...result, rulesRun: [memberRule] }, { ...context, presets: [preset], tagInputs: tags(['m-struct']) });
+      await notifyClashRunComplete({ ...result, rulesRun: [memberRule] }, { ...context, presets: [preset],
         tagInputs: new Map([['tag-arch', new Set(['m-struct'])]]) });
-    } finally {
-      off();
-    }
+    });
+    const revisions = events.map((event) => documentOf(event).manifest.rules.items[0].revision);
     assert.equal(revisions[0], revisions[1], "another rule's tag does not move this revision");
     assert.notEqual(revisions[1], revisions[2], 'its own tag does');
   });
@@ -111,7 +161,7 @@ describe('clash run host hook', () => {
     console.error = (...args: unknown[]) => { logged.push(args[1]); };
     const off = onClashRunComplete(async () => { throw new Error('store failed'); });
     try {
-      notifyClashRunComplete(result, context);
+      await notifyClashRunComplete(result, context);
       await new Promise((resolve) => setTimeout(resolve, 0));
     } finally {
       off();
@@ -121,15 +171,15 @@ describe('clash run host hook', () => {
     assert.equal((logged[0] as Error).message, 'store failed');
   });
 
-  it('keeps a failing listener from affecting another', () => {
+  it('keeps a failing listener from affecting another', async () => {
     const received: string[] = [];
     const originalError = console.error;
     const logged: unknown[] = [];
     console.error = (...args: unknown[]) => { logged.push(args[0]); };
     const offBad = onClashRunComplete(() => { throw new Error('host failure'); });
-    const offGood = onClashRunComplete((event) => received.push(event.document.findings[0].rule));
+    const offGood = onClashRunComplete((event) => { received.push(documentOf(event).findings[0].rule); });
     try {
-      notifyClashRunComplete(result, context);
+      await notifyClashRunComplete(result, context);
     } finally {
       offBad();
       offGood();

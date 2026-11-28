@@ -21,9 +21,12 @@
 
 import { uuidFromSeed } from './deterministic-uuid.js';
 import { bareIfcGuid } from './export/table.js';
-import { decodeQualifiedPair } from './exclude.js';
+import { clashElementIdentity } from './object-identity.js';
 import { clashReviewKey, clashSlotReviewKey } from './review.js';
+import { exclusionRuleCovers, recordExclusions, type ClashRunExclusionRule } from './run-exclusions.js';
 import type { Clash, ClashDistanceKind, ExclusionSet, ClashResult, ClashReview, ClashRule, ClashSeverity, ClashStatus, Vec3 } from './types.js';
+
+export { matchesExclusionRule, slotExclusionId, type ClashRunExclusionRule } from './run-exclusions.js';
 
 /** `$id` of the run-document schema; also the document's `schema` field. */
 export const CLASH_RUN_DOCUMENT_SCHEMA_ID = 'https://ifclite.dev/schemas/clash-run/v1.json';
@@ -82,11 +85,20 @@ export interface ClashRunManifest {
   /** Keys repeated by distinct objects within one slot: no stable identity, so no carried decision. */
   ambiguousKeys: Record<string, string[]>;
   /**
-   * Element pairs the run was told to skip (voids/hosts, user exclusions), as
-   * `slotExclusionId`s, sorted. `null`: not recorded, so the absence of a
-   * finding cannot be told apart from an exclusion.
+   * Element pairs the engine skipped (`ClashSettings.exclusions`: voids/hosts,
+   * aggregates), as `slotExclusionId`s, sorted. `[]` when
+   * `excludeVoidsAndHosts` was off, since the engine then applies none.
+   * `null`: not recorded, so the absence of a finding cannot be told apart
+   * from an exclusion.
    */
   exclusions: string[] | null;
+  /**
+   * The user's enabled exclusion rules. Findings they cover are left out of
+   * `findings`, and a comparison treats a pair they cover as excluded in this
+   * run, so a pair the user excluded is never reported as added, persistent
+   * or no longer detected.
+   */
+  exclusionRules: ClashRunExclusionRule[];
   truncated: { reason: string; droppedPairs: number } | null;
 }
 
@@ -156,6 +168,8 @@ export interface BuildClashRunDocumentInput {
   volumes?: ReadonlyMap<string, number>;
   /** The exclusion set the engine ran with (`ClashSettings.exclusions`). Omitted: recorded as unknown. */
   exclusions?: ExclusionSet;
+  /** The user's enabled exclusion rules; findings they cover are left out of the document. */
+  exclusionRules?: readonly ClashRunExclusionRule[];
   /**
    * A durable description of each explicit-member rule's membership (e.g. the
    * saved filter definition), by rule id. Without one, the member lists
@@ -165,13 +179,6 @@ export interface BuildClashRunDocumentInput {
   ruleMemberships?: Readonly<Record<string, string>>;
   /** Review state to record, by slot-qualified key. */
   reviews?: Readonly<Record<string, ClashReview>>;
-}
-
-/** Slot-qualified, order-independent id of an excluded element pair. */
-export function slotExclusionId(a: readonly [string, string], b: readonly [string, string]): string {
-  const ea = JSON.stringify(a);
-  const eb = JSON.stringify(b);
-  return JSON.stringify(ea < eb ? [a, b] : [b, a]);
 }
 
 /** The semantic fields of a rule as it ran: what decides which pairs it reports. */
@@ -206,6 +213,11 @@ export function clashRuleRevision(rule: ClashRule, settings: ClashResult['settin
   const members = !explicit ? null : membership !== undefined ? { membership }
     : { a: rule.membersA ? [...rule.membersA].sort() : null, b: rule.membersB ? [...rule.membersB].sort() : null };
   return uuidFromSeed(`clash-rule/1 ${JSON.stringify({ ...ruleSemantics(rule, settings), members })}`);
+}
+
+/** The revision of a whole rule set: changes when any rule is added, removed or changes revision. */
+export function clashRuleSetRevision(rules: ReadonlyArray<Pick<ClashRunRule, 'id' | 'revision'>>): string {
+  return uuidFromSeed(`clash-rule-set/1 ${JSON.stringify(rules.map((r) => [r.id, r.revision]).sort())}`);
 }
 
 /** Own data properties only (`Object.fromEntries`), so a slot id such as `__proto__` survives. */
@@ -268,7 +280,7 @@ export function buildClashRunDocument(input: BuildClashRunDocumentInput): ClashR
     const { a, b, mode, tolerance, clearance, reportTouch, explicitMembers } = ruleSemantics(rule, result.settings);
     return { id: rule.id, name: rule.name, revision, a, b, mode, tolerance, clearance, reportTouch, explicitMembers };
   });
-  const ruleSetRevision = uuidFromSeed(`clash-rule-set/1 ${JSON.stringify(rules.map((r) => [r.id, r.revision]).sort())}`);
+  const ruleSetRevision = clashRuleSetRevision(rules);
 
   const coverage: ClashRunCoverage[] = (result.ruleCoverage ?? []).map((entry) => {
     let examined: ClashRunCoverage['examined'] = null;
@@ -315,7 +327,10 @@ export function buildClashRunDocument(input: BuildClashRunDocumentInput): ClashR
     };
   };
 
-  const findings = result.clashes.map((clash): ClashRunFinding => {
+  const exclusionRules = (input.exclusionRules ?? []).map((rule) => ({ ...rule }));
+  const userExcluded = (clash: Clash) => exclusionRules.some((rule) => exclusionRuleCovers(rule,
+    { type: clash.a.tag, identity: clashElementIdentity(clash.a) }, { type: clash.b.tag, identity: clashElementIdentity(clash.b) }));
+  const findings = result.clashes.filter((clash) => !userExcluded(clash)).map((clash): ClashRunFinding => {
     // Without the rule in `rulesRun` its semantics are unrecorded, so no key could be trusted to compare.
     const ruleRevision = revisions.get(clash.rule);
     if (ruleRevision === undefined) throw new Error(`clash run references rule ${clash.rule}, which is not in rulesRun`);
@@ -360,28 +375,11 @@ export function buildClashRunDocument(input: BuildClashRunDocumentInput): ClashR
       settings: { tolerance: result.settings.tolerance, excludeVoidsAndHosts: result.settings.excludeVoidsAndHosts },
       coverage,
       ambiguousKeys: sortedRecord(ambiguous),
-      exclusions: input.exclusions ? recordExclusions(input.exclusions, slotByModel) : null,
+      // The engine applies `exclusions` only with `excludeVoidsAndHosts` on (orchestrator), so off means none.
+      exclusions: !result.settings.excludeVoidsAndHosts ? [] : input.exclusions ? recordExclusions(input.exclusions, slotByModel) : null,
+      exclusionRules,
       truncated: result.truncated ? { ...result.truncated } : null,
     },
     findings,
   };
-}
-
-/**
- * Translate an engine exclusion set to slot-qualified pair ids. A pair on a
- * model bound to no slot concerns no recorded finding and is dropped; a pair
- * that does not decode (built with another encoding) makes the record unknown,
- * since it could hide any pair.
- */
-function recordExclusions(exclusions: ExclusionSet, slotByModel: ReadonlyMap<string, string>): string[] | null {
-  const ids = new Set<string>();
-  for (const pair of exclusions) {
-    const decoded = decodeQualifiedPair(pair);
-    if (!decoded) return null;
-    const [a, b] = decoded;
-    const slotA = slotByModel.get(a.model);
-    const slotB = slotByModel.get(b.model);
-    if (slotA !== undefined && slotB !== undefined) ids.add(slotExclusionId([slotA, a.key], [slotB, b.key]));
-  }
-  return [...ids].sort();
 }

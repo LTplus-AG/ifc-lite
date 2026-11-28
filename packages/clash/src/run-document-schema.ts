@@ -6,82 +6,92 @@
  * JSON Schema (draft 2020-12) of `ClashRunDocument`, and a dependency-free
  * validator for a document read back from storage. The schema is for hosts
  * that validate in another language or at an API boundary; the validator
- * checks the same constraints in-process and names every failing path.
+ * checks the same shape in-process, names every failing path, and also checks
+ * what a schema cannot: that each finding is consistent with itself and with
+ * its manifest. A host stores documents a browser submitted, so it must not
+ * trust a key that does not follow from the finding's own elements and rule.
+ *
+ * Version 1 is CLOSED: unknown properties are refused everywhere a shape is
+ * fixed (`additionalProperties: false`), so a misspelt optional field fails
+ * instead of being dropped. A future field means a new `version`.
  */
 
-import { CLASH_RUN_DOCUMENT_SCHEMA_ID, CLASH_RUN_DOCUMENT_VERSION, type ClashRunDocument } from './run-document.js';
+import { clashElementIdentity, clashPairId } from './object-identity.js';
+import { slotPairKey } from './review.js';
+import {
+  clashRuleSetRevision,
+  CLASH_RUN_DOCUMENT_SCHEMA_ID,
+  CLASH_RUN_DOCUMENT_VERSION,
+  type ClashRunDocument,
+} from './run-document.js';
 
 const vec3 = { type: 'array', items: { type: 'number' }, minItems: 3, maxItems: 3 } as const;
 const nullableString = { type: ['string', 'null'] } as const;
 const stringList = { type: 'array', items: { type: 'string' } } as const;
 const slotKeyLists = { type: 'object', additionalProperties: stringList } as const;
-const endpoint = {
-  type: 'object',
-  required: ['slot', 'key', 'globalId', 'type'],
-  properties: {
-    slot: { type: 'string' }, key: { type: 'string' }, globalId: nullableString, type: { type: 'string' },
-    name: { type: 'string' }, ambiguous: { const: true },
-  },
-} as const;
+/** A fixed-shape object: listed properties only. */
+const closed = <const R extends readonly string[], const P extends Record<string, unknown>>(required: R, properties: P) =>
+  ({ type: 'object', required, properties, additionalProperties: false }) as const;
+const endpoint = closed(['slot', 'key', 'globalId', 'type'], {
+  slot: { type: 'string' }, key: { type: 'string' }, globalId: nullableString, type: { type: 'string' },
+  name: { type: 'string' }, ambiguous: { const: true },
+});
 
 /** The run document's JSON Schema. */
 export const CLASH_RUN_DOCUMENT_JSON_SCHEMA = {
   $schema: 'https://json-schema.org/draft/2020-12/schema',
   $id: CLASH_RUN_DOCUMENT_SCHEMA_ID,
   title: 'ifc-lite clash run',
-  type: 'object',
-  required: ['schema', 'version', 'runId', 'createdAt', 'labels', 'manifest', 'findings'],
-  properties: {
+  description: 'Version 1 is closed: unknown properties are refused; a new field means a new version. '
+    + 'Consistency between findings and the manifest (keys, rule revisions, unique ids) is checked by validateClashRunDocument.',
+  ...closed(['schema', 'version', 'runId', 'createdAt', 'labels', 'manifest', 'findings'], {
     schema: { const: CLASH_RUN_DOCUMENT_SCHEMA_ID },
     version: { const: CLASH_RUN_DOCUMENT_VERSION },
     runId: nullableString,
     createdAt: { type: 'string', format: 'date-time' },
     labels: stringList,
-    manifest: {
-      type: 'object',
-      required: ['slots', 'rules', 'engine', 'settings', 'coverage', 'ambiguousKeys', 'exclusions', 'truncated'],
-      properties: {
-        slots: { type: 'array', items: { type: 'object', required: ['slot', 'sha256'],
-          properties: { slot: { type: 'string' }, sha256: { type: ['string', 'null'], pattern: '^[0-9a-f]{64}$' },
-            label: { type: 'string' }, name: { type: 'string' } } } },
-        rules: { type: 'object', required: ['revision', 'items'], properties: {
-          revision: { type: 'string' },
-          items: { type: 'array', items: { type: 'object',
-            required: ['id', 'name', 'revision', 'a', 'b', 'mode', 'tolerance', 'clearance', 'reportTouch', 'explicitMembers'],
-            properties: {
-              id: { type: 'string' }, name: { type: 'string' }, revision: { type: 'string' }, a: { type: 'string' },
-              b: nullableString, mode: { enum: ['hard', 'clearance'] }, tolerance: { type: 'number' },
-              clearance: { type: ['number', 'null'] }, reportTouch: { type: 'boolean' },
-              explicitMembers: { type: 'object', required: ['a', 'b'], properties: { a: { type: 'boolean' }, b: { type: 'boolean' } } },
-            } } },
-        } },
-        engine: { type: 'object', required: ['name', 'version', 'build', 'backend'], properties: {
-          name: { type: 'string' }, version: nullableString, build: nullableString, backend: nullableString } },
-        settings: { type: 'object', required: ['tolerance', 'excludeVoidsAndHosts'], properties: {
-          tolerance: { type: 'number' }, excludeVoidsAndHosts: { type: 'boolean' } } },
-        coverage: { type: 'array', items: { type: 'object', required: ['rule', 'matchedA', 'matchedB', 'candidatesExamined', 'examined'],
-          properties: { rule: { type: 'string' }, matchedA: { type: 'integer' }, matchedB: { type: ['integer', 'null'] },
-            candidatesExamined: { type: ['integer', 'null'] }, examined: { anyOf: [{ type: 'null' }, { type: 'object', required: ['a', 'b'],
-              properties: { a: slotKeyLists, b: { anyOf: [slotKeyLists, { type: 'null' }] } } }] } } } },
-        ambiguousKeys: slotKeyLists,
-        exclusions: { anyOf: [stringList, { type: 'null' }] },
-        truncated: { anyOf: [{ type: 'null' }, { type: 'object', required: ['reason', 'droppedPairs'],
-          properties: { reason: { type: 'string' }, droppedPairs: { type: 'integer' } } }] },
-      },
-    },
-    findings: { type: 'array', items: { type: 'object',
-      required: ['id', 'key', 'legacyKey', 'rule', 'ruleRevision', 'status', 'severity', 'distance', 'distanceKind', 'volume', 'point', 'bbox', 'a', 'b'],
-      properties: {
+    manifest: closed(['slots', 'rules', 'engine', 'settings', 'coverage', 'ambiguousKeys', 'exclusions', 'exclusionRules', 'truncated'], {
+      slots: { type: 'array', items: closed(['slot', 'sha256'], {
+        slot: { type: 'string' }, sha256: { type: ['string', 'null'], pattern: '^[0-9a-f]{64}$' },
+        label: { type: 'string' }, name: { type: 'string' } }) },
+      rules: closed(['revision', 'items'], {
+        revision: { type: 'string' },
+        items: { type: 'array', items: closed(
+          ['id', 'name', 'revision', 'a', 'b', 'mode', 'tolerance', 'clearance', 'reportTouch', 'explicitMembers'], {
+            id: { type: 'string' }, name: { type: 'string' }, revision: { type: 'string' }, a: { type: 'string' },
+            b: nullableString, mode: { enum: ['hard', 'clearance'] }, tolerance: { type: 'number' },
+            clearance: { type: ['number', 'null'] }, reportTouch: { type: 'boolean' },
+            explicitMembers: closed(['a', 'b'], { a: { type: 'boolean' }, b: { type: 'boolean' } }),
+          }) },
+      }),
+      engine: closed(['name', 'version', 'build', 'backend'], {
+        name: { type: 'string' }, version: nullableString, build: nullableString, backend: nullableString }),
+      settings: closed(['tolerance', 'excludeVoidsAndHosts'], { tolerance: { type: 'number' }, excludeVoidsAndHosts: { type: 'boolean' } }),
+      coverage: { type: 'array', items: closed(['rule', 'matchedA', 'matchedB', 'candidatesExamined', 'examined'], {
+        rule: { type: 'string' }, matchedA: { type: 'integer' }, matchedB: { type: ['integer', 'null'] },
+        candidatesExamined: { type: ['integer', 'null'] },
+        examined: { anyOf: [{ type: 'null' }, closed(['a', 'b'], { a: slotKeyLists, b: { anyOf: [slotKeyLists, { type: 'null' }] } })] },
+      }) },
+      ambiguousKeys: slotKeyLists,
+      exclusions: { anyOf: [stringList, { type: 'null' }] },
+      exclusionRules: { type: 'array', items: { oneOf: [
+        closed(['kind', 'type'], { kind: { const: 'type' }, type: { type: 'string' } }),
+        closed(['kind', 'a', 'b'], { kind: { const: 'typePair' }, a: { type: 'string' }, b: { type: 'string' } }),
+        closed(['kind', 'a', 'b'], { kind: { const: 'elementKeyPair' }, a: { type: 'string' }, b: { type: 'string' } }),
+      ] } },
+      truncated: { anyOf: [{ type: 'null' }, closed(['reason', 'droppedPairs'], { reason: { type: 'string' }, droppedPairs: { type: 'integer' } })] },
+    }),
+    findings: { type: 'array', items: closed(
+      ['id', 'key', 'legacyKey', 'rule', 'ruleRevision', 'status', 'severity', 'distance', 'distanceKind', 'volume', 'point', 'bbox', 'a', 'b'], {
         id: { type: 'string' }, key: nullableString, legacyKey: { type: 'string' }, rule: { type: 'string' },
         ruleRevision: { type: 'string' }, status: { enum: ['hard', 'clearance', 'touch'] },
         severity: { enum: ['critical', 'major', 'minor', 'info'] }, distance: { type: 'number' },
         distanceKind: { enum: ['mesh', 'estimate', null] }, volume: { type: ['number', 'null'] }, point: vec3,
-        bbox: { type: 'object', required: ['min', 'max'], properties: { min: vec3, max: vec3 } },
+        bbox: closed(['min', 'max'], { min: vec3, max: vec3 }),
         a: endpoint, b: endpoint,
-        review: { type: 'object', required: ['status'], properties: {
-          status: { enum: ['open', 'resolved', 'accepted'] }, comment: { type: 'string' }, updatedAt: { type: 'number' } } },
-      } } },
-  },
+        review: closed(['status'], { status: { enum: ['open', 'resolved', 'accepted'] }, comment: { type: 'string' }, updatedAt: { type: 'number' } }),
+      }) },
+  }),
 } as const;
 
 export type ClashRunValidation = { ok: true; document: ClashRunDocument } | { ok: false; errors: string[] };
@@ -110,8 +120,12 @@ const vec: Check = (v, p, e) => {
   if (!Array.isArray(v) || v.length !== 3) return fail(e, p, 'three numbers');
   v.forEach((x, i) => num(x, `${p}[${i}]`, e));
 };
+/** A closed object: required and optional properties, and nothing else. */
 const obj = (required: Record<string, Check>, optional: Record<string, Check> = {}): Check => (v, p, e) => {
   if (!isRecord(v)) return fail(e, p, 'an object');
+  for (const key of Object.keys(v)) {
+    if (!Object.hasOwn(required, key) && !Object.hasOwn(optional, key)) e.push(`${p}.${JSON.stringify(key)}: unknown property`);
+  }
   for (const [key, check] of Object.entries(required)) {
     if (!Object.hasOwn(v, key)) e.push(`${p}.${key}: missing`);
     else check(v[key], `${p}.${key}`, e);
@@ -157,6 +171,12 @@ const documentCheck = obj({
     coverage: list(obj({ rule: str, matchedA: int, matchedB: nint, candidatesExamined: nint, examined: nullable(obj({ a: keyLists, b: nullable(keyLists) })) })),
     ambiguousKeys: keyLists,
     exclusions: nullable(list(str)),
+    exclusionRules: list((v, p, e) => {
+      const kind = isRecord(v) ? v.kind : undefined;
+      if (kind === 'type') obj({ kind: str, type: str })(v, p, e);
+      else if (kind === 'typePair' || kind === 'elementKeyPair') obj({ kind: str, a: str, b: str })(v, p, e);
+      else fail(e, p, 'an exclusion rule of kind "type", "typePair" or "elementKeyPair"');
+    }),
     truncated: nullable(obj({ reason: str, droppedPairs: int })),
   }),
   findings: list(obj({
@@ -166,19 +186,64 @@ const documentCheck = obj({
   }, { review: obj({ status: oneOf('open', 'resolved', 'accepted') }, { comment: str, updatedAt: num }) })),
 });
 
-/** Check a value read back from storage against the run-document schema. */
+/**
+ * What the schema cannot express: every finding must follow from its own
+ * elements and rule, and agree with the manifest. Without these a stored
+ * document could carry a key naming one pair on a finding about another, and
+ * a carried decision would land on the wrong elements.
+ */
+function consistencyErrors(doc: ClashRunDocument): string[] {
+  const errors: string[] = [];
+  const { manifest } = doc;
+  const slots = new Set<string>();
+  for (const { slot } of manifest.slots) {
+    if (slots.has(slot)) errors.push(`$.manifest.slots: duplicate slot id ${JSON.stringify(slot)}`);
+    slots.add(slot);
+  }
+  const revisions = new Map<string, string>();
+  for (const rule of manifest.rules.items) {
+    if (revisions.has(rule.id)) errors.push(`$.manifest.rules.items: duplicate rule id ${JSON.stringify(rule.id)}`);
+    revisions.set(rule.id, rule.revision);
+  }
+  if (manifest.rules.revision !== clashRuleSetRevision(manifest.rules.items)) {
+    errors.push('$.manifest.rules.revision: does not match the listed rules and revisions');
+  }
+  manifest.coverage.forEach((entry, i) => {
+    if (!revisions.has(entry.rule)) errors.push(`$.manifest.coverage[${i}].rule: not in manifest.rules`);
+  });
+  const ambiguous = new Map(Object.entries(manifest.ambiguousKeys).map(([slot, keys]) => [slot, new Set(keys)]));
+  const ids = new Set<string>();
+  doc.findings.forEach((finding, i) => {
+    const at = `$.findings[${i}]`;
+    if (ids.has(finding.id)) errors.push(`${at}.id: duplicate finding id ${JSON.stringify(finding.id)}`);
+    ids.add(finding.id);
+    for (const side of ['a', 'b'] as const) {
+      const end = finding[side];
+      if (!slots.has(end.slot)) errors.push(`${at}.${side}.slot: not in manifest.slots`);
+      if ((end.ambiguous === true) !== (ambiguous.get(end.slot)?.has(end.key) === true)) {
+        errors.push(`${at}.${side}.ambiguous: disagrees with manifest.ambiguousKeys`);
+      }
+    }
+    const revision = revisions.get(finding.rule);
+    if (revision === undefined) errors.push(`${at}.rule: not in manifest.rules`);
+    else if (revision !== finding.ruleRevision) errors.push(`${at}.ruleRevision: does not match the manifest rule's revision`);
+    const keyless = finding.a.ambiguous === true || finding.b.ambiguous === true;
+    if (keyless) {
+      if (finding.key !== null) errors.push(`${at}.key: must be null when an element's key is ambiguous`);
+      return;
+    }
+    const expected = slotPairKey(finding.rule, finding.ruleRevision, [finding.a.slot, finding.a.key], [finding.b.slot, finding.b.key]);
+    if (finding.key !== expected) errors.push(`${at}.key: does not follow from the finding's elements and rule`);
+    const legacy = clashPairId(finding.rule, clashElementIdentity({ key: finding.a.key, ref: 0 }), clashElementIdentity({ key: finding.b.key, ref: 0 }));
+    if (finding.legacyKey !== legacy) errors.push(`${at}.legacyKey: does not follow from the finding's elements and rule`);
+  });
+  return errors;
+}
+
+/** Check a value read back from storage: its shape, then its internal consistency. */
 export function validateClashRunDocument(value: unknown): ClashRunValidation {
   const errors: string[] = [];
   documentCheck(value, '$', errors);
-  if (errors.length === 0 && isRecord(value) && isRecord(value.manifest)) {
-    const slots = (value.manifest.slots as Array<{ slot: string }>).map((s) => s.slot);
-    if (new Set(slots).size !== slots.length) errors.push('$.manifest.slots: duplicate slot id');
-    const known = new Set(slots);
-    (value.findings as Array<{ a: { slot: string }; b: { slot: string } }>).forEach((finding, i) => {
-      for (const side of ['a', 'b'] as const) {
-        if (!known.has(finding[side].slot)) errors.push(`$.findings[${i}].${side}.slot: not in manifest.slots`);
-      }
-    });
-  }
+  if (errors.length === 0) errors.push(...consistencyErrors(value as ClashRunDocument));
   return errors.length === 0 ? { ok: true, document: value as ClashRunDocument } : { ok: false, errors };
 }

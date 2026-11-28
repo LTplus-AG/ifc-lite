@@ -95,10 +95,19 @@ slot gets no key, so no decision is carried to it. A finding the next run did
 not report is "no longer detected" only when that run's coverage shows both
 elements on opposite sides of the same rule and it did not exclude the pair; otherwise it
 is "not comparable", with the reason. Pass `exclusions`, or every finding that
-disappears is "not comparable" (`exclusions-not-recorded`). Detection change is separate from review status (open / resolved /
-accepted). `CLASH_RUN_DOCUMENT_JSON_SCHEMA` is the document's JSON Schema; the
-viewer hands a registered host each finished run through
-`ViewerHandle.onClashRunComplete`.
+disappears is "not comparable" (`exclusions-not-recorded`). Pass the user's
+`exclusionRules` too: findings they cover are left out of the document, and a
+pair one run excluded is never reported as added or fixed. Detection change is
+separate from review status (open / resolved / accepted).
+
+`CLASH_RUN_DOCUMENT_JSON_SCHEMA` is the document's JSON Schema (version 1 is
+closed: unknown properties are refused). `validateClashRunDocument` checks the
+same shape plus what a schema cannot: each finding's key follows from its own
+elements, rule and revision, revisions match the manifest, ids are unique.
+Validate every document you did not build yourself. The viewer hands a
+registered host each finished run through `ViewerHandle.onClashRunComplete`
+as `{ ok: true, document }` (deeply frozen), or `{ ok: false, error }` when
+the document could not be built.
 
 Includes the TypeScript reference engine, a Rust→WASM kernel kept in lockstep by a
 differential test (opt-in via `@ifc-lite/clash/wasm`; `backend: 'auto'` currently

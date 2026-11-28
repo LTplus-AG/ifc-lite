@@ -1,13 +1,13 @@
 diff --git a/packages/clash/src/run-compare.ts b/packages/clash/src/run-compare.ts
-index dc4faf5b9d..4054ce25ce 100644
+index 4401f23bcc..02fee72c0c 100644
 --- a/packages/clash/src/run-compare.ts
 +++ b/packages/clash/src/run-compare.ts
-@@ -185,7 +185,7 @@ export function compareClashRunDocuments(previous: ClashRunDocument, next: Clash
+@@ -229,7 +229,7 @@ function indexRun(doc: ClashRunDocument): RunIndex {
   */
- function examinedReasons(finding: ClashRunFinding, next: ClashRunDocument): ClashRunNotComparableReason[] {
-   const coverage = next.manifest.coverage.find((c) => c.rule === finding.rule);
--  if (!coverage || coverage.examined === null) return [];
-+  if (!coverage || coverage.examined === null) return ['coverage-not-recorded'];
-   const { a: sideA, b: sideB } = coverage.examined;
-   const on = (side: Record<string, string[]> | null, end: ClashRunFinding['a']) =>
-     side !== null && Object.hasOwn(side, end.slot) && side[end.slot].includes(end.key);
+ function examinedReasons(finding: ClashRunFinding, next: RunIndex): ClashRunNotComparableReason[] {
+   const coverage = next.coverage.get(finding.rule);
+-  if (!coverage) return [];
++  if (!coverage) return ['coverage-not-recorded'];
+   const { a: sideA, b: sideB } = coverage;
+   const on = (side: SideIndex | null, end: ClashRunFinding['a']) => side?.get(end.slot)?.has(end.key) === true;
+   const seen = (end: ClashRunFinding['a']) => on(sideA, end) || on(sideB, end);

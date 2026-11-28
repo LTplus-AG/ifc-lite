@@ -8164,3 +8164,18 @@ serialize named edits. Most entity types share a mask layout. Referencing a
 static layout per type reduced the engine WASM below its existing allowance
 with the same release profile. Interleaved FZK-Haus IFC4 STEP exports retained
 baseline throughput and produced byte-identical output.
+
+## Generated IFC entity cloning and debug formatting
+
+The public `IfcType` enum has unit variants for known entities and an owned
+keyword for an unknown entity. The release WASM contained several copies of
+the derived clone's large dispatch table. A temporary fieldless enum lets
+LLVM copy the known tag directly. The unknown branch clones its owned keyword.
+Debug formatting reuses the existing EXPRESS name lookup and retains the
+tuple formatter for unknown keywords.
+
+The pinned full-engine build shrank enough for the capped section exporter
+in #11604 to fit the existing size allowance. Both engines passed the public
+WASM contract suite. The capped build reproduced the viewer meshes, placements
+and audited STEP sections. Applying size optimization to the entire bindings
+crate increased the full engine size.

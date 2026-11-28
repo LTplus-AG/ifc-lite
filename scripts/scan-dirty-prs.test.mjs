@@ -45,7 +45,7 @@ function workflowFixture({ branches = '[main]', nodeJob = 'node' } = {}) {
   const path = join(TMP, `workflow-${(seq += 1)}.yml`);
   writeFileSync(
     path,
-    `on:\n  pull_request:\n    branches: ${branches}\njobs:\n  lint:\n    name: Lint\n    runs-on: ubuntu-latest\n    steps:\n      - run: true\n  ${nodeJob}:\n    name: Node tests\n    runs-on: ubuntu-latest\n    steps:\n      - run: true\n  node-tests-selected:\n    name: Node tests (selected, advisory)\n    runs-on: ubuntu-latest\n    steps:\n      - run: true\n`,
+    `on:\n  pull_request:\n    branches: ${branches}\njobs:\n  lint:\n    name: Lint\n    runs-on: ubuntu-latest\n    steps:\n      - run: true\n  ${nodeJob}:\n    name: Node tests\n    runs-on: ubuntu-latest\n    steps:\n      - run: true\n  node-tests-selected:\n    name: Node tests (selected, advisory)\n    runs-on: ubuntu-latest\n    steps:\n      - run: true\n  viewer-e2e-selected:\n    name: Viewer E2E shadow (selected for this PR)\n    runs-on: ubuntu-latest\n    steps:\n      - run: true\n`,
   );
   return path;
 }
@@ -87,7 +87,7 @@ test('GREEN: a clean PR with every required lane present passes', () => {
   assert.match(output, /✅/);
 });
 
-test('GREEN: a conflicted PR with every required lane and no advisory Node lane passes (#11501)', () => {
+test('GREEN: a conflicted PR with every required lane and neither advisory selector passes (#11501, #11515)', () => {
   const { code, output } = run([
     {
       number: 3417,

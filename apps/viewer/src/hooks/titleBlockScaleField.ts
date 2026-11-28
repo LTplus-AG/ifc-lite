@@ -5,11 +5,15 @@
 import { formatScaleFactorLabel, type TitleBlockConfig } from '@ifc-lite/drawing-2d';
 
 /**
- * Correct the title block's "Scale" text field for a fit-clamped sheet.
+ * Make the title block's "Scale" text state the scale the drawing
+ * was actually placed at.
  *
  * The field is plain static content: it was written once, by
  * `sheetSlice.ts`'s `autoPopulateTitleBlock`, from the REQUESTED
- * `sheet.scale.factor`. `calculateDrawingTransform`'s
+ * `sheet.scale.factor`. A restored sheet, saved template or agent
+ * `drawing.replaceSheet` can carry text that disagrees with it (#11458);
+ * this corrects it while the field still auto-populates from `drawing.scale`.
+ * And `calculateDrawingTransform`'s
  * `fitScale = min(scaleX, scaleY, 1)` (`sheet-types.ts`) can shrink the
  * drawing below that requested scale to fit the sheet's fixed viewport, and
  * when it does, `effectiveScaleFactor` (already fed to the scale BAR as
@@ -20,26 +24,32 @@ import { formatScaleFactorLabel, type TitleBlockConfig } from '@ifc-lite/drawing
  * same defect class PR #2131 fixed for the plain (non-sheet) SVG exporter's
  * title block.
  *
- * Returns `titleBlock` unchanged when the drawing was not clamped (the
- * common path incurs no allocation and never regresses a user-edited field
- * on the un-clamped path), and a shallow copy with only the 'scale' field's
- * `value` replaced otherwise.
+ * A read-only field that auto-populates from `drawing.scale` always gets the
+ * placed scale; user text (auto-populate off, or an editable field) is only
+ * corrected, for a field with the id 'scale', when the fit clamped the drawing. Returns `titleBlock` itself when
+ * no field needs a new value, and a shallow copy with only those fields'
+ * `value` replaced otherwise. The export and the sheet preview pass the placed
+ * scale; the title block editor, which has no viewport fit, shows a read-only
+ * Scale at the sheet's own scale (#11581).
  */
 export function titleBlockWithEffectiveScale(
   titleBlock: TitleBlockConfig,
   requestedScaleFactor: number,
-  effectiveScaleFactor: number
+  /** mm per metre the drawing is placed at; defaults to the requested scale (no viewport fit known). */
+  effectiveScaleFactor = 1000 / requestedScaleFactor
 ): TitleBlockConfig {
+  // Degenerate drawing bounds or an invalid sheet scale give no placed scale to state.
+  if (!Number.isFinite(effectiveScaleFactor) || effectiveScaleFactor <= 0) return titleBlock;
   const nominalScaleFactor = 1000 / requestedScaleFactor;
-  if (Math.abs(effectiveScaleFactor - nominalScaleFactor) <= 1e-9) {
-    return titleBlock;
-  }
+  const clamped = Math.abs(effectiveScaleFactor - nominalScaleFactor) > 1e-9;
+  const label = `1:${formatScaleFactorLabel(1000 / effectiveScaleFactor)}`;
+  // Auto-populate off, or an editable field, means user text: like `autoPopulateTitleBlock` (`sheetSlice.ts`)
+  // it is kept, except that a field with the id 'scale' is still corrected when the fit clamped the drawing (#2131).
+  const needsValue = (field: TitleBlockConfig['fields'][number]): boolean => field.value !== label
+    && ((field.autoPopulate && field.autoPopulateSource === 'drawing.scale' && !field.editable) || (clamped && field.id === 'scale'));
+  if (!titleBlock.fields.some(needsValue)) return titleBlock;
   return {
     ...titleBlock,
-    fields: titleBlock.fields.map((field) =>
-      field.id === 'scale'
-        ? { ...field, value: `1:${formatScaleFactorLabel(1000 / effectiveScaleFactor)}` }
-        : field
-    ),
+    fields: titleBlock.fields.map((field) => (needsValue(field) ? { ...field, value: label } : field)),
   };
 }

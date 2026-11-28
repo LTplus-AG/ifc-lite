@@ -51,19 +51,28 @@ export function clashRuleSetRevision(rules: ReadonlyArray<Pick<ClashRunRule, 'id
 }
 
 /**
- * The rule as it ran, membership included. The engine's `rulesRun` drops
- * `membersA`/`membersB`; without the rules as given, a side its coverage says
- * came from explicit members (`fromMembersA`/`fromMembersB`) is described by
- * the durable keys that side matched, so a membership change still changes
- * the revision (as does a model change in what the members match: fail closed).
+ * The rule as it ran, membership included, and a membership description when
+ * it has to be recovered. The engine's `rulesRun` drops `membersA`/`membersB`;
+ * without the rules as given, a side whose coverage says it came from explicit
+ * members (`fromMembersA`/`fromMembersB`) is described by what the rule
+ * matched, SLOT-QUALIFIED (the same key in two slots is two objects). So a
+ * membership change changes the revision, as does a model change in what the
+ * members match (fail closed). Without that evidence the rules are required.
  */
-export function effectiveRule(ran: ClashRule, given: ClashRule | undefined, coverage: ClashRuleCoverage | undefined): ClashRule {
-  if (given) return given;
-  if (!coverage?.fromMembersA && !coverage?.fromMembersB) return ran;
+export function effectiveRule(
+  ran: ClashRule,
+  given: ClashRule | undefined,
+  coverage: ClashRuleCoverage | undefined,
+  slotOf: (model: string) => string,
+): { rule: ClashRule; membership?: string } {
+  if (given) return { rule: given };
+  if (!coverage?.fromMembersA && !coverage?.fromMembersB) return { rule: ran };
   const keysA = coverage.fromMembersA ? coverage.matchedKeysA : undefined;
   const keysB = coverage.fromMembersB ? coverage.matchedKeysB ?? undefined : undefined;
-  if ((coverage.fromMembersA && !keysA) || (coverage.fromMembersB && !keysB)) {
+  if ((coverage.fromMembersA && !keysA) || (coverage.fromMembersB && !keysB) || !coverage.matchedElements) {
     throw new Error(`rule ${ran.id} used explicit members, which neither the given rules nor its coverage record`);
   }
-  return { ...ran, ...(keysA ? { membersA: [...keysA] } : {}), ...(keysB ? { membersB: [...keysB] } : {}) };
+  const elements = [...new Set(coverage.matchedElements.map((e) => JSON.stringify([slotOf(e.model), e.key])))].sort();
+  const rule = { ...ran, ...(keysA ? { membersA: [...keysA] } : {}), ...(keysB ? { membersB: [...keysB] } : {}) };
+  return { rule, membership: JSON.stringify({ a: keysA ? [...keysA].sort() : null, b: keysB ? [...keysB].sort() : null, elements }) };
 }

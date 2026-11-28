@@ -267,8 +267,8 @@ export function buildClashRunDocument(input: BuildClashRunDocumentInput): ClashR
   const revisions = new Map<string, string>();
   const given = new Map((input.rules ?? []).map((rule) => [rule.id, rule]));
   const rules: ClashRunRule[] = result.rulesRun.map((ran) => {
-    const rule = effectiveRule(ran, given.get(ran.id), result.ruleCoverage?.find((c) => c.rule === ran.id));
-    const revision = own(input.ruleRevisions, rule.id) ?? clashRuleRevision(rule, result.settings, own(input.ruleMemberships, rule.id));
+    const { rule, membership } = effectiveRule(ran, given.get(ran.id), result.ruleCoverage?.find((c) => c.rule === ran.id), slotOf);
+    const revision = own(input.ruleRevisions, rule.id) ?? clashRuleRevision(rule, result.settings, own(input.ruleMemberships, rule.id) ?? membership);
     revisions.set(rule.id, revision);
     const { a, b, mode, tolerance, clearance, reportTouch, explicitMembers } = ruleSemantics(rule, result.settings);
     return { id: rule.id, name: rule.name, revision, a, b, mode, tolerance, clearance, reportTouch, explicitMembers };

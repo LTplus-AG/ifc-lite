@@ -22,7 +22,7 @@
  */
 
 import { parseClashReviewKey } from './review.js';
-import { indexExclusionRules, isTypeRule, type ClashRunExclusionIndex, type ClashRunExclusionTypes } from './run-exclusions.js';
+import { indexExclusionRules, type ClashRunExclusionIndex, type ClashRunExclusionTypes } from './run-exclusions.js';
 import {
   matchesExclusionRule,
   slotExclusionId,
@@ -144,7 +144,7 @@ export function compareClashRunDocuments(previous: ClashRunDocument, next: Clash
     if (excluded) reasons.push('excluded-in-other-run');
     // Unknown user rules (a host that filtered the result itself) leave any absence unverified, as unknown exclusions do.
     else if (other.exclusions === null || other.exclusionRules === null
-      || (other.exclusionTypes === null && other.exclusionRules.some(isTypeRule))) {
+      || (other.exclusionTypes === null && (other.exclusionIndex.types.size > 0 || other.exclusionIndex.typePairs.size > 0))) {
       reasons.push('exclusions-not-recorded');
     }
     // A key the other run saw repeated in its slot has no identity there either.

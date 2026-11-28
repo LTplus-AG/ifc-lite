@@ -25,75 +25,7 @@ import {
   type ClashRunDocument,
 } from './run-document.js';
 
-const vec3 = { type: 'array', items: { type: 'number' }, minItems: 3, maxItems: 3 } as const;
-const nullableString = { type: ['string', 'null'] } as const;
-const stringList = { type: 'array', items: { type: 'string' } } as const;
-const slotKeyLists = { type: 'object', additionalProperties: stringList } as const;
-/** A fixed-shape object: listed properties only. Calls are marked pure so an unused schema is dropped from bundles. */
-const closed = <const R extends readonly string[], const P extends Record<string, unknown>>(required: R, properties: P) =>
-  ({ type: 'object', required, properties, additionalProperties: false }) as const;
-const endpoint = /*#__PURE__*/ closed(['slot', 'key', 'globalId', 'type'], {
-  slot: { type: 'string' }, key: { type: 'string' }, globalId: nullableString, type: { type: 'string' },
-  name: { type: 'string' }, ambiguous: { const: true },
-});
-
-/** The run document's JSON Schema. */
-export const CLASH_RUN_DOCUMENT_JSON_SCHEMA = {
-  $schema: 'https://json-schema.org/draft/2020-12/schema',
-  $id: CLASH_RUN_DOCUMENT_SCHEMA_ID,
-  title: 'ifc-lite clash run',
-  description: 'Version 1 is closed: unknown properties are refused; a new field means a new version. '
-    + 'Consistency between findings and the manifest (keys, rule revisions, unique ids) is checked by validateClashRunDocument.',
-  ...closed(['schema', 'version', 'runId', 'createdAt', 'labels', 'manifest', 'findings'], {
-    schema: { const: CLASH_RUN_DOCUMENT_SCHEMA_ID },
-    version: { const: CLASH_RUN_DOCUMENT_VERSION },
-    runId: nullableString,
-    createdAt: { type: 'string', format: 'date-time' },
-    labels: stringList,
-    manifest: /*#__PURE__*/ closed(['slots', 'rules', 'engine', 'settings', 'coverage', 'ambiguousKeys', 'exclusions', 'exclusionRules', 'exclusionTypes', 'truncated'], {
-      slots: { type: 'array', items: /*#__PURE__*/ closed(['slot', 'sha256'], {
-        slot: { type: 'string' }, sha256: { type: ['string', 'null'], pattern: '^[0-9a-f]{64}$' },
-        label: { type: 'string' }, name: { type: 'string' } }) },
-      rules: /*#__PURE__*/ closed(['revision', 'items'], {
-        revision: { type: 'string' },
-        items: { type: 'array', items: /*#__PURE__*/ closed(
-          ['id', 'name', 'revision', 'a', 'b', 'mode', 'tolerance', 'clearance', 'reportTouch', 'explicitMembers'], {
-            id: { type: 'string' }, name: { type: 'string' }, revision: { type: 'string' }, a: { type: 'string' },
-            b: nullableString, mode: { enum: ['hard', 'clearance'] }, tolerance: { type: 'number' },
-            clearance: { type: ['number', 'null'] }, reportTouch: { type: 'boolean' },
-            explicitMembers: /*#__PURE__*/ closed(['a', 'b'], { a: { type: 'boolean' }, b: { type: 'boolean' } }),
-          }) },
-      }),
-      engine: /*#__PURE__*/ closed(['name', 'version', 'build', 'backend'], {
-        name: { type: 'string' }, version: nullableString, build: nullableString, backend: nullableString }),
-      settings: /*#__PURE__*/ closed(['tolerance', 'excludeVoidsAndHosts'], { tolerance: { type: 'number' }, excludeVoidsAndHosts: { type: 'boolean' } }),
-      coverage: { type: 'array', items: /*#__PURE__*/ closed(['rule', 'matchedA', 'matchedB', 'candidatesExamined', 'examined'], {
-        rule: { type: 'string' }, matchedA: { type: 'integer' }, matchedB: { type: ['integer', 'null'] },
-        candidatesExamined: { type: ['integer', 'null'] },
-        examined: { anyOf: [{ type: 'null' }, /*#__PURE__*/ closed(['a', 'b'], { a: slotKeyLists, b: { anyOf: [slotKeyLists, { type: 'null' }] } })] },
-      }) },
-      ambiguousKeys: slotKeyLists,
-      exclusions: { anyOf: [stringList, { type: 'null' }] },
-      exclusionRules: { type: ['array', 'null'], items: { oneOf: [
-        /*#__PURE__*/ closed(['kind', 'type'], { kind: { const: 'type' }, type: { type: 'string' } }),
-        /*#__PURE__*/ closed(['kind', 'a', 'b'], { kind: { const: 'typePair' }, a: { type: 'string' }, b: { type: 'string' } }),
-        /*#__PURE__*/ closed(['kind', 'a', 'b'], { kind: { const: 'elementKeyPair' }, a: { type: 'string' }, b: { type: 'string' } }),
-      ] } },
-      exclusionTypes: { anyOf: [{ type: 'null' }, { type: 'object', additionalProperties: { type: 'object', additionalProperties: { type: 'string' } } }] },
-      truncated: { anyOf: [{ type: 'null' }, /*#__PURE__*/ closed(['reason', 'droppedPairs'], { reason: { type: 'string' }, droppedPairs: { type: 'integer' } })] },
-    }),
-    findings: { type: 'array', items: /*#__PURE__*/ closed(
-      ['id', 'key', 'legacyKey', 'rule', 'ruleRevision', 'status', 'severity', 'distance', 'distanceKind', 'volume', 'point', 'bbox', 'a', 'b'], {
-        id: { type: 'string' }, key: nullableString, legacyKey: { type: 'string' }, rule: { type: 'string' },
-        ruleRevision: { type: 'string' }, status: { enum: ['hard', 'clearance', 'touch'] },
-        severity: { enum: ['critical', 'major', 'minor', 'info'] }, distance: { type: 'number' },
-        distanceKind: { enum: ['mesh', 'estimate', null] }, volume: { type: ['number', 'null'] }, point: vec3,
-        bbox: /*#__PURE__*/ closed(['min', 'max'], { min: vec3, max: vec3 }),
-        a: endpoint, b: endpoint,
-        review: /*#__PURE__*/ closed(['status'], { status: { enum: ['open', 'resolved', 'accepted'] }, comment: { type: 'string' }, updatedAt: { type: 'number' } }),
-      }) },
-  }),
-} as const;
+export { CLASH_RUN_DOCUMENT_JSON_SCHEMA } from './run-document-json-schema.js';
 
 export type ClashRunValidation = { ok: true; document: ClashRunDocument } | { ok: false; errors: string[] };
 
@@ -154,45 +86,53 @@ const date: Check = (v, p, e) => {
   }
 };
 
-const endpointCheck = obj({ slot: str, key: str, globalId: nstr, type: str }, { name: str, ambiguous: oneOf(true) });
-const documentCheck = obj({
-  schema: oneOf(CLASH_RUN_DOCUMENT_SCHEMA_ID),
-  version: oneOf(CLASH_RUN_DOCUMENT_VERSION),
-  runId: nstr,
-  createdAt: date,
-  labels: list(str),
-  manifest: obj({
-    slots: list(obj({ slot: str, sha256: sha }, { label: str, name: str })),
-    rules: obj({ revision: str, items: list(obj({
-      id: str, name: str, revision: str, a: str, b: nstr, mode: oneOf('hard', 'clearance'), tolerance: num,
-      clearance: nnum, reportTouch: bool, explicitMembers: obj({ a: bool, b: bool }),
-    })) }),
-    engine: obj({ name: str, version: nstr, build: nstr, backend: nstr }),
-    settings: obj({ tolerance: num, excludeVoidsAndHosts: bool }),
-    coverage: list(obj({ rule: str, matchedA: int, matchedB: nint, candidatesExamined: nint, examined: nullable(obj({ a: keyLists, b: nullable(keyLists) })) })),
-    ambiguousKeys: keyLists,
-    exclusions: nullable(list(str)),
-    exclusionRules: nullable(list((v, p, e) => {
-      const kind = isRecord(v) ? v.kind : undefined;
-      if (kind === 'type') obj({ kind: str, type: str })(v, p, e);
-      else if (kind === 'typePair' || kind === 'elementKeyPair') obj({ kind: str, a: str, b: str })(v, p, e);
-      else fail(e, p, 'an exclusion rule of kind "type", "typePair" or "elementKeyPair"');
-    })),
-    exclusionTypes: nullable((v, p, e) => {
-      if (!isRecord(v)) return fail(e, p, 'an object of slot records');
-      for (const [slot, keys] of Object.entries(v)) {
-        if (!isRecord(keys)) { fail(e, `${p}.${JSON.stringify(slot)}`, 'an object of key -> type'); continue; }
-        for (const [key, type] of Object.entries(keys)) str(type, `${p}.${JSON.stringify(slot)}.${JSON.stringify(key)}`, e);
-      }
+/** The shape checker, built on first use rather than at load (the module must stay free of load-time work). */
+let builtDocumentCheck: Check | undefined;
+function buildDocumentCheck(): Check {
+  const endpointCheck = obj({ slot: str, key: str, globalId: nstr, type: str }, { name: str, ambiguous: oneOf(true) });
+  return obj({
+    schema: oneOf(CLASH_RUN_DOCUMENT_SCHEMA_ID),
+    version: oneOf(CLASH_RUN_DOCUMENT_VERSION),
+    runId: nstr,
+    createdAt: date,
+    labels: list(str),
+    manifest: obj({
+      slots: list(obj({ slot: str, sha256: sha }, { label: str, name: str })),
+      rules: obj({ revision: str, items: list(obj({
+        id: str, name: str, revision: str, a: str, b: nstr, mode: oneOf('hard', 'clearance'), tolerance: num,
+        clearance: nnum, reportTouch: bool, explicitMembers: obj({ a: bool, b: bool }),
+      })) }),
+      engine: obj({ name: str, version: nstr, build: nstr, backend: nstr }),
+      settings: obj({ tolerance: num, excludeVoidsAndHosts: bool }),
+      coverage: list(obj({ rule: str, matchedA: int, matchedB: nint, candidatesExamined: nint, examined: nullable(obj({ a: keyLists, b: nullable(keyLists) })) })),
+      ambiguousKeys: keyLists,
+      exclusions: nullable(list(str)),
+      exclusionRules: nullable(list((v, p, e) => {
+        const kind = isRecord(v) ? v.kind : undefined;
+        if (kind === 'type') obj({ kind: str, type: str })(v, p, e);
+        else if (kind === 'typePair' || kind === 'elementKeyPair') obj({ kind: str, a: str, b: str })(v, p, e);
+        else fail(e, p, 'an exclusion rule of kind "type", "typePair" or "elementKeyPair"');
+      })),
+      exclusionTypes: nullable((v, p, e) => {
+        if (!isRecord(v)) return fail(e, p, 'an object of slot records');
+        for (const [slot, keys] of Object.entries(v)) {
+          if (!isRecord(keys)) { fail(e, `${p}.${JSON.stringify(slot)}`, 'an object of key -> type'); continue; }
+          for (const [key, type] of Object.entries(keys)) str(type, `${p}.${JSON.stringify(slot)}.${JSON.stringify(key)}`, e);
+        }
+      }),
+      truncated: nullable(obj({ reason: str, droppedPairs: int })),
     }),
-    truncated: nullable(obj({ reason: str, droppedPairs: int })),
-  }),
-  findings: list(obj({
-    id: str, key: nstr, legacyKey: str, rule: str, ruleRevision: str, status: oneOf('hard', 'clearance', 'touch'),
-    severity: oneOf('critical', 'major', 'minor', 'info'), distance: num, distanceKind: oneOf('mesh', 'estimate', null),
-    volume: nnum, point: vec, bbox: obj({ min: vec, max: vec }), a: endpointCheck, b: endpointCheck,
-  }, { review: obj({ status: oneOf('open', 'resolved', 'accepted') }, { comment: str, updatedAt: num }) })),
-});
+    findings: list(obj({
+      id: str, key: nstr, legacyKey: str, rule: str, ruleRevision: str, status: oneOf('hard', 'clearance', 'touch'),
+      severity: oneOf('critical', 'major', 'minor', 'info'), distance: num, distanceKind: oneOf('mesh', 'estimate', null),
+      volume: nnum, point: vec, bbox: obj({ min: vec, max: vec }), a: endpointCheck, b: endpointCheck,
+    }, { review: obj({ status: oneOf('open', 'resolved', 'accepted') }, { comment: str, updatedAt: num }) })),
+  });
+}
+const documentCheck: Check = (v, p, e) => {
+  builtDocumentCheck ??= buildDocumentCheck();
+  builtDocumentCheck(v, p, e);
+};
 
 /** An element's legacy identity: its key, or for a repeated key `@[key, ref]` with an integer ref. */
 function identityNames(identity: string, end: ClashRunDocument['findings'][number]['a']): boolean {

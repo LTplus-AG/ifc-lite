@@ -11,7 +11,7 @@
 import { describe, it, expect } from 'vitest';
 import type { Clash, ClashElementRef, ClashResult, ClashRule } from './types.js';
 import { slotPairKey } from './review.js';
-import { buildClashRunDocument, type BuildClashRunDocumentInput, type ClashRunExclusionRule, type ClashRunSlotBinding } from './run-document.js';
+import { buildClashRunDocument, matchesExclusionRule, type BuildClashRunDocumentInput, type ClashRunExclusionRule, type ClashRunSlotBinding } from './run-document.js';
 import { validateClashRunDocument } from './run-document-schema.js';
 import { carryForwardReviews, compareClashRunDocuments } from './run-compare.js';
 
@@ -211,6 +211,11 @@ describe('type exclusions and rule forms across runs', () => {
     const carried = carryForwardReviews(narrow, wider, { [narrow.findings[0].key!]: { status: 'accepted' } });
     expect(carried.reviews).toEqual({});
     expect(carried.notCarried[0]).toMatchObject({ reason: 'not-comparable', reasons: ['rule-revision-changed'] });
+    // The same key matched in another slot is another object: a different membership, a different revision.
+    const movedSlot = withMembers(['D1']);
+    movedSlot.ruleCoverage![0].matchedElements = [{ model: 'm-str', key: 'D1', ref: 2 }, { model: 'm-str', key: 'W1', ref: 3 }];
+    expect(build({ result: movedSlot }).manifest.rules.items[0].revision).not.toBe(narrow.manifest.rules.items[0].revision);
+    expect(build({ result: withMembers(['D1']) }).manifest.rules.items[0].revision).toBe(narrow.manifest.rules.items[0].revision);
     // Members used but no keys recorded either: refused rather than revisioned by its selectors.
     const unknown = withMembers([]);
     delete unknown.ruleCoverage![0].matchedKeysA;
@@ -252,6 +257,13 @@ describe('exclusions in run documents', () => {
     expect(filtered.manifest.exclusionRules).toBeNull();
     expect(validateClashRunDocument(roundTrip(filtered)).ok).toBe(true);
     expect(compareClashRunDocuments(previous, filtered).notComparable.map((e) => e.reasons)).toEqual([['exclusions-not-recorded']]);
+  });
+
+  it("never matches a type pair on an element whose type the run did not record", () => {
+    // Rule ('' , IfcBeam): the wall's type is not among the rule's types, so it is not recorded; unknown must not read as ''.
+    const finding = { a: { slot: 'mep', key: 'D1', globalId: null, type: 'IfcWall' }, b: { slot: 'str', key: 'W1', globalId: null, type: 'IfcBeam' } };
+    expect(matchesExclusionRule([{ kind: 'typePair', a: '', b: 'IfcBeam' }], finding, { str: { W1: 'IfcBeam' } })).toBe(false);
+    expect(matchesExclusionRule([{ kind: 'type', type: 'IfcBeam' }], finding, { str: { W1: 'IfcBeam' } })).toBe(true);
   });
 
   it('covers type and type-pair rules', () => {

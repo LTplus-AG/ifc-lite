@@ -49,9 +49,14 @@ export function indexExclusionRules(rules: readonly ClashRunExclusionRule[]): Cl
 }
 
 /** Whether an indexed rule covers a clash between elements with these types and identities. */
-export function exclusionIndexCovers(index: ClashRunExclusionIndex, a: { type: string; identity: string }, b: { type: string; identity: string }): boolean {
-  return index.types.has(a.type) || index.types.has(b.type)
-    || (index.typePairs.size > 0 && index.typePairs.has(pairKey(a.type, b.type)))
+export function exclusionIndexCovers(
+  index: ClashRunExclusionIndex,
+  a: { type: string | undefined; identity: string },
+  b: { type: string | undefined; identity: string },
+): boolean {
+  // An unknown type (`undefined`) matches no type rule; a type pair needs both types known.
+  return (a.type !== undefined && index.types.has(a.type)) || (b.type !== undefined && index.types.has(b.type))
+    || (index.typePairs.size > 0 && a.type !== undefined && b.type !== undefined && index.typePairs.has(pairKey(a.type, b.type)))
     || (index.elementPairs.size > 0 && index.elementPairs.has(pairKey(a.identity, b.identity)));
 }
 
@@ -75,10 +80,10 @@ export function matchesExclusionRule(
 ): boolean {
   const index = Array.isArray(rules) ? indexExclusionRules(rules) : (rules as ClashRunExclusionIndex);
   if (index.types.size === 0 && index.typePairs.size === 0 && index.elementPairs.size === 0) return false;
-  const typeOf = (end: ClashRunEndpoint): string => {
+  const typeOf = (end: ClashRunEndpoint): string | undefined => {
     if (!types) return end.type;
     const bySlot = Object.hasOwn(types, end.slot) ? types[end.slot] : undefined;
-    return bySlot && Object.hasOwn(bySlot, end.key) ? bySlot[end.key] : '';
+    return bySlot && Object.hasOwn(bySlot, end.key) ? bySlot[end.key] : undefined;
   };
   const side = (end: ClashRunEndpoint) => ({ type: typeOf(end), identity: clashElementIdentity({ key: end.key, ref: 0 }) });
   const a = side(finding.a);

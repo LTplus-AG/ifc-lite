@@ -85,6 +85,8 @@ Plus low-level helpers under `@ifc-lite/collab`:
 - `createEntity / deleteEntity / setAttribute / setChild / setPropertyValue`
 - `createRelationship / addTarget / removeTarget`
 - `setGeometryRef / setGeometryParam`
+- Placement: `setEntityPlacement` / `getEntityPlacement` (the `usd::xformop` attribute)
+- CSG trees: `ensureCSGTree`, `getCSGOps`, `appendCSGOp`, `insertCSGOp`, `removeCSGOp`, `moveCSGOp`
 - `seedFromIfcx / snapshotToIfcx / extractUserLayer`
 - `createIndexedDbProvider / createWebSocketProvider`
 - `createPresence` (awareness-backed presence)
@@ -93,6 +95,10 @@ Plus low-level helpers under `@ifc-lite/collab`:
 - `seedFromStep` - seed a Y.Doc from a STEP model
 - `createWebRtcProvider` / `createMemoryProvider`
 - Branching: `forkSession`, `mergeBranch`, `buildBranchTree`
+- History sidecars: `attachHistorySidecar`, `MemoryHistorySidecar`, `AutomergeHistorySidecar`
+- Rooms: `roomIdFor`, `parseRoomId`, `federationRoomId`; relay state: `fetchRoomStateVector`, `stateVectorCovers`
+- Viewer presence: `mountPresenceInViewer`, `createPresenceOverlay`; agents: `markAsAgent`, `agentIdentityFromMcp`
+- Privacy: `exportAndLeave`, `redactAuthorMeta`
 - Federation: `createFederationSession`, model slots (`createModelSlot`, `listModelSlots`)
 - End-to-end encryption: `generateRoomKey`, `deriveRoomKey`, `createKeyRing`, `encryptFrame` / `decryptFrame`
 - Geometry blobs: `MemoryBlobStore`, `HttpBlobStore`, `createIndexedDbBlobStore`, `sweepBlobs`

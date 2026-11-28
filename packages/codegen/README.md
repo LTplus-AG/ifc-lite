@@ -1,8 +1,8 @@
 # @ifc-lite/codegen
 
-TypeScript code generator for IFC EXPRESS schemas. Parses official `.exp` schema files from buildingSMART and emits typed TypeScript: 1000+ entity interfaces with full inheritance, schema metadata for runtime introspection, and exhaustive enum unions.
+TypeScript code generator for IFC EXPRESS schemas. Parses official `.exp` schema files from buildingSMART and emits typed TypeScript: one interface per entity (776 for IFC4, 876 for IFC4X3) with full inheritance, schema metadata for runtime introspection, and exhaustive enum unions.
 
-The generator itself is a build-time tool. The package also ships pre-generated bundles as subpath exports: `@ifc-lite/codegen/ifc2x3`, `@ifc-lite/codegen/ifc4` and `@ifc-lite/codegen/ifc4x3` (entity interfaces, enums, schema registry, type ids, serializers), plus `@ifc-lite/codegen/schema-hierarchy` (`isSubtypeOf`, `isSubtypeOfAny`, `isProperSubtypeOf`, `isProperSubtypeOfAny`). `@ifc-lite/export` and `@ifc-lite/ids` import these at runtime; `@ifc-lite/parser` ships its own generated copy.
+The generator itself is a build-time tool. The package also ships pre-generated bundles as subpath exports: `@ifc-lite/codegen/ifc2x3`, `@ifc-lite/codegen/ifc4` and `@ifc-lite/codegen/ifc4x3` (entity interfaces, enums, schema registry, type ids, serializers), plus `@ifc-lite/codegen/schema-hierarchy` (`isSubtypeOf`, `isSubtypeOfAny`, `isProperSubtypeOf`, `isProperSubtypeOfAny`). `@ifc-lite/export` and `@ifc-lite/ids` import `schema-hierarchy` at runtime; `@ifc-lite/parser` ships its own generated copy.
 
 ## Installation
 
@@ -31,7 +31,7 @@ registry is an implementation detail of one crate and must use `pub(crate)`
 instead of becoming part of that crate's public API; the flag has no effect
 unless `--rust` is also present. To generate
 one exact-name universe across supported releases while keeping the first schema authoritative
-for attributes, pass older schemas with `--rust-supplemental-schema`. Rust generation also
+for attributes, pass older schemas with `--rust-supplemental-schema`. Rust generation (except with `--rust-crate-private`) also
 includes class-shaped rows from `@ifc-lite/data`'s IFC4 family catalog, covering accepted IFC4X1
 entities such as `IfcAlignmentCurve` that are absent from the bundled IFC4 ADD2 EXPRESS file:
 
@@ -115,11 +115,13 @@ Plus runtime metadata for the same entity:
 <!-- Reason: shows generator OUTPUT; SCHEMA_REGISTRY lives in the emitted schema-registry.ts. -->
 <!-- docs-check: skip -->
 ```typescript
-SCHEMA_REGISTRY.IfcWall = {
+SCHEMA_REGISTRY.entities.IfcWall = {
+  name: 'IfcWall',
+  isAbstract: false,
   parent: 'IfcBuildingElement',
   inheritanceChain: ['IfcRoot', 'IfcObjectDefinition', /* ... */, 'IfcWall'],
   attributes: [
-    { name: 'PredefinedType', type: 'IfcWallTypeEnum', optional: true },
+    { name: 'PredefinedType', type: 'IfcWallTypeEnum', optional: true, isArray: false, isList: false, isSet: false },
   ],
   allAttributes: [/* every inherited attribute, in inheritance order */],
 };
@@ -127,7 +129,7 @@ SCHEMA_REGISTRY.IfcWall = {
 
 ## Why generate vs. hand-write
 
-- **Coverage:** 776 IFC4 entities and 876 IFC4X3 entities — manual implementation gets ~7% there.
+- **Coverage:** 776 IFC4 entities and 876 IFC4X3 entities, all generated.
 - **Updates:** when buildingSMART releases a new schema, regenerate; no manual edits.
 - **Consistency:** every entity follows the same shape. Types, names, optional-ness all match the spec exactly.
 - **Type safety:** TypeScript catches schema-violating attribute access at compile time.

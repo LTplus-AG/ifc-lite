@@ -68,6 +68,10 @@ Also exported: `S3Persistence`, `RedisPersistence`, `MemoryPersistence`,
 with `COLLAB_TOKEN_SECRET`), the layer registry (`MemoryLayerRegistry`,
 `FsLayerRegistry`), blob storage and garbage collection (`FsBlobStorage`,
 `InMemoryBlobStorage`, `BlobGcWorker`) and `startSecureCollabServer` for TLS.
+Room tokens (`signRoomToken`, `verifyRoomToken`, `createRoomTokenAuthenticator`),
+path locks (`createPathLockRegistry`), signed-frame replay protection
+(`createReplayProtector`) and `SnapshotWorker` (server-side IFCX snapshots)
+are exported too.
 `@ifc-lite/collab-server/room-manager` exports `RoomManager` and `Room` on
 their own. See the [collaboration server guide](https://ifclite.dev/docs/guide/collab-server/).
 

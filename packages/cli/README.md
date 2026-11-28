@@ -1,6 +1,6 @@
 # @ifc-lite/cli
 
-BIM toolkit for the terminal. The `ifc-lite` command reads, queries, validates, exports, creates, merges, converts, and diffs IFC files, and can script them with the `bim.*` SDK. Output is pipe-friendly and every command supports `--json` for machine-readable results, which makes it a good fit for both humans and LLM terminals.
+BIM toolkit for the terminal. The `ifc-lite` command reads, queries, validates, exports, creates, merges, converts, and diffs IFC files, and can script them with the `bim.*` SDK. Output is pipe-friendly and most commands support `--json` for machine-readable results, which makes it a good fit for both humans and LLM terminals.
 
 ## Install
 
@@ -24,13 +24,14 @@ ifc-lite view model.ifc
 The cost command above uses the canonical fixture at the shown path (fetch it
 with `pnpm fixtures`); express ID 42 is its `External wall total` cost item.
 
-`bim.cost` reads the loaded IFC source snapshot and returns decimal strings;
-pending generic mutation overlays are not included until reload.
+`bim.cost` reads the loaded IFC source and returns decimal strings. Pending
+edits in the session's mutation overlay are applied by default; pass
+`{ includeMutations: false }` to read the values as the file on disk states them.
 
 ## Opening models from OCI registries
 
-Commands that read an IFC model (all but `view` and the IFCX `layer`/`ref`
-store) also accept an `oci://` reference to an artifact in an OCI registry
+Commands that read an IFC model (all but `view`, `mcp` and the IFCX
+`layer`/`ref` store) also accept an `oci://` reference to an artifact in an OCI registry
 (GHCR, ECR Public, Harbor, `distribution`, ...):
 
 ```bash
@@ -183,7 +184,7 @@ The protocol is newline-delimited JSON: one JSON object per line, in both direct
 
 Episode factory: `--seed <n>` generates a deterministic World Gym benchmark model in-process instead of loading a file. `--family frame|office|auto` pins the family; corruption follows the benchmark's deterministic draw at the spec's corrupt rate unless `--corrupt`/`--no-corrupt` forces it or `--corrupt-rate <p>` overrides the rate (forcing and a rate are mutually exclusive). The generator is dynamically imported from a repo checkout (`tools/world-gym/`); the published npm package prints a clear error for `--seed` while `--model` keeps working.
 
-Reward shaping: every channel's `score` is in `[0, 1]` and higher is better. The clash channel scores `1` for a clash-free model and strictly decreases as the clash count grows (the raw count is reported separately as `totalClashes`), so an agent maximizing any channel is never rewarded for making the model worse.
+Reward shaping: every channel's `score` is in `[0, 1]` and higher is better; a channel that cannot run (for example `ids` without `--ids`) reports `score: null` with an `error`. The clash channel scores `1` for a clash-free model and strictly decreases as the clash count grows (the raw count is reported separately as `totalClashes`), so an agent maximizing any channel is never rewarded for making the model worse.
 
 v0 ops mirror `bim.mutate`'s method names exactly: `setProperty`, `setAttribute`, `deleteProperty` (all keyed by `expressId`). Geometry-creating ops (new walls, slabs, etc.) are out of scope for v0.
 

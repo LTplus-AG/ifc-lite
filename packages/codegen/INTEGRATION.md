@@ -43,8 +43,8 @@ Add `--rust` to also write Rust type tables (see the
 | `rust/core/src/generated/{schema,type_ids,mod,slots,slots_table}.rs` | `schemas/IFC4X3.exp` plus IFC4 and IFC2X3 supplements; slots also from IFC2X3, IFC4, IFC4X1, IFC4X2 and `schemas/attribute-renames.json` | `ifc_lite_core` (public; `slots.rs` is `ifc_lite_core::slot`) |
 | `rust/core/src/generated/{ifc2x3,ifc4,ifc4x1,ifc4x2}/` | the matching `schemas/*.exp`, generated with `--rust-crate-private` | per-version registries inside `ifc_lite_core` |
 
-`@ifc-lite/export` and `@ifc-lite/ids` import the `@ifc-lite/codegen/*`
-bundles at runtime. `@ifc-lite/parser` picks the registry that matches a
+`@ifc-lite/export` and `@ifc-lite/ids` import `@ifc-lite/codegen/schema-hierarchy`
+at runtime; for the registries themselves they use the parser's copies. `@ifc-lite/parser` picks the registry that matches a
 model's schema with `getSchemaRegistryForVersion`
 (`packages/parser/src/generated/schema-registry-by-version.ts`).
 

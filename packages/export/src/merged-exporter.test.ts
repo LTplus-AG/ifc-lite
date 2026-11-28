@@ -1167,10 +1167,10 @@ describe('MergedExporter', () => {
   describe('unit normalization (#1475)', () => {
     // Primary = metres. Both models declare square-/cubic-metre area/volume units
     // (the Revit convention: millimetre lengths but metre-derived area/volume).
-    const metreModel = (): MergeModelInput => {
+    const metreModel = (extra: Array<[number, string, string]> = [], extraUnitIds: number[] = []): MockMergeModelInput => {
       const m = buildModel('primary', 'Primary-metre', [
         [1, 'IFCPROJECT', `#1=IFCPROJECT('${guid('primProj')}',$,'Primary',$,$,$,$,(#3),#2);`],
-        [2, 'IFCUNITASSIGNMENT', '#2=IFCUNITASSIGNMENT((#8,#9,#10));'],
+        [2, 'IFCUNITASSIGNMENT', `#2=IFCUNITASSIGNMENT((#8,#9,#10${extraUnitIds.map(id => `,#${id}`).join('')}));`],
         [3, 'IFCGEOMETRICREPRESENTATIONCONTEXT', "#3=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#7,$);"],
         [4, 'IFCSITE', `#4=IFCSITE('${guid('primSite')}',$,'Site',$,$,$,$,$,$,$);`],
         [5, 'IFCWALL', `#5=IFCWALL('${guid('primWall')}',$,'PW',$,$,#6,$,$);`],
@@ -1180,6 +1180,7 @@ describe('MergedExporter', () => {
         [9, 'IFCSIUNIT', '#9=IFCSIUNIT(*,.AREAUNIT.,$,.SQUARE_METRE.);'],
         [10, 'IFCSIUNIT', '#10=IFCSIUNIT(*,.VOLUMEUNIT.,$,.CUBIC_METRE.);'],
         [11, 'IFCRELAGGREGATES', `#11=IFCRELAGGREGATES('${guid('primAgg')}',$,$,$,#1,(#4));`],
+        ...extra,
       ]);
       m.lengthUnitScale = 1.0;
       return m;
@@ -1188,10 +1189,10 @@ describe('MergedExporter', () => {
     // Secondary = millimetres. A column at x=3000 mm, a storey at 3000 mm, a
     // 2500 mm extrusion depth, a 300 mm circle radius, a length quantity in mm and
     // an AREA quantity already in m² (Revit) that must NOT be length-rescaled.
-    const mmModel = (): MockMergeModelInput => {
+    const mmModel = (extra: Array<[number, string, string]> = [], extraUnitIds: number[] = []): MockMergeModelInput => {
       const m = buildModel('mm', 'Secondary-mm', [
         [1, 'IFCPROJECT', `#1=IFCPROJECT('${guid('mmProj')}',$,'Secondary',$,$,$,$,(#3),#2);`],
-        [2, 'IFCUNITASSIGNMENT', '#2=IFCUNITASSIGNMENT((#8,#9,#10));'],
+        [2, 'IFCUNITASSIGNMENT', `#2=IFCUNITASSIGNMENT((#8,#9,#10${extraUnitIds.map(id => `,#${id}`).join('')}));`],
         [3, 'IFCGEOMETRICREPRESENTATIONCONTEXT', "#3=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#7,$);"],
         [4, 'IFCSITE', `#4=IFCSITE('${guid('mmSite')}',$,'Site',$,$,$,$,$,$,$);`],
         [5, 'IFCCOLUMN', `#5=IFCCOLUMN('${guid('mmCol')}',$,'MC',$,$,#6,$,$);`],
@@ -1207,6 +1208,7 @@ describe('MergedExporter', () => {
         [15, 'IFCQUANTITYLENGTH', "#15=IFCQUANTITYLENGTH('Height',$,$,3000.,$);"],
         [16, 'IFCQUANTITYAREA', "#16=IFCQUANTITYAREA('Area',$,$,12.5,$);"],
         [17, 'IFCRELAGGREGATES', `#17=IFCRELAGGREGATES('${guid('mmAgg')}',$,$,$,#1,(#4));`],
+        ...extra,
       ]);
       m.lengthUnitScale = 0.001;
       return m;
@@ -1247,6 +1249,336 @@ describe('MergedExporter', () => {
       // Direction is never rescaled.
       expect(content).toContain('IFCDIRECTION((0.,0.,1.))');
       expect(findDanglingRefs(content)).toEqual([]);
+    });
+
+    it.each([
+      ['IFCMASSPERLENGTHMEASURE', '0.002', 2],
+      ['IFCMOMENTOFINERTIAMEASURE', '2.E12', 2],
+      ['IFCSECTIONMODULUSMEASURE', '3.E9', 3],
+      ['IFCWARPINGCONSTANTMEASURE', '4.E18', 4],
+    ])('normalizes %s from millimetres to metres (#11329)', (measure, value, expected) => {
+      const result = new MergedExporter([metreModel(), mmModel([
+        [18, 'IFCPROPERTYSINGLEVALUE', `#18=IFCPROPERTYSINGLEVALUE('Section datum',$,${measure}(${value}),$);`],
+      ])]).export({ schema: 'IFC4', unitReconciliation: 'normalize' });
+      const literal = new RegExp(`=IFCPROPERTYSINGLEVALUE\\('Section datum',\\$,${measure}\\(([^)]+)\\),\\$\\);`)
+        .exec(decode(result.content))?.[1];
+      expect(result.stats.normalizedModelCount).toBe(1);
+      expect(Number(literal)).toBe(expected);
+    });
+
+    it('retains STEP comments between a normalized profile measure and its value (#11329)', () => {
+      const result = new MergedExporter([metreModel(), mmModel([
+        [18, 'IFCPROPERTYSINGLEVALUE', "#18=IFCPROPERTYSINGLEVALUE('Section datum',$,IFCMOMENTOFINERTIAMEASURE /* design basis */ (2.E12),$);"],
+      ])]).export({ schema: 'IFC4', unitReconciliation: 'normalize' });
+      expect(decode(result.content)).toContain('IFCMOMENTOFINERTIAMEASURE /* design basis */ (2.)');
+    });
+
+    it.each([
+      ['explicit defining unit', true, false],
+      ['explicit defined unit', false, true],
+      ['both units inherited', false, false],
+    ])('normalizes profile measures in a table with %s in both exports (#11329)', async (_, definingExplicit, definedExplicit) => {
+      const table = (defining: string, defined: string, unitRef: string) =>
+        "IFCPROPERTYTABLEVALUE('Section table',$, "
+        + `(IFCMASSPERLENGTHMEASURE /* defining */ ( /* g/cm */ ${defining} /* first */ )),`
+        + ` (IFCMASSPERLENGTHMEASURE(/* g/cm */ ${defined} )), 'IFCMASSPERLENGTHMEASURE(99.)',`
+        + ` /* defining unit */ ${definingExplicit ? unitRef : '$'}, /* defined unit */ ${definedExplicit ? unitRef : '$'},.NOTDEFINED.);`;
+      const secondary = mmModel([
+        [18, 'IFCPROPERTYTABLEVALUE', '#18=' + table('50.', '30.', '#23')],
+        [19, 'IFCSIUNIT', '#19=IFCSIUNIT(*,.MASSUNIT.,$,.GRAM.);'],
+        [20, 'IFCSIUNIT', '#20=IFCSIUNIT(*,.LENGTHUNIT.,.CENTI.,.METRE.);'],
+        [21, 'IFCDERIVEDUNITELEMENT', '#21=IFCDERIVEDUNITELEMENT(#19,1);'],
+        [22, 'IFCDERIVEDUNITELEMENT', '#22=IFCDERIVEDUNITELEMENT(#20,-1);'],
+        [23, 'IFCDERIVEDUNIT', '#23=IFCDERIVEDUNIT((#21,#22),.MASSPERLENGTHUNIT.,$);'],
+      ], [23]);
+      const exporter = new MergedExporter([metreModel(), secondary]);
+      const options = { schema: 'IFC4', unitReconciliation: 'normalize' } as const;
+      for (const result of [exporter.export(options), await exporter.exportAsync(options)]) {
+        const output = decode(result.content);
+        expect(result.stats.normalizedModelCount).toBe(1);
+        const unitRef = /(#\d+)=IFCDERIVEDUNIT\(\(#\d+,#\d+\),\.MASSPERLENGTHUNIT\.,\$\);/.exec(output)?.[1];
+        expect(unitRef).toBeDefined();
+        expect(output).toContain(table(definingExplicit ? '50.' : '5.', definedExplicit ? '30.' : '3.', unitRef!));
+        expect(findDanglingRefs(output)).toEqual([]);
+      }
+    });
+
+    it.each([
+      ['#8', '2500.'],
+      ['$', '2.5'],
+    ])('keeps enumerated selections in the domain unit %s in both exports (#11333)', async (unit, expected) => {
+      const secondary = mmModel([
+        [18, 'IFCPROPERTYENUMERATEDVALUE', "#18=IFCPROPERTYENUMERATEDVALUE('Selected',$,(IFCLENGTHMEASURE(2500.)),/* domain */ #19);"],
+        [19, 'IFCPROPERTYENUMERATION', `#19=IFCPROPERTYENUMERATION('Domain',(IFCLENGTHMEASURE(2500.)),/* unit */ ${unit});`],
+        [20, 'IFCPROPERTYENUMERATEDVALUE', "#20=IFCPROPERTYENUMERATEDVALUE('Independent',$,(IFCLENGTHMEASURE(2500.)),$);"],
+      ]);
+      const exporter = new MergedExporter([metreModel(), secondary]);
+      const options = { schema: 'IFC4', unitReconciliation: 'normalize' } as const;
+      for (const result of [exporter.export(options), await exporter.exportAsync(options)]) {
+        const output = decode(result.content);
+        const domainId = /(#\d+)=IFCPROPERTYENUMERATION\('Domain'/.exec(output)?.[1];
+        expect(domainId).toBeDefined();
+        expect(output).toContain(`IFCPROPERTYENUMERATION('Domain',(IFCLENGTHMEASURE(${expected})),`);
+        expect(output).toContain(`IFCPROPERTYENUMERATEDVALUE('Selected',$,(IFCLENGTHMEASURE(${expected})),/* domain */ ${domainId});`);
+        expect(output).toContain("IFCPROPERTYENUMERATEDVALUE('Independent',$,(IFCLENGTHMEASURE(2.5)),$);");
+        expect(findDanglingRefs(output)).toEqual([]);
+      }
+    });
+
+    it.each(['IFC4', 'IFC4X3', 'IFC2X3'] as const)('normalizes table row cells by the owning %s table column (#11333)', async schema => {
+      const hasColumns = schema !== 'IFC2X3';
+      const secondary = mmModel([
+        [18, 'IFCTABLEROW', '#18=IFCTABLEROW((IFCMASSPERLENGTHMEASURE /* first */ (50.), IFCMASSPERLENGTHMEASURE(50.)),.F.);'],
+        [19, 'IFCSIUNIT', '#19=IFCSIUNIT(*,.MASSUNIT.,$,.GRAM.);'],
+        [20, 'IFCSIUNIT', '#20=IFCSIUNIT(*,.LENGTHUNIT.,.CENTI.,.METRE.);'],
+        [21, 'IFCDERIVEDUNITELEMENT', '#21=IFCDERIVEDUNITELEMENT(#19,1);'],
+        [22, 'IFCDERIVEDUNITELEMENT', '#22=IFCDERIVEDUNITELEMENT(#20,-1);'],
+        [23, 'IFCDERIVEDUNIT', '#23=IFCDERIVEDUNIT((#21,#22),.MASSPERLENGTHUNIT.,$);'],
+        [24, 'IFCTABLE', hasColumns ? "#24=IFCTABLE('Loads',(/* row */ #18),(#26,/* default */ #25));" : "#24=IFCTABLE('Loads',(#18));"],
+        ...(hasColumns ? [
+          [25, 'IFCTABLECOLUMN', '#25=IFCTABLECOLUMN($,$,$,$,$);'],
+          [26, 'IFCTABLECOLUMN', '#26=IFCTABLECOLUMN($,$,$,/* g/cm */ #23,$);'],
+        ] as Array<[number, string, string]> : []),
+        [27, 'IFCSIUNIT', '#27=IFCSIUNIT(*,.MASSUNIT.,.KILO.,.GRAM.);'],
+      ], [27]);
+      const primary = metreModel([[27, 'IFCSIUNIT', '#27=IFCSIUNIT(*,.MASSUNIT.,.KILO.,.GRAM.);']], [27]);
+      for (const model of [primary, secondary]) (model.dataStore as { schemaVersion: string }).schemaVersion = schema;
+      const exporter = new MergedExporter([primary, secondary]);
+      const options = { schema, unitReconciliation: 'normalize' } as const;
+      for (const result of [exporter.export(options), await exporter.exportAsync(options)]) {
+        const output = decode(result.content);
+        expect(output).toContain(`IFCTABLEROW((IFCMASSPERLENGTHMEASURE /* first */ (${hasColumns ? '50.' : '50000.'}), IFCMASSPERLENGTHMEASURE(50000.)),.F.);`);
+        expect(findDanglingRefs(output)).toEqual([]);
+      }
+    });
+
+    it.each([
+      ['IFC4', 'explicit first'], ['IFC4', 'inheriting first'],
+      ['IFC4X3', 'explicit first'], ['IFC4X3', 'inheriting first'],
+    ] as const)('resolves units for a shared table row in %s with %s (#11333)', async (schema, order) => {
+      const records: Array<[number, string, string]> = [
+        [18, 'IFCTABLEROW', '#18=IFCTABLEROW((IFCMASSPERLENGTHMEASURE(50.)),.F.);'],
+        [19, 'IFCSIUNIT', '#19=IFCSIUNIT(*,.MASSUNIT.,$,.GRAM.);'],
+        [20, 'IFCSIUNIT', '#20=IFCSIUNIT(*,.LENGTHUNIT.,.CENTI.,.METRE.);'],
+        [21, 'IFCDERIVEDUNITELEMENT', '#21=IFCDERIVEDUNITELEMENT(#19,1);'],
+        [22, 'IFCDERIVEDUNITELEMENT', '#22=IFCDERIVEDUNITELEMENT(#20,-1);'],
+        [23, 'IFCDERIVEDUNIT', '#23=IFCDERIVEDUNIT((#21,#22),.MASSPERLENGTHUNIT.,$);'],
+      ];
+      for (const [i, explicit] of (order === 'explicit first' ? [true, false] : [false, true]).entries()) {
+        const sensor = 30 + i * 10, table = sensor + 1, column = sensor + 2, prop = sensor + 3, pset = sensor + 4;
+        const label = explicit ? 'Explicit' : 'Inheriting';
+        records.push(
+          [sensor, 'IFCSENSOR', `#${sensor}=IFCSENSOR('${guid(label)}',$,'${label} sensor',$,$,$,$,$,$);`],
+          [table, 'IFCTABLE', `#${table}=IFCTABLE('${label} table',(#18),(#${column}));`],
+          [column, 'IFCTABLECOLUMN', `#${column}=IFCTABLECOLUMN($,$,$,${explicit ? '#23' : '$'},$);`],
+          [prop, 'IFCPROPERTYREFERENCEVALUE', `#${prop}=IFCPROPERTYREFERENCEVALUE('Readings',$,$,#${table});`],
+          [pset, 'IFCPROPERTYSET', `#${pset}=IFCPROPERTYSET('${guid(label+'ps')}',$,'Readings',$,(#${prop}));`],
+          [sensor+5, 'IFCRELDEFINESBYPROPERTIES', `#${sensor+5}=IFCRELDEFINESBYPROPERTIES('${guid(label+'rel')}',$,$,$,(#${sensor}),#${pset});`],
+        );
+      }
+      const makeExporter = () => {
+        const models = [metreModel(), mmModel(records)];
+        for (const model of models) (model.dataStore as { schemaVersion: string }).schemaVersion = schema;
+        return new MergedExporter(models);
+      };
+      const exporter = makeExporter();
+      const options = { schema, unitReconciliation: 'normalize' } as const;
+      const explicitSensor = order === 'explicit first' ? 30 : 40;
+      for (const hidden of [30, 40]) {
+        const selection = { ...options, visibleOnly: true, hiddenEntityIdsByModel: new Map([['mm', new Set([hidden])]]) };
+        for (const result of [exporter.export(selection), await exporter.exportAsync(selection)]) {
+          const output = decode(result.content);
+          const explicit = hidden !== explicitSensor;
+          expect(output).toContain(`'${explicit ? 'Explicit' : 'Inheriting'} table'`);
+          expect(output).not.toContain(`'${explicit ? 'Inheriting' : 'Explicit'} table'`);
+          expect(output).toContain(`IFCTABLEROW((IFCMASSPERLENGTHMEASURE(${explicit ? '50.' : '50000.'})),.F.)`);
+          expect(findDanglingRefs(output)).toEqual([]);
+        }
+      }
+      for (const visibleOnly of [false, true]) {
+        expect(() => exporter.export({ ...options, visibleOnly })).toThrow(/shared table row #18.*column 1/);
+        await expect(exporter.exportAsync({ ...options, visibleOnly })).rejects.toThrow(/shared table row #18.*column 1/);
+      }
+      // A conflicting unit policy is harmless if the shared cell needs no numeric change.
+      records[0] = [18, 'IFCTABLEROW', '#18=IFCTABLEROW((IFCMASSPERLENGTHMEASURE(0.00)),.F.);'];
+      const zero = makeExporter();
+      for (const result of [zero.export(options), await zero.exportAsync(options)]) {
+        expect(decode(result.content)).toContain('IFCTABLEROW((IFCMASSPERLENGTHMEASURE(0.00)),.F.)');
+      }
+    });
+
+    it.each(['IFC4', 'IFC4X3', 'IFC2X3'] as const)('normalizes regular and irregular samples by their owning %s time series (#11333)', async schema => {
+      const date = schema === 'IFC2X3' ? '#40' : "'2020-01-01T12:00:00'";
+      const values = (n: number) => `(IFCMASSPERLENGTHMEASURE(${n}.))`;
+      const series = (name: string, unit: string) => `'${name}',$,${date},${date},.DISCRETE.,.MEASURED.,$,${unit}`;
+      const secondary = mmModel([
+        [18, 'IFCTIMESERIESVALUE', `#18=IFCTIMESERIESVALUE(${values(50)});`],
+        [19, 'IFCSIUNIT', '#19=IFCSIUNIT(*,.MASSUNIT.,$,.GRAM.);'],
+        [20, 'IFCSIUNIT', '#20=IFCSIUNIT(*,.LENGTHUNIT.,.CENTI.,.METRE.);'],
+        [21, 'IFCDERIVEDUNITELEMENT', '#21=IFCDERIVEDUNITELEMENT(#19,1);'],
+        [22, 'IFCDERIVEDUNITELEMENT', '#22=IFCDERIVEDUNITELEMENT(#20,-1);'],
+        [23, 'IFCDERIVEDUNIT', '#23=IFCDERIVEDUNIT((#21,#22),.MASSPERLENGTHUNIT.,$);'],
+        [24, 'IFCREGULARTIMESERIES', `#24=IFCREGULARTIMESERIES(${series('Explicit regular', '#23')},1.,(/* sample */ #18));`],
+        [25, 'IFCTIMESERIESVALUE', `#25=IFCTIMESERIESVALUE(${values(51)});`],
+        [26, 'IFCREGULARTIMESERIES', `#26=IFCREGULARTIMESERIES(${series('Default regular', '$')},1.,(#25));`],
+        [27, 'IFCIRREGULARTIMESERIESVALUE', `#27=IFCIRREGULARTIMESERIESVALUE(${date},${values(52)});`],
+        [28, 'IFCIRREGULARTIMESERIES', `#28=IFCIRREGULARTIMESERIES(${series('Explicit irregular', '/* g/cm */ #23')},(#27));`],
+        [29, 'IFCIRREGULARTIMESERIESVALUE', `#29=IFCIRREGULARTIMESERIESVALUE(${date},${values(53)});`],
+        [30, 'IFCIRREGULARTIMESERIES', `#30=IFCIRREGULARTIMESERIES(${series('Default irregular', '$')},(#29));`],
+        ...(schema === 'IFC2X3' ? [[40, 'IFCCALENDARDATE', '#40=IFCCALENDARDATE(1,1,2020);'] as [number,string,string]] : []),
+      ]);
+      const primary = metreModel();
+      for (const model of [primary, secondary]) (model.dataStore as { schemaVersion: string }).schemaVersion = schema;
+      const exporter = new MergedExporter([primary, secondary]);
+      const options = { schema, unitReconciliation: 'normalize' } as const;
+      for (const result of [exporter.export(options), await exporter.exportAsync(options)]) {
+        const output = decode(result.content);
+        const unit = output.match(/(#\d+)=IFCDERIVEDUNIT\([^;]*\.MASSPERLENGTHUNIT\./)?.[1];
+        expect(unit).toBeDefined();
+        for (const [name, n] of [['Explicit regular', 50], ['Default regular', 51000], ['Explicit irregular', 52], ['Default irregular', 53000]] as const) {
+          const sample = output.split('\n').find(line => line.includes(values(n)))?.match(/(#\d+)=/)?.[1];
+          expect(sample).toBeDefined();
+          const owner = output.split('\n').find(line => line.includes(`'${name}'`));
+          expect(owner).toContain(`${sample}));`);
+          const expectedUnit = name.startsWith('Explicit') ? unit : '$';
+          expect(owner).toContain(`${expectedUnit},${name.endsWith('irregular') ? '(' : '1.,('}`);
+        }
+        expect(findDanglingRefs(output)).toEqual([]);
+      }
+    });
+
+    it('rejects a shared time series sample when only one owner needs its value scaled (#11333)', async () => {
+      const attrs = "'Sample',$,'2020-01-01T12:00:00','2020-01-01T12:00:00',.DISCRETE.,.MEASURED.,$";
+      const secondary = mmModel([
+        [18, 'IFCTIMESERIESVALUE', '#18=IFCTIMESERIESVALUE((IFCLENGTHMEASURE(50.)));'],
+        [19, 'IFCREGULARTIMESERIES', `#19=IFCREGULARTIMESERIES(${attrs},#8,1.,(#18));`],
+        [20, 'IFCREGULARTIMESERIES', `#20=IFCREGULARTIMESERIES(${attrs},$,1.,(#18));`],
+      ]);
+      const exporter = new MergedExporter([metreModel(), secondary]);
+      const options = { schema: 'IFC4', unitReconciliation: 'normalize' } as const;
+      expect(() => exporter.export(options)).toThrow(/shared time series sample #18/);
+      await expect(exporter.exportAsync(options)).rejects.toThrow(/shared time series sample #18/);
+    });
+
+    it.each(['regular', 'irregular'] as const)('uses only retained owners for a shared %s time series sample (#11333)', async kind => {
+      const regular = kind === 'regular';
+      const seriesType = regular ? 'IFCREGULARTIMESERIES' : 'IFCIRREGULARTIMESERIES';
+      const valueType = regular ? 'IFCTIMESERIESVALUE' : 'IFCIRREGULARTIMESERIESVALUE';
+      const date = "'2020-01-01T12:00:00'";
+      const records: Array<[number, string, string]> = [
+        [18, valueType, `#18=${valueType}(${regular ? '' : date + ','}(IFCLENGTHMEASURE(50.)));`],
+      ];
+      for (const [product, label, unit] of [[20, 'Explicit', '#8'], [30, 'Inheriting', '$']] as const) {
+        const owner = product + 1, prop = product + 2, pset = product + 3, rel = product + 4;
+        records.push(
+          [product, 'IFCSENSOR', `#${product}=IFCSENSOR('${guid(label)}',$,'${label} sensor',$,$,$,$,$,$);`],
+          [owner, seriesType, `#${owner}=${seriesType}('${label} series',$,${date},${date},.DISCRETE.,.MEASURED.,$,${unit},${regular ? '1.,' : ''}(#18));`],
+          [prop, 'IFCPROPERTYREFERENCEVALUE', `#${prop}=IFCPROPERTYREFERENCEVALUE('Series',$,$,#${owner});`],
+          [pset, 'IFCPROPERTYSET', `#${pset}=IFCPROPERTYSET('${guid(label+'ps')}',$,'Readings',$,(#${prop}));`],
+          [rel, 'IFCRELDEFINESBYPROPERTIES', `#${rel}=IFCRELDEFINESBYPROPERTIES('${guid(label+'rel')}',$,$,$,(#${product}),#${pset});`],
+        );
+      }
+      const exporter = new MergedExporter([metreModel(), mmModel(records)]);
+      const options = { schema: 'IFC4', unitReconciliation: 'normalize', visibleOnly: true } as const;
+      for (const [hidden, kept, omitted, value] of [[20, 'Inheriting', 'Explicit', '0.05'], [30, 'Explicit', 'Inheriting', '50.']] as const) {
+        const selection = { ...options, hiddenEntityIdsByModel: new Map([['mm', new Set([hidden])]]) };
+        for (const result of [exporter.export(selection), await exporter.exportAsync(selection)]) {
+          const output = decode(result.content);
+          expect(output).toContain(`'${kept} series'`);
+          expect(output).not.toContain(`'${omitted} series'`);
+          expect(output).toContain(`IFCLENGTHMEASURE(${value})`);
+          expect(findDanglingRefs(output)).toEqual([]);
+        }
+      }
+      expect(() => exporter.export(options)).toThrow(/shared time series sample #18/);
+      await expect(exporter.exportAsync(options)).rejects.toThrow(/shared time series sample #18/);
+    });
+
+    it('scales an undeclared mass per length by the mass unit too (#11329)', () => {
+      // 50 g/mm is 50 kg/m: the length ratio alone would give 50000.
+      const secondary = mmModel([
+        [18, 'IFCPROPERTYSINGLEVALUE', "#18=IFCPROPERTYSINGLEVALUE('Section datum',$,IFCMASSPERLENGTHMEASURE(50.),$);"],
+        [19, 'IFCSIUNIT', '#19=IFCSIUNIT(*,.MASSUNIT.,$,.GRAM.);'],
+      ], [19]);
+      const output = decode(new MergedExporter([metreModel(), secondary]).export({ schema: 'IFC4', unitReconciliation: 'normalize' }).content);
+      expect(output).toContain("'Section datum',$,IFCMASSPERLENGTHMEASURE(50.),$);");
+    });
+
+    it.each([
+      ['no profile value', null, true],
+      ['a value with an explicit unit', '#18=IFCPROPERTYSINGLEVALUE(\'Section datum\',$,IFCMASSPERLENGTHMEASURE(50.),#23);', true],
+      ['a value that inherits the unit', '#18=IFCPROPERTYSINGLEVALUE(\'Section datum\',$,IFCMASSPERLENGTHMEASURE(50.),$);', false],
+    ])('an unresolvable declared profile unit fails the merge only for a value that inherits it: %s (#11329)', (_case, property, exports) => {
+      const secondary = mmModel([
+        ...(property ? [[18, 'IFCPROPERTYSINGLEVALUE', property] as [number, string, string]] : []),
+        [19, 'IFCCONTEXTDEPENDENTUNIT', "#19=IFCCONTEXTDEPENDENTUNIT(#24,.MASSUNIT.,'lump');"],
+        [20, 'IFCSIUNIT', '#20=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);'],
+        [21, 'IFCDERIVEDUNITELEMENT', '#21=IFCDERIVEDUNITELEMENT(#19,1);'],
+        [22, 'IFCDERIVEDUNITELEMENT', '#22=IFCDERIVEDUNITELEMENT(#20,-1);'],
+        [23, 'IFCDERIVEDUNIT', '#23=IFCDERIVEDUNIT((#21,#22),.MASSPERLENGTHUNIT.,$);'],
+        [24, 'IFCDIMENSIONALEXPONENTS', '#24=IFCDIMENSIONALEXPONENTS(0,1,0,0,0,0,0);'],
+      ], [23]);
+      const run = () => new MergedExporter([metreModel(), secondary]).export({ schema: 'IFC4', unitReconciliation: 'normalize' });
+      if (exports) expect(run().stats.normalizedModelCount).toBe(1);
+      else expect(run).toThrow('Cannot normalize IFCMASSPERLENGTHMEASURE: its declared unit scale cannot be resolved');
+    });
+
+    it.each([
+      ['MASSPERLENGTH', -1, '50.', 50],
+      ['MOMENTOFINERTIA', 4, '2.E-5', 2e-5],
+      ['SECTIONMODULUS', 3, '3.E-4', 3e-4],
+      ['WARPINGCONSTANT', 6, '4.E-8', 4e-8],
+    ])('uses the declared %s unit in a millimetre project (#11329)', (kind, exponent, input, expected) => {
+      const elements = kind === 'MASSPERLENGTH' ? '#21,#22' : '#22';
+      const secondary = mmModel([
+        [18, 'IFCPROPERTYSINGLEVALUE', `#18=IFCPROPERTYSINGLEVALUE('Section datum',$,IFC${kind}MEASURE(${input}),$);`],
+        [19, 'IFCSIUNIT', '#19=IFCSIUNIT(*,.MASSUNIT.,.KILO.,.GRAM.);'],
+        [20, 'IFCSIUNIT', '#20=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);'],
+        [21, 'IFCDERIVEDUNITELEMENT', '#21=IFCDERIVEDUNITELEMENT(#19,1);'],
+        [22, 'IFCDERIVEDUNITELEMENT', `#22=IFCDERIVEDUNITELEMENT(#20,${exponent});`],
+        [23, 'IFCDERIVEDUNIT', `#23=IFCDERIVEDUNIT((${elements}),.${kind}UNIT.,$);`],
+      ], [23]);
+      const result = new MergedExporter([metreModel(), secondary])
+        .export({ schema: 'IFC4', unitReconciliation: 'normalize' });
+      const literal = /'Section datum',\$,IFC[A-Z]+MEASURE\(([^)]+)\)/.exec(decode(result.content))?.[1];
+      expect(Number(literal)).toBe(expected);
+    });
+
+    it.each([
+      ['kg/m to kg/m', '.KILO.', '$', '.KILO.', '$', '50.', true],
+      ['g/cm to kg/m', '$', '.CENTI.', '.KILO.', '$', '5.', true],
+      // The implicit kg/m fallback would give 5: only resolving the primary's g/cm gives 50.
+      ['g/cm to g/cm without a primary derived-unit type entry', '$', '.CENTI.', '$', '.CENTI.', '50.', false],
+    ])('normalizes declared mass per length from %s (#11329)', (_case, massPrefix, metrePrefix, primaryMass, primaryMetre, expected, indexed) => {
+      const massPerLengthUnits = (mass: string, length: string): Array<[number, string, string]> => [
+        [19, 'IFCSIUNIT', `#19=IFCSIUNIT(*,.MASSUNIT.,${mass},.GRAM.);`],
+        [20, 'IFCSIUNIT', `#20=IFCSIUNIT(*,.LENGTHUNIT.,${length},.METRE.);`],
+        [21, 'IFCDERIVEDUNITELEMENT', '#21=IFCDERIVEDUNITELEMENT(#19,1);'],
+        [22, 'IFCDERIVEDUNITELEMENT', '#22=IFCDERIVEDUNITELEMENT(#20,-1);'],
+        [23, 'IFCDERIVEDUNIT', '#23=IFCDERIVEDUNIT((#21,#22),.MASSPERLENGTHUNIT.,$);'],
+      ];
+      const primary = metreModel(massPerLengthUnits(primaryMass, primaryMetre), [23]);
+      if (!indexed) primary.dataStore.entityIndex.byType.delete('IFCDERIVEDUNIT');
+      const secondary = mmModel([
+        [18, 'IFCPROPERTYSINGLEVALUE', "#18=IFCPROPERTYSINGLEVALUE('Section weight',$,IFCMASSPERLENGTHMEASURE(50.),$);"],
+        ...massPerLengthUnits(massPrefix, metrePrefix),
+      ], [23]);
+      const result = new MergedExporter([primary, secondary]).export({ schema: 'IFC4', unitReconciliation: 'normalize' });
+      expect(decode(result.content)).toContain(`'Section weight',$,IFCMASSPERLENGTHMEASURE(${expected}),$`);
+    });
+
+    it('normalizes into the primary project’s declared derived unit (#11329)', () => {
+      const primary = metreModel([
+        [18, 'IFCSIUNIT', '#18=IFCSIUNIT(*,.LENGTHUNIT.,.CENTI.,.METRE.);'],
+        [19, 'IFCDERIVEDUNITELEMENT', '#19=IFCDERIVEDUNITELEMENT(#18,3);'],
+        [20, 'IFCDERIVEDUNIT', '#20=IFCDERIVEDUNIT((#19),.SECTIONMODULUSUNIT.,$);'],
+      ], [20]);
+      const secondary = mmModel([
+        [18, 'IFCPROPERTYSINGLEVALUE', "#18=IFCPROPERTYSINGLEVALUE('Section datum',$,IFCSECTIONMODULUSMEASURE(2000.),$);"],
+      ]);
+      const result = new MergedExporter([primary, secondary])
+        .export({ schema: 'IFC4', unitReconciliation: 'normalize' });
+      expect(decode(result.content)).toContain("'Section datum',$,IFCSECTIONMODULUSMEASURE(2.)");
     });
 
     it('does NOT length-rescale area quantities already in square metres (Revit)', () => {

@@ -4,6 +4,7 @@
 
 import { combine, evaluatePerf, evaluateRust, prRelevance } from './base-stale.mjs';
 import { BudgetError, slim } from './base-stale-io.mjs';
+import { matchesAny } from './ci-path-coverage.mjs';
 
 /**
  * Judge one PR. Never throws: a fault while gathering inputs is an `unknown`
@@ -14,6 +15,7 @@ export function evaluatePr(io, { pr, headSha, mainTip, ceilings, globs, measured
   try {
     const files = io.prFiles(pr, headSha, baseRef, baseSha);
     const rel = prRelevance(files, globs);
+    const nativeRequired = files.some((file) => matchesAny(file, globs.nativeGlobs));
     let prMeasured = null;
     if (measured) {
       prMeasured = measured.families.map(slim);
@@ -51,7 +53,7 @@ export function evaluatePr(io, { pr, headSha, mainTip, ceilings, globs, measured
       }
       perf = mainFault
         ? { verdict: 'unknown', reasons: [`main's measurement could not be read (${mainFault})`], rows: [] }
-        : evaluatePerf({ relevant: rel.perf, editsCeilings: rel.editsCeilings, prMeasured, testedBase: tb, ceilings, mainAtBase, mainLatest });
+        : evaluatePerf({ relevant: rel.perf, editsCeilings: rel.editsCeilings, nativeRequired, prMeasured, testedBase: tb, ceilings, mainAtBase, mainLatest });
     }
     let moved = null;
     if (rel.rust && tb) {

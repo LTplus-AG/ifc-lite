@@ -92,13 +92,14 @@ function metricMap(families) {
  * @param {object} input
  * @param {boolean} input.relevant  from prRelevance().perf
  * @param {boolean} [input.editsCeilings]
+ * @param {boolean} [input.nativeRequired]  whether the PR's paths trigger the native measurement job
  * @param {Array<object>|null} input.prMeasured  validated measured files from the PR's run, null when not found
  * @param {string|null} input.testedBase  main commit the PR was measured on
  * @param {Map<string, object>} input.ceilings  family -> validated ceiling file, read from current main
  * @param {{ sha: string, families: Array<object> }|null} input.mainAtBase  main's measurement at testedBase
  * @param {{ sha: string, behindTip: number, families: Array<object> }|null} input.mainLatest  newest measured main commit
  */
-export function evaluatePerf({ relevant, editsCeilings = false, prMeasured, testedBase, ceilings, mainAtBase, mainLatest }) {
+export function evaluatePerf({ relevant, editsCeilings = false, nativeRequired = false, prMeasured, testedBase, ceilings, mainAtBase, mainLatest }) {
   if (!relevant) return { verdict: NOT_RELEVANT, reasons: ['PR changes no perf-ratchet input'], rows: [] };
   if (!prMeasured || prMeasured.length === 0) {
     return { verdict: UNKNOWN, reasons: ["no perf-ratchet measurement found for the PR's head"], rows: [] };
@@ -172,14 +173,19 @@ export function evaluatePerf({ relevant, editsCeilings = false, prMeasured, test
       }
     }
   }
-  // A family main measures now but did not at the PR's base (a new ceiling
-  // family, or a newly added measuring job): the queue will judge it on the
-  // merged tree, and the PR's run never measured it. A family main measured
-  // at the base too was skipped by the PR's own path gate, as it will be in
-  // the queue, so its absence from the PR is not a gap.
   const measuredByPr = new Set(prMeasured.map((f) => f.family));
+  if (nativeRequired && !measuredByPr.has('native-instructions')) {
+    rows.push({
+      id: 'native-instructions/*',
+      verdict: UNKNOWN,
+      reason: "native-instructions: the PR's paths require a measurement, but its run did not supply one",
+    });
+  }
+  // For families without explicit path applicability, preserve the warning
+  // when main introduces a measurement the PR could not have supplied.
   const atBaseFamilies = mainAtBase ? new Set(mainAtBase.families.map((f) => f.family)) : null;
   for (const fam of mainLatest?.families ?? []) {
+    if (fam.family === 'native-instructions') continue;
     if (measuredByPr.has(fam.family) || !ceilings.has(fam.family) || atBaseFamilies?.has(fam.family)) continue;
     rows.push({
       id: `${fam.family}/*`,

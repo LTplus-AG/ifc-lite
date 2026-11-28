@@ -202,10 +202,10 @@ bt('only an existing non-success status can get an advisory release', () => {
 });
 
 bt('a family main measures now but not at the PR base is unknown, not fresh', () => {
-  const nativeCeil = { family: 'native-instructions', entries: [{ id: 'scan', metric: 'instructions', unit: 'count', ceiling: 100, tolerance: REL, provenance: PROV }] };
-  const both = new Map([...ceilings, ['native-instructions', nativeCeil]]);
-  const nativeFam = { family: 'native-instructions', commit: 'bbbbbbbbb222', measuredAt: PROV.measuredAt, metrics: [{ id: 'scan', value: 90 }] };
-  const latest = { sha: 'bbbbbbbbb222', behindTip: 0, families: [measured({ [EAGER]: 13000000 }, 'bbbbbbbbb222'), nativeFam] };
+  const newCeil = { family: 'new-family', entries: [{ id: 'scan', metric: 'instructions', unit: 'count', ceiling: 100, tolerance: REL, provenance: PROV }] };
+  const both = new Map([...ceilings, ['new-family', newCeil]]);
+  const newFam = { family: 'new-family', commit: 'bbbbbbbbb222', measuredAt: PROV.measuredAt, metrics: [{ id: 'scan', value: 90 }] };
+  const latest = { sha: 'bbbbbbbbb222', behindTip: 0, families: [measured({ [EAGER]: 13000000 }, 'bbbbbbbbb222'), newFam] };
   const run = (atBaseFamilies) => evaluatePerf({
     relevant: true,
     prMeasured: [measured({ [EAGER]: 13000000 })],
@@ -216,7 +216,7 @@ bt('a family main measures now but not at the PR base is unknown, not fresh', ()
   });
   const fresh = run([measured({ [EAGER]: 13000000 }, 'aaaaaaaaa111')]);
   assert.equal(fresh.verdict, UNKNOWN, 'new on main since the base: the PR never measured it');
-  assert.deepEqual(fresh.reasons, ["native-instructions: main measures this family since the PR's base aaaaaaaaa; the PR's run did not"]);
-  // Main measured it at the base too: the PR's own path gate skipped it, as the queue will.
-  assert.equal(run([measured({ [EAGER]: 13000000 }, 'aaaaaaaaa111'), { ...nativeFam, commit: 'aaaaaaaaa111' }]).verdict, FRESH);
+  assert.deepEqual(fresh.reasons, ["new-family: main measures this family since the PR's base aaaaaaaaa; the PR's run did not"]);
+  // Main measured it at the base too: there is no new measurement family to flag.
+  assert.equal(run([measured({ [EAGER]: 13000000 }, 'aaaaaaaaa111'), { ...newFam, commit: 'aaaaaaaaa111' }]).verdict, FRESH);
 });

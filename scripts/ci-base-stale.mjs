@@ -119,21 +119,26 @@ export function parseArgs(argv) {
   return opts;
 }
 
-/** The perf-ratchet job's gating filters and the `rust` filter, read from test.yml. */
+/** Measurement job gating filters and the `rust` filter, read from test.yml. */
 export function readFilterGlobs(workflowText) {
   const filters = parseFilterBlock(workflowText);
-  const job = splitJobs(workflowText).find((j) => j.id === 'perf-ratchet');
-  if (!job) throw new Error('test.yml has no perf-ratchet job');
-  const gating = gatingFilters(job.text, 'perf-ratchet');
-  if (!gating?.length) throw new Error('the perf-ratchet job is not path-gated; cannot derive its inputs');
-  const perfGlobs = gating.flatMap((name) => {
-    const globs = filters.get(name);
-    if (!globs) throw new Error(`perf-ratchet is gated on filter ${name}, which test.yml does not define`);
-    return globs;
-  });
+  const jobs = splitJobs(workflowText);
+  const jobGlobs = (id) => {
+    const job = jobs.find((j) => j.id === id);
+    if (!job) throw new Error(`test.yml has no ${id} job`);
+    const gating = gatingFilters(job.text, id);
+    if (!gating?.length) throw new Error(`the ${id} job is not path-gated; cannot derive its inputs`);
+    return gating.flatMap((name) => {
+      const globs = filters.get(name);
+      if (!globs) throw new Error(`${id} is gated on filter ${name}, which test.yml does not define`);
+      return globs;
+    });
+  };
+  const perfGlobs = jobGlobs('perf-ratchet');
+  const nativeGlobs = jobGlobs('native-instructions');
   const rustGlobs = filters.get('rust');
   if (!rustGlobs) throw new Error('test.yml defines no `rust` filter');
-  return { perfGlobs, rustGlobs };
+  return { perfGlobs, nativeGlobs, rustGlobs };
 }
 
 /** The filters from a workflow file on disk (test.yml by default). */

@@ -102,7 +102,7 @@ ct('readFilterGlobs refuses a workflow whose perf-ratchet gate it cannot read', 
 const PROV = { commit: 'abcdef1234567', measuredAt: '2026-11-22T00:00:00.000Z' };
 const ceilings = new Map([['bundle', { family: 'bundle', entries: [{ id: 'eager', metric: 'raw-bytes', unit: 'bytes', ceiling: 1000, tolerance: { kind: 'exact', value: 0 }, provenance: PROV }] }]]);
 const fam = (value, commit = 'cafe0000001') => ({ family: 'bundle', commit, measuredAt: PROV.measuredAt, metrics: [{ id: 'eager', value }] });
-const globs = { perfGlobs: ['apps/**', 'rust/**'], rustGlobs: ['rust/**'] };
+const globs = { perfGlobs: ['apps/**', 'rust/**'], nativeGlobs: ['rust/**'], rustGlobs: ['rust/**'] };
 
 function fakeIo(over = {}) {
   const calls = [];
@@ -132,6 +132,31 @@ ct('evaluatePr: main has not moved -> zero drift by construction, no main lookup
   });
   const r = evaluatePr(io, { pr: 1, headSha: 'h', mainTip: 'base0000001', ceilings, globs });
   assert.equal(r.verdict, 'fresh');
+});
+
+ct('evaluatePr #11350: missing native measurements are unknown only when the native job applies', () => {
+  const native = { family: 'native-instructions', metrics: [{ id: 'scan', value: 90 }] };
+  const nativeCeiling = { family: native.family, entries: [{ ...ceilings.get('bundle').entries[0], id: 'scan', ceiling: 100 }] };
+  const options = { pr: 1, headSha: 'h', ceilings: new Map([...ceilings, [native.family, nativeCeiling]]), globs: loadFilterGlobs(WORKFLOW_PATH) };
+  const judge = (path, mainTip, families = [fam(900)], mainFamilies = [fam(500), native]) => evaluatePr(fakeIo({
+    prFiles: () => [path],
+    prMeasurement: () => ({ runId: 7, testedBase: 'base0000001', families }),
+    mainMeasurementAt: () => ({ sha: 'base0000001', families: mainFamilies }),
+    latestMainMeasurement: () => ({ sha: 'tip00000001', behindTip: 0, families: [fam(520), native] }),
+  }), { ...options, mainTip });
+
+  const rust = 'rust/core/src/a.rs';
+  for (const tip of ['base0000001', 'tip00000001']) {
+    const missing = judge(rust, tip);
+    assert.equal(missing.verdict, 'unknown');
+    assert.equal(missing.perf.verdict, 'unknown');
+    assert.equal(missing.rust.verdict, 'fresh');
+    assert.ok(missing.perf.rows.some((row) => row.id === 'native-instructions/*' && row.verdict === 'unknown'));
+    assert.equal(judge(rust, tip, [fam(900), native]).verdict, 'fresh');
+    assert.equal(judge('apps/viewer/src/App.tsx', tip, [fam(900)], [fam(500)]).verdict, 'fresh');
+  }
+  assert.equal(judge('scripts/perf-ratchet/measure-native-instructions.mjs', 'tip00000001').verdict, 'unknown');
+  assert.equal(judge(rust, 'tip00000001', [fam(990)]).verdict, 'stale', 'measured bundle regression still takes precedence');
 });
 
 ct('evaluatePr: in-run measurement with an unreadable base is unknown, not fresh', () => {

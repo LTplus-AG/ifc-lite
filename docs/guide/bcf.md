@@ -157,10 +157,11 @@ import { extractViewpointState } from '@ifc-lite/bcf';
 // Convert BCF viewpoint back to viewer state
 const state = extractViewpointState(viewpoint);
 // state.camera - { position, target, up, fov, isOrthographic?, orthoScale? }
-// state.sectionPlane - clipping plane to apply (singular)
+// state.sectionPlane - the first clipping plane (for a single-plane viewer)
+// state.sectionPlanes - every clipping plane, in order
 // state.selectedGuids - entities to highlight
 // state.hiddenGuids - entities to hide
-// state.visibleGuids - entities for isolation mode
+// state.visibleGuids - entities for isolation mode (null when the viewpoint isolates nothing)
 // state.coloredGuids - entities with color overrides
 ```
 
@@ -369,13 +370,15 @@ A BCF create is not idempotent and the write bodies carry no client correlation 
 In the IFClite viewer, BCF is integrated through the BCF panel:
 
 1. **Load BCF** - Open the BCF panel and use its Import button to pick a `.bcf` or `.bcfzip` file (dropping one onto the main viewport is not supported — it names a model file, not a BCF archive). Load the IFC model a BCF's topics were captured from *before* importing it, so their viewpoints and component references resolve; the panel warns when you import with no model loaded.
-2. **Connect to a BCF server** - The cloud button in the panel header connects to a BCF API server — pick a known server (Aconex regions, BIMcollab, BIMData.io, BIM Track/Newforma Konekt, Catenda Hub, Dalux Field, OpenProject, StreamBIM) or enter a custom URL, sign in via the browser OAuth popup (authorization code + PKCE, with dynamic client registration where the server offers it), email & password, a pasted access token, or OAuth client credentials — then list its projects and load topics, viewpoints, and snapshots straight into the panel
+2. **Connect to a BCF server** - The cloud button in the panel header connects to a BCF API server — pick a known server (Aconex regions, BIMcollab, BIMData.io, BIM Track/Newforma Konekt, buildagil, Catenda Hub, Dalux Field, OpenProject, StreamBIM) or enter a custom URL, sign in via the browser OAuth popup (authorization code + PKCE, with dynamic client registration where the server offers it), email & password, a pasted access token, or OAuth client credentials — then list its projects and load topics, viewpoints, and snapshots straight into the panel
    - **Vendor-issued OAuth apps.** Some vendors — BIMcollab in particular — issue OAuth client ids to *application* developers, never to the people who administer a space, and refuse the password and client-credentials grants for such a client. Space users therefore cannot supply a client id themselves. A deployment signs its users in through its own registered client instead:
 
      ```
      VITE_BCF_APP_BIMCOLLAB_CLIENT_ID=<issued client id>
      VITE_BCF_APP_BIMCOLLAB_REDIRECT_URI=<only if the vendor registered something other than https://<this origin>/oauth/bcf/callback>
      ```
+
+     The same pair works for every preset: `VITE_BCF_APP_<PRESET>_CLIENT_ID` and `VITE_BCF_APP_<PRESET>_REDIRECT_URI`, where `<PRESET>` is the preset id upper-cased with `-` as `_` (for example `VITE_BCF_APP_ACONEX_EUROPE_CLIENT_ID`). buildagil instead reuses `VITE_BUILDAGIL_CLIENT_ID`, the client of the [buildagil cloud source](cloud-sources.md).
 
      With the app configured, picking that server shows no client-id field: the user enters their space URL, clicks Connect and signs in with their own account in the popup. Only the public client id and redirect URI may use `VITE_*`; never put a client secret there because Vite exposes those values to browser code. PKCE and the registered redirect URI protect the authorization code. A public client exchanges the code in the browser; a confidential one goes through the token relay below. The redirect URI must be on the deployment's own origin, because the popup hands the result back over an origin-scoped `BroadcastChannel`. Without the app, the form says plainly that the vendor issues client ids to application vendors instead of asking the user to register one. To develop against BIMcollab's playground, whose published client is pinned to `http://localhost:5000/Callback`, set that as the redirect URI and run `vite --port 5000`; the dev server routes the configured path to the callback page.
    - **Confidential vendor clients (BIMcollab).** IFClite's production BIMcollab client (`4e5649c2-6ea1-4736-8abc-8a91bbefcde3`, registered callbacks `https://www.ifclite.com/oauth/bcf/callback` and `http://localhost:5000/oauth/bcf/callback`) is a *confidential* client: the space's token endpoint answers a code exchange or a refresh without the client secret with `invalid_client`. The secret can't be in the browser, so the deployment runs a same-origin token relay at `/api/bcf/oauth/token` (`api/bcf/oauth/token.ts`, handler in `server/bcf/oauth-token-relay.ts`). The popup still does the authorization request with PKCE. The code exchange, and every later refresh of that session, go to the relay, which adds the client id and secret from server-only env and posts to the space's token endpoint. The browser stores no secret. The session records that it was relayed, so refreshes take the same route.

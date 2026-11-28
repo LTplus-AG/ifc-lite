@@ -191,6 +191,7 @@ Supports property filters (`--where`), missing-property checks (`--missing`), he
 | `--palette <name>` | Heatmap palette: `blue-red`, `green-red`, `rainbow` |
 | `--isolate` | Hide non-matching entities |
 | `--flyto` | Fly camera to results |
+| `--name <label>` | Label for the single rule built from the flags (default: type plus check) |
 | `--rules <file>` | Batch rules from JSON |
 | `--json` | Machine-readable output |
 | `--out <file>` | Write match results as JSON to a file instead of stdout |
@@ -431,6 +432,7 @@ ifc-lite export model.ifc --format csv --out walls.csv
 | `--name <str>` | Model name for geometry exports |
 | `--limit <N>` | Limit result count |
 | `--diagnostics` | Print a geometry summary after mesh-based exports |
+| `--profile` | `obj`/`gltf`/`glb`/`jsonld`/`ifcx`/`usd`/`step`: print WASM init and export wall time to stderr |
 | `--scale <step>` | `cityjson`/`cityjsonseq`: vertex grid in output units (default `0.001`, millimetres) |
 | `--blocks-only` | `cityjson`/`cityjsonseq`: buildings as LoD0/LoD1 only; rooms and elements keep their attributes but no geometry |
 | `--name-by-global-id` | `gltf`/`glb`: make each element one node named by its `GlobalId`, with its mesh parts as children |
@@ -766,6 +768,16 @@ ifc-lite bcf list topics.bcf
 ifc-lite bcf add-comment --file topics.bcf --text "Fixed in revision 3" --out updated.bcf
 ```
 
+| Flag | Description |
+|------|-------------|
+| `--title <t>` | Topic title (`create`, required) |
+| `--description <t>` | Topic description (`create`) |
+| `--author <email>` | Author of the topic or comment (default `cli@ifc-lite.com`) |
+| `--file <file.bcf>` | BCF file to add the comment to (`add-comment`, required) |
+| `--text <t>` | Comment text (`add-comment`, required) |
+| `--topic <guid>` | Topic to comment on (`add-comment`; default: the first topic) |
+| `--out <file.bcf>` | Output BCF file (required for `create` and `add-comment`) |
+
 ---
 
 ### `clash` - Clash Detection
@@ -897,7 +909,10 @@ echo '{"Start":[0,0,0],"End":[10,0,0],"Height":3,"Thickness":0.2}' \
 | `--material <json>` | Add material (JSON) |
 | `--color <r,g,b>` | Set color (0-1 per channel) |
 | `--from-json` | Read parameters from stdin JSON |
-| `--out <file>` | Output IFC file (required) |
+| `--wall-id <expressId>` | Host wall for `wall-door` / `wall-window` (required for those two) |
+| `--is-rectangular` | Rectangular instead of circular section (`pile`) |
+| `--out <file>` | Output IFC file (required unless `--viewer` is given) |
+| `--viewer <port>` | Stream the created geometry to a running viewer (`ifc-lite view`) |
 | `--json` | Output creation stats as JSON |
 
 ---
@@ -1414,6 +1429,13 @@ ifc-lite eval tests/models/cost/buildingsmart-cost-composition.ifc "bim.cost.eva
 ifc-lite eval model.ifc "bim.query().byType('IfcDoor').toArray().filter(d => d.name.includes('Fire'))"
 ```
 
+| Flag | Description |
+|------|-------------|
+| `--type <T[,T]>` | Evaluate the expression once per entity of these types, with `ref` bound to each (`"bim.quantity(ref, 'GrossSideArea')" --type IfcWall`) |
+| `--limit <N>` | With `--type`, stop after N entities |
+| `--viewer <port>` | Forward `bim.viewer.*` calls to a running viewer (`ifc-lite view`) |
+| `--json` | Machine-readable output |
+
 Cost reads use the loaded IFC source snapshot; pending generic mutation overlays
 are not included until the source is replaced or reloaded.
 
@@ -1447,6 +1469,7 @@ Run JavaScript files with the full `bim` SDK available.
 
 ```bash
 ifc-lite run analysis.js model.ifc
+ifc-lite run analysis.js model.ifc --viewer 3456   # stream bim.viewer.* calls to a running viewer
 ```
 
 **Example script (`analysis.js`):**
@@ -1578,7 +1601,8 @@ sequence produces byte-identical reward lines.
 instead of loading a file; mid-session `{"type":"reset","seed":8}` swaps to
 a fresh generated episode. Episode generation dynamically imports
 `tools/world-gym/` from a repo checkout; the published npm package prints a
-clear error for `--seed` while `--model` keeps working. See the
+clear error for `--seed` while `--model` keeps working. `--locale en|de|fr`
+sets the language of IDS check messages in the reward lines (default `en`). See the
 [`@ifc-lite/cli` README](https://github.com/LTplus-AG/ifc-lite/tree/main/packages/cli#gym)
 for the full protocol reference.
 
@@ -1943,6 +1967,10 @@ Run `ifc-lite schema` to see the full API before writing eval expressions.
 7. **Use `create --from-json`** — for programmatic element creation from generated JSON
 
 ## Command Reference
+
+The `georef` command reads, writes, checks and fixes georeferencing (`show`, `set`, `update`, `remove`, `check`, `fix`). See [Georeferencing](georeferencing.md) for flags and finding codes.
+
+The `site-context` command builds one GLB of Swiss terrain, parcels and neighbouring buildings around a georeferenced model, a coordinate or an EGRID. See [Site Context](site-context.md) for flags and the required attribution.
 
 The `semantic` command reads JSON/SPARQL providers, generates shared profile artifacts, validates JSON or RDF, and operates an authenticated HTTPS relay. See [Headless semantic records](semantic-headless.md) for flags, result formats, credential references, and reproduction examples.
 

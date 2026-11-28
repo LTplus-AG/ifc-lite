@@ -6,6 +6,7 @@ import { IfcParser } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { MergedExporter } from './merged-exporter.js';
 import { analyzeConversionLoss } from './schema-conversion-loss-report.js';
+import { readStepSlots } from './step-argument-parser.js';
 import { StepExporter } from './step-exporter.js';
 
 it('prunes references to removed IFC2X3 resources using IFC4 slot cardinality (#10970)', async () => {
@@ -61,18 +62,21 @@ it('reports populated task losses alongside cascaded omissions (#11326, #10970)'
   expect(output).toMatch(/^#6=IFCTASK\(/m);
 });
 
-it('clears an optional Representation on a varying action written constant (#10970, #11354)', async () => {
+async function optionalRepresentationStore() {
   const raw = readFileSync(new URL('../../../rust/export/tests/fixtures/schema_unrooted_legacy_optional.ifc', import.meta.url));
-  const store = await new IfcParser().parseColumnar(Uint8Array.from(raw).buffer);
+  return new IfcParser().parseColumnar(Uint8Array.from(raw).buffer);
+}
+
+it('clears the pruned Representation and retains the initial AppliedLoad (#10970, #11354)', async () => {
+  const store = await optionalRepresentationStore();
   const merged = new MergedExporter([{ id: 'source', name: 'source', dataStore: store }]);
   const options = { schema: 'IFC4' } as const;
-  // No load configuration holds the action: StepExporter writes it constant (#11354), the merged writer still keeps
-  // the IFC2X3 keyword. Either way its Representation is cleared.
-  const constant = "#30=IFCSTRUCTURALCURVEACTION('3sXjCM_kPHN8ZCpuBhV_98',$,'A',$,$,$,$,#11,.GLOBAL_COORDS.,.F.,.TRUE_LENGTH.,.CONST.);";
-  const kept = "#30=IFCSTRUCTURALLINEARACTIONVARYING('3sXjCM_kPHN8ZCpuBhV_98',$,'A',$,$,$,$,#11,.GLOBAL_COORDS.,.F.,$,.TRUE_LENGTH.,$,$);";
-  for (const [result, expected] of [[new StepExporter(store).export(options), constant], [merged.export(options), kept], [await merged.exportAsync(options), kept]] as const) {
+  const single = new StepExporter(store).export(options);
+  expect(new TextDecoder().decode(single.content)).toContain("#30=IFCSTRUCTURALCURVEACTION('3sXjCM_kPHN8ZCpuBhV_98',$,'A',$,$,$,$,#11,.GLOBAL_COORDS.,.F.,.TRUE_LENGTH.,.CONST.);");
+  for (const result of [single, merged.export(options), await merged.exportAsync(options)]) {
     const output = new TextDecoder().decode(result.content);
-    expect(output).toContain(expected);
+    const action = output.split('\n').find(line => line.startsWith('#30='));
+    expect(readStepSlots(action ?? '')?.slots.slice(6, 8)).toEqual(['$', '#11']);
     expect(output).not.toMatch(/^#(?:41|42|43)=/m);
     expect(result.stats.warnings.some(warning => /#30 \(IFCSTRUCTURAL\w+\) was omitted/.test(warning))).toBe(false);
   }
@@ -80,6 +84,16 @@ it('clears an optional Representation on a varying action written constant (#109
   expect(report.entries.find(entry => entry.sourceType === 'IFCPRODUCTDEFINITIONSHAPE')?.expressIds).toEqual([43]);
   expect(report.describe().some(line => line.includes('IFCSTRUCTURALLINEARACTIONVARYING (#30) will be omitted'))).toBe(false);
 });
+
+// #11354 covers single-model conversion. Make a future merged fix turn these witnesses red.
+for (const method of ['export', 'exportAsync'] as const) {
+  it.fails(`merged ${method} writes the incomplete action as an IFC4 constant (#11698 deferred)`, async () => {
+    const store = await optionalRepresentationStore();
+    const merged = new MergedExporter([{ id: 'source', name: 'source', dataStore: store }]);
+    const result = await merged[method]({ schema: 'IFC4' });
+    expect(new TextDecoder().decode(result.content)).toMatch(/^#30=IFCSTRUCTURALCURVEACTION\(.*?,\.CONST\.\);$/m);
+  });
+}
 
 const envelope = (records: string) => "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n" + records + "\nENDSEC;\nEND-ISO-10303-21;";
 const parse = (text: string) => new IfcParser().parseColumnar(new TextEncoder().encode(text).buffer);

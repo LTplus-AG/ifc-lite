@@ -113,7 +113,7 @@ for await (const event of geometry.processAdaptive(new Uint8Array(arrayBuffer)))
 }
 
 renderer.loadGeometry(meshes);
-renderer.requestRender();
+renderer.render(); // draws one frame; call it again (e.g. per requestAnimationFrame) after camera changes
 
 // Pick an entity at (x, y) in canvas pixels
 const hit = await renderer.pick(120, 240);

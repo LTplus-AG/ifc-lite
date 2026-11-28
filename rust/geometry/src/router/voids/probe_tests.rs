@@ -68,3 +68,20 @@ fn read_rect_profile_2d_rejects_parallelogram_just_outside_perp_tolerance() {
         "dot=0.011 is outside the 0.01 perpendicularity tolerance and must be rejected, got {result:?}"
     );
 }
+
+/// #11423: straight-side admission is cyclic and excludes reversals and real notches.
+#[test]
+fn subdivision_at_the_start_of_the_ring_requires_a_straight_side() {
+    let base = parallelogram_step(0.0);
+    let probe = |extra: &str, ring: &str| {
+        let source = base.replace("#5=IFCPOLYLINE((#1,#2,#3,#4));", &format!(
+            "#7=IFCCARTESIANPOINT(({extra}));#5=IFCPOLYLINE(({ring}));"));
+        let mut decoder = EntityDecoder::new(&source);
+        let profile = decoder.decode_by_id(6).unwrap();
+        GeometryRouter::new().read_rect_profile_2d(&profile, &mut decoder)
+    };
+    let split = probe("0.5,0.0", "#7,#2,#3,#4,#1,#7").unwrap();
+    assert_eq!((split.0, split.1, split.2, split.3), (1.0, 1.0, 0.5, 0.5));
+    assert!(probe("0.5,0.00001", "#1,#7,#2,#3,#4,#1").is_none());
+    assert!(probe("-0.5,0.0", "#1,#7,#2,#3,#4,#1").is_none());
+}

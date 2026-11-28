@@ -10,6 +10,7 @@
 //! two neighbours it guards give different observable results, so swapping or
 //! dropping one turns it red:
 //!
+//! - Partition before ParamRect on the untouched core of a two-body wall;
 //! - ParamRect before Bool2d (both fixtures eligible on one host);
 //! - malformed recut before the flap clip;
 //! - a rejected frame retry restoring the first run's diagnostics;
@@ -135,9 +136,115 @@ fn param_rect_is_tried_before_bool2d() {
     assert!((removed - 0.2).abs() < 1e-3, "removed {removed}");
 }
 
-#[cfg(feature = "csg_manifold_gate")]
+#[allow(dead_code)] // The shared IFC fixture also serves integration and manifold-only tests.
 #[path = "../../../tests/voids_common/split_wall.rs"]
 mod split_wall;
+
+/// Authored core and finish meshes, classified together. Offer the specified
+/// item's own parametric proof to make both competing stage decisions observable.
+fn split_wall_stages(router: &GeometryRouter, content: &str, param_item: usize) -> (Mesh, Mesh, VoidContext) {
+    use ifc_lite_core::{build_entity_index, EntityDecoder};
+    let mut decoder = EntityDecoder::with_index(content, build_entity_index(content));
+    let wall = decoder.decode_by_id(100).unwrap();
+    let opening = decoder.decode_by_id(200).unwrap();
+    let parts = router.process_element_with_submeshes(&wall, &mut decoder).unwrap().sub_meshes;
+    let [core, finish]: [crate::mesh::SubMesh; 2] = parts.try_into().expect("two authored wall bodies");
+    assert_eq!((core.geometry_id, finish.geometry_id), (63, 67));
+    let mut ctx = crate::program::openings::context(&wall, &[200], router, &mut decoder).unwrap();
+    ctx.param = Some(ParamRectCut {
+        host: router.parametric_rect_probe_all(&wall, &mut decoder).unwrap()[param_item],
+        openings: router.parametric_rect_probe_all(&opening, &mut decoder).unwrap(),
+    });
+    (core.mesh, finish.mesh, ctx)
+}
+
+fn full_face_recess() -> String {
+    // Cover the whole contact face so ParamRect also emits a closed solid.
+    split_wall::wall_with_finish([0.0; 2], 0.5, 2.274, split_wall::Recess::FromInterface, 4.0)
+        .replace("#110=IFCCARTESIANPOINT((1.,0.2,2.))", "#110=IFCCARTESIANPOINT((0.,0.2,3.))")
+        .replace("#120=IFCCARTESIANPOINT((0.5,0.5))", "#120=IFCCARTESIANPOINT((2.,1.5))")
+        .replace("'Recess',#121,1.0,1.0", "'Recess',#121,4.,3.")
+}
+
+/// #11423: the recess touches the core and cuts its finish sibling. ParamRect's
+/// penetration margin cuts the contact face if it runs before partitioning.
+#[test]
+fn partition_preserves_the_core_before_param_rect() {
+    crate::rect_fast::param_set_enabled_override(Some(true));
+    let _reset = ResetOnDrop(|| crate::rect_fast::param_set_enabled_override(None));
+    let router = GeometryRouter::with_scale(1.0);
+    let (core, _, ctx) = split_wall_stages(&router, &full_face_recess(), 0);
+    let analytic = router.try_param_rect_cut(&core, &ctx).expect("ParamRect must accept on its own");
+    let removed = mesh_signed_volume(&core).abs() - mesh_signed_volume(&analytic).abs();
+    assert!((removed - 0.0012).abs() < 0.0001, "the unpartitioned margin removed {removed} m³");
+    router.take_rect_fast_stats();
+
+    let out = router.apply_void_context(core.clone(), &ctx, 100);
+    assert_eq!(router.take_rect_fast_stats().fired, 0, "the untouched core must bypass the analytic cut");
+    assert_eq!(out.positions, core.positions);
+    assert_eq!(out.indices, core.indices);
+    assert_eq!(out.origin, core.origin);
+}
+
+/// A positive manifold-gated cut intentionally stays on the combined host.
+#[cfg(not(feature = "csg_manifold_gate"))]
+#[test]
+fn partition_continues_the_selected_finish_at_param_rect() {
+    crate::rect_fast::param_set_enabled_override(Some(true));
+    let _reset = ResetOnDrop(|| crate::rect_fast::param_set_enabled_override(None));
+    let router = GeometryRouter::with_scale(1.0);
+    let content = split_wall::wall_with_finish([0.0; 2], 0.5, 2.274, split_wall::Recess::FromInterface, 4.0);
+    let (core, finish, ctx) = split_wall_stages(&router, &content, 1);
+    let mut wall = Mesh::new();
+    wall.merge(&core);
+    wall.merge(&finish);
+    assert!(router.try_param_rect_cut(&wall, &ctx).is_none());
+    assert!(router.try_param_rect_cut(&finish, &ctx).is_some());
+    router.take_rect_fast_stats();
+
+    let out = router.apply_void_context(wall, &ctx, 100);
+    assert_eq!(router.take_rect_fast_stats().fired, 1, "only the selected finish takes ParamRect");
+    assert!((mesh_signed_volume(&out).abs() - 2.532).abs() < 0.0001);
+}
+
+/// A prism trims an extended core back to the authored box. The flush recess
+/// left on that box must re-enter partitioning as a single residual opening.
+#[test]
+fn prism_residual_restarts_at_partition() {
+    if !prism_cut::enabled() {
+        // The flag is process-wide and read once. Exercise the enabled path in
+        // isolation when the parent test run is forcing exact subtraction.
+        let this_test = std::thread::current();
+        let status = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", this_test.name().unwrap()])
+            .env("IFC_LITE_PRISM_CUT", "1")
+            .status().unwrap();
+        assert!(status.success());
+        return;
+    }
+    let router = GeometryRouter::with_scale(1.0);
+    let content = split_wall::wall_with_finish([0.0; 2], 0.5, 2.274, split_wall::Recess::FromInterface, 4.0);
+    let (_, _, mut ctx) = split_wall_stages(&router, &content, 0);
+    let core = ctx.param.take().unwrap().host;
+    let [x, y, z] = core.half;
+    let in_wall = |min, max| geom::rotate_mesh_from_frame(&box_mesh(min, max), &core.r, &core.center);
+    let host = in_wall([-x, -y, -z], [x + 1.0, y, z]);
+    let blade = in_wall([x, -y - 0.1, -z - 0.1], [x + 2.0, y + 0.1, z + 0.1]);
+    let (min, max) = blade.bounds();
+    let center = core.center.coords;
+    let trim = CutterKind::NonRectangular(blade, min.cast::<f64>() + center, max.cast::<f64>() + center, Some(Vector3::z()));
+    ctx.openings.insert(0, trim);
+    ctx.merged_openings = GeometryRouter::merge_rectangular_openings(&ctx.openings);
+    let (trimmed, rest) = router.try_prism_cut(&host, &ctx).expect("the prism trims the extension");
+    let rest = rest.expect("the flush recess is the residual");
+    assert_eq!(rest.openings.len(), 1);
+    assert_eq!(trimmed.triangle_count(), 12, "the trim restores a complete cuboid");
+    assert!((mesh_signed_volume(&trimmed).abs() - 2.4).abs() < 0.0001);
+    let out = router.apply_void_context(host, &ctx, 100);
+    assert_eq!(out.origin, trimmed.origin);
+    assert_eq!(out.positions, trimmed.positions);
+    assert_eq!(out.indices, trimmed.indices);
+}
 
 /// Two recesses across the interface of three touching solids. There is no
 /// world-coordinate rebase in this near-origin fixture. The manifold gate's

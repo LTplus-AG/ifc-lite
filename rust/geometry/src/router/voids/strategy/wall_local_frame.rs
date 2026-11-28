@@ -8,13 +8,16 @@
 //! frame recursion runs the frame-local chain again with
 //! `allow_local_frame: false` (#3641).
 
+use super::super::flush::recess_face_tol;
 use super::super::frame_snap;
 use super::super::geom::{
-    is_axis_aligned_direction, mesh_to_frame, project_aabb_in_frame, rotate_mesh_from_frame,
-    wall_frame_from_depth,
+    bounds_are_the_box, is_axis_aligned_direction, mesh_to_frame,
+    project_aabb_in_frame, rotate_mesh_from_frame, wall_frame_from_depth,
 };
-use super::super::local_frame::{host_thickness_wall_frame, vertical_depth_wall_frame};
-use super::super::{CutterKind, VoidContext, WALL_NORMAL_DEPTH_COS};
+use super::super::local_frame::{
+    dominant_horizontal_normal, host_thickness_wall_frame, vertical_depth_wall_frame,
+};
+use super::super::{CutterKind, VoidContext, NORMALIZE_EPSILON, WALL_NORMAL_DEPTH_COS};
 use crate::mesh_check::triangle_shape;
 use crate::program::openings::execute::Execution;
 use crate::{GeometryRouter, Mesh, Point3, Vector3};
@@ -43,8 +46,11 @@ impl Execution {
         element_id: u32,
         host_world_bounds: ((f32, f32, f32), (f32, f32, f32)),
     ) -> Option<Mesh> {
-        let axes = self.wall_frame_axes(mesh, ctx)?;
-        let (mn, mx) = mesh.bounds();
+        // Most hosts never need a wall frame. Scan the stored positions on the
+        // first use, then share those bounds with the frame and closure checks.
+        let stored_bounds = std::cell::LazyCell::new(|| mesh.bounds());
+        let axes = self.wall_frame_axes(mesh, ctx, || *stored_bounds)?;
+        let (mn, mx) = *stored_bounds;
         let center = Vector3::new(
             ((mn.x + mx.x) * 0.5) as f64,
             ((mn.y + mx.y) * 0.5) as f64,
@@ -70,9 +76,7 @@ impl Execution {
         // (the wasm default): `apply_void_context` then cleared that origin, so
         // the world bounds it passed differ from the stored ones. A world-frame
         // host has identical bounds and keeps its established closure test.
-        let (smn, smx) = mesh.bounds();
-        let frame_relative =
-            host_world_bounds != ((smn.x, smn.y, smn.z), (smx.x, smx.y, smx.z));
+        let frame_relative = host_world_bounds != ((mn.x, mn.y, mn.z), (mx.x, mx.y, mx.z));
         let frame = Matrix3::from_columns(&axes);
         let center_point = Point3::from(center);
         let result_local = self
@@ -162,19 +166,52 @@ impl Execution {
     /// whose openings can all be expressed in it, else `None` (the host keeps
     /// the world path). Translation-invariant, so it gives the same answer for a
     /// world-stored host and a local-frame one (#5739).
-    fn wall_frame_axes(&self, mesh: &Mesh, ctx: &VoidContext) -> Option<[Vector3<f64>; 3]> {
+    fn wall_frame_axes(
+        &self,
+        mesh: &Mesh,
+        ctx: &VoidContext,
+        stored_bounds: impl Fn() -> (Point3<f32>, Point3<f32>),
+    ) -> Option<[Vector3<f64>; 3]> {
         if ctx.merged_openings.is_empty() {
             return None;
         }
-        let depth_of = |op: &CutterKind| op.cutter().depth();
         // Define the wall frame from the first opening whose depth is a
         // genuinely rotated, ~horizontal axis. Axis-aligned walls find none and
-        // keep their (unchanged) world path.
+        // keep their (unchanged) world path. A box within `cos(1°)` of the axes
+        // whose bounds are not the box was classified diagonal for that
+        // reason (#11321). It seeds the frame only when the host is turned
+        // with it: the host must sit closer to the axes of the box's frame
+        // than to the world's. A box turned in a wall on the axes would
+        // otherwise turn the wall off them, and its recess would no longer
+        // start on the face it was authored on. The host must also line up
+        // with the box to the recess face tolerance over its run: a box
+        // turned 0.2 degrees against a 0.5 degree wall left the host 14 mm
+        // off its own faces in that frame, and the cut tore it.
+        let host_normal = std::cell::OnceCell::new();
+        let host_turned_with = |depth: &Vector3<f64>| {
+            let normal = host_normal.get_or_init(|| {
+                dominant_horizontal_normal(mesh).and_then(|n| n.try_normalize(NORMALIZE_EPSILON))
+            });
+            match (normal, depth.try_normalize(NORMALIZE_EPSILON)) {
+                (Some(normal), Some(depth)) => {
+                    let turn = normal.cross(&depth).norm();
+                    turn < off_axis(normal) && host_lines_up(stored_bounds(), &depth, turn)
+                }
+                _ => false,
+            }
+        };
+        let rotated_depth = |op: &CutterKind| {
+            let depth = op.cutter().depth()?;
+            let near_axis_box = || matches!(op, CutterKind::DiagonalRectangular(mesh, frame)
+                if frame.is_axis_aligned() && !bounds_are_the_box(mesh));
+            (!is_axis_aligned_direction(&depth) || (near_axis_box() && host_turned_with(&depth)))
+                .then_some(depth)
+        };
         let horizontal_axes = ctx
             .merged_openings
             .iter()
-            .filter_map(depth_of)
-            .find(|d| !is_axis_aligned_direction(d) && d.z.abs() <= 0.2)
+            .filter_map(rotated_depth)
+            .find(|d| d.z.abs() <= 0.2)
             .and_then(wall_frame_from_depth);
         let axes = match horizontal_axes {
             Some(axes) => axes,
@@ -189,6 +226,25 @@ impl Execution {
         }
         Some(axes)
     }
+}
+
+/// Whether a host turned `turn` (a sine) off the unit `depth` stays within
+/// the recess face tolerance, as the flush extension reads it, over its run:
+/// the horizontal diagonal of its bounds, which no run along the wall exceeds.
+fn host_lines_up((min, max): (Point3<f32>, Point3<f32>), depth: &Vector3<f64>, turn: f64) -> bool {
+    let bounds = [min.cast::<f64>(), max.cast::<f64>()];
+    let size = bounds[1] - bounds[0];
+    let extent = size.abs().dot(&depth.abs());
+    turn * size.x.hypot(size.y) <= recess_face_tol(&bounds, depth, extent)
+}
+
+/// The sine of the angle between the unit `dir` and its nearest world axis:
+/// the norm of its two other components, exact for the tiny turns that
+/// `1 - max²` would cancel away.
+fn off_axis(dir: &Vector3<f64>) -> f64 {
+    let a = dir.abs();
+    let nearest = if a.x >= a.y && a.x >= a.z { 0 } else if a.y >= a.z { 1 } else { 2 };
+    (0..3).filter(|&k| k != nearest).map(|k| dir[k] * dir[k]).sum::<f64>().sqrt()
 }
 
 /// The merged openings re-expressed in the wall frame `axes` around `center`,

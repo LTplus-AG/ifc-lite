@@ -29,6 +29,14 @@ pub(crate) struct ExtrudedSolidInfo {
 }
 
 mod rectangular;
+
+/// Subtraction uses the established four-corner admission. Frame comparison
+/// also accepts redundant source vertices along straight sides (#11423).
+#[derive(Clone, Copy)]
+pub(crate) enum RectProbe {
+    Cut,
+    Alignment,
+}
 use crate::representation::unwrap::{checked_probe, probe_result, unwrap_solid, Policy as UnwrapPolicy};
 
 impl GeometryRouter {
@@ -138,6 +146,17 @@ impl GeometryRouter {
         element: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Option<Vec<RectParam>> {
+        self.probe_rect_items(element, decoder, RectProbe::Cut).map(|(boxes, _)| boxes)
+    }
+
+    /// Also distinguish direct rectangular extrusions from the broader
+    /// approximations that are sufficient to choose an opening frame.
+    pub(crate) fn probe_rect_items(
+        &self,
+        element: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        purpose: RectProbe,
+    ) -> Option<(Vec<RectParam>, bool)> {
         let placement = self
             .get_placement_transform_from_element(element, decoder)
             .ok()?;
@@ -146,10 +165,13 @@ impl GeometryRouter {
             return None;
         }
         let mut boxes = Vec::with_capacity(items.len());
+        let mut whole_boxes = true;
         for item in items {
-            boxes.push(self.rect_param_from_item(item, &placement, decoder)?);
+            let (frame, whole) = self.probe_rect_item(item, &placement, decoder, purpose)?;
+            whole_boxes &= whole;
+            boxes.push(frame);
         }
-        Some(boxes)
+        Some((boxes, whole_boxes))
     }
 
     /// PHASE-0 CENSUS (read-only): the EXACT oriented rectangular box of an extruded

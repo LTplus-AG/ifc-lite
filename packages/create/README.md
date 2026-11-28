@@ -1,6 +1,6 @@
 # @ifc-lite/create
 
-Create valid IFC4 STEP files from scratch, programmatically. `IfcCreator` builds a complete spatial structure (project, site, building, storeys) and adds building elements with real geometry, property sets, quantities, and materials. Inputs are in metres. Element coordinates are relative to the storey you add the element to: the storey placement carries `Elevation` and every element chains to it, so an element standing on a storey at `Elevation: 3` is created with `Z = 0`.
+Create IFC STEP files from scratch, programmatically. `IfcCreator` writes IFC4 by default; pass `Schema: 'IFC2X3' | 'IFC4' | 'IFC4X3'` in the project parameters to pick another release. It builds a complete spatial structure (project, site, building, storeys) and adds building elements with real geometry, property sets, quantities, and materials. Inputs are in metres unless the project's `LengthUnit` is `'MILLIMETRE'`; any other value (including `'FOOT'`) still writes a metre length unit. Element coordinates are relative to the storey you add the element to: the storey placement carries `Elevation` and every element chains to it, so an element standing on a storey at `Elevation: 3` is created with `Z = 0`.
 
 ## Install
 
@@ -37,6 +37,9 @@ const { content } = creator.toIfc(); // IFC STEP text
   both joined end faces; unreadable cuts refuse the join.
 - Property sets, element quantities, materials, and colors
 - 4D scheduling entities: IfcWorkSchedule, IfcTask, IfcRelSequence
+- Cost entities on the creator (IFC4 / IFC4X3 only; IFC2X3 throws): `addIfcCostSchedule`, `addIfcCostItem`, `addIfcCostValue`
+- Terrain, survey, alignment and georeferencing (IFC4X3 only): `creator.terrain()` returns `addSurface` (TIN terrain), `addSurveyPoint`, `addAlignment`, `addPropertySet` and `setGeoreferencing` (IfcProjectedCRS plus IfcMapConversion, at most once per file)
+- `landXmlToIfc(source, options)` maps parsed LandXML surfaces, alignments and profiles to IFC4X3 (contract in `docs/architecture/landxml-to-ifc-mapping.md`)
 - In-store builders (`addWallToStore`, `addSlabToStore`, ...) that emit elements into an existing parsed model
 - `addStructuralPointConnectionToStore` accepts boolean fixed/free or numeric spring stiffness in `BoundaryCondition`
 - `addOrdinaryElementInStore(editor, anchor, element)` commits the eight ordinary
@@ -75,7 +78,7 @@ MPL-2.0
 
 ### Current storey plan frames
 
-`storeyPlanFrame(store, storeyExpressId, mutationView)` reads current named and positional placement edits, authored records and deletions through the canonical native metadata reader. Omitting the mutation view retains source-only behavior. A live chain is limited to 256 placements and returns `null` when unreadable, non-planar, cyclic or oversized; callers must disclose unavailable geometry rather than use old coordinates. Coordinates remain metres; directions are dimensionless. This planar reader does not support tilted storey placement or infer a transform from unavailable source data.
+`storeyPlanFrame(store, storeyExpressId, mutationView)` reads current named and positional placement edits, authored records and deletions through the canonical native metadata reader. Omitting the mutation view retains source-only behavior. The chain has no depth cap; it returns `null` when unreadable, non-planar or cyclic; callers must disclose unavailable geometry rather than use old coordinates. Coordinates remain metres; directions are dimensionless. This planar reader does not support tilted storey placement or infer a transform from unavailable source data.
 
 Native split placement snapshots and their writers honor current `ObjectPlacement`, `PlacementRelTo`, `RelativePlacement`, axis and direction edits. Named edits use the canonical schema layout; positional edits win for the same slot. The existing source attribute callback still supplies source records, and disabling it still makes source-only placement unreadable. Deleted leaves and cyclic or oversized parent chains are refused. This does not make unsupported body/profile layouts editable or infer geometry from missing source records.
 

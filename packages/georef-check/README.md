@@ -11,6 +11,14 @@ Most real-world georeferencing problems leave the model in the wrong place: thou
 
 The governing rule is precision over recall: a false alarm on a correct model is worse than a missed defect. Every detector fires only on a signature a correct model cannot show, and every threshold below is named in the code and pinned by a test on both sides.
 
+## Install
+
+```bash
+npm install @ifc-lite/georef-check @ifc-lite/parser
+```
+
+## Usage
+
 ```ts
 import { readFileSync } from 'node:fs';
 import { IfcParser } from '@ifc-lite/parser';
@@ -43,7 +51,7 @@ if (facts) {
 
 Every source is reported, not only the winning one. The parser's `extractGeoreferenceCandidatesOnDemand` keeps the sources that `extractGeoreferencingOnDemand` hides, because the most common defects are disagreements between those sources.
 
-**Coordinate magnitude, without meshing.** `coordinates.siteOrigin` is the first IfcSite's placement origin, composed through `PlacementRelTo` (IfcLocalPlacement only, at most 32 hops), and `coordinates.siteLocationPoint` is the IfcCartesianPoint a fix that moves the site edits. `coordinates.geometry` summarises two coordinate families **separately**: IfcCartesianPoint (up to 2048, evenly strided, leaving out every point that is an axis placement's Location, since those are placement offsets, not geometry) and IfcCartesianPointList2D/3D (up to 64 lists, strided over the file, each read through a bounded 8 KiB prefix, whatever its size). The families are never pooled. A file can hold thousands of small local points beside a few large meshes in map coordinates; pooled, the two populations meet in a meaningless middle. A family is at map magnitude when its own median is, and the model is when either family is. Each point is in its own placement, not composed. All values are in project units. The cost is bounded by the sample, not the model: at most 2048 point records, 64 list prefixes, and one first-reference read per axis placement (from the raw bytes) to know which points are placement Locations.
+**Coordinate magnitude, without meshing.** `coordinates.siteOrigin` is the first IfcSite's placement origin, composed through `PlacementRelTo` (IfcLocalPlacement only, at most 32 hops), and `coordinates.siteLocationPoint` is the IfcCartesianPoint a fix that moves the site edits. `coordinates.geometry` summarises two coordinate families **separately**: IfcCartesianPoint (up to 2048, evenly strided, leaving out every point that is an axis placement's Location, since those are placement offsets, not geometry) and IfcCartesianPointList2D/3D (up to 64 lists, strided over the file, each read through a bounded 8 KiB prefix, whatever its size). The families are never pooled. A file can hold thousands of small local points beside a few large meshes in map coordinates; pooled, the two populations meet in a meaningless middle. A family is at map magnitude when its own median is, and the model is when either family is. Each point is in its own placement, not composed. All values are in project units. The cost is bounded by the sample, not the model: at most 2048 point records, 64 list prefixes, and one first-reference read per axis placement (from the raw bytes) to know which points are placement Locations. `collectGeorefFacts(store, { maxSampledPoints })` changes the individual-point limit and the budget used to calculate how many tuples to sample per point list. The 64-list cap is fixed.
 
 **Injected capabilities**, both optional:
 
@@ -97,7 +105,7 @@ Each fix also carries `apply`, a machine-readable statement of how it can be app
 
 ## Levels of Georeferencing
 
-`report.levels` follows the published definition (Clemen & Görne 2019; the [IFCGeoRefChecker documentation](https://github.com/dd-bim/City2BIM/wiki/IFCGeoRefChecker); restated in Jaud & Clemen, ISPRS Annals X-4/W5-2024). The levels are independent; a file can show several.
+`report.levels` (also available on its own as `georeferencingLevels(facts)`) follows the published definition (Clemen & Görne 2019; the [IFCGeoRefChecker documentation](https://github.com/dd-bim/City2BIM/wiki/IFCGeoRefChecker); restated in Jaud & Clemen, ISPRS Annals X-4/W5-2024). The levels are independent; a file can show several.
 
 | Level | Present when |
 |---|---|

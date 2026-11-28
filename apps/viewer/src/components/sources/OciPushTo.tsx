@@ -212,7 +212,7 @@ export function OciPushTo({ disabled = false, onBusyChange }: {
       {t('registry.push.action')}
     </Button>
     {matchesTarget && <>
-      <p role="status" className="text-sm">{t('registry.push.unconfirmed')}</p>
+      <output className="block text-sm">{t('registry.push.unconfirmed')}</output>
       <Button variant="outline" disabled={repositoryDisabled} onClick={() => void retryConfirmation()}>
         {t('registry.push.retryConfirmation')}
       </Button>

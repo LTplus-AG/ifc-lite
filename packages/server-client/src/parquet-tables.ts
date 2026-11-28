@@ -17,6 +17,7 @@
 import type { MeshData } from './types.js';
 import { meshColumns, numericColumn, transformFields } from './parquet-columns.js';
 import { applyInstanceRotation, readRotationColumns } from './parquet-rotation.js';
+import { TypedArraySlab } from './typed-array-slab.js';
 
 /**
  * Structural view of the bits of `apache-arrow`'s `Table` this module uses.
@@ -114,6 +115,12 @@ export function buildMeshesFromTables(
   // it is on a v5 blob (see `readRotationColumns`).
   const rotationCols = readRotationColumns(meshArrow, meshCount, 'identity');
   const meshes: MeshData[] = new Array(meshCount);
+  // Every mesh's arrays are views into a few batch-sized buffers, not buffers of their own (see `typed-array-slab.ts`).
+  let vertexTotal = 0, indexTotal = 0;
+  for (let i = 0; i < meshCount; i++) { vertexTotal += vertexCounts[i]; indexTotal += indexCounts[i]; }
+  const positionSlab = new TypedArraySlab((n) => new Float32Array(n), vertexTotal * 3);
+  const normalSlab = new TypedArraySlab((n) => new Float32Array(n), vertexTotal * 3);
+  const indexSlab = new TypedArraySlab((n) => new Uint32Array(n), indexTotal);
 
   // Only consume the additive origin/geometry_class columns when all three
   // origin components are present AND parallel to the mesh rows — a short or
@@ -144,7 +151,7 @@ export function buildMeshesFromTables(
 
     // Reconstruct interleaved positions from columnar format. The server
     // already applies the Z-up -> Y-up swap, so this just copies through.
-    const positions = new Float32Array(vertexCount * 3);
+    const positions = positionSlab.take(vertexCount * 3);
     for (let v = 0; v < vertexCount; v++) {
       const srcIdx = vertexStart + v;
       positions[v * 3] = posX[srcIdx];
@@ -153,7 +160,7 @@ export function buildMeshesFromTables(
     }
 
     // Reconstruct interleaved normals (also pre-transformed server-side).
-    const normals = new Float32Array(vertexCount * 3);
+    const normals = normalSlab.take(vertexCount * 3);
     for (let v = 0; v < vertexCount; v++) {
       const srcIdx = vertexStart + v;
       normals[v * 3] = normX[srcIdx];
@@ -168,7 +175,7 @@ export function buildMeshesFromTables(
 
     // Reconstruct triangle indices from columnar format.
     const triangleCount = indexCount / 3, triangleStart = indexStart / 3;
-    const indices = new Uint32Array(indexCount);
+    const indices = indexSlab.take(indexCount);
     for (let t = 0; t < triangleCount; t++) {
       const srcIdx = triangleStart + t;
       indices[t * 3] = idx0[srcIdx];

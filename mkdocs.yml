@@ -230,8 +230,10 @@ nav:
     - Real-Time Collaboration: guide/collaboration.md
     - Collab Engine (API): guide/collaboration-api.md
     - Collaboration Server: guide/collab-server.md
+    - Layer Stack: guide/layer-stack.md
     - Lens Visualization: guide/lens.md
     - Lists & Schedules: guide/lists.md
+    - Location Zones: guide/location-zones.md
     - Construction Schedule (4D): guide/construction-schedule.md
     - Schedule Import: guide/schedule-import.md
     - Cost Panel: guide/cost-panel.md

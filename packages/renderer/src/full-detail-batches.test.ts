@@ -45,6 +45,15 @@ describe('FullDetailBatches', () => {
     assert.equal(fd.has(list[46]!), false, 'the previous hover is let go');
   });
 
+  it('looks again when a caller grows the selected set in place', () => {
+    const list = [batch(1, [10]), batch(2, [20])];
+    const selected = new Set([10]);
+    const fd = new FullDetailBatches();
+    fd.resolve(list, 0, selected, null);
+    selected.add(20);
+    assert.equal(fd.resolve(list, 0, selected, null).has(list[1]!), true);
+  });
+
   it('looks again when a held batch is swapped at the same index', () => {
     const list = [batch(1, [10]), batch(2, [20])];
     const fd = new FullDetailBatches();

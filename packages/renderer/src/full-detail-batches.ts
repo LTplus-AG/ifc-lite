@@ -73,11 +73,12 @@ class Source {
   private length = 0;
   private revision = -1;
   private ids: ReadonlySet<number> | null = null;
+  private idCount = 0;
   part: FullDetailPart = NO_PART;
 
   update(list: readonly BatchedMesh[], revision: number, ids: ReadonlySet<number>, lookup: BatchesHolding): void {
-    if (ids === this.ids && list === this.list?.deref() && list.length === this.length && revision === this.revision && this.part.current(list)) return;
-    this.list = new WeakRef(list); this.length = list.length; this.revision = revision; this.ids = ids;
+    if (ids === this.ids && ids.size === this.idCount && list === this.list?.deref() && list.length === this.length && revision === this.revision && this.part.current(list)) return;
+    this.list = new WeakRef(list); this.length = list.length; this.revision = revision; this.ids = ids; this.idCount = ids.size;
     this.part = ids.size === 0 ? NO_PART : new FullDetailPart(lookup(list, ids));
   }
 }
@@ -92,6 +93,7 @@ export class FullDetailBatches {
 
   /**
    * Bring the selection's and the hover's batches up to date (in any model: a wider set only costs detail).
+   * `selected` is compared by identity (and size): pass a new set for a new selection, as `SelectionSnapshot` does.
    * They are kept apart, so moving the pointer never looks up a large selection again, and each part keeps
    * its identity while unchanged. Returns this, for its `has` and `parts`.
    */

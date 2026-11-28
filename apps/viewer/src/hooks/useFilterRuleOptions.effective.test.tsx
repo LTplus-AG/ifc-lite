@@ -12,6 +12,7 @@ import { MutablePropertyView } from '@ifc-lite/mutations';
 import { render, cleanup, settle } from '@/test/render.js';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { useViewerStore } from '@/store';
+import { sourceWatermark } from '@/utils/source-watermark.js';
 import { useFilterRuleOptions } from './useFilterRuleOptions.js';
 
 const SAMPLE = new URL('../../public/samples/hello-wall.ifc', import.meta.url);
@@ -28,10 +29,11 @@ test('filter options refresh after an in-place overlay edit bumps the mutation v
     { disableWorkerScan: true },
   );
   const view = new MutablePropertyView(store.properties, 'm1');
-  view.setExpressIdWatermark(2000);
+  const maxExpressId = sourceWatermark(store);
+  view.setExpressIdWatermark(maxExpressId);
   const initial = useViewerStore.getState();
   useViewerStore.setState({
-    ...fixtureModels({ ...fixtureModel('m1'), ifcDataStore: store }),
+    ...fixtureModels({ ...fixtureModel('m1'), ifcDataStore: store, maxExpressId }),
     mutationViews: new Map([['m1', view]]),
     mutationVersion: 0,
     searchFilterSchema: new Map(),
@@ -64,13 +66,14 @@ test('#5898 filter suggestions follow the Bulk model picker rather than the acti
     { disableWorkerScan: true },
   );
   const view = new MutablePropertyView(store.properties, 'm2');
-  view.setExpressIdWatermark(2000);
+  const maxExpressId = sourceWatermark(store);
+  view.setExpressIdWatermark(maxExpressId);
   view.createEntity('IfcBuildingElementProxy', [null, null, 'Authored object']);
   const initial = useViewerStore.getState();
   useViewerStore.setState({
     ...fixtureModels(
-      { ...fixtureModel('m1'), ifcDataStore: store },
-      { ...fixtureModel('m2', { idOffset: 1_000_000 }), ifcDataStore: store },
+      { ...fixtureModel('m1'), ifcDataStore: store, maxExpressId },
+      { ...fixtureModel('m2', { idOffset: 1_000_000 }), ifcDataStore: store, maxExpressId },
     ),
     activeModelId: 'm1',
     mutationViews: new Map([['m2', view]]),

@@ -4,6 +4,7 @@
 
 import '@/test/setup-dom.js';
 import 'fake-indexeddb/auto';
+import { sourceWatermark } from '@/utils/source-watermark';
 import { afterEach, beforeEach, mock, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { act, useState } from 'react';
@@ -40,7 +41,7 @@ END-ISO-10303-21;`;
 beforeEach(async () => {
   setLocale('en'); localStorage.clear();
   const data = await new IfcParser().parseColumnar(new TextEncoder().encode(step).buffer, { disableWorkerScan: true });
-  const model = fixtureModel('a'); model.ifcDataStore = data;
+  const model = { ...fixtureModel('a'), ifcDataStore: data, maxExpressId: sourceWatermark(data) };
   useViewerStore.setState({ ...fixtureModels(model), collabRole: null, editEnabled: true, loading: false,
     mutationViews: new Map(), undoStacks: new Map(), redoStacks: new Map(), mutationBatchTags: new Map(),
     selectedEntityId: 1, selectedEntityIds: new Set(), referenceUndo: [], referenceRedo: [],

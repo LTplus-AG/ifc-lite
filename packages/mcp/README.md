@@ -27,6 +27,20 @@ npx @ifc-lite/mcp ./model.ifc --viewer
 npx @ifc-lite/mcp ./model.ifc --open
 ```
 
+Other server options (`npx @ifc-lite/mcp --help` lists them all):
+
+| Flag | Meaning |
+| --- | --- |
+| `--port <n>` | HTTP port. Default `8765`. |
+| `--host <h>` | HTTP host. Default `127.0.0.1`. A non-loopback host needs `--token`, `--read-only-token` or `--insecure`. |
+| `--token <t>` | Bearer token for HTTP (repeatable). Full scope, or the `--read-only` preset when `--read-only` is set. |
+| `--read-only-token <t>` | Bearer token with the `--read-only` preset (repeatable). |
+| `--insecure` | Allow a non-loopback bind without a token. Never use it in production. |
+| `--allow <path>` | Restrict file access to this directory or file (repeatable, stdio and HTTP). |
+| `--allow-origin <origin>` | Let a browser origin read HTTP responses (repeatable). Default: none. |
+| `--bsdd <url>` | Override the bSDD endpoint. |
+| `--viewer-port <n>` | Preferred viewer port (`0` = any free port). |
+
 ## Building client distribution artifacts
 
 From the repository root:
@@ -161,21 +175,23 @@ The same `npx` command works as a stdio server in any MCP-aware client.
 | Category | Examples |
 | --- | --- |
 | Discovery | `model_info`, `model_list`, `model_load`, `model_unload`, `schema_describe` |
-| Query | `query_entities`, `count_entities`, `get_entity`, `get_entities_bulk`, `spatial_hierarchy`, `containment_chain`, `relationships`, `properties_unique`, `materials_list`, `classifications_list`, `georeferencing`, `georeferencing_check`, `units`, `cost_data`, `cost_evaluate` |
+| Query | `query_entities`, `count_entities`, `get_entity`, `get_entities_bulk`, `spatial_hierarchy`, `containment_chain`, `relationships`, `properties_unique`, `materials_list`, `classifications_list`, `georeferencing`, `georeferencing_check`, `units`, `cost_data`, `cost_evaluate`, `structural_data` |
 | Geometry | `geometry_bbox`, `geometry_volume`, `geometry_area`, `geometry_get`, `raycast`, `clash_check`, `clash_matrix` |
-| Validation | `ids_validate`, `ids_explain`, `model_audit` |
+| Validation | `ids_validate`, `ids_explain`, `model_audit`, `check_rules` (a `.rules.json` rule set), `review_findings` |
 | IDS authoring | `ids_audit`, `ids_lint`, `ids_read`, `ids_apply_ops` (grounding-gated), `ids_write`, `ids_schema_search`, `ids_schema_entity`, `ids_schema_pset`, `ids_diff`, `ids_preview`, `ids_infer`, `ids_coverage`, `ids_test` |
-| Mutation | `entity_set_property`, `entity_delete_property`, `entity_set_attribute`, `entity_create`, `entity_delete`, `georeferencing_write`, `georeferencing_fix`, `mutation_batch`, `mutation_undo`, `mutation_diff`, `model_save` |
+| Mutation | `entity_set_property`, `entity_delete_property`, `entity_set_attribute`, `entity_create`, `entity_delete`, `georeferencing_write`, `georeferencing_fix`, `add_classification`, `assign_classification`, `mutation_batch`, `mutation_undo`, `mutation_diff`, `model_save` |
 | Hosted modelling | `place_opening`, `place_door`, `place_window` |
 | Design modelling | `place_curtain_wall`, `place_grid`, `place_grid_column` |
-| Storeys | `storey_list`, `storey_add`, `storey_rename`, `storey_plan_edit`, `storey_edit`, `storey_delete`: add, re-level (elevation or floor-to-floor) and delete storeys with geometry following them. `storey_plan_edit` dry-runs the edit and reports refusals before anything is written |
-| Physical edits | `edit_hosted_element`, `edit_element_geometry`, `copy_elements`, `duplicate_element`, `array_elements` |
+| Storeys | `storey_list`, `storey_add`, `storey_rename`, `storey_plan_edit`, `storey_edit`, `storey_delete`: add, re-level (elevation or floor-to-floor) and delete storeys with geometry following them. `storey_plan_edit` dry-runs the edit and reports refusals before anything is written; `storey_plan_add` does the same for `storey_add`. `set_top_constraint` binds an element top to a storey, slab or roof; `copy_to_storeys` copies products to other storeys |
+| Physical edits | `edit_hosted_element`, `edit_element_geometry`, `copy_elements`, `duplicate_element`, `array_elements`, `mirror_elements` |
 | Native Room | `query_rooms`, `room_command` |
 | Wall joins | `join_walls` |
 | BCF | `bcf_topic_list`, `bcf_topic_create`, `bcf_topic_update`, `bcf_topic_close`, `bcf_viewpoint_create`, `bcf_export` |
 | bSDD | `bsdd_search`, `bsdd_class`, `bsdd_property_sets`, `bsdd_match` |
 | Diff | `model_diff` (`by_content` for content-keyed matching), `quantity_diff` |
-| Export | `export_ifc`, `export_csv`, `export_json`, `export_glb`, `export_obj`, `export_ifcx`, `export_3dm`, `export_gltf`, `export_jsonld`, `export_cityjson`, `export_cityjsonseq`, `export_hbjson`, `export_dfjson` |
+| Draft layers and review | `create_draft_layer`, `draft_apply_ops`, `diff_layer`, `dry_run_merge`, `list_conflicts`, `publish_layer`, `request_review`, `respond_to_review`, `add_review_topic`, `add_review_feedback`, `get_review_feedback` |
+| Flow | `describe_flow`, `run_flow`, `propose_flow`, `resume_flow` |
+| Export | `export_ifc`, `export_csv`, `export_json`, `export_glb`, `export_obj`, `export_ifcx`, `export_usd`, `export_3dm`, `export_gltf`, `export_jsonld`, `export_cityjson`, `export_cityjsonseq`, `export_hbjson`, `export_dfjson` |
 | Model transforms | `model_merge`, `model_convert`, `model_extract`, `model_anonymize`, `model_simplify`, `model_lod`: write to `file_path` and leave the loaded model alone. An existing file there is replaced (a loaded model's source never is). `model_merge` and `model_anonymize` refuse a model with unsaved edits |
 | Viewer | `viewer_ask`, `viewer_open`, `viewer_close`, `viewer_status`, `viewer_select`, `viewer_colorize`, `viewer_isolate`, `viewer_hide`, `viewer_show`, `viewer_reset`, `viewer_fly_to`, `viewer_set_section`, `viewer_clear_section`, `viewer_color_by_storey`, `viewer_color_by_property`, `viewer_get_selection`, `viewer_wait_for_selection`, `viewer_describe_selection` |
 

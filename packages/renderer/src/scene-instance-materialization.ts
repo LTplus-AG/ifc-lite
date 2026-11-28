@@ -4,7 +4,22 @@
 import type { DecodedInstancedShard, MeshData } from '@ifc-lite/geometry';
 import { INSTANCE_COLOR_OFFSET, INSTANCE_STRIDE_BYTES, prepareInstancedRender } from './instanced-render.js';
 interface Occurrence { templateIndex: number; byteOffset: number; originalColor: [number, number, number, number]; itemId?: number }
-interface Template { modelIndex: number; positions: Float32Array; normals: Float32Array; indices: Uint32Array; instanceData: ArrayBuffer; canonicalAnchors?: Float64Array; canonicalMatrixTranslations?: Float32Array }
+export interface Template { modelIndex: number; positions: Float32Array; normals: Float32Array; indices: Uint32Array; instanceData: ArrayBuffer; canonicalAnchors?: Float64Array; canonicalMatrixTranslations?: Float32Array }
+export function occurrenceOrigin(tpl: Template, b: number, dv: DataView): [number, number, number] {
+  const anchorOffset = (b / INSTANCE_STRIDE_BYTES) * 3;
+  const raw12 = dv.getFloat32(b + 48, true), raw13 = dv.getFloat32(b + 52, true), raw14 = dv.getFloat32(b + 56, true);
+  const anchors = tpl.canonicalAnchors, baseline = tpl.canonicalMatrixTranslations;
+  // Model/entity placement mutates the matrix after decode. Do not apply a
+  // stale anchor to an edited occurrence whose matrix no longer matches its
+  // baseline. Unedited occurrences retain source precision.
+  const canonical = anchors && baseline
+    && raw12 === baseline[anchorOffset] && raw13 === baseline[anchorOffset + 1] && raw14 === baseline[anchorOffset + 2];
+  const m12 = canonical ? anchors[anchorOffset] : raw12;
+  const m13 = canonical ? anchors[anchorOffset + 1] : raw13;
+  const m14 = canonical ? anchors[anchorOffset + 2] : raw14;
+  return [m12, m13, m14];
+}
+
 /** CPU expansion retains the canonical f64 occurrence anchor rather than
  * round-tripping a national-grid translation through the V1 f32 matrix. */
 export function materializeInstances(expressId: number, occ: readonly Occurrence[], templates: readonly (Template | undefined)[]): MeshData[] | undefined {
@@ -17,17 +32,7 @@ export function materializeInstances(expressId: number, occ: readonly Occurrence
       const m0 = dv.getFloat32(b + 0, true), m1 = dv.getFloat32(b + 4, true), m2 = dv.getFloat32(b + 8, true);
       const m4 = dv.getFloat32(b + 16, true), m5 = dv.getFloat32(b + 20, true), m6 = dv.getFloat32(b + 24, true);
       const m8 = dv.getFloat32(b + 32, true), m9 = dv.getFloat32(b + 36, true), m10 = dv.getFloat32(b + 40, true);
-      const anchorOffset = (b / INSTANCE_STRIDE_BYTES) * 3;
-      const raw12 = dv.getFloat32(b + 48, true), raw13 = dv.getFloat32(b + 52, true), raw14 = dv.getFloat32(b + 56, true);
-      const anchors = tpl.canonicalAnchors, baseline = tpl.canonicalMatrixTranslations;
-      // Model/entity placement mutates the matrix after decode. Do not apply a
-      // stale anchor to an edited occurrence whose matrix no longer matches its
-      // baseline. Unedited occurrences retain source precision.
-      const canonical = anchors && baseline
-        && raw12 === baseline[anchorOffset] && raw13 === baseline[anchorOffset + 1] && raw14 === baseline[anchorOffset + 2];
-      const m12 = canonical ? anchors[anchorOffset] : raw12;
-      const m13 = canonical ? anchors[anchorOffset + 1] : raw13;
-      const m14 = canonical ? anchors[anchorOffset + 2] : raw14;
+      const [m12, m13, m14] = occurrenceOrigin(tpl, b, dv);
       const n = tpl.positions.length;
       const positions = new Float32Array(n);
       const normals = new Float32Array(tpl.normals.length);

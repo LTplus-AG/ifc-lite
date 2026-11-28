@@ -27,6 +27,8 @@ export interface PushRegistryOptions {
   location?: (session: string, req: http.IncomingMessage) => string;
   /** Overrides the `Docker-Content-Digest` sent on a blob PUT. */
   blobDigestHeader?: (digest: string) => string | undefined;
+  /** Overrides the acknowledgement status after storing a manifest. */
+  manifestStatus?: (reference: string) => number;
   /** Gate as in `registry()`: false -> 401 (with `challenge` when set), 'deny' -> 403. */
   accept?: (authorization: string | undefined, req: http.IncomingMessage) => boolean | 'deny';
   challenge?: string;
@@ -124,7 +126,7 @@ export function pushRegistry(options: PushRegistryOptions = {}): { handler: Hand
       if (referencedBlobs(doc).some((d) => !store.blobs.has(d))) return error(res, 400, 'MANIFEST_BLOB_UNKNOWN');
       store.manifests.set(digest, { mediaType: String(req.headers['content-type'] ?? ''), bytes: body });
       if (!reference.startsWith('sha256:')) store.tags.set(reference, digest);
-      return send(res, { status: 201, headers: { 'docker-content-digest': digest, location: `${prefix}/manifests/${digest}` } });
+      return send(res, { status: options.manifestStatus?.(reference) ?? 201, headers: { 'docker-content-digest': digest, location: `${prefix}/manifests/${digest}` } });
     }
     if (manifestMatch && (method === 'HEAD' || method === 'GET')) {
       const reference = manifestMatch[1];

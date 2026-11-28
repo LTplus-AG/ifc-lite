@@ -11,10 +11,15 @@ import { sanitizeFilename } from '@/lib/export/download';
 import { sha256 } from './artifacts';
 import { RegistryError } from './protocol';
 
+/** The model a registry save exports: the active one, else the only one loaded. */
+export function registryExportModelId(state: ReturnType<typeof useViewerStore.getState>): string | undefined {
+  return state.activeModelId ?? (state.models.size === 1 ? state.models.keys().next().value : undefined);
+}
+
 /** Export the active model through the same complete, mutation-aware path as Export modified IFC. */
 export async function exportRegistryModel(): Promise<{ bytes: Uint8Array<ArrayBuffer>; filename: string }> {
   const state = useViewerStore.getState();
-  const id = state.activeModelId ?? (state.models.size === 1 ? state.models.keys().next().value : undefined);
+  const id = registryExportModelId(state);
   if (!id) throw new RegistryError('Open and select an IFC model before publishing.');
   const model = state.models.get(id);
   if (!model || model.schemaVersion === 'IFC5' || model.ifcDataStore?.sourceKind === 'tabular') throw new RegistryError('Select an IFC STEP model for this demo.');

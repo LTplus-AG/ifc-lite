@@ -105,6 +105,24 @@ function checkRow(batch, row, reference) {
   }
   for (let i = indexStart; i < indexStart + indexCount; i++) assert.ok(indices[i] < vertexCount, `row ${row}: index in range`);
 
+  // Across side-split records at the same node, the smallest normal must still be the one
+  // elected from the original referenced corners before welding (#11606).
+  const least = (map, key, normal) => {
+    const old = map.get(key);
+    if (!old || (normal[0] - old[0] || normal[1] - old[1] || normal[2] - old[2]) < 0) map.set(key, normal.map(component => component || 0));
+  };
+  const authored = new Map(), stored = new Map();
+  for (const i of reference.indices) {
+    const key = [0, 1, 2].map(k => Math.round((reference.origin[k] + reference.positions[3 * i + k]) / step) - window[k]).join(',');
+    least(authored, key, Array.from(reference.normals.subarray(3 * i, 3 * i + 3)));
+  }
+  for (let v = 0; v < vertexCount; v++) {
+    const key = [0, 1, 2].map(k => view.getUint16(v * RECORD_BYTES + 2 * k, true)).join(',');
+    const i = (vertexStart + v) * 3;
+    if (Number.isFinite(batch.lodNormals[i])) least(stored, key, Array.from(batch.lodNormals.subarray(i, i + 3)));
+  }
+  assert.deepEqual(stored, authored, `row ${row}: authored normals elected by lattice node`);
+
   // Every reference vertex has a record within half a step on each axis, and the box is its f64 fold.
   const { positions, origin } = reference;
   const box = [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity];
@@ -121,6 +139,8 @@ function checkRow(batch, row, reference) {
     assert.ok(found, `row ${row}: vertex ${p / 3} of #${reference.expressId} has no record within half a step (${step} m)`);
   }
   for (let k = 0; k < 6; k++) assert.equal(bounds[row * 6 + k], box[k], `row ${row}: box component ${k}`);
+  // The anchor is the first source vertex, folded in f64 exactly as the renderer's chunkCellKey folds it.
+  for (let k = 0; k < 3; k++) assert.equal(batch.anchors[row * 3 + k], origin[k] + positions[k], `row ${row}: anchor component ${k}`);
 
   const referenceArea = doubleArea(reference.indices, 0, reference.indices.length,
     (i) => [positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]]);
@@ -143,8 +163,8 @@ function checkFixture(api, bytes, label) {
     const batch = collection.encodeCompact(CELL_METRES);
     try {
       return {
-        meshCount: batch.meshCount, records: batch.records, indices: batch.indices, table: batch.table,
-        windows: batch.windows, bounds: batch.bounds, cells: batch.cells, totals: batch.totals,
+        meshCount: batch.meshCount, records: batch.records, lodNormals: batch.lodNormals, indices: batch.indices, table: batch.table,
+        windows: batch.windows, bounds: batch.bounds, cells: batch.cells, anchors: batch.anchors, totals: batch.totals,
         refusals: batch.refusals, meshes: readMeshes(collection),
       };
     } finally {
@@ -160,6 +180,9 @@ function checkFixture(api, bytes, label) {
   assert.equal(encoded.windows.length, rows * 3);
   assert.equal(encoded.bounds.length, rows * 6);
   assert.equal(encoded.cells.length, rows * 3);
+  assert.ok(encoded.anchors instanceof Float64Array && encoded.anchors.length === rows * 3, `${label}: one anchor per row`);
+  assert.ok(encoded.lodNormals instanceof Float32Array);
+  assert.equal(encoded.lodNormals.length, encoded.records.length / RECORD_BYTES * 3);
   assert.equal(encoded.records.length % RECORD_BYTES, 0);
   assert.equal(encoded.refusals.length, REFUSAL_KINDS);
   const refused = encoded.refusals.reduce((sum, n) => sum + n, 0);

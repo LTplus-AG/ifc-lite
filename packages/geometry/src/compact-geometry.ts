@@ -22,6 +22,8 @@
 export interface CompactPayload {
   /** 12 bytes per welded vertex: u16 x, y, z offsets, u16 oct normal, u32 entity lane. */
   records: Uint8Array;
+  /** Smallest authored corner normal per welded vertex, in source f32 comparison order. */
+  lodNormals?: Float32Array;
   /** Mesh-local u16 triangle indices. */
   indices: Uint16Array;
   /** Per row (`COMPACT_TABLE_STRIDE` columns): mesh index in its collection, vertex start, vertex
@@ -33,6 +35,11 @@ export interface CompactPayload {
   bounds: Float64Array;
   /** Per row: cell indices xyz at the row's level. */
   cells: Int32Array;
+  /**
+   * Per row: the first source vertex (`origin + position`, f64), where the f32 load takes a mesh's spatial chunk.
+   * Absent from a wasm build that predates it: consumers then take the first record, within half a step of it.
+   */
+  anchors?: Float64Array;
 }
 
 /** A compact mesh's row: its payload and row number. */
@@ -53,11 +60,14 @@ export interface CompactWireRef {
 interface CompactBatchJs {
   readonly meshCount: number;
   readonly records: Uint8Array;
+  readonly lodNormals?: Float32Array;
   readonly indices: Uint16Array;
   readonly table: Uint32Array;
   readonly windows: Float64Array;
   readonly bounds: Float64Array;
   readonly cells: Int32Array;
+  /** Absent before the wasm build that writes it. */
+  readonly anchors?: Float64Array;
   free(): void;
 }
 
@@ -105,7 +115,10 @@ export function compactBounds(ref: CompactRef): Float64Array {
 
 /** Every array of a payload. One compact mesh keeps the whole payload of its batch alive, not only its own rows. */
 function payloadArrays(p: CompactPayload): ArrayBufferView[] {
-  return [p.records, p.indices, p.table, p.windows, p.bounds, p.cells];
+  const arrays: ArrayBufferView[] = [p.records, p.indices, p.table, p.windows, p.bounds, p.cells];
+  if (p.lodNormals) arrays.push(p.lodNormals);
+  if (p.anchors) arrays.push(p.anchors);
+  return arrays;
 }
 
 /** The payload's buffers, for a transfer list (each wasm getter returned a standalone copy). */
@@ -114,7 +127,7 @@ export function compactPayloadTransfers(p: CompactPayload): ArrayBuffer[] {
 }
 
 /**
- * Hand a memory census every array a compact mesh retains: the records, the indices and the four
+ * Hand a memory census every array a compact mesh retains: the records, the indices and the
  * per-row tables. The one walk both censuses use (the renderer's and the viewer's), so neither undercounts.
  */
 export function visitCompactPayload(p: CompactPayload, visit: (array: ArrayBufferView, kind: 'indices' | 'other') => void): void {
@@ -164,6 +177,12 @@ export function encodeCompactCollection(
       records: batch.records, indices: batch.indices, table: compactTableOf(batch.table, count),
       windows: batch.windows, bounds: batch.bounds, cells: batch.cells,
     };
+    // Read once (every wasm getter copies). TODO(remove-by: every supported @ifc-lite/wasm writes compact anchors,
+    // compact geometry maintainers), #11606: an older build has none (consumers then take the first record).
+    const normals = batch.lodNormals;
+    if (normals) payload.lodNormals = normals;
+    const anchors = batch.anchors;
+    if (anchors && anchors.length === count * 3) payload.anchors = anchors;
     const index = payloads.length;
     payloads.push(payload);
     const rows = new Map<number, CompactWireRef>();

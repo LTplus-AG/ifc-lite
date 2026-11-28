@@ -117,12 +117,13 @@ export function parseArgs(argv) {
   if (opts.mode === 'in-run' && !(opts.headSha && opts.mergeSha && opts.measuredDir)) {
     throw new Error('--in-run needs --head-sha, --merge-sha and --measured-dir');
   }
-  rejectSweepReplay(opts);
+  rejectReplayMode(opts);
   return opts;
 }
 
-function rejectSweepReplay({ mode, mainSha, prRun }) {
+function rejectReplayMode({ mode, mainSha, prRun }) {
   if (mode === 'sweep' && (mainSha || prRun)) throw new Error('--sweep cannot replay with --main-sha or --pr-run');
+  if (mode === 'in-run' && prRun) throw new Error('--in-run requires current evidence and cannot replay with --pr-run');
 }
 
 /** Measurement job gating filters and the `rust` filter, read from test.yml. */
@@ -216,7 +217,7 @@ function finish(opts, records, extra) {
 }
 
 export function run(opts, env = process.env, makeIo = createIo) {
-  rejectSweepReplay(opts);
+  rejectReplayMode(opts);
   const repo = env.GITHUB_REPOSITORY;
   if (!repo) throw new Error('GITHUB_REPOSITORY is not set');
   const gateMode = 'shadow';
@@ -321,10 +322,11 @@ export function run(opts, env = process.env, makeIo = createIo) {
     const baseSha = baseRef === 'main' && !opts.mainSha ? mainTip : null;
     let verdict;
     if (baseRef === 'main' && headSha) {
-      // If the measurement directory is absent, use the newest earlier run.
-      const readMeasured = () => inRun && existsSync(opts.measuredDir)
-        ? { families: readdirSync(opts.measuredDir).filter((n) => n.endsWith('.json')).sort().map((f) => loadMeasuredFile(join(opts.measuredDir, f))), mergeSha: opts.mergeSha }
-        : null;
+      const readMeasured = inRun ? () => {
+        if (!existsSync(opts.measuredDir)) return null;
+        const files = readdirSync(opts.measuredDir).filter((n) => n.endsWith('.json')).sort();
+        return { families: files.map((f) => loadMeasuredFile(join(opts.measuredDir, f))), mergeSha: opts.mergeSha };
+      } : null;
       verdict = evaluatePr(io, { pr: t.pr, headSha, mainTip, ceilings, globs, readMeasured, prRun: opts.prRun ?? null, baseRef, baseSha });
     } else {
       const outsideMain = Boolean(baseRef && baseRef !== 'main');

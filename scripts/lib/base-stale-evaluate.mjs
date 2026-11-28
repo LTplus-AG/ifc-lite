@@ -28,6 +28,7 @@ export function evaluatePr(io, { pr, headSha, mainTip, ceilings, globs, measured
     const nativeRequired = files.some((file) => matchesAny(file, globs.nativeGlobs));
     let prMeasured = replay?.families ?? null;
     measured ??= prRun ? null : readMeasured?.();
+    if (readMeasured && !measured) throw new Error('no measurement from the current Test attempt');
     if (!prRun && measured) {
       if (measured.families.filter((family) => family.family === 'bundle').length !== 1) {
         throw new Error('the in-run measurement directory must contain exactly one valid bundle measurement');

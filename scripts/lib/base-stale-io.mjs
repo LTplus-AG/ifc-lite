@@ -223,15 +223,14 @@ export function createIo({ repo, cwd = process.cwd(), cache = null, now = () => 
    * The PR head's newest measurement: the newest `pull_request` Test run on
    * that head that uploaded one. Older runs on the same head are not skipped
    * past a newer measuring run, so a re-run with a newer base wins. Two PRs
-   * can share a head against different bases, so a run that names its PRs
-   * must name this one (a fork's run names none and is taken as is), and the
-   * cache is keyed by PR as well as head.
+   * can share a head, so require an explicit association with this main PR
+   * before reading artifacts or reusing cached measurements.
    */
   function prMeasurement(headSha, onlyRun = null, number = null) {
+    const forThisPr = (r) => r.pull_requests?.some((p) => p.number === number && p.base?.ref === 'main');
     if (onlyRun) {
       const run = api(`repos/${repo}/actions/runs/${onlyRun}`, `run ${onlyRun}`);
-      if (run.event !== 'pull_request' || run.path?.split('@')[0] !== '.github/workflows/test.yml'
-          || (number !== null && run.pull_requests?.length && !run.pull_requests.some((pr) => pr.number === number && pr.base?.ref === 'main'))) return null;
+      if (run.event !== 'pull_request' || run.path?.split('@')[0] !== '.github/workflows/test.yml' || !run.head_sha || !forThisPr(run)) return null;
       const families = runMeasurement(onlyRun, run);
       if (!families) return null;
       // A replay names a past run, whose head is not the PR's current one.
@@ -241,7 +240,6 @@ export function createIo({ repo, cwd = process.cwd(), cache = null, now = () => 
       `repos/${repo}/actions/workflows/test.yml/runs?head_sha=${headSha}&event=pull_request&per_page=20`,
       `Test runs on ${headSha}`,
     ).workflow_runs ?? [];
-    const forThisPr = (r) => number === null || !(r.pull_requests?.length) || r.pull_requests.some((p) => p.number === number);
     const own = runs
       .filter((r) => !String(r.head_branch ?? '').startsWith('mergify/merge-queue/') && forThisPr(r))
       .sort((a, b) => b.id - a.id);

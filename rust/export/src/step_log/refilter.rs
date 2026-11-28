@@ -255,21 +255,25 @@ pub(crate) fn filter_source_line(
     narrow(text, excluded, upper, registry)
 }
 
-/// The created-entity pass's filter: the same three branches as the source
-/// pass, so a created styled item, layer assignment, texture map or
-/// non-relationship aggregate naming an omitted entity is narrowed or
-/// withheld rather than written with a dangling `#N` (#5941 review; the
-/// TypeScript created-entity pass was brought in line in the same change).
-pub(crate) fn filter_created_line(
-    text: &str,
-    id: u32,
-    upper: &str,
-    schema: &str,
-    excluded: &dyn Fn(u32) -> bool,
-    any_excluded: bool,
-) -> Filtered {
-    filter_source_line(text, id, upper, schema, excluded, any_excluded)
+/// Apply the same filters to edited, unedited, and newly created records.
+pub(crate) fn filter_log_line(pass: &mut super::pass::Pass<'_, '_>, line: String, id: u32, upper: &str) -> Result<String, String> {
+    let line = match filter_source_line(&line, id, upper, pass.schema, &|id| pass.is_omitted(id), !pass.overlay.tombstones.is_empty()) {
+        Filtered::Keep => line,
+        Filtered::Rewrite(line) => line,
+        Filtered::Withhold(warning) => return Err(warning),
+    };
+    if upper == "IFCRELDEFINESBYTYPE" && !pass.overlay.retypes.is_empty() {
+        if let Some((narrowed, warning)) = type_assignments::after_retypes(pass, &line, id) {
+            let Some(narrowed) = narrowed else { return Err(warning) };
+            pass.warnings.push(warning);
+            return Ok(narrowed);
+        }
+    }
+    Ok(line)
 }
+
+#[path = "refilter_type_assignments.rs"]
+mod type_assignments;
 
 #[cfg(test)]
 #[path = "refilter_tests.rs"]

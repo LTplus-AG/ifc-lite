@@ -1,6 +1,6 @@
 # @ifc-lite/cache
 
-Binary cache format for IFClite. Caches the parsed data store and geometry in a compact binary format so a previously-loaded IFC reopens in milliseconds instead of re-running the full parse + tessellation pipeline. Content-addressable (xxHash64 of the source IFC), so cache invalidation is automatic.
+Binary cache format for IFClite. Caches the parsed data store and geometry in a compact binary format so a previously-loaded IFC reopens without re-running the full parse + tessellation pipeline (see [Performance](https://ifclite.dev/docs/guide/performance/)). Content-addressable (xxHash64 of the source IFC), so cache invalidation is automatic.
 
 **Properties and quantities are not part of that speedup.** `BinaryCacheWriter.write` serializes whatever the data store's property/quantity tables already hold. A STEP-parsed store resolves properties lazily on demand and never populates those tables, so a cache written straight from a STEP parse round-trips with EMPTY property/quantity tables — a cache-restored model queries properties exactly as slow as a fresh parse (see `docs/guide/querying.md`). If your application needs fast repeat property queries too, retain the source buffer alongside the cache entry and re-attach on-demand extraction on read, the way the viewer's cache hook does.
 
@@ -108,6 +108,18 @@ const rawKey = xxhash64(buffer);     // same hash as a bigint
 
 The cache keys models by the xxHash64 of the source IFC, and `reader.validate(cacheBuffer, sourceBuffer)` uses the same hash to detect when the source has changed.
 
+## Source fingerprints
+
+`computeSourceFingerprint(bytes)` returns a `SourceFingerprint` (`{ hex, hash }`) from a fixed spread of the source: head, tail, eight interior windows and the byte length. It reads the same amount of data whatever the file size, so it is a cheap lookup key, not a content check: an edit that keeps the length and falls between the sampled windows gives the same fingerprint. `computeSourceFingerprintFromBlob(file)` gives the same result from a `Blob`/`File` through bounded slice reads. `sourceModelIdentity(name, bytes)` returns `` `${name}:${hex}` ``, the model identity the viewer, the CLI and the MCP server match rule-set `targets.modelFingerprints` against.
+
+```typescript
+import { computeSourceFingerprint, computeSourceFingerprintFromBlob, sourceModelIdentity } from '@ifc-lite/cache';
+
+const { hex } = computeSourceFingerprint(buffer);
+const same = await computeSourceFingerprintFromBlob(file); // same value for the same bytes
+const identity = sourceModelIdentity('office.ifc', buffer);
+```
+
 ## Building a cache outside the browser
 
 `ifc-build-cache` is a native CLI that writes this format from an IFC file without a browser or the WASM heap, so a server, a build step or a function can prepare the cache that `BinaryCacheReader` then reads. It installs through cargo from the repository. See the [Native Cache Builder guide](https://ifclite.dev/docs/guide/native-cache/) for installation, which format version a build writes, and what a native cache leaves out.
@@ -116,13 +128,13 @@ The cache keys models by the xxHash64 of the source IFC, and `reader.validate(ca
 
 The byte-level layout, the reader's compatibility rules and the conformance criterion for another writer are specified in [`SPEC.md`](./SPEC.md).
 
-The binary layout is versioned via the exported `FORMAT_VERSION` constant. Readers accept entries written by the current or an older format version (with backward-compatible decoding, e.g. the per-mesh geometry-class byte added in v5) and reject entries written by a newer one, so mixed-version deployments fail safely toward a cold parse. One exception: `read()` throws on geometry written before v13 (`skipGeometry: true` still reads the rest), so discard such an entry and rebuild it. Quantity and property tables written at v16 or earlier are misread when non-empty; `SPEC.md` §11 lists every version gate.
+The binary layout is versioned via the exported `FORMAT_VERSION` constant. Readers accept entries written by the current or an older format version (with backward-compatible decoding, e.g. the per-mesh source ids added in v14) and reject entries written by a newer one, so mixed-version deployments fail safely toward a cold parse. One exception: `read()` throws on geometry written before v13 (`skipGeometry: true` still reads the rest), so discard such an entry and rebuild it. Quantity and property tables written at v16 or earlier are misread when non-empty; `SPEC.md` §11 lists every version gate.
 
 Version 19 preserves explicitly supplied canonical `MeshData.appearanceSource` provenance. Fresh canonical meshes store an identity marker; fragmented or expanded meshes reference a geometry-header source-index pool, shared across spatial chunks, plus their corner mapping. Restored metadata points to the restored mesh indices, preserving the topology identity fence required by appearance preview. Invalid identities, source lengths, pool references and corner ranges fail cache reading/writing instead of enabling an unsafe preview. Unmarked meshes remain unmarked; old records never acquire inferred canonical identity.
 
 Version 20 appends the optional exact WASM RTC producer frame to `CoordinateInfo`, including an authoritative `needsShift: false` and a meaningful `true` frame at the zero origin. Direct reads of v13–v19 geometry remain supported with this provenance absent; it is never inferred from the older applied-only `wasmRtcOffset` field. Frame-present records strictly validate finite coordinates, the boolean decision, and offset consistency. Frame-absent records preserve legacy numeric offset values (including old non-finite values) for compatibility, without treating them as exact provenance.
 
-The viewer includes `FORMAT_VERSION` in its cache key, so older entries reparse once and receive real provenance from the canonical geometry pipeline. Direct readers can still decode v13–v19 records for viewing, with metadata introduced by newer versions absent. When reading an older geometry header directly, pass its version as the second argument to `readGeometryHeadV13(reader, version)`; it defaults to the current format. Keep the returned chunk metadata when calling `decodeGeometryChunk`, since it carries the shared source-index pool. This does not add UV/image caching: texture-carrying viewer models retain their existing cache bypass.
+The viewer includes `FORMAT_VERSION` in its cache key, so older entries reparse once and receive real provenance from the canonical geometry pipeline. Direct readers can still decode v13–v19 records for viewing, with metadata introduced by newer versions absent. When reading an older geometry header directly, pass its version as the second argument to `readGeometryHeadV13(reader, version)`; it defaults to the current format. Keep the returned chunk metadata when calling `decodeGeometryChunk`, since it carries the shared source-index pool. `read()`, `openGeometryChunksV13` and `decodeGeometryChunk` also accept `sharedArena: true`, which copies a chunk's mesh arrays into shared blocks instead of one buffer per array; such an array is a view into a shared block, so copy it (`array.slice()`) before transferring it. This does not add UV/image caching: texture-carrying viewer models retain their existing cache bypass.
 
 ## Inflating chunks off the main thread
 
@@ -130,7 +142,7 @@ The viewer includes `FORMAT_VERSION` in its cache key, so older entries reparse 
 
 ## Source-hash contract (and `omitSourceHash`)
 
-By default the header stores the full-file `xxhash64` of the source in `sourceHash`, and `reader.validate()` / `read({ sourceBuffer })` compare against it. Hashing a large source can be a multi-second main-thread cost, so a caller that validates the source **another way** (e.g. an application-layer content hash plus a file modified-time guard, as the viewer's source-decoupled cache tier does) can pass `omitSourceHash: true`:
+By default the header stores the full-file `xxhash64` of the source in `sourceHash`, and `reader.validate()` / `read({ sourceBuffer })` compare against it. Hashing a large source is a full-file pass on the main thread (see [Performance](https://ifclite.dev/docs/guide/performance/)), so a caller that validates the source **another way** (e.g. an application-layer content hash plus a file modified-time guard, as the viewer's source-decoupled cache tier does) can pass `omitSourceHash: true`:
 
 ```typescript
 import { BinaryCacheWriter, type CacheDataStore } from '@ifc-lite/cache';

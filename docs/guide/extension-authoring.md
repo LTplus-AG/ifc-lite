@@ -358,7 +358,7 @@ Exits non-zero on any failure; `--bail` stops on first fail.
 In the Extensions panel, click the **Fork** icon on any installed extension row. The host seeds the chat with:
 
 - The full manifest (in an `ifc-extension-manifest` fenced block)
-- Up to 6 bundle files, each capped at 4 KB and fenced with `ifc-extension-code` / `ifc-extension-widget`
+- Up to 6 bundle files, each truncated at 4,000 characters and fenced with `ifc-extension-code` / `ifc-extension-widget`
 - A prompt asking what you want to change
 
 The AI then runs the same authoring loop as a fresh bundle, modifying instead of creating. When you re-install, the Capability Review screen surfaces the diff vs your existing install (new / dropped capabilities are highlighted).
@@ -434,7 +434,7 @@ The signature commits to a canonical hash of the bundle contents + the `signedAt
     The manifest's `entry.commands["x"]` points at a file that isn't in the bundle. Likely you didn't `git add` the file before packing. Run `ext validate` first — it cross-references entries against the bundle's file map.
 
 ??? question "I want to inspect a packed `.iflx` without installing"
-    `ext verify <file>.iflx` prints the manifest, file list, capability list, and signature (if any) without writing anything to the viewer's storage.
+    `ext verify <file>.iflx` unpacks the bundle and prints its `id@version` and signature status (fingerprint and `signedAt` when signed; `--json` for machine output) without writing anything to the viewer's storage. It does not list the files or capabilities; run `ext validate` on the unpacked directory for the manifest checks.
 
 ## Next steps
 

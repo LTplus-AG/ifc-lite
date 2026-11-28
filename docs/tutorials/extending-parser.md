@@ -45,7 +45,7 @@ interface CustomDoorData {
   width: number;
   height: number;
   isExternal: boolean;
-  fireRating: number;
+  fireRating: string; // IfcLabel, e.g. 'EI30' or 'REI 60'
 }
 
 // Create custom decoder
@@ -79,7 +79,7 @@ class DoorDecoder {
       width: Number(findQuantity('Width')) || 0,
       height: Number(findQuantity('Height')) || 0,
       isExternal: Boolean(findProp('Pset_DoorCommon', 'IsExternal')),
-      fireRating: Number(findProp('Pset_DoorCommon', 'FireRating')) || 0
+      fireRating: String(findProp('Pset_DoorCommon', 'FireRating') ?? '')
     };
   }
 
@@ -142,7 +142,7 @@ decoder.register('IFCDOOR', (expressId, store) => {
     ?.properties.find(prop => prop.name === 'FireRating')?.value;
   return {
     expressId,
-    fireRating: Number(fireRating) || 0,
+    fireRating: String(fireRating ?? ''),
     // ... decode door
   };
 });
@@ -206,8 +206,17 @@ import { parseExpressSchema, generateTypeScript } from '@ifc-lite/codegen';
 const schema = parseExpressSchema(expressSource);
 const generated = generateTypeScript(schema);
 // generated.entities / .types / .enums / .selects / .schemaRegistry are TS source.
-// Write them into packages/parser/src/generated, then rebuild the parser.
 ```
+
+The committed generated code lives in several places that must stay in step:
+`packages/codegen/generated/{ifc4,ifc4x3,ifc2x3}`, the parser copy in
+`packages/parser/src/generated` (IFC4 in full, plus only `schema-registry.ts`
+under `ifc4x3/` and `ifc2x3/`), and the Rust registries in
+`rust/core/src/generated/`. Regenerate with the codegen CLI (`pnpm --filter
+@ifc-lite/codegen generate:ifc4`, `generate:ifc4x3`, `generate:ifc2x3`; see
+`packages/codegen/INTEGRATION.md` for copying into the parser), then run
+`pnpm check:codegen-sync`, which regenerates every target into a temp
+directory and fails on any committed file that differs.
 
 For one-off vendor extensions whose schema you do not control, do not extend the
 schema. Read the raw attributes of unknown entities on demand instead (see the
@@ -229,7 +238,7 @@ function extractCustom(store: IfcDataStore, expressId: number): Record<string, u
 
   return {
     isExternal: Boolean(findProp('Pset_WallCommon', 'IsExternal')),
-    fireRating: Number(findProp('Pset_WallCommon', 'FireRating')) || 0,
+    fireRating: String(findProp('Pset_WallCommon', 'FireRating') ?? ''), // IfcLabel text
   };
 }
 ```
@@ -271,9 +280,11 @@ const customFragmentShader = `
 ```
 
 !!! note "Custom Rendering"
-    Custom shaders and dynamic per-entity coloring are advanced features
-    not exposed in the current public API. For custom rendering needs,
-    consider extending the Renderer class or contributing to the project.
+    Custom shaders are not exposed in the current public API. Per-entity
+    colours are: pass an expressId-to-RGBA map to
+    `renderer.getScene().setColorOverrides(overrides, device, pipeline)`
+    (device and pipeline from `renderer.getGPUDevice()` and
+    `renderer.getPipeline()`; both can return `null`, so check them first).
 
 ### Visibility-Based Highlighting
 
@@ -316,6 +327,14 @@ class HighlightManager {
 ```
 
 ## Plugin System
+
+!!! note "Illustrative pattern"
+    `IfcLitePlugin` and `PluginManager` below are not ifc-lite APIs; they show
+    one way to structure your own code. The extension points that ship are
+    `@ifc-lite/extensions` (manifests, capabilities, UI slots) and
+    `@ifc-lite/plugin-api` (file-source plugins); see
+    [Extensions](../guide/extensions.md) and
+    [Authoring Extensions](../guide/extension-authoring.md).
 
 ### Creating a Plugin
 
@@ -393,12 +412,12 @@ plugins.onParse(store);
 ```typescript
 // Good: Single responsibility
 class FireRatingExtractor {
-  extract(store: IfcDataStore, expressId: number): number | null { ... }
+  extract(store: IfcDataStore, expressId: number): string | null { ... } // IfcLabel
 }
 
 // Bad: Too many responsibilities
 class EverythingExtractor {
-  extractFireRating(store: IfcDataStore, expressId: number): number { ... }
+  extractFireRating(store: IfcDataStore, expressId: number): string { ... }
   extractMaterials(store: IfcDataStore, expressId: number): Material[] { ... }
   // ...
 }

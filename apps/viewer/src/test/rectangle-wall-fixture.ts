@@ -10,6 +10,7 @@
  */
 
 import '@/lib/placement-edit.boot'; // the app's source-attribute reader for placement chains
+import { sourceWatermark } from '@/utils/source-watermark';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { IfcParser } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
@@ -85,7 +86,7 @@ export async function seedRectangleWall(unit: string, scale: number, rewrite?: (
   const bytes = new TextEncoder().encode(rewrite ? rewrite(step) : step);
   const dataStore = await new IfcParser().parseColumnar(bytes.buffer as ArrayBuffer, { disableWorkerScan: true });
   const geometry = geometryResult();
-  const model = { ...fixtureModel(WALL_MODEL), ifcDataStore: dataStore, geometryResult: geometry } as unknown as FederatedModel;
+  const model = { ...fixtureModel(WALL_MODEL), maxExpressId: sourceWatermark(dataStore), ifcDataStore: dataStore, geometryResult: geometry } as unknown as FederatedModel;
   useViewerStore.setState({
     ...fixtureModels(model),
     editEnabled: true,

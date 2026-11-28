@@ -249,11 +249,14 @@ Interactive model slicing with semantic axis names.
 
 ### Section Plane Types
 
-| Axis | Direction | Color | Use Case |
-|------|-----------|-------|----------|
-| `down` | Y-axis | Light Blue | Floor plans |
-| `front` | Z-axis | Green | Elevation views |
-| `side` | X-axis | Orange | Cross sections |
+| Axis | Direction | Use Case |
+|------|-----------|----------|
+| `down` | Y-axis | Floor plans |
+| `front` | Z-axis | Elevation views |
+| `side` | X-axis | Cross sections |
+
+Every axis, and a face-picked plane, draws its preview in one accent colour
+(`#03A9F4` until `renderer.setOverlayTheme(...)` sets another).
 
 ### Creating Section Planes
 
@@ -292,6 +295,9 @@ sectionPlane.max = storeyElevation + storeyHeight;
 // Cut-surface rendering (both default true)
 sectionPlane.showCap = true;       // filled cap surfaces with screen-space hatch
 sectionPlane.showOutlines = true;  // polygon outlines on the cut surfaces
+// Cap look: fill/stroke RGBA, pattern ('solid', 'diagonal', 'crossHatch', 'horizontal',
+// 'vertical', 'concrete', 'brick', 'insulation'), spacingPx, angleRad, widthPx, secondaryAngleRad
+sectionPlane.capStyle = { pattern: 'concrete', spacingPx: 8 };
 
 // Arbitrary slice plane: providing a world-space unit normal + distance
 // bypasses axis/position/min/max entirely (face-pick section planes)
@@ -320,7 +326,7 @@ const frames = renderer.getSectionPlaneFrames();
 
 The set can change from frame to frame (seven planes, then two, then none) without re-creating anything: the planes travel in each mesh's uniform, and a mesh drawn with no extra plane takes the same path it took before the option existed.
 
-A plane's cap comes from the cut polygons you upload for it: `renderer.uploadSection2DOverlay(polygons, lines, axis, position, range, flipped, customPlane, 'wing')`, and `renderer.clearSection2DOverlay('wing')` or `renderer.clearSection2DExtraOverlays(['face'])` to release caps. A cap is clipped by every other plane, never by its own. `sectionPlane.showGizmo = false` hides only the primary plane's preview quad.
+A plane's cap comes from the cut polygons you upload for it: `renderer.uploadSection2DOverlay(polygons, lines, axis, position, range, flipped, customPlane, 'wing')`, and `renderer.clearSection2DOverlay('wing')` to release one cap. `renderer.clearSection2DExtraOverlays(keep)` releases the cap of every extra plane whose id is not in `keep`, so `clearSection2DExtraOverlays(['face'])` keeps only `face`. A cap is clipped by every other plane, never by its own. `sectionPlane.showGizmo = false` hides only the primary plane's preview quad.
 
 To keep chosen entities whole, pass `sectionExcludedIds`. The set uses the same full scene IDs as `hiddenIds` (federated global IDs in the viewer), and exempts those entities from both the primary and every extra section plane. Flat, colour-batched, textured and instanced meshes, their shadows, GPU picking, CPU raycasting and selection outlines agree. Hidden/isolation filtering and `clipBox` still apply. Point clouds have no IFC entity IDs and keep their existing clipping behavior.
 
@@ -333,18 +339,29 @@ renderer.render({
 
 Omit the set or pass an empty set to restore clipping. In-place set edits take effect on the next render; picking uses a snapshot of that frame. Already-uploaded cap polygons and their outlines are filtered by `expressId`, including extra-plane caps. Standalone cap lines need `ownerId` to identify the excluded entity; unowned lines remain visible. Pass the same set in `SectionPlaneConfig.sectionExcludedIds` when generating drawings with `SectionCutter`, `cutMeshesStreaming` or `GPUSectionCutter`, so excluded entities generate no cut segments or polygons in the first place. Recompute standalone drawings after changing the set.
 
+### Section box
+
+`clipBox` crops the model to an axis-aligned world-space box from all six sides. It is independent of `sectionPlane` and combines with it. A box with `enabled: false` has no effect. GPU picking uses the clip box of the last render, so cropped-away geometry cannot be picked.
+
+```typescript
+renderer.render({
+  clipBox: { min: [0, 0, 0], max: [20, 6, 12], enabled: true, showCap: true },
+});
+```
+
+`showCap`, `showOutlines` and `capStyle` work as on a section plane, but a face's cap is drawn only where you uploaded its cut polygons under `sectionBoxCapKey(face)` (`face` is one of `SECTION_BOX_CAP_FACES`: `minX`, `maxX`, `minY`, `maxY`, `minZ`, `maxZ`). Each face's cap is clipped by the four faces around it.
+
 ### Section Plane Visualization
 
 ```mermaid
 graph TD
     subgraph SectionPlane["Section Plane Rendering"]
         Preview["Preview Pipeline"]
-        Cut["Cut Pipeline"]
         Grid["Grid Visualization"]
     end
 
     Preview -->|"Respects depth"| Behind["Behind geometry"]
-    Cut -->|"Always visible"| Front["In front"]
+    Preview -->|"Preview mode only"| Hidden["Plane hidden while cutting"]
     Grid --> Minor["100 divisions"]
     Grid --> Major["10 major cells"]
     Grid --> Edge["Soft edge fade"]
@@ -397,9 +414,19 @@ Advanced "magnetic" edge snapping for precision measurement and interaction.
 |------|-------------|----------|
 | `vertex` | Snap to mesh vertices | Highest |
 | `edge` | Snap to edge lines | High |
-| `face` | Snap to face surfaces | Medium |
+| `face` | Snap to face surfaces | Low |
 | `face_center` | Snap to face centroids | Medium |
 | `point_cloud` | Snap to a point-cloud scan point | See below |
+
+### Screen-space corner and edge snapping
+
+To pick a feature just outside its silhouette, pass `screenCornerSnap: {}` in the `snapOptions` argument to `Renderer.raycastSceneMagnetic`. This opt-in search covers flat geometry and GPU-instanced occurrences. It looks for a feature corner within 10 CSS pixels first, then a feature edge within 6 CSS pixels. An existing ray-based vertex or edge takes priority over a screen-space edge. Set `cornerRadiusPx` and `edgeRadiusPx` independently. A nonpositive or nonfinite radius disables that part of the screen search. The corresponding `snapToVertices` and `snapToEdges` switches also apply.
+
+Hidden entities, entities outside the current isolation, and clipped geometry are excluded. To restrict the search to particular models, pass their numeric renderer indices in `eligibleModelIndices`. Omitting the set includes all models. A piece without a model index belongs to index 0. By default, when the ray hits a surface, the search excludes candidates farther along the ray than that hit plus `occlusionTolerance` (default 0.05 world units plus 1% of the hit distance). Negative or nonfinite tolerance values use that default. Set `ignoreOcclusion: true` to search behind the hit surface as well.
+
+The search builds its screen grid during idle time after the view settles (`settleMs`, default 120 ms), in slices with a default budget of 6 ms (`maxSliceMs`). Picks keep the ordinary ray-based result until a matching screen candidate is available. As pieces enter the grid, their corners and edges become pickable without waiting for the entire scene.
+
+### Point-cloud snapping
 
 Point-cloud snapping is produced by `raycastSceneMagnetic` (not
 `SnapDetector` itself) whenever point-cloud assets are loaded: the nearest
@@ -643,13 +670,15 @@ interface SnapTarget {
     vertices?: Vec3[];     // For edges/faces
     edgeIndex?: number;
     faceIndex?: number;
+    // Source-curve snaps only: the source identity plus these fields
+    sourceCurve?: import('@ifc-lite/renderer').SourceCurveIdentity & { kind: 'line' | 'arc'; length: number; t: number };
   };
 }
 ```
 
 ## GPU Picking
 
-Depth-aware object selection supporting 100K+ meshes.
+Depth-aware object selection that resolves each click to the nearest visible entity.
 
 ### Basic Picking
 
@@ -691,7 +720,15 @@ drill from one pane of a curtain wall down to its own entity in the IFC source i
 stopping at the wall. It is the same value under the same name as `MeshData.geometryItemId`
 from `@ifc-lite/geometry`, and it is reported on every pick route: the GPU pick pass over
 hydrated per-piece meshes (small models), the GPU pick pass over whole colour batches
-that models past the pick-mesh budget take, and the CPU raycast fallback.
+that models past the pick-mesh budget take, and the CPU raycast fallback. The key is
+absent (never `0`) where there is no single item to report:
+
+- the single merged-mesh fallback and a cached `IfcMappedItem` have no item identity;
+- a piece that carries several entities (per-vertex `entityIds`) withholds its item id,
+  because it belongs to none of them individually;
+- a GPU-instanced occurrence hit by the per-piece GPU pass: that shader has no
+  per-occurrence item channel (the CPU raycast and the colour-batch route do report it);
+- rectangle (marquee) picks return bare express ids, not `PickResult`s.
 
 On the batch route the GPU reads only the entity from the vertex lane, so the renderer
 raycasts that one entity's retained CPU pieces along the same texel-centre ray to name
@@ -750,7 +787,8 @@ representation item. It is absent when:
 
 Every case in that list is geometry whose item identity was merged away before the pick
 ran. GPU-instanced occurrences are **not** in it: they carry their own item id, because
-the instanced wire format was extended to hold one. See
+the instanced wire format was extended to hold one (only the per-piece GPU route above
+cannot read it back). See
 [Item ids on instanced occurrences](./geometry.md#item-ids-on-instanced-occurrences) for
 that path, including how to tell a shard that declares no ids from a piece that has none.
 
@@ -907,31 +945,34 @@ subsets hold only visible entities.
 
 ### Basket Isolation (Viewer App)
 
-The viewer app provides a **basket** — an incremental isolation set that lets you build up a working set of entities interactively. Unlike simple isolation which replaces the set each time, the basket supports add/remove operations:
+The viewer app provides a **collection** (the "basket" in code) — an incremental isolation set that lets you build up a working set of entities interactively. Unlike simple isolation which replaces the set each time, the collection supports add/remove operations. Set, Add, Remove, Save view and Show All are also in the command palette:
 
-| Operation | Keyboard | Toolbar | Context Menu | Description |
-|-----------|----------|---------|--------------|-------------|
-| **Isolate** | `I` | Isolate button | Isolate selection | Replace basket with current selection and isolate it |
-| **Set** | — | Set button | Set as Basket | Replace basket with current selection |
-| **Add** | `=` or `+` | `+` button | Add to Basket | Add current selection to basket |
-| **Remove** | `-` | `-` button | Remove from Basket (-) | Remove current selection from basket |
-| **Show All** | `A` | Eye icon | Show All | Clear every filter; see below |
+| Operation | Keyboard | Ribbon | Context Menu | Description |
+|-----------|----------|--------|--------------|-------------|
+| **Isolate** | `I` | Isolate | — | Replace the collection with the current selection and isolate it |
+| **Set** | — | — | Set Collection | Replace the collection with the current selection |
+| **Add** | `=` or `+` | — | Add to Collection | Add the current selection to the collection |
+| **Remove** | `-` | — | Remove from Collection | Remove the current selection from the collection |
+| **Save view** | `B` | — | Save Collection View | Save the collection as a presentation view |
+| **Show All** | `A` | Show all (eye icon) | Show all | Clear every filter; see below |
+
+`D` toggles the presentation dock, which lists the saved collection views.
 
 **Workflow example:**
 
-1. Click a wall, press `I` — basket now contains just that wall (everything else hidden)
-2. Cmd+Click two doors to multi-select them, press `=` or `+` — doors are added to the basket
+1. Click a wall, press `I` — the collection now contains just that wall (everything else hidden)
+2. Cmd+Click two doors to multi-select them, press `=` or `+` — doors are added to the collection
 3. Click a window, press `=` or `+` — window added too
-4. Click the wall, press `-` — wall removed from basket, only doors and window remain
+4. Click the wall, press `-` — wall removed from the collection, only doors and window remain
 
-The toolbar Set button shows a badge with the current basket count when active. Multi-select (Cmd/Ctrl+Click) works with all basket operations — select multiple entities first, then press `=` / `+` or `-` to add/remove them all at once.
+The ribbon's presentation button tooltip shows the number of saved views and collected entities. Multi-select (Cmd/Ctrl+Click) works with all collection operations — select multiple entities first, then press `=` / `+` or `-` to add/remove them all at once.
 
 **Additional visibility shortcuts:**
 
 | Shortcut | Action |
 |----------|--------|
 | `Del` / `Backspace` | Hide selected entity |
-| `Space` | Hide selected entity (viewport-focused only) |
+| `Space` | Hide selected entity (unless a button or other pressable control has focus) |
 | `A` | Show all (see below for what it clears and what it keeps) |
 | `Esc` | One step per press: cancel the gesture in progress, else leave the tool, else clear the selection. Never changes visibility |
 
@@ -943,7 +984,12 @@ The toolbar Set button shows a badge with the current basket count when active. 
 - the Class filter;
 - the storey filter and Solo mode;
 - Exploded mode (levels return to Stacked);
-- hidden federated models.
+- hidden federated models;
+- a structural view mode (it returns to showing both physical and analytical elements);
+- the section cut's display;
+- the measurements' display.
+
+It also clears the selection, the basket's contents and any clash focus.
 
 It deliberately **keeps** four settings that are preferences rather than filters on this view:
 
@@ -997,6 +1043,8 @@ renderer.render({
 });
 ```
 
+The interface above is an excerpt. `RenderOptions` in `packages/renderer/src/types.ts` also carries, among others, `environment`, `extraSectionPlanes`, `clipBox`, `selectedItemId`, `hoverOutline`, `transparencyOverrides`, `ghostExceptIds`, `isInteracting`, `visualEnhancement`, `lod` and `sunShadows`.
+
 ## Materials and Colors
 
 IFClite uses colors from the IFC file. Mesh colors are determined during geometry processing based on IFC styles and material definitions.
@@ -1013,9 +1061,11 @@ for (const mesh of geometryResult.meshes) {
 ```
 
 !!! note "Custom Colors"
-    Dynamic color changes per-entity are not currently supported in the public API.
-    Colors are baked into geometry at load time. For advanced use cases,
-    see the viewer app source code for how batch rendering handles colors.
+    Load-time colours are baked into the geometry. For per-entity colour changes
+    afterwards, `renderer.getScene()` exposes `setColorOverrides(overrides, device,
+    pipeline)`, `updateMeshColors(updates, device, pipeline)`, `getColorOverrides()`
+    and `clearColorOverrides()`; take `device` and `pipeline` from
+    `renderer.getGPUDevice()` and `renderer.getPipeline()`.
 
 ## Performance Optimization
 
@@ -1048,19 +1098,26 @@ Builds a BVH (Bounding Volume Hierarchy) spatial index from geometry meshes for 
 import type { SpatialIndex } from '@ifc-lite/spatial';
 import type { MeshData } from '@ifc-lite/geometry';
 
+import type { BVH } from '@ifc-lite/spatial';
+
 /**
  * Builds a spatial index from an array of mesh data
  * @param meshes - Array of MeshData objects from GeometryProcessor
  * @returns BVH spatial index that implements SpatialIndex interface
  */
-declare function buildSpatialIndex(meshes: MeshData[]): SpatialIndex;
+declare function buildSpatialIndex(meshes: MeshData[]): BVH;
+
+/** Time-sliced variant: yields while computing bounds and building the BVH, using `budgetMs` as a time target (default 4 ms). */
+declare function buildSpatialIndexAsync(meshes: MeshData[], budgetMs?: number): Promise<BVH>;
+
+const index: SpatialIndex = buildSpatialIndex([]);
 ```
 
 **Parameters:**
 - `meshes: MeshData[]` - Array of mesh data objects, typically from `GeometryProcessor.process()` result
 
 **Returns:**
-- `SpatialIndex` - A BVH spatial index with methods for AABB queries, raycasting, and frustum queries
+- `BVH` - A BVH spatial index (it satisfies `SpatialIndex`) with methods for AABB queries, raycasting, and frustum queries
 
 **Usage Example:**
 
@@ -1146,7 +1203,7 @@ The renderer uses a Bounding Volume Hierarchy for fast raycasting:
 
 ```typescript
 // BVH is built automatically for CPU raycasting
-// For large models (100K+ meshes), ray intersection is O(log n)
+// The BVH skips branches whose bounds miss the ray. A ray can still visit every leaf.
 
 // Clear BVH cache when geometry changes significantly
 renderer.invalidateBVHCache();
@@ -1208,7 +1265,9 @@ primary-model only: disable it (`enableInstancing: false` on the
 Consumers that cache the IDs from `SceneContents.getInstancedEntityIds()` can
 read `getInstancedEntityRevision?.()` when `onGeometryChange` fires. Model
 translation and rotation leave the membership revision stable. Uploads,
-removals, and occurrence suppression can change it.
+removals, and occurrence suppression can change it. Pass `true` to
+`getInstancedEntityIds` to enumerate only while the instanced pass is drawn.
+Switching to Types view hides those occurrences from ray picks and screen snaps.
 
 ## Annotation Overlays
 
@@ -1275,6 +1334,15 @@ selected element's analytic directrix, and clearing it with
 The centreline drawing remains visible as x-ray context through section and
 crop cuts. Magnetic snapping to its exact source curve still follows the active
 pick clipping, so a clipped-out part of that drawing is not a snap target.
+Of the six channels, `annotation`, `alignment` and `terrain` grow the bounds;
+`grid`, `dxf` and `centreline` do not.
+
+Overlays are drawn through the section plane, the extra cutting planes and the
+clip box unless you opt in to clipping. Set `sectionClipped: true` on a
+`SymbolicFillInput` to discard what the cut removes, on a `SymbolicTextInput` to
+hide the label while its anchor is cut away, or pass `{ sectionClipped: true }`
+as the third argument of `setLineOverlay`. The flag belongs to that upload: a
+later upload without it draws unclipped again.
 
 ## Complete Example
 
@@ -1373,6 +1441,26 @@ async function createViewer() {
 }
 ```
 
+## Lifecycle and other renderer methods
+
+The example above renders every animation frame. These `Renderer` methods cover
+the rest of a host's lifecycle:
+
+| Method | Purpose |
+|--------|---------|
+| `whenReady()`, `isReady()` | Wait for, or test, the end of `init()` |
+| `resize(width, height)` | Resize the canvas and the camera's viewport |
+| `requestRender()`, `peekRenderRequest()`, `consumeRenderRequest()` | A dirty flag for an on-demand loop: set it when something changes, and render only when `consumeRenderRequest()` returns `true` |
+| `onDeviceLost(listener)`, `isDeviceLost()` | Observe a lost GPU device (the listener receives `{ message, reason }`; the call returns an unsubscribe function) |
+| `onPersistentRenderDegradation(listener)` | Observe rendering that stays degraded |
+| `captureScreenshot()`, `captureColorFrame()` | Capture the canvas as a data URL, or the rendered colour frame |
+| `probeSurface(x, y)` | The world point of the surface under a canvas pixel, or `null` |
+| `setOverlayTheme(theme)` | Overlay colours, including the section-plane accent |
+| `setPointCloudOptions(options)`, `setEdlOptions(options)` | Point-cloud display and Eye-Dome Lighting |
+| `getFrameStats()`, `getDiagnostics()` | Statistics of the last frame and renderer diagnostics |
+| `setGpuInstancing(enabled)` | Turn GPU instancing on or off; returns `false` when refused because instanced geometry is already loaded |
+| `destroy()` | Release GPU resources |
+
 ## Next Steps
 
 - [Geometry Guide](geometry.md) - Geometry processing
@@ -1395,15 +1483,15 @@ translation in **renderer Y-up metres**. It applies to flat, textured, instanced
 and embedded pointcloud geometry assigned that model index, including later
 uploads. Pass `[0, 0, 0]` to reset. Keep each loaded model's index stable until
 it is removed; do not compact indices while its geometry remains on the GPU.
-`renderer.getScene().getModelTranslation(modelIndex)` reads the current offset
-in the same Y-up metre frame. It defaults to zero before a placement is set.
+The public renderer API has no getter for the offset: keep the value you passed.
+A model without a placement has a zero offset.
 The scene retains occurrence records and bounds after releasing CPU vertices,
 so whole-model movement remains available in GPU-resident mode.
 
 `Renderer.setModelRotation(modelIndex, angle, [px, py, pz])` turns a model's
 GPU-instanced occurrences about the vertical (+Y) axis through the render-frame
 pivot `(px, pz)` (`py` is unused — the axis is always vertical); `angle === 0`
-clears it. It is the instanced-geometry counterpart to `setModelTranslation`
+clears it. It returns `false` when nothing changed. It is the instanced-geometry counterpart to `setModelTranslation`
 and composes with it (rotate about the pivot, then translate). It does not
 touch flat, authored, batched or point-cloud geometry — an instanced-only
 model's flat pieces, if any, must be rotated separately (e.g. by the caller's
@@ -1414,11 +1502,14 @@ For a separately streamed scan, call
 composes after the matrix passed to `setPointCloudTransform`, which accepts
 `Float64Array` as well as `Float32Array`. Pass coarse alignment matrices in
 float64 so cancellation with a manual correction happens before GPU rounding.
-`getPointCloudTransform(handle)` returns the final draw matrix for CPU spatial
-consumers. `getModelPlacementBounds(modelIndex, handle?)` returns placed bounds
-for framing a model and its streamed scan. An optional third argument reads
-both at a requested Y-up workspace translation while the renderer is
-synchronizing placement. `PointCloudRenderer.getAssetTranslation(handle)`
+`getPointCloudTransform(handle)` returns the final draw matrix (`Float32Array`) for CPU spatial
+consumers. `getPointCloudPlacement(handle)` returns an exact `Float64Array` copy because the
+float32 matrix rounds map-grid origins. `setPointCloudVisibility(handle, visible)` shows or hides
+one streamed scan without releasing its GPU buffers.
+
+`getModelPlacementBounds(modelIndex, handle?)` returns placed bounds for framing a model and its
+streamed scan. An optional third argument reads both at a requested Y-up workspace translation
+while the renderer is synchronizing placement. `PointCloudRenderer.getAssetTranslation(handle)`
 returns the scan’s applied workspace translation in Y-up metres.
 
 These APIs move workspace geometry; they do not rewrite source IFC placements

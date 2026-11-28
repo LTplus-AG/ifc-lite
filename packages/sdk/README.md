@@ -70,6 +70,9 @@ For embedded or remote contexts, continue using `createBimContext({ backend })` 
 - `bim.ids` / `bim.bcf` / `bim.clash` - validation, collaboration, interference checks
 - `bim.drawing` / `bim.list` / `bim.lens` - section cuts and SVG, schedules, rule-based coloring
 - `bim.cost` - canonical IFC 5D graph and decimal-string item/value evaluation
+- `bim.structural` - read-only structural analysis data (analysis models, members, connections, activities, load and result groups)
+- `bim.style` - persistent surface colours written into the model (`apply` / `applyAll`), the exported counterpart of `bim.viewer` colouring
+- `bim.georef` - read, set, update and remove georeferencing, write the IfcSite reference position (`setSite`), and `check` / `planFixes` / `fix`. The same doctor is available on its own as `@ifc-lite/sdk/georef-doctor` for hosts that hold georeference edits outside a `bim` session
 - `bim.create` / `bim.spaces` / `bim.spatial` / `bim.schedule` / `bim.files` / `bim.events` / `bim.bsdd` / `bim.sandbox`
 
 Cost reads describe the loaded IFC source snapshot. Every STEP reference is an

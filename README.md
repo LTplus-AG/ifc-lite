@@ -29,7 +29,7 @@ IFC data and geometry tools for developers.
 
 Parse, view, query, edit, validate, and export IFC files, entirely client-side. A Rust core compiled to WASM does the parsing and geometry, a WebGPU renderer puts it on screen, and modular npm packages let you pick the pieces you need. Geometry runs on an exact-arithmetic CSG kernel, verified element-by-element against IfcOpenShell across the public benchmark corpus.
 
-Works with **IFC2X3**, **IFC4 / IFC4X3** and **IFC5 (IFCX)**. Beside IFC, the web viewer opens glTF/GLB, LandXML, point clouds (LAS/LAZ, E57, PLY, PCD, PTS, XYZ) and [Gaussian splat captures](https://ifclite.dev/docs/guide/gaussian-captures/) (Gaussian PLY, `.splat`). Live demo at [ifclite.com](https://www.ifclite.com/) and more info at [ifclite.dev](https://www.ifclite.dev/).
+Works with **IFC2X3**, **IFC4 / IFC4X3** and **IFC5 (IFCX)**. Beside IFC (including zipped `.ifczip`), the web viewer opens glTF/GLB, Rhino `.3dm`, LandXML, point clouds (LAS/LAZ, E57, PLY, PCD, PTS, XYZ), DXF reference underlays and [Gaussian splat captures](https://ifclite.dev/docs/guide/gaussian-captures/) (Gaussian PLY, `.splat`). Live demo at [ifclite.com](https://www.ifclite.com/) and more info at [ifclite.dev](https://www.ifclite.dev/).
 
 ## Get Started
 
@@ -113,7 +113,7 @@ for await (const event of geometry.processAdaptive(new Uint8Array(arrayBuffer)))
 }
 
 renderer.loadGeometry(meshes);
-renderer.requestRender();
+renderer.render(); // draws one frame; call it again (e.g. per requestAnimationFrame) after camera changes
 
 // Pick an entity at (x, y) in canvas pixels
 const hit = await renderer.pick(120, 240);
@@ -280,11 +280,11 @@ Full list: [API Reference](https://ifclite.dev/docs/api/typescript/) (npm packag
 ## Performance
 
 - **Streaming first render:** geometry is processed in batches, so the first triangles are on screen while the rest of the file is still parsing.
-- **Geometry correctness:** exact-arithmetic boolean kernel — every opening is cut exactly, and the output is verified element-by-element against IfcOpenShell (99.9%+ agreement on the public benchmark corpus). Engines with approximate booleans are faster on boolean-heavy models; that trade is deliberate.
+- **Geometry correctness:** exact-arithmetic boolean kernel — every opening is cut exactly, and the output is verified element-by-element against IfcOpenShell on the public benchmark corpus. Engines with approximate booleans are faster on boolean-heavy models; that trade is deliberate.
 - **Geometry speed:** native (server/CLI, multi-threaded) beats `web-ifc` on most of the benchmark corpus; in the browser the viewer streams geometry across workers so the first triangles render long before the file finishes processing.
-- **Parse speed:** STEP tokenization runs at roughly 1.2 GB/s; a full parse lands around 50 MB/s.
+- **Parse speed:** a fast STEP tokenizer feeds a columnar parse; see the [performance guide](https://ifclite.dev/docs/guide/performance/) for measured throughput.
 - **Schema coverage:** 100% of IFC4 (776 entities) and IFC4X3 (876 entities).
-- **Footprint:** one lazily fetched WASM module (~2.6 MB gzipped) plus small per-package JS wrappers.
+- **Footprint:** one lazily fetched engine WASM module plus small per-package JS wrappers; the Rhino `.3dm` and CityJSON exporters fetch a second module (`@ifc-lite/wasm/rhino`) only when used. The performance guide records the engine size.
 
 See [benchmarks](https://ifclite.dev/docs/guide/performance/) for full numbers across model sizes and hardware.
 
@@ -292,6 +292,7 @@ See [benchmarks](https://ifclite.dev/docs/guide/performance/) for full numbers a
 
 Ready-to-run projects in [`examples/`](examples/):
 
+- [**Headless workflows**](examples/headless-workflows/) - Node entry points for data extraction, IDS validation, editing, geometry export and a local service
 - [**Three.js Viewer**](examples/threejs-viewer/) - IFC viewer using Three.js (WebGL)
 - [**Babylon.js Viewer**](examples/babylonjs-viewer/) - IFC viewer using Babylon.js (WebGL)
 - [**Collab Demo**](examples/collab-demo/) - real-time collaborative editing over websockets
@@ -311,10 +312,13 @@ Ready-to-run projects in [`examples/`](examples/):
 
 ## Contributing
 
-The WASM bundle is built from `rust/` on every fresh build, so a Rust
-toolchain is required. `rust-toolchain.toml` pins the nightly channel
-and the `wasm32-unknown-unknown` target. `rustup show` (or the
-contributing setup guide) installs everything needed.
+You need Node.js 22 (22.13 or later) or 24, not 23, and pnpm 10 (`corepack enable` provides the
+pinned pnpm). The WASM bundle is built from `rust/`, which needs the nightly
+toolchain and `wasm32-unknown-unknown` target pinned in `rust-toolchain.toml`
+plus `wasm-pack`. Run `rustup toolchain install` in the clone to install the
+pinned toolchain up front, so the first build does not stop to fetch it. Without
+Rust, `pnpm build:wasm:fetch` downloads the prebuilt WASM runtime from npm
+instead; see the [setup guide](https://ifclite.dev/docs/contributing/setup/).
 
 ```bash
 # 1. Rust toolchain (one-time)
@@ -324,7 +328,9 @@ cargo install wasm-pack   # or: curl https://rustwasm.github.io/wasm-pack/instal
 # 2. Clone and build
 git clone https://github.com/LTplus-AG/ifc-lite.git
 cd ifc-lite
-pnpm install && pnpm build && pnpm dev   # opens viewer at localhost:3000
+rustup toolchain install   # installs the nightly and target pinned in rust-toolchain.toml
+corepack enable
+pnpm install && pnpm dev   # builds every package, then serves the viewer at localhost:3000
 ```
 
 If you need IFC fixtures for tests, benchmarks, or stress tests, fetch them with:

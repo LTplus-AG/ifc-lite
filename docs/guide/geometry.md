@@ -438,6 +438,11 @@ to recovery, but only if you handle `complete.skippedHungElements`:
    replaced and the element is skipped.
 3. Everything else the worker had queued is replayed on the replacement.
 
+"Silent" means no in-call heartbeat: the kernel reports progress from inside a
+long call, so an element that is slow but still working is neither replayed nor
+skipped. A single call that runs past 10 minutes is recovered
+the same way even while it reports progress.
+
 A load that skipped elements still completes. `complete.skippedHungElements`
 lists their express ids and counts by IFC type, so treat such a `complete` as
 a partial result: tell the user, and don't cache it as the full model. After 16

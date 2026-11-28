@@ -49,9 +49,11 @@ Selectors are glob-and-union patterns matched against the element `tag`: `IfcDuc
 !!! note "Backends"
     `createClashEngine({ backend: 'ts' })` uses the in-process TypeScript
     reference engine. A Rust/WASM backend is opt-in via a separate subpath
-    import (`@ifc-lite/clash/wasm`) because it needs an async module init; the
-    TS backend applies a deterministic per-rule candidate-pair cap (reported in
-    `result.truncated`) while the WASM kernel runs every pair uncapped.
+    import (`@ifc-lite/clash/wasm`) because it needs an async module init.
+    The TS backend honours the optional `maxCandidatePairs` setting, one
+    candidate-pair budget for the whole run (unset means no cap), and reports
+    dropped pairs in `result.truncated`. The WASM kernel ignores it and runs
+    every pair.
 
 ### Source adapters
 

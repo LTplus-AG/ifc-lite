@@ -135,14 +135,14 @@ jobs:
   assert.deepEqual(prJobs(text), ['real']);
 });
 
-test('CI redesign step 5: the CSG accept gates are JUDGED, not exempt, and only the advisory viewer sample is', () => {
+test('CI redesign step 5: the CSG accept gates are JUDGED, not exempt, and advisory jobs are explicitly exempt', () => {
   // The one entry `UNJUDGED_BY_DESIGN` ever had was `csg-accept-gates`, an
   // advisory PR lane. It moved off the PR lane and into the aggregate's
   // `needs:` + results map (blocking in the merge queue and on push to main);
   // an exemption left behind would let a later edit drop it from `needs:`
   // again with this gate silent. Pinned against the REAL test.yml so the
   // three facts cannot drift apart: in `needs:`, judged in the map, not
-  // exempt -- and the list empty, so the default is "blocking" for everything.
+  // exempt. Keep the advisory exemptions explicit so new jobs default to blocking.
   const text = readFileSync(join(ROOT, '.github/workflows/test.yml'), 'utf8');
   const agg = readAggregate(text);
   assert.ok(agg.needs.includes('csg-accept-gates'), 'csg-accept-gates must be a dependency of the aggregate');
@@ -150,11 +150,11 @@ test('CI redesign step 5: the CSG accept gates are JUDGED, not exempt, and only 
   assert.ok(agg.needs.includes('rust-full'), 'rust-full (the moved feature legs) must be a dependency of the aggregate');
   assert.ok(agg.judged.includes('rust-full'), 'rust-full must be judged by the results map');
   assert.ok(!('csg-accept-gates' in UNJUDGED_BY_DESIGN), 'a judged job must not also be exempt');
-  // The one exemption: a budget-capped SAMPLE of the viewer suite on fast-lane
-  // PRs (scripts/ci-viewer-select.mjs). Its pass certifies nothing and the
-  // merge queue runs every shard. Adding another entry is a decision; make it
-  // here, not by loosening this line.
-  assert.deepEqual(Object.keys(UNJUDGED_BY_DESIGN), ['viewer-tests-selected', 'viewer-shards-status']);
+  // Fast PRs sample the Node, viewer unit, and viewer E2E suites. The queue
+  // runs the full suites, and the viewer status reporter posts a separate verdict.
+  assert.deepEqual(Object.keys(UNJUDGED_BY_DESIGN), [
+    'node-tests-selected', 'viewer-tests-selected', 'viewer-e2e-selected', 'viewer-shards-status',
+  ]);
 });
 
 test('every exemption carries a stated reason', () => {

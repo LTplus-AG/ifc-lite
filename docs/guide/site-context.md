@@ -12,6 +12,48 @@ map for the parcel, with its ÖREB extract link, through
 This is the headless core. Showing the context in the viewer and writing it
 into IFC build on the same document and GLB format.
 
+## In the viewer
+
+The **Site context** section of a model's Georeference panel (in the
+Information panel) loads the same layers around a georeferenced model. The
+**Site context** ribbon button and the **Load site context** palette command
+open that section; neither fetches anything. Pick a radius (100, 200, 300 or
+500 m), the layers to include (**Terrain**, **Parcel**, **Buildings**) and
+whether to **Drape aerial imagery**, then choose **Load site context**.
+Requests go from the browser straight to geo.admin.ch, only on that click.
+Each layer arrives as its own federated model that the hierarchy can hide like
+any other. A scene holds one model per layer: a layer that loads replaces the
+earlier model of the same layer, after the new one is in. A layer you did not
+request, or one that fails to load, keeps its earlier model, which may still sit
+around a different building; the section names that building when it does. When the model cannot host site context yet (no georeferencing, a
+CRS that does not resolve to LV95, another height datum, a site outside
+Switzerland), the section says why and what to fix. A deployment that turns
+off the `privacy.third-party` feature hides the section (see
+[Configuring the Viewer for a Deployment](viewer-deployment-config.md)).
+
+### Surface runoff
+
+Below Site context, the same panel shows a **Surface runoff** section for an
+IFC model placed in Switzerland. The **Runoff** ribbon button and the
+**Surface runoff check** palette command open it. It offers two things, each
+only on a click:
+
+- **Drape the overland flow map on the terrain**: the federal overland flow
+  map (BAFU) drawn on the loaded site-context terrain, with its legend. It
+  needs the **Terrain** layer loaded first.
+- **Run flood check**: the `@ifc-lite/flood-check` screening of doors,
+  windows, openings and equipment near the ground against the depth class the
+  map shows next to them. Pick the **Ground storey**, or leave it on "Not
+  stated" and the check guesses (a guess allows no favourable outcome). The
+  verdicts colour the checked elements (**Colour the checked elements by
+  verdict** turns that off) and show in the property panel for this session;
+  they are not written to the model.
+
+It is a screening against a published hazard map, not a flood simulation, and
+the map is not legally binding. The section is hidden with the
+`privacy.third-party` feature off, like Site context, because both fetch from
+geo.admin.ch.
+
 ## Attribution is required
 
 Every layer carries the attribution its data owners require, in the JSON
@@ -80,23 +122,19 @@ project length unit. When the map unit reads as metres the summary warns that
 metres are assumed: the reader also reports an unreadable `MapUnit` as
 metres, so a declared metre and an unreadable unit look the same.
 
-A run of `--centre 2600423,1199521 --radius 100` against the live services
-(Bundesplatz, Bern) sent 19 requests, downloaded 1.3 MB and took about 4 s.
-It wrote a 9.4 MB GLB: 17 terrain features (16 chunks and the skirt) with
-323 202 triangles at 0.5 m, plus the parcel with its ÖREB link. The parcel
-there reaches beyond the 200 m site, so its ribbon breaks where the terrain
-ends and the layer reports `parcel-undraped-vertices`. These are numbers from
-one run, not a benchmark.
+At `--radius 100` around Bundesplatz, Bern (`--centre 2600423,1199521`), the
+terrain comes out as 16 chunks and the skirt at 0.5 m spacing, plus the parcel
+with its ÖREB link. The parcel there reaches beyond the 200 m site, so its
+ribbon breaks where the terrain ends and the layer reports
+`parcel-undraped-vertices`.
 
-With `--layers buildings`, a run of `--centre 2600423,1199521 --radius 300`
-(Bundesplatz, Bern, live tileset release 20260520) found 420 buildings, 390
-with an EGID, in 57 tile requests and 19.3 MB, most of it the 5–12 MB index
-JSON files the cache then keeps; the building meshes came to 169 966
-triangles and a 15 MB GLB, and a re-run from the cache took about 3 s. With
-`--subject-egid 2242547` the Parliament Building was marked as the subject.
-One run, not a benchmark. For a 1 km urban site, raise `--tile-requests`:
-when the budget stops the read, the layer is marked incomplete and says how
-many tiles were left.
+The buildings layer reads swisstopo's tile index JSON files first; they are
+large, and the cache keeps them, so a re-run of the same site from the cache is
+much faster than the first run. `--subject-egid 2242547` marks the Parliament
+Building as the subject at that centre. For a 1 km urban site, raise
+`--tile-requests`: when the budget stops the read, the layer is marked
+incomplete and says how many tiles were left. Run times and download sizes
+depend on the live services, the tileset release and your connection.
 
 The JSON summary has the document origin and CRS, per layer the feature,
 triangle and vertex counts, completeness, attribution and issues, plus the

@@ -29,10 +29,14 @@ changes.
 ## Setup
 
 ```bash
+corepack enable      # pnpm pinned by packageManager
 pnpm install
 pnpm fixtures        # fetch test models (tests skip cleanly when absent)
-pnpm dev             # run the viewer
+pnpm dev             # build the packages, then run the viewer
 ```
+
+Prerequisites (Node.js, pnpm, Rust, `wasm-pack`) and troubleshooting are in
+[docs/contributing/setup.md](./docs/contributing/setup.md).
 
 Rust lives under `rust/` and `apps/server`; the TS packages under `packages/`
 and `apps/`. The WASM bundle is rebuilt with `pnpm build:wasm` (wraps
@@ -98,8 +102,8 @@ maintainer and means: in scope, wanted now, scoped. That label is how project di
 gets set, and it is the one thing not delegated. `scripts/check-issue-queue.mjs` checks it on every PR, and **prints which mode
 it is in**. Read that line rather than this one: the mode lives in
 `scripts/issue-queue.config.json` and this paragraph cannot be kept in sync with
-it. While the check reports ADVISORY it prints its verdict and does not fail the
-job, so a green tick does not mean the rule was met. A genuine drive-by fix can be waved through with the
+it. It has been enforcing since 2026-09-02 (`"mode": "enforcing"`): a PR with
+neither a linked `ready` issue nor the `unqueued` label fails it. A genuine drive-by fix can be waved through with the
 `unqueued` label, applied by the maintainer.
 
 **Filing issues is unrestricted and welcome.** An audit that produces twenty good
@@ -123,8 +127,14 @@ merges land clean.
 ## Pull requests
 
 - Branch from `main`; one focused change per PR.
-- Fill in the PR template. Green CI plus one approval plus resolved
-  conversations are required to merge (squash only).
+- Fill in the PR template. To merge, a PR needs green required status checks
+  (the `main` ruleset lists them, `PR review signal` and `CLA` among them) and
+  every conversation resolved (`main` branch protection). Neither requires an
+  approving review. Merges are squash only.
+- PRs merge through the Mergify merge queue (`.mergify.yml`). A PR with the
+  `mergify-trial` label enters the queue once it is not a draft, `CLA` passes,
+  `PR review signal` is green, no review thread is unresolved, and the
+  `PR viewer selection` status is neither failing nor pending.
 - Keep client and project identifiers out of code, tests, commit messages, and
   PR text.
 

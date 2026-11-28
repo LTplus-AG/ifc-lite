@@ -51,6 +51,8 @@ const IRRADIANCE_CALIBRATION = 1.82;
 export const FRAGMENT_DISCARDS_BEGIN = '// <fragment-discards>';
 export const FRAGMENT_DISCARDS_END = '// </fragment-discards>';
 
+// VertexOutput.position is @invariant: highlight/mask redraws ('greater-equal', no bias) must match the
+// depth of every derived module bit for bit (Metal broke it for the draw stream; invariant-position.test.ts).
 export const mainShaderSource = `
         ${meshUniformsWgsl}
         ${depthNudgeWgsl}
@@ -92,7 +94,7 @@ export const mainShaderSource = `
         }
 
         struct VertexOutput {
-          @builtin(position) position: vec4<f32>,
+          @invariant @builtin(position) position: vec4<f32>,
           @location(0) worldPos: vec3<f32>,
           @location(1) normal: vec3<f32>,
           @location(2) @interpolate(flat) entityId: u32,

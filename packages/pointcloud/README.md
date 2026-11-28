@@ -109,11 +109,18 @@ Notes:
   the scan at its next 4 MiB window.
 - The inlined worker bundle is lazy-loaded — consumers that only call
   `decodeIfcxPointAttribute` (the non-worker decoder) don't pay the bytes.
-- LAZ decoding (`format: 'laz'`) pulls in `laz-perf`'s wasm at runtime via
-  `new URL(..., import.meta.url)`, which doesn't resolve from inside a
-  `Blob`-URL worker. If you need LAZ from the published package, pass a
-  custom `spawn` callback that yields a worker capable of fetching the
-  wasm (see `DecodeWorkerOptions.spawn`).
+- LAZ decoding (`format: 'laz'`) loads `laz-perf`'s wasm through the
+  Vite-only `laz-perf/lib/web/laz-perf.wasm?url` asset import. The inlined
+  `Blob`-URL worker leaves that import external, so LAZ there fails with a
+  runtime error. COPC node decoding uses the same loader in the same
+  worker, so a COPC file can open (header and hierarchy) and then fail on
+  its first `readNode`. If you need LAZ or COPC from the published package,
+  pass a custom `spawn` callback that yields a worker capable of fetching
+  the wasm (see `DecodeWorkerOptions.spawn`). `createDecodeWorkerSource`
+  and `openCopcWorkerReader` share one decode worker per page, and the first
+  call that acquires it picks it: pass your `spawn` to that first call,
+  because a `spawn` given later is ignored while the shared worker is alive.
+  Sources that decode in process, such as `LasStreamingSource`, do not use it.
 - Strict CSPs need `script-src 'self' blob:` to allow the `Blob`-URL
   worker.
 

@@ -251,6 +251,7 @@ export function writeSourceEntityLines(
       if (mayNameOmittedRefs && effectiveRelType.startsWith('IFCREL')) {
         const filtered = filterHiddenRefsFromRelationshipLine(nextEntityText, isOmittedFromOutput);
         if (filtered === null) {
+          pass.enums.boundaries.noteWithheldReferrer(expressId);
           pass.warnings.push(ctx.relationshipWithheldWarning(expressId, displayRelType));
           continue;
         }
@@ -274,6 +275,7 @@ export function writeSourceEntityLines(
         // replaced (#5262).
         const filtered = filterHiddenRefsFromRelationshipLine(nextEntityText, isOmittedFromOutput, pass.sourceSchema);
         if (filtered === null) {
+          pass.enums.boundaries.noteWithheldReferrer(expressId);
           pass.warnings.push(styleEntityWithheldWarning(expressId, displayRelType));
           continue;
         }
@@ -309,6 +311,15 @@ export function writeSourceEntityLines(
           effectiveRelType,
           pass.sourceSchema,
         );
+      }
+
+      if (pass.filterRetypedAssignment && effectiveRelType === 'IFCRELDEFINESBYTYPE') {
+        const filtered = pass.filterRetypedAssignment(nextEntityText, expressId, pass.warnings);
+        if (filtered === null) {
+          pass.omittedTypeAssignments.add(expressId);
+          continue;
+        }
+        nextEntityText = filtered;
       }
 
       // Past every branch that can withhold this line, so the pipeline's own

@@ -105,6 +105,8 @@ class IfcParser {
 interface ParseOptions {
   onProgress?: (progress: { phase: string; percent: number }) => void;
   onDiagnostic?: (message: string) => void;
+  // Receives the entity-scan report (EntityScanReport) once scanning finishes
+  onScanReport?: (report: EntityScanReport) => void;
   // Optional IfcAPI instance for WASM-accelerated entity scanning
   wasmApi?: WasmScanApi;
   // Yield budget for large incremental parses
@@ -142,7 +144,7 @@ Result of `parseColumnar()`. Key fields (see `src/columnar-parser.ts` for the fu
 
 ```typescript
 interface IfcDataStore extends IfcStoreBase {
-  source: Uint8Array;
+  source: IfcSourceBytes;  // byte accessor (slice, decodeUtf8, withMaterialized, toTransferable), not a resident Uint8Array
   entityIndex: { byId: EntityByIdIndex; byType: Map<string, number[]> };
 
   strings: StringTable;
@@ -161,7 +163,7 @@ interface IfcDataStore extends IfcStoreBase {
   onDemandPropertyMap?: Map<number, number[]>;
   onDemandQuantityMap?: Map<number, number[]>;
   onDemandClassificationMap?: Map<number, number[]>;
-  onDemandMaterialMap?: Map<number, number>;
+  onDemandMaterialMap?: Map<number, number[]>;  // every associated material, not just the first
   onDemandDocumentMap?: Map<number, number[]>;
 }
 ```
@@ -185,7 +187,7 @@ const qsets = extractQuantitiesOnDemand(store, expressId);
 
 // Root attributes for one entity
 const attrs = extractEntityAttributesOnDemand(store, expressId);
-// { globalId, name, description, objectType, tag }
+// { globalId, name, description, objectType, tag, longName }
 ```
 
 Many more on-demand extractors are exported (classifications, materials, documents, relationships, group members, georeferencing, type properties, schedules); see `packages/parser/src/index.ts`.
@@ -221,6 +223,10 @@ class GeometryProcessor {
   // Stream geometry for large files (async generator of streaming events)
   processStreaming(/* buffer + streaming options; see the .d.ts */): AsyncGenerator<StreamingGeometryEvent>;
 
+  // Pick the path by size: one 'batch' below options.sizeThreshold (default 2 MB),
+  // else streaming, or the parallel worker path when SharedArrayBuffer is available
+  processAdaptive(buffer: Uint8Array, options?: { sizeThreshold?: number; batchSize?: number | DynamicBatchConfig; /* ... */ }): AsyncGenerator<StreamingGeometryEvent>;
+
   // Authored IfcSweptDiskSolid curves and derived centreline measurements
   extractSweptDiskDescriptions(buffer: Uint8Array, ids?: Uint32Array): SweptDiskDescriptions | null;
 
@@ -233,10 +239,10 @@ class GeometryProcessor {
     latitude: number,
     longitude: number,
     altitude: number,
-    xAxisAbscissa?: number,
-    xAxisOrdinate?: number,
-    name?: string,
-    altitudeMode?: 'clampToGround' | 'absolute',
+    xAxisAbscissa: number | undefined,  // pass undefined for no rotation; not omittable
+    xAxisOrdinate: number | undefined,
+    name?: string,                       // default 'IFC Model'
+    altitudeMode?: 'clampToGround' | 'absolute' | 'relativeToGround',
   ): Uint8Array | null;
   exportCsv(/* buffer, mode: 'entities'|'properties'|'quantities'|'spatial', ... */): Uint8Array | null;
   exportJson(/* ... */): Uint8Array | null;
@@ -244,9 +250,15 @@ class GeometryProcessor {
   exportStep(/* ... */): Uint8Array | null;
   exportIfcx(buffer, onlyKnownProperties?, pretty?): Uint8Array | null;
   exportMerged(buffers: Uint8Array[], schema?): Uint8Array | null;
+  exportUsd(buffer): Uint8Array | null;
   exportHbjson(buffer, name): Uint8Array | null;
+  exportHbjsonWithStats(buffer, name): { content: Uint8Array; stats: HbjsonStats } | null;
+  exportDfjson(buffer, name): string | null;
+  exportLandXmlTerrain(buffer, productIds: Uint32Array, options?): LandXmlTerrainExport | null;
 }
 ```
+
+Rhino `.3dm` scenes and CityJSON are standalone functions exported from the package, not processor methods: `exportRhinoScene` and `exportCityJson` load the separate `@ifc-lite/wasm/rhino` module on first use (see the `@ifc-lite/wasm` section below).
 
 `extractSweptDiskDescriptions` returns `null` until `init()` completes. Omit
 `ids` to inspect every product, or pass an empty `Uint32Array` to select none.
@@ -359,6 +371,7 @@ class IfcQuery {
   entity(expressId: number): EntityNode;
   get storeys(): EntityNode[];
   get project(): EntityNode | null;
+  get hierarchy(): SpatialHierarchy | null;
 
   // SQL (DuckDB-WASM, lazily initialized on first call)
   sql(query: string): Promise<SQLResult>;
@@ -410,7 +423,9 @@ class EntityNode {
 
   // Data
   properties(): PropertySet[];
+  property(psetName: string, propName: string): PropertyValue | null;
   quantities(): QuantitySet[];
+  quantity(qsetName: string, quantityName: string): number | null;
   allAttributes(): Array<{ name: string; value: string | number | boolean }>;
 
   // Generic traversal
@@ -505,6 +520,7 @@ class Renderer {
 
   // Rendering
   render(options?: RenderOptions): void;
+  requestRender(): void;  // only sets a dirty flag; the host's animation loop checks consumeRenderRequest()
 
   // Camera controls
   fitToView(): void;
@@ -512,6 +528,7 @@ class Renderer {
 
   // Selection (GPU picking)
   pick(x: number, y: number, options?: PickOptions): Promise<PickResult | null>;
+  pickRect(x0: number, y0: number, x1: number, y1: number, options?: PickOptions): Promise<Set<number>>;
 
   // Scene access
   // Narrower than the package-internal `Scene` class on purpose: `SceneContents`
@@ -523,6 +540,9 @@ class Renderer {
 
   // Resize handling
   resize(width: number, height: number): void;
+
+  // Release GPU resources
+  destroy(): void;
 }
 ```
 
@@ -562,6 +582,8 @@ class StepExporter {
   constructor(dataStore: IfcDataStore, mutationView?: MutablePropertyView);
 
   export(options: StepExportOptions): StepExportResult;
+  // Required for map-geometry normalization (export() throws for it)
+  exportAsync(options: StepExportOptions): Promise<StepExportResult>;
 }
 
 interface StepExportOptions {
@@ -647,16 +669,17 @@ Low-level closure walking for valid STEP export:
 // Forward closure walk from root entities
 function collectReferencedEntityIds(
   rootIds: Set<number>,
-  source: Uint8Array,
+  source: Uint8Array | IfcSourceBytes,
   entityIndex: { get(id: number): { byteOffset: number; byteLength: number } | undefined; has(id: number): boolean },
   excludeIds?: Set<number>,
+  isRefExcluded?: (id: number) => boolean,
 ): Set<number>;
 
 // Resolve viewer visibility into export roots
 function getVisibleEntityIds(dataStore, hiddenIds, isolatedIds): { roots: Set<number>; hiddenProductIds: Set<number> };
 
 // Reverse pass adding IfcStyledItem entities into the closure (mutates `closure`)
-function collectStyleEntities(closure: Set<number>, source: Uint8Array, entityIndex): void;
+function collectStyleEntities(closure: Set<number>, source: Uint8Array | IfcSourceBytes, entityIndex, excludeIds?: ReadonlySet<number>): void;
 ```
 
 ### Other exports
@@ -676,7 +699,7 @@ The standalone `GltfExporter` and `CsvExporter` classes were removed. glTF/GLB a
 
 Property editing with bidirectional change tracking. Nothing mutates the parsed buffer; edits accumulate in an overlay and materialise during `StepExporter.export({ applyMutations: true })`.
 
-`iterateEffectiveEntityIds(dataStore, view, types?)` enumerates the live entity
+`iterateEffectiveEntityIds(dataStore, view, types?, sourceIds?)` enumerates the live entity
 set for a model: parsed entities minus tombstones, plus overlay creations, with
 queued class changes applied. `types` is an optional list of schema-expanded
 UPPERCASE IFC names. Results carry `expressId`, effective `type`, and
@@ -695,7 +718,7 @@ class MutablePropertyView {
   getPropertyValue(entityId: number, psetName: string, propName: string): PropertyValue | null;
 
   // Property edits (each returns/records a Mutation)
-  setProperty(entityId, psetName, propName, value, valueType?, unit?): Mutation;
+  setProperty(entityId, psetName, propName, value, valueType?, unit?, skipHistory?, dataType?): Mutation;
   deleteProperty(entityId, psetName, propName): Mutation | null;
   createPropertySet(entityId, psetName, properties): Mutation;
   deletePropertySet(entityId, psetName): Mutation;
@@ -714,7 +737,7 @@ class MutablePropertyView {
   restoreFromTombstone(expressId: number): boolean;
 
   // Bookkeeping
-  getMutations(): Mutation[];
+  getMutations(since?: number): Mutation[];
   hasChanges(entityId?: number): boolean;
   applyMutations(mutations: Mutation[]): void;
   exportMutations(): string;
@@ -793,7 +816,7 @@ class BulkQueryEngine {
 
 ### CsvConnector
 
-Import property updates from CSV files: `parse`, `match`, `generateMutations`, `import`, `preview`, `autoDetectMappings`.
+Import property updates from CSV files: `parse`, `match`, `generateMutations`, `importAsync`, `preview`, `autoDetectMappings`.
 
 Mutation types cover properties (`CREATE/UPDATE/DELETE_PROPERTY`, `CREATE/DELETE_PROPERTY_SET`), quantities, named attributes (`UPDATE_ATTRIBUTE`), positional STEP args (`UPDATE_POSITIONAL_ATTRIBUTE`), and entity churn (`CREATE_ENTITY`, `DELETE_ENTITY`).
 
@@ -865,6 +888,7 @@ interface ProjectParams {
   Description?: string;
   Schema?: 'IFC2X3' | 'IFC4' | 'IFC4X3';
   LengthUnit?: string;  // 'METRE' (default), 'MILLIMETRE', 'FOOT'
+  Currency?: string;    // e.g. 'CHF', written as IfcMonetaryUnit; no default
   Author?: string;
   Organization?: string;
   FileName?: string;                    // STEP header FILE_NAME.name; default: 'created.ifc'
@@ -905,7 +929,7 @@ For editing an **already-parsed** `IfcDataStore`, the package exposes anchored b
 
 Hosted builders take a `HostAnchor` from `resolveHostAnchor(dataStore, hostExpressId, mutationView)` instead: `addOpeningToStore` (IfcOpeningElement + IfcRelVoidsElement in an IfcWall or IfcSlab), `addHostedDoorToStore` and `addHostedWindowToStore` (the opening plus an IfcDoor / IfcWindow filling it through IfcRelFillsElement).
 
-`addHostedElementInStore(dataStore, editor, hostExpressId, spec)` is the atomic hosted command operation used by the viewer, SDK and MCP. A spec chooses `kind: 'opening' | 'door' | 'window'` and the corresponding builder `params`. It resolves the live anchor and refuses wall cuts outside the host, overlapping existing openings, or having unreadable geometry. `readHostOpeningExtents(dataStore, hostExpressId, mutationView)` returns host-frame native-unit bounds and reports unreadable openings.
+`addHostedElementInStore(dataStore, editor, hostExpressId, spec, options?)` is the atomic hosted command operation used by the viewer, SDK and MCP. A spec chooses `kind: 'opening' | 'door' | 'window'` and the corresponding builder `params`. It resolves the live anchor and refuses wall cuts outside the host, overlapping existing openings, or having unreadable geometry. `readHostOpeningExtents(dataStore, hostExpressId, mutationView)` returns host-frame native-unit bounds and reports unreadable openings.
 
 `bim.store.joinWalls(modelId, aExpressId, bExpressId, options?)` exposes the existing `joinWallsInStore` core through SDK, sandbox and MCP. It returns the new `IfcRelConnectsPathElements` reference. The core now atomically protects hosted cuts against both joined end faces and refuses unreadable cut geometry. `recordCompoundMutation` and `undoRecordedMutationOperations` in `@ifc-lite/mutations` record and restore complete compound overlay graphs, including forgotten earlier entities, as one operation.
 
@@ -936,8 +960,12 @@ function resolveSpatialAnchor(store: IfcDataStore, storeyExpressId: number, view
 interface SpatialAnchor {
   ownerHistoryId: number | null; // optional from IFC4 onward
   bodyContextId: number;     // 'Body' subcontext (or parent context fallback)
+  axisContextId: number;     // 'Axis' subcontext (or parent context fallback)
+  rootContextId?: number | null;
   storeyId: number;
   storeyPlacementId: number; // the storey's own IfcLocalPlacement
+  schema?: 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5'; // default 'IFC4'
+  lengthUnitScale?: number;  // metres per native unit; default 1
   guidRandom?: RandomSource; // optional seeded [0,1) source: pins the emitted
                              // GlobalIds for reproducible in-store builds
                              // (counterpart of ProjectParams.GuidSource)
@@ -957,8 +985,11 @@ BCF (BIM Collaboration Format) support for topic tracking. Implements BCF 2.1 an
 ### readBCF / writeBCF
 
 ```typescript
-// Read a BCF/BCFzip file (accepts File, Blob, or ArrayBuffer)
-function readBCF(file: File | Blob | ArrayBuffer): Promise<BCFProject>;
+// Read a BCF/BCFzip file (accepts File, Blob, ArrayBuffer, or Uint8Array)
+function readBCF(
+  file: File | Blob | ArrayBuffer | Uint8Array,
+  limits?: { maxArchiveBytes?: number; maxEntries?: number; maxExpandedBytes?: number; onWarning?: (message: string, kind: 'skipped' | 'version') => void },
+): Promise<BCFProject>;
 
 // Write a BCF file (returns a Blob)
 function writeBCF(project: BCFProject): Promise<Blob>;
@@ -974,7 +1005,7 @@ function createBCFComment(options: { author: string; comment: string }): BCFComm
 function addTopicToProject(project: BCFProject, topic: BCFTopic): void;
 function addCommentToTopic(topic: BCFTopic, comment: BCFComment): void;
 function addViewpointToTopic(topic: BCFTopic, viewpoint: BCFViewpoint): void;
-function updateTopicStatus(/* topic, status, ... */): void;
+function updateTopicStatus(topic: BCFTopic, status: string, modifiedAuthor: string): void;
 ```
 
 ### Viewpoints
@@ -984,13 +1015,13 @@ function updateTopicStatus(/* topic, status, ... */): void;
 function createViewpoint(options): BCFViewpoint;
 
 // Extract viewer state from a BCF viewpoint
-function extractViewpointState(viewpoint: BCFViewpoint): {
+function extractViewpointState(viewpoint: BCFViewpoint, bounds?: ViewerBounds, targetDistance?: number): {
   camera?: ViewerCameraState;
   sectionPlane?: ViewerSectionPlane;     // the first clipping plane
   sectionPlanes?: ViewerSectionPlane[];  // every clipping plane, in order
   selectedGuids: string[];
   hiddenGuids: string[];
-  visibleGuids: string[];
+  visibleGuids: string[] | null;  // null: no isolation; []: isolation matching nothing
   coloredGuids: { color: string; guids: string[] }[];
 };
 ```
@@ -1009,13 +1040,13 @@ IDS (Information Delivery Specification) validation. Implements IDS 1.0 with all
 
 ```typescript
 // Parse an IDS XML file (accepts string or ArrayBuffer)
-function parseIDS(xmlContent: string | ArrayBuffer): IDSDocument;
+function parseIDS(xmlContent: string | ArrayBuffer, options?: ParseIDSOptions): IDSDocument;
 
 // Run validation against IFC data
 function validateIDS(
   document: IDSDocument,
   accessor: IFCDataAccessor,
-  modelInfo: IDSModelInfo,
+  modelInfo: ValidationModelInfo,  // IDSModelInfo is a deprecated alias
   options?: ValidatorOptions
 ): Promise<IDSValidationReport>;
 ```
@@ -1023,29 +1054,31 @@ function validateIDS(
 ### Facet checking
 
 ```typescript
-function checkFacet(facet, entity, accessor): boolean;
-function filterByFacet(facet, entities, accessor): EntityRef[];
-function checkEntityFacet(facet, entity): boolean;
-function checkAttributeFacet(facet, entity, accessor): boolean;
-function checkPropertyFacet(facet, entity, accessor): boolean;
-function checkClassificationFacet(facet, entity, accessor): boolean;
-function checkMaterialFacet(facet, entity, accessor): boolean;
-function checkPartOfFacet(facet, entity, accessor): boolean;
+// Every check* function takes (facet, expressId, accessor) and returns a FacetCheckResult
+function checkFacet(facet: IDSFacet, expressId: number, accessor: IFCDataAccessor): FacetCheckResult;
+// Candidate expressIds for an applicability facet, or undefined when it cannot pre-filter
+function filterByFacet(facet: IDSFacet, accessor: IFCDataAccessor): number[] | undefined;
+function checkEntityFacet(facet, expressId, accessor): FacetCheckResult;
+function checkAttributeFacet(facet, expressId, accessor): FacetCheckResult;
+function checkPropertyFacet(facet, expressId, accessor): FacetCheckResult;
+function checkClassificationFacet(facet, expressId, accessor): FacetCheckResult;
+function checkMaterialFacet(facet, expressId, accessor): FacetCheckResult;
+function checkPartOfFacet(facet, expressId, accessor): FacetCheckResult;
 ```
 
 ### Constraints, audit, translation
 
 ```typescript
-function matchConstraint(constraint: IDSConstraint, value: unknown): boolean;
+function matchConstraint(constraint: IDSConstraint, actualValue: string | number | boolean | null | undefined, options?: MatchOptions): boolean;
 function formatConstraint(constraint: IDSConstraint): string;
 function getConstraintMismatchReason(constraint: IDSConstraint, value: unknown): string;
 
 // IDS document correctness audit
-function auditIDSDocument(/* ... */): IDSAuditReport;
-function auditIDSStructure(/* ... */): IDSAuditReport;
+function auditIDSDocument(xml: string | ArrayBuffer, options?: IDSAuditOptions): Promise<IDSAuditReport>;
+function auditIDSStructure(doc: IDSDocument, options?: IDSAuditOptions): Promise<IDSAuditReport>;
 
 // Report localisation
-function createTranslationService(locale: 'en' | 'de' | 'fr' | 'it'): TranslationService;
+function createTranslationService(locale?: 'en' | 'de' | 'fr' | 'it' | 'ru'): TranslationService; // default 'en'
 ```
 
 ---
@@ -1058,10 +1091,11 @@ function createTranslationService(locale: 'en' | 'de' | 'fr' | 'it'): Translatio
 
 ```typescript
 class Drawing2DGenerator {
-  initialize(): Promise<void>;
-  generate(meshes: MeshData[], config: SectionConfig, options?: Partial<GeneratorOptions>): Promise<Drawing2D>;
+  // Pass a GPUDevice to enable the GPU section cutter; omit it for CPU only
+  initialize(gpuDevice?: GPUDevice): Promise<void>;
+  generate(meshes: MeshData[], config: SectionConfig, options?: Partial<GeneratorOptions>, profiles?: ProfileEntry[]): Promise<Drawing2D>;
   // Same drawing from a replayable source, one batch at a time (see DrawingMeshSource)
-  generateFromSource(source: DrawingMeshSource, config: SectionConfig, options?: Partial<GeneratorOptions>): Promise<Drawing2D>;
+  generateFromSource(source: DrawingMeshSource, config: SectionConfig, options?: Partial<GeneratorOptions>, profiles?: ProfileEntry[]): Promise<Drawing2D>;
   // Push chunks one at a time: addGeometry → endGeometry → addOcclusion → finish | cancel
   beginDrawing(config: SectionConfig, options?: Partial<GeneratorOptions>, profiles?: ProfileEntry[]): DrawingSession;
   dispose(): void;
@@ -1070,7 +1104,7 @@ class Drawing2DGenerator {
 interface DrawingMeshSource { pass(pass: 'geometry' | 'occlusion'): AsyncIterable<readonly MeshData[]>; }
 class StoreyFloorLevels { add(meshes): void; floors(): number[]; } // storeyFloorsFromMeshes, batch by batch
 
-function generateFloorPlan(meshes: MeshData[], elevation: number, options?: Partial<GeneratorOptions> & PlanSymbolOptions): Promise<Drawing2D>;
+function generateFloorPlan(meshes: MeshData[], elevation: number | StoreyCut, options?: Partial<GeneratorOptions> & PlanSymbolOptions): Promise<Drawing2D>;
 function generateSection(meshes: MeshData[], axis: 'x' | 'z', position: number, options?: Partial<GeneratorOptions>): Promise<Drawing2D>;
 function createSectionConfig(axis: 'x' | 'y' | 'z', position: number, options?: Partial<Omit<SectionConfig, 'plane'>>): SectionConfig;
 ```
@@ -1141,7 +1175,7 @@ Scripting SDK: the `bim.*` API for BIM automation. `createBimContext` builds a `
 
 QuickJS-in-WASM sandboxed script execution: `createSandbox` / `Sandbox`, `buildBridge` (marshals the `bim.*` API across the sandbox boundary), and `transpileTypeScript`.
 
-`buildBridge` returns `{ logs, resetLogs, dispose }`. `resetLogs` is part of the contract, not an implementation detail: the console capture budget (byte total and entry count) is scoped to **one run**, so a caller driving `buildBridge` directly must invoke `resetLogs()` at the start of every run. Skip it and a script that exhausts the budget silences the logs of every later run on the same bridge. `Sandbox.eval` already does this for you — only direct `buildBridge` callers carry the obligation.
+`buildBridge` returns `{ logs, resetLogs, hostWork, takeSurfaces, dispose }`. `resetLogs` is part of the contract, not an implementation detail: the console capture budget (byte total and entry count) is scoped to **one run**, so a caller driving `buildBridge` directly must invoke `resetLogs()` at the start of every run. Skip it and a script that exhausts the budget silences the logs of every later run on the same bridge. `Sandbox.eval` already does this for you — only direct `buildBridge` callers carry the obligation, and they also settle `hostWork` before reading `logs` or calling `takeSurfaces()`.
 
 ## @ifc-lite/extensions
 

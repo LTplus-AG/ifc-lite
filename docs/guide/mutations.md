@@ -70,6 +70,26 @@ neighbours you did not touch. For the same reason a numeric type cannot be
 changed this way — `Real` names neither `IfcLengthMeasure` nor `IfcReal`, so
 the source token wins.
 
+To name any other `IfcValue` member, numeric measures included, pass it
+explicitly. Through the SDK, `bim.mutate.setProperty` takes it as the last
+argument and validates it before writing: the name must be a scalar `IfcValue`
+member, and the value must fit its base type, domain and string width, or the
+call throws.
+
+```typescript
+import type { BimContext, EntityRef } from '@ifc-lite/sdk';
+
+declare const bim: BimContext;
+declare const wall: EntityRef;
+
+bim.mutate.setProperty(wall, 'Pset_WallCommon', 'Width', 0.24, 'IfcPositiveLengthMeasure');
+```
+
+On a `MutablePropertyView` the member is the eighth argument, `dataType`,
+after `valueType`, `unit` and `skipHistory`. It is not validated there, and the
+exporter writes it only when it agrees with `valueType`'s shape (a `Real` for
+a real measure) and the value fits; otherwise the source token wins as above.
+
 ### Mutation History
 
 ```typescript
@@ -393,6 +413,8 @@ Edits accumulate in the same overlay used by `setProperty` / `setAttribute`. The
 ### Atomic overlay edits
 
 Use `StoreEditor.runAtomic` to create or modify a related set of IFC entities together. The callback receives a detached editor; a thrown error leaves the live overlay, mutation history and express-ID allocator unchanged. `MutablePropertyView.runAtomic` provides the same operation with a draft view for property and quantity edits.
+
+A view created without a property table or on-demand extractor reports `hasPropertyBase() === false`. Readers with a parsed store can supply its properties to `view.getForEntity(id, baseId => store.getProperties(baseId))` so the view applies edits and deletions to the source values.
 
 Use `MutablePropertyView.snapshotForInspection()` when a reader needs to retain the current overlay revision. It copies the overlay and shares the source tables and read configuration. Changes made to the copy are detached from the live view.
 

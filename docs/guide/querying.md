@@ -163,6 +163,31 @@ console.log(results);
 // ]
 ```
 
+### Paging, Counting and Other Entry Points
+
+```typescript
+// Page through results; offset() is applied before limit()
+const page = query.walls().offset(20).limit(10).execute();
+
+// ids(), count() and first() are async
+const ids = await query.doors().ids();
+const doorCount = await query.doors().count(); // ignores limit() and offset()
+const firstSlab = await query.slabs().first(); // QueryResultEntity | null
+
+// Start from one entity, or from the whole model
+const one = query.byId(123).execute();
+const everything = query.all().limit(100).execute();
+
+// Load property and quantity sets with the results
+const withData = query.spaces().includeProperties().includeQuantities().execute();
+```
+
+`includeGeometry()` and `includeAll()` exist, but `QueryResultEntity.geometry`
+is always `null` today. `query.project` returns the `IfcProject` node and
+`query.hierarchy` the raw `SpatialHierarchy` (both `null` without one).
+`inBounds(aabb)` and `raycast(origin, direction)` need `store.spatialIndex`
+and throw when it is missing; `onStorey()` throws without a spatial hierarchy.
+
 ## Spatial Queries
 
 ### Hierarchy Navigation
@@ -273,33 +298,50 @@ For complex analytics, use SQL via DuckDB. SQL support is optional: install the
 call, so it adds nothing to your bundle until used; `sql()` throws if the package
 is not installed):
 
+!!! note "The `properties` and `quantities` tables need a materialised store"
+    `sql()` copies the store's columnar tables into DuckDB. A STEP parse leaves the
+    property and quantity tables empty (see [Direct Data Access](#direct-data-access)),
+    so on a `.ifc` model the `properties` and `quantities` tables have no rows: joins
+    against them return nothing, and a `NOT EXISTS` check against them matches every
+    entity. `entities` is copied from the entity table; `relationships` is copied
+    from the store's relationship graph, so it is empty when the model has none.
+    A STEP parse also leaves the entity table's `description` and `object_type`
+    empty (except on `IfcGroup` entities) and its `contained_in_storey` and
+    `defined_by_type` columns `NULL`; use the `relationships` table (as in the
+    storey example below) for containment. The `type` column holds the entity
+    table's type enum name, so a class the enum does not list (for example
+    `IfcChiller`) reads `'Unknown'`.
+
+    `sql()` also creates views: `walls` (`IfcWall` and `IfcWallStandardCase`),
+    `doors`, `windows`, `slabs`, `columns`, `beams`, `spaces`, plus
+    `entity_properties` and `entity_quantities`, which left-join each entity
+    to its property or quantity rows.
+
 ```typescript
 import { IfcQuery } from '@ifc-lite/query';
 
 const query = new IfcQuery(store); // store from parseColumnar()
 
 // sql() lazily initializes DuckDB-WASM on first call
+// This query reads only the entities table, so it returns rows for a STEP parse
 const result = await query.sql(`
   SELECT
     e.type,
     COUNT(*) as count,
-    AVG(p.value_int) as avg_fire_rating
+    COUNT(*) FILTER (WHERE e.has_geometry) as with_geometry
   FROM entities e
-  JOIN properties p ON e.express_id = p.entity_id
   WHERE e.type LIKE 'IfcWall%'
-    AND p.pset_name = 'Pset_WallCommon'
-    AND p.prop_name = 'FireRating'
   GROUP BY e.type
   ORDER BY count DESC
 `);
 
-console.table(result);
-// ┌──────────────────────┬───────┬─────────────────┐
-// │ type                 │ count │ avg_fire_rating │
-// ├──────────────────────┼───────┼─────────────────┤
-// │ IfcWallStandardCase  │ 42    │ 45              │
-// │ IfcWall              │ 18    │ 30              │
-// └──────────────────────┴───────┴─────────────────┘
+console.table(result.toJSON()); // SQLResult: { columns, rows, toArray(), toJSON() }
+// ┌──────────────────────┬───────┬───────────────┐
+// │ type                 │ count │ with_geometry │
+// ├──────────────────────┼───────┼───────────────┤
+// │ IfcWallStandardCase  │ 42    │ 42            │
+// │ IfcWall              │ 18    │ 18            │
+// └──────────────────────┴───────┴───────────────┘
 ```
 
 ### SQL Table Schema
@@ -339,7 +381,7 @@ interface QuantitiesTable {
   quantity_name: string;
   quantity_type: string;
   value: number;
-  formula: string | null;
+  formula: string; // '' when the quantity has no formula
 }
 
 // Relationships table
@@ -466,7 +508,7 @@ const alsoExternalWalls = query
 
 A capture supports up to 20,000 members across 1,024 source files. Larger or malformed saved populations refuse explicitly; capture a smaller population instead.
 
-For a pinned selected or visible Rules population, persist a `CapturedEntityScope` and resolve it with `resolveCapturedEntityScope(scope, models)`. Models supply their `filterIdentity`, full-content `sourceContentHash`, parsed store, and live mutation view. The resulting per-model candidate map includes explicit empty sets for all other loaded models; pass it as `candidateExpressIdsByModel` to the federated filter evaluator. Scope resolution refuses missing, ambiguous, replaced, or deleted members before a run. Source identity must cover every source byte, not a sampled hash or filename. Authored members additionally store their original `CREATE_ENTITY` mutation ID and refuse recovery that loses that provenance.
+For a pinned selected or visible Rules population, persist a `CapturedEntityScope` and resolve it with `resolveCapturedEntityScope(scope, models)` (both from `@ifc-lite/rules`). Models supply their `filterIdentity`, full-content `sourceContentHash`, parsed store, and live mutation view. The resulting per-model candidate map includes explicit empty sets for all other loaded models; pass it as `candidateExpressIdsByModel` to the federated filter evaluator. Scope resolution refuses missing, ambiguous, replaced, or deleted members before a run. Source identity must cover every source byte, not a sampled hash or filename. Authored members additionally store their original `CREATE_ENTITY` mutation ID and refuse recovery that loses that provenance.
 
 ## Next Steps
 

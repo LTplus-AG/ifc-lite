@@ -29,6 +29,18 @@ signed volume, watertightness), computed from plain vertex/face arrays so
 - `reference/` - committed reference JSON for the hard corpus, generated
   with the recorded engine version. Refreshing committed references is an
   explicit, reviewed change.
+- `reference_validation.py` / `reference_worker.py` - the owned-process
+  reference conversion and log capture described under #7723 below.
+- Cost parity (#4859): `dump_reference_cost.py` (IfcOpenShell side),
+  `dump_ifclite_cost.mjs` (the `@ifc-lite/parser` cost read model),
+  `compare_cost.py`, with committed references in `reference_cost/` and
+  inputs in `cost_fixtures/`.
+- Independent checkers that package tests call through the same IfcOpenShell
+  environment: `validate_export.py` (STEP/IFC export schema conformance),
+  `check_alignment.py`, `check_vertical.py` and `check_referents.py` (LandXML
+  to IFC4X3 alignments), `check_terrain_texture.py`, `structural_axes.py`,
+  `compare_surface.py`, `finite_coverage.py` and the `probe_*.py` scripts.
+- `Dockerfile` - a container with the reference engine.
 
 ## Gating policy (calibrated on real models, see compare.py docstring)
 
@@ -110,6 +122,9 @@ Both lanes live in the `IfcOpenShell parity` workflow
 - Nightly (`full` job): installs the latest stable engine, runs the
   full committed corpus (fetched fixtures included), regenerates reference
   dumps to detect reference-staleness, and uploads the diff reports.
+- Cost parity: `cost-quick` on PRs and merge-queue batches (in-tree fixture
+  against the committed `reference_cost/`; needs the WASM toolchain) and
+  `cost-full` outside PRs against the latest stable engine.
 
 IfcOpenShell is deliberately unpinned in `requirements.lock` (#7732). CI
 upgrades it on installation, so each run uses the latest stable PyPI release;

@@ -8,9 +8,8 @@ The change and the problem it solves.
 Closes #<issue>   <- required unless this PR carries the `unqueued` label.
                      The issue needs the `ready` label; a maintainer applies both.
                      See CONTRIBUTING.md "Picking what to work on".
-                     The `Issue queue` check prints its own mode. While it says
-                     ADVISORY, a green tick does not mean the rule was met, so
-                     read the verdict rather than the tick.
+                     The `Issue queue` check enforces this: without a linked
+                     `ready` issue or the `unqueued` label it fails.
 -->
 
 ## How it was verified
@@ -28,7 +27,7 @@ it does, and to answer follow-up questions with evidence rather than another
 generation.
 -->
 
-- [ ] `cargo test --workspace` (Rust) and/or `pnpm test` (TS) pass locally
+- [ ] `cargo test --workspace` and `cargo clippy --workspace --all-targets -- -D warnings` (Rust) and/or `pnpm test` (TS) pass locally
 - [ ] Geometry/WASM change: ran `scripts/build-wasm.sh` then `pnpm test:wasm-contract`
 
 ## Checklist
@@ -38,6 +37,8 @@ generation.
 - [ ] Published `packages/*` touched: added a changeset (`pnpm changeset`) and, if
       the export surface changed, ran `pnpm api-surface:update`. The bump level
       follows AGENTS.md, not generic semver: never `patch` when the surface shrank
+- [ ] Public API or CLI flag changed: updated the matching guide in this PR (edit
+      the source and run `pnpm docs:generate` for generated doc regions)
 - [ ] Geometry-output change: re-pinned **both** `mesh_determinism.json` and
       `mesh_determinism.wasm32.json` (or: no geometry output changed)
 - [ ] House rules: no `as any` / `@ts-ignore`, no silent `catch {}`, no module

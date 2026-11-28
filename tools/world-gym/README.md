@@ -42,7 +42,7 @@ node run-pilot.mjs --count 100000 --out-dir /path/outside/repo/wg-100k \
 node channel-report.mjs --manifest /path/wg-100k/manifest.jsonl --out channels-report.json
 
 # IfcOpenShell differential oracle spot-validation (needs a python with
-# ifcopenshell==0.8.5, the same pin as tools/ifcopenshell_reference)
+# ifcopenshell; tools/ifcopenshell_reference installs the latest stable one)
 node oracle-validate.mjs --manifest /path/wg-100k/manifest.jsonl \
   --python /path/to/venv/bin/python --every 500
 ```
@@ -64,7 +64,7 @@ node generator.mjs --seed 4218 --corrupt-rate 0.3 --out /tmp/m.ifc
 # Validate a submission (JSONL: header line + one prediction line per seed)
 node benchmark/score.mjs --submission sub.jsonl --split dev --validate-only
 
-# Score it: regenerates the split's ground truth from seeds (~1s for dev),
+# Score it: regenerates the split's ground truth from seeds,
 # emits a deterministic leaderboard-row JSON
 node benchmark/score.mjs --submission sub.jsonl --split dev --out row.json
 
@@ -121,7 +121,7 @@ tools/world-gym/
   determinism-check.mjs         byte-identical proof over N seeds
   channel-report.mjs            per-channel value distributions over a corpus manifest
   oracle-validate.mjs           samples + regenerates models, drives the python oracle
-  oracle_validate.py            IfcOpenShell 0.8.5 differential checks per sampled model
+  oracle_validate.py            IfcOpenShell differential checks per sampled model
   benchmark/
     BENCHMARK.md                the versioned benchmark spec (tasks, splits, rules, scoring)
     splits.mjs                  constants + seed-arithmetic splits + saltForSplit (normative universe)
@@ -130,7 +130,7 @@ tools/world-gym/
     score.mjs                   scoring harness CLI (per-task + aggregate + leaderboard row)
     baselines.mjs               always-clean / heuristic-text / oracle-kernel anchors
     results/                    committed anchor rows + split summaries (small JSONs)
-    attacks/                    committed adversarial submissions, kept as regressions
+    attacks/                    committed adversarial attack script (clean-twin-diff), kept as a regression
 ```
 
 `generateModel()` is the single source of truth. It:
@@ -303,8 +303,6 @@ verified byte-identical the same way; the 100k channel report re-proved
 
 ```text
 requested / completed / failed:   100000 / 100000 / 0
-wall time:                        126.4 s  (2m 6s)
-throughput:                       791.0 models/sec  (v1 subprocess engine: 6.6/sec -> ~120x)
 label coverage:                   100000/100000 (100%): entity counts, quantities,
                                    schema verdict, clash verdict, quantity re-extraction
 label classes:                     69693 clean / 30307 corrupted (corruptRate 0.3)
@@ -317,7 +315,6 @@ determinism re-proof:              10000/10000 regenerated models re-hash to the
                                    manifest sha256; 100/100 tampered candidates score 0
 dedup:                             100000 unique content hashes, 0 duplicates
 entity counts:                     min 244, median 641, p95 3549, max 4840
-per-model timing:                  generation median 1 ms; total (gen+label) median 7 ms, p95 33 ms
 ```
 
 Reward-channel distributions over this corpus (clean mean / corrupted mean):
@@ -337,20 +334,17 @@ bytes.
 ### Throughput: what changed vs v1
 
 v1 paid two fresh `node dist/index.js` subprocess launches per model
-(validate + clash), ~1.4 s median per model, 6.6 models/sec on 10 workers.
-v2 imports the same building blocks in-process and keeps one WASM geometry
-processor warm per worker: median label cost fell to ~6 ms, throughput rose
-to 791 models/sec end to end (measured A/B on 200 models: 6.58/s subprocess
-vs 186/s in-process, the latter pool-start dominated; at 100k scale
-amortization pushes it to 791/s). A 100k corpus now costs ~2 minutes on one
-laptop; 1M extrapolates to ~21 minutes.
+(validate + clash). v2 imports the same building blocks in-process and keeps
+one WASM geometry processor warm per worker, which is much faster. `run-pilot.mjs`
+writes the timing of each run to its `summary.json`. For measured figures, see
+the [performance guide](../../docs/guide/performance.md).
 
 ## IfcOpenShell differential oracle
 
 `oracle-validate.mjs` + `oracle_validate.py` spot-validate labels against
-IfcOpenShell 0.8.5 (the exact pin from
-`tools/ifcopenshell_reference/requirements.lock`; the harness's own local
-venv recipe applies). Per sampled model, the oracle independently:
+IfcOpenShell. `tools/ifcopenshell_reference/requirements.lock` leaves it
+unpinned, so its venv recipe installs the latest stable release; the 100k
+result below was measured with 0.8.5. Per sampled model, the oracle independently:
 
 - parses the file and confirms the schema;
 - recounts entities per type (expectations adjusted for planted text
@@ -403,13 +397,13 @@ caught the duplicated IfcProject silently doubling as an unplanned GUID dup
   console to stderr process-wide at init). Still worth fixing upstream in
   `packages/cli` / `packages/geometry`.
 - **GlobalId/timestamp non-determinism in `@ifc-lite/create` /
-  `@ifc-lite/encoding`** - see "Determinism". Worked around via a runtime
-  shim, not fixed at the source.
+  `@ifc-lite/encoding`** is fixed at the source: the generator passes
+  `ProjectParams.Timestamp` + `ProjectParams.GuidSource` (see "Determinism").
 - **`ifc-lite gym` integration is DONE** (B2.2): the generator is wired into
   the gym as an episode factory (`--seed` / reset-with-seed, see Reward
   channels above), with tests in `packages/cli/src/commands/gym.test.ts`.
-  Still open on that surface: `HeadlessBackend.mutate` remains a no-op stub
-  (the gym drives `MutablePropertyView` directly), no entity-creation ops,
+  Still open on that surface: the gym drives `MutablePropertyView` directly
+  rather than `HeadlessBackend.mutate`, no entity-creation ops,
   `done` never fires, `observation.bounds` always null.
 - **The defect-detection task is near-saturated by text heuristics
   (measured, v1.0).** On the dev split the no-kernel `heuristic-text`
@@ -461,7 +455,7 @@ caught the duplicated IfcProject silently doubling as an unplanned GUID dup
   exactly that reason).
 - No new npm dependencies - plain `.mjs` with Node built-ins plus relative
   imports into already-built `packages/*/dist`. The oracle needs a python
-  venv with `ifcopenshell==0.8.5` (same pin as
-  `tools/ifcopenshell_reference`), created outside the repo.
+  venv with `ifcopenshell` (as installed by `tools/ifcopenshell_reference`),
+  created outside the repo.
 - Generated corpora (IFC files, manifests, reports) are written outside the
   repo and are not checked in.

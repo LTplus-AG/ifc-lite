@@ -111,8 +111,8 @@ storeys for.
   an instance of a shared definition, so a file with many repeated blocks costs more
   memory than it needs to.
 - **Curves and text dots are read but not drawn.** They cross into the viewer and are
-  counted, and a file whose only drawable objects are curves is refused with "Nothing in
-  this file can be drawn".
+  counted, and a file that holds only curves, text dots or points is refused with "This
+  Rhino file holds only curves, text dots or points. The viewer does not draw those yet".
 - **Rhino's earth anchor is reported, never applied.** It shows in the model metadata and
   the geometry is not moved by it, so a Rhino file that is not an ifc-lite export does not
   align itself with a georeferenced IFC. ifc-lite's own exports align exactly, through the
@@ -123,6 +123,8 @@ storeys for.
 
 - **400 MB per file.** Above that the file is refused with its size and the cap. The limit
   is the Rhino runtime's 2 GB memory, not a policy.
+- **30,000,000 triangles per file.** A block counts once per placement. Objects past the
+  budget are not drawn, or drawn in part, and a warning says how many.
 - **Surfaces need their render meshes.** Rhino stores them with the file when you save
   from a shaded view without "Save Small". A surface saved without one cannot be drawn and
   is counted as skipped, with the remedy in the message.
@@ -150,6 +152,8 @@ storeys for.
 | "This file is … ; the reader handles up to 400 MB." | over the size cap |
 | "…could not be read: it most likely needs more memory than the reader has." | the Rhino runtime ran out of memory part-way through |
 | "Nothing in this file can be drawn…" | nothing in the file produced geometry; the message lists what was skipped |
+| "This Rhino file holds only curves, text dots or points…" | the file has geometry, but none the viewer draws yet |
+| "Every surface, mesh and point cloud in this Rhino file is hidden in Rhino…" | everything the viewer can draw is hidden in Rhino, and the rest is curves or text dots; show it in Rhino |
 
 A refusal leaves everything already loaded alone. Dismiss the message and carry on.
 

@@ -69,7 +69,7 @@ In the Extensions panel each row has:
 
 ## The Extensions panel
 
-Five tabs across the header:
+Four tabs across the header. **Ideas** appears only when the viewer's AI chat is available.
 
 === "Installed"
 
@@ -87,9 +87,7 @@ Five tabs across the header:
 
     Append-only ledger of lifecycle events: `install`, `uninstall`, `update`, `enable`, `disable`, `activate`, `deactivate`, `capability_grant`, `capability_revoke`, `mutation_summary`, `network_fetch`, `unhealthy`, `killed`. Filter by event kind, export the log as JSON, or clear it.
 
-=== "Privacy"
-
-    Controls for the local action log + prompt overlay. See [Privacy](privacy.md).
+The local action log and prompt overlay controls are under **Settings → Privacy**, not in this panel. See [Privacy](privacy.md).
 
 ## Capability Review screen
 

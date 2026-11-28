@@ -16,12 +16,31 @@ The repo already converged on the primitives without naming the product:
 
 - `@ifc-lite/ifcx` composes USD-style layer stacks (`layer-stack.ts`, `composition.ts`)
 - `@ifc-lite/diff` ships a store-agnostic, fingerprint-based entity diff engine
-- `@ifc-lite/collab` ships CRDT sessions, branching starters, conflict detection, and `extractMinimalLayer` (a differential layer composer, additive-only)
+- `@ifc-lite/collab` ships CRDT sessions, branching starters, conflict detection, and `extractMinimalLayer` (a differential layer composer; it now emits tombstones for deletions)
 - `@ifc-lite/mutations` ships change sets; `@ifc-lite/ids` ships validation; `@ifc-lite/bcf` ships the review-comment substrate
 - `@ifc-lite/extensions` ships a capability grammar with risk tiers, audit, and dry-run: the security model for non-human authors already exists
 - `@ifc-lite/mcp` ships the agent surface
 
-`branch.ts` and `minimal-layer.ts` both carry docstrings deferring exactly the pieces specified here (differential composer, deletion overlays). This spec set closes those deferrals and composes everything into one product.
+When this spec set was written, `branch.ts` and `minimal-layer.ts` both carried docstrings deferring exactly the pieces specified here (differential composer, deletion overlays). `minimal-layer.ts` now emits tombstones; `collab/src/branch/branch.ts` still defers the differential composer. This spec set closes those deferrals and composes everything into one product.
+
+## Implementation status
+
+Much of this spec has shipped. The table names the main code; the "Not implemented" list below names what is still a plan.
+
+| Spec | Shipped in |
+|---|---|
+| 02 §2.3 tombstones | `packages/ifcx/src/tombstones.ts`; `packages/collab/src/snapshot/minimal-layer.ts` emits them |
+| 03 provenance manifest (ed25519 `signatures` field) | `packages/ifcx/src/provenance.ts` |
+| 04 §4.3 expressId bridge | `packages/mutations/src/change-set-to-ops.ts` |
+| 05 per-component fingerprints | `components` sub-hashes in `packages/diff/src/fingerprint.ts` |
+| 05 three-way merge, merge layers, rebase, revert, ref policy | `@ifc-lite/merge` (`three-way.ts`, `merge-layer.ts`, `rebase.ts`, `inverse.ts`, `ref-flow.ts`) |
+| 06 MCP layer tools | `packages/mcp/src/tools/layer.ts`, `layer-access.ts`, `layer-review.ts` |
+| 09 CLI | `ifc-lite layer` and `ifc-lite ref` (`packages/cli/src/commands/layer*.ts`, `ref.ts`) |
+| 08 review UI | viewer Layers panel: `apps/viewer/src/components/viewer/layers/` (`LayerReviewSection.tsx` for registry-backed review, `LayerDiffView.tsx`, `LayerProvenanceDetail.tsx`) |
+| 10 registry | `packages/collab-server/src/layer-registry*.ts` |
+| 12 delivery step 1 (composition half), step 2 | opt-in opinion retention (`retainOpinions` in `packages/ifcx/src/federated-composition.ts`, `findDivergentAttributes` in `opinions.ts`), charters and resolution (`packages/extensions/src/authority/`) |
+
+Not implemented: the `layers.enabled` and `layers.authority` feature flags, the GitHub Action (09 §9.2), the viewer entity-panel opinions list (12 delivery step 1), the 12 §12.7 `RefPolicy` charter fields and contested-record BCF topics (12 delivery steps 3-4).
 
 ## Reading map
 

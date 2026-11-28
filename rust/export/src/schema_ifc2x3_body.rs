@@ -13,6 +13,8 @@ pub(crate) struct Body<'w> {
     held: Option<Vec<u8>>,
     ifc2x3: bool,
     prune_upgrade: Option<Upgrade>,
+    omitted: HashSet<u32>,
+    assignment_target: Option<&'static str>,
 }
 
 type BodyHeader<'a> = dyn FnMut(&mut dyn Write, &HashSet<u32>) -> io::Result<()> + 'a;
@@ -23,7 +25,19 @@ impl<'w> Body<'w> {
     }
 
     pub(crate) fn for_conversion(out: &'w mut dyn Write, ifc2x3: bool, deferred: bool, prune_upgrade: Option<Upgrade>) -> Self {
-        Body { out, held: (ifc2x3 || deferred || prune_upgrade.is_some()).then(Vec::new), ifc2x3, prune_upgrade }
+        Body { out, held: (ifc2x3 || deferred || prune_upgrade.is_some()).then(Vec::new), ifc2x3, prune_upgrade, omitted: HashSet::new(), assignment_target: None }
+    }
+
+    /// Keep omitted IDs for the final dependency pass, even when their lines were never written.
+    pub(crate) fn note_omitted(&mut self, id: u32) {
+        if self.prune_upgrade.is_some() { self.omitted.insert(id); }
+    }
+
+    pub(crate) fn prune_type_assignments(&mut self, target: &str, ids: HashSet<u32>) {
+        if !ids.is_empty() {
+            self.assignment_target = Some(crate::schema_convert::canon(target));
+            self.omitted.extend(ids);
+        }
     }
 
     pub(crate) fn finish(self) -> io::Result<isize> {
@@ -46,22 +60,28 @@ impl<'w> Body<'w> {
         warnings: &mut Vec<String>,
     ) -> io::Result<isize> {
         let Some(held) = self.held else { return Ok(0) };
-        let mut adapt = |text: &str| {
+        let adapt = |text: &str| {
             let rewritten = deferred(text);
             let source = rewritten.as_ref().map_or(text, |(s, _)| s.as_str());
             let added = rewritten.as_ref().map_or(0, |(_, n)| *n);
-            if let Some(upgrade) = self.prune_upgrade {
-                if let Some((pruned, omitted, losses)) = upgrade.prune(source) {
-                    let removed = losses.len() as isize;
-                    warnings.extend(losses);
-                    return Some((pruned, added - removed, omitted));
-                }
-            }
-            if let Some(placed) = self.ifc2x3.then(|| place_each_object_once(source)).flatten() {
-                let delta = added + placed.added as isize - placed.removed as isize;
-                Some((placed.body, delta, HashSet::new()))
+            let pruned = if let Some(upgrade) = self.prune_upgrade {
+                upgrade.prune(source, self.omitted)
             } else {
-                rewritten.map(|(body, delta)| (body, delta, HashSet::new()))
+                self.assignment_target.and_then(|target| crate::schema_unrooted_upgrade::prune_with_issue(source, &self.omitted, target, 11500))
+            };
+            let (rewritten, delta, omitted) = match pruned {
+                Some((body, omitted, losses)) => {
+                    let delta = added - losses.len() as isize;
+                    warnings.extend(losses);
+                    (Some(body), delta, omitted)
+                }
+                None => (rewritten.map(|(body, _)| body), added, HashSet::new()),
+            };
+            if let Some(placed) = self.ifc2x3.then(|| place_each_object_once(rewritten.as_deref().unwrap_or(text))).flatten() {
+                let delta = delta + placed.added as isize - placed.removed as isize;
+                Some((placed.body, delta, omitted))
+            } else {
+                rewritten.map(|body| (body, delta, omitted))
             }
         };
         let adapted = match std::str::from_utf8(&held) {

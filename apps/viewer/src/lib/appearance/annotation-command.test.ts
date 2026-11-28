@@ -122,7 +122,8 @@ for (const containerId of [40, 50, 51]) for (const federated of [false, true]) t
     assert.ok(container.elements.includes(native.annotationId));
     assert.ok(containerMap.get(containerId)?.includes(native.annotationId));
     assert.equal(hierarchy.elementToContainer?.get(native.annotationId), containerId);
-    assert.equal(hierarchy.elementToStorey.get(native.annotationId), containerId === 40 ? 40 : undefined);
+    const expectedStorey = containerId === 50 ? undefined : 40;
+    assert.equal(hierarchy.elementToStorey.get(native.annotationId), expectedStorey);
     assert.equal(hierarchy.getContainingSpace(native.annotationId), containerId === 51 ? 51 : null);
     assert.equal(hierarchy.getPath(native.annotationId).at(-1)?.expressId, containerId);
     const mesh = meshes.get(result.globalId)!;
@@ -155,6 +156,7 @@ for (const containerId of [40, 50, 51]) for (const federated of [false, true]) t
     assert.ok(!container.elements.includes(native.annotationId), 'Undo removes the annotation from the visible spatial tree');
     assert.equal(hierarchy.getContainingSpace(native.annotationId), null);
     assert.equal(hierarchy.elementToContainer?.get(native.annotationId), undefined);
+    assert.equal(hierarchy.elementToStorey.get(native.annotationId), undefined);
     assert.deepEqual(hierarchy.getPath(native.annotationId), []);
     assert.equal(useViewerStore.getState().models.get('annotation')!.geometryResult!.meshes.length, 0);
     useViewerStore.getState().redo('annotation');
@@ -162,6 +164,7 @@ for (const containerId of [40, 50, 51]) for (const federated of [false, true]) t
     assert.ok(container.elements.includes(native.annotationId));
     assert.equal(hierarchy.getContainingSpace(native.annotationId), containerId === 51 ? 51 : null);
     assert.equal(hierarchy.elementToContainer?.get(native.annotationId), containerId);
+    assert.equal(hierarchy.elementToStorey.get(native.annotationId), expectedStorey);
     assert.equal(useViewerStore.getState().models.get('annotation')!.geometryResult!.meshes.length, 1);
     const nextNative = JSON.parse(new TextDecoder().decode(api.planAnnotationPlane(source, JSON.stringify({
       schema: 'IFC4', sourceRevision: appearanceRevision('annotation'), nextExpressId: view.peekNextExpressId(),

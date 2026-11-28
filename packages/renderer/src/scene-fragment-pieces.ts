@@ -144,7 +144,7 @@ export class StreamingFragmentPieces {
    */
   record(fragment: BatchedMesh, pieces: readonly MeshData[], sourceOf: ReadonlyMap<MeshData, MeshData>): void {
     this.byBatchId.set(fragment.id, new FragmentPieces(fragment, pieces, sourceOf));
-    for (const piece of pieces) this.fragmentByMesh.set(sourceOf.get(piece) ?? piece, fragment);
+    for (const piece of pieces) this.fragmentIdByMesh.set(sourceOf.get(piece) ?? piece, fragment.id);
   }
 
   /**
@@ -152,10 +152,15 @@ export class StreamingFragmentPieces {
    * highlight copy of the mesh takes that fragment's encoding. A mesh split over several fragments names the last.
    */
   fragmentOf(mesh: MeshData): BatchedMesh | undefined {
-    const fragment = this.fragmentByMesh.get(mesh);
-    return fragment && this.forBatch(fragment) ? fragment : undefined;
+    const id = this.fragmentIdByMesh.get(mesh);
+    const record = id === undefined ? undefined : this.byBatchId.get(id);
+    return record instanceof FragmentPieces ? record.batch : undefined;
   }
-  private readonly fragmentByMesh = new WeakMap<MeshData, BatchedMesh>();
+  /**
+   * By batch id, never the fragment itself: once `retainOnly` drops a fragment's record its mapping names
+   * nothing, so a mesh that outlives the fragment (in its bucket, after finalize) keeps neither it nor its buffers.
+   */
+  private readonly fragmentIdByMesh = new WeakMap<MeshData, number>();
 
   /**
    * Call before a mesh the bucket's built batch does not hold joins the bucket,

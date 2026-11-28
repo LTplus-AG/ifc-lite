@@ -21,6 +21,9 @@ import type { BatchedMesh } from './types.js';
 import { Renderer } from './index.js';
 import { OpaqueVisibilityPass } from './opaque-visibility-pass.js';
 import { MESH_UNIFORM_BYTES } from './mesh-rte-uniforms.js';
+import { StreamingFragmentPieces } from './scene-fragment-pieces.js';
+import { setFlagsFromString } from 'node:v8';
+import { runInNewContext } from 'node:vm';
 
 Object.assign(globalThis, {
   GPUBufferUsage: { MAP_READ: 1, MAP_WRITE: 2, COPY_SRC: 4, COPY_DST: 8, INDEX: 16, VERTEX: 32, UNIFORM: 64, STORAGE: 128, INDIRECT: 256, QUERY_RESOLVE: 512 },
@@ -192,5 +195,67 @@ describe('a highlight copy outlives no change of its base\'s frame', () => {
     for (let v = 0; v < 3; v++) for (let a = 0; a < 3; a++) {
       assert.ok(vertices[v * 7 + a] === base[v * 3 + a], `vertex ${v} axis ${a}: copy ${vertices[v * 7 + a]} vs base ${base[v * 3 + a]}`);
     }
+  });
+});
+
+describe('the streaming fragment a highlight copy follows', () => {
+  it('is let go once a finalize retires it, while its mesh lives on in its bucket', async () => {
+    setFlagsFromString('--expose-gc');
+    const gc = runInNewContext('gc') as () => void;
+    const pieces = new StreamingFragmentPieces();
+    const mesh = { expressId: 5, positions: new Float32Array(9), normals: new Float32Array(9), indices: new Uint32Array([0, 1, 2]), color: GREY } as unknown as MeshData;
+    let ref: WeakRef<BatchedMesh> | undefined;
+    (() => {
+      const fragment = { id: 41, colorKey: 'k', expressIds: [5], vertexBuffer: { size: 1 << 20 } } as unknown as BatchedMesh;
+      pieces.record(fragment, [mesh], new Map());
+      ref = new WeakRef(fragment);
+      pieces.retainOnly([]); // the finalize swap: the fragment is gone from the scene
+    })();
+    for (let i = 0; i < 3 && ref!.deref(); i++) { await new Promise((done) => setImmediate(done)); gc(); }
+    assert.equal(ref!.deref(), undefined, 'the retired fragment (and its buffers) stayed reachable from its mesh');
+    assert.equal(mesh.expressId, 5); // the mesh is still alive here
+  });
+});
+
+describe('a pooled highlight copy outlives no change of any piece\'s frame', () => {
+  it('is built again when a later piece (not its first) moves from a quantized fragment into an f32 bucket', () => {
+    const h = rendererHarness();
+    h.scene.setQuantizedBatches(true);
+    const RED: [number, number, number, number] = [0.8, 0.1, 0.1, 1];
+    const tri = (id: number, x: number, color = GREY) => ({
+      expressId: id, modelIndex: 0, color, origin: [x + 0.0003, 0.0007, 0.0001],
+      positions: new Float32Array([0, 0, 0, 0.5, 0, 0, 0, 0.5, 0.3]), normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]), indices: new Uint32Array([0, 1, 2]),
+    } as unknown as MeshData);
+    // 500 grey entities in one small bucket (quantized before and after), then entity 501 in a red fragment of its own.
+    h.scene.appendToBatches(Array.from({ length: 500 }, (_, i) => tri(i + 1, (i % 25) * 0.6)), h.device, h.pipeline, true);
+    h.scene.appendToBatches([tri(501, 20, RED)], h.device, h.pipeline, true);
+    // An unselected red entity 100 m away: the finalized red bucket is past the u16 lattice range, f32.
+    h.scene.appendToBatches([tri(502, 120, RED)], h.device, h.pipeline, true);
+    assert.ok(h.scene.getBatchedMeshes().every((b) => b.quantized), 'fixture: quantized fragments');
+    const selectedIds = new Set(Array.from({ length: 501 }, (_, i) => i + 1));
+    const pool = () => {
+      h.renderer.render({ visualEnhancement: { enabled: false }, selectedIds });
+      const pooled = h.scene.getMeshes().filter((m) => m.hydrated && m.mergedSelection?.ids);
+      assert.equal(pooled.length, 1, 'fixture: the selection pools into one copy');
+      return pooled[0]!;
+    };
+    pool();
+    h.scene.finalizeStreaming(h.device, h.pipeline);
+    const copy = pool();
+    const red = h.scene.getBatchedMeshes().find((b) => b.expressIds.includes(501))!;
+    assert.equal(red.quantized, undefined, 'fixture: the finalized red bucket is f32');
+    assert.ok(h.scene.getBatchedMeshes().find((b) => b.expressIds.includes(1))!.quantized, 'fixture: the grey bucket stays quantized');
+    assert.deepEqual(copy.rteOrigin, red.origin, 'fixture: one frame origin');
+    // Entity 501's vertices in the red bucket, and in the pool (found by their entity lane).
+    const lanes = (bytes: Uint8Array, stride: number, laneAt: number) => {
+      const u32 = new Uint32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 4), f32 = new Float32Array(u32.buffer, u32.byteOffset, u32.length);
+      const out: number[] = [];
+      for (let v = 0; v * stride + laneAt < u32.length; v++) if ((u32[v * stride + laneAt]! & 0xffffff) === 501) out.push(f32[v * stride]!, f32[v * stride + 1]!, f32[v * stride + 2]!);
+      return out;
+    };
+    const base = lanes((red.vertexBuffer as unknown as FakeBuffer).data, 7, 6);
+    const drawn = lanes((copy.vertexBuffer as unknown as FakeBuffer).data, 7, 6);
+    assert.equal(base.length, 9, 'fixture: one triangle in the red bucket');
+    assert.deepEqual(drawn, base, 'entity 501 in the pool lands on the red bucket\'s vertices');
   });
 });

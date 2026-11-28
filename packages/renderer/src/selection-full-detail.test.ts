@@ -225,7 +225,8 @@ describe('per-batch loop: a highlighted entity\'s batch draws full detail', () =
 
     // A compact page decides per part (lod-parts.ts): the page holding the entity draws every part at LOD0.
     Object.assign(batch!, { lodParts: [{ bounds: batch!.bounds!, lod0Start: 0, lod0Count: 3, lod1: true, lod1Start: 0, lod1Count: 3 }] });
-    assert.ok(base({}).every((d) => d.indexBuffer === batch!.lod1IndexBuffer), 'control: its small part draws LOD1');
+    const control = base({});
+    assert.ok(control.length > 0 && control.every((d) => d.indexBuffer === batch!.lod1IndexBuffer), 'control: its small part draws LOD1');
     const page = base({ selectedId: 7 });
     assert.ok(page.length > 0 && page.every((d) => d.indexBuffer === batch!.indexBuffer), 'the page holding the selected entity draws LOD0 parts');
   });

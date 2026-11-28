@@ -13,6 +13,7 @@ import type { PlacementAnchor } from '@/lib/model-placement/state';
 import { explainRaycastFilter, modelEntityIds, hitModelId, isEligiblePickModel, pickableFilter, pickContext, rejectedPickMessage } from '@/lib/model-placement/pick-eligibility';
 import { resolve } from '@/i18n/registry';
 import { repositionInstanceIds } from '@/lib/model-placement/pick-instance-ids';
+import { createIsolationFor } from './repositionIsolation';
 import { useInstancedMembershipRevision } from '@/hooks/useSceneTriangleCounts';
 
 export type PickRole = 'source' | 'target' | null;
@@ -47,29 +48,31 @@ export function useRepositionPicking(role: PickRole, finish: (role: PickRole) =>
       for (const entityId of modelEntityIds(model)) baked.add(entityId);
     }
     let currentInstances: typeof instances.current | undefined;
-    let allowed = baked;
-    const allowedIds = () => {
+    let isolationFor = createIsolationFor(baked);
+    const pickIsolation = (isolated: Set<number> | null) => {
       if (currentInstances !== instances.current) {
         currentInstances = instances.current;
-        allowed = new Set(baked);
+        const allowed = new Set(baked);
         for (const [modelId, ids] of currentInstances) {
           if (accepts(modelId)) for (const id of ids) allowed.add(id);
         }
+        isolationFor = createIsolationFor(allowed);
       }
-      return allowed;
+      return isolationFor(isolated);
     };
     let edgeLock: EdgeLockInput = { edge: null, meshExpressId: null, lockStrength: 0 };
     let lastRevision = state.modelPlacement.revision;
     const previousCursor = canvas.style.cursor;
     canvas.style.cursor = 'crosshair';
     const cast = (event: PointerEvent, current: ReturnType<typeof useViewerStore.getState>,
-      filter: { hiddenIds: Set<number>; isolatedIds: Set<number> | undefined }, lock: EdgeLockInput) => {
+      filter: { hiddenIds: Set<number>; isolatedIds: Set<number> | undefined }, lock: EdgeLockInput, searchCorners = false) => {
       const rect = canvas.getBoundingClientRect();
       return renderer.raycastSceneMagnetic(event.clientX - rect.left, event.clientY - rect.top,
         lock, {
           hiddenIds: filter.hiddenIds, isolatedIds: filter.isolatedIds,
           snapOptions: { snapToVertices: current.snapEnabled, snapToEdges: current.snapEnabled,
-            snapToFaces: current.snapEnabled, snapToPointClouds: true, screenSnapRadius: 12 },
+            snapToFaces: current.snapEnabled, snapToPointClouds: true, screenSnapRadius: 12,
+            ...(searchCorners ? { screenCornerSnap: {} } : {}) },
         });
     };
     /** Click-only: what an unrestricted raycast (same hidden/isolation) hit, to explain a refusal. */
@@ -90,10 +93,8 @@ export function useRepositionPicking(role: PickRole, finish: (role: PickRole) =>
         edgeLock = { edge: null, meshExpressId: null, lockStrength: 0 };
       }
       lastRevision = current.modelPlacement.revision;
-      const allowed = allowedIds();
-      const isolatedIds = current.isolatedEntities === null ? allowed
-        : new Set([...allowed].filter((id) => current.isolatedEntities?.has(id)));
-      const result = cast(event, current, { hiddenIds: current.hiddenEntities, isolatedIds }, edgeLock);
+      const isolatedIds = pickIsolation(current.isolatedEntities);
+      const result = cast(event, current, { hiddenIds: current.hiddenEntities, isolatedIds }, edgeLock, true);
       if (result.edgeLock.shouldRelease) edgeLock = { edge: null, meshExpressId: null, lockStrength: 0 };
       else if (result.edgeLock.shouldLock && result.edgeLock.edge) edgeLock = {
         edge: result.edgeLock.edge, meshExpressId: result.edgeLock.meshExpressId, lockStrength: EDGE_LOCK_DEFAULTS.INITIAL_STRENGTH,

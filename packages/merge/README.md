@@ -64,6 +64,21 @@ Also included:
 - `planRebase` — re-run the plan against a moved ref; prior resolutions
   replay automatically
 - `opsToNodes` — serialize ops as ordinary IFCX node opinions
+- `diffLayerStacks` / `diffStackStates` — added, removed and modified
+  entities between two layer stacks or two composed states
+- `mergeIntoRef` — the store-agnostic layer-PR merge flow over a
+  host-supplied `LayerRefStore`. Outside preview mode, a candidate already on
+  the ref is a no-op fast-forward. A candidate authored against the ref's
+  current stack fast-forwards once the ref policy passes (a policy failure
+  stops the merge), unless it consumes a waiver: then it goes through the
+  three-way path so a merge layer records the waiver. Otherwise it is a
+  three-way plan with explicit conflicts; a candidate whose declared base
+  matches nothing on the ref is refused as `unrelated-base` unless
+  `allowUnrelated` is set. With `preview: true` it returns `preview` instead:
+  an empty plan on the fast paths, or the three-way plan even when the
+  declared base matches nothing. It returns an outcome instead of exiting. `resolveAncestor` maps
+  a candidate's `manifest.base` to a prefix of the ref; `checkRefPolicy`
+  enforces the ref's policy (required checks, human approval)
 
 Spec: `docs/architecture/layer-prs/05-merge.md`. Part of the
 [ifc-lite](https://github.com/LTplus-AG/ifc-lite) toolchain, MPL-2.0.

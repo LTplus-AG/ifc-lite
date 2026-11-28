@@ -49,9 +49,10 @@ the user could read aloud, not the user's content.
 
 ### 2.2 Storage and limits
 
-- IndexedDB store `action-log`, append-only.
-- Rolling window: default 30 days or 50,000 entries, whichever is
-  smaller.
+- IndexedDB store `action-events` in database `ifc-lite-extension-logs`
+  (`apps/viewer/src/services/extensions/idb-log-storage.ts`), append-only.
+- Rolling cap: default 50,000 entries or 8 MiB (`ActionLog` in `packages/extensions/src/log/writer.ts`); a 30-day age
+  window is planned, not implemented.
 - Per-entry: timestamp, intent id, parameter summary, success bit,
   duration ms.
 - Total footprint capped at a configurable byte budget (default 8 MB).
@@ -121,8 +122,12 @@ authoring pipeline (Mode B). The user sees the same plan card, the
 same review screen, the same capability summary.
 
 The miner is conservative by default. A pattern needs to recur at
-least 4 times across at least 2 distinct sessions before it surfaces.
-The threshold is exposed in settings.
+least 3 times across at least 2 distinct sessions (`minOccurrences`,
+`minSessions` in `miner/sequence.ts`; sessions split after 30 minutes
+idle) before it surfaces. While the log holds fewer than 100 events the
+scheduler relaxes this to 2 occurrences in 1 session with a 10-minute
+session gap, so new users see suggestions early (`adaptive`,
+`miner/scheduler.ts`). Miner options the host sets explicitly still win.
 
 ### 3.4 Why this is not annoying
 

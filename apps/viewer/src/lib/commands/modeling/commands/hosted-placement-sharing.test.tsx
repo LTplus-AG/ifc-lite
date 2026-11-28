@@ -64,7 +64,9 @@ async function sourceSharing(unit: 'metre' | 'millimetre') {
   const bytes = new TextEncoder().encode(exportModel());
   const source = await new IfcParser().parseColumnar(bytes.buffer as ArrayBuffer, { disableWorkerScan: true });
   const model = state().models.get(MODEL_ID)!;
-  useViewerStore.setState({ models: new Map([[MODEL_ID, { ...model, ifcDataStore: source }]]),
+  useViewerStore.setState({ models: new Map([[MODEL_ID, {
+    ...model, ifcDataStore: source, maxExpressId: Math.max(...source.entities.expressId),
+  }]]),
     mutationViews: new Map([[MODEL_ID, new MutablePropertyView(source.properties || null, MODEL_ID)]]),
     storeEditors: new Map(), undoStacks: new Map(), redoStacks: new Map(), mutationBatchTags: new Map() });
   return { host, otherHost, secondSelected, far, near, other, sharedPoint, sharedPlacement, witness };

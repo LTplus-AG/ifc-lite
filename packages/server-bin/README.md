@@ -5,7 +5,7 @@ Pre-built native binary for the IFClite server. No Docker, no Rust toolchain —
 ## Quick Start
 
 ```bash
-# Run the server (downloads binary on first run, ~20 MB)
+# Run the server (downloads the binary on first run)
 npx @ifc-lite/server-bin
 
 # Or install once, run anywhere
@@ -13,7 +13,7 @@ npm install -g @ifc-lite/server-bin
 ifc-lite-server
 ```
 
-The server starts on `http://localhost:8080` by default. Point [`@ifc-lite/server-client`](https://www.npmjs.com/package/@ifc-lite/server-client) at it and you've got a parsing backend with caching, streaming, and parallel processing.
+The server listens on all IPv4 interfaces (`0.0.0.0`) on port 8080 by default, so it is reachable from other machines unless a firewall blocks it; on the same host use `http://localhost:8080`. Set `IFC_SERVER_API_TOKEN` before exposing it. Point [`@ifc-lite/server-client`](https://www.npmjs.com/package/@ifc-lite/server-client) at it and you've got a parsing backend with caching, streaming, and parallel processing.
 
 ## CLI
 
@@ -22,6 +22,7 @@ npx @ifc-lite/server-bin                # start server on PORT (default 8080)
 PORT=3001 npx @ifc-lite/server-bin       # custom port
 npx @ifc-lite/server-bin download        # pre-fetch the binary (CI / pre-deploy)
 npx @ifc-lite/server-bin info            # show platform target + cache state
+npx @ifc-lite/server-bin version         # print the package version
 npx @ifc-lite/server-bin help            # full help
 ```
 
@@ -43,14 +44,23 @@ npx @ifc-lite/server-bin
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PORT` | `8080` | Server port |
-| `RUST_LOG` | `info` | Log level — `error` / `warn` / `info` / `debug` |
+| `RUST_LOG` | `info,tower_http=debug,ifc_lite_server=debug` | Log filter — e.g. `error` / `warn` / `info` / `debug` |
 | `MAX_FILE_SIZE_MB` | `500` | Max upload size |
 | `WORKER_THREADS` | CPU cores | Parallel parse threads |
-| `CACHE_DIR` | `./.cache` | Where to persist parsed-file cache |
+| `CACHE_DIR` | `/app/cache` in Docker (when `/.dockerenv` exists), else `.cache` under the current working directory | Where to persist parsed-file cache |
 | `REQUEST_TIMEOUT_SECS` | `300` | Per-request timeout |
 | `INITIAL_BATCH_SIZE` | `100` | First streaming batch size (snappy first paint) |
 | `MAX_BATCH_SIZE` | `1000` | Steady-state streaming batch size (throughput) |
-| `CACHE_MAX_AGE_DAYS` | `7` | Cache retention before eviction |
+| `CACHE_MAX_AGE_DAYS` | `7` | Parsed and stored, but nothing reads it yet: the server does no age-based cache eviction |
+| `CORS_ORIGINS` | `http://localhost:3000`, `:5173` and the `127.0.0.1` equivalents | Comma-separated allowed origins (`*` for all, development only) |
+| `IFC_SERVER_API_TOKEN` (or `API_TOKEN`) | unset | Bearer token required on the parse and cache routes; unset leaves them open and logs a warning. Health stays open |
+| `IFC_STREAM_IDLE_TIMEOUT_SECS` | `600` | Close a connection whose socket write makes no progress this long (`0` disables) |
+| `IFC_MAX_CONCURRENT_PARSES` | `WORKER_THREADS` | Parse jobs allowed to run at once |
+| `IFC_MEM_BUDGET_MB` | 70% of the tighter of the cgroup memory limit and physical RAM; `0` (off) only when neither is readable | Total upload MB admitted at once; an explicit `0` turns memory admission off |
+| `IFC_ADMISSION_QUEUE_DEPTH` | `2 × WORKER_THREADS` | Requests that may wait for an admission slot before rejection |
+| `IFC_ADMISSION_QUEUE_TIMEOUT_SECS` | `5` | Longest a queued request waits for a slot |
+| `IFC_MEM_SHED_PCT` | `85` | Shed new parse jobs above this RSS share of the memory budget |
+| `IFC_METRICS_ENABLED` | `false` | Expose `GET /api/v1/metrics` (behind the bearer token when one is set) |
 
 ## Programmatic usage
 
@@ -67,8 +77,9 @@ console.log(`Binary at ${path}`);
 const info = getBinaryInfo();
 console.log(`Platform: ${info.platform.targetTriple}, cached: ${info.isCached}`);
 
-// Run the server with custom args; resolves with the exit code
-const exitCode = await runBinary(['--config', './ifc-lite.toml']);
+// Run the server (configured through the environment variables above);
+// resolves with the exit code
+const exitCode = await runBinary();
 ```
 
 ## Supported platforms
@@ -116,7 +127,10 @@ cargo build --release
 | `ensureBinary(onProgress?)` | Download if missing — resolves with binary path |
 | `downloadBinary(onProgress?)` | Force re-download — resolves with binary path |
 | `getBinaryInfo()` | Returns `{ platform, binaryPath, cacheDir, isCached }` |
-| `isBinaryCached()` | Boolean — is the binary on disk? |
+| `getBinaryPath(platformInfo?)` | Path the binary is cached at (inside the package's `.cache` directory) |
+| `isBinaryCached()` | Resolves with a boolean — is the binary for this package version on disk? |
+| `getPlatformInfo()` | Detects the platform, architecture, musl and target triple; throws on an unsupported combination |
+| `getPlatformDescription(info)` | Human-readable name for a `PlatformInfo` |
 
 ## Docs
 

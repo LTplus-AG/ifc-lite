@@ -121,6 +121,7 @@ MCP's `run_flow`); the browser never grants this scope any authority (see
 | `export.create:<format>` | Produce a downloadable file in `<format>`. |
 | `storage.local` | Read/write extension-scoped storage. |
 | `network.fetch:<host-pattern>` | Fetch from URLs matching pattern. **Always reviewed.** |
+| `network.ai` | Send graph data to the AI model provider the host is configured with. Red tier. |
 | `secret.read:<NAME>` | Read the named env var, headless callers only. Exact target, no glob. **Always reviewed.** |
 | `command.invoke:<id-pattern>` | Invoke another extension's commands by id pattern. |
 | `ui.dock` `ui.toolbar` `ui.contextMenu` `ui.statusBar` | UI slot occupancy. Implicit when contributing; never grants logic capability. |
@@ -171,12 +172,18 @@ The screen surfaces:
   fixed lookup table the host owns).
 - **What it ships with** (tests, fixtures, signed-by info).
 - **What the diff is** (if updating: the capability diff).
-- **Plain-language risk badges**:
-  - Red: any `network.fetch` capability, any `model.delete`, any
-    `model.mutate:*` (wildcard).
-  - Yellow: any `model.mutate` with a specific pattern, any
-    `command.invoke` outside the same author namespace.
-  - Green: read-only / viewer-only / storage-only.
+- **Plain-language risk badges** (`computeRisk` in
+  `packages/extensions/src/capability/risk.ts`, base tiers from
+  `capability/catalogue.ts`):
+  - Red: `model.delete`, `network.ai`, `secret.read`, `network.fetch` with a
+    wildcard host or `*`, a universal `*` target on any non-green
+    capability, a missing required target, and any capability not in the
+    catalogue.
+  - Yellow: `network.fetch` to one specific host, `model.mutate` with a
+    specific pattern, `model.create`, `export.create`, `command.invoke`,
+    and a green capability whose target contains a glob inside the
+    pattern (a universal `*` target leaves a green capability green).
+  - Green: read-only / viewer-only / storage-only / UI slots.
 
 Risk badges are computed by the host from the capability list. The
 extension cannot suppress or recolor them.
@@ -201,9 +208,9 @@ We add:
   consults the active capability set before dispatching. The check is
   centralised; we do not scatter `if (cap)` checks across bridge
   functions.
-- **Time-bounded `fetch`.** Network fetches via `ctx.fetch` have a hard
-  ceiling (default 30 s) and a request-count budget (default 60 per
-  activation). Both are configurable per-extension by the user in
+- **Time-bounded `fetch`** (planned: v1 `ctx` has no `fetch`, see §6.3).
+  Network fetches via `ctx.fetch` will have a hard ceiling (default 30 s)
+  and a request-count budget (default 60 per activation). Both are configurable per-extension by the user in
   settings but never raisable by the extension itself.
 
 ## 6. Network egress
@@ -224,7 +231,9 @@ cookies, credentials, or other origins.
 
 ### 6.3 No exfiltration of host secrets
 
-The `ctx.fetch` capability is a closure that:
+**Status:** planned. v1 `ctx` carries only `bim` (see
+[01 §9](./01-extension-model.md#9-the-ctx-object)), so there is no
+`ctx.fetch` yet. The design is a closure that:
 
 - Strips `Cookie` and `Authorization` headers from the request unless
   the extension declares `network.credentials` (which is not in v1).
@@ -307,7 +316,8 @@ Registry extensions (Phase 4) are signed:
 - The loader verifies the signature on install and on update.
 - A signature mismatch fails closed.
 
-We use Ed25519 via libsodium. Signing keys are user-held; the registry
+We use Ed25519 through WebCrypto (`crypto.subtle`,
+`packages/extensions/src/signing/sign.ts`). Signing keys are user-held; the registry
 stores public keys only. This is the minimum-viable supply-chain
 posture; we will reassess based on what attacks materialise.
 
@@ -372,7 +382,7 @@ The host maintains a local audit log of:
 - Unhealthy / killed extension events.
 
 The log is local-only, append-only, capped at a configurable size
-(default 30 days / 10 MB rolling). The user can export it as JSON. We
+(`AuditLog` defaults: 10,000 events / 10 MiB, oldest dropped first). The user can export it as JSON. We
 do not transmit the log anywhere.
 
 The log is the basis for the **session-end summary** the user sees
@@ -388,7 +398,7 @@ month."
 | Host realm | Strict TS, no `eval` of strings | Move bridge to `Object.freeze` exports. |
 | Bridge | Capability-checked dispatch | Per-call fuzz tests, drift detection. |
 | Sandbox | QuickJS isolation, resource caps | WASI Preview 2 components for native-bound bits. |
-| Manifest | Zod schema, capability grammar | Manifest v2 with finer-grained patterns. |
+| Manifest | Hand-rolled validator (`validateManifest`), capability grammar | Manifest v2 with finer-grained patterns. |
 | Distribution | Local bundles only | Signed bundles, registry CI scans. |
 | User UX | Plain-language capability review | Risk badges, monthly summaries, typed-confirm for destructive grants. |
 | AI authoring | System prompt + output filter | Constitutional-style critique pass on every generated manifest. |

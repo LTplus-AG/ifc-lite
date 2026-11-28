@@ -38,8 +38,8 @@ export class VisibilityEpochTracker {
   ): number {
     const hidden = hiddenIds && hiddenIds.size > 0 ? hiddenIds : null;
     const isolated = isolatedIds ?? null;
-    const hiddenChanged = !contentEquals(hidden, this.hiddenSnapshot);
-    const isolatedChanged = !contentEquals(isolated, this.isolatedSnapshot);
+    const hiddenChanged = !entityIdSetsEqual(hidden, this.hiddenSnapshot);
+    const isolatedChanged = !entityIdSetsEqual(isolated, this.isolatedSnapshot);
     if (hiddenChanged || isolatedChanged) {
       this.version++;
       if (hiddenChanged) this.hiddenSnapshot = hidden ? new Set(hidden) : null;
@@ -53,7 +53,7 @@ export class VisibilityEpochTracker {
   }
 }
 
-function contentEquals(
+export function entityIdSetsEqual(
   live: ReadonlySet<number> | null,
   snapshot: ReadonlySet<number> | null,
 ): boolean {

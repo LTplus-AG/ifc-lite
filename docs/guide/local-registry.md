@@ -238,9 +238,15 @@ sign-in is blocked until server revocation succeeds.
 
 ## Focused checks
 
-Run through the root Turbo runner, supplying the real local executables:
+Run through the root Turbo runner, supplying the real local executables.
+`--only` skips Turbo's dependency tasks, so on a fresh checkout first get the
+WASM runtime (`node scripts/fetch-prebuilt-wasm.mjs`, or build it with
+`bash scripts/build-wasm.sh`) and build the viewer's workspace dependencies,
+as `registry-integration.yml` does:
 
 ```sh
+node scripts/fetch-prebuilt-wasm.mjs
+pnpm build --filter='@ifc-lite/viewer^...'
 OCI_REGISTRY_BINARY=/absolute/path/to/subsoil \
 ORAS_BINARY=/absolute/path/to/oras \
 TEST_PATTERN='lib/registry/.*test|components/sources/Registry.*test' \

@@ -129,6 +129,7 @@ export const UNJUDGED_BY_DESIGN = {
   // instead, as the `PR viewer selection` commit status that .mergify.yml's
   // auto_merge_conditions read (scripts/ci-viewer-select-status.mjs). The
   // merge queue still runs every viewer shard.
+  'node-tests-selected': 'advisory package selection and timing sample; the full Node shards remain authoritative',
   'viewer-tests-selected': 'sample of the viewer suite; gates queue entry through the PR viewer selection status, not the run',
   // Posts the full-lane verdict of that status from the shards' result. It
   // tests nothing: the shards it reads are already in the aggregate's `needs`.

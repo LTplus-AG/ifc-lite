@@ -18,13 +18,7 @@ export type TypeIsolationModelMapLike = ReadonlyMap<
  * tab's "Isolate in 3D", #2532): the shared IFC type name when every isolated
  * id resolves to the SAME type, otherwise a bare count.
  *
- * Each id is resolved through `fromGlobalIdFromModels` — the canonical
- * offset-range resolver — before it is looked up. `fromGlobalIdFromModels`
- * returns `undefined` when the id falls outside every model's offset range (a
- * stale/foreign id; with a single model, an id below its offset, #11527); in
- * that case the id is SKIPPED rather than queried against the wrong store
- * with its raw (un-offset) value as an expressId, which could coincidentally
- * hit an unrelated entity and mislabel or falsely "homogenize" the chip.
+ * IDs with no model ownership are skipped before looking up their class.
  *
  * Classes are read through `overlay` (the session's mutation views), so an
  * element authored this session labels as its own class rather than the
@@ -41,7 +35,7 @@ export function computeTypeIsolationLabel(
   let sampleType: string | undefined;
   let homogeneous = true;
   for (const id of isolatedEntities) {
-    const loc = fromGlobalIdFromModels(models, id);
+    const loc = fromGlobalIdFromModels(models, id, overlay);
     if (!loc) continue;
     const store = models.get(loc.modelId)?.ifcDataStore ?? fallbackStore;
     if (!store) continue;

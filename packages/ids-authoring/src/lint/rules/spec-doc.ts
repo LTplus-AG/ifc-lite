@@ -73,7 +73,7 @@ export const SPEC_006: DocumentRule = {
   defaultSeverity: 'warning',
   title: 'Overlapping specifications with conflicting requirements',
   rationale:
-    'Two specifications select exactly the same elements (identical applicability and IFC versions) but require values with nothing in common for the same attribute or property. No element can pass both. This rule only compares identical applicabilities; partially overlapping ones need a model to decide (SPEC-004, model-aware).',
+    'Two specifications select exactly the same elements (identical applicability and IFC versions) but require values with nothing in common for the same attribute or property. No element can pass both. This rule only compares identical applicabilities; partially overlapping ones need a model to decide, and no lint rule checks them.',
   example: 'Spec A: IfcDoor, FireRating = EI30. Spec B: IfcDoor, FireRating = EI60.',
   check(specs) {
     const out: Finding[] = [];

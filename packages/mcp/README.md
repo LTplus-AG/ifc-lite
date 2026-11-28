@@ -15,10 +15,12 @@ npx @ifc-lite/mcp ./model.ifc
 # Several files in one session
 npx @ifc-lite/mcp ./arch.ifc ./struct.ifc ./mep.ifc
 
-# Read-only (no mutation tools advertised)
+# Read-only (no mutation tools advertised; export and flow-checkpoint tools
+# can still write files under the allowed roots)
 npx @ifc-lite/mcp ./model.ifc --read-only
 
-# HTTP / Streamable HTTP for remote agents
+# HTTP / Streamable HTTP for remote agents. Files are not preloaded over HTTP:
+# each session starts empty and the agent loads models with model_load.
 npx @ifc-lite/mcp --transport http --port 8765 --token $API_TOKEN --allow ./models
 
 # Auto-open the WebGL viewer at startup. Add --open to also pop the URL in
@@ -26,6 +28,20 @@ npx @ifc-lite/mcp --transport http --port 8765 --token $API_TOKEN --allow ./mode
 npx @ifc-lite/mcp ./model.ifc --viewer
 npx @ifc-lite/mcp ./model.ifc --open
 ```
+
+Other server options (`npx @ifc-lite/mcp --help` lists them all):
+
+| Flag | Meaning |
+| --- | --- |
+| `--port <n>` | HTTP port. Default `8765`. |
+| `--host <h>` | HTTP host. Default `127.0.0.1`. A non-loopback host needs `--token`, `--read-only-token` or `--insecure`. |
+| `--token <t>` | Bearer token for HTTP (repeatable). Full scope, or the `--read-only` preset when `--read-only` is set. |
+| `--read-only-token <t>` | Bearer token with the `--read-only` preset (repeatable). |
+| `--insecure` | Allow a non-loopback bind without a token. Never use it in production. |
+| `--allow <path>` | Restrict file access to this directory or file (repeatable, stdio and HTTP). |
+| `--allow-origin <origin>` | Let a browser origin read HTTP responses (repeatable). Default: none. |
+| `--bsdd <url>` | Override the bSDD endpoint. |
+| `--viewer-port <n>` | Preferred viewer port (`0` = any free port). |
 
 ## Building client distribution artifacts
 
@@ -38,7 +54,7 @@ pnpm --filter @ifc-lite/mcp release:manifests
 With the project's WASM build toolchain installed, this builds a Claude
 Desktop `.mcpb`, a dependency inventory and the MCP Registry `server.json`
 for the package version under the gitignored `packages/mcp/release-out/`
-directory. Use `--no-bundle` to generate only `server.json`.
+directory (`--out <dir>` picks another one). Use `--no-bundle` to generate only `server.json`.
 The Registry entry identifies the matching npm release. Registry publication
 requires that npm version to exist with the same `mcpName`.
 
@@ -161,21 +177,23 @@ The same `npx` command works as a stdio server in any MCP-aware client.
 | Category | Examples |
 | --- | --- |
 | Discovery | `model_info`, `model_list`, `model_load`, `model_unload`, `schema_describe` |
-| Query | `query_entities`, `count_entities`, `get_entity`, `get_entities_bulk`, `spatial_hierarchy`, `containment_chain`, `relationships`, `properties_unique`, `materials_list`, `classifications_list`, `georeferencing`, `georeferencing_check`, `units`, `cost_data`, `cost_evaluate` |
+| Query | `query_entities`, `count_entities`, `get_entity`, `get_entities_bulk`, `spatial_hierarchy`, `containment_chain`, `relationships`, `properties_unique`, `materials_list`, `classifications_list`, `georeferencing`, `georeferencing_check`, `units`, `cost_data`, `cost_evaluate`, `structural_data` |
 | Geometry | `geometry_bbox`, `geometry_volume`, `geometry_area`, `geometry_get`, `raycast`, `clash_check`, `clash_matrix` |
-| Validation | `ids_validate`, `ids_explain`, `model_audit` |
+| Validation | `ids_validate`, `ids_explain`, `model_audit`, `check_rules` (a `.rules.json` rule set), `review_findings` |
 | IDS authoring | `ids_audit`, `ids_lint`, `ids_read`, `ids_apply_ops` (grounding-gated), `ids_write`, `ids_schema_search`, `ids_schema_entity`, `ids_schema_pset`, `ids_diff`, `ids_preview`, `ids_infer`, `ids_coverage`, `ids_test` |
-| Mutation | `entity_set_property`, `entity_delete_property`, `entity_set_attribute`, `entity_create`, `entity_delete`, `georeferencing_write`, `georeferencing_fix`, `mutation_batch`, `mutation_undo`, `mutation_diff`, `model_save` |
+| Mutation | `entity_set_property`, `entity_delete_property`, `entity_set_attribute`, `entity_create`, `entity_delete`, `georeferencing_write`, `georeferencing_fix`, `add_classification`, `assign_classification`, `mutation_batch`, `mutation_undo`, `mutation_diff`, `model_save` |
 | Hosted modelling | `place_opening`, `place_door`, `place_window` |
 | Design modelling | `place_curtain_wall`, `place_grid`, `place_grid_column` |
-| Storeys | `storey_list`, `storey_add`, `storey_rename`, `storey_plan_edit`, `storey_edit`, `storey_delete`: add, re-level (elevation or floor-to-floor) and delete storeys with geometry following them. `storey_plan_edit` dry-runs the edit and reports refusals before anything is written |
-| Physical edits | `edit_hosted_element`, `edit_element_geometry`, `copy_elements`, `duplicate_element`, `array_elements` |
+| Storeys | `storey_list`, `storey_add`, `storey_rename`, `storey_plan_edit`, `storey_edit`, `storey_delete`: add, re-level (elevation or floor-to-floor) and delete storeys with geometry following them. `storey_plan_edit` dry-runs the edit and reports refusals before anything is written; `storey_plan_add` does the same for `storey_add`. `set_top_constraint` binds an element top to a storey, slab or roof; `copy_to_storeys` copies products to other storeys |
+| Physical edits | `edit_hosted_element`, `edit_element_geometry`, `copy_elements`, `duplicate_element`, `array_elements`, `mirror_elements` |
 | Native Room | `query_rooms`, `room_command` |
 | Wall joins | `join_walls` |
 | BCF | `bcf_topic_list`, `bcf_topic_create`, `bcf_topic_update`, `bcf_topic_close`, `bcf_viewpoint_create`, `bcf_export` |
 | bSDD | `bsdd_search`, `bsdd_class`, `bsdd_property_sets`, `bsdd_match` |
 | Diff | `model_diff` (`by_content` for content-keyed matching), `quantity_diff` |
-| Export | `export_ifc`, `export_csv`, `export_json`, `export_glb`, `export_obj`, `export_ifcx`, `export_3dm`, `export_gltf`, `export_jsonld`, `export_cityjson`, `export_cityjsonseq`, `export_hbjson`, `export_dfjson` |
+| Draft layers and review | `create_draft_layer`, `draft_apply_ops`, `diff_layer`, `dry_run_merge`, `list_conflicts`, `publish_layer`, `request_review`, `respond_to_review`, `add_review_topic`, `add_review_feedback`, `get_review_feedback` |
+| Flow | `describe_flow`, `run_flow`, `propose_flow`, `resume_flow` |
+| Export | `export_ifc`, `export_csv`, `export_json`, `export_glb`, `export_obj`, `export_ifcx`, `export_usd`, `export_3dm`, `export_gltf`, `export_jsonld`, `export_cityjson`, `export_cityjsonseq`, `export_hbjson`, `export_dfjson` |
 | Model transforms | `model_merge`, `model_convert`, `model_extract`, `model_anonymize`, `model_simplify`, `model_lod`: write to `file_path` and leave the loaded model alone. An existing file there is replaced (a loaded model's source never is). `model_merge` and `model_anonymize` refuse a model with unsaved edits |
 | Viewer | `viewer_ask`, `viewer_open`, `viewer_close`, `viewer_status`, `viewer_select`, `viewer_colorize`, `viewer_isolate`, `viewer_hide`, `viewer_show`, `viewer_reset`, `viewer_fly_to`, `viewer_set_section`, `viewer_clear_section`, `viewer_color_by_storey`, `viewer_color_by_property`, `viewer_get_selection`, `viewer_wait_for_selection`, `viewer_describe_selection` |
 
@@ -190,7 +208,9 @@ hosted creation core. Pass `host_express_id`, optional `model_id` (required
 with several loaded models), and PascalCase `params`: `Offset`, `Width`,
 `Height`, optional `Sill` (required for a window). Lengths are metres in the
 wall's frame. Cuts must fit and avoid existing source/overlay openings;
-unreadable geometry is refused. The void/fill graph is written atomically,
+unreadable geometry is refused. `place_opening` also takes an IfcSlab host
+with `Position` (`[x, y]` in the slab's local frame), `Width` and `Depth`;
+slab footprint fit and overlap are not checked. The void/fill graph is written atomically,
 and one `mutation_undo` removes it. These writes reach IFC export; geometry
 tools continue to read the parsed model.
 
@@ -232,7 +252,7 @@ ePSet_MapConversion/ePSet_ProjectedCRS), or writes the IfcSite
 position (action `site`), and refuses, naming the missing input, rather than
 guess a CRS, unit or scale. `georeferencing_check` diagnoses the georeferencing
 and plans fixes; `georeferencing_fix` applies only the ones that go through the
-write API with every value known and no checker caveat. See the Georeferencing guide.
+write API with every value known and no checker caveat. See the [Georeferencing guide](../../docs/guide/georeferencing.md).
 
 One GlobalId resolves to one entity everywhere: an entity the session created
 wins over a same-GlobalId entity in the file, and a deleted one never resolves.
@@ -348,6 +368,7 @@ palette. Reads, selection inspection and palette discovery are available initial
 | `--allow-origin <origin>` | Another browser origin that may connect (repeatable), e.g. a dev server. |
 | `--read-only` | A ceiling: tools the tab labels as mutating stay hidden and refused even if the tab allows changes. The tab must enforce the rest. |
 | `--insecure` | Accept a plain-`http` origin on a non-loopback host (refused otherwise); prints a warning. |
+| `--channel` | Also push clicks on agent surfaces into a Claude Code session as channel messages (research preview; start Claude Code with a channel flag naming this server). |
 
 ### Security model
 
@@ -528,14 +549,15 @@ protocol version `1`; `--bridge` carries them over a loopback WebSocket at
 
 | Direction | `type` | Fields |
 |-----------|--------|--------|
-| tab → bridge | `hello` (first frame) | `protocol`, `pairingCode`, `permission`, `tools[]` (`name`, `title?`, `description`, `inputSchema`, `readOnly`), `client?`, `resultAck?` |
-| bridge → tab | `welcome` | `protocol`, `sessionId`, `permission` (effective), `readOnlyCeiling`, `bridge`, `features?` ([`image-content`]), `resultAck?` |
+| tab → bridge | `hello` (first frame) | `protocol`, `pairingCode`, `permission`, `tools[]` (`name`, `title?`, `description`, `inputSchema`, `readOnly`), `client?`, `resultAck?`, `a2uiSurface?` |
+| bridge → tab | `welcome` | `protocol`, `sessionId`, `permission` (effective), `readOnlyCeiling`, `bridge`, `features?` ([`image-content`, `ui-events`]), `resultAck?` |
 | bridge → tab | `a2ui-surface` | `sessionId`, `id`, `surface` (messages and optional title), sent when the tab advertises `hello.a2uiSurface` |
 | bridge → tab | `call` | `sessionId`, `id`, `name`, `arguments` |
 | tab → bridge | `result` | `sessionId`, `id`, `result` (an MCP `CallToolResult` with text, and image content when `welcome.features` lists `image-content`, passed through), `resultAck?` |
 | bridge → tab | `result-ack` | `sessionId`, `id`, `accepted` |
 | bridge → tab | `cancel` | `sessionId`, `id`, `reason` (`cancelled` or `timeout`) |
 | tab → bridge | `update` | `sessionId`, `permission?`, `tools?` |
+| tab → bridge | `ui-event` | `sessionId`, `event` (`surfaceId`, `name`, `prompt?`, `context?`): a click on a surface the agent sent with `tab_show_ui` |
 | bridge → tab | `error` | `code`, `message`; fatal codes end the channel; on the WebSocket transport, a close with code (4400 invalid, 4401 pairing failed, 4408 handshake timeout, 4409 replaced, 4426 protocol mismatch, 4503 shutting down) |
 
 Consumers can parse acknowledgements with `parseServerMessage(text, { resultAck: true })`. Both peers opt in to result acknowledgements by sending `resultAck: true` in `hello` and `welcome`. An intact result marked `resultAck: true` receives a `result-ack` after the bridge checks the result against its pending calls. A result that settled the pending call has `accepted: true`. Pending acknowledgements occupy call slots. If confirmation never arrives, the viewer closes the pairing. Older peers continue using protocol version 1 with the original delivery behavior.

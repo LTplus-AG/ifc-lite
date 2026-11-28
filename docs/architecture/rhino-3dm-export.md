@@ -566,7 +566,7 @@ and sets object ids. This is also the route for models too big for wasm.
 |---|---|
 | Rust | `ifc_lite_export::rhino::{build_rhino_scene, RhinoSceneOptions, RhinoScene}`; shared `scene_input` lifted from `usd/` |
 | Wasm | `exportRhinoScene` in the separate `@ifc-lite/wasm/rhino` payload (`rust/rhino-wasm`) |
-| CLI | `ifc-lite export model.ifc --format 3dm --out model.3dm [flags above]` in `export-rust-formats.ts`, count check via read-back object count |
+| CLI | `ifc-lite export model.ifc --format 3dm --out model.3dm [flags above]` in `packages/cli/src/commands/export-3dm.ts` (dispatched from `export.ts`), count check via read-back object count |
 | MCP | `export_3dm` tool, same options |
 | Viewer | Export menu and command palette `export:3dm`; dialog with units, layer scheme, instancing, properties, visible-only; source resolution reuses `step-export-source.ts` (`isStepSourceModel`, `resolveStepExportBytes`) so pending edits are exported; the write runs in a Web Worker |
 | Docs | this page, a guide section, CLI help |
@@ -592,11 +592,11 @@ shared vertices [ran]:
   anything finer than the float/double gap.
 - The wasm32 build caps the heap at 2 GB, and `toByteArray` grows its buffer by
   doubling inside that heap before copying to JS [src]. The practical ceiling is
-  therefore well under 1 GB of output [unproven]. Phase 2 measures it and sets
-  `maxOutputBytes` from the measurement. The scene build projects the output size
-  first (24 B/vertex + 12 B/normal + 12 B/triangle + overhead) and refuses above
-  the ceiling with a message that names the CLI's Python route. Not in phase 1:
-  the ceiling is unmeasured, so the projection and refusal land with phase 2.
+  therefore well under 1 GB of output [unproven]. Planned, not implemented: measure
+  it, set a `maxOutputBytes` ceiling from the measurement, project the output size
+  first (24 B/vertex + 12 B/normal + 12 B/triangle + overhead) and refuse above
+  the ceiling with a message that names the CLI's Python route. Phase 2 (the
+  `@ifc-lite/rhino3dm` adapter) shipped without this projection or refusal.
 - rhino3dm 9 (unpublished) moves to wasm64 by default, which needs Chrome 133+,
   Firefox 134+ or Node 24+, and Safari only in Technology Preview [src]. Pin 8.x
   until Safari ships wasm64.
@@ -677,6 +677,8 @@ One issue, stacked PRs, each under about 1,500 lines:
 - Federation: one root layer per model.
 - A RhinoCommon adapter in a Rhino plugin, fed by the same scene through the FFI.
 - Import direction (`.3dm` → IFC) using the GlobalId user text to match objects.
+  A read-only viewer import (level 1, `readRhino3dm`) has shipped; see
+  [Rhino .3dm import](rhino-3dm-import.md). Conversion back to IFC is still later.
 
 ## Decisions
 

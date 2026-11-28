@@ -632,6 +632,45 @@ ct('io #11350: PR measurement cache follows completed attempts of the same run',
   assert.deepEqual(measure(), second, 'listing order does not determine the selected artifact');
 });
 
+ct('io #11350: main measurements require a bundle and a measured tree matching the marker', (t) => {
+  const requested = 'a'.repeat(40);
+  const measured = 'b'.repeat(40);
+  const tree = 'c'.repeat(40);
+  const dir = mkdtempSync(join(tmpdir(), 'base-stale-tree-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const run = { status: 'completed', run_attempt: 2, run_started_at: '2026-11-28T00:20:00Z', updated_at: '2026-11-28T00:30:00Z' };
+  const marker = { id: 1, created_at: '2026-11-28T00:05:00Z', workflow_run: { id: 42, repository_id: 9, head_repository_id: 9 } };
+  const artifacts = ['perf-ratchet-measured', 'perf-ratchet-measured-native'].map((name, i) => ({
+    name, id: i + 2, created_at: '2026-11-28T00:25:00Z',
+  }));
+  const check = (measuredTree, emptyBundle = false) => {
+    const { io } = ioOverGh([
+      [`repos/o/r/git/commits/${requested}`, { tree: { sha: tree } }],
+      [`repos/o/r/git/commits/${measured}`, { tree: { sha: measuredTree } }],
+      [`repos/o/r/actions/artifacts?name=tested-tree-${tree}`, { artifacts: [marker] }],
+      ['repos/o/r/actions/runs/42/artifacts?', { artifacts, total_count: artifacts.length }],
+      ['repos/o/r/actions/runs/42', run],
+    ], {
+      spawn: (_file, args) => {
+        const bundle = args[1].endsWith('/2/zip');
+        const file = bundle && emptyBundle ? 'README.txt' : 'measurement.json';
+        writeFileSync(join(dir, file), file === 'README.txt' ? '' : JSON.stringify({
+          family: bundle ? 'bundle' : 'native-instructions', commit: measured,
+          measuredAt: run.run_started_at, metrics: [{ id: 'count', value: 10 }],
+        }));
+        return { status: 0, stdout: execFileSync('zip', ['-q', '-', file], { cwd: dir }) };
+      },
+    });
+    return { result: io.mainMeasurementAt(requested), downloads: io.stats.downloads };
+  };
+  assert.deepEqual(check('d'.repeat(40)), { result: null, downloads: 2 });
+  assert.deepEqual(check(tree, true), { result: null, downloads: 1 });
+  const { result, downloads } = check(tree);
+  assert.equal(downloads, 2);
+  assert.equal(result.sha, requested);
+  assert.deepEqual(result.families.map((m) => m.family), ['bundle', 'native-instructions']);
+});
+
 ct('io: the in-run markers are paged past the first 100', () => {
   const own = (sha) => ({ workflow_run: { id: 1, repository_id: 9, head_repository_id: 9, head_sha: sha } });
   const page = (n) => Array.from({ length: n }, (_, i) => own(`p${n}-${i}`));

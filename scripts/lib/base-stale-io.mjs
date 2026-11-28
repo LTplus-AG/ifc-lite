@@ -165,9 +165,12 @@ export function createIo({ repo, cwd = process.cwd(), cache = null, now = () => 
         mkdirSync(out);
         writeFileSync(join(dir, `${name}.zip`), zip.stdout);
         execFileSync('unzip', ['-q', '-o', join(dir, `${name}.zip`), '-d', out]);
-        for (const f of measuredJsonFiles(out)) families.push(slim(loadMeasuredFile(f)));
+        const family = name === MEASURED_ARTIFACTS[0] ? 'bundle' : 'native-instructions';
+        const matches = measuredJsonFiles(out).map(loadMeasuredFile).filter((m) => m.family === family);
+        if (matches.length !== 1 && family === 'bundle') return null;
+        if (matches.length === 1 && (!families.length || matches[0].commit === families[0].commit)) families.push(slim(matches[0]));
       }
-      return families.length ? families : null;
+      return families;
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -178,12 +181,10 @@ export function createIo({ repo, cwd = process.cwd(), cache = null, now = () => 
     return api(`repos/${repo}/git/commits/${sha}`, `commit ${sha}`).tree.sha;
   }
 
-  /** Main's measurement at one commit, found by tree, or null. */
   function mainMeasurementAt(sha) {
     const tree = treeOf(sha);
     const hit = store.mainMeasurements[tree];
-    // A miss, or a measurement without every family (the native job uploads
-    // after the bundle one), is re-checked after the TTL; a full one is final.
+    // A miss or partial measurement expires. A full tree match is final.
     if (hit?.attemptScoped && ((hit.families && !hit.checkedAt) || now() - hit.checkedAt < NEGATIVE_TTL_MS)) {
       stats.cacheHits += 1;
       return hit.families ? { sha, families: hit.families, runId: hit.runId } : null;
@@ -193,7 +194,11 @@ export function createIo({ repo, cwd = process.cwd(), cache = null, now = () => 
       .filter((a) => !a.expired && isOwnRun(a.workflow_run))
       .sort((a, b) => b.id - a.id)
       .slice(0, TREE_RUN_CAP);
-    const picked = pickTreeMeasurement(candidates.map((a) => a.workflow_run.id), runMeasurement, MEASURED_ARTIFACTS.length);
+    const measureTree = (id) => {
+      const families = runMeasurement(id);
+      return families && treeOf(families[0].commit) === tree ? families : null;
+    };
+    const picked = pickTreeMeasurement(candidates.map((a) => a.workflow_run.id), measureTree, MEASURED_ARTIFACTS.length);
     if (!picked) {
       store.mainMeasurements[tree] = { attemptScoped: true, families: null, checkedAt: now() };
       return null;
@@ -201,7 +206,6 @@ export function createIo({ repo, cwd = process.cwd(), cache = null, now = () => 
     store.mainMeasurements[tree] = { attemptScoped: true, families: picked.families, runId: picked.runId, ...(picked.full ? {} : { checkedAt: now() }) };
     return { sha, families: picked.families, runId: picked.runId };
   }
-
   /** First-parent history of main from `tip`, newest first. */
   function mainHistory(tip, count) {
     if (haveCommit(tip)) return git(['rev-list', '--first-parent', `-n${count}`, tip]).split('\n').filter(Boolean);

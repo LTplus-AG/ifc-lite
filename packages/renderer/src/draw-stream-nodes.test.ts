@@ -27,7 +27,7 @@ function batch(id: number, x: number, opts: { quantized?: boolean; lod1?: number
 }
 
 const stats = (): StreamFrameStats => ({ nodes: 0, nodesDrawn: 0, draws: 0, tris: 0, bundlesRecorded: 0, entries: 0, syncs: 0, invalidations: 0,
-  arenaBytes: 0, budgetDraws: 0, budgetCut: 0, proxiesDrawn: 0, proxyReady: 0, proxyNodes: 0, proxyBuildMs: 0, proxyBytes: 0 });
+  arenaBytes: 0, budgetDraws: 0, budgetCut: 0, proxiesDrawn: 0, proxyReady: 0, proxyNodes: 0, proxyBuildMs: 0, proxyBytes: 0, proxyTris: 0 });
 
 function frame(over: Partial<StreamFrameInputs> = {}): StreamFrameInputs {
   return {
@@ -228,6 +228,19 @@ describe('draw stream HLOD links', () => {
     for (const x of [0, 1, 2]) assert.ok(links.dirty.has(nodeKey(1, [x, 0, 0])), `cell ${x}`);
   });
 
+  it('hlodIds: a wholly hidden batch and a painted member leave their cells drawable', () => {
+    const tree = (ids: boolean): HlodTree => Object.assign(l1([[0, 0, 0], [1, 0, 0]]), { ids });
+    const hidden = { ...batch(2, 0), bounds: { min: [0, 0, 0], max: [10, 1, 1] } } as BatchedMesh;
+    const painted = { ...batch(3, 0), bounds: { min: [70, 0, 0], max: [80, 1, 1] } } as BatchedMesh;
+    const state = [{ alpha: 1, anchor: 3, overrideBits: 1 }];
+    const plain = linkHlodLeaves(tree(false), [], [hidden], [painted], state, 32, new Set([hidden]));
+    assert.ok(plain.dirty.has(nodeKey(1, [1, 0, 0])), 'without ids a painted member refines its cell');
+    const aware = linkHlodLeaves(tree(true), [], [hidden], [painted], state, 32, new Set([hidden]));
+    assert.equal(aware.dirty.size, 0);
+    const other = linkHlodLeaves(tree(true), [], [hidden], [], [], 32);
+    assert.ok(other.dirty.has(nodeKey(1, [0, 0, 0])), 'a legacy batch that is not proxy-safe still refines');
+  });
+
   it('gives up proxies when a batch spans too many cells (chunking off)', () => {
     const site = { ...batch(3, 0), bounds: { min: [0, 0, 0], max: [5000, 1, 1] } } as BatchedMesh;
     assert.equal(linkHlodLeaves(l1([[0, 0, 0]]), [], [site], [], [], 32).allDirty, true);
@@ -245,6 +258,39 @@ describe('draw stream proxy simplifier keys', () => {
     const out = reply as { pieces: { slot: number; ids: Uint32Array }[] } | null;
     assert.deepEqual(out!.pieces.map((p) => p.slot).sort((a, b) => a - b), [0, 1024]);
     assert.equal(out!.pieces.find((p) => p.slot === 0)!.ids.length, 6, 'the far triangle is its own, not merged into the near one');
+  });
+});
+
+describe('draw stream gate, hlodIds', () => {
+  const config = resolveDrawStreamConfig({ stream: true, settleMs: 0, hlod: true, hlodIds: true });
+  const run = (inputs: Record<string, unknown>, vis: (b: BatchedMesh) => unknown) => {
+    const verdicts: unknown[] = []; let ids: unknown = null;
+    const stream = { config, sync: (bs: BatchedMesh[], _g: string, _k: string, _c: number, eligible: (b: BatchedMesh) => unknown, _p: unknown, _r: unknown, i: unknown) => {
+      for (const b of bs) verdicts.push(eligible(b)); ids = i; return true; } } as unknown as Parameters<DrawStreamGate['sync']>[0];
+    const gate = new DrawStreamGate(); const bs = [batch(1, 0), batch(2, 40), batch(3, 80)];
+    gate.settled(bs, config, 0);
+    gate.sync(stream, bs, 'e', 32, { visibility: vis, alpha: () => 1, colorOverrides: null, colorOverrideGen: 0, emphasize: false, xrayActive: false, ...inputs } as never);
+    return { verdicts, ids: ids as { filter: boolean; overrideBits: number } };
+  };
+  const vis = (b: BatchedMesh): unknown => (b.id === 1 ? 'none' : b.id === 2 ? { partial: true } : 'all');
+
+  it('keeps partly hidden batches as members and marks wholly hidden ones proxy-safe once the table is on the GPU', () => {
+    const on = run({ visibilityFiltering: true, gpuVisibility: true }, vis);
+    assert.equal(on.verdicts[0], 'hidden');
+    assert.ok(on.verdicts[1] && typeof on.verdicts[1] === 'object', 'partly hidden stays a member');
+    assert.equal(on.ids.filter, true);
+  });
+
+  it('falls back to the legacy rule when the visibility table could not be written', () => {
+    const off = run({ visibilityFiltering: true, gpuVisibility: false }, vis);
+    assert.deepEqual(off.verdicts.slice(0, 2), [null, null]);
+    assert.equal(off.ids.filter, false);
+  });
+
+  it('gives proxies the paint bit whenever any colour override exists', () => {
+    const painted = run({ colorOverrides: new Map([[5, [1, 0, 0, 1]]]) }, () => 'all');
+    assert.notEqual(painted.ids.overrideBits, 0);
+    assert.equal(run({}, () => 'all').ids.overrideBits, 0);
   });
 });
 
@@ -287,6 +333,39 @@ describe('draw stream gate', () => {
       t.mock.timers.tick(10);
       assert.equal(frames, 1);
     } finally { gate.cancel(); }
+  });
+});
+
+describe('draw stream proxy simplifier, per-element ids (hlodIds)', () => {
+  const run = (data: Record<string, unknown>): { pieces: { slot: number; positions: Float32Array; ids: Uint32Array }[] } => {
+    let reply: unknown = null;
+    const self = { postMessage: (m: unknown) => { reply = m; }, onmessage: null as null | ((e: { data: unknown }) => void) };
+    new Function('self', PROXY_WORKER_SOURCE)(self);
+    self.onmessage!({ data });
+    return reply as { pieces: { slot: number; positions: Float32Array; ids: Uint32Array }[] };
+  };
+  // Two same-colour elements: a slab (id 7) and a wall standing on it (id 9), sharing the slab's top plane,
+  // tessellated so the wall's bottom corners weld into clusters the slab claimed first.
+  const quad = (at: number) => [at, at + 1, at + 2, at, at + 2, at + 3];
+  const slab = [[0, 0, 0], [8, 0, 0], [8, 8, 0], [0, 8, 0]];
+  const wall = [[0, 0, 0], [8, 0, 0], [8, 0, 3], [0, 0, 3], [0, 0, 0.1], [8, 0, 0.1], [8, 8, 0.1], [0, 8, 0.1]];
+  const positions = new Float32Array([...slab.flat(), ...wall.flat()]);
+  const indices = new Uint32Array([...quad(0), ...quad(4), ...quad(8)]);
+  const ids = new Uint32Array([...Array(4).fill(7), ...Array(8).fill(9)]);
+  const colors = new Uint16Array(12);
+  const tris = (out: ReturnType<typeof run>) => out.pieces.flatMap((p) => Array.from({ length: p.ids.length / 3 }, (_, t) => [p.ids[3 * t]!, p.ids[3 * t + 1]!, p.ids[3 * t + 2]!]));
+
+  it('gives every triangle its source element id on all three vertices', () => {
+    const t = tris(run({ job: 1, positions, ids, colors, indices, cell: 1, perElement: true }));
+    assert.ok(t.every(([a, b, c]) => a === b && b === c), 'one id per triangle');
+    assert.equal(t.filter(([a]) => a === 7).length, 2, 'the slab keeps both triangles');
+    assert.equal(t.filter(([a]) => a === 9).length, 4, 'the wall keeps all four: the coincident base quad is its own, not deduplicated into the slab');
+  });
+
+  it('without it, welded clusters hand the slab id to wall triangles (the artefact hlodIds removes)', () => {
+    const t = tris(run({ job: 1, positions, ids, colors, indices, cell: 1 }));
+    assert.ok(t.length < 6, 'the wall base collapses into the slab top');
+    assert.ok(t.some(([a, b, c]) => new Set([a, b, c]).size > 1), 'a wall triangle carries the slab id on its welded corners');
   });
 });
 

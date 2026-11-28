@@ -14,16 +14,25 @@
  * vertices per triangle, face normal) carrying the cluster's first element id.
  * Small elements vanish once they fit inside one cell, which is what makes a
  * far-field proxy cheap: furniture, fittings and pipes collapse, envelopes stay.
+ *
+ * `perElement` (draw-stream `hlodIds`): clusters stay shared across elements
+ * (positions weld, so joints stay watertight), but each surviving triangle
+ * carries its SOURCE triangle's element id on all three vertices, and the
+ * duplicate test keys on (cluster triple, id). The triangle set is then the
+ * union of per-element proxies: hiding one element removes exactly its
+ * triangles and never punches a hole in a neighbour. Without it a triangle's
+ * id is its first corner's cluster owner, which can belong to another element.
  */
 export const PROXY_WORKER_SOURCE = `
 self.onmessage = (event) => {
-  const { job, positions, ids, colors, indices, cell } = event.data;
+  const { job, positions, ids, colors, indices, cell, perElement } = event.data;
   const inv = 1 / cell;
   const clusters = new Map(); // per colour slot: cell key -> cluster index
   // 17 bits per axis (cells clamped to +-65536): the key stays an exact integer below 2^53.
   const axis = (q) => Math.min(65535, Math.max(-65536, Math.floor(q * inv))) + 65536;
   const sx = [], sy = [], sz = [], sn = [], sid = [];
   const bySlot = new Map();
+  const bySlotIds = new Map();
   const seen = new Map();
   const k = [0, 0, 0];
   for (let t = 0; t < indices.length; t += 3) {
@@ -43,17 +52,29 @@ self.onmessage = (event) => {
     const a = Math.min(k[0], k[1], k[2]), c = Math.max(k[0], k[1], k[2]), b = k[0] + k[1] + k[2] - a - c;
     const ab = a * 67108864 + b;
     let cs = seen.get(ab);
-    if (!cs) { cs = new Set(); seen.set(ab, cs); }
-    if (cs.has(c)) continue;
-    cs.add(c);
+    if (!cs) { cs = new Map(); seen.set(ab, cs); }
+    const tid = ids[indices[t]];
+    if (perElement) {
+      // one id per entry in the common case; a coincident triangle of another element adds a Set
+      let ids2 = cs.get(c);
+      if (ids2 === undefined) cs.set(c, tid);
+      else if (ids2 === tid) continue;
+      else if (typeof ids2 === 'number') cs.set(c, new Set([ids2, tid]));
+      else if (ids2.has(tid)) continue;
+      else ids2.add(tid);
+    } else {
+      if (cs.has(c)) continue;
+      cs.set(c, 0);
+    }
     let list = bySlot.get(slot);
-    if (!list) { list = []; bySlot.set(slot, list); }
+    if (!list) { list = []; bySlot.set(slot, list); bySlotIds.set(slot, []); }
     list.push(k[0], k[1], k[2]);
+    bySlotIds.get(slot).push(tid);
   }
   const out = [];
   const transfer = [];
   for (const [slot, tri] of bySlot) {
-    const n = tri.length;
+    const n = tri.length; const triIds = bySlotIds.get(slot);
     const pos = new Float32Array(n * 3), nrm = new Float32Array(n * 3), eid = new Uint32Array(n);
     const vtx = new Float32Array(n * 7), vtxU = new Uint32Array(vtx.buffer);
     const p = new Float64Array(9);
@@ -66,7 +87,7 @@ self.onmessage = (event) => {
         const o = 3 * (i + j);
         pos[o] = p[3 * j]; pos[o + 1] = p[3 * j + 1]; pos[o + 2] = p[3 * j + 2];
         nrm[o] = nx; nrm[o + 1] = ny; nrm[o + 2] = nz;
-        eid[i + j] = sid[tri[i + j]];
+        eid[i + j] = perElement ? triIds[i / 3] : sid[tri[i + j]];
         const w = 7 * (i + j);
         vtx[w] = pos[o]; vtx[w + 1] = pos[o + 1]; vtx[w + 2] = pos[o + 2];
         vtx[w + 3] = nx; vtx[w + 4] = ny; vtx[w + 5] = nz; vtxU[w + 6] = eid[i + j];

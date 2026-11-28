@@ -64,7 +64,10 @@ function spannedCells(min: readonly number[], max: readonly number[], cell: numb
  * does not hold.
  */
 export function linkHlodLeaves(h: HlodTree | null, nodes: StreamNode[], legacy: readonly BatchedMesh[], members: readonly BatchedMesh[],
-  states: readonly StreamBatchState[], cell: number): HlodLinks {
+  states: readonly StreamBatchState[], cell: number, proxySafe?: ReadonlySet<BatchedMesh>): HlodLinks {
+  // Id-aware proxies (hlodIds) discard hidden ids and paint overridden ones themselves:
+  // a wholly hidden batch and a painted member no longer keep their region on leaves.
+  const idAware = h?.ids === true;
   const links: HlodLinks = { leavesByParent: new Map(), uncovered: [], dirty: new Set(), allDirty: false };
   if (!h) { links.uncovered = nodes; return links; }
   const mark = (c: Vec3): void => {
@@ -77,8 +80,8 @@ export function linkHlodLeaves(h: HlodTree | null, nodes: StreamNode[], legacy: 
     const cells = spannedCells(min, max, cell);
     if (cells) for (const c of cells) mark(c); else links.allDirty = true;
   };
-  for (const b of legacy) if (b.bounds) markBounds(b.bounds.min, b.bounds.max);
-  for (let i = 0; i < members.length; i++) if (states[i]!.overrideBits !== 0) { const bb = members[i]!.bounds!; markBounds(bb.min, bb.max); }
+  for (const b of legacy) if (b.bounds && !proxySafe?.has(b)) markBounds(b.bounds.min, b.bounds.max);
+  if (!idAware) for (let i = 0; i < members.length; i++) if (states[i]!.overrideBits !== 0) { const bb = members[i]!.bounds!; markBounds(bb.min, bb.max); }
   for (const leaf of nodes) {
     const cells = spannedCells(leaf.min, leaf.max, cell);
     if (!cells) { links.allDirty = true; links.uncovered.push(leaf); continue; }

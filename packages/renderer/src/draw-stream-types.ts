@@ -18,6 +18,17 @@ export interface StreamBatchState {
   overrideBits: number;
 }
 
+/** `eligible` verdict (hlodIds): hidden whole, so the loop skips it, yet its region's proxies may still draw (they discard its ids). */
+export const STREAM_HIDDEN = 'hidden';
+
+/** hlodIds: the frame's id state the stream and its proxies apply per fragment. */
+export interface StreamIdState {
+  /** Hide/isolate is on and the GPU visibility table holds it: stream fragments test their id. */
+  filter: boolean;
+  /** overrideParams.y every proxy record carries (paint/emphasize bits, 0 = none). */
+  overrideBits: number;
+}
+
 /** One spatial node (a chunk cell) of stream members, drawn as one bundle. */
 export interface StreamNode {
   coords: Vec3;
@@ -51,7 +62,7 @@ export interface StreamFrameStats {
   nodes: number; nodesDrawn: number; draws: number; tris: number; bundlesRecorded: number; entries: number;
   /** Diagnostics: membership rebuilds so far, and bundle-cache invalidations so far. */
   syncs: number; invalidations: number;
-  arenaBytes: number; budgetDraws: number; budgetCut: number; proxiesDrawn: number; proxyReady: number; proxyNodes: number; proxyBuildMs: number; proxyBytes: number;
+  arenaBytes: number; budgetDraws: number; budgetCut: number; proxiesDrawn: number; proxyReady: number; proxyNodes: number; proxyBuildMs: number; proxyBytes: number; proxyTris: number;
   /** Nodes drawn directly this frame because the first-sight recording cap was reached. */
   directNodes?: number;
 }

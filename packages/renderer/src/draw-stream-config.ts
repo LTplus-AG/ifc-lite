@@ -24,6 +24,12 @@ export interface DrawStreamConfig {
   hlodPx: number;
   /** Proxy grid resolution per node edge. */
   hlodGrid: number;
+  /**
+   * Spike (tiled-federation phase 1): proxies carry per-triangle element ids and read the
+   * visibility and colour tables, so hide/isolate/colour overrides no longer force refinement
+   * to leaf geometry. Needs `hlod`. X-Ray and transparent overrides still refine.
+   */
+  hlodIds: boolean;
   /** Entity -> batch reverse index for selection/hover highlight resync (`batch-highlight.ts`). */
   hlIndex: boolean;
   /** Copy stream batches into shared vertex/index arenas so draws differ only in offsets. */
@@ -33,13 +39,13 @@ export interface DrawStreamConfig {
 }
 
 export const DEFAULT_DRAW_STREAM_CONFIG: Readonly<DrawStreamConfig> = Object.freeze({
-  stream: false, bundles: true, nodeCell: 0, settleMs: 1500, hlod: false, hlodPx: 2, hlodGrid: 24, hlIndex: false, arena: false, budgetMs: 0,
+  stream: false, bundles: true, nodeCell: 0, settleMs: 1500, hlod: false, hlodPx: 2, hlodGrid: 24, hlodIds: false, hlIndex: false, arena: false, budgetMs: 0,
 });
 
 /** Raw override values as flags carry them: booleans, numbers or their string spellings. */
 export type DrawStreamOverrides = Partial<Record<keyof DrawStreamConfig, unknown>>;
 
-const BOOLEAN_KEYS = ['stream', 'bundles', 'hlod', 'hlIndex', 'arena'] as const;
+const BOOLEAN_KEYS = ['stream', 'bundles', 'hlod', 'hlodIds', 'hlIndex', 'arena'] as const;
 const NUMBER_KEYS = ['nodeCell', 'settleMs', 'hlodPx', 'hlodGrid', 'budgetMs'] as const;
 /** Every config key, for hosts that read one flag per key. */
 export const DRAW_STREAM_CONFIG_KEYS: readonly (keyof DrawStreamConfig)[] = [...BOOLEAN_KEYS, ...NUMBER_KEYS];

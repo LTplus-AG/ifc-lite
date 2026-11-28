@@ -26,7 +26,8 @@ import type { BatchedMesh } from './types.js';
 import type { RenderPipeline } from './pipeline.js';
 import type { OpaqueDrawMode } from './opaque-draw-variants.js';
 import type { RelativeToEyeFrame } from './relative-to-eye.js';
-import { MESH_UNIFORM_BYTES, MESH_UNIFORM_FLOATS, MESH_UNIFORM_OFFSET } from './mesh-rte-uniforms.js';
+import { MESH_FLAGS_BYTE_OFFSET, MESH_UNIFORM_BYTES, MESH_UNIFORM_FLOATS, MESH_UNIFORM_OFFSET } from './mesh-rte-uniforms.js';
+import { MESH_FLAG_ENTITY_VISIBILITY } from './entity-visibility-table.js';
 import { emptyBindGroup, sectionExclusions } from './section-exclusions.js';
 import { STREAM_DELTA_FLOATS, STREAM_RECORD_FLOATS } from './shaders/main-stream.wgsl.js';
 import { packMeshMaterial } from './mesh-material.js';
@@ -36,7 +37,7 @@ import { StreamPipelines } from './draw-stream-pipelines.js';
 import { buildStreamNodes, linkHlodLeaves, type HlodLinks } from './draw-stream-nodes.js';
 import { collectStreamItems, StreamDrawBudget } from './draw-stream-cull.js';
 import { mixedBundles, pickedLoad } from './draw-stream-picks.js';
-import { cellOf, idOf, MemberPick, modeIndex, orthoSlot, type StreamBatchState, type StreamFrameInputs, type StreamFrameStats, type StreamItem, type StreamNode } from './draw-stream-types.js';
+import { cellOf, idOf, MemberPick, modeIndex, orthoSlot, STREAM_HIDDEN, type StreamIdState, type StreamBatchState, type StreamFrameInputs, type StreamFrameStats, type StreamItem, type StreamNode } from './draw-stream-types.js';
 import type { DrawStreamConfig } from './draw-stream-config.js';
 import { DEFAULT_CHUNK_CELL_SIZE } from './chunk-grid.js';
 import type { MeshData } from '@ifc-lite/geometry';
@@ -81,6 +82,9 @@ export class DrawStream {
   private warmReady = 0;
   private syncCount = 0;
   private invalidationCount = 0;
+  /** hlodIds: every stream fragment (leaves and proxies) tests its id against the visibility table this frame. */
+  filterVisibility = false;
+  private readonly flagsWord = new Uint32Array(1);
 
   constructor(private readonly device: GPUDevice, private readonly pipeline: RenderPipeline, readonly config: DrawStreamConfig) {
     this.frameBuffer = device.createBuffer({ label: 'draw-stream-frame', size: MESH_UNIFORM_BYTES, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
@@ -92,15 +96,18 @@ export class DrawStream {
    * override and X-Ray epochs) changed. `eligible` returns the batch's state
    * when it can be drawn as a plain opaque whole batch, else null (legacy).
    */
-  sync(batches: readonly BatchedMesh[], geomKey: string, key: string, cell: number, eligible: (b: BatchedMesh) => StreamBatchState | null,
-    forEachPiece?: (visit: (m: MeshData) => void) => void, requestRender?: () => void): boolean {
+  sync(batches: readonly BatchedMesh[], geomKey: string, key: string, cell: number, eligible: (b: BatchedMesh) => StreamBatchState | typeof STREAM_HIDDEN | null,
+    forEachPiece?: (visit: (m: MeshData) => void) => void, requestRender?: () => void, ids?: StreamIdState): boolean {
     if (requestRender) this.requestRender = requestRender;
+    const idAware = this.config.hlod && this.config.hlodIds;
+    if (idAware) { this.filterVisibility = ids?.filter === true; this.hlod?.setOverrideBits(ids?.overrideBits ?? 0); }
     if (key === this.key && geomKey === this.geomKey) return false;
     this.key = key; this.syncCount++; this.warmModes.fill(false);
     const leafCell = cell > 0 ? cell : DEFAULT_CHUNK_CELL_SIZE;
     if (this.config.hlod && forEachPiece && geomKey !== this.geomKey) {
       this.hlod?.destroy();
-      this.hlod = new HlodTree(this.device, leafCell, this.config.hlodGrid, () => this.requestRender());
+      this.hlod = new HlodTree(this.device, leafCell, this.config.hlodGrid, () => this.requestRender(), idAware);
+      if (idAware) this.hlod.setOverrideBits(ids?.overrideBits ?? 0);
       this.hlodGeneration = -1; this.hlodBindGroup = null; this.orthoKey = ''; this.hlod.build(forEachPiece); // a new tree restarts its generations
     }
     if (this.config.arena && geomKey !== this.geomKey) {
@@ -112,15 +119,17 @@ export class DrawStream {
     if (geomKey !== this.geomKey) this.outsideEnvelope.clear();
     this.geomKey = geomKey;
     const members: BatchedMesh[] = []; const legacy: BatchedMesh[] = []; const states: StreamBatchState[] = [];
+    const proxySafe = new Set<BatchedMesh>();
     for (const b of batches) {
       // An evicted batch the arena holds still draws from its arena copy.
       const st = b.bounds && !b.indexFormat /* a u16 compact page: arenas and stream draws index with u32 */ && (b.gpuResident !== false || this.arena?.slots.has(b)) && !this.outsideEnvelope.has(b) ? eligible(b) : null;
-      if (st) { members.push(b); states.push(st); } else legacy.push(b);
+      if (st === STREAM_HIDDEN) { legacy.push(b); proxySafe.add(b); } // the loop skips it; proxies discard its ids
+      else if (st) { members.push(b); states.push(st); } else legacy.push(b);
     }
     this.members = members; this.legacy = legacy;
     this.writeRecords(states);
     this.nodes = buildStreamNodes(members, leafCell); this.skipLeaves.clear();
-    this.links = linkHlodLeaves(this.hlod, this.nodes, legacy, members, states, leafCell);
+    this.links = linkHlodLeaves(this.hlod, this.nodes, legacy, members, states, leafCell, proxySafe);
     this.lastCamera = [NaN, NaN, NaN];
     return true;
   }
@@ -157,6 +166,11 @@ export class DrawStream {
   /** Write the frame uniform and, when the camera moved, every member's origin delta. */
   prepareFrame(frameUniforms: Float32Array, rte: RelativeToEyeFrame): void {
     this.device.queue.writeBuffer(this.frameBuffer, 0, frameUniforms);
+    if (this.filterVisibility) {
+      // the stream's own copy of flags.x gains the per-fragment visibility test (the loop's frame uniform is untouched)
+      this.flagsWord[0] = (new Uint32Array(frameUniforms.buffer, frameUniforms.byteOffset, MESH_UNIFORM_FLOATS)[MESH_UNIFORM_OFFSET.flags]! | MESH_FLAG_ENTITY_VISIBILITY) >>> 0;
+      this.device.queue.writeBuffer(this.frameBuffer, MESH_FLAGS_BYTE_OFFSET, this.flagsWord);
+    }
     const cam = rte.getCameraWorld();
     this.hlod?.prepareFrame(rte);
     if (cam[0] === this.lastCamera[0] && cam[1] === this.lastCamera[1] && cam[2] === this.lastCamera[2]) return;
@@ -217,7 +231,7 @@ export class DrawStream {
   encode(f: StreamFrameInputs, drawn: (b: BatchedMesh) => void): StreamFrameStats {
     const h = this.hlod;
     const stats: StreamFrameStats = { nodes: this.nodes.length, nodesDrawn: 0, draws: 0, tris: 0, bundlesRecorded: 0, entries: 0, syncs: this.syncCount, invalidations: this.invalidationCount, arenaBytes: this.arena?.bytes ?? 0, budgetDraws: 0, budgetCut: 0,
-      proxiesDrawn: 0, proxyReady: h?.stats.ready ?? 0, proxyNodes: h?.stats.nodes ?? 0, proxyBuildMs: h?.stats.buildMs ?? 0, proxyBytes: h?.stats.proxyBytes ?? 0 };
+      proxiesDrawn: 0, proxyReady: h?.stats.ready ?? 0, proxyNodes: h?.stats.nodes ?? 0, proxyBuildMs: h?.stats.buildMs ?? 0, proxyBytes: h?.stats.proxyBytes ?? 0, proxyTris: h?.stats.proxyTris ?? 0 };
     if (this.members.length === 0) return stats;
     const bg = this.ensureBindGroup();
     // Bundles are cached per draw mode: the viewer's effects governor toggles edges (object-id

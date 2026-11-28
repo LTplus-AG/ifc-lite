@@ -18,6 +18,7 @@ import { DEFAULT_DRAW_STREAM_CONFIG, drawStreamUsesHighlightIndex, type DrawStre
 import { batchEntities } from './batch-entities.js';
 import { batchEntityIdAnchor, batchHasColorOverride, packOverrideParams } from './entity-color-table.js';
 import { shouldRouteBatchTransparent } from './overlay-routing.js';
+import { STREAM_HIDDEN } from './draw-stream-types.js';
 
 export interface StreamEligibilityInputs {
   visibility: (b: BatchedMesh) => unknown;
@@ -26,6 +27,10 @@ export interface StreamEligibilityInputs {
   colorOverrideGen: number;
   emphasize: boolean;
   xrayActive: boolean;
+  /** hlodIds: hide/isolate is on this frame. */
+  visibilityFiltering?: boolean;
+  /** hlodIds: the GPU visibility table holds this frame's hide/isolate image (`FrameEntityVisibility.write`). */
+  gpuVisibility?: boolean;
   /** Every CPU mesh piece (HLOD proxy source). */
   forEachPiece?: (visit: (m: MeshData) => void) => void;
   requestRender?: () => void;
@@ -83,18 +88,27 @@ export class DrawStreamGate {
 
   sync(stream: DrawStream, batches: readonly BatchedMesh[], epoch: string, cell: number, inputs: StreamEligibilityInputs): void {
     const nodeCell = stream.config.nodeCell > 0 ? stream.config.nodeCell : cell;
-    stream.sync(batches, this.signature, `${this.signature}|${epoch}|r${this.resident}`, nodeCell, (b) => {
+    // hlodIds: with the visibility table on the GPU, hide/isolate is a per-fragment test on stream
+    // draws and proxies, so a partly hidden batch stays a member and a wholly hidden one leaves its
+    // region's proxies drawable (STREAM_HIDDEN). Proxies paint by id whenever any override exists.
+    const idAware = stream.config.hlod && stream.config.hlodIds;
+    const filter = idAware && inputs.visibilityFiltering === true && inputs.gpuVisibility === true;
+    packOverrideParams(this.scratch, 0, idAware && (inputs.colorOverrides?.size ?? 0) > 0, inputs.emphasize);
+    const ids = { filter, overrideBits: this.scratch[1]! };
+    stream.sync(batches, this.signature, `${this.signature}|${epoch}|r${this.resident}|f${filter ? 1 : 0}`, nodeCell, (b) => {
       // X-Ray splits batches per alpha group (#4129): keep the whole legacy machinery.
       if (inputs.xrayActive) return null;
-      if (inputs.visibility(b) !== 'all') return null;
+      const visibility = inputs.visibility(b);
+      if (filter) { if (visibility === 'none') return STREAM_HIDDEN; } else if (visibility !== 'all') return null;
       const alpha = inputs.alpha(b);
       if (alpha < 0.99) return null;
       if (shouldRouteBatchTransparent(alpha, batchEntities(b), inputs.colorOverrides)) return null;
       const anchor = batchEntityIdAnchor(b);
+      if (filter && anchor === null) return null; // its fragments could not name their entity
       const painted = batchHasColorOverride(b, inputs.colorOverrides, inputs.colorOverrideGen);
       packOverrideParams(this.scratch, anchor, painted, inputs.emphasize);
       return { alpha, anchor, overrideBits: this.scratch[1]! };
-    }, inputs.forEachPiece, inputs.requestRender);
+    }, inputs.forEachPiece, inputs.requestRender, ids);
   }
 }
 
@@ -136,6 +150,8 @@ export class RendererDrawStream {
     if (!this.gate.settled(batches, this.config, revision, inputs.requestRender)) { this.dropStream(); return batches; }
     const stream = (this.stream ??= new DrawStream(device, pipeline, this.config));
     this.gate.sync(stream, batches, epoch, cell, inputs);
+    // hlodIds: the visibility test discards, so the discard-free twin cannot draw this frame.
+    if (stream.filterVisibility && mode.discardFree) mode = { ...mode, discardFree: false };
     // Still compiling: the loop draws this frame, and the landed build asks for the next one.
     this.mode = stream.pipelines.resolve(mode);
     if (!this.mode) return batches;

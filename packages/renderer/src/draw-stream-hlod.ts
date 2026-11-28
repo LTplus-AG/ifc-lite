@@ -19,6 +19,13 @@
  * children, and level 1 refines to the leaf cells. So hide/isolate/override
  * never apply to a proxy: they force refinement to real geometry. Picking
  * runs its own pass over the real batches and is unaffected.
+ *
+ * With `ids` (config `hlodIds`, spike) each proxy triangle carries its source
+ * element's full scene id (worker `perElement`), proxy pieces are split per
+ * 2^24 id page so a record's anchor (`page << 24`) resolves every id exactly,
+ * and records carry the frame's paint/emphasize bits: proxies then discard
+ * hidden ids and paint overridden ones like any batch, and only X-Ray and
+ * transparent overrides still force refinement.
  */
 import type { MeshData } from '@ifc-lite/geometry';
 import { PROXY_WORKER_SOURCE } from './draw-stream-proxy-worker.js';
@@ -71,7 +78,9 @@ export class HlodTree {
   private nextJob = 1;
   private readonly palette = new Map<string, number>();
   /** Proxy colour slots: colour and surface finish, as the source pieces drew them. */
-  private readonly colours: { colour: [number, number, number, number]; finish: Finish | undefined }[] = [];
+  private readonly colours: { colour: [number, number, number, number]; finish: Finish | undefined; page: number }[] = [];
+  /** overrideParams.y of every proxy record (`setOverrideBits`); 0 without `ids`. */
+  private overrideBits = 0;
   private records = new Float32Array(0);
   private recordCount = 0;
   private origins: Vec3[] = [];
@@ -93,7 +102,8 @@ export class HlodTree {
   private buildStart = 0;
   private readonly scratch = new Float32Array(MESH_UNIFORM_FLOATS);
 
-  constructor(private readonly device: GPUDevice, readonly leafCell: number, readonly grid: number, private readonly onReady: () => void) {}
+  constructor(private readonly device: GPUDevice, readonly leafCell: number, readonly grid: number, private readonly onReady: () => void,
+    readonly ids = false) {}
 
   /** Assign every mesh piece to a level-1 node and derive the coarser levels. */
   build(forEachPiece: (visit: (m: MeshData) => void) => void): void {
@@ -138,11 +148,24 @@ export class HlodTree {
       error: size / this.grid, children: [], state: 'idle', draws: [], cpu: [], tris: 0, bundle: [null, null, null, null], ortho: [] };
   }
 
-  private slotOf(color: readonly number[], finish: Finish | undefined): number {
-    const k = proxySlotKey(color, finish);
+  private slotOf(color: readonly number[], finish: Finish | undefined, page = 0): number {
+    const k = `${proxySlotKey(color, finish)}|${page}`;
     let s = this.palette.get(k);
-    if (s === undefined) { s = this.colours.length; this.palette.set(k, s); this.colours.push({ colour: [color[0]!, color[1]!, color[2]!, color[3]!], finish }); }
+    if (s === undefined) { s = this.colours.length; this.palette.set(k, s); this.colours.push({ colour: [color[0]!, color[1]!, color[2]!, color[3]!], finish, page }); }
     return s;
+  }
+
+  /**
+   * Paint/emphasize bits every proxy record carries (`ids` only): the colour table then
+   * resolves each proxy fragment's own id like a painted batch's. Rewrites the records
+   * in place; recorded bundles stay valid (same buffers).
+   */
+  setOverrideBits(bits: number): void {
+    if (!this.ids || bits === this.overrideBits) return;
+    this.overrideBits = bits;
+    const u = new Uint32Array(this.records.buffer);
+    for (let i = 0; i < this.recordCount; i++) u[i * STREAM_RECORD_FLOATS + 18] = bits;
+    if (this.recordBuffer) this.flushRecords();
   }
 
   /** Keep up to two builds in flight; level 1 first, a parent once all its children settled. */
@@ -179,21 +202,26 @@ export class HlodTree {
     if (verts === 0) { n.state = 'empty'; return; }
     const positions = new Float32Array(verts * 3), ids = new Uint32Array(verts), colors = new Uint16Array(verts), indices = new Uint32Array(idx);
     let v = 0, t = 0;
-    const put = (src: Float32Array, srcOrigin: Vec3, id: (i: number) => number, slot: number, tri: Uint32Array | null): void => {
+    const put = (src: Float32Array, srcOrigin: Vec3, id: (i: number) => number, slot: (id: number) => number, tri: Uint32Array | null): void => {
       const base = v; const nv = src.length / 3;
       for (let i = 0; i < nv; i++) {
         positions[3 * v] = src[3 * i]! + srcOrigin[0] - origin[0]; positions[3 * v + 1] = src[3 * i + 1]! + srcOrigin[1] - origin[1]; positions[3 * v + 2] = src[3 * i + 2]! + srcOrigin[2] - origin[2];
-        ids[v] = id(i); colors[v] = slot; v++;
+        const e = id(i); ids[v] = e; colors[v] = slot(e); v++;
       }
       if (tri) for (let i = 0; i < tri.length; i++) indices[t++] = base + tri[i]!;
       else for (let i = 0; i < nv; i++) indices[t++] = base + i;
     };
-    if (n.level === 1) for (const m of n.pieces!) put(m.positions, m.origin ?? [0, 0, 0], m.entityIds ? (i) => m.entityIds![i]! : () => m.expressId, this.slotOf(m.color, m.material), m.indices);
-    else for (const c of n.children) { const o = c.origin ?? centre(c); for (const p of c.cpu) put(p.positions, o, (i) => p.ids[i]!, p.slot, null); }
+    if (n.level === 1) for (const m of n.pieces!) {
+      // `ids`: one slot per (colour, 2^24 id page), so every record's anchor resolves its ids exactly
+      const plain = this.slotOf(m.color, m.material);
+      const slot = this.ids ? (e: number) => this.slotOf(m.color, m.material, e >>> 24) : () => plain;
+      put(m.positions, m.origin ?? [0, 0, 0], m.entityIds ? (i) => m.entityIds![i]! : () => m.expressId, slot, m.indices);
+    }
+    else for (const c of n.children) { const o = c.origin ?? centre(c); for (const p of c.cpu) put(p.positions, o, (i) => p.ids[i]!, () => p.slot, null); }
     n.pieces = undefined;
     const job = this.nextJob++;
     this.jobs.set(job, n); n.state = 'pending';
-    this.worker!.postMessage({ job, positions, ids, colors, indices, cell: n.error }, [positions.buffer, ids.buffer, colors.buffer, indices.buffer]);
+    this.worker!.postMessage({ job, positions, ids, colors, indices, cell: n.error, perElement: this.ids }, [positions.buffer, ids.buffer, colors.buffer, indices.buffer]);
   }
 
   private finish(job: number, pieces: ProxyPiece[]): void {
@@ -227,7 +255,7 @@ export class HlodTree {
     this.onReady();
   }
 
-  private addRecord({ colour, finish }: { colour: [number, number, number, number]; finish: Finish | undefined }, origin: Vec3, node: HlodNode): number {
+  private addRecord({ colour, finish, page }: { colour: [number, number, number, number]; finish: Finish | undefined; page: number }, origin: Vec3, node: HlodNode): number {
     const i = this.recordCount++;
     if (this.records.length < this.recordCount * STREAM_RECORD_FLOATS) {
       const next = new Float32Array(Math.max(64, this.recordCount * 2) * STREAM_RECORD_FLOATS); next.set(this.records); this.records = next;
@@ -237,7 +265,9 @@ export class HlodTree {
     packMeshMaterial(this.scratch, colour[3], finish); const mr = MESH_UNIFORM_OFFSET.metallicRoughness;
     r[o + 4] = this.scratch[mr]!; r[o + 5] = this.scratch[mr + 1]!; r[o + 6] = this.scratch[mr + 2]!; r[o + 7] = this.scratch[mr + 3]!;
     r[o + 12] = origin[0]; r[o + 13] = origin[1]; r[o + 14] = origin[2];
-    u[o + 17] = 0xFFFFFFFF;
+    // overrideParams.x/y: without ids no anchor (the shader cannot name the entity); with ids the page base
+    u[o + 17] = this.ids ? (page * 0x1000000) >>> 0 : 0xFFFFFFFF;
+    u[o + 18] = this.overrideBits;
     this.origins[i] = origin; this.recordNodes[i] = node;
     return i;
   }

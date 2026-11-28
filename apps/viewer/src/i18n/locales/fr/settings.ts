@@ -48,7 +48,7 @@ export const settingsFr = {
   "settings.performance.reset": "Réinitialiser",
   "settings.performance.resetNamed": "Réinitialiser {name}",
   "settings.privacy.analyticsTitle": "Statistiques d'utilisation du produit",
-  "settings.privacy.analyticsDisclosure": "La visionneuse hébergée envoie à PostHog des événements anonymes d'utilisation et d'erreur, comme la commande utilisée, le schéma du modèle, des décomptes et la version de build, et compte les pages vues avec Vercel Web Analytics. Rien ne démarre avant l'avis de première visite. Les sessions ne sont jamais enregistrées.",
+  "settings.privacy.analyticsDisclosure": "La visionneuse hébergée envoie à PostHog des événements anonymes d'utilisation et d'erreur, comme la commande utilisée, le schéma du modèle, des décomptes et la version de build, et compte les pages vues avec Vercel Web Analytics. Rien ne démarre avant l'avis de première visite. Aucun enregistrement de session (ni capture d'écran ni replay).",
   "settings.privacy.analyticsExclusions": "Le contenu des modèles, les noms de fichier, les GlobalId, les valeurs de propriétés, le texte du chat et les clés d'API ne sont jamais inclus.",
   "settings.privacy.analyticsOptOut": "Désactiver les statistiques d'utilisation du produit",
   "settings.privacy.analyticsOptOutHint": "Arrête immédiatement l'envoi des événements d'utilisation et d'erreur et le comptage des pages vues depuis ce navigateur. Dès le prochain chargement de la page, les scripts d'analyse ne sont plus chargés du tout.",

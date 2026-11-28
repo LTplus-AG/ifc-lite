@@ -65,7 +65,7 @@ export const settingsEn = {
   'settings.performance.resetNamed': 'Reset {name}',
 
   'settings.privacy.analyticsTitle': 'Product analytics',
-  'settings.privacy.analyticsDisclosure': 'The hosted viewer sends anonymous usage and error events to PostHog, such as the command used, model schema, counts and build version, and counts page views with Vercel Web Analytics. Neither starts before the first-visit notice. Sessions are never recorded.',
+  'settings.privacy.analyticsDisclosure': 'The hosted viewer sends anonymous usage and error events to PostHog, such as the command used, model schema, counts and build version, and counts page views with Vercel Web Analytics. Neither starts before the first-visit notice. There is no session recording (no screen or replay capture).',
   'settings.privacy.analyticsExclusions': 'Model content, file names, GlobalIds, property values, chat text and API keys are never included.',
   'settings.privacy.analyticsOptOut': 'Opt out of product analytics',
   'settings.privacy.analyticsOptOutHint': 'Stops usage events, error events and page-view counts from this browser at once. From the next page load, the analytics scripts are not loaded at all.',

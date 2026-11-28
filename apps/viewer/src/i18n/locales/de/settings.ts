@@ -54,7 +54,7 @@ export const settingsDe = {
   "settings.performance.reset": "Zurücksetzen",
   "settings.performance.resetNamed": "{name} zurücksetzen",
   "settings.privacy.analyticsTitle": "Produktanalyse",
-  "settings.privacy.analyticsDisclosure": "Der gehostete Viewer sendet anonyme Nutzungs- und Fehlerereignisse an PostHog, etwa verwendeter Befehl, Modellschema, Anzahlen und Build-Version, und zählt Seitenaufrufe mit Vercel Web Analytics. Beides startet erst nach dem Hinweis beim ersten Besuch. Sitzungen werden nie aufgezeichnet.",
+  "settings.privacy.analyticsDisclosure": "Der gehostete Viewer sendet anonyme Nutzungs- und Fehlerereignisse an PostHog, etwa verwendeter Befehl, Modellschema, Anzahlen und Build-Version, und zählt Seitenaufrufe mit Vercel Web Analytics. Beides startet erst nach dem Hinweis beim ersten Besuch. Es gibt keine Sitzungsaufzeichnung (keine Bildschirm- oder Replay-Aufnahme).",
   "settings.privacy.analyticsExclusions": "Modellinhalte, Dateinamen, GlobalIds, Eigenschaftswerte, Chattexte und API-Schlüssel werden niemals eingeschlossen.",
   "settings.privacy.analyticsOptOut": "Produktanalyse deaktivieren",
   "settings.privacy.analyticsOptOutHint": "Stoppt Nutzungs- und Fehlerereignisse sowie die Zählung von Seitenaufrufen aus diesem Browser sofort. Ab dem nächsten Laden der Seite werden die Analyse-Skripte gar nicht mehr geladen.",

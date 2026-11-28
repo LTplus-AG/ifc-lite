@@ -258,16 +258,21 @@ const stopUncaught = enabled && typeof window !== 'undefined'
   ? listenForUncaught(window, held.holdUncaught, isAnalyticsOptedOut)
   : () => undefined;
 
-/** An opt-out here or in another tab: stop PostHog, drop held events, delete what PostHog stored. */
+/** The opt-out changed, here or in another tab: stop PostHog and clear what it stored, or resume it. */
 subscribeAnalyticsConsent(() => {
-  if (!isAnalyticsOptedOut()) return;
-  held.clear();
   try {
-    if (enabled && client && !posthogClient.has_opted_out_capturing()) posthogClient.opt_out_capturing();
+    if (isAnalyticsOptedOut()) {
+      held.clear();
+      if (enabled && client && !posthogClient.has_opted_out_capturing()) posthogClient.opt_out_capturing();
+      clearStoredAnalyticsIdentity();
+    } else if (enabled && client && posthogClient.has_opted_out_capturing()) {
+      posthogClient.opt_in_capturing({ captureEventName: false });
+      // Capture now, letting the SDK rotate an expired session ID before attaching it.
+      recordViewerSessionStart.startNow();
+    }
   } catch (error) {
     console.warn('[analytics] could not update PostHog consent', error);
   }
-  clearStoredAnalyticsIdentity();
 });
 
 /** All explicit capture sites use this facade, so the setting takes effect immediately. */
@@ -307,19 +312,8 @@ export function readAnalyticsFeatureFlag(key: string): boolean | string | undefi
  * started at all. Opting back in starts PostHog now, if the notice was shown.
  */
 export function setAnalyticsOptOut(value: boolean): void {
-  // Notifies the starter (starts PostHog on an opt-in) and the opt-out handler above.
+  // Notifies the starter (starts PostHog on an opt-in) and the consent handler above.
   persistAnalyticsOptOut(value);
-  if (value || !enabled) return;
-  try {
-    if (client && posthogClient.has_opted_out_capturing()) {
-      posthogClient.opt_in_capturing({ captureEventName: false });
-      // The callback may have fired while opted out. Capture now, allowing the
-      // SDK to rotate an expired session ID before attaching it to the event.
-      recordViewerSessionStart.startNow();
-    }
-  } catch (error) {
-    console.warn('[analytics] could not update PostHog consent', error);
-  }
 }
 
 /**

@@ -52,7 +52,7 @@ export const settingsIt = {
   "settings.performance.reset": "Reimposta",
   "settings.performance.resetNamed": "Reimposta {name}",
   "settings.privacy.analyticsTitle": "Statistiche di utilizzo del prodotto",
-  "settings.privacy.analyticsDisclosure": "Il visualizzatore ospitato invia a PostHog eventi anonimi di utilizzo e di errore, come il comando usato, lo schema del modello, i conteggi e la versione della build, e conta le visualizzazioni di pagina con Vercel Web Analytics. Nulla parte prima dell'avviso della prima visita. Le sessioni non vengono mai registrate.",
+  "settings.privacy.analyticsDisclosure": "Il visualizzatore ospitato invia a PostHog eventi anonimi di utilizzo e di errore, come il comando usato, lo schema del modello, i conteggi e la versione della build, e conta le visualizzazioni di pagina con Vercel Web Analytics. Nulla parte prima dell'avviso della prima visita. Non c'è registrazione delle sessioni (nessuna cattura dello schermo né replay).",
   "settings.privacy.analyticsExclusions": "Contenuto del modello, nomi dei file, GlobalId, valori delle proprietà, testo della chat e chiavi API non vengono mai inclusi.",
   "settings.privacy.analyticsOptOut": "Disattiva le statistiche di utilizzo del prodotto",
   "settings.privacy.analyticsOptOutHint": "Interrompe subito l'invio di eventi di utilizzo e di errore e il conteggio delle visualizzazioni di pagina da questo browser. Dal prossimo caricamento della pagina, gli script di analisi non vengono più caricati.",

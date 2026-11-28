@@ -411,4 +411,20 @@ describe('events before the notice are held in memory, never stored or sent earl
     }
     assert.deepEqual(postHogEntries(), [], 'nothing PostHog stored is left, though PostHog never starts here');
   });
+
+  it('an opt-in in another tab reaches this tab, so a stopped PostHog here resumes', () => {
+    assert.ok(consentAdded.subscribeAnalyticsConsent);
+    consent.persistAnalyticsOptOut(true);
+    let notified = 0;
+    const unsubscribe = consentAdded.subscribeAnalyticsConsent(() => { notified++; });
+    try {
+      localStorage.setItem('ifc-lite:analytics-opt-out', 'false');
+      window.dispatchEvent(Object.assign(new Event('storage'), { key: 'ifc-lite:analytics-opt-out' }));
+      assert.equal(consent.isAnalyticsOptedOut(), false, 'the other tab\'s opt-in is read');
+      assert.equal(notified, 1, 'and the consent handler (which resumes PostHog) is told');
+    } finally {
+      unsubscribe();
+    }
+  });
 });
+

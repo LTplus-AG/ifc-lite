@@ -146,7 +146,7 @@ describe.skipIf(!enabled)("#7495 publication deletion serialization", () => {
     const report = await createReport(db, config, owner, {
       clientRequestId: randomUUID(), title: "Delayed GitHub listing", description: "Synthetic retry",
       diagnostics: { errorCode: "retry", appVersion: "test", buildSha: "test" }, visibility: "private",
-      ...(destination === "comment" ? { issueTarget: bindingFeature!.signIssueBinding(config, owner, { correlation: { eventId: randomUUID(), sessionId: randomUUID(), buildSha: "test" }, posthogIssueId: randomUUID(), issueUrl, title: "Existing target", verifiedAt: new Date().toISOString() }) } : {}),
+      ...(destination === "comment" ? { issueTarget: bindingFeature!.signIssueBinding(config, owner, { correlation: { eventId: randomUUID(), buildSha: "test" }, posthogIssueId: randomUUID(), issueUrl, title: "Existing target", verifiedAt: new Date().toISOString() }) } : {}),
     });
     await submitReport(db, report.id, owner, false);
     let posts = 0, visible = false;
@@ -280,7 +280,7 @@ describe.skipIf(!enabled)("#7495 publication deletion serialization", () => {
     const endpoint = `http://127.0.0.1:${address.port}`;
     const github = new GithubIssues(liveConfig, (url, init) => fetch(endpoint + new URL(String(url)).pathname + new URL(String(url)).search, init));
     async function boundReport() {
-      const issueTarget = bindingFeature?.signIssueBinding(config, owner, { correlation: { eventId: randomUUID(), sessionId: randomUUID(), buildSha: "test" }, posthogIssueId: randomUUID(), issueUrl, title: "Known issue", verifiedAt: new Date().toISOString() });
+      const issueTarget = bindingFeature?.signIssueBinding(config, owner, { correlation: { eventId: randomUUID(), buildSha: "test" }, posthogIssueId: randomUUID(), issueUrl, title: "Known issue", verifiedAt: new Date().toISOString() });
       const report = await createReport(db, config, owner, { clientRequestId: randomUUID(), title: "Reviewed additional evidence", description: "Selected wall", diagnostics: { errorCode: "same_category", appVersion: "test", buildSha: "test" }, visibility: "private", issueTarget });
       await submitReport(db, report.id, owner, false); return report;
     }

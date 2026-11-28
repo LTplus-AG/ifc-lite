@@ -7,7 +7,7 @@ import type { Catalogue } from '../../registry';
 export const errorReportRu = {
   "errorReport.destination": "Куда следует поместить этот отчёт?",
   "errorReport.noCorrelation": "Не удалось подтвердить наличие существующей задачи для этой ошибки. Вы можете создать новый отчёт.",
-  "errorReport.correlationPrivate": "Проверьте, есть ли задача на GitHub для точной зафиксированной ошибки. Ссылка на её телеметрию остаётся конфиденциальной.",
+  "errorReport.correlationPrivate": "Проверьте, есть ли уже задача на GitHub для этой ошибки. При этом в службу отчётов отправляется ID зафиксированного события ошибки, а не вашего сеанса аналитики. ID никогда не публикуется.",
   "errorReport.checkIssue": "Проверить наличие существующей задачи",
   "errorReport.checkingIssue": "Проверка…",
   "errorReport.issueUnmatched": "Не удалось подтвердить ни одной открытой задачи GitHub для этой конкретной ошибки.",

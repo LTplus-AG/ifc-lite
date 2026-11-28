@@ -13,7 +13,7 @@ import {
   isRecord,
   boundedText,
   isUuid,
-  isReportCorrelation,
+  readReportCorrelation,
 } from "@ifc-lite/report-contract";
 import type { Config } from "./config.js";
 import { type Db } from "./database.js";
@@ -161,9 +161,9 @@ export function createHandler(
         return;
       }
       if (path === "/api/reports/resolve-issue" && method === "POST") {
-        const input = await body(req);
-        requireCondition(isReportCorrelation(input), 400, "correlation_invalid", "An exact captured error is needed to check for an existing issue.");
-        json(res, await resolveIssueTarget(db, config, owner, input));
+        const correlation = readReportCorrelation(await body(req));
+        requireCondition(correlation !== undefined, 400, "correlation_invalid", "An exact captured error is needed to check for an existing issue.");
+        json(res, await resolveIssueTarget(db, config, owner, correlation));
         return;
       }
       if (path === "/api/reports/drafts" && method === "POST") {

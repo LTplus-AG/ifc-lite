@@ -7,6 +7,7 @@ import {
   isDraftInput,
   isPublicSharingConsent,
   isReportCorrelation,
+  readReportCorrelation,
   isUploadInput,
   isAgreementAcceptance,
   REPORT_LIMITS,
@@ -34,7 +35,7 @@ describe("#7495 public report boundary", () => {
     expect(isDraftInput({ ...draft, model: "bytes" })).toBe(false);
   });
   it("keeps exact-event references outside public diagnostics (#7495)", () => {
-    const correlation = { eventId: draft.clientRequestId, sessionId: draft.clientRequestId, buildSha: "abcdef" };
+    const correlation = { eventId: draft.clientRequestId, buildSha: "abcdef" };
     expect(isReportCorrelation?.(correlation)).toBe(true);
     expect(isReportCorrelation?.({ ...correlation, filename: "private.ifc" })).toBe(false);
     expect(isReportCorrelation?.({ ...correlation, eventId: "' OR true" })).toBe(false);
@@ -43,6 +44,16 @@ describe("#7495 public report boundary", () => {
     }
     expect(isDraftInput({ ...draft, issueTarget: { issueUrl: "https://github.com/owner/repo/issues/1", title: "Known issue", verificationToken: "signed" } })).toBe(true);
     expect(isDraftInput({ ...draft, issueTarget: { issueUrl: "https://github.com/owner/repo/issues/1", title: "Known issue" } })).toBe(false);
+  });
+  it("never carries the analytics session ID; an older viewer's is discarded", () => {
+    const correlation = { eventId: draft.clientRequestId, buildSha: "abcdef" };
+    const legacy = { ...correlation, sessionId: "0b5c1d6e-2f3a-4b5c-8d9e-0f1a2b3c4d5e" };
+    expect(isReportCorrelation(legacy)).toBe(false);
+    expect(readReportCorrelation?.(legacy)).toEqual(correlation);
+    expect(readReportCorrelation?.(correlation)).toEqual(correlation);
+    expect(readReportCorrelation?.({ ...correlation, sessionId: "' OR true" })).toBeUndefined();
+    expect(readReportCorrelation?.({ ...correlation, filename: "private.ifc" })).toBeUndefined();
+    expect(readReportCorrelation?.("not a record")).toBeUndefined();
   });
   it("requires explicit upload consent and bounds file size independently of MIME", () => {
     const upload = {

@@ -16,9 +16,10 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import '@/index.css';
 import { applyRuntimeConfig } from '@/lib/features/runtime-start';
 
-// The same runtime start as the viewer, with no configuration: every feature on,
-// then analytics.
-applyRuntimeConfig();
+// The same runtime start as the viewer, with every feature on except analytics:
+// the embed runs inside third-party pages, which show no IFClite privacy
+// notice, so it sends no product analytics and injects no page-view script.
+applyRuntimeConfig({ version: 1, features: { default: 'all', disable: ['privacy.analytics', 'privacy.vercel-analytics'] } });
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

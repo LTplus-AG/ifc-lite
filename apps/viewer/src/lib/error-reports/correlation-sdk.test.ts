@@ -35,7 +35,8 @@ test('#7495 installed SDK captureException returns the exact scrubbed outbound i
     const correlation = feature?.reportCorrelation(event);
     assert.ok(correlation);
     assert.equal(correlation.eventId, event.uuid);
-    assert.equal(correlation.sessionId, sdk.get_session_id());
+    assert.deepEqual(Object.keys(correlation).sort(), ['buildSha', 'eventId']);
+    assert.equal(JSON.stringify(correlation).includes(sdk.get_session_id()), false, 'no analytics session ID in the report');
     assert.equal(correlation.buildSha, 'qualified-build');
     assert.ok(sent.some(item => typeof item === 'object' && item !== null && 'uuid' in item && item.uuid === event.uuid));
     assert.equal(JSON.stringify(event).includes('/private/client.ifc'), false);

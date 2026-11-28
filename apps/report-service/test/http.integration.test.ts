@@ -360,7 +360,7 @@ describe.skipIf(!enabled)('#7495 real HTTP ownership, consent and publication bo
   it('preserves the verified destination on first and repeated HTTP submit, then erases it on deletion (#7495, #7515)', async () => {
     const owner = await browser();
     const stranger = await browser();
-    const correlation = { eventId: randomUUID(), sessionId: randomUUID(), buildSha: 'test' };
+    const correlation = { eventId: randomUUID(), buildSha: 'test' };
     const binding = { correlation, posthogIssueId: randomUUID(), issueUrl: 'https://github.com/owner/repo/issues/12', title: 'Existing issue', verifiedAt: new Date().toISOString() };
     const target = bindingFeature?.signIssueBinding(config, { ...owner, admission: 'unused' }, binding) ?? { issueUrl: binding.issueUrl, title: binding.title, verificationToken: 'feature-unavailable' };
     const input = { ...draft(), issueTarget: target };
@@ -375,7 +375,7 @@ describe.skipIf(!enabled)('#7495 real HTTP ownership, consent and publication bo
     expect(JSON.stringify(rows.rows[0].draft)).not.toContain(correlation.eventId);
     const restored = await (await request(owner, `/${report.id}`)).json() as ReportReceipt;
     expect(restored.issueDestination?.issueUrl).toBe(binding.issueUrl);
-    expect(JSON.stringify(restored)).not.toContain(correlation.sessionId);
+    expect(JSON.stringify(restored)).not.toContain(correlation.eventId);
     // #7515 review4269572424: the first submission must use the same durable
     // receipt projection as its retry, without leaking the private binding.
     const firstResponse = await request(owner, `/${report.id}/submit`, 'POST', {});
@@ -383,7 +383,7 @@ describe.skipIf(!enabled)('#7495 real HTTP ownership, consent and publication bo
     const firstReceipt = await firstResponse.json() as ReportReceipt;
     expect(firstReceipt).toEqual({ id: report.id, status: 'submitted',
       issueDestination: { issueUrl: binding.issueUrl, title: binding.title } });
-    expect(JSON.stringify(firstReceipt)).not.toContain(correlation.sessionId);
+    expect(JSON.stringify(firstReceipt)).not.toContain(correlation.eventId);
     const retryResponse = await request(owner, `/${report.id}/submit`, 'POST', {});
     expect(retryResponse.status).toBe(202);
     expect(await retryResponse.json()).toEqual(firstReceipt);
@@ -392,12 +392,31 @@ describe.skipIf(!enabled)('#7495 real HTTP ownership, consent and publication bo
     expect((await db.query('SELECT issue_binding FROM model_reports WHERE id=$1', [report.id])).rows[0].issue_binding).toBeNull();
   });
 
+  it('migration drops the analytics session ID from bindings stored by older versions', async () => {
+    const owner = await browser();
+    const correlation = { eventId: randomUUID(), buildSha: 'test' };
+    const binding = { correlation, posthogIssueId: randomUUID(), issueUrl: 'https://github.com/owner/repo/issues/14', title: 'Existing issue', verifiedAt: new Date().toISOString() };
+    const target = bindingFeature?.signIssueBinding(config, { ...owner, admission: 'unused' }, binding) ?? { issueUrl: binding.issueUrl, title: binding.title, verificationToken: 'feature-unavailable' };
+    const created = await request(owner, '/drafts', 'POST', { ...draft(), issueTarget: target });
+    expect(created.status).toBe(201);
+    const report = await created.json() as ReportReceipt;
+    const sessionId = randomUUID();
+    await db.query(`UPDATE model_reports SET issue_binding=jsonb_set(issue_binding,'{correlation,sessionId}',to_jsonb($2::text)) WHERE id=$1`, [report.id, sessionId]);
+    await migrate(db);
+    const rows = await db.query('SELECT issue_binding FROM model_reports WHERE id=$1', [report.id]);
+    expect(rows.rows[0].issue_binding).toEqual(binding);
+    expect(JSON.stringify(rows.rows[0].issue_binding)).not.toContain(sessionId);
+  });
+
   it('reports disabled exact-event lookup honestly without creating a draft (#7495)', async () => {
     const owner = await browser();
-    const lookup = await request(owner, '/resolve-issue', 'POST', { eventId: randomUUID(), sessionId: randomUUID(), buildSha: 'test' });
+    const lookup = await request(owner, '/resolve-issue', 'POST', { eventId: randomUUID(), buildSha: 'test' });
     expect(lookup.status).toBe(200); expect(await lookup.json()).toEqual({ status: 'unavailable' });
     expect((await db.query('SELECT id FROM model_reports WHERE session_id=$1', [owner.id])).rowCount).toBe(0);
-    expect((await request(owner, '/resolve-issue', 'POST', { eventId: "' OR 1=1", sessionId: randomUUID(), buildSha: 'test' })).status).toBe(400);
+    expect((await request(owner, '/resolve-issue', 'POST', { eventId: "' OR 1=1", buildSha: 'test' })).status).toBe(400);
+    // An older viewer still sends the analytics session ID; it is accepted and discarded.
+    const legacy = await request(owner, '/resolve-issue', 'POST', { eventId: randomUUID(), sessionId: randomUUID(), buildSha: 'test' });
+    expect(legacy.status).toBe(200);
   });
 
   it('queues GitHub publication only after explicit submit and makes repeat submit idempotent', async () => {

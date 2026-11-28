@@ -7,7 +7,7 @@ import type { Catalogue } from '../../registry';
 export const errorReportIt = {
   "errorReport.destination": "Dove deve essere inviata questa segnalazione?",
   "errorReport.noCorrelation": "Non è possibile verificare una issue esistente per questo errore. Puoi creare una nuova segnalazione.",
-  "errorReport.correlationPrivate": "Verifica se esiste già una issue GitHub per l'errore esatto acquisito. Il relativo riferimento di telemetria resta privato.",
+  "errorReport.correlationPrivate": "Verifica se per questo errore esiste già una issue GitHub. Viene inviato al servizio di segnalazione l'ID dell'evento di errore acquisito, non quello della tua sessione di analisi. L'ID non viene mai pubblicato.",
   "errorReport.checkIssue": "Cerca una issue esistente",
   "errorReport.checkingIssue": "Verifica in corso…",
   "errorReport.issueUnmatched": "Non è stata verificata alcuna singola issue GitHub aperta per questo errore esatto.",

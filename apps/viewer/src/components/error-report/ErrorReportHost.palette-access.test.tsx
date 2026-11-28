@@ -77,7 +77,7 @@ test('#8947 live invitation opens actual dialog with exact failed source and cor
   searchDestination('report error');
   assert.equal(row().getAttribute('aria-disabled'), 'true');
   const context = { errorCode: 'load_failed', sourceFile: new File(['exact bytes'], 'exact-failed-source.ifc'),
-    correlation: { eventId: '11111111-1111-4111-8111-111111111111', sessionId: '22222222-2222-4222-8222-222222222222', buildSha: 'failed-build' } };
+    correlation: { eventId: '11111111-1111-4111-8111-111111111111', buildSha: 'failed-build' } };
   act(() => offerErrorReport(context, true));
   assert.notEqual(row().getAttribute('aria-disabled'), 'true');
   click(row()); await waitFor(() => !!document.querySelector('input[type="file"]'));

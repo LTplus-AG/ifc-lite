@@ -10,8 +10,11 @@ export interface ReportDiagnostics {
   buildSha: string;
   browser?: string;
 }
-/** Private correlation is never part of the public GitHub diagnostics. */
-export interface ReportCorrelation { eventId: string; sessionId: string; buildSha: string }
+/**
+ * Private correlation is never part of the public GitHub diagnostics. It names
+ * the one captured error event, never the analytics session it belonged to.
+ */
+export interface ReportCorrelation { eventId: string; buildSha: string }
 export interface VerifiedIssueTarget { issueUrl: string; title: string; verificationToken: string }
 export interface IssueResolution { status: "matched" | "unmatched" | "unavailable"; target?: VerifiedIssueTarget }
 export interface ReportDraftInput {
@@ -232,8 +235,20 @@ export function isUploadInput(
 }
 
 export function isReportCorrelation(value: unknown): value is ReportCorrelation {
-  return isRecord(value) && isUuid(value.eventId) && isUuid(value.sessionId) && boundedText(value.buildSha, 80) &&
-    Object.keys(value).every(key => ["eventId", "sessionId", "buildSha"].includes(key));
+  return isRecord(value) && isUuid(value.eventId) && boundedText(value.buildSha, 80) &&
+    Object.keys(value).every(key => ["eventId", "buildSha"].includes(key));
+}
+
+/**
+ * A correlation as an older viewer may still send it, with the analytics
+ * session ID it used to carry. The session ID is checked and discarded, so
+ * it never reaches a lookup, a signed binding or the database.
+ */
+export function readReportCorrelation(value: unknown): ReportCorrelation | undefined {
+  if (!isRecord(value)) return undefined;
+  const { sessionId, ...rest } = value;
+  if (sessionId !== undefined && !isUuid(sessionId)) return undefined;
+  return isReportCorrelation(rest) ? { eventId: rest.eventId, buildSha: rest.buildSha } : undefined;
 }
 
 /** Separate from purpose-bound private support consent. Never inferred from visibility. */

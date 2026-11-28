@@ -4,10 +4,16 @@
 
 import { offerErrorReport } from './error-reports/context';
 import { isFeatureEnabled } from './features/index.js';
-import posthogClient from 'posthog-js';
-import { isAnalyticsOptedOut, persistAnalyticsOptOut } from './analytics-consent.js';
+import posthogClient, { type PostHogConfig } from 'posthog-js';
+import {
+  clearStoredAnalyticsIdentity,
+  isAnalyticsOptedOut,
+  isPrivacyNoticeShown,
+  persistAnalyticsOptOut,
+  subscribeAnalyticsConsent,
+} from './analytics-consent.js';
 import { scrubEvent } from './analytics-scrub.js';
-import { reportReplayPrivacy } from './analytics-report-privacy.js';
+import { createAnalyticsStarter, createHeldAnalytics, listenForUncaught, posthogInitConfig, sendAsUnhandled } from './analytics-start.js';
 import { scrubUiEvent, type UiEventName, type UiEventProperties } from './analytics-ui-events.js';
 import { scrubExportEvent, type ExportCompletedProperties } from './analytics-export-events.js';
 import { CAPTURE_DEVICE_EVENT, CAPTURE_LOAD_EVENT, scrubCaptureEvent, type CaptureDeviceProperties, type CaptureLoadProperties } from './analytics-capture-events.js';
@@ -172,35 +178,22 @@ const recordViewerSessionStart = createViewerSessionStartRecorder(
   isAnalyticsOptedOut,
 );
 
-let client: AnalyticsClient | null = null;
-let started = false;
+/** The PostHog configuration (see ./analytics-start.ts). Exported for ./analytics-start.test.ts. */
+export function analyticsInitConfig(apiHost: string): Partial<PostHogConfig> {
+  return posthogInitConfig(apiHost, beforeSend);
+}
+export { createAnalyticsStarter, createHeldAnalytics, listenForUncaught };
 
-/**
- * Initialise PostHog, once. An entry calls this after the host's feature
- * configuration is applied, so a deployment that switches product analytics
- * off never contacts the analytics host at all. Importing this module no
- * longer starts anything.
- */
-export function startAnalytics(): void {
-  if (started || !isFeatureEnabled('privacy.analytics')) return;
-  started = true;
-  if (!enabled) return;
+let client: AnalyticsClient | null = null;
+
+function initPostHog(): void {
+  // PostHog's own exception autocapture takes over from here.
+  stopUncaught();
   try {
-    posthogClient.init(key as string, {
-      api_host: host,
-      // Events stay anonymous unless an explicit identify() opts a user in.
-      person_profiles: 'identified_only',
-      capture_pageview: false,
-      capture_pageleave: true,
-      autocapture: false,
-      // Strip any file name / model name / path / free text from every event
-      // (current + future) before it leaves the browser, drop unactionable
-      // third-party noise, and tag the geometry error family. See scrubEvent
-      // in ./analytics-scrub.ts.
-      before_send: beforeSend,
-      session_recording: reportReplayPrivacy,
-    });
-    if (isAnalyticsOptedOut()) posthogClient.opt_out_capturing();
+    posthogClient.init(key as string, analyticsInitConfig(host as string));
+    // The viewer's own setting decides; an older build may have left
+    // PostHog's stored consent at "opted out" after the visitor opted back in.
+    if (posthogClient.has_opted_out_capturing()) posthogClient.opt_in_capturing({ captureEventName: false });
     // Register build attribution as super-properties so every event (incl.
     // ifc_model_loaded) carries the deploy it was served from — this is what
     // lets field perf regressions be pinned to a specific release. Guarded with
@@ -221,15 +214,66 @@ export function startAnalytics(): void {
     // interaction; the callback catches later idle-tab session rotations.
     recordViewerSessionStart.startNow();
     posthogClient.onSessionId(recordViewerSessionStart.onSessionId);
+    held.flush(client);
   } catch (err) {
     console.warn('[analytics] PostHog init failed; analytics disabled', err);
   }
+  held.clear();
 }
 
-const noopAnalytics: AnalyticsClient = {
-  capture: () => undefined,
-  captureException: () => undefined,
-};
+const starter = createAnalyticsStarter({
+  configured: enabled,
+  init: initPostHog,
+  isOptedOut: isAnalyticsOptedOut,
+  // A host that switches the notice off (`privacy.notice`) informs its
+  // visitors itself, so its analytics need not wait for ours.
+  isNoticeShown: () => !isFeatureEnabled('privacy.notice') || isPrivacyNoticeShown(),
+  subscribe: (listener) => { subscribeAnalyticsConsent(listener); },
+});
+let started = false;
+
+/**
+ * Called once by an entry after the host's feature configuration is applied,
+ * so a deployment that switches product analytics off never contacts the
+ * analytics host at all. PostHog itself starts only once the visitor has not
+ * opted out and has seen the first-visit notice (see createAnalyticsStarter).
+ */
+export function startAnalytics(): void {
+  if (started) return;
+  if (isAnalyticsOptedOut()) clearStoredAnalyticsIdentity(); // before any exit: leftovers of older builds go too
+  if (!isFeatureEnabled('privacy.analytics')) {
+    // This host sends nothing, so nothing is held for later either.
+    held.stop();
+    stopUncaught();
+    return;
+  }
+  started = true;
+  if (!enabled) return;
+  starter.start();
+}
+
+/** Events before PostHog may start; see createHeldAnalytics. A build without a key holds nothing. */
+const held = createHeldAnalytics(100, enabled, ensureCapturableStack, sendAsUnhandled(posthogClient));
+const stopUncaught = enabled && typeof window !== 'undefined'
+  ? listenForUncaught(window, held.holdUncaught, isAnalyticsOptedOut)
+  : () => undefined;
+
+/** The opt-out changed, here or in another tab: stop PostHog and clear what it stored, or resume it. */
+subscribeAnalyticsConsent(() => {
+  try {
+    if (isAnalyticsOptedOut()) {
+      held.clear();
+      if (enabled && client && !posthogClient.has_opted_out_capturing()) posthogClient.opt_out_capturing();
+      clearStoredAnalyticsIdentity();
+    } else if (enabled && client && posthogClient.has_opted_out_capturing()) {
+      posthogClient.opt_in_capturing({ captureEventName: false });
+      // Capture now, letting the SDK rotate an expired session ID before attaching it.
+      recordViewerSessionStart.startNow();
+    }
+  } catch (error) {
+    console.warn('[analytics] could not update PostHog consent', error);
+  }
+});
 
 /** All explicit capture sites use this facade, so the setting takes effect immediately. */
 export function consentAwareAnalyticsClient(target: AnalyticsClient): AnalyticsClient {
@@ -242,8 +286,8 @@ export function consentAwareAnalyticsClient(target: AnalyticsClient): AnalyticsC
 }
 
 export const posthog: AnalyticsClient = consentAwareAnalyticsClient({
-  capture: (...args) => (client ?? noopAnalytics).capture(...args),
-  captureException: (...args) => (client ?? noopAnalytics).captureException(...args),
+  capture: (...args) => (client ?? held.client).capture(...args),
+  captureException: (...args) => (client ?? held.client).captureException(...args),
 });
 
 /**
@@ -262,21 +306,14 @@ export function readAnalyticsFeatureFlag(key: string): boolean | string | undefi
   }
 }
 
-/** Persist the preference and update PostHog's automatic capture policy. */
+/**
+ * Persist the preference. Opting out stops every capture at once and makes
+ * PostHog delete its stored identifier; on the next load PostHog is not
+ * started at all. Opting back in starts PostHog now, if the notice was shown.
+ */
 export function setAnalyticsOptOut(value: boolean): void {
+  // Notifies the starter (starts PostHog on an opt-in) and the consent handler above.
   persistAnalyticsOptOut(value);
-  if (!enabled || !client) return;
-  try {
-    if (value) posthogClient.opt_out_capturing();
-    else {
-      posthogClient.opt_in_capturing({ captureEventName: false });
-      // The callback may have fired while opted out. Capture now, allowing the
-      // SDK to rotate an expired session ID before attaching it to the event.
-      recordViewerSessionStart.startNow();
-    }
-  } catch (error) {
-    console.warn('[analytics] could not update PostHog consent', error);
-  }
 }
 
 /**

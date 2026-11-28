@@ -11,7 +11,9 @@
  * disclosure once. The toast opens Settings → Privacy for the full controls.
  *
  * The disclosure is required by RFC §06 §7 — users must be told what
- * gets stored locally before the miner / memory loops start.
+ * gets stored locally before the miner / memory loops start. Analytics wait
+ * for it too: PostHog and the hosting page-view script start only once
+ * `markPrivacyNoticeShown` has run (lib/analytics-consent).
  */
 
 import { isFeatureEnabled } from '@/lib/features';
@@ -20,32 +22,43 @@ import { toast } from '@/components/ui/toast';
 import { useOptionalExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { useTranslation } from '@/i18n';
 import { openSettings } from '@/lib/settings/open-settings';
+import { isPrivacyNoticeShown, markPrivacyNoticeShown } from '@/lib/analytics-consent';
 
-const STORAGE_KEY = 'ifclite.extensions.privacy-disclosure.v2';
+const NOTICE_PAINT_DELAY_MS = 250;
+const PRIVACY_GUIDE_URL = 'https://github.com/LTplus-AG/ifc-lite/blob/main/docs/guide/privacy.md';
 
-export function usePrivacyDisclosure(): void {
+/**
+ * `standalone`: for pages outside the viewer (`/mcp`, `/mcp/playground`). They
+ * have no extension host and no Settings dialog, so the notice shows without
+ * waiting for the host and its action opens the privacy guide. Analytics on
+ * those pages start after it, as in the viewer.
+ */
+export function usePrivacyDisclosure(options: { standalone?: boolean } = {}): void {
+  const standalone = options.standalone === true;
   const host = useOptionalExtensionHost();
   const { t } = useTranslation();
   useEffect(() => {
-    if (!isFeatureEnabled('privacy.notice') || !host) return;
+    if (!isFeatureEnabled('privacy.notice') || (!host && !standalone)) return;
     if (typeof window === 'undefined') return;
-    try {
-      if (window.localStorage.getItem(STORAGE_KEY)) return;
-    } catch (error) {
-      console.warn('[privacy] could not read disclosure acknowledgement', error);
-    }
+    if (isPrivacyNoticeShown()) return;
     // Defer slightly so the toast doesn't fight with the splash UI.
+    let marking: number | undefined;
     const handle = window.setTimeout(() => {
-      toast.info(t('settings.privacy.toastDisclosure'), {
-        label: t('settings.privacy.toastAction'),
-        onClick: () => openSettings('privacy'),
-      });
-      try {
-        window.localStorage.setItem(STORAGE_KEY, new Date().toISOString());
-      } catch (error) {
-        console.warn('[privacy] could not save disclosure acknowledgement', error);
+      if (standalone) {
+        toast.info(t('settings.privacy.toastDisclosureStandalone'), {
+          label: t('settings.privacy.learnMore'),
+          onClick: () => { window.open(PRIVACY_GUIDE_URL, '_blank', 'noopener,noreferrer'); },
+        });
+      } else {
+        toast.info(t('settings.privacy.toastDisclosure'), { label: t('settings.privacy.toastAction'), onClick: () => openSettings('privacy') });
       }
+      // Recorded (and analytics started) a moment later, once the toast has
+      // been painted, not in the same task that queues it.
+      marking = window.setTimeout(markPrivacyNoticeShown, NOTICE_PAINT_DELAY_MS);
     }, 3500);
-    return () => window.clearTimeout(handle);
-  }, [host, t]);
+    return () => {
+      window.clearTimeout(handle);
+      if (marking !== undefined) window.clearTimeout(marking);
+    };
+  }, [host, t, standalone]);
 }

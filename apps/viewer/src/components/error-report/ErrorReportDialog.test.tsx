@@ -462,7 +462,7 @@ for (const mode of ['automatic publication', 'manual status refresh'] as const) 
 });
 
 test('#7495 exact issue match requires explicit destination review and never silently falls back', async () => {
-  const correlation = { eventId: crypto.randomUUID(), sessionId: crypto.randomUUID(), buildSha: 'dev' };
+  const correlation = { eventId: crypto.randomUUID(), buildSha: 'dev' };
   const target = { issueUrl: 'https://github.com/LTplus-AG/ifc-lite/issues/7493', title: 'Known selection crash', verificationToken: 'signed-owner-bound-target' };
   const calls: Array<{ path: string; body?: Record<string, unknown> }> = [];
   const transport: typeof fetch = async (url, init) => {
@@ -489,14 +489,14 @@ test('#7495 exact issue match requires explicit destination review and never sil
   click(button('Send report')); await settle();
   const draft = calls.find(call => call.path.endsWith('/drafts'))?.body;
   assert.deepEqual(draft?.issueTarget, target);
-  assert.ok(!JSON.stringify(draft?.diagnostics).includes(correlation.sessionId));
+  assert.ok(!JSON.stringify(draft?.diagnostics).includes(correlation.eventId));
   assert.equal(calls.filter(call => call.path.endsWith('/drafts')).length, 1);
 });
 
 test('#7495 unavailable issue lookup requires an explicit new-issue choice', async () => {
   const transport: typeof fetch = async (url) => String(url).endsWith('/session')
     ? Response.json({ ...session, issueLinkingEnabled: true }) : Response.json({ status: 'unavailable' });
-  render(<ErrorReportDialog context={{ errorCode: 'renderer_frame_failed', correlation: { eventId: crypto.randomUUID(), sessionId: crypto.randomUUID(), buildSha: 'dev' } }} onClose={() => {}} client={new ReportClient(transport)} />);
+  render(<ErrorReportDialog context={{ errorCode: 'renderer_frame_failed', correlation: { eventId: crypto.randomUUID(), buildSha: 'dev' } }} onClose={() => {}} client={new ReportClient(transport)} />);
   await settle(); click(button('Check for an existing issue')); await settle();
   assert.equal(button('Review report').disabled, true);
   assert.ok(document.body.textContent?.includes('could not be verified'));

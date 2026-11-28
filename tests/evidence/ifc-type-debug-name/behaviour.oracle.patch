@@ -1,0 +1,20 @@
+diff --git a/packages/codegen/src/rust-type-traits.ts b/packages/codegen/src/rust-type-traits.ts
+--- a/packages/codegen/src/rust-type-traits.ts
++++ b/packages/codegen/src/rust-type-traits.ts
+@@ -33,5 +33,5 @@
+         match self {
+             Self::Unknown(keyword) => f.debug_tuple("Unknown").field(keyword).finish(),
+-            known => f.write_str(known.as_str()),
++            known => f.write_str(known.name()),
+         }
+     }
+diff --git a/rust/core/src/generated/schema.rs b/rust/core/src/generated/schema.rs
+--- a/rust/core/src/generated/schema.rs
++++ b/rust/core/src/generated/schema.rs
+@@ -2285,5 +2285,5 @@
+         match self {
+             Self::Unknown(keyword) => f.debug_tuple("Unknown").field(keyword).finish(),
+-            known => f.write_str(known.as_str()),
++            known => f.write_str(known.name()),
+         }
+     }

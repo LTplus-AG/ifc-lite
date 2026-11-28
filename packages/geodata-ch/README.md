@@ -22,6 +22,14 @@ the data owner requires. Browser and Node, no rendering, no IFC writing.
 - Descriptors for imagery, basemap and hazard layers (WMTS/WMS), with no
   fetching.
 
+## Install
+
+```bash
+npm install @ifc-lite/geodata-ch
+```
+
+## Usage
+
 ```ts
 import { createSwissGeodata, VECTOR_LAYERS } from '@ifc-lite/geodata-ch';
 

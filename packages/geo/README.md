@@ -90,9 +90,13 @@ When more than one field is given, a readable `wkt` defines the CRS, then
 registry rather than through its own parameters, and keeps a `TOWGS84` and an
 extent (`USAGE`/`BBOX`) it states.
 
-Definitions come from, in order: the EPSG index bundled in `@ifc-lite/data`
-(7000+ codes, loaded on first use), the name aliases, the WKT, and last the
-EPSG definition loader if you installed one.
+A WKT that is read without an EPSG identifier is the definition itself. A
+code (from `epsg`, an `EPSG:<code>` name, a name alias or a WKT identifier) is
+looked up in this order: the datum-shift grid table, when a grid loader is
+installed and the code has a grid (see "Accuracy"); the EPSG index bundled in
+`@ifc-lite/data` (7000+ codes, loaded on first use); a UTM zone named in the
+input (`... / UTM zone 32N`); and last the EPSG definition loader if you
+installed one.
 
 ### `CrsTransformer`
 
@@ -139,7 +143,10 @@ configureCrsLoaders({
 });
 ```
 
-Both factories use the global `fetch` and accept your own. A loader is just a
+Both factories use the global `fetch` and accept your own:
+`epsgIoDefinitionLoader(fetch)` and `projCdnGridLoader({ fetch, baseUrl,
+timeoutMs })`, where `baseUrl` defaults to `https://cdn.proj.org` and
+`timeoutMs` to 15 000 ms. A loader is just a
 function, so you can read grids from disk or a mirror instead:
 
 ```ts

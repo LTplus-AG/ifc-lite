@@ -212,7 +212,7 @@ arena cannot serve).
 - `@ifc-lite/geometry/rtc-rebase`: move already-loaded models onto a federation's shared RTC anchor
 - `@ifc-lite/geometry/geometry-class`: the per-mesh `geometryClass` tags (`GEOM_CLASS_OCCURRENCE`, `GEOM_CLASS_INSTANCED_TYPE`, ..., `geometryClassOf`)
 - `@ifc-lite/geometry/remesh`: `RemeshClient` re-meshes edited elements in a long-lived wasm worker, in the frame and style of the model's load
-- `@ifc-lite/geometry/rhino-export`: option types and value lists for the Rhino `.3dm` scene export
+- `@ifc-lite/geometry/rhino-export`: `exportRhinoScene(bytes, options)` builds the encoded Rhino scene (manifest JSON and binary blob) that `@ifc-lite/rhino3dm` writes as `.3dm`, plus its option types and value lists
 - `@ifc-lite/geometry/scan-segmentation`: `segmentScan` detects planes and cylinders in a point cloud (Rust via wasm)
 - `@ifc-lite/geometry/scan-proposals`: `proposeScanElements` turns a segmentation report into wall, slab, column and pipe proposals
 

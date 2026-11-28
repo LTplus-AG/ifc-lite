@@ -24,6 +24,7 @@
     "creates check runs. Nothing is lost: the aggregate is one of only two contexts in main's ruleset, so",
     "branch protection already blocks on it, and the #3294 total-absence shape still fails",
     "here naming all fifteen lanes. Asserted in check-pr-review-signal.test.mjs.",
+    "`excludeJobKeys` also drops `node-tests-selected` so advisory check publication never gates a PR.",
     "`reviewVerdictSeverity` is `warn`, and that is a considered downgrade rather than a",
     "retreat -- see the note on the key itself."
   ],
@@ -145,6 +146,6 @@
   ],
   "staleReviewPolicy": "claimed-verdict",
   "staleReviewSeverity": "warn",
-  "excludeJobKeys": ["test"],
+  "excludeJobKeys": ["test", "node-tests-selected"],
   "forkLanesAreAdvisory": true
 }

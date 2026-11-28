@@ -26,7 +26,7 @@ export function listenForModelTabLinks(): () => void {
       port.postMessage({ type: 'offer', to: data.from, name: [...models.values()].map((m) => m.name).join(', ').slice(0, 240) });
     } else if (data.type === 'deliver' && typeof data.fragment === 'string') {
       requestAgentBridgeDialog({ source: 'link', fragment: data.fragment });
-      port.postMessage({ type: 'received', to: data.from });
+      port.postMessage({ type: 'received', to: data.from, attemptId: data.attemptId });
       window.focus();
     }
   };

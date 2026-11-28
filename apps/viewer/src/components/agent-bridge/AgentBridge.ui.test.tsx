@@ -114,12 +114,13 @@ describe('pairing link (#9523)', () => {
     const channel = new MessageChannel();
     const previous = Object.getOwnPropertyDescriptor(globalThis, 'SharedWorker');
     let discoveries = 0;
-    let deliveredTo: string | undefined;
+    const deliveries: { to: string; attemptId: string }[] = [];
     channel.port2.onmessage = ({ data }) => {
       if (data.type === 'discover') {
         discoveries++;
         channel.port2.postMessage({ type: 'offer', from: String(discoveries), name: 'model.ifc' });
-      } else if (data.type === 'deliver') deliveredTo = data.to;
+        if (discoveries > 1) channel.port2.postMessage({ type: 'offer', from: 'other', name: 'other-model.ifc' });
+      } else if (data.type === 'deliver') deliveries.push(data);
     };
     Object.defineProperty(globalThis, 'SharedWorker', { configurable: true, value: class { port = channel.port1; } });
     try {
@@ -131,9 +132,23 @@ describe('pairing link (#9523)', () => {
       assert.ok(refresh);
       click(refresh);
       assert.equal(offers().length, 0);
-      await waitFor(() => offers().length === 1, 'reloaded model offer');
+      await waitFor(() => offers().length === 2, 'reloaded and alternate model offers');
       click(offers()[0]);
-      await waitFor(() => deliveredTo === '2', 'pairing link delivered to the new port id');
+      click(offers()[1]);
+      await waitFor(() => deliveries.length > 0, 'first delivery');
+      assert.deepEqual(deliveries.map(({ to }) => to), ['2']);
+      const acknowledge = (from: string, attemptId: string) => channel.port2.postMessage({ type: 'received', from, attemptId });
+      acknowledge('other', deliveries[0].attemptId);
+      await waitFor(() => discoveries === 3 && offers().length === 2, 'unacknowledged destination timed out and discovery restarted');
+      click(offers()[1]);
+      await waitFor(() => deliveries.length === 2, 'retry delivered');
+      assert.equal(deliveries[1].to, 'other');
+      acknowledge('2', deliveries[0].attemptId);
+      acknowledge('other', deliveries[0].attemptId);
+      await advanceMs(20);
+      assert.equal(offers().length, 2);
+      acknowledge('other', deliveries[1].attemptId);
+      await waitFor(() => document.body.textContent.includes('Switch to the model tab'), 'selected tab acknowledged the current attempt');
     } finally {
       channel.port2.close();
       if (previous) Object.defineProperty(globalThis, 'SharedWorker', previous);

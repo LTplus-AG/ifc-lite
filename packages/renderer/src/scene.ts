@@ -18,7 +18,7 @@ import { createSceneBatch } from './scene-batch-upload.js';
 import { SceneSnapshotLifecycle, type SceneSnapshotHost } from './scene-snapshot-lifecycle.js';
 import type { CompactSceneStats, SceneCompact, SceneCompactHost } from './scene-compact.js';
 import { createCompactPages } from './compact-page-deps.js';
-import { materializeCompactMeshes } from '@ifc-lite/geometry/compact';
+import { copyMeshShell, materializeCompactMeshes } from '@ifc-lite/geometry/compact';
 import type { SceneCaptureCallback, SceneCaptureDrop, SceneSnapshot } from './scene-snapshot.js';
 import { flushQueuedMeshes } from './scene-flush.js';
 import { uploadInstancedTemplate, type InstanceUploadHost } from './scene-instance-upload.js';
@@ -51,7 +51,8 @@ import { splitMeshDataForBufferLimit, cachedWorldAabb, worldAabbFromPieces, worl
 import { TopologyMemo } from './scene-precision.js';
 import { StreamAssembly } from './scene-stream-assembly.js';
 import { mergeSameColorPieces } from './scene-mesh-pieces.js';
-import { ColdPieceMembership } from './scene-cold-membership.js';
+import type { ColdResidencyHost } from './scene-cold-residency.js';
+import { hashGeometry } from './mesh-geometry-hash.js';
 import { LATTICE_KEY_SUFFIX, markOffLattice, resolvePrecisionBucket, type PrecisionBucket } from './scene-bucket-routing.js';
 import { residentBatchBytes, sumResidentGpuBytes, type ResidentGpuBytes } from './render-stats.js';
 import { composeInstancedOverrideColor, originalColorWithAlpha } from './instanced-override-color.js';
@@ -94,6 +95,21 @@ import {
 import { translateInstanceRecord } from './scene-instance-translation.js';
 import { tombstoneInstanceRecords } from './instanced-tombstones.js';
 import { discardSceneGpuResourcesForRecovery, prepareSceneDeviceRecovery, repartitionHydratedRecoveryBucket, restoreSceneGpuResourcesAfterRecovery, type SceneDeviceRecoveryPreparation, type SceneRecoveryHost } from './scene-device-recovery.js';
+
+// The cold tier is prepared only for scenes with a persisted geometry provider.
+let coldResidency: typeof import('./scene-cold-residency.js') | undefined;
+let loadingColdResidency: Promise<void> | undefined;
+function prepareColdResidency(): Promise<void> {
+  return loadingColdResidency ??= import('./scene-cold-residency.js').then(module => { coldResidency = module; })
+    .catch(error => {
+      loadingColdResidency = undefined;
+      console.warn('[Scene] cold residency could not be loaded:', error);
+    });
+}
+const coldResidencyDeps = {
+  selectEvictions, hashGeometry, copyMeshShell, repartitionHydratedRecoveryBucket,
+  latticeSuffix: LATTICE_KEY_SUFFIX, vertexBytes: BATCH_CONSTANTS.BYTES_PER_VERTEX,
+};
 
 /**
  * One GPU-uploaded instanced template: unique geometry (slot-0 vertex + index
@@ -545,6 +561,11 @@ export class Scene {
   /** Wire the cold-storage source (v13 cache chunks). Null disables the tier. */
   setColdGeometryProvider(provider: ColdGeometryProvider | null): void {
     this.coldProvider = provider;
+    if (provider && !coldResidency) {
+      void prepareColdResidency().then(() => {
+        if (this.coldProvider === provider) this.enforceHostBudget();
+      }).catch(error => console.warn('[Scene] cold residency could not enforce the host budget:', error));
+    }
   }
 
   /**
@@ -657,65 +678,7 @@ export class Scene {
     if (this.geometryReleased || this.ephemeralStreamingMode) return;
     if (this.streamingFragments.length > 0 || this.finalizeInProgress) return; // see enforceGpuBudget
 
-    const residentBytes = this.getResidentCpuBytes();
-    if (residentBytes <= budget) return;
-
-    const shells: ResidencyShell[] = [];
-    for (const bucket of this.buckets.values()) {
-      const b = bucket.batchedMesh;
-      if (!b || b.gpuResident !== false) continue;             // hot buckets stay warm-skippable
-      if (bucket.meshData.length === 0) continue;              // already cold
-      if (bucket.key.includes('#')) continue;                  // overflow sub-bucket
-      if (this.dirtyBuckets.has(bucket.key) || this.fragmentPieces.forBatch(b)) continue; // diverged from disk, or outgrew its batch: a restore keyed by its ids drops the rest (#9270)
-      // Colour-merged meshes (per-vertex entityIds) are registered in
-      // meshDataMap under EVERY contained id; evicting only the primary id's
-      // entry would leave the typed arrays reachable (no memory freed) and a
-      // later restore would duplicate the object. Ineligible.
-      let colorMerged = false;
-      let bytes = 0;
-      for (const md of bucket.meshData) {
-        if (md.entityIds && md.entityIds.length > 0) { colorMerged = true; break; }
-        bytes += md.positions.byteLength + md.normals.byteLength + md.indices.byteLength;
-      }
-      if (colorMerged) continue;
-      shells.push({
-        key: bucket.key,
-        bytes,
-        lastDrawnFrame: this.lastDrawnFrame.getAnyUse(b.id) ?? -1, // a subset on screen keeps its pieces (#9050)
-      });
-    }
-    const evictKeys = selectEvictions(shells, residentBytes, budget, this.residencyFrame);
-    let evictedBytes = 0, evicted = false;
-    for (const key of evictKeys) {
-      const bucket = this.buckets.get(key);
-      if (!bucket || bucket.meshData.length === 0) continue;
-      bucket.coldMembers = new ColdPieceMembership(bucket.meshData.map(m => this.modelTranslations.sourceMesh(m)));
-      for (const md of bucket.meshData) {
-        evictedBytes += md.positions.byteLength + md.normals.byteLength + md.indices.byteLength;
-        this.meshDataBucket.delete(md);
-        // Remove THIS object from the entity's piece list (identity match:
-        // other pieces of the entity may live in other, still-warm buckets).
-        const pieces = this.meshDataMap.get(md.expressId);
-        if (pieces) {
-          const idx = pieces.indexOf(md);
-          if (idx >= 0) pieces.splice(idx, 1);
-          if (pieces.length === 0) this.meshDataMap.delete(md.expressId);
-        }
-      }
-      bucket.meshData = []; // keeps the pick-geometry revision: these buckets no recent frame recorded drawing (#8998)
-      bucket.vertexBytes = 0;
-      this.coldBuckets.add(key);
-      evicted = true;
-    }
-    if (evicted) for (const listener of this.hostEvictionListeners) listener();
-    if (residentBytes - evictedBytes > budget && !this.hostOverBudgetWarned) {
-      this.hostOverBudgetWarned = true;
-      console.warn(
-        `[Scene] host residency budget ${(budget / 1048576).toFixed(0)}MB exceeded ` +
-        `(${((residentBytes - evictedBytes) / 1048576).toFixed(0)}MB CPU resident) — ` +
-        `remaining buckets are hot, dirty, or overflow sub-buckets. Rendering is unaffected.`
-      );
-    }
+    coldResidency?.evictColdBuckets(this as unknown as ColdResidencyHost, budget, coldResidencyDeps);
   }
 
   /**
@@ -726,6 +689,7 @@ export class Scene {
    * per-bucket restore path and leave those buckets cold.
    */
   async drainColdTier(): Promise<void> {
+    if (this.coldProvider && !coldResidency) await prepareColdResidency();
     if (this.coldBuckets.size === 0) return;
     for (const key of Array.from(this.coldBuckets)) {
       this.startColdRestore(key);
@@ -744,34 +708,10 @@ export class Scene {
     if (!bucket || !shell || !shell.bounds || !provider) return;
 
     const sourceBounds = this.modelTranslations.sourceDrawableBounds(shell)!;
-    const promise = provider
-      .loadMeshesInBounds(sourceBounds.min, sourceBounds.max)
-      .then((meshes) => {
-        // Re-validate: a clear()/finalize may have replaced the world.
-        const current = this.buckets.get(key);
-        if (!current || current !== bucket || !this.coldBuckets.has(key)) return;
-        const baseKey = this.baseColorKey(key);
-        const lattice = baseKey.endsWith(LATTICE_KEY_SUFFIX);
-        const members = bucket.coldMembers?.restore(meshes) ?? [];
-        for (const source of members) {
-          const m = this.modelTranslations.placeMesh(source);
-          if (lattice) this.offLattice.add(m);
-          bucket.meshData.push(m);
-          bucket.vertexBytes += (m.positions.length / 3) * BATCH_CONSTANTS.BYTES_PER_VERTEX;
-          this.meshDataBucket.set(m, bucket);
-          this.addMeshData(m);
-        }
-        if (members.length > 0) {
-          delete bucket.coldMembers;
-          this.coldBuckets.delete(key);
-          const restoredKeys = repartitionHydratedRecoveryBucket(this as unknown as SceneRecoveryHost, key, bucket, shell);
-          if (bucket.batchedMesh !== shell) this.dropPartialCacheForBatch(shell); // repartitioned: shell id retired
-          this.subsetResidency.requeueColdRestore(key, restoredKeys);
-        } else {
-          this.subsetResidency.warmOnly.delete(key);
-          console.warn(`[Scene] cold restore for ${key} could not match every original piece — bucket stays a shell`);
-        }
-      })
+    const residency = coldResidency;
+    if (!residency) return;
+    const promise = provider.loadMeshesInBounds(sourceBounds.min, sourceBounds.max)
+      .then(meshes => residency.restoreColdBucket(this as unknown as ColdResidencyHost, key, bucket, shell, meshes, coldResidencyDeps))
       .catch((err) => {
         console.warn('[Scene] cold restore failed (bucket stays cold, will retry on demand):', err);
       })

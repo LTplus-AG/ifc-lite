@@ -1155,10 +1155,10 @@ describe('sub-batch residency: a parent drawn only as X-Ray or promotion subsets
         assert.ok(h.stats.draws.includes(greyOf(h).vertexBuffer), 'complete in the capture frame');
     });
 
-    it('a cold parent waiting for its pieces under isolate counts as not resident (#9227)', () => {
+    it('a cold parent waiting for its pieces under isolate counts as not resident (#9227)', async () => {
         const h = makeHarness();
         seedBatches(h);
-        coldGrey(h);
+        await coldGrey(h);
         h.render({ isolatedIds: new Set([2]) });
         assert.strictEqual(h.renderer.getFrameStats()?.batchesNotResident, 1, 'its subset is missing this frame');
     });
@@ -1180,10 +1180,11 @@ describe('sub-batch residency: a parent drawn only as X-Ray or promotion subsets
     });
 
     // Shared set-up: grey {1,2} cold (hidden past both passes), provider ready.
-    const coldGrey = (h: Harness) => {
+    const coldGrey = async (h: Harness) => {
         const scene = sceneOf(h);
         const source = [triangle(1, GREY), triangle(2, GREY), triangle(3, RED)];
         scene.setColdGeometryProvider({ loadMeshesInBounds: async () => source.map((m) => ({ ...m })) });
+        await scene.drainColdTier(); // The cold tier is loaded on demand.
         scene.setGpuResidencyBudget(1);
         scene.setHostResidencyBudget(1);
         for (let i = 0; i < 260; i++) h.render({ hiddenIds: new Set([1, 2, 3]) });
@@ -1197,7 +1198,7 @@ describe('sub-batch residency: a parent drawn only as X-Ray or promotion subsets
         const h = makeHarness();
         seedBatches(h);
         const scene = sceneOf(h);
-        coldGrey(h);
+        await coldGrey(h);
         h.render({ isolatedIds: new Set([2]) });
         scene.processResidencyRestores(device(h), pipeline(h), Infinity); // disk fetch in flight
         h.render({ hiddenIds: new Set([3]) });                            // grey fully visible now
@@ -1340,7 +1341,7 @@ describe('sub-batch residency: a parent drawn only as X-Ray or promotion subsets
             const h = makeHarness();
             seedBatches(h);
             const scene = sceneOf(h);
-            coldGrey(h);
+            await coldGrey(h);
             const rebuilds = countRebuilds(scene, 1);
             h.render(XRAY);
             assert.ok(scene['subsetResidency'].warmOnly.has(greyOf(h).colorKey), 'queued for its pieces only');
@@ -1371,6 +1372,7 @@ describe('sub-batch residency: a parent drawn only as X-Ray or promotion subsets
             scene.setColorOverrides(new Map(), device(h), pipeline(h)); // no split while it goes cold
             const source = [triangle(1, GREY), triangle(2, GREY), triangle(3, RED), triangle(4, TRANSPARENT), triangle(5, TRANSPARENT)];
             scene.setColdGeometryProvider({ loadMeshesInBounds: async () => source.map((m) => ({ ...m })) });
+            await scene.drainColdTier(); // The cold tier is loaded on demand.
             scene.setGpuResidencyBudget(1);
             scene.setHostResidencyBudget(1);
             for (let i = 0; i < 260; i++) h.render({ hiddenIds: new Set([1, 2, 3, 4, 5]) });
@@ -1631,10 +1633,10 @@ describe('sub-batch residency: a parent drawn only as X-Ray or promotion subsets
                 assert.strictEqual(rebuilds.n, 0, 'nothing for the budget to evict again');
             });
 
-            it('a cold parent waiting for its pieces under X-Ray counts as not resident', () => {
+            it('a cold parent waiting for its pieces under X-Ray counts as not resident', async () => {
                 const h = makeHarness();
                 seedBatches(h);
-                coldGrey(h);
+                await coldGrey(h);
                 h.render({ ...XRAY, hiddenIds: new Set([3]) });
                 assert.ok(sceneOf(h)['subsetResidency'].warmOnly.has(greyOf(h).colorKey), 'waiting for its pieces');
                 assert.strictEqual(h.renderer.getFrameStats()?.batchesNotResident, 1, 'missing this frame');

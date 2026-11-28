@@ -7,7 +7,7 @@ import type { BatchedMesh } from './types.js';
 import { BATCH_CONSTANTS } from './constants.js';
 import { type TopologyMemo, originPreservesTriangleTopology, topologySafeBatchOrigin } from './scene-precision.js';
 import { addLatticeTriangle, emptyLatticeLoss, latticeFlattensPiece, latticeLoses, latticeNodes, type LatticeLoss } from './quantize.js';
-import type { ColdPieceMembership } from './scene-cold-membership.js';
+import type { ColdPieceMembership } from './scene-cold-residency.js';
 import { frameShift } from './scene-geometry.js';
 
 export interface PrecisionBucket {

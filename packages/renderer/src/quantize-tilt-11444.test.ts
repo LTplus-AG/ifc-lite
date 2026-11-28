@@ -212,7 +212,11 @@ describe('lattice turn guard (#11444)', () => {
         assert.equal(registered?.[0].indices.length, original.indices.length);
       }
     };
+    const evicted = new Promise<void>(resolve => {
+      const unsubscribe = scene.onHostEviction(() => { unsubscribe(); resolve(); });
+    });
     ageAndEnforceResidency(scene);
+    await evicted;
 
     assert.equal(scene.getBatchedMeshes().find(batch => batch.expressIds.includes(1))?.gpuResident, false);
     assert.equal(scene.getMeshDataPieces(2), undefined, 'the ordinary wall went cold');
@@ -239,6 +243,7 @@ describe('lattice turn guard (#11444)', () => {
       other.color = [1, 0, 0, 1];
       const pieces = [bar, wall(1), other];
       scene.setColdGeometryProvider({ loadMeshesInBounds: async () => pieces.map(piece => ({ ...piece })).reverse() });
+      await scene.drainColdTier(); // The cold tier is loaded on demand.
       scene.setGpuResidencyBudget(1);
       scene.setHostResidencyBudget(1);
       const [first, second] = order === 'wall first' ? [pieces[1], bar] : [bar, pieces[1]];

@@ -142,6 +142,7 @@ describe('Scene device recovery (#4885)', () => {
     scene['buckets'].set(key, { key, meshData: [first, second], batchedMesh: shell, vertexBytes: 168 });
     scene['batchedMeshes'] = [shell];
     scene.setColdGeometryProvider({ loadMeshesInBounds: async () => [first, second] });
+    await scene.drainColdTier(); // The cold tier is loaded on demand.
 
     scene.setHostResidencyBudget(1);
     for (let i = 0; i < 120; i++) scene.beginResidencyFrame();

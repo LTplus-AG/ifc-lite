@@ -401,6 +401,39 @@ describe('useBCF — clash-to-BCF export carries the clashing pair (#4806)', () 
     )), 'the hydrated owner without a GlobalId must not disappear from capture diagnostics');
   });
 
+  it('captures unpublished numeric overlay ID 101 and rejects adjacent stale ID 102 (#11640)', async () => {
+    const bytes = new TextEncoder().encode(`ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('wall','2026',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCWALL('${generateIfcGuid()}',$,'Source',$,$,$,$,$,$);
+ENDSEC;
+END-ISO-10303-21;`);
+    const { dataStore, view } = await seedAuthoringSample({ bytes });
+    assert.equal(getMaxExpressId(dataStore, []), 1);
+    view.setExpressIdWatermark(100);
+    const guid = generateIfcGuid();
+    assert.equal(view.createEntity('IfcWall', [guid, null, 'Overlay']).expressId, 101);
+    const capture = () => api!.createViewpointFromState({
+      includeSnapshot: false, includeSelection: true, additionalSelectedRefs: [101, 102],
+    });
+    const viewpoint = await capture();
+    assert.deepEqual(viewpoint?.components?.selection?.map(component => component.ifcGuid), [guid]);
+
+    const { resolveGlobalIdInModel } = useViewerStore.getState();
+    assert.deepEqual(resolveGlobalIdInModel(SAMPLE_MODEL, 101), { modelId: SAMPLE_MODEL, expressId: 101 });
+    // An unnameable ref also disappears from BCF selection, so check ownership directly.
+    assert.equal(resolveGlobalIdInModel(SAMPLE_MODEL, 102), null, 'stale ID 102 has no model owner');
+
+    const secondGuid = generateIfcGuid();
+    assert.equal(view.createEntity('IfcWall', [secondGuid, null, 'Second overlay']).expressId, 102);
+    const withSecondWall = await capture();
+    assert.deepEqual(withSecondWall?.components?.selection?.map(component => component.ifcGuid), [guid, secondGuid]);
+  });
+
   it('includes a StoreEditor-created clash member in selection, coloring, and isolation (#4921)', async () => {
     const { dataStore: nativeStore, view } = await seedAuthoringSample();
     const sourceId = nativeStore.entities.getExpressIdByGlobalId(BACK_WALL);

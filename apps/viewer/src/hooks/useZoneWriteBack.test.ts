@@ -19,6 +19,7 @@
  */
 
 import '@/test/setup-dom.js';
+import { sourceWatermark } from '@/utils/source-watermark';
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import {
@@ -129,6 +130,7 @@ async function seedStore(volumeUnitPrefix = '.MILLI.'): Promise<IfcDataStore> {
     models: new Map([['m1', {
       id: 'm1',
       name: 'zones.ifc',
+      idOffset: 0, maxExpressId: sourceWatermark(store),
       ifcDataStore: store,
       visible: true,
     } as never]]),

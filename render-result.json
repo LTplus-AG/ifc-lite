@@ -1,0 +1,178 @@
+{
+ "placed": {
+  "ok": true,
+  "adapter": {
+   "vendor": "nvidia",
+   "architecture": "blackwell",
+   "description": "",
+   "fallback": false
+  },
+  "drawCalls": 59,
+  "labelsShown": [
+   [
+    "arch",
+    true
+   ],
+   [
+    "struct",
+    true
+   ],
+   [
+    "mep",
+    true
+   ],
+   [
+    "missing",
+    true
+   ]
+  ],
+  "retryButtons": 1,
+  "federationLine": "[info] [viewer config] Federation render-placed: 3 loaded, 1 failed, 0 not started",
+  "placements": {
+   "mep": {
+    "translation": [
+     0,
+     -30,
+     0
+    ],
+    "rotation": {
+     "angle": 1.5707963267948966,
+     "pivot": [
+      0,
+      0,
+      0
+     ]
+    },
+    "locked": false
+   },
+   "struct": {
+    "translation": [
+     35,
+     0,
+     0
+    ],
+    "rotation": {
+     "angle": 0,
+     "pivot": [
+      0,
+      0,
+      0
+     ]
+    },
+    "locked": false
+   }
+  },
+  "models": [
+   {
+    "id": "arch",
+    "name": "arch: AC20-FZK-Haus (no transform)",
+    "loadState": "complete",
+    "loadError": null,
+    "hasStore": true,
+    "meshes": 285,
+    "triangles": 20074,
+    "idOffset": 0,
+    "maxExpressId": 79107
+   },
+   {
+    "id": "mep",
+    "name": "mep: IfcOpenHouse (yaw 90\u00b0, -30 m Y)",
+    "loadState": null,
+    "loadError": null,
+    "hasStore": true,
+    "meshes": 42,
+    "triangles": 1162,
+    "idOffset": 1079108,
+    "maxExpressId": 2885
+   },
+   {
+    "id": "missing",
+    "name": "missing: hash not on the server",
+    "loadState": "error",
+    "loadError": "This model is not available on the server (yet).",
+    "hasStore": false,
+    "meshes": 0,
+    "triangles": 0,
+    "idOffset": 0,
+    "maxExpressId": 0
+   },
+   {
+    "id": "struct",
+    "name": "struct: duplex (+35 m X)",
+    "loadState": null,
+    "loadError": null,
+    "hasStore": true,
+    "meshes": 486,
+    "triangles": 28413,
+    "idOffset": 2081994,
+    "maxExpressId": 39114
+   }
+  ],
+  "pageErrors": [],
+  "deviceLost": null
+ },
+ "unplaced": {
+  "ok": true,
+  "adapter": {
+   "vendor": "nvidia",
+   "architecture": "blackwell",
+   "description": "",
+   "fallback": false
+  },
+  "drawCalls": 61,
+  "labelsShown": [
+   [
+    "arch",
+    true
+   ],
+   [
+    "struct",
+    true
+   ],
+   [
+    "mep",
+    true
+   ]
+  ],
+  "retryButtons": 0,
+  "federationLine": null,
+  "placements": {},
+  "models": [
+   {
+    "id": "arch",
+    "name": "arch: AC20-FZK-Haus (no transform)",
+    "loadState": "complete",
+    "loadError": null,
+    "hasStore": true,
+    "meshes": 285,
+    "triangles": 20074,
+    "idOffset": 0,
+    "maxExpressId": 79107
+   },
+   {
+    "id": "mep",
+    "name": "mep: IfcOpenHouse (yaw 90\u00b0, -30 m Y)",
+    "loadState": null,
+    "loadError": null,
+    "hasStore": true,
+    "meshes": 42,
+    "triangles": 1162,
+    "idOffset": 1079108,
+    "maxExpressId": 2885
+   },
+   {
+    "id": "struct",
+    "name": "struct: duplex (+35 m X)",
+    "loadState": null,
+    "loadError": null,
+    "hasStore": true,
+    "meshes": 486,
+    "triangles": 28413,
+    "idOffset": 2081994,
+    "maxExpressId": 39114
+   }
+  ],
+  "pageErrors": [],
+  "deviceLost": null
+ }
+}

@@ -96,6 +96,7 @@ export class RaycastEngine {
             // Release the previous readback inventory and any pending idle build before its leases end.
             this.screenCorners.clear();
             this.cornerInventory = null;
+            this.cornerMarkers.set(null);
         }
         this.readbackMeshes = meshes ?? [];
         this.readbackCoverage = meshes && at ? { x: at.x, y: at.y, view: this.readbackViewKey() } : null;

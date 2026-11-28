@@ -1207,7 +1207,7 @@ describe('RaycastEngine readback meshes (#10264)', () => {
     const cursor = { x: at.x - 5, y: at.y + 5 };
     const run = (x = cursor.x, hiddenIds?: Set<number>) => engine.raycastSceneMagnetic(x, cursor.y,
       { edge: null, meshExpressId: null, lockStrength: 0 }, { hiddenIds, snapOptions: {
-        snapToEdges: false, screenSnapRadius: 1, screenCornerSnap: { settleMs: 0, idleHost: idle },
+        snapToEdges: false, screenSnapRadius: 1, screenCornerSnap: { markers: true, settleMs: 0, idleHost: idle },
       } });
     const prepared = { ...quad, positions: quad.positions.slice() };
     engine.setReadbackMeshes([prepared], cursor);
@@ -1215,6 +1215,17 @@ describe('RaycastEngine readback meshes (#10264)', () => {
     idle.drain();
     assert.deepEqual(run().snapTarget?.position, corner);
     assert.equal(run().snapTarget?.type, 'vertex');
+    for (const replacement of [[{ ...prepared }], null]) {
+      const markers = engine.cornerMarkers.get();
+      assert.ok(markers && markers.activeIndex >= 0);
+      engine.setReadbackMeshes([prepared], cursor);
+      assert.equal(engine.cornerMarkers.get(), markers, 'equivalent inventory keeps its markers');
+      engine.setReadbackMeshes(replacement, cursor);
+      assert.equal(engine.cornerMarkers.get(), null, 'inventory invalidation clears markers before another pick');
+      engine.setReadbackMeshes([prepared], cursor);
+      run(); idle.drain();
+      assert.equal(run().snapTarget?.type, 'vertex');
+    }
     assert.equal(run(cursor.x - 2).snapTarget, null, 'a neighbouring uncovered ray cannot reuse the warm grid');
     run(); idle.drain();
     assert.equal(run(cursor.x, new Set([17])).snapTarget, null);

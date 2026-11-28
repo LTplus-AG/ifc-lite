@@ -48,19 +48,19 @@ describe('which picks draw markers', () => {
 
 describe('marker list derivation', () => {
   const cand = (x: number, y: number, id: number) => ({ screen: { x, y }, position: { x, y, z: 0 }, expressId: id, distancePx: 0 });
-  const markers = (activeIndex: number): ScreenCornerMarkers => ({ viewKey: 'v', activeIndex, candidates: [cand(10, 10, 1), cand(20, 20, 2), cand(30, 30, 3)] });
+  const markers = (activeIndex: number): ScreenCornerMarkers => ({ viewKey: 'v', activeIndex, candidates: [cand(10, 40, 1), cand(20, 50, 2), cand(30, 60, 3)] });
 
   it('lists every candidate at its screen position, the active one last so it draws on top', () => {
     const views = cornerMarkerViews(markers(0), 'v');
     assert.equal(views.length, 3);
     assert.deepEqual(views.map((v) => v.active), [false, false, true]);
-    assert.deepEqual(views[2], { key: views[2].key, x: 10, y: 10, active: true });
+    assert.deepEqual(views[2], { key: views[2].key, x: 10, y: 40, active: true });
     assert.equal(new Set(views.map((v) => v.key)).size, 3, 'unique keys');
   });
 
   it('marks none active when the pick used none of the corners', () => {
     assert.deepEqual(cornerMarkerViews(markers(-1), 'v').map(v => [v.x, v.y, v.active]), [
-      [10, 10, false], [20, 20, false], [30, 30, false],
+      [10, 40, false], [20, 50, false], [30, 60, false],
     ]);
   });
 

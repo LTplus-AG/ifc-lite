@@ -102,9 +102,29 @@ pub(super) fn build_element_lookups(
         }
     }
 
-    // Orphan-only elements keep their first-declared orphan storey.
+    // #11468 parity with `packages/parser`'s `elementToStorey`: the aggregated
+    // parts of a directly contained element are on its storey, and so is an
+    // element contained in an IfcSpace/IfcSpatialZone that a project-reachable
+    // storey aggregates (the space may be nested in another space), with its
+    // parts. Direct containment in a reachable storey wins, so this runs after
+    // those rows are in. The walk goes through space-like nodes only. An
+    // element reached through spaces on several storeys goes to the lowest
+    // storey id; the parser applies the same rule.
+    claim_through_spaces(
+        relationships,
+        nodes_map,
+        project_reachable,
+        &element_to_space,
+        &is_space_like_spatial_type,
+        &mut element_to_storey,
+    );
+
+    // Orphan-only elements keep their first-declared orphan storey. They go in
+    // after the space claim: the parser never visits an orphan storey, so a
+    // reachable storey reached through a space wins over it there too.
+    let claimed: FxHashSet<u32> = element_to_storey.iter().map(|(e, _)| *e).collect();
     for (element_id, spatial_id) in element_to_orphan_storey {
-        if !storey_claimed.contains(&element_id) {
+        if !claimed.contains(&element_id) {
             element_to_storey.push((element_id, spatial_id));
         }
     }
@@ -114,5 +134,88 @@ pub(super) fn build_element_lookups(
         building: element_to_building,
         site: element_to_site,
         space: element_to_space,
+    }
+}
+
+fn claim_through_spaces(
+    relationships: &[Relationship],
+    nodes_map: &FxHashMap<u32, SpatialNode>,
+    project_reachable: &FxHashSet<u32>,
+    element_to_space: &[(u32, u32)],
+    is_space_like_spatial_type: &impl Fn(&str) -> bool,
+    element_to_storey: &mut Vec<(u32, u32)>,
+) {
+    let mut parts: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
+    for rel in relationships {
+        if rel.rel_type.eq_ignore_ascii_case("IFCRELAGGREGATES") {
+            parts.entry(rel.relating_id).or_default().push(rel.related_id);
+        }
+    }
+    // `owned` holds every element that already has a storey row; it is also the
+    // visited set of the part walks, so a cycle or a shared part stops there.
+    let mut owned: FxHashSet<u32> = element_to_storey.iter().map(|(e, _)| *e).collect();
+    // The aggregated parts of a directly contained element are on its storey
+    // (packages/parser propagates it to them), so they get that row first and
+    // the space claim below cannot hand them to another storey. Walked in row
+    // order, so a part shared by two parents takes the first-declared one.
+    let direct_rows = element_to_storey.len();
+    for i in 0..direct_rows {
+        let (element_id, storey) = element_to_storey[i];
+        claim_parts(element_id, storey, &parts, &mut owned, element_to_storey);
+    }
+
+    let mut elements_in_space: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
+    for (element_id, space_id) in element_to_space {
+        elements_in_space.entry(*space_id).or_default().push(*element_id);
+    }
+    if elements_in_space.is_empty() {
+        return;
+    }
+    let mut storeys: Vec<u32> = project_reachable
+        .iter()
+        .copied()
+        .filter(|id| {
+            nodes_map
+                .get(id)
+                .is_some_and(|n| n.type_name.eq_ignore_ascii_case("IFCBUILDINGSTOREY"))
+        })
+        .collect();
+    // Lowest storey id first, so it wins an element reached from several storeys.
+    storeys.sort_unstable();
+    let mut visited: FxHashSet<u32> = FxHashSet::default();
+    for storey in storeys {
+        let mut pending: Vec<u32> = nodes_map[&storey].children_ids.clone();
+        while let Some(id) = pending.pop() {
+            let Some(node) = nodes_map.get(&id) else { continue };
+            if !is_space_like_spatial_type(&node.type_name.to_uppercase()) || !visited.insert(id) {
+                continue;
+            }
+            for element_id in elements_in_space.get(&id).into_iter().flatten() {
+                if owned.insert(*element_id) {
+                    element_to_storey.push((*element_id, storey));
+                    claim_parts(*element_id, storey, &parts, &mut owned, element_to_storey);
+                }
+            }
+            pending.extend(node.children_ids.iter().copied());
+        }
+    }
+}
+
+/// Give every not-yet-owned aggregated descendant of `root` a row on `storey`.
+fn claim_parts(
+    root: u32,
+    storey: u32,
+    parts: &FxHashMap<u32, Vec<u32>>,
+    owned: &mut FxHashSet<u32>,
+    element_to_storey: &mut Vec<(u32, u32)>,
+) {
+    let mut pending = vec![root];
+    while let Some(id) = pending.pop() {
+        for kid in parts.get(&id).into_iter().flatten() {
+            if owned.insert(*kid) {
+                element_to_storey.push((*kid, storey));
+                pending.push(*kid);
+            }
+        }
     }
 }

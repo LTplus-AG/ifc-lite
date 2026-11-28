@@ -10,6 +10,7 @@ export interface Tool {
   description: string;
   inputSchema: JsonSchema;
   scope?: ToolScope;
+  additionalScopes?: readonly ToolScope[];
   /** Human-readable name for `tools/list`. */
   title?: string;
   /** MCP behaviour hints for `tools/list`. */

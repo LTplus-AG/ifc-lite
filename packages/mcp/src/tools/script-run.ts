@@ -375,6 +375,7 @@ export const scriptRunMutateTool: Tool = {
   title: 'Run SDK script (can edit)',
   description: `script, eval, javascript, sdk, edit: run an SDK script that may edit the model through bim.mutate and bim.store. ${SHARED_DESCRIPTION} Edits are queued like other mutation tools (mutation_diff, mutation_undo) and persist only via export_ifc or model_save. Not atomic: if the script throws, times out or is cancelled, edits made before that stay queued and the error's details.mutations_queued says how many. Hidden in --read-only mode.`,
   scope: 'mutate',
+  additionalScopes: ['read'],
   annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
   inputSchema,
   outputSchema,

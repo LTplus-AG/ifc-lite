@@ -57,11 +57,10 @@ import {
   AuthScope,
   fullScope,
   modelAllowed,
-  scopeAllows,
 } from './auth/scope.js';
 import { ClientLogForwarder, isLoggingLevel } from './client-logging.js';
 import { SERVER_INSTRUCTIONS } from './server-instructions.js';
-import { fitOutputSchema, toCatalogEntry, toToolDefinition, visibleTools } from './tool-catalog.js';
+import { fitOutputSchema, missingToolScope, toCatalogEntry, toToolDefinition, visibleTools } from './tool-catalog.js';
 import {
   DEFAULT_CONFIG,
   InMemoryModelRegistry,
@@ -380,11 +379,12 @@ export class MCPServer {
         message: `Server started in read-only mode; '${params.name}' rejected.`,
       });
     }
-    if (!scopeAllows(this.scope, tool.scope)) {
+    const missing = missingToolScope(tool, this.scope);
+    if (missing) {
       return toolError({
         code: ToolErrorCode.PERMISSION_DENIED,
-        message: `Tool '${params.name}' requires scope '${tool.scope}'`,
-        details: { required: tool.scope, granted: this.scope.scopes },
+        message: `Tool '${params.name}' requires scope '${missing}'`,
+        details: { required: missing, granted: this.scope.scopes },
       });
     }
 

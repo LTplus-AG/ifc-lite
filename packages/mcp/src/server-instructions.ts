@@ -22,7 +22,7 @@ Start here
 Conventions
 - model_id: tools that act on one loaded model take an optional model_id. Omit it when one model is loaded; pass it when several are (MODEL_REQUIRED otherwise). BCF topics, draft layers and the two-model diffs (model_diff, quantity_diff) take no model_id.
 - Entities: pass global_id (GlobalId) or express_id.
-- Errors are tool results with isError=true, structuredContent.code (e.g. ENTITY_NOT_FOUND) and often a hint. Follow the hint and retry. Tools with an outputSchema (script_run) put that envelope as JSON in the last text block instead.
+- Errors are tool results with isError=true, structuredContent.code (e.g. ENTITY_NOT_FOUND) and often a hint. Follow the hint and retry. When the output schema accepts the error envelope (e.g. model_convert), read structuredContent.code. When it excludes the envelope (e.g. script_run), read the JSON in the last text block.
 - Long calls send notifications/progress when the request carries _meta.progressToken.
 - tools/list shows only the tools this session's scope allows (read, validate, mutate, export, admin). A --read-only server hides mutate tools.
 

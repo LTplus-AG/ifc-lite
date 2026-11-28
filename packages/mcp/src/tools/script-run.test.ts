@@ -607,6 +607,27 @@ describe('script_run_mutate scope', () => {
   });
 });
 
+it('omits both scripting tools for a mutate-only token and reports the missing read scope on call', async () => {
+  const server = new MCPServer({
+    version: 'test', registry: ctx.registry, scope: { scopes: ['mutate'] },
+    tools: buildDefaultToolRegistry(), resources: new ResourceRegistry(), prompts: new PromptRegistry(),
+  });
+  const transport = new InProcessTransport();
+  await transport.connect(server);
+  await transport.send({ jsonrpc: '2.0', id: 1, method: 'initialize',
+    params: { protocolVersion: PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: 'test', version: '1' } } });
+  const list = await transport.send({ jsonrpc: '2.0', id: 2, method: 'tools/list' }) as { result: { tools: { name: string }[] } };
+  expect(list.result.tools.map(t => t.name).filter(name => name === 'script_run' || name === 'script_run_mutate')).toEqual([]);
+  const call = await transport.send({ jsonrpc: '2.0', id: 3, method: 'tools/call',
+    params: { name: 'script_run_mutate', arguments: { code: '1' } } }) as { result: { isError: boolean; content: { text: string }[] } };
+  expect(call.result.isError).toBe(true);
+  const envelope = call.result.content[call.result.content.length - 1].text;
+  expect(envelope).toMatch(/^\{/);
+  expect(JSON.parse(envelope)).toMatchObject({
+    code: 'PERMISSION_DENIED', details: { required: 'read' },
+  });
+});
+
 it('keeps structured errors for a transform tool whose output schema accepts them', async () => {
   const server = new MCPServer({
     version: '0.0.0-test', registry: ctx.registry, scope: fullScope(),

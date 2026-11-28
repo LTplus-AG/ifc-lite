@@ -24,9 +24,14 @@ export interface ToolCatalogEntry {
 
 const PURPOSE_MAX = 160;
 
+export function missingToolScope(tool: Tool, scope: AuthScope): ToolScope | undefined {
+  if (!scopeAllows(scope, tool.scope)) return tool.scope;
+  return tool.additionalScopes?.find((required) => !scopeAllows(scope, required));
+}
+
 /** Tools this scope may call. `readOnly` hides mutate tools even when the token grants `mutate`. */
 export function visibleTools(tools: ToolRegistry, scope: AuthScope, readOnly: boolean): Tool[] {
-  return tools.list().filter((t) => scopeAllows(scope, t.scope) && !(readOnly && t.scope === 'mutate'));
+  return tools.list().filter((t) => !missingToolScope(t, scope) && !(readOnly && t.scope === 'mutate'));
 }
 
 export function toToolDefinition(tool: Tool): ToolDefinition {

@@ -68,7 +68,7 @@ IfcSite `RefLatitude` / `RefLongitude` are written as `IfcCompoundPlaneAngleMeas
 
 ### MCP and SDK
 
-`georeferencing_check` returns the report and the plan as JSON; `georeferencing_fix` takes the same `apply`, `values` and `accept_approximate_datum` inputs, applies the ready fixes in the session (saved by `export_ifc` / `model_save`) and returns the check after them. In a script:
+`georeferencing_check` returns the report and the plan as JSON; it takes `apply`, `values`, `accept_approximate_datum` and `allow_network` (the MCP counterpart of `--allow-network`). `georeferencing_fix` takes the same inputs, applies the ready fixes in the session (saved by `export_ifc` / `model_save`) and returns the check after them. In a script:
 
 ```typescript
 import { readFile, writeFile } from 'node:fs/promises';

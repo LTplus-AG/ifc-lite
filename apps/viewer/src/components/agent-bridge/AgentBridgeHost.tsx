@@ -2,13 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/**
- * Eager mount points of the local agent bridge (#9523), both tiny: the
- * connect-dialog host in the viewer layout and the status-bar slot. Each
- * renders nothing until there is something to show and then loads its UI with
- * `import()`. Neither imports the bridge client or the tool host.
- */
-
+export { AgentBridgeStatusSlot } from './AgentBridgeStatusSlot';
+import { visible } from './AgentBridgeStatusSlot';
 import { useContext } from 'react';
 import { BimReactContext } from '@/sdk/BimProvider';
 import { savedTicket, saveTicket } from '@/lib/agent-bridge/resume';
@@ -18,7 +13,7 @@ import { isFeatureEnabled } from '@/lib/features';
 import { Suspense, useEffect, useSyncExternalStore } from 'react';
 import { lazyChunk } from '@/lib/lazy-chunk';
 import { consumePendingPairingFragment, onPairingFragment } from '@/lib/agent-bridge/pairing-fragment';
-import { closeAgentBridgeDialog, getAgentBridgeState, requestAgentBridgeDialog, useAgentBridgeState, type AgentBridgeStatus } from '@/lib/agent-bridge/state';
+import { closeAgentBridgeDialog, getAgentBridgeState, requestAgentBridgeDialog, useAgentBridgeState } from '@/lib/agent-bridge/state';
 import { useViewerStore } from '@/store';
 import { agentSurfaces } from '@/lib/agent-bridge/agent-surfaces';
 
@@ -32,14 +27,8 @@ function requestKey(request: object): number {
   return key;
 }
 
-const AgentBridgeChip = lazyChunk(() => import('./AgentBridgeChip').then((m) => ({ default: m.AgentBridgeChip })));
 const AgentSurfacesDock = lazyChunk(() => import('./AgentSurfacesDock').then((m) => ({ default: m.AgentSurfacesDock })));
 const AgentBridgeMobileIndicator = lazyChunk(() => import('./AgentBridgeMobileIndicator').then((m) => ({ default: m.AgentBridgeMobileIndicator })));
-
-/** A live or just-ended connection is shown; a failed attempt stays in its dialog. */
-function visible(status: AgentBridgeStatus): boolean {
-  return status.kind === 'connecting' || status.kind === 'connected' || status.kind === 'disconnected';
-}
 
 /**
  * Opens the connect dialog when asked to, and for each pairing link the tab is
@@ -121,11 +110,4 @@ export function AgentBridgeHost() {
       {dialog && <Suspense fallback={null}><AgentBridgeDialog key={requestKey(dialog)} request={dialog} onClose={closeAgentBridgeDialog} /></Suspense>}
     </>
   );
-}
-
-/** The desktop status-bar chip (the status bar exists only in the desktop layout). */
-export function AgentBridgeStatusSlot() {
-  const { status } = useAgentBridgeState();
-  if (!visible(status) || !isFeatureEnabled('ai.assistant')) return null;
-  return <Suspense fallback={null}><AgentBridgeChip /></Suspense>;
 }

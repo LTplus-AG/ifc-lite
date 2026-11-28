@@ -19,7 +19,7 @@ use super::collect::{collect, retain_shared_atoms};
 use super::generate::generate;
 use super::created::write_created;
 use super::ledger::Kind;
-use super::refilter::{filter_source_line, Filtered};
+use super::refilter::filter_log_line;
 use super::replay::replay;
 use super::pass::Pass;
 use super::source::Source;
@@ -145,6 +145,7 @@ fn write_line<W: Write>(
     if converting {
         let Some(flat) = flatten.line(from, text.to_string()) else { return Ok(false) };
         let text = flat.as_str();
+        checks.forms.durations.note_log_source(text);
         let converted = crate::schema_convert::convert_step_line(text, from, to, id, slot_fill, Some(checks))?;
         // A record the conversion does not write (#10763).
         if converted.is_empty() { return Ok(false); }
@@ -162,9 +163,10 @@ fn write_line<W: Write>(
 fn checks_for(content: &[u8], source_label: &str, target: &str, opts: &StepOptions, log: &MutationLog, src: &Source<'_>, pass: &mut super::pass::Pass<'_, '_>) -> crate::schema_enum::ConversionChecks {
     let unchanged = log.mutations.is_empty() && log.new_entities.is_empty() && log.georef_mutations.is_none();
     let mut checks = crate::schema_enum::ConversionChecks::for_source(content, source_label, target, opts, unchanged, &|id, start| src.span(id).is_some_and(|(kept, _)| kept == start), &mut || pass.allocate().ok());
-    let written = pass.mutated_lines.iter().filter_map(|(id, (line, _))| Some((*id, line.as_deref()?))).chain(pass.created_lines.iter().map(|(id, l)| (*id, l.as_str())));
-    let retained = |id| pass.will_be_emitted(id) && !matches!(pass.mutated_lines.get(&id), Some((None, _)));
+    let written = pass.mutated_lines.iter().filter_map(|(id, (line, _))| Some((*id, line.as_deref().ok()?))).chain(pass.created_lines.iter().map(|(id, l)| (*id, l.as_str())));
+    let retained = |id| pass.will_be_emitted(id) && !matches!(pass.mutated_lines.get(&id), Some((Err(_), _)));
     checks.materials.with_effective(crate::schema_convert::canon(source_label), &retained, written);
+    checks.boundaries.restrict(&pass.left_out); // #11457: only the boundaries judged up front
     checks
 }
 
@@ -204,7 +206,7 @@ fn check_created_ids(src: &Source<'_>, log: &MutationLog) -> io::Result<()> {
 fn body_has(pass: &Pass<'_, '_>, content: &[u8], contains: impl Fn(&[u8]) -> bool) -> bool {
     contains(content)
         || pass.created_lines.iter().any(|(_, text)| contains(text.as_bytes()))
-        || pass.mutated_lines.values().filter_map(|(text, _)| text.as_deref()).any(|text| contains(text.as_bytes()))
+        || pass.mutated_lines.values().filter_map(|(text, _)| text.as_deref().ok()).any(|text| contains(text.as_bytes()))
 }
 
 fn validate_log_options(opts: &StepOptions) -> io::Result<()> {
@@ -245,11 +247,9 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
         super::georef::apply(&mut pass, georef, &declared_schema(content, converting, &target)).map_err(unwritable)?;
     }
     retain_shared_atoms(&mut pass);
+    if converting { pass.left_out = super::boundaries_left_out(&pass, &src, &collected, &source_label, &target); }
 
-    // The source lines the log rewrites, decided before the header because
-    // the header counts them: every record with an attribute, retype or
-    // positional edit, run through the same filter the stream applies so a
-    // withheld line nominates nothing, as in the TypeScript source pass.
+    // Count rewritten source lines before the header, using the stream’s filter so withheld lines nominate nothing.
     let mut edited: Vec<u32> = pass.modified_attributes.iter().map(|(id, _)| *id).collect();
     edited.extend(pass.overlay.positional.keys().copied());
     edited.extend(pass.overlay.retype_order.iter().copied());
@@ -269,16 +269,8 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
             continue;
         };
         let upper = pass.type_of(id).unwrap_or_default();
-        let filtered = {
-            let excluded = |r: u32| pass.is_omitted(r);
-            filter_source_line(&text, id, &upper, pass.schema, &excluded, !pass.overlay.tombstones.is_empty())
-        };
-        let text = match filtered {
-            Filtered::Keep => Some(text),
-            Filtered::Rewrite(t) => Some(t),
-            Filtered::Withhold(_) => None,
-        };
-        if text.is_some() {
+        let text = filter_log_line(&mut pass, text, id, &upper);
+        if text.is_ok() {
             if delivery.retyped {
                 pass.ledger.nominate(id, Kind::Retype);
             }
@@ -298,19 +290,25 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
     let mut checks = checks_for(content, &source_label, &target, opts, log, &src, &mut pass); // #10763: its material records too
     checks.typed_properties.enabled = typed_properties;
     let defer_varying = body_has(&pass, content, |bytes| checks.structural.buffers_varying(bytes));
-    let date_buffer = body_has(&pass, content, |bytes| {
-        crate::schema_value_forms::ValueForms::buffer_for_dates(bytes, &source_label, &target)
+    let temporal_buffer = body_has(&pass, content, |bytes| {
+        crate::schema_value_forms::ValueForms::buffers_temporal_values(bytes, &source_label, &target)
     });
-    if target_is_ifc2x3 || date_buffer { checks.forms.enable_dates(); }
+    checks.forms.durations.log_unit_graph = temporal_buffer.then(String::new);
+    if target_is_ifc2x3 || temporal_buffer { checks.forms.defer_temporal_values(); }
     let may_prune_upgrade = crate::schema_unrooted_upgrade::Upgrade::between(&source_label, &target).filter(|upgrade|
         !pass.overlay.retype_order.is_empty() || !pass.created_lines.is_empty()
-            || upgrade.seeds(content).next().is_some());
+            || !pass.left_out.is_empty() || upgrade.seeds(content).next().is_some());
     let mut new_entities = pass.new_entity_count;
-    let delay_header = defer_varying || may_prune_upgrade.is_some();
-    let header = |mut out: &mut dyn Write, created| write_header(&mut out, opts, content, converting, &target, pass.ledger.modified_count() + created);
+    let may_drop_assignment = !pass.overlay.retypes.is_empty()
+        && (!src.of_type("IFCRELDEFINESBYTYPE").is_empty() || !pass.omitted_type_assignments.is_empty()
+            || pass.overlay.retypes.values().any(|(ty, _)| ty.eq_ignore_ascii_case("IFCRELDEFINESBYTYPE")));
+    let delay_header = defer_varying || may_prune_upgrade.is_some() || may_drop_assignment;
+    let modified_count = pass.ledger.modified_count();
+    let header = |mut out: &mut dyn Write, created| write_header(&mut out, opts, content, converting, &target, modified_count + created);
     if !delay_header { header(out, new_entities)?; }
-    let mut body = crate::schema_ifc2x3_placements::Body::for_conversion(&mut *out, target_is_ifc2x3, defer_varying || date_buffer || typed_properties, may_prune_upgrade);
-    let mut flatten = crate::schema_style_flatten::StyleFlatten::for_export(content, &source_label, &target); flatten.note_all(content, pass.mutated_lines.iter().filter_map(|(id, (t, _))| Some((*id, t.as_deref()?)))
+    let mut body = crate::schema_ifc2x3_placements::Body::for_conversion(&mut *out, target_is_ifc2x3, defer_varying || temporal_buffer || typed_properties || may_drop_assignment, may_prune_upgrade);
+    for &id in pass.left_out.iter().chain(&pass.withheld_created) { body.note_omitted(id); }
+    let mut flatten = crate::schema_style_flatten::StyleFlatten::for_export(content, &source_label, &target); flatten.note_all(content, pass.mutated_lines.iter().filter_map(|(id, (t, _))| Some((*id, t.as_deref().ok()?)))
         .chain(pass.generated.iter().chain(&pass.rewritten_lines).chain(&pass.georef_lines).chain(&pass.created_lines).map(|(id, l)| (*id, l.as_str()))));
     flatten.retain_grids(|id| !pass.skip.contains(&id) && !pass.is_deleted(id));
     let mut written = 0usize;
@@ -320,10 +318,10 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
         }
         let owned;
         let text: &str = match pass.mutated_lines.get(&id) {
-            Some((Some(text), _)) => text,
-            Some((None, _)) => {
-                let upper = pass.type_of(id).unwrap_or_default();
-                pass.warnings.push(format!("Relationship #{id} ({upper}) was withheld from the export: it names at least one entity that has no line in this export, in a slot with no spelling for an omitted reference (a single-valued attribute, or a set whose every member is omitted). Anything else that relationship associated is no longer associated in the output."));
+            Some((Ok(text), _)) => text,
+            Some((Err(warning), _)) => {
+                body.note_omitted(id);
+                pass.warnings.push(warning.clone());
                 continue;
             }
             None => {
@@ -333,15 +331,11 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
                     None => continue,
                 };
                 let upper = pass.type_of(id).unwrap_or_default();
-                let filtered = {
-                    let excluded = |r: u32| pass.is_omitted(r);
-                    filter_source_line(&raw, id, &upper, pass.schema, &excluded, !pass.overlay.tombstones.is_empty())
-                };
-                owned = match filtered {
-                    Filtered::Keep => raw,
-                    Filtered::Rewrite(t) => t,
-                    Filtered::Withhold(w) => {
-                        pass.warnings.push(w);
+                owned = match filter_log_line(&mut pass, raw, id, &upper) {
+                    Ok(text) => text,
+                    Err(warning) => {
+                        body.note_omitted(id);
+                        pass.warnings.push(warning);
                         continue;
                     }
                 };
@@ -350,12 +344,7 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
         };
         written += usize::from(write_line(&mut body, text, id, converting, &source_label, &target, &mut slot_fill, &mut checks, &flatten)?);
     }
-    // Every appended record goes out through the same `write_line` as a
-    // source one, in the TypeScript exporter's order: generated sets, the
-    // repointed type objects, the georeferencing records, the created
-    // entities. Each is in the source schema's layout, so a converting export
-    // converts it (renames, the quantity `Formula` slot, the IFC2X3 slot fill
-    // and its counters) instead of writing it raw (#7682, EXPORT-STEP-3).
+    // Convert each appended source-layout record through the same writer, in TypeScript export order (#7682).
     let appended = pass
         .generated
         .iter()
@@ -365,7 +354,8 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
     for (id, line) in appended.filter(|(id, _)| !flatten.drops(*id)) {
         written += usize::from(write_line(&mut body, line, *id, converting, &source_label, &target, &mut slot_fill, &mut checks, &flatten)?);
     }
-    let (delta, deferred_entities) = checks.finish_with_header(body, target_is_ifc2x3.then_some(&mut slot_fill), pass.ids, |out, varying, omitted| {
+    body.prune_type_assignments(&target, pass.omitted_type_assignments);
+    let (delta, deferred_entities) = checks.finish_with_header(body, target_is_ifc2x3.then_some(&mut slot_fill), pass.ids, &mut |out, varying, omitted| {
         if !delay_header { return Ok(()); }
         new_entities -= pass.generated.iter().chain(&pass.georef_lines).chain(&pass.created_lines)
             .filter(|(id, _)| omitted.contains(id)).count();
@@ -376,7 +366,7 @@ fn emit<W: Write>(content: &[u8], opts: &StepOptions, log: &MutationLog, out: &m
 
     let mut warnings = std::mem::take(&mut pass.warnings);
     warnings.extend(slot_fill.warnings());
-    warnings.extend(checks.warnings_for_sources(std::iter::once(content)));
+    warnings.extend(checks.warnings());
     let refused = warnings.iter().filter(|w| w.contains("is not a number and the slot is REAL-typed")).count();
     Ok(LogExportStats {
         written,

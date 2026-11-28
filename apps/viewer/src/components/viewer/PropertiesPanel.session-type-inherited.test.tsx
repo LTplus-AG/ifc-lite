@@ -17,6 +17,7 @@ import '@/test/setup-dom.js';
 
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { act } from 'react';
 import { PropertyValueType } from '@ifc-lite/data';
 import { advance, cleanup, click, press, render, settle, type } from '@/test/render.js';
 import { useViewerStore } from '@/store';
@@ -109,6 +110,22 @@ describe('a type made this session shows its property sets on its occurrences (#
     assert.equal(fireRating(typeId), 'REI60');
     assert.equal(fireRating(wall), undefined, 'the wall holds no copy');
     assert.deepEqual(panelRows(container), [`${typeId}:${SET}:FireRating`]);
+  });
+
+  it('#11824 discards the override confirmation when selecting another occurrence of the same type', async () => {
+    const container = render(<PropertiesPanel />);
+    await editInherited(container, 'REI90');
+    const staleOverride = buttonByText('Override On This Element');
+    act(() => {
+      s().setSelectedEntityId(toGlobalIdFromModels(s().models, MODEL_ID, other));
+      s().setSelectedEntity({ modelId: MODEL_ID, expressId: other });
+    });
+    assert.equal(staleOverride.isConnected, false);
+    assert.ok(!container.querySelector('input[aria-label="FireRating"]'));
+    click(staleOverride);
+    assert.equal(fireRating(wall), undefined);
+    assert.equal(fireRating(other), undefined);
+    assert.equal(fireRating(typeId), 'REI30');
   });
 
   it('Override On This Element writes the value on the wall only, and one undo takes it back', async () => {

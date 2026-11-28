@@ -2,9 +2,13 @@
 
 Portable semantic datasets and profile-driven validation for browser and headless IFC applications. RDF terms retain datatype, language, blank-node identity, repeated values and unbound SELECT columns. Domain profiles are optional projections over the preserved dataset.
 
-Providers parse SPARQL with Traqula before allowing SELECT or CONSTRUCT. UPDATE and SERVICE are denied; FROM needs explicit graph authorization. HTTPS requests reuse the sandbox network capability, byte limit, cancellation and redirect policy through its small `network` entry point. Bearer tokens live only in a request. Browser endpoints still need CORS; the Node relay is an explicitly configured alternative.
+Providers parse SPARQL with Traqula before allowing SELECT or CONSTRUCT. UPDATE and SERVICE are denied; FROM needs explicit graph authorization. HTTPS requests reuse the sandbox network capability, byte limit, cancellation and redirect policy through its small `network` entry point. Bearer tokens live only in a request. Browser endpoints still need CORS; the Node relay (`createSemanticRelay` / `createSemanticRelayServer` from `@ifc-lite/semantic/server`, mounted behind HTTPS with fixed provider ids) is an explicitly configured alternative.
 
 Resolution requires an explicit strategy and revision association. Duplicate IFC GlobalIds remain ambiguous. A missing revision never falls back to an unrelated loaded model. Workspace version 1 exports portable query settings, raw datasets and revision labels; import resets grants and loaded-model associations. Credentials and URL query parameters are excluded from portable endpoint configuration.
+
+```bash
+npm install @ifc-lite/semantic
+```
 
 ```typescript
 import { createSemanticProvider, ResolverRegistry } from '@ifc-lite/semantic';
@@ -16,6 +20,8 @@ const resolvers = new ResolverRegistry();
 ```
 
 This package does not claim conformance to CEN working drafts. Example DBL/DPP vocabulary is original, synthetic pilot data. JSON Schema and SHACL validate explicit profiles; OWL entailment is optional and not assumed.
+
+Profile tooling: `generateArtifacts(profile)` emits the JSON Schema, JSON-LD context, SHACL shapes, vocabulary Turtle and dictionary; `parseGraph(input, { format })` imports Turtle, N-Quads or JSON-LD into N-Quads; `validateGraph` and `createValidationReport` run and summarize SHACL validation; `profileToDictionary` / `dictionaryToProfile` round-trip a profile as a dictionary; `profileFromBsdd(provider, classUri, { id, version, vocabulary })` builds a profile from a bSDD class.
 
 Identity strategies include direct IFC GlobalId, explicitly configured profile fields (`createProfileMappingStrategy`), and portable resource links (`createResourceLinkStrategy`). A resource link stores a resource URI, a non-empty opaque model revision identifier, and IFC GlobalId. Every linked revision must have exactly one declaration in the workspace; loading a workspace leaves these declarations pending until the user associates them with loaded models. Domain profiles can impose stronger constraints, including revision IRIs in the reference profile. The resolver checks current live entities on every action; deleting/reloading a model cannot preserve a stale numeric express id. Several candidate identities are reported as ambiguous.
 

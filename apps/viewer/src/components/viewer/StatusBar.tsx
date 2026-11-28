@@ -19,7 +19,7 @@ import { useViewportStatusSummary } from '@/hooks/useViewportStatusSummary';
 import { FlavorIndicator } from '@/components/extensions/FlavorIndicator';
 import { StatusBarPresentationButton } from './StatusBarPresentationButton';
 import { StatusBarWorkspaceChip } from './StatusBarWorkspaceChip';
-import { AgentBridgeStatusSlot } from '@/components/agent-bridge/AgentBridgeHost';
+import { AgentBridgeStatusSlot } from '@/components/agent-bridge/AgentBridgeStatusSlot';
 import { ActivityTrayButton } from './activity/ActivityTray';
 import { FpsMemoryStats, TriangleCount } from './PerformanceStats';
 import { sharedEffectivePhysicalEntityIds } from '@/lib/physical-objects';

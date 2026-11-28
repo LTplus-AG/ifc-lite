@@ -6,6 +6,12 @@ Read and write Rhino `.3dm` through the pinned `rhino3dm` runtime, loaded lazily
 - `writeRhino3dm` turns an encoded IFC-lite RhinoScene v1 (JSON manifest plus a
   little-endian binary blob) into `.3dm` bytes. It performs no IFC interpretation.
 
+## Installation
+
+```bash
+npm install @ifc-lite/rhino3dm
+```
+
 ## Reading
 
 ```ts
@@ -77,6 +83,10 @@ by structured clone. A typed array is not itself transferable, so transfer
 - **Layers** come parent first with colour, visibility, user text and, when a
   layer carries `IFC::GlobalId` and `IFC::Class` stamps, its `spatial` element.
 
+`readRhino3dm` also takes `locateFile`, used only when it is the first call to
+initialize the shared runtime. `MAX_3DM_BYTES` (400 MiB) is the size cap and
+`tooLarge3dmMessage(byteLength)` builds its refusal text.
+
 `RhinoReadError.code` is one of `not-3dm`, `newer-archive` (saved by a Rhino
 newer than 8), `too-large` (above the 400 MB cap, or the wasm heap ran out) and
 `no-renderable-geometry` (for example surfaces saved without render meshes).
@@ -108,14 +118,14 @@ const { bytes, warnings, objectCount } = await writeRhino3dm(scene, {
 ```
 
 `EncodedRhinoScene`, `Write3dmOptions`, `RhinoSceneManifest` and its component
-types are exported. `parseRhinoScene` returns the validated manifest; malformed
+types are exported, plus `RHINO_3DM_VERSIONS` (`[8, 7]`). `parseRhinoScene` returns the validated manifest; malformed
 JSON, unsupported format/version, invalid references, alignment, triangle
 indices and invalid scalar values throw `RhinoSceneError`. Writing an archive
 version other than 7 or 8 also throws `RhinoSceneError`.
 
-The MIT-licensed `rhino3dm@8.35.0` runtime is pinned and imported lazily via
-`rhino3dm/rhino3dm.module.js`. Its WASM is 2.67 MB (1.04 MB gzip); importing this
-package loads neither the runtime nor WASM. Initialization is shared across
+The MIT-licensed `rhino3dm@8.35.0` runtime is pinned and imported lazily through
+the package's `#rhino-factory` import: `rhino3dm/rhino3dm.module.js` in browsers,
+`rhino3dm` in Node. Importing this package loads neither the runtime nor its WASM. Initialization is shared across
 writes, and the first call's `locateFile` applies to that runtime. Failed
 initialization can be retried. A browser build must serve the WASM separately;
 Vite does not automatically copy it from this dynamic import.

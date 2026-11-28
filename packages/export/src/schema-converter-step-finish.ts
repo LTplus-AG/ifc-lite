@@ -10,10 +10,11 @@ export function finishStepConversion(
   countedRanges: readonly (readonly [start: number, end: number])[],
 ): number {
   const { entities, enums } = pass;
+  enums.forms.durations.finish(entities);
   const next = enums.typedProperties.finish(entities, pass.ifc4Slots, nextExpressId, enums.structural);
   const varyingStart = entities.length;
   pass.newEntityCount += enums.structural.finishEffectiveVarying(entities);
-  if (!removesObsoleteResources(pass.sourceSchema, pass.schema)) {
+  if (!pass.omittedTypeAssignments.size && !removesObsoleteResources(pass.sourceSchema, pass.schema)) {
     enums.forms.dates.finish(entities);
     return next;
   }
@@ -25,7 +26,7 @@ export function finishStepConversion(
     for (let i = start; i < end; i++) countedIds.add(outputRecordId(entities[i]));
   }
   enums.forms.dates.finish(entities);
-  pass.warnings.push(...pruneUpgradeFromSource(entities, pass.sourceSchema, pass.schema, (id) => {
+  pass.warnings.push(...pruneUpgradeFromSource(entities, pass.sourceSchema, pass.schema, enums.boundaries.pruningSeeds(), pass.omittedTypeAssignments, (id) => {
     if (countedIds.delete(id)) pass.newEntityCount--;
   }));
   return next;

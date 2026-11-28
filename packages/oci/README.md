@@ -10,6 +10,10 @@ framework dependency and runs in Node and in browsers. `fetch` is injected
 It knows nothing about IFC and sets no policy on artifact media types: what
 a manifest *means* is the caller's decision.
 
+```bash
+npm install @ifc-lite/oci
+```
+
 ```ts
 import { OciClient, parseReference } from '@ifc-lite/oci';
 

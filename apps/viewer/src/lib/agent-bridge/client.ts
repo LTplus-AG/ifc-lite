@@ -45,82 +45,27 @@ import {
   parseServerMessage,
   parseTabMessage,
   type BridgeHelloMessage,
-  type BridgeToolDescriptor,
   type BridgeUiEvent,
   type BridgeUpdateMessage,
 } from '@ifc-lite/mcp/bridge-protocol';
-import type {
-  AgentBridgeActivity, AgentBridgePermission, AgentBridgeStatus,
-} from './state';
-import type { DeliveryClaim } from '../agent-tools/delivery';
-import type { ToolOutcome } from './result-frame';
+import type { AgentBridgePermission, AgentBridgeStatus } from './state';
 import { CALL_LIMITS, type CallLimits } from './call-admission';
 import { CallRunner } from './call-runner';
+import { handshakeProofs } from './resume';
 import { sendUiEventFrame } from './ui-event-frame';
 import { WELCOME_TIMEOUT_CLOSE, statusForClose } from './close-outcome';
 
 
-/** The subset of the browser `WebSocket` the client uses, so tests can inject a fake. */
-export interface WebSocketLike {
-  readonly readyState: number;
-  onopen: ((event: unknown) => void) | null;
-  onmessage: ((event: { data: unknown }) => void) | null;
-  onclose: ((event: { code: number; reason: string }) => void) | null;
-  onerror: ((event: unknown) => void) | null;
-  send(data: string): void;
-  close(code?: number, reason?: string): void;
-}
-
-export type WebSocketConstructor = new (url: string) => WebSocketLike;
-
-/** `WebSocket.OPEN`; a constant so the client does not depend on the global. */
+import { DEFAULT_WELCOME_TIMEOUT_MS, type BridgeClientOptions, type WebSocketConstructor, type WebSocketLike } from './client-options';
+export { DEFAULT_WELCOME_TIMEOUT_MS, type BridgeClientOptions, type WebSocketConstructor, type LocalNetworkPermission, type WebSocketLike } from './client-options';
 const OPEN = 1;
-
-/**
- * The bridge answers a wrong code after a backoff of up to 5 s, so the tab
- * waits well past that before calling the handshake lost.
- */
-export const DEFAULT_WELCOME_TIMEOUT_MS = 15_000;
-
-/** What the browser says about loopback access for this site. */
-export type LocalNetworkPermission = 'granted' | 'denied' | 'prompt' | 'unknown';
-
-export interface BridgeClientOptions {
-  port: number;
-  pairingCode: string;
-  /**
-   * The tools announced in `hello` and in every `update`. Tools labelled
-   * `readOnly: false` are refused by the bridge (and by `dispatch`, which
-   * must ask `canEditNow()`) until the user grants `read-write`.
-   */
-  tools: readonly BridgeToolDescriptor[];
-  /** Runs one call. Must not throw (a throw is still caught and reported as INTERNAL_ERROR). */
-  dispatch(name: string, args: Record<string, unknown>, signal: AbortSignal, onDelivery?: (claim: DeliveryClaim) => void): Promise<ToolOutcome>;
-  /** The model a call is about, for the activity log. */
-  modelIdFor?(args: Record<string, unknown>): string | null;
-  onStatus(status: AgentBridgeStatus): void;
-  onActivity?(entry: AgentBridgeActivity): void;
-  clientInfo?: { name: string; version?: string };
-  /** Defaults to the global `WebSocket`. */
-  WebSocket?: WebSocketConstructor;
-  /** Where `pagehide` is observed; defaults to `window` when there is one. */
-  lifecycle?: Pick<EventTarget, 'addEventListener' | 'removeEventListener'> | null;
-  /** Asked after a connection that never opened: the browser's `loopback-network` permission, to tell "denied" or "prompt pending" from "not running". */
-  probePermission?: () => Promise<LocalNetworkPermission>;
-  welcomeTimeoutMs?: number;
-  /** Defaults to `BRIDGE_LIMITS.maxResultBytes`. */
-  maxResultBytes?: number;
-  now?: () => number;
-  /** Test seam over {@link CALL_LIMITS}. */
-  limits?: Partial<CallLimits>;
-}
-
 
 function warn(message: string, err?: unknown): void {
   console.warn(`[agent-bridge] ${message}`, ...(err === undefined ? [] : [err]));
 }
 
 export class BridgeClient {
+  private proofs?: Awaited<ReturnType<typeof handshakeProofs>>;
   private ws: WebSocketLike | null = null;
   private sessionId: string | null = null;
   /** The bridge accepts `ui-event` frames (welcome.features). */
@@ -135,7 +80,7 @@ export class BridgeClient {
   private readonly mutating: ReadonlySet<string>;
   private readonly now: () => number;
   private readonly lifecycle: BridgeClientOptions['lifecycle'];
-  private readonly onPageHide = (): void => this.end({ kind: 'disconnected', reason: 'page-hidden' }, 1001, 'page hidden');
+  private readonly onPageHide = (): void => this.end({ kind: 'disconnected', reason: 'page-hidden' }, 1000, 'page hidden');
 
   constructor(private readonly opts: BridgeClientOptions) {
     this.now = opts.now ?? (() => Date.now());
@@ -246,7 +191,18 @@ export class BridgeClient {
       tools: [...this.opts.tools],
       ...(this.opts.clientInfo ? { client: this.opts.clientInfo } : {}),
     };
-    ws.send(JSON.stringify(hello));
+    if (this.opts.authenticate) {
+      const resume = this.opts.authenticate.resume;
+      void handshakeProofs(resume ? this.opts.pairingCode : hello.pairingCode, this.opts.authenticate.pendingNonce).then((proofs) => {
+        if (ws !== this.ws || this.ended) return;
+        this.proofs = proofs;
+        this.opts.authenticate?.prepared?.(proofs.nonce.slice(0, 32), proofs.next);
+        ws.send(JSON.stringify({ ...hello, pairingCode: proofs.tab, nonce: proofs.nonce, resume }));
+      }).catch((err: unknown) => {
+        warn('could not prepare a verified handshake', err);
+        this.end({ kind: 'error', code: 'pairing-failed', port: this.opts.port }, 1000, 'handshake failed');
+      });
+    } else ws.send(JSON.stringify(hello));
     this.welcomeTimer = setTimeout(() => {
       this.welcomeTimer = null;
       if (!this.sessionId) this.end({ kind: 'error', code: 'handshake-timeout', port: this.opts.port }, WELCOME_TIMEOUT_CLOSE, 'no welcome');
@@ -271,6 +227,14 @@ export class BridgeClient {
         if (msg.protocol !== BRIDGE_PROTOCOL_VERSION) {
           this.end({ kind: 'error', code: 'protocol-mismatch', port: this.opts.port }, 1000, 'protocol mismatch');
           return;
+        }
+        if (this.opts.authenticate) {
+          if (!this.proofs || this.proofs.bridge !== msg.proof) {
+            this.end({ kind: 'error', code: 'pairing-failed', port: this.opts.port }, 1000, 'bridge proof failed');
+            return;
+          }
+          this.opts.authenticate.accepted(this.proofs.next);
+          this.proofs = undefined;
         }
         this.clearWelcomeTimer();
         this.sessionId = msg.sessionId;
@@ -325,6 +289,7 @@ export class BridgeClient {
           // not name the frame, so it cannot be tied to a grant; an `update` is
           // checked with the bridge's own validator before it is sent instead
           // (see setPermission).
+          if (msg.code === 'UI_EVENT_REFUSED') this.opts.onRefusedEvent?.();
           warn(`the bridge refused a frame: ${msg.code}: ${msg.message}`);
           return;
         }

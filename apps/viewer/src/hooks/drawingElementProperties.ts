@@ -17,8 +17,7 @@
  * `DrawingPolygon.entityId` is a renderer/global id (idOffset-adjusted for
  * federation — see `FederatedModel.idOffset`'s doc comment), not necessarily
  * a raw per-model expressId, so it is resolved back to its owning model's
- * store via `fromGlobalIdFromModels` — the same resolution `bcfIdLookup.ts`
- * uses — before extracting; `legacyStore` covers the pre-federation path
+ * store via `fromGlobalIdFromModels` before extracting; `legacyStore` covers the pre-federation path
  * where `storeModels` is empty and the global id already IS the local id.
  *
  * The engine wants a record keyed by set name; the parser returns a list of
@@ -49,7 +48,7 @@
 
 import { extractPropertiesOnDemand, type IfcDataStore } from '@ifc-lite/parser';
 import { fromGlobalIdFromModels } from '@/store/globalId';
-import type { FederatedModel } from '@/store';
+import type { FederatedModel, ViewerState } from '@/store';
 
 type ElementProperties = Record<string, Record<string, unknown>>;
 
@@ -57,20 +56,30 @@ type ElementProperties = Record<string, Record<string, unknown>>;
 export function makePropertiesGetter(
   storeModels: ReadonlyMap<string, FederatedModel>,
   legacyStore: IfcDataStore | null,
+  views: ViewerState['mutationViews'],
 ): (globalId: number) => ElementProperties | undefined {
   const cache = new Map<number, ElementProperties | undefined>();
   return (globalId) => {
     if (cache.has(globalId)) return cache.get(globalId);
-    const ref = fromGlobalIdFromModels(storeModels, globalId);
-    const store = !ref || ref.modelId === 'legacy'
-      ? legacyStore
-      : (storeModels.get(ref.modelId)?.ifcDataStore ?? null);
-    const psets = store ? extractPropertiesOnDemand(store, ref ? ref.expressId : globalId) : [];
+    const ref = fromGlobalIdFromModels(storeModels, globalId, id => views.get(id));
+    // No ref means no loaded model owns the id: its raw value is no store's local id.
+    if (!ref) {
+      cache.set(globalId, undefined);
+      return undefined;
+    }
+    const store = ref.modelId === 'legacy' ? legacyStore : storeModels.get(ref.modelId)?.ifcDataStore;
+    const view = views.get(ref.modelId);
+    // Writes must see the same source as drawing reads so deleting an edited
+    // source property records a deletion even after this drawing pass ends.
+    if (view && !view.hasPropertyBase() && store?.getProperties) {
+      view.setOnDemandExtractor(id => store.getProperties(id));
+    }
+    const psets = view?.getForEntity(ref.expressId) ?? (store ? extractPropertiesOnDemand(store, ref.expressId) : []);
     let result: ElementProperties | undefined;
     if (psets.length > 0) {
-      result = {};
+      result = Object.create(null) as ElementProperties;
       for (const pset of psets) {
-        const props = (result[pset.name] ??= {});
+        const props = (result[pset.name] ??= Object.create(null) as Record<string, unknown>);
         for (const prop of pset.properties) {
           if (!Object.hasOwn(props, prop.name)) props[prop.name] = prop.value;
         }

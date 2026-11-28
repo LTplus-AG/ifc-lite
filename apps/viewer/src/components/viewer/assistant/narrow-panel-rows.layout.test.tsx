@@ -1,0 +1,144 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * Rename, save and merge rows keep a usable control at the side panel's real
+ * widths (#11439). Each row put a `min-w-0 flex-1` input or select beside
+ * fixed-width buttons in a row that could not wrap, so a narrow panel squeezed
+ * the control to a stub or pushed the row past the panel edge.
+ *
+ * The component is mounted for real (happy-dom), then its markup is laid out
+ * in real Chrome with the compiled app stylesheet inside a panel-width box, as
+ * in `LibraryPicker.layout.test.tsx`. Only numbers leave the page.
+ */
+
+import '@/test/setup-dom.js';
+import 'fake-indexeddb/auto';
+import { after, afterEach, before, describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { registerLocale, setLocale } from '@/i18n';
+import { clashGroupApplyDe } from '@/i18n/locales/de/clash-group-apply';
+import { chatDe } from '@/i18n/locales/de/chat';
+import { comparePanelDe } from '@/i18n/locales/de/compare-panel';
+import { aiReportsDe } from '@/i18n/locales/de/ai-reports';
+import { clashQualityDe } from '@/i18n/locales/de/clash-quality';
+import { clashGroupsDe } from '@/i18n/locales/de/clash-groups';
+import { captureEvidence } from '@/lib/assistant/evidence';
+import { cancelAssistant, replaceEvidence, useAssistant } from '@/lib/assistant/conversation';
+import { ReportDraftReview } from './ReportDraftReview.js';
+import { ClashQualityGates } from '../ClashQualityGates.js';
+import { ClashGroupStorage } from '../ClashGroupStorage.js';
+import { defaultQualityGateConfig } from '@/lib/clash/quality-gate';
+import { act } from 'react';
+import { cleanup, click, render } from '@/test/render.js';
+import { CONTRAST_BROWSER_SKIP, closeContrastBrowser, warmContrastBrowser, withThemedPage } from '@/test/contrast/render-harness.js';
+import { draftFromGroups, type DraftFinding } from '@/lib/assistant/clash-group-draft';
+import { ClashGroupDraftEditor } from './ClashGroupDraftEditor.js';
+import { ConversationLibrary } from './ConversationLibrary.js';
+import { SavedComparisonLibrary } from '../compare/SavedComparisonLibrary.js';
+
+/** The floating panel's minimum and the docked panel's default. */
+const PANEL_WIDTHS = [260, 350] as const;
+/** The `min-w-32` floor: a control narrower than this is a stub. */
+const MIN_CONTROL_PX = 128;
+
+before(warmContrastBrowser);
+const initialAssistant = useAssistant.getState();
+afterEach(() => { cleanup(); cancelAssistant(); useAssistant.setState(initialAssistant, true); setLocale('en'); });
+after(closeContrastBrowser);
+
+function finding(occurrence: string): DraftFinding {
+  return { citation: occurrence, occurrence, nativeType: 'hard', nativeSeverity: 'major',
+    disciplineCandidates: { a: ['ARC'], b: ['MEP'] } } as DraftFinding;
+}
+
+/** Markup as mounted, after `interact` (a click into rename mode). */
+function htmlOf(element: React.ReactElement, interact: (ui: HTMLElement) => void = () => {}): string {
+  const ui = render(element);
+  interact(ui);
+  const html = ui.innerHTML;
+  cleanup();
+  return html;
+}
+
+/** The clash editor with a group in rename mode, both merge rows, and the move row set to a new group. */
+function clashEditorHtml(): string {
+  const draft = draftFromGroups([
+    { name: 'Walls vs pipes', explanation: '', findings: [finding('o1')] },
+    { name: 'Riser', explanation: '', findings: [finding('o2')] },
+  ], 2, { kind: 'sample', evidenceId: 'e', omittedFromEvidence: 0 });
+  return htmlOf(<ClashGroupDraftEditor draft={draft} onChange={() => {}} resolve={() => undefined}
+    focusClash={() => {}} focusClashes={() => {}} />, (ui) => {
+    // The header's first button is the rename pencil, in any locale.
+    click(ui.querySelector<HTMLButtonElement>('h4 button')!);
+    // A selected finding opens the move row; moving to a new group adds its name input.
+    click(ui.querySelector<HTMLInputElement>('li input[type="checkbox"]')!);
+    const move = ui.querySelector<HTMLSelectElement>('.sticky select')!;
+    act(() => { move.value = 'new'; move.dispatchEvent(new window.Event('change', { bubbles: true })); });
+  });
+}
+
+interface RowLayout { control: number; overflow: number }
+
+/** Width of each matched control, and how far its row reaches past the panel's right edge. */
+async function layoutAt(html: string, width: number, selector: string): Promise<RowLayout[]> {
+  return withThemedPage('light', `<div id="panel" class="bg-card text-xs" style="width:${width}px">${html}</div>`, async (page) => {
+    await page.evaluate('globalThis.__name = (fn) => fn;');
+    return page.evaluate((query) => {
+      const panel = document.getElementById('panel')!.getBoundingClientRect();
+      return [...document.querySelectorAll<HTMLElement>(`#panel ${query}`)].map((control) => {
+        const row = control.parentElement!;
+        const reach = Math.max(...[...row.children].map((child) => child.getBoundingClientRect().right));
+        return { control: Math.round(control.getBoundingClientRect().width), overflow: Math.round(reach - panel.right) };
+      });
+    }, selector);
+  });
+}
+
+const ROWS = [
+  { name: 'clash group rename, merge and move', html: clashEditorHtml, selector: 'form > input, div > select, .sticky input', count: 5 },
+  { name: 'saved conversation name', html: () => htmlOf(<ConversationLibrary />), selector: '#assistant-conversation-name', count: 1 },
+  { name: 'saved comparison name and pick', html: () => htmlOf(<SavedComparisonLibrary result={null} running={false} />),
+    selector: '[data-saved-comparisons] > div.flex > input, [data-saved-comparisons] > label > select', count: 2 },
+  // #11590: the same row shape in other side panels.
+  { name: 'report draft name', html: reportDraftHtml, selector: '#assistant-report-name', count: 1 },
+  { name: 'clash quality gate band labels', html: () => htmlOf(<ClashQualityGates />),
+    selector: 'fieldset input:not([type="number"]):not([type="color"])', count: defaultBandCount() },
+  { name: 'clash group workspace', html: () => htmlOf(<ClashGroupStorage />), selector: 'label > select', count: 1 },
+] as const;
+
+/** One label input per default band, clash and duplicates. */
+function defaultBandCount(): number {
+  const config = defaultQualityGateConfig();
+  return config.clash.length + config.duplicates.length;
+}
+
+/** The report draft review renders once a reportable answer exists. */
+function reportDraftHtml(): string {
+  replaceEvidence(captureEvidence('clash'));
+  useAssistant.setState({ messages: [{ role: 'user', content: 'Summarize' }, { role: 'assistant', model: 'model', content: 'Summary' }] });
+  return htmlOf(<ReportDraftReview />);
+}
+
+describe('narrow side-panel rows keep a usable control (#11439, #11590)', () => {
+  for (const locale of ['en', 'de'] as const) {
+    for (const row of ROWS) {
+      it(`${row.name} (${locale})`, { skip: CONTRAST_BROWSER_SKIP }, async () => {
+        if (locale === 'de') {
+          registerLocale('de', { ...clashGroupApplyDe, ...chatDe, ...comparePanelDe, ...aiReportsDe, ...clashQualityDe, ...clashGroupsDe });
+          setLocale('de');
+        }
+        const html = row.html();
+        for (const width of PANEL_WIDTHS) {
+          const layouts = await layoutAt(html, width, row.selector);
+          assert.equal(layouts.length, row.count, `${row.name} renders its control at ${width}px`);
+          for (const layout of layouts) {
+            assert.ok(layout.control >= MIN_CONTROL_PX, `${row.name} control at ${width}px is ${layout.control}px`);
+            assert.ok(layout.overflow <= 0, `${row.name} at ${width}px reaches ${layout.overflow}px past the panel`);
+          }
+        }
+      });
+    }
+  }
+});

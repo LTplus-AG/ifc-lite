@@ -57,8 +57,8 @@ node scripts/generate-plato-clash.mjs
 node scripts/generate-plato-clash.mjs --check
 ```
 
-Env overrides (CI leaves them unset; local reuse of an existing checkout/SDK
-avoids re-downloading):
+Env overrides (CI sets only `PLATO_WORK_DIR=$HOME/.cache/ifc-lite-plato`, which
+it caches; local reuse of an existing checkout/SDK avoids re-downloading):
 
 - `PLATO_WORK_DIR` -- work/cache root for the checkouts
   (default: `node_modules/.cache/ifc-lite-plato`).

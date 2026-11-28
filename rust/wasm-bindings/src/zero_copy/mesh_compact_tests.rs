@@ -127,6 +127,29 @@ fn a_thin_rod_moves_to_a_finer_lattice() {
 }
 
 #[test]
+fn a_plate_retains_its_thickness_when_its_sides_have_negligible_area() {
+    let mut plate = flat_box(1, [0.0; 3], 0.6);
+    for p in plate.positions.chunks_exact_mut(3) {
+        p[2] *= 0.0001 / 0.6;
+    }
+    let mut collection = MeshCollection::new();
+    let mut wall = flat_box(1, [0.0; 3], 3.0);
+    for p in wall.positions.chunks_exact_mut(3) {
+        p[0] += 1.0; // Disjoint, but both solids fit in the finer window.
+        p[1] *= 0.2 / 3.0;
+    }
+    let base = (plate.positions.len() / 3) as u32;
+    plate.positions.extend(wall.positions);
+    plate.normals.extend(wall.normals);
+    plate.indices.extend(wall.indices.into_iter().map(|i| base + i));
+    collection.add(plate);
+    let batch = collection.encode_compact(32.0);
+    assert_eq!(batch.mesh_count(), 1);
+    assert!(batch.table[5] > BASE_LEVEL);
+    assert_eq!(batch.indices.len(), 72, "both closed solids retain every side");
+}
+
+#[test]
 fn a_wide_slab_moves_to_a_coarser_lattice() {
     let mut c = MeshCollection::new();
     c.add(flat_box(9, [0.0, 0.0, 0.0], 80.0));
@@ -168,7 +191,9 @@ fn the_two_sides_of_a_sheet_are_not_welded_together() {
 fn a_box_is_not_split() {
     let mut c = MeshCollection::new();
     c.add(flat_box(1, [0.0, 0.0, 0.0], 2.0));
-    assert_eq!(c.encode_compact(32.0).table[2], 8);
+    let b = c.encode_compact(32.0);
+    assert_eq!(b.table[2], 8);
+    assert_eq!(b.table[6], 24, "the row keeps the source vertex count, four per face");
 }
 
 /// Every source vertex decodes to within half a lattice step of itself on each axis: the precision the
@@ -445,4 +470,29 @@ fn a_shared_corner_is_one_node_whatever_the_window() {
     let (behind, behind_window) = global_x(back);
     assert_ne!(ahead_window, behind_window, "the two meshes use different windows");
     assert_eq!(ahead.first(), behind.last());
+}
+
+#[test]
+fn each_row_carries_its_first_source_vertex_exactly() {
+    // A box at origin x = 31 whose first corner is at x = 0.9998 (f32): 0.2 mm below the 32 m chunk plane. Its level
+    // 10 record rounds onto the plane; the anchor is `origin + position` with the f32 position widened, exactly.
+    let mut c = MeshCollection::new();
+    let mut near = flat_box(3, [31.0, 0.5, 0.25], 0.5);
+    for v in near.positions.chunks_exact_mut(3) {
+        v[0] += 0.9998f32;
+    }
+    c.add(near);
+    c.add(flat_box(4, [-1.0, 2.0, 3.0], 1.0));
+    let b = c.encode_compact(32.0);
+    assert_eq!(b.mesh_count(), 2);
+    assert_eq!(b.anchors.len(), 6);
+    let row = (0..2).find(|&r| b.table[r * TABLE_STRIDE] == 0).unwrap();
+    assert_eq!(b.anchors[row * 3], 31.0 + 0.9998f32 as f64, "x: origin + the widened f32 position");
+    assert_ne!(b.anchors[row * 3], 31.9998, "not the f64 literal: the f32 position is widened");
+    let r = &b.records[b.table[row * TABLE_STRIDE + 1] as usize * RECORD_BYTES..];
+    let record_x = (b.windows[row * 3] + u16::from_le_bytes([r[0], r[1]]) as f64) * step_of(b.table[row * TABLE_STRIDE + 5]);
+    assert!(record_x >= 32.0 && b.anchors[row * 3] < 32.0, "record {record_x} on the plane, anchor below it");
+    // The other box: its first corner is its origin (Z-up (-1, 2, 3) -> Y-up (-1, 3, -2)).
+    let other = 1 - row;
+    assert_eq!(&b.anchors[other * 3..other * 3 + 3], &[-1.0, 3.0, -2.0]);
 }

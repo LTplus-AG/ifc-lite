@@ -53,6 +53,10 @@ describe('scaleNumberLiterals', () => {
   it('never touches #-references or quoted strings', () => {
     expect(scaleNumberLiterals("#5,'Room (3000)',100.", 0.001)).toBe("#5,'Room (3000)',0.1");
   });
+
+  it('leaves numeric text inside a STEP comment intact (#11329)', () => {
+    expect(scaleNumberLiterals("/* room's 100. */100.", 0.001)).toBe("/* room's 100. */0.1");
+  });
 });
 
 describe('scaleTypedMeasures', () => {
@@ -60,6 +64,14 @@ describe('scaleTypedMeasures', () => {
     // length ×0.001, area unchanged, volume unchanged (the Revit case).
     expect(scaleTypedMeasures('IFCLENGTHMEASURE(100.),IFCAREAMEASURE(4.),IFCVOLUMEMEASURE(8.)', 0.001, 1, 1))
       .toBe('IFCLENGTHMEASURE(0.1),IFCAREAMEASURE(4.),IFCVOLUMEMEASURE(8.)');
+  });
+
+  it.each([
+    ['/* mm */', ''],
+    ["/* section's value ) */ ", ' /* IFCMOMENTOFINERTIAMEASURE(9.) */'],
+  ])('scales a commented typed profile value and preserves its trivia (#11329)', (before, after) => {
+    expect(scaleTypedMeasures(`IFCMOMENTOFINERTIAMEASURE(${before}2.E12${after})`, 0.001, 1, 1))
+      .toBe(`IFCMOMENTOFINERTIAMEASURE(${before}2.${after})`);
   });
 
   it('scales area/volume when the model uses length-derived units', () => {
@@ -112,6 +124,12 @@ describe('scaleTypedMeasures', () => {
   it('a comment containing "(" or ";" does not derail the parse (control)', () => {
     expect(scaleTypedMeasures('IFCLENGTHMEASURE/* has ( and ; inside */(100.)', 0.001, 1, 1))
       .toBe('IFCLENGTHMEASURE(0.1)');
+  });
+
+  it('retains the separator and numeric-slot trivia when requested (#11333)', () => {
+    const input = 'IFCLENGTHMEASURE /* mm */ ( 100. /* value */)';
+    expect(scaleTypedMeasures(input, 0.001, 1, 1, undefined, true))
+      .toBe('IFCLENGTHMEASURE /* mm */ ( 0.1 /* value */)');
   });
 
   it('two-way rule: an unterminated comment before "(" is not treated as trivia', () => {
@@ -177,6 +195,40 @@ describe('getEntityLengthPlan (schema-derived)', () => {
 });
 
 describe('rescaleEntityLengths (full entity lines)', () => {
+  it('rescales bare IFC2X3 profile measures before schema conversion (#11329)', () => {
+    const line = "#5=IFCSTRUCTURALPROFILEPROPERTIES('Section',$,0.002,$,$,$,$,2.E12,$,$,$,4.E18,$,$,$,$,3.E9,$,$,$,$,$,$);";
+    expect(rescaleEntityLengths(line, 'IFCSTRUCTURALPROFILEPROPERTIES', 0.001, 1, 1)).toBe(
+      "#5=IFCSTRUCTURALPROFILEPROPERTIES('Section',$,2.,$,$,$,$,2.,$,$,$,4.,$,$,$,$,3.,$,$,$,$,$,$);",
+    );
+  });
+
+  it.each([
+    ['IFCGENERALPROFILEPROPERTIES', '$,#3,0.0045,1000.,$,$,60000.', '$,#3,4.5,1.,$,$,0.06'],
+    ['IFCSTRUCTURALPROFILEPROPERTIES', '$,#3,0.0045,1000.,$,$,60000.,$,$,$,$,$,60.,-40.,5000.,4000.,$,$,$,$,$,$,$',
+      '$,#3,4.5,1.,$,$,0.06,$,$,$,$,$,0.06,-0.04,0.005,0.004,$,$,$,$,$,$,$'],
+  ])('keeps all geometric fields of %s in the normalized IFC2X3 units (#11329)', (type, input, expected) => {
+    expect(rescaleEntityLengths(`#5=${type}(${input});`, type, 0.001, 1e-6, 1e-9))
+      .toBe(`#5=${type}(${expected});`);
+  });
+
+  it('scales bare profile measures with comments on both sides of the number (#11329)', () => {
+    const line = "#5=IFCGENERALPROFILEPROPERTIES($,#3,/* section's kg/mm */0.002 /* 400 */,$,$,$,$);";
+    expect(rescaleEntityLengths(line, 'IFCGENERALPROFILEPROPERTIES', 0.001, 1, 1))
+      .toBe(line.replace('0.002', '2.'));
+    const declared = new Map([['IFCMASSPERLENGTHMEASURE', 0.1]]);
+    expect(rescaleEntityLengths(line, 'IFCGENERALPROFILEPROPERTIES', 0.001, 1, 1, declared))
+      .toBe(line.replace('0.002', '0.0002'));
+  });
+
+  it('normalizes implicit profile units even with comments, and keeps explicit units (#11329)', () => {
+    const withUnit = "#5=IFCPROPERTYSINGLEVALUE('Warping',$,ifcwarpingconstantmeasure(4.E18),#7);";
+    expect(rescaleEntityLengths(withUnit, 'IFCPROPERTYSINGLEVALUE', 0.001, 1, 1)).toBe(withUnit);
+    const implicit = withUnit.replace('#7', '/* project unit */$');
+    expect(rescaleEntityLengths(implicit, 'IFCPROPERTYSINGLEVALUE', 0.001, 1, 1)).toBe(
+      implicit.replace('(4.E18)', '(4.)'),
+    );
+  });
+
   it('leaves a line whose argument list it cannot delimit exactly as it found it', () => {
     // `findOuterArgs` is where a malformed record stops: it tracks quotes and
     // depth to find the `)` that closes the record's own `(`, so a line that
@@ -230,11 +282,10 @@ describe('rescaleEntityLengths (full entity lines)', () => {
       .toBe("#14=IFCPROPERTYSINGLEVALUE('T',$,IFCLENGTHMEASURE(50.),#77);");
   });
 
-  it('does not scale an IfcPropertyTableValue that declares its own DefiningUnit', () => {
-    // Attrs: Name,Description,DefiningValues,DefinedValues,Expression,DefiningUnit(5),DefinedUnit(6).
-    // DefiningUnit is a live ref → the table's values are already in its own unit.
+  it('scales only the implicit column of an IfcPropertyTableValue with a DefiningUnit (#11329)', () => {
     const line = "#30=IFCPROPERTYTABLEVALUE('T',$,(IFCLENGTHMEASURE(10.)),(IFCLENGTHMEASURE(20.)),$,#88,$);";
-    expect(rescaleEntityLengths(line, 'IFCPROPERTYTABLEVALUE', 0.001, 1, 1)).toBe(line);
+    expect(rescaleEntityLengths(line, 'IFCPROPERTYTABLEVALUE', 0.001, 1, 1))
+      .toBe("#30=IFCPROPERTYTABLEVALUE('T',$,(IFCLENGTHMEASURE(10.)),(IFCLENGTHMEASURE(0.02)),$,#88,$);");
   });
 
   it('scales an IfcPropertyTableValue with no explicit unit', () => {

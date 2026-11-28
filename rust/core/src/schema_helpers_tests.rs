@@ -4,6 +4,32 @@
 
 use super::*;
 
+// The engine-size reduction for #11604 shares tag copying and debug-name lookup.
+#[test]
+fn public_entity_clone_and_debug_preserve_known_and_owned_identities() {
+    for ty in crate::generated::IFC_TYPES
+        .iter()
+        .chain(crate::generated::SUPPLEMENTAL_IFC_TYPES)
+    {
+        let copy = ty.clone();
+        assert_eq!(&copy, ty);
+        assert_eq!(format!("{copy:?}"), ty.name());
+        assert_eq!(format!("{copy:#?}"), ty.name());
+    }
+    let copy = {
+        let original = IfcType::from_str("Ifc_Vendor_Widget");
+        original.clone()
+    };
+    let IfcType::Unknown(keyword) = &copy else {
+        panic!("an unsupported keyword must retain its owned name");
+    };
+    assert_eq!(keyword.as_str(), "IFC_VENDOR_WIDGET");
+    assert_eq!(keyword.id(), IfcType::from_str("IFC_VENDOR_WIDGET").id());
+    assert_eq!(format!("{copy:?}"), format!("Unknown({keyword:?})"));
+    let pretty = format!("{keyword:#?}").replace('\n', "\n    ");
+    assert_eq!(format!("{copy:#?}"), format!("Unknown(\n    {pretty},\n)"));
+}
+
 #[test]
 fn supported_schema_keywords_keep_their_exact_type() {
     let exact = IfcType::from_str("IFCSLABSTANDARDCASE");

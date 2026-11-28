@@ -16,7 +16,7 @@ Collaboration ships behind a flag so it stays out of the way until you want it.
 
 | How | What |
 | --- | --- |
-| Build env | Set `VITE_COLLAB_ENABLED=true` (and a server URL — see below) when building/serving the viewer. |
+| Build env | Set `VITE_COLLAB_ENABLED=true` (or `1`) when building/serving the viewer, and `VITE_COLLAB_SERVER_URL=wss://…` to point it at a [collaboration server](collab-server.md). Without a server URL the session is local-only. |
 | Per-browser (dev) | In the browser console: `localStorage.setItem('ifc-lite:collab:enabled', 'true')`, then reload. `localStorage.setItem('ifc-lite:collab:server-url', 'ws://127.0.0.1:1234')` likewise points this browser at a relay without a rebuild (an empty string forces local-only). |
 
 When enabled, a **Share** button appears in the toolbar (it's active once a model
@@ -101,18 +101,23 @@ and reconstructs the model:
 
 ## The room panel
 
-While you're in a room, a **people** button appears in the toolbar (with a live
-participant count). It opens the **Room** panel:
+While you're in a room, the **Collaboration room** panel (a side panel in the
+Coordinate group) shows the session:
 
-- **Connection + room id** — a live status dot (Live / Connecting / Offline).
-- **Roster** — everyone present: colour dot, name, **role badge**, and current
-  activity (active / idle / measuring …). You're marked *(you)*.
-- **Copy invite link** — mint and copy a fresh link.
-- **Leave room** — disconnect and return to solo editing.
+- **Connection + room id** — a status dot (Live / Syncing / Connecting /
+  Uploading / Local / Offline).
+- **Roster** — everyone present: colour dot, name, **role badge**, current
+  activity (active / idle / measuring …) and how many elements they have
+  selected. You're marked *(you)*. **Jump to view** moves your camera to a
+  peer's view.
+- **Copy invite link** — mint and copy a fresh link (available once the model
+  upload finishes).
+- **Leave session** — disconnect and return to solo editing. While your model
+  is still uploading, the button reads **Leave (abandons upload)**.
 - **Admins** additionally get:
     - **Revoke link** — invalidate the last share link you handed out; anyone
       trying to join with it afterwards is refused.
-    - **Remove** (hover a peer) — disconnect a participant; their link is revoked
+    - **Remove from session** (hover a peer) — disconnect a participant; their link is revoked
       so they can't immediately rejoin.
 
 ## Roles

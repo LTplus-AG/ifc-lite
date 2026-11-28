@@ -30,10 +30,12 @@ parsePropertyValue(['IFCBOOLEAN', '.T.']); // { displayValue: 'True', ifcType: .
 
 ## Exports
 
-- `decodeIfcString` / `encodeIfcString`: STEP `\X2\`, `\X\`, `\S\` escape handling
-- `generateIfcGuid`, `generateUuid`: new identifiers
+- `decodeIfcString` / `encodeIfcString`: STEP escape handling. The decoder reads `\X2\`, `\X4\`, `\X\`, `\S\` and the `\PA\`..`\PI\` code-page directives; the encoder writes `\X\`, `\X2\` and `\X4\`
+- `generateIfcGuid`, `generateUuid`: new identifiers; pass an optional `RandomSource` (a seeded `() => number`) for reproducible output
+- `uuidV5(namespace, name)`: name-based (version 5) UUID; `uuidFromSeed`: deterministic version-4-shaped UUID from a seed. Compose either with `uuidToIfcGuid` for a stable GlobalId
 - `uuidToIfcGuid`, `ifcGuidToUuid`: convert between UUIDs and 22-char IFC GUIDs
 - `isValidIfcGuid`, `isValidUuid`: validation
+- STEP text helpers: `decodeStepStringLiteral` (one literal's contents, doublings and directives included), `stepStringLiteralEnd`, `isStepPageQuoteOperand`, `splitStepTopLevel` (split a parameter list at top-level commas), `isWhollyNumeric`
 - `parsePropertyValue`: turn a parsed STEP property value (typed arrays, `.T.`/`.F.`, enums) into a display string plus optional IFC type name. It does **not** decode `\X2\`-style escapes: every ifc-lite parse path already decodes exactly once, at the parse boundary, and decoding a second time would collapse an authored `\\` a second time. Pass a still-encoded literal through `decodeIfcString` first.
 
 ## Links

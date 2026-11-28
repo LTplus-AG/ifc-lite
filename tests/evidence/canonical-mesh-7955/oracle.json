@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "key": "native/smlib-adapter/src/mesh_canonical.cpp",
+  "mutation": "tests/evidence/canonical-mesh-7955/behaviour.oracle.patch",
+  "test": "rust/retained-native/tests/canonical_mesh_native.rs",
+  "why": "Reverse application drops the canonicalisation calls in tessellate_mesh, so the rebuilt worker returns meshes in SMLib's heap-address order: vertices out of (x, y, z) order, triangles unsorted and quads split away from their lowest vertex."
+}

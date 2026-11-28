@@ -8,7 +8,7 @@ Guide to setting up a development environment for IFClite.
 
 | Tool | Version | Purpose |
 |------|---------|---------|
-| Node.js | 22.13+ or 24.x | JavaScript runtime (`engines` in `package.json`) |
+| Node.js | 22.x from 22.13, or 24.x (not 23) | JavaScript runtime (`engines` in `package.json`) |
 | pnpm | 10.x (`engines` requires 10.0+) | Package manager (pinned via `packageManager: pnpm@10.8.1`) |
 | Rust | pinned nightly | WASM compilation; `rust-toolchain.toml` pins the nightly channel and the `wasm32-unknown-unknown` target, and rustup installs both automatically on first use in the repo |
 | wasm-pack | 0.12+ | WASM toolchain (only needed to rebuild WASM; see `pnpm build:wasm:fetch` below) |
@@ -144,7 +144,9 @@ ifc-lite/
 │   ├── clash/             # ifc-lite-clash
 │   ├── export/            # ifc-lite-export
 │   ├── ffi/               # ifc-lite-ffi (native bindings)
-│   └── wasm-bindings/     # ifc-lite-wasm (WASM crate)
+│   ├── wasm-bindings/     # ifc-lite-wasm (WASM crate)
+│   ├── python/            # ifclite-geom PyO3 wheel (excluded from the workspace)
+│   └── ...                # landxml, geometry-runtime, diff, cache, git, testkit, and more
 ├── packages/              # TypeScript packages (@ifc-lite/*)
 │   ├── parser/            # @ifc-lite/parser
 │   ├── geometry/          # @ifc-lite/geometry
@@ -158,7 +160,9 @@ ifc-lite/
 │   ├── viewer/            # Viewer app
 │   ├── viewer-embed/      # Embeddable viewer
 │   ├── server/            # HTTP server (Rust)
-│   └── landing/           # Landing page
+│   ├── landing/           # Landing page
+│   └── ...                # cloud-service, report-service, autodesk-service, ...
+├── examples/              # Example projects (also pnpm workspace members)
 └── docs/                  # Documentation (MkDocs)
 ```
 
@@ -224,7 +228,7 @@ cargo doc -p ifc-lite-core --open
 
 # Generate without opening
 cargo doc --no-deps
-# Output: target/doc/index.html
+# Output: target/doc/<crate_name>/index.html (e.g. target/doc/ifc_lite_core/)
 ```
 
 **MkDocs (Project Documentation):**
@@ -302,9 +306,12 @@ cd packages/new-package
 
 # Initialize
 pnpm init
-
-# Add to workspace (update root package.json if needed)
 ```
+
+`pnpm-workspace.yaml` already includes `packages/*`, so the new directory is a
+workspace member with no further registration. A published package also needs
+a `README.md` (`pnpm docs:check-readmes`), a changeset (`pnpm changeset`), and
+an API-surface snapshot entry (`pnpm api-surface:update`).
 
 ### Updating Dependencies
 
@@ -543,7 +550,10 @@ one thing to check before you run it, see
 - All tests pass
 - Code builds successfully
 - Clear description of changes
-- Reference related issues if applicable
+- `Closes #<issue>` naming an issue labelled `ready`, unless a maintainer labels
+  the PR `unqueued`; the `Issue queue` check fails otherwise (see
+  [Picking what to work on](https://github.com/LTplus-AG/ifc-lite/blob/main/CONTRIBUTING.md#picking-what-to-work-on))
+- A signed CLA (the `CLA` check; see [CLA](cla.md))
 
 ## Next Steps
 

@@ -27,22 +27,12 @@ function resolveEntityRefFromState(
     return { modelId: resolved.modelId, expressId: resolved.expressId };
   }
 
-  // A #5050 streamed federation publishes one component at a time after its
-  // range has been reserved, but before its final semantic document is ready
-  // to enter `models`. Preserve store/overlay precedence above; only this
-  // short-lived, published-but-not-yet-installed window needs the registry.
-  // Without it a pick on the new component is attributed to the anchor by the
-  // single-model fallback below.
-  const progressive = federationRegistry.fromGlobalId(globalId);
-  if (progressive) return progressive;
+  // A streaming model can publish geometry before its semantic document or
+  // final parse range enters the store (#5050). Require published ownership.
+  const published = federationRegistry.fromGlobalId(globalId);
+  if (published) return published;
 
-  // Fallback: single-model mode where offset is 0 → globalId === expressId
-  if (state.models.size > 0) {
-    const firstModelId = state.models.keys().next().value as string;
-    return { modelId: firstModelId, expressId: globalId };
-  }
-
-  // Legacy single-model mode: no models in federation map yet.
+  // Legacy single-model mode or an ID with no known owner.
   // 'legacy' is recognized by PropertiesPanel for fallback to legacy ifcDataStore.
   return { modelId: 'legacy', expressId: globalId };
 }
@@ -52,8 +42,8 @@ function resolveEntityRefFromState(
  *
  * Resolution order:
  *  1. resolveGlobalIdFromModels (offset-based range check — the canonical path)
- *  2. First loaded model as fallback (single-model, offset 0)
- *  3. 'legacy' sentinel for truly legacy single-model mode (no federation map)
+ *  2. The federation registry for published IDs outside the store ranges
+ *  3. 'legacy' sentinel for legacy single-model mode or an unowned ID
  *
  * ALWAYS returns an EntityRef — never null.  This ensures all callers
  * (multi-select, basket, context menu) can proceed without null-guards.

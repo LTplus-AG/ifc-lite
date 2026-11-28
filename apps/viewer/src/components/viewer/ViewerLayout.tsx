@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 import { PersistentToolHosts } from './PersistentToolHosts';
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels';
 import type { PanelImperativeHandle } from 'react-resizable-panels';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -13,7 +13,7 @@ import { RibbonToolbar } from './ribbon/RibbonToolbar';
 import { HierarchyPanel } from './HierarchyPanel';
 import { StatusBar } from './StatusBar';
 import { FlavorDialogHost } from '@/components/extensions/FlavorDialogHost';
-import { AgentBridgeHost } from '@/components/agent-bridge/AgentBridgeHost';
+import { lazyChunk } from '@/lib/lazy-chunk';
 import { ViewportContainer } from './ViewportContainer';
 import { ModelToolRail } from './model/ModelToolRail';
 import { ModelWorkspaceSplit } from './model/ModelWorkspaceSplit';
@@ -43,6 +43,8 @@ import { BottomStrip } from './BottomStrip';
 import { loadBottomStripOrientation, persistBottomStripOrientation } from '@/lib/panels/bottom-strip-persistence';
 import { useModelHierarchyWidth } from './model/useModelHierarchyWidth';
 import { LEFT_PANEL_DEFAULT_SIZE } from '@/store/layoutReset';
+
+const AgentBridgeHost = lazyChunk(() => import('@/components/agent-bridge/AgentBridgeHost').then(m => ({ default: m.AgentBridgeHost })));
 
 /** Hierarchy's minimum width, % of the main row. */
 const LEFT_PANEL_MIN_SIZE = 10;
@@ -236,7 +238,7 @@ export function ViewerLayout() {
         <KeyboardShortcutsDialog open={shortcutsDialog.open} onClose={shortcutsDialog.close} initialTab={shortcutsDialog.tab} />
         <SettingsDialogHost />
         <FlavorDialogHost />
-        <AgentBridgeHost />
+        <Suspense fallback={null}><AgentBridgeHost /></Suspense>
         <ConfirmDialogHost />
         <EntityContextMenu />
         <HoverTooltip />

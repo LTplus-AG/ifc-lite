@@ -38,14 +38,14 @@
       "metric": "raw-bytes",
       "unit": "bytes",
       "description": "summed raw size of every JS file dist/index.html loads eagerly: the module <script src> plus <link rel=modulepreload>",
-      "ceiling": 13618673,
+      "ceiling": 13594566,
       "tolerance": {
         "kind": "relative",
         "value": 0.001
       },
       "provenance": {
-        "commit": "356ece76880b114fa7bc3a8f85779c927bea1885",
-        "measuredAt": "2026-11-24T10:11:32.761Z"
+        "commit": "cdb7f156e4e879fedb8b0235da921fd599be1bdf",
+        "measuredAt": "2026-11-27T11:29:57.072Z"
       }
     },
     {
@@ -53,14 +53,14 @@
       "metric": "raw-bytes",
       "unit": "bytes",
       "description": "raw size of apps/viewer/dist/assets/parser.worker-*.js, the parser worker's own chunk (chunks it imports on demand are not counted)",
-      "ceiling": 1475391,
+      "ceiling": 1471372,
       "tolerance": {
         "kind": "relative",
         "value": 0.001
       },
       "provenance": {
-        "commit": "356ece76880b114fa7bc3a8f85779c927bea1885",
-        "measuredAt": "2026-11-24T10:11:32.761Z"
+        "commit": "cdb7f156e4e879fedb8b0235da921fd599be1bdf",
+        "measuredAt": "2026-11-27T11:29:57.072Z"
       }
     }
   ]

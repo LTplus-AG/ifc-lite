@@ -8,18 +8,17 @@
 > first if you are short of time: it is the part that needs an answer.
 >
 > **In-tree:** the Rust diff engine, landed under #8042 while this was in draft
-> (§8). That is the only part of this spec set implemented on `main`.
+> (§8), and the `rust/git` crate (`ifc-lite-git`): the content-addressed node
+> layer (#8265), the keyed tree and entity → node adapter (#9331) and the
+> pinned deduplication boundary (`rust/git/tests/dedup_boundary.rs`, #9465).
+> It uses BLAKE3 with the `wasm32_simd` feature and the `IGN1` / `IGT1` magic
+> bytes described in §6.1.
 >
-> **Not in this tree, and cited by revision rather than claimed:** a `rust/git`
-> crate exists on an external branch —
-> [`bruadam/ifc-lite@65b5982b7`](https://github.com/bruadam/ifc-lite/commit/65b5982b77c0794df588734c59cdd22c8e950c58),
-> branch `feat/rust-git-object-model`, not proposed upstream yet. Every
-> statement here about node encoding, chunk boundaries, the `wasm32_simd` build
-> or a measured count refers to **that revision** and **cannot be verified from
-> this PR**, whose tree contains no `rust/git`. Where such a claim appears it
-> names the file it came from. No runtime, browser or external-branch benchmark
-> is claimed: the §6.1 figures are a native micro-benchmark on one machine,
-> reported as such.
+> **Cited by revision:** the crate was first written on an external branch,
+> [`bruadam/ifc-lite@65b5982b7`](https://github.com/bruadam/ifc-lite/commit/65b5982b77c0794df588734c59cdd22c8e950c58).
+> The §6.1 measurements were taken on that revision. They are a native
+> micro-benchmark on one machine, reported as such; no runtime or browser
+> benchmark is claimed.
 
 ## 1. North star
 
@@ -97,7 +96,7 @@ section got it wrong.** It said the preserved original owner is the commit
 author. That credits one party's changed content to another: `modified_history`
 writes `OwningUser`/`OwningApplication` from the *original* and
 `LastModifyingUser`/`LastModifyingApplication` from the *exporting* chain
-(`rust/export/src/plan/identity.rs:254-269`). So where A owns an object and B
+(`rust/export/src/plan/identity.rs:257-272`). So where A owns an object and B
 modifies it, A stays the owner and B is recorded as the modifier — and calling A
 the author of B's change inverts the one distinction #8154 took care to make.
 
@@ -260,8 +259,8 @@ preference of 23 October and the measurement below.
 a `node-hash-v1.md` under `@ifc-lite/provenance`. An earlier version of this
 heading said "DECIDED" for both halves. That was an overreach: the second half
 asserts where a format lives in someone else's published package, on the
-evidence of a crate that is **not proposed upstream**, and it is not mine to
-settle. It stays a proposal with its argument attached until it is accepted.
+evidence of a crate that was then **not proposed upstream** (it has since
+landed as `rust/git`, see the status note), and it is not mine to settle. It stays a proposal with its argument attached until it is accepted.
 
 Either way, **node-hash v0 stays frozen and untouched.** The reasoning follows,
 including the part of it that changed.
@@ -303,8 +302,7 @@ substantive one:
    figures, because those describe one long stream and this workload is the
    opposite: one hash per node, a few hundred bytes each, hundreds of thousands
    of them. Measured against a hardware-accelerated SHA-256 (`sha2` 0.10.9 with
-   its runtime feature detection, aarch64), on `bruadam/ifc-lite@65b5982b7` and so
-   not reproducible from this PR's tree:
+   its runtime feature detection, aarch64), on `bruadam/ifc-lite@65b5982b7`:
 
    | Input | BLAKE3 | SHA-256 | Ratio |
    | --- | --- | --- | --- |
@@ -325,11 +323,11 @@ substantive one:
    implementation while `.cargo/config.toml` enables `+simd128` for every other
    wasm32 build in the repo.
 
-   `rust/git` enables it as of `65b5982b7`, verified in both directions rather
-   than assumed: the `wasm32-unknown-unknown` build emits
-   `cargo::rustc-cfg=blake3_wasm32_simd` and the host build emits only
-   `blake3_neon`. Both observations are from that external revision, not from
-   this tree. The feature is inert off wasm32, because blake3's build script
+   `rust/git` enables it (`blake3 = { features = ["wasm32_simd"] }` in
+   `rust/git/Cargo.toml`), verified in both directions rather than assumed: the
+   `wasm32-unknown-unknown` build emits `cargo::rustc-cfg=blake3_wasm32_simd`
+   and the host build emits only `blake3_neon`. Both observations were made on
+   revision `65b5982b7`. The feature is inert off wasm32, because blake3's build script
    guards it with `if is_wasm32() && is_wasm32_simd()`.
 
    **Still not measured: the wasm ratio itself.** Only the native numbers above
@@ -546,9 +544,9 @@ pinned by parity fixtures.
 | --- | --- | --- |
 | 1 | **This docs skeleton** (`index.md` + mkdocs nav) | done |
 | 2 | Rust diff engine, ported byte-exact under #8042 | **done** (#8043 → #8105) |
-| 3 | `01-concepts.md`, `02-graph-object-model.md` | this PR |
+| 3 | `01-concepts.md`, `02-graph-object-model.md` | done |
 | 4 | `03-diff.md`, documenting the engine that landed in 2 | next |
-| 5 | Graph node model in Rust: GUID-agnostic node identity, with the shipped content-match tiers as its reconciliation fallback | after 4; §6.1 answered |
+| 5 | Graph node model in Rust: GUID-agnostic node identity, with the shipped content-match tiers as its reconciliation fallback | in progress: `rust/git` node layer (#8265), keyed tree + adapter (#9331), dedup boundary test (#9465) |
 | 6 | Authorship extraction across the four schemas | after 5 |
 | 7 | ~~**Per-property change tracking**, replacing set-level `pset:<Name>` keys~~ | **struck** — not a prerequisite, and the writer is already member-level (§6.3) |
 | 8 | **Delivery → layer adapter**: emit a delta layer against the party's previous delivery, with the match recorded in `identity_map` | after 6; the hand-over point to Layer PRs |

@@ -221,7 +221,8 @@ fn calendar_dates_and_zoned_times_round_trip_10879() {
     assert_eq!(warnings, parity_vectors().calendar_warnings);
     assert!(up.contains("#1=IFCCLASSIFICATION('Source','1','2024-02-29','Classification',$,$,$);"), "{up}");
     assert!(up.contains("#3=IFCIRREGULARTIMESERIESVALUE('2024-02-29T10:30:15.5+05:30',(IFCREAL(1.)));"), "{up}");
-    assert!(up.contains("#7=IFCCOSTVALUE('Estimate',$,$,$,'2024-02-29','2024-02-29','Materials',$,$,$);"), "{up}");
+    // #11199: ApplicableDate (#4) and FixedUntilDate (#8) are different dates, so a swap shows.
+    assert!(up.contains("#7=IFCCOSTVALUE('Estimate',$,$,$,'2024-02-29','2024-03-01','Materials',$,$,$);"), "{up}");
     for obsolete in ["IFCCALENDARDATE(", "IFCDATEANDTIME(", "IFCLOCALTIME(", "IFCCOORDINATEDUNIVERSALTIMEOFFSET("] {
         assert!(!up.contains(obsolete), "{up}");
     }
@@ -231,6 +232,7 @@ fn calendar_dates_and_zoned_times_round_trip_10879() {
     let merged = crate::export_merged(&[up.as_bytes()], &crate::MergedOptions { schema: down.schema.clone(), ..Default::default() });
     for output in [&step, &log, &merged] {
         assert!(output.contains("IFCCALENDARDATE(29,2,2024);"), "{output}");
+        assert!(output.contains("IFCCALENDARDATE(1,3,2024);"), "{output}");
         assert!(output.contains("IFCLOCALTIME(10,30,15.5,#"), "{output}");
         assert!(output.contains("IFCCOORDINATEDUNIVERSALTIMEOFFSET(5,30,.AHEAD.);"), "{output}");
     }
@@ -279,12 +281,12 @@ fn merged_dates_follow_the_written_classification_ids_10879() {
 }
 
 #[test]
-fn durations_warn_about_non_second_project_time_units_10879() {
+fn durations_scale_by_project_time_unit_11192() {
     let input = include_bytes!("../tests/fixtures/schema_duration_timeunit.ifc");
     let upgrade = crate::StepOptions { schema: Some("IFC4".to_owned()), ..Default::default() };
     let modern = crate::export_step(input, &upgrade).unwrap();
     for (source, schema, expected) in [
-        (input.as_slice(), "IFC4", ",'id',$,$,$,'PT10S',"),
+        (input.as_slice(), "IFC4", ",'id',$,$,$,'PT600S',"),
         (modern.as_bytes(), "IFC2X3", ",'id',$,$,$,10.,"),
     ] {
         let options = crate::StepOptions { schema: Some(schema.to_owned()), ..Default::default() };
@@ -293,7 +295,7 @@ fn durations_warn_about_non_second_project_time_units_10879() {
         let (merged, merge) = crate::export_merged_models(&[crate::MergedModel::new(source)], &crate::MergedOptions { schema: options.schema, ..Default::default() });
         for (output, warnings) in [(direct, direct_warnings), (logged, log.warnings), (merged, merge.warnings)] {
             assert!(output.contains(expected), "{output}");
-            assert!(warnings.iter().any(|warning| warning.contains("assumed seconds")), "{warnings:?}");
+            assert!(!warnings.iter().any(|warning| warning.contains("assumed seconds")), "{warnings:?}");
         }
     }
     let seconds = std::str::from_utf8(input).unwrap().replace("IFCUNITASSIGNMENT((#6))", "IFCUNITASSIGNMENT((#3))");
@@ -308,4 +310,70 @@ fn commented_typed_date_keeps_its_text_on_downgrade_10879() {
     let (out, dropped, _) = convert(line, "IFC4", "IFC2X3");
     assert_eq!(out, "#5=IFCPROPERTYSINGLEVALUE('Date',$,IFCTEXT('2024-01-01'),$);");
     assert_eq!(dropped, 0);
+}
+
+fn legacy_model(data: &str) -> String {
+    format!("ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t.ifc','',(''),(''),'','','');\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'P',$,$,$,$,$,$);\n{data}\nENDSEC;\nEND-ISO-10303-21;\n")
+}
+
+/// #11199: a legacy date record nothing references goes on an upgrade even when
+/// no slot converts, in the direct and the mutation-log writer. Twin of the TypeScript case.
+#[test]
+fn an_unreferenced_date_record_goes_without_a_slot_to_convert_11199() {
+    let input = legacy_model("#2=IFCCALENDARDATE(29,2,2024);\n#3=IFCLOCALTIME(10,30,$,$,$);");
+    for schema in ["IFC4", "IFC4X3"] {
+        let options = crate::StepOptions { schema: Some(schema.into()), ..Default::default() };
+        let (direct, stats, warnings) = crate::export_step_with_diagnostics(input.as_bytes(), &options).unwrap();
+        let (logged, log_stats) = crate::export_step_with_log(input.as_bytes(), &options, &crate::MutationLog::default()).unwrap();
+        for (output, written, warnings) in [(&direct, stats.written, &warnings), (&logged, log_stats.written, &log_stats.warnings)] {
+            assert!(!output.contains("=IFCCALENDARDATE(") && !output.contains("=IFCLOCALTIME("), "{schema}: {output}");
+            assert_eq!(written, output.lines().filter(|line| line.starts_with('#')).count(), "{schema}");
+            assert!(!warnings.iter().any(|w| w.contains("still referenced") || w.contains("readers may reject")), "{warnings:?}");
+            assert!(warnings.iter().any(|w| w == "2 legacy IFC2X3 date record(s) were omitted because no written record references them and the target schema does not declare their type: #2 (IFCCALENDARDATE), #3 (IFCLOCALTIME) (#11199)."), "{warnings:?}");
+        }
+    }
+}
+
+/// #11199: a clock whose minute or second the source left unset is written as
+/// 00 and reported. Twin of the TypeScript case.
+#[test]
+fn a_clock_with_an_unset_minute_or_second_is_reported_11199() {
+    let input = legacy_model("#2=IFCCALENDARDATE(29,2,2024);\n#4=IFCDATEANDTIME(#2,#5);\n#5=IFCLOCALTIME(10,$,$,$,$);\n#3=IFCIRREGULARTIMESERIESVALUE(#4,(IFCREAL(1.)));\n#6=IFCLOCALTIME(10,30,15.,$,$);\n#7=IFCDATEANDTIME(#2,#6);\n#8=IFCIRREGULARTIMESERIESVALUE(#7,(IFCREAL(2.)));");
+    for schema in ["IFC4", "IFC4X3"] {
+        let options = crate::StepOptions { schema: Some(schema.into()), ..Default::default() };
+        let (output, _, warnings) = crate::export_step_with_diagnostics(input.as_bytes(), &options).unwrap();
+        assert!(output.contains("#3=IFCIRREGULARTIMESERIESVALUE('2024-02-29T10:00:00',(IFCREAL(1.)));"), "{output}");
+        assert!(output.contains("#8=IFCIRREGULARTIMESERIESVALUE('2024-02-29T10:30:15',(IFCREAL(2.)));"), "{output}");
+        assert!(warnings.contains(&"1 time value(s) wrote an unset minute or second as 00, a precision the IFC2X3 source does not state: IFCIRREGULARTIMESERIESVALUE.TimeStamp (#11199).".to_owned()), "{warnings:?}");
+    }
+}
+
+/// #11199: a date record whose only referrer the upgrade proxies (IFC4) or
+/// omits (IFC4X3) is not written either, and is named. Twin of the TypeScript case.
+#[test]
+fn a_date_record_whose_referrer_is_proxied_or_omitted_is_named_11199() {
+    let input = legacy_model("#2=IFCCALENDARDATE(29,2,2024);\n#10=IFCTIMESERIESSCHEDULE('1YvctVUKr0kugbFTf53O9L',$,'S',$,$,(#2),.WEEKLY.,$);");
+    for schema in ["IFC4", "IFC4X3"] {
+        let options = crate::StepOptions { schema: Some(schema.into()), ..Default::default() };
+        let (output, _, warnings) = crate::export_step_with_diagnostics(input.as_bytes(), &options).unwrap();
+        assert!(!output.contains("=IFCCALENDARDATE(") && !output.contains("#10=IFCTIMESERIESSCHEDULE"), "{schema}: {output}");
+        let named = warnings.join("\n");
+        assert!(named.contains("were omitted because no written record references them and the target schema does not declare their type: #2 (IFCCALENDARDATE)"), "{schema}: {named}");
+        assert!(!named.contains("still referenced"), "{schema}: {named}");
+    }
+}
+
+#[test]
+fn discarded_timestamp_carrier_is_named_unless_consumed_or_retained_11199() {
+    for other in ["", "#4=IFCVENDORRESOURCE(#2);", "#4=IFCCLASSIFICATION('Source','1',#2,'Other');"] {
+        let input = legacy_model(&format!("#2=IFCCALENDARDATE(29,2,2024);\n#3=IFCIRREGULARTIMESERIESVALUE(#2,(IFCREAL(1.)));\n{other}"));
+        for schema in ["IFC4", "IFC4X3"] {
+            let options = crate::StepOptions { schema: Some(schema.into()), ..Default::default() };
+            let (output, _, warnings) = crate::export_step_with_diagnostics(input.as_bytes(), &options).unwrap();
+            assert!(output.contains("#3=IFCIRREGULARTIMESERIESVALUE($,(IFCREAL(1.)));"), "{output}");
+            assert_eq!(output.contains("#2=IFCCALENDARDATE"), other.contains("VENDOR"));
+            if other.contains("CLASSIFICATION") { assert!(output.contains("'2024-02-29'")); }
+            assert_eq!(warnings.join("\n").contains("#2 (IFCCALENDARDATE)"), other.is_empty(), "{warnings:?}");
+        }
+    }
 }

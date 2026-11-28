@@ -28,14 +28,14 @@ const processor = new GeometryProcessor({ preferNative: true });
 ```
 
 - `isTauri()` — detects a Tauri host (`window.__TAURI_INTERNALS__`).
-- `IPlatformBridge` — the generic contract a native bridge implements. **This is the stable extension point**: you can supply your own implementation for a non-Tauri host.
+- `IPlatformBridge` — the generic contract a native bridge implements. A non-Tauri host can implement it and call its own implementation directly, but `GeometryProcessor` has no option to accept one: it only ever uses the bundled `NativeBridge`, and only inside Tauri.
 - `NativeBridge` — the bundled Tauri implementation of `IPlatformBridge`, loaded lazily via `createPlatformBridge()` only when `isTauri()` is true.
 
 `@tauri-apps/api` is an **optional dependency** of `@ifc-lite/geometry`, so web consumers never pull it in. Your desktop shell provides it (and the matching native commands below).
 
 ## Host command contract (Tauri)
 
-If you use the bundled `NativeBridge`, your Tauri shell must register these Rust commands and emit these events. (For a different host, implement `IPlatformBridge` directly and this contract does not apply.)
+If you use the bundled `NativeBridge`, your Tauri shell must register these Rust commands and emit these events. (A different host that implements `IPlatformBridge` itself calls that implementation directly, outside `GeometryProcessor`, and this contract does not apply.)
 
 **Commands (`invoke`):**
 
@@ -56,6 +56,7 @@ If you use the bundled `NativeBridge`, your Tauri shell must register these Rust
 | `geometry-batch` | A batch of mesh data with its progress |
 | `geometry-packed-batch` | A packed batch of mesh data |
 | `geometry-color-update` | Per-element color updates |
+| `native-shard-ready` | `{ shardIndex }` when a packed cache shard is written during `get_geometry_streaming_from_path`; without it the bridge falls back to a timed poll |
 
 Tauri event names are global to the app, so `get_geometry_streaming` receives a `jobId` (a random string, one per stream) and the shell should copy it into every event payload it emits for that stream as `jobId`. The bridge drops a tagged event whose `jobId` belongs to another stream, so two streams running at once never receive each other's batches. Events without a `jobId` are still accepted for older shells, but such a shell must not run two streams at once.
 

@@ -52,6 +52,7 @@ import { fetchOpenPrs } from './lib/open-pr-fetch.mjs';
 const SCRIPTS_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(SCRIPTS_DIR, '..');
 const DEFAULT_WORKFLOW = join(REPO_ROOT, '.github/workflows/test.yml');
+const REVIEW_SIGNAL_CONFIG = join(SCRIPTS_DIR, 'pr-review-signal.config.json');
 // This scan's OWN workflow, for the cadence report (#3776).
 const OWN_WORKFLOW_FILE = 'dirty-pr-scan.yml';
 const OWN_WORKFLOW = join(REPO_ROOT, '.github/workflows', OWN_WORKFLOW_FILE);
@@ -74,15 +75,6 @@ function cronMinutesFrom(path) {
     return FALLBACK_CRON_MINUTES;
   }
 }
-
-// Same exclusion as scripts/pr-review-signal.config.json's `excludeJobKeys`,
-// and the same reason: the `test` aggregate `needs:` every other job and
-// publishes no check run until all finish, so requiring it here would flag a
-// PR that is merely mid-run as though it were conflicted-and-silent. This
-// scan runs on a cron cadence rather than right after a push, so that race is
-// narrower than #3312's, but it is not zero -- a PR can go dirty seconds after
-// a push the cron catches mid-flight.
-const EXCLUDE_JOB_KEYS = ['test'];
 
 /** @param {string[]} argv */
 function parseArgs(argv) {
@@ -206,12 +198,22 @@ async function main() {
     );
   }
   const workflowText = readFileSync(args.workflow, 'utf8');
-  const required = expandJobNames(workflowText, { exclude: EXCLUDE_JOB_KEYS });
+  // Use the review signal's presence policy for the aggregate and advisory jobs.
+  let excludeJobKeys;
+  try {
+    ({ excludeJobKeys = [] } = JSON.parse(readFileSync(REVIEW_SIGNAL_CONFIG, 'utf8')));
+    if (!Array.isArray(excludeJobKeys) || excludeJobKeys.some(key => typeof key !== 'string')) {
+      throw new TypeError('excludeJobKeys must be an array of job keys');
+    }
+  } catch (err) {
+    throw new DirtyPrScanError('BAD_CONFIG', `Could not read exclusions from ${REVIEW_SIGNAL_CONFIG}: ${err.message}`);
+  }
+  const required = expandJobNames(workflowText, { exclude: excludeJobKeys });
   const baseBranches = pullRequestBaseBranches(workflowText);
   // Same exclude list as `expandJobNames` above -- passing it to only one of
   // the two derivations is a silent, asymmetric failure: the lane would stay
   // required while its wholesale-skip alias disappears.
-  const aliases = matrixSkipAliases(workflowText, { exclude: EXCLUDE_JOB_KEYS });
+  const aliases = matrixSkipAliases(workflowText, { exclude: excludeJobKeys });
 
   let prs;
   if (args.stateFile) {

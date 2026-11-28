@@ -11,6 +11,8 @@ import type { BridgePermission, BridgeToolDescriptor } from './bridge-protocol.j
 export interface TabBridgeOptions {
   /** Port to bind on 127.0.0.1; 0 picks a free one. */
   port: number;
+  /** When `port` is taken, try its neighbours and then any free port (`fallbackPorts`) instead of failing. */
+  portFallback?: boolean;
   /** Browser origins allowed to connect (exact scheme://host[:port]). */
   allowedOrigins: readonly string[];
   /** `--read-only`: tools the tab labels mutating stay hidden and refused, whatever the tab grants. */
@@ -59,6 +61,8 @@ export const DEFAULT_CLOSE_GRACE_MS = 250;
 
 /** One unpaired connection's claim on the handshake slots. */
 export interface Slot {
+  origin?: string;
+  proof?: string;
   socket: Duplex;
   ws: WebSocket | null;
   paired: boolean;

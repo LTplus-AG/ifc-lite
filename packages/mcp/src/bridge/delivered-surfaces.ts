@@ -1,0 +1,156 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * What the agent sent to the paired tab with `tab_show_ui`, so a `ui-event`
+ * coming back can be checked against it. Without this a tab could raise an
+ * event for a surface the agent never showed and carry any prompt; with
+ * `--channel` that prompt reaches the agent framed as the user's words.
+ *
+ * An event is admitted only when its surface id names a surface the agent
+ * sent to this tab, and its name is `ask` or the name of an event action
+ * (`{ event: { name } }`) in that surface. Anything else is dropped.
+ *
+ * An admitted event's prompt is VERIFIED only when it is follow-up text the
+ * agent wrote in that surface: a follow-up's `prompt`, an event action's
+ * `userMessage`, or an `ask` action's `context.prompt`. Labels
+ * never verify (the renderer never sends one, and agents put entity names in
+ * them), nor do data values (entity names, property values, legend rows,
+ * `updateDataModel`), which may come from the model. Any other prompt, typed
+ * into a field or computed by the renderer, is still delivered, but marked
+ * unverified, and the agent reads it as quoted data rather than as the
+ * user's words (`channelParams`).
+ *
+ * A surface is recorded when its frame is sent (past the session's own checks),
+ * not when the tab confirms it: a tab
+ * may store and show it even if its answer is lost or the call times out,
+ * and what is recorded is only text the agent wrote.
+ */
+
+import { ASK_EVENT } from '@ifc-lite/a2ui';
+import { isRecord } from './json-bounds.js';
+import { AGENT_SURFACE_PANELS, a2uiSurfaceId, type BridgeUiEvent } from './ui-events.js';
+
+/**
+ * Surface ids remembered; the oldest is forgotten past this. The tab keeps
+ * 16 panels (agent-surfaces.ts) and one call can name several ids.
+ */
+export const MAX_DELIVERED_SURFACES = 256;
+/** Follow-up texts and event names remembered per surface, each; the oldest go first. */
+export const MAX_SURFACE_ENTRIES = 1024;
+
+function emptySurface(): Surface {
+  return { prompts: new Set(), events: new Set() };
+}
+
+/** What one surface may send back. */
+interface Surface {
+  prompts: Set<string>;
+  events: Set<string>;
+}
+
+/** Keep `value`, dropping the oldest entry past the cap: what the agent sent last stays admitted. */
+function keep(set: Set<string>, value: string): void {
+  set.delete(value);
+  set.add(value);
+  if (set.size > MAX_SURFACE_ENTRIES) set.delete(set.values().next().value as string);
+}
+
+function add(set: Set<string>, value: string): void {
+  const trimmed = value.trim();
+  if (trimmed) keep(set, trimmed);
+}
+
+function addString(set: Set<string>, value: unknown): void {
+  if (typeof value === 'string') add(set, value);
+}
+
+/**
+ * Follow-up text and event names from the agent's component definitions:
+ * a follow-up's `prompt` (`{ label, prompt }`), and an event action's
+ * `userMessage` and `context.prompt`.
+ */
+function collect(message: unknown, into: Surface): void {
+  if (!isRecord(message)) return;
+  const body = message.createSurface ?? message.updateComponents;
+  if (!isRecord(body)) return;
+  const components = body.components;
+  if (!Array.isArray(components)) return;
+  for (const component of components) {
+    if (!isRecord(component)) continue;
+    if (component.component === 'ActionBar' && Array.isArray(component.followUps)) {
+      for (const entry of component.followUps) {
+        if (isRecord(entry) && 'label' in entry) addString(into.prompts, entry.prompt);
+      }
+    }
+    if (component.component !== 'Button' || !isRecord(component.action)) continue;
+    const event = component.action.event;
+    if (!isRecord(event) || typeof event.name !== 'string') continue;
+    addString(into.events, event.name);
+    addString(into.prompts, event.userMessage);
+    if (event.name === ASK_EVENT && isRecord(event.context)) addString(into.prompts, event.context.prompt);
+  }
+}
+
+/**
+ * Refused, or admitted with the event to deliver: its name trimmed, and its
+ * prompt trimmed when verified (as the agent wrote it) or dropped when blank.
+ */
+type SurfaceCheck = { refused: string } | { promptVerified: boolean; event: BridgeUiEvent };
+
+export class DeliveredSurfaces {
+  /** Surface id -> what the agent sent for it. Insertion order is age. */
+  private readonly surfaces = new Map<string, Surface>();
+  /** Surface ids in each panel the tab may still display. */
+  private readonly panels: string[][] = [];
+
+  /**
+   * Remember the messages of one `tab_show_ui` call. The tab shows a call as
+   * one panel, but each click belongs to its rendering surface. Ids are unioned across calls and
+   * never forgotten on `deleteSurface`: the tab keeps an older panel on
+   * screen, and its buttons stay clickable.
+   */
+  record(messages: readonly unknown[]): void {
+    const ids = new Set(messages.map(a2uiSurfaceId).filter((id): id is string => id !== null));
+    if (ids.size === 0) return;
+    this.panels.push([...ids]);
+    if (this.panels.length > AGENT_SURFACE_PANELS) this.panels.shift();
+    for (const message of messages) {
+      const id = a2uiSurfaceId(message);
+      if (!id) continue;
+      const surface = this.surfaces.get(id) ?? emptySurface();
+      collect(message, surface);
+      // Re-inserted, so a surface the agent keeps updating is the newest.
+      this.surfaces.delete(id);
+      this.surfaces.set(id, surface);
+    }
+    // Forget the oldest ids, never one this call named or one that names a panel the tab may still show.
+    if (this.surfaces.size <= MAX_DELIVERED_SURFACES) return;
+    const kept = new Set(this.panels.flat());
+    for (const id of this.surfaces.keys()) {
+      if (this.surfaces.size <= MAX_DELIVERED_SURFACES) break;
+      if (!kept.has(id)) this.surfaces.delete(id);
+    }
+  }
+
+  /** Whether `event` is admitted and, if so, whether its prompt is verified (see the module header). */
+  check(event: BridgeUiEvent): SurfaceCheck {
+    const surface = this.surfaces.get(event.surfaceId);
+    if (!surface) return { refused: 'names a surface the agent did not show in this tab' };
+    const name = event.name.trim();
+    if (name !== ASK_EVENT && !surface.events.has(name)) return { refused: 'names an event that surface does not raise' };
+    const { prompt: raw, ...rest } = event;
+    const prompt = raw?.trim();
+    // A blank prompt is no prompt: nothing to pass on as the user's words.
+    if (!prompt) return { promptVerified: true, event: { ...rest, name } };
+    const promptVerified = surface.prompts.has(prompt);
+    return { promptVerified, event: { ...rest, name, prompt: promptVerified ? prompt : raw } };
+  }
+
+  /** A different tab paired: what the previous one was shown does not carry over. */
+  clear(): void {
+    this.surfaces.clear();
+    this.panels.length = 0;
+  }
+}

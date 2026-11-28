@@ -13,6 +13,7 @@
  */
 
 import '@/test/setup-dom.js';
+import { sourceWatermark } from '@/utils/source-watermark';
 import { describe, it, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
@@ -61,7 +62,7 @@ async function seed(): Promise<IfcDataStore> {
     bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
   );
   useViewerStore.setState({
-    models: new Map([['m1', { id: 'm1', name: 'zones.ifc', ifcDataStore: store, visible: true } as never]]),
+    models: new Map([['m1', { id: 'm1', name: 'zones.ifc', idOffset: 0, maxExpressId: sourceWatermark(store), ifcDataStore: store, visible: true } as never]]),
     zoneSets: [ZONE_SET],
     zoneAssignments: new Map([[WALL_ID, {
       'set-1': { zoneId: 'z-a', zoneName: 'Takt A', straddles: false, touchedZoneIds: ['z-a'] },
@@ -254,9 +255,13 @@ describe('ZonesPanel: exporting the table', () => {
 
       assert.equal(downloads.length, 1, 'the CSV button downloaded nothing');
       assert.equal(downloads[0].name, 'Takt areas-zone-quantities.csv');
-      const text = await (pending as Blob | null)?.text();
-      assert.ok(text?.startsWith('GlobalId,ExpressId,Model'), `unexpected header: ${text?.slice(0, 60)}`);
-      assert.match(text ?? '', /0Wall00000000000000042/);
+      const content = await (pending as Blob | null)?.arrayBuffer();
+      assert.ok(content, 'the CSV blob has content');
+      const bytes = new Uint8Array(content);
+      assert.deepEqual([...bytes.subarray(0, 3)], [0xef, 0xbb, 0xbf], 'the downloaded CSV begins with a UTF-8 BOM');
+      const text = new TextDecoder('utf-8', { ignoreBOM: true }).decode(bytes.subarray(3));
+      assert.ok(text.startsWith('GlobalId,ExpressId,Model'), `unexpected header: ${text.slice(0, 60)}`);
+      assert.match(text, /0Wall00000000000000042/);
     } finally {
       (URL as { createObjectURL: (b: Blob) => string }).createObjectURL = originalCreate;
       HTMLAnchorElement.prototype.click = originalClick;

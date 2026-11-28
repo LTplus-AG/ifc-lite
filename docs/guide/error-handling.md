@@ -34,7 +34,7 @@ The STEP parser degrades safely on malformed input. It rejects a bad record with
 an `Err`, skips unparseable bytes and continues scanning to the next valid
 entity, and never panics, hangs, or overflows the stack on hostile bytes. This
 is covered by malformed-input regression tests and a coverage-guided fuzz target
-(`rust/core/fuzz/`); see the testing guide for how to run the fuzzer.
+(`rust/core/fuzz/`); see the [testing guide](../contributing/testing.md) for how to run the fuzzer.
 
 At the WASM boundary, a hard failure surfaces as a thrown JavaScript error. Wrap
 calls that ingest untrusted files in `try/catch`.

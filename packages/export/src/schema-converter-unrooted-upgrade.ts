@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 
 import { StructuralDiagnostics } from './schema-converter-structural-diagnostics.js';
+import type { InverseClaims } from './merged-inverse-claims.js';
 import { getSchemaRegistryForVersion } from '@ifc-lite/parser';
 import { splitTopLevelStepArguments } from './step-argument-parser.js';
 import { frameArgs, stepRecordHead, stepRecordFrame, withFrameArgs, type StepRecordFrame } from './step-record-frame.js';
@@ -21,7 +22,6 @@ type Group = { id: number; remaining: number; minimum: number };
 type Member = { group: Group; lost: boolean };
 
 type RegistrySchema = 'IFC2X3' | 'IFC4' | 'IFC4X3';
-type UpgradeSchema = 'IFC4' | 'IFC4X3';
 
 const layouts = new Map<RegistrySchema, Map<string, readonly Attribute[]>>();
 
@@ -58,7 +58,7 @@ function record(line: string): OutputRecord | undefined {
 }
 
 /** Collect direct omissions only from the source model that is being upgraded. */
-export function noteUpgradeSeed(line: string, seeds: Set<number>, from: IfcSchemaVersion, to: IfcSchemaVersion): void {
+function noteUpgradeSeed(line: string, seeds: Set<number>, from: IfcSchemaVersion, to: IfcSchemaVersion): void {
   if (!removesObsoleteResources(from, to)) return;
   const head = stepRecordHead(line);
   if (!head) return;
@@ -93,7 +93,7 @@ function slot(value: string, attribute?: Attribute, narrowAggregates = true): Sl
   return { value, members, optional: attribute?.optional ?? false, minimum: members ? attribute?.arrayBounds?.[0] ?? 1 : 1 };
 }
 
-function readSlots(rec: OutputRecord, to: UpgradeSchema): Slot[] | undefined {
+function readSlots(rec: OutputRecord, to: RegistrySchema): Slot[] | undefined {
   const values = rec.frame ? splitTopLevelStepArguments(rec.raw, Number.MAX_SAFE_INTEGER) : null;
   const target = attributes(rec.type, to);
   // Verbatim records and varying actions left unconverted in IFC4 keep their
@@ -107,7 +107,7 @@ function readSlots(rec: OutputRecord, to: UpgradeSchema): Slot[] | undefined {
   return values.map((value, index) => slot(value, layout[index], narrow));
 }
 
-function indexRequiredMembers(rec: OutputRecord, users: Map<number, Member[]>, to: UpgradeSchema): void {
+function indexRequiredMembers(rec: OutputRecord, users: Map<number, Member[]>, to: RegistrySchema): void {
   // Without a usable layout a lost reference makes the record unsafe to keep.
   for (const part of readSlots(rec, to) ?? [slot(rec.raw)]) {
     if (part.optional || part.minimum === 0) continue;
@@ -125,7 +125,7 @@ function indexRequiredMembers(rec: OutputRecord, users: Map<number, Member[]>, t
   }
 }
 
-function cascadeOmissions(records: Iterable<OutputRecord | undefined>, seeds: ReadonlySet<number>, to: UpgradeSchema): Set<number> {
+function cascadeOmissions(records: Iterable<OutputRecord | undefined>, seeds: ReadonlySet<number>, to: RegistrySchema): Set<number> {
   const dropped = new Set(seeds);
   const users = new Map<number, Member[]>();
   for (const rec of records) {
@@ -144,8 +144,8 @@ function cascadeOmissions(records: Iterable<OutputRecord | undefined>, seeds: Re
 }
 
 /** Preview required-reference losses on the target layouts of an unedited source. */
-export function previewUpgradeDependents(store: SourceStore, from: IfcSchemaVersion, to: IfcSchemaVersion): Set<number> {
-  const seeds = new Set<number>();
+export function previewUpgradeDependents(store: SourceStore, from: IfcSchemaVersion, to: IfcSchemaVersion, boundaryIds: readonly number[]): Set<number> {
+  const seeds = new Set(boundaryIds);
   if (!removesObsoleteResources(from, to) || from === 'IFC5' || (to !== 'IFC4' && to !== 'IFC4X3')) return seeds;
   const routeOf = (type: string) => missingTypeRoute(type, from, to, attributes(type, from) !== undefined,
     attributes(convertEntityType(type, from, to), to) !== undefined);
@@ -157,7 +157,7 @@ export function previewUpgradeDependents(store: SourceStore, from: IfcSchemaVers
   if (seeds.size === 0) return seeds;
 
   const styles = StyleFlatten.fromStore(store, from, to);
-  const enums = new EnumReconciliation(true, [store], new StructuralDiagnostics(true));
+  const enums = new EnumReconciliation(true, new StructuralDiagnostics(true));
   enums.structural.fromStore(store, from, to, source);
   let nextId = getMaxExpressId(getCompleteEntityIndex(store)) + 1;
   enums.structural.ids = () => nextId++;
@@ -181,7 +181,7 @@ export function previewUpgradeDependents(store: SourceStore, from: IfcSchemaVers
   return dropped;
 }
 
-function rewrite(rec: OutputRecord, dropped: ReadonlySet<number>, to: UpgradeSchema): string {
+function rewrite(rec: OutputRecord, dropped: ReadonlySet<number>, to: RegistrySchema): string {
   if (!rec.frame || !referencesAnyExpressId(rec.raw, dropped)) return rec.line;
   const parts = readSlots(rec, to);
   if (!parts) return rec.line;
@@ -194,30 +194,69 @@ function rewrite(rec: OutputRecord, dropped: ReadonlySet<number>, to: UpgradeSch
 }
 
 /** Run after conversion so every reference is in the final id space and slot. */
-export function pruneUpgrade(lines: string[], seeds: ReadonlySet<number>, to: IfcSchemaVersion, onOmitted?: (id: number) => void): string[] {
-  if (seeds.size === 0 || (to !== 'IFC4' && to !== 'IFC4X3')) return [];
+function pruneUpgrade(lines: string[], seeds: ReadonlySet<number>, to: IfcSchemaVersion, onOmitted?: (id: number) => void, issue = to === 'IFC4' ? 10970 : 10971): string[] {
+  if (seeds.size === 0) return [];
+  // IFC5-labelled STEP uses IFC4X3 mappings. Only the assignment pass has
+  // concrete omitted IDs for this target; there is no IFC5 EXPRESS registry.
+  const layout = to === 'IFC5' ? 'IFC4X3' : to;
   const records = lines.map(record);
-  const dropped = cascadeOmissions(records, seeds, to);
+  const dropped = cascadeOmissions(records, seeds, layout);
   const warnings: string[] = [];
   let next = 0;
   for (const [index, rec] of records.entries()) {
     if (rec && dropped.has(rec.id)) {
       onOmitted?.(rec.id);
       const reason = seeds.has(rec.id) ? `the ${to} schema does not declare its type` : `a required ${to} attribute lost a reference`;
-      warnings.push(`#${rec.id} (${rec.type}) was omitted because ${reason} (#${to === 'IFC4' ? 10970 : 10971}).`);
+      warnings.push(`#${rec.id} (${rec.type}) was omitted because ${reason} (#${issue}).`);
     } else {
-      lines[next++] = rec ? rewrite(rec, dropped, to) : lines[index];
+      lines[next++] = rec ? rewrite(rec, dropped, layout) : lines[index];
     }
   }
   lines.length = next;
   return warnings;
 }
 
+/** Keep records that will be omitted out of the next model's GlobalId reconciliation. */
+export class MergedUpgradePruning {
+  private readonly seeds = new Set<number>();
+  private omitted = new Set<number>();
+
+  constructor(private readonly target: IfcSchemaVersion) {}
+
+  noteOmitted(id: number): void { this.seeds.add(id); }
+
+  note(line: string, from: IfcSchemaVersion): void {
+    noteUpgradeSeed(line, this.seeds, from, this.target);
+  }
+
+  /**
+   * Release the GlobalIds of unifiable records the final prune will omit. A relationship is never unified, and a
+   * later model's fold can still keep one omitted here, so its GlobalId stays reserved: at worst a later relationship
+   * with the same GlobalId is re-stamped.
+   */
+  forgetOmittedGuids<T extends { finalId: number; canUnify: boolean }>(lines: string[], start: number, guids: Map<string, T>, claims: InverseClaims): void {
+    if (!this.seeds.size || (this.target !== 'IFC4' && this.target !== 'IFC4X3')) return;
+    const previousCount = this.omitted.size;
+    for (const id of this.seeds) this.omitted.add(id);
+    // Model offsets keep emitted ids disjoint. Remaps can refer back to an
+    // earlier model, so index this model with the omissions already known.
+    this.omitted = cascadeOmissions(lines.slice(start).map(record), this.omitted, this.target);
+    if (this.omitted.size > previousCount) {
+      claims.releaseOmitted(this.omitted);
+      for (const [guid, prior] of guids) if (prior.canUnify && this.omitted.has(prior.finalId)) guids.delete(guid);
+    }
+  }
+
+  finish(lines: string[]): string[] {
+    return this.target === 'IFC5' ? [] : pruneUpgrade(lines, this.seeds, this.target);
+  }
+}
 
 /** Single-model output contains only converted records, including pending edits. */
-export function pruneUpgradeFromSource(lines: string[], from: IfcSchemaVersion, to: IfcSchemaVersion, onOmitted: (id: number) => void): string[] {
-  if (!removesObsoleteResources(from, to)) return [];
-  const seeds = new Set<number>();
+export function pruneUpgradeFromSource(lines: string[], from: IfcSchemaVersion, to: IfcSchemaVersion, omitted: Iterable<number>, assignments: ReadonlySet<number>, onOmitted: (id: number) => void): string[] {
+  if (!removesObsoleteResources(from, to)) return pruneUpgrade(lines, assignments, to, onOmitted, 11500);
+  const seeds = new Set(omitted);
+  for (const id of assignments) seeds.add(id);
   for (const line of lines) noteUpgradeSeed(line, seeds, from, to);
   return pruneUpgrade(lines, seeds, to, onOmitted);
 }

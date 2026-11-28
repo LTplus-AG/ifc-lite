@@ -79,6 +79,14 @@ These are not freed:
 
 No viewer code checks `isGeometryDataReleased()`; only renderer-internal guards react to a release.
 
+### Update (2026-11-28): after #11512
+
+The audit above is the record as written at stage S0. #11512 changed these points:
+
+- **Opt-in GPU-only residency now calls the explicit path.** `?perf.gpuOnly=on|auto` (off by default; `auto` arms it for sources of at least `GPU_ONLY_AUTO_BYTES`, 64 MiB) arms a single primary load. The controller calls `setBoundedGeometryMode(true)` and mirrors the stream into a live-geometry backing. Once the load has settled and the backing verifies, `releaseVerifiedGeometry` (`apps/viewer/src/lib/geometry-backing/active-backing.ts`) releases the store's arrays (`releaseCpuMeshBuffers`) and the scene's (`releaseGeometryData`). A load whose backing fails, or that a second model joins before release, keeps its CPU geometry (`apps/viewer/src/lib/geometry-backing/gpu-only-residency.ts`). The Viewport prop path is still wired off.
+- **Some consumers read geometry back.** Measure routes through `measureReadbackGate` on a released scene (`components/viewer/measureReadback.ts`). 2D drawings (`lib/drawing/drawing-geometry-context.ts`) and instanced export (`utils/instancedExport.ts`) detect a released scene and read back from the verified backing.
+- **Viewer code now checks for release.** The readback consumers above do, through `lib/geometry-backing/scene-released.ts` and `geometry-owner-residency.ts`.
+
 ## Who reads the store's mesh list
 
 The design note classified "about 60" further readers from one line each. Reading them properly finds **140 non-test files** that read the store's mesh list directly, through a helper, or downstream:

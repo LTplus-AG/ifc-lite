@@ -9,21 +9,15 @@ import type { StoreyRule } from './filter-rules.js';
 // ── Storey lookup fallback ────────────────────────────────────────────────────
 
 /**
- * Storey id an element belongs to: its own direct containment
- * (`elementToStorey`, set for an element the storey directly contains plus
- * its `IfcRelAggregates`-aggregated parts) OR — one hop through a
- * containing `IfcSpace`/`IfcSpatialZone` — the storey THAT space belongs
- * to. A space is itself mapped to its storey in `elementToStorey`
- * (`SpatialHierarchyBuilder` walks a storey's own spatial children), so
- * this is a composition of two maps that already exist plus
- * `getContainingSpace` (`@ifc-lite/data`'s `spatialLookups`), not a new
- * traversal. The single home for "which storey" so the per-entity
- * evaluator (`defaultStoreyName`/`storeyMatchesRefs`) and the bulk index
- * prefilter (`unionByStorey`) cannot answer it two different ways.
- *
- * Reaches exactly one level down from the storey: an element inside a
- * space nested inside another space (rather than directly under the
- * storey) is not resolved — see `docs/guide/selector-syntax.md`.
+ * Storey id an element belongs to: `elementToStorey`, which the parser fills
+ * for an element the storey contains directly, an element contained in a
+ * space (or nested space) the storey aggregates, and the aggregated parts of
+ * either (#11468), OR, one hop through a containing `IfcSpace` /
+ * `IfcSpatialZone`, the storey that space belongs to. The hop covers a
+ * hierarchy that maps the space but not its elements. The single home for
+ * "which storey" so the per-entity evaluator (`defaultStoreyName` /
+ * `storeyMatchesRefs`) and the bulk index prefilter (`unionByStorey`) cannot
+ * answer it two different ways.
  */
 function storeyIdOf(hierarchy: NonNullable<IfcDataStore['spatialHierarchy']>, expressId: number): number | undefined {
   const direct = hierarchy.elementToStorey.get(expressId);
@@ -38,18 +32,24 @@ function storeyIdOf(hierarchy: NonNullable<IfcDataStore['spatialHierarchy']>, ex
   return hierarchy.elementToStorey.get(spaceId);
 }
 
-/** Every element `bySpace` lists for a space belonging to `storeyId` — the
- *  bulk-prefilter twin of {@link storeyIdOf}'s one-hop space widening.
- *  `bySpace` is absent on the same partial test mocks {@link storeyIdOf}
- *  guards against. */
-function spaceElementsOfStorey(hierarchy: NonNullable<IfcDataStore['spatialHierarchy']>, storeyId: number): number[] {
-  const out: number[] = [];
-  if (!hierarchy.bySpace) return out;
-  for (const [spaceId, elements] of hierarchy.bySpace) {
-    if (hierarchy.elementToStorey.get(spaceId) !== storeyId) continue;
-    for (const id of elements) out.push(id);
+/** Every element {@link storeyIdOf} can resolve to one of `storeyIds`, for
+ *  the bulk prefilter: each storey's `byStorey` list, every `elementToStorey`
+ *  entry naming one, and every element `bySpace` lists for a space belonging
+ *  to one (the one-hop widening). One pass over each map, whatever the number
+ *  of storeys. `elementToStorey` and `bySpace` are absent on the same partial
+ *  test mocks {@link storeyIdOf} guards against. */
+function elementsOfStoreys(hierarchy: NonNullable<IfcDataStore['spatialHierarchy']>, storeyIds: ReadonlySet<number>): number[] | null {
+  if (storeyIds.size === 0) return null;
+  const out = new Set<number>();
+  for (const storeyId of storeyIds) for (const id of hierarchy.byStorey.get(storeyId) ?? []) out.add(id);
+  const storeyOf = hierarchy.elementToStorey ?? new Map<number, number>();
+  for (const [id, storey] of storeyOf) if (storeyIds.has(storey)) out.add(id);
+  for (const [spaceId, elements] of hierarchy.bySpace ?? []) {
+    const storey = storeyOf.get(spaceId);
+    if (storey === undefined || !storeyIds.has(storey)) continue;
+    for (const id of elements) out.add(id);
   }
-  return out;
+  return out.size > 0 ? [...out] : null;
 }
 
 export function defaultStoreyName(store: IfcDataStore, expressId: number): string {
@@ -73,31 +73,19 @@ export function storeyMatchesRefs(store: IfcDataStore, expressId: number, modelI
 
 /** Index-prefilter twin of {@link storeyMatchesRefs}/Name matching: the
  *  bucket of elements a `storey op:'in'` rule narrows to for `modelId`.
- *  Includes each matched storey's directly-contained elements AND every
- *  element `bySpace` lists for a space belonging to that storey, so this
- *  prefilter can never exclude a candidate the (also widened) per-entity
- *  check in `filter-evaluate.ts` would go on to match. */
+ *  Built from {@link elementsOfStoreys}, so this prefilter can never exclude
+ *  a candidate the per-entity check in `filter-evaluate.ts` would match. */
 export function unionByStorey(store: IfcDataStore, rule: StoreyRule, modelId: string | undefined): number[] | null {
   const hierarchy = store.spatialHierarchy;
   if (!hierarchy) return null;
-  const out: number[] = [];
+  const storeyIds = new Set<number>();
   if (rule.refs) {
-    for (const ref of rule.refs) {
-      if (ref.modelId !== modelId) continue;
-      const elements = hierarchy.byStorey.get(ref.expressId);
-      if (elements) for (const id of elements) out.push(id);
-      for (const id of spaceElementsOfStorey(hierarchy, ref.expressId)) out.push(id);
+    for (const ref of rule.refs) if (ref.modelId === modelId) storeyIds.add(ref.expressId);
+  } else {
+    const wanted = new Set(rule.values.map((n) => n.toLowerCase()));
+    for (const storeyId of hierarchy.byStorey.keys()) {
+      if (wanted.has(store.entities.getName(storeyId).toLowerCase())) storeyIds.add(storeyId);
     }
-    return out.length > 0 ? out : null;
   }
-  const wanted = new Set(rule.values.map((n) => n.toLowerCase()));
-  for (const storeyId of hierarchy.byStorey.keys()) {
-    const name = store.entities.getName(storeyId);
-    if (!wanted.has(name.toLowerCase())) continue;
-    const elements = hierarchy.byStorey.get(storeyId);
-    if (elements) for (const id of elements) out.push(id);
-    for (const id of spaceElementsOfStorey(hierarchy, storeyId)) out.push(id);
-  }
-  return out.length > 0 ? out : null;
+  return elementsOfStoreys(hierarchy, storeyIds);
 }
-

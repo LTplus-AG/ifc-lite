@@ -240,12 +240,13 @@ const wallCounts = await query.sql(`
   GROUP BY type
 `);
 
-// Join with properties
+// Join with properties. FireRating is an IfcLabel, so its value sits in
+// value_string (value_real holds only numeric property values).
 const wallsWithFireRating = await query.sql(`
   SELECT
     e.express_id,
     e.name,
-    p.value_real as fire_rating
+    p.value_string as fire_rating
   FROM entities e
   JOIN properties p ON e.express_id = p.entity_id
   WHERE e.type LIKE 'IfcWall%'
@@ -282,9 +283,14 @@ const floorAreaByStorey = await query.sql(`
 
 ### Color by Query
 
-!!! note "Color Support"
-    Dynamic per-entity coloring is not yet supported in the public API.
-    This example shows the concept - actual implementation requires extending the renderer.
+!!! note "Applying the colours"
+    This example builds the colour map. To paint it, convert each entry to an
+    RGBA tuple in 0-1 and pass the map to
+    `renderer.getScene().setColorOverrides(overrides, device, pipeline)`, with
+    `device` from `renderer.getGPUDevice()` and `pipeline` from
+    `renderer.getPipeline()`. Both getters return `null` before the renderer
+    is initialised (or after its device is lost), so check both before the
+    call. `clearColorOverrides()` removes the overrides.
 
 ```typescript
 import { IfcParser, extractPropertiesOnDemand } from '@ifc-lite/parser';

@@ -496,8 +496,8 @@ export default defineConfig({
     production or preview builds these responses come from your hosting layer or
     CDN, so serve the same `Cross-Origin-Opener-Policy: same-origin` and
     `Cross-Origin-Embedder-Policy: require-corp` headers there too — otherwise
-    `SharedArrayBuffer` is unavailable and the worker pool falls back to slower
-    per-worker copies. (Vite's `preview` server also honours a matching
+    `SharedArrayBuffer` is unavailable, the geometry worker pool does not
+    run, and `processAdaptive` falls back to single-threaded streaming. (Vite's `preview` server also honours a matching
     `preview.headers` block.)
 
 ## Full Example

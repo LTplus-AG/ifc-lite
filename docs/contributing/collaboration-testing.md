@@ -11,12 +11,11 @@ cursors move." Pick the depth you want; each section is self-contained.
 ## TL;DR
 
 ```sh
-# 1. Build everything once
-pnpm turbo build --filter=@ifc-lite/collab --filter=@ifc-lite/collab-server
+# 1. Run the test suites (Turbo builds their dependencies first)
+pnpm test --filter=@ifc-lite/collab --filter=@ifc-lite/collab-server
 
-# 2. Run the test suite
-pnpm --filter @ifc-lite/collab test
-pnpm --filter @ifc-lite/collab-server test
+# 2. Build the relay for the demos below
+pnpm turbo build --filter=@ifc-lite/collab-server
 
 # 3. Boot the server + the live two-tab demo
 pnpm collab:demo
@@ -34,8 +33,12 @@ VITE_COLLAB_ENABLED=true VITE_COLLAB_SERVER_URL=ws://localhost:1234 pnpm --filte
 
 The fastest way to verify everything works.
 
+Run tests through the root `pnpm test` (Turbo), not a package-local
+`vitest run`: Turbo's `test` task builds upstream workspace packages first,
+while a package-local run reads whatever their `dist/` holds.
+
 ```sh
-pnpm --filter @ifc-lite/collab test
+pnpm test --filter=@ifc-lite/collab
 # → suites covering schema, ops, snapshot round-trip, undo,
 #   conflict detection, conflict UI bridge, federation,
 #   blob store + GC, CSG, parametric kernel, determinism,
@@ -44,7 +47,7 @@ pnpm --filter @ifc-lite/collab test
 #   bridge, viewer bridge, perf, render math, latency sim,
 #   property-based convergence under random concurrent edits.
 
-pnpm --filter @ifc-lite/collab-server test
+pnpm test --filter=@ifc-lite/collab-server
 # → suites covering server boot, two-client sync,
 #   room-token auth (mint / revoke / kick), CORS,
 #   disconnect/reconnect, audit log + JSONL, retention,
@@ -54,10 +57,10 @@ pnpm --filter @ifc-lite/collab-server test
 #   path locks, snapshot worker, secure-bundle.
 ```
 
-Both filter together via Turbo:
+Both together:
 
 ```sh
-pnpm turbo test --filter=@ifc-lite/collab --filter=@ifc-lite/collab-server
+pnpm test --filter=@ifc-lite/collab --filter=@ifc-lite/collab-server
 ```
 
 ---
@@ -67,13 +70,13 @@ pnpm turbo test --filter=@ifc-lite/collab --filter=@ifc-lite/collab-server
 Asserts the §15 budget on your machine.
 
 ```sh
-pnpm --filter @ifc-lite/collab exec vitest run test/perf-benchmark.test.ts
+pnpm test --filter=@ifc-lite/collab -- test/perf-benchmark.test.ts
 ```
 
 For the heavy 100k-entity state-vector benchmark:
 
 ```sh
-COLLAB_BENCH_HEAVY=1 pnpm --filter @ifc-lite/collab exec vitest run test/perf-benchmark.test.ts
+COLLAB_BENCH_HEAVY=1 pnpm test --filter=@ifc-lite/collab --env-mode=loose -- test/perf-benchmark.test.ts
 ```
 
 ---
@@ -177,25 +180,26 @@ You will see:
 - The other tab's cursor visibly tracking yours, with a coloured
   arrow + labelled badge — that's `mountPresenceInViewer` and
   `peerVisuals`.
-- A "Selection" pill that updates when either tab clicks a box —
-  `presence.setSelection(...)` flows through awareness.
-- An "Add wall" button that calls `bim.transact()` to push a new
-  entity into the Y.Doc. The other tab sees it instantly.
-- An "Undo" button scoped to local writes only (the other tab's edits
-  are not in your undo stack — that's `Y.UndoManager` with our local
-  origin).
+- Clicking a box, or a row in the sidebar's entities list, selects it —
+  `presence.setSelection(...)` flows through awareness to the other tab.
+- A "+ wall" button that calls `session.transact()` to push a new
+  `IfcWall` entity into the Y.Doc. The other tab sees it instantly.
+- "undo" / "redo" buttons scoped to local writes only (the other tab's
+  edits are not in your undo stack — that's `Y.UndoManager` with our
+  local origin).
 
 Useful things to try:
 
 - **Network blip:** in DevTools → Network, set "Offline" on tab A,
   add a wall, switch back to "Online." Tab B catches up.
-- **Conflict:** rename the same wall in both tabs at the same time.
-  LWW resolves; the conflict bridge fires `open` then `close`. Watch
-  the bottom-right "Conflicts" pill flash.
+- **Conflict:** press "force conflict" in both tabs at nearly the same
+  time; each renames the last entity. LWW resolves; the conflict bridge
+  fires `open` then `close`, and the sidebar's "conflicts" panel lists
+  the conflict for 8 seconds.
 - **Presence stale:** close one tab — the other shows the badge fade
   to 0.4 opacity within ~10s, then drop entirely.
-- **History:** click "Capture snapshot" twice; the history sidecar
-  records IFCX entries you can inspect via the "history" panel.
+- **History:** click "capture snapshot" twice; the history sidecar
+  records IFCX snapshot entries you can inspect in the sidebar's "history" panel.
 
 ### Sharing several models (federation scope)
 
@@ -261,9 +265,9 @@ what runs. Set `E2E_EVIDENCE_DIR` to also write the run's JSON and screenshots
 to a directory. The project is opt-in (CI's
 required lanes select `viewer-e2e-ci` by name).
 
-Headless equivalents:
-`pnpm --filter viewer exec tsx --import ./src/test/vite-module-hooks.mjs --test src/lib/collab/room-reconstruct.test.ts`
-runs the owner → recipient → rejoin sequence on a synthetic two-entity model,
+Headless equivalents, all in `apps/viewer/src/lib/collab/` (run them with
+`TEST_PATTERN='room-reconstruct|room-two-copies|owner-seed' pnpm test --filter=@ifc-lite/viewer --env-mode=loose`):
+`room-reconstruct.test.ts` runs the owner → recipient → rejoin sequence on a synthetic two-entity model,
 `room-two-copies.ac20.test.ts` beside it on the real fixture (skipped until
 `pnpm fixtures` has run), and `owner-seed.frames.test.ts` pins the seed to a
 handful of doc updates — the relay's per-connection write budget dropped a
@@ -343,12 +347,16 @@ console.log('delivered', channel.delivered(), 'dropped', channel.dropped());
 import { runDeterminismHarness, DEFAULT_FIXTURES, paramsToMesh } from '@ifc-lite/collab';
 
 const report = runDeterminismHarness(paramsToMesh, DEFAULT_FIXTURES);
-console.log(report.results); // [{ name, hash, ok }, …]
+console.log(report.results); // [{ name, hash, ok, expected }, …]
+
+// Baseline for the next run: a map of fixture name to hash.
+const expected = Object.fromEntries(report.results.map((r) => [r.name, r.hash]));
 ```
 
-Drop the `report.results` JSON into your CI as `expected.json` and use
+Commit `expected` to your CI as `expected.json` and call
 `runDeterminismHarness(kernel, DEFAULT_FIXTURES, expected)` on the next
-run; any platform drift gets flagged.
+run. A hash that drifts, or a fixture missing from `expected`, sets that
+result's `ok` and `report.ok` to `false`.
 
 ---
 
@@ -400,9 +408,13 @@ const handle = await startSecureCollabServer({
 
 ## 8. Inspect the audit log
 
+The stock `dist/bin.js` server configures no audit sink, so it writes no
+audit log. Pass a `JsonlFileAuditSink` as in section 7 and read the file it
+names:
+
 ```sh
 # JSONL format — one entry per line, easy for jq / grep / Loki.
-tail -f .collab-data/audit.log | jq
+tail -f /var/log/collab/audit.log | jq
 # → { "timestamp": "2026-05-...", "userId": "louis", "role": "editor",
 #     "roomId": "project-abc/model.ifcx", "opType": "update",
 #     "opHash": "ab12cd34", "detail": { "bytes": 217 } }

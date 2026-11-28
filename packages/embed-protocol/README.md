@@ -31,9 +31,9 @@ window.addEventListener('message', (event) => {
 
 - Constants: `EMBED_SOURCE`, `PROTOCOL_VERSION`
 - Envelope: `EmbedMessageEnvelope`, `EmbedError`
-- Commands (host to viewer): `InboundCommandType`, `InboundPayloads`, `CommandResponses` (LOAD_MODEL, SELECT, SET_COLORS, SET_CAMERA, GET_PROPERTIES, ...)
+- Commands (host to viewer): `InboundCommandType`, `InboundPayloads`, `CommandResponses` (INIT, LOAD_MODEL, LOAD_MODEL_BUFFER, SELECT, SET_COLORS, SET_CAMERA, SET_TYPE_VISIBILITY, GET_PROPERTIES, GET_SCREENSHOT, ...)
 - Events (viewer to host): `OutboundEventType`, `OutboundPayloads` (READY, MODEL_LOADED, ENTITY_SELECTED, CAMERA_CHANGED, ...)
-- Shared data types: `ModelStats`, `EntityProperties`, `ModelInfo`, `ViewPreset`, `SectionAxis`, `EmbedConfig`, `EmbedUrlParams`
+- Shared data types: `ModelStats`, `EntityProperties`, `PropertySet`, `QuantitySet`, `ModelInfo`, `ViewPreset`, `SectionAxis`, `EmbedConfig`, `EmbedUrlParams`, `TypeVisibilityFlags` (keys listed in `TYPE_VISIBILITY_FLAG_KEYS`)
 - Helpers: `createCommand`, `createEvent`, `createResponse`, `isEmbedMessage`
 
 ## Links

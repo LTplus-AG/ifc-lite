@@ -40,7 +40,7 @@ fn merged_typed_property_ids_follow_synthesized_records_10797() {
     };
     warnings::finish_output(
         &mut out, &mut stats, schema, &slots, &mut checks,
-        single_parents::ParentClaims::for_schema(schema), &HashSet::new(), 2, &[],
+        single_parents::ParentClaims::for_schema(schema), &HashSet::new(), 2,
     );
 
     let ids = scan_ids(&out);

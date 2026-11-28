@@ -133,14 +133,15 @@ can hide or reorder rail icons; Browse panels still lists every available panel.
 
 | Group | Use it for |
 | --- | --- |
-| Coordinate | Model hierarchy, properties, sources, zones, and placement |
-| Check | Topics, validation, clashes, changes, and model comparison |
+| Coordinate | Model hierarchy, properties, Cloud Sources, zones, placement, the Assistant, Linked records, Review, and the Collaboration room |
+| Check | Topics, validation, IDS Studio, lenses, clashes, changes, model comparison, the Layer stack, and the Load report |
 | Quantify | Measurements, lists, charts, costs, and schedules |
 | Automate | Scripts, flows, and extensions |
-| Site | Point clouds, appearance, environment, drawings, and presentations |
+| Site | Point clouds, appearance, environment, drawings, documents, presentations, and InfluxDB 2 time series |
+| Author | The Model inspector and change sets of the Model workspace |
 
 The Point Clouds panel remains available before a scan loads; it explains what
-to load. The Session panel appears only when collaboration is enabled.
+to load. The Collaboration room panel appears only when collaboration is enabled.
 
 ### Viewer terms
 
@@ -300,7 +301,7 @@ measurements report Partial. Finite zero-valued measurements remain results.
 
 ## Autodesk cloud sources
 
-Open **Cloud sources** from Coordinate mode and select **Autodesk Forma / Data Exchange**. The viewer administrator configures either a public APS application ID for static sign-in or a same-origin hosted session service. Hosted mode keeps Autodesk tokens on the server. Static mode keeps tokens in memory and requires sign-in after a reload. A cancelled sign-in cannot complete the pending transaction.
+Open **Cloud Sources** from the Coordinate group and select **Autodesk Forma / Data Exchange**. The viewer administrator configures either a public APS application ID for static sign-in or a same-origin hosted session service. Hosted mode keeps Autodesk tokens on the server. Static mode keeps tokens in memory and requires sign-in after a reload. A cancelled sign-in cannot complete the pending transaction.
 
 Browse account projects and choose **Forma Data Management files** or **Data Exchanges**. For Forma Site Design, paste a Forma site link in the project entry. IFC, IFCX/IFC5 and GLB files download through the normal loader, pinned to the listed revision. Unsupported resources show an explanation. **Cancel download** stops the active batch; completed models remain loaded.
 
@@ -328,7 +329,7 @@ A saved conversation opens read-only, without turning its archived evidence into
 
 The native Script panel offers **Export saved script** and **Import script file**. Export includes the selected saved script's complete name, code and timestamps in a versioned `.ifc-script.json` file. Save editor changes first to include them. Import appends a new saved copy; it preserves the active editor and any unsaved changes. Open the copy in the script selector and press **Run** separately. Import never executes code or installs an extension.
 
-The reader accepts version 1 portable files and the original single native saved-script JSON record. It refuses unsupported versions, corrupt metadata, code over 100,000 characters and files over 1 MB. Unreadable, partially corrupt or future-version browser libraries are preserved rather than overwritten by import. Export your readable session scripts before repairing damaged storage. If the session library already differs from browser storage, export session scripts and reload before importing; import cannot overwrite another tab with a stale session. A storage refusal keeps the file available for explicit **Retry import into current library**. Changes to saved scripts or browser storage while the file is read revoke that import; retry intentionally appends to the current library without replacing an existing script. Pending reads are cancelled when the panel closes. Existing extension promotion, Flavor conversion and whole-library backup are separate routes.
+The reader accepts version 1 portable files and the original single native saved-script JSON record. It refuses unsupported versions, corrupt metadata, code over 100,000 characters and files over 1 MB. Unreadable, partially corrupt or future-version browser libraries are preserved rather than overwritten by import. Export your readable session scripts before repairing damaged storage. If the session library already differs from browser storage, export session scripts and reload before importing; import cannot overwrite another tab with a stale session. A storage refusal keeps the file available for explicit **Retry import into current library**. Changes to saved scripts or browser storage while the file is read revoke that import; retry intentionally appends to the current library without replacing an existing script. Pending reads are cancelled when the panel closes. Existing extension promotion, profile conversion and whole-library backup are separate routes.
 
 ## Presentation layers
 
@@ -386,7 +387,7 @@ planes as the IFC builder.
 
 ## Large IFC load warnings
 
-Before local IFC processing, the viewer estimates the memory needed from the source size. If that estimate exceeds the budget and the browser reports less than 8 GiB of device memory, the viewer refuses the local load. At a report of 8 GiB, or when no valid memory report is available, it asks whether to **Continue loading**: browsers cap the report, so a workstation can have more memory than the reported value. Continuing can still exhaust memory and crash the tab. The estimate cannot predict every model's geometry complexity.
+Before local IFC processing, the viewer estimates the memory needed from the source size and, for an uncompressed IFC, a small sample of the file (triangulated-mesh files need more). A browser without WebAssembly SIMD cannot process IFC locally, so the load is refused or, when eligible, goes to the processing server. If that estimate exceeds the budget and the browser reports less than 8 GiB of device memory, the viewer refuses the local load. At a report of 8 GiB, or when no valid memory report is available, it asks whether to **Continue loading**: browsers cap the report, so a workstation can have more memory than the reported value. Continuing can still exhaust memory and crash the tab. The estimate cannot predict every model's geometry complexity.
 
 The choice applies only to that load. A later file asks again, and cancelling or superseding a pending warning does not authorize loading it. Eligible native-server processing remains available; a server failure must pass the same local decision before falling back to WASM. The independent wasm32 source-size limit remains enforced for local processing.
 

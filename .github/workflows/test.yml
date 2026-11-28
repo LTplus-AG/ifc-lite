@@ -121,6 +121,11 @@ jobs:
   # Doc-only and non-test changes skip every expensive job below.
   changes:
     name: Detect changes
+    # Serialize status writers with the cancellation reporter for this head SHA.
+    # Allow multiple waiting writers so a reporter cannot evict a pending verdict.
+    concurrency:
+      group: viewer-selection-status-${{ github.event.pull_request.head.sha || github.run_id }}
+      queue: max
     # Free GitHub-hosted runner. ifc-lite is a PUBLIC repo, so standard
     # `ubuntu-latest` runners are free + unlimited (GitHub only bills public
     # repos for *larger* runners). Light jobs — path filter, lint, the gate —
@@ -268,6 +273,11 @@ jobs:
           # head means the verdict being replayed may have skipped lanes.
           REFUSE_REPLAY_AFTER: ${{ github.head_ref == 'changeset-release/main' && steps.release.outputs.lane != 'lean' && 'Release PR checks' || '' }}
         run: node scripts/ci-verdict-replay.mjs --probe
+      # The cancellation reporter reads this step's conclusion through the
+      # attempt jobs API. GitHub does not expose the probe's outputs there.
+      - name: Record no-op edit decision
+        if: always() && steps.noop.outputs.noop == 'true'
+        run: echo 'This edit replays the existing verdict.'
       # THE PUSH REPLAY, both halves (scripts/ci-push-replay.mjs). A PR run
       # records the exact tree it tests -- GitHub records neither the merge
       # commit nor its tree -- as an artifact NAMED for the tree. A push to
@@ -1279,8 +1289,9 @@ jobs:
       - name: Prove the changed tests observe the production change
         # `&&` binds tighter than `||`: python is tested first so a PR that
         # changes both keeps the wheel builds' 85 minutes (which also covers
-        # the <= ~36-minute browser path); a browser-only PR gets 40.
-        timeout-minutes: ${{ needs.changes.outputs.python == 'true' && 85 || steps.browser.outputs.needed == 'true' && 40 || 18 }}
+        # the <= ~36-minute browser path); the browser path gets 40.
+        # Rust can rebuild multiple feature targets before and after the revert (#11734).
+        timeout-minutes: ${{ needs.changes.outputs.python == 'true' && 85 || steps.browser.outputs.needed == 'true' && 40 || needs.changes.outputs.rust == 'true' && 30 || 18 }}
         env:
           # Type-only viewer changes compile the same test program as the Typecheck lane.
           NODE_OPTIONS: --max-old-space-size=8192
@@ -1397,76 +1408,33 @@ jobs:
       - name: Check changeset bump levels against the API surface
         run: node scripts/check-changeset-bump.mjs
 
-  # The viewer's own suite, split out of `node-tests` across sixteen shards.
+  # The viewer suite is split out of node-tests. It outgrew eight serial
+  # shards (#7360) and ran on sixteen before VIEWER_TEST_CONCURRENCY was set
+  # to 2. With two files running at a time, fourteen shards retain enough
+  # headroom for runner variability and free two hosted slots per queue run.
   #
-  # Measured, not guessed. Splitting it out of node-tests took that lane from
-  # a 25:00 timeout to 5:32 SUCCESS, so everything except the viewer costs five
-  # and a half minutes. The viewer alone then still timed out at 25:29 with a
-  # whole 4-vCPU runner to itself, which is what made sharding the answer
-  # rather than more concurrency inside one job.
+  # Rollback: unset VIEWER_TEST_CONCURRENCY to run serially with a 35-minute
+  # job cap. To restore sixteen jobs as well, restore the viewer matrix,
+  # both TEST_SHARDS settings and the manifest count together. PR review
+  # signal and the dirty-PR scanner derive check names from literal lists.
   #
-  # Healthy shard timings, recorded so the next person seeing this lane creep
-  # knows what good looks like rather than only what broken looked like:
-  # 2:29, 2:01, 1:50 against a 25 minute cap, at FOUR shards over 521 files.
-  # The suite had grown to 803 files by 2026-09-11 and the four shards were
-  # measured at 5.6-8.2 min on hosted runners, on the frontend PR's critical
-  # path; EIGHT shards (CI redesign, step 4) halved the per-shard file count
-  # then. The suite now needs sixteen shards (see #7360 below). Membership
-  # is a hash of the path (below), so going 4 -> 8 reassigns files exactly
-  # once and then stays stable.
+  # The selector packs measured files from apps/viewer/test-durations.json
+  # longest first onto the least-loaded shard. Adding or removing a file
+  # leaves the other assignments stable. Files absent from the manifest use
+  # a stable path hash. Concurrency 2 uses measured per-file durations
+  # normalized for runner variability. Change the manifest count with the matrix
+  # and both TEST_SHARDS settings so duration packing stays active.
   #
-  # Shard membership is by MEASURED DURATION first, path hash second
-  # (scripts/viewer-test-shards.mjs, tested by viewer-test-shards.test.mjs).
-  # Measured on three green main runs (2026-10-14): the hash split the
-  # same ~10,470 s of tests into shards of 336-900 s, and the slowest was
-  # always shard 4 (876-900 s): the content, not the runner. So every file in
-  # apps/viewer/test-durations.json is bin-packed (greedy LPT, ties by path)
-  # across the 16 shards, ~654 s of measured work each. The packing is a
-  # function of the manifest alone, so adding or deleting a test file still
-  # moves no other file; a file the manifest does not list takes the path
-  # hash below, so a new file always runs in exactly one shard. Runner speed
-  # still varies run to run (one job ran 1.7x its files' median), which no
-  # assignment can remove.
-  #
-  # Refresh the manifest when shard times drift apart, from two or three
-  # green runs (per-file times are median-combined):
+  # Refresh per-file weights from two or three dedicated green full runs
+  # with VIEWER_TEST_CONCURRENCY unset:
   #   node scripts/refresh-viewer-test-durations.mjs --run <id> --run <id>
-  # It needs `gh` and reads the `Viewer tests (shard n)` job logs; how TAP
-  # timestamps are attributed to files is in scripts/lib/viewer-test-durations.mjs.
-  # Changing the shard count below falls every file back to the hash until
-  # the manifest is refreshed for the new count.
-  #
-  # The fallback hash is of the file PATH, not its index in the sorted
-  # list. With `NR % n` every file after an added or removed test moves to a
-  # different shard: measured, adding ONE file reassigned 534 of 534. Two
-  # things that breaks. A flaky file wanders between shards, and "shard 1
-  # passed on PR X" stops being evidence about shard 1 on PR Y, because they
-  # are not the same set of files. I used exactly that cross-PR comparison as
-  # proof while chasing a flake, and it did not hold. With the hash, adding a
-  # file reassigns 0 of 534.
-  #
-  # Parallelism comes from the SHARDS, not from concurrency inside a shard.
-  # `--test-concurrency=1` is deliberate: at 4 a timing-sensitive test races
-  # three neighbours, and `useSandbox.runSupersession.test.tsx` failed on three
-  # unrelated PRs in one hour that way (issue #3060) while passing locally 3/3.
-  # The bump to 4 came from an earlier attempt at this lane that was MEASURED
-  # not to help on CI, and it was carried forward as harmless once sharding
-  # worked. It is not harmless, and its speedup is redundant with sharding.
-  # Cost of going back to 1, measured: ~70s versus ~19s per shard locally,
-  # roughly 8 minutes versus 2 on CI, against a 25 minute cap.
-  #
-  # Correction: dropping to 1 MITIGATED #3060, it did not fix it. The defect
-  # was in that file's fixture, which slept a flat 50ms and then asserted that
-  # a run had reached its host gate. The #1922 tests at the bottom of that file
-  # abort a WASM module, the aborted module is retired, and the next run pays a
-  # fresh `newQuickJSWASMModule()` — measured at 46-72ms on a contended
-  # machine, straddling the sleep. Reproduced locally at 11/30 failures with
-  # the exact reported `0 !== 1, then 2 !== 1`, on Node 22.13.1 AND 22.23.2,
-  # by loading the machine rather than by raising concurrency; the fixture now
-  # waits for the gate instead of predicting it, and the same load gives 30/30.
-  # So concurrency was the exposure, not the cause: this setting is still worth
-  # keeping for the other timing-sensitive tests it protects, but it is no
-  # longer what stands between #3060 and a red shard.
+  # Refresh the concurrent weights with --concurrent-run <id> for full runs
+  # at concurrency 2 while their file-timing artifacts are available.
+  # The TAP timestamp attribution in scripts/lib/viewer-test-durations.mjs
+  # requires serial files. Keep concurrency bounded to 2 in the viewer test
+  # script. Four-way concurrency exposed a timing-sensitive test in #3060.
+  # Its fixture now waits for the run to reach the host gate instead of
+  # sleeping for 50 ms and assuming QuickJS has initialized.
   #
   # Two earlier explanations in this file were WRONG and are corrected here,
   # because a confident wrong comment is worse than none:
@@ -1497,13 +1465,11 @@ jobs:
     needs: [changes, build]
     if: (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true') && needs.changes.outputs.replay != 'true' && needs.changes.outputs.lane != 'fast'
     runs-on: ${{ ((vars.SELF_HOSTED_QUEUE == 'true' && github.event_name == 'merge_group') || (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted'))))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest' }}
-    timeout-minutes: 25
+    timeout-minutes: ${{ vars.VIEWER_TEST_CONCURRENCY == '2' && 25 || 35 }}
     strategy:
       fail-fast: false
       matrix:
-        # #7360 qualification: 2,180 files outgrew eight serial shards.
-        # Keep the 25-minute cap and run every path exactly once.
-        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
     env:
       HAS_MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN != '' }}
     steps:
@@ -1560,7 +1526,7 @@ jobs:
       # test script pipes its file list through scripts/viewer-test-shards.mjs,
       # see above). Unset, the script takes every file, so a local `pnpm test`
       # is unchanged. The split is exact: a manifest file is packed into one
-      # shard and any other path hashes to exactly one of the 16 residues, so
+      # shard and any other path hashes to exactly one shard, so
       # nothing is dropped or run twice; an empty selection fails the step.
       #
       # CI_SHARD_RETRY (scripts/ci-shard-retry.mjs) reruns only the failed
@@ -1572,13 +1538,32 @@ jobs:
         run: pnpm --filter @ifc-lite/viewer run test
         continue-on-error: ${{ vars.CI_SHARD_RETRY == 'on' }}
         env:
-          NODE_OPTIONS: --test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml${{ (vars.CI_SHARD_RETRY == 'shadow' || vars.CI_SHARD_RETRY == 'on') && format(' --test-reporter=tap --test-reporter-destination={0}/viewer-attempt1.tap', runner.temp) || '' }}
-          TEST_SHARDS: '16'
+          NODE_OPTIONS: --test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml --test-reporter=${{ github.workspace }}/scripts/lib/test-file-reporter.mjs --test-reporter-destination=${{ runner.temp }}/viewer-test-file-durations.json${{ (vars.CI_SHARD_RETRY == 'shadow' || vars.CI_SHARD_RETRY == 'on') && format(' --test-reporter=tap --test-reporter-destination={0}/viewer-attempt1.tap', runner.temp) || '' }}
+          TEST_SHARDS: '14'
           TEST_SHARD: ${{ matrix.shard }}
           # Bounded by apps/viewer's test script, the one place the rule lives.
           # Above 1, refresh test-durations.json only from runs at 1:
           # scripts/lib/viewer-test-durations.mjs assumes serial files.
           VIEWER_TEST_CONCURRENCY: ${{ vars.VIEWER_TEST_CONCURRENCY }}
+          TEST_FILE_REPORT_FORMAT: durations
+      - name: Count viewer test files that reported a result
+        if: steps.viewer_tests.outcome == 'success'
+        continue-on-error: true
+        run: |
+          node --input-type=module -e '
+            import { readFileSync } from "node:fs";
+            const files = JSON.parse(readFileSync(process.argv[1], "utf8"));
+            console.log(`Viewer test files reported: ${Object.keys(files).length}`);
+          ' "$RUNNER_TEMP/viewer-test-file-durations.json"
+      - name: Upload viewer file timings
+        if: steps.viewer_tests.outcome == 'success'
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: viewer-file-timings-${{ matrix.shard }}
+          path: ${{ runner.temp }}/viewer-test-file-durations.json
+          if-no-files-found: error
+          retention-days: 7
       # The contrast harness fails rather than skips in CI when it has no
       # browser. Check the outcome too, so a shard that skipped them for that
       # reason can never pass (scripts/lib/contrast-skips.mjs).
@@ -1601,11 +1586,12 @@ jobs:
         run: node scripts/ci-shard-retry.mjs viewer
         env:
           CI_SHARD_RETRY: ${{ vars.CI_SHARD_RETRY }}
-          JOB_TIMEOUT_MINUTES: '25'  # this job's timeout-minutes
+          JOB_TIMEOUT_MINUTES: ${{ vars.VIEWER_TEST_CONCURRENCY == '2' && 25 || 35 }}  # this job's timeout-minutes
           TAP_FILE: ${{ runner.temp }}/viewer-attempt1.tap
           REPORT_DIR: ${{ runner.temp }}/shard-retry
-          TEST_SHARDS: '16'
+          TEST_SHARDS: '14'
           TEST_SHARD: ${{ matrix.shard }}
+          VIEWER_TEST_CONCURRENCY: ${{ vars.VIEWER_TEST_CONCURRENCY }}
       - name: Upload the retry record
         if: (success() || failure()) && (steps.viewer_retry.outcome == 'success' || steps.viewer_retry.outcome == 'failure')
         # A diagnostic: an upload error must not turn a passed retry red.
@@ -1641,13 +1627,15 @@ jobs:
   # The full-lane verdict of the `PR viewer selection` status: on a full-lane
   # PR run the `changes` job posted `pending` ("waiting for the viewer
   # shards"), and this posts success only when every shard passed, failure
-  # when one failed, nothing when they were cancelled or skipped (the pending
-  # stays, as for the selected tests). So a full-lane run on a sha an earlier
-  # fast run held never releases it before the shards have actually passed.
-  # !cancelled(), not always(): a cancelled run posts nothing either way, so
-  # it need not start a runner. Advisory to the run like the job below.
+  # when one failed, and nothing when they were cancelled or skipped. A full
+  # lane releases an earlier hold only after its shards pass. The completion
+  # workflow handles cancellation, so this job need not start on a cancelled
+  # run. Advisory to the run like the job below.
   viewer-shards-status:
     name: Viewer shards status (full lane)
+    concurrency:
+      group: viewer-selection-status-${{ github.event.pull_request.head.sha || github.run_id }}
+      queue: max
     needs: [changes, viewer-tests]
     continue-on-error: true
     # Runs exactly when the shards reached a verdict, which is when they ran:
@@ -1710,13 +1698,16 @@ jobs:
   # .mergify.yml's auto_merge_conditions keep a PR whose status is failing or
   # pending out of the queue; absent (fork PR) passes. Per sha, so a push
   # starts clean. A flake: re-run this job within a day (build-output is kept
-  # one day); after that, re-run all jobs or push. A stuck pending (run
-  # cancelled or broken before its verdict) says "if stuck: re-run all jobs".
+  # one day); after that, re-run all jobs or push. The completion workflow
+  # reports failure if the latest Test attempt cancels without a viewer verdict.
   # ROLLBACK: CI_PR_VIEWER_SELECT=off releases every held PR on its next run
   # (push, or close and reopen), which posts "not gated". The queue's full run
   # is still the full gate.
   viewer-tests-selected:
     name: Viewer tests, advisory (selected for this PR)
+    concurrency:
+      group: viewer-selection-status-${{ github.event.pull_request.head.sha || github.run_id }}
+      queue: max
     needs: [changes, build]
     continue-on-error: true
     # Keep in step with gateApplies() in scripts/ci-viewer-select-status.mjs.
@@ -2672,6 +2663,81 @@ jobs:
         if: matrix.shard == 4
         run: pnpm test:snap-edges
 
+  # Advisory only. Enable with CI_PR_NODE_SELECT=shadow. The four full
+  # shards keep their own conditions, commands and aggregate verdict.
+  node-tests-selected:
+    name: Node package tests, advisory (selected for this PR)
+    needs: [changes, build]
+    continue-on-error: true
+    if: >-
+      github.event_name == 'pull_request' &&
+      vars.CI_PR_NODE_SELECT == 'shadow' &&
+      needs.changes.outputs.lane == 'fast' &&
+      needs.changes.outputs.batch == 'false' &&
+      needs.changes.outputs.noop != 'true' &&
+      needs.changes.outputs.replay != 'true' &&
+      needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+          fetch-depth: 2
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Check package-source scope
+        id: scope
+        run: node scripts/ci-node-test-shards.mjs --shadow-preflight
+      - if: steps.scope.outputs.eligible == 'true'
+        run: pnpm install --frozen-lockfile
+      - name: Download build artifacts
+        if: steps.scope.outputs.eligible == 'true'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: build-output
+          path: packages
+      - name: Download example builds
+        if: steps.scope.outputs.eligible == 'true'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: example-build-output
+          path: examples
+      - name: Cache test fixtures
+        if: steps.scope.outputs.eligible == 'true'
+        id: fixtures-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: tests/models
+          key: ci-fixtures-source-v2-${{ runner.os }}-${{ hashFiles('tests/models/manifest.json', 'tests/models/README.md', 'tests/models/.manifest-ignore') }}
+      - name: Fetch fixtures
+        if: steps.scope.outputs.eligible == 'true' && steps.fixtures-cache.outputs.cache-hit != 'true'
+        run: pnpm fixtures
+      - name: Verify fixtures
+        if: steps.scope.outputs.eligible == 'true'
+        run: pnpm fixtures:check
+      - name: Run affected package tests
+        if: steps.scope.outputs.eligible == 'true'
+        env:
+          IFC_LITE_REQUIRE_FIXTURES: "1"
+        run: node scripts/ci-node-test-shards.mjs --shadow-run
+      - name: Upload Turbo test timings
+        if: always() && steps.scope.outputs.eligible == 'true' && hashFiles('.turbo/runs/*.json') != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: node-package-shadow-timings
+          path: .turbo/runs/*.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
+
   # `@ifc-lite/provenance` alone. Measured (CI redesign, step 4): its
   # merge-battery.test.ts is 353 s on a hosted runner, which on the shared
   # Node tests lane was more than every other package's suite together and
@@ -2878,6 +2944,146 @@ jobs:
           path: test-results/
           if-no-files-found: error
           retention-days: 3
+
+  # Measure catch rate and runtime cost for changed specs and the general
+  # smoke spec. Other paths stay unmapped. An 'on' mode requires a mapper
+  # from specs through page helpers to viewer imports, fixtures, and routes.
+  # Full PRs and queue runs retain all eight shards and their verdict.
+  viewer-e2e-selected:
+    name: Viewer E2E shadow (selected for this PR)
+    needs: [changes, build]
+    if: >-
+      github.event_name == 'pull_request' &&
+      vars.CI_PR_E2E_SELECT == 'shadow' &&
+      needs.changes.outputs.lane == 'fast' &&
+      needs.changes.outputs.batch != 'true' &&
+      needs.changes.outputs.noop != 'true' &&
+      (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true')
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    # Setup steps are bounded to 29 minutes in total. Leave time for the
+    # 13-minute Playwright cap, its kill grace, and evidence upload.
+    timeout-minutes: 50
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        timeout-minutes: 2
+        with:
+          fetch-depth: 2
+          lfs: false
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        timeout-minutes: 1
+        with:
+          node-version: 22
+      - name: Plan selected E2E
+        id: plan
+        timeout-minutes: 1
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: node scripts/ci-e2e-select.mjs --plan "$RUNNER_TEMP/viewer-e2e-shadow"
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        if: steps.plan.outputs.run == 'true'
+        timeout-minutes: 1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: steps.plan.outputs.run == 'true'
+        timeout-minutes: 2
+        with:
+          node-version: 22
+          cache: pnpm
+      - if: steps.plan.outputs.run == 'true'
+        timeout-minutes: 4
+        run: pnpm install --frozen-lockfile
+      - name: Download build artifacts
+        if: steps.plan.outputs.run == 'true'
+        timeout-minutes: 2
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: build-output
+          path: packages
+      - name: Cache test fixtures
+        if: steps.plan.outputs.run == 'true'
+        timeout-minutes: 2
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: fixtures-cache
+        with:
+          path: tests/models
+          key: ci-fixtures-source-v2-${{ runner.os }}-${{ hashFiles('tests/models/manifest.json', 'tests/models/README.md', 'tests/models/.manifest-ignore') }}
+      - name: Fetch fixtures
+        if: steps.plan.outputs.run == 'true' && steps.fixtures-cache.outputs.cache-hit != 'true'
+        timeout-minutes: 4
+        run: pnpm fixtures
+
+      # Verify cached fixtures as well as downloaded ones.
+      - name: Verify fixtures
+        if: steps.plan.outputs.run == 'true'
+        timeout-minutes: 1
+        run: pnpm fixtures:check
+      # Build only the viewer with the package outputs restored above.
+      # All shadow-specific work stays within this advisory job.
+      - name: Build the viewer for selected E2E
+        if: steps.plan.outputs.run == 'true'
+        timeout-minutes: 6
+        run: pnpm --filter @ifc-lite/viewer build
+      # The hosted runner already has the project's Chrome channel.
+      - name: Install Playwright video encoder
+        if: steps.plan.outputs.run == 'true'
+        timeout-minutes: 2
+        run: pnpm exec playwright install ffmpeg
+      - name: Verify the selected Playwright files
+        id: list
+        if: steps.plan.outputs.run == 'true'
+        timeout-minutes: 1
+        run: |
+          mapfile -t files < "$RUNNER_TEMP/viewer-e2e-shadow/filters.txt"
+          [ "${#files[@]}" -gt 0 ]
+          pnpm test:e2e:ci "${files[@]}" --list --reporter=list > "$RUNNER_TEMP/viewer-e2e-shadow/list.txt"
+          node scripts/ci-e2e-select.mjs --check-list "$RUNNER_TEMP/viewer-e2e-shadow"
+      - name: Run the selected Playwright files
+        id: e2e
+        if: steps.list.outcome == 'success'
+        timeout-minutes: 14
+        env:
+          E2E_GPU_STRICT: '0'
+          PLAYWRIGHT_JSON_OUTPUT_FILE: ${{ runner.temp }}/viewer-e2e-shadow/playwright.json
+        run: |
+          mapfile -t files < "$RUNNER_TEMP/viewer-e2e-shadow/filters.txt"
+          [ "${#files[@]}" -gt 0 ]
+          timeout --signal=INT --kill-after=30s 13m pnpm test:e2e:ci "${files[@]}" --reporter=list,json
+      - name: Record the advisory outcome
+        if: always()
+        timeout-minutes: 1
+        env:
+          COVERAGE: ${{ steps.plan.outputs.coverage || 'unknown' }}
+          FILE_COUNT: ${{ steps.plan.outputs.count || 'unknown' }}
+          PLAN_OUTCOME: ${{ steps.plan.outcome }}
+          LIST_OUTCOME: ${{ steps.list.outcome }}
+          E2E_OUTCOME: ${{ steps.e2e.outcome }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/viewer-e2e-shadow"
+          {
+            echo '### Viewer E2E shadow'
+            echo "- Change coverage: $COVERAGE"
+            echo "- Planned files: $FILE_COUNT"
+            echo "- Plan step: $PLAN_OUTCOME"
+            echo "- Playwright listing: $LIST_OUTCOME"
+            echo "- Playwright run: $E2E_OUTCOME"
+            echo '- Inspect plan.json for omitted specs and unknown paths, and playwright.json for test outcomes and skips.'
+          } | tee "$RUNNER_TEMP/viewer-e2e-shadow/outcome.md" >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload selected E2E evidence
+        if: always()
+        timeout-minutes: 3
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: viewer-e2e-shadow-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/viewer-e2e-shadow/
+            test-results/
+          retention-days: 7
+          if-no-files-found: error
 
   # THE PR LANE FOR RUST (CI redesign, step 5): workspace clippy and
   # `cargo test --workspace`, on every push, warm from main's shared cache.
@@ -3122,21 +3328,22 @@ jobs:
       # ON push to main and in the merge queue, where the aggregate judges
       # them. See that job for why each exists.
 
-  # #7955: the opt-in retained legs, in their own job. They were steps at the
-  # end of `rust-tests` and pushed that lane past its 45 min cap (cancelled
-  # on main and PRs, 2026-10-27). Same trigger as `rust-tests`, run in
-  # parallel, own cache prefix (feature builds differ from the default tree),
-  # and in the aggregate's `needs:` and results map, so nothing got weaker.
+  # #7955: run the independent retained browser, CLI and Rust checks in
+  # parallel. The CLI build and report share one workspace; the browser test
+  # builds its own WASM module and stages its own test peer. The aggregate
+  # judges all three legs through needs.rust-retained.result.
   rust-retained:
-    name: Rust tests (retained)
+    name: Rust tests (retained ${{ matrix.leg }})
     needs: changes
     if: (needs.changes.outputs.rust == 'true') && needs.changes.outputs.replay != 'true' && needs.changes.outputs.lane != 'fast'
     runs-on: ${{ ((vars.SELF_HOSTED_QUEUE == 'true' && github.event_name == 'merge_group') || (vars.SELF_HOSTED_RUST == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted'))))) && fromJSON('["self-hosted","linux","x64","ifclite-rust"]') || (((vars.SELF_HOSTED_QUEUE == 'true' && github.event_name == 'merge_group') || (vars.SELF_HOSTED_CI == 'true' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ci:hosted'))))) && fromJSON('["self-hosted","linux","x64","ifclite"]') || 'ubuntu-latest') }}
     timeout-minutes: 45
-    # DISK (hosted runners): at full DWARF these legs leave a 22.9 GB target
-    # dir (CARGO_INCREMENTAL=0), and a hosted runner ran out of disk here
-    # (merge-queue #8502, job 124766198979). Line tables, as rust-tests uses:
-    # 9.1 GB for the same legs.
+    strategy:
+      fail-fast: false
+      matrix:
+        leg: [browser, cli, rust]
+    # Full DWARF exhausted hosted-runner disk (#8502). Keep line tables for
+    # file:line in panics, as in rust-tests.
     env:
       HAS_MERGIFY_TOKEN: ${{ secrets.MERGIFY_TOKEN != '' }}
       CARGO_PROFILE_DEV_DEBUG: line-tables-only
@@ -3146,14 +3353,12 @@ jobs:
         with:
           lfs: false
           persist-credentials: false
-      # Persistent self-hosted Rust runner (vars.SELF_HOSTED_RUST): one warm
-      # target dir per job on the runner's rust-target volume, outside the
-      # workspace that the runner wipes. A job killed mid-compile (reboot) can
-      # leave truncated dep-info, so an unfinished marker discards the dir.
+      # Persistent self-hosted Rust runner: one warm target dir per leg.
+      # An unfinished marker guards against truncated dep-info after a reboot.
       - name: Warm target dir (self-hosted Rust runner)
         if: startsWith(runner.name, 'ifclite-rust')
         run: |
-          dir="/cache/rust-target/${GITHUB_JOB}"
+          dir="/cache/rust-target/${GITHUB_JOB}-${{ matrix.leg }}"
           if [ -e "$dir/.unfinished" ]; then echo "previous job did not finish; discarding $dir"; rm -rf "$dir"; fi
           mkdir -p "$dir" && touch "$dir/.unfinished"
           echo "CARGO_TARGET_DIR=$dir" >> "$GITHUB_ENV"
@@ -3174,17 +3379,17 @@ jobs:
           else
             echo "::warning::lld could not be installed; linking with the default linker"
           fi
-      # One owner restores/saves this mixed native+WASM dependency tree.
-      # Two overlapping rust-cache post actions prune and save the same paths.
+      # The feature builds and profiles differ by leg. Each leg owns one
+      # Cargo cache, with the pinned WASM toolchain for its WASM commands.
       - uses: ./.github/actions/setup-wasm-build
         id: retained_cache
         with:
-          cache-prefix: rust-retained-runtime
+          cache-prefix: rust-retained-runtime-${{ matrix.leg }}
       # Hosted Ubuntu images ship a matched chromedriver; the runner image has
       # only Chrome. Fetch the Chrome-for-Testing driver for the EXACT installed
       # Chrome build once onto the runner volume.
       - name: ChromeDriver matching Chrome (self-hosted Rust runner)
-        if: startsWith(runner.name, 'ifclite-rust')
+        if: matrix.leg == 'browser' && startsWith(runner.name, 'ifclite-rust')
         run: |
           set -euo pipefail
           version=$(google-chrome --version | grep -oE '[0-9]+(\.[0-9]+){3}')
@@ -3199,16 +3404,21 @@ jobs:
           "$dir/chromedriver-linux64/chromedriver" --version
           echo "IFCLITE_REAL_CHROMEDRIVER=$dir/chromedriver-linux64/chromedriver" >> "$GITHUB_ENV"
       - name: SMLib-free retained runtime in a real WASM module
+        if: matrix.leg == 'browser'
         env:
           RUST_CI_CACHE_HIT: ${{ env.CARGO_TARGET_DIR != '' && 'warm-target' || steps.retained_cache.outputs.cache-hit }}
         run: node scripts/ci-rust-metrics.mjs retained-browser-boundary command node scripts/retained-browser-runtime-tests.mjs
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        if: matrix.leg == 'cli'
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: matrix.leg != 'browser'
         with:
           node-version: 22
       - run: pnpm install --frozen-lockfile
+        if: matrix.leg == 'cli'
       - name: SMLib-free CLI report over the real retained WASM boundary
         id: retained_node_tests
+        if: matrix.leg == 'cli'
         env:
           RUST_CI_CACHE_HIT: ${{ env.CARGO_TARGET_DIR != '' && 'warm-target' || steps.retained_cache.outputs.cache-hit }}
         run: |
@@ -3216,7 +3426,7 @@ jobs:
           node scripts/ci-rust-metrics.mjs retained-cli-build command pnpm build --filter=@ifc-lite/cli
           node scripts/ci-rust-metrics.mjs retained-cli-report command node --test --test-reporter=tap --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=mergify-junit.xml scripts/retained-compare/inert.test.mjs scripts/retained-compare/metrics.test.mjs scripts/retained-compare/tolerances.test.mjs scripts/retained-compare/browser-metrics.test.mjs scripts/retained-compare/browser-corpus-pages.test.mjs scripts/retained-compare/real-authoring-support.test.mjs scripts/retained-compare/corpus-shards.test.mjs
       - name: Mergify CI Upload
-        if: (success() || failure()) && env.HAS_MERGIFY_TOKEN == 'true' && hashFiles('mergify-junit.xml') != ''
+        if: (success() || failure()) && matrix.leg == 'cli' && env.HAS_MERGIFY_TOKEN == 'true' && hashFiles('mergify-junit.xml') != ''
         continue-on-error: true
         uses: ./.github/actions/mergify-upload
         with:
@@ -3225,6 +3435,7 @@ jobs:
           test_step_outcome: ${{ steps.retained_node_tests.outcome }}
 
       - name: Rust tests and Clippy (retained controller and executor)
+        if: matrix.leg == 'rust'
         env:
           RUST_CI_CACHE_HIT: ${{ env.CARGO_TARGET_DIR != '' && 'warm-target' || steps.retained_cache.outputs.cache-hit }}
         # #7955 M1: the opt-in `retained-runtime` feature is outside the
@@ -3251,7 +3462,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: rust-ci-metrics-${{ github.job }}-${{ github.run_attempt }}
+          name: rust-ci-metrics-${{ github.job }}-${{ matrix.leg }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/rust-ci-metrics.jsonl
           if-no-files-found: error
           retention-days: 14
@@ -3431,6 +3642,9 @@ jobs:
 
       - name: Clippy (canonical opening work diagnostic)
         run: cargo clippy -p ifc-lite-processing --features opening-perf-trace --example opening_work_probe -- -D warnings
+
+      - name: Rust tests (precise native probe phases)
+        run: cargo test --locked -p ifc-lite-processing --features probe-phase-timings --test probe_phase_timings --example perf_probe
       - name: Disk left on the runner
         if: always()
         run: df -h .
@@ -4113,13 +4327,7 @@ jobs:
           workspaces: ". -> target/phase-markers"
           save-if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'merge_group' }}
       - name: Install valgrind
-        # Retried: a package mirror outage is not a verdict on the change.
-        run: |
-          for attempt in 1 2 3; do
-            sudo apt-get update && sudo apt-get install -y --no-install-recommends valgrind && exit 0
-            sleep $((attempt * 15))
-          done
-          exit 1
+        run: bash -e scripts/perf-ratchet/install-valgrind.sh
       - name: Fetch the FZK-Haus fixture
         run: node scripts/fixtures/fetch-fixtures.mjs ara3d/AC20-FZK-Haus.ifc
       - name: Measure perf-ratchet native-instructions family

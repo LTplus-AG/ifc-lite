@@ -6,8 +6,11 @@ IFC source recipes. `RetainedPrism` uses metre coordinates, a proper rigid
 cutter-to-host frame, an ordered outer loop followed by holes, and a positive-Z
 extrusion direction. `GeometryDocument::add_retained_prism` admits the same
 wire-format-1 request on native and browser runtimes. It grants no product
-publication authority. Halfspace dispatch still refuses plane, boxed and
-polygonally bounded halfspaces until their feature slices are qualified.
+publication authority. At CUT-0, halfspace dispatch still refused plane, boxed
+and polygonally bounded halfspaces; those slices have since landed under
+`rust/geometry/src/program/retained/halfspace/` (see
+[M5 chained clips](retained-m5-clips.md) and
+[bounded and boxed halfspaces](retained-halfspaces.md)).
 
 The frozen segment interface is **Line | Arc | Circle**. This intentionally
 extends M5-CHAINED-CLIPS §4.0.1 and §9, following the **Round 2 CUT-0 orchestrator

@@ -47,7 +47,8 @@ test('actual WASM catalog matches canonical exported overlay retypes and type me
   const request = { schema: 'IFC4' as const, sourceRevision: 'effective', productIds: [owner.expressId, 3, 11, 2, 1] };
   const catalog = await runAppearanceCatalog(bytes, request);
   assert.deepEqual(catalog.products, [
-    { productId: 1, ifcClass: 'IfcSlab', typeIds: [type.expressId] },
+    // The retyped slab loses its incompatible wall type (#11500).
+    { productId: 1, ifcClass: 'IfcSlab', typeIds: [] },
     { productId: 2, ifcClass: 'IfcSlab', typeIds: [21] },
     { productId: owner.expressId, ifcClass: 'IfcWall', typeIds: [type.expressId] },
   ]);
@@ -55,6 +56,7 @@ test('actual WASM catalog matches canonical exported overlay retypes and type me
   assert.deepEqual(catalog.types.map(type => [type.typeId, type.Name]), [[21, 'Duplicate'], [type.expressId, 'Duplicate']]);
   const parsed = await new IfcParser().parseColumnar(bytes.buffer);
   const relationship = new EntityExtractor(parsed.source).extractEntity(parsed.entityIndex.byId.get(30)!);
+  assert.deepEqual(relationship?.attributes[4], [owner.expressId]);
   assert.equal(relationship?.attributes[5], type.expressId, 'catalog agrees with actual exported IFC');
   assert.equal(view.peekNextExpressId(), next);
   assert.deepEqual(view.getMutations(), mutations);

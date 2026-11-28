@@ -219,7 +219,7 @@ describe('convertCommand', () => {
     captureStderr();
     const { dir, src } = await makeInput();
     // #70 converts, but its CausedBy names a load rather than a reaction.
-    // #71 names a reaction but stays unconverted: one aspect for two loads.
+    // #71 names a valid reaction but falls back to a constant load: one aspect for two loads.
     const mixed = MODEL.replace('ENDSEC;\nEND-ISO-10303-21;', () => `
 #60=IFCLOCALPLACEMENT($,#21);
 #61=IFCSTRUCTURALLOADLINEARFORCE('line',0.,0.,-5.,0.,0.,0.);
@@ -240,11 +240,17 @@ END-ISO-10303-21;`);
       .find(e => e.sourceType === 'IFCSTRUCTURALLINEARACTIONVARYING');
     expect(expected?.recordGroups).toEqual([
       { targetType: 'IFCSTRUCTURALCURVEACTION', expressIds: [70], count: 1, droppedAttributes: ['CausedBy'] },
-      { targetType: 'IFCSTRUCTURALLINEARACTIONVARYING', expressIds: [71], count: 1, droppedAttributes: ['CausedBy'] },
+      { targetType: 'IFCSTRUCTURALCURVEACTION', expressIds: [71], count: 1, droppedAttributes: ['VaryingAppliedLoadLocation', 'SubsequentAppliedLoads'] },
     ]);
 
     await convertCommand([src, '--schema', 'IFC4', '--out', join(dir, 'out.ifc'), '--json']);
 
+    const written = await readFile(join(dir, 'out.ifc'), 'utf8');
+    const configuration = /^#(\d+)=IFCSTRUCTURALLOADCONFIGURATION\(\$,\(#61,#61,#61\),\$\);$/m.exec(written);
+    expect(configuration).not.toBeNull();
+    expect(written).toContain(`#70=IFCSTRUCTURALCURVEACTION('3sXjCM_kPHN8ZCpuBhV_98',#45,'V',$,$,#60,#66,#${configuration?.[1]},.GLOBAL_COORDS.,.F.,.TRUE_LENGTH.,.NOTDEFINED.);`);
+    expect(written).toContain("#71=IFCSTRUCTURALCURVEACTION('4sXjCM_kPHN8ZCpuBhV_98',#45,'W',$,$,#60,#68,#61,.GLOBAL_COORDS.,.F.,.TRUE_LENGTH.,.CONST.);");
+    expect(written).toMatch(/IFCRELASSIGNSTOPRODUCT\('[^']+',#45,'Causes',\$,\(#63\),\$,#71\);/);
     const entry = JSON.parse(stdoutBuf).lossReport.find(
       (e: { type: string }) => e.type === 'IFCSTRUCTURALLINEARACTIONVARYING',
     );

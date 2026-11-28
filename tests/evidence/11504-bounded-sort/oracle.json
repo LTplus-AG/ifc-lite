@@ -1,0 +1,7 @@
+{
+  "issue": 7955,
+  "why": "Remove the work bound so a large index array is sorted in a single step.",
+  "key": "packages/renderer/src/snap-chunked-sort.ts",
+  "mutation": "tests/evidence/11504-bounded-sort/behaviour.oracle.patch",
+  "test": "packages/renderer/src/snap-geometry-build.test.ts"
+}

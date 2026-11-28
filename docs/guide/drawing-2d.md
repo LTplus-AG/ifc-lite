@@ -22,7 +22,7 @@ Each drawing includes:
 | **Projection lines** | Visible geometry beyond the cut plane |
 | **Hidden lines** | Occluded geometry rendered as dashed lines |
 | **Hatching** | Material-based fill patterns (concrete, masonry, insulation, etc.) |
-| **Architectural symbols** | Door swings, window frames, stair arrows |
+| **Architectural symbols** | Door swings and window frames in floor plans generated with `openingSymbols: true`; stair arrows from `generateStairArrow` |
 | **Annotations** | Dimensions and labels |
 
 IFC export includes the active model's Distance measurements, linear dimensions
@@ -36,7 +36,9 @@ IFC export refuses a project length-unit change while annotations outside the cu
 In a plan or section drawing, choose **Tag** and click a door, window or space.
 Door and window tags show the IFC `Tag` (or a `Mark` property), falling back to
 `Name`. Space tags show `Name` and, when available,
-`Qto_SpaceBaseQuantities.NetFloorArea` in m². Labels read the current model data,
+`Qto_SpaceBaseQuantities.NetFloorArea`. The area uses the quantity's own unit,
+else the project's area unit, else m². If a declared unit cannot be read, the
+tag shows the name only. Labels read the current model data,
 so property edits update them. Regenerated drawings anchor tags to the element's
 cut centroid. Use **Select** to drag a tag's offset, or select it and press Delete.
 Tags are saved with the drawing markup and included in SVG, DXF, scaled PDF and
@@ -97,8 +99,8 @@ every cut until you toggle it again, and a saved drawing keeps the setting it
 was saved with.
 
 Enable **Projection** to show geometry beyond the section cut, then open its
-settings button. **Auto** uses the existing model and floor/ceiling bands.
-Turn Auto off to enter a finite background depth in the selected display length
+settings button. **Automatic depth** uses the existing model and floor/ceiling bands.
+Turn it off to enter a finite background depth in the selected display length
 unit. The setting is stored in metres and remembered with the drawing options.
 Zero removes background projection while keeping the cut; Down plan views retain
 their separate overhead band. Flipping the section reverses the viewed side, and
@@ -138,15 +140,46 @@ storage: a failed save logs a warning and retains the previous saved version.
 Models without source bytes remain usable but cannot restore a sheet by file
 content.
 
+The title block's **Scale** field follows the sheet. Changing the sheet scale
+updates the drawing scale, the scale bar and every title-block field filled
+from the drawing scale. Text you typed yourself, such as "As indicated", is
+kept. The sheet preview and the exported sheet print the scale the drawing is
+placed at, even when a restored or templated sheet stored an older value. When
+the drawing must be shrunk to fit the sheet's drawing area, the preview and
+export show that reduced scale in the Scale field, while the title-block editor
+still shows the requested scale.
+
 ## Quick Start
 
 ### Generating a Floor Plan
 
 ```typescript
-import { generateFloorPlan } from '@ifc-lite/drawing-2d';
+import { generateFloorPlan, type StoreyCut } from '@ifc-lite/drawing-2d';
 
-// generateFloorPlan(meshes: MeshData[], elevation: number, options?)
-const drawing = await generateFloorPlan(meshData, 1.2, {
+// generateFloorPlan(meshes: MeshData[], elevation: number | StoreyCut, options?)
+// A number is a render-frame Y. A StoreyCut is a height above a storey floor:
+// the storey's Elevation is moved into the render frame with the geometry's
+// coordinateInfo (storeyCutElevation gives the same Y as a number).
+// storeyElevation is IfcBuildingStorey.Elevation in metres, measured from the
+// building placement. Take it from the storey's Elevation attribute. If that is
+// unset, resolve the storey's placement chain (PlacementRelTo) into the building
+// frame, or stop with an error: an entry in spatialHierarchy.storeyElevations
+// does not establish that frame, since its placement fallback reads only the
+// storey's own location.
+const storeyElevation = 0.5;
+// The parsed store does not carry the building placement. ASSUMPTION: the
+// building sits at its site's origin, so its local Z is 0 m. For a building
+// placed off it, set buildingZ to its local Z in metres: the Z of
+// IfcBuilding.ObjectPlacement.RelativePlacement.Location, relative to the site
+// placement, times store.lengthUnitScale.
+const buildingZ = 0;
+const cut: StoreyCut = {
+  storeyElevation,
+  cutHeight: 1.2,
+  frame: { ...geometryResult.coordinateInfo, buildingOrigin: { z: buildingZ } },
+};
+const drawing = await generateFloorPlan(geometryResult.meshes, cut, {
+  openingSymbols: true,
   includeHiddenLines: true,
   includeProjection: true,
 });
@@ -154,6 +187,8 @@ const drawing = await generateFloorPlan(meshData, 1.2, {
 console.log(`${drawing.stats.cutLineCount} cut lines`);
 console.log(`${drawing.stats.projectionLineCount} projection lines`);
 ```
+
+With `openingSymbols: true`, `drawing.planSymbols` contains a swing when the cut lies within the door element's overall height, including a gap between the leaf and transom. A window frame requires the section cutter to find an intersection with a window mesh. A symbol replaces that element's body linework, and `exportToSVG` and `exportToDXF` draw the symbol. Pass `openings`, keyed by `makeEntityKey(modelIndex, expressId)`, with each element's `operationType`, `partitioningType`, `width` (`OverallWidth`) and host `wallThickness`; without them a door swings `SINGLE_SWING_LEFT` at its mesh width. A door whose operation has no plan symbol keeps its cut body. By default, the floor-plan generator keeps the cut bodies.
 
 ### Generating a Section
 
@@ -229,10 +264,10 @@ encoder mismatches that declared codepage, and any real DXF reader
 import { exportToDXF, encodeDxfCp1252 } from '@ifc-lite/drawing-2d';
 
 declare const dxf: ReturnType<typeof exportToDXF>;
-const { bytes, hadUnmappable } = encodeDxfCp1252(dxf);
+const { bytes, hadEscaped, hadUnmappable } = encodeDxfCp1252(dxf);
 // bytes is a Uint8Array ready to write to disk or a Blob.
-// hadUnmappable is true if a character outside windows-1252 (e.g. CJK)
-// was replaced with '?' — R12 TEXT has no wider single-byte encoding.
+// hadEscaped reports lossless DXF Unicode escapes for BMP text outside windows-1252.
+// hadUnmappable reports replacement with '?' for unsupported characters such as emoji.
 ```
 
 ## Drawing Sheets
@@ -312,7 +347,7 @@ The package generates proper architectural symbols:
 | **Door swings** | Arc showing door opening direction and angle |
 | **Sliding doors** | Arrow showing sliding direction |
 | **Window frames** | Double-line representation with glass |
-| **Stair arrows** | Direction arrows with UP/DOWN labels |
+| **Stair arrows** | Direction arrows with UP/DN labels |
 
 ```typescript
 import { generateDoorSymbol, generateWindowSymbol } from '@ifc-lite/drawing-2d';
@@ -383,11 +418,13 @@ In the IFClite viewer:
 
 1. **Activate section plane** - Position a section plane in the 3D view
 2. **Open the Drawing panel** - The section cut appears in the **Drawing** panel, docked in the bottom strip below the 3D view (it opens with the Section tool, or from **Analyze → Drawing**, the sidebar rail or the command palette). Like the other bottom panels it can be resized, floated, or popped out onto another screen
-3. **Toggle layers** - Show/hide cut lines, projection, hidden lines, hatching
-4. **Annotate** - Add measurements, polygon areas, text boxes, and revision clouds
+3. **Toggle display** - Switch **Symbolic**, IFC **Annotations**, **Projection**, **3D overlay** and **Print preview** in the toolbar
+4. **Annotate** - Add distance measurements, snapped dimensions, polygon areas, element tags, text boxes, and revision clouds
 5. **Select & edit** - Click annotations to select, drag to move, Delete to remove
 6. **Graphic overrides** - Apply presets to change element appearance
-7. **Export** - Download the drawing as vector SVG, or as DXF R12 (plan sections are georeferenced to true world/map coordinates when the model carries an `IfcMapConversion`)
+7. **Export** - Download the drawing as vector SVG, as DXF R12 (plan sections are georeferenced to true world/map coordinates when the model carries an `IfcMapConversion`), or as a PDF to scale, or print it
+
+The cut menu in the panel header saves the current cut under a name. Saved cuts can be applied as the drawing's source, renamed or deleted.
 
 ### Drawing Navigation
 
@@ -398,7 +435,7 @@ over roughly 0.2 s, as in the 3D view, and a pan or the zoom buttons stop it.
 **Settings → Display → Navigation → Wheel zoom speed** applies here too.
 
 The navigation preset also applies to the Drawing panel: Default uses vertical
-wheel movement to zoom and horizontal movement to pan; Navisworks uses vertical
+wheel movement to zoom and horizontal movement to pan; Navisworks-like uses vertical
 wheel movement to zoom; Trackpad pans with two-finger scrolling and zooms with a
 pinch or Ctrl/Cmd wheel. These controls also work in floating and popped-out
 Drawing panels.
@@ -468,8 +505,9 @@ CAD layer visibility agree with the display.
 DXF exports include the visible mapped CAD vectors. Vertical section exports use
 local section coordinates; they are not map-georeferenced IFC XY drawings. DXF
 cannot embed the PDF/image raster references in this workflow, so the export
-menu lists their omission before continuing. PDF and DXF still report visible
-markup omissions. When a sheet is active, its scale governs PDF export and the
+menu lists their omission before continuing. Area, text and cloud markups are
+exported only to SVG and Print without an active sheet. PDF, DXF and sheet
+exports list them as omitted before continuing. When a sheet is active, its scale governs PDF export and the
 dialog explains why the scale cannot be changed there.
 
 ### Choosing a drawing export
@@ -508,15 +546,17 @@ With a point cloud loaded, the **Scan** tab of the drawing inspector overlays th
 
 | Tool | Description | Shortcuts |
 |------|-------------|-----------|
-| **Distance Measure** | Click two points to measure distance | Shift = lock axis |
-| **Area Measure** | Click polygon vertices, close near first point or double-click | Shift = orthogonal |
-| **Text Box** | Click to place, type text, Enter to confirm | Double-click to re-edit |
-| **Revision Cloud** | Click two corners to define rectangle | Shift = square |
-| **Select / Pan** | Click annotations to select, drag to move | Escape = exit tool / deselect |
+| **Select** | Click annotations to select, drag to move; drag empty space to pan | Escape = exit tool / deselect |
+| **Distance** | Click two points to measure distance | Shift = lock axis |
+| **Dimension** | Click two points, then click to place the dimension line. Points snap to endpoints, midpoints, intersections, perpendiculars and nearest points | Shift = horizontal/vertical, Esc = cancel, Ctrl/Cmd+Z = undo |
+| **Area** | Click polygon vertices, close near first point or double-click | Shift = orthogonal |
+| **Tag** | Click a door, window or space to tag it (see [Element tags](#element-tags-in-the-viewer)) | |
+| **Text** | Click to place, type text, Enter to confirm | Double-click to re-edit |
+| **Cloud** | Click two corners to define a revision-cloud rectangle | Shift = square |
 
 ### Annotation Selection
 
-When using the Select / Pan tool (or after pressing Escape to exit a creation tool):
+When using the Select tool (or after pressing Escape to exit a creation tool):
 
 - **Click** any annotation to select it (blue dashed border with corner handles)
 - **Drag** the selected annotation to reposition it
@@ -528,13 +568,14 @@ When using the Select / Pan tool (or after pressing Escape to exit a creation to
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| Hidden lines | On | Show occluded geometry as dashed lines |
-| Hatching | On | Material-based fill patterns |
-| Annotations | On | Dimensions and labels |
-| 3D overlay | On | Show section plane position in 3D view |
-| Scale | 1:100 | Drawing scale for dimensions |
-| Symbolic representations | Off | Use authored Plan/Annotation representations when available |
-| Scan → Vector outline | Off | Trace closed outlines from the scan points in the section band (see below) |
+| Symbolic | Off | Use authored Plan/Annotation representations when available |
+| Annotations | On | Overlay the model's `IfcAnnotation` curves, text and fills (plan Down cuts only) |
+| Projection | On for Down plans, off for Front/Side | Draw geometry beyond the cut (see [Projection Depth](#projection-depth)) |
+| 3D overlay | On | Show the drawing on the section plane in the 3D view |
+| Print preview | Off | Show white paper, as the drawing will export |
+| Scan → Vector outline | Off | Trace closed outlines from the scan points in the section band (see above) |
+
+Hidden lines are drawn dashed and cut polygons are filled; the toolbar has no switch for them. The drawing scale defaults to 1:100.
 
 ### Selective section cutting
 

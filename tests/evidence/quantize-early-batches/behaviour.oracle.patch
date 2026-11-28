@@ -1,0 +1,12 @@
+diff --git b/packages/renderer/src/quantized-requantize.ts a/packages/renderer/src/quantized-requantize.ts
+--- b/packages/renderer/src/quantized-requantize.ts
++++ a/packages/renderer/src/quantized-requantize.ts
+@@ -45,7 +45,7 @@
+   for (const [key, bucket] of view.buckets) {
+     const batch = bucket.batchedMesh;
+     // Released or evicted geometry keeps the batch it has (nothing to rebuild from, or not resident).
+-    if (batch && !batch.quantized && bucket.meshData.length > 0 && batch.gpuResident !== false) {
++    if (batch && builtUnquantized.has(batch) && bucket.meshData.length > 0 && batch.gpuResident !== false) {
+       view.pendingBatchKeys.add(key);
+       marked++;
+     }

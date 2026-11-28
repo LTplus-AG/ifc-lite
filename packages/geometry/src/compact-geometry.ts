@@ -22,10 +22,12 @@
 export interface CompactPayload {
   /** 12 bytes per welded vertex: u16 x, y, z offsets, u16 oct normal, u32 entity lane. */
   records: Uint8Array;
+  /** Smallest authored corner normal per welded vertex, in source f32 comparison order. */
+  lodNormals?: Float32Array;
   /** Mesh-local u16 triangle indices. */
   indices: Uint16Array;
   /** Per row (`COMPACT_TABLE_STRIDE` columns): mesh index in its collection, vertex start, vertex
-   *  count, index start, index count, lattice level (step = 2^-level m). */
+   *  count, index start, index count, lattice level (step = 2^-level m), source vertex count. */
   table: Uint32Array;
   /** Per row: lattice window origin in units of the row's step, xyz. */
   windows: Float64Array;
@@ -33,6 +35,11 @@ export interface CompactPayload {
   bounds: Float64Array;
   /** Per row: cell indices xyz at the row's level. */
   cells: Int32Array;
+  /**
+   * Per row: the first source vertex (`origin + position`, f64), where the f32 load takes a mesh's spatial chunk.
+   * Absent from a wasm build that predates it: consumers then take the first record, within half a step of it.
+   */
+  anchors?: Float64Array;
 }
 
 /** A compact mesh's row: its payload and row number. */
@@ -53,16 +60,19 @@ export interface CompactWireRef {
 interface CompactBatchJs {
   readonly meshCount: number;
   readonly records: Uint8Array;
+  readonly lodNormals?: Float32Array;
   readonly indices: Uint16Array;
   readonly table: Uint32Array;
   readonly windows: Float64Array;
   readonly bounds: Float64Array;
   readonly cells: Int32Array;
+  /** Absent before the wasm build that writes it. */
+  readonly anchors?: Float64Array;
   free(): void;
 }
 
 /** u32 columns per table row. */
-export const COMPACT_TABLE_STRIDE = 6;
+export const COMPACT_TABLE_STRIDE = 7;
 /** Bytes per vertex record. */
 export const COMPACT_RECORD_BYTES = 12;
 /** Cell size the viewer encodes at: half a level-10 window, the largest the encoder accepts. */
@@ -84,11 +94,13 @@ export interface CompactRow {
   indexCount: number;
   /** Lattice level: step = 2^-level metres. */
   level: number;
+  /** Vertices of the source f32 mesh, before welding: what a scan of its positions would count. */
+  sourceVertexCount: number;
 }
 
 export function compactRow(ref: CompactRef): CompactRow {
   const t = ref.payload.table, r = ref.row * COMPACT_TABLE_STRIDE;
-  return { vertexStart: t[r + 1], vertexCount: t[r + 2], indexStart: t[r + 3], indexCount: t[r + 4], level: t[r + 5] };
+  return { vertexStart: t[r + 1], vertexCount: t[r + 2], indexStart: t[r + 3], indexCount: t[r + 4], level: t[r + 5], sourceVertexCount: t[r + 6] };
 }
 
 /** Lattice step of a level in metres (level 10 is the renderer's `QUANT_STEP`). */
@@ -103,7 +115,10 @@ export function compactBounds(ref: CompactRef): Float64Array {
 
 /** Every array of a payload. One compact mesh keeps the whole payload of its batch alive, not only its own rows. */
 function payloadArrays(p: CompactPayload): ArrayBufferView[] {
-  return [p.records, p.indices, p.table, p.windows, p.bounds, p.cells];
+  const arrays: ArrayBufferView[] = [p.records, p.indices, p.table, p.windows, p.bounds, p.cells];
+  if (p.lodNormals) arrays.push(p.lodNormals);
+  if (p.anchors) arrays.push(p.anchors);
+  return arrays;
 }
 
 /** The payload's buffers, for a transfer list (each wasm getter returned a standalone copy). */
@@ -112,7 +127,7 @@ export function compactPayloadTransfers(p: CompactPayload): ArrayBuffer[] {
 }
 
 /**
- * Hand a memory census every array a compact mesh retains: the records, the indices and the four
+ * Hand a memory census every array a compact mesh retains: the records, the indices and the
  * per-row tables. The one walk both censuses use (the renderer's and the viewer's), so neither undercounts.
  */
 export function visitCompactPayload(p: CompactPayload, visit: (array: ArrayBufferView, kind: 'indices' | 'other') => void): void {
@@ -124,6 +139,29 @@ export function visitCompactPayload(p: CompactPayload, visit: (array: ArrayBuffe
  * getters then return empty arrays), append the payload to `payloads`, and return mesh index -> wire
  * ref. `undefined` when nothing was encoded or the wasm build has no encoder.
  */
+/** The six columns an `@ifc-lite/wasm` older than the source vertex count writes per row. */
+const LEGACY_COMPACT_TABLE_STRIDE = 6;
+
+/**
+ * `table` with `COMPACT_TABLE_STRIDE` columns per row. A wasm build that predates the source vertex count
+ * (a published patch range lets it pair with this package) writes six: widen it, taking the welded vertex
+ * count as the source count, as before. Any other shape would misread every row after the encoder consumed
+ * the meshes, so there is no f32 to fall back to: fail loudly.
+ */
+export function compactTableOf(table: Uint32Array, rows: number): Uint32Array {
+  if (table.length === rows * COMPACT_TABLE_STRIDE) return table;
+  if (table.length !== rows * LEGACY_COMPACT_TABLE_STRIDE) {
+    throw new Error(`compact geometry: the wasm table has ${table.length} cells for ${rows} rows (expected ${COMPACT_TABLE_STRIDE} or ${LEGACY_COMPACT_TABLE_STRIDE} columns)`);
+  }
+  const wide = new Uint32Array(rows * COMPACT_TABLE_STRIDE);
+  for (let row = 0; row < rows; row++) {
+    const from = row * LEGACY_COMPACT_TABLE_STRIDE, to = row * COMPACT_TABLE_STRIDE;
+    wide.set(table.subarray(from, from + LEGACY_COMPACT_TABLE_STRIDE), to);
+    wide[to + 6] = table[from + 2]; // vertex count
+  }
+  return wide;
+}
+
 export function encodeCompactCollection(
   collection: object,
   cellSize: number,
@@ -136,9 +174,15 @@ export function encodeCompactCollection(
     const count = batch.meshCount;
     if (count === 0) return undefined;
     const payload: CompactPayload = {
-      records: batch.records, indices: batch.indices, table: batch.table,
+      records: batch.records, indices: batch.indices, table: compactTableOf(batch.table, count),
       windows: batch.windows, bounds: batch.bounds, cells: batch.cells,
     };
+    // Read once (every wasm getter copies). TODO(remove-by: every supported @ifc-lite/wasm writes compact anchors,
+    // compact geometry maintainers), #11606: an older build has none (consumers then take the first record).
+    const normals = batch.lodNormals;
+    if (normals) payload.lodNormals = normals;
+    const anchors = batch.anchors;
+    if (anchors && anchors.length === count * 3) payload.anchors = anchors;
     const index = payloads.length;
     payloads.push(payload);
     const rows = new Map<number, CompactWireRef>();

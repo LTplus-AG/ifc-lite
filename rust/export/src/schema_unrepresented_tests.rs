@@ -89,7 +89,9 @@ fn every_source_only_type_has_a_route_10902() {
 
 /// As the TypeScript twin's end-to-end case: an IFC2X3 -> IFC4 upgrade
 /// maps, renames, proxies or keeps each record, and the warnings name the
-/// proxied and kept ones.
+/// proxied and omitted ones. No written record references the standalone
+/// IFCCALENDARDATE #6, so it is left out rather than written verbatim (#11199): #10902 kept
+/// verbatim dates only because a referenced one cannot go without dangling refs.
 #[test]
 fn an_upgrade_writes_each_route_and_names_it_10902() {
     let data = "#1=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'P',$,$,$,$,$,$);\n#2=IFCSPACE('0AvctVUKr0kugbFTf53O9L',$,'Room',$,$,$,$,$,.ELEMENT.,.INTERNAL.,$);\n#3=IFCACTOR('0BvctVUKr0kugbFTf53O9L',$,'Tenant',$,$,$);\n#4=IFCRELOCCUPIESSPACES('0CvctVUKr0kugbFTf53O9L',$,$,$,(#2),$,#3,$);\n#5=IFCMOVE('0DvctVUKr0kugbFTf53O9L',$,'Move',$,$,'T-1','planned',$,.F.,1,$,$,('pack'));\n#6=IFCCALENDARDATE(1,2,2020);\n#7=IFCSERVICELIFE('0EvctVUKr0kugbFTf53O9L',$,'Life',$,$,.ACTUALSERVICELIFE.,10.);";
@@ -100,10 +102,11 @@ fn an_upgrade_writes_each_route_and_names_it_10902() {
     assert_eq!(line("#4="), "#4=IFCRELASSIGNSTOACTOR('0CvctVUKr0kugbFTf53O9L',$,$,$,(#2),$,#3,$);");
     assert!(line("#7=") == "#7=IFCPROXY('0EvctVUKr0kugbFTf53O9L',$,'Life',$,$,$,$,.NOTDEFINED.,$);", "{out}");
     assert_eq!(line("#5="), "#5=IFCTASK('0DvctVUKr0kugbFTf53O9L',$,'Move',$,$,'T-1',$,'planned',$,.F.,1,$,$);");
-    assert_eq!(line("#6="), "#6=IFCCALENDARDATE(1,2,2020);");
+    assert_eq!(line("#6="), "");
     let named = warnings.join("\n");
     assert!(named.contains("were written as IFCPROXY: IFCSERVICELIFE (1)."), "{named}");
-    assert!(named.contains("which readers may reject: IFCCALENDARDATE (1)."), "{named}");
+    assert!(named.contains("1 legacy IFC2X3 date record(s) were omitted because no written record references them and the target schema does not declare their type: #6 (IFCCALENDARDATE) (#11199)."), "{named}");
+    assert!(!named.contains("readers may reject: IFCCALENDARDATE"), "{named}");
 }
 
 /// #11326, twin of the TypeScript loss report: IfcMove and IfcOrderAction attributes with no
@@ -120,6 +123,24 @@ fn an_upgrade_counts_only_populated_move_and_order_action_slots_11326() {
     assert_eq!(dropped(&format!("#5=IFCMOVE({head},#9,$,$);")), 1);
     assert_eq!(dropped(&format!("#5=IFCMOVE({head},$,#9,('p'));")), 2);
     assert_eq!(dropped(&format!("#6=IFCORDERACTION({head},'A-1');")), 1);
+}
+
+/// #11326: the same holds for an IFCREL* subtype IFC4 deleted (no attribute map) and for a type
+/// whose list shrinks (IfcWorkPlan): an unset slot counts 0, a populated one (`''` included) 1.
+#[test]
+fn an_upgrade_counts_only_populated_slots_of_unmapped_dropped_attributes_11326() {
+    let dropped = |data: &str| {
+        let src = format!("ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('t.ifc','',(''),(''),'','','');\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n{data}\nENDSEC;\nEND-ISO-10303-21;\n");
+        let opts = crate::step::StepOptions { schema: Some("IFC4".into()), ..Default::default() };
+        crate::export_step_with_stats(src.as_bytes(), &opts).unwrap().1.attribute_values_dropped
+    };
+    let tasks = |time: &str| format!("#8=IFCRELASSIGNSTASKS('0FvctVUKr0kugbFTf53O9L',$,$,$,(#5),$,#9,{time});");
+    assert_eq!(dropped(&tasks("$")), 0);
+    assert_eq!(dropped(&tasks("'a'")), 1);
+    assert_eq!(dropped(&tasks("''")), 1);
+    let plan = |user: &str| format!("#9=IFCWORKPLAN('0GvctVUKr0kugbFTf53O9L',$,'Plan',$,$,'WP1',$,$,$,$,$,$,$,$,{user});");
+    assert_eq!(dropped(&plan("$")), 0);
+    assert_eq!(dropped(&plan("'X'")), 1);
 }
 
 #[test]

@@ -143,6 +143,7 @@ export function fixtureModel(
     // silently exercise the hidden path in every test that seeds a model.
     visible: true,
     idOffset: options.idOffset ?? 0,
+    maxExpressId: (options.entities ?? []).reduce((max, entity) => Math.max(max, entity.expressId), 0),
     ifcDataStore: fixtureDataStore(options.entities, { aggregates: options.aggregates }),
   } as unknown as FederatedModel;
 }

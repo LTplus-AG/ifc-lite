@@ -59,6 +59,7 @@ owner/triangle/UV/image associations. Room transport preserves decoded image
 pixels; it does not promise the original compressed image bytes.
 
 This completes the scoped direct-tessellated image workflow in #4243. Evaluated
-surfaces and mapped occurrences remain in #4404; coordinated multi-model
-assignment and history remain in #4420. The scoped image workflow does not imply
-those later capabilities are available.
+surfaces and mapped occurrences followed in #4404 (see
+[evaluated occurrences](appearance-evaluated-occurrences.md)); coordinated
+multi-model assignment and history followed in #4420 (see
+[coordinated assignments](appearance-assignments.md)).

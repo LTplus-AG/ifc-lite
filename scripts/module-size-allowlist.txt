@@ -142,14 +142,12 @@
    788 packages/bcf/src/ids-reporter.ts
    806 packages/bcf/src/reader.ts
    532 packages/bcf/src/viewpoint.ts
-   753 packages/bcf/src/writer.ts
+   748 packages/bcf/src/writer.ts
    439 packages/clash/src/bcf-bridge.ts
    433 packages/clash/src/duplicates.ts
    547 packages/cli/src/commands/ask.ts
    499 packages/cli/src/commands/create.ts
-   482 packages/cli/src/commands/extract-entities.ts
    501 packages/cli/src/commands/query.ts
-   457 packages/codegen/src/express-parser.ts
    660 packages/codegen/src/rust-generator.ts
    640 packages/codegen/src/typescript-generator.ts
    805 packages/collab-server/src/layer-registry-route.ts
@@ -160,7 +158,7 @@
    591 packages/create-ifc-lite/src/templates/react.ts
    428 packages/create-ifc-lite/src/templates/server-native.ts
    538 packages/create-ifc-lite/src/templates/server.ts
-  2818 packages/create/src/ifc-creator.ts
+  2804 packages/create/src/ifc-creator.ts
    535 packages/create/src/in-store/auto-space-detect.ts
    878 packages/create/src/in-store/extract-walls.ts
    819 packages/create/src/types.ts
@@ -175,7 +173,7 @@
    565 packages/drawing-2d/src/gpu-section-cutter.ts
    470 packages/drawing-2d/src/graphic-overrides/presets.ts
    499 packages/drawing-2d/src/graphic-overrides/rule-engine.ts
-   570 packages/drawing-2d/src/index.ts
+   567 packages/drawing-2d/src/index.ts
    436 packages/drawing-2d/src/line-merger.ts
    417 packages/drawing-2d/src/object-styles.ts
    753 packages/drawing-2d/src/polygon-builder.ts

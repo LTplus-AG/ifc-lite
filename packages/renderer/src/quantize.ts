@@ -175,6 +175,26 @@ export function quantizeInterleaved(
 /** Share of one entity's surface that may collapse on the lattice before its batch stays f32 (#9068). */
 export const MAX_COLLAPSED_AREA_FRACTION = 0.01;
 
+/** A thin solid can lose an entire dimension while losing very little triangle area.
+ * Check each source piece against the nodes used for upload.
+ * Once two distinct nodes occur on an axis, that axis cannot have collapsed. */
+export function latticeFlattensPiece(data: Float32Array, stride: number, nodes: Int32Array, start: number, end: number): boolean {
+  for (let axis = 0; axis < 3; axis++) {
+    const first = data[start * stride + axis];
+    const node = nodes[start * 3 + axis];
+    let hasExtent = false;
+    for (let v = start + 1; v < end; v++) {
+      if (nodes[v * 3 + axis] !== node) {
+        hasExtent = false;
+        break;
+      }
+      if (data[v * stride + axis] !== first) hasExtent = true;
+    }
+    if (hasExtent) return true;
+  }
+  return false;
+}
+
 /**
  * Share of one entity's surface whose face may flip or turn past 20°
  * (`MIN_LATTICE_COS2`) without collapsing before its batch stays f32 (#11444).
@@ -188,7 +208,13 @@ const MAX_TURNED_AREA_FRACTION = 0.05;
 const MIN_LATTICE_COS2 = Math.cos((20 * Math.PI) / 180) ** 2;
 
 /** Source area (as `|n|`) of some triangles, and how much of it the lattice collapses, or keeps but turns. */
-export interface LatticeLoss { area: number; collapsed: number; turned: number }
+export interface LatticeLoss {
+  area: number;
+  collapsed: number;
+  turned: number;
+  rimSegments?: Set<string>;
+  flattenedRim?: boolean;
+}
 
 export function emptyLatticeLoss(): LatticeLoss {
   return { area: 0, collapsed: 0, turned: 0 };
@@ -196,7 +222,7 @@ export function emptyLatticeLoss(): LatticeLoss {
 
 /** Whether the lattice visibly destroys the shape `loss` sums up: the batch gate's rule for one entity. */
 export function latticeLoses(loss: LatticeLoss): boolean {
-  return loss.collapsed > loss.area * MAX_COLLAPSED_AREA_FRACTION || loss.turned > loss.area * MAX_TURNED_AREA_FRACTION;
+  return loss.flattenedRim === true || loss.collapsed > loss.area * MAX_COLLAPSED_AREA_FRACTION || loss.turned > loss.area * MAX_TURNED_AREA_FRACTION;
 }
 
 /** Each vertex's lattice node, `round(p / QUANT_STEP)` per axis, from positions at `strideFloats`; into `nodes` when given (at least 3 per vertex). */
@@ -230,7 +256,24 @@ export function addLatticeTriangle(
   // Integer lattice offsets: every product is exact, so zero means collapsed.
   const qnx = quy * qvz - quz * qvy, qny = quz * qvx - qux * qvz, qnz = qux * qvy - quy * qvx;
   const qnSq = qnx * qnx + qny * qny + qnz * qnz;
-  if (qnSq === 0) { loss.collapsed += area; return; }
+  if (qnSq === 0) {
+    loss.collapsed += area;
+    // A flattened rim quad contributes two triangles on the same segment,
+    // even when the source faces use separate vertex indices.
+    const ab = !qux && !quy && !quz;
+    const ac = !qvx && !qvy && !qvz;
+    const bc = qux === qvx && quy === qvy && quz === qvz;
+    if (!loss.flattenedRim && !(ab && ac) && (ab || ac || bc)) {
+      const other = ab ? nc : nb;
+      const aKey = `${nodes[na]},${nodes[na + 1]},${nodes[na + 2]}`;
+      const bKey = `${nodes[other]},${nodes[other + 1]},${nodes[other + 2]}`;
+      const key = aKey < bKey ? aKey + '/' + bKey : bKey + '/' + aKey;
+      loss.rimSegments ??= new Set();
+      loss.flattenedRim = loss.rimSegments.has(key) || loss.rimSegments.size >= 64;
+      if (!loss.flattenedRim) loss.rimSegments.add(key);
+    }
+    return;
+  }
   const turn = nx * qnx + ny * qny + nz * qnz;
   if (turn <= 0 || turn * turn < MIN_LATTICE_COS2 * area * area * qnSq) loss.turned += area;
 }
@@ -253,9 +296,16 @@ export function latticeCollapsesGeometry(
   vertexData: Float32Array,
   strideFloats: number,
   indices: Uint32Array,
+  pieces: readonly { positions: Float32Array }[],
 ): boolean {
   const ids = new Uint32Array(vertexData.buffer, vertexData.byteOffset, vertexData.length);
   const nodes = latticeNodes(vertexData, strideFloats);
+  let start = 0;
+  for (const piece of pieces) {
+    const end = start + piece.positions.length / 3;
+    if (end > start && latticeFlattensPiece(vertexData, strideFloats, nodes, start, end)) return true;
+    start = end;
+  }
   // Merged batches keep each entity's triangles contiguous: switch totals when
   // the entity changes (an entity split across runs is summed).
   const totals = new Map<number, LatticeLoss>();

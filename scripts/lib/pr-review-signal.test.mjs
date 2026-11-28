@@ -116,12 +116,14 @@ test('the REAL test.yml derives the lane names the REAL rollup publishes', () =>
     'Provenance tests',
     'Rust tests',
     // #7955: the opt-in retained legs, split out so `Rust tests` fits its cap.
-    'Rust tests (retained)',
+    'Rust tests (retained browser)',
+    'Rust tests (retained cli)',
+    'Rust tests (retained rust)',
     'Rust crate semver',
     // #7655: eight unchanged-budget smoke shards each publish a distinct check run.
     ...Array.from({ length: 8 }, (_, index) => `Viewer E2E smoke (${index + 1}/8)`),
-    // #7360: every expanded context remains required at sixteen shards.
-    ...Array.from({ length: 16 }, (_, index) => `Viewer tests (shard ${index})`),
+    // #7360: every expanded context remains required for the viewer matrix.
+    ...Array.from({ length: 14 }, (_, index) => `Viewer tests (shard ${index})`),
     'Docs checks (docs-only PRs)',
     // #4912: the strict docs site build, on every PR touching docs.
     'Docs site build (mkdocs --strict)',
@@ -293,7 +295,7 @@ test('the REAL test.yml maps every viewer shard to the template the REAL rollup 
   const aliases = matrixSkipAliases(
     readFileSync(join(REPO_ROOT, '.github/workflows/test.yml'), 'utf8'),
   );
-  for (const shard of Array.from({ length: 16 }, (_, index) => index)) {
+  for (const shard of Array.from({ length: 14 }, (_, index) => index)) {
     assert.equal(
       aliases.get(`Viewer tests (shard ${shard})`),
       MATRIX_TEMPLATE,
@@ -328,7 +330,7 @@ test('`excludeJobKeys` must reach BOTH derivations, or the alias map stops cover
 
   // Asymmetric: excluding the job from the ALIASES only puts the shards back.
   const asymmetric = missingLanes(required, PR3581_ROLLUP, matrixSkipAliases(wf, { exclude: [...exclude, 'viewer-tests'] }));
-  for (const shard of Array.from({ length: 16 }, (_, index) => index)) {
+  for (const shard of Array.from({ length: 14 }, (_, index) => index)) {
     assert.ok(asymmetric.includes(`Viewer tests (shard ${shard})`), `shard ${shard} uncovered`);
   }
 });

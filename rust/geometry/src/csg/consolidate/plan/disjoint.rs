@@ -4,7 +4,7 @@
 
 //! Conservative independent groups in the existing projected union domain.
 
-use i_overlay::i_float::adapter::FloatPointAdapter;
+use i_overlay::i_float::{adapter::FloatPointAdapter, float::rect::FloatRect};
 
 /// A strict gap in either integer-overlay axis proves independent operands.
 /// Use the same adaptive adapter over all original projected paths as the union:
@@ -21,17 +21,13 @@ pub(super) fn separated_groups(
     clip: &[Vec<[f64; 2]>],
 ) -> Option<Vec<Vec<usize>>> {
     let paths: Vec<_> = subject.iter().chain(clip).collect();
-    if paths.iter().any(|path| {
-        path.is_empty()
-            || path
-                .iter()
-                .flatten()
-                .any(|coordinate| !coordinate.is_finite())
-    }) {
+    if paths.iter().any(|path| path.is_empty()) {
         return None;
     }
-    let adapter =
-        FloatPointAdapter::<[f64; 2], i32>::with_iter(paths.iter().flat_map(|path| path.iter()));
+    let rect = FloatRect::with_iter(paths.iter().flat_map(|path| path.iter()))
+        .ok()
+        .flatten()?;
+    let adapter = FloatPointAdapter::<[f64; 2], i32>::new_conservative(rect);
     for axis in 0..2 {
         let mut intervals: Vec<_> = paths
             .iter()

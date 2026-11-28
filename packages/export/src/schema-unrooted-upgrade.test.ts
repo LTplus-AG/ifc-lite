@@ -254,3 +254,22 @@ it('clears only the optional Zone of a retained IFC2X3 local time in IFC4X3 (#10
   expect(description).not.toContain('IFCLOCALTIME (#5) will be omitted');
   expect(description).not.toContain('IFCDATEANDTIME (#7) will be omitted');
 });
+
+it('preserves circuit assignments and reports retired property definitions (#11324)', async () => {
+  const raw = readFileSync(new URL('../../../rust/export/tests/fixtures/schema_retired_rooted_upgrade.ifc', import.meta.url));
+  const store = await new IfcParser().parseColumnar(Uint8Array.from(raw).buffer);
+  const merged = new MergedExporter([{ id: 'source', name: 'source', dataStore: store }]);
+  for (const schema of ['IFC4', 'IFC4X3'] as const) {
+    for (const result of [new StepExporter(store).export({ schema }), merged.export({ schema }), await merged.exportAsync({ schema })]) {
+      const output = new TextDecoder().decode(result.content);
+      expect(output).not.toMatch(/^#(?:7|8)=/m);
+      expect(output).toContain("#9=IFCDISTRIBUTIONCIRCUIT('0CvctVUKr0kugbFTf53O9L'");
+      expect(output).toMatch(/^#10=IFCRELASSIGNSTOGROUP\(.*,#9\);/m);
+      expect(output).toMatch(/^#13=IFCRELDEFINESBYPROPERTIES\(.*,#12\);/m);
+      expect(result.stats.warnings).toEqual(expect.arrayContaining([
+        expect.stringContaining('#7 (IFCENERGYPROPERTIES) was omitted'),
+        expect.stringContaining('#8 (IFCRELDEFINESBYPROPERTIES) was omitted'),
+      ]));
+    }
+  }
+});

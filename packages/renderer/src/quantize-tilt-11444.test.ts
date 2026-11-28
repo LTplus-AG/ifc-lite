@@ -142,7 +142,7 @@ const metres = DIRECTRIX_MM.map(([x, y, z]): V => [x / 1000, y / 1000, z / 1000]
 const STRIDE = 7;
 function degrades(...meshes: MeshData[]): boolean {
   const merged = mergeGeometry(meshes, [0, 0, 0]);
-  return latticeCollapsesGeometry(merged.vertexData, STRIDE, merged.indices);
+  return latticeCollapsesGeometry(merged.vertexData, STRIDE, merged.indices, meshes);
 }
 
 describe('lattice turn guard (#11444)', () => {

@@ -256,6 +256,7 @@ fn split_unwitnessed_nodes(mesh: &MeshDataJs, s: &mut Scratch) -> Result<(), Ref
 /// without a triangle.
 fn triangles(mesh: &MeshDataJs, s: &mut Scratch) -> Result<(), Refusal> {
     let p = &mesh.positions;
+    let mut rim_segments = std::collections::HashSet::new();
     let (mut area, mut collapsed, mut turned) = (0.0f64, 0.0f64, 0.0f64);
     for t in mesh.indices.chunks_exact(3) {
         let (a, b, c) = (t[0] as usize, t[1] as usize, t[2] as usize);
@@ -271,7 +272,19 @@ fn triangles(mesh: &MeshDataJs, s: &mut Scratch) -> Result<(), Refusal> {
         if tri_area > 0.0 {
             area += tri_area;
             match lattice_turn(&s.nodes, [ra, rb, rc], n, tri_area) {
-                Turn::Collapsed => collapsed += tri_area,
+                Turn::Collapsed => {
+                    // A flattened rim quad contributes two triangles on the same
+                    // lattice segment, even when different faces split vertices.
+                    let [a, b, c] = [ra, rb, rc].map(|i| s.nodes[i as usize]);
+                    if (a != b || a != c) && (a == b || a == c || b == c) {
+                        let other = if a == b { c } else { b };
+                        let segment = (a.min(other), a.max(other));
+                        if rim_segments.len() >= 64 || !rim_segments.insert(segment) {
+                            return Err(Refusal::Collapse);
+                        }
+                    }
+                    collapsed += tri_area;
+                }
                 Turn::Turned => turned += tri_area,
                 Turn::Kept => {}
             }

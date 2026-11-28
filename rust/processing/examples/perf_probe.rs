@@ -34,6 +34,9 @@
 //! it already reports best-of-N to shave scheduler/GC noise, but treat single
 //! runs as noisy and compare medians across runs.
 //!
+//! `--precise-phases --json` (build with `--features probe-phase-timings`)
+//! reports fractional phase milliseconds for the live pipeline.
+//!
 //! `--fingerprint` checks ordered mesh payloads after timing (excludes text,
 //! material definitions, UVs, textures and instancing); see `perf_probe/fingerprint.rs`.
 //!
@@ -56,6 +59,9 @@ mod fingerprint;
 #[path = "perf_probe/measurement.rs"]
 mod measurement;
 
+#[path = "perf_probe/phase_timings.rs"]
+mod phase_timings;
+
 #[path = "perf_probe/result_cache.rs"]
 mod result_cache;
 
@@ -69,9 +75,10 @@ struct Probe {
     entities: usize,
     index_build_ms: Option<f64>,
     cold_timing: Option<measurement::ColdTiming>,
-    // Best-of-N run (selected by minimum total_time_ms).
+    // Best-of-N run (selected by minimum total phase duration).
     stats: ProcessingStats,
-    all_totals_ms: Vec<u64>,
+    all_totals_ms: Vec<f64>,
+    phase_timings: Option<phase_timings::Timings>,
     /// Full process_geometry call, including metadata after ProcessingStats closes.
     all_wall_ms: Vec<f64>,
     fingerprints: Option<Vec<String>>,
@@ -265,13 +272,13 @@ fn print_json(probes: &[Probe]) {
             s.total_vertices,
             s.total_triangles,
             p.index_build_ms.map(|ms| format!("{ms:.2}")).unwrap_or_else(|| "null".into()),
-            s.parse_time_ms,
-            s.entity_scan_time_ms,
-            s.lookup_time_ms,
-            s.preprocess_time_ms,
-            s.geometry_time_ms,
+            p.phase_timings.map_or(s.parse_time_ms as f64, |t| phase_timings::ms(t.parse_ns)),
+            p.phase_timings.map_or(s.entity_scan_time_ms as f64, |t| phase_timings::ms(t.scan_ns)),
+            p.phase_timings.map_or(s.lookup_time_ms as f64, |t| phase_timings::ms(t.lookup_ns)),
+            p.phase_timings.map_or(s.preprocess_time_ms as f64, |t| phase_timings::ms(t.preprocess_ns)),
+            p.phase_timings.map_or(s.geometry_time_ms as f64, |t| phase_timings::ms(t.geometry_ns)),
             s.faceted_brep_time_ms,
-            s.total_time_ms,
+            p.phase_timings.map_or(s.total_time_ms as f64, |t| phase_timings::ms(t.total_ns)),
             p.all_totals_ms,
             p.all_wall_ms,
             s.point_cache_hits,
@@ -311,6 +318,7 @@ fn main() {
     let mut fingerprint = false;
     let mut suite = false;
     let mut cold = false;
+    let mut precise_phases = false;
     let mut single_thread = false;
     let mut result_fingerprint = false;
     let mut cache_dir: Option<String> = None;
@@ -332,6 +340,7 @@ fn main() {
                     });
             }
             "--json" => json = true,
+            "--precise-phases" => precise_phases = true,
             "--census" => census = true,
             "--fingerprint" => fingerprint = true,
             "--suite" => suite = true,
@@ -345,7 +354,7 @@ fn main() {
             "--expect-cache" => expect_cache = Some(result_cache::flag_value("--expect-cache", args.next())),
             other if other.starts_with("--") => {
                 eprintln!("unknown flag: {other}");
-                eprintln!("usage: perf_probe [<file.ifc>...] [--suite] [--iters N] [--cold] [--single-thread] [--census] [--fingerprint] [--result-fingerprint] [--result-cache DIR [--result-cache-mode rw|ro|off] [--expect-cache hit|miss]] [--json]");
+                eprintln!("usage: perf_probe [<file.ifc>...] [--suite] [--iters N] [--cold] [--single-thread] [--census] [--fingerprint] [--result-fingerprint] [--result-cache DIR [--result-cache-mode rw|ro|off] [--expect-cache hit|miss]] [--json] [--precise-phases]");
                 std::process::exit(2);
             }
             other => fixtures.push(other.to_string()),
@@ -357,7 +366,7 @@ fn main() {
         }
     }
     if fixtures.is_empty() {
-        eprintln!("usage: perf_probe [<file.ifc>...] [--suite] [--iters N] [--cold] [--single-thread] [--census] [--fingerprint] [--result-fingerprint] [--result-cache DIR [--result-cache-mode rw|ro|off] [--expect-cache hit|miss]] [--json]");
+        eprintln!("usage: perf_probe [<file.ifc>...] [--suite] [--iters N] [--cold] [--single-thread] [--census] [--fingerprint] [--result-fingerprint] [--result-cache DIR [--result-cache-mode rw|ro|off] [--expect-cache hit|miss]] [--json] [--precise-phases]");
         eprintln!("  no fixtures given; try --suite (uses catalogued models on disk)");
         std::process::exit(2);
     }
@@ -367,6 +376,10 @@ fn main() {
         std::process::exit(2);
     }
 
+    if precise_phases && (!cfg!(feature = "probe-phase-timings") || !json || cache_dir.is_some()) {
+        eprintln!("--precise-phases requires --features probe-phase-timings, --json and a live pipeline");
+        std::process::exit(2);
+    }
     if cache_dir.is_some() && !cold {
         eprintln!("--result-cache requires --cold (one fixture, one iteration, a fresh process per measurement)");
         std::process::exit(2);
@@ -396,11 +409,14 @@ fn main() {
         if single_thread { ", single-thread" } else { "" }
     );
 
+    let mode = measurement::TimingMode { cold, precise_phases };
     let mut probes = Vec::new();
     for f in &fixtures {
-        if let Some(p) = measurement::run(f, iters, census, fingerprint, result_fingerprint, cold, cache.as_ref()) {
+        if let Some(p) = measurement::run(f, iters, census, fingerprint, result_fingerprint, mode, cache.as_ref()) {
             print_human(&p);
             probes.push(p);
+        } else if precise_phases {
+            std::process::exit(1);
         }
     }
 

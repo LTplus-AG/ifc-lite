@@ -36,7 +36,11 @@ import type { BatchedMesh } from './types.js';
 import type { RenderPipeline } from './pipeline.js';
 import type { CompactPageDeps } from './compact-page-deps.js';
 
-/** The store origin snaps to the coarsest level's step, so every level's quantMin is a multiple of its own step. */
+/**
+ * The store origin snaps to the coarsest level's step, so every level's quantMin is a multiple of its own
+ * step. Bucket batch frames snap to the same lattice (`BATCH_ORIGIN_STEP`, scene-precision.ts), so a vertex
+ * lands on one node on either path; not imported from there, which would pull an eager module into this chunk.
+ */
 const ORIGIN_STEP = 2 ** -9;
 const MAX_PAGE_VERTICES = 65536;
 

@@ -30,7 +30,7 @@ test.after(() => rmSync(TMP, { recursive: true, force: true }));
 
 const SHA = 'a'.repeat(40);
 const FULL_JOBS = [{ name: 'Detect changes', conclusion: 'success' }, { name: 'Viewer tests (shard 0)', conclusion: 'success' }];
-const FAST_JOBS = [{ name: 'Detect changes', conclusion: 'success' }, { name: 'Viewer tests (shard 0)', conclusion: 'skipped' }, { name: 'Rust tests (retained)', conclusion: 'skipped' }];
+const FAST_JOBS = [{ name: 'Detect changes', conclusion: 'success' }, { name: 'Viewer tests (shard 0)', conclusion: 'skipped' }, { name: TEST_YML.jobs['rust-retained'].name, conclusion: 'skipped' }];
 const openPr = (over = {}) => ({ number: 7, state: 'open', headSha: SHA, labels: [FULL_LABEL, 'bug'], ...over });
 
 const BASE = {
@@ -57,7 +57,7 @@ test('KEEP after a red run, even when a fast-skipped lane ran (#9787 review)', (
     { name: 'Build packages + WASM', conclusion: 'failure' },
     { name: 'Viewer tests (shard 0)', conclusion: 'skipped' },
     { name: 'Node tests (shard 1/4)', conclusion: 'skipped' },
-    { name: 'Rust tests (retained)', conclusion: 'success' },
+    { name: 'Rust tests (retained rust)', conclusion: 'success' },
   ];
   for (const conclusion of ['failure', 'cancelled', 'timed_out', 'neutral', 'action_required', undefined]) {
     assert.equal(decide({ run: { ...BASE.run, conclusion }, jobs: () => buildFailed }).action, 'keep', String(conclusion));
@@ -114,6 +114,7 @@ test('the API is read only once the cheap checks pass', () => {
 
 test('ranFullLane counts only a fast-skipped lane that ran to success', () => {
   assert.equal(ranFullLane([{ name: 'Node tests (shard 2/4)', conclusion: 'success' }]), true);
+  assert.equal(ranFullLane([{ name: 'Rust tests (retained cli)', conclusion: 'success' }]), true);
   for (const conclusion of ['cancelled', 'failure', 'skipped']) {
     assert.equal(ranFullLane([{ name: 'Viewer E2E smoke (3/8)', conclusion }]), false, conclusion);
   }

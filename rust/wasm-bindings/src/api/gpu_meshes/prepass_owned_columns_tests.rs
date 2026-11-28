@@ -21,7 +21,7 @@ fn issue_6537_sorted_owned_columns_retain_all_three_original_allocations() {
     assert_eq!(ids, [1, 2]);
     let pointers = (ids.as_ptr(), starts.as_ptr(), lengths.as_ptr());
     let (index, discovery) = ShardedColumns::owned(ids, starts, lengths, &classes).unwrap()
-        .discover_and_build(content, &Default::default()).unwrap();
+        .discover_and_build(content, &Default::default(), false).unwrap();
     assert_eq!((index.ids().as_ptr(), index.starts().as_ptr(), index.lengths().as_ptr()), pointers,
         "the production seam must adopt ABI columns rather than clone them");
     assert!(discovery.buffered_jobs.is_empty());
@@ -37,9 +37,9 @@ fn issue_6537_discovery_keeps_file_order_classes_and_occurrences_before_dedup() 
     assert_eq!(ids, [90, 70, 50, 10, 5, 3, 50]);
     let last = (starts[6] as usize, (starts[6] + lengths[6]) as usize);
     let (borrowed_index, borrowed) = ShardedColumns::borrowed(&ids, &starts, &lengths, &classes).unwrap()
-        .discover_and_build(content, &Default::default()).unwrap();
+        .discover_and_build(content, &Default::default(), false).unwrap();
     let (owned_index, owned) = ShardedColumns::owned(ids, starts, lengths, &classes).unwrap()
-        .discover_and_build(content, &Default::default()).unwrap();
+        .discover_and_build(content, &Default::default(), false).unwrap();
     assert_eq!(owned.project_id, Some(90));
     assert_eq!(owned.site_position.map(|site| site.0), Some(70));
     assert_eq!(owned.buffered_jobs.iter().map(|job| job.0).collect::<Vec<_>>(), [70, 50, 5, 50]);
@@ -59,7 +59,7 @@ fn issue_6537_owned_discovery_honors_disabled_types_and_type_candidates() {
     let (ids, starts, lengths, classes) = scan(content);
     let disabled = ["IFCWALL".to_owned()].into_iter().collect();
     let (_, discovery) = ShardedColumns::owned(ids, starts, lengths, &classes).unwrap()
-        .discover_and_build(content, &disabled).unwrap();
+        .discover_and_build(content, &disabled, false).unwrap();
     assert_eq!(discovery.buffered_jobs.iter().map(|row| row.0).collect::<Vec<_>>(), [4]);
     assert_eq!(discovery.type_candidate_spans.iter().map(|row| row.0).collect::<Vec<_>>(), [2]);
 }
@@ -95,7 +95,7 @@ fn issue_6537_owned_and_borrowed_refuse_each_column_length_before_discovery() {
 #[test]
 fn issue_6537_empty_owned_columns_build_an_empty_index_and_discovery() {
     let (index, discovery) = ShardedColumns::owned(Vec::new(), Vec::new(), Vec::new(), &[]).unwrap()
-        .discover_and_build(b"", &Default::default()).unwrap();
+        .discover_and_build(b"", &Default::default(), false).unwrap();
     assert!(index.is_empty());
     assert_eq!(discovery.total_jobs, 0);
     assert_eq!(discovery.project_id, None);
@@ -109,11 +109,11 @@ fn issue_7782_disabled_sites_keep_metadata_without_scheduling_geometry() {
     let (ids, starts, lengths, classes) = scan(content);
     let disabled = ["IFCSITE".to_owned()].into_iter().collect();
     let (_, enabled) = ShardedColumns::borrowed(&ids, &starts, &lengths, &classes).unwrap()
-        .discover_and_build(content, &Default::default()).unwrap();
+        .discover_and_build(content, &Default::default(), false).unwrap();
     let (_, borrowed) = ShardedColumns::borrowed(&ids, &starts, &lengths, &classes).unwrap()
-        .discover_and_build(content, &disabled).unwrap();
+        .discover_and_build(content, &disabled, false).unwrap();
     let (_, owned) = ShardedColumns::owned(ids, starts, lengths, &classes).unwrap()
-        .discover_and_build(content, &disabled).unwrap();
+        .discover_and_build(content, &disabled, false).unwrap();
     assert_eq!(enabled.buffered_jobs.iter().map(|job| job.0).collect::<Vec<_>>(), [70, 50, 5]);
     assert_eq!(enabled.total_jobs, 3);
     assert_eq!(enabled.site_position.map(|site| site.0), Some(70));

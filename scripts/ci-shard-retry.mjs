@@ -141,7 +141,7 @@ function notInShard(files, env) {
   } catch (err) {
     return `cannot read this shard: ${err.message}`;
   }
-  const assigned = assignShards(files, parseManifest(readFileSync(MANIFEST_PATH, 'utf8')), count);
+  const assigned = assignShards(files, parseManifest(readFileSync(MANIFEST_PATH, 'utf8')), count, env.VIEWER_TEST_CONCURRENCY);
   const outside = files.filter((f) => assigned.get(f) !== shard);
   return outside.length > 0 ? `failure(s) located in file(s) this shard does not run: ${outside.join(', ')}` : null;
 }

@@ -82,12 +82,7 @@ export { PolygonBuilder, simplifyPolygon, polygonBounds } from './polygon-builde
 // LINE MERGING
 // ═══════════════════════════════════════════════════════════════════════════
 
-export {
-  mergeDrawingLines,
-  mergeCollinearLines,
-  deduplicateLines,
-  splitLineAtParams,
-} from './line-merger.js';
+export { mergeDrawingLines, mergeCollinearLines, deduplicateLines, splitLineAtParams } from './line-merger.js';
 export type { LineMergerOptions } from './line-merger.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -121,6 +116,8 @@ export type { ProjectionBand, ProjectionBandDepths } from './projection-bands.js
 // Current-floor scoping + feature-element exclusion (issue #979 follow-up)
 export { currentFloorBands, storeyFloorsFromMeshes, StoreyFloorLevels } from './storey-bands.js';
 export type { StoreyFloorMesh } from './storey-bands.js';
+export { storeyCutElevation } from './storey-cut.js';
+export type { StoreyCut, StoreyCutFrame } from './storey-cut.js';
 export { isFeatureElementType } from './feature-elements.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -171,12 +168,12 @@ export type { HatchLine, HatchResult, CustomHatchSettings } from './hatch-genera
 // SVG EXPORT
 // ═══════════════════════════════════════════════════════════════════════════
 
+export { escapeXml, entityIdAttr, svgNum } from './xml-escape.js';
 export { SVGExporter, exportToSVG } from './svg-exporter.js';
 export type { SVGExportOptions } from './svg-exporter.js';
 
-// Scaled PDF export (issue #2042): pure scale/extent arithmetic only —
-// the PDF is assembled by the viewer using jsPDF, which is not a
-// dependency of this package.
+// Scaled PDF export (issue #2042): pure scale/extent arithmetic only; the
+// viewer assembles the PDF with jsPDF, which is not a dependency of this package.
 export {
   computePdfScaleLayout, worldPointToPdfMm, worldLengthToPdfMm, flipBounds2D, formatScaleFactorLabel,
   // The ratio a sheet PRINTS: the same number as the filename, hedged with

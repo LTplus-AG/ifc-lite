@@ -6,10 +6,12 @@ import type { MeshData } from '@ifc-lite/geometry';
 import type { BatchedMesh } from './types.js';
 import { BATCH_CONSTANTS } from './constants.js';
 import { type TopologyMemo, originPreservesTriangleTopology, topologySafeBatchOrigin } from './scene-precision.js';
-import { addLatticeTriangle, emptyLatticeLoss, latticeLoses, latticeNodes, type LatticeLoss } from './quantize.js';
+import { addLatticeTriangle, emptyLatticeLoss, latticeFlattensPiece, latticeLoses, latticeNodes, type LatticeLoss } from './quantize.js';
+import type { ColdPieceMembership } from './scene-cold-membership.js';
 import { frameShift } from './scene-geometry.js';
 
 export interface PrecisionBucket {
+  coldMembers?: ColdPieceMembership;
   key: string;
   meshData: MeshData[];
   batchedMesh: BatchedMesh | null;
@@ -45,7 +47,7 @@ const SCRATCH_KEEP = 1 << 20;
  * reads them, else the mesh's own id), judged on the f32 positions
  * `mergeGeometry` would store for it in `frame` (the same `frameShift`).
  */
-function addMeshLatticeLoss(lossOf: (lane: number) => LatticeLoss, mesh: MeshData, frame: readonly [number, number, number]): void {
+function addMeshLatticeLoss(lossOf: (lane: number) => LatticeLoss, mesh: MeshData, frame: readonly [number, number, number]): boolean {
   const { positions, indices, entityIds } = mesh;
   if (scratchPositions.length < positions.length) {
     scratchPositions = new Float32Array(positions.length);
@@ -57,12 +59,14 @@ function addMeshLatticeLoss(lossOf: (lane: number) => LatticeLoss, mesh: MeshDat
     for (let i = axis; i < positions.length; i += 3) local[i] = positions[i] + shift[axis];
   }
   const nodes = latticeNodes(local, 3, scratchNodes);
+  if (latticeFlattensPiece(local, 3, nodes, 0, local.length / 3)) return false;
   let lane = -1, loss = emptyLatticeLoss();
   for (let t = 0; t + 2 < indices.length; t += 3) {
     const id = entityIds ? entityIds[indices[t]] : mesh.expressId;
     if (id !== lane) { lane = id; loss = lossOf(id); }
     addLatticeTriangle(loss, local, 3, nodes, indices[t], indices[t + 1], indices[t + 2]);
   }
+  return true;
 }
 
 /**
@@ -88,12 +92,13 @@ export function markOffLattice(
     let entities = bases.get(route.base);
     if (!entities) bases.set(route.base, entities = new Map());
     const lanes = entities;
-    addMeshLatticeLoss((lane) => {
+    const preservesExtent = addMeshLatticeLoss((lane) => {
       let entity = lanes.get(lane);
       if (!entity) lanes.set(lane, entity = { loss: emptyLatticeLoss(), meshes: [] });
       if (entity.meshes[entity.meshes.length - 1] !== mesh) entity.meshes.push(mesh);
       return entity.loss;
     }, mesh, route.frame);
+    if (!preservesExtent) into.add(mesh);
   }
   for (const entities of bases.values()) {
     for (const { loss, meshes: parts } of entities.values()) {

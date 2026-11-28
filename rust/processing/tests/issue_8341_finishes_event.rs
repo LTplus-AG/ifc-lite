@@ -19,6 +19,8 @@ struct Recorder {
     pending: Option<Finishes>,
     events: usize,
     batches: Vec<(Vec<MeshData>, Option<Finishes>)>,
+    /// How many batches had arrived at the first `on_color_update`.
+    updates_after_batches: Option<usize>,
 }
 
 impl ProcessingSink for Recorder {
@@ -26,6 +28,10 @@ impl ProcessingSink for Recorder {
         assert!(self.pending.is_none(), "on_finishes fired twice before one on_batch");
         self.events += 1;
         self.pending = Some(finishes.to_vec());
+    }
+
+    fn on_color_update(&mut self, _updates: &[(u32, [f32; 4])]) {
+        self.updates_after_batches.get_or_insert(self.batches.len());
     }
 
     fn on_batch(&mut self, meshes: &[MeshData], _processed: usize, _total: usize) {
@@ -164,4 +170,106 @@ fn finishes_event_matches_the_rescan_join_on_real_fixtures_8341() {
             assert!(finished > 0, "FZK-Haus authors finishes (#5984 acceptance)");
         }
     }
+}
+
+/// A directly styled body: one face set (#61) whose attached style authors
+/// SpecularColour 0.75, so roughness 0.25.
+const DIRECT: &str = r#"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('issue-8341 deferred'),'2;1');
+FILE_NAME('t.ifc','2026-11-20T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('0$ScRe4drECQ4DMSqUjd6d',$,'P',$,$,$,$,(#2),#3);
+#2=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.0E-5,#5,$);
+#3=IFCUNITASSIGNMENT((#6));
+#4=IFCCARTESIANPOINT((0.,0.,0.));
+#5=IFCAXIS2PLACEMENT3D(#4,$,$);
+#6=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#49=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(1.,0.,0.),(0.,1.,0.),(0.,0.,1.)));
+#52=IFCSURFACESTYLE($,.POSITIVE.,(#54));
+#54=IFCSURFACESTYLERENDERING(#56,$,$,$,$,$,IFCNORMALISEDRATIOMEASURE(0.75),$,.NOTDEFINED.);
+#56=IFCCOLOURRGB($,0.6,0.5,0.4);
+#61=IFCTRIANGULATEDFACESET(#49,$,.T.,((1,2,3),(1,2,4),(1,4,3),(2,3,4)),$);
+#62=IFCSTYLEDITEM(#61,(#52),$);
+#100=IFCBUILDINGELEMENTPROXY('1directStyledBody0000',$,'Direct',$,$,#101,#102,$,.NOTDEFINED.);
+#101=IFCLOCALPLACEMENT($,#5);
+#102=IFCPRODUCTDEFINITIONSHAPE($,$,(#103));
+#103=IFCSHAPEREPRESENTATION(#2,'Body','Tessellation',(#61));
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+/// [`DIRECT`] with a second face set (#71) listed first, coloured by a
+/// uniform `IfcIndexedColourMap`. Indexed colours are not deferred, so in the
+/// deferred chunk #61 falls back to the element colour taken from #71.
+fn indexed_first() -> String {
+    let ifc = DIRECT
+        .replace(
+            "#103=IFCSHAPEREPRESENTATION(#2,'Body','Tessellation',(#61));",
+            "#103=IFCSHAPEREPRESENTATION(#2,'Body','Tessellation',(#71,#61));
+#71=IFCTRIANGULATEDFACESET(#49,$,.T.,((1,2,3),(1,2,4),(1,4,3),(2,3,4)),$);
+#72=IFCINDEXEDCOLOURMAP(#71,$,#73,(1,1,1,1));
+#73=IFCCOLOURRGBLIST(((0.1,0.2,0.3)));",
+        );
+    assert_ne!(ifc, DIRECT, "indexed splice applied");
+    ifc
+}
+
+/// A `fast_first` pass without presentation layers defers the attached styles
+/// past its first chunk, and the replay sends colours only. A finish is joined
+/// by the style source chosen while meshing, so a pass asked for finishes
+/// resolves the deferred styles before that chunk (#10698): every batch carries
+/// each item's own authored finish, in the colour it was authored with.
+#[test]
+fn a_deferred_first_chunk_keeps_its_items_authored_finish_8341() {
+    let features = ProcessingRequest::default().features.finishes(true).presentation_layers(false);
+    let request = ProcessingRequest::default()
+        .features(features)
+        .batching(Batching::new(1, 1).fast_first(true));
+    for (what, ifc, items) in [
+        ("direct", DIRECT.to_string(), vec![Some(61)]),
+        ("after an indexed-colour item", indexed_first(), vec![Some(71), Some(61)]),
+    ] {
+        let mut sink = Recorder::default();
+        process(ifc.as_bytes(), &request, &mut sink);
+        // With one job, every batch (one mesh each) comes from the first chunk,
+        // which is meshed after the deferred styles resolve: #61 is already in
+        // its authored colour, and the early replay sends no colour update.
+        let order: Vec<_> = sink.batches.iter().map(|(meshes, _)| meshes.iter().map(|m| m.geometry_item_id).collect::<Vec<_>>()).collect();
+        assert_eq!(order, items.iter().map(|&item| vec![item]).collect::<Vec<_>>(), "{what}: one batch per item, in order");
+        let styled = sink.batches.iter().flat_map(|(meshes, _)| meshes).find(|m| m.geometry_item_id == Some(61)).expect("#61");
+        assert_eq!(styled.color, [0.6, 0.5, 0.4, 1.0], "{what}: #61 in its authored colour from the first chunk");
+        assert!(sink.updates_after_batches.is_none(), "{what}: a colour update was sent although styles resolved first");
+        let roughness: Vec<_> = sink
+            .batches
+            .iter()
+            .flat_map(|(meshes, finishes)| meshes.iter().zip(finishes.as_ref().expect("announced")))
+            .map(|(mesh, finish)| (mesh.geometry_item_id, finish.and_then(|f| f.roughness).map(|r| (r * 100.0).round() / 100.0)))
+            .collect();
+        assert!(roughness.contains(&(Some(61), Some(0.25))), "{what}: the first chunk dropped #61's authored finish: {roughness:?}");
+        assert!(roughness.iter().all(|&(item, r)| item == Some(61) || r.is_none()), "{what}: a finish leaked to another item: {roughness:?}");
+    }
+}
+
+#[test]
+fn a_deferred_unstyled_sibling_keeps_the_element_fallback_finish_10698() {
+    let ifc = DIRECT.replace("0.6,0.5,0.4", "0.6,0.6,0.6").replace(
+        "#103=IFCSHAPEREPRESENTATION(#2,'Body','Tessellation',(#61));",
+        "#103=IFCSHAPEREPRESENTATION(#2,'Body','Tessellation',(#61,#71));
+#71=IFCTRIANGULATEDFACESET(#49,$,.T.,((1,2,3),(1,2,4),(1,4,3),(2,3,4)),$);",
+    );
+    let request = ProcessingRequest::default()
+        .features(ProcessingRequest::default().features.finishes(true).presentation_layers(false))
+        .batching(Batching::new(1, 1).fast_first(true));
+    let mut sink = Recorder::default();
+    process(ifc.as_bytes(), &request, &mut sink);
+    let (mesh, finish) = sink.batches.iter()
+        .flat_map(|(meshes, finishes)| meshes.iter().zip(finishes.as_ref().expect("announced")))
+        .find(|(mesh, _)| mesh.geometry_item_id == Some(71))
+        .expect("unstyled sibling mesh");
+    assert_eq!(mesh.color, [0.6, 0.6, 0.6, 1.0]);
+    let roughness = finish.and_then(|f| f.roughness).expect("element fallback roughness");
+    assert!((roughness - 0.25).abs() < 0.001, "roughness {roughness}");
 }

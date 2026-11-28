@@ -9,7 +9,7 @@ import type { CatalogTool } from './types';
 export interface AnthropicInputSchema {
   type: 'object';
   properties: Record<string, {
-    type: string;
+    type?: string;
     description?: string;
     enum?: unknown[];
     minimum?: number;
@@ -69,6 +69,12 @@ function ensureObjectSchema(tool: CatalogTool): AnthropicInputSchema {
         ...(typeof property?.minimum === 'number' ? { minimum: property.minimum } : {}),
         ...(typeof property?.maximum === 'number' ? { maximum: property.maximum } : {}),
       };
+    }
+    if (tool.name === 'query_entities') {
+      // Both browser hosts normalize paging with integerArg. A type or range
+      // constraint here would reject the argument before normalization.
+      properties.limit = { description: 'Page size. Numbers and numeric strings are truncated and clamped to 0–200. Other values use 50.' };
+      properties.offset = { description: 'Matches to skip. Numbers and numeric strings are truncated and clamped to a nonnegative safe integer. Other values use 0.' };
     }
     return {
       type: 'object',

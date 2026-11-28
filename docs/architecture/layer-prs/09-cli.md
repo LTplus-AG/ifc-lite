@@ -6,6 +6,11 @@ The commands ship today as `ifc-lite layer <publish|create|status|diff|merge|pus
 and `ifc-lite ref <list|create|move|protect>`; `ifc` below is the spec's shorthand. `layer checks`
 is not a separate command — check evidence is attached with `layer publish --check`. See
 [the CLI guide](../../guide/cli.md#layer-layered-change-tracking) for the shipped flags and examples.
+The block below is the spec. Not implemented: `publish --sign`, a selector on
+`merge --resolve` (the shipped flag takes only `ours` or `theirs`), and
+`log --graph` / `log --author`. Shipped but not in the block: `publish --principal`,
+`--kind` and `--strict-scope`; `merge --waive <spec> --reason "<text>"` and
+`--approved-by`; `revert --in <ref>` and `--resolve`.
 
 ```shell
 ifc layer create   --base <ref|stack|file.ifcx> --intent "..." [--scope "<capability>"]

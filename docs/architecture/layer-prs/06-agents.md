@@ -30,6 +30,8 @@ A draft may be co-edited live by humans and agents in the same CRDT session (`au
 | `get_review_feedback(review_id)` | BCF topics + per-entity decisions, structured for the agent to act on |
 | `respond_to_review(review_id, draft_id)` | opens a follow-up draft on the same base; publishes as a child layer of the PR |
 
+Shipped beside this table (`packages/mcp/src/tools/layer.ts`, `layer-review.ts`): `draft_apply_ops` (apply entity ops to a draft, each checked against its scope claims first), `add_review_topic` (a BCF-shaped comment bound to review, entity and optional componentKey) and `add_review_feedback` (per-entity reviewer decisions, optionally with a status change).
+
 `get_review_feedback` + `respond_to_review` close the loop: reviewer rejects 12 of 400 entities with a BCF comment, the agent reads the structured feedback, fixes, republishes. The PR becomes a genuine conversation between humans and agents with the model as the shared artifact.
 
 ## 6.4 Write-tool re-targeting

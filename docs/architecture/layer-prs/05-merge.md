@@ -3,11 +3,11 @@
 ## 5.1 Engines
 
 - `@ifc-lite/diff` (exists): two-way classification added/modified/deleted/unchanged over `EntityFingerprint`, scopes data/geometry/both
-- `packages/merge` (new): three-way merge built on two runs of the two-way engine, plus conflict records and merge-layer emission
+- `packages/merge` (`@ifc-lite/merge`, shipped): three-way merge built on two runs of the two-way engine, plus conflict records, merge-layer emission, rebase and revert
 
 ## 5.2 Per-component fingerprints (extension to `diff`)
 
-`fingerprint.ts` gains an opt-in mode emitting sub-hashes per componentKey (02 §2.2): per-Pset, per-Qset, attribute groups, placement, type-assignment. The existing whole-blob `dataHash` remains the default (protected by current tests). Sub-hashes make the conflict unit (entity, componentKey): an architect editing placement and an agent editing `Pset_FireSafety` on the same wall is **not** a conflict.
+`fingerprint.ts` has an opt-in mode emitting sub-hashes per componentKey (`EntityFingerprint.components`) (02 §2.2): per-Pset, per-Qset, attribute groups, placement, type-assignment. The existing whole-blob `dataHash` remains the default (protected by current tests). Sub-hashes make the conflict unit (entity, componentKey): an architect editing placement and an agent editing `Pset_FireSafety` on the same wall is **not** a conflict.
 
 ## 5.3 Three-way algorithm
 

@@ -7,7 +7,7 @@ Content-addressed store + ref database + policy engine + review/PR objects + aud
 ## 10.2 Open core split (deliberate Git/GitHub split)
 
 - **MPL-2.0, forever**: layer format, manifest spec, diff, merge, CLI, MCP tools, single-user/local refs, the GitHub Action
-- **Paid (extends the Tauri CHF 19/month track with a team tier)**: hosted registry, team permissions, protected refs + policies, review workflows + notifications, provenance/audit search ("every layer any agent wrote this month, grouped by model"), sidecar CDN, SLA
+- **Paid (a team tier; the Tauri desktop app this once extended has been removed)**: hosted registry, team permissions, protected refs + policies, review workflows + notifications, provenance/audit search ("every layer any agent wrote this month, grouped by model"), sidecar CDN, SLA
 
 The merge engine being open is what makes the standard adoptable (11); coordination is the product.
 

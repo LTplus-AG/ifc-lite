@@ -1,12 +1,12 @@
 # 12: Authority and Disagreement
 
-**Status: Draft v0.1, for discussion. Tracking: [#8203](https://github.com/LTplus-AG/ifc-lite/issues/8203#issuecomment-6446094066).** (Number 11 stays reserved for the upstream-standardization doc that 01 and 02 already cite.)
+**Status: Draft v0.1, for discussion; delivery steps 1-2 (§12.10) have shipped, steps 3-5 have not. Tracking: [#8203](https://github.com/LTplus-AG/ifc-lite/issues/8203#issuecomment-6446094066).** (Number 11 stays reserved for the upstream-standardization doc that 01 and 02 already cite.)
 
 ## 12.1 The problem
 
 The architect's layer says a wall is EI 60. The fire consultant's layer says EI 90. Which one is right?
 
-Nothing in the system can answer that today:
+Without a charter, nothing in the system can answer that (the charter and resolution code in `packages/extensions/src/authority/` is not yet wired into merge or the viewer):
 
 | Mechanism | What it decides | Why it doesn't answer the question |
 |---|---|---|

@@ -37,11 +37,13 @@ export type ClashRunNotComparableReason =
   | 'rule-revision-changed'
   /** The next run no longer contains a side's element (deleted, or its GlobalId re-minted). */
   | 'element-not-examined'
-  /** The next run's coverage does not list the elements it examined, and a slot model changed. */
+  /** Both elements were matched, but not on opposite sides of the rule, so the pair was never tested. */
+  | 'pair-not-examined'
+  /** The next run's coverage does not record which elements each rule side matched. */
   | 'coverage-not-recorded'
   /** The other run was told to skip this element pair (void/host or user exclusion). */
   | 'excluded-in-other-run'
-  /** The next run did not record its exclusions, so the pair may have been skipped rather than cleared. */
+  /** The other run did not record its exclusions, so the pair may have been skipped there. */
   | 'exclusions-not-recorded'
   /** The other run hit its candidate cap, so absence there proves nothing. */
   | 'run-truncated';
@@ -72,31 +74,28 @@ export interface ClashRunComparison {
 
 const byId = (x: ClashRunFinding, y: ClashRunFinding) => (x.id < y.id ? -1 : x.id > y.id ? 1 : 0);
 
+/** Own data properties only, so an id such as `__proto__` survives. */
+const record = <T>(entries: Array<[string, T]>): Record<string, T> => Object.fromEntries(entries);
+
 function slotChanges(previous: ClashRunDocument, next: ClashRunDocument): Record<string, ClashRunSlotChange> {
   const before = new Map(previous.manifest.slots.map((s) => [s.slot, s.sha256]));
   const after = new Map(next.manifest.slots.map((s) => [s.slot, s.sha256]));
-  const out: Record<string, ClashRunSlotChange> = {};
-  for (const slot of [...new Set([...before.keys(), ...after.keys()])].sort()) {
-    if (!after.has(slot)) out[slot] = 'removed';
-    else if (!before.has(slot)) out[slot] = 'added';
-    else {
-      const [a, b] = [before.get(slot), after.get(slot)];
-      out[slot] = a == null || b == null ? 'unpinned' : a === b ? 'unchanged' : 'model-changed';
-    }
-  }
-  return out;
+  return record([...new Set([...before.keys(), ...after.keys()])].sort().map((slot): [string, ClashRunSlotChange] => {
+    if (!after.has(slot)) return [slot, 'removed'];
+    if (!before.has(slot)) return [slot, 'added'];
+    const [a, b] = [before.get(slot), after.get(slot)];
+    return [slot, a == null || b == null ? 'unpinned' : a === b ? 'unchanged' : 'model-changed'];
+  }));
 }
 
 function ruleChanges(previous: ClashRunDocument, next: ClashRunDocument): Record<string, ClashRunRuleChange> {
   const before = new Map(previous.manifest.rules.items.map((r) => [r.id, r.revision]));
   const after = new Map(next.manifest.rules.items.map((r) => [r.id, r.revision]));
-  const out: Record<string, ClashRunRuleChange> = {};
-  for (const id of [...new Set([...before.keys(), ...after.keys()])].sort()) {
-    if (!after.has(id)) out[id] = 'removed';
-    else if (!before.has(id)) out[id] = 'added';
-    else out[id] = before.get(id) === after.get(id) ? 'unchanged' : 'revision-changed';
-  }
-  return out;
+  return record([...new Set([...before.keys(), ...after.keys()])].sort().map((id): [string, ClashRunRuleChange] => {
+    if (!after.has(id)) return [id, 'removed'];
+    if (!before.has(id)) return [id, 'added'];
+    return [id, before.get(id) === after.get(id) ? 'unchanged' : 'revision-changed'];
+  }));
 }
 
 function groupByKey(findings: readonly ClashRunFinding[]): { keyed: Map<string, ClashRunFinding[]>; keyless: ClashRunFinding[] } {
@@ -131,12 +130,13 @@ export function compareClashRunDocuments(previous: ClashRunDocument, next: Clash
     if (other.manifest.truncated) reasons.push('run-truncated');
     const exclusionId = slotExclusionId([finding.a.slot, finding.a.key], [finding.b.slot, finding.b.key]);
     if (other.manifest.exclusions?.includes(exclusionId)) reasons.push('excluded-in-other-run');
-    else if (side === 'previous' && other.manifest.exclusions === null) reasons.push('exclusions-not-recorded');
+    else if (other.manifest.exclusions === null) reasons.push('exclusions-not-recorded');
     // A key the other run saw repeated in its slot has no identity there either.
     for (const end of [finding.a, finding.b]) {
-      if (other.manifest.ambiguousKeys[end.slot]?.includes(end.key) && !reasons.includes('ambiguous-identity')) reasons.push('ambiguous-identity');
+      const repeated = Object.hasOwn(other.manifest.ambiguousKeys, end.slot) && other.manifest.ambiguousKeys[end.slot].includes(end.key);
+      if (repeated && !reasons.includes('ambiguous-identity')) reasons.push('ambiguous-identity');
     }
-    if (side === 'previous' && reasons.length === 0) reasons.push(...examinedReasons(finding, other, slots));
+    if (side === 'previous' && reasons.length === 0) reasons.push(...examinedReasons(finding, other));
     return reasons;
   };
   const notComparable = (side: 'previous' | 'next', finding: ClashRunFinding, reasons: ClashRunNotComparableReason[]) =>
@@ -178,17 +178,23 @@ export function compareClashRunDocuments(previous: ClashRunDocument, next: Clash
 
 /**
  * For a previous-run finding the next run did not report: did the next run
- * re-examine both elements? An unchanged pinned model under an unchanged rule
- * is re-examined by construction; otherwise the next run's coverage must list
- * both keys in their slots.
+ * test this pair? Its coverage must show the two elements on opposite sides
+ * of the rule (both on side A for a self-clash rule). An unchanged model is
+ * not taken as proof: a host-pinned revision can stay put while membership
+ * moves, so only the recorded sides count.
  */
-function examinedReasons(finding: ClashRunFinding, next: ClashRunDocument, slots: Record<string, ClashRunSlotChange>): ClashRunNotComparableReason[] {
-  if (slots[finding.a.slot] === 'unchanged' && slots[finding.b.slot] === 'unchanged') return [];
+function examinedReasons(finding: ClashRunFinding, next: ClashRunDocument): ClashRunNotComparableReason[] {
   const coverage = next.manifest.coverage.find((c) => c.rule === finding.rule);
   if (!coverage || coverage.examined === null) return ['coverage-not-recorded'];
-  const examined = coverage.examined;
-  const seen = (end: ClashRunFinding['a']) => examined[end.slot]?.includes(end.key) === true;
-  return seen(finding.a) && seen(finding.b) ? [] : ['element-not-examined'];
+  const { a: sideA, b: sideB } = coverage.examined;
+  const on = (side: Record<string, string[]> | null, end: ClashRunFinding['a']) =>
+    side !== null && Object.hasOwn(side, end.slot) && side[end.slot].includes(end.key);
+  const seen = (end: ClashRunFinding['a']) => on(sideA, end) || on(sideB, end);
+  if (!seen(finding.a) || !seen(finding.b)) return ['element-not-examined'];
+  const tested = sideB === null
+    ? on(sideA, finding.a) && on(sideA, finding.b)
+    : (on(sideA, finding.a) && on(sideB, finding.b)) || (on(sideB, finding.a) && on(sideA, finding.b));
+  return tested ? [] : ['pair-not-examined'];
 }
 
 /** Why a decision did not reach the next run. */

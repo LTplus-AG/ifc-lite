@@ -1,6 +1,6 @@
 {
   "issue": 7955,
-  "why": "Keep the comparison loadable but stop it verifying that the next run re-examined a vanished finding's elements: the run-document tests must go red.",
+  "why": "Keep the comparison loadable but treat a run with no recorded per-side coverage as having tested every pair: the run-document tests must go red.",
   "key": "packages/clash/src/run-compare.ts",
   "mutation": "tests/evidence/clash-run-compare/behaviour.oracle.patch",
   "test": "packages/clash/src/run-document.test.ts"

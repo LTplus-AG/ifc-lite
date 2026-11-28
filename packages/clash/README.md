@@ -92,8 +92,8 @@ Findings are keyed by `clashSlotReviewKey(clash, { slotOf, ruleRevision })`: eac
 element is qualified by its slot, and the key changes when a rule keeps its id
 but changes its meaning (`clashRuleRevision`). A GlobalId repeated within one
 slot gets no key, so no decision is carried to it. A finding the next run did
-not report is "no longer detected" only when that run verifiably re-examined
-both elements under the same rule and did not exclude the pair; otherwise it
+not report is "no longer detected" only when that run's coverage shows both
+elements on opposite sides of the same rule and it did not exclude the pair; otherwise it
 is "not comparable", with the reason. Pass `exclusions`, or every finding that
 disappears is "not comparable" (`exclusions-not-recorded`). Detection change is separate from review status (open / resolved /
 accepted). `CLASH_RUN_DOCUMENT_JSON_SCHEMA` is the document's JSON Schema; the

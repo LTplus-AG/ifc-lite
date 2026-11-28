@@ -43,7 +43,12 @@ function result(clashes: Clash[], rules: ClashRule[] = [RULE], matched?: Array<{
     clashes,
     summary: { total: clashes.length, byRule: {}, byTypePair: {}, bySeverity: { critical: 0, major: 0, minor: 0, info: 0 } },
     rulesRun: rules,
-    ruleCoverage: rules.map((r) => ({ rule: r.id, matchedA: 1, matchedB: 1, ...(matched ? { matchedElements: matched } : {}) })),
+    // Fixture coverage: every matched element sits on both sides of every rule.
+    ruleCoverage: rules.map((r) => {
+      const keys = matched ? [...new Set(matched.map((m) => m.key))].sort() : undefined;
+      return { rule: r.id, matchedA: 1, matchedB: 1,
+        ...(matched ? { matchedElements: matched, matchedKeysA: keys, matchedKeysB: keys } : {}) };
+    }),
     settings: SETTINGS,
   };
 }
@@ -194,6 +199,33 @@ describe('buildClashRunDocument', () => {
     expect(doc.manifest.ambiguousKeys).toEqual({ arch: [GUID_WALL] });
   });
 
+  it('accepts only RFC 3339 date-times, as the schema does', () => {
+    for (const createdAt of ['2026-11-28', '1', '2026-11-28T10:00:00']) {
+      const doc = { ...JSON.parse(JSON.stringify(run())), createdAt };
+      expect(validateClashRunDocument(doc).ok, createdAt).toBe(false);
+    }
+    expect(validateClashRunDocument({ ...JSON.parse(JSON.stringify(run())), createdAt: '2026-11-28T10:00:00+01:00' }).ok).toBe(true);
+  });
+
+  it('keeps a slot named __proto__ as an own, serialised record', () => {
+    const doc = buildClashRunDocument({
+      result: result([clash(ref('load-1', GUID_WALL, 2), ref('load-1', GUID_WALL, 9))], [RULE],
+        [{ model: 'load-1', key: GUID_WALL, ref: 2 }]),
+      slots: [{ slot: '__proto__', model: 'load-1', sha256: null }],
+    });
+    const stored = JSON.parse(JSON.stringify(doc));
+    expect(stored.manifest.ambiguousKeys).toEqual(JSON.parse(`{"__proto__":["${GUID_WALL}"]}`));
+    expect(Object.hasOwn(stored.manifest.coverage[0].examined.a, '__proto__')).toBe(true);
+    expect(validateClashRunDocument(stored).ok).toBe(true);
+  });
+
+  it('refuses a clash whose rule is not in rulesRun', () => {
+    expect(() => buildClashRunDocument({
+      result: result([clash(ref('load-1', GUID_WALL, 2), ref('load-2', GUID_BEAM, 3))], []),
+      slots: slots(SHA_A1, SHA_S1),
+    })).toThrow(/not in rulesRun/);
+  });
+
   it('refuses a clash on a model bound to no slot', () => {
     expect(() => buildClashRunDocument({
       result: result([clash(ref('stray', GUID_WALL, 2), ref('load-2', GUID_BEAM, 3))]),
@@ -237,9 +269,24 @@ describe('compareClashRunDocuments', () => {
 
     const unrecorded = buildClashRunDocument({ result: result([]), slots: slots(SHA_A2, SHA_S1) });
     expect(compareClashRunDocuments(previous, unrecorded).notComparable[0].reasons).toEqual(['coverage-not-recorded']);
-    // Same pinned models under the same rule: re-examined by construction.
+    // Same pinned models are not proof on their own: without per-side coverage it stays not comparable.
     const unchanged = buildClashRunDocument({ result: result([]), slots: slots(SHA_A1, SHA_S1) });
-    expect(compareClashRunDocuments(previous, unchanged).summary.noLongerDetected).toBe(1);
+    expect(compareClashRunDocuments(previous, unchanged).notComparable[0].reasons).toEqual(['coverage-not-recorded']);
+    const covered = buildClashRunDocument({ result: result([], [RULE], matchedAll()), slots: slots(SHA_A1, SHA_S1) });
+    expect(compareClashRunDocuments(previous, covered).summary.noLongerDetected).toBe(1);
+  });
+
+  it('does not call a pair fixed when its elements no longer sit on opposite rule sides', () => {
+    const previous = buildClashRunDocument({ result: result([wallBeam()], [RULE], matchedAll()), slots: slots(SHA_A1, SHA_S1) });
+    // Next version: the beam now matches side A too, and nothing matches side B.
+    const next = buildClashRunDocument({
+      result: { ...result([], [RULE]), ruleCoverage: [{ rule: RULE.id, matchedA: 2, matchedB: 0,
+        matchedElements: [{ model: 'load-1', key: GUID_WALL, ref: 2 }, { model: 'load-2', key: GUID_BEAM, ref: 3 }],
+        matchedKeysA: [GUID_BEAM, GUID_WALL], matchedKeysB: [] }] },
+      slots: slots(SHA_A1, SHA_S1),
+    });
+    expect(next.manifest.coverage[0].examined).toEqual({ a: { arch: [GUID_WALL], struct: [GUID_BEAM] }, b: {} });
+    expect(compareClashRunDocuments(previous, next).notComparable.map((e) => e.reasons)).toEqual([['pair-not-examined']]);
   });
 
   it('reports a changed rule and a missing slot as not comparable', () => {
@@ -269,6 +316,10 @@ describe('compareClashRunDocuments', () => {
     const unknown = buildWithoutDefaults({ result: result([], [RULE], matchedAll()), slots: slots(SHA_A1, SHA_S1) });
     expect(unknown.manifest.exclusions).toBeNull();
     expect(compareClashRunDocuments(previous, unknown).notComparable.map((e) => e.reasons)).toEqual([['exclusions-not-recorded']]);
+    // Nor is a pair "added" when the previous run may have excluded it.
+    const unknownBefore = buildWithoutDefaults({ result: result([], [RULE], matchedAll()), slots: slots(SHA_A1, SHA_S1) });
+    expect(compareClashRunDocuments(unknownBefore, previous).notComparable.map((e) => [e.side, e.reasons]))
+      .toEqual([['next', ['exclusions-not-recorded']]]);
   });
 
   it('keeps ambiguous findings out of every detection bucket', () => {

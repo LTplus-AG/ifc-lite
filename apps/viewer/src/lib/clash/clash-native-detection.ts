@@ -51,7 +51,7 @@ export function createClashDetection({ runEpochRef, runAbortRef, discardSolidPre
     owns: () => boolean,
     stamp: AnalysisStamp,
     request: ClashRunRequest | null,
-    hostInputs: { exclusions: ExclusionSet; tagInputs: ClashModelTagInputs | null },
+    hostInputs: { exclusions: ExclusionSet; tagInputs: ClashModelTagInputs | null; presets: readonly ClashPreset[] },
   ): boolean => {
     if (!owns()) return false;
     const state = useViewerStore.getState();
@@ -68,7 +68,8 @@ export function createClashDetection({ runEpochRef, runAbortRef, discardSolidPre
     // A host that stores runs (ViewerHandle.onClashRunComplete) gets the run document; no-op otherwise.
     if (published) {
       const current = useViewerStore.getState();
-      notifyClashRunComplete(res, { models: current.models, presets: current.clashPresets, ...hostInputs });
+      // Presets as they were when the run STARTED: an edit during the run must not relabel its findings.
+      notifyClashRunComplete(res, { models: current.models, ...hostInputs });
     }
     return published;
   };
@@ -77,6 +78,7 @@ export function createClashDetection({ runEpochRef, runAbortRef, discardSolidPre
     tagInputs: ClashModelTagInputs | null = null,
     request: ClashRunRequest | null = null,
     prepared?: ReturnType<typeof beginAbortableRun>,
+    presets: readonly ClashPreset[] = [],
   ): Promise<void> => {
     const {
       runEpoch: myEpoch,
@@ -109,7 +111,7 @@ export function createClashDetection({ runEpochRef, runAbortRef, discardSolidPre
           if (owns()) useViewerStore.getState().setClashProgress(p);
         },
       });
-      if (!publishClashResult(federationIdentity, res, owns, stamp, request, { exclusions, tagInputs })) return;
+      if (!publishClashResult(federationIdentity, res, owns, stamp, request, { exclusions, tagInputs, presets })) return;
       rememberModelTagInputs(res, tagInputs);
       state.setClashSelectedId(null);
       posthog.capture('clash_detection_run', {
@@ -131,6 +133,8 @@ export function createClashDetection({ runEpochRef, runAbortRef, discardSolidPre
     }
   };
   const runPresets = async (presets: ClashPreset[], request: ClashRunRequest): Promise<void> => {
+    // The definitions this run uses, frozen now: the host's run document must describe these, not later edits.
+    const presetSnapshot = structuredClone(presets);
     const state = useViewerStore.getState();
     const models = evaluatorModelsFromState(state);
     const tagInputs = captureModelTagInputs(presets, state.modelTagAssignments);
@@ -157,7 +161,7 @@ export function createClashDetection({ runEpochRef, runAbortRef, discardSolidPre
       return;
     }
     if (!stillWanted(myEpoch)) return;
-    return run(resolved, tagInputs, request, prepared);
+    return run(resolved, tagInputs, request, prepared, presetSnapshot);
   };
   const runMatrix = (): Promise<void> => {
     const enabled = useViewerStore.getState().clashPresets.filter((p) => p.enabled);
@@ -202,7 +206,7 @@ export function createClashDetection({ runEpochRef, runAbortRef, discardSolidPre
         exclusions,
         positionTolerance: state.clashDuplicateTolerance,
       });
-      if (!publishClashResult(federationIdentity, res, owns, stamp, { kind: 'duplicates' }, { exclusions, tagInputs: null })) return;
+      if (!publishClashResult(federationIdentity, res, owns, stamp, { kind: 'duplicates' }, { exclusions, tagInputs: null, presets: [] })) return;
       const sets = groupDuplicateSets(res);
       state.setClashGroups(sets);
       state.setClashSelectedId(null);

@@ -85,6 +85,22 @@ describe('clash run host hook', () => {
     assert.notEqual(revisions[1], revisions[2], 'an edited filter changes it');
   });
 
+  it('logs an async listener rejection instead of leaving it unhandled', async () => {
+    const originalError = console.error;
+    const logged: unknown[] = [];
+    console.error = (...args: unknown[]) => { logged.push(args[1]); };
+    const off = onClashRunComplete(async () => { throw new Error('store failed'); });
+    try {
+      notifyClashRunComplete(result, context);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    } finally {
+      off();
+      console.error = originalError;
+    }
+    assert.equal(logged.length, 1, 'the rejection is logged once');
+    assert.equal((logged[0] as Error).message, 'store failed');
+  });
+
   it('keeps a failing listener from affecting another', () => {
     const received: string[] = [];
     const originalError = console.error;

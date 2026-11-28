@@ -102,7 +102,8 @@ export function notifyClashRunComplete(result: ClashResult, context: ClashRunHos
         exclusions: context.exclusions,
         labels: [CLASH_RUN_BROWSER_SUBMITTED],
       });
-      listener({ document });
+      const delivered = listener({ document });
+      if (delivered instanceof Promise) delivered.catch((err: unknown) => { console.error('[clash] host run listener failed', err); });
     } catch (err) {
       console.error('[clash] host run listener failed', err);
     }

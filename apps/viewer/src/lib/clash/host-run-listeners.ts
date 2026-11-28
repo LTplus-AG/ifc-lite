@@ -27,7 +27,8 @@ export interface ClashRunCompleteEvent {
   document: ClashRunDocument;
 }
 
-export type ClashRunCompleteListener = (event: ClashRunCompleteEvent) => void;
+/** May be async (e.g. a host storing the run); a rejection is logged, never unhandled. */
+export type ClashRunCompleteListener = (event: ClashRunCompleteEvent) => void | Promise<void>;
 
 export interface ClashRunListenerOptions {
   /**

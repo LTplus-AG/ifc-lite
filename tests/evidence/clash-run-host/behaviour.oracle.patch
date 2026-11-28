@@ -1,5 +1,5 @@
 diff --git a/apps/viewer/src/lib/clash/host-run-document.ts b/apps/viewer/src/lib/clash/host-run-document.ts
-index e6cfe27504..de94ceb5b8 100644
+index 710166b90f..1b3a50b6ac 100644
 --- a/apps/viewer/src/lib/clash/host-run-document.ts
 +++ b/apps/viewer/src/lib/clash/host-run-document.ts
 @@ -54,7 +54,7 @@ function stableJson(value: unknown): string {

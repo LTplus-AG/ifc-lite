@@ -61,7 +61,8 @@ export const CLASH_RUN_DOCUMENT_JSON_SCHEMA = {
           tolerance: { type: 'number' }, excludeVoidsAndHosts: { type: 'boolean' } } },
         coverage: { type: 'array', items: { type: 'object', required: ['rule', 'matchedA', 'matchedB', 'candidatesExamined', 'examined'],
           properties: { rule: { type: 'string' }, matchedA: { type: 'integer' }, matchedB: { type: ['integer', 'null'] },
-            candidatesExamined: { type: ['integer', 'null'] }, examined: { anyOf: [slotKeyLists, { type: 'null' }] } } } },
+            candidatesExamined: { type: ['integer', 'null'] }, examined: { anyOf: [{ type: 'null' }, { type: 'object', required: ['a', 'b'],
+              properties: { a: slotKeyLists, b: { anyOf: [slotKeyLists, { type: 'null' }] } } }] } } } },
         ambiguousKeys: slotKeyLists,
         exclusions: { anyOf: [stringList, { type: 'null' }] },
         truncated: { anyOf: [{ type: 'null' }, { type: 'object', required: ['reason', 'droppedPairs'],
@@ -119,13 +120,15 @@ const obj = (required: Record<string, Check>, optional: Record<string, Check> = 
 };
 const keyLists: Check = (v, p, e) => {
   if (!isRecord(v)) return fail(e, p, 'an object of string lists');
-  for (const [slot, keys] of Object.entries(v)) list(str)(keys, `${p}.${slot}`, e);
+  for (const [slot, keys] of Object.entries(v)) list(str)(keys, `${p}.${JSON.stringify(slot)}`, e);
 };
 const sha: Check = (v, p, e) => {
   if (v !== null && (typeof v !== 'string' || !/^[0-9a-f]{64}$/.test(v))) fail(e, p, 'a lowercase hex sha256 or null');
 };
+/** RFC 3339 date-time, as the schema's `format: 'date-time'` requires: date, time and offset. */
+const DATE_TIME = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])T([01]\d|2[0-3]):[0-5]\d:([0-5]\d|60)(\.\d+)?(Z|[+-]([01]\d|2[0-3]):[0-5]\d)$/i;
 const date: Check = (v, p, e) => {
-  if (typeof v !== 'string' || Number.isNaN(Date.parse(v))) fail(e, p, 'an ISO date-time string');
+  if (typeof v !== 'string' || !DATE_TIME.test(v) || Number.isNaN(Date.parse(v))) fail(e, p, 'an RFC 3339 date-time string');
 };
 
 const endpointCheck = obj({ slot: str, key: str, globalId: nstr, type: str }, { name: str, ambiguous: oneOf(true) });
@@ -143,7 +146,7 @@ const documentCheck = obj({
     })) }),
     engine: obj({ name: str, version: nstr, build: nstr, backend: nstr }),
     settings: obj({ tolerance: num, excludeVoidsAndHosts: bool }),
-    coverage: list(obj({ rule: str, matchedA: int, matchedB: nint, candidatesExamined: nint, examined: nullable(keyLists) })),
+    coverage: list(obj({ rule: str, matchedA: int, matchedB: nint, candidatesExamined: nint, examined: nullable(obj({ a: keyLists, b: nullable(keyLists) })) })),
     ambiguousKeys: keyLists,
     exclusions: nullable(list(str)),
     truncated: nullable(obj({ reason: str, droppedPairs: int })),

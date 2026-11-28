@@ -61,8 +61,16 @@ export interface ClashRunCoverage {
   matchedA: number;
   matchedB: number | null;
   candidatesExamined: number | null;
-  /** Durable keys this rule matched, per slot, sorted. `null`: the engine did not record them. */
-  examined: Record<string, string[]> | null;
+  /**
+   * Durable keys this rule matched on each side, per slot, sorted. `b` is
+   * `null` for a self-clash rule. `null` as a whole: the engine did not record
+   * per-side matches, so no absence can be verified against this run.
+   *
+   * A key that matched on BOTH sides and occurs in more than one slot is left
+   * out of both: the engine records sides by key only, so which slot's element
+   * sat on which side is unknown, and an unknown side must not read as tested.
+   */
+  examined: { a: Record<string, string[]>; b: Record<string, string[]> | null } | null;
 }
 
 export interface ClashRunManifest {
@@ -159,9 +167,6 @@ export interface BuildClashRunDocumentInput {
   reviews?: Readonly<Record<string, ClashReview>>;
 }
 
-/** Revision of a clash whose rule is missing from `rulesRun`: compares as a changed rule. */
-const UNLISTED_RULE_REVISION = 'unlisted';
-
 /** Slot-qualified, order-independent id of an excluded element pair. */
 export function slotExclusionId(a: readonly [string, string], b: readonly [string, string]): string {
   const ea = JSON.stringify(a);
@@ -203,13 +208,12 @@ export function clashRuleRevision(rule: ClashRule, settings: ClashResult['settin
   return uuidFromSeed(`clash-rule/1 ${JSON.stringify({ ...ruleSemantics(rule, settings), members })}`);
 }
 
+/** Own data properties only (`Object.fromEntries`), so a slot id such as `__proto__` survives. */
 function sortedRecord(map: Map<string, Set<string>>): Record<string, string[]> {
-  const out: Record<string, string[]> = {};
-  for (const slot of [...map.keys()].sort()) out[slot] = [...map.get(slot)!].sort();
-  return out;
+  return Object.fromEntries([...map.keys()].sort().map((slot) => [slot, [...map.get(slot)!].sort()]));
 }
 
-/** Build the run document for a finished clash run. Throws when a clash's model has no slot. */
+/** Build the run document for a finished clash run. Throws when a clash's model has no slot or its rule is not in `rulesRun`. */
 export function buildClashRunDocument(input: BuildClashRunDocumentInput): ClashRunDocument {
   const { result } = input;
   const slotByModel = new Map<string, string>();
@@ -267,16 +271,33 @@ export function buildClashRunDocument(input: BuildClashRunDocumentInput): ClashR
   const ruleSetRevision = uuidFromSeed(`clash-rule-set/1 ${JSON.stringify(rules.map((r) => [r.id, r.revision]).sort())}`);
 
   const coverage: ClashRunCoverage[] = (result.ruleCoverage ?? []).map((entry) => {
-    let examined: Record<string, string[]> | null = null;
-    if (entry.matchedElements) {
-      const bySlot = new Map<string, Set<string>>();
+    let examined: ClashRunCoverage['examined'] = null;
+    if (entry.matchedElements && entry.matchedKeysA) {
+      const keysA = new Set(entry.matchedKeysA);
+      const keysB = entry.matchedKeysB ? new Set(entry.matchedKeysB) : null;
+      const slotsOfKey = new Map<string, Set<string>>();
       for (const element of entry.matchedElements) {
-        const slot = slotOf(element.model);
-        const set = bySlot.get(slot) ?? new Set<string>();
-        set.add(element.key);
-        bySlot.set(slot, set);
+        const slots = slotsOfKey.get(element.key) ?? new Set<string>();
+        slots.add(slotOf(element.model));
+        slotsOfKey.set(element.key, slots);
       }
-      examined = sortedRecord(bySlot);
+      const sideA = new Map<string, Set<string>>();
+      const sideB = new Map<string, Set<string>>();
+      const add = (side: Map<string, Set<string>>, slot: string, key: string) => {
+        const set = side.get(slot) ?? new Set<string>();
+        set.add(key);
+        side.set(slot, set);
+      };
+      for (const [key, slots] of slotsOfKey) {
+        const inA = keysA.has(key);
+        const inB = keysB?.has(key) === true;
+        if (inA && inB && slots.size > 1) continue; // side per slot unknown: credit neither
+        for (const slot of slots) {
+          if (inA) add(sideA, slot, key);
+          if (inB) add(sideB, slot, key);
+        }
+      }
+      examined = { a: sortedRecord(sideA), b: keysB ? sortedRecord(sideB) : null };
     }
     return { rule: entry.rule, matchedA: entry.matchedA, matchedB: entry.matchedB,
       candidatesExamined: entry.candidatesExamined ?? null, examined };
@@ -295,8 +316,9 @@ export function buildClashRunDocument(input: BuildClashRunDocumentInput): ClashR
   };
 
   const findings = result.clashes.map((clash): ClashRunFinding => {
-    // A clash always names a rule in `rulesRun`; a hand-built result that does not gets a revision no rule matches.
-    const ruleRevision = revisions.get(clash.rule) ?? UNLISTED_RULE_REVISION;
+    // Without the rule in `rulesRun` its semantics are unrecorded, so no key could be trusted to compare.
+    const ruleRevision = revisions.get(clash.rule);
+    if (ruleRevision === undefined) throw new Error(`clash run references rule ${clash.rule}, which is not in rulesRun`);
     const a = endpoint(clash.a);
     const b = endpoint(clash.b);
     const key = a.ambiguous || b.ambiguous ? null : clashSlotReviewKey(clash, { slotOf, ruleRevision });

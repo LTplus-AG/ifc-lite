@@ -813,7 +813,9 @@ ct('io #11350: PR measurement cache follows completed attempts of the same run',
     pull_requests: [{ number: 5, base: { ref: 'main' } }] };
   const forkRun = { ...run, id: 43, head_repository: { id: 8 }, pull_requests: [] };
   const otherForkRun = { ...forkRun, id: 44, head_repository: { id: 9 } };
+  const newerId = { ...run, id: 45, run_started_at: timestamp('10'), updated_at: timestamp('20') };
   let listedRuns = [run];
+  let omittedRuns = 0;
   const attempt2 = { ...run, run_attempt: 2, run_started_at: timestamp('20'), updated_at: timestamp('30') };
   const bundle = (id, minute) => ({ name: 'perf-ratchet-measured', id, created_at: timestamp(minute) });
   const firstBundle = bundle(1, '05');
@@ -822,11 +824,12 @@ ct('io #11350: PR measurement cache follows completed attempts of the same run',
   const dir = mkdtempSync(join(tmpdir(), 'base-stale-attempt-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const { io } = ioOverGh([
-    ['repos/o/r/actions/workflows/test.yml/runs?', () => ({ workflow_runs: listedRuns })],
+    ['repos/o/r/actions/workflows/test.yml/runs?', () => ({ workflow_runs: listedRuns, total_count: listedRuns.length + omittedRuns })],
     ['repos/o/r/actions/runs/42/artifacts?', () => ({ artifacts, total_count: artifacts.length })],
     ['repos/o/r/actions/runs/42/attempts/2', attempt2],
     ['repos/o/r/actions/runs/43/artifacts?', { artifacts: [bundle(43, '05')], total_count: 1 }],
     ['repos/o/r/actions/runs/44/artifacts?', { artifacts: [bundle(44, '05')], total_count: 1 }],
+    ['repos/o/r/actions/runs/45/artifacts?', { artifacts: [bundle(45, '15')], total_count: 1 }],
     ['repos/o/r/actions/runs/42', run],
     ['repos/o/r/actions/runs/43', forkRun],
     ...merges.map((merge, i) => [`repos/o/r/commits/${merge}`, { parents: [{ sha: bases[i] }, { sha: head }] }]),
@@ -834,8 +837,8 @@ ct('io #11350: PR measurement cache follows completed attempts of the same run',
     spawn: (file, args) => {
       assert.equal(file, 'gh');
       const artifactId = Number(args[1].split('/').at(-2));
-      assert.ok([run.run_attempt, 43, 44].some((id) => id === artifactId));
-      const i = artifactId === 1 ? 0 : 1;
+      assert.ok([run.run_attempt, 43, 44, 45].some((id) => id === artifactId));
+      const i = artifactId === 1 || artifactId === 45 ? 0 : 1;
       writeFileSync(join(dir, 'measured.json'), JSON.stringify({
         family: 'bundle', commit: merges[i], measuredAt: '2026-11-28T00:00:00Z',
         metrics: [{ id: 'bytes', value: i + 10 }],
@@ -881,6 +884,24 @@ ct('io #11350: PR measurement cache follows completed attempts of the same run',
   artifacts.reverse();
   assert.deepEqual(measure(), second, 'listing order does not determine the selected artifact');
   assert.equal(io.prMeasurement('different-live-head', 42, 5).testedBase, bases[1], 'attributed replay uses the run’s historical head');
+
+  listedRuns = [newerId, run];
+  run.status = 'in_progress';
+  const newerMeasurement = measure();
+  assert.equal(newerMeasurement.runId, 45);
+  assert.equal(newerMeasurement.testedBase, bases[0]);
+  run.status = 'completed';
+  run.updated_at = attempt2.updated_at;
+  assert.deepEqual(measure(), second, 'the later completion supersedes a cached higher run ID');
+  listedRuns.reverse();
+  assert.deepEqual(measure(), second, 'the list order does not change recency');
+  run.updated_at = newerId.updated_at;
+  assert.equal(measure(), null, 'same-second completions cannot be ordered by run ID');
+  run.updated_at = null;
+  assert.equal(measure(), null, 'missing timing cannot establish recency');
+  run.updated_at = attempt2.updated_at;
+  omittedRuns = 1;
+  assert.equal(measure(), null, 'a later rerun could be missing from a truncated list');
 });
 
 ct('io #11350: main measurements require a bundle and a measured tree matching the marker', (t) => {
@@ -903,7 +924,7 @@ ct('io #11350: main measurements require a bundle and a measured tree matching t
       [`repos/o/r/actions/artifacts?name=tested-tree-${tree}`, { artifacts: older ? [newer, marker] : [marker] }],
       ['repos/o/r/actions/runs/42/artifacts?', { artifacts, total_count: artifacts.length }],
       ['repos/o/r/actions/runs/43/artifacts?', { artifacts: [{ ...artifacts[0], id: 4 }], total_count: 1 }],
-      ['repos/o/r/actions/workflows/test.yml/runs?', { workflow_runs: [{ ...run, id: 42, pull_requests: [{ number: 5, base: { ref: 'main' } }] }] }],
+      ['repos/o/r/actions/workflows/test.yml/runs?', { total_count: 1, workflow_runs: [{ ...run, id: 42, pull_requests: [{ number: 5, base: { ref: 'main' } }] }] }],
       [`repos/o/r/commits/${measured}`, { parents: [{ sha: 'base0000001' }, { sha: 'head5' }] }],
       ['repos/o/r/actions/runs/42', run],
       ['repos/o/r/actions/runs/43', run],

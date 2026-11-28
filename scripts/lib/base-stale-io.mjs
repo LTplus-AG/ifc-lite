@@ -220,11 +220,8 @@ export function createIo({ repo, cwd = process.cwd(), cache = null, now = () => 
   }
 
   /**
-   * The PR head's newest measurement: the newest `pull_request` Test run on
-   * that head that uploaded one. Older runs on the same head are not skipped
-   * past a newer measuring run, so a re-run with a newer base wins. Two PRs
-   * can share a head, so require an explicit association with this main PR
-   * before reading artifacts or reusing cached measurements.
+   * The PR head's newest completed measuring attempt. Reruns keep the
+   * original run ID. Require explicit PR association before using evidence.
    */
   function prMeasurement(headSha, onlyRun = null, number = null) {
     const forThisPr = (r) => r.pull_requests?.some((p) => p.number === number && p.base?.ref === 'main');
@@ -236,17 +233,22 @@ export function createIo({ repo, cwd = process.cwd(), cache = null, now = () => 
       // A replay names a past run, whose head is not the PR's current one.
       return { runId: onlyRun, mergeSha: families[0].commit, testedBase: mergeParents(families[0].commit, run.head_sha), families };
     }
-    const runs = api(
-      `repos/${repo}/actions/workflows/test.yml/runs?head_sha=${headSha}&event=pull_request&per_page=20`,
+    const listing = api(
+      `repos/${repo}/actions/workflows/test.yml/runs?head_sha=${headSha}&event=pull_request&per_page=100`,
       `Test runs on ${headSha}`,
-    ).workflow_runs ?? [];
+    );
+    const runs = listing.workflow_runs ?? [];
+    if (listing.total_count !== runs.length) return null;
     const own = runs
-      .filter((r) => !String(r.head_branch ?? '').startsWith('mergify/merge-queue/') && forThisPr(r))
-      .sort((a, b) => b.id - a.id);
+      .filter((r) => r.status === 'completed' && !String(r.head_branch ?? '').startsWith('mergify/merge-queue/') && forThisPr(r))
+      .map((run) => ({ run, updated: Date.parse(run.updated_at) }))
+      .sort((a, b) => b.updated - a.updated);
+    if (own.some(({ updated }) => !Number.isFinite(updated))) return null;
     const key = number === null ? headSha : `${headSha}#${number}`;
     const cached = store.prMeasurements[key];
-    for (const run of own) {
-      if (run.status !== 'completed') continue;
+    for (const [index, { run, updated }] of own.entries()) {
+      // At second precision, a tied update time cannot establish the latest attempt.
+      if (own[index + 1]?.updated === updated) return null;
       // GitHub reuses the run ID on reruns. Legacy entries have no attempt.
       const runAttempt = run.run_attempt;
       const knownAttempt = Number.isSafeInteger(runAttempt) && runAttempt > 0;

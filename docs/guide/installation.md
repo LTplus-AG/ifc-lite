@@ -204,8 +204,8 @@ npx @ifc-lite/server-bin
 | `PORT` | 8080 | Server port |
 | `RUST_LOG` | info | Log level (error, warn, info, debug) |
 | `MAX_FILE_SIZE_MB` | 500 | Maximum upload size |
-| `WORKER_THREADS` | CPU cores | Parallel processing threads |
-| `CACHE_DIR` | ./.cache | Cache directory |
+| `WORKER_THREADS` | CPU cores (4 in the Docker image) | Parallel processing threads |
+| `CACHE_DIR` | `./.cache` (`/app/cache` in Docker) | Cache directory |
 | `REQUEST_TIMEOUT_SECS` | 300 | Request timeout |
 | `INITIAL_BATCH_SIZE` | 100 | Streaming initial batch |
 | `MAX_BATCH_SIZE` | 1000 | Streaming max batch |
@@ -401,7 +401,8 @@ ifc-lite/
 │   ├── clash/                 # Clash detection
 │   ├── ffi/                   # C FFI bindings
 │   ├── python/                # Python wheel (ifclite-geom)
-│   └── wasm-bindings/         # JavaScript API
+│   ├── wasm-bindings/         # JavaScript API
+│   └── ...                    # cache, diff, landxml, cloud-import, ...
 │
 ├── packages/                  # TypeScript packages (@ifc-lite/*)
 │   ├── parser/                # High-level IFC parser
@@ -419,7 +420,11 @@ ifc-lite/
 │   ├── viewer/                # React web application
 │   ├── viewer-embed/          # Embeddable viewer
 │   ├── landing/               # Landing page
-│   └── server/                # Rust HTTP server
+│   ├── server/                # Rust HTTP server
+│   ├── cloud-service/         # Hosted Dropbox and Microsoft read gateway
+│   ├── autodesk-service/      # Autodesk cloud API gateway
+│   ├── autodesk-exchange-worker/ # Windows .NET Autodesk Data Exchange worker
+│   └── report-service/        # Private model reports and GitHub issue submission
 │
 └── docs/                      # Documentation (MkDocs)
 ```

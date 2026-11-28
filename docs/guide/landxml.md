@@ -41,8 +41,10 @@ These are parsed, preserved with stable source identities, and inspectable in th
 panel under **LandXML Source**, but the viewer does not draw them:
 
 - horizontal alignments, stationing, cant and superelevation (IFC export writes horizontal
-  alignments as `IfcAlignment`, see [Export](#export); cant and superelevation are not exported)
-- profiles, vertical curves, roadways and cross-sections
+  alignments as `IfcAlignment` and station equations as station referents, see
+  [Export](#export); cant and superelevation are not exported)
+- profiles, vertical curves, roadways and cross-sections (IFC export writes an alignment's
+  design profile as `IfcAlignmentVertical`)
 - COGO points, monuments, parcels and plan features
 - pipe networks, structures and pipes
 
@@ -139,6 +141,32 @@ height system: no vertical datum is declared" or "EPSG:31467 read from the Coord
 no EPSG code is declared". A model aligned on declared CRSs alone has no such mark, even if the
 assumptions are switched on.
 
+## Imagery on terrain
+
+LandXML has no raster element, so imagery always comes from a separate georeferenced file or a
+map service. To drape a file, drop the image together with its sidecars onto the viewer while a
+LandXML terrain is loaded: it is draped onto the loaded terrain and creates no model.
+
+| Source | Placement and CRS | Exported to IFC |
+|---|---|---|
+| GeoTIFF | its geotransform tags, else a world file beside it (`.tfw`, `.tifw`, `.tiffw`, `.wld`); its EPSG geokey, else a `.aux.xml` or `.prj` naming an EPSG code | can be, as a lossless PNG |
+| PNG or JPEG | a world file beside it (`.pgw`, `.pngw`, `.jgw`, `.jpgw`, `.jpegw`, `.wld`) and a `.aux.xml` or `.prj` naming an EPSG code | can be, as the original bytes |
+| XYZ tiles or WMS | the EPSG:3857 tile grid, or a WMS 1.1.1 `GetMap` in the terrain's CRS over the terrain's extent | never: the viewer drape only |
+
+Map tiles are draped from the **Terrain Imagery** card in the terrain's model information panel
+(select the model in the hierarchy); the card offers the service form once the terrain declares a
+CRS. Pick **XYZ tiles** and give an http(s) URL template containing `{z}`, `{x}` and `{y}` and a
+zoom from 0 to 24, or pick **WMS** and give the endpoint, at least one layer and a ground distance
+per pixel, then choose **Drape tiles**. A mosaic wider than 16 tiles per side, or a WMS image
+above 4096 pixels per side, is refused rather than truncated.
+
+The drape is refused, never guessed, when the terrain declares no EPSG code, the image has no
+placement or no EPSG CRS, the image CRS cannot be reprojected exactly onto the terrain's, the
+image is not planar in the terrain's CRS to within half a pixel, or the image covers no vertex.
+A decoded image above 64 megapixels is refused. Where the image does not reach, the terrain
+keeps its flat colour. The full contract is §15 of the
+[LandXML → IFC mapping](../architecture/landxml-to-ifc-mapping.md).
+
 ## Export
 
 There are two separate exports, one in each direction. Neither is a round trip of the other.
@@ -146,18 +174,27 @@ There are two separate exports, one in each direction. Neither is a round trip o
 ### LandXML → IFC
 
 A LandXML model can be converted to IFC4X3, under the reviewed mapping in
-[LandXML → IFC mapping](../architecture/landxml-to-ifc-mapping.md) (v1.0). The conversion is
+[LandXML → IFC mapping](../architecture/landxml-to-ifc-mapping.md) (v1.4). The conversion is
 derived: it does not replace the source records, which remain the authoritative model in the
-viewer.
+viewer. From code, the converter is `landXmlToIfc` in `@ifc-lite/create`;
+`LANDXML_IFC_MAPPING_VERSION` names the mapping version it implements.
 
-What v1 writes:
+What v1.4 writes:
 
 | LandXML record | IFC4X3 |
 |---|---|
 | A renderable TIN `Surface` | `IfcGeographicElement` / `.TERRAIN.` carrying an `IfcTriangulatedIrregularNetwork` |
 | A `CgPoint` | `IfcAnnotation` / `.SURVEY.` with a property set |
 | A horizontal `Alignment` (lines, circular arcs, clothoid spirals) | `IfcAlignment` with its horizontal layout, geometry and start station |
+| A written alignment's design profile (`Profile/ProfAlign`: grades, `ParaCurve`, `UnsymParaCurve`, `CircCurve`) | `IfcAlignmentVertical` and an `IfcGradientCurve` along the horizontal curve |
+| A written alignment's station equations (`StaEquation`) | `IfcReferent` / `.STATION.` with `Pset_Stationing` |
 | A declared `CoordinateSystem` | `IfcProjectedCRS` + `IfcMapConversion` |
+| Imagery draped from a file (see [Imagery on terrain](#imagery-on-terrain)) | `IfcImageTexture` on the TIN, packaged as `.ifcZIP` |
+
+Draped file imagery is written only when the terrain surface it covers is itself written and the
+appearance planner can texture every written surface without rewriting other entities. When it
+cannot, the terrain is exported untextured as plain `.ifc` and the imagery is reported as refused
+with the reason.
 
 An alignment is written only when **every** segment is a line, circular arc or clothoid, each
 segment reproduces its authored end point, and consecutive segments meet. Anything else (an
@@ -165,10 +202,16 @@ segment reproduces its authored end point, and consecutive segments meet. Anythi
 whole, naming the segment and the reason. A gap would make every later station wrong, so a partial
 alignment is never written.
 
-Everything else — vertical profiles, cant, superelevation, station equations, cross sections,
-roadways, parcels, monuments, plan features, pipe networks, and a surface's breaklines, boundaries
-and contours — is **named in the export dialog before you commit**, by record family and count. A
-partial export is allowed; a silent partial is not.
+A profile is written only for a written alignment that has exactly one design profile. A sampled
+ground profile (`ProfSurf`), a profile whose alignment is refused or not in the file, and a
+profile station that station equations place nowhere or in more than one place are refused by
+name. An alignment's station equations are written all or none; when they are refused, the
+alignment is still written with its start station only.
+
+Everything else — cant, superelevation, cross sections, roadways, parcels, monuments, plan
+features, pipe networks, the refused profiles and station equations above, and a surface's
+breaklines, boundaries and contours — is **named in the export dialog before you commit**, by
+record family and count. A partial export is allowed; a silent partial is not.
 
 The dialog refuses outright when nothing in the file is covered, rather than producing a valid,
 empty, useless IFC. It also refuses when the target schema is not IFC4X3: the mapping derives

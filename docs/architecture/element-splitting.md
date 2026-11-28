@@ -8,7 +8,9 @@ the `element.split` command
 `splitLinearElementAtDistance` `MutationSlice` store actions
 (`apps/viewer/src/store/slices/mutationSlice.ts`), and helpers in
 `wall-edit.ts`, `slab-edit.ts`, `linear-element-edit.ts`,
-`metadata-clone.ts`, and `polygon-clip.ts`. The multi-element plane
+`metadata-clone.ts`, `polygon-clip.ts` and `split-guid.ts`. Those helpers
+live in `packages/create/src/in-store/edit/` (shared with the headless
+modelling API); `apps/viewer/src/lib/<name>.ts` only re-exports them. The multi-element plane
 split (Phase 6) ships as the `split.multi` command
 (`apps/viewer/src/lib/commands/modeling/commands/multi-split.ts`), and some
 shipped names differ from the sketches below.
@@ -77,7 +79,7 @@ knows what's targetable.
    - snap dots appear at: start, midpoint, thirds (every 0.5 m if
      wall is longer than 2 m), and at every intersecting wall
 3. User clicks:
-   - if cursor is within the wall and at least MIN_SEGMENT_LENGTH
+   - if cursor is within the wall and at least MIN_WALL_SEGMENT_LENGTH
      (0.05 m) from each end → commit split
    - otherwise: red "X" cursor + toast "Split too close to wall end"
 4. Two new walls appear; original is gone; selection moves to the
@@ -275,7 +277,8 @@ EVERY split path — wall, beam / column / member, slab / roof / plate
   the openings inside it move host.
 - The new piece's GlobalId is
   `uuidToIfcGuid(uuidV5(SPLIT_GLOBALID_NAMESPACE, "<sourceGlobalId>/split/<k>"))`
-  (`apps/viewer/src/lib/split-guid.ts`; `uuidV5` in
+  (`packages/create/src/in-store/edit/split-guid.ts`, re-exported by
+  `apps/viewer/src/lib/split-guid.ts`; `uuidV5` in
   `@ifc-lite/encoding`). `k` starts at 0 and increments while the
   candidate already exists in any loaded model, whether parsed or
   authored this session.
@@ -346,7 +349,7 @@ The tool refuses (with specific toasts) when:
 - Element is curved (wall along a Bezier, etc.) → "Curved walls
   can't be split"
 - Split distance leaves a segment shorter than
-  `MIN_SEGMENT_LENGTH` (0.05 m) → "Split too close to end"
+  `MIN_WALL_SEGMENT_LENGTH` (0.05 m, `wall-edit.ts`) → "Split too close to end"
 - Element is in a linked / read-only model → "Model is read-only"
 - Element has hosted openings that would straddle the cut line →
   warning toast "Cut bisects an opening; the opening will move to
@@ -354,8 +357,8 @@ The tool refuses (with specific toasts) when:
 
 ## Property + relationship preservation
 
-Single shared helper `cloneElementMetadata(modelId, sourceExpressId,
-targetExpressId)` that:
+Single shared helper `cloneElementMetadata(dataStore, view, editor,
+sourceExpressId, targetExpressIds)` (`metadata-clone.ts`) that:
 
 1. Walks every `IfcRelDefinesByProperties` referencing the source,
    appends the target to its `RelatedObjects` list.
@@ -441,21 +444,24 @@ whole split.
 
 ## Helpers (placement-edit / wall-edit)
 
-New helpers, scoped per the existing module split:
+Shipped helpers (`packages/create/src/in-store/edit/`). The split itself is
+the store actions above; the helpers resolve the edit chain and compute the
+two pieces' geometry:
 
 `wall-edit.ts`:
-- `splitRectangleWall(dataStore, view, editor, expressId, distance, options): SplitResult`
+- `resolveWallEditChain`, `computeWallSplitGeometry`, `projectOntoWallAxis`,
+  `resizeRectangleWall`, `MIN_WALL_SEGMENT_LENGTH`
 
-`slab-edit.ts` (new):
-- `resolveSlabEditChain(dataStore, view, editor, expressId): SlabEditChain | null`
-- `splitArbitraryClosedSlab(dataStore, view, editor, expressId, line, options): SplitResult`
+`slab-edit.ts`:
+- `resolveSlabEditChain(...)`, `computeSlabSplitGeometry(...)`
 
-`linear-element-edit.ts` (new):
-- Generic helper for beam/column/member — same shape as wall but
-  parametrised by axis vector and length attribute index.
+`linear-element-edit.ts`:
+- `resolveLinearElementChain`, `readLinearBodyMeasures`,
+  `computeLinearElementSplitGeometry`, `projectOntoLinearAxis`,
+  `shrinkLinearElementDepth` for beam/column/member.
 
 `metadata-clone.ts` (new):
-- `cloneElementMetadata(dataStore, view, editor, sourceId, targetId)` —
+- `cloneElementMetadata(dataStore, view, editor, sourceExpressId, targetExpressIds)` —
   walks rels and appends to lists.
 
 Module limits respected: each stays under 400 LOC.
@@ -499,7 +505,7 @@ once, both features benefit:
 
 | Key | Action |
 |---|---|
-| `K` | Toggle Split tool (only when `editEnabled`) |
+| `K` | Start `element.split` on the selected element, or cancel it when it is running (`tool.split` in `keyboard-commands.ts`; needs a selection) |
 | `Esc` | Cancel current split (clear anchor + hover) |
 | `Enter` | Commit at the current numeric distance (if input panel is active) |
 | `Shift` (held) | Bypass grid snap |

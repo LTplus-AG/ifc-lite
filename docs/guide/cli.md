@@ -901,6 +901,8 @@ echo '{"Start":[0,0,0],"End":[10,0,0],"Height":3,"Thickness":0.2}' \
 | `--depth <N>` | Element depth |
 | `--thickness <N>` | Element thickness |
 | `--name <str>` | Element name |
+| `--description`, `--object-type`, `--tag`, `--long-name`, `--predefined-type`, `--operation-type`, `--partitioning-type`, `--proxy-type` | IFC text attributes (`Description`, `ObjectType`, `Tag`, ...), where the element type has them |
+| `--length`, `--radius`, `--diameter`, `--wall-thickness`, `--slope`, `--rise`, `--overhang`, `--direction`, `--xdim`, `--ydim`, profile flags (`--overall-width`, `--overall-depth`, `--web-thickness`, `--flange-thickness`, `--flange-width`, `--fillet-radius`), stair flags (`--number-of-risers`, `--riser-height`, `--tread-length`) | Numeric shape parameters for the types that use them |
 | `--project <str>` | Project name |
 | `--storey <str>` | Storey name |
 | `--elevation <N>` | Storey elevation |
@@ -1334,19 +1336,20 @@ ifc-lite ext verify my-tool.iflx --key ~/.config/ifclite/key.public.iflk --json
 | `test <dir>` | Run `manifest.tests` against an in-process sandbox. Exits non-zero on any failure. |
 | `keygen` | Generate an Ed25519 keypair and write `<prefix>.public.iflk` + `<prefix>.private.iflk` (private file is `0600`). |
 | `sign <bundle>` | Sign a directory or unsigned `.iflx`. |
-| `verify <bundle>` | Inspect a `.iflx` — manifest, files, capabilities, signature. With `--key`, verify the embedded signature matches the expected public key fingerprint. |
-| `capabilities` | List every capability in the catalogue. |
+| `verify <bundle>` | Inspect a `.iflx`: prints `id@version` and whether it is signed (with the signature's fingerprint and signing time). With `--key`, also check that the signature matches the expected public key fingerprint. |
+| `capabilities` | List every capability in the catalogue with its risk tier and description. |
 
 **Common flags:**
 
 | Flag | Description |
 |------|-------------|
-| `--json` | Machine-readable output (validate / test / verify) |
+| `--json` | Machine-readable output (validate / test / verify / capabilities) |
 | `--bail` | Stop on first test failure (`ext test`) |
-| `--out <file>` | Output path (pack / sign / keygen) |
-| `--key <file>` | Key file path (sign / verify) |
+| `--out <file>` | Output path (pack / sign); key-file prefix for keygen |
+| `--key <file>` | Key file path (sign / verify, and pack with `--sign`) |
 | `--id <id>` | Override the manifest id during `ext init` |
 | `--name <name>` | Override the manifest name during `ext init` |
+| `--label <name>` | Label stored in the keypair (`ext keygen`) |
 
 The full design lives in [Authoring Extensions](extension-authoring.md). For the security model — capability grammar, sandbox limits, signing semantics — see [the threat-model RFC](../architecture/ai-customization/02-security.md).
 
@@ -1375,7 +1378,7 @@ ifc-lite layer log main --json
 | `merge <layer-id>` | Merge a candidate into a ref (fast-forward or three-way plan). `--into <ref>`, `--preview`, `--resolve ours\|theirs`, `--waive <spec> --reason "<text>"`, `--approved-by <principal>`, `--allow-unrelated`, `--json` |
 | `push <ref\|layer-id>` | Upload a ref's stack (or one layer) plus its check evidence to a layer registry. `--registry <url>`, `--token <bearer>` (falls back to `IFC_LITE_REGISTRY_TOKEN`), `--set-ref`, `--json`. A refused ref policy exits 3 |
 | `log <ref>` | Provenance log, newest first. `--json` |
-| `bake <ref> -o <out>` | Materialize a tombstone-free flat document |
+| `bake <ref> -o <out>` | Materialize a tombstone-free flat document (`--out` works as well as `-o`) |
 | `revert <layer-id>` | Publish an inverse layer and append it to a ref. `--in <ref>`, `--resolve ours\|theirs`, `--json` |
 | `rebase <layer-id>` | Re-plan a candidate onto a ref's current stack and publish the rebased layer. `--onto <ref>`, `--json` |
 

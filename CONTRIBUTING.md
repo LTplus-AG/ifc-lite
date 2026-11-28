@@ -127,11 +127,14 @@ merges land clean.
 ## Pull requests
 
 - Branch from `main`; one focused change per PR.
-- Fill in the PR template. Green required checks and resolved conversations
-  are required to merge (squash only). The `main` ruleset asks for no
-  approving review count. PRs merge through the Mergify merge queue
-  (`.mergify.yml`), which a PR enters once it carries the `mergify-trial`
-  label.
+- Fill in the PR template. To merge, a PR needs green required status checks
+  (the `main` ruleset lists them, `PR review signal` and `CLA` among them) and
+  every conversation resolved (`main` branch protection). Neither requires an
+  approving review. Merges are squash only.
+- PRs merge through the Mergify merge queue (`.mergify.yml`). A PR with the
+  `mergify-trial` label enters the queue once it is not a draft, `CLA` passes,
+  `PR review signal` is green, no review thread is unresolved, and the
+  `PR viewer selection` status is neither failing nor pending.
 - Keep client and project identifiers out of code, tests, commit messages, and
   PR text.
 

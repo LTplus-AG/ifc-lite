@@ -13,6 +13,8 @@ This page covers the importer only — for the Gantt panel itself, see the in-ap
 
 ## Supported inputs
 
+The file picker accepts `.xml`, `.csv` and `.txt`. The format is chosen from the content first: a file whose first non-whitespace character (after any BOM) is `<` is read as MSPDI. Otherwise a `.xml` name means MSPDI, and anything else is read as CSV.
+
 ### Microsoft Project XML (MSPDI) — preferred
 
 Export from MS Project with **File → Save As → XML**. This is the lossless path: dates are unambiguous ISO datetimes, durations are already ISO 8601, and each dependency carries an explicit link type and lag — nothing has to be guessed.
@@ -27,7 +29,7 @@ What is guarded is the id the importer has to invent for a task with **no** `UID
 
 ### CSV
 
-A generic fallback for schedules exported from other tools (or hand-built spreadsheets). Column names are matched case- and space-insensitively against alias sets, so "Task Name", "Activity", and "Name" all resolve to the same column. Only a **name** column is mandatory — everything else is optional.
+A generic fallback for schedules exported from other tools (or hand-built spreadsheets). The delimiter is picked from the header line: whichever of `,`, `;`, tab or `|` appears most often (comma when none does). Column names are matched case-insensitively, ignoring spaces and punctuation, against alias sets, so "Task Name", "Activity", and "Name" all resolve to the same column. Only a **name** column is mandatory — everything else is optional.
 
 | Column | Recognised header aliases |
 |---|---|

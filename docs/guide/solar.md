@@ -106,9 +106,9 @@ Key types: `SunPosition`, `SunTimes`, `Enu`, `SunSample`, `DayPathOptions`, `Ana
 
 The IFClite viewer builds a full solar study on top of this package:
 
-- **Sun & Sky panel** - Pick a date and time; the viewer computes the sun with `sunPosition` and `sunTimes` for the model's georeferenced site
-- **Sun-path dome** - A "Dome" toggle overlays the day arc, hourly analemmas, graticule, compass cardinals, and a live sun marker on the model (in the Cesium map view the ENU vectors are pinned to the site through an east-north-up frame at the model origin)
-- **Shadow study** - The computed sun direction drives scene lighting and shadows for a studied instant
+- **Sun study** (in the **Environment** panel) - Pick a date and time; the viewer computes the sun with `sunPosition` and `sunTimes` for the model's georeferenced site and shows azimuth, altitude, sunrise, sunset and noon. **Day** and **Year** sweep the time of day or the date across the year, and a toggle switches the clock between UTC and site solar time (from the site longitude)
+- **Sun-path dome** - With the 3D world context (Cesium) on, a **Dome** toggle overlays the day arc, hourly analemmas, graticule, compass cardinals, and a live sun marker on the model; the ENU vectors are pinned to the site through an east-north-up frame at the model origin. Without the world context the sun lights the model directly and the panel offers to turn the world context on
+- **Shadow study** - The computed sun direction drives scene lighting for a studied instant; in the world context a **Shadows** toggle adds real cast shadows
 
 The site location comes from the model's georeferencing, so a correctly georeferenced IFC gets a physically accurate sun with no extra setup.
 

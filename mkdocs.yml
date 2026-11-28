@@ -231,6 +231,7 @@ nav:
     - Collaboration Server: guide/collab-server.md
     - Lens Visualization: guide/lens.md
     - Lists & Schedules: guide/lists.md
+    - Construction Schedule (4D): guide/construction-schedule.md
     - Schedule Import: guide/schedule-import.md
     - Cost Panel: guide/cost-panel.md
     - Charts: guide/charts.md

@@ -1,0 +1,1131 @@
+{
+ "description": "Golden cases for the tile grid of docs/architecture/tiled-federation.md. Generated from packages/renderer/src/chunk-grid.ts and draw-stream-proxy-worker.ts; floats are IEEE-754 bit patterns (big-endian hex) so no JSON number parser is part of the contract.",
+ "leafCellMetres": 32,
+ "cellCoordinateRange": {
+  "min": -1048576,
+  "max": 1048575
+ },
+ "cells": [
+  {
+   "name": "no origin, small positive vertex",
+   "originBits": null,
+   "vertexBits": [
+    "3f800000",
+    "40000000",
+    "40400000"
+   ],
+   "rendererKey": "0,0,0",
+   "cell": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "name": "vertex exactly on the upper cell face belongs to the next cell",
+   "originBits": null,
+   "vertexBits": [
+    "42000000",
+    "42800000",
+    "42c00000"
+   ],
+   "rendererKey": "1,2,3",
+   "cell": [
+    1,
+    2,
+    3
+   ]
+  },
+  {
+   "name": "largest f32 below the face stays in the cell",
+   "originBits": null,
+   "vertexBits": [
+    "41ffffff",
+    "427fffff",
+    "42bfffff"
+   ],
+   "rendererKey": "0,1,2",
+   "cell": [
+    0,
+    1,
+    2
+   ]
+  },
+  {
+   "name": "negative zero is cell 0",
+   "originBits": null,
+   "vertexBits": [
+    "80000000",
+    "80000000",
+    "80000000"
+   ],
+   "rendererKey": "0,0,0",
+   "cell": [
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "name": "smallest negative f32 is cell -1",
+   "originBits": null,
+   "vertexBits": [
+    "80000001",
+    "8da24260",
+    "bf000000"
+   ],
+   "rendererKey": "-1,-1,-1",
+   "cell": [
+    -1,
+    -1,
+    -1
+   ]
+  },
+  {
+   "name": "exactly -32 is cell -1, the next f32 below it is cell -2",
+   "originBits": null,
+   "vertexBits": [
+    "c2000000",
+    "c1ffffff",
+    "c2800000"
+   ],
+   "rendererKey": "-1,-1,-2",
+   "cell": [
+    -1,
+    -1,
+    -2
+   ]
+  },
+  {
+   "name": "origin only: an empty mesh anchors at its origin",
+   "originBits": [
+    "4059200000000000",
+    "c059200000000000",
+    "403fffffffffffff"
+   ],
+   "vertexBits": null,
+   "rendererKey": "3,-4,0",
+   "cell": [
+    3,
+    -4,
+    0
+   ]
+  },
+  {
+   "name": "the sum is taken in f64: an f32 sum would round up into the next cell",
+   "originBits": [
+    "416312d3f0000000",
+    "0000000000000000",
+    "0000000000000000"
+   ],
+   "vertexBits": [
+    "3e800000",
+    "00000000",
+    "00000000"
+   ],
+   "rendererKey": "312500,0,0",
+   "cell": [
+    312500,
+    0,
+    0
+   ]
+  },
+  {
+   "name": "f64 sum rounds onto the face",
+   "originBits": [
+    "404fffffffffffff",
+    "0000000000000000",
+    "0000000000000000"
+   ],
+   "vertexBits": [
+    "283424dc",
+    "00000000",
+    "00000000"
+   ],
+   "rendererKey": "2,0,0",
+   "cell": [
+    2,
+    0,
+    0
+   ]
+  },
+  {
+   "name": "f64 origin just below the face, zero vertex",
+   "originBits": [
+    "404fffffffffffff",
+    "81a56e1fc2f8f359",
+    "0000000000000000"
+   ],
+   "vertexBits": [
+    "00000000",
+    "00000000",
+    "00000000"
+   ],
+   "rendererKey": "1,-1,0",
+   "cell": [
+    1,
+    -1,
+    0
+   ]
+  },
+  {
+   "name": "origin and vertex cancel across zero",
+   "originBits": [
+    "c048000000000000",
+    "4048000000000000",
+    "c030000000000000"
+   ],
+   "vertexBits": [
+    "423e0000",
+    "c2420000",
+    "41800000"
+   ],
+   "rendererKey": "-1,-1,0",
+   "cell": [
+    -1,
+    -1,
+    0
+   ]
+  },
+  {
+   "name": "kilometre-scale RTC-relative origin",
+   "originBits": [
+    "c0a3c64000000000",
+    "4079c10000000000",
+    "40c348b800000000"
+   ],
+   "vertexBits": [
+    "4059999a",
+    "bdcccccd",
+    "414ccccd"
+   ],
+   "rendererKey": "-79,12,308",
+   "cell": [
+    -79,
+    12,
+    308
+   ]
+  },
+  {
+   "name": "last cell inside the tile coordinate range",
+   "originBits": [
+    "417ffffe00000000",
+    "c180000000000000",
+    "0000000000000000"
+   ],
+   "vertexBits": [
+    "41f80000",
+    "00000000",
+    "00000000"
+   ],
+   "rendererKey": "1048575,-1048576,0",
+   "cell": [
+    1048575,
+    -1048576,
+    0
+   ]
+  },
+  {
+   "name": "first cell past the tile coordinate range is stray",
+   "originBits": [
+    "4180000000000000",
+    "0000000000000000",
+    "0000000000000000"
+   ],
+   "vertexBits": [
+    "00000000",
+    "00000000",
+    "00000000"
+   ],
+   "rendererKey": "1048576,0,0",
+   "cell": null
+  },
+  {
+   "name": "NaN vertex is stray",
+   "originBits": null,
+   "vertexBits": [
+    "7fc00000",
+    "00000000",
+    "00000000"
+   ],
+   "rendererKey": "nan",
+   "cell": null
+  },
+  {
+   "name": "infinite origin is stray",
+   "originBits": [
+    "0000000000000000",
+    "7ff0000000000000",
+    "0000000000000000"
+   ],
+   "vertexBits": [
+    "00000000",
+    "00000000",
+    "00000000"
+   ],
+   "rendererKey": "nan",
+   "cell": null
+  },
+  {
+   "name": "finite but astronomically far is stray",
+   "originBits": [
+    "7e37e43c8800759c",
+    "0000000000000000",
+    "0000000000000000"
+   ],
+   "vertexBits": [
+    "00000000",
+    "00000000",
+    "00000000"
+   ],
+   "rendererKey": "3.125e+298,0,0",
+   "cell": null
+  }
+ ],
+ "nodes": [
+  {
+   "cell": [
+    0,
+    0,
+    0
+   ],
+   "levels": [
+    {
+     "level": 1,
+     "coords": [
+      0,
+      0,
+      0
+     ]
+    },
+    {
+     "level": 2,
+     "coords": [
+      0,
+      0,
+      0
+     ]
+    },
+    {
+     "level": 3,
+     "coords": [
+      0,
+      0,
+      0
+     ]
+    },
+    {
+     "level": 4,
+     "coords": [
+      0,
+      0,
+      0
+     ]
+    },
+    {
+     "level": 10,
+     "coords": [
+      0,
+      0,
+      0
+     ]
+    },
+    {
+     "level": 20,
+     "coords": [
+      0,
+      0,
+      0
+     ]
+    }
+   ]
+  },
+  {
+   "cell": [
+    1,
+    1,
+    1
+   ],
+   "levels": [
+    {
+     "level": 1,
+     "coords": [
+      0,
+      0,
+      0
+     ]
+    },
+    {
+     "level": 2,
+     "coords": [
+      0,
+      0,
+      0
+     ]
+    },
+    {
+     "level": 3,
+     "coords": [
+      0,
+      0,
+      0
+     ]
+    },
+    {
+     "level": 4,
+     "coords": [
+      0,
+      0,
+      0
+     ]
+    },
+    {
+     "level": 10,
+     "coords": [
+      0,
+      0,
+      0
+     ]
+    },
+    {
+     "level": 20,
+     "coords": [
+      0,
+      0,
+      0
+     ]
+    }
+   ]
+  },
+  {
+   "cell": [
+    -1,
+    -1,
+    -1
+   ],
+   "levels": [
+    {
+     "level": 1,
+     "coords": [
+      -1,
+      -1,
+      -1
+     ]
+    },
+    {
+     "level": 2,
+     "coords": [
+      -1,
+      -1,
+      -1
+     ]
+    },
+    {
+     "level": 3,
+     "coords": [
+      -1,
+      -1,
+      -1
+     ]
+    },
+    {
+     "level": 4,
+     "coords": [
+      -1,
+      -1,
+      -1
+     ]
+    },
+    {
+     "level": 10,
+     "coords": [
+      -1,
+      -1,
+      -1
+     ]
+    },
+    {
+     "level": 20,
+     "coords": [
+      -1,
+      -1,
+      -1
+     ]
+    }
+   ]
+  },
+  {
+   "cell": [
+    5,
+    -6,
+    7
+   ],
+   "levels": [
+    {
+     "level": 1,
+     "coords": [
+      2,
+      -3,
+      3
+     ]
+    },
+    {
+     "level": 2,
+     "coords": [
+      1,
+      -2,
+      1
+     ]
+    },
+    {
+     "level": 3,
+     "coords": [
+      0,
+      -1,
+      0
+     ]
+    },
+    {
+     "level": 4,
+     "coords": [
+      0,
+      -1,
+      0
+     ]
+    },
+    {
+     "level": 10,
+     "coords": [
+      0,
+      -1,
+      0
+     ]
+    },
+    {
+     "level": 20,
+     "coords": [
+      0,
+      -1,
+      0
+     ]
+    }
+   ]
+  },
+  {
+   "cell": [
+    -1048576,
+    1048575,
+    0
+   ],
+   "levels": [
+    {
+     "level": 1,
+     "coords": [
+      -524288,
+      524287,
+      0
+     ]
+    },
+    {
+     "level": 2,
+     "coords": [
+      -262144,
+      262143,
+      0
+     ]
+    },
+    {
+     "level": 3,
+     "coords": [
+      -131072,
+      131071,
+      0
+     ]
+    },
+    {
+     "level": 4,
+     "coords": [
+      -65536,
+      65535,
+      0
+     ]
+    },
+    {
+     "level": 10,
+     "coords": [
+      -1024,
+      1023,
+      0
+     ]
+    },
+    {
+     "level": 20,
+     "coords": [
+      -1,
+      0,
+      0
+     ]
+    }
+   ]
+  },
+  {
+   "cell": [
+    3,
+    2,
+    -3
+   ],
+   "levels": [
+    {
+     "level": 1,
+     "coords": [
+      1,
+      1,
+      -2
+     ]
+    },
+    {
+     "level": 2,
+     "coords": [
+      0,
+      0,
+      -1
+     ]
+    },
+    {
+     "level": 3,
+     "coords": [
+      0,
+      0,
+      -1
+     ]
+    },
+    {
+     "level": 4,
+     "coords": [
+      0,
+      0,
+      -1
+     ]
+    },
+    {
+     "level": 10,
+     "coords": [
+      0,
+      0,
+      -1
+     ]
+    },
+    {
+     "level": 20,
+     "coords": [
+      0,
+      0,
+      -1
+     ]
+    }
+   ]
+  },
+  {
+   "cell": [
+    -2,
+    -3,
+    -4
+   ],
+   "levels": [
+    {
+     "level": 1,
+     "coords": [
+      -1,
+      -2,
+      -2
+     ]
+    },
+    {
+     "level": 2,
+     "coords": [
+      -1,
+      -1,
+      -1
+     ]
+    },
+    {
+     "level": 3,
+     "coords": [
+      -1,
+      -1,
+      -1
+     ]
+    },
+    {
+     "level": 4,
+     "coords": [
+      -1,
+      -1,
+      -1
+     ]
+    },
+    {
+     "level": 10,
+     "coords": [
+      -1,
+      -1,
+      -1
+     ]
+    },
+    {
+     "level": 20,
+     "coords": [
+      -1,
+      -1,
+      -1
+     ]
+    }
+   ]
+  },
+  {
+   "cell": [
+    1023,
+    -1024,
+    512
+   ],
+   "levels": [
+    {
+     "level": 1,
+     "coords": [
+      511,
+      -512,
+      256
+     ]
+    },
+    {
+     "level": 2,
+     "coords": [
+      255,
+      -256,
+      128
+     ]
+    },
+    {
+     "level": 3,
+     "coords": [
+      127,
+      -128,
+      64
+     ]
+    },
+    {
+     "level": 4,
+     "coords": [
+      63,
+      -64,
+      32
+     ]
+    },
+    {
+     "level": 10,
+     "coords": [
+      0,
+      -1,
+      0
+     ]
+    },
+    {
+     "level": 20,
+     "coords": [
+      0,
+      -1,
+      0
+     ]
+    }
+   ]
+  }
+ ],
+ "clustering": {
+  "clusterSizeBits": "4005555555555555",
+  "vertices": [
+   {
+    "positionBits": [
+     "3dcccccd",
+     "3dcccccd",
+     "3dcccccd"
+    ],
+    "id": 101,
+    "slot": 0,
+    "cluster": [
+     0,
+     0,
+     0
+    ]
+   },
+   {
+    "positionBits": [
+     "41200000",
+     "3dcccccd",
+     "3dcccccd"
+    ],
+    "id": 101,
+    "slot": 0,
+    "cluster": [
+     3,
+     0,
+     0
+    ]
+   },
+   {
+    "positionBits": [
+     "3dcccccd",
+     "41200000",
+     "3dcccccd"
+    ],
+    "id": 101,
+    "slot": 0,
+    "cluster": [
+     0,
+     3,
+     0
+    ]
+   },
+   {
+    "positionBits": [
+     "3e4ccccd",
+     "3e4ccccd",
+     "3e4ccccd"
+    ],
+    "id": 102,
+    "slot": 0,
+    "cluster": [
+     0,
+     0,
+     0
+    ]
+   },
+   {
+    "positionBits": [
+     "4121999a",
+     "3e4ccccd",
+     "3e4ccccd"
+    ],
+    "id": 102,
+    "slot": 0,
+    "cluster": [
+     3,
+     0,
+     0
+    ]
+   },
+   {
+    "positionBits": [
+     "3e4ccccd",
+     "4121999a",
+     "3e4ccccd"
+    ],
+    "id": 102,
+    "slot": 0,
+    "cluster": [
+     0,
+     3,
+     0
+    ]
+   },
+   {
+    "positionBits": [
+     "3e99999a",
+     "3e99999a",
+     "3e99999a"
+    ],
+    "id": 103,
+    "slot": 0,
+    "cluster": [
+     0,
+     0,
+     0
+    ]
+   },
+   {
+    "positionBits": [
+     "3ecccccd",
+     "3e99999a",
+     "3e99999a"
+    ],
+    "id": 103,
+    "slot": 0,
+    "cluster": [
+     0,
+     0,
+     0
+    ]
+   },
+   {
+    "positionBits": [
+     "3e99999a",
+     "3ecccccd",
+     "3e99999a"
+    ],
+    "id": 103,
+    "slot": 0,
+    "cluster": [
+     0,
+     0,
+     0
+    ]
+   },
+   {
+    "positionBits": [
+     "3dcccccd",
+     "3dcccccd",
+     "3dcccccd"
+    ],
+    "id": 104,
+    "slot": 1,
+    "cluster": [
+     0,
+     0,
+     0
+    ]
+   },
+   {
+    "positionBits": [
+     "41200000",
+     "3dcccccd",
+     "3dcccccd"
+    ],
+    "id": 104,
+    "slot": 1,
+    "cluster": [
+     3,
+     0,
+     0
+    ]
+   },
+   {
+    "positionBits": [
+     "3dcccccd",
+     "41200000",
+     "3dcccccd"
+    ],
+    "id": 104,
+    "slot": 1,
+    "cluster": [
+     0,
+     3,
+     0
+    ]
+   },
+   {
+    "positionBits": [
+     "bdcccccd",
+     "3dcccccd",
+     "3dcccccd"
+    ],
+    "id": 105,
+    "slot": 0,
+    "cluster": [
+     -1,
+     0,
+     0
+    ]
+   },
+   {
+    "positionBits": [
+     "c1200000",
+     "3dcccccd",
+     "3dcccccd"
+    ],
+    "id": 105,
+    "slot": 0,
+    "cluster": [
+     -4,
+     0,
+     0
+    ]
+   },
+   {
+    "positionBits": [
+     "bdcccccd",
+     "41200000",
+     "3dcccccd"
+    ],
+    "id": 105,
+    "slot": 0,
+    "cluster": [
+     -1,
+     3,
+     0
+    ]
+   },
+   {
+    "positionBits": [
+     "402aaaab",
+     "41a00000",
+     "41a00000"
+    ],
+    "id": 106,
+    "slot": 0,
+    "cluster": [
+     1,
+     7,
+     7
+    ]
+   },
+   {
+    "positionBits": [
+     "41000000",
+     "41a00000",
+     "41a00000"
+    ],
+    "id": 106,
+    "slot": 0,
+    "cluster": [
+     3,
+     7,
+     7
+    ]
+   },
+   {
+    "positionBits": [
+     "402aaaab",
+     "41f00000",
+     "41a00000"
+    ],
+    "id": 106,
+    "slot": 0,
+    "cluster": [
+     1,
+     11,
+     7
+    ]
+   },
+   {
+    "positionBits": [
+     "41200000",
+     "3dcccccd",
+     "3dcccccd"
+    ],
+    "id": 107,
+    "slot": 0,
+    "cluster": [
+     3,
+     0,
+     0
+    ]
+   },
+   {
+    "positionBits": [
+     "3dcccccd",
+     "3dcccccd",
+     "3dcccccd"
+    ],
+    "id": 107,
+    "slot": 0,
+    "cluster": [
+     0,
+     0,
+     0
+    ]
+   },
+   {
+    "positionBits": [
+     "3dcccccd",
+     "41200000",
+     "3dcccccd"
+    ],
+    "id": 107,
+    "slot": 0,
+    "cluster": [
+     0,
+     3,
+     0
+    ]
+   }
+  ],
+  "indices": [
+   0,
+   1,
+   2,
+   3,
+   4,
+   5,
+   6,
+   7,
+   8,
+   9,
+   10,
+   11,
+   12,
+   13,
+   14,
+   15,
+   16,
+   17,
+   18,
+   19,
+   20
+  ],
+  "expect": [
+   {
+    "slot": 0,
+    "triangleCount": 3,
+    "cornerIds": [
+     101,
+     101,
+     101,
+     105,
+     105,
+     105,
+     106,
+     106,
+     106
+    ],
+    "cornerPositionBits": [
+     "3e6eeeef",
+     "3e6eeeef",
+     "3e5dddde",
+     "41208889",
+     "3e088889",
+     "3e088889",
+     "3e088889",
+     "41208889",
+     "3e088889",
+     "bdcccccd",
+     "3dcccccd",
+     "3dcccccd",
+     "c1200000",
+     "3dcccccd",
+     "3dcccccd",
+     "bdcccccd",
+     "41200000",
+     "3dcccccd",
+     "402aaaab",
+     "41a00000",
+     "41a00000",
+     "41000000",
+     "41a00000",
+     "41a00000",
+     "402aaaab",
+     "41f00000",
+     "41a00000"
+    ]
+   },
+   {
+    "slot": 1,
+    "triangleCount": 1,
+    "cornerIds": [
+     104,
+     104,
+     104
+    ],
+    "cornerPositionBits": [
+     "3dcccccd",
+     "3dcccccd",
+     "3dcccccd",
+     "41200000",
+     "3dcccccd",
+     "3dcccccd",
+     "3dcccccd",
+     "41200000",
+     "3dcccccd"
+    ]
+   }
+  ]
+ }
+}

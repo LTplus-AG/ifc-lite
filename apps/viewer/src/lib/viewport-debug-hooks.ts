@@ -136,11 +136,16 @@ export function installViewportDebugHooks(
   }
   // Constant-time read of the renderer-owned snapshot; no scene collection walks.
   host.__ifc_lite_render_frame__ = () => renderer.getFrameStats();
-  // `?compactGeom`: pages drawn, and how many compact meshes something decoded back to f32 (0 after a plain load).
-  host.__ifc_lite_compact_stats__ = () => ({
-    pages: renderer.getScene().getBatchedMeshes().filter((batch) => batch.indexFormat === 'uint16').length,
-    decoded: compactHydrationStats(),
-  });
+  // `?compactGeom`: pages drawn, and how many compact meshes something decoded back to f32 (0 after a plain load);
+  // `scene`: meshes on pages, and those the scene sent to buckets decoded, by reason.
+  host.__ifc_lite_compact_stats__ = () => {
+    const scene = renderer.getScene();
+    return {
+      pages: scene.getBatchedMeshes().filter((batch) => batch.indexFormat === 'uint16').length,
+      decoded: compactHydrationStats(),
+      scene: scene.getCompactStats?.() ?? null,
+    };
+  };
   // Constant-time: the viewer's own settled rule (store not streaming, no pending shards, no queued meshes,
   // no streaming fragments, no finalize running), and a wanted section drawing (cap, 2D panel) caught up
   // with the live cut, so a screenshot never races the cap (#11428). The load scoreboard gates its

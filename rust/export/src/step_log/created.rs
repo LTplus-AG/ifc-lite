@@ -113,6 +113,7 @@ pub(crate) fn write_created(pass: &mut Pass<'_, '_>) -> Result<(), Unwritable> {
         let line = match filter_log_line(pass, line, id, &upper) {
             Ok(line) => line,
             Err(warning) => {
+                if !pass.left_out.is_empty() { pass.withheld_created.push(id); }
                 pass.warnings.push(warning);
                 continue;
             }

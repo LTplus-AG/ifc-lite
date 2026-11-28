@@ -257,7 +257,7 @@ pub(crate) fn filter_source_line(
 
 /// Apply the same filters to edited, unedited, and newly created records.
 pub(crate) fn filter_log_line(pass: &mut super::pass::Pass<'_, '_>, line: String, id: u32, upper: &str) -> Result<String, String> {
-    let line = match filter_source_line(&line, id, upper, pass.schema, &|id| pass.is_omitted(id), !pass.overlay.tombstones.is_empty()) {
+    let line = match filter_source_line(&line, id, upper, pass.schema, &|id| pass.is_omitted(id), !pass.overlay.tombstones.is_empty() || !pass.left_out.is_empty()) {
         Filtered::Keep => line,
         Filtered::Rewrite(line) => line,
         Filtered::Withhold(warning) => return Err(warning),

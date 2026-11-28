@@ -25,7 +25,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { parseExpressSchema } from '../src/express-parser.js';
+import { parseExpressSchema } from '../src/index.js';
 import { generateRust } from '../src/rust-generator.js';
 import { crc32 } from '../src/crc32.js';
 import {
@@ -254,9 +254,11 @@ describe('generateRust — entity categorisation', () => {
   });
 
   it('assigns every entity to exactly one category', () => {
+    const declaration = rust.schema.match(/pub enum IfcType \{([\s\S]*?)\n\}/)?.[1];
+    expect(declaration).toBeDefined();
     for (const entity of schema.entities) {
       const variant = `    ${entity.name},\n`;
-      expect(rust.schema.split(variant).length - 1, entity.name).toBe(1);
+      expect(declaration?.split(variant).length, entity.name).toBe(2);
     }
   });
 });

@@ -11,6 +11,7 @@ DATA;
 #4=IFCDATEANDTIME(/* day */ #2,#5 /* clock */);
 #5=IFCLOCALTIME(10,30,15.5,/* zone */ #6,$);
 #6=IFCCOORDINATEDUNIVERSALTIMEOFFSET(5,30,.AHEAD.);
-#7=IFCCOSTVALUE('Estimate',$,$,$,/* applicable */ #4,#2,'Materials',$);
+#7=IFCCOSTVALUE('Estimate',$,$,$,/* applicable */ #4,#8,'Materials',$);
+#8=IFCCALENDARDATE(1,3,2024);
 ENDSEC;
 END-ISO-10303-21;

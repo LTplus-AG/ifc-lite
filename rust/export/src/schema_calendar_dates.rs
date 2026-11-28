@@ -29,11 +29,34 @@ struct PendingDate {
 #[derive(Default)]
 pub(super) struct CalendarDates {
     pub(super) enabled: bool,
+    /// An IFC2X3 upgrade wrote a legacy date record, so those nothing references
+    /// go even when no slot converts (#11199).
+    carriers_written: bool,
+    /// The upgrade's target, whose omitted-route records reference nothing
+    /// once the later upgrade prune drops them (#11199).
+    target: &'static str,
     pending: HashMap<u32, Vec<PendingDate>>,
     retained: usize,
+    /// Legacy date records neither successfully converted nor retained (#11199).
+    omitted: Vec<(u32, String)>,
+}
+
+/// What a deferred date slot lost: all of it, its time (kept the date), or
+/// nothing but a clock precision it filled (#11199).
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum DateLoss {
+    Dropped,
+    Narrowed,
+    Filled,
 }
 
 impl CalendarDates {
+    /// Note an IFC2X3 upgrade's record of `ty`: a legacy date record arms the finishing pass.
+    pub(super) fn note_upgraded(&mut self, ty: &str, ifc4x3: bool) {
+        self.target = if ifc4x3 { "IFC4X3" } else { "IFC4" };
+        if carrier(ty) { self.carriers_written = true; }
+    }
+
     pub(super) fn defer(&mut self, id: u32, slot: u8, operator: &str, required: bool, site: impl FnOnce() -> String) -> bool {
         if !self.enabled {
             return false;
@@ -47,12 +70,14 @@ impl CalendarDates {
         true
     }
 
-    pub(super) fn finish(&mut self, text: &str, mut loss: impl FnMut(bool, bool, String), pruned: impl FnMut(&str)) -> Option<(String, isize)> {
-        if self.pending.is_empty() {
+    pub(super) fn finish(&mut self, text: &str, mut loss: impl FnMut(bool, DateLoss, String), pruned: impl FnMut(&str)) -> Option<(String, isize)> {
+        if !self.enabled || (self.pending.is_empty() && !self.carriers_written) {
             return None;
         }
-        let upgrade = self.pending.values().any(|dates| dates.iter().any(|date| date.up));
+        let upgrade = self.carriers_written || self.pending.values().any(|dates| dates.iter().any(|date| date.up));
         let (carriers, maximum) = collect_carriers(text, upgrade);
+        // Mask failed upgrades when counting references that carried a value.
+        let mut discarded = HashMap::new();
         let mut ids = IdAllocator::after(maximum);
         let mut appended = Vec::new();
         let mut rewrites = HashMap::new();
@@ -62,31 +87,53 @@ impl CalendarDates {
             let line = &text[begin..end];
             let Some(frame) = record_frame(line) else { continue };
             let Some(mut slots) = split_top_level_args(frame.args(line)) else { continue };
+            let mut failed_slots = Vec::new();
             for date in dates {
                 let Some(value) = slots.get_mut(usize::from(date.slot)) else { continue };
                 let fixed = if date.up {
                     from_legacy(value, date.kind, |id| carriers.get(&id?))
                 } else {
-                    restored_date(value, date.kind, &mut ids, &mut appended).map(|value| (value, false))
+                    restored_date(value, date.kind, &mut ids, &mut appended).map(|value| (value, false, false))
                 };
-                let narrowed = fixed.as_ref().is_some_and(|(_, narrowed)| *narrowed);
-                if fixed.is_none() || narrowed {
-                    loss(date.required, narrowed, date.site);
+                if date.up && fixed.is_none() { failed_slots.push(usize::from(date.slot)); }
+                let lost = match fixed {
+                    None => Some(DateLoss::Dropped),
+                    Some((_, true, _)) => Some(DateLoss::Narrowed),
+                    Some((_, _, true)) => Some(DateLoss::Filled),
+                    Some(_) => None,
+                };
+                if let Some(lost) = lost {
+                    loss(date.required, lost, date.site);
                 }
-                *value = fixed.map_or_else(|| "$".to_owned(), |(value, _)| value);
+                *value = fixed.map_or_else(|| "$".to_owned(), |(value, _, _)| value);
+            }
+            if !failed_slots.is_empty() {
+                let mut accounting = split_top_level_args(frame.args(line)).expect("already split");
+                for slot in failed_slots { accounting[slot] = "$".to_owned(); }
+                discarded.insert(id, frame.with_args(line, &accounting.join(",")));
             }
             rewrites.insert(id, frame.with_args(line, &slots.join(",")));
         }
         self.pending.clear();
-        let used = retained_carriers(text, &carriers, &rewrites);
+        let reached = retained_carriers(text, &carriers, &discarded, self.target);
+        self.omitted.extend(carriers.iter().filter(|(id, _)| !reached.contains(id)).map(|(id, date)| (*id, date.ty.clone())));
+        let used = retained_carriers(text, &carriers, &rewrites, self.target);
         self.retained = used.len();
         Some(finish_text(text, &carriers, &used, &rewrites, &appended, pruned))
     }
-    pub(super) fn warning(&self) -> Option<String> {
-        (self.retained != 0).then(|| format!(
+    pub(super) fn warnings(&self) -> impl Iterator<Item = String> + '_ {
+        let retained = (self.retained != 0).then(|| format!(
             "{} legacy IFC2X3 date record(s) are still referenced by unconverted slots, so the file is not valid against its header (#10879).",
             self.retained,
-        ))
+        ));
+        let mut omitted: Vec<_> = self.omitted.iter().collect();
+        omitted.sort_unstable();
+        let omitted = (!omitted.is_empty()).then(|| format!(
+            "{} legacy IFC2X3 date record(s) were omitted because no written record references them and the target schema does not declare their type: {} (#11199).",
+            omitted.len(),
+            omitted.iter().map(|(id, ty)| format!("#{id} ({ty})")).collect::<Vec<_>>().join(", "),
+        ));
+        retained.into_iter().chain(omitted)
     }
 }
 
@@ -120,7 +167,16 @@ fn restored_date(token: &str, kind: Kind, ids: &mut IdAllocator, appended: &mut 
     Some(format!("#{reference}"))
 }
 
-fn retained_carriers(text: &str, carriers: &HashMap<u32, DateRecord>, rewrites: &HashMap<u32, String>) -> HashSet<u32> {
+/// Whether the IFC2X3 upgrade to `target` writes an output record of `ty`
+/// with its references: not one it proxies or omits (the upgrade prune drops
+/// an omitted one after this pass). The writer's own route decides (#11199).
+fn writes_references(ty: &str, target: &str) -> bool {
+    use crate::schema_unrepresented::{missing_type_route, Route};
+    let declared = crate::schema_convert::schema_attribute_names("IFC2X3", ty).is_some();
+    !matches!(missing_type_route(ty, ty, "IFC2X3", target, declared), Route::Unrepresented | Route::Omitted)
+}
+
+fn retained_carriers(text: &str, carriers: &HashMap<u32, DateRecord>, rewrites: &HashMap<u32, String>, target: &str) -> HashSet<u32> {
     let mut retained = HashSet::new();
     if carriers.is_empty() {
         return retained;
@@ -128,8 +184,8 @@ fn retained_carriers(text: &str, carriers: &HashMap<u32, DateRecord>, rewrites: 
     let mut queue = VecDeque::new();
     let mut refs = Vec::new();
     let mut scanner = EntityScanner::new(text);
-    while let Some((id, _, a, b)) = scanner.next_entity() {
-        if carriers.contains_key(&id) {
+    while let Some((id, ty, a, b)) = scanner.next_entity() {
+        if carriers.contains_key(&id) || !writes_references(&ty.to_ascii_uppercase(), target) {
             continue;
         }
         let line = rewrites.get(&id).map_or(&text[a..b], String::as_str);

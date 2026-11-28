@@ -19,11 +19,15 @@
  * required-slot passes use (position `i` need not be attribute `i`).
  */
 
+import { attrNameTable, type IfcSchemaVersion } from './schema-converter.js';
+import { withoutComments } from './step-comment-skip.js';
+import { stepRecordHead } from './step-record-frame.js';
 import { TypedPropertyUpgrade } from './schema-converter-typed-properties.js';
 import { StructuralDiagnostics } from './schema-converter-structural-diagnostics.js';
 import { DocumentLinks } from './schema-converter-document-links.js';
 import { ValueForms } from './schema-converter-value-forms.js';
 import { MaterialReferents } from './schema-converter-material-referent.js';
+import { SpaceBoundaryElements } from './schema-converter-space-boundary.js';
 import { getSchemaRegistryForVersion, type SchemaVersionWithRegistry } from '@ifc-lite/parser';
 import { escapeStepString } from './step-serialization.js';
 import { readStepSlots, splitTopLevelStepArguments } from './step-argument-parser.js';
@@ -81,6 +85,8 @@ export class EnumReconciliation {
   readonly forms: ValueForms;
   /** The IfcMaterial a downgraded IfcMaterialProperties names (#10763). */
   readonly materials: MaterialReferents;
+  /** The IfcRelSpaceBoundary records an IFC2X3 upgrade leaves out for want of their element. */
+  readonly boundaries = new SpaceBoundaryElements();
 
   constructor(deferConversions = false) {
     this.forms = new ValueForms(deferConversions);
@@ -92,8 +98,8 @@ export class EnumReconciliation {
   private readonly unlabelled = new Map<string, number>();
 
   /** Reconcile `line`, already converted to `toSchema`, then report a broken USERDEFINED rule (#10780). */
-  apply(line: string, toSchema: SchemaVersionWithRegistry, maxReferenceId?: number): string {
-    const out = this.reconcile(line, toSchema, maxReferenceId);
+  apply(line: string, toSchema: SchemaVersionWithRegistry, maxReferenceId?: number, source?: string, from?: IfcSchemaVersion): string {
+    const out = this.reconcile(line, toSchema, maxReferenceId, source, from);
     // Only a record that says USERDEFINED can break the rule; the rest stop here.
     const record = /\.USERDEFINED\./i.test(out) ? readStepSlots(out, maxReferenceId) : null;
     const rule = record ? userDefinedRule(toSchema, record.type) : undefined;
@@ -101,7 +107,7 @@ export class EnumReconciliation {
     return out;
   }
 
-  private reconcile(line: string, toSchema: SchemaVersionWithRegistry, maxReferenceId?: number): string {
+  private reconcile(line: string, toSchema: SchemaVersionWithRegistry, maxReferenceId?: number, source?: string, from?: IfcSchemaVersion): string {
     const open = line.indexOf('(');
     const close = line.lastIndexOf(')');
     const eq = line.indexOf('=');
@@ -113,10 +119,18 @@ export class EnumReconciliation {
     if (values === null || values.length !== entity.attributes.length) return line;
     let changed = false;
     for (const { index, members } of entity.enumSlots) {
-      const member = ENUM_TOKEN.exec(values[index])?.[1]?.toUpperCase();
+      const proxyComposition = toSchema === 'IFC2X3' && type === 'IFCBUILDINGELEMENTPROXY' && index === 8;
+      const token = values[index];
+      const member = ENUM_TOKEN.exec(proxyComposition && token.includes('/*') ? withoutComments(token) : token)?.[1]?.toUpperCase();
       if (member === undefined || members.includes(member)) continue;
       const resolution = resolveMissingEnumMember(entity.attributes, index, members);
-      const where = `${type}.${entity.attributes[index].name} .${member}.`;
+      let where = `${type}.${entity.attributes[index].name} .${member}.`;
+      if (proxyComposition && source && from) {
+        const head = stepRecordHead(source);
+        const original = head && source.slice(head.typeStart, head.typeEnd).toUpperCase();
+        const attrs = original && original !== type ? attrNameTable(from)?.get(original) : undefined;
+        if (attrs?.length === 9 && attrs[index] === 'PredefinedType') where += ` (source ${original}.PredefinedType)`;
+      }
       switch (resolution.kind) {
         case 'userdefined':
           values[index] = '.USERDEFINED.';
@@ -154,7 +168,7 @@ export class EnumReconciliation {
       const total = [...this.unlabelled.values()].reduce((a, b) => a + b, 0);
       out.push(`${total} record(s) say .USERDEFINED. without the label their rule needs; none is invented: ${[...this.unlabelled.keys()].join(', ')} (#10780).`);
     }
-    return [...out, ...this.documents.warnings(), ...this.forms.warnings(), ...this.materials.warnings(), ...this.structural.warnings(), ...this.typedProperties.warnings()];
+    return [...out, ...this.documents.warnings(), ...this.forms.warnings(), ...this.materials.warnings(), ...this.boundaries.warnings(), ...this.structural.warnings(), ...this.typedProperties.warnings()];
   }
 
   private record(loss: Loss, where: string): void {

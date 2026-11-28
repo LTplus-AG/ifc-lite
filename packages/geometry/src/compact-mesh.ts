@@ -15,7 +15,7 @@
  * records (`geometry-worker-init.ts`), so no compact mesh exists.
  */
 
-import { compactRow, type CompactPayload } from './compact-geometry.js';
+import { compactBounds, compactRow, type CompactPayload, type CompactRef } from './compact-geometry.js';
 import type { MeshData } from './types.js';
 
 /** The three properties of a compact mesh that decode on first read. */
@@ -90,6 +90,23 @@ export function materializeCompactMesh(mesh: MeshData): void {
     Object.defineProperty(mesh, key, { value: mesh[key], enumerable: true, configurable: true, writable: true });
   }
   delete mesh.compact;
+}
+
+/**
+ * A compact mesh's box where the mesh is now, `[minx, miny, minz, maxx, maxy, maxz]` in its
+ * `origin + position` frame, without decoding it: the row box, moved by any change of `origin`
+ * since the records were adopted (positions are relative to it, so they move with it).
+ */
+export function compactMeshBounds(mesh: { compact?: CompactRef; origin?: ArrayLike<number> | null }): Float64Array | null {
+  const ref = mesh.compact;
+  if (!ref) return null;
+  const box = Float64Array.from(compactBounds(ref));
+  const now = mesh.origin, then = ref.origin;
+  for (let axis = 0; axis < 3; axis++) {
+    const shift = (now?.[axis] ?? 0) - (then?.[axis] ?? 0);
+    box[axis] += shift; box[axis + 3] += shift;
+  }
+  return box;
 }
 
 /** Triangles a mesh draws, without decoding a compact one. */

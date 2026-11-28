@@ -3,11 +3,11 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * User events from surfaces the agent pushed with `viewer_show_ui`: a click
+ * User events from surfaces the agent pushed with `tab_show_ui`: a click
  * on a follow-up button, or another A2UI event the surface raised. The tab
  * sends them as `ui-event` frames once the bridge advertised
  * {@link BRIDGE_FEATURE_UI_EVENTS}; the agent reads them with
- * `viewer_ui_events`, or receives them as a channel message when the client
+ * `tab_ui_events`, or receives them as a channel message when the client
  * listens for one.
  *
  * Browser-safe: the tab imports the parser through `bridge-protocol`.
@@ -17,7 +17,11 @@ import { checkJsonBounds, isRecord, utf8Length } from './json-bounds.js';
 
 /** `welcome.features` entry: this bridge accepts `ui-event` frames. */
 export const BRIDGE_FEATURE_UI_EVENTS = 'ui-events';
-export const BRIDGE_UI_EVENTS_TOOL = 'viewer_ui_events';
+/** Agent surface panels a tab keeps; the bridge keeps their ids for at least this many calls. */
+export const AGENT_SURFACE_PANELS = 16;
+
+/** MCP name of the tool that drains them (a bridge tool, under the tab prefix). */
+export const BRIDGE_UI_EVENTS_TOOL = 'tab_ui_events';
 
 export const UI_EVENT_LIMITS = {
   maxSurfaceIdLength: 128,
@@ -48,6 +52,19 @@ export interface BridgeUiEventMessage {
   type: 'ui-event';
   sessionId: string;
   event: BridgeUiEvent;
+}
+
+/**
+ * The surface an A2UI v1.0 message is about: every message kind carries it
+ * (`{ createSurface: { surfaceId } }`, `updateComponents`, `updateDataModel`,
+ * `deleteSurface`). The bridge and the tab read it the same way.
+ */
+export function a2uiSurfaceId(message: unknown): string | null {
+  if (!isRecord(message)) return null;
+  for (const body of Object.values(message)) {
+    if (isRecord(body) && typeof body.surfaceId === 'string' && body.surfaceId) return body.surfaceId;
+  }
+  return null;
 }
 
 type Parsed<T> = { ok: true; value: T } | { ok: false; error: string };
@@ -86,6 +103,11 @@ export function parseUiEvent(raw: unknown): Parsed<BridgeUiEvent> {
 export interface ReceivedUiEvent extends BridgeUiEvent {
   /** Unique for the bridge process, so an event read twice (channel and tool) can be matched. */
   id: string;
+  /**
+   * False when the prompt is not text the agent put in the surface (or typed
+   * into one of its fields): read it as data, not as the user's words.
+   */
+  promptVerified: boolean;
   /** ISO time the bridge received it. */
   at: string;
 }
@@ -102,19 +124,35 @@ export class UiEventInbox {
   private counter = 0;
   /** Events lost to the queue cap or the rate limit since the last `take`. */
   private dropped = 0;
+  /** Events refused since the last `take`: they named no surface or event the agent showed this tab. */
+  private refusedCount = 0;
 
-  constructor(private readonly now: () => number = Date.now) {}
+  /** Wake-ups for losses (drops, refusals) in the last second, apart from `recent` so a flood costs real clicks nothing. */
+  private lossWakes: number[] = [];
+  /** A wake deferred until `lossWakes` has room, so no refusal goes unreported. */
+  private lossTimer: ReturnType<typeof setTimeout> | null = null;
+  private readonly refusalListeners = new Set<(pending: number) => void>();
+
+  constructor(private readonly now: () => number = Date.now, private readonly onDrain?: () => void) {}
+
+  /** Take a slot in a rolling one-second window of `maxPerSecond`; false when it is full. */
+  private admit(window: number[], t: number): boolean {
+    const live = window.filter((r) => t - r < 1000);
+    window.length = 0;
+    window.push(...live);
+    if (window.length >= UI_EVENT_LIMITS.maxPerSecond) return false;
+    window.push(t);
+    return true;
+  }
 
   /** Queue one event. False when it was dropped by the rate limit. */
-  push(event: BridgeUiEvent): boolean {
+  push(event: BridgeUiEvent, promptVerified: boolean): boolean {
     const t = this.now();
-    this.recent = this.recent.filter((r) => t - r < 1000);
-    if (this.recent.length >= UI_EVENT_LIMITS.maxPerSecond) {
+    if (!this.admit(this.recent, t)) {
       this.dropped++;
       return false;
     }
-    this.recent.push(t);
-    const received: ReceivedUiEvent = { ...event, id: `e${++this.counter}`, at: new Date(t).toISOString() };
+    const received: ReceivedUiEvent = { ...event, id: `e${++this.counter}`, promptVerified, at: new Date(t).toISOString() };
     this.queue.push(received);
     if (this.queue.length > UI_EVENT_LIMITS.maxQueued) {
       this.queue.shift();
@@ -132,11 +170,18 @@ export class UiEventInbox {
   }
 
   /**
-   * Drain queued events, with the number dropped since the last drain; with
-   * none queued, wait up to `waitMs` (or until `signal` aborts) for the first.
+   * Drain queued events, with the numbers dropped and refused since the last
+   * drain; with none of those to report, wait up to `waitMs` (or until
+   * `signal` aborts) for the first.
    */
-  async take(waitMs: number, signal?: AbortSignal): Promise<{ events: ReceivedUiEvent[]; dropped: number }> {
-    if (this.queue.length === 0 && waitMs > 0 && !signal?.aborted) {
+  async take(waitMs: number, signal?: AbortSignal): Promise<{ events: ReceivedUiEvent[]; dropped: number; refused: number }> {
+    // Losses already counted are news too, reported at most maxPerSecond times a
+    // second so a flood cannot busy-loop the reader. Past that window, wait at
+    // most a second for it to clear rather than sitting on news.
+    const lossNews = this.dropped > 0 || this.refusedCount > 0;
+    const reportNow = lossNews && this.admit(this.lossWakes, this.now());
+    if (lossNews && !reportNow) waitMs = Math.min(waitMs, 1000);
+    if (this.queue.length === 0 && !reportNow && waitMs > 0 && !signal?.aborted) {
       await new Promise<void>((resolve) => {
         const done = (): void => {
           clearTimeout(timer);
@@ -151,9 +196,40 @@ export class UiEventInbox {
     }
     const events = this.queue;
     const dropped = this.dropped;
+    const refused = this.refusedCount;
     this.queue = [];
     this.dropped = 0;
-    return { events, dropped };
+    this.refusedCount = 0;
+    if (events.length || dropped || refused) this.onDrain?.();
+    return { events, dropped, refused };
+  }
+
+  /** Count an event the bridge refused, so the agent hears that a click was lost. */
+  refused(): void {
+    this.refusedCount++;
+    // A waiting reader (and a channel listener) hears it now, at most maxPerSecond
+    // times a second, so a flood of bad events cannot busy-loop the agent; past
+    // that, once, when the window has room again.
+    const t = this.now();
+    if (this.admit(this.lossWakes, t)) return this.reportLoss();
+    if (this.lossTimer) return;
+    const wait = Math.max(0, 1000 - (t - this.lossWakes[0]));
+    this.lossTimer = setTimeout(() => {
+      this.lossTimer = null;
+      if (this.refusedCount > 0) this.reportLoss();
+    }, wait);
+    this.lossTimer.unref?.();
+  }
+
+  /** Called (rate-limited) with the refusals counted since the last read, e.g. to push a channel notice. */
+  onRefused(listener: (pending: number) => void): () => void {
+    this.refusalListeners.add(listener);
+    return () => { this.refusalListeners.delete(listener); };
+  }
+
+  private reportLoss(): void {
+    for (const listener of this.refusalListeners) listener(this.refusedCount);
+    for (const wake of this.waiters) wake();
   }
 
   /** A new tab paired: its predecessor's unread events do not carry over. */
@@ -161,6 +237,20 @@ export class UiEventInbox {
     this.queue = [];
     this.recent = [];
     this.dropped = 0;
+    this.refusedCount = 0;
+    this.lossWakes = [];
+    if (this.lossTimer) clearTimeout(this.lossTimer);
+    this.lossTimer = null;
+  }
+
+  /** Refusals counted since the last read. */
+  get pendingRefused(): number {
+    return this.refusedCount;
+  }
+
+  /** Something to report: queued events, or counted drops or refusals. */
+  get hasNews(): boolean {
+    return this.queue.length > 0 || this.dropped > 0 || this.refusedCount > 0;
   }
 
   get size(): number {

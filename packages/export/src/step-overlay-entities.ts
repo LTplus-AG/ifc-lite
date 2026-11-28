@@ -215,6 +215,7 @@ export function writeOverlayCreatedEntities(
     if (mayNameOmittedRefs && upperType.startsWith('IFCREL')) {
       line = filterHiddenRefsFromRelationshipLine(line, isOmittedFromOutput);
       if (line === null) {
+        pass.enums.boundaries.noteWithheldReferrer(entity.expressId);
         pass.warnings.push(ctx.relationshipWithheldWarning(entity.expressId, upperType));
         continue;
       }
@@ -225,6 +226,7 @@ export function writeOverlayCreatedEntities(
       // source one is, instead of shipping a dangling `#N` (#5941 review).
       line = filterHiddenRefsFromRelationshipLine(line, isOmittedFromOutput, pass.sourceSchema);
       if (line === null) {
+        pass.enums.boundaries.noteWithheldReferrer(entity.expressId);
         pass.warnings.push(styleEntityWithheldWarning(entity.expressId, upperType));
         continue;
       }
@@ -233,7 +235,10 @@ export function writeOverlayCreatedEntities(
     }
     if (pass.filterRetypedAssignment && upperType === 'IFCRELDEFINESBYTYPE') {
       line = pass.filterRetypedAssignment(line, entity.expressId, pass.warnings);
-      if (line === null) continue;
+      if (line === null) {
+        pass.enums.boundaries.noteWithheldReferrer(entity.expressId);
+        continue;
+      }
     }
     // Converted after the loop: a created style assignment may follow the styled item naming it.
     (pass.converting ? toConvert : pass.entities).push(line);

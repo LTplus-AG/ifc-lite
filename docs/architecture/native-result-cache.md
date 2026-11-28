@@ -106,8 +106,9 @@ key = SHA-256( "ifc-lite-native-result-v1"
   dropped (`Miss(PolicyChangedDuringLookup)`). The pass itself still reads the
   live globals, so an uncached pass during a setter can mix policies as before;
   the cache only refuses to store or replay it.
-  `rust/processing/tests/result_cache_policy_ratchet.rs` fails on any `IFC_LITE_*` name that is
-  neither keyed nor listed as non-output. The non-output list is
+  `rust/processing/tests/result_cache_policy_ratchet.rs` fails when a quoted `IFC_LITE_*` or `IFCLITE_*`
+  name in production sources under `rust/core/src`, `rust/geometry/src` or
+  `rust/processing/src` is neither keyed nor listed as non-output. The non-output list is
   `IFC_LITE_CACHE_DIR` (it only chooses where entries live) and
   `IFC_LITE_ENGINE_BUILD_DIGEST` (a compile-time `env!` set by `build.rs` to the
   build digest, which is itself keyed). The ratchet also fails if any router on

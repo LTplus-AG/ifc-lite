@@ -7,7 +7,7 @@ There is no write API that targets a published layer or a ref. Every mutation, f
 ## 6.2 Draft lifecycle
 
 ```text
-create_draft_layer(base?, intent, scope?)   draft bound to base, held in the MCP session's layer workspace
+create_draft_layer(base?, intent, scope?)   optional base, draft held in the session's draft space
   └─ draft_apply_ops(draft_id, ops)        each op checked against the draft's scope claims first
   └─ dry_run_merge(layer_or_draft, into)   optional, any time
 publish_layer(draft_id)                    freeze: minimal layer + tombstones, canonicalize,
@@ -27,7 +27,7 @@ A draft may be co-edited live by humans and agents in the same CRDT session (`au
 | `publish_layer(draft_id)` | returns layer id, op count and `scope_verified` (plus any mismatches); `checks` is empty today |
 | `diff_layer(layer_or_draft, against?)` | structured diff, same JSON the review UI consumes; `against` defaults to the candidate's base |
 | `dry_run_merge(layer_or_draft, into)` | MergePlan preview: conflicts, auto-op count, whether the base resolved; no side effects. Does not evaluate checks |
-| `list_conflicts(layer_or_draft, into)` | conflict records only |
+| `list_conflicts(layer_or_draft, into)` | conflict records and `base_resolved` |
 | `request_review(layer_id, into, reviewers?)` | creates the review in the MCP layer workspace |
 | `get_review_feedback(review_id)` | review status, per-entity decisions and topics, structured for the agent to act on |
 | `respond_to_review(review_id, intent?)` | opens a follow-up draft on the reviewed layer's base and scope and records it on the review; publishing it is a separate `publish_layer` call |

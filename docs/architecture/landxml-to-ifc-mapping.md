@@ -226,9 +226,10 @@ station equations) and its own review. It is not v1.
 
 ## 7. Provenance
 
-Every produced file records, in the IFC header (`FILE_DESCRIPTION`) and in the
-`LandXML_Conversion` property set on `IfcSite` (`writeProvenance` in
-`packages/create/src/landxml/landxml-to-ifc.ts`):
+`IfcProject.Description` identifies the file as a derived LandXML conversion and
+names the mapping version. The `LandXML_Conversion` property set on `IfcSite`
+(`writeProvenance` in `packages/create/src/landxml/landxml-to-ifc.ts`) records the
+following. Source filename and hash are blank when the caller does not supply them.
 
 - that it is a derived conversion, the source filename and its hash;
 - this mapping document's version;

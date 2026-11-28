@@ -318,7 +318,7 @@ wide-arith parsing.
 
 ## Historical: Delivery plan (wire once unblocked)
 
-> Historical (retired 2026-11-14): nothing in this section is wired on `main`. `.github/workflows/wide-arithmetic.yml` and `scripts/lib/build-wasm-wide.sh` can be recovered from `f64111d981`; the `pkg-wide` bundle and any feature-detection module it names never landed.
+> The optional `pkg-wide` build and its CI tripwire were retired on 2026-11-14. The build script and workflow are available at `f64111d981`. Viewer feature detection and runtime selection of that bundle did not ship.
 
 
 This reuses the exact pattern already in place for the threaded second bundle
@@ -392,7 +392,7 @@ wasmtime run -W wide-arithmetic=y --invoke <fn> target-wide/.../*.wasm <args>
 
 ## Historical: CI tripwire (`.github/workflows/wide-arithmetic.yml`)
 
-> Historical (retired 2026-11-14): nothing in this section is wired on `main`. `.github/workflows/wide-arithmetic.yml` and `scripts/lib/build-wasm-wide.sh` can be recovered from `f64111d981`; the `pkg-wide` bundle and any feature-detection module it names never landed.
+> The optional `pkg-wide` build and its CI tripwire were retired on 2026-11-14. The build script and workflow are available at `f64111d981`. Viewer feature detection and runtime selection of that bundle did not ship.
 
 
 Both blockers above are external (an upstream crate version, engine support for

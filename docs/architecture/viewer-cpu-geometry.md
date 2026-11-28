@@ -42,11 +42,9 @@ In all three runs, every held byte was reachable from both `store.models` and th
 The viewer has two scene-side release entry points and a separate store-side release:
 
 - **Ephemeral path** (the one the viewer wires): `Scene.setEphemeralStreamingMode(true)` before streaming, `finishEphemeralStreaming()` at stream end, then `onGeometryReleased` calls the store's `releaseGeometryMemory`, which calls `releaseCpuMeshBuffers` (`apps/viewer/src/lib/geometry-cpu-release.ts`).
-- **Explicit path**: `Scene.releaseGeometryData()` after a normal finalize. When this audit was written only tests called it; since #11512 the opt-in GPU-only residency below calls it.
+- **Explicit path**: `Scene.releaseGeometryData()` after a normal finalize. Only tests call it.
 
-**Nothing turned either on when this audit was written.** `setBoundedGeometryMode` has one caller, with `false` (`useIfcLoader.ts`). `ViewportContainer.tsx` passes `releaseGeometryAfterStream={false}` as a literal, and the embed viewer omits it (default `false`), so `useGeometryStreaming` always calls `setEphemeralStreamingMode(false)` and the branch that calls `finishEphemeralStreaming` and `onGeometryReleased` is unreachable. There is no URL flag, environment variable, setting or size condition. The enabling calls were removed on 2026-06-07 with the desktop app (#992) and the single load path (#975).
-
-**Since #11512: opt-in GPU-only residency.** `?perf.gpuOnly=on|auto` (off by default; `auto` arms it for sources of at least `GPU_ONLY_AUTO_BYTES`, 64 MiB) arms a single primary load: the controller calls `setBoundedGeometryMode(true)`, mirrors the stream into a live-geometry backing, and once the load has settled and the backing verifies, `releaseVerifiedGeometry` (`apps/viewer/src/lib/geometry-backing/active-backing.ts`) releases the store's arrays (`releaseCpuMeshBuffers`) and the scene's (`releaseGeometryData`). Consumers then read geometry back on demand. A load whose backing fails, or that a second model joins before release, keeps its CPU geometry (`apps/viewer/src/lib/geometry-backing/gpu-only-residency.ts`). The Viewport prop path above is still wired off.
+**Nothing can turn either on today.** `setBoundedGeometryMode` has one caller, with `false` (`useIfcLoader.ts`). `ViewportContainer.tsx` passes `releaseGeometryAfterStream={false}` as a literal, and the embed viewer omits it (default `false`), so `useGeometryStreaming` always calls `setEphemeralStreamingMode(false)` and the branch that calls `finishEphemeralStreaming` and `onGeometryReleased` is unreachable. There is no URL flag, environment variable, setting or size condition. The enabling calls were removed on 2026-06-07 with the desktop app (#992) and the single load path (#975).
 
 ### What it would free
 
@@ -65,11 +63,9 @@ These are not freed:
 
 ### What breaks when it runs
 
-This table is the audit as written, before #11512. Rows marked *(since #11512)* note the consumers that now read geometry back from the verified backing instead.
-
 | Area | Behaviour after release |
 |---|---|
-| **Hide / isolate / storey isolation** | **Visible elements disappear.** A partly visible batch always gets a sub-batch request. Only the X-Ray and promotion splits check `canPartitionBatch`. The parent batch is then skipped (`renderer.ts`, where the partial-batch requests are drawn). After release, `getOrCreatePartialBatch` returns `undefined` and `if (subBatch)` draws nothing. So every visible element that shares a batch with a hidden or non-isolated element vanishes, and its shadow goes too (`shadow-occluder-batches.ts`). Flat geometry has no per-entity visibility in the shader; only instanced geometry has a flag discard (`shaders/main.wgsl.ts`). The design note's guess that hidden elements would show was wrong. |
+| **Hide / isolate / storey isolation** | **Visible elements disappear.** A partly visible batch always gets a sub-batch request. Only the X-Ray and promotion splits check `canPartitionBatch`. The parent batch is then skipped (`renderer.ts`, after `pushVisible`). After release, `getOrCreatePartialBatch` returns `undefined` and `if (subBatch)` draws nothing. So every visible element that shares a batch with a hidden or non-isolated element vanishes, and its shadow goes too (`shadow-occluder-batches.ts`). Flat geometry has no per-entity visibility in the shader; only instanced geometry has a flag discard (`shaders/main.wgsl.ts`). The design note's guess that hidden elements would show was wrong. |
 | X-Ray, fully visible batch | Drawn whole at the lowest alpha of its ids: faded too much, nothing missing. X-Ray combined with hiding vanishes like plain hiding. |
 | Click / hover pick | GPU pick bypassed; bounding-box raycast only, so a large box in front steals the pick. On the ephemeral path flat entities never enter `meshDataMap`, so they get **no** box and cannot be picked at all. Rect select is box-only without depth. |
 | Selection / hover highlight (flat) | `getMeshDataPieces` returns nothing: silently no highlight. Instanced and textured highlights still work. |
@@ -77,11 +73,19 @@ This table is the audit as written, before #11512. Rows marked *(since #11512)* 
 | Device loss | Recovery refuses with `cpu-geometry-released`; the model has to be reloaded. |
 | GPU / host residency, cold restore | Return early. |
 | Instanced appearance edits | Throw. |
-| Measure, snap | No target, null hit. *(since #11512)* Measure routes through `measureReadbackGate` on a released scene (`components/viewer/measureReadback.ts`). |
-| Section caps, 2D drawings, export, clash | Read the store's empty arrays: empty or zero-triangle output, a silent wrong answer (inferred, not traced line by line). *(since #11512)* 2D drawings (`lib/drawing/drawing-geometry-context.ts`) and instanced export (`utils/instancedExport.ts`) detect a released scene and read back from the backing. |
+| Measure, snap | No target, null hit. |
+| Section caps, 2D drawings, export, clash | Read the store's empty arrays: empty or zero-triangle output, a silent wrong answer (inferred, not traced line by line). |
 | Collab seed, symbolic fills, entity world position | Explicit guards: skip and report, or null. |
 
-When this audit was written no viewer code checked `isGeometryDataReleased()`. Since #11512 the readback consumers above do, through `lib/geometry-backing/scene-released.ts` and `geometry-owner-residency.ts`.
+No viewer code checks `isGeometryDataReleased()`; only renderer-internal guards react to a release.
+
+### Update (2026-11-28): after #11512
+
+The audit above is the record as written at stage S0. #11512 changed these points:
+
+- **Opt-in GPU-only residency now calls the explicit path.** `?perf.gpuOnly=on|auto` (off by default; `auto` arms it for sources of at least `GPU_ONLY_AUTO_BYTES`, 64 MiB) arms a single primary load. The controller calls `setBoundedGeometryMode(true)` and mirrors the stream into a live-geometry backing. Once the load has settled and the backing verifies, `releaseVerifiedGeometry` (`apps/viewer/src/lib/geometry-backing/active-backing.ts`) releases the store's arrays (`releaseCpuMeshBuffers`) and the scene's (`releaseGeometryData`). A load whose backing fails, or that a second model joins before release, keeps its CPU geometry (`apps/viewer/src/lib/geometry-backing/gpu-only-residency.ts`). The Viewport prop path is still wired off.
+- **Some consumers read geometry back.** Measure routes through `measureReadbackGate` on a released scene (`components/viewer/measureReadback.ts`). 2D drawings (`lib/drawing/drawing-geometry-context.ts`) and instanced export (`utils/instancedExport.ts`) detect a released scene and read back from the verified backing.
+- **Viewer code now checks for release.** The readback consumers above do, through `lib/geometry-backing/scene-released.ts` and `geometry-owner-residency.ts`.
 
 ## Who reads the store's mesh list
 

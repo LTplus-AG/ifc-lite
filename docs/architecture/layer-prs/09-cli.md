@@ -11,8 +11,9 @@ The block below is the spec. Not implemented: `publish --sign`, a selector on
 `log --graph` / `log --author`. Shipped but not in the block: `publish --principal`,
 `--kind` and `--strict-scope`; `merge --waive <spec> --reason "<text>"`,
 `--approved-by` and `--principal`; `revert --in <ref>` and `--resolve`.
-`layer publish` as shipped takes the delta as a required first argument,
-`ifc-lite layer publish <delta.ifcx> --base <ref|-> --intent "..."`, and
+`layer publish` as shipped requires `<delta.ifcx>` as its first argument. Use
+`ifc-lite layer publish <delta.ifcx> --base <ref|-> --intent "..."` when there is
+no saved draft. With a saved draft, `--base` and `--intent` default to its values.
 `layer status` prints the draft's base, intent, scope, creation date and
 whether the base ref has moved (no op count or scope usage).
 (`packages/cli/src/commands/layer-publish.ts`, `layer-merge.ts`)

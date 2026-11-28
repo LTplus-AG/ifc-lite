@@ -593,12 +593,13 @@ placement subtract RTC once; `M(p - rtc)` is not `M(p) - rtc` under rotation.
 Raw product items instead choose an element-frame offset through the inverse
 placement linear transform. See [Coordinate Handling](coordinate-handling.md#geometryrouter).
 
-The engine collates
-congruent occurrences into **GPU instances**: the wasm
-`processGeometryBatchInstanced` entry point (backed by
+The browser geometry workers collate
+congruent occurrences into **GPU instances** using the partitioned WASM batch
+APIs (`processGeometryBatchPartitioned` and its `FromSource` variant, called from
+`packages/geometry/src/geometry.worker.ts`; backed by
 `rust/geometry/src/instancing/` and the mapped-item sources in
-`rust/geometry/src/router/mapped_item.rs`) partitions opaque
-ordinary occurrences into per-template instanced shards, and the renderer
+`rust/geometry/src/router/mapped_item.rs`). These return an instanced shard
+alongside ordinary meshes, covering opaque ordinary occurrences grouped per template. The renderer
 uploads each template once as `instancedTemplates` via `addInstancedShard` (see
 the rendering guide), then draws every occurrence of a template in a single
 instanced draw call. Instancing is enabled for every viewer load, primary and federated
@@ -695,7 +696,7 @@ sequenceDiagram
     Host->>W: stream-end
 ```
 
-Because meshing starts on the first `jobs` chunk instead of after the full pre-pass, the first batch reaches the GPU well before the scan ends on large files. Measured load numbers live in [Performance](../guide/performance.md).
+The pre-pass streams `jobs` chunks to the host. The host queues them until the workers have started and received the resolved styles, voids and entity index, then dispatches the queued work. Measured load numbers live in [Performance](../guide/performance.md).
 
 ## CSG Kernel
 

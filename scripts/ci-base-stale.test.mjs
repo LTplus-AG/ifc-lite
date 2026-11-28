@@ -222,6 +222,35 @@ ct('run, on: a stale labelled PR gets a failure status; a fork gets nothing', ()
   assert.equal(posts[0].state, 'failure');
 });
 
+ct('run: same-head PRs keep separate evidence and a fresh row cannot clear a hold in one sweep (#11350)', () => {
+  const fresh = { ...STALE_PR, number: 6 };
+  for (const prs of [[STALE_PR, fresh], [fresh, STALE_PR]]) {
+    const ioOver = { prMeasurement: (_head, _run, pr) => ({
+      runId: pr, testedBase: 'base0000001', families: [fam(pr === fresh.number ? 400 : 990)],
+    }) };
+    const shadow = runFake({ gate: 'shadow', prs, existing: null, ioOver });
+    assert.deepEqual(shadow.posts, []);
+    assert.deepEqual(shadow.rows.map(r => [r.pr, r.verdict]), prs.map(p => [p.number, p === fresh ? 'fresh' : 'stale']));
+    const on = runFake({ gate: 'on', prs, ioOver });
+    assert.equal(on.posts.at(-1).state, 'failure');
+  }
+});
+
+ct('run, shadow: delayed verdicts against two main revisions remain evidence only (#11350)', () => {
+  const judge = (mainTip) => runFake({
+    gate: 'shadow',
+    existing: null,
+    ioOver: { mainTip: () => mainTip },
+  });
+  const newer = judge('base0000001');
+  const delayed = judge('tip00000001');
+  assert.deepEqual([newer.posts, delayed.posts], [[], []]);
+  assert.deepEqual([newer, delayed].map(({ rows: [r] }) => [r.head, r.mainTip, r.verdict]), [
+    ['head5', 'base0000001', 'fresh'],
+    ['head5', 'tip00000001', 'stale'],
+  ]);
+});
+
 ct('run, shadow: a settled sweep reads no status and posts nothing, even for a stale PR', () => {
   const { posts, reads, saved } = runFake({ gate: undefined, cacheData: { version: 1, lastMode: 'shadow' } });
   assert.deepEqual(posts, []);
